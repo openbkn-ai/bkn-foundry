@@ -34,6 +34,15 @@ func (n *NoopPermissionService) DeleteResources(ctx context.Context, resourceTyp
 	return nil // Silently skip.
 }
 
+func (n *NoopPermissionService) UpsertResourceParents(ctx context.Context, resourceType, parentType string,
+	items []interfaces.PermissionResourceParent) error {
+	return nil // Silently skip.
+}
+
+func (n *NoopPermissionService) DeleteResourceParents(ctx context.Context, resourceType string, resourceIDs []string) error {
+	return nil // Silently skip.
+}
+
 func (n *NoopPermissionService) FilterResources(ctx context.Context, resourceType string, ids []string,
 	ops []string, allowOperation bool, fullOps []string) (map[string]interfaces.PermissionResourceOps, error) {
 	// Return all resources without filtering.

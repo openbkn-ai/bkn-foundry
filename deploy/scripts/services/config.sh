@@ -503,9 +503,7 @@ DEP_EOF
     fi
     local bkn_safe_block
     bkn_safe_block=$(cat <<'BKNSAFE_ON'
-# ISF replacement: services route authz + directory lookups to bkn-safe (the ISF
-# stack is retired). bkn-safe installs into the same namespace, so url uses the
-# namespace-agnostic short service name.
+# Services route authorization and directory lookups to bkn-safe.
 bknSafe:
   authzProvider: bkn-safe
   directoryProvider: bkn-safe
@@ -520,6 +518,7 @@ BKNSAFE_ON
 namespace: ${cfg_namespace}
 auth:
   enabled: ${auth_enabled}
+  knChildResourcePepEnabled: false
 env:
   language: ${cfg_lang}
   timezone: ${cfg_tz}

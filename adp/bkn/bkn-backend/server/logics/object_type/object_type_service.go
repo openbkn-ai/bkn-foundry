@@ -153,13 +153,19 @@ func (ots *objectTypeService) CheckObjectTypeExistByName(ctx context.Context,
 }
 
 func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
-	objectTypes []*interfaces.ObjectType, mode string, needCreateConceptGroupRelation bool, strictMode bool) ([]string, error) {
+	objectTypes []*interfaces.ObjectType, mode string, needCreateConceptGroupRelation bool, strictMode bool) (ids []string, err error) {
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create object type")
 	defer span.End()
+	ctx, parentTracker, trackerOwner := permission.WithResourceParentTracker(ctx)
+	defer func() {
+		if trackerOwner && err != nil {
+			_ = parentTracker.Cleanup(ctx, ots.ps)
+		}
+	}()
 
 	// Check whether the user ID can modify the business knowledge network.
-	err := ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
+	err = ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   objectTypes[0].KNID,
 	}, []string{interfaces.OPERATION_TYPE_MODIFY})
@@ -169,9 +175,12 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 
 	currentTime := time.Now().UnixMilli()
 	for _, objectType := range objectTypes {
-		// Generate a distributed ID when the submitted model ID is empty.
-		if objectType.OTID == "" {
-			objectType.OTID = xid.New().String()
+		objectType.OTID, err = permission.PrepareKNChildResourceID(ctx, objectType.OTID)
+		if err != nil {
+			return nil, err
+		}
+		if err = permission.ValidateKNChildAuthorizationIDs(ctx, objectType.KNID, []string{objectType.OTID}); err != nil {
+			return nil, err
 		}
 
 		accountInfo := interfaces.AccountInfo{}
@@ -264,6 +273,13 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 			}
 		}
 	}
+	parentItems := interfaces.KNChildResourceParents(objectTypes[0].KNID, otIDs)
+	if err = ots.ps.UpsertResourceParents(ctx, interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		interfaces.RESOURCE_TYPE_KN, parentItems); err != nil {
+		return []string{}, err
+	}
+	permission.TrackResourceParents(ctx, interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		interfaces.RESOURCE_TYPE_KN, parentItems)
 
 	// Update.
 	for _, objectType := range updateObjectTypes {
@@ -503,14 +519,17 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, fmt.Sprintf("查询对象类[%s]信息", otIDs))
 	defer span.End()
 
-	// Check whether the user ID can view the business knowledge network.
-	err := ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   knID,
-	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
-	if err != nil {
-		return []*interfaces.ObjectType{}, err
+	otIDs = common.DuplicateSlice(otIDs)
+	if err := permission.ValidateKNChildPEPAuthorizationIDs(ctx, knID, otIDs); err != nil {
+		return nil, err
 	}
+	resource := interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID}
+	operation := interfaces.OPERATION_TYPE_VIEW_DETAIL
+	if len(otIDs) == 1 {
+		resource, operation = permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+			knID, otIDs[0], interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	}
+	var err error
 
 	// 0. Begin the transaction.
 	if tx == nil {
@@ -561,6 +580,9 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 
 		return []*interfaces.ObjectType{}, rest.NewHTTPError(ctx, http.StatusNotFound,
 			berrors.BknBackend_ObjectType_ObjectTypeNotFound).WithErrorDetails(errStr)
+	}
+	if err = ots.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
+		return nil, err
 	}
 
 	// Get object type groups.
@@ -717,11 +739,19 @@ func (ots *objectTypeService) UpdateObjectType(ctx context.Context, tx *sql.Tx, 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update object type")
 	defer span.End()
 
-	// Check whether the user ID can modify the business knowledge network.
-	err := ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   objectType.KNID,
-	}, []string{interfaces.OPERATION_TYPE_MODIFY})
+	if err := permission.ValidateKNChildPEPAuthorizationIDs(ctx, objectType.KNID, []string{objectType.OTID}); err != nil {
+		return err
+	}
+	_, exists, err := ots.CheckObjectTypeExistByID(ctx, objectType.KNID, objectType.Branch, objectType.OTID)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
+	}
+	resource, operation := permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		objectType.KNID, objectType.OTID, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_MODIFY)
+	err = ots.ps.CheckPermission(ctx, resource, []string{operation})
 	if err != nil {
 		return err
 	}
@@ -897,19 +927,40 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 	return nil
 }
 
-func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sql.Tx, knID string, branch string, otIDs []string) error {
+func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sql.Tx, knID string, branch string, otIDs []string) (err error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete object types")
 	defer span.End()
-
-	// Check whether the user ID can modify the business knowledge network.
-	err := ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   knID,
-	}, []string{interfaces.OPERATION_TYPE_MODIFY})
-	if err != nil {
-		return err
+	if tx == nil {
+		var cleanupTracker *permission.AuthorizationCleanupTracker
+		var trackerOwner bool
+		ctx, cleanupTracker, trackerOwner = permission.WithAuthorizationCleanupTracker(ctx)
+		defer func() {
+			if trackerOwner && err == nil {
+				_ = cleanupTracker.Cleanup(ctx, ots.ps)
+			}
+		}()
 	}
 
+	otIDs = common.DuplicateSlice(otIDs)
+	if err := permission.ValidateKNChildPEPAuthorizationIDs(ctx, knID, otIDs); err != nil {
+		return err
+	}
+	resource := interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID}
+	operation := interfaces.OPERATION_TYPE_MODIFY
+	if len(otIDs) == 1 {
+		_, exists, err := ots.CheckObjectTypeExistByID(ctx, knID, branch, otIDs[0])
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
+		}
+		resource, operation = permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+			knID, otIDs[0], interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE)
+	}
+	if err := ots.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
+		return err
+	}
 	if tx == nil {
 		// 0. Begin the transaction.
 		tx, err = ots.db.Begin()
@@ -1005,6 +1056,8 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 	// Record the deleted count in an info log.
 	logger.Infof("DeleteObjectTypesFromGroup success, the kn_id is [%s], branch is [%s], ot_ids is [%v], rowsAffect is [%d]",
 		knID, branch, otIDs, rowsAffect)
+	permission.TrackKNChildAuthorizationCleanup(ctx,
+		interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, otIDs)
 
 	span.SetStatus(codes.Ok, "")
 	return nil
@@ -1020,6 +1073,11 @@ func (ots *objectTypeService) DeleteObjectTypesByKnID(ctx context.Context, tx *s
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 			WithErrorDetails("missing transaction")
+	}
+	otIDs, err := ots.ota.GetObjectTypeIDsByKnID(ctx, knID, branch)
+	if err != nil {
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
 
 	// Delete object types.
@@ -1043,6 +1101,8 @@ func (ots *objectTypeService) DeleteObjectTypesByKnID(ctx context.Context, tx *s
 	// Record the deleted count in an info log.
 	logger.Infof("DeleteObjectTypesByKnID success, the kn_id is [%s], branch is [%s], rowsAffect is [%d]",
 		knID, branch, rowsAffect)
+	permission.TrackKNChildAuthorizationCleanup(ctx,
+		interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, otIDs)
 	span.SetStatus(codes.Ok, "")
 	return nil
 }

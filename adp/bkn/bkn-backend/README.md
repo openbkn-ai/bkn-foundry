@@ -89,7 +89,7 @@ bkn-backend/
   server/
     common/              # Shared helpers, settings, condition handling, trace helpers
     config/              # Service configuration
-    drivenadapters/      # DB, OpenSearch, VEGA, model-factory, user-management clients
+    drivenadapters/      # DB, OpenSearch, VEGA, model-factory, bkn-safe clients
     driveradapters/      # HTTP handlers, routers, request validation
     errors/              # BKN Backend error definitions
     interfaces/          # DTOs and service interfaces
@@ -122,7 +122,7 @@ Prerequisites:
 - Go 1.24+
 - MariaDB 11.4+ or DM8
 - OpenSearch 2.x
-- Reachable VEGA, model-factory, and identity/user-management dependencies when
+- Reachable VEGA, model-factory, and bkn-safe dependencies when
   exercising integration paths.
 
 Configure local settings in:

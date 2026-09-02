@@ -10,10 +10,12 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
+	"os"
 
 	// _ "net/http/pprof"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 	_ "unicode/utf8"
@@ -186,9 +188,13 @@ func main() {
 
 	// Sort Set entries in ascending alphabetical order.
 	if common.GetAuthEnabled() {
+		bknSafeURL := strings.TrimRight(strings.TrimSpace(os.Getenv("BKN_SAFE_URL")), "/")
+		if bknSafeURL == "" {
+			logger.Fatalf("BKN_SAFE_URL is required when authentication is enabled")
+		}
 		logics.SetAuthAccess(auth.NewHydraAuthAccess(appSetting))
-		logics.SetPermissionAccess(permission.MaybeShadow(permission.NewPermissionAccess(appSetting)))
-		logics.SetUserMgmtAccess(user_mgmt.NewUserMgmtAccess(appSetting))
+		logics.SetPermissionAccess(permission.NewPermissionAccess(bknSafeURL))
+		logics.SetUserMgmtAccess(user_mgmt.NewUserMgmtAccess(bknSafeURL))
 	}
 	logics.SetActionScheduleAccess(action_schedule.NewActionScheduleAccess(appSetting))
 	logics.SetAgentOperatorAccess(agent_operator.NewAgentOperatorAccess(appSetting))

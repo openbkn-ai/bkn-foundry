@@ -138,6 +138,9 @@ func Test_metricService_GetMetricByID(t *testing.T) {
 		})
 
 		Convey("Failed when permission denied\n", func() {
+			ma.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "mid1").Return(&interfaces.MetricDefinition{
+				ID: "mid1", KnID: "kn1", Branch: interfaces.MAIN_BRANCH,
+			}, nil)
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_InternalError_CheckPermissionFailed))
 
@@ -147,7 +150,6 @@ func Test_metricService_GetMetricByID(t *testing.T) {
 		})
 
 		Convey("Failed when not found\n", func() {
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ma.EXPECT().GetMetricByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, sql.ErrNoRows)
 
 			got, err := service.GetMetricByID(ctx, "kn1", interfaces.MAIN_BRANCH, "mid1")
@@ -158,7 +160,6 @@ func Test_metricService_GetMetricByID(t *testing.T) {
 		})
 
 		Convey("Failed when access returns other error\n", func() {
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ma.EXPECT().GetMetricByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, sql.ErrConnDone)
 
 			got, err := service.GetMetricByID(ctx, "kn1", interfaces.MAIN_BRANCH, "mid1")
@@ -290,6 +291,7 @@ func Test_metricService_UpdateMetric(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ma := bmock.NewMockMetricAccess(mockCtrl)
+		ma.EXPECT().CheckMetricExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("mid1", true, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
@@ -344,7 +346,10 @@ func Test_metricService_DeleteMetricsByIDs(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		ma := bmock.NewMockMetricAccess(mockCtrl)
+		ma.EXPECT().CheckMetricExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("mid1", true, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		ps.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 

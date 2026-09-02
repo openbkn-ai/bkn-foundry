@@ -84,6 +84,34 @@ func (mr *MockPermissionAccessMockRecorder) DeleteResources(ctx, resources any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteResources", reflect.TypeOf((*MockPermissionAccess)(nil).DeleteResources), ctx, resources)
 }
 
+// UpsertResourceParents mocks base method.
+func (m *MockPermissionAccess) UpsertResourceParents(ctx context.Context, resourceType, parentType string, items []interfaces.PermissionResourceParent) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertResourceParents", ctx, resourceType, parentType, items)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpsertResourceParents indicates an expected call of UpsertResourceParents.
+func (mr *MockPermissionAccessMockRecorder) UpsertResourceParents(ctx, resourceType, parentType, items any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertResourceParents", reflect.TypeOf((*MockPermissionAccess)(nil).UpsertResourceParents), ctx, resourceType, parentType, items)
+}
+
+// DeleteResourceParents mocks base method.
+func (m *MockPermissionAccess) DeleteResourceParents(ctx context.Context, resourceType string, resourceIDs []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteResourceParents", ctx, resourceType, resourceIDs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteResourceParents indicates an expected call of DeleteResourceParents.
+func (mr *MockPermissionAccessMockRecorder) DeleteResourceParents(ctx, resourceType, resourceIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteResourceParents", reflect.TypeOf((*MockPermissionAccess)(nil).DeleteResourceParents), ctx, resourceType, resourceIDs)
+}
+
 // FilterResources mocks base method.
 func (m *MockPermissionAccess) FilterResources(ctx context.Context, filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
 	m.ctrl.T.Helper()

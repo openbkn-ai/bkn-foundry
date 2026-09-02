@@ -8,6 +8,7 @@ package interfaces
 
 import (
 	"context"
+	"strings"
 )
 
 const (
@@ -22,7 +23,13 @@ const (
 	RESOURCE_ID_ALL = "*"
 
 	// Resource types.
-	RESOURCE_TYPE_KN = "knowledge_network"
+	RESOURCE_TYPE_KN            = "knowledge_network"
+	RESOURCE_TYPE_CONCEPT_GROUP = "concept_group"
+	RESOURCE_TYPE_OBJECT_TYPE   = "object_type"
+	RESOURCE_TYPE_RELATION_TYPE = "relation_type"
+	RESOURCE_TYPE_ACTION_TYPE   = "action_type"
+	RESOURCE_TYPE_METRIC        = "metric"
+	RESOURCE_TYPE_RISK_TYPE     = "risk_type"
 
 	// Resource operation types.
 	OPERATION_TYPE_VIEW_DETAIL = "view_detail"
@@ -32,6 +39,7 @@ const (
 	OPERATION_TYPE_QUERY_DATA  = "query_data"
 	OPERATION_TYPE_AUTHORIZE   = "authorize"
 	OPERATION_TYPE_TASK_MANAGE = "task_manage"
+	OPERATION_TYPE_EXECUTE     = "execute"
 
 	// Topic used to update a resource name.
 	AUTHORIZATION_RESOURCE_NAME_MODIFY = "authorization.resource.name.modify"
@@ -54,12 +62,6 @@ type PermissionCheck struct {
 	Accessor   PermissionAccessor `json:"accessor"`
 	Resource   PermissionResource `json:"resource"`
 	Operations []string           `json:"operation"`
-	Method     string             `json:"method"`
-}
-
-// PermissionCheckResult is the result of a permission check.
-type PermissionCheckResult struct {
-	Result bool `json:"result"`
 }
 
 // PermissionAccessor identifies an accessor.
@@ -75,6 +77,49 @@ type PermissionResource struct {
 	Name string `json:"name,omitempty"` // Resource name
 }
 
+// PermissionResourceParent records one concrete child-to-parent relationship.
+type PermissionResourceParent struct {
+	ResourceID string `json:"resource_id"`
+	ParentID   string `json:"parent_id"`
+}
+
+// KNChildResourceID returns the canonical Safe ID for a child resource.
+func KNChildResourceID(knID, childID string) string {
+	return knID + "/" + childID
+}
+
+// KNChildPermissionResource builds the canonical Safe reference for a KN child.
+func KNChildPermissionResource(resourceType, knID, childID string) PermissionResource {
+	return PermissionResource{Type: resourceType, ID: KNChildResourceID(knID, childID)}
+}
+
+// KNChildResourceParents builds concrete child-to-KN parent rows for bkn-safe.
+func KNChildResourceParents(knID string, childIDs []string) []PermissionResourceParent {
+	items := make([]PermissionResourceParent, 0, len(childIDs))
+	for _, childID := range childIDs {
+		items = append(items, PermissionResourceParent{
+			ResourceID: KNChildResourceID(knID, childID),
+			ParentID:   knID,
+		})
+	}
+	return items
+}
+
+// KNChildResourceIDs returns canonical Safe IDs for concrete KN children.
+func KNChildResourceIDs(knID string, childIDs []string) []string {
+	ids := make([]string, 0, len(childIDs))
+	for _, childID := range childIDs {
+		ids = append(ids, KNChildResourceID(knID, childID))
+	}
+	return ids
+}
+
+// IsValidAuthorizationID reports whether an ID is safe to embed in a canonical
+// authorization resource ID. Empty IDs and wildcard/path separators are invalid.
+func IsValidAuthorizationID(id string) bool {
+	return id != "" && strings.TrimSpace(id) == id && !strings.ContainsAny(id, "/*")
+}
+
 // PermissionResourcesFilter is used for filtering and deletion.
 //
 // Operations and CandidateOperations are independent dimensions.
@@ -82,16 +127,14 @@ type PermissionResource struct {
 // CandidateOperations determine which operations are returned to the frontend. When empty,
 // they fall back to Operations for backward compatibility.
 //
-// ISF previously used Operations for both dimensions and returned every allowed operation when
-// allow_operation was true. BKN Safe intersects the requested candidate list, so the candidates
-// must be explicitly passed to the adapter.
+// BKN Safe intersects the requested candidate list, so callers must pass the
+// candidates explicitly when they differ from the visibility operations.
 type PermissionResourcesFilter struct {
 	Accessor       PermissionAccessor   `json:"accessor,omitempty"`
 	Resources      []PermissionResource `json:"resources,omitempty"`
 	Operations     []string             `json:"operation,omitempty"`
 	AllowOperation bool                 `json:"allow_operation"`
-	Method         string               `json:"method,omitempty"`
-	// json:"-" keeps this new field out of the ISF request contract.
+	// CandidateOperations is an adapter-only projection hint.
 	CandidateOperations []string `json:"-"`
 }
 
@@ -125,4 +168,6 @@ type PermissionAccess interface {
 
 	CreateResources(ctx context.Context, policies []PermissionPolicy) error
 	DeleteResources(ctx context.Context, resources []PermissionResource) error
+	UpsertResourceParents(ctx context.Context, resourceType, parentType string, items []PermissionResourceParent) error
+	DeleteResourceParents(ctx context.Context, resourceType string, resourceIDs []string) error
 }

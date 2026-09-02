@@ -172,6 +172,46 @@ func (ps *PermissionServiceImpl) DeleteResources(ctx context.Context, resourceTy
 	return nil
 }
 
+// UpsertResourceParents synchronizes concrete KN child ownership into bkn-safe.
+func (ps *PermissionServiceImpl) UpsertResourceParents(ctx context.Context, resourceType, parentType string,
+	items []interfaces.PermissionResourceParent) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "UpsertPermissionResourceParents")
+	defer span.End()
+
+	if len(items) == 0 {
+		span.SetStatus(codes.Ok, "")
+		return nil
+	}
+	if err := ps.pa.UpsertResourceParents(ctx, resourceType, parentType, items); err != nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_InternalError_CreateResourcesFailed).WithErrorDetails(err)
+		otellog.LogError(ctx, "UpsertResourceParents failed", httpErr)
+		return httpErr
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+// DeleteResourceParents removes concrete KN child ownership from bkn-safe.
+func (ps *PermissionServiceImpl) DeleteResourceParents(ctx context.Context, resourceType string,
+	resourceIDs []string) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DeletePermissionResourceParents")
+	defer span.End()
+
+	if len(resourceIDs) == 0 {
+		span.SetStatus(codes.Ok, "")
+		return nil
+	}
+	if err := ps.pa.DeleteResourceParents(ctx, resourceType, resourceIDs); err != nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_InternalError_DeleteResourcesFailed).WithErrorDetails(err)
+		otellog.LogError(ctx, "DeleteResourceParents failed", httpErr)
+		return httpErr
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
 // Filter the resource list.
 func (ps *PermissionServiceImpl) FilterResources(ctx context.Context, resourceType string, ids []string,
 	ops []string, allowOperation bool, fullOps []string) (map[string]interfaces.PermissionResourceOps, error) {

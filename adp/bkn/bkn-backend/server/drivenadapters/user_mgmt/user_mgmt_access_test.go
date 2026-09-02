@@ -18,30 +18,24 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
-	"bkn-backend/common"
 	"bkn-backend/interfaces"
 )
 
-func newTestUserMgmtAccess(appSetting *common.AppSetting, httpClient rest.HTTPClient) *userMgmtAccess {
+func newTestUserMgmtAccess(baseURL string, httpClient rest.HTTPClient) *userMgmtAccess {
 	return &userMgmtAccess{
-		appSetting:  appSetting,
-		httpClient:  httpClient,
-		userMgmtUrl: appSetting.UserMgmtUrl,
+		httpClient: httpClient,
+		bknSafeURL: baseURL,
 	}
 }
 
 func TestNewUserMgmtAccess(t *testing.T) {
 	Convey("Test NewUserMgmtAccess", t, func() {
-		appSetting := &common.AppSetting{
-			UserMgmtUrl: "http://test-user-mgmt",
-		}
+		access := NewUserMgmtAccess("  http://bkn-safe:3000/  ")
 
-		access1 := NewUserMgmtAccess(appSetting)
-		access2 := NewUserMgmtAccess(appSetting)
-
-		Convey("Should return singleton instance", func() {
-			So(access1, ShouldNotBeNil)
-			So(access2, ShouldEqual, access1)
+		Convey("Should create a normalized bkn-safe directory adapter", func() {
+			impl, ok := access.(*userMgmtAccess)
+			So(ok, ShouldBeTrue)
+			So(impl.bknSafeURL, ShouldEqual, "http://bkn-safe:3000")
 		})
 	})
 }
@@ -52,13 +46,10 @@ func Test_userMgmtAccess_GetAccountNames(t *testing.T) {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
 
-		appSetting := &common.AppSetting{
-			UserMgmtUrl: "http://test-user-mgmt",
-		}
 		mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
-		uma := newTestUserMgmtAccess(appSetting, mockHTTPClient)
+		uma := newTestUserMgmtAccess("http://bkn-safe", mockHTTPClient)
 
-		httpUrl := "http://test-user-mgmt/api/user-management/v2/names"
+		httpUrl := "http://bkn-safe/api/safe/v1/directory/names"
 
 		Convey("Success getting account names", func() {
 			accountInfos := []*interfaces.AccountInfo{

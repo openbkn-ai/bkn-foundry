@@ -50,10 +50,6 @@ type AppSetting struct {
 	OpenSearchSetting rest.OpenSearchClientConfig
 	HydraAdminSetting hydra.HydraAdminSetting
 
-	// permission url
-	PermissionUrl string
-	// user management url
-	UserMgmtUrl string
 	// model factory url
 	ModelFactoryManagerUrl string
 	// model factory api url
@@ -77,8 +73,6 @@ const (
 	rdsServiceName                 string = "rds"
 	mqServiceName                  string = "mq"
 	opensearchServiceName          string = "opensearch"
-	permissionServiceName          string = "authorization-private"
-	userMgmtServiceName            string = "user-management"
 	hydraAdminServiceName          string = "hydra-admin"
 	modelFactoryManagerServiceName string = "mf-model-manager"
 	modelFactoryAPIServiceName     string = "mf-model-api"
@@ -145,10 +139,6 @@ func loadSetting(vp *viper.Viper) {
 	SetOpenSearchSetting()
 
 	SetHydraAdminSetting()
-
-	SetPermissionSetting()
-
-	SetUserMgmtSetting()
 
 	SetModelFactoryManagerSetting()
 
@@ -232,7 +222,7 @@ func GetAuthEnabled() bool {
 
 func SetHydraAdminSetting() {
 	if !GetAuthEnabled() {
-		logger.Info("ISF authentication disabled via AUTH_ENABLED env, skipping hydra-admin configuration")
+		logger.Info("Authentication disabled via AUTH_ENABLED env, skipping hydra-admin configuration")
 		return
 	}
 	setting, ok := appSetting.DepServices[hydraAdminServiceName]
@@ -244,40 +234,6 @@ func SetHydraAdminSetting() {
 		HydraAdminHost:     setting["host"].(string),
 		HydraAdminPort:     setting["port"].(int),
 	}
-}
-
-func SetPermissionSetting() {
-	if !GetAuthEnabled() {
-		logger.Info("ISF authentication disabled via AUTH_ENABLED env, skipping authorization configuration")
-		return
-	}
-	setting, ok := appSetting.DepServices[permissionServiceName]
-	if !ok {
-		logger.Fatalf("service %s not found in depServices", permissionServiceName)
-	}
-
-	protocol := setting["protocol"].(string)
-	host := setting["host"].(string)
-	port := setting["port"].(int)
-
-	appSetting.PermissionUrl = fmt.Sprintf("%s://%s:%d/api/authorization/v1", protocol, host, port)
-}
-
-func SetUserMgmtSetting() {
-	if !GetAuthEnabled() {
-		logger.Info("ISF authentication disabled via AUTH_ENABLED env, skipping user-management configuration")
-		return
-	}
-	setting, ok := appSetting.DepServices[userMgmtServiceName]
-	if !ok {
-		logger.Fatalf("service %s not found in depServices", userMgmtServiceName)
-	}
-
-	protocol := setting["protocol"].(string)
-	host := setting["host"].(string)
-	port := setting["port"].(int)
-
-	appSetting.UserMgmtUrl = fmt.Sprintf("%s://%s:%d", protocol, host, port)
 }
 
 func SetModelFactoryManagerSetting() {

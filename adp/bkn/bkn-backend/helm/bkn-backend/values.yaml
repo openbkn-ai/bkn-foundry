@@ -6,12 +6,9 @@ env:
   timezone: Asia/Shanghai
   language: en_US.UTF-8
 
-# bkn-safe (ISF replacement) cutover knobs. Default empty = ISF behavior.
-# provider: "" | "shadow" | "bkn-safe". url: bkn-safe ClusterIP base. Revertible.
+# bkn-safe service base URL.
 bknSafe:
-  authzProvider: ""
-  directoryProvider: ""
-  url: ""
+  url: "http://bkn-safe:3000"
 
 replicaCount: 1
 
@@ -44,6 +41,8 @@ antiAffinity:
 # Authentication switch.
 auth:
   enabled: true
+  # Enable only after existing KN child policies and ResourceParent data are migrated.
+  knChildResourcePepEnabled: false
 
 # Microservice communication dependency configuration.
 depServices:
@@ -71,16 +70,8 @@ depServices:
     protocol: http
     user: admin
     password: ""
-  authorization-private:
-    host: authorization-private
-    port: 30920
-    protocol: http
-  user-management:
-    host: user-management-private
-    port: 30980
-    protocol: http
   hydra-admin:
-    # ISF replacement: introspect against bkn-safe's paired hydra (cross-ns).
+    # Introspect against bkn-safe's paired Hydra.
     host: bkn-safe-hydra-admin
     port: 4445
     protocol: http

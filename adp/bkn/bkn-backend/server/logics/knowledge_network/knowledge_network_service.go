@@ -125,12 +125,18 @@ func (kns *knowledgeNetworkService) CheckKNExistByName(ctx context.Context, knNa
 	return KNID, exist, nil
 }
 
-func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces.KN, mode string, strictMode bool) (string, error) {
+func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces.KN, mode string, strictMode bool) (id string, err error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create knowledge network")
 	defer span.End()
+	ctx, parentTracker, trackerOwner := permission.WithResourceParentTracker(ctx)
+	defer func() {
+		if trackerOwner && err != nil {
+			_ = parentTracker.Cleanup(ctx, kns.ps)
+		}
+	}()
 
 	// Check whether the user ID can create business knowledge networks through policy evaluation.
-	err := kns.ps.CheckPermission(ctx, interfaces.PermissionResource{
+	err = kns.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   interfaces.RESOURCE_ID_ALL,
 	}, []string{interfaces.OPERATION_TYPE_CREATE})
@@ -936,12 +942,18 @@ func (kns *knowledgeNetworkService) UpdateKN(ctx context.Context, tx *sql.Tx, kn
 	return nil
 }
 
-func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces.KN) error {
+func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces.KN) (err error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete knowledge network")
 	defer span.End()
+	ctx, cleanupTracker, trackerOwner := permission.WithAuthorizationCleanupTracker(ctx)
+	defer func() {
+		if trackerOwner && err == nil {
+			_ = cleanupTracker.Cleanup(ctx, kns.ps)
+		}
+	}()
 
 	// Check whether the user ID can delete business knowledge networks.
-	err := kns.ps.CheckPermission(ctx, interfaces.PermissionResource{
+	err = kns.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   kn.KNID,
 	}, []string{interfaces.OPERATION_TYPE_DELETE})

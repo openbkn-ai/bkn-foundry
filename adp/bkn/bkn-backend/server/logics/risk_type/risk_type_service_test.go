@@ -17,8 +17,10 @@ package risk_type
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
@@ -27,6 +29,160 @@ import (
 	"bkn-backend/interfaces"
 	bmock "bkn-backend/interfaces/mock"
 )
+
+func TestRiskTypeServiceCreateRiskTypesResourceParentLifecycle(t *testing.T) {
+	newRiskType := func() []*interfaces.RiskType {
+		return []*interfaces.RiskType{{
+			RTID:   "risk-1",
+			RTName: "Risk 1",
+			KNID:   "kn-1",
+			Branch: interfaces.MAIN_BRANCH,
+		}}
+	}
+
+	t.Run("rolls back when the parent edge cannot be written", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		db, dbMock, err := sqlmock.New()
+		if err != nil {
+			t.Fatalf("sqlmock.New() error = %v", err)
+		}
+		defer db.Close()
+
+		rta := bmock.NewMockRiskTypeAccess(ctrl)
+		ps := bmock.NewMockPermissionService(ctrl)
+		vbs := bmock.NewMockVegaBackendService(ctrl)
+		service := &riskTypeService{appSetting: &common.AppSetting{}, db: db, rta: rta, ps: ps, vbs: vbs}
+		parentErr := errors.New("parent edge write failed")
+		parentItems := []interfaces.PermissionResourceParent{{ResourceID: "kn-1/risk-1", ParentID: "kn-1"}}
+
+		dbMock.ExpectBegin()
+		ps.EXPECT().CheckPermission(gomock.Any(),
+			interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: "kn-1"},
+			[]string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+		rta.EXPECT().CheckRiskTypeExistByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "risk-1").
+			Return("", false, nil)
+		rta.EXPECT().CheckRiskTypeExistByName(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "Risk 1").
+			Return("", false, nil)
+		rta.EXPECT().CreateRiskType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		ps.EXPECT().UpsertResourceParents(gomock.Any(), interfaces.RESOURCE_TYPE_RISK_TYPE,
+			interfaces.RESOURCE_TYPE_KN, parentItems).Return(parentErr)
+		dbMock.ExpectRollback()
+
+		_, err = service.CreateRiskTypes(context.Background(), nil, newRiskType(), interfaces.ImportMode_Normal)
+		if !errors.Is(err, parentErr) {
+			t.Fatalf("CreateRiskTypes() error = %v, want %v", err, parentErr)
+		}
+		if err := dbMock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("database expectations were not met: %v", err)
+		}
+	})
+
+	t.Run("removes the parent edge when commit fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		db, dbMock, err := sqlmock.New()
+		if err != nil {
+			t.Fatalf("sqlmock.New() error = %v", err)
+		}
+		defer db.Close()
+
+		rta := bmock.NewMockRiskTypeAccess(ctrl)
+		ps := bmock.NewMockPermissionService(ctrl)
+		vbs := bmock.NewMockVegaBackendService(ctrl)
+		service := &riskTypeService{appSetting: &common.AppSetting{}, db: db, rta: rta, ps: ps, vbs: vbs}
+		commitErr := errors.New("commit failed")
+		parentItems := []interfaces.PermissionResourceParent{{ResourceID: "kn-1/risk-1", ParentID: "kn-1"}}
+
+		dbMock.ExpectBegin()
+		ps.EXPECT().CheckPermission(gomock.Any(),
+			interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: "kn-1"},
+			[]string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+		rta.EXPECT().CheckRiskTypeExistByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "risk-1").
+			Return("", false, nil)
+		rta.EXPECT().CheckRiskTypeExistByName(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "Risk 1").
+			Return("", false, nil)
+		rta.EXPECT().CreateRiskType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		ps.EXPECT().UpsertResourceParents(gomock.Any(), interfaces.RESOURCE_TYPE_RISK_TYPE,
+			interfaces.RESOURCE_TYPE_KN, parentItems).Return(nil)
+		vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+		dbMock.ExpectCommit().WillReturnError(commitErr)
+		ps.EXPECT().DeleteResourceParents(gomock.Any(), interfaces.RESOURCE_TYPE_RISK_TYPE,
+			[]string{"kn-1/risk-1"}).Return(nil)
+
+		_, err = service.CreateRiskTypes(context.Background(), nil, newRiskType(), interfaces.ImportMode_Normal)
+		if !errors.Is(err, commitErr) {
+			t.Fatalf("CreateRiskTypes() error = %v, want %v", err, commitErr)
+		}
+		if err := dbMock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("database expectations were not met: %v", err)
+		}
+	})
+}
+
+func TestRiskTypeServiceDeleteRiskTypesAuthorizationCleanup(t *testing.T) {
+	t.Setenv("KN_CHILD_RESOURCE_PEP_ENABLED", "true")
+	newService := func(t *testing.T) (*riskTypeService, sqlmock.Sqlmock, *bmock.MockRiskTypeAccess,
+		*bmock.MockPermissionService, *bmock.MockVegaBackendService) {
+		t.Helper()
+		ctrl := gomock.NewController(t)
+		db, dbMock, err := sqlmock.New()
+		if err != nil {
+			t.Fatalf("sqlmock.New() error = %v", err)
+		}
+		t.Cleanup(func() { _ = db.Close() })
+		rta := bmock.NewMockRiskTypeAccess(ctrl)
+		ps := bmock.NewMockPermissionService(ctrl)
+		vbs := bmock.NewMockVegaBackendService(ctrl)
+		return &riskTypeService{appSetting: &common.AppSetting{}, db: db, rta: rta, ps: ps, vbs: vbs},
+			dbMock, rta, ps, vbs
+	}
+	prepareDelete := func(dbMock sqlmock.Sqlmock, rta *bmock.MockRiskTypeAccess,
+		ps *bmock.MockPermissionService, vbs *bmock.MockVegaBackendService) {
+		dbMock.ExpectBegin()
+		rta.EXPECT().CheckRiskTypeExistByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "risk-1").
+			Return("Risk 1", true, nil)
+		ps.EXPECT().CheckPermission(gomock.Any(),
+			interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_RISK_TYPE, ID: "kn-1/risk-1"},
+			[]string{interfaces.OPERATION_TYPE_DELETE}).Return(nil)
+		rta.EXPECT().DeleteRiskTypesByIDs(gomock.Any(), gomock.Any(), "kn-1", interfaces.MAIN_BRANCH,
+			[]string{"risk-1"}).Return(int64(1), nil)
+		vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+	}
+
+	t.Run("does not clean Safe when commit fails", func(t *testing.T) {
+		service, dbMock, rta, ps, vbs := newService(t)
+		prepareDelete(dbMock, rta, ps, vbs)
+		commitErr := errors.New("commit failed")
+		dbMock.ExpectCommit().WillReturnError(commitErr)
+
+		err := service.DeleteRiskTypesByIDs(context.Background(), nil, "kn-1", interfaces.MAIN_BRANCH,
+			[]string{"risk-1"})
+		if !errors.Is(err, commitErr) {
+			t.Fatalf("DeleteRiskTypesByIDs() error = %v, want %v", err, commitErr)
+		}
+		if err := dbMock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("database expectations were not met: %v", err)
+		}
+	})
+
+	t.Run("cleans policies and parent edges after commit", func(t *testing.T) {
+		service, dbMock, rta, ps, vbs := newService(t)
+		prepareDelete(dbMock, rta, ps, vbs)
+		dbMock.ExpectCommit()
+		ps.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_RISK_TYPE,
+			[]string{"kn-1/risk-1"}).Return(nil)
+		ps.EXPECT().DeleteResourceParents(gomock.Any(), interfaces.RESOURCE_TYPE_RISK_TYPE,
+			[]string{"kn-1/risk-1"}).Return(nil)
+
+		err := service.DeleteRiskTypesByIDs(context.Background(), nil, "kn-1", interfaces.MAIN_BRANCH,
+			[]string{"risk-1"})
+		if err != nil {
+			t.Fatalf("DeleteRiskTypesByIDs() error = %v", err)
+		}
+		if err := dbMock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("database expectations were not met: %v", err)
+		}
+	})
+}
 
 func TestRiskTypeServiceSearchRiskTypesContinuesDefaultCursorPaging(t *testing.T) {
 	Convey("SearchRiskTypes continues default cursor paging after a full page\n", t, func() {

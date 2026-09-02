@@ -10,19 +10,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
-	"os"
+	"strings"
 	"time"
 
 	"bkn-backend/interfaces"
 )
-
-// bkn-safe authz cutover (revertible via AUTHZ_PROVIDER):
-//   - unset / "isf" : ISF PermissionAccess unchanged (default)
-//   - "shadow"      : ISF authoritative + bkn-safe queried in parallel, diffs logged
-//   - "bkn-safe"    : bkn-safe authoritative (full adapter)
-// BKN_SAFE_URL points at bkn-safe. Flip the env to revert; ISF impl untouched.
 
 // safeClient talks to bkn-safe's clean authz API (/api/safe/v1/authz/*).
 type safeClient struct {
@@ -31,7 +24,10 @@ type safeClient struct {
 }
 
 func newSafeClient(baseURL string) *safeClient {
-	return &safeClient{baseURL: baseURL, http: &http.Client{Timeout: 5 * time.Second}}
+	return &safeClient{
+		baseURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"),
+		http:    &http.Client{Timeout: 5 * time.Second},
+	}
 }
 
 func (c *safeClient) checkOne(ctx context.Context, accessorID, rtype, rid, op string) (bool, error) {
@@ -83,6 +79,28 @@ func (c *safeClient) filterResources(ctx context.Context, accessorID string,
 	return out, nil
 }
 
+func (c *safeClient) upsertResourceParents(ctx context.Context, resourceType, parentType string,
+	items []interfaces.PermissionResourceParent) error {
+	if len(items) == 0 {
+		return nil
+	}
+	return c.do(ctx, http.MethodPut, "/api/safe/v1/authz/resource-parents", map[string]any{
+		"resource_type": resourceType,
+		"parent_type":   parentType,
+		"items":         items,
+	}, nil)
+}
+
+func (c *safeClient) deleteResourceParents(ctx context.Context, resourceType string, resourceIDs []string) error {
+	if len(resourceIDs) == 0 {
+		return nil
+	}
+	return c.do(ctx, http.MethodDelete, "/api/safe/v1/authz/resource-parents", map[string]any{
+		"resource_type": resourceType,
+		"resource_ids":  resourceIDs,
+	}, nil)
+}
+
 func (c *safeClient) allowedAll(ctx context.Context, accessorID, rtype, rid string, ops []string) (bool, error) {
 	for _, op := range ops {
 		ok, err := c.checkOne(ctx, accessorID, rtype, rid, op)
@@ -118,29 +136,13 @@ func (c *safeClient) do(ctx context.Context, method, path string, body, out any)
 	return nil
 }
 
-// ---- shadow wrapper: ISF authoritative, bkn-safe diff-logged ----
-
-type shadowPermissionAccess struct {
-	interfaces.PermissionAccess
-	safe *safeClient
-}
-
-func (s *shadowPermissionAccess) CheckPermission(ctx context.Context, check interfaces.PermissionCheck) (bool, error) {
-	isfOK, isfErr := s.PermissionAccess.CheckPermission(ctx, check)
-	safeOK, safeErr := s.safe.allowedAll(ctx, check.Accessor.ID, check.Resource.Type, check.Resource.ID, check.Operations)
-	switch {
-	case safeErr != nil:
-		log.Printf("[authz-shadow] bkn-safe error (ISF authoritative): %s:%s ops=%v err=%v", check.Resource.Type, check.Resource.ID, check.Operations, safeErr)
-	case isfErr == nil && isfOK != safeOK:
-		log.Printf("[authz-shadow] DIFF: accessor=%s %s:%s ops=%v isf=%v bkn-safe=%v", check.Accessor.ID, check.Resource.Type, check.Resource.ID, check.Operations, isfOK, safeOK)
-	}
-	return isfOK, isfErr
-}
-
-// ---- full bkn-safe adapter: bkn-safe authoritative ----
-
 type safePermissionAccess struct {
 	safe *safeClient
+}
+
+// NewPermissionAccess creates the bkn-safe authorization adapter.
+func NewPermissionAccess(baseURL string) interfaces.PermissionAccess {
+	return &safePermissionAccess{safe: newSafeClient(baseURL)}
 }
 
 func (s *safePermissionAccess) CheckPermission(ctx context.Context, check interfaces.PermissionCheck) (bool, error) {
@@ -213,27 +215,11 @@ func (s *safePermissionAccess) DeleteResources(ctx context.Context, resources []
 	return nil
 }
 
-// MaybeShadow applies the AUTHZ_PROVIDER switch. Default/unknown => ISF (inner).
-func MaybeShadow(inner interfaces.PermissionAccess) interfaces.PermissionAccess {
-	provider := os.Getenv("AUTHZ_PROVIDER")
-	if provider == "" || provider == "isf" {
-		return inner
-	}
-	url := os.Getenv("BKN_SAFE_URL")
-	if url == "" {
-		log.Printf("[authz] AUTHZ_PROVIDER=%s but BKN_SAFE_URL empty; using ISF", provider)
-		return inner
-	}
-	sc := newSafeClient(url)
-	switch provider {
-	case "bkn-safe":
-		log.Printf("[authz] provider=bkn-safe (authoritative) at %s", url)
-		return &safePermissionAccess{safe: sc}
-	case "shadow":
-		log.Printf("[authz] provider=shadow; ISF authoritative, comparing bkn-safe at %s", url)
-		return &shadowPermissionAccess{PermissionAccess: inner, safe: sc}
-	default:
-		log.Printf("[authz] unknown AUTHZ_PROVIDER=%s; using ISF", provider)
-		return inner
-	}
+func (s *safePermissionAccess) UpsertResourceParents(ctx context.Context, resourceType, parentType string,
+	items []interfaces.PermissionResourceParent) error {
+	return s.safe.upsertResourceParents(ctx, resourceType, parentType, items)
+}
+
+func (s *safePermissionAccess) DeleteResourceParents(ctx context.Context, resourceType string, resourceIDs []string) error {
+	return s.safe.deleteResourceParents(ctx, resourceType, resourceIDs)
 }

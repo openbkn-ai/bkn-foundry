@@ -255,7 +255,6 @@ func Test_actionTypeService_GetActionTypesByIDs(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ata.EXPECT().GetActionTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(atArr, nil)
 
 			result, err := service.GetActionTypesByIDs(ctx, knID, branch, atIDs)
@@ -270,6 +269,9 @@ func Test_actionTypeService_GetActionTypesByIDs(t *testing.T) {
 			branch := interfaces.MAIN_BRANCH
 			atIDs := []string{"at1"}
 
+			ata.EXPECT().GetActionTypesByIDs(gomock.Any(), knID, branch, atIDs).Return([]*interfaces.ActionType{{
+				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1"},
+			}}, nil)
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_ActionType_InternalError))
 
 			result, err := service.GetActionTypesByIDs(ctx, knID, branch, atIDs)
@@ -282,7 +284,6 @@ func Test_actionTypeService_GetActionTypesByIDs(t *testing.T) {
 			branch := interfaces.MAIN_BRANCH
 			atIDs := []string{"at1"}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ata.EXPECT().GetActionTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			result, err := service.GetActionTypesByIDs(ctx, knID, branch, atIDs)
@@ -993,7 +994,10 @@ func Test_actionTypeService_DeleteActionTypesByIDs(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
+		ata.EXPECT().CheckActionTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("at1", true, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		ps.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		service := &actionTypeService{
@@ -1080,6 +1084,7 @@ func Test_actionTypeService_UpdateActionType(t *testing.T) {
 			},
 		}
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
+		ata.EXPECT().CheckActionTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("at1", true, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
@@ -1179,6 +1184,8 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 		}
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().UpsertResourceParents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		ps.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
@@ -1326,7 +1333,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-			ata.EXPECT().CheckActionTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("at1", true, nil)
+			ata.EXPECT().CheckActionTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("at1", true, nil).Times(2)
 			ata.EXPECT().CheckActionTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("at1", true, nil)
 			ata.EXPECT().UpdateActionType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
@@ -1542,7 +1549,11 @@ func Test_actionTypeService_DeleteActionTypesByKnID(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
-		service := &actionTypeService{appSetting: &common.AppSetting{}, ata: ata}
+		ata.EXPECT().GetActionTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"at1"}, nil).AnyTimes()
+		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		ps.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		service := &actionTypeService{appSetting: &common.AppSetting{}, ata: ata, ps: ps}
 
 		Convey("Failed when tx is nil\n", func() {
 			err := service.DeleteActionTypesByKnID(ctx, nil, "kn1", interfaces.MAIN_BRANCH)

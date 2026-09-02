@@ -10,7 +10,7 @@ import (
 	"context"
 )
 
-// UserMgmtAccess defines the user-management access interface.
+// UserMgmtAccess resolves account names through the bkn-safe directory API.
 //
 //go:generate mockgen -source ../interfaces/user_mgmt_access.go -destination ../interfaces/mock/mock_user_mgmt_access.go
 type UserMgmtAccess interface {

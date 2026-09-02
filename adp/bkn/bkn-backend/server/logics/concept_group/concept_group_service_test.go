@@ -569,7 +569,6 @@ func Test_conceptGroupService_GetConceptGroupByID(t *testing.T) {
 			cgID := "cg1"
 			mode := ""
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
 
 			result, err := service.GetConceptGroupByID(ctx, knID, branch, cgID, mode)
@@ -585,11 +584,14 @@ func Test_conceptGroupService_GetConceptGroupByID(t *testing.T) {
 			cgID := "cg1"
 			mode := ""
 
+			cga.EXPECT().GetConceptGroupByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.ConceptGroup{
+				CGID: cgID, KNID: knID, Branch: branch,
+			}, nil)
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_ConceptGroup_InternalError))
 
 			result, err := service.GetConceptGroupByID(ctx, knID, branch, cgID, mode)
 			So(err, ShouldNotBeNil)
-			So(result, ShouldNotBeNil)
+			So(result, ShouldBeNil)
 		})
 
 		Convey("Failed when GetConceptGroupByID returns error\n", func() {
@@ -598,7 +600,6 @@ func Test_conceptGroupService_GetConceptGroupByID(t *testing.T) {
 			cgID := "cg1"
 			mode := ""
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			result, err := service.GetConceptGroupByID(ctx, knID, branch, cgID, mode)
@@ -920,7 +921,10 @@ func Test_conceptGroupService_DeleteConceptGroupByID(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
+		cga.EXPECT().CheckConceptGroupExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("cg1", true, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		ps.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
@@ -1034,6 +1038,7 @@ func Test_conceptGroupService_UpdateConceptGroup(t *testing.T) {
 			},
 		}
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
+		cga.EXPECT().CheckConceptGroupExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("cg1", true, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
@@ -1401,6 +1406,8 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 		}
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().UpsertResourceParents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		ps.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
@@ -1527,8 +1534,8 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-			// handleConceptGroupImportMode runs in CreateConceptGroup and again in UpdateConceptGroup → ValidateConceptGroups
-			cga.EXPECT().CheckConceptGroupExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("cg1", true, nil).Times(2)
+			// The overwrite path checks import conflicts, resource existence, and strict validation.
+			cga.EXPECT().CheckConceptGroupExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("cg1", true, nil).Times(3)
 			cga.EXPECT().CheckConceptGroupExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("cg1", true, nil).Times(2)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"cg1"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return([]string{}, nil)
 			cga.EXPECT().UpdateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -2151,7 +2158,11 @@ func Test_conceptGroupService_DeleteConceptGroupsByKnID(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
-		service := &conceptGroupService{appSetting: &common.AppSetting{}, cga: cga}
+		cga.EXPECT().GetConceptGroupIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"cg1"}, nil).AnyTimes()
+		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		ps.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		service := &conceptGroupService{appSetting: &common.AppSetting{}, cga: cga, ps: ps}
 
 		knID := "kn1"
 		branch := interfaces.MAIN_BRANCH
