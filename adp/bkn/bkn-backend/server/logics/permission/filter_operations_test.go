@@ -54,12 +54,10 @@ func Test_PermissionServiceImpl_FilterResources_FullOperationSet(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		t.Setenv("AUTHZ_PROVIDER", "bkn-safe")
-		t.Setenv("BKN_SAFE_URL", srv.URL)
 		svc := &PermissionServiceImpl{
 			appSetting: &common.AppSetting{},
 			mqClient:   &mockMQClient{},
-			pa:         padapter.MaybeShadow(nil),
+			pa:         padapter.NewPermissionAccess(srv.URL),
 		}
 
 		ctx := withAccountInfo(context.Background(), "u1", "user")

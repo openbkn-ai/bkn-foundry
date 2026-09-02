@@ -82,7 +82,7 @@ bkn-backend/
   server/
     common/              # 公共工具、配置、条件处理和 trace helper
     config/              # 服务配置
-    drivenadapters/      # DB、OpenSearch、VEGA、model-factory、user-management 客户端
+    drivenadapters/      # DB、OpenSearch、VEGA、model-factory、bkn-safe 客户端
     driveradapters/      # HTTP handler、router 和请求校验
     errors/              # BKN Backend 错误定义
     interfaces/          # DTO 和服务接口
@@ -115,7 +115,7 @@ bkn-backend/
 - Go 1.24+
 - MariaDB 11.4+ 或 DM8
 - OpenSearch 2.x
-- 调试集成路径时，需要可访问的 VEGA、model-factory 和身份/用户管理依赖。
+- 调试集成路径时，需要可访问的 VEGA、model-factory 和 bkn-safe 依赖。
 
 本地配置文件：
 

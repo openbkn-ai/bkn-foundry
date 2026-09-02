@@ -62,12 +62,6 @@ type PermissionCheck struct {
 	Accessor   PermissionAccessor `json:"accessor"`
 	Resource   PermissionResource `json:"resource"`
 	Operations []string           `json:"operation"`
-	Method     string             `json:"method"`
-}
-
-// PermissionCheckResult is the result of a permission check.
-type PermissionCheckResult struct {
-	Result bool `json:"result"`
 }
 
 // PermissionAccessor identifies an accessor.
@@ -133,16 +127,14 @@ func IsValidAuthorizationID(id string) bool {
 // CandidateOperations determine which operations are returned to the frontend. When empty,
 // they fall back to Operations for backward compatibility.
 //
-// ISF previously used Operations for both dimensions and returned every allowed operation when
-// allow_operation was true. BKN Safe intersects the requested candidate list, so the candidates
-// must be explicitly passed to the adapter.
+// BKN Safe intersects the requested candidate list, so callers must pass the
+// candidates explicitly when they differ from the visibility operations.
 type PermissionResourcesFilter struct {
 	Accessor       PermissionAccessor   `json:"accessor,omitempty"`
 	Resources      []PermissionResource `json:"resources,omitempty"`
 	Operations     []string             `json:"operation,omitempty"`
 	AllowOperation bool                 `json:"allow_operation"`
-	Method         string               `json:"method,omitempty"`
-	// json:"-" keeps this new field out of the ISF request contract.
+	// CandidateOperations is an adapter-only projection hint.
 	CandidateOperations []string `json:"-"`
 }
 

@@ -10,8 +10,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
-	"sync"
+	"strings"
 
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -23,40 +22,17 @@ import (
 	"bkn-backend/interfaces"
 )
 
-var (
-	umAccessOnce sync.Once
-	umAccess     interfaces.UserMgmtAccess
-)
-
 type userMgmtAccess struct {
-	appSetting  *common.AppSetting
-	httpClient  rest.HTTPClient
-	userMgmtUrl string
-	// bkn-safe directory cutover (revertible): DIRECTORY_PROVIDER=bkn-safe +
-	// BKN_SAFE_URL routes name resolution to bkn-safe's clean /directory/names
-	// instead of ISF /v2/names. Unset to revert (default = ISF).
-	directoryProvider string
-	bknSafeURL        string
+	httpClient rest.HTTPClient
+	bknSafeURL string
 }
 
-// NewUserMgmtAccess creates a user management access instance.
-func NewUserMgmtAccess(appSetting *common.AppSetting) interfaces.UserMgmtAccess {
-	umAccessOnce.Do(func() {
-		umAccess = &userMgmtAccess{
-			appSetting:        appSetting,
-			httpClient:        common.NewHTTPClient(),
-			userMgmtUrl:       appSetting.UserMgmtUrl,
-			directoryProvider: os.Getenv("DIRECTORY_PROVIDER"),
-			bknSafeURL:        os.Getenv("BKN_SAFE_URL"),
-		}
-	})
-
-	return umAccess
-}
-
-// useBknSafe reports whether name resolution should go to bkn-safe.
-func (uma *userMgmtAccess) useBknSafe() bool {
-	return uma.directoryProvider == "bkn-safe" && uma.bknSafeURL != ""
+// NewUserMgmtAccess creates a bkn-safe directory access instance.
+func NewUserMgmtAccess(baseURL string) interfaces.UserMgmtAccess {
+	return &userMgmtAccess{
+		httpClient: common.NewHTTPClient(),
+		bknSafeURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"),
+	}
 }
 
 func (uma *userMgmtAccess) GetAccountNames(ctx context.Context, accountInfos []*interfaces.AccountInfo) error {
@@ -87,24 +63,10 @@ func (uma *userMgmtAccess) GetAccountNames(ctx context.Context, accountInfos []*
 		}
 	}
 
-	// Build the request URL and body for BKN Safe (/directory/names) or ISF (/v2/names).
-	// Both return user_names and app_names; only the URL and body differ.
-	var httpUrl string
-	var requestBody map[string]any
-	if uma.useBknSafe() {
-		httpUrl = fmt.Sprintf("%s/api/safe/v1/directory/names", uma.bknSafeURL)
-		requestBody = map[string]any{
-			"user_ids": userIDs,
-			"app_ids":  appIDs,
-		}
-	} else {
-		httpUrl = fmt.Sprintf("%s/api/user-management/v2/names", uma.userMgmtUrl)
-		requestBody = map[string]any{
-			"method":   http.MethodGet,
-			"user_ids": userIDs,
-			"app_ids":  appIDs,
-			"strict":   false,
-		}
+	httpUrl := fmt.Sprintf("%s/api/safe/v1/directory/names", uma.bknSafeURL)
+	requestBody := map[string]any{
+		"user_ids": userIDs,
+		"app_ids":  appIDs,
 	}
 	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{
 		HttpUrl:         httpUrl,

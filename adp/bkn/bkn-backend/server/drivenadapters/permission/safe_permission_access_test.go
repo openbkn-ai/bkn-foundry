@@ -13,10 +13,7 @@ import (
 	"reflect"
 	"testing"
 
-	"go.uber.org/mock/gomock"
-
 	"bkn-backend/interfaces"
-	bmock "bkn-backend/interfaces/mock"
 )
 
 // capturedFilter is the decoded /resource-filter request body.
@@ -73,6 +70,16 @@ func knFilter(ids []string, ops, candidates []string) interfaces.PermissionResou
 		Operations:          ops,
 		CandidateOperations: candidates,
 		AllowOperation:      true,
+	}
+}
+
+func TestNewPermissionAccessUsesBknSafe(t *testing.T) {
+	access, ok := NewPermissionAccess("  http://bkn-safe:3000/  ").(*safePermissionAccess)
+	if !ok {
+		t.Fatalf("NewPermissionAccess() returned %T, want *safePermissionAccess", access)
+	}
+	if access.safe.baseURL != "http://bkn-safe:3000" {
+		t.Fatalf("safe base URL = %q, want normalized bkn-safe URL", access.safe.baseURL)
 	}
 }
 
@@ -152,72 +159,21 @@ func TestSafeResourceParentEmptyInputsDoNotCallServer(t *testing.T) {
 	}
 }
 
-func TestShadowDeleteResourcesWritesChildCleanupOnlyToSafe(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	legacy := bmock.NewMockPermissionAccess(ctrl)
-	var got map[string]any
+func TestSafeResourceParentErrorsPropagate(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodDelete || r.URL.Path != "/api/safe/v1/authz/policies" {
-			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
-		}
-		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
-			t.Fatalf("decode request: %v", err)
-		}
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	defer srv.Close()
-
-	access := &shadowPermissionAccess{PermissionAccess: legacy, safe: newSafeClient(srv.URL)}
-	resource := interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_RISK_TYPE, ID: "kn-1/risk-1"}
-	if err := access.DeleteResources(context.Background(), []interfaces.PermissionResource{resource}); err != nil {
-		t.Fatalf("DeleteResources() error = %v", err)
-	}
-	want := map[string]any{"resource": map[string]any{"type": "risk_type", "id": "kn-1/risk-1"}}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("request body = %#v, want %#v", got, want)
-	}
-}
-
-func TestShadowResourceParentErrorsDoNotAffectAuthoritativePath(t *testing.T) {
-	calls := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
 		http.Error(w, `{"error":"safe unavailable"}`, http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 
-	access := &shadowPermissionAccess{safe: newSafeClient(srv.URL)}
+	access := NewPermissionAccess(srv.URL)
 	items := []interfaces.PermissionResourceParent{{ResourceID: "kn-1/ot-1", ParentID: "kn-1"}}
 	if err := access.UpsertResourceParents(context.Background(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
-		interfaces.RESOURCE_TYPE_KN, items); err != nil {
-		t.Fatalf("UpsertResourceParents() error = %v, want nil in shadow mode", err)
+		interfaces.RESOURCE_TYPE_KN, items); err == nil {
+		t.Fatal("UpsertResourceParents() error = nil, want bkn-safe failure")
 	}
 	if err := access.DeleteResourceParents(context.Background(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
-		[]string{"kn-1/ot-1"}); err != nil {
-		t.Fatalf("DeleteResourceParents() error = %v, want nil in shadow mode", err)
-	}
-	if calls != 2 {
-		t.Fatalf("bkn-safe call count = %d, want 2", calls)
-	}
-}
-
-func TestShadowDeleteResourcesSafeFailureStillCallsLegacy(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	legacy := bmock.NewMockPermissionAccess(ctrl)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, `{"error":"safe unavailable"}`, http.StatusInternalServerError)
-	}))
-	defer srv.Close()
-
-	legacyResource := interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: "kn-1"}
-	legacy.EXPECT().DeleteResources(gomock.Any(), []interfaces.PermissionResource{legacyResource}).Return(nil)
-	access := &shadowPermissionAccess{PermissionAccess: legacy, safe: newSafeClient(srv.URL)}
-	resources := []interfaces.PermissionResource{
-		{Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE, ID: "kn-1/ot-1"},
-		legacyResource,
-	}
-	if err := access.DeleteResources(context.Background(), resources); err != nil {
-		t.Fatalf("DeleteResources() error = %v, want nil from authoritative legacy adapter", err)
+		[]string{"kn-1/ot-1"}); err == nil {
+		t.Fatal("DeleteResourceParents() error = nil, want bkn-safe failure")
 	}
 }
 
