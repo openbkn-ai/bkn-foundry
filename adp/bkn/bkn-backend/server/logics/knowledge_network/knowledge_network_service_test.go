@@ -8,6 +8,8 @@ package knowledge_network
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"testing"
@@ -22,6 +24,7 @@ import (
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 	bmock "bkn-backend/interfaces/mock"
+	"bkn-backend/logics/permission"
 )
 
 func Test_knowledgeNetworkService_CheckKNExistByID(t *testing.T) {
@@ -1688,6 +1691,29 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			So(knID, ShouldNotBeEmpty)
 		})
 
+		Convey("Commit failure compensates root authorization and dataset documents\n", func() {
+			kn := &interfaces.KN{
+				KNID:   "kn1",
+				KNName: "kn1",
+				Branch: interfaces.MAIN_BRANCH,
+			}
+
+			smock.ExpectBegin()
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			kna.EXPECT().CheckKNExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return("", false, nil)
+			kna.EXPECT().CheckKNExistByName(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return("", false, nil)
+			kna.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			ps.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			smock.ExpectCommit().WillReturnError(errors.New("commit failed"))
+			ps.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_KN, []string{"kn1"}).Return(nil)
+			vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+
+			knID, err := service.CreateKN(ctx, kn, interfaces.ImportMode_Normal, true)
+			So(err, ShouldNotBeNil)
+			So(knID, ShouldEqual, "kn1")
+		})
+
 		Convey("Failed when permission check fails\n", func() {
 			kn := &interfaces.KN{
 				KNID:   "kn1",
@@ -1880,7 +1906,12 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			kna.EXPECT().CheckKNExistByID(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			cgs.EXPECT().CreateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			cgs.EXPECT().CreateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(childCtx context.Context, _ *sql.Tx, _ *interfaces.ConceptGroup,
+					_ string, _ bool) (string, error) {
+					So(permission.KNImportPermissionPrechecked(childCtx), ShouldBeTrue)
+					return "", rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError)
+				})
 			smock.ExpectRollback()
 
 			knID, err := service3.CreateKN(ctx, kn, mode, true)
@@ -2042,6 +2073,8 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			ps.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
+			ps.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_KN, []string{"kn1"}).Return(nil)
+			vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 
 			knID, err := service.CreateKN(ctx, kn, mode, true)
 			So(err, ShouldNotBeNil)

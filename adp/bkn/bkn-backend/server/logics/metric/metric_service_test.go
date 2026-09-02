@@ -228,8 +228,7 @@ func Test_metricService_ListMetrics(t *testing.T) {
 			}
 			entries := []*interfaces.MetricDefinition{{ID: "m1", KnID: "kn1", Name: "n1"}}
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ma.EXPECT().ListMetrics(gomock.Any(), q).Return(entries, nil)
-			ma.EXPECT().GetMetricsTotal(gomock.Any(), q).Return(1, nil)
+			ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(entries, nil)
 
 			out, err := service.ListMetrics(ctx, q)
 			So(err, ShouldBeNil)
@@ -250,13 +249,12 @@ func Test_metricService_ListMetrics(t *testing.T) {
 				{ID: "m2", KnID: "kn1"},
 			}
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ma.EXPECT().ListMetrics(gomock.Any(), q).Return(entries, nil)
-			ma.EXPECT().GetMetricsTotal(gomock.Any(), q).Return(99, nil)
+			ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(entries, nil)
 
 			out, err := service.ListMetrics(ctx, q)
 			So(err, ShouldBeNil)
 			So(len(out.Entries), ShouldEqual, 0)
-			So(out.TotalCount, ShouldEqual, 99)
+			So(out.TotalCount, ShouldEqual, 2)
 		})
 
 		Convey("Failed when permission denied\n", func() {

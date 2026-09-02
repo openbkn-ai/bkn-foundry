@@ -137,6 +137,8 @@ spec:
             value: {{ .Values.auth.enabled | quote }}
           - name: KN_CHILD_RESOURCE_PEP_ENABLED
             value: {{ .Values.auth.knChildResourcePepEnabled | quote }}
+          - name: KN_CHILD_RESOURCE_FILTER_CHUNK_SIZE
+            value: {{ .Values.auth.knChildResourceFilterChunkSize | quote }}
         resources: {{- toYaml .Values.resources | nindent 10 }}
         volumeMounts:
           - name: {{ .Values.moduleName }}-cm

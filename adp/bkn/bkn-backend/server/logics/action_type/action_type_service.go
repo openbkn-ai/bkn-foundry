@@ -177,13 +177,14 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 		}
 	}()
 
-	// Check whether the user ID can modify the business knowledge network.
-	err = ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   actionTypes[0].KNID,
-	}, []string{interfaces.OPERATION_TYPE_MODIFY})
-	if err != nil {
-		return []string{}, err
+	if !permission.KNImportPermissionPrechecked(ctx) && !permission.KNChildResourcePEPEnabled() {
+		err = ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: interfaces.RESOURCE_TYPE_KN,
+			ID:   actionTypes[0].KNID,
+		}, []string{interfaces.OPERATION_TYPE_MODIFY})
+		if err != nil {
+			return []string{}, err
+		}
 	}
 
 	// 0. Begin the transaction.
@@ -268,6 +269,25 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 	createActionTypes, updateActionTypes, err := ats.handleActionTypeImportMode(ctx, mode, actionTypes)
 	if err != nil {
 		return []string{}, err
+	}
+	if !permission.KNImportPermissionPrechecked(ctx) && permission.KNChildResourcePEPEnabled() {
+		if len(createActionTypes) > 0 {
+			if err = ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
+				Type: interfaces.RESOURCE_TYPE_KN,
+				ID:   actionTypes[0].KNID,
+			}, []string{interfaces.OPERATION_TYPE_MODIFY}); err != nil {
+				return []string{}, err
+			}
+		}
+		updateIDs := make([]string, 0, len(updateActionTypes))
+		for _, actionType := range updateActionTypes {
+			updateIDs = append(updateIDs, actionType.ATID)
+		}
+		if err = permission.CheckKNChildBatchPermission(ctx, ats.ps,
+			interfaces.RESOURCE_TYPE_ACTION_TYPE, actionTypes[0].KNID, updateIDs,
+			interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_MODIFY); err != nil {
+			return []string{}, err
+		}
 	}
 
 	// Create.
@@ -376,18 +396,19 @@ func (ats *actionTypeService) ValidateActionTypes(ctx context.Context, knID stri
 func (ats *actionTypeService) ListActionTypes(ctx context.Context, query interfaces.ActionTypesQueryParams) ([]*interfaces.ActionType, int, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ListActionTypes")
 	defer span.End()
-
-	// Check whether the user ID can view the business knowledge network.
-	err := ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   query.KNID,
-	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
-	if err != nil {
-		return []*interfaces.ActionType{}, 0, err
+	if !permission.KNChildResourcePEPEnabled() {
+		if err := ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: interfaces.RESOURCE_TYPE_KN,
+			ID:   query.KNID,
+		}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
+			return []*interfaces.ActionType{}, 0, err
+		}
 	}
 
-	// Get the action type list.
-	actionTypes, err := ats.ata.ListActionTypes(ctx, query)
+	candidateQuery := query
+	candidateQuery.Offset = 0
+	candidateQuery.Limit = -1
+	actionTypes, err := ats.ata.ListActionTypes(ctx, candidateQuery)
 	if err != nil {
 		logger.Errorf("ListActionTypes error: %s", err.Error())
 		span.SetStatus(codes.Error, "List action types error")
@@ -395,12 +416,16 @@ func (ats *actionTypeService) ListActionTypes(ctx context.Context, query interfa
 			berrors.BknBackend_ActionType_InternalError).WithErrorDetails(err.Error())
 	}
 
-	total, err := ats.ata.GetActionTypesTotal(ctx, query)
-	if err != nil {
-		logger.Errorf("GetActionTypesTotal error: %s", err.Error())
-		span.SetStatus(codes.Error, "Get action types total error")
-		return []*interfaces.ActionType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_ActionType_InternalError).WithErrorDetails(err.Error())
+	total := len(actionTypes)
+	if permission.KNChildResourcePEPEnabled() {
+		actionTypes, total, err = permission.FilterAndPaginateKNChildren(ctx, ats.ps,
+			interfaces.RESOURCE_TYPE_ACTION_TYPE, query.KNID, actionTypes,
+			func(actionType *interfaces.ActionType) string { return actionType.ATID }, query.Offset, query.Limit)
+		if err != nil {
+			return []*interfaces.ActionType{}, 0, err
+		}
+	} else {
+		actionTypes = permission.PaginateKNChildCandidates(actionTypes, query.Offset, query.Limit)
 	}
 	if len(actionTypes) == 0 {
 		span.SetStatus(codes.Ok, "")
@@ -651,8 +676,6 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 	if err := permission.ValidateKNChildPEPAuthorizationIDs(ctx, knID, atIDs); err != nil {
 		return err
 	}
-	resource := interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID}
-	operation := interfaces.OPERATION_TYPE_MODIFY
 	if len(atIDs) == 1 {
 		_, exists, err := ats.CheckActionTypeExistByID(ctx, knID, branch, atIDs[0])
 		if err != nil {
@@ -661,11 +684,28 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 		if !exists {
 			return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionType_ActionTypeNotFound)
 		}
-		resource, operation = permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_ACTION_TYPE,
+		resource, operation := permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_ACTION_TYPE,
 			knID, atIDs[0], interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE)
-	}
-	if err := ats.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
-		return err
+		if err := ats.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
+			return err
+		}
+	} else {
+		if permission.KNChildResourcePEPEnabled() {
+			for _, atID := range atIDs {
+				_, exists, err := ats.CheckActionTypeExistByID(ctx, knID, branch, atID)
+				if err != nil {
+					return err
+				}
+				if !exists {
+					return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionType_ActionTypeNotFound)
+				}
+			}
+		}
+		if err := permission.CheckKNChildBatchPermission(ctx, ats.ps,
+			interfaces.RESOURCE_TYPE_ACTION_TYPE, knID, atIDs,
+			interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE); err != nil {
+			return err
+		}
 	}
 	if tx == nil {
 		// 0. Begin the transaction.
@@ -965,13 +1005,29 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 	response := interfaces.ActionTypes{}
 	var err error
 
-	// Check whether the user ID can view the business knowledge network.
-	err = ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   query.KNID,
-	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
-	if err != nil {
-		return response, err
+	var visibleIDs []string
+	if !permission.KNChildResourcePEPEnabled() {
+		err = ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: interfaces.RESOURCE_TYPE_KN,
+			ID:   query.KNID,
+		}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
+		if err != nil {
+			return response, err
+		}
+	} else {
+		candidateIDs, err := ats.GetActionTypeIDsByKnID(ctx, query.KNID, query.Branch)
+		if err != nil {
+			return response, err
+		}
+		visibleIDs, err = permission.FilterKNChildIDs(ctx, ats.ps,
+			interfaces.RESOURCE_TYPE_ACTION_TYPE, query.KNID, candidateIDs,
+			interfaces.OPERATION_TYPE_VIEW_DETAIL)
+		if err != nil {
+			return response, err
+		}
+		if len(visibleIDs) == 0 {
+			return response, nil
+		}
 	}
 
 	// Convert conditions to dataset filter conditions.
@@ -1011,6 +1067,9 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 				berrors.BknBackend_ActionType_InvalidParameter_ConceptCondition).
 				WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil))
 		}
+	}
+	if permission.KNChildResourcePEPEnabled() {
+		filterCondition = permission.RestrictDatasetFilterToIDs(filterCondition, visibleIDs)
 	}
 
 	// 1. Get relation types in the groups.

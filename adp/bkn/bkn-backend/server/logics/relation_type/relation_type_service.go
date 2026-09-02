@@ -105,13 +105,14 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 		}
 	}()
 
-	// Check whether the user ID can modify the business knowledge network.
-	err = rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   relationTypes[0].KNID,
-	}, []string{interfaces.OPERATION_TYPE_MODIFY})
-	if err != nil {
-		return []string{}, err
+	if !permission.KNImportPermissionPrechecked(ctx) && !permission.KNChildResourcePEPEnabled() {
+		err = rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: interfaces.RESOURCE_TYPE_KN,
+			ID:   relationTypes[0].KNID,
+		}, []string{interfaces.OPERATION_TYPE_MODIFY})
+		if err != nil {
+			return []string{}, err
+		}
 	}
 
 	// 0. Begin the transaction.
@@ -176,6 +177,25 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 	createRelationTypes, updateRelationTypes, err := rts.handleRelationTypeImportMode(ctx, mode, relationTypes)
 	if err != nil {
 		return []string{}, err
+	}
+	if !permission.KNImportPermissionPrechecked(ctx) && permission.KNChildResourcePEPEnabled() {
+		if len(createRelationTypes) > 0 {
+			if err = rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
+				Type: interfaces.RESOURCE_TYPE_KN,
+				ID:   relationTypes[0].KNID,
+			}, []string{interfaces.OPERATION_TYPE_MODIFY}); err != nil {
+				return []string{}, err
+			}
+		}
+		updateIDs := make([]string, 0, len(updateRelationTypes))
+		for _, relationType := range updateRelationTypes {
+			updateIDs = append(updateIDs, relationType.RTID)
+		}
+		if err = permission.CheckKNChildBatchPermission(ctx, rts.ps,
+			interfaces.RESOURCE_TYPE_RELATION_TYPE, relationTypes[0].KNID, updateIDs,
+			interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_MODIFY); err != nil {
+			return []string{}, err
+		}
 	}
 
 	// 1. Create the model.
@@ -270,18 +290,19 @@ func (rts *relationTypeService) ListRelationTypes(ctx context.Context,
 	if query.Branch == "" {
 		query.Branch = interfaces.MAIN_BRANCH
 	}
-
-	// Check whether the user ID can view the business knowledge network.
-	err := rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   query.KNID,
-	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
-	if err != nil {
-		return []*interfaces.RelationType{}, 0, err
+	if !permission.KNChildResourcePEPEnabled() {
+		if err := rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: interfaces.RESOURCE_TYPE_KN,
+			ID:   query.KNID,
+		}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
+			return []*interfaces.RelationType{}, 0, err
+		}
 	}
 
-	// Get the relation type list.
-	relationTypes, err := rts.rta.ListRelationTypes(ctx, query)
+	candidateQuery := query
+	candidateQuery.Offset = 0
+	candidateQuery.Limit = -1
+	relationTypes, err := rts.rta.ListRelationTypes(ctx, candidateQuery)
 	if err != nil {
 		logger.Errorf("ListRelationTypes error: %s", err.Error())
 		span.SetStatus(codes.Error, "List relation types error")
@@ -290,13 +311,16 @@ func (rts *relationTypeService) ListRelationTypes(ctx context.Context,
 			berrors.BknBackend_RelationType_InternalError).WithErrorDetails(err.Error())
 	}
 
-	total, err := rts.rta.GetRelationTypesTotal(ctx, query)
-	if err != nil {
-		logger.Errorf("GetRelationTypesTotal error: %s", err.Error())
-		span.SetStatus(codes.Error, "Get relation types total error")
-
-		return []*interfaces.RelationType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_RelationType_InternalError).WithErrorDetails(err.Error())
+	total := len(relationTypes)
+	if permission.KNChildResourcePEPEnabled() {
+		relationTypes, total, err = permission.FilterAndPaginateKNChildren(ctx, rts.ps,
+			interfaces.RESOURCE_TYPE_RELATION_TYPE, query.KNID, relationTypes,
+			func(relationType *interfaces.RelationType) string { return relationType.RTID }, query.Offset, query.Limit)
+		if err != nil {
+			return []*interfaces.RelationType{}, 0, err
+		}
+	} else {
+		relationTypes = permission.PaginateKNChildCandidates(relationTypes, query.Offset, query.Limit)
 	}
 	if len(relationTypes) == 0 {
 		span.SetStatus(codes.Ok, "")
@@ -592,8 +616,6 @@ func (rts *relationTypeService) DeleteRelationTypesByIDs(ctx context.Context, tx
 	if err := permission.ValidateKNChildPEPAuthorizationIDs(ctx, knID, rtIDs); err != nil {
 		return err
 	}
-	resource := interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID}
-	operation := interfaces.OPERATION_TYPE_MODIFY
 	if len(rtIDs) == 1 {
 		_, exists, err := rts.CheckRelationTypeExistByID(ctx, knID, branch, rtIDs[0])
 		if err != nil {
@@ -602,11 +624,28 @@ func (rts *relationTypeService) DeleteRelationTypesByIDs(ctx context.Context, tx
 		if !exists {
 			return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RelationType_RelationTypeNotFound)
 		}
-		resource, operation = permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_RELATION_TYPE,
+		resource, operation := permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_RELATION_TYPE,
 			knID, rtIDs[0], interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE)
-	}
-	if err := rts.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
-		return err
+		if err := rts.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
+			return err
+		}
+	} else {
+		if permission.KNChildResourcePEPEnabled() {
+			for _, rtID := range rtIDs {
+				_, exists, err := rts.CheckRelationTypeExistByID(ctx, knID, branch, rtID)
+				if err != nil {
+					return err
+				}
+				if !exists {
+					return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RelationType_RelationTypeNotFound)
+				}
+			}
+		}
+		if err := permission.CheckKNChildBatchPermission(ctx, rts.ps,
+			interfaces.RESOURCE_TYPE_RELATION_TYPE, knID, rtIDs,
+			interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE); err != nil {
+			return err
+		}
 	}
 	if tx == nil {
 		// 0. Begin the transaction.
@@ -834,13 +873,29 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 	response := interfaces.RelationTypes{}
 	var err error
 
-	// Check whether the user ID can view the business knowledge network.
-	err = rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   query.KNID,
-	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
-	if err != nil {
-		return response, err
+	var visibleIDs []string
+	if !permission.KNChildResourcePEPEnabled() {
+		err = rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: interfaces.RESOURCE_TYPE_KN,
+			ID:   query.KNID,
+		}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
+		if err != nil {
+			return response, err
+		}
+	} else {
+		candidateIDs, err := rts.GetRelationTypeIDsByKnID(ctx, query.KNID, query.Branch)
+		if err != nil {
+			return response, err
+		}
+		visibleIDs, err = permission.FilterKNChildIDs(ctx, rts.ps,
+			interfaces.RESOURCE_TYPE_RELATION_TYPE, query.KNID, candidateIDs,
+			interfaces.OPERATION_TYPE_VIEW_DETAIL)
+		if err != nil {
+			return response, err
+		}
+		if len(visibleIDs) == 0 {
+			return response, nil
+		}
 	}
 
 	// Convert conditions to dataset filter conditions.
@@ -880,6 +935,9 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 				berrors.BknBackend_RelationType_InvalidParameter_ConceptCondition).
 				WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil))
 		}
+	}
+	if permission.KNChildResourcePEPEnabled() {
+		filterCondition = permission.RestrictDatasetFilterToIDs(filterCondition, visibleIDs)
 	}
 
 	// 1. Get relation types in the groups.

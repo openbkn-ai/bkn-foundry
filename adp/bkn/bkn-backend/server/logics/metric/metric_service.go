@@ -161,12 +161,14 @@ func (ms *metricService) CreateMetrics(ctx context.Context, tx *sql.Tx, entries 
 			WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.EntriesRequired", nil))
 	}
 
-	err = ms.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   entries[0].KnID,
-	}, []string{interfaces.OPERATION_TYPE_MODIFY})
-	if err != nil {
-		return nil, err
+	if !permission.KNImportPermissionPrechecked(ctx) && !permission.KNChildResourcePEPEnabled() {
+		err = ms.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: interfaces.RESOURCE_TYPE_KN,
+			ID:   entries[0].KnID,
+		}, []string{interfaces.OPERATION_TYPE_MODIFY})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// 0. Begin the transaction.
@@ -236,6 +238,25 @@ func (ms *metricService) CreateMetrics(ctx context.Context, tx *sql.Tx, entries 
 	creates, updates, err = ms.handleMetricImportMode(ctx, importMode, entries)
 	if err != nil {
 		return nil, err
+	}
+	if !permission.KNImportPermissionPrechecked(ctx) && permission.KNChildResourcePEPEnabled() {
+		if len(creates) > 0 {
+			if err = ms.ps.CheckPermission(ctx, interfaces.PermissionResource{
+				Type: interfaces.RESOURCE_TYPE_KN,
+				ID:   entries[0].KnID,
+			}, []string{interfaces.OPERATION_TYPE_MODIFY}); err != nil {
+				return nil, err
+			}
+		}
+		updateIDs := make([]string, 0, len(updates))
+		for _, metric := range updates {
+			updateIDs = append(updateIDs, metric.ID)
+		}
+		if err = permission.CheckKNChildBatchPermission(ctx, ms.ps,
+			interfaces.RESOURCE_TYPE_METRIC, entries[0].KnID, updateIDs,
+			interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_MODIFY); err != nil {
+			return nil, err
+		}
 	}
 
 	ids = make([]string, 0, len(creates)+len(updates))
@@ -354,33 +375,32 @@ func (ms *metricService) handleMetricImportMode(ctx context.Context, mode string
 func (ms *metricService) ListMetrics(ctx context.Context, query interfaces.MetricsListQueryParams) (*interfaces.MetricsList, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ListMetrics")
 	defer span.End()
-
-	err := ms.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   query.KNID,
-	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
-	if err != nil {
-		return nil, err
+	if !permission.KNChildResourcePEPEnabled() {
+		if err := ms.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: interfaces.RESOURCE_TYPE_KN,
+			ID:   query.KNID,
+		}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
+			return nil, err
+		}
 	}
 
-	list, err := ms.ma.ListMetrics(ctx, query)
+	candidateQuery := query
+	candidateQuery.Offset = 0
+	candidateQuery.Limit = -1
+	list, err := ms.ma.ListMetrics(ctx, candidateQuery)
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Metric_InternalError).WithErrorDetails(err.Error())
 	}
-	total, err := ms.ma.GetMetricsTotal(ctx, query)
-	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Metric_InternalError).WithErrorDetails(err.Error())
-	}
-
-	if query.Limit != -1 {
-		if query.Offset < 0 || int(query.Offset) >= len(list) {
-			return &interfaces.MetricsList{Entries: []*interfaces.MetricDefinition{}, TotalCount: int64(total)}, nil
+	total := len(list)
+	if permission.KNChildResourcePEPEnabled() {
+		list, total, err = permission.FilterAndPaginateKNChildren(ctx, ms.ps,
+			interfaces.RESOURCE_TYPE_METRIC, query.KNID, list,
+			func(metric *interfaces.MetricDefinition) string { return metric.ID }, query.Offset, query.Limit)
+		if err != nil {
+			return nil, err
 		}
-		end := int(query.Offset) + query.Limit
-		if end > len(list) {
-			end = len(list)
-		}
-		list = list[query.Offset:end]
+	} else {
+		list = permission.PaginateKNChildCandidates(list, query.Offset, query.Limit)
 	}
 
 	if len(list) > 0 && ms.uma != nil {
@@ -601,8 +621,6 @@ func (ms *metricService) DeleteMetricsByIDs(ctx context.Context, tx *sql.Tx, knI
 	if err = permission.ValidateKNChildPEPAuthorizationIDs(ctx, knID, metricIDs); err != nil {
 		return err
 	}
-	resource := interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID}
-	operation := interfaces.OPERATION_TYPE_MODIFY
 	if len(metricIDs) == 1 {
 		_, exists, checkErr := ms.CheckMetricExistByID(ctx, knID, branch, metricIDs[0])
 		if checkErr != nil {
@@ -611,11 +629,28 @@ func (ms *metricService) DeleteMetricsByIDs(ctx context.Context, tx *sql.Tx, knI
 		if !exists {
 			return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_Metric_NotFound)
 		}
-		resource, operation = permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_METRIC,
+		resource, operation := permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_METRIC,
 			knID, metricIDs[0], interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE)
-	}
-	if err := ms.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
-		return err
+		if err := ms.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
+			return err
+		}
+	} else {
+		if permission.KNChildResourcePEPEnabled() {
+			for _, metricID := range metricIDs {
+				_, exists, checkErr := ms.CheckMetricExistByID(ctx, knID, branch, metricID)
+				if checkErr != nil {
+					return checkErr
+				}
+				if !exists {
+					return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_Metric_NotFound)
+				}
+			}
+		}
+		if err := permission.CheckKNChildBatchPermission(ctx, ms.ps,
+			interfaces.RESOURCE_TYPE_METRIC, knID, metricIDs,
+			interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE); err != nil {
+			return err
+		}
 	}
 
 	if tx == nil {
@@ -707,12 +742,31 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 		Groups: []any{},
 	}
 
-	err := ms.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   query.KNID,
-	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
-	if err != nil {
-		return response, err
+	var err error
+	var visibleIDs []string
+	if !permission.KNChildResourcePEPEnabled() {
+		err = ms.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: interfaces.RESOURCE_TYPE_KN,
+			ID:   query.KNID,
+		}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
+		if err != nil {
+			return response, err
+		}
+	} else {
+		candidateIDs, candidateErr := ms.ma.GetMetricIDsByKnID(ctx, query.KNID, query.Branch)
+		if candidateErr != nil {
+			return response, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_Metric_InternalError).WithErrorDetails(candidateErr.Error())
+		}
+		visibleIDs, err = permission.FilterKNChildIDs(ctx, ms.ps,
+			interfaces.RESOURCE_TYPE_METRIC, query.KNID, candidateIDs,
+			interfaces.OPERATION_TYPE_VIEW_DETAIL)
+		if err != nil {
+			return response, err
+		}
+		if len(visibleIDs) == 0 {
+			return response, nil
+		}
 	}
 
 	var filterCondition map[string]any
@@ -749,6 +803,9 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 				berrors.BknBackend_InvalidParameter_Condition).
 				WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil))
 		}
+	}
+	if permission.KNChildResourcePEPEnabled() {
+		filterCondition = permission.RestrictDatasetFilterToIDs(filterCondition, visibleIDs)
 	}
 
 	otIDMap := map[string]bool{}
