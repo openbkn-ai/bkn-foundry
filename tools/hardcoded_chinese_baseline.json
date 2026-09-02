@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "python3 tools/check_hardcoded_chinese.py --update-baseline",
-  "violation_count": 2583,
+  "violation_count": 2579,
   "violations": {
     "adp/bkn/bkn-backend/script/delete_concept_index/script.py": [
       "028026370fec2a882dbb",
@@ -82,12 +82,6 @@
     ],
     "adp/bkn/bkn-backend/server/bkn-specification/bkn/validator.go": [
       "77b2ed62380d52ff72c4"
-    ],
-    "adp/bkn/bkn-backend/server/drivenadapters/permission/permission_access.go": [
-      "f764029dc62af08a4331",
-      "3c9e29fdfa57ba84447b",
-      "064e1e3d102ba5189d63",
-      "501bd7b0200ff1cd22e9"
     ],
     "adp/bkn/bkn-backend/server/driveradapters/action_type_handler.go": [
       "2c006448497d5a369f65",
