@@ -11,7 +11,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 
 	"bkn-backend/interfaces"
 )
@@ -282,5 +284,84 @@ func TestSafeFilterResourcesPropagatesError(t *testing.T) {
 	if _, err := access.FilterResources(context.Background(),
 		knFilter([]string{"kn-1"}, []string{"view_detail"}, []string{"view_detail"})); err == nil {
 		t.Fatal("want error from a failing bkn-safe, got nil")
+	}
+}
+
+func TestSafePermissionErrorsDoNotExposeResponseBodies(t *testing.T) {
+	const sensitiveBody = "token=do-not-log"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, sensitiveBody, http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+	access := NewPermissionAccess(srv.URL)
+
+	_, err := access.CheckPermission(context.Background(), interfaces.PermissionCheck{
+		Accessor:   interfaces.PermissionAccessor{ID: "u-1", Type: "user"},
+		Resource:   interfaces.PermissionResource{Type: "knowledge_network", ID: "kn-1"},
+		Operations: []string{"view_detail"},
+	})
+	if err == nil {
+		t.Fatal("CheckPermission() error = nil, want server error")
+	}
+	if strings.Contains(err.Error(), sensitiveBody) {
+		t.Fatalf("CheckPermission() error exposes response body: %v", err)
+	}
+}
+
+func TestSafePermissionResponsesRejectInvalidPayloads(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "malformed JSON", body: "{"},
+		{name: "missing required field", body: "{}"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			t.Cleanup(srv.Close)
+			access := NewPermissionAccess(srv.URL)
+
+			_, err := access.CheckPermission(context.Background(), interfaces.PermissionCheck{
+				Accessor:   interfaces.PermissionAccessor{ID: "u-1", Type: "user"},
+				Resource:   interfaces.PermissionResource{Type: "knowledge_network", ID: "kn-1"},
+				Operations: []string{"view_detail"},
+			})
+			if err == nil {
+				t.Fatal("CheckPermission() error = nil, want invalid-response error")
+			}
+
+			_, err = access.FilterResources(context.Background(),
+				knFilter([]string{"kn-1"}, []string{"view_detail"}, []string{"view_detail"}))
+			if err == nil {
+				t.Fatal("FilterResources() error = nil, want invalid-response error")
+			}
+		})
+	}
+}
+
+func TestSafePermissionTimeoutPropagates(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+	}))
+	t.Cleanup(func() {
+		close(release)
+		srv.Close()
+	})
+	client := newSafeClient(srv.URL)
+	client.http.Timeout = 20 * time.Millisecond
+	access := &safePermissionAccess{safe: client}
+
+	_, err := access.CheckPermission(context.Background(), interfaces.PermissionCheck{
+		Accessor:   interfaces.PermissionAccessor{ID: "u-1", Type: "user"},
+		Resource:   interfaces.PermissionResource{Type: "knowledge_network", ID: "kn-1"},
+		Operations: []string{"view_detail"},
+	})
+	if err == nil {
+		t.Fatal("CheckPermission() error = nil, want timeout error")
 	}
 }

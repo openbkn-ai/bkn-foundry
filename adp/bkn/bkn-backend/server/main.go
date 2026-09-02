@@ -15,7 +15,6 @@ import (
 	// _ "net/http/pprof"
 	"os/signal"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 	_ "unicode/utf8"
@@ -188,9 +187,9 @@ func main() {
 
 	// Sort Set entries in ascending alphabetical order.
 	if common.GetAuthEnabled() {
-		bknSafeURL := strings.TrimRight(strings.TrimSpace(os.Getenv("BKN_SAFE_URL")), "/")
-		if bknSafeURL == "" {
-			logger.Fatalf("BKN_SAFE_URL is required when authentication is enabled")
+		bknSafeURL, err := common.NormalizeBknSafeURL(os.Getenv("BKN_SAFE_URL"))
+		if err != nil {
+			logger.Fatalf("Invalid bkn-safe configuration: %v", err)
 		}
 		logics.SetAuthAccess(auth.NewHydraAuthAccess(appSetting))
 		logics.SetPermissionAccess(permission.NewPermissionAccess(bknSafeURL))

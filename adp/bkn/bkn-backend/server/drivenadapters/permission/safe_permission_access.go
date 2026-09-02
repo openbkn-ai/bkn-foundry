@@ -32,14 +32,20 @@ func newSafeClient(baseURL string) *safeClient {
 
 func (c *safeClient) checkOne(ctx context.Context, accessorID, rtype, rid, op string) (bool, error) {
 	var out struct {
-		Allowed bool `json:"allowed"`
+		Allowed *bool `json:"allowed"`
 	}
 	err := c.do(ctx, http.MethodPost, "/api/safe/v1/authz/check", map[string]any{
 		"accessor_id": accessorID,
 		"resource":    map[string]string{"type": rtype, "id": rid},
 		"operation":   op,
 	}, &out)
-	return out.Allowed, err
+	if err != nil {
+		return false, err
+	}
+	if out.Allowed == nil {
+		return false, fmt.Errorf("invalid bkn-safe check response")
+	}
+	return *out.Allowed, nil
 }
 
 // safeResource is one { type, id } pair in the batch filter request.
@@ -60,7 +66,7 @@ func (c *safeClient) filterResources(ctx context.Context, accessorID string,
 		return out, nil
 	}
 	var resp struct {
-		Resources []struct {
+		Resources *[]struct {
 			ResourceID string   `json:"resource_id"`
 			Operations []string `json:"operations"`
 		} `json:"resources"`
@@ -73,7 +79,10 @@ func (c *safeClient) filterResources(ctx context.Context, accessorID string,
 	}, &resp); err != nil {
 		return nil, err
 	}
-	for _, r := range resp.Resources {
+	if resp.Resources == nil {
+		return nil, fmt.Errorf("invalid bkn-safe resource-filter response")
+	}
+	for _, r := range *resp.Resources {
 		out[r.ResourceID] = r.Operations
 	}
 	return out, nil
@@ -128,7 +137,7 @@ func (c *safeClient) do(ctx context.Context, method, path string, body, out any)
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("bkn-safe %s %s: %d: %s", method, path, resp.StatusCode, data)
+		return fmt.Errorf("bkn-safe %s %s returned status %d", method, path, resp.StatusCode)
 	}
 	if out != nil && len(data) > 0 {
 		return json.Unmarshal(data, out)
