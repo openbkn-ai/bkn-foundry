@@ -26,6 +26,9 @@ type queryAuthorizationService struct {
 }
 
 func NewQueryAuthorizationService(appSetting *common.AppSetting) interfaces.QueryAuthorizationService {
+	if !common.GetAuthEnabled() || !QueryDataPEPEnabled() {
+		return &noopQueryAuthorizationService{}
+	}
 	return &queryAuthorizationService{
 		models:      logics.OMA,
 		permissions: permissionlogic.NewPermissionService(appSetting),
