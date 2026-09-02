@@ -24,7 +24,7 @@ const (
 	OntologyQuery_InvalidRequestHeader_ContentType = "OntologyQuery.InvalidRequestHeader.ContentType"
 
 	// Permission
-	// OntologyQuery_InternalError_CheckPermissionFailed = "OntologyQuery.InternalError.CheckPermissionFailed"
+	OntologyQuery_InternalError_CheckPermissionFailed = "OntologyQuery.InternalError.CheckPermissionFailed"
 	// OntologyQuery_InternalError_CreateResourcesFailed = "OntologyQuery.InternalError.CreateResourcesFailed"
 	// OntologyQuery_InternalError_DeleteResourcesFailed = "OntologyQuery.InternalError.DeleteResourcesFailed"
 	// OntologyQuery_InternalError_FilterResourcesFailed = "OntologyQuery.InternalError.FilterResourcesFailed"
@@ -47,7 +47,7 @@ var (
 		OntologyQuery_NullParameter_OverrideMethod,
 
 		// permission
-		// OntologyQuery_InternalError_CheckPermissionFailed,
+		OntologyQuery_InternalError_CheckPermissionFailed,
 		// OntologyQuery_InternalError_CreateResourcesFailed,
 		// OntologyQuery_InternalError_DeleteResourcesFailed,
 		// OntologyQuery_InternalError_FilterResourcesFailed,

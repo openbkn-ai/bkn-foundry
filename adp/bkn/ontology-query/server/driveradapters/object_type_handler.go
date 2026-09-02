@@ -155,6 +155,12 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 		return
 	}
 
+	if !r.authorizeQuery(c, ctx, func() error {
+		return r.qas.AuthorizeObjectTypeQuery(ctx, knID, branch, otID)
+	}) {
+		return
+	}
+
 	// Execute the query.
 	result, err := r.ots.GetObjectsByObjectTypeID(ctx, &query)
 	if err != nil {
@@ -301,6 +307,12 @@ func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor
 
 		rest.ReplyError(c, httpErr)
 
+		return
+	}
+
+	if !r.authorizeQuery(c, ctx, func() error {
+		return r.qas.AuthorizeObjectTypeQuery(ctx, knID, branch, otID)
+	}) {
 		return
 	}
 

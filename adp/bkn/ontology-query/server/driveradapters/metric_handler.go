@@ -80,6 +80,11 @@ func (r *restHandler) postMetricData(c *gin.Context, vis hydra.Visitor) {
 	}
 
 	body.FillNull = fillNull
+	if !r.authorizeQuery(c, ctx, func() error {
+		return r.qas.AuthorizeMetricQuery(ctx, knID, branch, metricID)
+	}) {
+		return
+	}
 
 	out, err := r.ms.QueryMetricData(ctx, knID, branch, metricID, &body)
 	if err != nil {
@@ -153,6 +158,11 @@ func (r *restHandler) postMetricDryRun(c *gin.Context, vis hydra.Visitor) {
 		return
 	}
 	body.FillNull = fillNull
+	if !r.authorizeQuery(c, ctx, func() error {
+		return r.qas.AuthorizeMetricDryRun(ctx, knID, branch, body.MetricConfig)
+	}) {
+		return
+	}
 
 	out, err := r.ms.DryRunMetricData(ctx, knID, branch, &body)
 	if err != nil {

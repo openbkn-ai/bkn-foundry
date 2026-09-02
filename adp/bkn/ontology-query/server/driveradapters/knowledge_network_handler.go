@@ -164,6 +164,12 @@ func (r *restHandler) GetObjectsSubgraph(c *gin.Context, visitor hydra.Visitor) 
 		return
 	}
 
+	if !r.authorizeQuery(c, ctx, func() error {
+		return r.qas.AuthorizeSubgraphBySource(ctx, &query)
+	}) {
+		return
+	}
+
 	// Execute the query.
 	result, err := r.kns.SearchSubgraph(ctx, &query)
 	if err != nil {
@@ -284,6 +290,12 @@ func (r *restHandler) GetObjectsSubgraphByTypePath(c *gin.Context, visitor hydra
 		return
 	}
 
+	if !r.authorizeQuery(c, ctx, func() error {
+		return r.qas.AuthorizeSubgraphByTypePath(ctx, &query)
+	}) {
+		return
+	}
+
 	// Execute the query.
 	result, err := r.kns.SearchSubgraphByTypePath(ctx, &query)
 	if err != nil {
@@ -302,7 +314,7 @@ func (r *restHandler) GetObjectsSubgraphByTypePath(c *gin.Context, visitor hydra
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 
 	// result.OverallMs = time.Now().UnixMilli() - startTime.UnixMilli()
-	emitSubgraphEntriesEvidence(c, ctx, visitor, knID, branch, paths, result)
+	emitSubgraphEntriesEvidence(c, ctx, visitor, knID, branch, query.Paths, result)
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
@@ -411,6 +423,12 @@ func (r *restHandler) GetObjectsSubgraphByObjects(c *gin.Context, visitor hydra.
 
 		rest.ReplyError(c, httpErr)
 
+		return
+	}
+
+	if !r.authorizeQuery(c, ctx, func() error {
+		return r.qas.AuthorizeSubgraphByObjects(ctx, &query)
+	}) {
 		return
 	}
 

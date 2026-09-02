@@ -94,6 +94,9 @@ For detailed API documentation, see [API documentation](./api_doc/).
 - Go 1.24.0+
 - OpenSearch 2.x
 - Ontology manager module, running on port 13014
+- BKN Safe with the `/api/safe/v1/authz/resource-filter` contract enabled when
+  `QUERY_DATA_PEP_ENABLED=true`; the query PEP defaults to disabled until
+  authorization data migration and cross-service validation are complete
 
 ### Local development
 
@@ -158,6 +161,30 @@ server:
   language: zh-CN
   run_mode: debug
 ```
+
+### Data-query authorization
+
+Set `BKN_SAFE_BASE_URL` to the BKN Safe service root (for example,
+`http://bkn-safe:13020`). `BKN_SAFE_URL` is accepted only as a compatibility
+fallback. A missing or invalid URL does not enable an unauthenticated mode:
+object, relation, action-type, and metric data queries fail closed.
+
+Before reading data, ontology-query resolves dependencies from the published
+`main` knowledge-network model and checks `query_data` on canonical resources:
+
+- KN roots use `knowledge_network:{kn_id}`.
+- KN children use `{resource_type}:{kn_id}/{child_id}`.
+- Bound Vega resource references are validated against the published model but
+  are not sent directly to Safe by ontology-query. The query is forwarded to
+  Vega as the same caller, and Vega checks `resource:{resource_id}` before any
+  physical read, falling back to the owning catalog's `query_data` grant when
+  the table itself has no direct grant.
+
+Internal `/api/ontology-query/in/v1` requests must provide both `x-account-id`
+and `x-account-type`. Permission denial returns HTTP 403. Missing subjects,
+disabled accounts, BKN Safe failures, timeouts, invalid responses, or incomplete
+published dependencies prevent the data query from running; authorization
+infrastructure failures return HTTP 503.
 
 ## Monitoring and operations
 

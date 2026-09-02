@@ -29,6 +29,7 @@ import (
 	"ontology-query/logics/knowledge_network"
 	"ontology-query/logics/metric"
 	"ontology-query/logics/object_type"
+	queryauthorization "ontology-query/logics/query_authorization"
 	"ontology-query/version"
 )
 
@@ -45,6 +46,7 @@ type restHandler struct {
 	kns        interfaces.KnowledgeNetworkService
 	ms         interfaces.MetricQueryService
 	ots        interfaces.ObjectTypeService
+	qas        interfaces.QueryAuthorizationService
 }
 
 func NewRestHandler(appSetting *common.AppSetting) RestHandler {
@@ -57,6 +59,7 @@ func NewRestHandler(appSetting *common.AppSetting) RestHandler {
 		kns:        knowledge_network.NewKnowledgeNetworkService(appSetting),
 		ms:         metric.NewMetricQueryService(appSetting),
 		ots:        object_type.NewObjectTypeService(appSetting),
+		qas:        queryauthorization.NewQueryAuthorizationService(appSetting),
 	}
 	return r
 }

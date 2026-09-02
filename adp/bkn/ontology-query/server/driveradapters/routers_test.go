@@ -34,6 +34,36 @@ func setGinMode() func() {
 	}
 }
 
+type allowQueryAuthorizationService struct{}
+
+func (allowQueryAuthorizationService) AuthorizeObjectTypeQuery(context.Context, string, string, string) error {
+	return nil
+}
+
+func (allowQueryAuthorizationService) AuthorizeActionTypeQuery(context.Context, string, string, string) error {
+	return nil
+}
+
+func (allowQueryAuthorizationService) AuthorizeMetricQuery(context.Context, string, string, string) error {
+	return nil
+}
+
+func (allowQueryAuthorizationService) AuthorizeMetricDryRun(context.Context, string, string, *interfaces.MetricDefinition) error {
+	return nil
+}
+
+func (allowQueryAuthorizationService) AuthorizeSubgraphBySource(context.Context, *interfaces.SubGraphQueryBaseOnSource) error {
+	return nil
+}
+
+func (allowQueryAuthorizationService) AuthorizeSubgraphByTypePath(context.Context, *interfaces.SubGraphQueryBaseOnTypePath) error {
+	return nil
+}
+
+func (allowQueryAuthorizationService) AuthorizeSubgraphByObjects(context.Context, *interfaces.SubGraphQueryBaseOnObjects) error {
+	return nil
+}
+
 // MockNewRestHandler creates a restHandler for tests.
 func MockNewRestHandler(
 	appSetting *common.AppSetting,
@@ -48,6 +78,7 @@ func MockNewRestHandler(
 		ats:        ats,
 		kns:        kns,
 		ots:        ots,
+		qas:        allowQueryAuthorizationService{},
 	}
 }
 

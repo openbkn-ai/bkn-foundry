@@ -62,20 +62,24 @@ func (kns *knowledgeNetworkService) SearchSubgraph(ctx context.Context,
 	var resps interfaces.ObjectSubGraph
 
 	// 1. Under the specified business knowledge network, get all paths by source object type, direction, and path length.
-	typePaths, err := kns.omAccess.GetRelationTypePathsBaseOnSource(ctx, query.KNID, query.Branch,
-		interfaces.PathsQueryBaseOnSource{
-			ConceptGroups:     query.ConceptGroups,
-			SourceObjecTypeId: query.SourceObjecTypeId,
-			Direction:         query.Direction,
-			PathLength:        query.PathLength,
-		})
-	if err != nil {
-		span.SetAttributes(attribute.Key("kn_id").String(query.KNID))
-		span.SetAttributes(attribute.Key("branch").String(query.Branch))
-		otellog.LogError(ctx, fmt.Sprintf("Get RelationTypePathsBaseOnSource error: %v", err), err)
+	typePaths := query.AuthorizedTypePaths
+	if typePaths == nil {
+		var err error
+		typePaths, err = kns.omAccess.GetRelationTypePathsBaseOnSource(ctx, query.KNID, query.Branch,
+			interfaces.PathsQueryBaseOnSource{
+				ConceptGroups:     query.ConceptGroups,
+				SourceObjecTypeId: query.SourceObjecTypeId,
+				Direction:         query.Direction,
+				PathLength:        query.PathLength,
+			})
+		if err != nil {
+			span.SetAttributes(attribute.Key("kn_id").String(query.KNID))
+			span.SetAttributes(attribute.Key("branch").String(query.Branch))
+			otellog.LogError(ctx, fmt.Sprintf("Get RelationTypePathsBaseOnSource error: %v", err), err)
 
-		return resps, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).WithErrorDetails(err.Error())
+			return resps, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).WithErrorDetails(err.Error())
+		}
 	}
 
 	// 2. Retrieve source object type instances.
@@ -1370,6 +1374,11 @@ func (kns *knowledgeNetworkService) discoverRelationTypes(ctx context.Context,
 	// Collect and filter relation types, ensuring both source and target are in the input set.
 	allRelationTypes := make(map[string]interfaces.RelationType) // key: relationTypeID
 	for _, rt := range relationTypes {
+		if query.AuthorizedRelationTypeIDs != nil {
+			if _, allowed := query.AuthorizedRelationTypeIDs[rt.RTID]; !allowed {
+				continue
+			}
+		}
 		// Ensure both source and target are in the input set.
 		if _, exists := objectTypeMap[rt.SourceObjectTypeID]; !exists {
 			continue
