@@ -107,10 +107,10 @@ func TestMetricBatchDeletePEPRejectsBeforeBusinessWrites(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ma := bmock.NewMockMetricAccess(ctrl)
 	ps := bmock.NewMockPermissionService(ctrl)
-	for _, metricID := range []string{"metric-1", "metric-2"} {
-		ma.EXPECT().CheckMetricExistByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, metricID).
-			Return(metricID, true, nil)
-	}
+	ma.EXPECT().GetMetricsByIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH,
+		[]string{"metric-1", "metric-2"}).Return([]*interfaces.MetricDefinition{
+		{ID: "metric-1"}, {ID: "metric-2"},
+	}, nil)
 	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
 		[]string{"kn-1/metric-1", "kn-1/metric-2"}, []string{interfaces.OPERATION_TYPE_DELETE}, true,
 		[]string{interfaces.OPERATION_TYPE_DELETE}).Return(map[string]interfaces.PermissionResourceOps{

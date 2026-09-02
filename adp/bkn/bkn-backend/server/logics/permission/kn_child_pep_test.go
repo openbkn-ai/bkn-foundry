@@ -134,6 +134,24 @@ func TestFilterAndPaginateKNChildrenPropagatesFilterFailure(t *testing.T) {
 	}
 }
 
+func TestFilterAndPaginateKNChildrenSkipsHistoricalInvalidIDs(t *testing.T) {
+	t.Setenv("KN_CHILD_RESOURCE_PEP_ENABLED", "true")
+	ctrl := gomock.NewController(t)
+	ps := interfacemock.NewMockPermissionService(ctrl)
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		[]string{"kn-1/valid"}, gomock.Any(), true, gomock.Any()).Return(map[string]interfaces.PermissionResourceOps{
+		"kn-1/valid": {ResourceID: "kn-1/valid"},
+	}, nil)
+
+	got, total, err := FilterAndPaginateKNChildren(context.Background(), ps,
+		interfaces.RESOURCE_TYPE_OBJECT_TYPE, "kn-1",
+		[]childCandidate{{id: "legacy/id"}, {id: "valid"}},
+		func(candidate childCandidate) string { return candidate.id }, 0, -1)
+	if err != nil || total != 1 || !reflect.DeepEqual(got, []childCandidate{{id: "valid"}}) {
+		t.Fatalf("result = %#v, total = %d, error = %v", got, total, err)
+	}
+}
+
 func TestFilterAndPaginateKNChildrenSupportsEveryChildResourceType(t *testing.T) {
 	t.Setenv("KN_CHILD_RESOURCE_PEP_ENABLED", "true")
 	resourceTypes := []string{
@@ -243,6 +261,23 @@ func TestFilterKNChildIDsKeepsEqualChildIDsIsolatedByKN(t *testing.T) {
 		interfaces.OPERATION_TYPE_VIEW_DETAIL)
 	if err != nil || len(second) != 0 {
 		t.Fatalf("second KN result = %#v, error = %v", second, err)
+	}
+}
+
+func TestFilterKNChildIDsSkipsHistoricalInvalidIDs(t *testing.T) {
+	t.Setenv("KN_CHILD_RESOURCE_PEP_ENABLED", "true")
+	ctrl := gomock.NewController(t)
+	ps := interfacemock.NewMockPermissionService(ctrl)
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
+		[]string{"kn-1/valid"}, gomock.Any(), true, gomock.Any()).Return(map[string]interfaces.PermissionResourceOps{
+		"kn-1/valid": {ResourceID: "kn-1/valid"},
+	}, nil)
+
+	got, err := FilterKNChildIDs(context.Background(), ps,
+		interfaces.RESOURCE_TYPE_METRIC, "kn-1", []string{"bad*id", "valid", " spaced "},
+		interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	if err != nil || !reflect.DeepEqual(got, []string{"valid"}) {
+		t.Fatalf("result = %#v, error = %v", got, err)
 	}
 }
 

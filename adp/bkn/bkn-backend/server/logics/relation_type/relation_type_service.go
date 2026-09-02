@@ -290,7 +290,8 @@ func (rts *relationTypeService) ListRelationTypes(ctx context.Context,
 	if query.Branch == "" {
 		query.Branch = interfaces.MAIN_BRANCH
 	}
-	if !permission.KNChildResourcePEPEnabled() {
+	pepEnabled := permission.KNChildResourcePEPEnabled()
+	if !pepEnabled {
 		if err := rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
 			Type: interfaces.RESOURCE_TYPE_KN,
 			ID:   query.KNID,
@@ -299,10 +300,12 @@ func (rts *relationTypeService) ListRelationTypes(ctx context.Context,
 		}
 	}
 
-	candidateQuery := query
-	candidateQuery.Offset = 0
-	candidateQuery.Limit = -1
-	relationTypes, err := rts.rta.ListRelationTypes(ctx, candidateQuery)
+	listQuery := query
+	if pepEnabled {
+		listQuery.Offset = 0
+		listQuery.Limit = -1
+	}
+	relationTypes, err := rts.rta.ListRelationTypes(ctx, listQuery)
 	if err != nil {
 		logger.Errorf("ListRelationTypes error: %s", err.Error())
 		span.SetStatus(codes.Error, "List relation types error")
@@ -311,8 +314,8 @@ func (rts *relationTypeService) ListRelationTypes(ctx context.Context,
 			berrors.BknBackend_RelationType_InternalError).WithErrorDetails(err.Error())
 	}
 
-	total := len(relationTypes)
-	if permission.KNChildResourcePEPEnabled() {
+	var total int
+	if pepEnabled {
 		relationTypes, total, err = permission.FilterAndPaginateKNChildren(ctx, rts.ps,
 			interfaces.RESOURCE_TYPE_RELATION_TYPE, query.KNID, relationTypes,
 			func(relationType *interfaces.RelationType) string { return relationType.RTID }, query.Offset, query.Limit)
@@ -320,7 +323,13 @@ func (rts *relationTypeService) ListRelationTypes(ctx context.Context,
 			return []*interfaces.RelationType{}, 0, err
 		}
 	} else {
-		relationTypes = permission.PaginateKNChildCandidates(relationTypes, query.Offset, query.Limit)
+		total, err = rts.rta.GetRelationTypesTotal(ctx, query)
+		if err != nil {
+			logger.Errorf("GetRelationTypesTotal error: %s", err.Error())
+			span.SetStatus(codes.Error, "Get relation types total error")
+			return []*interfaces.RelationType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_RelationType_InternalError).WithErrorDetails(err.Error())
+		}
 	}
 	if len(relationTypes) == 0 {
 		span.SetStatus(codes.Ok, "")
@@ -631,14 +640,13 @@ func (rts *relationTypeService) DeleteRelationTypesByIDs(ctx context.Context, tx
 		}
 	} else {
 		if permission.KNChildResourcePEPEnabled() {
-			for _, rtID := range rtIDs {
-				_, exists, err := rts.CheckRelationTypeExistByID(ctx, knID, branch, rtID)
-				if err != nil {
-					return err
-				}
-				if !exists {
-					return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RelationType_RelationTypeNotFound)
-				}
+			relationTypes, err := rts.rta.GetRelationTypesByIDs(ctx, knID, branch, rtIDs)
+			if err != nil {
+				return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					berrors.BknBackend_RelationType_InternalError_GetRelationTypesByIDsFailed).WithErrorDetails(err.Error())
+			}
+			if len(relationTypes) != len(rtIDs) {
+				return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RelationType_RelationTypeNotFound)
 			}
 		}
 		if err := permission.CheckKNChildBatchPermission(ctx, rts.ps,

@@ -414,7 +414,8 @@ func (cgs *conceptGroupService) ListConceptGroups(ctx context.Context,
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "查询概念分组列表")
 	defer span.End()
-	if !permission.KNChildResourcePEPEnabled() {
+	pepEnabled := permission.KNChildResourcePEPEnabled()
+	if !pepEnabled {
 		if err := cgs.ps.CheckPermission(ctx, interfaces.PermissionResource{
 			Type: interfaces.RESOURCE_TYPE_KN,
 			ID:   query.KNID,
@@ -423,10 +424,12 @@ func (cgs *conceptGroupService) ListConceptGroups(ctx context.Context,
 		}
 	}
 
-	candidateQuery := query
-	candidateQuery.Offset = 0
-	candidateQuery.Limit = -1
-	conceptGroups, err := cgs.cga.ListConceptGroups(ctx, candidateQuery)
+	listQuery := query
+	if pepEnabled {
+		listQuery.Offset = 0
+		listQuery.Limit = -1
+	}
+	conceptGroups, err := cgs.cga.ListConceptGroups(ctx, listQuery)
 	if err != nil {
 		logger.Errorf("ListConceptGroups error: %s", err.Error())
 		span.SetStatus(codes.Error, "List concept groups error")
@@ -435,8 +438,8 @@ func (cgs *conceptGroupService) ListConceptGroups(ctx context.Context,
 			berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
 	}
 
-	total := len(conceptGroups)
-	if permission.KNChildResourcePEPEnabled() {
+	var total int
+	if pepEnabled {
 		conceptGroups, total, err = permission.FilterAndPaginateKNChildren(ctx, cgs.ps,
 			interfaces.RESOURCE_TYPE_CONCEPT_GROUP, query.KNID, conceptGroups,
 			func(group *interfaces.ConceptGroup) string { return group.CGID }, query.Offset, query.Limit)
@@ -444,7 +447,13 @@ func (cgs *conceptGroupService) ListConceptGroups(ctx context.Context,
 			return []*interfaces.ConceptGroup{}, 0, err
 		}
 	} else {
-		conceptGroups = permission.PaginateKNChildCandidates(conceptGroups, query.Offset, query.Limit)
+		total, err = cgs.cga.GetConceptGroupsTotal(ctx, query)
+		if err != nil {
+			logger.Errorf("GetConceptGroupsTotal error: %s", err.Error())
+			span.SetStatus(codes.Error, "Get concept groups total error")
+			return []*interfaces.ConceptGroup{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
+		}
 	}
 	if len(conceptGroups) == 0 {
 		span.SetStatus(codes.Ok, "")

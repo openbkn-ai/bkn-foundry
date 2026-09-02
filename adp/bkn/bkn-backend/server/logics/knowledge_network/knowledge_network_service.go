@@ -175,7 +175,6 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 	if err != nil {
 		return "", err
 	}
-	ctx = permission.WithKNImportPermissionPrechecked(ctx)
 
 	currentTime := time.Now().UnixMilli()
 	// Generate a distributed ID when the submitted model ID is empty.
@@ -257,6 +256,9 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 		return "", err
 	}
 	createdNewKN = isCreate
+	if isCreate {
+		ctx = permission.WithKNImportPermissionPrechecked(ctx)
+	}
 
 	// Process creation.
 	if isCreate {

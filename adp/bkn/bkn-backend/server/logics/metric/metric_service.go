@@ -636,14 +636,13 @@ func (ms *metricService) DeleteMetricsByIDs(ctx context.Context, tx *sql.Tx, knI
 		}
 	} else {
 		if permission.KNChildResourcePEPEnabled() {
-			for _, metricID := range metricIDs {
-				_, exists, checkErr := ms.CheckMetricExistByID(ctx, knID, branch, metricID)
-				if checkErr != nil {
-					return checkErr
-				}
-				if !exists {
-					return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_Metric_NotFound)
-				}
+			metrics, queryErr := ms.ma.GetMetricsByIDs(ctx, knID, branch, metricIDs)
+			if queryErr != nil {
+				return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					berrors.BknBackend_Metric_InternalError_GetMetricsByIDsFailed).WithErrorDetails(queryErr.Error())
+			}
+			if len(metrics) != len(metricIDs) {
+				return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_Metric_NotFound)
 			}
 		}
 		if err := permission.CheckKNChildBatchPermission(ctx, ms.ps,

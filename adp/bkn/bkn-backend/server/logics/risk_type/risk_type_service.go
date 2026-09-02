@@ -476,14 +476,13 @@ func (rts *riskTypeService) DeleteRiskTypesByIDs(ctx context.Context, tx *sql.Tx
 		}
 	} else {
 		if permission.KNChildResourcePEPEnabled() {
-			for _, rtID := range rtIDs {
-				_, exists, err := rts.CheckRiskTypeExistByID(ctx, knID, branch, rtID)
-				if err != nil {
-					return err
-				}
-				if !exists {
-					return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RiskType_RiskTypeNotFound)
-				}
+			riskTypes, queryErr := rts.rta.GetRiskTypesByIDs(ctx, knID, branch, rtIDs)
+			if queryErr != nil {
+				return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					berrors.BknBackend_RiskType_InternalError_GetRiskTypesByIDsFailed).WithErrorDetails(queryErr.Error())
+			}
+			if len(riskTypes) != len(rtIDs) {
+				return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RiskType_RiskTypeNotFound)
 			}
 		}
 		if err := permission.CheckKNChildBatchPermission(ctx, rts.ps,

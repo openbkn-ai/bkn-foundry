@@ -104,11 +104,20 @@ func FilterKNChildIDs(ctx context.Context, ps interfaces.PermissionService,
 	if len(childIDs) == 0 {
 		return []string{}, nil
 	}
-	if err := ValidateKNChildAuthorizationIDs(ctx, knID, childIDs); err != nil {
+	validChildIDs := make([]string, 0, len(childIDs))
+	for _, childID := range childIDs {
+		if interfaces.IsValidAuthorizationID(childID) {
+			validChildIDs = append(validChildIDs, childID)
+		}
+	}
+	if len(validChildIDs) == 0 {
+		return []string{}, nil
+	}
+	if err := ValidateKNChildAuthorizationIDs(ctx, knID, validChildIDs); err != nil {
 		return nil, err
 	}
 
-	resourceIDs := interfaces.KNChildResourceIDs(knID, childIDs)
+	resourceIDs := interfaces.KNChildResourceIDs(knID, validChildIDs)
 	matched, err := filterKNChildResourceIDs(ctx, ps, resourceType, resourceIDs, operation)
 	if err != nil {
 		return nil, err
@@ -117,7 +126,7 @@ func FilterKNChildIDs(ctx context.Context, ps interfaces.PermissionService,
 	visibleIDs := make([]string, 0, len(matched))
 	for index, resourceID := range resourceIDs {
 		if _, ok := matched[resourceID]; ok {
-			visibleIDs = append(visibleIDs, childIDs[index])
+			visibleIDs = append(visibleIDs, validChildIDs[index])
 		}
 	}
 	return visibleIDs, nil
@@ -165,9 +174,17 @@ func FilterAndPaginateKNChildren[T any](ctx context.Context, ps interfaces.Permi
 	if len(candidates) == 0 {
 		return []T{}, 0, nil
 	}
+	validCandidates := make([]T, 0, len(candidates))
 	childIDs := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {
-		childIDs = append(childIDs, childID(candidate))
+		id := childID(candidate)
+		if interfaces.IsValidAuthorizationID(id) {
+			validCandidates = append(validCandidates, candidate)
+			childIDs = append(childIDs, id)
+		}
+	}
+	if len(validCandidates) == 0 {
+		return []T{}, 0, nil
 	}
 	if err := ValidateKNChildAuthorizationIDs(ctx, knID, childIDs); err != nil {
 		return nil, 0, err
@@ -181,7 +198,7 @@ func FilterAndPaginateKNChildren[T any](ctx context.Context, ps interfaces.Permi
 	}
 
 	visible := make([]T, 0, len(matched))
-	for _, candidate := range candidates {
+	for _, candidate := range validCandidates {
 		canonicalID := interfaces.KNChildResourceID(knID, childID(candidate))
 		if _, ok := matched[canonicalID]; ok {
 			visible = append(visible, candidate)

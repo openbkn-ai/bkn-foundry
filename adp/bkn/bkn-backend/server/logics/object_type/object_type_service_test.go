@@ -1220,7 +1220,8 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ota.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(objectTypes, nil)
+			ota.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), query).Return(objectTypes, nil)
+			ota.EXPECT().GetObjectTypesTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
@@ -1243,6 +1244,7 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return([]*interfaces.ObjectType{}, nil)
+			ota.EXPECT().GetObjectTypesTotal(gomock.Any(), gomock.Any()).Return(0, nil)
 			smock.ExpectCommit()
 
 			result, total, err := service.ListObjectTypes(ctx, nil, query)
@@ -1305,6 +1307,7 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(objectTypes, nil)
+			ota.EXPECT().GetObjectTypesTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
 
@@ -1337,6 +1340,7 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(objectTypes, nil)
+			ota.EXPECT().GetObjectTypesTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
@@ -1357,9 +1361,8 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 			}
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ota.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return([]*interfaces.ObjectType{{
-				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1"},
-			}}, nil)
+			ota.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return([]*interfaces.ObjectType{}, nil)
+			ota.EXPECT().GetObjectTypesTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			smock.ExpectCommit()
 
 			result, total, err := service.ListObjectTypes(ctx, nil, query)

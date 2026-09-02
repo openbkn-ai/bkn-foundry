@@ -396,7 +396,8 @@ func (ats *actionTypeService) ValidateActionTypes(ctx context.Context, knID stri
 func (ats *actionTypeService) ListActionTypes(ctx context.Context, query interfaces.ActionTypesQueryParams) ([]*interfaces.ActionType, int, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ListActionTypes")
 	defer span.End()
-	if !permission.KNChildResourcePEPEnabled() {
+	pepEnabled := permission.KNChildResourcePEPEnabled()
+	if !pepEnabled {
 		if err := ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
 			Type: interfaces.RESOURCE_TYPE_KN,
 			ID:   query.KNID,
@@ -405,10 +406,12 @@ func (ats *actionTypeService) ListActionTypes(ctx context.Context, query interfa
 		}
 	}
 
-	candidateQuery := query
-	candidateQuery.Offset = 0
-	candidateQuery.Limit = -1
-	actionTypes, err := ats.ata.ListActionTypes(ctx, candidateQuery)
+	listQuery := query
+	if pepEnabled {
+		listQuery.Offset = 0
+		listQuery.Limit = -1
+	}
+	actionTypes, err := ats.ata.ListActionTypes(ctx, listQuery)
 	if err != nil {
 		logger.Errorf("ListActionTypes error: %s", err.Error())
 		span.SetStatus(codes.Error, "List action types error")
@@ -416,8 +419,8 @@ func (ats *actionTypeService) ListActionTypes(ctx context.Context, query interfa
 			berrors.BknBackend_ActionType_InternalError).WithErrorDetails(err.Error())
 	}
 
-	total := len(actionTypes)
-	if permission.KNChildResourcePEPEnabled() {
+	var total int
+	if pepEnabled {
 		actionTypes, total, err = permission.FilterAndPaginateKNChildren(ctx, ats.ps,
 			interfaces.RESOURCE_TYPE_ACTION_TYPE, query.KNID, actionTypes,
 			func(actionType *interfaces.ActionType) string { return actionType.ATID }, query.Offset, query.Limit)
@@ -425,7 +428,13 @@ func (ats *actionTypeService) ListActionTypes(ctx context.Context, query interfa
 			return []*interfaces.ActionType{}, 0, err
 		}
 	} else {
-		actionTypes = permission.PaginateKNChildCandidates(actionTypes, query.Offset, query.Limit)
+		total, err = ats.ata.GetActionTypesTotal(ctx, query)
+		if err != nil {
+			logger.Errorf("GetActionTypesTotal error: %s", err.Error())
+			span.SetStatus(codes.Error, "Get action types total error")
+			return []*interfaces.ActionType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_ActionType_InternalError).WithErrorDetails(err.Error())
+		}
 	}
 	if len(actionTypes) == 0 {
 		span.SetStatus(codes.Ok, "")
@@ -691,14 +700,13 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 		}
 	} else {
 		if permission.KNChildResourcePEPEnabled() {
-			for _, atID := range atIDs {
-				_, exists, err := ats.CheckActionTypeExistByID(ctx, knID, branch, atID)
-				if err != nil {
-					return err
-				}
-				if !exists {
-					return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionType_ActionTypeNotFound)
-				}
+			actionTypes, err := ats.ata.GetActionTypesByIDs(ctx, knID, branch, atIDs)
+			if err != nil {
+				return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					berrors.BknBackend_ActionType_InternalError_GetActionTypesByIDsFailed).WithErrorDetails(err.Error())
+			}
+			if len(actionTypes) != len(atIDs) {
+				return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionType_ActionTypeNotFound)
 			}
 		}
 		if err := permission.CheckKNChildBatchPermission(ctx, ats.ps,

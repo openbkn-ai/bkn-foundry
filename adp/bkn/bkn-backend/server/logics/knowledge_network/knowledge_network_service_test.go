@@ -1798,6 +1798,9 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 				KNID:   "kn1",
 				KNName: "kn1",
 				Branch: interfaces.MAIN_BRANCH,
+				ConceptGroups: []*interfaces.ConceptGroup{{
+					CGID: "cg1", KNID: "kn1", Branch: interfaces.MAIN_BRANCH,
+				}},
 			}
 			mode := interfaces.ImportMode_Overwrite
 			kna2 := bmock.NewMockKNAccess(mockCtrl)
@@ -1823,7 +1826,15 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			// CreateKN handleKNImportMode + UpdateKN(strict) → ValidateKN(..., Overwrite) → handleKNImportMode again
 			kna2.EXPECT().CheckKNExistByID(gomock.Any(), gomock.Any(), gomock.Any()).Return("kn1", true, nil).AnyTimes()
 			kna2.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("kn1", true, nil).AnyTimes()
+			cgs.EXPECT().ValidateConceptGroups(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
+				kn.ConceptGroups, true, gomock.Any(), interfaces.ImportMode_Overwrite).Return(nil)
 			kna2.EXPECT().UpdateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			cgs.EXPECT().CreateConceptGroup(gomock.Any(), gomock.Any(), kn.ConceptGroups[0], interfaces.ImportMode_Overwrite, true).
+				DoAndReturn(func(childCtx context.Context, _ *sql.Tx, _ *interfaces.ConceptGroup,
+					_ string, _ bool) (string, error) {
+					So(permission.KNImportPermissionPrechecked(childCtx), ShouldBeFalse)
+					return "cg1", nil
+				})
 			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil).AnyTimes()
 			smock.ExpectCommit()
 
