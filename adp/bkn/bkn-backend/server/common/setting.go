@@ -225,6 +225,9 @@ func GetAuthEnabled() bool {
 // authorization chain is enabled. It defaults to false until migration and
 // cross-service validation are complete.
 func GetActionExecutionPEPEnabled() bool {
+	if !GetAuthEnabled() {
+		return false
+	}
 	value := strings.ToLower(strings.TrimSpace(os.Getenv("ACTION_EXECUTION_PEP_ENABLED")))
 	return value == "true" || value == "1"
 }

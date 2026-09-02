@@ -118,3 +118,18 @@ func TestActionExecutionPEPDisabledPreservesCompatibility(t *testing.T) {
 		t.Fatalf("authorizeExecution() error = %v", err)
 	}
 }
+
+func TestActionExecutionPEPDisabledWhenAuthenticationIsDisabled(t *testing.T) {
+	t.Setenv("AUTH_ENABLED", "false")
+	t.Setenv(actionExecutionPEPEnabledEnv, "true")
+	if ActionExecutionPEPEnabled() {
+		t.Fatal("ActionExecutionPEPEnabled() = true while authentication is disabled")
+	}
+	service := &actionSchedulerService{}
+	if requirements, err := service.authorizeActionType(context.Background(), "", nil); err != nil || requirements != nil {
+		t.Fatalf("authorizeActionType() = %#v, %v", requirements, err)
+	}
+	if err := service.authorizeExecution(context.Background(), nil); err != nil {
+		t.Fatalf("authorizeExecution() error = %v", err)
+	}
+}

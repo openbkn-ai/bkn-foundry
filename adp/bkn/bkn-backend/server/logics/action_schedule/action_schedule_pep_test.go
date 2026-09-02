@@ -75,6 +75,31 @@ func TestCreateScheduleChecksAndStoresCurrentExecutionSubject(t *testing.T) {
 	}
 }
 
+func TestCreateScheduleStoresCurrentExecutionSubjectWhilePEPDisabled(t *testing.T) {
+	t.Setenv("ACTION_EXECUTION_PEP_ENABLED", "false")
+	service, schedules, actionTypes, checks := actionSchedulePEPTestService(t)
+	actionTypes.EXPECT().GetActionTypesByIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, []string{"at-1"}).
+		Return([]*interfaces.ActionType{{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at-1"}}}, nil)
+	schedules.EXPECT().CreateSchedule(gomock.Any(), nil, gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ any, schedule *interfaces.ActionSchedule) error {
+			if schedule.ExecutionSubject.ID != "user-current" || schedule.ExecutionSubject.Type != "user" {
+				t.Fatalf("execution subject = %#v", schedule.ExecutionSubject)
+			}
+			return nil
+		})
+
+	_, err := service.CreateSchedule(actionScheduleSubjectContext(), &interfaces.ActionSchedule{
+		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, ActionTypeID: "at-1",
+		CronExpression: "* * * * *",
+	})
+	if err != nil {
+		t.Fatalf("CreateSchedule() error = %v", err)
+	}
+	if checks.calls != 0 {
+		t.Fatalf("permission checks = %d, want 0", checks.calls)
+	}
+}
+
 func TestUpdateScheduleRotatesSubjectOnlyForExecutableChanges(t *testing.T) {
 	t.Setenv("ACTION_EXECUTION_PEP_ENABLED", "true")
 

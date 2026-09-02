@@ -93,8 +93,10 @@ func (s *actionScheduleService) CreateSchedule(ctx context.Context, schedule *in
 		if err := s.checkActionExecution(ctx, "schedule_create", schedule.KNID, schedule.ActionTypeID, schedule.DynamicParams); err != nil {
 			return "", err
 		}
-		schedule.ExecutionSubject = accountFromContext(ctx)
 	}
+	// Persist the current subject even while enforcement is disabled so a later
+	// PEP rollout does not strand schedules created during the migration window.
+	schedule.ExecutionSubject = accountFromContext(ctx)
 
 	// Generate ID and set defaults
 	schedule.ID = xid.New().String()

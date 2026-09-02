@@ -108,7 +108,7 @@ func (a *actionScheduleAccess) CreateSchedule(ctx context.Context, tx *sql.Tx, s
 		schedule.Updater.Type,
 		schedule.UpdateTime,
 	}
-	if common.GetActionExecutionPEPEnabled() {
+	if schedule.ExecutionSubject.ID != "" && schedule.ExecutionSubject.Type != "" {
 		columns = append(columns, "f_execution_subject", "f_execution_subject_type")
 		values = append(values, schedule.ExecutionSubject.ID, schedule.ExecutionSubject.Type)
 	}
@@ -177,7 +177,7 @@ func (a *actionScheduleAccess) UpdateSchedule(ctx context.Context, tx *sql.Tx, s
 	if schedule.Status != "" {
 		builder = builder.Set("f_status", schedule.Status)
 	}
-	if common.GetActionExecutionPEPEnabled() && schedule.ExecutionSubject.ID != "" && schedule.ExecutionSubject.Type != "" {
+	if schedule.ExecutionSubject.ID != "" && schedule.ExecutionSubject.Type != "" {
 		builder = builder.Set("f_execution_subject", schedule.ExecutionSubject.ID)
 		builder = builder.Set("f_execution_subject_type", schedule.ExecutionSubject.Type)
 	}

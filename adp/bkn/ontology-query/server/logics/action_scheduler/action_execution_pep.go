@@ -15,6 +15,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
+	"ontology-query/common"
 	oerrors "ontology-query/errors"
 	"ontology-query/interfaces"
 )
@@ -24,6 +25,9 @@ const actionExecutionPEPEnabledEnv = "ACTION_EXECUTION_PEP_ENABLED"
 // ActionExecutionPEPEnabled reports whether the complete action execution PEP
 // is enabled. It remains off until policies and schedule subjects are migrated.
 func ActionExecutionPEPEnabled() bool {
+	if !common.GetAuthEnabled() {
+		return false
+	}
 	value := strings.ToLower(strings.TrimSpace(os.Getenv(actionExecutionPEPEnabledEnv)))
 	return value == "true" || value == "1"
 }
