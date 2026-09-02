@@ -406,7 +406,7 @@ func Test_actionTypeService_ListActionTypes(t *testing.T) {
 			}
 
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return(atArr, nil)
+			ata.EXPECT().ListActionTypes(gomock.Any(), query).Return(atArr, nil)
 			ata.EXPECT().GetActionTypesTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]*interfaces.ObjectType{}, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)

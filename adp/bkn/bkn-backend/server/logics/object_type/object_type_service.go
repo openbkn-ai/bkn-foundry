@@ -164,13 +164,14 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		}
 	}()
 
-	// Check whether the user ID can modify the business knowledge network.
-	err = ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   objectTypes[0].KNID,
-	}, []string{interfaces.OPERATION_TYPE_MODIFY})
-	if err != nil {
-		return []string{}, err
+	if !permission.KNImportPermissionPrechecked(ctx) && !permission.KNChildResourcePEPEnabled() {
+		err = ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: interfaces.RESOURCE_TYPE_KN,
+			ID:   objectTypes[0].KNID,
+		}, []string{interfaces.OPERATION_TYPE_MODIFY})
+		if err != nil {
+			return []string{}, err
+		}
 	}
 
 	currentTime := time.Now().UnixMilli()
@@ -235,6 +236,25 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 	createObjectTypes, updateObjectTypes, err := ots.handleObjectTypeImportMode(ctx, mode, objectTypes)
 	if err != nil {
 		return []string{}, err
+	}
+	if !permission.KNImportPermissionPrechecked(ctx) && permission.KNChildResourcePEPEnabled() {
+		if len(createObjectTypes) > 0 {
+			if err = ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
+				Type: interfaces.RESOURCE_TYPE_KN,
+				ID:   objectTypes[0].KNID,
+			}, []string{interfaces.OPERATION_TYPE_MODIFY}); err != nil {
+				return []string{}, err
+			}
+		}
+		updateIDs := make([]string, 0, len(updateObjectTypes))
+		for _, objectType := range updateObjectTypes {
+			updateIDs = append(updateIDs, objectType.OTID)
+		}
+		if err = permission.CheckKNChildBatchPermission(ctx, ots.ps,
+			interfaces.RESOURCE_TYPE_OBJECT_TYPE, objectTypes[0].KNID, updateIDs,
+			interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_MODIFY); err != nil {
+			return []string{}, err
+		}
 	}
 
 	// Create.
@@ -388,17 +408,18 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "查询对象类列表")
 	defer span.End()
-
-	// Check whether the user ID can view the business knowledge network.
-	err := ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   query.KNID,
-	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
-	if err != nil {
-		return []*interfaces.ObjectType{}, 0, err
+	pepEnabled := permission.KNChildResourcePEPEnabled()
+	if !pepEnabled {
+		if err := ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: interfaces.RESOURCE_TYPE_KN,
+			ID:   query.KNID,
+		}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
+			return []*interfaces.ObjectType{}, 0, err
+		}
 	}
 
 	// 0. Begin the transaction.
+	var err error
 	if tx == nil {
 		tx, err = ots.db.Begin()
 		if err != nil {
@@ -427,8 +448,12 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 		}()
 	}
 
-	// Get the object type list.
-	objectTypes, err := ots.ota.ListObjectTypes(ctx, tx, query)
+	listQuery := query
+	if pepEnabled {
+		listQuery.Offset = 0
+		listQuery.Limit = -1
+	}
+	objectTypes, err := ots.ota.ListObjectTypes(ctx, tx, listQuery)
 	if err != nil {
 		logger.Errorf("ListObjectTypes error: %s", err.Error())
 		span.SetStatus(codes.Error, "List object types error")
@@ -437,13 +462,22 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
 
-	total, err := ots.ota.GetObjectTypesTotal(ctx, query)
-	if err != nil {
-		logger.Errorf("GetObjectTypesTotal error: %s", err.Error())
-		span.SetStatus(codes.Error, "Get object types total error")
-
-		return []*interfaces.ObjectType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
+	var total int
+	if pepEnabled {
+		objectTypes, total, err = permission.FilterAndPaginateKNChildren(ctx, ots.ps,
+			interfaces.RESOURCE_TYPE_OBJECT_TYPE, query.KNID, objectTypes,
+			func(objectType *interfaces.ObjectType) string { return objectType.OTID }, query.Offset, query.Limit)
+		if err != nil {
+			return []*interfaces.ObjectType{}, 0, err
+		}
+	} else {
+		total, err = ots.ota.GetObjectTypesTotal(ctx, query)
+		if err != nil {
+			logger.Errorf("GetObjectTypesTotal error: %s", err.Error())
+			span.SetStatus(codes.Error, "Get object types total error")
+			return []*interfaces.ObjectType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
+		}
 	}
 	if len(objectTypes) == 0 {
 		span.SetStatus(codes.Ok, "")
@@ -945,8 +979,6 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 	if err := permission.ValidateKNChildPEPAuthorizationIDs(ctx, knID, otIDs); err != nil {
 		return err
 	}
-	resource := interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID}
-	operation := interfaces.OPERATION_TYPE_MODIFY
 	if len(otIDs) == 1 {
 		_, exists, err := ots.CheckObjectTypeExistByID(ctx, knID, branch, otIDs[0])
 		if err != nil {
@@ -955,11 +987,27 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 		if !exists {
 			return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
 		}
-		resource, operation = permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		resource, operation := permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_OBJECT_TYPE,
 			knID, otIDs[0], interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE)
-	}
-	if err := ots.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
-		return err
+		if err := ots.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
+			return err
+		}
+	} else {
+		if permission.KNChildResourcePEPEnabled() {
+			objectTypes, err := ots.ota.GetObjectTypesByIDs(ctx, tx, knID, branch, otIDs)
+			if err != nil {
+				return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					berrors.BknBackend_ObjectType_InternalError_GetObjectTypesByIDsFailed).WithErrorDetails(err.Error())
+			}
+			if len(objectTypes) != len(otIDs) {
+				return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
+			}
+		}
+		if err := permission.CheckKNChildBatchPermission(ctx, ots.ps,
+			interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, otIDs,
+			interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE); err != nil {
+			return err
+		}
 	}
 	if tx == nil {
 		// 0. Begin the transaction.
@@ -1355,13 +1403,29 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 	response := interfaces.ObjectTypes{}
 	var err error
 
-	// Check whether the user ID can view the business knowledge network.
-	err = ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   query.KNID,
-	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
-	if err != nil {
-		return response, err
+	var visibleIDs []string
+	if !permission.KNChildResourcePEPEnabled() {
+		err = ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: interfaces.RESOURCE_TYPE_KN,
+			ID:   query.KNID,
+		}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
+		if err != nil {
+			return response, err
+		}
+	} else {
+		candidateIDs, err := ots.GetObjectTypeIDsByKnID(ctx, query.KNID, query.Branch)
+		if err != nil {
+			return response, err
+		}
+		visibleIDs, err = permission.FilterKNChildIDs(ctx, ots.ps,
+			interfaces.RESOURCE_TYPE_OBJECT_TYPE, query.KNID, candidateIDs,
+			interfaces.OPERATION_TYPE_VIEW_DETAIL)
+		if err != nil {
+			return response, err
+		}
+		if len(visibleIDs) == 0 {
+			return response, nil
+		}
 	}
 
 	// Convert conditions to dataset filter conditions.
@@ -1401,6 +1465,9 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 				berrors.BknBackend_ObjectType_InvalidParameter_ConceptCondition).
 				WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil))
 		}
+	}
+	if permission.KNChildResourcePEPEnabled() {
+		filterCondition = permission.RestrictDatasetFilterToIDs(filterCondition, visibleIDs)
 	}
 
 	// 1. Get object types in the groups.

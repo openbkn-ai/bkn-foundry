@@ -246,6 +246,17 @@ func Test_PermissionServiceImpl_FilterResources(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 		})
+
+		Convey("Failed: response contains an unrequested resource\n", func() {
+			ctx := withAccountInfo(context.Background(), "u1", "user")
+			pa.EXPECT().FilterResources(gomock.Any(), gomock.Any()).Return(map[string]interfaces.PermissionResourceOps{
+				"kn2": {ResourceID: "kn2", Operations: []string{"read"}},
+			}, nil)
+
+			result, err := svc.FilterResources(ctx, "kn", []string{"kn1"}, []string{"read"}, true, []string{"read"})
+			So(err, ShouldNotBeNil)
+			So(result, ShouldBeNil)
+		})
 	})
 }
 

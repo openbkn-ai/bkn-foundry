@@ -324,7 +324,7 @@ func Test_conceptGroupService_ListConceptGroups(t *testing.T) {
 			}
 
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(cgArr, nil)
+			cga.EXPECT().ListConceptGroups(gomock.Any(), query).Return(cgArr, nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{}, nil)

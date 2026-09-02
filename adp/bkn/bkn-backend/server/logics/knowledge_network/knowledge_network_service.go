@@ -134,6 +134,38 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 			_ = parentTracker.Cleanup(ctx, kns.ps)
 		}
 	}()
+	var createdNewKN bool
+	var datasetWritten bool
+	var rootPolicyMayExist bool
+	defer func() {
+		if err == nil || !createdNewKN {
+			return
+		}
+		cleanupCtx := context.WithoutCancel(ctx)
+		if rootPolicyMayExist {
+			if cleanupErr := kns.ps.DeleteResources(cleanupCtx,
+				interfaces.RESOURCE_TYPE_KN, []string{kn.KNID}); cleanupErr != nil {
+				otellog.LogError(cleanupCtx, "CreateKN authorization compensation failed", cleanupErr)
+			}
+		}
+		if datasetWritten {
+			filterCondition := map[string]any{
+				"operation": "and",
+				"sub_conditions": []map[string]any{
+					{
+						"field": "kn_id", "operation": "==", "value": kn.KNID, "value_from": "const",
+					},
+					{
+						"field": "branch", "operation": "==", "value": kn.Branch, "value_from": "const",
+					},
+				},
+			}
+			if cleanupErr := kns.vbs.DeleteDatasetDocumentsByQuery(cleanupCtx,
+				interfaces.BKN_DATASET_ID, filterCondition); cleanupErr != nil {
+				otellog.LogError(cleanupCtx, "CreateKN dataset compensation failed", cleanupErr)
+			}
+		}
+	}()
 
 	// Check whether the user ID can create business knowledge networks through policy evaluation.
 	err = kns.ps.CheckPermission(ctx, interfaces.PermissionResource{
@@ -222,6 +254,10 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 	isCreate, isUpdate, err := kns.handleKNImportMode(ctx, mode, kn)
 	if err != nil {
 		return "", err
+	}
+	createdNewKN = isCreate
+	if isCreate {
+		ctx = permission.WithKNImportPermissionPrechecked(ctx)
 	}
 
 	// Process creation.
@@ -393,11 +429,15 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 				berrors.BknBackend_KnowledgeNetwork_InternalError_InsertOpenSearchDataFailed).
 				WithErrorDetails(err.Error())
 		}
+		if isCreate {
+			datasetWritten = true
+		}
 	}
 
 	// Register resource policies last and only during creation.
 	if isCreate {
 		// Register resource policies.
+		rootPolicyMayExist = true
 		err = kns.ps.CreateResources(ctx, []interfaces.PermissionResource{{
 			ID:   kn.KNID,
 			Type: interfaces.RESOURCE_TYPE_KN,

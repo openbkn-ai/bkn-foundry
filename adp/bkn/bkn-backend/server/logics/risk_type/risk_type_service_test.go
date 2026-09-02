@@ -18,6 +18,7 @@ package risk_type
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -228,6 +229,60 @@ func TestRiskTypeServiceSearchRiskTypesContinuesDefaultCursorPaging(t *testing.T
 		So(len(result.Entries), ShouldEqual, interfaces.ConceptQueryLimit+1)
 		So(result.Entries[len(result.Entries)-1].RTID, ShouldEqual, "risk-last")
 	})
+}
+
+func TestRiskTypeServiceSearchRiskTypesFiltersTrustedCandidatesBeforeDatasetPaging(t *testing.T) {
+	t.Setenv("KN_CHILD_RESOURCE_PEP_ENABLED", "true")
+	ctrl := gomock.NewController(t)
+	rta := bmock.NewMockRiskTypeAccess(ctrl)
+	vbs := bmock.NewMockVegaBackendService(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	service := &riskTypeService{appSetting: &common.AppSetting{}, rta: rta, vbs: vbs, ps: ps}
+
+	rta.EXPECT().GetAllRiskTypesByKnID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH).
+		Return([]*interfaces.RiskType{{RTID: "risk-1"}, {RTID: "risk-2"}, {RTID: "risk-3"}}, nil)
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_RISK_TYPE,
+		[]string{"kn-1/risk-1", "kn-1/risk-2", "kn-1/risk-3"},
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true,
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(map[string]interfaces.PermissionResourceOps{
+		"kn-1/risk-1": {ResourceID: "kn-1/risk-1"},
+		"kn-1/risk-3": {ResourceID: "kn-1/risk-3"},
+	}, nil)
+
+	wantFilter := map[string]any{
+		"field": "id", "operation": "in", "value": []string{"risk-1", "risk-3"}, "value_from": "const",
+	}
+	nextCursor := "visible-cursor"
+	gomock.InOrder(
+		vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+				if !reflect.DeepEqual(params.FilterCondition, wantFilter) || !params.NeedTotal {
+					t.Fatalf("total query params = %#v", params)
+				}
+				return &interfaces.DatasetQueryResponse{TotalCount: 2}, nil
+			}),
+		vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+				if !reflect.DeepEqual(params.FilterCondition, wantFilter) {
+					t.Fatalf("page query filter = %#v", params.FilterCondition)
+				}
+				return &interfaces.DatasetQueryResponse{
+					Entries: []map[string]any{{"id": "risk-1", "name": "Risk 1"}},
+					Paging:  &interfaces.ResourceDataPagingResult{NextCursor: &nextCursor},
+				}, nil
+			}),
+	)
+
+	result, err := service.SearchRiskTypes(context.Background(), &interfaces.ConceptsQuery{
+		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, NeedTotal: true, Limit: 1,
+	})
+	if err != nil {
+		t.Fatalf("SearchRiskTypes() error = %v", err)
+	}
+	if result.TotalCount != 2 || len(result.Entries) != 1 || result.Entries[0].RTID != "risk-1" ||
+		result.NextCursor == nil || *result.NextCursor != nextCursor {
+		t.Fatalf("SearchRiskTypes() = %#v", result)
+	}
 }
 
 func TestRiskTypeServiceHandleImportModeLocalizesInvalidMode(t *testing.T) {

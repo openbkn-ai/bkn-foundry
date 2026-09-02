@@ -358,7 +358,7 @@ func Test_relationTypeService_ListRelationTypes(t *testing.T) {
 			}
 
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(rtArr, nil)
+			rta.EXPECT().ListRelationTypes(gomock.Any(), query).Return(rtArr, nil)
 			rta.EXPECT().GetRelationTypesTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]*interfaces.ObjectType{}, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)

@@ -257,8 +257,19 @@ func (ps *PermissionServiceImpl) FilterResources(ctx context.Context, resourceTy
 	}
 
 	// Convert resource IDs to a lookup map.
-	idMap := map[string]interfaces.PermissionResourceOps{}
-	for _, resourceOps := range matchResouces {
+	requestedIDs := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		requestedIDs[id] = struct{}{}
+	}
+	idMap := make(map[string]interfaces.PermissionResourceOps, len(matchResouces))
+	for key, resourceOps := range matchResouces {
+		if _, ok := requestedIDs[key]; !ok || resourceOps.ResourceID != key {
+			httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_InternalError_FilterResourcesFailed).
+				WithErrorDetails("invalid resource-filter response")
+			otellog.LogError(ctx, "FilterResources returned an invalid resource", httpErr)
+			return nil, httpErr
+		}
 		idMap[resourceOps.ResourceID] = resourceOps
 	}
 
