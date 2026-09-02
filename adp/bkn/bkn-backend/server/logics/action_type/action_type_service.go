@@ -348,7 +348,7 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 		permission.TrackCreatedPolicies(ctx, resources)
 		if err = ats.ps.CreateResources(ctx, resources, []string{interfaces.OPERATION_TYPE_EXECUTE}); err != nil {
 			logger.Errorf("Create action type policies error: %s", err.Error())
-			span.SetStatus(codes.Error, "创建行动类权限失败")
+			span.SetStatus(codes.Error, "failed to create action type permissions")
 			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ActionType_InternalError).
 				WithErrorDetails(err.Error())
