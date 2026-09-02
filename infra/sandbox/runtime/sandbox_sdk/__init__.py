@@ -68,8 +68,9 @@ def _is_pydantic_model(anno) -> bool:
 
 __all__ = ["tool", "Context", "dispatch", "export_schema", "run", "bkn"]
 
-# BKN 能力面。子模块导入即可，装配是惰性的——不碰 BKN 的纯计算函数不付代价。
 from . import bkn  # noqa: E402  （放在 __all__ 之后只为让上面那份清单先被读到）
+
+# BKN 能力面。子模块导入即可，装配是惰性的——不碰 BKN 的纯计算函数不付代价。
 
 
 # ==================================================================== #
@@ -421,9 +422,25 @@ def dispatch(event: dict = None, entry: str = None) -> Any:
     - 缺失的必填参数在此暴露，报清是哪个参数
     """
     event = event or {}
-    # 把本次执行的 event 交给能力面，用户函数因此不必自己接 token / conversation_id。
-    # 每次执行都重置：沙箱会话池化复用，上一个调用方的凭据不能留在进程里。
+    # 两个 BKN 面并存，每次执行都要各自重置一遍：沙箱会话池化复用同一个进程，
+    # 上一个调用方的凭据不能留下来。
+
+    # ① 内建面 sandbox_sdk.bkn（已弃用，仍受支持）：把本次执行的 event 交给它，
+    #    用户函数因此不必自己接 token / conversation_id。
     bkn.configure_runtime(event)
+
+    # ② bkn-osdk（推荐，新函数用它）：无参 configure() 按其文档语义是「整份替换为
+    #    空」，于是身份重新由本次执行的环境变量决定（BKN_BASE_URL / BKN_TOKEN /
+    #    BKN_CONVERSATION_ID / BKN_INTERACTION_ID，executor 每次执行现组一份再
+    #    --setenv 进沙箱）。osdk 每次解析都重读 os.environ、不缓存，所以除了这一次
+    #    重置之外不需要别的接线。
+    #    装不到就跳过：老镜像里没有它，而只用内建面的函数不该因此执行失败。
+    try:
+        import bkn_osdk
+    except ImportError:
+        pass
+    else:
+        bkn_osdk.configure()
     key = entry or _ENTRY
     if key is None:
         raise RuntimeError(

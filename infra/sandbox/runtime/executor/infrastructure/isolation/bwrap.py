@@ -440,15 +440,19 @@ console.log('===SANDBOX_RESULT===' + JSON.stringify(result) + '===SANDBOX_RESULT
             "PYTHONPATH": self._build_pythonpath(os.environ.get("PYTHONPATH")),
         }
         # After --clearenv, no image-level environment variables remain, so this must be passed through explicitly like PYTHONPATH.
-        # sandbox_sdk.bkn reports that BKN_SANDBOX_MCP_URL must be set by the control plane if it cannot read this value.
-        # In that case operations has already set it, but bwrap has blocked it from the process.
+        # Two BKN faces coexist and each reads its own address:
+        #   BKN_SANDBOX_MCP_URL  the retained sandbox_sdk.bkn, which POSTs to the MCP endpoint
+        #   BKN_BASE_URL         bkn-osdk, which appends its own paths to a host and port
+        # Missing either one does not fail closed; the call fails later, with an error that
+        # does not name the cause -- so pass both through.
         #
-        # Only this value needs to be passed through here: the control plane sets it on the **container**, and it is not present in the current execution env.
+        # Only these values need to be passed through here: the control plane sets them on the **container**, and they are not present in the current execution env.
         # values such as BKN_TOKEN are delivered with each execution and are already in execution.context.env_vars above,
         # so they do not need to and should not be read from the container environment because container-level values can persist across callers.
-        bkn_mcp_url = os.environ.get("BKN_SANDBOX_MCP_URL", "").strip()
-        if bkn_mcp_url:
-            env_args["BKN_SANDBOX_MCP_URL"] = bkn_mcp_url
+        for _bkn_addr_key in ("BKN_SANDBOX_MCP_URL", "BKN_BASE_URL"):
+            _bkn_addr = os.environ.get(_bkn_addr_key, "").strip()
+            if _bkn_addr:
+                env_args[_bkn_addr_key] = _bkn_addr
         if execution.context.event:
             env_args["EVENT_JSON"] = json.dumps(execution.context.event)
         if execution.context.env_vars:

@@ -3,6 +3,9 @@ sandbox_sdk.bkn —— 沙箱内的 BKN 能力面
 
 让沙箱里的函数直接调用 BKN，而不必自己实现一遍 MCP 客户端：
 
+【状态】不再推荐用于新函数——新函数用镜像里预装的 bkn-osdk（`from bkn_osdk import kn`），
+它是本面的超集，且同一份代码在沙箱外也能跑。本面**仍受支持**，存量函数不必改写。
+
     from sandbox_sdk import tool, bkn
 
     @tool

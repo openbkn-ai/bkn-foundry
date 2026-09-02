@@ -94,20 +94,28 @@ controlPlane:
     CLEANUP_INTERVAL_SECONDS: "300"
     DISABLE_BWRAP: "true"
     PYTHONUNBUFFERED: "1"
-    # In-cluster Context Loader MCP endpoint. The control plane writes it into
-    # every sandbox pod so sandbox_sdk.bkn can call back into BKN without the
-    # caller passing an address per execution. The sandbox is inside the cluster
-    # and cannot use the gateway address, so only the deployment knows this value.
-    # The trailing slash is required: without it the gateway answers 307 and the
-    # sandbox's urllib does not follow redirects on POST.
-    # Leave empty to ship without the capability surface; functions then have to
-    # pass `mcp` in the event themselves.
-    # Helm cannot read another release's values, so the address is written out
-    # here rather than derived from the agent-retrieval chart. The authoritative
-    # port is agent-retrieval's own `project.port`, which its sandboxMCPURL()
-    # renders into the same string for run_code; change them together. A wrong
-    # address does not fail closed — bkn.available() only checks that a URL and a
-    # token exist, so calls fail at the network layer instead.
+    # In-cluster platform address. The control plane writes it into every sandbox
+    # pod so bkn-osdk reaches BKN with no configure() call in user code. The
+    # sandbox is inside the cluster and cannot use the gateway address, so only
+    # the deployment knows this value.
+    # Host and port only, no path and no trailing slash: bkn-osdk appends its own
+    # paths, the REST routes under /api/agent-retrieval/v1/kn/ and the MCP face at
+    # /api/agent-retrieval/v1/mcp.
+    # Leave empty to ship without BKN access; functions that call it then fail with
+    # the SDK's "No base URL" error.
+    # Helm cannot read another release's values, so the address is written out here
+    # rather than derived from the agent-retrieval chart. The authoritative port is
+    # agent-retrieval's own `project.port`, which its sandboxMCPURL() renders into
+    # the same string for run_code; change them together. A wrong address does not
+    # fail closed — calls fail at the network layer instead.
+    BKN_BASE_URL: "http://agent-retrieval:30779"
+    # In-cluster Context Loader MCP endpoint, used by the built-in sandbox_sdk.bkn face.
+    # That face is no longer recommended for new functions (use bkn-osdk) but is still
+    # supported, so existing functions need no rewrite and this stays a live setting.
+    # The value carries the full MCP path and the trailing slash is required: without it the
+    # gateway answers 307 and that face's urllib does not follow redirects on POST.
+    # Setting only this one still works: the control plane derives BKN_BASE_URL from it by
+    # stripping the MCP path.
     BKN_SANDBOX_MCP_URL: "http://agent-retrieval:30779/api/agent-retrieval/v1/mcp/"
 
   s3:

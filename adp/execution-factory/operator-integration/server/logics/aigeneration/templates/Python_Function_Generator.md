@@ -11,7 +11,7 @@
 
 1. **导入模块**:
     - 必须从 sandbox_sdk 导入装饰器: `from sandbox_sdk import tool`
-    - 需要访问知识网络(BKN)时，一并导入能力面: `from sandbox_sdk import tool, bkn`
+    - 需要访问知识网络(BKN)时，另外导入平台 SDK: `from bkn_osdk import kn`（已预装进沙箱镜像）
     - **如果用户提供了已安装依赖库列表**:
         - 只使用列表中的库，优先选最合适的
         - 能用标准库实现就用标准库
@@ -46,21 +46,22 @@
     ```
 
 3. **访问知识网络 (可选)**:
-    - 仅当需求涉及查询知识网络/知识图谱时才用。以调用方身份读取 BKN，凭据与会话上下文由平台经环境变量注入，函数里看不到也不用传。
+    - 仅当需求涉及查询知识网络/知识图谱时才用。以调用方身份读取 BKN，平台地址、凭据与会话上下文都由平台经环境变量注入，函数里看不到、不用传，**也不要调 `bkn_osdk.configure()`**。
     ```python
-    from sandbox_sdk import tool, bkn
+    from sandbox_sdk import tool
+    from bkn_osdk import kn
 
 
     @tool
     def kn_summary(kn_id: str) -> dict:
         """取某知识网络的对象类清单。"""
-        if not bkn.available():
-            return {"available": False}
-        detail = bkn.get_kn_detail(kn_id, detail_level="summary")
+        detail = kn.get_kn_detail(kn_id, detail_level="summary")
         return {"object_types": [ot["name"] for ot in detail.get("object_types", [])]}
     ```
-    - 常用能力：`bkn.get_kn_detail(kn_id)` 取 schema、`bkn.search_schema(kn_id, query)` 按语义找对象类、`bkn.query_object_instance(kn_id=..., ot_id=..., limit=...)` 查实例。
-    - 需要聚合时用 `bkn.run_sql(sql=...)`，但 SQL 里的表名必须写成占位符 `{{.<resource_id>}}`，`<resource_id>` 先从 `bkn.search_schema` 返回的 `data_source.id`（或 `bkn.list_resources`）取，**不要直接写真实表名**（会被拒）。列名用物理列名，可让 `search_schema(..., include_columns=True)` 返回。
+    - 常用能力：`kn.get_kn_detail(kn_id)` 取 schema、`kn.search_schema(kn_id, query)` 按语义找对象类、`kn.query_object_instance(kn_id, ot_id, limit=...)` 查实例、`kn.list_resources(kn_id)` 列资源。
+    - 需要聚合时用 `kn.run_sql(kn_id, sql)`，但 SQL 里的表名必须写成占位符 `{{.<resource_id>}}`，`<resource_id>` 先从 `kn.search_schema` 返回的 `data_source.id`（或 `kn.list_resources`）取，**不要直接写真实表名**（会被拒）。列名用物理列名，可让 `search_schema(..., include_columns=True)` 返回。
+    - 平台没配好地址或调用失败时抛 `bkn_osdk.BknError`（`InputError` / `HttpError` 都是它的子类）。除非需求要求降级返回，否则让它抛出去，不要吞掉换成空结果——那会把配置问题伪装成"查无数据"。
+    - 旧写法 `from sandbox_sdk import tool, bkn` **仍然可用**，存量函数不需要改写。新生成的代码用上面的 `bkn_osdk`；改动已有函数时，除非用户明确要求迁移，否则保持它原有的写法。
 
 ## 逻辑实现规则
 

@@ -245,6 +245,14 @@ spec:
                 configMapKeyRef:
                   name: {{ .Values.configMap.name }}
                   key: PYTHONUNBUFFERED
+            - name: BKN_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configMap.name }}
+                  key: BKN_BASE_URL
+                  optional: true
+            # Still live: the built-in sandbox_sdk.bkn face reads it, and it also backs
+            # BKN_BASE_URL when that one is unset. See the chart README.
             - name: BKN_SANDBOX_MCP_URL
               valueFrom:
                 configMapKeyRef:

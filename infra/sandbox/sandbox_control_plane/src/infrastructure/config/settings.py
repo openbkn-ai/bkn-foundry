@@ -125,11 +125,22 @@ class Settings(BaseSettings):
     max_extracted_file_count: int = Field(default=10000, ge=1)
     max_extracted_total_size_mb: int = Field(default=512, ge=1)
     disable_bwrap: bool = Field(default=False)  # turn Bubblewrap off, for local development
-    # The in-cluster MCP address sandbox_sdk.bkn calls back into BKN with. It is deployment
+    # The in-cluster platform address sandbox functions reach BKN through. It is deployment
     # configuration rather than a secret, so the control plane injects it once and no caller
-    # has to pass it in the event. Left empty, callers must pass mcp themselves.
+    # has to pass it in the event. Left empty, functions that call BKN fail with bkn-osdk's
+    # own "No base URL" error.
     # The token takes the other path: event only, never an environment variable — sessions are
     # pooled and reused, and env would leave the previous caller's credential in the container.
+    # Point it at the host and port only; bkn-osdk appends its own paths, both the REST routes
+    # under /api/agent-retrieval/v1/kn/ and the MCP face at /api/agent-retrieval/v1/mcp.
+    bkn_base_url: str = Field(default="")
+    # The in-cluster MCP address sandbox_sdk.bkn calls back into BKN with. That face is
+    # deprecated in favour of bkn-osdk but still supported, so existing functions keep working;
+    # this stays a live setting rather than a compatibility shim. Its value carries the full MCP
+    # path because that face POSTs to the endpoint directly.
+    # It also backs bkn_base_url when that one is unset: resolve_bkn_base_url() derives the base
+    # by stripping the MCP path, so a deployment that has not added the new key still gets
+    # working bkn-osdk access.
     bkn_sandbox_mcp_url: str = Field(default="")
     control_plane_url: str | None = Field(
         default=None
@@ -216,3 +227,24 @@ def get_settings() -> Settings:
     lru_cache makes sure it loads only once.
     """
     return Settings()
+
+
+# The MCP path bkn-osdk appends itself. Present in the deprecated setting's value because the
+# retired sandbox_sdk.bkn posted straight to that endpoint.
+_MCP_PATH_SUFFIX = "/api/agent-retrieval/v1/mcp"
+
+
+def resolve_bkn_base_url() -> str:
+    """The platform base URL to hand sandbox containers.
+
+    Prefers the explicit setting. Falls back to deriving it from the deprecated
+    bkn_sandbox_mcp_url by stripping the MCP path, so a deployment that has not
+    migrated its values keeps working.
+    """
+    base = get_settings().bkn_base_url.strip()
+    if base:
+        return base.rstrip("/")
+    legacy = get_settings().bkn_sandbox_mcp_url.strip().rstrip("/")
+    if legacy.endswith(_MCP_PATH_SUFFIX):
+        return legacy[: -len(_MCP_PATH_SUFFIX)].rstrip("/")
+    return legacy
