@@ -135,6 +135,8 @@ spec:
             value: /opt/bkn-backend/config
           - name: AUTH_ENABLED
             value: {{ .Values.auth.enabled | quote }}
+          - name: KN_CHILD_RESOURCE_PEP_ENABLED
+            value: {{ .Values.auth.knChildResourcePepEnabled | quote }}
         resources: {{- toYaml .Values.resources | nindent 10 }}
         volumeMounts:
           - name: {{ .Values.moduleName }}-cm

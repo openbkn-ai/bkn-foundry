@@ -41,6 +41,8 @@ antiAffinity:
 # Authentication switch.
 auth:
   enabled: true
+  # Enable only after existing KN child policies and ResourceParent data are migrated.
+  knChildResourcePepEnabled: false
 
 # Microservice communication dependency configuration.
 depServices:

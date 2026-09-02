@@ -492,7 +492,7 @@ func (cgs *conceptGroupService) GetConceptGroupByID(ctx context.Context, knID st
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, fmt.Sprintf("查询概念分组[%s]信息", knID))
 	defer span.End()
 
-	if err := permission.ValidateKNChildAuthorizationIDs(ctx, knID, []string{cgID}); err != nil {
+	if err := permission.ValidateKNChildPEPAuthorizationIDs(ctx, knID, []string{cgID}); err != nil {
 		return nil, err
 	}
 
@@ -516,9 +516,9 @@ func (cgs *conceptGroupService) GetConceptGroupByID(ctx context.Context, knID st
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ConceptGroup_ConceptGroupNotFound).
 			WithErrorDetails(errStr)
 	}
-	if err = cgs.ps.CheckPermission(ctx,
-		interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_CONCEPT_GROUP, knID, cgID),
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
+	resource, operation := permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
+		knID, cgID, interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	if err = cgs.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
 		return nil, err
 	}
 
@@ -687,7 +687,7 @@ func (cgs *conceptGroupService) UpdateConceptGroup(ctx context.Context, tx *sql.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update concept group")
 	defer span.End()
 
-	if err := permission.ValidateKNChildAuthorizationIDs(ctx, conceptGroup.KNID, []string{conceptGroup.CGID}); err != nil {
+	if err := permission.ValidateKNChildPEPAuthorizationIDs(ctx, conceptGroup.KNID, []string{conceptGroup.CGID}); err != nil {
 		return err
 	}
 	_, exists, err := cgs.cga.CheckConceptGroupExistByID(ctx, conceptGroup.KNID, conceptGroup.Branch, conceptGroup.CGID)
@@ -698,10 +698,9 @@ func (cgs *conceptGroupService) UpdateConceptGroup(ctx context.Context, tx *sql.
 	if !exists {
 		return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ConceptGroup_ConceptGroupNotFound)
 	}
-	err = cgs.ps.CheckPermission(ctx,
-		interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
-			conceptGroup.KNID, conceptGroup.CGID),
-		[]string{interfaces.OPERATION_TYPE_MODIFY})
+	resource, operation := permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
+		conceptGroup.KNID, conceptGroup.CGID, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_MODIFY)
+	err = cgs.ps.CheckPermission(ctx, resource, []string{operation})
 	if err != nil {
 		return err
 	}
@@ -827,7 +826,7 @@ func (cgs *conceptGroupService) DeleteConceptGroupByID(ctx context.Context, tx *
 		}()
 	}
 
-	if err := permission.ValidateKNChildAuthorizationIDs(ctx, knID, []string{cgID}); err != nil {
+	if err := permission.ValidateKNChildPEPAuthorizationIDs(ctx, knID, []string{cgID}); err != nil {
 		return err
 	}
 	_, exists, err := cgs.cga.CheckConceptGroupExistByID(ctx, knID, branch, cgID)
@@ -838,9 +837,9 @@ func (cgs *conceptGroupService) DeleteConceptGroupByID(ctx context.Context, tx *
 	if !exists {
 		return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ConceptGroup_ConceptGroupNotFound)
 	}
-	err = cgs.ps.CheckPermission(ctx,
-		interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_CONCEPT_GROUP, knID, cgID),
-		[]string{interfaces.OPERATION_TYPE_DELETE})
+	resource, operation := permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
+		knID, cgID, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE)
+	err = cgs.ps.CheckPermission(ctx, resource, []string{operation})
 	if err != nil {
 		return err
 	}

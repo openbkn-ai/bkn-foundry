@@ -360,12 +360,14 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 	defer span.End()
 
 	rtIDs = common.DuplicateSlice(rtIDs)
-	if err := permission.ValidateKNChildAuthorizationIDs(ctx, knID, rtIDs); err != nil {
+	if err := permission.ValidateKNChildPEPAuthorizationIDs(ctx, knID, rtIDs); err != nil {
 		return nil, err
 	}
 	resource := interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID}
+	operation := interfaces.OPERATION_TYPE_VIEW_DETAIL
 	if len(rtIDs) == 1 {
-		resource = interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_RELATION_TYPE, knID, rtIDs[0])
+		resource, operation = permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_RELATION_TYPE,
+			knID, rtIDs[0], interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_VIEW_DETAIL)
 	}
 	var err error
 
@@ -391,7 +393,7 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 		return []*interfaces.RelationType{}, rest.NewHTTPError(ctx, http.StatusNotFound,
 			berrors.BknBackend_RelationType_RelationTypeNotFound).WithErrorDetails(errStr)
 	}
-	if err = rts.ps.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
+	if err = rts.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
 		return nil, err
 	}
 
@@ -482,7 +484,7 @@ func (rts *relationTypeService) UpdateRelationType(ctx context.Context, tx *sql.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update relation type")
 	defer span.End()
 
-	if err := permission.ValidateKNChildAuthorizationIDs(ctx, relationType.KNID, []string{relationType.RTID}); err != nil {
+	if err := permission.ValidateKNChildPEPAuthorizationIDs(ctx, relationType.KNID, []string{relationType.RTID}); err != nil {
 		return err
 	}
 	_, exists, err := rts.CheckRelationTypeExistByID(ctx, relationType.KNID, relationType.Branch, relationType.RTID)
@@ -492,10 +494,9 @@ func (rts *relationTypeService) UpdateRelationType(ctx context.Context, tx *sql.
 	if !exists {
 		return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RelationType_RelationTypeNotFound)
 	}
-	err = rts.ps.CheckPermission(ctx,
-		interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_RELATION_TYPE,
-			relationType.KNID, relationType.RTID),
-		[]string{interfaces.OPERATION_TYPE_MODIFY})
+	resource, operation := permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_RELATION_TYPE,
+		relationType.KNID, relationType.RTID, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_MODIFY)
+	err = rts.ps.CheckPermission(ctx, resource, []string{operation})
 	if err != nil {
 		return err
 	}
@@ -588,7 +589,7 @@ func (rts *relationTypeService) DeleteRelationTypesByIDs(ctx context.Context, tx
 	}
 
 	rtIDs = common.DuplicateSlice(rtIDs)
-	if err := permission.ValidateKNChildAuthorizationIDs(ctx, knID, rtIDs); err != nil {
+	if err := permission.ValidateKNChildPEPAuthorizationIDs(ctx, knID, rtIDs); err != nil {
 		return err
 	}
 	resource := interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID}
@@ -601,8 +602,8 @@ func (rts *relationTypeService) DeleteRelationTypesByIDs(ctx context.Context, tx
 		if !exists {
 			return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RelationType_RelationTypeNotFound)
 		}
-		resource = interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_RELATION_TYPE, knID, rtIDs[0])
-		operation = interfaces.OPERATION_TYPE_DELETE
+		resource, operation = permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_RELATION_TYPE,
+			knID, rtIDs[0], interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE)
 	}
 	if err := rts.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
 		return err

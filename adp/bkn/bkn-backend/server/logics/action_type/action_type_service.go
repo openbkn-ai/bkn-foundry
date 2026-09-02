@@ -452,12 +452,14 @@ func (ats *actionTypeService) GetActionTypesByIDs(ctx context.Context, knID stri
 	defer span.End()
 
 	atIDs = common.DuplicateSlice(atIDs)
-	if err := permission.ValidateKNChildAuthorizationIDs(ctx, knID, atIDs); err != nil {
+	if err := permission.ValidateKNChildPEPAuthorizationIDs(ctx, knID, atIDs); err != nil {
 		return nil, err
 	}
 	resource := interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID}
+	operation := interfaces.OPERATION_TYPE_VIEW_DETAIL
 	if len(atIDs) == 1 {
-		resource = interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_ACTION_TYPE, knID, atIDs[0])
+		resource, operation = permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_ACTION_TYPE,
+			knID, atIDs[0], interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_VIEW_DETAIL)
 	}
 	var err error
 
@@ -481,7 +483,7 @@ func (ats *actionTypeService) GetActionTypesByIDs(ctx context.Context, knID stri
 		return []*interfaces.ActionType{}, rest.NewHTTPError(ctx, http.StatusNotFound,
 			berrors.BknBackend_ActionType_ActionTypeNotFound).WithErrorDetails(errStr)
 	}
-	if err = ats.ps.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
+	if err = ats.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
 		return nil, err
 	}
 
@@ -527,7 +529,7 @@ func (ats *actionTypeService) UpdateActionType(ctx context.Context, tx *sql.Tx, 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "UpdateActionType")
 	defer span.End()
 
-	if err := permission.ValidateKNChildAuthorizationIDs(ctx, actionType.KNID, []string{actionType.ATID}); err != nil {
+	if err := permission.ValidateKNChildPEPAuthorizationIDs(ctx, actionType.KNID, []string{actionType.ATID}); err != nil {
 		return err
 	}
 	_, exists, err := ats.CheckActionTypeExistByID(ctx, actionType.KNID, actionType.Branch, actionType.ATID)
@@ -537,10 +539,9 @@ func (ats *actionTypeService) UpdateActionType(ctx context.Context, tx *sql.Tx, 
 	if !exists {
 		return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionType_ActionTypeNotFound)
 	}
-	err = ats.ps.CheckPermission(ctx,
-		interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_ACTION_TYPE,
-			actionType.KNID, actionType.ATID),
-		[]string{interfaces.OPERATION_TYPE_MODIFY})
+	resource, operation := permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_ACTION_TYPE,
+		actionType.KNID, actionType.ATID, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_MODIFY)
+	err = ats.ps.CheckPermission(ctx, resource, []string{operation})
 	if err != nil {
 		return err
 	}
@@ -647,7 +648,7 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 	}
 
 	atIDs = common.DuplicateSlice(atIDs)
-	if err := permission.ValidateKNChildAuthorizationIDs(ctx, knID, atIDs); err != nil {
+	if err := permission.ValidateKNChildPEPAuthorizationIDs(ctx, knID, atIDs); err != nil {
 		return err
 	}
 	resource := interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID}
@@ -660,8 +661,8 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 		if !exists {
 			return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionType_ActionTypeNotFound)
 		}
-		resource = interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_ACTION_TYPE, knID, atIDs[0])
-		operation = interfaces.OPERATION_TYPE_DELETE
+		resource, operation = permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_ACTION_TYPE,
+			knID, atIDs[0], interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE)
 	}
 	if err := ats.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
 		return err

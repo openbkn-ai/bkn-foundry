@@ -16,6 +16,7 @@ import (
 )
 
 func TestMetricSingleResourcePEP(t *testing.T) {
+	t.Setenv("KN_CHILD_RESOURCE_PEP_ENABLED", "true")
 	tests := []struct {
 		name      string
 		operation string

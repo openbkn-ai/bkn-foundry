@@ -119,6 +119,7 @@ func TestRiskTypeServiceCreateRiskTypesResourceParentLifecycle(t *testing.T) {
 }
 
 func TestRiskTypeServiceDeleteRiskTypesAuthorizationCleanup(t *testing.T) {
+	t.Setenv("KN_CHILD_RESOURCE_PEP_ENABLED", "true")
 	newService := func(t *testing.T) (*riskTypeService, sqlmock.Sqlmock, *bmock.MockRiskTypeAccess,
 		*bmock.MockPermissionService, *bmock.MockVegaBackendService) {
 		t.Helper()
