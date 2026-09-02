@@ -39,6 +39,11 @@ Description = "从opensearch中获取数据时，服务器内部发生错误"
 Solution = "请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。"
 ErrorLink = ""
 
+[OntologyQuery.InternalError.CheckPermissionFailed]
+Description = "数据查询权限校验失败"
+Solution = "请重试；若授权服务持续不可用，请联系技术支持。"
+ErrorLink = ""
+
 [OntologyQuery.Metric.InvalidParameter]
 Description = "指标请求参数无效"
 Solution = "请检查请求体与路径参数。"

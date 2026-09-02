@@ -39,6 +39,11 @@ Description = "An internal server error occurred while search data from opensear
 Solution = "Please try this operation again, if the error occurs again, submit the work order or contact technical support engineers."
 ErrorLink = ""
 
+[OntologyQuery.InternalError.CheckPermissionFailed]
+Description = "Failed to verify data-query permission"
+Solution = "Please retry. If the authorization service remains unavailable, contact technical support."
+ErrorLink = ""
+
 [OntologyQuery.Metric.InvalidParameter]
 Description = "Invalid metric request parameter"
 Solution = "Please check the request body and path parameters."

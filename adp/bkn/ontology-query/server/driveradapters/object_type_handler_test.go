@@ -102,6 +102,24 @@ func Test_RestHandler_GetObjectsInObjectTypeByIn(t *testing.T) {
 
 			So(w.Result().StatusCode, ShouldEqual, http.StatusInternalServerError)
 		})
+
+		Convey("失败 - 权限拒绝时不调用对象查询服务", func() {
+			qas := omock.NewMockQueryAuthorizationService(mockCtrl)
+			handler.qas = qas
+			qas.EXPECT().AuthorizeObjectTypeQuery(gomock.Any(), knID, interfaces.MAIN_BRANCH, otID).
+				Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
+
+			reqParamByte, _ := sonic.Marshal(objectQuery)
+			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
+			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
+			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
+			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_TYPE, "user")
+			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusForbidden)
+		})
 	})
 }
 

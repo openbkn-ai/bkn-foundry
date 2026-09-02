@@ -50,6 +50,7 @@ type AppSetting struct {
 
 	BKNBackendUrl  string
 	VegaBackendUrl string
+	BknSafeURL     string
 	// Operator execution URL.
 	AgentOperatorUrl string
 	// Toolbox execution URL.
@@ -150,6 +151,7 @@ func loadSetting(vp *viper.Viper) {
 	SetModelFactoryAPISetting()
 
 	SetVegaBackendSetting()
+	SetBknSafeSetting()
 
 	SetAgentOperatorSetting()
 
@@ -160,6 +162,16 @@ func loadSetting(vp *viper.Viper) {
 		version.GoVersion, version.GoArch)
 
 	logger.Debug("Application settings loaded")
+}
+
+// SetBknSafeSetting resolves the authorization service base URL. Validation is
+// repeated by the permission adapter so tests can construct AppSetting directly.
+func SetBknSafeSetting() {
+	baseURL := strings.TrimSpace(os.Getenv("BKN_SAFE_BASE_URL"))
+	if baseURL == "" {
+		baseURL = strings.TrimSpace(os.Getenv("BKN_SAFE_URL"))
+	}
+	appSetting.BknSafeURL = strings.TrimRight(baseURL, "/")
 }
 
 func SetDBSetting() {
@@ -198,7 +210,7 @@ func GetAuthEnabled() bool {
 
 func SetHydraAdminSetting() {
 	if !GetAuthEnabled() {
-		logger.Info("ISF authentication disabled via AUTH_ENABLED env, skipping hydra-admin configuration")
+		logger.Info("Authentication disabled via AUTH_ENABLED env, skipping hydra-admin configuration")
 		return
 	}
 	setting, ok := appSetting.DepServices[hydraAdminServiceName]

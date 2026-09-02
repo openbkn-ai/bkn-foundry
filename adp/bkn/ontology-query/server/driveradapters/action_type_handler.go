@@ -148,6 +148,12 @@ func (r *restHandler) GetActionsInActionType(c *gin.Context, visitor hydra.Visit
 		return
 	}
 
+	if !r.authorizeQuery(c, ctx, func() error {
+		return r.qas.AuthorizeActionTypeQuery(ctx, knID, branch, otID)
+	}) {
+		return
+	}
+
 	// Execute the query.
 	result, err := r.ats.GetActionsByActionTypeID(ctx, &query)
 	if err != nil {
