@@ -176,6 +176,12 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 			_ = parentTracker.Cleanup(ctx, ats.ps)
 		}
 	}()
+	ctx, policyTracker, policyTrackerOwner := permission.WithCreatedPolicyTracker(ctx)
+	defer func() {
+		if policyTrackerOwner && err != nil {
+			_ = policyTracker.Cleanup(ctx, ats.ps)
+		}
+	}()
 
 	if !permission.KNImportPermissionPrechecked(ctx) && !permission.KNChildResourcePEPEnabled() {
 		err = ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
@@ -328,6 +334,25 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 		return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ActionType_InternalError_InsertOpenSearchDataFailed).
 			WithErrorDetails(err.Error())
+	}
+
+	if len(createActionTypes) > 0 {
+		resources := make([]interfaces.PermissionResource, 0, len(createActionTypes))
+		for _, actionType := range createActionTypes {
+			resources = append(resources, interfaces.PermissionResource{
+				ID:   interfaces.KNChildResourceID(actionType.KNID, actionType.ATID),
+				Type: interfaces.RESOURCE_TYPE_ACTION_TYPE,
+				Name: actionType.ATName,
+			})
+		}
+		permission.TrackCreatedPolicies(ctx, resources)
+		if err = ats.ps.CreateResources(ctx, resources, []string{interfaces.OPERATION_TYPE_EXECUTE}); err != nil {
+			logger.Errorf("Create action type policies error: %s", err.Error())
+			span.SetStatus(codes.Error, "创建行动类权限失败")
+			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_ActionType_InternalError).
+				WithErrorDetails(err.Error())
+		}
 	}
 
 	span.SetStatus(codes.Ok, "")

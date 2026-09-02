@@ -134,20 +134,19 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 			_ = parentTracker.Cleanup(ctx, kns.ps)
 		}
 	}()
+	ctx, policyTracker, policyTrackerOwner := permission.WithCreatedPolicyTracker(ctx)
+	defer func() {
+		if policyTrackerOwner && err != nil {
+			_ = policyTracker.Cleanup(ctx, kns.ps)
+		}
+	}()
 	var createdNewKN bool
 	var datasetWritten bool
-	var rootPolicyMayExist bool
 	defer func() {
 		if err == nil || !createdNewKN {
 			return
 		}
 		cleanupCtx := context.WithoutCancel(ctx)
-		if rootPolicyMayExist {
-			if cleanupErr := kns.ps.DeleteResources(cleanupCtx,
-				interfaces.RESOURCE_TYPE_KN, []string{kn.KNID}); cleanupErr != nil {
-				otellog.LogError(cleanupCtx, "CreateKN authorization compensation failed", cleanupErr)
-			}
-		}
 		if datasetWritten {
 			filterCondition := map[string]any{
 				"operation": "and",
@@ -436,13 +435,13 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 
 	// Register resource policies last and only during creation.
 	if isCreate {
-		// Register resource policies.
-		rootPolicyMayExist = true
-		err = kns.ps.CreateResources(ctx, []interfaces.PermissionResource{{
+		resources := []interfaces.PermissionResource{{
 			ID:   kn.KNID,
 			Type: interfaces.RESOURCE_TYPE_KN,
 			Name: kn.KNName,
-		}}, interfaces.COMMON_OPERATIONS)
+		}}
+		permission.TrackCreatedPolicies(ctx, resources)
+		err = kns.ps.CreateResources(ctx, resources, interfaces.KN_CREATOR_OPERATIONS)
 		if err != nil {
 			logger.Errorf("CreateResources error: %s", err.Error())
 			span.SetStatus(codes.Error, "创建业务知识网络资源失败")
