@@ -6,7 +6,7 @@ env:
   timezone: Asia/Shanghai
   language: en_US.UTF-8
 
-# bkn-safe service base URL.
+# bkn-safe service base URL. Authentication requires an absolute HTTP(S) URL with a host.
 bknSafe:
   url: "http://bkn-safe:3000"
 
