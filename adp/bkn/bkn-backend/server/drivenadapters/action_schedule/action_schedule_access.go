@@ -72,43 +72,47 @@ func (a *actionScheduleAccess) CreateSchedule(ctx context.Context, tx *sql.Tx, s
 		return err
 	}
 
-	sqlStr, vals, err := sq.Insert(SCHEDULE_TABLE_NAME).
-		Columns(
-			"f_id",
-			"f_name",
-			"f_kn_id",
-			"f_branch",
-			"f_action_type_id",
-			"f_cron_expression",
-			"f_instance_identities",
-			"f_dynamic_params",
-			"f_status",
-			"f_next_run_time",
-			"f_creator",
-			"f_creator_type",
-			"f_create_time",
-			"f_updater",
-			"f_updater_type",
-			"f_update_time",
-		).
-		Values(
-			schedule.ID,
-			schedule.Name,
-			schedule.KNID,
-			schedule.Branch,
-			schedule.ActionTypeID,
-			schedule.CronExpression,
-			instanceIdentitiesStr,
-			dynamicParamsStr,
-			schedule.Status,
-			schedule.NextRunTime,
-			schedule.Creator.ID,
-			schedule.Creator.Type,
-			schedule.CreateTime,
-			schedule.Updater.ID,
-			schedule.Updater.Type,
-			schedule.UpdateTime,
-		).ToSql()
+	columns := []string{
+		"f_id",
+		"f_name",
+		"f_kn_id",
+		"f_branch",
+		"f_action_type_id",
+		"f_cron_expression",
+		"f_instance_identities",
+		"f_dynamic_params",
+		"f_status",
+		"f_next_run_time",
+		"f_creator",
+		"f_creator_type",
+		"f_create_time",
+		"f_updater",
+		"f_updater_type",
+		"f_update_time",
+	}
+	values := []any{
+		schedule.ID,
+		schedule.Name,
+		schedule.KNID,
+		schedule.Branch,
+		schedule.ActionTypeID,
+		schedule.CronExpression,
+		instanceIdentitiesStr,
+		dynamicParamsStr,
+		schedule.Status,
+		schedule.NextRunTime,
+		schedule.Creator.ID,
+		schedule.Creator.Type,
+		schedule.CreateTime,
+		schedule.Updater.ID,
+		schedule.Updater.Type,
+		schedule.UpdateTime,
+	}
+	if common.GetActionExecutionPEPEnabled() {
+		columns = append(columns, "f_execution_subject", "f_execution_subject_type")
+		values = append(values, schedule.ExecutionSubject.ID, schedule.ExecutionSubject.Type)
+	}
+	sqlStr, vals, err := sq.Insert(SCHEDULE_TABLE_NAME).Columns(columns...).Values(values...).ToSql()
 	if err != nil {
 		logger.Errorf("Failed to build insert sql: %s", common.SafeErrorSummary(err))
 		span.SetStatus(codes.Error, "Build sql failed")
@@ -167,8 +171,15 @@ func (a *actionScheduleAccess) UpdateSchedule(ctx context.Context, tx *sql.Tx, s
 		}
 		builder = builder.Set("f_dynamic_params", dynamicParamsStr)
 	}
-	if schedule.NextRunTime != 0 {
+	if schedule.NextRunTime != 0 || schedule.Status != "" {
 		builder = builder.Set("f_next_run_time", schedule.NextRunTime)
+	}
+	if schedule.Status != "" {
+		builder = builder.Set("f_status", schedule.Status)
+	}
+	if common.GetActionExecutionPEPEnabled() && schedule.ExecutionSubject.ID != "" && schedule.ExecutionSubject.Type != "" {
+		builder = builder.Set("f_execution_subject", schedule.ExecutionSubject.ID)
+		builder = builder.Set("f_execution_subject_type", schedule.ExecutionSubject.Type)
 	}
 
 	builder = builder.Set("f_updater", schedule.Updater.ID)
@@ -550,7 +561,7 @@ func (a *actionScheduleAccess) UpdateNextRunTime(ctx context.Context, scheduleID
 // Helper methods
 
 func (a *actionScheduleAccess) buildSelectQuery() sq.SelectBuilder {
-	return sq.Select(
+	columns := []string{
 		"f_id",
 		"f_name",
 		"f_kn_id",
@@ -570,15 +581,27 @@ func (a *actionScheduleAccess) buildSelectQuery() sq.SelectBuilder {
 		"f_updater",
 		"f_updater_type",
 		"f_update_time",
-	).From(SCHEDULE_TABLE_NAME)
+	}
+	if common.GetActionExecutionPEPEnabled() {
+		columns = append(columns, "f_execution_subject", "f_execution_subject_type")
+	}
+	return sq.Select(columns...).From(SCHEDULE_TABLE_NAME)
 }
 
 func (a *actionScheduleAccess) scanSchedule(row *sql.Row) (*interfaces.ActionSchedule, error) {
+	return a.scanScheduleValue(row)
+}
+
+type scheduleScanner interface {
+	Scan(dest ...any) error
+}
+
+func (a *actionScheduleAccess) scanScheduleValue(scanner scheduleScanner) (*interfaces.ActionSchedule, error) {
 	var schedule interfaces.ActionSchedule
 	var instanceIdentitiesStr, dynamicParamsStr string
 	var lockHolder sql.NullString
 
-	err := row.Scan(
+	destinations := []any{
 		&schedule.ID,
 		&schedule.Name,
 		&schedule.KNID,
@@ -598,7 +621,11 @@ func (a *actionScheduleAccess) scanSchedule(row *sql.Row) (*interfaces.ActionSch
 		&schedule.Updater.ID,
 		&schedule.Updater.Type,
 		&schedule.UpdateTime,
-	)
+	}
+	if common.GetActionExecutionPEPEnabled() {
+		destinations = append(destinations, &schedule.ExecutionSubject.ID, &schedule.ExecutionSubject.Type)
+	}
+	err := scanner.Scan(destinations...)
 	if err != nil {
 		return nil, err
 	}
@@ -626,53 +653,5 @@ func (a *actionScheduleAccess) scanSchedule(row *sql.Row) (*interfaces.ActionSch
 }
 
 func (a *actionScheduleAccess) scanScheduleFromRows(rows *sql.Rows) (*interfaces.ActionSchedule, error) {
-	var schedule interfaces.ActionSchedule
-	var instanceIdentitiesStr, dynamicParamsStr string
-	var lockHolder sql.NullString
-
-	err := rows.Scan(
-		&schedule.ID,
-		&schedule.Name,
-		&schedule.KNID,
-		&schedule.Branch,
-		&schedule.ActionTypeID,
-		&schedule.CronExpression,
-		&instanceIdentitiesStr,
-		&dynamicParamsStr,
-		&schedule.Status,
-		&schedule.LastRunTime,
-		&schedule.NextRunTime,
-		&lockHolder,
-		&schedule.LockTime,
-		&schedule.Creator.ID,
-		&schedule.Creator.Type,
-		&schedule.CreateTime,
-		&schedule.Updater.ID,
-		&schedule.Updater.Type,
-		&schedule.UpdateTime,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	if lockHolder.Valid {
-		schedule.LockHolder = lockHolder.String
-	}
-
-	if instanceIdentitiesStr != "" {
-		if err := sonic.UnmarshalString(instanceIdentitiesStr, &schedule.InstanceIdentities); err != nil {
-			logger.Warnf("Failed to unmarshal _instance_identities for schedule %s: %s", schedule.ID, common.SafeErrorSummary(err))
-			// Initialize to empty slice to avoid nil pointer issues
-			schedule.InstanceIdentities = []map[string]any{}
-		}
-	}
-	if dynamicParamsStr != "" {
-		if err := sonic.UnmarshalString(dynamicParamsStr, &schedule.DynamicParams); err != nil {
-			logger.Warnf("Failed to unmarshal dynamic_params for schedule %s: %s", schedule.ID, common.SafeErrorSummary(err))
-			// Initialize to empty map to avoid nil pointer issues
-			schedule.DynamicParams = map[string]any{}
-		}
-	}
-
-	return &schedule, nil
+	return a.scanScheduleValue(rows)
 }

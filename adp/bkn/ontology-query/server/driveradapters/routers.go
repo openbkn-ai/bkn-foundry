@@ -111,6 +111,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiInV1.POST("/knowledge-networks/:kn_id/action-types/:at_id", r.verifyJsonContentType(), r.GetActionsInActionTypeByIn)
 
 		// Action execution APIs (internal).
+		apiInV1.POST("/knowledge-networks/:kn_id/action-types/:at_id/execute/check", r.verifyJsonContentType(), r.CheckActionExecutionByIn)
 		apiInV1.POST("/knowledge-networks/:kn_id/action-types/:at_id/execute", r.verifyJsonContentType(), r.ExecuteActionByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/action-executions/:execution_id", r.GetActionExecutionByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/action-logs", r.QueryActionLogsByIn)

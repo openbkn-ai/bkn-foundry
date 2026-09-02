@@ -191,6 +191,14 @@ func (w *ScheduleWorker) tryExecuteSchedule(ctx context.Context, schedule *inter
 
 // executeSchedule calls ontology-query to execute the action
 func (w *ScheduleWorker) executeSchedule(ctx context.Context, schedule *interfaces.ActionSchedule) (string, error) {
+	executionSubject := schedule.Creator
+	if common.GetActionExecutionPEPEnabled() {
+		executionSubject = schedule.ExecutionSubject
+		if executionSubject.ID == "" || executionSubject.Type == "" {
+			return "", fmt.Errorf("schedule execution subject is missing")
+		}
+	}
+
 	// Build the request to ontology-query
 	executeURL := fmt.Sprintf("%s/api/ontology-query/in/v1/knowledge-networks/%s/action-types/%s/execute",
 		w.appSetting.OntologyQueryUrl, schedule.KNID, schedule.ActionTypeID)
@@ -213,8 +221,8 @@ func (w *ScheduleWorker) executeSchedule(ctx context.Context, schedule *interfac
 
 	req.Header.Set("Content-Type", "application/json")
 	// Set internal account info headers
-	req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, schedule.Creator.ID)
-	req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_TYPE, schedule.Creator.Type)
+	req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, executionSubject.ID)
+	req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_TYPE, executionSubject.Type)
 
 	resp, err := w.httpClient.Do(req)
 	if err != nil {

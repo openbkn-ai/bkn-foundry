@@ -16,6 +16,7 @@ var (
 	DB             *sql.DB
 	AA             interfaces.AuthAccess
 	AOA            interfaces.AgentOperatorAccess
+	AEA            interfaces.ActionExecutionAccess
 	ASA            interfaces.ActionScheduleAccess
 	ATA            interfaces.ActionTypeAccess
 	CGA            interfaces.ConceptGroupAccess
@@ -41,6 +42,10 @@ func SetAuthAccess(aa interfaces.AuthAccess) {
 
 func SetActionScheduleAccess(asa interfaces.ActionScheduleAccess) {
 	ASA = asa
+}
+
+func SetActionExecutionAccess(aea interfaces.ActionExecutionAccess) {
+	AEA = aea
 }
 
 func SetActionTypeAccess(ata interfaces.ActionTypeAccess) {

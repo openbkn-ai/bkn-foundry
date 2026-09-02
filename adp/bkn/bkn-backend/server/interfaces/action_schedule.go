@@ -33,6 +33,7 @@ type ActionSchedule struct {
 	CreateTime         int64            `json:"create_time,omitempty"`
 	Updater            AccountInfo      `json:"updater,omitempty"`
 	UpdateTime         int64            `json:"update_time,omitempty"`
+	ExecutionSubject   AccountInfo      `json:"execution_subject,omitempty"`
 }
 
 // ActionScheduleCreateRequest represents the request to create a schedule

@@ -108,3 +108,17 @@ func (mr *MockPermissionServiceMockRecorder) RequireQueryData(ctx, resources any
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequireQueryData", reflect.TypeOf((*MockPermissionService)(nil).RequireQueryData), ctx, resources)
 }
+
+// RequirePermissions mocks base method.
+func (m *MockPermissionService) RequirePermissions(ctx context.Context, requirements []interfaces.PermissionRequirement) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RequirePermissions", ctx, requirements)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RequirePermissions indicates an expected call of RequirePermissions.
+func (mr *MockPermissionServiceMockRecorder) RequirePermissions(ctx, requirements any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequirePermissions", reflect.TypeOf((*MockPermissionService)(nil).RequirePermissions), ctx, requirements)
+}

@@ -97,6 +97,7 @@ type ActionExecution struct {
 	EndTime              int64                   `json:"end_time,omitempty"`               // execution end time (Unix milliseconds)
 	DurationMs           int64                   `json:"duration_ms,omitempty"`            // execution duration in milliseconds
 	ActionTypeSnapshot   map[string]any          `json:"action_type_snapshot,omitempty"`   // Action-type configuration snapshot captured at execution time, matching the manager response.
+	PermissionSnapshot   []PermissionRequirement `json:"permission_snapshot,omitempty"`    // Canonical permission facts rechecked before every external call.
 	InstanceIdentityHash string                  `json:"instance_identity_hash,omitempty"` // fingerprint of instances + dynamic_params for duplicate detection
 }
 

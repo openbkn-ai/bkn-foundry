@@ -138,12 +138,6 @@
             "name": "redis"
         },
         {
-            "name": "user-management"
-        },
-        {
-            "name": "authorization"
-        },
-        {
             "name": "business-system-service"
         }
     ]

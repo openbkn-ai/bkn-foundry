@@ -1,20 +1,15 @@
-// Package drivenadapters defines driver adapters.
-// @file user_management.go
-// @description: Implement user management services.
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+// Package drivenadapters defines outbound service adapters.
 package drivenadapters
 
 import (
 	"context"
-	"fmt"
-	"net/http"
-	"strings"
 	"sync"
 
-	jsoniter "github.com/json-iterator/go"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 )
@@ -26,51 +21,34 @@ var (
 
 type noopUserManagementClient struct{}
 
-type userManagementClient struct {
-	baseURL    string
-	logger     interfaces.Logger
-	httpClient interfaces.HTTPClient
-}
-
-// NewUserManagementClient creates a user management service object.
+// NewUserManagementClient creates the bkn-safe directory adapter.
 func NewUserManagementClient() interfaces.UserManagement {
 	if !config.GetAuthEnabled() {
 		return &noopUserManagementClient{}
 	}
 	syncOnce.Do(func() {
 		conf := config.NewConfigLoader()
-		um = selectUserManagement(func() interfaces.UserManagement {
-			return &userManagementClient{
-				baseURL: fmt.Sprintf("%s://%s:%d/api/user-management", conf.UserMgnt.PrivateProtocol,
-					conf.UserMgnt.PrivateHost, conf.UserMgnt.PrivatePort),
-				logger:     conf.GetLogger(),
-				httpClient: rest.NewHTTPClient(),
-			}
-		}, conf.GetLogger())
+		baseURL := mustBknSafeURL()
+		conf.GetLogger().Infof("[user-mgnt] provider=bkn-safe directory at %s", baseURL)
+		um = newSafeUserManagement(baseURL, conf.GetLogger())
 	})
 	return um
 }
 
-func (n *noopUserManagementClient) GetAppInfo(ctx context.Context, appID string) (appInfo *interfaces.AppInfo, err error) {
-	return &interfaces.AppInfo{
-		ID:   appID,
-		Name: appID,
-	}, nil
+func (n *noopUserManagementClient) GetAppInfo(_ context.Context, appID string) (*interfaces.AppInfo, error) {
+	return &interfaces.AppInfo{ID: appID, Name: appID}, nil
 }
 
-func (n *noopUserManagementClient) GetUserInfo(ctx context.Context, userID string, fields ...string) (info *interfaces.UserInfo, err error) {
+func (n *noopUserManagementClient) GetUserInfo(_ context.Context, userID string, _ ...string) (*interfaces.UserInfo, error) {
 	displayName := interfaces.UnknownUser
 	if userID != "" {
 		displayName = userID
 	}
-	return &interfaces.UserInfo{
-		UserID:      userID,
-		DisplayName: displayName,
-	}, nil
+	return &interfaces.UserInfo{UserID: userID, DisplayName: displayName}, nil
 }
 
-func (n *noopUserManagementClient) GetUsersInfo(ctx context.Context, userIDs, fields []string) (infos []*interfaces.UserInfo, err error) {
-	infos = make([]*interfaces.UserInfo, 0, len(userIDs))
+func (n *noopUserManagementClient) GetUsersInfo(_ context.Context, userIDs, _ []string) ([]*interfaces.UserInfo, error) {
+	infos := make([]*interfaces.UserInfo, 0, len(userIDs))
 	for _, userID := range utils.UniqueStrings(userIDs) {
 		displayName := interfaces.UnknownUser
 		if userID == interfaces.SystemUser {
@@ -78,16 +56,13 @@ func (n *noopUserManagementClient) GetUsersInfo(ctx context.Context, userIDs, fi
 		} else if userID != "" {
 			displayName = userID
 		}
-		infos = append(infos, &interfaces.UserInfo{
-			UserID:      userID,
-			DisplayName: displayName,
-		})
+		infos = append(infos, &interfaces.UserInfo{UserID: userID, DisplayName: displayName})
 	}
 	return infos, nil
 }
 
-func (n *noopUserManagementClient) GetUsersName(ctx context.Context, userIDs []string) (userMap map[string]string, err error) {
-	userMap = make(map[string]string, len(userIDs))
+func (n *noopUserManagementClient) GetUsersName(_ context.Context, userIDs []string) (map[string]string, error) {
+	userMap := make(map[string]string, len(userIDs))
 	for _, userID := range utils.UniqueStrings(userIDs) {
 		if userID == interfaces.SystemUser {
 			userMap[userID] = interfaces.SystemUser
@@ -100,151 +75,4 @@ func (n *noopUserManagementClient) GetUsersName(ctx context.Context, userIDs []s
 		userMap[userID] = interfaces.UnknownUser
 	}
 	return userMap, nil
-}
-
-// GetAppInfo Get application information.
-func (u *userManagementClient) GetAppInfo(ctx context.Context, appID string) (appInfo *interfaces.AppInfo, err error) {
-	src := fmt.Sprintf("%s/v1/apps/%s", u.baseURL, appID)
-	header := common.GetHeaderFromCtx(ctx)
-	_, respParam, err := u.httpClient.Get(ctx, src, nil, header)
-	if err != nil {
-		u.logger.Errorf("GetAppInfo failed:%v, url:%v", err, src)
-		return
-	}
-	appInfo = &interfaces.AppInfo{}
-	resultByt := utils.ObjectToByte(respParam)
-	err = jsoniter.Unmarshal(resultByt, appInfo)
-	if err != nil {
-		u.logger.Errorf("GetAppInfo response unmarshal error:%s", err.Error())
-	}
-	return
-}
-
-// GetUserInfo Get user information.
-func (u *userManagementClient) GetUserInfo(ctx context.Context, userID string, fields ...string) (info *interfaces.UserInfo, err error) {
-	if len(fields) == 0 {
-		fields = []string{"name", "account", "roles"}
-	}
-	infos, err := u.GetUsersInfo(ctx, []string{userID}, fields)
-	if err != nil {
-		return
-	}
-	if len(infos) == 0 {
-		u.logger.WithContext(ctx).Errorf("GetUserInfo failed, user %s info not found", userID)
-		err = errors.DefaultHTTPError(ctx, http.StatusNotFound, fmt.Sprintf("user %s info not found", userID))
-		return
-	}
-	info = infos[0]
-	return
-}
-
-// GetUsersName Get user information in batches.
-func (u *userManagementClient) GetUsersInfo(ctx context.Context, userIDs, fields []string) (infos []*interfaces.UserInfo, err error) {
-	src := fmt.Sprintf("%s/v1/users/%s/%s", u.baseURL, strings.Join(userIDs, ","), strings.Join(fields, ","))
-	header := common.GetHeaderFromCtx(ctx)
-	respCode, result, err := u.httpClient.Get(ctx, src, nil, header)
-	infos = []*interfaces.UserInfo{}
-	if err != nil {
-		if respCode == http.StatusNotFound {
-			// Parse a list of user IDs in a 404 error response.
-			httpErr, ok := err.(*rest.ExHTTPError)
-			if ok {
-				notFoundUserIDs, parseErr := u.parseNotFoundUserIDs(ctx, httpErr.Body)
-				if parseErr != nil {
-					u.logger.WithContext(ctx).Warnf("Failed to parse 404 error details: %v", parseErr)
-					return nil, parseErr
-				}
-				for _, userID := range notFoundUserIDs {
-					infos = append(infos, &interfaces.UserInfo{UserID: userID, DisplayName: interfaces.UnknownUser})
-				}
-			}
-		}
-		u.logger.WithContext(ctx).Warnf("GetUsersInfo failed, err: %v", err)
-		return
-	}
-
-	resultByt := utils.ObjectToByte(result)
-	err = jsoniter.Unmarshal(resultByt, &infos)
-	if err != nil {
-		u.logger.WithContext(ctx).Warnf("GetUsersName Unmarshal %s failed, err: %v", string(resultByt), err)
-	}
-	return
-}
-
-// GetUsersName Get user names in batches.
-func (u *userManagementClient) GetUsersName(ctx context.Context, userIDs []string) (userMap map[string]string, err error) {
-	userIDs = utils.UniqueStrings(userIDs)
-	userMap = make(map[string]string)
-	checkUserIDs := []string{}
-	for _, userID := range userIDs {
-		if userID == interfaces.SystemUser {
-			userMap[userID] = interfaces.SystemUser
-			continue
-		}
-		checkUserIDs = append(checkUserIDs, userID)
-	}
-
-	if len(checkUserIDs) == 0 {
-		return
-	}
-
-	// Loop around handling 404 errors until all users have been handled.
-	for len(checkUserIDs) > 0 {
-		info, err := u.GetUsersInfo(ctx, checkUserIDs, []string{interfaces.DisplayName})
-		if err != nil {
-			// Check if it is a 404 error of type HTTPError.
-			if httpErr, ok := err.(*rest.ExHTTPError); ok && httpErr.HTTPCode == http.StatusNotFound {
-				// Parsing user ID in 404 error response.
-				notFoundUserIDs := []string{}
-				for _, userInfo := range info {
-					notFoundUserIDs = append(notFoundUserIDs, userInfo.UserID)
-					userMap[userInfo.UserID] = userInfo.DisplayName
-				}
-
-				// Remove processed user IDs from checkUserIDs.
-				checkUserIDs = u.removeUserIDs(checkUserIDs, notFoundUserIDs)
-				continue
-			}
-
-			// Other errors are returned directly.
-			return nil, err
-		}
-
-		// Process successfully returned user information.
-		for _, user := range info {
-			userMap[user.UserID] = user.DisplayName
-		}
-		// All users have been processed successfully.
-		break
-	}
-	return
-}
-
-// parseNotFoundUserIDs parses a list of user IDs in a 404 error response.
-func (u *userManagementClient) parseNotFoundUserIDs(ctx context.Context, resultByt []byte) (userIDs []string, err error) {
-	var errResp interfaces.ErrorResponse
-	err = jsoniter.Unmarshal(resultByt, &errResp)
-	if err != nil {
-		err = fmt.Errorf("[parseNotFoundUserIDs], failed to parse 404 error response, Unmarshal %s failed, err: %v", string(resultByt), err)
-		u.logger.WithContext(ctx).Warnf(err.Error())
-		return
-	}
-	userIDs = errResp.Detail.IDs
-	return
-}
-
-// removeUserIDs removes the specified user IDs from the source array.
-func (u *userManagementClient) removeUserIDs(source, toRemove []string) []string {
-	toRemoveSet := make(map[string]bool)
-	for _, id := range toRemove {
-		toRemoveSet[id] = true
-	}
-	result := make([]string, 0, len(source))
-	for _, id := range source {
-		if !toRemoveSet[id] {
-			result = append(result, id)
-		}
-	}
-
-	return result
 }

@@ -41,7 +41,7 @@ type apiLogModel struct {
 //
 // Choose one of two credentials: the one starting with the AppKey prefix (bak_) is submitted to bkn-safe for verification (API Key issued by the user),
 // The rest of the bearer token goes hydra introspection. The two paths produce the same TokenInfo, and the downstream authentication context is consistent.
-// When appKeys is nil (AUTH_ENABLED=false or BKN_SAFE_URL is not configured), all use hydra.
+// When appKeys is nil (AUTH_ENABLED=false), all requests use Hydra.
 func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKeyVerifier) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()

@@ -161,3 +161,26 @@ func TestDebugTool_NoParamsToolSendsEmptyEnvelope(t *testing.T) {
 		So(proxyReq.Body, ShouldBeNil)
 	})
 }
+
+func TestDebugTool_StripsPlatformHeadersBeforeExternalCall(t *testing.T) {
+	fixture := newDebugToolFixture(t, string(interfaces.ToolStatusTypeEnabled))
+	req := &interfaces.ExecuteToolReq{
+		UserID: "u1", BoxID: "b1", ToolID: "t1",
+		HTTPRequestParams: interfaces.HTTPRequestParams{Headers: map[string]any{
+			"X-Api-Key":       "business-secret",
+			"x-account-id":    "internal-user",
+			"X-Account-Type":  "user",
+			"X-Authorization": "platform-token",
+			"bkn-request-id":  "request-1",
+			"traceparent":     "00-00000000000000000000000000000001-0000000000000001-01",
+		}},
+	}
+
+	if _, err := fixture.service.DebugTool(context.Background(), req); err != nil {
+		t.Fatalf("DebugTool() error = %v", err)
+	}
+	got := (*fixture.captured).Headers
+	if len(got) != 1 || got["X-Api-Key"] != "business-secret" {
+		t.Fatalf("external headers = %#v", got)
+	}
+}

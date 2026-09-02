@@ -29,6 +29,7 @@ import (
 	"ontology-query/logics"
 	"ontology-query/logics/action_logs"
 	"ontology-query/logics/object_type"
+	"ontology-query/logics/permission"
 )
 
 // Environment variable for max execution objects limit
@@ -60,10 +61,9 @@ type actionSchedulerService struct {
 	aoAccess    interfaces.AgentOperatorAccess
 	logsService interfaces.ActionLogsService
 	ots         interfaces.ObjectTypeService
+	permissions interfaces.ActionExecutionPermissionService
 
-	// Reserved hooks for future extension
-	duplicateCheckHook  interfaces.DuplicateCheckHook
-	permissionCheckHook interfaces.PermissionCheckHook
+	duplicateCheckHook interfaces.DuplicateCheckHook
 }
 
 // NewActionSchedulerService creates a singleton instance of ActionSchedulerService
@@ -76,11 +76,43 @@ func NewActionSchedulerService(appSetting *common.AppSetting) interfaces.ActionS
 			logsService: action_logs.NewActionLogsService(appSetting),
 			ots:         object_type.NewObjectTypeService(appSetting),
 		}
+		if common.GetAuthEnabled() && ActionExecutionPEPEnabled() {
+			svc.permissions = permission.NewPermissionService(appSetting)
+		}
 		// Default duplicate strategy: reject same kn + action type + instance set + dynamic_params while in-flight within the window.
 		svc.duplicateCheckHook = svc.defaultDuplicateCheck
 		assService = svc
 	})
 	return assService
+}
+
+// CheckActionExecution verifies the current subject against the trusted,
+// published action dependencies without reading instance data or invoking the action.
+func (s *actionSchedulerService) CheckActionExecution(ctx context.Context, req *interfaces.ActionExecutionRequest) error {
+	if !ActionExecutionPEPEnabled() {
+		return nil
+	}
+	if req == nil || req.Branch != interfaces.MAIN_BRANCH {
+		return actionPermissionInvalid(ctx, "only the published main branch can execute actions")
+	}
+	if s == nil || s.omAccess == nil {
+		return actionPermissionUnavailable(ctx, fmt.Errorf("ontology model access is not configured"))
+	}
+	actionType, _, exists, err := s.omAccess.GetActionType(ctx, req.KNID, interfaces.MAIN_BRANCH, req.ActionTypeID)
+	if err != nil {
+		return actionPermissionUnavailable(ctx, err)
+	}
+	if !exists {
+		return rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ActionExecution_ActionTypeNotFound)
+	}
+	if missing := logics.MissingActionInputDynamicParamNames(&actionType, req.DynamicParams); len(missing) > 0 {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+			WithErrorDetails(locale.ValidationDetail(ctx, "ActionDynamicParamsMissing", map[string]any{
+				"actionType": actionType.ATName, "parameters": logics.FormatMissingParamNames(missing),
+			}))
+	}
+	_, err = s.authorizeActionType(ctx, req.KNID, &actionType)
+	return err
 }
 
 // ExecuteAction starts async action execution and returns execution_id immediately
@@ -112,6 +144,17 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 			}))
 	}
 
+	// Resolve the authenticated execution subject before any instance scan or
+	// physical data read. The permission snapshot is entirely server-derived.
+	executor := interfaces.AccountInfo{}
+	if accountInfo, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo); ok {
+		executor = accountInfo
+	}
+	permissionSnapshot, err := s.authorizeActionType(ctx, req.KNID, &actionType)
+	if err != nil {
+		return nil, err
+	}
+
 	// Get instances based on action type configuration and request parameters
 	instances, objDatas, err := s.getInstancesForAction(ctx, &actionType, req.KNID, req.Branch, req.InstanceIdentities)
 	if err != nil {
@@ -138,19 +181,6 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("Number of objects (%d) exceeds the maximum limit (%d). Please reduce the scope or adjust the ACTION_EXECUTION_MAX_OBJECTS environment variable.",
 				len(req.Instances), maxExecutionObjects))
-	}
-
-	// Get executor info from context
-	executor := interfaces.AccountInfo{}
-	if accountInfo := ctx.Value(interfaces.ACCOUNT_INFO_KEY); accountInfo != nil {
-		executor = accountInfo.(interfaces.AccountInfo)
-	}
-
-	// Reserved: Permission check hook
-	if s.permissionCheckHook != nil {
-		if err := s.permissionCheckHook(ctx, executor.ID, &actionType); err != nil {
-			return nil, err
-		}
 	}
 
 	instanceHash, err := computeDuplicateFingerprint(req.Instances, req.DynamicParams)
@@ -223,6 +253,7 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		Executor:             executor,    // full executor info
 		StartTime:            now,
 		ActionTypeSnapshot:   actionTypeSnapshot, // Save the action type configuration snapshot used during execution.
+		PermissionSnapshot:   permissionSnapshot,
 		InstanceIdentityHash: instanceHash,
 	}
 
@@ -340,7 +371,7 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 		}
 
 		// Execute based on action source type
-		params, result, execErr := s.invokeActionSource(ctx, actionType, params, req.DynamicParams)
+		params, result, execErr := s.invokeActionSource(ctx, execution.PermissionSnapshot, actionType, params, req.DynamicParams)
 
 		endTime := time.Now().UnixMilli()
 		if execErr != nil {
@@ -422,8 +453,12 @@ func resolveExecutionMode(actionType *interfaces.ActionType) string {
 
 // invokeActionSource runs the configured action source once and returns the parameters that
 // were actually submitted, so the recorded result reflects the real request payload.
-func (s *actionSchedulerService) invokeActionSource(ctx context.Context, actionType *interfaces.ActionType,
+func (s *actionSchedulerService) invokeActionSource(ctx context.Context,
+	permissionSnapshot []interfaces.PermissionRequirement, actionType *interfaces.ActionType,
 	params map[string]any, dynamicParams map[string]any) (map[string]any, any, error) {
+	if err := s.authorizeExecution(ctx, permissionSnapshot); err != nil {
+		return params, nil, err
+	}
 
 	switch actionType.ActionSource.Type {
 	case interfaces.ActionSourceTypeTool:
@@ -482,7 +517,7 @@ func (s *actionSchedulerService) executeOnce(ctx context.Context, execution *int
 		result.ErrorMessage = fmt.Sprintf("Failed to build parameters: %v", err)
 		failedCount = 1
 	} else {
-		sentParams, invokeResult, execErr := s.invokeActionSource(ctx, actionType, params, req.DynamicParams)
+		sentParams, invokeResult, execErr := s.invokeActionSource(ctx, execution.PermissionSnapshot, actionType, params, req.DynamicParams)
 		result.Parameters = sentParams
 		if execErr != nil {
 			result.Status = interfaces.ObjectStatusFailed

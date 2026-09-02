@@ -5,16 +5,9 @@ nodeSelector: {}
 namespace: openbkn
 moduleName: agent-operator-integration
 
-# bkn-safe authz. authzProvider: "" | "isf" | "shadow" | "bkn-safe", can be rolled back.
-#
-# The default value is bkn-safe: ISF has been retired. A null value will cause selectAuthz to fall to the ISF adapter.
-# (authorization_safe.go:283-286), and the authorization judgment is fail-closed when an error occurs.
-# (OperationCheckAll of decision.go turns errors to 403), and the result is that all authentication.
-# Always refuse. The actual deployment configuration such as deploy/conf/config.yaml is passed to bkn-safe, here.
-# Just make the chart default value consistent with it to avoid shortfalls when directly helm install.
+# bkn-safe API used for authorization, directory lookups, and AppKey introspection.
 bknSafe:
-  authzProvider: "bkn-safe"
-  url: ""
+  url: "http://bkn-safe:3000"
 
 # Set to dev for development mode.
 runMode: release
@@ -120,7 +113,7 @@ depServices:
     dbCharset: utf8mb4
     system_id: ""
   hydra:
-    # ISF replacement: introspect/token against bkn-safe's paired hydra (cross-ns).
+    # Token introspection uses bkn-safe's paired Hydra service.
     publicHost: bkn-safe-hydra-public
     publicPort: 4444
     publicProtocol: http
@@ -128,14 +121,6 @@ depServices:
     administrativePort: 4445
     administrativeProtocol: http
     administrativePrefix: /admin
-  user-management:
-    privateHost: user-management-private
-    privatePort: 30980
-    privateProtocol: http
-  authorization:
-    privateHost: authorization-private
-    privatePort: 30920
-    privateProtocol: http
   business-system-service:
     privateHost: business-system-service
     privatePort: 80

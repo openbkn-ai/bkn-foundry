@@ -9,6 +9,7 @@ package common
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -218,6 +219,14 @@ func GetAuthEnabled() bool {
 	envVal := os.Getenv("AUTH_ENABLED")
 	// Disable authentication only when explicitly set to false or 0.
 	return envVal != "false" && envVal != "0"
+}
+
+// GetActionExecutionPEPEnabled reports whether the complete action execution
+// authorization chain is enabled. It defaults to false until migration and
+// cross-service validation are complete.
+func GetActionExecutionPEPEnabled() bool {
+	value := strings.ToLower(strings.TrimSpace(os.Getenv("ACTION_EXECUTION_PEP_ENABLED")))
+	return value == "true" || value == "1"
 }
 
 func SetHydraAdminSetting() {

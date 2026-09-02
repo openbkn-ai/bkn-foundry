@@ -112,6 +112,82 @@ func TestPermissionServiceFilterQueryDataReturnsOnlyAllowedCandidatesInRequestOr
 	}
 }
 
+func TestPermissionServiceRequirePermissions(t *testing.T) {
+	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{
+		ID: "account-1", Type: "user",
+	})
+	requirements := []interfaces.PermissionRequirement{
+		{ResourceType: "action_type", ResourceID: "kn-a/at-1", Operation: "execute"},
+		{ResourceType: "tool_box", ResourceID: "box-1", Operation: "execute"},
+		{ResourceType: "object_type", ResourceID: "kn-a/ot-1", Operation: "query_data"},
+	}
+
+	t.Run("requires each resource-specific operation", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		access := omock.NewMockPermissionAccess(ctrl)
+		access.EXPECT().FilterResources(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, request interfaces.PermissionFilterRequest) (interfaces.PermissionFilterResponse, error) {
+				if len(request.Resources) != 3 || len(request.CandidateOperations) != 2 {
+					t.Fatalf("request = %#v", request)
+				}
+				return interfaces.PermissionFilterResponse{Resources: []interfaces.PermissionFilterResult{
+					{ResourceType: "action_type", ResourceID: "kn-a/at-1", Operations: []string{"execute"}},
+					{ResourceType: "tool_box", ResourceID: "box-1", Operations: []string{"execute"}},
+					{ResourceType: "object_type", ResourceID: "kn-a/ot-1", Operations: []string{"query_data"}},
+				}}, nil
+			})
+
+		if err := (&permissionService{access: access}).RequirePermissions(ctx, append(requirements, requirements[0])); err != nil {
+			t.Fatalf("RequirePermissions() error = %v", err)
+		}
+	})
+
+	t.Run("does not accept an operation granted for the wrong resource", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		access := omock.NewMockPermissionAccess(ctrl)
+		access.EXPECT().FilterResources(gomock.Any(), gomock.Any()).Return(interfaces.PermissionFilterResponse{
+			Resources: []interfaces.PermissionFilterResult{
+				{ResourceType: "action_type", ResourceID: "kn-a/at-1", Operations: []string{"execute", "query_data"}},
+				{ResourceType: "tool_box", ResourceID: "box-1", Operations: []string{"execute"}},
+				{ResourceType: "object_type", ResourceID: "kn-a/ot-1", Operations: []string{"execute"}},
+			},
+		}, nil)
+
+		err := (&permissionService{access: access}).RequirePermissions(ctx, requirements)
+		assertHTTPStatus(t, err, http.StatusForbidden)
+	})
+
+	t.Run("fails closed on an incomplete response", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		access := omock.NewMockPermissionAccess(ctrl)
+		access.EXPECT().FilterResources(gomock.Any(), gomock.Any()).Return(interfaces.PermissionFilterResponse{
+			Resources: []interfaces.PermissionFilterResult{
+				{ResourceType: "action_type", ResourceID: "kn-a/at-1", Operations: []string{"execute"}},
+			},
+		}, nil)
+
+		err := (&permissionService{access: access}).RequirePermissions(ctx, requirements)
+		assertHTTPStatus(t, err, http.StatusForbidden)
+	})
+
+	t.Run("fails closed when bkn-safe is unavailable", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		access := omock.NewMockPermissionAccess(ctrl)
+		access.EXPECT().FilterResources(gomock.Any(), gomock.Any()).Return(
+			interfaces.PermissionFilterResponse{}, errors.New("timeout"))
+
+		err := (&permissionService{access: access}).RequirePermissions(ctx, requirements)
+		assertHTTPStatus(t, err, http.StatusServiceUnavailable)
+	})
+
+	t.Run("rejects a missing execution subject", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		access := omock.NewMockPermissionAccess(ctrl)
+		err := (&permissionService{access: access}).RequirePermissions(context.Background(), requirements)
+		assertHTTPStatus(t, err, http.StatusForbidden)
+	})
+}
+
 func assertHTTPStatus(t *testing.T, err error, expected int) {
 	t.Helper()
 	var httpErr *rest.HTTPError

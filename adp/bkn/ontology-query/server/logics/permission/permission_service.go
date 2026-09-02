@@ -91,6 +91,74 @@ func (ps *permissionService) RequireQueryData(ctx context.Context, resources []i
 	return nil
 }
 
+func (ps *permissionService) RequirePermissions(ctx context.Context,
+	requirements []interfaces.PermissionRequirement) error {
+	account, ok := accountFromContext(ctx)
+	if !ok {
+		return permissionDenied(ctx, "request subject is missing")
+	}
+
+	normalized, err := normalizeRequirements(requirements)
+	if err != nil {
+		return permissionDenied(ctx, err.Error())
+	}
+	if len(normalized) == 0 {
+		return permissionDenied(ctx, "permission requirements are empty")
+	}
+	if ps == nil || ps.access == nil {
+		return permissionUnavailable(ctx, fmt.Errorf("permission access is not configured"))
+	}
+
+	resources := make([]interfaces.PermissionResource, 0, len(normalized))
+	operations := make([]string, 0, len(normalized))
+	seenOperations := make(map[string]struct{}, len(normalized))
+	for _, requirement := range normalized {
+		resources = append(resources, interfaces.PermissionResource{
+			Type: requirement.ResourceType,
+			ID:   requirement.ResourceID,
+		})
+		if _, exists := seenOperations[requirement.Operation]; !exists {
+			seenOperations[requirement.Operation] = struct{}{}
+			operations = append(operations, requirement.Operation)
+		}
+	}
+
+	response, err := ps.access.FilterResources(ctx, interfaces.PermissionFilterRequest{
+		AccessorID:          account.ID,
+		Resources:           resources,
+		CandidateOperations: operations,
+	})
+	if err != nil {
+		return permissionUnavailable(ctx, err)
+	}
+
+	allowed := make(map[string]map[string]struct{}, len(response.Resources))
+	requested := make(map[string]struct{}, len(resources))
+	for _, resource := range resources {
+		requested[resourceKey(resource.Type, resource.ID)] = struct{}{}
+	}
+	for _, result := range response.Resources {
+		key := resourceKey(strings.TrimSpace(result.ResourceType), strings.TrimSpace(result.ResourceID))
+		if _, exists := requested[key]; !exists {
+			continue
+		}
+		if _, exists := allowed[key]; !exists {
+			allowed[key] = make(map[string]struct{}, len(result.Operations))
+		}
+		for _, operation := range result.Operations {
+			allowed[key][strings.TrimSpace(operation)] = struct{}{}
+		}
+	}
+	for _, requirement := range normalized {
+		operationsForResource := allowed[resourceKey(requirement.ResourceType, requirement.ResourceID)]
+		if _, exists := operationsForResource[requirement.Operation]; !exists {
+			return permissionDenied(ctx, fmt.Sprintf("%s was not granted for %s:%s",
+				requirement.Operation, requirement.ResourceType, requirement.ResourceID))
+		}
+	}
+	return nil
+}
+
 func accountFromContext(ctx context.Context) (interfaces.AccountInfo, bool) {
 	if ctx == nil {
 		return interfaces.AccountInfo{}, false
@@ -131,6 +199,29 @@ func normalizeResources(resources []interfaces.PermissionResource) ([]interfaces
 		}
 		seen[key] = struct{}{}
 		normalized = append(normalized, resource)
+	}
+	return normalized, nil
+}
+
+func normalizeRequirements(requirements []interfaces.PermissionRequirement) ([]interfaces.PermissionRequirement, error) {
+	normalized := make([]interfaces.PermissionRequirement, 0, len(requirements))
+	seen := make(map[string]struct{}, len(requirements))
+	for _, requirement := range requirements {
+		requirement.ResourceType = strings.TrimSpace(requirement.ResourceType)
+		requirement.ResourceID = strings.TrimSpace(requirement.ResourceID)
+		requirement.Operation = strings.TrimSpace(requirement.Operation)
+		if requirement.ResourceType == "" || requirement.ResourceID == "" || requirement.Operation == "" {
+			return nil, fmt.Errorf("permission resource type, id, and operation are required")
+		}
+		if strings.Contains(requirement.ResourceID, "*") {
+			return nil, fmt.Errorf("type-wide resources cannot authorize action execution")
+		}
+		key := resourceKey(requirement.ResourceType, requirement.ResourceID) + "\x00" + requirement.Operation
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, requirement)
 	}
 	return normalized, nil
 }

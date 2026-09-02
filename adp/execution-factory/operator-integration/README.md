@@ -43,7 +43,7 @@ The directory structure of the project is as follows:
 ## 2. Project dependencies.
 - database.
 - hydra
-- user-management
+- bkn-safe
 
 ## 3. Project construction.
 ### 3.1 Compilation.

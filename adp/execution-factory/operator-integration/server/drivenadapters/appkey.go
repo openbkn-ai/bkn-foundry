@@ -10,7 +10,6 @@ package drivenadapters
 import (
 	"context"
 	"net/http"
-	"os"
 	"sync"
 
 	jsoniter "github.com/json-iterator/go"
@@ -52,22 +51,14 @@ type appKeyIntrospectResp struct {
 	KeyID       string `json:"key_id"`
 }
 
-// NewAppKeyVerifier Constructs an AppKey verifier supported by bkn-safe.
-// The following two cases return nil, and the caller treats it as "AppKey is not supported" and falls back to hydra:
-// - AUTH_ENABLED=false, the entire authentication is turned off.
-// - BKN_SAFE_URL is empty, bkn-safe cannot be accessed.
-//
-// This downgrade is consistent with the fallback in authorization_safe.go when BKN_SAFE_URL is missing.
+// NewAppKeyVerifier constructs an AppKey verifier supported by bkn-safe.
+// It returns nil only when authentication is explicitly disabled.
 func NewAppKeyVerifier() interfaces.AppKeyVerifier {
 	appKeyOnce.Do(func() {
 		if !config.GetAuthEnabled() {
 			return // appKeyInst remains nil.
 		}
-		baseURL := os.Getenv("BKN_SAFE_URL")
-		if baseURL == "" {
-			config.NewConfigLoader().GetLogger().Warnf("[appkey] BKN_SAFE_URL empty; AppKey verification disabled")
-			return // appKeyInst remains nil.
-		}
+		baseURL := mustBknSafeURL()
 		appKeyInst = &appKeyVerifier{
 			introspectURL: baseURL + appKeyIntrospectURI,
 			logger:        config.NewConfigLoader().GetLogger(),

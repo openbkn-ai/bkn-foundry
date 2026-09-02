@@ -19,6 +19,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 )
 
 const (
@@ -36,8 +37,10 @@ type MCPClient struct {
 
 // NewMCPClient creates MCP client.
 func NewMCPClient(ctx context.Context, mcpCoreInfo *interfaces.MCPCoreConfigInfo) (interfaces.MCPClient, error) {
+	safeCoreInfo := *mcpCoreInfo
+	safeCoreInfo.Headers = utils.SanitizeThirdPartyHeaders(mcpCoreInfo.Headers)
 	mcpClient := &MCPClient{
-		MCPCoreConfigInfo: mcpCoreInfo,
+		MCPCoreConfigInfo: &safeCoreInfo,
 	}
 	if err := mcpClient.initClient(ctx); err != nil {
 		return nil, classifyMCPConnError(ctx, mcpCoreInfo.URL, err)

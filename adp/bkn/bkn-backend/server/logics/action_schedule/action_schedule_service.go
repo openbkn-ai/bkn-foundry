@@ -37,6 +37,7 @@ type actionScheduleService struct {
 	appSetting *common.AppSetting
 	asa        interfaces.ActionScheduleAccess
 	ata        interfaces.ActionTypeAccess
+	aea        interfaces.ActionExecutionAccess
 	//db         interface{ Begin() (interface{}, error) }
 
 	cronParser cron.Parser
@@ -53,6 +54,7 @@ func NewActionScheduleService(appSetting *common.AppSetting) interfaces.ActionSc
 			appSetting: appSetting,
 			asa:        logics.ASA,
 			ata:        logics.ATA,
+			aea:        logics.AEA,
 			// Standard 5-field cron parser (minute, hour, day of month, month, day of week)
 			cronParser: cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow),
 		}
@@ -86,6 +88,12 @@ func (s *actionScheduleService) CreateSchedule(ctx context.Context, schedule *in
 			WithErrorDetails(actionScheduleDetail(ctx, "ActionTypeNotFound", map[string]any{"actionTypeID": schedule.ActionTypeID}))
 		otellog.LogError(ctx, "Action type not found", httpErr)
 		return "", httpErr
+	}
+	if common.GetActionExecutionPEPEnabled() {
+		if err := s.checkActionExecution(ctx, "schedule_create", schedule.KNID, schedule.ActionTypeID, schedule.DynamicParams); err != nil {
+			return "", err
+		}
+		schedule.ExecutionSubject = accountFromContext(ctx)
 	}
 
 	// Generate ID and set defaults
@@ -176,6 +184,18 @@ func (s *actionScheduleService) UpdateSchedule(ctx context.Context, scheduleID s
 		update.DynamicParams = req.DynamicParams
 	}
 
+	executableConfigChanged := req.CronExpression != "" || req.InstanceIdentities != nil || req.DynamicParams != nil
+	if common.GetActionExecutionPEPEnabled() && executableConfigChanged {
+		dynamicParams := existing.DynamicParams
+		if req.DynamicParams != nil {
+			dynamicParams = req.DynamicParams
+		}
+		if err := s.checkActionExecution(ctx, "schedule_update", existing.KNID, existing.ActionTypeID, dynamicParams); err != nil {
+			return err
+		}
+		update.ExecutionSubject = accountInfo
+	}
+
 	// Recalculate next run time if cron changed and schedule is active
 	if req.CronExpression != "" && existing.Status == interfaces.ScheduleStatusActive {
 		nextRunTime, err := s.CalculateNextRunTime(cronExpr, now)
@@ -238,6 +258,30 @@ func (s *actionScheduleService) UpdateScheduleStatus(ctx context.Context, schedu
 			otellog.LogError(ctx, "Calculate next run time failed", err)
 			return httpErr
 		}
+	}
+
+	if common.GetActionExecutionPEPEnabled() && status == interfaces.ScheduleStatusActive &&
+		existing.Status != interfaces.ScheduleStatusActive {
+		if err := s.checkActionExecution(ctx, "schedule_activate", existing.KNID, existing.ActionTypeID, existing.DynamicParams); err != nil {
+			return err
+		}
+		accountInfo := accountFromContext(ctx)
+		if err := s.asa.UpdateSchedule(ctx, nil, &interfaces.ActionSchedule{
+			ID:               scheduleID,
+			Status:           status,
+			NextRunTime:      nextRunTime,
+			ExecutionSubject: accountInfo,
+			Updater:          accountInfo,
+			UpdateTime:       time.Now().UnixMilli(),
+		}); err != nil {
+			httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionSchedule_UpdateFailed).
+				WithErrorDetails(err.Error())
+			otellog.LogError(ctx, "Failed to update schedule status", httpErr)
+			return httpErr
+		}
+		logger.Infof("Updated schedule %s status to %s", scheduleID, status)
+		span.SetStatus(codes.Ok, "")
+		return nil
 	}
 
 	if err := s.asa.UpdateScheduleStatus(ctx, scheduleID, status, nextRunTime); err != nil {
@@ -386,4 +430,25 @@ func (s *actionScheduleService) CalculateNextRunTime(cronExpr string, from int64
 	fromTime := time.UnixMilli(from)
 	nextTime := schedule.Next(fromTime)
 	return nextTime.UnixMilli(), nil
+}
+
+func (s *actionScheduleService) checkActionExecution(ctx context.Context, phase, knID, actionTypeID string,
+	dynamicParams map[string]any) error {
+	if s == nil || s.aea == nil {
+		return rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+			berrors.BknBackend_ActionSchedule_InternalError).WithErrorDetails("action execution authorization is not configured")
+	}
+	logger.Infof("Action execution permission check: phase=%s kn_id=%s action_type_id=%s", phase, knID, actionTypeID)
+	return s.aea.CheckActionExecution(ctx, interfaces.ActionExecutionCheckRequest{
+		KNID:          knID,
+		ActionTypeID:  actionTypeID,
+		DynamicParams: dynamicParams,
+	})
+}
+
+func accountFromContext(ctx context.Context) interfaces.AccountInfo {
+	if account, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo); ok {
+		return account
+	}
+	return interfaces.AccountInfo{}
 }
