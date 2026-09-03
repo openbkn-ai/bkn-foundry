@@ -429,46 +429,44 @@ func bknContextInputSchema() map[string]any {
 		"description": "BKN Trace managed context. Use only IDs returned by lifecycle tools.",
 		"properties": map[string]any{
 			"conversation_id": describedStringSchema(
-				"Conversation this call belongs to. Copy the conversation_id returned by bkn_start_interaction; " +
-					"it stays the same for every call in the conversation.",
+				"Conversation this call belongs to. Copy the conversation_id returned by " +
+					"bkn_start_interaction; it is the same for every call in the conversation.",
 			),
 			"interaction_id": describedStringSchema(
-				"Turn this call belongs to. Copy the interaction_id returned by bkn_start_interaction for the " +
-					"current user question; the next question gets a new one.",
+				"Turn this call belongs to. Copy the interaction_id returned by bkn_start_interaction; " +
+					"the next user question gets a new one.",
 			),
 			"parent_operation_id": describedStringSchema(
-				"operation_id of the enclosing step, which records this call as its child. Omit it when the call " +
-					"is made directly for the user's question.",
+				"operation_id of the enclosing step, which records this call as its child. Omit it for a " +
+					"call made directly for the user's question.",
 			),
 			"causation_event_ids": map[string]any{
 				"type": "array", "maxItems": 64,
-				"items": describedStringSchema("Event id of one upstream Trace event."),
-				"description": "Trace event ids that caused this call, when the host propagates them. Omit them " +
-					"if unknown: the recorded causality is then parent_operation_id alone.",
+				"items": describedStringSchema("One upstream Trace event id."),
+				"description": "Trace event ids that caused this call, when the host propagates them. Omit " +
+					"if unknown: causality is then parent_operation_id alone.",
 			},
 			"business_refs": map[string]any{
 				"type": "array", "maxItems": 64,
 				"description": "Business objects this call reads or acts on, declared for the evidence chain. " +
-					"Except for data_resource, every ref must belong to the knowledge network this call addresses; " +
-					"a ref that is not canonical is rejected.",
+					"Refs are checked against the knowledge network this call addresses, taken from the tool's " +
+					"kn_id argument or the X-Kn-ID header; with neither present declare only data_resource refs, " +
+					"because any other kind is then rejected and the call fails.",
 				"items": map[string]any{
 					"type":        "object",
 					"description": "One declared business object.",
 					"properties": map[string]any{
 						"ref_type": describedEnumSchema(
-							"Kind of business object being declared, which also fixes the prefix of ref_id: "+
-								"knowledge_network=kn, object_type=object, object_instance=object_instance, "+
-								"property=property, relation_type=relation, data_resource=resource, metric=metric, "+
-								"logic=logic, function=function, action_type=action_type, "+
-								"action_instance=action_instance.",
+							"Kind of business object declared. It also fixes the prefix of ref_id, which is this "+
+								"value itself except: knowledge_network=kn, object_type=object, "+
+								"relation_type=relation, data_resource=resource.",
 							"knowledge_network", "object_type", "object_instance", "property", "relation_type",
 							"data_resource", "metric", "logic", "function", "action_type", "action_instance",
 						),
 						"ref_id": describedStringSchema(
-							"Canonical colon-separated identifier of the object. Its first segment is the prefix " +
-								"ref_type requires and, for every kind except data_resource, its second segment is " +
-								"the kn_id this call addresses, for example object:<kn_id>:<object_type_id>. " +
-								"Instance-level and property-level kinds carry one further segment.",
+							"Canonical colon-separated id: the prefix ref_type requires, then, for every kind " +
+								"except data_resource, the kn_id this call addresses, as in " +
+								"object:<kn_id>:<object_type_id>. Instance and property kinds add one segment.",
 						),
 						"version": describedStringSchema(
 							"Version of the referenced object. Omit it when the object is unversioned; the " +
