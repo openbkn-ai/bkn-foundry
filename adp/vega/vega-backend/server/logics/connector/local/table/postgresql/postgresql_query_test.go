@@ -1,9 +1,11 @@
 package postgresql
 
 import (
+	"context"
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -40,6 +42,36 @@ func TestPostgresqlConnectorBuildDateFormat(t *testing.T) {
 			assert.Equal(t, tt.want, connector.buildDateFormat("created_at", tt.interval))
 		})
 	}
+}
+
+func TestPostgresqlConnectorExecuteQueryQuotesCalendarIntervalIdentifiers(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	connector := &PostgresqlConnector{db: db, connected: true}
+	resource := &interfaces.Resource{
+		SourceIdentifier: "public.events",
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "createdAt", OriginalName: "createdAt"},
+			{Name: "id", OriginalName: "id"},
+		},
+	}
+	params := &interfaces.ResourceDataQueryParams{
+		GroupBy:     []*interfaces.GroupByItem{{Property: "createdAt", CalendarInterval: interfaces.CALENDAR_UNIT_DAY}},
+		Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count"},
+		Sort:        []*interfaces.SortField{{Field: "createdAt", Direction: interfaces.ASC_DIRECTION}},
+		Limit:       20,
+	}
+	expectedQuery := "SELECT to_char(date_trunc('day',\"createdAt\"),'YYYY-MM-DD') AS \"createdAt\", COUNT(id) AS __value " +
+		"FROM \"public\".\"events\" GROUP BY to_char(date_trunc('day',\"createdAt\"),'YYYY-MM-DD') ORDER BY \"createdAt\" ASC LIMIT 20 OFFSET 0"
+	mock.ExpectQuery(expectedQuery).
+		WillReturnRows(sqlmock.NewRows([]string{"createdAt", "__value"}).AddRow("2024-01-01", 1))
+
+	result, err := connector.ExecuteQuery(context.Background(), resource, params)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"createdAt", "__value"}, result.Columns)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestPostgresqlBuildHavingCondition(t *testing.T) {

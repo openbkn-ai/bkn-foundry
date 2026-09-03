@@ -185,7 +185,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		if field, ok := fieldMap[groupByItem.Property]; ok {
 			if groupByItem.CalendarInterval != "" {
 				selectFields = append(selectFields,
-					c.buildDateFormat(field.OriginalName, groupByItem.CalendarInterval)+" AS "+groupByItem.Property)
+					c.buildDateFormat(quoteColumnName(field.OriginalName), groupByItem.CalendarInterval)+" AS "+quoteColumnName(groupByItem.Property))
 			} else {
 				selectFields = append(selectFields, field.OriginalName)
 			}
@@ -253,7 +253,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		for _, groupByItem := range params.GroupBy {
 			if field, ok := fieldMap[groupByItem.Property]; ok {
 				if groupByItem.CalendarInterval != "" {
-					groupByFields = append(groupByFields, c.buildDateFormat(field.OriginalName, groupByItem.CalendarInterval))
+					groupByFields = append(groupByFields, c.buildDateFormat(quoteColumnName(field.OriginalName), groupByItem.CalendarInterval))
 				} else {
 					groupByFields = append(groupByFields, field.OriginalName)
 				}
@@ -282,7 +282,14 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 			if sortItem.Direction == interfaces.DESC_DIRECTION {
 				dir = "DESC"
 			}
-			builder = builder.OrderBy(sortItem.Field + " " + dir)
+			sortField := sortItem.Field
+			for _, groupByItem := range params.GroupBy {
+				if groupByItem.Property == sortItem.Field && groupByItem.CalendarInterval != "" {
+					sortField = quoteColumnName(sortItem.Field)
+					break
+				}
+			}
+			builder = builder.OrderBy(sortField + " " + dir)
 		}
 	}
 
