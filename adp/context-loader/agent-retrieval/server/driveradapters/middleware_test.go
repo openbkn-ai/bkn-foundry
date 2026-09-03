@@ -106,6 +106,121 @@ func TestMiddlewareHeaderAuthContext_LeavesMissingAccountHeadersEmpty(t *testing
 	})
 }
 
+func TestMiddlewareHeaderAuthContext_StrictModeRejectsInvalidSubjects(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name    string
+		headers map[string]string
+	}{
+		{name: "missing", headers: map[string]string{}},
+		{name: "unsupported type", headers: map[string]string{"x-account-id": "user-1", "x-account-type": "role"}},
+		{name: "invalid id", headers: map[string]string{"x-account-id": "user *", "x-account-type": "user"}},
+		{name: "surrounding whitespace", headers: map[string]string{"x-account-id": " user-1 ", "x-account-type": "user"}},
+		{name: "conflicting ids", headers: map[string]string{"user_id": "user-1", "x-account-id": "user-2", "x-account-type": "user"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+			for key, value := range tt.headers {
+				c.Request.Header.Set(key, value)
+			}
+
+			middlewareHeaderAuthContextWithMode(true)(c)
+
+			if w.Code != http.StatusUnauthorized || !c.IsAborted() {
+				t.Fatalf("status=%d aborted=%v body=%s", w.Code, c.IsAborted(), w.Body.String())
+			}
+			if _, ok := common.GetAccountAuthContextFromCtx(c.Request.Context()); ok {
+				t.Fatal("invalid internal subject must not be stored in context")
+			}
+		})
+	}
+}
+
+func TestMiddlewareHeaderAuthContext_StrictModeStoresCanonicalSubject(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+	c.Request.Header.Set(string(interfaces.HeaderXAccountID), "user-1")
+	c.Request.Header.Set(string(interfaces.HeaderXAccountType), "realname")
+
+	middlewareHeaderAuthContextWithMode(true)(c)
+
+	auth, ok := common.GetAccountAuthContextFromCtx(c.Request.Context())
+	if !ok || auth.AccountID != "user-1" || auth.AccountType != interfaces.AccessorTypeUser {
+		t.Fatalf("auth context = %#v", auth)
+	}
+	if got := common.GetHeaderFromCtx(c.Request.Context()); got[string(interfaces.HeaderXAccountID)] != "user-1" ||
+		got[string(interfaces.HeaderXAccountType)] != "user" {
+		t.Fatalf("downstream headers = %#v", got)
+	}
+}
+
+func TestMiddlewareIntrospectIgnoresSpoofedAccountHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+	c.Request.Header.Set(string(interfaces.HeaderXAccountID), "attacker")
+	c.Request.Header.Set(string(interfaces.HeaderXAccountType), "app")
+
+	middlewareIntrospectVerify(stubPublicHydra{}, nil)(c)
+
+	auth, ok := common.GetAccountAuthContextFromCtx(c.Request.Context())
+	if !ok || auth.AccountID != "user-1" || auth.AccountType != interfaces.AccessorTypeUser {
+		t.Fatalf("auth context = %#v", auth)
+	}
+	got := common.GetHeaderFromCtx(c.Request.Context())
+	if got[string(interfaces.HeaderXAccountID)] != "user-1" || got[string(interfaces.HeaderXAccountType)] != "user" {
+		t.Fatalf("spoofed subject reached downstream headers: %#v", got)
+	}
+}
+
+func TestMiddlewareIntrospect_BodyCannotOverrideAuthenticatedSubject(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(
+		`{"query":"orders","XAccountID":"attacker","XAccountType":"app"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set(string(interfaces.HeaderXAccountID), "attacker")
+	c.Request.Header.Set(string(interfaces.HeaderXAccountType), "app")
+
+	middlewareIntrospectVerifyWithMode(stubPublicHydra{}, nil, true)(c)
+	if c.IsAborted() {
+		t.Fatalf("valid authenticated subject was rejected: %s", w.Body.String())
+	}
+	req := &interfaces.SearchSchemaReq{}
+	if err := c.ShouldBindHeader(req); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ShouldBindJSON(req); err != nil {
+		t.Fatal(err)
+	}
+	if req.XAccountID != "user-1" || req.XAccountType != "user" {
+		t.Fatalf("spoofed subject overrode authentication: %#v", req)
+	}
+}
+
+func TestMiddlewareIntrospect_StrictModeRejectsInvalidResolvedSubject(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+
+	middlewareIntrospectVerifyWithMode(invalidSubjectHydra{}, nil, true)(c)
+
+	if w.Code != http.StatusUnauthorized || !c.IsAborted() {
+		t.Fatalf("status=%d aborted=%v body=%s", w.Code, c.IsAborted(), w.Body.String())
+	}
+	if _, ok := common.GetAccountAuthContextFromCtx(c.Request.Context()); ok {
+		t.Fatal("invalid authenticated subject must not be stored in context")
+	}
+}
+
 func TestMiddlewareHeaderAuthContext_SetsTraceContext(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -165,6 +280,12 @@ func (stubPublicHydra) Introspect(_ context.Context, _ string) (*interfaces.Toke
 		VisitorID:  "user-1",
 		VisitorTyp: interfaces.RealName,
 	}, nil
+}
+
+type invalidSubjectHydra struct{}
+
+func (invalidSubjectHydra) Introspect(_ context.Context, _ string) (*interfaces.TokenInfo, error) {
+	return &interfaces.TokenInfo{VisitorTyp: interfaces.Anonymous}, nil
 }
 
 type stubLogicPropertyResolverHandler struct{}

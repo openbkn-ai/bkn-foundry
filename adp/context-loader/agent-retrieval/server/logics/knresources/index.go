@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -94,8 +95,9 @@ type KnResourcesService interface {
 }
 
 type knResourcesService struct {
-	vega interfaces.DrivenVega
-	bkn  interfaces.BknBackendAccess
+	vega       interfaces.DrivenVega
+	bkn        interfaces.BknBackendAccess
+	pepEnabled bool
 }
 
 var (
@@ -106,9 +108,11 @@ var (
 // NewKnResourcesService create KnResourcesService singleton.
 func NewKnResourcesService() KnResourcesService {
 	once.Do(func() {
+		conf := config.NewConfigLoader()
 		instance = &knResourcesService{
-			vega: drivenadapters.NewVegaAccess(),
-			bkn:  drivenadapters.NewBknBackendAccess(),
+			vega:       drivenadapters.NewVegaAccess(),
+			bkn:        drivenadapters.NewBknBackendAccess(),
+			pepEnabled: conf.Auth.ContextLoaderKNPEPEnabled,
 		}
 	})
 	return instance
@@ -117,6 +121,13 @@ func NewKnResourcesService() KnResourcesService {
 // NewKnResourcesServiceWith injection dependency creation (for testing).
 func NewKnResourcesServiceWith(vega interfaces.DrivenVega, bkn interfaces.BknBackendAccess) KnResourcesService {
 	return &knResourcesService{vega: vega, bkn: bkn}
+}
+
+// NewKnResourcesServiceWithPEP injects dependencies and the rollout state for focused tests.
+func NewKnResourcesServiceWithPEP(vega interfaces.DrivenVega, bkn interfaces.BknBackendAccess,
+	pepEnabled bool,
+) KnResourcesService {
+	return &knResourcesService{vega: vega, bkn: bkn, pepEnabled: pepEnabled}
 }
 
 // ListResources lists queryable data resources (output condensed fields; type is vega category).
@@ -136,6 +147,10 @@ func (s *knResourcesService) ListResources(ctx context.Context, req *ListResourc
 	})
 	if err != nil {
 		return nil, err
+	}
+	if vegaResp == nil {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+			"vega returned an incomplete protected response")
 	}
 
 	out := &ListResourcesResp{
@@ -172,6 +187,10 @@ func (s *knResourcesService) listByKnowledgeNetwork(ctx context.Context, knID, t
 
 	out := &ListResourcesResp{Entries: make([]ResourceLite, 0)}
 	if detail == nil {
+		if s.pepEnabled {
+			return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+				"BKN returned an incomplete protected response")
+		}
 		return out, nil
 	}
 
@@ -211,8 +230,9 @@ func (s *knResourcesService) listByKnowledgeNetwork(ctx context.Context, knID, t
 		targets = append(targets, target{objectTypeID: ot.ID, resourceID: resourceID})
 	}
 
-	// Concurrent retrieval is limited. A single failure will only fall into missing, and the entire call cannot fail - a dangling binding.
-	// It shouldn't drag down the other dozens of tables.
+	// Retrieval is bounded and stable by target position. Legacy mode classifies
+	// isolated failures as missing; PEP mode omits explicit 403 denials, preserves
+	// authoritative 404s, and fails the whole aggregate on every other failure.
 	type fetched struct {
 		resource *interfaces.VegaResource
 		err      error
@@ -235,7 +255,20 @@ func (s *knResourcesService) listByKnowledgeNetwork(ctx context.Context, knID, t
 	var firstFetchErr error
 	for i, t := range targets {
 		r := results[i]
-		if r.err != nil || r.resource == nil {
+		if r.err != nil {
+			if s.pepEnabled {
+				status, hasStatus := infraErr.HTTPStatus(r.err)
+				switch {
+				case hasStatus && status == http.StatusForbidden:
+					// A denied physical resource is not a missing/stale diagnostic:
+					// exposing the binding would reveal a resource the caller cannot view.
+					continue
+				case hasStatus && status == http.StatusNotFound:
+					// A genuine not-found remains a modelling diagnostic below.
+				default:
+					return nil, r.err
+				}
+			}
 			if firstFetchErr == nil && r.err != nil {
 				firstFetchErr = r.err
 			}
@@ -243,6 +276,18 @@ func (s *knResourcesService) listByKnowledgeNetwork(ctx context.Context, knID, t
 				ObjectTypeID: t.objectTypeID,
 				ResourceID:   t.resourceID,
 				Reason:       unresolvedReason(r.err),
+			})
+			continue
+		}
+		if r.resource == nil {
+			if s.pepEnabled {
+				return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+					"vega returned an incomplete protected response")
+			}
+			out.Missing = append(out.Missing, UnresolvedBinding{
+				ObjectTypeID: t.objectTypeID,
+				ResourceID:   t.resourceID,
+				Reason:       unresolvedReason(nil),
 			})
 			continue
 		}
@@ -261,13 +306,14 @@ func (s *knResourcesService) listByKnowledgeNetwork(ctx context.Context, knID, t
 			CatalogID:  r.resource.CatalogID,
 		})
 	}
-	// There is binding, none is retrieved, and the failure is not caused by a single resource such as "this resource is gone/no permissions".
+	// In legacy mode, when every binding fails for something other than a
+	// per-resource 404/403, surface the outage instead of returning an empty list.
 	// That basically leaves the entire game unavailable (vega hangs, ctx times out). At this time, "success + empty list" is returned.
 	// The caller must regard "the backend is down" as "this network has no tables" - exactly what this issue wants to eliminate.
 	// Dumb failure. Transparently transmit the first error so that the downstream status code and reason can surface.
 	//
-	// On the contrary, 404/403 still remains in missing: only one table is bound to a network, and this table happened to be deleted.
-	// That's a solid modeling fact and shouldn't be disguised as a service failure.
+	// PEP mode has already returned on outages and omitted 403 bindings above;
+	// only an authoritative 404 can remain in missing there.
 	if len(targets) > 0 && len(out.Missing) == len(targets) && isDownstreamOutage(firstFetchErr) {
 		return nil, firstFetchErr
 	}
@@ -310,6 +356,10 @@ func (s *knResourcesService) DescribeResource(ctx context.Context, resourceID st
 	res, err := s.vega.GetResource(ctx, resourceID)
 	if err != nil {
 		return nil, err
+	}
+	if res == nil {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+			"vega returned an incomplete protected response")
 	}
 
 	connectorType, err := s.vega.GetResourceConnectorType(ctx, resourceID)

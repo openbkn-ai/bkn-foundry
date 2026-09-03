@@ -579,7 +579,9 @@ func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetr
 		}
 		// Counts only: which object types have metrics worth drilling into, without
 		// carrying the metric list itself at this level.
-		metrics.AttachRelatedMetricCounts(ctx, knID, resp.ObjectTypes)
+		if err := metrics.AttachRelatedMetricCounts(ctx, knID, resp.ObjectTypes); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		resp.Slim(getStringArg(req, "detail_level", interfaces.DetailLevelSummary))
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {
@@ -608,6 +610,12 @@ func (a *knDrillArgs) resolveKnID(req mcp.CallToolRequest) string {
 // ids, plus the metrics scoped to them. Pairs with get_kn_detail summary, which
 // omits that heavy detail.
 func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetricsService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return handleGetObjectTypesWithPEP(bkn, metrics, false)
+}
+
+func handleGetObjectTypesWithPEP(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetricsService,
+	pepEnabled bool,
+) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
 		if err != nil {
@@ -628,18 +636,23 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 		// Prioritize the endpoint that retrieves details by id: the export view only lists object types, does not enrich the data source, and does not enrich the data source.
 		// condition_operations is always empty, and the caller uses this to determine whether the field can match / knn.
 		//
-		// But this endpoint requires all ids to be hit. If an invalid id is mixed in, the whole batch will be 404. Return to the export view at this time:
+		// In legacy mode this endpoint requires all ids to be hit. If an invalid id is mixed in, the whole batch will be 404. Return to the export view at this time:
 		// It would be better to have fewer operators in this batch than to throw away the remaining valid object types because of an invalid id——.
 		// Exported views also support fallback matching by name, which is also existing behavior.
+		// PEP mode never uses that unfiltered export fallback and does not report
+		// omitted IDs as missing, because an omission may be an authorization filter.
 		matched, err := bkn.GetObjectTypeDetail(ctx, knID, args.IDs, true)
 		var missing []string
-		if err != nil || len(matched) < len(args.IDs) {
+		if pepEnabled && err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		if !pepEnabled && (err != nil || len(matched) < len(args.IDs)) {
 			detail, detailErr := bkn.GetKnowledgeNetworkDetail(ctx, knID)
 			if detailErr != nil {
 				return mcp.NewToolResultError(detailErr.Error()), nil
 			}
 			matched, missing = detail.FilterObjectTypes(args.IDs)
-		} else {
+		} else if !pepEnabled {
 			missing = missingObjectTypeIDs(args.IDs, matched)
 		}
 		// The same rule as search_schema: only emit underivable operators. Comparison operators (==/in/like/range…)
@@ -648,7 +661,9 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 
 		// Step 2 of the OT-first metric path: a metric that is not bound to a logic
 		// property is unreachable from the object type without this.
-		metrics.AttachRelatedMetrics(ctx, knID, matched)
+		if err := metrics.AttachRelatedMetrics(ctx, knID, matched); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		bkntrace.EmitSchemaDefinitionEvents(ctx, nil, "object", knID, args.IDs, len(matched))
 		resp := &interfaces.ObjectTypesResp{KnID: knID, ObjectTypes: matched, Missing: missing}
 		result, err := BuildMCPToolResult(resp, format)
@@ -662,6 +677,10 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 // handleGetRelationTypes handles get_relation_types tool calls: return the full
 // definition (incl. mapping_rules) of the requested relation type ids.
 func handleGetRelationTypes(bkn interfaces.BknBackendAccess) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return handleGetRelationTypesWithPEP(bkn, false)
+}
+
+func handleGetRelationTypesWithPEP(bkn interfaces.BknBackendAccess, pepEnabled bool) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
 		if err != nil {
@@ -679,11 +698,21 @@ func handleGetRelationTypes(bkn interfaces.BknBackendAccess) func(ctx context.Co
 			return mcp.NewToolResultError("ids is required (relation type ids from get_kn_detail)"), nil
 		}
 
-		detail, err := bkn.GetKnowledgeNetworkDetail(ctx, knID)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+		var matched []*interfaces.RelationType
+		var missing []string
+		if pepEnabled {
+			var err error
+			matched, err = bkn.GetRelationTypeDetail(ctx, knID, args.IDs, true)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+		} else {
+			detail, err := bkn.GetKnowledgeNetworkDetail(ctx, knID)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			matched, missing = detail.FilterRelationTypes(args.IDs)
 		}
-		matched, missing := detail.FilterRelationTypes(args.IDs)
 		bkntrace.EmitSchemaDefinitionEvents(ctx, nil, "relation", knID, args.IDs, len(matched))
 		resp := &interfaces.RelationTypesResp{KnID: knID, RelationTypes: matched, Missing: missing}
 		result, err := BuildMCPToolResult(resp, format)

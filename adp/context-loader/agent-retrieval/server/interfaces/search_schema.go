@@ -8,8 +8,8 @@ package interfaces
 
 // SearchSchemaReq search_schema standard request
 type SearchSchemaReq struct {
-	XAccountID   string `header:"x-account-id"`
-	XAccountType string `header:"x-account-type"`
+	XAccountID   string `json:"-" header:"x-account-id"`
+	XAccountType string `json:"-" header:"x-account-type"`
 	XKnID        string `header:"x-kn-id"`
 
 	Query        string             `json:"query" validate:"required"`

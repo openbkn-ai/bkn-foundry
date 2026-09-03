@@ -24,7 +24,8 @@ const objectTypeRelationMultiplier = 2
 // conceptRetrieval concept recall main logic.
 //
 // Routing strategy:
-// - When config.ConceptGroups is not empty, use conceptRetrievalByGroups: call BKN directly.
+// - When config.ConceptGroups is not empty or the KN PEP rollout is enabled, use
+// conceptRetrievalByGroups: call BKN directly.
 // of SearchObjectTypes/SearchRelationTypes/SearchActionTypes, grouped by BKN in.
 // Complete the recall within the scope, skipping the local full GetKnowledgeNetworkDetail and local filtering.
 // - When config.ConceptGroups is empty, follow the historical path: pull all network details -> optional rough call.
@@ -43,7 +44,7 @@ func (s *localSearchImpl) conceptRetrieval(
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 
-	if len(config.ConceptGroups) > 0 {
+	if s.knPEPEnabled() || len(config.ConceptGroups) > 0 {
 		return s.conceptRetrievalByGroups(ctx, req, config)
 	}
 
@@ -105,7 +106,9 @@ func (s *localSearchImpl) conceptRetrieval(
 
 	// 7. Get sample data (optional)
 	if boolValue(config.IncludeSampleData) && len(objectTypesLocal) > 0 {
-		s.fetchSampleData(ctx, req.KnID, objectTypesLocal, boolValue(config.SchemaBrief))
+		if err := s.fetchAuthorizedSampleData(ctx, req.KnID, objectTypesLocal, boolValue(config.SchemaBrief)); err != nil {
+			return nil, err
+		}
 	}
 
 	return &interfaces.KnSearchConceptResult{
@@ -116,7 +119,8 @@ func (s *localSearchImpl) conceptRetrieval(
 	}, nil
 }
 
-// conceptRetrievalByGroups is the concept recall path in the scenario where concept_groups is not empty.
+// conceptRetrievalByGroups is the typed BKN concept recall path used by
+// concept-group searches and by the KN PEP rollout.
 //
 // Design points:
 // - Directly call BKN's typed search API (SearchObjectTypes / SearchRelationTypes /.
@@ -163,6 +167,9 @@ func (s *localSearchImpl) conceptRetrievalByGroups(
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("[ConceptRetrieval][Groups] SearchActionTypes failed: %v", err)
 		return nil, err
+	}
+	if s.knPEPEnabled() && (objectResp == nil || relationResp == nil || actionResp == nil) {
+		return nil, protectedDependencyUnavailable(ctx, "BKN typed concept search")
 	}
 
 	var (
@@ -212,7 +219,9 @@ func (s *localSearchImpl) conceptRetrievalByGroups(
 	actionTypesLocal := s.convertActionTypesToLocal(actions, req.KnID, objects)
 
 	if boolValue(config.IncludeSampleData) && len(objectTypesLocal) > 0 {
-		s.fetchSampleData(ctx, req.KnID, objectTypesLocal, brief)
+		if err := s.fetchAuthorizedSampleData(ctx, req.KnID, objectTypesLocal, brief); err != nil {
+			return nil, err
+		}
 	}
 
 	return &interfaces.KnSearchConceptResult{
@@ -280,15 +289,35 @@ func (s *localSearchImpl) completeReferencedObjectTypes(
 
 	out := make([]*interfaces.ObjectType, 0, len(objects)+len(enriched))
 	out = append(out, objects...)
+	returned := make(map[string]struct{}, len(enriched))
 	for _, obj := range enriched {
 		if obj == nil || obj.ID == "" {
+			if s.knPEPEnabled() {
+				return nil, protectedDependencyUnavailable(ctx, "BKN object type detail")
+			}
 			continue
 		}
+		if _, requested := missingSeen[obj.ID]; !requested {
+			if s.knPEPEnabled() {
+				return nil, protectedDependencyUnavailable(ctx, "BKN object type detail")
+			}
+			continue
+		}
+		if _, duplicate := returned[obj.ID]; duplicate {
+			if s.knPEPEnabled() {
+				return nil, protectedDependencyUnavailable(ctx, "BKN object type detail")
+			}
+			continue
+		}
+		returned[obj.ID] = struct{}{}
 		if _, ok := known[obj.ID]; ok {
 			continue
 		}
 		known[obj.ID] = struct{}{}
 		out = append(out, obj)
+	}
+	if s.knPEPEnabled() && len(returned) != len(missingIDs) {
+		return nil, protectedDependencyUnavailable(ctx, "BKN object type detail")
 	}
 
 	return out, nil
@@ -1107,7 +1136,9 @@ func (s *localSearchImpl) pruneProperties(
 }
 
 // fetchSampleData gets sample data.
-func (s *localSearchImpl) fetchSampleData(ctx context.Context, knID string, objectTypes []*interfaces.KnSearchObjectType, schemaBrief bool) {
+func (s *localSearchImpl) fetchSampleData(ctx context.Context, knID string,
+	objectTypes []*interfaces.KnSearchObjectType, schemaBrief bool,
+) error {
 	for _, obj := range objectTypes {
 		// Call instance retrieval to obtain a piece of sample data.
 		req := &interfaces.QueryObjectInstancesReq{
@@ -1121,6 +1152,15 @@ func (s *localSearchImpl) fetchSampleData(ctx context.Context, knID string, obje
 		resp, err := s.ontologyQuery.QueryObjectInstances(ctx, req)
 		if err != nil {
 			s.logger.WithContext(ctx).Warnf("[FetchSampleData] Failed to fetch sample for %s: %v", obj.ConceptID, err)
+			if s.knPEPEnabled() && isAuthorizationError(err) {
+				return err
+			}
+			continue
+		}
+		if resp == nil {
+			if s.knPEPEnabled() {
+				return protectedDependencyUnavailable(ctx, "ontology-query")
+			}
 			continue
 		}
 
@@ -1141,6 +1181,7 @@ func (s *localSearchImpl) fetchSampleData(ctx context.Context, knID string, obje
 			}
 		}
 	}
+	return nil
 }
 
 // ==================== Type conversion function ====================.

@@ -45,6 +45,7 @@ type knQueryToolsHandler struct {
 	resources  knresources.KnResourcesService
 	bknBackend interfaces.BknBackendAccess
 	metrics    knmetrics.KnMetricsService
+	pepEnabled bool
 }
 
 var (
@@ -62,6 +63,7 @@ func NewKnQueryToolsHandler() KnQueryToolsHandler {
 			resources:  knresources.NewKnResourcesService(),
 			bknBackend: drivenadapters.NewBknBackendAccess(),
 			metrics:    knmetrics.NewKnMetricsService(),
+			pepEnabled: conf.Auth.ContextLoaderKNPEPEnabled,
 		}
 	})
 	return handler
@@ -79,6 +81,10 @@ func (h *knQueryToolsHandler) RunSQL(c *gin.Context) {
 	resp, err := h.runSQL.RunSQL(ctx, req)
 	if err != nil {
 		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#RunSQL] run sql failed: %v", err)
+		if _, ok := errors.HTTPStatus(err); h.pepEnabled && ok {
+			rest.ReplyError(c, err)
+			return
+		}
 		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error()))
 		return
 	}
@@ -132,7 +138,11 @@ func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 		return
 	}
 	// Only the count is attached but not the details: it is enough for the Agent to judge which object type is worthy of drill-down metrics.
-	h.metrics.AttachRelatedMetricCounts(ctx, req.KnID, resp.ObjectTypes)
+	if err := h.metrics.AttachRelatedMetricCounts(ctx, req.KnID, resp.ObjectTypes); err != nil {
+		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] metric authorization failed: %v", err)
+		rest.ReplyError(c, err)
+		return
+	}
 	detailLevel := req.DetailLevel
 	if detailLevel == "" {
 		detailLevel = interfaces.DetailLevelSummary
@@ -211,15 +221,31 @@ func (h *knQueryToolsHandler) GetObjectTypes(c *gin.Context) {
 		return
 	}
 
-	detail, err := h.bknBackend.GetKnowledgeNetworkDetail(ctx, knID)
-	if err != nil {
-		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetObjectTypes] failed: %v", err)
+	var matched []*interfaces.ObjectType
+	var missing []string
+	if h.pepEnabled {
+		var err error
+		matched, err = h.bknBackend.GetObjectTypeDetail(ctx, knID, req.IDs, true)
+		if err != nil {
+			h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetObjectTypes] failed: %v", err)
+			rest.ReplyError(c, err)
+			return
+		}
+	} else {
+		detail, err := h.bknBackend.GetKnowledgeNetworkDetail(ctx, knID)
+		if err != nil {
+			h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetObjectTypes] failed: %v", err)
+			rest.ReplyError(c, err)
+			return
+		}
+		matched, missing = detail.FilterObjectTypes(req.IDs)
+	}
+	// OT-first step 2: scoped metrics with unbound logical properties are only visible here.
+	if err := h.metrics.AttachRelatedMetrics(ctx, knID, matched); err != nil {
+		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetObjectTypes] metric authorization failed: %v", err)
 		rest.ReplyError(c, err)
 		return
 	}
-	matched, missing := detail.FilterObjectTypes(req.IDs)
-	// OT-first step 2: scoped metrics with unbound logical properties are only visible here.
-	h.metrics.AttachRelatedMetrics(ctx, knID, matched)
 	bkntrace.EmitSchemaDefinitionEvents(ctx, h.logger, "object", knID, req.IDs, len(matched))
 	rest.ReplyOK(c, http.StatusOK, &interfaces.ObjectTypesResp{KnID: knID, ObjectTypes: matched, Missing: missing})
 }
@@ -240,13 +266,25 @@ func (h *knQueryToolsHandler) GetRelationTypes(c *gin.Context) {
 		return
 	}
 
-	detail, err := h.bknBackend.GetKnowledgeNetworkDetail(ctx, knID)
-	if err != nil {
-		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetRelationTypes] failed: %v", err)
-		rest.ReplyError(c, err)
-		return
+	var matched []*interfaces.RelationType
+	var missing []string
+	if h.pepEnabled {
+		var err error
+		matched, err = h.bknBackend.GetRelationTypeDetail(ctx, knID, req.IDs, true)
+		if err != nil {
+			h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetRelationTypes] failed: %v", err)
+			rest.ReplyError(c, err)
+			return
+		}
+	} else {
+		detail, err := h.bknBackend.GetKnowledgeNetworkDetail(ctx, knID)
+		if err != nil {
+			h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetRelationTypes] failed: %v", err)
+			rest.ReplyError(c, err)
+			return
+		}
+		matched, missing = detail.FilterRelationTypes(req.IDs)
 	}
-	matched, missing := detail.FilterRelationTypes(req.IDs)
 	bkntrace.EmitSchemaDefinitionEvents(ctx, h.logger, "relation", knID, req.IDs, len(matched))
 	rest.ReplyOK(c, http.StatusOK, &interfaces.RelationTypesResp{KnID: knID, RelationTypes: matched, Missing: missing})
 }

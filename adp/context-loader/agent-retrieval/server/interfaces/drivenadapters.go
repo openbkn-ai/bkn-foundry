@@ -274,8 +274,8 @@ type KnSearchScope struct {
 // KnSearchReq kn_search request
 type KnSearchReq struct {
 	// Header Parameters
-	XAccountID   string `header:"x-account-id"`
-	XAccountType string `header:"x-account-type"`
+	XAccountID   string `json:"-" header:"x-account-id"`
+	XAccountType string `json:"-" header:"x-account-type"`
 
 	// Body Parameters - use any to avoid defining complex structures explicitly
 	// Corresponds to the complete request structure of data-retrieval interface

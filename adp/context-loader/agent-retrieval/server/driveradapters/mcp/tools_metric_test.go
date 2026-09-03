@@ -161,6 +161,30 @@ func TestHandleGetObjectTypes_UsesEnrichedEndpoint(t *testing.T) {
 	})
 }
 
+func TestHandleGetObjectTypes_PEPDoesNotFallbackOrReportDeniedIDs(t *testing.T) {
+	stub := &capsBknBackend{}
+	handler := handleGetObjectTypesWithPEP(stub, knmetrics.NewKnMetricsServiceWith(nil, stub, nil), true)
+	req := mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{
+		Arguments: map[string]any{
+			"kn_id":           "kn1",
+			"ids":             []any{"stadiums", "denied"},
+			"response_format": "json",
+		},
+	}}
+
+	result, err := handler(context.Background(), req)
+	if err != nil || result.IsError {
+		t.Fatalf("unexpected result: err=%v result=%v", err, result)
+	}
+	if stub.detailCalls != 1 || stub.exportCalls != 0 {
+		t.Fatalf("PEP path must use only the typed endpoint: detail=%d export=%d", stub.detailCalls, stub.exportCalls)
+	}
+	response := resultToMap(t, result)
+	if _, exists := response["missing"]; exists {
+		t.Fatalf("filtered IDs must not appear in missing diagnostics: %#v", response["missing"])
+	}
+}
+
 // capsBknBackend only returns an object type with an operator, and records the number of times the two access paths are called.
 type capsBknBackend struct {
 	interfaces.BknBackendAccess

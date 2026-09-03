@@ -66,6 +66,10 @@ service:
 # Authentication switches.
 auth:
   enabled: true
+  # Temporary migration switch for #517. #1253 removes it after cutover.
+  contextLoaderKnPepEnabled: false
+  # Per-request batch size; this is not a cap on total retrieval candidates.
+  resourceFilterChunkSize: 200
 
 depServices:
   rds:

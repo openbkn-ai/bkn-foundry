@@ -70,7 +70,7 @@ func NewHydra() interfaces.Hydra {
 	once.Do(func() {
 		conf := config.NewConfigLoader()
 		if !config.GetAuthEnabled() {
-			conf.GetLogger().Warn("ISF authentication disabled via AUTH_ENABLED env, using noop hydra")
+			conf.GetLogger().Warn("authentication disabled via AUTH_ENABLED env, using noop hydra")
 			h = &noopHydra{}
 		} else {
 			h = &hydra{

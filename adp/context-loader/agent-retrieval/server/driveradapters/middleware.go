@@ -56,6 +56,12 @@ func getToken(c *gin.Context) (token string) {
 // Choose one of the two credentials: the one starting with the AppKey prefix (bak_) is submitted to bkn-safe for verification (API Key issued by the user),
 // The rest of the bearer token goes hydra introspection. The two paths produce the same TokenInfo, and the downstream authentication context is consistent.
 func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKeyVerifier) gin.HandlerFunc {
+	return middlewareIntrospectVerifyWithMode(hydra, appKeys, false)
+}
+
+func middlewareIntrospectVerifyWithMode(hydra interfaces.Hydra, appKeys interfaces.AppKeyVerifier,
+	strict bool,
+) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		// Set language information to context.
@@ -76,6 +82,19 @@ func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKe
 			c.Abort()
 			return
 		}
+		if tokenInfo == nil {
+			rest.ReplyError(c, aerrors.DefaultHTTPError(ctx, http.StatusUnauthorized,
+				"authenticated execution subject is missing"))
+			c.Abort()
+			return
+		}
+		accountType := tokenInfo.VisitorTyp.ToAccessorType()
+		if strict && !validInternalExecutionSubject(tokenInfo.VisitorID, accountType) {
+			rest.ReplyError(c, aerrors.DefaultHTTPError(ctx, http.StatusUnauthorized,
+				"authenticated execution subject is missing or invalid"))
+			c.Abort()
+			return
+		}
 		if tokenInfo.LoginIP == "" {
 			// If the returned IP is empty, use clientIP.
 			tokenInfo.LoginIP = c.ClientIP()
@@ -91,11 +110,17 @@ func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKe
 		// Set the authentication context on the context.
 		authContext := &interfaces.AccountAuthContext{
 			AccountID:   tokenInfo.VisitorID,
-			AccountType: tokenInfo.VisitorTyp.ToAccessorType(),
+			AccountType: accountType,
 			AuthMethod:  authMethod,
 			TokenInfo:   tokenInfo,
 		}
 		ctx = common.SetAccountAuthContextToCtx(ctx, authContext)
+		// Normalize caller-controlled aliases before handlers bind headers. The
+		// context remains authoritative for all outbound propagation, and request
+		// DTOs observe the same authenticated subject rather than spoofed values.
+		c.Request.Header.Set(string(interfaces.HeaderXAccountID), authContext.AccountID)
+		c.Request.Header.Set(string(interfaces.HeaderXAccountType), string(authContext.AccountType))
+		c.Request.Header.Set(string(interfaces.HeaderUserID), authContext.AccountID)
 		c.Request = c.Request.WithContext(ctx)
 		c.Request.Header.Set(string(interfaces.IsPublic), "true")
 		c.Next()
@@ -104,16 +129,51 @@ func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKe
 
 // Internal interface Header authentication account information processing middleware.
 func middlewareHeaderAuthContext() gin.HandlerFunc {
+	return middlewareHeaderAuthContextWithMode(false)
+}
+
+// middlewareHeaderAuthContextWithMode resolves the execution subject carried
+// by a trusted internal hop. Strict validation is tied to the temporary #517
+// rollout switch so the implementation can merge before all callers migrate.
+func middlewareHeaderAuthContextWithMode(strict bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		ctx = common.SetTraceContextToCtx(ctx, common.TraceContextFromHeaders(c.GetHeader))
 		// Get the xAccountType account type in the Header.
-		xAccountType := c.GetHeader(string(interfaces.HeaderXAccountType))
+		rawAccountType := c.GetHeader(string(interfaces.HeaderXAccountType))
+		rawUserID := c.GetHeader(string(interfaces.HeaderUserID))
+		rawAccountID := c.GetHeader(string(interfaces.HeaderXAccountID))
+		xAccountType, userID, xAccountID := rawAccountType, rawUserID, rawAccountID
+		if strict {
+			xAccountType = strings.TrimSpace(rawAccountType)
+			userID = strings.TrimSpace(rawUserID)
+			xAccountID = strings.TrimSpace(rawAccountID)
+			if rawUserID != userID || rawAccountID != xAccountID || rawAccountType != xAccountType {
+				rest.ReplyError(c, aerrors.DefaultHTTPError(ctx, http.StatusUnauthorized,
+					"internal execution subject contains invalid whitespace"))
+				c.Abort()
+				return
+			}
+		}
 
 		// Compatible with user_id parameter passing, when user_id is empty, xAccountID is used.
-		xAccountID := c.GetHeader(string(interfaces.HeaderUserID))
-		if xAccountID == "" {
-			xAccountID = c.GetHeader(string(interfaces.HeaderXAccountID))
+		if strict && userID != "" && xAccountID != "" && userID != xAccountID {
+			rest.ReplyError(c, aerrors.DefaultHTTPError(ctx, http.StatusUnauthorized,
+				"conflicting internal execution subject headers"))
+			c.Abort()
+			return
+		}
+		if userID != "" {
+			xAccountID = userID
+		}
+		if strict && xAccountType == "realname" {
+			xAccountType = string(interfaces.AccessorTypeUser)
+		}
+		if strict && !validInternalExecutionSubject(xAccountID, interfaces.AccessorType(xAccountType)) {
+			rest.ReplyError(c, aerrors.DefaultHTTPError(ctx, http.StatusUnauthorized,
+				"internal execution subject is missing or invalid"))
+			c.Abort()
+			return
 		}
 		// Set user_id to Header, TODO: Do you need to check required?.
 		c.Request.Header.Set(string(interfaces.HeaderUserID), xAccountID)
@@ -130,6 +190,18 @@ func middlewareHeaderAuthContext() gin.HandlerFunc {
 		ctx = common.SetAccountAuthContextToCtx(ctx, authContext)
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
+	}
+}
+
+func validInternalExecutionSubject(accountID string, accountType interfaces.AccessorType) bool {
+	if accountID == "" || strings.TrimSpace(accountID) != accountID || strings.ContainsAny(accountID, " \t\r\n*") {
+		return false
+	}
+	switch accountType {
+	case interfaces.AccessorTypeUser, interfaces.AccessorTypeApp:
+		return true
+	default:
+		return false
 	}
 }
 

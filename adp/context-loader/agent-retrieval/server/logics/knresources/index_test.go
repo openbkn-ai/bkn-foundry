@@ -333,6 +333,73 @@ func TestListResources_ByKnID_PartialFailureStillReturnsTheRest(t *testing.T) {
 	}
 }
 
+func TestListResources_ByKnID_PEPDeniedBindingIsOmitted(t *testing.T) {
+	ctx := context.Background()
+	fake := &fakeVega{
+		byID: map[string]*interfaces.VegaResource{
+			"r1": {ID: "r1", Name: "orders", Category: "table"},
+		},
+		errByID: map[string]error{
+			"secret": infraErr.DefaultHTTPError(ctx, http.StatusForbidden, "forbidden"),
+		},
+	}
+	bkn := &fakeBkn{detail: &interfaces.KnowledgeNetworkDetail{
+		ObjectTypes: []*interfaces.ObjectType{
+			ot("order", "resource", "r1"),
+			ot("secret_order", "resource", "secret"),
+		},
+	}}
+	svc := NewKnResourcesServiceWithPEP(fake, bkn, true)
+
+	resp, err := svc.ListResources(ctx, &ListResourcesReq{KnID: "kn1"})
+	if err != nil {
+		t.Fatalf("an explicit resource denial should be filtered, got %v", err)
+	}
+	if len(resp.Entries) != 1 || resp.Entries[0].ResourceID != "r1" {
+		t.Fatalf("expected only the allowed resource, got %+v", resp)
+	}
+	if len(resp.Missing) != 0 {
+		t.Fatalf("denied binding must not leak through missing diagnostics: %+v", resp.Missing)
+	}
+}
+
+func TestListResources_ByKnID_PEPPartialDependencyFailureFailsWholeRequest(t *testing.T) {
+	ctx := context.Background()
+	downstreamErr := infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable, "vega unavailable")
+	fake := &fakeVega{
+		byID: map[string]*interfaces.VegaResource{
+			"r1": {ID: "r1", Name: "orders", Category: "table"},
+		},
+		errByID: map[string]error{"r2": downstreamErr},
+	}
+	bkn := &fakeBkn{detail: &interfaces.KnowledgeNetworkDetail{
+		ObjectTypes: []*interfaces.ObjectType{
+			ot("order", "resource", "r1"),
+			ot("shipment", "resource", "r2"),
+		},
+	}}
+	svc := NewKnResourcesServiceWithPEP(fake, bkn, true)
+
+	_, err := svc.ListResources(ctx, &ListResourcesReq{KnID: "kn1"})
+	if !errors.Is(err, downstreamErr) {
+		t.Fatalf("expected the whole aggregate to fail, got %v", err)
+	}
+}
+
+func TestListResources_ByKnID_PEPIncompleteResourceFailsWholeRequest(t *testing.T) {
+	fake := &fakeVega{byID: map[string]*interfaces.VegaResource{"r1": nil}}
+	bkn := &fakeBkn{detail: &interfaces.KnowledgeNetworkDetail{
+		ObjectTypes: []*interfaces.ObjectType{ot("order", "resource", "r1")},
+	}}
+	svc := NewKnResourcesServiceWithPEP(fake, bkn, true)
+
+	resp, err := svc.ListResources(context.Background(), &ListResourcesReq{KnID: "kn1"})
+	status, ok := infraErr.HTTPStatus(err)
+	if resp != nil || !ok || status != http.StatusServiceUnavailable {
+		t.Fatalf("resp=%+v error=%v, want complete failure with 503", resp, err)
+	}
+}
+
 func TestListResources_ByKnID_AppliesTypeFilter(t *testing.T) {
 	fake := &fakeVega{byID: map[string]*interfaces.VegaResource{
 		"r1": {ID: "r1", Name: "orders", Category: "table"},
