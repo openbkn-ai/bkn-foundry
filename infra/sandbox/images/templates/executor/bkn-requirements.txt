@@ -11,6 +11,12 @@
 # has no git, so `git+https://` cannot install it.
 # To upgrade: replace the sha with a newer commit on bkn-sdk main and rebuild.
 #
+# Its only runtime dependency is httpx. Where the data-science stack is also
+# installed, common-requirements.txt pins httpx==0.27.2 and both files are
+# resolved in one pip pass, so that exact pin wins over this package's
+# `httpx>=0.27`. On a template without that stack, pip picks the newest httpx
+# satisfying the floor.
+#
 # Note for mirror-only builds: this is a PEP 508 direct URL, so `USE_MIRROR`
 # does not redirect it -- the build host needs to reach github.com even when pip
 # itself is pointed at a mirror.

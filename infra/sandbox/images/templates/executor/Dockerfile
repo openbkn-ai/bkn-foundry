@@ -67,18 +67,21 @@ COPY images/templates/executor/bkn-requirements.txt /tmp/bkn-requirements.txt
 # the built-in `bkn` face) is COPY'd unconditionally above, and the scaffolds and
 # generator prompts tell authors the SDK is pre-installed without naming a
 # template. The data-science stack stays opt-in.
+#
+# Both requirement files go into ONE pip invocation rather than two. Two
+# `--target` installs into the same directory corrupt it: pip skips a package
+# whose directory already exists (warning only, unless --upgrade) but still
+# writes the new dist-info, so the directory ends up with two dist-info entries
+# for one package and the earlier pin silently loses. Resolving both files in a
+# single pass keeps `httpx==0.27.2` here authoritative over the SDK's
+# `httpx>=0.27`.
 RUN mkdir -p /opt/sandbox-common && \
+    REQS="-r /tmp/bkn-requirements.txt" && \
+    if [ "$PREINSTALL_COMMON" = "true" ]; then REQS="$REQS -r /tmp/common-requirements.txt"; fi && \
     if [ "$USE_MIRROR" = "true" ]; then \
-      pip install --no-cache-dir -i "https://$PIP_MIRROR/pypi/simple" --target /opt/sandbox-common -r /tmp/bkn-requirements.txt; \
+      pip install --no-cache-dir -i "https://$PIP_MIRROR/pypi/simple" --target /opt/sandbox-common $REQS; \
     else \
-      pip install --no-cache-dir --target /opt/sandbox-common -r /tmp/bkn-requirements.txt; \
-    fi && \
-    if [ "$PREINSTALL_COMMON" = "true" ]; then \
-      if [ "$USE_MIRROR" = "true" ]; then \
-        pip install --no-cache-dir -i "https://$PIP_MIRROR/pypi/simple" --target /opt/sandbox-common -r /tmp/common-requirements.txt; \
-      else \
-        pip install --no-cache-dir --target /opt/sandbox-common -r /tmp/common-requirements.txt; \
-      fi; \
+      pip install --no-cache-dir --target /opt/sandbox-common $REQS; \
     fi && \
     rm -f /tmp/common-requirements.txt /tmp/bkn-requirements.txt
 
