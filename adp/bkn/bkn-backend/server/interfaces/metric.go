@@ -273,6 +273,7 @@ type MetricDefinition struct {
 	Updater    AccountInfo `json:"updater,omitempty" mapstructure:"updater"`
 	UpdateTime int64       `json:"update_time,omitempty" mapstructure:"update_time"`
 	ModuleType string      `json:"module_type,omitempty" mapstructure:"module_type"`
+	Operations []string    `json:"operations,omitempty"`
 
 	Vector []float32 `json:"_vector,omitempty"`
 	Score  *float64  `json:"_score,omitempty"`

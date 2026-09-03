@@ -376,6 +376,11 @@ components:
         module_type:
           type: string
           description: Always risk_type
+        operations:
+          description: Operations allowed for the current accessor on this risk type.
+          type: array
+          items:
+            type: string
         creator:
           $ref: "#/components/schemas/AccountInfo"
         create_time:

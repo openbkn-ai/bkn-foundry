@@ -19,6 +19,19 @@ import (
 const knChildResourcePEPEnabledEnv = "KN_CHILD_RESOURCE_PEP_ENABLED"
 const knChildResourceFilterChunkSizeEnv = "KN_CHILD_RESOURCE_FILTER_CHUNK_SIZE"
 
+var knChildOperations = []string{
+	interfaces.OPERATION_TYPE_VIEW_DETAIL,
+	interfaces.OPERATION_TYPE_QUERY_DATA,
+	interfaces.OPERATION_TYPE_MODIFY,
+	interfaces.OPERATION_TYPE_DELETE,
+	interfaces.OPERATION_TYPE_AUTHORIZE,
+}
+
+var actionTypeOperations = append(append([]string{}, knChildOperations...),
+	interfaces.OPERATION_TYPE_TASK_MANAGE,
+	interfaces.OPERATION_TYPE_EXECUTE,
+)
+
 type knImportPermissionPrecheckedKey struct{}
 
 // WithKNImportPermissionPrechecked marks child creates invoked by an already
@@ -40,6 +53,15 @@ func KNImportPermissionPrechecked(ctx context.Context) bool {
 func KNChildResourcePEPEnabled() bool {
 	value := strings.ToLower(strings.TrimSpace(os.Getenv(knChildResourcePEPEnabledEnv)))
 	return value == "true" || value == "1"
+}
+
+// KNChildOperationCandidates returns the instance-level operations exposed to
+// the current accessor for one knowledge-network child resource type.
+func KNChildOperationCandidates(resourceType string) []string {
+	if resourceType == interfaces.RESOURCE_TYPE_ACTION_TYPE {
+		return append([]string{}, actionTypeOperations...)
+	}
+	return append([]string{}, knChildOperations...)
 }
 
 // ValidateKNChildPEPAuthorizationIDs applies canonical-ID validation only when
@@ -208,8 +230,163 @@ func FilterAndPaginateKNChildren[T any](ctx context.Context, ps interfaces.Permi
 	return PaginateKNChildCandidates(visible, offset, limit), len(visible), nil
 }
 
+// FilterAndPaginateKNChildrenWithOperations filters children by view_detail,
+// applies pagination after filtering, and returns the allowed operations for
+// every visible canonical child resource. Disabled PEP deployments retain the
+// legacy parent-KN checks while exposing the equivalent child operation set.
+func FilterAndPaginateKNChildrenWithOperations[T any](ctx context.Context, ps interfaces.PermissionService,
+	resourceType, knID string, candidates []T, childID func(T) string,
+	offset, limit int) ([]T, int, map[string]interfaces.PermissionResourceOps, error) {
+
+	candidateOperations := KNChildOperationCandidates(resourceType)
+	if !KNChildResourcePEPEnabled() {
+		legacyOperations, err := getLegacyKNChildOperations(ctx, ps, knID, candidateOperations)
+		if err != nil {
+			return nil, 0, nil, err
+		}
+		result := PaginateKNChildCandidates(candidates, offset, limit)
+		projected := make(map[string]interfaces.PermissionResourceOps, len(result))
+		for _, candidate := range result {
+			projected[interfaces.KNChildResourceID(knID, childID(candidate))] = interfaces.PermissionResourceOps{
+				ResourceID: interfaces.KNChildResourceID(knID, childID(candidate)),
+				Operations: legacyOperations,
+			}
+		}
+		return result, len(candidates), projected, nil
+	}
+
+	if len(candidates) == 0 {
+		return []T{}, 0, map[string]interfaces.PermissionResourceOps{}, nil
+	}
+	validCandidates := make([]T, 0, len(candidates))
+	childIDs := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		id := childID(candidate)
+		if interfaces.IsValidAuthorizationID(id) {
+			validCandidates = append(validCandidates, candidate)
+			childIDs = append(childIDs, id)
+		}
+	}
+	if len(validCandidates) == 0 {
+		return []T{}, 0, map[string]interfaces.PermissionResourceOps{}, nil
+	}
+	if err := ValidateKNChildAuthorizationIDs(ctx, knID, childIDs); err != nil {
+		return nil, 0, nil, err
+	}
+
+	resourceIDs := interfaces.KNChildResourceIDs(knID, childIDs)
+	matched, err := filterKNChildResourceIDs(ctx, ps, resourceType, resourceIDs,
+		interfaces.OPERATION_TYPE_VIEW_DETAIL, candidateOperations)
+	if err != nil {
+		return nil, 0, nil, err
+	}
+
+	visible := make([]T, 0, len(matched))
+	for _, candidate := range validCandidates {
+		canonicalID := interfaces.KNChildResourceID(knID, childID(candidate))
+		if _, ok := matched[canonicalID]; ok {
+			visible = append(visible, candidate)
+		}
+	}
+	return PaginateKNChildCandidates(visible, offset, limit), len(visible), matched, nil
+}
+
+// GetKNChildOperations returns the allowed operations for a visible child.
+func GetKNChildOperations(ctx context.Context, ps interfaces.PermissionService,
+	resourceType, knID, childID string) ([]string, error) {
+
+	if !KNChildResourcePEPEnabled() {
+		return getLegacyKNChildOperations(ctx, ps, knID, KNChildOperationCandidates(resourceType))
+	}
+	if err := ValidateKNChildAuthorizationIDs(ctx, knID, []string{childID}); err != nil {
+		return nil, err
+	}
+	canonicalID := interfaces.KNChildResourceID(knID, childID)
+	matched, err := filterKNChildResourceIDs(ctx, ps, resourceType, []string{canonicalID},
+		interfaces.OPERATION_TYPE_VIEW_DETAIL, KNChildOperationCandidates(resourceType))
+	if err != nil {
+		return nil, err
+	}
+	resourceOps, ok := matched[canonicalID]
+	if !ok {
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+	}
+	return resourceOps.Operations, nil
+}
+
+func getLegacyKNChildOperations(ctx context.Context, ps interfaces.PermissionService,
+	knID string, childOperations []string) ([]string, error) {
+
+	rootCandidates := legacyKNOperationCandidates(childOperations)
+	matched, err := ps.FilterResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{knID},
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, rootCandidates)
+	if err != nil {
+		return nil, err
+	}
+	rootOps, ok := matched[knID]
+	if !ok {
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+	}
+	return projectLegacyKNChildOperations(rootOps.Operations, childOperations), nil
+}
+
+func legacyKNOperationCandidates(childOperations []string) []string {
+	candidates := make([]string, 0, len(childOperations))
+	seen := make(map[string]struct{}, len(childOperations))
+	for _, operation := range childOperations {
+		parentOperation, ok := legacyParentOperation(operation)
+		if !ok {
+			continue
+		}
+		if _, exists := seen[parentOperation]; !exists {
+			seen[parentOperation] = struct{}{}
+			candidates = append(candidates, parentOperation)
+		}
+	}
+	return candidates
+}
+
+func projectLegacyKNChildOperations(rootOperations, childOperations []string) []string {
+	allowed := make(map[string]struct{}, len(rootOperations))
+	for _, operation := range rootOperations {
+		allowed[operation] = struct{}{}
+	}
+	projected := make([]string, 0, len(childOperations))
+	for _, operation := range childOperations {
+		parentOperation, ok := legacyParentOperation(operation)
+		if ok {
+			if _, exists := allowed[parentOperation]; exists {
+				projected = append(projected, operation)
+			}
+		}
+	}
+	return projected
+}
+
+func legacyParentOperation(operation string) (string, bool) {
+	switch operation {
+	case interfaces.OPERATION_TYPE_VIEW_DETAIL:
+		return interfaces.OPERATION_TYPE_VIEW_DETAIL, true
+	case interfaces.OPERATION_TYPE_QUERY_DATA:
+		return interfaces.OPERATION_TYPE_QUERY_DATA, true
+	case interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE:
+		return interfaces.OPERATION_TYPE_MODIFY, true
+	case interfaces.OPERATION_TYPE_AUTHORIZE:
+		return interfaces.OPERATION_TYPE_AUTHORIZE, true
+	case interfaces.OPERATION_TYPE_TASK_MANAGE:
+		return interfaces.OPERATION_TYPE_TASK_MANAGE, true
+	default:
+		return "", false
+	}
+}
+
 func filterKNChildResourceIDs(ctx context.Context, ps interfaces.PermissionService,
-	resourceType string, resourceIDs []string, operation string) (map[string]interfaces.PermissionResourceOps, error) {
+	resourceType string, resourceIDs []string, operation string, candidateOperations ...[]string) (map[string]interfaces.PermissionResourceOps, error) {
+
+	fullOperations := []string{operation}
+	if len(candidateOperations) > 0 {
+		fullOperations = candidateOperations[0]
+	}
 
 	chunkSize := len(resourceIDs)
 	if configured, err := strconv.Atoi(strings.TrimSpace(os.Getenv(knChildResourceFilterChunkSizeEnv))); err == nil && configured > 0 && configured < chunkSize {
@@ -223,7 +400,7 @@ func filterKNChildResourceIDs(ctx context.Context, ps interfaces.PermissionServi
 		}
 		blockIDs := resourceIDs[start:end]
 		block, err := ps.FilterResources(ctx, resourceType, blockIDs,
-			[]string{operation}, true, []string{operation})
+			[]string{operation}, true, fullOperations)
 		if err != nil {
 			return nil, err
 		}

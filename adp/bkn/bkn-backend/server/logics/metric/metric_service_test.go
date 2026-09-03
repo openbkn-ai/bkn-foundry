@@ -212,6 +212,10 @@ func Test_metricService_ListMetrics(t *testing.T) {
 
 		ma := bmock.NewMockMetricAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{
+				"kn1": {ResourceID: "kn1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_AUTHORIZE}},
+			}, nil).AnyTimes()
 		service := &metricService{
 			appSetting: &common.AppSetting{},
 			ma:         ma,

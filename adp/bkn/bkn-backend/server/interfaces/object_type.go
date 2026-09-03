@@ -104,7 +104,8 @@ type ObjectType struct {
 	Updater    AccountInfo `json:"updater" mapstructure:"updater"`
 	UpdateTime int64       `json:"update_time" mapstructure:"update_time"`
 
-	ModuleType string `json:"module_type" mapstructure:"module_type"`
+	ModuleType string   `json:"module_type" mapstructure:"module_type"`
+	Operations []string `json:"operations,omitempty"`
 
 	PropertyMap  map[string]string `json:"-"` // Map from property name to display name
 	IfNameModify bool              `json:"-"`

@@ -1533,6 +1533,11 @@ components:
         module_type:
           description: Module type of the concept
           type: string
+        operations:
+          description: Operations allowed for the current accessor on this relation type.
+          type: array
+          items:
+            type: string
     RelationType:
       description: Relation type
       required:
@@ -1640,6 +1645,11 @@ components:
         module_type:
           description: Module type of the concept
           type: string
+        operations:
+          description: Operations allowed for the current accessor on this relation type.
+          type: array
+          items:
+            type: string
     RelationTypeSearchResponse:
       description: Relation type search result
       required:

@@ -73,6 +73,133 @@ type childCandidate struct {
 	id string
 }
 
+func TestKNChildOperationCandidatesMatchResourceContract(t *testing.T) {
+	wantChild := []string{
+		interfaces.OPERATION_TYPE_VIEW_DETAIL,
+		interfaces.OPERATION_TYPE_QUERY_DATA,
+		interfaces.OPERATION_TYPE_MODIFY,
+		interfaces.OPERATION_TYPE_DELETE,
+		interfaces.OPERATION_TYPE_AUTHORIZE,
+	}
+	if got := KNChildOperationCandidates(interfaces.RESOURCE_TYPE_RELATION_TYPE); !reflect.DeepEqual(got, wantChild) {
+		t.Fatalf("relation type operations = %#v, want %#v", got, wantChild)
+	}
+	wantAction := append(append([]string{}, wantChild...), interfaces.OPERATION_TYPE_TASK_MANAGE, interfaces.OPERATION_TYPE_EXECUTE)
+	if got := KNChildOperationCandidates(interfaces.RESOURCE_TYPE_ACTION_TYPE); !reflect.DeepEqual(got, wantAction) {
+		t.Fatalf("action type operations = %#v, want %#v", got, wantAction)
+	}
+}
+
+func TestFilterAndPaginateKNChildrenWithOperationsProjectsLegacyParentOperations(t *testing.T) {
+	t.Setenv("KN_CHILD_RESOURCE_PEP_ENABLED", "false")
+	ctrl := gomock.NewController(t)
+	ps := interfacemock.NewMockPermissionService(ctrl)
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_KN, []string{"kn-1"},
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true,
+		[]string{
+			interfaces.OPERATION_TYPE_VIEW_DETAIL,
+			interfaces.OPERATION_TYPE_QUERY_DATA,
+			interfaces.OPERATION_TYPE_MODIFY,
+			interfaces.OPERATION_TYPE_AUTHORIZE,
+		}).Return(map[string]interfaces.PermissionResourceOps{
+		"kn-1": {ResourceID: "kn-1", Operations: []string{
+			interfaces.OPERATION_TYPE_VIEW_DETAIL,
+			interfaces.OPERATION_TYPE_MODIFY,
+			interfaces.OPERATION_TYPE_AUTHORIZE,
+		}},
+	}, nil)
+
+	items, total, operations, err := FilterAndPaginateKNChildrenWithOperations(context.Background(), ps,
+		interfaces.RESOURCE_TYPE_OBJECT_TYPE, "kn-1", []childCandidate{{id: "one"}, {id: "two"}},
+		func(candidate childCandidate) string { return candidate.id }, 1, 1)
+	if err != nil {
+		t.Fatalf("FilterAndPaginateKNChildrenWithOperations() error = %v", err)
+	}
+	if total != 2 || !reflect.DeepEqual(items, []childCandidate{{id: "two"}}) {
+		t.Fatalf("items = %#v, total = %d", items, total)
+	}
+	if got := operations["kn-1/two"].Operations; !reflect.DeepEqual(got, []string{
+		interfaces.OPERATION_TYPE_VIEW_DETAIL,
+		interfaces.OPERATION_TYPE_MODIFY,
+		interfaces.OPERATION_TYPE_DELETE,
+		interfaces.OPERATION_TYPE_AUTHORIZE,
+	}) {
+		t.Fatalf("operations = %#v", got)
+	}
+}
+
+func TestFilterAndPaginateKNChildrenWithOperationsProjectsCanonicalOperations(t *testing.T) {
+	t.Setenv("KN_CHILD_RESOURCE_PEP_ENABLED", "true")
+	ctrl := gomock.NewController(t)
+	ps := interfacemock.NewMockPermissionService(ctrl)
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_ACTION_TYPE,
+		[]string{"kn-1/action-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true,
+		[]string{
+			interfaces.OPERATION_TYPE_VIEW_DETAIL,
+			interfaces.OPERATION_TYPE_QUERY_DATA,
+			interfaces.OPERATION_TYPE_MODIFY,
+			interfaces.OPERATION_TYPE_DELETE,
+			interfaces.OPERATION_TYPE_AUTHORIZE,
+			interfaces.OPERATION_TYPE_TASK_MANAGE,
+			interfaces.OPERATION_TYPE_EXECUTE,
+		}).Return(map[string]interfaces.PermissionResourceOps{
+		"kn-1/action-1": {ResourceID: "kn-1/action-1", Operations: []string{
+			interfaces.OPERATION_TYPE_VIEW_DETAIL,
+			interfaces.OPERATION_TYPE_AUTHORIZE,
+			interfaces.OPERATION_TYPE_EXECUTE,
+		}},
+	}, nil)
+
+	items, total, operations, err := FilterAndPaginateKNChildrenWithOperations(context.Background(), ps,
+		interfaces.RESOURCE_TYPE_ACTION_TYPE, "kn-1", []childCandidate{{id: "action-1"}},
+		func(candidate childCandidate) string { return candidate.id }, 0, -1)
+	if err != nil {
+		t.Fatalf("FilterAndPaginateKNChildrenWithOperations() error = %v", err)
+	}
+	if total != 1 || len(items) != 1 {
+		t.Fatalf("items = %#v, total = %d", items, total)
+	}
+	if got := operations["kn-1/action-1"].Operations; !reflect.DeepEqual(got, []string{
+		interfaces.OPERATION_TYPE_VIEW_DETAIL,
+		interfaces.OPERATION_TYPE_AUTHORIZE,
+		interfaces.OPERATION_TYPE_EXECUTE,
+	}) {
+		t.Fatalf("operations = %#v", got)
+	}
+}
+
+func TestGetKNChildOperationsUsesCanonicalDetailResource(t *testing.T) {
+	t.Setenv("KN_CHILD_RESOURCE_PEP_ENABLED", "true")
+	ctrl := gomock.NewController(t)
+	ps := interfacemock.NewMockPermissionService(ctrl)
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
+		[]string{"kn-1/metric-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true,
+		[]string{
+			interfaces.OPERATION_TYPE_VIEW_DETAIL,
+			interfaces.OPERATION_TYPE_QUERY_DATA,
+			interfaces.OPERATION_TYPE_MODIFY,
+			interfaces.OPERATION_TYPE_DELETE,
+			interfaces.OPERATION_TYPE_AUTHORIZE,
+		}).Return(map[string]interfaces.PermissionResourceOps{
+		"kn-1/metric-1": {ResourceID: "kn-1/metric-1", Operations: []string{
+			interfaces.OPERATION_TYPE_VIEW_DETAIL,
+			interfaces.OPERATION_TYPE_QUERY_DATA,
+		}},
+	}, nil)
+
+	operations, err := GetKNChildOperations(context.Background(), ps,
+		interfaces.RESOURCE_TYPE_METRIC, "kn-1", "metric-1")
+	if err != nil {
+		t.Fatalf("GetKNChildOperations() error = %v", err)
+	}
+	if !reflect.DeepEqual(operations, []string{
+		interfaces.OPERATION_TYPE_VIEW_DETAIL,
+		interfaces.OPERATION_TYPE_QUERY_DATA,
+	}) {
+		t.Fatalf("operations = %#v", operations)
+	}
+}
+
 func TestFilterAndPaginateKNChildrenUsesLegacyKNWhenDisabled(t *testing.T) {
 	t.Setenv("KN_CHILD_RESOURCE_PEP_ENABLED", "false")
 	ctrl := gomock.NewController(t)

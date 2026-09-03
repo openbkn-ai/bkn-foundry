@@ -430,7 +430,6 @@ func (ats *actionTypeService) ListActionTypes(ctx context.Context, query interfa
 			return []*interfaces.ActionType{}, 0, err
 		}
 	}
-
 	listQuery := query
 	if pepEnabled {
 		listQuery.Offset = 0
@@ -446,11 +445,15 @@ func (ats *actionTypeService) ListActionTypes(ctx context.Context, query interfa
 
 	var total int
 	if pepEnabled {
-		actionTypes, total, err = permission.FilterAndPaginateKNChildren(ctx, ats.ps,
+		var operationMap map[string]interfaces.PermissionResourceOps
+		actionTypes, total, operationMap, err = permission.FilterAndPaginateKNChildrenWithOperations(ctx, ats.ps,
 			interfaces.RESOURCE_TYPE_ACTION_TYPE, query.KNID, actionTypes,
 			func(actionType *interfaces.ActionType) string { return actionType.ATID }, query.Offset, query.Limit)
 		if err != nil {
 			return []*interfaces.ActionType{}, 0, err
+		}
+		for _, actionType := range actionTypes {
+			actionType.Operations = operationMap[interfaces.KNChildResourceID(query.KNID, actionType.ATID)].Operations
 		}
 	} else {
 		total, err = ats.ata.GetActionTypesTotal(ctx, query)
@@ -459,6 +462,14 @@ func (ats *actionTypeService) ListActionTypes(ctx context.Context, query interfa
 			span.SetStatus(codes.Error, "Get action types total error")
 			return []*interfaces.ActionType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ActionType_InternalError).WithErrorDetails(err.Error())
+		}
+		operations, err := permission.GetKNChildOperations(ctx, ats.ps,
+			interfaces.RESOURCE_TYPE_ACTION_TYPE, query.KNID, "")
+		if err != nil {
+			return []*interfaces.ActionType{}, 0, err
+		}
+		for _, actionType := range actionTypes {
+			actionType.Operations = operations
 		}
 	}
 	if len(actionTypes) == 0 {
@@ -514,12 +525,6 @@ func (ats *actionTypeService) GetActionTypesByIDs(ctx context.Context, knID stri
 	if err := permission.ValidateKNChildPEPAuthorizationIDs(ctx, knID, atIDs); err != nil {
 		return nil, err
 	}
-	resource := interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID}
-	operation := interfaces.OPERATION_TYPE_VIEW_DETAIL
-	if len(atIDs) == 1 {
-		resource, operation = permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_ACTION_TYPE,
-			knID, atIDs[0], interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_VIEW_DETAIL)
-	}
 	var err error
 
 	// De-duplicate IDs before querying.
@@ -542,7 +547,17 @@ func (ats *actionTypeService) GetActionTypesByIDs(ctx context.Context, knID stri
 		return []*interfaces.ActionType{}, rest.NewHTTPError(ctx, http.StatusNotFound,
 			berrors.BknBackend_ActionType_ActionTypeNotFound).WithErrorDetails(errStr)
 	}
-	if err = ats.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
+	if len(atIDs) == 1 && permission.KNChildResourcePEPEnabled() {
+		operations, err := permission.GetKNChildOperations(ctx, ats.ps,
+			interfaces.RESOURCE_TYPE_ACTION_TYPE, knID, atIDs[0])
+		if err != nil {
+			return nil, err
+		}
+		actionTypes[0].Operations = operations
+	} else if err = ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_KN,
+		ID:   knID,
+	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
 		return nil, err
 	}
 

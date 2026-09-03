@@ -2130,6 +2130,11 @@ components:
           enum:
             - object_type
           type: string
+        operations:
+          description: Operations allowed for the current accessor on this object type.
+          type: array
+          items:
+            type: string
         incremental_key:
           description: Property name used for incremental synchronization
           type: string

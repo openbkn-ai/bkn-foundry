@@ -318,7 +318,6 @@ func (rts *riskTypeService) ListRiskTypes(ctx context.Context, query interfaces.
 			return nil, 0, err
 		}
 	}
-
 	candidateQuery := query
 	candidateQuery.Offset = 0
 	candidateQuery.Limit = -1
@@ -329,16 +328,16 @@ func (rts *riskTypeService) ListRiskTypes(ctx context.Context, query interfaces.
 			berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())
 	}
 
+	var operationMap map[string]interfaces.PermissionResourceOps
 	total := len(list)
-	if permission.KNChildResourcePEPEnabled() {
-		list, total, err = permission.FilterAndPaginateKNChildren(ctx, rts.ps,
-			interfaces.RESOURCE_TYPE_RISK_TYPE, query.KNID, list,
-			func(riskType *interfaces.RiskType) string { return riskType.RTID }, query.Offset, query.Limit)
-		if err != nil {
-			return nil, 0, err
-		}
-	} else {
-		list = permission.PaginateKNChildCandidates(list, query.Offset, query.Limit)
+	list, total, operationMap, err = permission.FilterAndPaginateKNChildrenWithOperations(ctx, rts.ps,
+		interfaces.RESOURCE_TYPE_RISK_TYPE, query.KNID, list,
+		func(riskType *interfaces.RiskType) string { return riskType.RTID }, query.Offset, query.Limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	for _, riskType := range list {
+		riskType.Operations = operationMap[interfaces.KNChildResourceID(query.KNID, riskType.RTID)].Operations
 	}
 
 	if len(list) > 0 && rts.uma != nil {
@@ -371,9 +370,17 @@ func (rts *riskTypeService) GetRiskTypesByIDs(ctx context.Context, knID string, 
 		if len(list) != 1 {
 			return nil, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RiskType_RiskTypeNotFound)
 		}
-		resource, operation := permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_RISK_TYPE,
-			knID, rtIDs[0], interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_VIEW_DETAIL)
-		if err = rts.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
+		if permission.KNChildResourcePEPEnabled() {
+			operations, err := permission.GetKNChildOperations(ctx, rts.ps,
+				interfaces.RESOURCE_TYPE_RISK_TYPE, knID, rtIDs[0])
+			if err != nil {
+				return nil, err
+			}
+			list[0].Operations = operations
+		} else if err = rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: interfaces.RESOURCE_TYPE_KN,
+			ID:   knID,
+		}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
 			return nil, err
 		}
 	}
