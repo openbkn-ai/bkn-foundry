@@ -148,6 +148,14 @@ resources:
     memory: 4Gi
 
 bknTrace:
+  # Enables the narrow historical-projection reader. Core signs each request;
+  # BKN only receives the rotating Ed25519 public-key set from this secret.
+  projectionRead:
+    enabled: false
+    issuer: ""
+    audience: ""
+    publicKeysSecretName: ""
+    publicKeysSecretKey: "projection-grant-public-keys"
   evidence:
     ingestUrl: ""
     timeoutMs: "2000"

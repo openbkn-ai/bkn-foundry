@@ -103,6 +103,21 @@ func (mr *MockKNServiceMockRecorder) DeleteKN(ctx, kn any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteKN", reflect.TypeOf((*MockKNService)(nil).DeleteKN), ctx, kn)
 }
 
+// ExportKNForProjection mocks base method.
+func (m *MockKNService) ExportKNForProjection(ctx context.Context, knID string) (*interfaces.KN, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExportKNForProjection", ctx, knID)
+	ret0, _ := ret[0].(*interfaces.KN)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ExportKNForProjection indicates an expected call of ExportKNForProjection.
+func (mr *MockKNServiceMockRecorder) ExportKNForProjection(ctx, knID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportKNForProjection", reflect.TypeOf((*MockKNService)(nil).ExportKNForProjection), ctx, knID)
+}
+
 // GetKNByID mocks base method.
 func (m *MockKNService) GetKNByID(ctx context.Context, knID, branch, mode string) (*interfaces.KN, error) {
 	m.ctrl.T.Helper()

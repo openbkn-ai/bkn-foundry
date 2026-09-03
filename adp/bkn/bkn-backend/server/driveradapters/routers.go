@@ -8,7 +8,10 @@ package driveradapters
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -41,24 +44,33 @@ type RestHandler interface {
 }
 
 type restHandler struct {
-	appSetting            *common.AppSetting
-	auditRecorder         operationAuditRecorder
-	auditQueryStore       operationAuditQueryStore
-	auditIdentityResolver func(context.Context, string, hydra.Visitor) operationAuditActor
-	auditAccessResolver   func(context.Context, string, string) (bkntrace.OperationAuditProfile, error)
-	as                    interfaces.AuthService
-	ass                   interfaces.ActionScheduleService
-	ats                   interfaces.ActionTypeService
-	cgs                   interfaces.ConceptGroupService
-	kns                   interfaces.KNService
-	ots                   interfaces.ObjectTypeService
-	rts                   interfaces.RelationTypeService
-	rtsRisk               interfaces.RiskTypeService
-	ms                    interfaces.MetricService
-	bs                    interfaces.BKNService
+	appSetting              *common.AppSetting
+	auditRecorder           operationAuditRecorder
+	auditQueryStore         operationAuditQueryStore
+	auditIdentityResolver   func(context.Context, string, hydra.Visitor) operationAuditActor
+	auditAccessResolver     func(context.Context, string, string) (bkntrace.OperationAuditProfile, error)
+	as                      interfaces.AuthService
+	ass                     interfaces.ActionScheduleService
+	ats                     interfaces.ActionTypeService
+	cgs                     interfaces.ConceptGroupService
+	kns                     interfaces.KNService
+	ots                     interfaces.ObjectTypeService
+	rts                     interfaces.RelationTypeService
+	rtsRisk                 interfaces.RiskTypeService
+	ms                      interfaces.MetricService
+	bs                      interfaces.BKNService
+	projectionGrantVerifier *bkntrace.ProjectionGrantVerifier
 }
 
 func NewRestHandler(appSetting *common.AppSetting, auditStore *operationaudit.Store) RestHandler {
+	var projectionVerifier *bkntrace.ProjectionGrantVerifier
+	if projectionGrantVerifierEnabled() {
+		verifier, err := bkntrace.NewProjectionGrantVerifierFromEnv()
+		if err != nil {
+			panic(fmt.Sprintf("invalid projection grant verifier configuration: %v", err))
+		}
+		projectionVerifier = &verifier
+	}
 	r := &restHandler{
 		appSetting:          appSetting,
 		auditRecorder:       auditStore,
@@ -72,18 +84,23 @@ func NewRestHandler(appSetting *common.AppSetting, auditStore *operationaudit.St
 			}
 			return actor
 		},
-		as:      auth.NewAuthService(appSetting),
-		ass:     action_schedule.NewActionScheduleService(appSetting),
-		ats:     action_type.NewActionTypeService(appSetting),
-		cgs:     concept_group.NewConceptGroupService(appSetting),
-		kns:     knowledge_network.NewKNService(appSetting),
-		ots:     object_type.NewObjectTypeService(appSetting),
-		rts:     relation_type.NewRelationTypeService(appSetting),
-		rtsRisk: risk_type.NewRiskTypeService(appSetting),
-		ms:      metriclogics.NewMetricService(appSetting),
-		bs:      bkn.NewBKNService(appSetting),
+		as:                      auth.NewAuthService(appSetting),
+		ass:                     action_schedule.NewActionScheduleService(appSetting),
+		ats:                     action_type.NewActionTypeService(appSetting),
+		cgs:                     concept_group.NewConceptGroupService(appSetting),
+		kns:                     knowledge_network.NewKNService(appSetting),
+		ots:                     object_type.NewObjectTypeService(appSetting),
+		rts:                     relation_type.NewRelationTypeService(appSetting),
+		rtsRisk:                 risk_type.NewRiskTypeService(appSetting),
+		ms:                      metriclogics.NewMetricService(appSetting),
+		bs:                      bkn.NewBKNService(appSetting),
+		projectionGrantVerifier: projectionVerifier,
 	}
 	return r
+}
+
+func projectionGrantVerifierEnabled() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("BKN_TRACE_PROJECTION_GRANT_ENABLED")), "true")
 }
 
 func (r *restHandler) RegisterPublic(c *gin.Engine) {
@@ -190,6 +207,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	otlApiInV1 := c.Group("/api/ontology-manager/in/v1")
 	bknApiInV1.Use(rest.PrivateNoCacheMiddleware())
 	otlApiInV1.Use(rest.PrivateNoCacheMiddleware())
+	bknApiInV1.GET("/trace/projection/knowledge-networks/:kn_id", r.GetKNByProjectionGrant)
 
 	for _, apiInV1 := range []*gin.RouterGroup{bknApiInV1, otlApiInV1} {
 		// Knowledge networks.

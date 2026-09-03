@@ -18,6 +18,9 @@ type KNService interface {
 	CreateKN(ctx context.Context, kn *KN, mode string, strictMode bool) (string, error)
 	ListKNs(ctx context.Context, query KNsQueryParams) ([]*KN, int, error)
 	GetKNByID(ctx context.Context, knID string, branch string, mode string) (*KN, error)
+	// ExportKNForProjection reads exactly one current main-branch network after
+	// the HTTP boundary has verified a ProjectionReadGrant.
+	ExportKNForProjection(ctx context.Context, knID string) (*KN, error)
 	UpdateKN(ctx context.Context, tx *sql.Tx, kn *KN, strictMode bool) error
 	UpdateKNDetail(ctx context.Context, knID string, branch string, detail string) error
 	DeleteKN(ctx context.Context, kn *KN) error
