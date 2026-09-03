@@ -102,13 +102,21 @@ func Test_RestHandler_HealthCheck(t *testing.T) {
 		handler := MockNewRestHandler(appSetting, as, ats, kns, ots)
 		handler.RegisterPublic(engine)
 
-		Convey("成功 - 健康检查", func() {
-			req := httptest.NewRequest(http.MethodGet, "/health", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
+		for _, path := range []string{"/api/ontology-query/v1/health"} {
+			Convey("成功 - 健康检查 "+path, func() {
+				req := httptest.NewRequest(http.MethodGet, path, nil)
+				w := httptest.NewRecorder()
+				engine.ServeHTTP(w, req)
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
-		})
+				So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+				So(w.Body.String(), ShouldContainSubstring, "ServerVersion")
+			})
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+		So(w.Result().StatusCode, ShouldEqual, http.StatusNotFound)
 	})
 }
 

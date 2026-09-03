@@ -72,8 +72,9 @@ spec:
           timeoutSeconds: 30
           failureThreshold: 3
         readinessProbe:
-          tcpSocket:
-            port: {{ .Values.service.bknBackend.port }}
+          httpGet:
+            path: /api/bkn-backend/v1/health
+            port: backend
           initialDelaySeconds: 10
           periodSeconds: 10
           timeoutSeconds: 30

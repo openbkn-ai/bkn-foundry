@@ -53,7 +53,7 @@ func NewHTTPClient(baseURL string) *HTTPClient {
 
 // CheckHealth 检查服务健康状态
 func (c *HTTPClient) CheckHealth() error {
-	resp, err := c.Client.Get(c.BaseURL + "/health")
+	resp, err := c.Client.Get(c.BaseURL + "/api/vega-backend/v1/health")
 	if err != nil {
 		return fmt.Errorf("健康检查失败: %w", err)
 	}

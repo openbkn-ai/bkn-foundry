@@ -69,7 +69,7 @@ server/
 | Catalog 状态 | GET `/catalogs/:id/status`, POST `/catalogs/:id/test-connection` |
 | Resource | GET/POST `/resources`, GET/PUT/DELETE `/resources/:id` |
 | Resource 操作 | GET `/resources/:id/schema`, POST `/resources/:id/enable\|disable\|sync` |
-| 健康检查 | GET `/health` |
+| 健康检查 | GET `/api/vega-backend/v1/health` |
 
 #### 端点设计规则
 

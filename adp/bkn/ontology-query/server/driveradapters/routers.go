@@ -70,7 +70,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	c.Use(r.TraceContextMiddleware())
 	c.Use(r.LanguageMiddleware())
 
-	c.GET("/health", r.HealthCheck)
+	c.GET("/api/ontology-query/v1/health", r.HealthCheck)
 
 	apiV1 := c.Group("/api/ontology-query/v1")
 	apiV1.Use(rest.PrivateNoCacheMiddleware())

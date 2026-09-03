@@ -4,6 +4,33 @@ info:
   title: ontology-query
   version: 0.2.0
 paths:
+  /api/ontology-query/v1/health:
+    get:
+      summary: 获取 Ontology Query 健康状态和平台版本
+      description: 返回 Ontology Query 运行时信息。当前所有服务统一发布版本时，ServerVersion 表示平台版本。
+      operationId: getOntologyQueryHealth
+      security: []
+      responses:
+        "200":
+          description: 健康状态和版本信息
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ServerName:
+                    type: string
+                  ServerVersion:
+                    type: string
+                    description: 平台版本。
+                  Language:
+                    type: string
+                  GoVersion:
+                    type: string
+                  GoArch:
+                    type: string
+                required:
+                  - ServerVersion
   /api/ontology-query/v1/knowledge-networks/{kn_id}/object-types/{ot_id}:
     summary: 检索指定对象类的对象的详细数据
     post:

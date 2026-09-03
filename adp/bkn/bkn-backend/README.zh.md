@@ -140,7 +140,7 @@ http://localhost:13014
 健康检查：
 
 ```bash
-curl http://localhost:13014/health
+curl http://localhost:13014/api/bkn-backend/v1/health
 ```
 
 ## 测试

@@ -92,7 +92,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	c.Use(r.LanguageMiddleware())
 	c.Use(r.OperationAudit())
 
-	c.GET("/health", r.HealthCheck)
+	c.GET("/api/bkn-backend/v1/health", r.HealthCheck)
 
 	bknApiV1 := c.Group("/api/bkn-backend/v1")
 	otlApiV1 := c.Group("/api/ontology-manager/v1")

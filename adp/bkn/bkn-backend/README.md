@@ -148,7 +148,7 @@ http://localhost:13014
 Health check:
 
 ```bash
-curl http://localhost:13014/health
+curl http://localhost:13014/api/bkn-backend/v1/health
 ```
 
 ## Testing

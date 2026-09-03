@@ -111,8 +111,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	c.Use(r.LanguageMiddleware())
 	c.Use(r.OperationAudit())
 
-	c.GET("/health", r.HealthCheck)
-	c.GET("/readyz", r.ReadinessCheck)
+	c.GET("/api/vega-backend/v1/health", r.HealthCheck)
+	c.GET("/api/vega-backend/v1/readyz", r.ReadinessCheck)
 
 	// External API (External
 	apiV1 := c.Group("/api/vega-backend/v1")

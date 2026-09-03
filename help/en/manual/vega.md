@@ -32,7 +32,7 @@ openbkn vega catalog list --limit 1
 openbkn vega catalog health <catalog_id> [<catalog_id> ...]
 ```
 
-The vega-backend pod's own `GET /health` is not under `/api/vega-backend/v1` and is usually not exposed through the ingress; reach it from inside the cluster when troubleshooting.
+Vega Backend exposes `GET /api/vega-backend/v1/health` through the standard API prefix. It returns service metadata including the platform version.
 
 ### Catalog management
 
@@ -329,8 +329,8 @@ curl -sk "https://<access-address>/api/vega-backend/v1/catalogs?limit=1" \
   -H "Authorization: Bearer $(openbkn auth token)" \
 
 
-# Optional: raw pod health (path is /health on vega-backend, not under /v1)
-# curl -sk "https://<access-address>/health" -H "Authorization: Bearer $(openbkn auth token)"
+# Platform version and Vega Backend health
+curl -sk "https://<access-address>/api/vega-backend/v1/health"
 
 # List / get catalogs
 curl -sk "https://<access-address>/api/vega-backend/v1/catalogs?status=healthy&limit=20" \
