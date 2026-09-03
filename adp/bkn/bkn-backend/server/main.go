@@ -36,6 +36,7 @@ import (
 	"bkn-backend/drivenadapters/action_type"
 	"bkn-backend/drivenadapters/agent_operator"
 	"bkn-backend/drivenadapters/auth"
+	"bkn-backend/drivenadapters/capability_binding"
 	"bkn-backend/drivenadapters/concept_group"
 	"bkn-backend/drivenadapters/kn_proxy"
 	"bkn-backend/drivenadapters/knowledge_network"
@@ -205,6 +206,7 @@ func main() {
 	logics.SetConceptGroupAccess(concept_group.NewConceptGroupAccess(appSetting))
 	logics.SetKNAccess(knowledge_network.NewKNAccess(appSetting))
 	logics.SetKNProxyAccess(kn_proxy.NewAccess(db))
+	logics.SetCapabilityBindingAccess(capability_binding.NewCapabilityBindingAccess(appSetting))
 	logics.SetMetricAccess(metric.NewMetricAccess(appSetting))
 	logics.SetModelFactoryAccess(model_factory.NewModelFactoryAccess(appSetting))
 	logics.SetOpenSearchAccess(opensearch.NewOpenSearchAccess(appSetting))
