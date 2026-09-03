@@ -101,14 +101,24 @@ controlPlane:
     # Host and port only, no path and no trailing slash: bkn-osdk appends its own
     # paths, the REST routes under /api/agent-retrieval/v1/kn/ and the MCP face at
     # /api/agent-retrieval/v1/mcp.
-    # Leave empty to ship without BKN access; functions that call it then fail with
-    # the SDK's "No base URL" error.
+    # Left EMPTY on purpose. resolve_bkn_base_url() prefers this key, so a non-empty
+    # default would override whatever an existing deployment already put in
+    # BKN_SANDBOX_MCP_URL below — including the FQDN a cross-namespace install needs
+    # — and silently repoint it at a short name that does not resolve there. Empty
+    # means the derive-from-legacy path actually runs, which is what makes an
+    # upgrade require no values change.
+    # Set it explicitly on a new install, host and port only:
+    #   BKN_BASE_URL: "http://agent-retrieval:30779"
+    # or cross-namespace:
+    #   BKN_BASE_URL: "http://agent-retrieval.<bkn-namespace>.svc.cluster.local:30779"
+    # Both empty means no BKN access; functions that call it fail with the SDK's
+    # "No base URL" error.
     # Helm cannot read another release's values, so the address is written out here
     # rather than derived from the agent-retrieval chart. The authoritative port is
     # agent-retrieval's own `project.port`, which its sandboxMCPURL() renders into
     # the same string for run_code; change them together. A wrong address does not
     # fail closed — calls fail at the network layer instead.
-    BKN_BASE_URL: "http://agent-retrieval:30779"
+    BKN_BASE_URL: ""
     # In-cluster Context Loader MCP endpoint, used by the built-in sandbox_sdk.bkn face.
     # That face is no longer recommended for new functions (use bkn-osdk) but is still
     # supported, so existing functions need no rewrite and this stays a live setting.

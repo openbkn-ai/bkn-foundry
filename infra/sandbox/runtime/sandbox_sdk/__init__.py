@@ -440,7 +440,17 @@ def dispatch(event: dict = None, entry: str = None) -> Any:
     except ImportError:
         pass
     else:
-        bkn_osdk.configure()
+        try:
+            bkn_osdk.configure()
+        except Exception as exc:  # noqa: BLE001
+            # 不吞。重置失败意味着上一个调用方的地址与令牌可能还在进程里，
+            # 而这个进程马上要执行另一个调用方的代码——继续跑等于用错身份。
+            # 包一层只为让错误说清楚是什么，而不是抛一个没有上下文的栈。
+            raise RuntimeError(
+                "failed to reset the bkn-osdk process default; execution aborted "
+                "because sandbox sessions are pooled and the previous caller's "
+                "credentials cannot be confirmed cleared: %r" % (exc,)
+            ) from exc
     key = entry or _ENTRY
     if key is None:
         raise RuntimeError(

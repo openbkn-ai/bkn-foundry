@@ -62,7 +62,17 @@ ARG USE_MIRROR=false
 ARG PIP_MIRROR=mirrors.ustc.edu.cn
 ARG PREINSTALL_COMMON=false
 COPY images/templates/executor/common-requirements.txt /tmp/common-requirements.txt
+COPY images/templates/executor/bkn-requirements.txt /tmp/bkn-requirements.txt
+# The BKN SDK goes into every template, opt-in or not: sandbox_sdk (which carries
+# the built-in `bkn` face) is COPY'd unconditionally above, and the scaffolds and
+# generator prompts tell authors the SDK is pre-installed without naming a
+# template. The data-science stack stays opt-in.
 RUN mkdir -p /opt/sandbox-common && \
+    if [ "$USE_MIRROR" = "true" ]; then \
+      pip install --no-cache-dir -i "https://$PIP_MIRROR/pypi/simple" --target /opt/sandbox-common -r /tmp/bkn-requirements.txt; \
+    else \
+      pip install --no-cache-dir --target /opt/sandbox-common -r /tmp/bkn-requirements.txt; \
+    fi && \
     if [ "$PREINSTALL_COMMON" = "true" ]; then \
       if [ "$USE_MIRROR" = "true" ]; then \
         pip install --no-cache-dir -i "https://$PIP_MIRROR/pypi/simple" --target /opt/sandbox-common -r /tmp/common-requirements.txt; \
@@ -70,7 +80,7 @@ RUN mkdir -p /opt/sandbox-common && \
         pip install --no-cache-dir --target /opt/sandbox-common -r /tmp/common-requirements.txt; \
       fi; \
     fi && \
-    rm -f /tmp/common-requirements.txt
+    rm -f /tmp/common-requirements.txt /tmp/bkn-requirements.txt
 
 RUN chown -R sandbox:sandbox /app /workspace /opt/sandbox-venv /opt/sandbox-sdk /opt/sandbox-common
 
