@@ -185,9 +185,9 @@ type OperatorImpexData struct {
 
 // OperatorImpexItem operator import and export data model.
 type OperatorImpexItem struct {
-	OperatorID             string                  `json:"operator_id" validate:"uuid4"`                                          // Operator ID.
+	OperatorID             string                  `json:"operator_id" validate:"uuid"`                                           // Operator ID.
 	OperatorName           string                  `json:"operator_name" validate:"required"`                                     // Operator name.
-	Version                string                  `json:"version" validate:"uuid4"`                                              // Operator version.
+	Version                string                  `json:"version" validate:"uuid"`                                               // Operator version.
 	Status                 BizStatus               `json:"status" validate:"omitempty,oneof=unpublish published offline editing"` // Status.
 	MetadataType           MetadataType            `json:"metadata_type" default:"openapi" validate:"oneof=openapi function"`     // Operator metadata type (mandatory parameter)
 	Metadata               *MetadataInfo           `json:"metadata" validate:"required"`                                          // Operator metadata.

@@ -51,7 +51,11 @@ const (
 func (t *toolDB) InsertTool(ctx context.Context, tx *sql.Tx, tool *model.ToolDB) (toolID string, err error) {
 	now := time.Now().UnixNano()
 	if tool.ToolID == "" {
-		tool.ToolID = uuid.NewString()
+		id, generateErr := uuid.NewV7()
+		if generateErr != nil {
+			return "", generateErr
+		}
+		tool.ToolID = id.String()
 	}
 	toolID = tool.ToolID
 	tool.CreateTime = now
@@ -119,7 +123,11 @@ func (t *toolDB) InsertTools(ctx context.Context, tx *sql.Tx, tools []*model.Too
 	toolIDs = []string{}
 	for _, tool := range tools {
 		if tool.ToolID == "" {
-			tool.ToolID = uuid.NewString()
+			id, generateErr := uuid.NewV7()
+			if generateErr != nil {
+				return nil, generateErr
+			}
+			tool.ToolID = id.String()
 		}
 		toolIDs = append(toolIDs, tool.ToolID)
 		values = append(values, []interface{}{

@@ -8,12 +8,13 @@ package query
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/rs/xid"
 
 	"vega-backend/interfaces"
 )
@@ -58,8 +59,12 @@ func (m *cursorSessionManager) create(accountID, catalogID string, resourceIDs [
 		keepAliveSec = interfaces.DefaultCursorKeepAliveSec
 	}
 	now := time.Now().Unix()
+	generatedID, err := uuid.NewV7()
+	if err != nil {
+		return nil, fmt.Errorf("generate cursor session UUIDv7: %w", err)
+	}
 	session := &interfaces.CursorSession{
-		ID:              xid.New().String(),
+		ID:              generatedID.String(),
 		AccountID:       accountID,
 		CatalogID:       catalogID,
 		ResourceIDs:     append([]string(nil), resourceIDs...),
@@ -90,8 +95,12 @@ func (m *cursorSessionManager) createResourceData(accountID string, resource *in
 		keepAliveSec = interfaces.DefaultCursorKeepAliveSec
 	}
 	now := time.Now().Unix()
+	generatedID, err := uuid.NewV7()
+	if err != nil {
+		return nil, fmt.Errorf("generate cursor session UUIDv7: %w", err)
+	}
 	session := &interfaces.CursorSession{
-		ID:                     xid.New().String(),
+		ID:                     generatedID.String(),
 		AccountID:              accountID,
 		CatalogID:              resource.CatalogID,
 		ResourceIDs:            []string{resource.ID},

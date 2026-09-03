@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
@@ -17,7 +18,8 @@ func TestBuildFunctionProxyExecutionEnv(t *testing.T) {
 	Convey("Function proxy execution context should separate task and capability identifiers", t, func() {
 		version := "11111111-1111-4111-8111-111111111111"
 
-		env := buildFunctionProxyExecutionEnv(nil, version)
+		env, err := buildFunctionProxyExecutionEnv(nil, version)
+		So(err, ShouldBeNil)
 
 		So(env["source"], ShouldEqual, "function_proxy")
 		So(env["function_version_id"], ShouldEqual, version)
@@ -26,6 +28,26 @@ func TestBuildFunctionProxyExecutionEnv(t *testing.T) {
 		So(env["capability_id"], ShouldNotEqual, version)
 		So(env["capability_id"], ShouldEqual, "function_version:"+version)
 	})
+}
+
+func TestBuildFunctionProxyExecutionEnvKeepsSafeEnvWhenUUIDGenerationFails(t *testing.T) {
+	uuid.SetRand(strings.NewReader(""))
+	defer uuid.SetRand(nil)
+
+	version := "11111111-1111-4111-8111-111111111111"
+	env, err := buildFunctionProxyExecutionEnv(nil, version)
+	if err == nil {
+		t.Fatal("buildFunctionProxyExecutionEnv() error = nil, want UUID generation error")
+	}
+	if env == nil {
+		t.Fatal("buildFunctionProxyExecutionEnv() env = nil")
+	}
+	if env["task_id"] != "" {
+		t.Fatalf("task_id = %v, want blank safe fallback", env["task_id"])
+	}
+	if env["source"] != "function_proxy" || env["function_version_id"] != version || env["capability_id"] != "function_version:"+version {
+		t.Fatalf("execution context was not preserved: %v", env)
+	}
 }
 
 func TestNewFunctionExecuteResp(t *testing.T) {
@@ -218,10 +240,13 @@ func TestBuildFunctionExecutionEnvDoesNotDeriveSessionContext(t *testing.T) {
 // The proxy path carries no body fields at all: a registered function is invoked
 // by version, so the acting account has to come from the request.
 func TestBuildFunctionProxyExecutionEnvFallsBackToRequestAccount(t *testing.T) {
-	env := buildFunctionProxyExecutionEnv(
+	env, err := buildFunctionProxyExecutionEnv(
 		newRequestContext("tok-req", "acct-req"),
 		"11111111-1111-4111-8111-111111111111",
 	)
+	if err != nil {
+		t.Fatalf("构造函数代理执行环境失败: %v", err)
+	}
 
 	if env["user_id"] != "acct-req" {
 		t.Fatalf("user_id 未从鉴权上下文兜底: %v", env["user_id"])
@@ -236,10 +261,13 @@ func TestBuildFunctionProxyExecutionEnvFallsBackToRequestAccount(t *testing.T) {
 // function author read and exfiltrate the invoking user's live credential —
 // and the sandbox has outbound network.
 func TestBuildFunctionProxyExecutionEnvWithholdsCredential(t *testing.T) {
-	env := buildFunctionProxyExecutionEnv(
+	env, err := buildFunctionProxyExecutionEnv(
 		newRequestContext("tok-req", "acct-req"),
 		"11111111-1111-4111-8111-111111111111",
 	)
+	if err != nil {
+		t.Fatalf("构造函数代理执行环境失败: %v", err)
+	}
 
 	value, ok := env["BKN_TOKEN"]
 	if !ok {

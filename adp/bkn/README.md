@@ -97,7 +97,7 @@ Internal API prefixes:
 
 Prerequisites:
 
-- Go 1.24+
+- Go 1.25+
 - MariaDB 11.4+ or DM8
 - OpenSearch 2.x
 - Running dependencies configured in each service's `server/config/*.yaml`

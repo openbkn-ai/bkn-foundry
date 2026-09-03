@@ -15,10 +15,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-	"github.com/rs/xid"
 	attr "go.opentelemetry.io/otel/attribute"
 
 	"ontology-query/common"
@@ -221,7 +221,12 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 	span.SetAttributes(attr.Key("execution_mode").String(executionMode))
 
 	// Generate execution ID
-	executionID := xid.New().String()
+	generatedExecutionID, err := uuid.NewV7()
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_CreateExecutionFailed).
+			WithErrorDetails(fmt.Sprintf("failed to generate execution UUIDv7: %v", err))
+	}
+	executionID := generatedExecutionID.String()
 	now := time.Now().UnixMilli()
 
 	// Determine trigger type (default to manual if not specified)

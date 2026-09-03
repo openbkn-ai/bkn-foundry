@@ -13,9 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/asaskevich/govalidator"
 	"github.com/gin-gonic/gin"
-	validatorv10 "github.com/go-playground/validator/v10"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
@@ -203,12 +201,6 @@ func TestRegisterOperator(t *testing.T) {
 	})
 }
 
-func mockRegisterValidation() {
-	_ = validatorv10.New().RegisterValidation("uuid4", func(fl validatorv10.FieldLevel) bool {
-		return govalidator.IsUUIDv4(fl.Field().String())
-	})
-}
-
 func TestOperatorUpdateByOpenAPI(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -227,8 +219,6 @@ func TestOperatorUpdateByOpenAPI(t *testing.T) {
 	mockLogger.EXPECT().Warnf(gomock.Any(), gomock.Any()).Return().AnyTimes()
 	mockOperatorID := "b2d8baf0-e31f-4cac-851d-30ad8c2e4722"
 	mockOperatorVersion := "416278e0-2816-4537-a974-fbe46a3a7720"
-	// Actively register the validator when the simulated service is started.
-	mockRegisterValidation()
 	path := "/operator/info/update"
 	localFile := "../../tests/file/json/auth.json"
 	applicationJSON := "application/json"

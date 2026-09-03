@@ -3,7 +3,7 @@
 # Licensed under the OpenBKN License, a modified Apache 2.0 with Additional
 # Conditions. See LICENSE-OPENBKN.txt in the repository root for the full text.
 
-FROM golang:1.25.10 AS builder
+FROM golang:1.25.14 AS builder
 
 WORKDIR /workspace
 

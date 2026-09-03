@@ -50,7 +50,11 @@ const (
 // InsertToolBox insert toolbox.
 func (b *toolboxDB) InsertToolBox(ctx context.Context, tx *sql.Tx, toolbox *model.ToolboxDB) (boxID string, err error) {
 	if toolbox.BoxID == "" {
-		toolbox.BoxID = uuid.NewString()
+		id, generateErr := uuid.NewV7()
+		if generateErr != nil {
+			return "", generateErr
+		}
+		toolbox.BoxID = id.String()
 	}
 	boxID = toolbox.BoxID
 	orm := b.orm

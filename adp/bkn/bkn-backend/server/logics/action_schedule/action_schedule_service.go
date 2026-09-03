@@ -13,13 +13,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/robfig/cron/v3"
-	"github.com/rs/xid"
 	"go.opentelemetry.io/otel/codes"
 
 	"bkn-backend/common"
@@ -99,7 +99,11 @@ func (s *actionScheduleService) CreateSchedule(ctx context.Context, schedule *in
 	schedule.ExecutionSubject = accountFromContext(ctx)
 
 	// Generate ID and set defaults
-	schedule.ID = xid.New().String()
+	scheduleID, err := uuid.NewV7()
+	if err != nil {
+		return "", fmt.Errorf("generate action schedule UUIDv7: %w", err)
+	}
+	schedule.ID = scheduleID.String()
 	now := time.Now().UnixMilli()
 	schedule.CreateTime = now
 	schedule.UpdateTime = now

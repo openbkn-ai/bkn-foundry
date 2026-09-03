@@ -14,7 +14,7 @@ import (
 
 	"github.com/IBM/sarama"
 	"github.com/bytedance/sonic"
-	"github.com/rs/xid"
+	"github.com/google/uuid"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -211,7 +211,10 @@ func initAuditLogHandler(mqSetting *mq.MQSetting) {
 		auditLog := <-auditLogChan
 
 		// Populate derived audit fields.
-		transformLog(auditLog)
+		if err := transformLog(auditLog); err != nil {
+			logger.Errorf("generate audit log ID failed: %v", err)
+			continue
+		}
 
 		// Send the audit log.
 		sendLog(auditLog)
@@ -219,8 +222,12 @@ func initAuditLogHandler(mqSetting *mq.MQSetting) {
 }
 
 // transformLog populates derived audit fields.
-func transformLog(auditLog *AuditLog) {
-	auditLog.ID = xid.New().String()
+func transformLog(auditLog *AuditLog) error {
+	id, err := uuid.NewV7()
+	if err != nil {
+		return err
+	}
+	auditLog.ID = id.String()
 	auditLog.LogFrom = DEFAULT_AUDIT_LOG_FROM
 
 	var logInfoArr []string
@@ -239,6 +246,7 @@ func transformLog(auditLog *AuditLog) {
 	auditLog.Description = strings.Join(logInfoArr, " ")
 
 	auditLog.Detail["status"] = auditLog.Status
+	return nil
 }
 
 // sendLog sends an audit log to Kafka.

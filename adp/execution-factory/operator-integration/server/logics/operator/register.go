@@ -250,7 +250,12 @@ func (m *operatorManager) registerOperator(ctx context.Context, req *interfaces.
 	// Set creator and updater.
 	metadataDB.SetCreateInfo(accessor.ID)
 	metadataDB.SetUpdateInfo(accessor.ID)
-	metadataDB.SetVersion(uuid.New().String())
+	metadataVersion, generateErr := uuid.NewV7()
+	if generateErr != nil {
+		err = generateErr
+		return
+	}
+	metadataDB.SetVersion(metadataVersion.String())
 	operator = &model.OperatorRegisterDB{
 		Name:            metadataDB.GetSummary(),
 		MetadataVersion: metadataDB.GetVersion(),

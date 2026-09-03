@@ -297,6 +297,10 @@ func (b *AuditLogBuilder) build(p *AuditLogBuilderParams) (interface{}, error) {
 		return nil, fmt.Errorf("invalid operation type")
 	}
 	// organization.
+	outBizID, err := uuid.NewV7()
+	if err != nil {
+		return nil, err
+	}
 	logObj := &AuditLogOperationModel{
 		Operation:   p.Operation,
 		Description: p.Description,
@@ -315,7 +319,7 @@ func (b *AuditLogBuilder) build(p *AuditLogBuilderParams) (interface{}, error) {
 		Detail:   p.Detils,
 		ExMsg:    p.ExMsg,
 		Level:    level,
-		OutBizID: uuid.New().String(),
+		OutBizID: outBizID.String(),
 		Type:     OperationType,
 	}
 	// Internal services do not record Agent information.
@@ -360,8 +364,13 @@ func (b *AuditLogBuilder) Logger(ctx context.Context, p *AuditLogBuilderParams) 
 		b.logger.WithContext(newCtx).Errorf("build audit log failed: %v", err)
 		return
 	}
+	eventID, err := uuid.NewV7()
+	if err != nil {
+		b.logger.WithContext(newCtx).Errorf("generate audit event UUIDv7 failed: %v", err)
+		return
+	}
 	err = b.outboxMessageEvent.Publish(newCtx, &interfaces.OutboxMessageReq{
-		EventID:   uuid.New().String(),
+		EventID:   eventID.String(),
 		EventType: interfaces.OutboxMessageEventTypeAuditLog,
 		Topic:     interfaces.AuditLogTopic,
 		Payload:   utils.ObjectToJSON(logObj),

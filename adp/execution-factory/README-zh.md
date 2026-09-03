@@ -49,7 +49,7 @@ Execution Factory 以单一服务 `operator-integration` 交付，对外暴露�
 ## 快速开始
 
 ### 前置要求
-- Go 1.24+
+- Go 1.25+
 - MySQL / MariaDB / Dameng DB
 - Redis
 

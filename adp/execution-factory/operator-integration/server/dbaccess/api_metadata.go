@@ -59,7 +59,11 @@ func (a *apiMetadataDB) InsertAPIMetadata(ctx context.Context, tx *sql.Tx, metad
 		exec = tx.ExecContext
 	}
 	if metadata.Version == "" {
-		metadata.Version = uuid.New().String()
+		id, generateErr := uuid.NewV7()
+		if generateErr != nil {
+			return "", generateErr
+		}
+		metadata.Version = id.String()
 	}
 	version = metadata.Version
 	now := time.Now().UnixNano()
@@ -99,7 +103,11 @@ func (a *apiMetadataDB) InsertAPIMetadatas(ctx context.Context, tx *sql.Tx, meta
 	args := []interface{}{}
 	for _, metadata := range metadatas {
 		if metadata.Version == "" {
-			metadata.Version = uuid.New().String()
+			id, generateErr := uuid.NewV7()
+			if generateErr != nil {
+				return nil, generateErr
+			}
+			metadata.Version = id.String()
 		}
 		versions = append(versions, metadata.Version)
 		metadata.CreateTime = now

@@ -549,7 +549,11 @@ func (m *operatorManager) upgradeOperatorInfo(ctx context.Context, tx *sql.Tx, r
 	defer oteltrace.EndSpan(ctx, err)
 	// Upgrade metadata.
 	if needUpdateMetadata {
-		metadataDB.SetVersion(uuid.New().String())
+		metadataVersion, generateErr := uuid.NewV7()
+		if generateErr != nil {
+			return generateErr
+		}
+		metadataDB.SetVersion(metadataVersion.String())
 		metadataDB.SetUpdateInfo(req.UserID)
 		_, err = m.MetadataService.RegisterMetadata(ctx, tx, metadataDB)
 		if err != nil {

@@ -5,7 +5,7 @@
 # (dev/Dockerfile) wraps a host-cross-compiled binary; this one builds in-image.
 
 ########################### Stage 0 — build ########################
-ARG BUILD_IMAGE=golang:1.25.10
+ARG BUILD_IMAGE=golang:1.25.14
 ARG BASE_IMAGE=alpine:3.20
 
 FROM ${BUILD_IMAGE} AS builder

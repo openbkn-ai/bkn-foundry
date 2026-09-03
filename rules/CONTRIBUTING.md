@@ -69,7 +69,7 @@ When reporting a bug, please provide the following information:
 - **Version/Environment**:
   - BKN Foundry version (`git describe --tags` or `VERSION` file, e.g. `v0.6.0`)
   - Module affected (e.g. `adp/bkn`, `adp/vega/vega-backend`, `infra/sandbox`)
-  - Runtime (Java / Go / Python / Node — and version, e.g. JDK 17, Go 1.23, Python 3.11)
+  - Runtime (Java / Go / Python / Node — and version, e.g. JDK 17, Go 1.25, Python 3.11)
   - OS (Linux distro + kernel, macOS, Windows)
   - Cluster (single-node K3s / kubeadm / managed K8s) and how it was installed (`deploy.sh openbkn install`)
   - Storage backends as relevant (MariaDB / DM8, OpenSearch, Redis, Kafka)

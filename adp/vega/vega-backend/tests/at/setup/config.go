@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"os"
 
-	kwcrypto "github.com/openbkn-ai/bkn-comm-go/crypto"
+	bkncrypto "github.com/openbkn-ai/bkn-foundry/comm-go/crypto"
 	"github.com/spf13/viper"
 )
 
@@ -22,7 +22,7 @@ type TestConfig struct {
 	Crypto           CryptoConfig      `mapstructure:"crypto"`
 
 	// Cipher 运行时初始化的加密器（非配置文件字段）
-	Cipher kwcrypto.Cipher `mapstructure:"-"`
+	Cipher bkncrypto.Cipher `mapstructure:"-"`
 }
 
 // VegaBackendConfig VEGA Backend服务配置
@@ -106,7 +106,7 @@ func LoadTestConfig() (*TestConfig, error) {
 			}
 			privateKey = string(privateKeyContent)
 		}
-		cipher, err := kwcrypto.NewRSACipher(privateKey, string(publicKeyContent))
+		cipher, err := bkncrypto.NewRSACipher(privateKey, string(publicKeyContent))
 		if err != nil {
 			return nil, fmt.Errorf("初始化RSA加密器失败: %w", err)
 		}

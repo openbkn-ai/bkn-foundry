@@ -28,7 +28,10 @@ func TestBKNTraceRequestContextReadsBusinessCausalityHeaders(t *testing.T) {
 		c.Request.Header.Set(key, value)
 	}
 
-	got := bknTraceRequestContext(c, hydra.Visitor{})
+	got, err := bknTraceRequestContext(c, hydra.Visitor{})
+	if err != nil {
+		t.Fatalf("bknTraceRequestContext() error = %v", err)
+	}
 	if got.InteractionID != "int_backend_001" || got.OperationID != "op_backend_001" || got.CausationEventID != "evt_upstream_001" || got.ClaimID != "claim_upstream_001" || got.Attempt != 1 {
 		t.Fatalf("causality headers not parsed: %#v", got)
 	}
@@ -41,7 +44,10 @@ func TestBKNTraceRequestContextCreatesReplayEnvelopeForDirectStudioRequest(t *te
 	c.Request.Header.Set("x-account-id", "acct_demo")
 	c.Request.Header.Set("x-account-type", "user")
 
-	got := bknTraceRequestContext(c, hydra.Visitor{})
+	got, err := bknTraceRequestContext(c, hydra.Visitor{})
+	if err != nil {
+		t.Fatalf("bknTraceRequestContext() error = %v", err)
+	}
 	if got.RequestID == "" || !strings.HasPrefix(got.InteractionID, "int_") || !strings.HasPrefix(got.OperationID, "op_") {
 		t.Fatalf("direct request replay envelope not generated: %#v", got)
 	}

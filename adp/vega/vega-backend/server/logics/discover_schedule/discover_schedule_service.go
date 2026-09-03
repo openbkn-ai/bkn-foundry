@@ -13,11 +13,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-	"github.com/rs/xid"
 	"go.opentelemetry.io/otel/codes"
 
 	"vega-backend/common"
@@ -89,8 +89,12 @@ func (dss *discoverScheduleService) Create(ctx context.Context, req *interfaces.
 		return "", err
 	}
 	now := nowTime.UnixMilli()
+	generatedID, err := uuid.NewV7()
+	if err != nil {
+		return "", fmt.Errorf("generate discover schedule UUIDv7: %w", err)
+	}
 	schedule := &interfaces.DiscoverSchedule{
-		ID:        xid.New().String(),
+		ID:        generatedID.String(),
 		Name:      req.Name,
 		CatalogID: req.CatalogID,
 		CronExpr:  req.CronExpr,

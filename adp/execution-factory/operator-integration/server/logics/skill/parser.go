@@ -96,11 +96,15 @@ func (p *skillParser) parseSkillContent(content string, req *interfaces.Register
 		return nil, fmt.Errorf("invalid skill frontmatter: %w", err)
 	}
 
+	version, err := uuid.NewV7()
+	if err != nil {
+		return nil, err
+	}
 	skill := &model.SkillRepositoryDB{
 		Name:         fm.Name,
 		Description:  fm.Description,
 		SkillContent: strings.TrimSpace(parts[2]),
-		Version:      uuid.New().String(),
+		Version:      version.String(),
 		Status:       interfaces.BizStatusUnpublish.String(),
 		Source:       req.Source,
 		Dependencies: utils.ObjectToJSON(fm.Dependencies),

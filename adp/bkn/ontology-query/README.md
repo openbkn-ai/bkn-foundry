@@ -38,7 +38,7 @@ Ontology Query is the query service component of the ontology engine. It focuses
 
 ### Technology stack
 
-- **Language**: Go 1.24
+- **Language**: Go 1.25
 - **Web framework**: Gin 1.11
 - **Search engine**: OpenSearch 2.x
 - **Query language**: custom query language
@@ -91,7 +91,7 @@ For detailed API documentation, see [API documentation](./api_doc/).
 
 ### Requirements
 
-- Go 1.24.0+
+- Go 1.25.0+
 - OpenSearch 2.x
 - Ontology manager module, running on port 13014
 - BKN Safe with the `/api/safe/v1/authz/resource-filter` contract enabled when

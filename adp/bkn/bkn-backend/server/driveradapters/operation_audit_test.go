@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 
 	"bkn-backend/common/operationaudit"
@@ -94,6 +95,31 @@ func (s *recordingOperationAuditStore) Record(_ context.Context, entry operation
 	return nil
 }
 
+func TestOperationAuditRequestIDFailureDoesNotChangeBusinessResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	uuid.SetRand(strings.NewReader(""))
+	defer uuid.SetRand(nil)
+
+	store := &recordingOperationAuditStore{}
+	handler := &restHandler{auditRecorder: store}
+	engine := gin.New()
+	engine.Use(handler.OperationAudit())
+	engine.POST("/api/bkn-backend/v1/knowledge-networks", func(c *gin.Context) {
+		c.Status(http.StatusCreated)
+	})
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/bkn-backend/v1/knowledge-networks", nil)
+	engine.ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("business response status = %d, want %d", response.Code, http.StatusCreated)
+	}
+	if len(store.entries) != 0 {
+		t.Fatalf("audit entries = %d, want 0", len(store.entries))
+	}
+}
+
 func TestOperationAuditMiddlewareRecordsOneReadableSuccessFact(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	store := &recordingOperationAuditStore{}
@@ -139,6 +165,7 @@ func TestOperationAuditFactsUseImportedKnowledgeNetworkID(t *testing.T) {
 		operationAuditRule{Action: "import", TargetType: "knowledge_network"},
 		nil,
 		[]byte(`{"kn_id":"supplychain"}`),
+		"req-test",
 	)
 	if facts.targetID != "supplychain" || facts.knowledgeNetworkID != "supplychain" {
 		t.Fatalf("facts = %#v", facts)

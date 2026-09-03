@@ -17,9 +17,9 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/rs/xid"
 
 	"vega-backend/common"
 	"vega-backend/common/operationaudit"
@@ -55,7 +55,11 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 			logger.Errorf("operation audit fact rejected: action=%s target_type=%s missing verified actor", rule.Action, rule.TargetType)
 			return
 		}
-		requestID := operationAuditRequestID(c)
+		requestID, err := operationAuditRequestID(c)
+		if err != nil {
+			logger.Errorf("operation audit request ID generation failed: action=%s target_type=%s error=%v", rule.Action, rule.TargetType, err)
+			return
+		}
 		actorName := operationAuditActorName(c.Request.Context(), c.GetHeader("Authorization"), actor.ID)
 		if actorName == "" {
 			actorName = actor.ID
@@ -147,19 +151,23 @@ func operationAuditOutcome(c *gin.Context) (string, string, string) {
 	return "failure", fmt.Sprintf("http_%d", status), "management request failed"
 }
 
-func operationAuditRequestID(c *gin.Context) string {
+func operationAuditRequestID(c *gin.Context) (string, error) {
 	if value, exists := c.Get(operationAuditRequestKey); exists {
 		if requestID, ok := value.(string); ok && requestID != "" {
-			return requestID
+			return requestID, nil
 		}
 	}
 	if traceContext, ok := common.GetTraceContextFromCtx(c.Request.Context()); ok && strings.TrimSpace(traceContext.RequestID) != "" {
-		return rememberOperationAuditRequestID(c, strings.TrimSpace(traceContext.RequestID))
+		return rememberOperationAuditRequestID(c, strings.TrimSpace(traceContext.RequestID)), nil
 	}
 	if value := strings.TrimSpace(c.GetHeader(common.HeaderBKNRequestID)); value != "" {
-		return rememberOperationAuditRequestID(c, value)
+		return rememberOperationAuditRequestID(c, value), nil
 	}
-	return rememberOperationAuditRequestID(c, "req_"+xid.New().String())
+	id, err := uuid.NewV7()
+	if err != nil {
+		return "", fmt.Errorf("generate operation audit request UUIDv7: %w", err)
+	}
+	return rememberOperationAuditRequestID(c, "req_"+id.String()), nil
 }
 
 func rememberOperationAuditRequestID(c *gin.Context, requestID string) string {

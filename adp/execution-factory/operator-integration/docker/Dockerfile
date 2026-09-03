@@ -1,6 +1,6 @@
 # Multi-stage: Go is compiled within the builder (the independent compilation stage of the original Azure pipeline has been inlined), leaving only the binary for prod.
 ########################### Stage 0: builder ########################
-ARG BUILD_IMAGE=golang:1.25.10
+ARG BUILD_IMAGE=golang:1.25.14
 ARG baseImage=ubuntu:22.04
 
 FROM ${BUILD_IMAGE} AS builder

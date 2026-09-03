@@ -20,9 +20,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/rs/xid"
 
 	"bkn-backend/common/operationaudit"
 	"bkn-backend/interfaces"
@@ -153,14 +153,18 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 		if r == nil || r.auditRecorder == nil {
 			return
 		}
+		requestID, err := operationAuditRequestID(c)
+		if err != nil {
+			logger.Errorf("operation audit request ID generation failed: action=%s target_type=%s error=%v", rule.Action, rule.TargetType, err)
+			return
+		}
 		visitor, _ := operationAuditVisitor(c)
 		actor := r.operationAuditIdentity(c.Request.Context(), c.GetHeader("Authorization"), visitor)
 		if actor.ActorID == "" {
 			actor.ActorID, actor.ActorName, actor.ActorType = "unauthenticated", "未认证调用者", "unknown"
 		}
-		facts := operationAuditFacts(c, rule, requestBody, responseBody.body.Bytes())
+		facts := operationAuditFacts(c, rule, requestBody, responseBody.body.Bytes(), requestID)
 		now := time.Now().UTC()
-		requestID := operationAuditRequestID(c)
 		entry := operationaudit.Entry{
 			EventID:            operationAuditEventID(requestID, c.Request.Method, c.Request.URL.Path),
 			EventTime:          now,
@@ -308,7 +312,7 @@ type extractedOperationAuditFacts struct {
 	changeSummary      map[string]any
 }
 
-func operationAuditFacts(c *gin.Context, rule operationAuditRule, requestBody, responseBody []byte) extractedOperationAuditFacts {
+func operationAuditFacts(c *gin.Context, rule operationAuditRule, requestBody, responseBody []byte, requestID string) extractedOperationAuditFacts {
 	requestJSON := decodeBoundedObject(requestBody)
 	responseJSON := decodeBoundedObject(responseBody)
 	knID := strings.TrimSpace(c.Param("kn_id"))
@@ -326,7 +330,6 @@ func operationAuditFacts(c *gin.Context, rule operationAuditRule, requestBody, r
 	} else if len(requestNames) > 0 {
 		targetName = strings.Join(requestNames, "、")
 	}
-	requestID := operationAuditRequestID(c)
 	if targetID == "" {
 		targetID = rule.TargetType + ":" + requestID
 	}
@@ -445,10 +448,10 @@ func boundedFailure(value map[string]any, status int) (string, string) {
 	return boundText(code, 128), boundText(message, 512)
 }
 
-func operationAuditRequestID(c *gin.Context) string {
+func operationAuditRequestID(c *gin.Context) (string, error) {
 	if value, exists := c.Get(operationAuditRequestKey); exists {
 		if requestID, ok := value.(string); ok && requestID != "" {
-			return requestID
+			return requestID, nil
 		}
 	}
 	requestID := firstNonEmptyHeader(c, headerBKNRequestID, headerLegacyRequestID)
@@ -456,12 +459,16 @@ func operationAuditRequestID(c *gin.Context) string {
 		requestID = ""
 	}
 	if requestID == "" {
-		requestID = "req_" + xid.New().String()
+		id, err := uuid.NewV7()
+		if err != nil {
+			return "", fmt.Errorf("generate operation audit request UUIDv7: %w", err)
+		}
+		requestID = "req_" + id.String()
 	}
 	c.Request.Header.Set(headerBKNRequestID, requestID)
 	c.Set(operationAuditRequestKey, requestID)
 	c.Header(headerBKNRequestID, requestID)
-	return requestID
+	return requestID, nil
 }
 
 func operationAuditPrintableASCII(value string) bool {

@@ -48,7 +48,11 @@ func NewFunctionMetadataDB() model.IFunctionMetadataDB {
 // InsertFuncMetadata inserts function metadata.
 func (fm *functionMetadataDB) InsertFuncMetadata(ctx context.Context, tx *sql.Tx, metadata *model.FunctionMetadataDB) (version string, err error) {
 	if metadata.Version == "" {
-		metadata.Version = uuid.New().String()
+		id, generateErr := uuid.NewV7()
+		if generateErr != nil {
+			return "", generateErr
+		}
+		metadata.Version = id.String()
 	}
 	version = metadata.Version
 
@@ -201,7 +205,11 @@ func (fm *functionMetadataDB) InsertFuncMetadatas(ctx context.Context, tx *sql.T
 	values := [][]interface{}{}
 	for _, metadata := range metadatas {
 		if metadata.Version == "" {
-			metadata.Version = uuid.New().String()
+			id, generateErr := uuid.NewV7()
+			if generateErr != nil {
+				return nil, generateErr
+			}
+			metadata.Version = id.String()
 		}
 		versions = append(versions, metadata.Version)
 		values = append(values, []interface{}{

@@ -20,7 +20,7 @@ Agent Retrieval 是 ADP context-loader 中的检索服务组件，面向知识�
 ## 技术架构
 
 ### 技术栈
-- **语言**：Go 1.24
+- **语言**：Go 1.25
 - **Web 框架**：Gin 1.11
 - **可观测**：OpenTelemetry
 - **缓存**：Redis（可选，支持哨兵模式）
@@ -61,7 +61,7 @@ server/
 ## 快速开始
 
 ### 环境要求
-- Go 1.24+
+- Go 1.25+
 - 可访问的 ontology-query、ontology-manager 等后端（或通过 ktctl 连接远程集群）
 
 ### 本地开发

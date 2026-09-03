@@ -21,7 +21,7 @@ images from current source** and ensure the deploy env sets the switch.
 REG=ghcr.io/openbkn-ai
 TAG=0.1.1            # bump (recommended) or reuse 0.1.0 to overwrite in place
 GOPROXY_URL=https://goproxy.cn,direct          # drop outside CN
-BUILD_IMAGE=docker.m.daocloud.io/library/golang:1.25.10   # or golang:1.25.10
+BUILD_IMAGE=docker.m.daocloud.io/library/golang:1.25.14   # or golang:1.25.14
 BASE_UBUNTU=docker.m.daocloud.io/library/ubuntu:24.04      # or ubuntu:24.04
 
 # --- bkn-backend (Go, CGO) — plain Dockerfile build ---

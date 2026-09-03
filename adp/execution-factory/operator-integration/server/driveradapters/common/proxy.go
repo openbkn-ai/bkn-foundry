@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
@@ -209,16 +210,20 @@ func inferSchemaExecutionEnv() map[string]any {
 	return env
 }
 
-func buildFunctionProxyExecutionEnv(c *gin.Context, version string) map[string]any {
+func buildFunctionProxyExecutionEnv(c *gin.Context, version string) (map[string]any, error) {
 	env := newExecutionEnv()
 	env["source"] = "function_proxy"
-	env["task_id"] = "function_proxy_" + uuid.NewString()
 	env["capability_id"] = "function_version:" + version
 	env["function_version_id"] = version
+	taskID, err := uuid.NewV7()
+	if err != nil {
+		return fillExecutionAccountFromRequest(env, c), err
+	}
+	env["task_id"] = "function_proxy_" + taskID.String()
 	// This path has no body fields to carry the acting account at all: a registered
 	// function is invoked by version. The credential is deliberately withheld — the
 	// code being run belongs to whoever registered the version, not to the caller.
-	return fillExecutionAccountFromRequest(env, c)
+	return fillExecutionAccountFromRequest(env, c), nil
 }
 
 // FunctionExecuteResp function execution response.
@@ -287,7 +292,7 @@ func buildFunctionExecutionEnv(c *gin.Context, req *interfaces.FunctionProxyExec
 
 // FunctionExecuteProxyReq function execution proxy request parameters.
 type FunctionExecuteProxyReq struct {
-	Version string `uri:"version" validate:"required,uuid4"`
+	Version string `uri:"version" validate:"required,uuid"`
 	Timeout int64  `query:"timeout"` // milliseconds.
 }
 
@@ -342,12 +347,16 @@ func (h *unifiedProxyHandler) FunctionExecuteProxy(c *gin.Context) {
 	if metadata.GetDependencies() != "" {
 		dependencies = utils.JSONToObject[[]*interfaces.DependencyInfo](metadata.GetDependencies())
 	}
+	executionEnv, generateErr := buildFunctionProxyExecutionEnv(c, req.Version)
+	if generateErr != nil {
+		h.Logger.Warnf("generate function proxy task UUIDv7 failed: %v", generateErr)
+	}
 	execReq := &interfaces.ExecuteCodeReq{
 		Code:                  code,
 		Event:                 event,
 		Timeout:               int(req.Timeout / 1000),
 		Language:              scriptType,
-		EnvVars:               buildFunctionProxyExecutionEnv(c, req.Version),
+		EnvVars:               executionEnv,
 		Dependencies:          dependencies,
 		PythonPackageIndexURL: metadata.GetDependenciesURL(),
 	}

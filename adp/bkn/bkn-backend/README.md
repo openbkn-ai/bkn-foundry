@@ -119,7 +119,7 @@ Core logic packages:
 
 Prerequisites:
 
-- Go 1.24+
+- Go 1.25+
 - MariaDB 11.4+ or DM8
 - OpenSearch 2.x
 - Reachable VEGA, model-factory, and bkn-safe dependencies when

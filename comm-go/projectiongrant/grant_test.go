@@ -109,7 +109,7 @@ func TestVerifyRejectsTamperedGrantAndInconsistentHeader(t *testing.T) {
 	}
 	options := VerifyOptions{Now: now.Add(time.Minute), ExpectedIssuer: "trace-core-projection", ExpectedAudience: "bkn-projection-read"}
 	for _, malformed := range []string{
-		token[:len(token)-1] + "x",
+		tamperSignature(t, token),
 		replaceHeaderField(t, token, "alg", "none"),
 		replaceHeaderField(t, token, "kid", "unknown"),
 	} {
@@ -117,6 +117,20 @@ func TestVerifyRejectsTamperedGrantAndInconsistentHeader(t *testing.T) {
 			t.Fatalf("malformed grant was accepted: %q", malformed)
 		}
 	}
+}
+
+func tamperSignature(t *testing.T, token string) string {
+	t.Helper()
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 || parts[2] == "" {
+		t.Fatal("invalid test token")
+	}
+	replacement := byte('A')
+	if parts[2][0] == replacement {
+		replacement = 'B'
+	}
+	parts[2] = string(replacement) + parts[2][1:]
+	return strings.Join(parts, ".")
 }
 
 func validClaims(now time.Time) Claims {

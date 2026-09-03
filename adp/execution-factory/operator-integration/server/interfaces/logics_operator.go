@@ -11,7 +11,7 @@ import (
 
 // OperatorStatusItem structure of a single status update item.
 type OperatorStatusItem struct {
-	OperatorID string    `json:"operator_id" validate:"required,uuid4"`
+	OperatorID string    `json:"operator_id" validate:"required,uuid"`
 	Status     BizStatus `json:"status" validate:"required,oneof=unpublish published offline editing"`
 }
 
@@ -23,7 +23,7 @@ type OperatorStatusUpdateReq struct {
 
 // OperatorDeleteItem single delete request.
 type OperatorDeleteItem struct {
-	OperatorID string `json:"operator_id" validate:"required,uuid4"`
+	OperatorID string `json:"operator_id" validate:"required,uuid"`
 }
 
 // OperatorDeleteReq delete request.
@@ -32,7 +32,7 @@ type OperatorDeleteReq []OperatorDeleteItem
 // OperatorUpdateReq update request.
 type OperatorUpdateReq struct {
 	*OperatorRegisterReq `json:",inline"`
-	OperatorID           string `json:"operator_id" form:"operator_id" validate:"required,uuid4"`
+	OperatorID           string `json:"operator_id" form:"operator_id" validate:"required,uuid"`
 }
 
 // OperatorRegisterReq registration request.
@@ -61,7 +61,7 @@ type OperatorEditReq struct {
 	UserID                 string                  `header:"user_id" validate:"required"` // User ID.
 	Name                   string                  `json:"name" form:"name"`
 	Description            string                  `json:"description" form:"description"`                                       // Operator description.
-	OperatorID             string                  `json:"operator_id" form:"operator_id" validate:"required,uuid4"`             // Operator ID.
+	OperatorID             string                  `json:"operator_id" form:"operator_id" validate:"required,uuid"`              // Operator ID.
 	OperatorInfoEdit       *OperatorInfoEdit       `json:"operator_info" form:"operator_info"`                                   // Operator information.
 	OperatorExecuteControl *OperatorExecuteControl `json:"operator_execute_control" form:"operator_execute_control"`             // executive control.
 	ExtendInfo             map[string]interface{}  `json:"extend_info,omitempty" form:"extend_info,omitempty"`                   // Extended information.
@@ -81,16 +81,16 @@ type OperatorInfoEdit struct {
 
 // OperatorEditResp edit response.
 type OperatorEditResp struct {
-	OperatorID string    `json:"operator_id" validate:"required,uuid4"`
-	Version    string    `json:"version" validate:"required,uuid4"`
+	OperatorID string    `json:"operator_id" validate:"required,uuid"`
+	Version    string    `json:"version" validate:"required,uuid"`
 	Status     BizStatus `json:"status" validate:"required,oneof=unpublish published offline editing"` // validate:"oneof=asc desc"
 }
 
 // OperatorDataInfo operator data.
 type OperatorDataInfo struct {
 	Name                   string                  `json:"name"` // Operator name.
-	OperatorID             string                  `json:"operator_id" validate:"uuid4"`
-	Version                string                  `json:"version" validate:"uuid4"`
+	OperatorID             string                  `json:"operator_id" validate:"uuid"`
+	Version                string                  `json:"version" validate:"uuid"`
 	Status                 BizStatus               `json:"status" validate:"omitempty,oneof=unpublish published offline editing"` // Status.
 	MetadataType           MetadataType            `json:"metadata_type" default:"openapi" validate:"oneof=openapi function"`     // Operator metadata type (mandatory parameter)
 	Metadata               *MetadataInfo           `json:"metadata"`
@@ -185,17 +185,17 @@ type OperatorMarketDetailReq struct {
 // DebugOperatorReq debugging request.
 type DebugOperatorReq struct {
 	UserID            string `header:"user_id" validate:"required"` // User ID, internal use.
-	OperatorID        string `json:"operator_id" validate:"required,uuid4"`
-	Version           string `json:"version" validate:"required,uuid4"`
+	OperatorID        string `json:"operator_id" validate:"required,uuid"`
+	Version           string `json:"version" validate:"required,uuid"`
 	Timeout           int    `json:"timeout"` // Timeout time in seconds.
 	HTTPRequestParams `json:",inline"`
 }
 
 // ExecuteOperatorReq executes the request.
 type ExecuteOperatorReq struct {
-	UserID            string `header:"user_id" validate:"required"`        // User ID, internal use.
-	OperatorID        string `uri:"operator_id" validate:"required,uuid4"` // Operator ID.
-	Timeout           int    `json:"timeout"`                              // Timeout time in seconds.
+	UserID            string `header:"user_id" validate:"required"`       // User ID, internal use.
+	OperatorID        string `uri:"operator_id" validate:"required,uuid"` // Operator ID.
+	Timeout           int    `json:"timeout"`                             // Timeout time in seconds.
 	HTTPRequestParams `json:",inline"`
 }
 
@@ -227,7 +227,7 @@ type PageQueryOperatorMarketReq struct {
 // GetOperatorInfoByOperatorIDReq Get operator information request.
 type GetOperatorInfoByOperatorIDReq struct {
 	UserID     string `header:"user_id"` // Optional.
-	OperatorID string `uri:"operator_id" validate:"required,uuid4"`
+	OperatorID string `uri:"operator_id" validate:"required,uuid"`
 }
 
 // OperatorManager operator management interface.

@@ -322,7 +322,11 @@ func (m *operatorManager) updateOperatorConfig(ctx context.Context, tx *sql.Tx, 
 	operatorDB.MetadataType = newOperatorDB.MetadataType
 	switch interfaces.BizStatus(operatorDB.Status) {
 	case interfaces.BizStatusPublished, interfaces.BizStatusOffline:
-		newMetadataDB.SetVersion(uuid.New().String())
+		metadataVersion, generateErr := uuid.NewV7()
+		if generateErr != nil {
+			return generateErr
+		}
+		newMetadataDB.SetVersion(metadataVersion.String())
 		operatorDB.MetadataVersion, err = m.MetadataService.RegisterMetadata(ctx, tx, newMetadataDB)
 	case interfaces.BizStatusUnpublish, interfaces.BizStatusEditing:
 		// Check if metadata exists.
