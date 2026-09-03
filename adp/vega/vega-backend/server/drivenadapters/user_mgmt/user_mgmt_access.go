@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/bytedance/sonic"
@@ -34,11 +35,14 @@ type userMgmtAccess struct {
 func NewUserMgmtAccess(appSetting *common.AppSetting) interfaces.UserMgmtAccess {
 	umAccessOnce.Do(func() {
 		umAccess = &userMgmtAccess{
-			appSetting:        appSetting,
-			httpClient:        common.NewHTTPClient(),
-			userMgmtUrl:       appSetting.UserMgmtUrl,
-			directoryProvider: os.Getenv("DIRECTORY_PROVIDER"),
-			bknSafeURL:        os.Getenv("BKN_SAFE_URL"),
+			appSetting:  appSetting,
+			httpClient:  common.NewHTTPClient(),
+			userMgmtUrl: appSetting.UserMgmtUrl,
+			// Trimmed for the same reason the authz side trims: a values file
+			// with a trailing space would otherwise fail the equality check
+			// below and silently resolve names through the retired ISF.
+			directoryProvider: strings.TrimSpace(os.Getenv("DIRECTORY_PROVIDER")),
+			bknSafeURL:        strings.TrimSpace(os.Getenv("BKN_SAFE_URL")),
 		}
 	})
 

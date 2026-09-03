@@ -4,7 +4,7 @@ import os
 import time
 
 import aiohttp
-from app.core.config import base_config
+from app.core.config import base_config, directory_settings
 
 
 _DIRECTORY_TIMEOUT = aiohttp.ClientTimeout(total=3, sock_connect=1, sock_read=2)
@@ -75,8 +75,7 @@ async def get_username_by_ids(user_ids):
         return {}
     # bkn-safe directory cutover (revertible): DIRECTORY_PROVIDER=bkn-safe +
     # BKN_SAFE_URL resolves names via bkn-safe instead of ISF. Unset to revert.
-    provider = os.getenv("DIRECTORY_PROVIDER", "")
-    bkn_safe_url = os.getenv("BKN_SAFE_URL", "")
+    provider, bkn_safe_url = directory_settings()
     if provider == "bkn-safe" and bkn_safe_url:
         return await _resolve_names_bkn_safe(bkn_safe_url, user_ids)
     user_management_url = f"http://{base_config.USERMANAGEMENTPRIVATEHOST}:{base_config.USERMANAGEMENTPRIVATEPORT}/api/user-management/v1/batch-get-user-info"

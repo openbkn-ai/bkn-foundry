@@ -141,17 +141,31 @@ AUTHZ_PROVIDER_ISF = 'isf'
 SUPPORTED_AUTHZ_PROVIDERS = AUTHZ_PROVIDERS_REQUIRING_SAFE_URL + (AUTHZ_PROVIDER_ISF,)
 
 
-def authz_settings():
-    """Read the authorization backend selection through one normalisation.
+def _stripped_env(name):
+    """Read one bkn-safe cutover variable, whitespace removed.
 
-    Both the startup check and PermissionManager go through here so a value
-    that passes validation is the same value the runtime compares against.
-    Normalising in only one of the two would let "bkn-safe " start the service
-    and then miss every equality check, which is the silent ISF fallback this
-    validation exists to remove.
+    Every reader of these variables goes through here. Normalising in only
+    some of them would let "bkn-safe " pass the startup check and then miss
+    the equality comparisons that select the backend, which is the silent ISF
+    fallback this validation exists to remove.
     """
-    return (os.getenv('AUTHZ_PROVIDER', '').strip(),
-            os.getenv('BKN_SAFE_URL', '').strip())
+    return os.getenv(name, '').strip()
+
+
+def authz_settings():
+    """Authorization backend selection, shared by the startup check and
+    PermissionManager."""
+    return _stripped_env('AUTHZ_PROVIDER'), _stripped_env('BKN_SAFE_URL')
+
+
+def directory_settings():
+    """Directory (name resolution) backend selection, same normalisation."""
+    return _stripped_env('DIRECTORY_PROVIDER'), _stripped_env('BKN_SAFE_URL')
+
+
+def bkn_safe_url():
+    """bkn-safe base URL, same normalisation."""
+    return _stripped_env('BKN_SAFE_URL')
 
 
 def validate_authz_config():
