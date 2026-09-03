@@ -663,6 +663,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MetricAnalysisDimension"
+        operations:
+          description: Operations allowed for the current accessor on this metric.
+          type: array
+          items:
+            type: string
     CreateMetricRequest:
       type: object
       required:

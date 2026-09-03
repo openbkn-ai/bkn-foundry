@@ -27,6 +27,7 @@ type RiskType struct {
 	Updater    AccountInfo `json:"updater" mapstructure:"updater"`
 	UpdateTime int64       `json:"update_time" mapstructure:"update_time"`
 	ModuleType string      `json:"module_type" mapstructure:"module_type"`
+	Operations []string    `json:"operations,omitempty"`
 
 	Vector []float32 `json:"_vector,omitempty"`
 	Score  *float64  `json:"_score,omitempty"` // OpenSearch relevance score used for concept searches.

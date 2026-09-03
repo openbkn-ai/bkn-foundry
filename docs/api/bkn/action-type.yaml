@@ -1330,6 +1330,11 @@ components:
           enum:
             - action_type
           type: string
+        operations:
+          description: Operations allowed for the current accessor on this action type.
+          type: array
+          items:
+            type: string
         object_type:
           description: Summary information for the object type owned by the action
           type: object

@@ -429,7 +429,6 @@ func (cgs *conceptGroupService) ListConceptGroups(ctx context.Context,
 			return []*interfaces.ConceptGroup{}, 0, err
 		}
 	}
-
 	listQuery := query
 	if pepEnabled {
 		listQuery.Offset = 0
@@ -446,17 +445,19 @@ func (cgs *conceptGroupService) ListConceptGroups(ctx context.Context,
 
 	var total int
 	if pepEnabled {
-		conceptGroups, total, err = permission.FilterAndPaginateKNChildren(ctx, cgs.ps,
+		var operationMap map[string]interfaces.PermissionResourceOps
+		conceptGroups, total, operationMap, err = permission.FilterAndPaginateKNChildrenWithOperations(ctx, cgs.ps,
 			interfaces.RESOURCE_TYPE_CONCEPT_GROUP, query.KNID, conceptGroups,
 			func(group *interfaces.ConceptGroup) string { return group.CGID }, query.Offset, query.Limit)
 		if err != nil {
 			return []*interfaces.ConceptGroup{}, 0, err
 		}
+		for _, conceptGroup := range conceptGroups {
+			conceptGroup.Operations = operationMap[interfaces.KNChildResourceID(query.KNID, conceptGroup.CGID)].Operations
+		}
 	} else {
 		total, err = cgs.cga.GetConceptGroupsTotal(ctx, query)
 		if err != nil {
-			logger.Errorf("GetConceptGroupsTotal error: %s", err.Error())
-			span.SetStatus(codes.Error, "Get concept groups total error")
 			return []*interfaces.ConceptGroup{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
 		}
@@ -540,6 +541,14 @@ func (cgs *conceptGroupService) GetConceptGroupByID(ctx context.Context, knID st
 		knID, cgID, interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_VIEW_DETAIL)
 	if err = cgs.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
 		return nil, err
+	}
+	if permission.KNChildResourcePEPEnabled() {
+		operations, err := permission.GetKNChildOperations(ctx, cgs.ps,
+			interfaces.RESOURCE_TYPE_CONCEPT_GROUP, knID, cgID)
+		if err != nil {
+			return nil, err
+		}
+		conceptGroup.Operations = operations
 	}
 
 	otIDs, err := cgs.cga.GetConceptIDsByConceptGroupIDs(ctx, conceptGroup.KNID,

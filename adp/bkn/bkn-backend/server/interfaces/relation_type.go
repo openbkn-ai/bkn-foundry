@@ -44,7 +44,8 @@ type RelationType struct {
 	Updater    AccountInfo `json:"updater" mapstructure:"updater"`
 	UpdateTime int64       `json:"update_time" mapstructure:"update_time"`
 
-	ModuleType string `json:"module_type" mapstructure:"module_type"`
+	ModuleType string   `json:"module_type" mapstructure:"module_type"`
+	Operations []string `json:"operations,omitempty"`
 
 	IfNameModify bool `json:"-"`
 

@@ -375,7 +375,8 @@ func (ms *metricService) handleMetricImportMode(ctx context.Context, mode string
 func (ms *metricService) ListMetrics(ctx context.Context, query interfaces.MetricsListQueryParams) (*interfaces.MetricsList, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ListMetrics")
 	defer span.End()
-	if !permission.KNChildResourcePEPEnabled() {
+	pepEnabled := permission.KNChildResourcePEPEnabled()
+	if !pepEnabled {
 		if err := ms.ps.CheckPermission(ctx, interfaces.PermissionResource{
 			Type: interfaces.RESOURCE_TYPE_KN,
 			ID:   query.KNID,
@@ -383,7 +384,6 @@ func (ms *metricService) ListMetrics(ctx context.Context, query interfaces.Metri
 			return nil, err
 		}
 	}
-
 	candidateQuery := query
 	candidateQuery.Offset = 0
 	candidateQuery.Limit = -1
@@ -392,12 +392,16 @@ func (ms *metricService) ListMetrics(ctx context.Context, query interfaces.Metri
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Metric_InternalError).WithErrorDetails(err.Error())
 	}
 	total := len(list)
-	if permission.KNChildResourcePEPEnabled() {
-		list, total, err = permission.FilterAndPaginateKNChildren(ctx, ms.ps,
+	if pepEnabled {
+		var operationMap map[string]interfaces.PermissionResourceOps
+		list, total, operationMap, err = permission.FilterAndPaginateKNChildrenWithOperations(ctx, ms.ps,
 			interfaces.RESOURCE_TYPE_METRIC, query.KNID, list,
 			func(metric *interfaces.MetricDefinition) string { return metric.ID }, query.Offset, query.Limit)
 		if err != nil {
 			return nil, err
+		}
+		for _, metric := range list {
+			metric.Operations = operationMap[interfaces.KNChildResourceID(query.KNID, metric.ID)].Operations
 		}
 	} else {
 		list = permission.PaginateKNChildCandidates(list, query.Offset, query.Limit)
@@ -435,6 +439,14 @@ func (ms *metricService) GetMetricByID(ctx context.Context, knID, branch, metric
 	if err = ms.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
 		return nil, err
 	}
+	if permission.KNChildResourcePEPEnabled() {
+		operations, err := permission.GetKNChildOperations(ctx, ms.ps,
+			interfaces.RESOURCE_TYPE_METRIC, knID, metricID)
+		if err != nil {
+			return nil, err
+		}
+		def.Operations = operations
+	}
 	span.SetStatus(codes.Ok, "")
 	return def, nil
 }
@@ -448,6 +460,14 @@ func (ms *metricService) GetMetricsByIDs(ctx context.Context, knID, branch strin
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_Metric_InternalError_GetMetricsByIDsFailed).WithErrorDetails(err.Error())
+	}
+	if len(metricIDs) == 1 && len(list) == 1 && permission.KNChildResourcePEPEnabled() {
+		operations, err := permission.GetKNChildOperations(ctx, ms.ps,
+			interfaces.RESOURCE_TYPE_METRIC, knID, metricIDs[0])
+		if err != nil {
+			return nil, err
+		}
+		list[0].Operations = operations
 	}
 	span.SetStatus(codes.Ok, "")
 	return list, nil

@@ -417,7 +417,6 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 			return []*interfaces.ObjectType{}, 0, err
 		}
 	}
-
 	// 0. Begin the transaction.
 	var err error
 	if tx == nil {
@@ -464,17 +463,19 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 
 	var total int
 	if pepEnabled {
-		objectTypes, total, err = permission.FilterAndPaginateKNChildren(ctx, ots.ps,
+		var operationMap map[string]interfaces.PermissionResourceOps
+		objectTypes, total, operationMap, err = permission.FilterAndPaginateKNChildrenWithOperations(ctx, ots.ps,
 			interfaces.RESOURCE_TYPE_OBJECT_TYPE, query.KNID, objectTypes,
 			func(objectType *interfaces.ObjectType) string { return objectType.OTID }, query.Offset, query.Limit)
 		if err != nil {
 			return []*interfaces.ObjectType{}, 0, err
 		}
+		for _, objectType := range objectTypes {
+			objectType.Operations = operationMap[interfaces.KNChildResourceID(query.KNID, objectType.OTID)].Operations
+		}
 	} else {
 		total, err = ots.ota.GetObjectTypesTotal(ctx, query)
 		if err != nil {
-			logger.Errorf("GetObjectTypesTotal error: %s", err.Error())
-			span.SetStatus(codes.Error, "Get object types total error")
 			return []*interfaces.ObjectType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 		}
@@ -559,7 +560,7 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 	}
 	resource := interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID}
 	operation := interfaces.OPERATION_TYPE_VIEW_DETAIL
-	if len(otIDs) == 1 {
+	if len(otIDs) == 1 && permission.KNChildResourcePEPEnabled() {
 		resource, operation = permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_OBJECT_TYPE,
 			knID, otIDs[0], interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_VIEW_DETAIL)
 	}
@@ -617,6 +618,14 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 	}
 	if err = ots.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
 		return nil, err
+	}
+	if len(otIDs) == 1 && permission.KNChildResourcePEPEnabled() {
+		operations, err := permission.GetKNChildOperations(ctx, ots.ps,
+			interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, otIDs[0])
+		if err != nil {
+			return nil, err
+		}
+		objectTypes[0].Operations = operations
 	}
 
 	// Get object type groups.

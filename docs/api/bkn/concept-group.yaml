@@ -463,6 +463,11 @@ components:
         module_type:
           description: Module type of the concept
           type: string
+        operations:
+          description: Operations allowed for the current accessor on this concept group.
+          type: array
+          items:
+            type: string
     Statistics:
       description: Concept statistics
       required:

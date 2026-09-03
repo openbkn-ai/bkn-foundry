@@ -299,7 +299,6 @@ func (rts *relationTypeService) ListRelationTypes(ctx context.Context,
 			return []*interfaces.RelationType{}, 0, err
 		}
 	}
-
 	listQuery := query
 	if pepEnabled {
 		listQuery.Offset = 0
@@ -316,17 +315,19 @@ func (rts *relationTypeService) ListRelationTypes(ctx context.Context,
 
 	var total int
 	if pepEnabled {
-		relationTypes, total, err = permission.FilterAndPaginateKNChildren(ctx, rts.ps,
+		var operationMap map[string]interfaces.PermissionResourceOps
+		relationTypes, total, operationMap, err = permission.FilterAndPaginateKNChildrenWithOperations(ctx, rts.ps,
 			interfaces.RESOURCE_TYPE_RELATION_TYPE, query.KNID, relationTypes,
 			func(relationType *interfaces.RelationType) string { return relationType.RTID }, query.Offset, query.Limit)
 		if err != nil {
 			return []*interfaces.RelationType{}, 0, err
 		}
+		for _, relationType := range relationTypes {
+			relationType.Operations = operationMap[interfaces.KNChildResourceID(query.KNID, relationType.RTID)].Operations
+		}
 	} else {
 		total, err = rts.rta.GetRelationTypesTotal(ctx, query)
 		if err != nil {
-			logger.Errorf("GetRelationTypesTotal error: %s", err.Error())
-			span.SetStatus(codes.Error, "Get relation types total error")
 			return []*interfaces.RelationType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RelationType_InternalError).WithErrorDetails(err.Error())
 		}
@@ -398,7 +399,7 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 	}
 	resource := interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID}
 	operation := interfaces.OPERATION_TYPE_VIEW_DETAIL
-	if len(rtIDs) == 1 {
+	if len(rtIDs) == 1 && permission.KNChildResourcePEPEnabled() {
 		resource, operation = permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_RELATION_TYPE,
 			knID, rtIDs[0], interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_VIEW_DETAIL)
 	}
@@ -428,6 +429,14 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 	}
 	if err = rts.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
 		return nil, err
+	}
+	if len(rtIDs) == 1 && permission.KNChildResourcePEPEnabled() {
+		operations, err := permission.GetKNChildOperations(ctx, rts.ps,
+			interfaces.RESOURCE_TYPE_RELATION_TYPE, knID, rtIDs[0])
+		if err != nil {
+			return nil, err
+		}
+		relationTypes[0].Operations = operations
 	}
 
 	// Retrieve source and target object type names.

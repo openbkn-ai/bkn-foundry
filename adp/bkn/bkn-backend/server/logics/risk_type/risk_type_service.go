@@ -310,7 +310,8 @@ func (rts *riskTypeService) handleImportMode(ctx context.Context, mode string, r
 func (rts *riskTypeService) ListRiskTypes(ctx context.Context, query interfaces.RiskTypesQueryParams) ([]*interfaces.RiskType, int, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ListRiskTypes")
 	defer span.End()
-	if !permission.KNChildResourcePEPEnabled() {
+	pepEnabled := permission.KNChildResourcePEPEnabled()
+	if !pepEnabled {
 		if err := rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
 			Type: interfaces.RESOURCE_TYPE_KN,
 			ID:   query.KNID,
@@ -318,7 +319,6 @@ func (rts *riskTypeService) ListRiskTypes(ctx context.Context, query interfaces.
 			return nil, 0, err
 		}
 	}
-
 	candidateQuery := query
 	candidateQuery.Offset = 0
 	candidateQuery.Limit = -1
@@ -330,12 +330,16 @@ func (rts *riskTypeService) ListRiskTypes(ctx context.Context, query interfaces.
 	}
 
 	total := len(list)
-	if permission.KNChildResourcePEPEnabled() {
-		list, total, err = permission.FilterAndPaginateKNChildren(ctx, rts.ps,
+	if pepEnabled {
+		var operationMap map[string]interfaces.PermissionResourceOps
+		list, total, operationMap, err = permission.FilterAndPaginateKNChildrenWithOperations(ctx, rts.ps,
 			interfaces.RESOURCE_TYPE_RISK_TYPE, query.KNID, list,
 			func(riskType *interfaces.RiskType) string { return riskType.RTID }, query.Offset, query.Limit)
 		if err != nil {
 			return nil, 0, err
+		}
+		for _, riskType := range list {
+			riskType.Operations = operationMap[interfaces.KNChildResourceID(query.KNID, riskType.RTID)].Operations
 		}
 	} else {
 		list = permission.PaginateKNChildCandidates(list, query.Offset, query.Limit)
@@ -375,6 +379,14 @@ func (rts *riskTypeService) GetRiskTypesByIDs(ctx context.Context, knID string, 
 			knID, rtIDs[0], interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_VIEW_DETAIL)
 		if err = rts.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
 			return nil, err
+		}
+		if permission.KNChildResourcePEPEnabled() {
+			operations, err := permission.GetKNChildOperations(ctx, rts.ps,
+				interfaces.RESOURCE_TYPE_RISK_TYPE, knID, rtIDs[0])
+			if err != nil {
+				return nil, err
+			}
+			list[0].Operations = operations
 		}
 	}
 	span.SetStatus(codes.Ok, "")

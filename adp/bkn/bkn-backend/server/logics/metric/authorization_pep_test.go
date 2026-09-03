@@ -88,7 +88,13 @@ func TestMetricListPEPFiltersBeforeTotalAndPagination(t *testing.T) {
 	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
 		[]string{"kn-1/metric-1", "kn-1/metric-2", "kn-1/metric-3"},
 		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true,
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(map[string]interfaces.PermissionResourceOps{
+		[]string{
+			interfaces.OPERATION_TYPE_VIEW_DETAIL,
+			interfaces.OPERATION_TYPE_QUERY_DATA,
+			interfaces.OPERATION_TYPE_MODIFY,
+			interfaces.OPERATION_TYPE_DELETE,
+			interfaces.OPERATION_TYPE_AUTHORIZE,
+		}).Return(map[string]interfaces.PermissionResourceOps{
 		"kn-1/metric-1": {ResourceID: "kn-1/metric-1"},
 		"kn-1/metric-3": {ResourceID: "kn-1/metric-3"},
 	}, nil)
