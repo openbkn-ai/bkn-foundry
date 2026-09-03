@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
@@ -16,15 +17,15 @@ import (
 
 type testLogger struct{}
 
-func (testLogger) Debug(...interface{})                             {}
-func (testLogger) Info(...interface{})                              {}
-func (testLogger) Warn(...interface{})                              {}
-func (testLogger) Error(...interface{})                             {}
-func (testLogger) Debugf(string, ...interface{})                    {}
-func (testLogger) Infof(string, ...interface{})                     {}
-func (testLogger) Warnf(string, ...interface{})                     {}
-func (testLogger) Errorf(string, ...interface{})                    {}
-func (l testLogger) WithContext(context.Context) interfaces.Logger  { return l }
+func (testLogger) Debug(...interface{})                            {}
+func (testLogger) Info(...interface{})                             {}
+func (testLogger) Warn(...interface{})                             {}
+func (testLogger) Error(...interface{})                            {}
+func (testLogger) Debugf(string, ...interface{})                   {}
+func (testLogger) Infof(string, ...interface{})                    {}
+func (testLogger) Warnf(string, ...interface{})                    {}
+func (testLogger) Errorf(string, ...interface{})                   {}
+func (l testLogger) WithContext(context.Context) interfaces.Logger { return l }
 
 // fakeDirectory serves the two bkn-safe directory endpoints the adapter uses,
 // with one known user (u1/Alice) and one known app (app1/MES).
@@ -111,22 +112,21 @@ func TestSafeUserManagement(t *testing.T) {
 	})
 }
 
-func TestSelectUserManagement(t *testing.T) {
-	isf := func() interfaces.UserManagement { return &noopUserManagementClient{} }
+func TestNewUserManagementClientAuthDisabled(t *testing.T) {
+	t.Setenv("AUTH_ENABLED", "false")
+	syncOnce = sync.Once{}
+	um = nil
+	t.Cleanup(func() {
+		syncOnce = sync.Once{}
+		um = nil
+	})
 
-	t.Setenv("AUTHZ_PROVIDER", "")
-	if _, ok := selectUserManagement(isf, testLogger{}).(*noopUserManagementClient); !ok {
-		t.Fatal("unset provider should keep ISF client")
+	client := NewUserManagementClient()
+	userMap, err := client.GetUsersName(context.Background(), []string{interfaces.SystemUser, "user1", ""})
+	if err != nil {
+		t.Fatalf("GetUsersName: %v", err)
 	}
-
-	t.Setenv("AUTHZ_PROVIDER", "bkn-safe")
-	t.Setenv("BKN_SAFE_URL", "")
-	if _, ok := selectUserManagement(isf, testLogger{}).(*noopUserManagementClient); !ok {
-		t.Fatal("empty BKN_SAFE_URL should fall back to ISF client")
-	}
-
-	t.Setenv("BKN_SAFE_URL", "http://bkn-safe:3000")
-	if _, ok := selectUserManagement(isf, testLogger{}).(*safeUserManagement); !ok {
-		t.Fatal("bkn-safe provider should select the directory adapter")
+	if userMap[interfaces.SystemUser] != interfaces.SystemUser || userMap["user1"] != "user1" {
+		t.Fatalf("user map = %v", userMap)
 	}
 }

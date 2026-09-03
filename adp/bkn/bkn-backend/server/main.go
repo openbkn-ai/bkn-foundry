@@ -31,6 +31,7 @@ import (
 	"bkn-backend/common/bkntrace"
 	"bkn-backend/common/bkntrace/outbox"
 	"bkn-backend/common/operationaudit"
+	"bkn-backend/drivenadapters/action_execution"
 	"bkn-backend/drivenadapters/action_schedule"
 	"bkn-backend/drivenadapters/action_type"
 	"bkn-backend/drivenadapters/agent_operator"
@@ -196,6 +197,7 @@ func main() {
 		logics.SetUserMgmtAccess(user_mgmt.NewUserMgmtAccess(bknSafeURL))
 	}
 	logics.SetActionScheduleAccess(action_schedule.NewActionScheduleAccess(appSetting))
+	logics.SetActionExecutionAccess(action_execution.NewActionExecutionAccess(appSetting))
 	logics.SetAgentOperatorAccess(agent_operator.NewAgentOperatorAccess(appSetting))
 	logics.SetActionTypeAccess(action_type.NewActionTypeAccess(appSetting))
 	logics.SetConceptGroupAccess(concept_group.NewConceptGroupAccess(appSetting))

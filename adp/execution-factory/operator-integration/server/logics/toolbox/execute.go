@@ -14,6 +14,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
@@ -351,6 +352,7 @@ func (s *ToolServiceImpl) executeTool(ctx context.Context, req *interfaces.Execu
 		HTTPRequestParams: req.HTTPRequestParams,
 		Timeout:           time.Duration(req.Timeout) * time.Second,
 	}
+	proxyReq.Headers = utils.SanitizeThirdPartyHeaders(proxyReq.Headers)
 	resp, err = s.Proxy.HandlerRequest(ctx, proxyReq)
 	return
 }

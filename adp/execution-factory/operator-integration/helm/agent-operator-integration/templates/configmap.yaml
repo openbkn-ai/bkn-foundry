@@ -43,14 +43,6 @@ data:
       admin_port: {{ .Values.depServices.hydra.administrativePort }}
       admin_protocol: {{ .Values.depServices.hydra.administrativeProtocol | quote }}
       admin_prefix: {{ .Values.depServices.hydra.administrativePrefix | quote }}
-    user_management:
-      private_protocol: {{ index .Values "depServices" "user-management" "privateProtocol" | quote }}
-      private_host: {{ index .Values "depServices" "user-management" "privateHost" | quote }}
-      private_port: {{ index .Values "depServices" "user-management" "privatePort" }}
-    authorization:
-      private_protocol: {{ .Values.depServices.authorization.privateProtocol | quote }}
-      private_host: {{ .Values.depServices.authorization.privateHost | quote }}
-      private_port: {{ .Values.depServices.authorization.privatePort }}
     business-system-service:
       private_protocol: {{ index .Values "depServices" "business-system-service" "privateProtocol" | quote }}
       private_host: {{ index .Values "depServices" "business-system-service" "privateHost" | quote }}

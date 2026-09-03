@@ -27,6 +27,43 @@ import (
 	"ontology-query/interfaces"
 )
 
+// CheckActionExecutionByIn verifies the current internal caller against the
+// trusted action execution dependencies without reading or executing data.
+func (r *restHandler) CheckActionExecutionByIn(c *gin.Context) {
+	requestVisitor := visitor.GenerateVisitor(c)
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	accountInfo := interfaces.AccountInfo{ID: requestVisitor.ID, Type: string(requestVisitor.Type)}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+
+	req := interfaces.ActionExecutionRequest{}
+	if err := common.BindPreciseJSON(c.Request.Body, &req); err != nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("Binding Parameter Failed: %s", err.Error()))
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	req.KNID = c.Param("kn_id")
+	req.ActionTypeID = c.Param("at_id")
+	req.Branch = c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+
+	if err := r.ass.CheckActionExecution(ctx, &req); err != nil {
+		httpErr, ok := err.(*rest.HTTPError)
+		if !ok {
+			httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError).
+				WithErrorDetails(err.Error())
+		}
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
+	rest.ReplyOK(c, http.StatusNoContent, nil)
+}
+
 // ExecuteActionByIn handles action execution request (internal)
 func (r *restHandler) ExecuteActionByIn(c *gin.Context) {
 	logger.Debug("Handler ExecuteActionByIn Start")

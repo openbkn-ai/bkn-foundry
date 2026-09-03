@@ -35,14 +35,6 @@ oauth:
   admin_port: 4445
   admin_protocol: "http"
   admin_prefix: "/admin"
-user_management:
-  private_host: "user-management-private.openbkn"
-  private_port: 30980
-  private_protocol: "http"
-authorization:
-  private_host: "authorization-private.openbkn"
-  private_port: 30920
-  private_protocol: "http"
 agent-operator-app:
   private_host: "agent-operator-app.openbkn"
   private_port: 9000

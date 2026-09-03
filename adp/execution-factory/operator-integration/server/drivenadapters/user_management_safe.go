@@ -11,26 +11,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
-	"os"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
-
-// bkn-safe user-directory adapter + cutover switch for exec-factory.
-//
-// The ISF user-management service is retired; its replacement is bkn-safe's
-// directory API (/api/safe/v1/directory). The switch reuses the authz cutover
-// envs (see authorization_safe.go) so one flip moves both surfaces:
-//   - AUTHZ_PROVIDER != "bkn-safe" : ISF user-management (legacy default)
-//   - AUTHZ_PROVIDER == "bkn-safe" : bkn-safe directory at BKN_SAFE_URL
-//
-// Mapping (ISF -> bkn-safe):
-//   GET /v1/users/<ids>/<fields>  -> POST /api/safe/v1/directory/users-detail
-//   GET /v1/apps/<id>             -> POST /api/safe/v1/directory/names (app_ids)
 
 type safeUserManagement struct {
 	baseURL string
@@ -50,8 +36,8 @@ type safeUserDetail struct {
 	Roles   []string `json:"roles"`
 }
 
-// GetUsersInfo returns the directory record for each EXISTING user id (missing
-// ids are omitted, matching the happy-path ISF behaviour). The fields argument
+// GetUsersInfo returns the directory record for each existing user ID. Missing
+// IDs are omitted. The fields argument
 // is ignored: bkn-safe returns the full record and callers pick what they need.
 func (s *safeUserManagement) GetUsersInfo(ctx context.Context, userIDs, fields []string) (infos []*interfaces.UserInfo, err error) {
 	infos = []*interfaces.UserInfo{}
@@ -89,8 +75,8 @@ func (s *safeUserManagement) GetUserInfo(ctx context.Context, userID string, fie
 	return infos[0], nil
 }
 
-// GetUsersName resolves display names; unknown ids degrade to UnknownUser so
-// audit/list rendering never fails on a deleted account (ISF 404-loop parity).
+// GetUsersName resolves display names. Unknown IDs degrade to UnknownUser so
+// audit and list rendering do not fail for a deleted account.
 func (s *safeUserManagement) GetUsersName(ctx context.Context, userIDs []string) (userMap map[string]string, err error) {
 	userMap = make(map[string]string)
 	lookup := make([]string, 0, len(userIDs))
@@ -162,23 +148,4 @@ func (s *safeUserManagement) post(ctx context.Context, path string, body, out an
 		return json.Unmarshal(data, out)
 	}
 	return nil
-}
-
-// selectUserManagement applies the bkn-safe cutover switch (same envs as
-// selectAuthz). Default/unset => the legacy ISF client built by the caller.
-func selectUserManagement(isf func() interfaces.UserManagement, logger interfaces.Logger) interfaces.UserManagement {
-	if os.Getenv("AUTHZ_PROVIDER") != "bkn-safe" {
-		return isf()
-	}
-	baseURL := os.Getenv("BKN_SAFE_URL")
-	if baseURL == "" {
-		logger.Warnf("[user-mgnt] AUTHZ_PROVIDER=bkn-safe but BKN_SAFE_URL empty; falling back to ISF")
-		return isf()
-	}
-	if _, err := url.Parse(baseURL); err != nil {
-		logger.Warnf("[user-mgnt] invalid BKN_SAFE_URL %q (%v); falling back to ISF", baseURL, err)
-		return isf()
-	}
-	logger.Infof("[user-mgnt] provider=bkn-safe directory at %s", baseURL)
-	return newSafeUserManagement(baseURL, logger)
 }

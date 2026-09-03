@@ -145,6 +145,52 @@ func TestSafeAuthorizationUsesEffectiveLocale(t *testing.T) {
 	}
 }
 
+func TestSafeAuthorizationRejectsIncompleteCheckResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{})
+	}))
+	defer server.Close()
+
+	safe := newSafeAuthorization(server.URL, testLogger{})
+	result, err := safe.OperationCheck(context.Background(), &interfaces.AuthOperationCheckRequest{
+		Accessor:  &interfaces.AuthAccessor{ID: "user-1"},
+		Resource:  &interfaces.AuthResource{Type: "skill", ID: "skill-1"},
+		Operation: []interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
+	})
+	if err == nil || result != nil {
+		t.Fatalf("OperationCheck() = %#v, %v; want incomplete response error", result, err)
+	}
+}
+
+func TestNormalizeBknSafeURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     string
+		want    string
+		wantErr bool
+	}{
+		{name: "http", raw: "http://bkn-safe:3000/", want: "http://bkn-safe:3000"},
+		{name: "https", raw: " https://safe.example/ ", want: "https://safe.example"},
+		{name: "empty", wantErr: true},
+		{name: "relative", raw: "bkn-safe:3000", wantErr: true},
+		{name: "unsupported scheme", raw: "ftp://bkn-safe", wantErr: true},
+		{name: "query", raw: "http://bkn-safe:3000?token=secret", wantErr: true},
+		{name: "userinfo", raw: "http://user:secret@bkn-safe:3000", wantErr: true},
+		{name: "path", raw: "https://safe.example/internal", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := normalizeBknSafeURL(tt.raw)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("normalizeBknSafeURL(%q) error = %v, wantErr %v", tt.raw, err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Fatalf("normalizeBknSafeURL(%q) = %q, want %q", tt.raw, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestIntersectStringSlices(t *testing.T) {
 	got := intersectStringSlices([]string{"a", "b", "c"}, []string{"b", "c", "d"})
 	if len(got) != 2 || got[0] != "b" || got[1] != "c" {

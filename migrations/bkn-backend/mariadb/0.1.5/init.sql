@@ -186,6 +186,8 @@ CREATE TABLE IF NOT EXISTS t_action_schedule (
   f_updater VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Updater ID',
   f_updater_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'Updater type',
   f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT 'Update timestamp (ms)',
+  f_execution_subject VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Current execution subject ID',
+  f_execution_subject_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'Current execution subject type',
   PRIMARY KEY (f_id),
   KEY idx_kn_branch (f_kn_id, f_branch),
   KEY idx_status_next_run (f_status, f_next_run_time),

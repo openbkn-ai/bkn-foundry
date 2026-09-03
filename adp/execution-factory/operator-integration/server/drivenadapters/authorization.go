@@ -1,142 +1,28 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 package drivenadapters
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
-	infraErr "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 )
-
-type authorization struct {
-	logger     interfaces.Logger
-	httpClient interfaces.HTTPClient
-	baseURL    string
-}
 
 var (
 	authOnce sync.Once
-	auth     *authorization
+	auth     interfaces.Authorization
 )
 
-const (
-	authOperationCheckURI = "/v1/operation-check"
-	authResourceFilterURI = "/v1/resource-filter"
-	authResourceListURI   = "/v1/resource-list"
-	authCreatePolicyURI   = "/v1/policy"
-	authDeletePolicyURI   = "/v1/policy-delete"
-	authReaultFilterURI   = "/v1/resource-filter"
-)
-
-// NewAuthorization creates an authentication service object.
+// NewAuthorization creates the bkn-safe authorization adapter.
 func NewAuthorization() interfaces.Authorization {
 	authOnce.Do(func() {
-		config := config.NewConfigLoader()
-		auth = &authorization{
-			logger:     config.GetLogger(),
-			httpClient: rest.NewHTTPClient(),
-			baseURL: fmt.Sprintf("%s://%s:%d/api/authorization",
-				config.Authorization.PrivateProtocol,
-				config.Authorization.PrivateHost,
-				config.Authorization.PrivatePort),
-		}
+		conf := config.NewConfigLoader()
+		baseURL := mustBknSafeURL()
+		conf.GetLogger().Infof("[authz] provider=bkn-safe at %s", baseURL)
+		auth = newSafeAuthorization(baseURL, conf.GetLogger())
 	})
-	// Authz cutover (revertible): AUTHZ_PROVIDER selects isf (default) / shadow /
-	// bkn-safe. Flip the env to revert; ISF adapter is untouched. See
-	// authorization_safe.go.
-	return selectAuthz(auth, auth.logger)
-}
-
-// OperationCheck operation authentication.
-func (a *authorization) OperationCheck(ctx context.Context, req *interfaces.AuthOperationCheckRequest) (resp *interfaces.AuthOperationCheckResponse, err error) {
-	url := fmt.Sprintf("%s%s", a.baseURL, authOperationCheckURI)
-	header := map[string]string{"Content-Type": "application/json"}
-	_, respBody, err := a.httpClient.Post(ctx, url, header, req)
-	if err != nil {
-		a.logger.WithContext(ctx).Warnf("[OperationCheck] operation check failed, err: %v", err)
-		return
-	}
-	resp = &interfaces.AuthOperationCheckResponse{}
-	resultByt := utils.ObjectToByte(respBody)
-	err = json.Unmarshal(resultByt, resp)
-	if err != nil {
-		a.logger.WithContext(ctx).Errorf("[OperationCheck] Unmarshal %s err:%v", string(resultByt), err)
-		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
-	}
-	return
-}
-
-// ResourceList resource list.
-func (a *authorization) ResourceList(ctx context.Context, req *interfaces.ResourceListRequest) (resp []*interfaces.AuthResourceResult, err error) {
-	url := fmt.Sprintf("%s%s", a.baseURL, authResourceListURI)
-	header := map[string]string{"Content-Type": "application/json"}
-	_, respBody, err := a.httpClient.Post(ctx, url, header, req)
-	if err != nil {
-		a.logger.WithContext(ctx).Warnf("[ResourceList] resource list failed, err: %v", err)
-		return nil, err
-	}
-	resp = []*interfaces.AuthResourceResult{}
-	resultByt := utils.ObjectToByte(respBody)
-	err = json.Unmarshal(resultByt, &resp)
-	if err != nil {
-		a.logger.WithContext(ctx).Errorf("[ResourceList] Unmarshal %s err:%v", string(resultByt), err)
-		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
-	}
-	return
-}
-
-// ResourceFilter resource filtering.
-func (a *authorization) ResourceFilter(ctx context.Context, req *interfaces.AuthResourceFilterRequest) (resp []*interfaces.AuthResourceResult, err error) {
-	url := fmt.Sprintf("%s%s", a.baseURL, authResourceFilterURI)
-	header := map[string]string{"Content-Type": "application/json"}
-	_, respBody, err := a.httpClient.Post(ctx, url, header, req)
-	if err != nil {
-		a.logger.WithContext(ctx).Warnf("[ResourceFilter] resource filter failed, err: %v", err)
-		return
-	}
-	resp = []*interfaces.AuthResourceResult{}
-	resultByt := utils.ObjectToByte(respBody)
-	err = json.Unmarshal(resultByt, &resp)
-	if err != nil {
-		a.logger.WithContext(ctx).Errorf("[ResourceFilter] Unmarshal %s err:%v", string(resultByt), err)
-		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
-	}
-	return
-}
-
-// CreatePolicy creates a policy.
-func (a *authorization) CreatePolicy(ctx context.Context, req []*interfaces.AuthCreatePolicyRequest) (err error) {
-	url := fmt.Sprintf("%s%s", a.baseURL, authCreatePolicyURI)
-	header := map[string]string{"Content-Type": "application/json"}
-	respCode, respData, err := a.httpClient.Post(ctx, url, header, req)
-	if err != nil {
-		a.logger.WithContext(ctx).Warnf("[CreatePolicy] create policy failed, err: %v", err)
-		return
-	}
-	if respCode != http.StatusNoContent {
-		err = infraErr.DefaultHTTPError(ctx, respCode, respData)
-	}
-	return
-}
-
-// DeletePolicy delete policy.
-func (a *authorization) DeletePolicy(ctx context.Context, req *interfaces.AuthDeletePolicyRequest) (err error) {
-	url := fmt.Sprintf("%s%s", a.baseURL, authDeletePolicyURI)
-	header := map[string]string{"Content-Type": "application/json"}
-	respCode, respBody, err := a.httpClient.Post(ctx, url, header, req)
-	if err != nil {
-		a.logger.WithContext(ctx).Warnf("[DeletePolicy] delete policy failed, err: %v", err)
-		return
-	}
-	if respCode != http.StatusNoContent {
-		a.logger.WithContext(ctx).Warnf("[DeletePolicy] delete policy failed, respCode: %d, respBody: %s", respCode, respBody)
-		err = infraErr.DefaultHTTPError(ctx, respCode, respBody)
-	}
-	return
+	return auth
 }

@@ -12,6 +12,9 @@ import "context"
 //
 //go:generate mockgen -source ../interfaces/action_scheduler_service.go -destination ../interfaces/mock/mock_action_scheduler_service.go
 type ActionSchedulerService interface {
+	// CheckActionExecution resolves trusted dependencies and verifies the current subject without executing the action.
+	CheckActionExecution(ctx context.Context, req *ActionExecutionRequest) error
+
 	// ExecuteAction starts async action execution, returns execution_id immediately
 	ExecuteAction(ctx context.Context, req *ActionExecutionRequest) (*ActionExecutionResponse, error)
 
@@ -23,8 +26,3 @@ type ActionSchedulerService interface {
 // This hook will be called before execution to check if the action should be executed
 // Returns true if execution should proceed, false if it should be skipped
 type DuplicateCheckHook func(ctx context.Context, req *ActionExecutionRequest) (bool, error)
-
-// PermissionCheckHook is a reserved extension point for permission validation
-// This hook will be called before execution to validate user permissions
-// Returns nil if permission check passes, error otherwise
-type PermissionCheckHook func(ctx context.Context, executorID string, actionType *ActionType) error

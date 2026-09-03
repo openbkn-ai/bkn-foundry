@@ -10,9 +10,13 @@ const (
 	PermissionResourceTypeKnowledgeNetwork = "knowledge_network"
 	PermissionResourceTypeObjectType       = "object_type"
 	PermissionResourceTypeRelationType     = "relation_type"
+	PermissionResourceTypeActionType       = "action_type"
 	PermissionResourceTypeMetric           = "metric"
+	PermissionResourceTypeToolBox          = "tool_box"
+	PermissionResourceTypeMCP              = "mcp"
 
 	PermissionOperationQueryData = "query_data"
+	PermissionOperationExecute   = "execute"
 )
 
 // PermissionResource identifies one concrete authorization resource.
@@ -41,6 +45,14 @@ type PermissionFilterResponse struct {
 	Resources []PermissionFilterResult `json:"resources"`
 }
 
+// PermissionRequirement is an immutable authorization fact captured for an
+// action execution and checked again immediately before every external call.
+type PermissionRequirement struct {
+	ResourceType string `json:"resource_type"`
+	ResourceID   string `json:"resource_id"`
+	Operation    string `json:"operation"`
+}
+
 //go:generate mockgen -source ../interfaces/permission_service.go -destination ../interfaces/mock/mock_permission_service.go
 type PermissionAccess interface {
 	FilterResources(ctx context.Context, request PermissionFilterRequest) (PermissionFilterResponse, error)
@@ -49,6 +61,13 @@ type PermissionAccess interface {
 type PermissionService interface {
 	FilterQueryData(ctx context.Context, resources []PermissionResource) ([]PermissionResource, error)
 	RequireQueryData(ctx context.Context, resources []PermissionResource) error
+	RequirePermissions(ctx context.Context, requirements []PermissionRequirement) error
+}
+
+// ActionExecutionPermissionService checks the heterogeneous requirements of
+// one action execution as the account stored in the request context.
+type ActionExecutionPermissionService interface {
+	RequirePermissions(ctx context.Context, requirements []PermissionRequirement) error
 }
 
 // KNChildPermissionResource builds the canonical Safe reference for a KN child.

@@ -41,6 +41,20 @@ func (m *MockActionSchedulerService) EXPECT() *MockActionSchedulerServiceMockRec
 	return m.recorder
 }
 
+// CheckActionExecution mocks base method.
+func (m *MockActionSchedulerService) CheckActionExecution(ctx context.Context, req *interfaces.ActionExecutionRequest) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckActionExecution", ctx, req)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CheckActionExecution indicates an expected call of CheckActionExecution.
+func (mr *MockActionSchedulerServiceMockRecorder) CheckActionExecution(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckActionExecution", reflect.TypeOf((*MockActionSchedulerService)(nil).CheckActionExecution), ctx, req)
+}
+
 // ExecuteAction mocks base method.
 func (m *MockActionSchedulerService) ExecuteAction(ctx context.Context, req *interfaces.ActionExecutionRequest) (*interfaces.ActionExecutionResponse, error) {
 	m.ctrl.T.Helper()

@@ -35,8 +35,6 @@ type Config struct {
 	Project                 Project                   `yaml:"project"`
 	OAuth                   OAuthConfig               `yaml:"oauth"`
 	DB                      DBConfig                  `yaml:"db"`
-	UserMgnt                PrivateBaseConfig         `yaml:"user_management"`
-	Authorization           PrivateBaseConfig         `yaml:"authorization"`
 	OperatorConfig          OperatorConfig            `yaml:"operator"`
 	Logger                  interfaces.Logger         `yaml:"-"`
 	RedisConfig             RedisConfig               `yaml:"redis"`
@@ -445,7 +443,7 @@ func (conf ObservabilityConfig) otelEndpoint() string {
 	return ""
 }
 
-// GetAuthEnabled returns whether ISF auth dependencies are enabled.
+// GetAuthEnabled returns whether authentication and authorization are enabled.
 // Only explicit false/0 disables the feature; default is enabled.
 func GetAuthEnabled() bool {
 	envVal := os.Getenv("AUTH_ENABLED")

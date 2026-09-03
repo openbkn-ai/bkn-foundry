@@ -104,7 +104,7 @@ func TestMiddlewareIntrospectVerifyCredentialRouting(t *testing.T) {
 		})
 
 		Convey("verifier 为 nil 时 bak_ 凭据回落 hydra，不 panic", func() {
-			// AUTH_ENABLED=false or BKN_SAFE_URL unconfigured deployment mode.
+			// AUTH_ENABLED=false deployment mode.
 			hydra.EXPECT().Introspect(gomock.Any()).Return(&interfaces.TokenInfo{
 				Active: true, VisitorID: "fallback-1", VisitorTyp: interfaces.RealName,
 			}, nil).Times(1)
