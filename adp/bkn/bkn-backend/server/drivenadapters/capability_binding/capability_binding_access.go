@@ -10,7 +10,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
+	"strings"
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
@@ -95,6 +95,27 @@ func scanBindingFromRow(scanner interface {
 	}
 	binding.BoundAsBox = boundAsBox != 0
 	return binding, nil
+}
+
+// bindingOrderClause resolves the ORDER BY fragment from a fixed table instead of interpolating
+// the caller's strings. The handler already validates sort and direction against
+// interfaces.CapabilityBindingSort, but that whitelist does not travel with the access layer:
+// the internal resolve path and any later caller reach this function directly, and an
+// interpolated ORDER BY is an injection point regardless of who is expected to call it.
+// An unrecognised value falls back to the default ordering rather than reaching the database.
+func bindingOrderClause(sort, direction string) string {
+	column, ok := map[string]string{
+		"f_create_time": "f_create_time",
+		"f_update_time": "f_update_time",
+	}[sort]
+	if !ok {
+		column = "f_create_time"
+	}
+	dir := "DESC"
+	if strings.EqualFold(direction, "asc") {
+		dir = "ASC"
+	}
+	return column + " " + dir
 }
 
 func processBindingQueryCondition(query interfaces.CapabilityBindingsQueryParams, builder sq.SelectBuilder) sq.SelectBuilder {
@@ -282,15 +303,9 @@ func (ca *capabilityBindingAccess) ListBindings(ctx context.Context,
 	defer span.End()
 
 	builder := processBindingQueryCondition(query, sq.Select(bindingSelectColumns()...).From(CAPABILITY_BINDING_TABLE_NAME))
-	if query.Sort != "" {
-		dir := query.Direction
-		if dir == "" {
-			dir = interfaces.DESC_DIRECTION
-		}
-		// f_id breaks ties: bindings mounted in one request share f_create_time, and without a
-		// tie-breaker the order across page boundaries is unstable — rows repeat or get skipped.
-		builder = builder.OrderBy(fmt.Sprintf("%s %s", query.Sort, dir), "f_id ASC")
-	}
+	// f_id breaks ties: bindings mounted in one request share f_create_time, and without a
+	// tie-breaker the order across page boundaries is unstable — rows repeat or get skipped.
+	builder = builder.OrderBy(bindingOrderClause(query.Sort, query.Direction), "f_id ASC")
 	if query.Limit > 0 {
 		builder = builder.Limit(uint64(query.Limit))
 		if query.Offset > 0 {

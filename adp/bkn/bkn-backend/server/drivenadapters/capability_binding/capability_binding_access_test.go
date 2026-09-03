@@ -122,7 +122,7 @@ func TestCapabilityBindingAccess_ListBindings(t *testing.T) {
 		ca, mock, cleanup := mockCapabilityBindingAccess(t)
 		defer cleanup()
 
-		mock.ExpectQuery("SELECT (.+) FROM t_kn_capability_binding WHERE f_kn_id = \\? AND f_branch = \\? AND f_capability_type = \\? ORDER BY f_create_time desc, f_id ASC LIMIT 10 OFFSET 20").
+		mock.ExpectQuery("SELECT (.+) FROM t_kn_capability_binding WHERE f_kn_id = \\? AND f_branch = \\? AND f_capability_type = \\? ORDER BY f_create_time DESC, f_id ASC LIMIT 10 OFFSET 20").
 			WithArgs("kn1", "dev", interfaces.CAPABILITY_TYPE_SKILL).
 			WillReturnRows(bindingRows().AddRow(
 				"bind-1", "kn1", "dev", interfaces.CAPABILITY_TYPE_SKILL, "", "skill-1",
@@ -145,7 +145,9 @@ func TestCapabilityBindingAccess_ListBindings(t *testing.T) {
 		ca, mock, cleanup := mockCapabilityBindingAccess(t)
 		defer cleanup()
 
-		mock.ExpectQuery("SELECT (.+) FROM t_kn_capability_binding").
+		// No sort given: the ordering still has to be deterministic, so the default clause is
+		// emitted rather than an unordered query whose pages can repeat or skip rows.
+		mock.ExpectQuery("SELECT (.+) FROM t_kn_capability_binding WHERE f_kn_id = \\? AND f_branch = \\? ORDER BY f_create_time DESC, f_id ASC").
 			WithArgs("kn1", interfaces.MAIN_BRANCH).
 			WillReturnRows(bindingRows())
 
@@ -206,6 +208,30 @@ func TestCapabilityBindingAccess_DeleteBindings(t *testing.T) {
 
 		So(err, ShouldBeNil)
 		So(rows, ShouldEqual, int64(5))
+		So(mock.ExpectationsWereMet(), ShouldBeNil)
+	})
+}
+
+func TestCapabilityBindingAccess_OrderByIsNotInterpolated(t *testing.T) {
+	Convey("排序列不拼接调用方字符串", t, func() {
+		ca, mock, cleanup := mockCapabilityBindingAccess(t)
+		defer cleanup()
+
+		// The handler validates sort against a whitelist, but that whitelist does not travel
+		// with the access layer. An unrecognised column falls back to the default instead of
+		// being interpolated into the statement.
+		mock.ExpectQuery("ORDER BY f_create_time DESC, f_id ASC").
+			WithArgs("kn1", interfaces.MAIN_BRANCH).
+			WillReturnRows(bindingRows())
+
+		_, err := ca.ListBindings(context.Background(), interfaces.CapabilityBindingsQueryParams{
+			PaginationQueryParameters: interfaces.PaginationQueryParameters{
+				Sort: "f_id; DROP TABLE t_kn_capability_binding", Direction: "asc; --",
+			},
+			KNID: "kn1",
+		})
+
+		So(err, ShouldBeNil)
 		So(mock.ExpectationsWereMet(), ShouldBeNil)
 	})
 }
