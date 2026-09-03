@@ -15,7 +15,8 @@ from app.commons.locale import (
     is_business_api_path,
     localized_error_content,
 )
-from app.core.config import base_config, server_info, observability_config
+from app.core.config import (base_config, observability_config, server_info,
+                            validate_authz_config)
 from app.logs import log_init, sys_log
 from app.mydb.ConnectUtil import get_redis_util
 from app.mydb.pymysql_pool import PymysqlPool
@@ -241,6 +242,9 @@ def create_app():
 
     # Initialize logging.
     log_init()
+    # Reject an authorization backend that cannot be honoured before the
+    # service starts answering requests with it.
+    validate_authz_config()
     # Load runtime configuration.
     conf_init(app)
     # Register application routes.

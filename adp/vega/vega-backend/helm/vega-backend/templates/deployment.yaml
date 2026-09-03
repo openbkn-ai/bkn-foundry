@@ -83,7 +83,8 @@ spec:
             value: {{ .Values.env.timezone }}
           - name: LANG
             value: {{ .Values.env.language }}
-          # bkn-safe (ISF replacement) cutover; empty = ISF (default), revertible.
+          # bkn-safe (ISF replacement) cutover. Accepted: bkn-safe, shadow, isf.
+          # An unset or misspelled value refuses to start rather than falling back to ISF.
           - name: AUTHZ_PROVIDER
             value: {{ .Values.bknSafe.authzProvider | quote }}
           - name: DIRECTORY_PROVIDER

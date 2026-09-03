@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -21,11 +22,12 @@ import (
 	"vega-backend/interfaces"
 )
 
-// bkn-safe authz cutover (revertible via AUTHZ_PROVIDER):
-//   - unset / "isf" : ISF PermissionAccess unchanged (default)
-//   - "shadow"      : ISF authoritative + bkn-safe queried in parallel, diffs logged
-//   - "bkn-safe"    : bkn-safe authoritative (full adapter)
-// BKN_SAFE_URL points at bkn-safe. Flip the env to revert; ISF impl untouched.
+// bkn-safe authz cutover (selected by AUTHZ_PROVIDER):
+//   - "bkn-safe" : bkn-safe authoritative (full adapter)
+//   - "shadow"   : ISF authoritative + bkn-safe queried in parallel, diffs logged
+//   - "isf"      : ISF PermissionAccess unchanged; retired, kept as an escape hatch
+// "bkn-safe" and "shadow" both need BKN_SAFE_URL. There is no implicit default:
+// an unset or misspelled value is a misconfiguration, not a silent ISF fallback.
 
 // safeClient talks to bkn-safe's clean authz API (/api/safe/v1/authz/*).
 type safeClient struct {
@@ -307,27 +309,36 @@ func (s *safePermissionAccess) DeleteResources(ctx context.Context, resources []
 	return nil
 }
 
-// MaybeShadow applies the AUTHZ_PROVIDER switch. Default/unknown => ISF (inner).
-func MaybeShadow(inner interfaces.PermissionAccess) interfaces.PermissionAccess {
-	provider := os.Getenv("AUTHZ_PROVIDER")
-	if provider == "" || provider == "isf" {
-		return inner
+// supportedAuthzProviders lists every accepted AUTHZ_PROVIDER value, in the
+// order the error message should offer them.
+var supportedAuthzProviders = []string{"bkn-safe", "shadow", "isf"}
+
+// MaybeShadow applies the AUTHZ_PROVIDER switch.
+//
+// An unset or misspelled provider, and "bkn-safe" without BKN_SAFE_URL, used to
+// print one line and fall back to ISF. ISF is retired, so that fallback turned a
+// typo into an authorization surface whose answers are unpredictable, and the
+// single log line made it invisible at runtime. Report the misconfiguration and
+// let the caller refuse to start.
+func MaybeShadow(inner interfaces.PermissionAccess) (interfaces.PermissionAccess, error) {
+	provider := strings.TrimSpace(os.Getenv("AUTHZ_PROVIDER"))
+	if provider == "isf" {
+		log.Printf("[authz] provider=isf selects the retired authorization service; migrate to bkn-safe")
+		return inner, nil
 	}
-	url := os.Getenv("BKN_SAFE_URL")
-	if url == "" {
-		log.Printf("[authz] AUTHZ_PROVIDER=%s but BKN_SAFE_URL empty; using ISF", provider)
-		return inner
+	if provider != "bkn-safe" && provider != "shadow" {
+		return nil, fmt.Errorf("AUTHZ_PROVIDER=%q is not a supported authorization backend; set it to one of %s",
+			provider, strings.Join(supportedAuthzProviders, ", "))
 	}
-	sc := newSafeClient(url)
-	switch provider {
-	case "bkn-safe":
-		log.Printf("[authz] provider=bkn-safe (authoritative) at %s", url)
-		return &safePermissionAccess{safe: sc}
-	case "shadow":
-		log.Printf("[authz] provider=shadow; ISF authoritative, comparing bkn-safe at %s", url)
-		return &shadowPermissionAccess{PermissionAccess: inner, safe: sc}
-	default:
-		log.Printf("[authz] unknown AUTHZ_PROVIDER=%s; using ISF", provider)
-		return inner
+	safeURL := strings.TrimSpace(os.Getenv("BKN_SAFE_URL"))
+	if safeURL == "" {
+		return nil, fmt.Errorf("AUTHZ_PROVIDER=%s requires BKN_SAFE_URL to be set", provider)
 	}
+	sc := newSafeClient(safeURL)
+	if provider == "shadow" {
+		log.Printf("[authz] provider=shadow; ISF authoritative, comparing bkn-safe at %s", safeURL)
+		return &shadowPermissionAccess{PermissionAccess: inner, safe: sc}, nil
+	}
+	log.Printf("[authz] provider=bkn-safe (authoritative) at %s", safeURL)
+	return &safePermissionAccess{safe: sc}, nil
 }

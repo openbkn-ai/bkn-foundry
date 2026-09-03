@@ -1,3 +1,11 @@
+import os
+
+# The service now defaults to AUTH_ENABLED=true so a deployment that forgets the
+# variable fails closed. The suite predates that default and asserts the
+# anonymous-allow behaviour, so pin the open value here instead of rewriting
+# every case; tests that exercise the auth path patch base_config themselves.
+os.environ.setdefault("AUTH_ENABLED", "false")
+
 import unittest
 from os import path
 

@@ -107,7 +107,10 @@ class BaseConfig(object):
     METERINGSTREAMMAXLEN = int(os.getenv('METERING_STREAM_MAXLEN', '100000'))
 
     # Authorization switch: true enables authentication and resource filtering.
-    AUTH_ENABLED = os.getenv('AUTH_ENABLED', 'false').lower() == 'true'
+    # Defaults to true so a deployment that never sets the variable fails
+    # closed, matching every Go service. Local runs and tests that want an
+    # open surface have to say AUTH_ENABLED=false out loud.
+    AUTH_ENABLED = os.getenv('AUTH_ENABLED', 'true').lower() == 'true'
     # Anonymous identity used for audit correlation when authorization is disabled.
     ANONYMOUS_USER_ID = "anonymous-user"
 
@@ -127,6 +130,42 @@ def resolve_metering_backend():
 
 
 base_config = BaseConfig()
+
+# Authorization backends this service can talk to. bkn-safe and shadow both
+# reach bkn-safe and therefore need BKN_SAFE_URL; isf is retired and stays
+# reachable only for environments that have not finished the cutover.
+AUTHZ_PROVIDERS_REQUIRING_SAFE_URL = ('bkn-safe', 'shadow')
+AUTHZ_PROVIDER_ISF = 'isf'
+SUPPORTED_AUTHZ_PROVIDERS = AUTHZ_PROVIDERS_REQUIRING_SAFE_URL + (AUTHZ_PROVIDER_ISF,)
+
+
+def validate_authz_config():
+    """Refuse to start when the authorization backend cannot be honoured.
+
+    A misspelled AUTHZ_PROVIDER, or bkn-safe selected while BKN_SAFE_URL is
+    empty, used to print one line and fall back to ISF. ISF is retired, so
+    that fallback turned a typo into an authorization surface whose answers
+    are unpredictable, and the single log line made it invisible at runtime.
+    """
+    if not base_config.AUTH_ENABLED:
+        return
+    provider = os.getenv('AUTHZ_PROVIDER', '').strip()
+    safe_url = os.getenv('BKN_SAFE_URL', '').strip()
+    if provider in AUTHZ_PROVIDERS_REQUIRING_SAFE_URL:
+        if not safe_url:
+            raise RuntimeError(
+                f'AUTHZ_PROVIDER={provider} requires BKN_SAFE_URL to be set')
+        return
+    if provider == AUTHZ_PROVIDER_ISF:
+        logging.getLogger(__name__).warning(
+            'AUTHZ_PROVIDER=isf selects the retired authorization service; '
+            'migrate the deployment to bkn-safe')
+        return
+    raise RuntimeError(
+        f'AUTHZ_PROVIDER={provider!r} is not a supported authorization '
+        f'backend; set it to one of {", ".join(SUPPORTED_AUTHZ_PROVIDERS)}')
+
+
 server_info = ServerInfo(
     server_name="agent-executor",
     server_version="1.0.0",
