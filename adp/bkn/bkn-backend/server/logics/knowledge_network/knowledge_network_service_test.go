@@ -1112,6 +1112,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 		ms := bmock.NewMockMetricService(mockCtrl)
 		riskTypeS := bmock.NewMockRiskTypeService(mockCtrl)
 		cgs := bmock.NewMockConceptGroupService(mockCtrl)
+		cbs := bmock.NewMockCapabilityBindingService(mockCtrl)
 
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
@@ -1126,6 +1127,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ms:         ms,
 			riskTypeS:  riskTypeS,
 			cgs:        cgs,
+			cbs:        cbs,
 			db:         db,
 		}
 
@@ -1145,6 +1147,10 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ms.EXPECT().DeleteMetricsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			// Deleting a network must clear its capability bindings: a knowledge network ID can
+			// be supplied by the caller, so leftover rows would be inherited by a network
+			// recreated under the same ID.
+			cbs.EXPECT().DeleteCapabilitiesByKnID(gomock.Any(), gomock.Any(), "kn1", gomock.Any()).Return(nil)
 			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -1275,6 +1281,10 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ms.EXPECT().DeleteMetricsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			// Deleting a network must clear its capability bindings: a knowledge network ID can
+			// be supplied by the caller, so leftover rows would be inherited by a network
+			// recreated under the same ID.
+			cbs.EXPECT().DeleteCapabilitiesByKnID(gomock.Any(), gomock.Any(), "kn1", gomock.Any()).Return(nil)
 			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
@@ -1298,6 +1308,10 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ms.EXPECT().DeleteMetricsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			// Deleting a network must clear its capability bindings: a knowledge network ID can
+			// be supplied by the caller, so leftover rows would be inherited by a network
+			// recreated under the same ID.
+			cbs.EXPECT().DeleteCapabilitiesByKnID(gomock.Any(), gomock.Any(), "kn1", gomock.Any()).Return(nil)
 			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
@@ -1322,6 +1336,10 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ms.EXPECT().DeleteMetricsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			// Deleting a network must clear its capability bindings: a knowledge network ID can
+			// be supplied by the caller, so leftover rows would be inherited by a network
+			// recreated under the same ID.
+			cbs.EXPECT().DeleteCapabilitiesByKnID(gomock.Any(), gomock.Any(), "kn1", gomock.Any()).Return(nil)
 			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))

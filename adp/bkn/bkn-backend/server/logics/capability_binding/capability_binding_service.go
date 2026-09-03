@@ -28,6 +28,14 @@ import (
 	"bkn-backend/logics/permission"
 )
 
+// Column widths of t_kn_capability_binding, mirrored here so an over-long value is rejected
+// with 400 instead of reaching the database.
+const (
+	maxOwnerIDLength      = 64
+	maxCapabilityIDLength = 64
+	maxCommentLength      = 255
+)
+
 var (
 	capabilityBindingServiceOnce sync.Once
 	capabilityBindingServiceInst interfaces.CapabilityBindingService
@@ -71,6 +79,24 @@ func normalizeAttachEntry(ctx context.Context, entry *interfaces.AttachCapabilit
 	if capabilityID == "" {
 		return "", "", "", rest.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_NullParameter_CapabilityID)
+	}
+	// Column widths are checked here rather than left to the database: an over-long value would
+	// otherwise surface as a 500 under strict SQL mode, or be silently truncated into a binding
+	// that points at a different capability.
+	if len(capabilityID) > maxCapabilityIDLength {
+		return "", "", "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+			berrors.BknBackend_CapabilityBinding_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("capability_id exceeds %d characters", maxCapabilityIDLength))
+	}
+	if len(ownerID) > maxOwnerIDLength {
+		return "", "", "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+			berrors.BknBackend_CapabilityBinding_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("owner_id exceeds %d characters", maxOwnerIDLength))
+	}
+	if len(strings.TrimSpace(entry.Comment)) > maxCommentLength {
+		return "", "", "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+			berrors.BknBackend_CapabilityBinding_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("comment exceeds %d characters", maxCommentLength))
 	}
 	switch capabilityType {
 	case interfaces.CAPABILITY_TYPE_SKILL:

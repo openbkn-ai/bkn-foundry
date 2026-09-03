@@ -30,6 +30,7 @@ import (
 	"bkn-backend/logics"
 	"bkn-backend/logics/action_type"
 	"bkn-backend/logics/batchindex"
+	"bkn-backend/logics/capability_binding"
 	"bkn-backend/logics/concept_group"
 	"bkn-backend/logics/metric"
 	"bkn-backend/logics/model_factory"
@@ -51,6 +52,7 @@ type knowledgeNetworkService struct {
 	db         *sql.DB
 	ata        interfaces.ActionTypeAccess
 	cba        interfaces.CapabilityBindingAccess
+	cbs        interfaces.CapabilityBindingService
 	ats        interfaces.ActionTypeService
 	cga        interfaces.ConceptGroupAccess
 	cgs        interfaces.ConceptGroupService
@@ -77,6 +79,7 @@ func NewKNService(appSetting *common.AppSetting) interfaces.KNServiceWithProxyMu
 			appSetting: appSetting,
 			ata:        logics.ATA,
 			cba:        logics.CBA,
+			cbs:        capability_binding.NewCapabilityBindingService(appSetting),
 			ats:        action_type.NewActionTypeService(appSetting),
 			cga:        logics.CGA,
 			cgs:        concept_group.NewConceptGroupService(appSetting),
@@ -1157,6 +1160,16 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 	if err != nil {
 		logger.Errorf("DeleteConceptGroupsByKnID error: %s", err.Error())
 		span.SetStatus(codes.Error, "删除业务知识网络概念分组失败")
+		return err
+	}
+
+	// Delete the capability bindings of the business knowledge network. A knowledge network ID
+	// can be supplied by the caller, so leaving the rows behind would let a network recreated
+	// under the same ID inherit Skills and functions its owner never mounted.
+	err = kns.cbs.DeleteCapabilitiesByKnID(ctx, tx, kn.KNID, kn.Branch)
+	if err != nil {
+		logger.Errorf("DeleteCapabilitiesByKnID error: %s", err.Error())
+		span.SetStatus(codes.Error, "删除业务知识网络能力绑定失败")
 		return err
 	}
 

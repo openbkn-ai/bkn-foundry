@@ -18,10 +18,6 @@ Description = "不支持的能力类型"
 Solution = "能力类型仅支持 skill 与 function。"
 ErrorLink = ""
 
-[BknBackend.CapabilityBinding.NotFound]
-Description = "未找到能力绑定"
-Solution = "请确认绑定 id 与分支。"
-ErrorLink = ""
 
 [BknBackend.CapabilityBinding.InternalError]
 Description = "能力绑定处理失败"

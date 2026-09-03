@@ -18,10 +18,6 @@ Description = "Unsupported capability type"
 Solution = "Only skill and function are supported."
 ErrorLink = ""
 
-[BknBackend.CapabilityBinding.NotFound]
-Description = "Capability binding not found"
-Solution = "Verify the binding id and branch."
-ErrorLink = ""
 
 [BknBackend.CapabilityBinding.InternalError]
 Description = "Failed to process the capability binding"

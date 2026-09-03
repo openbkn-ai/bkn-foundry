@@ -11,7 +11,6 @@ const (
 	BknBackend_CapabilityBinding_NullParameter_CapabilityID           = "BknBackend.CapabilityBinding.NullParameter.CapabilityID"
 	BknBackend_CapabilityBinding_NullParameter_OwnerID                = "BknBackend.CapabilityBinding.NullParameter.OwnerID"
 	BknBackend_CapabilityBinding_InvalidCapabilityType                = "BknBackend.CapabilityBinding.InvalidCapabilityType"
-	BknBackend_CapabilityBinding_NotFound                             = "BknBackend.CapabilityBinding.NotFound"
 	BknBackend_CapabilityBinding_InternalError                        = "BknBackend.CapabilityBinding.InternalError"
 	BknBackend_CapabilityBinding_InternalError_BeginTransaction       = "BknBackend.CapabilityBinding.InternalError.BeginTransactionFailed"
 	BknBackend_CapabilityBinding_InternalError_CreateBindingsFailed   = "BknBackend.CapabilityBinding.InternalError.CreateBindingsFailed"
@@ -25,7 +24,6 @@ var CapabilityBindingErrCodeList = []string{
 	BknBackend_CapabilityBinding_NullParameter_CapabilityID,
 	BknBackend_CapabilityBinding_NullParameter_OwnerID,
 	BknBackend_CapabilityBinding_InvalidCapabilityType,
-	BknBackend_CapabilityBinding_NotFound,
 	BknBackend_CapabilityBinding_InternalError,
 	BknBackend_CapabilityBinding_InternalError_BeginTransaction,
 	BknBackend_CapabilityBinding_InternalError_CreateBindingsFailed,

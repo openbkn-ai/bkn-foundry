@@ -9,6 +9,7 @@ package capability_binding
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -145,6 +146,23 @@ func TestAttachCapabilities(t *testing.T) {
 			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("超出列宽的入参报 400，不落库", func() {
+			service, _ := newTestService(t, ctrl)
+
+			for _, entry := range []*interfaces.AttachCapabilityEntry{
+				{CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: strings.Repeat("s", 65)},
+				{CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, OwnerID: strings.Repeat("b", 65), CapabilityID: "tool-1"},
+				{CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "skill-1", Comment: strings.Repeat("c", 256)},
+			} {
+				_, err := service.AttachCapabilities(context.Background(), nil, "kn1", "main",
+					[]*interfaces.AttachCapabilityEntry{entry})
+
+				httpErr, ok := err.(*rest.HTTPError)
+				So(ok, ShouldBeTrue)
+				So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+			}
 		})
 
 		Convey("空请求体报 400", func() {
