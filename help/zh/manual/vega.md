@@ -32,7 +32,7 @@ openbkn vega catalog list --limit 1
 openbkn vega catalog health <catalog_id> [<catalog_id> ...]
 ```
 
-vega-backend Pod 自身的 `GET /health` 不在 `/api/vega-backend/v1` 下，通常也不经 Ingress 暴露，排障时在集群内访问。
+Vega Backend 通过标准 API 前缀暴露 `GET /api/vega-backend/v1/health`，返回包含平台版本的服务运行信息。
 
 ### Catalog 管理
 
@@ -324,8 +324,8 @@ curl -sk "https://<访问地址>/api/vega-backend/v1/catalogs?limit=1" \
   -H "Authorization: Bearer $(openbkn auth token)" \
 
 
-# 可选：直连 vega-backend Pod 的 /health（不在 /v1 下）
-# curl -sk "https://<访问地址>/health" -H "Authorization: Bearer $(openbkn auth token)"
+# 平台版本和 Vega Backend 健康状态
+curl -sk "https://<访问地址>/api/vega-backend/v1/health"
 
 curl -sk "https://<访问地址>/api/vega-backend/v1/catalogs?health_check_status=healthy&limit=20" \
   -H "Authorization: Bearer $(openbkn auth token)"

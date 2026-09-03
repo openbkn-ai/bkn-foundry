@@ -16,6 +16,35 @@ tags:
     description: BKN import and export APIs
 
 paths:
+  /api/bkn-backend/v1/health:
+    get:
+      tags:
+        - BKN
+      summary: Get BKN backend health and platform version
+      description: Returns BKN backend runtime information. ServerVersion is the platform version for releases in which all services share one version.
+      operationId: getBKNBackendHealth
+      security: []
+      responses:
+        '200':
+          description: Health and version information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ServerName:
+                    type: string
+                  ServerVersion:
+                    type: string
+                    description: Platform version.
+                  Language:
+                    type: string
+                  GoVersion:
+                    type: string
+                  GoArch:
+                    type: string
+                required:
+                  - ServerVersion
   # ==================== BKN Import/Export ====================
   /api/bkn-backend/v1/bkns:
     post:

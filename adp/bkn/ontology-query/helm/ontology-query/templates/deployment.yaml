@@ -72,8 +72,9 @@ spec:
           timeoutSeconds: 30
           failureThreshold: 3
         readinessProbe:
-          tcpSocket:
-            port: {{ .Values.service.ontologyQuery.port }}
+          httpGet:
+            path: /api/ontology-query/v1/health
+            port: query
           initialDelaySeconds: 10
           periodSeconds: 10
           timeoutSeconds: 30

@@ -41,11 +41,21 @@ func Test_RestHandler_HealthCheck(t *testing.T) {
 		handler := &restHandler{appSetting: &common.AppSetting{}}
 		handler.RegisterPublic(engine)
 
+		for _, path := range []string{"/api/bkn-backend/v1/health"} {
+			Convey("It serves health information without authentication at "+path, func() {
+				req := httptest.NewRequest(http.MethodGet, path, nil)
+				w := httptest.NewRecorder()
+				engine.ServeHTTP(w, req)
+
+				So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+				So(w.Body.String(), ShouldContainSubstring, "ServerVersion")
+			})
+		}
+
 		req := httptest.NewRequest(http.MethodGet, "/health", nil)
 		w := httptest.NewRecorder()
 		engine.ServeHTTP(w, req)
-
-		So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+		So(w.Result().StatusCode, ShouldEqual, http.StatusNotFound)
 	})
 }
 

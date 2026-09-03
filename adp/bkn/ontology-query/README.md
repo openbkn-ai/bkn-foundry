@@ -83,7 +83,7 @@ server/
 
 ### System APIs
 
-- **Health check**: `GET /health`
+- **Health check**: `GET /api/ontology-query/v1/health`
 
 For detailed API documentation, see [API documentation](./api_doc/).
 
@@ -190,8 +190,8 @@ infrastructure failures return HTTP 503.
 
 ### Health checks
 
-- **Health check endpoint**: `GET /health`
-- **Readiness check endpoint**: `GET /ready`
+- **Health check endpoint**: `GET /api/ontology-query/v1/health`
+- **Readiness check endpoint**: `GET /api/ontology-query/v1/health`
 
 ### Logging configuration
 

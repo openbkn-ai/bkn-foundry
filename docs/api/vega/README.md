@@ -12,6 +12,7 @@
 | [connector-type.yaml](connector-type.yaml) | ConnectorType | `GET/POST /connector-types`、`GET/PUT/DELETE /connector-types/{type}`、`POST .../enable`、`POST .../disable` |
 | [discover-task.yaml](discover-task.yaml) | DiscoverTask | `POST /catalogs/{id}/discover`、`GET /discover-tasks`、`GET /discover-tasks/{id}`、`DELETE /discover-tasks/{ids}` |
 | [discover-schedule.yaml](discover-schedule.yaml) | DiscoverSchedule | `GET/POST /discover-schedules`、`GET/PUT/DELETE /discover-schedules/{id}`、`POST .../enable`、`POST .../disable` |
+| [health.yaml](health.yaml) | Health | `GET /api/vega-backend/v1/health`（返回平台版本） |
 | [resource.yaml](resource.yaml) | Resource | `GET/POST /resources`、`GET/PUT/DELETE /resources/{id(s)}` |
 | [resource-data.yaml](resource-data.yaml) | ResourceData | `POST/PUT /resources/{id}/data`、`GET/PUT/DELETE /resources/{id}/data/{doc_id(s)}` |
 | [raw-query.yaml](raw-query.yaml) | RawQuery | `POST /resources/query` |

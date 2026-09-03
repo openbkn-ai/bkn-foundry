@@ -1,0 +1,46 @@
+openapi: 3.1.1
+info:
+  title: Vega Backend Health API
+  description: Vega Backend 健康状态和平台版本接口。
+  version: 0.1.0
+servers:
+  - url: /api/vega-backend/v1
+paths:
+  /health:
+    get:
+      summary: 获取 Vega Backend 健康状态和平台版本
+      description: 返回 Vega Backend 运行时信息。当前所有服务统一发布版本时，ServerVersion 表示平台版本。
+      operationId: getVegaBackendHealth
+      security: []
+      responses:
+        '200':
+          description: 健康状态和版本信息
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ServerName:
+                    type: string
+                  ServerVersion:
+                    type: string
+                    description: 平台版本。
+                  Language:
+                    type: string
+                  GoVersion:
+                    type: string
+                  GoArch:
+                    type: string
+                required:
+                  - ServerVersion
+  /readyz:
+    get:
+      summary: 获取 Vega Backend 就绪状态
+      description: 返回 200 表示服务可接收流量；服务终止排空期间返回 503。
+      operationId: getVegaBackendReadiness
+      security: []
+      responses:
+        '200':
+          description: 服务已就绪
+        '503':
+          description: 服务正在排空或尚未就绪

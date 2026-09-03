@@ -60,17 +60,40 @@ func Test_RestHandler_HealthCheck(t *testing.T) {
 	t.Run("returns server metadata", func(t *testing.T) {
 		engine := gin.New()
 		handler := &restHandler{}
-		engine.GET("/health", handler.HealthCheck)
+		for _, path := range []string{"/api/vega-backend/v1/health"} {
+			t.Run(path, func(t *testing.T) {
+				engine.GET(path, handler.HealthCheck)
+				req := httptest.NewRequest(http.MethodGet, path, nil)
+				w := httptest.NewRecorder()
 
-		req := httptest.NewRequest(http.MethodGet, "/health", nil)
-		w := httptest.NewRecorder()
+				engine.ServeHTTP(w, req)
 
-		engine.ServeHTTP(w, req)
-
-		require.Equal(t, http.StatusOK, w.Result().StatusCode)
-		assert.Contains(t, w.Body.String(), "ServerName")
-		assert.Contains(t, w.Body.String(), "ServerVersion")
+				require.Equal(t, http.StatusOK, w.Result().StatusCode)
+				assert.Contains(t, w.Body.String(), "ServerName")
+				assert.Contains(t, w.Body.String(), "ServerVersion")
+			})
+		}
 	})
+}
+
+func Test_RestHandler_RegisterPublicHealthRoutes(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	engine := gin.New()
+	(&restHandler{}).RegisterPublic(engine)
+
+	routes := make(map[string]bool)
+	for _, route := range engine.Routes() {
+		if route.Method == http.MethodGet {
+			routes[route.Path] = true
+		}
+	}
+
+	assert.True(t, routes["/api/vega-backend/v1/health"])
+	assert.True(t, routes["/api/vega-backend/v1/readyz"])
+	assert.False(t, routes["/health"])
+	assert.False(t, routes["/readyz"])
 }
 
 func Test_RestHandler_ReadinessCheck(t *testing.T) {
@@ -79,10 +102,10 @@ func Test_RestHandler_ReadinessCheck(t *testing.T) {
 
 	engine := gin.New()
 	handler := &restHandler{}
-	engine.GET("/readyz", handler.ReadinessCheck)
+	engine.GET("/api/vega-backend/v1/readyz", handler.ReadinessCheck)
 
 	handler.SetReady(true)
-	request := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/vega-backend/v1/readyz", nil)
 	readyResponse := httptest.NewRecorder()
 	engine.ServeHTTP(readyResponse, request)
 	require.Equal(t, http.StatusOK, readyResponse.Code)
