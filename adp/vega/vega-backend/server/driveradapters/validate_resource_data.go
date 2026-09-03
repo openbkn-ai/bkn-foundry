@@ -357,7 +357,7 @@ func validateResourceDataQueryGroupByFields(ctx context.Context, params *interfa
 	schemaDefinition []*interfaces.Property) error {
 	fields := make(map[string]struct{}, len(schemaDefinition))
 	for _, property := range schemaDefinition {
-		if property != nil {
+		if property != nil && property.Name != "" {
 			fields[property.Name] = struct{}{}
 		}
 	}

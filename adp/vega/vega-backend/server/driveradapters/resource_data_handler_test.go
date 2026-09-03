@@ -153,13 +153,11 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "createdAt")
 	})
 
-	t.Run("does not reject index subfields absent from schema definition", func(t *testing.T) {
-		engine, rs, _, rds := setupResourceDataHandlerTest(t)
+	t.Run("rejects index subfields absent from schema definition", func(t *testing.T) {
+		engine, rs, _, _ := setupResourceDataHandlerTest(t)
 		resource := sampleDatasetResource()
 		resource.Category = interfaces.ResourceCategoryIndex
 		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
-		rds.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).
-			Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{}}, nil)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data",
 			strings.NewReader(`{"group_by":[{"property":"title.keyword"}]}`))
@@ -169,7 +167,47 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 
 		engine.ServeHTTP(w, req)
 
-		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.InvalidParameter.GroupBy")
+	})
+
+	t.Run("rejects local index subfields outside the resource schema", func(t *testing.T) {
+		engine, rs, _, _ := setupResourceDataHandlerTest(t)
+		resource := sampleDatasetResource()
+		resource.Category = interfaces.ResourceCategoryTable
+		resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
+		resource.LocalIndexName = "resource-index"
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data",
+			strings.NewReader(`{"group_by":[{"property":"title.keyword"}]}`))
+		req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.InvalidParameter.GroupBy")
+	})
+
+	t.Run("rejects group by fields addressed by original name", func(t *testing.T) {
+		engine, rs, _, _ := setupResourceDataHandlerTest(t)
+		resource := sampleDatasetResource()
+		resource.Category = interfaces.ResourceCategoryTable
+		resource.SchemaDefinition = []*interfaces.Property{{Name: "createdAt", OriginalName: "created_at"}}
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data",
+			strings.NewReader(`{"group_by":[{"property":"created_at"}]}`))
+		req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.InvalidParameter.GroupBy")
 	})
 
 	t.Run("preserves total count requested by cursor session", func(t *testing.T) {

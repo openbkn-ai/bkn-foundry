@@ -141,14 +141,12 @@ func (r *restHandler) queryResourceData(c *gin.Context, ctx context.Context, spa
 	if warning != "" {
 		otellog.LogWarn(ctx, "Query hit deprecated resource: "+warning)
 	}
-	if resource.Category == interfaces.ResourceCategoryTable {
-		if err := validateResourceDataQueryGroupByFields(ctx, &params, resource.SchemaDefinition); err != nil {
-			httpErr := err.(*rest.HTTPError)
-			otellog.LogError(ctx, "Validate resource data group by fields failed", httpErr)
-			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-			rest.ReplyError(c, httpErr)
-			return
-		}
+	if err := validateResourceDataQueryGroupByFields(ctx, &params, resource.SchemaDefinition); err != nil {
+		httpErr := err.(*rest.HTTPError)
+		otellog.LogError(ctx, "Validate resource data group by fields failed", httpErr)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
 	}
 
 	result, err := r.rds.QueryWithPaging(ctx, resource, &params)
