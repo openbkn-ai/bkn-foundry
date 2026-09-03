@@ -350,3 +350,24 @@ func validateAggregateParams(ctx context.Context, params *interfaces.ResourceDat
 
 	return nil
 }
+
+// validateResourceDataQueryGroupByFields verifies that group-by fields are declared by the resource.
+// It runs after the resource is loaded so request-level validation can remain resource independent.
+func validateResourceDataQueryGroupByFields(ctx context.Context, params *interfaces.ResourceDataQueryParams,
+	schemaDefinition []*interfaces.Property) error {
+	fields := make(map[string]struct{}, len(schemaDefinition))
+	for _, property := range schemaDefinition {
+		if property != nil && property.Name != "" {
+			fields[property.Name] = struct{}{}
+		}
+	}
+
+	for _, groupByItem := range params.GroupBy {
+		if _, ok := fields[groupByItem.Property]; !ok {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_GroupBy).
+				WithErrorDetails(fmt.Sprintf("GroupBy property %q is not defined by the resource", groupByItem.Property))
+		}
+	}
+
+	return nil
+}

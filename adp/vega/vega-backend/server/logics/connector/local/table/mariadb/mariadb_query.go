@@ -466,7 +466,7 @@ func (c *MariaDBConnector) buildDateFormat(alias, dateField, calendarInterval st
 	case interfaces.CALENDAR_UNIT_MONTH:
 		dateFmt = fmt.Sprintf(`date_format(%s,'%s')`, dateField, `%Y-%m`)
 	case interfaces.CALENDAR_UNIT_QUARTER:
-		dateFmt = fmt.Sprintf(`format('%%d-Q%%d',year(%s),quarter(%s))`, dateField, dateField)
+		dateFmt = fmt.Sprintf(`concat(year(%s),'-Q',quarter(%s))`, dateField, dateField)
 	case interfaces.CALENDAR_UNIT_YEAR:
 		dateFmt = fmt.Sprintf(`date_format(%s,'%s')`, dateField, `%Y`)
 	}

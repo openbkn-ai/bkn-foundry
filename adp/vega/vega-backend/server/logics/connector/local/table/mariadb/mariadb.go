@@ -19,6 +19,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 
 	"vega-backend/interfaces"
+	"vega-backend/logics/connector/local/table"
 )
 
 type mariadbConfig struct {
@@ -162,6 +163,8 @@ func (c *MariaDBConnector) connectionString() string {
 	for k, v := range c.config.Options {
 		values.Set(k, fmt.Sprintf("%v", v))
 	}
+	values.Set("loc", table.ServerTimeZone())
+	values.Set("time_zone", "'"+table.ServerTimeZone()+"'")
 
 	return fmt.Sprintf("%s:%s@tcp(%s)/?%s",
 		c.config.Username,

@@ -20,6 +20,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 
 	"vega-backend/interfaces"
+	"vega-backend/logics/connector/local/table"
 )
 
 type postgresqlConfig struct {
@@ -168,6 +169,7 @@ func (c *PostgresqlConnector) connectionString() string {
 	if q.Get("sslmode") == "" {
 		q.Set("sslmode", "disable")
 	}
+	q.Set("timezone", table.ServerTimeZone())
 	u.RawQuery = q.Encode()
 	return u.String()
 }

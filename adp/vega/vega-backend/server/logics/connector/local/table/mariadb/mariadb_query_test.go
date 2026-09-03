@@ -116,7 +116,7 @@ func TestBuildDateFormat(t *testing.T) {
 		{name: "day", interval: interfaces.CALENDAR_UNIT_DAY, want: "date_format(created_at,'%Y-%m-%d')"},
 		{name: "week", interval: interfaces.CALENDAR_UNIT_WEEK, want: "date_format(created_at,'%x-%v')"},
 		{name: "month", interval: interfaces.CALENDAR_UNIT_MONTH, want: "date_format(created_at,'%Y-%m')"},
-		{name: "quarter", interval: interfaces.CALENDAR_UNIT_QUARTER, want: "format('%d-Q%d',year(created_at),quarter(created_at))"},
+		{name: "quarter", interval: interfaces.CALENDAR_UNIT_QUARTER, want: "concat(year(created_at),'-Q',quarter(created_at))"},
 		{name: "year", interval: interfaces.CALENDAR_UNIT_YEAR, want: "date_format(created_at,'%Y')"},
 		{name: "unknown", interval: "unknown", want: ""},
 	}
