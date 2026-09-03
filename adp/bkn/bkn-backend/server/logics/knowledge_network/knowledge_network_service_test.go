@@ -783,22 +783,22 @@ func Test_knowledgeNetworkService_ExportKNForProjectionDoesNotUseUserServices(t 
 		defer mockCtrl.Finish()
 
 		kna := bmock.NewMockKNAccess(mockCtrl)
-		cgs := bmock.NewMockConceptGroupService(mockCtrl)
-		ots := bmock.NewMockObjectTypeService(mockCtrl)
-		rts := bmock.NewMockRelationTypeService(mockCtrl)
-		ats := bmock.NewMockActionTypeService(mockCtrl)
-		ms := bmock.NewMockMetricService(mockCtrl)
+		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
+		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
+		ata := bmock.NewMockActionTypeAccess(mockCtrl)
+		ma := bmock.NewMockMetricAccess(mockCtrl)
 		service := &knowledgeNetworkService{
-			kna: kna, cgs: cgs, ots: ots, rts: rts, ats: ats, ms: ms,
+			kna: kna, cga: cga, ota: ota, rta: rta, ata: ata, ma: ma,
 		}
 
 		kn := &interfaces.KN{KNID: "kn-allowed", KNName: "Allowed", Branch: interfaces.MAIN_BRANCH}
 		kna.EXPECT().GetKNByID(gomock.Any(), "kn-allowed", interfaces.MAIN_BRANCH).Return(kn, nil)
-		cgs.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return([]*interfaces.ConceptGroup{}, 0, nil)
-		ots.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return([]*interfaces.ObjectType{}, 0, nil)
-		rts.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{}, 0, nil)
-		ats.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{}, 0, nil)
-		ms.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(&interfaces.MetricsList{}, nil)
+		cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return([]*interfaces.ConceptGroup{}, nil)
+		ota.EXPECT().ListObjectTypes(gomock.Any(), nil, gomock.Any()).Return([]*interfaces.ObjectType{}, nil)
+		rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{}, nil)
+		ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{}, nil)
+		ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return([]*interfaces.MetricDefinition{}, nil)
 
 		result, err := service.ExportKNForProjection(ctx, "kn-allowed")
 		So(err, ShouldBeNil)

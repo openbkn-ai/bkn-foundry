@@ -669,7 +669,39 @@ func (kns *knowledgeNetworkService) GetKNByID(ctx context.Context, knID string, 
 // caller has already been authorized for this exact network by a signed grant,
 // so it must not enter account-based resource filtering or identity enrichment.
 func (kns *knowledgeNetworkService) ExportKNForProjection(ctx context.Context, knID string) (*interfaces.KN, error) {
-	return kns.getKNByID(ctx, knID, interfaces.MAIN_BRANCH, interfaces.Mode_Export, false)
+	kn, err := kns.getKNByID(ctx, knID, interfaces.MAIN_BRANCH, "", false)
+	if err != nil {
+		return nil, err
+	}
+	query := interfaces.PaginationQueryParameters{Limit: -1}
+	kn.ConceptGroups, err = kns.cga.ListConceptGroups(ctx, interfaces.ConceptGroupsQueryParams{PaginationQueryParameters: query, KNID: kn.KNID, Branch: kn.Branch})
+	if err != nil {
+		return nil, err
+	}
+	kn.ObjectTypes, err = kns.ota.ListObjectTypes(ctx, nil, interfaces.ObjectTypesQueryParams{PaginationQueryParameters: query, KNID: kn.KNID, Branch: kn.Branch})
+	if err != nil {
+		return nil, err
+	}
+	kn.RelationTypes, err = kns.rta.ListRelationTypes(ctx, interfaces.RelationTypesQueryParams{PaginationQueryParameters: query, KNID: kn.KNID, Branch: kn.Branch})
+	if err != nil {
+		return nil, err
+	}
+	kn.ActionTypes, err = kns.ata.ListActionTypes(ctx, interfaces.ActionTypesQueryParams{PaginationQueryParameters: query, KNID: kn.KNID, Branch: kn.Branch})
+	if err != nil {
+		return nil, err
+	}
+	metrics, err := kns.ma.ListMetrics(ctx, interfaces.MetricsListQueryParams{PaginationQueryParameters: query, KNID: kn.KNID, Branch: kn.Branch})
+	if err != nil {
+		return nil, err
+	}
+	kn.Metrics = metrics
+	if kns.riskTypeA != nil {
+		kn.RiskTypes, err = kns.riskTypeA.GetAllRiskTypesByKnID(ctx, kn.KNID, kn.Branch)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return kn, nil
 }
 
 func (kns *knowledgeNetworkService) getKNByID(ctx context.Context, knID string, branch string, mode string, enforceUserPermission bool) (*interfaces.KN, error) {
