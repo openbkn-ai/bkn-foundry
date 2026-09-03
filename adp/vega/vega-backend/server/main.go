@@ -132,7 +132,11 @@ func main() {
 	// The Set order is sorted in ascending alphabetical order
 	if common.GetAuthEnabled() {
 		logics.SetAuthAccess(auth.NewHydraAuthAccess(appSetting))
-		logics.SetPermissionAccess(permission.MaybeShadow(permission.NewPermissionAccess(appSetting)))
+		permissionAccess, err := permission.MaybeShadow(permission.NewPermissionAccess(appSetting))
+		if err != nil {
+			logger.Fatalf("authorization provider is misconfigured: %v", err)
+		}
+		logics.SetPermissionAccess(permissionAccess)
 		logics.SetUserMgmtAccess(user_mgmt.NewUserMgmtAccess(appSetting))
 	}
 

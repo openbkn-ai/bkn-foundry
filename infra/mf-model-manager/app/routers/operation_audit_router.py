@@ -1,10 +1,10 @@
 import asyncio
-import os
 from datetime import datetime
 
 import aiohttp
 from fastapi import APIRouter, HTTPException, Query, Request
 
+from app.core.config import bkn_safe_url
 from app.mydb.pymysql_pool import PymysqlPool
 from app.commons.locale import internal_request_headers
 
@@ -24,7 +24,7 @@ def _audit_error(name):
 
 async def _require_audit_reader(request: Request):
     token = request.headers.get("authorization", "")
-    safe = os.getenv("BKN_SAFE_URL", "").rstrip("/")
+    safe = bkn_safe_url().rstrip("/")
     if not token or not safe:
         raise _audit_error("access_denied")
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=3)) as session:

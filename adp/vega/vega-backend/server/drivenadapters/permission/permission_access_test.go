@@ -506,15 +506,60 @@ func TestMaybeShadow(t *testing.T) {
 		t.Setenv("AUTHZ_PROVIDER", "isf")
 		t.Setenv("BKN_SAFE_URL", "http://safe")
 
-		assert.Same(t, inner, MaybeShadow(inner))
+		got, err := MaybeShadow(inner)
+
+		require.NoError(t, err)
+		assert.Same(t, inner, got)
 	})
 
-	t.Run("returns inner for unknown provider or empty safe url", func(t *testing.T) {
+	// An unset provider keeps the ISF fallback so an upgrade does not
+	// CrashLoopBackOff; only a misspelled one is a startup error.
+	t.Run("returns inner for unset provider", func(t *testing.T) {
 		inner, _ := newMockPermissionAccessWithoutExpectation(t)
-		t.Setenv("AUTHZ_PROVIDER", "unknown")
-		t.Setenv("BKN_SAFE_URL", "")
+		t.Setenv("AUTHZ_PROVIDER", "")
+		t.Setenv("BKN_SAFE_URL", "http://safe")
 
-		assert.Same(t, inner, MaybeShadow(inner))
+		got, err := MaybeShadow(inner)
+
+		require.NoError(t, err)
+		assert.Same(t, inner, got)
+	})
+
+	// A values file with a trailing space has to select the same backend the
+	// runtime then compares against, not fall through to ISF unnoticed.
+	t.Run("tolerates surrounding whitespace", func(t *testing.T) {
+		inner, _ := newMockPermissionAccessWithoutExpectation(t)
+		t.Setenv("AUTHZ_PROVIDER", " bkn-safe ")
+		t.Setenv("BKN_SAFE_URL", " http://safe ")
+
+		got, err := MaybeShadow(inner)
+
+		require.NoError(t, err)
+		require.IsType(t, &safePermissionAccess{}, got)
+	})
+
+	t.Run("rejects unknown provider", func(t *testing.T) {
+		inner, _ := newMockPermissionAccessWithoutExpectation(t)
+		t.Setenv("AUTHZ_PROVIDER", "bkn_safe")
+		t.Setenv("BKN_SAFE_URL", "http://safe")
+
+		got, err := MaybeShadow(inner)
+
+		require.Error(t, err)
+		assert.Nil(t, got)
+	})
+
+	t.Run("rejects empty safe url", func(t *testing.T) {
+		for _, provider := range []string{"bkn-safe", "shadow"} {
+			inner, _ := newMockPermissionAccessWithoutExpectation(t)
+			t.Setenv("AUTHZ_PROVIDER", provider)
+			t.Setenv("BKN_SAFE_URL", "  ")
+
+			got, err := MaybeShadow(inner)
+
+			require.Error(t, err, provider)
+			assert.Nil(t, got, provider)
+		}
 	})
 
 	t.Run("wraps inner in shadow mode", func(t *testing.T) {
@@ -522,8 +567,9 @@ func TestMaybeShadow(t *testing.T) {
 		t.Setenv("AUTHZ_PROVIDER", "shadow")
 		t.Setenv("BKN_SAFE_URL", "http://safe")
 
-		got := MaybeShadow(inner)
+		got, err := MaybeShadow(inner)
 
+		require.NoError(t, err)
 		require.IsType(t, &shadowPermissionAccess{}, got)
 		assert.Same(t, inner, got.(*shadowPermissionAccess).PermissionAccess)
 	})
@@ -533,8 +579,9 @@ func TestMaybeShadow(t *testing.T) {
 		t.Setenv("AUTHZ_PROVIDER", "bkn-safe")
 		t.Setenv("BKN_SAFE_URL", "http://safe")
 
-		got := MaybeShadow(inner)
+		got, err := MaybeShadow(inner)
 
+		require.NoError(t, err)
 		require.IsType(t, &safePermissionAccess{}, got)
 	})
 }

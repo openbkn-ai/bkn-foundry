@@ -1,9 +1,7 @@
-import os
-
 import aiohttp
 from typing import List, Dict, Optional
 
-from app.core.config import base_config
+from app.core.config import authz_settings, base_config
 from app.dao.small_model_dao import small_model_dao
 from app.logs.stand_log import StandLogger
 from app.commons.locale import internal_request_headers
@@ -23,9 +21,10 @@ class PermissionManager:
         #                              parallel, diffs logged (decision path only)
         #   AUTHZ_PROVIDER=bkn-safe -> bkn-safe AUTHORITATIVE for all methods
         #                              (ISF not consulted)
-        # Unset to revert (default = pure ISF). BKN_SAFE_URL points at bkn-safe.
-        self.authz_provider = os.getenv("AUTHZ_PROVIDER", "")
-        self.bkn_safe_url = os.getenv("BKN_SAFE_URL", "")
+        # Unset falls back to ISF and warns at startup. BKN_SAFE_URL points at bkn-safe.
+        # Same normalisation the startup check uses, so a provider that was
+        # accepted at boot is the one compared here.
+        self.authz_provider, self.bkn_safe_url = authz_settings()
 
     def _bkn_safe_authoritative(self) -> bool:
         return self.authz_provider == "bkn-safe" and bool(self.bkn_safe_url)
