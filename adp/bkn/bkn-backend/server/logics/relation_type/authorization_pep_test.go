@@ -49,9 +49,14 @@ func TestRelationTypeSingleResourcePEP(t *testing.T) {
 				rta.EXPECT().CheckRelationTypeExistByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "rt-1").
 					Return("relation", true, nil)
 			}
-			ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
-				Type: interfaces.RESOURCE_TYPE_RELATION_TYPE, ID: "kn-1/rt-1",
-			}, []string{tt.operation}).Return(denied)
+			if tt.name == "detail" {
+				ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_RELATION_TYPE,
+					[]string{"kn-1/rt-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, gomock.Any()).Return(nil, denied)
+			} else {
+				ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+					Type: interfaces.RESOURCE_TYPE_RELATION_TYPE, ID: "kn-1/rt-1",
+				}, []string{tt.operation}).Return(denied)
+			}
 			service := &relationTypeService{rta: rta, ps: ps}
 			if err := tt.invoke(service, context.Background()); !errors.Is(err, denied) {
 				t.Fatalf("operation error = %v, want %v", err, denied)

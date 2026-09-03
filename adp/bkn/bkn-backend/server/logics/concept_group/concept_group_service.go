@@ -458,8 +458,18 @@ func (cgs *conceptGroupService) ListConceptGroups(ctx context.Context,
 	} else {
 		total, err = cgs.cga.GetConceptGroupsTotal(ctx, query)
 		if err != nil {
+			logger.Errorf("GetConceptGroupsTotal error: %s", err.Error())
+			span.SetStatus(codes.Error, "Get concept groups total error")
 			return []*interfaces.ConceptGroup{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
+		}
+		operations, err := permission.GetKNChildOperations(ctx, cgs.ps,
+			interfaces.RESOURCE_TYPE_CONCEPT_GROUP, query.KNID, "")
+		if err != nil {
+			return []*interfaces.ConceptGroup{}, 0, err
+		}
+		for _, conceptGroup := range conceptGroups {
+			conceptGroup.Operations = operations
 		}
 	}
 	if len(conceptGroups) == 0 {
@@ -537,11 +547,6 @@ func (cgs *conceptGroupService) GetConceptGroupByID(ctx context.Context, knID st
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ConceptGroup_ConceptGroupNotFound).
 			WithErrorDetails(errStr)
 	}
-	resource, operation := permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
-		knID, cgID, interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_VIEW_DETAIL)
-	if err = cgs.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
-		return nil, err
-	}
 	if permission.KNChildResourcePEPEnabled() {
 		operations, err := permission.GetKNChildOperations(ctx, cgs.ps,
 			interfaces.RESOURCE_TYPE_CONCEPT_GROUP, knID, cgID)
@@ -549,6 +554,11 @@ func (cgs *conceptGroupService) GetConceptGroupByID(ctx context.Context, knID st
 			return nil, err
 		}
 		conceptGroup.Operations = operations
+	} else if err = cgs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_KN,
+		ID:   knID,
+	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
+		return nil, err
 	}
 
 	otIDs, err := cgs.cga.GetConceptIDsByConceptGroupIDs(ctx, conceptGroup.KNID,

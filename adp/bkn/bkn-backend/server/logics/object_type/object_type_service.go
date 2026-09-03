@@ -476,8 +476,18 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 	} else {
 		total, err = ots.ota.GetObjectTypesTotal(ctx, query)
 		if err != nil {
+			logger.Errorf("GetObjectTypesTotal error: %s", err.Error())
+			span.SetStatus(codes.Error, "Get object types total error")
 			return []*interfaces.ObjectType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
+		}
+		operations, err := permission.GetKNChildOperations(ctx, ots.ps,
+			interfaces.RESOURCE_TYPE_OBJECT_TYPE, query.KNID, "")
+		if err != nil {
+			return []*interfaces.ObjectType{}, 0, err
+		}
+		for _, objectType := range objectTypes {
+			objectType.Operations = operations
 		}
 	}
 	if len(objectTypes) == 0 {
@@ -558,12 +568,6 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 	if err := permission.ValidateKNChildPEPAuthorizationIDs(ctx, knID, otIDs); err != nil {
 		return nil, err
 	}
-	resource := interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID}
-	operation := interfaces.OPERATION_TYPE_VIEW_DETAIL
-	if len(otIDs) == 1 && permission.KNChildResourcePEPEnabled() {
-		resource, operation = permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_OBJECT_TYPE,
-			knID, otIDs[0], interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_VIEW_DETAIL)
-	}
 	var err error
 
 	// 0. Begin the transaction.
@@ -616,9 +620,6 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 		return []*interfaces.ObjectType{}, rest.NewHTTPError(ctx, http.StatusNotFound,
 			berrors.BknBackend_ObjectType_ObjectTypeNotFound).WithErrorDetails(errStr)
 	}
-	if err = ots.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
-		return nil, err
-	}
 	if len(otIDs) == 1 && permission.KNChildResourcePEPEnabled() {
 		operations, err := permission.GetKNChildOperations(ctx, ots.ps,
 			interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, otIDs[0])
@@ -626,6 +627,11 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 			return nil, err
 		}
 		objectTypes[0].Operations = operations
+	} else if err = ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_KN,
+		ID:   knID,
+	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
+		return nil, err
 	}
 
 	// Get object type groups.

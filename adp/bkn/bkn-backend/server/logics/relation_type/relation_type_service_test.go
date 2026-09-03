@@ -144,6 +144,10 @@ func Test_relationTypeService_GetRelationTypesByIDs(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{
+				"kn1": {ResourceID: "kn1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_AUTHORIZE}},
+			}, nil).AnyTimes()
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
 		ums := bmock.NewMockUserMgmtService(mockCtrl)
 
@@ -326,6 +330,10 @@ func Test_relationTypeService_ListRelationTypes(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{
+				"kn1": {ResourceID: "kn1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_AUTHORIZE}},
+			}, nil).AnyTimes()
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
 		ums := bmock.NewMockUserMgmtService(mockCtrl)
 

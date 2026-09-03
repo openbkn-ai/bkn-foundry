@@ -201,6 +201,10 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{
+				"kn1": {ResourceID: "kn1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_AUTHORIZE}},
+			}, nil).AnyTimes()
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		ma := bmock.NewMockMetricAccess(mockCtrl)
 		ums := bmock.NewMockUserMgmtService(mockCtrl)
@@ -1185,6 +1189,10 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{
+				"kn1": {ResourceID: "kn1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_AUTHORIZE}},
+			}, nil).AnyTimes()
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		ums := bmock.NewMockUserMgmtService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))

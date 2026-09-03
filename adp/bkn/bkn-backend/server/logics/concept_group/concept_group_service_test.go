@@ -299,6 +299,10 @@ func Test_conceptGroupService_ListConceptGroups(t *testing.T) {
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ums := bmock.NewMockUserMgmtService(mockCtrl)
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{
+				"kn1": {ResourceID: "kn1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_AUTHORIZE}},
+			}, nil).AnyTimes()
 
 		service := &conceptGroupService{
 			appSetting: appSetting,
@@ -536,6 +540,10 @@ func Test_conceptGroupService_GetConceptGroupByID(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{
+				"kn1": {ResourceID: "kn1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_AUTHORIZE}},
+			}, nil).AnyTimes()
 
 		service := &conceptGroupService{
 			appSetting: appSetting,
