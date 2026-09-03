@@ -283,13 +283,14 @@ type MetricTypeConcepts struct {
 
 // KnowledgeNetworkDetail Knowledge network detail with full schema
 type KnowledgeNetworkDetail struct {
-	ID            string          `json:"id"`             // Knowledge network ID
-	Name          string          `json:"name"`           // Knowledge network name
-	Comment       string          `json:"comment"`        // Comment/description
-	ConceptGroups []*ConceptGroup `json:"concept_groups"` // Concept groups
-	ObjectTypes   []*ObjectType   `json:"object_types"`   // Object types
-	RelationTypes []*RelationType `json:"relation_types"` // Relation types
-	ActionTypes   []*ActionType   `json:"action_types"`   // Action types
+	ID            string          `json:"id"`                // Knowledge network ID
+	Name          string          `json:"name"`              // Knowledge network name
+	Comment       string          `json:"comment"`           // Comment/description
+	ConceptGroups []*ConceptGroup `json:"concept_groups"`    // Concept groups
+	ObjectTypes   []*ObjectType   `json:"object_types"`      // Object types
+	RelationTypes []*RelationType `json:"relation_types"`    // Relation types
+	ActionTypes   []*ActionType   `json:"action_types"`      // Action types
+	Metrics       []*MetricType   `json:"metrics,omitempty"` // Metrics included by a sealed projection export
 }
 
 // Detail levels for get_kn_detail progressive disclosure.
