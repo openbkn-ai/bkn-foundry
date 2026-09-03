@@ -364,6 +364,7 @@ func operationAuditPathTarget(c *gin.Context, targetType string) string {
 		"relation_type": {"rt_id", "rt_ids"}, "action_type": {"at_id", "at_ids"},
 		"risk_type": {"rt_id", "rt_ids"},
 		"metric":    {"metric_ids"}, "concept_group": {"cg_id"}, "action_schedule": {"schedule_id", "schedule_ids"},
+		"kn_capability_binding": {"binding_ids"},
 	}
 	for _, name := range names[targetType] {
 		if value := strings.TrimSpace(c.Param(name)); value != "" {

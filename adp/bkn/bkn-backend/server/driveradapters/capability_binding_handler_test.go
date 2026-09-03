@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -42,6 +43,27 @@ func Test_CapabilityRoutes_AllPrefixes(t *testing.T) {
 			So(registered[http.MethodGet+" "+prefix+"/knowledge-networks/:kn_id/capabilities"], ShouldBeTrue)
 			So(registered[http.MethodDelete+" "+prefix+"/knowledge-networks/:kn_id/capabilities/:binding_ids"], ShouldBeTrue)
 		}
+	})
+}
+
+// Test_CapabilityAudit_TargetFromPath keeps the released binding IDs in the audit row. Without a
+// path-parameter entry the target falls back to a synthesised "<target_type>:<request_id>", so the
+// audit trail no longer says which binding was released — found on the test server, where DELETE
+// rows carried the placeholder instead of the ID.
+func Test_CapabilityAudit_TargetFromPath(t *testing.T) {
+	Convey("解绑审计的 target 取路径上的 binding_ids", t, func() {
+		restore := setGinMode()
+		defer restore()
+
+		engine := gin.New()
+		var target string
+		engine.DELETE("/knowledge-networks/:kn_id/capabilities/:binding_ids", func(c *gin.Context) {
+			target = operationAuditPathTarget(c, "kn_capability_binding")
+		})
+		req := httptest.NewRequest(http.MethodDelete, "/knowledge-networks/kn1/capabilities/bind-1,bind-2", nil)
+		engine.ServeHTTP(httptest.NewRecorder(), req)
+
+		So(target, ShouldEqual, "bind-1,bind-2")
 	})
 }
 
