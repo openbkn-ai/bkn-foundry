@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -1048,11 +1049,13 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
 	}
 	if keyFieldsChanged {
-		updated, err := rs.ra.UpdateLocalIndexState(ctx, tx, resource.ID,
-			resource.LocalIndexStatus, resource.LocalIndexName, "")
-		if err != nil || !updated {
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
-				WithErrorDetails("failed to clear resource incremental checkpoint")
+		if resource.SyncMark != "" {
+			updated, err := rs.ra.UpdateLocalIndexState(ctx, tx, resource.ID,
+				resource.LocalIndexStatus, resource.LocalIndexName, "")
+			if err != nil || !updated {
+				return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
+					WithErrorDetails("failed to clear resource incremental checkpoint")
+			}
 		}
 		resource.SyncMark = ""
 	} else if buildRelevantChanged && previousFingerprint != currentFingerprint &&
@@ -1089,8 +1092,8 @@ func indexConfigKeyFieldsChanged(current, requested *interfaces.ResourceIndexCon
 	if current == nil {
 		return len(requested.PrimaryKeyFields) > 0 || len(requested.IncrementalFields) > 0
 	}
-	return !reflect.DeepEqual(current.PrimaryKeyFields, requested.PrimaryKeyFields) ||
-		!reflect.DeepEqual(current.IncrementalFields, requested.IncrementalFields)
+	return !slices.Equal(current.PrimaryKeyFields, requested.PrimaryKeyFields) ||
+		!slices.Equal(current.IncrementalFields, requested.IncrementalFields)
 }
 
 // SetEnabled changes only a Resource's enabled state.

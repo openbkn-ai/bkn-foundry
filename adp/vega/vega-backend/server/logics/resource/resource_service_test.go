@@ -1300,6 +1300,43 @@ func TestResourceServiceUpdate(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
+	t.Run("update key fields without a checkpoint does not update local index state", func(t *testing.T) {
+		rs, mockRA, mockPS, _, _, mockCS, mockBTA := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
+		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).Return(int64(1), nil)
+
+		err := rs.Update(context.Background(), &interfaces.Resource{
+			ID:               "r1",
+			CatalogID:        "cat1",
+			Category:         interfaces.ResourceCategoryTable,
+			Name:             "table",
+			LocalIndexName:   "vega-build-r1-task-1",
+			LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+			SourceIdentifier: "public.orders",
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "id", Type: interfaces.DataType_Integer},
+				{Name: "updated_at", Type: interfaces.DataType_Timestamp},
+			},
+			IndexConfig: &interfaces.ResourceIndexConfig{
+				PrimaryKeyFields:  []string{"id"},
+				IncrementalFields: []string{"id"},
+			},
+		}, &interfaces.ResourceRequest{
+			CatalogID:        "cat1",
+			Category:         interfaces.ResourceCategoryTable,
+			Name:             "table",
+			SourceIdentifier: "public.orders",
+			IndexConfig: &interfaces.ResourceIndexConfig{
+				PrimaryKeyFields:  []string{"id"},
+				IncrementalFields: []string{"updated_at", "id"},
+			},
+		})
+
+		require.NoError(t, err)
+	})
 	t.Run("update rejects missing default embedding model ID", func(t *testing.T) {
 		rs, _, mockPS, _, _, _, mockBTA := newTestService(t)
 		ctrl := gomock.NewController(t)
