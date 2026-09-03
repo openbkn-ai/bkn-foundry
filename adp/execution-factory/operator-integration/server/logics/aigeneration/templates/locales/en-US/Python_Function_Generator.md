@@ -12,7 +12,7 @@ Write a Python script that follows the format below. Use the user's natural-lang
 
 1. Imports
    - Import the decorator: `from sandbox_sdk import tool`.
-   - When the tool needs a knowledge network (BKN), also import the capability surface: `from sandbox_sdk import tool, bkn`.
+   - When the tool needs a knowledge network (BKN), also import the platform SDK: `from bkn_osdk import kn` (pre-installed in the sandbox image).
    - If installed dependencies are provided, use only libraries from that list or the Python standard library.
    - Prefer the standard library when it is sufficient. Import only libraries that the implementation actually uses.
 
@@ -43,23 +43,24 @@ def tool_name(param1: str, param2: int = 0) -> dict:
 ```
 
 3. Reaching a knowledge network (optional)
-   - Only when the request involves querying a knowledge network / knowledge graph. It reads BKN as the invoking caller; credentials and session context are injected by the platform via environment variables, so the function never sees or passes them.
+   - Only when the request involves querying a knowledge network / knowledge graph. It reads BKN as the invoking caller; the platform address, credentials and session context are all injected by the platform via environment variables, so the function never sees or passes them — and must **not** call `bkn_osdk.configure()`.
 
 ```python
-from sandbox_sdk import tool, bkn
+from sandbox_sdk import tool
+from bkn_osdk import kn
 
 
 @tool
 def kn_summary(kn_id: str) -> dict:
     """List the object types of a knowledge network."""
-    if not bkn.available():
-        return {"available": False}
-    detail = bkn.get_kn_detail(kn_id, detail_level="summary")
+    detail = kn.get_kn_detail(kn_id, detail_level="summary")
     return {"object_types": [ot["name"] for ot in detail.get("object_types", [])]}
 ```
 
-   - Common capabilities: `bkn.get_kn_detail(kn_id)` for the schema, `bkn.search_schema(kn_id, query)` to find object types semantically, `bkn.query_object_instance(kn_id=..., ot_id=..., limit=...)` for instances.
-   - For aggregation use `bkn.run_sql(sql=...)`, but table names in the SQL must be the placeholder `{{.<resource_id>}}`, where `<resource_id>` comes from the `data_source.id` returned by `bkn.search_schema` (or from `bkn.list_resources`) — do **not** write a real table name (it is rejected). Use physical column names, which `search_schema(..., include_columns=True)` returns.
+   - Common capabilities: `kn.get_kn_detail(kn_id)` for the schema, `kn.search_schema(kn_id, query)` to find object types semantically, `kn.query_object_instance(kn_id, ot_id, limit=...)` for instances, `kn.list_resources(kn_id)` for resources.
+   - For aggregation use `kn.run_sql(kn_id, sql)`, but table names in the SQL must be the placeholder `{{.<resource_id>}}`, where `<resource_id>` comes from the `data_source.id` returned by `kn.search_schema` (or from `kn.list_resources`) — do **not** write a real table name (it is rejected). Use physical column names, which `search_schema(..., include_columns=True)` returns.
+   - A misconfigured platform address or a failed call raises `bkn_osdk.BknError` (`InputError` and `HttpError` are its subclasses). Let it propagate unless the request asks for a degraded result — swallowing it into an empty result disguises a configuration problem as "no data found".
+   - The older `from sandbox_sdk import tool, bkn` form **still works**; existing functions need no rewrite. Use `bkn_osdk` for newly generated code, and when editing an existing function keep whichever form it already uses unless the request explicitly asks to migrate.
 
 ## Implementation rules
 

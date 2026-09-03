@@ -137,6 +137,7 @@ class TestBubblewrapRunnerInit:
         """Common baked dir is bound and ordered after the dependency dir so a
         function's declared dependencies still override the baked baseline."""
         from pathlib import Path
+        from executor.infrastructure.config import settings
         from executor.infrastructure.isolation.bwrap import BubblewrapRunner
 
         runner = BubblewrapRunner(Path("/tmp/workspace"))

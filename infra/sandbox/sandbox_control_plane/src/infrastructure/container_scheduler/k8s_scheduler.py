@@ -35,7 +35,7 @@ from kubernetes.client import (
 )
 from kubernetes.client.rest import ApiException
 
-from src.infrastructure.config.settings import get_settings
+from src.infrastructure.config.settings import get_settings, resolve_bkn_base_url
 from src.infrastructure.container_scheduler.base import (
     ContainerConfig,
     ContainerInfo,
@@ -265,11 +265,16 @@ class K8sScheduler(IContainerScheduler):
                 ]
             )
 
-        # The MCP address for sandbox_sdk.bkn. A deployment-level constant, injected
-        # once; a caller that passes mcp in the event wins (see _mcp_url in sandbox_sdk/bkn.py).
+        # Both BKN faces get their address here. Deployment-level constants, injected once,
+        # so a function that calls BKN needs no address in the event and no configure() call.
+        #   BKN_SANDBOX_MCP_URL  sandbox_sdk.bkn (deprecated, still supported)
+        #   BKN_BASE_URL         bkn-osdk, derived from the MCP URL when unset
         bkn_mcp_url = get_settings().bkn_sandbox_mcp_url.strip()
         if bkn_mcp_url:
             env_vars.append(V1EnvVar(name="BKN_SANDBOX_MCP_URL", value=bkn_mcp_url))
+        bkn_base_url = resolve_bkn_base_url()
+        if bkn_base_url:
+            env_vars.append(V1EnvVar(name="BKN_BASE_URL", value=bkn_base_url))
 
         # Add PYTHONPATH so dependency imports resolve
         if has_dependencies:

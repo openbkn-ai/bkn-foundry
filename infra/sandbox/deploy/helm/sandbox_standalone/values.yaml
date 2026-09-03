@@ -102,6 +102,11 @@ controlPlane:
     # sandbox's urllib does not follow redirects on POST.
     # Leave empty to ship without the capability surface; functions then have to
     # pass `mcp` in the event themselves.
+    # Host and port only; bkn-osdk appends its own paths. No trailing slash.
+    # Standalone sandbox ships without BKN, so this is empty by default.
+    BKN_BASE_URL: ""
+    # MCP endpoint for the built-in sandbox_sdk.bkn face (still supported). Standalone
+    # sandbox ships without BKN, so this is empty by default. See the sandbox chart values.
     BKN_SANDBOX_MCP_URL: ""
 
   s3:

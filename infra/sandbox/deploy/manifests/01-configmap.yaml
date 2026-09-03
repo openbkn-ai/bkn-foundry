@@ -30,12 +30,21 @@ data:
   # 禁用 Bubblewrap（K8s 环境下推荐使用）
   DISABLE_BWRAP: "true"
 
-  # 集群内 Context Loader 的 MCP 地址，控制面会把它写进每个沙箱 Pod，
-  # 沙箱里的 sandbox_sdk.bkn 据此回访 BKN，调用方不必每次执行都传地址。
-  # 本目录部署的是独立沙箱（sandbox-system），默认没有 BKN，因此留空。
-  # 与 BKN 同集群时填 agent-retrieval 的地址；BKN 通常在另一个命名空间，
-  # 因此要写 FQDN（与本文件 DATABASE_URL 的写法一致），短名解析不到：
+  # 集群内平台地址，控制面会把它写进每个沙箱 Pod，沙箱里的 bkn-osdk 据此回访 BKN，
+  # 用户代码不必自己 configure()。本目录部署的是独立沙箱（sandbox-system），默认没有
+  # BKN，因此留空。
+  # 与 BKN 同集群时填 agent-retrieval 的地址；BKN 通常在另一个命名空间，因此要写 FQDN
+  # （与本文件 DATABASE_URL 的写法一致），短名解析不到：
+  #   http://agent-retrieval.<bkn-namespace>.svc.cluster.local:30779
+  # 只填到主机与端口，路径由 bkn-osdk 自己拼——REST 走 /api/agent-retrieval/v1/kn/，
+  # MCP 面走 /api/agent-retrieval/v1/mcp。因此这里不要带尾斜杠，也不要带路径。
+  BKN_BASE_URL: ""
+
+  # 集群内 Context Loader 的 MCP 地址，供内建面 sandbox_sdk.bkn 使用。该面已不推荐用于
+  # 新函数（改用 bkn-osdk），但**仍受支持**，存量函数不用改写，所以这仍是活的配置项。
+  # 值要带完整 MCP 路径，尾斜杠必须有：缺了网关回 307，而那个面用的 urllib 对 POST 不
+  # 跟随重定向。
   #   http://agent-retrieval.<bkn-namespace>.svc.cluster.local:30779/api/agent-retrieval/v1/mcp/
-  # 地址错了不会 fail closed——bkn.available() 只检查 URL 与令牌是否存在。
-  # 尾斜杠必须有：缺了网关回 307，而沙箱用的 urllib 对 POST 不跟随重定向。
+  # 若只填了这一个、没填 BKN_BASE_URL，控制面会剥掉 MCP 路径推导出后者，bkn-osdk 照样
+  # 可用——存量部署不改 values 也能继续工作。
   BKN_SANDBOX_MCP_URL: ""

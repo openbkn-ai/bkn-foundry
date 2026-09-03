@@ -33,6 +33,7 @@ data:
   CLEANUP_INTERVAL_SECONDS: {{ .Values.controlPlane.env.CLEANUP_INTERVAL_SECONDS | quote }}
   DISABLE_BWRAP: {{ .Values.controlPlane.env.DISABLE_BWRAP | quote }}
   PYTHONUNBUFFERED: {{ .Values.controlPlane.env.PYTHONUNBUFFERED | quote }}
+  BKN_BASE_URL: {{ .Values.controlPlane.env.BKN_BASE_URL | default "" | quote }}
   BKN_SANDBOX_MCP_URL: {{ .Values.controlPlane.env.BKN_SANDBOX_MCP_URL | default "" | quote }}
   DEFAULT_TEMPLATE_IMAGE_REGISTRY: {{ $templateImageRegistry | quote }}
   DEFAULT_TEMPLATE_IMAGE_REPOSITORY: {{ $pythonBasicTemplate.repository | quote }}

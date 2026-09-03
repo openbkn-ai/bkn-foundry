@@ -1,0 +1,23 @@
+# The platform's own Python SDK, installed into EVERY template image.
+#
+# It sits here rather than in common-requirements.txt because that file is
+# opt-in per template (PREINSTALL_COMMON), while the BKN capability surface has
+# to be universal: sandbox_sdk -- which carries the built-in `bkn` face -- is
+# COPY'd unconditionally, and the generated scaffolds and generator prompts tell
+# function authors the SDK is pre-installed without distinguishing templates. A
+# template that silently lacked it would fail at `import bkn_osdk`.
+#
+# Not on PyPI, so it is pinned by commit through the source archive. The image
+# has no git, so `git+https://` cannot install it.
+# To upgrade: replace the sha with a newer commit on bkn-sdk main and rebuild.
+#
+# Its only runtime dependency is httpx. Where the data-science stack is also
+# installed, common-requirements.txt pins httpx==0.27.2 and both files are
+# resolved in one pip pass, so that exact pin wins over this package's
+# `httpx>=0.27`. On a template without that stack, pip picks the newest httpx
+# satisfying the floor.
+#
+# Note for mirror-only builds: this is a PEP 508 direct URL, so `USE_MIRROR`
+# does not redirect it -- the build host needs to reach github.com even when pip
+# itself is pointed at a mirror.
+bkn-osdk @ https://github.com/openbkn-ai/bkn-sdk/archive/00e128e.zip#subdirectory=python

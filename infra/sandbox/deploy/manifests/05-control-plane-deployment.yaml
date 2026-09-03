@@ -167,6 +167,13 @@ spec:
                 configMapKeyRef:
                   name: sandbox-config
                   key: DISABLE_BWRAP
+            - name: BKN_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: sandbox-config
+                  key: BKN_BASE_URL
+                  optional: true
+            # 仍在用：内建面 sandbox_sdk.bkn 读它，也用作 BKN_BASE_URL 的兜底来源，见 01-configmap.yaml
             - name: BKN_SANDBOX_MCP_URL
               valueFrom:
                 configMapKeyRef:

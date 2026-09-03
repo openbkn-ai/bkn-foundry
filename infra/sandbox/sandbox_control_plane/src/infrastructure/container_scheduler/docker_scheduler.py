@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 from aiodocker import Docker
 from aiodocker.exceptions import DockerError
 
-from src.infrastructure.config.settings import get_settings
+from src.infrastructure.config.settings import get_settings, resolve_bkn_base_url
 from src.infrastructure.container_scheduler.base import (
     ContainerConfig,
     ContainerInfo,
@@ -312,12 +312,14 @@ exec python -m executor.interfaces.http.rest
         # Base environment variables
         env_vars = dict(config.env_vars)
 
-        # The MCP address for sandbox_sdk.bkn, configured in the same place as in
-        # k8s_scheduler. A deployment-level constant, injected once; a caller that
-        # passes mcp in the event wins.
+        # Both BKN faces get their address here, configured in the same place as in
+        # k8s_scheduler. Deployment-level constants, injected once.
         bkn_mcp_url = get_settings().bkn_sandbox_mcp_url.strip()
         if bkn_mcp_url:
             env_vars.setdefault("BKN_SANDBOX_MCP_URL", bkn_mcp_url)
+        bkn_base_url = resolve_bkn_base_url()
+        if bkn_base_url:
+            env_vars.setdefault("BKN_BASE_URL", bkn_base_url)
 
         # Base container configuration
         container_config = {
