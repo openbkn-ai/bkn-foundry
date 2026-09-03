@@ -158,7 +158,8 @@ type PropertyFeature struct {
 
 // ResourceIndexConfig carries resource-level defaults and cross-field build policy.
 type ResourceIndexConfig struct {
-	BuildKeyFields          []string `json:"build_key_fields,omitempty"`
+	PrimaryKeyFields        []string `json:"primary_key_fields,omitempty"`
+	IncrementalFields       []string `json:"incremental_fields,omitempty"`
 	DefaultFulltextAnalyzer string   `json:"default_fulltext_analyzer,omitempty"`
 	DefaultEmbeddingModel   string   `json:"default_embedding_model,omitempty"`
 }

@@ -28,9 +28,14 @@ Description = "配置的全文分词器不可用"
 Solution = "请选择当前索引能力快照支持的分词器"
 ErrorLink = ""
 
-[VegaBackend.Resource.InvalidParameter.BuildKeyFields]
-Description = "构建键无效"
-Solution = "构建键必须不重复、存在于 schema，且类型为 integer、unsigned integer、string、date、datetime 或 timestamp"
+[VegaBackend.Resource.InvalidParameter.PrimaryKeyFields]
+Description = "主键字段无效"
+Solution = "主键必须是不重复、存在于 schema 且类型受支持的字段"
+ErrorLink = ""
+
+[VegaBackend.Resource.InvalidParameter.IncrementalFields]
+Description = "增量字段无效"
+Solution = "增量字段必须是不重复、存在于 schema 且类型受支持的字段"
 ErrorLink = ""
 
 [VegaBackend.Resource.LengthExceeded.Name]

@@ -287,7 +287,7 @@ func TestCompleteFullBuildTask(t *testing.T) {
 		ts := vmock.NewMockBuildTaskService(ctrl)
 		resource := workerTestResource()
 		task := workerTestFullTask(t, resource)
-		resource.IndexConfig.BuildKeyFields = []string{"updated_at"}
+		resource.IndexConfig.IncrementalFields = []string{"updated_at"}
 		resource.SchemaDefinition = []*interfaces.Property{{Name: "updated_at", Type: interfaces.DataType_Timestamp}}
 
 		db, mock, err := sqlmock.New()
@@ -313,9 +313,12 @@ func TestCompleteFullBuildTask(t *testing.T) {
 
 func workerTestResource() *interfaces.Resource {
 	return &interfaces.Resource{
-		ID:          "r1",
-		Category:    interfaces.ResourceCategoryTable,
-		IndexConfig: &interfaces.ResourceIndexConfig{BuildKeyFields: []string{"id"}},
+		ID:       "r1",
+		Category: interfaces.ResourceCategoryTable,
+		IndexConfig: &interfaces.ResourceIndexConfig{
+			PrimaryKeyFields:  []string{"id"},
+			IncrementalFields: []string{"id"},
+		},
 		SchemaDefinition: []*interfaces.Property{
 			{Name: "id", Type: interfaces.DataType_Integer},
 		},
@@ -333,8 +336,9 @@ func workerTestFullTask(t *testing.T, resource *interfaces.Resource) *interfaces
 		ExecuteType: interfaces.BuildTaskExecuteTypeFull,
 		IndexConfig: &interfaces.BuildTaskIndexConfig{
 			IndexConfigContract: interfaces.IndexConfigContract{
-				BuildKeyFields: []string{"id"},
-				Fields:         fields,
+				PrimaryKeyFields:  []string{"id"},
+				IncrementalFields: []string{"id"},
+				Fields:            fields,
 			},
 		},
 	}

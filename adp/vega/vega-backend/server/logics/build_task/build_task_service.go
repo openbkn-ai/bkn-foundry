@@ -122,13 +122,17 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 		return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InternalError_InvalidCategory).
 			WithErrorDetails("Resource category must be table")
 	}
+	if req.Mode == interfaces.BuildTaskModeStreaming {
+		return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_StreamingUnsupported).
+			WithErrorDetails("streaming build tasks are temporarily unsupported")
+	}
 	executeType, err := normalizeCreateBuildTaskExecuteType(ctx, req)
 	if err != nil {
 		span.SetStatus(codes.Error, "Invalid execute type")
 		return "", err
 	}
-	if err := validateBuildKeyFields(ctx, resource); err != nil {
-		span.SetStatus(codes.Error, "Invalid build key fields")
+	if err := validateBuildTaskKeyFields(ctx, resource); err != nil {
+		span.SetStatus(codes.Error, "Invalid primary or incremental key fields")
 		return "", err
 	}
 	if executeType == interfaces.BuildTaskExecuteTypeIncremental {
@@ -210,10 +214,12 @@ func validateBuildTaskAnalyzers(ctx context.Context, indexManager interfaces.Loc
 	return nil
 }
 
-func validateBuildKeyFields(ctx context.Context, resource *interfaces.Resource) error {
-	if resource.IndexConfig == nil || len(resource.IndexConfig.BuildKeyFields) == 0 {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_BuildKeyFields).
-			WithErrorDetails("build task requires at least one build_key_fields entry")
+func validateBuildTaskKeyFields(ctx context.Context, resource *interfaces.Resource) error {
+	if resource.IndexConfig == nil || len(resource.IndexConfig.PrimaryKeyFields) == 0 {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields).WithErrorDetails("build task requires at least one primary_key_fields entry")
+	}
+	if len(resource.IndexConfig.IncrementalFields) == 0 {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_IncrementalFields).WithErrorDetails("build task requires at least one incremental_fields entry")
 	}
 
 	schemaFields := make(map[string]*interfaces.Property, len(resource.SchemaDefinition))
@@ -232,22 +238,34 @@ func validateBuildKeyFields(ctx context.Context, resource *interfaces.Resource) 
 			WithErrorDetails(fmt.Sprintf("resource schema contains unsupported fields: %s", strings.Join(unsupportedFields, ", ")))
 	}
 
-	seen := make(map[string]struct{}, len(resource.IndexConfig.BuildKeyFields))
-	for _, fieldName := range resource.IndexConfig.BuildKeyFields {
+	primaryKeys := make(map[string]struct{}, len(resource.IndexConfig.PrimaryKeyFields))
+	for _, fieldName := range resource.IndexConfig.PrimaryKeyFields {
 		prop, exists := schemaFields[fieldName]
 		if !exists {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_BuildKeyFields).
-				WithErrorDetails(fmt.Sprintf("build_key_fields field %q is not in the resource schema", fieldName))
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields).WithErrorDetails(fmt.Sprintf("primary_key_fields field %q is not in the resource schema", fieldName))
 		}
-		if _, duplicate := seen[fieldName]; duplicate {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_BuildKeyFields).
-				WithErrorDetails(fmt.Sprintf("build_key_fields contains duplicate field %q", fieldName))
+		if _, duplicate := primaryKeys[fieldName]; duplicate {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields).WithErrorDetails(fmt.Sprintf("primary_key_fields contains duplicate field %q", fieldName))
 		}
-		if !interfaces.DataType_IsBuildKey(prop.Type) {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_BuildKeyFields).
-				WithErrorDetails(fmt.Sprintf("build_key_fields field %q has unsupported type %q", fieldName, prop.Type))
+		if !interfaces.IndexConfig_IsPrimaryKeyType(prop.Type) {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields).WithErrorDetails(fmt.Sprintf("primary_key_fields field %q has unsupported type %q", fieldName, prop.Type))
 		}
-		seen[fieldName] = struct{}{}
+		primaryKeys[fieldName] = struct{}{}
+	}
+
+	incrementalKeys := make(map[string]struct{}, len(resource.IndexConfig.IncrementalFields))
+	for _, fieldName := range resource.IndexConfig.IncrementalFields {
+		prop, exists := schemaFields[fieldName]
+		if !exists {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_IncrementalFields).WithErrorDetails(fmt.Sprintf("incremental_fields field %q is not in the resource schema", fieldName))
+		}
+		if _, duplicate := incrementalKeys[fieldName]; duplicate {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_IncrementalFields).WithErrorDetails(fmt.Sprintf("incremental_fields contains duplicate field %q", fieldName))
+		}
+		if !interfaces.IndexConfig_IsIncrementalFieldType(prop.Type) {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_IncrementalFields).WithErrorDetails(fmt.Sprintf("incremental_fields field %q has unsupported type %q", fieldName, prop.Type))
+		}
+		incrementalKeys[fieldName] = struct{}{}
 	}
 	return nil
 }
@@ -339,7 +357,8 @@ func (bts *buildTaskService) fillBuildTaskIndexSnapshot(ctx context.Context, res
 		Features: map[string]interfaces.BuildTaskFieldIndexFeature{},
 	}
 	if resource.IndexConfig != nil {
-		buildTask.IndexConfig.BuildKeyFields = append([]string(nil), resource.IndexConfig.BuildKeyFields...)
+		buildTask.IndexConfig.PrimaryKeyFields = resource.IndexConfig.PrimaryKeyFields
+		buildTask.IndexConfig.IncrementalFields = resource.IndexConfig.IncrementalFields
 		defaultEmbeddingModel = resource.IndexConfig.DefaultEmbeddingModel
 		defaultFulltextAnalyzer = resource.IndexConfig.DefaultFulltextAnalyzer
 	}
@@ -421,7 +440,7 @@ func validateIncrementalBaseline(ctx context.Context, resource *interfaces.Resou
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IncrementalBaselineUnavailable).
 			WithErrorDetails(fmt.Sprintf("invalid incremental checkpoint: %v", err))
 	}
-	if err := sync_checkpoint.ValidateCursor(checkpoint, resource.IndexConfig.BuildKeyFields, resource.SchemaDefinition); err != nil {
+	if err := sync_checkpoint.ValidateCursor(checkpoint, resource.IndexConfig.IncrementalFields, resource.SchemaDefinition); err != nil {
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IncrementalBaselineUnavailable).
 			WithErrorDetails(fmt.Sprintf("invalid incremental checkpoint: %v", err))
 	}
@@ -802,6 +821,10 @@ func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset boo
 }
 
 func (bts *buildTaskService) validateStartBuildTaskStillCurrent(ctx context.Context, buildTask *interfaces.BuildTask) error {
+	if buildTask.Mode == interfaces.BuildTaskModeStreaming {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_StreamingUnsupported).
+			WithErrorDetails("streaming build tasks are temporarily unsupported")
+	}
 	resource, err := bts.rs.GetByID(ctx, buildTask.ResourceID)
 	if err != nil {
 		otellog.LogError(ctx, "Get resource failed", err)
@@ -811,7 +834,7 @@ func (bts *buildTaskService) validateStartBuildTaskStillCurrent(ctx context.Cont
 	if resource == nil {
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
-	if err := validateBuildKeyFields(ctx, resource); err != nil {
+	if err := validateBuildTaskKeyFields(ctx, resource); err != nil {
 		return err
 	}
 

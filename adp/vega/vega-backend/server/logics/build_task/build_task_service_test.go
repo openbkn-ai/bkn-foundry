@@ -356,7 +356,8 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 			CatalogID: "catalog-1",
 			Category:  interfaces.ResourceCategoryTable,
 			IndexConfig: &interfaces.ResourceIndexConfig{
-				BuildKeyFields:          []string{"id"},
+				PrimaryKeyFields:        []string{"id"},
+				IncrementalFields:       []string{"id"},
 				DefaultFulltextAnalyzer: "standard",
 			},
 			SchemaDefinition: []*interfaces.Property{
@@ -373,7 +374,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		assert.Contains(t, httpErr.BaseError.ErrorDetails, "analyzer")
 		assert.Len(t, validator.captured, 1)
 	})
-	t.Run("rejects batch task without build key fields", func(t *testing.T) {
+	t.Run("rejects batch task without primary key fields", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
@@ -390,10 +391,10 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 			ResourceID: "resource-1",
 			Mode:       interfaces.BuildTaskModeBatch,
 		})
-		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_BuildKeyFields)
+		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 	})
-	t.Run("rejects streaming task without build key fields", func(t *testing.T) {
+	t.Run("rejects streaming task", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
@@ -410,7 +411,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 			ResourceID: "resource-1",
 			Mode:       interfaces.BuildTaskModeStreaming,
 		})
-		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_BuildKeyFields)
+		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_StreamingUnsupported)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 	})
 	t.Run("rejects resources containing unsupported fields before creating a task", func(t *testing.T) {
@@ -424,7 +425,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 			ID:          "resource-1",
 			CatalogID:   "catalog-1",
 			Category:    interfaces.ResourceCategoryTable,
-			IndexConfig: &interfaces.ResourceIndexConfig{BuildKeyFields: []string{"id"}},
+			IndexConfig: &interfaces.ResourceIndexConfig{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"id"}},
 			SchemaDefinition: []*interfaces.Property{
 				{Name: "id", Type: interfaces.DataType_Integer},
 				{Name: "interests", Type: interfaces.DataType_Other, OriginalType: "_text"},
@@ -448,12 +449,12 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 			ID:               "resource-1",
 			CatalogID:        "catalog-1",
 			Category:         interfaces.ResourceCategoryTable,
-			IndexConfig:      &interfaces.ResourceIndexConfig{BuildKeyFields: []string{"body"}},
+			IndexConfig:      &interfaces.ResourceIndexConfig{PrimaryKeyFields: []string{"body"}, IncrementalFields: []string{"body"}},
 			SchemaDefinition: []*interfaces.Property{{Name: "body", Type: interfaces.DataType_Text}},
 		}, nil)
 
 		_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{ResourceID: "resource-1", Mode: interfaces.BuildTaskModeBatch})
-		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_BuildKeyFields)
+		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 		assert.Contains(t, httpErr.BaseError.ErrorDetails, `unsupported type "text"`)
 	})
@@ -470,7 +471,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 				ID:               "resource-1",
 				CatalogID:        "catalog-1",
 				Category:         interfaces.ResourceCategoryTable,
-				IndexConfig:      &interfaces.ResourceIndexConfig{BuildKeyFields: []string{"id"}},
+				IndexConfig:      &interfaces.ResourceIndexConfig{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"id"}},
 				SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}},
 			}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
@@ -492,7 +493,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 				ID:               "resource-1",
 				CatalogID:        "catalog-1",
 				Category:         interfaces.ResourceCategoryTable,
-				IndexConfig:      &interfaces.ResourceIndexConfig{BuildKeyFields: []string{"id"}},
+				IndexConfig:      &interfaces.ResourceIndexConfig{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"id"}},
 				SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}},
 			}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
@@ -541,7 +542,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		assert.Equal(t, interfaces.BuildTaskExecuteTypeIncremental, captured.ExecuteType)
 		assert.Equal(t, mustBuildTaskIndexConfig(t, resource).Fields, captured.IndexConfig.Fields)
 	})
-	t.Run("allows streaming task with a build key and no physical primary key", func(t *testing.T) {
+	t.Run("rejects streaming task with configured keys", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
@@ -559,26 +560,17 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 			CatalogID: "catalog-1",
 			Category:  interfaces.ResourceCategoryTable,
 			IndexConfig: &interfaces.ResourceIndexConfig{
-				BuildKeyFields: []string{"supplier_id"},
+				PrimaryKeyFields:  []string{"supplier_id"},
+				IncrementalFields: []string{"supplier_id"},
 			},
 			SchemaDefinition: []*interfaces.Property{{Name: "supplier_id", Type: interfaces.DataType_Integer}},
 		}, nil)
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
-			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
-		mockBTA.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
-
 		_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{
 			ResourceID: "resource-1",
 			Mode:       interfaces.BuildTaskModeStreaming,
 		})
 
-		require.NoError(t, err)
-		select {
-		case <-service.DispatchSignal():
-		default:
-			t.Fatal("expected a dispatch signal after the task was persisted")
-		}
+		requireHTTPError(t, err, verrors.VegaBackend_BuildTask_StreamingUnsupported)
 	})
 	t.Run("rejects execute type for streaming", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -600,7 +592,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 			ExecuteType: interfaces.BuildTaskExecuteTypeFull,
 		})
 
-		requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidExecuteType)
+		requireHTTPError(t, err, verrors.VegaBackend_BuildTask_StreamingUnsupported)
 	})
 	t.Run("caches default embedding SmallModel by model ID", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -617,7 +609,8 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 				CatalogID: "catalog-1",
 				Category:  interfaces.ResourceCategoryTable,
 				IndexConfig: &interfaces.ResourceIndexConfig{
-					BuildKeyFields:          []string{"id"},
+					PrimaryKeyFields:        []string{"id"},
+					IncrementalFields:       []string{"id"},
 					DefaultEmbeddingModel:   "2064382281006583808",
 					DefaultFulltextAnalyzer: "ik_max_word",
 				},
@@ -665,7 +658,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		require.NotNil(t, captured)
 		require.NotNil(t, captured.IndexConfig)
 		assert.Equal(t, interfaces.BuildTaskExecuteTypeFull, captured.ExecuteType)
-		assert.Equal(t, []string{"id"}, captured.IndexConfig.BuildKeyFields)
+		assert.Equal(t, []string{"id"}, captured.IndexConfig.PrimaryKeyFields)
 		expectedModel := &interfaces.SmallModel{ModelID: "2064382281006583808", ModelName: "text-embedding-v4", EmbeddingDim: 1024}
 		assert.Equal(t, expectedModel, captured.IndexConfig.Features["family_name"].Vector)
 		assert.Equal(t, expectedModel, captured.IndexConfig.Features["given_name"].Vector)
@@ -685,7 +678,8 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 			CatalogID: "catalog-1",
 			Category:  interfaces.ResourceCategoryTable,
 			IndexConfig: &interfaces.ResourceIndexConfig{
-				BuildKeyFields:          []string{"id"},
+				PrimaryKeyFields:        []string{"id"},
+				IncrementalFields:       []string{"id"},
 				DefaultEmbeddingModel:   "2064382281006583808",
 				DefaultFulltextAnalyzer: "ik_max_word",
 			},
@@ -723,11 +717,10 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		require.NotNil(t, captured)
 		require.NotNil(t, captured.IndexConfig)
 
-		resource.IndexConfig.BuildKeyFields[0] = "changed"
 		resource.IndexConfig.DefaultEmbeddingModel = "changed-model"
 		resource.SchemaDefinition[0].Features = nil
 
-		assert.Equal(t, []string{"id"}, captured.IndexConfig.BuildKeyFields)
+		assert.Equal(t, []string{"id"}, captured.IndexConfig.PrimaryKeyFields)
 		assert.Equal(t, expectedFields, captured.IndexConfig.Fields)
 		assert.Equal(t, &interfaces.SmallModel{ModelID: "2064382281006583808", ModelName: "text-embedding-v4", EmbeddingDim: 1024}, captured.IndexConfig.Features["family_name"].Vector)
 		assert.Equal(t, &interfaces.BuildTaskFulltextConfig{Analyzer: "ik_max_word"}, captured.IndexConfig.Features["family_name"].Fulltext)
@@ -747,7 +740,8 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 				CatalogID: "catalog-1",
 				Category:  interfaces.ResourceCategoryTable,
 				IndexConfig: &interfaces.ResourceIndexConfig{
-					BuildKeyFields:        []string{"id"},
+					PrimaryKeyFields:      []string{"id"},
+					IncrementalFields:     []string{"id"},
 					DefaultEmbeddingModel: "default-model-id",
 				},
 				SchemaDefinition: []*interfaces.Property{
@@ -807,7 +801,8 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 				CatalogID: "catalog-1",
 				Category:  interfaces.ResourceCategoryTable,
 				IndexConfig: &interfaces.ResourceIndexConfig{
-					BuildKeyFields:          []string{"id"},
+					PrimaryKeyFields:        []string{"id"},
+					IncrementalFields:       []string{"id"},
 					DefaultEmbeddingModel:   "default-model",
 					DefaultFulltextAnalyzer: "default_analyzer",
 				},
@@ -864,7 +859,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, captured)
 		require.NotNil(t, captured.IndexConfig)
-		assert.Equal(t, []string{"id"}, captured.IndexConfig.BuildKeyFields)
+		assert.Equal(t, []string{"id"}, captured.IndexConfig.PrimaryKeyFields)
 		assert.Equal(t, &interfaces.SmallModel{ModelID: "model-a-id", ModelName: "model-a", EmbeddingDim: 768}, captured.IndexConfig.Features["title"].Vector)
 		assert.Equal(t, &interfaces.SmallModel{ModelID: "model-b-id", ModelName: "model-b", EmbeddingDim: 1024}, captured.IndexConfig.Features["body"].Vector)
 		assert.Equal(t, &interfaces.BuildTaskFulltextConfig{Analyzer: "ik_max_word"}, captured.IndexConfig.Features["title"].Fulltext)
@@ -885,7 +880,8 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 				CatalogID: "catalog-1",
 				Category:  interfaces.ResourceCategoryTable,
 				IndexConfig: &interfaces.ResourceIndexConfig{
-					BuildKeyFields:        []string{"id"},
+					PrimaryKeyFields:      []string{"id"},
+					IncrementalFields:     []string{"id"},
 					DefaultEmbeddingModel: "bogus-model-id",
 				},
 				SchemaDefinition: []*interfaces.Property{
@@ -1187,8 +1183,9 @@ func TestBuildTaskServiceStart(t *testing.T) {
 		currentResource := &interfaces.Resource{
 			ID:          "resource-1",
 			CatalogID:   "catalog-1",
-			IndexConfig: &interfaces.ResourceIndexConfig{BuildKeyFields: []string{"updated_at"}},
+			IndexConfig: &interfaces.ResourceIndexConfig{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"updated_at", "id"}},
 			SchemaDefinition: []*interfaces.Property{
+				{Name: "id", Type: interfaces.DataType_Integer},
 				{Name: "updated_at", Type: interfaces.DataType_Timestamp},
 			},
 		}
@@ -1248,7 +1245,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 			CatalogID:  "catalog-1",
 			Status:     interfaces.BuildTaskStatusStopped,
 			IndexConfig: &interfaces.BuildTaskIndexConfig{
-				IndexConfigContract: interfaces.IndexConfigContract{BuildKeyFields: []string{"id"}},
+				IndexConfigContract: interfaces.IndexConfigContract{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"id"}},
 				Features:            map[string]interfaces.BuildTaskFieldIndexFeature{},
 			},
 		}, nil)
@@ -1259,7 +1256,8 @@ func TestBuildTaskServiceStart(t *testing.T) {
 			ID:        "resource-1",
 			CatalogID: "catalog-1",
 			IndexConfig: &interfaces.ResourceIndexConfig{
-				BuildKeyFields: []string{"id"},
+				PrimaryKeyFields:  []string{"id"},
+				IncrementalFields: []string{"id"},
 			},
 			SchemaDefinition: []*interfaces.Property{
 				{Name: "id", Type: interfaces.DataType_Integer},
@@ -1288,7 +1286,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 		resource := &interfaces.Resource{
 			ID:          "resource-1",
 			CatalogID:   "catalog-1",
-			IndexConfig: &interfaces.ResourceIndexConfig{BuildKeyFields: []string{"id"}},
+			IndexConfig: &interfaces.ResourceIndexConfig{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"id"}},
 			SchemaDefinition: []*interfaces.Property{
 				{Name: "id", Type: interfaces.DataType_Integer},
 				{
@@ -1347,7 +1345,7 @@ func buildTaskTestResource() *interfaces.Resource {
 		ID:          "resource-1",
 		CatalogID:   "catalog-1",
 		Category:    interfaces.ResourceCategoryTable,
-		IndexConfig: &interfaces.ResourceIndexConfig{BuildKeyFields: []string{"id"}},
+		IndexConfig: &interfaces.ResourceIndexConfig{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"id"}},
 		SchemaDefinition: []*interfaces.Property{
 			{Name: "id", Type: interfaces.DataType_Integer},
 		},
@@ -1363,7 +1361,8 @@ func mustBuildTaskIndexConfig(t *testing.T, resource *interfaces.Resource) *inte
 		Features:            map[string]interfaces.BuildTaskFieldIndexFeature{},
 	}
 	if resource.IndexConfig != nil {
-		config.IndexConfigContract.BuildKeyFields = append([]string(nil), resource.IndexConfig.BuildKeyFields...)
+		config.IndexConfigContract.PrimaryKeyFields = append([]string(nil), resource.IndexConfig.PrimaryKeyFields...)
+		config.IndexConfigContract.IncrementalFields = append([]string(nil), resource.IndexConfig.IncrementalFields...)
 	}
 	return config
 }

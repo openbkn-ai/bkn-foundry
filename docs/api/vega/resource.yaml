@@ -773,7 +773,11 @@ components:
       description: 本地索引构建配置
       type: object
       properties:
-        build_key_fields:
+        primary_key_fields:
+          type: array
+          items:
+            type: string
+        incremental_fields:
           type: array
           items:
             type: string

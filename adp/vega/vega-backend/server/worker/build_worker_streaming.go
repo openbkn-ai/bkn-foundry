@@ -321,7 +321,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 						document[k] = v
 					}
 
-					kafkaKeyValues, err := getKafkaKeyValues(buildTaskBuildKeyFields(buildTaskInfo), keyMap)
+					kafkaKeyValues, err := getKafkaKeyValues(buildTaskInfo.IndexConfig.PrimaryKeyFields, keyMap)
 					if err != nil {
 						return fmt.Errorf("extract Kafka key values: %w", err)
 					}
@@ -553,7 +553,7 @@ func streamingDatabase(catalog *interfaces.Catalog) (string, error) {
 
 // handleUpdateOperation handles update operations.
 func (sbw *streamingBuildWorker) handleUpdateOperation(ctx context.Context, keyMap, after map[string]any, indexName string, buildTaskInfo *interfaces.BuildTask, pipeline *embeddingPipeline) error {
-	documentIDFields := buildTaskBuildKeyFields(buildTaskInfo)
+	documentIDFields := buildTaskInfo.IndexConfig.PrimaryKeyFields
 	kafkaKeyValues, err := getKafkaKeyValues(documentIDFields, keyMap)
 	if err != nil {
 		return fmt.Errorf("extract Kafka key values: %w", err)
@@ -597,7 +597,7 @@ func (sbw *streamingBuildWorker) handleUpdateOperation(ctx context.Context, keyM
 
 // handleDeleteOperation handles deletion operations.
 func (sbw *streamingBuildWorker) handleDeleteOperation(ctx context.Context, keyMap map[string]any, indexName string, buildTaskInfo *interfaces.BuildTask) error {
-	kafkaKeyValues, err := getKafkaKeyValues(buildTaskBuildKeyFields(buildTaskInfo), keyMap)
+	kafkaKeyValues, err := getKafkaKeyValues(buildTaskInfo.IndexConfig.PrimaryKeyFields, keyMap)
 	if err != nil {
 		return fmt.Errorf("extract Kafka key values: %w", err)
 	}

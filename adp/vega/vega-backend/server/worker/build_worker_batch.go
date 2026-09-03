@@ -302,14 +302,15 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 		}
 	}
 
-	keys := buildTaskBuildKeyFields(buildTaskInfo)
+	primaryKeyFields := buildTaskInfo.IndexConfig.PrimaryKeyFields
+	incrementalFields := buildTaskInfo.IndexConfig.IncrementalFields
 	var lastBatchKeyValues []interfaces.KeyValue
 	if lastSyncedMark != "" {
 		checkpoint, err := sync_checkpoint.DecodeBatch(lastSyncedMark)
 		if err != nil {
 			return fmt.Errorf("decode synced mark: %w", err)
 		}
-		if err := sync_checkpoint.ValidateCursor(checkpoint, keys, resource.SchemaDefinition); err != nil {
+		if err := sync_checkpoint.ValidateCursor(checkpoint, incrementalFields, resource.SchemaDefinition); err != nil {
 			return fmt.Errorf("validate synced mark: %w", err)
 		}
 		lastBatchKeyValues = checkpoint.Cursor
@@ -334,8 +335,8 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 	}
 
 	// Build sort fields
-	sortFields := make([]*interfaces.SortField, len(keys))
-	for i, field := range keys {
+	sortFields := make([]*interfaces.SortField, len(incrementalFields))
+	for i, field := range incrementalFields {
 		sortFields[i] = &interfaces.SortField{
 			Field: field,
 		}
@@ -387,7 +388,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 
 		// Add filter condition for batch fields if we have last values
 		if len(lastBatchKeyValues) > 0 {
-			params.FilterCondCfg = buildBatchCursorFilter(keys, lastBatchKeyValues)
+			params.FilterCondCfg = buildBatchCursorFilter(incrementalFields, lastBatchKeyValues)
 
 			// Convert FilterCondCfg to ActualFilterCond
 			fieldMap := map[string]*interfaces.Property{}
@@ -424,25 +425,25 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 		if readRows > 0 {
 			// Update lastBatchKeyValues with the last values in this batch
 			lastItem := result.Entries[readRows-1]
-			lastBatchKeyValues, err = extractKeyValues(keys, lastItem)
+			lastBatchKeyValues, err = extractKeyValues(incrementalFields, lastItem)
 			if err != nil {
 				return fmt.Errorf("extract cursor key values: %w", err)
 			}
 			indexDocuments := make(map[string]map[string]any, readRows)
 			for _, doc := range result.Entries {
-				keyValues, err := extractKeyValues(keys, doc)
+				keyValues, err := extractKeyValues(primaryKeyFields, doc)
 				if err != nil {
 					return err
-				}
-				if err := normalizeJSONDocumentFields(doc, resource.SchemaDefinition); err != nil {
-					return fmt.Errorf("normalize document for local index: %w", err)
 				}
 				docID, err := generateDocumentID(keyValues)
 				if err != nil {
 					return err
 				}
 				if _, exists := indexDocuments[docID]; exists {
-					return fmt.Errorf("build document ID: duplicate build key values %q", docID)
+					return fmt.Errorf("build document ID: duplicate primary key values %q", docID)
+				}
+				if err := normalizeJSONDocumentFields(doc, resource.SchemaDefinition); err != nil {
+					return fmt.Errorf("normalize document for local index: %w", err)
 				}
 				indexDocuments[docID] = doc
 			}

@@ -294,7 +294,7 @@ func TestBuildTaskWorkerRejectsChangedBatchTaskBeforeClaim(t *testing.T) {
 			task.ID = "task-1"
 			task.Status = interfaces.BuildTaskStatusPending
 			task.ExecuteType = executeType
-			resource.IndexConfig.BuildKeyFields = []string{"updated_at"}
+			resource.IndexConfig.IncrementalFields = []string{"updated_at"}
 			resource.SchemaDefinition = []*interfaces.Property{{Name: "updated_at", Type: interfaces.DataType_Timestamp}}
 			worker := &BuildTaskWorker{
 				bts: bts,
@@ -310,6 +310,26 @@ func TestBuildTaskWorkerRejectsChangedBatchTaskBeforeClaim(t *testing.T) {
 			require.EqualError(t, err, "resource index config has changed")
 		})
 	}
+}
+
+func TestBuildTaskWorkerRejectsBatchTaskWithoutNewKeyFields(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	bts := vmock.NewMockBuildTaskService(ctrl)
+	rs := vmock.NewMockResourceService(ctrl)
+	resource := workerTestResource()
+	task := workerTestFullTask(t, resource)
+	task.ID = "task-1"
+	task.Status = interfaces.BuildTaskStatusPending
+	task.IndexConfig.PrimaryKeyFields = nil
+	worker := &BuildTaskWorker{bts: bts, bbw: &batchBuildWorker{rs: rs}}
+
+	bts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(task, nil)
+	rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(resource, nil)
+	bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "task-1",
+		"batch build task snapshot requires primary_key_fields and incremental_fields").Return(true, nil)
+
+	err := worker.runBatchTask(context.Background(), "task-1")
+	require.EqualError(t, err, "batch build task snapshot requires primary_key_fields and incremental_fields")
 }
 
 func TestBuildTaskWorkerCancelsBatchTaskWhenResourceWasDeleted(t *testing.T) {

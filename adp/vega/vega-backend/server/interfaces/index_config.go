@@ -8,11 +8,42 @@ package interfaces
 
 import "encoding/json"
 
+// PRIMARY_KEY_TYPES are scalar types whose values have a stable document-ID
+// representation across the supported table connectors.
+var PRIMARY_KEY_TYPES = map[string]struct{}{
+	DataType_Integer:         {},
+	DataType_UnsignedInteger: {},
+	DataType_String:          {},
+}
+
+// INCREMENTAL_FIELD_TYPES are scalar types supported by batch keyset sorting,
+// cursor filtering, and checkpoint decoding.
+var INCREMENTAL_FIELD_TYPES = map[string]struct{}{
+	DataType_Integer:         {},
+	DataType_UnsignedInteger: {},
+	DataType_String:          {},
+	DataType_Date:            {},
+	DataType_Time:            {},
+	DataType_Datetime:        {},
+	DataType_Timestamp:       {},
+}
+
+func IndexConfig_IsPrimaryKeyType(dataType string) bool {
+	_, ok := PRIMARY_KEY_TYPES[dataType]
+	return ok
+}
+
+func IndexConfig_IsIncrementalFieldType(dataType string) bool {
+	_, ok := INCREMENTAL_FIELD_TYPES[dataType]
+	return ok
+}
+
 // IndexConfigContract contains only configuration that affects local index
 // mappings, generated documents, queries, document IDs, or batch cursors.
 type IndexConfigContract struct {
-	BuildKeyFields []string                   `json:"build_key_fields"`
-	Fields         []IndexConfigFieldContract `json:"fields"`
+	PrimaryKeyFields  []string                   `json:"primary_key_fields"`
+	IncrementalFields []string                   `json:"incremental_fields"`
+	Fields            []IndexConfigFieldContract `json:"fields"`
 }
 
 type IndexConfigFieldContract struct {

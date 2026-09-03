@@ -67,7 +67,7 @@ func Test_BuildTaskRestHandler_CreateBuildTask(t *testing.T) {
 		assert.NotContains(t, w.Body.String(), `"status"`)
 	})
 
-	t.Run("ignores legacy index config fields", func(t *testing.T) {
+	t.Run("creates batch task without index config fields", func(t *testing.T) {
 		engine, bts, _ := setupBuildTaskHandlerTest(t)
 		bts.EXPECT().Create(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, req *interfaces.CreateBuildTaskRequest) (string, error) {
@@ -76,7 +76,7 @@ func Test_BuildTaskRestHandler_CreateBuildTask(t *testing.T) {
 				return "task-1", nil
 			})
 
-		body := `{"resource_id":"res-1","mode":"batch","build_key_fields":"id","embedding_fields":"title","embedding_model":"embedding","model_dimensions":1024,"fulltext_fields":"title","fulltext_analyzer":"ik_max_word"}`
+		body := `{"resource_id":"res-1","mode":"batch"}`
 		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()

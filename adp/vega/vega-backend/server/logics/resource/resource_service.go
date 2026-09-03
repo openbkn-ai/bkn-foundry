@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -948,6 +949,7 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		}
 	}
 	previousFingerprint := ""
+	keyFieldsChanged := req.IndexConfig != nil && indexConfigKeyFieldsChanged(resource.IndexConfig, req.IndexConfig)
 	if buildRelevantChanged {
 		previousFingerprint, err = ResourceIndexConfigFingerprint(resource)
 		if err != nil {
@@ -1046,7 +1048,17 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		span.SetStatus(codes.Error, "Resource update conflict")
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
 	}
-	if buildRelevantChanged && previousFingerprint != currentFingerprint &&
+	if keyFieldsChanged {
+		if resource.SyncMark != "" {
+			updated, err := rs.ra.UpdateLocalIndexState(ctx, tx, resource.ID,
+				resource.LocalIndexStatus, resource.LocalIndexName, "")
+			if err != nil || !updated {
+				return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
+					WithErrorDetails("failed to clear resource incremental checkpoint")
+			}
+		}
+		resource.SyncMark = ""
+	} else if buildRelevantChanged && previousFingerprint != currentFingerprint &&
 		resource.LocalIndexStatus == interfaces.ResourceLocalIndexStatusAvailable {
 		updated, err := rs.ra.UpdateLocalIndexState(ctx, tx, resource.ID,
 			interfaces.ResourceLocalIndexStatusStale, resource.LocalIndexName, "")
@@ -1071,6 +1083,17 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func indexConfigKeyFieldsChanged(current, requested *interfaces.ResourceIndexConfig) bool {
+	if requested == nil {
+		return false
+	}
+	if current == nil {
+		return len(requested.PrimaryKeyFields) > 0 || len(requested.IncrementalFields) > 0
+	}
+	return !slices.Equal(current.PrimaryKeyFields, requested.PrimaryKeyFields) ||
+		!slices.Equal(current.IncrementalFields, requested.IncrementalFields)
 }
 
 // SetEnabled changes only a Resource's enabled state.
@@ -1506,7 +1529,7 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context,
 }
 
 func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema []*interfaces.Property, indexConfig *interfaces.ResourceIndexConfig) error {
-	if err := validateIndexConfigBuildKeyFields(ctx, schema, indexConfig); err != nil {
+	if err := validateIndexConfigKeyFields(ctx, schema, indexConfig); err != nil {
 		return err
 	}
 	defaultEmbeddingModelID := ""
@@ -1609,8 +1632,8 @@ func fulltextAnalyzerConfigValue(config map[string]any) string {
 	return value
 }
 
-func validateIndexConfigBuildKeyFields(ctx context.Context, schema []*interfaces.Property, indexConfig *interfaces.ResourceIndexConfig) error {
-	if indexConfig == nil || len(indexConfig.BuildKeyFields) == 0 {
+func validateIndexConfigKeyFields(ctx context.Context, schema []*interfaces.Property, indexConfig *interfaces.ResourceIndexConfig) error {
+	if indexConfig == nil {
 		return nil
 	}
 
@@ -1620,22 +1643,34 @@ func validateIndexConfigBuildKeyFields(ctx context.Context, schema []*interfaces
 			schemaFields[prop.Name] = prop
 		}
 	}
-	seen := make(map[string]struct{}, len(indexConfig.BuildKeyFields))
-	for _, field := range indexConfig.BuildKeyFields {
+	primaryKeys := make(map[string]struct{}, len(indexConfig.PrimaryKeyFields))
+	for _, field := range indexConfig.PrimaryKeyFields {
 		prop, exists := schemaFields[field]
 		if !exists {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_BuildKeyFields).
-				WithErrorDetails(fmt.Sprintf("build_key_fields field %q is not in the resource schema", field))
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_PrimaryKeyFields).WithErrorDetails(fmt.Sprintf("primary_key_fields field %q is not in the resource schema", field))
 		}
-		if _, duplicate := seen[field]; duplicate {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_BuildKeyFields).
-				WithErrorDetails(fmt.Sprintf("build_key_fields contains duplicate field %q", field))
+		if _, duplicate := primaryKeys[field]; duplicate {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_PrimaryKeyFields).WithErrorDetails(fmt.Sprintf("primary_key_fields contains duplicate field %q", field))
 		}
-		if !interfaces.DataType_IsBuildKey(prop.Type) {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_BuildKeyFields).
-				WithErrorDetails(fmt.Sprintf("build_key_fields field %q has unsupported type %q", field, prop.Type))
+		if !interfaces.IndexConfig_IsPrimaryKeyType(prop.Type) {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_PrimaryKeyFields).WithErrorDetails(fmt.Sprintf("primary_key_fields field %q has unsupported type %q", field, prop.Type))
 		}
-		seen[field] = struct{}{}
+		primaryKeys[field] = struct{}{}
+	}
+
+	incrementalKeys := make(map[string]struct{}, len(indexConfig.IncrementalFields))
+	for _, field := range indexConfig.IncrementalFields {
+		prop, exists := schemaFields[field]
+		if !exists {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_IncrementalFields).WithErrorDetails(fmt.Sprintf("incremental_fields field %q is not in the resource schema", field))
+		}
+		if _, duplicate := incrementalKeys[field]; duplicate {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_IncrementalFields).WithErrorDetails(fmt.Sprintf("incremental_fields contains duplicate field %q", field))
+		}
+		if !interfaces.IndexConfig_IsIncrementalFieldType(prop.Type) {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_IncrementalFields).WithErrorDetails(fmt.Sprintf("incremental_fields field %q has unsupported type %q", field, prop.Type))
+		}
+		incrementalKeys[field] = struct{}{}
 	}
 	return nil
 }

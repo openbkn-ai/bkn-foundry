@@ -16,6 +16,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/bytedance/sonic"
+
 	"vega-backend/interfaces"
 )
 
@@ -28,13 +30,15 @@ func BuildIndexConfigContract(resource *interfaces.Resource) (interfaces.IndexCo
 	}
 
 	contract := interfaces.IndexConfigContract{
-		BuildKeyFields: make([]string, 0),
-		Fields:         make([]interfaces.IndexConfigFieldContract, 0, len(resource.SchemaDefinition)),
+		PrimaryKeyFields:  make([]string, 0),
+		IncrementalFields: make([]string, 0),
+		Fields:            make([]interfaces.IndexConfigFieldContract, 0, len(resource.SchemaDefinition)),
 	}
 	defaultEmbeddingModel := ""
 	defaultFulltextAnalyzer := ""
 	if resource.IndexConfig != nil {
-		contract.BuildKeyFields = append(contract.BuildKeyFields, resource.IndexConfig.BuildKeyFields...)
+		contract.PrimaryKeyFields = append(contract.PrimaryKeyFields, resource.IndexConfig.PrimaryKeyFields...)
+		contract.IncrementalFields = append(contract.IncrementalFields, resource.IndexConfig.IncrementalFields...)
 		defaultEmbeddingModel = strings.TrimSpace(resource.IndexConfig.DefaultEmbeddingModel)
 		defaultFulltextAnalyzer = strings.TrimSpace(resource.IndexConfig.DefaultFulltextAnalyzer)
 	}
@@ -186,8 +190,9 @@ func SnapshotBuildTaskIndexConfigFields(resource *interfaces.Resource) ([]interf
 
 func cloneIndexConfigContract(contract interfaces.IndexConfigContract) interfaces.IndexConfigContract {
 	cloned := interfaces.IndexConfigContract{
-		BuildKeyFields: append([]string(nil), contract.BuildKeyFields...),
-		Fields:         make([]interfaces.IndexConfigFieldContract, 0, len(contract.Fields)),
+		PrimaryKeyFields:  append([]string(nil), contract.PrimaryKeyFields...),
+		IncrementalFields: append([]string(nil), contract.IncrementalFields...),
+		Fields:            make([]interfaces.IndexConfigFieldContract, 0, len(contract.Fields)),
 	}
 	for _, field := range contract.Fields {
 		clonedField := interfaces.IndexConfigFieldContract{
@@ -236,7 +241,7 @@ func normalizeIndexConfigContract(contract interfaces.IndexConfigContract) (inte
 				feature.RefProperty = ""
 			}
 			if len(feature.Config) > 0 {
-				config, err := canonicalJSON(feature.Config)
+				config, err := sonic.ConfigStd.Marshal(feature.Config)
 				if err != nil {
 					return interfaces.IndexConfigContract{}, fmt.Errorf("index config contract field %q feature %q: %w", field.Name, feature.Type, err)
 				}
@@ -278,7 +283,7 @@ func normalizeIndexConfigContract(contract interfaces.IndexConfigContract) (inte
 
 // IndexConfigFingerprint hashes a normalized contract with canonical JSON.
 func IndexConfigFingerprint(config interfaces.IndexConfigContract) (string, error) {
-	data, err := json.Marshal(config)
+	data, err := sonic.ConfigStd.Marshal(config)
 	if err != nil {
 		return "", fmt.Errorf("fingerprint index config: %w", err)
 	}
@@ -328,7 +333,7 @@ func effectiveFeatureConfig(feature interfaces.PropertyFeature, defaultEmbedding
 	if len(config) == 0 {
 		return nil, nil
 	}
-	return canonicalJSON(config)
+	return sonic.ConfigStd.Marshal(config)
 }
 
 func stringConfigValueForFingerprint(config map[string]any, key string) string {
@@ -337,25 +342,4 @@ func stringConfigValueForFingerprint(config map[string]any, key string) string {
 		return ""
 	}
 	return strings.TrimSpace(value)
-}
-
-func canonicalJSON(value any) (json.RawMessage, error) {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return nil, err
-	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.UseNumber()
-	var normalized any
-	if err := decoder.Decode(&normalized); err != nil {
-		return nil, err
-	}
-	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
-		if err == nil {
-			return nil, fmt.Errorf("multiple JSON values are not allowed")
-		}
-		return nil, err
-	}
-	return json.Marshal(normalized)
 }

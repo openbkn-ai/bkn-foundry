@@ -28,9 +28,14 @@ Description = "Configured full-text analyzer is unavailable"
 Solution = "Choose an analyzer supported by the current index capability snapshot"
 ErrorLink = ""
 
-[VegaBackend.Resource.InvalidParameter.BuildKeyFields]
-Description = "Invalid build key fields"
-Solution = "Build keys must be unique schema fields of type integer, unsigned integer, string, date, datetime, or timestamp"
+[VegaBackend.Resource.InvalidParameter.PrimaryKeyFields]
+Description = "Invalid primary key fields"
+Solution = "Primary keys must be unique schema fields of a supported type"
+ErrorLink = ""
+
+[VegaBackend.Resource.InvalidParameter.IncrementalFields]
+Description = "Invalid incremental fields"
+Solution = "Incremental fields must be unique schema fields of a supported type"
 ErrorLink = ""
 
 [VegaBackend.Resource.LengthExceeded.Name]

@@ -320,13 +320,6 @@ func buildTaskHasEmbedding(buildTask *interfaces.BuildTask) bool {
 	return false
 }
 
-func buildTaskBuildKeyFields(buildTask *interfaces.BuildTask) []string {
-	if buildTask == nil || buildTask.IndexConfig == nil {
-		return nil
-	}
-	return append([]string(nil), buildTask.IndexConfig.BuildKeyFields...)
-}
-
 // The hasFulltextFeature determines whether a field already has the fulltext feature.
 func hasFulltextFeature(prop *interfaces.Property) bool {
 	for _, f := range prop.Features {

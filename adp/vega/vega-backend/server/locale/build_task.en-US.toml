@@ -13,9 +13,19 @@ Description = "Invalid build task mode"
 Solution = "Mode must be one of: streaming, batch"
 ErrorLink = ""
 
-[VegaBackend.BuildTask.InvalidParameter.BuildKeyFields]
-Description = "Invalid batch build key fields"
-Solution = "Configure at least one unique build_key_fields field that exists in the resource schema and has a supported type"
+[VegaBackend.BuildTask.InvalidParameter.PrimaryKeyFields]
+Description = "Invalid primary key fields"
+Solution = "Configure at least one unique primary_key_fields field that exists in the resource schema and has a supported type"
+ErrorLink = ""
+
+[VegaBackend.BuildTask.InvalidParameter.IncrementalFields]
+Description = "Invalid incremental fields"
+Solution = "Configure at least one unique incremental_fields field that exists in the resource schema and has a supported type"
+ErrorLink = ""
+
+[VegaBackend.BuildTask.StreamingUnsupported]
+Description = "Streaming build tasks are temporarily unsupported"
+Solution = "Create a batch build task instead"
 ErrorLink = ""
 
 [VegaBackend.BuildTask.InvalidParameter.UnsupportedSchemaFields]
