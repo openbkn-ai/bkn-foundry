@@ -99,9 +99,9 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/ID"
+                $ref: "#/components/schemas/ID"
+              example:
+                id: "example-knowledge-network-id"
           description: Creation succeeded
       summary: Create a business knowledge network
   /api/bkn-backend/v1/knowledge-networks/{kn_id}:
