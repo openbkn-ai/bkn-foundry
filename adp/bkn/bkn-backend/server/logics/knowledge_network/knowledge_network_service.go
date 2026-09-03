@@ -1169,7 +1169,7 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 	err = kns.cbs.DeleteCapabilitiesByKnID(ctx, tx, kn.KNID, kn.Branch)
 	if err != nil {
 		logger.Errorf("DeleteCapabilitiesByKnID error: %s", err.Error())
-		span.SetStatus(codes.Error, "删除业务知识网络能力绑定失败")
+		span.SetStatus(codes.Error, "delete knowledge network capability bindings failed")
 		return err
 	}
 
