@@ -134,6 +134,23 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "VegaBackend.InvalidParameter.Offset")
 	})
 
+	t.Run("rejects group by fields outside the resource schema", func(t *testing.T) {
+		engine, rs, _, _ := setupResourceDataHandlerTest(t)
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(sampleDatasetResource(), nil)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data",
+			strings.NewReader(`{"group_by":[{"property":"createdAt","calendar_interval":"day"}]}`))
+		req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.InvalidParameter.GroupBy")
+		assert.Contains(t, w.Body.String(), "createdAt")
+	})
+
 	t.Run("preserves total count requested by cursor session", func(t *testing.T) {
 		engine, rs, _, rds := setupResourceDataHandlerTest(t)
 		resource := sampleDatasetResource()

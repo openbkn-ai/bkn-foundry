@@ -145,6 +145,12 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 	for _, prop := range resource.SchemaDefinition {
 		fieldMap[prop.Name] = prop
 	}
+	originalName := func(property string) string {
+		if field, ok := fieldMap[property]; ok && field.OriginalName != "" {
+			return field.OriginalName
+		}
+		return property
+	}
 
 	// Build the origTypeMap in advance to only store the correspondence between column names and primitive types
 	origTypeMap := map[string]string{}
@@ -182,25 +188,19 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 
 	// Add the GROUP BY field (when aggregating queries)
 	for _, groupByItem := range params.GroupBy {
-		if field, ok := fieldMap[groupByItem.Property]; ok {
-			if groupByItem.CalendarInterval != "" {
-				selectFields = append(selectFields,
-					c.buildDateFormat(quoteColumnName(field.OriginalName), groupByItem.CalendarInterval)+" AS "+quoteColumnName(groupByItem.Property))
-			} else {
-				selectFields = append(selectFields, field.OriginalName)
-			}
+		column := quoteColumnName(originalName(groupByItem.Property))
+		if groupByItem.CalendarInterval != "" {
+			selectFields = append(selectFields,
+				c.buildDateFormat(column, groupByItem.CalendarInterval)+" AS "+quoteColumnName(groupByItem.Property))
 		} else {
-			selectFields = append(selectFields, groupByItem.Property)
+			selectFields = append(selectFields, column)
 		}
 	}
 
 	// Add aggregated fields (when performing aggregated queries)
 	var aggAlias string
 	if params.Aggregation != nil {
-		aggField := params.Aggregation.Property
-		if field, ok := fieldMap[aggField]; ok {
-			aggField = field.OriginalName
-		}
+		aggField := quoteColumnName(originalName(params.Aggregation.Property))
 
 		// Determine the aggregation function
 		aggFunc := params.Aggregation.Aggr
@@ -218,7 +218,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 			aggAlias = "__value"
 		}
 
-		selectFields = append(selectFields, aggFunc+" AS "+aggAlias)
+		selectFields = append(selectFields, aggFunc+" AS "+quoteColumnName(aggAlias))
 	}
 
 	// If it is not an aggregated query and GROUP BY is not specified, add all fields
@@ -251,14 +251,11 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 	if len(params.GroupBy) > 0 {
 		groupByFields := []string{}
 		for _, groupByItem := range params.GroupBy {
-			if field, ok := fieldMap[groupByItem.Property]; ok {
-				if groupByItem.CalendarInterval != "" {
-					groupByFields = append(groupByFields, c.buildDateFormat(quoteColumnName(field.OriginalName), groupByItem.CalendarInterval))
-				} else {
-					groupByFields = append(groupByFields, field.OriginalName)
-				}
+			column := quoteColumnName(originalName(groupByItem.Property))
+			if groupByItem.CalendarInterval != "" {
+				groupByFields = append(groupByFields, c.buildDateFormat(column, groupByItem.CalendarInterval))
 			} else {
-				groupByFields = append(groupByFields, groupByItem.Property)
+				groupByFields = append(groupByFields, column)
 			}
 		}
 		builder = builder.GroupBy(groupByFields...)
@@ -282,10 +279,13 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 			if sortItem.Direction == interfaces.DESC_DIRECTION {
 				dir = "DESC"
 			}
-			sortField := sortItem.Field
+			sortField := quoteColumnName(originalName(sortItem.Field))
+			if aggAlias != "" && sortItem.Field == aggAlias {
+				sortField = quoteColumnName(aggAlias)
+			}
 			for _, groupByItem := range params.GroupBy {
 				if groupByItem.Property == sortItem.Field && groupByItem.CalendarInterval != "" {
-					sortField = quoteColumnName(sortItem.Field)
+					sortField = c.buildDateFormat(quoteColumnName(originalName(groupByItem.Property)), groupByItem.CalendarInterval)
 					break
 				}
 			}

@@ -63,8 +63,8 @@ func TestPostgresqlConnectorExecuteQueryQuotesCalendarIntervalIdentifiers(t *tes
 		Sort:        []*interfaces.SortField{{Field: "createdAt", Direction: interfaces.ASC_DIRECTION}},
 		Limit:       20,
 	}
-	expectedQuery := "SELECT to_char(date_trunc('day',\"createdAt\"),'YYYY-MM-DD') AS \"createdAt\", COUNT(id) AS __value " +
-		"FROM \"public\".\"events\" GROUP BY to_char(date_trunc('day',\"createdAt\"),'YYYY-MM-DD') ORDER BY \"createdAt\" ASC LIMIT 20 OFFSET 0"
+	expectedQuery := "SELECT to_char(date_trunc('day',\"createdAt\"),'YYYY-MM-DD') AS \"createdAt\", COUNT(\"id\") AS \"__value\" " +
+		"FROM \"public\".\"events\" GROUP BY to_char(date_trunc('day',\"createdAt\"),'YYYY-MM-DD') ORDER BY to_char(date_trunc('day',\"createdAt\"),'YYYY-MM-DD') ASC LIMIT 20 OFFSET 0"
 	mock.ExpectQuery(expectedQuery).
 		WillReturnRows(sqlmock.NewRows([]string{"createdAt", "__value"}).AddRow("2024-01-01", 1))
 
