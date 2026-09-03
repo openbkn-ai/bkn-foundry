@@ -126,6 +126,7 @@ func TestPostgresqlConnectorNew(t *testing.T) {
 }
 
 func TestPostgresqlConnectorConnectionStringSupportsIPv6(t *testing.T) {
+	t.Setenv("TZ", "Asia/Shanghai")
 	connector := &PostgresqlConnector{config: &postgresqlConfig{
 		Host: "2001:db8::1", Port: 5432, Username: "user", Password: "secret", Database: "app",
 	}}
@@ -134,6 +135,7 @@ func TestPostgresqlConnectorConnectionStringSupportsIPv6(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "2001:db8::1", connectionURL.Hostname())
 	assert.Equal(t, "5432", connectionURL.Port())
+	assert.Equal(t, "Asia/Shanghai", connectionURL.Query().Get("timezone"))
 }
 
 func TestPostgresqlConnectorValidateSchemas(t *testing.T) {

@@ -18,6 +18,30 @@ func TestPostgresqlConnectorBuildPagedSQL(t *testing.T) {
 	)
 }
 
+func TestPostgresqlConnectorBuildDateFormat(t *testing.T) {
+	connector := &PostgresqlConnector{}
+	tests := []struct {
+		name     string
+		interval string
+		want     string
+	}{
+		{name: "minute", interval: interfaces.CALENDAR_UNIT_MINUTE, want: "to_char(date_trunc('minute',created_at),'YYYY-MM-DD HH24:MI')"},
+		{name: "hour", interval: interfaces.CALENDAR_UNIT_HOUR, want: "to_char(date_trunc('hour',created_at),'YYYY-MM-DD HH24')"},
+		{name: "day", interval: interfaces.CALENDAR_UNIT_DAY, want: "to_char(date_trunc('day',created_at),'YYYY-MM-DD')"},
+		{name: "week", interval: interfaces.CALENDAR_UNIT_WEEK, want: "to_char(date_trunc('week',created_at),'IYYY-IW')"},
+		{name: "month", interval: interfaces.CALENDAR_UNIT_MONTH, want: "to_char(date_trunc('month',created_at),'YYYY-MM')"},
+		{name: "quarter", interval: interfaces.CALENDAR_UNIT_QUARTER, want: "to_char(date_trunc('quarter',created_at),'YYYY-\"Q\"Q')"},
+		{name: "year", interval: interfaces.CALENDAR_UNIT_YEAR, want: "to_char(date_trunc('year',created_at),'YYYY')"},
+		{name: "unknown", interval: "unknown", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, connector.buildDateFormat("created_at", tt.interval))
+		})
+	}
+}
+
 func TestPostgresqlBuildHavingCondition(t *testing.T) {
 	connector := &PostgresqlConnector{}
 	tests := []struct {

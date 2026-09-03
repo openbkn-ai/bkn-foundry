@@ -112,11 +112,15 @@ func TestMariaDBConnectorNew(t *testing.T) {
 }
 
 func TestMariaDBConnectorConnectionStringSupportsIPv6(t *testing.T) {
+	t.Setenv("TZ", "Asia/Shanghai")
 	connector := &MariaDBConnector{config: &mariadbConfig{
 		Host: "2001:db8::1", Port: 3306, Username: "root", Password: "secret",
 	}}
 
-	assert.Contains(t, connector.connectionString(), "@tcp([2001:db8::1]:3306)/")
+	connectionString := connector.connectionString()
+	assert.Contains(t, connectionString, "@tcp([2001:db8::1]:3306)/")
+	assert.Contains(t, connectionString, "loc=Asia%2FShanghai")
+	assert.Contains(t, connectionString, "time_zone=%27Asia%2FShanghai%27")
 }
 
 func TestMariaDBConnectorValidateDatabases(t *testing.T) {

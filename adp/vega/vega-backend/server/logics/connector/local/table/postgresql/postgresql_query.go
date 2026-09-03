@@ -183,7 +183,12 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 	// Add the GROUP BY field (when aggregating queries)
 	for _, groupByItem := range params.GroupBy {
 		if field, ok := fieldMap[groupByItem.Property]; ok {
-			selectFields = append(selectFields, field.OriginalName)
+			if groupByItem.CalendarInterval != "" {
+				selectFields = append(selectFields,
+					c.buildDateFormat(field.OriginalName, groupByItem.CalendarInterval)+" AS "+groupByItem.Property)
+			} else {
+				selectFields = append(selectFields, field.OriginalName)
+			}
 		} else {
 			selectFields = append(selectFields, groupByItem.Property)
 		}
@@ -247,7 +252,11 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		groupByFields := []string{}
 		for _, groupByItem := range params.GroupBy {
 			if field, ok := fieldMap[groupByItem.Property]; ok {
-				groupByFields = append(groupByFields, field.OriginalName)
+				if groupByItem.CalendarInterval != "" {
+					groupByFields = append(groupByFields, c.buildDateFormat(field.OriginalName, groupByItem.CalendarInterval))
+				} else {
+					groupByFields = append(groupByFields, field.OriginalName)
+				}
 			} else {
 				groupByFields = append(groupByFields, groupByItem.Property)
 			}
@@ -349,6 +358,27 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 	}
 
 	return result, nil
+}
+
+func (c *PostgresqlConnector) buildDateFormat(dateField, calendarInterval string) string {
+	switch calendarInterval {
+	case interfaces.CALENDAR_UNIT_MINUTE:
+		return fmt.Sprintf(`to_char(date_trunc('minute',%s),'YYYY-MM-DD HH24:MI')`, dateField)
+	case interfaces.CALENDAR_UNIT_HOUR:
+		return fmt.Sprintf(`to_char(date_trunc('hour',%s),'YYYY-MM-DD HH24')`, dateField)
+	case interfaces.CALENDAR_UNIT_DAY:
+		return fmt.Sprintf(`to_char(date_trunc('day',%s),'YYYY-MM-DD')`, dateField)
+	case interfaces.CALENDAR_UNIT_WEEK:
+		return fmt.Sprintf(`to_char(date_trunc('week',%s),'IYYY-IW')`, dateField)
+	case interfaces.CALENDAR_UNIT_MONTH:
+		return fmt.Sprintf(`to_char(date_trunc('month',%s),'YYYY-MM')`, dateField)
+	case interfaces.CALENDAR_UNIT_QUARTER:
+		return fmt.Sprintf(`to_char(date_trunc('quarter',%s),'YYYY-"Q"Q')`, dateField)
+	case interfaces.CALENDAR_UNIT_YEAR:
+		return fmt.Sprintf(`to_char(date_trunc('year',%s),'YYYY')`, dateField)
+	default:
+		return ""
+	}
 }
 
 // buildHavingCondition builds the HAVING condition
