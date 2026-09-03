@@ -14,6 +14,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	permissionlogic "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/permission"
 )
 
 // localSearchImpl local search implementation body.
@@ -23,6 +24,7 @@ type localSearchImpl struct {
 	bknBackend    interfaces.BknBackendAccess
 	ontologyQuery interfaces.DrivenOntologyQuery
 	rerankClient  interfaces.DrivenMFModelAPIClient
+	authorizer    interfaces.QueryCandidateAuthorizer
 }
 
 var (
@@ -40,6 +42,7 @@ func NewLocalSearchService() interfaces.IKnSearchLocalService {
 			bknBackend:    drivenadapters.NewBknBackendAccess(),
 			ontologyQuery: drivenadapters.NewOntologyQueryAccess(),
 			rerankClient:  drivenadapters.NewMFModelAPIClient(),
+			authorizer:    permissionlogic.NewQueryCandidateAuthorizer(configLoader),
 		}
 	})
 	return localSearchService

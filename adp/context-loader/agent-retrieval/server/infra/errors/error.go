@@ -9,6 +9,7 @@ package errors
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -17,6 +18,30 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/localize"
 )
+
+// HTTPStatus returns the status carried by a public HTTPError.
+func HTTPStatus(err error) (int, bool) {
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) {
+		return 0, false
+	}
+	return httpErr.HTTPCode, true
+}
+
+// IsAuthorizationError identifies statuses that must never be flattened into a
+// successful retrieval fallback while the KN PEP is enabled.
+func IsAuthorizationError(err error) bool {
+	status, ok := HTTPStatus(err)
+	if !ok {
+		return false
+	}
+	switch status {
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusServiceUnavailable:
+		return true
+	default:
+		return false
+	}
+}
 
 // HTTPError represents a public HTTP error.
 type HTTPError struct {

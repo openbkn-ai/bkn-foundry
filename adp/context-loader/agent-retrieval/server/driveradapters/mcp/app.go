@@ -21,6 +21,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/extension/mcptool"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	logicsKar "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knactionrecall"
 	logicsFs "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knfindskills"
 	logicsKlp "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knlogicpropertyresolver"
@@ -140,6 +141,7 @@ func newMCPServer(lifecycleClient *bkntrace.LifecycleClient) (*server.MCPServer,
 func newMCPServerForLocale(lifecycleClient *bkntrace.LifecycleClient, locale string) (*server.MCPServer, *toolBuilder) {
 	localeBundle := loadMCPLocaleBundle(locale)
 	b := newToolBuilder(localeBundle)
+	conf := config.NewConfigLoader()
 
 	knSearchService := knsearch.NewKnSearchService()
 	b.add(toolKeySearchSchema, handleSearchSchema(knSearchService))
@@ -170,8 +172,8 @@ func newMCPServerForLocale(lifecycleClient *bkntrace.LifecycleClient, locale str
 	bknBackend := drivenadapters.NewBknBackendAccess()
 	b.add(toolKeyListKnowledgeNetworks, handleListKnowledgeNetworks(bknBackend))
 	b.add(toolKeyGetKnDetail, handleGetKnDetail(bknBackend, metricsService))
-	b.add(toolKeyGetObjectTypes, handleGetObjectTypes(bknBackend, metricsService))
-	b.add(toolKeyGetRelationTypes, handleGetRelationTypes(bknBackend))
+	b.add(toolKeyGetObjectTypes, handleGetObjectTypesWithPEP(bknBackend, metricsService, conf.Auth.ContextLoaderKNPEPEnabled))
+	b.add(toolKeyGetRelationTypes, handleGetRelationTypesWithPEP(bknBackend, conf.Auth.ContextLoaderKNPEPEnabled))
 
 	runSQLService := knrunsql.NewKnRunSQLService()
 	b.add(toolKeyRunSQL, handleRunSQL(runSQLService))

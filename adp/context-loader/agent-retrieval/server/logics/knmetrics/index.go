@@ -39,10 +39,11 @@ var validSteps = map[string]struct{}{
 
 // KnMetricsService metric visibility and metric access.
 type KnMetricsService interface {
-	// AttachRelatedMetrics attaches the metrics under its scope to the object type (failed to downgrade to not attached).
-	AttachRelatedMetrics(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType)
+	// AttachRelatedMetrics attaches the metrics under its scope to the object type.
+	// Legacy mode degrades failures; PEP mode returns them.
+	AttachRelatedMetrics(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType) error
 	// AttachRelatedMetricCounts Attach only counts, used for progressive drill-down of get_kn_detail.
-	AttachRelatedMetricCounts(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType)
+	AttachRelatedMetricCounts(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType) error
 	// QueryMetric takes the number based on the metric's own semantics.
 	QueryMetric(ctx context.Context, req *interfaces.QueryMetricReq) (*interfaces.QueryMetricResp, error)
 }
@@ -51,6 +52,7 @@ type knMetricsService struct {
 	logger        interfaces.Logger
 	bknBackend    interfaces.BknBackendAccess
 	ontologyQuery interfaces.DrivenOntologyQuery
+	pepEnabled    bool
 }
 
 var (
@@ -66,6 +68,7 @@ func NewKnMetricsService() KnMetricsService {
 			logger:        conf.GetLogger(),
 			bknBackend:    drivenadapters.NewBknBackendAccess(),
 			ontologyQuery: drivenadapters.NewOntologyQueryAccess(),
+			pepEnabled:    conf.Auth.ContextLoaderKNPEPEnabled,
 		}
 	})
 	return instance
@@ -77,14 +80,25 @@ func NewKnMetricsServiceWith(logger interfaces.Logger, bkn interfaces.BknBackend
 	return &knMetricsService{logger: logger, bknBackend: bkn, ontologyQuery: oq}
 }
 
+// NewKnMetricsServiceWithPEP injects dependencies and the rollout state for focused tests.
+func NewKnMetricsServiceWithPEP(logger interfaces.Logger, bkn interfaces.BknBackendAccess,
+	oq interfaces.DrivenOntologyQuery, pepEnabled bool,
+) KnMetricsService {
+	return &knMetricsService{logger: logger, bknBackend: bkn, ontologyQuery: oq, pepEnabled: pepEnabled}
+}
+
 // AttachRelatedMetrics distributes metrics to each object type according to scope_ref.
 //
-// Failure to get the index is not fatal: the object type definition itself has been obtained, and marking the entire get_object_types as failed will only.
-// The Agent cannot even read the schema. Downgrade to "no related_metrics" and leave logs.
-func (s *knMetricsService) AttachRelatedMetrics(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType) {
-	byScope := s.metricsByScope(ctx, knID, objectTypes)
-	if byScope == nil {
-		return
+// Legacy mode keeps metric enrichment best-effort. PEP mode cannot distinguish
+// a registry outage from an authorization dependency failure, so it fails closed.
+func (s *knMetricsService) AttachRelatedMetrics(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType) error {
+	byScope, err := s.metricsByScope(ctx, knID, objectTypes)
+	if err != nil {
+		if s.pepEnabled {
+			return err
+		}
+		s.warnf(ctx, "[KnMetrics] list metrics for kn=%s failed, object types answered without metrics: %v", knID, err)
+		return nil
 	}
 	for _, ot := range objectTypes {
 		if ot == nil {
@@ -93,13 +107,18 @@ func (s *knMetricsService) AttachRelatedMetrics(ctx context.Context, knID string
 		ot.RelatedMetrics = byScope[ot.ID]
 		ot.RelatedMetricCount = len(ot.RelatedMetrics)
 	}
+	return nil
 }
 
 // AttachRelatedMetricCounts only writes counts, not details (used for get_kn_detail summary).
-func (s *knMetricsService) AttachRelatedMetricCounts(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType) {
-	byScope := s.metricsByScope(ctx, knID, objectTypes)
-	if byScope == nil {
-		return
+func (s *knMetricsService) AttachRelatedMetricCounts(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType) error {
+	byScope, err := s.metricsByScope(ctx, knID, objectTypes)
+	if err != nil {
+		if s.pepEnabled {
+			return err
+		}
+		s.warnf(ctx, "[KnMetrics] list metrics for kn=%s failed, object types answered without metrics: %v", knID, err)
+		return nil
 	}
 	for _, ot := range objectTypes {
 		if ot == nil {
@@ -107,11 +126,12 @@ func (s *knMetricsService) AttachRelatedMetricCounts(ctx context.Context, knID s
 		}
 		ot.RelatedMetricCount = len(byScope[ot.ID])
 	}
+	return nil
 }
 
-// metricsByScope retrieves the metrics under this batch of object types in batches at one time and sorts them according to scope_ref; returns nil on failure.
+// metricsByScope retrieves the metrics under this batch of object types and groups them by scope_ref.
 func (s *knMetricsService) metricsByScope(ctx context.Context, knID string,
-	objectTypes []*interfaces.ObjectType) map[string][]*interfaces.RelatedMetric {
+	objectTypes []*interfaces.ObjectType) (map[string][]*interfaces.RelatedMetric, error) {
 	ids := make([]string, 0, len(objectTypes))
 	for _, ot := range objectTypes {
 		if ot != nil && strings.TrimSpace(ot.ID) != "" {
@@ -119,13 +139,12 @@ func (s *knMetricsService) metricsByScope(ctx context.Context, knID string,
 		}
 	}
 	if len(ids) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	metrics, err := s.bknBackend.ListMetricsByObjectTypes(ctx, knID, ids)
 	if err != nil {
-		s.warnf(ctx, "[KnMetrics] list metrics for kn=%s failed, object types answered without metrics: %v", knID, err)
-		return nil
+		return nil, err
 	}
 
 	byScope := make(map[string][]*interfaces.RelatedMetric, len(ids))
@@ -135,7 +154,7 @@ func (s *knMetricsService) metricsByScope(ctx context.Context, knID string,
 		}
 		byScope[m.ScopeRef] = append(byScope[m.ScopeRef], m)
 	}
-	return byScope
+	return byScope, nil
 }
 
 // QueryMetric forwards ontology-query's metric fetching endpoint after verifying the input parameters.

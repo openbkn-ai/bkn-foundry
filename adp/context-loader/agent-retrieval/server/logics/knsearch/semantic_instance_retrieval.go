@@ -65,6 +65,18 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 		}, nil
 	}
 
+	if s.knPEPEnabled() {
+		objectTypes, err = s.filterAuthorizedObjectTypes(ctx, req.KnID, objectTypes)
+		if err != nil {
+			return nil, err
+		}
+		if len(objectTypes) == 0 {
+			return &interfaces.KnSearchSemanticInstanceResult{
+				Message: infraErr.LocalizedDetail(ctx, "NoSearchableObjectTypes"),
+			}, nil
+		}
+	}
+
 	instanceConfig := config.SemanticInstanceRetrieval
 	propertyConfig := config.PropertyFilter
 
@@ -125,6 +137,7 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	// Results are collected per position, not appended as they arrive, so the response does not depend
 	// on which object type happened to answer first.
 	perType := make([][]*interfaces.KnSearchNode, len(objectTypes))
+	perTypeErrs := make([]error, len(objectTypes))
 	concurrency := instanceConfig.ObjectTypeConcurrency
 	if concurrency <= 0 {
 		concurrency = 1
@@ -148,12 +161,18 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 				// whose declared operators lie must not empty the whole result.
 				s.logger.WithContext(ctx).Warnf("[SemanticInstanceRetrieval] Failed to retrieve instances for %s: %v",
 					objType.ConceptID, err)
+				perTypeErrs[idx] = err
 				return
 			}
 			perType[idx] = nodes
 		}(i, objType)
 	}
 	wg.Wait()
+	for _, queryErr := range perTypeErrs {
+		if s.knPEPEnabled() && queryErr != nil && isAuthorizationError(queryErr) {
+			return nil, queryErr
+		}
+	}
 
 	var allNodes []*interfaces.KnSearchNode
 	var maxScore float64
@@ -442,6 +461,9 @@ func (s *localSearchImpl) retrieveInstancesFused(
 	live := make([]channelOutcome, 0, len(outcomes))
 	for _, o := range outcomes {
 		if o.err != nil {
+			if s.knPEPEnabled() && isAuthorizationError(o.err) {
+				return nil, o.err
+			}
 			// Failure of a single channel does not destroy the entire object type. Knn returns 400 when hitting a field without vector mapping.
 			// (condition_operations is declared by the network builder and stored as it is, so it is not trustworthy). In the past, this 400.
 			// It will fail together with match, and no instance of the object type will be recalled.
@@ -509,6 +531,12 @@ func (s *localSearchImpl) fetchChannel(
 	resp, err := s.ontologyQuery.QueryObjectInstances(ctx, queryReq)
 	if err != nil {
 		return channelOutcome{name: ch.name, err: fmt.Errorf("query instances failed: %w", err)}
+	}
+	if resp == nil {
+		if s.knPEPEnabled() {
+			return channelOutcome{name: ch.name, err: protectedDependencyUnavailable(ctx, "ontology-query")}
+		}
+		return channelOutcome{name: ch.name, err: fmt.Errorf("ontology-query returned an empty response")}
 	}
 
 	out := channelOutcome{name: ch.name, nodes: make([]*interfaces.KnSearchNode, 0, len(resp.Data))}
@@ -598,6 +626,12 @@ func (s *localSearchImpl) retrieveInstancesSingleQuery(
 	resp, err := s.ontologyQuery.QueryObjectInstances(ctx, queryReq)
 	if err != nil {
 		return nil, fmt.Errorf("query instances failed: %w", err)
+	}
+	if resp == nil {
+		if s.knPEPEnabled() {
+			return nil, protectedDependencyUnavailable(ctx, "ontology-query")
+		}
+		return nil, fmt.Errorf("ontology-query returned an empty response")
 	}
 
 	// Convert to KnSearchNode format.

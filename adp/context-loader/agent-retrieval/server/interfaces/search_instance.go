@@ -11,8 +11,8 @@ package interfaces
 // Depth(max_instances_per_type). Candidate pool size, vector sub-condition budget, correlation threshold and other operational levels.
 // Parameters are not entered here - the Agent cannot determine how to adjust them. If you want to adjust them, go to kn_search's retrieval_config.
 type SearchInstanceReq struct {
-	XAccountID   string `header:"x-account-id"`
-	XAccountType string `header:"x-account-type"`
+	XAccountID   string `json:"-" header:"x-account-id"`
+	XAccountType string `json:"-" header:"x-account-type"`
 	XKnID        string `header:"x-kn-id"`
 
 	Query string `json:"query" validate:"required"`

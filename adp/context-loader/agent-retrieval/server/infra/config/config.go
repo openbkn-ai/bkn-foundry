@@ -39,6 +39,7 @@ type Config struct {
 	Vega                 PrivateBaseConfig      `yaml:"vega"`                 // Vega data-catalog backend (run_sql / resource query)
 	OperatorIntegration  PrivateBaseConfig      `yaml:"operator_integration"` // Operator integration service configuration
 	BknSafe              PrivateBaseConfig      `yaml:"bkn_safe"`             // bkn-safe auth service (AppKey verification)
+	Auth                 AuthorizationConfig    `yaml:"auth"`                 // KN retrieval authorization rollout configuration
 	RedisConfig          RedisConfig            `yaml:"redis"`
 	Logger               interfaces.Logger      `yaml:"-"`
 	ConceptSearchConfig  KnConceptSearchConfig  `yaml:"concept_search_config"`  // Knowledge network concept search configuration
@@ -48,6 +49,16 @@ type Config struct {
 	// New configuration - knowledge rearrangement and retrieval related.
 	MFModelAPI PrivateBaseConfig `yaml:"mf_model_api"` // MF-Model API unified service configuration.
 	FindSkills FindSkillsConfig  `yaml:"find_skills"`  // find_skills Skill recall configuration.
+}
+
+// AuthorizationConfig controls context-loader's temporary KN retrieval PEP.
+// The switch is intentionally disabled until existing policies and
+// ResourceParent rows have been migrated and the cross-service flow is
+// validated. The chunk size bounds one Safe request, not the number of
+// candidates a business request may contain.
+type AuthorizationConfig struct {
+	ContextLoaderKNPEPEnabled bool `yaml:"context_loader_kn_pep_enabled" env:"CONTEXT_LOADER_KN_PEP_ENABLED"`
+	ResourceFilterChunkSize   int  `yaml:"resource_filter_chunk_size" env:"CONTEXT_LOADER_KN_PEP_CHUNK_SIZE" default:"200"`
 }
 
 // ObservabilityConfig trace configuration
@@ -228,7 +239,7 @@ func parseAuthEnabled(envVal string) bool {
 	return v != "false" && v != "0"
 }
 
-// GetAuthEnabled returns whether ISF authentication is enabled.
+// GetAuthEnabled returns whether authentication is enabled.
 // Defaults to true (secure by default). Only returns false when
 // AUTH_ENABLED is explicitly set to "false" or "0" (case-insensitive).
 func GetAuthEnabled() bool {

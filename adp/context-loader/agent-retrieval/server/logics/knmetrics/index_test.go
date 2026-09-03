@@ -7,10 +7,12 @@ package knmetrics
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
 	"github.com/smartystreets/goconvey/convey"
 
+	infraerrors "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -110,6 +112,38 @@ func TestAttachRelatedMetricCounts(t *testing.T) {
 		convey.So(ots[0].RelatedMetrics, convey.ShouldBeNil)
 		convey.So(ots[1].RelatedMetricCount, convey.ShouldEqual, 0)
 	})
+}
+
+func TestAttachRelatedMetrics_PEPFailureIsNotDowngraded(t *testing.T) {
+	ctx := context.Background()
+	authErr := infraerrors.DefaultHTTPError(ctx, http.StatusServiceUnavailable, "safe unavailable")
+	bkn := &stubBknBackend{err: authErr}
+	svc := NewKnMetricsServiceWithPEP(nil, bkn, nil, true)
+
+	err := svc.AttachRelatedMetrics(ctx, "kn1", []*interfaces.ObjectType{{ID: "ot1"}})
+	if !errors.Is(err, authErr) {
+		t.Fatalf("expected authorization dependency error, got %v", err)
+	}
+}
+
+func TestAttachRelatedMetrics_PEPUnknownFailureIsNotDowngraded(t *testing.T) {
+	dependencyErr := errors.New("connection reset")
+	bkn := &stubBknBackend{err: dependencyErr}
+	svc := NewKnMetricsServiceWithPEP(nil, bkn, nil, true)
+
+	err := svc.AttachRelatedMetrics(context.Background(), "kn1", []*interfaces.ObjectType{{ID: "ot1"}})
+	if !errors.Is(err, dependencyErr) {
+		t.Fatalf("expected protected dependency error, got %v", err)
+	}
+}
+
+func TestAttachRelatedMetricCounts_LegacyFailureStillDegrades(t *testing.T) {
+	bkn := &stubBknBackend{err: errors.New("backend down")}
+	svc := NewKnMetricsServiceWithPEP(nil, bkn, nil, false)
+
+	if err := svc.AttachRelatedMetricCounts(context.Background(), "kn1", []*interfaces.ObjectType{{ID: "ot1"}}); err != nil {
+		t.Fatalf("legacy rollout state should keep best-effort behavior, got %v", err)
+	}
 }
 
 func TestQueryMetric(t *testing.T) {
