@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -43,6 +44,29 @@ type capturedOperationAuditRecorder struct{ entries []operationaudit.Entry }
 func (r *capturedOperationAuditRecorder) Record(_ context.Context, entry operationaudit.Entry) error {
 	r.entries = append(r.entries, entry)
 	return nil
+}
+
+func TestOperationAuditRequestIDFailureDoesNotChangeBusinessResponse(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+	uuid.SetRand(strings.NewReader(""))
+	defer uuid.SetRand(nil)
+
+	recorder := &capturedOperationAuditRecorder{}
+	handler := &restHandler{auditRecorder: recorder}
+	engine := gin.New()
+	engine.Use(handler.OperationAudit())
+	engine.POST("/api/vega-backend/v1/catalogs", func(c *gin.Context) {
+		c.Set(operationAuditVisitorKey, hydra.Visitor{ID: "user-1", Type: hydra.VisitorType("user")})
+		c.Status(http.StatusCreated)
+	})
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/vega-backend/v1/catalogs", nil)
+	engine.ServeHTTP(response, request)
+
+	require.Equal(t, http.StatusCreated, response.Code)
+	require.Empty(t, recorder.entries)
 }
 
 func TestOperationAuditRecordsBoundedManagementFact(t *testing.T) {

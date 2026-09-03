@@ -50,7 +50,11 @@ func (s *skillRepositoryDB) InsertSkill(ctx context.Context, tx *sql.Tx, skill *
 		orm = s.orm.WithTx(tx)
 	}
 	if skill.SkillID == "" {
-		skill.SkillID = uuid.NewString()
+		id, generateErr := uuid.NewV7()
+		if generateErr != nil {
+			return "", generateErr
+		}
+		skill.SkillID = id.String()
 	}
 	now := time.Now().UnixNano()
 	skillID = skill.SkillID

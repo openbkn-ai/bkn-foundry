@@ -7,7 +7,7 @@ FROM ${BASE_IMAGE}
 
 ARG USE_MIRROR=false
 ARG APT_MIRROR=mirrors.ustc.edu.cn
-ARG GO_VERSION=1.25.2
+ARG GO_VERSION=1.21.13
 ARG GO_DOWNLOAD_BASE=https://go.dev/dl
 ARG GO_DOWNLOAD_MIRROR=https://mirrors.ustc.edu.cn/golang
 # docker buildx sets TARGETARCH from --platform for each target architecture.

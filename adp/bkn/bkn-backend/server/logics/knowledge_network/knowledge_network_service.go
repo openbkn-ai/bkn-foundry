@@ -16,11 +16,11 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-	"github.com/rs/xid"
 	"go.opentelemetry.io/otel/codes"
 
 	bknsdk "bkn-backend/bkn-specification/bkn"
@@ -178,7 +178,11 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 	currentTime := time.Now().UnixMilli()
 	// Generate a distributed ID when the submitted model ID is empty.
 	if kn.KNID == "" {
-		kn.KNID = xid.New().String()
+		generatedID, generateErr := uuid.NewV7()
+		if generateErr != nil {
+			return "", fmt.Errorf("generate knowledge network UUIDv7: %w", generateErr)
+		}
+		kn.KNID = generatedID.String()
 	}
 	for _, conceptGroup := range kn.ConceptGroups {
 		conceptGroup.KNID = kn.KNID

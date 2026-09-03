@@ -52,7 +52,11 @@ func NewOutboxMessageDB() model.IOutboxMessage {
 // Insert adds message event.
 func (outboxMessage *outboxMessageDB) Insert(ctx context.Context, tx *sql.Tx, message *model.OutboxMessageDB) (eventID string, err error) {
 	if message.EventID == "" {
-		message.EventID = uuid.New().String()
+		id, generateErr := uuid.NewV7()
+		if generateErr != nil {
+			return "", generateErr
+		}
+		message.EventID = id.String()
 	}
 	eventID = message.EventID
 	orm := outboxMessage.orm

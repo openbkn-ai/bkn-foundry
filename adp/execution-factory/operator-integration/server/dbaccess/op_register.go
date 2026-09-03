@@ -57,7 +57,11 @@ func NewOperatorManagerDB() model.IOperatorRegisterDB {
 // InsertOperator insert operator.
 func (o *operatorManagerDB) InsertOperator(ctx context.Context, tx *sql.Tx, operator *model.OperatorRegisterDB) (opID string, err error) {
 	if operator.OperatorID == "" {
-		operator.OperatorID = uuid.NewString()
+		id, generateErr := uuid.NewV7()
+		if generateErr != nil {
+			return "", generateErr
+		}
+		operator.OperatorID = id.String()
 	}
 	opID = operator.OperatorID
 	orm := o.orm

@@ -274,7 +274,11 @@ func (s *ToolServiceImpl) importByCreate(ctx context.Context, tx *sql.Tx, item *
 	metadataMap := map[string]interfaces.IMetadataDB{}
 	for _, metadataDB := range metadataDBs {
 		version := metadataDB.GetVersion()
-		metadataDB.SetVersion(uuid.New().String())
+		metadataVersion, generateErr := uuid.NewV7()
+		if generateErr != nil {
+			return nil, generateErr
+		}
+		metadataDB.SetVersion(metadataVersion.String())
 		metadataMap[version] = metadataDB
 	}
 	newMetadataDBs := []interfaces.IMetadataDB{}

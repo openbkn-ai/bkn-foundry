@@ -18,12 +18,12 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-	"github.com/rs/xid"
 	"go.opentelemetry.io/otel/codes"
 
 	bknsdk "bkn-backend/bkn-specification/bkn"
@@ -1959,7 +1959,11 @@ func (ots *objectTypeService) handleGroupRelations(ctx context.Context, tx *sql.
 
 	// Create.
 	for _, cg := range objectType.ConceptGroups {
-		cgRelationID := xid.New().String()
+		generatedID, generateErr := uuid.NewV7()
+		if generateErr != nil {
+			return fmt.Errorf("generate concept group relation UUIDv7: %w", generateErr)
+		}
+		cgRelationID := generatedID.String()
 		err = ots.cga.CreateConceptGroupRelation(ctx, tx, &interfaces.ConceptGroupRelation{
 			ID:          cgRelationID,
 			KNID:        objectType.KNID,
@@ -2062,7 +2066,11 @@ func (ots *objectTypeService) syncObjectGroups(ctx context.Context, tx *sql.Tx,
 	if len(groupsToAdd) > 0 {
 		// Build records for new relationships.
 		for _, cgID := range groupsToAdd {
-			cgRelationID := xid.New().String()
+			generatedID, generateErr := uuid.NewV7()
+			if generateErr != nil {
+				return fmt.Errorf("generate concept group relation UUIDv7: %w", generateErr)
+			}
+			cgRelationID := generatedID.String()
 			err = ots.cga.CreateConceptGroupRelation(ctx, tx, &interfaces.ConceptGroupRelation{
 				ID:          cgRelationID,
 				KNID:        objectType.KNID,

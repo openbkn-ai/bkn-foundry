@@ -63,7 +63,11 @@ func (mt *mcpToolDB) BatchInsert(ctx context.Context, tx *sql.Tx, tools []*model
 	values := make([][]interface{}, len(tools))
 	for i, tool := range tools {
 		if tool.MCPToolID == "" {
-			tool.MCPToolID = uuid.New().String()
+			id, generateErr := uuid.NewV7()
+			if generateErr != nil {
+				return generateErr
+			}
+			tool.MCPToolID = id.String()
 		}
 		now := time.Now().UnixNano()
 		tool.CreateTime = now

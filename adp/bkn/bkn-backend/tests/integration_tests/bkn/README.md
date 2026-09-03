@@ -4,7 +4,7 @@ Verify BKN file import, export, and data consistency for tar-format BKN files.
 
 ## Technology Stack
 
-- **Language**: Go 1.24
+- **Language**: Go 1.25
 - **Test framework**: [GoConvey](https://github.com/smartystreets/goconvey) (BDD style)
 - **Configuration management**: [Viper](https://github.com/spf13/viper) (YAML + environment variables)
 

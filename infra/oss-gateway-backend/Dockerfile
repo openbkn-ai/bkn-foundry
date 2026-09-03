@@ -1,5 +1,5 @@
 # Global build arguments must be declared before FROM.
-ARG GO_BUILD_IMAGE=golang:1.25.10
+ARG GO_BUILD_IMAGE=golang:1.25.14
 ARG BASE_IMAGE=ubuntu:24.04
 
 # Build stage.

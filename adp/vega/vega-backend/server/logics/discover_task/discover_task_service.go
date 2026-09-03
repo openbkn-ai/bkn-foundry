@@ -15,11 +15,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-	"github.com/rs/xid"
 	"go.opentelemetry.io/otel/codes"
 
 	"vega-backend/common"
@@ -123,8 +123,12 @@ func (dts *discoverTaskService) Create(ctx context.Context, req *interfaces.Crea
 
 	now := time.Now().UnixMilli()
 	queuePriority := DiscoverTaskPriority(req)
+	generatedID, err := uuid.NewV7()
+	if err != nil {
+		return "", fmt.Errorf("generate discover task UUIDv7: %w", err)
+	}
 	task := &interfaces.DiscoverTask{
-		ID:            xid.New().String(),
+		ID:            generatedID.String(),
 		CatalogID:     req.CatalogID,
 		ResourceID:    req.ResourceID,
 		ScheduleID:    req.ScheduleID,

@@ -17,11 +17,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-	"github.com/rs/xid"
 	"go.opentelemetry.io/otel/codes"
 
 	"vega-backend/common"
@@ -316,8 +316,12 @@ func (bts *buildTaskService) newBuildTaskFromCreateRequest(ctx context.Context, 
 	}
 
 	now := time.Now().UnixMilli()
+	generatedID, err := uuid.NewV7()
+	if err != nil {
+		return nil, fmt.Errorf("generate build task UUIDv7: %w", err)
+	}
 	buildTask := &interfaces.BuildTask{
-		ID:          xid.New().String(),
+		ID:          generatedID.String(),
 		ResourceID:  resource.ID,
 		CatalogID:   resource.CatalogID,
 		Status:      interfaces.BuildTaskStatusPending,

@@ -69,7 +69,7 @@ BKN Foundry 是一个 **monorepo**（[`openbkn-ai/bkn-foundry`](https://github.c
 - **版本号 / 环境**：
   - BKN Foundry 版本（`git describe --tags` 或 `VERSION` 文件，如 `v0.6.0`）
   - 受影响的模块（如 `adp/bkn`、`adp/vega/vega-backend`、`infra/sandbox`）
-  - 运行时（Java / Go / Python / Node 及版本，如 JDK 17、Go 1.23、Python 3.11）
+  - 运行时（Java / Go / Python / Node 及版本，如 JDK 17、Go 1.25、Python 3.11）
   - 操作系统（Linux 发行版与内核 / macOS / Windows）
   - 集群形态（单机 K3s / kubeadm / 托管 K8s）以及安装方式（`deploy.sh openbkn install`）
   - 涉及的存储/中间件（MariaDB / DM8、OpenSearch、Redis、Kafka）

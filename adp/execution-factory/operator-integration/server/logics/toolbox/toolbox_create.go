@@ -243,7 +243,11 @@ func (s *ToolServiceImpl) parseOpenAPIToMetadata(ctx context.Context, boxID, use
 		metadata.SetCreateInfo(userID)
 		metadata.SetUpdateInfo(userID)
 		if metadata.GetVersion() == "" {
-			metadata.SetVersion(uuid.New().String())
+			metadataVersion, generateErr := uuid.NewV7()
+			if generateErr != nil {
+				return nil, nil, nil, generateErr
+			}
+			metadata.SetVersion(metadataVersion.String())
 		}
 		tools = append(tools, &model.ToolDB{
 			BoxID:       boxID,

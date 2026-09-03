@@ -9,6 +9,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/google/uuid"
 	"go.uber.org/mock/gomock"
 
 	"bkn-backend/interfaces"
@@ -29,8 +30,12 @@ func TestPrepareKNChildResourceID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PrepareKNChildResourceID() error = %v", err)
 	}
-	if len(id) != 20 {
-		t.Fatalf("generated ID length = %d, want 20", len(id))
+	generatedID, err := uuid.Parse(id)
+	if err != nil {
+		t.Fatalf("generated ID %q is not a UUID: %v", id, err)
+	}
+	if generatedID.Version() != 7 {
+		t.Fatalf("generated UUID version = %d, want 7", generatedID.Version())
 	}
 	if _, err := PrepareKNChildResourceID(context.Background(), "bad/id"); err == nil {
 		t.Fatal("ID containing a slash must be rejected")

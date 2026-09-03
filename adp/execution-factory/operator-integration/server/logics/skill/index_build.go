@@ -128,8 +128,12 @@ func (s *skillIndexBuildService) createTask(ctx context.Context, userID string, 
 		return nil, oerrors.DefaultHTTPError(ctx, http.StatusConflict, "skill index build task is already running")
 	}
 
+	taskID, err := uuid.NewV7()
+	if err != nil {
+		return nil, err
+	}
 	task := &model.SkillIndexBuildTaskDB{
-		TaskID:      uuid.NewString(),
+		TaskID:      taskID.String(),
 		Status:      interfaces.SkillIndexBuildStatusPending.String(),
 		ExecuteType: executeType.String(),
 		CreateUser:  userID,

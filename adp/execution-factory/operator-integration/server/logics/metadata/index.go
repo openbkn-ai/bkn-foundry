@@ -229,7 +229,11 @@ func (m *metadataService) RegisterMetadata(ctx context.Context, tx *sql.Tx, meta
 			return
 		}
 		if apiMetadata.Version == "" {
-			apiMetadata.Version = uuid.New().String()
+			id, generateErr := uuid.NewV7()
+			if generateErr != nil {
+				return "", generateErr
+			}
+			apiMetadata.Version = id.String()
 		}
 		version, err = m.APIMetadataDB.InsertAPIMetadata(ctx, tx, apiMetadata)
 		if err != nil {
@@ -243,7 +247,11 @@ func (m *metadataService) RegisterMetadata(ctx context.Context, tx *sql.Tx, meta
 			return
 		}
 		if funcMetadata.Version == "" {
-			funcMetadata.Version = uuid.New().String()
+			id, generateErr := uuid.NewV7()
+			if generateErr != nil {
+				return "", generateErr
+			}
+			funcMetadata.Version = id.String()
 		}
 		funcMetadata.Path = interfaces.SetAOIFuncExecPath(funcMetadata.Version)
 		version, err = m.FuncMetadataDB.InsertFuncMetadata(ctx, tx, funcMetadata)
@@ -282,7 +290,11 @@ func (m *metadataService) BatchRegisterMetadata(ctx context.Context, tx *sql.Tx,
 				return
 			}
 			if apiMetadata.Version == "" {
-				apiMetadata.Version = uuid.New().String()
+				id, generateErr := uuid.NewV7()
+				if generateErr != nil {
+					return nil, generateErr
+				}
+				apiMetadata.Version = id.String()
 			}
 			apiMetadatas = append(apiMetadatas, apiMetadata)
 		case string(model.SourceTypeFunction):
@@ -292,7 +304,11 @@ func (m *metadataService) BatchRegisterMetadata(ctx context.Context, tx *sql.Tx,
 				return
 			}
 			if funcMetadata.Version == "" {
-				funcMetadata.Version = uuid.New().String()
+				id, generateErr := uuid.NewV7()
+				if generateErr != nil {
+					return nil, generateErr
+				}
+				funcMetadata.Version = id.String()
 			}
 			funcMetadata.Path = interfaces.SetAOIFuncExecPath(funcMetadata.Version)
 			funcMetadatas = append(funcMetadatas, funcMetadata)

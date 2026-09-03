@@ -21,7 +21,7 @@ Vega是一个企业级数据管理平台，旨在提供统一的数据连接、�
 ### 环境要求
 
 - Java 8+ (对于Java项目)
-- Go 1.19+ (对于Go项目)
+- Go 1.25+ (对于Go项目)
 - Maven 3.6+
 - Docker & Docker Compose
 - Kubernetes (生产环境)

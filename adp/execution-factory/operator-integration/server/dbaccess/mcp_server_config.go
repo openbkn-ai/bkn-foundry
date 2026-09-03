@@ -57,9 +57,13 @@ func NewMCPServerConfigDBSingleton() model.DBMCPServerConfig {
 // Insert Insert MCP Server configuration.
 func (m *mcpServerConfigDB) Insert(ctx context.Context, tx *sql.Tx, config *model.MCPServerConfigDB) (id string, err error) {
 	now := time.Now().UnixNano()
-	MCPID := uuid.New().String()
-	if config.MCPID != "" {
-		MCPID = config.MCPID
+	MCPID := config.MCPID
+	if MCPID == "" {
+		generatedID, generateErr := uuid.NewV7()
+		if generateErr != nil {
+			return "", generateErr
+		}
+		MCPID = generatedID.String()
 	}
 
 	// The default version number is 1.

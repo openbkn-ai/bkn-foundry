@@ -20,10 +20,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/bytedance/sonic"
+	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-	"github.com/rs/xid"
 	"go.opentelemetry.io/otel/codes"
 
 	"vega-backend/common"
@@ -193,7 +193,11 @@ func (suts *semanticUnderstandingTaskService) createTask(ctx context.Context, ta
 	accountInfo := accountInfoFromContext(ctx)
 
 	now := time.Now().UnixMilli()
-	task.ID = xid.New().String()
+	generatedID, err := uuid.NewV7()
+	if err != nil {
+		return nil, fmt.Errorf("generate semantic understanding task UUIDv7: %w", err)
+	}
+	task.ID = generatedID.String()
 	task.Status = interfaces.SemanticUnderstandingTaskStatusPending
 	task.Creator = accountInfo
 	task.CreateTime = now

@@ -55,7 +55,11 @@ func (c *categoryDB) Insert(ctx context.Context, tx *sql.Tx, category *model.Cat
 	now := time.Now().UnixNano()
 
 	if category.CategoryID == "" {
-		category.CategoryID = uuid.New().String()
+		id, generateErr := uuid.NewV7()
+		if generateErr != nil {
+			return "", generateErr
+		}
+		category.CategoryID = id.String()
 	}
 	category.CreateTime = now
 	category.UpdateTime = now

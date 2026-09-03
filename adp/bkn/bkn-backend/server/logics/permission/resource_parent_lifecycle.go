@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-	"github.com/rs/xid"
 
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
@@ -286,7 +286,11 @@ func logAuthorizationCleanupFailure(cleanupKind, resourceType, resourceID, paren
 func PrepareKNChildResourceID(ctx context.Context, requestedID string) (string, error) {
 	id := requestedID
 	if id == "" {
-		id = xid.New().String()
+		generatedID, err := uuid.NewV7()
+		if err != nil {
+			return "", fmt.Errorf("generate child resource UUIDv7: %w", err)
+		}
+		id = generatedID.String()
 	}
 	if !interfaces.IsValidAuthorizationID(id) {
 		return "", rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ID).

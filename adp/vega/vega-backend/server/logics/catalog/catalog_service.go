@@ -19,12 +19,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	kwcrypto "github.com/openbkn-ai/bkn-foundry/comm-go/crypto"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-	"github.com/rs/xid"
 	attr "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
@@ -255,7 +255,11 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	now := time.Now().UnixMilli()
 	id := req.ID
 	if id == "" {
-		id = xid.New().String()
+		generatedID, err := uuid.NewV7()
+		if err != nil {
+			return "", fmt.Errorf("generate catalog UUIDv7: %w", err)
+		}
+		id = generatedID.String()
 	}
 	catalog := &interfaces.Catalog{
 		ID:            id,

@@ -83,9 +83,6 @@ func init() {
 		// Returns the field name defined by the json tag.
 		return name
 	})
-	_ = validator.RegisterValidation("uuid4", func(fl validatorv10.FieldLevel) bool {
-		return govalidator.IsUUIDv4(fl.Field().String())
-	})
 }
 
 // ValidateOperatorName verifies whether the operator name is legal.

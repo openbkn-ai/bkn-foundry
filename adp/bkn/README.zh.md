@@ -98,7 +98,7 @@ make api-docs-html
 
 依赖要求：
 
-- Go 1.24+
+- Go 1.25+
 - MariaDB 11.4+ 或 DM8
 - OpenSearch 2.x
 - 按各服务 `server/config/*.yaml` 配置可访问的依赖服务

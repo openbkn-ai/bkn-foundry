@@ -20,7 +20,7 @@ Core features are five tools and the Context Loader MCP server:
 ## Technical Architecture
 
 ### Tech Stack
-- **Language**: Go 1.24
+- **Language**: Go 1.25
 - **Web framework**: Gin 1.11
 - **Observability**: OpenTelemetry
 - **Cache**: Redis (optional, sentinel mode supported)
@@ -61,7 +61,7 @@ server/
 ## Quick Start
 
 ### Requirements
-- Go 1.24+
+- Go 1.25+
 - Access to ontology-query, ontology-manager, and other configured backends (or use ktctl to connect to a remote cluster)
 
 ### Local Development
