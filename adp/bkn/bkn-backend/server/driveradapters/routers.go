@@ -64,7 +64,7 @@ type restHandler struct {
 
 func NewRestHandler(appSetting *common.AppSetting, auditStore *operationaudit.Store) RestHandler {
 	var projectionVerifier *bkntrace.ProjectionGrantVerifier
-	if projectionGrantVerifierConfigured() {
+	if projectionGrantVerifierEnabled() {
 		verifier, err := bkntrace.NewProjectionGrantVerifierFromEnv()
 		if err != nil {
 			panic(fmt.Sprintf("invalid projection grant verifier configuration: %v", err))
@@ -99,10 +99,8 @@ func NewRestHandler(appSetting *common.AppSetting, auditStore *operationaudit.St
 	return r
 }
 
-func projectionGrantVerifierConfigured() bool {
-	return strings.TrimSpace(os.Getenv("BKN_TRACE_PROJECTION_GRANT_ISSUER")) != "" ||
-		strings.TrimSpace(os.Getenv("BKN_TRACE_PROJECTION_GRANT_AUDIENCE")) != "" ||
-		strings.TrimSpace(os.Getenv("BKN_TRACE_PROJECTION_GRANT_PUBLIC_KEYS")) != ""
+func projectionGrantVerifierEnabled() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("BKN_TRACE_PROJECTION_GRANT_ENABLED")), "true")
 }
 
 func (r *restHandler) RegisterPublic(c *gin.Engine) {

@@ -88,6 +88,8 @@ spec:
           - name: BKN_SAFE_BASE_URL
             value: {{ .Values.bknSafe.url | quote }}
           {{- if .Values.bknTrace.projectionRead.enabled }}
+          - name: BKN_TRACE_PROJECTION_GRANT_ENABLED
+            value: "true"
           - name: BKN_TRACE_PROJECTION_GRANT_ISSUER
             value: {{ required "bknTrace.projectionRead.issuer is required when projection reads are enabled" .Values.bknTrace.projectionRead.issuer | quote }}
           - name: BKN_TRACE_PROJECTION_GRANT_AUDIENCE

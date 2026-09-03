@@ -6,28 +6,45 @@
 
 package driveradapters
 
-import "testing"
+import (
+	"testing"
 
-func TestProjectionGrantVerifierConfigured(t *testing.T) {
+	"github.com/gin-gonic/gin"
+)
+
+func TestProjectionGrantVerifierEnabled(t *testing.T) {
 	for _, test := range []struct {
-		name   string
-		issuer string
-		aud    string
-		keys   string
-		want   bool
+		name    string
+		enabled string
+		issuer  string
+		aud     string
+		keys    string
+		want    bool
 	}{
 		{name: "all unset", want: false},
-		{name: "issuer set", issuer: "trace-core-projection", want: true},
-		{name: "audience set", aud: "bkn-projection-read", want: true},
-		{name: "keys set", keys: "key-1=base64", want: true},
+		{name: "unrelated projection config", issuer: "trace-core-projection", aud: "bkn-projection-read", keys: "key-1=base64", want: false},
+		{name: "explicitly enabled", enabled: "true", want: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("BKN_TRACE_PROJECTION_GRANT_ENABLED", test.enabled)
 			t.Setenv("BKN_TRACE_PROJECTION_GRANT_ISSUER", test.issuer)
 			t.Setenv("BKN_TRACE_PROJECTION_GRANT_AUDIENCE", test.aud)
 			t.Setenv("BKN_TRACE_PROJECTION_GRANT_PUBLIC_KEYS", test.keys)
-			if got := projectionGrantVerifierConfigured(); got != test.want {
-				t.Fatalf("projectionGrantVerifierConfigured() = %t, want %t", got, test.want)
+			if got := projectionGrantVerifierEnabled(); got != test.want {
+				t.Fatalf("projectionGrantVerifierEnabled() = %t, want %t", got, test.want)
 			}
 		})
+	}
+}
+
+func TestProjectionReadRouteHasNoOntologyManagerAlias(t *testing.T) {
+	test := setGinMode()
+	defer test()
+	engine := gin.New()
+	(&restHandler{}).RegisterPublic(engine)
+	for _, route := range engine.Routes() {
+		if route.Path == "/api/ontology-manager/in/v1/trace/projection/knowledge-networks/:kn_id" {
+			t.Fatal("projection reader must not have an ontology-manager alias")
+		}
 	}
 }

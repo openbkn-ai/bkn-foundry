@@ -776,6 +776,36 @@ func Test_knowledgeNetworkService_GetKNByID(t *testing.T) {
 	})
 }
 
+func Test_knowledgeNetworkService_ExportKNForProjectionDoesNotUseUserServices(t *testing.T) {
+	Convey("Test projection export bypasses user authorization and enrichment\n", t, func() {
+		ctx := context.Background()
+		mockCtrl := gomock.NewController(t)
+		defer mockCtrl.Finish()
+
+		kna := bmock.NewMockKNAccess(mockCtrl)
+		cgs := bmock.NewMockConceptGroupService(mockCtrl)
+		ots := bmock.NewMockObjectTypeService(mockCtrl)
+		rts := bmock.NewMockRelationTypeService(mockCtrl)
+		ats := bmock.NewMockActionTypeService(mockCtrl)
+		ms := bmock.NewMockMetricService(mockCtrl)
+		service := &knowledgeNetworkService{
+			kna: kna, cgs: cgs, ots: ots, rts: rts, ats: ats, ms: ms,
+		}
+
+		kn := &interfaces.KN{KNID: "kn-allowed", KNName: "Allowed", Branch: interfaces.MAIN_BRANCH}
+		kna.EXPECT().GetKNByID(gomock.Any(), "kn-allowed", interfaces.MAIN_BRANCH).Return(kn, nil)
+		cgs.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return([]*interfaces.ConceptGroup{}, 0, nil)
+		ots.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return([]*interfaces.ObjectType{}, 0, nil)
+		rts.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{}, 0, nil)
+		ats.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{}, 0, nil)
+		ms.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(&interfaces.MetricsList{}, nil)
+
+		result, err := service.ExportKNForProjection(ctx, "kn-allowed")
+		So(err, ShouldBeNil)
+		So(result, ShouldEqual, kn)
+	})
+}
+
 func Test_knowledgeNetworkService_InsertDatasetData(t *testing.T) {
 	Convey("Test InsertDatasetData\n", t, func() {
 		ctx := context.Background()

@@ -76,7 +76,7 @@ func TestKnowledgeNetworkProjectionReadRequiresGrantForClaimedNetwork(t *testing
 	engine := gin.New()
 	engine.GET("/api/bkn-backend/in/v1/trace/projection/knowledge-networks/:kn_id", handler.GetKNByProjectionGrant)
 
-	kns.EXPECT().GetKNByID(gomock.Any(), "kn-allowed", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(&interfaces.KN{KNID: "kn-allowed", KNName: "Allowed"}, nil)
+	kns.EXPECT().ExportKNForProjection(gomock.Any(), "kn-allowed").Return(&interfaces.KN{KNID: "kn-allowed", KNName: "Allowed"}, nil)
 	request := httptest.NewRequest(http.MethodGet, "/api/bkn-backend/in/v1/trace/projection/knowledge-networks/kn-allowed", nil)
 	request.Header.Set(projectionGrantHeader, token)
 	response := httptest.NewRecorder()
@@ -105,6 +105,51 @@ func TestKnowledgeNetworkProjectionReadRequiresGrantForClaimedNetwork(t *testing
 	engine.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/ontology-manager/in/v1/trace/projection/knowledge-networks/kn-allowed", nil))
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("ontology-manager projection alias response = %d, want 404", response.Code)
+	}
+}
+
+func TestKnowledgeNetworkProjectionReadHidesSourceFailures(t *testing.T) {
+	test := setGinMode()
+	defer test()
+
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	t.Setenv("BKN_TRACE_PROJECTION_GRANT_ISSUER", "trace-core-projection")
+	t.Setenv("BKN_TRACE_PROJECTION_GRANT_AUDIENCE", "bkn-projection-read")
+	t.Setenv("BKN_TRACE_PROJECTION_GRANT_PUBLIC_KEYS", "key-1="+base64.StdEncoding.EncodeToString(publicKey))
+	verifier, err := bkntrace.NewProjectionGrantVerifierFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := projectiongrant.Sign(projectiongrant.Claims{
+		Version: 1, Issuer: "trace-core-projection", KeyID: "key-1", Audience: "bkn-projection-read",
+		EventID: "event-1", InteractionID: "interaction-1", FactsHash: "facts-1",
+		KnowledgeNetworkIDs: []string{"kn-allowed"}, IssuedAt: now.Add(-time.Minute), ExpiresAt: now.Add(time.Hour),
+	}, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	kns := bmock.NewMockKNService(ctrl)
+	kns.EXPECT().ExportKNForProjection(gomock.Any(), "kn-allowed").Return(nil, errors.New("database unavailable"))
+	handler := &restHandler{kns: kns, projectionGrantVerifier: &verifier}
+	engine := gin.New()
+	engine.GET("/api/bkn-backend/in/v1/trace/projection/knowledge-networks/:kn_id", handler.GetKNByProjectionGrant)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/bkn-backend/in/v1/trace/projection/knowledge-networks/kn-allowed", nil)
+	request.Header.Set(projectionGrantHeader, token)
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, request)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("source failure response = %d, want 404", response.Code)
+	}
+	if response.Body.Len() != 0 {
+		t.Fatalf("source failure body = %q, want empty", response.Body.String())
 	}
 }
 

@@ -41,13 +41,9 @@ func (r *restHandler) GetKNByProjectionGrant(c *gin.Context) {
 		c.Status(http.StatusNotFound)
 		return
 	}
-	kn, err := r.kns.GetKNByID(c.Request.Context(), knID, interfaces.MAIN_BRANCH, interfaces.Mode_Export)
+	kn, err := r.kns.ExportKNForProjection(c.Request.Context(), knID)
 	if err != nil {
-		if httpErr, ok := err.(*rest.HTTPError); ok {
-			rest.ReplyError(c, httpErr)
-			return
-		}
-		c.Status(http.StatusInternalServerError)
+		c.Status(http.StatusNotFound)
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, kn)
