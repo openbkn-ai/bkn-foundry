@@ -13,7 +13,7 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/google/uuid v1.6.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.4
+	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.4-0.20260831021942-4643567ee25d
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/smartystreets/goconvey v1.8.1
