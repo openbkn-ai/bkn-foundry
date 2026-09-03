@@ -356,6 +356,14 @@ func enumSchema(values ...string) map[string]any {
 	return map[string]any{"type": "string", "enum": values}
 }
 
+func describedStringSchema(description string) map[string]any {
+	return map[string]any{"type": "string", "description": description}
+}
+
+func describedEnumSchema(description string, values ...string) map[string]any {
+	return map[string]any{"type": "string", "enum": values, "description": description}
+}
+
 func expectedResourceSchema(idField string) map[string]any {
 	return map[string]any{
 		"type": "array",
@@ -402,27 +410,70 @@ func offerBKNContext(input json.RawMessage) json.RawMessage {
 	return raw
 }
 
+// bknContextInputSchema declares the managed Trace context that offerBKNContext
+// injects into every business tool.
+//
+// The field descriptions are documentation, not validation: this schema is the
+// only place a client can learn what the Trace parameters mean, since a UI that
+// renders a tool's inputSchema as a field table (bkn-studio#347) and a model
+// choosing arguments both read the declaration and nothing else. Cross-field
+// rules stay in requireBKNContext and the lifecycle guard.
+//
+// The text is English in the baseline because this schema is built in Go, where
+// hard-coded Chinese is barred; en-US therefore needs no overlay entry, and a
+// zh-CN client sees the same English it already sees for the object-level
+// description above.
 func bknContextInputSchema() map[string]any {
 	return map[string]any{
 		"type":        "object",
 		"description": "BKN Trace managed context. Use only IDs returned by lifecycle tools.",
 		"properties": map[string]any{
-			"conversation_id":     stringSchema(),
-			"interaction_id":      stringSchema(),
-			"parent_operation_id": stringSchema(),
+			"conversation_id": describedStringSchema(
+				"Conversation this call belongs to. Copy the conversation_id returned by bkn_start_interaction; " +
+					"it stays the same for every call in the conversation.",
+			),
+			"interaction_id": describedStringSchema(
+				"Turn this call belongs to. Copy the interaction_id returned by bkn_start_interaction for the " +
+					"current user question; the next question gets a new one.",
+			),
+			"parent_operation_id": describedStringSchema(
+				"operation_id of the enclosing step, which records this call as its child. Omit it when the call " +
+					"is made directly for the user's question.",
+			),
 			"causation_event_ids": map[string]any{
-				"type": "array", "maxItems": 64, "items": stringSchema(),
+				"type": "array", "maxItems": 64,
+				"items": describedStringSchema("Event id of one upstream Trace event."),
+				"description": "Trace event ids that caused this call, when the host propagates them. Omit them " +
+					"if unknown: the recorded causality is then parent_operation_id alone.",
 			},
 			"business_refs": map[string]any{
 				"type": "array", "maxItems": 64,
+				"description": "Business objects this call reads or acts on, declared for the evidence chain. " +
+					"Except for data_resource, every ref must belong to the knowledge network this call addresses; " +
+					"a ref that is not canonical is rejected.",
 				"items": map[string]any{
-					"type": "object",
+					"type":        "object",
+					"description": "One declared business object.",
 					"properties": map[string]any{
-						"ref_type": enumSchema(
+						"ref_type": describedEnumSchema(
+							"Kind of business object being declared, which also fixes the prefix of ref_id: "+
+								"knowledge_network=kn, object_type=object, object_instance=object_instance, "+
+								"property=property, relation_type=relation, data_resource=resource, metric=metric, "+
+								"logic=logic, function=function, action_type=action_type, "+
+								"action_instance=action_instance.",
 							"knowledge_network", "object_type", "object_instance", "property", "relation_type",
 							"data_resource", "metric", "logic", "function", "action_type", "action_instance",
 						),
-						"ref_id": stringSchema(), "version": stringSchema(),
+						"ref_id": describedStringSchema(
+							"Canonical colon-separated identifier of the object. Its first segment is the prefix " +
+								"ref_type requires and, for every kind except data_resource, its second segment is " +
+								"the kn_id this call addresses, for example object:<kn_id>:<object_type_id>. " +
+								"Instance-level and property-level kinds carry one further segment.",
+						),
+						"version": describedStringSchema(
+							"Version of the referenced object. Omit it when the object is unversioned; the " +
+								"declaration is then recorded as \"unversioned\".",
+						),
 					},
 					"required": []string{"ref_type", "ref_id"}, "additionalProperties": false,
 				},
