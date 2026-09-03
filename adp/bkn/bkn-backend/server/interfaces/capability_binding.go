@@ -6,9 +6,14 @@
 
 package interfaces
 
+import "github.com/openbkn-ai/bkn-foundry/comm-go/audit"
+
 // Capability types a knowledge network can bind. Skill and Function share one table because
 // their binding semantics are identical: both store a reference, never the capability itself.
 const (
+	// AUDIT_TARGET_CAPABILITY_BINDING is the operation-audit target type of a binding row.
+	AUDIT_TARGET_CAPABILITY_BINDING = "kn_capability_binding"
+
 	CAPABILITY_TYPE_SKILL    = "skill"
 	CAPABILITY_TYPE_FUNCTION = "function"
 )
@@ -83,4 +88,21 @@ type AttachCapabilityEntry struct {
 // AttachCapabilitiesReq mounts one or more capabilities onto a knowledge network branch.
 type AttachCapabilitiesReq struct {
 	Capabilities []*AttachCapabilityEntry `json:"capabilities"`
+}
+
+var (
+	// CapabilityBindingSort maps the sort keys accepted on the query string to physical columns.
+	CapabilityBindingSort = map[string]string{
+		"create_time": "f_create_time",
+		"update_time": "f_update_time",
+	}
+)
+
+// GenerateCapabilityBindingAuditObject builds the audit object for mount and release operations.
+func GenerateCapabilityBindingAuditObject(id string, name string) audit.AuditObject {
+	return audit.AuditObject{
+		Type: AUDIT_TARGET_CAPABILITY_BINDING,
+		ID:   id,
+		Name: name,
+	}
 }

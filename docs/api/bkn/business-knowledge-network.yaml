@@ -1773,8 +1773,26 @@ components:
         action_types_total:
           description: Action type count
           type: integer
+        concept_groups_total:
+          description: Concept group count
+          type: integer
+        risk_types_total:
+          description: Risk type count
+          type: integer
         metrics_total:
           description: Metric count
+          type: integer
+        skills_total:
+          description: >-
+            Bound Skill count. Counts rows of the capability binding table for this branch;
+            it carries no dangling judgement, so a Skill deleted in the execution factory is
+            still counted until the binding is released.
+          type: integer
+        functions_total:
+          description: >-
+            Bound function (ToolBox tool) count, on the same terms as skills_total. A
+            whole-box mount is expanded into one binding per tool at write time, so this is
+            the number of tools, not of boxes.
           type: integer
     ConceptGroupInfo:
       description: Concept group information

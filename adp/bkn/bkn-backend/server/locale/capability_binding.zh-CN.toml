@@ -1,0 +1,54 @@
+[BknBackend.CapabilityBinding.InvalidParameter]
+Description = "能力绑定参数不合法"
+Solution = "请检查请求体中的能力类型与标识。"
+ErrorLink = ""
+
+[BknBackend.CapabilityBinding.NullParameter.CapabilityID]
+Description = "缺少能力标识"
+Solution = "skill 需要提供 skill_id，function 需要提供 tool_id。"
+ErrorLink = ""
+
+[BknBackend.CapabilityBinding.NullParameter.OwnerID]
+Description = "缺少所属工具箱标识"
+Solution = "function 类型必须提供 owner_id（工具箱 id），工具标识在执行工厂按箱限定作用域。"
+ErrorLink = ""
+
+[BknBackend.CapabilityBinding.InvalidCapabilityType]
+Description = "不支持的能力类型"
+Solution = "能力类型仅支持 skill 与 function。"
+ErrorLink = ""
+
+[BknBackend.CapabilityBinding.NotFound]
+Description = "未找到能力绑定"
+Solution = "请确认绑定 id 与分支。"
+ErrorLink = ""
+
+[BknBackend.CapabilityBinding.InternalError]
+Description = "能力绑定处理失败"
+Solution = "请重试或联系支持。"
+ErrorLink = ""
+
+[BknBackend.CapabilityBinding.InternalError.BeginTransactionFailed]
+Description = "开启事务失败"
+Solution = "请重试或联系支持。"
+ErrorLink = ""
+
+[BknBackend.CapabilityBinding.InternalError.CreateBindingsFailed]
+Description = "写入能力绑定失败"
+Solution = "请重试或联系支持。"
+ErrorLink = ""
+
+[BknBackend.CapabilityBinding.InternalError.DeleteBindingsFailed]
+Description = "解除能力绑定失败"
+Solution = "请重试或联系支持。"
+ErrorLink = ""
+
+[BknBackend.CapabilityBinding.InternalError.ListBindingsFailed]
+Description = "查询能力绑定列表失败"
+Solution = "请重试或联系支持。"
+ErrorLink = ""
+
+[BknBackend.CapabilityBinding.InternalError.GetBindingsTotalFailed]
+Description = "统计能力绑定数量失败"
+Solution = "请重试或联系支持。"
+ErrorLink = ""

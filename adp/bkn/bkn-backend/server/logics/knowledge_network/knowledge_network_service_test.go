@@ -192,6 +192,7 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		rtA := bmock.NewMockRiskTypeAccess(mockCtrl)
 		ma := bmock.NewMockMetricAccess(mockCtrl)
+		cba := bmock.NewMockCapabilityBindingAccess(mockCtrl)
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
@@ -201,6 +202,7 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 			cga:        cga,
 			riskTypeA:  rtA,
 			ma:         ma,
+			cba:        cba,
 		}
 
 		Convey("Success getting statistics\n", func() {
@@ -215,6 +217,11 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(2, nil)
 			rtA.EXPECT().GetRiskTypesTotal(gomock.Any(), gomock.Any()).Return(4, nil)
 			ma.EXPECT().GetMetricsTotal(gomock.Any(), gomock.Any()).Return(7, nil)
+			cba.EXPECT().GetBindingsTotalByType(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).
+				Return(map[string]int{
+					interfaces.CAPABILITY_TYPE_SKILL:    3,
+					interfaces.CAPABILITY_TYPE_FUNCTION: 4,
+				}, nil)
 
 			stats, err := service.GetStatByKN(ctx, kn)
 			So(err, ShouldBeNil)
@@ -225,6 +232,8 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 			So(stats.CgTotal, ShouldEqual, 2)
 			So(stats.RiskTypeTotal, ShouldEqual, 4)
 			So(stats.MetricsTotal, ShouldEqual, 7)
+			So(stats.SkillsTotal, ShouldEqual, 3)
+			So(stats.FunctionsTotal, ShouldEqual, 4)
 		})
 
 		Convey("Failed when getting object types total returns error\n", func() {

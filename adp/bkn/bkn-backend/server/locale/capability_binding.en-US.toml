@@ -1,0 +1,54 @@
+[BknBackend.CapabilityBinding.InvalidParameter]
+Description = "Invalid capability binding parameter"
+Solution = "Check the capability type and identifiers in the request body."
+ErrorLink = ""
+
+[BknBackend.CapabilityBinding.NullParameter.CapabilityID]
+Description = "Missing capability identifier"
+Solution = "Provide skill_id for a skill and tool_id for a function."
+ErrorLink = ""
+
+[BknBackend.CapabilityBinding.NullParameter.OwnerID]
+Description = "Missing owning tool box identifier"
+Solution = "A function binding requires owner_id (the tool box id); tool ids are scoped to their box in the execution factory."
+ErrorLink = ""
+
+[BknBackend.CapabilityBinding.InvalidCapabilityType]
+Description = "Unsupported capability type"
+Solution = "Only skill and function are supported."
+ErrorLink = ""
+
+[BknBackend.CapabilityBinding.NotFound]
+Description = "Capability binding not found"
+Solution = "Verify the binding id and branch."
+ErrorLink = ""
+
+[BknBackend.CapabilityBinding.InternalError]
+Description = "Failed to process the capability binding"
+Solution = "Please retry or contact support."
+ErrorLink = ""
+
+[BknBackend.CapabilityBinding.InternalError.BeginTransactionFailed]
+Description = "Failed to begin the transaction"
+Solution = "Please retry or contact support."
+ErrorLink = ""
+
+[BknBackend.CapabilityBinding.InternalError.CreateBindingsFailed]
+Description = "Failed to write capability bindings"
+Solution = "Please retry or contact support."
+ErrorLink = ""
+
+[BknBackend.CapabilityBinding.InternalError.DeleteBindingsFailed]
+Description = "Failed to release capability bindings"
+Solution = "Please retry or contact support."
+ErrorLink = ""
+
+[BknBackend.CapabilityBinding.InternalError.ListBindingsFailed]
+Description = "Failed to list capability bindings"
+Solution = "Please retry or contact support."
+ErrorLink = ""
+
+[BknBackend.CapabilityBinding.InternalError.GetBindingsTotalFailed]
+Description = "Failed to count capability bindings"
+Solution = "Please retry or contact support."
+ErrorLink = ""

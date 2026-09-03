@@ -50,6 +50,7 @@ type knowledgeNetworkService struct {
 	appSetting *common.AppSetting
 	db         *sql.DB
 	ata        interfaces.ActionTypeAccess
+	cba        interfaces.CapabilityBindingAccess
 	ats        interfaces.ActionTypeService
 	cga        interfaces.ConceptGroupAccess
 	cgs        interfaces.ConceptGroupService
@@ -75,6 +76,7 @@ func NewKNService(appSetting *common.AppSetting) interfaces.KNServiceWithProxyMu
 		knService = &knowledgeNetworkService{
 			appSetting: appSetting,
 			ata:        logics.ATA,
+			cba:        logics.CBA,
 			ats:        action_type.NewActionTypeService(appSetting),
 			cga:        logics.CGA,
 			cgs:        concept_group.NewConceptGroupService(appSetting),
@@ -934,13 +936,26 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 			berrors.BknBackend_KnowledgeNetwork_InternalError_GetMetricsTotalFailed).WithErrorDetails(err.Error())
 	}
 
+	// Capability binding counts. One grouped query covers both skills and functions.
+	capabilityTotals, err := kns.cba.GetBindingsTotalByType(ctx, kn.KNID, kn.Branch)
+	if err != nil {
+		logger.Errorf("GetBindingsTotalByType in knowledge network[%s] error: %s", kn.KNID, err.Error())
+		span.SetStatus(codes.Error, fmt.Sprintf("GetBindingsTotalByType in knowledge network[%s], error: %v", kn.KNID, err))
+		span.End()
+
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_CapabilityBinding_InternalError_GetBindingsTotalFailed).WithErrorDetails(err.Error())
+	}
+
 	statistics := &interfaces.Statistics{
-		CgTotal:       cgCnt,
-		OtTotal:       otCnt,
-		RtTotal:       rtCnt,
-		AtTotal:       atCnt,
-		RiskTypeTotal: riskTypeCnt,
-		MetricsTotal:  metricsCnt,
+		CgTotal:        cgCnt,
+		OtTotal:        otCnt,
+		RtTotal:        rtCnt,
+		AtTotal:        atCnt,
+		RiskTypeTotal:  riskTypeCnt,
+		MetricsTotal:   metricsCnt,
+		SkillsTotal:    capabilityTotals[interfaces.CAPABILITY_TYPE_SKILL],
+		FunctionsTotal: capabilityTotals[interfaces.CAPABILITY_TYPE_FUNCTION],
 	}
 
 	span.SetStatus(codes.Ok, "")
