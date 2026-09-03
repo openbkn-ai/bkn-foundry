@@ -37,6 +37,14 @@ func (r *skillRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
 	engine.GET("/skills/market", r.SkillHandler.QuerySkillMarketList)
 	// Check skills market details.
 	engine.GET("/skills/market/:skill_id", r.SkillHandler.GetSkillMarketDetail)
+	// Metadata interface.
+	// Batch names by skill ID. Same handler as the public face; FilterViewableIDs returns
+	// the IDs unchanged on the internal face, so callers see existence, not their own grants.
+	engine.POST("/skills/names", r.SkillHandler.QuerySkillNamesByIDs)
+	// Query skill details. Registered here for bkn-backend, whose execution-factory client
+	// is pinned to internal-v1. Unlike /skills/market/:skill_id it applies no public_access
+	// filter and reports an unpublished skill through `status` instead of 404.
+	engine.GET("/skills/:skill_id", r.SkillHandler.GetSkillDetail)
 	// Read interface.
 	// Query skill content.
 	engine.GET("/skills/:skill_id/content", r.SkillHandler.GetSkillContent)

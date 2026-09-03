@@ -1241,19 +1241,25 @@ func (r *skillRegistry) GetSkillDetail(ctx context.Context, req *interfaces.GetS
 		"user_id":  req.UserID,
 		"skill_id": req.SkillID,
 	})
-	accessor, err := r.AuthService.GetAccessor(ctx, req.UserID)
-	if err != nil {
-		return nil, err
-	}
-	if err = r.AuthService.CheckViewPermission(ctx, accessor, req.SkillID, interfaces.AuthResourceTypeSkill); err != nil {
-		return nil, err
+	// Object-level view is a caller-scoped judgement, so it only applies on the public face.
+	// The internal face answers "does this skill exist and what is its status" identically for
+	// every caller: bkn-backend validates capability bindings through it and must be able to
+	// tell "no such skill" apart from "exists but unpublished".
+	if infracommon.IsPublicAPIFromCtx(ctx) {
+		accessor, aerr := r.AuthService.GetAccessor(ctx, req.UserID)
+		if aerr != nil {
+			return nil, aerr
+		}
+		if err = r.AuthService.CheckViewPermission(ctx, accessor, req.SkillID, interfaces.AuthResourceTypeSkill); err != nil {
+			return nil, err
+		}
 	}
 	skill, err := r.skillRepo.SelectSkillByID(ctx, nil, req.SkillID)
 	if err != nil {
 		return nil, err
 	}
 	if skill == nil || skill.IsDeleted {
-		return nil, fmt.Errorf("skill not found: %s", req.SkillID)
+		return nil, errors.DefaultHTTPError(ctx, http.StatusNotFound, fmt.Sprintf("skill not found: %s", req.SkillID))
 	}
 	skillInfo := convertSkillDetail(skill, r.CategoryManager.GetCategoryName(ctx, interfaces.BizCategory(skill.Category)))
 	// Get user information.

@@ -785,7 +785,9 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 			mockUserMgnt.EXPECT().GetUsersName(gomock.Any(), gomock.Any()).Return(map[string]string{}, nil)
 			mockCategoryManager.EXPECT().GetCategoryName(gomock.Any(), gomock.Any()).Return("").AnyTimes()
 
-			resp, err := registry.GetSkillDetail(context.Background(), &interfaces.GetSkillDetailReq{
+			// Public face: object-level view still applies there (see registry_internal_face_test.go
+			// for the internal face, which answers the same way for every caller).
+			resp, err := registry.GetSkillDetail(skillPublicCtx(), &interfaces.GetSkillDetailReq{
 				SkillID: "skill-7",
 			})
 
@@ -819,7 +821,7 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 			mockUserMgnt.EXPECT().GetUsersName(gomock.Any(), gomock.Any()).Return(map[string]string{}, nil)
 			mockCategoryManager.EXPECT().GetCategoryName(gomock.Any(), gomock.Any()).Return("").AnyTimes()
 
-			resp, err := registry.GetSkillDetail(context.Background(), &interfaces.GetSkillDetailReq{
+			resp, err := registry.GetSkillDetail(skillPublicCtx(), &interfaces.GetSkillDetailReq{
 				SkillID: "skill-7b",
 			})
 
@@ -869,7 +871,7 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 				SkillID: "skill-12", Status: interfaces.BizStatusPublished.String(), IsDeleted: true,
 			}, nil)
 
-			resp, err := registry.GetSkillDetail(context.Background(), &interfaces.GetSkillDetailReq{
+			resp, err := registry.GetSkillDetail(skillPublicCtx(), &interfaces.GetSkillDetailReq{
 				SkillID: "skill-12",
 			})
 
@@ -885,7 +887,7 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 			mockAuthService.EXPECT().GetAccessor(gomock.Any(), "").Return(&interfaces.AuthAccessor{ID: "viewer"}, nil)
 			mockAuthService.EXPECT().CheckViewPermission(gomock.Any(), gomock.Any(), "skill-12b", interfaces.AuthResourceTypeSkill).Return(errors.New("view forbidden"))
 
-			resp, err := registry.GetSkillDetail(context.Background(), &interfaces.GetSkillDetailReq{
+			resp, err := registry.GetSkillDetail(skillPublicCtx(), &interfaces.GetSkillDetailReq{
 				SkillID: "skill-12b",
 			})
 

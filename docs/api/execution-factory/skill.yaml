@@ -37,6 +37,10 @@ info:
     放行等于任意账户可读任意技能全文，但直接翻强制会误伤，先影子观察再翻。
     调用方没带账户身份时任何档位都跳过判定——那是「无从判断」，不是「判定为无权」。
     `/execute` 不受该档位影响，一直按账户强制。
+
+    内部面另有两个只读元数据接口：`GET /skills/{skill_id}` 与 `POST /skills/names`。
+    它们不做调用者维度的判定，答的是「技能是否存在、什么状态」，供 bkn-backend 校验
+    知识网络能力绑定与回填元数据。
   version: 0.1.3
 servers:
   - url: /api/agent-operator-integration/v1
@@ -159,6 +163,10 @@ paths:
       operationId: getSkillNames
       description: |
         与 `/operator/names`、`/tool-box/names` 同契约：不存在的 ID 静默略过、不占位。
+
+        **也注册在 `internal-v1`**。公开面按调用者的 `view` 过滤（无权限的 ID 与不存在的
+        ID 一样被略过），内部面不过滤——服务间调用要的是「这些 ID 还在不在」，用于知识网络
+        能力绑定的元数据回填与悬空判定。
       requestBody:
         required: true
         content:
@@ -264,7 +272,15 @@ paths:
         - Skill
       summary: 查询技能详情
       operationId: getSkill
-      description: 取技能的元数据。文件清单与内容走 `/content`，包体走 `/download`。
+      description: |
+        取技能的元数据。文件清单与内容走 `/content`，包体走 `/download`。
+
+        **也注册在 `internal-v1`**，供 bkn-backend 校验知识网络能力绑定。内部面不做
+        调用者维度的 `view` 判定，同一技能对任何调用者返回相同结果；未发布的技能通过
+        `status` 字段体现，不返回 404。别拿 `/skills/market/{skill_id}` 代替它——那条路
+        走 `public_access` 且未发布即 404，会把「存在但未发布」误报成「不存在」。
+
+        `404` 只表示技能不存在或已删除。
       parameters:
         - $ref: '#/components/parameters/SkillID'
       responses:
