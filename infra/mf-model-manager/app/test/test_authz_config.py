@@ -3,7 +3,7 @@ import os
 import unittest
 from unittest import mock
 
-from app.core.config import base_config, validate_authz_config
+from app.core.config import authz_settings, base_config, validate_authz_config
 
 
 class ValidateAuthzConfigTest(unittest.TestCase):
@@ -32,13 +32,24 @@ class ValidateAuthzConfigTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self._run("shadow", "")
 
-    def test_unset_provider_is_rejected(self):
-        with self.assertRaises(RuntimeError):
-            self._run("", "http://bkn-safe:3000")
+    def test_unset_provider_is_accepted_with_a_warning(self):
+        # Refusing to start would turn an upgrade of a deployment that pins an
+        # explicit empty value into a CrashLoopBackOff.
+        self._run("", "http://bkn-safe:3000")
 
     def test_misspelled_provider_is_rejected(self):
         with self.assertRaises(RuntimeError):
             self._run("bkn_safe", "http://bkn-safe:3000")
+
+    def test_padded_provider_matches_the_runtime_comparison(self):
+        # A values file with a trailing space has to reach PermissionManager as
+        # the same normalised value the startup check accepted, or the service
+        # boots and then falls back to ISF on every decision.
+        env = {"AUTHZ_PROVIDER": " bkn-safe ", "BKN_SAFE_URL": " http://bkn-safe:3000 "}
+        with mock.patch.dict(os.environ, env, clear=False), \
+                mock.patch.object(base_config, "AUTH_ENABLED", True):
+            validate_authz_config()
+            self.assertEqual(authz_settings(), ("bkn-safe", "http://bkn-safe:3000"))
 
     def test_disabled_auth_skips_validation(self):
         # No authorization backend is consulted at all, so a missing provider

@@ -26,8 +26,10 @@ import (
 //   - "bkn-safe" : bkn-safe authoritative (full adapter)
 //   - "shadow"   : ISF authoritative + bkn-safe queried in parallel, diffs logged
 //   - "isf"      : ISF PermissionAccess unchanged; retired, kept as an escape hatch
-// "bkn-safe" and "shadow" both need BKN_SAFE_URL. There is no implicit default:
-// an unset or misspelled value is a misconfiguration, not a silent ISF fallback.
+// "bkn-safe" and "shadow" both need BKN_SAFE_URL. A misspelled value is a
+// misconfiguration and refuses to start; an unset value still falls back to ISF
+// but says so loudly, because existing deployments carry an explicit empty value
+// in their own values overrides and an upgrade must not CrashLoopBackOff.
 
 // safeClient talks to bkn-safe's clean authz API (/api/safe/v1/authz/*).
 type safeClient struct {
@@ -315,18 +317,27 @@ var supportedAuthzProviders = []string{"bkn-safe", "shadow", "isf"}
 
 // MaybeShadow applies the AUTHZ_PROVIDER switch.
 //
-// An unset or misspelled provider, and "bkn-safe" without BKN_SAFE_URL, used to
-// print one line and fall back to ISF. ISF is retired, so that fallback turned a
-// typo into an authorization surface whose answers are unpredictable, and the
-// single log line made it invisible at runtime. Report the misconfiguration and
+// A misspelled provider, and "bkn-safe" without BKN_SAFE_URL, used to print one
+// line and fall back to ISF. ISF is retired, so that fallback turned a typo into
+// an authorization surface whose answers are unpredictable, and the single log
+// line made it invisible at runtime. Both now report the misconfiguration and
 // let the caller refuse to start.
+//
+// An unset provider keeps the old fallback, loudly: deployments upgraded with
+// their own values override still carry an explicit empty value, and refusing to
+// start would turn an upgrade into a CrashLoopBackOff. Flipping that to an error
+// waits until those deployments are counted.
 func MaybeShadow(inner interfaces.PermissionAccess) (interfaces.PermissionAccess, error) {
 	provider := strings.TrimSpace(os.Getenv("AUTHZ_PROVIDER"))
-	if provider == "isf" {
+	switch provider {
+	case "":
+		log.Printf("[authz] AUTHZ_PROVIDER is unset, so authorization falls back to the retired ISF; set it to bkn-safe")
+		return inner, nil
+	case "isf":
 		log.Printf("[authz] provider=isf selects the retired authorization service; migrate to bkn-safe")
 		return inner, nil
-	}
-	if provider != "bkn-safe" && provider != "shadow" {
+	case "bkn-safe", "shadow":
+	default:
 		return nil, fmt.Errorf("AUTHZ_PROVIDER=%q is not a supported authorization backend; set it to one of %s",
 			provider, strings.Join(supportedAuthzProviders, ", "))
 	}

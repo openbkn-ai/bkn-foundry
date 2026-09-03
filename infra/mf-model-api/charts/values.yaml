@@ -30,13 +30,12 @@ ingress:
 env:
   devicecode: ""
 
-# bkn-safe (ISF replacement) cutover knobs. isf is the only other accepted
-# value and is retired; anything else refuses to start.
+# bkn-safe (ISF replacement) cutover knobs. isf is accepted but retired; a
+# misspelled value refuses to start, an unset one falls back to ISF and warns.
 # provider: "bkn-safe" | "shadow" | "isf". url: bkn-safe ClusterIP base URL.
 bknSafe:
-  # Defaults match what the installer writes. A chart-only install therefore
-  # lands on a working bkn-safe deployment instead of the retired ISF: an
-  # unset or misspelled authzProvider is now a startup error, not a fallback.
+  # Defaults match what the installer writes, so a chart-only install lands on
+  # a working bkn-safe deployment instead of the retired ISF.
   authzProvider: "bkn-safe"
   directoryProvider: "bkn-safe"
   url: "http://bkn-safe:3000"

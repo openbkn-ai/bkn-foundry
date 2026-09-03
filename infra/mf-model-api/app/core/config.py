@@ -139,6 +139,19 @@ AUTHZ_PROVIDER_ISF = 'isf'
 SUPPORTED_AUTHZ_PROVIDERS = AUTHZ_PROVIDERS_REQUIRING_SAFE_URL + (AUTHZ_PROVIDER_ISF,)
 
 
+def authz_settings():
+    """Read the authorization backend selection through one normalisation.
+
+    Both the startup check and PermissionManager go through here so a value
+    that passes validation is the same value the runtime compares against.
+    Normalising in only one of the two would let "bkn-safe " start the service
+    and then miss every equality check, which is the silent ISF fallback this
+    validation exists to remove.
+    """
+    return (os.getenv('AUTHZ_PROVIDER', '').strip(),
+            os.getenv('BKN_SAFE_URL', '').strip())
+
+
 def validate_authz_config():
     """Refuse to start when the authorization backend cannot be honoured.
 
@@ -146,15 +159,24 @@ def validate_authz_config():
     empty, used to print one line and fall back to ISF. ISF is retired, so
     that fallback turned a typo into an authorization surface whose answers
     are unpredictable, and the single log line made it invisible at runtime.
+
+    An unset provider keeps working: existing deployments carry an explicit
+    empty value in their own values overrides, and refusing to start would
+    turn an upgrade into a CrashLoopBackOff. It warns loudly instead, and the
+    flip to a hard failure waits until those deployments are counted.
     """
     if not base_config.AUTH_ENABLED:
         return
-    provider = os.getenv('AUTHZ_PROVIDER', '').strip()
-    safe_url = os.getenv('BKN_SAFE_URL', '').strip()
+    provider, safe_url = authz_settings()
     if provider in AUTHZ_PROVIDERS_REQUIRING_SAFE_URL:
         if not safe_url:
             raise RuntimeError(
                 f'AUTHZ_PROVIDER={provider} requires BKN_SAFE_URL to be set')
+        return
+    if provider == '':
+        logging.getLogger(__name__).warning(
+            'AUTHZ_PROVIDER is unset, so authorization falls back to the '
+            'retired ISF; set it to bkn-safe')
         return
     if provider == AUTHZ_PROVIDER_ISF:
         logging.getLogger(__name__).warning(

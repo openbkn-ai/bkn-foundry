@@ -512,17 +512,30 @@ func TestMaybeShadow(t *testing.T) {
 		assert.Same(t, inner, got)
 	})
 
-	// An unset or misspelled provider used to fall back to the retired ISF.
-	// It has to surface as a startup error instead.
-	t.Run("rejects unset provider", func(t *testing.T) {
+	// An unset provider keeps the ISF fallback so an upgrade does not
+	// CrashLoopBackOff; only a misspelled one is a startup error.
+	t.Run("returns inner for unset provider", func(t *testing.T) {
 		inner, _ := newMockPermissionAccessWithoutExpectation(t)
 		t.Setenv("AUTHZ_PROVIDER", "")
 		t.Setenv("BKN_SAFE_URL", "http://safe")
 
 		got, err := MaybeShadow(inner)
 
-		require.Error(t, err)
-		assert.Nil(t, got)
+		require.NoError(t, err)
+		assert.Same(t, inner, got)
+	})
+
+	// A values file with a trailing space has to select the same backend the
+	// runtime then compares against, not fall through to ISF unnoticed.
+	t.Run("tolerates surrounding whitespace", func(t *testing.T) {
+		inner, _ := newMockPermissionAccessWithoutExpectation(t)
+		t.Setenv("AUTHZ_PROVIDER", " bkn-safe ")
+		t.Setenv("BKN_SAFE_URL", " http://safe ")
+
+		got, err := MaybeShadow(inner)
+
+		require.NoError(t, err)
+		require.IsType(t, &safePermissionAccess{}, got)
 	})
 
 	t.Run("rejects unknown provider", func(t *testing.T) {
