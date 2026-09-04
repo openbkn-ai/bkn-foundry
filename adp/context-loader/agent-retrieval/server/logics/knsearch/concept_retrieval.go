@@ -32,7 +32,12 @@ func (s *localSearchImpl) conceptRetrieval(
 	req *interfaces.KnSearchLocalRequest,
 	config *interfaces.KnSearchConceptRetrievalConfig,
 ) (*interfaces.KnSearchConceptResult, error) {
-	return s.conceptRetrievalByGroups(ctx, req, config)
+	var err error
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer func() { oteltrace.EndSpan(ctx, err) }()
+
+	result, err := s.conceptRetrievalByGroups(ctx, req, config)
+	return result, err
 }
 
 // conceptRetrievalByGroups is the typed BKN concept recall path used by

@@ -587,6 +587,9 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 			return nil, err
 		}
 		objectTypes[0].Operations = operations
+	} else if err = permission.CheckKNChildBatchPermission(ctx, ots.ps,
+		interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, otIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
+		return nil, err
 	}
 
 	// Get object type groups.

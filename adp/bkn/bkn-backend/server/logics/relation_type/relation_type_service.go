@@ -398,6 +398,9 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 			return nil, err
 		}
 		relationTypes[0].Operations = operations
+	} else if err = permission.CheckKNChildBatchPermission(ctx, rts.ps,
+		interfaces.RESOURCE_TYPE_RELATION_TYPE, knID, rtIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
+		return nil, err
 	}
 
 	// Retrieve source and target object type names.

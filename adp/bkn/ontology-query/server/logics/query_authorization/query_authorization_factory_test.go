@@ -26,6 +26,9 @@ func TestQueryAuthorizationBypassesOnlyWhenAuthenticationIsDisabled(t *testing.T
 	t.Setenv("AUTH_ENABLED", "false")
 
 	service := NewQueryAuthorizationService(&common.AppSetting{})
+	if _, ok := service.(*authenticationDisabledQueryAuthorizationService); !ok {
+		t.Fatalf("query authorization service = %T, want authentication-disabled service", service)
+	}
 	query := &interfaces.SubGraphQueryBaseOnTypePath{
 		KNID:   "kn-a",
 		Branch: "historical-branch",

@@ -514,6 +514,9 @@ func (ats *actionTypeService) GetActionTypesByIDs(ctx context.Context, knID stri
 			return nil, err
 		}
 		actionTypes[0].Operations = operations
+	} else if err = permission.CheckKNChildBatchPermission(ctx, ats.ps,
+		interfaces.RESOURCE_TYPE_ACTION_TYPE, knID, atIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
+		return nil, err
 	}
 
 	// TODO: localize bound and impacted object types and their API documents.

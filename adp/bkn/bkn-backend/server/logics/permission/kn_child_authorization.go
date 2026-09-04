@@ -55,9 +55,9 @@ func KNChildOperationCandidates(resourceType string) []string {
 	return append([]string{}, knChildOperations...)
 }
 
-// CheckKNChildBatchPermission authorizes every child before business writes.
-// Callers that already opened a transaction must roll it back when this check
-// fails.
+// CheckKNChildBatchPermission authorizes every requested child with
+// all-or-nothing semantics. Write callers that already opened a transaction
+// must roll it back when this check fails.
 func CheckKNChildBatchPermission(ctx context.Context, ps interfaces.PermissionService,
 	resourceType, knID string, childIDs []string, childOperation string) error {
 

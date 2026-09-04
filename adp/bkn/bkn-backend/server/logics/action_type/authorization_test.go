@@ -7,8 +7,10 @@ package action_type
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.uber.org/mock/gomock"
 
 	"bkn-backend/interfaces"
@@ -61,5 +63,30 @@ func TestActionTypeSingleResourceAuthorization(t *testing.T) {
 				t.Fatalf("operation error = %v, want %v", err, denied)
 			}
 		})
+	}
+}
+
+func TestActionTypeMultiResourceDetailRequiresEveryChildPermission(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ata := bmock.NewMockActionTypeAccess(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	ids := []string{"at-1", "at-2"}
+
+	ata.EXPECT().GetActionTypesByIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, ids).
+		Return([]*interfaces.ActionType{
+			{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at-1"}},
+			{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at-2"}},
+		}, nil)
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_ACTION_TYPE,
+		[]string{"kn-1/at-1", "kn-1/at-2"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true,
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(map[string]interfaces.PermissionResourceOps{
+		"kn-1/at-1": {ResourceID: "kn-1/at-1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+	}, nil)
+
+	service := &actionTypeService{ata: ata, ps: ps}
+	_, err := service.GetActionTypesByIDs(context.Background(), "kn-1", interfaces.MAIN_BRANCH, ids)
+	var httpErr *rest.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden {
+		t.Fatalf("GetActionTypesByIDs() error = %v, want 403 when any child is denied", err)
 	}
 }
