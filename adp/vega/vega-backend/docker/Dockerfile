@@ -5,7 +5,7 @@
 
 ########################### Stage 0 ########################
 ARG BUILD_IMAGE=golang:1.25.14
-ARG BASE_IMAGE=ubuntu:24.04
+ARG PYTHON_BASE_IMAGE=ghcr.io/openbkn-ai/vega-backend-python-base:sha-c757948463031d6d
 
 FROM ${BUILD_IMAGE} AS builder
 
@@ -24,17 +24,10 @@ RUN set -ex; \
 
 ########################### Stage 1 ########################
 # Copy working directory to the actual release docker images
-FROM ${BASE_IMAGE} AS prod
+FROM ${PYTHON_BASE_IMAGE} AS prod
 
 ARG UID=1001
 ARG GID=1001
-
-RUN groupadd -r -g $GID openbkn \
-    && useradd -r -u $UID -g $GID openbkn \
-    && apt-get update \
-    && apt-get install -y python3 python3-pip \
-    && pip3 install --break-system-packages --index-url https://pypi.org/simple/ "sqlglot==30.14.0" \
-    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder --chown=$UID:$GID /go/src/bin /opt/vega-backend
 
