@@ -582,9 +582,7 @@ func (a *actionScheduleAccess) buildSelectQuery() sq.SelectBuilder {
 		"f_updater_type",
 		"f_update_time",
 	}
-	if common.GetActionExecutionPEPEnabled() {
-		columns = append(columns, "f_execution_subject", "f_execution_subject_type")
-	}
+	columns = append(columns, "f_execution_subject", "f_execution_subject_type")
 	return sq.Select(columns...).From(SCHEDULE_TABLE_NAME)
 }
 
@@ -622,9 +620,7 @@ func (a *actionScheduleAccess) scanScheduleValue(scanner scheduleScanner) (*inte
 		&schedule.Updater.Type,
 		&schedule.UpdateTime,
 	}
-	if common.GetActionExecutionPEPEnabled() {
-		destinations = append(destinations, &schedule.ExecutionSubject.ID, &schedule.ExecutionSubject.Type)
-	}
+	destinations = append(destinations, &schedule.ExecutionSubject.ID, &schedule.ExecutionSubject.Type)
 	err := scanner.Scan(destinations...)
 	if err != nil {
 		return nil, err

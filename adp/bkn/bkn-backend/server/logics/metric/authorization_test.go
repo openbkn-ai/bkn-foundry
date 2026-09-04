@@ -18,8 +18,7 @@ import (
 	bmock "bkn-backend/interfaces/mock"
 )
 
-func TestMetricSingleResourcePEP(t *testing.T) {
-	t.Setenv("KN_CHILD_RESOURCE_PEP_ENABLED", "true")
+func TestMetricSingleResourceAuthorization(t *testing.T) {
 	tests := []struct {
 		name      string
 		operation string
@@ -67,8 +66,7 @@ func TestMetricSingleResourcePEP(t *testing.T) {
 	}
 }
 
-func TestMetricListPEPFiltersBeforeTotalAndPagination(t *testing.T) {
-	t.Setenv("KN_CHILD_RESOURCE_PEP_ENABLED", "true")
+func TestMetricListAuthorizationFiltersBeforeTotalAndPagination(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ma := bmock.NewMockMetricAccess(ctrl)
 	ps := bmock.NewMockPermissionService(ctrl)
@@ -113,8 +111,7 @@ func TestMetricListPEPFiltersBeforeTotalAndPagination(t *testing.T) {
 	}
 }
 
-func TestMetricBatchDeletePEPRejectsBeforeBusinessWrites(t *testing.T) {
-	t.Setenv("KN_CHILD_RESOURCE_PEP_ENABLED", "true")
+func TestMetricBatchDeleteAuthorizationRejectsBeforeBusinessWrites(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ma := bmock.NewMockMetricAccess(ctrl)
 	ps := bmock.NewMockPermissionService(ctrl)
@@ -137,8 +134,7 @@ func TestMetricBatchDeletePEPRejectsBeforeBusinessWrites(t *testing.T) {
 	}
 }
 
-func TestMetricBatchOverwritePEPRejectsAndRollsBackBeforeBusinessWrites(t *testing.T) {
-	t.Setenv("KN_CHILD_RESOURCE_PEP_ENABLED", "true")
+func TestMetricBatchOverwriteAuthorizationRejectsAndRollsBackBeforeBusinessWrites(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	db, dbMock, err := sqlmock.New()
 	if err != nil {

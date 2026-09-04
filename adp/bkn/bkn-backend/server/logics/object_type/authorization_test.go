@@ -7,17 +7,18 @@ package object_type
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.uber.org/mock/gomock"
 
 	"bkn-backend/interfaces"
 	bmock "bkn-backend/interfaces/mock"
 )
 
-func TestObjectTypeSingleResourcePEP(t *testing.T) {
-	t.Setenv("KN_CHILD_RESOURCE_PEP_ENABLED", "true")
+func TestObjectTypeSingleResourceAuthorization(t *testing.T) {
 	tests := []struct {
 		name      string
 		operation string
@@ -74,22 +75,37 @@ func TestObjectTypeSingleResourcePEP(t *testing.T) {
 	}
 }
 
-func TestObjectTypeSingleResourcePEPDisabledUsesParentKN(t *testing.T) {
-	t.Setenv("KN_CHILD_RESOURCE_PEP_ENABLED", "false")
+func TestObjectTypeMultiResourceDetailRequiresEveryChildPermission(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ota := bmock.NewMockObjectTypeAccess(ctrl)
 	ps := bmock.NewMockPermissionService(ctrl)
-	denied := errors.New("denied")
-	ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "legacy/id").
-		Return("object", true, nil)
-	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN, ID: "kn-1",
-	}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(denied)
-	service := &objectTypeService{ota: ota, ps: ps}
+	db, sqlMock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
 
-	err := service.DeleteObjectTypesByIDs(context.Background(), nil, "kn-1", interfaces.MAIN_BRANCH,
-		[]string{"legacy/id"})
-	if !errors.Is(err, denied) {
-		t.Fatalf("operation error = %v, want %v", err, denied)
+	ids := []string{"ot-1", "ot-2"}
+	sqlMock.ExpectBegin()
+	ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, ids).
+		Return([]*interfaces.ObjectType{
+			{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot-1"}},
+			{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot-2"}},
+		}, nil)
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		[]string{"kn-1/ot-1", "kn-1/ot-2"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true,
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(map[string]interfaces.PermissionResourceOps{
+		"kn-1/ot-1": {ResourceID: "kn-1/ot-1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+	}, nil)
+	sqlMock.ExpectRollback()
+
+	service := &objectTypeService{db: db, ota: ota, ps: ps}
+	_, err = service.GetObjectTypesByIDs(context.Background(), nil, "kn-1", interfaces.MAIN_BRANCH, ids)
+	var httpErr *rest.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden {
+		t.Fatalf("GetObjectTypesByIDs() error = %v, want 403 when any child is denied", err)
+	}
+	if err := sqlMock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }

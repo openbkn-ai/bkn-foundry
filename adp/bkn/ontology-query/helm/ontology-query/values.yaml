@@ -40,10 +40,6 @@ antiAffinity:
 # Authentication switch
 auth:
   enabled: true
-  # Enable only after query_data policies and ResourceParent data are migrated.
-  queryDataPepEnabled: false
-  # Enable only after Schedule execution subjects and action policies are migrated.
-  actionExecutionPepEnabled: false
 
 bknSafe:
   url: "http://bkn-safe:3000"

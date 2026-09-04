@@ -48,6 +48,9 @@ func (a *queryCandidateAuthorizer) FilterObjectTypeIDs(ctx context.Context,
 	if len(candidateIDs) == 0 {
 		return []string{}, nil
 	}
+	if !config.GetAuthEnabled() {
+		return append([]string(nil), candidateIDs...), nil
+	}
 	account, ok := trustedAccount(ctx)
 	if !ok {
 		return nil, infraerrors.DefaultHTTPError(ctx, http.StatusUnauthorized, "request subject is missing or invalid")

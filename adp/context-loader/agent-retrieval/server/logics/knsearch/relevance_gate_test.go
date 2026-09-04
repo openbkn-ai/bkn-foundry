@@ -147,7 +147,8 @@ func TestSemanticInstanceRetrieval_ThresholdEnablesRerank(t *testing.T) {
 			return rowsToResp([]map[string]any{instanceRow("a", 9), instanceRow("b", 8)}), nil
 		},
 	}
-	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery, rerankClient: client}
+	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery,
+		authorizer: allowAllQueryCandidateAuthorizer{}, rerankClient: client}
 	config := DefaultRetrievalConfig()
 	config.SemanticInstanceRetrieval.MinRerankerScore = 0.5
 	if normalizeRerankMode(config.SemanticInstanceRetrieval.InstanceRerankMode) != InstanceRerankModeOff {

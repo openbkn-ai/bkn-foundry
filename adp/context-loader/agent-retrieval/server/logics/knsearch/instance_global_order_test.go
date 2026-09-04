@@ -53,7 +53,7 @@ func TestSemanticInstanceRetrieval_OrdersAcrossObjectTypes(t *testing.T) {
 			}
 		},
 	}
-	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery}
+	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery, authorizer: allowAllQueryCandidateAuthorizer{}}
 	config := DefaultRetrievalConfig()
 
 	result, err := svc.semanticInstanceRetrieval(context.Background(),
@@ -90,7 +90,7 @@ func TestSemanticInstanceRetrieval_StampsRank(t *testing.T) {
 			}), nil
 		},
 	}
-	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery}
+	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery, authorizer: allowAllQueryCandidateAuthorizer{}}
 	config := DefaultRetrievalConfig()
 
 	result, err := svc.semanticInstanceRetrieval(context.Background(),

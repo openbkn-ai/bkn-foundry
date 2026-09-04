@@ -16,7 +16,6 @@ import (
 )
 
 func TestExecuteScheduleUsesPersistedExecutionSubject(t *testing.T) {
-	t.Setenv("ACTION_EXECUTION_PEP_ENABLED", "true")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		if got := request.Header.Get(interfaces.HTTP_HEADER_ACCOUNT_ID); got != "user-current" {
 			t.Errorf("account ID = %q, want user-current", got)
@@ -43,8 +42,7 @@ func TestExecuteScheduleUsesPersistedExecutionSubject(t *testing.T) {
 	}
 }
 
-func TestExecuteScheduleRejectsMissingSubjectWhenPEPEnabled(t *testing.T) {
-	t.Setenv("ACTION_EXECUTION_PEP_ENABLED", "true")
+func TestExecuteScheduleRejectsMissingSubjectWhenAuthenticationEnabled(t *testing.T) {
 	worker := &ScheduleWorker{appSetting: &common.AppSetting{}, httpClient: http.DefaultClient}
 	if executionID, err := worker.executeSchedule(context.Background(), &interfaces.ActionSchedule{
 		Creator: interfaces.AccountInfo{ID: "user-creator", Type: "user"},

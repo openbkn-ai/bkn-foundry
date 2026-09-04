@@ -518,8 +518,6 @@ BKNSAFE_ON
 namespace: ${cfg_namespace}
 auth:
   enabled: ${auth_enabled}
-  knChildResourcePepEnabled: false
-  queryDataPepEnabled: false
 env:
   language: ${cfg_lang}
   timezone: ${cfg_tz}

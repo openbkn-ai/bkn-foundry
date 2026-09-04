@@ -12,10 +12,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-func (s *localSearchImpl) knPEPEnabled() bool {
-	return s != nil && s.config != nil && s.config.Auth.ContextLoaderKNPEPEnabled
-}
-
 func (s *localSearchImpl) filterAuthorizedObjectTypes(ctx context.Context, knID string,
 	objectTypes []*interfaces.KnSearchObjectType,
 ) ([]*interfaces.KnSearchObjectType, error) {
@@ -55,13 +51,9 @@ func (s *localSearchImpl) filterAuthorizedObjectTypes(ctx context.Context, knID 
 func (s *localSearchImpl) fetchAuthorizedSampleData(ctx context.Context, knID string,
 	objectTypes []*interfaces.KnSearchObjectType, brief bool,
 ) error {
-	targets := objectTypes
-	if s.knPEPEnabled() {
-		var err error
-		targets, err = s.filterAuthorizedObjectTypes(ctx, knID, objectTypes)
-		if err != nil {
-			return err
-		}
+	targets, err := s.filterAuthorizedObjectTypes(ctx, knID, objectTypes)
+	if err != nil {
+		return err
 	}
 	if len(targets) == 0 {
 		return nil

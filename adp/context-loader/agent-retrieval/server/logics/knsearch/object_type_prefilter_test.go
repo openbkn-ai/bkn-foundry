@@ -92,7 +92,7 @@ func TestSemanticInstanceRetrieval_PreFilterSavesDownstreamQueries(t *testing.T)
 			return rowsToResp([]map[string]any{instanceRow(req.OtID, 9)}), nil
 		},
 	}
-	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery}
+	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery, authorizer: allowAllQueryCandidateAuthorizer{}}
 	config := DefaultRetrievalConfig()
 	config.SemanticInstanceRetrieval.MinObjectTypeScoreRatio = 0.25
 
@@ -119,7 +119,7 @@ func TestSemanticInstanceRetrieval_CostScalesWithObjectTypes(t *testing.T) {
 					return rowsToResp([]map[string]any{instanceRow(req.OtID, 9)}), nil
 				},
 			}
-			svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery}
+			svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery, authorizer: allowAllQueryCandidateAuthorizer{}}
 			config := DefaultRetrievalConfig()
 			config.ConceptRetrieval.TopK = count
 
@@ -187,7 +187,7 @@ func TestSemanticInstanceRetrieval_PreFilterQueriesUnscoredObjectTypes(t *testin
 			return rowsToResp([]map[string]any{instanceRow(req.OtID, 9)}), nil
 		},
 	}
-	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery}
+	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery, authorizer: allowAllQueryCandidateAuthorizer{}}
 	config := DefaultRetrievalConfig()
 	config.SemanticInstanceRetrieval.MinObjectTypeScoreRatio = 0.3
 

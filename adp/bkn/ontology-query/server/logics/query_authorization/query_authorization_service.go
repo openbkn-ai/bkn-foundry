@@ -25,14 +25,63 @@ type queryAuthorizationService struct {
 	permissions interfaces.PermissionService
 }
 
+type authenticationDisabledQueryAuthorizationService struct{}
+
+var (
+	_ interfaces.QueryAuthorizationService = (*queryAuthorizationService)(nil)
+	_ interfaces.QueryAuthorizationService = (*authenticationDisabledQueryAuthorizationService)(nil)
+)
+
 func NewQueryAuthorizationService(appSetting *common.AppSetting) interfaces.QueryAuthorizationService {
-	if !common.GetAuthEnabled() || !QueryDataPEPEnabled() {
-		return &noopQueryAuthorizationService{}
+	if !common.GetAuthEnabled() {
+		return &authenticationDisabledQueryAuthorizationService{}
 	}
 	return &queryAuthorizationService{
 		models:      logics.OMA,
 		permissions: permissionlogic.NewPermissionService(appSetting),
 	}
+}
+
+func (s *authenticationDisabledQueryAuthorizationService) AuthorizeObjectTypeQuery(
+	context.Context, string, string, string,
+) error {
+	return nil
+}
+
+func (s *authenticationDisabledQueryAuthorizationService) AuthorizeActionTypeQuery(
+	context.Context, string, string, string,
+) error {
+	return nil
+}
+
+func (s *authenticationDisabledQueryAuthorizationService) AuthorizeMetricQuery(
+	context.Context, string, string, string,
+) error {
+	return nil
+}
+
+func (s *authenticationDisabledQueryAuthorizationService) AuthorizeMetricDryRun(
+	context.Context, string, string, *interfaces.MetricDefinition,
+) error {
+	return nil
+}
+
+func (s *authenticationDisabledQueryAuthorizationService) AuthorizeSubgraphBySource(
+	context.Context, *interfaces.SubGraphQueryBaseOnSource,
+) error {
+	return nil
+}
+
+func (s *authenticationDisabledQueryAuthorizationService) AuthorizeSubgraphByTypePath(
+	context.Context, *interfaces.SubGraphQueryBaseOnTypePath,
+) error {
+	return nil
+}
+
+func (s *authenticationDisabledQueryAuthorizationService) AuthorizeSubgraphByObjects(
+	context.Context, *interfaces.SubGraphQueryBaseOnObjects,
+) error {
+	return nil
 }
 
 func (s *queryAuthorizationService) AuthorizeObjectTypeQuery(ctx context.Context,

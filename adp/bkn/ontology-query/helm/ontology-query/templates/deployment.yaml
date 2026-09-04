@@ -132,10 +132,6 @@ spec:
             value: "{{ .Values.env.actionExecutionDuplicateWindowSeconds }}"
           - name: AUTH_ENABLED
             value: {{ .Values.auth.enabled | quote }}
-          - name: QUERY_DATA_PEP_ENABLED
-            value: {{ .Values.auth.queryDataPepEnabled | quote }}
-          - name: ACTION_EXECUTION_PEP_ENABLED
-            value: {{ .Values.auth.actionExecutionPepEnabled | quote }}
           - name: BKN_SAFE_BASE_URL
             value: {{ .Values.bknSafe.url | quote }}
         resources: {{- toYaml .Values.resources | nindent 10 }}

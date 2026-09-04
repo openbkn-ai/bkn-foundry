@@ -44,22 +44,18 @@ func TestParseAuthEnabled(t *testing.T) {
 	})
 }
 
-func TestContextLoaderKNPEPConfigDefaultsAndEnvironment(t *testing.T) {
+func TestAuthorizationChunkSizeDefaultsAndEnvironment(t *testing.T) {
 	conf := &Config{}
 	if err := conf.localConfig("/path/that/does/not/exist"); err == nil {
 		t.Fatal("expected missing fixture error")
-	}
-	if conf.Auth.ContextLoaderKNPEPEnabled {
-		t.Fatal("context-loader KN PEP must default to disabled")
 	}
 	if conf.Auth.ResourceFilterChunkSize != 200 {
 		t.Fatalf("default chunk size = %d, want 200", conf.Auth.ResourceFilterChunkSize)
 	}
 
-	t.Setenv("CONTEXT_LOADER_KN_PEP_ENABLED", "true")
-	t.Setenv("CONTEXT_LOADER_KN_PEP_CHUNK_SIZE", "73")
+	t.Setenv("CONTEXT_LOADER_RESOURCE_FILTER_CHUNK_SIZE", "73")
 	overrideWithEnv(conf)
-	if !conf.Auth.ContextLoaderKNPEPEnabled || conf.Auth.ResourceFilterChunkSize != 73 {
+	if conf.Auth.ResourceFilterChunkSize != 73 {
 		t.Fatalf("environment override failed: %+v", conf.Auth)
 	}
 }

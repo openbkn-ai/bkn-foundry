@@ -28,7 +28,7 @@ func (s *actionExecutionAccessStub) CheckActionExecution(_ context.Context,
 	return s.checkErr
 }
 
-func actionSchedulePEPTestService(t *testing.T) (*actionScheduleService,
+func actionScheduleAuthorizationTestService(t *testing.T) (*actionScheduleService,
 	*bmock.MockActionScheduleAccess, *bmock.MockActionTypeAccess, *actionExecutionAccessStub) {
 	t.Helper()
 	ctrl := gomock.NewController(t)
@@ -51,8 +51,7 @@ func actionScheduleSubjectContext() context.Context {
 }
 
 func TestCreateScheduleChecksAndStoresCurrentExecutionSubject(t *testing.T) {
-	t.Setenv("ACTION_EXECUTION_PEP_ENABLED", "true")
-	service, schedules, actionTypes, checks := actionSchedulePEPTestService(t)
+	service, schedules, actionTypes, checks := actionScheduleAuthorizationTestService(t)
 	actionTypes.EXPECT().GetActionTypesByIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, []string{"at-1"}).
 		Return([]*interfaces.ActionType{{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at-1"}}}, nil)
 	schedules.EXPECT().CreateSchedule(gomock.Any(), nil, gomock.Any()).DoAndReturn(
@@ -75,36 +74,10 @@ func TestCreateScheduleChecksAndStoresCurrentExecutionSubject(t *testing.T) {
 	}
 }
 
-func TestCreateScheduleStoresCurrentExecutionSubjectWhilePEPDisabled(t *testing.T) {
-	t.Setenv("ACTION_EXECUTION_PEP_ENABLED", "false")
-	service, schedules, actionTypes, checks := actionSchedulePEPTestService(t)
-	actionTypes.EXPECT().GetActionTypesByIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, []string{"at-1"}).
-		Return([]*interfaces.ActionType{{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at-1"}}}, nil)
-	schedules.EXPECT().CreateSchedule(gomock.Any(), nil, gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ any, schedule *interfaces.ActionSchedule) error {
-			if schedule.ExecutionSubject.ID != "user-current" || schedule.ExecutionSubject.Type != "user" {
-				t.Fatalf("execution subject = %#v", schedule.ExecutionSubject)
-			}
-			return nil
-		})
-
-	_, err := service.CreateSchedule(actionScheduleSubjectContext(), &interfaces.ActionSchedule{
-		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, ActionTypeID: "at-1",
-		CronExpression: "* * * * *",
-	})
-	if err != nil {
-		t.Fatalf("CreateSchedule() error = %v", err)
-	}
-	if checks.calls != 0 {
-		t.Fatalf("permission checks = %d, want 0", checks.calls)
-	}
-}
-
 func TestUpdateScheduleRotatesSubjectOnlyForExecutableChanges(t *testing.T) {
-	t.Setenv("ACTION_EXECUTION_PEP_ENABLED", "true")
 
 	t.Run("name only keeps the current subject", func(t *testing.T) {
-		service, schedules, _, checks := actionSchedulePEPTestService(t)
+		service, schedules, _, checks := actionScheduleAuthorizationTestService(t)
 		schedules.EXPECT().GetSchedule(gomock.Any(), "schedule-1").Return(&interfaces.ActionSchedule{
 			ID: "schedule-1", KNID: "kn-1", ActionTypeID: "at-1", CronExpression: "* * * * *",
 			ExecutionSubject: interfaces.AccountInfo{ID: "user-original", Type: "user"},
@@ -127,7 +100,7 @@ func TestUpdateScheduleRotatesSubjectOnlyForExecutableChanges(t *testing.T) {
 	})
 
 	t.Run("dynamic parameters recheck and rotate the subject", func(t *testing.T) {
-		service, schedules, _, checks := actionSchedulePEPTestService(t)
+		service, schedules, _, checks := actionScheduleAuthorizationTestService(t)
 		schedules.EXPECT().GetSchedule(gomock.Any(), "schedule-1").Return(&interfaces.ActionSchedule{
 			ID: "schedule-1", KNID: "kn-1", ActionTypeID: "at-1", CronExpression: "* * * * *",
 			DynamicParams: map[string]any{"threshold": 1},
@@ -152,8 +125,7 @@ func TestUpdateScheduleRotatesSubjectOnlyForExecutableChanges(t *testing.T) {
 }
 
 func TestActivateScheduleRechecksAndRotatesExecutionSubject(t *testing.T) {
-	t.Setenv("ACTION_EXECUTION_PEP_ENABLED", "true")
-	service, schedules, _, checks := actionSchedulePEPTestService(t)
+	service, schedules, _, checks := actionScheduleAuthorizationTestService(t)
 	schedules.EXPECT().GetSchedule(gomock.Any(), "schedule-1").Return(&interfaces.ActionSchedule{
 		ID: "schedule-1", KNID: "kn-1", ActionTypeID: "at-1", CronExpression: "* * * * *",
 		Status: interfaces.ScheduleStatusInactive,

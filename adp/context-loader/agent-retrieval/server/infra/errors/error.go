@@ -29,7 +29,7 @@ func HTTPStatus(err error) (int, bool) {
 }
 
 // IsAuthorizationError identifies statuses that must never be flattened into a
-// successful retrieval fallback while the KN PEP is enabled.
+// successful retrieval fallback.
 func IsAuthorizationError(err error) bool {
 	status, ok := HTTPStatus(err)
 	if !ok {

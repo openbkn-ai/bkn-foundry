@@ -94,9 +94,7 @@ For detailed API documentation, see [API documentation](./api_doc/).
 - Go 1.25.0+
 - OpenSearch 2.x
 - Ontology manager module, running on port 13014
-- BKN Safe with the `/api/safe/v1/authz/resource-filter` contract enabled when
-  `QUERY_DATA_PEP_ENABLED=true`; the query PEP defaults to disabled until
-  authorization data migration and cross-service validation are complete
+- BKN Safe with the `/api/safe/v1/authz/resource-filter` contract enabled
 
 ### Local development
 

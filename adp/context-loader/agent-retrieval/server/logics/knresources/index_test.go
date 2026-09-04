@@ -231,7 +231,7 @@ func TestListResources_ByKnID_DedupesSharedResource(t *testing.T) {
 func TestListResources_ByKnID_ClassifiesUnresolvedBindings(t *testing.T) {
 	fake := &fakeVega{
 		byID:    map[string]*interfaces.VegaResource{"r1": {ID: "r1", Name: "orders", Category: "table"}},
-		errByID: map[string]error{"gone": errors.New("404 not found")},
+		errByID: map[string]error{"gone": infraErr.DefaultHTTPError(context.Background(), http.StatusNotFound, "not found")},
 	}
 	bkn := &fakeBkn{detail: &interfaces.KnowledgeNetworkDetail{
 		ObjectTypes: []*interfaces.ObjectType{
@@ -311,29 +311,7 @@ func TestListResources_ByKnID_AllFetchesNotFoundStaysClassified(t *testing.T) {
 	}
 }
 
-func TestListResources_ByKnID_PartialFailureStillReturnsTheRest(t *testing.T) {
-	fake := &fakeVega{
-		byID:    map[string]*interfaces.VegaResource{"r1": {ID: "r1", Name: "orders", Category: "table"}},
-		errByID: map[string]error{"r2": infraErr.DefaultHTTPError(context.Background(), http.StatusInternalServerError, "vega down")},
-	}
-	bkn := &fakeBkn{detail: &interfaces.KnowledgeNetworkDetail{
-		ObjectTypes: []*interfaces.ObjectType{
-			ot("order", "resource", "r1"),
-			ot("shipment", "resource", "r2"),
-		},
-	}}
-	svc := NewKnResourcesServiceWith(fake, bkn)
-
-	resp, err := svc.ListResources(context.Background(), &ListResourcesReq{KnID: "kn1"})
-	if err != nil {
-		t.Fatalf("one failing binding must not fail the whole call: %v", err)
-	}
-	if resp.TotalCount != 1 || len(resp.Entries) != 1 || len(resp.Missing) != 1 {
-		t.Fatalf("expected 1 entry + 1 missing, got %+v", resp)
-	}
-}
-
-func TestListResources_ByKnID_PEPDeniedBindingIsOmitted(t *testing.T) {
+func TestListResources_ByKnID_DeniedBindingIsOmitted(t *testing.T) {
 	ctx := context.Background()
 	fake := &fakeVega{
 		byID: map[string]*interfaces.VegaResource{
@@ -349,7 +327,7 @@ func TestListResources_ByKnID_PEPDeniedBindingIsOmitted(t *testing.T) {
 			ot("secret_order", "resource", "secret"),
 		},
 	}}
-	svc := NewKnResourcesServiceWithPEP(fake, bkn, true)
+	svc := NewKnResourcesServiceWith(fake, bkn)
 
 	resp, err := svc.ListResources(ctx, &ListResourcesReq{KnID: "kn1"})
 	if err != nil {
@@ -363,7 +341,7 @@ func TestListResources_ByKnID_PEPDeniedBindingIsOmitted(t *testing.T) {
 	}
 }
 
-func TestListResources_ByKnID_PEPPartialDependencyFailureFailsWholeRequest(t *testing.T) {
+func TestListResources_ByKnID_AuthorizationDependencyFailureFailsWholeRequest(t *testing.T) {
 	ctx := context.Background()
 	downstreamErr := infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable, "vega unavailable")
 	fake := &fakeVega{
@@ -378,7 +356,7 @@ func TestListResources_ByKnID_PEPPartialDependencyFailureFailsWholeRequest(t *te
 			ot("shipment", "resource", "r2"),
 		},
 	}}
-	svc := NewKnResourcesServiceWithPEP(fake, bkn, true)
+	svc := NewKnResourcesServiceWith(fake, bkn)
 
 	_, err := svc.ListResources(ctx, &ListResourcesReq{KnID: "kn1"})
 	if !errors.Is(err, downstreamErr) {
@@ -386,12 +364,12 @@ func TestListResources_ByKnID_PEPPartialDependencyFailureFailsWholeRequest(t *te
 	}
 }
 
-func TestListResources_ByKnID_PEPIncompleteResourceFailsWholeRequest(t *testing.T) {
+func TestListResources_ByKnID_IncompleteAuthorizedResourceFailsWholeRequest(t *testing.T) {
 	fake := &fakeVega{byID: map[string]*interfaces.VegaResource{"r1": nil}}
 	bkn := &fakeBkn{detail: &interfaces.KnowledgeNetworkDetail{
 		ObjectTypes: []*interfaces.ObjectType{ot("order", "resource", "r1")},
 	}}
-	svc := NewKnResourcesServiceWithPEP(fake, bkn, true)
+	svc := NewKnResourcesServiceWith(fake, bkn)
 
 	resp, err := svc.ListResources(context.Background(), &ListResourcesReq{KnID: "kn1"})
 	status, ok := infraErr.HTTPStatus(err)

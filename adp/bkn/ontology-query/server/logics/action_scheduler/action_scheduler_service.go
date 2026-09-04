@@ -76,7 +76,7 @@ func NewActionSchedulerService(appSetting *common.AppSetting) interfaces.ActionS
 			logsService: action_logs.NewActionLogsService(appSetting),
 			ots:         object_type.NewObjectTypeService(appSetting),
 		}
-		if common.GetAuthEnabled() && ActionExecutionPEPEnabled() {
+		if common.GetAuthEnabled() {
 			svc.permissions = permission.NewPermissionService(appSetting)
 		}
 		// Default duplicate strategy: reject same kn + action type + instance set + dynamic_params while in-flight within the window.
@@ -89,7 +89,7 @@ func NewActionSchedulerService(appSetting *common.AppSetting) interfaces.ActionS
 // CheckActionExecution verifies the current subject against the trusted,
 // published action dependencies without reading instance data or invoking the action.
 func (s *actionSchedulerService) CheckActionExecution(ctx context.Context, req *interfaces.ActionExecutionRequest) error {
-	if !ActionExecutionPEPEnabled() {
+	if !common.GetAuthEnabled() {
 		return nil
 	}
 	if req == nil || req.Branch != interfaces.MAIN_BRANCH {
