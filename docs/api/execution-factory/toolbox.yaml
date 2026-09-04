@@ -641,6 +641,19 @@ paths:
 
         **返回的是被调服务的原始响应**（`status_code` / `headers` / `body`），
         不是平台自己的信封——上游返 500 时本接口仍是 200，`status_code` 里才是 500。
+
+        **函数工具（`metadata_type=function`）的受管上下文**：请求同时带
+        `Authorization`、`bkn-conversation-id`、`bkn-interaction-id` 三者时，平台把
+        已认证的调用者与其托管 Interaction 透传进本次沙箱执行，函数可用
+        `sandbox_sdk.bkn` 以调用者权限读取知识网络，读到的内容归因到同一个
+        Interaction。三者缺一即视为非受管调用，函数拿不到凭据与会话上下文。
+
+        这些值由服务端从请求本身捕获，**不是工具的业务参数**，不写进工具 Schema，
+        请求体里同名字段会被服务端捕获值覆盖。非函数工具不透传：OpenAPI 与算子类工具
+        指向第三方地址，平台身份不出网。
+
+        注意随之而来的信任边界：函数代码由注册者提供，沙箱可出网，因此被调函数
+        能在自身环境变量里读到调用者的活令牌。只把函数工具发布给可信的注册者。
       parameters:
         - $ref: '#/components/parameters/BoxID'
         - $ref: '#/components/parameters/ToolID'

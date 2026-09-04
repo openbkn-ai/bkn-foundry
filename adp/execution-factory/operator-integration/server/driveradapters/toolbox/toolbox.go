@@ -624,6 +624,14 @@ func (h *toolBoxHandler) ExecuteTool(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
+	// Read after binding, so a Tool body can never set them: these decide which
+	// principal and which managed Interaction a Function executes under.
+	req.RequestAuthorization = c.GetHeader("Authorization")
+	if req.RequestAuthorization == "" {
+		req.RequestAuthorization = c.GetHeader("X-Authorization")
+	}
+	req.BKNConversationID = c.GetHeader(string(interfaces.HeaderBKNConversationID))
+	req.BKNInteractionID = c.GetHeader(string(interfaces.HeaderBKNInteractionID))
 	resp, err := h.ToolService.ExecuteTool(c.Request.Context(), req)
 	rest.ReplyWithExecutionMode(c, resp, err)
 }

@@ -48,6 +48,10 @@ const (
 	HeaderXAccountType HeaderKey = "x-account-type"
 	// HeaderUserID User ID.
 	HeaderUserID HeaderKey = "user_id"
+	// HeaderBKNConversationID managed Conversation the call belongs to.
+	HeaderBKNConversationID HeaderKey = "bkn-conversation-id"
+	// HeaderBKNInteractionID managed Interaction the call belongs to.
+	HeaderBKNInteractionID HeaderKey = "bkn-interaction-id"
 )
 
 const ()

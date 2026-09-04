@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/creasty/defaults"
@@ -165,12 +166,10 @@ func fillExecutionAccountFromRequest(env map[string]any, c *gin.Context) map[str
 // sandbox_sdk.bkn reported "not configured". The request is already introspected
 // and already carries it, so read it from there.
 //
-// Only for the path where the caller submits the code it is about to run, so the
-// credential never leaves the account it belongs to. The proxy path must not use
-// this: it runs code registered by a third party, and its route authenticates by
-// trusted header rather than by introspection, so the Authorization value there
-// is an unverified passthrough. Injecting it would let a function author read and
-// exfiltrate the invoking user's live credential.
+// This is the path where the caller submits the code it is about to run, so the
+// credential never leaves the account it belongs to. The proxy path runs code a
+// third party registered and is governed separately — see
+// fillManagedInteractionFromRequest.
 func fillExecutionCredentialFromRequest(env map[string]any, c *gin.Context) map[string]any {
 	if c == nil || c.Request == nil {
 		return env
@@ -217,13 +216,52 @@ func buildFunctionProxyExecutionEnv(c *gin.Context, version string) (map[string]
 	env["function_version_id"] = version
 	taskID, err := uuid.NewV7()
 	if err != nil {
-		return fillExecutionAccountFromRequest(env, c), err
+		return fillManagedInteractionFromRequest(fillExecutionAccountFromRequest(env, c), c), err
 	}
 	env["task_id"] = "function_proxy_" + taskID.String()
-	// This path has no body fields to carry the acting account at all: a registered
-	// function is invoked by version. The credential is deliberately withheld — the
-	// code being run belongs to whoever registered the version, not to the caller.
-	return fillExecutionAccountFromRequest(env, c), nil
+	// This path has no body fields to carry the acting account at all: a
+	// registered function is invoked by version, so the account comes from the
+	// request. Whether anything else follows depends on the call being managed.
+	return fillManagedInteractionFromRequest(fillExecutionAccountFromRequest(env, c), c), nil
+}
+
+// fillManagedInteractionFromRequest hands a proxied Function the invoking
+// caller's credential and its managed Interaction.
+//
+// A published Function is a business operation, and the useful ones read the
+// knowledge network. Without a credential sandbox_sdk.bkn reports "not
+// configured"; without the Interaction its reads are unattributable. The public
+// Toolbox execute handler captures both from the request it authenticated and
+// forwards them here, so a Function reads BKN as the principal that asked for
+// it, inside the Interaction that asked.
+//
+// The cost is explicit and accepted: the code being run was registered by a
+// third party, the sandbox has outbound network, and this route authenticates by
+// trusted header rather than by introspection, so a function author can read the
+// invoking user's live token out of its own environment. Two things bound it.
+// All three values must be present, so a Function invoked outside a managed
+// Interaction still receives nothing and the unmanaged proxy call keeps the
+// earlier withhold-everything behaviour. And they are written as one set, over
+// keys newExecutionEnv already preset to blank, so a pooled container never
+// serves one caller's token beside another caller's Interaction.
+//
+// The direct /v1/function/execute path is deliberately untouched: session
+// context there stays caller-stated in the body (#1161), because a request that
+// merely passes trace headers through has not claimed an Interaction.
+func fillManagedInteractionFromRequest(env map[string]any, c *gin.Context) map[string]any {
+	if c == nil || c.Request == nil {
+		return env
+	}
+	token := drivenadapters.GetToken(c)
+	conversationID := strings.TrimSpace(c.GetHeader(string(interfaces.HeaderBKNConversationID)))
+	interactionID := strings.TrimSpace(c.GetHeader(string(interfaces.HeaderBKNInteractionID)))
+	if token == "" || conversationID == "" || interactionID == "" {
+		return env
+	}
+	env["BKN_TOKEN"] = token
+	env["BKN_CONVERSATION_ID"] = conversationID
+	env["BKN_INTERACTION_ID"] = interactionID
+	return env
 }
 
 // FunctionExecuteResp function execution response.

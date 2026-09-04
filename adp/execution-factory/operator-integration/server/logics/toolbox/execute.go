@@ -353,8 +353,42 @@ func (s *ToolServiceImpl) executeTool(ctx context.Context, req *interfaces.Execu
 		Timeout:           time.Duration(req.Timeout) * time.Second,
 	}
 	proxyReq.Headers = utils.SanitizeThirdPartyHeaders(proxyReq.Headers)
+	// After sanitizing, never before: the sanitizer strips exactly this header
+	// family on the way to a third party, and a Function is not one — it runs
+	// inside the platform, on the platform's own sandbox.
+	if tool.SourceType == model.SourceTypeFunction {
+		proxyReq.Headers = functionRuntimeHeaders(proxyReq.Headers, req)
+	}
 	resp, err = s.Proxy.HandlerRequest(ctx, proxyReq)
 	return
+}
+
+// functionRuntimeHeaders forwards the authenticated caller and its managed
+// Interaction to a Function tool, so the code it runs can read BKN as the
+// principal that invoked it, inside the Interaction that invoked it.
+//
+// Only for Function tools: an OpenAPI or operator tool points at a third-party
+// address, and the sanitizer above is what keeps platform identity away from it.
+//
+// All three values must be present. A partial context means the call did not
+// come through a managed Interaction, and a credential without the lifecycle
+// guard it belongs to is exactly what must not reach a pooled sandbox.
+//
+// Server-captured values win over anything in the body: a Tool that could state
+// them would be stating whose credential it runs under.
+func functionRuntimeHeaders(headers map[string]any, req *interfaces.ExecuteToolReq) map[string]any {
+	if req == nil || req.RequestAuthorization == "" ||
+		req.BKNConversationID == "" || req.BKNInteractionID == "" {
+		return headers
+	}
+	forwarded := make(map[string]any, len(headers)+3)
+	for key, value := range headers {
+		forwarded[key] = value
+	}
+	forwarded["Authorization"] = req.RequestAuthorization
+	forwarded[string(interfaces.HeaderBKNConversationID)] = req.BKNConversationID
+	forwarded[string(interfaces.HeaderBKNInteractionID)] = req.BKNInteractionID
+	return forwarded
 }
 
 func actionExecutionSpanAttrs(ctx context.Context, operation string, err error, refs map[string]interface{}) map[string]interface{} {
