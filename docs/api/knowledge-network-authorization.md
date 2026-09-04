@@ -87,6 +87,12 @@ limit. It must not be used to reject an otherwise valid business request.
 
 ## Subjects and failure behavior
 
+`AUTH_ENABLED` is the only remaining authorization gate. When it is `true`, all
+checks in this contract are enforced; there are no module-specific child,
+query-data, or action-execution rollout switches. An environment running with
+authentication disabled does not provide these fine-grained authorization
+guarantees.
+
 Public APIs derive the subject from a valid OAuth bearer token or AppKey.
 Internal APIs accept only the trusted service-to-service `x-account-id` and
 `x-account-type` context. Missing, empty, disabled, unknown, or unsupported
@@ -157,13 +163,16 @@ type.
 
 ## Rollout prerequisites
 
-Before enabling the temporary PEP switches, run the migration documented in
-`adp/bkn/bkn-backend/script/migrate_kn_authz/README.md` and validate the result.
+The module-specific PEP rollout switches have been removed. Before upgrading an
+existing environment that runs with authentication enabled, run the migration
+documented in `adp/bkn/bkn-backend/script/migrate_kn_authz/README.md` and validate
+the result.
 Run the dry-run first while the affected services are stopped and both databases
-are backed up. Any validation error or non-zero migration exit keeps every PEP
-switch disabled. Safe reconstruction is transactional; branch normalization is
-a separate BKN transaction. The script is idempotent, so investigate the report
-and rerun it instead of enabling enforcement over partial data.
+are backed up. Any validation error or non-zero migration exit blocks the
+upgrade; do not route traffic to the upgraded services with partial authorization
+data. Safe reconstruction is transactional; branch normalization is a separate
+BKN transaction. The script is idempotent, so investigate the report and rerun
+it after a failure.
 The deployment must provide a valid bkn-safe base URL. When authentication is
 enabled, BKN and execution-factory stop at startup if the URL is missing or is
 not an absolute HTTP(S) service URL.

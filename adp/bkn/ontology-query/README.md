@@ -186,8 +186,9 @@ infrastructure failures return HTTP 503.
 
 ### Action-execution authorization
 
-With `ACTION_EXECUTION_PEP_ENABLED=true`, both submission and the real external
-invocation require all of the following for the authenticated execution subject:
+When authentication is enabled, both submission and the real external invocation
+require all of the following for the authenticated execution subject. There is
+no separate action-execution rollout switch:
 
 - `execute` on `action_type:{kn_id}/{action_type_id}`; this operation never
   inherits from the knowledge network;

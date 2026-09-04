@@ -128,15 +128,14 @@ server/config/bkn-backend-config.yaml
 
 当 `AUTH_ENABLED=true` 时，必须配置 `BKN_SAFE_URL`，并且它必须是带 host 的
 绝对 HTTP(S) URL。带凭据、查询参数或 fragment 的 URL 会被拒绝。配置不符合
-要求时进程在启动阶段退出，不会回退到旧权限后端或无鉴权模式。
+要求时进程在启动阶段退出，不会回退到旧权限后端或无鉴权模式。认证开启时会
+始终执行子资源和行动执行权限校验，不再提供独立的 PEP 灰度开关。
 
 Helm values：
 
 | Value | 默认值 | 含义 |
 | --- | --- | --- |
 | `bknSafe.url` | `http://bkn-safe:3000` | bkn-safe 服务根地址 |
-| `auth.knChildResourcePepEnabled` | `false` | 迁移完成后启用规范子资源 PEP |
-| `auth.actionExecutionPepEnabled` | `false` | 迁移完成后启用调度/行动执行复核 |
 | `auth.knChildResourceFilterChunkSize` | `0` | 可选调用方分块大小；`0` 表示单次发送，不是服务端限制 |
 
 资源、操作和错误语义见
