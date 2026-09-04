@@ -2,9 +2,9 @@
   "openapi": "3.1.0",
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {
-    "title": "OpenBKN 日志查询 API",
+    "title": "OpenBKN Log Query API",
     "version": "0.1.3-r6.2",
-    "description": "OpenBKN 0.1.3 当前已实现的统一日志列表、详情、采样 facet、来源健康和只读策略机器合同。日志导出、高风险治理写操作、隔离逐条访问和 compliance_grade 尚未进入本实现合同。"
+    "description": "Machine contract implemented in OpenBKN 0.1.3 for unified log lists, details, sampled facets, source health, and read-only policies. Log export, high-risk governance writes, per-record quarantine access, and compliance_grade are not yet part of this contract."
   },
   "security": [
     {
@@ -66,7 +66,7 @@
           {
             "name": "q",
             "in": "query",
-            "description": "只检索 safe_summary 和已注册低敏字段。",
+            "description": "Searches only safe_summary and registered low-sensitivity fields.",
             "schema": {
               "type": "string",
               "maxLength": 512
@@ -186,7 +186,7 @@
           {
             "name": "page",
             "in": "query",
-            "description": "页码，从 1 开始。服务端使用受控游标保证各页查询范围稳定。",
+            "description": "One-based page number. The server uses a controlled cursor to keep each page's query range stable.",
             "schema": {
               "type": "integer",
               "default": 1,
@@ -207,7 +207,7 @@
         ],
         "responses": {
           "200": {
-            "description": "完整或部分成功。部分来源失败时 partial=true。",
+            "description": "Complete or partial success. partial=true when some sources fail.",
             "content": {
               "application/json": {
                 "schema": {
@@ -249,7 +249,7 @@
         ],
         "responses": {
           "200": {
-            "description": "经过类别、范围和字段权限裁剪的详情。",
+            "description": "Details filtered by category, scope, and field permissions.",
             "content": {
               "application/json": {
                 "schema": {
@@ -280,7 +280,7 @@
           {
             "name": "q",
             "in": "query",
-            "description": "与日志列表相同，只检索 safe_summary 和已注册低敏字段。",
+            "description": "Like the log list, searches only safe_summary and registered low-sensitivity fields.",
             "schema": {
               "type": "string",
               "maxLength": 512
@@ -428,7 +428,7 @@
         ],
         "responses": {
           "200": {
-            "description": "使用与日志列表相同的过滤和授权投影，对当前页最多 200 条记录计算采样 facet；sampled_records 返回实际样本数，partial=true 表示不得按全量分布解读。",
+            "description": "Computes sampled facets for at most 200 records on the current page using the same filters and authorization projection as the log list. sampled_records reports the actual sample size; partial=true means the result must not be interpreted as a full distribution.",
             "content": {
               "application/json": {
                 "schema": {
@@ -460,7 +460,7 @@
         "operationId": "listObservabilityLogSources",
         "responses": {
           "200": {
-            "description": "只返回当前主体可知的来源。",
+            "description": "Returns only sources visible to the current subject.",
             "content": {
               "application/json": {
                 "schema": {
@@ -494,7 +494,7 @@
         "operationId": "listObservabilityLogPolicies",
         "responses": {
           "200": {
-            "description": "返回授权范围的普通日志和审计策略投影。",
+            "description": "Returns the authorized projection of ordinary-log and audit policies.",
             "content": {
               "application/json": {
                 "schema": {
@@ -535,7 +535,7 @@
       "TimeFrom": {
         "name": "time_from",
         "in": "query",
-        "description": "包含边界；普通检索默认最近 24 小时，携带 Conversation、Interaction、Operation、Request、Trace 或 Span 标识的关联下钻默认最近 7 天。",
+        "description": "Inclusive boundary. Ordinary searches default to the last 24 hours; correlation drill-downs with a Conversation, Interaction, Operation, Request, Trace, or Span identifier default to the last seven days.",
         "schema": {
           "type": "string",
           "format": "date-time"
@@ -544,7 +544,7 @@
       "TimeTo": {
         "name": "time_to",
         "in": "query",
-        "description": "不包含边界。",
+        "description": "Exclusive boundary.",
         "schema": {
           "type": "string",
           "format": "date-time"
@@ -553,7 +553,7 @@
       "Cursor": {
         "name": "cursor",
         "in": "query",
-        "description": "不透明签名游标，绑定过滤条件、effective_subject_id、access_scope_fingerprint、query_watermark、可见来源和各来源 keyset。access_scope_fingerprint 由账号、当前内置角色、应用归属和知识网络管理范围规范化计算。",
+        "description": "Opaque signed cursor bound to filters, effective_subject_id, access_scope_fingerprint, query_watermark, visible sources, and each source keyset. access_scope_fingerprint is normalized from the account, current built-in roles, application ownership, and managed knowledge-network scope.",
         "x-openbkn-cursor-binding": [
           "normalized_filter_hash",
           "effective_subject_id",
@@ -643,7 +643,7 @@
       },
       "ResourceScope": {
         "type": "string",
-        "description": "严格资源范围；来源和字段授权使用独立带类型 scope。",
+        "description": "Strict resource scope. Source and field authorization use independent typed scopes.",
         "pattern": "^(platform:[^:]+|environment:[^:]+:[^:]+|source:[^:]+:[^:]+|field:[^:]+:[^:]+:[a-z][a-z0-9_]{0,63})$"
       },
       "Outcome": {
@@ -755,7 +755,7 @@
           },
           "trust_level": {
             "type": "string",
-            "description": "本 OpenAPI 只描述普通受权查询投影；隔离记录没有查询端点。",
+            "description": "This OpenAPI describes only the ordinary authorized query projection; quarantined records have no query endpoint.",
             "const": "trusted"
           },
           "request_id": {
@@ -802,7 +802,7 @@
           },
           "attributes": {
             "type": "object",
-            "description": "只包含 0.1.3 注册 allowlist 字段；正文和秘密必须使用 Artifact 或在采集边界拒绝。",
+            "description": "Contains only fields registered in the 0.1.3 allowlist. Full content and secrets must use an Artifact or be rejected at the ingestion boundary.",
             "properties": {
               "action": {
                 "type": "string"
@@ -964,7 +964,7 @@
           },
           "replayed_from_quarantine_id": {
             "type": "string",
-            "description": "隔离事实经后续受治理流程首次进入普通区时使用；0.1.3 不提供重放写 API。"
+            "description": "Used when a quarantined fact first enters the ordinary zone through a later governed process. Version 0.1.3 provides no replay write API."
           }
         },
         "allOf": [
@@ -1838,7 +1838,7 @@
     },
     "responses": {
       "BadRequest": {
-        "description": "invalid_log_filter 或 cursor_invalid。",
+        "description": "invalid_log_filter or cursor_invalid.",
         "content": {
           "application/json": {
             "schema": {
@@ -1848,7 +1848,7 @@
         }
       },
       "CursorStale": {
-        "description": "access_scope_fingerprint、可见来源集合或查询合同变化，必须重新从第一页查询。",
+        "description": "The access_scope_fingerprint, visible source set, or query contract changed. Restart from the first page.",
         "content": {
           "application/json": {
             "schema": {
@@ -1858,7 +1858,7 @@
         }
       },
       "NotDisclosed": {
-        "description": "记录不存在或当前主体不可披露，统一返回 log_not_disclosed，防止枚举探测。",
+        "description": "The record does not exist or cannot be disclosed to the current subject. Returns log_not_disclosed in both cases to prevent enumeration.",
         "content": {
           "application/json": {
             "schema": {
@@ -1868,7 +1868,7 @@
         }
       },
       "PermissionDenied": {
-        "description": "主体可知资源存在但缺少明确操作权限。",
+        "description": "The subject may know that the resource exists but lacks explicit operation permission.",
         "content": {
           "application/json": {
             "schema": {
@@ -1878,7 +1878,7 @@
         }
       },
       "SourcesUnavailable": {
-        "description": "全部授权来源失败，code=sources_unavailable。",
+        "description": "All authorized sources failed; code=sources_unavailable.",
         "content": {
           "application/json": {
             "schema": {
@@ -1888,7 +1888,7 @@
         }
       },
       "AuthenticationRequired": {
-        "description": "缺少或无效认证，code=authentication_required。",
+        "description": "Authentication is missing or invalid; code=authentication_required.",
         "content": {
           "application/json": {
             "schema": {
@@ -1898,7 +1898,7 @@
         }
       },
       "AccessDenied": {
-        "description": "已认证主体不具备请求类别的基础读取权限，code=observability_access_denied。",
+        "description": "The authenticated subject lacks baseline read permission for the requested category; code=observability_access_denied.",
         "content": {
           "application/json": {
             "schema": {

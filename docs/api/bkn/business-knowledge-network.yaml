@@ -154,11 +154,11 @@ paths:
                 contain detail:
                   value:
                     id: kn_system_incident_event_network
-                    name: DIP系统故障事件网络
+                    name: DIP system fault event network
                     tags:
-                      - 事件
-                      - 故障
-                    comment: DIP系统故障事件网络。。。。。。。。。。。。
+                      - event
+                      - fault
+                    comment: DIP system fault event network
                     icon: ""
                     color: ""
                     branch: main
@@ -166,15 +166,15 @@ paths:
                     create_time: 1757583140948
                     updater: a0f02238-6cec-11f0-82bb-fa1c4529a151
                     update_time: 1757583140948
-                    detail: markdown文本
+                    detail: Markdown text
                 not_contain_detail:
                   value:
                     id: kn_system_incident_event_network
-                    name: DIP系统故障事件网络
+                    name: DIP system fault event network
                     tags:
-                      - 事件
-                      - 故障
-                    comment: DIP系统故障事件网络。。。。。。。。。。。。
+                      - event
+                      - fault
+                    comment: DIP system fault event network
                     icon: ""
                     color: ""
                     branch: main

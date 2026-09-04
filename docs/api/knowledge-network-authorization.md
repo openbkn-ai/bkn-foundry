@@ -6,10 +6,20 @@ Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
 # Knowledge-network authorization contract
 
-This document describes the authorization contract shared by bkn-safe,
-bkn-backend, ontology-query, context-loader, and execution-factory. The
-runtime OpenAPI files remain authoritative for individual request and response
-schemas.
+This document contains only the authorization invariants shared by bkn-safe,
+bkn-backend, ontology-query, context-loader, and execution-factory. It is not an
+API reference or a design document.
+
+Concrete paths, methods, fields, status codes, and error envelopes are defined
+by the service OpenAPI files:
+
+- [bkn-safe authorization](bkn-safe/authorization.yaml)
+- [BKN](bkn/)
+- [ontology-query](ontology-query/ontology-query.yaml)
+- [execution-factory](execution-factory/)
+
+Detailed design background and decision history belong in
+[bkn-docs](https://github.com/openbkn-ai/bkn-docs/issues/92).
 
 ## Resource references
 
@@ -29,8 +39,7 @@ business ID joined by `/`.
 
 The two parts of a child ID are business IDs. Do not substitute a database row
 ID, a parent-only knowledge-network ID, or a branch-qualified ID. Authorization
-always evaluates the published `main` model. Business IDs must be non-empty,
-must not contain `/` or `*`, and must not have leading or trailing whitespace.
+always evaluates the published `main` model.
 
 ## Operations and inheritance
 
@@ -50,15 +59,13 @@ applies the following one-hop parent operation mapping:
 `action_type:*:execute` is invalid. Execution permission is granted only on a
 concrete `action_type:{kn_id}/{action_type_id}` resource.
 
-## Business entry points
+## Cross-service enforcement
 
 | Entry point | Required decision |
 | --- | --- |
 | Knowledge-network or child detail | `view_detail` on the canonical resource |
 | List or search | build trusted candidates, filter by `view_detail`, then compute total and pagination |
 | Create knowledge network | `knowledge_network:*:create` |
-| Import a new knowledge network | `knowledge_network:*:create` once for the transaction; nested child creates reuse that precheck |
-| Import with overwrite | `knowledge_network:*:create`, then the existing knowledge network and affected children must pass their normal update checks |
 | Modify child | `modify` on the canonical child |
 | Delete child | `delete` on every target; a batch is all-or-nothing |
 | Query object, relation, metric, or action data | `query_data` on every dependency resolved from the published model |
@@ -71,16 +78,19 @@ retries retain the original subject; a manual rerun creates a new execution
 for the current caller. Caller-supplied body fields do not replace the
 authenticated subject.
 
-## Batch filtering
+## Collection and batch consistency
 
-`POST /api/safe/v1/authz/resource-filter` has no fixed resource-count,
+Lists and searches build their trusted candidate set first, apply authorization,
+and only then calculate total and pagination. This prevents unauthorized rows
+from affecting result counts or page boundaries.
+
+The shared resource-filtering contract has no fixed resource-count,
 operation-count, or matrix-cell hard cap and does not promise a fixed-size
-`413` response. Callers may split trusted candidates into dynamically sized
-chunks for operational reasons. A timeout, failed chunk, missing `resources`
-field, duplicate row, or unknown resource echoed by a response makes the whole
-business request fail; callers must not return a partial list or partial query
-result. Because this API returns only authorized resources, an omitted
-candidate is a normal denial rather than a malformed response.
+payload rejection threshold. Callers may split trusted candidates into
+dynamically sized chunks for operational reasons. A timeout, failed chunk, or
+malformed response fails the whole business request; callers must not return a
+partial list or query result. An omitted candidate is a normal denial because
+the filter returns only authorized resources.
 
 The default caller chunk size is an implementation tuning value, not an API
 limit. It must not be used to reject an otherwise valid business request.
@@ -93,90 +103,29 @@ query-data, or action-execution rollout switches. An environment running with
 authentication disabled does not provide these fine-grained authorization
 guarantees.
 
-Public APIs derive the subject from a valid OAuth bearer token or AppKey.
-Internal APIs accept only the trusted service-to-service `x-account-id` and
-`x-account-type` context. Missing, empty, disabled, unknown, or unsupported
-subjects are denied before data access or external execution.
+Public services derive the subject from their authenticated request. Trusted
+internal calls propagate that subject through their service-to-service identity
+context. Caller-controlled payload fields never replace it. Missing, disabled,
+unknown, or unsupported subjects are denied before data access or external
+execution.
 
-| Condition | Business behavior |
-| --- | --- |
-| Credential missing or invalid | `401` on public APIs |
-| Authenticated subject lacks a required operation | `403` |
-| Requested business resource does not exist | `404` only after the authoritative business service confirms absence |
-| bkn-safe timeout, transport failure, invalid response, or incomplete decision | fail closed; no partial result or external execution |
-| BKN authorization dependency failure | `500` with the BKN error envelope |
-| ontology-query authorization dependency failure | `503` with the ontology-query error envelope |
-| execution-factory authorization denial or decision failure | `403` with the execution-factory error envelope |
-
-Do not turn a `403` into `404`, `missing`, an empty enrichment, or a schema-only
-success. A disabled account is not an anonymous caller and receives no
-permissions.
-
-## Correct and incorrect requests
-
-Correct single-resource decision:
-
-```json
-{
-  "accessor_id": "user-a",
-  "resource": {"type": "object_type", "id": "supply_chain/purchase_order"},
-  "operation": "query_data"
-}
-```
-
-Correct mixed-resource batch filter:
-
-```json
-{
-  "accessor_id": "user-a",
-  "resources": [
-    {"type": "object_type", "id": "supply_chain/purchase_order"},
-    {"type": "metric", "id": "supply_chain/on_time_rate"}
-  ],
-  "visibility_operations": ["view_detail"],
-  "candidate_operations": ["view_detail", "query_data", "modify", "delete", "authorize"]
-}
-```
-
-Incorrect child reference (parent-only fallback):
-
-```json
-{
-  "accessor_id": "user-a",
-  "resource": {"type": "object_type", "id": "supply_chain"},
-  "operation": "query_data"
-}
-```
-
-Incorrect operation and forbidden wildcard execution grant:
-
-```json
-{
-  "accessor_id": "user-a",
-  "resource": {"type": "action_type", "id": "*"},
-  "operations": ["data_query", "execute"]
-}
-```
-
-Use `query_data`, not `data_query`, and grant `execute` to one concrete action
-type.
+Authorization is fail-closed across service boundaries. A timeout, transport
+failure, malformed response, incomplete dependency set, or indeterminate
+decision produces no data and invokes no external target. Each service reports
+that failure using its own OpenAPI error contract.
 
 ## Rollout prerequisites
 
 The module-specific PEP rollout switches have been removed. Before upgrading an
-existing environment that runs with authentication enabled, run the migration
-documented in `adp/bkn/bkn-backend/script/migrate_kn_authz/README.md` and validate
-the result.
+existing environment that runs with authentication enabled, follow the
+[migration guide](../../adp/bkn/bkn-backend/script/migrate_kn_authz/README.md)
+and validate the result.
 Run the dry-run first while the affected services are stopped and both databases
 are backed up. Any validation error or non-zero migration exit blocks the
 upgrade; do not route traffic to the upgraded services with partial authorization
 data. Safe reconstruction is transactional; branch normalization is a separate
 BKN transaction. The script is idempotent, so investigate the report and rerun
 it after a failure.
-The deployment must provide a valid bkn-safe base URL. When authentication is
-enabled, BKN and execution-factory stop at startup if the URL is missing or is
-not an absolute HTTP(S) service URL.
-
-Implementation tracking: [#1241](https://github.com/openbkn-ai/bkn-foundry/issues/1241),
-contract synchronization: [#1249](https://github.com/openbkn-ai/bkn-foundry/issues/1249),
-and end-to-end validation: [#1239](https://github.com/openbkn-ai/bkn-foundry/issues/1239).
+When authentication is enabled, every participating service must have a valid
+bkn-safe connection before it receives traffic. Exact configuration keys and
+startup validation are documented by the owning service.

@@ -1,6 +1,7 @@
-# 跨模块复用的通用 schema 片段。
-# 与 errors.yaml / auth.yaml 一样，本文件是 $ref 片段，不作独立文档 lint，
-# 其正确性由引用它的模块文档解析时连带校验。
+# Common schema fragments shared across modules.
+# Like errors.yaml and auth.yaml, this file is a $ref fragment and is not linted
+# as a standalone API description. Referencing module documents validate it
+# while resolving their references.
 openapi: 3.0.3
 info:
   title: shared common schemas
@@ -11,18 +12,18 @@ components:
     AccountInfo:
       type: object
       description: |
-        操作者信息。服务端返回的是对象而非裸 ID —— 对应 Go 侧
-        `interfaces.AccountInfo{ID, Type, Name}`。
+        Actor information. The service returns an object rather than a bare ID,
+        corresponding to the Go type `interfaces.AccountInfo{ID, Type, Name}`.
       properties:
         id:
           type: string
-          description: 账号 ID
+          description: Account ID
         type:
           type: string
-          description: 账号类型（如 user / app）
+          description: Account type, such as user or app
         name:
           type: string
-          description: 账号显示名
+          description: Account display name
       example:
         id: a0f02238-6cec-11f0-82bb-fa1c4529a151
         type: user
@@ -31,48 +32,54 @@ components:
       type: object
       additionalProperties: false
       description: |
-        BKN Trace 业务溯源上下文，声明这次调用属于哪一轮业务对话。REST 面必填。
+        BKN Trace business-provenance context identifying the business
+        conversation and interaction to which this call belongs. Required on
+        REST APIs.
 
-        两个必填子字段均为服务端签发的句柄、不可自拟：
+        Both required child fields are server-issued handles and must not be
+        invented by the caller:
 
-        - `conversation_id`：首轮调用 Context Loader MCP 工具
-          `bkn_start_interaction` 取得
-        - `interaction_id`：调用 Context Loader 的 MCP 工具
-          `bkn_start_interaction` 取得
+        - `conversation_id`: obtained from the Context Loader MCP tool
+          `bkn_start_interaction` on the first turn
+        - `interaction_id`: obtained from the Context Loader MCP tool
+          `bkn_start_interaction`
 
-        这两个句柄只能经上述 MCP 溯源工具取得。BKN Trace Core 的
-        `/api/agent-observability/v1` 会话接口只接受集群内可信服务的网关凭据，
-        不接受 OAuth token 或 `bak_` AppKey，外部调用方直接调用会得到
-        `401 permission_denied`。
-        Context Loader 按请求关联信息、工具名和规范化输入服务端派生 Operation
-        幂等标识；调用方不得提交 `operation_key`。网络重试应复用
-        `bkn-request-id`，或提供同一次逻辑调用稳定不变的
-        `X-OpenBKN-Client-Invocation-Id` 请求头。该提示只用于幂等，不参与身份、
-        权限或数据隔离判定。
+        These handles are available only through the provenance MCP tool above.
+        The BKN Trace Core session APIs under `/api/agent-observability/v1`
+        accept gateway credentials only from trusted in-cluster services. They
+        do not accept OAuth tokens or `bak_` AppKeys; direct external calls
+        receive `401 permission_denied`.
+        Context Loader derives the Operation idempotency identity on the server
+        from request correlation, tool name, and normalized input. Callers must
+        not submit `operation_key`. Network retries should reuse
+        `bkn-request-id` or provide a stable
+        `X-OpenBKN-Client-Invocation-Id` for the same logical call. This hint is
+        used only for idempotency and has no role in identity, authorization, or
+        data-isolation decisions.
       required:
         - conversation_id
         - interaction_id
       properties:
         conversation_id:
           type: string
-          description: 业务对话 ID，服务端签发。
+          description: Server-issued business conversation ID.
           example: conv_8eca1655217a128b16727ce664cd579c
         interaction_id:
           type: string
-          description: 交互（一轮问答）ID，服务端签发。
+          description: Server-issued interaction ID for one question-and-answer turn.
           example: int_0ab58662974fe9edcfb4ae3e77e43502
         parent_operation_id:
           type: string
-          description: 触发本次调用的上游操作 ID，用于表达因果边。
+          description: Upstream operation ID that caused this call.
         causation_event_ids:
           type: array
           items:
             type: string
-          description: 触发本次调用的事件 ID 列表，用于表达因果边。
+          description: Event IDs that caused this call.
         business_refs:
           type: array
           maxItems: 64
-          description: 当前调用已知的规范化业务对象、数据或逻辑引用。
+          description: Canonical business-object, data, or logic references known to this call.
           items:
             type: object
             additionalProperties: false
@@ -82,10 +89,10 @@ components:
             properties:
               ref_type:
                 type: string
-                description: 业务引用类型，例如 object_type、property 或 data_resource。
+                description: Business reference type, such as object_type, property, or data_resource.
               ref_id:
                 type: string
-                description: 规范化业务引用 ID；除 data_resource 外必须属于当前知识网络。
+                description: Canonical business reference ID. Except for data_resource, it must belong to the current knowledge network.
               version:
                 type: string
-                description: 引用版本；省略时为 unversioned。
+                description: Reference version. Omission means unversioned.

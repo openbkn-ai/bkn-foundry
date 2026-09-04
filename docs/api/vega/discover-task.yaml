@@ -3,24 +3,28 @@ openapi: 3.1.1
 info:
   title: DiscoverTask
   description: |
-    Vega Backend 资源发现任务（DiscoverTask）相关 API。
+    APIs for Vega Backend resource-discovery tasks.
 
-    DiscoverTask 是**执行审计记录**，由三条路径产生：
+    A DiscoverTask is an **execution audit record** created through one of three paths:
 
-    - 手动触发：`POST /catalogs/{id}/discover`（动作端点，本规范末尾覆盖）
-    - 定时触发：worker 内部由 `DiscoverSchedule`（见 [discover-schedule.yaml](discover-schedule.yaml)）按 cron 触发
-    - 资源刷新：`POST /resources/{id}/discover`（见 [resource.yaml](resource.yaml)）
+    - Manual trigger: `POST /catalogs/{id}/discover`, documented at the end of this specification.
+    - Scheduled trigger: a worker starts it from a `DiscoverSchedule`; see
+      [discover-schedule.yaml](discover-schedule.yaml).
+    - Resource refresh: `POST /resources/{id}/discover`; see [resource.yaml](resource.yaml).
 
-    `queue_priority` 是服务端计算的只读整数队列优先级，数值越大优先级越高。
-    当前默认队列配置中，定时 catalog 任务为低（10）、手动 catalog 任务为普通（20）、
-    资源刷新任务为高（30）。worker 严格按优先级取任务，同一 catalog 内串行执行。
+    `queue_priority` is a read-only integer computed by the server; larger values have
+    higher priority. The default priorities are 10 for scheduled catalog discovery,
+    20 for manual catalog discovery, and 30 for resource refresh. Workers dequeue tasks
+    strictly by priority and execute tasks for the same catalog serially.
 
-    状态机（`pending → running → completed/failed/cancelled`）由 worker 单向推进；
-    用户不能 cancel / retry / restart。对外仅暴露 list / get / delete 三类只读 + 清理操作。
+    The worker advances the state machine (`pending → running → completed/failed/cancelled`)
+    in one direction. Users cannot cancel, retry, or restart a task. The public API exposes
+    only list, get, and cleanup operations.
 
-    端点设计遵循 [vega-backend/CLAUDE.md] 的"端点设计规则"：批量删除走 path
-    （`DELETE /discover-tasks/{ids}`，逗号分隔），按父资源过滤一律走 query
-    （如 `GET /discover-tasks?catalog_id=` / `?schedule_id=` / `?resource_id=`），不提供嵌套列表视图。
+    Bulk deletion follows the endpoint rules in [vega-backend/CLAUDE.md]: IDs are passed
+    as a comma-separated path parameter to `DELETE /discover-tasks/{ids}`. Parent-resource
+    filters use query parameters such as `catalog_id`, `schedule_id`, and `resource_id`;
+    nested list endpoints are not provided.
   version: 0.1.0
 servers:
   - url: /api/vega-backend/v1
@@ -29,28 +33,30 @@ security:
 paths:
   /discover-tasks:
     get:
-      summary: 获取发现任务列表
-      description: 分页获取发现任务；支持按 catalog_id / resource_id / schedule_id / status / strategy / trigger_type 过滤。
+      summary: List discovery tasks
+      description: Returns paginated discovery tasks and supports filtering by `catalog_id`, `resource_id`, `schedule_id`, `status`, `strategy`, and `trigger_type`.
       parameters:
         - name: catalog_id
-          description: 按归属 catalog 过滤
+          description: Filter by owning catalog
           in: query
           schema:
             type: string
         - name: resource_id
           description: |
-            按被刷新的 Resource 过滤。非空时仅匹配资源刷新任务；catalog 发现任务该字段为空。
+            Filters by the Resource being refreshed. A non-empty value matches only
+            resource-refresh tasks; catalog-discovery tasks leave this field empty.
           in: query
           schema:
             type: string
         - name: schedule_id
           description: |
-            按归属 DiscoverSchedule 过滤；trigger_type=manual 的 task 该字段恒为空字符串。
+            Filters by the owning DiscoverSchedule. Tasks with `trigger_type=manual`
+            always have an empty value.
           in: query
           schema:
             type: string
         - name: status
-          description: 按状态过滤；多个状态重复传递该参数，状态之间为 OR 关系。
+          description: Filters by status. Repeat this parameter for multiple values, which are combined with OR.
           in: query
           style: form
           explode: true
@@ -60,7 +66,7 @@ paths:
               type: string
               enum: [pending, running, completed, failed, cancelled]
         - name: strategy
-          description: 按探查策略过滤
+          description: Filters by discovery strategy.
           in: query
           schema:
             type: string
@@ -69,7 +75,7 @@ paths:
               - create_only
               - cleanup_only
         - name: trigger_type
-          description: 按触发方式过滤
+          description: Filters by trigger type.
           in: query
           schema:
             type: string
@@ -77,7 +83,7 @@ paths:
               - manual
               - scheduled
         - name: offset
-          description: 分页偏移量，>=0，默认 0
+          description: Pagination offset. Must be at least 0 and defaults to 0
           in: query
           schema:
             type: integer
@@ -85,21 +91,21 @@ paths:
             minimum: 0
             default: 0
         - name: limit
-          description: 每页数量，默认 20
+          description: Page size. Defaults to 20
           in: query
           schema:
             type: integer
             format: int64
             default: 20
         - name: sort
-          description: 排序字段；默认按创建时间倒序。时间值为 0 时按数据库普通数值排序：升序在前、降序在后。
+          description: Sort field. Results default to descending creation time. A zero timestamp is sorted as a normal database value, first in ascending order and last in descending order.
           in: query
           schema:
             type: string
             enum: [create_time, start_time, finish_time, last_progress_time]
             default: create_time
         - name: direction
-          description: 排序方向
+          description: Sort direction
           in: query
           schema:
             type: string
@@ -123,13 +129,13 @@ paths:
   /discover-tasks/{id}:
     parameters:
       - name: id
-        description: DiscoverTask ID；DELETE 时可传逗号分隔的 ID 列表
+        description: DiscoverTask ID. DELETE accepts a comma-separated list of IDs.
         in: path
         required: true
         schema:
           type: string
     get:
-      summary: 获取发现任务详情
+      summary: Get discovery task details
       responses:
         "200":
           description: ok
@@ -144,30 +150,35 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
     delete:
-      summary: 删除发现任务（整体事务）
+      summary: Delete discovery tasks atomically
       description: |
-        整体事务语义：所有 id 通过预校验后才进入删除阶段，任一预校验失败整批不删。
+        The operation is atomic: deletion starts only after every ID passes validation.
+        If any validation fails, nothing is deleted.
 
-        预校验顺序：
+        Validation order:
 
-        1. 任一 id 处于 `pending` / `running` → 409 `VegaBackend.DiscoverTask.HasRunningExecution`，
-           `error_details` 携带 `{ running_ids: [...] }`。状态拦截**不可绕过**——避免删除
-           掉 worker 正在写入的 task 留下孤儿数据。需等待任务进入终态（completed/failed/cancelled）。
-        2. 任一 id 不存在（且未启用 `ignore_missing`）→ 404 `VegaBackend.DiscoverTask.NotFound`，
-           `error_details` 携带 `{ missing_ids: [...] }`。
-        3. 全部通过 → 逐条删除，返回 204。
+        1. If any ID is `pending` or `running`, return 409
+           `VegaBackend.DiscoverTask.HasRunningExecution` with
+           `{ running_ids: [...] }` in `error_details`. This status check cannot be
+           bypassed because deleting a task while a worker writes it would leave orphaned
+           data. Wait until the task reaches `completed`, `failed`, or `cancelled`.
+        2. If any ID does not exist and `ignore_missing` is false, return 404
+           `VegaBackend.DiscoverTask.NotFound` with `{ missing_ids: [...] }` in
+           `error_details`.
+        3. If all IDs pass, delete them and return 204.
       parameters:
         - name: ignore_missing
           description: |
-            放宽不存在性检查：缺失 id 视为已删除（静默跳过），其它 id 正常删。
-            **不影响** pending/running 拦截。
+            Relaxes the existence check: missing IDs are treated as already deleted and
+            silently skipped, while other IDs are deleted normally. This does **not**
+            bypass the `pending`/`running` check.
           in: query
           schema:
             type: boolean
             default: false
       responses:
         "204":
-          description: 删除成功
+          description: Deleted successfully
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -185,16 +196,18 @@ paths:
         schema:
           type: string
     post:
-      summary: 手动触发 catalog 资源发现
+      summary: Manually trigger catalog resource discovery
       description: |
-        对指定 catalog 触发一次资源发现。**异步语义**：服务端创建一条 `trigger_type=manual`
-        的 DiscoverTask 并立即返回 task id；实际发现执行由 worker 异步推进。客户端可用
-        返回的 task id 通过 `GET /discover-tasks/{id}` 轮询执行进度。
+        Triggers resource discovery for the specified catalog. **Asynchronous:** the
+        server creates a DiscoverTask with `trigger_type=manual`, immediately returns its
+        task ID, and lets a worker perform discovery asynchronously. Poll
+        `GET /discover-tasks/{id}` with the returned ID to observe progress.
 
-        可选请求体 `{"strategy":"full_sync|create_only|cleanup_only"}`；省略时默认
-        `full_sync`。本端点保留 RPC 风格嵌套形态——是对 catalog 的动作而非创建顶层 task。
+        The optional body is `{"strategy":"full_sync|create_only|cleanup_only"}` and
+        defaults to `full_sync`. This RPC-style nested endpoint represents an action on a
+        catalog rather than creation of a top-level task.
 
-        仅支持 `type=physical` 的 catalog；`type=logical` 会返回 400。
+        Only catalogs with `type=physical` are supported. A logical catalog returns 400.
       requestBody:
         required: false
         content:
@@ -203,7 +216,7 @@ paths:
               $ref: "#/components/schemas/DiscoverTriggerRequest"
       responses:
         "200":
-          description: 触发成功，DiscoverTask 已创建并入队
+          description: Trigger accepted; the DiscoverTask was created and queued
           content:
             application/json:
               schema:
@@ -213,13 +226,13 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
-          description: Catalog 不存在
+          description: Catalog not found
           content:
             application/json:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
         "409":
-          description: Catalog 已禁用
+          description: Catalog is disabled
           content:
             application/json:
               schema:
@@ -232,55 +245,55 @@ components:
       $ref: "../_shared/auth.yaml#/components/securitySchemes/OAuth2"
   responses:
     BadRequest:
-      description: 请求参数 / 请求体非法
+      description: Invalid request parameters or request body
       content:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     Unauthorized:
-      description: 未授权（OAuth Token 校验失败）
+      description: Unauthorized because OAuth token validation failed
       content:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     NotFound:
-      description: 资源不存在
+      description: Resource not found
       content:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     Conflict:
       description: |
-        状态冲突：task 处于 pending/running 无法删除
+        Status conflict; a task in `pending` or `running` cannot be deleted
       content:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     InternalServerError:
-      description: 服务内部错误
+      description: Internal server error
       content:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
   schemas:
     AccountInfo:
-      description: 操作者信息
+      description: Operator information
       type: object
       required:
         - id
         - type
       properties:
         id:
-          description: 账户 ID
+          description: Account ID
           type: string
         type:
-          description: 账户类型
+          description: Account type
           type: string
         name:
-          description: 显示名
+          description: Display name
           type: string
     DiscoverResult:
-      description: 发现任务执行结果（仅在 status=completed 时有意义）
+      description: Discovery task result, meaningful only when `status=completed`.
       type: object
       required:
         - catalog_id
@@ -290,31 +303,31 @@ components:
         - message
       properties:
         catalog_id:
-          description: 关联 catalog ID
+          description: Associated catalog ID
           type: string
         new_count:
-          description: 本次发现的新增资源数
+          description: Number of resources created by this discovery run
           type: integer
         stale_count:
-          description: 本次发现已失效的资源数
+          description: Number of resources invalidated by this discovery run
           type: integer
         unchanged_count:
-          description: 本次发现未变化的资源数
+          description: Number of unchanged resources in this discovery run
           type: integer
         updated_count:
-          description: 本次发现属性有变化、已更新的资源数
+          description: Number of resources whose changed attributes were updated
           type: integer
         restored_count:
-          description: 本次发现由失效恢复为可用的资源数
+          description: Number of invalid resources restored to available
           type: integer
         failed_count:
-          description: 本次发现处理失败的资源数
+          description: Number of resources that failed during discovery
           type: integer
         message:
-          description: 执行说明
+          description: Execution details
           type: string
     DiscoverTask:
-      description: 发现任务实体
+      description: Discovery task entity
       type: object
       required:
         - id
@@ -330,46 +343,46 @@ components:
         - create_time
       properties:
         id:
-          description: 全局唯一 ID
+          description: Globally unique ID
           type: string
         catalog_id:
-          description: 关联 catalog ID
+          description: Associated catalog ID
           type: string
         resource_id:
-          description: 被刷新的 Resource ID；catalog 发现任务不返回该字段
+          description: ID of the refreshed Resource; omitted for catalog discovery tasks
           type: string
         resource_name:
-          description: 被刷新的 Resource 当前名称；资源不存在时不返回该字段
+          description: Current name of the refreshed Resource; omitted if the Resource no longer exists
           type: string
         catalog_name:
-          description: 关联 catalog 名称
+          description: Associated catalog name
           type: string
         schedule_id:
           description: |
-            关联的 DiscoverSchedule ID。trigger_type=manual 时为空字符串。
+            Associated DiscoverSchedule ID. Empty when `trigger_type=manual`.
           type: string
         strategy:
-          description: 发现策略
+          description: Discovery strategy
           type: string
           enum:
             - full_sync
             - create_only
             - cleanup_only
         trigger_type:
-          description: 触发方式
+          description: Trigger type
           type: string
           enum:
             - manual
             - scheduled
         queue_priority:
           description: |
-            服务端计算的只读整数队列优先级，数值越大优先级越高。
-            当前默认队列配置为低=10（scheduled）、普通=20（手动 catalog）、
-            高=30（resource refresh）。
+            Read-only integer queue priority computed by the server. Larger values have
+            higher priority. The defaults are 10 for scheduled catalog discovery, 20 for
+            manual catalog discovery, and 30 for resource refresh.
           type: integer
           readOnly: true
         status:
-          description: 状态
+          description: Status
           type: string
           enum:
             - pending
@@ -378,34 +391,34 @@ components:
             - failed
             - cancelled
         progress:
-          description: 进度，0-100
+          description: Progress from 0 to 100
           type: integer
         message:
-          description: 状态说明 / 错误信息
+          description: Status details or error message
           type: string
         start_time:
-          description: 开始执行时间，毫秒级时间戳；未开始时为 0
+          description: Start time as a millisecond timestamp; 0 if not started
           type: integer
           format: int64
         finish_time:
-          description: 完成时间，毫秒级时间戳；未完成时为 0
+          description: Completion time as a millisecond timestamp; 0 if not completed
           type: integer
           format: int64
         last_progress_time:
-          description: 最近一次对外可观测进度更新的时间，毫秒级时间戳；无进度更新时为 0
+          description: Time of the latest externally observable progress update, as a millisecond timestamp; 0 if never updated
           type: integer
           format: int64
         result:
-          description: 执行结果（仅 completed 状态下非空）
+          description: Execution result, non-empty only when status is `completed`
           $ref: "#/components/schemas/DiscoverResult"
         creator:
           $ref: "#/components/schemas/AccountInfo"
         create_time:
-          description: 创建时间，毫秒级时间戳
+          description: Creation time as a millisecond timestamp
           type: integer
           format: int64
     DiscoverTaskResultSummary:
-      description: 发现任务列表使用的结果计数；执行说明仅在单条详情接口中返回。
+      description: Result counters used in discovery-task lists. Execution details are returned only by the single-task detail endpoint.
       type: object
       required: [catalog_id, new_count, stale_count, unchanged_count, updated_count, restored_count, failed_count]
       properties:
@@ -417,17 +430,17 @@ components:
         restored_count: { type: integer }
         failed_count: { type: integer }
     DiscoverTaskSummary:
-      description: 发现任务列表摘要；完整执行结果及其 message 请调用单条详情接口获取。
+      description: Discovery-task list summary. Use the single-task detail endpoint for the complete result and its message.
       type: object
       required: [id, catalog_id, schedule_id, strategy, trigger_type, queue_priority, status, progress, creator, create_time]
       properties:
         id: { type: string }
         catalog_id: { type: string }
         resource_id:
-          description: 被刷新的 Resource ID；catalog 发现任务不返回该字段
+          description: ID of the refreshed Resource; omitted for catalog discovery tasks
           type: string
         resource_name:
-          description: 被刷新的 Resource 当前名称；资源不存在时不返回该字段
+          description: Current name of the refreshed Resource; omitted if the Resource no longer exists
           type: string
         catalog_name: { type: string }
         schedule_id: { type: string }
@@ -438,7 +451,7 @@ components:
           type: string
           enum: [manual, scheduled]
         queue_priority:
-          description: 服务端计算的只读整数队列优先级；数值越大优先级越高。当前默认队列配置为低=10、普通=20、高=30
+          description: Read-only integer queue priority computed by the server. Larger values have higher priority; defaults are low=10, normal=20, and high=30.
           type: integer
           readOnly: true
         status:
@@ -452,16 +465,16 @@ components:
         creator: { $ref: "#/components/schemas/AccountInfo" }
         create_time: { type: integer, format: int64 }
     DiscoverTriggerResponse:
-      description: 手动触发响应（异步——返回新建的 DiscoverTask ID）
+      description: Response to a manual asynchronous trigger, containing the new DiscoverTask ID.
       type: object
       required:
         - id
       properties:
         id:
-          description: 新建 DiscoverTask 的 ID；可用 `GET /discover-tasks/{id}` 轮询进度
+          description: ID of the new DiscoverTask. Use `GET /discover-tasks/{id}` to poll its progress.
           type: string
     DiscoverTriggerRequest:
-      description: 手动触发发现时的可选策略；省略时服务端使用 `full_sync`
+      description: Optional strategy for manually triggered discovery. The server uses `full_sync` when omitted.
       type: object
       properties:
         strategy:
@@ -471,18 +484,18 @@ components:
             - create_only
             - cleanup_only
     ListDiscoverTasks:
-      description: 发现任务摘要列表；完整结果请调用单条详情接口。
+      description: List of discovery-task summaries. Use the single-task detail endpoint for complete results.
       type: object
       required:
         - entries
         - total_count
       properties:
         entries:
-          description: 条目列表
+          description: Entries
           type: array
           items:
             $ref: "#/components/schemas/DiscoverTaskSummary"
         total_count:
-          description: 总条数
+          description: Total number of entries
           type: integer
           format: int64
