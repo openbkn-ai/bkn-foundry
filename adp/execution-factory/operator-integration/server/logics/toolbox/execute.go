@@ -358,11 +358,40 @@ func (s *ToolServiceImpl) executeTool(ctx context.Context, req *interfaces.Execu
 	// After sanitizing, never before: the sanitizer strips exactly this header
 	// family on the way to a third party, and this deployment's own function
 	// runtime is not one.
-	if tool.SourceType == model.SourceTypeFunction && isPlatformFunctionTarget(url) {
-		proxyReq.Headers = functionRuntimeHeaders(proxyReq.Headers, req)
+	if tool.SourceType == model.SourceTypeFunction {
+		if isPlatformFunctionTarget(url) {
+			proxyReq.Headers = functionRuntimeHeaders(proxyReq.Headers, req)
+		} else {
+			s.logWithheldManagedContext(ctx, req, url)
+		}
 	}
 	resp, err = s.Proxy.HandlerRequest(ctx, proxyReq)
 	return
+}
+
+// logWithheldManagedContext records the one case an operator cannot otherwise
+// diagnose: a managed call whose Function does not resolve to this deployment's
+// runtime, so the credential was withheld on purpose.
+//
+// Inside the sandbox this surfaces only as sandbox_sdk.bkn reporting "not
+// configured", which reads identically to an unmanaged call. Without this line
+// the address is the one thing nobody can see.
+//
+// Host and tool identity only: the credential and the Interaction ids are the
+// values being withheld, and logging them here would put them in the log
+// instead.
+func (s *ToolServiceImpl) logWithheldManagedContext(ctx context.Context, req *interfaces.ExecuteToolReq, rawURL string) {
+	if s.Logger == nil || req == nil ||
+		req.RequestAuthorization == "" || req.BKNConversationID == "" || req.BKNInteractionID == "" {
+		return
+	}
+	host := "unparsable"
+	if target, err := neturl.Parse(rawURL); err == nil {
+		host = target.Scheme + "://" + target.Host
+	}
+	s.Logger.WithContext(ctx).Warnf(
+		"managed context withheld from function tool %s in box %s: target %s is not this deployment's function runtime (%s)",
+		req.ToolID, req.BoxID, host, interfaces.AOIServerURL)
 }
 
 // isPlatformFunctionTarget reports whether a Function tool actually resolves to
