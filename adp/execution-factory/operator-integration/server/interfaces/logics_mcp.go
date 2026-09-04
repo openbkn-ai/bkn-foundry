@@ -101,6 +101,7 @@ type MCPServerDeleteRequest struct {
 
 type MCPServerConfigInfo struct {
 	MCPCoreConfigInfo `json:",inline"`
+	Operations        []AuthOperationType  `json:"operations,omitempty"`                        // Instance operations held by the requesting user.
 	MCPID             string               `json:"mcp_id"`                                      // MCP Server ID
 	Version           int                  `json:"version,omitempty"`                           // MCP Server version.
 	CreationType      MCPCreationType      `json:"creation_type,omitempty"`                     // Create type.

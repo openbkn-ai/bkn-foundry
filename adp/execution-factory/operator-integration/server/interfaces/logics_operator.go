@@ -88,7 +88,8 @@ type OperatorEditResp struct {
 
 // OperatorDataInfo operator data.
 type OperatorDataInfo struct {
-	Name                   string                  `json:"name"` // Operator name.
+	Operations             []AuthOperationType     `json:"operations,omitempty"` // Instance operations held by the requesting user.
+	Name                   string                  `json:"name"`                 // Operator name.
 	OperatorID             string                  `json:"operator_id" validate:"uuid"`
 	Version                string                  `json:"version" validate:"uuid"`
 	Status                 BizStatus               `json:"status" validate:"omitempty,oneof=unpublish published offline editing"` // Status.

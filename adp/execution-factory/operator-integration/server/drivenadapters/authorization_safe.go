@@ -72,17 +72,58 @@ func (s *safeAuthorization) OperationCheck(ctx context.Context, req *interfaces.
 	return &interfaces.AuthOperationCheckResponse{Result: ok}, nil
 }
 
-// ResourceFilter keeps the resources the accessor is allowed all the operations on.
+// ResourceFilter keeps the resources the accessor is allowed all the visibility operations on
+// and projects the requested candidate operations for each surviving resource in one bkn-safe
+// request. Do not replace this with one check per list row: list pages must remain batch PEPs.
 func (s *safeAuthorization) ResourceFilter(ctx context.Context, req *interfaces.AuthResourceFilterRequest) ([]*interfaces.AuthResourceResult, error) {
-	out := make([]*interfaces.AuthResourceResult, 0, len(req.Resources))
-	for _, r := range req.Resources {
-		ok, err := s.allowedAll(ctx, req.Accessor.ID, r.Type, r.ID, req.Operations)
-		if err != nil {
-			return nil, err
+	if req == nil || req.Accessor == nil {
+		return []*interfaces.AuthResourceResult{}, nil
+	}
+
+	type safeResourceResult struct {
+		ResourceID   string   `json:"resource_id"`
+		ResourceType string   `json:"resource_type"`
+		Operations   []string `json:"operations"`
+	}
+	var response struct {
+		Resources *[]safeResourceResult `json:"resources"`
+	}
+	resources := make([]map[string]string, 0, len(req.Resources))
+	for _, resource := range req.Resources {
+		if resource == nil {
+			continue
 		}
-		if ok {
-			out = append(out, &interfaces.AuthResourceResult{ID: r.ID})
+		resources = append(resources, map[string]string{"id": resource.ID, "type": resource.Type})
+	}
+	visibilityOperations := make([]string, 0, len(req.Operations))
+	for _, operation := range req.Operations {
+		visibilityOperations = append(visibilityOperations, string(operation))
+	}
+	candidateOperations := make([]string, 0, len(req.CandidateOperations))
+	for _, operation := range req.CandidateOperations {
+		candidateOperations = append(candidateOperations, string(operation))
+	}
+	if err := s.post(ctx, "/api/safe/v1/authz/resource-filter", map[string]any{
+		"accessor_id":           req.Accessor.ID,
+		"resources":             resources,
+		"visibility_operations": visibilityOperations,
+		"candidate_operations":  candidateOperations,
+	}, &response); err != nil {
+		return nil, err
+	}
+	if response.Resources == nil {
+		return nil, fmt.Errorf("invalid bkn-safe resource-filter response")
+	}
+
+	out := make([]*interfaces.AuthResourceResult, 0, len(*response.Resources))
+	for _, resource := range *response.Resources {
+		operations := make([]interfaces.AuthOperationType, 0, len(resource.Operations))
+		for _, operation := range resource.Operations {
+			operations = append(operations, interfaces.AuthOperationType(operation))
 		}
+		out = append(out, &interfaces.AuthResourceResult{
+			ID: resource.ResourceID, Type: resource.ResourceType, Operations: operations,
+		})
 	}
 	return out, nil
 }

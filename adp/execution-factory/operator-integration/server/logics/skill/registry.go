@@ -920,7 +920,7 @@ func (r *skillRegistry) QuerySkillList(ctx context.Context, req *interfaces.Quer
 		filter["category"] = req.Category.String()
 	}
 
-	authResp, err := r.querySkillListPage(ctx, filter, req.CommonPageParams, req.UserID, interfaces.AuthOperationTypeView)
+	authResp, accessor, err := r.querySkillListPage(ctx, filter, req.CommonPageParams, req.UserID, interfaces.AuthOperationTypeView)
 	if err != nil {
 		return nil, err
 	}
@@ -932,8 +932,26 @@ func (r *skillRegistry) QuerySkillList(ctx context.Context, req *interfaces.Quer
 	if err != nil {
 		return nil, err
 	}
+	if err = projectSkillAuthorizeOperations(ctx, r.AuthService, accessor, skillInfos); err != nil {
+		return nil, err
+	}
 	resp.Data = skillInfos
 	return resp, nil
+}
+
+func projectSkillAuthorizeOperations(ctx context.Context, authorization interfaces.IAuthorizationService, accessor *interfaces.AuthAccessor, skills []*interfaces.SkillInfo) error {
+	skillIDs := make([]string, 0, len(skills))
+	for _, skill := range skills {
+		skillIDs = append(skillIDs, skill.SkillID)
+	}
+	operationsByID, err := auth.ProjectAuthorizeOperations(ctx, authorization, accessor, skillIDs, interfaces.AuthResourceTypeSkill)
+	if err != nil {
+		return err
+	}
+	for _, skill := range skills {
+		skill.Operations = operationsByID[skill.SkillID]
+	}
+	return nil
 }
 
 // Assemble Skill Market Summary List.
@@ -1063,7 +1081,7 @@ func (r *skillRegistry) queryReleaseListPage(ctx context.Context, filter map[str
 }
 
 func (r *skillRegistry) querySkillListPage(ctx context.Context, filter map[string]interface{}, pageParamsReq interfaces.CommonPageParams, userID string, operations ...interfaces.AuthOperationType) (
-	authResp *interfaces.QueryResponse[model.SkillRepositoryDB], err error) {
+	authResp *interfaces.QueryResponse[model.SkillRepositoryDB], accessor *interfaces.AuthAccessor, err error) {
 	// Build query executor.
 	sortField := "f_update_time"
 	switch pageParamsReq.SortBy {
@@ -1135,7 +1153,6 @@ func (r *skillRegistry) querySkillListPage(ctx context.Context, filter map[strin
 		// If it is an external interface, permission check.
 		queryBuilder.SetAuthFilter(func(newCtx context.Context) ([]string, error) {
 			// Check viewing permissions.
-			var accessor *interfaces.AuthAccessor
 			accessor, err = r.AuthService.GetAccessor(newCtx, userID)
 			if err != nil {
 				return nil, err

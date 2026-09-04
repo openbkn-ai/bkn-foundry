@@ -117,6 +117,10 @@ type IAuthorizationService interface {
 
 	// ResourceFilterIDs resource filtering.
 	ResourceFilterIDs(ctx context.Context, accessor *AuthAccessor, resourceIDS []string, resourceType AuthResourceType, operations ...AuthOperationType) ([]string, error)
+	// ResourceFilterOperations returns the requested candidate operations for each resource
+	// that satisfies every visibility operation. It is the list-page projection used by
+	// clients to decide which object-level controls to render.
+	ResourceFilterOperations(ctx context.Context, accessor *AuthAccessor, resourceIDs []string, resourceType AuthResourceType, visibilityOperations []AuthOperationType, candidateOperations []AuthOperationType) (map[string][]AuthOperationType, error)
 	// ResourceListIDs resource list.
 	ResourceListIDs(ctx context.Context, accessor *AuthAccessor, resourceType AuthResourceType, operations ...AuthOperationType) ([]string, error)
 

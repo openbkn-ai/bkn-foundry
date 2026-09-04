@@ -56,7 +56,71 @@ func fakeAuthz(t *testing.T) *httptest.Server {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"ids": ids})
 	})
+	mux.HandleFunc("/api/safe/v1/authz/resource-filter", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			AccessorID string `json:"accessor_id"`
+			Resources  []struct {
+				Type string `json:"type"`
+				ID   string `json:"id"`
+			} `json:"resources"`
+			VisibilityOperations []string `json:"visibility_operations"`
+			CandidateOperations  []string `json:"candidate_operations"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if req.AccessorID != "u1" || len(req.Resources) != 2 || req.Resources[0].Type != "skill" || req.Resources[0].ID != "s1" ||
+			len(req.VisibilityOperations) != 1 || req.VisibilityOperations[0] != "view" ||
+			len(req.CandidateOperations) != 1 || req.CandidateOperations[0] != "authorize" {
+			http.Error(w, "unexpected resource filter request", http.StatusBadRequest)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"resources": []map[string]any{
+			{"resource_id": "s1", "resource_type": "skill", "operations": []string{"authorize"}},
+			{"resource_id": "s2", "resource_type": "skill", "operations": []string{}},
+		}})
+	})
 	return httptest.NewServer(mux)
+}
+
+func TestSafeAuthorizationResourceFilterProjectsCandidateOperations(t *testing.T) {
+	srv := fakeAuthz(t)
+	defer srv.Close()
+
+	resources, err := newSafeAuthorization(srv.URL, testLogger{}).ResourceFilter(context.Background(), &interfaces.AuthResourceFilterRequest{
+		Accessor: &interfaces.AuthAccessor{ID: "u1"},
+		Resources: []*interfaces.AuthResource{
+			{ID: "s1", Type: "skill"},
+			{ID: "s2", Type: "skill"},
+		},
+		Operations:          []interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
+		CandidateOperations: []interfaces.AuthOperationType{interfaces.AuthOperationTypeAuthorize},
+	})
+	if err != nil {
+		t.Fatalf("ResourceFilter: %v", err)
+	}
+	if len(resources) != 2 || resources[0].ID != "s1" || resources[0].Type != "skill" ||
+		len(resources[0].Operations) != 1 || resources[0].Operations[0] != interfaces.AuthOperationTypeAuthorize ||
+		len(resources[1].Operations) != 0 {
+		t.Fatalf("ResourceFilter = %+v, want authorize only for s1", resources)
+	}
+}
+
+func TestSafeAuthorizationResourceFilterRejectsMissingResources(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{})
+	}))
+	defer srv.Close()
+
+	resources, err := newSafeAuthorization(srv.URL, testLogger{}).ResourceFilter(context.Background(), &interfaces.AuthResourceFilterRequest{
+		Accessor:   &interfaces.AuthAccessor{ID: "u1"},
+		Resources:  []*interfaces.AuthResource{{ID: "s1", Type: "skill"}},
+		Operations: []interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
+	})
+	if err == nil {
+		t.Fatalf("ResourceFilter = %+v, want an invalid response error", resources)
+	}
 }
 
 func TestSafeAuthorizationResourceList(t *testing.T) {

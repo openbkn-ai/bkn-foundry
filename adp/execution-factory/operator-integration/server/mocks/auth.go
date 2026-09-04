@@ -345,6 +345,21 @@ func (mr *MockIAuthorizationServiceMockRecorder) ResourceFilterIDs(ctx, accessor
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResourceFilterIDs", reflect.TypeOf((*MockIAuthorizationService)(nil).ResourceFilterIDs), varargs...)
 }
 
+// ResourceFilterOperations mocks base method.
+func (m *MockIAuthorizationService) ResourceFilterOperations(ctx context.Context, accessor *interfaces.AuthAccessor, resourceIDs []string, resourceType interfaces.AuthResourceType, visibilityOperations, candidateOperations []interfaces.AuthOperationType) (map[string][]interfaces.AuthOperationType, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResourceFilterOperations", ctx, accessor, resourceIDs, resourceType, visibilityOperations, candidateOperations)
+	ret0, _ := ret[0].(map[string][]interfaces.AuthOperationType)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResourceFilterOperations indicates an expected call of ResourceFilterOperations.
+func (mr *MockIAuthorizationServiceMockRecorder) ResourceFilterOperations(ctx, accessor, resourceIDs, resourceType, visibilityOperations, candidateOperations any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResourceFilterOperations", reflect.TypeOf((*MockIAuthorizationService)(nil).ResourceFilterOperations), ctx, accessor, resourceIDs, resourceType, visibilityOperations, candidateOperations)
+}
+
 // ResourceListIDs mocks base method.
 func (m *MockIAuthorizationService) ResourceListIDs(ctx context.Context, accessor *interfaces.AuthAccessor, resourceType interfaces.AuthResourceType, operations ...interfaces.AuthOperationType) ([]string, error) {
 	m.ctrl.T.Helper()
