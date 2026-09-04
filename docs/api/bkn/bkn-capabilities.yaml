@@ -151,8 +151,12 @@ paths:
                 $ref: '#/components/schemas/CapabilityBindingList'
         '400':
           description: >-
-            Empty capability list, unsupported capability_type, missing capability_id, or a
-            function without owner_id
+            Empty capability list, unsupported capability_type, missing capability_id, a
+            function without owner_id, or a value longer than its column: owner_id and
+            capability_id are limited to 64 characters and comment to 255. Over-long values are
+            rejected here rather than reaching the database, where they would surface as a 500
+            under strict SQL mode or be silently truncated into a binding pointing at a
+            different capability.
         '403':
           description: The caller cannot modify this knowledge network
         '404':
@@ -188,7 +192,10 @@ paths:
           in: query
       responses:
         '204':
-          description: Released
+          description: >-
+            Released. Releasing a binding that is already gone is also a 204: the request states
+            that the capability is not mounted, and that is true either way. This matches
+            DELETE .../metrics.
         '400':
           description: Empty binding_ids
         '403':
