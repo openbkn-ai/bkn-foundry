@@ -37,7 +37,6 @@ info:
     Product note: object instance execution targets logical properties. Object-type aggregate metrics must use metric data or dry-run rather than the instance execution entry point.
 security:
   - OAuth2: []
-  - AppKey: []
 paths:
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/metrics:
     get:
@@ -343,8 +342,6 @@ components:
   securitySchemes:
     OAuth2:
       $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
-    AppKey:
-      $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
   schemas:
     MetricUnitType:
       type: string

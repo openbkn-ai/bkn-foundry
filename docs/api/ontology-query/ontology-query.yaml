@@ -12,7 +12,6 @@ info:
     permissions. See `../knowledge-network-authorization.md`.
 security:
   - OAuth2: []
-  - AppKey: []
 paths:
   /api/ontology-query/v1/health:
     get:
@@ -2581,7 +2580,7 @@ paths:
         异步提交行动执行，立即返回 `execution_id`。执行主体只来自认证上下文，
         请求体中的 `dynamic_params` 不能覆盖它。
 
-        开启执行 PEP 后，提交和真实外调前都要求具体 Action Type 的 `execute`、
+        认证开启时，提交和真实外调前都要求具体 Action Type 的 `execute`、
         引用的 tool_box 或 MCP 的 `execute`，以及目标、affect 和 impact contract
         引用对象类的 `query_data`。`action_type.execute` 不从父知识网络继承。
         默认启用防重复：同一知识网络、行动类、目标实例与 dynamic_params 指纹在配置窗口内
@@ -3049,11 +3048,9 @@ components:
   securitySchemes:
     OAuth2:
       $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
-    AppKey:
-      $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
   responses:
     Unauthorized:
-      description: Missing or invalid OAuth bearer token or AppKey.
+      description: Missing or invalid OAuth bearer token.
       content:
         application/json:
           schema:

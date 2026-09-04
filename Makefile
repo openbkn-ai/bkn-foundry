@@ -17,9 +17,9 @@ MODULES      := bkn context-loader ontology-query vega execution-factory mf-mode
 #   bkn-safe      自助读取面和集群内 authz 合同都不作为通用集成合同对外
 #   observability 只有 observability.json，没有可发布的 YAML，渲染出来是空分组
 MODULES_UNPUBLISHED := bkn-safe observability
-# Internal bkn-safe contracts are not published, but they are still linted so
-# service-to-service request and error schemas cannot drift silently.
-LINT_MODULES := $(MODULES) bkn-safe
+# Unpublished modules are linted too, so service-to-service request and error
+# schemas cannot drift silently.
+LINT_MODULES := $(MODULES) $(MODULES_UNPUBLISHED)
 # 对账：docs/api 下的模块目录必须要么在 MODULES 里、要么在 MODULES_UNPUBLISHED 里，
 # 新增模块目录却忘了登记时直接报错，避免"加了文档但站点上没有"的静默漏发。
 MODULE_DIRS  := $(dir $(wildcard $(API_DIR)/*/.))

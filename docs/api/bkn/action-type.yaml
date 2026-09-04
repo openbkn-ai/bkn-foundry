@@ -10,7 +10,6 @@ info:
     from the knowledge network. See `../knowledge-network-authorization.md`.
 security:
   - OAuth2: []
-  - AppKey: []
 paths:
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-types:
     get:
@@ -529,8 +528,6 @@ components:
   securitySchemes:
     OAuth2:
       $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
-    AppKey:
-      $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
   schemas:
     BasicInfo:
       description: Basic resource information containing ID and name

@@ -328,20 +328,30 @@ components:
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+            $ref: '#/components/schemas/BknSafeError'
     InternalError:
       description: Authorization engine or storage failure.
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+            $ref: '#/components/schemas/BknSafeError'
     AuthorizationUnavailable:
       description: Account state cannot be read; no permission is granted.
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+            $ref: '#/components/schemas/BknSafeError'
   schemas:
+    BknSafeError:
+      description: BKN Safe error envelope with the deprecated legacy `error` alias.
+      allOf:
+        - $ref: '../_shared/errors.yaml#/components/schemas/Error'
+        - type: object
+          properties:
+            error:
+              type: string
+              deprecated: true
+              description: Legacy human-readable error alias; identical to `description`.
     ResourceRef:
       type: object
       required: [type]

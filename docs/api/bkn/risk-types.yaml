@@ -12,7 +12,6 @@ info:
     `../knowledge-network-authorization.md`.
 security:
   - OAuth2: []
-  - AppKey: []
 paths:
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/risk-types:
     post:
@@ -334,8 +333,6 @@ components:
   securitySchemes:
     OAuth2:
       $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
-    AppKey:
-      $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
   schemas:
     AccountInfo:
       type: object
