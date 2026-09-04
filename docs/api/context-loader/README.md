@@ -17,6 +17,7 @@
 | [logic-property.yaml](logic-property.yaml) | Logical-property evaluation and metric queries | `POST /kn/logic-property-resolver`, `POST /kn/query_metric` |
 | [action.yaml](action.yaml) | Action retrieval and execution | `POST /kn/get_action_info`, `POST /kn/execute_action`, `POST /kn/get_action_execution`, `POST /kn/list_action_executions` |
 | [skill.yaml](skill.yaml) | Skill retrieval and reading | `POST /kn/find_skills`, `POST /kn/list_skills`, `POST /kn/get_skill_content`, `POST /kn/read_skill_file`, `POST /kn/execute_skill` |
+| [tool.yaml](tool.yaml) | Published-tool retrieval and execution | `POST /kn/search_tools`, `POST /kn/execute_tool` |
 | [data-access.yaml](data-access.yaml) | Direct data access | `POST /kn/list_resources`, `POST /kn/describe_resource`, `POST /kn/run_sql` |
 | [mcp.yaml](mcp.yaml) | MCP service | `GET /mcp/info`, `POST /mcp` |
 
@@ -29,8 +30,10 @@ get_object_types         → inspect physical property columns, allowed operator
 query_object_instance    → retrieve instances and read the primary key from _instance_identity
   ├→ logic-property-resolver → evaluate metric or operator logical properties
   ├→ get_action_info → execute_action → get_action_execution → complete an action flow
-  └→ find_skills            → retrieve loadable Skills
-       └→ get_skill_content → read_skill_file → execute_skill
+  ├→ find_skills            → retrieve loadable Skills
+  │    └→ get_skill_content → read_skill_file → execute_skill
+  └→ search_tools           → find published Function tools
+       └→ execute_tool      → run one as the calling principal
 ```
 
 For modeled metrics, prefer the ontology contract rather than rebuilding the

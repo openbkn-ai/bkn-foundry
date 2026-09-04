@@ -30,6 +30,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knrunsql"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knsearch"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knskills"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/kntools"
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
@@ -60,6 +61,8 @@ const (
 	toolKeyGetSkillContent          = "get_skill_content"
 	toolKeyReadSkillFile            = "read_skill_file"
 	toolKeyExecuteSkill             = "execute_skill"
+	toolKeySearchTools              = "search_tools"
+	toolKeyExecuteTool              = "execute_tool"
 	// Bounds the lifetime of mcp-go's in-memory session state.
 	mcpSessionIdleTTL = 30 * time.Minute
 )
@@ -190,6 +193,13 @@ func newMCPServerForLocale(lifecycleClient *bkntrace.LifecycleClient, locale str
 	if knskills.ExecuteEnabled() {
 		b.add(toolKeyExecuteSkill, handleExecuteSkill(skillsService))
 	}
+
+	// The published Function tool surface. A Skill is a reusable procedure a
+	// model reads and runs; a published Function is a business operation someone
+	// registered and published, so discovery and execution are separate tools.
+	toolsService := kntools.NewKnToolsService()
+	b.add(toolKeySearchTools, handleSearchTools(toolsService))
+	b.add(toolKeyExecuteTool, handleExecuteTool(toolsService))
 
 	// The lifecycle tools are registered straight onto the server by the tracing
 	// adapter rather than through the builder. Claim their advertised names all

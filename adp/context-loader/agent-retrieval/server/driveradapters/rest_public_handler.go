@@ -22,6 +22,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knquerytools"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knsearch"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knskills"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/kntools"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/mcp"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
@@ -43,6 +44,7 @@ type restPublicHandler struct {
 	KnFindSkillsHandler            knfindskills.KnFindSkillsHandler
 	KnQueryToolsHandler            knquerytools.KnQueryToolsHandler
 	KnSkillsHandler                knskills.KnSkillsHandler
+	KnToolsHandler                 kntools.KnToolsHandler
 	Logger                         interfaces.Logger
 	LifecycleClient                *bkntrace.LifecycleClient
 	// ServicePort is used to deduce the address for the sandbox to return to this service (see PTC toolkit endpoint).
@@ -66,6 +68,7 @@ func NewRestPublicHandler(logger interfaces.Logger, servicePort int) interfaces.
 		KnFindSkillsHandler:            knfindskills.NewKnFindSkillsHandler(),
 		KnQueryToolsHandler:            knquerytools.NewKnQueryToolsHandler(),
 		KnSkillsHandler:                knskills.NewKnSkillsHandler(),
+		KnToolsHandler:                 kntools.NewKnToolsHandler(),
 		Logger:                         logger,
 		LifecycleClient:                bkntrace.NewLifecycleClientFromEnv(),
 		ServicePort:                    servicePort,
@@ -111,6 +114,10 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	if logicsSkills.ExecuteEnabled() {
 		engine.POST("/kn/execute_skill", r.KnSkillsHandler.ExecuteSkill)
 	}
+
+	// Published Function tool surface: find a callable tool, then run it.
+	engine.POST("/kn/search_tools", r.KnToolsHandler.SearchTools)
+	engine.POST("/kn/execute_tool", r.KnToolsHandler.ExecuteTool)
 
 	// MCP Server (Bearer token auth, supports Cursor/Claude Desktop)
 	// GET /mcp/info returns the self-description (tool catalog and connection

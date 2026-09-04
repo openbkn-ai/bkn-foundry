@@ -414,5 +414,28 @@
     "output_schema.properties.object_types.items.properties.data_source.description": "Bound data resource {type, id, name}; the id works as the {{.<resource_id>}} placeholder in run_sql.",
     "output_schema.properties.object_types.items.properties.data_properties.description": "Data properties [{name, type, condition_operations}]; condition_operations decides whether the property can be filtered with match or knn.",
     "output_schema.properties.message.description": "A note from retrieval, present in two cases: (1) there was no hit, and this says why it is empty; (2) **there are results but the results themselves need explaining** — for example the deployment configured a relevance threshold that could not run because the reranker was unavailable, so the instances below are unfiltered recall. **Read this field even when nodes is non-empty**: it is what separates a filtered result from one that could not be filtered."
+  },
+  "search_tools": {
+    "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
+    "input_schema.properties.query.description": "Optional. Matches against tool name, description, use rule and toolbox name. Matching is literal substring, case-insensitive, so another keyword helps more than another phrasing; leave it empty to list every tool this account can call.",
+    "input_schema.properties.toolbox_id.description": "Optional. Restricts the search to one toolbox. Take it from a toolbox_id this tool returned earlier.",
+    "input_schema.properties.limit.description": "Optional. Caps how many tools come back. Defaults to 20, maximum 100. Every hit carries its input schema, so a large limit costs a lot of context.",
+    "output_schema.properties.tools.description": "The published Function tools this account can call",
+    "output_schema.properties.tools.items.properties.tool_id.description": "Tool id, passed to execute_tool together with toolbox_id",
+    "output_schema.properties.tools.items.properties.toolbox_id.description": "Id of the owning toolbox, required by execute_tool",
+    "output_schema.properties.tools.items.properties.toolbox_name.description": "Name of the owning toolbox",
+    "output_schema.properties.tools.items.properties.name.description": "Tool name",
+    "output_schema.properties.tools.items.properties.description.description": "What the tool does",
+    "output_schema.properties.tools.items.properties.use_rule.description": "Use rule: what its author says about when and how to call it",
+    "output_schema.properties.tools.items.properties.input_schema.description": "The business input contract, with service topology trimmed out. Fill execute_tool's arguments from it",
+    "output_schema.properties.total_matched.description": "How many tools matched, which can exceed the length of tools",
+    "output_schema.properties.truncated.description": "True when more tools matched than limit allows and only the first ones were returned",
+    "output_schema.properties.message.description": "Explains an empty or truncated result"
+  },
+  "execute_tool": {
+    "input_schema.properties.toolbox_id.description": "Toolbox id, taken from a search_tools result.",
+    "input_schema.properties.tool_id.description": "Tool id, taken from a search_tools result.",
+    "input_schema.properties.arguments.description": "The tool's business input, filled from the input_schema search_tools returned. Do not put credentials or session ids here; the platform carries those itself.",
+    "output_schema.description": "The tool's raw response. A function that fails reports it in the body with HTTP 200, so read the body rather than trusting the call to have succeeded."
   }
 }

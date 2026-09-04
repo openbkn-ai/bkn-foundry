@@ -1,0 +1,52 @@
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "response_format": {
+        "type": "string",
+        "enum": ["json", "toon"],
+        "default": "toon",
+        "description": "文本格式：json 或 toon，默认 toon"
+      },
+      "query": {
+        "type": "string",
+        "description": "可选。检索词，按工具名、说明、使用规则与工具箱名匹配。当前为字面子串匹配（大小写不敏感），换词比换说法更有效；留空则返回当前账户可调用的全部工具。"
+      },
+      "toolbox_id": {
+        "type": "string",
+        "description": "可选。只在该工具箱内检索。取自本工具此前返回的 toolbox_id。"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "description": "可选。最多返回多少个工具，默认 20，上限 100。每个命中都带入参 schema，调大会显著占用上下文。"
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "tools": {
+        "type": "array",
+        "description": "当前账户可调用的已发布函数工具",
+        "items": {
+          "type": "object",
+          "properties": {
+            "tool_id": { "type": "string", "description": "工具 ID，连同 toolbox_id 一起传给 execute_tool" },
+            "toolbox_id": { "type": "string", "description": "所属工具箱 ID，execute_tool 必填" },
+            "toolbox_name": { "type": "string", "description": "所属工具箱名称" },
+            "name": { "type": "string", "description": "工具名" },
+            "description": { "type": "string", "description": "工具说明" },
+            "use_rule": { "type": "string", "description": "使用规则，注册者对调用时机与约束的说明" },
+            "input_schema": { "type": "object", "description": "业务入参契约，已裁掉服务地址等传输信息；execute_tool 的 arguments 按它填" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "total_matched": { "type": "integer", "description": "匹配到的工具总数，可能大于 tools 长度" },
+      "truncated": { "type": "boolean", "description": "为 true 表示命中数超过 limit，只返回了前若干条" },
+      "message": { "type": "string", "description": "空结果或截断说明" }
+    }
+  }
+}

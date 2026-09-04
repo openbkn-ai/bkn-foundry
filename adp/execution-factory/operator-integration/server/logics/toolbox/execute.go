@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	neturl "net/url"
+	"strings"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/bkntrace"
@@ -353,8 +355,105 @@ func (s *ToolServiceImpl) executeTool(ctx context.Context, req *interfaces.Execu
 		Timeout:           time.Duration(req.Timeout) * time.Second,
 	}
 	proxyReq.Headers = utils.SanitizeThirdPartyHeaders(proxyReq.Headers)
+	// After sanitizing, never before: the sanitizer strips exactly this header
+	// family on the way to a third party, and this deployment's own function
+	// runtime is not one.
+	if tool.SourceType == model.SourceTypeFunction {
+		if isPlatformFunctionTarget(url) {
+			proxyReq.Headers = functionRuntimeHeaders(proxyReq.Headers, req)
+		} else {
+			s.logWithheldManagedContext(ctx, req, url)
+		}
+	}
 	resp, err = s.Proxy.HandlerRequest(ctx, proxyReq)
 	return
+}
+
+// logWithheldManagedContext records the one case an operator cannot otherwise
+// diagnose: a managed call whose Function does not resolve to this deployment's
+// runtime, so the credential was withheld on purpose.
+//
+// Inside the sandbox this surfaces only as sandbox_sdk.bkn reporting "not
+// configured", which reads identically to an unmanaged call. Without this line
+// the address is the one thing nobody can see.
+//
+// Host and tool identity only: the credential and the Interaction ids are the
+// values being withheld, and logging them here would put them in the log
+// instead.
+func (s *ToolServiceImpl) logWithheldManagedContext(ctx context.Context, req *interfaces.ExecuteToolReq, rawURL string) {
+	if s.Logger == nil || req == nil ||
+		req.RequestAuthorization == "" || req.BKNConversationID == "" || req.BKNInteractionID == "" {
+		return
+	}
+	host := "unparsable"
+	if target, err := neturl.Parse(rawURL); err == nil {
+		host = target.Scheme + "://" + target.Host
+	}
+	s.Logger.WithContext(ctx).Warnf(
+		"managed context withheld from function tool %s in box %s: target %s is not this deployment's function runtime (%s)",
+		req.ToolID, req.BoxID, host, interfaces.AOIServerURL)
+}
+
+// isPlatformFunctionTarget reports whether a Function tool actually resolves to
+// this deployment's own function runtime.
+//
+// SourceTypeFunction is not by itself proof of that. Registration pins the
+// address to AOIServerURL, but import takes metadata.server_url from the
+// payload verbatim (see impex.go), so a toolbox can be imported with a Function
+// whose address is any host the importer chose. Forwarding the caller's live
+// credential on that basis would hand an arbitrary external endpoint the token
+// of whoever invoked the tool — a strictly worse outcome than the accepted one,
+// where the token stays inside this deployment's sandbox.
+//
+// Scheme and host must match the configured runtime, and the path must be the
+// internal function-exec route. A tool that fails the check still executes; it
+// simply receives no credential and no Interaction, exactly like an unmanaged
+// call.
+func isPlatformFunctionTarget(rawURL string) bool {
+	target, err := neturl.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	runtime, err := neturl.Parse(interfaces.AOIServerURL)
+	if err != nil {
+		return false
+	}
+	if !strings.EqualFold(target.Scheme, runtime.Scheme) || !strings.EqualFold(target.Host, runtime.Host) {
+		return false
+	}
+	// GetAOIFuncExecPath ends in the :version placeholder; the prefix before it
+	// is what every registered version shares.
+	prefix := strings.TrimSuffix(interfaces.GetAOIFuncExecPath(), ":version")
+	return strings.HasPrefix(target.Path, prefix)
+}
+
+// functionRuntimeHeaders forwards the authenticated caller and its managed
+// Interaction to a Function tool, so the code it runs can read BKN as the
+// principal that invoked it, inside the Interaction that invoked it.
+//
+// Only for Function tools resolving to this deployment's own runtime: every
+// other address is a third party, and the sanitizer above is what keeps
+// platform identity away from it.
+//
+// All three values must be present. A partial context means the call did not
+// come through a managed Interaction, and a credential without the lifecycle
+// guard it belongs to is exactly what must not reach a pooled sandbox.
+//
+// Server-captured values win over anything in the body: a Tool that could state
+// them would be stating whose credential it runs under.
+func functionRuntimeHeaders(headers map[string]any, req *interfaces.ExecuteToolReq) map[string]any {
+	if req == nil || req.RequestAuthorization == "" ||
+		req.BKNConversationID == "" || req.BKNInteractionID == "" {
+		return headers
+	}
+	forwarded := make(map[string]any, len(headers)+3)
+	for key, value := range headers {
+		forwarded[key] = value
+	}
+	forwarded["Authorization"] = req.RequestAuthorization
+	forwarded[string(interfaces.HeaderBKNConversationID)] = req.BKNConversationID
+	forwarded[string(interfaces.HeaderBKNInteractionID)] = req.BKNInteractionID
+	return forwarded
 }
 
 func actionExecutionSpanAttrs(ctx context.Context, operation string, err error, refs map[string]interface{}) map[string]interface{} {

@@ -194,6 +194,7 @@ func TestRegisteredProxyRouteCannotBypassLifecycle(t *testing.T) {
 		KnFindSkillsHandler:            stubKnFindSkillsHandler{},
 		KnQueryToolsHandler:            queryTools,
 		KnSkillsHandler:                stubKnSkillsHandler{},
+		KnToolsHandler:                 stubKnToolsHandler{},
 		LifecycleClient:                bkntrace.NewLifecycleClient("", nil),
 		Logger:                         logger.DefaultLogger(),
 	}
@@ -225,6 +226,7 @@ func TestRegisteredProxyRouteCannotBypassLifecycle(t *testing.T) {
 		KnFindSkillsHandler:            stubKnFindSkillsHandler{},
 		KnQueryToolsHandler:            &countingQueryToolsHandler{},
 		KnSkillsHandler:                stubKnSkillsHandler{},
+		KnToolsHandler:                 stubKnToolsHandler{},
 		MCPProxyHandler:                proxy,
 		LifecycleClient:                bkntrace.NewLifecycleClient("", nil),
 		Logger:                         logger.DefaultLogger(),

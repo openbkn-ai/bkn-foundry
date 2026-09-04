@@ -15,7 +15,8 @@ info:
     `get_action_info`、`execute_action`、`get_action_execution`、
     `list_action_executions`、`find_skills`、`run_sql`、`list_knowledge_networks`、
     `get_kn_detail`、`get_object_types`、`get_relation_types`、`list_resources`、
-    `describe_resource`、`list_skills`、`get_skill_content`、`read_skill_file`。
+    `describe_resource`、`list_skills`、`get_skill_content`、`read_skill_file`、
+    `search_tools`、`execute_tool`。
     另有一个默认不装配的 `execute_skill`：它把入口命令送进沙箱执行，只有显式开启
     （`EXECUTE_SKILL_ENABLED=true`）才出现在 `tools/list` 与 `GET /mcp/info`，
     未开启时与「没编译进来」无异。该开关是技能执行能力的总闸，同时决定

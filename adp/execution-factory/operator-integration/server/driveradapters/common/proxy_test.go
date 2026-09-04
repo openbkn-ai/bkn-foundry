@@ -253,13 +253,12 @@ func TestBuildFunctionProxyExecutionEnvFallsBackToRequestAccount(t *testing.T) {
 	}
 }
 
-// The proxy path must never hand the sandbox the caller's credential.
+// An unmanaged proxy call still gets nothing.
 //
 // It runs code registered by a third party, and its route authenticates by
 // trusted header (hydra.GenerateVisitor) rather than by introspection, so the
-// Authorization value is an unverified passthrough. Injecting it would let a
-// function author read and exfiltrate the invoking user's live credential —
-// and the sandbox has outbound network.
+// Authorization value is an unverified passthrough. Only a complete managed
+// context lifts that, and a bare token is not one.
 func TestBuildFunctionProxyExecutionEnvWithholdsCredential(t *testing.T) {
 	env, err := buildFunctionProxyExecutionEnv(
 		newRequestContext("tok-req", "acct-req"),
@@ -274,7 +273,54 @@ func TestBuildFunctionProxyExecutionEnvWithholdsCredential(t *testing.T) {
 		t.Fatalf("BKN_TOKEN 必须在场（缺席会让上一个调用方的值留下）: %v", env)
 	}
 	if value != "" {
-		t.Fatalf("代理路径不得注入调用方凭据，得到 %v", value)
+		t.Fatalf("无受管上下文时不得注入调用方凭据，得到 %v", value)
+	}
+}
+
+// A managed Toolbox call hands the Function its invoker and Interaction, which
+// is what lets sandbox_sdk.bkn read the knowledge network as that principal.
+func TestBuildFunctionProxyExecutionEnvCarriesAManagedInteraction(t *testing.T) {
+	c := newRequestContext("tok-req", "acct-req")
+	c.Request.Header.Set("bkn-conversation-id", "conv_1")
+	c.Request.Header.Set("bkn-interaction-id", "int_1")
+
+	env, err := buildFunctionProxyExecutionEnv(c, "11111111-1111-4111-8111-111111111111")
+	if err != nil {
+		t.Fatalf("构造函数代理执行环境失败: %v", err)
+	}
+
+	for key, want := range map[string]string{
+		"BKN_TOKEN":           "tok-req",
+		"BKN_CONVERSATION_ID": "conv_1",
+		"BKN_INTERACTION_ID":  "int_1",
+	} {
+		if env[key] != want {
+			t.Fatalf("%s 未随受管调用下发，期望 %s，得到 %v", key, want, env[key])
+		}
+	}
+}
+
+// A partial context is treated as absent: a credential separated from the
+// lifecycle guard it belongs to must not reach a pooled sandbox.
+func TestBuildFunctionProxyExecutionEnvRefusesAPartialInteraction(t *testing.T) {
+	for _, header := range []string{"bkn-conversation-id", "bkn-interaction-id"} {
+		c := newRequestContext("tok-req", "acct-req")
+		c.Request.Header.Set(header, "only_half")
+
+		env, err := buildFunctionProxyExecutionEnv(c, "11111111-1111-4111-8111-111111111111")
+		if err != nil {
+			t.Fatalf("构造函数代理执行环境失败: %v", err)
+		}
+
+		for _, key := range []string{"BKN_TOKEN", "BKN_CONVERSATION_ID", "BKN_INTERACTION_ID"} {
+			value, ok := env[key]
+			if !ok {
+				t.Fatalf("%s 必须在场: %v", key, env)
+			}
+			if value != "" {
+				t.Fatalf("只带 %s 的半截上下文不得下发 %s，得到 %v", header, key, value)
+			}
+		}
 	}
 }
 

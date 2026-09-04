@@ -42,6 +42,7 @@ var communityTools = []string{
 	// knowledge network tools.
 	"describe_resource",
 	"execute_action",
+	"execute_tool",
 	"explore_subgraph",
 	"find_skills",
 	"get_action_execution",
@@ -66,6 +67,7 @@ var communityTools = []string{
 	"run_sql",
 	"search_instance",
 	"search_schema",
+	"search_tools",
 	// execute_skill is not configured by default (MCP_EXECUTE_SKILL_ENABLED), so it is not included in this baseline.
 	// Watched by TestExecuteSkillOnlyAppearsWhenEnabled alone.
 }

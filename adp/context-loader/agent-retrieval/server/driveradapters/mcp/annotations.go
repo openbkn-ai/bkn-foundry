@@ -93,6 +93,11 @@ var toolAnnotations = map[string]func() mcp.ToolAnnotation{
 	toolKeyReadSkillFile:   readOnlyTool,
 	toolKeyExecuteSkill:    arbitraryEffectTool,
 
+	// Published Function tools: the catalogue only reads. Running one executes
+	// code a third party registered, against whatever systems it was wired to.
+	toolKeySearchTools: readOnlyTool,
+	toolKeyExecuteTool: arbitraryEffectTool,
+
 	// Execution: the caller supplies the program.
 	toolKeyRunCode:  arbitraryEffectTool,
 	toolKeyRunShell: arbitraryEffectTool,

@@ -125,6 +125,17 @@
     "SkillRelativePathRequired": "缺少 rel_path 参数。请从 get_skill_content 返回的文件列表中获取该参数。",
     "SkillEntryShellRequired": "缺少 entry_shell 参数。请从 SKILL.md 声明的入口命令中获取该参数。",
     "LogicPropertyInputMissing": "生成的动态参数缺少必需输入项。",
+    "ToolboxCatalogRequestFailed": "获取已发布工具箱列表失败。",
+    "ToolboxCatalogResponseInvalid": "已发布工具箱列表响应无效。",
+    "ToolCatalogRequestFailed": "获取工具箱内工具列表失败。",
+    "ToolCatalogResponseInvalid": "工具列表响应无效。",
+    "ToolExecutionRequestFailed": "调用已发布工具失败。",
+    "ToolExecutionResponseInvalid": "已发布工具响应无效。",
+    "ToolboxIDRequired": "缺少 toolbox_id 参数。",
+    "ToolboxIDAndToolIDRequired": "缺少 toolbox_id 或 tool_id 参数，二者都取自 search_tools 的返回。",
+    "ToolNotExecutable": "该工具不在当前可调用的已启用工具列表中：工具可能已停用、所属工具箱未发布，或当前账户无权访问。请先用 search_tools 确认可用的 toolbox_id 与 tool_id。",
+    "NoPublishedToolsMatched": "没有匹配的已发布工具。请先在执行工厂注册工具、发布所属工具箱并启用工具，或放宽 query、去掉 toolbox_id 后重试。",
+    "ToolSearchTruncated": "匹配的工具超过 limit，仅返回前若干条。请收窄 query 或提高 limit。",
     "LogicPropertyGenerationFailed": "生成动态参数失败。"
   },
   "find_skills": {
