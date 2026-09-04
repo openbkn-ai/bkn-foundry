@@ -47,6 +47,9 @@ func (r *toolboxRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
 	engine.GET("/tool-box/:box_id", r.ToolBoxHandler.QueryToolBox)
 	engine.GET("/tool-box/:box_id/tool/:tool_id", r.ToolBoxHandler.QueryTool)
 	engine.GET("/tool-box/:box_id/tools/list", r.ToolBoxHandler.QueryBoxToolPage)
+	// Retrieval interface. Internal face only: the whitelist carries the caller's authorization
+	// decision, and a public caller supplying its own whitelist would be deciding its own scope.
+	engine.POST("/tool-box/tools/search", r.ToolBoxHandler.SearchTools)
 	engine.POST("/tool-box/:box_id/proxy/:tool_id", middlewareProxyRequest(), r.ToolBoxHandler.ExecuteTool)
 }
 

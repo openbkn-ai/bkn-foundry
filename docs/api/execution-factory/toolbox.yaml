@@ -23,6 +23,25 @@ info:
 
     **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` 前缀的
     AppKey）。
+
+    **检索入口在内部面**：`POST /internal-v1/tool-box/tools/search`，请求体
+    `{ query, tool_refs, top_k }`，出参每项带 `matched_by` 与 `score`。
+
+    `tool_refs` 是扁平引用 `"{box_id}/{tool_id}"` 的列表。**工具 id 在执行工厂里按箱
+    限定作用域**，所以配对才是一个工具的身份——只按 tool_id 收窄会让调用方够到另一个
+    箱里同 id 的工具。格式非法的引用被静默丢弃(白名单来自存量绑定,一条失效条目应当
+    让范围变窄,而不是让整个请求失败);悬空引用查不到行,同样静默略过。
+
+    `tool_refs` 必填,**空数组与字段缺失都返回空结果,不是「不过滤」**——后者会把全平台
+    工具交给一个没有任何绑定的调用方。白名单进查询条件做 pre-filter,不是先取 top_k
+    再过滤;执行工厂只收一组引用,不认识 `kn_id`。
+
+    **本期是字面子串匹配,不是语义检索**:工具侧至今没有向量索引(技能侧有,工具侧
+    从零建一条链路体量相当),因此 `matched_by` 恒为 `like`、`score` 缺省。`%` 与 `_`
+    按字面处理,不当通配符。出参形状按语义检索预留,届时替换实现不改契约。
+
+    不收进下面的 `paths`:内部面不校验令牌,按 `docs/api/README.md` 的口径不作为集成
+    合同发布。
   version: 0.1.3
 servers:
   - url: /api/agent-operator-integration/v1

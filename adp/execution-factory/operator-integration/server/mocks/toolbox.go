@@ -340,6 +340,21 @@ func (mr *MockIToolServiceMockRecorder) RegisterOpenApiBundle(ctx, req any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterOpenApiBundle", reflect.TypeOf((*MockIToolService)(nil).RegisterOpenApiBundle), ctx, req)
 }
 
+// SearchTools mocks base method.
+func (m *MockIToolService) SearchTools(ctx context.Context, req *interfaces.SearchToolsReq) (*interfaces.SearchToolsResp, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchTools", ctx, req)
+	ret0, _ := ret[0].(*interfaces.SearchToolsResp)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchTools indicates an expected call of SearchTools.
+func (mr *MockIToolServiceMockRecorder) SearchTools(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchTools", reflect.TypeOf((*MockIToolService)(nil).SearchTools), ctx, req)
+}
+
 // UpdateTool mocks base method.
 func (m *MockIToolService) UpdateTool(ctx context.Context, req *interfaces.UpdateToolReq) (*interfaces.UpdateToolResp, error) {
 	m.ctrl.T.Helper()

@@ -21,6 +21,7 @@ type ToolBoxHandler interface {
 	QueryToolBox(c *gin.Context)
 	DeleteToolBox(c *gin.Context)
 	QueryToolBoxPage(c *gin.Context)
+	SearchTools(c *gin.Context)
 	QueryToolBoxNamesByIDs(c *gin.Context)
 	UpdateToolBoxStatus(c *gin.Context)
 	// Tool operation interface.

@@ -425,6 +425,8 @@ type GetReleaseToolBoxInfoResp struct {
 
 // IToolService toolbox service interface.
 type IToolService interface {
+	// SearchTools retrieves tools inside an explicit whitelist (#1261).
+	SearchTools(ctx context.Context, req *SearchToolsReq) (resp *SearchToolsResp, err error)
 	// Toolbox management.
 	CreateToolBox(ctx context.Context, req *CreateToolBoxReq) (resp *CreateToolBoxResp, err error)
 	UpdateToolBox(ctx context.Context, req *UpdateToolBoxReq) (resp *UpdateToolBoxResp, err error)
@@ -467,4 +469,37 @@ type IToolService interface {
 // ToolBoxEventHandler event handling interface.
 type ToolBoxEventHandler interface {
 	HandleOperatorDeleteEvent(ctx context.Context, message []byte) error
+}
+
+// Retrieval channel reported on every tool search hit. Only "like" occurs today: the tool index
+// does not exist yet, so retrieval is literal substring containment. The field is here so the
+// contract does not change when the semantic index lands.
+const ToolMatchedByLike = "like"
+
+// SearchToolsReq searches tools inside an explicit whitelist (#1261).
+//
+// ToolRefs are flat "{box_id}/{tool_id}" references. A tool id is scoped to its box in the
+// execution factory, so the pair is what identifies a tool. The list is mandatory and
+// fail-closed: empty or missing returns nothing rather than every tool on the platform.
+type SearchToolsReq struct {
+	Query    string   `json:"query"`
+	ToolRefs []string `json:"tool_refs"`
+	TopK     int      `json:"top_k"`
+}
+
+// SearchToolHit is one retrieved tool.
+type SearchToolHit struct {
+	BoxID       string  `json:"box_id"`
+	ToolID      string  `json:"tool_id"`
+	Name        string  `json:"name"`
+	Description string  `json:"description"`
+	Status      string  `json:"status"`
+	// Score is absent while retrieval is substring matching; it is part of the contract so the
+	// semantic implementation can fill it without changing the response shape.
+	Score     float64 `json:"score"`
+	MatchedBy string  `json:"matched_by"`
+}
+
+type SearchToolsResp struct {
+	Entries []*SearchToolHit `json:"entries"`
 }
