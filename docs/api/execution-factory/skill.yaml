@@ -50,12 +50,16 @@ info:
     后者会把全平台技能交给一个没有任何绑定的调用方。白名单进查询条件做 pre-filter，
     不是先取 top_k 再过滤；执行工厂只收一组 id，不认识 `kn_id`，语义由调用方负责。
 
-    向量通道用建索引时锁定的那个 embedding 模型；模型取不到、或与数据集
-    `index_config.default_embedding_model` 对不上时跳过向量通道、只走全文，
-    并在 `matched_by` 里如实反映。`matched_by` 描述的是**查询是怎么组的**，
-    不是逐条文档的命中归因——Vega 把多路合成一个 `_score`，不返回归因。
+    **本期只有全文通道，向量通道未启用**：ANN 只能靠 `knn_vector` 的 `sub_conditions`
+    做过滤，而 Vega 目前把该 `filter` 生成在 `knn` 的平级位置，OpenSearch 直接 400
+    （`[knn] malformed query`）；放不进去就只能先取全局最近的 k 条再与白名单相交，
+    绑定数少的调用方向量通道恒空、`matched_by` 还会谎报 `knn`。修复见 #1296，修完再接。
+    因此当前 `matched_by` 恒为 `match`（不带 query 时为 `like`）。
 
-    排序目前是 BM25 分与向量分直加、没有 reranker，与概念召回是同一个已知问题。
+    `matched_by` 描述的是**查询是怎么组的**，不是逐条文档的命中归因——Vega 把多路合成
+    一个 `_score`，不返回归因。
+
+    排序没有 reranker，与概念召回是同一个已知问题。
     不收进上面的 `paths`：内部面不校验令牌，按 `docs/api/README.md` 的口径不作为
     集成合同发布。
   version: 0.1.3

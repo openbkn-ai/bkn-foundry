@@ -1099,20 +1099,14 @@ func (c *OpenSearchConnector) ConvertFilterConditionKnnVector(condition interfac
 			filterQueries = append(filterQueries, subQuery)
 		}
 
-		// The filter belongs inside the vector field's object, not beside "knn". OpenSearch
-		// parses {"knn":{"<field>":{...}}} and stops at the end of that object, so a sibling
-		// "filter" key made the whole query invalid:
-		//   [knn] malformed query, expected [END_OBJECT] but found [FIELD_NAME]
-		// Placing it inside is also what makes it a pre-filter: the engine restricts the ANN
-		// search itself instead of intersecting its output afterwards.
-		if fieldQuery, ok := knnQuery[cond.FilterFieldName].(map[string]any); ok {
-			fieldQuery["filter"] = map[string]any{
+		return map[string]any{
+			"knn": knnQuery,
+			"filter": map[string]any{
 				"bool": map[string]any{
 					"must": filterQueries,
 				},
-			}
-		}
-		return map[string]any{"knn": knnQuery}, nil
+			},
+		}, nil
 	}
 
 	return map[string]any{

@@ -226,20 +226,17 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 		got, err := conn.ConvertFilterCondition(cond, schema)
 
 		require.NoError(t, err)
-		// The filter sits inside the vector field's object. OpenSearch rejects a sibling
-		// "filter" key next to "knn" with [knn] malformed query, and inside is also what makes
-		// the filter restrict the ANN search rather than its output.
 		assert.Equal(t, map[string]any{
 			"knn": map[string]any{
 				"embedding": map[string]any{
 					"vector": []float32{0.1, 0.2},
 					"k":      3,
-					"filter": map[string]any{
-						"bool": map[string]any{
-							"must": []map[string]any{
-								{"term": map[string]any{"is_active": true}},
-							},
-						},
+				},
+			},
+			"filter": map[string]any{
+				"bool": map[string]any{
+					"must": []map[string]any{
+						{"term": map[string]any{"is_active": true}},
 					},
 				},
 			},
