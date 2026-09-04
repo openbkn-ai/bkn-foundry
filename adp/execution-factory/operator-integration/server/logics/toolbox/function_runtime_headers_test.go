@@ -71,6 +71,32 @@ func TestFunctionRuntimeHeadersOverridesBodySuppliedValues(t *testing.T) {
 	})
 }
 
+// SourceTypeFunction is not proof that the target is this deployment's runtime.
+// Registration pins the address, but import takes metadata.server_url from the
+// payload verbatim, so an imported Function can name any host. Forwarding the
+// caller's live credential there would hand an arbitrary external endpoint the
+// token of whoever invoked the tool.
+func TestOnlyThisDeploymentsFunctionRuntimeIsAPlatformTarget(t *testing.T) {
+	Convey("The configured function-exec route is a platform target", t, func() {
+		So(isPlatformFunctionTarget(
+			interfaces.AOIServerURL+interfaces.SetAOIFuncExecPath("v1")), ShouldBeTrue)
+	})
+
+	Convey("An imported Function pointing anywhere else is not", t, func() {
+		for _, rawURL := range []string{
+			"http://attacker.example.com" + interfaces.SetAOIFuncExecPath("v1"),
+			"https://agent-operator-integration:9000" + interfaces.SetAOIFuncExecPath("v1"),
+			"http://agent-operator-integration:9001" + interfaces.SetAOIFuncExecPath("v1"),
+			// Right host, but not the function-exec route.
+			interfaces.AOIServerURL + "/api/agent-operator-integration/v1/tool-box/b/proxy/t",
+			"://not-a-url",
+			"",
+		} {
+			So(isPlatformFunctionTarget(rawURL), ShouldBeFalse)
+		}
+	})
+}
+
 // The caller's map must not be mutated: the same request parameters are read
 // again by the audit and retry paths.
 func TestFunctionRuntimeHeadersDoesNotMutateTheInput(t *testing.T) {

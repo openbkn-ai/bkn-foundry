@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	neturl "net/url"
+	"strings"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/bkntrace"
@@ -354,21 +356,55 @@ func (s *ToolServiceImpl) executeTool(ctx context.Context, req *interfaces.Execu
 	}
 	proxyReq.Headers = utils.SanitizeThirdPartyHeaders(proxyReq.Headers)
 	// After sanitizing, never before: the sanitizer strips exactly this header
-	// family on the way to a third party, and a Function is not one — it runs
-	// inside the platform, on the platform's own sandbox.
-	if tool.SourceType == model.SourceTypeFunction {
+	// family on the way to a third party, and this deployment's own function
+	// runtime is not one.
+	if tool.SourceType == model.SourceTypeFunction && isPlatformFunctionTarget(url) {
 		proxyReq.Headers = functionRuntimeHeaders(proxyReq.Headers, req)
 	}
 	resp, err = s.Proxy.HandlerRequest(ctx, proxyReq)
 	return
 }
 
+// isPlatformFunctionTarget reports whether a Function tool actually resolves to
+// this deployment's own function runtime.
+//
+// SourceTypeFunction is not by itself proof of that. Registration pins the
+// address to AOIServerURL, but import takes metadata.server_url from the
+// payload verbatim (see impex.go), so a toolbox can be imported with a Function
+// whose address is any host the importer chose. Forwarding the caller's live
+// credential on that basis would hand an arbitrary external endpoint the token
+// of whoever invoked the tool — a strictly worse outcome than the accepted one,
+// where the token stays inside this deployment's sandbox.
+//
+// Scheme and host must match the configured runtime, and the path must be the
+// internal function-exec route. A tool that fails the check still executes; it
+// simply receives no credential and no Interaction, exactly like an unmanaged
+// call.
+func isPlatformFunctionTarget(rawURL string) bool {
+	target, err := neturl.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	runtime, err := neturl.Parse(interfaces.AOIServerURL)
+	if err != nil {
+		return false
+	}
+	if !strings.EqualFold(target.Scheme, runtime.Scheme) || !strings.EqualFold(target.Host, runtime.Host) {
+		return false
+	}
+	// GetAOIFuncExecPath ends in the :version placeholder; the prefix before it
+	// is what every registered version shares.
+	prefix := strings.TrimSuffix(interfaces.GetAOIFuncExecPath(), ":version")
+	return strings.HasPrefix(target.Path, prefix)
+}
+
 // functionRuntimeHeaders forwards the authenticated caller and its managed
 // Interaction to a Function tool, so the code it runs can read BKN as the
 // principal that invoked it, inside the Interaction that invoked it.
 //
-// Only for Function tools: an OpenAPI or operator tool points at a third-party
-// address, and the sanitizer above is what keeps platform identity away from it.
+// Only for Function tools resolving to this deployment's own runtime: every
+// other address is a third party, and the sanitizer above is what keeps
+// platform identity away from it.
 //
 // All three values must be present. A partial context means the call did not
 // come through a managed Interaction, and a credential without the lifecycle

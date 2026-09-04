@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/bytedance/sonic"
@@ -30,9 +31,13 @@ const (
 	listPublishedToolsURI     = "/v1/tool-box/%s/tools/list"
 	executePublishedToolURI   = "/v1/tool-box/%s/proxy/%s"
 
-	// The catalogue is a discovery surface, not a paging API: one page each is
-	// what a model can hold, and the search layer caps what it keeps anyway.
-	publishedCataloguePageSize = "100"
+	// The search layer caps what a model is shown, but the walk underneath has
+	// to be complete: execute_tool checks its tool against this catalogue, so a
+	// tool that falls off the end would be refused as if it were disabled.
+	publishedCataloguePageSize = 100
+	// A stop for a catalogue that never shortens — a downstream that ignores
+	// paging would otherwise loop forever on identical pages.
+	publishedCatalogueMaxPages = 50
 )
 
 // ListPublishedToolboxes returns the published Function toolboxes the caller can see.
@@ -43,53 +48,58 @@ func (o *operatorIntegrationClient) ListPublishedToolboxes(
 	if !ok {
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusUnauthorized, ErrCallerTokenMissing.Error())
 	}
-	query := url.Values{
-		"status":        {"published"},
-		"metadata_type": {"function"},
-		"page":          {"1"},
-		"page_size":     {publishedCataloguePageSize},
-	}
-	if req != nil && strings.TrimSpace(req.Keyword) != "" {
-		query.Set("name", strings.TrimSpace(req.Keyword))
-	}
-
 	fullURL := o.baseURL + listPublishedToolboxesURI
-	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#ListPublishedToolboxes] URL: %s?%s", fullURL, query.Encode())
-
 	header := o.skillHeader(ctx, "operator.published_toolbox.list")
 	header["Authorization"] = "Bearer " + token
-	code, body, err := o.httpClient.Get(ctx, fullURL, query, header)
-	if err != nil {
-		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ListPublishedToolboxes] Request failed, err: %v", err)
-		return nil, skillUpstreamError(ctx, code, "ToolboxCatalogRequestFailed", err)
-	}
 
-	var payload struct {
-		Data []struct {
-			BoxID   string `json:"box_id"`
-			BoxName string `json:"box_name"`
-			BoxDesc string `json:"box_desc"`
-			Status  string `json:"status"`
-		} `json:"data"`
-	}
-	if err = sonic.Unmarshal(utils.ObjectToByte(body), &payload); err != nil {
-		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ListPublishedToolboxes] Unmarshal failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-			infraErr.LocalizedDetail(ctx, "ToolboxCatalogResponseInvalid"))
-	}
-
-	resp := &interfaces.ListPublishedToolboxesResponse{
-		Toolboxes: make([]interfaces.PublishedToolboxSummary, 0, len(payload.Data)),
-	}
-	for _, box := range payload.Data {
-		if box.Status != "published" || strings.TrimSpace(box.BoxID) == "" {
-			continue
+	resp := &interfaces.ListPublishedToolboxesResponse{Toolboxes: []interfaces.PublishedToolboxSummary{}}
+	for page := 1; page <= publishedCatalogueMaxPages; page++ {
+		query := url.Values{
+			"status":        {"published"},
+			"metadata_type": {"function"},
+			"page":          {strconv.Itoa(page)},
+			"page_size":     {strconv.Itoa(publishedCataloguePageSize)},
 		}
-		resp.Toolboxes = append(resp.Toolboxes, interfaces.PublishedToolboxSummary{
-			ToolboxID:   box.BoxID,
-			Name:        box.BoxName,
-			Description: box.BoxDesc,
-		})
+		if req != nil && strings.TrimSpace(req.Keyword) != "" {
+			query.Set("name", strings.TrimSpace(req.Keyword))
+		}
+		o.logger.WithContext(ctx).Debugf("[OperatorIntegration#ListPublishedToolboxes] URL: %s?%s", fullURL, query.Encode())
+
+		code, body, err := o.httpClient.Get(ctx, fullURL, query, header)
+		if err != nil {
+			o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ListPublishedToolboxes] Request failed, err: %v", err)
+			return nil, skillUpstreamError(ctx, code, "ToolboxCatalogRequestFailed", err)
+		}
+
+		var payload struct {
+			Data []struct {
+				BoxID   string `json:"box_id"`
+				BoxName string `json:"box_name"`
+				BoxDesc string `json:"box_desc"`
+				Status  string `json:"status"`
+			} `json:"data"`
+		}
+		if err = sonic.Unmarshal(utils.ObjectToByte(body), &payload); err != nil {
+			o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ListPublishedToolboxes] Unmarshal failed, err: %v", err)
+			return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
+				infraErr.LocalizedDetail(ctx, "ToolboxCatalogResponseInvalid"))
+		}
+
+		for _, box := range payload.Data {
+			if box.Status != "published" || strings.TrimSpace(box.BoxID) == "" {
+				continue
+			}
+			resp.Toolboxes = append(resp.Toolboxes, interfaces.PublishedToolboxSummary{
+				ToolboxID:   box.BoxID,
+				Name:        box.BoxName,
+				Description: box.BoxDesc,
+			})
+		}
+		// A short page is the last one. Filtered-out rows still count towards
+		// the page: the page length, not the kept length, says whether to stop.
+		if len(payload.Data) < publishedCataloguePageSize {
+			break
+		}
 	}
 	return resp, nil
 }
@@ -106,52 +116,61 @@ func (o *operatorIntegrationClient) ListPublishedTools(
 	if !ok {
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusUnauthorized, ErrCallerTokenMissing.Error())
 	}
-	query := url.Values{"status": {"enabled"}, "page": {"1"}, "page_size": {publishedCataloguePageSize}}
-
 	fullURL := o.baseURL + fmt.Sprintf(listPublishedToolsURI, url.PathEscape(strings.TrimSpace(req.ToolboxID)))
-	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#ListPublishedTools] URL: %s?%s", fullURL, query.Encode())
-
 	header := o.skillHeader(ctx, "operator.published_tool.list")
 	header["Authorization"] = "Bearer " + token
-	code, body, err := o.httpClient.Get(ctx, fullURL, query, header)
-	if err != nil {
-		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ListPublishedTools] Request failed, err: %v", err)
-		return nil, skillUpstreamError(ctx, code, "ToolCatalogRequestFailed", err)
-	}
-
-	var payload struct {
-		BoxID string `json:"box_id"`
-		Tools []struct {
-			ToolID      string         `json:"tool_id"`
-			Name        string         `json:"name"`
-			Description string         `json:"description"`
-			Status      string         `json:"status"`
-			UseRule     string         `json:"use_rule"`
-			Metadata    map[string]any `json:"metadata"`
-		} `json:"tools"`
-	}
-	if err = sonic.Unmarshal(utils.ObjectToByte(body), &payload); err != nil {
-		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ListPublishedTools] Unmarshal failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-			infraErr.LocalizedDetail(ctx, "ToolCatalogResponseInvalid"))
-	}
 
 	resp := &interfaces.ListPublishedToolsResponse{
 		ToolboxID: req.ToolboxID,
-		Tools:     make([]interfaces.PublishedToolSummary, 0, len(payload.Tools)),
+		Tools:     []interfaces.PublishedToolSummary{},
 	}
-	for _, tool := range payload.Tools {
-		if tool.Status != "enabled" || strings.TrimSpace(tool.ToolID) == "" {
-			continue
+	for page := 1; page <= publishedCatalogueMaxPages; page++ {
+		query := url.Values{
+			"status":    {"enabled"},
+			"page":      {strconv.Itoa(page)},
+			"page_size": {strconv.Itoa(publishedCataloguePageSize)},
 		}
-		apiSpec, _ := tool.Metadata["api_spec"].(map[string]any)
-		resp.Tools = append(resp.Tools, interfaces.PublishedToolSummary{
-			ToolID:      tool.ToolID,
-			Name:        tool.Name,
-			Description: tool.Description,
-			UseRule:     tool.UseRule,
-			InputSchema: businessInputSchema(apiSpec),
-		})
+		o.logger.WithContext(ctx).Debugf("[OperatorIntegration#ListPublishedTools] URL: %s?%s", fullURL, query.Encode())
+
+		code, body, err := o.httpClient.Get(ctx, fullURL, query, header)
+		if err != nil {
+			o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ListPublishedTools] Request failed, err: %v", err)
+			return nil, skillUpstreamError(ctx, code, "ToolCatalogRequestFailed", err)
+		}
+
+		var payload struct {
+			BoxID string `json:"box_id"`
+			Tools []struct {
+				ToolID      string         `json:"tool_id"`
+				Name        string         `json:"name"`
+				Description string         `json:"description"`
+				Status      string         `json:"status"`
+				UseRule     string         `json:"use_rule"`
+				Metadata    map[string]any `json:"metadata"`
+			} `json:"tools"`
+		}
+		if err = sonic.Unmarshal(utils.ObjectToByte(body), &payload); err != nil {
+			o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ListPublishedTools] Unmarshal failed, err: %v", err)
+			return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
+				infraErr.LocalizedDetail(ctx, "ToolCatalogResponseInvalid"))
+		}
+
+		for _, tool := range payload.Tools {
+			if tool.Status != "enabled" || strings.TrimSpace(tool.ToolID) == "" {
+				continue
+			}
+			apiSpec, _ := tool.Metadata["api_spec"].(map[string]any)
+			resp.Tools = append(resp.Tools, interfaces.PublishedToolSummary{
+				ToolID:      tool.ToolID,
+				Name:        tool.Name,
+				Description: tool.Description,
+				UseRule:     tool.UseRule,
+				InputSchema: businessInputSchema(apiSpec),
+			})
+		}
+		if len(payload.Tools) < publishedCataloguePageSize {
+			break
+		}
 	}
 	return resp, nil
 }

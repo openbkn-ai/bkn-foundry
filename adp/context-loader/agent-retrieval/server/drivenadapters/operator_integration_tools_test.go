@@ -6,6 +6,8 @@ package drivenadapters
 
 import (
 	"context"
+	"net/url"
+	"strconv"
 	"testing"
 
 	"github.com/smartystreets/goconvey/convey"
@@ -129,6 +131,45 @@ func TestPublishedToolSurfaceRefusesWithoutACallerToken(t *testing.T) {
 			ToolboxID: "box_1", ToolID: "tool_1",
 		})
 		convey.So(err, convey.ShouldNotBeNil)
+	})
+}
+
+// execute_tool checks its tool against this catalogue before calling it, so a
+// catalogue that stops at one page would refuse the 101st enabled tool as if it
+// were disabled. The walk has to reach the end.
+func TestPublishedCatalogueWalksEveryPage(t *testing.T) {
+	convey.Convey("paging continues until a short page", t, func() {
+		client, httpClient := toolsTestClient(t)
+
+		fullPage := make([]any, 0, 100)
+		for i := 0; i < 100; i++ {
+			fullPage = append(fullPage, map[string]any{
+				"tool_id": "tool_" + strconv.Itoa(i), "name": "t", "status": "enabled",
+			})
+		}
+		lastPage := []any{map[string]any{"tool_id": "tool_100", "name": "the-101st", "status": "enabled"}}
+
+		var pages []string
+		gomock.InOrder(
+			httpClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, _ string, query any, _ map[string]string) (int, any, error) {
+					pages = append(pages, query.(url.Values).Get("page"))
+					return 200, map[string]any{"tools": fullPage}, nil
+				}),
+			httpClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, _ string, query any, _ map[string]string) (int, any, error) {
+					pages = append(pages, query.(url.Values).Get("page"))
+					return 200, map[string]any{"tools": lastPage}, nil
+				}),
+		)
+
+		resp, err := client.ListPublishedTools(managedCallContext(),
+			&interfaces.ListPublishedToolsRequest{ToolboxID: "box_1"})
+
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(pages, convey.ShouldResemble, []string{"1", "2"})
+		convey.So(len(resp.Tools), convey.ShouldEqual, 101)
+		convey.So(resp.Tools[100].Name, convey.ShouldEqual, "the-101st")
 	})
 }
 
