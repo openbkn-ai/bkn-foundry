@@ -184,6 +184,23 @@ disabled accounts, BKN Safe failures, timeouts, invalid responses, or incomplete
 published dependencies prevent the data query from running; authorization
 infrastructure failures return HTTP 503.
 
+### Action-execution authorization
+
+With `ACTION_EXECUTION_PEP_ENABLED=true`, both submission and the real external
+invocation require all of the following for the authenticated execution subject:
+
+- `execute` on `action_type:{kn_id}/{action_type_id}`; this operation never
+  inherits from the knowledge network;
+- `execute` on the referenced `tool_box` or `mcp` resource;
+- `query_data` on every object type referenced by the action's target, affect,
+  and impact contracts.
+
+The worker rechecks the stored subject's current account state and permissions
+immediately before invocation. A missing subject, missing permission snapshot,
+incomplete dependency, or BKN Safe failure prevents the external call. See the
+[shared authorization contract](../../../docs/api/knowledge-network-authorization.md)
+for canonical IDs and error semantics.
+
 ## Monitoring and operations
 
 ### Health checks

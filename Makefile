@@ -14,9 +14,12 @@ TPL_DIR      := $(API_DIR)/_templates
 MODULES      := bkn context-loader ontology-query vega execution-factory mf-model-manager \
                 agent-observability bkn-agent
 # 暂不发布的模块目录（YAML 保留在仓库，只是不进站点、不参与 lint）：
-#   bkn-safe      仅一份自助读取接口，不作为通用集成合同对外
+#   bkn-safe      自助读取面和集群内 authz 合同都不作为通用集成合同对外
 #   observability 只有 observability.json，没有可发布的 YAML，渲染出来是空分组
 MODULES_UNPUBLISHED := bkn-safe observability
+# Internal bkn-safe contracts are not published, but they are still linted so
+# service-to-service request and error schemas cannot drift silently.
+LINT_MODULES := $(MODULES) bkn-safe
 # 对账：docs/api 下的模块目录必须要么在 MODULES 里、要么在 MODULES_UNPUBLISHED 里，
 # 新增模块目录却忘了登记时直接报错，避免"加了文档但站点上没有"的静默漏发。
 MODULE_DIRS  := $(dir $(wildcard $(API_DIR)/*/.))
@@ -47,7 +50,7 @@ CONTRACT_ARGS       ?= --include-probe-post
 ## _shared/ 是 $ref 片段（无 openapi/info/paths 顶层），不作独立文档 lint，
 ## 其正确性由引用它的模块文档解析时连带校验。
 api-docs-lint:
-	@set -e; for m in $(MODULES); do \
+	@set -e; for m in $(LINT_MODULES); do \
 	  for y in $(API_DIR)/$$m/*.yaml; do \
 	    [ -e "$$y" ] || continue; \
 	    npx @redocly/cli lint --config .redocly.yaml "$$y"; \

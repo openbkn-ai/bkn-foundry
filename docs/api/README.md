@@ -37,7 +37,7 @@
 
 | 目录 | 原因 |
 | --- | --- |
-| [`bkn-safe/`](bkn-safe/) | 只有一份自助知识网络授权范围读取接口，不作为通用集成合同对外，管理面 API 更不宜误当集成合同 |
+| [`bkn-safe/`](bkn-safe/) | 包含自助读取面和仅限集群内服务调用的 authz 合同；两者都参与 lint，但不作为通用外部集成 API 发布 |
 | [`observability/`](observability/) | 只有 `observability.json`，没有可发布的 YAML，渲染出来是空分组 |
 
 > 新增模块目录必须登记到 `MODULES` 或 `MODULES_UNPUBLISHED`，否则 `make api-docs-*` 直接报错——防止"加了文档但站点上没有"的静默漏发。
@@ -63,6 +63,11 @@ bkn-backend 同时注册了 `/api/bkn-backend/v1` 与 `/api/ontology-manager/v1`
 | [`_shared/auth.yaml`](_shared/auth.yaml) | 认证方案（OAuth2 clientCredentials + AppKey `bak_`）。引用：`$ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'` |
 
 > ⚠️ mf-model 是 FastAPI，错误信封字段不同（`code / detail / link`），补写时单列 `errors-fastapi.yaml`，不并入上面这套——不假装全平台一套错误结构。
+
+领域知识网络权限跨 bkn-safe、BKN、ontology-query、context-loader 和
+execution-factory 的资源 ID、操作继承、执行主体、批量失败及错误语义见
+[`knowledge-network-authorization.md`](knowledge-network-authorization.md)。各接口的
+Method、请求和响应字段仍以对应模块 YAML 为准。
 
 ## 🛠️ 渲染管线
 

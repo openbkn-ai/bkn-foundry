@@ -7,8 +7,12 @@ info:
     Risk Type management. A risk type is a lightweight concept with only a name, tags, comment, and display metadata
     (icon and color). It is not bound to action types or thresholds. All APIs are exposed under /api/bkn-backend/v1,
     require OAuth2 authentication, and default the branch query parameter to main.
+    Risk types use `risk_type:{kn_id}/{risk_type_id}`. Reads and lists require
+    `view_detail`; updates and deletes use `modify` and `delete`. See
+    `../knowledge-network-authorization.md`.
 security:
   - OAuth2: []
+  - AppKey: []
 paths:
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/risk-types:
     post:
@@ -329,12 +333,9 @@ paths:
 components:
   securitySchemes:
     OAuth2:
-      type: oauth2
-      description: OAuth2 authentication for public APIs
-      flows:
-        clientCredentials:
-          tokenUrl: /oauth2/token
-          scopes: {}
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+    AppKey:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
   schemas:
     AccountInfo:
       type: object

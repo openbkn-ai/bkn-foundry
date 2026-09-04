@@ -5,7 +5,7 @@ info:
   description: |
     Vega Backend 授权资源列表 API。
 
-    该端点按 `resource_type` 查询可授权资源的简要列表，供 ISF / 权限配置场景选择资源使用。
+    该端点按 `resource_type` 查询可授权资源的简要列表，供权限配置场景选择资源使用。
 
     支持的 `resource_type`：
 

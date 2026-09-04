@@ -3,6 +3,14 @@ openapi: 3.0.2
 info:
   title: BusinessKnowledgeNetwork
   version: 0.1.0
+  description: |
+    Knowledge-network CRUD uses `knowledge_network:{kn_id}`. Create requires
+    `knowledge_network:*:create`; detail, list, update, and delete use the
+    corresponding instance operations. Lists are authorization-filtered before
+    total and pagination. See `../knowledge-network-authorization.md`.
+security:
+  - OAuth2: []
+  - AppKey: []
 paths:
   /api/bkn-backend/v1/knowledge-networks:
     get:
@@ -327,6 +335,11 @@ paths:
         "400":
           description: Invalid request parameters, such as an invalid body, unparseable strict_mode, or invalid import_mode or mode. This is not a business validation result.
 components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+    AppKey:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
   schemas:
     ValidateKNRequestBody:
       type: object

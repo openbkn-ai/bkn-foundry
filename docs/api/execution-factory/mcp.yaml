@@ -360,6 +360,9 @@ paths:
       description: |
         用给定参数真实调用一次该 MCP Server 上的某个工具，看返回什么。
 
+        当前主体必须对具体 `mcp:{mcp_id}` 持有 `execute`。拒绝或 bkn-safe
+        判定失败时不会调用目标 MCP Server。
+
         **失败不体现在 HTTP 状态码上**：工具报错时接口仍是 200，`is_error` 为
         `true`，错误内容在 `content` 里。
       parameters:
@@ -392,6 +395,12 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 当前主体缺少 MCP execute 权限，或权限判定失败
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -571,6 +580,10 @@ paths:
         `/mcp/{mcp_id}/tool/{tool_name}/debug` 的差别只在定位方式：那边工具名走
         路径、语义是「调试」；这边工具名在请求体里、语义是「生产调用」。
         两者的返回结构一致，同样是**工具报错也返回 200，看 `is_error`**。
+
+        当前主体必须对具体 `mcp:{mcp_id}` 持有 `execute`。用于知识网络 Action
+        时，ontology-query 还会在此前校验具体 Action Type 和数据依赖。请求体
+        不能覆盖执行主体，平台身份头和 trace 控制头不会转发给第三方 MCP。
       parameters:
         - $ref: '#/components/parameters/MCPID'
       requestBody:
@@ -601,6 +614,12 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 当前主体缺少 MCP execute 权限，或权限判定失败
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':

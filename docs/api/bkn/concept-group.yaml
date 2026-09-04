@@ -3,7 +3,14 @@ openapi: 3.0.2
 info:
   title: ConceptGroup
   version: 0.1.0
-  description: Concept group management APIs
+  description: |
+    Concept groups use `concept_group:{kn_id}/{group_id}`. Reads and lists
+    require `view_detail`; updates use `modify`; deletion uses `delete`.
+    Lists are filtered before total and pagination. See
+    `../knowledge-network-authorization.md`.
+security:
+  - OAuth2: []
+  - AppKey: []
 paths:
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/concept-groups/{group_id}:
     get:
@@ -343,6 +350,11 @@ paths:
         "400":
           description: Invalid request parameters and similar errors. Business validation failures use 200 with valid=false.
 components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+    AppKey:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
   schemas:
     ReqConceptGroup:
       description: Concept group information

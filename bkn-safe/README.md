@@ -1,13 +1,13 @@
 # bkn-safe
 
-ISF 替换的自研认证/鉴权/用户管理服务（代码内代号 `safe`）。配合**上游 ORY Hydra**
-工作：hydra 签发 token，bkn-safe 是 hydra 的 login/consent/device 提供方，并承担鉴权
-与用户目录。
+bkn-safe 是 OpenBKN 的认证、鉴权和用户目录服务。它配合**上游 ORY Hydra**
+工作：Hydra 签发 token，bkn-safe 提供 login/consent/device 流程，并承担权限判定
+与用户目录管理。
 
 **文档**：
-- [`docs/DESIGN.md`](docs/DESIGN.md) — 设计文档（架构/组件/数据模型/鉴权模型/认证流程/seed/部署）
-- [`docs/API.md`](docs/API.md) — HTTP API 参照（authz / directory / user-write / provider 页）
-- 替换全局背景与设计文档：[bkn-docs `docs/foundry/`](https://github.com/openbkn-ai/bkn-docs/tree/main/docs/foundry)（contract test 冻结夹具见 [`contract/testdata/`](contract/testdata/)）
+- 领域知识网络权限调用合同：[`docs/api/knowledge-network-authorization.md`](../docs/api/knowledge-network-authorization.md)
+- 自助授权范围 OpenAPI：[`docs/api/bkn-safe/self-service.yaml`](../docs/api/bkn-safe/self-service.yaml)
+- 全局设计文档：[bkn-docs `docs/foundry/`](https://github.com/openbkn-ai/bkn-docs/tree/main/docs/foundry)
 
 ## 三职责
 
@@ -57,7 +57,7 @@ cd dev && docker compose up -d --build      # postgres + mariadb + hydra v26.2.0
 
 `validate-e2e.sh` 已验证：authcode 全流程产出的 token，introspect 的 `ext` =
 `{visitor_type:realname, login_ip, udid:"", account_type:other, client_type:web}`，
-逐字匹配 §1 契约与真实 ISF golden。
+逐字匹配冻结的兼容契约夹具。
 
 ## 配置
 
@@ -138,6 +138,10 @@ VS Code / Cursor：打开 `bkn-safe` 根目录，选 **Run and Debug → bkn-saf
 资源可用 `resources: [{type,id}]` 给出，也可用 `resource_type` + `resource_ids`
 的单类型形式；两者可同时出现，一次请求内允许混合资源类型。重复资源和操作会按首次
 出现位置去重，响应顺序稳定。
+
+本端点不设置固定的资源数、operation 数或矩阵单元 hard cap，也不承诺固定规模
+超限返回 413。调用方可以按实时负载动态分块；任一分块超时、失败或返回不完整时，
+上层业务必须整体失败，不能返回部分列表或部分查询结果。
 
 判定语义与单条 `POST /check` 完全一致：直接授权、角色继承（含角色间传递）、
 根部门公共授权、超管通配、`act` 通配一视同仁。内部不逐 (资源 × 操作) 调用引擎，

@@ -603,6 +603,9 @@ paths:
         用给定参数真实调用一次工具。与 `/proxy/{tool_id}` 的差别只在语义与审计
         ——调试面向开发期，代理面向生产调用。请求与响应结构一致。
 
+        调用主体来自 OAuth/AppKey 或受信任内部身份上下文，并且必须对具体
+        `tool_box:{box_id}` 持有 `execute`。拒绝或 bkn-safe 判定失败时不会调用工具。
+
         参数按 HTTP 的四个位置分开传：`header` / `query` / `path` / `body`。
       parameters:
         - $ref: '#/components/parameters/BoxID'
@@ -624,6 +627,12 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 当前主体缺少工具箱 execute 权限，或权限判定失败
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -638,6 +647,11 @@ paths:
       description: |
         生产调用入口：由平台代为执行工具并返回结果，调用方不必知道工具背后打的是
         哪个地址。与调试接口的差别在于会走权限校验与审计日志。
+
+        调用主体来自 OAuth/AppKey 或受信任内部身份上下文，并且必须对具体
+        `tool_box:{box_id}` 持有 `execute`。用于知识网络 Action 时，ontology-query
+        还会在此前校验具体 Action Type 和数据依赖。请求体不能覆盖执行主体。
+        平台身份头和 trace 控制头在请求离开平台前会被移除。
 
         **返回的是被调服务的原始响应**（`status_code` / `headers` / `body`），
         不是平台自己的信封——上游返 500 时本接口仍是 200，`status_code` 里才是 500。
@@ -661,6 +675,12 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 当前主体缺少工具箱 execute 权限，或权限判定失败
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':

@@ -3,6 +3,14 @@ openapi: 3.0.2
 info:
   title: RelationType
   version: 0.1.0
+  description: |
+    Relation types use `relation_type:{kn_id}/{relation_type_id}`. Reads and
+    lists require `view_detail`; data reads require `query_data`; updates and
+    deletes use `modify` and `delete`. Lists and searches are filtered before
+    total and pagination. See `../knowledge-network-authorization.md`.
+security:
+  - OAuth2: []
+  - AppKey: []
 paths:
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/relation-types:
     get:
@@ -875,6 +883,11 @@ paths:
         "400":
           description: Invalid request parameters and similar errors. Business validation failures use 200 plus valid false.
 components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+    AppKey:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
   schemas:
     BasicInfo:
       description: Basic resource information containing an ID and name

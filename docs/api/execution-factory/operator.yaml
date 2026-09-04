@@ -391,6 +391,9 @@ paths:
         用指定版本跑一次算子，看真实请求与响应。调的是**某个具体 version**，
         不是「当前版本」——`version` 必填。
 
+        当前主体必须对具体 `operator:{operator_id}` 持有 `execute`。拒绝或
+        bkn-safe 判定失败时不会执行算子。
+
         请求参数按 HTTP 的四个位置分开传：`header` / `query` / `path` / `body`。
         函数类算子只用 `body`。
       requestBody:
@@ -419,6 +422,12 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 当前主体缺少算子 execute 权限，或权限判定失败
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':

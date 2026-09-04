@@ -30,8 +30,9 @@ Important boundaries:
 - Branch is a supported data dimension through the `branch` query parameter, but
   this service does not expose a complete branch lifecycle API such as create,
   merge, publish, or rollback.
-- Permission-resource hooks exist, but fine-grained resource permission enforcement
-  is currently not complete in the service layer.
+- Fine-grained authorization covers the knowledge-network root and its six child
+  resource types. Child decisions use canonical `{kn_id}/{child_id}` IDs; list
+  and search results are filtered before total and pagination are computed.
 - Natural-language query planning and context loading are not handled here; use
   `adp/context-loader` for that layer.
 - Object sample-data and resource operations depend on VEGA availability.
@@ -112,7 +113,7 @@ Core logic packages:
 | `metric` | Metric definition validation, CRUD, and search |
 | `risk_type` | Risk type CRUD and concept search |
 | `action_schedule` | Scheduled action metadata and cron handling |
-| `permission` | Permission-resource integration hooks |
+| `permission` | bkn-safe decisions, child filtering, and ResourceParent lifecycle |
 | `bkn` | BKN import/export service |
 
 ## Local Development
@@ -130,6 +131,26 @@ Configure local settings in:
 ```text
 server/config/bkn-backend-config.yaml
 ```
+
+### Authorization configuration
+
+When `AUTH_ENABLED=true`, `BKN_SAFE_URL` is mandatory and must be an absolute
+HTTP(S) URL with a host. Credentials, query strings, and fragments are rejected.
+The process exits during startup when this contract is not satisfied; there is
+no legacy provider or unauthenticated fallback.
+
+The Helm values are:
+
+| Value | Default | Meaning |
+| --- | --- | --- |
+| `bknSafe.url` | `http://bkn-safe:3000` | bkn-safe service root |
+| `auth.knChildResourcePepEnabled` | `false` | Enable canonical child-resource PEP after migration |
+| `auth.actionExecutionPepEnabled` | `false` | Enable schedule/action execution rechecks after migration |
+| `auth.knChildResourceFilterChunkSize` | `0` | Optional caller-side chunk size; `0` sends one request and is not a server limit |
+
+The authorization resource and operation contract, including error behavior,
+is documented in
+[`docs/api/knowledge-network-authorization.md`](../../../docs/api/knowledge-network-authorization.md).
 
 Run locally:
 
