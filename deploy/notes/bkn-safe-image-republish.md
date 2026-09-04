@@ -23,6 +23,7 @@ TAG=0.1.1            # bump (recommended) or reuse 0.1.0 to overwrite in place
 GOPROXY_URL=https://goproxy.cn,direct          # drop outside CN
 BUILD_IMAGE=docker.m.daocloud.io/library/golang:1.25.14   # or golang:1.25.14
 BASE_UBUNTU=docker.m.daocloud.io/library/ubuntu:24.04      # or ubuntu:24.04
+PYTHON_BASE_IMAGE="$(awk -F= '$1 == "ARG PYTHON_BASE_IMAGE" { print $2 }' adp/vega/vega-backend/docker/Dockerfile)"
 
 # --- bkn-backend (Go, CGO) — plain Dockerfile build ---
 ( cd adp/bkn/bkn-backend && docker build -f docker/Dockerfile \
@@ -30,14 +31,11 @@ BASE_UBUNTU=docker.m.daocloud.io/library/ubuntu:24.04      # or ubuntu:24.04
     --build-arg GOPROXY_URL="$GOPROXY_URL" --build-arg SERVER_VERSION="$TAG" \
     -t "$REG/bkn-backend:$TAG" . )
 
-# --- vega-backend (Go, CGO) — its prod stage pip-installs sqlglot (slow/blocked
-#     in CN), so build the binary then OVERLAY onto the existing base image ---
-( cd adp/vega/vega-backend
-  docker run --rm -v "$PWD/server:/go/src" -w /go/src \
-    -e GOPROXY="$GOPROXY_URL" -e CGO_ENABLED=1 -e GOFLAGS=-mod=mod "$BUILD_IMAGE" \
-    bash -c "go mod download && go build -ldflags '-s -w -X vega-backend/version.ServerVersion=$TAG' -o ./bin/vega-backend-server"
-  printf 'FROM %s/vega-backend:0.1.0\nCOPY bin/vega-backend-server /opt/vega-backend/vega-backend-server\n' "$REG" > /tmp/vega.Dockerfile
-  docker build -f /tmp/vega.Dockerfile -t "$REG/vega-backend:$TAG" server )
+# --- vega-backend (Go, CGO) — reuses the published Python base image ---
+( cd adp/vega/vega-backend && docker build -f docker/Dockerfile \
+    --build-arg BUILD_IMAGE="$BUILD_IMAGE" --build-arg PYTHON_BASE_IMAGE="$PYTHON_BASE_IMAGE" \
+    --build-arg GOPROXY_URL="$GOPROXY_URL" --build-arg SERVER_VERSION="$TAG" \
+    -t "$REG/vega-backend:$TAG" . )
 
 # --- agent-backend (agent-factory) and mf-model-api ---
 # Rebuild from their own docker/Dockerfile the same way (Go: plain build;
