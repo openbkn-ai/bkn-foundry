@@ -23,6 +23,9 @@ const (
 	// vegaPagingModeSingle is the one-page read mode. Vega rejects anything but "single" or
 	// "cursor" with 400 paging.mode must be either single or cursor.
 	vegaPagingModeSingle = "single"
+	// knnLimitKey is the key Vega expects for the neighbour count, matching what ontology-query
+	// sends (condition.KNN_LIMIT_KEY_DEFAULT).
+	knnLimitKey = "k"
 )
 
 var (
@@ -101,7 +104,16 @@ func (s *skillSearchService) SearchSkills(ctx context.Context,
 		}
 		if vector := s.embedQuery(ctx, query); len(vector) > 0 {
 			channels = append(channels, map[string]any{
-				"field": "_vector", "operation": "knn_vector", "value": vector, "value_from": "const", "k": topK,
+				"field": "_vector", "operation": "knn_vector", "value": vector, "value_from": "const",
+				// Vega reads the neighbour count from limit_key/limit_value and silently defaults
+				// to k=10 otherwise; a bare "k" key is ignored.
+				"limit_key": knnLimitKey, "limit_value": topK,
+				// The whitelist has to be inside the knn condition, not only beside it: knn_vector
+				// takes sub_conditions as the ANN filter, so a sibling AND would let the engine
+				// pick the globally nearest neighbours first and intersect afterwards — the
+				// vector channel would return nothing whenever the caller's skills are not among
+				// the platform's nearest, while every hit still reported matched_by=knn.
+				"sub_conditions": []map[string]any{whitelist},
 			})
 			matchedBy = interfaces.SkillMatchedByKnn
 		}
@@ -165,8 +177,15 @@ func (s *skillSearchService) embedQuery(ctx context.Context, query string) []flo
 		log.Warnf("skill search: embedding model unavailable, falling back to full-text: %v", err)
 		return nil
 	}
-	if resource.IndexConfig == nil || resource.IndexConfig.DefaultEmbeddingModel != model.ModelID {
-		log.Warnf("skill search: dataset was built with a different embedding model, falling back to full-text")
+	// Datasets built before the model reference was pinned to an ID carry the model *name* here
+	// instead (the test server holds one: default_embedding_model = "text-embedding-v4"), so both
+	// spellings count as the same model. Anything else is a genuine mismatch and disables the
+	// vector channel rather than querying one model's vectors with another model's embedding.
+	if resource.IndexConfig == nil ||
+		(resource.IndexConfig.DefaultEmbeddingModel != model.ModelID &&
+			resource.IndexConfig.DefaultEmbeddingModel != model.ModelName) {
+		log.Warnf("skill search: dataset was built with a different embedding model (%q), falling back to full-text",
+			datasetEmbeddingModel(resource))
 		return nil
 	}
 
@@ -225,4 +244,11 @@ func floatField(entry map[string]any, key string) float64 {
 		return float64(value)
 	}
 	return 0
+}
+
+func datasetEmbeddingModel(resource *interfaces.VegaResource) string {
+	if resource == nil || resource.IndexConfig == nil {
+		return ""
+	}
+	return resource.IndexConfig.DefaultEmbeddingModel
 }
