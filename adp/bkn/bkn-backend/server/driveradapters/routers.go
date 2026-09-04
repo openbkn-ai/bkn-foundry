@@ -32,6 +32,7 @@ import (
 	"bkn-backend/logics/bkn"
 	"bkn-backend/logics/capability_binding"
 	"bkn-backend/logics/concept_group"
+	"bkn-backend/logics/cypher"
 	"bkn-backend/logics/knowledge_network"
 	metriclogics "bkn-backend/logics/metric"
 	"bkn-backend/logics/object_type"
@@ -63,6 +64,7 @@ type restHandler struct {
 	ms                      interfaces.MetricService
 	bs                      interfaces.BKNService
 	projectionGrantVerifier *bkntrace.ProjectionGrantVerifier
+	cqs                     interfaces.CypherQueryService
 }
 
 func NewRestHandler(appSetting *common.AppSetting, auditStore *operationaudit.Store) RestHandler {
@@ -101,6 +103,7 @@ func NewRestHandler(appSetting *common.AppSetting, auditStore *operationaudit.St
 		ms:                      metriclogics.NewMetricService(appSetting),
 		bs:                      bkn.NewBKNService(appSetting),
 		projectionGrantVerifier: projectionVerifier,
+		cqs:                     cypher.NewCypherQueryService(appSetting),
 	}
 	return r
 }
@@ -211,6 +214,9 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiV1.GET("/knowledge-networks/:kn_id/action-schedules", r.ListActionSchedulesByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/action-schedules/:schedule_id", r.GetActionScheduleByEx)
 
+		// Cypher queries over instance data.
+		apiV1.POST("/knowledge-networks/:kn_id/cypher-queries", r.verifyJsonContentType(), r.RunCypherQueryByEx)
+
 		// Knowledge network resource example list.
 		apiV1.GET("/resources", r.ListResources)
 
@@ -303,6 +309,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiInV1.GET("/knowledge-networks/:kn_id/action-schedules", r.ListActionSchedulesByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/action-schedules/:schedule_id", r.GetActionScheduleByIn)
 
+		// Cypher queries over instance data.
+		apiInV1.POST("/knowledge-networks/:kn_id/cypher-queries", r.verifyJsonContentType(), r.RunCypherQueryByIn)
 	}
 
 	logger.Info("RestHandler RegisterPublic")

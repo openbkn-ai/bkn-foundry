@@ -8,7 +8,6 @@ package interfaces
 
 import "context"
 
-
 // Vega raw query accepts these SQL dialects as input. Generating the catalog's
 // own dialect keeps vega from transpiling, which halves its python subprocess
 // count -- see the design note in logics/cypher.
@@ -18,6 +17,11 @@ const (
 	VEGA_DIALECT_MYSQL    = "mysql"
 	VEGA_DIALECT_POSTGRES = "postgres"
 	VEGA_DIALECT_TSQL     = "tsql"
+
+	// VEGA_PAGING_MODE_SINGLE asks vega-backend for one page rather than a
+	// cursor session, which is what a compiled statement with its own LIMIT
+	// needs.
+	VEGA_PAGING_MODE_SINGLE = "single"
 )
 
 // RawQueryColumn describes one projected column of a raw query result.
