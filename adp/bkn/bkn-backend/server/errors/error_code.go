@@ -122,4 +122,5 @@ func init() {
 	rest.Register(ConceptGroupErrCodeList)
 	rest.Register(RiskTypeErrCodeList)
 	rest.Register(MetricErrCodeList)
+	rest.Register(CypherErrCodeList)
 }
