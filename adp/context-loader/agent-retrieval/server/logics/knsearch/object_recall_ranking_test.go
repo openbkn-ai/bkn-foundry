@@ -261,7 +261,7 @@ func buildEndpointsLastNetwork() *interfaces.KnowledgeNetworkDetail {
 // take endpoints from and the assertion has nothing to bite on - since #788 a relation the last
 // rung cannot vouch for is dropped rather than ranked. TestNoRelevantRelationYieldsEmptyList covers
 // that other half.
-func TestObjectScoringDegradesWhenBackendFails(t *testing.T) {
+func TestObjectScoringFailsClosedWhenBackendFails(t *testing.T) {
 	net := buildEndpointsLastNetwork()
 	backend := &mockBknBackend{
 		networkDetail:    net,
@@ -277,56 +277,8 @@ func TestObjectScoringDegradesWhenBackendFails(t *testing.T) {
 	cfg.TopK = 5
 
 	req := &interfaces.KnSearchLocalRequest{KnID: "kn_endpoints_last", Query: "关系_A", EnableRerank: true}
-	res, err := svc.conceptRetrieval(context.Background(), req, cfg)
-	if err != nil {
-		t.Fatalf("expected graceful degradation, got error: %v", err)
-	}
-	if len(res.ObjectTypes) == 0 {
-		t.Fatalf("expected object types on degraded path, got none")
-	}
-
-	endpoints := map[string]struct{}{}
-	for _, rel := range res.RelationTypes {
-		endpoints[rel.SourceObjectTypeID] = struct{}{}
-		endpoints[rel.TargetObjectTypeID] = struct{}{}
-	}
-	if len(endpoints) == 0 {
-		t.Fatalf("fixture must yield relation endpoints, got none")
-	}
-
-	got := make([]string, 0, len(res.ObjectTypes))
-	for _, obj := range res.ObjectTypes {
-		got = append(got, obj.ConceptID)
-	}
-	t.Logf("degraded order -> %v (endpoints=%d)", got, len(endpoints))
-
-	// The discriminating premise of the assertion: the endpoint set is not equal to the first N in the definition order, otherwise "endpoint first" and "definition order".
-	// There is no way to distinguish, and the assertion is empty.
-	definitionOrderHead := map[string]struct{}{}
-	for i := 0; i < len(endpoints); i++ {
-		definitionOrderHead[fmt.Sprintf("obj_%d", i)] = struct{}{}
-	}
-	sameAsDefinitionOrder := true
-	for id := range endpoints {
-		if _, ok := definitionOrderHead[id]; !ok {
-			sameAsDefinitionOrder = false
-			break
-		}
-	}
-	if sameAsDefinitionOrder {
-		t.Fatalf("fixture cannot distinguish endpoint-first from definition order; endpoints=%v", endpoints)
-	}
-
-	seenNonEndpoint := false
-	for _, id := range got {
-		_, isEndpoint := endpoints[id]
-		if isEndpoint && seenNonEndpoint {
-			t.Errorf("degraded path must keep relation endpoints first, got %s after a non-endpoint: %v", id, got)
-			break
-		}
-		if !isEndpoint {
-			seenNonEndpoint = true
-		}
+	if res, err := svc.conceptRetrieval(context.Background(), req, cfg); err == nil || res != nil {
+		t.Fatalf("conceptRetrieval() = %#v, %v; want protected backend failure", res, err)
 	}
 }
 

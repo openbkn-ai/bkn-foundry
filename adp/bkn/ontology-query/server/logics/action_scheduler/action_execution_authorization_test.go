@@ -28,7 +28,7 @@ func (s *actionPermissionStub) RequirePermissions(_ context.Context,
 }
 
 func TestAuthorizeActionTypeResolvesTrustedRequirements(t *testing.T) {
-	t.Setenv(actionExecutionPEPEnabledEnv, "true")
+	t.Setenv("AUTH_ENABLED", "true")
 	ctrl := gomock.NewController(t)
 	models := omock.NewMockOntologyManagerAccess(ctrl)
 	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "ot-input").
@@ -62,7 +62,7 @@ func TestAuthorizeActionTypeResolvesTrustedRequirements(t *testing.T) {
 }
 
 func TestExecuteActionChecksPermissionsBeforeInstanceData(t *testing.T) {
-	t.Setenv(actionExecutionPEPEnabledEnv, "true")
+	t.Setenv("AUTH_ENABLED", "true")
 	ctrl := gomock.NewController(t)
 	models := omock.NewMockOntologyManagerAccess(ctrl)
 	models.EXPECT().GetActionType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "at-1").Return(
@@ -87,7 +87,7 @@ func TestExecuteActionChecksPermissionsBeforeInstanceData(t *testing.T) {
 }
 
 func TestAuthorizeExecutionRequiresSnapshotWhenEnabled(t *testing.T) {
-	t.Setenv(actionExecutionPEPEnabledEnv, "true")
+	t.Setenv("AUTH_ENABLED", "true")
 	err := (&actionSchedulerService{permissions: &actionPermissionStub{}}).authorizeExecution(context.Background(), nil)
 	if err == nil {
 		t.Fatal("authorizeExecution() accepted a missing permission snapshot")
@@ -95,7 +95,7 @@ func TestAuthorizeExecutionRequiresSnapshotWhenEnabled(t *testing.T) {
 }
 
 func TestInvokeActionSourceDoesNotCallExternalServiceAfterRevocation(t *testing.T) {
-	t.Setenv(actionExecutionPEPEnabledEnv, "true")
+	t.Setenv("AUTH_ENABLED", "true")
 	revoked := errors.New("permission revoked")
 	service := &actionSchedulerService{permissions: &actionPermissionStub{err: revoked}}
 	params, result, err := service.invokeActionSource(context.Background(), []interfaces.PermissionRequirement{
@@ -108,23 +108,8 @@ func TestInvokeActionSourceDoesNotCallExternalServiceAfterRevocation(t *testing.
 	}
 }
 
-func TestActionExecutionPEPDisabledPreservesCompatibility(t *testing.T) {
-	t.Setenv(actionExecutionPEPEnabledEnv, "false")
-	service := &actionSchedulerService{}
-	if requirements, err := service.authorizeActionType(context.Background(), "", nil); err != nil || requirements != nil {
-		t.Fatalf("authorizeActionType() = %#v, %v", requirements, err)
-	}
-	if err := service.authorizeExecution(context.Background(), nil); err != nil {
-		t.Fatalf("authorizeExecution() error = %v", err)
-	}
-}
-
-func TestActionExecutionPEPDisabledWhenAuthenticationIsDisabled(t *testing.T) {
+func TestActionExecutionAuthorizationBypassesWhenAuthenticationIsDisabled(t *testing.T) {
 	t.Setenv("AUTH_ENABLED", "false")
-	t.Setenv(actionExecutionPEPEnabledEnv, "true")
-	if ActionExecutionPEPEnabled() {
-		t.Fatal("ActionExecutionPEPEnabled() = true while authentication is disabled")
-	}
 	service := &actionSchedulerService{}
 	if requirements, err := service.authorizeActionType(context.Background(), "", nil); err != nil || requirements != nil {
 		t.Fatalf("authorizeActionType() = %#v, %v", requirements, err)

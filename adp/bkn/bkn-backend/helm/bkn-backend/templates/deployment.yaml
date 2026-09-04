@@ -149,10 +149,6 @@ spec:
             value: /opt/bkn-backend/config
           - name: AUTH_ENABLED
             value: {{ .Values.auth.enabled | quote }}
-          - name: KN_CHILD_RESOURCE_PEP_ENABLED
-            value: {{ .Values.auth.knChildResourcePepEnabled | quote }}
-          - name: ACTION_EXECUTION_PEP_ENABLED
-            value: {{ .Values.auth.actionExecutionPepEnabled | quote }}
           - name: KN_CHILD_RESOURCE_FILTER_CHUNK_SIZE
             value: {{ .Values.auth.knChildResourceFilterChunkSize | quote }}
         resources: {{- toYaml .Values.resources | nindent 10 }}

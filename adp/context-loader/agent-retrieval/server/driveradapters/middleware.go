@@ -24,6 +24,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	aerrors "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -56,12 +57,7 @@ func getToken(c *gin.Context) (token string) {
 // Choose one of the two credentials: the one starting with the AppKey prefix (bak_) is submitted to bkn-safe for verification (API Key issued by the user),
 // The rest of the bearer token goes hydra introspection. The two paths produce the same TokenInfo, and the downstream authentication context is consistent.
 func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKeyVerifier) gin.HandlerFunc {
-	return middlewareIntrospectVerifyWithMode(hydra, appKeys, false)
-}
-
-func middlewareIntrospectVerifyWithMode(hydra interfaces.Hydra, appKeys interfaces.AppKeyVerifier,
-	strict bool,
-) gin.HandlerFunc {
+	strict := config.GetAuthEnabled()
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		// Set language information to context.
@@ -129,13 +125,7 @@ func middlewareIntrospectVerifyWithMode(hydra interfaces.Hydra, appKeys interfac
 
 // Internal interface Header authentication account information processing middleware.
 func middlewareHeaderAuthContext() gin.HandlerFunc {
-	return middlewareHeaderAuthContextWithMode(false)
-}
-
-// middlewareHeaderAuthContextWithMode resolves the execution subject carried
-// by a trusted internal hop. Strict validation is tied to the temporary #517
-// rollout switch so the implementation can merge before all callers migrate.
-func middlewareHeaderAuthContextWithMode(strict bool) gin.HandlerFunc {
+	strict := config.GetAuthEnabled()
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		ctx = common.SetTraceContextToCtx(ctx, common.TraceContextFromHeaders(c.GetHeader))

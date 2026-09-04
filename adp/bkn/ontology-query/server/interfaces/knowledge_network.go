@@ -35,7 +35,7 @@ type SubGraphQueryBaseOnSource struct {
 	ActualCondition *cond.CondCfg `json:"-"`
 	KNID            string        `json:"-"`
 	Branch          string        `json:"-"`
-	// AuthorizedTypePaths is populated by the query PEP from the published model.
+	// AuthorizedTypePaths is populated by query authorization from the published model.
 	// A non-nil empty slice deliberately prevents path discovery from being repeated
 	// after every candidate path has been filtered out.
 	AuthorizedTypePaths []RelationTypePath `json:"-"`
@@ -58,7 +58,7 @@ type SubGraphQueryBaseOnObjects struct {
 	KNID    string                `json:"-"`
 	Branch  string                `json:"-"`
 	// AuthorizedRelationTypeIDs limits relation discovery to candidates retained
-	// by the query PEP. Nil means no PEP-provided constraint; an empty map means
+	// by query authorization. Nil means no authorization constraint; an empty map means
 	// that no relation candidate may be queried.
 	AuthorizedRelationTypeIDs map[string]struct{} `json:"-"`
 	CommonQueryParameters

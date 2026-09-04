@@ -236,6 +236,8 @@ func TestRegisteredProxyRouteCannotBypassLifecycle(t *testing.T) {
 		bytes.NewBufferString(`{"arg":"unsafe"}`),
 	)
 	privateRequest.Header.Set("Content-Type", "application/json")
+	privateRequest.Header.Set(string(interfaces.HeaderXAccountID), "user-1")
+	privateRequest.Header.Set(string(interfaces.HeaderXAccountType), string(interfaces.AccessorTypeUser))
 	privateResponse := httptest.NewRecorder()
 	privateEngine.ServeHTTP(privateResponse, privateRequest)
 	if proxy.calls != 0 || privateResponse.Code != http.StatusBadRequest {

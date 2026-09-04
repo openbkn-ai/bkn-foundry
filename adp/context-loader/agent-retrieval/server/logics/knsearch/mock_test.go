@@ -96,11 +96,17 @@ func (m *mockBknBackend) ListKnowledgeNetworks(ctx context.Context, req *interfa
 
 func (m *mockBknBackend) SearchObjectTypes(ctx context.Context, req *interfaces.QueryConceptsReq) (*interfaces.ObjectTypeConcepts, error) {
 	m.objectTypesReq = req
+	if m.objectTypesResp == nil && m.objectTypesError == nil && m.networkDetail != nil {
+		return &interfaces.ObjectTypeConcepts{Entries: m.networkDetail.ObjectTypes}, nil
+	}
 	return m.objectTypesResp, m.objectTypesError
 }
 
 func (m *mockBknBackend) SearchRelationTypes(ctx context.Context, req *interfaces.QueryConceptsReq) (*interfaces.RelationTypeConcepts, error) {
 	m.relationTypesReq = req
+	if m.relationTypesResp == nil && m.relationTypesError == nil && m.networkDetail != nil {
+		return &interfaces.RelationTypeConcepts{Entries: m.networkDetail.RelationTypes}, nil
+	}
 	return m.relationTypesResp, m.relationTypesError
 }
 
@@ -109,6 +115,21 @@ func (m *mockBknBackend) GetObjectTypeDetail(ctx context.Context, knID string, o
 	m.objectDetailCalls++
 	m.objectDetailKnID = knID
 	m.objectDetailIDs = append([]string(nil), otIds...)
+	if m.objectDetailResp == nil && m.objectDetailError == nil && m.networkDetail != nil {
+		requested := make(map[string]struct{}, len(otIds))
+		for _, id := range otIds {
+			requested[id] = struct{}{}
+		}
+		result := make([]*interfaces.ObjectType, 0, len(otIds))
+		for _, objectType := range m.networkDetail.ObjectTypes {
+			if objectType != nil {
+				if _, ok := requested[objectType.ID]; ok {
+					result = append(result, objectType)
+				}
+			}
+		}
+		return result, nil
+	}
 	return m.objectDetailResp, m.objectDetailError
 }
 
@@ -118,7 +139,18 @@ func (m *mockBknBackend) GetRelationTypeDetail(ctx context.Context, knID string,
 
 func (m *mockBknBackend) SearchActionTypes(ctx context.Context, req *interfaces.QueryConceptsReq) (actionTypes *interfaces.ActionTypeConcepts, err error) {
 	m.actionTypesReq = req
+	if m.actionTypesResp == nil && m.actionTypesError == nil && m.networkDetail != nil {
+		return &interfaces.ActionTypeConcepts{Entries: m.networkDetail.ActionTypes}, nil
+	}
 	return m.actionTypesResp, m.actionTypesError
+}
+
+type allowAllQueryCandidateAuthorizer struct{}
+
+func (allowAllQueryCandidateAuthorizer) FilterObjectTypeIDs(_ context.Context, _ string,
+	candidateIDs []string,
+) ([]string, error) {
+	return append([]string(nil), candidateIDs...), nil
 }
 
 func (m *mockBknBackend) ListMetricsByObjectTypes(ctx context.Context, knID string, otIDs []string) ([]*interfaces.RelatedMetric, error) {

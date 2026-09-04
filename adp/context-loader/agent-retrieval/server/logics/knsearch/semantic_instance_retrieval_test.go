@@ -129,6 +129,7 @@ func TestSemanticInstanceRetrieval_MainFlow(t *testing.T) {
 			svc := &localSearchImpl{
 				logger:        &mockLogger{},
 				ontologyQuery: mockQuery,
+				authorizer:    allowAllQueryCandidateAuthorizer{},
 			}
 
 			res, err := svc.semanticInstanceRetrieval(context.Background(), tt.req, tt.objectTypes, mockConfig)
@@ -152,6 +153,7 @@ func TestRetrieveInstancesForObjectType(t *testing.T) {
 	svc := &localSearchImpl{
 		logger:        &mockLogger{},
 		ontologyQuery: mockQuery,
+		authorizer:    allowAllQueryCandidateAuthorizer{},
 	}
 
 	req := &interfaces.KnSearchLocalRequest{KnID: "129", Query: "test"}

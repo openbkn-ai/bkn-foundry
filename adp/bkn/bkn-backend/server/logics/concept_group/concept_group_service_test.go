@@ -300,9 +300,13 @@ func Test_conceptGroupService_ListConceptGroups(t *testing.T) {
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ums := bmock.NewMockUserMgmtService(mockCtrl)
 		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(map[string]interfaces.PermissionResourceOps{
-				"kn1": {ResourceID: "kn1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_AUTHORIZE}},
-			}, nil).AnyTimes()
+			DoAndReturn(func(_ context.Context, _ string, ids, _ []string, _ bool, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
+				matched := make(map[string]interfaces.PermissionResourceOps, len(ids))
+				for _, id := range ids {
+					matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE, interfaces.OPERATION_TYPE_AUTHORIZE}}
+				}
+				return matched, nil
+			}).AnyTimes()
 
 		service := &conceptGroupService{
 			appSetting: appSetting,
@@ -327,9 +331,10 @@ func Test_conceptGroupService_ListConceptGroups(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			cga.EXPECT().ListConceptGroups(gomock.Any(), query).Return(cgArr, nil)
-			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
+			listQuery := query
+			listQuery.Offset = 0
+			listQuery.Limit = -1
+			cga.EXPECT().ListConceptGroups(gomock.Any(), listQuery).Return(cgArr, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{}, nil)
 
@@ -349,26 +354,10 @@ func Test_conceptGroupService_ListConceptGroups(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return([]*interfaces.ConceptGroup{}, nil)
-			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(0, nil)
 
 			cgs, total, err := service.ListConceptGroups(ctx, query)
 			So(err, ShouldBeNil)
-			So(total, ShouldEqual, 0)
-			So(len(cgs), ShouldEqual, 0)
-		})
-
-		Convey("Failed when permission check fails\n", func() {
-			query := interfaces.ConceptGroupsQueryParams{
-				KNID:   "kn1",
-				Branch: interfaces.MAIN_BRANCH,
-			}
-
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_ConceptGroup_InternalError))
-
-			cgs, total, err := service.ListConceptGroups(ctx, query)
-			So(err, ShouldNotBeNil)
 			So(total, ShouldEqual, 0)
 			So(len(cgs), ShouldEqual, 0)
 		})
@@ -379,7 +368,6 @@ func Test_conceptGroupService_ListConceptGroups(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			cgs, total, err := service.ListConceptGroups(ctx, query)
@@ -404,9 +392,7 @@ func Test_conceptGroupService_ListConceptGroups(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(cgArr, nil)
-			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			cgs, total, err := service.ListConceptGroups(ctx, query)
@@ -442,9 +428,7 @@ func Test_conceptGroupService_ListConceptGroups(t *testing.T) {
 				ata:        ata,
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(cgArr, nil)
-			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
@@ -470,9 +454,7 @@ func Test_conceptGroupService_ListConceptGroups(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(cgArr, nil)
-			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return([]string{}, nil)
 
@@ -491,9 +473,7 @@ func Test_conceptGroupService_ListConceptGroups(t *testing.T) {
 					Offset: 100,
 				},
 			}
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-			cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return([]*interfaces.ConceptGroup{}, nil)
-			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
+			cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return([]*interfaces.ConceptGroup{{CGID: "cg1"}}, nil)
 
 			cgs, total, err := service.ListConceptGroups(ctx, query)
 			So(err, ShouldBeNil)
@@ -516,9 +496,7 @@ func Test_conceptGroupService_ListConceptGroups(t *testing.T) {
 				{CGID: "cg3", CGName: "cg3"},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(cgArr[1:], nil)
-			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(3, nil)
+			cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(cgArr, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{}, nil).AnyTimes()
 
@@ -541,9 +519,13 @@ func Test_conceptGroupService_GetConceptGroupByID(t *testing.T) {
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(map[string]interfaces.PermissionResourceOps{
-				"kn1": {ResourceID: "kn1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_AUTHORIZE}},
-			}, nil).AnyTimes()
+			DoAndReturn(func(_ context.Context, _ string, ids, _ []string, _ bool, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
+				matched := make(map[string]interfaces.PermissionResourceOps, len(ids))
+				for _, id := range ids {
+					matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE, interfaces.OPERATION_TYPE_AUTHORIZE}}
+				}
+				return matched, nil
+			}).AnyTimes()
 
 		service := &conceptGroupService{
 			appSetting: appSetting,
@@ -561,7 +543,6 @@ func Test_conceptGroupService_GetConceptGroupByID(t *testing.T) {
 				CGName: "cg1",
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(cg, nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{}, nil)
 
@@ -584,22 +565,6 @@ func Test_conceptGroupService_GetConceptGroupByID(t *testing.T) {
 			So(result, ShouldBeNil)
 			httpErr := err.(*rest.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_ConceptGroupNotFound)
-		})
-
-		Convey("Failed when permission check fails\n", func() {
-			knID := "kn1"
-			branch := interfaces.MAIN_BRANCH
-			cgID := "cg1"
-			mode := ""
-
-			cga.EXPECT().GetConceptGroupByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.ConceptGroup{
-				CGID: cgID, KNID: knID, Branch: branch,
-			}, nil)
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_ConceptGroup_InternalError))
-
-			result, err := service.GetConceptGroupByID(ctx, knID, branch, cgID, mode)
-			So(err, ShouldNotBeNil)
-			So(result, ShouldBeNil)
 		})
 
 		Convey("Failed when GetConceptGroupByID returns error\n", func() {
@@ -629,7 +594,6 @@ func Test_conceptGroupService_GetConceptGroupByID(t *testing.T) {
 				Branch: branch,
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(cg, nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
@@ -663,7 +627,6 @@ func Test_conceptGroupService_GetConceptGroupByID(t *testing.T) {
 				ats:        ats,
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(cg, nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(otIDs, nil)
 			ots.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return([]*interfaces.ObjectType{}, 0, nil)
@@ -697,7 +660,6 @@ func Test_conceptGroupService_GetConceptGroupByID(t *testing.T) {
 				ots:        ots,
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(cg, nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(otIDs, nil)
 			ots.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, 0, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
@@ -730,7 +692,6 @@ func Test_conceptGroupService_GetConceptGroupByID(t *testing.T) {
 				rts:        rts,
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(cg, nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(otIDs, nil)
 			ots.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return([]*interfaces.ObjectType{}, 0, nil)
@@ -766,7 +727,6 @@ func Test_conceptGroupService_GetConceptGroupByID(t *testing.T) {
 				ats:        ats,
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(cg, nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(otIDs, nil)
 			ots.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return([]*interfaces.ObjectType{}, 0, nil)

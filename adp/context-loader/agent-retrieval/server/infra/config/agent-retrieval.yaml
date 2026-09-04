@@ -56,8 +56,6 @@ bkn_safe: # bkn-safe authorization service, used to validate user self-issued Ap
   private_host: "bkn-safe"
   private_port: 3000
 auth:
-  # Temporary migration switch. Keep false until #1248 and #1239 complete.
-  context_loader_kn_pep_enabled: false
   # Limits one bkn-safe request only; the complete candidate set is processed in chunks.
   resource_filter_chunk_size: 200
 redis:

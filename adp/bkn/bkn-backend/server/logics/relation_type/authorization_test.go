@@ -15,8 +15,7 @@ import (
 	bmock "bkn-backend/interfaces/mock"
 )
 
-func TestRelationTypeSingleResourcePEP(t *testing.T) {
-	t.Setenv("KN_CHILD_RESOURCE_PEP_ENABLED", "true")
+func TestRelationTypeSingleResourceAuthorization(t *testing.T) {
 	tests := []struct {
 		name      string
 		operation string

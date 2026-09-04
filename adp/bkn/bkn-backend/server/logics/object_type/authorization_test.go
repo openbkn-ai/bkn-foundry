@@ -16,8 +16,7 @@ import (
 	bmock "bkn-backend/interfaces/mock"
 )
 
-func TestObjectTypeSingleResourcePEP(t *testing.T) {
-	t.Setenv("KN_CHILD_RESOURCE_PEP_ENABLED", "true")
+func TestObjectTypeSingleResourceAuthorization(t *testing.T) {
 	tests := []struct {
 		name      string
 		operation string
@@ -71,25 +70,5 @@ func TestObjectTypeSingleResourcePEP(t *testing.T) {
 				t.Fatalf("operation error = %v, want %v", err, denied)
 			}
 		})
-	}
-}
-
-func TestObjectTypeSingleResourcePEPDisabledUsesParentKN(t *testing.T) {
-	t.Setenv("KN_CHILD_RESOURCE_PEP_ENABLED", "false")
-	ctrl := gomock.NewController(t)
-	ota := bmock.NewMockObjectTypeAccess(ctrl)
-	ps := bmock.NewMockPermissionService(ctrl)
-	denied := errors.New("denied")
-	ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "legacy/id").
-		Return("object", true, nil)
-	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN, ID: "kn-1",
-	}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(denied)
-	service := &objectTypeService{ota: ota, ps: ps}
-
-	err := service.DeleteObjectTypesByIDs(context.Background(), nil, "kn-1", interfaces.MAIN_BRANCH,
-		[]string{"legacy/id"})
-	if !errors.Is(err, denied) {
-		t.Fatalf("operation error = %v, want %v", err, denied)
 	}
 }

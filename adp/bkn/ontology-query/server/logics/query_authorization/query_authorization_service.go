@@ -26,17 +26,19 @@ type queryAuthorizationService struct {
 }
 
 func NewQueryAuthorizationService(appSetting *common.AppSetting) interfaces.QueryAuthorizationService {
-	if !common.GetAuthEnabled() || !QueryDataPEPEnabled() {
-		return &noopQueryAuthorizationService{}
+	service := &queryAuthorizationService{}
+	if common.GetAuthEnabled() {
+		service.models = logics.OMA
+		service.permissions = permissionlogic.NewPermissionService(appSetting)
 	}
-	return &queryAuthorizationService{
-		models:      logics.OMA,
-		permissions: permissionlogic.NewPermissionService(appSetting),
-	}
+	return service
 }
 
 func (s *queryAuthorizationService) AuthorizeObjectTypeQuery(ctx context.Context,
 	knID, branch, objectTypeID string) error {
+	if !common.GetAuthEnabled() {
+		return nil
+	}
 	if err := validateQueryIdentity(ctx, knID, branch, objectTypeID); err != nil {
 		return err
 	}
@@ -53,6 +55,9 @@ func (s *queryAuthorizationService) AuthorizeObjectTypeQuery(ctx context.Context
 
 func (s *queryAuthorizationService) AuthorizeActionTypeQuery(ctx context.Context,
 	knID, branch, actionTypeID string) error {
+	if !common.GetAuthEnabled() {
+		return nil
+	}
 	if err := validateQueryIdentity(ctx, knID, branch, actionTypeID); err != nil {
 		return err
 	}
@@ -86,6 +91,9 @@ func (s *queryAuthorizationService) AuthorizeActionTypeQuery(ctx context.Context
 
 func (s *queryAuthorizationService) AuthorizeMetricQuery(ctx context.Context,
 	knID, branch, metricID string) error {
+	if !common.GetAuthEnabled() {
+		return nil
+	}
 	if err := validateQueryIdentity(ctx, knID, branch, metricID); err != nil {
 		return err
 	}
@@ -121,6 +129,9 @@ func (s *queryAuthorizationService) AuthorizeMetricQuery(ctx context.Context,
 
 func (s *queryAuthorizationService) AuthorizeMetricDryRun(ctx context.Context,
 	knID, branch string, definition *interfaces.MetricDefinition) error {
+	if !common.GetAuthEnabled() {
+		return nil
+	}
 	if err := validateQueryIdentity(ctx, knID, branch, "dry-run"); err != nil {
 		return err
 	}
@@ -145,6 +156,9 @@ func (s *queryAuthorizationService) AuthorizeMetricDryRun(ctx context.Context,
 
 func (s *queryAuthorizationService) AuthorizeSubgraphBySource(ctx context.Context,
 	query *interfaces.SubGraphQueryBaseOnSource) error {
+	if !common.GetAuthEnabled() {
+		return nil
+	}
 	if query == nil {
 		return invalidQuery(ctx, "subgraph query is required")
 	}
@@ -227,6 +241,9 @@ func (s *queryAuthorizationService) AuthorizeSubgraphBySource(ctx context.Contex
 
 func (s *queryAuthorizationService) AuthorizeSubgraphByTypePath(ctx context.Context,
 	query *interfaces.SubGraphQueryBaseOnTypePath) error {
+	if !common.GetAuthEnabled() {
+		return nil
+	}
 	if query == nil {
 		return invalidQuery(ctx, "subgraph path query is required")
 	}
@@ -280,6 +297,9 @@ func (s *queryAuthorizationService) AuthorizeSubgraphByTypePath(ctx context.Cont
 
 func (s *queryAuthorizationService) AuthorizeSubgraphByObjects(ctx context.Context,
 	query *interfaces.SubGraphQueryBaseOnObjects) error {
+	if !common.GetAuthEnabled() {
+		return nil
+	}
 	if query == nil {
 		return invalidQuery(ctx, "object subgraph query is required")
 	}

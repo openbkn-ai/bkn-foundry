@@ -80,7 +80,7 @@ func (s *localSearchImpl) Search(ctx context.Context, req *interfaces.KnSearchLo
 
 	instanceResult, instanceErr := s.semanticInstanceRetrieval(ctx, req, conceptResult.ObjectTypes, mergedConfig)
 	if instanceErr != nil {
-		if s.knPEPEnabled() && isAuthorizationError(instanceErr) {
+		if isAuthorizationError(instanceErr) {
 			return nil, instanceErr
 		}
 		// Instance recall failure does not bring down the entire search: the Schema itself is already a useful result and is returned in a degraded manner.

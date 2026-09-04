@@ -690,6 +690,7 @@ func TestFetchSampleData(t *testing.T) {
 	svc := &localSearchImpl{
 		logger:        &mockLogger{},
 		ontologyQuery: mockQuery,
+		authorizer:    allowAllQueryCandidateAuthorizer{},
 	}
 
 	objects := []*interfaces.KnSearchObjectType{

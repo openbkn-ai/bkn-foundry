@@ -501,6 +501,8 @@ func Test_ActionExecution_Snapshot(t *testing.T) {
 }
 
 func Test_executeAsync_ContextAndProgress(t *testing.T) {
+	t.Setenv("AUTH_ENABLED", "false")
+
 	Convey("executeAsync should restore trace context and flush small-run progress", t, func() {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
@@ -599,6 +601,8 @@ func Test_resolveExecutionMode(t *testing.T) {
 }
 
 func Test_executeAsync_AggregatedInvokesToolOnce(t *testing.T) {
+	t.Setenv("AUTH_ENABLED", "false")
+
 	Convey("聚合参数命中多个实例时只调用一次工具（#724）", t, func() {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
@@ -711,6 +715,8 @@ func aggregatedOnceFixture(execID string) (*interfaces.ActionExecution, *interfa
 }
 
 func Test_executeAsync_AggregatedCancelledBeforeInvocation(t *testing.T) {
+	t.Setenv("AUTH_ENABLED", "false")
+
 	Convey("聚合执行在调用发出前被取消：不得再发出工具调用", t, func() {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
@@ -749,6 +755,8 @@ func Test_executeAsync_AggregatedCancelledBeforeInvocation(t *testing.T) {
 }
 
 func Test_executeAsync_AggregatedCancelledDuringInvocation(t *testing.T) {
+	t.Setenv("AUTH_ENABLED", "false")
+
 	Convey("聚合执行在调用途中被取消：终态保持 cancelled，且已发出的调用结果照记", t, func() {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
@@ -794,6 +802,8 @@ func Test_executeAsync_AggregatedCancelledDuringInvocation(t *testing.T) {
 }
 
 func Test_executeAsync_PerInstanceStillFansOut(t *testing.T) {
+	t.Setenv("AUTH_ENABLED", "false")
+
 	Convey("含 property 参数时仍逐实例执行，计数与改动前一致", t, func() {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
@@ -863,6 +873,8 @@ func Test_executeAsync_PerInstanceStillFansOut(t *testing.T) {
 }
 
 func Test_ExecuteAction_InputDynamicParamsValidation(t *testing.T) {
+	t.Setenv("AUTH_ENABLED", "false")
+
 	Convey("行动执行：行动类含 input 参数时，dynamic_params 未给齐则返回 400", t, func() {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
@@ -956,6 +968,8 @@ func Test_ExecuteAction_InputDynamicParamsValidation(t *testing.T) {
 }
 
 func Test_ExecuteAction_ScanMode(t *testing.T) {
+	t.Setenv("AUTH_ENABLED", "false")
+
 	Convey("Test ExecuteAction with scan mode (empty _instance_identities)", t, func() {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
@@ -1169,6 +1183,8 @@ func Test_ExecuteAction_ScanMode(t *testing.T) {
 }
 
 func Test_ExecuteAction_UnboundObjectType(t *testing.T) {
+	t.Setenv("AUTH_ENABLED", "false")
+
 	Convey("Test ExecuteAction with unbound object type", t, func() {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
@@ -1283,6 +1299,8 @@ func Test_ExecuteAction_UnboundObjectType(t *testing.T) {
 }
 
 func Test_ExecuteAction_AddActionType(t *testing.T) {
+	t.Setenv("AUTH_ENABLED", "false")
+
 	Convey("Test ExecuteAction with add action type", t, func() {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()

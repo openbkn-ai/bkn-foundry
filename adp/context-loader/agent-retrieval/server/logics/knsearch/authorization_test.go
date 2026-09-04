@@ -11,7 +11,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	infraerrors "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -33,10 +32,9 @@ func (s *stubQueryCandidateAuthorizer) FilterObjectTypeIDs(_ context.Context, kn
 	return append([]string(nil), s.allowed...), s.err
 }
 
-func pepSearch(authorizer interfaces.QueryCandidateAuthorizer, oq interfaces.DrivenOntologyQuery) *localSearchImpl {
+func authorizedSearch(authorizer interfaces.QueryCandidateAuthorizer, oq interfaces.DrivenOntologyQuery) *localSearchImpl {
 	return &localSearchImpl{
 		logger:        &mockLogger{},
-		config:        &config.Config{Auth: config.AuthorizationConfig{ContextLoaderKNPEPEnabled: true}},
 		ontologyQuery: oq,
 		authorizer:    authorizer,
 	}
@@ -44,7 +42,7 @@ func pepSearch(authorizer interfaces.QueryCandidateAuthorizer, oq interfaces.Dri
 
 func TestFilterAuthorizedObjectTypes_PreservesCandidateOrder(t *testing.T) {
 	authorizer := &stubQueryCandidateAuthorizer{allowed: []string{"ot3", "ot1"}}
-	svc := pepSearch(authorizer, nil)
+	svc := authorizedSearch(authorizer, nil)
 	candidates := []*interfaces.KnSearchObjectType{
 		{ConceptID: "ot1"}, {ConceptID: "ot2"}, {ConceptID: "ot3"},
 	}
@@ -62,14 +60,14 @@ func TestFilterAuthorizedObjectTypes_PreservesCandidateOrder(t *testing.T) {
 	}
 }
 
-func TestConceptRetrieval_PEPUsesTypedBKNEndpointsWithoutExportFallback(t *testing.T) {
+func TestConceptRetrieval_AuthorizationUsesTypedBKNEndpointsWithoutExportFallback(t *testing.T) {
 	backend := &mockBknBackend{
 		networkDetail:     &interfaces.KnowledgeNetworkDetail{ObjectTypes: []*interfaces.ObjectType{{ID: "export-only"}}},
 		objectTypesResp:   &interfaces.ObjectTypeConcepts{Entries: []*interfaces.ObjectType{{ID: "allowed", Name: "Allowed"}}},
 		relationTypesResp: &interfaces.RelationTypeConcepts{},
 		actionTypesResp:   &interfaces.ActionTypeConcepts{},
 	}
-	svc := pepSearch(&stubQueryCandidateAuthorizer{}, nil)
+	svc := authorizedSearch(&stubQueryCandidateAuthorizer{}, nil)
 	svc.bknBackend = backend
 	retrievalConfig := DefaultRetrievalConfig()
 
@@ -87,13 +85,13 @@ func TestConceptRetrieval_PEPUsesTypedBKNEndpointsWithoutExportFallback(t *testi
 	}
 }
 
-func TestConceptRetrieval_PEPRejectsIncompleteTypedResponse(t *testing.T) {
+func TestConceptRetrieval_AuthorizationRejectsIncompleteTypedResponse(t *testing.T) {
 	backend := &mockBknBackend{
 		objectTypesResp:   &interfaces.ObjectTypeConcepts{},
 		relationTypesResp: nil,
 		actionTypesResp:   &interfaces.ActionTypeConcepts{},
 	}
-	svc := pepSearch(&stubQueryCandidateAuthorizer{}, nil)
+	svc := authorizedSearch(&stubQueryCandidateAuthorizer{}, nil)
 	svc.bknBackend = backend
 	retrievalConfig := DefaultRetrievalConfig()
 
@@ -112,7 +110,7 @@ func TestFetchAuthorizedSampleData_FiltersBeforeOntologyQuery(t *testing.T) {
 		queried = append(queried, req.OtID)
 		return &interfaces.QueryObjectInstancesResp{Data: []any{map[string]any{"id": req.OtID}}}, nil
 	}}
-	svc := pepSearch(authorizer, oq)
+	svc := authorizedSearch(authorizer, oq)
 	allowed := &interfaces.KnSearchObjectType{ConceptID: "allowed"}
 	denied := &interfaces.KnSearchObjectType{ConceptID: "denied"}
 
@@ -135,7 +133,7 @@ func TestFetchAuthorizedSampleData_AuthorizationFailureStopsFanout(t *testing.T)
 	authErr := infraerrors.DefaultHTTPError(ctx, http.StatusServiceUnavailable, "safe unavailable")
 	authorizer := &stubQueryCandidateAuthorizer{err: authErr}
 	oq := &mockOntologyQuery{instancesResp: &interfaces.QueryObjectInstancesResp{}}
-	svc := pepSearch(authorizer, oq)
+	svc := authorizedSearch(authorizer, oq)
 
 	err := svc.fetchAuthorizedSampleData(ctx, "kn1", []*interfaces.KnSearchObjectType{{ConceptID: "ot1"}}, false)
 	if !errors.Is(err, authErr) {
@@ -151,7 +149,7 @@ func TestFetchAuthorizedSampleData_IncompleteQueryResponseFailsClosed(t *testing
 	oq := &mockOntologyQuery{instancesFunc: func(_ *interfaces.QueryObjectInstancesReq) (*interfaces.QueryObjectInstancesResp, error) {
 		return nil, nil
 	}}
-	svc := pepSearch(authorizer, oq)
+	svc := authorizedSearch(authorizer, oq)
 
 	err := svc.fetchAuthorizedSampleData(context.Background(), "kn1", []*interfaces.KnSearchObjectType{{ConceptID: "ot1"}}, false)
 	status, ok := infraerrors.HTTPStatus(err)
@@ -160,11 +158,11 @@ func TestFetchAuthorizedSampleData_IncompleteQueryResponseFailsClosed(t *testing
 	}
 }
 
-func TestSemanticInstanceRetrieval_PEPFailureDoesNotReturnPartialNodes(t *testing.T) {
+func TestSemanticInstanceRetrieval_AuthorizationFailureDoesNotReturnPartialNodes(t *testing.T) {
 	for _, status := range []int{http.StatusForbidden, http.StatusServiceUnavailable} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
 			ctx := context.Background()
-			dependencyErr := infraerrors.DefaultHTTPError(ctx, status, "ontology-query PEP failure")
+			dependencyErr := infraerrors.DefaultHTTPError(ctx, status, "ontology-query authorization failure")
 			authorizer := &stubQueryCandidateAuthorizer{allowed: []string{"ot1", "ot2"}}
 			oq := &mockOntologyQuery{instancesFunc: func(req *interfaces.QueryObjectInstancesReq) (*interfaces.QueryObjectInstancesResp, error) {
 				if req.OtID == "ot2" {
@@ -174,7 +172,7 @@ func TestSemanticInstanceRetrieval_PEPFailureDoesNotReturnPartialNodes(t *testin
 					map[string]any{"instance_name": "visible", "_score": 1.0},
 				}}, nil
 			}}
-			svc := pepSearch(authorizer, oq)
+			svc := authorizedSearch(authorizer, oq)
 			matchOnly := []interfaces.KnOperationType{interfaces.KnOperationTypeMatch}
 			objectTypes := []*interfaces.KnSearchObjectType{
 				{ConceptID: "ot1", DataProperties: []*interfaces.KnSearchDataProperty{{Name: "name", Type: "text", ConditionOperations: matchOnly}}},

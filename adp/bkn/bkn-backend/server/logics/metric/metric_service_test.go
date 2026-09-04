@@ -25,6 +25,20 @@ import (
 	"bkn-backend/logics/batchindex"
 )
 
+func allowAllMetricPermissionResources(_ context.Context, _ string, ids, _ []string, _ bool, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
+	matched := make(map[string]interfaces.PermissionResourceOps, len(ids))
+	for _, id := range ids {
+		matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: []string{
+			interfaces.OPERATION_TYPE_VIEW_DETAIL,
+			interfaces.OPERATION_TYPE_QUERY_DATA,
+			interfaces.OPERATION_TYPE_MODIFY,
+			interfaces.OPERATION_TYPE_DELETE,
+			interfaces.OPERATION_TYPE_AUTHORIZE,
+		}}
+	}
+	return matched, nil
+}
+
 func Test_metricService_CheckMetricExistByID(t *testing.T) {
 	Convey("Test CheckMetricExistByID\n", t, func() {
 		ctx := context.Background()
@@ -121,6 +135,8 @@ func Test_metricService_GetMetricByID(t *testing.T) {
 
 		ma := bmock.NewMockMetricAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(allowAllMetricPermissionResources).AnyTimes()
 		service := &metricService{
 			appSetting: &common.AppSetting{},
 			ma:         ma,
@@ -129,24 +145,11 @@ func Test_metricService_GetMetricByID(t *testing.T) {
 
 		Convey("Success when metric found\n", func() {
 			def := &interfaces.MetricDefinition{ID: "mid1", KnID: "kn1", Branch: interfaces.MAIN_BRANCH, Name: "n1"}
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ma.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "mid1").Return(def, nil)
 
 			got, err := service.GetMetricByID(ctx, "kn1", interfaces.MAIN_BRANCH, "mid1")
 			So(err, ShouldBeNil)
 			So(got, ShouldEqual, def)
-		})
-
-		Convey("Failed when permission denied\n", func() {
-			ma.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "mid1").Return(&interfaces.MetricDefinition{
-				ID: "mid1", KnID: "kn1", Branch: interfaces.MAIN_BRANCH,
-			}, nil)
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_InternalError_CheckPermissionFailed))
-
-			got, err := service.GetMetricByID(ctx, "kn1", interfaces.MAIN_BRANCH, "mid1")
-			So(err, ShouldNotBeNil)
-			So(got, ShouldBeNil)
 		})
 
 		Convey("Failed when not found\n", func() {
@@ -178,9 +181,13 @@ func Test_metricService_GetMetricsByIDs(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		ma := bmock.NewMockMetricAccess(mockCtrl)
+		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(allowAllMetricPermissionResources).AnyTimes()
 		service := &metricService{
 			appSetting: &common.AppSetting{},
 			ma:         ma,
+			ps:         ps,
 		}
 
 		Convey("Success\n", func() {
@@ -213,9 +220,7 @@ func Test_metricService_ListMetrics(t *testing.T) {
 		ma := bmock.NewMockMetricAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(map[string]interfaces.PermissionResourceOps{
-				"kn1": {ResourceID: "kn1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_AUTHORIZE}},
-			}, nil).AnyTimes()
+			DoAndReturn(allowAllMetricPermissionResources).AnyTimes()
 		service := &metricService{
 			appSetting: &common.AppSetting{},
 			ma:         ma,
@@ -231,7 +236,6 @@ func Test_metricService_ListMetrics(t *testing.T) {
 				},
 			}
 			entries := []*interfaces.MetricDefinition{{ID: "m1", KnID: "kn1", Name: "n1"}}
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(entries, nil)
 
 			out, err := service.ListMetrics(ctx, q)
@@ -252,7 +256,6 @@ func Test_metricService_ListMetrics(t *testing.T) {
 				{ID: "m1", KnID: "kn1"},
 				{ID: "m2", KnID: "kn1"},
 			}
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(entries, nil)
 
 			out, err := service.ListMetrics(ctx, q)
@@ -261,19 +264,8 @@ func Test_metricService_ListMetrics(t *testing.T) {
 			So(out.TotalCount, ShouldEqual, 2)
 		})
 
-		Convey("Failed when permission denied\n", func() {
-			q := interfaces.MetricsListQueryParams{KNID: "kn1"}
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_InternalError_CheckPermissionFailed))
-
-			out, err := service.ListMetrics(ctx, q)
-			So(err, ShouldNotBeNil)
-			So(out, ShouldBeNil)
-		})
-
 		Convey("Failed when ListMetrics returns error\n", func() {
 			q := interfaces.MetricsListQueryParams{KNID: "kn1"}
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(nil, sql.ErrConnDone)
 
 			out, err := service.ListMetrics(ctx, q)
@@ -295,6 +287,8 @@ func Test_metricService_UpdateMetric(t *testing.T) {
 		ma := bmock.NewMockMetricAccess(mockCtrl)
 		ma.EXPECT().CheckMetricExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("mid1", true, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(allowAllMetricPermissionResources).AnyTimes()
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
@@ -350,6 +344,8 @@ func Test_metricService_DeleteMetricsByIDs(t *testing.T) {
 		ma := bmock.NewMockMetricAccess(mockCtrl)
 		ma.EXPECT().CheckMetricExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("mid1", true, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(allowAllMetricPermissionResources).AnyTimes()
 		ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		ps.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
@@ -374,7 +370,9 @@ func Test_metricService_DeleteMetricsByIDs(t *testing.T) {
 			So(errBegin, ShouldBeNil)
 
 			ids := []string{"a", "b"}
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ma.EXPECT().GetMetricsByIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, ids).Return([]*interfaces.MetricDefinition{
+				{ID: "a", KnID: "kn1"}, {ID: "b", KnID: "kn1"},
+			}, nil)
 			ma.EXPECT().DeleteMetricsByIDs(gomock.Any(), tx, "kn1", interfaces.MAIN_BRANCH, ids).Return(nil)
 			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil).Times(2)
 
@@ -408,23 +406,18 @@ func Test_metricService_SearchMetrics(t *testing.T) {
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
+		ma := bmock.NewMockMetricAccess(mockCtrl)
+		ma.EXPECT().GetMetricIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"m1"}, nil).AnyTimes()
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(allowAllMetricPermissionResources).AnyTimes()
 
 		service := &metricService{
 			appSetting: appSetting,
 			ps:         ps,
 			vbs:        vbs,
 			cga:        cga,
+			ma:         ma,
 		}
-
-		Convey("permission denied\n", func() {
-			q := &interfaces.ConceptsQuery{KNID: "kn1"}
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_InternalError_CheckPermissionFailed))
-
-			res, err := service.SearchMetrics(ctx, q)
-			So(err, ShouldNotBeNil)
-			So(res.Type, ShouldEqual, interfaces.MODULE_TYPE_METRIC)
-		})
 
 		Convey("Success without concept groups\n", func() {
 			query := &interfaces.ConceptsQuery{
@@ -433,7 +426,6 @@ func Test_metricService_SearchMetrics(t *testing.T) {
 				Limit:  10,
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{},
 			}
@@ -466,7 +458,6 @@ func Test_metricService_SearchMetrics(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot1"}, nil)
 			datasetResp := &interfaces.DatasetQueryResponse{
@@ -488,7 +479,6 @@ func Test_metricService_SearchMetrics(t *testing.T) {
 				ConceptGroups: []string{"cg1"},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(0, nil)
 
 			result, err := service.SearchMetrics(ctx, query)
@@ -504,7 +494,6 @@ func Test_metricService_SearchMetrics(t *testing.T) {
 				ConceptGroups: []string{"cg1"},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{}, nil)
 
@@ -521,7 +510,6 @@ func Test_metricService_SearchMetrics(t *testing.T) {
 				ConceptGroups: []string{"cg1"},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot_keep"}, nil)
 
@@ -561,7 +549,6 @@ func Test_metricService_SearchMetrics(t *testing.T) {
 				Limit:         2,
 				ConceptGroups: []string{"cg1"},
 			}
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot_keep"}, nil)
 			nextCursor := "cursor-1"
@@ -598,7 +585,6 @@ func Test_metricService_SearchMetrics(t *testing.T) {
 				ConceptGroups: []string{"cg1"},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot1"}, nil)
 

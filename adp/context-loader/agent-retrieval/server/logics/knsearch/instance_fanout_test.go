@@ -42,7 +42,7 @@ func TestSemanticInstanceRetrieval_QueriesObjectTypesConcurrently(t *testing.T) 
 			return rowsToResp([]map[string]any{instanceRow(req.OtID+"-a", 9)}), nil
 		},
 	}
-	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery}
+	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery, authorizer: allowAllQueryCandidateAuthorizer{}}
 	config := DefaultRetrievalConfig()
 	config.SemanticInstanceRetrieval.ObjectTypeConcurrency = 4
 
@@ -82,7 +82,7 @@ func TestSemanticInstanceRetrieval_ConcurrencyIsBounded(t *testing.T) {
 			return rowsToResp([]map[string]any{instanceRow(req.OtID, 9)}), nil
 		},
 	}
-	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery}
+	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery, authorizer: allowAllQueryCandidateAuthorizer{}}
 	config := DefaultRetrievalConfig()
 	config.SemanticInstanceRetrieval.ObjectTypeConcurrency = 3
 
@@ -109,7 +109,7 @@ func TestSemanticInstanceRetrieval_OrderIsIndependentOfCompletion(t *testing.T) 
 			return rowsToResp([]map[string]any{instanceRow(req.OtID+"-row", 9)}), nil
 		},
 	}
-	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery}
+	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery, authorizer: allowAllQueryCandidateAuthorizer{}}
 	config := DefaultRetrievalConfig()
 
 	result, err := svc.semanticInstanceRetrieval(context.Background(),
@@ -135,7 +135,7 @@ func TestSemanticInstanceRetrieval_FailureIsIsolated(t *testing.T) {
 			return rowsToResp([]map[string]any{instanceRow(req.OtID, 9)}), nil
 		},
 	}
-	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery}
+	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery, authorizer: allowAllQueryCandidateAuthorizer{}}
 
 	result, err := svc.semanticInstanceRetrieval(context.Background(),
 		&interfaces.KnSearchLocalRequest{KnID: "129", Query: "q"}, fanoutObjectTypes(4), DefaultRetrievalConfig())
@@ -155,7 +155,7 @@ func TestSemanticInstanceRetrieval_RespectsMaxObjectTypes(t *testing.T) {
 			return rowsToResp([]map[string]any{instanceRow(req.OtID, 9)}), nil
 		},
 	}
-	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery}
+	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery, authorizer: allowAllQueryCandidateAuthorizer{}}
 	config := DefaultRetrievalConfig()
 	config.ConceptRetrieval.TopK = 5
 

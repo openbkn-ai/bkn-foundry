@@ -63,11 +63,9 @@ service:
     min_reranker_score: 0
     # 0 keeps the object type pre-filter off. Same file for how to calibrate it.
     min_object_type_score_ratio: 0
-# Authentication switches.
+# Authentication settings.
 auth:
   enabled: true
-  # Temporary migration switch for #517. #1253 removes it after cutover.
-  contextLoaderKnPepEnabled: false
   # Per-request batch size; this is not a cap on total retrieval candidates.
   resourceFilterChunkSize: 200
 

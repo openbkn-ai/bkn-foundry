@@ -164,16 +164,6 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		}
 	}()
 
-	if !permission.KNImportPermissionPrechecked(ctx) && !permission.KNChildResourcePEPEnabled() {
-		err = ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
-			Type: interfaces.RESOURCE_TYPE_KN,
-			ID:   objectTypes[0].KNID,
-		}, []string{interfaces.OPERATION_TYPE_MODIFY})
-		if err != nil {
-			return []string{}, err
-		}
-	}
-
 	currentTime := time.Now().UnixMilli()
 	for _, objectType := range objectTypes {
 		objectType.OTID, err = permission.PrepareKNChildResourceID(ctx, objectType.OTID)
@@ -237,7 +227,7 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 	if err != nil {
 		return []string{}, err
 	}
-	if !permission.KNImportPermissionPrechecked(ctx) && permission.KNChildResourcePEPEnabled() {
+	if !permission.KNImportPermissionPrechecked(ctx) {
 		if len(createObjectTypes) > 0 {
 			if err = ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
 				Type: interfaces.RESOURCE_TYPE_KN,
@@ -252,7 +242,7 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		}
 		if err = permission.CheckKNChildBatchPermission(ctx, ots.ps,
 			interfaces.RESOURCE_TYPE_OBJECT_TYPE, objectTypes[0].KNID, updateIDs,
-			interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_MODIFY); err != nil {
+			interfaces.OPERATION_TYPE_MODIFY); err != nil {
 			return []string{}, err
 		}
 	}
@@ -408,15 +398,6 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "查询对象类列表")
 	defer span.End()
-	pepEnabled := permission.KNChildResourcePEPEnabled()
-	if !pepEnabled {
-		if err := ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
-			Type: interfaces.RESOURCE_TYPE_KN,
-			ID:   query.KNID,
-		}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
-			return []*interfaces.ObjectType{}, 0, err
-		}
-	}
 	// 0. Begin the transaction.
 	var err error
 	if tx == nil {
@@ -448,10 +429,8 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 	}
 
 	listQuery := query
-	if pepEnabled {
-		listQuery.Offset = 0
-		listQuery.Limit = -1
-	}
+	listQuery.Offset = 0
+	listQuery.Limit = -1
 	objectTypes, err := ots.ota.ListObjectTypes(ctx, tx, listQuery)
 	if err != nil {
 		logger.Errorf("ListObjectTypes error: %s", err.Error())
@@ -461,34 +440,15 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
 
-	var total int
-	if pepEnabled {
-		var operationMap map[string]interfaces.PermissionResourceOps
-		objectTypes, total, operationMap, err = permission.FilterAndPaginateKNChildrenWithOperations(ctx, ots.ps,
-			interfaces.RESOURCE_TYPE_OBJECT_TYPE, query.KNID, objectTypes,
-			func(objectType *interfaces.ObjectType) string { return objectType.OTID }, query.Offset, query.Limit)
-		if err != nil {
-			return []*interfaces.ObjectType{}, 0, err
-		}
-		for _, objectType := range objectTypes {
-			objectType.Operations = operationMap[interfaces.KNChildResourceID(query.KNID, objectType.OTID)].Operations
-		}
-	} else {
-		total, err = ots.ota.GetObjectTypesTotal(ctx, query)
-		if err != nil {
-			logger.Errorf("GetObjectTypesTotal error: %s", err.Error())
-			span.SetStatus(codes.Error, "Get object types total error")
-			return []*interfaces.ObjectType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
-		}
-		operations, err := permission.GetKNChildOperations(ctx, ots.ps,
-			interfaces.RESOURCE_TYPE_OBJECT_TYPE, query.KNID, "")
-		if err != nil {
-			return []*interfaces.ObjectType{}, 0, err
-		}
-		for _, objectType := range objectTypes {
-			objectType.Operations = operations
-		}
+	var operationMap map[string]interfaces.PermissionResourceOps
+	objectTypes, total, operationMap, err := permission.FilterAndPaginateKNChildrenWithOperations(ctx, ots.ps,
+		interfaces.RESOURCE_TYPE_OBJECT_TYPE, query.KNID, objectTypes,
+		func(objectType *interfaces.ObjectType) string { return objectType.OTID }, query.Offset, query.Limit)
+	if err != nil {
+		return []*interfaces.ObjectType{}, 0, err
+	}
+	for _, objectType := range objectTypes {
+		objectType.Operations = operationMap[interfaces.KNChildResourceID(query.KNID, objectType.OTID)].Operations
 	}
 	if len(objectTypes) == 0 {
 		span.SetStatus(codes.Ok, "")
@@ -565,7 +525,7 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 	defer span.End()
 
 	otIDs = common.DuplicateSlice(otIDs)
-	if err := permission.ValidateKNChildPEPAuthorizationIDs(ctx, knID, otIDs); err != nil {
+	if err := permission.ValidateKNChildAuthorizationIDs(ctx, knID, otIDs); err != nil {
 		return nil, err
 	}
 	var err error
@@ -620,18 +580,13 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 		return []*interfaces.ObjectType{}, rest.NewHTTPError(ctx, http.StatusNotFound,
 			berrors.BknBackend_ObjectType_ObjectTypeNotFound).WithErrorDetails(errStr)
 	}
-	if len(otIDs) == 1 && permission.KNChildResourcePEPEnabled() {
+	if len(otIDs) == 1 {
 		operations, err := permission.GetKNChildOperations(ctx, ots.ps,
 			interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, otIDs[0])
 		if err != nil {
 			return nil, err
 		}
 		objectTypes[0].Operations = operations
-	} else if err = ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   knID,
-	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
-		return nil, err
 	}
 
 	// Get object type groups.
@@ -788,7 +743,7 @@ func (ots *objectTypeService) UpdateObjectType(ctx context.Context, tx *sql.Tx, 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update object type")
 	defer span.End()
 
-	if err := permission.ValidateKNChildPEPAuthorizationIDs(ctx, objectType.KNID, []string{objectType.OTID}); err != nil {
+	if err := permission.ValidateKNChildAuthorizationIDs(ctx, objectType.KNID, []string{objectType.OTID}); err != nil {
 		return err
 	}
 	_, exists, err := ots.CheckObjectTypeExistByID(ctx, objectType.KNID, objectType.Branch, objectType.OTID)
@@ -798,9 +753,9 @@ func (ots *objectTypeService) UpdateObjectType(ctx context.Context, tx *sql.Tx, 
 	if !exists {
 		return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
 	}
-	resource, operation := permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_OBJECT_TYPE,
-		objectType.KNID, objectType.OTID, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_MODIFY)
-	err = ots.ps.CheckPermission(ctx, resource, []string{operation})
+	resource := interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		objectType.KNID, objectType.OTID)
+	err = ots.ps.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_MODIFY})
 	if err != nil {
 		return err
 	}
@@ -991,7 +946,7 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 	}
 
 	otIDs = common.DuplicateSlice(otIDs)
-	if err := permission.ValidateKNChildPEPAuthorizationIDs(ctx, knID, otIDs); err != nil {
+	if err := permission.ValidateKNChildAuthorizationIDs(ctx, knID, otIDs); err != nil {
 		return err
 	}
 	if len(otIDs) == 1 {
@@ -1002,25 +957,21 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 		if !exists {
 			return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
 		}
-		resource, operation := permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_OBJECT_TYPE,
-			knID, otIDs[0], interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE)
-		if err := ots.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
+		resource := interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, otIDs[0])
+		if err := ots.ps.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_DELETE}); err != nil {
 			return err
 		}
 	} else {
-		if permission.KNChildResourcePEPEnabled() {
-			objectTypes, err := ots.ota.GetObjectTypesByIDs(ctx, tx, knID, branch, otIDs)
-			if err != nil {
-				return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_ObjectType_InternalError_GetObjectTypesByIDsFailed).WithErrorDetails(err.Error())
-			}
-			if len(objectTypes) != len(otIDs) {
-				return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
-			}
+		objectTypes, err := ots.ota.GetObjectTypesByIDs(ctx, tx, knID, branch, otIDs)
+		if err != nil {
+			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_ObjectType_InternalError_GetObjectTypesByIDsFailed).WithErrorDetails(err.Error())
+		}
+		if len(objectTypes) != len(otIDs) {
+			return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
 		}
 		if err := permission.CheckKNChildBatchPermission(ctx, ots.ps,
-			interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, otIDs,
-			interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE); err != nil {
+			interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, otIDs, interfaces.OPERATION_TYPE_DELETE); err != nil {
 			return err
 		}
 	}
@@ -1418,29 +1369,18 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 	response := interfaces.ObjectTypes{}
 	var err error
 
-	var visibleIDs []string
-	if !permission.KNChildResourcePEPEnabled() {
-		err = ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
-			Type: interfaces.RESOURCE_TYPE_KN,
-			ID:   query.KNID,
-		}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
-		if err != nil {
-			return response, err
-		}
-	} else {
-		candidateIDs, err := ots.GetObjectTypeIDsByKnID(ctx, query.KNID, query.Branch)
-		if err != nil {
-			return response, err
-		}
-		visibleIDs, err = permission.FilterKNChildIDs(ctx, ots.ps,
-			interfaces.RESOURCE_TYPE_OBJECT_TYPE, query.KNID, candidateIDs,
-			interfaces.OPERATION_TYPE_VIEW_DETAIL)
-		if err != nil {
-			return response, err
-		}
-		if len(visibleIDs) == 0 {
-			return response, nil
-		}
+	candidateIDs, err := ots.GetObjectTypeIDsByKnID(ctx, query.KNID, query.Branch)
+	if err != nil {
+		return response, err
+	}
+	visibleIDs, err := permission.FilterKNChildIDs(ctx, ots.ps,
+		interfaces.RESOURCE_TYPE_OBJECT_TYPE, query.KNID, candidateIDs,
+		interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	if err != nil {
+		return response, err
+	}
+	if len(visibleIDs) == 0 {
+		return response, nil
 	}
 
 	// Convert conditions to dataset filter conditions.
@@ -1481,9 +1421,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 				WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil))
 		}
 	}
-	if permission.KNChildResourcePEPEnabled() {
-		filterCondition = permission.RestrictDatasetFilterToIDs(filterCondition, visibleIDs)
-	}
+	filterCondition = permission.RestrictDatasetFilterToIDs(filterCondition, visibleIDs)
 
 	// 1. Get object types in the groups.
 	otIDMap := map[string]bool{} // Object type IDs in the groups

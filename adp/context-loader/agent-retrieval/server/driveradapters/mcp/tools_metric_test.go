@@ -161,9 +161,9 @@ func TestHandleGetObjectTypes_UsesEnrichedEndpoint(t *testing.T) {
 	})
 }
 
-func TestHandleGetObjectTypes_PEPDoesNotFallbackOrReportDeniedIDs(t *testing.T) {
+func TestHandleGetObjectTypes_AuthorizationDoesNotFallbackOrReportDeniedIDs(t *testing.T) {
 	stub := &capsBknBackend{}
-	handler := handleGetObjectTypesWithPEP(stub, knmetrics.NewKnMetricsServiceWith(nil, stub, nil), true)
+	handler := handleGetObjectTypes(stub, knmetrics.NewKnMetricsServiceWith(nil, stub, nil))
 	req := mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{
 		Arguments: map[string]any{
 			"kn_id":           "kn1",
@@ -177,7 +177,7 @@ func TestHandleGetObjectTypes_PEPDoesNotFallbackOrReportDeniedIDs(t *testing.T) 
 		t.Fatalf("unexpected result: err=%v result=%v", err, result)
 	}
 	if stub.detailCalls != 1 || stub.exportCalls != 0 {
-		t.Fatalf("PEP path must use only the typed endpoint: detail=%d export=%d", stub.detailCalls, stub.exportCalls)
+		t.Fatalf("authorized path must use only the typed endpoint: detail=%d export=%d", stub.detailCalls, stub.exportCalls)
 	}
 	response := resultToMap(t, result)
 	if _, exists := response["missing"]; exists {
