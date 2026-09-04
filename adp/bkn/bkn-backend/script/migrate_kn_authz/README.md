@@ -1,3 +1,9 @@
+<!--
+Copyright openbkn.ai
+
+Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+-->
+
 # Migrate Knowledge-Network Authorization Data
 
 This standalone script rebuilds the seven knowledge-network authorization
