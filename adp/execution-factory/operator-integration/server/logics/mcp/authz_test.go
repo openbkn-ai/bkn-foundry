@@ -42,3 +42,26 @@ func TestParseSSEAuthz(t *testing.T) {
 		// The single test environment cannot be entered, so internal surface release is only guaranteed by the IsPublicAPIFromCtx judgment itself and is not asserted here.
 	})
 }
+
+func TestProjectMCPAuthorizeOperations(t *testing.T) {
+	Convey("MCP list projects authorize with the existing accessor", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		authService := mocks.NewMockIAuthorizationService(ctrl)
+		accessor := &interfaces.AuthAccessor{ID: "user-1"}
+		configs := []*interfaces.MCPServerConfigInfo{{MCPID: "mcp-1"}, {MCPID: "mcp-2"}}
+		authService.EXPECT().ResourceFilterOperations(
+			gomock.Any(), accessor, []string{"mcp-1", "mcp-2"}, interfaces.AuthResourceTypeMCP,
+			[]interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
+			[]interfaces.AuthOperationType{interfaces.AuthOperationTypeAuthorize},
+		).Return(map[string][]interfaces.AuthOperationType{
+			"mcp-1": {interfaces.AuthOperationTypeAuthorize},
+		}, nil)
+
+		err := projectMCPAuthorizeOperations(common.SetPublicAPIToCtx(context.Background(), true), authService, accessor, configs)
+
+		So(err, ShouldBeNil)
+		So(configs[0].Operations, ShouldResemble, []interfaces.AuthOperationType{interfaces.AuthOperationTypeAuthorize})
+		So(configs[1].Operations, ShouldBeEmpty)
+	})
+}

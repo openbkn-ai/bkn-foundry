@@ -196,7 +196,7 @@ func (s *ToolServiceImpl) QueryToolBoxList(ctx context.Context, req *interfaces.
 	resp = &interfaces.QueryToolBoxListResp{
 		Data: []*interfaces.ToolBoxInfo{},
 	}
-	authResp, err := s.getToolBoxListPage(ctx, filter, req.CommonPageParams, req.UserID, operations)
+	authResp, accessor, err := s.getToolBoxListPage(ctx, filter, req.CommonPageParams, req.UserID, operations)
 	if err != nil {
 		return
 	}
@@ -210,19 +210,19 @@ func (s *ToolServiceImpl) QueryToolBoxList(ctx context.Context, req *interfaces.
 	if err != nil {
 		return
 	}
-	if err = projectToolBoxAuthorizeOperations(ctx, s.AuthService, req.UserID, toolBoxInfoList); err != nil {
+	if err = projectToolBoxAuthorizeOperations(ctx, s.AuthService, accessor, toolBoxInfoList); err != nil {
 		return
 	}
 	resp.Data = toolBoxInfoList
 	return
 }
 
-func projectToolBoxAuthorizeOperations(ctx context.Context, authorization interfaces.IAuthorizationService, userID string, toolBoxes []*interfaces.ToolBoxInfo) error {
+func projectToolBoxAuthorizeOperations(ctx context.Context, authorization interfaces.IAuthorizationService, accessor *interfaces.AuthAccessor, toolBoxes []*interfaces.ToolBoxInfo) error {
 	toolBoxIDs := make([]string, 0, len(toolBoxes))
 	for _, toolBox := range toolBoxes {
 		toolBoxIDs = append(toolBoxIDs, toolBox.BoxID)
 	}
-	operationsByID, err := auth.ProjectAuthorizeOperations(ctx, authorization, userID, toolBoxIDs, interfaces.AuthResourceTypeToolBox)
+	operationsByID, err := auth.ProjectAuthorizeOperations(ctx, authorization, accessor, toolBoxIDs, interfaces.AuthResourceTypeToolBox)
 	if err != nil {
 		return err
 	}

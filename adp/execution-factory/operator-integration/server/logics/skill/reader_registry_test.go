@@ -906,7 +906,7 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 				CategoryManager: mockCategoryManager,
 				Logger:          logger.DefaultLogger(),
 			}
-			mockAuthService.EXPECT().GetAccessor(gomock.Any(), "").Return(&interfaces.AuthAccessor{ID: "viewer"}, nil).Times(2)
+			mockAuthService.EXPECT().GetAccessor(gomock.Any(), "").Return(&interfaces.AuthAccessor{ID: "viewer"}, nil).Times(1)
 			mockAuthService.EXPECT().ResourceListIDs(gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeSkill, interfaces.AuthOperationTypeView).Return([]string{"skill-12c"}, nil)
 			mockAuthService.EXPECT().ResourceFilterOperations(
 				gomock.Any(),

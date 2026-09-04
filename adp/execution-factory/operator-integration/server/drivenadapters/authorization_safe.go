@@ -86,7 +86,7 @@ func (s *safeAuthorization) ResourceFilter(ctx context.Context, req *interfaces.
 		Operations   []string `json:"operations"`
 	}
 	var response struct {
-		Resources []safeResourceResult `json:"resources"`
+		Resources *[]safeResourceResult `json:"resources"`
 	}
 	resources := make([]map[string]string, 0, len(req.Resources))
 	for _, resource := range req.Resources {
@@ -111,9 +111,12 @@ func (s *safeAuthorization) ResourceFilter(ctx context.Context, req *interfaces.
 	}, &response); err != nil {
 		return nil, err
 	}
+	if response.Resources == nil {
+		return nil, fmt.Errorf("invalid bkn-safe resource-filter response")
+	}
 
-	out := make([]*interfaces.AuthResourceResult, 0, len(response.Resources))
-	for _, resource := range response.Resources {
+	out := make([]*interfaces.AuthResourceResult, 0, len(*response.Resources))
+	for _, resource := range *response.Resources {
 		operations := make([]interfaces.AuthOperationType, 0, len(resource.Operations))
 		for _, operation := range resource.Operations {
 			operations = append(operations, interfaces.AuthOperationType(operation))

@@ -73,3 +73,26 @@ func TestGetToolBoxNamesByIDsAuthz(t *testing.T) {
 		})
 	})
 }
+
+func TestProjectToolBoxAuthorizeOperations(t *testing.T) {
+	Convey("Toolbox list projects authorize with the existing accessor", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		authService := mocks.NewMockIAuthorizationService(ctrl)
+		accessor := &interfaces.AuthAccessor{ID: "user-1"}
+		toolBoxes := []*interfaces.ToolBoxInfo{{BoxID: "box-1"}, {BoxID: "box-2"}}
+		authService.EXPECT().ResourceFilterOperations(
+			gomock.Any(), accessor, []string{"box-1", "box-2"}, interfaces.AuthResourceTypeToolBox,
+			[]interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
+			[]interfaces.AuthOperationType{interfaces.AuthOperationTypeAuthorize},
+		).Return(map[string][]interfaces.AuthOperationType{
+			"box-1": {interfaces.AuthOperationTypeAuthorize},
+		}, nil)
+
+		err := projectToolBoxAuthorizeOperations(common.SetPublicAPIToCtx(context.Background(), true), authService, accessor, toolBoxes)
+
+		So(err, ShouldBeNil)
+		So(toolBoxes[0].Operations, ShouldResemble, []interfaces.AuthOperationType{interfaces.AuthOperationTypeAuthorize})
+		So(toolBoxes[1].Operations, ShouldBeEmpty)
+	})
+}

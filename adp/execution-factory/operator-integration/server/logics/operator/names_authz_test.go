@@ -73,3 +73,26 @@ func TestGetOperatorNamesByIDsAuthz(t *testing.T) {
 		})
 	})
 }
+
+func TestProjectOperatorAuthorizeOperations(t *testing.T) {
+	Convey("Operator list projects authorize with the existing accessor", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		authService := mocks.NewMockIAuthorizationService(ctrl)
+		accessor := &interfaces.AuthAccessor{ID: "user-1"}
+		operators := []*interfaces.OperatorDataInfo{{OperatorID: "op-1"}, {OperatorID: "op-2"}}
+		authService.EXPECT().ResourceFilterOperations(
+			gomock.Any(), accessor, []string{"op-1", "op-2"}, interfaces.AuthResourceTypeOperator,
+			[]interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
+			[]interfaces.AuthOperationType{interfaces.AuthOperationTypeAuthorize},
+		).Return(map[string][]interfaces.AuthOperationType{
+			"op-2": {interfaces.AuthOperationTypeAuthorize},
+		}, nil)
+
+		err := projectOperatorAuthorizeOperations(common.SetPublicAPIToCtx(context.Background(), true), authService, accessor, operators)
+
+		So(err, ShouldBeNil)
+		So(operators[0].Operations, ShouldBeEmpty)
+		So(operators[1].Operations, ShouldResemble, []interfaces.AuthOperationType{interfaces.AuthOperationTypeAuthorize})
+	})
+}

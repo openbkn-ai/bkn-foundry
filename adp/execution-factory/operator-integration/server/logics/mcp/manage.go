@@ -462,6 +462,7 @@ func (s *mcpServiceImpl) QueryPage(ctx context.Context, req *interfaces.MCPServe
 		return configList, nil
 	}
 
+	var accessor *interfaces.AuthAccessor
 	queryBuilder := auth.NewQueryBuilder[model.MCPServerConfigDB]().
 		SetPage(req.Page, req.PageSize).SetAll(req.All).
 		SetQueryFunctions(queryTotalFunc, queryBatchFunc).
@@ -473,7 +474,6 @@ func (s *mcpServiceImpl) QueryPage(ctx context.Context, req *interfaces.MCPServe
 			return queryBatchFunc(newCtx, pageSize, offset, cursorValue)
 		}).
 		SetAuthFilter(func(newCtx context.Context) ([]string, error) {
-			var accessor *interfaces.AuthAccessor
 			accessor, err = s.AuthService.GetAccessor(newCtx, req.UserID)
 			if err != nil {
 				return nil, err
@@ -508,7 +508,7 @@ func (s *mcpServiceImpl) QueryPage(ctx context.Context, req *interfaces.MCPServe
 		config.UpdateUser = utils.GetValueOrDefault(userMap, config.UpdateUser, interfaces.UnknownUser)
 		config.ToolConfigs = toolConfigMap[s.genToolConfigMapKey(config.MCPID, config.Version)]
 	}
-	if err = projectMCPAuthorizeOperations(ctx, s.AuthService, req.UserID, data); err != nil {
+	if err = projectMCPAuthorizeOperations(ctx, s.AuthService, accessor, data); err != nil {
 		return nil, err
 	}
 
@@ -527,12 +527,12 @@ func (s *mcpServiceImpl) QueryPage(ctx context.Context, req *interfaces.MCPServe
 	return
 }
 
-func projectMCPAuthorizeOperations(ctx context.Context, authorization interfaces.IAuthorizationService, userID string, configs []*interfaces.MCPServerConfigInfo) error {
+func projectMCPAuthorizeOperations(ctx context.Context, authorization interfaces.IAuthorizationService, accessor *interfaces.AuthAccessor, configs []*interfaces.MCPServerConfigInfo) error {
 	mcpIDs := make([]string, 0, len(configs))
 	for _, config := range configs {
 		mcpIDs = append(mcpIDs, config.MCPID)
 	}
-	operationsByID, err := auth.ProjectAuthorizeOperations(ctx, authorization, userID, mcpIDs, interfaces.AuthResourceTypeMCP)
+	operationsByID, err := auth.ProjectAuthorizeOperations(ctx, authorization, accessor, mcpIDs, interfaces.AuthResourceTypeMCP)
 	if err != nil {
 		return err
 	}

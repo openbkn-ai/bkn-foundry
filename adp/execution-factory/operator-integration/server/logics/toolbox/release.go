@@ -332,7 +332,7 @@ func (s *ToolServiceImpl) QueryMarketToolBoxList(ctx context.Context, req *inter
 	resp = &interfaces.QueryToolBoxListResp{
 		Data: []*interfaces.ToolBoxInfo{},
 	}
-	authResp, err := s.getToolBoxListPage(ctx, filter, req.CommonPageParams, req.UserID, operations)
+	authResp, _, err := s.getToolBoxListPage(ctx, filter, req.CommonPageParams, req.UserID, operations)
 	if err != nil {
 		return
 	}
@@ -351,7 +351,7 @@ func (s *ToolServiceImpl) QueryMarketToolBoxList(ctx context.Context, req *inter
 }
 
 func (s *ToolServiceImpl) getToolBoxListPage(ctx context.Context, filter map[string]interface{}, pageParamsReq interfaces.CommonPageParams,
-	userID string, operations ...interfaces.AuthOperationType) (authResp *interfaces.QueryResponse[model.ToolboxDB], err error) {
+	userID string, operations ...interfaces.AuthOperationType) (authResp *interfaces.QueryResponse[model.ToolboxDB], accessor *interfaces.AuthAccessor, err error) {
 	sortField := sortFieldMap[pageParamsReq.SortBy]
 	sort := &ormhelper.SortParams{
 		Fields: []ormhelper.SortField{
@@ -415,7 +415,6 @@ func (s *ToolServiceImpl) getToolBoxListPage(ctx context.Context, filter map[str
 	// Determine whether it is an external interface.
 	if infracommon.IsPublicAPIFromCtx(ctx) {
 		queryBuilder.SetAuthFilter(func(newCtx context.Context) ([]string, error) {
-			var accessor *interfaces.AuthAccessor
 			accessor, err = s.AuthService.GetAccessor(newCtx, userID)
 			if err != nil {
 				return nil, err

@@ -107,6 +107,22 @@ func TestSafeAuthorizationResourceFilterProjectsCandidateOperations(t *testing.T
 	}
 }
 
+func TestSafeAuthorizationResourceFilterRejectsMissingResources(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{})
+	}))
+	defer srv.Close()
+
+	resources, err := newSafeAuthorization(srv.URL, testLogger{}).ResourceFilter(context.Background(), &interfaces.AuthResourceFilterRequest{
+		Accessor:   &interfaces.AuthAccessor{ID: "u1"},
+		Resources:  []*interfaces.AuthResource{{ID: "s1", Type: "skill"}},
+		Operations: []interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
+	})
+	if err == nil {
+		t.Fatalf("ResourceFilter = %+v, want an invalid response error", resources)
+	}
+}
+
 func TestSafeAuthorizationResourceList(t *testing.T) {
 	srv := fakeAuthz(t)
 	defer srv.Close()

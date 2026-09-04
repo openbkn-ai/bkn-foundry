@@ -90,23 +90,23 @@ func TestProjectAuthorizeOperations(t *testing.T) {
 
 		Convey("内部调用不投影实例权限", func() {
 			authService := mocks.NewMockIAuthorizationService(ctrl)
-			got, err := ProjectAuthorizeOperations(context.Background(), authService, "user-1", ids, interfaces.AuthResourceTypeSkill)
+			got, err := ProjectAuthorizeOperations(context.Background(), authService, nil, ids, interfaces.AuthResourceTypeSkill)
 			So(err, ShouldBeNil)
 			So(got, ShouldBeEmpty)
 		})
 
 		Convey("公有管理列表批量投影 authorize", func() {
 			authService := mocks.NewMockIAuthorizationService(ctrl)
-			authService.EXPECT().GetAccessor(gomock.Any(), "user-1").Return(&interfaces.AuthAccessor{ID: "user-1"}, nil)
+			accessor := &interfaces.AuthAccessor{ID: "user-1"}
 			authService.EXPECT().ResourceFilterOperations(
-				gomock.Any(), gomock.Any(), ids, interfaces.AuthResourceTypeSkill,
+				gomock.Any(), accessor, ids, interfaces.AuthResourceTypeSkill,
 				[]interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
 				[]interfaces.AuthOperationType{interfaces.AuthOperationTypeAuthorize},
 			).Return(map[string][]interfaces.AuthOperationType{
 				"a": {interfaces.AuthOperationTypeAuthorize},
 				"b": {},
 			}, nil)
-			got, err := ProjectAuthorizeOperations(publicCtx(), authService, "user-1", ids, interfaces.AuthResourceTypeSkill)
+			got, err := ProjectAuthorizeOperations(publicCtx(), authService, accessor, ids, interfaces.AuthResourceTypeSkill)
 			So(err, ShouldBeNil)
 			So(got["a"], ShouldResemble, []interfaces.AuthOperationType{interfaces.AuthOperationTypeAuthorize})
 			So(got["b"], ShouldBeEmpty)
