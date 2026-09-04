@@ -445,3 +445,18 @@ func (h *skillHandler) ExecuteSkill(c *gin.Context) {
 	}
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
+
+// SearchSkills retrieves skills inside an explicit whitelist (#1260).
+func (h *skillHandler) SearchSkills(c *gin.Context) {
+	req := &interfaces.SearchSkillsReq{}
+	if err := utils.GetBindJSONRaw(c, req); err != nil {
+		rest.ReplyError(c, err)
+		return
+	}
+	resp, err := h.SearchService.SearchSkills(c.Request.Context(), req)
+	if err != nil {
+		rest.ReplyError(c, err)
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, resp)
+}

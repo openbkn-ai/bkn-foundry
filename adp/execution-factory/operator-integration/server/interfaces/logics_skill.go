@@ -477,3 +477,43 @@ type SkillIndexSyncService interface {
 	UpdateSkill(ctx context.Context, skill *model.SkillRepositoryDB) error
 	DeleteSkill(ctx context.Context, skillID string) error
 }
+
+// Retrieval channels reported back on every search hit. They describe how the query was formed,
+// not which clause a given document matched: Vega merges the channels into one _score and does
+// not attribute a hit to a clause.
+const (
+	SkillMatchedByKnn   = "knn"
+	SkillMatchedByMatch = "match"
+	SkillMatchedByLike  = "like"
+)
+
+// SearchSkillsReq searches the skill index inside an explicit whitelist (#1260).
+//
+// SkillIDs is mandatory and fail-closed: an empty or missing list returns no results rather than
+// the whole platform. The execution factory never learns which knowledge network the whitelist
+// came from — the caller owns that meaning.
+type SearchSkillsReq struct {
+	Query    string   `json:"query"`
+	SkillIDs []string `json:"skill_ids"`
+	TopK     int      `json:"top_k"`
+}
+
+// SearchSkillHit is one retrieved skill.
+type SearchSkillHit struct {
+	SkillID     string  `json:"skill_id"`
+	Name        string  `json:"name"`
+	Description string  `json:"description"`
+	Score       float64 `json:"score"`
+	MatchedBy   string  `json:"matched_by"`
+}
+
+type SearchSkillsResp struct {
+	Entries []*SearchSkillHit `json:"entries"`
+}
+
+// SkillSearchService queries the skill index built by SkillIndexBuildService.
+//
+//go:generate mockgen -source ../interfaces/logics_skill.go -destination ../mocks/logics_skill.go -package mocks
+type SkillSearchService interface {
+	SearchSkills(ctx context.Context, req *SearchSkillsReq) (*SearchSkillsResp, error)
+}

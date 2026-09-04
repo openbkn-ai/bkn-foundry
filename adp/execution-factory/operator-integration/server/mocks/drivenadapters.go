@@ -804,6 +804,21 @@ func (mr *MockVegaBackendClientMockRecorder) GetResourceByID(ctx, id any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetResourceByID", reflect.TypeOf((*MockVegaBackendClient)(nil).GetResourceByID), ctx, id)
 }
 
+// QueryDatasetData mocks base method.
+func (m *MockVegaBackendClient) QueryDatasetData(ctx context.Context, datasetID string, params *interfaces.VegaDataQueryParams) (*interfaces.VegaDataQueryResp, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "QueryDatasetData", ctx, datasetID, params)
+	ret0, _ := ret[0].(*interfaces.VegaDataQueryResp)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// QueryDatasetData indicates an expected call of QueryDatasetData.
+func (mr *MockVegaBackendClientMockRecorder) QueryDatasetData(ctx, datasetID, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryDatasetData", reflect.TypeOf((*MockVegaBackendClient)(nil).QueryDatasetData), ctx, datasetID, params)
+}
+
 // UpdateCatalog mocks base method.
 func (m *MockVegaBackendClient) UpdateCatalog(ctx context.Context, req *interfaces.VegaCatalogRequest) error {
 	m.ctrl.T.Helper()

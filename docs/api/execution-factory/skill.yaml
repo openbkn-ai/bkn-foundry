@@ -41,6 +41,23 @@ info:
     内部面另有两个只读元数据接口：`GET /skills/{skill_id}` 与 `POST /skills/names`。
     它们不做调用者维度的判定，答的是「技能是否存在、什么状态」，供 bkn-backend 校验
     知识网络能力绑定与回填元数据。
+
+    **检索入口在内部面**：`POST /internal-v1/skills/search`，请求体
+    `{ query, skill_ids, top_k }`，出参每项带 `score` 与 `matched_by`
+    （`knn` / `match` / `like`）。
+
+    `skill_ids` 是必填白名单，**空数组与字段缺失都返回空结果，不是「不过滤」**——
+    后者会把全平台技能交给一个没有任何绑定的调用方。白名单进查询条件做 pre-filter，
+    不是先取 top_k 再过滤；执行工厂只收一组 id，不认识 `kn_id`，语义由调用方负责。
+
+    向量通道用建索引时锁定的那个 embedding 模型；模型取不到、或与数据集
+    `index_config.default_embedding_model` 对不上时跳过向量通道、只走全文，
+    并在 `matched_by` 里如实反映。`matched_by` 描述的是**查询是怎么组的**，
+    不是逐条文档的命中归因——Vega 把多路合成一个 `_score`，不返回归因。
+
+    排序目前是 BM25 分与向量分直加、没有 reranker，与概念召回是同一个已知问题。
+    不收进上面的 `paths`：内部面不校验令牌，按 `docs/api/README.md` 的口径不作为
+    集成合同发布。
   version: 0.1.3
 servers:
   - url: /api/agent-operator-integration/v1

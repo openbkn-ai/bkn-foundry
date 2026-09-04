@@ -273,3 +273,27 @@ func (v *vegaBackendClient) DeleteDatasetDocumentByID(ctx context.Context, datas
 	}
 	return nil
 }
+
+// QueryDatasetData reads documents from a dataset. Vega exposes the read as a POST body with a
+// GET method override so a filter condition can be sent; the header below is what makes it a read.
+func (v *vegaBackendClient) QueryDatasetData(ctx context.Context, datasetID string,
+	params *interfaces.VegaDataQueryParams) (*interfaces.VegaDataQueryResp, error) {
+	src := fmt.Sprintf("%s/v1/resources/%s/data", v.baseURL, url.PathEscape(datasetID))
+	headers := v.buildHeaders(ctx)
+	headers["X-HTTP-Method-Override"] = http.MethodGet
+	respCode, respData, err := v.httpClient.PostNoUnmarshal(ctx, src, headers, params)
+	if err != nil {
+		v.logger.WithContext(ctx).Errorf("failed to query vega dataset data, resource_id=%s, url=%s, err=%v",
+			datasetID, src, err)
+		return nil, err
+	}
+	if respCode != http.StatusOK {
+		return nil, fmt.Errorf("query dataset data failed: %s", string(respData))
+	}
+	resp := &interfaces.VegaDataQueryResp{}
+	if err := json.Unmarshal(respData, resp); err != nil {
+		v.logger.WithContext(ctx).Errorf("failed to unmarshal vega dataset data, resource_id=%s, err=%v", datasetID, err)
+		return nil, err
+	}
+	return resp, nil
+}
