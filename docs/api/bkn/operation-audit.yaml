@@ -1,0 +1,319 @@
+---
+# BKN Backend 管理操作审计的只读查询面。
+openapi: 3.0.2
+info:
+  title: BKN 操作审计
+  version: 0.1.0
+  description: |
+    知识网络建模面的**管理操作事实**：谁、在哪个网络、对什么资源、做了什么、成没成。
+    只读，事实由写接口在处理请求时顺带落库，没有补录入口。
+
+    与 **BKN Trace** 不是一回事：Trace 记的是 Agent 的问答与取数链路，这里记的是**建模
+    与配置的变更**（建对象类、改指标、挂载能力……）。两者互不覆盖。
+
+    ## 记录的是有界事实，不是请求
+
+    表里只有下面这组字段，**不含请求体、响应体与任何凭据**。`change_summary` 也只允许
+    `changed_fields` 与 `status` 两个键，多余的键会让整条记录被拒绝而不是被截断。
+
+    ## 可见范围按调用者身份收窄
+
+    | 调用者 | 能看到 |
+    |---|---|
+    | 管理员 | 全部 |
+    | 有受管知识网络的用户 | 这些网络下的记录 |
+    | 其余用户 | 只有自己是操作者的记录 |
+
+    第三类调用者传 `actor_id` 查别人会得到 403（`BknBackend.OperationAudit.AccessDenied`），
+    而不是一个悄悄被改写成自己的结果集——否则「查得到空结果」与「无权查」就分不出来了。
+
+    ## 时间范围必填
+
+    `from` 与 `to` 都是必填的 RFC3339 时间戳，`from` 必须早于 `to`，跨度上限 **30 天**。
+    不满足直接 400。这是防止一次查询扫全表的护栏，不是可选的便利参数。
+
+    翻页用 `before_time` + `before_event_id` 游标，不是 offset：审计表按时间倒序增长，
+    offset 翻页会在写入的同时重复或漏掉记录。
+
+    ## 动作与目标类型是封闭词表
+
+    写入端按固定集合校验，不在集合里的值**整条记录被丢弃**，调用方的业务请求照常成功，
+    只在服务日志里留一行。加新动作或新目标类型必须同时改
+    `server/common/operationaudit/store.go` 的 `allowedActions` / `allowedTargetTypes`
+    与 `driveradapters/operation_audit.go` 的路由规则表，两处缺一，审计就是静默丢失。
+
+    **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` 前缀的 AppKey）。
+
+    **前缀别名**：下列路径同时注册在 `/api/ontology-manager/v1`。
+paths:
+  /api/bkn-backend/v1/operation-audits:
+    get:
+      summary: 查询操作审计记录
+      operationId: listOperationAudits
+      parameters:
+        - name: from
+          description: 起始时间（含），RFC3339。必填。
+          schema:
+            type: string
+            format: date-time
+          in: query
+          required: true
+        - name: to
+          description: 结束时间（不含），RFC3339。必填，且与 from 的跨度不超过 30 天。
+          schema:
+            type: string
+            format: date-time
+          in: query
+          required: true
+        - name: actor_id
+          description: |
+            按操作者过滤。可见范围受限的调用者传别人的 ID 会得到 403，而不是空结果。
+          schema:
+            type: string
+          in: query
+        - name: action
+          description: 按动作过滤，取值见 Action。
+          schema:
+            $ref: '#/components/schemas/Action'
+          in: query
+        - name: target_type
+          description: 按目标资源类型过滤，取值见 TargetType。
+          schema:
+            $ref: '#/components/schemas/TargetType'
+          in: query
+        - name: target_id
+          description: 按目标资源 ID 过滤。批量操作的记录里该字段是逗号分隔的多个 ID。
+          schema:
+            type: string
+          in: query
+        - name: outcome
+          description: 按结果过滤。
+          schema:
+            $ref: '#/components/schemas/Outcome'
+          in: query
+        - name: limit
+          description: 每页条数，默认 50，上限 500。超出上限按上限处理，不报错。
+          schema:
+            type: integer
+            default: 50
+            maximum: 500
+          in: query
+        - name: before_time
+          description: |
+            游标：只返回早于该时刻的记录，RFC3339。与 before_event_id 配合使用，
+            两者都来自上一页响应的 next_before_time / next_before_event_id。
+          schema:
+            type: string
+            format: date-time
+          in: query
+        - name: before_event_id
+          description: 游标的第二段，用于同一时刻内多条记录的定序。
+          schema:
+            type: string
+          in: query
+      responses:
+        '200':
+          description: 一页审计记录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationAuditPage'
+        '400':
+          description: |
+            时间范围缺失、格式错误、from 不早于 to、跨度超过 30 天
+            （`BknBackend.OperationAudit.InvalidRange`），或 before_time 格式错误
+            （`BknBackend.OperationAudit.InvalidBeforeTime`）
+        '401':
+          description: 未认证
+        '403':
+          description: 越权查询他人记录（`BknBackend.OperationAudit.AccessDenied`）
+        '500':
+          description: 查询失败（`BknBackend.OperationAudit.QueryFailed`）
+        '503':
+          description: |
+            审计存储未配置或身份解析不可用（`BknBackend.OperationAudit.ServiceUnavailable`）
+      tags:
+        - OperationAudit
+  /api/bkn-backend/v1/operation-audits/{event_id}:
+    get:
+      summary: 查询单条操作审计记录
+      operationId: getOperationAudit
+      parameters:
+        - name: event_id
+          description: 事件 ID
+          schema:
+            type: string
+          in: path
+          required: true
+      responses:
+        '200':
+          description: 审计记录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationAuditEntry'
+        '401':
+          description: 未认证
+        '403':
+          description: 无权访问审计面（`BknBackend.OperationAudit.AccessDenied`）
+        '404':
+          description: |
+            记录不存在，**或存在但不在调用者可见范围内**
+            （`BknBackend.OperationAudit.NotFound`）。两者不作区分：用 403 区分等于
+            把「这条记录存在」告诉了无权看它的人。
+        '500':
+          description: 查询失败
+        '503':
+          description: 审计存储未配置
+      tags:
+        - OperationAudit
+components:
+  schemas:
+    Action:
+      description: |
+        动作词表。写入端按固定集合校验，集合外的值会让整条审计记录被丢弃。
+      enum:
+        - create
+        - update
+        - delete
+        - import
+        - add_members
+        - remove_members
+        - enable
+        - disable
+        - attach
+        - detach
+      type: string
+    TargetType:
+      description: 目标资源类型词表，同样是封闭集合。
+      enum:
+        - knowledge_network
+        - object_type
+        - relation_type
+        - action_type
+        - metric
+        - risk_type
+        - concept_group
+        - action_schedule
+        - kn_capability_binding
+      type: string
+    Outcome:
+      description: 操作结果。denied 表示请求被授权拒绝，与 failure（执行失败）不同。
+      enum:
+        - success
+        - failure
+        - denied
+      type: string
+    OperationAuditEntry:
+      description: 一条管理操作事实
+      type: object
+      required:
+        - event_id
+        - event_time
+        - recorded_at
+        - knowledge_network_id
+        - actor_id
+        - actor_name
+        - actor_type
+        - request_id
+        - action
+        - target_type
+        - target_id
+        - target_name
+        - outcome
+      properties:
+        event_id:
+          description: 事件 ID，由 request_id 与请求方法、路径派生，同一请求幂等
+          type: string
+        event_time:
+          description: 事件发生时间，RFC3339 纳秒精度，UTC
+          type: string
+          format: date-time
+        recorded_at:
+          description: 落库时间，RFC3339 纳秒精度，UTC
+          type: string
+          format: date-time
+        knowledge_network_id:
+          description: 所属知识网络 ID。取不到时回落为目标 ID。
+          type: string
+        actor_id:
+          description: 操作者 ID。调用者未认证时为字面量 `unauthenticated`。
+          type: string
+        actor_name:
+          description: 操作者显示名
+          type: string
+        actor_type:
+          description: 操作者类型（user / app 等）；未认证时为 `unknown`
+          type: string
+        auth_method:
+          description: 认证方式
+          type: string
+        credential_id:
+          description: 凭据标识（如 AppKey 的 ID）。**不含凭据本身。**
+          type: string
+        request_id:
+          description: 请求 ID，可与服务日志对照
+          type: string
+        source_channel:
+          description: 来源渠道
+          type: string
+        method:
+          description: HTTP 方法
+          type: string
+        action:
+          $ref: '#/components/schemas/Action'
+        target_type:
+          $ref: '#/components/schemas/TargetType'
+        target_id:
+          description: 目标资源 ID；批量操作是逗号分隔的多个 ID
+          type: string
+        target_name:
+          description: 目标资源名称；取不到时与 target_id 相同
+          type: string
+        outcome:
+          $ref: '#/components/schemas/Outcome'
+        failure_code:
+          description: 失败时的错误码
+          type: string
+        failure_message:
+          description: 失败时的错误描述，长度有界
+          type: string
+        change_summary:
+          description: |
+            变更摘要。只允许 `changed_fields` 与 `status` 两个键，其余键会让整条记录被拒。
+            **不含字段的新旧值。**
+          type: object
+          properties:
+            changed_fields:
+              type: array
+              items:
+                type: string
+            status:
+              type: string
+        schema_version:
+          description: 审计记录结构版本
+          type: string
+    OperationAuditPage:
+      description: 一页审计记录。游标翻页，无总数。
+      type: object
+      required:
+        - entries
+        - has_more
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperationAuditEntry'
+        has_more:
+          description: 是否还有更早的记录
+          type: boolean
+        next_before_time:
+          description: 下一页的 before_time，仅在 has_more 为 true 时出现
+          type: string
+          format: date-time
+        next_before_event_id:
+          description: 下一页的 before_event_id，仅在 has_more 为 true 时出现
+          type: string
+tags:
+  - name: OperationAudit
+    description: 管理操作审计（只读）
