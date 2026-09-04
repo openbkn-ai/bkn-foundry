@@ -1,39 +1,43 @@
-# 执行工厂 API 文档
+# Execution Factory API Documentation
 
-> 执行工厂（服务名 `agent-operator-integration`）HTTP API 的 OpenAPI 3.0.3 定义。
-> 平台的「能力」都在这里落地：一段代码、一个算子、一箱工具、一个 MCP、一个 Skill，最终都通过它注册、调试、发布与执行。
+> OpenAPI 3.0.3 definitions for the Execution Factory HTTP API, whose service
+> name is `agent-operator-integration`. Platform capabilities—code, operators,
+> toolboxes, MCP servers, and Skills—are registered, debugged, published, and
+> executed through this service.
 
-## 文件索引
+## File index
 
-| 文件 | 主题 | 包含的端点（`/api/agent-operator-integration/v1` 下） |
+| File | Topic | Endpoints under `/api/agent-operator-integration/v1` |
 |---|---|---|
-| [function.yaml](function.yaml) | 函数 | `POST /function/execute`、`POST /function/infer-schema`、`GET /function/dependencies`、`GET /function/dependency-versions/{package_name}`、`GET /template/{template_type}`、`POST /ai_generate/function/{type}`、`GET /ai_generate/prompt/{type}` |
-| [sandbox.yaml](sandbox.yaml) | 沙箱观测 | `GET /sandbox/health`、`GET /sandbox/pool`、`GET /sandbox/sessions`、`GET /sandbox/sessions/{id}` |
-| [impex.yaml](impex.yaml) | 导入导出 | `GET /impex/export/{type}/{id}`、`POST /impex/import/{type}` |
-| [operator.yaml](operator.yaml) | 算子 | 注册 / 编辑 / 更新 / 列表 / 详情 / 批量取名 / 状态 / 删除 / 调试 / 历史版本 / 市场 / 分类，共 14 条 |
-| [mcp.yaml](mcp.yaml) | MCP | 探测 / 增删改查 / 状态 / 工具调试 / 市场 3 条 / 代理列工具与调用 / 对外端点 3 条，共 16 条 |
-| [toolbox.yaml](toolbox.yaml) | 工具箱 | 工具箱 CRUD 与状态 / 箱内工具增删改查与启停 / 调试与代理调用 / 算子转工具 / OpenAPI 能力包 / 市场 4 条，共 21 条 |
-| [skill.yaml](skill.yaml) | Skill | 注册 / 列表 / 详情 / 元数据与包更新 / 发布与历史 / 市场 2 条 / 消费态与管理态读取各 3 条 / 执行 / 索引构建 5 条，共 25 条 |
+| [function.yaml](function.yaml) | Functions | `POST /function/execute`, `POST /function/infer-schema`, `GET /function/dependencies`, `GET /function/dependency-versions/{package_name}`, `GET /template/{template_type}`, `POST /ai_generate/function/{type}`, `GET /ai_generate/prompt/{type}` |
+| [sandbox.yaml](sandbox.yaml) | Sandbox observability | `GET /sandbox/health`, `GET /sandbox/pool`, `GET /sandbox/sessions`, `GET /sandbox/sessions/{id}` |
+| [impex.yaml](impex.yaml) | Import/export | `GET /impex/export/{type}/{id}`, `POST /impex/import/{type}` |
+| [operator.yaml](operator.yaml) | Operators | Registration, editing, update, list, detail, batch names, status, deletion, debugging, history, market, and category: 14 operations |
+| [mcp.yaml](mcp.yaml) | MCP | Probe, CRUD, status, tool debugging, three market operations, proxy tool listing and invocation, and three exposed operations: 16 operations |
+| [toolbox.yaml](toolbox.yaml) | Toolboxes | Toolbox CRUD and status, tool CRUD and enablement, debug and proxy calls, operator conversion, OpenAPI capability packages, and four market operations: 21 operations |
+| [skill.yaml](skill.yaml) | Skills | Registration, list, detail, metadata and package updates, publishing and history, two market operations, three consumer reads, three management reads, execution, and five index-build operations: 25 operations |
 
-**公开面 89 条已全部收录。**
+**All 89 public operations are documented.**
 
-## 写一个函数：完整走一遍
+## Run a function end to end
 
-**1. 看骨架**——入口函数必须叫 `handler`，这是硬约定。
+**1. Read the template.** The entry function must be named `handler`.
 
 ```bash
 curl -s -H "Authorization: Bearer $TOKEN" \
   "$BASE/api/agent-operator-integration/v1/template/python"
 ```
 
-**2. 看沙箱里已经有什么库**——列表里有的直接 `import`，不用在 `dependencies` 里再声明。
+**2. Inspect installed packages.** Packages in this list can be imported
+directly and do not need to be declared in `dependencies`.
 
 ```bash
 curl -s -H "Authorization: Bearer $TOKEN" \
   "$BASE/api/agent-operator-integration/v1/function/dependencies"
 ```
 
-**3. 跑起来**。`event` 是唯一入参，`handler` 的返回值进 `result`，`print` 进 `stdout`。
+**3. Execute the function.** `event` is the only input. The `handler` return
+value becomes `result`, while printed output becomes `stdout`.
 
 ```bash
 curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
@@ -62,9 +66,11 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
 }
 ```
 
-> 上面这段是测试服的真实返回。`peak_memory_mb` 与 IO 计数依赖沙箱运行时能力，取不到就是 `null`。
+> This is a real response from a test environment. `peak_memory_mb` and the I/O
+> counters depend on sandbox runtime support and are null when unavailable.
 
-**4. 要用第三方库**——先查版本，再声明依赖。首次执行会因装包变慢。
+**4. Add a third-party package.** Look up a version first, then declare the
+dependency. The first execution is slower while the package is installed.
 
 ```bash
 curl -s -H "Authorization: Bearer $TOKEN" \
@@ -72,107 +78,116 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ```jsonc
-// 然后在 execute 请求体里加：
+// Add these fields to the execute request
 "dependencies": [{ "name": "requests", "version": "2.32.3" }],
-"dependencies_url": "https://pypi.tuna.tsinghua.edu.cn/simple/"   // 内网换私有源
+"dependencies_url": "https://pypi.tuna.tsinghua.edu.cn/simple/"   // Use a private mirror when required
 ```
 
-**5. 不想自己写**——用大模型生成，或反过来由代码推出参数定义。
+**5. Generate code or metadata.** A large model can generate the function, or
+infer parameter definitions from existing code.
 
 ```bash
-# 由描述生成代码
+# Generate code from a description
 curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   "$BASE/api/agent-operator-integration/v1/ai_generate/function/python_function_generator" \
-  -d '{"query": "写一个函数，接收订单列表，返回总金额和订单数"}'
+  -d '{"query": "Write a function that accepts a list of orders and returns the total amount and order count"}'
 
-# 由代码反推入参 / 出参定义
+# Infer input and output definitions from code
 curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   "$BASE/api/agent-operator-integration/v1/ai_generate/function/metadata_param_generator" \
   -d '{"code": "def handler(event):\n    return {}\n"}'
 ```
 
-## 三个最容易踩的点
+## Common pitfalls
 
-- **入口函数名固定是 `handler`**，签名 `handler(event: Dict[str, Any]) -> Any`。改名不会报「找不到入口」，而是行为不符合预期。
-- **代码抛异常时接口仍返回 200**。判断成败看 `exit_code`（0 才是成功）与 `stderr`，不能只看 HTTP 状态码。
-- **`timeout` 单位是秒**。内部面的 `POST /internal-v1/function/exec/{version}` 用的是毫秒，两者不一致，别照搬。
+- **The entry function must be named `handler`** with the signature `handler(event: Dict[str, Any]) -> Any`. A different name does not necessarily produce a missing-entry error; behavior may simply be incorrect.
+- **A code exception still returns HTTP 200.** Use `exit_code`—zero means success—and `stderr` to determine the execution result.
+- **Public `timeout` values are seconds.** The internal `POST /internal-v1/function/exec/{version}` operation uses milliseconds.
 
-## 约定
+## Conventions
 
-- **OpenAPI 版本**：3.0.3。
-- **认证**：`Authorization: Bearer <token>`，OAuth access token 或用户自助签发的 AppKey（`bak_` 前缀）。
-- **权限**：函数执行要求算子的 `execute` 权限，AI 生成要求 `create` 权限，返回 403 时先查角色授权。
-- **错误信封**：本服务**不用** `comm-go/rest.BaseError`，字段是 `code` / `description` / `solution` / `link` / `details`，引 [`_shared/errors.yaml#/components/schemas/ErrorCompact`](../_shared/errors.yaml)（与 context-loader 同源同形）。
-- **内部接口**：`/api/agent-operator-integration/internal-v1` 是内部面，另有 `POST /function/exec/{version}`（按已注册的函数版本执行，`timeout` 单位毫秒）等端点，**本文档不收录**。
-- **能力面**：`/api/capabilities-lab/v1` 是合并进本服务的另一套路由（原 capabilities-lab 独立服务），也挂在 Ingress 上，路径与语义都与 `v1` 不同，**本文档暂不收录**。
-- **`*_time` 一律是纳秒**：算子 / MCP / 工具箱 / Skill 的 `*_time` 字段都由 `time.Now().UnixNano()` 生成，形如 `1784880971306127803`；按毫秒解析会得到 1970 年附近的日期。例外是沙箱观测面，它的 `created_at` / `last_used_at` / `checked_at` 是 RFC3339 字符串——两种记法看字段后缀区分（`*_time` 是纳秒整数，`*_at` 是字符串）。
-- **契约巡检**：只读 GET **默认就在探测范围内，不需要标注**。本模块 13 处 `x-contract-probe` 只加在「需要分批」的端点上——列表接口用 `provides` 把 `box_id` / `skill_id` / `mcp_id` 等喂给后续批次的详情接口，普通 GET 路径是一次性并发、拿不到上一条的产出。机制见 [`tools/README.md`](../tools/README.md)。
+- **OpenAPI version:** 3.0.3.
+- **Authentication:** `Authorization: Bearer <token>` with an OAuth access token or a self-issued AppKey with the `bak_` prefix.
+- **Authorization:** Function execution requires `execute` on the operator. AI generation requires `create`. Check role grants after a 403 response.
+- **Error envelope:** This service does not use `comm-go/rest.BaseError`. It uses `code`, `description`, `solution`, `link`, and `details`, as defined by [`ErrorCompact`](../_shared/errors.yaml), which is also used by context-loader.
+- **Internal APIs:** `/api/agent-operator-integration/internal-v1` is the internal surface and includes operations such as `POST /function/exec/{version}`, which executes a registered function version with a millisecond timeout. This documentation excludes internal APIs.
+- **Capabilities surface:** `/api/capabilities-lab/v1` is another route group merged from the former capabilities-lab service. It is exposed through Ingress but has different paths and semantics and is not yet documented here.
+- **All `*_time` fields are nanoseconds:** Operator, MCP, toolbox, and Skill timestamps use `time.Now().UnixNano()`, for example `1784880971306127803`. Parsing them as milliseconds produces a date near 1970. Sandbox-observability fields ending in `*_at`, including `created_at`, `last_used_at`, and `checked_at`, are RFC3339 strings.
+- **Contract inspection:** Read-only GET operations are probed by default and need no annotation. The 13 `x-contract-probe` annotations in this module are only for operations that must run in batches. List operations use `provides` to feed values such as `box_id`, `skill_id`, and `mcp_id` into detail operations in later batches. See [tools/README.md](../tools/README.md).
 
-## 收录范围为什么是这些
+## Publication scope
 
-只收 **Ingress 暴露的公开面** `/api/agent-operator-integration/v1`——那是浏览器
-（Studio）能够到达的面。内部面 `internal-v1` **刻意不挂 Ingress**：它不校验令牌，
-身份取自调用方自填的 `X-Account-ID` 头，该头缺失时调用者会被降级为硬编码管理员，
-一旦暴露，其下约 40 条写接口即可从集群外无凭据调用（见 chart values 注释与 #326）。
-因此本文档不描述内部面，也请不要把它写进任何对外文档。
+Only the Ingress-exposed public surface at
+`/api/agent-operator-integration/v1` is documented. This is the surface reached
+by browsers and Studio. The `internal-v1` surface is intentionally not exposed
+through Ingress. It does not validate tokens and derives identity from the
+caller-supplied `X-Account-ID` header. Exposing it would make roughly 40 write
+operations reachable from outside the cluster without credentials; see the
+chart values comments and #326. Do not describe the internal surface in public
+documentation.
 
-## 覆盖边界
+## Coverage boundary
 
-**公开面 `/api/agent-operator-integration/v1` 的 89 个端点已全部收录**：
-函数 7 + 沙箱观测 4 + 导入导出 2 + 算子 14 + MCP 16 + 工具箱 21 + Skill 25。
+All 89 operations on the public `/api/agent-operator-integration/v1` surface are
+documented: 7 function, 4 sandbox-observability, 2 import/export, 14 operator,
+16 MCP, 21 toolbox, and 25 Skill operations.
 
-> 端点总数两次修正：89 → 90（MCP 的 `Any /mcp/app/{mcp_id}/mcp` 被漏，抽路由的
-> 正则没算 `Any`）→ 91（`POST /function/infer-schema` 被漏，最初枚举时读的是过期
-> 分支上的 handler 文件）。第三次变化是删除而非修正：91 → 89，`POST /operator/intcomp`
-> 与 `POST /tool-box/intcomp` 两条内置组件注册端点随内置注册机制一并移除。
-> 现在的数字与代码 `RegisterPublic` 逐条对过，
-> 并用实机访问日志交叉验证过没有「日志里有、文档里没有」的路径。
+> The operation total was corrected twice: 89 → 90 after the MCP
+> `Any /mcp/app/{mcp_id}/mcp` route was missed because the route-extraction
+> expression did not count `Any`, and 90 → 91 after
+> `POST /function/infer-schema` was missed because an outdated handler file was
+> inspected. The third change was a removal rather than a correction: 91 → 89
+> when `POST /operator/intcomp` and `POST /tool-box/intcomp` were removed with
+> the built-in component registration mechanism. The current total has been
+> checked line by line against `RegisterPublic` and cross-checked against live
+> access logs.
 
-### 验证程度分两级，不要混为一谈
+### Two levels of verification
 
-- **路由与收录范围**：全部从代码的 `RegisterPublic` 逐条核过，89 条不多不少。
-- **字段级**：只有实机打过的才算验证过（见下节），其余按 Go 类型写成，
-  **未经实机验证**，改动时请人工核对。
+- **Routes and publication scope:** Every `RegisterPublic` route was checked; all 89 are present.
+- **Field-level contracts:** Only operations exercised against a running environment are considered verified. Other schemas were derived from Go types and require manual review when changed.
 
-服务目录下 `adp/execution-factory/operator-integration/docs/apis/` 里有一份历史
-草稿可作参照，但它与实现存在漂移（context-loader 的同类草稿实测就有三处写错），
-不要直接当作真相源。
+The historical draft under
+`adp/execution-factory/operator-integration/docs/apis/` can provide context but
+has drifted from the implementation. A similar context-loader draft contained
+three observed errors, so drafts are not authoritative.
 
-### 实机验证覆盖
+### Live verification coverage
 
-> 本节的数字取自端点总数还是 91 条时的那次巡检，**早于两条 intcomp 端点被删除**。
-> 那两条属于下表「写操作 / 未标只读」一类，巡检本就不发送，因此除总数由 91 变 89、
-> 写操作由 42 变 40 外，其余分类的结论不受影响。数字保留原值，不追改成 89。
+> The numbers in this section come from an inspection performed when the total
+> was still 91, before the two intcomp operations were removed. Those operations
+> were unprobed writes, so only the total changed from 91 to 89 and the write
+> count from 42 to 40. Other categories are unaffected; the original numbers
+> remain here to preserve the inspection record.
 
-在开发 VM（`parallels@10.211.55.4`，镜像
-`0.1.3-main.20260730112246.sha185a9c2`）跑契约巡检，**91 条里 30 条完成字段级比对、
-缺口 0**；但其中 4 条的响应是空列表，数组元素的字段本次无从观测，因此**真正被逐字段
-核过的是 26 条**：
+The contract inspection ran against development VM `parallels@10.211.55.4`
+using image `0.1.3-main.20260730112246.sha185a9c2`. Thirty of 91 operations
+completed field-level comparison with no gaps. Four returned empty arrays, so
+only 26 operations had every field observed.
 
 ```bash
 make api-contract-diff CONTRACT_FACE=ex CONTRACT_SSH=parallels@10.211.55.4 \
      CONTRACT_ARGS="--include-probe-post --token $TOKEN"
 ```
 
-91 条的去向如下。除「完成字段级比对」外都不是「验过没问题」，接手时请自行核对：
-
-| 类别 | 条数 | 说明 |
+| Category | Count | Notes |
 |---|---|---|
-| 完成字段级比对 | 30 | 缺口 0。其中 4 条响应样本为空（`function/dependencies`、`operator/info/list`、`operator/market`、`skills/index/build`），共 112 个字段落在空数组下未观测——巡检报告里单列一节标出，不要把这几条的「0 缺口」当成验过 |
-| 写操作 / 未标只读 | 42 | 注册、编辑、删除、发布、执行等，工具按设计不发送 |
-| 200 无 JSON 响应体 | 7 | 删除、状态变更、SSE 流、`.adp` 导入——文档本就没有 200 响应 schema，无从比对 |
-| 缺路径参数 | 7 | 环境里没有对应数据（如没有算子版本、没有 MCP 工具名） |
-| 环境相关失败 | 5 | MCP 代理不可达（503）、代理型 MCP 无接入地址（400）、技能包下载响应非 JSON（2 条）、`/tool-box/market/tools` 必填的 `tool_name` 造不出取值 |
+| Field-level comparison completed | 30 | No gaps. Four responses were empty (`function/dependencies`, `operator/info/list`, `operator/market`, `skills/index/build`), leaving 112 fields under empty arrays unobserved. Do not treat their zero-gap result as full verification |
+| Writes or operations not marked read-only | 42 | Registration, editing, deletion, publication, and execution are intentionally not sent |
+| HTTP 200 without a JSON body | 7 | Deletion, status changes, SSE streams, and `.adp` import have no 200 response schema to compare |
+| Missing path parameters | 7 | The environment lacked data such as operator versions or MCP tool names |
+| Environment-dependent failure | 5 | An unreachable MCP proxy (503), proxy MCP without a connection address (400), two non-JSON Skill package downloads, and a required `tool_name` for `/tool-box/market/tools` that could not be synthesized |
 
-### 实际被调用的有多少
+### Observed production-like usage
 
-另在测试服 `14.103.77.23` 用该服务 pod 近 3 天访问日志比对过：91 条里 31 条被真实
-打到。**这不等于其余「没用」**——那是测试环境，写操作与市场、历史版本、索引重建
-本就低频。只作热路径参考：`GET /tool-box/list` 265 次、`GET /skills` 87、
-`GET /operator/category` 74、`GET /mcp/list` 67。
+Access logs from test environment `14.103.77.23` were compared over three days.
+Thirty-one of the then-current 91 operations were observed. This does not imply
+that the others are unused; writes, market operations, history, and index
+rebuilds are naturally less frequent in a test environment. Example hot paths
+were `GET /tool-box/list` with 265 calls, `GET /skills` with 87,
+`GET /operator/category` with 74, and `GET /mcp/list` with 67.
 
-日志里另有 40 条打到内部面 `internal-v1`（集群内 bkn-agent / context-loader 走
-ClusterIP 调工具代理与 `function/exec`），不经 Ingress，也不在本文档范围。
-
-仍不收录的两个面：内部面 `internal-v1`（刻意不挂 Ingress，见上节）与能力面
-`/api/capabilities-lab/v1`。
+Another 40 paths in the logs belonged to `internal-v1`, used inside the cluster
+by bkn-agent and context-loader through ClusterIP for tool proxying and
+`function/exec`. They bypass Ingress and remain outside this documentation.
+The other excluded surface is `/api/capabilities-lab/v1`.

@@ -3,14 +3,17 @@ openapi: 3.1.1
 info:
   title: CatalogHealthCheckSchedule
   description: |
-    Vega Backend Catalog 健康检查计划 API。
+    Vega Backend Catalog health-check schedule API.
 
-    每个 physical Catalog 对应一条健康检查计划。计划是 Catalog 的独立子资源，Catalog 详情与
-    列表响应不会内嵌该对象。创建 physical Catalog 时可通过 `health_check_schedule` 组合创建；
-    创建后的查询和修改使用本文件定义的独立端点。
+    Each physical Catalog has one health-check schedule. The schedule is an
+    independent child resource and is not embedded in Catalog detail or list
+    responses. It can be created with a physical Catalog through
+    `health_check_schedule`; subsequent reads and updates use the dedicated
+    endpoints defined here.
 
-    每个外部接口都有一一对应的内部版本，路径前缀为 `/api/vega-backend/in/v1`，请求体与
-    响应结构与外部完全一致；区别仅在于鉴权方式。本文档仅描述外部接口。
+    Every external endpoint has a matching internal version under
+    `/api/vega-backend/in/v1` with identical request and response structures.
+    Only authentication differs. This document describes external APIs only.
   version: 0.1.0
 servers:
   - url: /api/vega-backend/v1
@@ -26,8 +29,8 @@ paths:
         schema:
           type: string
     get:
-      summary: 获取 Catalog 健康检查计划
-      description: 仅 physical Catalog 支持；需要该 Catalog 的 `view_detail` 权限。
+      summary: Get a Catalog health-check schedule
+      description: Supported only for physical Catalogs and requires `view_detail` on the Catalog.
       responses:
         "200":
           description: ok
@@ -46,13 +49,15 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
     put:
-      summary: 修改 Catalog 健康检查计划
+      summary: Update a Catalog health-check schedule
       description: |
-        仅 physical Catalog 支持，需要该 Catalog 的 `modify` 权限。不支持 DELETE 或单独的启停接口：
-        使用 `mode=inherit`、`enabled`、`disabled` 完成全量状态切换。
+        Supported only for physical Catalogs and requires `modify` on the
+        Catalog. DELETE and separate enable/disable endpoints are not supported.
+        Use `mode=inherit`, `enabled`, or `disabled` for full state transitions.
 
-        必须传入 `expected_update_time` 进行乐观并发控制。该值应取自最近一次查询响应的
-        `update_time`；若计划已被其他请求更新，返回 409
+        `expected_update_time` is required for optimistic concurrency control.
+        Use `update_time` from the latest query response. A concurrent update
+        causes a 409 response.
         `VegaBackend.CatalogHealthCheckSchedule.UpdateConflict`。
       requestBody:
         required: true
@@ -66,7 +71,7 @@ paths:
                     - expected_update_time
       responses:
         "200":
-          description: 更新后的计划
+          description: Updated schedule
           content:
             application/json:
               schema:
@@ -92,27 +97,27 @@ components:
   responses:
     BadRequest:
       description: |
-        请求参数或请求体非法。常见 errcode：
-        - `VegaBackend.CatalogHealthCheckSchedule.InvalidParameter`：Catalog 不是 physical 类型，或计划模式、Cron 配置非法
+        Invalid request parameters or body. Common errcode:
+        - `VegaBackend.CatalogHealthCheckSchedule.InvalidParameter`: the Catalog is not physical, or the mode or Cron configuration is invalid
       content:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     Unauthorized:
-      description: 未授权（OAuth Token 校验失败）
+      description: Unauthorized because OAuth token validation failed
       content:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     Forbidden:
-      description: Catalog 权限不足
+      description: Insufficient Catalog permission
       content:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     NotFound:
       description: |
-        健康检查计划或其所属 Catalog 不存在。errcode：
+        The health-check schedule or its Catalog does not exist. Errcode:
         - `VegaBackend.CatalogHealthCheckSchedule.NotFound`
         - `VegaBackend.Catalog.NotFound`
       content:
@@ -120,64 +125,64 @@ components:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     NotAcceptable:
-      description: Content-Type 不是 application/json
+      description: Content-Type is not application/json
       content:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     Conflict:
       description: |
-        健康检查计划更新冲突。errcode：
-        - `VegaBackend.CatalogHealthCheckSchedule.UpdateConflict`：`expected_update_time` 与当前 `update_time` 不一致
+        Health-check schedule update conflict. Errcode:
+        - `VegaBackend.CatalogHealthCheckSchedule.UpdateConflict`: `expected_update_time` does not match the current `update_time`
       content:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     InternalServerError:
       description: |
-        服务内部错误。可能的 errcode：
+        Internal server error. Possible errcodes:
         - `VegaBackend.CatalogHealthCheckSchedule.InternalError`
         - `VegaBackend.CatalogHealthCheckSchedule.InternalError.GetFailed`
         - `VegaBackend.CatalogHealthCheckSchedule.InternalError.UpdateFailed`
-        - `VegaBackend.Catalog.InternalError.GetFailed`：获取父 Catalog 失败
+        - `VegaBackend.Catalog.InternalError.GetFailed`: failed to read the parent Catalog
       content:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
   schemas:
     AccountInfo:
-      description: 账号信息
+      description: Account information
       type: object
       properties:
         id:
           type: string
         type:
-          description: 账号类型（user / app / anonymous 等）
+          description: Account type, such as user, app, or anonymous
           type: string
         name:
-          description: 账号显示名
+          description: Account display name
           type: string
     CatalogHealthCheckScheduleRequest:
-      description: Catalog 健康检查计划配置；可在创建 physical Catalog 时组合提交，或通过 PUT 独立修改
+      description: Catalog health-check schedule configuration, submitted with physical Catalog creation or updated independently with PUT
       type: object
       required:
         - mode
       properties:
         expected_update_time:
-          description: 仅独立 PUT 使用的必填乐观锁版本，取自最近一次查询响应的 `update_time`
+          description: Required optimistic-lock version for standalone PUT, taken from `update_time` in the latest query response
           type: integer
           format: int64
           minimum: 1
         mode:
-          description: "`inherit` 使用 ConfigMap 的平台默认 Cron 并清空自定义 Cron，`enabled` 使用本请求的 Cron，`disabled` 停用。PUT 设置为 `disabled` 时保留已有自定义 Cron。"
+          description: "`inherit` uses the platform default Cron from ConfigMap and clears the custom Cron; `enabled` uses the Cron in this request; `disabled` stops the schedule. Setting `disabled` with PUT preserves an existing custom Cron."
           type: string
           enum: [inherit, enabled, disabled]
         cron_expr:
-          description: 仅当 `mode=enabled` 时必填的健康检查 Cron 表达式；相邻两次执行的间隔不得短于 1 小时。PUT 的 `mode=disabled` 忽略该字段并保留已有自定义 Cron
+          description: Health-check Cron expression required only when `mode=enabled`; adjacent runs must be at least one hour apart. PUT with `mode=disabled` ignores this field and preserves the existing custom Cron
           type: string
           minLength: 1
     CatalogHealthCheckSchedule:
-      description: physical Catalog 的独立健康检查计划及最近调度元数据
+      description: Independent health-check schedule and recent scheduling metadata for a physical Catalog
       type: object
       required:
         - catalog_id
@@ -193,11 +198,11 @@ components:
         cron_expr:
           type: string
         last_run:
-          description: 最近一次计划执行时间，Unix 毫秒时间戳；健康检查结果存放于 Catalog，而非本对象
+          description: Most recent scheduled execution time as Unix milliseconds. Health-check results belong to the Catalog, not this object
           type: integer
           format: int64
         next_run:
-          description: 下次计划执行时间，Unix 毫秒时间戳；`disabled` 时为 0，创建或切换为 `inherit` 时按平台全局 Cron 计算为未来时间
+          description: Next scheduled execution time as Unix milliseconds. It is 0 when disabled and a future time calculated from the platform Cron when created or switched to `inherit`
           type: integer
           format: int64
         creator:

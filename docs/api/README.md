@@ -1,88 +1,88 @@
-# 📚 API 文档
+# 📚 API Documentation
 
-本目录统一收纳 bkn-foundry 各服务的 **OpenAPI 文档**。YAML 是统一发布格式；手写模块以 YAML 为真相源，生成型模块以源码注解为真相源。交互式 HTML 由工具从 YAML 自动渲染。
+This directory contains the OpenAPI documentation for bkn-foundry services. YAML is the common publication format. Handwritten modules treat YAML as the source of truth, while generated modules treat source annotations as authoritative. Tooling renders interactive HTML from the YAML files.
 
-## 👀 如何查看
+## 👀 Viewing the documentation
 
-- **在线（推荐）**：合并到 `main` 后由 CI 发布到 **GitHub Pages**，带版本下拉、按模块的交互式文档（搜索 / 折叠 / 示例）与认证说明，一个链接看全部。
-- **本地生成交互式 HTML**：
+- **Online (recommended):** After changes are merged into `main`, CI publishes versioned, interactive, module-grouped documentation to **GitHub Pages**, including search, collapsible sections, examples, and authentication guidance.
+- **Generate interactive HTML locally:**
 
   ```bash
-  npm install          # 首次：装 @redocly/cli 等文档工具
-  make api-docs-html   # 渲染到 _generated/html/，打开 index.html 查看
+  npm install          # First run: install @redocly/cli and other documentation tools
+  make api-docs-html   # Render to _generated/html/, then open index.html
   ```
 
-## 🔑 如何调用（认证）
+## 🔑 Calling the APIs
 
-接口需认证，请求头带 `Authorization: Bearer <token>`。获取 token：**① CLI 登录**（`openbkn auth login`，token 存 `~/.bkn/` 自动携带）；**② AppKey**（`POST /api/safe/v1/me/api-keys` 签发 `bak_` 密钥，适合自动化）；**③ 应用集成设备码流**（自研应用引导用户登录，`POST /oauth2/device/auth`，无需注册 client）。完整示例见在线文档首页的「认证」区块。
+APIs require authentication through `Authorization: Bearer <token>`. Obtain a token with one of these methods: **1. CLI login** (`openbkn auth login`, which stores the token in `~/.bkn/` and sends it automatically); **2. AppKey** (`POST /api/safe/v1/me/api-keys` issues a `bak_` key for automation); **3. device authorization flow** (an integrated application directs the user to sign in through `POST /oauth2/device/auth` without registering a client). The authentication section on the generated documentation home page contains complete examples.
 
-## 🗂️ 模块一览
+## 🗂️ Modules
 
-下表顺序即站点首页的卡片分组顺序，由 [`Makefile`](../../Makefile) 的 `MODULES` 决定，改那一行即改线上顺序。
+The order below matches the card groups on the documentation home page. It is controlled by `MODULES` in the repository [Makefile](../../Makefile).
 
-| 模块 | 目录 | 覆盖情况 |
+| Module | Directory | Coverage |
 |---|---|---|
-| 🟦 bkn-backend | [`bkn/`](bkn/) | 业务知识网络：对象类 / 关系类 / 行动类 / 概念组 / 指标 / 导入导出。**全量** |
-| 🟫 context-loader | [`context-loader/`](context-loader/) | Agent 上下文入口：Schema 检索 / 实例与子图查询 / 逻辑属性 / 行动执行 / Skill 召回 / 数据直查 / MCP。**外部面全量**（内部 `/in/v1` 面不收录） |
-| 🟩 ontology-query | [`ontology-query/`](ontology-query/) | 本体查询 / 语义检索 / 行动执行与日志。**全量** |
-| 🟨 vega-backend | [`vega/`](vega/) | 数据可观测：目录 / 资源 / 连接器 / 构建任务 / 发现任务 / 原生查询。**全量** |
-| 🟩 execution-factory | [`execution-factory/`](execution-factory/) | 执行工厂：函数 / 沙箱观测 / 导入导出 / 算子 / MCP / 工具箱 / Skill。**公开面全量**（89 个端点）。只收 Ingress 暴露的 `/v1`，内部面 `internal-v1` 刻意不收（不校验令牌），能力面 `/api/capabilities-lab/v1` 暂未收 |
-| 🟧 mf-model-manager | [`mf-model-manager/`](mf-model-manager/) | 模型工厂。**仅部分**：目前只覆盖大模型的连通性测试、默认模型设置与用量总览，其余接口（小模型、配额、提示词等）尚未文档化 |
-| 🟥 agent-observability | [`agent-observability/`](agent-observability/) | BKN Trace：受管会话生命周期、业务证据、技术链路与快照。由 Go 注解生成，**禁止手改 YAML**。**全量** |
-| 🟪 bkn-agent | [`bkn-agent/`](bkn-agent/) | Agent 运行时：agent CRUD / 对话 / 任务 / 提示词 / 导入导出。**全量** |
+| 🟦 bkn-backend | [`bkn/`](bkn/) | Business knowledge networks: object types, relation types, action types, concept groups, metrics, and import/export. **Complete** |
+| 🟫 context-loader | [`context-loader/`](context-loader/) | Agent context entry points: schema retrieval, instance and subgraph queries, logical properties, action execution, Skill retrieval, direct data access, and MCP. **Complete external surface**; internal `/in/v1` APIs are excluded |
+| 🟩 ontology-query | [`ontology-query/`](ontology-query/) | Ontology queries, semantic retrieval, action execution, and logs. **Complete** |
+| 🟨 vega-backend | [`vega/`](vega/) | Data observability: catalogs, resources, connectors, build tasks, discovery tasks, and raw queries. **Complete** |
+| 🟩 execution-factory | [`execution-factory/`](execution-factory/) | Execution factory: functions, sandbox observability, import/export, operators, MCP, toolboxes, and Skills. **Complete public surface** (89 endpoints). Only Ingress-exposed `/v1` APIs are included; the tokenless `internal-v1` surface is intentionally excluded, and `/api/capabilities-lab/v1` is not documented yet |
+| 🟧 mf-model-manager | [`mf-model-manager/`](mf-model-manager/) | Model factory. **Partial**: currently covers large-model connection testing, default model settings, and usage overview. Small models, quotas, prompts, and other APIs are not yet documented |
+| 🟥 agent-observability | [`agent-observability/`](agent-observability/) | BKN Trace: managed session lifecycle, business evidence, technical traces, and snapshots. Generated from Go annotations; **do not edit the YAML directly**. **Complete** |
+| 🟪 bkn-agent | [`bkn-agent/`](bkn-agent/) | Agent runtime: agent CRUD, conversations, tasks, prompts, and import/export. **Complete** |
 
-### 暂不发布的模块
+### Unpublished modules
 
-目录仍在仓库里，但不进站点、不参与 lint。登记在 Makefile 的 `MODULES_UNPUBLISHED`：
+These directories remain in the repository but are not published on the site. They are registered in `MODULES_UNPUBLISHED` in the Makefile.
 
-| 目录 | 原因 |
+| Directory | Reason |
 | --- | --- |
-| [`bkn-safe/`](bkn-safe/) | 只有一份自助知识网络授权范围读取接口，不作为通用集成合同对外，管理面 API 更不宜误当集成合同 |
-| [`observability/`](observability/) | 只有 `observability.json`，没有可发布的 YAML，渲染出来是空分组 |
+| [`bkn-safe/`](bkn-safe/) | Contains the self-service read surface and a cluster-internal authorization contract. Both are linted but are not published as general external integration APIs |
+| [`observability/`](observability/) | Contains only `observability.json`; it has no publishable YAML and would render as an empty group |
 
-> 新增模块目录必须登记到 `MODULES` 或 `MODULES_UNPUBLISHED`，否则 `make api-docs-*` 直接报错——防止"加了文档但站点上没有"的静默漏发。
+> Every new module directory must be registered in either `MODULES` or `MODULES_UNPUBLISHED`. The `make api-docs-*` targets fail otherwise, preventing documentation from being added silently without appearing on the site.
 
-### ⚠️ `/api/ontology-manager/v1` 是历史别名，不要再用
+### ⚠️ `/api/ontology-manager/v1` is a legacy alias
 
-bkn-backend 同时注册了 `/api/bkn-backend/v1` 与 `/api/ontology-manager/v1`
-两套外部路由，逐条等价（内部面的 `in/v1` 同理）。后者是 monorepo 重构
-（#111）时为兼容旧调用方保留的别名，helm ingress 至今仍暴露它。
+bkn-backend registers both `/api/bkn-backend/v1` and `/api/ontology-manager/v1` as equivalent external routes. The same applies to their internal `in/v1` surfaces. The latter was retained for compatibility during the monorepo refactor in #111 and is still exposed by the Helm Ingress.
 
-**规范前缀是 `/api/bkn-backend/v1`**，本文档只按它编写：
+**The canonical prefix is `/api/bkn-backend/v1`**, and this documentation uses only that prefix:
 
-- 仓库内的服务调用一律走 `/api/bkn-backend/v1`（128 处），无一处使用别名；
-- 别名路由暂不下线，避免破坏存量客户端；待确认外部无调用后再移除。
+- all in-repository service calls use `/api/bkn-backend/v1`; none use the alias;
+- the alias remains available to avoid breaking existing clients and can be removed after external usage has been ruled out.
 
-## 🔗 共享定义
+## 🔗 Shared definitions
 
-`_shared/` 收敛跨模块复用的 schema，各模块 YAML 用 `$ref` 引用，不再各自内嵌：
+`_shared/` centralizes schemas reused across modules. Module YAML files reference them with `$ref` instead of embedding copies.
 
-| 文件 | 内容 |
+| File | Content |
 |---|---|
-| [`_shared/errors.yaml`](_shared/errors.yaml) | 统一错误响应体（Go 服务 `rest.BaseError`：`error_code / description / solution / error_link / error_details`）。引用：`$ref: '../_shared/errors.yaml#/components/schemas/Error'` |
-| [`_shared/auth.yaml`](_shared/auth.yaml) | 认证方案（OAuth2 clientCredentials + AppKey `bak_`）。引用：`$ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'` |
+| [`_shared/errors.yaml`](_shared/errors.yaml) | Common Go service error envelope (`rest.BaseError`: `error_code / description / solution / error_link / error_details`). Reference: `$ref: '../_shared/errors.yaml#/components/schemas/Error'` |
+| [`_shared/auth.yaml`](_shared/auth.yaml) | Authentication schemes (OAuth2 client credentials and `bak_` AppKey). Reference: `$ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'` |
 
-> ⚠️ mf-model 是 FastAPI，错误信封字段不同（`code / detail / link`），补写时单列 `errors-fastapi.yaml`，不并入上面这套——不假装全平台一套错误结构。
+> ⚠️ mf-model uses FastAPI and has a different error envelope (`code / detail / link`). If documented, it must use a separate `errors-fastapi.yaml` rather than being forced into the common schema.
 
-## 🛠️ 渲染管线
+The resource IDs, operation inheritance, execution subjects, batch behavior, and failure boundaries shared by bkn-safe, BKN, ontology-query, context-loader, and execution-factory are defined in the [knowledge-network authorization contract](knowledge-network-authorization.md). Concrete methods, request fields, and response fields remain authoritative in the corresponding module YAML.
 
-`_generated/` 下全部是**渲染产物**，不进 git、不要手改。本地手动跑：
+## 🛠️ Rendering pipeline
+
+Everything under `_generated/` is generated output. It is not committed and must not be edited manually.
 
 ```bash
-npm install            # 安装 @redocly/cli + widdershins（根 package.json）
-make api-docs-lint     # 校验 OpenAPI YAML（$ref 可解析等）
-make api-docs-html     # YAML → 交互式 HTML，输出到 _generated/html/
-make api-docs          # （可选）YAML → Markdown，输出到 _generated/*.md，本地阅读 / 喂飞书用
+npm install            # Install @redocly/cli and widdershins from the root package.json
+make api-docs-lint     # Validate OpenAPI YAML and resolve references
+make api-docs-html     # Render interactive HTML to _generated/html/
+make api-docs          # Optionally render Markdown to _generated/*.md
 ```
 
-- **CI**：[`.github/workflows/ci-docs-api.yml`](../../.github/workflows/ci-docs-api.yml)。PR 触碰 `docs/api/**` 时 lint；push 到 `main` 后渲染 HTML 并发布到 **GitHub Pages**（在线查看，需仓库 Settings → Pages 把 Source 设为 “GitHub Actions”）。
-- **Lint 配置**：[`.redocly.yaml`](../../.redocly.yaml)。底线是 `$ref` 可解析；example/描述类既存瑕疵降为 warn，留各模块补写时清理。
+- **CI:** [`.github/workflows/ci-docs-api.yml`](../../.github/workflows/ci-docs-api.yml). Pull requests that touch `docs/api/**` run lint. Pushes to `main` render HTML and publish it to **GitHub Pages**. Repository Settings → Pages must use “GitHub Actions” as the source.
+- **Lint configuration:** [`.redocly.yaml`](../../.redocly.yaml). All `$ref` values must resolve. Existing example and description issues are warnings and should be cleaned up when the owning module is updated.
 
-## ✍️ 约定
+## ✍️ Conventions
 
-> 编写规则见 [`rules/CONTRIBUTING.zh.md`](../../rules/CONTRIBUTING.zh.md) 的「文档放置规范」一节。下面是要点：
+See the documentation placement rules in [`rules/CONTRIBUTING.md`](../../rules/CONTRIBUTING.md). Key points:
 
-- 新增 / 修改 API 文档 → 改对应模块的 `*.yaml`，一资源一 YAML。
-- `agent-observability` 是生成型例外：修改 Go 注解后执行 `make -C bkn-trace/agent-observability gen-swag`，不得直接编辑发布 YAML；`check-swag` 会校验运行时 JSON、Go 文档与发布 YAML 一致。
-- 跨模块复用的错误 / 认证 → 引 `_shared/`，不复制。
-- 旧位置 `adp/docs/api/` 只留 [`MOVED.md`](../../adp/docs/api/MOVED.md) 指针，不再放文件。
+- Add or update API documentation in the relevant module `*.yaml`, with one resource per YAML file.
+- `agent-observability` is generated. Update its Go annotations and run `make -C bkn-trace/agent-observability gen-swag`; never edit the published YAML directly. `check-swag` verifies that runtime JSON, Go documentation, and published YAML remain synchronized.
+- Reference shared errors and authentication from `_shared/`; do not copy them.
+- The legacy `adp/docs/api/` location contains only [`MOVED.md`](../../adp/docs/api/MOVED.md) and must not receive new files.

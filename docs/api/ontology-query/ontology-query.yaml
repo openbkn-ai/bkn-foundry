@@ -3,6 +3,15 @@ openapi: 3.0.2
 info:
   title: ontology-query
   version: 0.2.0
+  description: |
+    Data-query endpoints resolve trusted dependencies from the published `main`
+    knowledge-network model and require `query_data` on every canonical
+    `{resource_type}:{kn_id}/{child_id}` dependency before reading data.
+    Action submission additionally requires direct `action_type.execute`, the
+    referenced execution resource's `execute`, and all input/target data
+    permissions. See `../knowledge-network-authorization.md`.
+security:
+  - OAuth2: []
 paths:
   /api/ontology-query/v1/health:
     get:
@@ -805,6 +814,12 @@ paths:
                     - x6f100cb5d44b4bb19facd4036759b509
                     - "1"
           description: ok
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/AuthorizationUnavailable'
       summary: 检索指定对象类的对象的详细数据
     parameters:
     - name: kn_id
@@ -949,6 +964,12 @@ paths:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/Error'
           description: 请求参数错误。例如行动类存在 value_from 为 input 的参数时，须在请求体 dynamic_params 中传入全部对应取值，否则返回 400（如 OntologyQuery.ActionType.InvalidParameter.DynamicParams）。
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/AuthorizationUnavailable'
       summary: 行动查询
   /api/ontology-query/v1/knowledge-networks/{kn_id}/subgraph:
     summary: 获取对象子图
@@ -2068,6 +2089,12 @@ paths:
                       current_path_number: 1
                       overall_ms: 0
           description: 对象子图
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/AuthorizationUnavailable'
       summary: 子图查询
       description: 子图查询，可以是基于起点、方向和路径长度获取对象子图，有可以是基于路径获取对象子图，查询请求方式和返回体不同
     parameters:
@@ -2224,6 +2251,12 @@ paths:
                         target_object_id: comment-7.55914262659e+11
                       length: 1
                     overall_ms: 150
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/AuthorizationUnavailable'
       summary: 基于一组对象实例组织关系子图
       description: |
         给定一组对象实例，按概念定义的关系，组织这些对象实例的关系子图。
@@ -2453,6 +2486,12 @@ paths:
                       a_action: {}
                     overall_ms: 2588
           description: ok
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/AuthorizationUnavailable'
       summary: 对象属性值查询
 
   /api/ontology-query/v1/knowledge-networks/{kn_id}/action-types/{at_id}/execute:
@@ -2530,9 +2569,20 @@ paths:
             已有 **start_time 落在窗口内** 的 pending/running 执行时拒绝。
             仍在运行但启动时间早于窗口的执行**不会**被拦截（防连点/短重试，非全程 in-flight 锁）。
             窗口秒数由环境变量 `ACTION_EXECUTION_DUPLICATE_WINDOW_SECONDS` 控制（默认 60；0 关闭）。
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/AuthorizationUnavailable'
       summary: 执行行动类
       description: |
-        异步提交行动执行，立即返回 `execution_id`。
+        异步提交行动执行，立即返回 `execution_id`。执行主体只来自认证上下文，
+        请求体中的 `dynamic_params` 不能覆盖它。
+
+        认证开启时，提交和真实外调前都要求具体 Action Type 的 `execute`、
+        引用的 tool_box 或 MCP 的 `execute`，以及目标、affect 和 impact contract
+        引用对象类的 `query_data`。`action_type.execute` 不从父知识网络继承。
         默认启用防重复：同一知识网络、行动类、目标实例与 dynamic_params 指纹在配置窗口内
         若已有进行中（pending/running）且 start_time 落在窗口内的执行，则返回 409。
 
@@ -2937,6 +2987,12 @@ paths:
             application/json:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/AuthorizationUnavailable'
 
   /api/ontology-query/v1/knowledge-networks/{kn_id}/metrics/dry-run:
     post:
@@ -2981,8 +3037,40 @@ paths:
             application/json:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/AuthorizationUnavailable'
 
 components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+  responses:
+    Unauthorized:
+      description: Missing or invalid OAuth bearer token.
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    Forbidden:
+      description: The authenticated subject lacks at least one required permission.
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    AuthorizationUnavailable:
+      description: |
+        Authorization could not be completed because the subject, published
+        dependency set, bkn-safe response, or authorization transport was
+        missing, invalid, incomplete, or unavailable. No data is read and no
+        external action is invoked.
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
   schemas:
     Object:
       description: 对象的json，字段不定，随对象实例动态变化

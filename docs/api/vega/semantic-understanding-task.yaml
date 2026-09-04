@@ -4,8 +4,9 @@ info:
   title: Semantic Understanding Task
   version: 0.1.0
   description: |
-    Vega Backend 语义理解异步任务 API。任务可针对单个 Resource 或整个 Catalog 创建；
-    worker 将任务提交给 bkn-agent，并异步写回结果与应用状态。
+    Vega Backend asynchronous semantic-understanding task API. A task can target
+    one Resource or an entire Catalog. The worker submits the task to bkn-agent
+    and writes back results and application status asynchronously.
 servers:
   - url: /api/vega-backend/v1
 security:
@@ -13,7 +14,7 @@ security:
 paths:
   /semantic-understanding-tasks:
     get:
-      summary: 获取语义理解任务列表
+      summary: List semantic-understanding tasks
       parameters:
         - name: scope
           in: query
@@ -27,7 +28,7 @@ paths:
           in: query
           schema: { type: string }
         - name: status
-          description: 按状态过滤；多个状态重复传递该参数，状态之间为 OR 关系。
+          description: Filter by status. Repeat the parameter for multiple statuses, which are combined with OR.
           in: query
           style: form
           explode: true
@@ -37,13 +38,13 @@ paths:
               type: string
               enum: [pending, running, completed, failed, cancelled]
         - name: apply_mode
-          description: 应用方式。
+          description: Application mode.
           in: query
           schema:
             type: string
             enum: [dry_run, fill_empty, force]
         - name: applied
-          description: 是否已应用。
+          description: Whether the result has been applied.
           in: query
           schema:
             type: boolean
@@ -54,7 +55,7 @@ paths:
           in: query
           schema: { type: integer, default: 20 }
         - name: sort
-          description: 排序字段。`start_time`、`finish_time` 为 `0` 的未开始或未结束任务按普通数值排序。
+          description: Sort field. Tasks with `start_time` or `finish_time` equal to `0` are sorted as ordinary numeric values.
           in: query
           schema:
             type: string
@@ -76,7 +77,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "500": { $ref: "#/components/responses/InternalServerError" }
     post:
-      summary: 创建语义理解任务
+      summary: Create a semantic-understanding task
       requestBody:
         required: true
         content:
@@ -84,7 +85,7 @@ paths:
             schema: { $ref: "#/components/schemas/CreateSemanticUnderstandingTaskRequest" }
       responses:
         "201":
-          description: 创建成功
+          description: Created successfully
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SemanticUnderstandingTask" }
@@ -100,7 +101,7 @@ paths:
         required: true
         schema: { type: string }
     get:
-      summary: 获取语义理解任务详情
+      summary: Get semantic-understanding task details
       responses:
         "200":
           description: ok
@@ -111,14 +112,14 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "500": { $ref: "#/components/responses/InternalServerError" }
     delete:
-      summary: 删除语义理解任务
-      description: 路径参数可为逗号分隔的任务 ID；运行中的任务不可删除。
+      summary: Delete semantic-understanding tasks
+      description: The path parameter may contain comma-separated task IDs. Running tasks cannot be deleted.
       parameters:
         - name: ignore_missing
           in: query
           schema: { type: boolean, default: false }
       responses:
-        "204": { description: 删除成功 }
+        "204": { description: Deleted successfully }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -130,19 +131,19 @@ components:
       $ref: "../_shared/auth.yaml#/components/securitySchemes/OAuth2"
   responses:
     BadRequest:
-      description: 请求参数或请求体非法
+      description: Invalid request parameters or body
       content: { application/json: { schema: { $ref: "../_shared/errors.yaml#/components/schemas/Error" } } }
     Unauthorized:
-      description: OAuth Token 校验失败
+      description: OAuth token validation failed
       content: { application/json: { schema: { $ref: "../_shared/errors.yaml#/components/schemas/Error" } } }
     NotFound:
-      description: 资源不存在
+      description: Resource not found
       content: { application/json: { schema: { $ref: "../_shared/errors.yaml#/components/schemas/Error" } } }
     Conflict:
-      description: 状态冲突或已有活动任务
+      description: State conflict or an active task already exists
       content: { application/json: { schema: { $ref: "../_shared/errors.yaml#/components/schemas/Error" } } }
     InternalServerError:
-      description: 服务内部错误
+      description: Internal server error
       content: { application/json: { schema: { $ref: "../_shared/errors.yaml#/components/schemas/Error" } } }
   schemas:
     AccountInfo:
@@ -158,12 +159,12 @@ components:
         masked:
           type: boolean
           enum: [false]
-          description: 当前仅支持未脱敏样例行；样例行会写入任务输入并发送至语义理解 Agent。
+          description: Only unmasked sample rows are currently supported. Samples are stored in task input and sent to the semantic-understanding Agent.
         max_rows:
           type: integer
           minimum: 1
           maximum: 20
-          description: 发送至语义理解 Agent 的样例行数量上限。每个文本单元格最多保留 128 个 Unicode 字符；样例行序列化总量最多 128 KiB，超出时仅保留前面的完整行。
+          description: Maximum sample rows sent to the semantic-understanding Agent. Each text cell retains at most 128 Unicode characters, and serialized samples are limited to 128 KiB; only complete leading rows are retained when exceeded.
     CreateSemanticUnderstandingTaskRequest:
       type: object
       required: [scope]
@@ -175,7 +176,7 @@ components:
         confidence_threshold: { type: number, format: double, default: 0.75 }
         include_sample_rows:
           type: boolean
-          description: 是否尝试读取并发送原始样例行；仅资源语义理解任务支持。样例查询不可用时，任务仍会创建并以空样例行继续执行。
+          description: Whether to read and send raw sample rows. Supported only for Resource semantic-understanding tasks. If sampling is unavailable, the task is still created and continues with no sample rows.
         sample_policy: { $ref: "#/components/schemas/SamplePolicy" }
       allOf:
         - if:

@@ -1,26 +1,27 @@
-# 共享错误响应体 —— 单一来源
+# Shared error response bodies — single source of truth
 #
-# `Error` 由 comm-go/rest.BaseError JSON 序列化得到，vega / bkn / dataflow /
-# execution-factory / bkn-safe 走这套信封。各模块 YAML 用
+# `Error` is the JSON representation of comm-go/rest.BaseError. Vega, BKN,
+# dataflow, execution-factory, and bkn-safe use this envelope. Module YAML files
+# reference it with:
 #   $ref: '../_shared/errors.yaml#/components/schemas/Error'
-# 引用，不再各自内嵌。
+# instead of embedding independent copies.
 #
-# 注意：adp 下的 context-loader（agent-retrieval）与 execution-factory
-#       （agent-operator-integration）不用 comm-go/rest.BaseError 这套信封（两者
-#       仍从 comm-go/rest 取本地化辅助），各自带了一份同源的
-#       infra/errors.HTTPError，字段名与 rest.BaseError 不同（code/description/
-#       solution/link/details），见下方 ErrorCompact——不改成 BaseError 是因为其
-#       调用方（MCP 客户端、Studio）已按现字段名解析。
-#       ErrorAgentRetrieval 是 ErrorCompact 的别名，保留是因为 context-loader 的
-#       9 份 YAML 已按该名引用（#578 已合入）。
+# Note: context-loader (`agent-retrieval`) and execution-factory
+# (`agent-operator-integration`) under adp do not use the
+# comm-go/rest.BaseError envelope. They use equivalent local
+# infra/errors.HTTPError types whose field names differ:
+# code/description/solution/link/details. ErrorCompact documents that contract.
+# It remains separate because MCP clients and Studio already parse these fields.
+# ErrorAgentRetrieval is retained as an alias because the nine context-loader
+# YAML files introduced in #578 reference that name.
 #
-# 注意：mf-model 是 FastAPI，错误信封字段不同（code/detail/link），单列
-#       errors-fastapi.yaml，不并入本文件——不假装全平台一套。
+# Note: mf-model uses FastAPI and a different code/detail/link envelope. It must
+# use a separate errors-fastapi.yaml rather than being forced into this schema.
 components:
   schemas:
     Error:
       description: |
-        统一错误响应体。由 `comm-go/rest.BaseError` JSON 序列化得到。
+        Common error response serialized from `comm-go/rest.BaseError`.
       type: object
       required:
         - error_code
@@ -31,74 +32,83 @@ components:
       properties:
         error_code:
           type: string
-          description: 机器可读错误码。
+          description: Machine-readable error code.
         description:
           type: string
-          description: 人类可读错误说明。
+          description: Human-readable error description.
         solution:
           type: string
-          description: 建议的处理方式。
+          description: Recommended remediation.
         error_link:
           type: string
-          description: 指向错误详情文档的链接。
+          description: Link to detailed error documentation.
         error_details:
-          description: 详细内容，类型不固定。
+          description: Error details with a service-defined type.
 
     ErrorCompact:
       description: |
-        adp 下 context-loader（`agent-retrieval`）与 execution-factory
-        （`agent-operator-integration`）共用的错误响应体，由各自的
-        `infra/errors.HTTPError` 序列化得到。字段名与上面的 `Error` **不同**，
-        对接时不要混用。
+        Error response shared by context-loader (`agent-retrieval`) and
+        execution-factory (`agent-operator-integration`) under adp. It is
+        serialized from each service's `infra/errors.HTTPError`. Its field names
+        differ from `Error` above and clients must not treat them as the same
+        envelope.
 
-        另一个易踩的点：错误来自下游服务时，这两个服务会原样透传下游响应体，
-        此时字段名是下游的信封（通常是 `error_code` / `error_details`）。
-        判断来源看 `code` 前缀：`Public.*` 与服务自己的前缀
-        （`agentRetrieval.*` / `AgentOperatorIntegration.*`，注意后者首字母大写）
-        是本服务产生的。
+        When an error originates from a downstream service, these services pass
+        the downstream body through unchanged. In that case the field names are
+        those of the downstream envelope, commonly `error_code` and
+        `error_details`. Use the `code` prefix to identify locally generated
+        errors: `Public.*`, `agentRetrieval.*`, or
+        `AgentOperatorIntegration.*` (the last prefix starts with a capital
+        letter).
 
-        **例外：来自 mf-model-api 的错误不适用上面的 `code` 前缀判定。**
-        `mf-model-api` 的 `/v1/chat/completions` 是 OpenAI 兼容面，失败一律返回
-        OpenAI 错误体 `{"error": {"message", "type", "param", "code"}}`，顶层
-        没有 `code`（原来的业务码挪进了 `error.code`）。凡是走大模型调用的端点
-        （如 execution-factory 的 `/ai_generate/*`），透传出来的就是这个形态：
-        顶层有 `error` 对象即表示错误来自模型调用链路，用 `error.message`
-        取文案、`error.type` 取分类（`rate_limit_exceeded` /
-        `service_unavailable_error` / `invalid_request_error` 等）。
+        Errors from mf-model-api are an exception to the prefix rule.
+        `/v1/chat/completions` exposes an OpenAI-compatible surface and always
+        returns `{"error": {"message", "type", "param", "code"}}` on failure.
+        There is no top-level `code`; the original business code is in
+        `error.code`. Endpoints that call a large model, such as
+        execution-factory `/ai_generate/*`, pass this shape through. A top-level
+        `error` object therefore identifies an error from the model call chain.
+        Read `error.message` for the text and `error.type` for classifications
+        such as `rate_limit_exceeded`, `service_unavailable_error`, and
+        `invalid_request_error`.
       type: object
       properties:
         code:
           type: string
           description: |
-            机器可读错误码。通用错误为 `Public.<ErrCode>`（如 `Public.BadRequest`），
-            业务错误为 `<服务名>.<ErrCode>.<ExtCode>`，如
-            `AgentOperatorIntegration.BadRequest.ValidationRequired`。
+            Machine-readable error code. Generic errors use
+            `Public.<ErrCode>`, such as `Public.BadRequest`. Business errors use
+            `<service>.<ErrCode>.<ExtCode>`, for example
+            `AgentOperatorIntegration.BadRequest.ValidationRequired`.
           example: Public.BadRequest
         description:
           type: string
-          description: 人类可读错误说明（按请求语言本地化）。
+          description: Localized, human-readable error description.
         solution:
           type: string
-          description: 建议的处理方式。
+          description: Recommended remediation.
         link:
           type: string
-          description: 指向错误详情文档的链接；无对应文档时为「无」。
+          description: Link to error documentation; may indicate that no link is available.
         details:
-          description: 详细内容，类型不固定（字符串或对象）。
+          description: Error details, commonly a string or object.
 
     ErrorOpenAI:
       description: |
-        OpenAI 兼容的错误响应体。`mf-model-api` 的 `/v1/chat/completions` 只返回
-        这一种形态，凡是把大模型调用结果往上抛的端点（如 execution-factory 的
-        `/ai_generate/function/{type}`）也原样透传。
+        OpenAI-compatible error response. `mf-model-api`
+        `/v1/chat/completions` returns only this shape, and endpoints that pass
+        large-model failures through, such as execution-factory
+        `/ai_generate/function/{type}`, return it unchanged.
 
-        与 `ErrorCompact` 的关键差异：**顶层只有 `error` 一个字段**，业务码在
-        `error.code` 里，没有 `solution` / `link`。判断错误是否来自模型调用链路，
-        看顶层有没有 `error` 对象即可。
+        Unlike `ErrorCompact`, the top level contains only `error`. The business
+        code is in `error.code`, and there are no `solution` or `link` fields.
+        A top-level `error` object identifies a failure from the model call
+        chain.
 
-        覆盖范围包括请求体校验失败（HTTP 400）：`/v1/chat/completions` 上的参数
-        缺失 / 类型错误也是这个形状，原业务码（`ModelFactory.Router.ParamError.*`）
-        在 `error.code` 里。
+        This shape also covers request validation failures (HTTP 400). Missing
+        or invalid parameters on `/v1/chat/completions` use the same envelope,
+        with the original business code, such as
+        `ModelFactory.Router.ParamError.*`, in `error.code`.
       type: object
       required:
         - error
@@ -110,33 +120,37 @@ components:
           properties:
             message:
               type: string
-              description: 人类可读的错误说明，可直接展示给用户。
+              description: Human-readable error message suitable for display.
               example: Service is too busy. Please try again later.
             type:
               type: string
               nullable: true
               description: |
-                错误分类。常见取值：`rate_limit_exceeded`（上游限流）、
-                `service_unavailable_error`（上游暂时不可用）、
-                `invalid_request_error`（请求本身有问题）、
-                `authentication_error` / `permission_error`（本服务与模型厂商
-                之间的认证问题，**不代表调用方凭据有问题**）、
-                `api_connection_error`（连不上模型服务）、`server_error`。
+                Error classification. Common values include
+                `rate_limit_exceeded` for upstream throttling,
+                `service_unavailable_error` for temporary upstream outages,
+                `invalid_request_error` for invalid requests,
+                `authentication_error` or `permission_error` for authentication
+                between this service and the model provider (not caller
+                authentication), `api_connection_error` for connectivity
+                failures, and `server_error`.
               example: service_unavailable_error
             param:
               nullable: true
-              description: 出问题的参数名；无则为 null。
+              description: Name of the invalid parameter, or null.
             code:
               nullable: true
               description: |
-                机器可读错误码。上游给了就透传上游的；本服务产生的错误则是原
-                envelope 的业务码（如 `ModelFactory.ModelController.Model.ConnectError`）。
+                Machine-readable error code. An upstream code is passed through;
+                locally generated errors use the original envelope's business
+                code, such as
+                `ModelFactory.ModelController.Model.ConnectError`.
               example: service_unavailable_error
 
     ErrorAgentRetrieval:
       description: |
-        `ErrorCompact` 的别名，供 context-loader 的 YAML 引用（#578 合入时用的是
-        这个名字，9 份文件都按它写的，故保留）。**结构完全等同 `ErrorCompact`**，
-        新写文档请直接引 `ErrorCompact`。
+        Alias of `ErrorCompact` retained for the context-loader YAML files added
+        in #578. The structure is identical. New documentation should reference
+        `ErrorCompact` directly.
       allOf:
         - $ref: '#/components/schemas/ErrorCompact'

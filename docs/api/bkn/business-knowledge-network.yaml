@@ -3,6 +3,13 @@ openapi: 3.0.2
 info:
   title: BusinessKnowledgeNetwork
   version: 0.1.0
+  description: |
+    Knowledge-network CRUD uses `knowledge_network:{kn_id}`. Create requires
+    `knowledge_network:*:create`; detail, list, update, and delete use the
+    corresponding instance operations. Lists are authorization-filtered before
+    total and pagination. See `../knowledge-network-authorization.md`.
+security:
+  - OAuth2: []
 paths:
   /api/bkn-backend/v1/knowledge-networks:
     get:
@@ -146,11 +153,11 @@ paths:
                 contain detail:
                   value:
                     id: kn_system_incident_event_network
-                    name: DIP系统故障事件网络
+                    name: DIP system fault event network
                     tags:
-                      - 事件
-                      - 故障
-                    comment: DIP系统故障事件网络。。。。。。。。。。。。
+                      - event
+                      - fault
+                    comment: DIP system fault event network
                     icon: ""
                     color: ""
                     branch: main
@@ -158,15 +165,15 @@ paths:
                     create_time: 1757583140948
                     updater: a0f02238-6cec-11f0-82bb-fa1c4529a151
                     update_time: 1757583140948
-                    detail: markdown文本
+                    detail: Markdown text
                 not_contain_detail:
                   value:
                     id: kn_system_incident_event_network
-                    name: DIP系统故障事件网络
+                    name: DIP system fault event network
                     tags:
-                      - 事件
-                      - 故障
-                    comment: DIP系统故障事件网络。。。。。。。。。。。。
+                      - event
+                      - fault
+                    comment: DIP system fault event network
                     icon: ""
                     color: ""
                     branch: main
@@ -327,6 +334,9 @@ paths:
         "400":
           description: Invalid request parameters, such as an invalid body, unparseable strict_mode, or invalid import_mode or mode. This is not a business validation result.
 components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
   schemas:
     ValidateKNRequestBody:
       type: object

@@ -3,13 +3,16 @@ openapi: 3.1.1
 info:
   title: ConnectorType
   description: |
-    Vega Backend 连接器类型（ConnectorType）相关 API。
+    APIs for Vega Backend connector types.
 
-    连接器类型描述一个可注册的数据源驱动（如 mysql、postgresql、opensearch 等），
-    提供其注册元信息以及启用状态。字段配置（field_config，兼容 JSON Schema
-    properties）只在详情接口中按运行时实现获取：local 由当前进程中的实现提供；
-    remote 的运行时字段定义尚未实现。Mode 区分本地（local，进程内运行）与远程
-    （remote，独立服务通过 HTTP 调用），Category 区分数据源大类。
+    A connector type describes a registered data-source driver, such as mysql,
+    postgresql, or opensearch, together with its registration metadata and enabled
+    state. Field configuration (`field_config`, compatible with JSON Schema
+    `properties`) is returned only by the detail endpoint and is obtained from the
+    runtime implementation. Local definitions come from implementations in the
+    current process; runtime field definitions for remote connectors are not yet
+    implemented. `mode` distinguishes in-process `local` connectors from `remote`
+    connectors invoked over HTTP. `category` identifies the data-source category.
   version: 0.1.0
 servers:
   - url: /api/vega-backend/v1
@@ -18,21 +21,21 @@ security:
 paths:
   /connector-types:
     get:
-      summary: 获取连接器类型列表
-      description: 分页获取已注册的连接器类型摘要；不返回 field_config。支持按 name、tag、mode、category、enabled、available 过滤。
+      summary: List connector types
+      description: Returns paginated summaries of registered connector types without `field_config`. Supports filtering by `name`, `tag`, `mode`, `category`, `enabled`, and `available`.
       parameters:
         - name: name
-          description: 按名称模糊过滤，匹配名称中包含该值的连接器类型
+          description: Filters connector types whose name contains this value.
           in: query
           schema:
             type: string
         - name: tag
-          description: 按标签精确过滤，默认为空
+          description: Filters by an exact tag match. Empty by default.
           in: query
           schema:
             type: string
         - name: mode
-          description: 按运行模式过滤
+          description: Filters by runtime mode.
           in: query
           schema:
             type: string
@@ -40,7 +43,7 @@ paths:
               - local
               - remote
         - name: category
-          description: 按分类过滤
+          description: Filters by category.
           in: query
           schema:
             type: string
@@ -53,17 +56,17 @@ paths:
               - metric
               - api
         - name: enabled
-          description: 按启用状态过滤；不传表示不过滤
+          description: Filters by enabled state. Omit to disable this filter.
           in: query
           schema:
             type: boolean
         - name: available
-          description: 按当前二进制是否包含连接器实现过滤；不传表示不过滤
+          description: Filters by whether the running binary includes the connector implementation. Omit to disable this filter.
           in: query
           schema:
             type: boolean
         - name: offset
-          description: 分页偏移量，>=0，默认 0
+          description: Pagination offset. Must be at least 0 and defaults to 0.
           in: query
           schema:
             type: integer
@@ -71,14 +74,14 @@ paths:
             minimum: 0
             default: 0
         - name: limit
-          description: 每页数量，1-1000，-1 表示不分页，默认 20
+          description: Page size from 1 to 1000. Use -1 to disable pagination. Defaults to 20.
           in: query
           schema:
             type: integer
             format: int64
             default: 20
         - name: sort
-          description: 排序字段，默认 name
+          description: Sort field. Defaults to `name`.
           in: query
           schema:
             type: string
@@ -86,7 +89,7 @@ paths:
               - name
             default: name
         - name: direction
-          description: 排序方向，默认 desc
+          description: Sort direction. Defaults to `desc`.
           in: query
           schema:
             type: string
@@ -108,8 +111,8 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
     post:
-      summary: 注册连接器类型
-      description: 创建一个新的连接器类型。`type` 必须唯一，已存在时返回 409。
+      summary: Register a connector type
+      description: Creates a connector type. `type` must be unique; an existing value returns 409.
       requestBody:
         required: true
         content:
@@ -118,7 +121,7 @@ paths:
               $ref: "#/components/schemas/ConnectorTypeReq"
       responses:
         "201":
-          description: 创建成功
+          description: Created successfully
           content:
             application/json:
               schema:
@@ -130,7 +133,7 @@ paths:
         "406":
           $ref: "#/components/responses/NotAcceptable"
         "409":
-          description: 同 type 的连接器类型已存在
+          description: A connector type with the same `type` already exists
           content:
             application/json:
               schema:
@@ -140,13 +143,13 @@ paths:
   /connector-types/{type}:
     parameters:
       - name: type
-        description: 连接器类型标识（如 mysql、postgresql）
+        description: Connector type identifier, such as `mysql` or `postgresql`.
         in: path
         required: true
         schema:
           type: string
     get:
-      summary: 获取连接器类型详情
+      summary: Get connector type details
       responses:
         "200":
           description: ok
@@ -159,7 +162,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "503":
-          description: 运行时连接器字段定义不可用（例如 remote connector 尚未实现字段定义）。错误码为 `VegaBackend.ConnectorType.FieldConfigUnavailable`。
+          description: The runtime connector field definition is unavailable, for example because remote connector field definitions are not implemented. The error code is `VegaBackend.ConnectorType.FieldConfigUnavailable`.
           content:
             application/json:
               schema:
@@ -167,15 +170,17 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
     put:
-      summary: 修改连接器类型
+      summary: Update a connector type
       description: |
-        全量更新指定连接器类型。连接器类型由路径参数 `type` 唯一确定（主键不可改）。
+        Fully updates the connector type identified by the `type` path parameter.
+        The primary key cannot be changed.
 
-        请求体的 `type` 字段**必填**，且必须与路径参数完全一致：
-        - 缺失 → 400 `VegaBackend.ConnectorType.InvalidParameter.Type`。
-        - 不一致 → 409 `VegaBackend.ConnectorType.TypeMismatch`。
+        The request body must include `type`, and it must exactly match the path parameter:
+        - Missing → 400 `VegaBackend.ConnectorType.InvalidParameter.Type`.
+        - Mismatch → 409 `VegaBackend.ConnectorType.TypeMismatch`.
 
-        修改 `name` 时若新名称已被其它类型占用，返回 409 `VegaBackend.ConnectorType.NameExists`。
+        If a new `name` is already used by another type, the endpoint returns 409
+        `VegaBackend.ConnectorType.NameExists`.
       requestBody:
         required: true
         content:
@@ -184,7 +189,7 @@ paths:
               $ref: "#/components/schemas/ConnectorTypeReq"
       responses:
         "204":
-          description: 更新成功
+          description: Updated successfully
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -195,9 +200,9 @@ paths:
           $ref: "#/components/responses/NotAcceptable"
         "409":
           description: |
-            主键 / 名称冲突。具体场景：
-            - 请求体 `type` 与路径参数不一致 → `VegaBackend.ConnectorType.TypeMismatch`
-            - 新 `name` 已被其它连接器类型占用 → `VegaBackend.ConnectorType.NameExists`
+            Primary-key or name conflict:
+            - Request-body `type` differs from the path parameter → `VegaBackend.ConnectorType.TypeMismatch`.
+            - The new `name` is already used by another connector type → `VegaBackend.ConnectorType.NameExists`.
           content:
             application/json:
               schema:
@@ -205,15 +210,15 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
     delete:
-      summary: 删除连接器类型
-      description: 删除指定 type 的连接器类型。`mode=local` 的内置类型不可删除（403）。
+      summary: Delete a connector type
+      description: Deletes the connector type identified by `type`. Built-in types with `mode=local` cannot be deleted and return 403.
       responses:
         "204":
-          description: 删除成功
+          description: Deleted successfully
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
-          description: 不可删除（如 local 内置类型）
+          description: The connector type cannot be deleted, for example a built-in local type
           content:
             application/json:
               schema:
@@ -225,17 +230,17 @@ paths:
   /connector-types/{type}/enable:
     parameters:
       - name: type
-        description: 连接器类型标识
+        description: Connector type identifier
         in: path
         required: true
         schema:
           type: string
     post:
-      summary: 启用连接器类型
-      description: 启用指定连接器类型；幂等，重复调用不报错。
+      summary: Enable a connector type
+      description: Enables the connector type. The operation is idempotent.
       responses:
         "204":
-          description: 启用成功
+          description: Enabled successfully
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -245,17 +250,17 @@ paths:
   /connector-types/{type}/disable:
     parameters:
       - name: type
-        description: 连接器类型标识
+        description: Connector type identifier
         in: path
         required: true
         schema:
           type: string
     post:
-      summary: 停用连接器类型
-      description: 停用指定连接器类型；幂等，重复调用不报错。
+      summary: Disable a connector type
+      description: Disables the connector type. The operation is idempotent.
       responses:
         "204":
-          description: 停用成功
+          description: Disabled successfully
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -268,48 +273,48 @@ components:
       $ref: "../_shared/auth.yaml#/components/securitySchemes/OAuth2"
   responses:
     BadRequest:
-      description: 请求参数 / 请求体非法
+      description: Invalid request parameters or request body
       content:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     Unauthorized:
-      description: 未授权（OAuth Token 校验失败）
+      description: Unauthorized because OAuth token validation failed
       content:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     NotFound:
-      description: 资源不存在
+      description: Resource not found
       content:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     NotAcceptable:
-      description: Content-Type 不是 application/json
+      description: Content-Type is not `application/json`
       content:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     InternalServerError:
-      description: 服务内部错误
+      description: Internal server error
       content:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
   schemas:
     ConnectorFieldConfig:
-      description: 连接器配置字段元信息（兼容 JSON Schema properties）
+      description: Connector configuration-field metadata compatible with JSON Schema `properties`.
       type: object
       required:
         - name
         - type
       properties:
         name:
-          description: 字段显示名
+          description: Field display name
           type: string
         type:
-          description: 字段类型
+          description: Field type
           type: string
           enum:
             - string
@@ -319,18 +324,18 @@ components:
             - object
             - array
         description:
-          description: 字段描述
+          description: Field description
           type: string
         required:
-          description: 是否必填
+          description: Whether the field is required
           type: boolean
           default: false
         encrypted:
-          description: 是否需要加密存储（自定义扩展）
+          description: Whether the field must be stored encrypted (custom extension)
           type: boolean
           default: false
     ConnectorTypeSummary:
-      description: 已注册连接器类型的摘要；不含运行时字段定义。
+      description: Summary of a registered connector type without runtime field definitions.
       type: object
       required:
         - type
@@ -341,43 +346,43 @@ components:
         - available
       properties:
         type:
-          description: 连接器类型标识，全局唯一
+          description: Globally unique connector type identifier
           type: string
         name:
-          description: 连接器类型显示名
+          description: Connector type display name
           type: string
         tags:
-          description: 标签
+          description: Tags
           type: array
           items:
             type: string
         description:
-          description: 类型描述
+          description: Type description
           type: string
         mode:
-          description: 运行模式
+          description: Runtime mode
           type: string
           enum: [local, remote]
         category:
-          description: 分类
+          description: Category
           type: string
           enum: [table, index, topic, file, fileset, metric, api]
         endpoint:
-          description: 仅 remote 模式下的远程服务地址
+          description: Remote service address, used only in `remote` mode
           type: string
         enabled:
-          description: 是否启用
+          description: Whether the connector type is enabled
           type: boolean
         available:
-          description: 当前运行的二进制是否包含该连接器实现
+          description: Whether the running binary includes this connector implementation
           type: boolean
         operations:
-          description: 当前用户可对该连接器类型执行的操作集合
+          description: Operations the current user may perform on this connector type
           type: array
           items:
             type: string
     ConnectorType:
-      description: 连接器类型详情；field_config 为运行时读取的字段语义。available 为 false 时不返回 field_config。
+      description: Connector type details. `field_config` is read from the runtime; it is omitted when `available` is false.
       type: object
       required:
         - type
@@ -388,27 +393,27 @@ components:
         - available
       properties:
         type:
-          description: 连接器类型标识，全局唯一
+          description: Globally unique connector type identifier
           type: string
         name:
-          description: 连接器类型显示名
+          description: Connector type display name
           type: string
         tags:
-          description: 标签
+          description: Tags
           type: array
           items:
             type: string
         description:
-          description: 类型描述
+          description: Type description
           type: string
         mode:
-          description: 运行模式
+          description: Runtime mode
           type: string
           enum:
             - local
             - remote
         category:
-          description: 分类
+          description: Category
           type: string
           enum:
             - table
@@ -419,34 +424,39 @@ components:
             - metric
             - api
         endpoint:
-          description: 仅 remote 模式下的远程服务地址
+          description: Remote service address, used only in `remote` mode
           type: string
         field_config:
-          description: 字段配置（兼容 JSON Schema properties），key 为字段标识
+          description: Field configuration compatible with JSON Schema `properties`; each key is a field identifier
           type: object
           additionalProperties:
             $ref: "#/components/schemas/ConnectorFieldConfig"
         enabled:
-          description: 是否启用
+          description: Whether the connector type is enabled
           type: boolean
         available:
-          description: 当前运行的二进制是否包含该连接器实现
+          description: Whether the running binary includes this connector implementation
           type: boolean
         operations:
-          description: 该连接器类型支持的操作集合
+          description: Operations supported by this connector type
           type: array
           items:
             type: string
     ConnectorTypeReq:
       description: |
-        连接器类型创建 / 更新请求体。
+        Request body for creating or updating a connector type.
 
-        - `type` 在 POST 与 PUT 中都**必填**，且必须自描述资源主键。
-        - POST：全局唯一，已存在返回 409 `VegaBackend.ConnectorType.TypeExists`。
-        - POST/PUT 注册或更新 `local` 连接器时，当前二进制必须包含对应注册 key 的实现；
-          `name` 可修改，`mode`、`category` 必须与代码定义一致。
-        - 字段定义不属于注册请求，也不会持久化；通过详情接口读取运行时定义。
-        - PUT：必须与路径参数 `type` **完全一致**，缺失返回 400 `VegaBackend.ConnectorType.InvalidParameter.Type`，不一致返回 409 `VegaBackend.ConnectorType.TypeMismatch`。
+        - `type` is required for both POST and PUT and identifies the resource primary key.
+        - For POST, `type` must be globally unique. An existing value returns 409
+          `VegaBackend.ConnectorType.TypeExists`.
+        - When POST or PUT registers or updates a `local` connector, the running binary
+          must contain the implementation registered under that key. `name` may change,
+          while `mode` and `category` must match the code definition.
+        - Field definitions are neither accepted by registration requests nor persisted;
+          read the runtime definitions through the detail endpoint.
+        - For PUT, `type` must exactly match the path parameter. A missing value returns
+          400 `VegaBackend.ConnectorType.InvalidParameter.Type`; a mismatch returns 409
+          `VegaBackend.ConnectorType.TypeMismatch`.
       type: object
       required:
         - type
@@ -455,27 +465,27 @@ components:
         - category
       properties:
         type:
-          description: 连接器类型标识；POST 与 PUT 都必填，PUT 时必须与路径参数一致
+          description: Connector type identifier. Required for POST and PUT; for PUT it must match the path parameter.
           type: string
         name:
-          description: 连接器类型显示名
+          description: Connector type display name
           type: string
         tags:
-          description: 标签
+          description: Tags
           type: array
           items:
             type: string
         description:
-          description: 类型描述
+          description: Type description
           type: string
         mode:
-          description: 运行模式
+          description: Runtime mode
           type: string
           enum:
             - local
             - remote
         category:
-          description: 分类；POST/PUT 注册或更新 local 连接器时必须与后端代码定义一致
+          description: Category. When POST or PUT registers or updates a local connector, this must match the backend code definition.
           type: string
           enum:
             - table
@@ -486,34 +496,34 @@ components:
             - metric
             - api
         endpoint:
-          description: 仅 remote 模式下的远程服务地址
+          description: Remote service address, used only in `remote` mode
           type: string
         enabled:
-          description: 是否启用
+          description: Whether the connector type is enabled
           type: boolean
           default: false
     ListConnectorTypes:
-      description: 连接器类型列表
+      description: Connector type list
       type: object
       required:
         - entries
         - total_count
       properties:
         entries:
-          description: 条目列表
+          description: Entries
           type: array
           items:
             $ref: "#/components/schemas/ConnectorTypeSummary"
         total_count:
-          description: 总条数
+          description: Total number of entries
           type: integer
           format: int64
     ConnectorTypeRef:
-      description: 连接器类型引用
+      description: Connector type reference
       type: object
       required:
         - type
       properties:
         type:
-          description: 连接器类型标识
+          description: Connector type identifier
           type: string

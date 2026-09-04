@@ -241,64 +241,65 @@ paths:
                 type: object
                 properties:
                   summary:
-                    description: 时间范围内的汇总指标
+                    description: Summary metrics for the time range
                     type: object
                     properties:
                       total_usage:
-                        description: 调用次数
+                        description: Call count
                         type: integer
                       total_tokens:
-                        description: token 总量
+                        description: Total token count
                         type: integer
                       input_tokens:
-                        description: 输入 token 数
+                        description: Input token count
                         type: integer
                       output_tokens:
-                        description: 输出 token 数
+                        description: Output token count
                         type: integer
                       avg_response_time:
-                        description: 平均响应耗时
+                        description: Average response latency
                         type: number
                       error_rate:
-                        description: 错误率
+                        description: Error rate
                         type: number
                   trends:
-                    description: 按天聚合的趋势序列
+                    description: Daily aggregated trend series
                     type: array
                     items:
                       type: object
                       properties:
                         date:
-                          description: 日期，格式 `YYYY-MM-DD`
+                          description: Date in `YYYY-MM-DD` format
                           type: string
                         input_tokens:
-                          description: 当日输入 token 数
+                          description: Daily input token count
                           type: integer
                         output_tokens:
-                          description: 当日输出 token 数
+                          description: Daily output token count
                           type: integer
                         avg_total_time:
-                          description: 当日平均总耗时
+                          description: Daily average total latency
                           type: number
                         avg_first_time:
-                          description: 当日平均首 token 耗时
+                          description: Daily average time to first token
                           type: number
                         avg_rate:
-                          description: 当日平均出字速率
+                          description: Daily average output rate
                           type: number
                   qps_data:
-                    description: QPS 序列，按 5 分钟粒度聚合
+                    description: QPS series aggregated in five-minute intervals
                     type: array
                     items:
                       type: object
                       properties:
                         date:
-                          description: 时间点，格式 `YYYY-MM-DD HH:mm:00`
+                          description: Timestamp in `YYYY-MM-DD HH:mm:00` format
                           type: string
                         avg_qps:
                           description: |
-                            平均 QPS。服务端固定格式化为 6 位小数的**字符串**
-                            （如 `"0.000000"`），不是数值类型。
+                            Average QPS. The server always formats it as a **string**
+                            with six decimal places (for example, `"0.000000"`),
+                            not a numeric value.
                           type: string
         '400':
           description: Missing or invalid date range

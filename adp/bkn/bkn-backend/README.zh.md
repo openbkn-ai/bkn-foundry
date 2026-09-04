@@ -26,7 +26,8 @@
 重要边界：
 
 - `branch` 作为数据维度通过查询参数支持，但服务没有提供完整的分支生命周期 API，例如创建、合并、发布或回滚。
-- 权限资源 hook 已存在，但细粒度资源权限强制执行在服务层尚未完整闭环。
+- 细粒度权限覆盖知识网络根资源和六类子资源。子资源使用规范
+  `{kn_id}/{child_id}` ID 判权；列表和搜索先过滤权限，再计算 total 和分页。
 - 自然语言查询规划和上下文加载不由本服务负责，对应能力在 `adp/context-loader`。
 - 对象样例数据和资源相关操作依赖 VEGA 可用。
 - 向量搜索和概念索引依赖 OpenSearch 与 model-factory embedding 配置。
@@ -105,7 +106,7 @@ bkn-backend/
 | `metric` | 指标定义校验、CRUD 和搜索 |
 | `risk_type` | 风险类 CRUD 和概念搜索 |
 | `action_schedule` | 行动调度元数据和 cron 处理 |
-| `permission` | 权限资源集成 hook |
+| `permission` | bkn-safe 权限判定、子资源过滤和 ResourceParent 生命周期 |
 | `bkn` | BKN 导入导出服务 |
 
 ## 本地开发
@@ -122,6 +123,23 @@ bkn-backend/
 ```text
 server/config/bkn-backend-config.yaml
 ```
+
+### 权限配置
+
+当 `AUTH_ENABLED=true` 时，必须配置 `BKN_SAFE_URL`，并且它必须是带 host 的
+绝对 HTTP(S) URL。带凭据、查询参数或 fragment 的 URL 会被拒绝。配置不符合
+要求时进程在启动阶段退出，不会回退到旧权限后端或无鉴权模式。认证开启时会
+始终执行子资源和行动执行权限校验，不再提供独立的 PEP 灰度开关。
+
+Helm values：
+
+| Value | 默认值 | 含义 |
+| --- | --- | --- |
+| `bknSafe.url` | `http://bkn-safe:3000` | bkn-safe 服务根地址 |
+| `auth.knChildResourceFilterChunkSize` | `0` | 可选调用方分块大小；`0` 表示单次发送，不是服务端限制 |
+
+资源、操作和错误语义见
+[`docs/api/knowledge-network-authorization.md`](../../../docs/api/knowledge-network-authorization.md)。
 
 本地运行：
 

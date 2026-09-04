@@ -3,6 +3,13 @@ openapi: 3.0.2
 info:
   title: ObjectType
   version: 0.1.0
+  description: |
+    Object types use `object_type:{kn_id}/{object_type_id}`. Reads and lists
+    require `view_detail`; data reads require `query_data`; updates and deletes
+    use `modify` and `delete`. Lists and searches are filtered before total and
+    pagination. See `../knowledge-network-authorization.md`.
+security:
+  - OAuth2: []
 paths:
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/object-types:
     get:
@@ -88,7 +95,7 @@ paths:
             schema:
               $ref: "#/components/schemas/override"
             examples:
-              检索对象类-第一次请求:
+              list object types - first request:
                 value:
                   need_total: true
                   limit: 1
@@ -105,14 +112,14 @@ paths:
                         value:
                           - pod
                           - 10
-              创建对象类:
+              create object type:
                 value:
                   - id: pod_has_metric
                     name: pod_has_metric
                     tags:
-                      - 事件网络
-                      - 拓扑架构
-                    comment: 绑定了指标模型的pod信息.....
+                      - event network
+                      - topology
+                    comment: Pod information bound to a metric model
                     icon: ""
                     color: ""
                     branch: main
@@ -123,126 +130,126 @@ paths:
                       - name: id
                         display_name: id
                         type: int64
-                        comment: 主键
+                        comment: Primary key
                         mapped_field:
                           name: id
                         index: true
                       - name: node_id
                         display_name: node_id
                         type: VARCHAR
-                        comment: 节点id，
+                        comment: Node ID
                         mapped_field:
                           name: node_id
                         index: true
                       - name: pod_cluster_id
                         display_name: pod_cluster_id
                         type: VARCHAR
-                        comment: pod的集群id
+                        comment: Pod cluster ID
                         mapped_field:
                           name: pod_cluster_id
                         index: true
                       - name: pod_ip
                         display_name: pod_ip
                         type: VARCHAR
-                        comment: pod的ip
+                        comment: Pod IP
                         mapped_field:
                           name: pod_ip
                         index: true
                       - name: pod_name
                         display_name: pod_name
                         type: VARCHAR
-                        comment: pod名称
+                        comment: Pod name
                         mapped_field:
                           name: pod_name
                         index: true
                       - name: pod_namespace
                         display_name: pod_namespace
                         type: VARCHAR
-                        comment: pod所属命名空间
+                        comment: Pod namespace
                         mapped_field:
                           name: pod_namespace
                         index: true
                       - name: pod_node_name
                         display_name: pod_node_name
                         type: int
-                        comment: pod所在节点名称
+                        comment: Pod node name
                         mapped_field:
                           name: pod_node_name
                         index: true
                       - name: pod_port
                         display_name: pod_port
                         type: VARCHAR
-                        comment: pod端口
+                        comment: Pod port
                         mapped_field:
                           name: pod_port
                         index: true
                       - name: pod_status
                         display_name: pod_status
                         type: VARCHAR
-                        comment: pod状态
+                        comment: Pod status
                         mapped_field:
                           name: pod_status
                         index: true
                       - name: service_ip
                         display_name: service_ip
                         type: VARCHAR
-                        comment: 服务ip
+                        comment: Service IP
                         mapped_field:
                           name: service_ip
                         index: true
                       - name: service_name
                         display_name: service_name
                         type: VARCHAR
-                        comment: 服务名称
+                        comment: Service name
                         mapped_field:
                           name: service_name
                         index: true
                       - name: component
                         display_name: component
                         type: VARCHAR
-                        comment: 组件
+                        comment: Component
                         mapped_field:
                           name: component
                         index: true
                       - name: pod_create_time
                         display_name: pod_create_time
                         type: VARCHAR
-                        comment: pod创建时间
+                        comment: Pod creation time
                         mapped_field:
                           name: pod_create_time
                         index: true
                       - name: pod_delete_time
                         display_name: pod_delete_time
                         type: VARCHAR
-                        comment: pod删除时间
+                        comment: Pod deletion time
                         mapped_field:
                           name: pod_delete_time
                         index: true
                       - name: s_create_time
                         display_name: s_create_time
                         type: timestamp
-                        comment: 系统创建时间
+                        comment: System creation time
                         mapped_field:
                           name: s_create_time
                         index: true
                       - name: s_update_time
                         display_name: s_update_time
                         type: timestamp
-                        comment: 系统更新时间
+                        comment: System update time
                         mapped_field:
                           name: s_update_time
                         index: true
                       - name: _timestamp
                         display_name: _timestamp
                         type: timestamp
-                        comment: 时间
+                        comment: Time
                         mapped_field:
                           name: _timestamp
                         index: true
                       - name: _action
                         display_name: _action
                         type: VARCHAR
-                        comment: 行动
+                        comment: Action
                         mapped_field:
                           name: _action
                         index: true
@@ -250,7 +257,7 @@ paths:
                       - name: metric_test
                         display_name: metric_test
                         type: metric
-                        comment: pod的指标
+                        comment: Pod metrics
                         index: true
                         data_source:
                           type: metric-model
@@ -274,7 +281,7 @@ paths:
                       - name: tool_test
                         display_name: tool_test
                         type: tool
-                        comment: pod工具
+                        comment: Pod tools
                         index: true
                         data_source:
                           type: tool
@@ -297,9 +304,9 @@ paths:
                   - id: pod
                     name: pod
                     tags:
-                      - 事件网络
-                      - 拓扑架构
-                    comment: pod信息.....
+                      - event network
+                      - topology
+                    comment: Pod information
                     icon: ""
                     color: ""
                     branch: main
@@ -310,126 +317,126 @@ paths:
                       - name: id
                         display_name: id
                         type: int64
-                        comment: 主键
+                        comment: Primary key
                         mapped_field:
                           name: id
                         index: true
                       - name: node_id
                         display_name: node_id
                         type: VARCHAR
-                        comment: 节点id，
+                        comment: Node ID
                         mapped_field:
                           name: node_id
                         index: true
                       - name: pod_cluster_id
                         display_name: pod_cluster_id
                         type: VARCHAR
-                        comment: pod的集群id
+                        comment: Pod cluster ID
                         mapped_field:
                           name: pod_cluster_id
                         index: true
                       - name: pod_ip
                         display_name: pod_ip
                         type: VARCHAR
-                        comment: pod的ip
+                        comment: Pod IP
                         mapped_field:
                           name: pod_ip
                         index: true
                       - name: pod_name
                         display_name: pod_name
                         type: VARCHAR
-                        comment: pod名称
+                        comment: Pod name
                         mapped_field:
                           name: pod_name
                         index: true
                       - name: pod_namespace
                         display_name: pod_namespace
                         type: VARCHAR
-                        comment: pod所属命名空间
+                        comment: Pod namespace
                         mapped_field:
                           name: pod_namespace
                         index: true
                       - name: pod_node_name
                         display_name: pod_node_name
                         type: int
-                        comment: pod所在节点名称
+                        comment: Pod node name
                         mapped_field:
                           name: pod_node_name
                         index: true
                       - name: pod_port
                         display_name: pod_port
                         type: VARCHAR
-                        comment: pod端口
+                        comment: Pod port
                         mapped_field:
                           name: pod_port
                         index: true
                       - name: pod_status
                         display_name: pod_status
                         type: VARCHAR
-                        comment: pod状态
+                        comment: Pod status
                         mapped_field:
                           name: pod_status
                         index: true
                       - name: service_ip
                         display_name: service_ip
                         type: VARCHAR
-                        comment: 服务ip
+                        comment: Service IP
                         mapped_field:
                           name: service_ip
                         index: true
                       - name: service_name
                         display_name: service_name
                         type: VARCHAR
-                        comment: 服务名称
+                        comment: Service name
                         mapped_field:
                           name: service_name
                         index: true
                       - name: component
                         display_name: component
                         type: VARCHAR
-                        comment: 组件
+                        comment: Component
                         mapped_field:
                           name: component
                         index: true
                       - name: pod_create_time
                         display_name: pod_create_time
                         type: VARCHAR
-                        comment: pod创建时间
+                        comment: Pod creation time
                         mapped_field:
                           name: pod_create_time
                         index: true
                       - name: pod_delete_time
                         display_name: pod_delete_time
                         type: VARCHAR
-                        comment: pod删除时间
+                        comment: Pod deletion time
                         mapped_field:
                           name: pod_delete_time
                         index: true
                       - name: s_create_time
                         display_name: s_create_time
                         type: timestamp
-                        comment: 系统创建时间
+                        comment: System creation time
                         mapped_field:
                           name: s_create_time
                         index: true
                       - name: s_update_time
                         display_name: s_update_time
                         type: timestamp
-                        comment: 系统更新时间
+                        comment: System update time
                         mapped_field:
                           name: s_update_time
                         index: true
                       - name: _timestamp
                         display_name: _timestamp
                         type: timestamp
-                        comment: 时间
+                        comment: Time
                         mapped_field:
                           name: _timestamp
                         index: true
                       - name: _action
                         display_name: _action
                         type: VARCHAR
-                        comment: 行动
+                        comment: Action
                         mapped_field:
                           name: _action
                         index: true
@@ -441,8 +448,8 @@ paths:
                   - id: node
                     name: node
                     tags:
-                      - 拓扑架构
-                    comment: 系统节点.....
+                      - topology
+                    comment: System node
                     icon: ""
                     color: ""
                     branch: main
@@ -453,126 +460,126 @@ paths:
                       - name: id
                         display_name: id
                         type: int64
-                        comment: 主键
+                        comment: Primary key
                         mapped_field:
                           name: id
                         index: true
                       - name: node_name
                         display_name: node_name
                         type: VARCHAR
-                        comment: 节点名称，
+                        comment: Node name
                         mapped_field:
                           name: node_name
                         index: true
                       - name: node_namespace
                         display_name: node_namespace
                         type: VARCHAR
-                        comment: 节点命名空间
+                        comment: Node namespace
                         mapped_field:
                           name: node_namespace
                         index: true
                       - name: node_ip
                         display_name: node_ip
                         type: VARCHAR
-                        comment: 节点ip
+                        comment: Node IP
                         mapped_field:
                           name: node_ip
                         index: true
                       - name: node_mac
                         display_name: node_mac
                         type: VARCHAR
-                        comment: mac地址
+                        comment: MAC address
                         mapped_field:
                           name: node_mac
                         index: true
                       - name: node_status
                         display_name: node_status
                         type: VARCHAR
-                        comment: 节点状态
+                        comment: Node status
                         mapped_field:
                           name: node_status
                         index: true
                       - name: node_memory_capacity
                         display_name: node_memory_capacity
                         type: int
-                        comment: 节点状态
+                        comment: Node status
                         mapped_field:
                           name: node_memory_capacity
                         index: true
                       - name: node_monitor
                         display_name: node_monitor
                         type: VARCHAR
-                        comment: 节点monitor
+                        comment: Node monitor
                         mapped_field:
                           name: node_monitor
                         index: true
                       - name: node_disk_capacity
                         display_name: node_disk_capacity
                         type: VARCHAR
-                        comment: 节点磁盘容量
+                        comment: Node disk capacity
                         mapped_field:
                           name: node_disk_capacity
                         index: true
                       - name: node_cpu_capacity
                         display_name: node_cpu_capacity
                         type: VARCHAR
-                        comment: 节点CPU容量
+                        comment: Node CPU capacity
                         mapped_field:
                           name: node_cpu_capacity
                         index: true
                       - name: node_core_version
                         display_name: node_core_version
                         type: VARCHAR
-                        comment: 节点内核版本
+                        comment: Node kernel version
                         mapped_field:
                           name: node_core_version
                         index: true
                       - name: node_create_time
                         display_name: node_create_time
                         type: VARCHAR
-                        comment: 节点创建时间
+                        comment: Node creation time
                         mapped_field:
                           name: node_create_time
                         index: true
                       - name: node_delete_time
                         display_name: node_delete_time
                         type: VARCHAR
-                        comment: 节点删除时间
+                        comment: Node deletion time
                         mapped_field:
                           name: node_delete_time
                         index: true
                       - name: node_memory_capacity
                         display_name: node_memory_capacity
                         type: VARCHAR
-                        comment: 节点内存容量
+                        comment: Node memory capacity
                         mapped_field:
                           name: node_memory_capacity
                         index: true
                       - name: s_create_time
                         display_name: s_create_time
                         type: timestamp
-                        comment: 系统创建时间
+                        comment: System creation time
                         mapped_field:
                           name: s_create_time
                         index: true
                       - name: s_update_time
                         display_name: s_update_time
                         type: timestamp
-                        comment: 系统更新时间
+                        comment: System update time
                         mapped_field:
                           name: s_update_time
                         index: true
                       - name: timestamp
                         display_name: timestamp
                         type: timestamp
-                        comment: 时间
+                        comment: Time
                         mapped_field:
                           name: timestamp
                         index: true
                       - name: _action
                         display_name: _action
                         type: VARCHAR
-                        comment: 行动
+                        comment: Action
                         mapped_field:
                           name: _action
                         index: true
@@ -581,7 +588,7 @@ paths:
                     display_key: node_name
                     IfNameModify: false
                     module_type: object_type
-              检索对象类-非第一次:
+              list object types - subsequent request:
                 value:
                   cursor: cursor-object-types-1
                   need_total: true
@@ -652,15 +659,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/ObjectTypeSearchResponse"
               examples:
-                检索对象类-第一次请求:
+                list object types - first request:
                   value:
                     entries:
                       - id: pod_has_metric_test
                         name: pod_has_metric_test
                         tags:
-                          - 事件网络
-                          - 拓扑架构
-                        comment: 绑定了指标模型的pod信息.....
+                          - event network
+                          - topology
+                        comment: Pod information bound to a metric model
                         icon: ""
                         color: ""
                         branch: main
@@ -678,13 +685,13 @@ paths:
                           - name: id
                             display_name: id
                             type: int64
-                            comment: 主键
+                            comment: Primary key
                             mapped_field:
                               name: id
                           - name: node_id
                             display_name: node_id
                             type: VARCHAR
-                            comment: 节点id，
+                            comment: Node ID
                             mapped_field:
                               name: node_id
                             condition_operations:
@@ -697,7 +704,7 @@ paths:
                           - name: pod_cluster_id
                             display_name: pod_cluster_id
                             type: VARCHAR
-                            comment: pod的集群id
+                            comment: Pod cluster ID
                             mapped_field:
                               name: pod_cluster_id
                             condition_operations:
@@ -710,7 +717,7 @@ paths:
                           - name: pod_ip
                             display_name: pod_ip
                             type: VARCHAR
-                            comment: pod的ip
+                            comment: Pod IP
                             mapped_field:
                               name: pod_ip
                             condition_operations:
@@ -723,7 +730,7 @@ paths:
                           - name: pod_name
                             display_name: pod_name
                             type: VARCHAR
-                            comment: pod名称
+                            comment: Pod name
                             mapped_field:
                               name: pod_name
                             condition_operations:
@@ -736,7 +743,7 @@ paths:
                           - name: pod_namespace
                             display_name: pod_namespace
                             type: VARCHAR
-                            comment: pod所属命名空间
+                            comment: Pod namespace
                             mapped_field:
                               name: pod_namespace
                             condition_operations:
@@ -749,7 +756,7 @@ paths:
                           - name: pod_node_name
                             display_name: pod_node_name
                             type: int
-                            comment: pod所在节点名称
+                            comment: Pod node name
                             mapped_field:
                               name: pod_node_name
                             condition_operations:
@@ -762,7 +769,7 @@ paths:
                           - name: pod_port
                             display_name: pod_port
                             type: VARCHAR
-                            comment: pod端口
+                            comment: Pod port
                             mapped_field:
                               name: pod_port
                             condition_operations:
@@ -775,7 +782,7 @@ paths:
                           - name: pod_status
                             display_name: pod_status
                             type: VARCHAR
-                            comment: pod状态
+                            comment: Pod status
                             mapped_field:
                               name: pod_status
                             condition_operations:
@@ -788,7 +795,7 @@ paths:
                           - name: service_ip
                             display_name: service_ip
                             type: VARCHAR
-                            comment: 服务ip
+                            comment: Service IP
                             mapped_field:
                               name: service_ip
                             condition_operations:
@@ -801,7 +808,7 @@ paths:
                           - name: service_name
                             display_name: service_name
                             type: VARCHAR
-                            comment: 服务名称
+                            comment: Service name
                             mapped_field:
                               name: service_name
                             condition_operations:
@@ -814,7 +821,7 @@ paths:
                           - name: component
                             display_name: component
                             type: VARCHAR
-                            comment: 组件
+                            comment: Component
                             mapped_field:
                               name: component
                             condition_operations:
@@ -827,7 +834,7 @@ paths:
                           - name: pod_create_time
                             display_name: pod_create_time
                             type: VARCHAR
-                            comment: pod创建时间
+                            comment: Pod creation time
                             mapped_field:
                               name: pod_create_time
                             condition_operations:
@@ -840,7 +847,7 @@ paths:
                           - name: pod_delete_time
                             display_name: pod_delete_time
                             type: VARCHAR
-                            comment: pod删除时间
+                            comment: Pod deletion time
                             mapped_field:
                               name: pod_delete_time
                             condition_operations:
@@ -853,7 +860,7 @@ paths:
                           - name: s_create_time
                             display_name: s_create_time
                             type: timestamp
-                            comment: 系统创建时间
+                            comment: System creation time
                             mapped_field:
                               name: s_create_time
                             condition_operations:
@@ -866,7 +873,7 @@ paths:
                           - name: s_update_time
                             display_name: s_update_time
                             type: timestamp
-                            comment: 系统更新时间
+                            comment: System update time
                             mapped_field:
                               name: s_update_time
                             condition_operations:
@@ -879,7 +886,7 @@ paths:
                           - name: _timestamp
                             display_name: _timestamp
                             type: timestamp
-                            comment: 时间
+                            comment: Time
                             mapped_field:
                               name: _timestamp
                             condition_operations:
@@ -892,7 +899,7 @@ paths:
                           - name: _action
                             display_name: _action
                             type: VARCHAR
-                            comment: 行动
+                            comment: Action
                             mapped_field:
                               name: _action
                             condition_operations:
@@ -906,7 +913,7 @@ paths:
                           - name: metric_test
                             display_name: metric_test
                             type: metric
-                            comment: pod的指标
+                            comment: Pod metrics
                             index: true
                             data_source:
                               type: metric-model
@@ -940,7 +947,7 @@ paths:
                           - name: tool_test
                             display_name: tool_test
                             type: tool
-                            comment: pod工具
+                            comment: Pod tools
                             index: true
                             data_source:
                               type: tool
@@ -964,15 +971,15 @@ paths:
                         module_type: object_type
                     total_count: 2
                     next_cursor: cursor-object-types-1
-                检索对象类-非第一次:
+                list object types - subsequent request:
                   value:
                     entries:
                       - id: pod_has_metric_test2
                         name: pod_has_metric_test2
                         tags:
-                          - 事件网络
-                          - 拓扑架构
-                        comment: 绑定了指标模型的pod信息.....
+                          - event network
+                          - topology
+                        comment: Pod information bound to a metric model
                         icon: ""
                         color: ""
                         branch: main
@@ -990,7 +997,7 @@ paths:
                           - name: id
                             display_name: id
                             type: int64
-                            comment: 主键
+                            comment: Primary key
                             mapped_field:
                               name: id
                             index: true
@@ -1003,7 +1010,7 @@ paths:
                           - name: node_id
                             display_name: node_id
                             type: VARCHAR
-                            comment: 节点id，
+                            comment: Node ID
                             mapped_field:
                               name: node_id
                             condition_operations:
@@ -1016,7 +1023,7 @@ paths:
                           - name: pod_cluster_id
                             display_name: pod_cluster_id
                             type: VARCHAR
-                            comment: pod的集群id
+                            comment: Pod cluster ID
                             mapped_field:
                               name: pod_cluster_id
                             condition_operations:
@@ -1029,7 +1036,7 @@ paths:
                           - name: pod_ip
                             display_name: pod_ip
                             type: VARCHAR
-                            comment: pod的ip
+                            comment: Pod IP
                             mapped_field:
                               name: pod_ip
                             condition_operations:
@@ -1042,7 +1049,7 @@ paths:
                           - name: pod_name
                             display_name: pod_name
                             type: VARCHAR
-                            comment: pod名称
+                            comment: Pod name
                             mapped_field:
                               name: pod_name
                             condition_operations:
@@ -1055,7 +1062,7 @@ paths:
                           - name: pod_namespace
                             display_name: pod_namespace
                             type: VARCHAR
-                            comment: pod所属命名空间
+                            comment: Pod namespace
                             mapped_field:
                               name: pod_namespace
                             condition_operations:
@@ -1068,7 +1075,7 @@ paths:
                           - name: pod_node_name
                             display_name: pod_node_name
                             type: int
-                            comment: pod所在节点名称
+                            comment: Pod node name
                             mapped_field:
                               name: pod_node_name
                             condition_operations:
@@ -1081,7 +1088,7 @@ paths:
                           - name: pod_port
                             display_name: pod_port
                             type: VARCHAR
-                            comment: pod端口
+                            comment: Pod port
                             mapped_field:
                               name: pod_port
                             condition_operations:
@@ -1094,7 +1101,7 @@ paths:
                           - name: pod_status
                             display_name: pod_status
                             type: VARCHAR
-                            comment: pod状态
+                            comment: Pod status
                             mapped_field:
                               name: pod_status
                             condition_operations:
@@ -1107,7 +1114,7 @@ paths:
                           - name: service_ip
                             display_name: service_ip
                             type: VARCHAR
-                            comment: 服务ip
+                            comment: Service IP
                             mapped_field:
                               name: service_ip
                             condition_operations:
@@ -1120,7 +1127,7 @@ paths:
                           - name: service_name
                             display_name: service_name
                             type: VARCHAR
-                            comment: 服务名称
+                            comment: Service name
                             mapped_field:
                               name: service_name
                             condition_operations:
@@ -1133,7 +1140,7 @@ paths:
                           - name: component
                             display_name: component
                             type: VARCHAR
-                            comment: 组件
+                            comment: Component
                             mapped_field:
                               name: component
                             condition_operations:
@@ -1146,7 +1153,7 @@ paths:
                           - name: pod_create_time
                             display_name: pod_create_time
                             type: VARCHAR
-                            comment: pod创建时间
+                            comment: Pod creation time
                             mapped_field:
                               name: pod_create_time
                             condition_operations:
@@ -1159,7 +1166,7 @@ paths:
                           - name: pod_delete_time
                             display_name: pod_delete_time
                             type: VARCHAR
-                            comment: pod删除时间
+                            comment: Pod deletion time
                             mapped_field:
                               name: pod_delete_time
                             condition_operations:
@@ -1172,7 +1179,7 @@ paths:
                           - name: s_create_time
                             display_name: s_create_time
                             type: timestamp
-                            comment: 系统创建时间
+                            comment: System creation time
                             mapped_field:
                               name: s_create_time
                             condition_operations:
@@ -1185,7 +1192,7 @@ paths:
                           - name: s_update_time
                             display_name: s_update_time
                             type: timestamp
-                            comment: 系统更新时间
+                            comment: System update time
                             mapped_field:
                               name: s_update_time
                             condition_operations:
@@ -1198,7 +1205,7 @@ paths:
                           - name: _timestamp
                             display_name: _timestamp
                             type: timestamp
-                            comment: 时间
+                            comment: Time
                             mapped_field:
                               name: _timestamp
                             condition_operations:
@@ -1211,7 +1218,7 @@ paths:
                           - name: _action
                             display_name: _action
                             type: VARCHAR
-                            comment: 行动
+                            comment: Action
                             mapped_field:
                               name: _action
                             condition_operations:
@@ -1225,7 +1232,7 @@ paths:
                           - name: metric_test
                             display_name: metric_test
                             type: metric
-                            comment: pod的指标
+                            comment: Pod metrics
                             index: true
                             data_source:
                               type: metric-model
@@ -1259,7 +1266,7 @@ paths:
                           - name: tool_test
                             display_name: tool_test
                             type: tool
-                            comment: pod工具
+                            comment: Pod tools
                             index: true
                             data_source:
                               type: tool
@@ -1624,6 +1631,9 @@ paths:
         "400":
           description: Invalid request parameters and similar errors. A business validation failure is represented by 200 plus valid false and detail, not this status.
 components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
   schemas:
     BasicInfo:
       description: Basic resource information containing an ID and name

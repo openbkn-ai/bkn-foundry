@@ -3,6 +3,13 @@ openapi: 3.0.2
 info:
   title: RelationType
   version: 0.1.0
+  description: |
+    Relation types use `relation_type:{kn_id}/{relation_type_id}`. Reads and
+    lists require `view_detail`; data reads require `query_data`; updates and
+    deletes use `modify` and `delete`. Lists and searches are filtered before
+    total and pagination. See `../knowledge-network-authorization.md`.
+security:
+  - OAuth2: []
 paths:
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/relation-types:
     get:
@@ -94,13 +101,13 @@ paths:
             schema:
               $ref: "#/components/schemas/override"
             examples:
-              创建关系类:
+              create relation type:
                 value:
                   - id: service_2_pod
-                    name: 包含
+                    name: contains
                     tags:
-                      - 拓扑架构
-                    comment: 服务到pod的关系，服务包含于pod
+                      - topology
+                    comment: Relationship from a service to a pod; the service contains the pod
                     icon: ""
                     color: ""
                     branch: main
@@ -114,10 +121,10 @@ paths:
                           name: service_name
                     module_type: relation_type
                   - id: pod_2_node
-                    name: 属于
+                    name: belongs to
                     tags:
-                      - 拓扑架构
-                    comment: pod到node的关系，pod包含于节点
+                      - topology
+                    comment: Relationship from a pod to a node; the pod belongs to the node
                     icon: ""
                     color: ""
                     branch: main
@@ -130,7 +137,7 @@ paths:
                         target_property:
                           name: node_name
                     module_type: relation_type
-              检索关系类-第一次请求:
+              list relation types - first request:
                 value:
                   need_total: true
                   limit: 1
@@ -147,7 +154,7 @@ paths:
                         value:
                           - pod
                           - 10
-              检索关系类-非第一次:
+              list relation types - subsequent request:
                 value:
                   cursor: cursor-relation-types-1
                   need_total: true
@@ -210,14 +217,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/RelationTypeSearchResponse"
               examples:
-                检索关系类-第一次请求:
+                list relation types - first request:
                   value:
                     entries:
                       - id: pod_2_node_TEST
-                        name: 属于2
+                        name: belongs to 2
                         tags:
-                          - 拓扑架构
-                        comment: pod到node的关系，pod包含于节点
+                          - topology
+                        comment: Relationship from a pod to a node; the pod belongs to the node
                         icon: ""
                         color: ""
                         branch: main
@@ -249,14 +256,14 @@ paths:
                         module_type: relation_type
                     total_count: 2
                     next_cursor: cursor-relation-types-1
-                检索关系类--非第一次请求:
+                list relation types - subsequent request:
                   value:
                     entries:
                       - id: service_2_pod_test
-                        name: 包含2
+                        name: contains 2
                         tags:
-                          - 拓扑架构
-                        comment: 服务到pod的关系，服务包含于pod
+                          - topology
+                        comment: Relationship from a service to a pod; the service contains the pod
                         icon: ""
                         color: ""
                         branch: main
@@ -435,7 +442,7 @@ paths:
             schema:
               $ref: "#/components/schemas/RelationPathReqeustBody"
             examples:
-              获取路径:
+              get paths:
                 value:
                   source_object_type_id: comment
                   direction: backward
@@ -466,7 +473,7 @@ paths:
                           data_source:
                             type: resource
                             id: "1995407615886381058"
-                            name: 评论表
+                            name: comment table
                           data_properties:
                             - name: c_browserused
                               display_name: c_browserused
@@ -614,7 +621,7 @@ paths:
                           data_source:
                             type: resource
                             id: "1995407615886381058"
-                            name: 评论表
+                            name: comment table
                           data_properties:
                             - name: c_browserused
                               display_name: c_browserused
@@ -875,6 +882,9 @@ paths:
         "400":
           description: Invalid request parameters and similar errors. Business validation failures use 200 plus valid false.
 components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
   schemas:
     BasicInfo:
       description: Basic resource information containing an ID and name
