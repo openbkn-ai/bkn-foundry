@@ -26,7 +26,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/mcp"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	infraerrors "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	infrarest "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -49,8 +48,7 @@ type restPublicHandler struct {
 	Logger                         interfaces.Logger
 	LifecycleClient                *bkntrace.LifecycleClient
 	// ServicePort is used to deduce the address for the sandbox to return to this service (see PTC toolkit endpoint).
-	ServicePort  int
-	KNPEPEnabled bool
+	ServicePort int
 }
 
 var buildMCPInfo = mcp.BuildMCPInfoForLocale
@@ -58,7 +56,6 @@ var buildMCPInfo = mcp.BuildMCPInfoForLocale
 // NewRestPublicHandler createrestHandlerinstance.
 // servicePort is used to derive the sandbox return address; the sandbox is within the cluster and cannot reach the gateway address on the browser side.
 func NewRestPublicHandler(logger interfaces.Logger, servicePort int) interfaces.HTTPRouterInterface {
-	conf := config.NewConfigLoader()
 	return &restPublicHandler{
 		Hydra:                          drivenadapters.NewHydra(),
 		AppKeys:                        drivenadapters.NewAppKeyVerifier(),
@@ -75,14 +72,13 @@ func NewRestPublicHandler(logger interfaces.Logger, servicePort int) interfaces.
 		Logger:                         logger,
 		LifecycleClient:                bkntrace.NewLifecycleClientFromEnv(),
 		ServicePort:                    servicePort,
-		KNPEPEnabled:                   conf.Auth.ContextLoaderKNPEPEnabled,
 	}
 }
 
 // RegisterRouter registers public routes.
 func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	mws := []gin.HandlerFunc{}
-	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, sharedrest.LanguageMiddleware(), sharedrest.PrivateNoCacheMiddleware(), middlewareIntrospectVerifyWithMode(r.Hydra, r.AppKeys, r.KNPEPEnabled), middlewareResponseFormat(), middlewareLifecycle(r.LifecycleClient))
+	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, sharedrest.LanguageMiddleware(), sharedrest.PrivateNoCacheMiddleware(), middlewareIntrospectVerify(r.Hydra, r.AppKeys), middlewareResponseFormat(), middlewareLifecycle(r.LifecycleClient))
 	engine.Use(mws...)
 
 	engine.POST("/kn/logic-property-resolver", r.KnLogicPropertyResolverHandler.ResolveLogicProperties)

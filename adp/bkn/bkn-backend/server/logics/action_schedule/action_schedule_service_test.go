@@ -33,6 +33,7 @@ func newTestService(t *testing.T) (*actionScheduleService, *gomock.Controller, *
 		appSetting: &common.AppSetting{},
 		asa:        asa,
 		ata:        ata,
+		aea:        &actionExecutionAccessStub{},
 		cronParser: cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow),
 	}
 	return svc, mockCtrl, asa, ata
@@ -293,7 +294,7 @@ func Test_actionScheduleService_UpdateScheduleStatus(t *testing.T) {
 
 		Convey("Success activating schedule\n", func() {
 			asa.EXPECT().GetSchedule(gomock.Any(), scheduleID).Return(existing, nil)
-			asa.EXPECT().UpdateScheduleStatus(gomock.Any(), scheduleID, interfaces.ScheduleStatusActive, gomock.Any()).Return(nil)
+			asa.EXPECT().UpdateSchedule(gomock.Any(), nil, gomock.Any()).Return(nil)
 
 			err := svc.UpdateScheduleStatus(ctx, scheduleID, interfaces.ScheduleStatusActive)
 			So(err, ShouldBeNil)

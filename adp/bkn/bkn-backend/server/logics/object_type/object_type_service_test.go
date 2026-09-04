@@ -24,6 +24,23 @@ import (
 	"bkn-backend/logics"
 )
 
+func allowAllPermissionResources(_ context.Context, _ string, ids, _ []string, _ bool, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
+	matched := make(map[string]interfaces.PermissionResourceOps, len(ids))
+	for _, id := range ids {
+		matched[id] = interfaces.PermissionResourceOps{
+			ResourceID: id,
+			Operations: []string{
+				interfaces.OPERATION_TYPE_VIEW_DETAIL,
+				interfaces.OPERATION_TYPE_QUERY_DATA,
+				interfaces.OPERATION_TYPE_MODIFY,
+				interfaces.OPERATION_TYPE_DELETE,
+				interfaces.OPERATION_TYPE_AUTHORIZE,
+			},
+		}
+	}
+	return matched, nil
+}
+
 func Test_objectTypeService_CheckObjectTypeExistByID(t *testing.T) {
 	Convey("Test CheckObjectTypeExistByID\n", t, func() {
 		ctx := context.Background()
@@ -202,9 +219,7 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(map[string]interfaces.PermissionResourceOps{
-				"kn1": {ResourceID: "kn1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_AUTHORIZE}},
-			}, nil).AnyTimes()
+			DoAndReturn(allowAllPermissionResources).AnyTimes()
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		ma := bmock.NewMockMetricAccess(mockCtrl)
 		ums := bmock.NewMockUserMgmtService(mockCtrl)
@@ -239,7 +254,6 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 				},
 			}
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(otArr, nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
@@ -272,23 +286,6 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
 		})
 
-		Convey("Failed when permission check fails\n", func() {
-			knID := "kn1"
-			branch := interfaces.MAIN_BRANCH
-			otIDs := []string{"ot1"}
-
-			smock.ExpectBegin()
-			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), knID, branch, otIDs).Return([]*interfaces.ObjectType{{
-				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1"},
-			}}, nil)
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_InternalError_CheckPermissionFailed))
-			smock.ExpectRollback()
-
-			result, err := service.GetObjectTypesByIDs(ctx, nil, knID, branch, otIDs)
-			So(err, ShouldNotBeNil)
-			So(len(result), ShouldEqual, 0)
-		})
-
 		Convey("Failed when GetObjectTypesByIDs returns error\n", func() {
 			knID := "kn1"
 			branch := interfaces.MAIN_BRANCH
@@ -317,7 +314,6 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(otArr, nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
@@ -363,7 +359,6 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 
 			smock.ExpectBegin()
 			tx, _ := db.Begin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(otArr, nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
@@ -388,7 +383,6 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(otArr, nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
@@ -426,7 +420,6 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(otArr, nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
@@ -555,6 +548,9 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 		}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(allowAllPermissionResources).AnyTimes()
 		ps.EXPECT().UpsertResourceParents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		ps.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
@@ -587,7 +583,6 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ota.EXPECT().CreateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -599,25 +594,6 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(len(result), ShouldEqual, 1)
 			So(result[0], ShouldEqual, "ot1")
-		})
-
-		Convey("Failed when permission check fails\n", func() {
-			objectTypes := []*interfaces.ObjectType{
-				{
-					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-						OTID:   "ot1",
-						OTName: "object_type1",
-					},
-					KNID:   "kn1",
-					Branch: interfaces.MAIN_BRANCH,
-				},
-			}
-
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_InternalError_CheckPermissionFailed))
-
-			result, err := service.CreateObjectTypes(ctx, nil, objectTypes, interfaces.ImportMode_Normal, false, true)
-			So(err, ShouldNotBeNil)
-			So(len(result), ShouldEqual, 0)
 		})
 
 		Convey("Failed when object type ID already exists in normal mode\n", func() {
@@ -633,7 +609,6 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("ot1", true, nil)
 			ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			smock.ExpectRollback()
@@ -658,7 +633,6 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("ot1", true, nil)
 			ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("ot1", true, nil)
 			smock.ExpectCommit()
@@ -680,7 +654,6 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			objectTypes := []*interfaces.ObjectType{ot}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil).AnyTimes()
 			ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("ot1", true, nil).Times(2)
 			ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("ot1", true, nil)
@@ -706,7 +679,6 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Do(func(ctx, knID, branch, otID interface{}) {
 				So(otID, ShouldNotBeEmpty)
 			}).Return("", false, nil)
@@ -735,7 +707,6 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ota.EXPECT().CreateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
@@ -759,7 +730,6 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ota.EXPECT().CreateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -784,7 +754,6 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ota.EXPECT().CreateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -807,6 +776,8 @@ func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(allowAllPermissionResources).AnyTimes()
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		ums := bmock.NewMockUserMgmtService(mockCtrl)
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
@@ -846,7 +817,6 @@ func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"ot1"}).Return([]*interfaces.ObjectType{objectType}, nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
 			vbs.EXPECT().GetResourceByID(gomock.Any(), "resource1").Return(&interfaces.VegaResource{
@@ -1190,9 +1160,7 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(map[string]interfaces.PermissionResourceOps{
-				"kn1": {ResourceID: "kn1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_AUTHORIZE}},
-			}, nil).AnyTimes()
+			DoAndReturn(allowAllPermissionResources).AnyTimes()
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		ums := bmock.NewMockUserMgmtService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
@@ -1215,6 +1183,9 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 				KNID:   "kn1",
 				Branch: interfaces.MAIN_BRANCH,
 			}
+			listQuery := query
+			listQuery.Offset = 0
+			listQuery.Limit = -1
 			objectTypes := []*interfaces.ObjectType{
 				{
 					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
@@ -1227,9 +1198,7 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ota.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), query).Return(objectTypes, nil)
-			ota.EXPECT().GetObjectTypesTotal(gomock.Any(), gomock.Any()).Return(1, nil)
+			ota.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), listQuery).Return(objectTypes, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
@@ -1250,27 +1219,11 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return([]*interfaces.ObjectType{}, nil)
-			ota.EXPECT().GetObjectTypesTotal(gomock.Any(), gomock.Any()).Return(0, nil)
 			smock.ExpectCommit()
 
 			result, total, err := service.ListObjectTypes(ctx, nil, query)
 			So(err, ShouldBeNil)
-			So(total, ShouldEqual, 0)
-			So(len(result), ShouldEqual, 0)
-		})
-
-		Convey("Failed when permission check fails\n", func() {
-			query := interfaces.ObjectTypesQueryParams{
-				KNID:   "kn1",
-				Branch: interfaces.MAIN_BRANCH,
-			}
-
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_InternalError_CheckPermissionFailed))
-
-			result, total, err := service.ListObjectTypes(ctx, nil, query)
-			So(err, ShouldNotBeNil)
 			So(total, ShouldEqual, 0)
 			So(len(result), ShouldEqual, 0)
 		})
@@ -1282,7 +1235,6 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
 
@@ -1313,9 +1265,7 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(objectTypes, nil)
-			ota.EXPECT().GetObjectTypesTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
 
@@ -1346,9 +1296,7 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(objectTypes, nil)
-			ota.EXPECT().GetObjectTypesTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
@@ -1368,9 +1316,9 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ota.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return([]*interfaces.ObjectType{}, nil)
-			ota.EXPECT().GetObjectTypesTotal(gomock.Any(), gomock.Any()).Return(1, nil)
+			ota.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return([]*interfaces.ObjectType{{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1"},
+			}}, nil)
 			smock.ExpectCommit()
 
 			result, total, err := service.ListObjectTypes(ctx, nil, query)
@@ -1395,6 +1343,8 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
 		ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("ot1", true, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(allowAllPermissionResources).AnyTimes()
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
@@ -1713,6 +1663,8 @@ func Test_objectTypeService_DeleteObjectTypesByIDs(t *testing.T) {
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
 		ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("ot1", true, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(allowAllPermissionResources).AnyTimes()
 		ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		ps.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
@@ -1732,9 +1684,13 @@ func Test_objectTypeService_DeleteObjectTypesByIDs(t *testing.T) {
 			knID := "kn1"
 			branch := interfaces.MAIN_BRANCH
 			otIDs := []string{"ot1", "ot2"}
+			objectTypes := []*interfaces.ObjectType{
+				{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1"}},
+				{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot2"}},
+			}
 
+			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), knID, branch, otIDs).Return(objectTypes, nil)
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().DeleteObjectTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(2), nil)
 			ota.EXPECT().DeleteObjectTypeStatusByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(2), nil)
 			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
@@ -2267,6 +2223,10 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 		ma := bmock.NewMockMetricAccess(mockCtrl)
 		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().GetObjectTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot1"}, nil).AnyTimes()
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(allowAllPermissionResources).AnyTimes()
 
 		service := &objectTypeService{
 			appSetting: appSetting,
@@ -2275,6 +2235,7 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 			ma:         ma,
 			mfs:        mfs,
 			ps:         ps,
+			ota:        ota,
 		}
 
 		Convey("Success searching object types without concept groups\n", func() {
@@ -2284,7 +2245,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				Limit:  10,
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{},
 			}
@@ -2317,7 +2277,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot1"}, nil)
 			datasetResp := &interfaces.DatasetQueryResponse{
@@ -2337,7 +2296,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				Limit:         2,
 				ConceptGroups: []string{"cg1"},
 			}
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"keep-1", "keep-2"}, nil)
 			nextCursor := "cursor-1"
@@ -2374,7 +2332,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				ConceptGroups: []string{"cg1"},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(0, nil)
 
 			result, err := service.SearchObjectTypes(ctx, query)
@@ -2390,7 +2347,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				ConceptGroups: []string{"cg1"},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(0, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			result, err := service.SearchObjectTypes(ctx, query)
@@ -2406,7 +2362,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				ConceptGroups: []string{"cg1"},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
@@ -2422,7 +2377,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				Limit:  10,
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{},
 			}
@@ -2444,7 +2398,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			result, err := service.SearchObjectTypes(ctx, query)
 			So(err, ShouldNotBeNil)
 			So(len(result.Entries), ShouldEqual, 0)
@@ -2464,7 +2417,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{},
 			}
@@ -2484,7 +2436,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				ConceptGroups: []string{"cg1"},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{}, nil)
 
@@ -2501,7 +2452,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				NeedTotal: true,
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			totalResp := &interfaces.DatasetQueryResponse{
 				TotalCount: 5,
 			}
@@ -2526,7 +2476,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				ConceptGroups: []string{"cg1"},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot1"}, nil)
 			totalResp := &interfaces.DatasetQueryResponse{
@@ -2552,7 +2501,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				NeedTotal: true,
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			result, err := service.SearchObjectTypes(ctx, query)
@@ -2569,7 +2517,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				ConceptGroups: []string{"cg1"},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot1"}, nil)
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
@@ -2590,7 +2537,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			result, err := service.SearchObjectTypes(ctx, query)
 			So(err, ShouldNotBeNil)
 			So(len(result.Entries), ShouldEqual, 0)
@@ -2611,7 +2557,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			result, err := service.SearchObjectTypes(ctx, query)
 			So(err, ShouldNotBeNil)
 			So(len(result.Entries), ShouldEqual, 0)
@@ -2624,7 +2569,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				Limit:  10,
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			result, err := service.SearchObjectTypes(ctx, query)
@@ -2643,7 +2587,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				"invalid": make(chan int), // channel cannot be marshaled
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{entry},
 			}
@@ -2665,7 +2608,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				"invalid_json": make(chan int), // channel cannot be marshaled/unmarshaled
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{entry},
 			}
@@ -2703,7 +2645,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{entry},
 			}
@@ -2737,7 +2678,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				"_score":  0.8,
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot1"}, nil)
 			datasetResp := &interfaces.DatasetQueryResponse{

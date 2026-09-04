@@ -7,16 +7,17 @@ package relation_type
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.uber.org/mock/gomock"
 
 	"bkn-backend/interfaces"
 	bmock "bkn-backend/interfaces/mock"
 )
 
-func TestRelationTypeSingleResourcePEP(t *testing.T) {
-	t.Setenv("KN_CHILD_RESOURCE_PEP_ENABLED", "true")
+func TestRelationTypeSingleResourceAuthorization(t *testing.T) {
 	tests := []struct {
 		name      string
 		operation string
@@ -62,5 +63,30 @@ func TestRelationTypeSingleResourcePEP(t *testing.T) {
 				t.Fatalf("operation error = %v, want %v", err, denied)
 			}
 		})
+	}
+}
+
+func TestRelationTypeMultiResourceDetailRequiresEveryChildPermission(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	rta := bmock.NewMockRelationTypeAccess(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	ids := []string{"rt-1", "rt-2"}
+
+	rta.EXPECT().GetRelationTypesByIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, ids).
+		Return([]*interfaces.RelationType{
+			{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "rt-1"}},
+			{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "rt-2"}},
+		}, nil)
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_RELATION_TYPE,
+		[]string{"kn-1/rt-1", "kn-1/rt-2"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true,
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(map[string]interfaces.PermissionResourceOps{
+		"kn-1/rt-1": {ResourceID: "kn-1/rt-1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+	}, nil)
+
+	service := &relationTypeService{rta: rta, ps: ps}
+	_, err := service.GetRelationTypesByIDs(context.Background(), "kn-1", interfaces.MAIN_BRANCH, ids)
+	var httpErr *rest.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden {
+		t.Fatalf("GetRelationTypesByIDs() error = %v, want 403 when any child is denied", err)
 	}
 }

@@ -135,6 +135,7 @@ func TestLocalSearch_Service(t *testing.T) {
 				logger:        &mockLogger{},
 				bknBackend:    mockManager,
 				ontologyQuery: mockQuery,
+				authorizer:    allowAllQueryCandidateAuthorizer{},
 				rerankClient:  mockRerank,
 			}
 

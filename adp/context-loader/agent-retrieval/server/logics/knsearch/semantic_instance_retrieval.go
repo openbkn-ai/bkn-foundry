@@ -65,16 +65,14 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 		}, nil
 	}
 
-	if s.knPEPEnabled() {
-		objectTypes, err = s.filterAuthorizedObjectTypes(ctx, req.KnID, objectTypes)
-		if err != nil {
-			return nil, err
-		}
-		if len(objectTypes) == 0 {
-			return &interfaces.KnSearchSemanticInstanceResult{
-				Message: infraErr.LocalizedDetail(ctx, "NoSearchableObjectTypes"),
-			}, nil
-		}
+	objectTypes, err = s.filterAuthorizedObjectTypes(ctx, req.KnID, objectTypes)
+	if err != nil {
+		return nil, err
+	}
+	if len(objectTypes) == 0 {
+		return &interfaces.KnSearchSemanticInstanceResult{
+			Message: infraErr.LocalizedDetail(ctx, "NoSearchableObjectTypes"),
+		}, nil
 	}
 
 	instanceConfig := config.SemanticInstanceRetrieval
@@ -169,7 +167,7 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	}
 	wg.Wait()
 	for _, queryErr := range perTypeErrs {
-		if s.knPEPEnabled() && queryErr != nil && isAuthorizationError(queryErr) {
+		if queryErr != nil && isAuthorizationError(queryErr) {
 			return nil, queryErr
 		}
 	}
@@ -461,7 +459,7 @@ func (s *localSearchImpl) retrieveInstancesFused(
 	live := make([]channelOutcome, 0, len(outcomes))
 	for _, o := range outcomes {
 		if o.err != nil {
-			if s.knPEPEnabled() && isAuthorizationError(o.err) {
+			if isAuthorizationError(o.err) {
 				return nil, o.err
 			}
 			// Failure of a single channel does not destroy the entire object type. Knn returns 400 when hitting a field without vector mapping.
@@ -533,10 +531,7 @@ func (s *localSearchImpl) fetchChannel(
 		return channelOutcome{name: ch.name, err: fmt.Errorf("query instances failed: %w", err)}
 	}
 	if resp == nil {
-		if s.knPEPEnabled() {
-			return channelOutcome{name: ch.name, err: protectedDependencyUnavailable(ctx, "ontology-query")}
-		}
-		return channelOutcome{name: ch.name, err: fmt.Errorf("ontology-query returned an empty response")}
+		return channelOutcome{name: ch.name, err: protectedDependencyUnavailable(ctx, "ontology-query")}
 	}
 
 	out := channelOutcome{name: ch.name, nodes: make([]*interfaces.KnSearchNode, 0, len(resp.Data))}
@@ -628,10 +623,7 @@ func (s *localSearchImpl) retrieveInstancesSingleQuery(
 		return nil, fmt.Errorf("query instances failed: %w", err)
 	}
 	if resp == nil {
-		if s.knPEPEnabled() {
-			return nil, protectedDependencyUnavailable(ctx, "ontology-query")
-		}
-		return nil, fmt.Errorf("ontology-query returned an empty response")
+		return nil, protectedDependencyUnavailable(ctx, "ontology-query")
 	}
 
 	// Convert to KnSearchNode format.

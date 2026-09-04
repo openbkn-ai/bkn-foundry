@@ -729,6 +729,9 @@ paths:
         在沙箱里跑技能包里的一条命令。技能包被上传到沙箱工作目录，然后执行
         `entry_shell` 指定的命令。
 
+        当前主体必须对具体 `skill:{skill_id}` 持有 `execute`。请求体不能替换
+        OAuth/AppKey 或受信任内部上下文产生的执行主体。
+
         **`mocked` 字段要看**：为 `true` 表示这次并没有真的在沙箱里执行
         （沙箱不可用等原因下的降级），返回的 stdout/stderr 不是真实结果。
 
@@ -762,6 +765,12 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 当前主体缺少 Skill execute 权限，或权限判定失败
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':

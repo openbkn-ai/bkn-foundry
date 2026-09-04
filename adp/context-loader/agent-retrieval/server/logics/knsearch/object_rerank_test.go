@@ -163,7 +163,7 @@ func TestMetaWordQueryWithoutRerankStillPicksTheDecoy(t *testing.T) {
 // Coarse scoring failing no longer costs object relevance: the reranker is a second, independent
 // source of it. Only losing both drops to the endpoint-first order asserted by
 // TestObjectScoringDegradesWhenBackendFails.
-func TestObjectRelevanceSurvivesCoarseFailure(t *testing.T) {
+func TestObjectRelevanceFailsClosedOnConceptBackendFailure(t *testing.T) {
 	net := buildEndpointsLastNetwork()
 	svc := &localSearchImpl{
 		logger: &mockLogger{},
@@ -190,20 +190,8 @@ func TestObjectRelevanceSurvivesCoarseFailure(t *testing.T) {
 	cfg.TopK = 5
 
 	req := &interfaces.KnSearchLocalRequest{KnID: "kn_endpoints_last", Query: "对象_0", EnableRerank: true}
-	res, err := svc.conceptRetrieval(context.Background(), req, cfg)
-	if err != nil {
-		t.Fatalf("expected graceful degradation, got error: %v", err)
-	}
-	if len(res.ObjectTypes) == 0 {
-		t.Fatalf("expected object types, got none")
-	}
-	// obj_0 hangs off no relation in this fixture, so ranking it first can only come from relevance.
-	if res.ObjectTypes[0].ConceptID != "obj_0" {
-		got := make([]string, 0, len(res.ObjectTypes))
-		for _, o := range res.ObjectTypes {
-			got = append(got, o.ConceptID)
-		}
-		t.Errorf("expected obj_0 first on reranker-only relevance, got %v", got)
+	if res, err := svc.conceptRetrieval(context.Background(), req, cfg); err == nil || res != nil {
+		t.Fatalf("conceptRetrieval() = %#v, %v; want protected backend failure", res, err)
 	}
 }
 

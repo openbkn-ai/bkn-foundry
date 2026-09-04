@@ -24,7 +24,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/kntools"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/mcpproxy"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	logicsSkills "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knskills"
 )
@@ -42,12 +41,10 @@ type restPrivateHandler struct {
 	KnToolsHandler                 kntools.KnToolsHandler
 	Logger                         interfaces.Logger
 	LifecycleClient                *bkntrace.LifecycleClient
-	KNPEPEnabled                   bool
 }
 
 // NewRestPrivateHandler createrestHandlerinstance.
 func NewRestPrivateHandler(logger interfaces.Logger) interfaces.HTTPRouterInterface {
-	conf := config.NewConfigLoader()
 	return &restPrivateHandler{
 		KnLogicPropertyResolverHandler: knlogicpropertyresolver.NewKnLogicPropertyResolverHandler(),
 		KnActionRecallHandler:          knactionrecall.NewKnActionRecallHandler(),
@@ -61,14 +58,13 @@ func NewRestPrivateHandler(logger interfaces.Logger) interfaces.HTTPRouterInterf
 		KnToolsHandler:                 kntools.NewKnToolsHandler(),
 		Logger:                         logger,
 		LifecycleClient:                bkntrace.NewLifecycleClientFromEnv(),
-		KNPEPEnabled:                   conf.Auth.ContextLoaderKNPEPEnabled,
 	}
 }
 
 // RegisterRouter registers routes.
 func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	mws := []gin.HandlerFunc{}
-	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, sharedrest.LanguageMiddleware(), sharedrest.PrivateNoCacheMiddleware(), middlewareHeaderAuthContextWithMode(r.KNPEPEnabled), middlewareResponseFormat(), middlewareLifecycle(r.LifecycleClient))
+	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, sharedrest.LanguageMiddleware(), sharedrest.PrivateNoCacheMiddleware(), middlewareHeaderAuthContext(), middlewareResponseFormat(), middlewareLifecycle(r.LifecycleClient))
 	engine.Use(mws...)
 
 	engine.POST("/kn/logic-property-resolver", r.KnLogicPropertyResolverHandler.ResolveLogicProperties)

@@ -1,88 +1,97 @@
-# Context Loader API 文档
+# Context Loader API Documentation
 
-> Context Loader（服务名 `agent-retrieval`）HTTP API 的 OpenAPI 3.0.3 定义。
-> 这是 Agent 拿业务上下文的统一入口：Schema 探索、实例检索、逻辑属性求值、行动召回与执行、Skill 召回、数据层直查，外加一套等价的 MCP 工具。
+> OpenAPI 3.0.3 definitions for the Context Loader HTTP API, whose service name
+> is `agent-retrieval`. This is the unified entry point for agents to obtain
+> business context: schema exploration, instance retrieval, logical-property
+> evaluation, action retrieval and execution, Skill retrieval, direct data
+> access, and an equivalent MCP tool surface.
 
-## 文件索引
+## File index
 
-| 文件 | 主题 | 包含的端点（`/api/agent-retrieval/v1` 下） |
+| File | Topic | Endpoints under `/api/agent-retrieval/v1` |
 |---|---|---|
-| [schema-search.yaml](schema-search.yaml) | Schema 检索 | `POST /kn/search_schema`、`POST /kn/kn_search` |
-| [kn-explore.yaml](kn-explore.yaml) | 知识网络浏览 | `POST /kn/list_knowledge_networks`、`POST /kn/get_kn_detail`、`POST /kn/get_object_types`、`POST /kn/get_relation_types` |
-| [object-instance.yaml](object-instance.yaml) | 对象实例查询 | `POST /kn/query_object_instance` |
-| [instance-subgraph.yaml](instance-subgraph.yaml) | 实例子图查询 | `POST /kn/query_instance_subgraph` |
-| [logic-property.yaml](logic-property.yaml) | 逻辑属性求值与指标取数 | `POST /kn/logic-property-resolver`、`POST /kn/query_metric` |
-| [action.yaml](action.yaml) | 行动召回与执行 | `POST /kn/get_action_info`、`POST /kn/execute_action`、`POST /kn/get_action_execution`、`POST /kn/list_action_executions` |
-| [skill.yaml](skill.yaml) | Skill 召回与读取 | `POST /kn/find_skills`、`POST /kn/list_skills`、`POST /kn/get_skill_content`、`POST /kn/read_skill_file`、`POST /kn/execute_skill` |
-| [tool.yaml](tool.yaml) | 已发布工具的检索与调用 | `POST /kn/search_tools`、`POST /kn/execute_tool` |
-| [data-access.yaml](data-access.yaml) | 数据层直查 | `POST /kn/list_resources`、`POST /kn/describe_resource`、`POST /kn/run_sql` |
-| [mcp.yaml](mcp.yaml) | MCP 服务 | `GET /mcp/info`、`POST /mcp` |
+| [schema-search.yaml](schema-search.yaml) | Schema retrieval | `POST /kn/search_schema`, `POST /kn/kn_search` |
+| [kn-explore.yaml](kn-explore.yaml) | Knowledge-network exploration | `POST /kn/list_knowledge_networks`, `POST /kn/get_kn_detail`, `POST /kn/get_object_types`, `POST /kn/get_relation_types` |
+| [object-instance.yaml](object-instance.yaml) | Object-instance queries | `POST /kn/query_object_instance` |
+| [instance-subgraph.yaml](instance-subgraph.yaml) | Instance-subgraph queries | `POST /kn/query_instance_subgraph` |
+| [logic-property.yaml](logic-property.yaml) | Logical-property evaluation and metric queries | `POST /kn/logic-property-resolver`, `POST /kn/query_metric` |
+| [action.yaml](action.yaml) | Action retrieval and execution | `POST /kn/get_action_info`, `POST /kn/execute_action`, `POST /kn/get_action_execution`, `POST /kn/list_action_executions` |
+| [skill.yaml](skill.yaml) | Skill retrieval and reading | `POST /kn/find_skills`, `POST /kn/list_skills`, `POST /kn/get_skill_content`, `POST /kn/read_skill_file`, `POST /kn/execute_skill` |
+| [tool.yaml](tool.yaml) | Published-tool retrieval and execution | `POST /kn/search_tools`, `POST /kn/execute_tool` |
+| [data-access.yaml](data-access.yaml) | Direct data access | `POST /kn/list_resources`, `POST /kn/describe_resource`, `POST /kn/run_sql` |
+| [mcp.yaml](mcp.yaml) | MCP service | `GET /mcp/info`, `POST /mcp` |
 
-## 典型链路
+## Typical flow
 
 ```text
-list_knowledge_networks  → 发现 kn_id
-search_schema            → 一句话找到相关对象类 / 关系类 / 行动类 / 指标类
-get_object_types         → 下钻拿属性的物理列名、可用算子，以及该对象类下的 related_metrics
-query_object_instance    → 取实例，从 _instance_identity 拿主键
-  ├→ logic-property-resolver → 求指标 / 算子类逻辑属性（实例 + 已绑逻辑属性）
-  ├→ get_action_info → execute_action → get_action_execution → 执行闭环
-  ├→ find_skills            → 召回可装载的 Skill
+list_knowledge_networks  → discover kn_id
+search_schema            → find relevant object, relation, action, and metric types
+get_object_types         → inspect physical property columns, allowed operators, and related_metrics
+query_object_instance    → retrieve instances and read the primary key from _instance_identity
+  ├→ logic-property-resolver → evaluate metric or operator logical properties
+  ├→ get_action_info → execute_action → get_action_execution → complete an action flow
+  ├→ find_skills            → retrieve loadable Skills
   │    └→ get_skill_content → read_skill_file → execute_skill
-  └→ search_tools           → 找到已发布函数工具
-       └→ execute_tool      → 以调用者身份执行
+  └→ search_tools           → find published Function tools
+       └→ execute_tool      → run one as the calling principal
 ```
 
-指标取数（OT 优先，已建模指标别用 `run_sql` 重写口径）：
+For modeled metrics, prefer the ontology contract rather than rebuilding the
+definition with `run_sql`:
 
 ```text
-search_schema / get_kn_detail  → 锁定对象类（summary 里 related_metric_count > 0 才有指标）
-get_object_types               → 从 related_metrics 选定指标
-  ├→ logic-property-resolver   → 实例级 + 已绑逻辑属性
-  └→ query_metric              → 类级 / 未绑逻辑属性，按 MetricDefinition 口径算
+search_schema / get_kn_detail  → identify an object type; related_metric_count must be positive
+get_object_types               → select a metric from related_metrics
+  ├→ logic-property-resolver   → instance-level metrics and bound logical properties
+  └→ query_metric              → type-level metrics or unbound logical properties, using MetricDefinition
 ```
 
-Skill 面另有一条不依赖知识网络的入口：`list_skills` 直接翻已发布 Skill 列表，
-再走同样的 `get_skill_content` → `read_skill_file` → `execute_skill`。
+The Skill surface also has a knowledge-network-independent entry point:
+`list_skills` lists published Skills directly, followed by the same
+`get_skill_content` → `read_skill_file` → `execute_skill` flow.
 
-绕开本体直查数据：`list_resources` → `describe_resource` → `run_sql`。
+To bypass the ontology and access data directly, use
+`list_resources` → `describe_resource` → `run_sql`.
 
-## 约定
+## Conventions
 
-- **OpenAPI 版本**：3.0.3。
-- **认证**：`Authorization: Bearer <token>`，凭据二选一——OAuth access token，或用户自助签发的 AppKey（`bak_` 前缀）。账户身份由服务端从凭据解析，调用方**不需要**传 `x-account-id` / `x-account-type`。
-- **全部是 POST**：包括语义上的「查询」类端点；无请求体的（如 `list_knowledge_networks`）也走 POST。
-- **响应格式**：所有端点支持 `?response_format=toon`，返回 `application/toon`——同构数组压成表格，比 JSON 省 token；默认 `json`。
-- **错误信封**：本服务**不用** `comm-go/rest.BaseError`，字段是 `code` / `description` / `solution` / `link` / `details`，引 [`_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval`](../_shared/errors.yaml)。**下游报错时原样透传下游响应体**，此时字段名是下游的（通常 `error_code` / `error_details`）；看 `code` 前缀判断来源，`Public.*` 与 `agentRetrieval.*` 是本服务产生的。
-- **内部接口**：每个端点都有对应的 `/api/agent-retrieval/in/v1/...` 版本，请求 / 响应结构一致，区别只在鉴权（外部走 Token，内部从 `X-Account-ID` / `X-Account-Type` 头取访问者）。内部面另有三个不对外的端点：`POST /kn/full_build_ontology`、`GET /kn/full_ontology_building_status`、`POST /mcp/proxy/{mcp_id}/tools/{tool_name}/call`。**本文档仅描述外部接口**，内部路由以 `driveradapters/rest_private_handler.go` 实际注册的为准。
-- **实例标识不可自拼**：需要 `_instance_identities` 的接口，取值一律来自 `query_object_instance` 或 `query_instance_subgraph` 结果里的 `_instance_identity`，两条链路同名同义。
-- **算子白名单看对象类**：条件里能用哪些算子以对象类的 `condition_operations` 为准（`get_object_types` 返回）。该声明是建网时客户端写入并原样落库的，未经服务端校验，最终判定在下游 ontology-query。
+- **OpenAPI version:** 3.0.3.
+- **Authentication:** `Authorization: Bearer <token>` with either an OAuth access token or a self-issued AppKey with the `bak_` prefix. The service derives the account from the credential; callers do not send `x-account-id` or `x-account-type`.
+- **All operations use POST:** This includes query-like operations and operations without a request body, such as `list_knowledge_networks`.
+- **Response format:** Every operation accepts `?response_format=toon` and returns `application/toon`, which represents homogeneous arrays as tables to reduce token usage. The default is `json`.
+- **Error envelope:** This service does not use `comm-go/rest.BaseError`. It uses `code`, `description`, `solution`, `link`, and `details`, as defined by [`ErrorAgentRetrieval`](../_shared/errors.yaml). Downstream error bodies are passed through unchanged and commonly use `error_code` and `error_details`. Locally generated codes start with `Public.*` or `agentRetrieval.*`.
+- **Internal APIs:** Every operation has a corresponding `/api/agent-retrieval/in/v1/...` route with the same request and response structure. External routes use a token; internal routes derive the visitor from `X-Account-ID` and `X-Account-Type`. Three internal-only operations also exist: `POST /kn/full_build_ontology`, `GET /kn/full_ontology_building_status`, and `POST /mcp/proxy/{mcp_id}/tools/{tool_name}/call`. This documentation covers only external APIs; `driveradapters/rest_private_handler.go` is authoritative for internal routing.
+- **Do not construct instance identities:** Values required by `_instance_identities` must come from `_instance_identity` in `query_object_instance` or `query_instance_subgraph` results.
+- **Object types define allowed operators:** Use the object type's `condition_operations`, returned by `get_object_types`. The client supplies this declaration when modeling the network and it is stored without server-side validation; ontology-query makes the final decision.
 
-## 契约巡检覆盖
+## Contract inspection coverage
 
-本模块的端点全是 POST，工具默认只发 GET 覆盖不到，因此在只读端点上标了
-`x-contract-probe`（机制见 [`tools/README.md`](../tools/README.md)）。跑法：
+All operations in this module use POST, while the inspection tool sends GET by
+default. Read-only operations therefore use `x-contract-probe`; see
+[tools/README.md](../tools/README.md).
 
 ```bash
 make api-contract-diff CONTRACT_FACE=ex CONTRACT_SSH=root@<host> \
      CONTRACT_ARGS="--include-probe-post --token $TOKEN"
 ```
 
-25 个操作里 **16 个在探测范围内**，其余 9 个不探测，原因如下——它们的响应结构
-**未经实机验证**，改动时请人工核对：
+Sixteen of the 25 operations are probed. The remaining operations require
+manual review because their response structures have not been verified against
+a running environment:
 
-| 端点 | 不探测的原因 |
+| Endpoint | Why it is not probed |
 |---|---|
-| `execute_action` | **有副作用**，会真的触发行动执行 |
-| `logic-property-resolver` | 同上，且需要真实实例标识才能求值 |
-| `query_metric` | 需要环境里存在已建模指标，`metric_id` 无法自动合成 |
-| `run_sql` | 需要针对具体资源构造有意义的 SQL，无法自动合成 |
-| `POST /mcp` | JSON-RPC 会话语义，不是普通请求 / 响应结构 |
-| `execute_skill` | **有副作用**，会在沙箱内真的执行命令 |
-| `get_skill_content` | 需要环境里存在已发布 Skill 的真实 `skill_id` |
-| `read_skill_file` | 同上，且还需要包内一个真实存在的 `rel_path` |
+| `execute_action` | Has side effects and starts a real action execution |
+| `logic-property-resolver` | Has side effects and requires a real instance identity |
+| `query_metric` | Requires a modeled metric whose `metric_id` cannot be synthesized |
+| `run_sql` | Requires meaningful SQL for a concrete resource |
+| `POST /mcp` | Uses JSON-RPC session semantics rather than an ordinary request/response contract |
+| `execute_skill` | Has side effects and executes a command in the sandbox |
+| `get_skill_content` | Requires the `skill_id` of a published Skill |
+| `read_skill_file` | Also requires an existing `rel_path` inside the Skill package |
 
-探测范围内的 16 个中，`get_action_info`、`get_action_execution`、`find_skills`
-依赖环境里存在行动类 / 执行记录 / `skills` 对象类，数据不具备时报告会列为
-「缺少探测参数」或 404，同样按未验证处理。`list_skills` 在没有已发布 Skill 时
-返回空列表加 `message`，属正常 200。
+Among the 16 probed operations, `get_action_info`, `get_action_execution`, and
+`find_skills` require action types, execution records, or a `skills` object type
+in the environment. Without them, the report marks the operation as missing
+probe parameters or returns 404, so it remains unverified. `list_skills`
+normally returns an empty list plus `message` when no Skill is published.

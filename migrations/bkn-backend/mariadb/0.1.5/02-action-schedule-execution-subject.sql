@@ -2,8 +2,7 @@
 --
 -- Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
--- Add the current execution subject used by Schedule triggers. Apply this
--- migration before enabling ACTION_EXECUTION_PEP_ENABLED.
+-- Add the current execution subject used to authorize Schedule triggers.
 ALTER TABLE t_action_schedule
   ADD COLUMN IF NOT EXISTS f_execution_subject VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Current execution subject ID' AFTER f_update_time,
   ADD COLUMN IF NOT EXISTS f_execution_subject_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'Current execution subject type' AFTER f_execution_subject;
@@ -16,7 +15,7 @@ SET f_execution_subject = f_creator,
     f_execution_subject_type = f_creator_type
 WHERE f_execution_subject = '' OR f_execution_subject_type = '';
 
--- Rollback after disabling ACTION_EXECUTION_PEP_ENABLED:
+-- Rollback:
 -- ALTER TABLE t_action_schedule
 --   DROP COLUMN IF EXISTS f_execution_subject_type,
 --   DROP COLUMN IF EXISTS f_execution_subject;

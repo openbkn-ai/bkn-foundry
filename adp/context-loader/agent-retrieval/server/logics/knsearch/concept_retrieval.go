@@ -23,15 +23,8 @@ const objectTypeRelationMultiplier = 2
 
 // conceptRetrieval concept recall main logic.
 //
-// Routing strategy:
-// - When config.ConceptGroups is not empty or the KN PEP rollout is enabled, use
-// conceptRetrievalByGroups: call BKN directly.
-// of SearchObjectTypes/SearchRelationTypes/SearchActionTypes, grouped by BKN in.
-// Complete the recall within the scope, skipping the local full GetKnowledgeNetworkDetail and local filtering.
-// - When config.ConceptGroups is empty, follow the historical path: pull all network details -> optional rough call.
-// Back -> Relationship sorting -> Object selection -> Attribute clipping.
-//
-// The reason for this split: BKN concept_group uses the object_type collection as its boundary.
+// The typed BKN search APIs are the source of truth for concept recall. BKN
+// concept_group uses the object_type collection as its boundary.
 // The grouping range of relation_type/action_type is derived by BKN by object boundaries. ContextLoader.
 // Instead of duplicating this grouping derivation logic, use BKN typed search as the source of truth.
 func (s *localSearchImpl) conceptRetrieval(
@@ -40,87 +33,15 @@ func (s *localSearchImpl) conceptRetrieval(
 	config *interfaces.KnSearchConceptRetrievalConfig,
 ) (*interfaces.KnSearchConceptResult, error) {
 	var err error
-	var unmatchedObjectTypes []string
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
-	defer oteltrace.EndSpan(ctx, err)
+	defer func() { oteltrace.EndSpan(ctx, err) }()
 
-	if s.knPEPEnabled() || len(config.ConceptGroups) > 0 {
-		return s.conceptRetrievalByGroups(ctx, req, config)
-	}
-
-	networkDetail, err := s.bknBackend.GetKnowledgeNetworkDetail(ctx, req.KnID)
-	if err != nil {
-		s.logger.WithContext(ctx).Errorf("[ConceptRetrieval] GetKnowledgeNetworkDetail failed: %v", err)
-		return nil, err
-	}
-
-	s.logger.WithContext(ctx).Debugf("[ConceptRetrieval] Network detail: object_types=%d, relation_types=%d, action_types=%d",
-		len(networkDetail.ObjectTypes), len(networkDetail.RelationTypes), len(networkDetail.ActionTypes))
-
-	// Apply the caller's object type scope here, on the raw candidate pool: everything below
-	// (scoring, relation ranking, the TopK cut) must only ever see object types that are in
-	// scope, or a pinned object type ranking below TopK would be cut before the filter runs.
-	scope := newObjectTypeScope(config.ObjectTypes, config.ExcludeObjectTypes)
-	networkDetail.ObjectTypes, unmatchedObjectTypes = scope.apply(networkDetail.ObjectTypes)
-	networkDetail.RelationTypes, networkDetail.ActionTypes = scope.applyToConcepts(
-		networkDetail.ObjectTypes, networkDetail.RelationTypes, networkDetail.ActionTypes)
-	s.logScopeOutcome(ctx, "", scope, networkDetail.ObjectTypes, unmatchedObjectTypes)
-
-	// 2. Rough recall (optional, for large-scale knowledge networks)
-	coarseScored := false
-	if boolValue(config.EnableCoarseRecall) && len(networkDetail.RelationTypes) >= config.CoarseMinRelationCount {
-		s.logger.WithContext(ctx).Infof("[ConceptRetrieval] Enable coarse recall, relation_count=%d >= threshold=%d",
-			len(networkDetail.RelationTypes), config.CoarseMinRelationCount)
-		networkDetail, err = s.coarseRecall(ctx, req.KnID, req.Query, networkDetail, config)
-		if err != nil {
-			s.logger.WithContext(ctx).Warnf("[ConceptRetrieval] Coarse recall failed, continue with full schema: %v", err)
-			// Failure of rough recall will not affect subsequent processes, and the complete Schema will continue to be used.
-		} else {
-			coarseScored = true
-		}
-	}
-
-	// 3. Coarse object type scoring (BM25 + kNN). Coarse recall only fires on very large networks
-	// (relation count >= CoarseMinRelationCount) and most real networks never reach it, so without
-	// this channel object types carry no query signal at all and can only be brought out passively
-	// by a relation endpoint. It is also the first stage of the two-stage object ranking: it decides
-	// which object types are worth handing to the reranker in step 4.
-	if !coarseScored {
-		s.scoreObjectTypes(ctx, req.KnID, req.Query, networkDetail.ObjectTypes, config)
-	}
-
-	// 4. Rank relation types and score object types against the query, in one rerank call.
-	rankedRelations := s.rankConcepts(ctx, req.Query, networkDetail.ObjectTypes, networkDetail.RelationTypes,
-		config.TopK, req.EnableRerank, req.RerankModel, config.ObjectRerankCandidateLimit)
-	s.logger.WithContext(ctx).Debugf("[ConceptRetrieval] Ranked relations: %d -> top_k=%d", len(networkDetail.RelationTypes), len(rankedRelations))
-
-	// 5. Object type selection: Sort by self-relevance, relationship endpoints are incorporated as schema self-consistent constraints.
-	selectedObjects := s.selectObjectTypesForConceptRetrieval(networkDetail.ObjectTypes, rankedRelations, config.TopK)
-	s.logger.WithContext(ctx).Debugf("[ConceptRetrieval] Selected objects: %d", len(selectedObjects))
-
-	// 5. Convert to local response structure (consistent with Python schema_brief semantics)
-	brief := boolValue(config.SchemaBrief)
-	objectTypesLocal := s.convertObjectTypesToLocal(selectedObjects, brief, req.IncludeColumns)
-	relationTypesLocal := s.convertRelationTypesToLocal(rankedRelations, brief)
-	actionTypesLocal := s.convertActionTypesToLocal(networkDetail.ActionTypes, networkDetail.ID, networkDetail.ObjectTypes)
-
-	// 7. Get sample data (optional)
-	if boolValue(config.IncludeSampleData) && len(objectTypesLocal) > 0 {
-		if err := s.fetchAuthorizedSampleData(ctx, req.KnID, objectTypesLocal, boolValue(config.SchemaBrief)); err != nil {
-			return nil, err
-		}
-	}
-
-	return &interfaces.KnSearchConceptResult{
-		ObjectTypes:          objectTypesLocal,
-		RelationTypes:        relationTypesLocal,
-		ActionTypes:          actionTypesLocal,
-		UnmatchedObjectTypes: unmatchedObjectTypes,
-	}, nil
+	result, err := s.conceptRetrievalByGroups(ctx, req, config)
+	return result, err
 }
 
 // conceptRetrievalByGroups is the typed BKN concept recall path used by
-// concept-group searches and by the KN PEP rollout.
+// concept-group and unrestricted searches.
 //
 // Design points:
 // - Directly call BKN's typed search API (SearchObjectTypes / SearchRelationTypes /.
@@ -168,7 +89,7 @@ func (s *localSearchImpl) conceptRetrievalByGroups(
 		s.logger.WithContext(ctx).Errorf("[ConceptRetrieval][Groups] SearchActionTypes failed: %v", err)
 		return nil, err
 	}
-	if s.knPEPEnabled() && (objectResp == nil || relationResp == nil || actionResp == nil) {
+	if objectResp == nil || relationResp == nil || actionResp == nil {
 		return nil, protectedDependencyUnavailable(ctx, "BKN typed concept search")
 	}
 
@@ -292,22 +213,13 @@ func (s *localSearchImpl) completeReferencedObjectTypes(
 	returned := make(map[string]struct{}, len(enriched))
 	for _, obj := range enriched {
 		if obj == nil || obj.ID == "" {
-			if s.knPEPEnabled() {
-				return nil, protectedDependencyUnavailable(ctx, "BKN object type detail")
-			}
-			continue
+			return nil, protectedDependencyUnavailable(ctx, "BKN object type detail")
 		}
 		if _, requested := missingSeen[obj.ID]; !requested {
-			if s.knPEPEnabled() {
-				return nil, protectedDependencyUnavailable(ctx, "BKN object type detail")
-			}
-			continue
+			return nil, protectedDependencyUnavailable(ctx, "BKN object type detail")
 		}
 		if _, duplicate := returned[obj.ID]; duplicate {
-			if s.knPEPEnabled() {
-				return nil, protectedDependencyUnavailable(ctx, "BKN object type detail")
-			}
-			continue
+			return nil, protectedDependencyUnavailable(ctx, "BKN object type detail")
 		}
 		returned[obj.ID] = struct{}{}
 		if _, ok := known[obj.ID]; ok {
@@ -316,7 +228,7 @@ func (s *localSearchImpl) completeReferencedObjectTypes(
 		known[obj.ID] = struct{}{}
 		out = append(out, obj)
 	}
-	if s.knPEPEnabled() && len(returned) != len(missingIDs) {
+	if len(returned) != len(missingIDs) {
 		return nil, protectedDependencyUnavailable(ctx, "BKN object type detail")
 	}
 
@@ -1152,16 +1064,13 @@ func (s *localSearchImpl) fetchSampleData(ctx context.Context, knID string,
 		resp, err := s.ontologyQuery.QueryObjectInstances(ctx, req)
 		if err != nil {
 			s.logger.WithContext(ctx).Warnf("[FetchSampleData] Failed to fetch sample for %s: %v", obj.ConceptID, err)
-			if s.knPEPEnabled() && isAuthorizationError(err) {
+			if isAuthorizationError(err) {
 				return err
 			}
 			continue
 		}
 		if resp == nil {
-			if s.knPEPEnabled() {
-				return protectedDependencyUnavailable(ctx, "ontology-query")
-			}
-			continue
+			return protectedDependencyUnavailable(ctx, "ontology-query")
 		}
 
 		if len(resp.Data) > 0 {

@@ -7,6 +7,11 @@ info:
   description: |
     Modeling CRUD for BKN native metrics: create, list, validate, update, and delete.
 
+    Metrics use `metric:{kn_id}/{metric_id}`. Reads and lists require
+    `view_detail`; metric data requires `query_data`; updates and deletes use
+    `modify` and `delete`. Lists and searches are filtered before total and
+    pagination. See `../knowledge-network-authorization.md`.
+
     ## Supported matrix (current implementation)
 
     | Capability | Status | Notes |
@@ -30,6 +35,8 @@ info:
     Consult ontology-query for condition merge semantics and the relationship between analysis_dimensions and group_by.
 
     Product note: object instance execution targets logical properties. Object-type aggregate metrics must use metric data or dry-run rather than the instance execution entry point.
+security:
+  - OAuth2: []
 paths:
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/metrics:
     get:
@@ -332,6 +339,9 @@ paths:
           description: ok
 
 components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
   schemas:
     MetricUnitType:
       type: string

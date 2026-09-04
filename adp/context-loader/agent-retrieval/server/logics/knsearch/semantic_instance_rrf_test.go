@@ -107,7 +107,7 @@ func TestFusedRetrieval_VectorHitsSurviveBM25Flood(t *testing.T) {
 			return rowsToResp(bm25Flood()), nil
 		},
 	}
-	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery}
+	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery, authorizer: allowAllQueryCandidateAuthorizer{}}
 	config := DefaultSemanticInstanceRetrievalConfig()
 	objType := rrfTestObjectType()
 
@@ -132,7 +132,7 @@ func TestFusedRetrieval_VectorHitsSurviveBM25Flood(t *testing.T) {
 func TestSingleQueryRetrieval_VectorHitsLostToBM25(t *testing.T) {
 	merged := append(bm25Flood(), vectorHits()...) // Single query returns in descending order by _score, with all BM25 rows at the front.
 	mockQuery := &mockOntologyQuery{instancesResp: rowsToResp(merged)}
-	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery}
+	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery, authorizer: allowAllQueryCandidateAuthorizer{}}
 	config := DefaultSemanticInstanceRetrievalConfig()
 	config.EnableRRFFusion = boolPtr(false)
 
@@ -245,7 +245,7 @@ func TestFusedRetrieval_KnnChannelFailureIsolated(t *testing.T) {
 			return rowsToResp([]map[string]any{instanceRow("m1", 12.0), instanceRow("m2", 11.0)}), nil
 		},
 	}
-	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery}
+	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery, authorizer: allowAllQueryCandidateAuthorizer{}}
 
 	nodes, err := svc.retrieveInstancesForObjectType(context.Background(),
 		&interfaces.KnSearchLocalRequest{KnID: "129", Query: "test"},
@@ -261,7 +261,7 @@ func TestFusedRetrieval_KnnChannelFailureIsolated(t *testing.T) {
 // Only when both paths fail will an error be reported upward, and the caller will skip the object type.
 func TestFusedRetrieval_AllChannelsFailReturnsError(t *testing.T) {
 	mockQuery := &mockOntologyQuery{instancesError: errors.New("downstream down")}
-	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery}
+	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery, authorizer: allowAllQueryCandidateAuthorizer{}}
 
 	_, err := svc.retrieveInstancesForObjectType(context.Background(),
 		&interfaces.KnSearchLocalRequest{KnID: "129", Query: "test"},
@@ -285,7 +285,7 @@ func TestFusedRetrieval_UnscoredRowsUseLocalScoring(t *testing.T) {
 			}), nil
 		},
 	}
-	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery}
+	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery, authorizer: allowAllQueryCandidateAuthorizer{}}
 	config := DefaultSemanticInstanceRetrievalConfig()
 
 	nodes, err := svc.retrieveInstancesForObjectType(context.Background(),

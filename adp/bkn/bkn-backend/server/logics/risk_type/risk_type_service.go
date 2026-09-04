@@ -107,16 +107,6 @@ func (rts *riskTypeService) CreateRiskTypes(ctx context.Context, tx *sql.Tx, ris
 		}
 	}()
 
-	if !permission.KNImportPermissionPrechecked(ctx) && !permission.KNChildResourcePEPEnabled() {
-		err = rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
-			Type: interfaces.RESOURCE_TYPE_KN,
-			ID:   riskTypes[0].KNID,
-		}, []string{interfaces.OPERATION_TYPE_MODIFY})
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	currentTime := time.Now().UnixMilli()
 	for _, rt := range riskTypes {
 		rt.RTID, err = permission.PrepareKNChildResourceID(ctx, rt.RTID)
@@ -163,7 +153,7 @@ func (rts *riskTypeService) CreateRiskTypes(ctx context.Context, tx *sql.Tx, ris
 	if err != nil {
 		return nil, err
 	}
-	if !permission.KNImportPermissionPrechecked(ctx) && permission.KNChildResourcePEPEnabled() {
+	if !permission.KNImportPermissionPrechecked(ctx) {
 		if len(createList) > 0 {
 			if err = rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
 				Type: interfaces.RESOURCE_TYPE_KN,
@@ -178,7 +168,7 @@ func (rts *riskTypeService) CreateRiskTypes(ctx context.Context, tx *sql.Tx, ris
 		}
 		if err = permission.CheckKNChildBatchPermission(ctx, rts.ps,
 			interfaces.RESOURCE_TYPE_RISK_TYPE, riskTypes[0].KNID, updateIDs,
-			interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_MODIFY); err != nil {
+			interfaces.OPERATION_TYPE_MODIFY); err != nil {
 			return nil, err
 		}
 	}
@@ -310,14 +300,6 @@ func (rts *riskTypeService) handleImportMode(ctx context.Context, mode string, r
 func (rts *riskTypeService) ListRiskTypes(ctx context.Context, query interfaces.RiskTypesQueryParams) ([]*interfaces.RiskType, int, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ListRiskTypes")
 	defer span.End()
-	if !permission.KNChildResourcePEPEnabled() {
-		if err := rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
-			Type: interfaces.RESOURCE_TYPE_KN,
-			ID:   query.KNID,
-		}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
-			return nil, 0, err
-		}
-	}
 	candidateQuery := query
 	candidateQuery.Offset = 0
 	candidateQuery.Limit = -1
@@ -357,7 +339,7 @@ func (rts *riskTypeService) GetRiskTypesByIDs(ctx context.Context, knID string, 
 	defer span.End()
 
 	rtIDs = common.DuplicateSlice(rtIDs)
-	if err := permission.ValidateKNChildPEPAuthorizationIDs(ctx, knID, rtIDs); err != nil {
+	if err := permission.ValidateKNChildAuthorizationIDs(ctx, knID, rtIDs); err != nil {
 		return nil, err
 	}
 	list, err := rts.rta.GetRiskTypesByIDs(ctx, knID, branch, rtIDs)
@@ -370,19 +352,12 @@ func (rts *riskTypeService) GetRiskTypesByIDs(ctx context.Context, knID string, 
 		if len(list) != 1 {
 			return nil, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RiskType_RiskTypeNotFound)
 		}
-		if permission.KNChildResourcePEPEnabled() {
-			operations, err := permission.GetKNChildOperations(ctx, rts.ps,
-				interfaces.RESOURCE_TYPE_RISK_TYPE, knID, rtIDs[0])
-			if err != nil {
-				return nil, err
-			}
-			list[0].Operations = operations
-		} else if err = rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
-			Type: interfaces.RESOURCE_TYPE_KN,
-			ID:   knID,
-		}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
+		operations, err := permission.GetKNChildOperations(ctx, rts.ps,
+			interfaces.RESOURCE_TYPE_RISK_TYPE, knID, rtIDs[0])
+		if err != nil {
 			return nil, err
 		}
+		list[0].Operations = operations
 	}
 	span.SetStatus(codes.Ok, "")
 	return list, nil
@@ -392,7 +367,7 @@ func (rts *riskTypeService) UpdateRiskType(ctx context.Context, tx *sql.Tx, risk
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "UpdateRiskType")
 	defer span.End()
 
-	if err := permission.ValidateKNChildPEPAuthorizationIDs(ctx, riskType.KNID, []string{riskType.RTID}); err != nil {
+	if err := permission.ValidateKNChildAuthorizationIDs(ctx, riskType.KNID, []string{riskType.RTID}); err != nil {
 		return err
 	}
 	_, exists, err := rts.CheckRiskTypeExistByID(ctx, riskType.KNID, riskType.Branch, riskType.RTID)
@@ -402,9 +377,9 @@ func (rts *riskTypeService) UpdateRiskType(ctx context.Context, tx *sql.Tx, risk
 	if !exists {
 		return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RiskType_RiskTypeNotFound)
 	}
-	resource, operation := permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_RISK_TYPE,
-		riskType.KNID, riskType.RTID, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_MODIFY)
-	err = rts.ps.CheckPermission(ctx, resource, []string{operation})
+	resource := interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_RISK_TYPE,
+		riskType.KNID, riskType.RTID)
+	err = rts.ps.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_MODIFY})
 	if err != nil {
 		return err
 	}
@@ -465,7 +440,7 @@ func (rts *riskTypeService) DeleteRiskTypesByIDs(ctx context.Context, tx *sql.Tx
 	}
 
 	rtIDs = common.DuplicateSlice(rtIDs)
-	if err := permission.ValidateKNChildPEPAuthorizationIDs(ctx, knID, rtIDs); err != nil {
+	if err := permission.ValidateKNChildAuthorizationIDs(ctx, knID, rtIDs); err != nil {
 		return err
 	}
 	if len(rtIDs) == 1 {
@@ -476,25 +451,21 @@ func (rts *riskTypeService) DeleteRiskTypesByIDs(ctx context.Context, tx *sql.Tx
 		if !exists {
 			return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RiskType_RiskTypeNotFound)
 		}
-		resource, operation := permission.ResolveKNChildPermissionTarget(interfaces.RESOURCE_TYPE_RISK_TYPE,
-			knID, rtIDs[0], interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE)
-		if err := rts.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
+		resource := interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_RISK_TYPE, knID, rtIDs[0])
+		if err := rts.ps.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_DELETE}); err != nil {
 			return err
 		}
 	} else {
-		if permission.KNChildResourcePEPEnabled() {
-			riskTypes, queryErr := rts.rta.GetRiskTypesByIDs(ctx, knID, branch, rtIDs)
-			if queryErr != nil {
-				return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_RiskType_InternalError_GetRiskTypesByIDsFailed).WithErrorDetails(queryErr.Error())
-			}
-			if len(riskTypes) != len(rtIDs) {
-				return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RiskType_RiskTypeNotFound)
-			}
+		riskTypes, queryErr := rts.rta.GetRiskTypesByIDs(ctx, knID, branch, rtIDs)
+		if queryErr != nil {
+			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_RiskType_InternalError_GetRiskTypesByIDsFailed).WithErrorDetails(queryErr.Error())
+		}
+		if len(riskTypes) != len(rtIDs) {
+			return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RiskType_RiskTypeNotFound)
 		}
 		if err := permission.CheckKNChildBatchPermission(ctx, rts.ps,
-			interfaces.RESOURCE_TYPE_RISK_TYPE, knID, rtIDs,
-			interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE); err != nil {
+			interfaces.RESOURCE_TYPE_RISK_TYPE, knID, rtIDs, interfaces.OPERATION_TYPE_DELETE); err != nil {
 			return err
 		}
 	}
@@ -624,34 +595,23 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 	response := interfaces.RiskTypes{}
 	var err error
 
-	var visibleIDs []string
-	if !permission.KNChildResourcePEPEnabled() {
-		err = rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
-			Type: interfaces.RESOURCE_TYPE_KN,
-			ID:   query.KNID,
-		}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
-		if err != nil {
-			return response, err
-		}
-	} else {
-		candidates, candidateErr := rts.rta.GetAllRiskTypesByKnID(ctx, query.KNID, query.Branch)
-		if candidateErr != nil {
-			return response, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				berrors.BknBackend_RiskType_InternalError).WithErrorDetails(candidateErr.Error())
-		}
-		candidateIDs := make([]string, 0, len(candidates))
-		for _, candidate := range candidates {
-			candidateIDs = append(candidateIDs, candidate.RTID)
-		}
-		visibleIDs, err = permission.FilterKNChildIDs(ctx, rts.ps,
-			interfaces.RESOURCE_TYPE_RISK_TYPE, query.KNID, candidateIDs,
-			interfaces.OPERATION_TYPE_VIEW_DETAIL)
-		if err != nil {
-			return response, err
-		}
-		if len(visibleIDs) == 0 {
-			return response, nil
-		}
+	candidates, candidateErr := rts.rta.GetAllRiskTypesByKnID(ctx, query.KNID, query.Branch)
+	if candidateErr != nil {
+		return response, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_RiskType_InternalError).WithErrorDetails(candidateErr.Error())
+	}
+	candidateIDs := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		candidateIDs = append(candidateIDs, candidate.RTID)
+	}
+	visibleIDs, err := permission.FilterKNChildIDs(ctx, rts.ps,
+		interfaces.RESOURCE_TYPE_RISK_TYPE, query.KNID, candidateIDs,
+		interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	if err != nil {
+		return response, err
+	}
+	if len(visibleIDs) == 0 {
+		return response, nil
 	}
 
 	var filterCondition map[string]any
@@ -691,9 +651,7 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 				WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil))
 		}
 	}
-	if permission.KNChildResourcePEPEnabled() {
-		filterCondition = permission.RestrictDatasetFilterToIDs(filterCondition, visibleIDs)
-	}
+	filterCondition = permission.RestrictDatasetFilterToIDs(filterCondition, visibleIDs)
 
 	if query.NeedTotal {
 		params := &interfaces.ResourceDataQueryParams{

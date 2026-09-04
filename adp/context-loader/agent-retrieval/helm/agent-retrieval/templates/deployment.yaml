@@ -79,9 +79,7 @@ spec:
             {{- if hasKey .Values "auth" }}
               - name: AUTH_ENABLED
                 value: {{ .Values.auth.enabled | quote }}
-              - name: CONTEXT_LOADER_KN_PEP_ENABLED
-                value: {{ .Values.auth.contextLoaderKnPepEnabled | default false | quote }}
-              - name: CONTEXT_LOADER_KN_PEP_CHUNK_SIZE
+              - name: CONTEXT_LOADER_RESOURCE_FILTER_CHUNK_SIZE
                 value: {{ .Values.auth.resourceFilterChunkSize | default 200 | quote }}
             {{- end}}
               - name: BKN_TRACE_CORE_URL

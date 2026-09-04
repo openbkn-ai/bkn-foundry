@@ -100,7 +100,11 @@ Microservice internal interface calls need to pass authentication parameters in 
 - `x-account-type`: Account type, supports the following types:
 - `user`: user account.
 - `app`: application account.
-- `anonymous`: anonymous access.
+
+These headers are only for trusted internal service-to-service calls. Public
+APIs derive the subject from OAuth or AppKey authentication; request body fields
+and caller-supplied identity headers cannot replace it. A missing, disabled, or
+unknown subject has no execution permission.
 
 ## Usage.
 
@@ -109,6 +113,24 @@ Microservice internal interface calls need to pass authentication parameters in 
 req.Header.Set("x-account-id", "user-123")
 req.Header.Set("x-account-type", "user")
 ```
+
+## Authorization
+
+When `AUTH_ENABLED=true`, `BKN_SAFE_URL` is required. It must be an absolute
+HTTP(S) service URL without credentials, query, fragment, or a non-root path;
+invalid configuration stops the service at startup.
+
+Tool, MCP, operator, and Skill execution checks the authenticated subject's
+`execute` operation on the concrete `tool_box`, `mcp`, `operator`, or `skill`
+resource. A denied or failed decision returns 403 and the target is not invoked.
+Platform identity and trace-control headers are stripped before a tool or MCP
+request leaves the platform, so downstream third parties do not receive the
+OpenBKN account context.
+
+For knowledge-network Action execution, ontology-query also checks the concrete
+Action Type and all referenced data dependencies before execution-factory calls
+the target. See the
+[shared authorization contract](../../../docs/api/knowledge-network-authorization.md).
 
 # Operator operation tool.
 

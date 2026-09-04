@@ -80,10 +80,10 @@ func TestMiddlewareResponseFormat_Invalid(t *testing.T) {
 	})
 }
 
-func TestMiddlewareHeaderAuthContext_LeavesMissingAccountHeadersEmpty(t *testing.T) {
+func TestMiddlewareHeaderAuthContext_RejectsMissingAccountHeaders(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	convey.Convey("middlewareHeaderAuthContext keeps missing account headers empty", t, func() {
+	convey.Convey("middlewareHeaderAuthContext rejects a missing execution subject", t, func() {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Request = httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
@@ -91,18 +91,9 @@ func TestMiddlewareHeaderAuthContext_LeavesMissingAccountHeadersEmpty(t *testing
 		mw := middlewareHeaderAuthContext()
 		mw(c)
 
-		authCtx, ok := common.GetAccountAuthContextFromCtx(c.Request.Context())
-		convey.So(ok, convey.ShouldBeTrue)
-		convey.So(authCtx, convey.ShouldNotBeNil)
-		convey.So(authCtx.AccountID, convey.ShouldEqual, "")
-		convey.So(authCtx.AccountType, convey.ShouldEqual, interfaces.AccessorType(""))
-		convey.So(authCtx.TokenInfo, convey.ShouldNotBeNil)
-		convey.So(authCtx.TokenInfo.VisitorID, convey.ShouldEqual, "")
-		convey.So(authCtx.TokenInfo.VisitorTyp, convey.ShouldEqual, interfaces.VisitorType(""))
-
-		header := common.GetHeaderFromCtx(c.Request.Context())
-		convey.So(header[string(interfaces.HeaderXAccountID)], convey.ShouldEqual, "")
-		convey.So(header[string(interfaces.HeaderXAccountType)], convey.ShouldEqual, "")
+		convey.So(w.Code, convey.ShouldEqual, http.StatusUnauthorized)
+		_, ok := common.GetAccountAuthContextFromCtx(c.Request.Context())
+		convey.So(ok, convey.ShouldBeFalse)
 	})
 }
 
@@ -127,7 +118,7 @@ func TestMiddlewareHeaderAuthContext_StrictModeRejectsInvalidSubjects(t *testing
 				c.Request.Header.Set(key, value)
 			}
 
-			middlewareHeaderAuthContextWithMode(true)(c)
+			middlewareHeaderAuthContext()(c)
 
 			if w.Code != http.StatusUnauthorized || !c.IsAborted() {
 				t.Fatalf("status=%d aborted=%v body=%s", w.Code, c.IsAborted(), w.Body.String())
@@ -147,7 +138,7 @@ func TestMiddlewareHeaderAuthContext_StrictModeStoresCanonicalSubject(t *testing
 	c.Request.Header.Set(string(interfaces.HeaderXAccountID), "user-1")
 	c.Request.Header.Set(string(interfaces.HeaderXAccountType), "realname")
 
-	middlewareHeaderAuthContextWithMode(true)(c)
+	middlewareHeaderAuthContext()(c)
 
 	auth, ok := common.GetAccountAuthContextFromCtx(c.Request.Context())
 	if !ok || auth.AccountID != "user-1" || auth.AccountType != interfaces.AccessorTypeUser {
@@ -189,7 +180,7 @@ func TestMiddlewareIntrospect_BodyCannotOverrideAuthenticatedSubject(t *testing.
 	c.Request.Header.Set(string(interfaces.HeaderXAccountID), "attacker")
 	c.Request.Header.Set(string(interfaces.HeaderXAccountType), "app")
 
-	middlewareIntrospectVerifyWithMode(stubPublicHydra{}, nil, true)(c)
+	middlewareIntrospectVerify(stubPublicHydra{}, nil)(c)
 	if c.IsAborted() {
 		t.Fatalf("valid authenticated subject was rejected: %s", w.Body.String())
 	}
@@ -211,7 +202,7 @@ func TestMiddlewareIntrospect_StrictModeRejectsInvalidResolvedSubject(t *testing
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
 
-	middlewareIntrospectVerifyWithMode(invalidSubjectHydra{}, nil, true)(c)
+	middlewareIntrospectVerify(invalidSubjectHydra{}, nil)(c)
 
 	if w.Code != http.StatusUnauthorized || !c.IsAborted() {
 		t.Fatalf("status=%d aborted=%v body=%s", w.Code, c.IsAborted(), w.Body.String())
@@ -229,7 +220,8 @@ func TestMiddlewareHeaderAuthContext_SetsTraceContext(t *testing.T) {
 		c, _ := gin.CreateTestContext(w)
 		c.Request = httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
 		c.Request.Header.Set(common.HeaderBKNRequestID, "req_01JZVALIDREQUESTID000000002")
-		c.Request.Header.Set(string(interfaces.HeaderXAccountType), "service")
+		c.Request.Header.Set(string(interfaces.HeaderXAccountID), "user-1")
+		c.Request.Header.Set(string(interfaces.HeaderXAccountType), string(interfaces.AccessorTypeUser))
 		c.Request.Header.Set(common.HeaderBaggage, "bkn.account.type=admin,bkn.account.id=user-1,prompt=raw,bkn.runtime.env=test")
 
 		mw := middlewareHeaderAuthContext()
@@ -245,7 +237,7 @@ func TestMiddlewareHeaderAuthContext_SetsTraceContext(t *testing.T) {
 		header := common.GetHeaderFromCtx(c.Request.Context())
 		convey.So(header[common.HeaderBKNRequestID], convey.ShouldEqual, "req_01JZVALIDREQUESTID000000002")
 		convey.So(header[common.HeaderLegacyRequestID], convey.ShouldEqual, "req_01JZVALIDREQUESTID000000002")
-		convey.So(header[common.HeaderBaggage], convey.ShouldEqual, "bkn.account.type=service,bkn.runtime.env=test")
+		convey.So(header[common.HeaderBaggage], convey.ShouldEqual, "bkn.account.type=user,bkn.runtime.env=test")
 	})
 
 	convey.Convey("middlewareHeaderAuthContext falls back to x-request-id and generates missing ids", t, func() {
@@ -253,6 +245,8 @@ func TestMiddlewareHeaderAuthContext_SetsTraceContext(t *testing.T) {
 		c, _ := gin.CreateTestContext(w)
 		c.Request = httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
 		c.Request.Header.Set(common.HeaderLegacyRequestID, "req_01JZVALIDREQUESTID000000003")
+		c.Request.Header.Set(string(interfaces.HeaderXAccountID), "user-1")
+		c.Request.Header.Set(string(interfaces.HeaderXAccountType), string(interfaces.AccessorTypeUser))
 
 		mw := middlewareHeaderAuthContext()
 		mw(c)
@@ -264,6 +258,8 @@ func TestMiddlewareHeaderAuthContext_SetsTraceContext(t *testing.T) {
 		w = httptest.NewRecorder()
 		c, _ = gin.CreateTestContext(w)
 		c.Request = httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+		c.Request.Header.Set(string(interfaces.HeaderXAccountID), "user-1")
+		c.Request.Header.Set(string(interfaces.HeaderXAccountType), string(interfaces.AccessorTypeUser))
 
 		mw(c)
 

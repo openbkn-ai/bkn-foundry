@@ -906,8 +906,18 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 				CategoryManager: mockCategoryManager,
 				Logger:          logger.DefaultLogger(),
 			}
-			mockAuthService.EXPECT().GetAccessor(gomock.Any(), "").Return(&interfaces.AuthAccessor{ID: "viewer"}, nil)
+			mockAuthService.EXPECT().GetAccessor(gomock.Any(), "").Return(&interfaces.AuthAccessor{ID: "viewer"}, nil).Times(1)
 			mockAuthService.EXPECT().ResourceListIDs(gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeSkill, interfaces.AuthOperationTypeView).Return([]string{"skill-12c"}, nil)
+			mockAuthService.EXPECT().ResourceFilterOperations(
+				gomock.Any(),
+				gomock.Any(),
+				[]string{"skill-12c"},
+				interfaces.AuthResourceTypeSkill,
+				[]interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
+				[]interfaces.AuthOperationType{interfaces.AuthOperationTypeAuthorize},
+			).Return(map[string][]interfaces.AuthOperationType{
+				"skill-12c": {interfaces.AuthOperationTypeAuthorize},
+			}, nil)
 			mockSkillRepo.EXPECT().CountByWhereClause(gomock.Any(), gomock.Nil(), gomock.Any()).Return(int64(1), nil)
 			mockSkillRepo.EXPECT().SelectSkillListPage(gomock.Any(), gomock.Nil(), gomock.Any(), gomock.Any(), gomock.Nil()).Return([]*model.SkillRepositoryDB{
 				{SkillID: "skill-12c", Name: "visible", IsDeleted: true},
@@ -924,6 +934,7 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(len(resp.Data), ShouldEqual, 1)
 			So(resp.Data[0].SkillID, ShouldEqual, "skill-12c")
+			So(resp.Data[0].Operations, ShouldResemble, []interfaces.AuthOperationType{interfaces.AuthOperationTypeAuthorize})
 		})
 
 		Convey("GetSkillContent hides deleting skills", func() {

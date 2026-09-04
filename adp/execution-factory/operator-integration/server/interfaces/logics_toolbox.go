@@ -166,23 +166,24 @@ type CommonPageParams struct {
 
 // ToolBoxInfo toolbox information.
 type ToolBoxInfo struct {
-	MetadataType MetadataType `json:"metadata_type" validate:"required,oneof=openapi function"` // metadata type.
-	BoxID        string       `json:"box_id"`                                                   // Toolbox ID.
-	BoxName      string       `json:"box_name"`                                                 // Toolbox name.
-	BoxDesc      string       `json:"box_desc"`                                                 // Toolbox description.
-	BoxSvcURL    string       `json:"box_svc_url"`                                              // Toolbox service address.
-	Status       BizStatus    `json:"status" validate:"oneof=unpublish published offline"`      // toolbox status.
-	CategoryType string       `json:"category_type"`                                            // Classification.
-	CategoryName string       `json:"category_name"`                                            // Category name.
-	IsInternal   bool         `json:"is_internal"`                                              // Is it an internal toolbox?.
-	Source       string       `json:"source" default:"custom" validate:"oneof=custom internal"` // Toolbox source.
-	Tools        []string     `json:"tools"`                                                    // Tool list under toolbox.
-	CreateTime   int64        `json:"create_time"`                                              // creation time.
-	UpdateTime   int64        `json:"update_time"`                                              // Update time.
-	CreateUser   string       `json:"create_user"`                                              // Create user.
-	UpdateUser   string       `json:"update_user"`                                              // Update user.
-	ReleaseUser  string       `json:"release_user,omitempty"`                                   // Posted by.
-	ReleaseTime  int64        `json:"release_time,omitempty"`                                   // Release time.
+	Operations   []AuthOperationType `json:"operations,omitempty"`                                     // Instance operations held by the requesting user.
+	MetadataType MetadataType        `json:"metadata_type" validate:"required,oneof=openapi function"` // metadata type.
+	BoxID        string              `json:"box_id"`                                                   // Toolbox ID.
+	BoxName      string              `json:"box_name"`                                                 // Toolbox name.
+	BoxDesc      string              `json:"box_desc"`                                                 // Toolbox description.
+	BoxSvcURL    string              `json:"box_svc_url"`                                              // Toolbox service address.
+	Status       BizStatus           `json:"status" validate:"oneof=unpublish published offline"`      // toolbox status.
+	CategoryType string              `json:"category_type"`                                            // Classification.
+	CategoryName string              `json:"category_name"`                                            // Category name.
+	IsInternal   bool                `json:"is_internal"`                                              // Is it an internal toolbox?.
+	Source       string              `json:"source" default:"custom" validate:"oneof=custom internal"` // Toolbox source.
+	Tools        []string            `json:"tools"`                                                    // Tool list under toolbox.
+	CreateTime   int64               `json:"create_time"`                                              // creation time.
+	UpdateTime   int64               `json:"update_time"`                                              // Update time.
+	CreateUser   string              `json:"create_user"`                                              // Create user.
+	UpdateUser   string              `json:"update_user"`                                              // Update user.
+	ReleaseUser  string              `json:"release_user,omitempty"`                                   // Posted by.
+	ReleaseTime  int64               `json:"release_time,omitempty"`                                   // Release time.
 }
 
 // QueryToolBoxListResp Gets the toolbox list and returns the results.

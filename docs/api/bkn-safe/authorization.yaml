@@ -1,0 +1,501 @@
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+openapi: 3.0.3
+info:
+  title: bkn-safe internal authorization API
+  version: 0.3.0
+  description: |
+    Internal service-to-service authorization contract used by BKN,
+    ontology-query, context-loader, and execution-factory.
+
+    This surface is deliberately tokenless and must be reachable only through
+    the cluster network boundary. Callers authenticate their own public request
+    first and pass the resulting concrete `accessor_id`; clients must never
+    expose these endpoints directly through an ingress.
+
+    Knowledge-network roots use `{kn_id}`. Child resources use
+    `{kn_id}/{child_id}`. The supported KN resource types are
+    `knowledge_network`, `concept_group`, `object_type`, `relation_type`,
+    `action_type`, `metric`, and `risk_type`.
+
+    `resource-filter` has no fixed resource, operation, or matrix-cell hard cap
+    and does not define a fixed-scale 413 response. Callers may dynamically
+    chunk requests, but any failed or invalid chunk fails the complete business
+    request.
+servers:
+  - url: /api/safe/v1/authz
+security: []
+paths:
+  /check:
+    post:
+      operationId: checkAuthorization
+      summary: Check one resource operation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckRequest'
+            examples:
+              objectTypeQueryData:
+                value:
+                  accessor_id: user-a
+                  resource:
+                    type: object_type
+                    id: supply_chain/purchase_order
+                  operation: query_data
+      responses:
+        '200':
+          description: Decision. Unknown and disabled accounts return `allowed=false`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/AuthorizationUnavailable'
+  /operations:
+    post:
+      operationId: listAllowedOperations
+      summary: List allowed operations for one resource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OperationsRequest'
+      responses:
+        '200':
+          description: Allowed operations from the registered resource catalog.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/AuthorizationUnavailable'
+  /resource-filter:
+    post:
+      operationId: filterAuthorizedResources
+      summary: Filter trusted candidates and project their allowed operations
+      description: |
+        `visibility_operations` and `candidate_operations` are independent.
+        A resource is returned only when every visibility operation is allowed.
+        Its `operations` value is the allowed subset of candidate operations.
+        An empty visibility list returns every requested resource. Omitting
+        candidate operations uses each resource type's operation catalog.
+
+        The response preserves first-seen candidate order and de-duplicates
+        resources and operations. An unknown or disabled account returns an
+        empty `resources` array. An empty candidate list is valid.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResourceFilterRequest'
+            examples:
+              mixedKnowledgeNetworkChildren:
+                value:
+                  accessor_id: user-a
+                  resources:
+                    - type: object_type
+                      id: supply_chain/purchase_order
+                    - type: metric
+                      id: supply_chain/on_time_rate
+                  visibility_operations: [view_detail]
+                  candidate_operations: [view_detail, query_data, modify, delete, authorize]
+      responses:
+        '200':
+          description: Filtered resources in stable candidate order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceFilterResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/AuthorizationUnavailable'
+  /resources:
+    get:
+      operationId: listAuthorizedResourceIds
+      summary: List concrete resource IDs allowed for one operation
+      parameters:
+        - name: accessor_id
+          in: query
+          required: true
+          schema: {type: string}
+        - name: resource_type
+          in: query
+          required: true
+          schema: {type: string}
+        - name: operation
+          in: query
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Concrete resource IDs. Type-wide `*` grants are excluded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ids]
+                properties:
+                  ids:
+                    type: array
+                    items: {type: string}
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/AuthorizationUnavailable'
+  /policies:
+    post:
+      operationId: createResourcePolicy
+      summary: Grant operations on one concrete resource
+      description: |
+        Wildcard resource types and wildcard operations are rejected.
+        `action_type:*:execute` is also rejected; Action Type execute grants
+        must target a concrete `{kn_id}/{action_type_id}`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PolicyWriteRequest'
+      responses:
+        '204': {description: Policy created}
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: deleteResourcePolicies
+      summary: Delete all policies for one concrete resource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resource]
+              properties:
+                resource:
+                  $ref: '#/components/schemas/ResourceRef'
+      responses:
+        '204': {description: Policies deleted or already absent}
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    get:
+      operationId: listResourcePolicies
+      summary: List direct policies for a resource
+      parameters:
+        - name: resource_type
+          in: query
+          required: true
+          schema: {type: string}
+        - name: resource_id
+          in: query
+          required: false
+          schema: {type: string}
+      responses:
+        '200':
+          description: Matching direct policies.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries]
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PolicyEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /resource-parents:
+    put:
+      operationId: upsertResourceParents
+      summary: Upsert concrete child-to-parent ownership edges
+      description: |
+        The hierarchy pair must be declared in the seeded catalog. Items are
+        concrete instance IDs; wildcards and self-parent edges are rejected.
+        One request accepts at most 1000 items and returns 400 when exceeded.
+        This ResourceParent write cap is separate from resource-filter, which
+        has no fixed candidate hard cap.
+      parameters:
+        - name: dry_run
+          in: query
+          required: false
+          schema: {type: boolean, default: false}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResourceParentWriteRequest'
+            examples:
+              objectTypeParent:
+                value:
+                  resource_type: object_type
+                  parent_type: knowledge_network
+                  items:
+                    - resource_id: supply_chain/purchase_order
+                      parent_id: supply_chain
+      responses:
+        '204': {description: 'Edges upserted, or the item list was empty'}
+        '200':
+          description: Dry-run preview when `dry_run=true`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceParentPreview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: deleteResourceParents
+      summary: Delete child-to-parent edges
+      description: Idempotent. One request accepts at most 1000 resource IDs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResourceParentDeleteRequest'
+      responses:
+        '204': {description: Edges deleted or already absent}
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    get:
+      operationId: listResourceParents
+      summary: Read stored child-to-parent edges for reconciliation
+      parameters:
+        - name: resource_type
+          in: query
+          required: true
+          schema: {type: string}
+        - name: parent_id
+          in: query
+          required: false
+          schema: {type: string}
+        - name: resource_id
+          in: query
+          required: false
+          schema: {type: string}
+        - name: limit
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 1000, default: 500}
+        - name: offset
+          in: query
+          required: false
+          schema: {type: integer, minimum: 0, default: 0}
+      responses:
+        '200':
+          description: Stable page ordered by resource ID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceParentListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  responses:
+    BadRequest:
+      description: Malformed or unsafe request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BknSafeError'
+    InternalError:
+      description: Authorization engine or storage failure.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BknSafeError'
+    AuthorizationUnavailable:
+      description: Account state cannot be read; no permission is granted.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BknSafeError'
+  schemas:
+    BknSafeError:
+      description: BKN Safe error envelope with the deprecated legacy `error` alias.
+      allOf:
+        - $ref: '../_shared/errors.yaml#/components/schemas/Error'
+        - type: object
+          properties:
+            error:
+              type: string
+              deprecated: true
+              description: Legacy human-readable error alias; identical to `description`.
+    ResourceRef:
+      type: object
+      required: [type]
+      properties:
+        type: {type: string}
+        id: {type: string}
+    CheckRequest:
+      type: object
+      required: [accessor_id, resource, operation]
+      properties:
+        accessor_id: {type: string}
+        resource:
+          $ref: '#/components/schemas/ResourceRef'
+        operation: {type: string}
+    CheckResponse:
+      type: object
+      required: [allowed]
+      properties:
+        allowed: {type: boolean}
+    OperationsRequest:
+      type: object
+      required: [accessor_id, resource]
+      properties:
+        accessor_id: {type: string}
+        resource:
+          $ref: '#/components/schemas/ResourceRef'
+    OperationsResponse:
+      type: object
+      required: [operations]
+      properties:
+        operations:
+          type: array
+          items: {type: string}
+    ResourceFilterRequest:
+      type: object
+      required: [accessor_id]
+      properties:
+        accessor_id: {type: string}
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceRef'
+        resource_type: {type: string}
+        resource_ids:
+          type: array
+          items: {type: string}
+        visibility_operations:
+          type: array
+          items: {type: string}
+        candidate_operations:
+          type: array
+          items: {type: string}
+    FilteredResource:
+      type: object
+      required: [resource_type, resource_id, operations]
+      properties:
+        resource_type: {type: string}
+        resource_id: {type: string}
+        operations:
+          type: array
+          items: {type: string}
+    ResourceFilterResponse:
+      type: object
+      required: [resources]
+      properties:
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/FilteredResource'
+    PolicyWriteRequest:
+      type: object
+      required: [accessor_id, resource, operations]
+      properties:
+        accessor_id: {type: string}
+        resource:
+          $ref: '#/components/schemas/ResourceRef'
+        operations:
+          type: array
+          items: {type: string}
+    PolicyEntry:
+      type: object
+      required: [accessor_id, resource, operations]
+      properties:
+        accessor_id: {type: string}
+        resource:
+          $ref: '#/components/schemas/ResourceRef'
+        operations:
+          type: array
+          items: {type: string}
+    ResourceParentItem:
+      type: object
+      required: [resource_id, parent_id]
+      properties:
+        resource_id: {type: string}
+        parent_id: {type: string}
+    ResourceParentWriteRequest:
+      type: object
+      required: [resource_type, parent_type, items]
+      properties:
+        resource_type: {type: string}
+        parent_type: {type: string}
+        items:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/ResourceParentItem'
+    ResourceParentDeleteRequest:
+      type: object
+      required: [resource_type, resource_ids]
+      properties:
+        resource_type: {type: string}
+        resource_ids:
+          type: array
+          maxItems: 1000
+          items: {type: string}
+    ResourceParentPreview:
+      type: object
+      required: [changes, total, truncated]
+      properties:
+        changes:
+          type: array
+          items:
+            type: object
+            required: [accessor_id, resource_id, operation, direction]
+            properties:
+              accessor_id: {type: string}
+              resource_id: {type: string}
+              operation: {type: string}
+              direction: {type: string, enum: [grant, revoke]}
+        total: {type: integer, format: int64}
+        truncated: {type: boolean}
+    ResourceParentListItem:
+      type: object
+      required: [resource_id, parent_type, parent_id]
+      properties:
+        resource_id: {type: string}
+        parent_type: {type: string}
+        parent_id: {type: string}
+    ResourceParentListResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceParentListItem'
+        total: {type: integer, format: int64}

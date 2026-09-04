@@ -41,10 +41,6 @@ antiAffinity:
 # Authentication switch.
 auth:
   enabled: true
-  # Enable only after existing KN child policies and ResourceParent data are migrated.
-  knChildResourcePepEnabled: false
-  # Enable only after Schedule execution subjects and action policies are migrated.
-  actionExecutionPepEnabled: false
   # Zero sends one request; set a positive runtime value to split resource-filter calls without imposing a request cap.
   knChildResourceFilterChunkSize: 0
 

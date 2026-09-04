@@ -25,6 +25,20 @@ import (
 	"bkn-backend/logics/batchindex"
 )
 
+func allowAllRelationPermissionResources(_ context.Context, _ string, ids, _ []string, _ bool, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
+	matched := make(map[string]interfaces.PermissionResourceOps, len(ids))
+	for _, id := range ids {
+		matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: []string{
+			interfaces.OPERATION_TYPE_VIEW_DETAIL,
+			interfaces.OPERATION_TYPE_QUERY_DATA,
+			interfaces.OPERATION_TYPE_MODIFY,
+			interfaces.OPERATION_TYPE_DELETE,
+			interfaces.OPERATION_TYPE_AUTHORIZE,
+		}}
+	}
+	return matched, nil
+}
+
 func Test_relationTypeService_CheckRelationTypeExistByID(t *testing.T) {
 	Convey("Test CheckRelationTypeExistByID\n", t, func() {
 		ctx := context.Background()
@@ -145,9 +159,7 @@ func Test_relationTypeService_GetRelationTypesByIDs(t *testing.T) {
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(map[string]interfaces.PermissionResourceOps{
-				"kn1": {ResourceID: "kn1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_AUTHORIZE}},
-			}, nil).AnyTimes()
+			DoAndReturn(allowAllRelationPermissionResources).AnyTimes()
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
 		ums := bmock.NewMockUserMgmtService(mockCtrl)
 
@@ -178,7 +190,6 @@ func Test_relationTypeService_GetRelationTypesByIDs(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rta.EXPECT().GetRelationTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rtArr, nil)
 			ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]*interfaces.ObjectType{}, nil).AnyTimes()
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
@@ -210,21 +221,6 @@ func Test_relationTypeService_GetRelationTypesByIDs(t *testing.T) {
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_RelationTypeNotFound)
 		})
 
-		Convey("Failed when permission check fails\n", func() {
-			knID := "kn1"
-			branch := interfaces.MAIN_BRANCH
-			rtIDs := []string{"rt1"}
-
-			rta.EXPECT().GetRelationTypesByIDs(gomock.Any(), knID, branch, rtIDs).Return([]*interfaces.RelationType{{
-				RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "rt1"},
-			}}, nil)
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_InternalError_CheckPermissionFailed))
-
-			result, err := service.GetRelationTypesByIDs(ctx, knID, branch, rtIDs)
-			So(err, ShouldNotBeNil)
-			So(len(result), ShouldEqual, 0)
-		})
-
 		Convey("Failed when GetRelationTypesByIDs returns error\n", func() {
 			knID := "kn1"
 			branch := interfaces.MAIN_BRANCH
@@ -252,7 +248,6 @@ func Test_relationTypeService_GetRelationTypesByIDs(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rta.EXPECT().GetRelationTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rtArr, nil)
 			ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
 
@@ -307,7 +302,6 @@ func Test_relationTypeService_GetRelationTypesByIDs(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rta.EXPECT().GetRelationTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rtArr, nil)
 			ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectTypeMap, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
@@ -331,9 +325,7 @@ func Test_relationTypeService_ListRelationTypes(t *testing.T) {
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(map[string]interfaces.PermissionResourceOps{
-				"kn1": {ResourceID: "kn1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_AUTHORIZE}},
-			}, nil).AnyTimes()
+			DoAndReturn(allowAllRelationPermissionResources).AnyTimes()
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
 		ums := bmock.NewMockUserMgmtService(mockCtrl)
 
@@ -354,6 +346,9 @@ func Test_relationTypeService_ListRelationTypes(t *testing.T) {
 					Offset: 0,
 				},
 			}
+			listQuery := query
+			listQuery.Offset = 0
+			listQuery.Limit = -1
 			rtArr := []*interfaces.RelationType{
 				{
 					RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
@@ -365,9 +360,7 @@ func Test_relationTypeService_ListRelationTypes(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			rta.EXPECT().ListRelationTypes(gomock.Any(), query).Return(rtArr, nil)
-			rta.EXPECT().GetRelationTypesTotal(gomock.Any(), gomock.Any()).Return(1, nil)
+			rta.EXPECT().ListRelationTypes(gomock.Any(), listQuery).Return(rtArr, nil)
 			ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]*interfaces.ObjectType{}, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 
@@ -396,13 +389,11 @@ func Test_relationTypeService_ListRelationTypes(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).DoAndReturn(
 				func(_ context.Context, q interfaces.RelationTypesQueryParams) ([]*interfaces.RelationType, error) {
 					So(q.Branch, ShouldEqual, interfaces.MAIN_BRANCH)
 					return rtArr, nil
 				})
-			rta.EXPECT().GetRelationTypesTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 				func(_ context.Context, knID string, branch string, otIDs []string, _ bool) (map[string]*interfaces.ObjectType, error) {
 					So(branch, ShouldEqual, interfaces.MAIN_BRANCH)
@@ -431,26 +422,10 @@ func Test_relationTypeService_ListRelationTypes(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{}, nil)
-			rta.EXPECT().GetRelationTypesTotal(gomock.Any(), gomock.Any()).Return(0, nil)
 
 			rts, total, err := service.ListRelationTypes(ctx, query)
 			So(err, ShouldBeNil)
-			So(total, ShouldEqual, 0)
-			So(len(rts), ShouldEqual, 0)
-		})
-
-		Convey("Failed when permission check fails\n", func() {
-			query := interfaces.RelationTypesQueryParams{
-				KNID:   "kn1",
-				Branch: interfaces.MAIN_BRANCH,
-			}
-
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_InternalError_CheckPermissionFailed))
-
-			rts, total, err := service.ListRelationTypes(ctx, query)
-			So(err, ShouldNotBeNil)
 			So(total, ShouldEqual, 0)
 			So(len(rts), ShouldEqual, 0)
 		})
@@ -461,7 +436,6 @@ func Test_relationTypeService_ListRelationTypes(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
 
 			rts, total, err := service.ListRelationTypes(ctx, query)
@@ -490,9 +464,7 @@ func Test_relationTypeService_ListRelationTypes(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(rtArr, nil)
-			rta.EXPECT().GetRelationTypesTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
 
 			rts, total, err := service.ListRelationTypes(ctx, query)
@@ -521,9 +493,7 @@ func Test_relationTypeService_ListRelationTypes(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(rtArr, nil)
-			rta.EXPECT().GetRelationTypesTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]*interfaces.ObjectType{}, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
 
@@ -553,9 +523,7 @@ func Test_relationTypeService_ListRelationTypes(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(rtArr, nil)
-			rta.EXPECT().GetRelationTypesTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]*interfaces.ObjectType{}, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 
@@ -575,9 +543,9 @@ func Test_relationTypeService_ListRelationTypes(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{}, nil)
-			rta.EXPECT().GetRelationTypesTotal(gomock.Any(), gomock.Any()).Return(1, nil)
+			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{{
+				RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "rt1"},
+			}}, nil)
 
 			rts, total, err := service.ListRelationTypes(ctx, query)
 			So(err, ShouldBeNil)
@@ -621,9 +589,7 @@ func Test_relationTypeService_ListRelationTypes(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(rtArr[1:], nil)
-			rta.EXPECT().GetRelationTypesTotal(gomock.Any(), gomock.Any()).Return(3, nil)
+			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(rtArr, nil)
 			ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
 				[]string{"ot1", "ot2"}, false).Return(map[string]*interfaces.ObjectType{}, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
@@ -650,6 +616,9 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 		}
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(allowAllRelationPermissionResources).AnyTimes()
 		ps.EXPECT().UpsertResourceParents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		ps.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
@@ -680,7 +649,6 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1"}}, nil).AnyTimes()
 			ots.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", true, nil).AnyTimes()
@@ -693,25 +661,6 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(len(result), ShouldEqual, 1)
 			So(result[0], ShouldEqual, "rt1")
-		})
-
-		Convey("Failed when permission check fails\n", func() {
-			relationTypes := []*interfaces.RelationType{
-				{
-					RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
-						RTID:   "rt1",
-						RTName: "relation_type1",
-					},
-					KNID:   "kn1",
-					Branch: interfaces.MAIN_BRANCH,
-				},
-			}
-
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_InternalError_CheckPermissionFailed))
-
-			result, err := service.CreateRelationTypes(ctx, nil, relationTypes, interfaces.ImportMode_Normal, true)
-			So(err, ShouldNotBeNil)
-			So(len(result), ShouldEqual, 0)
 		})
 
 		Convey("Failed when relation type ID already exists in normal mode\n", func() {
@@ -727,7 +676,6 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rta.EXPECT().CheckRelationTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("rt1", true, nil)
 			smock.ExpectRollback()
 
@@ -751,7 +699,6 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rta.EXPECT().CheckRelationTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("rt1", true, nil)
 			smock.ExpectCommit()
 
@@ -775,7 +722,6 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rta.EXPECT().CheckRelationTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&interfaces.ObjectType{}, nil).AnyTimes()
@@ -801,7 +747,6 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 			rta.EXPECT().CheckRelationTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("rt1", true, nil).Times(2)
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&interfaces.ObjectType{}, nil).AnyTimes()
@@ -829,7 +774,6 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 			rta.EXPECT().CheckRelationTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&interfaces.ObjectType{}, nil).AnyTimes()
@@ -855,7 +799,6 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rta.EXPECT().CheckRelationTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Do(func(ctx, knID, branch, rtID interface{}) {
 				So(rtID, ShouldNotBeEmpty)
 			}).Return("", false, nil)
@@ -887,7 +830,6 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 				berrors.BknBackend_RelationType_InternalError)
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httpErr)
 			smock.ExpectRollback()
 
@@ -909,7 +851,6 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.ObjectType{}, nil).AnyTimes()
 			rta.EXPECT().CheckRelationTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			rta.EXPECT().CreateRelationType(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
@@ -933,7 +874,6 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.ObjectType{}, nil).AnyTimes()
 			rta.EXPECT().CheckRelationTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			rta.EXPECT().CreateRelationType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -961,6 +901,8 @@ func Test_relationTypeService_UpdateRelationType(t *testing.T) {
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		rta.EXPECT().CheckRelationTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("rt1", true, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(allowAllRelationPermissionResources).AnyTimes()
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
@@ -1090,6 +1032,8 @@ func Test_relationTypeService_DeleteRelationTypesByIDs(t *testing.T) {
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		rta.EXPECT().CheckRelationTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("rt1", true, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(allowAllRelationPermissionResources).AnyTimes()
 		ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		ps.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
@@ -1107,9 +1051,13 @@ func Test_relationTypeService_DeleteRelationTypesByIDs(t *testing.T) {
 			knID := "kn1"
 			branch := interfaces.MAIN_BRANCH
 			rtIDs := []string{"rt1", "rt2"}
+			relationTypes := []*interfaces.RelationType{
+				{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "rt1"}},
+				{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "rt2"}},
+			}
 
+			rta.EXPECT().GetRelationTypesByIDs(gomock.Any(), knID, branch, rtIDs).Return(relationTypes, nil)
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rta.EXPECT().DeleteRelationTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(2), nil)
 			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
 			smock.ExpectCommit()
@@ -1517,12 +1465,17 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
+		rta.EXPECT().GetRelationTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"rt1"}, nil).AnyTimes()
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(allowAllRelationPermissionResources).AnyTimes()
 
 		service := &relationTypeService{
 			appSetting: appSetting,
 			cga:        cga,
 			vbs:        vbs,
 			ps:         ps,
+			rta:        rta,
 		}
 
 		Convey("Success searching relation types without concept groups\n", func() {
@@ -1532,7 +1485,6 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 				Limit:  10,
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
 				Entries:    []map[string]any{},
 				TotalCount: 0,
@@ -1565,7 +1517,6 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			cga.EXPECT().GetRelationTypeIDsFromConceptGroupRelation(gomock.Any(), gomock.Any()).Return([]string{"rt1"}, nil)
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
@@ -1585,7 +1536,6 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 				Limit:         2,
 				ConceptGroups: []string{"cg1"},
 			}
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			cga.EXPECT().GetRelationTypeIDsFromConceptGroupRelation(gomock.Any(), gomock.Any()).Return([]string{"keep-1", "keep-2"}, nil)
 			nextCursor := "cursor-1"
@@ -1622,7 +1572,6 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 				ConceptGroups: []string{"cg1"},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(0, nil)
 
 			result, err := service.SearchRelationTypes(ctx, query)
@@ -1638,7 +1587,6 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 				ConceptGroups: []string{"cg1"},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(0, rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
 
 			result, err := service.SearchRelationTypes(ctx, query)
@@ -1654,7 +1602,6 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 				ConceptGroups: []string{"cg1"},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			cga.EXPECT().GetRelationTypeIDsFromConceptGroupRelation(gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
 
@@ -1670,7 +1617,6 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 				Limit:  10,
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
 				Entries:    []map[string]any{},
 				TotalCount: 0,
@@ -1949,6 +1895,7 @@ func Test_relationTypeService_ValidateRelationTypes(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
@@ -1978,7 +1925,6 @@ func Test_relationTypeService_ValidateRelationTypes(t *testing.T) {
 		}
 
 		Convey("strictMode false skips validateDependency\n", func() {
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			expectRTImportOK()
 			err := service.ValidateRelationTypes(ctx, "kn1", interfaces.MAIN_BRANCH, relationTypes, false, nil, interfaces.ImportMode_Normal)
 			So(err, ShouldBeNil)
@@ -1987,7 +1933,6 @@ func Test_relationTypeService_ValidateRelationTypes(t *testing.T) {
 		Convey("strictMode true runs validateDependency and fails when source OT missing\n", func() {
 			httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RelationType_InternalError)
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			expectRTImportOK()
 			smock.ExpectBegin()
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httpErr)
@@ -2049,25 +1994,21 @@ func Test_relationTypeService_SearchRelationTypes_extraCases(t *testing.T) {
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
+		rta.EXPECT().GetRelationTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"rt1"}, nil).AnyTimes()
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(allowAllRelationPermissionResources).AnyTimes()
 
 		service := &relationTypeService{
 			appSetting: appSetting,
 			cga:        cga,
 			vbs:        vbs,
 			ps:         ps,
+			rta:        rta,
 		}
-
-		Convey("Failed when CheckPermission returns error\n", func() {
-			query := &interfaces.ConceptsQuery{KNID: "kn1", Branch: interfaces.MAIN_BRANCH, Limit: 10}
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_InternalError_CheckPermissionFailed))
-			result, err := service.SearchRelationTypes(ctx, query)
-			So(err, ShouldNotBeNil)
-			So(len(result.Entries), ShouldEqual, 0)
-		})
 
 		Convey("Failed when QueryResourceData returns error\n", func() {
 			query := &interfaces.ConceptsQuery{KNID: "kn1", Branch: interfaces.MAIN_BRANCH, Limit: 10}
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
 			result, err := service.SearchRelationTypes(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -2081,7 +2022,6 @@ func Test_relationTypeService_SearchRelationTypes_extraCases(t *testing.T) {
 				Limit:         10,
 				ConceptGroups: []string{"cg1"},
 			}
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			cga.EXPECT().GetRelationTypeIDsFromConceptGroupRelation(gomock.Any(), gomock.Any()).Return([]string{}, nil)
 			result, err := service.SearchRelationTypes(ctx, query)
@@ -2096,7 +2036,6 @@ func Test_relationTypeService_SearchRelationTypes_extraCases(t *testing.T) {
 				Limit:     10,
 				NeedTotal: true,
 			}
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			// NeedTotal block: QueryResourceData with Limit=1, NeedTotal=true
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{}, TotalCount: 5,
@@ -2117,7 +2056,6 @@ func Test_relationTypeService_SearchRelationTypes_extraCases(t *testing.T) {
 				"rt_name": "relation1",
 				"_score":  float64(0.95),
 			}
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{entry},
 			}, nil)

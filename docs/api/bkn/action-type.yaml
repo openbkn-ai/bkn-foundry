@@ -3,6 +3,13 @@ openapi: 3.0.2
 info:
   title: ActionType
   version: 0.1.0
+  description: |
+    Action types use `action_type:{kn_id}/{action_type_id}`. Reads and lists
+    require `view_detail`; updates and deletes use `modify` and `delete`.
+    `execute` requires a direct concrete Action Type grant and never inherits
+    from the knowledge network. See `../knowledge-network-authorization.md`.
+security:
+  - OAuth2: []
 paths:
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-types:
     get:
@@ -93,13 +100,13 @@ paths:
             schema:
               $ref: "#/components/schemas/override"
             examples:
-              创建行动类:
+              create action type:
                 value:
                   - id: restart_pod
-                    name: 重启pod
+                    name: restart pod
                     tags:
-                      - 拓扑架构
-                    comment: "当pod状态是unknown或者failed时,重启pod"
+                      - topology
+                    comment: "Restart the pod when its status is unknown or failed"
                     icon: ""
                     color: ""
                     branch: main
@@ -117,7 +124,7 @@ paths:
                     impact_contracts:
                       - object_type_id: pod
                         expected_operation: modify
-                        description: 重启 pod
+                        description: Restart the pod
                         affected_fields: []
                     action_source:
                       type: tool
@@ -137,7 +144,7 @@ paths:
                       type: ""
                       expression: ""
                     module_type: action_type
-              检索行动类-第一次请求:
+              list action types - first request:
                 value:
                   need_total: true
                   limit: 1
@@ -154,7 +161,7 @@ paths:
                         value:
                           - pod
                           - 10
-              检索行动类-非第一次请求:
+              list action types - subsequent request:
                 value:
                   cursor: cursor-action-types-1
                   need_total: true
@@ -217,14 +224,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/ActionTypeSearchResponse"
               examples:
-                检索行动类-第一次请求:
+                list action types - first request:
                   value:
                     entries:
                       - id: restart_pod
-                        name: 重启pod
+                        name: restart pod
                         tags:
-                          - 拓扑架构
-                        comment: "当pod状态是unknown或者failed时,重启pod"
+                          - topology
+                        comment: "Restart the pod when its status is unknown or failed"
                         icon: ""
                         color: ""
                         branch: main
@@ -240,7 +247,7 @@ paths:
                         impact_contracts:
                           - object_type_id: pod
                             expected_operation: modify
-                            description: 重启pod
+                            description: Restart the pod
                             affected_fields: []
                         object_type:
                           id: ""
@@ -276,14 +283,14 @@ paths:
                         module_type: action_type
                     total_count: 2
                     next_cursor: cursor-action-types-1
-                检索行动类-非第一次请求:
+                list action types - subsequent request:
                   value:
                     entries:
                       - id: restart_pod_test
-                        name: 重启pod_test
+                        name: restart_pod_test
                         tags:
-                          - 拓扑架构
-                        comment: "当pod状态是unknown或者failed时,重启pod"
+                          - topology
+                        comment: "Restart the pod when its status is unknown or failed"
                         icon: ""
                         color: ""
                         branch: main
@@ -299,7 +306,7 @@ paths:
                         impact_contracts:
                           - object_type_id: pod
                             expected_operation: modify
-                            description: 重启pod
+                            description: Restart the pod
                             affected_fields: []
                         object_type:
                           id: ""
@@ -518,6 +525,9 @@ paths:
         "400":
           description: Invalid request parameters and similar errors. Business validation failures use 200 with valid=false.
 components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
   schemas:
     BasicInfo:
       description: Basic resource information containing ID and name

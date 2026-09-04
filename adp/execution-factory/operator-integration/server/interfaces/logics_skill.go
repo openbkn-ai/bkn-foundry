@@ -60,22 +60,23 @@ type QuerySkillListReq struct {
 
 // SkillInfo Skill details.
 type SkillInfo struct {
-	SkillID      string         `json:"skill_id"`
-	Name         string         `json:"name"`
-	Description  string         `json:"description"`
-	Version      string         `json:"version"`
-	Status       BizStatus      `json:"status"`
-	Source       string         `json:"source"`
-	Dependencies map[string]any `json:"dependencies,omitempty"`
-	ExtendInfo   map[string]any `json:"extend_info,omitempty"`
-	CreateUser   string         `json:"create_user"`
-	CreateTime   int64          `json:"create_time"`
-	UpdateUser   string         `json:"update_user"`
-	UpdateTime   int64          `json:"update_time"`
-	Category     BizCategory    `json:"category,omitempty"`
-	CategoryName string         `json:"category_name,omitempty"`
-	ReleaseUser  string         `json:"release_user,omitempty"`
-	ReleaseTime  int64          `json:"release_time,omitempty"`
+	Operations   []AuthOperationType `json:"operations,omitempty"`
+	SkillID      string              `json:"skill_id"`
+	Name         string              `json:"name"`
+	Description  string              `json:"description"`
+	Version      string              `json:"version"`
+	Status       BizStatus           `json:"status"`
+	Source       string              `json:"source"`
+	Dependencies map[string]any      `json:"dependencies,omitempty"`
+	ExtendInfo   map[string]any      `json:"extend_info,omitempty"`
+	CreateUser   string              `json:"create_user"`
+	CreateTime   int64               `json:"create_time"`
+	UpdateUser   string              `json:"update_user"`
+	UpdateTime   int64               `json:"update_time"`
+	Category     BizCategory         `json:"category,omitempty"`
+	CategoryName string              `json:"category_name,omitempty"`
+	ReleaseUser  string              `json:"release_user,omitempty"`
+	ReleaseTime  int64               `json:"release_time,omitempty"`
 }
 
 // SkillFileSummary Skill file summary.

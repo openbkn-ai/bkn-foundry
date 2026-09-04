@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"sort"
 	"strings"
 
@@ -20,21 +19,9 @@ import (
 	"ontology-query/interfaces"
 )
 
-const actionExecutionPEPEnabledEnv = "ACTION_EXECUTION_PEP_ENABLED"
-
-// ActionExecutionPEPEnabled reports whether the complete action execution PEP
-// is enabled. It remains off until policies and schedule subjects are migrated.
-func ActionExecutionPEPEnabled() bool {
-	if !common.GetAuthEnabled() {
-		return false
-	}
-	value := strings.ToLower(strings.TrimSpace(os.Getenv(actionExecutionPEPEnabledEnv)))
-	return value == "true" || value == "1"
-}
-
 func (s *actionSchedulerService) authorizeActionType(ctx context.Context, knID string,
 	actionType *interfaces.ActionType) ([]interfaces.PermissionRequirement, error) {
-	if !ActionExecutionPEPEnabled() {
+	if !common.GetAuthEnabled() {
 		return nil, nil
 	}
 	if s == nil || s.permissions == nil {
@@ -54,7 +41,7 @@ func (s *actionSchedulerService) authorizeActionType(ctx context.Context, knID s
 
 func (s *actionSchedulerService) authorizeExecution(ctx context.Context,
 	requirements []interfaces.PermissionRequirement) error {
-	if !ActionExecutionPEPEnabled() {
+	if !common.GetAuthEnabled() {
 		return nil
 	}
 	if s == nil || s.permissions == nil {

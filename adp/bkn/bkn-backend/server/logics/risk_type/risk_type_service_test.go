@@ -120,7 +120,6 @@ func TestRiskTypeServiceCreateRiskTypesResourceParentLifecycle(t *testing.T) {
 }
 
 func TestRiskTypeServiceDeleteRiskTypesAuthorizationCleanup(t *testing.T) {
-	t.Setenv("KN_CHILD_RESOURCE_PEP_ENABLED", "true")
 	newService := func(t *testing.T) (*riskTypeService, sqlmock.Sqlmock, *bmock.MockRiskTypeAccess,
 		*bmock.MockPermissionService, *bmock.MockVegaBackendService) {
 		t.Helper()
@@ -193,10 +192,12 @@ func TestRiskTypeServiceSearchRiskTypesContinuesDefaultCursorPaging(t *testing.T
 
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		rta := bmock.NewMockRiskTypeAccess(mockCtrl)
 		service := &riskTypeService{
 			appSetting: &common.AppSetting{},
 			vbs:        vbs,
 			ps:         ps,
+			rta:        rta,
 		}
 		query := &interfaces.ConceptsQuery{
 			KNID:   "kn1",
@@ -208,7 +209,14 @@ func TestRiskTypeServiceSearchRiskTypesContinuesDefaultCursorPaging(t *testing.T
 			fullPage[i] = map[string]any{"id": "risk", "name": "risk"}
 		}
 
-		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		rta.EXPECT().GetAllRiskTypesByKnID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return([]*interfaces.RiskType{
+			{RTID: "risk"}, {RTID: "risk-last"},
+		}, nil)
+		ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_RISK_TYPE,
+			[]string{"kn1/risk", "kn1/risk-last"}, gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]interfaces.PermissionResourceOps{
+			"kn1/risk":      {ResourceID: "kn1/risk"},
+			"kn1/risk-last": {ResourceID: "kn1/risk-last"},
+		}, nil)
 		nextCursor := "cursor-1"
 		gomock.InOrder(
 			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
@@ -232,7 +240,6 @@ func TestRiskTypeServiceSearchRiskTypesContinuesDefaultCursorPaging(t *testing.T
 }
 
 func TestRiskTypeServiceSearchRiskTypesFiltersTrustedCandidatesBeforeDatasetPaging(t *testing.T) {
-	t.Setenv("KN_CHILD_RESOURCE_PEP_ENABLED", "true")
 	ctrl := gomock.NewController(t)
 	rta := bmock.NewMockRiskTypeAccess(ctrl)
 	vbs := bmock.NewMockVegaBackendService(ctrl)

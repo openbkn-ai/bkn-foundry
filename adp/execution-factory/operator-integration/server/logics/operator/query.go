@@ -119,7 +119,7 @@ func (m *operatorManager) GetOperatorQueryPage(ctx context.Context, req *interfa
 		},
 	}
 	var operatorList []*model.OperatorRegisterDB
-	authResp, err := m.queryOperatorConfigList(ctx, req)
+	authResp, accessor, err := m.queryOperatorConfigList(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -175,11 +175,29 @@ func (m *operatorManager) GetOperatorQueryPage(ctx context.Context, req *interfa
 		operatorInfo.UpdateUser = utils.GetValueOrDefault(userMap, operatorInfo.UpdateUser, interfaces.UnknownUser)
 		result.Data = append(result.Data, operatorInfo)
 	}
+	if err = projectOperatorAuthorizeOperations(ctx, m.AuthService, accessor, result.Data); err != nil {
+		return nil, err
+	}
 	return
 }
 
+func projectOperatorAuthorizeOperations(ctx context.Context, authorization interfaces.IAuthorizationService, accessor *interfaces.AuthAccessor, operators []*interfaces.OperatorDataInfo) error {
+	operatorIDs := make([]string, 0, len(operators))
+	for _, operator := range operators {
+		operatorIDs = append(operatorIDs, operator.OperatorID)
+	}
+	operationsByID, err := auth.ProjectAuthorizeOperations(ctx, authorization, accessor, operatorIDs, interfaces.AuthResourceTypeOperator)
+	if err != nil {
+		return err
+	}
+	for _, operator := range operators {
+		operator.Operations = operationsByID[operator.OperatorID]
+	}
+	return nil
+}
+
 func (m *operatorManager) queryOperatorConfigList(ctx context.Context, req *interfaces.PageQueryRequest) (
-	authResp *interfaces.QueryResponse[model.OperatorRegisterDB], err error) {
+	authResp *interfaces.QueryResponse[model.OperatorRegisterDB], accessor *interfaces.AuthAccessor, err error) {
 	// Query operator list.
 	conditions := map[string]interface{}{}
 	// Convert request parameters into conditions.
@@ -271,7 +289,6 @@ func (m *operatorManager) queryOperatorConfigList(ctx context.Context, req *inte
 	if common.IsPublicAPIFromCtx(ctx) {
 		queryBuilder.SetAuthFilter(func(newCtx context.Context) ([]string, error) {
 			// Check viewing permissions.
-			var accessor *interfaces.AuthAccessor
 			accessor, err = m.AuthService.GetAccessor(newCtx, req.UserID)
 			if err != nil {
 				return nil, err

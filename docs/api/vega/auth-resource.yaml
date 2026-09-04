@@ -3,15 +3,16 @@ openapi: 3.1.1
 info:
   title: Auth Resource
   description: |
-    Vega Backend 授权资源列表 API。
+    Vega Backend authorization resource-list API.
 
-    该端点按 `resource_type` 查询可授权资源的简要列表，供 ISF / 权限配置场景选择资源使用。
+    Queries a compact list of resources available for authorization by
+    `resource_type`, for use in permission configuration.
 
-    支持的 `resource_type`：
+    Supported `resource_type` values:
 
-    - `catalog`：Catalog 授权资源。
-    - `resource`：Resource 授权资源。
-    - `connector-type`：ConnectorType 授权资源。
+    - `catalog`: Catalog authorization resources.
+    - `resource`: Resource authorization resources.
+    - `connector-type`: ConnectorType authorization resources.
   version: 0.1.0
 servers:
   - url: /api/vega-backend/v1
@@ -21,10 +22,10 @@ paths:
   /auth-resources:
     get:
       operationId: listAuthResources
-      summary: 获取授权资源列表
+      summary: List authorization resources
       parameters:
         - name: resource_type
-          description: 授权资源类型
+          description: Authorization resource type
           in: query
           required: true
           schema:
@@ -34,17 +35,17 @@ paths:
               - resource
               - connector-type
         - name: id
-          description: 按资源 ID 精确过滤
+          description: Exact resource ID filter
           in: query
           schema:
             type: string
         - name: keyword
-          description: 按名称关键字过滤
+          description: Name keyword filter
           in: query
           schema:
             type: string
         - name: offset
-          description: 分页偏移量，>=0，默认 0
+          description: Pagination offset, at least 0; defaults to 0
           in: query
           schema:
             type: integer
@@ -52,14 +53,14 @@ paths:
             minimum: 0
             default: 0
         - name: limit
-          description: 每页数量，默认 50
+          description: Page size; defaults to 50
           in: query
           schema:
             type: integer
             format: int64
             default: 50
         - name: sort
-          description: 排序字段；仅支持 `name`
+          description: Sort field; only `name` is supported
           in: query
           schema:
             type: string
@@ -67,7 +68,7 @@ paths:
               - name
             default: name
         - name: direction
-          description: 排序方向
+          description: Sort direction
           in: query
           schema:
             type: string
@@ -94,7 +95,7 @@ components:
       $ref: "../_shared/auth.yaml#/components/securitySchemes/OAuth2"
   schemas:
     AuthResource:
-      description: 可授权资源简要信息
+      description: Compact information about an authorization resource
       type: object
       required:
         - id
@@ -112,7 +113,7 @@ components:
         name:
           type: string
     ListAuthResources:
-      description: 授权资源列表响应
+      description: Authorization resource-list response
       type: object
       required:
         - entries
@@ -127,19 +128,19 @@ components:
           format: int64
   responses:
     BadRequest:
-      description: 请求参数错误
+      description: Invalid request parameters
       content:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     Unauthorized:
-      description: 未认证
+      description: Unauthenticated
       content:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     InternalServerError:
-      description: 服务端错误
+      description: Server error
       content:
         application/json:
           schema:

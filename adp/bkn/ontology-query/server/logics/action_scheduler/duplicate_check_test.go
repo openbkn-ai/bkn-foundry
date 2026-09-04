@@ -137,6 +137,8 @@ func Test_defaultDuplicateCheck(t *testing.T) {
 }
 
 func Test_ExecuteAction_DuplicateCheck(t *testing.T) {
+	t.Setenv("AUTH_ENABLED", "false")
+
 	Convey("ExecuteAction returns 409 when defaultDuplicateCheck finds in-flight duplicate", t, func() {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()

@@ -13,6 +13,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/telemetry"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metadata"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
@@ -195,7 +196,7 @@ func (s *ToolServiceImpl) QueryToolBoxList(ctx context.Context, req *interfaces.
 	resp = &interfaces.QueryToolBoxListResp{
 		Data: []*interfaces.ToolBoxInfo{},
 	}
-	authResp, err := s.getToolBoxListPage(ctx, filter, req.CommonPageParams, req.UserID, operations)
+	authResp, accessor, err := s.getToolBoxListPage(ctx, filter, req.CommonPageParams, req.UserID, operations)
 	if err != nil {
 		return
 	}
@@ -209,8 +210,26 @@ func (s *ToolServiceImpl) QueryToolBoxList(ctx context.Context, req *interfaces.
 	if err != nil {
 		return
 	}
+	if err = projectToolBoxAuthorizeOperations(ctx, s.AuthService, accessor, toolBoxInfoList); err != nil {
+		return
+	}
 	resp.Data = toolBoxInfoList
 	return
+}
+
+func projectToolBoxAuthorizeOperations(ctx context.Context, authorization interfaces.IAuthorizationService, accessor *interfaces.AuthAccessor, toolBoxes []*interfaces.ToolBoxInfo) error {
+	toolBoxIDs := make([]string, 0, len(toolBoxes))
+	for _, toolBox := range toolBoxes {
+		toolBoxIDs = append(toolBoxIDs, toolBox.BoxID)
+	}
+	operationsByID, err := auth.ProjectAuthorizeOperations(ctx, authorization, accessor, toolBoxIDs, interfaces.AuthResourceTypeToolBox)
+	if err != nil {
+		return err
+	}
+	for _, toolBox := range toolBoxes {
+		toolBox.Operations = operationsByID[toolBox.BoxID]
+	}
+	return nil
 }
 
 // UpdateToolBoxStatus Modifies toolbox status.

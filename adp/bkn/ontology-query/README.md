@@ -94,9 +94,7 @@ For detailed API documentation, see [API documentation](./api_doc/).
 - Go 1.25.0+
 - OpenSearch 2.x
 - Ontology manager module, running on port 13014
-- BKN Safe with the `/api/safe/v1/authz/resource-filter` contract enabled when
-  `QUERY_DATA_PEP_ENABLED=true`; the query PEP defaults to disabled until
-  authorization data migration and cross-service validation are complete
+- BKN Safe with the `/api/safe/v1/authz/resource-filter` contract enabled
 
 ### Local development
 
@@ -185,6 +183,24 @@ and `x-account-type`. Permission denial returns HTTP 403. Missing subjects,
 disabled accounts, BKN Safe failures, timeouts, invalid responses, or incomplete
 published dependencies prevent the data query from running; authorization
 infrastructure failures return HTTP 503.
+
+### Action-execution authorization
+
+When authentication is enabled, both submission and the real external invocation
+require all of the following for the authenticated execution subject. There is
+no separate action-execution rollout switch:
+
+- `execute` on `action_type:{kn_id}/{action_type_id}`; this operation never
+  inherits from the knowledge network;
+- `execute` on the referenced `tool_box` or `mcp` resource;
+- `query_data` on every object type referenced by the action's target, affect,
+  and impact contracts.
+
+The worker rechecks the stored subject's current account state and permissions
+immediately before invocation. A missing subject, missing permission snapshot,
+incomplete dependency, or BKN Safe failure prevents the external call. See the
+[shared authorization contract](../../../docs/api/knowledge-network-authorization.md)
+for canonical IDs and error semantics.
 
 ## Monitoring and operations
 
