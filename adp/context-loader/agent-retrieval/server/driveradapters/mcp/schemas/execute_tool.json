@@ -1,0 +1,25 @@
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "toolbox_id": {
+        "type": "string",
+        "description": "工具箱 ID，取自 search_tools 返回的 toolbox_id。"
+      },
+      "tool_id": {
+        "type": "string",
+        "description": "工具 ID，取自 search_tools 返回的 tool_id。"
+      },
+      "arguments": {
+        "type": "object",
+        "description": "工具的业务入参，按 search_tools 返回的 input_schema 填写。不要在这里塞令牌、会话 id 等传输信息，平台会自行携带。"
+      }
+    },
+    "required": ["toolbox_id", "tool_id", "arguments"]
+  },
+  "output_schema": {
+    "type": "object",
+    "description": "工具的原始响应。函数自身报错同样返回 200，需读响应体判断成败，不能只看调用是否成功。",
+    "additionalProperties": true
+  }
+}

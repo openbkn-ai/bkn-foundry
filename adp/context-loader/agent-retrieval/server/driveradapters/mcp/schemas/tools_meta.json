@@ -212,5 +212,21 @@
     "group": "execution",
     "group_title": "代码执行",
     "order": 620
+  },
+  "search_tools": {
+    "name": "search_tools",
+    "title": "工具检索",
+    "group": "tool",
+    "group_title": "工具",
+    "order": 560,
+    "description": "检索平台上已发布、当前账户可调用的函数工具（执行工厂 Toolbox Tool）。返回 tool_id、toolbox_id 与业务入参 schema，拿到后用 execute_tool 调用。当前是按名称/说明的字面匹配加列举，不是语义召回：搜不到就换关键词或留空 query 通览。"
+  },
+  "execute_tool": {
+    "name": "execute_tool",
+    "title": "执行工具",
+    "group": "tool",
+    "group_title": "工具",
+    "order": 570,
+    "description": "调用一个已发布的函数工具，以当前调用者身份执行，返回工具原始响应。toolbox_id / tool_id 必须取自 search_tools；arguments 按其返回的 input_schema 填。工具可能对外部系统写入且不可回滚，调用前先读清 description 与 use_rule。"
   }
 }

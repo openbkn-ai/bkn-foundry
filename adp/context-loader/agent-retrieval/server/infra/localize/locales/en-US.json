@@ -125,6 +125,17 @@
     "SkillRelativePathRequired": "rel_path is required. Obtain it from the file list returned by get_skill_content.",
     "SkillEntryShellRequired": "entry_shell is required. Obtain it from the entry command declared in SKILL.md.",
     "LogicPropertyInputMissing": "Generated dynamic parameters are missing required input values.",
+    "ToolboxCatalogRequestFailed": "Unable to list published toolboxes.",
+    "ToolboxCatalogResponseInvalid": "The published toolbox listing response is invalid.",
+    "ToolCatalogRequestFailed": "Unable to list the tools in the toolbox.",
+    "ToolCatalogResponseInvalid": "The tool listing response is invalid.",
+    "ToolExecutionRequestFailed": "Unable to execute the published tool.",
+    "ToolExecutionResponseInvalid": "The published tool response is invalid.",
+    "ToolboxIDRequired": "toolbox_id is required.",
+    "ToolboxIDAndToolIDRequired": "toolbox_id and tool_id are required. Both come from a search_tools result.",
+    "ToolNotExecutable": "This tool is not in the enabled catalogue you can call: it may be disabled, its toolbox may be unpublished, or this account may not have access. Confirm a callable toolbox_id and tool_id with search_tools first.",
+    "NoPublishedToolsMatched": "No published tools matched. Register a tool in Execution Factory, publish its toolbox and enable the tool, or broaden query and drop toolbox_id, then retry.",
+    "ToolSearchTruncated": "More tools matched than limit allows; only the first ones are returned. Narrow query or raise limit.",
     "LogicPropertyGenerationFailed": "Unable to generate dynamic parameters."
   },
   "find_skills": {

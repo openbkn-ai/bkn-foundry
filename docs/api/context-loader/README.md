@@ -14,6 +14,7 @@
 | [logic-property.yaml](logic-property.yaml) | 逻辑属性求值与指标取数 | `POST /kn/logic-property-resolver`、`POST /kn/query_metric` |
 | [action.yaml](action.yaml) | 行动召回与执行 | `POST /kn/get_action_info`、`POST /kn/execute_action`、`POST /kn/get_action_execution`、`POST /kn/list_action_executions` |
 | [skill.yaml](skill.yaml) | Skill 召回与读取 | `POST /kn/find_skills`、`POST /kn/list_skills`、`POST /kn/get_skill_content`、`POST /kn/read_skill_file`、`POST /kn/execute_skill` |
+| [tool.yaml](tool.yaml) | 已发布工具的检索与调用 | `POST /kn/search_tools`、`POST /kn/execute_tool` |
 | [data-access.yaml](data-access.yaml) | 数据层直查 | `POST /kn/list_resources`、`POST /kn/describe_resource`、`POST /kn/run_sql` |
 | [mcp.yaml](mcp.yaml) | MCP 服务 | `GET /mcp/info`、`POST /mcp` |
 
@@ -26,8 +27,10 @@ get_object_types         → 下钻拿属性的物理列名、可用算子，以
 query_object_instance    → 取实例，从 _instance_identity 拿主键
   ├→ logic-property-resolver → 求指标 / 算子类逻辑属性（实例 + 已绑逻辑属性）
   ├→ get_action_info → execute_action → get_action_execution → 执行闭环
-  └→ find_skills            → 召回可装载的 Skill
-       └→ get_skill_content → read_skill_file → execute_skill
+  ├→ find_skills            → 召回可装载的 Skill
+  │    └→ get_skill_content → read_skill_file → execute_skill
+  └→ search_tools           → 找到已发布函数工具
+       └→ execute_tool      → 以调用者身份执行
 ```
 
 指标取数（OT 优先，已建模指标别用 `run_sql` 重写口径）：
