@@ -330,10 +330,11 @@ type ResourceListRequest struct {
 
 // AuthResourceFilterRequest resource filtering request.
 type AuthResourceFilterRequest struct {
-	Accessor   *AuthAccessor       `json:"accessor"`  // Visitor information.
-	Resources  []*AuthResource     `json:"resources"` // Resource list.
-	Operations []AuthOperationType `json:"operation"` // List of actions to check.
-	Method     string              `json:"method"`    // method.
+	Accessor            *AuthAccessor       `json:"accessor"`             // Visitor information.
+	Resources           []*AuthResource     `json:"resources"`            // Resource list.
+	Operations          []AuthOperationType `json:"operation"`            // Operations required for visibility.
+	CandidateOperations []AuthOperationType `json:"candidate_operations"` // Operations to project for every visible resource.
+	Method              string              `json:"method"`               // method.
 }
 
 type AuthOperation struct {
@@ -363,7 +364,9 @@ type AuthDeletePolicyRequest struct {
 
 // AuthResourceResult resource result.
 type AuthResourceResult struct {
-	ID string `json:"id"` // Unique identification ID.
+	ID         string              `json:"id"`         // Unique identification ID.
+	Type       string              `json:"type"`       // Resource type.
+	Operations []AuthOperationType `json:"operations"` // Operations held on this resource.
 }
 
 // Authorization authorization service interface.

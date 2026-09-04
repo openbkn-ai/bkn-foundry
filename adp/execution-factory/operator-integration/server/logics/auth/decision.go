@@ -209,10 +209,11 @@ func (s *authServiceImpl) ResourceFilterIDs(
 	operations ...interfaces.AuthOperationType,
 ) ([]string, error) {
 	req := &interfaces.AuthResourceFilterRequest{
-		Accessor:   accessor,
-		Resources:  []*interfaces.AuthResource{},
-		Operations: operations,
-		Method:     interfaces.AuthMethodGet,
+		Accessor:            accessor,
+		Resources:           []*interfaces.AuthResource{},
+		Operations:          operations,
+		CandidateOperations: operations,
+		Method:              interfaces.AuthMethodGet,
 	}
 
 	for _, resourceID := range resourceIDS {
@@ -231,6 +232,44 @@ func (s *authServiceImpl) ResourceFilterIDs(
 		resourceIDs = append(resourceIDs, resource.ID)
 	}
 	return resourceIDs, nil
+}
+
+// ResourceFilterOperations returns the candidate operations held on each resource that is
+// visible to the accessor. The caller supplies explicit candidates so list rendering cannot
+// accidentally infer instance permissions from a type-wide grant.
+func (s *authServiceImpl) ResourceFilterOperations(
+	ctx context.Context,
+	accessor *interfaces.AuthAccessor,
+	resourceIDs []string,
+	resourceType interfaces.AuthResourceType,
+	visibilityOperations []interfaces.AuthOperationType,
+	candidateOperations []interfaces.AuthOperationType,
+) (map[string][]interfaces.AuthOperationType, error) {
+	result := make(map[string][]interfaces.AuthOperationType, len(resourceIDs))
+	if len(resourceIDs) == 0 {
+		return result, nil
+	}
+	resources := make([]*interfaces.AuthResource, 0, len(resourceIDs))
+	for _, resourceID := range resourceIDs {
+		resources = append(resources, &interfaces.AuthResource{ID: resourceID, Type: string(resourceType)})
+	}
+	response, err := s.authorization.ResourceFilter(ctx, &interfaces.AuthResourceFilterRequest{
+		Accessor:            accessor,
+		Resources:           resources,
+		Operations:          visibilityOperations,
+		CandidateOperations: candidateOperations,
+		Method:              interfaces.AuthMethodGet,
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, resource := range response {
+		if resource == nil || resource.Type != string(resourceType) {
+			continue
+		}
+		result[resource.ID] = resource.Operations
+	}
+	return result, nil
 }
 
 // ResourceListIDs Get the resource list.

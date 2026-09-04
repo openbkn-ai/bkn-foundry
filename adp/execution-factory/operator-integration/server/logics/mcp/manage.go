@@ -508,6 +508,9 @@ func (s *mcpServiceImpl) QueryPage(ctx context.Context, req *interfaces.MCPServe
 		config.UpdateUser = utils.GetValueOrDefault(userMap, config.UpdateUser, interfaces.UnknownUser)
 		config.ToolConfigs = toolConfigMap[s.genToolConfigMapKey(config.MCPID, config.Version)]
 	}
+	if err = projectMCPAuthorizeOperations(ctx, s.AuthService, req.UserID, data); err != nil {
+		return nil, err
+	}
 
 	queryResult := &ormhelper.QueryResult{
 		Total:      int64(resp.TotalCount),
@@ -522,6 +525,21 @@ func (s *mcpServiceImpl) QueryPage(ctx context.Context, req *interfaces.MCPServe
 		Data:        data,
 	}
 	return
+}
+
+func projectMCPAuthorizeOperations(ctx context.Context, authorization interfaces.IAuthorizationService, userID string, configs []*interfaces.MCPServerConfigInfo) error {
+	mcpIDs := make([]string, 0, len(configs))
+	for _, config := range configs {
+		mcpIDs = append(mcpIDs, config.MCPID)
+	}
+	operationsByID, err := auth.ProjectAuthorizeOperations(ctx, authorization, userID, mcpIDs, interfaces.AuthResourceTypeMCP)
+	if err != nil {
+		return err
+	}
+	for _, config := range configs {
+		config.Operations = operationsByID[config.MCPID]
+	}
+	return nil
 }
 
 // GetDetail Gets MCP Server details.

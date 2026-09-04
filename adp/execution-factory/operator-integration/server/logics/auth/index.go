@@ -88,6 +88,14 @@ func (n *noopAuthService) ResourceFilterIDs(ctx context.Context, accessor *inter
 	return resourceIDS, nil
 }
 
+func (n *noopAuthService) ResourceFilterOperations(ctx context.Context, accessor *interfaces.AuthAccessor, resourceIDs []string, resourceType interfaces.AuthResourceType, visibilityOperations []interfaces.AuthOperationType, candidateOperations []interfaces.AuthOperationType) (map[string][]interfaces.AuthOperationType, error) {
+	result := make(map[string][]interfaces.AuthOperationType, len(resourceIDs))
+	for _, resourceID := range resourceIDs {
+		result[resourceID] = append([]interfaces.AuthOperationType(nil), candidateOperations...)
+	}
+	return result, nil
+}
+
 func (n *noopAuthService) ResourceListIDs(ctx context.Context, accessor *interfaces.AuthAccessor, resourceType interfaces.AuthResourceType, operations ...interfaces.AuthOperationType) ([]string, error) {
 	return []string{interfaces.ResourceIDAll}, nil
 }

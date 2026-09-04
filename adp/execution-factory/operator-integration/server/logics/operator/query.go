@@ -175,7 +175,25 @@ func (m *operatorManager) GetOperatorQueryPage(ctx context.Context, req *interfa
 		operatorInfo.UpdateUser = utils.GetValueOrDefault(userMap, operatorInfo.UpdateUser, interfaces.UnknownUser)
 		result.Data = append(result.Data, operatorInfo)
 	}
+	if err = projectOperatorAuthorizeOperations(ctx, m.AuthService, req.UserID, result.Data); err != nil {
+		return nil, err
+	}
 	return
+}
+
+func projectOperatorAuthorizeOperations(ctx context.Context, authorization interfaces.IAuthorizationService, userID string, operators []*interfaces.OperatorDataInfo) error {
+	operatorIDs := make([]string, 0, len(operators))
+	for _, operator := range operators {
+		operatorIDs = append(operatorIDs, operator.OperatorID)
+	}
+	operationsByID, err := auth.ProjectAuthorizeOperations(ctx, authorization, userID, operatorIDs, interfaces.AuthResourceTypeOperator)
+	if err != nil {
+		return err
+	}
+	for _, operator := range operators {
+		operator.Operations = operationsByID[operator.OperatorID]
+	}
+	return nil
 }
 
 func (m *operatorManager) queryOperatorConfigList(ctx context.Context, req *interfaces.PageQueryRequest) (

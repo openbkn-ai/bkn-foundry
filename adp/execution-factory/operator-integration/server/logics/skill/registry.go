@@ -932,8 +932,26 @@ func (r *skillRegistry) QuerySkillList(ctx context.Context, req *interfaces.Quer
 	if err != nil {
 		return nil, err
 	}
+	if err = projectSkillAuthorizeOperations(ctx, r.AuthService, req.UserID, skillInfos); err != nil {
+		return nil, err
+	}
 	resp.Data = skillInfos
 	return resp, nil
+}
+
+func projectSkillAuthorizeOperations(ctx context.Context, authorization interfaces.IAuthorizationService, userID string, skills []*interfaces.SkillInfo) error {
+	skillIDs := make([]string, 0, len(skills))
+	for _, skill := range skills {
+		skillIDs = append(skillIDs, skill.SkillID)
+	}
+	operationsByID, err := auth.ProjectAuthorizeOperations(ctx, authorization, userID, skillIDs, interfaces.AuthResourceTypeSkill)
+	if err != nil {
+		return err
+	}
+	for _, skill := range skills {
+		skill.Operations = operationsByID[skill.SkillID]
+	}
+	return nil
 }
 
 // Assemble Skill Market Summary List.
