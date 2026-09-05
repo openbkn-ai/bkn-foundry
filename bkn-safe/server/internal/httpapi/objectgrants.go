@@ -13,6 +13,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/managedproxy"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
@@ -714,6 +715,15 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 			replyPublicError(c, http.StatusForbidden)
 			return
 		}
+		managed, err := managedproxy.IsManaged(c.Request.Context(), db, req.AccessorID)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		if managed {
+			replyPublicError(c, http.StatusForbidden)
+			return
+		}
 		// Administrator, or the object's own owner delegating it. Resolved here
 		// rather than in middleware because the owner branch is a question about
 		// the object named in the BODY, which middleware cannot see.
@@ -726,7 +736,7 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 		}
 		// Grantee must be a user (apps are user rows too). Departments/groups are
 		// rejected: their grants never match at enforce time.
-		ok, err := isUserAccessor(c, db, req.AccessorID)
+		ok, err = isUserAccessor(c, db, req.AccessorID)
 		if err != nil {
 			serverError(c, err)
 			return
@@ -789,7 +799,6 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 
 func revokeObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-
 		var req struct {
 			AccessorID string      `json:"accessor_id" binding:"required"`
 			Resource   resourceRef `json:"resource" binding:"required"`
@@ -799,6 +808,15 @@ func revokeObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 		}
 		if !isConcreteResourceID(req.Resource.ID) {
 			replyPublicError(c, http.StatusBadRequest)
+			return
+		}
+		managed, err := managedproxy.IsManaged(c.Request.Context(), db, req.AccessorID)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		if managed {
+			replyPublicError(c, http.StatusForbidden)
 			return
 		}
 		// Revoking on an object is the mirror of granting on it: whoever can open

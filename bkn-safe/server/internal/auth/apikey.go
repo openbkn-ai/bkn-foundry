@@ -16,6 +16,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/managedproxy"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
@@ -71,6 +72,13 @@ type VerifiedKey struct {
 // nil = never expires. The caller has already authenticated the owner, so the key
 // can never grant more than the owner holds.
 func (s *APIKeyStore) Issue(ctx context.Context, ownerID, name string, expiresAt *time.Time) (string, *model.APIKey, error) {
+	managed, err := managedproxy.IsManaged(ctx, s.db, ownerID)
+	if err != nil {
+		return "", nil, err
+	}
+	if managed {
+		return "", nil, managedproxy.ErrManagedAccount
+	}
 	// Names are unique per owner so a user's key list is unambiguous. Checked at
 	// the app layer (not a DB unique index) because pre-existing rows may already
 	// hold duplicate names — a unique index would break AutoMigrate on them.
@@ -144,6 +152,15 @@ func (s *APIKeyStore) Verify(ctx context.Context, plaintext string) (*VerifiedKe
 	if !owner.Enabled {
 		return nil, ErrAPIKeyInvalid
 	}
+	if owner.AccountType == model.AccountTypeApp {
+		managed, err := managedproxy.IsManaged(ctx, s.db, owner.ID)
+		if err != nil {
+			return nil, err
+		}
+		if managed {
+			return nil, ErrAPIKeyInvalid
+		}
+	}
 
 	// Best-effort last-used stamp; never fail verification on a write error.
 	now := time.Now()
@@ -210,8 +227,15 @@ func (s *APIKeyStore) Delete(ctx context.Context, id string) error {
 // This is the "I lost it / rotate on suspected leak" path — no need to recreate
 // and rename. Returns gorm.ErrRecordNotFound when the caller owns no such key.
 func (s *APIKeyStore) Regenerate(ctx context.Context, ownerID, id string) (string, *model.APIKey, error) {
+	managed, err := managedproxy.IsManaged(ctx, s.db, ownerID)
+	if err != nil {
+		return "", nil, err
+	}
+	if managed {
+		return "", nil, managedproxy.ErrManagedAccount
+	}
 	var rec model.APIKey
-	err := s.db.WithContext(ctx).First(&rec, "id = ? AND owner_user_id = ?", id, ownerID).Error
+	err = s.db.WithContext(ctx).First(&rec, "id = ? AND owner_user_id = ?", id, ownerID).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return "", nil, gorm.ErrRecordNotFound
 	}

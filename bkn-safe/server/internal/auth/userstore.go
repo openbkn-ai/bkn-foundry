@@ -12,11 +12,13 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/managedproxy"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
@@ -43,6 +45,12 @@ func NewInitialPassword() string {
 // ErrInvalidCredentials is returned when account/password verification fails.
 // It is deliberately opaque (no "user not found" vs "wrong password" leak).
 var ErrInvalidCredentials = errors.New("invalid account or password")
+
+// ErrManagedLoginDisabled is intentionally wrapped in ErrInvalidCredentials so
+// public login responses remain opaque. The distinct sentinel prevents an
+// authenticator chain from falling through to LDAP for a protected local proxy
+// account that happens to share the same account string.
+var ErrManagedLoginDisabled = fmt.Errorf("%w: managed account login disabled", ErrInvalidCredentials)
 
 // ErrUserDisabled is returned when the account exists but is disabled.
 var ErrUserDisabled = errors.New("user disabled")
@@ -78,6 +86,13 @@ func (s *UserStore) Verify(ctx context.Context, account, password string) (*mode
 	if err != nil {
 		return nil, err
 	}
+	managed, err := managedproxy.IsManaged(ctx, s.db, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	if managed {
+		return nil, ErrManagedLoginDisabled
+	}
 	if u.PasswordHash == "" {
 		// No local password (e.g. an LDAP/app identity) — not a local login.
 		return nil, ErrInvalidCredentials
@@ -109,6 +124,9 @@ func (s *UserStore) CreateLocalUser(ctx context.Context, u *model.User, password
 // enabled/account_type — NOT account or password, which have their own paths).
 // Returns gorm.ErrRecordNotFound when no row matches.
 func (s *UserStore) UpdateUser(ctx context.Context, id string, fields map[string]any) error {
+	if err := rejectManagedMutation(ctx, s.db, id); err != nil {
+		return err
+	}
 	res := s.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", id).Updates(fields)
 	if res.Error != nil {
 		return res.Error
@@ -124,6 +142,9 @@ func (s *UserStore) UpdateUser(ctx context.Context, id string, fields map[string
 // caller's job (it holds the enforcer). Returns gorm.ErrRecordNotFound when the
 // user doesn't exist.
 func (s *UserStore) DeleteUser(ctx context.Context, id string) error {
+	if err := rejectManagedMutation(ctx, s.db, id); err != nil {
+		return err
+	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		res := tx.Where("id = ?", id).Delete(&model.User{})
 		if res.Error != nil {
@@ -166,6 +187,9 @@ func (s *UserStore) ChangePassword(ctx context.Context, account, oldPassword, ne
 // their next login. Contrast SetPassword (self-service / forced-change
 // completion), which clears the flag.
 func (s *UserStore) ResetPassword(ctx context.Context, userID, password string) error {
+	if err := rejectManagedMutation(ctx, s.db, userID); err != nil {
+		return err
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
@@ -178,6 +202,9 @@ func (s *UserStore) ResetPassword(ctx context.Context, userID, password string) 
 // SetPassword updates a local user's password and clears MustChangePassword
 // (a successful change always satisfies a forced-change requirement).
 func (s *UserStore) SetPassword(ctx context.Context, userID, password string) error {
+	if err := rejectManagedMutation(ctx, s.db, userID); err != nil {
+		return err
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
@@ -185,4 +212,15 @@ func (s *UserStore) SetPassword(ctx context.Context, userID, password string) er
 	return s.db.WithContext(ctx).Model(&model.User{}).
 		Where("id = ?", userID).
 		Updates(map[string]any{"password_hash": string(hash), "must_change_password": false}).Error
+}
+
+func rejectManagedMutation(ctx context.Context, db *gorm.DB, userID string) error {
+	managed, err := managedproxy.IsManaged(ctx, db, userID)
+	if err != nil {
+		return err
+	}
+	if managed {
+		return managedproxy.ErrManagedAccount
+	}
+	return nil
 }

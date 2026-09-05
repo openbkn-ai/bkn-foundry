@@ -66,7 +66,8 @@ type UserDetail struct {
 // GetUser returns a user's detail, or gorm.ErrRecordNotFound.
 func (s *Service) GetUser(ctx context.Context, id string) (*UserDetail, error) {
 	var u model.User
-	if err := s.db.WithContext(ctx).First(&u, "id = ?", id).Error; err != nil {
+	if err := withoutManagedProxyAccounts(s.db.WithContext(ctx).Model(&model.User{})).
+		Where("id = ?", id).First(&u).Error; err != nil {
 		return nil, err
 	}
 	d := &UserDetail{
@@ -91,7 +92,7 @@ func (s *Service) GetUser(ctx context.Context, id string) (*UserDetail, error) {
 // ResolveUserNames maps user ids to {id,name}. Unknown ids are omitted (the
 // clean contract returns what it finds; callers handle gaps).
 func (s *Service) ResolveUserNames(ctx context.Context, ids []string) ([]NamedRef, error) {
-	return s.resolveNames(ctx, &model.User{}, ids)
+	return s.resolveUserNames(ctx, ids)
 }
 
 // ResolveDepartmentNames maps department ids to {id,name}.
@@ -107,13 +108,25 @@ func (s *Service) ResolveGroupNames(ctx context.Context, ids []string) ([]NamedR
 // ResolveAppNames maps application-account ids to {id,name}. App accounts are
 // User rows (account_type=app), so resolution is a plain users-table lookup.
 func (s *Service) ResolveAppNames(ctx context.Context, ids []string) ([]NamedRef, error) {
-	return s.resolveNames(ctx, &model.User{}, ids)
+	return s.resolveUserNames(ctx, ids)
 }
 
 // ResolveContactorNames maps contactor ids to {id,name} (User rows,
 // account_type=contactor).
 func (s *Service) ResolveContactorNames(ctx context.Context, ids []string) ([]NamedRef, error) {
-	return s.resolveNames(ctx, &model.User{}, ids)
+	return s.resolveUserNames(ctx, ids)
+}
+
+func (s *Service) resolveUserNames(ctx context.Context, ids []string) ([]NamedRef, error) {
+	out := make([]NamedRef, 0, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	if err := withoutManagedProxyAccounts(s.db.WithContext(ctx).Model(&model.User{})).
+		Select("id", "name").Where("id IN ?", ids).Scan(&out).Error; err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // resolveNames is the shared id->name lookup for any model with id+name columns.
@@ -143,7 +156,10 @@ func (s *Service) ListDepartments(ctx context.Context, parentID string) ([]model
 func (s *Service) FindUserByAccount(ctx context.Context, account string) (*UserSummary, error) {
 	var u UserSummary
 	if err := s.db.WithContext(ctx).Model(&model.User{}).
-		Select(userSummaryCols).Where("account = ?", account).First(&u).Error; err != nil {
+		Select(userSummaryCols).
+		Where("account = ?", account).
+		Where("NOT EXISTS (SELECT 1 FROM managed_proxy_accounts mpa WHERE mpa.proxy_account_id = users.id)").
+		First(&u).Error; err != nil {
 		return nil, err
 	}
 	return &u, nil
@@ -174,7 +190,7 @@ func (s *Service) DepartmentMembers(ctx context.Context, deptID string) ([]UserS
 	if len(ids) == 0 {
 		return out, nil
 	}
-	if err := s.db.WithContext(ctx).Model(&model.User{}).
+	if err := withoutManagedProxyAccounts(s.db.WithContext(ctx).Model(&model.User{})).
 		Select(userSummaryCols).Where("id IN ?", ids).Order("account").Scan(&out).Error; err != nil {
 		return nil, err
 	}
@@ -220,6 +236,9 @@ func (s *Service) RemoveDepartmentMembers(ctx context.Context, deptID string, us
 	if len(ids) == 0 {
 		return nil
 	}
+	if err := s.rejectManagedUserIDs(ctx, ids); err != nil {
+		return err
+	}
 	return s.db.WithContext(ctx).
 		Where("department_id = ? AND user_id IN ?", deptID, ids).
 		Delete(&model.UserDepartment{}).Error
@@ -242,7 +261,9 @@ func (s *Service) requireDepartment(ctx context.Context, id string) error {
 func (s *Service) requireUsersExist(ctx context.Context, ids []string) error {
 	var found []string
 	if err := s.db.WithContext(ctx).Model(&model.User{}).
-		Where("id IN ?", ids).Pluck("id", &found).Error; err != nil {
+		Where("id IN ?", ids).
+		Where("NOT EXISTS (SELECT 1 FROM managed_proxy_accounts mpa WHERE mpa.proxy_account_id = users.id)").
+		Pluck("id", &found).Error; err != nil {
 		return err
 	}
 	if len(found) == len(ids) {
@@ -308,7 +329,10 @@ func (s *Service) SetUserDepartments(ctx context.Context, userID string, deptIDs
 // requireUser returns gorm.ErrRecordNotFound when no user has the id.
 func (s *Service) requireUser(ctx context.Context, id string) error {
 	var n int64
-	if err := s.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", id).Count(&n).Error; err != nil {
+	if err := s.db.WithContext(ctx).Model(&model.User{}).
+		Where("id = ?", id).
+		Where("NOT EXISTS (SELECT 1 FROM managed_proxy_accounts mpa WHERE mpa.proxy_account_id = users.id)").
+		Count(&n).Error; err != nil {
 		return err
 	}
 	if n == 0 {
@@ -395,7 +419,8 @@ func (s *Service) DeleteDepartment(ctx context.Context, id string) error {
 // GroupMembers returns the member user ids of a group.
 func (s *Service) GroupMembers(ctx context.Context, groupID string) ([]string, error) {
 	var ms []model.GroupMember
-	if err := s.db.WithContext(ctx).Where("group_id = ?", groupID).Find(&ms).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("group_id = ?", groupID).
+		Where(managedProxyMembershipFilter("group_members.member_id")).Find(&ms).Error; err != nil {
 		return nil, err
 	}
 	ids := make([]string, 0, len(ms))
@@ -415,6 +440,7 @@ func (s *Service) SearchOrg(ctx context.Context, userIDs, scopeDeptIDs []string)
 	var uds []model.UserDepartment
 	if err := s.db.WithContext(ctx).
 		Where("user_id IN ? AND department_id IN ?", userIDs, scopeDeptIDs).
+		Where(managedProxyMembershipFilter("user_departments.user_id")).
 		Find(&uds).Error; err != nil {
 		return nil, err
 	}

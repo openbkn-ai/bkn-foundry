@@ -37,7 +37,7 @@ These directories remain in the repository but are not published on the site. Th
 
 | Directory | Reason |
 | --- | --- |
-| [`bkn-safe/`](bkn-safe/) | Contains the self-service read surface and a cluster-internal authorization contract. Both are linted but are not published as general external integration APIs |
+| [`bkn-safe/`](bkn-safe/) | Contains the self-service read surface plus cluster-internal authorization and managed-proxy contracts. They are linted but are not published as general external integration APIs |
 | [`observability/`](observability/) | Contains only `observability.json`; it has no publishable YAML and would render as an empty group |
 
 > Every new module directory must be registered in either `MODULES` or `MODULES_UNPUBLISHED`. The `make api-docs-*` targets fail otherwise, preventing documentation from being added silently without appearing on the site.

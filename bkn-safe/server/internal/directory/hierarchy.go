@@ -84,7 +84,8 @@ func (s *Service) deptChain(ctx context.Context, deptID string) ([]DeptRef, erro
 // userDirectDeptIDs returns the departments a user is directly assigned to.
 func (s *Service) userDirectDeptIDs(ctx context.Context, userID string) ([]string, error) {
 	var uds []model.UserDepartment
-	if err := s.db.WithContext(ctx).Where("user_id = ?", userID).Find(&uds).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("user_id = ?", userID).
+		Where(managedProxyMembershipFilter("user_departments.user_id")).Find(&uds).Error; err != nil {
 		return nil, err
 	}
 	ids := make([]string, 0, len(uds))
@@ -162,7 +163,9 @@ func (s *Service) DepartmentInfos(ctx context.Context, ids []string) ([]DeptInfo
 // departments (by member_type).
 func (s *Service) GroupMembersSplit(ctx context.Context, groupID string) (userIDs, deptIDs []string, err error) {
 	var ms []model.GroupMember
-	if err = s.db.WithContext(ctx).Where("group_id = ?", groupID).Find(&ms).Error; err != nil {
+	if err = s.db.WithContext(ctx).Where("group_id = ?", groupID).
+		Where("member_type = ? OR "+managedProxyMembershipFilter("group_members.member_id"), "department").
+		Find(&ms).Error; err != nil {
 		return nil, nil, err
 	}
 	userIDs, deptIDs = []string{}, []string{}
@@ -234,7 +237,8 @@ func (s *Service) UsersDetail(ctx context.Context, ids []string) ([]UserFull, er
 	out := make([]UserFull, 0, len(ids))
 	for _, id := range ids {
 		var u model.User
-		err := s.db.WithContext(ctx).First(&u, "id = ?", id).Error
+		err := withoutManagedProxyAccounts(s.db.WithContext(ctx).Model(&model.User{})).
+			Where("id = ?", id).First(&u).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			continue
 		}

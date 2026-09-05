@@ -6,9 +6,13 @@ package directory
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"gorm.io/gorm"
+
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/managedproxy"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
@@ -56,6 +60,111 @@ func TestListUsersFiltersAndEnrichment(t *testing.T) {
 	}
 	if total != 1 || byRole[0].ID != "u1" {
 		t.Fatalf("role filter: total=%d user=%s", total, byRole[0].ID)
+	}
+}
+
+func TestListUsersHidesManagedProxyAccounts(t *testing.T) {
+	s, db := newSvc(t)
+	if err := db.Create(&model.User{ID: "u-visible", Account: "visible", Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	proxy, _, err := managedproxy.New(db).Create(t.Context(), managedproxy.CreateRequest{
+		ManagedResourceType: managedproxy.ResourceKnowledgeNetwork,
+		ManagedResourceID:   "kn-hidden",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	users, total, err := s.ListUsers(t.Context(), UserListFilter{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 || len(users) != 1 || users[0].ID != "u-visible" {
+		t.Fatalf("ListUsers() = total %d, users %+v; proxy %q must stay hidden", total, users, proxy.ProxyAccountID)
+	}
+	if _, err := s.GetUser(t.Context(), proxy.ProxyAccountID); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("GetUser(proxy) error = %v, want not found", err)
+	}
+	if err := s.SetUserDepartments(t.Context(), proxy.ProxyAccountID, nil); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("SetUserDepartments(proxy) error = %v, want not found", err)
+	}
+}
+
+func TestManagedProxyIsHiddenFromDirectoryMembershipSurfaces(t *testing.T) {
+	s, db := newSvc(t)
+	proxy, _, err := managedproxy.New(db).Create(t.Context(), managedproxy.CreateRequest{
+		ManagedResourceType: managedproxy.ResourceKnowledgeNetwork,
+		ManagedResourceID:   "kn-hidden-membership",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.Department{ID: "d-proxy", Name: "Hidden"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.Group{ID: "g-proxy", Name: "Hidden"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	// Simulate legacy/corrupt memberships created before the managed-account
+	// guards existed. Read paths still must not expose the proxy.
+	if err := db.Create(&model.UserDepartment{UserID: proxy.ProxyAccountID, DepartmentID: "d-proxy"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.GroupMember{
+		GroupID: "g-proxy", MemberID: proxy.ProxyAccountID, MemberType: "user",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	for name, resolve := range map[string]func(context.Context, []string) ([]NamedRef, error){
+		"user names":      s.ResolveUserNames,
+		"app names":       s.ResolveAppNames,
+		"contactor names": s.ResolveContactorNames,
+	} {
+		t.Run(name, func(t *testing.T) {
+			refs, err := resolve(t.Context(), []string{proxy.ProxyAccountID})
+			if err != nil || len(refs) != 0 {
+				t.Fatalf("resolve proxy = (%+v, %v), want empty", refs, err)
+			}
+		})
+	}
+	if user, err := s.FindUserByAccount(t.Context(), "bkn-proxy-"+proxy.ProxyAccountID); !errors.Is(err, gorm.ErrRecordNotFound) || user != nil {
+		t.Fatalf("FindUserByAccount(proxy) = (%+v, %v), want not found", user, err)
+	}
+	if members, err := s.DepartmentMembers(t.Context(), "d-proxy"); err != nil || len(members) != 0 {
+		t.Fatalf("DepartmentMembers() = (%+v, %v), want empty", members, err)
+	}
+	if members, err := s.GroupMembers(t.Context(), "g-proxy"); err != nil || len(members) != 0 {
+		t.Fatalf("GroupMembers() = (%+v, %v), want empty", members, err)
+	}
+	if users, _, err := s.GroupMembersSplit(t.Context(), "g-proxy"); err != nil || len(users) != 0 {
+		t.Fatalf("GroupMembersSplit() = (%+v, %v), want no users", users, err)
+	}
+	if ids, err := s.UserDeptIDs(t.Context(), proxy.ProxyAccountID); err != nil || len(ids) != 0 {
+		t.Fatalf("UserDeptIDs(proxy) = (%+v, %v), want empty", ids, err)
+	}
+	if users, err := s.UsersDetail(t.Context(), []string{proxy.ProxyAccountID}); err != nil || len(users) != 0 {
+		t.Fatalf("UsersDetail(proxy) = (%+v, %v), want empty", users, err)
+	}
+	if users, _, err := s.SearchOrgFull(t.Context(), []string{proxy.ProxyAccountID}, nil, []string{"d-proxy"}); err != nil || len(users) != 0 {
+		t.Fatalf("SearchOrgFull(proxy) = (%+v, %v), want empty", users, err)
+	}
+	deps, _, err := s.ListAllDepartments(t.Context(), "", 0, 10)
+	if err != nil || len(deps) != 1 || deps[0].MemberCount != 0 || deps[0].SubtreeMemberCount != 0 {
+		t.Fatalf("department counts expose proxy membership: (%+v, %v)", deps, err)
+	}
+
+	if err := s.RemoveDepartmentMembers(t.Context(), "d-proxy", []string{proxy.ProxyAccountID}); !errors.Is(err, ErrUnknownUser) {
+		t.Fatalf("RemoveDepartmentMembers(proxy) error = %v, want ErrUnknownUser", err)
+	}
+	var count int64
+	if err := db.Model(&model.UserDepartment{}).
+		Where("user_id = ? AND department_id = ?", proxy.ProxyAccountID, "d-proxy").Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("generic removal changed proxy membership, rows = %d", count)
 	}
 }
 

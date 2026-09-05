@@ -592,6 +592,10 @@ func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service, e *authz.Enfo
 			replyPublicError(c, http.StatusNotFound)
 			return
 		}
+		if errors.Is(err, directory.ErrUnknownUser) {
+			replyPublicError(c, http.StatusBadRequest)
+			return
+		}
 		if err != nil {
 			serverError(c, err)
 			return

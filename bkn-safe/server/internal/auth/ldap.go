@@ -139,6 +139,9 @@ func (c *Chain) Verify(ctx context.Context, account, password string) (*model.Us
 		if err == nil {
 			return u, nil
 		}
+		if errors.Is(err, ErrManagedLoginDisabled) {
+			return nil, err
+		}
 		// Fall through on credential failures; surface infra errors immediately.
 		if errors.Is(err, ErrInvalidCredentials) || errors.Is(err, ErrUserDisabled) {
 			lastErr = err
