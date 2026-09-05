@@ -1,0 +1,150 @@
+---
+openapi: 3.0.2
+info:
+  title: CypherQuery
+  version: 0.1.0
+  description: |-
+    Read-only Cypher queries over the instance data of a knowledge network.
+    A query is compiled into a single SQL statement and executed through vega-backend, so the
+    subset accepted here is what compiles that way: one MATCH over a path of at most one
+    relationship, a WHERE of properties compared against literals, and a projection of
+    properties. Everything else is refused by name rather than approximated.
+    Paging is written in the query itself with SKIP and LIMIT; there is no paging parameter.
+    Exposed under /api/bkn-backend/v1 (OAuth2) and /api/ontology-manager/v1 (alias), with the
+    branch query parameter defaulting to main.
+security:
+  - OAuth2: []
+paths:
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/cypher-queries:
+    post:
+      tags:
+        - CypherQuery
+      summary: Run a read-only Cypher query
+      description: |-
+        Compiles a Cypher query against the knowledge network's model and returns the rows it
+        produces. Requires application/json content type and the query_data operation on the
+        knowledge network; each resource the statement reads is additionally checked for
+        view_detail by vega-backend under the caller's own identity.
+
+        Labels and relationship types accept either the id or the name of the object type or
+        relation type. Properties are addressed by property name; display names and logic
+        properties are not accepted. A query that does not write its own LIMIT is capped at
+        1000 rows, and a LIMIT above 10000 is refused rather than silently reduced.
+
+        The generated SQL is not returned: it names physical tables and columns, which the
+        caller is not entitled to just because they may read the data.
+      operationId: runCypherQuery
+      security:
+        - OAuth2: []
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          description: Business knowledge network ID
+          schema:
+            type: string
+        - name: branch
+          in: query
+          description: Branch name. Defaults to main.
+          schema:
+            type: string
+            default: main
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CypherQueryRequest"
+      responses:
+        "200":
+          description: The query ran. Returns its columns and rows.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CypherQueryResult"
+        "400":
+          description: |-
+            The query is the caller's to fix. error_code distinguishes the reason:
+            BknBackend.Cypher.SyntaxError (could not be parsed),
+            BknBackend.Cypher.Unsupported (valid openCypher outside the supported subset),
+            BknBackend.Cypher.InvalidQuery (does not match the knowledge network model),
+            BknBackend.Cypher.LimitExceeded (LIMIT above the ceiling),
+            BknBackend.Cypher.InvalidParameter (missing or oversized query).
+            error_details carries the compiler's message, with a line and column where the
+            construct appears.
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "403":
+          description: The caller lacks query_data on the knowledge network, or carries no identity.
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "404":
+          description: Knowledge network not found
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "406":
+          description: Content-Type is not application/json
+        "500":
+          description: The compiled statement failed to run. The dependency's message is not passed through.
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: /oauth2/auth
+          tokenUrl: /oauth2/token
+          scopes: {}
+  schemas:
+    CypherQueryRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          maxLength: 8192
+          description: |-
+            The Cypher query. Supported shape:
+            MATCH (a:Label)[-[:RELATION]->(b:Label)]
+            [WHERE a.property <op> literal AND ...]
+            RETURN [DISTINCT] a.property [AS alias], ...
+            [ORDER BY a.property [DESC]] [SKIP n] [LIMIT n]
+            Comparison operators are =, <>, <, >, <= and >=, with a literal on the right.
+            Relationships must be directed and name exactly one relation type; nodes must
+            name exactly one object type.
+          example: "MATCH (o:order)-[:rel_order_item_order]->(i:order_item) WHERE o.amount > 100 RETURN o.order_id AS id, i.item_id AS item ORDER BY o.amount DESC LIMIT 20"
+    CypherQueryResult:
+      type: object
+      properties:
+        columns:
+          type: array
+          description: Output columns, in RETURN order. The name is the AS alias, or the source text of the property reference when no alias was written.
+          items:
+            $ref: "#/components/schemas/CypherQueryColumn"
+        entries:
+          type: array
+          description: Result rows, keyed by column name.
+          items:
+            type: object
+            additionalProperties: true
+    CypherQueryColumn:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          description: Column type as reported by the underlying resource.
