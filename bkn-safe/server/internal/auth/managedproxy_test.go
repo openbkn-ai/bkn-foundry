@@ -87,6 +87,17 @@ func TestManagedProxyCannotReceiveOrRotateCredentials(t *testing.T) {
 	if _, _, err := keys.Regenerate(t.Context(), user.ID, "missing"); !errors.Is(err, managedproxy.ErrManagedAccount) {
 		t.Fatalf("Regenerate() error = %v, want ErrManagedAccount", err)
 	}
+	keyID := randBase62(keyIDLen)
+	secret := randBase62(secretLen)
+	if err := db.Create(&model.APIKey{
+		ID: NewID(), KeyID: keyID, OwnerUserID: user.ID, Name: "injected",
+		SecretHash: hashSecret(secret), Enabled: true,
+	}).Error; err != nil {
+		t.Fatalf("inject legacy key: %v", err)
+	}
+	if _, err := keys.Verify(t.Context(), KeyPrefix+keyID+"_"+secret); !errors.Is(err, ErrAPIKeyInvalid) {
+		t.Fatalf("Verify() error = %v, want ErrAPIKeyInvalid", err)
+	}
 	if err := NewUserStore(db).ResetPassword(t.Context(), user.ID, "secret"); !errors.Is(err, managedproxy.ErrManagedAccount) {
 		t.Fatalf("ResetPassword() error = %v, want ErrManagedAccount", err)
 	}

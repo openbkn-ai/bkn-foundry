@@ -516,13 +516,6 @@ func listGroupedObjectGrants(c *gin.Context, qdb *gorm.DB, groupBy, whereSQL str
 // isUserAccessor reports whether id is a known user row (real user or app
 // account; both are model.User distinguished by account_type).
 func isUserAccessor(c *gin.Context, db *gorm.DB, id string) (bool, error) {
-	managed, err := managedproxy.IsManaged(c.Request.Context(), db, id)
-	if err != nil {
-		return false, err
-	}
-	if managed {
-		return false, nil
-	}
 	var n int64
 	if err := db.WithContext(c.Request.Context()).Model(&model.User{}).
 		Where("id = ? AND enabled = ?", id, true).Count(&n).Error; err != nil {
@@ -722,6 +715,15 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 			replyPublicError(c, http.StatusForbidden)
 			return
 		}
+		managed, err := managedproxy.IsManaged(c.Request.Context(), db, req.AccessorID)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		if managed {
+			replyPublicError(c, http.StatusForbidden)
+			return
+		}
 		// Administrator, or the object's own owner delegating it. Resolved here
 		// rather than in middleware because the owner branch is a question about
 		// the object named in the BODY, which middleware cannot see.
@@ -734,7 +736,7 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 		}
 		// Grantee must be a user (apps are user rows too). Departments/groups are
 		// rejected: their grants never match at enforce time.
-		ok, err := isUserAccessor(c, db, req.AccessorID)
+		ok, err = isUserAccessor(c, db, req.AccessorID)
 		if err != nil {
 			serverError(c, err)
 			return

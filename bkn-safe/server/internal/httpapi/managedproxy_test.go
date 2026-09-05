@@ -127,8 +127,8 @@ func TestGenericPolicyEndpointCannotGrantManagedProxy(t *testing.T) {
 	}
 }
 
-func TestManagedProxyIsNotAGenericGranteeOrRoleSubject(t *testing.T) {
-	_, _, db := newTestServer(t)
+func TestManagedProxyIsProtectedFromGenericGrantAndRoleBinding(t *testing.T) {
+	r, _, db, _ := newAdminServer(t)
 	account, _, err := managedproxy.New(db).Create(t.Context(), managedproxy.CreateRequest{
 		ManagedResourceType: managedproxy.ResourceKnowledgeNetwork,
 		ManagedResourceID:   "kn-subject",
@@ -136,10 +136,20 @@ func TestManagedProxyIsNotAGenericGranteeOrRoleSubject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	seedCatalogOps(t, db, "resource", "query_data")
+	w := adminReq(t, r, http.MethodPost, objectGrantsPath, gin.H{
+		"accessor_id": account.ProxyAccountID,
+		"resource":    gin.H{"type": "resource", "id": "r-1"},
+		"operations":  []string{"query_data"},
+	})
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("generic grant = %d body=%s, want 403", w.Code, w.Body.String())
+	}
+
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
-	if ok, err := isUserAccessor(c, db, account.ProxyAccountID); err != nil || ok {
-		t.Fatalf("isUserAccessor(proxy) = (%v, %v), want false", ok, err)
+	if ok, err := isUserAccessor(c, db, account.ProxyAccountID); err != nil || !ok {
+		t.Fatalf("isUserAccessor(proxy) = (%v, %v), want true", ok, err)
 	}
 	if ok, err := accessorExists(c, db, account.ProxyAccountID); err != nil || ok {
 		t.Fatalf("accessorExists(proxy) = (%v, %v), want false", ok, err)

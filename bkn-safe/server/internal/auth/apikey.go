@@ -152,12 +152,14 @@ func (s *APIKeyStore) Verify(ctx context.Context, plaintext string) (*VerifiedKe
 	if !owner.Enabled {
 		return nil, ErrAPIKeyInvalid
 	}
-	managed, err := managedproxy.IsManaged(ctx, s.db, owner.ID)
-	if err != nil {
-		return nil, err
-	}
-	if managed {
-		return nil, ErrAPIKeyInvalid
+	if owner.AccountType == model.AccountTypeApp {
+		managed, err := managedproxy.IsManaged(ctx, s.db, owner.ID)
+		if err != nil {
+			return nil, err
+		}
+		if managed {
+			return nil, ErrAPIKeyInvalid
+		}
 	}
 
 	// Best-effort last-used stamp; never fail verification on a write error.

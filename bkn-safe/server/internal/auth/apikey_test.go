@@ -71,6 +71,24 @@ func TestIssueAndVerify(t *testing.T) {
 	}
 }
 
+func TestVerifyUserKeySkipsManagedProxyLookup(t *testing.T) {
+	s, db := newAPIKeyStore(t)
+	ctx := context.Background()
+	seedUser(t, db, "u-1", true, model.AccountTypeOther)
+	plaintext, _, err := s.Issue(ctx, "u-1", "ci-bot", nil)
+	if err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+	if err := db.Migrator().DropTable(&model.ManagedProxyAccount{}); err != nil {
+		t.Fatalf("drop managed proxy table: %v", err)
+	}
+
+	v, err := s.Verify(ctx, plaintext)
+	if err != nil || v.OwnerID != "u-1" {
+		t.Fatalf("verify without managed proxy table = %+v err=%v", v, err)
+	}
+}
+
 func TestVerifyAppAccountType(t *testing.T) {
 	s, db := newAPIKeyStore(t)
 	ctx := context.Background()
