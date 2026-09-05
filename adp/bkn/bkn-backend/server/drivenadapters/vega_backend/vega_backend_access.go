@@ -511,7 +511,9 @@ func (vba *vegaBackendAccess) RawQuery(ctx context.Context, req *interfaces.RawQ
 
 	headers, err := vba.buildUserHeaders(ctx)
 	if err != nil {
-		common.LogSafeError(ctx, "RawQuery refused: "+err.Error(), err)
+		// The message stays static: the adapter package must not put error text
+		// into a log line, and this one is already known to be about identity.
+		common.LogSafeError(ctx, "RawQuery refused: caller identity missing", err)
 		oteltrace.AddHttpAttrs4Error(span, 0, "InternalError", "Raw query without caller identity")
 		return nil, err
 	}
