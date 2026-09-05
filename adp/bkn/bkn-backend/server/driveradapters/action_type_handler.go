@@ -184,7 +184,7 @@ func (r *restHandler) CreateActionTypes(c *gin.Context, visitor hydra.Visitor) {
 	}
 
 	// Create the resources.
-	atIDs, err := r.ats.CreateActionTypes(ctx, nil, actionTypes, mode, strictMode)
+	atIDs, err := r.createActionTypes(ctx, knID, branch, actionTypes, mode, strictMode)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		// Set trace attributes for the error.
@@ -469,7 +469,7 @@ func (r *restHandler) UpdateActionType(c *gin.Context, visitor hydra.Visitor) {
 	actionType.IfNameModify = ifNameModify
 
 	// Update the resource by ID.
-	err = r.ats.UpdateActionType(ctx, nil, &actionType, strictMode)
+	err = r.updateActionType(ctx, &actionType, strictMode)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 
@@ -569,7 +569,7 @@ func (r *restHandler) DeleteActionTypes(c *gin.Context) {
 	}
 
 	// Delete action types in batch.
-	err = r.ats.DeleteActionTypesByIDs(ctx, nil, knID, branch, atIDs)
+	err = r.deleteActionTypes(ctx, knID, branch, atIDs)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		// Set trace attributes for the error.

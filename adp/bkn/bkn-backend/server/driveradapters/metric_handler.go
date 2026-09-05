@@ -145,7 +145,7 @@ func (r *restHandler) CreateMetrics(c *gin.Context, vis hydra.Visitor) {
 		metrics[i].Branch = branch
 	}
 
-	ids, err := r.ms.CreateMetrics(ctx, nil, metrics, strictMode, mode)
+	ids, err := r.createMetrics(ctx, knID, branch, metrics, strictMode, mode)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -563,7 +563,7 @@ func (r *restHandler) UpdateMetric(c *gin.Context, vis hydra.Visitor) {
 		}
 	}
 
-	if err = r.ms.UpdateMetric(ctx, nil, &req, strictMode); err != nil {
+	if err = r.updateMetric(ctx, &req, strictMode); err != nil {
 		rest.ReplyError(c, err.(*rest.HTTPError))
 		return
 	}
@@ -612,7 +612,7 @@ func (r *restHandler) DeleteMetricsByIDs(c *gin.Context, vis hydra.Visitor) {
 	}
 
 	ids := common.StringToStringSlice(metricIDsStr)
-	if err = r.ms.DeleteMetricsByIDs(ctx, nil, knID, branch, ids); err != nil {
+	if err = r.deleteMetrics(ctx, knID, branch, ids); err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
