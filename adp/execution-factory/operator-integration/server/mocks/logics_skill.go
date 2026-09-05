@@ -605,3 +605,42 @@ func (mr *MockSkillIndexSyncServiceMockRecorder) UpsertSkill(ctx, skill any) *go
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertSkill", reflect.TypeOf((*MockSkillIndexSyncService)(nil).UpsertSkill), ctx, skill)
 }
+
+// MockSkillSearchService is a mock of SkillSearchService interface.
+type MockSkillSearchService struct {
+	ctrl     *gomock.Controller
+	recorder *MockSkillSearchServiceMockRecorder
+	isgomock struct{}
+}
+
+// MockSkillSearchServiceMockRecorder is the mock recorder for MockSkillSearchService.
+type MockSkillSearchServiceMockRecorder struct {
+	mock *MockSkillSearchService
+}
+
+// NewMockSkillSearchService creates a new mock instance.
+func NewMockSkillSearchService(ctrl *gomock.Controller) *MockSkillSearchService {
+	mock := &MockSkillSearchService{ctrl: ctrl}
+	mock.recorder = &MockSkillSearchServiceMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockSkillSearchService) EXPECT() *MockSkillSearchServiceMockRecorder {
+	return m.recorder
+}
+
+// SearchSkills mocks base method.
+func (m *MockSkillSearchService) SearchSkills(ctx context.Context, req *interfaces.SearchSkillsReq) (*interfaces.SearchSkillsResp, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchSkills", ctx, req)
+	ret0, _ := ret[0].(*interfaces.SearchSkillsResp)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchSkills indicates an expected call of SearchSkills.
+func (mr *MockSkillSearchServiceMockRecorder) SearchSkills(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchSkills", reflect.TypeOf((*MockSkillSearchService)(nil).SearchSkills), ctx, req)
+}

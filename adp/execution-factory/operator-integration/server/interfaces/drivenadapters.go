@@ -887,6 +887,37 @@ type VegaBackendClient interface {
 	WriteDatasetDocuments(ctx context.Context, datasetID string, documents []map[string]any) error
 	UpdateDatasetDocuments(ctx context.Context, datasetID string, documents []map[string]any) error
 	DeleteDatasetDocumentByID(ctx context.Context, datasetID string, docID string) error
+	// QueryDatasetData reads documents out of a dataset. It is the only read path on this
+	// client: everything else here writes, because until skill retrieval (#1260) the execution
+	// factory only ever populated the index and never queried it.
+	QueryDatasetData(ctx context.Context, datasetID string, params *VegaDataQueryParams) (*VegaDataQueryResp, error)
+}
+
+// VegaDataQueryParams is the body of POST /resources/{id}/data with a GET method override.
+type VegaDataQueryParams struct {
+	FilterCondition map[string]any  `json:"filter_condition,omitempty"`
+	Paging          *VegaDataPaging `json:"paging,omitempty"`
+	NeedTotal       bool            `json:"need_total,omitempty"`
+	Sort            []*VegaDataSort `json:"sort,omitempty"`
+	OutputFields    []string        `json:"output_fields,omitempty"`
+}
+
+type VegaDataPaging struct {
+	Mode   string `json:"mode,omitempty"`
+	Offset int    `json:"offset,omitempty"`
+	Limit  int    `json:"limit,omitempty"`
+	Cursor string `json:"cursor,omitempty"`
+}
+
+type VegaDataSort struct {
+	Field     string `json:"field"`
+	Direction string `json:"direction"`
+}
+
+// VegaDataQueryResp carries raw documents; each one may hold a "_score" key added by the engine.
+type VegaDataQueryResp struct {
+	Entries    []map[string]any `json:"entries"`
+	TotalCount int64            `json:"total_count"`
 }
 
 // OssObject OSS object structure.

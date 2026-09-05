@@ -45,6 +45,10 @@ func (r *skillRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
 	// is pinned to internal-v1. Unlike /skills/market/:skill_id it applies no public_access
 	// filter and reports an unpublished skill through `status` instead of 404.
 	engine.GET("/skills/:skill_id", r.SkillHandler.GetSkillDetail)
+	// Retrieval interface. The skills segment is a literal, so it does not collide with :skill_id.
+	// Internal face only: the whitelist carries the caller's authorization decision, and a public
+	// caller supplying its own whitelist would be deciding its own scope.
+	engine.POST("/skills/search", r.SkillHandler.SearchSkills)
 	// Read interface.
 	// Query skill content.
 	engine.GET("/skills/:skill_id/content", r.SkillHandler.GetSkillContent)
