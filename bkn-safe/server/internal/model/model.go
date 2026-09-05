@@ -72,6 +72,70 @@ type ManagedProxyAccount struct {
 	UpdatedAt           time.Time
 }
 
+// ProxyGrantSource is the durable provenance ledger for one direct permission
+// required by a managed BKN proxy. A binding may require several permissions,
+// and several bindings may require the same permission, so the source identity
+// and permission tuple form the idempotency key. Revoked rows are retained for
+// audit and may be reactivated by a later full synchronization.
+type ProxyGrantSource struct {
+	ID              string     `json:"id" gorm:"primaryKey;size:64"`
+	ProxyAccountID  string     `json:"proxy_account_id" gorm:"size:64;uniqueIndex:uidx_proxy_grant_source,priority:1;index:idx_proxy_grant_tuple,priority:1"`
+	ResourceType    string     `json:"resource_type" gorm:"size:64;uniqueIndex:uidx_proxy_grant_source,priority:2;index:idx_proxy_grant_tuple,priority:2"`
+	ResourceID      string     `json:"resource_id" gorm:"size:128;uniqueIndex:uidx_proxy_grant_source,priority:3;index:idx_proxy_grant_tuple,priority:3"`
+	Operation       string     `json:"operation" gorm:"size:64;uniqueIndex:uidx_proxy_grant_source,priority:4;index:idx_proxy_grant_tuple,priority:4"`
+	SourceType      string     `json:"source_type" gorm:"size:32;uniqueIndex:uidx_proxy_grant_source,priority:5;index"`
+	SourceID        string     `json:"source_id" gorm:"size:128;uniqueIndex:uidx_proxy_grant_source,priority:6;index"`
+	KNID            string     `json:"kn_id" gorm:"size:128;index"`
+	BindingType     string     `json:"binding_type" gorm:"size:64"`
+	BindingID       string     `json:"binding_id" gorm:"size:128"`
+	GrantedBy       string     `json:"granted_by" gorm:"size:64;index"`
+	LifecycleStatus string     `json:"lifecycle_status" gorm:"size:16;index"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	RevokedAt       *time.Time `json:"revoked_at,omitempty" gorm:"index"`
+}
+
+// TableName keeps the schema name frozen to the singular name used by the
+// cross-service design contract.
+func (ProxyGrantSource) TableName() string { return "proxy_grant_source" }
+
+// ProxyGrantPolicy records whether the source service owns the concrete
+// Casbin row for a permission tuple. If the row already existed when the first
+// source arrived, PolicyOwned is false and removing the last source preserves
+// that manual/legacy Allow.
+type ProxyGrantPolicy struct {
+	ProxyAccountID string `gorm:"primaryKey;size:64"`
+	ResourceType   string `gorm:"primaryKey;size:64"`
+	ResourceID     string `gorm:"primaryKey;size:128"`
+	Operation      string `gorm:"primaryKey;size:64"`
+	PolicyOwned    bool   `gorm:"not null"`
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+func (ProxyGrantPolicy) TableName() string { return "proxy_grant_policy" }
+
+// ProxyGrantAuditLog records both successful and denied proxy-grant decisions.
+// It is deliberately separate from the browser/admin audit log: this internal
+// surface receives a trusted grantor identity in the request rather than an
+// OAuth token resolved by HTTP middleware.
+type ProxyGrantAuditLog struct {
+	ID             string    `json:"id" gorm:"primaryKey;size:64"`
+	Action         string    `json:"action" gorm:"size:32;index"`
+	Decision       string    `json:"decision" gorm:"size:16;index"`
+	Reason         string    `json:"reason" gorm:"size:255"`
+	GrantorID      string    `json:"grantor_id" gorm:"size:64;index"`
+	ProxyAccountID string    `json:"proxy_account_id" gorm:"size:64;index"`
+	ResourceType   string    `json:"resource_type" gorm:"size:64"`
+	ResourceID     string    `json:"resource_id" gorm:"size:128"`
+	Operation      string    `json:"operation" gorm:"size:64"`
+	SourceType     string    `json:"source_type" gorm:"size:32"`
+	SourceID       string    `json:"source_id" gorm:"size:128"`
+	CreatedAt      time.Time `json:"created_at" gorm:"index"`
+}
+
+func (ProxyGrantAuditLog) TableName() string { return "proxy_grant_audit_log" }
+
 // Role source values. system|business roles are SEEDED built-ins (their UUIDs
 // are hardcoded in DA/flow-automation, such as application, data, and AI administrators) and are
 // immutable via the API — they may only be changed by editing the seed files.
@@ -285,6 +349,7 @@ func AllModels() []any {
 		&User{}, &Role{}, &Department{}, &UserDepartment{},
 		&Group{}, &GroupMember{}, &ResourceType{}, &Operation{},
 		&AuditLog{}, &AccessLog{}, &APIKey{}, &License{}, &ResourceParent{},
-		&ManagedProxyAccount{},
+		&ManagedProxyAccount{}, &ProxyGrantSource{}, &ProxyGrantPolicy{},
+		&ProxyGrantAuditLog{},
 	}
 }

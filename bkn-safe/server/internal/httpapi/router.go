@@ -24,6 +24,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/license"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/managedproxy"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/proxygrant"
 )
 
 // Deps are the collaborators the HTTP layer needs.
@@ -82,6 +83,9 @@ func New(deps Deps) *gin.Engine {
 		apiKeys = auth.NewAPIKeyStore(deps.DB)
 		registerAPIKeyVerify(r, apiKeys)
 		registerManagedProxyAccounts(r, managedproxy.New(deps.DB))
+		if deps.Enforcer != nil {
+			registerProxyGrantSources(r, proxygrant.New(deps.DB, deps.Enforcer))
+		}
 	}
 
 	// hydra login/consent/device provider pages.
