@@ -725,3 +725,18 @@ func (h *toolBoxHandler) GetReleaseToolBoxInfo(c *gin.Context) {
 	}
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
+
+// SearchTools retrieves tools inside an explicit whitelist (#1261).
+func (h *toolBoxHandler) SearchTools(c *gin.Context) {
+	req := &interfaces.SearchToolsReq{}
+	if err := utils.GetBindJSONRaw(c, req); err != nil {
+		rest.ReplyError(c, err)
+		return
+	}
+	resp, err := h.ToolService.SearchTools(c.Request.Context(), req)
+	if err != nil {
+		rest.ReplyError(c, err)
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, resp)
+}

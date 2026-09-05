@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -534,6 +535,46 @@ func (t *toolDB) SelectToolBySource(ctx context.Context, sourceType model.Source
 	err = orm.Select().From(tbTool).WhereEq("f_source_type", sourceType).WhereEq("f_source_id", sourceID).Get(ctx, &tools)
 	if err != nil {
 		err = errors.Wrapf(err, "select tool by source error")
+	}
+	return
+}
+
+// escapeLikeLiteral makes a user-supplied keyword match literally in a LIKE pattern.
+//
+// The platform's like contract is substring containment, so % and _ typed by a caller are data,
+// not wildcards. Left unescaped, a query containing "%" would match everything and a query
+// containing "_" would match any single character in that position.
+func escapeLikeLiteral(keyword string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return replacer.Replace(keyword)
+}
+
+// SearchToolsByIDs returns tools inside an ID whitelist whose name or description contains the
+// keyword. The whitelist is part of the query rather than applied to its results: filtering after
+// the fact would drop a caller's tools whenever unrelated ones sort ahead of them.
+func (t *toolDB) SearchToolsByIDs(ctx context.Context, toolIDs []string, keyword string,
+	limit int) (tools []*model.ToolDB, err error) {
+	tools = []*model.ToolDB{}
+	if len(toolIDs) == 0 {
+		return
+	}
+	args := make([]interface{}, 0, len(toolIDs))
+	for _, id := range toolIDs {
+		args = append(args, id)
+	}
+
+	query := t.orm.Select().From(tbTool).WhereIn("f_tool_id", args...)
+	if keyword != "" {
+		pattern := "%" + escapeLikeLiteral(keyword) + "%"
+		query = query.Or(func(w *ormhelper.WhereBuilder) {
+			w.Like("f_name", pattern).Like("f_description", pattern)
+		})
+	}
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	if err = query.Get(ctx, &tools); err != nil {
+		err = errors.Wrapf(err, "search tools by ids error")
 	}
 	return
 }

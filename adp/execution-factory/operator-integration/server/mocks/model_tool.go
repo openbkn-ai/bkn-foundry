@@ -101,6 +101,21 @@ func (mr *MockIToolDBMockRecorder) InsertTools(ctx, tx, tools any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertTools", reflect.TypeOf((*MockIToolDB)(nil).InsertTools), ctx, tx, tools)
 }
 
+// SearchToolsByIDs mocks base method.
+func (m *MockIToolDB) SearchToolsByIDs(ctx context.Context, toolIDs []string, keyword string, limit int) ([]*model.ToolDB, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchToolsByIDs", ctx, toolIDs, keyword, limit)
+	ret0, _ := ret[0].([]*model.ToolDB)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchToolsByIDs indicates an expected call of SearchToolsByIDs.
+func (mr *MockIToolDBMockRecorder) SearchToolsByIDs(ctx, toolIDs, keyword, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchToolsByIDs", reflect.TypeOf((*MockIToolDB)(nil).SearchToolsByIDs), ctx, toolIDs, keyword, limit)
+}
+
 // SelectBoxToolByName mocks base method.
 func (m *MockIToolDB) SelectBoxToolByName(ctx context.Context, boxID, name string) (bool, *model.ToolDB, error) {
 	m.ctrl.T.Helper()

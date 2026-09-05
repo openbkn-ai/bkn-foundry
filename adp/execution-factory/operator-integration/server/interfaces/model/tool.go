@@ -57,5 +57,8 @@ type IToolDB interface {
 	// Get the toolbox ID according to query conditions and GROUP BY.
 	SelectToolBoxIDsByFilter(ctx context.Context, filter map[string]interface{}) ([]string, error)
 	SelectToolBoxByToolIDs(ctx context.Context, toolIDs []string) ([]*ToolDB, error)
+	// SearchToolsByIDs returns the tools among toolIDs whose name or description contains the
+	// keyword. An empty keyword returns every tool in the set.
+	SearchToolsByIDs(ctx context.Context, toolIDs []string, keyword string, limit int) ([]*ToolDB, error)
 	SelectToolBySource(ctx context.Context, sourceType SourceType, sourceID string) ([]*ToolDB, error)
 }
