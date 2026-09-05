@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf8" />
+  <title>数据层直查</title>
+  <!-- needed for adaptive design -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      padding: 0;
+      margin: 0;
+    }
+  </style>
+  <script src="https://cdn.redocly.com/redoc/v2.5.0/bundles/redoc.standalone.js"></script><style data-styled="true" data-styled-version="6.4.1">.eQypqI{width:calc(100% - 40%);padding:0 40px;}/*!sc*/
+@media print,screen and (max-width: 75rem){.eQypqI{width:100%;padding:40px 40px;}}/*!sc*/
+data-styled.g5[id="sc-hKgHXU"]{content:"eQypqI,"}/*!sc*/
+.bKZuAK{padding:40px 0;}/*!sc*/
+.bKZuAK:last-child{min-height:calc(100vh + 1px);}/*!sc*/
+.bKZuAK>.bKZuAK:last-child{min-height:initial;}/*!sc*/
+@media print,screen and (max-width: 75rem){.bKZuAK{padding:0;}}/*!sc*/
+.hxxgNd{padding:40px 0;position:relative;}/*!sc*/
+.hxxgNd:last-child{min-height:calc(100vh + 1px);}/*!sc*/
+.hxxgNd>.hxxgNd:last-child{min-height:initial;}/*!sc*/
+@media print,screen and (max-width: 75rem){.hxxgNd{padding:0;}}/*!sc*/
+.hxxgNd:not(:last-of-type):after{position:absolute;bottom:0;width:100%;display:block;content:'';border-bottom:1px solid rgba(0, 0, 0, 0.2);}/*!sc*/
+data-styled.g6[id="sc-eCsseJ"]{content:"bKZuAK,hxxgNd,"}/*!sc*/
+.kWQHAp{width:40%;color:#ffffff;background-color:#263238;padding:0 40px;}/*!sc*/
+@media print,screen and (max-width: 75rem){.kWQHAp{width:100%;padding:40px 40px;}}/*!sc*/
+data-styled.g7[id="sc-jSgsbC"]{content:"kWQHAp,"}/*!sc*/
+.jYdWFY{background-color:#263238;}/*!sc*/
+data-styled.g8[id="sc-gKscir"]{content:"jYdWFY,"}/*!sc*/
+.cOCikg{display:flex;width:100%;padding:0;}/*!sc*/
+@media print,screen and (max-width: 75rem){.cOCikg{flex-direction:column;}}/*!sc*/
+data-styled.g9[id="sc-iBPUmU"]{content:"cOCikg,"}/*!sc*/
+.edtrWC{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#333333;}/*!sc*/
+data-styled.g10[id="sc-fubEtJ"]{content:"edtrWC,"}/*!sc*/
+.bwjsfx{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;margin:0 0 20px;}/*!sc*/
+data-styled.g11[id="sc-pGbXd"]{content:"bwjsfx,"}/*!sc*/
+.hgYAAF{color:#ffffff;}/*!sc*/
+data-styled.g13[id="sc-kEjckD"]{content:"hgYAAF,"}/*!sc*/
+.iFTCOQ{border-bottom:1px solid rgba(38, 50, 56, 0.3);margin:1em 0 1em 0;color:rgba(38, 50, 56, 0.5);font-weight:normal;text-transform:uppercase;font-size:0.929em;line-height:20px;}/*!sc*/
+data-styled.g14[id="sc-iqHZue"]{content:"iFTCOQ,"}/*!sc*/
+.itgZBm{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.itgZBm:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+h1:hover>.itgZBm::before,h2:hover>.itgZBm::before,.itgZBm:hover::before{visibility:visible;}/*!sc*/
+data-styled.g15[id="sc-crrrsl"]{content:"itgZBm,"}/*!sc*/
+.cWjMmC{height:18px;width:18px;min-width:18px;vertical-align:middle;float:right;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.dHiXwH{height:1.3em;width:1.3em;min-width:1.3em;vertical-align:middle;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.iTiSfO{height:18px;width:18px;min-width:18px;vertical-align:middle;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.idFXFs{height:1.5em;width:1.5em;min-width:1.5em;vertical-align:middle;float:left;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.idFXFs polygon{fill:#1d8127;}/*!sc*/
+.djPqdM{height:1.5em;width:1.5em;min-width:1.5em;vertical-align:middle;float:left;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.djPqdM polygon{fill:#d41f1c;}/*!sc*/
+.dvMtUQ{height:20px;width:20px;min-width:20px;vertical-align:middle;float:right;transition:transform 0.2s ease-out;transform:rotateZ(0);}/*!sc*/
+.dvMtUQ polygon{fill:white;}/*!sc*/
+data-styled.g16[id="sc-dQoBM"]{content:"cWjMmC,dHiXwH,iTiSfO,idFXFs,djPqdM,dvMtUQ,"}/*!sc*/
+.DPwQp{border-left:1px solid #7c7cbb;box-sizing:border-box;position:relative;padding:10px 10px 10px 0;}/*!sc*/
+@media screen and (max-width: 50rem){.DPwQp{display:block;overflow:hidden;}}/*!sc*/
+tr:first-of-type>.DPwQp,tr.last>.DPwQp{border-left-width:0;background-position:top left;background-repeat:no-repeat;background-size:1px 100%;}/*!sc*/
+tr:first-of-type>.DPwQp{background-image:linear-gradient(
+      to bottom,
+      transparent 0%,
+      transparent 22px,
+      #7c7cbb 22px,
+      #7c7cbb 100%
+    );}/*!sc*/
+tr.last>.DPwQp{background-image:linear-gradient(
+      to bottom,
+      #7c7cbb 0%,
+      #7c7cbb 22px,
+      transparent 22px,
+      transparent 100%
+    );}/*!sc*/
+tr.last+tr>.DPwQp{border-left-color:transparent;}/*!sc*/
+tr.last:first-child>.DPwQp{background:none;border-left-color:transparent;}/*!sc*/
+data-styled.g19[id="sc-hBFaCF"]{content:"DPwQp,"}/*!sc*/
+.hUqyua{vertical-align:top;line-height:20px;white-space:nowrap;font-size:13px;font-family:Courier,monospace;}/*!sc*/
+.hUqyua.deprecated{text-decoration:line-through;color:#707070;}/*!sc*/
+data-styled.g21[id="sc-fFubTW"]{content:"hUqyua,"}/*!sc*/
+.gNQdZ{border-bottom:1px solid #9fb4be;padding:10px 0;width:75%;box-sizing:border-box;}/*!sc*/
+tr.expanded .gNQdZ{border-bottom:none;}/*!sc*/
+@media screen and (max-width: 50rem){.gNQdZ{padding:0 20px;border-bottom:none;border-left:1px solid #7c7cbb;}tr.last>.gNQdZ{border-left:none;}}/*!sc*/
+data-styled.g22[id="sc-bkAakD"]{content:"gNQdZ,"}/*!sc*/
+.iNiPzl{color:#7c7cbb;font-family:Courier,monospace;margin-right:10px;}/*!sc*/
+.iNiPzl::before{content:'';display:inline-block;vertical-align:middle;width:10px;height:1px;background:#7c7cbb;}/*!sc*/
+.iNiPzl::after{content:'';display:inline-block;vertical-align:middle;width:1px;background:#7c7cbb;height:7px;}/*!sc*/
+data-styled.g23[id="sc-idOkdQ"]{content:"iNiPzl,"}/*!sc*/
+.juzVUC{border-collapse:separate;border-radius:3px;font-size:14px;border-spacing:0;width:100%;}/*!sc*/
+.juzVUC >tr{vertical-align:middle;}/*!sc*/
+@media screen and (max-width: 50rem){.juzVUC{display:block;}.juzVUC >tr,.juzVUC >tbody>tr{display:block;}}/*!sc*/
+@media screen and (max-width: 50rem) and (-ms-high-contrast:none){.juzVUC td{float:left;width:100%;}}/*!sc*/
+.juzVUC .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux{margin:1em;margin-right:0;background:#fafafa;}/*!sc*/
+.juzVUC .sc-dIUiux .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux{background:#ffffff;}/*!sc*/
+data-styled.g25[id="sc-hHfrpe"]{content:"juzVUC,"}/*!sc*/
+.hqsuVf >ul{list-style:none;padding:0;margin:0;margin:0 -5px;}/*!sc*/
+.hqsuVf >ul >li{padding:5px 10px;display:inline-block;background-color:#11171a;border-bottom:1px solid rgba(0, 0, 0, 0.5);cursor:pointer;text-align:center;outline:none;color:#ccc;margin:0 5px 5px 5px;border:1px solid #07090b;border-radius:5px;min-width:60px;font-size:0.9em;font-weight:bold;}/*!sc*/
+.hqsuVf >ul >li.react-tabs__tab--selected{color:#333333;background:#ffffff;}/*!sc*/
+.hqsuVf >ul >li.react-tabs__tab--selected:focus{outline:auto;}/*!sc*/
+.hqsuVf >ul >li:only-child{flex:none;min-width:100px;}/*!sc*/
+.hqsuVf >ul >li.tab-success{color:#1d8127;}/*!sc*/
+.hqsuVf >ul >li.tab-redirect{color:#ffa500;}/*!sc*/
+.hqsuVf >ul >li.tab-info{color:#87ceeb;}/*!sc*/
+.hqsuVf >ul >li.tab-error{color:#d41f1c;}/*!sc*/
+.hqsuVf >.react-tabs__tab-panel{background:#11171a;}/*!sc*/
+.hqsuVf >.react-tabs__tab-panel>div,.hqsuVf >.react-tabs__tab-panel>pre{padding:20px;margin:0;}/*!sc*/
+.hqsuVf >.react-tabs__tab-panel>div>pre{padding:0;}/*!sc*/
+data-styled.g31[id="sc-cxFMaL"]{content:"hqsuVf,"}/*!sc*/
+.iNuSsz code[class*='language-'],.iNuSsz pre[class*='language-']{text-shadow:0 -0.1em 0.2em black;text-align:left;white-space:pre;word-spacing:normal;word-break:normal;word-wrap:normal;line-height:1.5;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-hyphens:none;-moz-hyphens:none;-ms-hyphens:none;hyphens:none;}/*!sc*/
+@media print{.iNuSsz code[class*='language-'],.iNuSsz pre[class*='language-']{text-shadow:none;}}/*!sc*/
+.iNuSsz pre[class*='language-']{padding:1em;margin:0.5em 0;overflow:auto;}/*!sc*/
+.iNuSsz .token.comment,.iNuSsz .token.prolog,.iNuSsz .token.doctype,.iNuSsz .token.cdata{color:hsl(30, 20%, 50%);}/*!sc*/
+.iNuSsz .token.punctuation{opacity:0.7;}/*!sc*/
+.iNuSsz .namespace{opacity:0.7;}/*!sc*/
+.iNuSsz .token.property,.iNuSsz .token.tag,.iNuSsz .token.number,.iNuSsz .token.constant,.iNuSsz .token.symbol{color:#4a8bb3;}/*!sc*/
+.iNuSsz .token.boolean{color:#e64441;}/*!sc*/
+.iNuSsz .token.selector,.iNuSsz .token.attr-name,.iNuSsz .token.string,.iNuSsz .token.char,.iNuSsz .token.builtin,.iNuSsz .token.inserted{color:#a0fbaa;}/*!sc*/
+.iNuSsz .token.selector+a,.iNuSsz .token.attr-name+a,.iNuSsz .token.string+a,.iNuSsz .token.char+a,.iNuSsz .token.builtin+a,.iNuSsz .token.inserted+a,.iNuSsz .token.selector+a:visited,.iNuSsz .token.attr-name+a:visited,.iNuSsz .token.string+a:visited,.iNuSsz .token.char+a:visited,.iNuSsz .token.builtin+a:visited,.iNuSsz .token.inserted+a:visited{color:#4ed2ba;text-decoration:underline;}/*!sc*/
+.iNuSsz .token.property.string{color:white;}/*!sc*/
+.iNuSsz .token.operator,.iNuSsz .token.entity,.iNuSsz .token.url,.iNuSsz .token.variable{color:hsl(40, 90%, 60%);}/*!sc*/
+.iNuSsz .token.atrule,.iNuSsz .token.attr-value,.iNuSsz .token.keyword{color:hsl(350, 40%, 70%);}/*!sc*/
+.iNuSsz .token.regex,.iNuSsz .token.important{color:#e90;}/*!sc*/
+.iNuSsz .token.important,.iNuSsz .token.bold{font-weight:bold;}/*!sc*/
+.iNuSsz .token.italic{font-style:italic;}/*!sc*/
+.iNuSsz .token.entity{cursor:help;}/*!sc*/
+.iNuSsz .token.deleted{color:red;}/*!sc*/
+data-styled.g33[id="sc-iJuXkV"]{content:"iNuSsz,"}/*!sc*/
+.ldPDIU{opacity:0.7;transition:opacity 0.3s ease;text-align:right;}/*!sc*/
+.ldPDIU:focus-within{opacity:1;}/*!sc*/
+.ldPDIU >button{background-color:transparent;border:0;color:inherit;padding:2px 10px;font-family:Roboto,sans-serif;font-size:14px;line-height:1.5em;cursor:pointer;outline:0;}/*!sc*/
+.ldPDIU >button :hover,.ldPDIU >button :focus{background:rgba(255, 255, 255, 0.1);}/*!sc*/
+data-styled.g34[id="sc-giIpqw"]{content:"ldPDIU,"}/*!sc*/
+.bsUDpT{position:relative;}/*!sc*/
+data-styled.g38[id="sc-kLgmGd"]{content:"bsUDpT,"}/*!sc*/
+.lgCKWg{position:absolute;pointer-events:none;z-index:1;top:50%;-webkit-transform:translateY(-50%);-ms-transform:translateY(-50%);transform:translateY(-50%);right:8px;margin:auto;text-align:center;}/*!sc*/
+.lgCKWg polyline{color:white;}/*!sc*/
+data-styled.g39[id="sc-iktELE"]{content:"lgCKWg,"}/*!sc*/
+.ekMQOb{box-sizing:border-box;min-width:100px;outline:none;display:inline-block;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.5);vertical-align:bottom;padding:2px 0px 2px 6px;position:relative;width:auto;background:white;color:#263238;font-family:Montserrat,sans-serif;font-size:0.929em;line-height:1.5em;cursor:pointer;transition:border 0.25s ease,color 0.25s ease,box-shadow 0.25s ease;}/*!sc*/
+.ekMQOb label{box-sizing:border-box;min-width:100px;outline:none;display:inline-block;font-family:Montserrat,sans-serif;color:#333333;vertical-align:bottom;width:auto;text-transform:none;padding:0 22px 0 4px;font-size:0.929em;line-height:1.5em;font-family:inherit;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;}/*!sc*/
+.ekMQOb .dropdown-select{position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;border:none;appearance:none;cursor:pointer;color:#333333;line-height:inherit;font-family:inherit;}/*!sc*/
+.ekMQOb:hover,.ekMQOb:focus-within{border:1px solid #32329f;color:#32329f;box-shadow:0px 0px 0px 1px #32329f;}/*!sc*/
+data-styled.g40[id="sc-jJEKGn"]{content:"ekMQOb,"}/*!sc*/
+.eBDHRN{margin-left:10px;text-transform:none;font-size:0.929em;color:black;}/*!sc*/
+data-styled.g42[id="sc-gWHgjU"]{content:"eBDHRN,"}/*!sc*/
+.jtfGmi{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.jtfGmi p:last-child{margin-bottom:0;}/*!sc*/
+.jtfGmi h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.jtfGmi h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.jtfGmi code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.jtfGmi pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.jtfGmi pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.jtfGmi pre code:before,.jtfGmi pre code:after{content:none;}/*!sc*/
+.jtfGmi blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.jtfGmi img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.jtfGmi ul,.jtfGmi ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.jtfGmi ul ul,.jtfGmi ol ul,.jtfGmi ul ol,.jtfGmi ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.jtfGmi table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.jtfGmi table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.jtfGmi table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.jtfGmi table th,.jtfGmi table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.jtfGmi table th{text-align:left;font-weight:bold;}/*!sc*/
+.jtfGmi .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.jtfGmi .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.jtfGmi h1:hover>.share-link::before,.jtfGmi h2:hover>.share-link::before,.jtfGmi .share-link:hover::before{visibility:visible;}/*!sc*/
+.jtfGmi a{text-decoration:auto;color:#32329f;}/*!sc*/
+.jtfGmi a:visited{color:#32329f;}/*!sc*/
+.jtfGmi a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+.dyntKg{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.dyntKg p:last-child{margin-bottom:0;}/*!sc*/
+.dyntKg p:first-child{margin-top:0;}/*!sc*/
+.dyntKg p:last-child{margin-bottom:0;}/*!sc*/
+.dyntKg h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.dyntKg h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.dyntKg code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.dyntKg pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.dyntKg pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.dyntKg pre code:before,.dyntKg pre code:after{content:none;}/*!sc*/
+.dyntKg blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.dyntKg img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.dyntKg ul,.dyntKg ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.dyntKg ul ul,.dyntKg ol ul,.dyntKg ul ol,.dyntKg ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.dyntKg table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.dyntKg table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.dyntKg table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.dyntKg table th,.dyntKg table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.dyntKg table th{text-align:left;font-weight:bold;}/*!sc*/
+.dyntKg .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.dyntKg .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.dyntKg h1:hover>.share-link::before,.dyntKg h2:hover>.share-link::before,.dyntKg .share-link:hover::before{visibility:visible;}/*!sc*/
+.dyntKg a{text-decoration:auto;color:#32329f;}/*!sc*/
+.dyntKg a:visited{color:#32329f;}/*!sc*/
+.dyntKg a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+.eBjiEo{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.eBjiEo p:last-child{margin-bottom:0;}/*!sc*/
+.eBjiEo p:first-child{margin-top:0;}/*!sc*/
+.eBjiEo p:last-child{margin-bottom:0;}/*!sc*/
+.eBjiEo p{display:inline-block;}/*!sc*/
+.eBjiEo h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.eBjiEo h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.eBjiEo code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.eBjiEo pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.eBjiEo pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.eBjiEo pre code:before,.eBjiEo pre code:after{content:none;}/*!sc*/
+.eBjiEo blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.eBjiEo img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.eBjiEo ul,.eBjiEo ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.eBjiEo ul ul,.eBjiEo ol ul,.eBjiEo ul ol,.eBjiEo ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.eBjiEo table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.eBjiEo table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.eBjiEo table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.eBjiEo table th,.eBjiEo table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.eBjiEo table th{text-align:left;font-weight:bold;}/*!sc*/
+.eBjiEo .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.eBjiEo .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.eBjiEo h1:hover>.share-link::before,.eBjiEo h2:hover>.share-link::before,.eBjiEo .share-link:hover::before{visibility:visible;}/*!sc*/
+.eBjiEo a{text-decoration:auto;color:#32329f;}/*!sc*/
+.eBjiEo a:visited{color:#32329f;}/*!sc*/
+.eBjiEo a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+data-styled.g43[id="sc-cBNeAB"]{content:"jtfGmi,dyntKg,eBjiEo,"}/*!sc*/
+.hynizp{display:inline;}/*!sc*/
+data-styled.g44[id="sc-cittYi"]{content:"hynizp,"}/*!sc*/
+.hiQxbu{position:relative;}/*!sc*/
+data-styled.g45[id="sc-jcVbNL"]{content:"hiQxbu,"}/*!sc*/
+.fRRakq:hover>.sc-giIpqw{opacity:1;}/*!sc*/
+data-styled.g50[id="sc-cTkvqA"]{content:"fRRakq,"}/*!sc*/
+.cCicSb{font-family:Courier,monospace;font-size:13px;white-space:pre;contain:content;overflow-x:auto;}/*!sc*/
+.cCicSb .redoc-json code>.collapser{display:none;pointer-events:none;}/*!sc*/
+.cCicSb .callback-function{color:gray;}/*!sc*/
+.cCicSb .collapser:after{content:'-';cursor:pointer;}/*!sc*/
+.cCicSb .collapsed>.collapser:after{content:'+';cursor:pointer;}/*!sc*/
+.cCicSb .ellipsis:after{content:' … ';}/*!sc*/
+.cCicSb .collapsible{margin-left:2em;}/*!sc*/
+.cCicSb .hoverable{padding-top:1px;padding-bottom:1px;padding-left:2px;padding-right:2px;border-radius:2px;}/*!sc*/
+.cCicSb .hovered{background-color:rgba(235, 238, 249, 1);}/*!sc*/
+.cCicSb .collapser{background-color:transparent;border:0;color:#fff;font-family:Courier,monospace;font-size:13px;padding-right:6px;padding-left:6px;padding-top:0;padding-bottom:0;display:flex;align-items:center;justify-content:center;width:15px;height:15px;position:absolute;top:4px;left:-1.5em;cursor:default;user-select:none;-webkit-user-select:none;padding:2px;}/*!sc*/
+.cCicSb .collapser:focus{outline-color:#fff;outline-style:dotted;outline-width:1px;}/*!sc*/
+.cCicSb ul{list-style-type:none;padding:0px;margin:0px 0px 0px 26px;}/*!sc*/
+.cCicSb li{position:relative;display:block;}/*!sc*/
+.cCicSb .hoverable{display:inline-block;}/*!sc*/
+.cCicSb .selected{outline-style:solid;outline-width:1px;outline-style:dotted;}/*!sc*/
+.cCicSb .collapsed>.collapsible{display:none;}/*!sc*/
+.cCicSb .ellipsis{display:none;}/*!sc*/
+.cCicSb .collapsed>.ellipsis{display:inherit;}/*!sc*/
+data-styled.g51[id="sc-jNMdgd"]{content:"cCicSb,"}/*!sc*/
+.ilXydl{padding:0.9em;background-color:rgba(38,50,56,0.4);margin:0 0 10px 0;display:block;font-family:Montserrat,sans-serif;font-size:0.929em;line-height:1.5em;}/*!sc*/
+data-styled.g52[id="sc-dOSQqJ"]{content:"ilXydl,"}/*!sc*/
+.fLqWfi{font-family:Montserrat,sans-serif;font-size:12px;position:absolute;z-index:1;top:-11px;left:12px;font-weight:600;color:rgba(255,255,255,0.7);}/*!sc*/
+data-styled.g53[id="sc-bBrNAk"]{content:"fLqWfi,"}/*!sc*/
+.jyrVDw{position:relative;}/*!sc*/
+data-styled.g54[id="sc-cOahfn"]{content:"jyrVDw,"}/*!sc*/
+.dMpNQv{margin:0 0 10px 0;display:block;background-color:rgba(38,50,56,0.4);border:none;padding:0.9em 1.6em 0.9em 0.9em;box-shadow:none;}/*!sc*/
+.dMpNQv label{color:#ffffff;text-overflow:ellipsis;white-space:nowrap;overflow:hidden;font-size:1em;text-transform:none;border:none;}/*!sc*/
+.dMpNQv:hover,.dMpNQv:focus-within{border:none;box-shadow:none;background-color:rgba(38,50,56,0.7);}/*!sc*/
+data-styled.g55[id="sc-AzeoO"]{content:"dMpNQv,"}/*!sc*/
+.icbUjL{margin-top:15px;}/*!sc*/
+data-styled.g57[id="sc-hTZjHc"]{content:"icbUjL,"}/*!sc*/
+.bvJPfa.deprecated span.property-name{text-decoration:line-through;color:#707070;}/*!sc*/
+.bvJPfa button{background-color:transparent;border:0;outline:0;font-size:13px;font-family:Courier,monospace;cursor:pointer;padding:0;color:#333333;}/*!sc*/
+.bvJPfa button:focus{font-weight:600;}/*!sc*/
+.bvJPfa .sc-dQoBM{height:1.1em;width:1.1em;}/*!sc*/
+.bvJPfa .sc-dQoBM polygon{fill:#666;}/*!sc*/
+data-styled.g58[id="sc-jgHDmf"]{content:"bvJPfa,"}/*!sc*/
+.gCMUGw{vertical-align:middle;font-size:13px;line-height:20px;}/*!sc*/
+data-styled.g59[id="sc-gTgAvG"]{content:"gCMUGw,"}/*!sc*/
+.dCeeDp{color:rgba(102,102,102,0.9);}/*!sc*/
+data-styled.g60[id="sc-laROWl"]{content:"dCeeDp,"}/*!sc*/
+.cxjEEA{color:#666;}/*!sc*/
+data-styled.g61[id="sc-iNqMfM"]{content:"cxjEEA,"}/*!sc*/
+.jJMDiT{color:#666;word-break:break-word;}/*!sc*/
+data-styled.g62[id="sc-jeGQnC"]{content:"jJMDiT,"}/*!sc*/
+.egFobb{color:#d41f1c;font-size:0.9em;font-weight:normal;margin-left:20px;line-height:1;}/*!sc*/
+data-styled.g63[id="sc-eJMOEj"]{content:"egFobb,"}/*!sc*/
+.jzGNYG{border-radius:2px;word-break:break-word;background-color:rgba(51,51,51,0.05);color:rgba(51,51,51,0.9);padding:0 5px;border:1px solid rgba(51,51,51,0.1);font-family:Courier,monospace;}/*!sc*/
+.sc-lcukLb+.sc-lcukLb{margin-left:0;}/*!sc*/
+data-styled.g67[id="sc-lcukLb"]{content:"jzGNYG,"}/*!sc*/
+.ewkFZw:after{content:' and ';font-weight:normal;}/*!sc*/
+.ewkFZw:last-child:after{content:none;}/*!sc*/
+.ewkFZw a{text-decoration:auto;color:#32329f;}/*!sc*/
+.ewkFZw a:visited{color:#32329f;}/*!sc*/
+.ewkFZw a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+data-styled.g82[id="sc-hOqsyU"]{content:"ewkFZw,"}/*!sc*/
+.gXVZLC{white-space:nowrap;}/*!sc*/
+.gXVZLC:after{content:' or ';white-space:pre;}/*!sc*/
+.gXVZLC:last-child:after,.gXVZLC:only-child:after{content:none;}/*!sc*/
+.gXVZLC a{text-decoration:auto;color:#32329f;}/*!sc*/
+.gXVZLC a:visited{color:#32329f;}/*!sc*/
+.gXVZLC a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+data-styled.g83[id="sc-dtwqPB"]{content:"gXVZLC,"}/*!sc*/
+.hnzXSU{flex:1 1 auto;cursor:pointer;}/*!sc*/
+data-styled.g84[id="sc-dacGni"]{content:"hnzXSU,"}/*!sc*/
+.jnRUlI{width:75%;text-overflow:ellipsis;border-radius:4px;overflow:hidden;}/*!sc*/
+@media screen and (max-width: 50rem){.jnRUlI{margin-top:10px;}}/*!sc*/
+data-styled.g85[id="sc-jUEocL"]{content:"jnRUlI,"}/*!sc*/
+.htSlhJ{display:inline-block;margin:0;}/*!sc*/
+data-styled.g86[id="sc-jQbHUc"]{content:"htSlhJ,"}/*!sc*/
+.bhICnb{width:100%;display:flex;margin:1em 0;flex-direction:row;}/*!sc*/
+@media screen and (max-width: 50rem){.bhICnb{flex-direction:column;}}/*!sc*/
+data-styled.g87[id="sc-fvhGkJ"]{content:"bhICnb,"}/*!sc*/
+.eSPXsI{margin-top:0;margin-bottom:0.5em;}/*!sc*/
+data-styled.g93[id="sc-ctaZPk"]{content:"eSPXsI,"}/*!sc*/
+.kdqpyX{width:9ex;display:inline-block;height:13px;line-height:13px;background-color:#333;border-radius:3px;background-repeat:no-repeat;background-position:6px 4px;font-size:7px;font-family:Verdana,sans-serif;color:white;text-transform:uppercase;text-align:center;font-weight:bold;vertical-align:middle;margin-right:6px;margin-top:2px;}/*!sc*/
+.kdqpyX.get{background-color:#2F8132;}/*!sc*/
+.kdqpyX.post{background-color:#186FAF;}/*!sc*/
+.kdqpyX.put{background-color:#95507c;}/*!sc*/
+.kdqpyX.options{background-color:#947014;}/*!sc*/
+.kdqpyX.patch{background-color:#bf581d;}/*!sc*/
+.kdqpyX.delete{background-color:#cc3333;}/*!sc*/
+.kdqpyX.basic{background-color:#707070;}/*!sc*/
+.kdqpyX.link{background-color:#07818F;}/*!sc*/
+.kdqpyX.head{background-color:#A23DAD;}/*!sc*/
+.kdqpyX.hook{background-color:#32329f;}/*!sc*/
+.kdqpyX.schema{background-color:#707070;}/*!sc*/
+data-styled.g101[id="sc-XhXdA"]{content:"kdqpyX,"}/*!sc*/
+.eqhvhc{margin:0;padding:0;}/*!sc*/
+.eqhvhc:first-child{padding-bottom:32px;}/*!sc*/
+.sc-ikPCzd .sc-ikPCzd{font-size:0.929em;}/*!sc*/
+.eGBeQN{margin:0;padding:0;display:none;}/*!sc*/
+.eGBeQN:first-child{padding-bottom:32px;}/*!sc*/
+.sc-ikPCzd .sc-ikPCzd{font-size:0.929em;}/*!sc*/
+data-styled.g102[id="sc-ikPCzd"]{content:"eqhvhc,eGBeQN,"}/*!sc*/
+.hNMAOR{list-style:none inside none;overflow:hidden;text-overflow:ellipsis;padding:0;}/*!sc*/
+data-styled.g103[id="sc-tYrig"]{content:"hNMAOR,"}/*!sc*/
+.kYHuni{cursor:pointer;color:#333333;margin:0;padding:12.5px 20px;display:flex;justify-content:space-between;font-family:Montserrat,sans-serif;font-size:0.929em;text-transform:none;background-color:#fafafa;}/*!sc*/
+.kYHuni:hover{color:#32329f;background-color:#e1e1e1;}/*!sc*/
+.kYHuni .sc-dQoBM{height:1.5em;width:1.5em;}/*!sc*/
+.kYHuni .sc-dQoBM polygon{fill:#333333;}/*!sc*/
+.ehmZgs{cursor:pointer;color:#333333;margin:0;padding:12.5px 20px;display:flex;justify-content:space-between;font-family:Montserrat,sans-serif;background-color:#fafafa;}/*!sc*/
+.ehmZgs:hover{color:#32329f;background-color:#ededed;}/*!sc*/
+.ehmZgs .sc-dQoBM{height:1.5em;width:1.5em;}/*!sc*/
+.ehmZgs .sc-dQoBM polygon{fill:#333333;}/*!sc*/
+data-styled.g104[id="sc-biBsFP"]{content:"kYHuni,ehmZgs,"}/*!sc*/
+.dYJaHY{display:inline-block;vertical-align:middle;width:calc(100% - 38px);overflow:hidden;text-overflow:ellipsis;}/*!sc*/
+data-styled.g105[id="sc-eHfQNO"]{content:"dYJaHY,"}/*!sc*/
+.icnaqS{font-size:0.8em;margin-top:10px;text-align:center;position:fixed;width:260px;bottom:0;background:#fafafa;}/*!sc*/
+.icnaqS a,.icnaqS a:visited,.icnaqS a:hover{color:#333333!important;padding:5px 0;border-top:1px solid #e1e1e1;text-decoration:none;display:flex;align-items:center;justify-content:center;}/*!sc*/
+.icnaqS img{width:15px;margin-right:5px;}/*!sc*/
+@media screen and (max-width: 50rem){.icnaqS{width:100%;}}/*!sc*/
+data-styled.g106[id="sc-hzMLOJ"]{content:"icnaqS,"}/*!sc*/
+.gnyOsi{cursor:pointer;position:relative;margin-bottom:5px;}/*!sc*/
+data-styled.g112[id="sc-fXozIE"]{content:"gnyOsi,"}/*!sc*/
+.kmRXcZ{font-family:Courier,monospace;margin-left:10px;flex:1;overflow-x:hidden;text-overflow:ellipsis;}/*!sc*/
+data-styled.g113[id="sc-FyhMp"]{content:"kmRXcZ,"}/*!sc*/
+.eJFCKx{outline:0;color:inherit;width:100%;text-align:left;cursor:pointer;padding:10px 30px 10px 20px;border-radius:4px 4px 0 0;background-color:#11171a;display:flex;white-space:nowrap;align-items:center;border:1px solid transparent;border-bottom:0;transition:border-color 0.25s ease;}/*!sc*/
+.eJFCKx ..sc-FyhMp{color:#ffffff;}/*!sc*/
+.eJFCKx:focus{box-shadow:inset 0 2px 2px rgba(0, 0, 0, 0.45),0 2px 0 rgba(128, 128, 128, 0.25);}/*!sc*/
+data-styled.g114[id="sc-jXkukm"]{content:"eJFCKx,"}/*!sc*/
+.kcqnuN{font-size:0.929em;line-height:20px;background-color:#186FAF;color:#ffffff;padding:3px 10px;text-transform:uppercase;font-family:Montserrat,sans-serif;margin:0;}/*!sc*/
+data-styled.g115[id="sc-eFucnX"]{content:"kcqnuN,"}/*!sc*/
+.AnL{position:absolute;width:100%;z-index:100;background:#fafafa;color:#263238;box-sizing:border-box;box-shadow:0 0 6px rgba(0, 0, 0, 0.33);overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;transition:all 0.25s ease;visibility:hidden;transform:translateY(-50%) scaleY(0);}/*!sc*/
+data-styled.g116[id="sc-fmlIYk"]{content:"AnL,"}/*!sc*/
+.gjZMty{padding:10px;}/*!sc*/
+data-styled.g117[id="sc-ljRaAR"]{content:"gjZMty,"}/*!sc*/
+.eFxVeO{padding:5px;border:1px solid #ccc;background:#fff;word-break:break-all;color:#32329f;}/*!sc*/
+.eFxVeO >span{color:#333333;}/*!sc*/
+data-styled.g118[id="sc-jmhDzS"]{content:"eFxVeO,"}/*!sc*/
+.eEdthm{text-transform:lowercase;margin-left:0;line-height:1.5em;}/*!sc*/
+data-styled.g119[id="sc-dUrlDD"]{content:"eEdthm,"}/*!sc*/
+.jNapuE{text-transform:lowercase;margin-left:0;line-height:1.5em;color:#666;font-size:0.9em;}/*!sc*/
+data-styled.g120[id="sc-htubao"]{content:"jNapuE,"}/*!sc*/
+.ciHfuN{display:block;border:0;width:100%;text-align:left;padding:10px;border-radius:2px;margin-bottom:4px;line-height:1.5em;cursor:pointer;color:#1d8127;background-color:rgba(29,129,39,0.07);}/*!sc*/
+.ciHfuN:focus{outline:auto #1d8127;}/*!sc*/
+.iagvZz{display:block;border:0;width:100%;text-align:left;padding:10px;border-radius:2px;margin-bottom:4px;line-height:1.5em;cursor:pointer;color:#d41f1c;background-color:rgba(212,31,28,0.07);}/*!sc*/
+.iagvZz:focus{outline:auto #d41f1c;}/*!sc*/
+data-styled.g121[id="sc-cbDJdZ"]{content:"ciHfuN,iagvZz,"}/*!sc*/
+.mtsUp{vertical-align:top;}/*!sc*/
+data-styled.g124[id="sc-fWPeRB"]{content:"mtsUp,"}/*!sc*/
+.ihqrCS{font-size:1.3em;padding:0.2em 0;margin:3em 0 1.1em;color:#333333;font-weight:normal;}/*!sc*/
+data-styled.g125[id="sc-fHYzZk"]{content:"ihqrCS,"}/*!sc*/
+.iTRatv{margin-bottom:30px;}/*!sc*/
+data-styled.g130[id="sc-iGcuFr"]{content:"iTRatv,"}/*!sc*/
+.iDYPDd{user-select:none;width:20px;height:20px;align-self:center;display:flex;flex-direction:column;color:#32329f;}/*!sc*/
+data-styled.g131[id="sc-irlPNa"]{content:"iDYPDd,"}/*!sc*/
+.lkswgW{width:260px;background-color:#fafafa;overflow:hidden;display:flex;flex-direction:column;backface-visibility:hidden;height:100vh;position:sticky;position:-webkit-sticky;top:0;}/*!sc*/
+@media screen and (max-width: 50rem){.lkswgW{position:fixed;z-index:20;width:100%;background:#fafafa;display:none;}}/*!sc*/
+@media print{.lkswgW{display:none;}}/*!sc*/
+data-styled.g132[id="sc-eWvQxi"]{content:"lkswgW,"}/*!sc*/
+.fsqnbI{outline:none;user-select:none;background-color:#f2f2f2;color:#32329f;display:none;cursor:pointer;position:fixed;right:20px;z-index:100;border-radius:50%;box-shadow:0 0 20px rgba(0, 0, 0, 0.3);bottom:44px;width:60px;height:60px;padding:0 20px;}/*!sc*/
+@media screen and (max-width: 50rem){.fsqnbI{display:flex;}}/*!sc*/
+.fsqnbI svg{color:#0065FB;}/*!sc*/
+@media print{.fsqnbI{display:none;}}/*!sc*/
+data-styled.g133[id="sc-kUbhZP"]{content:"fsqnbI,"}/*!sc*/
+.iABphV{font-family:Roboto,sans-serif;font-size:14px;font-weight:400;line-height:1.5em;color:#333333;display:flex;position:relative;text-align:left;-webkit-font-smoothing:antialiased;font-smoothing:antialiased;text-rendering:optimizeSpeed!important;tap-highlight-color:rgba(0, 0, 0, 0);text-size-adjust:100%;}/*!sc*/
+.iABphV *{box-sizing:border-box;-webkit-tap-highlight-color:rgba(255, 255, 255, 0);}/*!sc*/
+data-styled.g134[id="sc-dwcwXc"]{content:"iABphV,"}/*!sc*/
+.JaJkD{z-index:1;position:relative;overflow:hidden;width:calc(100% - 260px);contain:layout;}/*!sc*/
+@media print,screen and (max-width: 50rem){.JaJkD{width:100%;}}/*!sc*/
+data-styled.g135[id="sc-jtHOzJ"]{content:"JaJkD,"}/*!sc*/
+.dQcVAt{background:#263238;position:absolute;top:0;bottom:0;right:0;width:calc((100% - 260px) * 0.4);}/*!sc*/
+@media print,screen and (max-width: 75rem){.dQcVAt{display:none;}}/*!sc*/
+data-styled.g136[id="sc-elsZMO"]{content:"dQcVAt,"}/*!sc*/
+.heVKiz{padding:5px 0;}/*!sc*/
+data-styled.g137[id="sc-kiYrpv"]{content:"heVKiz,"}/*!sc*/
+.gyVKdy{width:calc(100% - 40px);box-sizing:border-box;margin:0 20px;padding:5px 10px 5px 20px;border:0;border-bottom:1px solid #e1e1e1;font-family:Roboto,sans-serif;font-weight:bold;font-size:13px;color:#333333;background-color:transparent;outline:none;}/*!sc*/
+data-styled.g138[id="sc-cKZGmI"]{content:"gyVKdy,"}/*!sc*/
+.eIwqum{position:absolute;left:20px;height:1.8em;width:0.9em;}/*!sc*/
+.eIwqum path{fill:#333333;}/*!sc*/
+data-styled.g139[id="sc-iIEXPp"]{content:"eIwqum,"}/*!sc*/
+</style>
+  <link href="https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700" rel="stylesheet">
+</head>
+
+<body>
+  
+      <div id="redoc"><div class="sc-dwcwXc iABphV redoc-wrap"><div class="sc-eWvQxi lkswgW menu-content" style="top:0px;height:calc(100vh - 0px)"><div role="search" class="sc-kiYrpv heVKiz"><svg class="sc-iIEXPp eIwqum search-icon" version="1.1" viewBox="0 0 1000 1000" x="0px" xmlns="http://www.w3.org/2000/svg" y="0px"><path d="M968.2,849.4L667.3,549c83.9-136.5,66.7-317.4-51.7-435.6C477.1-25,252.5-25,113.9,113.4c-138.5,138.3-138.5,362.6,0,501C219.2,730.1,413.2,743,547.6,666.5l301.9,301.4c43.6,43.6,76.9,14.9,104.2-12.4C981,928.3,1011.8,893,968.2,849.4z M524.5,522c-88.9,88.7-233,88.7-321.8,0c-88.9-88.7-88.9-232.6,0-321.3c88.9-88.7,233-88.7,321.8,0C613.4,289.4,613.4,433.3,524.5,522z"></path></svg><input placeholder="Search..." aria-label="Search" type="text" class="sc-cKZGmI gyVKdy search-input" value=""/></div><div class="sc-kLgmGd bsUDpT scrollbar-container undefined"><ul role="menu" class="sc-ikPCzd eqhvhc"><li tabindex="0" depth="1" data-item-id="tag/DataAccess" role="menuitem" aria-label="DataAccess" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP kYHuni -depth1"><span width="calc(100% - 38px)" title="DataAccess" class="sc-eHfQNO dYJaHY">DataAccess</span><svg class="sc-dQoBM cWjMmC" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></label><ul class="sc-ikPCzd eGBeQN"><li tabindex="0" depth="2" data-item-id="tag/DataAccess/operation/listResources" role="menuitem" aria-label="列出可查询的数据资源" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP ehmZgs -depth2"><span type="post" class="sc-XhXdA kdqpyX operation-type post">post</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHfQNO dYJaHY">列出可查询的数据资源</span></label></li><li tabindex="0" depth="2" data-item-id="tag/DataAccess/operation/describeResource" role="menuitem" aria-label="查看资源的物理结构" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP ehmZgs -depth2"><span type="post" class="sc-XhXdA kdqpyX operation-type post">post</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHfQNO dYJaHY">查看资源的物理结构</span></label></li><li tabindex="0" depth="2" data-item-id="tag/DataAccess/operation/runSQL" role="menuitem" aria-label="对数据资源执行只读 SQL" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP ehmZgs -depth2"><span type="post" class="sc-XhXdA kdqpyX operation-type post">post</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHfQNO dYJaHY">对数据资源执行只读 SQL</span></label></li></ul></li></ul><div class="sc-hzMLOJ icnaqS"><a target="_blank" rel="noopener noreferrer" href="https://redocly.com/redoc/">API docs by Redocly</a></div></div></div><div class="sc-kUbhZP fsqnbI"><div class="sc-irlPNa iDYPDd"><svg class="" style="transform:translate(2px, -4px) rotate(180deg);transition:transform 0.2s ease" viewBox="0 0 926.23699 573.74994" version="1.1" x="0px" y="0px" width="15" height="15"><g transform="translate(904.92214,-879.1482)"><path d="
+          m -673.67664,1221.6502 -231.2455,-231.24803 55.6165,
+          -55.627 c 30.5891,-30.59485 56.1806,-55.627 56.8701,-55.627 0.6894,
+          0 79.8637,78.60862 175.9427,174.68583 l 174.6892,174.6858 174.6892,
+          -174.6858 c 96.079,-96.07721 175.253196,-174.68583 175.942696,
+          -174.68583 0.6895,0 26.281,25.03215 56.8701,
+          55.627 l 55.6165,55.627 -231.245496,231.24803 c -127.185,127.1864
+          -231.5279,231.248 -231.873,231.248 -0.3451,0 -104.688,
+          -104.0616 -231.873,-231.248 z
+        " fill="currentColor"></path></g></svg><svg class="" style="transform:translate(2px, 4px);transition:transform 0.2s ease" viewBox="0 0 926.23699 573.74994" version="1.1" x="0px" y="0px" width="15" height="15"><g transform="translate(904.92214,-879.1482)"><path d="
+          m -673.67664,1221.6502 -231.2455,-231.24803 55.6165,
+          -55.627 c 30.5891,-30.59485 56.1806,-55.627 56.8701,-55.627 0.6894,
+          0 79.8637,78.60862 175.9427,174.68583 l 174.6892,174.6858 174.6892,
+          -174.6858 c 96.079,-96.07721 175.253196,-174.68583 175.942696,
+          -174.68583 0.6895,0 26.281,25.03215 56.8701,
+          55.627 l 55.6165,55.627 -231.245496,231.24803 c -127.185,127.1864
+          -231.5279,231.248 -231.873,231.248 -0.3451,0 -104.688,
+          -104.0616 -231.873,-231.248 z
+        " fill="currentColor"></path></g></svg></div></div><div class="sc-jtHOzJ JaJkD api-content"><div class="sc-eCsseJ bKZuAK"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI api-info"><h1 class="sc-fubEtJ sc-ctaZPk edtrWC eSPXsI">数据层直查<!-- --> <span>(<!-- -->0.1.3<!-- -->)</span></h1><p>Download OpenAPI specification<!-- -->:</p><div class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><div data-role="redoc-summary" html="" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><div data-role="redoc-description" html="&lt;p&gt;脱离本体、直接查底层数据资源的三个接口：列资源、看资源结构、跑只读 SQL。&lt;/p&gt;
+&lt;p&gt;与本体路径（&lt;a href=&quot;schema-search.yaml&quot;&gt;schema-search.yaml&lt;/a&gt; →
+&lt;a href=&quot;object-instance.yaml&quot;&gt;object-instance.yaml&lt;/a&gt;）互补：本体路径回答「这张网里
+业务概念长什么样」，数据层直查回答「底下的表里到底有什么」。两条路都通向
+&lt;code&gt;run_sql&lt;/code&gt;——要么从 &lt;code&gt;search_schema&lt;/code&gt; 拿对象类的物理列名（&lt;code&gt;include_columns=true&lt;/code&gt;），
+要么从 &lt;code&gt;list_resources&lt;/code&gt; + &lt;code&gt;describe_resource&lt;/code&gt; 拿资源的物理 schema。&lt;/p&gt;
+&lt;p&gt;典型链路：&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;list_resources    → 找到 resource_id
+describe_resource → 看有哪些列、什么类型、什么连接器
+run_sql           → SELECT &lt;span class=&quot;token punctuation&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;.&lt;/span&gt; FROM &lt;span class=&quot;token punctuation&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;token operator&quot;&gt;&amp;lt;&lt;/span&gt;resource_id&lt;span class=&quot;token operator&quot;&gt;&gt;&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;}&lt;/span&gt; &lt;span class=&quot;token punctuation&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;token punctuation&quot;&gt;.&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;&lt;strong&gt;授权&lt;/strong&gt;：资源可见性与读取权限由下游 vega 按账户强制（空账户直接拒绝），本服务
+不做二次放行。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;认证&lt;/strong&gt;：&lt;code&gt;Authorization: Bearer &amp;lt;token&amp;gt;&lt;/code&gt;（OAuth access token 或 &lt;code&gt;bak_&lt;/code&gt; AppKey）。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>脱离本体、直接查底层数据资源的三个接口：列资源、看资源结构、跑只读 SQL。</p>
+<p>与本体路径（<a href="schema-search.yaml">schema-search.yaml</a> →
+<a href="object-instance.yaml">object-instance.yaml</a>）互补：本体路径回答「这张网里
+业务概念长什么样」，数据层直查回答「底下的表里到底有什么」。两条路都通向
+<code>run_sql</code>——要么从 <code>search_schema</code> 拿对象类的物理列名（<code>include_columns=true</code>），
+要么从 <code>list_resources</code> + <code>describe_resource</code> 拿资源的物理 schema。</p>
+<p>典型链路：</p>
+<pre><code>list_resources    → 找到 resource_id
+describe_resource → 看有哪些列、什么类型、什么连接器
+run_sql           → SELECT <span class="token punctuation">.</span><span class="token punctuation">.</span><span class="token punctuation">.</span> FROM <span class="token punctuation">{</span><span class="token punctuation">{</span><span class="token punctuation">.</span><span class="token operator">&lt;</span>resource_id<span class="token operator">></span><span class="token punctuation">}</span><span class="token punctuation">}</span> <span class="token punctuation">.</span><span class="token punctuation">.</span><span class="token punctuation">.</span>
+</code></pre>
+<p><strong>授权</strong>：资源可见性与读取权限由下游 vega 按账户强制（空账户直接拒绝），本服务
+不做二次放行。</p>
+<p><strong>认证</strong>：<code>Authorization: Bearer &lt;token&gt;</code>（OAuth access token 或 <code>bak_</code> AppKey）。</p>
+</div></div></div></div><div id="tag/DataAccess" data-section-id="tag/DataAccess" class="sc-eCsseJ bKZuAK"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#tag/DataAccess" aria-label="tag/DataAccess"></a>DataAccess</h2></div></div></div><div id="tag/DataAccess/operation/listResources" data-section-id="tag/DataAccess/operation/listResources" class="sc-eCsseJ hxxgNd"><div data-section-id="operation/listResources" id="operation/listResources" class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#tag/DataAccess/operation/listResources" aria-label="tag/DataAccess/operation/listResources"></a>列出可查询的数据资源<!-- --> </h2><div class="sc-iGcuFr iTRatv"><div html="&lt;p&gt;列出当前账户有权查看的数据资源，输出精简字段（够用来挑一个 &lt;code&gt;resource_id&lt;/code&gt;）。
+请求体可选，不传则按 vega 默认分页返回。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>列出当前账户有权查看的数据资源，输出精简字段（够用来挑一个 <code>resource_id</code>）。
+请求体可选，不传则按 vega 默认分页返回。</p>
+</div></div><div class="sc-fvhGkJ bhICnb"><div class="sc-dacGni hnzXSU"><h5 class="sc-iqHZue sc-jQbHUc iFTCOQ htSlhJ">Authorizations:</h5><svg class="sc-dQoBM dHiXwH" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jUEocL jnRUlI"><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>OAuth2</i></span></span><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>AppKey</i></span></span></div></div><div><h5 class="sc-iqHZue iFTCOQ">query<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class="last "><td kind="field" title="response_format" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">response_format</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;json&quot;</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Enum<!-- -->:</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;json&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;toon&quot;</span> </div> <div><div html="&lt;p&gt;响应格式。&lt;code&gt;toon&lt;/code&gt; 返回 &lt;code&gt;application/toon&lt;/code&gt;，同构数组压成表格，省 token。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>响应格式。<code>toon</code> 返回 <code>application/toon</code>，同构数组压成表格，省 token。</p>
+</div></div></div></td></tr></tbody></table></div><h5 class="sc-iqHZue iFTCOQ">Request Body schema: <span class="sc-gWHgjU eBDHRN">application/json</span><div class="sc-htubao jNapuE">optional</div></h5><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><table class="sc-hHfrpe juzVUC"><tbody><tr class=""><td class="sc-hBFaCF sc-fFubTW sc-jgHDmf DPwQp hUqyua bvJPfa" kind="field" title="bkn_context"><span class="sc-idOkdQ iNiPzl"></span><button aria-label="expand bkn_context"><span class="property-name">bkn_context</span><svg class="sc-dQoBM iTiSfO" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">object</span><span class="sc-gTgAvG sc-jeGQnC gCMUGw jJMDiT"> (<!-- -->BKNContext<!-- -->) </span></div> <div><div html="&lt;p&gt;BKN Trace business-provenance context identifying the business
+conversation and interaction to which this call belongs. Required on
+REST APIs.&lt;/p&gt;
+&lt;p&gt;Both required child fields are server-issued handles and must not be
+invented by the caller:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;conversation_id&lt;/code&gt;: obtained from the Context Loader MCP tool
+&lt;code&gt;bkn_start_interaction&lt;/code&gt; on the first turn&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;interaction_id&lt;/code&gt;: obtained from the Context Loader MCP tool
+&lt;code&gt;bkn_start_interaction&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;These handles are available only through the provenance MCP tool above.
+The BKN Trace Core session APIs under &lt;code&gt;/api/agent-observability/v1&lt;/code&gt;
+accept gateway credentials only from trusted in-cluster services. They
+do not accept OAuth tokens or &lt;code&gt;bak_&lt;/code&gt; AppKeys; direct external calls
+receive &lt;code&gt;401 permission_denied&lt;/code&gt;.
+Context Loader derives the Operation idempotency identity on the server
+from request correlation, tool name, and normalized input. Callers must
+not submit &lt;code&gt;operation_key&lt;/code&gt;. Network retries should reuse
+&lt;code&gt;bkn-request-id&lt;/code&gt; or provide a stable
+&lt;code&gt;X-OpenBKN-Client-Invocation-Id&lt;/code&gt; for the same logical call. This hint is
+used only for idempotency and has no role in identity, authorization, or
+data-isolation decisions.&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>BKN Trace business-provenance context identifying the business
+conversation and interaction to which this call belongs. Required on
+REST APIs.</p>
+<p>Both required child fields are server-issued handles and must not be
+invented by the caller:</p>
+<ul>
+<li><code>conversation_id</code>: obtained from the Context Loader MCP tool
+<code>bkn_start_interaction</code> on the first turn</li>
+<li><code>interaction_id</code>: obtained from the Context Loader MCP tool
+<code>bkn_start_interaction</code></li>
+</ul>
+<p>These handles are available only through the provenance MCP tool above.
+The BKN Trace Core session APIs under <code>/api/agent-observability/v1</code>
+accept gateway credentials only from trusted in-cluster services. They
+do not accept OAuth tokens or <code>bak_</code> AppKeys; direct external calls
+receive <code>401 permission_denied</code>.
+Context Loader derives the Operation idempotency identity on the server
+from request correlation, tool name, and normalized input. Callers must
+not submit <code>operation_key</code>. Network retries should reuse
+<code>bkn-request-id</code> or provide a stable
+<code>X-OpenBKN-Client-Invocation-Id</code> for the same logical call. This hint is
+used only for idempotency and has no role in identity, authorization, or
+data-isolation decisions.</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="catalog_id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">catalog_id</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;限定某个 catalog。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>限定某个 catalog。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="type" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">type</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;资源类别，映射 vega 的 category：&lt;code&gt;table&lt;/code&gt; / &lt;code&gt;file&lt;/code&gt; / &lt;code&gt;fileset&lt;/code&gt; / &lt;code&gt;api&lt;/code&gt; /
+&lt;code&gt;metric&lt;/code&gt; / &lt;code&gt;topic&lt;/code&gt; / &lt;code&gt;index&lt;/code&gt; / &lt;code&gt;logicview&lt;/code&gt; / &lt;code&gt;dataset&lt;/code&gt;。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>资源类别，映射 vega 的 category：<code>table</code> / <code>file</code> / <code>fileset</code> / <code>api</code> /
+<code>metric</code> / <code>topic</code> / <code>index</code> / <code>logicview</code> / <code>dataset</code>。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="offset" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">offset</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">integer</span></div> <div><div html="&lt;p&gt;分页偏移；不传由 vega 取默认值 0。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>分页偏移；不传由 vega 取默认值 0。</p>
+</div></div></div></td></tr><tr class="last "><td kind="field" title="limit" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">limit</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">integer</span></div> <div><div html="&lt;p&gt;分页大小；不传由 vega 取默认值 20。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>分页大小；不传由 vega 取默认值 20。</p>
+</div></div></div></td></tr></tbody></table><div><h3 class="sc-fHYzZk ihqrCS">Responses</h3><div><button class="sc-cbDJdZ ciHfuN"><svg class="sc-dQoBM idFXFs" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">200<!-- --> </strong><div html="&lt;p&gt;资源列表&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>资源列表</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">401<!-- --> </strong><div html="&lt;p&gt;凭据缺失或无效&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>凭据缺失或无效</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">500<!-- --> </strong><div html="&lt;p&gt;服务内部错误；下游 vega 报错时原样透传其响应体&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>服务内部错误；下游 vega 报错时原样透传其响应体</p>
+</div></button></div></div></div><div class="sc-jSgsbC sc-gKscir kWQHAp jYdWFY"><div class="sc-fXozIE gnyOsi"><button class="sc-jXkukm eJFCKx"><span type="post" class="sc-eFucnX kcqnuN http-verb post">post</span><span class="sc-FyhMp kmRXcZ">/kn/list_resources</span><svg class="sc-dQoBM dvMtUQ" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmlIYk AnL"><div class="sc-ljRaAR gjZMty"><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div><div tabindex="0" role="button"><div class="sc-jmhDzS eFxVeO"><span>/api/agent-retrieval/v1</span>/kn/list_resources</div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Request samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="react-tabs__tab react-tabs__tab--selected" role="tab" id="tab_R_4kmq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_4kmq_0" tabindex="0" data-rttab="true">Payload</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_4kmq_0" aria-labelledby="tab_R_4kmq_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"catalog_id"</span>: <span class="token string">&quot;cat_prod_mysql&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"type"</span>: <span class="token string">&quot;table&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"limit"</span>: <span class="token number">50</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_4smq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_4smq_0" tabindex="0" data-rttab="true">200</li><li class="tab-error" role="tab" id="tab_R_4smq_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_4smq_1" data-rttab="true">401</li><li class="tab-error" role="tab" id="tab_R_4smq_2" aria-selected="false" aria-disabled="false" aria-controls="panel_R_4smq_2" data-rttab="true">500</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_4smq_0" aria-labelledby="tab_R_4smq_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-jJEKGn sc-AzeoO ekMQOb dMpNQv"><svg class="sc-iktELE lgCKWg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg><select class="dropdown-select"><option value="application/json" selected="">application/json</option><option value="application/toon">application/toon</option></select><label>application/json</label></div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"entries"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"resource_id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"type"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"status"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"catalog_id"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"total_count"</span>: <span class="token number">0</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_4smq_1" aria-labelledby="tab_R_4smq_1"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_4smq_2" aria-labelledby="tab_R_4smq_2"></div></div></div></div></div></div><div id="tag/DataAccess/operation/describeResource" data-section-id="tag/DataAccess/operation/describeResource" class="sc-eCsseJ hxxgNd"><div data-section-id="operation/describeResource" id="operation/describeResource" class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#tag/DataAccess/operation/describeResource" aria-label="tag/DataAccess/operation/describeResource"></a>查看资源的物理结构<!-- --> </h2><div class="sc-iGcuFr iTRatv"><div html="&lt;p&gt;取单个资源的物理列与连接器类型——写 &lt;code&gt;run_sql&lt;/code&gt; 之前该看的东西。
+&lt;code&gt;connector_type&lt;/code&gt; 决定实际目标方言；&lt;code&gt;run_sql&lt;/code&gt; 仅支持 &lt;code&gt;mysql&lt;/code&gt; / &lt;code&gt;mariadb&lt;/code&gt; /
+&lt;code&gt;postgresql&lt;/code&gt; / &lt;code&gt;sqlserver&lt;/code&gt; 资源，统一接收 MySQL 方言。目标方言不是 MySQL 时由
+Vega 转译，MySQL / MariaDB 资源则直接下发；其他连接器（如 &lt;code&gt;opensearch&lt;/code&gt;）会被拒绝。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>取单个资源的物理列与连接器类型——写 <code>run_sql</code> 之前该看的东西。
+<code>connector_type</code> 决定实际目标方言；<code>run_sql</code> 仅支持 <code>mysql</code> / <code>mariadb</code> /
+<code>postgresql</code> / <code>sqlserver</code> 资源，统一接收 MySQL 方言。目标方言不是 MySQL 时由
+Vega 转译，MySQL / MariaDB 资源则直接下发；其他连接器（如 <code>opensearch</code>）会被拒绝。</p>
+</div></div><div class="sc-fvhGkJ bhICnb"><div class="sc-dacGni hnzXSU"><h5 class="sc-iqHZue sc-jQbHUc iFTCOQ htSlhJ">Authorizations:</h5><svg class="sc-dQoBM dHiXwH" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jUEocL jnRUlI"><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>OAuth2</i></span></span><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>AppKey</i></span></span></div></div><div><h5 class="sc-iqHZue iFTCOQ">query<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class="last "><td kind="field" title="response_format" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">response_format</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;json&quot;</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Enum<!-- -->:</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;json&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;toon&quot;</span> </div> <div><div html="&lt;p&gt;响应格式。&lt;code&gt;toon&lt;/code&gt; 返回 &lt;code&gt;application/toon&lt;/code&gt;，同构数组压成表格，省 token。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>响应格式。<code>toon</code> 返回 <code>application/toon</code>，同构数组压成表格，省 token。</p>
+</div></div></div></td></tr></tbody></table></div><h5 class="sc-iqHZue iFTCOQ">Request Body schema: <span class="sc-gWHgjU eBDHRN">application/json</span><div class="sc-gTgAvG sc-eJMOEj sc-dUrlDD gCMUGw egFobb eEdthm">required</div></h5><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><table class="sc-hHfrpe juzVUC"><tbody><tr class=""><td class="sc-hBFaCF sc-fFubTW sc-jgHDmf DPwQp hUqyua bvJPfa" kind="field" title="bkn_context"><span class="sc-idOkdQ iNiPzl"></span><button aria-label="expand bkn_context"><span class="property-name">bkn_context</span><svg class="sc-dQoBM iTiSfO" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">object</span><span class="sc-gTgAvG sc-jeGQnC gCMUGw jJMDiT"> (<!-- -->BKNContext<!-- -->) </span></div> <div><div html="&lt;p&gt;BKN Trace business-provenance context identifying the business
+conversation and interaction to which this call belongs. Required on
+REST APIs.&lt;/p&gt;
+&lt;p&gt;Both required child fields are server-issued handles and must not be
+invented by the caller:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;conversation_id&lt;/code&gt;: obtained from the Context Loader MCP tool
+&lt;code&gt;bkn_start_interaction&lt;/code&gt; on the first turn&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;interaction_id&lt;/code&gt;: obtained from the Context Loader MCP tool
+&lt;code&gt;bkn_start_interaction&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;These handles are available only through the provenance MCP tool above.
+The BKN Trace Core session APIs under &lt;code&gt;/api/agent-observability/v1&lt;/code&gt;
+accept gateway credentials only from trusted in-cluster services. They
+do not accept OAuth tokens or &lt;code&gt;bak_&lt;/code&gt; AppKeys; direct external calls
+receive &lt;code&gt;401 permission_denied&lt;/code&gt;.
+Context Loader derives the Operation idempotency identity on the server
+from request correlation, tool name, and normalized input. Callers must
+not submit &lt;code&gt;operation_key&lt;/code&gt;. Network retries should reuse
+&lt;code&gt;bkn-request-id&lt;/code&gt; or provide a stable
+&lt;code&gt;X-OpenBKN-Client-Invocation-Id&lt;/code&gt; for the same logical call. This hint is
+used only for idempotency and has no role in identity, authorization, or
+data-isolation decisions.&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>BKN Trace business-provenance context identifying the business
+conversation and interaction to which this call belongs. Required on
+REST APIs.</p>
+<p>Both required child fields are server-issued handles and must not be
+invented by the caller:</p>
+<ul>
+<li><code>conversation_id</code>: obtained from the Context Loader MCP tool
+<code>bkn_start_interaction</code> on the first turn</li>
+<li><code>interaction_id</code>: obtained from the Context Loader MCP tool
+<code>bkn_start_interaction</code></li>
+</ul>
+<p>These handles are available only through the provenance MCP tool above.
+The BKN Trace Core session APIs under <code>/api/agent-observability/v1</code>
+accept gateway credentials only from trusted in-cluster services. They
+do not accept OAuth tokens or <code>bak_</code> AppKeys; direct external calls
+receive <code>401 permission_denied</code>.
+Context Loader derives the Operation idempotency identity on the server
+from request correlation, tool name, and normalized input. Callers must
+not submit <code>operation_key</code>. Network retries should reuse
+<code>bkn-request-id</code> or provide a stable
+<code>X-OpenBKN-Client-Invocation-Id</code> for the same logical call. This hint is
+used only for idempotency and has no role in identity, authorization, or
+data-isolation decisions.</p>
+</div></div></div></td></tr><tr class="last "><td kind="field" title="resource_id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">resource_id</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;资源 ID。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>资源 ID。</p>
+</div></div></div></td></tr></tbody></table><div><h3 class="sc-fHYzZk ihqrCS">Responses</h3><div><button class="sc-cbDJdZ ciHfuN"><svg class="sc-dQoBM idFXFs" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">200<!-- --> </strong><div html="&lt;p&gt;资源的物理 schema&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>资源的物理 schema</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">400<!-- --> </strong><div html="&lt;p&gt;缺少 &lt;code&gt;resource_id&lt;/code&gt;&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>缺少 <code>resource_id</code></p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">401<!-- --> </strong><div html="&lt;p&gt;凭据缺失或无效&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>凭据缺失或无效</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">404<!-- --> </strong><div html="&lt;p&gt;资源不存在或当前账户无权查看&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>资源不存在或当前账户无权查看</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">500<!-- --> </strong><div html="&lt;p&gt;服务内部错误；下游 vega 报错时原样透传其响应体&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>服务内部错误；下游 vega 报错时原样透传其响应体</p>
+</div></button></div></div></div><div class="sc-jSgsbC sc-gKscir kWQHAp jYdWFY"><div class="sc-fXozIE gnyOsi"><button class="sc-jXkukm eJFCKx"><span type="post" class="sc-eFucnX kcqnuN http-verb post">post</span><span class="sc-FyhMp kmRXcZ">/kn/describe_resource</span><svg class="sc-dQoBM dvMtUQ" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmlIYk AnL"><div class="sc-ljRaAR gjZMty"><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div><div tabindex="0" role="button"><div class="sc-jmhDzS eFxVeO"><span>/api/agent-retrieval/v1</span>/kn/describe_resource</div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Request samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="react-tabs__tab react-tabs__tab--selected" role="tab" id="tab_R_4kqq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_4kqq_0" tabindex="0" data-rttab="true">Payload</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_4kqq_0" aria-labelledby="tab_R_4kqq_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"resource_id"</span>: <span class="token string">&quot;res_orders&quot;</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_4sqq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_4sqq_0" tabindex="0" data-rttab="true">200</li><li class="tab-error" role="tab" id="tab_R_4sqq_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_4sqq_1" data-rttab="true">400</li><li class="tab-error" role="tab" id="tab_R_4sqq_2" aria-selected="false" aria-disabled="false" aria-controls="panel_R_4sqq_2" data-rttab="true">401</li><li class="tab-error" role="tab" id="tab_R_4sqq_3" aria-selected="false" aria-disabled="false" aria-controls="panel_R_4sqq_3" data-rttab="true">404</li><li class="tab-error" role="tab" id="tab_R_4sqq_4" aria-selected="false" aria-disabled="false" aria-controls="panel_R_4sqq_4" data-rttab="true">500</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_4sqq_0" aria-labelledby="tab_R_4sqq_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-jJEKGn sc-AzeoO ekMQOb dMpNQv"><svg class="sc-iktELE lgCKWg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg><select class="dropdown-select"><option value="application/json" selected="">application/json</option><option value="application/toon">application/toon</option></select><label>application/json</label></div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"resource_id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"connector_type"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"columns"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"type"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"description"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">]</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_4sqq_1" aria-labelledby="tab_R_4sqq_1"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_4sqq_2" aria-labelledby="tab_R_4sqq_2"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_4sqq_3" aria-labelledby="tab_R_4sqq_3"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_4sqq_4" aria-labelledby="tab_R_4sqq_4"></div></div></div></div></div></div><div id="tag/DataAccess/operation/runSQL" data-section-id="tag/DataAccess/operation/runSQL" class="sc-eCsseJ hxxgNd"><div data-section-id="operation/runSQL" id="operation/runSQL" class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#tag/DataAccess/operation/runSQL" aria-label="tag/DataAccess/operation/runSQL"></a>对数据资源执行只读 SQL<!-- --> </h2><div class="sc-iGcuFr iTRatv"><div html="&lt;p&gt;以 MySQL 方言执行&lt;strong&gt;只读&lt;/strong&gt; SQL。表名不写物理表名，写占位符
+&lt;code&gt;{{.&amp;lt;resource_id&amp;gt;}}&lt;/code&gt;，由服务端解析到真实数据源。&lt;/p&gt;
+&lt;p&gt;标识符需要引用时使用反引号（如 &lt;code&gt;`order_id`&lt;/code&gt;）；双引号在 MySQL 方言下是
+字符串字面量，不能用于标识符。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;两条硬约束，违反直接 400，SQL 不会下发&lt;/strong&gt;：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;p&gt;&lt;strong&gt;必须引用占位符&lt;/strong&gt;。SQL 里没有 &lt;code&gt;{{.resource_id}}&lt;/code&gt; 时报
+&lt;code&gt;sql must reference at least one data resource via the {{.resource_id}} placeholder&lt;/code&gt;
+——这既是定位数据源的唯一途径，也挡住了绕开权限直接写物理表名。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p&gt;&lt;strong&gt;必须是单条只读 &lt;code&gt;SELECT&lt;/code&gt; 语句&lt;/strong&gt;。端到端兼容性以 vega 的只读策略为准；
+虽然本服务的本地守卫可接受以 &lt;code&gt;WITH&lt;/code&gt; 开头的语句，但 vega 当前会拒绝 CTE，
+因此调用方**不得使用 &lt;code&gt;WITH&lt;/code&gt; / CTE 或 &lt;code&gt;UNION&lt;/code&gt; / &lt;code&gt;INTERSECT&lt;/code&gt; / &lt;code&gt;EXCEPT&lt;/code&gt;**。
+守卫会先剥掉注释、字符串字面量、反引号标识符与占位符，
+再判定：不允许多语句（剥离后仍含 &lt;code&gt;;&lt;/code&gt;）、必须以 &lt;code&gt;SELECT&lt;/code&gt; 或 &lt;code&gt;WITH&lt;/code&gt; 开头、不得含
+写入 / DDL / 权限 / 过程类关键字（INSERT、UPDATE、DELETE、DROP、ALTER、
+CREATE、TRUNCATE、GRANT、REVOKE、REPLACE、MERGE、UPSERT、CALL、EXEC、
+EXECUTE、RENAME、LOAD、COPY、INTO、ATTACH、DETACH、USE、VACUUM、ANALYZE、
+REFRESH、COMMENT、PREPARE、DEALLOCATE）。&lt;/p&gt;
+&lt;p&gt;当前保证可用的只读语法为：单表或同一 catalog 内的 &lt;code&gt;JOIN&lt;/code&gt;、&lt;code&gt;WHERE&lt;/code&gt;、
+&lt;code&gt;GROUP BY&lt;/code&gt; / &lt;code&gt;HAVING&lt;/code&gt;、&lt;code&gt;ORDER BY&lt;/code&gt;、&lt;code&gt;LIMIT&lt;/code&gt; 及常用聚合函数（如 &lt;code&gt;COUNT&lt;/code&gt;、&lt;code&gt;SUM&lt;/code&gt;、
+&lt;code&gt;AVG&lt;/code&gt;、&lt;code&gt;MIN&lt;/code&gt;、&lt;code&gt;MAX&lt;/code&gt;）。子查询和窗口函数不属于当前兼容性承诺，调用方不得依赖。
+SQL Server 资源还要求 &lt;code&gt;SELECT&lt;/code&gt; 输出列名唯一；使用 &lt;code&gt;JOIN&lt;/code&gt; 时，&lt;code&gt;*&lt;/code&gt; 必须带表别名
+限定（如 &lt;code&gt;o.*&lt;/code&gt;），不能使用裸 &lt;code&gt;*&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;守卫不是完整 SQL 解析器，是纵深防御的一层：vega 侧另有基于 SQLGlot AST 的
+只读策略做最终裁决（拒绝非顶层 SELECT、WITH/CTE、集合运算等），两层都不可省。&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;&lt;strong&gt;不分页&lt;/strong&gt;：固定单次返回，上限 10000 行。要更多数据请在 SQL 里自己收敛
+（聚合、加条件、加 LIMIT）。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>以 MySQL 方言执行<strong>只读</strong> SQL。表名不写物理表名，写占位符
+<code>{{.&lt;resource_id&gt;}}</code>，由服务端解析到真实数据源。</p>
+<p>标识符需要引用时使用反引号（如 <code>`order_id`</code>）；双引号在 MySQL 方言下是
+字符串字面量，不能用于标识符。</p>
+<p><strong>两条硬约束，违反直接 400，SQL 不会下发</strong>：</p>
+<ol>
+<li><p><strong>必须引用占位符</strong>。SQL 里没有 <code>{{.resource_id}}</code> 时报
+<code>sql must reference at least one data resource via the {{.resource_id}} placeholder</code>
+——这既是定位数据源的唯一途径，也挡住了绕开权限直接写物理表名。</p>
+</li>
+<li><p><strong>必须是单条只读 <code>SELECT</code> 语句</strong>。端到端兼容性以 vega 的只读策略为准；
+虽然本服务的本地守卫可接受以 <code>WITH</code> 开头的语句，但 vega 当前会拒绝 CTE，
+因此调用方**不得使用 <code>WITH</code> / CTE 或 <code>UNION</code> / <code>INTERSECT</code> / <code>EXCEPT</code>**。
+守卫会先剥掉注释、字符串字面量、反引号标识符与占位符，
+再判定：不允许多语句（剥离后仍含 <code>;</code>）、必须以 <code>SELECT</code> 或 <code>WITH</code> 开头、不得含
+写入 / DDL / 权限 / 过程类关键字（INSERT、UPDATE、DELETE、DROP、ALTER、
+CREATE、TRUNCATE、GRANT、REVOKE、REPLACE、MERGE、UPSERT、CALL、EXEC、
+EXECUTE、RENAME、LOAD、COPY、INTO、ATTACH、DETACH、USE、VACUUM、ANALYZE、
+REFRESH、COMMENT、PREPARE、DEALLOCATE）。</p>
+<p>当前保证可用的只读语法为：单表或同一 catalog 内的 <code>JOIN</code>、<code>WHERE</code>、
+<code>GROUP BY</code> / <code>HAVING</code>、<code>ORDER BY</code>、<code>LIMIT</code> 及常用聚合函数（如 <code>COUNT</code>、<code>SUM</code>、
+<code>AVG</code>、<code>MIN</code>、<code>MAX</code>）。子查询和窗口函数不属于当前兼容性承诺，调用方不得依赖。
+SQL Server 资源还要求 <code>SELECT</code> 输出列名唯一；使用 <code>JOIN</code> 时，<code>*</code> 必须带表别名
+限定（如 <code>o.*</code>），不能使用裸 <code>*</code>。</p>
+<p>守卫不是完整 SQL 解析器，是纵深防御的一层：vega 侧另有基于 SQLGlot AST 的
+只读策略做最终裁决（拒绝非顶层 SELECT、WITH/CTE、集合运算等），两层都不可省。</p>
+</li>
+</ol>
+<p><strong>不分页</strong>：固定单次返回，上限 10000 行。要更多数据请在 SQL 里自己收敛
+（聚合、加条件、加 LIMIT）。</p>
+</div></div><div class="sc-fvhGkJ bhICnb"><div class="sc-dacGni hnzXSU"><h5 class="sc-iqHZue sc-jQbHUc iFTCOQ htSlhJ">Authorizations:</h5><svg class="sc-dQoBM dHiXwH" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jUEocL jnRUlI"><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>OAuth2</i></span></span><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>AppKey</i></span></span></div></div><div><h5 class="sc-iqHZue iFTCOQ">query<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class="last "><td kind="field" title="response_format" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">response_format</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;json&quot;</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Enum<!-- -->:</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;json&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;toon&quot;</span> </div> <div><div html="&lt;p&gt;响应格式。&lt;code&gt;toon&lt;/code&gt; 返回 &lt;code&gt;application/toon&lt;/code&gt;，同构数组压成表格，省 token。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>响应格式。<code>toon</code> 返回 <code>application/toon</code>，同构数组压成表格，省 token。</p>
+</div></div></div></td></tr></tbody></table></div><h5 class="sc-iqHZue iFTCOQ">Request Body schema: <span class="sc-gWHgjU eBDHRN">application/json</span><div class="sc-gTgAvG sc-eJMOEj sc-dUrlDD gCMUGw egFobb eEdthm">required</div></h5><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><table class="sc-hHfrpe juzVUC"><tbody><tr class=""><td class="sc-hBFaCF sc-fFubTW sc-jgHDmf DPwQp hUqyua bvJPfa" kind="field" title="bkn_context"><span class="sc-idOkdQ iNiPzl"></span><button aria-label="expand bkn_context"><span class="property-name">bkn_context</span><svg class="sc-dQoBM iTiSfO" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">object</span><span class="sc-gTgAvG sc-jeGQnC gCMUGw jJMDiT"> (<!-- -->BKNContext<!-- -->) </span></div> <div><div html="&lt;p&gt;BKN Trace business-provenance context identifying the business
+conversation and interaction to which this call belongs. Required on
+REST APIs.&lt;/p&gt;
+&lt;p&gt;Both required child fields are server-issued handles and must not be
+invented by the caller:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;conversation_id&lt;/code&gt;: obtained from the Context Loader MCP tool
+&lt;code&gt;bkn_start_interaction&lt;/code&gt; on the first turn&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;interaction_id&lt;/code&gt;: obtained from the Context Loader MCP tool
+&lt;code&gt;bkn_start_interaction&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;These handles are available only through the provenance MCP tool above.
+The BKN Trace Core session APIs under &lt;code&gt;/api/agent-observability/v1&lt;/code&gt;
+accept gateway credentials only from trusted in-cluster services. They
+do not accept OAuth tokens or &lt;code&gt;bak_&lt;/code&gt; AppKeys; direct external calls
+receive &lt;code&gt;401 permission_denied&lt;/code&gt;.
+Context Loader derives the Operation idempotency identity on the server
+from request correlation, tool name, and normalized input. Callers must
+not submit &lt;code&gt;operation_key&lt;/code&gt;. Network retries should reuse
+&lt;code&gt;bkn-request-id&lt;/code&gt; or provide a stable
+&lt;code&gt;X-OpenBKN-Client-Invocation-Id&lt;/code&gt; for the same logical call. This hint is
+used only for idempotency and has no role in identity, authorization, or
+data-isolation decisions.&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>BKN Trace business-provenance context identifying the business
+conversation and interaction to which this call belongs. Required on
+REST APIs.</p>
+<p>Both required child fields are server-issued handles and must not be
+invented by the caller:</p>
+<ul>
+<li><code>conversation_id</code>: obtained from the Context Loader MCP tool
+<code>bkn_start_interaction</code> on the first turn</li>
+<li><code>interaction_id</code>: obtained from the Context Loader MCP tool
+<code>bkn_start_interaction</code></li>
+</ul>
+<p>These handles are available only through the provenance MCP tool above.
+The BKN Trace Core session APIs under <code>/api/agent-observability/v1</code>
+accept gateway credentials only from trusted in-cluster services. They
+do not accept OAuth tokens or <code>bak_</code> AppKeys; direct external calls
+receive <code>401 permission_denied</code>.
+Context Loader derives the Operation idempotency identity on the server
+from request correlation, tool name, and normalized input. Callers must
+not submit <code>operation_key</code>. Network retries should reuse
+<code>bkn-request-id</code> or provide a stable
+<code>X-OpenBKN-Client-Invocation-Id</code> for the same logical call. This hint is
+used only for idempotency and has no role in identity, authorization, or
+data-isolation decisions.</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="sql" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">sql</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;MySQL 方言 SQL。表名必须写成 &lt;code&gt;{{.&amp;lt;resource_id&amp;gt;}}&lt;/code&gt; 占位符，
+也接受 &lt;code&gt;{{&amp;lt;resource_id&amp;gt;}}&lt;/code&gt; 形式；&lt;code&gt;resource_id&lt;/code&gt; 必须匹配
+&lt;code&gt;[a-z0-9][a-z0-9_-]{0,39}&lt;/code&gt;（小写，最长 40 个字符），否则占位符不会被识别。
+标识符需要引用时使用反引号；双引号在 MySQL 方言下是字符串字面量，不能用于
+标识符。只允许单条 &lt;code&gt;SELECT&lt;/code&gt;（不支持 &lt;code&gt;WITH&lt;/code&gt; / CTE）。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>MySQL 方言 SQL。表名必须写成 <code>{{.&lt;resource_id&gt;}}</code> 占位符，
+也接受 <code>{{&lt;resource_id&gt;}}</code> 形式；<code>resource_id</code> 必须匹配
+<code>[a-z0-9][a-z0-9_-]{0,39}</code>（小写，最长 40 个字符），否则占位符不会被识别。
+标识符需要引用时使用反引号；双引号在 MySQL 方言下是字符串字面量，不能用于
+标识符。只允许单条 <code>SELECT</code>（不支持 <code>WITH</code> / CTE）。</p>
+</div></div></div></td></tr><tr class="last "><td kind="field" title="query_timeout" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">query_timeout</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">integer</span></div> <div><div html="&lt;p&gt;查询超时（秒）。不传走下游默认。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>查询超时（秒）。不传走下游默认。</p>
+</div></div></div></td></tr></tbody></table><div><h3 class="sc-fHYzZk ihqrCS">Responses</h3><div><button class="sc-cbDJdZ ciHfuN"><svg class="sc-dQoBM idFXFs" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">200<!-- --> </strong><div html="&lt;p&gt;查询结果&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>查询结果</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">400<!-- --> </strong><div html="&lt;p&gt;SQL 为空、未引用资源占位符、使用 &lt;code&gt;WITH&lt;/code&gt; / CTE 或集合运算、含多语句或写 / DDL
+关键字，以及下游返回的 SQL 语法 / 权限错误。本接口的 &lt;code&gt;code&lt;/code&gt; 统一为
+&lt;code&gt;Public.BadRequest&lt;/code&gt;；CTE 场景下 vega 的原始错误体（含
+&lt;code&gt;VegaBackend.Query.InvalidParameter&lt;/code&gt; 与 &lt;code&gt;raw query rejected by read-only policy&lt;/code&gt;）以
+字符串形式透传在 &lt;code&gt;details&lt;/code&gt; 中。调用方应将 CTE 改写为单条 &lt;code&gt;SELECT&lt;/code&gt;，或拆分为多次查询。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>SQL 为空、未引用资源占位符、使用 <code>WITH</code> / CTE 或集合运算、含多语句或写 / DDL
+关键字，以及下游返回的 SQL 语法 / 权限错误。本接口的 <code>code</code> 统一为
+<code>Public.BadRequest</code>；CTE 场景下 vega 的原始错误体（含
+<code>VegaBackend.Query.InvalidParameter</code> 与 <code>raw query rejected by read-only policy</code>）以
+字符串形式透传在 <code>details</code> 中。调用方应将 CTE 改写为单条 <code>SELECT</code>，或拆分为多次查询。</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">401<!-- --> </strong><div html="&lt;p&gt;凭据缺失或无效&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>凭据缺失或无效</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">500<!-- --> </strong><div html="&lt;p&gt;服务内部错误；下游 vega 报错时原样透传其响应体&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>服务内部错误；下游 vega 报错时原样透传其响应体</p>
+</div></button></div></div></div><div class="sc-jSgsbC sc-gKscir kWQHAp jYdWFY"><div class="sc-fXozIE gnyOsi"><button class="sc-jXkukm eJFCKx"><span type="post" class="sc-eFucnX kcqnuN http-verb post">post</span><span class="sc-FyhMp kmRXcZ">/kn/run_sql</span><svg class="sc-dQoBM dvMtUQ" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmlIYk AnL"><div class="sc-ljRaAR gjZMty"><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div><div tabindex="0" role="button"><div class="sc-jmhDzS eFxVeO"><span>/api/agent-retrieval/v1</span>/kn/run_sql</div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Request samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="react-tabs__tab react-tabs__tab--selected" role="tab" id="tab_R_4kuq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_4kuq_0" tabindex="0" data-rttab="true">Payload</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_4kuq_0" aria-labelledby="tab_R_4kuq_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Example</span><div class="sc-jJEKGn sc-AzeoO ekMQOb dMpNQv"><svg class="sc-iktELE lgCKWg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg><select class="dropdown-select"><option value="单表聚合" selected="">单表聚合</option><option value="两表关联">两表关联</option></select><label>单表聚合</label></div></div><div><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"sql"</span>: <span class="token string">&quot;SELECT status, count(*) AS cnt FROM {{.res_orders}} WHERE created_at &gt;= DATE_SUB(CURRENT_DATE, INTERVAL 7 DAY) GROUP BY status&quot;</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_4suq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_4suq_0" tabindex="0" data-rttab="true">200</li><li class="tab-error" role="tab" id="tab_R_4suq_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_4suq_1" data-rttab="true">400</li><li class="tab-error" role="tab" id="tab_R_4suq_2" aria-selected="false" aria-disabled="false" aria-controls="panel_R_4suq_2" data-rttab="true">401</li><li class="tab-error" role="tab" id="tab_R_4suq_3" aria-selected="false" aria-disabled="false" aria-controls="panel_R_4suq_3" data-rttab="true">500</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_4suq_0" aria-labelledby="tab_R_4suq_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-jJEKGn sc-AzeoO ekMQOb dMpNQv"><svg class="sc-iktELE lgCKWg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg><select class="dropdown-select"><option value="application/json" selected="">application/json</option><option value="application/toon">application/toon</option></select><label>application/json</label></div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"columns"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"type"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"entries"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><span class="token punctuation">{ }</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"total_count"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"warnings"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"paging"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"next_cursor"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"expires_at_sec"</span>: <span class="token number">0</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_4suq_1" aria-labelledby="tab_R_4suq_1"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_4suq_2" aria-labelledby="tab_R_4suq_2"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_4suq_3" aria-labelledby="tab_R_4suq_3"></div></div></div></div></div></div></div><div class="sc-elsZMO dQcVAt"></div></div></div>
+      <script>
+      const __redoc_state = {"menu":{"activeItemIdx":-1},"spec":{"data":{"openapi":"3.0.3","info":{"title":"数据层直查","description":"脱离本体、直接查底层数据资源的三个接口：列资源、看资源结构、跑只读 SQL。\n\n与本体路径（[schema-search.yaml](schema-search.yaml) →\n[object-instance.yaml](object-instance.yaml)）互补：本体路径回答「这张网里\n业务概念长什么样」，数据层直查回答「底下的表里到底有什么」。两条路都通向\n`run_sql`——要么从 `search_schema` 拿对象类的物理列名（`include_columns=true`），\n要么从 `list_resources` + `describe_resource` 拿资源的物理 schema。\n\n典型链路：\n\n```\nlist_resources    → 找到 resource_id\ndescribe_resource → 看有哪些列、什么类型、什么连接器\nrun_sql           → SELECT ... FROM {{.<resource_id>}} ...\n```\n\n**授权**：资源可见性与读取权限由下游 vega 按账户强制（空账户直接拒绝），本服务\n不做二次放行。\n\n**认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` AppKey）。\n","version":"0.1.3"},"servers":[{"url":"/api/agent-retrieval/v1"}],"security":[{"OAuth2":[]},{"AppKey":[]}],"paths":{"/kn/list_resources":{"post":{"tags":["DataAccess"],"summary":"列出可查询的数据资源","operationId":"listResources","x-contract-probe":{"readonly":true,"order":1,"body":{"limit":3},"provides":{"cl_resource_id":"entries[0].resource_id"}},"description":"列出当前账户有权查看的数据资源，输出精简字段（够用来挑一个 `resource_id`）。\n请求体可选，不传则按 vega 默认分页返回。\n","parameters":[{"$ref":"#/components/parameters/ResponseFormat"}],"requestBody":{"required":false,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ListResourcesRequest"},"examples":{"限定目录与类型":{"value":{"catalog_id":"cat_prod_mysql","type":"table","limit":50}}}}}},"responses":{"200":{"description":"资源列表","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ListResourcesResponse"}},"application/toon":{"schema":{"type":"string"}}}},"401":{"$ref":"#/components/responses/Unauthorized"},"500":{"$ref":"#/components/responses/InternalError"}}}},"/kn/describe_resource":{"post":{"tags":["DataAccess"],"summary":"查看资源的物理结构","operationId":"describeResource","x-contract-probe":{"readonly":true,"order":2,"body":{"resource_id":"{cl_resource_id}"}},"description":"取单个资源的物理列与连接器类型——写 `run_sql` 之前该看的东西。\n`connector_type` 决定实际目标方言；`run_sql` 仅支持 `mysql` / `mariadb` /\n`postgresql` / `sqlserver` 资源，统一接收 MySQL 方言。目标方言不是 MySQL 时由\nVega 转译，MySQL / MariaDB 资源则直接下发；其他连接器（如 `opensearch`）会被拒绝。\n","parameters":[{"$ref":"#/components/parameters/ResponseFormat"}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/DescribeResourceRequest"},"examples":{"查一张表":{"value":{"resource_id":"res_orders"}}}}}},"responses":{"200":{"description":"资源的物理 schema","content":{"application/json":{"schema":{"$ref":"#/components/schemas/DescribeResourceResponse"}},"application/toon":{"schema":{"type":"string"}}}},"400":{"description":"缺少 `resource_id`","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"401":{"$ref":"#/components/responses/Unauthorized"},"404":{"description":"资源不存在或当前账户无权查看","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"500":{"$ref":"#/components/responses/InternalError"}}}},"/kn/run_sql":{"post":{"tags":["DataAccess"],"summary":"对数据资源执行只读 SQL","operationId":"runSQL","description":"以 MySQL 方言执行**只读** SQL。表名不写物理表名，写占位符\n`{{.<resource_id>}}`，由服务端解析到真实数据源。\n\n标识符需要引用时使用反引号（如 `` `order_id` ``）；双引号在 MySQL 方言下是\n字符串字面量，不能用于标识符。\n\n**两条硬约束，违反直接 400，SQL 不会下发**：\n\n1. **必须引用占位符**。SQL 里没有 `{{.resource_id}}` 时报\n   `sql must reference at least one data resource via the {{.resource_id}} placeholder`\n   ——这既是定位数据源的唯一途径，也挡住了绕开权限直接写物理表名。\n2. **必须是单条只读 `SELECT` 语句**。端到端兼容性以 vega 的只读策略为准；\n   虽然本服务的本地守卫可接受以 `WITH` 开头的语句，但 vega 当前会拒绝 CTE，\n   因此调用方**不得使用 `WITH` / CTE 或 `UNION` / `INTERSECT` / `EXCEPT`**。\n   守卫会先剥掉注释、字符串字面量、反引号标识符与占位符，\n   再判定：不允许多语句（剥离后仍含 `;`）、必须以 `SELECT` 或 `WITH` 开头、不得含\n   写入 / DDL / 权限 / 过程类关键字（INSERT、UPDATE、DELETE、DROP、ALTER、\n   CREATE、TRUNCATE、GRANT、REVOKE、REPLACE、MERGE、UPSERT、CALL、EXEC、\n   EXECUTE、RENAME、LOAD、COPY、INTO、ATTACH、DETACH、USE、VACUUM、ANALYZE、\n   REFRESH、COMMENT、PREPARE、DEALLOCATE）。\n\n   当前保证可用的只读语法为：单表或同一 catalog 内的 `JOIN`、`WHERE`、\n   `GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 及常用聚合函数（如 `COUNT`、`SUM`、\n   `AVG`、`MIN`、`MAX`）。子查询和窗口函数不属于当前兼容性承诺，调用方不得依赖。\n   SQL Server 资源还要求 `SELECT` 输出列名唯一；使用 `JOIN` 时，`*` 必须带表别名\n   限定（如 `o.*`），不能使用裸 `*`。\n\n   守卫不是完整 SQL 解析器，是纵深防御的一层：vega 侧另有基于 SQLGlot AST 的\n   只读策略做最终裁决（拒绝非顶层 SELECT、WITH/CTE、集合运算等），两层都不可省。\n\n**不分页**：固定单次返回，上限 10000 行。要更多数据请在 SQL 里自己收敛\n（聚合、加条件、加 LIMIT）。\n","parameters":[{"$ref":"#/components/parameters/ResponseFormat"}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/RunSQLRequest"},"examples":{"单表聚合":{"value":{"sql":"SELECT status, count(*) AS cnt FROM {{.res_orders}} WHERE created_at >= DATE_SUB(CURRENT_DATE, INTERVAL 7 DAY) GROUP BY status"}},"两表关联":{"value":{"sql":"SELECT o.id, c.name FROM {{.res_orders}} o JOIN {{.res_customers}} c ON o.customer_id = c.id LIMIT 100","query_timeout":60}}}}}},"responses":{"200":{"description":"查询结果","content":{"application/json":{"schema":{"$ref":"#/components/schemas/RunSQLResponse"}},"application/toon":{"schema":{"type":"string"}}}},"400":{"description":"SQL 为空、未引用资源占位符、使用 `WITH` / CTE 或集合运算、含多语句或写 / DDL\n关键字，以及下游返回的 SQL 语法 / 权限错误。本接口的 `code` 统一为\n`Public.BadRequest`；CTE 场景下 vega 的原始错误体（含\n`VegaBackend.Query.InvalidParameter` 与 `raw query rejected by read-only policy`）以\n字符串形式透传在 `details` 中。调用方应将 CTE 改写为单条 `SELECT`，或拆分为多次查询。\n","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"401":{"$ref":"#/components/responses/Unauthorized"},"500":{"$ref":"#/components/responses/InternalError"}}}}},"components":{"securitySchemes":{"OAuth2":{"type":"oauth2","description":"OAuth2 authentication for public APIs.","flows":{"clientCredentials":{"tokenUrl":"/oauth2/token","scopes":{}}}},"AppKey":{"type":"apiKey","in":"header","name":"Authorization","description":"Application key with the `bak_` prefix. Send it as\n`Authorization: Bearer bak_xxx` for service-to-service or\napplication-level calls.\n"}},"parameters":{"ResponseFormat":{"name":"response_format","in":"query","required":false,"schema":{"type":"string","enum":["json","toon"],"default":"json"},"description":"响应格式。`toon` 返回 `application/toon`，同构数组压成表格，省 token。"}},"responses":{"Unauthorized":{"description":"凭据缺失或无效","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"InternalError":{"description":"服务内部错误；下游 vega 报错时原样透传其响应体","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}}},"schemas":{"ListResourcesRequest":{"type":"object","required":["bkn_context"],"properties":{"bkn_context":{"$ref":"#/components/schemas/BKNContext"},"catalog_id":{"type":"string","description":"限定某个 catalog。"},"type":{"type":"string","description":"资源类别，映射 vega 的 category：`table` / `file` / `fileset` / `api` /\n`metric` / `topic` / `index` / `logicview` / `dataset`。\n"},"offset":{"type":"integer","description":"分页偏移；不传由 vega 取默认值 0。"},"limit":{"type":"integer","description":"分页大小；不传由 vega 取默认值 20。"}}},"ListResourcesResponse":{"type":"object","properties":{"entries":{"type":"array","items":{"$ref":"#/components/schemas/ResourceLite"}},"total_count":{"type":"integer","format":"int64","description":"命中总数。"}}},"ResourceLite":{"type":"object","properties":{"resource_id":{"type":"string","description":"资源 ID，即 `run_sql` 占位符里要填的值。"},"name":{"type":"string","description":"资源名称。"},"type":{"type":"string","description":"资源类别（取自 vega category）。"},"status":{"type":"string","description":"资源状态。"},"catalog_id":{"type":"string","description":"所属 catalog ID。"}}},"DescribeResourceRequest":{"type":"object","required":["bkn_context","resource_id"],"properties":{"bkn_context":{"$ref":"#/components/schemas/BKNContext"},"resource_id":{"type":"string","description":"资源 ID。"}}},"DescribeResourceResponse":{"type":"object","properties":{"resource_id":{"type":"string"},"connector_type":{"type":"string","description":"连接器类型（如 mysql / postgresql / opensearch）。"},"columns":{"type":"array","items":{"$ref":"#/components/schemas/ColumnLite"},"description":"物理列定义。"}}},"ColumnLite":{"type":"object","properties":{"name":{"type":"string","description":"物理列名。"},"type":{"type":"string","description":"列类型。"},"description":{"type":"string","description":"列说明；没有时不返回。"}}},"RunSQLRequest":{"type":"object","required":["bkn_context","sql"],"properties":{"bkn_context":{"$ref":"#/components/schemas/BKNContext"},"sql":{"type":"string","description":"MySQL 方言 SQL。表名必须写成 `{{.<resource_id>}}` 占位符，\n也接受 `{{<resource_id>}}` 形式；`resource_id` 必须匹配\n`[a-z0-9][a-z0-9_-]{0,39}`（小写，最长 40 个字符），否则占位符不会被识别。\n标识符需要引用时使用反引号；双引号在 MySQL 方言下是字符串字面量，不能用于\n标识符。只允许单条 `SELECT`（不支持 `WITH` / CTE）。\n","example":"SELECT * FROM {{.res_orders}} LIMIT 100"},"query_timeout":{"type":"integer","description":"查询超时（秒）。不传走下游默认。"}}},"RunSQLResponse":{"type":"object","description":"vega 原始查询的结果。本接口固定用单次返回模式（上限 10000 行），\n因此 `paging.next_cursor` 恒为空。\n","properties":{"columns":{"type":"array","items":{"$ref":"#/components/schemas/QueryColumn"},"description":"结果集列元数据。"},"entries":{"type":"array","items":{"type":"object","additionalProperties":true},"description":"结果行，key 为列名。"},"total_count":{"type":"integer","format":"int64","description":"总行数；下游未返回时该字段不出现。"},"warnings":{"type":"array","items":{"type":"string"},"description":"下游返回的告警。"},"paging":{"$ref":"#/components/schemas/PagingResponse"}}},"QueryColumn":{"type":"object","properties":{"name":{"type":"string","description":"列名。"},"type":{"type":"string","description":"列类型；下游未给出时不返回。"}}},"PagingResponse":{"type":"object","properties":{"next_cursor":{"type":"string","nullable":true,"description":"下一页游标。本接口走单次返回模式，恒为 null。"},"expires_at_sec":{"type":"integer","format":"int64","nullable":true,"description":"游标过期时间（Unix 秒）。"}}},"BKNContext":{"type":"object","additionalProperties":false,"description":"BKN Trace business-provenance context identifying the business\nconversation and interaction to which this call belongs. Required on\nREST APIs.\n\nBoth required child fields are server-issued handles and must not be\ninvented by the caller:\n\n- `conversation_id`: obtained from the Context Loader MCP tool\n  `bkn_start_interaction` on the first turn\n- `interaction_id`: obtained from the Context Loader MCP tool\n  `bkn_start_interaction`\n\nThese handles are available only through the provenance MCP tool above.\nThe BKN Trace Core session APIs under `/api/agent-observability/v1`\naccept gateway credentials only from trusted in-cluster services. They\ndo not accept OAuth tokens or `bak_` AppKeys; direct external calls\nreceive `401 permission_denied`.\nContext Loader derives the Operation idempotency identity on the server\nfrom request correlation, tool name, and normalized input. Callers must\nnot submit `operation_key`. Network retries should reuse\n`bkn-request-id` or provide a stable\n`X-OpenBKN-Client-Invocation-Id` for the same logical call. This hint is\nused only for idempotency and has no role in identity, authorization, or\ndata-isolation decisions.\n","required":["conversation_id","interaction_id"],"properties":{"conversation_id":{"type":"string","description":"Server-issued business conversation ID.","example":"conv_8eca1655217a128b16727ce664cd579c"},"interaction_id":{"type":"string","description":"Server-issued interaction ID for one question-and-answer turn.","example":"int_0ab58662974fe9edcfb4ae3e77e43502"},"parent_operation_id":{"type":"string","description":"Upstream operation ID that caused this call."},"causation_event_ids":{"type":"array","items":{"type":"string"},"description":"Event IDs that caused this call."},"business_refs":{"type":"array","maxItems":64,"description":"Canonical business-object, data, or logic references known to this call.","items":{"type":"object","additionalProperties":false,"required":["ref_type","ref_id"],"properties":{"ref_type":{"type":"string","description":"Business reference type, such as object_type, property, or data_resource."},"ref_id":{"type":"string","description":"Canonical business reference ID. Except for data_resource, it must belong to the current knowledge network."},"version":{"type":"string","description":"Reference version. Omission means unversioned."}}}}}},"ErrorCompact":{"description":"Error response shared by context-loader (`agent-retrieval`) and\nexecution-factory (`agent-operator-integration`) under adp. It is\nserialized from each service's `infra/errors.HTTPError`. Its field names\ndiffer from `Error` above and clients must not treat them as the same\nenvelope.\n\nWhen an error originates from a downstream service, these services pass\nthe downstream body through unchanged. In that case the field names are\nthose of the downstream envelope, commonly `error_code` and\n`error_details`. Use the `code` prefix to identify locally generated\nerrors: `Public.*`, `agentRetrieval.*`, or\n`AgentOperatorIntegration.*` (the last prefix starts with a capital\nletter).\n\nErrors from mf-model-api are an exception to the prefix rule.\n`/v1/chat/completions` exposes an OpenAI-compatible surface and always\nreturns `{\"error\": {\"message\", \"type\", \"param\", \"code\"}}` on failure.\nThere is no top-level `code`; the original business code is in\n`error.code`. Endpoints that call a large model, such as\nexecution-factory `/ai_generate/*`, pass this shape through. A top-level\n`error` object therefore identifies an error from the model call chain.\nRead `error.message` for the text and `error.type` for classifications\nsuch as `rate_limit_exceeded`, `service_unavailable_error`, and\n`invalid_request_error`.\n","type":"object","properties":{"code":{"type":"string","description":"Machine-readable error code. Generic errors use\n`Public.<ErrCode>`, such as `Public.BadRequest`. Business errors use\n`<service>.<ErrCode>.<ExtCode>`, for example\n`AgentOperatorIntegration.BadRequest.ValidationRequired`.\n","example":"Public.BadRequest"},"description":{"type":"string","description":"Localized, human-readable error description."},"solution":{"type":"string","description":"Recommended remediation."},"link":{"type":"string","description":"Link to error documentation; may indicate that no link is available."},"details":{"description":"Error details, commonly a string or object."}}},"ErrorAgentRetrieval":{"description":"Alias of `ErrorCompact` retained for the context-loader YAML files added\nin #578. The structure is identical. New documentation should reference\n`ErrorCompact` directly.\n","allOf":[{"$ref":"#/components/schemas/ErrorCompact"}]}}}}},"searchIndex":{"store":["tag/DataAccess","tag/DataAccess/operation/listResources","tag/DataAccess/operation/describeResource","tag/DataAccess/operation/runSQL"],"index":{"version":"2.3.9","fields":["title","description"],"fieldVectors":[["title/0",[0,1.311]],["description/0",[]],["title/1",[1,0.226]],["description/1",[1,0.396,2,1.044,3,0.537,4,1.814]],["title/2",[1,0.226]],["description/2",[1,0.42,3,0.399,5,1.786,6,1.347,7,1.228,8,1.786,9,1.347,10,1.347,11,1.347,12,1.347]],["title/3",[1,0.167,13,0.557]],["description/3",[1,0.431,2,0.753,3,0.388,7,0.601,13,1.008,14,0.65,15,0.65,16,0.65,17,0.65,18,0.65,19,0.65,20,0.65,21,0.65,22,0.65,23,0.65,24,1.308,25,1.044,26,0.65,27,0.65,28,0.65,29,0.65,30,0.65,31,0.65,32,0.65,33,0.65,34,0.65,35,0.65,36,0.65,37,0.65,38,0.65,39,0.65,40,0.65,41,0.65,42,0.65,43,0.65,44,0.65,45,0.65,46,0.65,47,0.65,48,0.65,49,0.65]]],"invertedIndex":[["",{"_index":1,"title":{"1":{},"2":{},"3":{}},"description":{"1":{},"2":{},"3":{}}}],["1",{"_index":16,"title":{},"description":{"3":{}}}],["10000",{"_index":47,"title":{},"description":{"3":{}}}],["2",{"_index":23,"title":{},"description":{"3":{}}}],["400，sql",{"_index":15,"title":{},"description":{"3":{}}}],["ast",{"_index":45,"title":{},"description":{"3":{}}}],["avg`、`min`、`max",{"_index":40,"title":{},"description":{"3":{}}}],["by`、`limit",{"_index":38,"title":{},"description":{"3":{}}}],["catalog",{"_index":34,"title":{},"description":{"3":{}}}],["connector_typ",{"_index":6,"title":{},"description":{"2":{}}}],["count`、`sum",{"_index":39,"title":{},"description":{"3":{}}}],["create、truncate、grant、revoke、replace、merge、upsert、call、exec",{"_index":31,"title":{},"description":{"3":{}}}],["cte",{"_index":25,"title":{},"description":{"3":{}}}],["data",{"_index":19,"title":{},"description":{"3":{}}}],["dataaccess",{"_index":0,"title":{"0":{}},"description":{}}],["ddl",{"_index":29,"title":{},"description":{"3":{}}}],["except",{"_index":28,"title":{},"description":{"3":{}}}],["execute、rename、load、copy、into、attach、detach、use、vacuum、analyz",{"_index":32,"title":{},"description":{"3":{}}}],["group",{"_index":36,"title":{},"description":{"3":{}}}],["having`、`ord",{"_index":37,"title":{},"description":{"3":{}}}],["insert、update、delete、drop、alt",{"_index":30,"title":{},"description":{"3":{}}}],["intersect",{"_index":27,"title":{},"description":{"3":{}}}],["join",{"_index":42,"title":{},"description":{"3":{}}}],["join`、`wher",{"_index":35,"title":{},"description":{"3":{}}}],["kn/describe_resourc",{"_index":12,"title":{},"description":{"2":{}}}],["kn/list_resourc",{"_index":4,"title":{},"description":{"1":{}}}],["kn/run_sql",{"_index":49,"title":{},"description":{"3":{}}}],["limit",{"_index":48,"title":{},"description":{"3":{}}}],["mariadb",{"_index":8,"title":{},"description":{"2":{}}}],["mysql",{"_index":7,"title":{},"description":{"2":{},"3":{}}}],["o",{"_index":43,"title":{},"description":{"3":{}}}],["on",{"_index":18,"title":{},"description":{"3":{}}}],["opensearch",{"_index":11,"title":{},"description":{"2":{}}}],["order_id",{"_index":14,"title":{},"description":{"3":{}}}],["placehold",{"_index":22,"title":{},"description":{"3":{}}}],["postgresql",{"_index":9,"title":{},"description":{"2":{}}}],["refer",{"_index":17,"title":{},"description":{"3":{}}}],["refresh、comment、prepare、dealloc",{"_index":33,"title":{},"description":{"3":{}}}],["resourc",{"_index":20,"title":{},"description":{"3":{}}}],["resource_id",{"_index":2,"title":{},"description":{"1":{},"3":{}}}],["run_sql",{"_index":5,"title":{},"description":{"2":{}}}],["select",{"_index":24,"title":{},"description":{"3":{}}}],["select、with/ct",{"_index":46,"title":{},"description":{"3":{}}}],["server",{"_index":41,"title":{},"description":{"3":{}}}],["sql",{"_index":13,"title":{"3":{}},"description":{"3":{}}}],["sqlglot",{"_index":44,"title":{},"description":{"3":{}}}],["sqlserver",{"_index":10,"title":{},"description":{"2":{}}}],["union",{"_index":26,"title":{},"description":{"3":{}}}],["vega",{"_index":3,"title":{},"description":{"1":{},"2":{},"3":{}}}],["via",{"_index":21,"title":{},"description":{"3":{}}}]],"pipeline":[]}},"options":{}};
+
+      var container = document.getElementById('redoc');
+      Redoc.hydrate(__redoc_state, container);
+
+      </script>
+</body>
+
+</html>

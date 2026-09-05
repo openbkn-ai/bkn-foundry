@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf8" />
+  <title>DiscoverSchedule</title>
+  <!-- needed for adaptive design -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      padding: 0;
+      margin: 0;
+    }
+  </style>
+  <script src="https://cdn.redocly.com/redoc/v2.5.0/bundles/redoc.standalone.js"></script><style data-styled="true" data-styled-version="6.4.1">.eQypqI{width:calc(100% - 40%);padding:0 40px;}/*!sc*/
+@media print,screen and (max-width: 75rem){.eQypqI{width:100%;padding:40px 40px;}}/*!sc*/
+data-styled.g5[id="sc-hKgHXU"]{content:"eQypqI,"}/*!sc*/
+.bKZuAK{padding:40px 0;}/*!sc*/
+.bKZuAK:last-child{min-height:calc(100vh + 1px);}/*!sc*/
+.bKZuAK>.bKZuAK:last-child{min-height:initial;}/*!sc*/
+@media print,screen and (max-width: 75rem){.bKZuAK{padding:0;}}/*!sc*/
+.hxxgNd{padding:40px 0;position:relative;}/*!sc*/
+.hxxgNd:last-child{min-height:calc(100vh + 1px);}/*!sc*/
+.hxxgNd>.hxxgNd:last-child{min-height:initial;}/*!sc*/
+@media print,screen and (max-width: 75rem){.hxxgNd{padding:0;}}/*!sc*/
+.hxxgNd:not(:last-of-type):after{position:absolute;bottom:0;width:100%;display:block;content:'';border-bottom:1px solid rgba(0, 0, 0, 0.2);}/*!sc*/
+data-styled.g6[id="sc-eCsseJ"]{content:"bKZuAK,hxxgNd,"}/*!sc*/
+.kWQHAp{width:40%;color:#ffffff;background-color:#263238;padding:0 40px;}/*!sc*/
+@media print,screen and (max-width: 75rem){.kWQHAp{width:100%;padding:40px 40px;}}/*!sc*/
+data-styled.g7[id="sc-jSgsbC"]{content:"kWQHAp,"}/*!sc*/
+.jYdWFY{background-color:#263238;}/*!sc*/
+data-styled.g8[id="sc-gKscir"]{content:"jYdWFY,"}/*!sc*/
+.cOCikg{display:flex;width:100%;padding:0;}/*!sc*/
+@media print,screen and (max-width: 75rem){.cOCikg{flex-direction:column;}}/*!sc*/
+data-styled.g9[id="sc-iBPUmU"]{content:"cOCikg,"}/*!sc*/
+.edtrWC{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#333333;}/*!sc*/
+data-styled.g10[id="sc-fubEtJ"]{content:"edtrWC,"}/*!sc*/
+.bwjsfx{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;margin:0 0 20px;}/*!sc*/
+data-styled.g11[id="sc-pGbXd"]{content:"bwjsfx,"}/*!sc*/
+.hgYAAF{color:#ffffff;}/*!sc*/
+data-styled.g13[id="sc-kEjckD"]{content:"hgYAAF,"}/*!sc*/
+.iFTCOQ{border-bottom:1px solid rgba(38, 50, 56, 0.3);margin:1em 0 1em 0;color:rgba(38, 50, 56, 0.5);font-weight:normal;text-transform:uppercase;font-size:0.929em;line-height:20px;}/*!sc*/
+data-styled.g14[id="sc-iqHZue"]{content:"iFTCOQ,"}/*!sc*/
+.itgZBm{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.itgZBm:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+h1:hover>.itgZBm::before,h2:hover>.itgZBm::before,.itgZBm:hover::before{visibility:visible;}/*!sc*/
+data-styled.g15[id="sc-crrrsl"]{content:"itgZBm,"}/*!sc*/
+.dHiXwH{height:1.3em;width:1.3em;min-width:1.3em;vertical-align:middle;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.idFXFs{height:1.5em;width:1.5em;min-width:1.5em;vertical-align:middle;float:left;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.idFXFs polygon{fill:#1d8127;}/*!sc*/
+.djPqdM{height:1.5em;width:1.5em;min-width:1.5em;vertical-align:middle;float:left;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.djPqdM polygon{fill:#d41f1c;}/*!sc*/
+.dvMtUQ{height:20px;width:20px;min-width:20px;vertical-align:middle;float:right;transition:transform 0.2s ease-out;transform:rotateZ(0);}/*!sc*/
+.dvMtUQ polygon{fill:white;}/*!sc*/
+data-styled.g16[id="sc-dQoBM"]{content:"dHiXwH,idFXFs,djPqdM,dvMtUQ,"}/*!sc*/
+.DPwQp{border-left:1px solid #7c7cbb;box-sizing:border-box;position:relative;padding:10px 10px 10px 0;}/*!sc*/
+@media screen and (max-width: 50rem){.DPwQp{display:block;overflow:hidden;}}/*!sc*/
+tr:first-of-type>.DPwQp,tr.last>.DPwQp{border-left-width:0;background-position:top left;background-repeat:no-repeat;background-size:1px 100%;}/*!sc*/
+tr:first-of-type>.DPwQp{background-image:linear-gradient(
+      to bottom,
+      transparent 0%,
+      transparent 22px,
+      #7c7cbb 22px,
+      #7c7cbb 100%
+    );}/*!sc*/
+tr.last>.DPwQp{background-image:linear-gradient(
+      to bottom,
+      #7c7cbb 0%,
+      #7c7cbb 22px,
+      transparent 22px,
+      transparent 100%
+    );}/*!sc*/
+tr.last+tr>.DPwQp{border-left-color:transparent;}/*!sc*/
+tr.last:first-child>.DPwQp{background:none;border-left-color:transparent;}/*!sc*/
+data-styled.g19[id="sc-hBFaCF"]{content:"DPwQp,"}/*!sc*/
+.hUqyua{vertical-align:top;line-height:20px;white-space:nowrap;font-size:13px;font-family:Courier,monospace;}/*!sc*/
+.hUqyua.deprecated{text-decoration:line-through;color:#707070;}/*!sc*/
+data-styled.g21[id="sc-fFubTW"]{content:"hUqyua,"}/*!sc*/
+.gNQdZ{border-bottom:1px solid #9fb4be;padding:10px 0;width:75%;box-sizing:border-box;}/*!sc*/
+tr.expanded .gNQdZ{border-bottom:none;}/*!sc*/
+@media screen and (max-width: 50rem){.gNQdZ{padding:0 20px;border-bottom:none;border-left:1px solid #7c7cbb;}tr.last>.gNQdZ{border-left:none;}}/*!sc*/
+data-styled.g22[id="sc-bkAakD"]{content:"gNQdZ,"}/*!sc*/
+.iNiPzl{color:#7c7cbb;font-family:Courier,monospace;margin-right:10px;}/*!sc*/
+.iNiPzl::before{content:'';display:inline-block;vertical-align:middle;width:10px;height:1px;background:#7c7cbb;}/*!sc*/
+.iNiPzl::after{content:'';display:inline-block;vertical-align:middle;width:1px;background:#7c7cbb;height:7px;}/*!sc*/
+data-styled.g23[id="sc-idOkdQ"]{content:"iNiPzl,"}/*!sc*/
+.juzVUC{border-collapse:separate;border-radius:3px;font-size:14px;border-spacing:0;width:100%;}/*!sc*/
+.juzVUC >tr{vertical-align:middle;}/*!sc*/
+@media screen and (max-width: 50rem){.juzVUC{display:block;}.juzVUC >tr,.juzVUC >tbody>tr{display:block;}}/*!sc*/
+@media screen and (max-width: 50rem) and (-ms-high-contrast:none){.juzVUC td{float:left;width:100%;}}/*!sc*/
+.juzVUC .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux{margin:1em;margin-right:0;background:#fafafa;}/*!sc*/
+.juzVUC .sc-dIUiux .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux{background:#ffffff;}/*!sc*/
+data-styled.g25[id="sc-hHfrpe"]{content:"juzVUC,"}/*!sc*/
+.hqsuVf >ul{list-style:none;padding:0;margin:0;margin:0 -5px;}/*!sc*/
+.hqsuVf >ul >li{padding:5px 10px;display:inline-block;background-color:#11171a;border-bottom:1px solid rgba(0, 0, 0, 0.5);cursor:pointer;text-align:center;outline:none;color:#ccc;margin:0 5px 5px 5px;border:1px solid #07090b;border-radius:5px;min-width:60px;font-size:0.9em;font-weight:bold;}/*!sc*/
+.hqsuVf >ul >li.react-tabs__tab--selected{color:#333333;background:#ffffff;}/*!sc*/
+.hqsuVf >ul >li.react-tabs__tab--selected:focus{outline:auto;}/*!sc*/
+.hqsuVf >ul >li:only-child{flex:none;min-width:100px;}/*!sc*/
+.hqsuVf >ul >li.tab-success{color:#1d8127;}/*!sc*/
+.hqsuVf >ul >li.tab-redirect{color:#ffa500;}/*!sc*/
+.hqsuVf >ul >li.tab-info{color:#87ceeb;}/*!sc*/
+.hqsuVf >ul >li.tab-error{color:#d41f1c;}/*!sc*/
+.hqsuVf >.react-tabs__tab-panel{background:#11171a;}/*!sc*/
+.hqsuVf >.react-tabs__tab-panel>div,.hqsuVf >.react-tabs__tab-panel>pre{padding:20px;margin:0;}/*!sc*/
+.hqsuVf >.react-tabs__tab-panel>div>pre{padding:0;}/*!sc*/
+data-styled.g31[id="sc-cxFMaL"]{content:"hqsuVf,"}/*!sc*/
+.iNuSsz code[class*='language-'],.iNuSsz pre[class*='language-']{text-shadow:0 -0.1em 0.2em black;text-align:left;white-space:pre;word-spacing:normal;word-break:normal;word-wrap:normal;line-height:1.5;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-hyphens:none;-moz-hyphens:none;-ms-hyphens:none;hyphens:none;}/*!sc*/
+@media print{.iNuSsz code[class*='language-'],.iNuSsz pre[class*='language-']{text-shadow:none;}}/*!sc*/
+.iNuSsz pre[class*='language-']{padding:1em;margin:0.5em 0;overflow:auto;}/*!sc*/
+.iNuSsz .token.comment,.iNuSsz .token.prolog,.iNuSsz .token.doctype,.iNuSsz .token.cdata{color:hsl(30, 20%, 50%);}/*!sc*/
+.iNuSsz .token.punctuation{opacity:0.7;}/*!sc*/
+.iNuSsz .namespace{opacity:0.7;}/*!sc*/
+.iNuSsz .token.property,.iNuSsz .token.tag,.iNuSsz .token.number,.iNuSsz .token.constant,.iNuSsz .token.symbol{color:#4a8bb3;}/*!sc*/
+.iNuSsz .token.boolean{color:#e64441;}/*!sc*/
+.iNuSsz .token.selector,.iNuSsz .token.attr-name,.iNuSsz .token.string,.iNuSsz .token.char,.iNuSsz .token.builtin,.iNuSsz .token.inserted{color:#a0fbaa;}/*!sc*/
+.iNuSsz .token.selector+a,.iNuSsz .token.attr-name+a,.iNuSsz .token.string+a,.iNuSsz .token.char+a,.iNuSsz .token.builtin+a,.iNuSsz .token.inserted+a,.iNuSsz .token.selector+a:visited,.iNuSsz .token.attr-name+a:visited,.iNuSsz .token.string+a:visited,.iNuSsz .token.char+a:visited,.iNuSsz .token.builtin+a:visited,.iNuSsz .token.inserted+a:visited{color:#4ed2ba;text-decoration:underline;}/*!sc*/
+.iNuSsz .token.property.string{color:white;}/*!sc*/
+.iNuSsz .token.operator,.iNuSsz .token.entity,.iNuSsz .token.url,.iNuSsz .token.variable{color:hsl(40, 90%, 60%);}/*!sc*/
+.iNuSsz .token.atrule,.iNuSsz .token.attr-value,.iNuSsz .token.keyword{color:hsl(350, 40%, 70%);}/*!sc*/
+.iNuSsz .token.regex,.iNuSsz .token.important{color:#e90;}/*!sc*/
+.iNuSsz .token.important,.iNuSsz .token.bold{font-weight:bold;}/*!sc*/
+.iNuSsz .token.italic{font-style:italic;}/*!sc*/
+.iNuSsz .token.entity{cursor:help;}/*!sc*/
+.iNuSsz .token.deleted{color:red;}/*!sc*/
+data-styled.g33[id="sc-iJuXkV"]{content:"iNuSsz,"}/*!sc*/
+.ldPDIU{opacity:0.7;transition:opacity 0.3s ease;text-align:right;}/*!sc*/
+.ldPDIU:focus-within{opacity:1;}/*!sc*/
+.ldPDIU >button{background-color:transparent;border:0;color:inherit;padding:2px 10px;font-family:Roboto,sans-serif;font-size:14px;line-height:1.5em;cursor:pointer;outline:0;}/*!sc*/
+.ldPDIU >button :hover,.ldPDIU >button :focus{background:rgba(255, 255, 255, 0.1);}/*!sc*/
+data-styled.g34[id="sc-giIpqw"]{content:"ldPDIU,"}/*!sc*/
+.bsUDpT{position:relative;}/*!sc*/
+data-styled.g38[id="sc-kLgmGd"]{content:"bsUDpT,"}/*!sc*/
+.eBDHRN{margin-left:10px;text-transform:none;font-size:0.929em;color:black;}/*!sc*/
+data-styled.g42[id="sc-gWHgjU"]{content:"eBDHRN,"}/*!sc*/
+.jtfGmi{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.jtfGmi p:last-child{margin-bottom:0;}/*!sc*/
+.jtfGmi h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.jtfGmi h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.jtfGmi code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.jtfGmi pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.jtfGmi pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.jtfGmi pre code:before,.jtfGmi pre code:after{content:none;}/*!sc*/
+.jtfGmi blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.jtfGmi img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.jtfGmi ul,.jtfGmi ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.jtfGmi ul ul,.jtfGmi ol ul,.jtfGmi ul ol,.jtfGmi ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.jtfGmi table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.jtfGmi table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.jtfGmi table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.jtfGmi table th,.jtfGmi table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.jtfGmi table th{text-align:left;font-weight:bold;}/*!sc*/
+.jtfGmi .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.jtfGmi .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.jtfGmi h1:hover>.share-link::before,.jtfGmi h2:hover>.share-link::before,.jtfGmi .share-link:hover::before{visibility:visible;}/*!sc*/
+.jtfGmi a{text-decoration:auto;color:#32329f;}/*!sc*/
+.jtfGmi a:visited{color:#32329f;}/*!sc*/
+.jtfGmi a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+.dyntKg{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.dyntKg p:last-child{margin-bottom:0;}/*!sc*/
+.dyntKg p:first-child{margin-top:0;}/*!sc*/
+.dyntKg p:last-child{margin-bottom:0;}/*!sc*/
+.dyntKg h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.dyntKg h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.dyntKg code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.dyntKg pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.dyntKg pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.dyntKg pre code:before,.dyntKg pre code:after{content:none;}/*!sc*/
+.dyntKg blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.dyntKg img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.dyntKg ul,.dyntKg ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.dyntKg ul ul,.dyntKg ol ul,.dyntKg ul ol,.dyntKg ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.dyntKg table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.dyntKg table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.dyntKg table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.dyntKg table th,.dyntKg table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.dyntKg table th{text-align:left;font-weight:bold;}/*!sc*/
+.dyntKg .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.dyntKg .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.dyntKg h1:hover>.share-link::before,.dyntKg h2:hover>.share-link::before,.dyntKg .share-link:hover::before{visibility:visible;}/*!sc*/
+.dyntKg a{text-decoration:auto;color:#32329f;}/*!sc*/
+.dyntKg a:visited{color:#32329f;}/*!sc*/
+.dyntKg a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+.eBjiEo{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.eBjiEo p:last-child{margin-bottom:0;}/*!sc*/
+.eBjiEo p:first-child{margin-top:0;}/*!sc*/
+.eBjiEo p:last-child{margin-bottom:0;}/*!sc*/
+.eBjiEo p{display:inline-block;}/*!sc*/
+.eBjiEo h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.eBjiEo h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.eBjiEo code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.eBjiEo pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.eBjiEo pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.eBjiEo pre code:before,.eBjiEo pre code:after{content:none;}/*!sc*/
+.eBjiEo blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.eBjiEo img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.eBjiEo ul,.eBjiEo ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.eBjiEo ul ul,.eBjiEo ol ul,.eBjiEo ul ol,.eBjiEo ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.eBjiEo table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.eBjiEo table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.eBjiEo table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.eBjiEo table th,.eBjiEo table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.eBjiEo table th{text-align:left;font-weight:bold;}/*!sc*/
+.eBjiEo .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.eBjiEo .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.eBjiEo h1:hover>.share-link::before,.eBjiEo h2:hover>.share-link::before,.eBjiEo .share-link:hover::before{visibility:visible;}/*!sc*/
+.eBjiEo a{text-decoration:auto;color:#32329f;}/*!sc*/
+.eBjiEo a:visited{color:#32329f;}/*!sc*/
+.eBjiEo a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+data-styled.g43[id="sc-cBNeAB"]{content:"jtfGmi,dyntKg,eBjiEo,"}/*!sc*/
+.hynizp{display:inline;}/*!sc*/
+data-styled.g44[id="sc-cittYi"]{content:"hynizp,"}/*!sc*/
+.hiQxbu{position:relative;}/*!sc*/
+data-styled.g45[id="sc-jcVbNL"]{content:"hiQxbu,"}/*!sc*/
+.fRRakq:hover>.sc-giIpqw{opacity:1;}/*!sc*/
+data-styled.g50[id="sc-cTkvqA"]{content:"fRRakq,"}/*!sc*/
+.cCicSb{font-family:Courier,monospace;font-size:13px;white-space:pre;contain:content;overflow-x:auto;}/*!sc*/
+.cCicSb .redoc-json code>.collapser{display:none;pointer-events:none;}/*!sc*/
+.cCicSb .callback-function{color:gray;}/*!sc*/
+.cCicSb .collapser:after{content:'-';cursor:pointer;}/*!sc*/
+.cCicSb .collapsed>.collapser:after{content:'+';cursor:pointer;}/*!sc*/
+.cCicSb .ellipsis:after{content:' … ';}/*!sc*/
+.cCicSb .collapsible{margin-left:2em;}/*!sc*/
+.cCicSb .hoverable{padding-top:1px;padding-bottom:1px;padding-left:2px;padding-right:2px;border-radius:2px;}/*!sc*/
+.cCicSb .hovered{background-color:rgba(235, 238, 249, 1);}/*!sc*/
+.cCicSb .collapser{background-color:transparent;border:0;color:#fff;font-family:Courier,monospace;font-size:13px;padding-right:6px;padding-left:6px;padding-top:0;padding-bottom:0;display:flex;align-items:center;justify-content:center;width:15px;height:15px;position:absolute;top:4px;left:-1.5em;cursor:default;user-select:none;-webkit-user-select:none;padding:2px;}/*!sc*/
+.cCicSb .collapser:focus{outline-color:#fff;outline-style:dotted;outline-width:1px;}/*!sc*/
+.cCicSb ul{list-style-type:none;padding:0px;margin:0px 0px 0px 26px;}/*!sc*/
+.cCicSb li{position:relative;display:block;}/*!sc*/
+.cCicSb .hoverable{display:inline-block;}/*!sc*/
+.cCicSb .selected{outline-style:solid;outline-width:1px;outline-style:dotted;}/*!sc*/
+.cCicSb .collapsed>.collapsible{display:none;}/*!sc*/
+.cCicSb .ellipsis{display:none;}/*!sc*/
+.cCicSb .collapsed>.ellipsis{display:inherit;}/*!sc*/
+data-styled.g51[id="sc-jNMdgd"]{content:"cCicSb,"}/*!sc*/
+.ilXydl{padding:0.9em;background-color:rgba(38,50,56,0.4);margin:0 0 10px 0;display:block;font-family:Montserrat,sans-serif;font-size:0.929em;line-height:1.5em;}/*!sc*/
+data-styled.g52[id="sc-dOSQqJ"]{content:"ilXydl,"}/*!sc*/
+.fLqWfi{font-family:Montserrat,sans-serif;font-size:12px;position:absolute;z-index:1;top:-11px;left:12px;font-weight:600;color:rgba(255,255,255,0.7);}/*!sc*/
+data-styled.g53[id="sc-bBrNAk"]{content:"fLqWfi,"}/*!sc*/
+.jyrVDw{position:relative;}/*!sc*/
+data-styled.g54[id="sc-cOahfn"]{content:"jyrVDw,"}/*!sc*/
+.icbUjL{margin-top:15px;}/*!sc*/
+data-styled.g57[id="sc-hTZjHc"]{content:"icbUjL,"}/*!sc*/
+.gCMUGw{vertical-align:middle;font-size:13px;line-height:20px;}/*!sc*/
+data-styled.g59[id="sc-gTgAvG"]{content:"gCMUGw,"}/*!sc*/
+.dCeeDp{color:rgba(102,102,102,0.9);}/*!sc*/
+data-styled.g60[id="sc-laROWl"]{content:"dCeeDp,"}/*!sc*/
+.cxjEEA{color:#666;}/*!sc*/
+data-styled.g61[id="sc-iNqMfM"]{content:"cxjEEA,"}/*!sc*/
+.egFobb{color:#d41f1c;font-size:0.9em;font-weight:normal;margin-left:20px;line-height:1;}/*!sc*/
+data-styled.g63[id="sc-eJMOEj"]{content:"egFobb,"}/*!sc*/
+.jzGNYG{border-radius:2px;word-break:break-word;background-color:rgba(51,51,51,0.05);color:rgba(51,51,51,0.9);padding:0 5px;border:1px solid rgba(51,51,51,0.1);font-family:Courier,monospace;}/*!sc*/
+.sc-lcukLb+.sc-lcukLb{margin-left:0;}/*!sc*/
+data-styled.g67[id="sc-lcukLb"]{content:"jzGNYG,"}/*!sc*/
+.gAOGaI{border-radius:2px;background-color:rgba(104,104,207,0.05);color:rgba(50,50,159,0.9);margin:0 5px;padding:0 5px;border:1px solid rgba(50,50,159,0.1);}/*!sc*/
+.sc-clsJvZ+.sc-clsJvZ{margin-left:0;}/*!sc*/
+data-styled.g69[id="sc-clsJvZ"]{content:"gAOGaI,"}/*!sc*/
+.ewkFZw:after{content:' and ';font-weight:normal;}/*!sc*/
+.ewkFZw:last-child:after{content:none;}/*!sc*/
+.ewkFZw a{text-decoration:auto;color:#32329f;}/*!sc*/
+.ewkFZw a:visited{color:#32329f;}/*!sc*/
+.ewkFZw a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+data-styled.g82[id="sc-hOqsyU"]{content:"ewkFZw,"}/*!sc*/
+.gXVZLC{white-space:nowrap;}/*!sc*/
+.gXVZLC:after{content:' or ';white-space:pre;}/*!sc*/
+.gXVZLC:last-child:after,.gXVZLC:only-child:after{content:none;}/*!sc*/
+.gXVZLC a{text-decoration:auto;color:#32329f;}/*!sc*/
+.gXVZLC a:visited{color:#32329f;}/*!sc*/
+.gXVZLC a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+data-styled.g83[id="sc-dtwqPB"]{content:"gXVZLC,"}/*!sc*/
+.hnzXSU{flex:1 1 auto;cursor:pointer;}/*!sc*/
+data-styled.g84[id="sc-dacGni"]{content:"hnzXSU,"}/*!sc*/
+.jnRUlI{width:75%;text-overflow:ellipsis;border-radius:4px;overflow:hidden;}/*!sc*/
+@media screen and (max-width: 50rem){.jnRUlI{margin-top:10px;}}/*!sc*/
+data-styled.g85[id="sc-jUEocL"]{content:"jnRUlI,"}/*!sc*/
+.htSlhJ{display:inline-block;margin:0;}/*!sc*/
+data-styled.g86[id="sc-jQbHUc"]{content:"htSlhJ,"}/*!sc*/
+.bhICnb{width:100%;display:flex;margin:1em 0;flex-direction:row;}/*!sc*/
+@media screen and (max-width: 50rem){.bhICnb{flex-direction:column;}}/*!sc*/
+data-styled.g87[id="sc-fvhGkJ"]{content:"bhICnb,"}/*!sc*/
+.eSPXsI{margin-top:0;margin-bottom:0.5em;}/*!sc*/
+data-styled.g93[id="sc-ctaZPk"]{content:"eSPXsI,"}/*!sc*/
+.kdqpyX{width:9ex;display:inline-block;height:13px;line-height:13px;background-color:#333;border-radius:3px;background-repeat:no-repeat;background-position:6px 4px;font-size:7px;font-family:Verdana,sans-serif;color:white;text-transform:uppercase;text-align:center;font-weight:bold;vertical-align:middle;margin-right:6px;margin-top:2px;}/*!sc*/
+.kdqpyX.get{background-color:#2F8132;}/*!sc*/
+.kdqpyX.post{background-color:#186FAF;}/*!sc*/
+.kdqpyX.put{background-color:#95507c;}/*!sc*/
+.kdqpyX.options{background-color:#947014;}/*!sc*/
+.kdqpyX.patch{background-color:#bf581d;}/*!sc*/
+.kdqpyX.delete{background-color:#cc3333;}/*!sc*/
+.kdqpyX.basic{background-color:#707070;}/*!sc*/
+.kdqpyX.link{background-color:#07818F;}/*!sc*/
+.kdqpyX.head{background-color:#A23DAD;}/*!sc*/
+.kdqpyX.hook{background-color:#32329f;}/*!sc*/
+.kdqpyX.schema{background-color:#707070;}/*!sc*/
+data-styled.g101[id="sc-XhXdA"]{content:"kdqpyX,"}/*!sc*/
+.eqhvhc{margin:0;padding:0;}/*!sc*/
+.eqhvhc:first-child{padding-bottom:32px;}/*!sc*/
+.sc-ikPCzd .sc-ikPCzd{font-size:0.929em;}/*!sc*/
+data-styled.g102[id="sc-ikPCzd"]{content:"eqhvhc,"}/*!sc*/
+.hNMAOR{list-style:none inside none;overflow:hidden;text-overflow:ellipsis;padding:0;}/*!sc*/
+data-styled.g103[id="sc-tYrig"]{content:"hNMAOR,"}/*!sc*/
+.ehmZgs{cursor:pointer;color:#333333;margin:0;padding:12.5px 20px;display:flex;justify-content:space-between;font-family:Montserrat,sans-serif;background-color:#fafafa;}/*!sc*/
+.ehmZgs:hover{color:#32329f;background-color:#ededed;}/*!sc*/
+.ehmZgs .sc-dQoBM{height:1.5em;width:1.5em;}/*!sc*/
+.ehmZgs .sc-dQoBM polygon{fill:#333333;}/*!sc*/
+data-styled.g104[id="sc-biBsFP"]{content:"ehmZgs,"}/*!sc*/
+.dYJaHY{display:inline-block;vertical-align:middle;width:calc(100% - 38px);overflow:hidden;text-overflow:ellipsis;}/*!sc*/
+data-styled.g105[id="sc-eHfQNO"]{content:"dYJaHY,"}/*!sc*/
+.icnaqS{font-size:0.8em;margin-top:10px;text-align:center;position:fixed;width:260px;bottom:0;background:#fafafa;}/*!sc*/
+.icnaqS a,.icnaqS a:visited,.icnaqS a:hover{color:#333333!important;padding:5px 0;border-top:1px solid #e1e1e1;text-decoration:none;display:flex;align-items:center;justify-content:center;}/*!sc*/
+.icnaqS img{width:15px;margin-right:5px;}/*!sc*/
+@media screen and (max-width: 50rem){.icnaqS{width:100%;}}/*!sc*/
+data-styled.g106[id="sc-hzMLOJ"]{content:"icnaqS,"}/*!sc*/
+.gnyOsi{cursor:pointer;position:relative;margin-bottom:5px;}/*!sc*/
+data-styled.g112[id="sc-fXozIE"]{content:"gnyOsi,"}/*!sc*/
+.kmRXcZ{font-family:Courier,monospace;margin-left:10px;flex:1;overflow-x:hidden;text-overflow:ellipsis;}/*!sc*/
+data-styled.g113[id="sc-FyhMp"]{content:"kmRXcZ,"}/*!sc*/
+.eJFCKx{outline:0;color:inherit;width:100%;text-align:left;cursor:pointer;padding:10px 30px 10px 20px;border-radius:4px 4px 0 0;background-color:#11171a;display:flex;white-space:nowrap;align-items:center;border:1px solid transparent;border-bottom:0;transition:border-color 0.25s ease;}/*!sc*/
+.eJFCKx ..sc-FyhMp{color:#ffffff;}/*!sc*/
+.eJFCKx:focus{box-shadow:inset 0 2px 2px rgba(0, 0, 0, 0.45),0 2px 0 rgba(128, 128, 128, 0.25);}/*!sc*/
+data-styled.g114[id="sc-jXkukm"]{content:"eJFCKx,"}/*!sc*/
+.kcqnuN{font-size:0.929em;line-height:20px;background-color:#186FAF;color:#ffffff;padding:3px 10px;text-transform:uppercase;font-family:Montserrat,sans-serif;margin:0;}/*!sc*/
+.iykXxP{font-size:0.929em;line-height:20px;background-color:#2F8132;color:#ffffff;padding:3px 10px;text-transform:uppercase;font-family:Montserrat,sans-serif;margin:0;}/*!sc*/
+.fpxrAS{font-size:0.929em;line-height:20px;background-color:#95507c;color:#ffffff;padding:3px 10px;text-transform:uppercase;font-family:Montserrat,sans-serif;margin:0;}/*!sc*/
+.btbfOP{font-size:0.929em;line-height:20px;background-color:#cc3333;color:#ffffff;padding:3px 10px;text-transform:uppercase;font-family:Montserrat,sans-serif;margin:0;}/*!sc*/
+data-styled.g115[id="sc-eFucnX"]{content:"kcqnuN,iykXxP,fpxrAS,btbfOP,"}/*!sc*/
+.AnL{position:absolute;width:100%;z-index:100;background:#fafafa;color:#263238;box-sizing:border-box;box-shadow:0 0 6px rgba(0, 0, 0, 0.33);overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;transition:all 0.25s ease;visibility:hidden;transform:translateY(-50%) scaleY(0);}/*!sc*/
+data-styled.g116[id="sc-fmlIYk"]{content:"AnL,"}/*!sc*/
+.gjZMty{padding:10px;}/*!sc*/
+data-styled.g117[id="sc-ljRaAR"]{content:"gjZMty,"}/*!sc*/
+.eFxVeO{padding:5px;border:1px solid #ccc;background:#fff;word-break:break-all;color:#32329f;}/*!sc*/
+.eFxVeO >span{color:#333333;}/*!sc*/
+data-styled.g118[id="sc-jmhDzS"]{content:"eFxVeO,"}/*!sc*/
+.eEdthm{text-transform:lowercase;margin-left:0;line-height:1.5em;}/*!sc*/
+data-styled.g119[id="sc-dUrlDD"]{content:"eEdthm,"}/*!sc*/
+.ciHfuN{display:block;border:0;width:100%;text-align:left;padding:10px;border-radius:2px;margin-bottom:4px;line-height:1.5em;cursor:pointer;color:#1d8127;background-color:rgba(29,129,39,0.07);}/*!sc*/
+.ciHfuN:focus{outline:auto #1d8127;}/*!sc*/
+.iagvZz{display:block;border:0;width:100%;text-align:left;padding:10px;border-radius:2px;margin-bottom:4px;line-height:1.5em;cursor:pointer;color:#d41f1c;background-color:rgba(212,31,28,0.07);}/*!sc*/
+.iagvZz:focus{outline:auto #d41f1c;}/*!sc*/
+.dFAghD{display:block;border:0;width:100%;text-align:left;padding:10px;border-radius:2px;margin-bottom:4px;line-height:1.5em;cursor:pointer;color:#1d8127;background-color:rgba(29,129,39,0.07);cursor:default;}/*!sc*/
+.dFAghD:focus{outline:auto #1d8127;}/*!sc*/
+.dFAghD::before{content:"—";font-weight:bold;width:1.5em;text-align:center;display:inline-block;vertical-align:top;}/*!sc*/
+.dFAghD:focus{outline:0;}/*!sc*/
+data-styled.g121[id="sc-cbDJdZ"]{content:"ciHfuN,iagvZz,dFAghD,"}/*!sc*/
+.mtsUp{vertical-align:top;}/*!sc*/
+data-styled.g124[id="sc-fWPeRB"]{content:"mtsUp,"}/*!sc*/
+.ihqrCS{font-size:1.3em;padding:0.2em 0;margin:3em 0 1.1em;color:#333333;font-weight:normal;}/*!sc*/
+data-styled.g125[id="sc-fHYzZk"]{content:"ihqrCS,"}/*!sc*/
+.iTRatv{margin-bottom:30px;}/*!sc*/
+data-styled.g130[id="sc-iGcuFr"]{content:"iTRatv,"}/*!sc*/
+.iDYPDd{user-select:none;width:20px;height:20px;align-self:center;display:flex;flex-direction:column;color:#32329f;}/*!sc*/
+data-styled.g131[id="sc-irlPNa"]{content:"iDYPDd,"}/*!sc*/
+.lkswgW{width:260px;background-color:#fafafa;overflow:hidden;display:flex;flex-direction:column;backface-visibility:hidden;height:100vh;position:sticky;position:-webkit-sticky;top:0;}/*!sc*/
+@media screen and (max-width: 50rem){.lkswgW{position:fixed;z-index:20;width:100%;background:#fafafa;display:none;}}/*!sc*/
+@media print{.lkswgW{display:none;}}/*!sc*/
+data-styled.g132[id="sc-eWvQxi"]{content:"lkswgW,"}/*!sc*/
+.fsqnbI{outline:none;user-select:none;background-color:#f2f2f2;color:#32329f;display:none;cursor:pointer;position:fixed;right:20px;z-index:100;border-radius:50%;box-shadow:0 0 20px rgba(0, 0, 0, 0.3);bottom:44px;width:60px;height:60px;padding:0 20px;}/*!sc*/
+@media screen and (max-width: 50rem){.fsqnbI{display:flex;}}/*!sc*/
+.fsqnbI svg{color:#0065FB;}/*!sc*/
+@media print{.fsqnbI{display:none;}}/*!sc*/
+data-styled.g133[id="sc-kUbhZP"]{content:"fsqnbI,"}/*!sc*/
+.iABphV{font-family:Roboto,sans-serif;font-size:14px;font-weight:400;line-height:1.5em;color:#333333;display:flex;position:relative;text-align:left;-webkit-font-smoothing:antialiased;font-smoothing:antialiased;text-rendering:optimizeSpeed!important;tap-highlight-color:rgba(0, 0, 0, 0);text-size-adjust:100%;}/*!sc*/
+.iABphV *{box-sizing:border-box;-webkit-tap-highlight-color:rgba(255, 255, 255, 0);}/*!sc*/
+data-styled.g134[id="sc-dwcwXc"]{content:"iABphV,"}/*!sc*/
+.JaJkD{z-index:1;position:relative;overflow:hidden;width:calc(100% - 260px);contain:layout;}/*!sc*/
+@media print,screen and (max-width: 50rem){.JaJkD{width:100%;}}/*!sc*/
+data-styled.g135[id="sc-jtHOzJ"]{content:"JaJkD,"}/*!sc*/
+.dQcVAt{background:#263238;position:absolute;top:0;bottom:0;right:0;width:calc((100% - 260px) * 0.4);}/*!sc*/
+@media print,screen and (max-width: 75rem){.dQcVAt{display:none;}}/*!sc*/
+data-styled.g136[id="sc-elsZMO"]{content:"dQcVAt,"}/*!sc*/
+.heVKiz{padding:5px 0;}/*!sc*/
+data-styled.g137[id="sc-kiYrpv"]{content:"heVKiz,"}/*!sc*/
+.gyVKdy{width:calc(100% - 40px);box-sizing:border-box;margin:0 20px;padding:5px 10px 5px 20px;border:0;border-bottom:1px solid #e1e1e1;font-family:Roboto,sans-serif;font-weight:bold;font-size:13px;color:#333333;background-color:transparent;outline:none;}/*!sc*/
+data-styled.g138[id="sc-cKZGmI"]{content:"gyVKdy,"}/*!sc*/
+.eIwqum{position:absolute;left:20px;height:1.8em;width:0.9em;}/*!sc*/
+.eIwqum path{fill:#333333;}/*!sc*/
+data-styled.g139[id="sc-iIEXPp"]{content:"eIwqum,"}/*!sc*/
+</style>
+  <link href="https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700" rel="stylesheet">
+</head>
+
+<body>
+  
+      <div id="redoc"><div class="sc-dwcwXc iABphV redoc-wrap"><div class="sc-eWvQxi lkswgW menu-content" style="top:0px;height:calc(100vh - 0px)"><div role="search" class="sc-kiYrpv heVKiz"><svg class="sc-iIEXPp eIwqum search-icon" version="1.1" viewBox="0 0 1000 1000" x="0px" xmlns="http://www.w3.org/2000/svg" y="0px"><path d="M968.2,849.4L667.3,549c83.9-136.5,66.7-317.4-51.7-435.6C477.1-25,252.5-25,113.9,113.4c-138.5,138.3-138.5,362.6,0,501C219.2,730.1,413.2,743,547.6,666.5l301.9,301.4c43.6,43.6,76.9,14.9,104.2-12.4C981,928.3,1011.8,893,968.2,849.4z M524.5,522c-88.9,88.7-233,88.7-321.8,0c-88.9-88.7-88.9-232.6,0-321.3c88.9-88.7,233-88.7,321.8,0C613.4,289.4,613.4,433.3,524.5,522z"></path></svg><input placeholder="Search..." aria-label="Search" type="text" class="sc-cKZGmI gyVKdy search-input" value=""/></div><div class="sc-kLgmGd bsUDpT scrollbar-container undefined"><ul role="menu" class="sc-ikPCzd eqhvhc"><li tabindex="0" depth="2" data-item-id="/paths/~1discover-schedules/post" role="menuitem" aria-label="创建发现调度" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP ehmZgs -depth2"><span type="post" class="sc-XhXdA kdqpyX operation-type post">post</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHfQNO dYJaHY">创建发现调度</span></label></li><li tabindex="0" depth="2" data-item-id="/paths/~1discover-schedules/get" role="menuitem" aria-label="获取调度列表" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP ehmZgs -depth2"><span type="get" class="sc-XhXdA kdqpyX operation-type get">get</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHfQNO dYJaHY">获取调度列表</span></label></li><li tabindex="0" depth="2" data-item-id="/paths/~1discover-schedules~1{id}/get" role="menuitem" aria-label="获取调度详情" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP ehmZgs -depth2"><span type="get" class="sc-XhXdA kdqpyX operation-type get">get</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHfQNO dYJaHY">获取调度详情</span></label></li><li tabindex="0" depth="2" data-item-id="/paths/~1discover-schedules~1{id}/put" role="menuitem" aria-label="严格更新调度" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP ehmZgs -depth2"><span type="put" class="sc-XhXdA kdqpyX operation-type put">put</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHfQNO dYJaHY">严格更新调度</span></label></li><li tabindex="0" depth="2" data-item-id="/paths/~1discover-schedules~1{id}/delete" role="menuitem" aria-label="删除调度" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP ehmZgs -depth2"><span type="delete" class="sc-XhXdA kdqpyX operation-type delete">del</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHfQNO dYJaHY">删除调度</span></label></li><li tabindex="0" depth="2" data-item-id="/paths/~1discover-schedules~1{id}~1enable/post" role="menuitem" aria-label="启用调度" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP ehmZgs -depth2"><span type="post" class="sc-XhXdA kdqpyX operation-type post">post</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHfQNO dYJaHY">启用调度</span></label></li><li tabindex="0" depth="2" data-item-id="/paths/~1discover-schedules~1{id}~1disable/post" role="menuitem" aria-label="停用调度" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP ehmZgs -depth2"><span type="post" class="sc-XhXdA kdqpyX operation-type post">post</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHfQNO dYJaHY">停用调度</span></label></li></ul><div class="sc-hzMLOJ icnaqS"><a target="_blank" rel="noopener noreferrer" href="https://redocly.com/redoc/">API docs by Redocly</a></div></div></div><div class="sc-kUbhZP fsqnbI"><div class="sc-irlPNa iDYPDd"><svg class="" style="transform:translate(2px, -4px) rotate(180deg);transition:transform 0.2s ease" viewBox="0 0 926.23699 573.74994" version="1.1" x="0px" y="0px" width="15" height="15"><g transform="translate(904.92214,-879.1482)"><path d="
+          m -673.67664,1221.6502 -231.2455,-231.24803 55.6165,
+          -55.627 c 30.5891,-30.59485 56.1806,-55.627 56.8701,-55.627 0.6894,
+          0 79.8637,78.60862 175.9427,174.68583 l 174.6892,174.6858 174.6892,
+          -174.6858 c 96.079,-96.07721 175.253196,-174.68583 175.942696,
+          -174.68583 0.6895,0 26.281,25.03215 56.8701,
+          55.627 l 55.6165,55.627 -231.245496,231.24803 c -127.185,127.1864
+          -231.5279,231.248 -231.873,231.248 -0.3451,0 -104.688,
+          -104.0616 -231.873,-231.248 z
+        " fill="currentColor"></path></g></svg><svg class="" style="transform:translate(2px, 4px);transition:transform 0.2s ease" viewBox="0 0 926.23699 573.74994" version="1.1" x="0px" y="0px" width="15" height="15"><g transform="translate(904.92214,-879.1482)"><path d="
+          m -673.67664,1221.6502 -231.2455,-231.24803 55.6165,
+          -55.627 c 30.5891,-30.59485 56.1806,-55.627 56.8701,-55.627 0.6894,
+          0 79.8637,78.60862 175.9427,174.68583 l 174.6892,174.6858 174.6892,
+          -174.6858 c 96.079,-96.07721 175.253196,-174.68583 175.942696,
+          -174.68583 0.6895,0 26.281,25.03215 56.8701,
+          55.627 l 55.6165,55.627 -231.245496,231.24803 c -127.185,127.1864
+          -231.5279,231.248 -231.873,231.248 -0.3451,0 -104.688,
+          -104.0616 -231.873,-231.248 z
+        " fill="currentColor"></path></g></svg></div></div><div class="sc-jtHOzJ JaJkD api-content"><div class="sc-eCsseJ bKZuAK"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI api-info"><h1 class="sc-fubEtJ sc-ctaZPk edtrWC eSPXsI">DiscoverSchedule<!-- --> <span>(<!-- -->0.1.0<!-- -->)</span></h1><p>Download OpenAPI specification<!-- -->:</p><div class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><div data-role="redoc-summary" html="" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><div data-role="redoc-description" html="&lt;p&gt;Vega Backend 资源发现调度（DiscoverSchedule）相关 API。&lt;/p&gt;
+&lt;p&gt;DiscoverSchedule 是&lt;strong&gt;cron 配置&lt;/strong&gt;实体，不直接承载执行：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;调度器到点触发后产出一条 &lt;code&gt;trigger_type=scheduled&lt;/code&gt; 的 DiscoverTask（详见 &lt;a href=&quot;discover-task.yaml&quot;&gt;discover-task.yaml&lt;/a&gt;）&lt;/li&gt;
+&lt;li&gt;用户通过本规范增删改查 DiscoverSchedule，通过 enable/disable 控制其是否生效&lt;/li&gt;
+&lt;li&gt;一次性发现走 &lt;code&gt;POST /catalogs/{id}/discover&lt;/code&gt;（&lt;a href=&quot;discover-task.yaml&quot;&gt;discover-task.yaml&lt;/a&gt; 末尾），不通过本规范&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;每个 DiscoverSchedule 归属一个 Physical Catalog（多对一）。Logical Catalog 不支持发现调度，
+&lt;code&gt;catalog_id&lt;/code&gt; 在创建后&lt;strong&gt;不可修改&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;端点设计遵循 [vega-backend/CLAUDE.md] 的&amp;quot;端点设计规则&amp;quot;——状态切换走动作端点
+&lt;code&gt;enable&lt;/code&gt; / &lt;code&gt;disable&lt;/code&gt;，与 ConnectorType 风格对齐；不暴露 &lt;code&gt;enabled&lt;/code&gt; 字段为可写。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;错误码新增&lt;/strong&gt; &lt;code&gt;VegaBackend.DiscoverSchedule.*&lt;/code&gt; 系列，与其它资源解耦。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>Vega Backend 资源发现调度（DiscoverSchedule）相关 API。</p>
+<p>DiscoverSchedule 是<strong>cron 配置</strong>实体，不直接承载执行：</p>
+<ul>
+<li>调度器到点触发后产出一条 <code>trigger_type=scheduled</code> 的 DiscoverTask（详见 <a href="discover-task.yaml">discover-task.yaml</a>）</li>
+<li>用户通过本规范增删改查 DiscoverSchedule，通过 enable/disable 控制其是否生效</li>
+<li>一次性发现走 <code>POST /catalogs/{id}/discover</code>（<a href="discover-task.yaml">discover-task.yaml</a> 末尾），不通过本规范</li>
+</ul>
+<p>每个 DiscoverSchedule 归属一个 Physical Catalog（多对一）。Logical Catalog 不支持发现调度，
+<code>catalog_id</code> 在创建后<strong>不可修改</strong>。</p>
+<p>端点设计遵循 [vega-backend/CLAUDE.md] 的&quot;端点设计规则&quot;——状态切换走动作端点
+<code>enable</code> / <code>disable</code>，与 ConnectorType 风格对齐；不暴露 <code>enabled</code> 字段为可写。</p>
+<p><strong>错误码新增</strong> <code>VegaBackend.DiscoverSchedule.*</code> 系列，与其它资源解耦。</p>
+</div></div></div></div><div id="/paths/~1discover-schedules/post" data-section-id="/paths/~1discover-schedules/post" class="sc-eCsseJ hxxgNd"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#/paths/~1discover-schedules/post" aria-label="/paths/~1discover-schedules/post"></a>创建发现调度<!-- --> </h2><div class="sc-iGcuFr iTRatv"><div html="&lt;p&gt;创建 DiscoverSchedule。&lt;code&gt;name&lt;/code&gt; 与 &lt;code&gt;catalog_id&lt;/code&gt; 必填，catalog 必须存在且类型为 physical；不存在返回
+404 &lt;code&gt;VegaBackend.Catalog.NotFound&lt;/code&gt;，logical catalog 返回 400。&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;body 中 &lt;code&gt;enabled=true&lt;/code&gt; 时，worker 会在 &lt;code&gt;next_run&lt;/code&gt; 到期后触发；&lt;code&gt;false&lt;/code&gt; 时不会触发。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cron_expr&lt;/code&gt; 必填，标准 5 字段格式，相邻两次触发至少间隔 1 小时；非法或过于频繁时返回
+400 &lt;code&gt;VegaBackend.DiscoverSchedule.InvalidCronExpr&lt;/code&gt;。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;strategies&lt;/code&gt; 可空（表示全部）；非空时元素必须是 &lt;code&gt;insert&lt;/code&gt; / &lt;code&gt;delete&lt;/code&gt; / &lt;code&gt;update&lt;/code&gt; 的子集。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;start_time&lt;/code&gt; / &lt;code&gt;end_time&lt;/code&gt; 均 ≥ 0；&lt;code&gt;end_time&amp;gt;0&lt;/code&gt; 时要求 &lt;code&gt;start_time ≤ end_time&lt;/code&gt;；非法返回
+400 &lt;code&gt;VegaBackend.DiscoverSchedule.InvalidTimeRange&lt;/code&gt;。&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>创建 DiscoverSchedule。<code>name</code> 与 <code>catalog_id</code> 必填，catalog 必须存在且类型为 physical；不存在返回
+404 <code>VegaBackend.Catalog.NotFound</code>，logical catalog 返回 400。</p>
+<ul>
+<li>body 中 <code>enabled=true</code> 时，worker 会在 <code>next_run</code> 到期后触发；<code>false</code> 时不会触发。</li>
+<li><code>cron_expr</code> 必填，标准 5 字段格式，相邻两次触发至少间隔 1 小时；非法或过于频繁时返回
+400 <code>VegaBackend.DiscoverSchedule.InvalidCronExpr</code>。</li>
+<li><code>strategies</code> 可空（表示全部）；非空时元素必须是 <code>insert</code> / <code>delete</code> / <code>update</code> 的子集。</li>
+<li><code>start_time</code> / <code>end_time</code> 均 ≥ 0；<code>end_time&gt;0</code> 时要求 <code>start_time ≤ end_time</code>；非法返回
+400 <code>VegaBackend.DiscoverSchedule.InvalidTimeRange</code>。</li>
+</ul>
+</div></div><div class="sc-fvhGkJ bhICnb"><div class="sc-dacGni hnzXSU"><h5 class="sc-iqHZue sc-jQbHUc iFTCOQ htSlhJ">Authorizations:</h5><svg class="sc-dQoBM dHiXwH" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jUEocL jnRUlI"><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>OAuth2</i></span></span></div></div><h5 class="sc-iqHZue iFTCOQ">Request Body schema: <span class="sc-gWHgjU eBDHRN">application/json</span><div class="sc-gTgAvG sc-eJMOEj sc-dUrlDD gCMUGw egFobb eEdthm">required</div></h5><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><table class="sc-hHfrpe juzVUC"><tbody><tr class=""><td kind="field" title="expected_update_time" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">expected_update_time</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">integer</span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA"> <!-- -->&lt;<!-- -->int64<!-- -->&gt;<!-- --> </span><span> <span class="sc-gTgAvG sc-clsJvZ gCMUGw gAOGaI"> <!-- -->&gt;= 1<!-- --> </span></span></div> <div><div html="&lt;p&gt;仅 PUT 使用的必填乐观锁版本，取自最近一次查询响应的 &lt;code&gt;update_time&lt;/code&gt;&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>仅 PUT 使用的必填乐观锁版本，取自最近一次查询响应的 <code>update_time</code></p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="name" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">name</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span><span> <span class="sc-gTgAvG sc-clsJvZ gCMUGw gAOGaI"> <!-- -->&lt;= 255 characters<!-- --> </span></span></div> <div><div html="&lt;p&gt;调度名称，必填，最大长度 255&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>调度名称，必填，最大长度 255</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="catalog_id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">catalog_id</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;关联 catalog；创建必填，PUT 时必须与当前一致&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>关联 catalog；创建必填，PUT 时必须与当前一致</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="cron_expr" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">cron_expr</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;标准 5 字段 cron 表达式（必填），相邻两次触发至少间隔 1 小时&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>标准 5 字段 cron 表达式（必填），相邻两次触发至少间隔 1 小时</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="start_time" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">start_time</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">integer</span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA"> <!-- -->&lt;<!-- -->int64<!-- -->&gt;<!-- --> </span><span> <span class="sc-gTgAvG sc-clsJvZ gCMUGw gAOGaI"> <!-- -->&gt;= 0<!-- --> </span></span></div> <div><div html="&lt;p&gt;调度生效起始时间，毫秒时间戳；0 表示无起始限制。须 ≥ 0&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>调度生效起始时间，毫秒时间戳；0 表示无起始限制。须 ≥ 0</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="end_time" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">end_time</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">integer</span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA"> <!-- -->&lt;<!-- -->int64<!-- -->&gt;<!-- --> </span><span> <span class="sc-gTgAvG sc-clsJvZ gCMUGw gAOGaI"> <!-- -->&gt;= 0<!-- --> </span></span></div> <div><div html="&lt;p&gt;调度结束时间，毫秒时间戳；0 表示无结束时间。
+须 ≥ 0，且 &lt;code&gt;end_time&amp;gt;0&lt;/code&gt; 时要求 &lt;code&gt;start_time ≤ end_time&lt;/code&gt;&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>调度结束时间，毫秒时间戳；0 表示无结束时间。
+须 ≥ 0，且 <code>end_time&gt;0</code> 时要求 <code>start_time ≤ end_time</code></p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="enabled" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">enabled</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">boolean</span></div> <div><div html="&lt;p&gt;创建时可选（默认 false）；PUT 时必须与当前一致，否则 409 EnabledFieldNotAllowed&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>创建时可选（默认 false）；PUT 时必须与当前一致，否则 409 EnabledFieldNotAllowed</p>
+</div></div></div></td></tr><tr class="last "><td kind="field" title="strategy" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">strategy</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Enum<!-- -->:</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;full_sync&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;create_only&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;cleanup_only&quot;</span> </div> <div><div html="&lt;p&gt;发现策略；省略时服务端默认 &lt;code&gt;full_sync&lt;/code&gt;&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>发现策略；省略时服务端默认 <code>full_sync</code></p>
+</div></div></div></td></tr></tbody></table><div><h3 class="sc-fHYzZk ihqrCS">Responses</h3><div><button class="sc-cbDJdZ ciHfuN"><svg class="sc-dQoBM idFXFs" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">201<!-- --> </strong><div html="&lt;p&gt;创建成功&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>创建成功</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">400<!-- --> </strong><div html="&lt;p&gt;请求参数 / 请求体非法。常见 errcode：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.InvalidParameter.RequestBody&lt;/code&gt;：body schema 不合法&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InvalidCronExpr&lt;/code&gt;：cron 表达式非法&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InvalidStrategies&lt;/code&gt;：strategies 元素非法&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InvalidTimeRange&lt;/code&gt;：&lt;code&gt;start_time&lt;/code&gt; / &lt;code&gt;end_time&lt;/code&gt; 非法&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>请求参数 / 请求体非法。常见 errcode：</p>
+<ul>
+<li><code>VegaBackend.InvalidParameter.RequestBody</code>：body schema 不合法</li>
+<li><code>VegaBackend.DiscoverSchedule.InvalidCronExpr</code>：cron 表达式非法</li>
+<li><code>VegaBackend.DiscoverSchedule.InvalidStrategies</code>：strategies 元素非法</li>
+<li><code>VegaBackend.DiscoverSchedule.InvalidTimeRange</code>：<code>start_time</code> / <code>end_time</code> 非法</li>
+</ul>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">401<!-- --> </strong><div html="&lt;p&gt;未授权（OAuth Token 校验失败）&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>未授权（OAuth Token 校验失败）</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">404<!-- --> </strong><div html="&lt;p&gt;资源不存在。errcode：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.NotFound&lt;/code&gt;：schedule id 不存在&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.Catalog.NotFound&lt;/code&gt;：创建时 catalog_id 不存在&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>资源不存在。errcode：</p>
+<ul>
+<li><code>VegaBackend.DiscoverSchedule.NotFound</code>：schedule id 不存在</li>
+<li><code>VegaBackend.Catalog.NotFound</code>：创建时 catalog_id 不存在</li>
+</ul>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">406<!-- --> </strong><div html="&lt;p&gt;Content-Type 不是 application/json&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>Content-Type 不是 application/json</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">500<!-- --> </strong><div html="&lt;p&gt;服务内部错误。常见 errcode：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.GetFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.CreateFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.UpdateFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.DeleteFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.GetAccountNamesFailed&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>服务内部错误。常见 errcode：</p>
+<ul>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.GetFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.CreateFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.UpdateFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.DeleteFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.GetAccountNamesFailed</code></li>
+</ul>
+</div></button></div></div></div><div class="sc-jSgsbC sc-gKscir kWQHAp jYdWFY"><div class="sc-fXozIE gnyOsi"><button class="sc-jXkukm eJFCKx"><span type="post" class="sc-eFucnX kcqnuN http-verb post">post</span><span class="sc-FyhMp kmRXcZ">/discover-schedules</span><svg class="sc-dQoBM dvMtUQ" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmlIYk AnL"><div class="sc-ljRaAR gjZMty"><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div><div tabindex="0" role="button"><div class="sc-jmhDzS eFxVeO"><span>/api/vega-backend/v1</span>/discover-schedules</div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Request samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="react-tabs__tab react-tabs__tab--selected" role="tab" id="tab_R_154q_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_154q_0" tabindex="0" data-rttab="true">Payload</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_154q_0" aria-labelledby="tab_R_154q_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"expected_update_time"</span>: <span class="token number">1</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"catalog_id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"cron_expr"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"start_time"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"end_time"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"enabled"</span>: <span class="token boolean">true</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"strategy"</span>: <span class="token string">&quot;full_sync&quot;</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_174q_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_174q_0" tabindex="0" data-rttab="true">201</li><li class="tab-error" role="tab" id="tab_R_174q_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_174q_1" data-rttab="true">400</li><li class="tab-error" role="tab" id="tab_R_174q_2" aria-selected="false" aria-disabled="false" aria-controls="panel_R_174q_2" data-rttab="true">401</li><li class="tab-error" role="tab" id="tab_R_174q_3" aria-selected="false" aria-disabled="false" aria-controls="panel_R_174q_3" data-rttab="true">404</li><li class="tab-error" role="tab" id="tab_R_174q_4" aria-selected="false" aria-disabled="false" aria-controls="panel_R_174q_4" data-rttab="true">406</li><li class="tab-error" role="tab" id="tab_R_174q_5" aria-selected="false" aria-disabled="false" aria-controls="panel_R_174q_5" data-rttab="true">500</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_174q_0" aria-labelledby="tab_R_174q_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"id"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_174q_1" aria-labelledby="tab_R_174q_1"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_174q_2" aria-labelledby="tab_R_174q_2"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_174q_3" aria-labelledby="tab_R_174q_3"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_174q_4" aria-labelledby="tab_R_174q_4"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_174q_5" aria-labelledby="tab_R_174q_5"></div></div></div></div></div></div><div id="/paths/~1discover-schedules/get" data-section-id="/paths/~1discover-schedules/get" class="sc-eCsseJ hxxgNd"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#/paths/~1discover-schedules/get" aria-label="/paths/~1discover-schedules/get"></a>获取调度列表<!-- --> </h2><div class="sc-iGcuFr iTRatv"><div html="&lt;p&gt;分页 + filter 获取 DiscoverSchedule 列表；支持按 name 模糊过滤。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>分页 + filter 获取 DiscoverSchedule 列表；支持按 name 模糊过滤。</p>
+</div></div><div class="sc-fvhGkJ bhICnb"><div class="sc-dacGni hnzXSU"><h5 class="sc-iqHZue sc-jQbHUc iFTCOQ htSlhJ">Authorizations:</h5><svg class="sc-dQoBM dHiXwH" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jUEocL jnRUlI"><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>OAuth2</i></span></span></div></div><div><h5 class="sc-iqHZue iFTCOQ">query<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class=""><td kind="field" title="name" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">name</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;按名称模糊过滤，匹配名称中包含该值的调度&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>按名称模糊过滤，匹配名称中包含该值的调度</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="catalog_id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">catalog_id</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;按归属 catalog 过滤&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>按归属 catalog 过滤</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="enabled" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">enabled</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">boolean</span></div> <div><div html="&lt;p&gt;按启用状态过滤；不传表示不过滤&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>按启用状态过滤；不传表示不过滤</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="offset" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">offset</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">integer</span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA"> <!-- -->&lt;<!-- -->int64<!-- -->&gt;<!-- --> </span><span> <span class="sc-gTgAvG sc-clsJvZ gCMUGw gAOGaI"> <!-- -->&gt;= 0<!-- --> </span></span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">0</span></div> <div><div html="&lt;p&gt;分页偏移量，&amp;gt;=0，默认 0&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>分页偏移量，&gt;=0，默认 0</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="limit" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">limit</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">integer</span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA"> <!-- -->&lt;<!-- -->int64<!-- -->&gt;<!-- --> </span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">20</span></div> <div><div html="&lt;p&gt;每页数量，1-1000，-1 表示不分页，默认 20&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>每页数量，1-1000，-1 表示不分页，默认 20</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="sort" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">sort</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;update_time&quot;</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Enum<!-- -->:</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;name&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;create_time&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;update_time&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;next_run&quot;</span> </div> <div><div html="&lt;p&gt;排序字段&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>排序字段</p>
+</div></div></div></td></tr><tr class="last "><td kind="field" title="direction" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">direction</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;desc&quot;</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Enum<!-- -->:</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;asc&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;desc&quot;</span> </div> <div><div html="&lt;p&gt;排序方向&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>排序方向</p>
+</div></div></div></td></tr></tbody></table></div><div><h3 class="sc-fHYzZk ihqrCS">Responses</h3><div><button class="sc-cbDJdZ ciHfuN"><svg class="sc-dQoBM idFXFs" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">200<!-- --> </strong><div html="&lt;p&gt;ok&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>ok</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">400<!-- --> </strong><div html="&lt;p&gt;请求参数 / 请求体非法。常见 errcode：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.InvalidParameter.RequestBody&lt;/code&gt;：body schema 不合法&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InvalidCronExpr&lt;/code&gt;：cron 表达式非法&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InvalidStrategies&lt;/code&gt;：strategies 元素非法&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InvalidTimeRange&lt;/code&gt;：&lt;code&gt;start_time&lt;/code&gt; / &lt;code&gt;end_time&lt;/code&gt; 非法&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>请求参数 / 请求体非法。常见 errcode：</p>
+<ul>
+<li><code>VegaBackend.InvalidParameter.RequestBody</code>：body schema 不合法</li>
+<li><code>VegaBackend.DiscoverSchedule.InvalidCronExpr</code>：cron 表达式非法</li>
+<li><code>VegaBackend.DiscoverSchedule.InvalidStrategies</code>：strategies 元素非法</li>
+<li><code>VegaBackend.DiscoverSchedule.InvalidTimeRange</code>：<code>start_time</code> / <code>end_time</code> 非法</li>
+</ul>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">401<!-- --> </strong><div html="&lt;p&gt;未授权（OAuth Token 校验失败）&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>未授权（OAuth Token 校验失败）</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">500<!-- --> </strong><div html="&lt;p&gt;服务内部错误。常见 errcode：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.GetFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.CreateFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.UpdateFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.DeleteFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.GetAccountNamesFailed&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>服务内部错误。常见 errcode：</p>
+<ul>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.GetFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.CreateFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.UpdateFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.DeleteFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.GetAccountNamesFailed</code></li>
+</ul>
+</div></button></div></div></div><div class="sc-jSgsbC sc-gKscir kWQHAp jYdWFY"><div class="sc-fXozIE gnyOsi"><button class="sc-jXkukm eJFCKx"><span type="get" class="sc-eFucnX iykXxP http-verb get">get</span><span class="sc-FyhMp kmRXcZ">/discover-schedules</span><svg class="sc-dQoBM dvMtUQ" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmlIYk AnL"><div class="sc-ljRaAR gjZMty"><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div><div tabindex="0" role="button"><div class="sc-jmhDzS eFxVeO"><span>/api/vega-backend/v1</span>/discover-schedules</div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_175a_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_175a_0" tabindex="0" data-rttab="true">200</li><li class="tab-error" role="tab" id="tab_R_175a_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_175a_1" data-rttab="true">400</li><li class="tab-error" role="tab" id="tab_R_175a_2" aria-selected="false" aria-disabled="false" aria-controls="panel_R_175a_2" data-rttab="true">401</li><li class="tab-error" role="tab" id="tab_R_175a_3" aria-selected="false" aria-disabled="false" aria-controls="panel_R_175a_3" data-rttab="true">500</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_175a_0" aria-labelledby="tab_R_175a_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"entries"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"catalog_id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"catalog_name"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"cron_expr"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"start_time"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"end_time"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"enabled"</span>: <span class="token boolean">true</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"strategy"</span>: <span class="token string">&quot;full_sync&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"last_run"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"next_run"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"creator"</span>: <button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"type"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"create_time"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"updater"</span>: <button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"type"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"update_time"</span>: <span class="token number">0</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"total_count"</span>: <span class="token number">0</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_175a_1" aria-labelledby="tab_R_175a_1"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_175a_2" aria-labelledby="tab_R_175a_2"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_175a_3" aria-labelledby="tab_R_175a_3"></div></div></div></div></div></div><div id="/paths/~1discover-schedules~1{id}/get" data-section-id="/paths/~1discover-schedules~1{id}/get" class="sc-eCsseJ hxxgNd"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#/paths/~1discover-schedules~1{id}/get" aria-label="/paths/~1discover-schedules~1{id}/get"></a>获取调度详情<!-- --> </h2><div class="sc-fvhGkJ bhICnb"><div class="sc-dacGni hnzXSU"><h5 class="sc-iqHZue sc-jQbHUc iFTCOQ htSlhJ">Authorizations:</h5><svg class="sc-dQoBM dHiXwH" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jUEocL jnRUlI"><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>OAuth2</i></span></span></div></div><div><h5 class="sc-iqHZue iFTCOQ">path<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class="last "><td kind="field" title="id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">id</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;DiscoverSchedule ID&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>DiscoverSchedule ID</p>
+</div></div></div></td></tr></tbody></table></div><div><h3 class="sc-fHYzZk ihqrCS">Responses</h3><div><button class="sc-cbDJdZ ciHfuN"><svg class="sc-dQoBM idFXFs" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">200<!-- --> </strong><div html="&lt;p&gt;ok&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>ok</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">401<!-- --> </strong><div html="&lt;p&gt;未授权（OAuth Token 校验失败）&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>未授权（OAuth Token 校验失败）</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">404<!-- --> </strong><div html="&lt;p&gt;资源不存在。errcode：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.NotFound&lt;/code&gt;：schedule id 不存在&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.Catalog.NotFound&lt;/code&gt;：创建时 catalog_id 不存在&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>资源不存在。errcode：</p>
+<ul>
+<li><code>VegaBackend.DiscoverSchedule.NotFound</code>：schedule id 不存在</li>
+<li><code>VegaBackend.Catalog.NotFound</code>：创建时 catalog_id 不存在</li>
+</ul>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">409<!-- --> </strong><div html="&lt;p&gt;PUT 或启停动作发生并发更新冲突。errcode：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.CatalogMismatch&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.EnabledFieldNotAllowed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.UpdateConflict&lt;/code&gt;：PUT 的 &lt;code&gt;expected_update_time&lt;/code&gt; 与当前版本不一致，
+或启停动作读取后调度已被并发更新&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>PUT 或启停动作发生并发更新冲突。errcode：</p>
+<ul>
+<li><code>VegaBackend.DiscoverSchedule.CatalogMismatch</code></li>
+<li><code>VegaBackend.DiscoverSchedule.EnabledFieldNotAllowed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.UpdateConflict</code>：PUT 的 <code>expected_update_time</code> 与当前版本不一致，
+或启停动作读取后调度已被并发更新</li>
+</ul>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">500<!-- --> </strong><div html="&lt;p&gt;服务内部错误。常见 errcode：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.GetFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.CreateFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.UpdateFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.DeleteFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.GetAccountNamesFailed&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>服务内部错误。常见 errcode：</p>
+<ul>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.GetFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.CreateFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.UpdateFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.DeleteFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.GetAccountNamesFailed</code></li>
+</ul>
+</div></button></div></div></div><div class="sc-jSgsbC sc-gKscir kWQHAp jYdWFY"><div class="sc-fXozIE gnyOsi"><button class="sc-jXkukm eJFCKx"><span type="get" class="sc-eFucnX iykXxP http-verb get">get</span><span class="sc-FyhMp kmRXcZ">/discover-schedules/{id}</span><svg class="sc-dQoBM dvMtUQ" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmlIYk AnL"><div class="sc-ljRaAR gjZMty"><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div><div tabindex="0" role="button"><div class="sc-jmhDzS eFxVeO"><span>/api/vega-backend/v1</span>/discover-schedules/{id}</div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_175q_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_175q_0" tabindex="0" data-rttab="true">200</li><li class="tab-error" role="tab" id="tab_R_175q_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_175q_1" data-rttab="true">401</li><li class="tab-error" role="tab" id="tab_R_175q_2" aria-selected="false" aria-disabled="false" aria-controls="panel_R_175q_2" data-rttab="true">404</li><li class="tab-error" role="tab" id="tab_R_175q_3" aria-selected="false" aria-disabled="false" aria-controls="panel_R_175q_3" data-rttab="true">409</li><li class="tab-error" role="tab" id="tab_R_175q_4" aria-selected="false" aria-disabled="false" aria-controls="panel_R_175q_4" data-rttab="true">500</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_175q_0" aria-labelledby="tab_R_175q_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"catalog_id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"catalog_name"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"cron_expr"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"start_time"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"end_time"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"enabled"</span>: <span class="token boolean">true</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"strategy"</span>: <span class="token string">&quot;full_sync&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"last_run"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"next_run"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"creator"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"type"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"create_time"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"updater"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"type"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"update_time"</span>: <span class="token number">0</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_175q_1" aria-labelledby="tab_R_175q_1"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_175q_2" aria-labelledby="tab_R_175q_2"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_175q_3" aria-labelledby="tab_R_175q_3"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_175q_4" aria-labelledby="tab_R_175q_4"></div></div></div></div></div></div><div id="/paths/~1discover-schedules~1{id}/put" data-section-id="/paths/~1discover-schedules~1{id}/put" class="sc-eCsseJ hxxgNd"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#/paths/~1discover-schedules~1{id}/put" aria-label="/paths/~1discover-schedules~1{id}/put"></a>严格更新调度<!-- --> </h2><div class="sc-iGcuFr iTRatv"><div html="&lt;p&gt;&lt;strong&gt;严格全量替换&lt;/strong&gt;，&lt;strong&gt;只允许变更&amp;quot;配置&amp;quot;字段&lt;/strong&gt;（&lt;code&gt;name&lt;/code&gt; / &lt;code&gt;cron_expr&lt;/code&gt; / &lt;code&gt;strategies&lt;/code&gt; /
+&lt;code&gt;start_time&lt;/code&gt; / &lt;code&gt;end_time&lt;/code&gt;）。下列字段约束如下：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;字段&lt;/th&gt;
+&lt;th&gt;约束&lt;/th&gt;
+&lt;th&gt;失败 errcode&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;catalog_id&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;必须显式携带且等于当前值（空串 / 缺失同样视为不一致）&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;DiscoverSchedule.CatalogMismatch&lt;/code&gt;（409）&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;enabled&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;必须与当前一致；状态切换走 &lt;code&gt;POST .../enable&lt;/code&gt; &lt;code&gt;disable&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;DiscoverSchedule.EnabledFieldNotAllowed&lt;/code&gt;（409）&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;&lt;/table&gt;
+&lt;p&gt;&lt;code&gt;id&lt;/code&gt; 字段在 body 中携带时被忽略，path 为权威来源。其它系统维护字段
+（&lt;code&gt;last_run&lt;/code&gt; / &lt;code&gt;next_run&lt;/code&gt; / 时间戳 / 操作者）携带时静默忽略；其中
+&lt;code&gt;expected_update_time&lt;/code&gt; 是更新前置条件，不属于被忽略的系统维护字段。&lt;/p&gt;
+&lt;p&gt;必须传入 &lt;code&gt;expected_update_time&lt;/code&gt; 进行乐观并发控制。该值应取自最近一次查询响应的
+&lt;code&gt;update_time&lt;/code&gt;；若计划已被其他请求更新，返回 409
+&lt;code&gt;VegaBackend.DiscoverSchedule.UpdateConflict&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;更新会重新计算数据库中的 &lt;code&gt;next_run&lt;/code&gt;，worker 无需维护进程内调度状态。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p><strong>严格全量替换</strong>，<strong>只允许变更&quot;配置&quot;字段</strong>（<code>name</code> / <code>cron_expr</code> / <code>strategies</code> /
+<code>start_time</code> / <code>end_time</code>）。下列字段约束如下：</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>约束</th>
+<th>失败 errcode</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>catalog_id</code></td>
+<td>必须显式携带且等于当前值（空串 / 缺失同样视为不一致）</td>
+<td><code>DiscoverSchedule.CatalogMismatch</code>（409）</td>
+</tr>
+<tr>
+<td><code>enabled</code></td>
+<td>必须与当前一致；状态切换走 <code>POST .../enable</code> <code>disable</code></td>
+<td><code>DiscoverSchedule.EnabledFieldNotAllowed</code>（409）</td>
+</tr>
+</tbody></table>
+<p><code>id</code> 字段在 body 中携带时被忽略，path 为权威来源。其它系统维护字段
+（<code>last_run</code> / <code>next_run</code> / 时间戳 / 操作者）携带时静默忽略；其中
+<code>expected_update_time</code> 是更新前置条件，不属于被忽略的系统维护字段。</p>
+<p>必须传入 <code>expected_update_time</code> 进行乐观并发控制。该值应取自最近一次查询响应的
+<code>update_time</code>；若计划已被其他请求更新，返回 409
+<code>VegaBackend.DiscoverSchedule.UpdateConflict</code>。</p>
+<p>更新会重新计算数据库中的 <code>next_run</code>，worker 无需维护进程内调度状态。</p>
+</div></div><div class="sc-fvhGkJ bhICnb"><div class="sc-dacGni hnzXSU"><h5 class="sc-iqHZue sc-jQbHUc iFTCOQ htSlhJ">Authorizations:</h5><svg class="sc-dQoBM dHiXwH" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jUEocL jnRUlI"><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>OAuth2</i></span></span></div></div><div><h5 class="sc-iqHZue iFTCOQ">path<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class="last "><td kind="field" title="id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">id</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;DiscoverSchedule ID&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>DiscoverSchedule ID</p>
+</div></div></div></td></tr></tbody></table></div><h5 class="sc-iqHZue iFTCOQ">Request Body schema: <span class="sc-gWHgjU eBDHRN">application/json</span><div class="sc-gTgAvG sc-eJMOEj sc-dUrlDD gCMUGw egFobb eEdthm">required</div></h5><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><table class="sc-hHfrpe juzVUC"><tbody><tr class=""><td kind="field" title="expected_update_time" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">expected_update_time</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">integer</span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA"> <!-- -->&lt;<!-- -->int64<!-- -->&gt;<!-- --> </span><span> <span class="sc-gTgAvG sc-clsJvZ gCMUGw gAOGaI"> <!-- -->&gt;= 1<!-- --> </span></span></div> <div><div html="&lt;p&gt;仅 PUT 使用的必填乐观锁版本，取自最近一次查询响应的 &lt;code&gt;update_time&lt;/code&gt;&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>仅 PUT 使用的必填乐观锁版本，取自最近一次查询响应的 <code>update_time</code></p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="name" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">name</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span><span> <span class="sc-gTgAvG sc-clsJvZ gCMUGw gAOGaI"> <!-- -->&lt;= 255 characters<!-- --> </span></span></div> <div><div html="&lt;p&gt;调度名称，必填，最大长度 255&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>调度名称，必填，最大长度 255</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="catalog_id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">catalog_id</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;关联 catalog；创建必填，PUT 时必须与当前一致&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>关联 catalog；创建必填，PUT 时必须与当前一致</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="cron_expr" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">cron_expr</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;标准 5 字段 cron 表达式（必填），相邻两次触发至少间隔 1 小时&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>标准 5 字段 cron 表达式（必填），相邻两次触发至少间隔 1 小时</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="start_time" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">start_time</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">integer</span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA"> <!-- -->&lt;<!-- -->int64<!-- -->&gt;<!-- --> </span><span> <span class="sc-gTgAvG sc-clsJvZ gCMUGw gAOGaI"> <!-- -->&gt;= 0<!-- --> </span></span></div> <div><div html="&lt;p&gt;调度生效起始时间，毫秒时间戳；0 表示无起始限制。须 ≥ 0&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>调度生效起始时间，毫秒时间戳；0 表示无起始限制。须 ≥ 0</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="end_time" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">end_time</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">integer</span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA"> <!-- -->&lt;<!-- -->int64<!-- -->&gt;<!-- --> </span><span> <span class="sc-gTgAvG sc-clsJvZ gCMUGw gAOGaI"> <!-- -->&gt;= 0<!-- --> </span></span></div> <div><div html="&lt;p&gt;调度结束时间，毫秒时间戳；0 表示无结束时间。
+须 ≥ 0，且 &lt;code&gt;end_time&amp;gt;0&lt;/code&gt; 时要求 &lt;code&gt;start_time ≤ end_time&lt;/code&gt;&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>调度结束时间，毫秒时间戳；0 表示无结束时间。
+须 ≥ 0，且 <code>end_time&gt;0</code> 时要求 <code>start_time ≤ end_time</code></p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="enabled" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">enabled</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">boolean</span></div> <div><div html="&lt;p&gt;创建时可选（默认 false）；PUT 时必须与当前一致，否则 409 EnabledFieldNotAllowed&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>创建时可选（默认 false）；PUT 时必须与当前一致，否则 409 EnabledFieldNotAllowed</p>
+</div></div></div></td></tr><tr class="last "><td kind="field" title="strategy" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">strategy</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Enum<!-- -->:</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;full_sync&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;create_only&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;cleanup_only&quot;</span> </div> <div><div html="&lt;p&gt;发现策略；省略时服务端默认 &lt;code&gt;full_sync&lt;/code&gt;&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>发现策略；省略时服务端默认 <code>full_sync</code></p>
+</div></div></div></td></tr></tbody></table><div><h3 class="sc-fHYzZk ihqrCS">Responses</h3><div><button class="sc-cbDJdZ dFAghD" disabled=""><strong class="sc-fWPeRB mtsUp">204<!-- --> </strong><div html="&lt;p&gt;更新成功&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>更新成功</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">400<!-- --> </strong><div html="&lt;p&gt;请求参数 / 请求体非法。常见 errcode：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.InvalidParameter.RequestBody&lt;/code&gt;：body schema 不合法&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InvalidCronExpr&lt;/code&gt;：cron 表达式非法&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InvalidStrategies&lt;/code&gt;：strategies 元素非法&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InvalidTimeRange&lt;/code&gt;：&lt;code&gt;start_time&lt;/code&gt; / &lt;code&gt;end_time&lt;/code&gt; 非法&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>请求参数 / 请求体非法。常见 errcode：</p>
+<ul>
+<li><code>VegaBackend.InvalidParameter.RequestBody</code>：body schema 不合法</li>
+<li><code>VegaBackend.DiscoverSchedule.InvalidCronExpr</code>：cron 表达式非法</li>
+<li><code>VegaBackend.DiscoverSchedule.InvalidStrategies</code>：strategies 元素非法</li>
+<li><code>VegaBackend.DiscoverSchedule.InvalidTimeRange</code>：<code>start_time</code> / <code>end_time</code> 非法</li>
+</ul>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">401<!-- --> </strong><div html="&lt;p&gt;未授权（OAuth Token 校验失败）&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>未授权（OAuth Token 校验失败）</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">404<!-- --> </strong><div html="&lt;p&gt;资源不存在。errcode：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.NotFound&lt;/code&gt;：schedule id 不存在&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.Catalog.NotFound&lt;/code&gt;：创建时 catalog_id 不存在&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>资源不存在。errcode：</p>
+<ul>
+<li><code>VegaBackend.DiscoverSchedule.NotFound</code>：schedule id 不存在</li>
+<li><code>VegaBackend.Catalog.NotFound</code>：创建时 catalog_id 不存在</li>
+</ul>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">406<!-- --> </strong><div html="&lt;p&gt;Content-Type 不是 application/json&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>Content-Type 不是 application/json</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">409<!-- --> </strong><div html="&lt;p&gt;PUT 或启停动作发生并发更新冲突。errcode：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.CatalogMismatch&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.EnabledFieldNotAllowed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.UpdateConflict&lt;/code&gt;：PUT 的 &lt;code&gt;expected_update_time&lt;/code&gt; 与当前版本不一致，
+或启停动作读取后调度已被并发更新&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>PUT 或启停动作发生并发更新冲突。errcode：</p>
+<ul>
+<li><code>VegaBackend.DiscoverSchedule.CatalogMismatch</code></li>
+<li><code>VegaBackend.DiscoverSchedule.EnabledFieldNotAllowed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.UpdateConflict</code>：PUT 的 <code>expected_update_time</code> 与当前版本不一致，
+或启停动作读取后调度已被并发更新</li>
+</ul>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">500<!-- --> </strong><div html="&lt;p&gt;服务内部错误。常见 errcode：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.GetFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.CreateFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.UpdateFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.DeleteFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.GetAccountNamesFailed&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>服务内部错误。常见 errcode：</p>
+<ul>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.GetFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.CreateFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.UpdateFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.DeleteFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.GetAccountNamesFailed</code></li>
+</ul>
+</div></button></div></div></div><div class="sc-jSgsbC sc-gKscir kWQHAp jYdWFY"><div class="sc-fXozIE gnyOsi"><button class="sc-jXkukm eJFCKx"><span type="put" class="sc-eFucnX fpxrAS http-verb put">put</span><span class="sc-FyhMp kmRXcZ">/discover-schedules/{id}</span><svg class="sc-dQoBM dvMtUQ" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmlIYk AnL"><div class="sc-ljRaAR gjZMty"><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div><div tabindex="0" role="button"><div class="sc-jmhDzS eFxVeO"><span>/api/vega-backend/v1</span>/discover-schedules/{id}</div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Request samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="react-tabs__tab react-tabs__tab--selected" role="tab" id="tab_R_156a_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_156a_0" tabindex="0" data-rttab="true">Payload</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_156a_0" aria-labelledby="tab_R_156a_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"expected_update_time"</span>: <span class="token number">1</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"catalog_id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"cron_expr"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"start_time"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"end_time"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"enabled"</span>: <span class="token boolean">true</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"strategy"</span>: <span class="token string">&quot;full_sync&quot;</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-error react-tabs__tab--selected" role="tab" id="tab_R_176a_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_176a_0" tabindex="0" data-rttab="true">400</li><li class="tab-error" role="tab" id="tab_R_176a_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_176a_1" data-rttab="true">401</li><li class="tab-error" role="tab" id="tab_R_176a_2" aria-selected="false" aria-disabled="false" aria-controls="panel_R_176a_2" data-rttab="true">404</li><li class="tab-error" role="tab" id="tab_R_176a_3" aria-selected="false" aria-disabled="false" aria-controls="panel_R_176a_3" data-rttab="true">406</li><li class="tab-error" role="tab" id="tab_R_176a_4" aria-selected="false" aria-disabled="false" aria-controls="panel_R_176a_4" data-rttab="true">409</li><li class="tab-error" role="tab" id="tab_R_176a_5" aria-selected="false" aria-disabled="false" aria-controls="panel_R_176a_5" data-rttab="true">500</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_176a_0" aria-labelledby="tab_R_176a_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"error_code"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"description"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"solution"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"error_link"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"error_details"</span>: <span class="token keyword">null</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_176a_1" aria-labelledby="tab_R_176a_1"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_176a_2" aria-labelledby="tab_R_176a_2"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_176a_3" aria-labelledby="tab_R_176a_3"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_176a_4" aria-labelledby="tab_R_176a_4"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_176a_5" aria-labelledby="tab_R_176a_5"></div></div></div></div></div></div><div id="/paths/~1discover-schedules~1{id}/delete" data-section-id="/paths/~1discover-schedules~1{id}/delete" class="sc-eCsseJ hxxgNd"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#/paths/~1discover-schedules~1{id}/delete" aria-label="/paths/~1discover-schedules~1{id}/delete"></a>删除调度<!-- --> </h2><div class="sc-iGcuFr iTRatv"><div html="&lt;p&gt;删除 DiscoverSchedule。数据库是调度状态的唯一事实源，删除后 worker 不再获取该计划。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;不删除已有 DiscoverTask 历史&lt;/strong&gt;——该 schedule 历史触发的 DiscoverTask 保留
+&lt;code&gt;schedule_id&lt;/code&gt; 字段作为孤儿引用，便于审计追溯。正在执行的 DiscoverTask 不受影响。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>删除 DiscoverSchedule。数据库是调度状态的唯一事实源，删除后 worker 不再获取该计划。</p>
+<p><strong>不删除已有 DiscoverTask 历史</strong>——该 schedule 历史触发的 DiscoverTask 保留
+<code>schedule_id</code> 字段作为孤儿引用，便于审计追溯。正在执行的 DiscoverTask 不受影响。</p>
+</div></div><div class="sc-fvhGkJ bhICnb"><div class="sc-dacGni hnzXSU"><h5 class="sc-iqHZue sc-jQbHUc iFTCOQ htSlhJ">Authorizations:</h5><svg class="sc-dQoBM dHiXwH" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jUEocL jnRUlI"><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>OAuth2</i></span></span></div></div><div><h5 class="sc-iqHZue iFTCOQ">path<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class="last "><td kind="field" title="id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">id</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;DiscoverSchedule ID&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>DiscoverSchedule ID</p>
+</div></div></div></td></tr></tbody></table></div><div><h3 class="sc-fHYzZk ihqrCS">Responses</h3><div><button class="sc-cbDJdZ dFAghD" disabled=""><strong class="sc-fWPeRB mtsUp">204<!-- --> </strong><div html="&lt;p&gt;删除成功&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>删除成功</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">401<!-- --> </strong><div html="&lt;p&gt;未授权（OAuth Token 校验失败）&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>未授权（OAuth Token 校验失败）</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">404<!-- --> </strong><div html="&lt;p&gt;资源不存在。errcode：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.NotFound&lt;/code&gt;：schedule id 不存在&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.Catalog.NotFound&lt;/code&gt;：创建时 catalog_id 不存在&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>资源不存在。errcode：</p>
+<ul>
+<li><code>VegaBackend.DiscoverSchedule.NotFound</code>：schedule id 不存在</li>
+<li><code>VegaBackend.Catalog.NotFound</code>：创建时 catalog_id 不存在</li>
+</ul>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">500<!-- --> </strong><div html="&lt;p&gt;服务内部错误。常见 errcode：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.GetFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.CreateFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.UpdateFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.DeleteFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.GetAccountNamesFailed&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>服务内部错误。常见 errcode：</p>
+<ul>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.GetFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.CreateFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.UpdateFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.DeleteFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.GetAccountNamesFailed</code></li>
+</ul>
+</div></button></div></div></div><div class="sc-jSgsbC sc-gKscir kWQHAp jYdWFY"><div class="sc-fXozIE gnyOsi"><button class="sc-jXkukm eJFCKx"><span type="delete" class="sc-eFucnX btbfOP http-verb delete">delete</span><span class="sc-FyhMp kmRXcZ">/discover-schedules/{id}</span><svg class="sc-dQoBM dvMtUQ" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmlIYk AnL"><div class="sc-ljRaAR gjZMty"><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div><div tabindex="0" role="button"><div class="sc-jmhDzS eFxVeO"><span>/api/vega-backend/v1</span>/discover-schedules/{id}</div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-error react-tabs__tab--selected" role="tab" id="tab_R_176q_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_176q_0" tabindex="0" data-rttab="true">401</li><li class="tab-error" role="tab" id="tab_R_176q_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_176q_1" data-rttab="true">404</li><li class="tab-error" role="tab" id="tab_R_176q_2" aria-selected="false" aria-disabled="false" aria-controls="panel_R_176q_2" data-rttab="true">500</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_176q_0" aria-labelledby="tab_R_176q_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"error_code"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"description"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"solution"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"error_link"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"error_details"</span>: <span class="token keyword">null</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_176q_1" aria-labelledby="tab_R_176q_1"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_176q_2" aria-labelledby="tab_R_176q_2"></div></div></div></div></div></div><div id="/paths/~1discover-schedules~1{id}~1enable/post" data-section-id="/paths/~1discover-schedules~1{id}~1enable/post" class="sc-eCsseJ hxxgNd"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#/paths/~1discover-schedules~1{id}~1enable/post" aria-label="/paths/~1discover-schedules~1{id}~1enable/post"></a>启用调度<!-- --> </h2><div class="sc-iGcuFr iTRatv"><div html="&lt;p&gt;启用 DiscoverSchedule 并重新计算 &lt;code&gt;next_run&lt;/code&gt;。&lt;strong&gt;幂等&lt;/strong&gt;：对已 enable 的 schedule
+再 enable 返回 204，不报错。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>启用 DiscoverSchedule 并重新计算 <code>next_run</code>。<strong>幂等</strong>：对已 enable 的 schedule
+再 enable 返回 204，不报错。</p>
+</div></div><div class="sc-fvhGkJ bhICnb"><div class="sc-dacGni hnzXSU"><h5 class="sc-iqHZue sc-jQbHUc iFTCOQ htSlhJ">Authorizations:</h5><svg class="sc-dQoBM dHiXwH" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jUEocL jnRUlI"><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>OAuth2</i></span></span></div></div><div><h5 class="sc-iqHZue iFTCOQ">path<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class="last "><td kind="field" title="id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">id</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;DiscoverSchedule ID&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>DiscoverSchedule ID</p>
+</div></div></div></td></tr></tbody></table></div><div><h3 class="sc-fHYzZk ihqrCS">Responses</h3><div><button class="sc-cbDJdZ dFAghD" disabled=""><strong class="sc-fWPeRB mtsUp">204<!-- --> </strong><div html="&lt;p&gt;启用成功（含已启用的幂等返回）&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>启用成功（含已启用的幂等返回）</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">401<!-- --> </strong><div html="&lt;p&gt;未授权（OAuth Token 校验失败）&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>未授权（OAuth Token 校验失败）</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">404<!-- --> </strong><div html="&lt;p&gt;资源不存在。errcode：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.NotFound&lt;/code&gt;：schedule id 不存在&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.Catalog.NotFound&lt;/code&gt;：创建时 catalog_id 不存在&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>资源不存在。errcode：</p>
+<ul>
+<li><code>VegaBackend.DiscoverSchedule.NotFound</code>：schedule id 不存在</li>
+<li><code>VegaBackend.Catalog.NotFound</code>：创建时 catalog_id 不存在</li>
+</ul>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">409<!-- --> </strong><div html="&lt;p&gt;PUT 或启停动作发生并发更新冲突。errcode：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.CatalogMismatch&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.EnabledFieldNotAllowed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.UpdateConflict&lt;/code&gt;：PUT 的 &lt;code&gt;expected_update_time&lt;/code&gt; 与当前版本不一致，
+或启停动作读取后调度已被并发更新&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>PUT 或启停动作发生并发更新冲突。errcode：</p>
+<ul>
+<li><code>VegaBackend.DiscoverSchedule.CatalogMismatch</code></li>
+<li><code>VegaBackend.DiscoverSchedule.EnabledFieldNotAllowed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.UpdateConflict</code>：PUT 的 <code>expected_update_time</code> 与当前版本不一致，
+或启停动作读取后调度已被并发更新</li>
+</ul>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">500<!-- --> </strong><div html="&lt;p&gt;服务内部错误。常见 errcode：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.GetFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.CreateFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.UpdateFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.DeleteFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.GetAccountNamesFailed&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>服务内部错误。常见 errcode：</p>
+<ul>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.GetFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.CreateFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.UpdateFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.DeleteFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.GetAccountNamesFailed</code></li>
+</ul>
+</div></button></div></div></div><div class="sc-jSgsbC sc-gKscir kWQHAp jYdWFY"><div class="sc-fXozIE gnyOsi"><button class="sc-jXkukm eJFCKx"><span type="post" class="sc-eFucnX kcqnuN http-verb post">post</span><span class="sc-FyhMp kmRXcZ">/discover-schedules/{id}/enable</span><svg class="sc-dQoBM dvMtUQ" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmlIYk AnL"><div class="sc-ljRaAR gjZMty"><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div><div tabindex="0" role="button"><div class="sc-jmhDzS eFxVeO"><span>/api/vega-backend/v1</span>/discover-schedules/{id}/enable</div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-error react-tabs__tab--selected" role="tab" id="tab_R_177a_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_177a_0" tabindex="0" data-rttab="true">401</li><li class="tab-error" role="tab" id="tab_R_177a_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_177a_1" data-rttab="true">404</li><li class="tab-error" role="tab" id="tab_R_177a_2" aria-selected="false" aria-disabled="false" aria-controls="panel_R_177a_2" data-rttab="true">409</li><li class="tab-error" role="tab" id="tab_R_177a_3" aria-selected="false" aria-disabled="false" aria-controls="panel_R_177a_3" data-rttab="true">500</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_177a_0" aria-labelledby="tab_R_177a_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"error_code"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"description"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"solution"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"error_link"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"error_details"</span>: <span class="token keyword">null</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_177a_1" aria-labelledby="tab_R_177a_1"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_177a_2" aria-labelledby="tab_R_177a_2"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_177a_3" aria-labelledby="tab_R_177a_3"></div></div></div></div></div></div><div id="/paths/~1discover-schedules~1{id}~1disable/post" data-section-id="/paths/~1discover-schedules~1{id}~1disable/post" class="sc-eCsseJ hxxgNd"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#/paths/~1discover-schedules~1{id}~1disable/post" aria-label="/paths/~1discover-schedules~1{id}~1disable/post"></a>停用调度<!-- --> </h2><div class="sc-iGcuFr iTRatv"><div html="&lt;p&gt;停用 DiscoverSchedule；worker 仅扫描 enabled 计划。&lt;strong&gt;幂等&lt;/strong&gt;：对已 disable 的 schedule
+再 disable 返回 204，不报错。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;不影响已经入队 / 正在执行的 DiscoverTask&lt;/strong&gt;；这些任务执行时已经持有所需上下文。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>停用 DiscoverSchedule；worker 仅扫描 enabled 计划。<strong>幂等</strong>：对已 disable 的 schedule
+再 disable 返回 204，不报错。</p>
+<p><strong>不影响已经入队 / 正在执行的 DiscoverTask</strong>；这些任务执行时已经持有所需上下文。</p>
+</div></div><div class="sc-fvhGkJ bhICnb"><div class="sc-dacGni hnzXSU"><h5 class="sc-iqHZue sc-jQbHUc iFTCOQ htSlhJ">Authorizations:</h5><svg class="sc-dQoBM dHiXwH" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jUEocL jnRUlI"><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>OAuth2</i></span></span></div></div><div><h5 class="sc-iqHZue iFTCOQ">path<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class="last "><td kind="field" title="id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">id</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;DiscoverSchedule ID&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>DiscoverSchedule ID</p>
+</div></div></div></td></tr></tbody></table></div><div><h3 class="sc-fHYzZk ihqrCS">Responses</h3><div><button class="sc-cbDJdZ dFAghD" disabled=""><strong class="sc-fWPeRB mtsUp">204<!-- --> </strong><div html="&lt;p&gt;停用成功（含已停用的幂等返回）&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>停用成功（含已停用的幂等返回）</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">401<!-- --> </strong><div html="&lt;p&gt;未授权（OAuth Token 校验失败）&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>未授权（OAuth Token 校验失败）</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">404<!-- --> </strong><div html="&lt;p&gt;资源不存在。errcode：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.NotFound&lt;/code&gt;：schedule id 不存在&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.Catalog.NotFound&lt;/code&gt;：创建时 catalog_id 不存在&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>资源不存在。errcode：</p>
+<ul>
+<li><code>VegaBackend.DiscoverSchedule.NotFound</code>：schedule id 不存在</li>
+<li><code>VegaBackend.Catalog.NotFound</code>：创建时 catalog_id 不存在</li>
+</ul>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">409<!-- --> </strong><div html="&lt;p&gt;PUT 或启停动作发生并发更新冲突。errcode：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.CatalogMismatch&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.EnabledFieldNotAllowed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.UpdateConflict&lt;/code&gt;：PUT 的 &lt;code&gt;expected_update_time&lt;/code&gt; 与当前版本不一致，
+或启停动作读取后调度已被并发更新&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>PUT 或启停动作发生并发更新冲突。errcode：</p>
+<ul>
+<li><code>VegaBackend.DiscoverSchedule.CatalogMismatch</code></li>
+<li><code>VegaBackend.DiscoverSchedule.EnabledFieldNotAllowed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.UpdateConflict</code>：PUT 的 <code>expected_update_time</code> 与当前版本不一致，
+或启停动作读取后调度已被并发更新</li>
+</ul>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">500<!-- --> </strong><div html="&lt;p&gt;服务内部错误。常见 errcode：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.GetFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.CreateFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.UpdateFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.DeleteFailed&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.DiscoverSchedule.InternalError.GetAccountNamesFailed&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>服务内部错误。常见 errcode：</p>
+<ul>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.GetFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.CreateFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.UpdateFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.DeleteFailed</code></li>
+<li><code>VegaBackend.DiscoverSchedule.InternalError.GetAccountNamesFailed</code></li>
+</ul>
+</div></button></div></div></div><div class="sc-jSgsbC sc-gKscir kWQHAp jYdWFY"><div class="sc-fXozIE gnyOsi"><button class="sc-jXkukm eJFCKx"><span type="post" class="sc-eFucnX kcqnuN http-verb post">post</span><span class="sc-FyhMp kmRXcZ">/discover-schedules/{id}/disable</span><svg class="sc-dQoBM dvMtUQ" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmlIYk AnL"><div class="sc-ljRaAR gjZMty"><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div><div tabindex="0" role="button"><div class="sc-jmhDzS eFxVeO"><span>/api/vega-backend/v1</span>/discover-schedules/{id}/disable</div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-error react-tabs__tab--selected" role="tab" id="tab_R_177q_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_177q_0" tabindex="0" data-rttab="true">401</li><li class="tab-error" role="tab" id="tab_R_177q_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_177q_1" data-rttab="true">404</li><li class="tab-error" role="tab" id="tab_R_177q_2" aria-selected="false" aria-disabled="false" aria-controls="panel_R_177q_2" data-rttab="true">409</li><li class="tab-error" role="tab" id="tab_R_177q_3" aria-selected="false" aria-disabled="false" aria-controls="panel_R_177q_3" data-rttab="true">500</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_177q_0" aria-labelledby="tab_R_177q_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"error_code"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"description"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"solution"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"error_link"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"error_details"</span>: <span class="token keyword">null</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_177q_1" aria-labelledby="tab_R_177q_1"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_177q_2" aria-labelledby="tab_R_177q_2"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_177q_3" aria-labelledby="tab_R_177q_3"></div></div></div></div></div></div></div><div class="sc-elsZMO dQcVAt"></div></div></div>
+      <script>
+      const __redoc_state = {"menu":{"activeItemIdx":-1},"spec":{"data":{"openapi":"3.1.1","info":{"title":"DiscoverSchedule","description":"Vega Backend 资源发现调度（DiscoverSchedule）相关 API。\n\nDiscoverSchedule 是**cron 配置**实体，不直接承载执行：\n\n- 调度器到点触发后产出一条 `trigger_type=scheduled` 的 DiscoverTask（详见 [discover-task.yaml](discover-task.yaml)）\n- 用户通过本规范增删改查 DiscoverSchedule，通过 enable/disable 控制其是否生效\n- 一次性发现走 `POST /catalogs/{id}/discover`（[discover-task.yaml](discover-task.yaml) 末尾），不通过本规范\n\n每个 DiscoverSchedule 归属一个 Physical Catalog（多对一）。Logical Catalog 不支持发现调度，\n`catalog_id` 在创建后**不可修改**。\n\n端点设计遵循 [vega-backend/CLAUDE.md] 的\"端点设计规则\"——状态切换走动作端点\n`enable` / `disable`，与 ConnectorType 风格对齐；不暴露 `enabled` 字段为可写。\n\n**错误码新增** `VegaBackend.DiscoverSchedule.*` 系列，与其它资源解耦。\n","version":"0.1.0"},"servers":[{"url":"/api/vega-backend/v1"}],"security":[{"OAuth2":[]}],"paths":{"/discover-schedules":{"post":{"summary":"创建发现调度","description":"创建 DiscoverSchedule。`name` 与 `catalog_id` 必填，catalog 必须存在且类型为 physical；不存在返回\n404 `VegaBackend.Catalog.NotFound`，logical catalog 返回 400。\n\n- body 中 `enabled=true` 时，worker 会在 `next_run` 到期后触发；`false` 时不会触发。\n- `cron_expr` 必填，标准 5 字段格式，相邻两次触发至少间隔 1 小时；非法或过于频繁时返回\n  400 `VegaBackend.DiscoverSchedule.InvalidCronExpr`。\n- `strategies` 可空（表示全部）；非空时元素必须是 `insert` / `delete` / `update` 的子集。\n- `start_time` / `end_time` 均 ≥ 0；`end_time>0` 时要求 `start_time ≤ end_time`；非法返回\n  400 `VegaBackend.DiscoverSchedule.InvalidTimeRange`。\n","requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/DiscoverScheduleRequest"}}}},"responses":{"201":{"description":"创建成功","content":{"application/json":{"schema":{"type":"object","required":["id"],"properties":{"id":{"description":"新建 DiscoverSchedule 的 ID","type":"string"}}}}}},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"404":{"$ref":"#/components/responses/NotFound"},"406":{"$ref":"#/components/responses/NotAcceptable"},"500":{"$ref":"#/components/responses/InternalServerError"}}},"get":{"summary":"获取调度列表","description":"分页 + filter 获取 DiscoverSchedule 列表；支持按 name 模糊过滤。","parameters":[{"name":"name","description":"按名称模糊过滤，匹配名称中包含该值的调度","in":"query","schema":{"type":"string"}},{"name":"catalog_id","description":"按归属 catalog 过滤","in":"query","schema":{"type":"string"}},{"name":"enabled","description":"按启用状态过滤；不传表示不过滤","in":"query","schema":{"type":"boolean"}},{"name":"offset","description":"分页偏移量，>=0，默认 0","in":"query","schema":{"type":"integer","format":"int64","minimum":0,"default":0}},{"name":"limit","description":"每页数量，1-1000，-1 表示不分页，默认 20","in":"query","schema":{"type":"integer","format":"int64","default":20}},{"name":"sort","description":"排序字段","in":"query","schema":{"type":"string","enum":["name","create_time","update_time","next_run"],"default":"update_time"}},{"name":"direction","description":"排序方向","in":"query","schema":{"type":"string","enum":["asc","desc"],"default":"desc"}}],"responses":{"200":{"description":"ok","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ListDiscoverSchedules"}}}},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"500":{"$ref":"#/components/responses/InternalServerError"}}}},"/discover-schedules/{id}":{"parameters":[{"name":"id","description":"DiscoverSchedule ID","in":"path","required":true,"schema":{"type":"string"}}],"get":{"summary":"获取调度详情","responses":{"200":{"description":"ok","content":{"application/json":{"schema":{"$ref":"#/components/schemas/DiscoverSchedule"}}}},"401":{"$ref":"#/components/responses/Unauthorized"},"404":{"$ref":"#/components/responses/NotFound"},"409":{"$ref":"#/components/responses/Conflict"},"500":{"$ref":"#/components/responses/InternalServerError"}}},"put":{"summary":"严格更新调度","description":"**严格全量替换**，**只允许变更\"配置\"字段**（`name` / `cron_expr` / `strategies` /\n`start_time` / `end_time`）。下列字段约束如下：\n\n| 字段 | 约束 | 失败 errcode |\n|---|---|---|\n| `catalog_id` | 必须显式携带且等于当前值（空串 / 缺失同样视为不一致） | `DiscoverSchedule.CatalogMismatch`（409） |\n| `enabled` | 必须与当前一致；状态切换走 `POST .../enable` `disable` | `DiscoverSchedule.EnabledFieldNotAllowed`（409） |\n\n`id` 字段在 body 中携带时被忽略，path 为权威来源。其它系统维护字段\n（`last_run` / `next_run` / 时间戳 / 操作者）携带时静默忽略；其中\n`expected_update_time` 是更新前置条件，不属于被忽略的系统维护字段。\n\n必须传入 `expected_update_time` 进行乐观并发控制。该值应取自最近一次查询响应的\n`update_time`；若计划已被其他请求更新，返回 409\n`VegaBackend.DiscoverSchedule.UpdateConflict`。\n\n更新会重新计算数据库中的 `next_run`，worker 无需维护进程内调度状态。\n","requestBody":{"required":true,"content":{"application/json":{"schema":{"allOf":[{"$ref":"#/components/schemas/DiscoverScheduleRequest"},{"type":"object","required":["expected_update_time"]}]}}}},"responses":{"204":{"description":"更新成功"},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"404":{"$ref":"#/components/responses/NotFound"},"406":{"$ref":"#/components/responses/NotAcceptable"},"409":{"$ref":"#/components/responses/Conflict"},"500":{"$ref":"#/components/responses/InternalServerError"}}},"delete":{"summary":"删除调度","description":"删除 DiscoverSchedule。数据库是调度状态的唯一事实源，删除后 worker 不再获取该计划。\n\n**不删除已有 DiscoverTask 历史**——该 schedule 历史触发的 DiscoverTask 保留\n`schedule_id` 字段作为孤儿引用，便于审计追溯。正在执行的 DiscoverTask 不受影响。\n","responses":{"204":{"description":"删除成功"},"401":{"$ref":"#/components/responses/Unauthorized"},"404":{"$ref":"#/components/responses/NotFound"},"500":{"$ref":"#/components/responses/InternalServerError"}}}},"/discover-schedules/{id}/enable":{"parameters":[{"name":"id","description":"DiscoverSchedule ID","in":"path","required":true,"schema":{"type":"string"}}],"post":{"summary":"启用调度","description":"启用 DiscoverSchedule 并重新计算 `next_run`。**幂等**：对已 enable 的 schedule\n再 enable 返回 204，不报错。\n","responses":{"204":{"description":"启用成功（含已启用的幂等返回）"},"401":{"$ref":"#/components/responses/Unauthorized"},"404":{"$ref":"#/components/responses/NotFound"},"409":{"$ref":"#/components/responses/Conflict"},"500":{"$ref":"#/components/responses/InternalServerError"}}}},"/discover-schedules/{id}/disable":{"parameters":[{"name":"id","description":"DiscoverSchedule ID","in":"path","required":true,"schema":{"type":"string"}}],"post":{"summary":"停用调度","description":"停用 DiscoverSchedule；worker 仅扫描 enabled 计划。**幂等**：对已 disable 的 schedule\n再 disable 返回 204，不报错。\n\n**不影响已经入队 / 正在执行的 DiscoverTask**；这些任务执行时已经持有所需上下文。\n","responses":{"204":{"description":"停用成功（含已停用的幂等返回）"},"401":{"$ref":"#/components/responses/Unauthorized"},"404":{"$ref":"#/components/responses/NotFound"},"409":{"$ref":"#/components/responses/Conflict"},"500":{"$ref":"#/components/responses/InternalServerError"}}}}},"components":{"securitySchemes":{"OAuth2":{"type":"oauth2","description":"OAuth2 authentication for public APIs.","flows":{"clientCredentials":{"tokenUrl":"/oauth2/token","scopes":{}}}}},"responses":{"BadRequest":{"description":"请求参数 / 请求体非法。常见 errcode：\n- `VegaBackend.InvalidParameter.RequestBody`：body schema 不合法\n- `VegaBackend.DiscoverSchedule.InvalidCronExpr`：cron 表达式非法\n- `VegaBackend.DiscoverSchedule.InvalidStrategies`：strategies 元素非法\n- `VegaBackend.DiscoverSchedule.InvalidTimeRange`：`start_time` / `end_time` 非法\n","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},"Unauthorized":{"description":"未授权（OAuth Token 校验失败）","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},"NotFound":{"description":"资源不存在。errcode：\n- `VegaBackend.DiscoverSchedule.NotFound`：schedule id 不存在\n- `VegaBackend.Catalog.NotFound`：创建时 catalog_id 不存在\n","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},"NotAcceptable":{"description":"Content-Type 不是 application/json","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},"Conflict":{"description":"PUT 或启停动作发生并发更新冲突。errcode：\n- `VegaBackend.DiscoverSchedule.CatalogMismatch`\n- `VegaBackend.DiscoverSchedule.EnabledFieldNotAllowed`\n- `VegaBackend.DiscoverSchedule.UpdateConflict`：PUT 的 `expected_update_time` 与当前版本不一致，\n  或启停动作读取后调度已被并发更新\n","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},"InternalServerError":{"description":"服务内部错误。常见 errcode：\n- `VegaBackend.DiscoverSchedule.InternalError.GetFailed`\n- `VegaBackend.DiscoverSchedule.InternalError.CreateFailed`\n- `VegaBackend.DiscoverSchedule.InternalError.UpdateFailed`\n- `VegaBackend.DiscoverSchedule.InternalError.DeleteFailed`\n- `VegaBackend.DiscoverSchedule.InternalError.GetAccountNamesFailed`\n","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}}},"schemas":{"AccountInfo":{"description":"操作者信息","type":"object","required":["id","type"],"properties":{"id":{"type":"string"},"type":{"type":"string"},"name":{"type":"string"}}},"DiscoverSchedule":{"description":"发现调度实体","type":"object","required":["id","name","catalog_id","cron_expr","enabled","strategy","creator","create_time","updater","update_time"],"properties":{"id":{"description":"全局唯一 ID","type":"string"},"name":{"description":"调度名称","type":"string","maxLength":255},"catalog_id":{"description":"关联 catalog；创建后**不可修改**","type":"string"},"catalog_name":{"description":"关联 catalog 名称","type":"string"},"cron_expr":{"description":"标准 5 字段 cron 表达式","type":"string"},"start_time":{"description":"调度生效起始时间，毫秒时间戳；0 表示无起始限制。\n调度器到点触发时，若当前时间小于 `start_time` 则跳过本次执行。\n","type":"integer","format":"int64","minimum":0},"end_time":{"description":"调度结束时间，毫秒时间戳；0 表示无结束时间。\nworker 扫描到期计划时，若当前时间大于 `end_time` 则**自动 disable** 该 schedule。\n","type":"integer","format":"int64","minimum":0},"enabled":{"description":"是否启用；**只读**输出字段，状态切换走 `POST .../enable` `POST .../disable`\n","type":"boolean"},"strategy":{"description":"发现策略；创建或更新时省略则默认为 `full_sync`","type":"string","enum":["full_sync","create_only","cleanup_only"]},"last_run":{"description":"上次执行时间，毫秒时间戳；系统维护","type":"integer","format":"int64"},"next_run":{"description":"下次预计执行时间，毫秒时间戳；系统维护","type":"integer","format":"int64"},"creator":{"$ref":"#/components/schemas/AccountInfo"},"create_time":{"description":"创建时间，毫秒时间戳","type":"integer","format":"int64"},"updater":{"$ref":"#/components/schemas/AccountInfo"},"update_time":{"description":"更新时间，毫秒时间戳","type":"integer","format":"int64"}}},"DiscoverScheduleRequest":{"description":"创建 / 更新请求体。\n\n- 创建时 `name`、`catalog_id` 与 `cron_expr` 必填；`enabled` 默认 false（可同时传 true 一步启用）\n- PUT 时 `catalog_id` 必填且必须与当前一致（空串 / 缺失视为不一致 → 409 CatalogMismatch）；\n  `enabled` 必须与当前一致（否则 409 EnabledFieldNotAllowed）。\n","type":"object","required":["name","catalog_id","cron_expr"],"properties":{"expected_update_time":{"description":"仅 PUT 使用的必填乐观锁版本，取自最近一次查询响应的 `update_time`","type":"integer","format":"int64","minimum":1},"name":{"description":"调度名称，必填，最大长度 255","type":"string","maxLength":255},"catalog_id":{"description":"关联 catalog；创建必填，PUT 时必须与当前一致","type":"string"},"cron_expr":{"description":"标准 5 字段 cron 表达式（必填），相邻两次触发至少间隔 1 小时","type":"string"},"start_time":{"description":"调度生效起始时间，毫秒时间戳；0 表示无起始限制。须 ≥ 0","type":"integer","format":"int64","minimum":0},"end_time":{"description":"调度结束时间，毫秒时间戳；0 表示无结束时间。\n须 ≥ 0，且 `end_time>0` 时要求 `start_time ≤ end_time`\n","type":"integer","format":"int64","minimum":0},"enabled":{"description":"创建时可选（默认 false）；PUT 时必须与当前一致，否则 409 EnabledFieldNotAllowed\n","type":"boolean"},"strategy":{"description":"发现策略；省略时服务端默认 `full_sync`","type":"string","enum":["full_sync","create_only","cleanup_only"]}}},"ListDiscoverSchedules":{"description":"调度列表响应","type":"object","required":["entries","total_count"],"properties":{"entries":{"type":"array","items":{"$ref":"#/components/schemas/DiscoverSchedule"}},"total_count":{"type":"integer","format":"int64"}}},"Error":{"description":"Common error response serialized from `comm-go/rest.BaseError`.\n","type":"object","required":["error_code","description","solution","error_link","error_details"],"properties":{"error_code":{"type":"string","description":"Machine-readable error code."},"description":{"type":"string","description":"Human-readable error description."},"solution":{"type":"string","description":"Recommended remediation."},"error_link":{"type":"string","description":"Link to detailed error documentation."},"error_details":{"description":"Error details with a service-defined type."}}}}}}},"searchIndex":{"store":["/paths/~1discover-schedules/post","/paths/~1discover-schedules/get","/paths/~1discover-schedules~1{id}/get","/paths/~1discover-schedules~1{id}/put","/paths/~1discover-schedules~1{id}/delete","/paths/~1discover-schedules~1{id}~1enable/post","/paths/~1discover-schedules~1{id}~1disable/post"],"index":{"version":"2.3.9","fields":["title","description"],"fieldVectors":[["title/0",[0,0.342]],["description/0",[0,0.684,1,1.124,2,0.781,3,1.723,4,1.124,5,1.124,6,1.124,7,2.094,8,0.781,9,1.124,10,0.781,11,0.555,12,1.124,13,0.781,14,1.124,15,1.124,16,1.124,17,0.781,18,1.124,19,1.124,20,1.124,21,1.197,22,1.197,23,1.124,24,1.124,25,0.781]],["title/1",[0,0.342]],["description/1",[0,0.667,25,1.565,26,2.252,27,1.112,28,1.565]],["title/2",[0,0.342]],["description/2",[29,1.36]],["title/3",[0,0.342]],["description/3",[0,0.702,2,0.716,8,0.716,11,0.509,13,0.716,17,0.716,21,0.716,22,0.716,28,0.716,29,0.509,30,1.03,31,1.03,32,0.795,33,1.03,34,0.716,35,1.03,36,1.03,37,1.03,38,1.03,39,1.61,40,1.03,41,1.03,42,1.03,43,1.03]],["title/4",[0,0.342]],["description/4",[0,0.676,10,1.349,27,0.959,29,0.959,44,1.97,45,0.959,46,1.942]],["title/5",[0,0.342]],["description/5",[0,0.654,11,1.041,27,1.041,32,1.324,45,1.041,47,1.464,48,2.108]],["title/6",[0,0.342]],["description/6",[0,0.681,32,0.941,34,1.744,44,1.323,45,0.941,47,1.323,49,1.904,50,1.904]]],"invertedIndex":[["",{"_index":0,"title":{"0":{},"1":{},"2":{},"3":{},"4":{},"5":{},"6":{}},"description":{"0":{},"1":{},"3":{},"4":{},"5":{},"6":{}}}],["0；`end_time>0",{"_index":23,"title":{},"description":{"0":{}}}],["1",{"_index":15,"title":{},"description":{"0":{}}}],["204",{"_index":47,"title":{},"description":{"5":{},"6":{}}}],["400",{"_index":7,"title":{},"description":{"0":{}}}],["404",{"_index":5,"title":{},"description":{"0":{}}}],["409",{"_index":41,"title":{},"description":{"3":{}}}],["5",{"_index":14,"title":{},"description":{"0":{}}}],["bodi",{"_index":8,"title":{},"description":{"0":{},"3":{}}}],["catalog",{"_index":3,"title":{},"description":{"0":{}}}],["catalog_id",{"_index":2,"title":{},"description":{"0":{},"3":{}}}],["cron_expr",{"_index":13,"title":{},"description":{"0":{},"3":{}}}],["delet",{"_index":19,"title":{},"description":{"0":{}}}],["disabl",{"_index":34,"title":{},"description":{"3":{},"6":{}}}],["discover-schedul",{"_index":25,"title":{},"description":{"0":{},"1":{}}}],["discover-schedules/{id",{"_index":29,"title":{},"description":{"2":{},"3":{},"4":{}}}],["discover-schedules/{id}/dis",{"_index":50,"title":{},"description":{"6":{}}}],["discover-schedules/{id}/en",{"_index":48,"title":{},"description":{"5":{}}}],["discoverschedul",{"_index":27,"title":{},"description":{"1":{},"4":{},"5":{}}}],["discoverschedule.catalogmismatch`（409",{"_index":31,"title":{},"description":{"3":{}}}],["discoverschedule.enabledfieldnotallowed`（409",{"_index":35,"title":{},"description":{"3":{}}}],["discoverschedule。`nam",{"_index":1,"title":{},"description":{"0":{}}}],["discoverschedule；work",{"_index":49,"title":{},"description":{"6":{}}}],["discovertask",{"_index":44,"title":{},"description":{"4":{},"6":{}}}],["enabl",{"_index":32,"title":{},"description":{"3":{},"5":{},"6":{}}}],["enabled=tru",{"_index":9,"title":{},"description":{"0":{}}}],["end_tim",{"_index":22,"title":{},"description":{"0":{},"3":{}}}],["errcod",{"_index":30,"title":{},"description":{"3":{}}}],["expected_update_tim",{"_index":39,"title":{},"description":{"3":{}}}],["fals",{"_index":12,"title":{},"description":{"0":{}}}],["filter",{"_index":26,"title":{},"description":{"1":{}}}],["id",{"_index":36,"title":{},"description":{"3":{}}}],["insert",{"_index":18,"title":{},"description":{"0":{}}}],["last_run",{"_index":38,"title":{},"description":{"3":{}}}],["name",{"_index":28,"title":{},"description":{"1":{},"3":{}}}],["next_run",{"_index":11,"title":{},"description":{"0":{},"3":{},"5":{}}}],["next_run`，work",{"_index":43,"title":{},"description":{"3":{}}}],["path",{"_index":37,"title":{},"description":{"3":{}}}],["physic",{"_index":4,"title":{},"description":{"0":{}}}],["post",{"_index":33,"title":{},"description":{"3":{}}}],["schedul",{"_index":45,"title":{},"description":{"4":{},"5":{},"6":{}}}],["schedule_id",{"_index":46,"title":{},"description":{"4":{}}}],["start_tim",{"_index":21,"title":{},"description":{"0":{},"3":{}}}],["strategi",{"_index":17,"title":{},"description":{"0":{},"3":{}}}],["updat",{"_index":20,"title":{},"description":{"0":{}}}],["update_tim",{"_index":40,"title":{},"description":{"3":{}}}],["vegabackend.catalog.notfound`，log",{"_index":6,"title":{},"description":{"0":{}}}],["vegabackend.discoverschedule.invalidcronexpr",{"_index":16,"title":{},"description":{"0":{}}}],["vegabackend.discoverschedule.invalidtimerang",{"_index":24,"title":{},"description":{"0":{}}}],["vegabackend.discoverschedule.updateconflict",{"_index":42,"title":{},"description":{"3":{}}}],["worker",{"_index":10,"title":{},"description":{"0":{},"4":{}}}]],"pipeline":[]}},"options":{}};
+
+      var container = document.getElementById('redoc');
+      Redoc.hydrate(__redoc_state, container);
+
+      </script>
+</body>
+
+</html>

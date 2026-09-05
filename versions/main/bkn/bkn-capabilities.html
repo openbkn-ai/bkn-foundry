@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf8" />
+  <title>BKN Capabilities</title>
+  <!-- needed for adaptive design -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      padding: 0;
+      margin: 0;
+    }
+  </style>
+  <script src="https://cdn.redocly.com/redoc/v2.5.0/bundles/redoc.standalone.js"></script><style data-styled="true" data-styled-version="6.4.1">.eQypqI{width:calc(100% - 40%);padding:0 40px;}/*!sc*/
+@media print,screen and (max-width: 75rem){.eQypqI{width:100%;padding:40px 40px;}}/*!sc*/
+.jmTlOw{width:calc(100% - 40%);padding:0 40px;}/*!sc*/
+@media print,screen and (max-width: 75rem){.jmTlOw{width:100%;padding:0px 40px;}}/*!sc*/
+data-styled.g5[id="sc-hKgHXU"]{content:"eQypqI,jmTlOw,"}/*!sc*/
+.bKZuAK{padding:40px 0;}/*!sc*/
+.bKZuAK:last-child{min-height:calc(100vh + 1px);}/*!sc*/
+.bKZuAK>.bKZuAK:last-child{min-height:initial;}/*!sc*/
+@media print,screen and (max-width: 75rem){.bKZuAK{padding:0;}}/*!sc*/
+.hxxgNd{padding:40px 0;position:relative;}/*!sc*/
+.hxxgNd:last-child{min-height:calc(100vh + 1px);}/*!sc*/
+.hxxgNd>.hxxgNd:last-child{min-height:initial;}/*!sc*/
+@media print,screen and (max-width: 75rem){.hxxgNd{padding:0;}}/*!sc*/
+.hxxgNd:not(:last-of-type):after{position:absolute;bottom:0;width:100%;display:block;content:'';border-bottom:1px solid rgba(0, 0, 0, 0.2);}/*!sc*/
+data-styled.g6[id="sc-eCsseJ"]{content:"bKZuAK,hxxgNd,"}/*!sc*/
+.kWQHAp{width:40%;color:#ffffff;background-color:#263238;padding:0 40px;}/*!sc*/
+@media print,screen and (max-width: 75rem){.kWQHAp{width:100%;padding:40px 40px;}}/*!sc*/
+data-styled.g7[id="sc-jSgsbC"]{content:"kWQHAp,"}/*!sc*/
+.jYdWFY{background-color:#263238;}/*!sc*/
+data-styled.g8[id="sc-gKscir"]{content:"jYdWFY,"}/*!sc*/
+.cOCikg{display:flex;width:100%;padding:0;}/*!sc*/
+@media print,screen and (max-width: 75rem){.cOCikg{flex-direction:column;}}/*!sc*/
+data-styled.g9[id="sc-iBPUmU"]{content:"cOCikg,"}/*!sc*/
+.edtrWC{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#333333;}/*!sc*/
+data-styled.g10[id="sc-fubEtJ"]{content:"edtrWC,"}/*!sc*/
+.bwjsfx{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;margin:0 0 20px;}/*!sc*/
+data-styled.g11[id="sc-pGbXd"]{content:"bwjsfx,"}/*!sc*/
+.bedHjN{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.27em;line-height:1.6em;color:#333333;}/*!sc*/
+data-styled.g12[id="sc-jrAIFA"]{content:"bedHjN,"}/*!sc*/
+.hgYAAF{color:#ffffff;}/*!sc*/
+data-styled.g13[id="sc-kEjckD"]{content:"hgYAAF,"}/*!sc*/
+.iFTCOQ{border-bottom:1px solid rgba(38, 50, 56, 0.3);margin:1em 0 1em 0;color:rgba(38, 50, 56, 0.5);font-weight:normal;text-transform:uppercase;font-size:0.929em;line-height:20px;}/*!sc*/
+data-styled.g14[id="sc-iqHZue"]{content:"iFTCOQ,"}/*!sc*/
+.itgZBm{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.itgZBm:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+h1:hover>.itgZBm::before,h2:hover>.itgZBm::before,.itgZBm:hover::before{visibility:visible;}/*!sc*/
+data-styled.g15[id="sc-crrrsl"]{content:"itgZBm,"}/*!sc*/
+.cWjMmC{height:18px;width:18px;min-width:18px;vertical-align:middle;float:right;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.idFXFs{height:1.5em;width:1.5em;min-width:1.5em;vertical-align:middle;float:left;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.idFXFs polygon{fill:#1d8127;}/*!sc*/
+.dvMtUQ{height:20px;width:20px;min-width:20px;vertical-align:middle;float:right;transition:transform 0.2s ease-out;transform:rotateZ(0);}/*!sc*/
+.dvMtUQ polygon{fill:white;}/*!sc*/
+.iTiSfO{height:18px;width:18px;min-width:18px;vertical-align:middle;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+data-styled.g16[id="sc-dQoBM"]{content:"cWjMmC,idFXFs,dvMtUQ,iTiSfO,"}/*!sc*/
+.DPwQp{border-left:1px solid #7c7cbb;box-sizing:border-box;position:relative;padding:10px 10px 10px 0;}/*!sc*/
+@media screen and (max-width: 50rem){.DPwQp{display:block;overflow:hidden;}}/*!sc*/
+tr:first-of-type>.DPwQp,tr.last>.DPwQp{border-left-width:0;background-position:top left;background-repeat:no-repeat;background-size:1px 100%;}/*!sc*/
+tr:first-of-type>.DPwQp{background-image:linear-gradient(
+      to bottom,
+      transparent 0%,
+      transparent 22px,
+      #7c7cbb 22px,
+      #7c7cbb 100%
+    );}/*!sc*/
+tr.last>.DPwQp{background-image:linear-gradient(
+      to bottom,
+      #7c7cbb 0%,
+      #7c7cbb 22px,
+      transparent 22px,
+      transparent 100%
+    );}/*!sc*/
+tr.last+tr>.DPwQp{border-left-color:transparent;}/*!sc*/
+tr.last:first-child>.DPwQp{background:none;border-left-color:transparent;}/*!sc*/
+data-styled.g19[id="sc-hBFaCF"]{content:"DPwQp,"}/*!sc*/
+.hUqyua{vertical-align:top;line-height:20px;white-space:nowrap;font-size:13px;font-family:Courier,monospace;}/*!sc*/
+.hUqyua.deprecated{text-decoration:line-through;color:#707070;}/*!sc*/
+data-styled.g21[id="sc-fFubTW"]{content:"hUqyua,"}/*!sc*/
+.gNQdZ{border-bottom:1px solid #9fb4be;padding:10px 0;width:75%;box-sizing:border-box;}/*!sc*/
+tr.expanded .gNQdZ{border-bottom:none;}/*!sc*/
+@media screen and (max-width: 50rem){.gNQdZ{padding:0 20px;border-bottom:none;border-left:1px solid #7c7cbb;}tr.last>.gNQdZ{border-left:none;}}/*!sc*/
+data-styled.g22[id="sc-bkAakD"]{content:"gNQdZ,"}/*!sc*/
+.iNiPzl{color:#7c7cbb;font-family:Courier,monospace;margin-right:10px;}/*!sc*/
+.iNiPzl::before{content:'';display:inline-block;vertical-align:middle;width:10px;height:1px;background:#7c7cbb;}/*!sc*/
+.iNiPzl::after{content:'';display:inline-block;vertical-align:middle;width:1px;background:#7c7cbb;height:7px;}/*!sc*/
+data-styled.g23[id="sc-idOkdQ"]{content:"iNiPzl,"}/*!sc*/
+.juzVUC{border-collapse:separate;border-radius:3px;font-size:14px;border-spacing:0;width:100%;}/*!sc*/
+.juzVUC >tr{vertical-align:middle;}/*!sc*/
+@media screen and (max-width: 50rem){.juzVUC{display:block;}.juzVUC >tr,.juzVUC >tbody>tr{display:block;}}/*!sc*/
+@media screen and (max-width: 50rem) and (-ms-high-contrast:none){.juzVUC td{float:left;width:100%;}}/*!sc*/
+.juzVUC .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux{margin:1em;margin-right:0;background:#fafafa;}/*!sc*/
+.juzVUC .sc-dIUiux .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux{background:#ffffff;}/*!sc*/
+data-styled.g25[id="sc-hHfrpe"]{content:"juzVUC,"}/*!sc*/
+.hqsuVf >ul{list-style:none;padding:0;margin:0;margin:0 -5px;}/*!sc*/
+.hqsuVf >ul >li{padding:5px 10px;display:inline-block;background-color:#11171a;border-bottom:1px solid rgba(0, 0, 0, 0.5);cursor:pointer;text-align:center;outline:none;color:#ccc;margin:0 5px 5px 5px;border:1px solid #07090b;border-radius:5px;min-width:60px;font-size:0.9em;font-weight:bold;}/*!sc*/
+.hqsuVf >ul >li.react-tabs__tab--selected{color:#333333;background:#ffffff;}/*!sc*/
+.hqsuVf >ul >li.react-tabs__tab--selected:focus{outline:auto;}/*!sc*/
+.hqsuVf >ul >li:only-child{flex:none;min-width:100px;}/*!sc*/
+.hqsuVf >ul >li.tab-success{color:#1d8127;}/*!sc*/
+.hqsuVf >ul >li.tab-redirect{color:#ffa500;}/*!sc*/
+.hqsuVf >ul >li.tab-info{color:#87ceeb;}/*!sc*/
+.hqsuVf >ul >li.tab-error{color:#d41f1c;}/*!sc*/
+.hqsuVf >.react-tabs__tab-panel{background:#11171a;}/*!sc*/
+.hqsuVf >.react-tabs__tab-panel>div,.hqsuVf >.react-tabs__tab-panel>pre{padding:20px;margin:0;}/*!sc*/
+.hqsuVf >.react-tabs__tab-panel>div>pre{padding:0;}/*!sc*/
+data-styled.g31[id="sc-cxFMaL"]{content:"hqsuVf,"}/*!sc*/
+.iNuSsz code[class*='language-'],.iNuSsz pre[class*='language-']{text-shadow:0 -0.1em 0.2em black;text-align:left;white-space:pre;word-spacing:normal;word-break:normal;word-wrap:normal;line-height:1.5;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-hyphens:none;-moz-hyphens:none;-ms-hyphens:none;hyphens:none;}/*!sc*/
+@media print{.iNuSsz code[class*='language-'],.iNuSsz pre[class*='language-']{text-shadow:none;}}/*!sc*/
+.iNuSsz pre[class*='language-']{padding:1em;margin:0.5em 0;overflow:auto;}/*!sc*/
+.iNuSsz .token.comment,.iNuSsz .token.prolog,.iNuSsz .token.doctype,.iNuSsz .token.cdata{color:hsl(30, 20%, 50%);}/*!sc*/
+.iNuSsz .token.punctuation{opacity:0.7;}/*!sc*/
+.iNuSsz .namespace{opacity:0.7;}/*!sc*/
+.iNuSsz .token.property,.iNuSsz .token.tag,.iNuSsz .token.number,.iNuSsz .token.constant,.iNuSsz .token.symbol{color:#4a8bb3;}/*!sc*/
+.iNuSsz .token.boolean{color:#e64441;}/*!sc*/
+.iNuSsz .token.selector,.iNuSsz .token.attr-name,.iNuSsz .token.string,.iNuSsz .token.char,.iNuSsz .token.builtin,.iNuSsz .token.inserted{color:#a0fbaa;}/*!sc*/
+.iNuSsz .token.selector+a,.iNuSsz .token.attr-name+a,.iNuSsz .token.string+a,.iNuSsz .token.char+a,.iNuSsz .token.builtin+a,.iNuSsz .token.inserted+a,.iNuSsz .token.selector+a:visited,.iNuSsz .token.attr-name+a:visited,.iNuSsz .token.string+a:visited,.iNuSsz .token.char+a:visited,.iNuSsz .token.builtin+a:visited,.iNuSsz .token.inserted+a:visited{color:#4ed2ba;text-decoration:underline;}/*!sc*/
+.iNuSsz .token.property.string{color:white;}/*!sc*/
+.iNuSsz .token.operator,.iNuSsz .token.entity,.iNuSsz .token.url,.iNuSsz .token.variable{color:hsl(40, 90%, 60%);}/*!sc*/
+.iNuSsz .token.atrule,.iNuSsz .token.attr-value,.iNuSsz .token.keyword{color:hsl(350, 40%, 70%);}/*!sc*/
+.iNuSsz .token.regex,.iNuSsz .token.important{color:#e90;}/*!sc*/
+.iNuSsz .token.important,.iNuSsz .token.bold{font-weight:bold;}/*!sc*/
+.iNuSsz .token.italic{font-style:italic;}/*!sc*/
+.iNuSsz .token.entity{cursor:help;}/*!sc*/
+.iNuSsz .token.deleted{color:red;}/*!sc*/
+data-styled.g33[id="sc-iJuXkV"]{content:"iNuSsz,"}/*!sc*/
+.ldPDIU{opacity:0.7;transition:opacity 0.3s ease;text-align:right;}/*!sc*/
+.ldPDIU:focus-within{opacity:1;}/*!sc*/
+.ldPDIU >button{background-color:transparent;border:0;color:inherit;padding:2px 10px;font-family:Roboto,sans-serif;font-size:14px;line-height:1.5em;cursor:pointer;outline:0;}/*!sc*/
+.ldPDIU >button :hover,.ldPDIU >button :focus{background:rgba(255, 255, 255, 0.1);}/*!sc*/
+data-styled.g34[id="sc-giIpqw"]{content:"ldPDIU,"}/*!sc*/
+.bsUDpT{position:relative;}/*!sc*/
+data-styled.g38[id="sc-kLgmGd"]{content:"bsUDpT,"}/*!sc*/
+.eBDHRN{margin-left:10px;text-transform:none;font-size:0.929em;color:black;}/*!sc*/
+data-styled.g42[id="sc-gWHgjU"]{content:"eBDHRN,"}/*!sc*/
+.jtfGmi{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.jtfGmi p:last-child{margin-bottom:0;}/*!sc*/
+.jtfGmi h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.jtfGmi h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.jtfGmi code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.jtfGmi pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.jtfGmi pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.jtfGmi pre code:before,.jtfGmi pre code:after{content:none;}/*!sc*/
+.jtfGmi blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.jtfGmi img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.jtfGmi ul,.jtfGmi ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.jtfGmi ul ul,.jtfGmi ol ul,.jtfGmi ul ol,.jtfGmi ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.jtfGmi table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.jtfGmi table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.jtfGmi table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.jtfGmi table th,.jtfGmi table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.jtfGmi table th{text-align:left;font-weight:bold;}/*!sc*/
+.jtfGmi .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.jtfGmi .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.jtfGmi h1:hover>.share-link::before,.jtfGmi h2:hover>.share-link::before,.jtfGmi .share-link:hover::before{visibility:visible;}/*!sc*/
+.jtfGmi a{text-decoration:auto;color:#32329f;}/*!sc*/
+.jtfGmi a:visited{color:#32329f;}/*!sc*/
+.jtfGmi a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+.dyntKg{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.dyntKg p:last-child{margin-bottom:0;}/*!sc*/
+.dyntKg p:first-child{margin-top:0;}/*!sc*/
+.dyntKg p:last-child{margin-bottom:0;}/*!sc*/
+.dyntKg h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.dyntKg h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.dyntKg code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.dyntKg pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.dyntKg pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.dyntKg pre code:before,.dyntKg pre code:after{content:none;}/*!sc*/
+.dyntKg blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.dyntKg img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.dyntKg ul,.dyntKg ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.dyntKg ul ul,.dyntKg ol ul,.dyntKg ul ol,.dyntKg ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.dyntKg table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.dyntKg table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.dyntKg table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.dyntKg table th,.dyntKg table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.dyntKg table th{text-align:left;font-weight:bold;}/*!sc*/
+.dyntKg .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.dyntKg .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.dyntKg h1:hover>.share-link::before,.dyntKg h2:hover>.share-link::before,.dyntKg .share-link:hover::before{visibility:visible;}/*!sc*/
+.dyntKg a{text-decoration:auto;color:#32329f;}/*!sc*/
+.dyntKg a:visited{color:#32329f;}/*!sc*/
+.dyntKg a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+.eBjiEo{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.eBjiEo p:last-child{margin-bottom:0;}/*!sc*/
+.eBjiEo p:first-child{margin-top:0;}/*!sc*/
+.eBjiEo p:last-child{margin-bottom:0;}/*!sc*/
+.eBjiEo p{display:inline-block;}/*!sc*/
+.eBjiEo h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.eBjiEo h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.eBjiEo code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.eBjiEo pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.eBjiEo pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.eBjiEo pre code:before,.eBjiEo pre code:after{content:none;}/*!sc*/
+.eBjiEo blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.eBjiEo img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.eBjiEo ul,.eBjiEo ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.eBjiEo ul ul,.eBjiEo ol ul,.eBjiEo ul ol,.eBjiEo ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.eBjiEo table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.eBjiEo table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.eBjiEo table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.eBjiEo table th,.eBjiEo table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.eBjiEo table th{text-align:left;font-weight:bold;}/*!sc*/
+.eBjiEo .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.eBjiEo .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.eBjiEo h1:hover>.share-link::before,.eBjiEo h2:hover>.share-link::before,.eBjiEo .share-link:hover::before{visibility:visible;}/*!sc*/
+.eBjiEo a{text-decoration:auto;color:#32329f;}/*!sc*/
+.eBjiEo a:visited{color:#32329f;}/*!sc*/
+.eBjiEo a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+data-styled.g43[id="sc-cBNeAB"]{content:"jtfGmi,dyntKg,eBjiEo,"}/*!sc*/
+.hynizp{display:inline;}/*!sc*/
+data-styled.g44[id="sc-cittYi"]{content:"hynizp,"}/*!sc*/
+.hiQxbu{position:relative;}/*!sc*/
+data-styled.g45[id="sc-jcVbNL"]{content:"hiQxbu,"}/*!sc*/
+.fRRakq:hover>.sc-giIpqw{opacity:1;}/*!sc*/
+data-styled.g50[id="sc-cTkvqA"]{content:"fRRakq,"}/*!sc*/
+.cCicSb{font-family:Courier,monospace;font-size:13px;white-space:pre;contain:content;overflow-x:auto;}/*!sc*/
+.cCicSb .redoc-json code>.collapser{display:none;pointer-events:none;}/*!sc*/
+.cCicSb .callback-function{color:gray;}/*!sc*/
+.cCicSb .collapser:after{content:'-';cursor:pointer;}/*!sc*/
+.cCicSb .collapsed>.collapser:after{content:'+';cursor:pointer;}/*!sc*/
+.cCicSb .ellipsis:after{content:' … ';}/*!sc*/
+.cCicSb .collapsible{margin-left:2em;}/*!sc*/
+.cCicSb .hoverable{padding-top:1px;padding-bottom:1px;padding-left:2px;padding-right:2px;border-radius:2px;}/*!sc*/
+.cCicSb .hovered{background-color:rgba(235, 238, 249, 1);}/*!sc*/
+.cCicSb .collapser{background-color:transparent;border:0;color:#fff;font-family:Courier,monospace;font-size:13px;padding-right:6px;padding-left:6px;padding-top:0;padding-bottom:0;display:flex;align-items:center;justify-content:center;width:15px;height:15px;position:absolute;top:4px;left:-1.5em;cursor:default;user-select:none;-webkit-user-select:none;padding:2px;}/*!sc*/
+.cCicSb .collapser:focus{outline-color:#fff;outline-style:dotted;outline-width:1px;}/*!sc*/
+.cCicSb ul{list-style-type:none;padding:0px;margin:0px 0px 0px 26px;}/*!sc*/
+.cCicSb li{position:relative;display:block;}/*!sc*/
+.cCicSb .hoverable{display:inline-block;}/*!sc*/
+.cCicSb .selected{outline-style:solid;outline-width:1px;outline-style:dotted;}/*!sc*/
+.cCicSb .collapsed>.collapsible{display:none;}/*!sc*/
+.cCicSb .ellipsis{display:none;}/*!sc*/
+.cCicSb .collapsed>.ellipsis{display:inherit;}/*!sc*/
+data-styled.g51[id="sc-jNMdgd"]{content:"cCicSb,"}/*!sc*/
+.ilXydl{padding:0.9em;background-color:rgba(38,50,56,0.4);margin:0 0 10px 0;display:block;font-family:Montserrat,sans-serif;font-size:0.929em;line-height:1.5em;}/*!sc*/
+data-styled.g52[id="sc-dOSQqJ"]{content:"ilXydl,"}/*!sc*/
+.fLqWfi{font-family:Montserrat,sans-serif;font-size:12px;position:absolute;z-index:1;top:-11px;left:12px;font-weight:600;color:rgba(255,255,255,0.7);}/*!sc*/
+data-styled.g53[id="sc-bBrNAk"]{content:"fLqWfi,"}/*!sc*/
+.jyrVDw{position:relative;}/*!sc*/
+data-styled.g54[id="sc-cOahfn"]{content:"jyrVDw,"}/*!sc*/
+.icbUjL{margin-top:15px;}/*!sc*/
+data-styled.g57[id="sc-hTZjHc"]{content:"icbUjL,"}/*!sc*/
+.bvJPfa.deprecated span.property-name{text-decoration:line-through;color:#707070;}/*!sc*/
+.bvJPfa button{background-color:transparent;border:0;outline:0;font-size:13px;font-family:Courier,monospace;cursor:pointer;padding:0;color:#333333;}/*!sc*/
+.bvJPfa button:focus{font-weight:600;}/*!sc*/
+.bvJPfa .sc-dQoBM{height:1.1em;width:1.1em;}/*!sc*/
+.bvJPfa .sc-dQoBM polygon{fill:#666;}/*!sc*/
+data-styled.g58[id="sc-jgHDmf"]{content:"bvJPfa,"}/*!sc*/
+.gCMUGw{vertical-align:middle;font-size:13px;line-height:20px;}/*!sc*/
+data-styled.g59[id="sc-gTgAvG"]{content:"gCMUGw,"}/*!sc*/
+.dCeeDp{color:rgba(102,102,102,0.9);}/*!sc*/
+data-styled.g60[id="sc-laROWl"]{content:"dCeeDp,"}/*!sc*/
+.cxjEEA{color:#666;}/*!sc*/
+data-styled.g61[id="sc-iNqMfM"]{content:"cxjEEA,"}/*!sc*/
+.jJMDiT{color:#666;word-break:break-word;}/*!sc*/
+data-styled.g62[id="sc-jeGQnC"]{content:"jJMDiT,"}/*!sc*/
+.egFobb{color:#d41f1c;font-size:0.9em;font-weight:normal;margin-left:20px;line-height:1;}/*!sc*/
+data-styled.g63[id="sc-eJMOEj"]{content:"egFobb,"}/*!sc*/
+.jzGNYG{border-radius:2px;word-break:break-word;background-color:rgba(51,51,51,0.05);color:rgba(51,51,51,0.9);padding:0 5px;border:1px solid rgba(51,51,51,0.1);font-family:Courier,monospace;}/*!sc*/
+.sc-lcukLb+.sc-lcukLb{margin-left:0;}/*!sc*/
+data-styled.g67[id="sc-lcukLb"]{content:"jzGNYG,"}/*!sc*/
+.gAOGaI{border-radius:2px;background-color:rgba(104,104,207,0.05);color:rgba(50,50,159,0.9);margin:0 5px;padding:0 5px;border:1px solid rgba(50,50,159,0.1);}/*!sc*/
+.sc-clsJvZ+.sc-clsJvZ{margin-left:0;}/*!sc*/
+data-styled.g69[id="sc-clsJvZ"]{content:"gAOGaI,"}/*!sc*/
+.eSPXsI{margin-top:0;margin-bottom:0.5em;}/*!sc*/
+data-styled.g93[id="sc-ctaZPk"]{content:"eSPXsI,"}/*!sc*/
+.kdqpyX{width:9ex;display:inline-block;height:13px;line-height:13px;background-color:#333;border-radius:3px;background-repeat:no-repeat;background-position:6px 4px;font-size:7px;font-family:Verdana,sans-serif;color:white;text-transform:uppercase;text-align:center;font-weight:bold;vertical-align:middle;margin-right:6px;margin-top:2px;}/*!sc*/
+.kdqpyX.get{background-color:#2F8132;}/*!sc*/
+.kdqpyX.post{background-color:#186FAF;}/*!sc*/
+.kdqpyX.put{background-color:#95507c;}/*!sc*/
+.kdqpyX.options{background-color:#947014;}/*!sc*/
+.kdqpyX.patch{background-color:#bf581d;}/*!sc*/
+.kdqpyX.delete{background-color:#cc3333;}/*!sc*/
+.kdqpyX.basic{background-color:#707070;}/*!sc*/
+.kdqpyX.link{background-color:#07818F;}/*!sc*/
+.kdqpyX.head{background-color:#A23DAD;}/*!sc*/
+.kdqpyX.hook{background-color:#32329f;}/*!sc*/
+.kdqpyX.schema{background-color:#707070;}/*!sc*/
+data-styled.g101[id="sc-XhXdA"]{content:"kdqpyX,"}/*!sc*/
+.eqhvhc{margin:0;padding:0;}/*!sc*/
+.eqhvhc:first-child{padding-bottom:32px;}/*!sc*/
+.sc-ikPCzd .sc-ikPCzd{font-size:0.929em;}/*!sc*/
+.eGBeQN{margin:0;padding:0;display:none;}/*!sc*/
+.eGBeQN:first-child{padding-bottom:32px;}/*!sc*/
+.sc-ikPCzd .sc-ikPCzd{font-size:0.929em;}/*!sc*/
+data-styled.g102[id="sc-ikPCzd"]{content:"eqhvhc,eGBeQN,"}/*!sc*/
+.hNMAOR{list-style:none inside none;overflow:hidden;text-overflow:ellipsis;padding:0;}/*!sc*/
+data-styled.g103[id="sc-tYrig"]{content:"hNMAOR,"}/*!sc*/
+.kYHuni{cursor:pointer;color:#333333;margin:0;padding:12.5px 20px;display:flex;justify-content:space-between;font-family:Montserrat,sans-serif;font-size:0.929em;text-transform:none;background-color:#fafafa;}/*!sc*/
+.kYHuni:hover{color:#32329f;background-color:#e1e1e1;}/*!sc*/
+.kYHuni .sc-dQoBM{height:1.5em;width:1.5em;}/*!sc*/
+.kYHuni .sc-dQoBM polygon{fill:#333333;}/*!sc*/
+.ehmZgs{cursor:pointer;color:#333333;margin:0;padding:12.5px 20px;display:flex;justify-content:space-between;font-family:Montserrat,sans-serif;background-color:#fafafa;}/*!sc*/
+.ehmZgs:hover{color:#32329f;background-color:#ededed;}/*!sc*/
+.ehmZgs .sc-dQoBM{height:1.5em;width:1.5em;}/*!sc*/
+.ehmZgs .sc-dQoBM polygon{fill:#333333;}/*!sc*/
+data-styled.g104[id="sc-biBsFP"]{content:"kYHuni,ehmZgs,"}/*!sc*/
+.dYJaHY{display:inline-block;vertical-align:middle;width:calc(100% - 38px);overflow:hidden;text-overflow:ellipsis;}/*!sc*/
+data-styled.g105[id="sc-eHfQNO"]{content:"dYJaHY,"}/*!sc*/
+.icnaqS{font-size:0.8em;margin-top:10px;text-align:center;position:fixed;width:260px;bottom:0;background:#fafafa;}/*!sc*/
+.icnaqS a,.icnaqS a:visited,.icnaqS a:hover{color:#333333!important;padding:5px 0;border-top:1px solid #e1e1e1;text-decoration:none;display:flex;align-items:center;justify-content:center;}/*!sc*/
+.icnaqS img{width:15px;margin-right:5px;}/*!sc*/
+@media screen and (max-width: 50rem){.icnaqS{width:100%;}}/*!sc*/
+data-styled.g106[id="sc-hzMLOJ"]{content:"icnaqS,"}/*!sc*/
+.gnyOsi{cursor:pointer;position:relative;margin-bottom:5px;}/*!sc*/
+data-styled.g112[id="sc-fXozIE"]{content:"gnyOsi,"}/*!sc*/
+.kmRXcZ{font-family:Courier,monospace;margin-left:10px;flex:1;overflow-x:hidden;text-overflow:ellipsis;}/*!sc*/
+data-styled.g113[id="sc-FyhMp"]{content:"kmRXcZ,"}/*!sc*/
+.eJFCKx{outline:0;color:inherit;width:100%;text-align:left;cursor:pointer;padding:10px 30px 10px 20px;border-radius:4px 4px 0 0;background-color:#11171a;display:flex;white-space:nowrap;align-items:center;border:1px solid transparent;border-bottom:0;transition:border-color 0.25s ease;}/*!sc*/
+.eJFCKx ..sc-FyhMp{color:#ffffff;}/*!sc*/
+.eJFCKx:focus{box-shadow:inset 0 2px 2px rgba(0, 0, 0, 0.45),0 2px 0 rgba(128, 128, 128, 0.25);}/*!sc*/
+data-styled.g114[id="sc-jXkukm"]{content:"eJFCKx,"}/*!sc*/
+.iykXxP{font-size:0.929em;line-height:20px;background-color:#2F8132;color:#ffffff;padding:3px 10px;text-transform:uppercase;font-family:Montserrat,sans-serif;margin:0;}/*!sc*/
+.kcqnuN{font-size:0.929em;line-height:20px;background-color:#186FAF;color:#ffffff;padding:3px 10px;text-transform:uppercase;font-family:Montserrat,sans-serif;margin:0;}/*!sc*/
+.btbfOP{font-size:0.929em;line-height:20px;background-color:#cc3333;color:#ffffff;padding:3px 10px;text-transform:uppercase;font-family:Montserrat,sans-serif;margin:0;}/*!sc*/
+data-styled.g115[id="sc-eFucnX"]{content:"iykXxP,kcqnuN,btbfOP,"}/*!sc*/
+.AnL{position:absolute;width:100%;z-index:100;background:#fafafa;color:#263238;box-sizing:border-box;box-shadow:0 0 6px rgba(0, 0, 0, 0.33);overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;transition:all 0.25s ease;visibility:hidden;transform:translateY(-50%) scaleY(0);}/*!sc*/
+data-styled.g116[id="sc-fmlIYk"]{content:"AnL,"}/*!sc*/
+.gjZMty{padding:10px;}/*!sc*/
+data-styled.g117[id="sc-ljRaAR"]{content:"gjZMty,"}/*!sc*/
+.eFxVeO{padding:5px;border:1px solid #ccc;background:#fff;word-break:break-all;color:#32329f;}/*!sc*/
+.eFxVeO >span{color:#333333;}/*!sc*/
+data-styled.g118[id="sc-jmhDzS"]{content:"eFxVeO,"}/*!sc*/
+.eEdthm{text-transform:lowercase;margin-left:0;line-height:1.5em;}/*!sc*/
+data-styled.g119[id="sc-dUrlDD"]{content:"eEdthm,"}/*!sc*/
+.ciHfuN{display:block;border:0;width:100%;text-align:left;padding:10px;border-radius:2px;margin-bottom:4px;line-height:1.5em;cursor:pointer;color:#1d8127;background-color:rgba(29,129,39,0.07);}/*!sc*/
+.ciHfuN:focus{outline:auto #1d8127;}/*!sc*/
+.JFbul{display:block;border:0;width:100%;text-align:left;padding:10px;border-radius:2px;margin-bottom:4px;line-height:1.5em;cursor:pointer;color:#d41f1c;background-color:rgba(212,31,28,0.07);cursor:default;}/*!sc*/
+.JFbul:focus{outline:auto #d41f1c;}/*!sc*/
+.JFbul::before{content:"—";font-weight:bold;width:1.5em;text-align:center;display:inline-block;vertical-align:top;}/*!sc*/
+.JFbul:focus{outline:0;}/*!sc*/
+.dFAghD{display:block;border:0;width:100%;text-align:left;padding:10px;border-radius:2px;margin-bottom:4px;line-height:1.5em;cursor:pointer;color:#1d8127;background-color:rgba(29,129,39,0.07);cursor:default;}/*!sc*/
+.dFAghD:focus{outline:auto #1d8127;}/*!sc*/
+.dFAghD::before{content:"—";font-weight:bold;width:1.5em;text-align:center;display:inline-block;vertical-align:top;}/*!sc*/
+.dFAghD:focus{outline:0;}/*!sc*/
+data-styled.g121[id="sc-cbDJdZ"]{content:"ciHfuN,JFbul,dFAghD,"}/*!sc*/
+.mtsUp{vertical-align:top;}/*!sc*/
+data-styled.g124[id="sc-fWPeRB"]{content:"mtsUp,"}/*!sc*/
+.ihqrCS{font-size:1.3em;padding:0.2em 0;margin:3em 0 1.1em;color:#333333;font-weight:normal;}/*!sc*/
+data-styled.g125[id="sc-fHYzZk"]{content:"ihqrCS,"}/*!sc*/
+.iTRatv{margin-bottom:30px;}/*!sc*/
+data-styled.g130[id="sc-iGcuFr"]{content:"iTRatv,"}/*!sc*/
+.iDYPDd{user-select:none;width:20px;height:20px;align-self:center;display:flex;flex-direction:column;color:#32329f;}/*!sc*/
+data-styled.g131[id="sc-irlPNa"]{content:"iDYPDd,"}/*!sc*/
+.lkswgW{width:260px;background-color:#fafafa;overflow:hidden;display:flex;flex-direction:column;backface-visibility:hidden;height:100vh;position:sticky;position:-webkit-sticky;top:0;}/*!sc*/
+@media screen and (max-width: 50rem){.lkswgW{position:fixed;z-index:20;width:100%;background:#fafafa;display:none;}}/*!sc*/
+@media print{.lkswgW{display:none;}}/*!sc*/
+data-styled.g132[id="sc-eWvQxi"]{content:"lkswgW,"}/*!sc*/
+.fsqnbI{outline:none;user-select:none;background-color:#f2f2f2;color:#32329f;display:none;cursor:pointer;position:fixed;right:20px;z-index:100;border-radius:50%;box-shadow:0 0 20px rgba(0, 0, 0, 0.3);bottom:44px;width:60px;height:60px;padding:0 20px;}/*!sc*/
+@media screen and (max-width: 50rem){.fsqnbI{display:flex;}}/*!sc*/
+.fsqnbI svg{color:#0065FB;}/*!sc*/
+@media print{.fsqnbI{display:none;}}/*!sc*/
+data-styled.g133[id="sc-kUbhZP"]{content:"fsqnbI,"}/*!sc*/
+.iABphV{font-family:Roboto,sans-serif;font-size:14px;font-weight:400;line-height:1.5em;color:#333333;display:flex;position:relative;text-align:left;-webkit-font-smoothing:antialiased;font-smoothing:antialiased;text-rendering:optimizeSpeed!important;tap-highlight-color:rgba(0, 0, 0, 0);text-size-adjust:100%;}/*!sc*/
+.iABphV *{box-sizing:border-box;-webkit-tap-highlight-color:rgba(255, 255, 255, 0);}/*!sc*/
+data-styled.g134[id="sc-dwcwXc"]{content:"iABphV,"}/*!sc*/
+.JaJkD{z-index:1;position:relative;overflow:hidden;width:calc(100% - 260px);contain:layout;}/*!sc*/
+@media print,screen and (max-width: 50rem){.JaJkD{width:100%;}}/*!sc*/
+data-styled.g135[id="sc-jtHOzJ"]{content:"JaJkD,"}/*!sc*/
+.dQcVAt{background:#263238;position:absolute;top:0;bottom:0;right:0;width:calc((100% - 260px) * 0.4);}/*!sc*/
+@media print,screen and (max-width: 75rem){.dQcVAt{display:none;}}/*!sc*/
+data-styled.g136[id="sc-elsZMO"]{content:"dQcVAt,"}/*!sc*/
+.heVKiz{padding:5px 0;}/*!sc*/
+data-styled.g137[id="sc-kiYrpv"]{content:"heVKiz,"}/*!sc*/
+.gyVKdy{width:calc(100% - 40px);box-sizing:border-box;margin:0 20px;padding:5px 10px 5px 20px;border:0;border-bottom:1px solid #e1e1e1;font-family:Roboto,sans-serif;font-weight:bold;font-size:13px;color:#333333;background-color:transparent;outline:none;}/*!sc*/
+data-styled.g138[id="sc-cKZGmI"]{content:"gyVKdy,"}/*!sc*/
+.eIwqum{position:absolute;left:20px;height:1.8em;width:0.9em;}/*!sc*/
+.eIwqum path{fill:#333333;}/*!sc*/
+data-styled.g139[id="sc-iIEXPp"]{content:"eIwqum,"}/*!sc*/
+</style>
+  <link href="https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700" rel="stylesheet">
+</head>
+
+<body>
+  
+      <div id="redoc"><div class="sc-dwcwXc iABphV redoc-wrap"><div class="sc-eWvQxi lkswgW menu-content" style="top:0px;height:calc(100vh - 0px)"><div role="search" class="sc-kiYrpv heVKiz"><svg class="sc-iIEXPp eIwqum search-icon" version="1.1" viewBox="0 0 1000 1000" x="0px" xmlns="http://www.w3.org/2000/svg" y="0px"><path d="M968.2,849.4L667.3,549c83.9-136.5,66.7-317.4-51.7-435.6C477.1-25,252.5-25,113.9,113.4c-138.5,138.3-138.5,362.6,0,501C219.2,730.1,413.2,743,547.6,666.5l301.9,301.4c43.6,43.6,76.9,14.9,104.2-12.4C981,928.3,1011.8,893,968.2,849.4z M524.5,522c-88.9,88.7-233,88.7-321.8,0c-88.9-88.7-88.9-232.6,0-321.3c88.9-88.7,233-88.7,321.8,0C613.4,289.4,613.4,433.3,524.5,522z"></path></svg><input placeholder="Search..." aria-label="Search" type="text" class="sc-cKZGmI gyVKdy search-input" value=""/></div><div class="sc-kLgmGd bsUDpT scrollbar-container undefined"><ul role="menu" class="sc-ikPCzd eqhvhc"><li tabindex="0" depth="1" data-item-id="section/Identity" role="menuitem" aria-label="Identity" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP kYHuni -depth1"><span width="calc(100% - 38px)" title="Identity" class="sc-eHfQNO dYJaHY">Identity</span></label></li><li tabindex="0" depth="1" data-item-id="section/What-a-binding-answers" role="menuitem" aria-label="What a binding answers" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP kYHuni -depth1"><span width="calc(100% - 38px)" title="What a binding answers" class="sc-eHfQNO dYJaHY">What a binding answers</span></label></li><li tabindex="0" depth="1" data-item-id="section/Scope-and-branch" role="menuitem" aria-label="Scope and branch" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP kYHuni -depth1"><span width="calc(100% - 38px)" title="Scope and branch" class="sc-eHfQNO dYJaHY">Scope and branch</span></label></li><li tabindex="0" depth="1" data-item-id="section/Idempotency" role="menuitem" aria-label="Idempotency" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP kYHuni -depth1"><span width="calc(100% - 38px)" title="Idempotency" class="sc-eHfQNO dYJaHY">Idempotency</span></label></li><li tabindex="0" depth="1" data-item-id="section/Not-covered-here" role="menuitem" aria-label="Not covered here" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP kYHuni -depth1"><span width="calc(100% - 38px)" title="Not covered here" class="sc-eHfQNO dYJaHY">Not covered here</span></label></li><li tabindex="0" depth="1" data-item-id="tag/Capabilities" role="menuitem" aria-label="Capabilities" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP kYHuni -depth1"><span width="calc(100% - 38px)" title="Capabilities" class="sc-eHfQNO dYJaHY">Capabilities</span><svg class="sc-dQoBM cWjMmC" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></label><ul class="sc-ikPCzd eGBeQN"><li tabindex="0" depth="2" data-item-id="tag/Capabilities/operation/listCapabilities" role="menuitem" aria-label="List the capabilities bound to a knowledge network" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP ehmZgs -depth2"><span type="get" class="sc-XhXdA kdqpyX operation-type get">get</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHfQNO dYJaHY">List the capabilities bound to a knowledge network</span></label></li><li tabindex="0" depth="2" data-item-id="tag/Capabilities/operation/attachCapabilities" role="menuitem" aria-label="Mount capabilities onto a knowledge network" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP ehmZgs -depth2"><span type="post" class="sc-XhXdA kdqpyX operation-type post">post</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHfQNO dYJaHY">Mount capabilities onto a knowledge network</span></label></li><li tabindex="0" depth="2" data-item-id="tag/Capabilities/operation/detachCapabilities" role="menuitem" aria-label="Release capability bindings" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP ehmZgs -depth2"><span type="delete" class="sc-XhXdA kdqpyX operation-type delete">del</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHfQNO dYJaHY">Release capability bindings</span></label></li></ul></li></ul><div class="sc-hzMLOJ icnaqS"><a target="_blank" rel="noopener noreferrer" href="https://redocly.com/redoc/">API docs by Redocly</a></div></div></div><div class="sc-kUbhZP fsqnbI"><div class="sc-irlPNa iDYPDd"><svg class="" style="transform:translate(2px, -4px) rotate(180deg);transition:transform 0.2s ease" viewBox="0 0 926.23699 573.74994" version="1.1" x="0px" y="0px" width="15" height="15"><g transform="translate(904.92214,-879.1482)"><path d="
+          m -673.67664,1221.6502 -231.2455,-231.24803 55.6165,
+          -55.627 c 30.5891,-30.59485 56.1806,-55.627 56.8701,-55.627 0.6894,
+          0 79.8637,78.60862 175.9427,174.68583 l 174.6892,174.6858 174.6892,
+          -174.6858 c 96.079,-96.07721 175.253196,-174.68583 175.942696,
+          -174.68583 0.6895,0 26.281,25.03215 56.8701,
+          55.627 l 55.6165,55.627 -231.245496,231.24803 c -127.185,127.1864
+          -231.5279,231.248 -231.873,231.248 -0.3451,0 -104.688,
+          -104.0616 -231.873,-231.248 z
+        " fill="currentColor"></path></g></svg><svg class="" style="transform:translate(2px, 4px);transition:transform 0.2s ease" viewBox="0 0 926.23699 573.74994" version="1.1" x="0px" y="0px" width="15" height="15"><g transform="translate(904.92214,-879.1482)"><path d="
+          m -673.67664,1221.6502 -231.2455,-231.24803 55.6165,
+          -55.627 c 30.5891,-30.59485 56.1806,-55.627 56.8701,-55.627 0.6894,
+          0 79.8637,78.60862 175.9427,174.68583 l 174.6892,174.6858 174.6892,
+          -174.6858 c 96.079,-96.07721 175.253196,-174.68583 175.942696,
+          -174.68583 0.6895,0 26.281,25.03215 56.8701,
+          55.627 l 55.6165,55.627 -231.245496,231.24803 c -127.185,127.1864
+          -231.5279,231.248 -231.873,231.248 -0.3451,0 -104.688,
+          -104.0616 -231.873,-231.248 z
+        " fill="currentColor"></path></g></svg></div></div><div class="sc-jtHOzJ JaJkD api-content"><div class="sc-eCsseJ bKZuAK"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI api-info"><h1 class="sc-fubEtJ sc-ctaZPk edtrWC eSPXsI">BKN Capabilities<!-- --> <span>(<!-- -->0.1.0<!-- -->)</span></h1><p>Download OpenAPI specification<!-- -->:</p><div class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><div data-role="redoc-summary" html="" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><div data-role="redoc-description" html="&lt;p&gt;A capability binding records that a Skill or a ToolBox tool belongs to a knowledge network.
+The master data stays in the execution factory; the binding holds only the reference, so
+creating, publishing and indexing capabilities is unchanged by these endpoints.&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>A capability binding records that a Skill or a ToolBox tool belongs to a knowledge network.
+The master data stays in the execution factory; the binding holds only the reference, so
+creating, publishing and indexing capabilities is unchanged by these endpoints.</p>
+</div></div></div></div><div id="section/Identity" data-section-id="section/Identity" class="sc-eCsseJ bKZuAK"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-jrAIFA bedHjN"><a class="sc-crrrsl itgZBm" href="#section/Identity" aria-label="section/Identity"></a>Identity</h2></div></div><div class="sc-hKgHXU jmTlOw"><div class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi redoc-markdown " html="&lt;p&gt;A capability is identified by three parts:&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;capability_type&lt;/th&gt;
+&lt;th&gt;owner_id&lt;/th&gt;
+&lt;th&gt;capability_id&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;skill&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;empty&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;skill_id&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;function&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;box_id&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;tool_id&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;&lt;/table&gt;
+&lt;p&gt;&lt;code&gt;owner_id&lt;/code&gt; is required for a function because a tool id is scoped to its box in the
+execution factory. A skill has no owning container, so an &lt;code&gt;owner_id&lt;/code&gt; sent with a skill is
+dropped rather than stored — keeping it would create a second row for the same skill that
+the unique key cannot collapse, and repeated mounts would stop being idempotent.&lt;/p&gt;
+"><p>A capability is identified by three parts:</p>
+<table>
+<thead>
+<tr>
+<th>capability_type</th>
+<th>owner_id</th>
+<th>capability_id</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>skill</code></td>
+<td>empty</td>
+<td><code>skill_id</code></td>
+</tr>
+<tr>
+<td><code>function</code></td>
+<td><code>box_id</code></td>
+<td><code>tool_id</code></td>
+</tr>
+</tbody></table>
+<p><code>owner_id</code> is required for a function because a tool id is scoped to its box in the
+execution factory. A skill has no owning container, so an <code>owner_id</code> sent with a skill is
+dropped rather than stored — keeping it would create a second row for the same skill that
+the unique key cannot collapse, and repeated mounts would stop being idempotent.</p>
+</div></div></div><div id="section/What-a-binding-answers" data-section-id="section/What-a-binding-answers" class="sc-eCsseJ bKZuAK"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-jrAIFA bedHjN"><a class="sc-crrrsl itgZBm" href="#section/What-a-binding-answers" aria-label="section/What-a-binding-answers"></a>What a binding answers</h2></div></div><div class="sc-hKgHXU jmTlOw"><div class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi redoc-markdown " html="&lt;p&gt;A binding answers &amp;quot;which capabilities does this knowledge network have&amp;quot;, not &amp;quot;which
+capability is relevant to this question&amp;quot;. Listing does not replace retrieval: a network
+with dozens of Skills and tools needs the execution factory&amp;#39;s search endpoints.&lt;/p&gt;
+"><p>A binding answers &quot;which capabilities does this knowledge network have&quot;, not &quot;which
+capability is relevant to this question&quot;. Listing does not replace retrieval: a network
+with dozens of Skills and tools needs the execution factory&#39;s search endpoints.</p>
+</div></div></div><div id="section/Scope-and-branch" data-section-id="section/Scope-and-branch" class="sc-eCsseJ bKZuAK"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-jrAIFA bedHjN"><a class="sc-crrrsl itgZBm" href="#section/Scope-and-branch" aria-label="section/Scope-and-branch"></a>Scope and branch</h2></div></div><div class="sc-hKgHXU jmTlOw"><div class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi redoc-markdown " html="&lt;p&gt;Bindings are per branch. Creating a branch copies them, deleting a branch clears them, and
+the count in the knowledge-network statistics follows the branch being viewed.&lt;/p&gt;
+"><p>Bindings are per branch. Creating a branch copies them, deleting a branch clears them, and
+the count in the knowledge-network statistics follows the branch being viewed.</p>
+</div></div></div><div id="section/Idempotency" data-section-id="section/Idempotency" class="sc-eCsseJ bKZuAK"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-jrAIFA bedHjN"><a class="sc-crrrsl itgZBm" href="#section/Idempotency" aria-label="section/Idempotency"></a>Idempotency</h2></div></div><div class="sc-hKgHXU jmTlOw"><div class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi redoc-markdown " html="&lt;p&gt;Mounting is a statement about membership, not an event. Mounting a capability that is
+already bound returns the existing binding rather than failing, and repeating an entry
+inside one request produces one row.&lt;/p&gt;
+"><p>Mounting is a statement about membership, not an event. Mounting a capability that is
+already bound returns the existing binding rather than failing, and repeating an entry
+inside one request produces one row.</p>
+</div></div></div><div id="section/Not-covered-here" data-section-id="section/Not-covered-here" class="sc-eCsseJ bKZuAK"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-jrAIFA bedHjN"><a class="sc-crrrsl itgZBm" href="#section/Not-covered-here" aria-label="section/Not-covered-here"></a>Not covered here</h2></div></div><div class="sc-hKgHXU jmTlOw"><div class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi redoc-markdown " html="&lt;p&gt;Whole-box mounting, the write-time check that the target exists and is published, metadata
+backfill and dangling marking arrive with the rest of the capability binding work; this
+file describes the CRUD surface only.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Prefix aliases&lt;/strong&gt;: every path below is also served under &lt;code&gt;/api/ontology-manager/v1&lt;/code&gt;, and
+the internal face under &lt;code&gt;/api/bkn-backend/in/v1&lt;/code&gt; and &lt;code&gt;/api/ontology-manager/in/v1&lt;/code&gt;.&lt;/p&gt;
+"><p>Whole-box mounting, the write-time check that the target exists and is published, metadata
+backfill and dangling marking arrive with the rest of the capability binding work; this
+file describes the CRUD surface only.</p>
+<p><strong>Prefix aliases</strong>: every path below is also served under <code>/api/ontology-manager/v1</code>, and
+the internal face under <code>/api/bkn-backend/in/v1</code> and <code>/api/ontology-manager/in/v1</code>.</p>
+</div></div></div><div id="tag/Capabilities" data-section-id="tag/Capabilities" class="sc-eCsseJ bKZuAK"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#tag/Capabilities" aria-label="tag/Capabilities"></a>Capabilities</h2></div></div><div class="sc-hKgHXU jmTlOw"><div class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi redoc-markdown " html="&lt;p&gt;Knowledge-network capability binding&lt;/p&gt;
+"><p>Knowledge-network capability binding</p>
+</div></div></div><div id="tag/Capabilities/operation/listCapabilities" data-section-id="tag/Capabilities/operation/listCapabilities" class="sc-eCsseJ hxxgNd"><div data-section-id="operation/listCapabilities" id="operation/listCapabilities" class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#tag/Capabilities/operation/listCapabilities" aria-label="tag/Capabilities/operation/listCapabilities"></a>List the capabilities bound to a knowledge network<!-- --> </h2><div><h5 class="sc-iqHZue iFTCOQ">path<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class="last "><td kind="field" title="kn_id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">kn_id</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;Business knowledge network ID&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>Business knowledge network ID</p>
+</div></div></div></td></tr></tbody></table></div><div><h5 class="sc-iqHZue iFTCOQ">query<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class=""><td kind="field" title="branch" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">branch</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;Branch. Defaults to main.&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>Branch. Defaults to main.</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="type" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">type</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Enum<!-- -->:</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;skill&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;function&quot;</span> </div> <div><div html="&lt;p&gt;Filter by capability type. Any other value is rejected with 400.&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>Filter by capability type. Any other value is rejected with 400.</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="owner_id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">owner_id</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;Filter by owning tool box. Only meaningful for functions.&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>Filter by owning tool box. Only meaningful for functions.</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="offset" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">offset</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">integer</span></div> <div><div html="&lt;p&gt;Offset. Defaults to 0.&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>Offset. Defaults to 0.</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="limit" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">limit</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">integer</span></div> <div><div html="&lt;p&gt;Page size. Defaults to 10.&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>Page size. Defaults to 10.</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="sort" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">sort</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Enum<!-- -->:</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;create_time&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;update_time&quot;</span> </div> <div><div html="&lt;p&gt;Sort field. Defaults to create_time.&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>Sort field. Defaults to create_time.</p>
+</div></div></div></td></tr><tr class="last "><td kind="field" title="direction" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">direction</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Enum<!-- -->:</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;asc&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;desc&quot;</span> </div> <div><div html="&lt;p&gt;Sort direction, asc or desc. Defaults to desc.&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>Sort direction, asc or desc. Defaults to desc.</p>
+</div></div></div></td></tr></tbody></table></div><div><h3 class="sc-fHYzZk ihqrCS">Responses</h3><div><button class="sc-cbDJdZ ciHfuN"><svg class="sc-dQoBM idFXFs" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">200<!-- --> </strong><div html="&lt;p&gt;Capability bindings of this branch&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>Capability bindings of this branch</p>
+</div></button></div><div><button class="sc-cbDJdZ JFbul" disabled=""><strong class="sc-fWPeRB mtsUp">400<!-- --> </strong><div html="&lt;p&gt;Invalid capability type or pagination parameter&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>Invalid capability type or pagination parameter</p>
+</div></button></div><div><button class="sc-cbDJdZ JFbul" disabled=""><strong class="sc-fWPeRB mtsUp">403<!-- --> </strong><div html="&lt;p&gt;The caller cannot view this knowledge network&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>The caller cannot view this knowledge network</p>
+</div></button></div><div><button class="sc-cbDJdZ JFbul" disabled=""><strong class="sc-fWPeRB mtsUp">404<!-- --> </strong><div html="&lt;p&gt;Knowledge network or branch not found&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>Knowledge network or branch not found</p>
+</div></button></div></div></div><div class="sc-jSgsbC sc-gKscir kWQHAp jYdWFY"><div class="sc-fXozIE gnyOsi"><button class="sc-jXkukm eJFCKx"><span type="get" class="sc-eFucnX iykXxP http-verb get">get</span><span class="sc-FyhMp kmRXcZ">/api/bkn-backend/v1/knowledge-networks/{kn_id}/capabilities</span><svg class="sc-dQoBM dvMtUQ" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmlIYk AnL"><div class="sc-ljRaAR gjZMty"><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div><div tabindex="0" role="button"><div class="sc-jmhDzS eFxVeO"><span></span>/api/bkn-backend/v1/knowledge-networks/{kn_id}/capabilities</div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_jira_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_jira_0" tabindex="0" data-rttab="true">200</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_jira_0" aria-labelledby="tab_R_jira_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"entries"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"kn_id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"branch"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"capability_type"</span>: <span class="token string">&quot;skill&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"owner_id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"capability_id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"bound_as_box"</span>: <span class="token boolean">true</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"comment"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"description"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"status"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"owner_name"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"creator"</span>: <button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"type"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"create_time"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"updater"</span>: <button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"type"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"update_time"</span>: <span class="token number">0</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"total_count"</span>: <span class="token number">0</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div></div></div></div></div></div><div id="tag/Capabilities/operation/attachCapabilities" data-section-id="tag/Capabilities/operation/attachCapabilities" class="sc-eCsseJ hxxgNd"><div data-section-id="operation/attachCapabilities" id="operation/attachCapabilities" class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#tag/Capabilities/operation/attachCapabilities" aria-label="tag/Capabilities/operation/attachCapabilities"></a>Mount capabilities onto a knowledge network<!-- --> </h2><div class="sc-iGcuFr iTRatv"><div html="&lt;p&gt;Idempotent. A capability already bound resolves to its existing binding, and the
+response carries one entry per requested capability in request order.&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>Idempotent. A capability already bound resolves to its existing binding, and the
+response carries one entry per requested capability in request order.</p>
+</div></div><div><h5 class="sc-iqHZue iFTCOQ">path<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class="last "><td kind="field" title="kn_id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">kn_id</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;Business knowledge network ID&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>Business knowledge network ID</p>
+</div></div></div></td></tr></tbody></table></div><div><h5 class="sc-iqHZue iFTCOQ">query<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class="last "><td kind="field" title="branch" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">branch</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;Branch. Defaults to main.&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>Branch. Defaults to main.</p>
+</div></div></div></td></tr></tbody></table></div><h5 class="sc-iqHZue iFTCOQ">Request Body schema: <span class="sc-gWHgjU eBDHRN">application/json</span><div class="sc-gTgAvG sc-eJMOEj sc-dUrlDD gCMUGw egFobb eEdthm">required</div></h5><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><table class="sc-hHfrpe juzVUC"><tbody><tr class="last "><td class="sc-hBFaCF sc-fFubTW sc-jgHDmf DPwQp hUqyua bvJPfa" kind="field" title="capabilities"><span class="sc-idOkdQ iNiPzl"></span><button aria-label="expand capabilities"><span class="property-name">capabilities</span><svg class="sc-dQoBM iTiSfO" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp">Array of </span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">objects</span><span class="sc-gTgAvG sc-jeGQnC gCMUGw jJMDiT"> (<!-- -->AttachCapabilityEntry<!-- -->) </span><span> <span class="sc-gTgAvG sc-clsJvZ gCMUGw gAOGaI"> <!-- -->non-empty<!-- --> </span></span></div> <div><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div></div></div></td></tr></tbody></table><div><h3 class="sc-fHYzZk ihqrCS">Responses</h3><div><button class="sc-cbDJdZ ciHfuN"><svg class="sc-dQoBM idFXFs" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">200<!-- --> </strong><div html="&lt;p&gt;The bindings of the requested capabilities&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>The bindings of the requested capabilities</p>
+</div></button></div><div><button class="sc-cbDJdZ JFbul" disabled=""><strong class="sc-fWPeRB mtsUp">400<!-- --> </strong><div html="&lt;p&gt;Empty capability list, unsupported capability_type, missing capability_id, a function without owner_id, or a value longer than its column: owner_id and capability_id are limited to 64 characters and comment to 255. Over-long values are rejected here rather than reaching the database, where they would surface as a 500 under strict SQL mode or be silently truncated into a binding pointing at a different capability.&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>Empty capability list, unsupported capability_type, missing capability_id, a function without owner_id, or a value longer than its column: owner_id and capability_id are limited to 64 characters and comment to 255. Over-long values are rejected here rather than reaching the database, where they would surface as a 500 under strict SQL mode or be silently truncated into a binding pointing at a different capability.</p>
+</div></button></div><div><button class="sc-cbDJdZ JFbul" disabled=""><strong class="sc-fWPeRB mtsUp">403<!-- --> </strong><div html="&lt;p&gt;The caller cannot modify this knowledge network&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>The caller cannot modify this knowledge network</p>
+</div></button></div><div><button class="sc-cbDJdZ JFbul" disabled=""><strong class="sc-fWPeRB mtsUp">404<!-- --> </strong><div html="&lt;p&gt;Knowledge network or branch not found&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>Knowledge network or branch not found</p>
+</div></button></div></div></div><div class="sc-jSgsbC sc-gKscir kWQHAp jYdWFY"><div class="sc-fXozIE gnyOsi"><button class="sc-jXkukm eJFCKx"><span type="post" class="sc-eFucnX kcqnuN http-verb post">post</span><span class="sc-FyhMp kmRXcZ">/api/bkn-backend/v1/knowledge-networks/{kn_id}/capabilities</span><svg class="sc-dQoBM dvMtUQ" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmlIYk AnL"><div class="sc-ljRaAR gjZMty"><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div><div tabindex="0" role="button"><div class="sc-jmhDzS eFxVeO"><span></span>/api/bkn-backend/v1/knowledge-networks/{kn_id}/capabilities</div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Request samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="react-tabs__tab react-tabs__tab--selected" role="tab" id="tab_R_ijba_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_ijba_0" tabindex="0" data-rttab="true">Payload</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_ijba_0" aria-labelledby="tab_R_ijba_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"capabilities"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"capability_type"</span>: <span class="token string">&quot;skill&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"owner_id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"capability_id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"comment"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">]</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_jjba_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_jjba_0" tabindex="0" data-rttab="true">200</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_jjba_0" aria-labelledby="tab_R_jjba_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"entries"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"kn_id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"branch"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"capability_type"</span>: <span class="token string">&quot;skill&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"owner_id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"capability_id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"bound_as_box"</span>: <span class="token boolean">true</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"comment"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"description"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"status"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"owner_name"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"creator"</span>: <button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"type"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"create_time"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"updater"</span>: <button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"type"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"update_time"</span>: <span class="token number">0</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"total_count"</span>: <span class="token number">0</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div></div></div></div></div></div><div id="tag/Capabilities/operation/detachCapabilities" data-section-id="tag/Capabilities/operation/detachCapabilities" class="sc-eCsseJ hxxgNd"><div data-section-id="operation/detachCapabilities" id="operation/detachCapabilities" class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#tag/Capabilities/operation/detachCapabilities" aria-label="tag/Capabilities/operation/detachCapabilities"></a>Release capability bindings<!-- --> </h2><div class="sc-iGcuFr iTRatv"><div html="&lt;p&gt;Releases by binding ID, comma separated for a batch. IDs that are already gone are not
+an error. Binding IDs are used rather than the capability identity because a
+tool-level binding needs owner_id as well to be located, and identifiers containing
+special characters would have to be escaped in the path.&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>Releases by binding ID, comma separated for a batch. IDs that are already gone are not
+an error. Binding IDs are used rather than the capability identity because a
+tool-level binding needs owner_id as well to be located, and identifiers containing
+special characters would have to be escaped in the path.</p>
+</div></div><div><h5 class="sc-iqHZue iFTCOQ">path<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class=""><td kind="field" title="kn_id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">kn_id</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;Business knowledge network ID&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>Business knowledge network ID</p>
+</div></div></div></td></tr><tr class="last "><td kind="field" title="binding_ids" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">binding_ids</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;Comma-separated binding IDs&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>Comma-separated binding IDs</p>
+</div></div></div></td></tr></tbody></table></div><div><h5 class="sc-iqHZue iFTCOQ">query<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class="last "><td kind="field" title="branch" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">branch</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;Branch. Defaults to main.&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>Branch. Defaults to main.</p>
+</div></div></div></td></tr></tbody></table></div><div><h3 class="sc-fHYzZk ihqrCS">Responses</h3><div><button class="sc-cbDJdZ dFAghD" disabled=""><strong class="sc-fWPeRB mtsUp">204<!-- --> </strong><div html="&lt;p&gt;Released. Releasing a binding that is already gone is also a 204: the request states that the capability is not mounted, and that is true either way. This matches DELETE .../metrics.&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>Released. Releasing a binding that is already gone is also a 204: the request states that the capability is not mounted, and that is true either way. This matches DELETE .../metrics.</p>
+</div></button></div><div><button class="sc-cbDJdZ JFbul" disabled=""><strong class="sc-fWPeRB mtsUp">400<!-- --> </strong><div html="&lt;p&gt;Empty binding_ids&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>Empty binding_ids</p>
+</div></button></div><div><button class="sc-cbDJdZ JFbul" disabled=""><strong class="sc-fWPeRB mtsUp">403<!-- --> </strong><div html="&lt;p&gt;The caller cannot modify this knowledge network&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>The caller cannot modify this knowledge network</p>
+</div></button></div><div><button class="sc-cbDJdZ JFbul" disabled=""><strong class="sc-fWPeRB mtsUp">404<!-- --> </strong><div html="&lt;p&gt;Knowledge network or branch not found&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>Knowledge network or branch not found</p>
+</div></button></div></div></div><div class="sc-jSgsbC sc-gKscir kWQHAp jYdWFY"><div class="sc-fXozIE gnyOsi"><button class="sc-jXkukm eJFCKx"><span type="delete" class="sc-eFucnX btbfOP http-verb delete">delete</span><span class="sc-FyhMp kmRXcZ">/api/bkn-backend/v1/knowledge-networks/{kn_id}/capabilities/{binding_ids}</span><svg class="sc-dQoBM dvMtUQ" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmlIYk AnL"><div class="sc-ljRaAR gjZMty"><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div><div tabindex="0" role="button"><div class="sc-jmhDzS eFxVeO"><span></span>/api/bkn-backend/v1/knowledge-networks/{kn_id}/capabilities/{binding_ids}</div></div></div></div></div></div></div></div></div><div class="sc-elsZMO dQcVAt"></div></div></div>
+      <script>
+      const __redoc_state = {"menu":{"activeItemIdx":-1},"spec":{"data":{"openapi":"3.0.2","info":{"title":"BKN Capabilities","version":"0.1.0","description":"A capability binding records that a Skill or a ToolBox tool belongs to a knowledge network.\nThe master data stays in the execution factory; the binding holds only the reference, so\ncreating, publishing and indexing capabilities is unchanged by these endpoints.\n\n## Identity\n\nA capability is identified by three parts:\n\n| capability_type | owner_id | capability_id |\n|---|---|---|\n| `skill` | empty | `skill_id` |\n| `function` | `box_id` | `tool_id` |\n\n`owner_id` is required for a function because a tool id is scoped to its box in the\nexecution factory. A skill has no owning container, so an `owner_id` sent with a skill is\ndropped rather than stored — keeping it would create a second row for the same skill that\nthe unique key cannot collapse, and repeated mounts would stop being idempotent.\n\n## What a binding answers\n\nA binding answers \"which capabilities does this knowledge network have\", not \"which\ncapability is relevant to this question\". Listing does not replace retrieval: a network\nwith dozens of Skills and tools needs the execution factory's search endpoints.\n\n## Scope and branch\n\nBindings are per branch. Creating a branch copies them, deleting a branch clears them, and\nthe count in the knowledge-network statistics follows the branch being viewed.\n\n## Idempotency\n\nMounting is a statement about membership, not an event. Mounting a capability that is\nalready bound returns the existing binding rather than failing, and repeating an entry\ninside one request produces one row.\n\n## Not covered here\n\nWhole-box mounting, the write-time check that the target exists and is published, metadata\nbackfill and dangling marking arrive with the rest of the capability binding work; this\nfile describes the CRUD surface only.\n\n**Prefix aliases**: every path below is also served under `/api/ontology-manager/v1`, and\nthe internal face under `/api/bkn-backend/in/v1` and `/api/ontology-manager/in/v1`.\n"},"paths":{"/api/bkn-backend/v1/knowledge-networks/{kn_id}/capabilities":{"get":{"summary":"List the capabilities bound to a knowledge network","parameters":[{"name":"kn_id","description":"Business knowledge network ID","schema":{"type":"string"},"in":"path","required":true},{"name":"branch","description":"Branch. Defaults to main.","schema":{"type":"string"},"in":"query"},{"name":"type","description":"Filter by capability type. Any other value is rejected with 400.","schema":{"enum":["skill","function"],"type":"string"},"in":"query"},{"name":"owner_id","description":"Filter by owning tool box. Only meaningful for functions.","schema":{"type":"string"},"in":"query"},{"name":"offset","description":"Offset. Defaults to 0.","schema":{"type":"integer"},"in":"query"},{"name":"limit","description":"Page size. Defaults to 10.","schema":{"type":"integer"},"in":"query"},{"name":"sort","description":"Sort field. Defaults to create_time.","schema":{"enum":["create_time","update_time"],"type":"string"},"in":"query"},{"name":"direction","description":"Sort direction, asc or desc. Defaults to desc.","schema":{"enum":["asc","desc"],"type":"string"},"in":"query"}],"responses":{"200":{"description":"Capability bindings of this branch","content":{"application/json":{"schema":{"$ref":"#/components/schemas/CapabilityBindingList"}}}},"400":{"description":"Invalid capability type or pagination parameter"},"403":{"description":"The caller cannot view this knowledge network"},"404":{"description":"Knowledge network or branch not found"}},"operationId":"listCapabilities","tags":["Capabilities"]},"post":{"summary":"Mount capabilities onto a knowledge network","description":"Idempotent. A capability already bound resolves to its existing binding, and the\nresponse carries one entry per requested capability in request order.\n","parameters":[{"name":"kn_id","description":"Business knowledge network ID","schema":{"type":"string"},"in":"path","required":true},{"name":"branch","description":"Branch. Defaults to main.","schema":{"type":"string"},"in":"query"}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/AttachCapabilitiesRequest"}}}},"responses":{"200":{"description":"The bindings of the requested capabilities","content":{"application/json":{"schema":{"$ref":"#/components/schemas/CapabilityBindingList"}}}},"400":{"description":"Empty capability list, unsupported capability_type, missing capability_id, a function without owner_id, or a value longer than its column: owner_id and capability_id are limited to 64 characters and comment to 255. Over-long values are rejected here rather than reaching the database, where they would surface as a 500 under strict SQL mode or be silently truncated into a binding pointing at a different capability."},"403":{"description":"The caller cannot modify this knowledge network"},"404":{"description":"Knowledge network or branch not found"}},"operationId":"attachCapabilities","tags":["Capabilities"]}},"/api/bkn-backend/v1/knowledge-networks/{kn_id}/capabilities/{binding_ids}":{"delete":{"summary":"Release capability bindings","description":"Releases by binding ID, comma separated for a batch. IDs that are already gone are not\nan error. Binding IDs are used rather than the capability identity because a\ntool-level binding needs owner_id as well to be located, and identifiers containing\nspecial characters would have to be escaped in the path.\n","parameters":[{"name":"kn_id","description":"Business knowledge network ID","schema":{"type":"string"},"in":"path","required":true},{"name":"binding_ids","description":"Comma-separated binding IDs","schema":{"type":"string"},"in":"path","required":true},{"name":"branch","description":"Branch. Defaults to main.","schema":{"type":"string"},"in":"query"}],"responses":{"204":{"description":"Released. Releasing a binding that is already gone is also a 204: the request states that the capability is not mounted, and that is true either way. This matches DELETE .../metrics."},"400":{"description":"Empty binding_ids"},"403":{"description":"The caller cannot modify this knowledge network"},"404":{"description":"Knowledge network or branch not found"}},"operationId":"detachCapabilities","tags":["Capabilities"]}}},"components":{"schemas":{"CapabilityBinding":{"description":"One capability bound to a knowledge network branch","type":"object","required":["id","kn_id","branch","capability_type","capability_id"],"properties":{"id":{"description":"Binding ID, a UUIDv7","type":"string"},"kn_id":{"description":"Business knowledge network ID","type":"string"},"branch":{"description":"Branch","type":"string"},"capability_type":{"description":"Capability type","enum":["skill","function"],"type":"string"},"owner_id":{"description":"Owning tool box ID. Present for functions, empty for skills.","type":"string"},"capability_id":{"description":"Execution-factory identifier — skill_id for a skill, tool_id for a function","type":"string"},"bound_as_box":{"description":"Whether the row came from expanding a whole-box mount. It does not change the binding semantics: the row is an ordinary tool-level binding and can be released on its own.","type":"boolean"},"comment":{"description":"Free-text note","type":"string"},"name":{"description":"Capability name, backfilled from the execution factory when available. Never persisted in the binding.","type":"string"},"description":{"description":"Capability description, backfilled from the execution factory","type":"string"},"status":{"description":"Capability status in the execution factory, backfilled","type":"string"},"owner_name":{"description":"Tool box name, backfilled","type":"string"},"creator":{"$ref":"#/components/schemas/AccountInfo"},"create_time":{"description":"Creation time in milliseconds","type":"integer","format":"int64"},"updater":{"$ref":"#/components/schemas/AccountInfo"},"update_time":{"description":"Update time in milliseconds","type":"integer","format":"int64"}}},"CapabilityBindingList":{"description":"Capability binding list","type":"object","required":["entries","total_count"],"properties":{"entries":{"type":"array","items":{"$ref":"#/components/schemas/CapabilityBinding"}},"total_count":{"description":"Total matching bindings, ignoring pagination","type":"integer"}}},"AttachCapabilitiesRequest":{"description":"Mount request","type":"object","required":["capabilities"],"properties":{"capabilities":{"type":"array","minItems":1,"items":{"$ref":"#/components/schemas/AttachCapabilityEntry"}}}},"AttachCapabilityEntry":{"description":"One capability to mount","type":"object","required":["capability_type","capability_id"],"properties":{"capability_type":{"enum":["skill","function"],"type":"string"},"owner_id":{"description":"Tool box ID. Required for a function, ignored for a skill.","type":"string"},"capability_id":{"description":"skill_id for a skill, tool_id for a function","type":"string"},"comment":{"description":"Free-text note","type":"string"}}},"AccountInfo":{"description":"Account information","type":"object","properties":{"id":{"type":"string"},"type":{"type":"string"},"name":{"type":"string"}}}}},"tags":[{"name":"Capabilities","description":"Knowledge-network capability binding"}]}},"searchIndex":{"store":["section/Identity","section/What-a-binding-answers","section/Scope-and-branch","section/Idempotency","section/Not-covered-here","tag/Capabilities","tag/Capabilities/operation/listCapabilities","tag/Capabilities/operation/attachCapabilities","tag/Capabilities/operation/detachCapabilities"],"index":{"version":"2.3.9","fields":["title","description"],"fieldVectors":[["title/0",[0,1.828]],["description/0",[1,0.073,2,0.822,3,1.125,4,1.125,5,3.497,6,1.125,7,1.603,8,1.125,9,1.818,10,1.125,11,1.125,12,1.773,13,1.125,14,1.125,15,1.125,16,0.822,17,0.822,18,0.822,19,1.125,20,0.822,21,1.125,22,1.125,23,0.822,24,1.125,25,1.125,26,1.125,27,1.125,28,0.822,29,1.125,30,0.822,31,1.125,32,1.125,33,1.125,34,1.125,35,0.822,36,0.474,37,1.125,38,0.822,39,0.623]],["title/1",[40,0.055,41,1.498]],["description/1",[1,0.172,9,1.431,16,1.431,20,1.431,40,0.053,41,1.431,42,1.084,43,1.475,44,1.959,45,1.959,46,1.431,47,1.959,48,1.959,49,1.959,50,1.431,51,1.959,52,1.959,53,1.959]],["title/2",[18,1.498,54,1.498]],["description/2",[28,1.552,38,1.552,40,0.057,54,2.457,55,1.552,56,2.124,57,2.124,58,2.124,59,2.124,60,1.552,61,2.124,62,2.124,63,2.124]],["title/3",[39,1.385]],["description/3",[1,0.127,30,1.431,35,1.431,36,1.122,40,0.053,64,1.959,65,1.959,66,1.959,67,1.084,68,1.084,69,1.959,70,1.084,71,1.959,72,1.431,73,1.959,74,1.948,75,1.431,76,1.959]],["title/4",[77,2.05,78,2.05]],["description/4",[1,0.103,36,0.668,40,0.043,70,0.878,79,1.587,80,1.587,81,1.587,82,1.587,83,1.587,84,1.587,85,1.587,86,1.587,87,1.587,88,1.587,89,1.587,90,1.587,91,1.587,92,1.587,93,1.587,94,1.587,95,1.587,96,1.587,97,1.16,98,1.587,99,1.587,100,2.3,101,1.587,102,1.587,103,1.587,104,1.587,105,1.587]],["title/5",[1,0.162]],["description/5",[1,0.189,40,0.079,60,2.141]],["title/6",[1,0.086,42,0.735,43,0.735,46,0.971,68,0.735]],["description/6",[106,2.273]],["title/7",[1,0.086,36,0.559,42,0.735,43,0.735,107,1.329]],["description/7",[1,0.179,39,1.151,40,0.056,55,1.52,67,1.151,68,1.151,70,1.151,72,1.52,74,1.52,75,2.029,106,1.52,108,2.08,109,2.08,110,2.08,111,2.08]],["title/8",[1,0.112,40,0.047,112,1.268]],["description/8",[0,1.238,1,0.11,2,1.238,7,1.238,17,2.05,23,1.238,40,0.076,50,1.238,67,0.938,97,1.238,112,1.238,113,1.694,114,1.694,115,1.694,116,1.694,117,1.694,118,1.694,119,1.694,120,1.694,121,1.694,122,1.694,123,1.694,124,1.694,125,1.694]]],"invertedIndex":[["",{"_index":5,"title":{},"description":{"0":{}}}],["alias",{"_index":96,"title":{},"description":{"4":{}}}],["alreadi",{"_index":67,"title":{},"description":{"3":{},"7":{},"8":{}}}],["answer",{"_index":41,"title":{"1":{}},"description":{"1":{}}}],["api/bkn-backend/in/v1",{"_index":104,"title":{},"description":{"4":{}}}],["api/bkn-backend/v1/knowledge-networks/{kn_id}/cap",{"_index":106,"title":{},"description":{"6":{},"7":{}}}],["api/bkn-backend/v1/knowledge-networks/{kn_id}/capabilities/{binding_id",{"_index":125,"title":{},"description":{"8":{}}}],["api/ontology-manager/in/v1",{"_index":105,"title":{},"description":{"4":{}}}],["api/ontology-manager/v1",{"_index":101,"title":{},"description":{"4":{}}}],["arriv",{"_index":88,"title":{},"description":{"4":{}}}],["backfil",{"_index":85,"title":{},"description":{"4":{}}}],["batch",{"_index":115,"title":{},"description":{"8":{}}}],["be",{"_index":38,"title":{},"description":{"0":{},"2":{}}}],["below",{"_index":98,"title":{},"description":{"4":{}}}],["bind",{"_index":40,"title":{"1":{},"8":{}},"description":{"1":{},"2":{},"3":{},"4":{},"5":{},"7":{},"8":{}}}],["bound",{"_index":68,"title":{"6":{}},"description":{"3":{},"7":{}}}],["box",{"_index":19,"title":{},"description":{"0":{}}}],["box_id",{"_index":13,"title":{},"description":{"0":{}}}],["branch",{"_index":54,"title":{"2":{}},"description":{"2":{}}}],["capability_id",{"_index":8,"title":{},"description":{"0":{}}}],["capability_typ",{"_index":6,"title":{},"description":{"0":{}}}],["capabl",{"_index":1,"title":{"5":{},"6":{},"7":{},"8":{}},"description":{"0":{},"1":{},"3":{},"4":{},"5":{},"7":{},"8":{}}}],["carri",{"_index":110,"title":{},"description":{"7":{}}}],["charact",{"_index":123,"title":{},"description":{"8":{}}}],["check",{"_index":81,"title":{},"description":{"4":{}}}],["clear",{"_index":58,"title":{},"description":{"2":{}}}],["collaps",{"_index":34,"title":{},"description":{"0":{}}}],["comma",{"_index":113,"title":{},"description":{"8":{}}}],["contain",{"_index":23,"title":{},"description":{"0":{},"8":{}}}],["copi",{"_index":56,"title":{},"description":{"2":{}}}],["count",{"_index":59,"title":{},"description":{"2":{}}}],["cover",{"_index":77,"title":{"4":{}},"description":{}}],["creat",{"_index":28,"title":{},"description":{"0":{},"2":{}}}],["crud",{"_index":93,"title":{},"description":{"4":{}}}],["dangl",{"_index":86,"title":{},"description":{"4":{}}}],["delet",{"_index":57,"title":{},"description":{"2":{}}}],["describ",{"_index":92,"title":{},"description":{"4":{}}}],["dozen",{"_index":49,"title":{},"description":{"1":{}}}],["drop",{"_index":25,"title":{},"description":{"0":{}}}],["empti",{"_index":10,"title":{},"description":{"0":{}}}],["endpoint",{"_index":53,"title":{},"description":{"1":{}}}],["entri",{"_index":72,"title":{},"description":{"3":{},"7":{}}}],["error",{"_index":117,"title":{},"description":{"8":{}}}],["escap",{"_index":124,"title":{},"description":{"8":{}}}],["event",{"_index":66,"title":{},"description":{"3":{}}}],["execut",{"_index":20,"title":{},"description":{"0":{},"1":{}}}],["exist",{"_index":70,"title":{},"description":{"3":{},"4":{},"7":{}}}],["face",{"_index":103,"title":{},"description":{"4":{}}}],["factori",{"_index":21,"title":{},"description":{"0":{}}}],["factory'",{"_index":51,"title":{},"description":{"1":{}}}],["fail",{"_index":71,"title":{},"description":{"3":{}}}],["file",{"_index":91,"title":{},"description":{"4":{}}}],["follow",{"_index":62,"title":{},"description":{"2":{}}}],["function",{"_index":12,"title":{},"description":{"0":{}}}],["gone",{"_index":116,"title":{},"description":{"8":{}}}],["here",{"_index":78,"title":{"4":{}},"description":{}}],["id",{"_index":17,"title":{},"description":{"0":{},"8":{}}}],["idempot",{"_index":39,"title":{"3":{}},"description":{"0":{},"7":{}}}],["ident",{"_index":0,"title":{"0":{}},"description":{"8":{}}}],["identifi",{"_index":2,"title":{},"description":{"0":{},"8":{}}}],["insid",{"_index":73,"title":{},"description":{"3":{}}}],["intern",{"_index":102,"title":{},"description":{"4":{}}}],["keep",{"_index":27,"title":{},"description":{"0":{}}}],["key",{"_index":33,"title":{},"description":{"0":{}}}],["knowledg",{"_index":42,"title":{"6":{},"7":{}},"description":{"1":{}}}],["knowledge-network",{"_index":60,"title":{},"description":{"2":{},"5":{}}}],["list",{"_index":46,"title":{"6":{}},"description":{"1":{}}}],["locat",{"_index":121,"title":{},"description":{"8":{}}}],["mark",{"_index":87,"title":{},"description":{"4":{}}}],["membership",{"_index":65,"title":{},"description":{"3":{}}}],["metadata",{"_index":84,"title":{},"description":{"4":{}}}],["mount",{"_index":36,"title":{"7":{}},"description":{"0":{},"3":{},"4":{}}}],["need",{"_index":50,"title":{},"description":{"1":{},"8":{}}}],["network",{"_index":43,"title":{"6":{},"7":{}},"description":{"1":{}}}],["on",{"_index":74,"title":{},"description":{"3":{},"7":{}}}],["onto",{"_index":107,"title":{"7":{}},"description":{}}],["order",{"_index":111,"title":{},"description":{"7":{}}}],["own",{"_index":22,"title":{},"description":{"0":{}}}],["owner_id",{"_index":7,"title":{},"description":{"0":{},"8":{}}}],["part",{"_index":4,"title":{},"description":{"0":{}}}],["path",{"_index":97,"title":{},"description":{"4":{},"8":{}}}],["per",{"_index":55,"title":{},"description":{"2":{},"7":{}}}],["prefix",{"_index":95,"title":{},"description":{"4":{}}}],["produc",{"_index":76,"title":{},"description":{"3":{}}}],["publish",{"_index":83,"title":{},"description":{"4":{}}}],["question",{"_index":45,"title":{},"description":{"1":{}}}],["releas",{"_index":112,"title":{"8":{}},"description":{"8":{}}}],["relev",{"_index":44,"title":{},"description":{"1":{}}}],["repeat",{"_index":35,"title":{},"description":{"0":{},"3":{}}}],["replac",{"_index":47,"title":{},"description":{"1":{}}}],["request",{"_index":75,"title":{},"description":{"3":{},"7":{}}}],["requir",{"_index":15,"title":{},"description":{"0":{}}}],["resolv",{"_index":108,"title":{},"description":{"7":{}}}],["respons",{"_index":109,"title":{},"description":{"7":{}}}],["rest",{"_index":89,"title":{},"description":{"4":{}}}],["retriev",{"_index":48,"title":{},"description":{"1":{}}}],["return",{"_index":69,"title":{},"description":{"3":{}}}],["row",{"_index":30,"title":{},"description":{"0":{},"3":{}}}],["same",{"_index":31,"title":{},"description":{"0":{}}}],["scope",{"_index":18,"title":{"2":{}},"description":{"0":{}}}],["search",{"_index":52,"title":{},"description":{"1":{}}}],["second",{"_index":29,"title":{},"description":{"0":{}}}],["sent",{"_index":24,"title":{},"description":{"0":{}}}],["separ",{"_index":114,"title":{},"description":{"8":{}}}],["serv",{"_index":99,"title":{},"description":{"4":{}}}],["skill",{"_index":9,"title":{},"description":{"0":{},"1":{}}}],["skill_id",{"_index":11,"title":{},"description":{"0":{}}}],["special",{"_index":122,"title":{},"description":{"8":{}}}],["statement",{"_index":64,"title":{},"description":{"3":{}}}],["statist",{"_index":61,"title":{},"description":{"2":{}}}],["stop",{"_index":37,"title":{},"description":{"0":{}}}],["store",{"_index":26,"title":{},"description":{"0":{}}}],["surfac",{"_index":94,"title":{},"description":{"4":{}}}],["target",{"_index":82,"title":{},"description":{"4":{}}}],["three",{"_index":3,"title":{},"description":{"0":{}}}],["tool",{"_index":16,"title":{},"description":{"0":{},"1":{}}}],["tool-level",{"_index":119,"title":{},"description":{"8":{}}}],["tool_id",{"_index":14,"title":{},"description":{"0":{}}}],["under",{"_index":100,"title":{},"description":{"4":{}}}],["uniqu",{"_index":32,"title":{},"description":{"0":{}}}],["us",{"_index":118,"title":{},"description":{"8":{}}}],["view",{"_index":63,"title":{},"description":{"2":{}}}],["well",{"_index":120,"title":{},"description":{"8":{}}}],["whole-box",{"_index":79,"title":{},"description":{"4":{}}}],["work",{"_index":90,"title":{},"description":{"4":{}}}],["write-tim",{"_index":80,"title":{},"description":{"4":{}}}]],"pipeline":[]}},"options":{}};
+
+      var container = document.getElementById('redoc');
+      Redoc.hydrate(__redoc_state, container);
+
+      </script>
+</body>
+
+</html>

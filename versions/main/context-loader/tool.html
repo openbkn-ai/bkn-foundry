@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf8" />
+  <title>已发布工具的检索与调用</title>
+  <!-- needed for adaptive design -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      padding: 0;
+      margin: 0;
+    }
+  </style>
+  <script src="https://cdn.redocly.com/redoc/v2.5.0/bundles/redoc.standalone.js"></script><style data-styled="true" data-styled-version="6.4.1">.eQypqI{width:calc(100% - 40%);padding:0 40px;}/*!sc*/
+@media print,screen and (max-width: 75rem){.eQypqI{width:100%;padding:40px 40px;}}/*!sc*/
+data-styled.g5[id="sc-hKgHXU"]{content:"eQypqI,"}/*!sc*/
+.bKZuAK{padding:40px 0;}/*!sc*/
+.bKZuAK:last-child{min-height:calc(100vh + 1px);}/*!sc*/
+.bKZuAK>.bKZuAK:last-child{min-height:initial;}/*!sc*/
+@media print,screen and (max-width: 75rem){.bKZuAK{padding:0;}}/*!sc*/
+.hxxgNd{padding:40px 0;position:relative;}/*!sc*/
+.hxxgNd:last-child{min-height:calc(100vh + 1px);}/*!sc*/
+.hxxgNd>.hxxgNd:last-child{min-height:initial;}/*!sc*/
+@media print,screen and (max-width: 75rem){.hxxgNd{padding:0;}}/*!sc*/
+.hxxgNd:not(:last-of-type):after{position:absolute;bottom:0;width:100%;display:block;content:'';border-bottom:1px solid rgba(0, 0, 0, 0.2);}/*!sc*/
+data-styled.g6[id="sc-eCsseJ"]{content:"bKZuAK,hxxgNd,"}/*!sc*/
+.kWQHAp{width:40%;color:#ffffff;background-color:#263238;padding:0 40px;}/*!sc*/
+@media print,screen and (max-width: 75rem){.kWQHAp{width:100%;padding:40px 40px;}}/*!sc*/
+data-styled.g7[id="sc-jSgsbC"]{content:"kWQHAp,"}/*!sc*/
+.jYdWFY{background-color:#263238;}/*!sc*/
+data-styled.g8[id="sc-gKscir"]{content:"jYdWFY,"}/*!sc*/
+.cOCikg{display:flex;width:100%;padding:0;}/*!sc*/
+@media print,screen and (max-width: 75rem){.cOCikg{flex-direction:column;}}/*!sc*/
+data-styled.g9[id="sc-iBPUmU"]{content:"cOCikg,"}/*!sc*/
+.edtrWC{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#333333;}/*!sc*/
+data-styled.g10[id="sc-fubEtJ"]{content:"edtrWC,"}/*!sc*/
+.bwjsfx{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;margin:0 0 20px;}/*!sc*/
+data-styled.g11[id="sc-pGbXd"]{content:"bwjsfx,"}/*!sc*/
+.hgYAAF{color:#ffffff;}/*!sc*/
+data-styled.g13[id="sc-kEjckD"]{content:"hgYAAF,"}/*!sc*/
+.iFTCOQ{border-bottom:1px solid rgba(38, 50, 56, 0.3);margin:1em 0 1em 0;color:rgba(38, 50, 56, 0.5);font-weight:normal;text-transform:uppercase;font-size:0.929em;line-height:20px;}/*!sc*/
+data-styled.g14[id="sc-iqHZue"]{content:"iFTCOQ,"}/*!sc*/
+.itgZBm{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.itgZBm:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+h1:hover>.itgZBm::before,h2:hover>.itgZBm::before,.itgZBm:hover::before{visibility:visible;}/*!sc*/
+data-styled.g15[id="sc-crrrsl"]{content:"itgZBm,"}/*!sc*/
+.cWjMmC{height:18px;width:18px;min-width:18px;vertical-align:middle;float:right;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.dHiXwH{height:1.3em;width:1.3em;min-width:1.3em;vertical-align:middle;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.iTiSfO{height:18px;width:18px;min-width:18px;vertical-align:middle;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.idFXFs{height:1.5em;width:1.5em;min-width:1.5em;vertical-align:middle;float:left;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.idFXFs polygon{fill:#1d8127;}/*!sc*/
+.djPqdM{height:1.5em;width:1.5em;min-width:1.5em;vertical-align:middle;float:left;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.djPqdM polygon{fill:#d41f1c;}/*!sc*/
+.dvMtUQ{height:20px;width:20px;min-width:20px;vertical-align:middle;float:right;transition:transform 0.2s ease-out;transform:rotateZ(0);}/*!sc*/
+.dvMtUQ polygon{fill:white;}/*!sc*/
+data-styled.g16[id="sc-dQoBM"]{content:"cWjMmC,dHiXwH,iTiSfO,idFXFs,djPqdM,dvMtUQ,"}/*!sc*/
+.DPwQp{border-left:1px solid #7c7cbb;box-sizing:border-box;position:relative;padding:10px 10px 10px 0;}/*!sc*/
+@media screen and (max-width: 50rem){.DPwQp{display:block;overflow:hidden;}}/*!sc*/
+tr:first-of-type>.DPwQp,tr.last>.DPwQp{border-left-width:0;background-position:top left;background-repeat:no-repeat;background-size:1px 100%;}/*!sc*/
+tr:first-of-type>.DPwQp{background-image:linear-gradient(
+      to bottom,
+      transparent 0%,
+      transparent 22px,
+      #7c7cbb 22px,
+      #7c7cbb 100%
+    );}/*!sc*/
+tr.last>.DPwQp{background-image:linear-gradient(
+      to bottom,
+      #7c7cbb 0%,
+      #7c7cbb 22px,
+      transparent 22px,
+      transparent 100%
+    );}/*!sc*/
+tr.last+tr>.DPwQp{border-left-color:transparent;}/*!sc*/
+tr.last:first-child>.DPwQp{background:none;border-left-color:transparent;}/*!sc*/
+data-styled.g19[id="sc-hBFaCF"]{content:"DPwQp,"}/*!sc*/
+.hUqyua{vertical-align:top;line-height:20px;white-space:nowrap;font-size:13px;font-family:Courier,monospace;}/*!sc*/
+.hUqyua.deprecated{text-decoration:line-through;color:#707070;}/*!sc*/
+data-styled.g21[id="sc-fFubTW"]{content:"hUqyua,"}/*!sc*/
+.gNQdZ{border-bottom:1px solid #9fb4be;padding:10px 0;width:75%;box-sizing:border-box;}/*!sc*/
+tr.expanded .gNQdZ{border-bottom:none;}/*!sc*/
+@media screen and (max-width: 50rem){.gNQdZ{padding:0 20px;border-bottom:none;border-left:1px solid #7c7cbb;}tr.last>.gNQdZ{border-left:none;}}/*!sc*/
+data-styled.g22[id="sc-bkAakD"]{content:"gNQdZ,"}/*!sc*/
+.iNiPzl{color:#7c7cbb;font-family:Courier,monospace;margin-right:10px;}/*!sc*/
+.iNiPzl::before{content:'';display:inline-block;vertical-align:middle;width:10px;height:1px;background:#7c7cbb;}/*!sc*/
+.iNiPzl::after{content:'';display:inline-block;vertical-align:middle;width:1px;background:#7c7cbb;height:7px;}/*!sc*/
+data-styled.g23[id="sc-idOkdQ"]{content:"iNiPzl,"}/*!sc*/
+.juzVUC{border-collapse:separate;border-radius:3px;font-size:14px;border-spacing:0;width:100%;}/*!sc*/
+.juzVUC >tr{vertical-align:middle;}/*!sc*/
+@media screen and (max-width: 50rem){.juzVUC{display:block;}.juzVUC >tr,.juzVUC >tbody>tr{display:block;}}/*!sc*/
+@media screen and (max-width: 50rem) and (-ms-high-contrast:none){.juzVUC td{float:left;width:100%;}}/*!sc*/
+.juzVUC .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux{margin:1em;margin-right:0;background:#fafafa;}/*!sc*/
+.juzVUC .sc-dIUiux .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux{background:#ffffff;}/*!sc*/
+data-styled.g25[id="sc-hHfrpe"]{content:"juzVUC,"}/*!sc*/
+.hqsuVf >ul{list-style:none;padding:0;margin:0;margin:0 -5px;}/*!sc*/
+.hqsuVf >ul >li{padding:5px 10px;display:inline-block;background-color:#11171a;border-bottom:1px solid rgba(0, 0, 0, 0.5);cursor:pointer;text-align:center;outline:none;color:#ccc;margin:0 5px 5px 5px;border:1px solid #07090b;border-radius:5px;min-width:60px;font-size:0.9em;font-weight:bold;}/*!sc*/
+.hqsuVf >ul >li.react-tabs__tab--selected{color:#333333;background:#ffffff;}/*!sc*/
+.hqsuVf >ul >li.react-tabs__tab--selected:focus{outline:auto;}/*!sc*/
+.hqsuVf >ul >li:only-child{flex:none;min-width:100px;}/*!sc*/
+.hqsuVf >ul >li.tab-success{color:#1d8127;}/*!sc*/
+.hqsuVf >ul >li.tab-redirect{color:#ffa500;}/*!sc*/
+.hqsuVf >ul >li.tab-info{color:#87ceeb;}/*!sc*/
+.hqsuVf >ul >li.tab-error{color:#d41f1c;}/*!sc*/
+.hqsuVf >.react-tabs__tab-panel{background:#11171a;}/*!sc*/
+.hqsuVf >.react-tabs__tab-panel>div,.hqsuVf >.react-tabs__tab-panel>pre{padding:20px;margin:0;}/*!sc*/
+.hqsuVf >.react-tabs__tab-panel>div>pre{padding:0;}/*!sc*/
+data-styled.g31[id="sc-cxFMaL"]{content:"hqsuVf,"}/*!sc*/
+.iNuSsz code[class*='language-'],.iNuSsz pre[class*='language-']{text-shadow:0 -0.1em 0.2em black;text-align:left;white-space:pre;word-spacing:normal;word-break:normal;word-wrap:normal;line-height:1.5;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-hyphens:none;-moz-hyphens:none;-ms-hyphens:none;hyphens:none;}/*!sc*/
+@media print{.iNuSsz code[class*='language-'],.iNuSsz pre[class*='language-']{text-shadow:none;}}/*!sc*/
+.iNuSsz pre[class*='language-']{padding:1em;margin:0.5em 0;overflow:auto;}/*!sc*/
+.iNuSsz .token.comment,.iNuSsz .token.prolog,.iNuSsz .token.doctype,.iNuSsz .token.cdata{color:hsl(30, 20%, 50%);}/*!sc*/
+.iNuSsz .token.punctuation{opacity:0.7;}/*!sc*/
+.iNuSsz .namespace{opacity:0.7;}/*!sc*/
+.iNuSsz .token.property,.iNuSsz .token.tag,.iNuSsz .token.number,.iNuSsz .token.constant,.iNuSsz .token.symbol{color:#4a8bb3;}/*!sc*/
+.iNuSsz .token.boolean{color:#e64441;}/*!sc*/
+.iNuSsz .token.selector,.iNuSsz .token.attr-name,.iNuSsz .token.string,.iNuSsz .token.char,.iNuSsz .token.builtin,.iNuSsz .token.inserted{color:#a0fbaa;}/*!sc*/
+.iNuSsz .token.selector+a,.iNuSsz .token.attr-name+a,.iNuSsz .token.string+a,.iNuSsz .token.char+a,.iNuSsz .token.builtin+a,.iNuSsz .token.inserted+a,.iNuSsz .token.selector+a:visited,.iNuSsz .token.attr-name+a:visited,.iNuSsz .token.string+a:visited,.iNuSsz .token.char+a:visited,.iNuSsz .token.builtin+a:visited,.iNuSsz .token.inserted+a:visited{color:#4ed2ba;text-decoration:underline;}/*!sc*/
+.iNuSsz .token.property.string{color:white;}/*!sc*/
+.iNuSsz .token.operator,.iNuSsz .token.entity,.iNuSsz .token.url,.iNuSsz .token.variable{color:hsl(40, 90%, 60%);}/*!sc*/
+.iNuSsz .token.atrule,.iNuSsz .token.attr-value,.iNuSsz .token.keyword{color:hsl(350, 40%, 70%);}/*!sc*/
+.iNuSsz .token.regex,.iNuSsz .token.important{color:#e90;}/*!sc*/
+.iNuSsz .token.important,.iNuSsz .token.bold{font-weight:bold;}/*!sc*/
+.iNuSsz .token.italic{font-style:italic;}/*!sc*/
+.iNuSsz .token.entity{cursor:help;}/*!sc*/
+.iNuSsz .token.deleted{color:red;}/*!sc*/
+data-styled.g33[id="sc-iJuXkV"]{content:"iNuSsz,"}/*!sc*/
+.ldPDIU{opacity:0.7;transition:opacity 0.3s ease;text-align:right;}/*!sc*/
+.ldPDIU:focus-within{opacity:1;}/*!sc*/
+.ldPDIU >button{background-color:transparent;border:0;color:inherit;padding:2px 10px;font-family:Roboto,sans-serif;font-size:14px;line-height:1.5em;cursor:pointer;outline:0;}/*!sc*/
+.ldPDIU >button :hover,.ldPDIU >button :focus{background:rgba(255, 255, 255, 0.1);}/*!sc*/
+data-styled.g34[id="sc-giIpqw"]{content:"ldPDIU,"}/*!sc*/
+.bsUDpT{position:relative;}/*!sc*/
+data-styled.g38[id="sc-kLgmGd"]{content:"bsUDpT,"}/*!sc*/
+.lgCKWg{position:absolute;pointer-events:none;z-index:1;top:50%;-webkit-transform:translateY(-50%);-ms-transform:translateY(-50%);transform:translateY(-50%);right:8px;margin:auto;text-align:center;}/*!sc*/
+.lgCKWg polyline{color:white;}/*!sc*/
+data-styled.g39[id="sc-iktELE"]{content:"lgCKWg,"}/*!sc*/
+.ekMQOb{box-sizing:border-box;min-width:100px;outline:none;display:inline-block;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.5);vertical-align:bottom;padding:2px 0px 2px 6px;position:relative;width:auto;background:white;color:#263238;font-family:Montserrat,sans-serif;font-size:0.929em;line-height:1.5em;cursor:pointer;transition:border 0.25s ease,color 0.25s ease,box-shadow 0.25s ease;}/*!sc*/
+.ekMQOb label{box-sizing:border-box;min-width:100px;outline:none;display:inline-block;font-family:Montserrat,sans-serif;color:#333333;vertical-align:bottom;width:auto;text-transform:none;padding:0 22px 0 4px;font-size:0.929em;line-height:1.5em;font-family:inherit;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;}/*!sc*/
+.ekMQOb .dropdown-select{position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;border:none;appearance:none;cursor:pointer;color:#333333;line-height:inherit;font-family:inherit;}/*!sc*/
+.ekMQOb:hover,.ekMQOb:focus-within{border:1px solid #32329f;color:#32329f;box-shadow:0px 0px 0px 1px #32329f;}/*!sc*/
+data-styled.g40[id="sc-jJEKGn"]{content:"ekMQOb,"}/*!sc*/
+.eBDHRN{margin-left:10px;text-transform:none;font-size:0.929em;color:black;}/*!sc*/
+data-styled.g42[id="sc-gWHgjU"]{content:"eBDHRN,"}/*!sc*/
+.jtfGmi{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.jtfGmi p:last-child{margin-bottom:0;}/*!sc*/
+.jtfGmi h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.jtfGmi h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.jtfGmi code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.jtfGmi pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.jtfGmi pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.jtfGmi pre code:before,.jtfGmi pre code:after{content:none;}/*!sc*/
+.jtfGmi blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.jtfGmi img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.jtfGmi ul,.jtfGmi ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.jtfGmi ul ul,.jtfGmi ol ul,.jtfGmi ul ol,.jtfGmi ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.jtfGmi table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.jtfGmi table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.jtfGmi table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.jtfGmi table th,.jtfGmi table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.jtfGmi table th{text-align:left;font-weight:bold;}/*!sc*/
+.jtfGmi .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.jtfGmi .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.jtfGmi h1:hover>.share-link::before,.jtfGmi h2:hover>.share-link::before,.jtfGmi .share-link:hover::before{visibility:visible;}/*!sc*/
+.jtfGmi a{text-decoration:auto;color:#32329f;}/*!sc*/
+.jtfGmi a:visited{color:#32329f;}/*!sc*/
+.jtfGmi a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+.dyntKg{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.dyntKg p:last-child{margin-bottom:0;}/*!sc*/
+.dyntKg p:first-child{margin-top:0;}/*!sc*/
+.dyntKg p:last-child{margin-bottom:0;}/*!sc*/
+.dyntKg h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.dyntKg h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.dyntKg code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.dyntKg pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.dyntKg pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.dyntKg pre code:before,.dyntKg pre code:after{content:none;}/*!sc*/
+.dyntKg blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.dyntKg img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.dyntKg ul,.dyntKg ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.dyntKg ul ul,.dyntKg ol ul,.dyntKg ul ol,.dyntKg ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.dyntKg table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.dyntKg table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.dyntKg table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.dyntKg table th,.dyntKg table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.dyntKg table th{text-align:left;font-weight:bold;}/*!sc*/
+.dyntKg .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.dyntKg .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.dyntKg h1:hover>.share-link::before,.dyntKg h2:hover>.share-link::before,.dyntKg .share-link:hover::before{visibility:visible;}/*!sc*/
+.dyntKg a{text-decoration:auto;color:#32329f;}/*!sc*/
+.dyntKg a:visited{color:#32329f;}/*!sc*/
+.dyntKg a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+.eBjiEo{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.eBjiEo p:last-child{margin-bottom:0;}/*!sc*/
+.eBjiEo p:first-child{margin-top:0;}/*!sc*/
+.eBjiEo p:last-child{margin-bottom:0;}/*!sc*/
+.eBjiEo p{display:inline-block;}/*!sc*/
+.eBjiEo h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.eBjiEo h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.eBjiEo code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.eBjiEo pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.eBjiEo pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.eBjiEo pre code:before,.eBjiEo pre code:after{content:none;}/*!sc*/
+.eBjiEo blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.eBjiEo img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.eBjiEo ul,.eBjiEo ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.eBjiEo ul ul,.eBjiEo ol ul,.eBjiEo ul ol,.eBjiEo ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.eBjiEo table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.eBjiEo table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.eBjiEo table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.eBjiEo table th,.eBjiEo table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.eBjiEo table th{text-align:left;font-weight:bold;}/*!sc*/
+.eBjiEo .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.eBjiEo .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.eBjiEo h1:hover>.share-link::before,.eBjiEo h2:hover>.share-link::before,.eBjiEo .share-link:hover::before{visibility:visible;}/*!sc*/
+.eBjiEo a{text-decoration:auto;color:#32329f;}/*!sc*/
+.eBjiEo a:visited{color:#32329f;}/*!sc*/
+.eBjiEo a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+data-styled.g43[id="sc-cBNeAB"]{content:"jtfGmi,dyntKg,eBjiEo,"}/*!sc*/
+.hynizp{display:inline;}/*!sc*/
+data-styled.g44[id="sc-cittYi"]{content:"hynizp,"}/*!sc*/
+.hiQxbu{position:relative;}/*!sc*/
+data-styled.g45[id="sc-jcVbNL"]{content:"hiQxbu,"}/*!sc*/
+.fRRakq:hover>.sc-giIpqw{opacity:1;}/*!sc*/
+data-styled.g50[id="sc-cTkvqA"]{content:"fRRakq,"}/*!sc*/
+.cCicSb{font-family:Courier,monospace;font-size:13px;white-space:pre;contain:content;overflow-x:auto;}/*!sc*/
+.cCicSb .redoc-json code>.collapser{display:none;pointer-events:none;}/*!sc*/
+.cCicSb .callback-function{color:gray;}/*!sc*/
+.cCicSb .collapser:after{content:'-';cursor:pointer;}/*!sc*/
+.cCicSb .collapsed>.collapser:after{content:'+';cursor:pointer;}/*!sc*/
+.cCicSb .ellipsis:after{content:' … ';}/*!sc*/
+.cCicSb .collapsible{margin-left:2em;}/*!sc*/
+.cCicSb .hoverable{padding-top:1px;padding-bottom:1px;padding-left:2px;padding-right:2px;border-radius:2px;}/*!sc*/
+.cCicSb .hovered{background-color:rgba(235, 238, 249, 1);}/*!sc*/
+.cCicSb .collapser{background-color:transparent;border:0;color:#fff;font-family:Courier,monospace;font-size:13px;padding-right:6px;padding-left:6px;padding-top:0;padding-bottom:0;display:flex;align-items:center;justify-content:center;width:15px;height:15px;position:absolute;top:4px;left:-1.5em;cursor:default;user-select:none;-webkit-user-select:none;padding:2px;}/*!sc*/
+.cCicSb .collapser:focus{outline-color:#fff;outline-style:dotted;outline-width:1px;}/*!sc*/
+.cCicSb ul{list-style-type:none;padding:0px;margin:0px 0px 0px 26px;}/*!sc*/
+.cCicSb li{position:relative;display:block;}/*!sc*/
+.cCicSb .hoverable{display:inline-block;}/*!sc*/
+.cCicSb .selected{outline-style:solid;outline-width:1px;outline-style:dotted;}/*!sc*/
+.cCicSb .collapsed>.collapsible{display:none;}/*!sc*/
+.cCicSb .ellipsis{display:none;}/*!sc*/
+.cCicSb .collapsed>.ellipsis{display:inherit;}/*!sc*/
+data-styled.g51[id="sc-jNMdgd"]{content:"cCicSb,"}/*!sc*/
+.ilXydl{padding:0.9em;background-color:rgba(38,50,56,0.4);margin:0 0 10px 0;display:block;font-family:Montserrat,sans-serif;font-size:0.929em;line-height:1.5em;}/*!sc*/
+data-styled.g52[id="sc-dOSQqJ"]{content:"ilXydl,"}/*!sc*/
+.fLqWfi{font-family:Montserrat,sans-serif;font-size:12px;position:absolute;z-index:1;top:-11px;left:12px;font-weight:600;color:rgba(255,255,255,0.7);}/*!sc*/
+data-styled.g53[id="sc-bBrNAk"]{content:"fLqWfi,"}/*!sc*/
+.jyrVDw{position:relative;}/*!sc*/
+data-styled.g54[id="sc-cOahfn"]{content:"jyrVDw,"}/*!sc*/
+.dMpNQv{margin:0 0 10px 0;display:block;background-color:rgba(38,50,56,0.4);border:none;padding:0.9em 1.6em 0.9em 0.9em;box-shadow:none;}/*!sc*/
+.dMpNQv label{color:#ffffff;text-overflow:ellipsis;white-space:nowrap;overflow:hidden;font-size:1em;text-transform:none;border:none;}/*!sc*/
+.dMpNQv:hover,.dMpNQv:focus-within{border:none;box-shadow:none;background-color:rgba(38,50,56,0.7);}/*!sc*/
+data-styled.g55[id="sc-AzeoO"]{content:"dMpNQv,"}/*!sc*/
+.icbUjL{margin-top:15px;}/*!sc*/
+data-styled.g57[id="sc-hTZjHc"]{content:"icbUjL,"}/*!sc*/
+.bvJPfa.deprecated span.property-name{text-decoration:line-through;color:#707070;}/*!sc*/
+.bvJPfa button{background-color:transparent;border:0;outline:0;font-size:13px;font-family:Courier,monospace;cursor:pointer;padding:0;color:#333333;}/*!sc*/
+.bvJPfa button:focus{font-weight:600;}/*!sc*/
+.bvJPfa .sc-dQoBM{height:1.1em;width:1.1em;}/*!sc*/
+.bvJPfa .sc-dQoBM polygon{fill:#666;}/*!sc*/
+data-styled.g58[id="sc-jgHDmf"]{content:"bvJPfa,"}/*!sc*/
+.gCMUGw{vertical-align:middle;font-size:13px;line-height:20px;}/*!sc*/
+data-styled.g59[id="sc-gTgAvG"]{content:"gCMUGw,"}/*!sc*/
+.dCeeDp{color:rgba(102,102,102,0.9);}/*!sc*/
+data-styled.g60[id="sc-laROWl"]{content:"dCeeDp,"}/*!sc*/
+.cxjEEA{color:#666;}/*!sc*/
+data-styled.g61[id="sc-iNqMfM"]{content:"cxjEEA,"}/*!sc*/
+.jJMDiT{color:#666;word-break:break-word;}/*!sc*/
+data-styled.g62[id="sc-jeGQnC"]{content:"jJMDiT,"}/*!sc*/
+.egFobb{color:#d41f1c;font-size:0.9em;font-weight:normal;margin-left:20px;line-height:1;}/*!sc*/
+data-styled.g63[id="sc-eJMOEj"]{content:"egFobb,"}/*!sc*/
+.jzGNYG{border-radius:2px;word-break:break-word;background-color:rgba(51,51,51,0.05);color:rgba(51,51,51,0.9);padding:0 5px;border:1px solid rgba(51,51,51,0.1);font-family:Courier,monospace;}/*!sc*/
+.sc-lcukLb+.sc-lcukLb{margin-left:0;}/*!sc*/
+data-styled.g67[id="sc-lcukLb"]{content:"jzGNYG,"}/*!sc*/
+.gAOGaI{border-radius:2px;background-color:rgba(104,104,207,0.05);color:rgba(50,50,159,0.9);margin:0 5px;padding:0 5px;border:1px solid rgba(50,50,159,0.1);}/*!sc*/
+.sc-clsJvZ+.sc-clsJvZ{margin-left:0;}/*!sc*/
+data-styled.g69[id="sc-clsJvZ"]{content:"gAOGaI,"}/*!sc*/
+.ewkFZw:after{content:' and ';font-weight:normal;}/*!sc*/
+.ewkFZw:last-child:after{content:none;}/*!sc*/
+.ewkFZw a{text-decoration:auto;color:#32329f;}/*!sc*/
+.ewkFZw a:visited{color:#32329f;}/*!sc*/
+.ewkFZw a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+data-styled.g82[id="sc-hOqsyU"]{content:"ewkFZw,"}/*!sc*/
+.gXVZLC{white-space:nowrap;}/*!sc*/
+.gXVZLC:after{content:' or ';white-space:pre;}/*!sc*/
+.gXVZLC:last-child:after,.gXVZLC:only-child:after{content:none;}/*!sc*/
+.gXVZLC a{text-decoration:auto;color:#32329f;}/*!sc*/
+.gXVZLC a:visited{color:#32329f;}/*!sc*/
+.gXVZLC a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+data-styled.g83[id="sc-dtwqPB"]{content:"gXVZLC,"}/*!sc*/
+.hnzXSU{flex:1 1 auto;cursor:pointer;}/*!sc*/
+data-styled.g84[id="sc-dacGni"]{content:"hnzXSU,"}/*!sc*/
+.jnRUlI{width:75%;text-overflow:ellipsis;border-radius:4px;overflow:hidden;}/*!sc*/
+@media screen and (max-width: 50rem){.jnRUlI{margin-top:10px;}}/*!sc*/
+data-styled.g85[id="sc-jUEocL"]{content:"jnRUlI,"}/*!sc*/
+.htSlhJ{display:inline-block;margin:0;}/*!sc*/
+data-styled.g86[id="sc-jQbHUc"]{content:"htSlhJ,"}/*!sc*/
+.bhICnb{width:100%;display:flex;margin:1em 0;flex-direction:row;}/*!sc*/
+@media screen and (max-width: 50rem){.bhICnb{flex-direction:column;}}/*!sc*/
+data-styled.g87[id="sc-fvhGkJ"]{content:"bhICnb,"}/*!sc*/
+.eSPXsI{margin-top:0;margin-bottom:0.5em;}/*!sc*/
+data-styled.g93[id="sc-ctaZPk"]{content:"eSPXsI,"}/*!sc*/
+.kdqpyX{width:9ex;display:inline-block;height:13px;line-height:13px;background-color:#333;border-radius:3px;background-repeat:no-repeat;background-position:6px 4px;font-size:7px;font-family:Verdana,sans-serif;color:white;text-transform:uppercase;text-align:center;font-weight:bold;vertical-align:middle;margin-right:6px;margin-top:2px;}/*!sc*/
+.kdqpyX.get{background-color:#2F8132;}/*!sc*/
+.kdqpyX.post{background-color:#186FAF;}/*!sc*/
+.kdqpyX.put{background-color:#95507c;}/*!sc*/
+.kdqpyX.options{background-color:#947014;}/*!sc*/
+.kdqpyX.patch{background-color:#bf581d;}/*!sc*/
+.kdqpyX.delete{background-color:#cc3333;}/*!sc*/
+.kdqpyX.basic{background-color:#707070;}/*!sc*/
+.kdqpyX.link{background-color:#07818F;}/*!sc*/
+.kdqpyX.head{background-color:#A23DAD;}/*!sc*/
+.kdqpyX.hook{background-color:#32329f;}/*!sc*/
+.kdqpyX.schema{background-color:#707070;}/*!sc*/
+data-styled.g101[id="sc-XhXdA"]{content:"kdqpyX,"}/*!sc*/
+.eqhvhc{margin:0;padding:0;}/*!sc*/
+.eqhvhc:first-child{padding-bottom:32px;}/*!sc*/
+.sc-ikPCzd .sc-ikPCzd{font-size:0.929em;}/*!sc*/
+.eGBeQN{margin:0;padding:0;display:none;}/*!sc*/
+.eGBeQN:first-child{padding-bottom:32px;}/*!sc*/
+.sc-ikPCzd .sc-ikPCzd{font-size:0.929em;}/*!sc*/
+data-styled.g102[id="sc-ikPCzd"]{content:"eqhvhc,eGBeQN,"}/*!sc*/
+.hNMAOR{list-style:none inside none;overflow:hidden;text-overflow:ellipsis;padding:0;}/*!sc*/
+data-styled.g103[id="sc-tYrig"]{content:"hNMAOR,"}/*!sc*/
+.kYHuni{cursor:pointer;color:#333333;margin:0;padding:12.5px 20px;display:flex;justify-content:space-between;font-family:Montserrat,sans-serif;font-size:0.929em;text-transform:none;background-color:#fafafa;}/*!sc*/
+.kYHuni:hover{color:#32329f;background-color:#e1e1e1;}/*!sc*/
+.kYHuni .sc-dQoBM{height:1.5em;width:1.5em;}/*!sc*/
+.kYHuni .sc-dQoBM polygon{fill:#333333;}/*!sc*/
+.ehmZgs{cursor:pointer;color:#333333;margin:0;padding:12.5px 20px;display:flex;justify-content:space-between;font-family:Montserrat,sans-serif;background-color:#fafafa;}/*!sc*/
+.ehmZgs:hover{color:#32329f;background-color:#ededed;}/*!sc*/
+.ehmZgs .sc-dQoBM{height:1.5em;width:1.5em;}/*!sc*/
+.ehmZgs .sc-dQoBM polygon{fill:#333333;}/*!sc*/
+data-styled.g104[id="sc-biBsFP"]{content:"kYHuni,ehmZgs,"}/*!sc*/
+.dYJaHY{display:inline-block;vertical-align:middle;width:calc(100% - 38px);overflow:hidden;text-overflow:ellipsis;}/*!sc*/
+data-styled.g105[id="sc-eHfQNO"]{content:"dYJaHY,"}/*!sc*/
+.icnaqS{font-size:0.8em;margin-top:10px;text-align:center;position:fixed;width:260px;bottom:0;background:#fafafa;}/*!sc*/
+.icnaqS a,.icnaqS a:visited,.icnaqS a:hover{color:#333333!important;padding:5px 0;border-top:1px solid #e1e1e1;text-decoration:none;display:flex;align-items:center;justify-content:center;}/*!sc*/
+.icnaqS img{width:15px;margin-right:5px;}/*!sc*/
+@media screen and (max-width: 50rem){.icnaqS{width:100%;}}/*!sc*/
+data-styled.g106[id="sc-hzMLOJ"]{content:"icnaqS,"}/*!sc*/
+.gnyOsi{cursor:pointer;position:relative;margin-bottom:5px;}/*!sc*/
+data-styled.g112[id="sc-fXozIE"]{content:"gnyOsi,"}/*!sc*/
+.kmRXcZ{font-family:Courier,monospace;margin-left:10px;flex:1;overflow-x:hidden;text-overflow:ellipsis;}/*!sc*/
+data-styled.g113[id="sc-FyhMp"]{content:"kmRXcZ,"}/*!sc*/
+.eJFCKx{outline:0;color:inherit;width:100%;text-align:left;cursor:pointer;padding:10px 30px 10px 20px;border-radius:4px 4px 0 0;background-color:#11171a;display:flex;white-space:nowrap;align-items:center;border:1px solid transparent;border-bottom:0;transition:border-color 0.25s ease;}/*!sc*/
+.eJFCKx ..sc-FyhMp{color:#ffffff;}/*!sc*/
+.eJFCKx:focus{box-shadow:inset 0 2px 2px rgba(0, 0, 0, 0.45),0 2px 0 rgba(128, 128, 128, 0.25);}/*!sc*/
+data-styled.g114[id="sc-jXkukm"]{content:"eJFCKx,"}/*!sc*/
+.kcqnuN{font-size:0.929em;line-height:20px;background-color:#186FAF;color:#ffffff;padding:3px 10px;text-transform:uppercase;font-family:Montserrat,sans-serif;margin:0;}/*!sc*/
+data-styled.g115[id="sc-eFucnX"]{content:"kcqnuN,"}/*!sc*/
+.AnL{position:absolute;width:100%;z-index:100;background:#fafafa;color:#263238;box-sizing:border-box;box-shadow:0 0 6px rgba(0, 0, 0, 0.33);overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;transition:all 0.25s ease;visibility:hidden;transform:translateY(-50%) scaleY(0);}/*!sc*/
+data-styled.g116[id="sc-fmlIYk"]{content:"AnL,"}/*!sc*/
+.gjZMty{padding:10px;}/*!sc*/
+data-styled.g117[id="sc-ljRaAR"]{content:"gjZMty,"}/*!sc*/
+.eFxVeO{padding:5px;border:1px solid #ccc;background:#fff;word-break:break-all;color:#32329f;}/*!sc*/
+.eFxVeO >span{color:#333333;}/*!sc*/
+data-styled.g118[id="sc-jmhDzS"]{content:"eFxVeO,"}/*!sc*/
+.eEdthm{text-transform:lowercase;margin-left:0;line-height:1.5em;}/*!sc*/
+data-styled.g119[id="sc-dUrlDD"]{content:"eEdthm,"}/*!sc*/
+.jNapuE{text-transform:lowercase;margin-left:0;line-height:1.5em;color:#666;font-size:0.9em;}/*!sc*/
+data-styled.g120[id="sc-htubao"]{content:"jNapuE,"}/*!sc*/
+.ciHfuN{display:block;border:0;width:100%;text-align:left;padding:10px;border-radius:2px;margin-bottom:4px;line-height:1.5em;cursor:pointer;color:#1d8127;background-color:rgba(29,129,39,0.07);}/*!sc*/
+.ciHfuN:focus{outline:auto #1d8127;}/*!sc*/
+.iagvZz{display:block;border:0;width:100%;text-align:left;padding:10px;border-radius:2px;margin-bottom:4px;line-height:1.5em;cursor:pointer;color:#d41f1c;background-color:rgba(212,31,28,0.07);}/*!sc*/
+.iagvZz:focus{outline:auto #d41f1c;}/*!sc*/
+data-styled.g121[id="sc-cbDJdZ"]{content:"ciHfuN,iagvZz,"}/*!sc*/
+.mtsUp{vertical-align:top;}/*!sc*/
+data-styled.g124[id="sc-fWPeRB"]{content:"mtsUp,"}/*!sc*/
+.ihqrCS{font-size:1.3em;padding:0.2em 0;margin:3em 0 1.1em;color:#333333;font-weight:normal;}/*!sc*/
+data-styled.g125[id="sc-fHYzZk"]{content:"ihqrCS,"}/*!sc*/
+.iTRatv{margin-bottom:30px;}/*!sc*/
+data-styled.g130[id="sc-iGcuFr"]{content:"iTRatv,"}/*!sc*/
+.iDYPDd{user-select:none;width:20px;height:20px;align-self:center;display:flex;flex-direction:column;color:#32329f;}/*!sc*/
+data-styled.g131[id="sc-irlPNa"]{content:"iDYPDd,"}/*!sc*/
+.lkswgW{width:260px;background-color:#fafafa;overflow:hidden;display:flex;flex-direction:column;backface-visibility:hidden;height:100vh;position:sticky;position:-webkit-sticky;top:0;}/*!sc*/
+@media screen and (max-width: 50rem){.lkswgW{position:fixed;z-index:20;width:100%;background:#fafafa;display:none;}}/*!sc*/
+@media print{.lkswgW{display:none;}}/*!sc*/
+data-styled.g132[id="sc-eWvQxi"]{content:"lkswgW,"}/*!sc*/
+.fsqnbI{outline:none;user-select:none;background-color:#f2f2f2;color:#32329f;display:none;cursor:pointer;position:fixed;right:20px;z-index:100;border-radius:50%;box-shadow:0 0 20px rgba(0, 0, 0, 0.3);bottom:44px;width:60px;height:60px;padding:0 20px;}/*!sc*/
+@media screen and (max-width: 50rem){.fsqnbI{display:flex;}}/*!sc*/
+.fsqnbI svg{color:#0065FB;}/*!sc*/
+@media print{.fsqnbI{display:none;}}/*!sc*/
+data-styled.g133[id="sc-kUbhZP"]{content:"fsqnbI,"}/*!sc*/
+.iABphV{font-family:Roboto,sans-serif;font-size:14px;font-weight:400;line-height:1.5em;color:#333333;display:flex;position:relative;text-align:left;-webkit-font-smoothing:antialiased;font-smoothing:antialiased;text-rendering:optimizeSpeed!important;tap-highlight-color:rgba(0, 0, 0, 0);text-size-adjust:100%;}/*!sc*/
+.iABphV *{box-sizing:border-box;-webkit-tap-highlight-color:rgba(255, 255, 255, 0);}/*!sc*/
+data-styled.g134[id="sc-dwcwXc"]{content:"iABphV,"}/*!sc*/
+.JaJkD{z-index:1;position:relative;overflow:hidden;width:calc(100% - 260px);contain:layout;}/*!sc*/
+@media print,screen and (max-width: 50rem){.JaJkD{width:100%;}}/*!sc*/
+data-styled.g135[id="sc-jtHOzJ"]{content:"JaJkD,"}/*!sc*/
+.dQcVAt{background:#263238;position:absolute;top:0;bottom:0;right:0;width:calc((100% - 260px) * 0.4);}/*!sc*/
+@media print,screen and (max-width: 75rem){.dQcVAt{display:none;}}/*!sc*/
+data-styled.g136[id="sc-elsZMO"]{content:"dQcVAt,"}/*!sc*/
+.heVKiz{padding:5px 0;}/*!sc*/
+data-styled.g137[id="sc-kiYrpv"]{content:"heVKiz,"}/*!sc*/
+.gyVKdy{width:calc(100% - 40px);box-sizing:border-box;margin:0 20px;padding:5px 10px 5px 20px;border:0;border-bottom:1px solid #e1e1e1;font-family:Roboto,sans-serif;font-weight:bold;font-size:13px;color:#333333;background-color:transparent;outline:none;}/*!sc*/
+data-styled.g138[id="sc-cKZGmI"]{content:"gyVKdy,"}/*!sc*/
+.eIwqum{position:absolute;left:20px;height:1.8em;width:0.9em;}/*!sc*/
+.eIwqum path{fill:#333333;}/*!sc*/
+data-styled.g139[id="sc-iIEXPp"]{content:"eIwqum,"}/*!sc*/
+</style>
+  <link href="https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700" rel="stylesheet">
+</head>
+
+<body>
+  
+      <div id="redoc"><div class="sc-dwcwXc iABphV redoc-wrap"><div class="sc-eWvQxi lkswgW menu-content" style="top:0px;height:calc(100vh - 0px)"><div role="search" class="sc-kiYrpv heVKiz"><svg class="sc-iIEXPp eIwqum search-icon" version="1.1" viewBox="0 0 1000 1000" x="0px" xmlns="http://www.w3.org/2000/svg" y="0px"><path d="M968.2,849.4L667.3,549c83.9-136.5,66.7-317.4-51.7-435.6C477.1-25,252.5-25,113.9,113.4c-138.5,138.3-138.5,362.6,0,501C219.2,730.1,413.2,743,547.6,666.5l301.9,301.4c43.6,43.6,76.9,14.9,104.2-12.4C981,928.3,1011.8,893,968.2,849.4z M524.5,522c-88.9,88.7-233,88.7-321.8,0c-88.9-88.7-88.9-232.6,0-321.3c88.9-88.7,233-88.7,321.8,0C613.4,289.4,613.4,433.3,524.5,522z"></path></svg><input placeholder="Search..." aria-label="Search" type="text" class="sc-cKZGmI gyVKdy search-input" value=""/></div><div class="sc-kLgmGd bsUDpT scrollbar-container undefined"><ul role="menu" class="sc-ikPCzd eqhvhc"><li tabindex="0" depth="1" data-item-id="tag/Tool" role="menuitem" aria-label="Tool" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP kYHuni -depth1"><span width="calc(100% - 38px)" title="Tool" class="sc-eHfQNO dYJaHY">Tool</span><svg class="sc-dQoBM cWjMmC" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></label><ul class="sc-ikPCzd eGBeQN"><li tabindex="0" depth="2" data-item-id="tag/Tool/operation/searchTools" role="menuitem" aria-label="检索可调用的已发布函数工具" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP ehmZgs -depth2"><span type="post" class="sc-XhXdA kdqpyX operation-type post">post</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHfQNO dYJaHY">检索可调用的已发布函数工具</span></label></li><li tabindex="0" depth="2" data-item-id="tag/Tool/operation/executeTool" role="menuitem" aria-label="执行一个已发布函数工具" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP ehmZgs -depth2"><span type="post" class="sc-XhXdA kdqpyX operation-type post">post</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHfQNO dYJaHY">执行一个已发布函数工具</span></label></li></ul></li></ul><div class="sc-hzMLOJ icnaqS"><a target="_blank" rel="noopener noreferrer" href="https://redocly.com/redoc/">API docs by Redocly</a></div></div></div><div class="sc-kUbhZP fsqnbI"><div class="sc-irlPNa iDYPDd"><svg class="" style="transform:translate(2px, -4px) rotate(180deg);transition:transform 0.2s ease" viewBox="0 0 926.23699 573.74994" version="1.1" x="0px" y="0px" width="15" height="15"><g transform="translate(904.92214,-879.1482)"><path d="
+          m -673.67664,1221.6502 -231.2455,-231.24803 55.6165,
+          -55.627 c 30.5891,-30.59485 56.1806,-55.627 56.8701,-55.627 0.6894,
+          0 79.8637,78.60862 175.9427,174.68583 l 174.6892,174.6858 174.6892,
+          -174.6858 c 96.079,-96.07721 175.253196,-174.68583 175.942696,
+          -174.68583 0.6895,0 26.281,25.03215 56.8701,
+          55.627 l 55.6165,55.627 -231.245496,231.24803 c -127.185,127.1864
+          -231.5279,231.248 -231.873,231.248 -0.3451,0 -104.688,
+          -104.0616 -231.873,-231.248 z
+        " fill="currentColor"></path></g></svg><svg class="" style="transform:translate(2px, 4px);transition:transform 0.2s ease" viewBox="0 0 926.23699 573.74994" version="1.1" x="0px" y="0px" width="15" height="15"><g transform="translate(904.92214,-879.1482)"><path d="
+          m -673.67664,1221.6502 -231.2455,-231.24803 55.6165,
+          -55.627 c 30.5891,-30.59485 56.1806,-55.627 56.8701,-55.627 0.6894,
+          0 79.8637,78.60862 175.9427,174.68583 l 174.6892,174.6858 174.6892,
+          -174.6858 c 96.079,-96.07721 175.253196,-174.68583 175.942696,
+          -174.68583 0.6895,0 26.281,25.03215 56.8701,
+          55.627 l 55.6165,55.627 -231.245496,231.24803 c -127.185,127.1864
+          -231.5279,231.248 -231.873,231.248 -0.3451,0 -104.688,
+          -104.0616 -231.873,-231.248 z
+        " fill="currentColor"></path></g></svg></div></div><div class="sc-jtHOzJ JaJkD api-content"><div class="sc-eCsseJ bKZuAK"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI api-info"><h1 class="sc-fubEtJ sc-ctaZPk edtrWC eSPXsI">已发布工具的检索与调用<!-- --> <span>(<!-- -->0.1.5<!-- -->)</span></h1><p>Download OpenAPI specification<!-- -->:</p><div class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><div data-role="redoc-summary" html="" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><div data-role="redoc-description" html="&lt;p&gt;把执行工厂里已注册、已发布的&lt;strong&gt;函数工具&lt;/strong&gt;（Toolbox Tool，&lt;code&gt;metadata_type=function&lt;/code&gt;）
+交给调用方使用：&lt;code&gt;search_tools&lt;/code&gt; 找到工具并拿回业务入参契约，&lt;code&gt;execute_tool&lt;/code&gt; 以调用者
+自己的身份执行它。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;&lt;code&gt;search_tools&lt;/code&gt; 目前是列举加字面过滤，不是语义召回&lt;/strong&gt;。执行工厂没有跨工具箱的工具
+枚举端点，也还没有可供 embedding 的工具数据集，所以本接口按当前账户可见的已发布
+工具箱逐个取回已启用工具，再按名称、说明、使用规则与工具箱名做大小写不敏感的子串
+匹配。「能算汇率的工具」这类问法答不了，换关键词或留空 &lt;code&gt;query&lt;/code&gt; 通览更有效。契约按
+「传检索词、拿有界列表」写，等 #1009 的工具数据集落地后换掉排序实现即可，调用方无感。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;可见性与权限押在下游&lt;/strong&gt;：两条接口都带调用者原始令牌打执行工厂的公开 API，工具箱是否
+对该账户可见、工具是否允许执行由执行工厂判定，Context Loader 不代为放行。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;&lt;code&gt;execute_tool&lt;/code&gt; 有不可回滚的副作用&lt;/strong&gt;：注册进来的函数可以对外部系统写入。调用前先读
+&lt;code&gt;search_tools&lt;/code&gt; 返回的 &lt;code&gt;description&lt;/code&gt; 与 &lt;code&gt;use_rule&lt;/code&gt;。服务端先在「当前账户可调用的已启用
+工具」列表里核对 &lt;code&gt;tool_id&lt;/code&gt;，不在其中直接 400，不会打到执行代理。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;托管 Interaction&lt;/strong&gt;：请求体里的 &lt;code&gt;bkn_context&lt;/code&gt; 可选。带上时，&lt;code&gt;conversation_id&lt;/code&gt; 与
+&lt;code&gt;interaction_id&lt;/code&gt; 会随调用透传到执行工厂，被调函数因而落在同一个 Interaction 下，
+证据链完整；不带则只执行、不归因。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;认证&lt;/strong&gt;：&lt;code&gt;Authorization: Bearer &amp;lt;token&amp;gt;&lt;/code&gt;（OAuth access token 或 &lt;code&gt;bak_&lt;/code&gt; AppKey）。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>把执行工厂里已注册、已发布的<strong>函数工具</strong>（Toolbox Tool，<code>metadata_type=function</code>）
+交给调用方使用：<code>search_tools</code> 找到工具并拿回业务入参契约，<code>execute_tool</code> 以调用者
+自己的身份执行它。</p>
+<p><strong><code>search_tools</code> 目前是列举加字面过滤，不是语义召回</strong>。执行工厂没有跨工具箱的工具
+枚举端点，也还没有可供 embedding 的工具数据集，所以本接口按当前账户可见的已发布
+工具箱逐个取回已启用工具，再按名称、说明、使用规则与工具箱名做大小写不敏感的子串
+匹配。「能算汇率的工具」这类问法答不了，换关键词或留空 <code>query</code> 通览更有效。契约按
+「传检索词、拿有界列表」写，等 #1009 的工具数据集落地后换掉排序实现即可，调用方无感。</p>
+<p><strong>可见性与权限押在下游</strong>：两条接口都带调用者原始令牌打执行工厂的公开 API，工具箱是否
+对该账户可见、工具是否允许执行由执行工厂判定，Context Loader 不代为放行。</p>
+<p><strong><code>execute_tool</code> 有不可回滚的副作用</strong>：注册进来的函数可以对外部系统写入。调用前先读
+<code>search_tools</code> 返回的 <code>description</code> 与 <code>use_rule</code>。服务端先在「当前账户可调用的已启用
+工具」列表里核对 <code>tool_id</code>，不在其中直接 400，不会打到执行代理。</p>
+<p><strong>托管 Interaction</strong>：请求体里的 <code>bkn_context</code> 可选。带上时，<code>conversation_id</code> 与
+<code>interaction_id</code> 会随调用透传到执行工厂，被调函数因而落在同一个 Interaction 下，
+证据链完整；不带则只执行、不归因。</p>
+<p><strong>认证</strong>：<code>Authorization: Bearer &lt;token&gt;</code>（OAuth access token 或 <code>bak_</code> AppKey）。</p>
+</div></div></div></div><div id="tag/Tool" data-section-id="tag/Tool" class="sc-eCsseJ bKZuAK"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#tag/Tool" aria-label="tag/Tool"></a>Tool</h2></div></div></div><div id="tag/Tool/operation/searchTools" data-section-id="tag/Tool/operation/searchTools" class="sc-eCsseJ hxxgNd"><div data-section-id="operation/searchTools" id="operation/searchTools" class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#tag/Tool/operation/searchTools" aria-label="tag/Tool/operation/searchTools"></a>检索可调用的已发布函数工具<!-- --> </h2><div class="sc-iGcuFr iTRatv"><div html="&lt;p&gt;返回当前账户可调用的已发布函数工具。每条命中都带 &lt;code&gt;tool_id&lt;/code&gt;、&lt;code&gt;toolbox_id&lt;/code&gt; 与裁剪
+过的 &lt;code&gt;input_schema&lt;/code&gt;（只保留业务入参，服务地址等传输信息不下发），可直接用于构造
+&lt;code&gt;execute_tool&lt;/code&gt; 调用。&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;limit&lt;/code&gt; 默认 20、上限 100：每条命中都带一份入参 schema，调大会显著占用上下文。
+命中数超过 &lt;code&gt;limit&lt;/code&gt; 时 &lt;code&gt;truncated=true&lt;/code&gt; 并给出 &lt;code&gt;message&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;单个工具箱取列表失败时跳过该箱而不是整体失败：一个被撤销或损坏的工具箱不该让
+调用方看不到其余所有工具。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;空结果是 200 不是错误&lt;/strong&gt;：无匹配时 &lt;code&gt;tools: []&lt;/code&gt; 并带 &lt;code&gt;message&lt;/code&gt; 说明。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>返回当前账户可调用的已发布函数工具。每条命中都带 <code>tool_id</code>、<code>toolbox_id</code> 与裁剪
+过的 <code>input_schema</code>（只保留业务入参，服务地址等传输信息不下发），可直接用于构造
+<code>execute_tool</code> 调用。</p>
+<p><code>limit</code> 默认 20、上限 100：每条命中都带一份入参 schema，调大会显著占用上下文。
+命中数超过 <code>limit</code> 时 <code>truncated=true</code> 并给出 <code>message</code>。</p>
+<p>单个工具箱取列表失败时跳过该箱而不是整体失败：一个被撤销或损坏的工具箱不该让
+调用方看不到其余所有工具。</p>
+<p><strong>空结果是 200 不是错误</strong>：无匹配时 <code>tools: []</code> 并带 <code>message</code> 说明。</p>
+</div></div><div class="sc-fvhGkJ bhICnb"><div class="sc-dacGni hnzXSU"><h5 class="sc-iqHZue sc-jQbHUc iFTCOQ htSlhJ">Authorizations:</h5><svg class="sc-dQoBM dHiXwH" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jUEocL jnRUlI"><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>OAuth2</i></span></span><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>AppKey</i></span></span></div></div><div><h5 class="sc-iqHZue iFTCOQ">query<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class="last "><td kind="field" title="response_format" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">response_format</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;json&quot;</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Enum<!-- -->:</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;json&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;toon&quot;</span> </div> <div><div html="&lt;p&gt;响应格式。&lt;code&gt;toon&lt;/code&gt; 返回 &lt;code&gt;application/toon&lt;/code&gt;，同构数组压成表格，省 token。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>响应格式。<code>toon</code> 返回 <code>application/toon</code>，同构数组压成表格，省 token。</p>
+</div></div></div></td></tr></tbody></table></div><div><h5 class="sc-iqHZue iFTCOQ">header<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class="last "><td kind="field" title="Accept-Language" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">Accept-Language</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;可选的 RFC 9110 语言偏好。服务从支持的 &lt;code&gt;zh-CN&lt;/code&gt;、&lt;code&gt;en-US&lt;/code&gt; 中选择响应错误文本语言。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>可选的 RFC 9110 语言偏好。服务从支持的 <code>zh-CN</code>、<code>en-US</code> 中选择响应错误文本语言。</p>
+</div></div></div></td></tr></tbody></table></div><h5 class="sc-iqHZue iFTCOQ">Request Body schema: <span class="sc-gWHgjU eBDHRN">application/json</span><div class="sc-htubao jNapuE">optional</div></h5><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><table class="sc-hHfrpe juzVUC"><tbody><tr class=""><td class="sc-hBFaCF sc-fFubTW sc-jgHDmf DPwQp hUqyua bvJPfa" kind="field" title="bkn_context"><span class="sc-idOkdQ iNiPzl"></span><button aria-label="expand bkn_context"><span class="property-name">bkn_context</span><svg class="sc-dQoBM iTiSfO" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">object</span><span class="sc-gTgAvG sc-jeGQnC gCMUGw jJMDiT"> (<!-- -->BKNContext<!-- -->) </span></div> <div><div html="&lt;p&gt;BKN Trace business-provenance context identifying the business
+conversation and interaction to which this call belongs. Required on
+REST APIs.&lt;/p&gt;
+&lt;p&gt;Both required child fields are server-issued handles and must not be
+invented by the caller:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;conversation_id&lt;/code&gt;: obtained from the Context Loader MCP tool
+&lt;code&gt;bkn_start_interaction&lt;/code&gt; on the first turn&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;interaction_id&lt;/code&gt;: obtained from the Context Loader MCP tool
+&lt;code&gt;bkn_start_interaction&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;These handles are available only through the provenance MCP tool above.
+The BKN Trace Core session APIs under &lt;code&gt;/api/agent-observability/v1&lt;/code&gt;
+accept gateway credentials only from trusted in-cluster services. They
+do not accept OAuth tokens or &lt;code&gt;bak_&lt;/code&gt; AppKeys; direct external calls
+receive &lt;code&gt;401 permission_denied&lt;/code&gt;.
+Context Loader derives the Operation idempotency identity on the server
+from request correlation, tool name, and normalized input. Callers must
+not submit &lt;code&gt;operation_key&lt;/code&gt;. Network retries should reuse
+&lt;code&gt;bkn-request-id&lt;/code&gt; or provide a stable
+&lt;code&gt;X-OpenBKN-Client-Invocation-Id&lt;/code&gt; for the same logical call. This hint is
+used only for idempotency and has no role in identity, authorization, or
+data-isolation decisions.&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>BKN Trace business-provenance context identifying the business
+conversation and interaction to which this call belongs. Required on
+REST APIs.</p>
+<p>Both required child fields are server-issued handles and must not be
+invented by the caller:</p>
+<ul>
+<li><code>conversation_id</code>: obtained from the Context Loader MCP tool
+<code>bkn_start_interaction</code> on the first turn</li>
+<li><code>interaction_id</code>: obtained from the Context Loader MCP tool
+<code>bkn_start_interaction</code></li>
+</ul>
+<p>These handles are available only through the provenance MCP tool above.
+The BKN Trace Core session APIs under <code>/api/agent-observability/v1</code>
+accept gateway credentials only from trusted in-cluster services. They
+do not accept OAuth tokens or <code>bak_</code> AppKeys; direct external calls
+receive <code>401 permission_denied</code>.
+Context Loader derives the Operation idempotency identity on the server
+from request correlation, tool name, and normalized input. Callers must
+not submit <code>operation_key</code>. Network retries should reuse
+<code>bkn-request-id</code> or provide a stable
+<code>X-OpenBKN-Client-Invocation-Id</code> for the same logical call. This hint is
+used only for idempotency and has no role in identity, authorization, or
+data-isolation decisions.</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="query" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">query</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;可选。按工具名、说明、使用规则与工具箱名匹配，大小写不敏感的字面子串匹配。
+留空返回当前账户可调用的全部工具。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>可选。按工具名、说明、使用规则与工具箱名匹配，大小写不敏感的字面子串匹配。
+留空返回当前账户可调用的全部工具。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="toolbox_id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">toolbox_id</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;可选。只在该工具箱内检索，取自本接口此前返回的 &lt;code&gt;toolbox_id&lt;/code&gt;。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>可选。只在该工具箱内检索，取自本接口此前返回的 <code>toolbox_id</code>。</p>
+</div></div></div></td></tr><tr class="last "><td kind="field" title="limit" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">limit</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">integer</span><span> <span class="sc-gTgAvG sc-clsJvZ gCMUGw gAOGaI"> <!-- -->[ 1 .. 100 ]<!-- --> </span></span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">20</span></div> <div><div html="&lt;p&gt;可选。最多返回多少个工具。每条命中都带入参 schema。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>可选。最多返回多少个工具。每条命中都带入参 schema。</p>
+</div></div></div></td></tr></tbody></table><div><h3 class="sc-fHYzZk ihqrCS">Responses</h3><div><button class="sc-cbDJdZ ciHfuN"><svg class="sc-dQoBM idFXFs" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">200<!-- --> </strong><div html="&lt;p&gt;可调用的已发布工具列表，可能为空&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>可调用的已发布工具列表，可能为空</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">401<!-- --> </strong><div html="&lt;p&gt;凭据缺失或无效&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>凭据缺失或无效</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">502<!-- --> </strong><div html="&lt;p&gt;上游 execution-factory 不可用&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>上游 execution-factory 不可用</p>
+</div></button></div></div></div><div class="sc-jSgsbC sc-gKscir kWQHAp jYdWFY"><div class="sc-fXozIE gnyOsi"><button class="sc-jXkukm eJFCKx"><span type="post" class="sc-eFucnX kcqnuN http-verb post">post</span><span class="sc-FyhMp kmRXcZ">/kn/search_tools</span><svg class="sc-dQoBM dvMtUQ" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmlIYk AnL"><div class="sc-ljRaAR gjZMty"><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div><div tabindex="0" role="button"><div class="sc-jmhDzS eFxVeO"><span>/api/agent-retrieval/v1</span>/kn/search_tools</div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Request samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="react-tabs__tab react-tabs__tab--selected" role="tab" id="tab_R_4kmq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_4kmq_0" tabindex="0" data-rttab="true">Payload</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_4kmq_0" aria-labelledby="tab_R_4kmq_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Example</span><div class="sc-jJEKGn sc-AzeoO ekMQOb dMpNQv"><svg class="sc-iktELE lgCKWg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg><select class="dropdown-select"><option value="全部" selected="">全部</option><option value="按关键词">按关键词</option><option value="限定工具箱">限定工具箱</option></select><label>全部</label></div></div><div><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><span class="token punctuation">{ }</span></code></div></div></div></div></div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_4smq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_4smq_0" tabindex="0" data-rttab="true">200</li><li class="tab-error" role="tab" id="tab_R_4smq_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_4smq_1" data-rttab="true">401</li><li class="tab-error" role="tab" id="tab_R_4smq_2" aria-selected="false" aria-disabled="false" aria-controls="panel_R_4smq_2" data-rttab="true">502</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_4smq_0" aria-labelledby="tab_R_4smq_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-jJEKGn sc-AzeoO ekMQOb dMpNQv"><svg class="sc-iktELE lgCKWg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg><select class="dropdown-select"><option value="application/json" selected="">application/json</option><option value="application/toon">application/toon</option></select><label>application/json</label></div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Example</span><div class="sc-jJEKGn sc-AzeoO ekMQOb dMpNQv"><svg class="sc-iktELE lgCKWg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg><select class="dropdown-select"><option value="有结果" selected="">有结果</option><option value="空结果">空结果</option></select><label>有结果</label></div></div><div><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"tools"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"tool_id"</span>: <span class="token string">&quot;tool_fx_convert&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"toolbox_id"</span>: <span class="token string">&quot;box_finance&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"toolbox_name"</span>: <span class="token string">&quot;财务工具箱&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;fx_convert&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"description"</span>: <span class="token string">&quot;按指定日期汇率换算金额&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"use_rule"</span>: <span class="token string">&quot;只用于已结算币种，未结算单据先调 settle_order&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"input_schema"</span>: <button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"request_body"</span>: <button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"content"</span>: <button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"application/json"</span>: <button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"schema"</span>: <button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"type"</span>: <span class="token string">&quot;object&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"properties"</span>: <button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"amount"</span>: <button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"type"</span>: <span class="token string">&quot;number&quot;</span></div></li></ul><span class="token punctuation">}</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"from"</span>: <button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"type"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"to"</span>: <button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"type"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"total_matched"</span>: <span class="token number">1</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_4smq_1" aria-labelledby="tab_R_4smq_1"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_4smq_2" aria-labelledby="tab_R_4smq_2"></div></div></div></div></div></div><div id="tag/Tool/operation/executeTool" data-section-id="tag/Tool/operation/executeTool" class="sc-eCsseJ hxxgNd"><div data-section-id="operation/executeTool" id="operation/executeTool" class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#tag/Tool/operation/executeTool" aria-label="tag/Tool/operation/executeTool"></a>执行一个已发布函数工具<!-- --> </h2><div class="sc-iGcuFr iTRatv"><div html="&lt;p&gt;以调用者身份执行工具，返回工具的原始响应。&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;toolbox_id&lt;/code&gt; 与 &lt;code&gt;tool_id&lt;/code&gt; 必须取自 &lt;code&gt;search_tools&lt;/code&gt;；&lt;code&gt;arguments&lt;/code&gt; 按其返回的
+&lt;code&gt;input_schema&lt;/code&gt; 填，只放业务参数——令牌、会话 id 等传输信息由平台携带，写进
+&lt;code&gt;arguments&lt;/code&gt; 既不生效也会被记进调用参数。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;函数自身报错同样是 200&lt;/strong&gt;：调用成功不等于业务成功，需读响应体判断。&lt;/p&gt;
+&lt;p&gt;工具已停用、所属工具箱未发布，或当前账户无权访问时返回 400，&lt;code&gt;message&lt;/code&gt; 说明原因，
+请求不会打到执行代理。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>以调用者身份执行工具，返回工具的原始响应。</p>
+<p><code>toolbox_id</code> 与 <code>tool_id</code> 必须取自 <code>search_tools</code>；<code>arguments</code> 按其返回的
+<code>input_schema</code> 填，只放业务参数——令牌、会话 id 等传输信息由平台携带，写进
+<code>arguments</code> 既不生效也会被记进调用参数。</p>
+<p><strong>函数自身报错同样是 200</strong>：调用成功不等于业务成功，需读响应体判断。</p>
+<p>工具已停用、所属工具箱未发布，或当前账户无权访问时返回 400，<code>message</code> 说明原因，
+请求不会打到执行代理。</p>
+</div></div><div class="sc-fvhGkJ bhICnb"><div class="sc-dacGni hnzXSU"><h5 class="sc-iqHZue sc-jQbHUc iFTCOQ htSlhJ">Authorizations:</h5><svg class="sc-dQoBM dHiXwH" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jUEocL jnRUlI"><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>OAuth2</i></span></span><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>AppKey</i></span></span></div></div><div><h5 class="sc-iqHZue iFTCOQ">header<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class="last "><td kind="field" title="Accept-Language" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">Accept-Language</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;可选的 RFC 9110 语言偏好。服务从支持的 &lt;code&gt;zh-CN&lt;/code&gt;、&lt;code&gt;en-US&lt;/code&gt; 中选择响应错误文本语言。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>可选的 RFC 9110 语言偏好。服务从支持的 <code>zh-CN</code>、<code>en-US</code> 中选择响应错误文本语言。</p>
+</div></div></div></td></tr></tbody></table></div><h5 class="sc-iqHZue iFTCOQ">Request Body schema: <span class="sc-gWHgjU eBDHRN">application/json</span><div class="sc-gTgAvG sc-eJMOEj sc-dUrlDD gCMUGw egFobb eEdthm">required</div></h5><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><table class="sc-hHfrpe juzVUC"><tbody><tr class=""><td class="sc-hBFaCF sc-fFubTW sc-jgHDmf DPwQp hUqyua bvJPfa" kind="field" title="bkn_context"><span class="sc-idOkdQ iNiPzl"></span><button aria-label="expand bkn_context"><span class="property-name">bkn_context</span><svg class="sc-dQoBM iTiSfO" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">object</span><span class="sc-gTgAvG sc-jeGQnC gCMUGw jJMDiT"> (<!-- -->BKNContext<!-- -->) </span></div> <div><div html="&lt;p&gt;BKN Trace business-provenance context identifying the business
+conversation and interaction to which this call belongs. Required on
+REST APIs.&lt;/p&gt;
+&lt;p&gt;Both required child fields are server-issued handles and must not be
+invented by the caller:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;conversation_id&lt;/code&gt;: obtained from the Context Loader MCP tool
+&lt;code&gt;bkn_start_interaction&lt;/code&gt; on the first turn&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;interaction_id&lt;/code&gt;: obtained from the Context Loader MCP tool
+&lt;code&gt;bkn_start_interaction&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;These handles are available only through the provenance MCP tool above.
+The BKN Trace Core session APIs under &lt;code&gt;/api/agent-observability/v1&lt;/code&gt;
+accept gateway credentials only from trusted in-cluster services. They
+do not accept OAuth tokens or &lt;code&gt;bak_&lt;/code&gt; AppKeys; direct external calls
+receive &lt;code&gt;401 permission_denied&lt;/code&gt;.
+Context Loader derives the Operation idempotency identity on the server
+from request correlation, tool name, and normalized input. Callers must
+not submit &lt;code&gt;operation_key&lt;/code&gt;. Network retries should reuse
+&lt;code&gt;bkn-request-id&lt;/code&gt; or provide a stable
+&lt;code&gt;X-OpenBKN-Client-Invocation-Id&lt;/code&gt; for the same logical call. This hint is
+used only for idempotency and has no role in identity, authorization, or
+data-isolation decisions.&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>BKN Trace business-provenance context identifying the business
+conversation and interaction to which this call belongs. Required on
+REST APIs.</p>
+<p>Both required child fields are server-issued handles and must not be
+invented by the caller:</p>
+<ul>
+<li><code>conversation_id</code>: obtained from the Context Loader MCP tool
+<code>bkn_start_interaction</code> on the first turn</li>
+<li><code>interaction_id</code>: obtained from the Context Loader MCP tool
+<code>bkn_start_interaction</code></li>
+</ul>
+<p>These handles are available only through the provenance MCP tool above.
+The BKN Trace Core session APIs under <code>/api/agent-observability/v1</code>
+accept gateway credentials only from trusted in-cluster services. They
+do not accept OAuth tokens or <code>bak_</code> AppKeys; direct external calls
+receive <code>401 permission_denied</code>.
+Context Loader derives the Operation idempotency identity on the server
+from request correlation, tool name, and normalized input. Callers must
+not submit <code>operation_key</code>. Network retries should reuse
+<code>bkn-request-id</code> or provide a stable
+<code>X-OpenBKN-Client-Invocation-Id</code> for the same logical call. This hint is
+used only for idempotency and has no role in identity, authorization, or
+data-isolation decisions.</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="toolbox_id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">toolbox_id</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;工具箱 ID，取自 &lt;code&gt;search_tools&lt;/code&gt;。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>工具箱 ID，取自 <code>search_tools</code>。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="tool_id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">tool_id</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;工具 ID，取自 &lt;code&gt;search_tools&lt;/code&gt;。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>工具 ID，取自 <code>search_tools</code>。</p>
+</div></div></div></td></tr><tr class="last "><td class="sc-hBFaCF sc-fFubTW sc-jgHDmf DPwQp hUqyua bvJPfa" kind="field" title="arguments"><span class="sc-idOkdQ iNiPzl"></span><button aria-label="expand arguments"><span class="property-name">arguments</span><svg class="sc-dQoBM iTiSfO" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">object</span></div> <div><div html="&lt;p&gt;工具的业务入参，按 &lt;code&gt;search_tools&lt;/code&gt; 返回的 &lt;code&gt;input_schema&lt;/code&gt; 填写。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>工具的业务入参，按 <code>search_tools</code> 返回的 <code>input_schema</code> 填写。</p>
+</div></div></div></td></tr></tbody></table><div><h3 class="sc-fHYzZk ihqrCS">Responses</h3><div><button class="sc-cbDJdZ ciHfuN"><svg class="sc-dQoBM idFXFs" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">200<!-- --> </strong><div html="&lt;p&gt;工具原始响应&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>工具原始响应</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">400<!-- --> </strong><div html="&lt;p&gt;缺少 toolbox_id / tool_id，或该工具不在可调用的已启用工具列表中&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>缺少 toolbox_id / tool_id，或该工具不在可调用的已启用工具列表中</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">401<!-- --> </strong><div html="&lt;p&gt;凭据缺失或无效&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>凭据缺失或无效</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">502<!-- --> </strong><div html="&lt;p&gt;上游 execution-factory 不可用&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>上游 execution-factory 不可用</p>
+</div></button></div></div></div><div class="sc-jSgsbC sc-gKscir kWQHAp jYdWFY"><div class="sc-fXozIE gnyOsi"><button class="sc-jXkukm eJFCKx"><span type="post" class="sc-eFucnX kcqnuN http-verb post">post</span><span class="sc-FyhMp kmRXcZ">/kn/execute_tool</span><svg class="sc-dQoBM dvMtUQ" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmlIYk AnL"><div class="sc-ljRaAR gjZMty"><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div><div tabindex="0" role="button"><div class="sc-jmhDzS eFxVeO"><span>/api/agent-retrieval/v1</span>/kn/execute_tool</div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Request samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="react-tabs__tab react-tabs__tab--selected" role="tab" id="tab_R_4kqq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_4kqq_0" tabindex="0" data-rttab="true">Payload</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_4kqq_0" aria-labelledby="tab_R_4kqq_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Example</span><div class="sc-jJEKGn sc-AzeoO ekMQOb dMpNQv"><svg class="sc-iktELE lgCKWg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg><select class="dropdown-select"><option value="调用" selected="">调用</option><option value="归因到当前 Interaction">归因到当前 Interaction</option></select><label>调用</label></div></div><div><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"toolbox_id"</span>: <span class="token string">&quot;box_finance&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"tool_id"</span>: <span class="token string">&quot;tool_fx_convert&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"arguments"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"amount"</span>: <span class="token number">1200</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"from"</span>: <span class="token string">&quot;USD&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"to"</span>: <span class="token string">&quot;CNY&quot;</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_4sqq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_4sqq_0" tabindex="0" data-rttab="true">200</li><li class="tab-error" role="tab" id="tab_R_4sqq_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_4sqq_1" data-rttab="true">400</li><li class="tab-error" role="tab" id="tab_R_4sqq_2" aria-selected="false" aria-disabled="false" aria-controls="panel_R_4sqq_2" data-rttab="true">401</li><li class="tab-error" role="tab" id="tab_R_4sqq_3" aria-selected="false" aria-disabled="false" aria-controls="panel_R_4sqq_3" data-rttab="true">502</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_4sqq_0" aria-labelledby="tab_R_4sqq_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><span class="token punctuation">{ }</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_4sqq_1" aria-labelledby="tab_R_4sqq_1"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_4sqq_2" aria-labelledby="tab_R_4sqq_2"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_4sqq_3" aria-labelledby="tab_R_4sqq_3"></div></div></div></div></div></div></div><div class="sc-elsZMO dQcVAt"></div></div></div>
+      <script>
+      const __redoc_state = {"menu":{"activeItemIdx":-1},"spec":{"data":{"openapi":"3.0.3","info":{"title":"已发布工具的检索与调用","description":"把执行工厂里已注册、已发布的**函数工具**（Toolbox Tool，`metadata_type=function`）\n交给调用方使用：`search_tools` 找到工具并拿回业务入参契约，`execute_tool` 以调用者\n自己的身份执行它。\n\n**`search_tools` 目前是列举加字面过滤，不是语义召回**。执行工厂没有跨工具箱的工具\n枚举端点，也还没有可供 embedding 的工具数据集，所以本接口按当前账户可见的已发布\n工具箱逐个取回已启用工具，再按名称、说明、使用规则与工具箱名做大小写不敏感的子串\n匹配。「能算汇率的工具」这类问法答不了，换关键词或留空 `query` 通览更有效。契约按\n「传检索词、拿有界列表」写，等 #1009 的工具数据集落地后换掉排序实现即可，调用方无感。\n\n**可见性与权限押在下游**：两条接口都带调用者原始令牌打执行工厂的公开 API，工具箱是否\n对该账户可见、工具是否允许执行由执行工厂判定，Context Loader 不代为放行。\n\n**`execute_tool` 有不可回滚的副作用**：注册进来的函数可以对外部系统写入。调用前先读\n`search_tools` 返回的 `description` 与 `use_rule`。服务端先在「当前账户可调用的已启用\n工具」列表里核对 `tool_id`，不在其中直接 400，不会打到执行代理。\n\n**托管 Interaction**：请求体里的 `bkn_context` 可选。带上时，`conversation_id` 与\n`interaction_id` 会随调用透传到执行工厂，被调函数因而落在同一个 Interaction 下，\n证据链完整；不带则只执行、不归因。\n\n**认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` AppKey）。\n","version":"0.1.5"},"servers":[{"url":"/api/agent-retrieval/v1"}],"security":[{"OAuth2":[]},{"AppKey":[]}],"paths":{"/kn/search_tools":{"post":{"tags":["Tool"],"summary":"检索可调用的已发布函数工具","operationId":"searchTools","x-contract-probe":{"readonly":true,"order":1,"body":{"limit":3}},"description":"返回当前账户可调用的已发布函数工具。每条命中都带 `tool_id`、`toolbox_id` 与裁剪\n过的 `input_schema`（只保留业务入参，服务地址等传输信息不下发），可直接用于构造\n`execute_tool` 调用。\n\n`limit` 默认 20、上限 100：每条命中都带一份入参 schema，调大会显著占用上下文。\n命中数超过 `limit` 时 `truncated=true` 并给出 `message`。\n\n单个工具箱取列表失败时跳过该箱而不是整体失败：一个被撤销或损坏的工具箱不该让\n调用方看不到其余所有工具。\n\n**空结果是 200 不是错误**：无匹配时 `tools: []` 并带 `message` 说明。\n","parameters":[{"$ref":"#/components/parameters/AcceptLanguage"},{"$ref":"#/components/parameters/ResponseFormat"}],"requestBody":{"required":false,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/SearchToolsRequest"},"examples":{"全部":{"value":{}},"按关键词":{"value":{"query":"汇率","limit":10}},"限定工具箱":{"value":{"toolbox_id":"box_finance"}}}}}},"responses":{"200":{"description":"可调用的已发布工具列表，可能为空","content":{"application/json":{"schema":{"$ref":"#/components/schemas/SearchToolsResponse"},"examples":{"有结果":{"value":{"tools":[{"tool_id":"tool_fx_convert","toolbox_id":"box_finance","toolbox_name":"财务工具箱","name":"fx_convert","description":"按指定日期汇率换算金额","use_rule":"只用于已结算币种，未结算单据先调 settle_order","input_schema":{"request_body":{"content":{"application/json":{"schema":{"type":"object","properties":{"amount":{"type":"number"},"from":{"type":"string"},"to":{"type":"string"}}}}}}}}],"total_matched":1}},"空结果":{"value":{"tools":[],"total_matched":0,"message":"没有匹配的已发布工具。请先在执行工厂注册工具、发布所属工具箱并启用工具，或放宽 query、去掉 toolbox_id 后重试。"}}}},"application/toon":{"schema":{"type":"string"}}}},"401":{"description":"凭据缺失或无效","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"502":{"description":"上游 execution-factory 不可用","headers":{"Content-Language":{"$ref":"#/components/headers/ContentLanguage"}},"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}}}}},"/kn/execute_tool":{"post":{"tags":["Tool"],"summary":"执行一个已发布函数工具","operationId":"executeTool","description":"以调用者身份执行工具，返回工具的原始响应。\n\n`toolbox_id` 与 `tool_id` 必须取自 `search_tools`；`arguments` 按其返回的\n`input_schema` 填，只放业务参数——令牌、会话 id 等传输信息由平台携带，写进\n`arguments` 既不生效也会被记进调用参数。\n\n**函数自身报错同样是 200**：调用成功不等于业务成功，需读响应体判断。\n\n工具已停用、所属工具箱未发布，或当前账户无权访问时返回 400，`message` 说明原因，\n请求不会打到执行代理。\n","parameters":[{"$ref":"#/components/parameters/AcceptLanguage"}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ExecuteToolRequest"},"examples":{"调用":{"value":{"toolbox_id":"box_finance","tool_id":"tool_fx_convert","arguments":{"amount":1200,"from":"USD","to":"CNY"}}},"归因到当前 Interaction":{"value":{"bkn_context":{"conversation_id":"conv_01J8Z","interaction_id":"int_01J8Z"},"toolbox_id":"box_finance","tool_id":"tool_fx_convert","arguments":{"amount":1200,"from":"USD","to":"CNY"}}}}}}},"responses":{"200":{"description":"工具原始响应","content":{"application/json":{"schema":{"type":"object","description":"工具自身的响应体，结构由该工具的 OpenAPI 契约决定。","additionalProperties":true}}}},"400":{"description":"缺少 toolbox_id / tool_id，或该工具不在可调用的已启用工具列表中","headers":{"Content-Language":{"$ref":"#/components/headers/ContentLanguage"}},"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"401":{"description":"凭据缺失或无效","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"502":{"description":"上游 execution-factory 不可用","headers":{"Content-Language":{"$ref":"#/components/headers/ContentLanguage"}},"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}}}}}},"components":{"securitySchemes":{"OAuth2":{"type":"oauth2","description":"OAuth2 authentication for public APIs.","flows":{"clientCredentials":{"tokenUrl":"/oauth2/token","scopes":{}}}},"AppKey":{"type":"apiKey","in":"header","name":"Authorization","description":"Application key with the `bak_` prefix. Send it as\n`Authorization: Bearer bak_xxx` for service-to-service or\napplication-level calls.\n"}},"parameters":{"AcceptLanguage":{"name":"Accept-Language","in":"header","required":false,"schema":{"type":"string"},"description":"可选的 RFC 9110 语言偏好。服务从支持的 `zh-CN`、`en-US` 中选择响应错误文本语言。"},"ResponseFormat":{"name":"response_format","in":"query","required":false,"schema":{"type":"string","enum":["json","toon"],"default":"json"},"description":"响应格式。`toon` 返回 `application/toon`，同构数组压成表格，省 token。"}},"headers":{"ContentLanguage":{"description":"仅当响应包含本地化人类可读文本时返回，值为实际使用的语言。","schema":{"type":"string"}}},"schemas":{"SearchToolsRequest":{"type":"object","properties":{"bkn_context":{"$ref":"#/components/schemas/BKNContext"},"query":{"type":"string","description":"可选。按工具名、说明、使用规则与工具箱名匹配，大小写不敏感的字面子串匹配。\n留空返回当前账户可调用的全部工具。\n","example":"汇率"},"toolbox_id":{"type":"string","description":"可选。只在该工具箱内检索，取自本接口此前返回的 `toolbox_id`。","example":"box_finance"},"limit":{"type":"integer","minimum":1,"maximum":100,"default":20,"description":"可选。最多返回多少个工具。每条命中都带入参 schema。"}}},"SearchToolsResponse":{"type":"object","properties":{"tools":{"type":"array","description":"当前账户可调用的已发布函数工具。","items":{"$ref":"#/components/schemas/ToolEntry"}},"total_matched":{"type":"integer","description":"匹配到的工具总数，可能大于 `tools` 长度。"},"truncated":{"type":"boolean","description":"为 true 表示命中数超过 `limit`，只返回了前若干条。"},"message":{"type":"string","description":"空结果或截断说明。"}}},"ToolEntry":{"type":"object","properties":{"tool_id":{"type":"string","description":"工具 ID，连同 `toolbox_id` 一起传给 `execute_tool`。"},"toolbox_id":{"type":"string","description":"所属工具箱 ID，`execute_tool` 必填。"},"toolbox_name":{"type":"string","description":"所属工具箱名称。"},"name":{"type":"string","description":"工具名。"},"description":{"type":"string","description":"工具说明。"},"use_rule":{"type":"string","description":"使用规则，注册者对调用时机与约束的说明。"},"input_schema":{"type":"object","description":"业务入参契约，取自工具 OpenAPI 规格的 `parameters` / `request_body` /\n`components.schemas`，服务地址等传输信息已裁掉。\n","additionalProperties":true}}},"ExecuteToolRequest":{"type":"object","required":["toolbox_id","tool_id","arguments"],"properties":{"bkn_context":{"$ref":"#/components/schemas/BKNContext"},"toolbox_id":{"type":"string","description":"工具箱 ID，取自 `search_tools`。","example":"box_finance"},"tool_id":{"type":"string","description":"工具 ID，取自 `search_tools`。","example":"tool_fx_convert"},"arguments":{"type":"object","description":"工具的业务入参，按 `search_tools` 返回的 `input_schema` 填写。","additionalProperties":true}}},"BKNContext":{"type":"object","additionalProperties":false,"description":"BKN Trace business-provenance context identifying the business\nconversation and interaction to which this call belongs. Required on\nREST APIs.\n\nBoth required child fields are server-issued handles and must not be\ninvented by the caller:\n\n- `conversation_id`: obtained from the Context Loader MCP tool\n  `bkn_start_interaction` on the first turn\n- `interaction_id`: obtained from the Context Loader MCP tool\n  `bkn_start_interaction`\n\nThese handles are available only through the provenance MCP tool above.\nThe BKN Trace Core session APIs under `/api/agent-observability/v1`\naccept gateway credentials only from trusted in-cluster services. They\ndo not accept OAuth tokens or `bak_` AppKeys; direct external calls\nreceive `401 permission_denied`.\nContext Loader derives the Operation idempotency identity on the server\nfrom request correlation, tool name, and normalized input. Callers must\nnot submit `operation_key`. Network retries should reuse\n`bkn-request-id` or provide a stable\n`X-OpenBKN-Client-Invocation-Id` for the same logical call. This hint is\nused only for idempotency and has no role in identity, authorization, or\ndata-isolation decisions.\n","required":["conversation_id","interaction_id"],"properties":{"conversation_id":{"type":"string","description":"Server-issued business conversation ID.","example":"conv_8eca1655217a128b16727ce664cd579c"},"interaction_id":{"type":"string","description":"Server-issued interaction ID for one question-and-answer turn.","example":"int_0ab58662974fe9edcfb4ae3e77e43502"},"parent_operation_id":{"type":"string","description":"Upstream operation ID that caused this call."},"causation_event_ids":{"type":"array","items":{"type":"string"},"description":"Event IDs that caused this call."},"business_refs":{"type":"array","maxItems":64,"description":"Canonical business-object, data, or logic references known to this call.","items":{"type":"object","additionalProperties":false,"required":["ref_type","ref_id"],"properties":{"ref_type":{"type":"string","description":"Business reference type, such as object_type, property, or data_resource."},"ref_id":{"type":"string","description":"Canonical business reference ID. Except for data_resource, it must belong to the current knowledge network."},"version":{"type":"string","description":"Reference version. Omission means unversioned."}}}}}},"ErrorCompact":{"description":"Error response shared by context-loader (`agent-retrieval`) and\nexecution-factory (`agent-operator-integration`) under adp. It is\nserialized from each service's `infra/errors.HTTPError`. Its field names\ndiffer from `Error` above and clients must not treat them as the same\nenvelope.\n\nWhen an error originates from a downstream service, these services pass\nthe downstream body through unchanged. In that case the field names are\nthose of the downstream envelope, commonly `error_code` and\n`error_details`. Use the `code` prefix to identify locally generated\nerrors: `Public.*`, `agentRetrieval.*`, or\n`AgentOperatorIntegration.*` (the last prefix starts with a capital\nletter).\n\nErrors from mf-model-api are an exception to the prefix rule.\n`/v1/chat/completions` exposes an OpenAI-compatible surface and always\nreturns `{\"error\": {\"message\", \"type\", \"param\", \"code\"}}` on failure.\nThere is no top-level `code`; the original business code is in\n`error.code`. Endpoints that call a large model, such as\nexecution-factory `/ai_generate/*`, pass this shape through. A top-level\n`error` object therefore identifies an error from the model call chain.\nRead `error.message` for the text and `error.type` for classifications\nsuch as `rate_limit_exceeded`, `service_unavailable_error`, and\n`invalid_request_error`.\n","type":"object","properties":{"code":{"type":"string","description":"Machine-readable error code. Generic errors use\n`Public.<ErrCode>`, such as `Public.BadRequest`. Business errors use\n`<service>.<ErrCode>.<ExtCode>`, for example\n`AgentOperatorIntegration.BadRequest.ValidationRequired`.\n","example":"Public.BadRequest"},"description":{"type":"string","description":"Localized, human-readable error description."},"solution":{"type":"string","description":"Recommended remediation."},"link":{"type":"string","description":"Link to error documentation; may indicate that no link is available."},"details":{"description":"Error details, commonly a string or object."}}},"ErrorAgentRetrieval":{"description":"Alias of `ErrorCompact` retained for the context-loader YAML files added\nin #578. The structure is identical. New documentation should reference\n`ErrorCompact` directly.\n","allOf":[{"$ref":"#/components/schemas/ErrorCompact"}]}}}}},"searchIndex":{"store":["tag/Tool","tag/Tool/operation/searchTools","tag/Tool/operation/executeTool"],"index":{"version":"2.3.9","fields":["title","description"],"fieldVectors":[["title/0",[0,0.47]],["description/0",[]],["title/1",[1,0.105]],["description/1",[0,0.357,1,0.206,2,0.745,3,0.357,4,0.745,5,1.107,6,0.745,7,0.745,8,0.745,9,0.745,10,1.107,11,0.357,12,0.745]],["title/2",[1,0.105]],["description/2",[1,0.206,3,0.43,11,0.43,13,0.898,14,0.898,15,0.898,16,0.898,17,0.898,18,0.898,19,0.898]]],"invertedIndex":[["",{"_index":1,"title":{"1":{},"2":{}},"description":{"1":{},"2":{}}}],["100",{"_index":7,"title":{},"description":{"1":{}}}],["20",{"_index":6,"title":{},"description":{"1":{}}}],["200",{"_index":11,"title":{},"description":{"1":{},"2":{}}}],["400，`messag",{"_index":18,"title":{},"description":{"2":{}}}],["argument",{"_index":17,"title":{},"description":{"2":{}}}],["execute_tool",{"_index":4,"title":{},"description":{"1":{}}}],["id",{"_index":16,"title":{},"description":{"2":{}}}],["input_schema",{"_index":3,"title":{},"description":{"1":{},"2":{}}}],["kn/execute_tool",{"_index":19,"title":{},"description":{"2":{}}}],["kn/search_tool",{"_index":12,"title":{},"description":{"1":{}}}],["limit",{"_index":5,"title":{},"description":{"1":{}}}],["messag",{"_index":10,"title":{},"description":{"1":{}}}],["schema",{"_index":8,"title":{},"description":{"1":{}}}],["search_tools`；`argu",{"_index":15,"title":{},"description":{"2":{}}}],["tool",{"_index":0,"title":{"0":{}},"description":{"1":{}}}],["tool_id",{"_index":14,"title":{},"description":{"2":{}}}],["tool_id`、`toolbox_id",{"_index":2,"title":{},"description":{"1":{}}}],["toolbox_id",{"_index":13,"title":{},"description":{"2":{}}}],["truncated=tru",{"_index":9,"title":{},"description":{"1":{}}}]],"pipeline":[]}},"options":{}};
+
+      var container = document.getElementById('redoc');
+      Redoc.hydrate(__redoc_state, container);
+
+      </script>
+</body>
+
+</html>

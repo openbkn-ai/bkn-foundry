@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf8" />
+  <title>Raw Query</title>
+  <!-- needed for adaptive design -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      padding: 0;
+      margin: 0;
+    }
+  </style>
+  <script src="https://cdn.redocly.com/redoc/v2.5.0/bundles/redoc.standalone.js"></script><style data-styled="true" data-styled-version="6.4.1">.eQypqI{width:calc(100% - 40%);padding:0 40px;}/*!sc*/
+@media print,screen and (max-width: 75rem){.eQypqI{width:100%;padding:40px 40px;}}/*!sc*/
+data-styled.g5[id="sc-hKgHXU"]{content:"eQypqI,"}/*!sc*/
+.bKZuAK{padding:40px 0;}/*!sc*/
+.bKZuAK:last-child{min-height:calc(100vh + 1px);}/*!sc*/
+.bKZuAK>.bKZuAK:last-child{min-height:initial;}/*!sc*/
+@media print,screen and (max-width: 75rem){.bKZuAK{padding:0;}}/*!sc*/
+.hxxgNd{padding:40px 0;position:relative;}/*!sc*/
+.hxxgNd:last-child{min-height:calc(100vh + 1px);}/*!sc*/
+.hxxgNd>.hxxgNd:last-child{min-height:initial;}/*!sc*/
+@media print,screen and (max-width: 75rem){.hxxgNd{padding:0;}}/*!sc*/
+.hxxgNd:not(:last-of-type):after{position:absolute;bottom:0;width:100%;display:block;content:'';border-bottom:1px solid rgba(0, 0, 0, 0.2);}/*!sc*/
+data-styled.g6[id="sc-eCsseJ"]{content:"bKZuAK,hxxgNd,"}/*!sc*/
+.kWQHAp{width:40%;color:#ffffff;background-color:#263238;padding:0 40px;}/*!sc*/
+@media print,screen and (max-width: 75rem){.kWQHAp{width:100%;padding:40px 40px;}}/*!sc*/
+data-styled.g7[id="sc-jSgsbC"]{content:"kWQHAp,"}/*!sc*/
+.jYdWFY{background-color:#263238;}/*!sc*/
+data-styled.g8[id="sc-gKscir"]{content:"jYdWFY,"}/*!sc*/
+.cOCikg{display:flex;width:100%;padding:0;}/*!sc*/
+@media print,screen and (max-width: 75rem){.cOCikg{flex-direction:column;}}/*!sc*/
+data-styled.g9[id="sc-iBPUmU"]{content:"cOCikg,"}/*!sc*/
+.edtrWC{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#333333;}/*!sc*/
+data-styled.g10[id="sc-fubEtJ"]{content:"edtrWC,"}/*!sc*/
+.bwjsfx{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;margin:0 0 20px;}/*!sc*/
+data-styled.g11[id="sc-pGbXd"]{content:"bwjsfx,"}/*!sc*/
+.hgYAAF{color:#ffffff;}/*!sc*/
+data-styled.g13[id="sc-kEjckD"]{content:"hgYAAF,"}/*!sc*/
+.iFTCOQ{border-bottom:1px solid rgba(38, 50, 56, 0.3);margin:1em 0 1em 0;color:rgba(38, 50, 56, 0.5);font-weight:normal;text-transform:uppercase;font-size:0.929em;line-height:20px;}/*!sc*/
+data-styled.g14[id="sc-iqHZue"]{content:"iFTCOQ,"}/*!sc*/
+.itgZBm{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.itgZBm:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+h1:hover>.itgZBm::before,h2:hover>.itgZBm::before,.itgZBm:hover::before{visibility:visible;}/*!sc*/
+data-styled.g15[id="sc-crrrsl"]{content:"itgZBm,"}/*!sc*/
+.dHiXwH{height:1.3em;width:1.3em;min-width:1.3em;vertical-align:middle;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.iTiSfO{height:18px;width:18px;min-width:18px;vertical-align:middle;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.idFXFs{height:1.5em;width:1.5em;min-width:1.5em;vertical-align:middle;float:left;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.idFXFs polygon{fill:#1d8127;}/*!sc*/
+.djPqdM{height:1.5em;width:1.5em;min-width:1.5em;vertical-align:middle;float:left;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.djPqdM polygon{fill:#d41f1c;}/*!sc*/
+.dvMtUQ{height:20px;width:20px;min-width:20px;vertical-align:middle;float:right;transition:transform 0.2s ease-out;transform:rotateZ(0);}/*!sc*/
+.dvMtUQ polygon{fill:white;}/*!sc*/
+data-styled.g16[id="sc-dQoBM"]{content:"dHiXwH,iTiSfO,idFXFs,djPqdM,dvMtUQ,"}/*!sc*/
+.DPwQp{border-left:1px solid #7c7cbb;box-sizing:border-box;position:relative;padding:10px 10px 10px 0;}/*!sc*/
+@media screen and (max-width: 50rem){.DPwQp{display:block;overflow:hidden;}}/*!sc*/
+tr:first-of-type>.DPwQp,tr.last>.DPwQp{border-left-width:0;background-position:top left;background-repeat:no-repeat;background-size:1px 100%;}/*!sc*/
+tr:first-of-type>.DPwQp{background-image:linear-gradient(
+      to bottom,
+      transparent 0%,
+      transparent 22px,
+      #7c7cbb 22px,
+      #7c7cbb 100%
+    );}/*!sc*/
+tr.last>.DPwQp{background-image:linear-gradient(
+      to bottom,
+      #7c7cbb 0%,
+      #7c7cbb 22px,
+      transparent 22px,
+      transparent 100%
+    );}/*!sc*/
+tr.last+tr>.DPwQp{border-left-color:transparent;}/*!sc*/
+tr.last:first-child>.DPwQp{background:none;border-left-color:transparent;}/*!sc*/
+data-styled.g19[id="sc-hBFaCF"]{content:"DPwQp,"}/*!sc*/
+.hUqyua{vertical-align:top;line-height:20px;white-space:nowrap;font-size:13px;font-family:Courier,monospace;}/*!sc*/
+.hUqyua.deprecated{text-decoration:line-through;color:#707070;}/*!sc*/
+data-styled.g21[id="sc-fFubTW"]{content:"hUqyua,"}/*!sc*/
+.gNQdZ{border-bottom:1px solid #9fb4be;padding:10px 0;width:75%;box-sizing:border-box;}/*!sc*/
+tr.expanded .gNQdZ{border-bottom:none;}/*!sc*/
+@media screen and (max-width: 50rem){.gNQdZ{padding:0 20px;border-bottom:none;border-left:1px solid #7c7cbb;}tr.last>.gNQdZ{border-left:none;}}/*!sc*/
+data-styled.g22[id="sc-bkAakD"]{content:"gNQdZ,"}/*!sc*/
+.iNiPzl{color:#7c7cbb;font-family:Courier,monospace;margin-right:10px;}/*!sc*/
+.iNiPzl::before{content:'';display:inline-block;vertical-align:middle;width:10px;height:1px;background:#7c7cbb;}/*!sc*/
+.iNiPzl::after{content:'';display:inline-block;vertical-align:middle;width:1px;background:#7c7cbb;height:7px;}/*!sc*/
+data-styled.g23[id="sc-idOkdQ"]{content:"iNiPzl,"}/*!sc*/
+.juzVUC{border-collapse:separate;border-radius:3px;font-size:14px;border-spacing:0;width:100%;}/*!sc*/
+.juzVUC >tr{vertical-align:middle;}/*!sc*/
+@media screen and (max-width: 50rem){.juzVUC{display:block;}.juzVUC >tr,.juzVUC >tbody>tr{display:block;}}/*!sc*/
+@media screen and (max-width: 50rem) and (-ms-high-contrast:none){.juzVUC td{float:left;width:100%;}}/*!sc*/
+.juzVUC .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux{margin:1em;margin-right:0;background:#fafafa;}/*!sc*/
+.juzVUC .sc-dIUiux .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux{background:#ffffff;}/*!sc*/
+data-styled.g25[id="sc-hHfrpe"]{content:"juzVUC,"}/*!sc*/
+.dlFwaC{margin:0 0 3px 0;display:inline-block;}/*!sc*/
+data-styled.g26[id="sc-dmlpFL"]{content:"dlFwaC,"}/*!sc*/
+.dnfeFw{font-size:0.9em;margin-right:10px;color:#32329f;font-family:Montserrat,sans-serif;}/*!sc*/
+data-styled.g27[id="sc-kfzzyY"]{content:"dnfeFw,"}/*!sc*/
+.eryvgE{display:inline-block;margin-right:10px;margin-bottom:5px;font-size:0.8em;cursor:pointer;border:1px solid #32329f;padding:2px 10px;line-height:1.5em;outline:none;color:white;background-color:#32329f;}/*!sc*/
+.eryvgE:focus{box-shadow:0 0 0 1px #32329f;}/*!sc*/
+.eryvgE:focus{box-shadow:none;background-color:#202065;}/*!sc*/
+.gWmwZE{display:inline-block;margin-right:10px;margin-bottom:5px;font-size:0.8em;cursor:pointer;border:1px solid #32329f;padding:2px 10px;line-height:1.5em;outline:none;color:#32329f;background-color:white;}/*!sc*/
+.gWmwZE:focus{box-shadow:0 0 0 1px #32329f;}/*!sc*/
+data-styled.g28[id="sc-fKFxPF"]{content:"eryvgE,gWmwZE,"}/*!sc*/
+.hqsuVf >ul{list-style:none;padding:0;margin:0;margin:0 -5px;}/*!sc*/
+.hqsuVf >ul >li{padding:5px 10px;display:inline-block;background-color:#11171a;border-bottom:1px solid rgba(0, 0, 0, 0.5);cursor:pointer;text-align:center;outline:none;color:#ccc;margin:0 5px 5px 5px;border:1px solid #07090b;border-radius:5px;min-width:60px;font-size:0.9em;font-weight:bold;}/*!sc*/
+.hqsuVf >ul >li.react-tabs__tab--selected{color:#333333;background:#ffffff;}/*!sc*/
+.hqsuVf >ul >li.react-tabs__tab--selected:focus{outline:auto;}/*!sc*/
+.hqsuVf >ul >li:only-child{flex:none;min-width:100px;}/*!sc*/
+.hqsuVf >ul >li.tab-success{color:#1d8127;}/*!sc*/
+.hqsuVf >ul >li.tab-redirect{color:#ffa500;}/*!sc*/
+.hqsuVf >ul >li.tab-info{color:#87ceeb;}/*!sc*/
+.hqsuVf >ul >li.tab-error{color:#d41f1c;}/*!sc*/
+.hqsuVf >.react-tabs__tab-panel{background:#11171a;}/*!sc*/
+.hqsuVf >.react-tabs__tab-panel>div,.hqsuVf >.react-tabs__tab-panel>pre{padding:20px;margin:0;}/*!sc*/
+.hqsuVf >.react-tabs__tab-panel>div>pre{padding:0;}/*!sc*/
+data-styled.g31[id="sc-cxFMaL"]{content:"hqsuVf,"}/*!sc*/
+.iNuSsz code[class*='language-'],.iNuSsz pre[class*='language-']{text-shadow:0 -0.1em 0.2em black;text-align:left;white-space:pre;word-spacing:normal;word-break:normal;word-wrap:normal;line-height:1.5;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-hyphens:none;-moz-hyphens:none;-ms-hyphens:none;hyphens:none;}/*!sc*/
+@media print{.iNuSsz code[class*='language-'],.iNuSsz pre[class*='language-']{text-shadow:none;}}/*!sc*/
+.iNuSsz pre[class*='language-']{padding:1em;margin:0.5em 0;overflow:auto;}/*!sc*/
+.iNuSsz .token.comment,.iNuSsz .token.prolog,.iNuSsz .token.doctype,.iNuSsz .token.cdata{color:hsl(30, 20%, 50%);}/*!sc*/
+.iNuSsz .token.punctuation{opacity:0.7;}/*!sc*/
+.iNuSsz .namespace{opacity:0.7;}/*!sc*/
+.iNuSsz .token.property,.iNuSsz .token.tag,.iNuSsz .token.number,.iNuSsz .token.constant,.iNuSsz .token.symbol{color:#4a8bb3;}/*!sc*/
+.iNuSsz .token.boolean{color:#e64441;}/*!sc*/
+.iNuSsz .token.selector,.iNuSsz .token.attr-name,.iNuSsz .token.string,.iNuSsz .token.char,.iNuSsz .token.builtin,.iNuSsz .token.inserted{color:#a0fbaa;}/*!sc*/
+.iNuSsz .token.selector+a,.iNuSsz .token.attr-name+a,.iNuSsz .token.string+a,.iNuSsz .token.char+a,.iNuSsz .token.builtin+a,.iNuSsz .token.inserted+a,.iNuSsz .token.selector+a:visited,.iNuSsz .token.attr-name+a:visited,.iNuSsz .token.string+a:visited,.iNuSsz .token.char+a:visited,.iNuSsz .token.builtin+a:visited,.iNuSsz .token.inserted+a:visited{color:#4ed2ba;text-decoration:underline;}/*!sc*/
+.iNuSsz .token.property.string{color:white;}/*!sc*/
+.iNuSsz .token.operator,.iNuSsz .token.entity,.iNuSsz .token.url,.iNuSsz .token.variable{color:hsl(40, 90%, 60%);}/*!sc*/
+.iNuSsz .token.atrule,.iNuSsz .token.attr-value,.iNuSsz .token.keyword{color:hsl(350, 40%, 70%);}/*!sc*/
+.iNuSsz .token.regex,.iNuSsz .token.important{color:#e90;}/*!sc*/
+.iNuSsz .token.important,.iNuSsz .token.bold{font-weight:bold;}/*!sc*/
+.iNuSsz .token.italic{font-style:italic;}/*!sc*/
+.iNuSsz .token.entity{cursor:help;}/*!sc*/
+.iNuSsz .token.deleted{color:red;}/*!sc*/
+data-styled.g33[id="sc-iJuXkV"]{content:"iNuSsz,"}/*!sc*/
+.ldPDIU{opacity:0.7;transition:opacity 0.3s ease;text-align:right;}/*!sc*/
+.ldPDIU:focus-within{opacity:1;}/*!sc*/
+.ldPDIU >button{background-color:transparent;border:0;color:inherit;padding:2px 10px;font-family:Roboto,sans-serif;font-size:14px;line-height:1.5em;cursor:pointer;outline:0;}/*!sc*/
+.ldPDIU >button :hover,.ldPDIU >button :focus{background:rgba(255, 255, 255, 0.1);}/*!sc*/
+data-styled.g34[id="sc-giIpqw"]{content:"ldPDIU,"}/*!sc*/
+.bsUDpT{position:relative;}/*!sc*/
+data-styled.g38[id="sc-kLgmGd"]{content:"bsUDpT,"}/*!sc*/
+.lgCKWg{position:absolute;pointer-events:none;z-index:1;top:50%;-webkit-transform:translateY(-50%);-ms-transform:translateY(-50%);transform:translateY(-50%);right:8px;margin:auto;text-align:center;}/*!sc*/
+.lgCKWg polyline{color:white;}/*!sc*/
+data-styled.g39[id="sc-iktELE"]{content:"lgCKWg,"}/*!sc*/
+.ekMQOb{box-sizing:border-box;min-width:100px;outline:none;display:inline-block;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.5);vertical-align:bottom;padding:2px 0px 2px 6px;position:relative;width:auto;background:white;color:#263238;font-family:Montserrat,sans-serif;font-size:0.929em;line-height:1.5em;cursor:pointer;transition:border 0.25s ease,color 0.25s ease,box-shadow 0.25s ease;}/*!sc*/
+.ekMQOb label{box-sizing:border-box;min-width:100px;outline:none;display:inline-block;font-family:Montserrat,sans-serif;color:#333333;vertical-align:bottom;width:auto;text-transform:none;padding:0 22px 0 4px;font-size:0.929em;line-height:1.5em;font-family:inherit;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;}/*!sc*/
+.ekMQOb .dropdown-select{position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;border:none;appearance:none;cursor:pointer;color:#333333;line-height:inherit;font-family:inherit;}/*!sc*/
+.ekMQOb:hover,.ekMQOb:focus-within{border:1px solid #32329f;color:#32329f;box-shadow:0px 0px 0px 1px #32329f;}/*!sc*/
+data-styled.g40[id="sc-jJEKGn"]{content:"ekMQOb,"}/*!sc*/
+.eBDHRN{margin-left:10px;text-transform:none;font-size:0.929em;color:black;}/*!sc*/
+data-styled.g42[id="sc-gWHgjU"]{content:"eBDHRN,"}/*!sc*/
+.jtfGmi{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.jtfGmi p:last-child{margin-bottom:0;}/*!sc*/
+.jtfGmi h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.jtfGmi h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.jtfGmi code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.jtfGmi pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.jtfGmi pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.jtfGmi pre code:before,.jtfGmi pre code:after{content:none;}/*!sc*/
+.jtfGmi blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.jtfGmi img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.jtfGmi ul,.jtfGmi ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.jtfGmi ul ul,.jtfGmi ol ul,.jtfGmi ul ol,.jtfGmi ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.jtfGmi table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.jtfGmi table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.jtfGmi table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.jtfGmi table th,.jtfGmi table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.jtfGmi table th{text-align:left;font-weight:bold;}/*!sc*/
+.jtfGmi .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.jtfGmi .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.jtfGmi h1:hover>.share-link::before,.jtfGmi h2:hover>.share-link::before,.jtfGmi .share-link:hover::before{visibility:visible;}/*!sc*/
+.jtfGmi a{text-decoration:auto;color:#32329f;}/*!sc*/
+.jtfGmi a:visited{color:#32329f;}/*!sc*/
+.jtfGmi a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+.dyntKg{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.dyntKg p:last-child{margin-bottom:0;}/*!sc*/
+.dyntKg p:first-child{margin-top:0;}/*!sc*/
+.dyntKg p:last-child{margin-bottom:0;}/*!sc*/
+.dyntKg h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.dyntKg h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.dyntKg code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.dyntKg pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.dyntKg pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.dyntKg pre code:before,.dyntKg pre code:after{content:none;}/*!sc*/
+.dyntKg blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.dyntKg img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.dyntKg ul,.dyntKg ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.dyntKg ul ul,.dyntKg ol ul,.dyntKg ul ol,.dyntKg ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.dyntKg table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.dyntKg table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.dyntKg table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.dyntKg table th,.dyntKg table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.dyntKg table th{text-align:left;font-weight:bold;}/*!sc*/
+.dyntKg .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.dyntKg .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.dyntKg h1:hover>.share-link::before,.dyntKg h2:hover>.share-link::before,.dyntKg .share-link:hover::before{visibility:visible;}/*!sc*/
+.dyntKg a{text-decoration:auto;color:#32329f;}/*!sc*/
+.dyntKg a:visited{color:#32329f;}/*!sc*/
+.dyntKg a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+.eBjiEo{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.eBjiEo p:last-child{margin-bottom:0;}/*!sc*/
+.eBjiEo p:first-child{margin-top:0;}/*!sc*/
+.eBjiEo p:last-child{margin-bottom:0;}/*!sc*/
+.eBjiEo p{display:inline-block;}/*!sc*/
+.eBjiEo h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.eBjiEo h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.eBjiEo code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.eBjiEo pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.eBjiEo pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.eBjiEo pre code:before,.eBjiEo pre code:after{content:none;}/*!sc*/
+.eBjiEo blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.eBjiEo img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.eBjiEo ul,.eBjiEo ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.eBjiEo ul ul,.eBjiEo ol ul,.eBjiEo ul ol,.eBjiEo ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.eBjiEo table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.eBjiEo table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.eBjiEo table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.eBjiEo table th,.eBjiEo table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.eBjiEo table th{text-align:left;font-weight:bold;}/*!sc*/
+.eBjiEo .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.eBjiEo .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.eBjiEo h1:hover>.share-link::before,.eBjiEo h2:hover>.share-link::before,.eBjiEo .share-link:hover::before{visibility:visible;}/*!sc*/
+.eBjiEo a{text-decoration:auto;color:#32329f;}/*!sc*/
+.eBjiEo a:visited{color:#32329f;}/*!sc*/
+.eBjiEo a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+data-styled.g43[id="sc-cBNeAB"]{content:"jtfGmi,dyntKg,eBjiEo,"}/*!sc*/
+.hynizp{display:inline;}/*!sc*/
+data-styled.g44[id="sc-cittYi"]{content:"hynizp,"}/*!sc*/
+.hiQxbu{position:relative;}/*!sc*/
+data-styled.g45[id="sc-jcVbNL"]{content:"hiQxbu,"}/*!sc*/
+.fRRakq:hover>.sc-giIpqw{opacity:1;}/*!sc*/
+data-styled.g50[id="sc-cTkvqA"]{content:"fRRakq,"}/*!sc*/
+.cCicSb{font-family:Courier,monospace;font-size:13px;white-space:pre;contain:content;overflow-x:auto;}/*!sc*/
+.cCicSb .redoc-json code>.collapser{display:none;pointer-events:none;}/*!sc*/
+.cCicSb .callback-function{color:gray;}/*!sc*/
+.cCicSb .collapser:after{content:'-';cursor:pointer;}/*!sc*/
+.cCicSb .collapsed>.collapser:after{content:'+';cursor:pointer;}/*!sc*/
+.cCicSb .ellipsis:after{content:' … ';}/*!sc*/
+.cCicSb .collapsible{margin-left:2em;}/*!sc*/
+.cCicSb .hoverable{padding-top:1px;padding-bottom:1px;padding-left:2px;padding-right:2px;border-radius:2px;}/*!sc*/
+.cCicSb .hovered{background-color:rgba(235, 238, 249, 1);}/*!sc*/
+.cCicSb .collapser{background-color:transparent;border:0;color:#fff;font-family:Courier,monospace;font-size:13px;padding-right:6px;padding-left:6px;padding-top:0;padding-bottom:0;display:flex;align-items:center;justify-content:center;width:15px;height:15px;position:absolute;top:4px;left:-1.5em;cursor:default;user-select:none;-webkit-user-select:none;padding:2px;}/*!sc*/
+.cCicSb .collapser:focus{outline-color:#fff;outline-style:dotted;outline-width:1px;}/*!sc*/
+.cCicSb ul{list-style-type:none;padding:0px;margin:0px 0px 0px 26px;}/*!sc*/
+.cCicSb li{position:relative;display:block;}/*!sc*/
+.cCicSb .hoverable{display:inline-block;}/*!sc*/
+.cCicSb .selected{outline-style:solid;outline-width:1px;outline-style:dotted;}/*!sc*/
+.cCicSb .collapsed>.collapsible{display:none;}/*!sc*/
+.cCicSb .ellipsis{display:none;}/*!sc*/
+.cCicSb .collapsed>.ellipsis{display:inherit;}/*!sc*/
+data-styled.g51[id="sc-jNMdgd"]{content:"cCicSb,"}/*!sc*/
+.ilXydl{padding:0.9em;background-color:rgba(38,50,56,0.4);margin:0 0 10px 0;display:block;font-family:Montserrat,sans-serif;font-size:0.929em;line-height:1.5em;}/*!sc*/
+data-styled.g52[id="sc-dOSQqJ"]{content:"ilXydl,"}/*!sc*/
+.fLqWfi{font-family:Montserrat,sans-serif;font-size:12px;position:absolute;z-index:1;top:-11px;left:12px;font-weight:600;color:rgba(255,255,255,0.7);}/*!sc*/
+data-styled.g53[id="sc-bBrNAk"]{content:"fLqWfi,"}/*!sc*/
+.jyrVDw{position:relative;}/*!sc*/
+data-styled.g54[id="sc-cOahfn"]{content:"jyrVDw,"}/*!sc*/
+.dMpNQv{margin:0 0 10px 0;display:block;background-color:rgba(38,50,56,0.4);border:none;padding:0.9em 1.6em 0.9em 0.9em;box-shadow:none;}/*!sc*/
+.dMpNQv label{color:#ffffff;text-overflow:ellipsis;white-space:nowrap;overflow:hidden;font-size:1em;text-transform:none;border:none;}/*!sc*/
+.dMpNQv:hover,.dMpNQv:focus-within{border:none;box-shadow:none;background-color:rgba(38,50,56,0.7);}/*!sc*/
+data-styled.g55[id="sc-AzeoO"]{content:"dMpNQv,"}/*!sc*/
+.icbUjL{margin-top:15px;}/*!sc*/
+data-styled.g57[id="sc-hTZjHc"]{content:"icbUjL,"}/*!sc*/
+.bvJPfa.deprecated span.property-name{text-decoration:line-through;color:#707070;}/*!sc*/
+.bvJPfa button{background-color:transparent;border:0;outline:0;font-size:13px;font-family:Courier,monospace;cursor:pointer;padding:0;color:#333333;}/*!sc*/
+.bvJPfa button:focus{font-weight:600;}/*!sc*/
+.bvJPfa .sc-dQoBM{height:1.1em;width:1.1em;}/*!sc*/
+.bvJPfa .sc-dQoBM polygon{fill:#666;}/*!sc*/
+data-styled.g58[id="sc-jgHDmf"]{content:"bvJPfa,"}/*!sc*/
+.gCMUGw{vertical-align:middle;font-size:13px;line-height:20px;}/*!sc*/
+data-styled.g59[id="sc-gTgAvG"]{content:"gCMUGw,"}/*!sc*/
+.dCeeDp{color:rgba(102,102,102,0.9);}/*!sc*/
+data-styled.g60[id="sc-laROWl"]{content:"dCeeDp,"}/*!sc*/
+.cxjEEA{color:#666;}/*!sc*/
+data-styled.g61[id="sc-iNqMfM"]{content:"cxjEEA,"}/*!sc*/
+.jJMDiT{color:#666;word-break:break-word;}/*!sc*/
+data-styled.g62[id="sc-jeGQnC"]{content:"jJMDiT,"}/*!sc*/
+.egFobb{color:#d41f1c;font-size:0.9em;font-weight:normal;margin-left:20px;line-height:1;}/*!sc*/
+data-styled.g63[id="sc-eJMOEj"]{content:"egFobb,"}/*!sc*/
+.jzGNYG{border-radius:2px;word-break:break-word;background-color:rgba(51,51,51,0.05);color:rgba(51,51,51,0.9);padding:0 5px;border:1px solid rgba(51,51,51,0.1);font-family:Courier,monospace;}/*!sc*/
+.sc-lcukLb+.sc-lcukLb{margin-left:0;}/*!sc*/
+data-styled.g67[id="sc-lcukLb"]{content:"jzGNYG,"}/*!sc*/
+.gAOGaI{border-radius:2px;background-color:rgba(104,104,207,0.05);color:rgba(50,50,159,0.9);margin:0 5px;padding:0 5px;border:1px solid rgba(50,50,159,0.1);}/*!sc*/
+.sc-clsJvZ+.sc-clsJvZ{margin-left:0;}/*!sc*/
+data-styled.g69[id="sc-clsJvZ"]{content:"gAOGaI,"}/*!sc*/
+.ewkFZw:after{content:' and ';font-weight:normal;}/*!sc*/
+.ewkFZw:last-child:after{content:none;}/*!sc*/
+.ewkFZw a{text-decoration:auto;color:#32329f;}/*!sc*/
+.ewkFZw a:visited{color:#32329f;}/*!sc*/
+.ewkFZw a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+data-styled.g82[id="sc-hOqsyU"]{content:"ewkFZw,"}/*!sc*/
+.gXVZLC{white-space:nowrap;}/*!sc*/
+.gXVZLC:after{content:' or ';white-space:pre;}/*!sc*/
+.gXVZLC:last-child:after,.gXVZLC:only-child:after{content:none;}/*!sc*/
+.gXVZLC a{text-decoration:auto;color:#32329f;}/*!sc*/
+.gXVZLC a:visited{color:#32329f;}/*!sc*/
+.gXVZLC a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+data-styled.g83[id="sc-dtwqPB"]{content:"gXVZLC,"}/*!sc*/
+.hnzXSU{flex:1 1 auto;cursor:pointer;}/*!sc*/
+data-styled.g84[id="sc-dacGni"]{content:"hnzXSU,"}/*!sc*/
+.jnRUlI{width:75%;text-overflow:ellipsis;border-radius:4px;overflow:hidden;}/*!sc*/
+@media screen and (max-width: 50rem){.jnRUlI{margin-top:10px;}}/*!sc*/
+data-styled.g85[id="sc-jUEocL"]{content:"jnRUlI,"}/*!sc*/
+.htSlhJ{display:inline-block;margin:0;}/*!sc*/
+data-styled.g86[id="sc-jQbHUc"]{content:"htSlhJ,"}/*!sc*/
+.bhICnb{width:100%;display:flex;margin:1em 0;flex-direction:row;}/*!sc*/
+@media screen and (max-width: 50rem){.bhICnb{flex-direction:column;}}/*!sc*/
+data-styled.g87[id="sc-fvhGkJ"]{content:"bhICnb,"}/*!sc*/
+.eSPXsI{margin-top:0;margin-bottom:0.5em;}/*!sc*/
+data-styled.g93[id="sc-ctaZPk"]{content:"eSPXsI,"}/*!sc*/
+.kdqpyX{width:9ex;display:inline-block;height:13px;line-height:13px;background-color:#333;border-radius:3px;background-repeat:no-repeat;background-position:6px 4px;font-size:7px;font-family:Verdana,sans-serif;color:white;text-transform:uppercase;text-align:center;font-weight:bold;vertical-align:middle;margin-right:6px;margin-top:2px;}/*!sc*/
+.kdqpyX.get{background-color:#2F8132;}/*!sc*/
+.kdqpyX.post{background-color:#186FAF;}/*!sc*/
+.kdqpyX.put{background-color:#95507c;}/*!sc*/
+.kdqpyX.options{background-color:#947014;}/*!sc*/
+.kdqpyX.patch{background-color:#bf581d;}/*!sc*/
+.kdqpyX.delete{background-color:#cc3333;}/*!sc*/
+.kdqpyX.basic{background-color:#707070;}/*!sc*/
+.kdqpyX.link{background-color:#07818F;}/*!sc*/
+.kdqpyX.head{background-color:#A23DAD;}/*!sc*/
+.kdqpyX.hook{background-color:#32329f;}/*!sc*/
+.kdqpyX.schema{background-color:#707070;}/*!sc*/
+data-styled.g101[id="sc-XhXdA"]{content:"kdqpyX,"}/*!sc*/
+.eqhvhc{margin:0;padding:0;}/*!sc*/
+.eqhvhc:first-child{padding-bottom:32px;}/*!sc*/
+.sc-ikPCzd .sc-ikPCzd{font-size:0.929em;}/*!sc*/
+data-styled.g102[id="sc-ikPCzd"]{content:"eqhvhc,"}/*!sc*/
+.hNMAOR{list-style:none inside none;overflow:hidden;text-overflow:ellipsis;padding:0;}/*!sc*/
+data-styled.g103[id="sc-tYrig"]{content:"hNMAOR,"}/*!sc*/
+.ehmZgs{cursor:pointer;color:#333333;margin:0;padding:12.5px 20px;display:flex;justify-content:space-between;font-family:Montserrat,sans-serif;background-color:#fafafa;}/*!sc*/
+.ehmZgs:hover{color:#32329f;background-color:#ededed;}/*!sc*/
+.ehmZgs .sc-dQoBM{height:1.5em;width:1.5em;}/*!sc*/
+.ehmZgs .sc-dQoBM polygon{fill:#333333;}/*!sc*/
+data-styled.g104[id="sc-biBsFP"]{content:"ehmZgs,"}/*!sc*/
+.dYJaHY{display:inline-block;vertical-align:middle;width:calc(100% - 38px);overflow:hidden;text-overflow:ellipsis;}/*!sc*/
+data-styled.g105[id="sc-eHfQNO"]{content:"dYJaHY,"}/*!sc*/
+.icnaqS{font-size:0.8em;margin-top:10px;text-align:center;position:fixed;width:260px;bottom:0;background:#fafafa;}/*!sc*/
+.icnaqS a,.icnaqS a:visited,.icnaqS a:hover{color:#333333!important;padding:5px 0;border-top:1px solid #e1e1e1;text-decoration:none;display:flex;align-items:center;justify-content:center;}/*!sc*/
+.icnaqS img{width:15px;margin-right:5px;}/*!sc*/
+@media screen and (max-width: 50rem){.icnaqS{width:100%;}}/*!sc*/
+data-styled.g106[id="sc-hzMLOJ"]{content:"icnaqS,"}/*!sc*/
+.gnyOsi{cursor:pointer;position:relative;margin-bottom:5px;}/*!sc*/
+data-styled.g112[id="sc-fXozIE"]{content:"gnyOsi,"}/*!sc*/
+.kmRXcZ{font-family:Courier,monospace;margin-left:10px;flex:1;overflow-x:hidden;text-overflow:ellipsis;}/*!sc*/
+data-styled.g113[id="sc-FyhMp"]{content:"kmRXcZ,"}/*!sc*/
+.eJFCKx{outline:0;color:inherit;width:100%;text-align:left;cursor:pointer;padding:10px 30px 10px 20px;border-radius:4px 4px 0 0;background-color:#11171a;display:flex;white-space:nowrap;align-items:center;border:1px solid transparent;border-bottom:0;transition:border-color 0.25s ease;}/*!sc*/
+.eJFCKx ..sc-FyhMp{color:#ffffff;}/*!sc*/
+.eJFCKx:focus{box-shadow:inset 0 2px 2px rgba(0, 0, 0, 0.45),0 2px 0 rgba(128, 128, 128, 0.25);}/*!sc*/
+data-styled.g114[id="sc-jXkukm"]{content:"eJFCKx,"}/*!sc*/
+.kcqnuN{font-size:0.929em;line-height:20px;background-color:#186FAF;color:#ffffff;padding:3px 10px;text-transform:uppercase;font-family:Montserrat,sans-serif;margin:0;}/*!sc*/
+data-styled.g115[id="sc-eFucnX"]{content:"kcqnuN,"}/*!sc*/
+.AnL{position:absolute;width:100%;z-index:100;background:#fafafa;color:#263238;box-sizing:border-box;box-shadow:0 0 6px rgba(0, 0, 0, 0.33);overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;transition:all 0.25s ease;visibility:hidden;transform:translateY(-50%) scaleY(0);}/*!sc*/
+data-styled.g116[id="sc-fmlIYk"]{content:"AnL,"}/*!sc*/
+.gjZMty{padding:10px;}/*!sc*/
+data-styled.g117[id="sc-ljRaAR"]{content:"gjZMty,"}/*!sc*/
+.eFxVeO{padding:5px;border:1px solid #ccc;background:#fff;word-break:break-all;color:#32329f;}/*!sc*/
+.eFxVeO >span{color:#333333;}/*!sc*/
+data-styled.g118[id="sc-jmhDzS"]{content:"eFxVeO,"}/*!sc*/
+.eEdthm{text-transform:lowercase;margin-left:0;line-height:1.5em;}/*!sc*/
+data-styled.g119[id="sc-dUrlDD"]{content:"eEdthm,"}/*!sc*/
+.ciHfuN{display:block;border:0;width:100%;text-align:left;padding:10px;border-radius:2px;margin-bottom:4px;line-height:1.5em;cursor:pointer;color:#1d8127;background-color:rgba(29,129,39,0.07);}/*!sc*/
+.ciHfuN:focus{outline:auto #1d8127;}/*!sc*/
+.iagvZz{display:block;border:0;width:100%;text-align:left;padding:10px;border-radius:2px;margin-bottom:4px;line-height:1.5em;cursor:pointer;color:#d41f1c;background-color:rgba(212,31,28,0.07);}/*!sc*/
+.iagvZz:focus{outline:auto #d41f1c;}/*!sc*/
+data-styled.g121[id="sc-cbDJdZ"]{content:"ciHfuN,iagvZz,"}/*!sc*/
+.mtsUp{vertical-align:top;}/*!sc*/
+data-styled.g124[id="sc-fWPeRB"]{content:"mtsUp,"}/*!sc*/
+.ihqrCS{font-size:1.3em;padding:0.2em 0;margin:3em 0 1.1em;color:#333333;font-weight:normal;}/*!sc*/
+data-styled.g125[id="sc-fHYzZk"]{content:"ihqrCS,"}/*!sc*/
+.iTRatv{margin-bottom:30px;}/*!sc*/
+data-styled.g130[id="sc-iGcuFr"]{content:"iTRatv,"}/*!sc*/
+.iDYPDd{user-select:none;width:20px;height:20px;align-self:center;display:flex;flex-direction:column;color:#32329f;}/*!sc*/
+data-styled.g131[id="sc-irlPNa"]{content:"iDYPDd,"}/*!sc*/
+.lkswgW{width:260px;background-color:#fafafa;overflow:hidden;display:flex;flex-direction:column;backface-visibility:hidden;height:100vh;position:sticky;position:-webkit-sticky;top:0;}/*!sc*/
+@media screen and (max-width: 50rem){.lkswgW{position:fixed;z-index:20;width:100%;background:#fafafa;display:none;}}/*!sc*/
+@media print{.lkswgW{display:none;}}/*!sc*/
+data-styled.g132[id="sc-eWvQxi"]{content:"lkswgW,"}/*!sc*/
+.fsqnbI{outline:none;user-select:none;background-color:#f2f2f2;color:#32329f;display:none;cursor:pointer;position:fixed;right:20px;z-index:100;border-radius:50%;box-shadow:0 0 20px rgba(0, 0, 0, 0.3);bottom:44px;width:60px;height:60px;padding:0 20px;}/*!sc*/
+@media screen and (max-width: 50rem){.fsqnbI{display:flex;}}/*!sc*/
+.fsqnbI svg{color:#0065FB;}/*!sc*/
+@media print{.fsqnbI{display:none;}}/*!sc*/
+data-styled.g133[id="sc-kUbhZP"]{content:"fsqnbI,"}/*!sc*/
+.iABphV{font-family:Roboto,sans-serif;font-size:14px;font-weight:400;line-height:1.5em;color:#333333;display:flex;position:relative;text-align:left;-webkit-font-smoothing:antialiased;font-smoothing:antialiased;text-rendering:optimizeSpeed!important;tap-highlight-color:rgba(0, 0, 0, 0);text-size-adjust:100%;}/*!sc*/
+.iABphV *{box-sizing:border-box;-webkit-tap-highlight-color:rgba(255, 255, 255, 0);}/*!sc*/
+data-styled.g134[id="sc-dwcwXc"]{content:"iABphV,"}/*!sc*/
+.JaJkD{z-index:1;position:relative;overflow:hidden;width:calc(100% - 260px);contain:layout;}/*!sc*/
+@media print,screen and (max-width: 50rem){.JaJkD{width:100%;}}/*!sc*/
+data-styled.g135[id="sc-jtHOzJ"]{content:"JaJkD,"}/*!sc*/
+.dQcVAt{background:#263238;position:absolute;top:0;bottom:0;right:0;width:calc((100% - 260px) * 0.4);}/*!sc*/
+@media print,screen and (max-width: 75rem){.dQcVAt{display:none;}}/*!sc*/
+data-styled.g136[id="sc-elsZMO"]{content:"dQcVAt,"}/*!sc*/
+.heVKiz{padding:5px 0;}/*!sc*/
+data-styled.g137[id="sc-kiYrpv"]{content:"heVKiz,"}/*!sc*/
+.gyVKdy{width:calc(100% - 40px);box-sizing:border-box;margin:0 20px;padding:5px 10px 5px 20px;border:0;border-bottom:1px solid #e1e1e1;font-family:Roboto,sans-serif;font-weight:bold;font-size:13px;color:#333333;background-color:transparent;outline:none;}/*!sc*/
+data-styled.g138[id="sc-cKZGmI"]{content:"gyVKdy,"}/*!sc*/
+.eIwqum{position:absolute;left:20px;height:1.8em;width:0.9em;}/*!sc*/
+.eIwqum path{fill:#333333;}/*!sc*/
+data-styled.g139[id="sc-iIEXPp"]{content:"eIwqum,"}/*!sc*/
+</style>
+  <link href="https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700" rel="stylesheet">
+</head>
+
+<body>
+  
+      <div id="redoc"><div class="sc-dwcwXc iABphV redoc-wrap"><div class="sc-eWvQxi lkswgW menu-content" style="top:0px;height:calc(100vh - 0px)"><div role="search" class="sc-kiYrpv heVKiz"><svg class="sc-iIEXPp eIwqum search-icon" version="1.1" viewBox="0 0 1000 1000" x="0px" xmlns="http://www.w3.org/2000/svg" y="0px"><path d="M968.2,849.4L667.3,549c83.9-136.5,66.7-317.4-51.7-435.6C477.1-25,252.5-25,113.9,113.4c-138.5,138.3-138.5,362.6,0,501C219.2,730.1,413.2,743,547.6,666.5l301.9,301.4c43.6,43.6,76.9,14.9,104.2-12.4C981,928.3,1011.8,893,968.2,849.4z M524.5,522c-88.9,88.7-233,88.7-321.8,0c-88.9-88.7-88.9-232.6,0-321.3c88.9-88.7,233-88.7,321.8,0C613.4,289.4,613.4,433.3,524.5,522z"></path></svg><input placeholder="Search..." aria-label="Search" type="text" class="sc-cKZGmI gyVKdy search-input" value=""/></div><div class="sc-kLgmGd bsUDpT scrollbar-container undefined"><ul role="menu" class="sc-ikPCzd eqhvhc"><li tabindex="0" depth="2" data-item-id="/paths/~1resources~1query/post" role="menuitem" aria-label="执行原生查询（SQL 或 DSL）" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP ehmZgs -depth2"><span type="post" class="sc-XhXdA kdqpyX operation-type post">post</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHfQNO dYJaHY">执行原生查询（SQL 或 DSL）</span></label></li></ul><div class="sc-hzMLOJ icnaqS"><a target="_blank" rel="noopener noreferrer" href="https://redocly.com/redoc/">API docs by Redocly</a></div></div></div><div class="sc-kUbhZP fsqnbI"><div class="sc-irlPNa iDYPDd"><svg class="" style="transform:translate(2px, -4px) rotate(180deg);transition:transform 0.2s ease" viewBox="0 0 926.23699 573.74994" version="1.1" x="0px" y="0px" width="15" height="15"><g transform="translate(904.92214,-879.1482)"><path d="
+          m -673.67664,1221.6502 -231.2455,-231.24803 55.6165,
+          -55.627 c 30.5891,-30.59485 56.1806,-55.627 56.8701,-55.627 0.6894,
+          0 79.8637,78.60862 175.9427,174.68583 l 174.6892,174.6858 174.6892,
+          -174.6858 c 96.079,-96.07721 175.253196,-174.68583 175.942696,
+          -174.68583 0.6895,0 26.281,25.03215 56.8701,
+          55.627 l 55.6165,55.627 -231.245496,231.24803 c -127.185,127.1864
+          -231.5279,231.248 -231.873,231.248 -0.3451,0 -104.688,
+          -104.0616 -231.873,-231.248 z
+        " fill="currentColor"></path></g></svg><svg class="" style="transform:translate(2px, 4px);transition:transform 0.2s ease" viewBox="0 0 926.23699 573.74994" version="1.1" x="0px" y="0px" width="15" height="15"><g transform="translate(904.92214,-879.1482)"><path d="
+          m -673.67664,1221.6502 -231.2455,-231.24803 55.6165,
+          -55.627 c 30.5891,-30.59485 56.1806,-55.627 56.8701,-55.627 0.6894,
+          0 79.8637,78.60862 175.9427,174.68583 l 174.6892,174.6858 174.6892,
+          -174.6858 c 96.079,-96.07721 175.253196,-174.68583 175.942696,
+          -174.68583 0.6895,0 26.281,25.03215 56.8701,
+          55.627 l 55.6165,55.627 -231.245496,231.24803 c -127.185,127.1864
+          -231.5279,231.248 -231.873,231.248 -0.3451,0 -104.688,
+          -104.0616 -231.873,-231.248 z
+        " fill="currentColor"></path></g></svg></div></div><div class="sc-jtHOzJ JaJkD api-content"><div class="sc-eCsseJ bKZuAK"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI api-info"><h1 class="sc-fubEtJ sc-ctaZPk edtrWC eSPXsI">Raw Query<!-- --> <span>(<!-- -->0.1.0<!-- -->)</span></h1><p>Download OpenAPI specification<!-- -->:</p><div class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><div data-role="redoc-summary" html="" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><div data-role="redoc-description" html="&lt;p&gt;Vega Backend 原生查询端点（&lt;code&gt;POST /resources/query&lt;/code&gt;）相关 API。&lt;/p&gt;
+&lt;p&gt;本端点执行经服务端校验和资源绑定的原生查询，&lt;strong&gt;不做结构化 filter 解析&lt;/strong&gt;：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;SQL 引擎（mysql / postgresql / sqlserver / clickhouse / 达梦 / oracle）→ &lt;code&gt;query&lt;/code&gt; 字段为 SQL 字符串&lt;/li&gt;
+&lt;li&gt;索引引擎（opensearch / elasticsearch）→ &lt;code&gt;query&lt;/code&gt; 字段为 DSL JSON 对象&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;与 &lt;code&gt;POST /resources/{id}/data&lt;/code&gt;（&lt;a href=&quot;resource-data.yaml&quot;&gt;resource-data.yaml&lt;/a&gt;）的分工：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;维度&lt;/th&gt;
+&lt;th&gt;&lt;code&gt;POST /resources/query&lt;/code&gt;&lt;/th&gt;
+&lt;th&gt;&lt;code&gt;POST /resources/{id}/data&lt;/code&gt; (Override:GET)&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;&lt;tr&gt;
+&lt;td&gt;资源定位&lt;/td&gt;
+&lt;td&gt;SQL 使用受控 &lt;code&gt;{{resource_id}}&lt;/code&gt; 占位符；DSL 使用顶层 &lt;code&gt;resource_id&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;绑定 &lt;code&gt;:id&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;输入&lt;/td&gt;
+&lt;td&gt;原生 SQL / DSL + format/dialect&lt;/td&gt;
+&lt;td&gt;结构化 &lt;code&gt;filter_condition&lt;/code&gt; + 分页&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;输出&lt;/td&gt;
+&lt;td&gt;列元数据 + raw entries + cursor 分页&lt;/td&gt;
+&lt;td&gt;文档对象 + 可选 total_count + cursor 分页&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Cursor&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;paging.cursor&lt;/code&gt; / &lt;code&gt;paging.next_cursor&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;paging.cursor&lt;/code&gt; / &lt;code&gt;paging.next_cursor&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;用途&lt;/td&gt;
+&lt;td&gt;同一 Catalog 内的复杂 SQL / DSL&lt;/td&gt;
+&lt;td&gt;应用层结构化访问&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;&lt;/table&gt;
+&lt;p&gt;&lt;strong&gt;SQL 只读策略&lt;/strong&gt;：SQL 只允许单条顶层 &lt;code&gt;SELECT&lt;/code&gt;，且所有物理表必须由受权限保护的
+Resource 占位符解析；DSL 的索引同样只能由 Resource 推导。当前可用的 SQL 子集为
+同一 Catalog 内的 &lt;code&gt;JOIN&lt;/code&gt;、&lt;code&gt;WHERE&lt;/code&gt;、&lt;code&gt;GROUP BY&lt;/code&gt; / &lt;code&gt;HAVING&lt;/code&gt;、&lt;code&gt;ORDER BY&lt;/code&gt;、&lt;code&gt;LIMIT&lt;/code&gt; 和
+常用聚合函数（&lt;code&gt;COUNT&lt;/code&gt;、&lt;code&gt;SUM&lt;/code&gt;、&lt;code&gt;AVG&lt;/code&gt;、&lt;code&gt;MIN&lt;/code&gt;、&lt;code&gt;MAX&lt;/code&gt;）。子查询不被只读策略单独禁止；
+窗口函数与其他内置函数须由 SQLGlot 识别为安全表达式，且由 &lt;code&gt;input_dialect&lt;/code&gt; 和底层连接器支持。&lt;/p&gt;
+&lt;p&gt;不支持 &lt;code&gt;WITH&lt;/code&gt; / CTE、&lt;code&gt;UNION&lt;/code&gt; / &lt;code&gt;INTERSECT&lt;/code&gt; / &lt;code&gt;EXCEPT&lt;/code&gt;、多语句、&lt;code&gt;SELECT INTO&lt;/code&gt;、
+锁定读取，以及写入、DDL、事务、权限与过程类语句。函数仅允许 SQLGlot 可识别的具名
+内置表达式：UDF 与未建模的方言函数一律被拒绝；文件读取、外部访问或休眠等高风险
+内置函数（如 &lt;code&gt;pg_read_file&lt;/code&gt;、&lt;code&gt;http_get&lt;/code&gt;、&lt;code&gt;sleep&lt;/code&gt;、&lt;code&gt;system&lt;/code&gt;）另被显式拒绝。违反策略返回 HTTP 400
+&lt;code&gt;VegaBackend.Query.InvalidParameter&lt;/code&gt;，&lt;code&gt;error_details&lt;/code&gt; 为
+&lt;code&gt;raw query rejected by read-only policy&lt;/code&gt;；请改写为单条顶层 &lt;code&gt;SELECT&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;调用方仍应受 RBAC 与限流约束，底层账号必须保持只读。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>Vega Backend 原生查询端点（<code>POST /resources/query</code>）相关 API。</p>
+<p>本端点执行经服务端校验和资源绑定的原生查询，<strong>不做结构化 filter 解析</strong>：</p>
+<ul>
+<li>SQL 引擎（mysql / postgresql / sqlserver / clickhouse / 达梦 / oracle）→ <code>query</code> 字段为 SQL 字符串</li>
+<li>索引引擎（opensearch / elasticsearch）→ <code>query</code> 字段为 DSL JSON 对象</li>
+</ul>
+<p>与 <code>POST /resources/{id}/data</code>（<a href="resource-data.yaml">resource-data.yaml</a>）的分工：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th><code>POST /resources/query</code></th>
+<th><code>POST /resources/{id}/data</code> (Override:GET)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>资源定位</td>
+<td>SQL 使用受控 <code>{{resource_id}}</code> 占位符；DSL 使用顶层 <code>resource_id</code></td>
+<td>绑定 <code>:id</code></td>
+</tr>
+<tr>
+<td>输入</td>
+<td>原生 SQL / DSL + format/dialect</td>
+<td>结构化 <code>filter_condition</code> + 分页</td>
+</tr>
+<tr>
+<td>输出</td>
+<td>列元数据 + raw entries + cursor 分页</td>
+<td>文档对象 + 可选 total_count + cursor 分页</td>
+</tr>
+<tr>
+<td>Cursor</td>
+<td><code>paging.cursor</code> / <code>paging.next_cursor</code></td>
+<td><code>paging.cursor</code> / <code>paging.next_cursor</code></td>
+</tr>
+<tr>
+<td>用途</td>
+<td>同一 Catalog 内的复杂 SQL / DSL</td>
+<td>应用层结构化访问</td>
+</tr>
+</tbody></table>
+<p><strong>SQL 只读策略</strong>：SQL 只允许单条顶层 <code>SELECT</code>，且所有物理表必须由受权限保护的
+Resource 占位符解析；DSL 的索引同样只能由 Resource 推导。当前可用的 SQL 子集为
+同一 Catalog 内的 <code>JOIN</code>、<code>WHERE</code>、<code>GROUP BY</code> / <code>HAVING</code>、<code>ORDER BY</code>、<code>LIMIT</code> 和
+常用聚合函数（<code>COUNT</code>、<code>SUM</code>、<code>AVG</code>、<code>MIN</code>、<code>MAX</code>）。子查询不被只读策略单独禁止；
+窗口函数与其他内置函数须由 SQLGlot 识别为安全表达式，且由 <code>input_dialect</code> 和底层连接器支持。</p>
+<p>不支持 <code>WITH</code> / CTE、<code>UNION</code> / <code>INTERSECT</code> / <code>EXCEPT</code>、多语句、<code>SELECT INTO</code>、
+锁定读取，以及写入、DDL、事务、权限与过程类语句。函数仅允许 SQLGlot 可识别的具名
+内置表达式：UDF 与未建模的方言函数一律被拒绝；文件读取、外部访问或休眠等高风险
+内置函数（如 <code>pg_read_file</code>、<code>http_get</code>、<code>sleep</code>、<code>system</code>）另被显式拒绝。违反策略返回 HTTP 400
+<code>VegaBackend.Query.InvalidParameter</code>，<code>error_details</code> 为
+<code>raw query rejected by read-only policy</code>；请改写为单条顶层 <code>SELECT</code>。</p>
+<p>调用方仍应受 RBAC 与限流约束，底层账号必须保持只读。</p>
+</div></div></div></div><div id="/paths/~1resources~1query/post" data-section-id="/paths/~1resources~1query/post" class="sc-eCsseJ hxxgNd"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#/paths/~1resources~1query/post" aria-label="/paths/~1resources~1query/post"></a>执行原生查询（SQL 或 DSL）<!-- --> </h2><div class="sc-iGcuFr iTRatv"><div html="&lt;p&gt;&lt;strong&gt;请求体的 &lt;code&gt;query&lt;/code&gt; 字段类型由 &lt;code&gt;query_format&lt;/code&gt; 和 &lt;code&gt;input_dialect&lt;/code&gt; 决定&lt;/strong&gt;：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;SQL：&lt;code&gt;{&amp;quot;query&amp;quot;:&amp;quot;SELECT * FROM {{resource_id}}&amp;quot;, &amp;quot;query_format&amp;quot;:&amp;quot;sql&amp;quot;, &amp;quot;input_dialect&amp;quot;:&amp;quot;postgres&amp;quot;}&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;SQL Server T-SQL：&lt;code&gt;{&amp;quot;query&amp;quot;:&amp;quot;SELECT TOP (20) * FROM {{resource_id}}&amp;quot;, &amp;quot;query_format&amp;quot;:&amp;quot;sql&amp;quot;, &amp;quot;input_dialect&amp;quot;:&amp;quot;tsql&amp;quot;}&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;OpenSearch DSL：&lt;code&gt;{&amp;quot;query&amp;quot;:{&amp;quot;resource_id&amp;quot;:&amp;quot;...&amp;quot;,&amp;quot;query&amp;quot;:{&amp;quot;match_all&amp;quot;:{}}}, &amp;quot;query_format&amp;quot;:&amp;quot;dsl&amp;quot;, &amp;quot;input_dialect&amp;quot;:&amp;quot;opensearch&amp;quot;}&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;实际执行连接器始终从 Resource/Catalog 推导，客户端不能通过输入方言选择数据源。
+SQL Server Catalog 的目标方言固定为 &lt;code&gt;tsql&lt;/code&gt;；客户端可直接提交 &lt;code&gt;tsql&lt;/code&gt;，也可提交受支持的其它 SQL
+输入方言，由服务端转换为 T-SQL。无论输入方言为何，&lt;code&gt;EXEC&lt;/code&gt;、&lt;code&gt;SELECT INTO&lt;/code&gt;、DDL/DML 和多语句
+都会在访问数据库前被拒绝。由于 total-count 和部分分页查询需要使用 SQL Server 派生表，计算表达式
+必须显式指定唯一列别名；通配符不能与其它投影列混用，多表 JOIN 的通配符必须指定表名（例如 &lt;code&gt;orders.*&lt;/code&gt;）。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;SQL 语法边界&lt;/strong&gt;：只接受单条顶层 &lt;code&gt;SELECT&lt;/code&gt;。支持同一 Catalog 内的 &lt;code&gt;JOIN&lt;/code&gt;、
+&lt;code&gt;WHERE&lt;/code&gt;、&lt;code&gt;GROUP BY&lt;/code&gt; / &lt;code&gt;HAVING&lt;/code&gt;、&lt;code&gt;ORDER BY&lt;/code&gt;、&lt;code&gt;LIMIT&lt;/code&gt; 和常用聚合函数。子查询不被
+只读策略单独禁止，但须由所选方言和连接器支持；窗口函数与其他内置函数还必须
+由 SQLGlot 识别为安全表达式，UDF 与未建模的方言函数会被拒绝。&lt;code&gt;WITH&lt;/code&gt; / CTE、
+&lt;code&gt;UNION&lt;/code&gt; / &lt;code&gt;INTERSECT&lt;/code&gt; / &lt;code&gt;EXCEPT&lt;/code&gt;、多语句、&lt;code&gt;SELECT INTO&lt;/code&gt;、锁定读取、DML、DDL、
+事务、权限和过程类语句均被拒绝。CTE 不可通过改写为 &lt;code&gt;WITH&lt;/code&gt; 规避：请改为单条
+顶层 &lt;code&gt;SELECT&lt;/code&gt;，或拆分为多次查询。&lt;/p&gt;
+&lt;p&gt;OpenSearch DSL 使用 &lt;code&gt;paging.mode: cursor&lt;/code&gt; 时必须提供非空 &lt;code&gt;sort&lt;/code&gt;。客户端提交的
+&lt;code&gt;search_after&lt;/code&gt; 会被服务端忽略；该位置仅由服务端保存在不透明 cursor 中。排序应
+包含稳定且唯一的 tiebreaker，避免相同排序值跨页重复或遗漏。&lt;/p&gt;
+&lt;p&gt;OpenSearch 聚合 DSL 仅支持 &lt;code&gt;paging.mode: single&lt;/code&gt;，服务端强制 &lt;code&gt;size: 0&lt;/code&gt;，并将
+metric、terms/date_histogram 及其单链嵌套 bucket 展开为逐行 &lt;code&gt;entries&lt;/code&gt;。不能
+转换为行结构的聚合在访问 OpenSearch 前返回 400；&lt;code&gt;paging.offset/limit&lt;/code&gt; 应用于
+展开后的行结果，cursor 模式不支持聚合。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p><strong>请求体的 <code>query</code> 字段类型由 <code>query_format</code> 和 <code>input_dialect</code> 决定</strong>：</p>
+<ul>
+<li>SQL：<code>{&quot;query&quot;:&quot;SELECT * FROM {{resource_id}}&quot;, &quot;query_format&quot;:&quot;sql&quot;, &quot;input_dialect&quot;:&quot;postgres&quot;}</code></li>
+<li>SQL Server T-SQL：<code>{&quot;query&quot;:&quot;SELECT TOP (20) * FROM {{resource_id}}&quot;, &quot;query_format&quot;:&quot;sql&quot;, &quot;input_dialect&quot;:&quot;tsql&quot;}</code></li>
+<li>OpenSearch DSL：<code>{&quot;query&quot;:{&quot;resource_id&quot;:&quot;...&quot;,&quot;query&quot;:{&quot;match_all&quot;:{}}}, &quot;query_format&quot;:&quot;dsl&quot;, &quot;input_dialect&quot;:&quot;opensearch&quot;}</code></li>
+</ul>
+<p>实际执行连接器始终从 Resource/Catalog 推导，客户端不能通过输入方言选择数据源。
+SQL Server Catalog 的目标方言固定为 <code>tsql</code>；客户端可直接提交 <code>tsql</code>，也可提交受支持的其它 SQL
+输入方言，由服务端转换为 T-SQL。无论输入方言为何，<code>EXEC</code>、<code>SELECT INTO</code>、DDL/DML 和多语句
+都会在访问数据库前被拒绝。由于 total-count 和部分分页查询需要使用 SQL Server 派生表，计算表达式
+必须显式指定唯一列别名；通配符不能与其它投影列混用，多表 JOIN 的通配符必须指定表名（例如 <code>orders.*</code>）。</p>
+<p><strong>SQL 语法边界</strong>：只接受单条顶层 <code>SELECT</code>。支持同一 Catalog 内的 <code>JOIN</code>、
+<code>WHERE</code>、<code>GROUP BY</code> / <code>HAVING</code>、<code>ORDER BY</code>、<code>LIMIT</code> 和常用聚合函数。子查询不被
+只读策略单独禁止，但须由所选方言和连接器支持；窗口函数与其他内置函数还必须
+由 SQLGlot 识别为安全表达式，UDF 与未建模的方言函数会被拒绝。<code>WITH</code> / CTE、
+<code>UNION</code> / <code>INTERSECT</code> / <code>EXCEPT</code>、多语句、<code>SELECT INTO</code>、锁定读取、DML、DDL、
+事务、权限和过程类语句均被拒绝。CTE 不可通过改写为 <code>WITH</code> 规避：请改为单条
+顶层 <code>SELECT</code>，或拆分为多次查询。</p>
+<p>OpenSearch DSL 使用 <code>paging.mode: cursor</code> 时必须提供非空 <code>sort</code>。客户端提交的
+<code>search_after</code> 会被服务端忽略；该位置仅由服务端保存在不透明 cursor 中。排序应
+包含稳定且唯一的 tiebreaker，避免相同排序值跨页重复或遗漏。</p>
+<p>OpenSearch 聚合 DSL 仅支持 <code>paging.mode: single</code>，服务端强制 <code>size: 0</code>，并将
+metric、terms/date_histogram 及其单链嵌套 bucket 展开为逐行 <code>entries</code>。不能
+转换为行结构的聚合在访问 OpenSearch 前返回 400；<code>paging.offset/limit</code> 应用于
+展开后的行结果，cursor 模式不支持聚合。</p>
+</div></div><div class="sc-fvhGkJ bhICnb"><div class="sc-dacGni hnzXSU"><h5 class="sc-iqHZue sc-jQbHUc iFTCOQ htSlhJ">Authorizations:</h5><svg class="sc-dQoBM dHiXwH" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jUEocL jnRUlI"><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>OAuth2</i></span></span></div></div><h5 class="sc-iqHZue iFTCOQ">Request Body schema: <span class="sc-gWHgjU eBDHRN">application/json</span><div class="sc-gTgAvG sc-eJMOEj sc-dUrlDD gCMUGw egFobb eEdthm">required</div></h5><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><div><span class="sc-kfzzyY dnfeFw"> <!-- -->One of<!-- --> </span><div class="sc-dmlpFL dlFwaC"><button class="sc-fKFxPF eryvgE">RawQueryInitialRequest</button><button class="sc-fKFxPF gWmwZE">RawQueryContinuationRequest</button></div><div></div><table class="sc-hHfrpe juzVUC"><tbody><tr class=""><td class="sc-hBFaCF sc-fFubTW sc-jgHDmf DPwQp hUqyua bvJPfa" kind="field" title="query"><span class="sc-idOkdQ iNiPzl"></span><button aria-label="expand query"><span class="property-name">query</span><svg class="sc-dQoBM iTiSfO" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string or object</span></div> <div><div html="&lt;p&gt;查询语句。类型依赖 &lt;code&gt;query_format&lt;/code&gt;：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;SQL 引擎用字符串&lt;/li&gt;
+&lt;li&gt;索引引擎（OpenSearch/Elasticsearch）用 JSON 对象&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>查询语句。类型依赖 <code>query_format</code>：</p>
+<ul>
+<li>SQL 引擎用字符串</li>
+<li>索引引擎（OpenSearch/Elasticsearch）用 JSON 对象</li>
+</ul>
+</div></div></div></td></tr><tr class=""><td kind="field" title="query_format" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">query_format</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Enum<!-- -->:</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;sql&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;dsl&quot;</span> </div> <div><div html="&lt;p&gt;输入载体类型。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>输入载体类型。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="input_dialect" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">input_dialect</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Enum<!-- -->:</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;postgres&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;mysql&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;trino&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;duckdb&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;tsql&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;opensearch&quot;</span> </div> <div><div html="&lt;p&gt;输入方言。SQL 省略时默认 &lt;code&gt;postgres&lt;/code&gt;；SQL Server 原生 T-SQL 使用 &lt;code&gt;tsql&lt;/code&gt;。
+SQL Server Catalog 的执行目标方言始终是 &lt;code&gt;tsql&lt;/code&gt;，必要时由服务端转换。DSL 必须是 &lt;code&gt;opensearch&lt;/code&gt;。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>输入方言。SQL 省略时默认 <code>postgres</code>；SQL Server 原生 T-SQL 使用 <code>tsql</code>。
+SQL Server Catalog 的执行目标方言始终是 <code>tsql</code>，必要时由服务端转换。DSL 必须是 <code>opensearch</code>。</p>
+</div></div></div></td></tr><tr class=""><td class="sc-hBFaCF sc-fFubTW sc-jgHDmf DPwQp hUqyua bvJPfa" kind="field" title="paging"><span class="sc-idOkdQ iNiPzl"></span><button aria-label="expand paging"><span class="property-name">paging</span><svg class="sc-dQoBM iTiSfO" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">object</span><span class="sc-gTgAvG sc-jeGQnC gCMUGw jJMDiT"> (<!-- -->PagingRequest<!-- -->) </span></div> <div><div html="&lt;p&gt;SQL cursor 使用 OFFSET 分页；为避免底层数据变更导致跨页重复或遗漏，调用方应提供包含唯一 tiebreaker 的确定性 ORDER BY。服务端暂不强制校验该排序。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>SQL cursor 使用 OFFSET 分页；为避免底层数据变更导致跨页重复或遗漏，调用方应提供包含唯一 tiebreaker 的确定性 ORDER BY。服务端暂不强制校验该排序。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="query_timeout_sec" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">query_timeout_sec</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">integer</span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA"> <!-- -->&lt;<!-- -->int64<!-- -->&gt;<!-- --> </span><span> <span class="sc-gTgAvG sc-clsJvZ gCMUGw gAOGaI"> <!-- -->[ 1 .. 3600 ]<!-- --> </span></span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">60</span></div> <div><div html="&lt;p&gt;单页查询超时（秒），仅首次请求可设置；cursor 续页沿用首次请求的值。[1, 3600]，默认 60。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>单页查询超时（秒），仅首次请求可设置；cursor 续页沿用首次请求的值。[1, 3600]，默认 60。</p>
+</div></div></div></td></tr><tr class="last "><td kind="field" title="need_total" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">need_total</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">boolean</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">false</span></div> <div><div html="&lt;p&gt;是否需要完整总数。仅为 true 时响应包含 total_count；cursor 首次请求的值会由服务端冻结并用于所有续页，续页携带的值不改变该行为。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>是否需要完整总数。仅为 true 时响应包含 total_count；cursor 首次请求的值会由服务端冻结并用于所有续页，续页携带的值不改变该行为。</p>
+</div></div></div></td></tr></tbody></table></div><div><h3 class="sc-fHYzZk ihqrCS">Responses</h3><div><button class="sc-cbDJdZ ciHfuN"><svg class="sc-dQoBM idFXFs" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">200<!-- --> </strong><div html="&lt;p&gt;查询成功&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>查询成功</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">400<!-- --> </strong><div html="&lt;p&gt;请求参数 / 请求体非法。常见 errcode：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.InvalidParameter.RequestBody&lt;/code&gt;：body schema 不合法&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.Query.InvalidParameter&lt;/code&gt;：&lt;code&gt;query_format&lt;/code&gt;、&lt;code&gt;input_dialect&lt;/code&gt; 或 paging 参数非法，
+以及 SQL 违反只读策略（包括 &lt;code&gt;WITH&lt;/code&gt; / CTE）；此时 &lt;code&gt;error_details&lt;/code&gt; 固定为
+&lt;code&gt;raw query rejected by read-only policy&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.Query.InvalidParameter.QueryTimeout&lt;/code&gt;：&lt;code&gt;query_timeout_sec&lt;/code&gt; 超出 [1, 3600]&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>请求参数 / 请求体非法。常见 errcode：</p>
+<ul>
+<li><code>VegaBackend.InvalidParameter.RequestBody</code>：body schema 不合法</li>
+<li><code>VegaBackend.Query.InvalidParameter</code>：<code>query_format</code>、<code>input_dialect</code> 或 paging 参数非法，
+以及 SQL 违反只读策略（包括 <code>WITH</code> / CTE）；此时 <code>error_details</code> 固定为
+<code>raw query rejected by read-only policy</code></li>
+<li><code>VegaBackend.Query.InvalidParameter.QueryTimeout</code>：<code>query_timeout_sec</code> 超出 [1, 3600]</li>
+</ul>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">401<!-- --> </strong><div html="&lt;p&gt;未授权（OAuth Token 校验失败）&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>未授权（OAuth Token 校验失败）</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">403<!-- --> </strong><div html="&lt;p&gt;cursor 所属调用方无权限，或资源 / Catalog 权限已变更。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>cursor 所属调用方无权限，或资源 / Catalog 权限已变更。</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">404<!-- --> </strong><div html="&lt;p&gt;cursor 不存在、已过期或已完成。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>cursor 不存在、已过期或已完成。</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">406<!-- --> </strong><div html="&lt;p&gt;Content-Type 不是 application/json&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>Content-Type 不是 application/json</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">409<!-- --> </strong><div html="&lt;p&gt;请求当前无法执行。常见 errcode：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.Catalog.IsDisabled&lt;/code&gt;：Catalog 已禁用&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.Resource.NotQueryable&lt;/code&gt;：Resource 为 &lt;code&gt;disabled&lt;/code&gt; 或 &lt;code&gt;stale&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.Resource.MetadataUnavailable&lt;/code&gt;：其他可查询状态下 Resource 的 &lt;code&gt;last_discover_status=missing&lt;/code&gt;，或 &lt;code&gt;schema_definition&lt;/code&gt; 为空&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.Query.CursorResourceChanged&lt;/code&gt;：cursor 绑定的 Resource 或 Resource 版本已变化&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.Query.ExecuteFailed&lt;/code&gt;：cursor 指向的 Catalog 已变化&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Resource 条件同时出现时，判断优先级为 &lt;code&gt;disabled&lt;/code&gt;、&lt;code&gt;stale&lt;/code&gt;、&lt;code&gt;missing&lt;/code&gt;、空 schema。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>请求当前无法执行。常见 errcode：</p>
+<ul>
+<li><code>VegaBackend.Catalog.IsDisabled</code>：Catalog 已禁用</li>
+<li><code>VegaBackend.Resource.NotQueryable</code>：Resource 为 <code>disabled</code> 或 <code>stale</code></li>
+<li><code>VegaBackend.Resource.MetadataUnavailable</code>：其他可查询状态下 Resource 的 <code>last_discover_status=missing</code>，或 <code>schema_definition</code> 为空</li>
+<li><code>VegaBackend.Query.CursorResourceChanged</code>：cursor 绑定的 Resource 或 Resource 版本已变化</li>
+<li><code>VegaBackend.Query.ExecuteFailed</code>：cursor 指向的 Catalog 已变化</li>
+</ul>
+<p>Resource 条件同时出现时，判断优先级为 <code>disabled</code>、<code>stale</code>、<code>missing</code>、空 schema。</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">429<!-- --> </strong><div html="&lt;p&gt;Cursor session 数量达到全局上限；请稍后重试或等待已有 cursor 过期。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>Cursor session 数量达到全局上限；请稍后重试或等待已有 cursor 过期。</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">500<!-- --> </strong><div html="&lt;p&gt;服务内部错误。常见 errcode：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;VegaBackend.Query.ExecuteFailed&lt;/code&gt;：底层连接器执行查询失败（SQL 语法、权限、超时等）&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>服务内部错误。常见 errcode：</p>
+<ul>
+<li><code>VegaBackend.Query.ExecuteFailed</code>：底层连接器执行查询失败（SQL 语法、权限、超时等）</li>
+</ul>
+</div></button></div></div></div><div class="sc-jSgsbC sc-gKscir kWQHAp jYdWFY"><div class="sc-fXozIE gnyOsi"><button class="sc-jXkukm eJFCKx"><span type="post" class="sc-eFucnX kcqnuN http-verb post">post</span><span class="sc-FyhMp kmRXcZ">/resources/query</span><svg class="sc-dQoBM dvMtUQ" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmlIYk AnL"><div class="sc-ljRaAR gjZMty"><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div><div tabindex="0" role="button"><div class="sc-jmhDzS eFxVeO"><span>/api/vega-backend/v1</span>/resources/query</div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Request samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="react-tabs__tab react-tabs__tab--selected" role="tab" id="tab_R_99q_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_99q_0" tabindex="0" data-rttab="true">Payload</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_99q_0" aria-labelledby="tab_R_99q_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Example</span><div class="sc-jJEKGn sc-AzeoO ekMQOb dMpNQv"><svg class="sc-iktELE lgCKWg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg><select class="dropdown-select"><option value="RawQueryInitialRequest" selected="">RawQueryInitialRequest</option><option value="RawQueryContinuationRequest">RawQueryContinuationRequest</option></select><label>RawQueryInitialRequest</label></div></div><div><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"query"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"query_format"</span>: <span class="token string">&quot;sql&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"input_dialect"</span>: <span class="token string">&quot;postgres&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"paging"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"mode"</span>: <span class="token string">&quot;cursor&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"limit"</span>: <span class="token number">1</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"offset"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"keep_alive_sec"</span>: <span class="token number">60</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"cursor"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"query_timeout_sec"</span>: <span class="token number">60</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"need_total"</span>: <span class="token boolean">false</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_9pq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_9pq_0" tabindex="0" data-rttab="true">200</li><li class="tab-error" role="tab" id="tab_R_9pq_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9pq_1" data-rttab="true">400</li><li class="tab-error" role="tab" id="tab_R_9pq_2" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9pq_2" data-rttab="true">401</li><li class="tab-error" role="tab" id="tab_R_9pq_3" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9pq_3" data-rttab="true">403</li><li class="tab-error" role="tab" id="tab_R_9pq_4" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9pq_4" data-rttab="true">404</li><li class="tab-error" role="tab" id="tab_R_9pq_5" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9pq_5" data-rttab="true">406</li><li class="tab-error" role="tab" id="tab_R_9pq_6" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9pq_6" data-rttab="true">409</li><li class="tab-error" role="tab" id="tab_R_9pq_7" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9pq_7" data-rttab="true">429</li><li class="tab-error" role="tab" id="tab_R_9pq_8" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9pq_8" data-rttab="true">500</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_9pq_0" aria-labelledby="tab_R_9pq_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"columns"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"type"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"entries"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><span class="token punctuation">{ }</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"total_count"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"warnings"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"paging"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"next_cursor"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"expires_at_sec"</span>: <span class="token number">0</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9pq_1" aria-labelledby="tab_R_9pq_1"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9pq_2" aria-labelledby="tab_R_9pq_2"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9pq_3" aria-labelledby="tab_R_9pq_3"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9pq_4" aria-labelledby="tab_R_9pq_4"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9pq_5" aria-labelledby="tab_R_9pq_5"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9pq_6" aria-labelledby="tab_R_9pq_6"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9pq_7" aria-labelledby="tab_R_9pq_7"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9pq_8" aria-labelledby="tab_R_9pq_8"></div></div></div></div></div></div></div><div class="sc-elsZMO dQcVAt"></div></div></div>
+      <script>
+      const __redoc_state = {"menu":{"activeItemIdx":-1},"spec":{"data":{"openapi":"3.1.1","info":{"title":"Raw Query","description":"Vega Backend 原生查询端点（`POST /resources/query`）相关 API。\n\n本端点执行经服务端校验和资源绑定的原生查询，**不做结构化 filter 解析**：\n\n- SQL 引擎（mysql / postgresql / sqlserver / clickhouse / 达梦 / oracle）→ `query` 字段为 SQL 字符串\n- 索引引擎（opensearch / elasticsearch）→ `query` 字段为 DSL JSON 对象\n\n与 `POST /resources/{id}/data`（[resource-data.yaml](resource-data.yaml)）的分工：\n\n| 维度 | `POST /resources/query` | `POST /resources/{id}/data` (Override:GET) |\n|---|---|---|\n| 资源定位 | SQL 使用受控 `{{resource_id}}` 占位符；DSL 使用顶层 `resource_id` | 绑定 `:id` |\n| 输入 | 原生 SQL / DSL + format/dialect | 结构化 `filter_condition` + 分页 |\n| 输出 | 列元数据 + raw entries + cursor 分页 | 文档对象 + 可选 total_count + cursor 分页 |\n| Cursor | `paging.cursor` / `paging.next_cursor` | `paging.cursor` / `paging.next_cursor` |\n| 用途 | 同一 Catalog 内的复杂 SQL / DSL | 应用层结构化访问 |\n\n**SQL 只读策略**：SQL 只允许单条顶层 `SELECT`，且所有物理表必须由受权限保护的\nResource 占位符解析；DSL 的索引同样只能由 Resource 推导。当前可用的 SQL 子集为\n同一 Catalog 内的 `JOIN`、`WHERE`、`GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和\n常用聚合函数（`COUNT`、`SUM`、`AVG`、`MIN`、`MAX`）。子查询不被只读策略单独禁止；\n窗口函数与其他内置函数须由 SQLGlot 识别为安全表达式，且由 `input_dialect` 和底层连接器支持。\n\n不支持 `WITH` / CTE、`UNION` / `INTERSECT` / `EXCEPT`、多语句、`SELECT INTO`、\n锁定读取，以及写入、DDL、事务、权限与过程类语句。函数仅允许 SQLGlot 可识别的具名\n内置表达式：UDF 与未建模的方言函数一律被拒绝；文件读取、外部访问或休眠等高风险\n内置函数（如 `pg_read_file`、`http_get`、`sleep`、`system`）另被显式拒绝。违反策略返回 HTTP 400\n`VegaBackend.Query.InvalidParameter`，`error_details` 为\n`raw query rejected by read-only policy`；请改写为单条顶层 `SELECT`。\n\n调用方仍应受 RBAC 与限流约束，底层账号必须保持只读。\n","version":"0.1.0"},"servers":[{"url":"/api/vega-backend/v1"}],"security":[{"OAuth2":[]}],"paths":{"/resources/query":{"post":{"summary":"执行原生查询（SQL 或 DSL）","description":"**请求体的 `query` 字段类型由 `query_format` 和 `input_dialect` 决定**：\n\n- SQL：`{\"query\":\"SELECT * FROM {{resource_id}}\", \"query_format\":\"sql\", \"input_dialect\":\"postgres\"}`\n- SQL Server T-SQL：`{\"query\":\"SELECT TOP (20) * FROM {{resource_id}}\", \"query_format\":\"sql\", \"input_dialect\":\"tsql\"}`\n- OpenSearch DSL：`{\"query\":{\"resource_id\":\"...\",\"query\":{\"match_all\":{}}}, \"query_format\":\"dsl\", \"input_dialect\":\"opensearch\"}`\n\n实际执行连接器始终从 Resource/Catalog 推导，客户端不能通过输入方言选择数据源。\nSQL Server Catalog 的目标方言固定为 `tsql`；客户端可直接提交 `tsql`，也可提交受支持的其它 SQL\n输入方言，由服务端转换为 T-SQL。无论输入方言为何，`EXEC`、`SELECT INTO`、DDL/DML 和多语句\n都会在访问数据库前被拒绝。由于 total-count 和部分分页查询需要使用 SQL Server 派生表，计算表达式\n必须显式指定唯一列别名；通配符不能与其它投影列混用，多表 JOIN 的通配符必须指定表名（例如 `orders.*`）。\n\n**SQL 语法边界**：只接受单条顶层 `SELECT`。支持同一 Catalog 内的 `JOIN`、\n`WHERE`、`GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和常用聚合函数。子查询不被\n只读策略单独禁止，但须由所选方言和连接器支持；窗口函数与其他内置函数还必须\n由 SQLGlot 识别为安全表达式，UDF 与未建模的方言函数会被拒绝。`WITH` / CTE、\n`UNION` / `INTERSECT` / `EXCEPT`、多语句、`SELECT INTO`、锁定读取、DML、DDL、\n事务、权限和过程类语句均被拒绝。CTE 不可通过改写为 `WITH` 规避：请改为单条\n顶层 `SELECT`，或拆分为多次查询。\n\nOpenSearch DSL 使用 `paging.mode: cursor` 时必须提供非空 `sort`。客户端提交的\n`search_after` 会被服务端忽略；该位置仅由服务端保存在不透明 cursor 中。排序应\n包含稳定且唯一的 tiebreaker，避免相同排序值跨页重复或遗漏。\n\nOpenSearch 聚合 DSL 仅支持 `paging.mode: single`，服务端强制 `size: 0`，并将\nmetric、terms/date_histogram 及其单链嵌套 bucket 展开为逐行 `entries`。不能\n转换为行结构的聚合在访问 OpenSearch 前返回 400；`paging.offset/limit` 应用于\n展开后的行结果，cursor 模式不支持聚合。\n","requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/RawQueryRequest"}}}},"responses":{"200":{"description":"查询成功","content":{"application/json":{"schema":{"$ref":"#/components/schemas/RawQueryResponse"}}}},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"406":{"$ref":"#/components/responses/NotAcceptable"},"409":{"$ref":"#/components/responses/Conflict"},"429":{"$ref":"#/components/responses/TooManyRequests"},"500":{"$ref":"#/components/responses/InternalServerError"}}}}},"components":{"securitySchemes":{"OAuth2":{"type":"oauth2","description":"OAuth2 authentication for public APIs.","flows":{"clientCredentials":{"tokenUrl":"/oauth2/token","scopes":{}}}}},"responses":{"BadRequest":{"description":"请求参数 / 请求体非法。常见 errcode：\n- `VegaBackend.InvalidParameter.RequestBody`：body schema 不合法\n- `VegaBackend.Query.InvalidParameter`：`query_format`、`input_dialect` 或 paging 参数非法，\n  以及 SQL 违反只读策略（包括 `WITH` / CTE）；此时 `error_details` 固定为\n  `raw query rejected by read-only policy`\n- `VegaBackend.Query.InvalidParameter.QueryTimeout`：`query_timeout_sec` 超出 [1, 3600]\n","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},"Unauthorized":{"description":"未授权（OAuth Token 校验失败）","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},"Forbidden":{"description":"cursor 所属调用方无权限，或资源 / Catalog 权限已变更。","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},"NotFound":{"description":"cursor 不存在、已过期或已完成。","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},"NotAcceptable":{"description":"Content-Type 不是 application/json","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},"Conflict":{"description":"请求当前无法执行。常见 errcode：\n- `VegaBackend.Catalog.IsDisabled`：Catalog 已禁用\n- `VegaBackend.Resource.NotQueryable`：Resource 为 `disabled` 或 `stale`\n- `VegaBackend.Resource.MetadataUnavailable`：其他可查询状态下 Resource 的 `last_discover_status=missing`，或 `schema_definition` 为空\n- `VegaBackend.Query.CursorResourceChanged`：cursor 绑定的 Resource 或 Resource 版本已变化\n- `VegaBackend.Query.ExecuteFailed`：cursor 指向的 Catalog 已变化\n\nResource 条件同时出现时，判断优先级为 `disabled`、`stale`、`missing`、空 schema。\n","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},"TooManyRequests":{"description":"Cursor session 数量达到全局上限；请稍后重试或等待已有 cursor 过期。","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},"InternalServerError":{"description":"服务内部错误。常见 errcode：\n- `VegaBackend.Query.ExecuteFailed`：底层连接器执行查询失败（SQL 语法、权限、超时等）\n","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}}},"schemas":{"RawQueryRequest":{"description":"原生查询请求","oneOf":[{"$ref":"#/components/schemas/RawQueryInitialRequest"},{"$ref":"#/components/schemas/RawQueryContinuationRequest"}]},"RawQueryInitialRequest":{"description":"原生查询首次请求","type":"object","required":["query","query_format"],"properties":{"query":{"description":"查询语句。类型依赖 `query_format`：\n- SQL 引擎用字符串\n- 索引引擎（OpenSearch/Elasticsearch）用 JSON 对象\n","oneOf":[{"type":"string","description":"SQL 字符串（mysql / postgresql / sqlserver 等）。仅允许单条顶层 `SELECT`；支持同一\nCatalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合。\n不支持 WITH/CTE、集合运算、多语句、SELECT INTO、锁定读取、DML/DDL、\n事务、权限或过程类语句。子查询须由输入方言与连接器支持；窗口函数和其他\n内置函数还必须由 SQLGlot 识别为安全表达式，UDF 与未建模的方言函数会被拒绝。\n"},{"type":"object","description":"DSL JSON 对象（OpenSearch / Elasticsearch）","additionalProperties":true}]},"query_format":{"description":"输入载体类型。","type":"string","enum":["sql","dsl"]},"input_dialect":{"description":"输入方言。SQL 省略时默认 `postgres`；SQL Server 原生 T-SQL 使用 `tsql`。\nSQL Server Catalog 的执行目标方言始终是 `tsql`，必要时由服务端转换。DSL 必须是 `opensearch`。\n","type":"string","enum":["postgres","mysql","trino","duckdb","tsql","opensearch"]},"paging":{"allOf":[{"$ref":"#/components/schemas/PagingRequest"},{"not":{"required":["cursor"]}}]},"query_timeout_sec":{"description":"单页查询超时（秒），仅首次请求可设置；cursor 续页沿用首次请求的值。[1, 3600]，默认 60。","type":"integer","format":"int64","minimum":1,"maximum":3600,"default":60},"need_total":{"description":"是否需要完整总数。仅为 true 时响应包含 total_count；cursor 首次请求的值会由服务端冻结并用于所有续页，续页携带的值不改变该行为。","type":"boolean","default":false}}},"RawQueryContinuationRequest":{"description":"原生查询 cursor 续页请求；除 need_total 外，首次请求字段不得重传。","type":"object","required":["paging"],"not":{"anyOf":[{"required":["query"]},{"required":["query_format"]},{"required":["input_dialect"]},{"required":["query_timeout_sec"]}]},"properties":{"paging":{"type":"object","required":["cursor"],"not":{"anyOf":[{"required":["mode"]},{"required":["offset"]},{"required":["limit"]},{"required":["keep_alive_sec"]}]},"properties":{"cursor":{"type":"string","minLength":1}}},"need_total":{"description":"可携带但不会覆盖首次请求冻结的值。","type":"boolean"}}},"PagingRequest":{"description":"SQL cursor 使用 OFFSET 分页；为避免底层数据变更导致跨页重复或遗漏，调用方应提供包含唯一 tiebreaker 的确定性 ORDER BY。服务端暂不强制校验该排序。","type":"object","allOf":[{"if":{"required":["mode"],"properties":{"mode":{"const":"cursor"}}},"then":{"required":["limit"],"properties":{"keep_alive_sec":{"minimum":60,"maximum":3600}}}}],"properties":{"mode":{"type":"string","enum":["single","cursor"],"default":"single"},"limit":{"type":"integer","description":"单次最多返回条数；cursor 首次请求必填，范围 [1, 10000]。single 模式省略时使用默认值。","minimum":1,"maximum":10000},"offset":{"description":"仅首次请求可用的起始偏移，适用于 single 和 cursor 的第一页；续页只能传 paging.cursor。非聚合 OpenSearch DSL 要求 offset + limit 不超过 10000。","type":"integer","minimum":0},"keep_alive_sec":{"description":"cursor 成功取页后的空闲租约秒数；首次 cursor 请求时取值范围 [60, 3600]，single 模式下忽略。省略时默认 1800。","type":"integer"},"cursor":{"type":"string"}}},"RawQueryResponse":{"description":"原生查询响应","type":"object","required":["columns","entries"],"properties":{"columns":{"description":"列元数据","type":"array","items":{"$ref":"#/components/schemas/ColumnInfo"}},"entries":{"description":"查询结果（每条为一行/一个文档；支持的 OpenSearch 聚合也展开为逐行结果）","type":"array","items":{"type":"object","additionalProperties":true}},"total_count":{"description":"当前查询完整命中数；仅 need_total=true 时返回，cursor 的每一页返回同一个冻结总数。","type":"integer","format":"int64"},"warnings":{"description":"非阻断告警","type":"array","items":{"type":"string"}},"paging":{"$ref":"#/components/schemas/PagingResponse"}}},"PagingResponse":{"description":"cursor 分页状态。末页时两个字段均为 null。","type":"object","required":["next_cursor","expires_at_sec"],"properties":{"next_cursor":{"type":["string","null"],"description":"下一页使用的不透明游标；为空表示已到末页。"},"expires_at_sec":{"type":["integer","null"],"format":"int64","description":"cursor 空闲租约的到期 Unix 时间戳（秒）；每次成功且仍有下一页时刷新。"}}},"ColumnInfo":{"description":"列元数据","type":"object","required":["name","type"],"properties":{"name":{"description":"列名","type":"string"},"type":{"description":"列类型（取决于底层连接器）","type":"string"}}},"Error":{"description":"Common error response serialized from `comm-go/rest.BaseError`.\n","type":"object","required":["error_code","description","solution","error_link","error_details"],"properties":{"error_code":{"type":"string","description":"Machine-readable error code."},"description":{"type":"string","description":"Human-readable error description."},"solution":{"type":"string","description":"Recommended remediation."},"error_link":{"type":"string","description":"Link to detailed error documentation."},"error_details":{"description":"Error details with a service-defined type."}}}}}}},"searchIndex":{"store":["/paths/~1resources~1query/post"],"index":{"version":"2.3.9","fields":["title","description"],"fieldVectors":[["title/0",[0,0.182,1,0.182,2,0.182]],["description/0",[0,0.323,1,0.39,2,0.251,3,0.288,4,0.288,5,0.288,6,0.288,7,0.396,8,0.396,9,0.288,10,0.452,11,0.288,12,0.288,13,0.288,14,0.288,15,0.487,16,0.288,17,0.288,18,0.288,19,0.288,20,0.396,21,0.396,22,0.288,23,0.288,24,0.288,25,0.396,26,0.288,27,0.396,28,0.288,29,0.288,30,0.288,31,0.288,32,0.288,33,0.396,34,0.288,35,0.288,36,0.288,37,0.288,38,0.396,39,0.452,40,0.288,41,0.288,42,0.288,43,0.288,44,0.288,45,0.288,46,0.288,47,0.288,48,0.288,49,0.288,50,0.288]]],"invertedIndex":[["",{"_index":1,"title":{"0":{}},"description":{"0":{}}}],["0",{"_index":45,"title":{},"description":{"0":{}}}],["20",{"_index":13,"title":{},"description":{"0":{}}}],["400；`paging.offset/limit",{"_index":49,"title":{},"description":{"0":{}}}],["bucket",{"_index":47,"title":{},"description":{"0":{}}}],["by`、`limit",{"_index":30,"title":{},"description":{"0":{}}}],["catalog",{"_index":20,"title":{},"description":{"0":{}}}],["cte",{"_index":33,"title":{},"description":{"0":{}}}],["cursor",{"_index":39,"title":{},"description":{"0":{}}}],["dsl",{"_index":2,"title":{"0":{}},"description":{"0":{}}}],["dsl：`{\"query\":{\"resource_id\":\"...\",\"query\":{\"match_al",{"_index":16,"title":{},"description":{"0":{}}}],["entri",{"_index":48,"title":{},"description":{"0":{}}}],["except`、多语句、`select",{"_index":36,"title":{},"description":{"0":{}}}],["having`、`ord",{"_index":29,"title":{},"description":{"0":{}}}],["input_dialect",{"_index":5,"title":{},"description":{"0":{}}}],["input_dialect\":\"opensearch",{"_index":18,"title":{},"description":{"0":{}}}],["input_dialect\":\"postgr",{"_index":9,"title":{},"description":{"0":{}}}],["input_dialect\":\"tsql",{"_index":14,"title":{},"description":{"0":{}}}],["intersect",{"_index":35,"title":{},"description":{"0":{}}}],["into`、ddl/dml",{"_index":23,"title":{},"description":{"0":{}}}],["into`、锁定读取、dml、ddl",{"_index":37,"title":{},"description":{"0":{}}}],["join",{"_index":25,"title":{},"description":{"0":{}}}],["metric、terms/date_histogram",{"_index":46,"title":{},"description":{"0":{}}}],["opensearch",{"_index":15,"title":{},"description":{"0":{}}}],["order",{"_index":26,"title":{},"description":{"0":{}}}],["paging.mod",{"_index":38,"title":{},"description":{"0":{}}}],["queri",{"_index":3,"title":{},"description":{"0":{}}}],["query_format",{"_index":4,"title":{},"description":{"0":{}}}],["query_format\":\"dsl",{"_index":17,"title":{},"description":{"0":{}}}],["query_format\":\"sql",{"_index":8,"title":{},"description":{"0":{}}}],["resource/catalog",{"_index":19,"title":{},"description":{"0":{}}}],["resource_id",{"_index":7,"title":{},"description":{"0":{}}}],["resources/queri",{"_index":50,"title":{},"description":{"0":{}}}],["search_aft",{"_index":41,"title":{},"description":{"0":{}}}],["select",{"_index":27,"title":{},"description":{"0":{}}}],["server",{"_index":10,"title":{},"description":{"0":{}}}],["singl",{"_index":43,"title":{},"description":{"0":{}}}],["size",{"_index":44,"title":{},"description":{"0":{}}}],["sort",{"_index":40,"title":{},"description":{"0":{}}}],["sql",{"_index":0,"title":{"0":{}},"description":{"0":{}}}],["sqlglot",{"_index":31,"title":{},"description":{"0":{}}}],["sql：`{\"query\":\"select",{"_index":6,"title":{},"description":{"0":{}}}],["t-sql。无论输入方言为何，`exec`、`select",{"_index":22,"title":{},"description":{"0":{}}}],["t-sql：`{\"query\":\"select",{"_index":11,"title":{},"description":{"0":{}}}],["tiebreak",{"_index":42,"title":{},"description":{"0":{}}}],["top",{"_index":12,"title":{},"description":{"0":{}}}],["total-count",{"_index":24,"title":{},"description":{"0":{}}}],["tsql",{"_index":21,"title":{},"description":{"0":{}}}],["udf",{"_index":32,"title":{},"description":{"0":{}}}],["union",{"_index":34,"title":{},"description":{"0":{}}}],["where`、`group",{"_index":28,"title":{},"description":{"0":{}}}]],"pipeline":[]}},"options":{}};
+
+      var container = document.getElementById('redoc');
+      Redoc.hydrate(__redoc_state, container);
+
+      </script>
+</body>
+
+</html>
