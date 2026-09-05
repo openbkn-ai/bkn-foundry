@@ -46,6 +46,15 @@ func registerManagedProxyAccounts(r *gin.Engine, service *managedproxy.Service) 
 		writeManagedProxyResult(c, account, err)
 	})
 
+	group.POST("/:id/restore", func(c *gin.Context) {
+		account, err := service.Restore(c.Request.Context(), c.Param("id"))
+		if errors.Is(err, managedproxy.ErrInvalidLifecycle) {
+			replyPublicError(c, http.StatusConflict)
+			return
+		}
+		writeManagedProxyResult(c, account, err)
+	})
+
 	group.POST("/:id/disable", func(c *gin.Context) {
 		account, err := service.Disable(c.Request.Context(), c.Param("id"))
 		writeManagedProxyResult(c, account, err)

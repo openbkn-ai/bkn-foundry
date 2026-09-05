@@ -43,7 +43,7 @@ import (
 
 var (
 	knServiceOnce sync.Once
-	knService     interfaces.KNService
+	knService     interfaces.KNServiceWithProxyMutation
 )
 
 type knowledgeNetworkService struct {
@@ -70,7 +70,7 @@ type knowledgeNetworkService struct {
 	vbs        interfaces.VegaBackendService
 }
 
-func NewKNService(appSetting *common.AppSetting) interfaces.KNService {
+func NewKNService(appSetting *common.AppSetting) interfaces.KNServiceWithProxyMutation {
 	knServiceOnce.Do(func() {
 		knService = &knowledgeNetworkService{
 			appSetting: appSetting,
@@ -244,7 +244,7 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 
 	var proxyPlan *proxyPublishPlan
 	if isCreate || isUpdate {
-		proxyPlan, err = kns.prepareProxyPublish(ctx, kn)
+		proxyPlan, err = kns.prepareProxyImport(ctx, kn, isUpdate, mode)
 		if err != nil {
 			return "", err
 		}

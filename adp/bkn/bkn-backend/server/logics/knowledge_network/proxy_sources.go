@@ -32,6 +32,7 @@ func buildProxyGrantSources(kn *interfaces.KN) ([]interfaces.ProxyGrantSourceSpe
 	}
 
 	objectResources := make(map[string]string, len(kn.ObjectTypes))
+	objectTypes := make(map[string]struct{}, len(kn.ObjectTypes))
 	sources := make([]interfaces.ProxyGrantSourceSpec, 0)
 	bindings := make([]proxyModelBinding, 0)
 	seen := make(map[string]struct{})
@@ -65,21 +66,48 @@ func buildProxyGrantSources(kn *interfaces.KN) ([]interfaces.ProxyGrantSourceSpe
 	}
 
 	for _, objectType := range kn.ObjectTypes {
-		if objectType == nil || objectType.DataSource == nil || strings.TrimSpace(objectType.DataSource.ID) == "" {
+		if objectType == nil {
 			continue
 		}
-		if strings.TrimSpace(objectType.DataSource.Type) != interfaces.DATA_SOURCE_TYPE_RESOURCE {
-			return nil, "", fmt.Errorf("object type %s has unsupported data source type", objectType.OTID)
+		objectTypeID := strings.TrimSpace(objectType.OTID)
+		if objectTypeID != "" {
+			objectTypes[objectTypeID] = struct{}{}
 		}
-		resourceID := strings.TrimSpace(objectType.DataSource.ID)
-		objectResources[objectType.OTID] = resourceID
-		if err := add(interfaces.MODULE_TYPE_OBJECT_TYPE, objectType.OTID, "resource", resourceID,
-			interfaces.OPERATION_TYPE_VIEW_DETAIL, "schema"); err != nil {
-			return nil, "", err
+		if objectType.DataSource != nil && strings.TrimSpace(objectType.DataSource.ID) != "" {
+			if strings.TrimSpace(objectType.DataSource.Type) != interfaces.DATA_SOURCE_TYPE_RESOURCE {
+				return nil, "", fmt.Errorf("object type %s has unsupported data source type", objectType.OTID)
+			}
+			resourceID := strings.TrimSpace(objectType.DataSource.ID)
+			objectResources[objectTypeID] = resourceID
+			if err := add(interfaces.MODULE_TYPE_OBJECT_TYPE, objectType.OTID, "resource", resourceID,
+				interfaces.OPERATION_TYPE_VIEW_DETAIL, "schema"); err != nil {
+				return nil, "", err
+			}
+			if err := add(interfaces.MODULE_TYPE_OBJECT_TYPE, objectType.OTID, "resource", resourceID,
+				interfaces.OPERATION_TYPE_QUERY_DATA, "data"); err != nil {
+				return nil, "", err
+			}
 		}
-		if err := add(interfaces.MODULE_TYPE_OBJECT_TYPE, objectType.OTID, "resource", resourceID,
-			interfaces.OPERATION_TYPE_QUERY_DATA, "data"); err != nil {
-			return nil, "", err
+
+		for _, property := range objectType.LogicProperties {
+			if property == nil || property.DataSource == nil ||
+				strings.TrimSpace(property.DataSource.Type) != interfaces.LOGIC_PROPERTY_TYPE_TOOL {
+				continue
+			}
+			boxID := strings.TrimSpace(property.DataSource.BoxID)
+			toolID := strings.TrimSpace(property.DataSource.ToolID)
+			// Non-strict imports may keep an unbound logic property as a draft.
+			// Grant the toolbox only after the concrete tool binding is complete.
+			if boxID == "" || toolID == "" {
+				continue
+			}
+			propertyBindingID := stableProxySourceID(kn.KNID, "logic_property",
+				strings.Join([]string{objectTypeID, property.Name}, "\x00"))
+			if err := add("logic_property", propertyBindingID, "tool_box", boxID,
+				interfaces.OPERATION_TYPE_EXECUTE,
+				strings.Join([]string{objectTypeID, property.Name, toolID}, ":")); err != nil {
+				return nil, "", err
+			}
 		}
 	}
 
@@ -88,10 +116,21 @@ func buildProxyGrantSources(kn *interfaces.KN) ([]interfaces.ProxyGrantSourceSpe
 			continue
 		}
 		for _, objectTypeID := range []string{relationType.SourceObjectTypeID, relationType.TargetObjectTypeID} {
+			objectTypeID = strings.TrimSpace(objectTypeID)
+			// A non-strict import may keep a relation endpoint empty while the
+			// model is still being assembled. It has no permission target yet.
+			if objectTypeID == "" {
+				continue
+			}
+			if _, exists := objectTypes[objectTypeID]; !exists {
+				// Dependency validation belongs to the model layer. Permission
+				// projection stays tolerant of draft or legacy references so a
+				// caller can repair or remove them through the same publish path.
+				continue
+			}
 			resourceID := objectResources[objectTypeID]
 			if resourceID == "" {
-				return nil, "", fmt.Errorf("relation type %s references object type %s without a resource binding",
-					relationType.RTID, objectTypeID)
+				continue
 			}
 			if err := add(interfaces.MODULE_TYPE_RELATION_TYPE, relationType.RTID, "resource", resourceID,
 				interfaces.OPERATION_TYPE_QUERY_DATA, objectTypeID); err != nil {
@@ -104,12 +143,22 @@ func buildProxyGrantSources(kn *interfaces.KN) ([]interfaces.ProxyGrantSourceSpe
 		if metric == nil {
 			continue
 		}
-		resourceID := objectResources[strings.TrimSpace(metric.ScopeRef)]
+		scopeType := strings.TrimSpace(metric.ScopeType)
+		scopeRef := strings.TrimSpace(metric.ScopeRef)
+		// Non-strict imports may persist metrics without a scope. Such metrics
+		// have no backing resource and therefore contribute no proxy grant.
+		if scopeType == "" && scopeRef == "" {
+			continue
+		}
+		if _, exists := objectTypes[scopeRef]; !exists {
+			continue
+		}
+		resourceID := objectResources[scopeRef]
 		if resourceID == "" {
-			return nil, "", fmt.Errorf("metric %s references scope %s without a resource binding", metric.ID, metric.ScopeRef)
+			continue
 		}
 		if err := add(interfaces.MODULE_TYPE_METRIC, metric.ID, "resource", resourceID,
-			interfaces.OPERATION_TYPE_QUERY_DATA, metric.ScopeType+":"+metric.ScopeRef); err != nil {
+			interfaces.OPERATION_TYPE_QUERY_DATA, scopeType+":"+scopeRef); err != nil {
 			return nil, "", err
 		}
 	}
@@ -120,12 +169,20 @@ func buildProxyGrantSources(kn *interfaces.KN) ([]interfaces.ProxyGrantSourceSpe
 		}
 		switch strings.TrimSpace(actionType.ActionSource.Type) {
 		case interfaces.ACTION_SOURCE_TYPE_TOOL:
+			if strings.TrimSpace(actionType.ActionSource.BoxID) == "" ||
+				strings.TrimSpace(actionType.ActionSource.ToolID) == "" {
+				continue
+			}
 			if err := add(interfaces.MODULE_TYPE_ACTION_TYPE, actionType.ATID, "tool_box",
 				actionType.ActionSource.BoxID, interfaces.OPERATION_TYPE_EXECUTE,
 				"tool:"+actionType.ActionSource.ToolID); err != nil {
 				return nil, "", err
 			}
 		case interfaces.ACTION_SOURCE_TYPE_MCP:
+			if strings.TrimSpace(actionType.ActionSource.McpID) == "" ||
+				strings.TrimSpace(actionType.ActionSource.ToolName) == "" {
+				continue
+			}
 			if err := add(interfaces.MODULE_TYPE_ACTION_TYPE, actionType.ATID, "mcp",
 				actionType.ActionSource.McpID, interfaces.OPERATION_TYPE_EXECUTE,
 				"tool:"+actionType.ActionSource.ToolName); err != nil {
@@ -157,4 +214,26 @@ func buildProxyGrantSources(kn *interfaces.KN) ([]interfaces.ProxyGrantSourceSpe
 func stableProxySourceID(knID, bindingType, bindingID string) string {
 	digest := sha256.Sum256([]byte(strings.Join([]string{knID, bindingType, bindingID}, "\x00")))
 	return hex.EncodeToString(digest[:])
+}
+
+func addedProxyGrantSources(current, candidate []interfaces.ProxyGrantSourceSpec) []interfaces.ProxyGrantSourceSpec {
+	currentKeys := make(map[string]struct{}, len(current))
+	for _, source := range current {
+		currentKeys[proxyGrantSourceKey(source)] = struct{}{}
+	}
+	added := make([]interfaces.ProxyGrantSourceSpec, 0, len(candidate))
+	for _, source := range candidate {
+		if _, exists := currentKeys[proxyGrantSourceKey(source)]; !exists {
+			added = append(added, source)
+		}
+	}
+	return added
+}
+
+func proxyGrantSourceKey(source interfaces.ProxyGrantSourceSpec) string {
+	return strings.Join([]string{
+		source.ResourceType, source.ResourceID, source.Operation,
+		source.SourceType, source.SourceID, source.KNID,
+		source.BindingType, source.BindingID,
+	}, "\x00")
 }

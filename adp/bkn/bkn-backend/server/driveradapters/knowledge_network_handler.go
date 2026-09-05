@@ -92,6 +92,14 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	bindingPolicy := strings.TrimSpace(c.DefaultQuery("binding_policy", bknBindingPolicyPreserve))
+	if bindingPolicy != bknBindingPolicyPreserve && bindingPolicy != bknBindingPolicyDetach {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails(commonValidationDetail(ctx, "BindingPolicyInvalid", map[string]any{"value": bindingPolicy}))
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 
 	// Whether to validate dependencies, default true. Parse priority: strict_mode > validate_dependency (legacy) > true
 	strictModeStr := c.Query(interfaces.QueryParam_StrictMode)
@@ -194,9 +202,16 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 			}
 		}
 	}
+	if bindingPolicy == bknBindingPolicyDetach {
+		detachBKNExternalBindings(&kn)
+	}
+
+	// Detached imports have already been structurally validated above. Persist
+	// them without resolving the environment-local dependencies just removed.
+	persistenceStrictMode := strictMode && bindingPolicy != bknBindingPolicyDetach
 
 	// Create the knowledge network.
-	knID, err := r.kns.CreateKN(ctx, &kn, mode, strictMode)
+	knID, err := r.kns.CreateKN(ctx, &kn, mode, persistenceStrictMode)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 

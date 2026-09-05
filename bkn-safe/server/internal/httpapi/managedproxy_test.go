@@ -62,6 +62,15 @@ func TestManagedProxyAccountLifecycleAPI(t *testing.T) {
 	if account.Enabled || account.LifecycleStatus != managedproxy.StatusArchived {
 		t.Fatalf("archived response = %+v", account)
 	}
+
+	w = do(t, r, http.MethodPost, "/api/safe/in/v1/managed-proxy-accounts/"+account.ProxyAccountID+"/restore", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("restore = %d body=%s", w.Code, w.Body.String())
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &account)
+	if !account.Enabled || account.LifecycleStatus != managedproxy.StatusActive {
+		t.Fatalf("restored response = %+v", account)
+	}
 }
 
 func TestManagedProxyStatusControlsAuthorizationDecisions(t *testing.T) {

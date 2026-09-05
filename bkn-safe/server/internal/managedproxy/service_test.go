@@ -193,6 +193,50 @@ func TestDisableAndArchiveAreIdempotent(t *testing.T) {
 	}
 }
 
+func TestRestoreArchivedProxyForCreationRetry(t *testing.T) {
+	service := managedproxy.New(managedProxyTestDB(t))
+	created, _, err := service.Create(t.Context(), managedproxy.CreateRequest{
+		ManagedResourceType: managedproxy.ResourceKnowledgeNetwork,
+		ManagedResourceID:   "kn-retry",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Archive(t.Context(), created.ProxyAccountID); err != nil {
+		t.Fatal(err)
+	}
+
+	restored, err := service.Restore(t.Context(), created.ProxyAccountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.ProxyAccountID != created.ProxyAccountID || !restored.Enabled ||
+		restored.LifecycleStatus != managedproxy.StatusActive || restored.Version != 3 {
+		t.Fatalf("restored proxy = %+v", restored)
+	}
+	replayed, err := service.Restore(t.Context(), created.ProxyAccountID)
+	if err != nil || replayed.Version != restored.Version {
+		t.Fatalf("replayed Restore() = (%+v, %v)", replayed, err)
+	}
+}
+
+func TestRestoreRejectsDisablingProxy(t *testing.T) {
+	service := managedproxy.New(managedProxyTestDB(t))
+	created, _, err := service.Create(t.Context(), managedproxy.CreateRequest{
+		ManagedResourceType: managedproxy.ResourceKnowledgeNetwork,
+		ManagedResourceID:   "kn-deleting",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Disable(t.Context(), created.ProxyAccountID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Restore(t.Context(), created.ProxyAccountID); !errors.Is(err, managedproxy.ErrInvalidLifecycle) {
+		t.Fatalf("Restore() error = %v, want ErrInvalidLifecycle", err)
+	}
+}
+
 func TestGetFailsClosedForCredentialedManagedIdentity(t *testing.T) {
 	db := managedProxyTestDB(t)
 	service := managedproxy.New(db)

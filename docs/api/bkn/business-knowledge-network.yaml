@@ -82,6 +82,20 @@ paths:
             type: boolean
             default: true
           in: query
+        - name: binding_policy
+          description: |
+            Controls environment-local bindings in the imported model. preserve keeps resource,
+            Tool Box, MCP, and indirect-relation backing resource identifiers and applies proxy
+            permission checks. detach removes those identifiers while preserving model topology
+            for later incremental binding. The request is structurally validated before detachment;
+            persistence then skips dependency lookups for the removed environment-local bindings.
+          schema:
+            type: string
+            enum:
+              - preserve
+              - detach
+            default: preserve
+          in: query
         - name: validate_dependency
           deprecated: true
           description: "Deprecated. Use strict_mode instead. This parameter is retained for compatibility and is read when strict_mode is empty."

@@ -185,7 +185,7 @@ func (r *restHandler) CreateRelationTypes(c *gin.Context, visitor hydra.Visitor)
 
 	// Create the resources.
 	// Direct relation type creation validates dependencies by default.
-	rtIDs, err := r.rts.CreateRelationTypes(ctx, nil, relationTypes, mode, strictMode)
+	rtIDs, err := r.createRelationTypes(ctx, knID, branch, relationTypes, mode, strictMode)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 
@@ -447,7 +447,7 @@ func (r *restHandler) UpdateRelationType(c *gin.Context, visitor hydra.Visitor) 
 	}
 
 	// Update the resource by ID.
-	err = r.rts.UpdateRelationType(ctx, nil, &relationType, strictMode)
+	err = r.updateRelationType(ctx, &relationType, strictMode)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 
@@ -547,7 +547,7 @@ func (r *restHandler) DeleteRelationTypes(c *gin.Context) {
 	}
 
 	// Delete relation types in batch.
-	err = r.rts.DeleteRelationTypesByIDs(ctx, nil, knID, branch, rtIDs)
+	err = r.deleteRelationTypes(ctx, knID, branch, rtIDs)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		// Set trace attributes for the error.

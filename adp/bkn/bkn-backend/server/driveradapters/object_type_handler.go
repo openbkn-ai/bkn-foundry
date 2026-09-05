@@ -185,7 +185,7 @@ func (r *restHandler) CreateObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 	}
 
 	// Create the resources.
-	otIDs, err := r.ots.CreateObjectTypes(ctx, nil, objectTypes, mode, true, strictMode)
+	otIDs, err := r.createObjectTypes(ctx, knID, branch, objectTypes, mode, strictMode)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 
@@ -472,7 +472,7 @@ func (r *restHandler) UpdateObjectType(c *gin.Context, visitor hydra.Visitor) {
 	objectType.IfNameModify = ifNameModify
 
 	// Update the resource by ID.
-	err = r.ots.UpdateObjectType(ctx, nil, &objectType, strictMode)
+	err = r.updateObjectType(ctx, &objectType, strictMode)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 
@@ -785,7 +785,7 @@ func (r *restHandler) DeleteObjectTypes(c *gin.Context) {
 	}
 
 	// Delete object types in batch.
-	err = r.ots.DeleteObjectTypesByIDs(ctx, nil, knID, branch, otIDs)
+	err = r.deleteObjectTypes(ctx, knID, branch, otIDs)
 	if err != nil {
 		// Guard against a plain downstream error: normalize it to 500 instead of panicking into a 502.
 		httpErr, ok := err.(*rest.HTTPError)

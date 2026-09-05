@@ -1063,6 +1063,27 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("Fails strict mode without panicking when a tool binding is absent\n", func() {
+			objectTypes := []*interfaces.ObjectType{
+				{
+					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+						OTName: "ot1",
+						LogicProperties: []*interfaces.LogicProperty{
+							{Name: "lp1", Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL},
+						},
+					},
+					KNID: "kn1",
+				},
+			}
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			expectImportModeOK()
+			err := service.ValidateObjectTypes(ctx, "kn1", interfaces.MAIN_BRANCH, objectTypes, true, nil, interfaces.ImportMode_Normal)
+			So(err, ShouldNotBeNil)
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InvalidParameter)
+		})
+
 		Convey("Success strict mode when tool binding resolves\n", func() {
 			objectTypes := []*interfaces.ObjectType{
 				{

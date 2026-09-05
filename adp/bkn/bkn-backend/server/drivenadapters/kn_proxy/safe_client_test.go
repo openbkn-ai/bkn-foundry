@@ -44,6 +44,11 @@ func TestSafeClientUsesManagedInternalContracts(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(interfaces.ProxyGrantCheckResult{Allowed: true})
 	})
+	mux.HandleFunc("/api/safe/in/v1/managed-proxy-accounts/proxy-1/restore", func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(interfaces.ManagedProxyAccount{
+			ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleActive, Enabled: true,
+		})
+	})
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
@@ -51,6 +56,10 @@ func TestSafeClientUsesManagedInternalContracts(t *testing.T) {
 	account, created, err := client.Create(t.Context(), "kn-1", "network proxy")
 	if err != nil || !created || account.ProxyAccountID != "proxy-1" {
 		t.Fatalf("Create() = account %#v, created %v, err %v", account, created, err)
+	}
+	account, err = client.Restore(t.Context(), "proxy-1")
+	if err != nil || !account.Enabled || account.LifecycleStatus != interfaces.KNProxyLifecycleActive {
+		t.Fatalf("Restore() = account %#v, err %v", account, err)
 	}
 	result, err := client.CheckGrant(t.Context(), "proxy-1", "grantor-1", interfaces.ProxyGrantSourceSpec{
 		ResourceType: "resource", ResourceID: "resource-1", Operation: "query_data",

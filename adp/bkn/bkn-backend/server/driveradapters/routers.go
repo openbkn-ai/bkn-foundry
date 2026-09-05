@@ -54,6 +54,7 @@ type restHandler struct {
 	ats                     interfaces.ActionTypeService
 	cgs                     interfaces.ConceptGroupService
 	kns                     interfaces.KNService
+	knProxyPublisher        interfaces.KNProxyMutationPublisher
 	ots                     interfaces.ObjectTypeService
 	rts                     interfaces.RelationTypeService
 	rtsRisk                 interfaces.RiskTypeService
@@ -71,6 +72,7 @@ func NewRestHandler(appSetting *common.AppSetting, auditStore *operationaudit.St
 		}
 		projectionVerifier = &verifier
 	}
+	knService := knowledge_network.NewKNService(appSetting)
 	r := &restHandler{
 		appSetting:          appSetting,
 		auditRecorder:       auditStore,
@@ -88,7 +90,8 @@ func NewRestHandler(appSetting *common.AppSetting, auditStore *operationaudit.St
 		ass:                     action_schedule.NewActionScheduleService(appSetting),
 		ats:                     action_type.NewActionTypeService(appSetting),
 		cgs:                     concept_group.NewConceptGroupService(appSetting),
-		kns:                     knowledge_network.NewKNService(appSetting),
+		kns:                     knService,
+		knProxyPublisher:        knService,
 		ots:                     object_type.NewObjectTypeService(appSetting),
 		rts:                     relation_type.NewRelationTypeService(appSetting),
 		rtsRisk:                 risk_type.NewRiskTypeService(appSetting),
