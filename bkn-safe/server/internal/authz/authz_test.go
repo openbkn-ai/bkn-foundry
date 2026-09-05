@@ -5,12 +5,14 @@
 package authz
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 // newTestEnforcer builds an Enforcer over an in-memory sqlite DB carrying the
@@ -129,20 +131,42 @@ func TestAllowedOps(t *testing.T) {
 	}
 }
 
-// TestRemoveResourcePolicies drops all grants on a concrete instance.
+// TestRemoveResourcePolicies requires source-ledger cleanup before it drops
+// grants on a concrete instance.
 func TestRemoveResourcePolicies(t *testing.T) {
-	e := newTestEnforcer(t)
+	e, db := newTestEnforcerDB(t)
 	const user = "u-1"
 	mustNoErr(t, e.GrantObjectPermission(user, "pipeline", "p1", "read"))
 	mustNoErr(t, e.GrantObjectPermission(user, "pipeline", "p1", "update"))
+	const proxy = "proxy-1"
+	source := model.ProxyGrantSource{
+		ID: "source-1", ProxyAccountID: proxy, ResourceType: "pipeline", ResourceID: "p1",
+		Operation: "read", SourceType: "manual", SourceID: "binding-1", LifecycleStatus: "active",
+	}
+	if err := db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+	mustNoErr(t, e.GrantObjectPermission(proxy, "pipeline", "p1", "read"))
 
 	ok, _ := e.Check(user, "pipeline", "p1", "read")
 	if !ok {
 		t.Fatal("expected read before removal")
 	}
+	if err := e.RemoveResourcePolicies("pipeline", "p1"); !errors.Is(err, ErrManagedProxyPolicies) {
+		t.Fatalf("RemoveResourcePolicies() error = %v, want managed proxy conflict", err)
+	}
+	if ok, _ := e.Check(user, "pipeline", "p1", "read"); !ok {
+		t.Error("ordinary policy changed despite managed proxy conflict")
+	}
+	if err := db.Model(&source).Update("lifecycle_status", "revoked").Error; err != nil {
+		t.Fatal(err)
+	}
 	mustNoErr(t, e.RemoveResourcePolicies("pipeline", "p1"))
 	if ok, _ := e.Check(user, "pipeline", "p1", "read"); ok {
 		t.Error("read still allowed after RemoveResourcePolicies")
+	}
+	if ok, _ := e.Check(proxy, "pipeline", "p1", "read"); ok {
+		t.Error("unsourced proxy policy still allowed after RemoveResourcePolicies")
 	}
 }
 

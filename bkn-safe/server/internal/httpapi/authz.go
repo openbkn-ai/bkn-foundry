@@ -285,6 +285,10 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 		}
 		auditPolicyWriteShape(c, db, "DELETE", "", req.Resource, nil)
 		if err := e.RemoveResourcePolicies(req.Resource.Type, req.Resource.ID); err != nil {
+			if errors.Is(err, authz.ErrManagedProxyPolicies) {
+				replyPublicError(c, http.StatusConflict)
+				return
+			}
 			serverError(c, err)
 			return
 		}

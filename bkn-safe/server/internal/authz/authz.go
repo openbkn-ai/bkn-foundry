@@ -16,13 +16,17 @@
 package authz
 
 import (
+	"errors"
 	"fmt"
 	"sort"
+	"sync"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
 	gormadapter "github.com/casbin/gorm-adapter/v3"
 	"gorm.io/gorm"
+
+	safemodel "github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 // modelConf is the RBAC + resource-instance Casbin model.
@@ -62,14 +66,23 @@ const PublicAccessorID = "00000000-0000-0000-0000-000000000000"
 // the matched object (used for the super-admin "do everything" grant).
 const ActAll = "*"
 
+// ErrManagedProxyPolicies tells a resource-deletion caller to remove the
+// corresponding proxy-grant sources before performing generic policy cleanup.
+var ErrManagedProxyPolicies = errors.New("resource still has managed proxy policies")
+
 // Enforcer wraps a Casbin enforcer with the bkn-safe object convention.
 type Enforcer struct {
-	e *casbin.Enforcer
+	e casbin.IEnforcer
 	// db reads the resource hierarchy (which catalog a table belongs to) that
 	// casbin cannot express: policies are keyed by an opaque "type:id", so
 	// inheritance is resolved around the matcher, not inside it. Nil disables
 	// inheritance entirely, which is the pre-#800 behaviour.
 	db *gorm.DB
+	// transactionMu serializes every policy write and must be acquired before
+	// reading the adapter pointer. The gorm adapter temporarily replaces that
+	// pointer while a transaction is in flight, so adapter-local locking alone
+	// is too late for concurrent callers.
+	transactionMu sync.Mutex
 }
 
 // New builds an Enforcer using a GORM-backed policy store on the given db.
@@ -82,7 +95,7 @@ func New(db *gorm.DB) (*Enforcer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse casbin model: %w", err)
 	}
-	e, err := casbin.NewEnforcer(m, adapter)
+	e, err := casbin.NewSyncedEnforcer(m, adapter)
 	if err != nil {
 		return nil, fmt.Errorf("new enforcer: %w", err)
 	}
@@ -148,6 +161,8 @@ func (en *Enforcer) AllowedOps(accessorID, resourceType, resourceID string, cand
 // GrantRolePermission grants a role an op over a resource-type instance pattern
 // (id may be "*" for the whole type). Idempotent.
 func (en *Enforcer) GrantRolePermission(roleID, resourceType, idPattern, op string) error {
+	en.transactionMu.Lock()
+	defer en.transactionMu.Unlock()
 	_, err := en.e.AddPolicy(roleID, obj(resourceType, idPattern), op)
 	return err
 }
@@ -155,6 +170,8 @@ func (en *Enforcer) GrantRolePermission(roleID, resourceType, idPattern, op stri
 // RevokeRolePermission removes a role's op over a resource-type instance
 // pattern (the inverse of GrantRolePermission). Idempotent.
 func (en *Enforcer) RevokeRolePermission(roleID, resourceType, idPattern, op string) error {
+	en.transactionMu.Lock()
+	defer en.transactionMu.Unlock()
 	_, err := en.e.RemovePolicy(roleID, obj(resourceType, idPattern), op)
 	return err
 }
@@ -163,6 +180,8 @@ func (en *Enforcer) RevokeRolePermission(roleID, resourceType, idPattern, op str
 // (e.g. "agent:*" or "*" for everything); act may be ActAll ("*"). Used by the
 // seed for the super-admin wildcard. Idempotent.
 func (en *Enforcer) Grant(sub, obj, act string) error {
+	en.transactionMu.Lock()
+	defer en.transactionMu.Unlock()
 	_, err := en.e.AddPolicy(sub, obj, act)
 	return err
 }
@@ -170,12 +189,16 @@ func (en *Enforcer) Grant(sub, obj, act string) error {
 // GrantObjectPermission grants an accessor an op over one concrete resource
 // instance (the CreateResources pattern). Idempotent.
 func (en *Enforcer) GrantObjectPermission(accessorID, resourceType, resourceID, op string) error {
+	en.transactionMu.Lock()
+	defer en.transactionMu.Unlock()
 	_, err := en.e.AddPolicy(accessorID, obj(resourceType, resourceID), op)
 	return err
 }
 
 // RevokeObjectPermission removes a concrete per-object grant.
 func (en *Enforcer) RevokeObjectPermission(accessorID, resourceType, resourceID, op string) error {
+	en.transactionMu.Lock()
+	defer en.transactionMu.Unlock()
 	_, err := en.e.RemovePolicy(accessorID, obj(resourceType, resourceID), op)
 	return err
 }
@@ -189,6 +212,8 @@ func (en *Enforcer) CanAdmin(accessorID string) (bool, error) {
 
 // AssignRole binds an accessor (user/app) to a role. Idempotent.
 func (en *Enforcer) AssignRole(accessorID, roleID string) error {
+	en.transactionMu.Lock()
+	defer en.transactionMu.Unlock()
 	_, err := en.e.AddGroupingPolicy(accessorID, roleID)
 	return err
 }
@@ -196,6 +221,8 @@ func (en *Enforcer) AssignRole(accessorID, roleID string) error {
 // RemoveRole unbinds an accessor from a role (the inverse of AssignRole).
 // Idempotent: removing a binding that isn't there is a no-op.
 func (en *Enforcer) RemoveRole(accessorID, roleID string) error {
+	en.transactionMu.Lock()
+	defer en.transactionMu.Unlock()
 	_, err := en.e.RemoveGroupingPolicy(accessorID, roleID)
 	return err
 }
@@ -444,6 +471,8 @@ func hasOp(ops []string, want string) bool {
 // (grouping g-lines with role=roleID) and its own permission grants (p-lines
 // with sub=roleID). Called when a custom role is deleted. Idempotent.
 func (en *Enforcer) RemoveRoleCompletely(roleID string) error {
+	en.transactionMu.Lock()
+	defer en.transactionMu.Unlock()
 	if _, err := en.e.RemoveFilteredGroupingPolicy(1, roleID); err != nil {
 		return err
 	}
@@ -462,6 +491,8 @@ func (en *Enforcer) RemoveRoleCompletely(roleID string) error {
 // This is the migration for those, and it is idempotent: once no row holds the
 // old spelling, it does nothing.
 func (en *Enforcer) RenameOperation(resourceType, oldOp, newOp string) (int, error) {
+	en.transactionMu.Lock()
+	defer en.transactionMu.Unlock()
 	rows, err := en.e.GetFilteredPolicy(2, oldOp)
 	if err != nil {
 		return 0, err
@@ -510,6 +541,8 @@ type BackfilledGrant struct {
 // Idempotent: once every holder row carries the implied operation it adds
 // nothing, at the cost of one filtered read per declared implication per start.
 func (en *Enforcer) BackfillImpliedOperation(resourceType, holderOp, impliedOp string) ([]BackfilledGrant, error) {
+	en.transactionMu.Lock()
+	defer en.transactionMu.Unlock()
 	rows, err := en.e.GetFilteredPolicy(2, holderOp)
 	if err != nil {
 		return nil, err
@@ -543,6 +576,8 @@ func (en *Enforcer) BackfillImpliedOperation(resourceType, holderOp, impliedOp s
 // member bindings. Seed uses this before re-applying the built-in permission
 // matrix so removed grants do not linger across upgrades.
 func (en *Enforcer) RemoveRolePermissions(roleID string) error {
+	en.transactionMu.Lock()
+	defer en.transactionMu.Unlock()
 	_, err := en.e.RemoveFilteredPolicy(0, roleID)
 	return err
 }
@@ -552,6 +587,8 @@ func (en *Enforcer) RemoveRolePermissions(roleID string) error {
 // directly to it (p-lines with sub=accessor). Called when a user is deleted so
 // no orphaned grants linger. Idempotent.
 func (en *Enforcer) RemoveAccessor(accessorID string) error {
+	en.transactionMu.Lock()
+	defer en.transactionMu.Unlock()
 	if _, err := en.e.RemoveFilteredGroupingPolicy(0, accessorID); err != nil {
 		return err
 	}
@@ -559,9 +596,24 @@ func (en *Enforcer) RemoveAccessor(accessorID string) error {
 	return err
 }
 
-// RemoveResourcePolicies drops every policy targeting a concrete resource
-// instance (used when a resource is deleted).
+// RemoveResourcePolicies drops policies targeting a concrete resource instance
+// after ensuring no managed proxy policy remains. Proxy policies belong
+// exclusively to proxy-grant sources, and the KN deletion flow must remove
+// those sources before generic resource policy cleanup.
 func (en *Enforcer) RemoveResourcePolicies(resourceType, resourceID string) error {
+	en.transactionMu.Lock()
+	defer en.transactionMu.Unlock()
+	if en.db != nil {
+		var activeSources int64
+		if err := en.db.Model(&safemodel.ProxyGrantSource{}).
+			Where("resource_type = ? AND resource_id = ? AND lifecycle_status = ?", resourceType, resourceID, "active").
+			Count(&activeSources).Error; err != nil {
+			return err
+		}
+		if activeSources > 0 {
+			return ErrManagedProxyPolicies
+		}
+	}
 	_, err := en.e.RemoveFilteredPolicy(1, obj(resourceType, resourceID))
 	return err
 }
@@ -733,7 +785,9 @@ func (en *Enforcer) ListObjectGrants(accessorID, resourceType, resourceID string
 // one per op. The "edit a grant" write behind the admin object-grant page
 // (POST /policies only adds, never prunes). Passing no ops clears the grant.
 func (en *Enforcer) SetObjectPermissions(accessorID, resourceType, resourceID string, ops []string) error {
-	if _, err := en.RemoveAccessorResourcePolicies(accessorID, resourceType, resourceID); err != nil {
+	en.transactionMu.Lock()
+	defer en.transactionMu.Unlock()
+	if _, err := en.removeAccessorResourcePolicies(accessorID, resourceType, resourceID); err != nil {
 		return err
 	}
 	for _, op := range ops {
@@ -755,6 +809,12 @@ func (en *Enforcer) SetObjectPermissions(accessorID, resourceType, resourceID st
 // either way — but the audit trail needs the distinction: "revoked 3 ops" and
 // "matched nothing" are different administrative facts.
 func (en *Enforcer) RemoveAccessorResourcePolicies(accessorID, resourceType, resourceID string) (int, error) {
+	en.transactionMu.Lock()
+	defer en.transactionMu.Unlock()
+	return en.removeAccessorResourcePolicies(accessorID, resourceType, resourceID)
+}
+
+func (en *Enforcer) removeAccessorResourcePolicies(accessorID, resourceType, resourceID string) (int, error) {
 	rows, err := en.e.GetFilteredPolicy(0, accessorID, obj(resourceType, resourceID))
 	if err != nil {
 		return 0, err

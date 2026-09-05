@@ -1,0 +1,421 @@
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+openapi: 3.0.3
+info:
+  title: BKN Safe Proxy Grant Source API
+  version: 0.1.5
+  description: |
+    Allows trusted BKN workloads to maintain least-privilege grant sources for managed proxy
+    accounts. This API is available only on the internal ClusterIP surface and is not exposed
+    through Ingress.
+
+    Source records, materialization markers, authorization audit entries, and Casbin Allow
+    policies are updated in one database transaction. Replaying the same source is idempotent;
+    multiple sources may share one Allow policy; the policy is removed only when its last active
+    source is revoked and the source service owns that policy. Manual or legacy Allow policies
+    that predate the source are preserved and reported as untracked during reconciliation.
+servers:
+  - url: /api/safe/in/v1
+security: []
+paths:
+  /proxy-grant-sources:
+    post:
+      tags: [Proxy grant sources]
+      operationId: createProxyGrantSource
+      summary: Create or reactivate a proxy grant source
+      description: |
+        The grantor must be an enabled, non-managed account and must hold both `authorize` and
+        the operation being delegated on the target. The first creation returns 201; replaying
+        the same source returns 200.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrantRequest'
+      responses:
+        '201':
+          description: The source was created, together with a Casbin Allow policy when required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxyGrantSource'
+        '200':
+          description: The same source is already active; the existing record is returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxyGrantSource'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /proxy-grant-sources/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Source record ID.
+        schema:
+          type: string
+          maxLength: 64
+    delete:
+      tags: [Proxy grant sources]
+      operationId: revokeProxyGrantSource
+      summary: Revoke a proxy grant source
+      description: |
+        Repeated revocation is idempotent. The Allow policy is preserved while another active
+        source remains; revoking the final source removes only policies owned by this service.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevokeRequest'
+      responses:
+        '200':
+          description: The source was revoked or was already revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxyGrantSource'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /proxy-grant-sources/check:
+    post:
+      tags: [Proxy grant sources]
+      operationId: checkProxyGrantSourceAuthority
+      summary: Check whether a grantor may establish a source
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrantRequest'
+      responses:
+        '200':
+          description: The check completed; insufficient authority is represented by `allowed=false`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /proxy-grant-sources/sync:
+    post:
+      tags: [Proxy grant sources]
+      operationId: syncProxyGrantSources
+      summary: Synchronize the complete source set from the latest published model
+      description: |
+        `sources` is the proxy account's complete current set of `kn_proxy_binding` sources.
+        Every new source is checked before any mutation. If one source is unauthorized, the
+        entire synchronization is rejected without changing sources or policies. Removed entries
+        do not affect manual sources or other active sources.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncRequest'
+      responses:
+        '200':
+          description: Synchronization completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /proxy-grant-sources/reconcile:
+    post:
+      tags: [Proxy grant sources]
+      operationId: reconcileProxyGrantSources
+      summary: Repair drift between the source ledger and Casbin Allow policies
+      description: |
+        Restores Allow policies missing for active sources and removes source-owned Allow policies
+        that have no active source. Existing policies without a materialization marker are reported
+        in `untracked_policies` instead of being deleted, avoiding accidental removal of historical
+        manual grants.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReconcileRequest'
+      responses:
+        '200':
+          description: Reconciliation completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReconcileResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  responses:
+    BadRequest:
+      description: The request is missing fields, exceeds length limits, contains wildcards, or targets an operation outside the proxy allowlist or operation catalog
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    Forbidden:
+      description: The grantor lacks `authorize` or the delegated operation on the target, or the source belongs to a different knowledge network
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    NotFound:
+      description: The proxy account or source record does not exist
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    Conflict:
+      description: The proxy account is disabled or archived and cannot receive a new grant source
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    InternalError:
+      description: A database, Casbin, or audit write failed; in-transaction failures are rolled back, while a post-commit cache reload failure may be retried idempotently
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+  schemas:
+    GrantRequest:
+      type: object
+      additionalProperties: false
+      required: [proxy_account_id, grantor_id, source]
+      properties:
+        proxy_account_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        grantor_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        source:
+          $ref: '#/components/schemas/SourceSpec'
+    RevokeRequest:
+      type: object
+      additionalProperties: false
+      required: [grantor_id]
+      properties:
+        grantor_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+    SyncRequest:
+      type: object
+      additionalProperties: false
+      required: [proxy_account_id, grantor_id, sources]
+      properties:
+        proxy_account_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        grantor_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceSpec'
+    ReconcileRequest:
+      type: object
+      additionalProperties: false
+      required: [requested_by]
+      properties:
+        proxy_account_id:
+          type: string
+          maxLength: 64
+          description: When omitted, all managed proxy accounts are reconciled.
+        requested_by:
+          type: string
+          minLength: 1
+          maxLength: 64
+    SourceSpec:
+      type: object
+      additionalProperties: false
+      required:
+        - resource_type
+        - resource_id
+        - operation
+        - source_id
+        - kn_id
+        - binding_type
+        - binding_id
+      properties:
+        resource_type:
+          type: string
+          enum: [resource, tool_box, mcp]
+        resource_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        operation:
+          type: string
+          enum: [view_detail, query_data, execute]
+        source_type:
+          type: string
+          enum: [kn_proxy_binding, manual, admin]
+          default: kn_proxy_binding
+        source_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Stable caller-generated source key; one binding may reuse it across multiple permissions.
+        kn_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        binding_type:
+          type: string
+          minLength: 1
+          maxLength: 64
+        binding_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+    ProxyGrantSource:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - proxy_account_id
+        - resource_type
+        - resource_id
+        - operation
+        - source_type
+        - source_id
+        - kn_id
+        - binding_type
+        - binding_id
+        - granted_by
+        - lifecycle_status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        proxy_account_id:
+          type: string
+        resource_type:
+          type: string
+          enum: [resource, tool_box, mcp]
+        resource_id:
+          type: string
+        operation:
+          type: string
+          enum: [view_detail, query_data, execute]
+        source_type:
+          type: string
+          enum: [kn_proxy_binding, manual, admin]
+        source_id:
+          type: string
+        kn_id:
+          type: string
+        binding_type:
+          type: string
+        binding_id:
+          type: string
+        granted_by:
+          type: string
+        lifecycle_status:
+          type: string
+          enum: [active, revoked]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+    CheckResult:
+      type: object
+      additionalProperties: false
+      required: [allowed]
+      properties:
+        allowed:
+          type: boolean
+        reason:
+          type: string
+          description: Returned only when `allowed=false`; it does not contain target connection details.
+    SyncResult:
+      type: object
+      additionalProperties: false
+      required: [added, revoked, unchanged, sources]
+      properties:
+        added:
+          type: integer
+          minimum: 0
+        revoked:
+          type: integer
+          minimum: 0
+        unchanged:
+          type: integer
+          minimum: 0
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProxyGrantSource'
+    ReconcileResult:
+      type: object
+      additionalProperties: false
+      required:
+        - policies_restored
+        - policies_removed
+        - markers_created
+        - markers_removed
+        - untracked_policies
+      properties:
+        policies_restored:
+          type: integer
+          minimum: 0
+        policies_removed:
+          type: integer
+          minimum: 0
+        markers_created:
+          type: integer
+          minimum: 0
+        markers_removed:
+          type: integer
+          minimum: 0
+        untracked_policies:
+          type: integer
+          minimum: 0

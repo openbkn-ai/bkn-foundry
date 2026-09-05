@@ -1,3 +1,9 @@
+{{- /* Casbin policies are cached in process. Until a cross-pod watcher is
+added, multiple replicas can make authorization decisions from different
+policy versions. Keep the supported deployment shape explicit. */}}
+{{- if ne (int .Values.replicaCount) 1 }}
+{{- fail (printf "bkn-safe currently supports only one replica; replicaCount must be 1, got %v" .Values.replicaCount) }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
