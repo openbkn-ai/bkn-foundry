@@ -280,6 +280,16 @@ func lifecycleAvailabilityError(err error) lifecycleError {
 		if message == "" {
 			message = "BKN Trace evidence could not be recorded"
 		}
+		// A missing ingest credential is a deployment defect, not a transient
+		// Core outage. Returning retry_later here made a caller start another
+		// interaction after Core had already accepted the first one, leaving
+		// empty active interactions behind until their leases expired.
+		if coreErr.Code == "INGEST_AUTH_NOT_CONFIGURED" {
+			return lifecycleError{
+				Code: "evidence_capture_failed", Message: message,
+				RequiredAction: "contact_platform_operator",
+			}
+		}
 		switch coreErr.StatusCode {
 		case http.StatusUnauthorized, http.StatusForbidden:
 			return lifecycleError{
