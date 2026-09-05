@@ -43,7 +43,7 @@ func (kns *knowledgeNetworkService) prepareProxyPublish(ctx context.Context, kn 
 	if !kns.proxyOrchestrationEnabled(kn.Branch) {
 		return nil, nil
 	}
-	plan, err := kns.beginProxyPublish(ctx, kn, true)
+	plan, err := kns.beginProxyPublish(ctx, kn, true, false)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,8 @@ func (kns *knowledgeNetworkService) prepareProxyPublish(ctx context.Context, kn 
 	return plan, nil
 }
 
-func (kns *knowledgeNetworkService) beginProxyPublish(ctx context.Context, kn *interfaces.KN, createIfMissing bool) (*proxyPublishPlan, error) {
+func (kns *knowledgeNetworkService) beginProxyPublish(ctx context.Context, kn *interfaces.KN,
+	createIfMissing, authorizeMissing bool) (*proxyPublishPlan, error) {
 	grantorID := accountIDFromContext(ctx)
 	if grantorID == "" {
 		return nil, proxyHTTPError(ctx, http.StatusForbidden, "proxy grantor identity is unavailable")
@@ -80,9 +81,27 @@ func (kns *knowledgeNetworkService) beginProxyPublish(ctx context.Context, kn *i
 	createdMapping := false
 	if mapping == nil {
 		if !createIfMissing {
-			return nil, proxyHTTPError(ctx, http.StatusConflict, "knowledge network proxy mapping is unavailable; reconcile before publishing")
+			return nil, proxyHTTPError(ctx, http.StatusConflict, "knowledge network proxy mapping is unavailable")
 		}
-		mapping, createdMapping, err = kns.createProxyMapping(ctx, kn)
+		if authorizeMissing {
+			if err := kns.ps.CheckPermission(ctx, interfaces.PermissionResource{
+				Type: interfaces.RESOURCE_TYPE_KN,
+				ID:   kn.KNID,
+			}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}); err != nil {
+				return nil, err
+			}
+		}
+		mappingKN := kn
+		if authorizeMissing && strings.TrimSpace(kn.KNName) == "" {
+			existingKN, loadErr := kns.kna.GetKNByID(ctx, kn.KNID, interfaces.MAIN_BRANCH)
+			if loadErr != nil || existingKN == nil {
+				return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "load knowledge network for proxy mapping")
+			}
+			mappingCopy := *kn
+			mappingCopy.KNName = existingKN.KNName
+			mappingKN = &mappingCopy
+		}
+		mapping, createdMapping, err = kns.createProxyMapping(ctx, mappingKN)
 		if err != nil {
 			return nil, err
 		}
@@ -93,7 +112,7 @@ func (kns *knowledgeNetworkService) beginProxyPublish(ctx context.Context, kn *i
 
 	lockOwner := uuid.NewString()
 	if err := kns.acquireProxyLock(ctx, kn.KNID, lockOwner); err != nil {
-		if createdMapping {
+		if createdMapping && !authorizeMissing {
 			kns.abortCreatedProxy(context.WithoutCancel(ctx), &proxyPublishPlan{
 				mapping: mapping, createdMapping: true,
 			})
@@ -179,7 +198,7 @@ func (kns *knowledgeNetworkService) preflightProxySources(ctx context.Context, p
 // PublishKNChildMutation applies one standalone child-resource write through
 // the same serialized, fail-closed proxy publication lifecycle as whole-network
 // publication. The pending state and business rows commit atomically.
-func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, changes *interfaces.KN,
+func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, changes *interfaces.KN, mergeMode string,
 	mutate func(context.Context, *sql.Tx) error) error {
 	if mutate == nil {
 		return proxyHTTPError(ctx, http.StatusInternalServerError, "child resource mutation callback is unavailable")
@@ -194,7 +213,7 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 		return err
 	}
 
-	plan, err := kns.beginProxyPublish(ctx, changes, false)
+	plan, err := kns.beginProxyPublish(ctx, changes, true, true)
 	if err != nil {
 		return err
 	}
@@ -207,7 +226,24 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	candidate := mergeProxyMutationChanges(current, changes)
+	if plan.createdMapping {
+		currentSources, currentVersion, buildErr := buildProxyGrantSources(current)
+		if buildErr != nil {
+			return proxyHTTPError(ctx, http.StatusBadRequest, "published model contains an invalid proxy target")
+		}
+		if err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.grantorID, currentSources); err != nil {
+			return err
+		}
+		plan.modelVersion = currentVersion
+		if err := kns.markProxyPendingInNewTransaction(ctx, plan, currentVersion); err != nil {
+			return err
+		}
+		if err := kns.finishProxyPublish(ctx, plan); err != nil {
+			return err
+		}
+	}
+
+	candidate := mergeProxyMutationChanges(current, changes, mergeMode)
 	sources, version, err := buildProxyGrantSources(candidate)
 	if err != nil {
 		return proxyHTTPError(ctx, http.StatusBadRequest, "published model contains an invalid proxy target")
@@ -302,13 +338,68 @@ func prepareProxyMutationIDs(ctx context.Context, changes *interfaces.KN) error 
 	return nil
 }
 
-func mergeProxyMutationChanges(current, changes *interfaces.KN) *interfaces.KN {
+func mergeProxyMutationChanges(current, changes *interfaces.KN, mergeMode string) *interfaces.KN {
 	candidate := *current
-	candidate.ObjectTypes = append(append([]*interfaces.ObjectType(nil), current.ObjectTypes...), changes.ObjectTypes...)
-	candidate.RelationTypes = append(append([]*interfaces.RelationType(nil), current.RelationTypes...), changes.RelationTypes...)
-	candidate.ActionTypes = append(append([]*interfaces.ActionType(nil), current.ActionTypes...), changes.ActionTypes...)
-	candidate.Metrics = append(append([]*interfaces.MetricDefinition(nil), current.Metrics...), changes.Metrics...)
+	keepExisting := mergeMode != interfaces.ImportMode_Overwrite
+	candidate.ObjectTypes = mergeProxyItems(current.ObjectTypes, changes.ObjectTypes, keepExisting,
+		func(item *interfaces.ObjectType) (string, bool) {
+			if item == nil {
+				return "", false
+			}
+			return item.OTID, true
+		})
+	candidate.RelationTypes = mergeProxyItems(current.RelationTypes, changes.RelationTypes, keepExisting,
+		func(item *interfaces.RelationType) (string, bool) {
+			if item == nil {
+				return "", false
+			}
+			return item.RTID, true
+		})
+	candidate.ActionTypes = mergeProxyItems(current.ActionTypes, changes.ActionTypes, keepExisting,
+		func(item *interfaces.ActionType) (string, bool) {
+			if item == nil {
+				return "", false
+			}
+			return item.ATID, true
+		})
+	candidate.Metrics = mergeProxyItems(current.Metrics, changes.Metrics, keepExisting,
+		func(item *interfaces.MetricDefinition) (string, bool) {
+			if item == nil {
+				return "", false
+			}
+			return item.ID, true
+		})
 	return &candidate
+}
+
+func mergeProxyItems[T any](current, changes []T, keepExisting bool,
+	itemID func(T) (string, bool)) []T {
+	byID := make(map[string]T, len(current)+len(changes))
+	for _, item := range current {
+		if id, ok := itemID(item); ok {
+			byID[id] = item
+		}
+	}
+	for _, item := range changes {
+		id, ok := itemID(item)
+		if !ok {
+			continue
+		}
+		if _, exists := byID[id]; keepExisting && exists {
+			continue
+		}
+		byID[id] = item
+	}
+	ids := make([]string, 0, len(byID))
+	for id := range byID {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	merged := make([]T, 0, len(ids))
+	for _, id := range ids {
+		merged = append(merged, byID[id])
+	}
+	return merged
 }
 
 func (kns *knowledgeNetworkService) markProxyPending(ctx context.Context, tx *sql.Tx, plan *proxyPublishPlan) error {

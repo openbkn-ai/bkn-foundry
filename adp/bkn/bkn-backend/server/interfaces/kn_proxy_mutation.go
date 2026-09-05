@@ -13,7 +13,7 @@ import (
 // with the knowledge-network proxy publication lifecycle. The callback receives
 // the transaction and context that own authorization compensation tracking.
 type KNProxyMutationPublisher interface {
-	PublishKNChildMutation(ctx context.Context, changes *KN,
+	PublishKNChildMutation(ctx context.Context, changes *KN, mergeMode string,
 		mutate func(context.Context, *sql.Tx) error) error
 }
 
