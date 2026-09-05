@@ -59,6 +59,10 @@ func (c *safeClient) Disable(ctx context.Context, proxyAccountID string) (*inter
 	return c.changeLifecycle(ctx, proxyAccountID, "disable")
 }
 
+func (c *safeClient) Restore(ctx context.Context, proxyAccountID string) (*interfaces.ManagedProxyAccount, error) {
+	return c.changeLifecycle(ctx, proxyAccountID, "restore")
+}
+
 func (c *safeClient) Archive(ctx context.Context, proxyAccountID string) (*interfaces.ManagedProxyAccount, error) {
 	return c.changeLifecycle(ctx, proxyAccountID, "archive")
 }
@@ -80,7 +84,10 @@ func (c *safeClient) changeLifecycle(ctx context.Context, proxyAccountID, action
 	if action == "archive" && account.LifecycleStatus != interfaces.KNProxyLifecycleArchived {
 		return nil, fmt.Errorf("invalid managed proxy archive state")
 	}
-	if account.Enabled || account.LoginEnabled || account.CredentialIssuanceEnabled {
+	if action == "restore" && (account.LifecycleStatus != interfaces.KNProxyLifecycleActive || !account.Enabled) {
+		return nil, fmt.Errorf("invalid managed proxy restore state")
+	}
+	if (action != "restore" && account.Enabled) || account.LoginEnabled || account.CredentialIssuanceEnabled {
 		return nil, fmt.Errorf("managed proxy lifecycle response is not fail-closed")
 	}
 	return &account, nil

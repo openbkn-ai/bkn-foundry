@@ -205,6 +205,16 @@ func Test_KnowledgeNetworkRestHandler_CreateKN(t *testing.T) {
 			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
 		})
 
+		Convey("Invalid binding policy\n", func() {
+			reqParamByte, _ := sonic.Marshal(kn)
+			req := httptest.NewRequest(http.MethodPost, url+"?binding_policy=copy", bytes.NewReader(reqParamByte))
+			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+		})
+
 		Convey("KN name is null\n", func() {
 			reqParamByte, _ := sonic.Marshal(interfaces.KN{})
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))

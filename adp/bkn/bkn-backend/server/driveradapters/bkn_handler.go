@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
@@ -24,6 +25,11 @@ import (
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 	"bkn-backend/logics"
+)
+
+const (
+	bknBindingPolicyPreserve = "preserve"
+	bknBindingPolicyDetach   = "detach"
 )
 
 // UploadBKN imports an uploaded BKN tar archive (external endpoint).
@@ -74,9 +80,17 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 
 	// Read form parameters.
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	bindingPolicy := strings.TrimSpace(c.DefaultQuery("binding_policy", bknBindingPolicyPreserve))
+	if bindingPolicy != bknBindingPolicyPreserve && bindingPolicy != bknBindingPolicyDetach {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails(commonValidationDetail(ctx, "BindingPolicyInvalid", map[string]any{"value": bindingPolicy}))
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 
-	logger.Debugf("Upload BKN: branch=%s, filename=%s, size=%d",
-		branch, header.Filename, header.Size)
+	logger.Debugf("Upload BKN: branch=%s, binding_policy=%s, filename=%s, size=%d",
+		branch, bindingPolicy, header.Filename, header.Size)
 
 	// Load the network directly from the tar archive in memory.
 	bknNetwork, err := bknsdk.LoadNetworkFromTar(file)
@@ -125,6 +139,9 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 			continue
 		}
 		kn.Metrics = append(kn.Metrics, logics.ToADPMetricDefinition(kn.KNID, branch, bknM))
+	}
+	if bindingPolicy == bknBindingPolicyDetach {
+		detachBKNExternalBindings(kn)
 	}
 
 	// Validate required knowledge network creation fields, lengths, and enum values.
@@ -219,6 +236,44 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	logger.Debugf("Upload BKN completed: kn_id=%s", knID)
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, map[string]string{"kn_id": knID})
+}
+
+// detachBKNExternalBindings keeps the portable model topology while removing
+// environment-local resource, toolbox, and MCP identifiers. The existing
+// incremental APIs can bind targets later and publish proxy grants atomically.
+func detachBKNExternalBindings(kn *interfaces.KN) {
+	if kn == nil {
+		return
+	}
+	detachObjectTypes := func(objectTypes []*interfaces.ObjectType) {
+		for _, objectType := range objectTypes {
+			if objectType == nil {
+				continue
+			}
+			objectType.DataSource = nil
+			for _, property := range objectType.LogicProperties {
+				if property != nil {
+					property.DataSource = nil
+				}
+			}
+		}
+	}
+	detachActionTypes := func(actionTypes []*interfaces.ActionType) {
+		for _, actionType := range actionTypes {
+			if actionType != nil {
+				actionType.ActionSource = interfaces.ActionSource{}
+			}
+		}
+	}
+	detachObjectTypes(kn.ObjectTypes)
+	detachActionTypes(kn.ActionTypes)
+	for _, conceptGroup := range kn.ConceptGroups {
+		if conceptGroup == nil {
+			continue
+		}
+		detachObjectTypes(conceptGroup.ObjectTypes)
+		detachActionTypes(conceptGroup.ActionTypes)
+	}
 }
 
 // DownloadBKN exports a BKN tar archive (external endpoint).

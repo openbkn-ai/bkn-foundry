@@ -275,6 +275,21 @@ func (mr *MockManagedProxyAccessMockRecorder) ReconcileGrants(ctx, proxyAccountI
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileGrants", reflect.TypeOf((*MockManagedProxyAccess)(nil).ReconcileGrants), ctx, proxyAccountID, requestedBy)
 }
 
+// Restore mocks base method.
+func (m *MockManagedProxyAccess) Restore(ctx context.Context, proxyAccountID string) (*interfaces.ManagedProxyAccount, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Restore", ctx, proxyAccountID)
+	ret0, _ := ret[0].(*interfaces.ManagedProxyAccount)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Restore indicates an expected call of Restore.
+func (mr *MockManagedProxyAccessMockRecorder) Restore(ctx, proxyAccountID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Restore", reflect.TypeOf((*MockManagedProxyAccess)(nil).Restore), ctx, proxyAccountID)
+}
+
 // SyncGrants mocks base method.
 func (m *MockManagedProxyAccess) SyncGrants(ctx context.Context, proxyAccountID, grantorID string, sources []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantSyncResult, error) {
 	m.ctrl.T.Helper()

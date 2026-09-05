@@ -47,6 +47,53 @@ func assertProxyMutation(t *testing.T, publisher *knProxyMutationPublisherStub, 
 	assertChanges(publisher.changes)
 }
 
+func TestConceptGroupImportWithBindingsUsesKNProxyPublisher(t *testing.T) {
+	objectType := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot-1"}}
+	relationType := &interfaces.RelationType{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "rt-1"}}
+	actionType := &interfaces.ActionType{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at-1"}}
+	conceptGroup := &interfaces.ConceptGroup{
+		CGID: "cg-1", KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
+		ObjectTypes: []*interfaces.ObjectType{objectType}, RelationTypes: []*interfaces.RelationType{relationType},
+		ActionTypes: []*interfaces.ActionType{actionType},
+	}
+	ctrl := gomock.NewController(t)
+	service := bmock.NewMockConceptGroupService(ctrl)
+	publisher := &knProxyMutationPublisherStub{}
+	service.EXPECT().CreateConceptGroup(gomock.Any(), nil, conceptGroup,
+		interfaces.ImportMode_Overwrite, true).Return("cg-1", nil)
+	handler := &restHandler{cgs: service, knProxyPublisher: publisher}
+
+	id, err := handler.createConceptGroup(t.Context(), conceptGroup, interfaces.ImportMode_Overwrite, true)
+	if err != nil || id != "cg-1" {
+		t.Fatalf("createConceptGroup() = %q, %v", id, err)
+	}
+	assertProxyMutation(t, publisher, interfaces.ImportMode_Overwrite, func(changes *interfaces.KN) {
+		if len(changes.ObjectTypes) != 1 || changes.ObjectTypes[0] != objectType ||
+			len(changes.RelationTypes) != 1 || changes.RelationTypes[0] != relationType ||
+			len(changes.ActionTypes) != 1 || changes.ActionTypes[0] != actionType {
+			t.Fatalf("concept group proxy changes = %#v", changes)
+		}
+	})
+}
+
+func TestEmptyConceptGroupImportSkipsKNProxyPublisher(t *testing.T) {
+	conceptGroup := &interfaces.ConceptGroup{CGID: "cg-1", KNID: "kn-1", Branch: interfaces.MAIN_BRANCH}
+	ctrl := gomock.NewController(t)
+	service := bmock.NewMockConceptGroupService(ctrl)
+	publisher := &knProxyMutationPublisherStub{}
+	service.EXPECT().CreateConceptGroup(gomock.Any(), nil, conceptGroup,
+		interfaces.ImportMode_Normal, true).Return("cg-1", nil)
+	handler := &restHandler{cgs: service, knProxyPublisher: publisher}
+
+	id, err := handler.createConceptGroup(t.Context(), conceptGroup, interfaces.ImportMode_Normal, true)
+	if err != nil || id != "cg-1" {
+		t.Fatalf("createConceptGroup() = %q, %v", id, err)
+	}
+	if publisher.calls != 0 {
+		t.Fatalf("proxy publisher calls = %d, want 0", publisher.calls)
+	}
+}
+
 func TestObjectTypeWritesUseKNProxyPublisher(t *testing.T) {
 	objectType := &interfaces.ObjectType{
 		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot-1"},

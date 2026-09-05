@@ -40,10 +40,20 @@ func (kns *knowledgeNetworkService) proxyOrchestrationEnabled(branch string) boo
 }
 
 func (kns *knowledgeNetworkService) prepareProxyPublish(ctx context.Context, kn *interfaces.KN) (*proxyPublishPlan, error) {
+	return kns.prepareProxyPublishWithBaseline(ctx, kn, false, "")
+}
+
+func (kns *knowledgeNetworkService) prepareProxyImport(ctx context.Context, kn *interfaces.KN,
+	mergeCurrent bool, mergeMode string) (*proxyPublishPlan, error) {
+	return kns.prepareProxyPublishWithBaseline(ctx, kn, mergeCurrent, mergeMode)
+}
+
+func (kns *knowledgeNetworkService) prepareProxyPublishWithBaseline(ctx context.Context, kn *interfaces.KN,
+	mergeCurrent bool, mergeMode string) (*proxyPublishPlan, error) {
 	if !kns.proxyOrchestrationEnabled(kn.Branch) {
 		return nil, nil
 	}
-	plan, err := kns.beginProxyPublish(ctx, kn, true, false)
+	plan, err := kns.beginProxyPublish(ctx, kn, true, mergeCurrent)
 	if err != nil {
 		return nil, err
 	}
@@ -55,11 +65,28 @@ func (kns *knowledgeNetworkService) prepareProxyPublish(ctx context.Context, kn 
 		}
 	}()
 
-	sources, version, err := buildProxyGrantSources(kn)
-	if err != nil {
-		return nil, proxyHTTPError(ctx, http.StatusBadRequest, "published model contains an invalid proxy target")
+	candidate := kn
+	var currentSources []interfaces.ProxyGrantSourceSpec
+	if mergeCurrent {
+		current, loadErr := kns.ExportKNForProjection(ctx, kn.KNID)
+		if loadErr != nil {
+			return nil, loadErr
+		}
+		currentSources, _, err = buildProxyGrantSources(current)
+		if err != nil {
+			return nil, invalidProxyTargetError(ctx, err)
+		}
+		candidate = mergeProxyMutationChanges(current, kn, mergeMode)
 	}
-	if err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.grantorID, sources); err != nil {
+	sources, version, err := buildProxyGrantSources(candidate)
+	if err != nil {
+		return nil, invalidProxyTargetError(ctx, err)
+	}
+	preflightSources := sources
+	if mergeCurrent && !plan.createdMapping {
+		preflightSources = addedProxyGrantSources(currentSources, sources)
+	}
+	if err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.grantorID, preflightSources); err != nil {
 		return nil, err
 	}
 	plan.modelVersion = version
@@ -105,6 +132,26 @@ func (kns *knowledgeNetworkService) beginProxyPublish(ctx context.Context, kn *i
 		if err != nil {
 			return nil, err
 		}
+	}
+	if mapping.LifecycleStatus == interfaces.KNProxyLifecycleArchived && createIfMissing {
+		if authorizeMissing {
+			if err := kns.ps.CheckPermission(ctx, interfaces.PermissionResource{
+				Type: interfaces.RESOURCE_TYPE_KN,
+				ID:   kn.KNID,
+			}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}); err != nil {
+				return nil, err
+			}
+		}
+		if _, err := kns.mpa.Restore(ctx, mapping.ProxyAccountID); err != nil {
+			return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "restore knowledge network proxy")
+		}
+		if err := kns.kpa.SetLifecycle(ctx, mapping.KNID, interfaces.KNProxyLifecycleActive,
+			time.Now().UnixMilli()); err != nil {
+			cleanupManagedProxy(context.WithoutCancel(ctx), kns.mpa, mapping.ProxyAccountID)
+			return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "record restored knowledge network proxy")
+		}
+		mapping.LifecycleStatus = interfaces.KNProxyLifecycleActive
+		createdMapping = true
 	}
 	if mapping.LifecycleStatus != interfaces.KNProxyLifecycleActive {
 		return nil, proxyHTTPError(ctx, http.StatusConflict, "knowledge network proxy is not active")
@@ -189,7 +236,9 @@ func (kns *knowledgeNetworkService) preflightProxySources(ctx context.Context, p
 			return proxyHTTPError(ctx, http.StatusServiceUnavailable, "proxy permission preflight failed")
 		}
 		if !result.Allowed {
-			return proxyHTTPError(ctx, http.StatusForbidden, "proxy permission preflight denied")
+			return proxyHTTPError(ctx, http.StatusForbidden, fmt.Sprintf(
+				"proxy permission preflight denied for %s %s on %s %s with operation %s",
+				source.BindingType, source.BindingID, source.ResourceType, source.ResourceID, source.Operation))
 		}
 	}
 	return nil
@@ -226,11 +275,11 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 	if err != nil {
 		return err
 	}
+	currentSources, currentVersion, buildErr := buildProxyGrantSources(current)
+	if buildErr != nil {
+		return invalidProxyTargetError(ctx, buildErr)
+	}
 	if plan.createdMapping {
-		currentSources, currentVersion, buildErr := buildProxyGrantSources(current)
-		if buildErr != nil {
-			return proxyHTTPError(ctx, http.StatusBadRequest, "published model contains an invalid proxy target")
-		}
 		if err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.grantorID, currentSources); err != nil {
 			return err
 		}
@@ -246,9 +295,15 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 	candidate := mergeProxyMutationChanges(current, changes, mergeMode)
 	sources, version, err := buildProxyGrantSources(candidate)
 	if err != nil {
-		return proxyHTTPError(ctx, http.StatusBadRequest, "published model contains an invalid proxy target")
+		return invalidProxyTargetError(ctx, err)
 	}
-	if err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.grantorID, sources); err != nil {
+	// Existing grants were already authorized when they were installed. Only
+	// additions and binding replacements require the current editor to hold
+	// AUTHORIZE plus the requested downstream operation. Removals are applied
+	// by the post-commit full sync and must remain usable as a repair path even
+	// when the old target no longer exists or is no longer delegable.
+	if err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.grantorID,
+		addedProxyGrantSources(currentSources, sources)); err != nil {
 		return err
 	}
 	plan.modelVersion = version
@@ -663,7 +718,7 @@ func (kns *knowledgeNetworkService) PlanKNProxySync(ctx context.Context, knID st
 	}
 	sources, version, err := buildProxyGrantSources(latest)
 	if err != nil {
-		return nil, proxyHTTPError(ctx, http.StatusBadRequest, "published model contains an invalid proxy target")
+		return nil, invalidProxyTargetError(ctx, err)
 	}
 	plan := &interfaces.KNProxySyncPlan{KNID: knID, ModelVersion: version, Sources: sources}
 	if mapping, getErr := kns.kpa.Get(ctx, knID); getErr != nil {
@@ -753,4 +808,12 @@ func accountIDFromContext(ctx context.Context) string {
 
 func proxyHTTPError(ctx context.Context, status int, detail string) *rest.HTTPError {
 	return rest.NewHTTPError(ctx, status, berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(detail)
+}
+
+func invalidProxyTargetError(ctx context.Context, cause error) *rest.HTTPError {
+	detail := "published model contains an invalid proxy target"
+	if cause != nil {
+		detail += ": " + cause.Error()
+	}
+	return proxyHTTPError(ctx, http.StatusBadRequest, detail)
 }

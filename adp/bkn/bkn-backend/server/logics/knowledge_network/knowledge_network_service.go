@@ -244,7 +244,7 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 
 	var proxyPlan *proxyPublishPlan
 	if isCreate || isUpdate {
-		proxyPlan, err = kns.prepareProxyPublish(ctx, kn)
+		proxyPlan, err = kns.prepareProxyImport(ctx, kn, isUpdate, mode)
 		if err != nil {
 			return "", err
 		}

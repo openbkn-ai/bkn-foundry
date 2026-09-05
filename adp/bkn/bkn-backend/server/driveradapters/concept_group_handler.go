@@ -190,7 +190,7 @@ func (r *restHandler) CreateConceptGroup(c *gin.Context, visitor hydra.Visitor) 
 	}
 
 	// Create the concept group.
-	cgID, err := r.cgs.CreateConceptGroup(ctx, nil, &cg, mode, strictMode)
+	cgID, err := r.createConceptGroup(ctx, &cg, mode, strictMode)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 

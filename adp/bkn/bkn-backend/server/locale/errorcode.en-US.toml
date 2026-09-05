@@ -209,6 +209,7 @@ ConceptGroupModuleTypeInvalid = "The module type must be concept_group."
 KnowledgeNetworkNotFound = "Business knowledge network {{.knowledgeNetworkID}} was not found."
 UploadedFileReadFailed = "Failed to read the uploaded file."
 ArchiveFileTypeInvalid = "The uploaded file must be a tar archive."
+BindingPolicyInvalid = "binding_policy must be preserve or detach; got {{.value}}."
 ArchiveLoadFailed = "Failed to load the knowledge network from the archive."
 KnowledgeNetworkIDRequired = "kn_id is required."
 

@@ -209,6 +209,7 @@ ConceptGroupModuleTypeInvalid = "模块类型必须为 concept_group。"
 KnowledgeNetworkNotFound = "业务知识网络 {{.knowledgeNetworkID}} 不存在。"
 UploadedFileReadFailed = "读取上传文件失败。"
 ArchiveFileTypeInvalid = "上传文件必须为 tar 归档文件。"
+BindingPolicyInvalid = "binding_policy 必须是 preserve 或 detach，当前值为 {{.value}}。"
 ArchiveLoadFailed = "从归档文件加载业务知识网络失败。"
 KnowledgeNetworkIDRequired = "必须提供 kn_id。"
 

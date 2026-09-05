@@ -87,6 +87,34 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+  /managed-proxy-accounts/{id}/restore:
+    parameters:
+      - $ref: '#/components/parameters/ProxyAccountID'
+    post:
+      tags: [Managed proxy accounts]
+      operationId: restoreManagedProxyAccount
+      summary: Restore an archived managed proxy account
+      description: |
+        Reactivates the same environment-local identity after a compensated knowledge-network
+        creation failed, allowing the original import to be retried without creating another app.
+        Active accounts are returned unchanged. Accounts in disabling state return 409.
+      responses:
+        '200':
+          description: The account is active
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManagedProxyAccount'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The account is currently disabling and cannot be restored
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /managed-proxy-accounts/{id}/archive:
     parameters:
       - $ref: '#/components/parameters/ProxyAccountID'
@@ -96,7 +124,7 @@ paths:
       summary: Archive a managed proxy account
       description: |
         Preserves the identity record for historical audit correlation and keeps the account
-        disabled. Repeated calls do not increment the version.
+        disabled until the dedicated restore transition is used. Repeated calls do not increment the version.
       responses:
         '200':
           description: The account was archived

@@ -92,6 +92,14 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	bindingPolicy := strings.TrimSpace(c.DefaultQuery("binding_policy", bknBindingPolicyPreserve))
+	if bindingPolicy != bknBindingPolicyPreserve && bindingPolicy != bknBindingPolicyDetach {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails(commonValidationDetail(ctx, "BindingPolicyInvalid", map[string]any{"value": bindingPolicy}))
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 
 	// Whether to validate dependencies, default true. Parse priority: strict_mode > validate_dependency (legacy) > true
 	strictModeStr := c.Query(interfaces.QueryParam_StrictMode)
@@ -193,6 +201,9 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 				return
 			}
 		}
+	}
+	if bindingPolicy == bknBindingPolicyDetach {
+		detachBKNExternalBindings(&kn)
 	}
 
 	// Create the knowledge network.

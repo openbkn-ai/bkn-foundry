@@ -76,6 +76,16 @@ paths:
           schema:
             type: string
             default: main
+        - name: binding_policy
+          in: query
+          description: |
+            Controls how environment-local bindings in the archive are imported.
+            preserve keeps resource, Tool Box, and MCP identifiers and subjects them to proxy permission checks.
+            detach removes those identifiers while preserving the knowledge model topology so targets can be bound later through incremental APIs.
+          schema:
+            type: string
+            enum: [preserve, detach]
+            default: preserve
         - name: import_mode
           description: |
             Import mode. normal reports an error for duplicate concept names; overwrite replaces them;

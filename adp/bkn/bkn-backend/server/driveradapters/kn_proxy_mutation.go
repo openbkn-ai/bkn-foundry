@@ -19,6 +19,22 @@ func (r *restHandler) publishKNChildMutation(ctx context.Context, changes *inter
 	return r.knProxyPublisher.PublishKNChildMutation(ctx, changes, mergeMode, mutate)
 }
 
+func (r *restHandler) createConceptGroup(ctx context.Context, conceptGroup *interfaces.ConceptGroup,
+	mode string, strictMode bool) (id string, err error) {
+	if len(conceptGroup.ObjectTypes) == 0 && len(conceptGroup.RelationTypes) == 0 && len(conceptGroup.ActionTypes) == 0 {
+		return r.cgs.CreateConceptGroup(ctx, nil, conceptGroup, mode, strictMode)
+	}
+	changes := &interfaces.KN{
+		KNID: conceptGroup.KNID, Branch: conceptGroup.Branch,
+		ObjectTypes: conceptGroup.ObjectTypes, RelationTypes: conceptGroup.RelationTypes, ActionTypes: conceptGroup.ActionTypes,
+	}
+	err = r.publishKNChildMutation(ctx, changes, mode, func(mutationCtx context.Context, tx *sql.Tx) error {
+		id, err = r.cgs.CreateConceptGroup(mutationCtx, tx, conceptGroup, mode, strictMode)
+		return err
+	})
+	return id, err
+}
+
 func (r *restHandler) createObjectTypes(ctx context.Context, knID, branch string,
 	entries []*interfaces.ObjectType, mode string, strictMode bool) (ids []string, err error) {
 	changes := &interfaces.KN{KNID: knID, Branch: branch, ObjectTypes: entries}

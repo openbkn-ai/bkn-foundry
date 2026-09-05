@@ -170,6 +170,14 @@ func Test_BKNRestHandler_UploadBKN(t *testing.T) {
 			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
 		})
 
+		Convey("Failed when binding_policy is invalid\n", func() {
+			req := newMultipartRequest(t, url+"?binding_policy=copy", "test.tar", newValidBKNTar(t))
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+		})
+
 		Convey("Failed when CreateKN returns error\n", func() {
 			err := &rest.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
@@ -187,6 +195,46 @@ func Test_BKNRestHandler_UploadBKN(t *testing.T) {
 			So(w.Result().StatusCode, ShouldEqual, http.StatusInternalServerError)
 		})
 	})
+}
+
+func TestDetachBKNExternalBindingsPreservesTopology(t *testing.T) {
+	relation := &interfaces.RelationType{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
+		RTID: "rt-1", SourceObjectTypeID: "ot-1", TargetObjectTypeID: "ot-2",
+	}}
+	metric := &interfaces.MetricDefinition{ID: "metric-1", ScopeType: interfaces.ScopeTypeObjectType, ScopeRef: "ot-1"}
+	kn := &interfaces.KN{
+		ObjectTypes: []*interfaces.ObjectType{{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+			OTID: "ot-1", DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"},
+			LogicProperties: []*interfaces.LogicProperty{{
+				Name: "forecast", Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+				DataSource: &interfaces.ResourceInfo{Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL, BoxID: "box-1", ToolID: "tool-1"},
+			}},
+		}}},
+		RelationTypes: []*interfaces.RelationType{relation},
+		Metrics:       []*interfaces.MetricDefinition{metric},
+		ActionTypes: []*interfaces.ActionType{{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+			ATID: "at-1", ObjectTypeID: "ot-1",
+			ActionSource: interfaces.ActionSource{Type: interfaces.ACTION_SOURCE_TYPE_MCP, McpID: "mcp-1", ToolName: "run"},
+		}}},
+	}
+
+	detachBKNExternalBindings(kn)
+
+	if kn.ObjectTypes[0].DataSource != nil || kn.ObjectTypes[0].LogicProperties[0].DataSource != nil {
+		t.Fatalf("object bindings were not detached: %#v", kn.ObjectTypes[0])
+	}
+	if kn.ActionTypes[0].ActionSource != (interfaces.ActionSource{}) {
+		t.Fatalf("action source was not detached: %#v", kn.ActionTypes[0].ActionSource)
+	}
+	if kn.RelationTypes[0] != relation || relation.SourceObjectTypeID != "ot-1" || relation.TargetObjectTypeID != "ot-2" {
+		t.Fatalf("relation topology changed: %#v", kn.RelationTypes)
+	}
+	if kn.Metrics[0] != metric || metric.ScopeRef != "ot-1" {
+		t.Fatalf("metric topology changed: %#v", kn.Metrics)
+	}
+	if kn.ActionTypes[0].ObjectTypeID != "ot-1" {
+		t.Fatalf("action object binding changed: %#v", kn.ActionTypes[0])
+	}
 }
 
 func Test_BKNRestHandler_DownloadBKN(t *testing.T) {

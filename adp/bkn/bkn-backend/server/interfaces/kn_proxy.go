@@ -121,6 +121,7 @@ type KNProxyAccess interface {
 
 type ManagedProxyAccess interface {
 	Create(ctx context.Context, knID, name string) (*ManagedProxyAccount, bool, error)
+	Restore(ctx context.Context, proxyAccountID string) (*ManagedProxyAccount, error)
 	Disable(ctx context.Context, proxyAccountID string) (*ManagedProxyAccount, error)
 	Archive(ctx context.Context, proxyAccountID string) (*ManagedProxyAccount, error)
 	CheckGrant(ctx context.Context, proxyAccountID, grantorID string, source ProxyGrantSourceSpec) (ProxyGrantCheckResult, error)

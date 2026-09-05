@@ -31,6 +31,7 @@ const (
 
 var (
 	ErrInvalidManagedResource = errors.New("invalid managed resource")
+	ErrInvalidLifecycle       = errors.New("invalid managed proxy lifecycle transition")
 	ErrManagedAccount         = errors.New("managed proxy account is protected")
 	ErrInconsistentAccount    = errors.New("managed proxy account is inconsistent")
 )
@@ -131,6 +132,60 @@ func (s *Service) Get(ctx context.Context, proxyAccountID string) (*Account, err
 	return s.get(ctx, "proxy_account_id = ?", strings.TrimSpace(proxyAccountID))
 }
 
+// Restore reactivates an archived identity for an idempotent retry of the same
+// managed resource. A disabling proxy belongs to an in-progress delete and
+// cannot be restored until that lifecycle reaches archived.
+func (s *Service) Restore(ctx context.Context, proxyAccountID string) (*Account, error) {
+	proxyAccountID = strings.TrimSpace(proxyAccountID)
+	if proxyAccountID == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var mapping model.ManagedProxyAccount
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&mapping,
+			"proxy_account_id = ?", proxyAccountID).Error; err != nil {
+			return err
+		}
+		var user model.User
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user,
+			"id = ?", proxyAccountID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrInconsistentAccount
+			}
+			return err
+		}
+		if user.AccountType != model.AccountTypeApp || user.PasswordHash != "" {
+			return ErrInconsistentAccount
+		}
+		switch mapping.LifecycleStatus {
+		case StatusActive:
+			if !user.Enabled {
+				return ErrInconsistentAccount
+			}
+			return nil
+		case StatusArchived:
+			if user.Enabled {
+				return ErrInconsistentAccount
+			}
+		case StatusDisabling:
+			return ErrInvalidLifecycle
+		default:
+			return ErrInconsistentAccount
+		}
+		if err := tx.Model(&user).Update("enabled", true).Error; err != nil {
+			return err
+		}
+		return tx.Model(&mapping).Updates(map[string]any{
+			"lifecycle_status": StatusActive,
+			"version":          gorm.Expr("version + ?", 1),
+		}).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.Get(ctx, proxyAccountID)
+}
+
 func (s *Service) getByManagedResource(ctx context.Context, resourceType, resourceID string) (*Account, error) {
 	return s.get(ctx, "managed_by = ? AND managed_resource_type = ? AND managed_resource_id = ?",
 		ManagerBKN, resourceType, resourceID)
@@ -166,8 +221,9 @@ func (s *Service) Disable(ctx context.Context, proxyAccountID string) (*Account,
 	return s.transition(ctx, proxyAccountID, StatusDisabling)
 }
 
-// Archive permanently keeps the identity disabled while preserving the row for
-// historical audit joins.
+// Archive keeps the identity disabled while preserving the row for historical
+// audit joins. Only the dedicated restore transition can reactivate it for an
+// idempotent retry of the same managed resource.
 func (s *Service) Archive(ctx context.Context, proxyAccountID string) (*Account, error) {
 	return s.transition(ctx, proxyAccountID, StatusArchived)
 }
