@@ -1,0 +1,413 @@
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+openapi: 3.0.3
+info:
+  title: BKN Safe 代理授权来源 API
+  version: 0.1.5
+  description: |
+    供受信任 BKN workload 维护受管代理账号的底层最小权限来源。本接口只存在于
+    ClusterIP 内部面，不经 Ingress 暴露。
+
+    来源记录、物化标记、授权审计和 Casbin Allow 在同一个数据库事务内更新。同一
+    来源重复写入幂等；多个来源可共享一条 Allow；只有最后一个有效来源撤销且该 Allow
+    由来源服务创建时才删除。来源建立前已存在的人工或历史 Allow 会保留并在 reconcile
+    结果中报告为未追踪策略。
+servers:
+  - url: /api/safe/in/v1
+security: []
+paths:
+  /proxy-grant-sources:
+    post:
+      tags: [Proxy grant sources]
+      operationId: createProxyGrantSource
+      summary: 新增或恢复一个代理授权来源
+      description: |
+        grantor 必须是 enabled 的非受管账号，并同时持有目标 authorize 和准备授出的
+        operation。首次创建返回 201；相同来源重放返回 200。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrantRequest'
+      responses:
+        '201':
+          description: 来源已创建，必要时同时创建 Casbin Allow
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxyGrantSource'
+        '200':
+          description: 相同来源已经有效，返回原记录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxyGrantSource'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /proxy-grant-sources/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: 来源记录 ID。
+        schema:
+          type: string
+          maxLength: 64
+    delete:
+      tags: [Proxy grant sources]
+      operationId: revokeProxyGrantSource
+      summary: 撤销一个代理授权来源
+      description: |
+        重复撤销幂等。仍有其他有效来源时保留 Allow；最后来源撤销时仅删除来源服务拥有的 Allow。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevokeRequest'
+      responses:
+        '200':
+          description: 已撤销或此前已经撤销
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxyGrantSource'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /proxy-grant-sources/check:
+    post:
+      tags: [Proxy grant sources]
+      operationId: checkProxyGrantSourceAuthority
+      summary: 预检 grantor 是否可以建立来源
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrantRequest'
+      responses:
+        '200':
+          description: 预检完成；权限不足通过 allowed=false 表达
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /proxy-grant-sources/sync:
+    post:
+      tags: [Proxy grant sources]
+      operationId: syncProxyGrantSources
+      summary: 按最新发布模型全量同步来源
+      description: |
+        sources 是该 proxy 当前完整的 kn_proxy_binding 来源集合。服务先预检所有新增来源，
+        任一来源越权时整次同步拒绝且不改变来源或 Policy；删除项不影响人工或其他有效来源。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncRequest'
+      responses:
+        '200':
+          description: 同步完成
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /proxy-grant-sources/reconcile:
+    post:
+      tags: [Proxy grant sources]
+      operationId: reconcileProxyGrantSources
+      summary: 修复来源账本与 Casbin Allow 漂移
+      description: |
+        恢复有效来源缺失的 Allow，删除没有有效来源且仍由来源服务拥有的 Allow。
+        无物化标记的现有策略不会自动删除，而在 untracked_policies 中报告，避免误删历史人工授权。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReconcileRequest'
+      responses:
+        '200':
+          description: 对账完成
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReconcileResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  responses:
+    BadRequest:
+      description: 请求缺少字段、字段超长、包含通配符或目标 operation 不在代理白名单/操作目录
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    Forbidden:
+      description: grantor 缺少目标 authorize 或准备授出的 operation，或来源不属于 proxy 对应知识网络
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    NotFound:
+      description: proxy account 或来源记录不存在
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    Conflict:
+      description: proxy account 已禁用或归档，不能新增授权来源
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    InternalError:
+      description: 数据库、Casbin 或审计写入失败；事务内失败会回滚，提交后缓存刷新失败可幂等重试
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+  schemas:
+    GrantRequest:
+      type: object
+      additionalProperties: false
+      required: [proxy_account_id, grantor_id, source]
+      properties:
+        proxy_account_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        grantor_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        source:
+          $ref: '#/components/schemas/SourceSpec'
+    RevokeRequest:
+      type: object
+      additionalProperties: false
+      required: [grantor_id]
+      properties:
+        grantor_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+    SyncRequest:
+      type: object
+      additionalProperties: false
+      required: [proxy_account_id, grantor_id, sources]
+      properties:
+        proxy_account_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        grantor_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceSpec'
+    ReconcileRequest:
+      type: object
+      additionalProperties: false
+      required: [requested_by]
+      properties:
+        proxy_account_id:
+          type: string
+          maxLength: 64
+          description: 省略时对账全部受管 proxy。
+        requested_by:
+          type: string
+          minLength: 1
+          maxLength: 64
+    SourceSpec:
+      type: object
+      additionalProperties: false
+      required:
+        - resource_type
+        - resource_id
+        - operation
+        - source_id
+        - kn_id
+        - binding_type
+        - binding_id
+      properties:
+        resource_type:
+          type: string
+          enum: [resource, tool_box, mcp]
+        resource_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        operation:
+          type: string
+          enum: [view_detail, query_data, execute]
+        source_type:
+          type: string
+          enum: [kn_proxy_binding, manual, admin]
+          default: kn_proxy_binding
+        source_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: 调用方生成的稳定来源键；同一绑定可为多个权限复用该值。
+        kn_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        binding_type:
+          type: string
+          minLength: 1
+          maxLength: 64
+        binding_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+    ProxyGrantSource:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - proxy_account_id
+        - resource_type
+        - resource_id
+        - operation
+        - source_type
+        - source_id
+        - kn_id
+        - binding_type
+        - binding_id
+        - granted_by
+        - lifecycle_status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        proxy_account_id:
+          type: string
+        resource_type:
+          type: string
+          enum: [resource, tool_box, mcp]
+        resource_id:
+          type: string
+        operation:
+          type: string
+          enum: [view_detail, query_data, execute]
+        source_type:
+          type: string
+          enum: [kn_proxy_binding, manual, admin]
+        source_id:
+          type: string
+        kn_id:
+          type: string
+        binding_type:
+          type: string
+        binding_id:
+          type: string
+        granted_by:
+          type: string
+        lifecycle_status:
+          type: string
+          enum: [active, revoked]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+    CheckResult:
+      type: object
+      additionalProperties: false
+      required: [allowed]
+      properties:
+        allowed:
+          type: boolean
+        reason:
+          type: string
+          description: 仅 allowed=false 时返回，不包含目标连接信息。
+    SyncResult:
+      type: object
+      additionalProperties: false
+      required: [added, revoked, unchanged, sources]
+      properties:
+        added:
+          type: integer
+          minimum: 0
+        revoked:
+          type: integer
+          minimum: 0
+        unchanged:
+          type: integer
+          minimum: 0
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProxyGrantSource'
+    ReconcileResult:
+      type: object
+      additionalProperties: false
+      required:
+        - policies_restored
+        - policies_removed
+        - markers_created
+        - markers_removed
+        - untracked_policies
+      properties:
+        policies_restored:
+          type: integer
+          minimum: 0
+        policies_removed:
+          type: integer
+          minimum: 0
+        markers_created:
+          type: integer
+          minimum: 0
+        markers_removed:
+          type: integer
+          minimum: 0
+        untracked_policies:
+          type: integer
+          minimum: 0

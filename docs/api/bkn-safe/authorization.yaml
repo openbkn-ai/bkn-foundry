@@ -184,6 +184,10 @@ paths:
     delete:
       operationId: deleteResourcePolicies
       summary: Delete all policies for one concrete resource
+      description: |
+        Deletes ordinary direct policies for the resource. If the resource still
+        has policies managed by proxy grant sources, the request fails with `409`;
+        callers must revoke or synchronize those sources before retrying cleanup.
       requestBody:
         required: true
         content:
@@ -198,6 +202,8 @@ paths:
         '204': {description: Policies deleted or already absent}
         '400':
           $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/ManagedProxyPoliciesRemain'
         '500':
           $ref: '#/components/responses/InternalError'
     get:
@@ -337,6 +343,12 @@ components:
             $ref: '#/components/schemas/BknSafeError'
     AuthorizationUnavailable:
       description: Account state cannot be read; no permission is granted.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BknSafeError'
+    ManagedProxyPoliciesRemain:
+      description: Managed proxy grant sources must be removed before generic resource policy cleanup.
       content:
         application/json:
           schema:

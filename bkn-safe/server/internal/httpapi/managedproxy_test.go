@@ -109,7 +109,7 @@ func TestManagedProxyAPIRejectsUnsupportedOwnerType(t *testing.T) {
 }
 
 func TestGenericPolicyEndpointCannotGrantManagedProxy(t *testing.T) {
-	r, _, _ := newTestServer(t)
+	r, enforcer, db := newTestServer(t)
 	w := do(t, r, http.MethodPost, "/api/safe/in/v1/managed-proxy-accounts", map[string]any{
 		"managed_resource_type": managedproxy.ResourceKnowledgeNetwork,
 		"managed_resource_id":   "kn-policy",
@@ -124,6 +124,24 @@ func TestGenericPolicyEndpointCannotGrantManagedProxy(t *testing.T) {
 	})
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("generic proxy grant = %d body=%s", w.Code, w.Body.String())
+	}
+	if err := enforcer.GrantObjectPermission(account.ProxyAccountID, "resource", "r-1", "query_data"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.ProxyGrantSource{
+		ID: "source-policy", ProxyAccountID: account.ProxyAccountID, ResourceType: "resource", ResourceID: "r-1",
+		Operation: "query_data", SourceType: "manual", SourceID: "binding-policy", LifecycleStatus: "active",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	w = do(t, r, http.MethodDelete, "/api/safe/v1/authz/policies", map[string]any{
+		"resource": map[string]any{"type": "resource", "id": "r-1"},
+	})
+	if w.Code != http.StatusConflict {
+		t.Fatalf("generic resource cleanup = %d body=%s, want 409", w.Code, w.Body.String())
+	}
+	if allowed, err := enforcer.Check(account.ProxyAccountID, "resource", "r-1", "query_data"); err != nil || !allowed {
+		t.Fatalf("generic resource cleanup changed proxy permission: allowed=%v err=%v", allowed, err)
 	}
 }
 
