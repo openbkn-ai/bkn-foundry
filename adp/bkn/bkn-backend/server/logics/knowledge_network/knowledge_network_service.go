@@ -230,18 +230,9 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 	bknNetwork := logics.ToBKNNetWork(kn)
 	kn.BKNRawContent = bknsdk.SerializeBknNetwork(bknNetwork)
 
-	// Begin before import conflict checks to preserve the existing all-or-nothing
-	// import boundary. The proxy lock is acquired immediately after those checks.
-	tx, err := kns.db.Begin()
-	if err != nil {
-		otellog.LogError(ctx, "Begin transaction error", err)
-		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_KnowledgeNetwork_InternalError_BeginTransactionFailed).
-			WithErrorDetails(err.Error())
-	}
-	defer tx.Rollback()
-
-	// Resolve import semantics before taking the per-network publication lock.
+	// Resolve import semantics and perform external proxy preflight before
+	// opening the database transaction. Large models can require many remote
+	// permission checks, so holding an idle connection here can exhaust the pool.
 	isCreate, isUpdate, err := kns.handleKNImportMode(ctx, mode, kn)
 	if err != nil {
 		return "", err
@@ -264,6 +255,15 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 			}
 		}()
 	}
+
+	tx, err := kns.db.Begin()
+	if err != nil {
+		otellog.LogError(ctx, "Begin transaction error", err)
+		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_KnowledgeNetwork_InternalError_BeginTransactionFailed).
+			WithErrorDetails(err.Error())
+	}
+	defer tx.Rollback()
 
 	// Process creation.
 	if isCreate {
@@ -1181,22 +1181,20 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 			WithErrorDetails(err.Error())
 	}
 
-	if proxyPlan == nil {
-		// Legacy behavior while proxy orchestration is disabled.
-		err = kns.ps.DeleteResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{kn.KNID})
-		if err != nil {
-			logger.Errorf("DeleteResources error: %s", err.Error())
-			span.SetStatus(codes.Error, "删除业务知识网络资源策略失败")
-			return err
-		}
-	}
 	if err = tx.Commit(); err != nil {
 		otellog.LogError(ctx, "DeleteKN Transaction Commit Failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
 	}
 	deletionCommitted = true
-	if err = kns.finalizeProxyDelete(ctx, proxyPlan); err != nil {
+	if proxyPlan == nil {
+		err = kns.ps.DeleteResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{kn.KNID})
+	} else {
+		err = kns.finalizeProxyDelete(ctx, proxyPlan)
+	}
+	if err != nil {
+		logger.Errorf("Finalize knowledge network authorization deletion error: %s", err.Error())
+		span.SetStatus(codes.Error, "删除业务知识网络资源策略失败")
 		return err
 	}
 	span.SetStatus(codes.Ok, "")

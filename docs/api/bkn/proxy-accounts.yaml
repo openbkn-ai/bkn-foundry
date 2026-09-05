@@ -59,6 +59,7 @@ paths:
   /api/bkn-backend/in/v1/proxy-accounts/reconcile:
     post:
       summary: Detect mapping defects and reconcile bkn-safe authorization ledger drift
+      description: The caller must hold authorize on every live knowledge network that has a proxy mapping. Authorization is completed before any policy repair starts; orphan mappings are reported without mutation.
       responses:
         '200':
           description: Reconciliation report
@@ -66,6 +67,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProxyReconcileReport'
+        '403': { description: The caller cannot authorize every live mapped knowledge network. }
         '503': { description: Reconciliation is unavailable. }
 components:
   parameters:

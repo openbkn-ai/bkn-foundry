@@ -1297,7 +1297,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("Failed when DeleteResources returns error\n", func() {
+		Convey("Failed after commit when DeleteResources returns error\n", func() {
 			kn := &interfaces.KN{
 				KNID:   "kn1",
 				KNName: "kn1",
@@ -1316,7 +1316,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
-			smock.ExpectRollback()
+			smock.ExpectCommit()
 
 			err := service.DeleteKN(ctx, kn)
 			So(err, ShouldNotBeNil)
@@ -1884,6 +1884,8 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			mode := interfaces.ImportMode_Normal
 
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			kna.EXPECT().CheckKNExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return("", false, nil)
+			kna.EXPECT().CheckKNExistByName(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return("", false, nil)
 			// Simulate Begin failure.
 			db2, _, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 			_ = db2.Close() // Close the database connection to simulate Begin failure.

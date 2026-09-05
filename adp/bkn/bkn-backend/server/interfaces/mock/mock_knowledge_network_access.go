@@ -118,6 +118,21 @@ func (mr *MockKNAccessMockRecorder) GetAllKNs(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllKNs", reflect.TypeOf((*MockKNAccess)(nil).GetAllKNs), ctx)
 }
 
+// GetAllMainBranchKNs mocks base method.
+func (m *MockKNAccess) GetAllMainBranchKNs(ctx context.Context) (map[string]*interfaces.KN, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAllMainBranchKNs", ctx)
+	ret0, _ := ret[0].(map[string]*interfaces.KN)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetAllMainBranchKNs indicates an expected call of GetAllMainBranchKNs.
+func (mr *MockKNAccessMockRecorder) GetAllMainBranchKNs(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllMainBranchKNs", reflect.TypeOf((*MockKNAccess)(nil).GetAllMainBranchKNs), ctx)
+}
+
 // GetKNByID mocks base method.
 func (m *MockKNAccess) GetKNByID(ctx context.Context, knID, branch string) (*interfaces.KN, error) {
 	m.ctrl.T.Helper()

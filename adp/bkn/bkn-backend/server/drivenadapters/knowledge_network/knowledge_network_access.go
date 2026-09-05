@@ -863,8 +863,18 @@ func (kna *knowledgeNetworkAccess) GetNeighborPathsBatch(ctx context.Context, ot
 	return rtPathsMap, nil
 }
 
-// Query current business knowledge networks on the main branch.
+// GetAllKNs queries knowledge networks across all branches for existing callers
+// such as concept synchronization.
 func (kna *knowledgeNetworkAccess) GetAllKNs(ctx context.Context) (map[string]*interfaces.KN, error) {
+	return kna.getAllKNs(ctx, "")
+}
+
+// GetAllMainBranchKNs queries only published main-branch knowledge networks.
+func (kna *knowledgeNetworkAccess) GetAllMainBranchKNs(ctx context.Context) (map[string]*interfaces.KN, error) {
+	return kna.getAllKNs(ctx, interfaces.MAIN_BRANCH)
+}
+
+func (kna *knowledgeNetworkAccess) getAllKNs(ctx context.Context, branch string) (map[string]*interfaces.KN, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Select knowledge networks")
 	defer span.End()
 
@@ -872,7 +882,7 @@ func (kna *knowledgeNetworkAccess) GetAllKNs(ctx context.Context) (map[string]*i
 		attr.Key("db_url").String(libdb.GetDBUrl()),
 		attr.Key("db_type").String(libdb.GetDBType()))
 
-	sqlStr, vals, err := sq.Select(
+	query := sq.Select(
 		"f_id",
 		"f_name",
 		"f_tags",
@@ -888,9 +898,11 @@ func (kna *knowledgeNetworkAccess) GetAllKNs(ctx context.Context) (map[string]*i
 		"f_updater",
 		"f_updater_type",
 		"f_update_time").
-		From(KN_TABLE_NAME).
-		Where(sq.Eq{"f_branch": interfaces.MAIN_BRANCH}).
-		ToSql()
+		From(KN_TABLE_NAME)
+	if branch != "" {
+		query = query.Where(sq.Eq{"f_branch": branch})
+	}
+	sqlStr, vals, err := query.ToSql()
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to build the sql of select knowledge networks, error", err)
 		return map[string]*interfaces.KN{}, err

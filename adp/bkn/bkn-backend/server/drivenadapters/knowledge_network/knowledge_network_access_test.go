@@ -680,7 +680,7 @@ func Test_knowledgeNetworkAccess_GetAllKNs(t *testing.T) {
 
 		sqlStr := fmt.Sprintf("SELECT f_id, f_name, f_tags, f_comment, f_icon, f_color, f_bkn_raw_content, f_skill_content, "+
 			"f_branch, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
-			"FROM %s WHERE f_branch = ?", KN_TABLE_NAME)
+			"FROM %s", KN_TABLE_NAME)
 
 		rows := sqlmock.NewRows([]string{
 			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content", "f_skill_content",
@@ -692,12 +692,12 @@ func Test_knowledgeNetworkAccess_GetAllKNs(t *testing.T) {
 			"admin", "admin", testUpdateTime,
 		).AddRow(
 			"kn2", "Knowledge Network 2", `"tag2"`, "comment2", "icon2", "color2", "detail2", "skill2",
-			"main", "admin", "admin", testUpdateTime,
+			"feature", "admin", "admin", testUpdateTime,
 			"admin", "admin", testUpdateTime,
 		)
 
 		Convey("GetAllKNs Success \n", func() {
-			smock.ExpectQuery(sqlStr).WithArgs(interfaces.MAIN_BRANCH).WillReturnRows(rows)
+			smock.ExpectQuery(sqlStr).WithArgs().WillReturnRows(rows)
 
 			kns, err := kna.GetAllKNs(testCtx)
 			So(err, ShouldBeNil)
@@ -712,7 +712,7 @@ func Test_knowledgeNetworkAccess_GetAllKNs(t *testing.T) {
 
 		Convey("GetAllKNs Failed \n", func() {
 			expectedErr := errors.New("some error")
-			smock.ExpectQuery(sqlStr).WithArgs(interfaces.MAIN_BRANCH).WillReturnError(expectedErr)
+			smock.ExpectQuery(sqlStr).WithArgs().WillReturnError(expectedErr)
 
 			kns, err := kna.GetAllKNs(testCtx)
 			So(kns, ShouldResemble, map[string]*interfaces.KN{})
@@ -734,7 +734,7 @@ func Test_knowledgeNetworkAccess_GetAllKNs(t *testing.T) {
 				"admin", "admin", testUpdateTime, "testUpdateTime",
 			)
 
-			smock.ExpectQuery(sqlStr).WithArgs(interfaces.MAIN_BRANCH).WillReturnRows(rows)
+			smock.ExpectQuery(sqlStr).WithArgs().WillReturnRows(rows)
 
 			kns, err := kna.GetAllKNs(testCtx)
 			So(kns, ShouldResemble, map[string]*interfaces.KN{})
@@ -744,6 +744,32 @@ func Test_knowledgeNetworkAccess_GetAllKNs(t *testing.T) {
 				t.Errorf("there were unfulfilled expectations: %s", err)
 			}
 		})
+	})
+}
+
+func Test_knowledgeNetworkAccess_GetAllMainBranchKNs(t *testing.T) {
+	Convey("GetAllMainBranchKNs filters non-published branches", t, func() {
+		appSetting := &common.AppSetting{}
+		kna, smock := MockNewKNAccess(appSetting)
+		sqlStr := fmt.Sprintf("SELECT f_id, f_name, f_tags, f_comment, f_icon, f_color, f_bkn_raw_content, f_skill_content, "+
+			"f_branch, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
+			"FROM %s WHERE f_branch = ?", KN_TABLE_NAME)
+		rows := sqlmock.NewRows([]string{
+			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content", "f_skill_content",
+			"f_branch", "f_creator", "f_creator_type", "f_create_time",
+			"f_updater", "f_updater_type", "f_update_time",
+		}).AddRow(
+			"kn1", "Knowledge Network 1", `"tag1"`, "comment", "icon", "color", "detail", "skill",
+			interfaces.MAIN_BRANCH, "admin", "user", testUpdateTime,
+			"admin", "user", testUpdateTime,
+		)
+		smock.ExpectQuery(sqlStr).WithArgs(interfaces.MAIN_BRANCH).WillReturnRows(rows)
+
+		kns, err := kna.GetAllMainBranchKNs(testCtx)
+		So(err, ShouldBeNil)
+		So(len(kns), ShouldEqual, 1)
+		So(kns["kn1"].Branch, ShouldEqual, interfaces.MAIN_BRANCH)
+		So(smock.ExpectationsWereMet(), ShouldBeNil)
 	})
 }
 
