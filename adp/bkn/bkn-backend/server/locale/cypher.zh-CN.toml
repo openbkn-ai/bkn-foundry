@@ -1,0 +1,40 @@
+# Cypher
+[BknBackend.Cypher.InvalidParameter]
+Description = "Cypher 查询请求参数无效"
+Solution = "请检查请求体与查询参数。"
+ErrorLink = ""
+
+[BknBackend.Cypher.SyntaxError]
+Description = "Cypher 查询语法解析失败"
+Solution = "请按提示位置修正查询语句。"
+ErrorLink = ""
+
+[BknBackend.Cypher.Unsupported]
+Description = "Cypher 查询使用了本接口不支持的语法"
+Solution = "请改写为受支持的只读子集。"
+ErrorLink = ""
+
+[BknBackend.Cypher.InvalidQuery]
+Description = "Cypher 查询与知识网络模型不匹配"
+Solution = "请对照模型检查标签、关系类型与属性。"
+ErrorLink = ""
+
+[BknBackend.Cypher.LimitExceeded]
+Description = "请求的 LIMIT 超过接口单次返回上限"
+Solution = "请调小 LIMIT 并分页获取结果。"
+ErrorLink = ""
+
+[BknBackend.Cypher.InternalError]
+Description = "Cypher 查询编译失败"
+Solution = "请联系管理员。"
+ErrorLink = ""
+
+[BknBackend.Cypher.QueryFailed]
+Description = "编译后的查询执行失败"
+Solution = "请稍后重试或联系管理员。"
+ErrorLink = ""
+
+[BknBackend.Cypher.InvalidParameter.Detail]
+QueryRequired = "query 不能为空。"
+QueryTooLong = "query 长度不能超过 {{.max}} 个字符。"
+LimitExceeded = "LIMIT 不能超过 {{.max}}。"

@@ -461,3 +461,92 @@ func (vba *vegaBackendAccess) WriteDatasetDocuments(ctx context.Context, dataset
 	oteltrace.AddHttpAttrs4Ok(span, respCode)
 	return nil
 }
+
+// buildUserHeaders is buildHeaders without the admin fallback.
+//
+// buildHeaders substitutes the admin account when the context carries no
+// identity, which suits the modelling calls that own it. Raw query cannot use
+// that: vega checks view_detail on every resource the statement references,
+// against whoever the headers name. Falling back to admin would authorize the
+// read as the platform rather than as the caller, disabling that check without
+// any signal. Missing identity is a bug in the calling path, so it fails here.
+func (vba *vegaBackendAccess) buildUserHeaders(ctx context.Context) (map[string]string, error) {
+	value := ctx.Value(interfaces.ACCOUNT_INFO_KEY)
+	if value == nil {
+		return nil, fmt.Errorf("raw query requires the caller's identity, none in context")
+	}
+	accountInfo, ok := value.(interfaces.AccountInfo)
+	if !ok || accountInfo.ID == "" {
+		return nil, fmt.Errorf("raw query requires the caller's identity, none in context")
+	}
+
+	return map[string]string{
+		interfaces.CONTENT_TYPE_NAME:        interfaces.CONTENT_TYPE_JSON,
+		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,
+		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
+	}, nil
+}
+
+// RawQuery runs a read-only SQL statement through vega-backend.
+func (vba *vegaBackendAccess) RawQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "driven layer: Vega raw query")
+	defer span.End()
+
+	if req == nil || req.Query == "" {
+		return nil, fmt.Errorf("raw query statement is required")
+	}
+	if req.InputDialect == "" {
+		return nil, fmt.Errorf("raw query input dialect is required")
+	}
+	if req.QueryFormat == "" {
+		req.QueryFormat = interfaces.VEGA_QUERY_FORMAT_SQL
+	}
+
+	httpUrl := fmt.Sprintf("%s/resources/query", vba.baseUrl)
+	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{
+		HttpUrl:         httpUrl,
+		HttpMethod:      http.MethodPost,
+		HttpContentType: rest.ContentTypeJson,
+	})
+
+	headers, err := vba.buildUserHeaders(ctx)
+	if err != nil {
+		// The message stays static: the adapter package must not put error text
+		// into a log line, and this one is already known to be about identity.
+		common.LogSafeError(ctx, "RawQuery refused: caller identity missing", err)
+		oteltrace.AddHttpAttrs4Error(span, 0, "InternalError", "Raw query without caller identity")
+		return nil, err
+	}
+
+	respCode, respData, err := vba.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, req)
+	logger.Debugf("RawQuery finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
+
+	if err != nil {
+		// The statement carries physical table and column names, so it never
+		// reaches the caller; only the summary goes to the log.
+		safeErr := fmt.Errorf("Vega dependency request failed")
+		common.LogSafeError(ctx, "RawQuery failed: "+common.SafeErrorSummary(err), safeErr)
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http raw query failed")
+		return nil, safeErr
+	}
+
+	if respCode != http.StatusOK {
+		err := fmt.Errorf("RawQuery returned HTTP %d", respCode)
+		common.LogSafeError(ctx, "RawQuery failed", err)
+		logger.Debugf("RawQuery response: %s", common.SafeTextSummary("response", string(respData)))
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
+		return nil, err
+	}
+
+	var response interfaces.RawQueryResponse
+	// Result values keep their original JSON number representation: an id or a
+	// decimal amount must not be narrowed to float64 on the way through.
+	if err := vegaResponseJSON.Unmarshal(respData, &response); err != nil {
+		common.LogSafeError(ctx, "Failed to unmarshal RawQuery response", err)
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal RawQuery response failed")
+		return nil, fmt.Errorf("failed to unmarshal RawQuery response: %v", err)
+	}
+
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return &response, nil
+}
