@@ -219,6 +219,19 @@ func TestLifecycleAvailabilityErrorPreservesEvidenceAuthorizationFailure(t *test
 	}
 }
 
+func TestLifecycleAvailabilityErrorPreservesEvidenceIngestConfigurationFailure(t *testing.T) {
+	result := lifecycleAvailabilityError(&bkntrace.CoreHTTPError{
+		StatusCode: http.StatusServiceUnavailable,
+		Code:       "INGEST_AUTH_NOT_CONFIGURED",
+		Message:    "evidence ingest authentication is not configured",
+	})
+	if result.Code != "evidence_capture_failed" ||
+		result.Message != "evidence ingest authentication is not configured" ||
+		result.RequiredAction != "contact_platform_operator" || result.Retryable {
+		t.Fatalf("evidence ingest configuration failure was misclassified: %#v", result)
+	}
+}
+
 func trustedSessionGuardContext() context.Context {
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{})
 	return common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
