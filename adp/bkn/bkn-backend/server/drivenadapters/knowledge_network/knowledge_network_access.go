@@ -889,6 +889,7 @@ func (kna *knowledgeNetworkAccess) GetAllKNs(ctx context.Context) (map[string]*i
 		"f_updater_type",
 		"f_update_time").
 		From(KN_TABLE_NAME).
+		Where(sq.Eq{"f_branch": interfaces.MAIN_BRANCH}).
 		ToSql()
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to build the sql of select knowledge networks, error", err)

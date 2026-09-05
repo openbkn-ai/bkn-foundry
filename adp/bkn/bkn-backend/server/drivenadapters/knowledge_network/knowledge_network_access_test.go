@@ -680,7 +680,7 @@ func Test_knowledgeNetworkAccess_GetAllKNs(t *testing.T) {
 
 		sqlStr := fmt.Sprintf("SELECT f_id, f_name, f_tags, f_comment, f_icon, f_color, f_bkn_raw_content, f_skill_content, "+
 			"f_branch, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
-			"FROM %s", KN_TABLE_NAME)
+			"FROM %s WHERE f_branch = ?", KN_TABLE_NAME)
 
 		rows := sqlmock.NewRows([]string{
 			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content", "f_skill_content",
@@ -697,7 +697,7 @@ func Test_knowledgeNetworkAccess_GetAllKNs(t *testing.T) {
 		)
 
 		Convey("GetAllKNs Success \n", func() {
-			smock.ExpectQuery(sqlStr).WithArgs().WillReturnRows(rows)
+			smock.ExpectQuery(sqlStr).WithArgs(interfaces.MAIN_BRANCH).WillReturnRows(rows)
 
 			kns, err := kna.GetAllKNs(testCtx)
 			So(err, ShouldBeNil)
@@ -712,7 +712,7 @@ func Test_knowledgeNetworkAccess_GetAllKNs(t *testing.T) {
 
 		Convey("GetAllKNs Failed \n", func() {
 			expectedErr := errors.New("some error")
-			smock.ExpectQuery(sqlStr).WithArgs().WillReturnError(expectedErr)
+			smock.ExpectQuery(sqlStr).WithArgs(interfaces.MAIN_BRANCH).WillReturnError(expectedErr)
 
 			kns, err := kna.GetAllKNs(testCtx)
 			So(kns, ShouldResemble, map[string]*interfaces.KN{})
@@ -734,7 +734,7 @@ func Test_knowledgeNetworkAccess_GetAllKNs(t *testing.T) {
 				"admin", "admin", testUpdateTime, "testUpdateTime",
 			)
 
-			smock.ExpectQuery(sqlStr).WithArgs().WillReturnRows(rows)
+			smock.ExpectQuery(sqlStr).WithArgs(interfaces.MAIN_BRANCH).WillReturnRows(rows)
 
 			kns, err := kna.GetAllKNs(testCtx)
 			So(kns, ShouldResemble, map[string]*interfaces.KN{})

@@ -54,7 +54,9 @@ type knowledgeNetworkService struct {
 	cga        interfaces.ConceptGroupAccess
 	cgs        interfaces.ConceptGroupService
 	kna        interfaces.KNAccess
+	kpa        interfaces.KNProxyAccess
 	ma         interfaces.MetricAccess
+	mpa        interfaces.ManagedProxyAccess
 	ms         interfaces.MetricService
 	mfs        interfaces.ModelFactoryService
 	ota        interfaces.ObjectTypeAccess
@@ -78,7 +80,9 @@ func NewKNService(appSetting *common.AppSetting) interfaces.KNService {
 			cgs:        concept_group.NewConceptGroupService(appSetting),
 			db:         logics.DB,
 			kna:        logics.KNA,
+			kpa:        logics.KPA,
 			ma:         logics.MA,
+			mpa:        logics.MPA,
 			ms:         metric.NewMetricService(appSetting),
 			mfs:        model_factory.NewModelFactoryService(appSetting, logics.MFA),
 			ota:        logics.OTA,
@@ -128,22 +132,23 @@ func (kns *knowledgeNetworkService) CheckKNExistByName(ctx context.Context, knNa
 func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces.KN, mode string, strictMode bool) (id string, err error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create knowledge network")
 	defer span.End()
+	modelCommitted := false
 	ctx, parentTracker, trackerOwner := permission.WithResourceParentTracker(ctx)
 	defer func() {
-		if trackerOwner && err != nil {
+		if trackerOwner && err != nil && !modelCommitted {
 			_ = parentTracker.Cleanup(ctx, kns.ps)
 		}
 	}()
 	ctx, policyTracker, policyTrackerOwner := permission.WithCreatedPolicyTracker(ctx)
 	defer func() {
-		if policyTrackerOwner && err != nil {
+		if policyTrackerOwner && err != nil && !modelCommitted {
 			_ = policyTracker.Cleanup(ctx, kns.ps)
 		}
 	}()
 	var createdNewKN bool
 	var datasetWritten bool
 	defer func() {
-		if err == nil || !createdNewKN {
+		if err == nil || !createdNewKN || modelCommitted {
 			return
 		}
 		cleanupCtx := context.WithoutCancel(ctx)
@@ -225,7 +230,8 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 	bknNetwork := logics.ToBKNNetWork(kn)
 	kn.BKNRawContent = bknsdk.SerializeBknNetwork(bknNetwork)
 
-	// 0. Begin the transaction.
+	// Begin before import conflict checks to preserve the existing all-or-nothing
+	// import boundary. The proxy lock is acquired immediately after those checks.
 	tx, err := kns.db.Begin()
 	if err != nil {
 		otellog.LogError(ctx, "Begin transaction error", err)
@@ -233,27 +239,9 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 			berrors.BknBackend_KnowledgeNetwork_InternalError_BeginTransactionFailed).
 			WithErrorDetails(err.Error())
 	}
+	defer tx.Rollback()
 
-	// 0.1 On failure.
-	defer func() {
-		switch err {
-		case nil:
-			// Commit the transaction.
-			err = tx.Commit()
-			if err != nil {
-				otellog.LogError(ctx, "CreateKN Transaction Commit Failed", err)
-				return
-			}
-			otellog.LogDebug(ctx, "CreateKN Transaction Commit Success")
-		default:
-			rollbackErr := tx.Rollback()
-			if rollbackErr != nil {
-				otellog.LogError(ctx, "CreateKN Transaction Rollback Error", err)
-			}
-		}
-	}()
-
-	// Process import mode.
+	// Resolve import semantics before taking the per-network publication lock.
 	isCreate, isUpdate, err := kns.handleKNImportMode(ctx, mode, kn)
 	if err != nil {
 		return "", err
@@ -261,6 +249,20 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 	createdNewKN = isCreate
 	if isCreate {
 		ctx = permission.WithKNImportPermissionPrechecked(ctx)
+	}
+
+	var proxyPlan *proxyPublishPlan
+	if isCreate || isUpdate {
+		proxyPlan, err = kns.prepareProxyPublish(ctx, kn)
+		if err != nil {
+			return "", err
+		}
+		defer kns.releaseProxyLock(context.WithoutCancel(ctx), proxyPlan)
+		defer func() {
+			if isCreate && err != nil && !modelCommitted {
+				kns.abortCreatedProxy(context.WithoutCancel(ctx), proxyPlan)
+			}
+		}()
 	}
 
 	// Process creation.
@@ -454,6 +456,19 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 				WithErrorDetails(err.Error())
 		}
 
+	}
+
+	if err = kns.markProxyPending(ctx, tx, proxyPlan); err != nil {
+		return "", err
+	}
+	if err = tx.Commit(); err != nil {
+		otellog.LogError(ctx, "CreateKN Transaction Commit Failed", err)
+		return kn.KNID, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+	}
+	modelCommitted = true
+	if err = kns.finishProxyPublish(ctx, proxyPlan); err != nil {
+		return kn.KNID, err
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -1033,9 +1048,10 @@ func (kns *knowledgeNetworkService) UpdateKN(ctx context.Context, tx *sql.Tx, kn
 func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces.KN) (err error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete knowledge network")
 	defer span.End()
+	deletionCommitted := false
 	ctx, cleanupTracker, trackerOwner := permission.WithAuthorizationCleanupTracker(ctx)
 	defer func() {
-		if trackerOwner && err == nil {
+		if trackerOwner && (err == nil || deletionCommitted) {
 			_ = cleanupTracker.Cleanup(ctx, kns.ps)
 		}
 	}()
@@ -1049,6 +1065,12 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 		return err
 	}
 
+	proxyPlan, err := kns.prepareProxyDelete(ctx, kn.KNID, kn.Branch)
+	if err != nil {
+		return err
+	}
+	defer kns.releaseProxyLock(context.WithoutCancel(ctx), proxyPlan)
+
 	// 0. Begin the transaction.
 	tx, err := kns.db.Begin()
 	if err != nil {
@@ -1058,24 +1080,7 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 			WithErrorDetails(err.Error())
 	}
 
-	// 0.1 On failure.
-	defer func() {
-		switch err {
-		case nil:
-			// Commit the transaction.
-			err = tx.Commit()
-			if err != nil {
-				otellog.LogError(ctx, "CreateKN Transaction Commit Failed", err)
-				return
-			}
-			otellog.LogDebug(ctx, "DeleteKN Transaction Commit Success")
-		default:
-			rollbackErr := tx.Rollback()
-			if rollbackErr != nil {
-				otellog.LogError(ctx, "CreateKN Transaction Rollback Error", err)
-			}
-		}
-	}()
+	defer tx.Rollback()
 
 	// Delete business knowledge networks.
 	rowsAffect, err := kns.kna.DeleteKN(ctx, tx, kn.KNID, kn.Branch)
@@ -1176,11 +1181,22 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 			WithErrorDetails(err.Error())
 	}
 
-	// Clear resource policies.
-	err = kns.ps.DeleteResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{kn.KNID})
-	if err != nil {
-		logger.Errorf("DeleteResources error: %s", err.Error())
-		span.SetStatus(codes.Error, "删除业务知识网络资源策略失败")
+	if proxyPlan == nil {
+		// Legacy behavior while proxy orchestration is disabled.
+		err = kns.ps.DeleteResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{kn.KNID})
+		if err != nil {
+			logger.Errorf("DeleteResources error: %s", err.Error())
+			span.SetStatus(codes.Error, "删除业务知识网络资源策略失败")
+			return err
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		otellog.LogError(ctx, "DeleteKN Transaction Commit Failed", err)
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+	}
+	deletionCommitted = true
+	if err = kns.finalizeProxyDelete(ctx, proxyPlan); err != nil {
 		return err
 	}
 	span.SetStatus(codes.Ok, "")

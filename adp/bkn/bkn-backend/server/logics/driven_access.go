@@ -21,7 +21,9 @@ var (
 	ATA            interfaces.ActionTypeAccess
 	CGA            interfaces.ConceptGroupAccess
 	KNA            interfaces.KNAccess
+	KPA            interfaces.KNProxyAccess
 	MA             interfaces.MetricAccess
+	MPA            interfaces.ManagedProxyAccess
 	MFA            interfaces.ModelFactoryAccess
 	OSA            interfaces.OpenSearchAccess
 	OTA            interfaces.ObjectTypeAccess
@@ -58,6 +60,14 @@ func SetConceptGroupAccess(cga interfaces.ConceptGroupAccess) {
 
 func SetKNAccess(kna interfaces.KNAccess) {
 	KNA = kna
+}
+
+func SetKNProxyAccess(kpa interfaces.KNProxyAccess) {
+	KPA = kpa
+}
+
+func SetManagedProxyAccess(mpa interfaces.ManagedProxyAccess) {
+	MPA = mpa
 }
 
 func SetMetricAccess(ma interfaces.MetricAccess) {
