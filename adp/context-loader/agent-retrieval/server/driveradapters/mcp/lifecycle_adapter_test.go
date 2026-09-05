@@ -1005,3 +1005,73 @@ func TestLifecycleToolRegistryDoesNotExposeCallerControlledFinalize(t *testing.T
 		t.Fatal("third-party callers must not be allowed to finalize platform execution receipts")
 	}
 }
+
+// Function reads remain independent operations while retaining their invoker.
+func TestFunctionReadsPreserveParentThroughLifecycle(t *testing.T) {
+	parents := []string{"op-function-a", "op-function-a", "op-function-b", ""}
+	var children []string
+	client := &http.Client{Transport: lifecycleAdapterRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/interactions/int-1"):
+			return lifecycleAdapterJSONResponse(http.StatusOK, bkntrace.Interaction{
+				InteractionID: "int-1", ConversationID: "conv-1",
+				ExecutionStatus: "active", LeaseToken: "lease-1", LeaseEpoch: 1,
+			}), nil
+		case strings.HasSuffix(r.URL.Path, "/operations:ensure"):
+			var body struct {
+				ParentOperationID string `json:"parent_operation_id"`
+				OperationKey      string `json:"operation_key"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			if body.ParentOperationID != parents[len(children)] {
+				t.Fatalf("parent sent to Trace=%q want=%q", body.ParentOperationID, parents[len(children)])
+			}
+			child := "op-child-" + body.OperationKey
+			for _, previous := range children {
+				if previous == child {
+					t.Fatal("distinct reads reused an operation key")
+				}
+			}
+			children = append(children, child)
+			return lifecycleAdapterJSONResponse(http.StatusOK, bkntrace.OperationResult{
+				Created: true, Execute: true,
+				Operation: bkntrace.Operation{OperationID: child, ConversationID: "conv-1", InteractionID: "int-1", Attempt: 1, AttemptStatus: "pending"},
+				Receipt:   bkntrace.Receipt{ReceiptID: "receipt-" + child, ReceiptStatus: "pending"},
+			}), nil
+		case strings.HasSuffix(r.URL.Path, "/attempts/1:complete"):
+			child := children[len(children)-1]
+			return lifecycleAdapterJSONResponse(http.StatusOK, bkntrace.OperationResult{
+				Operation: bkntrace.Operation{OperationID: child, Attempt: 1, AttemptStatus: "completed"},
+				Receipt:   bkntrace.Receipt{ReceiptID: "receipt-" + child, ReceiptStatus: "completed"},
+			}), nil
+		default:
+			return lifecycleAdapterJSONResponse(http.StatusNotFound, map[string]any{}), nil
+		}
+	})}
+	handler := lifecycleToolMiddleware(bkntrace.NewLifecycleClient("http://trace.test", client))(
+		func(ctx context.Context, _ mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			traceContext, _ := common.GetTraceContextFromCtx(ctx)
+			if traceContext.OperationID != children[len(children)-1] {
+				t.Fatal("child execution did not receive its own operation ID")
+			}
+			return mcpsdk.NewToolResultStructured(map[string]any{"datas": []any{}}, `{"datas":[]}`), nil
+		},
+	)
+	ctx := trustedMCPIntegrationContext(context.Background(), 77)
+	for index, parent := range parents {
+		request := businessToolRequest("session-1", "conv-1", "int-1", "read-"+string(rune('a'+index)))
+		request.Params.Name = "query_object_instance"
+		args := request.Params.Arguments.(map[string]any)
+		args["kn_id"], args["ot_id"] = "kn-1", "inventory"
+		args["bkn_context"].(map[string]any)["parent_operation_id"] = parent
+		result, err := handler(ctx, request)
+		if err != nil || result == nil || result.IsError {
+			t.Fatalf("read %d failed: %#v %v", index, result, err)
+		}
+	}
+	if len(children) != len(parents) {
+		t.Fatalf("children=%v", children)
+	}
+}

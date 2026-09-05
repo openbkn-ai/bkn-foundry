@@ -208,3 +208,53 @@ def test_shipped_artifact_is_importable_and_versioned():
     for name in ("list_knowledge_networks", "query_object_instance",
                  "run_sql", "list_resources"):
         assert callable(getattr(_bkn_tools, name)), name
+
+
+def test_internal_queries_carry_parent_without_reusing_operation_id(monkeypatch):
+    from sandbox_sdk import _bkn_tools
+
+    monkeypatch.setenv("BKN_TOKEN", "test-token")
+    monkeypatch.setenv("BKN_SANDBOX_MCP_URL", "http://svc/mcp/")
+    monkeypatch.setenv("BKN_CONVERSATION_ID", "conv_test")
+    monkeypatch.setenv("BKN_INTERACTION_ID", "int_test")
+    monkeypatch.setattr(_bkn_tools, "_ensure_session", lambda: None)
+    # Avoid _configure's working-directory setup; keep the real call serializer.
+    def configure(event):
+        monkeypatch.setattr(_bkn_tools, "_CFG", dict(event))
+
+    monkeypatch.setattr(_bkn_tools, "_configure", configure)
+    calls = []
+
+    def rpc(method, params):
+        calls.append(params)
+        return {"result": {"content": [{"type": "text", "text": '{"datas": []}'}]}}
+
+    monkeypatch.setattr(_bkn_tools, "_rpc", rpc)
+    for parent in ("op_function_a", "op_function_b", ""):
+        monkeypatch.setenv("BKN_PARENT_OPERATION_ID", parent)
+        bkn.configure_runtime({})
+        for ot in ("bom", "inventory"):
+            bkn.query_object_instance(kn_id="kn_test", ot_id=ot)
+            ctx = calls[-1]["arguments"]["bkn_context"]
+            assert ctx.get("parent_operation_id", "") == parent
+            assert ctx["interaction_id"] == "int_test"
+            assert "operation_id" not in ctx
+            assert "operation_key" not in ctx
+
+
+def test_explicit_runtime_parent_wins(monkeypatch):
+    monkeypatch.setenv("BKN_PARENT_OPERATION_ID", "op_env")
+    bkn.configure_runtime({"bkn": {"parent_operation_id": "op_explicit"}})
+    assert bkn._business_context()["parent_operation_id"] == "op_explicit"
+
+
+def test_environment_parent_does_not_cross_explicit_turn(monkeypatch):
+    monkeypatch.setenv("BKN_CONVERSATION_ID", "conv_env")
+    monkeypatch.setenv("BKN_INTERACTION_ID", "int_env")
+    monkeypatch.setenv("BKN_PARENT_OPERATION_ID", "op_env")
+    bkn.configure_runtime({"bkn": {
+        "conversation_id": "conv_other", "interaction_id": "int_other",
+    }})
+    assert bkn._business_context() == {
+        "conversation_id": "conv_other", "interaction_id": "int_other",
+    }

@@ -223,6 +223,11 @@ func (o *operatorIntegrationClient) ExecutePublishedTool(
 	// bkn-interaction-id) that the lifecycle guard put on the context, which is
 	// what lets the Function read BKN inside the same Interaction.
 	header := o.skillHeader(ctx, "operator.published_tool.execute")
+	// The transport operation is derived, but Function reads need the Guard's
+	// persisted operation as their parent. Keep those identities separate.
+	if traceContext, ok := common.GetTraceContextFromCtx(ctx); ok && traceContext.OperationID != "" {
+		header[common.HeaderBKNParentOperationID] = traceContext.OperationID
+	}
 	header["Authorization"] = "Bearer " + token
 
 	parameters := req.Parameters

@@ -283,6 +283,7 @@ func TestBuildFunctionProxyExecutionEnvCarriesAManagedInteraction(t *testing.T) 
 	c := newRequestContext("tok-req", "acct-req")
 	c.Request.Header.Set("bkn-conversation-id", "conv_1")
 	c.Request.Header.Set("bkn-interaction-id", "int_1")
+	c.Request.Header.Set("bkn-parent-operation-id", "op_function")
 
 	env, err := buildFunctionProxyExecutionEnv(c, "11111111-1111-4111-8111-111111111111")
 	if err != nil {
@@ -290,9 +291,10 @@ func TestBuildFunctionProxyExecutionEnvCarriesAManagedInteraction(t *testing.T) 
 	}
 
 	for key, want := range map[string]string{
-		"BKN_TOKEN":           "tok-req",
-		"BKN_CONVERSATION_ID": "conv_1",
-		"BKN_INTERACTION_ID":  "int_1",
+		"BKN_TOKEN":               "tok-req",
+		"BKN_CONVERSATION_ID":     "conv_1",
+		"BKN_INTERACTION_ID":      "int_1",
+		"BKN_PARENT_OPERATION_ID": "op_function",
 	} {
 		if env[key] != want {
 			t.Fatalf("%s 未随受管调用下发，期望 %s，得到 %v", key, want, env[key])
@@ -344,6 +346,22 @@ func TestInferSchemaExecutionEnvCarriesNoCredential(t *testing.T) {
 	for _, key := range []string{"BKN_TOKEN", "BKN_CONVERSATION_ID", "BKN_INTERACTION_ID", "user_id"} {
 		if value, ok := env[key]; !ok || value != "" {
 			t.Fatalf("%s 不应带凭据: %v", key, env)
+		}
+	}
+}
+
+func TestFunctionExecutionParentIsClearedWithoutManagedInvocation(t *testing.T) {
+	c := newRequestContext("tok-req", "acct-req")
+	c.Request.Header.Set("bkn-parent-operation-id", "op_unrelated")
+	env, err := buildFunctionProxyExecutionEnv(c, "11111111-1111-4111-8111-111111111111")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, values := range map[string]map[string]any{
+		"proxy": env, "direct": buildFunctionExecutionEnv(c, nil), "schema": inferSchemaExecutionEnv(),
+	} {
+		if value, ok := values["BKN_PARENT_OPERATION_ID"]; !ok || value != "" {
+			t.Fatalf("%s must clear parent operation, got %v", name, values)
 		}
 	}
 }

@@ -64,6 +64,7 @@ _MCP_URL_ENV = "BKN_SANDBOX_MCP_URL"
 _TOKEN_ENV = "BKN_TOKEN"
 _CONVERSATION_ENV = "BKN_CONVERSATION_ID"
 _INTERACTION_ENV = "BKN_INTERACTION_ID"
+_PARENT_OPERATION_ENV = "BKN_PARENT_OPERATION_ID"
 
 # 显式不走代理：MCP 端点是集群内地址，任何继承来的代理配置都只会让请求发不出去；
 # 且 urllib 一旦认定要走代理就改发 absolute-form 请求行（POST http://host/path），
@@ -126,6 +127,18 @@ def _business_context() -> dict:
             value = os.environ.get(env_name, "").strip()
             if value:
                 context[key] = value
+    # An environment parent belongs to this execution's turn. An explicit
+    # runtime context for another turn must not inherit that parent.
+    if (
+        not str(context.get("parent_operation_id") or "").strip()
+        and context.get("conversation_id")
+        and context.get("interaction_id")
+        and context.get("conversation_id") == os.environ.get(_CONVERSATION_ENV, "").strip()
+        and context.get("interaction_id") == os.environ.get(_INTERACTION_ENV, "").strip()
+    ):
+        parent = os.environ.get(_PARENT_OPERATION_ENV, "").strip()
+        if parent:
+            context["parent_operation_id"] = parent
     return context
 
 

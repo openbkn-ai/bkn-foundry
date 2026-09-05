@@ -121,7 +121,7 @@ func executionEnvKeys() []string {
 		// BKN identity and session context. Must be listed here: newExecutionEnv Rely on this list to put each key.
 		// Preset it as an empty string, so as to achieve "the complete set is delivered every time it is executed". Missing one, the previous caller in the pooled session.
 		// The token will be left for the next one - and what the token misses is not the mark, but the identity.
-		"BKN_TOKEN", "BKN_CONVERSATION_ID", "BKN_INTERACTION_ID",
+		"BKN_TOKEN", "BKN_CONVERSATION_ID", "BKN_INTERACTION_ID", "BKN_PARENT_OPERATION_ID",
 	}
 }
 
@@ -261,6 +261,7 @@ func fillManagedInteractionFromRequest(env map[string]any, c *gin.Context) map[s
 	env["BKN_TOKEN"] = token
 	env["BKN_CONVERSATION_ID"] = conversationID
 	env["BKN_INTERACTION_ID"] = interactionID
+	env["BKN_PARENT_OPERATION_ID"] = strings.TrimSpace(c.GetHeader(string(interfaces.HeaderBKNParentOperationID)))
 	return env
 }
 

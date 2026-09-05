@@ -333,6 +333,7 @@ type ExecuteToolReq struct {
 	RequestAuthorization string `json:"-"`
 	BKNConversationID    string `json:"-"`
 	BKNInteractionID     string `json:"-"`
+	BKNParentOperationID string `json:"-"`
 	HTTPRequestParams    `json:",inline"`
 }
 
