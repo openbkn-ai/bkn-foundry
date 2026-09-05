@@ -48,3 +48,23 @@ ErrorLink = ""
 Description = "Failed to count capability bindings"
 Solution = "Please retry or contact support."
 ErrorLink = ""
+
+[BknBackend.CapabilityBinding.TargetNotFound]
+Description = "Capability not found"
+Solution = "Check the skill_id, or the box_id and tool_id of the function."
+ErrorLink = ""
+
+[BknBackend.CapabilityBinding.TargetNotAvailable]
+Description = "The capability exists but is not usable"
+Solution = "Publish the tool box or skill in the execution factory, or enable the tool, then mount it."
+ErrorLink = ""
+
+[BknBackend.CapabilityBinding.EmptyToolBox]
+Description = "The tool box has no tool to mount"
+Solution = "Add and enable at least one tool in that box first."
+ErrorLink = ""
+
+[BknBackend.CapabilityBinding.ExecutionFactoryUnavailable]
+Description = "The execution factory is unreachable; no binding was written"
+Solution = "Retry later. This request produced no partial write."
+ErrorLink = ""

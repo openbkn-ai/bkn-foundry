@@ -23,10 +23,35 @@ import (
 
 func newTestService(t *testing.T, ctrl *gomock.Controller) (*capabilityBindingService, *bmock.MockCapabilityBindingAccess) {
 	t.Helper()
+	service, cba, aoa := newTestServiceWithFactory(t, ctrl)
+	// Permissive answers for the cases that are about idempotency and normalisation rather than
+	// validation: every target exists and is usable, so those tests reach the write path.
+	aoa.EXPECT().GetSkillByID(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, skillID string) (*interfaces.SkillBrief, error) {
+			return &interfaces.SkillBrief{SkillID: skillID, Status: interfaces.EXEC_SKILL_STATUS_PUBLISHED}, nil
+		}).AnyTimes()
+	aoa.EXPECT().ListBoxTools(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, boxID string) ([]*interfaces.ToolBrief, error) {
+			return []*interfaces.ToolBrief{{
+				BoxID: boxID, BoxStatus: interfaces.EXEC_BOX_STATUS_PUBLISHED,
+				ToolID: "tool-1", Status: interfaces.EXEC_TOOL_STATUS_ENABLED,
+			}}, nil
+		}).AnyTimes()
+	return service, cba
+}
+
+// newTestServiceWithFactory hands back the execution-factory client with no expectations set:
+// mounting validates every target against it, so a validation test declares exactly what the
+// factory answers. A permissive default here would shadow those declarations, since gomock takes
+// the first matching expectation.
+func newTestServiceWithFactory(t *testing.T, ctrl *gomock.Controller) (*capabilityBindingService,
+	*bmock.MockCapabilityBindingAccess, *bmock.MockAgentOperatorAccess) {
+	t.Helper()
 	cba := bmock.NewMockCapabilityBindingAccess(ctrl)
+	aoa := bmock.NewMockAgentOperatorAccess(ctrl)
 	ps := bmock.NewMockPermissionService(ctrl)
 	ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-	return &capabilityBindingService{appSetting: &common.AppSetting{}, cba: cba, ps: ps}, cba
+	return &capabilityBindingService{appSetting: &common.AppSetting{}, cba: cba, aoa: aoa, ps: ps}, cba, aoa
 }
 
 func TestAttachCapabilities(t *testing.T) {

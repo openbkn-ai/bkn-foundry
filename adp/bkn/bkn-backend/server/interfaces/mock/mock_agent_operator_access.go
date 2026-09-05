@@ -10,6 +10,7 @@
 package mock_interfaces
 
 import (
+	interfaces "bkn-backend/interfaces"
 	context "context"
 	reflect "reflect"
 
@@ -54,6 +55,21 @@ func (mr *MockAgentOperatorAccessMockRecorder) GetMcpToolByName(ctx, mcpID, tool
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMcpToolByName", reflect.TypeOf((*MockAgentOperatorAccess)(nil).GetMcpToolByName), ctx, mcpID, toolName)
 }
 
+// GetSkillByID mocks base method.
+func (m *MockAgentOperatorAccess) GetSkillByID(ctx context.Context, skillID string) (*interfaces.SkillBrief, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSkillByID", ctx, skillID)
+	ret0, _ := ret[0].(*interfaces.SkillBrief)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSkillByID indicates an expected call of GetSkillByID.
+func (mr *MockAgentOperatorAccessMockRecorder) GetSkillByID(ctx, skillID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSkillByID", reflect.TypeOf((*MockAgentOperatorAccess)(nil).GetSkillByID), ctx, skillID)
+}
+
 // GetToolByID mocks base method.
 func (m *MockAgentOperatorAccess) GetToolByID(ctx context.Context, boxID, toolID string) error {
 	m.ctrl.T.Helper()
@@ -66,4 +82,19 @@ func (m *MockAgentOperatorAccess) GetToolByID(ctx context.Context, boxID, toolID
 func (mr *MockAgentOperatorAccessMockRecorder) GetToolByID(ctx, boxID, toolID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetToolByID", reflect.TypeOf((*MockAgentOperatorAccess)(nil).GetToolByID), ctx, boxID, toolID)
+}
+
+// ListBoxTools mocks base method.
+func (m *MockAgentOperatorAccess) ListBoxTools(ctx context.Context, boxID string) ([]*interfaces.ToolBrief, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListBoxTools", ctx, boxID)
+	ret0, _ := ret[0].([]*interfaces.ToolBrief)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListBoxTools indicates an expected call of ListBoxTools.
+func (mr *MockAgentOperatorAccessMockRecorder) ListBoxTools(ctx, boxID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBoxTools", reflect.TypeOf((*MockAgentOperatorAccess)(nil).ListBoxTools), ctx, boxID)
 }
