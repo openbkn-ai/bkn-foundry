@@ -4,16 +4,18 @@
 
 openapi: 3.0.3
 info:
-  title: BKN Safe 代理授权来源 API
+  title: BKN Safe Proxy Grant Source API
   version: 0.1.5
   description: |
-    供受信任 BKN workload 维护受管代理账号的底层最小权限来源。本接口只存在于
-    ClusterIP 内部面，不经 Ingress 暴露。
+    Allows trusted BKN workloads to maintain least-privilege grant sources for managed proxy
+    accounts. This API is available only on the internal ClusterIP surface and is not exposed
+    through Ingress.
 
-    来源记录、物化标记、授权审计和 Casbin Allow 在同一个数据库事务内更新。同一
-    来源重复写入幂等；多个来源可共享一条 Allow；只有最后一个有效来源撤销且该 Allow
-    由来源服务创建时才删除。来源建立前已存在的人工或历史 Allow 会保留并在 reconcile
-    结果中报告为未追踪策略。
+    Source records, materialization markers, authorization audit entries, and Casbin Allow
+    policies are updated in one database transaction. Replaying the same source is idempotent;
+    multiple sources may share one Allow policy; the policy is removed only when its last active
+    source is revoked and the source service owns that policy. Manual or legacy Allow policies
+    that predate the source are preserved and reported as untracked during reconciliation.
 servers:
   - url: /api/safe/in/v1
 security: []
@@ -22,10 +24,11 @@ paths:
     post:
       tags: [Proxy grant sources]
       operationId: createProxyGrantSource
-      summary: 新增或恢复一个代理授权来源
+      summary: Create or reactivate a proxy grant source
       description: |
-        grantor 必须是 enabled 的非受管账号，并同时持有目标 authorize 和准备授出的
-        operation。首次创建返回 201；相同来源重放返回 200。
+        The grantor must be an enabled, non-managed account and must hold both `authorize` and
+        the operation being delegated on the target. The first creation returns 201; replaying
+        the same source returns 200.
       requestBody:
         required: true
         content:
@@ -34,13 +37,13 @@ paths:
               $ref: '#/components/schemas/GrantRequest'
       responses:
         '201':
-          description: 来源已创建，必要时同时创建 Casbin Allow
+          description: The source was created, together with a Casbin Allow policy when required
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProxyGrantSource'
         '200':
-          description: 相同来源已经有效，返回原记录
+          description: The same source is already active; the existing record is returned
           content:
             application/json:
               schema:
@@ -60,16 +63,17 @@ paths:
       - name: id
         in: path
         required: true
-        description: 来源记录 ID。
+        description: Source record ID.
         schema:
           type: string
           maxLength: 64
     delete:
       tags: [Proxy grant sources]
       operationId: revokeProxyGrantSource
-      summary: 撤销一个代理授权来源
+      summary: Revoke a proxy grant source
       description: |
-        重复撤销幂等。仍有其他有效来源时保留 Allow；最后来源撤销时仅删除来源服务拥有的 Allow。
+        Repeated revocation is idempotent. The Allow policy is preserved while another active
+        source remains; revoking the final source removes only policies owned by this service.
       requestBody:
         required: true
         content:
@@ -78,7 +82,7 @@ paths:
               $ref: '#/components/schemas/RevokeRequest'
       responses:
         '200':
-          description: 已撤销或此前已经撤销
+          description: The source was revoked or was already revoked
           content:
             application/json:
               schema:
@@ -95,7 +99,7 @@ paths:
     post:
       tags: [Proxy grant sources]
       operationId: checkProxyGrantSourceAuthority
-      summary: 预检 grantor 是否可以建立来源
+      summary: Check whether a grantor may establish a source
       requestBody:
         required: true
         content:
@@ -104,7 +108,7 @@ paths:
               $ref: '#/components/schemas/GrantRequest'
       responses:
         '200':
-          description: 预检完成；权限不足通过 allowed=false 表达
+          description: The check completed; insufficient authority is represented by `allowed=false`
           content:
             application/json:
               schema:
@@ -117,10 +121,12 @@ paths:
     post:
       tags: [Proxy grant sources]
       operationId: syncProxyGrantSources
-      summary: 按最新发布模型全量同步来源
+      summary: Synchronize the complete source set from the latest published model
       description: |
-        sources 是该 proxy 当前完整的 kn_proxy_binding 来源集合。服务先预检所有新增来源，
-        任一来源越权时整次同步拒绝且不改变来源或 Policy；删除项不影响人工或其他有效来源。
+        `sources` is the proxy account's complete current set of `kn_proxy_binding` sources.
+        Every new source is checked before any mutation. If one source is unauthorized, the
+        entire synchronization is rejected without changing sources or policies. Removed entries
+        do not affect manual sources or other active sources.
       requestBody:
         required: true
         content:
@@ -129,7 +135,7 @@ paths:
               $ref: '#/components/schemas/SyncRequest'
       responses:
         '200':
-          description: 同步完成
+          description: Synchronization completed
           content:
             application/json:
               schema:
@@ -148,10 +154,12 @@ paths:
     post:
       tags: [Proxy grant sources]
       operationId: reconcileProxyGrantSources
-      summary: 修复来源账本与 Casbin Allow 漂移
+      summary: Repair drift between the source ledger and Casbin Allow policies
       description: |
-        恢复有效来源缺失的 Allow，删除没有有效来源且仍由来源服务拥有的 Allow。
-        无物化标记的现有策略不会自动删除，而在 untracked_policies 中报告，避免误删历史人工授权。
+        Restores Allow policies missing for active sources and removes source-owned Allow policies
+        that have no active source. Existing policies without a materialization marker are reported
+        in `untracked_policies` instead of being deleted, avoiding accidental removal of historical
+        manual grants.
       requestBody:
         required: true
         content:
@@ -160,7 +168,7 @@ paths:
               $ref: '#/components/schemas/ReconcileRequest'
       responses:
         '200':
-          description: 对账完成
+          description: Reconciliation completed
           content:
             application/json:
               schema:
@@ -174,31 +182,31 @@ paths:
 components:
   responses:
     BadRequest:
-      description: 请求缺少字段、字段超长、包含通配符或目标 operation 不在代理白名单/操作目录
+      description: The request is missing fields, exceeds length limits, contains wildcards, or targets an operation outside the proxy allowlist or operation catalog
       content:
         application/json:
           schema:
             $ref: '../_shared/errors.yaml#/components/schemas/Error'
     Forbidden:
-      description: grantor 缺少目标 authorize 或准备授出的 operation，或来源不属于 proxy 对应知识网络
+      description: The grantor lacks `authorize` or the delegated operation on the target, or the source belongs to a different knowledge network
       content:
         application/json:
           schema:
             $ref: '../_shared/errors.yaml#/components/schemas/Error'
     NotFound:
-      description: proxy account 或来源记录不存在
+      description: The proxy account or source record does not exist
       content:
         application/json:
           schema:
             $ref: '../_shared/errors.yaml#/components/schemas/Error'
     Conflict:
-      description: proxy account 已禁用或归档，不能新增授权来源
+      description: The proxy account is disabled or archived and cannot receive a new grant source
       content:
         application/json:
           schema:
             $ref: '../_shared/errors.yaml#/components/schemas/Error'
     InternalError:
-      description: 数据库、Casbin 或审计写入失败；事务内失败会回滚，提交后缓存刷新失败可幂等重试
+      description: A database, Casbin, or audit write failed; in-transaction failures are rolled back, while a post-commit cache reload failure may be retried idempotently
       content:
         application/json:
           schema:
@@ -253,7 +261,7 @@ components:
         proxy_account_id:
           type: string
           maxLength: 64
-          description: 省略时对账全部受管 proxy。
+          description: When omitted, all managed proxy accounts are reconciled.
         requested_by:
           type: string
           minLength: 1
@@ -288,7 +296,7 @@ components:
           type: string
           minLength: 1
           maxLength: 128
-          description: 调用方生成的稳定来源键；同一绑定可为多个权限复用该值。
+          description: Stable caller-generated source key; one binding may reuse it across multiple permissions.
         kn_id:
           type: string
           minLength: 1
@@ -367,7 +375,7 @@ components:
           type: boolean
         reason:
           type: string
-          description: 仅 allowed=false 时返回，不包含目标连接信息。
+          description: Returned only when `allowed=false`; it does not contain target connection details.
     SyncResult:
       type: object
       additionalProperties: false
