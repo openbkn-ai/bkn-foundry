@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
@@ -213,6 +214,40 @@ func Test_KnowledgeNetworkRestHandler_CreateKN(t *testing.T) {
 			engine.ServeHTTP(w, req)
 
 			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("Detach policy persists a structurally valid tool property without dependency lookups\n", func() {
+			portableKN := kn
+			portableKN.ObjectTypes = []*interfaces.ObjectType{{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID:   "ot1",
+					OTName: "object1",
+					DataProperties: []*interfaces.DataProperty{{
+						Name: "prop1", Type: "string", DisplayName: "prop1",
+					}},
+					PrimaryKeys: []string{"prop1"},
+					DisplayKey:  "prop1",
+					LogicProperties: []*interfaces.LogicProperty{{
+						Name: "forecast", Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL, DisplayName: "forecast",
+						DataSource: &interfaces.ResourceInfo{
+							Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL, BoxID: "box1", ToolID: "tool1",
+						},
+					}},
+				},
+			}}
+			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any(), false).
+				DoAndReturn(func(_ context.Context, imported *interfaces.KN, _ string, _ bool) (string, error) {
+					So(imported.ObjectTypes[0].LogicProperties[0].DataSource, ShouldBeNil)
+					return "kn1", nil
+				})
+
+			reqParamByte, _ := sonic.Marshal(portableKN)
+			req := httptest.NewRequest(http.MethodPost, url+"?binding_policy=detach", bytes.NewReader(reqParamByte))
+			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusCreated)
 		})
 
 		Convey("KN name is null\n", func() {

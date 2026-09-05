@@ -200,6 +200,13 @@ func Test_BKNRestHandler_UploadBKN(t *testing.T) {
 func TestDetachBKNExternalBindingsPreservesTopology(t *testing.T) {
 	relation := &interfaces.RelationType{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
 		RTID: "rt-1", SourceObjectTypeID: "ot-1", TargetObjectTypeID: "ot-2",
+		MappingRules: &interfaces.InDirectMapping{
+			BackingDataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "relation-resource-1"},
+			SourceMappingRules: []interfaces.Mapping{{
+				SourceProp: interfaces.SimpleProperty{Name: "source-id"},
+				TargetProp: interfaces.SimpleProperty{Name: "bridge-source-id"},
+			}},
+		},
 	}}
 	metric := &interfaces.MetricDefinition{ID: "metric-1", ScopeType: interfaces.ScopeTypeObjectType, ScopeRef: "ot-1"}
 	kn := &interfaces.KN{
@@ -228,6 +235,10 @@ func TestDetachBKNExternalBindingsPreservesTopology(t *testing.T) {
 	}
 	if kn.RelationTypes[0] != relation || relation.SourceObjectTypeID != "ot-1" || relation.TargetObjectTypeID != "ot-2" {
 		t.Fatalf("relation topology changed: %#v", kn.RelationTypes)
+	}
+	indirect, ok := relation.MappingRules.(*interfaces.InDirectMapping)
+	if !ok || indirect.BackingDataSource != nil || len(indirect.SourceMappingRules) != 1 {
+		t.Fatalf("relation binding was not detached or mapping topology changed: %#v", relation.MappingRules)
 	}
 	if kn.Metrics[0] != metric || metric.ScopeRef != "ot-1" {
 		t.Fatalf("metric topology changed: %#v", kn.Metrics)

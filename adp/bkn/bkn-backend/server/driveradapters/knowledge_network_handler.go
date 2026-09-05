@@ -206,8 +206,12 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 		detachBKNExternalBindings(&kn)
 	}
 
+	// Detached imports have already been structurally validated above. Persist
+	// them without resolving the environment-local dependencies just removed.
+	persistenceStrictMode := strictMode && bindingPolicy != bknBindingPolicyDetach
+
 	// Create the knowledge network.
-	knID, err := r.kns.CreateKN(ctx, &kn, mode, strictMode)
+	knID, err := r.kns.CreateKN(ctx, &kn, mode, persistenceStrictMode)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 

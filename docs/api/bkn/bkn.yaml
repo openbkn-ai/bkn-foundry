@@ -81,7 +81,7 @@ paths:
           description: |
             Controls how environment-local bindings in the archive are imported.
             preserve keeps resource, Tool Box, and MCP identifiers and subjects them to proxy permission checks.
-            detach removes those identifiers while preserving the knowledge model topology so targets can be bound later through incremental APIs.
+            detach removes those identifiers, including indirect-relation backing resources, while preserving the knowledge model topology so targets can be bound later through incremental APIs.
           schema:
             type: string
             enum: [preserve, detach]

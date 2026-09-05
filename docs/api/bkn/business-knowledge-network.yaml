@@ -85,8 +85,10 @@ paths:
         - name: binding_policy
           description: |
             Controls environment-local bindings in the imported model. preserve keeps resource,
-            Tool Box, and MCP identifiers and applies proxy permission checks. detach removes
-            those identifiers while preserving model topology for later incremental binding.
+            Tool Box, MCP, and indirect-relation backing resource identifiers and applies proxy
+            permission checks. detach removes those identifiers while preserving model topology
+            for later incremental binding. The request is structurally validated before detachment;
+            persistence then skips dependency lookups for the removed environment-local bindings.
           schema:
             type: string
             enum:

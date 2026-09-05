@@ -265,13 +265,35 @@ func detachBKNExternalBindings(kn *interfaces.KN) {
 			}
 		}
 	}
+	detachRelationTypes := func(relationTypes []*interfaces.RelationType) {
+		for _, relationType := range relationTypes {
+			if relationType == nil {
+				continue
+			}
+			switch mapping := relationType.MappingRules.(type) {
+			case *interfaces.InDirectMapping:
+				if mapping != nil {
+					mapping.BackingDataSource = nil
+				}
+			case interfaces.InDirectMapping:
+				mapping.BackingDataSource = nil
+				relationType.MappingRules = mapping
+			case map[string]any:
+				if _, exists := mapping["backing_data_source"]; exists {
+					mapping["backing_data_source"] = nil
+				}
+			}
+		}
+	}
 	detachObjectTypes(kn.ObjectTypes)
+	detachRelationTypes(kn.RelationTypes)
 	detachActionTypes(kn.ActionTypes)
 	for _, conceptGroup := range kn.ConceptGroups {
 		if conceptGroup == nil {
 			continue
 		}
 		detachObjectTypes(conceptGroup.ObjectTypes)
+		detachRelationTypes(conceptGroup.RelationTypes)
 		detachActionTypes(conceptGroup.ActionTypes)
 	}
 }
