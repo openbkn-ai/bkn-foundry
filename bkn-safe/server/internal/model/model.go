@@ -52,6 +52,26 @@ type User struct {
 	UpdatedAt          time.Time
 }
 
+// ManagedProxyAccount marks an app identity whose lifecycle is owned by one
+// platform resource rather than by a human administrator. The identity itself
+// remains a User row so the existing Casbin subject and account-status checks
+// keep working; this companion row is the protection boundary that keeps the
+// account out of normal login, credential, directory-membership and generic
+// grant-management paths.
+//
+// The three managed-resource columns are unique together: retrying KN creation
+// resolves the same proxy instead of creating another enabled app identity.
+type ManagedProxyAccount struct {
+	ProxyAccountID      string `gorm:"primaryKey;size:64"`
+	ManagedBy           string `gorm:"size:32;uniqueIndex:uidx_managed_proxy_resource,priority:1"`
+	ManagedResourceType string `gorm:"size:64;uniqueIndex:uidx_managed_proxy_resource,priority:2"`
+	ManagedResourceID   string `gorm:"size:128;uniqueIndex:uidx_managed_proxy_resource,priority:3"`
+	LifecycleStatus     string `gorm:"size:16;index"`
+	Version             uint64
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
 // Role source values. system|business roles are SEEDED built-ins (their UUIDs
 // are hardcoded in DA/flow-automation, such as application, data, and AI administrators) and are
 // immutable via the API — they may only be changed by editing the seed files.
@@ -265,5 +285,6 @@ func AllModels() []any {
 		&User{}, &Role{}, &Department{}, &UserDepartment{},
 		&Group{}, &GroupMember{}, &ResourceType{}, &Operation{},
 		&AuditLog{}, &AccessLog{}, &APIKey{}, &License{}, &ResourceParent{},
+		&ManagedProxyAccount{},
 	}
 }

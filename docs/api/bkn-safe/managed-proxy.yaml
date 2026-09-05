@@ -1,0 +1,199 @@
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+openapi: 3.0.3
+info:
+  title: BKN Safe 受管知识网络代理账号 API
+  version: 0.1.5
+  description: |
+    供受信任 BKN workload 创建和管理知识网络的一对一代理 app 身份。
+    本接口只存在于 ClusterIP 内部面，不经 Ingress 暴露；调用方不能指定
+    `managed_by`、账号 ID、账号类型、登录能力或凭据签发能力。
+
+    同一知识网络的重复创建是幂等的：首次返回 201，重放返回 200，并复用
+    原 proxy account。禁用和归档同样幂等。proxy account 不进入 Studio 用户
+    列表，不能登录、重置密码、签发 AppKey、绑定角色或通过通用 Policy 接口授权。
+servers:
+  - url: /api/safe/in/v1
+security: []
+paths:
+  /managed-proxy-accounts:
+    post:
+      tags: [Managed proxy accounts]
+      operationId: createManagedProxyAccount
+      summary: 创建或解析知识网络的受管代理账号
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateManagedProxyAccountRequest'
+      responses:
+        '201':
+          description: 已创建新的代理账号
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManagedProxyAccount'
+        '200':
+          description: 相同知识网络已经存在代理账号，返回原账号
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManagedProxyAccount'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /managed-proxy-accounts/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ProxyAccountID'
+    get:
+      tags: [Managed proxy accounts]
+      operationId: getManagedProxyAccount
+      summary: 查询受管代理账号
+      responses:
+        '200':
+          description: 代理账号及其当前生命周期状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManagedProxyAccount'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /managed-proxy-accounts/{id}/disable:
+    parameters:
+      - $ref: '#/components/parameters/ProxyAccountID'
+    post:
+      tags: [Managed proxy accounts]
+      operationId: disableManagedProxyAccount
+      summary: 禁用受管代理账号
+      description: |
+        立即令账号无法通过现有 active-account 判定。重复调用不增加版本号。
+      responses:
+        '200':
+          description: 已禁用；账号进入 disabling 状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManagedProxyAccount'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /managed-proxy-accounts/{id}/archive:
+    parameters:
+      - $ref: '#/components/parameters/ProxyAccountID'
+    post:
+      tags: [Managed proxy accounts]
+      operationId: archiveManagedProxyAccount
+      summary: 归档受管代理账号
+      description: |
+        保留身份记录供历史审计关联，并保证账号保持 disabled。重复调用不增加版本号。
+      responses:
+        '200':
+          description: 已归档
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManagedProxyAccount'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  parameters:
+    ProxyAccountID:
+      name: id
+      in: path
+      required: true
+      description: 环境内系统生成的 proxy account ID。
+      schema:
+        type: string
+        maxLength: 64
+  responses:
+    BadRequest:
+      description: 请求体缺失、类型错误或试图管理非知识网络资源
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    NotFound:
+      description: 代理账号不存在
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    InternalError:
+      description: 数据库失败或代理映射与账号记录不一致
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+  schemas:
+    CreateManagedProxyAccountRequest:
+      type: object
+      additionalProperties: false
+      required: [managed_resource_type, managed_resource_id]
+      properties:
+        managed_resource_type:
+          type: string
+          enum: [knowledge_network]
+        managed_resource_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: 知识网络 ID；同一环境内只能绑定一个 proxy account。
+        name:
+          type: string
+          maxLength: 255
+          description: 可选展示名；不作为账号 ID、登录名或幂等键。
+    ManagedProxyAccount:
+      type: object
+      additionalProperties: false
+      required:
+        - proxy_account_id
+        - account_type
+        - name
+        - managed_by
+        - managed_resource_type
+        - managed_resource_id
+        - lifecycle_status
+        - enabled
+        - login_enabled
+        - credential_issuance_enabled
+        - version
+      properties:
+        proxy_account_id:
+          type: string
+        account_type:
+          type: string
+          enum: [app]
+        name:
+          type: string
+        managed_by:
+          type: string
+          enum: [bkn]
+        managed_resource_type:
+          type: string
+          enum: [knowledge_network]
+        managed_resource_id:
+          type: string
+        lifecycle_status:
+          type: string
+          enum: [active, disabling, archived]
+        enabled:
+          type: boolean
+        login_enabled:
+          type: boolean
+          enum: [false]
+        credential_issuance_enabled:
+          type: boolean
+          enum: [false]
+        version:
+          type: integer
+          format: int64
+          minimum: 1

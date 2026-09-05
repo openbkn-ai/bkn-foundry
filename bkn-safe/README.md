@@ -7,6 +7,7 @@ bkn-safe 是 OpenBKN 的认证、鉴权和用户目录服务。它配合**上游
 **文档**：
 - 领域知识网络权限调用合同：[`docs/api/knowledge-network-authorization.md`](../docs/api/knowledge-network-authorization.md)
 - 自助授权范围 OpenAPI：[`docs/api/bkn-safe/self-service.yaml`](../docs/api/bkn-safe/self-service.yaml)
+- 受管 KN 代理内部 OpenAPI：[`docs/api/bkn-safe/managed-proxy.yaml`](../docs/api/bkn-safe/managed-proxy.yaml)
 - 全局设计文档：[bkn-docs `docs/foundry/`](https://github.com/openbkn-ai/bkn-docs/tree/main/docs/foundry)
 
 ## 三职责
@@ -98,6 +99,8 @@ VS Code / Cursor：打开 `bkn-safe` 根目录，选 **Run and Debug → bkn-saf
 - 认证（hydra 重定向到这里）：`GET/POST /login`、`GET /consent`、`GET/POST /device`
 - 鉴权 `/api/safe/v1/authz`：`POST /check`、`POST /operations`、`POST /resource-filter`、
   `POST|DELETE /policies`、`POST /role-bindings`
+- 受管 KN 代理（ClusterIP 内部面）`/api/safe/in/v1/managed-proxy-accounts`：创建、查询、
+  禁用和归档一对一 proxy app；账号禁止登录、AppKey、普通用户管理与通用 Policy 授权
 - 目录 `/api/safe/v1/directory`：`GET /users/:id`、`POST /names`、`GET /departments`、
   `GET /groups/:id/members`、`POST /search-org`、`POST /users`、`PUT /users/:id/password`
 - 健康：`GET /health/ready`、`/health/alive`

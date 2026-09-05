@@ -15,6 +15,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/managedproxy"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
@@ -226,6 +227,15 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			Operations []string    `json:"operations" binding:"required"`
 		}
 		if !bind(c, &req) {
+			return
+		}
+		managed, err := managedproxy.IsManaged(c.Request.Context(), db, req.AccessorID)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		if managed {
+			replyPublicError(c, http.StatusForbidden)
 			return
 		}
 		// This route is tokenless by design (service-to-service, ClusterIP), so
@@ -465,6 +475,15 @@ func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			RoleID     string `json:"role_id" binding:"required"`
 		}
 		if !bind(c, &req) {
+			return
+		}
+		managed, err := managedproxy.IsManaged(c.Request.Context(), db, req.AccessorID)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		if managed {
+			replyPublicError(c, http.StatusForbidden)
 			return
 		}
 		// Unbinding is blocked for the same reason binding is: with no API path
@@ -774,7 +793,18 @@ func splitObject(o string) (rtype, rid string) {
 // department or group id.
 func accessorExists(c *gin.Context, db *gorm.DB, id string) (bool, error) {
 	ctx := c.Request.Context()
-	for _, m := range []any{&model.User{}, &model.Department{}, &model.Group{}} {
+	var userCount int64
+	if err := db.WithContext(ctx).Model(&model.User{}).Where("id = ?", id).Count(&userCount).Error; err != nil {
+		return false, err
+	}
+	if userCount > 0 {
+		managed, err := managedproxy.IsManaged(ctx, db, id)
+		if err != nil {
+			return false, err
+		}
+		return !managed, nil
+	}
+	for _, m := range []any{&model.Department{}, &model.Group{}} {
 		var n int64
 		if err := db.WithContext(ctx).Model(m).Where("id = ?", id).Count(&n).Error; err != nil {
 			return false, err

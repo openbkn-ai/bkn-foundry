@@ -14,6 +14,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/managedproxy"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
@@ -49,6 +50,10 @@ func registerMeAPIKeys(g *gin.RouterGroup, keys *auth.APIKeyStore) {
 		plaintext, rec, err := keys.Issue(c.Request.Context(), owner, req.Name, exp)
 		if errors.Is(err, auth.ErrAPIKeyNameTaken) {
 			replyPublicError(c, http.StatusConflict)
+			return
+		}
+		if errors.Is(err, managedproxy.ErrManagedAccount) {
+			replyPublicError(c, http.StatusForbidden)
 			return
 		}
 		if err != nil {
@@ -97,6 +102,10 @@ func registerMeAPIKeys(g *gin.RouterGroup, keys *auth.APIKeyStore) {
 		plaintext, rec, err := keys.Regenerate(c.Request.Context(), owner, c.Param("id"))
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			replyPublicError(c, http.StatusNotFound)
+			return
+		}
+		if errors.Is(err, managedproxy.ErrManagedAccount) {
+			replyPublicError(c, http.StatusForbidden)
 			return
 		}
 		if err != nil {

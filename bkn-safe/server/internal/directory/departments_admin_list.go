@@ -59,6 +59,7 @@ func (s *Service) memberCounts(ctx context.Context, deptIDs []string) (map[strin
 	if err := s.db.WithContext(ctx).Model(&model.UserDepartment{}).
 		Select("department_id, COUNT(*) AS count").
 		Where("department_id IN ?", deptIDs).
+		Where(managedProxyMembershipFilter("user_departments.user_id")).
 		Group("department_id").
 		Scan(&rows).Error; err != nil {
 		return nil, err
@@ -108,6 +109,7 @@ func (s *Service) subtreeMemberCounts(ctx context.Context, deptIDs []string) (ma
 	if err := s.db.WithContext(ctx).Model(&model.UserDepartment{}).
 		Select("user_id, department_id").
 		Where("department_id IN ?", allDeptIDs).
+		Where(managedProxyMembershipFilter("user_departments.user_id")).
 		Scan(&rows).Error; err != nil {
 		return nil, err
 	}

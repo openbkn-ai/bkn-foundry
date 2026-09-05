@@ -64,7 +64,7 @@ func (s *Service) ListUsers(ctx context.Context, filter UserListFilter) ([]UserS
 		offset = 0
 	}
 
-	q := s.db.WithContext(ctx).Model(&model.User{})
+	q := withoutManagedProxyAccounts(s.db.WithContext(ctx).Model(&model.User{}))
 	if filter.Search != "" {
 		like := "%" + filter.Search + "%"
 		q = q.Where(

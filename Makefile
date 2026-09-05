@@ -14,7 +14,7 @@ TPL_DIR      := $(API_DIR)/_templates
 MODULES      := bkn context-loader ontology-query vega execution-factory mf-model-manager \
                 agent-observability bkn-agent
 # 暂不发布的模块目录（YAML 保留在仓库，只是不进站点、不参与 lint）：
-#   bkn-safe      自助读取面和集群内 authz 合同都不作为通用集成合同对外
+#   bkn-safe      自助读取面及集群内 authz / managed-proxy 合同不作为通用集成合同对外
 #   observability 只有 observability.json，没有可发布的 YAML，渲染出来是空分组
 MODULES_UNPUBLISHED := bkn-safe observability
 # Unpublished modules are linted too, so service-to-service request and error

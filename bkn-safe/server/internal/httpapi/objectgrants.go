@@ -13,6 +13,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/managedproxy"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
@@ -515,6 +516,13 @@ func listGroupedObjectGrants(c *gin.Context, qdb *gorm.DB, groupBy, whereSQL str
 // isUserAccessor reports whether id is a known user row (real user or app
 // account; both are model.User distinguished by account_type).
 func isUserAccessor(c *gin.Context, db *gorm.DB, id string) (bool, error) {
+	managed, err := managedproxy.IsManaged(c.Request.Context(), db, id)
+	if err != nil {
+		return false, err
+	}
+	if managed {
+		return false, nil
+	}
 	var n int64
 	if err := db.WithContext(c.Request.Context()).Model(&model.User{}).
 		Where("id = ? AND enabled = ?", id, true).Count(&n).Error; err != nil {
@@ -789,7 +797,6 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 
 func revokeObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-
 		var req struct {
 			AccessorID string      `json:"accessor_id" binding:"required"`
 			Resource   resourceRef `json:"resource" binding:"required"`
@@ -799,6 +806,15 @@ func revokeObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 		}
 		if !isConcreteResourceID(req.Resource.ID) {
 			replyPublicError(c, http.StatusBadRequest)
+			return
+		}
+		managed, err := managedproxy.IsManaged(c.Request.Context(), db, req.AccessorID)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		if managed {
+			replyPublicError(c, http.StatusForbidden)
 			return
 		}
 		// Revoking on an object is the mirror of granting on it: whoever can open

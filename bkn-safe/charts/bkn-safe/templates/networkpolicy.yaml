@@ -2,7 +2,7 @@
 Default-deny ingress for bkn-safe, admitting only:
   - the gateway/ingress controller, for the browser- and CLI-facing routes;
   - an explicit set of in-cluster peers, for the tokenless internal APIs
-    (/authz, /directory, /api-keys/introspect).
+    (/authz, /directory, /api-keys/introspect, /in/v1/managed-proxy-accounts).
 
 These internal APIs authenticate no caller by design — their whole security
 model is "only in-cluster services can reach them", which a ClusterIP Service
