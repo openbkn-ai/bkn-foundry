@@ -104,12 +104,19 @@ func buildProxyGrantSources(kn *interfaces.KN) ([]interfaces.ProxyGrantSourceSpe
 		if metric == nil {
 			continue
 		}
-		resourceID := objectResources[strings.TrimSpace(metric.ScopeRef)]
+		scopeType := strings.TrimSpace(metric.ScopeType)
+		scopeRef := strings.TrimSpace(metric.ScopeRef)
+		// Non-strict imports may persist metrics without a scope. Such metrics
+		// have no backing resource and therefore contribute no proxy grant.
+		if scopeType == "" && scopeRef == "" {
+			continue
+		}
+		resourceID := objectResources[scopeRef]
 		if resourceID == "" {
 			return nil, "", fmt.Errorf("metric %s references scope %s without a resource binding", metric.ID, metric.ScopeRef)
 		}
 		if err := add(interfaces.MODULE_TYPE_METRIC, metric.ID, "resource", resourceID,
-			interfaces.OPERATION_TYPE_QUERY_DATA, metric.ScopeType+":"+metric.ScopeRef); err != nil {
+			interfaces.OPERATION_TYPE_QUERY_DATA, scopeType+":"+scopeRef); err != nil {
 			return nil, "", err
 		}
 	}

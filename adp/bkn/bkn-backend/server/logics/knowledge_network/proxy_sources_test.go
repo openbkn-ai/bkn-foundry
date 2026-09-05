@@ -81,3 +81,32 @@ func TestBuildProxyGrantSourcesRejectsUnboundRelationEndpoint(t *testing.T) {
 		t.Fatal("buildProxyGrantSources() error = nil, want invalid binding error")
 	}
 }
+
+func TestBuildProxyGrantSourcesSkipsUnscopedMetric(t *testing.T) {
+	kn := &interfaces.KN{
+		KNID:    "kn-1",
+		Metrics: []*interfaces.MetricDefinition{{ID: "metric-unscoped"}},
+	}
+	sources, version, err := buildProxyGrantSources(kn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sources) != 0 {
+		t.Fatalf("unscoped metric sources = %#v, want none", sources)
+	}
+	if version == "" {
+		t.Fatal("unscoped metric model version is empty")
+	}
+}
+
+func TestBuildProxyGrantSourcesRejectsUnboundMetricScope(t *testing.T) {
+	kn := &interfaces.KN{
+		KNID: "kn-1",
+		Metrics: []*interfaces.MetricDefinition{{
+			ID: "metric-invalid", ScopeType: interfaces.ScopeTypeObjectType, ScopeRef: "missing-ot",
+		}},
+	}
+	if _, _, err := buildProxyGrantSources(kn); err == nil {
+		t.Fatal("buildProxyGrantSources() error = nil, want invalid metric scope error")
+	}
+}
