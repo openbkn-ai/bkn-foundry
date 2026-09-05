@@ -30,6 +30,7 @@ import (
 	"bkn-backend/logics"
 	"bkn-backend/logics/action_type"
 	"bkn-backend/logics/batchindex"
+	"bkn-backend/logics/capability_binding"
 	"bkn-backend/logics/concept_group"
 	"bkn-backend/logics/metric"
 	"bkn-backend/logics/model_factory"
@@ -50,6 +51,8 @@ type knowledgeNetworkService struct {
 	appSetting *common.AppSetting
 	db         *sql.DB
 	ata        interfaces.ActionTypeAccess
+	cba        interfaces.CapabilityBindingAccess
+	cbs        interfaces.CapabilityBindingService
 	ats        interfaces.ActionTypeService
 	cga        interfaces.ConceptGroupAccess
 	cgs        interfaces.ConceptGroupService
@@ -75,6 +78,8 @@ func NewKNService(appSetting *common.AppSetting) interfaces.KNServiceWithProxyMu
 		knService = &knowledgeNetworkService{
 			appSetting: appSetting,
 			ata:        logics.ATA,
+			cba:        logics.CBA,
+			cbs:        capability_binding.NewCapabilityBindingService(appSetting),
 			ats:        action_type.NewActionTypeService(appSetting),
 			cga:        logics.CGA,
 			cgs:        concept_group.NewConceptGroupService(appSetting),
@@ -934,13 +939,26 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 			berrors.BknBackend_KnowledgeNetwork_InternalError_GetMetricsTotalFailed).WithErrorDetails(err.Error())
 	}
 
+	// Capability binding counts. One grouped query covers both skills and functions.
+	capabilityTotals, err := kns.cba.GetBindingsTotalByType(ctx, kn.KNID, kn.Branch)
+	if err != nil {
+		logger.Errorf("GetBindingsTotalByType in knowledge network[%s] error: %s", kn.KNID, err.Error())
+		span.SetStatus(codes.Error, fmt.Sprintf("GetBindingsTotalByType in knowledge network[%s], error: %v", kn.KNID, err))
+		span.End()
+
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_CapabilityBinding_InternalError_GetBindingsTotalFailed).WithErrorDetails(err.Error())
+	}
+
 	statistics := &interfaces.Statistics{
-		CgTotal:       cgCnt,
-		OtTotal:       otCnt,
-		RtTotal:       rtCnt,
-		AtTotal:       atCnt,
-		RiskTypeTotal: riskTypeCnt,
-		MetricsTotal:  metricsCnt,
+		CgTotal:        cgCnt,
+		OtTotal:        otCnt,
+		RtTotal:        rtCnt,
+		AtTotal:        atCnt,
+		RiskTypeTotal:  riskTypeCnt,
+		MetricsTotal:   metricsCnt,
+		SkillsTotal:    capabilityTotals[interfaces.CAPABILITY_TYPE_SKILL],
+		FunctionsTotal: capabilityTotals[interfaces.CAPABILITY_TYPE_FUNCTION],
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -1142,6 +1160,16 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 	if err != nil {
 		logger.Errorf("DeleteConceptGroupsByKnID error: %s", err.Error())
 		span.SetStatus(codes.Error, "删除业务知识网络概念分组失败")
+		return err
+	}
+
+	// Delete the capability bindings of the business knowledge network. A knowledge network ID
+	// can be supplied by the caller, so leaving the rows behind would let a network recreated
+	// under the same ID inherit Skills and functions its owner never mounted.
+	err = kns.cbs.DeleteCapabilitiesByKnID(ctx, tx, kn.KNID, kn.Branch)
+	if err != nil {
+		logger.Errorf("DeleteCapabilitiesByKnID error: %s", err.Error())
+		span.SetStatus(codes.Error, "delete knowledge network capability bindings failed")
 		return err
 	}
 

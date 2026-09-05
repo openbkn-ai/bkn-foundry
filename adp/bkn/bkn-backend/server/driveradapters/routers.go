@@ -30,6 +30,7 @@ import (
 	"bkn-backend/logics/action_type"
 	"bkn-backend/logics/auth"
 	"bkn-backend/logics/bkn"
+	"bkn-backend/logics/capability_binding"
 	"bkn-backend/logics/concept_group"
 	"bkn-backend/logics/knowledge_network"
 	metriclogics "bkn-backend/logics/metric"
@@ -52,6 +53,7 @@ type restHandler struct {
 	as                      interfaces.AuthService
 	ass                     interfaces.ActionScheduleService
 	ats                     interfaces.ActionTypeService
+	cbs                     interfaces.CapabilityBindingService
 	cgs                     interfaces.ConceptGroupService
 	kns                     interfaces.KNService
 	knProxyPublisher        interfaces.KNProxyMutationPublisher
@@ -89,6 +91,7 @@ func NewRestHandler(appSetting *common.AppSetting, auditStore *operationaudit.St
 		as:                      auth.NewAuthService(appSetting),
 		ass:                     action_schedule.NewActionScheduleService(appSetting),
 		ats:                     action_type.NewActionTypeService(appSetting),
+		cbs:                     capability_binding.NewCapabilityBindingService(appSetting),
 		cgs:                     concept_group.NewConceptGroupService(appSetting),
 		kns:                     knService,
 		knProxyPublisher:        knService,
@@ -183,6 +186,11 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiV1.GET("/knowledge-networks/:kn_id/metrics", r.ListMetricsByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/metrics/:metric_ids", r.GetMetricsByIDsByEx)
 
+		// Capability bindings: which Skills and ToolBox tools belong to this knowledge network.
+		apiV1.POST("/knowledge-networks/:kn_id/capabilities", r.verifyJsonContentType(), r.AttachCapabilitiesByEx)
+		apiV1.DELETE("/knowledge-networks/:kn_id/capabilities/:binding_ids", r.DetachCapabilitiesByEx)
+		apiV1.GET("/knowledge-networks/:kn_id/capabilities", r.ListCapabilitiesByEx)
+
 		// Risk types.
 		apiV1.POST("/knowledge-networks/:kn_id/risk-types", r.verifyJsonContentType(), r.HandleRiskTypeGetOverrideByEx)
 		apiV1.DELETE("/knowledge-networks/:kn_id/risk-types/:rt_ids", r.DeleteRiskTypes)
@@ -267,6 +275,11 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiInV1.DELETE("/knowledge-networks/:kn_id/metrics/:metric_ids", r.DeleteMetricsByIDsByIn)
 		apiInV1.PUT("/knowledge-networks/:kn_id/metrics/:metric_ids", r.verifyJsonContentType(), r.UpdateMetricByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/metrics", r.ListMetricsByIn)
+
+		// Capability bindings: Context Loader resolves the references of one branch here.
+		apiInV1.POST("/knowledge-networks/:kn_id/capabilities", r.verifyJsonContentType(), r.AttachCapabilitiesByIn)
+		apiInV1.DELETE("/knowledge-networks/:kn_id/capabilities/:binding_ids", r.DetachCapabilitiesByIn)
+		apiInV1.GET("/knowledge-networks/:kn_id/capabilities", r.ListCapabilitiesByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/metrics/:metric_ids", r.GetMetricsByIDsByIn)
 
 		// Risk types (internal); GetRiskTypesByIn supports the risk_type_ids query parameter.

@@ -22,7 +22,7 @@ The order below matches the card groups on the documentation home page. It is co
 
 | Module | Directory | Coverage |
 |---|---|---|
-| 🟦 bkn-backend | [`bkn/`](bkn/) | Business knowledge networks: object types, relation types, action types, concept groups, metrics, and import/export. **Complete** |
+| 🟦 bkn-backend | [`bkn/`](bkn/) | Business knowledge networks: object types, relation types, action types, concept groups, metrics, capability bindings, operation audit, and import/export. **Complete** |
 | 🟫 context-loader | [`context-loader/`](context-loader/) | Agent context entry points: schema retrieval, instance and subgraph queries, logical properties, action execution, Skill retrieval, direct data access, and MCP. **Complete external surface**; internal `/in/v1` APIs are excluded |
 | 🟩 ontology-query | [`ontology-query/`](ontology-query/) | Ontology queries, semantic retrieval, action execution, and logs. **Complete** |
 | 🟨 vega-backend | [`vega/`](vega/) | Data observability: catalogs, resources, connectors, build tasks, discovery tasks, and raw queries. **Complete** |

@@ -19,6 +19,7 @@ var (
 	AEA            interfaces.ActionExecutionAccess
 	ASA            interfaces.ActionScheduleAccess
 	ATA            interfaces.ActionTypeAccess
+	CBA            interfaces.CapabilityBindingAccess
 	CGA            interfaces.ConceptGroupAccess
 	KNA            interfaces.KNAccess
 	KPA            interfaces.KNProxyAccess
@@ -52,6 +53,10 @@ func SetActionExecutionAccess(aea interfaces.ActionExecutionAccess) {
 
 func SetActionTypeAccess(ata interfaces.ActionTypeAccess) {
 	ATA = ata
+}
+
+func SetCapabilityBindingAccess(cba interfaces.CapabilityBindingAccess) {
+	CBA = cba
 }
 
 func SetConceptGroupAccess(cga interfaces.ConceptGroupAccess) {

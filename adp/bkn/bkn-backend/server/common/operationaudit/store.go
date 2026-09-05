@@ -29,10 +29,12 @@ var (
 	allowedActions = map[string]struct{}{
 		"create": {}, "update": {}, "delete": {}, "import": {},
 		"add_members": {}, "remove_members": {}, "enable": {}, "disable": {},
+		"attach": {}, "detach": {},
 	}
 	allowedTargetTypes = map[string]struct{}{
 		"knowledge_network": {}, "object_type": {}, "relation_type": {}, "action_type": {},
 		"metric": {}, "risk_type": {}, "concept_group": {}, "action_schedule": {},
+		"kn_capability_binding": {},
 	}
 	allowedOutcomes    = map[string]struct{}{"success": {}, "failure": {}, "denied": {}}
 	allowedSummaryKeys = map[string]struct{}{"changed_fields": {}, "status": {}}

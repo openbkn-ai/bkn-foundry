@@ -192,6 +192,7 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		rtA := bmock.NewMockRiskTypeAccess(mockCtrl)
 		ma := bmock.NewMockMetricAccess(mockCtrl)
+		cba := bmock.NewMockCapabilityBindingAccess(mockCtrl)
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
@@ -201,6 +202,7 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 			cga:        cga,
 			riskTypeA:  rtA,
 			ma:         ma,
+			cba:        cba,
 		}
 
 		Convey("Success getting statistics\n", func() {
@@ -215,6 +217,11 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(2, nil)
 			rtA.EXPECT().GetRiskTypesTotal(gomock.Any(), gomock.Any()).Return(4, nil)
 			ma.EXPECT().GetMetricsTotal(gomock.Any(), gomock.Any()).Return(7, nil)
+			cba.EXPECT().GetBindingsTotalByType(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).
+				Return(map[string]int{
+					interfaces.CAPABILITY_TYPE_SKILL:    3,
+					interfaces.CAPABILITY_TYPE_FUNCTION: 4,
+				}, nil)
 
 			stats, err := service.GetStatByKN(ctx, kn)
 			So(err, ShouldBeNil)
@@ -225,6 +232,8 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 			So(stats.CgTotal, ShouldEqual, 2)
 			So(stats.RiskTypeTotal, ShouldEqual, 4)
 			So(stats.MetricsTotal, ShouldEqual, 7)
+			So(stats.SkillsTotal, ShouldEqual, 3)
+			So(stats.FunctionsTotal, ShouldEqual, 4)
 		})
 
 		Convey("Failed when getting object types total returns error\n", func() {
@@ -1103,6 +1112,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 		ms := bmock.NewMockMetricService(mockCtrl)
 		riskTypeS := bmock.NewMockRiskTypeService(mockCtrl)
 		cgs := bmock.NewMockConceptGroupService(mockCtrl)
+		cbs := bmock.NewMockCapabilityBindingService(mockCtrl)
 
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
@@ -1117,6 +1127,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ms:         ms,
 			riskTypeS:  riskTypeS,
 			cgs:        cgs,
+			cbs:        cbs,
 			db:         db,
 		}
 
@@ -1136,6 +1147,10 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ms.EXPECT().DeleteMetricsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			// Deleting a network must clear its capability bindings: a knowledge network ID can
+			// be supplied by the caller, so leftover rows would be inherited by a network
+			// recreated under the same ID.
+			cbs.EXPECT().DeleteCapabilitiesByKnID(gomock.Any(), gomock.Any(), "kn1", gomock.Any()).Return(nil)
 			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -1266,6 +1281,10 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ms.EXPECT().DeleteMetricsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			// Deleting a network must clear its capability bindings: a knowledge network ID can
+			// be supplied by the caller, so leftover rows would be inherited by a network
+			// recreated under the same ID.
+			cbs.EXPECT().DeleteCapabilitiesByKnID(gomock.Any(), gomock.Any(), "kn1", gomock.Any()).Return(nil)
 			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
@@ -1289,6 +1308,10 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ms.EXPECT().DeleteMetricsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			// Deleting a network must clear its capability bindings: a knowledge network ID can
+			// be supplied by the caller, so leftover rows would be inherited by a network
+			// recreated under the same ID.
+			cbs.EXPECT().DeleteCapabilitiesByKnID(gomock.Any(), gomock.Any(), "kn1", gomock.Any()).Return(nil)
 			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
@@ -1313,6 +1336,10 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ms.EXPECT().DeleteMetricsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			// Deleting a network must clear its capability bindings: a knowledge network ID can
+			// be supplied by the caller, so leftover rows would be inherited by a network
+			// recreated under the same ID.
+			cbs.EXPECT().DeleteCapabilitiesByKnID(gomock.Any(), gomock.Any(), "kn1", gomock.Any()).Return(nil)
 			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))

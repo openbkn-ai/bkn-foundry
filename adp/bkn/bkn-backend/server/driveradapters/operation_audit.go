@@ -74,6 +74,8 @@ var operationAuditRoutes = map[string]operationAuditRule{
 	"POST /knowledge-networks/:kn_id/metrics":                                            {Action: "create", TargetType: "metric"},
 	"PUT /knowledge-networks/:kn_id/metrics/:metric_ids":                                 {Action: "update", TargetType: "metric"},
 	"DELETE /knowledge-networks/:kn_id/metrics/:metric_ids":                              {Action: "delete", TargetType: "metric"},
+	"POST /knowledge-networks/:kn_id/capabilities":                                       {Action: "attach", TargetType: "kn_capability_binding"},
+	"DELETE /knowledge-networks/:kn_id/capabilities/:binding_ids":                        {Action: "detach", TargetType: "kn_capability_binding"},
 	"POST /knowledge-networks/:kn_id/risk-types":                                         {Action: "create", TargetType: "risk_type"},
 	"PUT /knowledge-networks/:kn_id/risk-types/:rt_id":                                   {Action: "update", TargetType: "risk_type"},
 	"DELETE /knowledge-networks/:kn_id/risk-types/:rt_ids":                               {Action: "delete", TargetType: "risk_type"},
@@ -362,6 +364,7 @@ func operationAuditPathTarget(c *gin.Context, targetType string) string {
 		"relation_type": {"rt_id", "rt_ids"}, "action_type": {"at_id", "at_ids"},
 		"risk_type": {"rt_id", "rt_ids"},
 		"metric":    {"metric_ids"}, "concept_group": {"cg_id"}, "action_schedule": {"schedule_id", "schedule_ids"},
+		"kn_capability_binding": {"binding_ids"},
 	}
 	for _, name := range names[targetType] {
 		if value := strings.TrimSpace(c.Param(name)); value != "" {

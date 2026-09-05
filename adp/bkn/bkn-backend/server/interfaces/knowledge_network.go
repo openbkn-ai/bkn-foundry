@@ -217,14 +217,19 @@ type Statistics struct {
 	AtTotal       int `json:"action_types_total"`
 	RiskTypeTotal int `json:"risk_types_total"`
 	MetricsTotal  int `json:"metrics_total"`
+	// Skills and functions are capability bindings, counted as rows of t_kn_capability_binding.
+	// The count carries no dangling judgement: that needs the execution factory and does not
+	// belong on a counting path.
+	SkillsTotal    int `json:"skills_total"`
+	FunctionsTotal int `json:"functions_total"`
 }
 
 // Business knowledge network pagination query.
 type KNsQueryParams struct {
 	PaginationQueryParameters
-	NamePattern    string
-	Tag            string
-	Branch         string
+	NamePattern string
+	Tag         string
+	Branch      string
 	// CandidateIDs restricts an internal detail query to permission-filtered IDs.
 	CandidateIDs []string `json:"-" form:"-"`
 	// OnlyIDs avoids loading list detail before permission filtering.

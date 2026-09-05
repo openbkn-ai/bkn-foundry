@@ -1,0 +1,342 @@
+---
+# Read-only query surface over BKN Backend management operation audit facts.
+openapi: 3.0.2
+info:
+  title: BKN Operation Audit
+  version: 0.1.0
+  description: |
+    Management operation facts on the modeling surface: who, in which knowledge network, did
+    what to which resource, and whether it succeeded. Read-only — facts are written by the
+    write endpoints as they handle a request, and there is no back-fill entrance.
+
+    Not the same thing as **BKN Trace**: Trace records an Agent's question-answering and
+    retrieval chain, this records **modeling and configuration changes** (creating an object
+    type, editing a metric, mounting a capability). Neither covers the other.
+
+    ## Bounded facts, not requests
+
+    A record holds the fields below and nothing else: **no request body, no response body and
+    no credentials**. `change_summary` accepts only the keys `changed_fields` and `status`; any
+    other key makes the whole record be rejected rather than truncated.
+
+    ## Visibility narrows by caller
+
+    | Caller | Sees |
+    |---|---|
+    | Administrator | Everything |
+    | User with managed knowledge networks | Records under those networks |
+    | Everyone else | Only records where they are the actor |
+
+    A caller in the third group asking for someone else's `actor_id` gets a 403
+    (`BknBackend.OperationAudit.AccessDenied`) rather than a result set quietly rewritten to
+    their own — otherwise "no results" and "not allowed" would be indistinguishable.
+
+    ## The time range is mandatory
+
+    `from` and `to` are both required RFC3339 timestamps, `from` must precede `to`, and the
+    span is capped at **30 days**. Anything else is a 400. This is a guard against a
+    full-table scan, not an optional convenience.
+
+    Paging uses the `before_time` + `before_event_id` cursor rather than an offset: the table
+    grows newest-first, and offset paging would repeat or skip records while writes continue.
+
+    ## Actions and target types are closed vocabularies
+
+    The write path validates both against fixed sets, and a value outside them makes **the
+    whole record be dropped** while the caller's business request still succeeds — the only
+    trace is a line in the service log. Adding a verb or a target type means changing both
+    `allowedActions` / `allowedTargetTypes` in `server/common/operationaudit/store.go` and the
+    route rule table in `driveradapters/operation_audit.go`. Miss either one and the audit is
+    silently lost.
+
+    **Authentication**: `Authorization: Bearer <token>` (an OAuth access token or a `bak_`
+    prefixed AppKey).
+
+    **Prefix alias**: the paths below are also registered under `/api/ontology-manager/v1`.
+paths:
+  /api/bkn-backend/v1/operation-audits:
+    get:
+      summary: List operation audit records
+      operationId: listOperationAudits
+      parameters:
+        - name: from
+          description: Start of the range, inclusive, RFC3339. Required.
+          schema:
+            type: string
+            format: date-time
+          in: query
+          required: true
+        - name: to
+          description: >-
+            End of the range, exclusive, RFC3339. Required, and at most 30 days after `from`.
+          schema:
+            type: string
+            format: date-time
+          in: query
+          required: true
+        - name: actor_id
+          description: >-
+            Filter by actor. A caller whose visibility is narrowed gets a 403 when asking for
+            someone else's ID, not an empty result.
+          schema:
+            type: string
+          in: query
+        - name: action
+          description: Filter by action; see Action.
+          schema:
+            $ref: '#/components/schemas/Action'
+          in: query
+        - name: target_type
+          description: Filter by target resource type; see TargetType.
+          schema:
+            $ref: '#/components/schemas/TargetType'
+          in: query
+        - name: target_id
+          description: >-
+            Filter by target resource ID. A batch operation records several IDs separated by
+            commas.
+          schema:
+            type: string
+          in: query
+        - name: outcome
+          description: Filter by outcome.
+          schema:
+            $ref: '#/components/schemas/Outcome'
+          in: query
+        - name: limit
+          description: Page size, 50 by default, capped at 500. A larger value is capped, not rejected.
+          schema:
+            type: integer
+            default: 50
+            maximum: 500
+          in: query
+        - name: before_time
+          description: >-
+            Cursor: return only records older than this instant, RFC3339. Used together with
+            `before_event_id`; both come from the previous page's `next_before_time` and
+            `next_before_event_id`.
+          schema:
+            type: string
+            format: date-time
+          in: query
+        - name: before_event_id
+          description: Second half of the cursor, ordering records that share one instant.
+          schema:
+            type: string
+          in: query
+      responses:
+        '200':
+          description: One page of audit records
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationAuditPage'
+        '400':
+          description: >-
+            Missing or malformed range, `from` not before `to`, or a span over 30 days
+            (`BknBackend.OperationAudit.InvalidRange`); malformed `before_time`
+            (`BknBackend.OperationAudit.InvalidBeforeTime`)
+        '401':
+          description: Unauthenticated
+        '403':
+          description: >-
+            Querying another actor's records without the visibility to do so
+            (`BknBackend.OperationAudit.AccessDenied`)
+        '500':
+          description: Query failed (`BknBackend.OperationAudit.QueryFailed`)
+        '503':
+          description: >-
+            Audit store not configured, or identity resolution unavailable
+            (`BknBackend.OperationAudit.ServiceUnavailable`)
+      tags:
+        - OperationAudit
+  /api/bkn-backend/v1/operation-audits/{event_id}:
+    get:
+      summary: Get one operation audit record
+      operationId: getOperationAudit
+      parameters:
+        - name: event_id
+          description: Event ID
+          schema:
+            type: string
+          in: path
+          required: true
+      responses:
+        '200':
+          description: The audit record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationAuditEntry'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: No access to the audit surface (`BknBackend.OperationAudit.AccessDenied`)
+        '404':
+          description: >-
+            No such record, **or a record that exists outside the caller's visibility**
+            (`BknBackend.OperationAudit.NotFound`). The two are not distinguished: answering
+            403 there would tell someone the record exists.
+        '500':
+          description: Query failed
+        '503':
+          description: Audit store not configured
+      tags:
+        - OperationAudit
+components:
+  schemas:
+    Action:
+      description: >-
+        Action vocabulary. The write path validates against this fixed set, and a value outside
+        it makes the whole record be dropped.
+      enum:
+        - create
+        - update
+        - delete
+        - import
+        - add_members
+        - remove_members
+        - enable
+        - disable
+        - attach
+        - detach
+      type: string
+    TargetType:
+      description: Target resource vocabulary, a closed set on the same terms.
+      enum:
+        - knowledge_network
+        - object_type
+        - relation_type
+        - action_type
+        - metric
+        - risk_type
+        - concept_group
+        - action_schedule
+        - kn_capability_binding
+      type: string
+    Outcome:
+      description: >-
+        Outcome of the operation. `denied` means authorization refused the request, which is
+        not the same as `failure` (the operation ran and failed).
+      enum:
+        - success
+        - failure
+        - denied
+      type: string
+    OperationAuditEntry:
+      description: One management operation fact
+      type: object
+      required:
+        - event_id
+        - event_time
+        - recorded_at
+        - knowledge_network_id
+        - actor_id
+        - actor_name
+        - actor_type
+        - request_id
+        - action
+        - target_type
+        - target_id
+        - target_name
+        - outcome
+      properties:
+        event_id:
+          description: >-
+            Event ID, derived from the request ID together with the method and path, so one
+            request maps to one event
+          type: string
+        event_time:
+          description: When the operation happened, RFC3339 with nanosecond precision, UTC
+          type: string
+          format: date-time
+        recorded_at:
+          description: When the fact was stored, RFC3339 with nanosecond precision, UTC
+          type: string
+          format: date-time
+        knowledge_network_id:
+          description: >-
+            Owning knowledge network. Falls back to the target ID when the network cannot be
+            resolved from the request.
+          type: string
+        actor_id:
+          description: Actor ID. The literal `unauthenticated` when the caller had no identity.
+          type: string
+        actor_name:
+          description: Actor display name
+          type: string
+        actor_type:
+          description: Actor type (user, app, …); `unknown` for an unauthenticated caller
+          type: string
+        auth_method:
+          description: Authentication method
+          type: string
+        credential_id:
+          description: Credential identifier, such as an AppKey ID. **Never the credential itself.**
+          type: string
+        request_id:
+          description: Request ID, matching the service log
+          type: string
+        source_channel:
+          description: Source channel
+          type: string
+        method:
+          description: HTTP method
+          type: string
+        action:
+          $ref: '#/components/schemas/Action'
+        target_type:
+          $ref: '#/components/schemas/TargetType'
+        target_id:
+          description: Target resource ID; comma separated for a batch operation
+          type: string
+        target_name:
+          description: Target resource name; equal to the target ID when the name is unavailable
+          type: string
+        outcome:
+          $ref: '#/components/schemas/Outcome'
+        failure_code:
+          description: Error code when the operation failed
+          type: string
+        failure_message:
+          description: Bounded error description when the operation failed
+          type: string
+        change_summary:
+          description: >-
+            Change summary. Only `changed_fields` and `status` are accepted; any other key
+            makes the record be rejected. **Field values, old or new, are never included.**
+          type: object
+          properties:
+            changed_fields:
+              type: array
+              items:
+                type: string
+            status:
+              type: string
+        schema_version:
+          description: Structure version of the audit record
+          type: string
+    OperationAuditPage:
+      description: One page of audit records. Cursor paged, with no total.
+      type: object
+      required:
+        - entries
+        - has_more
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperationAuditEntry'
+        has_more:
+          description: Whether older records remain
+          type: boolean
+        next_before_time:
+          description: The next page's `before_time`; present only when `has_more` is true
+          type: string
+          format: date-time
+        next_before_event_id:
+          description: The next page's `before_event_id`; present only when `has_more` is true
+          type: string
+tags:
+  - name: OperationAudit
+    description: Management operation audit (read-only)

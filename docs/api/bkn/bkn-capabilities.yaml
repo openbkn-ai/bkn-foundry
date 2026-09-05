@@ -1,0 +1,334 @@
+---
+# Knowledge-network capability binding: which Skills and ToolBox tools belong to a knowledge network.
+openapi: 3.0.2
+info:
+  title: BKN Capabilities
+  version: 0.1.0
+  description: |
+    A capability binding records that a Skill or a ToolBox tool belongs to a knowledge network.
+    The master data stays in the execution factory; the binding holds only the reference, so
+    creating, publishing and indexing capabilities is unchanged by these endpoints.
+
+    ## Identity
+
+    A capability is identified by three parts:
+
+    | capability_type | owner_id | capability_id |
+    |---|---|---|
+    | `skill` | empty | `skill_id` |
+    | `function` | `box_id` | `tool_id` |
+
+    `owner_id` is required for a function because a tool id is scoped to its box in the
+    execution factory. A skill has no owning container, so an `owner_id` sent with a skill is
+    dropped rather than stored — keeping it would create a second row for the same skill that
+    the unique key cannot collapse, and repeated mounts would stop being idempotent.
+
+    ## What a binding answers
+
+    A binding answers "which capabilities does this knowledge network have", not "which
+    capability is relevant to this question". Listing does not replace retrieval: a network
+    with dozens of Skills and tools needs the execution factory's search endpoints.
+
+    ## Scope and branch
+
+    Bindings are per branch. Creating a branch copies them, deleting a branch clears them, and
+    the count in the knowledge-network statistics follows the branch being viewed.
+
+    ## Idempotency
+
+    Mounting is a statement about membership, not an event. Mounting a capability that is
+    already bound returns the existing binding rather than failing, and repeating an entry
+    inside one request produces one row.
+
+    ## Not covered here
+
+    Whole-box mounting, the write-time check that the target exists and is published, metadata
+    backfill and dangling marking arrive with the rest of the capability binding work; this
+    file describes the CRUD surface only.
+
+    **Prefix aliases**: every path below is also served under `/api/ontology-manager/v1`, and
+    the internal face under `/api/bkn-backend/in/v1` and `/api/ontology-manager/in/v1`.
+paths:
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/capabilities:
+    get:
+      summary: List the capabilities bound to a knowledge network
+      parameters:
+        - name: kn_id
+          description: Business knowledge network ID
+          schema:
+            type: string
+          in: path
+          required: true
+        - name: branch
+          description: Branch. Defaults to main.
+          schema:
+            type: string
+          in: query
+        - name: type
+          description: Filter by capability type. Any other value is rejected with 400.
+          schema:
+            enum:
+              - skill
+              - function
+            type: string
+          in: query
+        - name: owner_id
+          description: Filter by owning tool box. Only meaningful for functions.
+          schema:
+            type: string
+          in: query
+        - name: offset
+          description: Offset. Defaults to 0.
+          schema:
+            type: integer
+          in: query
+        - name: limit
+          description: Page size. Defaults to 10.
+          schema:
+            type: integer
+          in: query
+        - name: sort
+          description: Sort field. Defaults to create_time.
+          schema:
+            enum:
+              - create_time
+              - update_time
+            type: string
+          in: query
+        - name: direction
+          description: Sort direction, asc or desc. Defaults to desc.
+          schema:
+            enum:
+              - asc
+              - desc
+            type: string
+          in: query
+      responses:
+        '200':
+          description: Capability bindings of this branch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapabilityBindingList'
+        '400':
+          description: Invalid capability type or pagination parameter
+        '403':
+          description: The caller cannot view this knowledge network
+        '404':
+          description: Knowledge network or branch not found
+      operationId: listCapabilities
+      tags:
+        - Capabilities
+    post:
+      summary: Mount capabilities onto a knowledge network
+      description: |
+        Idempotent. A capability already bound resolves to its existing binding, and the
+        response carries one entry per requested capability in request order.
+      parameters:
+        - name: kn_id
+          description: Business knowledge network ID
+          schema:
+            type: string
+          in: path
+          required: true
+        - name: branch
+          description: Branch. Defaults to main.
+          schema:
+            type: string
+          in: query
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachCapabilitiesRequest'
+      responses:
+        '200':
+          description: The bindings of the requested capabilities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapabilityBindingList'
+        '400':
+          description: >-
+            Empty capability list, unsupported capability_type, missing capability_id, a
+            function without owner_id, or a value longer than its column: owner_id and
+            capability_id are limited to 64 characters and comment to 255. Over-long values are
+            rejected here rather than reaching the database, where they would surface as a 500
+            under strict SQL mode or be silently truncated into a binding pointing at a
+            different capability.
+        '403':
+          description: The caller cannot modify this knowledge network
+        '404':
+          description: Knowledge network or branch not found
+      operationId: attachCapabilities
+      tags:
+        - Capabilities
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/capabilities/{binding_ids}:
+    delete:
+      summary: Release capability bindings
+      description: |
+        Releases by binding ID, comma separated for a batch. IDs that are already gone are not
+        an error. Binding IDs are used rather than the capability identity because a
+        tool-level binding needs owner_id as well to be located, and identifiers containing
+        special characters would have to be escaped in the path.
+      parameters:
+        - name: kn_id
+          description: Business knowledge network ID
+          schema:
+            type: string
+          in: path
+          required: true
+        - name: binding_ids
+          description: Comma-separated binding IDs
+          schema:
+            type: string
+          in: path
+          required: true
+        - name: branch
+          description: Branch. Defaults to main.
+          schema:
+            type: string
+          in: query
+      responses:
+        '204':
+          description: >-
+            Released. Releasing a binding that is already gone is also a 204: the request states
+            that the capability is not mounted, and that is true either way. This matches
+            DELETE .../metrics.
+        '400':
+          description: Empty binding_ids
+        '403':
+          description: The caller cannot modify this knowledge network
+        '404':
+          description: Knowledge network or branch not found
+      operationId: detachCapabilities
+      tags:
+        - Capabilities
+components:
+  schemas:
+    CapabilityBinding:
+      description: One capability bound to a knowledge network branch
+      type: object
+      required:
+        - id
+        - kn_id
+        - branch
+        - capability_type
+        - capability_id
+      properties:
+        id:
+          description: Binding ID, a UUIDv7
+          type: string
+        kn_id:
+          description: Business knowledge network ID
+          type: string
+        branch:
+          description: Branch
+          type: string
+        capability_type:
+          description: Capability type
+          enum:
+            - skill
+            - function
+          type: string
+        owner_id:
+          description: Owning tool box ID. Present for functions, empty for skills.
+          type: string
+        capability_id:
+          description: Execution-factory identifier — skill_id for a skill, tool_id for a function
+          type: string
+        bound_as_box:
+          description: >-
+            Whether the row came from expanding a whole-box mount. It does not change the
+            binding semantics: the row is an ordinary tool-level binding and can be released
+            on its own.
+          type: boolean
+        comment:
+          description: Free-text note
+          type: string
+        name:
+          description: >-
+            Capability name, backfilled from the execution factory when available. Never
+            persisted in the binding.
+          type: string
+        description:
+          description: Capability description, backfilled from the execution factory
+          type: string
+        status:
+          description: Capability status in the execution factory, backfilled
+          type: string
+        owner_name:
+          description: Tool box name, backfilled
+          type: string
+        creator:
+          $ref: '#/components/schemas/AccountInfo'
+        create_time:
+          description: Creation time in milliseconds
+          type: integer
+          format: int64
+        updater:
+          $ref: '#/components/schemas/AccountInfo'
+        update_time:
+          description: Update time in milliseconds
+          type: integer
+          format: int64
+    CapabilityBindingList:
+      description: Capability binding list
+      type: object
+      required:
+        - entries
+        - total_count
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/CapabilityBinding'
+        total_count:
+          description: Total matching bindings, ignoring pagination
+          type: integer
+    AttachCapabilitiesRequest:
+      description: Mount request
+      type: object
+      required:
+        - capabilities
+      properties:
+        capabilities:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/AttachCapabilityEntry'
+    AttachCapabilityEntry:
+      description: One capability to mount
+      type: object
+      required:
+        - capability_type
+        - capability_id
+      properties:
+        capability_type:
+          enum:
+            - skill
+            - function
+          type: string
+        owner_id:
+          description: Tool box ID. Required for a function, ignored for a skill.
+          type: string
+        capability_id:
+          description: skill_id for a skill, tool_id for a function
+          type: string
+        comment:
+          description: Free-text note
+          type: string
+    AccountInfo:
+      description: Account information
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        name:
+          type: string
+tags:
+  - name: Capabilities
+    description: Knowledge-network capability binding
