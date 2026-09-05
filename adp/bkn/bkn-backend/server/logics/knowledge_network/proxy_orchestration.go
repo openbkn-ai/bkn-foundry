@@ -35,6 +35,11 @@ type proxyPublishPlan struct {
 	createdMapping bool
 }
 
+type publishedProxyBindingCacheEntry struct {
+	modelVersion string
+	sources      []interfaces.ProxyGrantSourceSpec
+}
+
 func (kns *knowledgeNetworkService) proxyOrchestrationEnabled(branch string) bool {
 	return branch == interfaces.MAIN_BRANCH && kns.kpa != nil && kns.mpa != nil
 }
@@ -699,6 +704,82 @@ func (kns *knowledgeNetworkService) GetKNProxy(ctx context.Context, knID string)
 		return nil, proxyHTTPError(ctx, http.StatusNotFound, "knowledge network proxy mapping not found")
 	}
 	return mapping, nil
+}
+
+// ResolveKNProxyBinding validates a server-derived runtime target against the
+// latest published main model and returns the proxy mapping only when that
+// exact model version has finished permission synchronization.
+func (kns *knowledgeNetworkService) ResolveKNProxyBinding(ctx context.Context, knID string,
+	binding interfaces.KNProxyBinding) (*interfaces.KNProxyAccount, error) {
+	if kns.kpa == nil {
+		return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "proxy orchestration is disabled")
+	}
+	mapping, err := kns.kpa.Get(ctx, knID)
+	if err != nil {
+		return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "load knowledge network proxy mapping")
+	}
+	if mapping == nil {
+		return nil, proxyHTTPError(ctx, http.StatusNotFound, "knowledge network proxy mapping not found")
+	}
+	if mapping.LifecycleStatus != interfaces.KNProxyLifecycleActive ||
+		mapping.SyncStatus != interfaces.KNProxySyncReady ||
+		mapping.PublishedModelVersion == "" || mapping.SyncedModelVersion != mapping.PublishedModelVersion {
+		return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "knowledge network proxy is not synchronized with the current published model")
+	}
+	sources, modelVersion, err := kns.loadPublishedProxyBindings(ctx, knID, mapping.PublishedModelVersion)
+	if err != nil {
+		return nil, err
+	}
+	if !containsProxyBinding(sources, knID, binding) {
+		return nil, proxyHTTPError(ctx, http.StatusForbidden, "target is not a current published binding")
+	}
+	if mapping.PublishedModelVersion != modelVersion || mapping.SyncedModelVersion != modelVersion {
+		return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "knowledge network proxy is not synchronized with the current published model")
+	}
+	return mapping, nil
+}
+
+func (kns *knowledgeNetworkService) loadPublishedProxyBindings(ctx context.Context, knID,
+	expectedVersion string) ([]interfaces.ProxyGrantSourceSpec, string, error) {
+	if cached, ok := kns.proxyBindingCache.Load(knID); ok {
+		entry, valid := cached.(publishedProxyBindingCacheEntry)
+		if valid && entry.modelVersion == expectedVersion {
+			return entry.sources, entry.modelVersion, nil
+		}
+	}
+	latest, err := kns.ExportKNForProjection(ctx, knID)
+	if err != nil {
+		return nil, "", proxyHTTPError(ctx, http.StatusServiceUnavailable, "load current published proxy bindings")
+	}
+	sources, modelVersion, err := buildProxyGrantSources(latest)
+	if err != nil {
+		return nil, "", invalidProxyTargetError(ctx, err)
+	}
+	if modelVersion != expectedVersion {
+		return nil, "", proxyHTTPError(ctx, http.StatusServiceUnavailable,
+			"knowledge network proxy is not synchronized with the current published model")
+	}
+	entry := publishedProxyBindingCacheEntry{modelVersion: modelVersion, sources: sources}
+	kns.proxyBindingCache.Store(knID, entry)
+	return entry.sources, entry.modelVersion, nil
+}
+
+func containsProxyBinding(sources []interfaces.ProxyGrantSourceSpec, knID string,
+	binding interfaces.KNProxyBinding) bool {
+	values := []string{binding.ChildType, binding.ChildID, binding.TargetType, binding.TargetID, binding.Operation}
+	for _, value := range values {
+		if strings.TrimSpace(value) == "" || strings.TrimSpace(value) != value || strings.ContainsAny(value, "*\r\n") {
+			return false
+		}
+	}
+	for _, source := range sources {
+		if source.KNID == knID && source.BindingType == binding.ChildType && source.BindingID == binding.ChildID &&
+			source.ResourceType == binding.TargetType && source.ResourceID == binding.TargetID &&
+			source.Operation == binding.Operation {
+			return true
+		}
+	}
+	return false
 }
 
 // PlanKNProxySync is a side-effect-free backfill and publication dry run. It

@@ -17,6 +17,7 @@ var (
 	OMA interfaces.OntologyManagerAccess
 	OSA interfaces.OpenSearchAccess
 	VBA interfaces.VegaBackendAccess
+	PCR interfaces.ProxyContextResolver
 )
 
 func SetAuthAccess(aa interfaces.AuthAccess) {
@@ -41,4 +42,8 @@ func SetOpenSearchAccess(osa interfaces.OpenSearchAccess) {
 
 func SetVegaBackendAccess(v interfaces.VegaBackendAccess) {
 	VBA = v
+}
+
+func SetProxyContextResolver(resolver interfaces.ProxyContextResolver) {
+	PCR = resolver
 }

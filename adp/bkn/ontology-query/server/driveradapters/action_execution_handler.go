@@ -153,7 +153,7 @@ func (r *restHandler) ExecuteAction(c *gin.Context, visitor hydra.Visitor) {
 func (r *restHandler) GetActionExecutionByIn(c *gin.Context) {
 	logger.Debug("Handler GetActionExecutionByIn Start")
 	visitor := visitor.GenerateVisitor(c)
-	r.GetActionExecution(c, visitor)
+	r.GetActionExecution(c, visitor, true)
 }
 
 // GetActionExecutionByEx handles get execution status request (external)
@@ -166,11 +166,11 @@ func (r *restHandler) GetActionExecutionByEx(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	r.GetActionExecution(c, visitor)
+	r.GetActionExecution(c, visitor, false)
 }
 
 // GetActionExecution handles the get execution status request
-func (r *restHandler) GetActionExecution(c *gin.Context, visitor hydra.Visitor) {
+func (r *restHandler) GetActionExecution(c *gin.Context, visitor hydra.Visitor, includeProxyContext bool) {
 	logger.Debug("Handler GetActionExecution Start")
 	startTime := time.Now()
 
@@ -210,6 +210,9 @@ func (r *restHandler) GetActionExecution(c *gin.Context, visitor hydra.Visitor) 
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	logger.Debugf("GetActionExecution completed in %dms", time.Since(startTime).Milliseconds())
+	if !includeProxyContext {
+		result = redactActionExecutionProxyContext(result)
+	}
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
@@ -217,7 +220,7 @@ func (r *restHandler) GetActionExecution(c *gin.Context, visitor hydra.Visitor) 
 func (r *restHandler) QueryActionLogsByIn(c *gin.Context) {
 	logger.Debug("Handler QueryActionLogsByIn Start")
 	visitor := visitor.GenerateVisitor(c)
-	r.QueryActionLogs(c, visitor)
+	r.QueryActionLogs(c, visitor, true)
 }
 
 // QueryActionLogsByEx handles query action logs request (external)
@@ -230,11 +233,11 @@ func (r *restHandler) QueryActionLogsByEx(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	r.QueryActionLogs(c, visitor)
+	r.QueryActionLogs(c, visitor, false)
 }
 
 // QueryActionLogs handles the query action logs request (GET with query parameters)
-func (r *restHandler) QueryActionLogs(c *gin.Context, visitor hydra.Visitor) {
+func (r *restHandler) QueryActionLogs(c *gin.Context, visitor hydra.Visitor, includeProxyContext bool) {
 	logger.Debug("Handler QueryActionLogs Start")
 	startTime := time.Now()
 
@@ -307,6 +310,9 @@ func (r *restHandler) QueryActionLogs(c *gin.Context, visitor hydra.Visitor) {
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	logger.Debugf("QueryActionLogs completed in %dms", time.Since(startTime).Milliseconds())
+	if !includeProxyContext {
+		result = redactActionExecutionListProxyContext(result)
+	}
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
@@ -314,7 +320,7 @@ func (r *restHandler) QueryActionLogs(c *gin.Context, visitor hydra.Visitor) {
 func (r *restHandler) GetActionLogByIn(c *gin.Context) {
 	logger.Debug("Handler GetActionLogByIn Start")
 	visitor := visitor.GenerateVisitor(c)
-	r.GetActionLog(c, visitor)
+	r.GetActionLog(c, visitor, true)
 }
 
 // GetActionLogByEx handles get single action log request (external)
@@ -327,11 +333,11 @@ func (r *restHandler) GetActionLogByEx(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	r.GetActionLog(c, visitor)
+	r.GetActionLog(c, visitor, false)
 }
 
 // GetActionLog handles the get single action log request
-func (r *restHandler) GetActionLog(c *gin.Context, visitor hydra.Visitor) {
+func (r *restHandler) GetActionLog(c *gin.Context, visitor hydra.Visitor, includeProxyContext bool) {
 	logger.Debug("Handler GetActionLog Start")
 	startTime := time.Now()
 
@@ -397,7 +403,37 @@ func (r *restHandler) GetActionLog(c *gin.Context, visitor hydra.Visitor) {
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	logger.Debugf("GetActionLog completed in %dms", time.Since(startTime).Milliseconds())
+	if !includeProxyContext {
+		result = redactActionExecutionProxyContext(result)
+	}
 	rest.ReplyOK(c, http.StatusOK, result)
+}
+
+func redactActionExecutionProxyContext(execution *interfaces.ActionExecution) *interfaces.ActionExecution {
+	if execution == nil {
+		return nil
+	}
+	redacted := *execution
+	redacted.Proxy = nil
+	redacted.ProxyVersion = 0
+	redacted.ProxyModelVersion = ""
+	redacted.ProxyPermissionSnapshot = nil
+	return &redacted
+}
+
+func redactActionExecutionListProxyContext(
+	list *interfaces.ActionExecutionList,
+) *interfaces.ActionExecutionList {
+	if list == nil {
+		return nil
+	}
+	redacted := *list
+	redacted.Entries = append([]interfaces.ActionExecution(nil), list.Entries...)
+	for index := range redacted.Entries {
+		entry := redactActionExecutionProxyContext(&redacted.Entries[index])
+		redacted.Entries[index] = *entry
+	}
+	return &redacted
 }
 
 // CancelActionLogByIn handles cancel action execution request (internal)

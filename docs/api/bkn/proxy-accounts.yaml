@@ -19,6 +19,32 @@ paths:
                 $ref: '#/components/schemas/KnowledgeNetworkProxyAccount'
         '404': { description: No mapping exists. }
         '503': { description: Proxy orchestration is unavailable. }
+  /api/bkn-backend/in/v1/knowledge-networks/{kn_id}/proxy-account/resolve:
+    post:
+      summary: Resolve a runtime proxy only for an exact current published binding
+      description: |
+        Cluster-internal endpoint for ontology-query after caller authorization.
+        BKN rebuilds the authoritative source set from the latest main model and
+        returns the managed proxy only when the requested tuple exists and that
+        exact model version is fully synchronized.
+      parameters:
+        - $ref: '#/components/parameters/KnowledgeNetworkID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProxyRuntimeBinding'
+      responses:
+        '200':
+          description: Active mapping synchronized with the current published binding.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeNetworkProxyAccount'
+        '403': { description: The target is not an exact current published binding. }
+        '404': { description: No mapping exists. }
+        '503': { description: Mapping or model synchronization is unavailable. }
   /api/bkn-backend/in/v1/knowledge-networks/{kn_id}/proxy-account/sync:
     post:
       summary: Retry synchronization from the latest persisted main model
@@ -77,6 +103,16 @@ components:
       required: true
       schema: { type: string, maxLength: 64 }
   schemas:
+    ProxyRuntimeBinding:
+      type: object
+      additionalProperties: false
+      required: [child_type, child_id, target_type, target_id, operation]
+      properties:
+        child_type: { type: string, enum: [object_type, relation_type, metric, action_type, logic_property] }
+        child_id: { type: string }
+        target_type: { type: string, enum: [resource, tool_box, mcp] }
+        target_id: { type: string }
+        operation: { type: string, enum: [view_detail, query_data, execute] }
     KnowledgeNetworkProxyAccount:
       type: object
       required: [kn_id, proxy_account_id, proxy_account_type, lifecycle_status, version, sync_status, published_model_version, synced_model_version, created_at, updated_at]

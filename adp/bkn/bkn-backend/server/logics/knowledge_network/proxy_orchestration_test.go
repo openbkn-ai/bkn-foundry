@@ -953,6 +953,70 @@ func TestGetKNProxyResolvesMappingWithoutBusinessAuthorize(t *testing.T) {
 	}
 }
 
+func TestResolveKNProxyBindingRequiresCurrentPublishedSourceAndSyncedVersion(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	kna := bmock.NewMockKNAccess(ctrl)
+	cga := bmock.NewMockConceptGroupAccess(ctrl)
+	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	rta := bmock.NewMockRelationTypeAccess(ctrl)
+	ata := bmock.NewMockActionTypeAccess(ctrl)
+	ma := bmock.NewMockMetricAccess(ctrl)
+	objectType := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+		OTID: "ot-1", DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"},
+		LogicProperties: []*interfaces.LogicProperty{{
+			Name: "risk_score", Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+			DataSource: &interfaces.ResourceInfo{Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL, BoxID: "box-1", ToolID: "tool-1"},
+		}},
+	}}
+	published := &interfaces.KN{KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, ObjectTypes: []*interfaces.ObjectType{objectType}}
+	_, modelVersion, err := buildProxyGrantSources(published)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	kna.EXPECT().GetKNByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH).
+		Return(&interfaces.KN{KNID: "kn-1", Branch: interfaces.MAIN_BRANCH}, nil)
+	cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(nil, nil)
+	ota.EXPECT().ListObjectTypes(gomock.Any(), nil, gomock.Any()).Return([]*interfaces.ObjectType{objectType}, nil)
+	rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, nil)
+	ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return(nil, nil)
+	ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(nil, nil)
+	mapping := &interfaces.KNProxyAccount{
+		KNID: "kn-1", ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleActive,
+		SyncStatus: interfaces.KNProxySyncReady, PublishedModelVersion: modelVersion, SyncedModelVersion: modelVersion,
+	}
+	service := &knowledgeNetworkService{
+		kna: kna, cga: cga, ota: ota, rta: rta, ata: ata, ma: ma,
+		kpa: &proxyAccessStub{mapping: mapping},
+	}
+	binding := interfaces.KNProxyBinding{
+		ChildType: interfaces.MODULE_TYPE_OBJECT_TYPE, ChildID: "ot-1",
+		TargetType: "resource", TargetID: "resource-1", Operation: interfaces.OPERATION_TYPE_QUERY_DATA,
+	}
+	if got, resolveErr := service.ResolveKNProxyBinding(t.Context(), "kn-1", binding); resolveErr != nil || got != mapping {
+		t.Fatalf("ResolveKNProxyBinding() = %#v, %v", got, resolveErr)
+	}
+
+	unbound := binding
+	unbound.TargetID = "resource-other"
+	if _, resolveErr := service.ResolveKNProxyBinding(t.Context(), "kn-1", unbound); resolveErr == nil {
+		t.Fatal("unbound target was accepted")
+	}
+	logicPropertyBinding := interfaces.KNProxyBinding{
+		ChildType:  "logic_property",
+		ChildID:    "d24404efa877194b29ee86381e672d23b44933439f4b0fcb11659f0fd4325406",
+		TargetType: "tool_box", TargetID: "box-1", Operation: interfaces.OPERATION_TYPE_EXECUTE,
+	}
+	if got, resolveErr := service.ResolveKNProxyBinding(t.Context(), "kn-1", logicPropertyBinding); resolveErr != nil || got != mapping {
+		t.Fatalf("ResolveKNProxyBinding(logic property) = %#v, %v", got, resolveErr)
+	}
+
+	mapping.SyncedModelVersion = "stale-version"
+	if _, resolveErr := service.ResolveKNProxyBinding(t.Context(), "kn-1", binding); resolveErr == nil {
+		t.Fatal("stale synchronized model version was accepted")
+	}
+}
+
 func TestReconcileKNProxiesReportsMissingOrphanAndConflict(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	kna := bmock.NewMockKNAccess(ctrl)

@@ -56,6 +56,21 @@ func (mr *MockAgentOperatorAccessMockRecorder) ExecuteMCP(ctx, mcpID, toolName, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteMCP", reflect.TypeOf((*MockAgentOperatorAccess)(nil).ExecuteMCP), ctx, mcpID, toolName, execRequest)
 }
 
+// ExecuteMCPAsProxy mocks base method.
+func (m *MockAgentOperatorAccess) ExecuteMCPAsProxy(ctx context.Context, mcpID, toolName string, execRequest interfaces.MCPExecutionRequest) (any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExecuteMCPAsProxy", ctx, mcpID, toolName, execRequest)
+	ret0, _ := ret[0].(any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ExecuteMCPAsProxy indicates an expected call of ExecuteMCPAsProxy.
+func (mr *MockAgentOperatorAccessMockRecorder) ExecuteMCPAsProxy(ctx, mcpID, toolName, execRequest any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteMCPAsProxy", reflect.TypeOf((*MockAgentOperatorAccess)(nil).ExecuteMCPAsProxy), ctx, mcpID, toolName, execRequest)
+}
+
 // ExecuteTool mocks base method.
 func (m *MockAgentOperatorAccess) ExecuteTool(ctx context.Context, boxID, toolID string, execRequest interfaces.ToolExecutionRequest) (any, error) {
 	m.ctrl.T.Helper()
@@ -69,4 +84,19 @@ func (m *MockAgentOperatorAccess) ExecuteTool(ctx context.Context, boxID, toolID
 func (mr *MockAgentOperatorAccessMockRecorder) ExecuteTool(ctx, boxID, toolID, execRequest any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteTool", reflect.TypeOf((*MockAgentOperatorAccess)(nil).ExecuteTool), ctx, boxID, toolID, execRequest)
+}
+
+// ExecuteToolAsProxy mocks base method.
+func (m *MockAgentOperatorAccess) ExecuteToolAsProxy(ctx context.Context, boxID, toolID string, execRequest interfaces.ToolExecutionRequest) (any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExecuteToolAsProxy", ctx, boxID, toolID, execRequest)
+	ret0, _ := ret[0].(any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ExecuteToolAsProxy indicates an expected call of ExecuteToolAsProxy.
+func (mr *MockAgentOperatorAccessMockRecorder) ExecuteToolAsProxy(ctx, boxID, toolID, execRequest any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteToolAsProxy", reflect.TypeOf((*MockAgentOperatorAccess)(nil).ExecuteToolAsProxy), ctx, boxID, toolID, execRequest)
 }

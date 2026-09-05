@@ -4,12 +4,19 @@ info:
   title: ontology-query
   version: 0.2.0
   description: |
-    Data-query endpoints resolve trusted dependencies from the published `main`
-    knowledge-network model and require `query_data` on every canonical
-    `{resource_type}:{kn_id}/{child_id}` dependency before reading data.
-    Action submission additionally requires direct `action_type.execute`, the
-    referenced execution resource's `execute`, and all input/target data
-    permissions. See `../knowledge-network-authorization.md`.
+    Schema and data-query endpoints resolve trusted dependencies from the published
+    `main` knowledge-network model and require the real caller's `view_detail` or
+    `query_data` on every canonical `{resource_type}:{kn_id}/{child_id}` dependency
+    before reading metadata or data. The service then resolves the knowledge
+    network's active managed proxy; Vega performs the final corresponding resource
+    permission check for that proxy through its restricted internal endpoint.
+
+    Action submission requires the caller's `action_type.execute` plus all
+    input/target object dependencies' `query_data`. Tool Box or MCP `execute`
+    belongs to the managed proxy and is checked again by the restricted execution
+    endpoint. Proxy identity and target bindings are always server-derived from
+    the current published `main` model. See `../knowledge-network-authorization.md`
+    and `trusted-proxy-context.md`.
 security:
   - OAuth2: []
 paths:
@@ -40,6 +47,104 @@ paths:
                     type: string
                 required:
                   - ServerVersion
+  /api/ontology-query/v1/knowledge-networks/{kn_id}/object-types/{ot_id}/schema:
+    get:
+      summary: Get the bound Vega schema in an object-type context
+      description: |
+        Requires the caller's `object_type.view_detail`. The target resource is
+        resolved from the current published main model; Vega performs the final
+        `resource.view_detail` check for the knowledge network's managed proxy.
+        Proxy identities and resource IDs supplied by the client are ignored.
+      operationId: getObjectTypeResourceSchema
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: ot_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: branch
+          in: query
+          schema: { type: string, enum: [main], default: main }
+      responses:
+        '200':
+          description: The schema definition only; physical resource metadata is not exposed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [schema_definition]
+                properties:
+                  schema_definition:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        '403': { description: Caller or managed proxy lacks the required permission. }
+        '404': { description: The published object type does not exist. }
+        '503': { description: Proxy mapping or a permission dependency is unavailable. }
+  /api/ontology-query/v1/knowledge-networks/{kn_id}/object-types/{ot_id}/sample-data:
+    get:
+      summary: Get object-type sample data through the managed proxy
+      description: |
+        Requires the caller's `object_type.query_data`. The target resource is
+        resolved from the current published main model and Vega performs the
+        final managed-proxy `resource.query_data` check before reading rows.
+      operationId: getObjectTypeSampleDataViaProxy
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: ot_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: branch
+          in: query
+          schema: { type: string, enum: [main], default: main }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: need_total
+          in: query
+          schema: { type: boolean, default: true }
+        - name: search_after
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Object-type columns and sample entries.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [name, columns, entries]
+                properties:
+                  name: { type: string }
+                  columns:
+                    type: array
+                    items:
+                      type: object
+                      required: [data_index, title]
+                      properties:
+                        data_index: { type: string }
+                        title: { type: string }
+                  entries:
+                    type: array
+                    items: { type: object, additionalProperties: true }
+                  total_count: { type: integer, format: int64 }
+                  search_after:
+                    type: array
+                    items: {}
+        '403': { description: Caller or managed proxy lacks query_data. }
+        '404': { description: The published object type does not exist. }
+        '503': { description: Proxy mapping or a permission dependency is unavailable. }
   /api/ontology-query/v1/knowledge-networks/{kn_id}/object-types/{ot_id}:
     summary: 检索指定对象类的对象的详细数据
     post:

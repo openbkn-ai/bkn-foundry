@@ -17,6 +17,12 @@ type DatasetQueryResponse struct {
 	SearchAfter []any            `json:"search_after"`
 }
 
+// ResourceSchemaResponse is the restricted subset of Vega resource detail
+// that ontology-query may expose in an object-type context.
+type ResourceSchemaResponse struct {
+	SchemaDefinition []map[string]any `json:"schema_definition"`
+}
+
 // ResourceDataPagingRequest matches vega-backend paging contract for resource data.
 type ResourceDataPagingRequest struct {
 	Mode         string `json:"mode,omitempty"`
@@ -26,7 +32,8 @@ type ResourceDataPagingRequest struct {
 	Cursor       string `json:"cursor,omitempty"`
 }
 
-// ResourceDataQueryParams is the JSON body for POST /resources/:id/data.
+// ResourceDataQueryParams is the JSON body for the restricted
+// POST /proxy/resources/:id/data endpoint.
 // Analytics fields align with resource_data_query_analytics_schema.md (aggregate mode).
 // Pagination must be sent via Paging (vega HTTP contract); Limit/Offset are local helpers
 // that are normalized into Paging before the request is marshaled.
@@ -48,5 +55,6 @@ type ResourceDataQueryParams struct {
 
 //go:generate mockgen -source vega_backend_access.go -destination mock/mock_vega_backend_access.go -package mock_interfaces
 type VegaBackendAccess interface {
+	GetResourceSchema(ctx context.Context, resourceID string) (*ResourceSchemaResponse, error)
 	QueryResourceData(ctx context.Context, resourceID string, params *ResourceDataQueryParams) (*DatasetQueryResponse, error)
 }

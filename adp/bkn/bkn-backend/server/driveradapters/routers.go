@@ -212,6 +212,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	otlApiInV1.Use(rest.PrivateNoCacheMiddleware())
 	bknApiInV1.GET("/trace/projection/knowledge-networks/:kn_id", r.GetKNByProjectionGrant)
 	bknApiInV1.GET("/knowledge-networks/:kn_id/proxy-account", r.GetKNProxy)
+	bknApiInV1.POST("/knowledge-networks/:kn_id/proxy-account/resolve", r.verifyJsonContentType(), r.ResolveKNProxyBinding)
 	bknApiInV1.GET("/knowledge-networks/:kn_id/proxy-account/plan", r.PlanKNProxySync)
 	bknApiInV1.POST("/knowledge-networks/:kn_id/proxy-account/sync", r.RetryKNProxySync)
 	bknApiInV1.POST("/knowledge-networks/:kn_id/proxy-account/deletion/finalize", r.FinalizeKNProxyDeletion)

@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -39,6 +40,7 @@ type knowledgeNetworkService struct {
 	omAccess   interfaces.OntologyManagerAccess
 	ots        interfaces.ObjectTypeService
 	vba        interfaces.VegaBackendAccess
+	proxy      interfaces.ProxyContextResolver
 }
 
 func NewKnowledgeNetworkService(appSetting *common.AppSetting) interfaces.KnowledgeNetworkService {
@@ -48,6 +50,7 @@ func NewKnowledgeNetworkService(appSetting *common.AppSetting) interfaces.Knowle
 			omAccess:   logics.OMA,
 			ots:        object_type.NewObjectTypeService(appSetting),
 			vba:        logics.VBA,
+			proxy:      logics.PCR,
 		}
 	})
 	return knService
@@ -60,6 +63,11 @@ func (kns *knowledgeNetworkService) SearchSubgraph(ctx context.Context,
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "查询对象子图")
 	defer span.End()
 	var resps interfaces.ObjectSubGraph
+	if query == nil || query.Branch != interfaces.MAIN_BRANCH {
+		return resps, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails("only the published main branch can be queried")
+	}
 
 	// 1. Under the specified business knowledge network, get all paths by source object type, direction, and path length.
 	typePaths := query.AuthorizedTypePaths
@@ -135,6 +143,11 @@ func (kns *knowledgeNetworkService) SearchSubgraphByTypePath(ctx context.Context
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "查询路径的对象子图")
 	defer span.End()
+	if query == nil || query.Branch != interfaces.MAIN_BRANCH {
+		return interfaces.PathsEntries{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails("only the published main branch can be queried")
+	}
 
 	// Query multiple paths concurrently; each path runs independently with its own filters.
 	errCh := make(chan error, len(query.Paths.TypePaths))
@@ -1019,6 +1032,37 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 	mappingRules *interfaces.InDirectMapping, isForward bool) (map[string][]map[string]any, error) {
 
 	result := make(map[string][]map[string]any)
+	if mappingRules.BackingDataSource == nil ||
+		mappingRules.BackingDataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE ||
+		strings.TrimSpace(mappingRules.BackingDataSource.ID) == "" {
+		backingType := ""
+		if mappingRules.BackingDataSource != nil {
+			backingType = mappingRules.BackingDataSource.Type
+		}
+		return nil, logics.UnsupportedRelationBackingDataSourceError(ctx, backingType)
+	}
+	if kns.proxy == nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+			oerrors.OntologyQuery_InternalError_CheckPermissionFailed).
+			WithErrorDetails("knowledge network proxy resolver is not configured")
+	}
+	relationTypeID := edge.RelationType.RTID
+	if relationTypeID == "" {
+		relationTypeID = edge.RelationTypeId
+	}
+	proxyContext, err := kns.proxy.Resolve(ctx, interfaces.TrustedProxyBinding{
+		KNID:       query.KNID,
+		ChildType:  interfaces.PermissionResourceTypeRelationType,
+		ChildID:    relationTypeID,
+		TargetType: interfaces.ProxyTargetTypeResource,
+		TargetID:   mappingRules.BackingDataSource.ID,
+		Operation:  interfaces.PermissionOperationQueryData,
+	})
+	if err != nil {
+		return nil, err
+	}
+	ctx = interfaces.WithTrustedProxyContext(ctx, proxyContext)
+
 	batchSize := 50 // Batch size for view queries.
 	var mappingRulesToUse []interfaces.Mapping
 	if isForward {
@@ -1118,6 +1162,10 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 			}
 			resp, err := kns.vba.QueryResourceData(ctx, mappingRules.BackingDataSource.ID, params)
 			if err != nil {
+				if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
+					return nil, rest.NewHTTPError(ctx, downstream.StatusCode,
+						relationDownstreamErrorCode(downstream.StatusCode))
+				}
 				return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 					oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).WithErrorDetails(err.Error())
 			}
@@ -1139,6 +1187,21 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 	}
 
 	return result, nil
+}
+
+func relationDownstreamErrorCode(statusCode int) string {
+	switch statusCode {
+	case http.StatusUnauthorized:
+		return rest.PublicError_Unauthorized
+	case http.StatusForbidden:
+		return rest.PublicError_Forbidden
+	case http.StatusNotFound:
+		return rest.PublicError_NotFound
+	case http.StatusConflict:
+		return rest.PublicError_Conflict
+	default:
+		return oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter
+	}
 }
 
 // Map view data back to each object.
@@ -1242,6 +1305,11 @@ func (kns *knowledgeNetworkService) SearchSubgraphByObjects(ctx context.Context,
 	defer span.End()
 
 	var result interfaces.ObjectSubGraph
+	if query == nil || query.Branch != interfaces.MAIN_BRANCH {
+		return result, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails("only the published main branch can be queried")
+	}
 	result.Objects = make(map[string]interfaces.ObjectInfoInSubgraph)
 	result.IsolatedObjects = make(map[string]interfaces.ObjectInfoInSubgraph)
 	result.RelationPaths = []interfaces.RelationPath{}

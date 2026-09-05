@@ -26,10 +26,14 @@ type ToolExecutionRequest struct {
 
 //go:generate mockgen -source ../interfaces/agent_operator_access.go -destination ../interfaces/mock/mock_agent_operator_access.go
 type AgentOperatorAccess interface {
-	// ExecuteTool executes a tool via tool-box API
+	// ExecuteTool executes a non-Action tool call as the direct caller.
 	// API: POST /tool-box/{box_id}/proxy/{tool_id}
 	ExecuteTool(ctx context.Context, boxID string, toolID string, execRequest ToolExecutionRequest) (any, error)
-	// ExecuteMCP executes an MCP-based action through agent-operator-integration
+	// ExecuteMCP executes a non-Action MCP call as the direct caller.
 	// API: POST /mcp/proxy/{mcp_id}/tool/call
 	ExecuteMCP(ctx context.Context, mcpID string, toolName string, execRequest MCPExecutionRequest) (any, error)
+	// ExecuteToolAsProxy executes a tool call with the trusted KN proxy context.
+	ExecuteToolAsProxy(ctx context.Context, boxID string, toolID string, execRequest ToolExecutionRequest) (any, error)
+	// ExecuteMCPAsProxy executes an Action MCP call with the trusted KN proxy context.
+	ExecuteMCPAsProxy(ctx context.Context, mcpID string, toolName string, execRequest MCPExecutionRequest) (any, error)
 }

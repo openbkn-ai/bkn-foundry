@@ -106,6 +106,18 @@ type KNProxySyncPlan struct {
 	Sources        []ProxyGrantSourceSpec `json:"sources"`
 }
 
+// KNProxyBinding identifies one runtime target that ontology-query derived
+// from a published knowledge-network child. BKN validates the complete tuple
+// against its authoritative current main-model projection before returning the
+// managed proxy mapping.
+type KNProxyBinding struct {
+	ChildType  string `json:"child_type"`
+	ChildID    string `json:"child_id"`
+	TargetType string `json:"target_type"`
+	TargetID   string `json:"target_id"`
+	Operation  string `json:"operation"`
+}
+
 //go:generate mockgen -source ../interfaces/kn_proxy.go -destination ../interfaces/mock/mock_kn_proxy.go
 type KNProxyAccess interface {
 	Get(ctx context.Context, knID string) (*KNProxyAccount, error)

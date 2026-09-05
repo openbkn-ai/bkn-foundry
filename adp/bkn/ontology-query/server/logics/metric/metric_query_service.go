@@ -37,6 +37,7 @@ type metricQueryService struct {
 	oma        interfaces.OntologyManagerAccess
 	mfa        interfaces.ModelFactoryAccess
 	vba        interfaces.VegaBackendAccess
+	proxy      interfaces.ProxyContextResolver
 }
 
 // NewMetricQueryService constructs the metric query service (same pattern as NewObjectTypeService / bkn-backend NewMetricService).
@@ -47,6 +48,7 @@ func NewMetricQueryService(appSetting *common.AppSetting) interfaces.MetricQuery
 			oma:        logics.OMA,
 			mfa:        logics.MFA,
 			vba:        logics.VBA,
+			proxy:      logics.PCR,
 		}
 	})
 	return metricQueryServiceInst
@@ -745,6 +747,29 @@ func (s *metricQueryService) executeMetric(ctx context.Context, knID string, bra
 	if ot.DataSource == nil || ot.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE || ot.DataSource.ID == "" {
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidDataSource)
 	}
+	if s.proxy == nil {
+		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+			oerrors.OntologyQuery_InternalError_CheckPermissionFailed).
+			WithErrorDetails("knowledge network proxy resolver is not configured")
+	}
+	childType := interfaces.PermissionResourceTypeMetric
+	childID := def.ID
+	if strings.TrimSpace(childID) == "" {
+		childType = interfaces.PermissionResourceTypeObjectType
+		childID = ot.OTID
+	}
+	proxyContext, err := s.proxy.Resolve(ctx, interfaces.TrustedProxyBinding{
+		KNID:       knID,
+		ChildType:  childType,
+		ChildID:    childID,
+		TargetType: interfaces.ProxyTargetTypeResource,
+		TargetID:   ot.DataSource.ID,
+		Operation:  interfaces.PermissionOperationQueryData,
+	})
+	if err != nil {
+		return interfaces.MetricData{}, err
+	}
+	ctx = interfaces.WithTrustedProxyContext(ctx, proxyContext)
 
 	params, trend, err := s.buildResourceDataQueryParams(ctx, def, metricQuery, ot)
 	if err != nil {
@@ -756,6 +781,10 @@ func (s *metricQueryService) executeMetric(ctx context.Context, knID string, bra
 	datas, err := s.vba.QueryResourceData(ctx, ot.DataSource.ID, params)
 	if err != nil {
 		logger.Errorf("QueryResourceData: %v", err)
+		if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
+			return interfaces.MetricData{}, rest.NewHTTPError(ctx, downstream.StatusCode,
+				metricDownstreamErrorCode(downstream.StatusCode))
+		}
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -792,6 +821,10 @@ func (s *metricQueryService) executeMetric(ctx context.Context, knID string, bra
 		samePeriodDatas, err = s.vba.QueryResourceData(ctx, ot.DataSource.ID, params)
 		if err != nil {
 			logger.Errorf("QueryResourceData: %v", err)
+			if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
+				return interfaces.MetricData{}, rest.NewHTTPError(ctx, downstream.StatusCode,
+					metricDownstreamErrorCode(downstream.StatusCode))
+			}
 			return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -820,12 +853,32 @@ func (s *metricQueryService) executeMetric(ctx context.Context, knID string, bra
 	return out, nil
 }
 
+func metricDownstreamErrorCode(statusCode int) string {
+	switch statusCode {
+	case http.StatusUnauthorized:
+		return rest.PublicError_Unauthorized
+	case http.StatusForbidden:
+		return rest.PublicError_Forbidden
+	case http.StatusNotFound:
+		return rest.PublicError_NotFound
+	case http.StatusConflict:
+		return rest.PublicError_Conflict
+	default:
+		return oerrors.OntologyQuery_Metric_InvalidParameter
+	}
+}
+
 func (s *metricQueryService) GetMetricDefinition(ctx context.Context, knID, branch, metricID string) (*interfaces.MetricDefinition, bool, error) {
 	return s.oma.GetMetricDefinition(ctx, knID, branch, metricID)
 }
 
 func (s *metricQueryService) QueryMetricData(ctx context.Context, knID string, branch string, metricID string,
 	metricQuery *interfaces.MetricQueryRequest) (interfaces.MetricData, error) {
+	if branch != interfaces.MAIN_BRANCH {
+		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			oerrors.OntologyQuery_Metric_InvalidParameter).
+			WithErrorDetails("only the published main branch can be queried")
+	}
 
 	if metricQuery == nil {
 		metricQuery = &interfaces.MetricQueryRequest{}
@@ -850,6 +903,11 @@ func (s *metricQueryService) QueryMetricData(ctx context.Context, knID string, b
 
 func (s *metricQueryService) DryRunMetricData(ctx context.Context, knID, branch string,
 	metricDryRun *interfaces.MetricDryRunRequest) (interfaces.MetricData, error) {
+	if branch != interfaces.MAIN_BRANCH {
+		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			oerrors.OntologyQuery_Metric_InvalidParameter).
+			WithErrorDetails("only the published main branch can be queried")
+	}
 
 	if metricDryRun == nil || metricDryRun.MetricConfig == nil || metricDryRun.MetricConfig.CalculationFormula == nil {
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).

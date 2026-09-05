@@ -74,29 +74,6 @@ func (s *actionSchedulerService) resolveActionPermissionRequirements(ctx context
 		ResourceID:   knID + "/" + actionType.ATID,
 		Operation:    interfaces.PermissionOperationExecute,
 	}}
-	switch actionType.ActionSource.Type {
-	case interfaces.ActionSourceTypeTool:
-		if err := validateStandaloneActionResourceID(actionType.ActionSource.BoxID); err != nil {
-			return nil, actionPermissionInvalid(ctx, "tool box: "+err.Error())
-		}
-		requirements = append(requirements, interfaces.PermissionRequirement{
-			ResourceType: interfaces.PermissionResourceTypeToolBox,
-			ResourceID:   actionType.ActionSource.BoxID,
-			Operation:    interfaces.PermissionOperationExecute,
-		})
-	case interfaces.ActionSourceTypeMCP:
-		if err := validateStandaloneActionResourceID(actionType.ActionSource.McpID); err != nil {
-			return nil, actionPermissionInvalid(ctx, "MCP: "+err.Error())
-		}
-		requirements = append(requirements, interfaces.PermissionRequirement{
-			ResourceType: interfaces.PermissionResourceTypeMCP,
-			ResourceID:   actionType.ActionSource.McpID,
-			Operation:    interfaces.PermissionOperationExecute,
-		})
-	default:
-		return nil, actionPermissionInvalid(ctx, fmt.Sprintf("unsupported action source type: %s", actionType.ActionSource.Type))
-	}
-
 	objectTypeIDs := []string{actionType.ObjectTypeID}
 	if actionType.Affect != nil {
 		objectTypeIDs = append(objectTypeIDs, actionType.Affect.ObjectTypeID)
@@ -144,6 +121,100 @@ func (s *actionSchedulerService) resolveActionPermissionRequirements(ctx context
 		return requirements[i].Operation < requirements[j].Operation
 	})
 	return requirements, nil
+}
+
+func (s *actionSchedulerService) resolveActionProxyContext(
+	ctx context.Context, knID string, actionType *interfaces.ActionType,
+) (*interfaces.TrustedProxyContext, []interfaces.PermissionRequirement, error) {
+	binding, requirement, err := actionProxyBinding(ctx, knID, actionType)
+	if err != nil {
+		return nil, nil, err
+	}
+	if s == nil || s.proxy == nil {
+		return nil, nil, actionPermissionUnavailable(ctx, fmt.Errorf("knowledge network proxy resolver is not configured"))
+	}
+	proxy, err := s.proxy.Resolve(ctx, binding)
+	if err != nil {
+		return nil, nil, err
+	}
+	return proxy, []interfaces.PermissionRequirement{requirement}, nil
+}
+
+func actionProxyBinding(ctx context.Context, knID string,
+	actionType *interfaces.ActionType) (interfaces.TrustedProxyBinding, interfaces.PermissionRequirement, error) {
+	if actionType == nil {
+		return interfaces.TrustedProxyBinding{}, interfaces.PermissionRequirement{},
+			actionPermissionInvalid(ctx, "action type is required")
+	}
+	if err := validateActionResourceID(knID, actionType.ATID); err != nil {
+		return interfaces.TrustedProxyBinding{}, interfaces.PermissionRequirement{}, actionPermissionInvalid(ctx, err.Error())
+	}
+
+	targetType := ""
+	targetID := ""
+	switch actionType.ActionSource.Type {
+	case interfaces.ActionSourceTypeTool:
+		targetType = interfaces.ProxyTargetTypeToolBox
+		targetID = actionType.ActionSource.BoxID
+		if err := validateStandaloneActionResourceID(actionType.ActionSource.ToolID); err != nil {
+			return interfaces.TrustedProxyBinding{}, interfaces.PermissionRequirement{},
+				actionPermissionInvalid(ctx, "tool: "+err.Error())
+		}
+	case interfaces.ActionSourceTypeMCP:
+		targetType = interfaces.ProxyTargetTypeMCP
+		targetID = actionType.ActionSource.McpID
+		if strings.TrimSpace(actionType.ActionSource.ToolName) == "" && strings.TrimSpace(actionType.ActionSource.ToolID) == "" {
+			return interfaces.TrustedProxyBinding{}, interfaces.PermissionRequirement{},
+				actionPermissionInvalid(ctx, "MCP tool name is required")
+		}
+	default:
+		return interfaces.TrustedProxyBinding{}, interfaces.PermissionRequirement{},
+			actionPermissionInvalid(ctx, fmt.Sprintf("unsupported action source type: %s", actionType.ActionSource.Type))
+	}
+	if err := validateStandaloneActionResourceID(targetID); err != nil {
+		return interfaces.TrustedProxyBinding{}, interfaces.PermissionRequirement{},
+			actionPermissionInvalid(ctx, targetType+": "+err.Error())
+	}
+
+	binding := interfaces.TrustedProxyBinding{
+		KNID:       knID,
+		ChildType:  interfaces.PermissionResourceTypeActionType,
+		ChildID:    actionType.ATID,
+		TargetType: targetType,
+		TargetID:   targetID,
+		Operation:  interfaces.PermissionOperationExecute,
+	}
+	requirement := interfaces.PermissionRequirement{
+		ResourceType: targetType,
+		ResourceID:   targetID,
+		Operation:    interfaces.PermissionOperationExecute,
+	}
+	return binding, requirement, nil
+}
+
+func trustedActionProxyContext(execution *interfaces.ActionExecution,
+	actionType *interfaces.ActionType) (*interfaces.TrustedProxyContext, error) {
+	if execution == nil || actionType == nil {
+		return nil, fmt.Errorf("execution and action type are required")
+	}
+	binding, requirement, err := actionProxyBinding(context.Background(), execution.KNID, actionType)
+	if err != nil {
+		return nil, err
+	}
+	if execution.Executor.ID == "" || execution.Executor.Type == "" ||
+		execution.Proxy == nil || execution.Proxy.ID == "" || execution.Proxy.Type != interfaces.ProxyAccountTypeApp ||
+		execution.ProxyVersion <= 0 || execution.ProxyModelVersion == "" ||
+		len(execution.ProxyPermissionSnapshot) != 1 || execution.ProxyPermissionSnapshot[0] != requirement {
+		return nil, fmt.Errorf("execution dual-principal snapshot is incomplete")
+	}
+	return &interfaces.TrustedProxyContext{
+		Caller:                execution.Executor,
+		Proxy:                 *execution.Proxy,
+		ProxyVersion:          execution.ProxyVersion,
+		PublishedModelVersion: execution.ProxyModelVersion,
+		Binding:               binding,
+		ExecutionID:           execution.ID,
+	}, nil
 }
 
 func validateActionResourceID(knID, childID string) error {

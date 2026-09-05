@@ -12,11 +12,13 @@ const (
 	PermissionResourceTypeRelationType     = "relation_type"
 	PermissionResourceTypeActionType       = "action_type"
 	PermissionResourceTypeMetric           = "metric"
+	PermissionResourceTypeLogicProperty    = "logic_property"
 	PermissionResourceTypeToolBox          = "tool_box"
 	PermissionResourceTypeMCP              = "mcp"
 
-	PermissionOperationQueryData = "query_data"
-	PermissionOperationExecute   = "execute"
+	PermissionOperationViewDetail = "view_detail"
+	PermissionOperationQueryData  = "query_data"
+	PermissionOperationExecute    = "execute"
 )
 
 // PermissionResource identifies one concrete authorization resource.

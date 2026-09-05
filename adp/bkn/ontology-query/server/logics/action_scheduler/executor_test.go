@@ -68,7 +68,7 @@ func Test_ExecuteTool_UsesContextDeadline(t *testing.T) {
 			},
 		}
 
-		aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box_001", "tool_001", gomock.Any()).DoAndReturn(
+		aoAccess.EXPECT().ExecuteToolAsProxy(gomock.Any(), "box_001", "tool_001", gomock.Any()).DoAndReturn(
 			func(ctx context.Context, boxID, toolID string, req interfaces.ToolExecutionRequest) (any, error) {
 				deadline, ok := ctx.Deadline()
 				So(ok, ShouldBeTrue)

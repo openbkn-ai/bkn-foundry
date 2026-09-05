@@ -61,6 +61,14 @@ func Test_mapToActionExecution(t *testing.T) {
 				"total_count":      float64(2),
 				"success_count":    float64(1),
 				"failed_count":     float64(1),
+				"proxy_subject": map[string]any{
+					"id": "proxy-1", "type": "app",
+				},
+				"proxy_version":       float64(3),
+				"proxy_model_version": "model-v3",
+				"proxy_permission_snapshot": []any{
+					map[string]any{"resource_type": "tool_box", "resource_id": "box-1", "operation": "execute"},
+				},
 			}
 
 			exec, err := mapToActionExecution(m)
@@ -74,6 +82,12 @@ func Test_mapToActionExecution(t *testing.T) {
 			So(exec.TotalCount, ShouldEqual, 2)
 			So(exec.SuccessCount, ShouldEqual, 1)
 			So(exec.FailedCount, ShouldEqual, 1)
+			So(exec.Proxy, ShouldResemble, &interfaces.AccountInfo{ID: "proxy-1", Type: "app"})
+			So(exec.ProxyVersion, ShouldEqual, int64(3))
+			So(exec.ProxyModelVersion, ShouldEqual, "model-v3")
+			So(exec.ProxyPermissionSnapshot, ShouldResemble, []interfaces.PermissionRequirement{{
+				ResourceType: "tool_box", ResourceID: "box-1", Operation: "execute",
+			}})
 		})
 
 		Convey("should handle results array", func() {

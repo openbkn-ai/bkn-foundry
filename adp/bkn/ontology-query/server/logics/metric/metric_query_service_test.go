@@ -24,6 +24,30 @@ import (
 	omock "ontology-query/interfaces/mock"
 )
 
+type metricProxyResolverStub struct {
+	bindings []interfaces.TrustedProxyBinding
+	err      error
+}
+
+func (s *metricProxyResolverStub) Resolve(ctx context.Context,
+	binding interfaces.TrustedProxyBinding) (*interfaces.TrustedProxyContext, error) {
+	s.bindings = append(s.bindings, binding)
+	if s.err != nil {
+		return nil, s.err
+	}
+	caller, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	if caller.ID == "" {
+		caller = interfaces.AccountInfo{ID: "test-caller", Type: "user"}
+	}
+	return &interfaces.TrustedProxyContext{
+		Caller:                caller,
+		Proxy:                 interfaces.AccountInfo{ID: "test-proxy", Type: interfaces.ProxyAccountTypeApp},
+		ProxyVersion:          2,
+		PublishedModelVersion: "model-v2",
+		Binding:               binding,
+	}, nil
+}
+
 func Test_metricGroupByDimensions_analysisDimensions(t *testing.T) {
 	Convey("metricGroupByDimensions respects analysis_dimensions\n", t, func() {
 		ctx := context.Background()
@@ -415,6 +439,7 @@ func Test_metricQueryService_QueryMetricData(t *testing.T) {
 			appSetting: &common.AppSetting{},
 			oma:        oma,
 			vba:        vba,
+			proxy:      &metricProxyResolverStub{},
 		}
 
 		def := &interfaces.MetricDefinition{
@@ -679,6 +704,7 @@ func Test_metricQueryService_DryRunMetricData(t *testing.T) {
 			appSetting: &common.AppSetting{},
 			oma:        oma,
 			vba:        vba,
+			proxy:      &metricProxyResolverStub{},
 		}
 
 		Convey("Fails when kn_id mismatches metric_config.kn_id\n", func() {

@@ -10,6 +10,8 @@ import "context"
 
 //go:generate mockgen -source ../interfaces/object_type_service.go -destination ../interfaces/mock/mock_object_type_service.go
 type ObjectTypeService interface {
+	GetObjectTypeSchema(ctx context.Context, knID, branch, objectTypeID string) (*ResourceSchemaResponse, error)
+	GetObjectTypeSampleData(ctx context.Context, query *ObjectQueryBaseOnObjectType) (*ObjectTypeSampleData, error)
 	GetObjectsByObjectTypeID(ctx context.Context, query *ObjectQueryBaseOnObjectType) (Objects, error)
 	GetObjectPropertyValue(ctx context.Context, query *ObjectPropertyValueQuery) (Objects, error)
 }

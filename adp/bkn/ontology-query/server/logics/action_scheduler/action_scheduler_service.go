@@ -62,6 +62,7 @@ type actionSchedulerService struct {
 	logsService interfaces.ActionLogsService
 	ots         interfaces.ObjectTypeService
 	permissions interfaces.ActionExecutionPermissionService
+	proxy       interfaces.ProxyContextResolver
 
 	duplicateCheckHook interfaces.DuplicateCheckHook
 }
@@ -75,6 +76,7 @@ func NewActionSchedulerService(appSetting *common.AppSetting) interfaces.ActionS
 			aoAccess:    logics.AOA,
 			logsService: action_logs.NewActionLogsService(appSetting),
 			ots:         object_type.NewObjectTypeService(appSetting),
+			proxy:       logics.PCR,
 		}
 		if common.GetAuthEnabled() {
 			svc.permissions = permission.NewPermissionService(appSetting)
@@ -89,10 +91,13 @@ func NewActionSchedulerService(appSetting *common.AppSetting) interfaces.ActionS
 // CheckActionExecution verifies the current subject against the trusted,
 // published action dependencies without reading instance data or invoking the action.
 func (s *actionSchedulerService) CheckActionExecution(ctx context.Context, req *interfaces.ActionExecutionRequest) error {
-	if !common.GetAuthEnabled() {
-		return nil
+	if req == nil {
+		return actionPermissionInvalid(ctx, "action execution request is required")
 	}
-	if req == nil || req.Branch != interfaces.MAIN_BRANCH {
+	if req.Branch == "" {
+		req.Branch = interfaces.MAIN_BRANCH
+	}
+	if req.Branch != interfaces.MAIN_BRANCH {
 		return actionPermissionInvalid(ctx, "only the published main branch can execute actions")
 	}
 	if s == nil || s.omAccess == nil {
@@ -112,6 +117,10 @@ func (s *actionSchedulerService) CheckActionExecution(ctx context.Context, req *
 			}))
 	}
 	_, err = s.authorizeActionType(ctx, req.KNID, &actionType)
+	if err != nil {
+		return err
+	}
+	_, _, err = s.resolveActionProxyContext(ctx, req.KNID, &actionType)
 	return err
 }
 
@@ -119,6 +128,15 @@ func (s *actionSchedulerService) CheckActionExecution(ctx context.Context, req *
 func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfaces.ActionExecutionRequest) (*interfaces.ActionExecutionResponse, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ExecuteAction")
 	defer span.End()
+	if req == nil {
+		return nil, actionPermissionInvalid(ctx, "action execution request is required")
+	}
+	if req.Branch == "" {
+		req.Branch = interfaces.MAIN_BRANCH
+	}
+	if req.Branch != interfaces.MAIN_BRANCH {
+		return nil, actionPermissionInvalid(ctx, "only the published main branch can execute actions")
+	}
 
 	span.SetAttributes(
 		attr.Key("kn_id").String(req.KNID),
@@ -151,6 +169,10 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		executor = accountInfo
 	}
 	permissionSnapshot, err := s.authorizeActionType(ctx, req.KNID, &actionType)
+	if err != nil {
+		return nil, err
+	}
+	actionProxy, proxyPermissionSnapshot, err := s.resolveActionProxyContext(ctx, req.KNID, &actionType)
 	if err != nil {
 		return nil, err
 	}
@@ -227,6 +249,8 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 			WithErrorDetails(fmt.Sprintf("failed to generate execution UUIDv7: %v", err))
 	}
 	executionID := generatedExecutionID.String()
+	actionProxy.ExecutionID = executionID
+	proxySubject := actionProxy.Proxy
 	now := time.Now().UnixMilli()
 
 	// Determine trigger type (default to manual if not specified)
@@ -238,28 +262,32 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 	// Create execution record with metadata only (no Results to save space)
 	// Results will be stored incrementally during execution
 	execution := &interfaces.ActionExecution{
-		ID:                   executionID,
-		KNID:                 req.KNID,
-		ActionTypeID:         actionType.ATID,
-		ActionTypeName:       actionType.ATName,
-		ActionSourceType:     actionType.ActionSource.Type,
-		ActionSource:         actionType.ActionSource,
-		ObjectTypeID:         actionType.ObjectTypeID,
-		TriggerType:          triggerType,
-		Status:               interfaces.ExecutionStatusPending,
-		ExecutionMode:        executionMode,
-		TargetCount:          len(req.Instances),
-		TotalCount:           invocationCount,
-		SuccessCount:         0,
-		FailedCount:          0,
-		Results:              []interfaces.ObjectExecutionResult{}, // Empty initially to save space
-		DynamicParams:        req.DynamicParams,
-		ExecutorID:           executor.ID, // deprecated, kept for backward compatibility
-		Executor:             executor,    // full executor info
-		StartTime:            now,
-		ActionTypeSnapshot:   actionTypeSnapshot, // Save the action type configuration snapshot used during execution.
-		PermissionSnapshot:   permissionSnapshot,
-		InstanceIdentityHash: instanceHash,
+		ID:                      executionID,
+		KNID:                    req.KNID,
+		ActionTypeID:            actionType.ATID,
+		ActionTypeName:          actionType.ATName,
+		ActionSourceType:        actionType.ActionSource.Type,
+		ActionSource:            actionType.ActionSource,
+		ObjectTypeID:            actionType.ObjectTypeID,
+		TriggerType:             triggerType,
+		Status:                  interfaces.ExecutionStatusPending,
+		ExecutionMode:           executionMode,
+		TargetCount:             len(req.Instances),
+		TotalCount:              invocationCount,
+		SuccessCount:            0,
+		FailedCount:             0,
+		Results:                 []interfaces.ObjectExecutionResult{}, // Empty initially to save space
+		DynamicParams:           req.DynamicParams,
+		ExecutorID:              executor.ID, // deprecated, kept for backward compatibility
+		Executor:                executor,    // full executor info
+		StartTime:               now,
+		ActionTypeSnapshot:      actionTypeSnapshot, // Save the action type configuration snapshot used during execution.
+		PermissionSnapshot:      permissionSnapshot,
+		Proxy:                   &proxySubject,
+		ProxyVersion:            actionProxy.ProxyVersion,
+		ProxyModelVersion:       actionProxy.PublishedModelVersion,
+		ProxyPermissionSnapshot: proxyPermissionSnapshot,
+		InstanceIdentityHash:    instanceHash,
 	}
 
 	// Save initial execution record (metadata only)
@@ -316,6 +344,11 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 	ctx := context.Background()
 	// Restore account info from execution record for downstream API calls (user_id header)
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, execution.Executor)
+	if proxyContext, err := trustedActionProxyContext(execution, actionType); err == nil {
+		ctx = interfaces.WithTrustedProxyContext(ctx, proxyContext)
+	} else {
+		logger.Errorf("Execution %s has an invalid proxy snapshot: %v", execution.ID, err)
+	}
 
 	logger.Infof("Starting async execution: %s, mode: %s, target instances: %d",
 		execution.ID, execution.ExecutionMode, len(req.Instances))
@@ -463,6 +496,9 @@ func (s *actionSchedulerService) invokeActionSource(ctx context.Context,
 	params map[string]any, dynamicParams map[string]any) (map[string]any, any, error) {
 	if err := s.authorizeExecution(ctx, permissionSnapshot); err != nil {
 		return params, nil, err
+	}
+	if _, ok := interfaces.TrustedProxyContextFromContext(ctx); !ok {
+		return params, nil, actionPermissionUnavailable(ctx, fmt.Errorf("execution proxy snapshot is missing"))
 	}
 
 	switch actionType.ActionSource.Type {

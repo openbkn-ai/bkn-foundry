@@ -269,6 +269,21 @@ func (mr *MockKNServiceMockRecorder) ReconcileKNProxies(ctx, requestedBy any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileKNProxies", reflect.TypeOf((*MockKNService)(nil).ReconcileKNProxies), ctx, requestedBy)
 }
 
+// ResolveKNProxyBinding mocks base method.
+func (m *MockKNService) ResolveKNProxyBinding(ctx context.Context, knID string, binding interfaces.KNProxyBinding) (*interfaces.KNProxyAccount, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveKNProxyBinding", ctx, knID, binding)
+	ret0, _ := ret[0].(*interfaces.KNProxyAccount)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolveKNProxyBinding indicates an expected call of ResolveKNProxyBinding.
+func (mr *MockKNServiceMockRecorder) ResolveKNProxyBinding(ctx, knID, binding any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveKNProxyBinding", reflect.TypeOf((*MockKNService)(nil).ResolveKNProxyBinding), ctx, knID, binding)
+}
+
 // RetryKNProxySync mocks base method.
 func (m *MockKNService) RetryKNProxySync(ctx context.Context, knID string) (*interfaces.KNProxyAccount, error) {
 	m.ctrl.T.Helper()

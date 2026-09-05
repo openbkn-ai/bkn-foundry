@@ -8,6 +8,7 @@ package object_type
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"testing"
@@ -24,6 +25,30 @@ import (
 	"ontology-query/logics"
 )
 
+type objectTypeProxyResolverStub struct {
+	bindings []interfaces.TrustedProxyBinding
+	err      error
+}
+
+func (s *objectTypeProxyResolverStub) Resolve(ctx context.Context,
+	binding interfaces.TrustedProxyBinding) (*interfaces.TrustedProxyContext, error) {
+	s.bindings = append(s.bindings, binding)
+	if s.err != nil {
+		return nil, s.err
+	}
+	caller, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	if caller.ID == "" {
+		caller = interfaces.AccountInfo{ID: "test-caller", Type: "user"}
+	}
+	return &interfaces.TrustedProxyContext{
+		Caller:                caller,
+		Proxy:                 interfaces.AccountInfo{ID: "test-proxy", Type: interfaces.ProxyAccountTypeApp},
+		ProxyVersion:          2,
+		PublishedModelVersion: "model-v2",
+		Binding:               binding,
+	}, nil
+}
+
 func Test_NewObjectTypeService(t *testing.T) {
 	Convey("Test NewObjectTypeService", t, func() {
 		appSetting := &common.AppSetting{}
@@ -39,6 +64,105 @@ func Test_NewObjectTypeService(t *testing.T) {
 			So(service1, ShouldEqual, service2)
 		})
 	})
+}
+
+func TestObjectTypeSchemaUsesPublishedViewDetailBinding(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	vega := omock.NewMockVegaBackendAccess(ctrl)
+	proxy := &objectTypeProxyResolverStub{}
+	service := &objectTypeService{omAccess: models, vba: vega, proxy: proxy}
+
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "ot-1").Return(
+		interfaces.ObjectType{
+			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+				OTID: "ot-1", DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"},
+			},
+			KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
+		}, true, nil)
+	vega.EXPECT().GetResourceSchema(gomock.Any(), "resource-1").DoAndReturn(
+		func(ctx context.Context, _ string) (*interfaces.ResourceSchemaResponse, error) {
+			trusted, ok := interfaces.TrustedProxyContextFromContext(ctx)
+			if !ok || trusted.Binding.Operation != interfaces.PermissionOperationViewDetail {
+				t.Fatalf("missing view_detail proxy context: %#v", trusted)
+			}
+			return &interfaces.ResourceSchemaResponse{SchemaDefinition: []map[string]any{{"name": "id", "type": "string"}}}, nil
+		})
+
+	got, err := service.GetObjectTypeSchema(context.Background(), "kn-1", interfaces.MAIN_BRANCH, "ot-1")
+	if err != nil {
+		t.Fatalf("GetObjectTypeSchema() error = %v", err)
+	}
+	if len(got.SchemaDefinition) != 1 || proxy.bindings[0].TargetID != "resource-1" ||
+		proxy.bindings[0].Operation != interfaces.PermissionOperationViewDetail {
+		t.Fatalf("unexpected schema/proxy binding: %#v %#v", got, proxy.bindings)
+	}
+}
+
+func TestObjectTypeSampleDataUsesQueryDataProxyBinding(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{
+		Entries: []map[string]any{{"field1": "sample"}}, TotalCount: 1,
+	}}
+	proxy := &objectTypeProxyResolverStub{}
+	service := &objectTypeService{omAccess: models, vba: vega, proxy: proxy}
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "ot-1").Return(
+		interfaces.ObjectType{
+			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+				OTID: "ot-1", OTName: "Orders",
+				DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"},
+				DataProperties: []cond.DataProperty{{
+					Name: "order_id", DisplayName: "Order ID", MappedField: cond.Field{Name: "field1"},
+				}},
+				PrimaryKeys: []string{"order_id"}, DisplayKey: "order_id",
+			},
+			KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
+		}, true, nil)
+
+	got, err := service.GetObjectTypeSampleData(context.Background(), &interfaces.ObjectQueryBaseOnObjectType{
+		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, ObjectTypeID: "ot-1",
+	})
+	if err != nil {
+		t.Fatalf("GetObjectTypeSampleData() error = %v", err)
+	}
+	if got.Name != "Orders" || len(got.Columns) != 1 || got.Columns[0].DataIndex != "order_id" ||
+		len(got.Entries) != 1 || got.Entries[0]["order_id"] != "sample" ||
+		proxy.bindings[0].Operation != interfaces.PermissionOperationQueryData {
+		t.Fatalf("unexpected sample response/binding: %#v %#v", got, proxy.bindings)
+	}
+}
+
+func TestToolLogicPropertyUsesPublishedProxyBinding(t *testing.T) {
+	const publishedBindingID = "d24404efa877194b29ee86381e672d23b44933439f4b0fcb11659f0fd4325406"
+	if got := logicPropertyBindingID("kn-1", "ot-1", "risk_score"); got != publishedBindingID {
+		t.Fatalf("logicPropertyBindingID() = %q, want BKN projection key %q", got, publishedBindingID)
+	}
+	ctrl := gomock.NewController(t)
+	agentOperator := omock.NewMockAgentOperatorAccess(ctrl)
+	proxy := &objectTypeProxyResolverStub{}
+	service := &objectTypeService{aoAccess: agentOperator, proxy: proxy}
+	logicProperty := &interfaces.LogicProperty{
+		Name: "risk_score", Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+		DataSource: &interfaces.ResourceInfo{BoxID: "box-1", ToolID: "tool-1"},
+	}
+	agentOperator.EXPECT().ExecuteToolAsProxy(gomock.Any(), "box-1", "tool-1", gomock.Any()).
+		DoAndReturn(func(ctx context.Context, _, _ string, _ interfaces.ToolExecutionRequest) (any, error) {
+			trusted, ok := interfaces.TrustedProxyContextFromContext(ctx)
+			if !ok || trusted.Binding.ChildType != interfaces.PermissionResourceTypeLogicProperty ||
+				trusted.Binding.ChildID != publishedBindingID ||
+				trusted.Binding.TargetID != "box-1" ||
+				trusted.Binding.Operation != interfaces.PermissionOperationExecute {
+				t.Fatalf("unexpected logic-property proxy context: %#v", trusted)
+			}
+			return map[string]any{"score": 9}, nil
+		})
+
+	result, err := service.handleToolProperty(context.Background(), "kn-1", "ot-1", "risk_score",
+		interfaces.ToolProperty{Parameters: map[string]any{}}, logicProperty, nil)
+	if err != nil || result == nil || len(proxy.bindings) != 1 {
+		t.Fatalf("handleToolProperty() = %#v, %v; bindings = %#v", result, err, proxy.bindings)
+	}
 }
 
 func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
@@ -63,6 +187,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 			osa:        osa,
 			mfa:        mfa,
 			aoAccess:   aoAccess,
+			proxy:      &objectTypeProxyResolverStub{},
 		}
 
 		ctx := context.Background()
@@ -949,7 +1074,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 			// Unsupported logical property types are not added to the result.
 		})
 
-		Convey("vega 返回 4xx 时按原状态码透传，不升级为 500", func() {
+		Convey("vega 返回 4xx 时保留状态码但不泄漏底层详情", func() {
 			objectType := interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 					OTID:        objectTypeID,
@@ -988,7 +1113,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 			So(ok, ShouldBeTrue)
 			// Reporting parameter issues as 500 makes callers check service health, while the real fix is changing the query or building the index.
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorDetails, ShouldEqual, details)
+			So(httpErr.BaseError.ErrorDetails, ShouldBeEmpty)
 		})
 
 		Convey("vega 返回 5xx 时仍认定为依赖故障", func() {
@@ -1124,6 +1249,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 			mqs:        mqs,
 			mfa:        mfa,
 			aoAccess:   aoAccess,
+			proxy:      &objectTypeProxyResolverStub{},
 		}
 
 		ctx := context.Background()
@@ -1149,14 +1275,14 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 				Parameters:    map[string]any{},
 				DynamicParams: map[string]any{"payload": map[string]any{"id": "123"}},
 			}
-			aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box1", "tool1", gomock.Any()).DoAndReturn(
+			aoAccess.EXPECT().ExecuteToolAsProxy(gomock.Any(), "box1", "tool1", gomock.Any()).DoAndReturn(
 				func(_ context.Context, _, _ string, request interfaces.ToolExecutionRequest) (any, error) {
 					So(request.Timeout, ShouldEqual, int64(300))
 					So(request.Body, ShouldResemble, map[string]any{"payload": map[string]any{"id": "123"}})
 					return map[string]any{"result": "success"}, nil
 				})
 
-			result, err := service.handleToolProperty(ctx, "logic_prop1", toolValue, logicProp,
+			result, err := service.handleToolProperty(ctx, "kn1", "ot1", "logic_prop1", toolValue, logicProp,
 				map[string]map[string]any{"logic_prop1": {"payload": map[string]any{"id": "123"}}})
 			So(err, ShouldBeNil)
 			So(result, ShouldResemble, map[string]any{"result": "success"})
@@ -1174,10 +1300,10 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 				},
 			}
 			toolValue := interfaces.ToolProperty{Parameters: map[string]any{}}
-			aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box1", "tool1", gomock.Any()).
+			aoAccess.EXPECT().ExecuteToolAsProxy(gomock.Any(), "box1", "tool1", gomock.Any()).
 				Return(nil, fmt.Errorf("tool failed"))
 
-			result, err := service.handleToolProperty(localizedCtx, "logic_prop1", toolValue, logicProp, nil)
+			result, err := service.handleToolProperty(localizedCtx, "kn1", "ot1", "logic_prop1", toolValue, logicProp, nil)
 			So(result, ShouldBeNil)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*rest.HTTPError)
@@ -1212,10 +1338,10 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 				},
 			}
 			toolValue := interfaces.ToolProperty{Parameters: map[string]any{}}
-			aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box1", "tool1", gomock.Any()).
+			aoAccess.EXPECT().ExecuteToolAsProxy(gomock.Any(), "box1", "tool1", gomock.Any()).
 				Return(map[string]any{"data": map[string]any{"result": "success"}}, nil)
 
-			result, err := service.handleToolProperty(ctx, "logic_prop1", toolValue, logicProp, nil)
+			result, err := service.handleToolProperty(ctx, "kn1", "ot1", "logic_prop1", toolValue, logicProp, nil)
 			So(err, ShouldBeNil)
 			So(result, ShouldEqual, "success")
 		})
@@ -1232,10 +1358,10 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 				},
 			}
 			toolValue := interfaces.ToolProperty{Parameters: map[string]any{}}
-			aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box1", "tool1", gomock.Any()).
+			aoAccess.EXPECT().ExecuteToolAsProxy(gomock.Any(), "box1", "tool1", gomock.Any()).
 				Return(map[string]any{"data": map[string]any{}}, nil)
 
-			result, err := service.handleToolProperty(ctx, "logic_prop1", toolValue, logicProp, nil)
+			result, err := service.handleToolProperty(ctx, "kn1", "ot1", "logic_prop1", toolValue, logicProp, nil)
 			So(result, ShouldBeNil)
 			So(err, ShouldBeNil)
 		})
@@ -1252,10 +1378,10 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 				},
 			}
 			toolValue := interfaces.ToolProperty{Parameters: map[string]any{}}
-			aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box1", "tool1", gomock.Any()).
+			aoAccess.EXPECT().ExecuteToolAsProxy(gomock.Any(), "box1", "tool1", gomock.Any()).
 				Return("not-json", nil)
 
-			result, err := service.handleToolProperty(ctx, "logic_prop1", toolValue, logicProp, nil)
+			result, err := service.handleToolProperty(ctx, "kn1", "ot1", "logic_prop1", toolValue, logicProp, nil)
 			So(result, ShouldBeNil)
 			So(err, ShouldBeNil)
 		})
@@ -1536,7 +1662,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 			vba.EXPECT().QueryResourceData(gomock.Any(), "res1", gomock.Any()).Return(&interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{{"id": "123"}},
 			}, nil)
-			aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box1", "tool1", gomock.Any()).Return(map[string]any{"result": "success"}, nil)
+			aoAccess.EXPECT().ExecuteToolAsProxy(gomock.Any(), "box1", "tool1", gomock.Any()).Return(map[string]any{"result": "success"}, nil)
 
 			result, err := service.GetObjectPropertyValue(ctx, query)
 			So(err, ShouldBeNil)
@@ -1594,7 +1720,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 			vba.EXPECT().QueryResourceData(gomock.Any(), "res1", gomock.Any()).Return(&interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{{"id": "123"}},
 			}, nil)
-			aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box1", "tool1", gomock.Any()).Return(nil, fmt.Errorf("tool failed"))
+			aoAccess.EXPECT().ExecuteToolAsProxy(gomock.Any(), "box1", "tool1", gomock.Any()).Return(nil, fmt.Errorf("tool failed"))
 
 			result, err := service.GetObjectPropertyValue(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -1841,6 +1967,33 @@ func Test_generateExecRequest(t *testing.T) {
 	})
 }
 
+func TestObjectTypeProxyFailureStopsVegaRead(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	vega := omock.NewMockVegaBackendAccess(ctrl)
+	proxyErr := errors.New("proxy unavailable")
+	service := &objectTypeService{
+		omAccess: models,
+		vba:      vega,
+		proxy:    &objectTypeProxyResolverStub{err: proxyErr},
+	}
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "ot-1").Return(
+		interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+			OTID: "ot-1",
+			DataSource: &interfaces.ResourceInfo{
+				Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+				ID:   "resource-1",
+			},
+		}}, true, nil)
+
+	_, err := service.GetObjectsByObjectTypeID(context.Background(), &interfaces.ObjectQueryBaseOnObjectType{
+		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, ObjectTypeID: "ot-1",
+	})
+	if !errors.Is(err, proxyErr) {
+		t.Fatalf("GetObjectsByObjectTypeID() error = %v, want proxy failure", err)
+	}
+}
+
 // vegaStubForOTQuery implements interfaces.VegaBackendAccess for tests.
 type vegaStubForOTQuery struct {
 	resp       *interfaces.DatasetQueryResponse
@@ -1854,4 +2007,8 @@ func (v *vegaStubForOTQuery) QueryResourceData(ctx context.Context, resourceID s
 		return nil, v.err
 	}
 	return v.resp, nil
+}
+
+func (v *vegaStubForOTQuery) GetResourceSchema(context.Context, string) (*interfaces.ResourceSchemaResponse, error) {
+	return &interfaces.ResourceSchemaResponse{SchemaDefinition: []map[string]any{}}, nil
 }

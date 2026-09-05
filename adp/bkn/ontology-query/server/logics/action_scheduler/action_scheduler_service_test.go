@@ -535,6 +535,7 @@ func Test_executeAsync_ContextAndProgress(t *testing.T) {
 			},
 			Parameters: []interfaces.Parameter{},
 		}
+		attachTestActionProxySnapshot(t, execution, actionType)
 		req := &interfaces.ActionExecutionRequest{
 			Instances: []interfaces.ObjectSystemInfo{
 				{InstanceIdentity: map[string]any{"id": "1"}},
@@ -555,7 +556,7 @@ func Test_executeAsync_ContextAndProgress(t *testing.T) {
 		logsService.EXPECT().GetExecution(gomock.Any(), gomock.Any()).Return(&interfaces.ActionExecution{
 			Status: interfaces.ExecutionStatusRunning,
 		}, nil).AnyTimes()
-		aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box_001", "tool_001", gomock.Any()).DoAndReturn(
+		aoAccess.EXPECT().ExecuteToolAsProxy(gomock.Any(), "box_001", "tool_001", gomock.Any()).DoAndReturn(
 			func(ctx context.Context, boxID, toolID string, execRequest interfaces.ToolExecutionRequest) (any, error) {
 				So(ctx.Value(interfaces.ACCOUNT_INFO_KEY), ShouldResemble, execution.Executor)
 				_, ok := ctx.Deadline()
@@ -631,6 +632,7 @@ func Test_executeAsync_AggregatedInvokesToolOnce(t *testing.T) {
 				{Name: "text", ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_INPUT},
 			},
 		}
+		attachTestActionProxySnapshot(t, execution, actionType)
 
 		instances := make([]interfaces.ObjectSystemInfo, 0, 7)
 		objDatas := make([]map[string]any, 0, 7)
@@ -658,7 +660,7 @@ func Test_executeAsync_AggregatedInvokesToolOnce(t *testing.T) {
 		}, nil).AnyTimes()
 
 		// Core assertion: seven target instances produce only one tool call.
-		aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box_001", "tool_001", gomock.Any()).DoAndReturn(
+		aoAccess.EXPECT().ExecuteToolAsProxy(gomock.Any(), "box_001", "tool_001", gomock.Any()).DoAndReturn(
 			func(ctx context.Context, boxID, toolID string, execRequest interfaces.ToolExecutionRequest) (any, error) {
 				return map[string]any{"message_id": "m_1"}, nil
 			}).Times(1)
@@ -682,7 +684,7 @@ func Test_executeAsync_AggregatedInvokesToolOnce(t *testing.T) {
 
 // aggregatedOnceFixture builds an ExecutionModeOnce execution whose parameters are all
 // instance-independent, so the scheduler collapses the matched instances into one invocation.
-func aggregatedOnceFixture(execID string) (*interfaces.ActionExecution, *interfaces.ActionType, *interfaces.ActionExecutionRequest) {
+func aggregatedOnceFixture(t *testing.T, execID string) (*interfaces.ActionExecution, *interfaces.ActionType, *interfaces.ActionExecutionRequest) {
 	execution := &interfaces.ActionExecution{
 		ID:            execID,
 		KNID:          "kn_001",
@@ -702,6 +704,7 @@ func aggregatedOnceFixture(execID string) (*interfaces.ActionExecution, *interfa
 			{Name: "text", ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_INPUT},
 		},
 	}
+	attachTestActionProxySnapshot(t, execution, actionType)
 	req := &interfaces.ActionExecutionRequest{
 		Instances: []interfaces.ObjectSystemInfo{
 			{InstanceIdentity: map[string]any{"id": "1"}},
@@ -725,7 +728,7 @@ func Test_executeAsync_AggregatedCancelledBeforeInvocation(t *testing.T) {
 		logsService := omock.NewMockActionLogsService(mockCtrl)
 		service := &actionSchedulerService{aoAccess: aoAccess, logsService: logsService}
 
-		execution, actionType, req := aggregatedOnceFixture("exec_cancel_before")
+		execution, actionType, req := aggregatedOnceFixture(t, "exec_cancel_before")
 
 		var finalUpdate map[string]any
 		logsService.EXPECT().UpdateExecution(gomock.Any(), "kn_001", "exec_cancel_before", gomock.Any()).DoAndReturn(
@@ -740,7 +743,7 @@ func Test_executeAsync_AggregatedCancelledBeforeInvocation(t *testing.T) {
 		}, nil).AnyTimes()
 
 		// After cancellation, the tool must not be called at all.
-		aoAccess.EXPECT().ExecuteTool(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+		aoAccess.EXPECT().ExecuteToolAsProxy(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
 		service.executeAsync(execution, actionType, req)
 
@@ -765,7 +768,7 @@ func Test_executeAsync_AggregatedCancelledDuringInvocation(t *testing.T) {
 		logsService := omock.NewMockActionLogsService(mockCtrl)
 		service := &actionSchedulerService{aoAccess: aoAccess, logsService: logsService}
 
-		execution, actionType, req := aggregatedOnceFixture("exec_cancel_during")
+		execution, actionType, req := aggregatedOnceFixture(t, "exec_cancel_during")
 
 		var finalUpdate map[string]any
 		logsService.EXPECT().UpdateExecution(gomock.Any(), "kn_001", "exec_cancel_during", gomock.Any()).DoAndReturn(
@@ -786,7 +789,7 @@ func Test_executeAsync_AggregatedCancelledDuringInvocation(t *testing.T) {
 			}, nil),
 		)
 
-		aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box_001", "tool_001", gomock.Any()).
+		aoAccess.EXPECT().ExecuteToolAsProxy(gomock.Any(), "box_001", "tool_001", gomock.Any()).
 			Return(map[string]any{"message_id": "m_1"}, nil).Times(1)
 
 		service.executeAsync(execution, actionType, req)
@@ -831,6 +834,7 @@ func Test_executeAsync_PerInstanceStillFansOut(t *testing.T) {
 				{Name: "order_no", ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_PROP, Value: "order_no"},
 			},
 		}
+		attachTestActionProxySnapshot(t, execution, actionType)
 		req := &interfaces.ActionExecutionRequest{
 			Instances: []interfaces.ObjectSystemInfo{
 				{InstanceIdentity: map[string]any{"id": "1"}},
@@ -855,7 +859,7 @@ func Test_executeAsync_PerInstanceStillFansOut(t *testing.T) {
 		}, nil).AnyTimes()
 
 		sentOrderNos := []any{}
-		aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box_001", "tool_001", gomock.Any()).DoAndReturn(
+		aoAccess.EXPECT().ExecuteToolAsProxy(gomock.Any(), "box_001", "tool_001", gomock.Any()).DoAndReturn(
 			func(ctx context.Context, boxID, toolID string, execRequest interfaces.ToolExecutionRequest) (any, error) {
 				sentOrderNos = append(sentOrderNos, execRequest.Body["order_no"])
 				return map[string]any{"ok": true}, nil
@@ -990,6 +994,7 @@ func Test_ExecuteAction_ScanMode(t *testing.T) {
 			aoAccess:    aoAccess,
 			logsService: logsService,
 			ots:         ots,
+			proxy:       &actionProxyResolverStub{},
 		}
 
 		ctx := context.Background()
@@ -1084,6 +1089,7 @@ func Test_ExecuteAction_ScanMode(t *testing.T) {
 				ATID:         actionTypeID,
 				ATName:       "restart_pod",
 				ObjectTypeID: objectTypeID,
+				ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box_001", ToolID: "tool_001"},
 			}
 
 			// Mock GetActionType
@@ -1115,6 +1121,7 @@ func Test_ExecuteAction_ScanMode(t *testing.T) {
 				ATID:         actionTypeID,
 				ATName:       "restart_pod",
 				ObjectTypeID: objectTypeID,
+				ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box_001", ToolID: "tool_001"},
 			}
 
 			// Mock GetActionType
@@ -1151,6 +1158,7 @@ func Test_ExecuteAction_ScanMode(t *testing.T) {
 				ATID:         actionTypeID,
 				ATName:       "restart_pod",
 				ObjectTypeID: objectTypeID,
+				ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box_001", ToolID: "tool_001"},
 			}
 
 			// Mock GetActionType
@@ -1205,6 +1213,7 @@ func Test_ExecuteAction_UnboundObjectType(t *testing.T) {
 			aoAccess:    aoAccess,
 			logsService: logsService,
 			ots:         ots,
+			proxy:       &actionProxyResolverStub{},
 		}
 
 		ctx := context.Background()
@@ -1321,6 +1330,7 @@ func Test_ExecuteAction_AddActionType(t *testing.T) {
 			aoAccess:    aoAccess,
 			logsService: logsService,
 			ots:         ots,
+			proxy:       &actionProxyResolverStub{},
 		}
 
 		ctx := context.Background()

@@ -8,6 +8,8 @@ package object_type
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"strings"
@@ -46,6 +48,7 @@ type objectTypeService struct {
 	osa        interfaces.OpenSearchAccess
 	vba        interfaces.VegaBackendAccess
 	mqs        interfaces.MetricQueryService
+	proxy      interfaces.ProxyContextResolver
 }
 
 func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeService {
@@ -58,9 +61,113 @@ func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeSe
 			osa:        logics.OSA,
 			vba:        logics.VBA,
 			mqs:        metric.NewMetricQueryService(appSetting),
+			proxy:      logics.PCR,
 		}
 	})
 	return otService
+}
+
+func (ots *objectTypeService) GetObjectTypeSchema(ctx context.Context,
+	knID, branch, objectTypeID string) (*interfaces.ResourceSchemaResponse, error) {
+	if branch != interfaces.MAIN_BRANCH {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			oerrors.OntologyQuery_ObjectType_InvalidParameter).
+			WithErrorDetails("only the published main branch can be queried")
+	}
+	objectType, exists, err := ots.omAccess.GetObjectType(ctx, knID, branch, objectTypeID)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+			oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).WithErrorDetails(err.Error())
+	}
+	if !exists {
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
+	}
+	if objectType.KNID != "" && objectType.KNID != knID {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("object type belongs to another knowledge network")
+	}
+	if objectType.DataSource == nil || objectType.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE ||
+		strings.TrimSpace(objectType.DataSource.ID) == "" {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("object type has no published resource data source")
+	}
+	if ots.proxy == nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+			oerrors.OntologyQuery_InternalError_CheckPermissionFailed).
+			WithErrorDetails("knowledge network proxy resolver is not configured")
+	}
+	proxyContext, err := ots.proxy.Resolve(ctx, interfaces.TrustedProxyBinding{
+		KNID:       knID,
+		ChildType:  interfaces.PermissionResourceTypeObjectType,
+		ChildID:    objectType.OTID,
+		TargetType: interfaces.ProxyTargetTypeResource,
+		TargetID:   objectType.DataSource.ID,
+		Operation:  interfaces.PermissionOperationViewDetail,
+	})
+	if err != nil {
+		return nil, err
+	}
+	response, err := ots.vba.GetResourceSchema(interfaces.WithTrustedProxyContext(ctx, proxyContext), objectType.DataSource.ID)
+	if err != nil {
+		if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
+			return nil, rest.NewHTTPError(ctx, downstream.StatusCode, downstreamErrorCode(downstream.StatusCode))
+		}
+		return nil, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+			oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed)
+	}
+	return response, nil
+}
+
+func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
+	query *interfaces.ObjectQueryBaseOnObjectType) (*interfaces.ObjectTypeSampleData, error) {
+	if query == nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+	}
+	if query.Limit <= 0 {
+		query.Limit = 20
+	}
+	if query.Limit > 100 {
+		query.Limit = 100
+	}
+	if query.Offset < 0 {
+		query.Offset = 0
+	}
+	query.IncludeTypeInfo = true
+	query.IncludeLogicParams = false
+	query.ExcludeSystemProperties = []string{
+		interfaces.SYSTEM_PROPERTY_INSTANCE_ID,
+		interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY,
+		interfaces.SYSTEM_PROPERTY_DISPLAY,
+	}
+	objects, err := ots.GetObjectsByObjectTypeID(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	if objects.ObjectType == nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+			oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed)
+	}
+	result := &interfaces.ObjectTypeSampleData{
+		Columns:     []*interfaces.ObjectTypeSampleDataColumn{},
+		Entries:     objects.Datas,
+		Name:        objects.ObjectType.OTName,
+		TotalCount:  objects.TotalCount,
+		SearchAfter: objects.SearchAfter,
+	}
+	for _, property := range objects.ObjectType.DataProperties {
+		if strings.TrimSpace(property.Name) == "" {
+			continue
+		}
+		title := property.DisplayName
+		if title == "" {
+			title = property.Name
+		}
+		result.Columns = append(result.Columns, &interfaces.ObjectTypeSampleDataColumn{
+			DataIndex: property.Name,
+			Title:     title,
+		})
+	}
+	return result, nil
 }
 
 func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
@@ -72,6 +179,11 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 	start := time.Now().UnixMilli()
 
 	var resps interfaces.Objects
+	if query == nil || query.Branch != interfaces.MAIN_BRANCH {
+		return resps, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			oerrors.OntologyQuery_ObjectType_InvalidParameter).
+			WithErrorDetails("only the published main branch can be queried")
+	}
 
 	objectType, exists, err := ots.omAccess.GetObjectType(ctx, query.KNID, query.Branch, query.ObjectTypeID)
 	if err != nil {
@@ -391,6 +503,24 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		FilterCondition: logics.CondCfgToFilterMap(viewQuery.Filters),
 		OutputFields:    outputFields,
 	}
+	if ots.proxy == nil {
+		return rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+			oerrors.OntologyQuery_InternalError_CheckPermissionFailed).
+			WithErrorDetails("knowledge network proxy resolver is not configured")
+	}
+	proxyContext, err := ots.proxy.Resolve(ctx, interfaces.TrustedProxyBinding{
+		KNID:       query.KNID,
+		ChildType:  interfaces.PermissionResourceTypeObjectType,
+		ChildID:    objectType.OTID,
+		TargetType: interfaces.ProxyTargetTypeResource,
+		TargetID:   objectType.DataSource.ID,
+		Operation:  interfaces.PermissionOperationQueryData,
+	})
+	if err != nil {
+		return err
+	}
+	ctx = interfaces.WithTrustedProxyContext(ctx, proxyContext)
+
 	resp, err := ots.vba.QueryResourceData(ctx, objectType.DataSource.ID, params)
 	if err != nil {
 		// When downstream identifies a caller-side issue (4xx), pass through the original status code and carry its reason upward.
@@ -398,7 +528,7 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		// like service failures, preventing callers from self-correcting and sending manual investigation in the wrong direction.
 		if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
 			return rest.NewHTTPError(ctx, downstream.StatusCode,
-				downstreamErrorCode(downstream.StatusCode)).WithErrorDetails(downstream.Message())
+				downstreamErrorCode(downstream.StatusCode))
 		}
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).WithErrorDetails(err.Error())
@@ -734,7 +864,7 @@ func (ots *objectTypeService) processLogicProperty(ctx context.Context,
 	case interfaces.PROPERTY_TYPE_METRIC:
 		return ots.handleMetricProperty(ctx, knID, branch, otID, propName, propValue, logicProp, dynamicParams)
 	case interfaces.LOGIC_PROPERTY_TYPE_TOOL:
-		return ots.handleToolProperty(ctx, propName, propValue, logicProp, dynamicParams)
+		return ots.handleToolProperty(ctx, knID, otID, propName, propValue, logicProp, dynamicParams)
 	default:
 		logger.Warnf("不支持的逻辑属性类型: %s", logicProp.Type)
 		return nil, nil
@@ -828,6 +958,8 @@ func (ots *objectTypeService) handleMetricProperty(ctx context.Context,
 
 // handleToolProperty handles logic properties backed by ToolBox tools.
 func (ots *objectTypeService) handleToolProperty(ctx context.Context,
+	knID string,
+	objectTypeID string,
 	propName string,
 	propValue any,
 	logicProp *interfaces.LogicProperty,
@@ -850,7 +982,24 @@ func (ots *objectTypeService) handleToolProperty(ctx context.Context,
 		Path:    toolRequest.Path,
 		Timeout: 300,
 	}
-	toolResult, err := ots.aoAccess.ExecuteTool(ctx, logicProp.DataSource.BoxID, logicProp.DataSource.ToolID, request)
+	if ots.proxy == nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+			oerrors.OntologyQuery_InternalError_CheckPermissionFailed).
+			WithErrorDetails("knowledge network proxy resolver is not configured")
+	}
+	proxyContext, err := ots.proxy.Resolve(ctx, interfaces.TrustedProxyBinding{
+		KNID:       knID,
+		ChildType:  interfaces.PermissionResourceTypeLogicProperty,
+		ChildID:    logicPropertyBindingID(knID, objectTypeID, propName),
+		TargetType: interfaces.ProxyTargetTypeToolBox,
+		TargetID:   logicProp.DataSource.BoxID,
+		Operation:  interfaces.PermissionOperationExecute,
+	})
+	if err != nil {
+		return nil, err
+	}
+	toolResult, err := ots.aoAccess.ExecuteToolAsProxy(interfaces.WithTrustedProxyContext(ctx, proxyContext),
+		logicProp.DataSource.BoxID, logicProp.DataSource.ToolID, request)
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			oerrors.OntologyQuery_ObjectType_InternalError_ExecuteToolFailed).
@@ -870,6 +1019,16 @@ func (ots *objectTypeService) handleToolProperty(ctx context.Context,
 	}
 
 	return toolResult, nil
+}
+
+// logicPropertyBindingID mirrors BKN's published-model projection key. The
+// opaque value keeps the object type/property tuple safe for an HTTP header.
+func logicPropertyBindingID(knID, objectTypeID, propertyName string) string {
+	propertyKey := strings.Join([]string{objectTypeID, propertyName}, "\x00")
+	digest := sha256.Sum256([]byte(strings.Join([]string{
+		knID, interfaces.PermissionResourceTypeLogicProperty, propertyKey,
+	}, "\x00")))
+	return hex.EncodeToString(digest[:])
 }
 
 func generateToolExecutionRequest(configParams []interfaces.Parameter, parameters map[string]any,

@@ -25,6 +25,30 @@ import (
 	"ontology-query/logics"
 )
 
+type knowledgeNetworkProxyResolverStub struct {
+	bindings []interfaces.TrustedProxyBinding
+	err      error
+}
+
+func (s *knowledgeNetworkProxyResolverStub) Resolve(ctx context.Context,
+	binding interfaces.TrustedProxyBinding) (*interfaces.TrustedProxyContext, error) {
+	s.bindings = append(s.bindings, binding)
+	if s.err != nil {
+		return nil, s.err
+	}
+	caller, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	if caller.ID == "" {
+		caller = interfaces.AccountInfo{ID: "test-caller", Type: "user"}
+	}
+	return &interfaces.TrustedProxyContext{
+		Caller:                caller,
+		Proxy:                 interfaces.AccountInfo{ID: "test-proxy", Type: interfaces.ProxyAccountTypeApp},
+		ProxyVersion:          2,
+		PublishedModelVersion: "model-v2",
+		Binding:               binding,
+	}, nil
+}
+
 func Test_NewKnowledgeNetworkService(t *testing.T) {
 	Convey("Test NewKnowledgeNetworkService", t, func() {
 		appSetting := &common.AppSetting{}
@@ -1500,6 +1524,7 @@ func Test_knowledgeNetworkService_buildBatchConditions(t *testing.T) {
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
+			proxy:      &knowledgeNetworkProxyResolverStub{},
 		}
 
 		ctx := context.Background()
@@ -1636,6 +1661,7 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
+			proxy:      &knowledgeNetworkProxyResolverStub{},
 		}
 
 		ctx := context.Background()
@@ -1944,6 +1970,7 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
+			proxy:      &knowledgeNetworkProxyResolverStub{},
 		}
 
 		ctx := context.Background()
@@ -2288,6 +2315,10 @@ func (v *vegaStubForKNQuery) QueryResourceData(ctx context.Context, resourceID s
 		return nil, v.err
 	}
 	return v.resp, nil
+}
+
+func (v *vegaStubForKNQuery) GetResourceSchema(context.Context, string) (*interfaces.ResourceSchemaResponse, error) {
+	return &interfaces.ResourceSchemaResponse{SchemaDefinition: []map[string]any{}}, nil
 }
 
 func resourceBacking(id string) *interfaces.ResourceInfo {

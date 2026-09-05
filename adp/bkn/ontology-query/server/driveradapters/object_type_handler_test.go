@@ -123,6 +123,45 @@ func Test_RestHandler_GetObjectsInObjectTypeByIn(t *testing.T) {
 	})
 }
 
+func TestObjectTypeSchemaIgnoresForgedProxyHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctrl := gomock.NewController(t)
+	authService := omock.NewMockAuthService(ctrl)
+	objectService := omock.NewMockObjectTypeService(ctrl)
+	authorization := omock.NewMockQueryAuthorizationService(ctrl)
+	handler := &restHandler{as: authService, ots: objectService, qas: authorization}
+	engine := gin.New()
+	engine.GET("/api/ontology-query/v1/knowledge-networks/:kn_id/object-types/:ot_id/schema", handler.GetObjectTypeSchemaByEx)
+
+	authService.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).Return(
+		hydra.Visitor{ID: "oauth-user", Type: hydra.VisitorType_User}, nil)
+	authorization.EXPECT().AuthorizeObjectTypeSchema(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "ot-1").
+		DoAndReturn(func(ctx context.Context, _, _, _ string) error {
+			account, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+			if account.ID != "oauth-user" || account.Type != "user" {
+				t.Fatalf("forged account reached authorization: %#v", account)
+			}
+			if _, ok := interfaces.TrustedProxyContextFromContext(ctx); ok {
+				t.Fatal("public proxy headers created a trusted proxy context")
+			}
+			return nil
+		})
+	objectService.EXPECT().GetObjectTypeSchema(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "ot-1").Return(
+		&interfaces.ResourceSchemaResponse{SchemaDefinition: []map[string]any{}}, nil)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/api/ontology-query/v1/knowledge-networks/kn-1/object-types/ot-1/schema", nil)
+	req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "forged-proxy")
+	req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_TYPE, "app")
+	req.Header.Set(interfaces.HTTPHeaderBKNCallerID, "forged-caller")
+	req.Header.Set(interfaces.HTTPHeaderBKNTargetID, "unbound-resource")
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func Test_RestHandler_GetObjectsInObjectTypeByEx(t *testing.T) {
 	Convey("Test RestHandler GetObjectsInObjectTypeByEx", t, func() {
 		test := setGinMode()

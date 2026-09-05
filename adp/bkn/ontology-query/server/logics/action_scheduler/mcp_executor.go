@@ -49,7 +49,7 @@ func ExecuteMCP(ctx context.Context, aoAccess interfaces.AgentOperatorAccess, ac
 	execCtx, cancel := context.WithTimeout(ctx, time.Duration(mcpRequest.Timeout)*time.Second)
 	defer cancel()
 
-	result, err := aoAccess.ExecuteMCP(execCtx, mcpID, toolName, mcpRequest)
+	result, err := aoAccess.ExecuteMCPAsProxy(execCtx, mcpID, toolName, mcpRequest)
 	if err != nil {
 		logger.Errorf("MCP execution failed: %v", err)
 		return nil, fmt.Errorf("MCP execution failed: %w", err)
