@@ -81,6 +81,8 @@ func TestExecutePublishedToolCarriesCallerAndInteraction(t *testing.T) {
 		convey.So(gotHeader["Authorization"], convey.ShouldEqual, "Bearer caller-token")
 		convey.So(gotHeader["bkn-conversation-id"], convey.ShouldEqual, "conv_1")
 		convey.So(gotHeader["bkn-interaction-id"], convey.ShouldEqual, "int_1")
+		convey.So(gotHeader["bkn-parent-operation-id"], convey.ShouldEqual, "op_1")
+		convey.So(gotHeader["bkn-operation-id"], convey.ShouldNotEqual, "op_1")
 
 		// The Toolbox proxy expects HTTPRequestParams: business parameters go in
 		// its body field, or the proxied request arrives with an empty body.

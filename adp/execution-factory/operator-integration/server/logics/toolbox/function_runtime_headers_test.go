@@ -17,12 +17,14 @@ func TestFunctionRuntimeHeadersForwardsAManagedCall(t *testing.T) {
 				RequestAuthorization: "Bearer caller-token",
 				BKNConversationID:    "conv_1",
 				BKNInteractionID:     "int_1",
+				BKNParentOperationID: "op_function",
 			},
 		)
 
 		So(headers["Authorization"], ShouldEqual, "Bearer caller-token")
 		So(headers["bkn-conversation-id"], ShouldEqual, "conv_1")
 		So(headers["bkn-interaction-id"], ShouldEqual, "int_1")
+		So(headers["bkn-parent-operation-id"], ShouldEqual, "op_function")
 		So(headers["X-Api-Key"], ShouldEqual, "tool-own-key")
 	})
 }
@@ -62,12 +64,14 @@ func TestFunctionRuntimeHeadersOverridesBodySuppliedValues(t *testing.T) {
 				RequestAuthorization: "Bearer caller-token",
 				BKNConversationID:    "conv_1",
 				BKNInteractionID:     "int_1",
+				BKNParentOperationID: "op_function",
 			},
 		)
 
 		So(headers["Authorization"], ShouldEqual, "Bearer caller-token")
 		So(headers["bkn-conversation-id"], ShouldEqual, "conv_1")
 		So(headers["bkn-interaction-id"], ShouldEqual, "int_1")
+		So(headers["bkn-parent-operation-id"], ShouldEqual, "op_function")
 	})
 }
 
@@ -107,6 +111,7 @@ func TestFunctionRuntimeHeadersDoesNotMutateTheInput(t *testing.T) {
 			RequestAuthorization: "Bearer caller-token",
 			BKNConversationID:    "conv_1",
 			BKNInteractionID:     "int_1",
+			BKNParentOperationID: "op_function",
 		})
 
 		So(len(original), ShouldEqual, 1)

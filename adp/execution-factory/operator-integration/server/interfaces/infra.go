@@ -52,6 +52,8 @@ const (
 	HeaderBKNConversationID HeaderKey = "bkn-conversation-id"
 	// HeaderBKNInteractionID managed Interaction the call belongs to.
 	HeaderBKNInteractionID HeaderKey = "bkn-interaction-id"
+	// HeaderBKNParentOperationID is the persisted operation invoking the Function.
+	HeaderBKNParentOperationID HeaderKey = "bkn-parent-operation-id"
 )
 
 const ()

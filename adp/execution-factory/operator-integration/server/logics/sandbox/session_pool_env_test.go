@@ -7,15 +7,16 @@ import "testing"
 // By leaving the credentials there, you're leaving a call's token in clear text for half a day - long after the execution that initiated it ended.
 func TestSessionScopedEnvVarsDropsCredentials(t *testing.T) {
 	scoped := sessionScopedEnvVars(map[string]any{
-		"source":              "function_debug",
-		"task_id":             "t1",
-		"user_id":             "u1",
-		"BKN_TOKEN":           "bak_secret",
-		"BKN_CONVERSATION_ID": "conv_1",
-		"BKN_INTERACTION_ID":  "int_1",
+		"source":                  "function_debug",
+		"task_id":                 "t1",
+		"user_id":                 "u1",
+		"BKN_TOKEN":               "bak_secret",
+		"BKN_CONVERSATION_ID":     "conv_1",
+		"BKN_INTERACTION_ID":      "int_1",
+		"BKN_PARENT_OPERATION_ID": "op_function",
 	})
 
-	for _, key := range []string{"BKN_TOKEN", "BKN_CONVERSATION_ID", "BKN_INTERACTION_ID"} {
+	for _, key := range []string{"BKN_TOKEN", "BKN_CONVERSATION_ID", "BKN_INTERACTION_ID", "BKN_PARENT_OPERATION_ID"} {
 		if _, leaked := scoped[key]; leaked {
 			t.Fatalf("%s 不该进入会话级 env: %v", key, scoped)
 		}

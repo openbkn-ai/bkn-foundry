@@ -32,6 +32,7 @@ const (
 	HeaderBKNConversationID     = "bkn-conversation-id"
 	HeaderBKNInteractionID      = "bkn-interaction-id"
 	HeaderBKNOperationID        = "bkn-operation-id"
+	HeaderBKNParentOperationID  = "bkn-parent-operation-id"
 	HeaderBKNReceiptID          = "bkn-receipt-id"
 	HeaderBKNClientInvocationID = "X-OpenBKN-Client-Invocation-Id"
 	HeaderBKNCausationEventID   = "bkn-causation-event-id"
@@ -314,6 +315,7 @@ func StripBusinessTraceHeaders(header map[string]string) {
 			HeaderBKNConversationID,
 			HeaderBKNInteractionID,
 			HeaderBKNOperationID,
+			HeaderBKNParentOperationID,
 			HeaderBKNCausationEventID,
 			HeaderBKNClaimID,
 			HeaderBKNAttempt,

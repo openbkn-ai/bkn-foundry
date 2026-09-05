@@ -632,6 +632,7 @@ func (h *toolBoxHandler) ExecuteTool(c *gin.Context) {
 	}
 	req.BKNConversationID = c.GetHeader(string(interfaces.HeaderBKNConversationID))
 	req.BKNInteractionID = c.GetHeader(string(interfaces.HeaderBKNInteractionID))
+	req.BKNParentOperationID = c.GetHeader(string(interfaces.HeaderBKNParentOperationID))
 	resp, err := h.ToolService.ExecuteTool(c.Request.Context(), req)
 	rest.ReplyWithExecutionMode(c, resp, err)
 }

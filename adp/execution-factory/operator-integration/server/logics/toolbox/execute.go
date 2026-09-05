@@ -446,13 +446,14 @@ func functionRuntimeHeaders(headers map[string]any, req *interfaces.ExecuteToolR
 		req.BKNConversationID == "" || req.BKNInteractionID == "" {
 		return headers
 	}
-	forwarded := make(map[string]any, len(headers)+3)
+	forwarded := make(map[string]any, len(headers)+4)
 	for key, value := range headers {
 		forwarded[key] = value
 	}
 	forwarded["Authorization"] = req.RequestAuthorization
 	forwarded[string(interfaces.HeaderBKNConversationID)] = req.BKNConversationID
 	forwarded[string(interfaces.HeaderBKNInteractionID)] = req.BKNInteractionID
+	forwarded[string(interfaces.HeaderBKNParentOperationID)] = req.BKNParentOperationID
 	return forwarded
 }
 
