@@ -83,6 +83,11 @@ type AttachCapabilityEntry struct {
 	OwnerID        string `json:"owner_id"`
 	CapabilityID   string `json:"capability_id"`
 	Comment        string `json:"comment"`
+	// AllTools mounts every enabled tool of the box named by OwnerID. It is expanded at write
+	// time into one tool-level binding per tool, so the stored rows carry no box-level scope and
+	// the read path never expands anything. Tools added to the box later are not inherited: a
+	// shared box would otherwise let someone else widen this network's reach.
+	AllTools bool `json:"all_tools"`
 }
 
 // AttachCapabilitiesReq mounts one or more capabilities onto a knowledge network branch.

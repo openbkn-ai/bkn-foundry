@@ -45,6 +45,7 @@ type capabilityBindingService struct {
 	appSetting *common.AppSetting
 	db         *sql.DB
 	cba        interfaces.CapabilityBindingAccess
+	aoa        interfaces.AgentOperatorAccess
 	ps         interfaces.PermissionService
 }
 
@@ -54,6 +55,7 @@ func NewCapabilityBindingService(appSetting *common.AppSetting) interfaces.Capab
 			appSetting: appSetting,
 			db:         logics.DB,
 			cba:        logics.CBA,
+			aoa:        logics.AOA,
 			ps:         permission.NewPermissionService(appSetting),
 		}
 	})
@@ -134,17 +136,22 @@ func (cbs *capabilityBindingService) AttachCapabilities(ctx context.Context, tx 
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
 
-	result := make([]*interfaces.CapabilityBinding, 0, len(entries))
-	toCreate := make([]*interfaces.CapabilityBinding, 0, len(entries))
+	// Every target is normalised, expanded and validated against the execution factory before a
+	// single row is written. Validating inside the write loop would leave a half-mounted request
+	// behind when the fourth capability turns out not to exist.
+	resolvedEntries, err := cbs.resolveEntries(ctx, entries)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*interfaces.CapabilityBinding, 0, len(resolvedEntries))
+	toCreate := make([]*interfaces.CapabilityBinding, 0, len(resolvedEntries))
 	// Seen tracks the identities of this request so that a payload repeating the same capability
 	// produces one row, not a duplicate-key failure halfway through the batch.
-	seen := make(map[string]*interfaces.CapabilityBinding, len(entries))
+	seen := make(map[string]*interfaces.CapabilityBinding, len(resolvedEntries))
 
-	for _, entry := range entries {
-		capabilityType, ownerID, capabilityID, err := normalizeAttachEntry(ctx, entry)
-		if err != nil {
-			return nil, err
-		}
+	for _, resolvedEntry := range resolvedEntries {
+		capabilityType, ownerID, capabilityID := resolvedEntry.capabilityType, resolvedEntry.ownerID, resolvedEntry.capabilityID
 		identity := strings.Join([]string{capabilityType, ownerID, capabilityID}, "\x00")
 		if existing, ok := seen[identity]; ok {
 			result = append(result, existing)
@@ -179,7 +186,8 @@ func (cbs *capabilityBindingService) AttachCapabilities(ctx context.Context, tx 
 			CapabilityType: capabilityType,
 			OwnerID:        ownerID,
 			CapabilityID:   capabilityID,
-			Comment:        strings.TrimSpace(entry.Comment),
+			Comment:        resolvedEntry.comment,
+			BoundAsBox:     resolvedEntry.boundAsBox,
 			Creator:        accountInfo,
 			Updater:        accountInfo,
 			CreateTime:     currentTime,

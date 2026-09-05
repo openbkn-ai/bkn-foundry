@@ -40,11 +40,46 @@ info:
     already bound returns the existing binding rather than failing, and repeating an entry
     inside one request produces one row.
 
+    ## Mounting validates the target
+
+    A mount checks the capability against the execution factory before writing anything, and
+    the two failures it can report are deliberately distinct: **the target does not exist**
+    (check the id) and **the target exists but is not usable** (publish the tool box or skill,
+    or enable the tool). Collapsing them into one error would leave the caller guessing which
+    fix applies.
+
+    Validation runs over the whole request first. A batch whose fourth capability is unknown
+    writes nothing at all rather than leaving three bindings behind.
+
+    When the execution factory is unreachable the answer is **502 and no write**. A binding
+    recorded without validation cannot be told apart later from one that was checked.
+
+    Two things are deliberately *not* checked. `metadata_type` is ignored, so `openapi` and
+    `function` tools are equally bindable — a binding names a tool, and the box is only the
+    execution factory's container for it. And mounting does not require permission to *execute*
+    the target: binding is a modeling action by the network's owner, while whether a caller may
+    run the tool stays the execution factory's decision at call time.
+
+    ## Whole-box mounting
+
+    `{"capability_type": "function", "owner_id": "box-x", "all_tools": true}` mounts every
+    enabled tool of that box. The expansion happens **at write time**: the stored rows are
+    ordinary tool-level bindings carrying `bound_as_box: true`, so the read path never expands
+    anything and any single row can be released on its own.
+
+    Tools added to the box afterwards are **not** inherited. That is the point of expanding
+    rather than storing a box-level scope: on a shared box, inheritance would let someone else's
+    edit widen this network's reach. The list view reports how many tools of a box are not
+    mounted so they can be added deliberately.
+
+    Disabled tools are skipped, on the same terms that reject them when named directly. A box
+    with no tool to mount is a 400, not a silent success — "I mounted the box" and "nothing
+    happened" must not look alike.
+
     ## Not covered here
 
-    Whole-box mounting, the write-time check that the target exists and is published, metadata
-    backfill and dangling marking arrive with the rest of the capability binding work; this
-    file describes the CRUD surface only.
+    Metadata backfill and dangling marking arrive with the rest of the capability binding work;
+    this file describes the CRUD surface only.
 
     **Prefix aliases**: every path below is also served under `/api/ontology-manager/v1`, and
     the internal face under `/api/bkn-backend/in/v1` and `/api/ontology-manager/in/v1`.
@@ -156,7 +191,15 @@ paths:
             capability_id are limited to 64 characters and comment to 255. Over-long values are
             rejected here rather than reaching the database, where they would surface as a 500
             under strict SQL mode or be silently truncated into a binding pointing at a
-            different capability.
+            different capability. Also returned when the target does not exist
+            (`BknBackend.CapabilityBinding.TargetNotFound`), exists but is unpublished or
+            disabled (`BknBackend.CapabilityBinding.TargetNotAvailable`), or a whole-box mount
+            names a box with no tool to mount (`BknBackend.CapabilityBinding.EmptyToolBox`).
+        '502':
+          description: >-
+            The execution factory is unreachable, so the targets could not be validated
+            (`BknBackend.CapabilityBinding.ExecutionFactoryUnavailable`). Nothing is written —
+            a retry is safe.
         '403':
           description: The caller cannot modify this knowledge network
         '404':
@@ -314,8 +357,15 @@ components:
           description: Tool box ID. Required for a function, ignored for a skill.
           type: string
         capability_id:
-          description: skill_id for a skill, tool_id for a function
+          description: >-
+            skill_id for a skill, tool_id for a function. Omitted when all_tools is set.
           type: string
+        all_tools:
+          description: >-
+            Mount every enabled tool of the box named by owner_id. Expanded at write time into
+            one tool-level binding per tool, each with bound_as_box true; tools added to the box
+            later are not inherited.
+          type: boolean
         comment:
           description: Free-text note
           type: string
