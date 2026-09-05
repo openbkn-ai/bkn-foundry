@@ -4,16 +4,18 @@
 
 openapi: 3.0.3
 info:
-  title: BKN Safe 受管知识网络代理账号 API
+  title: BKN Safe Managed Knowledge Network Proxy Account API
   version: 0.1.5
   description: |
-    供受信任 BKN workload 创建和管理知识网络的一对一代理 app 身份。
-    本接口只存在于 ClusterIP 内部面，不经 Ingress 暴露；调用方不能指定
-    `managed_by`、账号 ID、账号类型、登录能力或凭据签发能力。
+    Creates and manages a one-to-one proxy app identity for a knowledge network on behalf of
+    trusted BKN workloads. This API is available only on the internal ClusterIP surface and is
+    not exposed through Ingress. Callers cannot specify `managed_by`, the account ID, the account
+    type, login capability, or credential-issuance capability.
 
-    同一知识网络的重复创建是幂等的：首次返回 201，重放返回 200，并复用
-    原 proxy account。禁用和归档同样幂等。proxy account 不进入 Studio 用户
-    列表，不能登录、重置密码、签发 AppKey、绑定角色或通过通用 Policy 接口授权。
+    Repeated creation for the same knowledge network is idempotent: the first request returns
+    201, while replays return 200 and reuse the original proxy account. Disable and archive are
+    also idempotent. Proxy accounts are hidden from Studio user lists and cannot log in, reset a
+    password, issue AppKeys, bind roles, or receive grants through the generic Policy API.
 servers:
   - url: /api/safe/in/v1
 security: []
@@ -22,7 +24,7 @@ paths:
     post:
       tags: [Managed proxy accounts]
       operationId: createManagedProxyAccount
-      summary: 创建或解析知识网络的受管代理账号
+      summary: Create or resolve a managed proxy account for a knowledge network
       requestBody:
         required: true
         content:
@@ -31,13 +33,13 @@ paths:
               $ref: '#/components/schemas/CreateManagedProxyAccountRequest'
       responses:
         '201':
-          description: 已创建新的代理账号
+          description: A new proxy account was created
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ManagedProxyAccount'
         '200':
-          description: 相同知识网络已经存在代理账号，返回原账号
+          description: A proxy account already exists for the knowledge network; the existing account is returned
           content:
             application/json:
               schema:
@@ -52,10 +54,10 @@ paths:
     get:
       tags: [Managed proxy accounts]
       operationId: getManagedProxyAccount
-      summary: 查询受管代理账号
+      summary: Get a managed proxy account
       responses:
         '200':
-          description: 代理账号及其当前生命周期状态
+          description: The proxy account and its current lifecycle status
           content:
             application/json:
               schema:
@@ -70,12 +72,13 @@ paths:
     post:
       tags: [Managed proxy accounts]
       operationId: disableManagedProxyAccount
-      summary: 禁用受管代理账号
+      summary: Disable a managed proxy account
       description: |
-        立即令账号无法通过现有 active-account 判定。重复调用不增加版本号。
+        Immediately prevents the account from passing the existing active-account check.
+        Repeated calls do not increment the version.
       responses:
         '200':
-          description: 已禁用；账号进入 disabling 状态
+          description: The account was disabled and is now in the disabling state
           content:
             application/json:
               schema:
@@ -90,12 +93,13 @@ paths:
     post:
       tags: [Managed proxy accounts]
       operationId: archiveManagedProxyAccount
-      summary: 归档受管代理账号
+      summary: Archive a managed proxy account
       description: |
-        保留身份记录供历史审计关联，并保证账号保持 disabled。重复调用不增加版本号。
+        Preserves the identity record for historical audit correlation and keeps the account
+        disabled. Repeated calls do not increment the version.
       responses:
         '200':
-          description: 已归档
+          description: The account was archived
           content:
             application/json:
               schema:
@@ -110,25 +114,25 @@ components:
       name: id
       in: path
       required: true
-      description: 环境内系统生成的 proxy account ID。
+      description: The system-generated proxy account ID within this environment.
       schema:
         type: string
         maxLength: 64
   responses:
     BadRequest:
-      description: 请求体缺失、类型错误或试图管理非知识网络资源
+      description: The request body is missing or invalid, or the resource is not a knowledge network
       content:
         application/json:
           schema:
             $ref: '../_shared/errors.yaml#/components/schemas/Error'
     NotFound:
-      description: 代理账号不存在
+      description: The proxy account does not exist
       content:
         application/json:
           schema:
             $ref: '../_shared/errors.yaml#/components/schemas/Error'
     InternalError:
-      description: 数据库失败或代理映射与账号记录不一致
+      description: A database failure occurred, or the proxy mapping and account record are inconsistent
       content:
         application/json:
           schema:
@@ -146,11 +150,11 @@ components:
           type: string
           minLength: 1
           maxLength: 128
-          description: 知识网络 ID；同一环境内只能绑定一个 proxy account。
+          description: Knowledge network ID; only one proxy account can be bound within an environment.
         name:
           type: string
           maxLength: 255
-          description: 可选展示名；不作为账号 ID、登录名或幂等键。
+          description: Optional display name; it is not used as the account ID, login name, or idempotency key.
     ManagedProxyAccount:
       type: object
       additionalProperties: false
