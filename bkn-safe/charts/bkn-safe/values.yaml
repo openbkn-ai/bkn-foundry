@@ -1,3 +1,6 @@
+# Casbin policy state is cached in process. Keep one replica until a cross-pod
+# policy watcher/version refresh is implemented; the deployment template
+# rejects overrides so authorization decisions cannot diverge between Pods.
 replicaCount: 1
 # Namespace follows the Helm release (-n) — templates use .Release.Namespace, so
 # bkn-safe installs into the same namespace as the rest of BKN Foundry (openbkn).
@@ -19,7 +22,8 @@ service:
 # Only the hydra provider pages (login/consent/device) and the self-service
 # change-password endpoint are browser/CLI-facing and go through the ingress.
 # The internal APIs (/api/safe/v1/authz, /api/safe/v1/directory,
-# /api/safe/v1/internal/license, /api/safe/in/v1/managed-proxy-accounts) stay
+# /api/safe/v1/internal/license, /api/safe/in/v1/managed-proxy-accounts and
+# /api/safe/in/v1/proxy-grant-sources) stay
 # ClusterIP, called service-to-service — do
 # NOT expose those at the gateway. The licence group is tokenless by design (its
 # boundary is the network, see networkPolicy below), so putting it behind the

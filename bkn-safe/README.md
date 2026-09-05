@@ -8,6 +8,7 @@ bkn-safe 是 OpenBKN 的认证、鉴权和用户目录服务。它配合**上游
 - 领域知识网络权限调用合同：[`docs/api/knowledge-network-authorization.md`](../docs/api/knowledge-network-authorization.md)
 - 自助授权范围 OpenAPI：[`docs/api/bkn-safe/self-service.yaml`](../docs/api/bkn-safe/self-service.yaml)
 - Managed KN proxy internal OpenAPI: [`docs/api/bkn-safe/managed-proxy.yaml`](../docs/api/bkn-safe/managed-proxy.yaml)
+- Proxy grant source internal OpenAPI: [`docs/api/bkn-safe/proxy-grants.yaml`](../docs/api/bkn-safe/proxy-grants.yaml)
 - 全局设计文档：[bkn-docs `docs/foundry/`](https://github.com/openbkn-ai/bkn-docs/tree/main/docs/foundry)
 
 ## 三职责
@@ -102,6 +103,9 @@ VS Code / Cursor：打开 `bkn-safe` 根目录，选 **Run and Debug → bkn-saf
 - Managed KN proxies (ClusterIP-internal surface) `/api/safe/in/v1/managed-proxy-accounts`:
   create, get, disable, and archive one-to-one proxy apps; these accounts cannot log in, use
   AppKeys, be managed as regular users, or receive grants through the generic Policy API
+- Proxy grant sources (ClusterIP-internal surface) `/api/safe/in/v1/proxy-grant-sources`:
+  create and revoke sources, preflight authorization, synchronize the complete published-model
+  source set, and reconcile Casbin Allow policies; the source ledger and policies update atomically
 - 目录 `/api/safe/v1/directory`：`GET /users/:id`、`POST /names`、`GET /departments`、
   `GET /groups/:id/members`、`POST /search-org`、`POST /users`、`PUT /users/:id/password`
 - 健康：`GET /health/ready`、`/health/alive`
