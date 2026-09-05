@@ -1,0 +1,137 @@
+openapi: 3.0.3
+info:
+  title: BKN Knowledge Network Managed Proxy API
+  version: 0.1.0
+  description: Cluster-internal runtime lookup and governance APIs for the environment-local knowledge-network proxy mapping.
+paths:
+  /api/bkn-backend/in/v1/knowledge-networks/{kn_id}/proxy-account:
+    get:
+      summary: Resolve the managed runtime proxy and publication synchronization state
+      description: The trusted runtime authorizes the original business caller before using this lookup. The lookup itself does not require proxy-administration permission.
+      parameters:
+        - $ref: '#/components/parameters/KnowledgeNetworkID'
+      responses:
+        '200':
+          description: Mapping state. Runtime callers may use it only when sync_status is ready and both model versions match.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeNetworkProxyAccount'
+        '404': { description: No mapping exists. }
+        '503': { description: Proxy orchestration is unavailable. }
+  /api/bkn-backend/in/v1/knowledge-networks/{kn_id}/proxy-account/sync:
+    post:
+      summary: Retry synchronization from the latest persisted main model
+      parameters:
+        - $ref: '#/components/parameters/KnowledgeNetworkID'
+      responses:
+        '200':
+          description: Latest synchronization state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeNetworkProxyAccount'
+        '403': { description: The caller lacks authorize or a required target operation. }
+        '409': { description: Another publication owns the per-network lease. }
+        '503': { description: Synchronization failed; the mapping remains fail-closed. }
+  /api/bkn-backend/in/v1/knowledge-networks/{kn_id}/proxy-account/plan:
+    get:
+      summary: Dry-run the source set derived from the latest persisted main model
+      parameters:
+        - $ref: '#/components/parameters/KnowledgeNetworkID'
+      responses:
+        '200':
+          description: Side-effect-free synchronization plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxySyncPlan'
+        '403': { description: The caller cannot authorize this knowledge network. }
+  /api/bkn-backend/in/v1/knowledge-networks/{kn_id}/proxy-account/deletion/finalize:
+    post:
+      summary: Resume proxy archival and KN policy cleanup after business data deletion committed
+      parameters:
+        - $ref: '#/components/parameters/KnowledgeNetworkID'
+      responses:
+        '204': { description: Deletion lifecycle finalized. }
+        '403': { description: The caller cannot delete this knowledge network. }
+        '503': { description: Cleanup remains retryable. }
+  /api/bkn-backend/in/v1/proxy-accounts/reconcile:
+    post:
+      summary: Detect mapping defects and reconcile bkn-safe authorization ledger drift
+      description: The caller must hold authorize on every live knowledge network that has a proxy mapping. Authorization is completed before any policy repair starts; orphan mappings are reported without mutation.
+      responses:
+        '200':
+          description: Reconciliation report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxyReconcileReport'
+        '403': { description: The caller cannot authorize every live mapped knowledge network. }
+        '503': { description: Reconciliation is unavailable. }
+components:
+  parameters:
+    KnowledgeNetworkID:
+      name: kn_id
+      in: path
+      required: true
+      schema: { type: string, maxLength: 64 }
+  schemas:
+    KnowledgeNetworkProxyAccount:
+      type: object
+      required: [kn_id, proxy_account_id, proxy_account_type, lifecycle_status, version, sync_status, published_model_version, synced_model_version, created_at, updated_at]
+      properties:
+        kn_id: { type: string }
+        proxy_account_id: { type: string, readOnly: true }
+        proxy_account_type: { type: string, enum: [app], readOnly: true }
+        lifecycle_status: { type: string, enum: [active, disabling, archived] }
+        version: { type: integer, format: int64 }
+        sync_status: { type: string, enum: [pending, ready, failed] }
+        published_model_version: { type: string }
+        synced_model_version: { type: string }
+        last_error: { type: string, maxLength: 1024 }
+        created_at: { type: integer, format: int64 }
+        updated_at: { type: integer, format: int64 }
+    ProxyReconcileReport:
+      type: object
+      required: [missing_mappings, orphan_mappings, conflicting_proxy_accounts, authorization_drift]
+      properties:
+        missing_mappings:
+          type: array
+          items: { type: string }
+        orphan_mappings:
+          type: array
+          items: { type: string }
+        conflicting_proxy_accounts:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }
+        authorization_drift:
+          type: object
+          additionalProperties:
+            type: object
+        errors:
+          type: object
+          additionalProperties: { type: string }
+    ProxySyncPlan:
+      type: object
+      required: [kn_id, model_version, sources]
+      properties:
+        kn_id: { type: string }
+        proxy_account_id: { type: string }
+        model_version: { type: string }
+        sources:
+          type: array
+          items:
+            type: object
+            required: [resource_type, resource_id, operation, source_type, source_id, kn_id, binding_type, binding_id]
+            properties:
+              resource_type: { type: string }
+              resource_id: { type: string }
+              operation: { type: string }
+              source_type: { type: string, enum: [kn_proxy_binding] }
+              source_id: { type: string }
+              kn_id: { type: string }
+              binding_type: { type: string }
+              binding_id: { type: string }

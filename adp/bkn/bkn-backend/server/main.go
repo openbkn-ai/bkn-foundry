@@ -37,6 +37,7 @@ import (
 	"bkn-backend/drivenadapters/agent_operator"
 	"bkn-backend/drivenadapters/auth"
 	"bkn-backend/drivenadapters/concept_group"
+	"bkn-backend/drivenadapters/kn_proxy"
 	"bkn-backend/drivenadapters/knowledge_network"
 	"bkn-backend/drivenadapters/metric"
 	"bkn-backend/drivenadapters/model_factory"
@@ -194,6 +195,7 @@ func main() {
 		}
 		logics.SetAuthAccess(auth.NewHydraAuthAccess(appSetting))
 		logics.SetPermissionAccess(permission.NewPermissionAccess(bknSafeURL))
+		logics.SetManagedProxyAccess(kn_proxy.NewManagedProxyAccess(bknSafeURL))
 		logics.SetUserMgmtAccess(user_mgmt.NewUserMgmtAccess(bknSafeURL))
 	}
 	logics.SetActionScheduleAccess(action_schedule.NewActionScheduleAccess(appSetting))
@@ -202,6 +204,7 @@ func main() {
 	logics.SetActionTypeAccess(action_type.NewActionTypeAccess(appSetting))
 	logics.SetConceptGroupAccess(concept_group.NewConceptGroupAccess(appSetting))
 	logics.SetKNAccess(knowledge_network.NewKNAccess(appSetting))
+	logics.SetKNProxyAccess(kn_proxy.NewAccess(db))
 	logics.SetMetricAccess(metric.NewMetricAccess(appSetting))
 	logics.SetModelFactoryAccess(model_factory.NewModelFactoryAccess(appSetting))
 	logics.SetOpenSearchAccess(opensearch.NewOpenSearchAccess(appSetting))

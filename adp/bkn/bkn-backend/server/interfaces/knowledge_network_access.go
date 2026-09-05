@@ -25,6 +25,7 @@ type KNAccess interface {
 	DeleteKN(ctx context.Context, tx *sql.Tx, knID string, branch string) (int64, error)
 
 	GetAllKNs(ctx context.Context) (map[string]*KN, error)
+	GetAllMainBranchKNs(ctx context.Context) (map[string]*KN, error)
 	GetNeighborPathsBatch(ctx context.Context, otIDs []string, query RelationTypePathsBaseOnSource) (map[string][]RelationTypePath, error)
 
 	// GetKNNamesByIDs gets knowledge-network names in batches by ID. This lightweight query bypasses authorization

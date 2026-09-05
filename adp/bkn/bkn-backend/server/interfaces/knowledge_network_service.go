@@ -24,6 +24,11 @@ type KNService interface {
 	UpdateKN(ctx context.Context, tx *sql.Tx, kn *KN, strictMode bool) error
 	UpdateKNDetail(ctx context.Context, knID string, branch string, detail string) error
 	DeleteKN(ctx context.Context, kn *KN) error
+	FinalizeKNProxyDeletion(ctx context.Context, knID string) error
+	GetKNProxy(ctx context.Context, knID string) (*KNProxyAccount, error)
+	PlanKNProxySync(ctx context.Context, knID string) (*KNProxySyncPlan, error)
+	RetryKNProxySync(ctx context.Context, knID string) (*KNProxyAccount, error)
+	ReconcileKNProxies(ctx context.Context, requestedBy string) (*KNProxyReconcileReport, error)
 
 	GetStatByKN(ctx context.Context, kn *KN) (*Statistics, error)
 	GetRelationTypePaths(ctx context.Context, query RelationTypePathsBaseOnSource) ([]RelationTypePath, error)
