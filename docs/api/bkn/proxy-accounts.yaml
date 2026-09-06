@@ -74,7 +74,7 @@ paths:
   /api/bkn-backend/v1/proxy-accounts/reconcile:
     post:
       summary: Detect and reconcile proxy authorization drift
-      description: The caller must hold authorize on every live mapped knowledge network. Authorization completes before any policy repair starts.
+      description: The caller must hold authorize on every live main-branch knowledge network, including those without a proxy mapping. Authorization completes before any policy repair starts.
       security:
         - OAuth2: []
       responses:
@@ -85,7 +85,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProxyGovernanceReconcileReport'
         '401': { description: OAuth authentication failed. }
-        '403': { description: The caller cannot authorize every live mapped knowledge network. }
+        '403': { description: The caller cannot authorize every live main-branch knowledge network. }
         '503': { description: Reconciliation is unavailable. }
   /api/bkn-backend/in/v1/knowledge-networks/{kn_id}/proxy-account:
     get:
@@ -168,7 +168,7 @@ paths:
   /api/bkn-backend/in/v1/proxy-accounts/reconcile:
     post:
       summary: Detect mapping defects and reconcile bkn-safe authorization ledger drift
-      description: The caller must hold authorize on every live knowledge network that has a proxy mapping. Authorization is completed before any policy repair starts; orphan mappings are reported without mutation.
+      description: The caller must hold authorize on every live main-branch knowledge network, including those without a proxy mapping. Authorization is completed before any policy repair starts; orphan mappings are reported without mutation.
       responses:
         '200':
           description: Reconciliation report
@@ -176,7 +176,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProxyReconcileReport'
-        '403': { description: The caller cannot authorize every live mapped knowledge network. }
+        '403': { description: The caller cannot authorize every live main-branch knowledge network. }
         '503': { description: Reconciliation is unavailable. }
 components:
   securitySchemes:
