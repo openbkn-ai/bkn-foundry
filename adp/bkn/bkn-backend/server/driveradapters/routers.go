@@ -127,6 +127,11 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	bknApiV1.POST("/trace/outbox/:outbox_id/abandon", r.verifyJsonContentType(), r.AbandonTraceOutbox)
 	bknApiV1.GET("/operation-audits", r.ListOperationAudits)
 	bknApiV1.GET("/operation-audits/:event_id", r.GetOperationAudit)
+	bknApiV1.GET("/proxy-accounts", r.ListKNProxiesByEx)
+	bknApiV1.GET("/knowledge-networks/:kn_id/proxy-account", r.GetKNProxyByEx)
+	bknApiV1.GET("/knowledge-networks/:kn_id/proxy-account/plan", r.PlanKNProxySyncByEx)
+	bknApiV1.POST("/knowledge-networks/:kn_id/proxy-account/sync", r.RetryKNProxySyncByEx)
+	bknApiV1.POST("/proxy-accounts/reconcile", r.ReconcileKNProxiesByEx)
 
 	for _, apiV1 := range []*gin.RouterGroup{bknApiV1, otlApiV1} {
 		// Knowledge networks.

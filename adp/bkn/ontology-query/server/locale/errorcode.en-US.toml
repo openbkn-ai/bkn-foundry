@@ -44,6 +44,41 @@ Description = "Failed to verify data-query permission"
 Solution = "Please retry. If the authorization service remains unavailable, contact technical support."
 ErrorLink = ""
 
+[OntologyQuery.Proxy.BindingInvalid]
+Description = "The published binding cannot be accessed through the knowledge-network proxy"
+Solution = "Publish a valid binding and synchronize proxy permissions before retrying."
+ErrorLink = ""
+
+[OntologyQuery.Proxy.Disabled]
+Description = "The knowledge-network proxy account is not active"
+Solution = "Ask an administrator to restore the proxy account."
+ErrorLink = ""
+
+[OntologyQuery.Proxy.MappingNotFound]
+Description = "The knowledge-network proxy mapping does not exist"
+Solution = "Ask an administrator to synchronize the proxy account."
+ErrorLink = ""
+
+[OntologyQuery.Proxy.PermissionDenied]
+Description = "The knowledge-network proxy lacks permission for the published resource"
+Solution = "Ask an administrator to inspect and synchronize proxy grants."
+ErrorLink = ""
+
+[OntologyQuery.Proxy.SyncFailed]
+Description = "Knowledge-network proxy permission synchronization failed"
+Solution = "Ask an administrator to inspect the synchronization error and retry."
+ErrorLink = ""
+
+[OntologyQuery.Proxy.SyncPending]
+Description = "Knowledge-network proxy permissions are still synchronizing"
+Solution = "Wait for synchronization to finish or ask an administrator to retry it."
+ErrorLink = ""
+
+[OntologyQuery.Proxy.Unavailable]
+Description = "The knowledge-network proxy service is unavailable"
+Solution = "Try again later; contact an administrator if the problem persists."
+ErrorLink = ""
+
 [OntologyQuery.Metric.InvalidParameter]
 Description = "Invalid metric request parameter"
 Solution = "Please check the request body and path parameters."

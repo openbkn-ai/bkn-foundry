@@ -25,7 +25,15 @@ const (
 	BknBackend_KnowledgeNetwork_NullParameter_SourceObjectTypeId   = "BknBackend.KnowledgeNetwork.NullParameter.SourceObjectTypeId"
 
 	// 404
-	BknBackend_KnowledgeNetwork_NotFound = "BknBackend.KnowledgeNetwork.NotFound"
+	BknBackend_KnowledgeNetwork_NotFound             = "BknBackend.KnowledgeNetwork.NotFound"
+	BknBackend_KnowledgeNetwork_ProxyMappingNotFound = "BknBackend.KnowledgeNetwork.Proxy.MappingNotFound"
+
+	// Proxy runtime state
+	BknBackend_KnowledgeNetwork_ProxyBindingInvalid = "BknBackend.KnowledgeNetwork.Proxy.BindingInvalid"
+	BknBackend_KnowledgeNetwork_ProxyDisabled       = "BknBackend.KnowledgeNetwork.Proxy.Disabled"
+	BknBackend_KnowledgeNetwork_ProxySyncFailed     = "BknBackend.KnowledgeNetwork.Proxy.SyncFailed"
+	BknBackend_KnowledgeNetwork_ProxySyncPending    = "BknBackend.KnowledgeNetwork.Proxy.SyncPending"
+	BknBackend_KnowledgeNetwork_ProxyUnavailable    = "BknBackend.KnowledgeNetwork.Proxy.Unavailable"
 
 	// 500
 	BknBackend_KnowledgeNetwork_InternalError                             = "BknBackend.KnowledgeNetwork.InternalError"
@@ -70,6 +78,14 @@ var (
 
 		// 404
 		BknBackend_KnowledgeNetwork_NotFound,
+		BknBackend_KnowledgeNetwork_ProxyMappingNotFound,
+
+		// Proxy runtime state
+		BknBackend_KnowledgeNetwork_ProxyBindingInvalid,
+		BknBackend_KnowledgeNetwork_ProxyDisabled,
+		BknBackend_KnowledgeNetwork_ProxySyncFailed,
+		BknBackend_KnowledgeNetwork_ProxySyncPending,
+		BknBackend_KnowledgeNetwork_ProxyUnavailable,
 
 		// 500
 		BknBackend_KnowledgeNetwork_InternalError,

@@ -82,9 +82,9 @@ paths:
                     items:
                       type: object
                       additionalProperties: true
-        '403': { description: Caller or managed proxy lacks the required permission. }
-        '404': { description: The published object type does not exist. }
-        '503': { description: Proxy mapping or a permission dependency is unavailable. }
+        '403': { description: "Caller permission is denied, or the managed proxy lacks resource permission (`OntologyQuery.Proxy.PermissionDenied`)." }
+        '404': { description: The published object type or proxy mapping does not exist (`OntologyQuery.Proxy.MappingNotFound` for the latter). }
+        '503': { description: "Proxy binding is invalid, disabled, pending, failed, or unavailable; see the stable `OntologyQuery.Proxy.*` error code." }
   /api/ontology-query/v1/knowledge-networks/{kn_id}/object-types/{ot_id}/sample-data:
     get:
       summary: Get object-type sample data through the managed proxy
@@ -145,9 +145,9 @@ paths:
                   search_after:
                     type: array
                     items: {}
-        '403': { description: Caller or managed proxy lacks query_data. }
-        '404': { description: The published object type does not exist. }
-        '503': { description: Proxy mapping or a permission dependency is unavailable. }
+        '403': { description: "Caller query_data is denied, or the managed proxy lacks resource query_data (`OntologyQuery.Proxy.PermissionDenied`)." }
+        '404': { description: The published object type or proxy mapping does not exist (`OntologyQuery.Proxy.MappingNotFound` for the latter). }
+        '503': { description: "Proxy binding is invalid, disabled, pending, failed, or unavailable; see the stable `OntologyQuery.Proxy.*` error code." }
   /api/ontology-query/v1/knowledge-networks/{kn_id}/object-types/{ot_id}:
     summary: 检索指定对象类的对象的详细数据
     post:

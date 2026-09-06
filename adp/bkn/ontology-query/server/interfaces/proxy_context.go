@@ -4,7 +4,10 @@
 
 package interfaces
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 const (
 	HTTPHeaderBKNCallerID     = "x-bkn-caller-id"
@@ -20,8 +23,12 @@ const (
 
 	ProxyAccountTypeApp = "app"
 
-	ProxyLifecycleActive = "active"
-	ProxySyncReady       = "ready"
+	ProxyLifecycleActive    = "active"
+	ProxyLifecycleDisabling = "disabling"
+	ProxyLifecycleArchived  = "archived"
+	ProxySyncPending        = "pending"
+	ProxySyncReady          = "ready"
+	ProxySyncFailed         = "failed"
 
 	ProxyTargetTypeResource = "resource"
 	ProxyTargetTypeToolBox  = "tool_box"
@@ -41,6 +48,18 @@ type KnowledgeNetworkProxyAccount struct {
 	SyncStatus            string `json:"sync_status"`
 	PublishedModelVersion string `json:"published_model_version"`
 	SyncedModelVersion    string `json:"synced_model_version"`
+}
+
+// KnowledgeNetworkProxyResolveError preserves only the stable status and code
+// returned by BKN. Response descriptions and internal details are deliberately
+// not propagated across the service boundary.
+type KnowledgeNetworkProxyResolveError struct {
+	StatusCode int
+	Code       string
+}
+
+func (e *KnowledgeNetworkProxyResolveError) Error() string {
+	return fmt.Sprintf("knowledge network proxy resolution failed with status %d and code %s", e.StatusCode, e.Code)
 }
 
 // TrustedProxyBinding identifies one downstream target derived from the

@@ -44,6 +44,41 @@ Description = "数据查询权限校验失败"
 Solution = "请重试；若授权服务持续不可用，请联系技术支持。"
 ErrorLink = ""
 
+[OntologyQuery.Proxy.BindingInvalid]
+Description = "已发布绑定无法通过知识网络代理访问"
+Solution = "请发布有效绑定并同步代理权限，然后重试。"
+ErrorLink = ""
+
+[OntologyQuery.Proxy.Disabled]
+Description = "知识网络代理账号未处于启用状态"
+Solution = "请联系管理员恢复代理账号。"
+ErrorLink = ""
+
+[OntologyQuery.Proxy.MappingNotFound]
+Description = "知识网络代理映射不存在"
+Solution = "请联系管理员同步代理账号。"
+ErrorLink = ""
+
+[OntologyQuery.Proxy.PermissionDenied]
+Description = "知识网络代理缺少已发布资源的访问权限"
+Solution = "请联系管理员检查并同步代理授权。"
+ErrorLink = ""
+
+[OntologyQuery.Proxy.SyncFailed]
+Description = "知识网络代理权限同步失败"
+Solution = "请联系管理员检查同步错误并重试。"
+ErrorLink = ""
+
+[OntologyQuery.Proxy.SyncPending]
+Description = "知识网络代理权限正在同步"
+Solution = "请等待同步完成，或联系管理员重试同步。"
+ErrorLink = ""
+
+[OntologyQuery.Proxy.Unavailable]
+Description = "知识网络代理服务不可用"
+Solution = "请稍后重试；若问题持续，请联系管理员。"
+ErrorLink = ""
+
 [OntologyQuery.Metric.InvalidParameter]
 Description = "指标请求参数无效"
 Solution = "请检查请求体与路径参数。"

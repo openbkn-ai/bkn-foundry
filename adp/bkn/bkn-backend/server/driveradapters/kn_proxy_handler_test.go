@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"go.uber.org/mock/gomock"
 
 	"bkn-backend/interfaces"
@@ -48,6 +49,37 @@ func TestResolveKNProxyBindingEndpointUsesServerMapping(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	engine.ServeHTTP(recorder, req)
 	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestListKNProxiesPublicEndpointUsesOAuthIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctrl := gomock.NewController(t)
+	authService := bmock.NewMockAuthService(ctrl)
+	service := bmock.NewMockKNService(ctrl)
+	handler := &restHandler{as: authService, kns: service}
+	engine := gin.New()
+	engine.GET("/api/bkn-backend/v1/proxy-accounts", handler.ListKNProxiesByEx)
+
+	authService.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).Return(hydra.Visitor{
+		ID: "operator-1", Type: hydra.VisitorType("user"),
+	}, nil)
+	service.EXPECT().ListGovernedKNProxies(gomock.Any()).DoAndReturn(
+		func(ctx context.Context) (*interfaces.KNProxyAccountList, error) {
+			account, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+			if account.ID != "operator-1" || account.Type != "user" {
+				t.Fatalf("unexpected OAuth caller context: %#v", account)
+			}
+			return &interfaces.KNProxyAccountList{Entries: []*interfaces.KNProxyGovernanceView{{
+				KNID: "kn-1", ProxyAccountID: "proxy-1",
+			}}, Total: 1}, nil
+		})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/bkn-backend/v1/proxy-accounts", nil)
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"proxy_account_id":"proxy-1"`) {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
 }

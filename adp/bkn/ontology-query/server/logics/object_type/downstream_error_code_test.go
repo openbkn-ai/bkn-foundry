@@ -71,3 +71,12 @@ func Test_downstreamErrorCodeIsRegisteredInEveryLanguage(t *testing.T) {
 		}
 	}
 }
+
+func Test_proxyDownstreamErrorCodeSeparatesManagedProxyPermission(t *testing.T) {
+	if got := proxyDownstreamErrorCode(http.StatusForbidden); got != oerrors.OntologyQuery_Proxy_PermissionDenied {
+		t.Fatalf("proxy 403 code = %q, want %q", got, oerrors.OntologyQuery_Proxy_PermissionDenied)
+	}
+	if got := proxyDownstreamErrorCode(http.StatusBadRequest); got != oerrors.OntologyQuery_ObjectType_InvalidParameter {
+		t.Fatalf("proxy 400 code = %q, want %q", got, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+	}
+}

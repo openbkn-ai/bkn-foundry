@@ -706,35 +706,106 @@ func (kns *knowledgeNetworkService) GetKNProxy(ctx context.Context, knID string)
 	return mapping, nil
 }
 
+// GetGovernedKNProxy exposes proxy state only after checking the caller's
+// authorize operation on the exact knowledge network. Runtime services must
+// continue to use GetKNProxy after separately authorizing the business call.
+func (kns *knowledgeNetworkService) GetGovernedKNProxy(ctx context.Context, knID string) (*interfaces.KNProxyGovernanceView, error) {
+	if err := kns.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_KN,
+		ID:   knID,
+	}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}); err != nil {
+		return nil, err
+	}
+	mapping, err := kns.GetKNProxy(ctx, knID)
+	if err != nil {
+		return nil, err
+	}
+	return interfaces.NewKNProxyGovernanceView(mapping), nil
+}
+
+// ListGovernedKNProxies returns only mappings in the caller's authorize scope,
+// so mapping existence and proxy identifiers are not disclosed across tenants.
+func (kns *knowledgeNetworkService) ListGovernedKNProxies(ctx context.Context) (*interfaces.KNProxyAccountList, error) {
+	if kns.kpa == nil {
+		return nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
+			berrors.BknBackend_KnowledgeNetwork_ProxyUnavailable, "proxy orchestration is disabled")
+	}
+	mappings, err := kns.kpa.List(ctx)
+	if err != nil {
+		return nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
+			berrors.BknBackend_KnowledgeNetwork_ProxyUnavailable, "list knowledge network proxy mappings")
+	}
+	ids := make([]string, 0, len(mappings))
+	for _, mapping := range mappings {
+		if mapping != nil && strings.TrimSpace(mapping.KNID) != "" {
+			ids = append(ids, mapping.KNID)
+		}
+	}
+	if len(ids) == 0 {
+		return &interfaces.KNProxyAccountList{Entries: []*interfaces.KNProxyGovernanceView{}}, nil
+	}
+	allowed, err := kns.ps.FilterResources(ctx, interfaces.RESOURCE_TYPE_KN, ids,
+		[]string{interfaces.OPERATION_TYPE_AUTHORIZE}, true, interfaces.COMMON_OPERATIONS)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]*interfaces.KNProxyGovernanceView, 0, len(allowed))
+	for _, mapping := range mappings {
+		if mapping == nil {
+			continue
+		}
+		if _, ok := allowed[mapping.KNID]; ok {
+			entries = append(entries, interfaces.NewKNProxyGovernanceView(mapping))
+		}
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].KNID < entries[j].KNID })
+	return &interfaces.KNProxyAccountList{Entries: entries, Total: len(entries)}, nil
+}
+
 // ResolveKNProxyBinding validates a server-derived runtime target against the
 // latest published main model and returns the proxy mapping only when that
 // exact model version has finished permission synchronization.
 func (kns *knowledgeNetworkService) ResolveKNProxyBinding(ctx context.Context, knID string,
 	binding interfaces.KNProxyBinding) (*interfaces.KNProxyAccount, error) {
 	if kns.kpa == nil {
-		return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "proxy orchestration is disabled")
+		return nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
+			berrors.BknBackend_KnowledgeNetwork_ProxyUnavailable, "proxy orchestration is disabled")
 	}
 	mapping, err := kns.kpa.Get(ctx, knID)
 	if err != nil {
-		return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "load knowledge network proxy mapping")
+		return nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
+			berrors.BknBackend_KnowledgeNetwork_ProxyUnavailable, "load knowledge network proxy mapping")
 	}
 	if mapping == nil {
-		return nil, proxyHTTPError(ctx, http.StatusNotFound, "knowledge network proxy mapping not found")
+		return nil, proxyStateHTTPError(ctx, http.StatusNotFound,
+			berrors.BknBackend_KnowledgeNetwork_ProxyMappingNotFound, "knowledge network proxy mapping not found")
 	}
-	if mapping.LifecycleStatus != interfaces.KNProxyLifecycleActive ||
-		mapping.SyncStatus != interfaces.KNProxySyncReady ||
+	if mapping.LifecycleStatus != interfaces.KNProxyLifecycleActive {
+		return nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
+			berrors.BknBackend_KnowledgeNetwork_ProxyDisabled, "knowledge network proxy is not active")
+	}
+	if mapping.SyncStatus == interfaces.KNProxySyncFailed {
+		return nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
+			berrors.BknBackend_KnowledgeNetwork_ProxySyncFailed, "knowledge network proxy synchronization failed")
+	}
+	if mapping.SyncStatus != interfaces.KNProxySyncReady ||
 		mapping.PublishedModelVersion == "" || mapping.SyncedModelVersion != mapping.PublishedModelVersion {
-		return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "knowledge network proxy is not synchronized with the current published model")
+		return nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
+			berrors.BknBackend_KnowledgeNetwork_ProxySyncPending,
+			"knowledge network proxy is not synchronized with the current published model")
 	}
 	sources, modelVersion, err := kns.loadPublishedProxyBindings(ctx, knID, mapping.PublishedModelVersion)
 	if err != nil {
 		return nil, err
 	}
 	if !containsProxyBinding(sources, knID, binding) {
-		return nil, proxyHTTPError(ctx, http.StatusForbidden, "target is not a current published binding")
+		return nil, proxyStateHTTPError(ctx, http.StatusForbidden,
+			berrors.BknBackend_KnowledgeNetwork_ProxyBindingInvalid, "target is not a current published binding")
 	}
 	if mapping.PublishedModelVersion != modelVersion || mapping.SyncedModelVersion != modelVersion {
-		return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "knowledge network proxy is not synchronized with the current published model")
+		return nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
+			berrors.BknBackend_KnowledgeNetwork_ProxySyncPending,
+			"knowledge network proxy is not synchronized with the current published model")
 	}
 	return mapping, nil
 }
@@ -889,6 +960,10 @@ func accountIDFromContext(ctx context.Context) string {
 
 func proxyHTTPError(ctx context.Context, status int, detail string) *rest.HTTPError {
 	return rest.NewHTTPError(ctx, status, berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(detail)
+}
+
+func proxyStateHTTPError(ctx context.Context, status int, code, detail string) *rest.HTTPError {
+	return rest.NewHTTPError(ctx, status, code).WithErrorDetails(detail)
 }
 
 func invalidProxyTargetError(ctx context.Context, cause error) *rest.HTTPError {

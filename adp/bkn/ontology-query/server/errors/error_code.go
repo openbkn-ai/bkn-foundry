@@ -25,6 +25,13 @@ const (
 
 	// Permission
 	OntologyQuery_InternalError_CheckPermissionFailed = "OntologyQuery.InternalError.CheckPermissionFailed"
+	OntologyQuery_Proxy_BindingInvalid                = "OntologyQuery.Proxy.BindingInvalid"
+	OntologyQuery_Proxy_Disabled                      = "OntologyQuery.Proxy.Disabled"
+	OntologyQuery_Proxy_MappingNotFound               = "OntologyQuery.Proxy.MappingNotFound"
+	OntologyQuery_Proxy_PermissionDenied              = "OntologyQuery.Proxy.PermissionDenied"
+	OntologyQuery_Proxy_SyncFailed                    = "OntologyQuery.Proxy.SyncFailed"
+	OntologyQuery_Proxy_SyncPending                   = "OntologyQuery.Proxy.SyncPending"
+	OntologyQuery_Proxy_Unavailable                   = "OntologyQuery.Proxy.Unavailable"
 	// OntologyQuery_InternalError_CreateResourcesFailed = "OntologyQuery.InternalError.CreateResourcesFailed"
 	// OntologyQuery_InternalError_DeleteResourcesFailed = "OntologyQuery.InternalError.DeleteResourcesFailed"
 	// OntologyQuery_InternalError_FilterResourcesFailed = "OntologyQuery.InternalError.FilterResourcesFailed"
@@ -48,6 +55,13 @@ var (
 
 		// permission
 		OntologyQuery_InternalError_CheckPermissionFailed,
+		OntologyQuery_Proxy_BindingInvalid,
+		OntologyQuery_Proxy_Disabled,
+		OntologyQuery_Proxy_MappingNotFound,
+		OntologyQuery_Proxy_PermissionDenied,
+		OntologyQuery_Proxy_SyncFailed,
+		OntologyQuery_Proxy_SyncPending,
+		OntologyQuery_Proxy_Unavailable,
 		// OntologyQuery_InternalError_CreateResourcesFailed,
 		// OntologyQuery_InternalError_DeleteResourcesFailed,
 		// OntologyQuery_InternalError_FilterResourcesFailed,

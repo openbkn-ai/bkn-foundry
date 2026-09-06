@@ -1,9 +1,92 @@
 openapi: 3.0.3
 info:
   title: BKN Knowledge Network Managed Proxy API
-  version: 0.1.0
-  description: Cluster-internal runtime lookup and governance APIs for the environment-local knowledge-network proxy mapping.
+  version: 0.2.0
+  description: OAuth-protected governance APIs and cluster-internal runtime APIs for environment-local knowledge-network proxy mappings.
 paths:
+  /api/bkn-backend/v1/proxy-accounts:
+    get:
+      summary: List knowledge-network proxy mappings in the caller's governance scope
+      description: Returns only mappings for knowledge networks on which the OAuth caller has the authorize operation. Unauthorized mapping existence and proxy account identifiers are not disclosed.
+      security:
+        - OAuth2: []
+      responses:
+        '200':
+          description: Permission-filtered mapping list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeNetworkProxyAccountList'
+        '401': { description: OAuth authentication failed. }
+        '503': { description: Proxy mapping storage or authorization filtering is unavailable. }
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/proxy-account:
+    get:
+      summary: Get one governed knowledge-network proxy mapping
+      security:
+        - OAuth2: []
+      parameters:
+        - $ref: '#/components/parameters/KnowledgeNetworkID'
+      responses:
+        '200':
+          description: Mapping state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeNetworkProxyGovernanceView'
+        '401': { description: OAuth authentication failed. }
+        '403': { description: The caller cannot authorize this knowledge network. }
+        '404': { description: No mapping exists. }
+        '503': { description: Proxy orchestration is unavailable. }
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/proxy-account/plan:
+    get:
+      summary: Preview the published binding sources used for proxy synchronization
+      security:
+        - OAuth2: []
+      parameters:
+        - $ref: '#/components/parameters/KnowledgeNetworkID'
+      responses:
+        '200':
+          description: Side-effect-free synchronization plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxySyncPlan'
+        '401': { description: OAuth authentication failed. }
+        '403': { description: The caller cannot authorize this knowledge network. }
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/proxy-account/sync:
+    post:
+      summary: Retry proxy synchronization from the latest persisted main model
+      security:
+        - OAuth2: []
+      parameters:
+        - $ref: '#/components/parameters/KnowledgeNetworkID'
+      responses:
+        '200':
+          description: Latest synchronization state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeNetworkProxyGovernanceView'
+        '401': { description: OAuth authentication failed. }
+        '403': { description: The caller lacks authorize or a required target operation. }
+        '409': { description: Another publication owns the per-network lease. }
+        '503': { description: Synchronization failed; the mapping remains fail-closed. }
+  /api/bkn-backend/v1/proxy-accounts/reconcile:
+    post:
+      summary: Detect and reconcile proxy authorization drift
+      description: The caller must hold authorize on every live mapped knowledge network. Authorization completes before any policy repair starts.
+      security:
+        - OAuth2: []
+      responses:
+        '200':
+          description: Reconciliation report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxyGovernanceReconcileReport'
+        '401': { description: OAuth authentication failed. }
+        '403': { description: The caller cannot authorize every live mapped knowledge network. }
+        '503': { description: Reconciliation is unavailable. }
   /api/bkn-backend/in/v1/knowledge-networks/{kn_id}/proxy-account:
     get:
       summary: Resolve the managed runtime proxy and publication synchronization state
@@ -43,8 +126,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/KnowledgeNetworkProxyAccount'
         '403': { description: The target is not an exact current published binding. }
-        '404': { description: No mapping exists. }
-        '503': { description: Mapping or model synchronization is unavailable. }
+        '404': { description: No mapping exists (`BknBackend.KnowledgeNetwork.Proxy.MappingNotFound`). }
+        '503': { description: "Mapping is disabled, pending, failed, or unavailable; see the stable `BknBackend.KnowledgeNetwork.Proxy.*` error code." }
   /api/bkn-backend/in/v1/knowledge-networks/{kn_id}/proxy-account/sync:
     post:
       summary: Retry synchronization from the latest persisted main model
@@ -96,6 +179,9 @@ paths:
         '403': { description: The caller cannot authorize every live mapped knowledge network. }
         '503': { description: Reconciliation is unavailable. }
 components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
   parameters:
     KnowledgeNetworkID:
       name: kn_id
@@ -103,6 +189,17 @@ components:
       required: true
       schema: { type: string, maxLength: 64 }
   schemas:
+    KnowledgeNetworkProxyAccountList:
+      type: object
+      required: [entries, total]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/KnowledgeNetworkProxyGovernanceView'
+        total:
+          type: integer
+          minimum: 0
     ProxyRuntimeBinding:
       type: object
       additionalProperties: false
@@ -128,6 +225,22 @@ components:
         last_error: { type: string, maxLength: 1024 }
         created_at: { type: integer, format: int64 }
         updated_at: { type: integer, format: int64 }
+    KnowledgeNetworkProxyGovernanceView:
+      type: object
+      description: OAuth governance projection. Internal last-error, grantor, and lock details are omitted.
+      required: [kn_id, proxy_account_id, proxy_account_type, lifecycle_status, version, sync_status, published_model_version, synced_model_version, created_at, updated_at]
+      properties:
+        kn_id: { type: string }
+        proxy_account_id: { type: string, readOnly: true }
+        proxy_account_type: { type: string, enum: [app], readOnly: true }
+        lifecycle_status: { type: string, enum: [active, disabling, archived] }
+        last_error_code: { type: string, enum: [PROXY_SYNC_FAILED], description: Stable public summary; raw internal synchronization errors are omitted. }
+        version: { type: integer, format: int64 }
+        sync_status: { type: string, enum: [pending, ready, failed] }
+        published_model_version: { type: string }
+        synced_model_version: { type: string }
+        created_at: { type: integer, format: int64 }
+        updated_at: { type: integer, format: int64 }
     ProxyReconcileReport:
       type: object
       required: [missing_mappings, orphan_mappings, conflicting_proxy_accounts, authorization_drift]
@@ -150,6 +263,29 @@ components:
         errors:
           type: object
           additionalProperties: { type: string }
+    ProxyGovernanceReconcileReport:
+      type: object
+      description: Public reconciliation result. Failed network IDs are exposed without raw internal error text.
+      required: [missing_mappings, orphan_mappings, conflicting_proxy_accounts, authorization_drift]
+      properties:
+        missing_mappings:
+          type: array
+          items: { type: string }
+        orphan_mappings:
+          type: array
+          items: { type: string }
+        conflicting_proxy_accounts:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }
+        authorization_drift:
+          type: object
+          additionalProperties:
+            type: object
+        failed_kn_ids:
+          type: array
+          items: { type: string }
     ProxySyncPlan:
       type: object
       required: [kn_id, model_version, sources]

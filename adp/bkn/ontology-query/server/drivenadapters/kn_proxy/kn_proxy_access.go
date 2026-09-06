@@ -34,6 +34,10 @@ type resolveProxyBindingRequest struct {
 	Operation  string `json:"operation"`
 }
 
+type proxyErrorResponse struct {
+	ErrorCode string `json:"error_code"`
+}
+
 func NewKnowledgeNetworkProxyAccess(appSetting *common.AppSetting) interfaces.KnowledgeNetworkProxyAccess {
 	baseURL := ""
 	if appSetting != nil {
@@ -72,7 +76,12 @@ func (a *knowledgeNetworkProxyAccess) ResolveKnowledgeNetworkProxy(
 		return nil, fmt.Errorf("call BKN proxy lookup: %w", err)
 	}
 	if status != http.StatusOK {
-		return nil, fmt.Errorf("BKN proxy lookup returned status %d", status)
+		response := proxyErrorResponse{}
+		_ = sonic.Unmarshal(body, &response)
+		return nil, &interfaces.KnowledgeNetworkProxyResolveError{
+			StatusCode: status,
+			Code:       strings.TrimSpace(response.ErrorCode),
+		}
 	}
 	if len(body) == 0 {
 		return nil, fmt.Errorf("BKN proxy lookup returned an empty response")

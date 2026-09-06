@@ -6,6 +6,7 @@ package proxy_context
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -20,6 +21,14 @@ type proxyContextResolver struct {
 	access interfaces.KnowledgeNetworkProxyAccess
 }
 
+const (
+	bknProxyBindingInvalidCode  = "BknBackend.KnowledgeNetwork.Proxy.BindingInvalid"
+	bknProxyDisabledCode        = "BknBackend.KnowledgeNetwork.Proxy.Disabled"
+	bknProxyMappingNotFoundCode = "BknBackend.KnowledgeNetwork.Proxy.MappingNotFound"
+	bknProxySyncFailedCode      = "BknBackend.KnowledgeNetwork.Proxy.SyncFailed"
+	bknProxySyncPendingCode     = "BknBackend.KnowledgeNetwork.Proxy.SyncPending"
+)
+
 func NewProxyContextResolver(access interfaces.KnowledgeNetworkProxyAccess) interfaces.ProxyContextResolver {
 	return &proxyContextResolver{access: access}
 }
@@ -33,26 +42,40 @@ func (r *proxyContextResolver) Resolve(
 		return nil, proxyUnavailable(ctx, "request caller is unavailable")
 	}
 	if err := validateBinding(binding); err != nil {
-		return nil, proxyUnavailable(ctx, "trusted proxy binding is invalid")
+		return nil, proxyError(ctx, http.StatusForbidden, oerrors.OntologyQuery_Proxy_BindingInvalid,
+			"trusted proxy binding is invalid")
 	}
 	if r == nil || r.access == nil {
 		return nil, proxyUnavailable(ctx, "knowledge network proxy resolver is not configured")
 	}
 
 	mapping, err := r.access.ResolveKnowledgeNetworkProxy(ctx, binding)
-	if err != nil || mapping == nil {
+	if err != nil {
+		return nil, mapProxyResolutionError(ctx, err)
+	}
+	if mapping == nil {
 		return nil, proxyUnavailable(ctx, "knowledge network proxy mapping is unavailable")
+	}
+	if mapping.LifecycleStatus != interfaces.ProxyLifecycleActive {
+		return nil, proxyError(ctx, http.StatusServiceUnavailable, oerrors.OntologyQuery_Proxy_Disabled,
+			"knowledge network proxy is not active")
+	}
+	if mapping.SyncStatus == interfaces.ProxySyncFailed {
+		return nil, proxyError(ctx, http.StatusServiceUnavailable, oerrors.OntologyQuery_Proxy_SyncFailed,
+			"knowledge network proxy synchronization failed")
+	}
+	if mapping.SyncStatus != interfaces.ProxySyncReady ||
+		strings.TrimSpace(mapping.PublishedModelVersion) == "" ||
+		mapping.PublishedModelVersion != mapping.SyncedModelVersion {
+		return nil, proxyError(ctx, http.StatusServiceUnavailable, oerrors.OntologyQuery_Proxy_SyncPending,
+			"knowledge network proxy is not synchronized with the current published model")
 	}
 	if mapping.KNID != binding.KNID ||
 		strings.TrimSpace(mapping.ProxyAccountID) == "" ||
 		strings.TrimSpace(mapping.ProxyAccountID) != mapping.ProxyAccountID ||
 		mapping.ProxyAccountType != interfaces.ProxyAccountTypeApp ||
-		mapping.LifecycleStatus != interfaces.ProxyLifecycleActive ||
-		mapping.SyncStatus != interfaces.ProxySyncReady ||
 		mapping.Version <= 0 ||
-		strings.TrimSpace(mapping.PublishedModelVersion) == "" ||
-		strings.TrimSpace(mapping.PublishedModelVersion) != mapping.PublishedModelVersion ||
-		mapping.PublishedModelVersion != mapping.SyncedModelVersion {
+		strings.TrimSpace(mapping.PublishedModelVersion) != mapping.PublishedModelVersion {
 		return nil, proxyUnavailable(ctx, "knowledge network proxy is not ready")
 	}
 
@@ -121,6 +144,35 @@ func validateBinding(binding interfaces.TrustedProxyBinding) error {
 }
 
 func proxyUnavailable(ctx context.Context, detail string) *rest.HTTPError {
-	return rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
-		oerrors.OntologyQuery_InternalError_CheckPermissionFailed).WithErrorDetails(detail)
+	return proxyError(ctx, http.StatusServiceUnavailable, oerrors.OntologyQuery_Proxy_Unavailable, detail)
+}
+
+func proxyError(ctx context.Context, status int, code, detail string) *rest.HTTPError {
+	return rest.NewHTTPError(ctx, status, code).WithErrorDetails(detail)
+}
+
+func mapProxyResolutionError(ctx context.Context, err error) *rest.HTTPError {
+	var resolutionErr *interfaces.KnowledgeNetworkProxyResolveError
+	if !errors.As(err, &resolutionErr) {
+		return proxyUnavailable(ctx, "knowledge network proxy mapping is unavailable")
+	}
+	switch resolutionErr.Code {
+	case bknProxyBindingInvalidCode:
+		return proxyError(ctx, http.StatusForbidden, oerrors.OntologyQuery_Proxy_BindingInvalid,
+			"target is not a current published binding")
+	case bknProxyDisabledCode:
+		return proxyError(ctx, http.StatusServiceUnavailable, oerrors.OntologyQuery_Proxy_Disabled,
+			"knowledge network proxy is not active")
+	case bknProxyMappingNotFoundCode:
+		return proxyError(ctx, http.StatusNotFound, oerrors.OntologyQuery_Proxy_MappingNotFound,
+			"knowledge network proxy mapping does not exist")
+	case bknProxySyncFailedCode:
+		return proxyError(ctx, http.StatusServiceUnavailable, oerrors.OntologyQuery_Proxy_SyncFailed,
+			"knowledge network proxy synchronization failed")
+	case bknProxySyncPendingCode:
+		return proxyError(ctx, http.StatusServiceUnavailable, oerrors.OntologyQuery_Proxy_SyncPending,
+			"knowledge network proxy synchronization is pending")
+	default:
+		return proxyUnavailable(ctx, "knowledge network proxy mapping is unavailable")
+	}
 }

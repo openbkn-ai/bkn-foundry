@@ -12,6 +12,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
+	oerrors "ontology-query/errors"
 	"ontology-query/interfaces"
 )
 
@@ -86,6 +87,53 @@ func TestResolveFailsClosedWhenMappingDependencyFails(t *testing.T) {
 	assertServiceUnavailable(t, got, err)
 }
 
+func TestResolveMapsStableBKNProxyErrors(t *testing.T) {
+	tests := map[string]struct {
+		status int
+		code   string
+		want   string
+	}{
+		"missing mapping": {
+			status: http.StatusNotFound,
+			code:   bknProxyMappingNotFoundCode,
+			want:   oerrors.OntologyQuery_Proxy_MappingNotFound,
+		},
+		"disabled": {
+			status: http.StatusServiceUnavailable,
+			code:   bknProxyDisabledCode,
+			want:   oerrors.OntologyQuery_Proxy_Disabled,
+		},
+		"sync failed": {
+			status: http.StatusServiceUnavailable,
+			code:   bknProxySyncFailedCode,
+			want:   oerrors.OntologyQuery_Proxy_SyncFailed,
+		},
+		"sync pending": {
+			status: http.StatusServiceUnavailable,
+			code:   bknProxySyncPendingCode,
+			want:   oerrors.OntologyQuery_Proxy_SyncPending,
+		},
+		"invalid binding": {
+			status: http.StatusForbidden,
+			code:   bknProxyBindingInvalidCode,
+			want:   oerrors.OntologyQuery_Proxy_BindingInvalid,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			resolver := NewProxyContextResolver(&proxyAccessStub{err: &interfaces.KnowledgeNetworkProxyResolveError{
+				StatusCode: test.status,
+				Code:       test.code,
+			}})
+			_, err := resolver.Resolve(callerContext(), validBinding())
+			httpErr, ok := err.(*rest.HTTPError)
+			if !ok || httpErr.BaseError.ErrorCode != test.want {
+				t.Fatalf("Resolve() error = %#v, want code %q", err, test.want)
+			}
+		})
+	}
+}
+
 func TestResolveRejectsMissingCallerAndForgedBinding(t *testing.T) {
 	resolver := NewProxyContextResolver(&proxyAccessStub{mapping: readyMapping()})
 	got, err := resolver.Resolve(context.Background(), validBinding())
@@ -94,17 +142,17 @@ func TestResolveRejectsMissingCallerAndForgedBinding(t *testing.T) {
 	binding := validBinding()
 	binding.TargetID = "resource-*"
 	got, err = resolver.Resolve(callerContext(), binding)
-	assertServiceUnavailable(t, got, err)
+	assertProxyError(t, got, err, http.StatusForbidden, oerrors.OntologyQuery_Proxy_BindingInvalid)
 
 	binding = validBinding()
 	binding.TargetID = "unbound/resource"
 	got, err = resolver.Resolve(callerContext(), binding)
-	assertServiceUnavailable(t, got, err)
+	assertProxyError(t, got, err, http.StatusForbidden, oerrors.OntologyQuery_Proxy_BindingInvalid)
 
 	binding = validBinding()
 	binding.Operation = interfaces.PermissionOperationExecute
 	got, err = resolver.Resolve(callerContext(), binding)
-	assertServiceUnavailable(t, got, err)
+	assertProxyError(t, got, err, http.StatusForbidden, oerrors.OntologyQuery_Proxy_BindingInvalid)
 }
 
 func assertServiceUnavailable(t *testing.T, _ *interfaces.TrustedProxyContext, err error) {
@@ -115,6 +163,14 @@ func assertServiceUnavailable(t *testing.T, _ *interfaces.TrustedProxyContext, e
 	httpErr, ok := err.(*rest.HTTPError)
 	if !ok || httpErr.HTTPCode != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503 HTTPError, got %T %#v", err, err)
+	}
+}
+
+func assertProxyError(t *testing.T, _ *interfaces.TrustedProxyContext, err error, status int, code string) {
+	t.Helper()
+	httpErr, ok := err.(*rest.HTTPError)
+	if !ok || httpErr.HTTPCode != status || httpErr.BaseError.ErrorCode != code {
+		t.Fatalf("expected status %d code %q, got %T %#v", status, code, err, err)
 	}
 }
 

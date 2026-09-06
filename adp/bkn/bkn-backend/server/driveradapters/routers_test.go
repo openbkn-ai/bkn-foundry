@@ -86,3 +86,27 @@ func Test_RestHandler_VerifyOAuth_Failure(t *testing.T) {
 		So(w.Result().StatusCode, ShouldEqual, http.StatusUnauthorized)
 	})
 }
+
+func TestRegisterPublicIncludesOAuthProxyGovernanceRoutes(t *testing.T) {
+	restoreGin := setGinMode()
+	defer restoreGin()
+	engine := gin.New()
+	handler := &restHandler{appSetting: &common.AppSetting{}}
+	handler.RegisterPublic(engine)
+
+	routes := map[string]bool{}
+	for _, route := range engine.Routes() {
+		routes[route.Method+" "+route.Path] = true
+	}
+	for _, want := range []string{
+		"GET /api/bkn-backend/v1/proxy-accounts",
+		"GET /api/bkn-backend/v1/knowledge-networks/:kn_id/proxy-account",
+		"GET /api/bkn-backend/v1/knowledge-networks/:kn_id/proxy-account/plan",
+		"POST /api/bkn-backend/v1/knowledge-networks/:kn_id/proxy-account/sync",
+		"POST /api/bkn-backend/v1/proxy-accounts/reconcile",
+	} {
+		if !routes[want] {
+			t.Fatalf("public proxy governance route %q is not registered", want)
+		}
+	}
+}

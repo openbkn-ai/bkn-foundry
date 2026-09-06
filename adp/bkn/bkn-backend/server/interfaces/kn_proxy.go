@@ -7,6 +7,7 @@ package interfaces
 import (
 	"context"
 	"database/sql"
+	"sort"
 )
 
 const (
@@ -40,6 +41,50 @@ type KNProxyAccount struct {
 	LockUntil             int64  `json:"-"`
 	CreatedAt             int64  `json:"created_at"`
 	UpdatedAt             int64  `json:"updated_at"`
+}
+
+// KNProxyGovernanceView is the public, sanitized projection of a proxy
+// mapping. Internal synchronization details such as last_error and grantor or
+// lock identities are never returned by OAuth governance APIs.
+type KNProxyGovernanceView struct {
+	KNID                  string `json:"kn_id"`
+	ProxyAccountID        string `json:"proxy_account_id"`
+	ProxyAccountType      string `json:"proxy_account_type"`
+	LifecycleStatus       string `json:"lifecycle_status"`
+	LastErrorCode         string `json:"last_error_code,omitempty"`
+	Version               int64  `json:"version"`
+	SyncStatus            string `json:"sync_status"`
+	PublishedModelVersion string `json:"published_model_version"`
+	SyncedModelVersion    string `json:"synced_model_version"`
+	CreatedAt             int64  `json:"created_at"`
+	UpdatedAt             int64  `json:"updated_at"`
+}
+
+type KNProxyAccountList struct {
+	Entries []*KNProxyGovernanceView `json:"entries"`
+	Total   int                      `json:"total"`
+}
+
+func NewKNProxyGovernanceView(mapping *KNProxyAccount) *KNProxyGovernanceView {
+	if mapping == nil {
+		return nil
+	}
+	view := &KNProxyGovernanceView{
+		KNID:                  mapping.KNID,
+		ProxyAccountID:        mapping.ProxyAccountID,
+		ProxyAccountType:      mapping.ProxyAccountType,
+		LifecycleStatus:       mapping.LifecycleStatus,
+		Version:               mapping.Version,
+		SyncStatus:            mapping.SyncStatus,
+		PublishedModelVersion: mapping.PublishedModelVersion,
+		SyncedModelVersion:    mapping.SyncedModelVersion,
+		CreatedAt:             mapping.CreatedAt,
+		UpdatedAt:             mapping.UpdatedAt,
+	}
+	if mapping.LastSyncError != "" {
+		view.LastErrorCode = "PROXY_SYNC_FAILED"
+	}
+	return view
 }
 
 // ManagedProxyAccount is the lifecycle representation returned by bkn-safe.
@@ -97,6 +142,32 @@ type KNProxyReconcileReport struct {
 	ConflictingProxy   map[string][]string                  `json:"conflicting_proxy_accounts"`
 	AuthorizationDrift map[string]ProxyGrantReconcileResult `json:"authorization_drift"`
 	Errors             map[string]string                    `json:"errors,omitempty"`
+}
+
+type KNProxyGovernanceReconcileReport struct {
+	MissingMappings    []string                             `json:"missing_mappings"`
+	OrphanMappings     []string                             `json:"orphan_mappings"`
+	ConflictingProxy   map[string][]string                  `json:"conflicting_proxy_accounts"`
+	AuthorizationDrift map[string]ProxyGrantReconcileResult `json:"authorization_drift"`
+	FailedKNIDs        []string                             `json:"failed_kn_ids,omitempty"`
+}
+
+func NewKNProxyGovernanceReconcileReport(report *KNProxyReconcileReport) *KNProxyGovernanceReconcileReport {
+	if report == nil {
+		return nil
+	}
+	failedKNIDs := make([]string, 0, len(report.Errors))
+	for knID := range report.Errors {
+		failedKNIDs = append(failedKNIDs, knID)
+	}
+	sort.Strings(failedKNIDs)
+	return &KNProxyGovernanceReconcileReport{
+		MissingMappings:    report.MissingMappings,
+		OrphanMappings:     report.OrphanMappings,
+		ConflictingProxy:   report.ConflictingProxy,
+		AuthorizationDrift: report.AuthorizationDrift,
+		FailedKNIDs:        failedKNIDs,
+	}
 }
 
 type KNProxySyncPlan struct {

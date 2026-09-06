@@ -110,7 +110,7 @@ func (ots *objectTypeService) GetObjectTypeSchema(ctx context.Context,
 	response, err := ots.vba.GetResourceSchema(interfaces.WithTrustedProxyContext(ctx, proxyContext), objectType.DataSource.ID)
 	if err != nil {
 		if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
-			return nil, rest.NewHTTPError(ctx, downstream.StatusCode, downstreamErrorCode(downstream.StatusCode))
+			return nil, rest.NewHTTPError(ctx, downstream.StatusCode, proxyDownstreamErrorCode(downstream.StatusCode))
 		}
 		return nil, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed)
@@ -452,6 +452,16 @@ func downstreamErrorCode(statusCode int) string {
 	}
 }
 
+// proxyDownstreamErrorCode distinguishes a denied managed principal from a
+// denied business caller. Caller authorization has already succeeded before a
+// trusted proxy context reaches Vega.
+func proxyDownstreamErrorCode(statusCode int) string {
+	if statusCode == http.StatusForbidden {
+		return oerrors.OntologyQuery_Proxy_PermissionDenied
+	}
+	return downstreamErrorCode(statusCode)
+}
+
 func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
 	objectType interfaces.ObjectType, resps *interfaces.Objects, fieldPropMap map[string]string) error {
 
@@ -528,7 +538,7 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		// like service failures, preventing callers from self-correcting and sending manual investigation in the wrong direction.
 		if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
 			return rest.NewHTTPError(ctx, downstream.StatusCode,
-				downstreamErrorCode(downstream.StatusCode))
+				proxyDownstreamErrorCode(downstream.StatusCode))
 		}
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).WithErrorDetails(err.Error())
