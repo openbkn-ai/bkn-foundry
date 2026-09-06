@@ -63,6 +63,19 @@ type Objects struct {
 	SearchFromIndex bool             `json:"search_from_index"` // Whether to query the index.
 }
 
+type ObjectTypeSampleDataColumn struct {
+	DataIndex string `json:"data_index"`
+	Title     string `json:"title"`
+}
+
+type ObjectTypeSampleData struct {
+	Columns     []*ObjectTypeSampleDataColumn `json:"columns"`
+	Entries     []map[string]any              `json:"entries"`
+	Name        string                        `json:"name"`
+	TotalCount  int64                         `json:"total_count,omitempty"`
+	SearchAfter []any                         `json:"search_after,omitempty"`
+}
+
 // Calculation parameters for metric properties.
 type MetricProperty struct {
 	PropertyType         string         `json:"property_type"`

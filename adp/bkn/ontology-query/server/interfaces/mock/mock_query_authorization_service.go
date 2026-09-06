@@ -97,6 +97,20 @@ func (mr *MockQueryAuthorizationServiceMockRecorder) AuthorizeObjectTypeQuery(ct
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthorizeObjectTypeQuery", reflect.TypeOf((*MockQueryAuthorizationService)(nil).AuthorizeObjectTypeQuery), ctx, knID, branch, objectTypeID)
 }
 
+// AuthorizeObjectTypeSchema mocks base method.
+func (m *MockQueryAuthorizationService) AuthorizeObjectTypeSchema(ctx context.Context, knID, branch, objectTypeID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AuthorizeObjectTypeSchema", ctx, knID, branch, objectTypeID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AuthorizeObjectTypeSchema indicates an expected call of AuthorizeObjectTypeSchema.
+func (mr *MockQueryAuthorizationServiceMockRecorder) AuthorizeObjectTypeSchema(ctx, knID, branch, objectTypeID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthorizeObjectTypeSchema", reflect.TypeOf((*MockQueryAuthorizationService)(nil).AuthorizeObjectTypeSchema), ctx, knID, branch, objectTypeID)
+}
+
 // AuthorizeSubgraphByObjects mocks base method.
 func (m *MockQueryAuthorizationService) AuthorizeSubgraphByObjects(ctx context.Context, query *interfaces.SubGraphQueryBaseOnObjects) error {
 	m.ctrl.T.Helper()

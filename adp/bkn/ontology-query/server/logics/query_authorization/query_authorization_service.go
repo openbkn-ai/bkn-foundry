@@ -48,6 +48,12 @@ func (s *authenticationDisabledQueryAuthorizationService) AuthorizeObjectTypeQue
 	return nil
 }
 
+func (s *authenticationDisabledQueryAuthorizationService) AuthorizeObjectTypeSchema(
+	context.Context, string, string, string,
+) error {
+	return nil
+}
+
 func (s *authenticationDisabledQueryAuthorizationService) AuthorizeActionTypeQuery(
 	context.Context, string, string, string,
 ) error {
@@ -98,6 +104,28 @@ func (s *queryAuthorizationService) AuthorizeObjectTypeQuery(ctx context.Context
 		return err
 	}
 	return s.require(ctx, resources)
+}
+
+func (s *queryAuthorizationService) AuthorizeObjectTypeSchema(ctx context.Context,
+	knID, branch, objectTypeID string) error {
+	if err := validateQueryIdentity(ctx, knID, branch, objectTypeID); err != nil {
+		return err
+	}
+	objectType, err := s.loadObjectType(ctx, knID, objectTypeID)
+	if err != nil {
+		return err
+	}
+	if _, err := objectTypeResources(ctx, knID, objectType); err != nil {
+		return err
+	}
+	if s == nil || s.permissions == nil {
+		return dependencyResolutionFailed(ctx, fmt.Errorf("permission service is not configured"))
+	}
+	return s.permissions.RequirePermissions(ctx, []interfaces.PermissionRequirement{{
+		ResourceType: interfaces.PermissionResourceTypeObjectType,
+		ResourceID:   knID + "/" + objectTypeID,
+		Operation:    interfaces.PermissionOperationViewDetail,
+	}})
 }
 
 func (s *queryAuthorizationService) AuthorizeActionTypeQuery(ctx context.Context,

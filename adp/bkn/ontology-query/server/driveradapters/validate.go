@@ -8,17 +8,53 @@ package driveradapters
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/mitchellh/mapstructure"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
+	"ontology-query/common"
 	cond "ontology-query/common/condition"
 	oerrors "ontology-query/errors"
 	"ontology-query/interfaces"
 	"ontology-query/locale"
 )
+
+// parseSearchAfterQuery preserves numeric cursor literals while retaining the
+// legacy comma-separated query format. A JSON array can be used when a string
+// cursor component contains a comma or when exact scalar types are required.
+func parseSearchAfterQuery(raw string) (interfaces.SearchAfterArray, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return interfaces.SearchAfterArray{}, nil
+	}
+
+	if strings.HasPrefix(raw, "[") {
+		var values interfaces.SearchAfterArray
+		if err := common.UnmarshalPreciseJSON([]byte(raw), &values); err != nil {
+			return nil, err
+		}
+		return values, nil
+	}
+
+	parts := strings.Split(raw, ",")
+	values := make(interfaces.SearchAfterArray, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		var decoded any
+		if err := common.UnmarshalPreciseJSON([]byte(part), &decoded); err == nil {
+			if number, ok := decoded.(json.Number); ok {
+				values = append(values, number)
+				continue
+			}
+		}
+		values = append(values, part)
+	}
+	return values, nil
+}
 
 // ValidateHeaderMethodOverride validates the method override passed in the request header.
 func ValidateHeaderMethodOverride(ctx context.Context, headerMethod string) error {

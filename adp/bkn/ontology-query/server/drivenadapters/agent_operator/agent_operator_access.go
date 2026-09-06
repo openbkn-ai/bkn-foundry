@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -61,26 +62,76 @@ func NewAgentOperatorAccess(appSetting *common.AppSetting) interfaces.AgentOpera
 	return aoAccess
 }
 
+func (aoa *agentOperatorAccess) proxyHeaders(
+	ctx context.Context, targetType, targetID string,
+) (map[string]string, error) {
+	proxy, ok := interfaces.TrustedProxyContextFromContext(ctx)
+	if !ok || proxy.Proxy.ID == "" || proxy.Proxy.Type != interfaces.ProxyAccountTypeApp ||
+		proxy.Caller.ID == "" || proxy.Caller.Type == "" || proxy.ProxyVersion <= 0 {
+		return nil, fmt.Errorf("trusted proxy context is missing or incomplete")
+	}
+	binding := proxy.Binding
+	if binding.TargetType != targetType || binding.TargetID != targetID ||
+		binding.Operation != interfaces.PermissionOperationExecute || binding.KNID == "" || binding.ChildID == "" ||
+		(binding.ChildType != interfaces.PermissionResourceTypeActionType &&
+			binding.ChildType != interfaces.PermissionResourceTypeLogicProperty) {
+		return nil, fmt.Errorf("action target does not match the trusted published binding")
+	}
+
+	headers := map[string]string{
+		interfaces.CONTENT_TYPE_NAME:         interfaces.CONTENT_TYPE_JSON,
+		interfaces.HTTP_HEADER_ACCOUNT_ID:    proxy.Proxy.ID,
+		interfaces.HTTP_HEADER_ACCOUNT_TYPE:  proxy.Proxy.Type,
+		interfaces.HTTPHeaderBKNCallerID:     proxy.Caller.ID,
+		interfaces.HTTPHeaderBKNCallerType:   proxy.Caller.Type,
+		interfaces.HTTPHeaderBKNKnowledgeID:  binding.KNID,
+		interfaces.HTTPHeaderBKNChildType:    binding.ChildType,
+		interfaces.HTTPHeaderBKNChildID:      binding.ChildID,
+		interfaces.HTTPHeaderBKNProxyVersion: strconv.FormatInt(proxy.ProxyVersion, 10),
+		interfaces.HTTPHeaderBKNTargetType:   binding.TargetType,
+		interfaces.HTTPHeaderBKNTargetID:     binding.TargetID,
+		interfaces.HTTPHeaderBKNOperation:    binding.Operation,
+	}
+	if proxy.ExecutionID != "" {
+		headers[interfaces.HTTPHeaderBKNExecutionID] = proxy.ExecutionID
+	}
+	return common.MergeTraceHeadersForChildOperation(ctx, headers, "action.proxy.execute", 1), nil
+}
+
+func directCallerHeaders(ctx context.Context, operation string) map[string]string {
+	account, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	return common.MergeTraceHeadersForChildOperation(ctx, map[string]string{
+		interfaces.CONTENT_TYPE_NAME:        interfaces.CONTENT_TYPE_JSON,
+		interfaces.HTTP_HEADER_ACCOUNT_ID:   account.ID,
+		interfaces.HTTP_HEADER_ACCOUNT_TYPE: account.Type,
+	}, operation, 1)
+}
+
 // ExecuteTool executes a tool via tool-box API
 // API: POST /tool-box/{box_id}/proxy/{tool_id}
 func (aoa *agentOperatorAccess) ExecuteTool(ctx context.Context, boxID string,
 	toolID string, execRequest interfaces.ToolExecutionRequest) (any, error) {
+	return aoa.executeTool(ctx, boxID, toolID, execRequest,
+		directCallerHeaders(ctx, "tool.execute"))
+}
+
+func (aoa *agentOperatorAccess) ExecuteToolAsProxy(ctx context.Context, boxID string,
+	toolID string, execRequest interfaces.ToolExecutionRequest) (any, error) {
+	headers, err := aoa.proxyHeaders(ctx, interfaces.ProxyTargetTypeToolBox, boxID)
+	if err != nil {
+		return nil, err
+	}
+	return aoa.executeTool(ctx, boxID, toolID, execRequest, headers)
+}
+
+func (aoa *agentOperatorAccess) executeTool(ctx context.Context, boxID string,
+	toolID string, execRequest interfaces.ToolExecutionRequest, headers map[string]string) (any, error) {
 
 	var (
 		respCode int
 		result   []byte
 		err      error
 	)
-
-	accountInfo := interfaces.AccountInfo{}
-	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
-		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
-	}
-	headers := map[string]string{
-		interfaces.CONTENT_TYPE_NAME:        interfaces.CONTENT_TYPE_JSON,
-		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,
-		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
-	}
 
 	// http://{host}:{port}/api/agent-operator-integration/internal-v1/tool-box/{box_id}/proxy/{tool_id}
 	url := fmt.Sprintf("%s/%s/proxy/%s", aoa.appSetting.ToolBoxUrl, boxID, toolID)
@@ -110,11 +161,11 @@ func (aoa *agentOperatorAccess) ExecuteTool(ctx context.Context, boxID string,
 				ErrorDetails: opError.Detail,
 			}}
 		logger.Errorf("Tool execution failed: %v", httpErr.Error())
-		return toolResult, fmt.Errorf("execute tool %s/%s return error %v", boxID, toolID, httpErr.Error())
+		return toolResult, fmt.Errorf("proxy tool execution returned status %d", httpErr.HTTPCode)
 	}
 
 	if result == nil {
-		return toolResult, fmt.Errorf("execute tool %s/%s return null", boxID, toolID)
+		return toolResult, fmt.Errorf("proxy tool execution returned an empty response")
 	}
 
 	if err := common.UnmarshalPreciseJSON(result, &toolResult); err != nil {
@@ -140,24 +191,27 @@ func (aoa *agentOperatorAccess) ExecuteTool(ctx context.Context, boxID string,
 // API: POST /mcp/proxy/{mcp_id}/tool/call
 func (aoa *agentOperatorAccess) ExecuteMCP(ctx context.Context, mcpID string,
 	toolName string, execRequest interfaces.MCPExecutionRequest) (any, error) {
+	return aoa.executeMCP(ctx, mcpID, toolName, execRequest,
+		directCallerHeaders(ctx, "mcp.execute"))
+}
+
+func (aoa *agentOperatorAccess) ExecuteMCPAsProxy(ctx context.Context, mcpID string,
+	toolName string, execRequest interfaces.MCPExecutionRequest) (any, error) {
+	headers, err := aoa.proxyHeaders(ctx, interfaces.ProxyTargetTypeMCP, mcpID)
+	if err != nil {
+		return nil, err
+	}
+	return aoa.executeMCP(ctx, mcpID, toolName, execRequest, headers)
+}
+
+func (aoa *agentOperatorAccess) executeMCP(ctx context.Context, mcpID string,
+	toolName string, execRequest interfaces.MCPExecutionRequest, headers map[string]string) (any, error) {
 
 	var (
 		respCode int
 		result   []byte
 		err      error
 	)
-
-	// Get account info from context for user_id header
-	accountInfo := interfaces.AccountInfo{}
-	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
-		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
-	}
-
-	headers := map[string]string{
-		interfaces.CONTENT_TYPE_NAME:        interfaces.CONTENT_TYPE_JSON,
-		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,
-		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
-	}
 
 	// http://{host}:{port}/api/agent-operator-integration/internal-v1/mcp/proxy/{mcp_id}/tool/call
 	url := fmt.Sprintf("%s/proxy/%s/tool/call", aoa.appSetting.MCPUrl, mcpID)
@@ -187,11 +241,11 @@ func (aoa *agentOperatorAccess) ExecuteMCP(ctx context.Context, mcpID string,
 				ErrorDetails: opError.Detail,
 			}}
 		logger.Errorf("MCP execution failed: %v", httpErr.Error())
-		return mcpResult, fmt.Errorf("execute MCP %s return error %v", mcpID, httpErr.Error())
+		return mcpResult, fmt.Errorf("proxy MCP execution returned status %d", httpErr.HTTPCode)
 	}
 
 	if result == nil {
-		return mcpResult, fmt.Errorf("execute MCP %s return null", mcpID)
+		return mcpResult, fmt.Errorf("proxy MCP execution returned an empty response")
 	}
 
 	if err := common.UnmarshalPreciseJSON(result, &mcpResult); err != nil {

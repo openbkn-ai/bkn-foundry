@@ -81,6 +81,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiV1.POST("/trace/outbox/:outbox_id/abandon", r.verifyJsonContentType(), r.AbandonTraceOutbox)
 
 		// Query object data for the specified object type.
+		apiV1.GET("/knowledge-networks/:kn_id/object-types/:ot_id/schema", r.GetObjectTypeSchemaByEx)
+		apiV1.GET("/knowledge-networks/:kn_id/object-types/:ot_id/sample-data", r.GetObjectTypeSampleDataByEx)
 		apiV1.POST("/knowledge-networks/:kn_id/object-types/:ot_id", r.verifyJsonContentType(), r.GetObjectsInObjectTypeByEx)
 		apiV1.POST("/knowledge-networks/:kn_id/object-types/:ot_id/properties", r.verifyJsonContentType(), r.GetObjectsPropertiesByEx)
 		// Get an object subgraph by start point, direction, and path length.
@@ -103,6 +105,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiInV1.Use(rest.PrivateNoCacheMiddleware())
 	{
 		// Knowledge networks.
+		apiInV1.GET("/knowledge-networks/:kn_id/object-types/:ot_id/schema", r.GetObjectTypeSchemaByIn)
+		apiInV1.GET("/knowledge-networks/:kn_id/object-types/:ot_id/sample-data", r.GetObjectTypeSampleDataByIn)
 		apiInV1.POST("/knowledge-networks/:kn_id/object-types/:ot_id", r.verifyJsonContentType(), r.GetObjectsInObjectTypeByIn)
 		apiInV1.POST("/knowledge-networks/:kn_id/object-types/:ot_id/properties", r.verifyJsonContentType(), r.GetObjectsPropertiesByIn)
 		// Get an object subgraph by start point, direction, and path length.

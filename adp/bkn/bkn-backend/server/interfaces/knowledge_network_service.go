@@ -26,6 +26,7 @@ type KNService interface {
 	DeleteKN(ctx context.Context, kn *KN) error
 	FinalizeKNProxyDeletion(ctx context.Context, knID string) error
 	GetKNProxy(ctx context.Context, knID string) (*KNProxyAccount, error)
+	ResolveKNProxyBinding(ctx context.Context, knID string, binding KNProxyBinding) (*KNProxyAccount, error)
 	PlanKNProxySync(ctx context.Context, knID string) (*KNProxySyncPlan, error)
 	RetryKNProxySync(ctx context.Context, knID string) (*KNProxyAccount, error)
 	ReconcileKNProxies(ctx context.Context, requestedBy string) (*KNProxyReconcileReport, error)

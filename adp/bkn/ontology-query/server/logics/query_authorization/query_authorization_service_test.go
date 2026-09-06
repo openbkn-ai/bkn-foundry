@@ -40,6 +40,25 @@ func TestAuthorizeMetricQueryUsesPublishedDependencies(t *testing.T) {
 	}
 }
 
+func TestAuthorizeObjectTypeSchemaRequiresViewDetail(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	permissions := omock.NewMockPermissionService(ctrl)
+	service := &queryAuthorizationService{models: models, permissions: permissions}
+
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "orders").Return(
+		publishedObjectType("kn-a", "orders", "orders-resource"), true, nil)
+	permissions.EXPECT().RequirePermissions(gomock.Any(), []interfaces.PermissionRequirement{{
+		ResourceType: interfaces.PermissionResourceTypeObjectType,
+		ResourceID:   "kn-a/orders",
+		Operation:    interfaces.PermissionOperationViewDetail,
+	}}).Return(nil)
+
+	if err := service.AuthorizeObjectTypeSchema(context.Background(), "kn-a", "main", "orders"); err != nil {
+		t.Fatalf("AuthorizeObjectTypeSchema() error = %v", err)
+	}
+}
+
 func TestAuthorizeMetricDryRunDoesNotInventMetricResource(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	models := omock.NewMockOntologyManagerAccess(ctrl)

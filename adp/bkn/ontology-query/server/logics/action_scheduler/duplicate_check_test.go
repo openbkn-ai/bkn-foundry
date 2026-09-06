@@ -160,7 +160,7 @@ func Test_ExecuteAction_DuplicateCheck(t *testing.T) {
 			ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box", ToolID: "tool"},
 			Parameters:   []interfaces.Parameter{},
 		}
-		omAccess.EXPECT().GetActionType(gomock.Any(), "kn_001", "", "at_001").
+		omAccess.EXPECT().GetActionType(gomock.Any(), "kn_001", interfaces.MAIN_BRANCH, "at_001").
 			Return(actionType, map[string]any{}, true, nil)
 
 		ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).Return(interfaces.Objects{
@@ -184,6 +184,7 @@ func Test_ExecuteAction_DuplicateCheck(t *testing.T) {
 			omAccess:    omAccess,
 			logsService: logsService,
 			ots:         ots,
+			proxy:       &actionProxyResolverStub{},
 		}
 		service.duplicateCheckHook = service.defaultDuplicateCheck
 

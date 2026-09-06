@@ -29,12 +29,14 @@ import (
 	"ontology-query/common/bkntrace/outbox"
 	"ontology-query/drivenadapters/agent_operator"
 	"ontology-query/drivenadapters/auth"
+	knproxy "ontology-query/drivenadapters/kn_proxy"
 	"ontology-query/drivenadapters/model_factory"
 	"ontology-query/drivenadapters/ontology_manager"
 	"ontology-query/drivenadapters/opensearch"
 	"ontology-query/drivenadapters/vega_backend"
 	"ontology-query/driveradapters"
 	"ontology-query/logics"
+	proxycontext "ontology-query/logics/proxy_context"
 )
 
 type mgrService struct {
@@ -169,6 +171,7 @@ func main() {
 	logics.SetOntologyManagerAccess(ontology_manager.NewOntologyManagerAccess(appSetting))
 	logics.SetOpenSearchAccess(opensearch.NewOpenSearchAccess(appSetting))
 	logics.SetVegaBackendAccess(vega_backend.NewVegaBackendAccess(appSetting))
+	logics.SetProxyContextResolver(proxycontext.NewProxyContextResolver(knproxy.NewKnowledgeNetworkProxyAccess(appSetting)))
 
 	server := &mgrService{
 		appSetting:    appSetting,

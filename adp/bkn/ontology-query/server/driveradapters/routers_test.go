@@ -36,6 +36,10 @@ func setGinMode() func() {
 
 type allowQueryAuthorizationService struct{}
 
+func (allowQueryAuthorizationService) AuthorizeObjectTypeSchema(context.Context, string, string, string) error {
+	return nil
+}
+
 func (allowQueryAuthorizationService) AuthorizeObjectTypeQuery(context.Context, string, string, string) error {
 	return nil
 }

@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -24,6 +25,110 @@ import (
 	oerrors "ontology-query/errors"
 	"ontology-query/interfaces"
 )
+
+// GetObjectTypeSchemaByIn returns the bound Vega schema for a trusted internal caller.
+func (r *restHandler) GetObjectTypeSchemaByIn(c *gin.Context) {
+	r.getObjectTypeSchema(c, visitor.GenerateVisitor(c))
+}
+
+// GetObjectTypeSchemaByEx returns the bound Vega schema for an authenticated caller.
+func (r *restHandler) GetObjectTypeSchemaByEx(c *gin.Context) {
+	ctx := rest.GetLanguageCtx(c)
+	requestVisitor, err := r.verifyOAuth(ctx, c)
+	if err != nil {
+		return
+	}
+	r.getObjectTypeSchema(c, requestVisitor)
+}
+
+func (r *restHandler) getObjectTypeSchema(c *gin.Context, requestVisitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{
+		ID: requestVisitor.ID, Type: string(requestVisitor.Type),
+	})
+	knID := c.Param("kn_id")
+	objectTypeID := c.Param("ot_id")
+	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	if !r.authorizeQuery(c, ctx, func() error {
+		return r.qas.AuthorizeObjectTypeSchema(ctx, knID, branch, objectTypeID)
+	}) {
+		return
+	}
+	schema, err := r.ots.GetObjectTypeSchema(ctx, knID, branch, objectTypeID)
+	if err != nil {
+		if httpErr, ok := err.(*rest.HTTPError); ok {
+			rest.ReplyError(c, httpErr)
+		} else {
+			rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+				oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed))
+		}
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, schema)
+}
+
+// GetObjectTypeSampleDataByIn returns a small data sample for a trusted internal caller.
+func (r *restHandler) GetObjectTypeSampleDataByIn(c *gin.Context) {
+	r.getObjectTypeSampleData(c, visitor.GenerateVisitor(c))
+}
+
+// GetObjectTypeSampleDataByEx returns a small data sample for an authenticated caller.
+func (r *restHandler) GetObjectTypeSampleDataByEx(c *gin.Context) {
+	ctx := rest.GetLanguageCtx(c)
+	requestVisitor, err := r.verifyOAuth(ctx, c)
+	if err != nil {
+		return
+	}
+	r.getObjectTypeSampleData(c, requestVisitor)
+}
+
+func (r *restHandler) getObjectTypeSampleData(c *gin.Context, requestVisitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{
+		ID: requestVisitor.ID, Type: string(requestVisitor.Type),
+	})
+	knID := c.Param("kn_id")
+	objectTypeID := c.Param("ot_id")
+	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	limit, limitErr := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	offset, offsetErr := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	needTotal, totalErr := strconv.ParseBool(c.DefaultQuery("need_total", "true"))
+	if limitErr != nil || offsetErr != nil || totalErr != nil {
+		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("invalid sample pagination"))
+		return
+	}
+	searchAfter, searchAfterErr := parseSearchAfterQuery(c.Query("search_after"))
+	if searchAfterErr != nil {
+		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("invalid search_after cursor"))
+		return
+	}
+	if !r.authorizeQuery(c, ctx, func() error {
+		return r.qas.AuthorizeObjectTypeQuery(ctx, knID, branch, objectTypeID)
+	}) {
+		return
+	}
+	result, err := r.ots.GetObjectTypeSampleData(ctx, &interfaces.ObjectQueryBaseOnObjectType{
+		KNID: knID, Branch: branch, ObjectTypeID: objectTypeID,
+		PageQuery: interfaces.PageQuery{
+			Limit: limit, Offset: offset, NeedTotal: needTotal,
+			SearchAfterParams: interfaces.SearchAfterParams{SearchAfter: searchAfter},
+		},
+	})
+	if err != nil {
+		if httpErr, ok := err.(*rest.HTTPError); ok {
+			rest.ReplyError(c, httpErr)
+		} else {
+			rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+				oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed))
+		}
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, result)
+}
 
 // Object data query by object type (internal).
 func (r *restHandler) GetObjectsInObjectTypeByIn(c *gin.Context) {

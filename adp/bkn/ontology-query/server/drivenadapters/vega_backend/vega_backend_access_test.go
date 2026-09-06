@@ -20,8 +20,8 @@ import (
 	"ontology-query/interfaces"
 )
 
-func TestVegaBackendAccessBuildHeadersPropagatesTraceContext(t *testing.T) {
-	convey.Convey("buildHeaders includes account and BKN trace context headers", t, func() {
+func TestVegaBackendAccessBuildProxyHeadersPropagatesDualPrincipalAndTraceContext(t *testing.T) {
+	convey.Convey("buildProxyHeaders includes trusted dual-principal and BKN trace context headers", t, func() {
 		traceID := trace.TraceID{0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x60, 0x61, 0x62, 0x63, 0x64, 0x65}
 		spanID := trace.SpanID{0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77}
 		spanCtx := trace.NewSpanContext(trace.SpanContextConfig{
@@ -31,10 +31,7 @@ func TestVegaBackendAccessBuildHeadersPropagatesTraceContext(t *testing.T) {
 			Remote:     true,
 		})
 		ctx := trace.ContextWithSpanContext(context.Background(), spanCtx)
-		ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{
-			ID:   "user-1",
-			Type: "user",
-		})
+		ctx = trustedResourceProxyContext(ctx, "resource-1")
 		ctx = common.SetTraceContextToCtx(ctx, common.TraceContext{
 			RequestID: "req_01JZVALIDREQUESTID000000016",
 			Baggage: map[string]string{
@@ -44,11 +41,20 @@ func TestVegaBackendAccessBuildHeadersPropagatesTraceContext(t *testing.T) {
 		})
 
 		access := &vegaBackendAccess{}
-		headers := access.buildHeaders(ctx)
+		headers, err := access.buildProxyHeaders(ctx, "resource-1", interfaces.PermissionOperationQueryData)
 
+		convey.So(err, convey.ShouldBeNil)
 		convey.So(headers[interfaces.CONTENT_TYPE_NAME], convey.ShouldEqual, interfaces.CONTENT_TYPE_JSON)
-		convey.So(headers[interfaces.HTTP_HEADER_ACCOUNT_ID], convey.ShouldEqual, "user-1")
-		convey.So(headers[interfaces.HTTP_HEADER_ACCOUNT_TYPE], convey.ShouldEqual, "user")
+		convey.So(headers[interfaces.HTTP_HEADER_ACCOUNT_ID], convey.ShouldEqual, "proxy-1")
+		convey.So(headers[interfaces.HTTP_HEADER_ACCOUNT_TYPE], convey.ShouldEqual, "app")
+		convey.So(headers[interfaces.HTTPHeaderBKNCallerID], convey.ShouldEqual, "user-1")
+		convey.So(headers[interfaces.HTTPHeaderBKNCallerType], convey.ShouldEqual, "user")
+		convey.So(headers[interfaces.HTTPHeaderBKNKnowledgeID], convey.ShouldEqual, "kn-1")
+		convey.So(headers[interfaces.HTTPHeaderBKNChildType], convey.ShouldEqual, "object_type")
+		convey.So(headers[interfaces.HTTPHeaderBKNChildID], convey.ShouldEqual, "ot-1")
+		convey.So(headers[interfaces.HTTPHeaderBKNProxyVersion], convey.ShouldEqual, "3")
+		convey.So(headers[interfaces.HTTPHeaderBKNTargetID], convey.ShouldEqual, "resource-1")
+		convey.So(headers[interfaces.HTTPHeaderBKNOperation], convey.ShouldEqual, "query_data")
 		convey.So(headers[common.HeaderBKNRequestID], convey.ShouldEqual, "req_01JZVALIDREQUESTID000000016")
 		convey.So(headers[common.HeaderLegacyRequestID], convey.ShouldEqual, "req_01JZVALIDREQUESTID000000016")
 		convey.So(headers[common.HeaderTraceparent], convey.ShouldEqual, "00-50515253545556575859606162636465-7071727374757677-01")
@@ -79,17 +85,14 @@ func TestVegaBackendAccessQueryResourceDataUsesLocalClientSpan(t *testing.T) {
 			Remote:     true,
 		})
 		ctx := trace.ContextWithSpanContext(context.Background(), spanCtx)
-		ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{
-			ID:   "user-1",
-			Type: "user",
-		})
+		ctx = trustedResourceProxyContext(ctx, "resource-1")
 		ctx = common.SetTraceContextToCtx(ctx, common.TraceContext{
 			RequestID: "req_01JZVALIDREQUESTID000000017",
 		})
 
 		var outboundTraceparent string
 		mockHTTPClient.EXPECT().
-			PostNoUnmarshal(gomock.Any(), "http://vega/resources/resource-1/data", gomock.Any(), gomock.Any()).
+			PostNoUnmarshal(gomock.Any(), "http://vega/proxy/resources/resource-1/data", gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ string, headers map[string]string, _ any) (int, []byte, error) {
 				outboundTraceparent = headers[common.HeaderTraceparent]
 				return http.StatusOK, []byte(`{"entries":[]}`), nil
@@ -136,12 +139,45 @@ func TestNormalizeResourceDataQueryParams(t *testing.T) {
 	})
 }
 
+func TestVegaBackendAccessRejectsMissingOrMismatchedProxyContextBeforeIO(t *testing.T) {
+	access := &vegaBackendAccess{baseURL: "http://vega"}
+	if _, err := access.QueryResourceData(context.Background(), "resource-1", nil); err == nil {
+		t.Fatal("expected missing proxy context to fail")
+	}
+	ctx := trustedResourceProxyContext(context.Background(), "resource-2")
+	if _, err := access.QueryResourceData(ctx, "resource-1", nil); err == nil {
+		t.Fatal("expected unbound resource to fail")
+	}
+}
+
+func TestVegaBackendAccessGetResourceSchemaUsesViewDetailProxyEndpoint(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	httpClient := rmock.NewMockHTTPClient(ctrl)
+	httpClient.EXPECT().GetNoUnmarshal(gomock.Any(), "http://vega/proxy/resources/resource-1/schema", nil, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, _ any, headers map[string]string) (int, []byte, error) {
+			if headers[interfaces.HTTPHeaderBKNOperation] != interfaces.PermissionOperationViewDetail ||
+				headers[interfaces.HTTP_HEADER_ACCOUNT_ID] != "proxy-1" {
+				t.Fatalf("unexpected schema proxy headers: %#v", headers)
+			}
+			return http.StatusOK, []byte(`{"schema_definition":[{"name":"id","type":"string"}]}`), nil
+		})
+	access := &vegaBackendAccess{baseURL: "http://vega", httpClient: httpClient}
+	ctx := trustedResourceProxyContext(context.Background(), "resource-1")
+	trusted, _ := interfaces.TrustedProxyContextFromContext(ctx)
+	trusted.Binding.Operation = interfaces.PermissionOperationViewDetail
+
+	got, err := access.GetResourceSchema(ctx, "resource-1")
+	if err != nil || len(got.SchemaDefinition) != 1 {
+		t.Fatalf("GetResourceSchema() = %#v, %v", got, err)
+	}
+}
+
 func TestVegaBackendAccessQueryResourceDataPreservesLargeIntegers(t *testing.T) {
 	convey.Convey("QueryResourceData preserves dynamic JSON number literals", t, func() {
 		mockCtrl := gomock.NewController(t)
 		mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
 		mockHTTPClient.EXPECT().
-			PostNoUnmarshal(gomock.Any(), "http://vega/resources/resource-1/data", gomock.Any(), gomock.Any()).
+			PostNoUnmarshal(gomock.Any(), "http://vega/proxy/resources/resource-1/data", gomock.Any(), gomock.Any()).
 			Return(http.StatusOK, []byte(`{
 				"entries":[{
 					"int64_max":9223372036854775807,
@@ -163,7 +199,8 @@ func TestVegaBackendAccessQueryResourceDataPreservesLargeIntegers(t *testing.T) 
 			httpClient: mockHTTPClient,
 			baseURL:    "http://vega",
 		}
-		response, err := access.QueryResourceData(context.Background(), "resource-1", &interfaces.ResourceDataQueryParams{})
+		response, err := access.QueryResourceData(trustedResourceProxyContext(context.Background(), "resource-1"),
+			"resource-1", &interfaces.ResourceDataQueryParams{})
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(response.Entries, convey.ShouldHaveLength, 1)
 		convey.So(response.TotalCount, convey.ShouldEqual, int64(1))
@@ -197,5 +234,23 @@ func TestVegaBackendAccessQueryResourceDataPreservesLargeIntegers(t *testing.T) 
 			convey.So(strings.Contains(string(wire), literal), convey.ShouldBeTrue)
 		}
 		convey.So(strings.Contains(string(wire), "e+"), convey.ShouldBeFalse)
+	})
+}
+
+func trustedResourceProxyContext(ctx context.Context, resourceID string) context.Context {
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "user-1", Type: "user"})
+	return interfaces.WithTrustedProxyContext(ctx, &interfaces.TrustedProxyContext{
+		Caller:                interfaces.AccountInfo{ID: "user-1", Type: "user"},
+		Proxy:                 interfaces.AccountInfo{ID: "proxy-1", Type: interfaces.ProxyAccountTypeApp},
+		ProxyVersion:          3,
+		PublishedModelVersion: "model-v1",
+		Binding: interfaces.TrustedProxyBinding{
+			KNID:       "kn-1",
+			ChildType:  interfaces.PermissionResourceTypeObjectType,
+			ChildID:    "ot-1",
+			TargetType: interfaces.ProxyTargetTypeResource,
+			TargetID:   resourceID,
+			Operation:  interfaces.PermissionOperationQueryData,
+		},
 	})
 }

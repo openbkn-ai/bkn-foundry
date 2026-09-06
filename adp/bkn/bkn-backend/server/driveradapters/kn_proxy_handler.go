@@ -12,6 +12,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"bkn-backend/common/visitor"
+	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 )
 
@@ -24,6 +25,22 @@ func proxyRequestContext(c *gin.Context) (context.Context, string) {
 func (r *restHandler) GetKNProxy(c *gin.Context) {
 	ctx, _ := proxyRequestContext(c)
 	mapping, err := r.kns.GetKNProxy(ctx, c.Param("kn_id"))
+	if err != nil {
+		rest.ReplyError(c, err.(*rest.HTTPError))
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, mapping)
+}
+
+func (r *restHandler) ResolveKNProxyBinding(c *gin.Context) {
+	ctx, _ := proxyRequestContext(c)
+	var binding interfaces.KNProxyBinding
+	if err := c.ShouldBindJSON(&binding); err != nil {
+		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).WithErrorDetails("invalid proxy binding request"))
+		return
+	}
+	mapping, err := r.kns.ResolveKNProxyBinding(ctx, c.Param("kn_id"), binding)
 	if err != nil {
 		rest.ReplyError(c, err.(*rest.HTTPError))
 		return
