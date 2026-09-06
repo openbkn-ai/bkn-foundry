@@ -8,6 +8,7 @@ package capability_binding
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
@@ -198,6 +199,43 @@ func TestAttachExpandsWholeBox(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(len(bindings), ShouldEqual, 2)
+		})
+	})
+}
+
+// TestBoxIDIsTheOnlySpelling pins the wire name. The stored column is type-neutral (a skill has
+// no container, and a later capability type may bring a different kind), but the payload uses the
+// name the execution factory, Context Loader and Studio already use for a tool box.
+func TestBoxIDIsTheOnlySpelling(t *testing.T) {
+	Convey("工具箱在报文里叫 box_id", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		Convey("请求体解析 box_id", func() {
+			entry := &interfaces.AttachCapabilityEntry{}
+			So(json.Unmarshal([]byte(`{"capability_type":"function","box_id":"box-1","capability_id":"t1"}`), entry), ShouldBeNil)
+			So(entry.OwnerID, ShouldEqual, "box-1")
+		})
+
+		Convey("旧的 owner_id 不再被识别", func() {
+			entry := &interfaces.AttachCapabilityEntry{}
+			So(json.Unmarshal([]byte(`{"capability_type":"function","owner_id":"box-1","capability_id":"t1"}`), entry), ShouldBeNil)
+			So(entry.OwnerID, ShouldBeEmpty)
+		})
+
+		Convey("function 出参是 box_id,skill 不带该字段", func() {
+			fn, err := json.Marshal(&interfaces.CapabilityBinding{
+				CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, OwnerID: "box-1", CapabilityID: "t1",
+			})
+			So(err, ShouldBeNil)
+			So(string(fn), ShouldContainSubstring, `"box_id":"box-1"`)
+			So(string(fn), ShouldNotContainSubstring, "owner_id")
+
+			skill, err := json.Marshal(&interfaces.CapabilityBinding{
+				CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "s1",
+			})
+			So(err, ShouldBeNil)
+			So(string(skill), ShouldNotContainSubstring, "box_id")
 		})
 	})
 }

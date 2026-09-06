@@ -342,3 +342,54 @@ func (aoa *agentOperatorAccess) ListBoxTools(ctx context.Context, boxID string) 
 	oteltrace.AddHttpAttrs4Ok(span, respCode)
 	return tools, nil
 }
+
+// GetSkillNamesByIDs resolves skill names in bulk (POST .../skills/names).
+//
+// The endpoint's contract is that unknown IDs are skipped rather than returned empty, which is
+// what makes the difference between the request and the answer a usable dangling-reference set.
+func (aoa *agentOperatorAccess) GetSkillNamesByIDs(ctx context.Context, skillIDs []string) (map[string]string, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetSkillNamesByIDs")
+	defer span.End()
+
+	names := map[string]string{}
+	if len(skillIDs) == 0 {
+		return names, nil
+	}
+
+	url := fmt.Sprintf("%s/skills/names", aoa.agentOperatorURL)
+	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{
+		HttpUrl:         url,
+		HttpMethod:      http.MethodPost,
+		HttpContentType: rest.ContentTypeJson,
+	})
+
+	respCode, result, err := aoa.httpClient.PostNoUnmarshal(ctx, url, aoa.execFactoryHeaders(ctx),
+		map[string]any{"ids": skillIDs})
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http post skill names failed")
+		common.LogSafeError(ctx, "Skill name lookup request failed", err)
+		return nil, fmt.Errorf("skill name lookup failed: %w", err)
+	}
+	if respCode != http.StatusOK {
+		common.LogSafeError(ctx, "Skill name lookup failed",
+			fmt.Errorf("skill name lookup returned HTTP %d", respCode))
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Post skill names failed")
+		return nil, fmt.Errorf("skill name lookup returned HTTP %d", respCode)
+	}
+
+	var payload struct {
+		Entries []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"entries"`
+	}
+	if err = json.Unmarshal(result, &payload); err != nil {
+		common.LogSafeError(ctx, "Unmarshal skill names failed", err)
+		return nil, fmt.Errorf("skill name lookup failed: %w", err)
+	}
+	for _, entry := range payload.Entries {
+		names[entry.ID] = entry.Name
+	}
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return names, nil
+}

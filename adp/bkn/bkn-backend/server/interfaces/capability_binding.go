@@ -29,16 +29,15 @@ type CapabilityBinding struct {
 	KNID           string `json:"kn_id" mapstructure:"kn_id"`
 	Branch         string `json:"branch" mapstructure:"branch"`
 	CapabilityType string `json:"capability_type" mapstructure:"capability_type"`
-	OwnerID        string `json:"owner_id,omitempty" mapstructure:"owner_id"`
-	CapabilityID   string `json:"capability_id" mapstructure:"capability_id"`
-	// BoundAsBox records how the row was created: by expanding a whole-box mount rather than by
-	// naming the tool. It is provenance, not current coverage — a tool bound individually and
-	// later included in a whole-box mount keeps the flag false, because that first gesture is
-	// still what created it.
-	//
-	// Anything asking "which tools of this box are bound" must therefore group by box, not
-	// filter on this flag. The row is an ordinary tool-level binding either way and can be
-	// released on its own.
+	// OwnerID is the container the capability belongs to: the tool box for a function, empty
+	// for a skill. The wire name is box_id, matching what the execution factory, Context Loader
+	// and Studio all call it; the field and its column stay type-neutral so a later capability
+	// type can bring a different kind of container without a migration.
+	OwnerID      string `json:"box_id,omitempty" mapstructure:"owner_id"`
+	CapabilityID string `json:"capability_id" mapstructure:"capability_id"`
+	// BoundAsBox marks a row produced by expanding a whole-box mount. It does not change the
+	// binding semantics — the row is still an ordinary tool-level binding and can be released
+	// on its own — it only lets the list view report how many tools of a box are not mounted.
 	BoundAsBox bool   `json:"bound_as_box" mapstructure:"bound_as_box"`
 	Comment    string `json:"comment,omitempty" mapstructure:"comment"`
 
@@ -74,20 +73,53 @@ type CapabilityBindingsQueryParams struct {
 	CapabilityType string
 	OwnerID        string
 	CapabilityIDs  []string
+	// WithDetail also fills description and status. Names alone cost one call per tool box and
+	// one for all skills; the detail of a skill has to be read one skill at a time, so it is
+	// asked for rather than always paid.
+	WithDetail bool
+}
+
+// CAPABILITY_STATUS_MISSING marks a binding whose target is gone from the execution factory.
+// Such a row is reported, never deleted: removing it silently would erase the only evidence that
+// the network once pointed at something, and retrieval already skips it without saying so.
+const CAPABILITY_STATUS_MISSING = "missing"
+
+// CapabilityBoxSummary reports how much of a tool box this branch has mounted. It exists because
+// a whole-box mount is expanded at write time and does not follow the box afterwards: without
+// this, a tool added to the box later is invisible to the person who mounted it.
+type CapabilityBoxSummary struct {
+	BoxID string `json:"box_id"`
+	// BoxName is empty when the execution factory could not be reached.
+	BoxName string `json:"box_name,omitempty"`
+	// BoxMissing marks a box that no longer exists; every binding under it is missing too.
+	BoxMissing bool `json:"box_missing,omitempty"`
+	// TotalTools counts the enabled tools currently in the box.
+	TotalTools int `json:"total_tools"`
+	// MountedTools counts those already bound to this branch.
+	MountedTools int `json:"mounted_tools"`
+	// UnmountedTools is what a one-click top-up would add.
+	UnmountedTools int `json:"unmounted_tools"`
 }
 
 // CapabilityBindingsList is the list response for GET .../capabilities.
 type CapabilityBindingsList struct {
 	Entries    []*CapabilityBinding `json:"entries"`
 	TotalCount int                  `json:"total_count"`
+	// Boxes summarises the tool boxes behind the whole-box mounts on this page.
+	Boxes []*CapabilityBoxSummary `json:"boxes,omitempty"`
+	// MetadataAvailable is false when the execution factory could not be reached. The bindings
+	// are still returned in full — the names are missing, not the memberships — and the flag
+	// says so explicitly so an empty name is not read as a deleted capability.
+	MetadataAvailable bool `json:"metadata_available"`
 }
 
 // AttachCapabilityEntry is one item of a mount request.
 type AttachCapabilityEntry struct {
 	CapabilityType string `json:"capability_type"`
-	OwnerID        string `json:"owner_id"`
-	CapabilityID   string `json:"capability_id"`
-	Comment        string `json:"comment"`
+	// OwnerID names the tool box for a function binding and is ignored for a skill.
+	OwnerID      string `json:"box_id"`
+	CapabilityID string `json:"capability_id"`
+	Comment      string `json:"comment"`
 	// AllTools mounts every enabled tool of the box named by OwnerID. It is expanded at write
 	// time into one tool-level binding per tool, so the stored rows carry no box-level scope and
 	// the read path never expands anything. Tools added to the box later are not inherited: a

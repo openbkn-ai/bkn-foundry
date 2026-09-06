@@ -267,8 +267,15 @@ func (cbs *capabilityBindingService) ListCapabilities(ctx context.Context,
 			berrors.BknBackend_CapabilityBinding_InternalError_GetBindingsTotalFailed).WithErrorDetails(err.Error())
 	}
 
+	backfilled := cbs.backfillMetadata(ctx, query, entries, query.WithDetail)
+
 	span.SetStatus(codes.Ok, "")
-	return &interfaces.CapabilityBindingsList{Entries: entries, TotalCount: total}, nil
+	return &interfaces.CapabilityBindingsList{
+		Entries:           entries,
+		TotalCount:        total,
+		Boxes:             backfilled.boxes,
+		MetadataAvailable: backfilled.available,
+	}, nil
 }
 
 func (cbs *capabilityBindingService) GetCapabilityTotalsByType(ctx context.Context, knID,
