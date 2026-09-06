@@ -212,10 +212,10 @@ github.com/ncruces/go-strftime v1.0.0 h1:HMFp8mLCTPp341M/ZnA4qaf7ZlsbTc+miZjCLOF
 github.com/ncruces/go-strftime v1.0.0/go.mod h1:Fwc5htZGVVkseilnfgOVb9mKy6w1naJmn9CehxcKcls=
 github.com/openbkn-ai/bkn-comm-go v0.0.4 h1:oYmrMuayyTrDn3fZ+La7PXTuJV4wjHcKr5HTVVolBOo=
 github.com/openbkn-ai/bkn-comm-go v0.0.4/go.mod h1:pyx5ux3IT4zZrUoqni6DVzLaFe1fY8dwAl6wL8PAf7I=
+github.com/openbkn-ai/bkn-foundry/comm-go v0.1.4-0.20260906124959-4fccf48bd648 h1:TipX6KrcV2ZKyzq1u8TsjcRPaKVmFBv+MDmgZNH/0rs=
+github.com/openbkn-ai/bkn-foundry/comm-go v0.1.4-0.20260906124959-4fccf48bd648/go.mod h1:ajnsvSsBnIo6Sz82kArtLWxn/gRwvNROElbgqhsLuwo=
 github.com/openbkn-ai/bkn-foundry/comm-go v0.1.4 h1:gzR1lRYnjyyMSWAZak9YnQjc5RGYuFk6cF9ziespAoU=
 github.com/openbkn-ai/bkn-foundry/comm-go v0.1.4/go.mod h1:D0d+xRVJAk7DutF2g8I/TsXceE/1Iv3EmNNj8yxu2pA=
-github.com/openbkn-ai/bkn-foundry/comm-go v0.1.5-0.20260906124959-4fccf48bd648 h1:INx/Ri4HBCEDU+xgu6Pr7Qb6qZft1znTTRxnO9EkeY8=
-github.com/openbkn-ai/bkn-foundry/comm-go v0.1.5-0.20260906124959-4fccf48bd648/go.mod h1:ajnsvSsBnIo6Sz82kArtLWxn/gRwvNROElbgqhsLuwo=
 github.com/openbkn-ai/licverify v0.5.1 h1:mQVlRKvFNLDyjG41lti+MNt0BRmyrAxKdQDHSX3MPPs=
 github.com/openbkn-ai/licverify v0.5.1/go.mod h1:9Cnmt/tl7JN48+EjsGCjQERs1mNjuaBHdM+oVx0gvS4=
 github.com/opensearch-project/opensearch-go/v2 v2.3.0 h1:nQIEMr+A92CkhHrZgUhcfsrZjibvB3APXf2a1VwCmMQ=
