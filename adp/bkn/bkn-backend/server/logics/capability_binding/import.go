@@ -42,8 +42,9 @@ func (cbs *capabilityBindingService) ImportCapabilities(ctx context.Context, knI
 		return report, nil
 	}
 
-	entries := make([]*interfaces.AttachCapabilityEntry, 0,
-		len(declared.Skills)+len(declared.Functions))
+	// No capacity hint: the two lengths come from an uploaded file, and summing them is a
+	// tainted-arithmetic pattern for no gain on a list this short.
+	var entries []*interfaces.AttachCapabilityEntry
 
 	for _, skill := range declared.Skills {
 		if skill == nil {
