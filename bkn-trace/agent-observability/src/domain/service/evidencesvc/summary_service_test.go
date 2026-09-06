@@ -195,7 +195,8 @@ func TestListConversationsLoadsInteractionScopedTerminalArtifactsForPage(t *test
 	if page.Entries[0].InteractionCount != 2 {
 		t.Fatalf("canonical interactions must determine the conversation turn count: %+v", page.Entries[0])
 	}
-	if len(projection.queries) != 1 || !containsSummaryID(projection.queries[0].InteractionIDs, "interaction-page") {
+	if len(projection.queries) != 1 || len(projection.queries[0].InteractionIDs) != 1 ||
+		!containsSummaryID(projection.queries[0].InteractionIDs, "interaction-page") {
 		t.Fatalf("conversation page must load terminal artifacts by canonical interaction id: %+v", projection.queries)
 	}
 	if !containsArtifactType(projection.queries[0].ArtifactTypes, evidencevo.ArtifactTypeQuestion) ||

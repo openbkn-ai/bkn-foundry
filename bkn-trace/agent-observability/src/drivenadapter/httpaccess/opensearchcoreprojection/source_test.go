@@ -547,6 +547,71 @@ func TestSourceUsesApplicationPrincipalAsTechnicalOwnerCandidate(t *testing.T) {
 	}
 }
 
+func TestSourceAuthorizesSelectedFirstInteractionOutsideRecentReceiptCap(t *testing.T) {
+	t.Parallel()
+
+	searches := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		searches++
+		body, _ := io.ReadAll(r.Body)
+		query := string(body)
+		switch searches {
+		case 1:
+			if !strings.Contains(query, `"collapse":{"field":"conversation_id.keyword"`) {
+				t.Fatalf("conversation list must keep its collapsed receipt query: %s", body)
+			}
+			_, _ = io.WriteString(w, `{"hits":{"hits":[
+				{"inner_hits":{"selected_receipts":{"hits":{"total":{"value":20},"hits":[
+					{"_source":{"receipt_id":"receipt-third","owner":{"effective_subject_type":"user","effective_subject_id":"user-1"},"conversation_id":"conv-1","interaction_id":"int-third","request_id":"request-third","trace_id":"trace-third","issued_at":"2026-09-06T03:00:00Z"}},
+					{"_source":{"receipt_id":"receipt-second","owner":{"effective_subject_type":"user","effective_subject_id":"user-1"},"conversation_id":"conv-1","interaction_id":"int-second","request_id":"request-second","trace_id":"trace-second","issued_at":"2026-09-06T02:00:00Z"}}
+				]}}}},
+				{"inner_hits":{"selected_receipts":{"hits":{"total":{"value":1},"hits":[
+					{"_source":{"receipt_id":"receipt-other","owner":{"effective_subject_type":"user","effective_subject_id":"user-1"},"conversation_id":"conv-other","interaction_id":"int-other","request_id":"request-other","trace_id":"trace-other","issued_at":"2026-09-06T02:30:00Z"}}
+				]}}}}
+			]}}`)
+		case 2:
+			if !strings.Contains(query, `"interaction_id.keyword":["int-first"]`) {
+				t.Fatalf("selected first interaction must be loaded separately: %s", body)
+			}
+			_, _ = io.WriteString(w, `{"hits":{"hits":[{"_source":{
+				"receipt_id":"receipt-first","owner":{"effective_subject_type":"user","effective_subject_id":"user-1"},
+				"conversation_id":"conv-1","interaction_id":"int-first","request_id":"request-first","trace_id":"trace-first","issued_at":"2026-09-06T01:00:00Z"
+			}}]}}`)
+		default:
+			t.Fatalf("unexpected receipt search %d: %s", searches, body)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	artifacts := &recordingArtifactProjectionSource{result: iprojectionsource.Result{Artifacts: []evidencevo.EvidenceArtifact{{
+		ArtifactID: "question-first", ArtifactType: evidencevo.ArtifactTypeQuestion,
+		InteractionID: "int-first", RequestID: "request-lifecycle", TraceID: "trace-lifecycle",
+		Content: "第一轮问题", ObservedAt: "2026-09-06T00:59:00Z", AccountID: "user-1", AccountType: "user",
+	}}}}
+	source := opensearchcoreprojection.New(
+		opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core", artifacts,
+	)
+
+	result, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
+		Scope:           evidencevo.QueryScope{AccountID: "user-1", AccountType: "user"},
+		ConversationIDs: []string{"conv-1", "conv-other"}, InteractionIDs: []string{"int-first"},
+		ArtifactTypes: []evidencevo.ArtifactType{evidencevo.ArtifactTypeQuestion, evidencevo.ArtifactTypeResult}, Limit: 20,
+	})
+	if err != nil {
+		t.Fatalf("load projection: %v", err)
+	}
+	if searches != 2 {
+		t.Fatalf("selected first interaction outside the recent receipt cap must trigger one bounded lookup, got %d searches", searches)
+	}
+	if len(artifacts.queries) != 1 || len(artifacts.queries[0].AuthorizedInteractionIDs) != 4 ||
+		artifacts.queries[0].AuthorizedInteractionIDs[0] != "int-first" {
+		t.Fatalf("artifact authorization must include the selected first interaction: %+v", artifacts.queries)
+	}
+	if len(result.Traces) != 4 || len(result.Artifacts) != 1 {
+		t.Fatalf("first interaction receipt and terminal preview must be retained: %+v", result)
+	}
+}
+
 type artifactProjectionSource struct {
 	result iprojectionsource.Result
 }

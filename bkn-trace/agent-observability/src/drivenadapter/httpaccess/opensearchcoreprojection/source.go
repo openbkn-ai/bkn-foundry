@@ -88,13 +88,40 @@ func (s *Source) loadReceipts(ctx context.Context, query iprojectionsource.Query
 	if hasBatchIdentitySelector(query) {
 		result := make([]receiptDocument, 0, len(candidates))
 		interactionSet := make(map[string]struct{})
+		receiptSet := make(map[string]struct{})
 		for _, receipt := range candidates {
 			if !receiptMatchesScope(receipt, query.Scope) || !matchesReceiptQuery(receipt, query) {
 				continue
 			}
 			result = append(result, receipt)
+			receiptSet[receipt.ReceiptID] = struct{}{}
 			if receipt.InteractionID != "" {
 				interactionSet[receipt.InteractionID] = struct{}{}
+			}
+		}
+		selectedReceipts, selectedTruncated, err := s.loadInteractionReceipts(ctx, query, query.InteractionIDs)
+		if err != nil {
+			return nil, nil, false, err
+		}
+		truncated = truncated || selectedTruncated
+		for interactionID, receipts := range receiptsByInteraction(selectedReceipts) {
+			if !interactionMatchesScope(receipts, query.Scope) {
+				continue
+			}
+			included := false
+			for _, receipt := range receipts {
+				if !matchesReceiptQuery(receipt, query) {
+					continue
+				}
+				included = true
+				if _, found := receiptSet[receipt.ReceiptID]; found {
+					continue
+				}
+				receiptSet[receipt.ReceiptID] = struct{}{}
+				result = append(result, receipt)
+			}
+			if included {
+				interactionSet[interactionID] = struct{}{}
 			}
 		}
 		interactions := make([]string, 0, len(interactionSet))

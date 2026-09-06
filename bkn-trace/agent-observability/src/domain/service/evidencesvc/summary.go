@@ -1546,18 +1546,19 @@ func (s *Service) listConversationIdentityPage(ctx context.Context, options evid
 		return evidencevo.ConversationSummaryPage{Entries: []evidencevo.ConversationSummary{}, Total: identityPage.Total, Page: normalizeSummaryPage(options.Page), PageSize: normalizeSummaryLimit(options.Limit)}, true, nil
 	}
 	ids := summaryIdentityIDs(identityPage.Entries)
-	interactionIDs, interactionsByConversation, err := s.listCanonicalInteractionIDs(ctx, ids)
+	_, interactionsByConversation, err := s.listCanonicalInteractionIDs(ctx, ids)
 	if err != nil {
 		return evidencevo.ConversationSummaryPage{}, true, err
 	}
+	previewInteractionIDs := firstCanonicalInteractionIDs(interactionsByConversation)
 	terminalArtifactTypes := []evidencevo.ArtifactType(nil)
-	if len(interactionIDs) > 0 {
+	if len(previewInteractionIDs) > 0 {
 		terminalArtifactTypes = []evidencevo.ArtifactType{evidencevo.ArtifactTypeQuestion, evidencevo.ArtifactTypeResult}
 	}
 	requests, _, metadata, err := s.loadProjectedExecutionSummaries(ctx, iprojectionsource.Query{
 		Scope:           options.Scope,
 		ConversationIDs: ids,
-		InteractionIDs:  interactionIDs,
+		InteractionIDs:  previewInteractionIDs,
 		ArtifactTypes:   terminalArtifactTypes,
 		Limit:           selectedSummaryCandidateLimit(len(ids)),
 	}, summaryLoadMetadata{})
@@ -1641,6 +1642,24 @@ func (s *Service) listCanonicalInteractionIDs(ctx context.Context, conversationI
 	return ids, byConversation, nil
 }
 
+func firstCanonicalInteractionIDs(byConversation map[string][]sessionvo.Interaction) []string {
+	ids := make([]string, 0, len(byConversation))
+	seen := make(map[string]struct{})
+	for _, interactions := range byConversation {
+		first, ok := firstCanonicalInteraction(interactions)
+		if !ok {
+			continue
+		}
+		if _, found := seen[first.ID]; found {
+			continue
+		}
+		seen[first.ID] = struct{}{}
+		ids = append(ids, first.ID)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
 // applyFirstCanonicalConversationPreview makes the list preview describe the
 // first managed turn. A later round must never substitute content when that
 // first turn has no readable terminal artifact.
@@ -1652,13 +1671,8 @@ func applyFirstCanonicalConversationPreview(
 	if entry == nil || len(interactions) == 0 {
 		return
 	}
-	first := interactions[0]
-	for _, interaction := range interactions[1:] {
-		if interaction.Ordinal < first.Ordinal || interaction.Ordinal == first.Ordinal && interaction.ID < first.ID {
-			first = interaction
-		}
-	}
-	if first.ID == "" {
+	first, ok := firstCanonicalInteraction(interactions)
+	if !ok {
 		return
 	}
 	firstRequests := make([]evidencevo.RequestSummary, 0)
@@ -1673,6 +1687,20 @@ func applyFirstCanonicalConversationPreview(
 	}
 	summary, _ := aggregateRequestGroup(firstRequests)
 	entry.QuestionPreview, entry.ResultPreview = summary.QuestionPreview, summary.ResultPreview
+}
+
+func firstCanonicalInteraction(interactions []sessionvo.Interaction) (sessionvo.Interaction, bool) {
+	var first sessionvo.Interaction
+	found := false
+	for _, interaction := range interactions {
+		if interaction.ID == "" {
+			continue
+		}
+		if !found || interaction.Ordinal < first.Ordinal || interaction.Ordinal == first.Ordinal && interaction.ID < first.ID {
+			first, found = interaction, true
+		}
+	}
+	return first, found
 }
 
 func canUseSummaryIdentityPage(options evidencevo.SummaryQueryOptions) bool {
