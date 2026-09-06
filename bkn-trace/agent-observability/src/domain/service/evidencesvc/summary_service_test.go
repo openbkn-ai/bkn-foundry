@@ -139,6 +139,89 @@ func TestListConversationsLoadsOnlySelectedPageIdentities(t *testing.T) {
 	}
 }
 
+func TestListConversationsLoadsInteractionScopedTerminalArtifactsForPage(t *testing.T) {
+	base := evidencestore.New()
+	sessions := sessionstore.New()
+	store := &pagingSessionStore{Store: sessions, conversationPage: isessionstore.SummaryIdentityPage{
+		Entries: []isessionstore.SummaryIdentity{{ID: "conv-page", StartedAt: "2026-08-19T09:00:00Z"}}, Total: 1,
+	}}
+	terminalAt := time.Date(2026, 8, 19, 9, 0, 2, 0, time.UTC)
+	if err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		tx.SaveConversation(sessionvo.Conversation{ID: "conv-page", CreatedAt: terminalAt, UpdatedAt: terminalAt})
+		tx.SaveInteraction(sessionvo.Interaction{
+			ID: "interaction-page", ConversationID: "conv-page", Ordinal: 1,
+			ExecutionStatus: sessionvo.InteractionCompleted, EvidenceStatus: sessionvo.EvidenceComplete,
+			CreatedAt: terminalAt, UpdatedAt: terminalAt, TerminalAt: &terminalAt,
+		})
+		tx.SaveInteraction(sessionvo.Interaction{
+			ID: "interaction-without-receipt", ConversationID: "conv-page", Ordinal: 2,
+			ExecutionStatus: sessionvo.InteractionCompleted, EvidenceStatus: sessionvo.EvidenceComplete,
+			CreatedAt: terminalAt, UpdatedAt: terminalAt, TerminalAt: &terminalAt,
+		})
+		return nil
+	}); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	trace := pageSummaryTrace("trace-page", "req-page", "2026-08-19T09:00:00Z", "acct_demo", "bd_demo")
+	trace.ConversationID = "conv-page"
+	trace.Events[0].InteractionID = "interaction-page"
+	trace.Events[0].Payload["question_artifact_ref"] = "artifact:question-page"
+	trace.Events = append(trace.Events, evidencevo.EvidenceEvent{
+		EventID: "result-page", EventType: "claim.created", TraceID: "trace-page", RequestID: "req-page",
+		InteractionID: "interaction-page", ObservedAt: "2026-08-19T09:00:01Z", EmittedAt: "2026-08-19T09:00:01Z",
+		Payload: map[string]any{"result_artifact_ref": "artifact:result-page"},
+	})
+	question := summaryServiceArtifact(t, "question-page", evidencevo.ArtifactTypeQuestion, "req-page", "", "interaction-page", "查询库存")
+	result := summaryServiceArtifact(t, "result-page", evidencevo.ArtifactTypeResult, "req-page", "", "interaction-page", "库存 1756")
+	projection := &capturingProjectionSource{resultFor: func(query iprojectionsource.Query) iprojectionsource.Result {
+		value := iprojectionsource.Result{Traces: []evidencevo.NormalizedTrace{trace}}
+		if containsSummaryID(query.InteractionIDs, "interaction-page") &&
+			containsArtifactType(query.ArtifactTypes, evidencevo.ArtifactTypeQuestion) &&
+			containsArtifactType(query.ArtifactTypes, evidencevo.ArtifactTypeResult) {
+			value.Artifacts = []evidencevo.EvidenceArtifact{question, result}
+		}
+		return value
+	}}
+	service := New(base, WithProjectionSource(projection), WithSessionStore(store))
+
+	page, err := service.ListConversations(context.Background(), evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), Limit: 20})
+
+	if err != nil || len(page.Entries) != 1 {
+		t.Fatalf("list conversation page: page=%+v err=%v", page, err)
+	}
+	if page.Entries[0].QuestionPreview != "查询库存" || page.Entries[0].ResultPreview != "库存 1756" {
+		t.Fatalf("interaction-scoped terminal artifacts must populate the conversation preview: %+v", page.Entries[0])
+	}
+	if page.Entries[0].InteractionCount != 2 {
+		t.Fatalf("canonical interactions must determine the conversation turn count: %+v", page.Entries[0])
+	}
+	if len(projection.queries) != 1 || !containsSummaryID(projection.queries[0].InteractionIDs, "interaction-page") {
+		t.Fatalf("conversation page must load terminal artifacts by canonical interaction id: %+v", projection.queries)
+	}
+	if !containsArtifactType(projection.queries[0].ArtifactTypes, evidencevo.ArtifactTypeQuestion) ||
+		!containsArtifactType(projection.queries[0].ArtifactTypes, evidencevo.ArtifactTypeResult) {
+		t.Fatalf("conversation page must not spend its artifact budget on operation artifacts: %+v", projection.queries)
+	}
+}
+
+func containsSummaryID(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func containsArtifactType(values []evidencevo.ArtifactType, target evidencevo.ArtifactType) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
 func TestListTraceExecutionsBoundsProjectionExpansionPerIdentity(t *testing.T) {
 	base := evidencestore.New()
 	store := &pagingSessionStore{Store: sessionstore.New(), tracePage: isessionstore.SummaryIdentityPage{
@@ -503,6 +586,28 @@ func TestBuildConversationSummarySkipsUnavailableFirstInteractionPreview(t *test
 
 	if summary.QuestionPreview != "后续问题" || summary.ResultPreview != "后续结果" {
 		t.Fatalf("conversation preview must skip an unavailable first interaction: %+v", summary)
+	}
+}
+
+func TestApplyFirstCanonicalConversationPreviewDoesNotBorrowLaterRound(t *testing.T) {
+	entry := evidencevo.ConversationSummary{QuestionPreview: "fallback", ResultPreview: "fallback"}
+	applyFirstCanonicalConversationPreview(&entry, []evidencevo.RequestSummary{
+		{
+			RequestID: "req_first", InteractionID: "interaction_first",
+			StartedAt: "2026-08-07T08:00:00Z", Status: "completed", EvidenceCompleteness: "partial",
+		},
+		{
+			RequestID: "req_second", InteractionID: "interaction_second",
+			StartedAt: "2026-08-07T08:02:00Z", Status: "completed", EvidenceCompleteness: "complete",
+			InteractionQuestion: "后续问题", InteractionResult: "后续结果",
+		},
+	}, []sessionvo.Interaction{
+		{ID: "interaction_first", Ordinal: 1},
+		{ID: "interaction_second", Ordinal: 2},
+	})
+
+	if entry.QuestionPreview != "" || entry.ResultPreview != "" {
+		t.Fatalf("conversation list must represent the first canonical round, not a later available preview: %+v", entry)
 	}
 }
 

@@ -440,6 +440,64 @@ func TestProjectionSourceExpandsConversationArtifactsBySelectedTraceIDs(t *testi
 	}
 }
 
+func TestProjectionSourceLoadsInteractionScopedArtifactsWithoutDroppingScope(t *testing.T) {
+	artifactQueries := make([]string, 0, 2)
+	trace := normalizedTrace()
+	trace.TraceID = "trace-selected"
+	trace.ConversationID = "conversation-selected"
+	document := toDocument(trace, mustTime(t, "2026-08-19T09:00:00Z"))
+	document.Aggregate = true
+	hit, _ := json.Marshal(map[string]any{"hits": map[string]any{"hits": []any{
+		map[string]any{"_id": document.DocumentID, "_source": document, "sort": []any{document.DocumentID}},
+	}}})
+	client := newFakeOpenSearchClient(func(r *http.Request) (*http.Response, error) {
+		switch {
+		case r.Method == http.MethodPut && (r.URL.Path == "/bkn-trace-evidence-test" || r.URL.Path == "/bkn-trace-evidence-test-artifacts"):
+			return jsonResponse(`{"acknowledged":true}`), nil
+		case r.Method == http.MethodPost && r.URL.Path == "/bkn-trace-evidence-test/_search":
+			return jsonResponse(string(hit)), nil
+		case r.Method == http.MethodPost && r.URL.Path == "/bkn-trace-evidence-test-artifacts/_search":
+			body, _ := io.ReadAll(r.Body)
+			artifactQueries = append(artifactQueries, string(body))
+			return jsonResponse(`{"hits":{"hits":[]}}`), nil
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+			return nil, nil
+		}
+	})
+	store := New(client, "bkn-trace-evidence-test")
+	_, err := store.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
+		Scope:           evidencevo.QueryScope{AccountID: trace.AccountID, AccountType: trace.AccountType},
+		ConversationIDs: []string{trace.ConversationID},
+		InteractionIDs:  []string{"interaction-terminal"},
+		ArtifactTypes:   []evidencevo.ArtifactType{evidencevo.ArtifactTypeQuestion, evidencevo.ArtifactTypeResult},
+		Limit:           20,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(artifactQueries) != 2 {
+		t.Fatalf("conversation preview must preserve the Trace artifact read and add one terminal Interaction read: %v", artifactQueries)
+	}
+	legacyQuery, terminalQuery := artifactQueries[0], artifactQueries[1]
+	if !strings.Contains(legacyQuery, `"trace_id":["trace-selected"]`) {
+		t.Fatalf("legacy Trace artifact query must remain available for artifacts without interaction_id: %s", legacyQuery)
+	}
+	if strings.Contains(legacyQuery, `"interaction_id"`) || strings.Contains(legacyQuery, `"artifact_type"`) {
+		t.Fatalf("legacy Trace artifact query must retain its complete evidence input: %s", legacyQuery)
+	}
+	if !strings.Contains(terminalQuery, `"interaction_id":["interaction-terminal"]`) ||
+		!strings.Contains(terminalQuery, `"artifact_type":["question","result"]`) {
+		t.Fatalf("terminal artifact query must be restricted to the requested Interaction previews: %s", terminalQuery)
+	}
+	if strings.Contains(terminalQuery, "bkn.conversation.id") || strings.Contains(terminalQuery, `"trace_id"`) {
+		t.Fatalf("interaction-scoped artifact lookup must not require unavailable conversation/trace fields: %s", terminalQuery)
+	}
+	if !strings.Contains(legacyQuery, trace.AccountID) || !strings.Contains(terminalQuery, trace.AccountID) {
+		t.Fatalf("both artifact reads must retain their scope filter: %v", artifactQueries)
+	}
+}
+
 func TestProjectionSourceUsesAuthorizedInteractionsWhenConversationEvidenceIsMissing(t *testing.T) {
 	var artifactQuery string
 	client := newFakeOpenSearchClient(func(r *http.Request) (*http.Response, error) {

@@ -21,7 +21,14 @@ type Query struct {
 	TraceID         string
 	TraceIDs        []string
 	ConversationIDs []string
-	InteractionID   string
+	// InteractionIDs narrows artifact reads to canonical Interaction facts while
+	// retaining the caller's ordinary scope filters. It is intentionally distinct
+	// from AuthorizedInteractionIDs, which represents a pre-authorized Core handoff.
+	InteractionIDs []string
+	// ArtifactTypes bounds an artifact read to the contract types required by the
+	// caller, for example the terminal question/result previews in a list page.
+	ArtifactTypes []evidencevo.ArtifactType
+	InteractionID string
 	// AuthorizedInteractionIDs is an internal handoff from the Core projection.
 	// It carries an Interaction-level authorization decision to its artifact reader.
 	AuthorizedInteractionIDs []string

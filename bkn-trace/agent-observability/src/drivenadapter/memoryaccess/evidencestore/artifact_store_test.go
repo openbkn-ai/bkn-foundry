@@ -12,6 +12,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iartifactstore"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionsource"
 )
 
 func TestMemoryStoreArtifactIsIdempotentAndRejectsConflictingContent(t *testing.T) {
@@ -88,6 +89,43 @@ func TestMemoryStoreListsOnlyAuthorizedArtifactsForRequest(t *testing.T) {
 
 	if err != nil || len(result.Entries) != 1 || result.Entries[0].ArtifactID != owned.ArtifactID || result.Truncated {
 		t.Fatalf("expected only authorized artifact, got %+v err=%v", result, err)
+	}
+}
+
+func TestMemoryProjectionPreservesLegacyArtifactsAlongsideTerminalInteractionPreview(t *testing.T) {
+	store := New()
+	terminal := normalizedStoreArtifact(t)
+	terminal.ArtifactType = evidencevo.ArtifactTypeQuestion
+	terminal.OperationID = ""
+	terminal.ContentHash = ""
+	terminal, validationErrors := evidencevo.NormalizeArtifact(terminal)
+	if len(validationErrors) != 0 {
+		t.Fatalf("normalize terminal artifact: %+v", validationErrors)
+	}
+	legacy := normalizedStoreArtifact(t)
+	legacy.ArtifactID = "artifact_legacy_action_001"
+	legacy.ArtifactType = evidencevo.ArtifactTypeActionResult
+	legacy.InteractionID = ""
+	legacy.ContentHash = ""
+	legacy, validationErrors = evidencevo.NormalizeArtifact(legacy)
+	if len(validationErrors) != 0 {
+		t.Fatalf("normalize legacy artifact: %+v", validationErrors)
+	}
+	for _, artifact := range []evidencevo.EvidenceArtifact{terminal, legacy} {
+		if _, err := store.StoreArtifact(context.Background(), artifact); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	result, err := store.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
+		Scope:           evidencevo.QueryScope{AccountID: terminal.AccountID, AccountType: terminal.AccountType},
+		ConversationIDs: []string{"conversation-preview"},
+		InteractionIDs:  []string{terminal.InteractionID},
+		ArtifactTypes:   []evidencevo.ArtifactType{evidencevo.ArtifactTypeQuestion, evidencevo.ArtifactTypeResult},
+	})
+
+	if err != nil || len(result.Artifacts) != 2 {
+		t.Fatalf("memory projection must retain legacy Trace artifacts while supplementing terminal previews: result=%+v err=%v", result, err)
 	}
 }
 

@@ -27,6 +27,7 @@ type Transaction interface {
 	FindInteractionByStartKey(conversationID, idempotencyKey string) (sessionvo.Interaction, bool)
 	PeekInteraction(interactionID string) (sessionvo.Interaction, bool)
 	ListInteractionsByIDs(interactionIDs []string) map[string]sessionvo.Interaction
+	ListInteractionsByConversationIDs(conversationIDs []string) map[string][]sessionvo.Interaction
 	FindInteraction(interactionID string) (sessionvo.Interaction, bool)
 	ListInteractions(conversationID string) []sessionvo.Interaction
 	ListInteractionPage(query InteractionPageQuery) InteractionPage

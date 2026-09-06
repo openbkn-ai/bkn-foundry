@@ -184,6 +184,32 @@ func (tx memoryTransaction) ListInteractionsByIDs(interactionIDs []string) map[s
 	return result
 }
 
+func (tx memoryTransaction) ListInteractionsByConversationIDs(conversationIDs []string) map[string][]sessionvo.Interaction {
+	result := make(map[string][]sessionvo.Interaction, len(conversationIDs))
+	selected := make(map[string]struct{}, len(conversationIDs))
+	for _, conversationID := range conversationIDs {
+		if conversationID != "" {
+			selected[conversationID] = struct{}{}
+		}
+	}
+	for _, interaction := range tx.s.interactions {
+		if _, found := selected[interaction.ConversationID]; found {
+			result[interaction.ConversationID] = append(result[interaction.ConversationID], interaction)
+		}
+	}
+	for conversationID := range result {
+		entries := result[conversationID]
+		sort.Slice(entries, func(i, j int) bool {
+			if entries[i].Ordinal == entries[j].Ordinal {
+				return entries[i].ID < entries[j].ID
+			}
+			return entries[i].Ordinal < entries[j].Ordinal
+		})
+		result[conversationID] = entries
+	}
+	return result
+}
+
 func (tx memoryTransaction) ListInteractions(conversationID string) []sessionvo.Interaction {
 	result := make([]sessionvo.Interaction, 0)
 	for _, interaction := range tx.s.interactions {

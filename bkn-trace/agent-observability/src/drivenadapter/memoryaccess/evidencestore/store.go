@@ -131,6 +131,15 @@ func (s *Store) LoadExecutionProjection(ctx context.Context, query iprojectionso
 	if err != nil {
 		return iprojectionsource.Result{}, err
 	}
+	artifactInteractionIDs := query.InteractionIDs
+	artifactTypes := query.ArtifactTypes
+	if len(query.ConversationIDs) > 0 && len(query.InteractionIDs) > 0 {
+		// The in-memory projection already loads the selected scope in one pass.
+		// Keep the legacy artifact set intact; OpenSearch adds a separate terminal
+		// Interaction read because its Trace query cannot see trace-less artifacts.
+		artifactInteractionIDs = nil
+		artifactTypes = nil
+	}
 	filteredTraces := make([]evidencevo.NormalizedTrace, 0, len(traces))
 	for _, trace := range traces {
 		if query.RequestID != "" && trace.RequestID != query.RequestID ||
@@ -145,6 +154,8 @@ func (s *Store) LoadExecutionProjection(ctx context.Context, query iprojectionso
 	for _, artifact := range artifacts {
 		if query.RequestID != "" && artifact.RequestID != query.RequestID ||
 			query.TraceID != "" && artifact.TraceID != query.TraceID ||
+			len(artifactInteractionIDs) > 0 && !memoryContainsProjectionID(artifactInteractionIDs, artifact.InteractionID) ||
+			len(artifactTypes) > 0 && !memoryContainsArtifactType(artifactTypes, artifact.ArtifactType) ||
 			query.InteractionID != "" && artifact.InteractionID != query.InteractionID ||
 			!memoryTimeInRange(artifact.ObservedAt, query.From, query.To) {
 			continue
@@ -163,6 +174,24 @@ func (s *Store) LoadExecutionProjection(ctx context.Context, query iprojectionso
 		truncated = true
 	}
 	return iprojectionsource.Result{Traces: filteredTraces, Artifacts: filteredArtifacts, Truncated: truncated}, nil
+}
+
+func memoryContainsProjectionID(values []string, candidate string) bool {
+	for _, value := range values {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+func memoryContainsArtifactType(values []evidencevo.ArtifactType, candidate evidencevo.ArtifactType) bool {
+	for _, value := range values {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func memoryTraceHasInteraction(trace evidencevo.NormalizedTrace, interactionID string) bool {
