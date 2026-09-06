@@ -898,16 +898,23 @@ func (kns *knowledgeNetworkService) ReconcileKNProxies(ctx context.Context, requ
 	if err != nil {
 		return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "list proxy mappings for reconciliation")
 	}
-	// Reconciliation mutates bkn-safe policy materialization. Authorize every
-	// live knowledge network before applying any mutation so the operation is
-	// all-or-nothing with respect to the caller's governance scope.
-	for _, mapping := range mappings {
-		if _, exists := knsByID[mapping.KNID]; !exists {
+	// Reconciliation reports missing mappings from the complete set of live
+	// knowledge networks and mutates bkn-safe policy materialization. Authorize
+	// every live knowledge network, including those without a mapping, before
+	// computing the report or applying any mutation. Otherwise an empty or
+	// incomplete mapping table could bypass authorization and disclose KN IDs.
+	liveKNIDs := make([]string, 0, len(knsByID))
+	for knID, kn := range knsByID {
+		if kn == nil || kn.Branch != interfaces.MAIN_BRANCH {
 			continue
 		}
+		liveKNIDs = append(liveKNIDs, knID)
+	}
+	sort.Strings(liveKNIDs)
+	for _, knID := range liveKNIDs {
 		if err := kns.ps.CheckPermission(ctx, interfaces.PermissionResource{
 			Type: interfaces.RESOURCE_TYPE_KN,
-			ID:   mapping.KNID,
+			ID:   knID,
 		}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}); err != nil {
 			return nil, err
 		}

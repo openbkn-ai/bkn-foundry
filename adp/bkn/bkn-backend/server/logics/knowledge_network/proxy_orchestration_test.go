@@ -1023,7 +1023,7 @@ func TestGovernedKNProxyViewOmitsInternalFailureDetails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(encoded), "secret") || string(encoded) != `{"missing_mappings":null,"orphan_mappings":null,"conflicting_proxy_accounts":null,"authorization_drift":null,"failed_kn_ids":["kn-1","kn-2"]}` {
+	if strings.Contains(string(encoded), "secret") || string(encoded) != `{"missing_mappings":[],"orphan_mappings":[],"conflicting_proxy_accounts":{},"authorization_drift":{},"failed_kn_ids":["kn-1","kn-2"]}` {
 		t.Fatalf("public reconcile view leaked internal details: %s", encoded)
 	}
 }
@@ -1147,6 +1147,10 @@ func TestReconcileKNProxiesReportsMissingOrphanAndConflict(t *testing.T) {
 	permissionService := bmock.NewMockPermissionService(ctrl)
 	permissionService.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
+		ID:   "kn-live",
+	}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}).Return(nil)
+	permissionService.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   "kn-mapped",
 	}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}).Return(nil)
 	mpa := &managedProxyAccessStub{}
@@ -1167,6 +1171,30 @@ func TestReconcileKNProxiesReportsMissingOrphanAndConflict(t *testing.T) {
 	}
 	if !reflect.DeepEqual(mpa.reconciled, []string{"proxy-mapped"}) {
 		t.Fatalf("reconciled proxies = %#v, want live authorized mapping only", mpa.reconciled)
+	}
+}
+
+func TestReconcileKNProxiesAuthorizesNetworksWithoutMappings(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	kna := bmock.NewMockKNAccess(ctrl)
+	kna.EXPECT().GetAllMainBranchKNs(gomock.Any()).Return(map[string]*interfaces.KN{
+		"kn-unmapped": {KNID: "kn-unmapped", Branch: interfaces.MAIN_BRANCH},
+	}, nil)
+	kpa := &proxyAccessStub{}
+	permissionService := bmock.NewMockPermissionService(ctrl)
+	permissionService.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_KN,
+		ID:   "kn-unmapped",
+	}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}).Return(
+		rest.NewHTTPError(t.Context(), http.StatusForbidden, rest.PublicError_Forbidden))
+	mpa := &managedProxyAccessStub{}
+	service := &knowledgeNetworkService{kna: kna, kpa: kpa, mpa: mpa, ps: permissionService}
+
+	if _, err := service.ReconcileKNProxies(t.Context(), "operator-1"); err == nil {
+		t.Fatal("ReconcileKNProxies() error = nil, want authorization failure for unmapped knowledge network")
+	}
+	if len(mpa.reconciled) != 0 {
+		t.Fatalf("reconciliation mutated proxies before authorization completed: %#v", mpa.reconciled)
 	}
 }
 

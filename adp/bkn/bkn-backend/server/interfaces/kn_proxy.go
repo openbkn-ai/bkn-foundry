@@ -161,13 +161,26 @@ func NewKNProxyGovernanceReconcileReport(report *KNProxyReconcileReport) *KNProx
 		failedKNIDs = append(failedKNIDs, knID)
 	}
 	sort.Strings(failedKNIDs)
-	return &KNProxyGovernanceReconcileReport{
+	view := &KNProxyGovernanceReconcileReport{
 		MissingMappings:    report.MissingMappings,
 		OrphanMappings:     report.OrphanMappings,
 		ConflictingProxy:   report.ConflictingProxy,
 		AuthorizationDrift: report.AuthorizationDrift,
 		FailedKNIDs:        failedKNIDs,
 	}
+	if view.MissingMappings == nil {
+		view.MissingMappings = []string{}
+	}
+	if view.OrphanMappings == nil {
+		view.OrphanMappings = []string{}
+	}
+	if view.ConflictingProxy == nil {
+		view.ConflictingProxy = map[string][]string{}
+	}
+	if view.AuthorizationDrift == nil {
+		view.AuthorizationDrift = map[string]ProxyGrantReconcileResult{}
+	}
+	return view
 }
 
 type KNProxySyncPlan struct {
