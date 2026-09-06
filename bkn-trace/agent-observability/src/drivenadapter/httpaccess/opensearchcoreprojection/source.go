@@ -99,7 +99,7 @@ func (s *Source) loadReceipts(ctx context.Context, query iprojectionsource.Query
 				interactionSet[receipt.InteractionID] = struct{}{}
 			}
 		}
-		selectedReceipts, selectedTruncated, err := s.loadSelectedInteractionReceipts(ctx, query, query.InteractionIDs)
+		selectedReceipts, selectedTruncated, err := s.loadInteractionReceipts(ctx, query, query.InteractionIDs)
 		if err != nil {
 			return nil, nil, false, err
 		}
@@ -277,14 +277,6 @@ func (s *Source) searchReceipts(ctx context.Context, query iprojectionsource.Que
 }
 
 func (s *Source) loadInteractionReceipts(ctx context.Context, query iprojectionsource.Query, interactionIDs []string) ([]receiptDocument, bool, error) {
-	return s.loadInteractionReceiptsWithCollapse(ctx, query, interactionIDs, false)
-}
-
-func (s *Source) loadSelectedInteractionReceipts(ctx context.Context, query iprojectionsource.Query, interactionIDs []string) ([]receiptDocument, bool, error) {
-	return s.loadInteractionReceiptsWithCollapse(ctx, query, interactionIDs, true)
-}
-
-func (s *Source) loadInteractionReceiptsWithCollapse(ctx context.Context, query iprojectionsource.Query, interactionIDs []string, collapse bool) ([]receiptDocument, bool, error) {
 	if len(interactionIDs) == 0 {
 		return nil, false, nil
 	}
@@ -294,10 +286,10 @@ func (s *Source) loadInteractionReceiptsWithCollapse(ctx context.Context, query 
 	interactionQuery.InteractionID = ""
 	interactionQuery.From = time.Time{}
 	interactionQuery.To = time.Time{}
-	return s.searchReceiptsForInteractions(ctx, interactionQuery, interactionIDs, collapse)
+	return s.searchReceiptsForInteractions(ctx, interactionQuery, interactionIDs)
 }
 
-func (s *Source) searchReceiptsForInteractions(ctx context.Context, query iprojectionsource.Query, interactionIDs []string, collapse bool) ([]receiptDocument, bool, error) {
+func (s *Source) searchReceiptsForInteractions(ctx context.Context, query iprojectionsource.Query, interactionIDs []string) ([]receiptDocument, bool, error) {
 	size := maxProjectionDocuments
 	if query.Limit > 0 && query.Limit < size {
 		// Keep the follow-up expansion within the same caller-owned candidate
@@ -307,24 +299,11 @@ func (s *Source) searchReceiptsForInteractions(ctx context.Context, query iproje
 	}
 	must := []map[string]any{{"exists": map[string]any{"field": "receipt_id"}}}
 	must = append(must, map[string]any{"terms": map[string]any{"interaction_id.keyword": interactionIDs}})
-	queryBody := map[string]any{
+	body, err := json.Marshal(map[string]any{
 		"size":  size,
 		"query": map[string]any{"bool": map[string]any{"must": must}},
 		"sort":  []map[string]any{{"issued_at": map[string]any{"order": "desc"}}, {"_id": map[string]any{"order": "desc"}}},
-	}
-	innerHitName := ""
-	if collapse {
-		innerHitName = "selected_interaction_receipts"
-		queryBody["size"] = len(interactionIDs)
-		queryBody["collapse"] = map[string]any{
-			"field": "interaction_id.keyword",
-			"inner_hits": map[string]any{
-				"name": innerHitName, "size": maxReceiptsPerSelectedIdentity,
-				"sort": []map[string]any{{"issued_at": map[string]any{"order": "desc"}}, {"_id": map[string]any{"order": "desc"}}},
-			},
-		}
-	}
-	body, err := json.Marshal(queryBody)
+	})
 	if err != nil {
 		return nil, false, err
 	}
@@ -335,17 +314,7 @@ func (s *Source) searchReceiptsForInteractions(ctx context.Context, query iproje
 	var response struct {
 		Hits struct {
 			Hits []struct {
-				Source    receiptDocument `json:"_source"`
-				InnerHits map[string]struct {
-					Hits struct {
-						Total struct {
-							Value int `json:"value"`
-						} `json:"total"`
-						Hits []struct {
-							Source receiptDocument `json:"_source"`
-						} `json:"hits"`
-					} `json:"hits"`
-				} `json:"inner_hits"`
+				Source receiptDocument `json:"_source"`
 			} `json:"hits"`
 		} `json:"hits"`
 	}
@@ -353,22 +322,8 @@ func (s *Source) searchReceiptsForInteractions(ctx context.Context, query iproje
 		return nil, false, fmt.Errorf("decode Core interaction receipt projection: %w", err)
 	}
 	result := make([]receiptDocument, 0, len(response.Hits.Hits))
-	truncated := false
 	for _, hit := range response.Hits.Hits {
-		if innerHitName != "" {
-			inner := hit.InnerHits[innerHitName].Hits
-			for _, innerHit := range inner.Hits {
-				result = append(result, innerHit.Source)
-			}
-			if inner.Total.Value > len(inner.Hits) {
-				truncated = true
-			}
-			continue
-		}
 		result = append(result, hit.Source)
-	}
-	if innerHitName != "" {
-		return result, truncated, nil
 	}
 	return result, len(response.Hits.Hits) >= size, nil
 }

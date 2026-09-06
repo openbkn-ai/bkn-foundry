@@ -570,25 +570,13 @@ func TestSourceAuthorizesSelectedFirstInteractionOutsideRecentReceiptCap(t *test
 				]}}}}
 			]}}`)
 		case 2:
-			for _, expected := range []string{
-				`"interaction_id.keyword":["int-first","int-other-first"]`,
-				`"collapse":{"field":"interaction_id.keyword"`,
-				`"name":"selected_interaction_receipts","size":20`,
-			} {
-				if !strings.Contains(query, expected) {
-					t.Fatalf("selected first interactions must have independent bounded receipt groups (%s): %s", expected, body)
-				}
+			if !strings.Contains(query, `"interaction_id.keyword":["int-first"]`) {
+				t.Fatalf("selected first interaction must be loaded separately: %s", body)
 			}
-			_, _ = io.WriteString(w, `{"hits":{"hits":[
-				{"inner_hits":{"selected_interaction_receipts":{"hits":{"total":{"value":1},"hits":[{"_source":{
-					"receipt_id":"receipt-first","owner":{"effective_subject_type":"user","effective_subject_id":"user-1"},
-					"conversation_id":"conv-1","interaction_id":"int-first","request_id":"request-first","trace_id":"trace-first","issued_at":"2026-09-06T01:00:00Z"
-				}}]}}}},
-				{"inner_hits":{"selected_interaction_receipts":{"hits":{"total":{"value":1},"hits":[{"_source":{
-					"receipt_id":"receipt-other-first","owner":{"effective_subject_type":"user","effective_subject_id":"user-1"},
-					"conversation_id":"conv-other","interaction_id":"int-other-first","request_id":"request-other-first","trace_id":"trace-other-first","issued_at":"2026-09-06T01:30:00Z"
-				}}]}}}}
-			]}}`)
+			_, _ = io.WriteString(w, `{"hits":{"hits":[{"_source":{
+				"receipt_id":"receipt-first","owner":{"effective_subject_type":"user","effective_subject_id":"user-1"},
+				"conversation_id":"conv-1","interaction_id":"int-first","request_id":"request-first","trace_id":"trace-first","issued_at":"2026-09-06T01:00:00Z"
+			}}]}}`)
 		default:
 			t.Fatalf("unexpected receipt search %d: %s", searches, body)
 		}
@@ -606,7 +594,7 @@ func TestSourceAuthorizesSelectedFirstInteractionOutsideRecentReceiptCap(t *test
 
 	result, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
 		Scope:           evidencevo.QueryScope{AccountID: "user-1", AccountType: "user"},
-		ConversationIDs: []string{"conv-1", "conv-other"}, InteractionIDs: []string{"int-first", "int-other-first"},
+		ConversationIDs: []string{"conv-1", "conv-other"}, InteractionIDs: []string{"int-first"},
 		ArtifactTypes: []evidencevo.ArtifactType{evidencevo.ArtifactTypeQuestion, evidencevo.ArtifactTypeResult}, Limit: 20,
 	})
 	if err != nil {
@@ -615,11 +603,11 @@ func TestSourceAuthorizesSelectedFirstInteractionOutsideRecentReceiptCap(t *test
 	if searches != 2 {
 		t.Fatalf("selected first interaction outside the recent receipt cap must trigger one bounded lookup, got %d searches", searches)
 	}
-	if len(artifacts.queries) != 1 || len(artifacts.queries[0].AuthorizedInteractionIDs) != 5 ||
+	if len(artifacts.queries) != 1 || len(artifacts.queries[0].AuthorizedInteractionIDs) != 4 ||
 		artifacts.queries[0].AuthorizedInteractionIDs[0] != "int-first" {
 		t.Fatalf("artifact authorization must include the selected first interaction: %+v", artifacts.queries)
 	}
-	if len(result.Traces) != 5 || len(result.Artifacts) != 1 {
+	if len(result.Traces) != 4 || len(result.Artifacts) != 1 {
 		t.Fatalf("first interaction receipt and terminal preview must be retained: %+v", result)
 	}
 }
