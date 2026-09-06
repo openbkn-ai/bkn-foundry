@@ -99,7 +99,7 @@ VS Code / Cursor：打开 `bkn-safe` 根目录，选 **Run and Debug → bkn-saf
 
 - 认证（hydra 重定向到这里）：`GET/POST /login`、`GET /consent`、`GET/POST /device`
 - 鉴权 `/api/safe/v1/authz`：`POST /check`、`POST /operations`、`POST /resource-filter`、
-  `POST|DELETE /policies`、`POST /role-bindings`
+  `POST /property-levels`、`POST|DELETE /policies`、`POST /role-bindings`
 - Managed KN proxies (ClusterIP-internal surface) `/api/safe/in/v1/managed-proxy-accounts`:
   create, get, disable, and archive one-to-one proxy apps; these accounts cannot log in, use
   AppKeys, be managed as regular users, or receive grants through the generic Policy API
@@ -163,6 +163,18 @@ VS Code / Cursor：打开 `bkn-safe` 根目录，选 **Run and Debug → bkn-saf
 给了 `resource_ids` 却没给 `resource_type` 返回 `400`；账号状态存储不可用返回
 `503`；其他引擎失败返回 `500`。**空资源列表不是错误**，返回
 `{"resources": []}`，分页调用方无需特判。
+
+### `POST /api/safe/v1/authz/property-levels`（对象属性批量判档）
+
+可信的对象查询服务把认证上下文中解析出的 `accessor_id`、规范对象类资源 ID
+`<kn_id>/<ot_id>` 和本次实际请求的属性一次提交。Community 根据对象类现有操作回落：
+`query_data → full`、仅 `view_detail → schema`、均无权限 → `none`。Enterprise
+resolver 只能在此基础上收窄；core 会再次取最小档，不能通过属性记录升权。
+
+一次请求最多 100 个对象类、每个对象类 200 个属性、合计 1000 个属性。响应与请求
+顺序一致；未知档位、不完整的 Enterprise 结果、账号状态或授权判定不可用均失败关闭。
+该端点与其他 `/authz` 路由一样只存在于 ClusterIP S2S 边界，Helm Ingress 不暴露；
+终端业务请求不得提交或覆盖这里的 `accessor_id`。
 
 ## 授权档位（付费能力门控）
 

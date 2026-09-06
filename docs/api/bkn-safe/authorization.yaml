@@ -21,9 +21,10 @@ info:
     `action_type`, `metric`, and `risk_type`.
 
     `resource-filter` has no fixed resource, operation, or matrix-cell hard cap
-    and does not define a fixed-scale 413 response. Callers may dynamically
-    chunk requests, but any failed or invalid chunk fails the complete business
-    request.
+    and does not define a fixed-scale 413 response. `property-levels` has a
+    separate security limit of 100 object types, 200 properties per object type,
+    and 1000 properties per request. Callers may dynamically chunk requests,
+    but any failed or invalid chunk fails the complete business request.
 servers:
   - url: /api/safe/v1/authz
 security: []
@@ -124,6 +125,53 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '500':
           $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/AuthorizationUnavailable'
+  /property-levels:
+    post:
+      operationId: resolveObjectPropertyAccessLevels
+      summary: Resolve effective access levels for requested object properties
+      description: |
+        Resolves `none < schema < masked < full` in one call for the exact
+        object types and properties supplied by a trusted workload. The
+        workload derives `accessor_id` from its already-authenticated public
+        request; it must never copy an accessor supplied by an end user.
+
+        Core maps `query_data` to `full`, `view_detail` without `query_data` to
+        `schema`, and no applicable operation to `none`. A registered Enterprise
+        resolver may only narrow that base level. Community builds and
+        unavailable Enterprise capability return the core mapping and cannot
+        produce `masked`.
+
+        Entries and properties preserve request order. Unknown or disabled
+        accessors receive `none` for every requested property. Invalid object
+        references, duplicate items, duplicate properties, and limits above
+        100 object types, 200 properties per object type, or 1000 total
+        properties are rejected before authorization work starts. An invalid,
+        partial, or unavailable Enterprise decision returns 503; callers must
+        fail the complete business request rather than infer a fallback.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PropertyLevelsRequest'
+            examples:
+              customerProperties:
+                value:
+                  accessor_id: user-a
+                  items:
+                    - object_type_ref: supply_chain/customer
+                      properties: [name, mobile, id_card]
+      responses:
+        '200':
+          description: Effective levels for every requested property in stable request order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyLevelsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '503':
           $ref: '#/components/responses/AuthorizationUnavailable'
   /resources:
@@ -433,6 +481,77 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FilteredResource'
+    PropertyAccessLevel:
+      type: string
+      enum: [none, schema, masked, full]
+      description: Ordered effective visibility; unknown values are invalid and fail closed.
+    PropertyLevelsRequest:
+      type: object
+      additionalProperties: false
+      required: [accessor_id, items]
+      properties:
+        accessor_id:
+          type: string
+          minLength: 1
+          description: Concrete caller identity derived by the trusted workload from its authentication context.
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PropertyLevelsRequestItem'
+    PropertyLevelsRequestItem:
+      type: object
+      additionalProperties: false
+      required: [object_type_ref, properties]
+      properties:
+        object_type_ref:
+          type: string
+          minLength: 3
+          maxLength: 81
+          pattern: '^[a-z0-9][a-z0-9_-]{0,39}/[a-z0-9][a-z0-9_-]{0,39}$'
+          description: Canonical resource ID part `<kn_id>/<ot_id>` without an `object_type:` prefix.
+        properties:
+          type: array
+          minItems: 1
+          maxItems: 200
+          uniqueItems: true
+          items:
+            type: string
+            pattern: '^[a-zA-Z0-9][a-zA-Z0-9_-]{0,39}$'
+    PropertyLevelsResponse:
+      type: object
+      additionalProperties: false
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertyLevelsEntry'
+    PropertyLevelsEntry:
+      type: object
+      additionalProperties: false
+      required: [object_type_ref, properties]
+      properties:
+        object_type_ref:
+          type: string
+        properties:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertyLevelDecision'
+    PropertyLevelDecision:
+      type: object
+      additionalProperties: false
+      required: [name, level, source]
+      properties:
+        name:
+          type: string
+        level:
+          $ref: '#/components/schemas/PropertyAccessLevel'
+        source:
+          type: string
+          enum: [object_type, property]
+          description: The layer that constrained the effective level; `property` is emitted only for an explicit property grant.
     PolicyWriteRequest:
       type: object
       required: [accessor_id, resource, operations]
