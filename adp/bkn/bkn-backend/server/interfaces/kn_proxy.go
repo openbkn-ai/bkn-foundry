@@ -121,9 +121,10 @@ type ProxyGrantCheckResult struct {
 }
 
 type ProxyGrantSyncResult struct {
-	Added     int `json:"added"`
-	Revoked   int `json:"revoked"`
-	Unchanged int `json:"unchanged"`
+	Added       int `json:"added"`
+	Transferred int `json:"transferred"`
+	Revoked     int `json:"revoked"`
+	Unchanged   int `json:"unchanged"`
 }
 
 type ProxyGrantReconcileResult struct {
@@ -132,6 +133,7 @@ type ProxyGrantReconcileResult struct {
 	MarkersCreated    int `json:"markers_created"`
 	MarkersRemoved    int `json:"markers_removed"`
 	UntrackedPolicies int `json:"untracked_policies"`
+	InvalidSources    int `json:"invalid_sources"`
 }
 
 // KNProxyReconcileReport identifies BKN mapping defects and reports any

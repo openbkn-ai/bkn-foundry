@@ -44,6 +44,32 @@ func TestSafeClientUsesManagedInternalContracts(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(interfaces.ProxyGrantCheckResult{Allowed: true})
 	})
+	mux.HandleFunc("/api/safe/in/v1/proxy-grant-sources/sync", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			ProxyID string `json:"proxy_account_id"`
+			Grantor string `json:"grantor_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body.ProxyID != "proxy-1" || body.Grantor != "grantor-1" {
+			t.Fatalf("sync body = %#v", body)
+		}
+		_ = json.NewEncoder(w).Encode(interfaces.ProxyGrantSyncResult{Transferred: 1})
+	})
+	mux.HandleFunc("/api/safe/in/v1/proxy-grant-sources/reconcile", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			ProxyID     string `json:"proxy_account_id"`
+			RequestedBy string `json:"requested_by"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body.ProxyID != "proxy-1" || body.RequestedBy != "operator-1" {
+			t.Fatalf("reconcile body = %#v", body)
+		}
+		_ = json.NewEncoder(w).Encode(interfaces.ProxyGrantReconcileResult{InvalidSources: 2})
+	})
 	mux.HandleFunc("/api/safe/in/v1/managed-proxy-accounts/proxy-1/restore", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(interfaces.ManagedProxyAccount{
 			ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleActive, Enabled: true,
@@ -68,6 +94,14 @@ func TestSafeClientUsesManagedInternalContracts(t *testing.T) {
 	})
 	if err != nil || !result.Allowed {
 		t.Fatalf("CheckGrant() = %#v, %v", result, err)
+	}
+	syncResult, err := client.SyncGrants(t.Context(), "proxy-1", "grantor-1", nil)
+	if err != nil || syncResult.Transferred != 1 {
+		t.Fatalf("SyncGrants() = %#v, %v", syncResult, err)
+	}
+	reconcileResult, err := client.ReconcileGrants(t.Context(), "proxy-1", "operator-1")
+	if err != nil || reconcileResult.InvalidSources != 2 {
+		t.Fatalf("ReconcileGrants() = %#v, %v", reconcileResult, err)
 	}
 }
 

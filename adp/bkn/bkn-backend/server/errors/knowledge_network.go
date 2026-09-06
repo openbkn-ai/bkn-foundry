@@ -29,11 +29,12 @@ const (
 	BknBackend_KnowledgeNetwork_ProxyMappingNotFound = "BknBackend.KnowledgeNetwork.Proxy.MappingNotFound"
 
 	// Proxy runtime state
-	BknBackend_KnowledgeNetwork_ProxyBindingInvalid = "BknBackend.KnowledgeNetwork.Proxy.BindingInvalid"
-	BknBackend_KnowledgeNetwork_ProxyDisabled       = "BknBackend.KnowledgeNetwork.Proxy.Disabled"
-	BknBackend_KnowledgeNetwork_ProxySyncFailed     = "BknBackend.KnowledgeNetwork.Proxy.SyncFailed"
-	BknBackend_KnowledgeNetwork_ProxySyncPending    = "BknBackend.KnowledgeNetwork.Proxy.SyncPending"
-	BknBackend_KnowledgeNetwork_ProxyUnavailable    = "BknBackend.KnowledgeNetwork.Proxy.Unavailable"
+	BknBackend_KnowledgeNetwork_ProxyBindingInvalid    = "BknBackend.KnowledgeNetwork.Proxy.BindingInvalid"
+	BknBackend_KnowledgeNetwork_ProxyPermissionMissing = "BknBackend.KnowledgeNetwork.Proxy.PermissionMissing"
+	BknBackend_KnowledgeNetwork_ProxyDisabled          = "BknBackend.KnowledgeNetwork.Proxy.Disabled"
+	BknBackend_KnowledgeNetwork_ProxySyncFailed        = "BknBackend.KnowledgeNetwork.Proxy.SyncFailed"
+	BknBackend_KnowledgeNetwork_ProxySyncPending       = "BknBackend.KnowledgeNetwork.Proxy.SyncPending"
+	BknBackend_KnowledgeNetwork_ProxyUnavailable       = "BknBackend.KnowledgeNetwork.Proxy.Unavailable"
 
 	// 500
 	BknBackend_KnowledgeNetwork_InternalError                             = "BknBackend.KnowledgeNetwork.InternalError"
@@ -82,6 +83,7 @@ var (
 
 		// Proxy runtime state
 		BknBackend_KnowledgeNetwork_ProxyBindingInvalid,
+		BknBackend_KnowledgeNetwork_ProxyPermissionMissing,
 		BknBackend_KnowledgeNetwork_ProxyDisabled,
 		BknBackend_KnowledgeNetwork_ProxySyncFailed,
 		BknBackend_KnowledgeNetwork_ProxySyncPending,

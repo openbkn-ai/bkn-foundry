@@ -256,25 +256,3 @@ func stableProxySourceID(knID, bindingType, bindingID string) string {
 	digest := sha256.Sum256([]byte(strings.Join([]string{knID, bindingType, bindingID}, "\x00")))
 	return hex.EncodeToString(digest[:])
 }
-
-func addedProxyGrantSources(current, candidate []interfaces.ProxyGrantSourceSpec) []interfaces.ProxyGrantSourceSpec {
-	currentKeys := make(map[string]struct{}, len(current))
-	for _, source := range current {
-		currentKeys[proxyGrantSourceKey(source)] = struct{}{}
-	}
-	added := make([]interfaces.ProxyGrantSourceSpec, 0, len(candidate))
-	for _, source := range candidate {
-		if _, exists := currentKeys[proxyGrantSourceKey(source)]; !exists {
-			added = append(added, source)
-		}
-	}
-	return added
-}
-
-func proxyGrantSourceKey(source interfaces.ProxyGrantSourceSpec) string {
-	return strings.Join([]string{
-		source.ResourceType, source.ResourceID, source.Operation,
-		source.SourceType, source.SourceID, source.KNID,
-		source.BindingType, source.BindingID,
-	}, "\x00")
-}

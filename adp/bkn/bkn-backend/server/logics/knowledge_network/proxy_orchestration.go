@@ -29,7 +29,7 @@ const (
 
 type proxyPublishPlan struct {
 	mapping        *interfaces.KNProxyAccount
-	grantorID      string
+	delegatorID    string
 	modelVersion   string
 	lockOwner      string
 	createdMapping bool
@@ -38,6 +38,18 @@ type proxyPublishPlan struct {
 type publishedProxyBindingCacheEntry struct {
 	modelVersion string
 	sources      []interfaces.ProxyGrantSourceSpec
+}
+
+type missingProxyPermission struct {
+	ResourceType string `json:"resource_type"`
+	ResourceID   string `json:"resource_id"`
+	Operation    string `json:"operation"`
+	BindingType  string `json:"binding_type"`
+	BindingID    string `json:"binding_id"`
+}
+
+type missingProxyPermissionDetails struct {
+	MissingPermissions []missingProxyPermission `json:"missing_permissions"`
 }
 
 func (kns *knowledgeNetworkService) proxyOrchestrationEnabled(branch string) bool {
@@ -71,15 +83,10 @@ func (kns *knowledgeNetworkService) prepareProxyPublishWithBaseline(ctx context.
 	}()
 
 	candidate := kn
-	var currentSources []interfaces.ProxyGrantSourceSpec
 	if mergeCurrent {
 		current, loadErr := kns.ExportKNForProjection(ctx, kn.KNID)
 		if loadErr != nil {
 			return nil, loadErr
-		}
-		currentSources, _, err = buildProxyGrantSources(current)
-		if err != nil {
-			return nil, invalidProxyTargetError(ctx, err)
 		}
 		candidate = mergeProxyMutationChanges(current, kn, mergeMode)
 	}
@@ -87,11 +94,11 @@ func (kns *knowledgeNetworkService) prepareProxyPublishWithBaseline(ctx context.
 	if err != nil {
 		return nil, invalidProxyTargetError(ctx, err)
 	}
-	preflightSources := sources
-	if mergeCurrent && !plan.createdMapping {
-		preflightSources = addedProxyGrantSources(currentSources, sources)
-	}
-	if err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.grantorID, preflightSources); err != nil {
+	// Check the complete desired set, not only additions. Safe preserves a still-valid
+	// historical delegator and asks the current editor to take over only when that
+	// delegator has lost the exact downstream operation. Doing this before the
+	// business write avoids discovering an invalid retained source after commit.
+	if err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources); err != nil {
 		return nil, err
 	}
 	plan.modelVersion = version
@@ -100,10 +107,10 @@ func (kns *knowledgeNetworkService) prepareProxyPublishWithBaseline(ctx context.
 }
 
 func (kns *knowledgeNetworkService) beginProxyPublish(ctx context.Context, kn *interfaces.KN,
-	createIfMissing, authorizeMissing bool) (*proxyPublishPlan, error) {
-	grantorID := accountIDFromContext(ctx)
-	if grantorID == "" {
-		return nil, proxyHTTPError(ctx, http.StatusForbidden, "proxy grantor identity is unavailable")
+	createIfMissing, checkMissingWrite bool) (*proxyPublishPlan, error) {
+	delegatorID := accountIDFromContext(ctx)
+	if delegatorID == "" {
+		return nil, proxyHTTPError(ctx, http.StatusForbidden, "proxy delegator identity is unavailable")
 	}
 
 	mapping, err := kns.kpa.Get(ctx, kn.KNID)
@@ -115,16 +122,16 @@ func (kns *knowledgeNetworkService) beginProxyPublish(ctx context.Context, kn *i
 		if !createIfMissing {
 			return nil, proxyHTTPError(ctx, http.StatusConflict, "knowledge network proxy mapping is unavailable")
 		}
-		if authorizeMissing {
+		if checkMissingWrite {
 			if err := kns.ps.CheckPermission(ctx, interfaces.PermissionResource{
 				Type: interfaces.RESOURCE_TYPE_KN,
 				ID:   kn.KNID,
-			}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}); err != nil {
+			}, []string{interfaces.OPERATION_TYPE_MODIFY}); err != nil {
 				return nil, err
 			}
 		}
 		mappingKN := kn
-		if authorizeMissing && strings.TrimSpace(kn.KNName) == "" {
+		if checkMissingWrite && strings.TrimSpace(kn.KNName) == "" {
 			existingKN, loadErr := kns.kna.GetKNByID(ctx, kn.KNID, interfaces.MAIN_BRANCH)
 			if loadErr != nil || existingKN == nil {
 				return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "load knowledge network for proxy mapping")
@@ -139,11 +146,11 @@ func (kns *knowledgeNetworkService) beginProxyPublish(ctx context.Context, kn *i
 		}
 	}
 	if mapping.LifecycleStatus == interfaces.KNProxyLifecycleArchived && createIfMissing {
-		if authorizeMissing {
+		if checkMissingWrite {
 			if err := kns.ps.CheckPermission(ctx, interfaces.PermissionResource{
 				Type: interfaces.RESOURCE_TYPE_KN,
 				ID:   kn.KNID,
-			}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}); err != nil {
+			}, []string{interfaces.OPERATION_TYPE_MODIFY}); err != nil {
 				return nil, err
 			}
 		}
@@ -164,7 +171,7 @@ func (kns *knowledgeNetworkService) beginProxyPublish(ctx context.Context, kn *i
 
 	lockOwner := uuid.NewString()
 	if err := kns.acquireProxyLock(ctx, kn.KNID, lockOwner); err != nil {
-		if createdMapping && !authorizeMissing {
+		if createdMapping && !checkMissingWrite {
 			kns.abortCreatedProxy(context.WithoutCancel(ctx), &proxyPublishPlan{
 				mapping: mapping, createdMapping: true,
 			})
@@ -172,7 +179,7 @@ func (kns *knowledgeNetworkService) beginProxyPublish(ctx context.Context, kn *i
 		return nil, err
 	}
 	return &proxyPublishPlan{
-		mapping: mapping, grantorID: grantorID, lockOwner: lockOwner, createdMapping: createdMapping,
+		mapping: mapping, delegatorID: delegatorID, lockOwner: lockOwner, createdMapping: createdMapping,
 	}, nil
 }
 
@@ -233,18 +240,35 @@ func (kns *knowledgeNetworkService) abortCreatedProxy(ctx context.Context, plan 
 	}
 }
 
-func (kns *knowledgeNetworkService) preflightProxySources(ctx context.Context, proxyID, grantorID string,
+func (kns *knowledgeNetworkService) preflightProxySources(ctx context.Context, proxyID, delegatorID string,
 	sources []interfaces.ProxyGrantSourceSpec) error {
+	missing := make([]missingProxyPermission, 0)
 	for _, source := range sources {
-		result, err := kns.mpa.CheckGrant(ctx, proxyID, grantorID, source)
+		result, err := kns.mpa.CheckGrant(ctx, proxyID, delegatorID, source)
 		if err != nil {
 			return proxyHTTPError(ctx, http.StatusServiceUnavailable, "proxy permission preflight failed")
 		}
 		if !result.Allowed {
-			return proxyHTTPError(ctx, http.StatusForbidden, fmt.Sprintf(
-				"proxy permission preflight denied for %s %s on %s %s with operation %s",
-				source.BindingType, source.BindingID, source.ResourceType, source.ResourceID, source.Operation))
+			missing = append(missing, missingProxyPermission{
+				ResourceType: source.ResourceType,
+				ResourceID:   source.ResourceID,
+				Operation:    source.Operation,
+				BindingType:  source.BindingType,
+				BindingID:    source.BindingID,
+			})
 		}
+	}
+	if len(missing) > 0 {
+		sort.Slice(missing, func(i, j int) bool {
+			left := fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%s", missing[i].ResourceType,
+				missing[i].ResourceID, missing[i].Operation, missing[i].BindingType, missing[i].BindingID)
+			right := fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%s", missing[j].ResourceType,
+				missing[j].ResourceID, missing[j].Operation, missing[j].BindingType, missing[j].BindingID)
+			return left < right
+		})
+		return rest.NewHTTPError(ctx, http.StatusForbidden,
+			berrors.BknBackend_KnowledgeNetwork_ProxyPermissionMissing).
+			WithErrorDetails(missingProxyPermissionDetails{MissingPermissions: missing})
 	}
 	return nil
 }
@@ -280,35 +304,16 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	currentSources, currentVersion, buildErr := buildProxyGrantSources(current)
-	if buildErr != nil {
-		return invalidProxyTargetError(ctx, buildErr)
-	}
-	if plan.createdMapping {
-		if err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.grantorID, currentSources); err != nil {
-			return err
-		}
-		plan.modelVersion = currentVersion
-		if err := kns.markProxyPendingInNewTransaction(ctx, plan, currentVersion); err != nil {
-			return err
-		}
-		if err := kns.finishProxyPublish(ctx, plan); err != nil {
-			return err
-		}
-	}
-
 	candidate := mergeProxyMutationChanges(current, changes, mergeMode)
 	sources, version, err := buildProxyGrantSources(candidate)
 	if err != nil {
 		return invalidProxyTargetError(ctx, err)
 	}
-	// Existing grants were already authorized when they were installed. Only
-	// additions and binding replacements require the current editor to hold
-	// AUTHORIZE plus the requested downstream operation. Removals are applied
-	// by the post-commit full sync and must remain usable as a repair path even
-	// when the old target no longer exists or is no longer delegable.
-	if err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.grantorID,
-		addedProxyGrantSources(currentSources, sources)); err != nil {
+	// Preflight the complete desired set. Safe accepts retained sources whose
+	// historical delegator is still valid, and requires this editor's exact
+	// downstream operation only for additions or an explicit delegator transfer.
+	// Removed sources are absent from the candidate and therefore need no check.
+	if err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources); err != nil {
 		return err
 	}
 	plan.modelVersion = version
@@ -466,7 +471,7 @@ func (kns *knowledgeNetworkService) markProxyPending(ctx context.Context, tx *sq
 	if plan == nil {
 		return nil
 	}
-	if err := kns.kpa.SetPending(ctx, tx, plan.mapping.KNID, plan.modelVersion, plan.grantorID, time.Now().UnixMilli()); err != nil {
+	if err := kns.kpa.SetPending(ctx, tx, plan.mapping.KNID, plan.modelVersion, plan.delegatorID, time.Now().UnixMilli()); err != nil {
 		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "mark proxy synchronization pending")
 	}
 	return nil
@@ -492,7 +497,7 @@ func (kns *knowledgeNetworkService) finishProxyPublish(ctx context.Context, plan
 		}
 		plan.modelVersion = latestVersion
 	}
-	if _, err := kns.mpa.SyncGrants(ctx, plan.mapping.ProxyAccountID, plan.grantorID, sources); err != nil {
+	if _, err := kns.mpa.SyncGrants(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources); err != nil {
 		kns.recordProxySyncFailure(ctx, plan, latestVersion, err)
 		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "synchronize latest proxy permissions")
 	}
@@ -586,7 +591,7 @@ func (kns *knowledgeNetworkService) prepareProxyDelete(ctx context.Context, knID
 	if mapping == nil {
 		return nil, nil
 	}
-	plan := &proxyPublishPlan{mapping: mapping, grantorID: grantorID, lockOwner: uuid.NewString(), modelVersion: mapping.PublishedModelVersion}
+	plan := &proxyPublishPlan{mapping: mapping, delegatorID: grantorID, lockOwner: uuid.NewString(), modelVersion: mapping.PublishedModelVersion}
 	if err := kns.acquireProxyLock(ctx, knID, plan.lockOwner); err != nil {
 		return nil, err
 	}
@@ -615,7 +620,7 @@ func (kns *knowledgeNetworkService) finalizeProxyDelete(ctx context.Context, pla
 			return proxyHTTPError(ctx, http.StatusServiceUnavailable, "record disabled knowledge network proxy")
 		}
 	}
-	if _, err := kns.mpa.SyncGrants(ctx, plan.mapping.ProxyAccountID, plan.grantorID,
+	if _, err := kns.mpa.SyncGrants(ctx, plan.mapping.ProxyAccountID, plan.delegatorID,
 		[]interfaces.ProxyGrantSourceSpec{}); err != nil {
 		kns.recordProxySyncFailure(ctx, plan, plan.mapping.PublishedModelVersion, err)
 		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "clear knowledge network proxy grants")
@@ -667,7 +672,7 @@ func (kns *knowledgeNetworkService) RetryKNProxySync(ctx context.Context, knID s
 		return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "proxy orchestration is disabled")
 	}
 	if err := kns.ps.CheckPermission(ctx, interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID},
-		[]string{interfaces.OPERATION_TYPE_AUTHORIZE}); err != nil {
+		[]string{interfaces.OPERATION_TYPE_MODIFY}); err != nil {
 		return nil, err
 	}
 	latest, err := kns.ExportKNForProjection(ctx, knID)
@@ -939,7 +944,7 @@ func (kns *knowledgeNetworkService) ReconcileKNProxies(ctx context.Context, requ
 			continue
 		}
 		if result.PoliciesRestored != 0 || result.PoliciesRemoved != 0 || result.MarkersCreated != 0 ||
-			result.MarkersRemoved != 0 || result.UntrackedPolicies != 0 {
+			result.MarkersRemoved != 0 || result.UntrackedPolicies != 0 || result.InvalidSources != 0 {
 			report.AuthorizationDrift[mapping.KNID] = result
 		}
 	}
