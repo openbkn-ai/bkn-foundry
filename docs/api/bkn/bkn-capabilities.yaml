@@ -127,6 +127,19 @@ info:
     exists so an empty name is not read as a deleted capability; an outage and a deletion must
     not look alike.
 
+    ## The internal face answers differently
+
+    `GET /api/bkn-backend/in/v1/knowledge-networks/{kn_id}/capabilities` returns **bare
+    references** — `capability_type`, `box_id`, `capability_id` — with no metadata, no paging and
+    no box summaries.
+
+    Context Loader calls it on every recall to learn what is in scope before asking the execution
+    factory to search inside that scope. Backfilling names here would add a service hop per
+    recall to produce exactly what the caller is about to fetch itself, and paging it would hand
+    back a subset of the scope, which is a different scope. A network with no bindings resolves
+    to an empty list rather than an error: "this network has no skills" is an answer, not a
+    broken dependency.
+
     **Prefix aliases**: every path below is also served under `/api/ontology-manager/v1`, and
     the internal face under `/api/bkn-backend/in/v1` and `/api/ontology-manager/in/v1`.
 paths:

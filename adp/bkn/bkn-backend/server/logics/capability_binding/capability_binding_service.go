@@ -308,3 +308,53 @@ func (cbs *capabilityBindingService) DeleteCapabilitiesByKnID(ctx context.Contex
 	span.SetStatus(codes.Ok, "")
 	return nil
 }
+
+// ResolveCapabilities returns the references bound to one knowledge network branch.
+//
+// No metadata and no paging. Context Loader uses this to decide what is in scope before asking
+// the execution factory to search inside it, so a page of the scope would be a different, smaller
+// scope — and the names it would carry are the ones the caller is about to fetch anyway.
+func (cbs *capabilityBindingService) ResolveCapabilities(ctx context.Context, knID, branch,
+	capabilityType string) (*interfaces.CapabilityReferenceList, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Resolve capabilities")
+	defer span.End()
+
+	if err := cbs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_KN,
+		ID:   knID,
+	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
+		return nil, err
+	}
+
+	capabilityType = strings.TrimSpace(capabilityType)
+	if capabilityType != "" && !interfaces.IsValidCapabilityType(capabilityType) {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			berrors.BknBackend_CapabilityBinding_InvalidCapabilityType).
+			WithErrorDetails(fmt.Sprintf("unsupported capability_type: %s", capabilityType))
+	}
+
+	bindings, err := cbs.cba.ListBindings(ctx, interfaces.CapabilityBindingsQueryParams{
+		KNID:           knID,
+		Branch:         branch,
+		CapabilityType: capabilityType,
+	})
+	if err != nil {
+		logger.Errorf("ResolveCapabilities in knowledge network[%s] error: %v", knID, err)
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_CapabilityBinding_InternalError_ListBindingsFailed).WithErrorDetails(err.Error())
+	}
+
+	// An unbound network resolves to an empty list, not an error: "this network has no skills" is
+	// an answer, and turning it into a failure would make retrieval report a broken dependency.
+	entries := make([]*interfaces.CapabilityReference, 0, len(bindings))
+	for _, binding := range bindings {
+		entries = append(entries, &interfaces.CapabilityReference{
+			CapabilityType: binding.CapabilityType,
+			BoxID:          binding.OwnerID,
+			CapabilityID:   binding.CapabilityID,
+		})
+	}
+	span.SetStatus(codes.Ok, "")
+	return &interfaces.CapabilityReferenceList{Entries: entries}, nil
+}
