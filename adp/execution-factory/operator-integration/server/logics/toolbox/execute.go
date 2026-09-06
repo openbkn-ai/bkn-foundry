@@ -16,6 +16,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
+	proxyexecution "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/proxy_execution"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
@@ -364,6 +365,9 @@ func (s *ToolServiceImpl) executeTool(ctx context.Context, req *interfaces.Execu
 		} else {
 			s.logWithheldManagedContext(ctx, req, url)
 		}
+	}
+	if err = proxyexecution.AuthorizeOutbound(ctx, s.ProxyAuthorizer, s.ProxyAudit); err != nil {
+		return nil, err
 	}
 	resp, err = s.Proxy.HandlerRequest(ctx, proxyReq)
 	return

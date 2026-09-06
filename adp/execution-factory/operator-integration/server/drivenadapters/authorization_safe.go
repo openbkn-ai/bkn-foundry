@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
@@ -256,11 +257,14 @@ func (s *safeAuthorization) get(ctx context.Context, path string, query url.Valu
 		return err
 	}
 	req.Header.Set(sharedrest.AcceptLanguageHeader, sharedrest.GetLanguageByCtx(ctx))
+	for key, value := range common.BuildTraceHeaders(ctx) {
+		req.Header.Set(key, value)
+	}
 	resp, err := s.http.Do(req)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("bkn-safe GET %s: %d: %s", path, resp.StatusCode, data)
@@ -282,11 +286,14 @@ func (s *safeAuthorization) do(ctx context.Context, method, path string, body, o
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set(sharedrest.AcceptLanguageHeader, sharedrest.GetLanguageByCtx(ctx))
+	for key, value := range common.BuildTraceHeaders(ctx) {
+		req.Header.Set(key, value)
+	}
 	resp, err := s.http.Do(req)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("bkn-safe %s %s: %d: %s", method, path, resp.StatusCode, data)

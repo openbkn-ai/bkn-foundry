@@ -12,6 +12,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/telemetry"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
+	proxyexecution "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/proxy_execution"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
@@ -179,6 +180,9 @@ func (s *mcpServiceImpl) CallMCPTool(ctx context.Context, req *interfaces.MCPPro
 }
 
 func (s *mcpServiceImpl) callTool(ctx context.Context, req *CallToolRequest) (*CallToolResponse, error) {
+	if err := proxyexecution.AuthorizeOutbound(ctx, s.ProxyAuthorizer, s.ProxyAudit); err != nil {
+		return nil, err
+	}
 	mcpClient, err := s.getMCPClient(ctx, req.ListToolsRequest)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("get mcp client error: %v", err)

@@ -21,6 +21,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/operator"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/proxy"
+	proxyexecution "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/proxy_execution"
 )
 
 var (
@@ -49,6 +50,8 @@ type ToolServiceImpl struct {
 	MetadataService  interfaces.IMetadataService
 	ActionEvidence   bkntrace.Emitter
 	ActionExecutions bkntrace.ExecutionGate
+	ProxyAuthorizer  interfaces.ProxyExecutionAuthorizer
+	ProxyAudit       interfaces.ProxyExecutionAuditRecorder
 }
 
 // NewToolServiceImpl creates a toolbox service.
@@ -72,6 +75,10 @@ func NewToolServiceImpl() interfaces.IToolService {
 			MetadataService:  metadata.NewMetadataService(),
 			ActionEvidence:   bkntrace.NewHTTPEmitter(),
 			ActionExecutions: bkntrace.NewRedisExecutionGate(redisClient),
+			ProxyAuthorizer: proxyexecution.NewAuthorizer(
+				drivenadapters.NewProxyExecutionAuthorizationAccess(),
+			),
+			ProxyAudit: proxyexecution.NewAuditLogger(conf.GetLogger()),
 		}
 	})
 	return toolService

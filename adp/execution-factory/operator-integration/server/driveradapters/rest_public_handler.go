@@ -65,6 +65,7 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 		middlewareTraceContext,
 		sharedrest.LanguageMiddleware(),
 		sharedrest.PrivateNoCacheMiddleware(),
+		stripProxyExecutionHeaders(),
 		middlewareIntrospectVerify(r.Hydra, r.AppKeys),
 		OperationAudit(r.auditStore),
 	)

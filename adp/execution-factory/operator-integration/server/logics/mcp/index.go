@@ -16,6 +16,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/category"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/mcpinstance"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
+	proxyexecution "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/proxy_execution"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/toolbox"
 )
 
@@ -38,13 +39,16 @@ type mcpServiceImpl struct {
 	ToolService               interfaces.IToolService
 	AuditLog                  interfaces.LogModelOperator[*metric.AuditLogBuilderParams]
 	MCPInstanceService        interfaces.InstanceService
+	ProxyAuthorizer           interfaces.ProxyExecutionAuthorizer
+	ProxyAudit                interfaces.ProxyExecutionAuditRecorder
 }
 
 // NewMCPServiceImpl initializes the MCP service.
 func NewMCPServiceImpl() interfaces.IMCPService {
 	mOnce.Do(func() {
+		conf := config.NewConfigLoader()
 		s := &mcpServiceImpl{
-			logger:                    config.NewConfigLoader().GetLogger(),
+			logger:                    conf.GetLogger(),
 			DBTx:                      dbaccess.NewBaseTx(),
 			DBMCPServerConfig:         dbaccess.NewMCPServerConfigDBSingleton(),
 			DBMCPServerRelease:        dbaccess.NewMCPServerReleaseDBSingleton(),
@@ -56,6 +60,10 @@ func NewMCPServiceImpl() interfaces.IMCPService {
 			AuthService:               auth.NewAuthServiceImpl(),
 			ToolService:               toolbox.NewToolServiceImpl(),
 			AuditLog:                  metric.NewAuditLogBuilder(),
+			ProxyAuthorizer: proxyexecution.NewAuthorizer(
+				drivenadapters.NewProxyExecutionAuthorizationAccess(),
+			),
+			ProxyAudit: proxyexecution.NewAuditLogger(conf.GetLogger()),
 		}
 		s.MCPInstanceService = mcpinstance.NewMCPInstanceService(s)
 		mcpService = s
