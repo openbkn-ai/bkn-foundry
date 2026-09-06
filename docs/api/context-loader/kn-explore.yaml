@@ -741,7 +741,11 @@ components:
 
     ResourceInfo:
       type: object
-      description: 对象类的数据来源。
+      nullable: true
+      description: |
+        对象类绑定的数据资源；未绑定数据源时为 null，这是合法状态。
+        get_kn_detail 的 summary 和 full 均返回此字段，get_object_types 语义相同。
+        REST 响应与 MCP structuredContent 使用同一约定。
       properties:
         type:
           type: string

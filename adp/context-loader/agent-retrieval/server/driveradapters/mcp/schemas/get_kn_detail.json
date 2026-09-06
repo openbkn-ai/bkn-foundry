@@ -98,9 +98,12 @@
               "description": "说明；仅 detail_level=full 时出现——默认的 summary 只给骨架与 name+type 的属性表，照这一条去取会拿到 None，要完整字段映射改调 get_object_types"
             },
             "data_source": {
-              "type": "object",
+              "type": [
+                "object",
+                "null"
+              ],
               "additionalProperties": true,
-              "description": "绑定的数据资源 {type, id, name}；仅 detail_level=full 时出现——默认的 summary 只给骨架与 name+type 的属性表，照这一条去取会拿到 None，要完整字段映射改调 get_object_types"
+              "description": "绑定的数据资源 {type, id, name}；未绑定数据源时为 null。summary 和 full 均返回此字段。"
             },
             "data_properties": {
               "type": "array",

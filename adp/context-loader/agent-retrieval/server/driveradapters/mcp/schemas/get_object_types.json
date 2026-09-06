@@ -53,9 +53,12 @@
               "description": "说明"
             },
             "data_source": {
-              "type": "object",
+              "type": [
+                "object",
+                "null"
+              ],
               "additionalProperties": true,
-              "description": "绑定的数据资源 {type, id, name}"
+              "description": "绑定的数据资源 {type, id, name}；未绑定数据源时为 null。"
             },
             "data_properties": {
               "type": "array",
