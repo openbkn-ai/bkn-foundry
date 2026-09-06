@@ -116,6 +116,9 @@ paths:
           schema: { type: boolean, default: true }
         - name: search_after
           in: query
+          description: >-
+            Pagination cursor. Accepts the legacy comma-separated form or a JSON array when a string value contains a comma.
+            Numeric literals are preserved exactly.
           schema: { type: string }
       responses:
         '200':

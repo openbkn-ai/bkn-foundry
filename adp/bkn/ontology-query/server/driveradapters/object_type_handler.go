@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -101,11 +100,11 @@ func (r *restHandler) getObjectTypeSampleData(c *gin.Context, requestVisitor hyd
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("invalid sample pagination"))
 		return
 	}
-	searchAfter := []any{}
-	if raw := strings.TrimSpace(c.Query("search_after")); raw != "" {
-		for _, value := range strings.Split(raw, ",") {
-			searchAfter = append(searchAfter, strings.TrimSpace(value))
-		}
+	searchAfter, searchAfterErr := parseSearchAfterQuery(c.Query("search_after"))
+	if searchAfterErr != nil {
+		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("invalid search_after cursor"))
+		return
 	}
 	if !r.authorizeQuery(c, ctx, func() error {
 		return r.qas.AuthorizeObjectTypeQuery(ctx, knID, branch, objectTypeID)
@@ -116,7 +115,7 @@ func (r *restHandler) getObjectTypeSampleData(c *gin.Context, requestVisitor hyd
 		KNID: knID, Branch: branch, ObjectTypeID: objectTypeID,
 		PageQuery: interfaces.PageQuery{
 			Limit: limit, Offset: offset, NeedTotal: needTotal,
-			SearchAfterParams: interfaces.SearchAfterParams{SearchAfter: interfaces.SearchAfterArray(searchAfter)},
+			SearchAfterParams: interfaces.SearchAfterParams{SearchAfter: searchAfter},
 		},
 	})
 	if err != nil {

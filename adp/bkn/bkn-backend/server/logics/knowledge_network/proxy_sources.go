@@ -115,6 +115,20 @@ func buildProxyGrantSources(kn *interfaces.KN) ([]interfaces.ProxyGrantSourceSpe
 		if relationType == nil {
 			continue
 		}
+		backingResource, indirect, err := indirectRelationProxyResource(relationType.MappingRules)
+		if err != nil {
+			return nil, "", fmt.Errorf("relation type %s has invalid indirect mapping rules: %w", relationType.RTID, err)
+		}
+		if indirect && backingResource != nil && strings.TrimSpace(backingResource.ID) != "" {
+			if strings.TrimSpace(backingResource.Type) != interfaces.DATA_SOURCE_TYPE_RESOURCE {
+				return nil, "", fmt.Errorf("relation type %s has unsupported backing data source type", relationType.RTID)
+			}
+			if err := add(interfaces.MODULE_TYPE_RELATION_TYPE, relationType.RTID, "resource",
+				strings.TrimSpace(backingResource.ID), interfaces.OPERATION_TYPE_QUERY_DATA,
+				"backing_data_source"); err != nil {
+				return nil, "", err
+			}
+		}
 		for _, objectTypeID := range []string{relationType.SourceObjectTypeID, relationType.TargetObjectTypeID} {
 			objectTypeID = strings.TrimSpace(objectTypeID)
 			// A non-strict import may keep a relation endpoint empty while the
@@ -209,6 +223,33 @@ func buildProxyGrantSources(kn *interfaces.KN) ([]interfaces.ProxyGrantSourceSpe
 	}
 	digest := sha256.Sum256(canonical)
 	return sources, "sha256:" + hex.EncodeToString(digest[:]), nil
+}
+
+func indirectRelationProxyResource(mappingRules any) (*interfaces.ResourceInfo, bool, error) {
+	switch rules := mappingRules.(type) {
+	case *interfaces.InDirectMapping:
+		if rules == nil {
+			return nil, true, nil
+		}
+		return rules.BackingDataSource, true, nil
+	case interfaces.InDirectMapping:
+		return rules.BackingDataSource, true, nil
+	case map[string]any:
+		if _, exists := rules["backing_data_source"]; !exists {
+			return nil, false, nil
+		}
+		data, err := json.Marshal(rules)
+		if err != nil {
+			return nil, true, err
+		}
+		var decoded interfaces.InDirectMapping
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			return nil, true, err
+		}
+		return decoded.BackingDataSource, true, nil
+	default:
+		return nil, false, nil
+	}
 }
 
 func stableProxySourceID(knID, bindingType, bindingID string) string {

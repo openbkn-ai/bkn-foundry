@@ -276,14 +276,15 @@ func (r *restHandler) QueryActionLogs(c *gin.Context, visitor hydra.Visitor, inc
 		query.StartTimeRange = []int64{query.StartTimeFrom, query.StartTimeTo}
 	}
 
-	// Parse search_after from comma-separated string
-	if query.SearchAfterStr != "" {
-		parts := strings.Split(query.SearchAfterStr, ",")
-		query.SearchAfter = make([]any, len(parts))
-		for i, p := range parts {
-			query.SearchAfter[i] = strings.TrimSpace(p)
-		}
+	searchAfter, err := parseSearchAfterQuery(query.SearchAfterStr)
+	if err != nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+			WithErrorDetails("invalid search_after cursor")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
 	}
+	query.SearchAfter = searchAfter
 
 	// Set default limit
 	if query.Limit <= 0 {

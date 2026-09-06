@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -16,6 +17,47 @@ import (
 	oerrors "ontology-query/errors"
 	"ontology-query/interfaces"
 )
+
+func TestParseSearchAfterQuery(t *testing.T) {
+	t.Run("preserves numeric literals in the legacy comma-separated format", func(t *testing.T) {
+		values, err := parseSearchAfterQuery("18446744073709551615, -42, 1.5, 00123, cursor")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(values) != 5 {
+			t.Fatalf("values = %#v", values)
+		}
+		for index, literal := range []string{"18446744073709551615", "-42", "1.5"} {
+			number, ok := values[index].(json.Number)
+			if !ok || number.String() != literal {
+				t.Fatalf("values[%d] = %#v, want json.Number(%q)", index, values[index], literal)
+			}
+		}
+		if values[3] != "00123" || values[4] != "cursor" {
+			t.Fatalf("string cursor values = %#v", values[3:])
+		}
+	})
+
+	t.Run("accepts a JSON array for strings containing commas", func(t *testing.T) {
+		values, err := parseSearchAfterQuery(`["value,with,comma",18446744073709551615]`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(values) != 2 || values[0] != "value,with,comma" {
+			t.Fatalf("values = %#v", values)
+		}
+		number, ok := values[1].(json.Number)
+		if !ok || number.String() != "18446744073709551615" {
+			t.Fatalf("numeric cursor = %#v", values[1])
+		}
+	})
+
+	t.Run("rejects a malformed JSON array", func(t *testing.T) {
+		if _, err := parseSearchAfterQuery(`[1,`); err == nil {
+			t.Fatal("parseSearchAfterQuery() error = nil")
+		}
+	})
+}
 
 func Test_ValidateHeaderMethodOverride(t *testing.T) {
 	Convey("Test ValidateHeaderMethodOverride", t, func() {

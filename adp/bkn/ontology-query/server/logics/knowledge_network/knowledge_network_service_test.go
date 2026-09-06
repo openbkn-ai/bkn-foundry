@@ -1977,6 +1977,8 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 		knID := "kn1"
 
 		Convey("成功 - 批量获取视图数据", func() {
+			proxy := &knowledgeNetworkProxyResolverStub{}
+			service.proxy = proxy
 			query := &interfaces.SubGraphQueryBaseOnSource{
 				KNID: knID,
 			}
@@ -1991,7 +1993,9 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 			}
 
 			edge := &interfaces.TypeEdge{
+				RelationTypeId: "rt1",
 				RelationType: interfaces.RelationType{
+					RTID:   "rt1",
 					RTName: "relation1",
 				},
 			}
@@ -2027,6 +2031,15 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(result, ShouldNotBeNil)
 			So(len(result), ShouldBeGreaterThan, 0)
+			So(proxy.bindings, ShouldHaveLength, 1)
+			So(proxy.bindings[0], ShouldResemble, interfaces.TrustedProxyBinding{
+				KNID:       knID,
+				ChildType:  interfaces.PermissionResourceTypeRelationType,
+				ChildID:    "rt1",
+				TargetType: interfaces.ProxyTargetTypeResource,
+				TargetID:   "res1",
+				Operation:  interfaces.PermissionOperationQueryData,
+			})
 		})
 
 		Convey("失败 - 获取视图数据错误", func() {

@@ -97,6 +97,42 @@ func TestBuildProxyGrantSourcesSkipsUnboundRelationEndpoint(t *testing.T) {
 	}
 }
 
+func TestBuildProxyGrantSourcesIncludesIndirectRelationBackingResource(t *testing.T) {
+	backing := &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-bridge"}
+	kn := &interfaces.KN{
+		KNID: "kn-1",
+		RelationTypes: []*interfaces.RelationType{{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
+			RTID: "rt-indirect",
+			MappingRules: &interfaces.InDirectMapping{
+				BackingDataSource: backing,
+			},
+		}}},
+	}
+
+	sources, firstVersion, err := buildProxyGrantSources(kn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sources) != 1 {
+		t.Fatalf("indirect relation sources = %#v, want one backing resource grant", sources)
+	}
+	source := sources[0]
+	if source.BindingType != interfaces.MODULE_TYPE_RELATION_TYPE || source.BindingID != "rt-indirect" ||
+		source.ResourceType != "resource" || source.ResourceID != "resource-bridge" ||
+		source.Operation != interfaces.OPERATION_TYPE_QUERY_DATA {
+		t.Fatalf("indirect relation source = %#v", source)
+	}
+
+	backing.ID = "resource-bridge-v2"
+	_, secondVersion, err := buildProxyGrantSources(kn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstVersion == secondVersion {
+		t.Fatal("model version did not change when the indirect relation backing resource changed")
+	}
+}
+
 func TestBuildProxyGrantSourcesSkipsUnscopedMetric(t *testing.T) {
 	kn := &interfaces.KN{
 		KNID:    "kn-1",

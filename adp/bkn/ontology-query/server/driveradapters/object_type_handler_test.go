@@ -9,6 +9,7 @@ package driveradapters
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -155,6 +156,39 @@ func TestObjectTypeSchemaIgnoresForgedProxyHeaders(t *testing.T) {
 	req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_TYPE, "app")
 	req.Header.Set(interfaces.HTTPHeaderBKNCallerID, "forged-caller")
 	req.Header.Set(interfaces.HTTPHeaderBKNTargetID, "unbound-resource")
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestObjectTypeSampleDataPreservesNumericSearchAfter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctrl := gomock.NewController(t)
+	objectService := omock.NewMockObjectTypeService(ctrl)
+	handler := &restHandler{ots: objectService, qas: allowQueryAuthorizationService{}}
+	engine := gin.New()
+	engine.GET("/api/ontology-query/in/v1/knowledge-networks/:kn_id/object-types/:ot_id/sample-data",
+		handler.GetObjectTypeSampleDataByIn)
+
+	objectService.EXPECT().GetObjectTypeSampleData(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, query *interfaces.ObjectQueryBaseOnObjectType) (*interfaces.ObjectTypeSampleData, error) {
+			if len(query.SearchAfter) != 2 {
+				t.Fatalf("search_after = %#v", query.SearchAfter)
+			}
+			number, ok := query.SearchAfter[0].(json.Number)
+			if !ok || number.String() != "18446744073709551615" || query.SearchAfter[1] != "value,with,comma" {
+				t.Fatalf("search_after = %#v", query.SearchAfter)
+			}
+			return &interfaces.ObjectTypeSampleData{}, nil
+		})
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/api/ontology-query/in/v1/knowledge-networks/kn-1/object-types/ot-1/sample-data?"+
+			"search_after=%5B18446744073709551615%2C%22value%2Cwith%2Ccomma%22%5D", nil)
+	req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user-1")
+	req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_TYPE, "user")
 	recorder := httptest.NewRecorder()
 	engine.ServeHTTP(recorder, req)
 	if recorder.Code != http.StatusOK {
