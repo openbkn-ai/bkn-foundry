@@ -140,7 +140,12 @@
     "SkillSearchRequestFailed": "技能检索请求失败。",
     "SkillSearchResponseInvalid": "技能检索响应无效。",
     "SkillNameLookupFailed": "技能名称查询失败。",
-    "SkillNameLookupInvalid": "技能名称查询响应无效。"
+    "SkillNameLookupInvalid": "技能名称查询响应无效。",
+    "ToolScopeKnIDRequired": "kn_id 必填：工具范围取自知识网络已挂载的函数。",
+    "NoBoundToolsInNetwork": "当前知识网络未挂载任何函数工具，因此没有可调用的工具。请在知识网络的「函数」中挂载后重试。",
+    "ToolNotMountedOnNetwork": "该工具未挂载到当前知识网络，无法在此调用。",
+    "ToolSearchRequestFailed": "工具检索请求失败。",
+    "ToolSearchResponseInvalid": "工具检索响应无效。"
   },
   "find_skills": {
     "no_bound_skills": "当前知识网络未挂载任何 Skill，因此没有可召回的 Skill。请在知识网络的「SKILLs」中挂载后重试。",

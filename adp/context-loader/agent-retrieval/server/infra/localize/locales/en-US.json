@@ -140,7 +140,12 @@
     "SkillSearchRequestFailed": "The skill search request failed.",
     "SkillSearchResponseInvalid": "The skill search response is invalid.",
     "SkillNameLookupFailed": "The skill name lookup failed.",
-    "SkillNameLookupInvalid": "The skill name lookup response is invalid."
+    "SkillNameLookupInvalid": "The skill name lookup response is invalid.",
+    "ToolScopeKnIDRequired": "kn_id is required: tool scope is what the knowledge network has mounted.",
+    "NoBoundToolsInNetwork": "This knowledge network has no Function tool mounted, so there is nothing to call. Mount one under Functions in the knowledge network and try again.",
+    "ToolNotMountedOnNetwork": "This tool is not mounted on the knowledge network, so it cannot be called here.",
+    "ToolSearchRequestFailed": "The tool search request failed.",
+    "ToolSearchResponseInvalid": "The tool search response is invalid."
   },
   "find_skills": {
     "no_bound_skills": "This knowledge network has no Skill mounted, so there is nothing to recall. Mount one under SKILLs in the knowledge network and try again.",

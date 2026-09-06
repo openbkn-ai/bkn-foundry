@@ -249,3 +249,52 @@ func (o *operatorIntegrationClient) ExecutePublishedTool(
 	}
 	return result, nil
 }
+
+// searchBoundToolsURI ranks a whitelist of tools. It is on internal-v1, unlike the catalogue
+// calls above: there is no per-caller listing to authorize here, because the whitelist decides
+// the scope and it comes from what the knowledge network bound.
+const searchBoundToolsURI = "/internal-v1/tool-box/tools/search"
+
+// SearchBoundTools ranks the Function tools named by a whitelist.
+//
+// Sending no references returns nothing rather than the whole catalogue, so a binding list that
+// could not be read cannot widen into every tool on the platform.
+func (o *operatorIntegrationClient) SearchBoundTools(ctx context.Context,
+	req *interfaces.SearchBoundToolsRequest) ([]interfaces.ToolHit, error) {
+	if req == nil || len(req.ToolRefs) == 0 {
+		return []interfaces.ToolHit{}, nil
+	}
+
+	fullURL := o.baseURL + searchBoundToolsURI
+	header := o.skillHeader(ctx, "operator.tool.search")
+	header["Content-Type"] = "application/json"
+
+	payload := map[string]any{
+		"query":     req.Query,
+		"tool_refs": req.ToolRefs,
+	}
+	if req.TopK > 0 {
+		payload["top_k"] = req.TopK
+	}
+	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#SearchBoundTools] URL: %s, whitelist=%d",
+		fullURL, len(req.ToolRefs))
+
+	code, respBody, err := o.httpClient.Post(ctx, fullURL, header, payload)
+	if err != nil {
+		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#SearchBoundTools] Request failed, err: %v", err)
+		return nil, skillUpstreamError(ctx, code, "ToolSearchRequestFailed", err)
+	}
+
+	var raw struct {
+		Entries []interfaces.ToolHit `json:"entries"`
+	}
+	if err = sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
+		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#SearchBoundTools] Unmarshal failed, err: %v", err)
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
+			infraErr.LocalizedDetail(ctx, "ToolSearchResponseInvalid"))
+	}
+	if raw.Entries == nil {
+		return []interfaces.ToolHit{}, nil
+	}
+	return raw.Entries, nil
+}

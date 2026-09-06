@@ -135,11 +135,11 @@
   "search_tools": {
     "title": "Tool Search",
     "group_title": "Tools",
-    "description": "Search the published Function tools this account can call (Execution Factory Toolbox Tools). Each hit carries tool_id, toolbox_id and the business input schema; pass them to execute_tool. This is literal name and description matching over the catalogue, not semantic recall: if nothing matches, try another keyword or leave query empty to browse."
+    "description": "Search the Function tools one knowledge network has mounted (Execution Factory Toolbox Tools). The scope is the intersection of what the network mounted and what this account can call, so a network that mounted none returns nothing. Each hit carries tool_id, toolbox_id and the business input schema; pass them to execute_tool."
   },
   "execute_tool": {
     "title": "Execute Tool",
     "group_title": "Tools",
-    "description": "Invoke one published Function tool as the calling principal and return its raw response. toolbox_id and tool_id must come from search_tools, and arguments follows the input_schema it returned. A tool may write to external systems irreversibly, so read its description and use_rule before calling."
+    "description": "Invoke one Function tool mounted on the knowledge network, as the calling principal, and return its raw response. kn_id, toolbox_id and tool_id must come from search_tools, and arguments follows the input_schema it returned. A tool may write to external systems irreversibly, so read its description and use_rule before calling."
   }
 }
