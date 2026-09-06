@@ -186,3 +186,42 @@ func TestBackfillDegrades(t *testing.T) {
 		So(list.MetadataAvailable, ShouldBeFalse)
 	})
 }
+
+// TestWholeBoxTopUpIsAnotherMount pins the flow behind the list page's top-up button: re-issuing
+// the same whole-box mount adds only what is missing. Without this, "3 tools not mounted" would
+// need an endpoint of its own, and the frontend would have to diff the box against the bindings
+// itself.
+func TestWholeBoxTopUpIsAnotherMount(t *testing.T) {
+	Convey("重发整箱挂载即补挂,已绑定的不重复写入", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		service, cba, aoa := newTestServiceWithFactory(t, ctrl)
+		existing := &interfaces.CapabilityBinding{
+			ID: "b1", KNID: "kn1", Branch: "main", CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION,
+			OwnerID: "box-1", CapabilityID: "t1", BoundAsBox: true,
+		}
+		// The box now holds a tool that was added after the first mount.
+		aoa.EXPECT().ListBoxTools(gomock.Any(), "box-1").Return([]*interfaces.ToolBrief{
+			{BoxID: "box-1", BoxStatus: interfaces.EXEC_BOX_STATUS_PUBLISHED, ToolID: "t1", Status: interfaces.EXEC_TOOL_STATUS_ENABLED},
+			{BoxID: "box-1", BoxStatus: interfaces.EXEC_BOX_STATUS_PUBLISHED, ToolID: "t2-new", Status: interfaces.EXEC_TOOL_STATUS_ENABLED},
+		}, nil)
+		cba.EXPECT().GetBindingByCapability(gomock.Any(), "kn1", "main",
+			interfaces.CAPABILITY_TYPE_FUNCTION, "box-1", "t1").Return(existing, nil)
+		cba.EXPECT().GetBindingByCapability(gomock.Any(), "kn1", "main",
+			interfaces.CAPABILITY_TYPE_FUNCTION, "box-1", "t2-new").Return(nil, nil)
+		// Only the new tool is written.
+		cba.EXPECT().CreateBindings(gomock.Any(), gomock.Nil(), gomock.Len(1)).Return(nil)
+
+		bindings, err := service.AttachCapabilities(context.Background(), nil, "kn1", "main",
+			[]*interfaces.AttachCapabilityEntry{
+				{CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, OwnerID: "box-1", AllTools: true},
+			})
+
+		So(err, ShouldBeNil)
+		So(len(bindings), ShouldEqual, 2)
+		So(bindings[0].ID, ShouldEqual, "b1")
+		So(bindings[1].CapabilityID, ShouldEqual, "t2-new")
+		So(bindings[1].BoundAsBox, ShouldBeTrue)
+	})
+}
