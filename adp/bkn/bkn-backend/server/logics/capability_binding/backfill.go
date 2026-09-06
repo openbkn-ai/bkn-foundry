@@ -34,7 +34,8 @@ type backfillResult struct {
 // the point of the endpoint; the names are decoration, and failing the whole request over them
 // would take the mount UI down with the factory.
 func (cbs *capabilityBindingService) backfillMetadata(ctx context.Context,
-	bindings []*interfaces.CapabilityBinding, withDetail bool) backfillResult {
+	query interfaces.CapabilityBindingsQueryParams, bindings []*interfaces.CapabilityBinding,
+	withDetail bool) backfillResult {
 	result := backfillResult{available: true}
 	if len(bindings) == 0 {
 		return result
@@ -52,7 +53,7 @@ func (cbs *capabilityBindingService) backfillMetadata(ctx context.Context,
 	}
 
 	if len(boxBindings) > 0 {
-		summaries, ok := cbs.backfillFunctions(ctx, boxBindings, withDetail)
+		summaries, ok := cbs.backfillFunctions(ctx, query, boxBindings, withDetail)
 		result.boxes = summaries
 		result.available = result.available && ok
 	}
@@ -65,7 +66,8 @@ func (cbs *capabilityBindingService) backfillMetadata(ctx context.Context,
 // backfillFunctions resolves one tool box per call and reports what is bound versus what the box
 // currently holds.
 func (cbs *capabilityBindingService) backfillFunctions(ctx context.Context,
-	boxBindings map[string][]*interfaces.CapabilityBinding, withDetail bool) ([]*interfaces.CapabilityBoxSummary, bool) {
+	query interfaces.CapabilityBindingsQueryParams, boxBindings map[string][]*interfaces.CapabilityBinding,
+	withDetail bool) ([]*interfaces.CapabilityBoxSummary, bool) {
 	available := true
 	summaries := make([]*interfaces.CapabilityBoxSummary, 0, len(boxBindings))
 
@@ -99,7 +101,6 @@ func (cbs *capabilityBindingService) backfillFunctions(ctx context.Context,
 			summary.BoxName = tool.BoxName
 		}
 
-		mounted := map[string]struct{}{}
 		for _, binding := range bindings {
 			tool, ok := byToolID[binding.CapabilityID]
 			if !ok {
@@ -112,11 +113,21 @@ func (cbs *capabilityBindingService) backfillFunctions(ctx context.Context,
 				binding.Description = tool.Description
 			}
 			binding.Status = tool.Status
-			if tool.Status == interfaces.EXEC_TOOL_STATUS_ENABLED {
-				mounted[tool.ToolID] = struct{}{}
-			}
 		}
-		summary.MountedTools = len(mounted)
+
+		// The mounted count is over the whole branch, not over this page. Counting the page
+		// against a box-wide total mixes two scales: page one of a fully mounted 23-tool box
+		// would read "10 of 23 mounted, 13 to add", and the top-up it offers would do nothing
+		// because every tool is already bound.
+		mounted, err := cbs.countMountedTools(ctx, query, boxID, byToolID)
+		if err != nil {
+			// A wrong number is worse than no number: the summary is dropped rather than
+			// published with a count that would send the caller after tools already bound.
+			logger.Warnf("capability metadata backfill: mounted count for box %s failed: %v", boxID, err)
+			available = false
+			continue
+		}
+		summary.MountedTools = mounted
 		summary.UnmountedTools = summary.TotalTools - summary.MountedTools
 		if summary.UnmountedTools < 0 {
 			summary.UnmountedTools = 0
@@ -175,4 +186,34 @@ func (cbs *capabilityBindingService) backfillSkills(ctx context.Context,
 		}
 	}
 	return available
+}
+
+// countMountedTools counts the box's enabled tools bound anywhere on this branch.
+//
+// It reads the bindings of one box rather than reusing the page: the page is a slice of the whole
+// list, while the box total it is compared against is not, and subtracting one from the other
+// produces a number that is only right when the page happens to hold every binding of the box.
+func (cbs *capabilityBindingService) countMountedTools(ctx context.Context,
+	query interfaces.CapabilityBindingsQueryParams, boxID string,
+	tools map[string]*interfaces.ToolBrief) (int, error) {
+	rows, err := cbs.cba.ListBindings(ctx, interfaces.CapabilityBindingsQueryParams{
+		KNID:           query.KNID,
+		Branch:         query.Branch,
+		CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION,
+		OwnerID:        boxID,
+	})
+	if err != nil {
+		return 0, err
+	}
+	mounted := map[string]struct{}{}
+	for _, row := range rows {
+		tool, ok := tools[row.CapabilityID]
+		if !ok || tool.Status != interfaces.EXEC_TOOL_STATUS_ENABLED {
+			// A binding to a tool that is gone or disabled is not something a top-up would
+			// re-add, so it does not count as mounted either.
+			continue
+		}
+		mounted[row.CapabilityID] = struct{}{}
+	}
+	return len(mounted), nil
 }

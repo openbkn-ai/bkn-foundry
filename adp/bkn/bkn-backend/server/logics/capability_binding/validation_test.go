@@ -239,3 +239,48 @@ func TestBoxIDIsTheOnlySpelling(t *testing.T) {
 		})
 	})
 }
+
+// TestSkillEditingIsBindable covers the state a skill enters after its metadata is edited.
+//
+// The execution factory flips published to editing on a metadata edit and keeps the published
+// version in the retrieval index, so such a skill is still loadable. Refusing to bind it would
+// answer "publish it first" about a skill that is already published, and re-publishing would be
+// the only way out of an error the caller did not cause.
+func TestSkillEditingIsBindable(t *testing.T) {
+	Convey("已发布后又编辑过的技能仍可挂载", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		Convey("editing 可挂载", func() {
+			service, cba, aoa := newTestServiceWithFactory(t, ctrl)
+			aoa.EXPECT().GetSkillByID(gomock.Any(), "s1").
+				Return(&interfaces.SkillBrief{SkillID: "s1", Status: interfaces.EXEC_SKILL_STATUS_EDITING}, nil)
+			cba.EXPECT().GetBindingByCapability(gomock.Any(), "kn1", "main",
+				interfaces.CAPABILITY_TYPE_SKILL, "", "s1").Return(nil, nil)
+			cba.EXPECT().CreateBindings(gomock.Any(), gomock.Nil(), gomock.Len(1)).Return(nil)
+
+			bindings, err := service.AttachCapabilities(context.Background(), nil, "kn1", "main",
+				[]*interfaces.AttachCapabilityEntry{
+					{CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "s1"},
+				})
+
+			So(err, ShouldBeNil)
+			So(len(bindings), ShouldEqual, 1)
+		})
+
+		Convey("从未发布与已下线仍被拒", func() {
+			for _, status := range []string{"unpublish", "offline"} {
+				service, _, aoa := newTestServiceWithFactory(t, ctrl)
+				aoa.EXPECT().GetSkillByID(gomock.Any(), "s1").
+					Return(&interfaces.SkillBrief{SkillID: "s1", Status: status}, nil)
+
+				_, err := service.AttachCapabilities(context.Background(), nil, "kn1", "main",
+					[]*interfaces.AttachCapabilityEntry{
+						{CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "s1"},
+					})
+
+				So(errorCodeOf(t, err), ShouldContainSubstring, "TargetNotAvailable")
+			}
+		})
+	})
+}

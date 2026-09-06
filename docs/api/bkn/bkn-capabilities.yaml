@@ -113,6 +113,12 @@ info:
     deliberately. Disabled tools are excluded from the totals: they are not something a top-up
     would add.
 
+    These counts are **per branch, not per page**. Pagination slices the entry list, not the box,
+    so counting a page against a box-wide total would read "10 of 23 mounted" for a box that is
+    fully mounted and offer a top-up that does nothing. When the count cannot be established the
+    box is omitted from `boxes` and `metadata_available` turns false, rather than published with
+    a number that would send the caller after tools that are already bound.
+
     ## When the execution factory is down
 
     Listing degrades rather than fails: the bindings come back in full with empty metadata and

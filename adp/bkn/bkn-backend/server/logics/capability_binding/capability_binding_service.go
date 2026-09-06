@@ -267,7 +267,7 @@ func (cbs *capabilityBindingService) ListCapabilities(ctx context.Context,
 			berrors.BknBackend_CapabilityBinding_InternalError_GetBindingsTotalFailed).WithErrorDetails(err.Error())
 	}
 
-	backfilled := cbs.backfillMetadata(ctx, entries, query.WithDetail)
+	backfilled := cbs.backfillMetadata(ctx, query, entries, query.WithDetail)
 
 	span.SetStatus(codes.Ok, "")
 	return &interfaces.CapabilityBindingsList{
