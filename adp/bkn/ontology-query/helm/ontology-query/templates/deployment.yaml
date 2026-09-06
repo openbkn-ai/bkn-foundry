@@ -132,6 +132,10 @@ spec:
             value: "{{ .Values.env.actionExecutionDuplicateWindowSeconds }}"
           - name: AUTH_ENABLED
             value: {{ .Values.auth.enabled | quote }}
+          - name: KN_PROXY_MODE
+            value: {{ .Values.knProxy.mode | default "off" | quote }}
+          - name: KN_PROXY_KN_ALLOWLIST
+            value: {{ join "," (.Values.knProxy.knowledgeNetworks | default (list)) | quote }}
           - name: BKN_SAFE_BASE_URL
             value: {{ .Values.bknSafe.url | quote }}
         resources: {{- toYaml .Values.resources | nindent 10 }}

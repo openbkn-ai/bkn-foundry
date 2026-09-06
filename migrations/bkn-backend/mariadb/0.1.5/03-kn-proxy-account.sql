@@ -25,5 +25,6 @@ CREATE TABLE IF NOT EXISTS t_kn_proxy_account (
   INDEX idx_kn_proxy_lock (f_lock_until)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='Knowledge network managed proxy mapping';
 
--- Rollback:
--- DROP TABLE IF EXISTS t_kn_proxy_account;
+-- Forward-compatible rollback: keep this table in place. Disable proxy traffic,
+-- clear migration-created grant sources through the BKN API, and archive the
+-- managed accounts. Older binaries ignore the retained mapping table.

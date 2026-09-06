@@ -70,6 +70,10 @@ def build_report(base_url: str, user_id: str, apply: bool) -> dict[str, Any]:
 
 
 def main() -> int:
+    print(
+        "DEPRECATED: use deploy/scripts/upgrades/0.1.5/migrate.py for a complete 0.1.5 upgrade.",
+        file=sys.stderr,
+    )
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--backend-url", required=True)
     parser.add_argument("--user-id", required=True, help="authorized human grantor")

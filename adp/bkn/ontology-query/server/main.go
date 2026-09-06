@@ -171,7 +171,12 @@ func main() {
 	logics.SetOntologyManagerAccess(ontology_manager.NewOntologyManagerAccess(appSetting))
 	logics.SetOpenSearchAccess(opensearch.NewOpenSearchAccess(appSetting))
 	logics.SetVegaBackendAccess(vega_backend.NewVegaBackendAccess(appSetting))
-	logics.SetProxyContextResolver(proxycontext.NewProxyContextResolver(knproxy.NewKnowledgeNetworkProxyAccess(appSetting)))
+	proxyMode, proxyAllowlist := common.GetKNProxyRollout()
+	logics.SetProxyContextResolver(proxycontext.NewRolloutProxyContextResolver(
+		proxycontext.NewProxyContextResolver(knproxy.NewKnowledgeNetworkProxyAccess(appSetting)),
+		proxyMode,
+		proxyAllowlist,
+	))
 
 	server := &mgrService{
 		appSetting:    appSetting,

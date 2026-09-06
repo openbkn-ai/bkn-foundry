@@ -25,6 +25,7 @@ type KNService interface {
 	UpdateKNDetail(ctx context.Context, knID string, branch string, detail string) error
 	DeleteKN(ctx context.Context, kn *KN) error
 	FinalizeKNProxyDeletion(ctx context.Context, knID string) error
+	RollbackKNProxy(ctx context.Context, knID string) error
 	GetKNProxy(ctx context.Context, knID string) (*KNProxyAccount, error)
 	GetGovernedKNProxy(ctx context.Context, knID string) (*KNProxyGovernanceView, error)
 	ListGovernedKNProxies(ctx context.Context) (*KNProxyAccountList, error)

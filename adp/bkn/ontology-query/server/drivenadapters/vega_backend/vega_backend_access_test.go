@@ -150,6 +150,36 @@ func TestVegaBackendAccessRejectsMissingOrMismatchedProxyContextBeforeIO(t *test
 	}
 }
 
+func TestVegaBackendAccessUsesDirectCallerEndpointWhenProxyRolloutIsOff(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	httpClient := rmock.NewMockHTTPClient(ctrl)
+	caller := interfaces.AccountInfo{ID: "caller-1", Type: "user"}
+	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, caller)
+	ctx = interfaces.WithTrustedProxyContext(ctx, &interfaces.TrustedProxyContext{
+		Caller:          caller,
+		UseDirectCaller: true,
+		Binding: interfaces.TrustedProxyBinding{
+			KNID: "kn-1", TargetType: interfaces.ProxyTargetTypeResource,
+			TargetID: "resource-1", Operation: interfaces.PermissionOperationQueryData,
+		},
+	})
+	httpClient.EXPECT().PostNoUnmarshal(gomock.Any(),
+		"http://vega/resources/resource-1/data", gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, headers map[string]string, _ any) (int, []byte, error) {
+			if headers[interfaces.HTTP_HEADER_ACCOUNT_ID] != caller.ID ||
+				headers[interfaces.HTTP_HEADER_ACCOUNT_TYPE] != caller.Type ||
+				headers[interfaces.HTTPHeaderBKNProxyVersion] != "" {
+				t.Fatalf("unexpected direct-caller headers: %#v", headers)
+			}
+			return http.StatusOK, []byte(`{"entries":[]}`), nil
+		})
+
+	access := &vegaBackendAccess{httpClient: httpClient, baseURL: "http://vega"}
+	if _, err := access.QueryResourceData(ctx, "resource-1", nil); err != nil {
+		t.Fatalf("QueryResourceData() error = %v", err)
+	}
+}
+
 func TestVegaBackendAccessGetResourceSchemaUsesViewDetailProxyEndpoint(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	httpClient := rmock.NewMockHTTPClient(ctrl)

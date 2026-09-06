@@ -1,0 +1,19 @@
+{{- if .Values.knProxy.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Values.moduleName }}-ingress
+  namespace: {{ .Values.namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      module: {{ .Values.moduleName }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+{{ toYaml .Values.knProxy.networkPolicy.allowedIngress | indent 8 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.service.bknBackend.port }}
+{{- end }}

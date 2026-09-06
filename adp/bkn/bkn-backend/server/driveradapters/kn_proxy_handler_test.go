@@ -83,3 +83,30 @@ func TestListKNProxiesPublicEndpointUsesOAuthIdentity(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
 }
+
+func TestRollbackKNProxyEndpointUsesInternalCallerIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctrl := gomock.NewController(t)
+	service := bmock.NewMockKNService(ctrl)
+	handler := &restHandler{kns: service}
+	engine := gin.New()
+	engine.POST("/api/bkn-backend/in/v1/knowledge-networks/:kn_id/proxy-account/rollback", handler.RollbackKNProxy)
+
+	service.EXPECT().RollbackKNProxy(gomock.Any(), "kn-1").DoAndReturn(
+		func(ctx context.Context, _ string) error {
+			account, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+			if account.ID != "operator-1" || account.Type != "user" {
+				t.Fatalf("unexpected caller context: %#v", account)
+			}
+			return nil
+		})
+	req := httptest.NewRequest(http.MethodPost,
+		"/api/bkn-backend/in/v1/knowledge-networks/kn-1/proxy-account/rollback", nil)
+	req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "operator-1")
+	req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_TYPE, "user")
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+}

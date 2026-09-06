@@ -6,6 +6,10 @@ Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
 # Backfill Knowledge-Network Managed Proxies
 
+> Deprecated compatibility entry: this script alone does not complete an
+> OpenBKN 0.1.4 to 0.1.5 upgrade. Use the versioned migration entry at
+> `deploy/scripts/upgrades/0.1.5/migrate.py`.
+
 This script uses BKN Backend's internal governance endpoints so the dry run and
 the applied migration share the runtime's latest-main source derivation. The
 caller must be a human grantor with `authorize` and every requested target

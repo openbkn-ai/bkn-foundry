@@ -9,6 +9,28 @@ moduleName: agent-operator-integration
 bknSafe:
   url: "http://bkn-safe:3000"
 
+# Optional ingress isolation for the internal proxy execution plane. Enable
+# only after confirming every legitimate caller is represented below.
+knProxy:
+  networkPolicy:
+    enabled: false
+    allowedIngress:
+      - podSelector:
+          matchLabels:
+            module: bkn-backend
+      - podSelector:
+          matchLabels:
+            module: ontology-query
+      - podSelector:
+          matchLabels:
+            app: agent-operator-integration
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: ingress-nginx
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: ingress-nginx
+
 # Set to dev for development mode.
 runMode: release
 

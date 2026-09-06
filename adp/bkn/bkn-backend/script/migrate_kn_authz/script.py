@@ -680,6 +680,10 @@ def run(args: argparse.Namespace) -> int:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     """CLI entry point."""
+    print(
+        "DEPRECATED: use deploy/scripts/upgrades/0.1.5/migrate.py for a complete 0.1.5 upgrade.",
+        file=sys.stderr,
+    )
     try:
         args = parse_args(argv)
         return run(args)
