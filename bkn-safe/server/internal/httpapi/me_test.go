@@ -105,9 +105,9 @@ func TestMeUpdateProfile(t *testing.T) {
 	if w := tokReq(t, r, http.MethodPut, path, map[string]any{"name": "X"}, ""); w.Code != http.StatusUnauthorized {
 		t.Errorf("no token: want 401, got %d", w.Code)
 	}
-	// subject without a user row -> 404
-	if w := tokReq(t, r, http.MethodPut, path, map[string]any{"name": "X"}, "ghost"); w.Code != http.StatusNotFound {
-		t.Errorf("ghost: want 404, got %d", w.Code)
+	// subject without an active local user row -> 403
+	if w := tokReq(t, r, http.MethodPut, path, map[string]any{"name": "X"}, "ghost"); w.Code != http.StatusForbidden {
+		t.Errorf("ghost: want 403, got %d", w.Code)
 	}
 	// empty body -> 400
 	if w := tokReq(t, r, http.MethodPut, path, map[string]any{}, "u-me"); w.Code != http.StatusBadRequest {

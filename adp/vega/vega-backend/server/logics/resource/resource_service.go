@@ -540,6 +540,10 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 
 // Get retrieves a Resource by ID.
 func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.Resource, error) {
+	if interfaces.IsTrustedProxyRead(ctx) {
+		return rs.InternalGetByID(ctx, nil, id)
+	}
+
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get resource")
 	defer span.End()
 
@@ -676,6 +680,10 @@ func (rs *resourceService) InternalGetByCatalogID(ctx context.Context, catalogID
 
 // GetByIDs retrieves Resources by IDs.
 func (rs *resourceService) GetByIDs(ctx context.Context, ids []string) ([]*interfaces.Resource, error) {
+	if interfaces.IsTrustedProxyRead(ctx) {
+		return rs.InternalGetByIDs(ctx, ids)
+	}
+
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get resources by IDs")
 	defer span.End()
 

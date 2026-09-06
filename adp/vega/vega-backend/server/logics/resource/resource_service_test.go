@@ -259,6 +259,16 @@ func TestResourceServiceCheckExistByName(t *testing.T) {
 }
 
 func TestResourceServiceGetByID(t *testing.T) {
+	t.Run("trusted proxy read skips secondary metadata authorization", func(t *testing.T) {
+		rs, mockRA, _, _, _, _, _ := newTestService(t)
+		want := &interfaces.Resource{ID: "r1", CatalogID: "cat-user"}
+		mockRA.EXPECT().GetByID(gomock.Any(), nil, "r1").Return(want, nil)
+
+		got, err := rs.GetByID(interfaces.WithTrustedProxyRead(context.Background()), "r1")
+		require.NoError(t, err)
+		assert.Same(t, want, got)
+	})
+
 	t.Run("keeps resource when account name lookup fails", func(t *testing.T) {
 		rs, mockRA, mockPS, _, mockUMS, _, _ := newTestService(t)
 		mockRA.EXPECT().GetByID(gomock.Any(), nil, "r1").
@@ -353,6 +363,16 @@ func TestResourceServiceGetByID(t *testing.T) {
 }
 
 func TestResourceServiceGetByIDs(t *testing.T) {
+	t.Run("trusted proxy read skips secondary metadata authorization", func(t *testing.T) {
+		rs, mockRA, _, _, _, _, _ := newTestService(t)
+		want := []*interfaces.Resource{{ID: "r1", CatalogID: "cat-user"}}
+		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).Return(want, nil)
+
+		got, err := rs.GetByIDs(interfaces.WithTrustedProxyRead(context.Background()), []string{"r1"})
+		require.NoError(t, err)
+		assert.Equal(t, want, got)
+	})
+
 	t.Run("get by ids success", func(t *testing.T) {
 		rs, mockRA, mockPS, _, mockUMS, _, _ := newTestService(t)
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1", "r2"}).

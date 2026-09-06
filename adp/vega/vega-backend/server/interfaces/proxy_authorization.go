@@ -9,6 +9,8 @@ import (
 	"errors"
 )
 
+type trustedProxyReadKey struct{}
+
 const (
 	HTTPHeaderBKNCallerID     = "x-bkn-caller-id"
 	HTTPHeaderBKNCallerType   = "x-bkn-caller-type"
@@ -73,4 +75,18 @@ type ProxyAuthorizationAccess interface {
 // ProxyAuthorizationService is the final PEP for Vega proxy reads.
 type ProxyAuthorizationService interface {
 	Authorize(ctx context.Context, request ProxyReadContext) error
+}
+
+// WithTrustedProxyRead marks a request whose target and operation already
+// passed the restricted proxy PEP. Only the proxy handlers may set this marker;
+// downstream metadata reads use it to avoid a second, unrelated account check.
+func WithTrustedProxyRead(ctx context.Context) context.Context {
+	return context.WithValue(ctx, trustedProxyReadKey{}, true)
+}
+
+// IsTrustedProxyRead reports whether the restricted proxy PEP authorized this
+// server-side call chain.
+func IsTrustedProxyRead(ctx context.Context) bool {
+	trusted, ok := ctx.Value(trustedProxyReadKey{}).(bool)
+	return ok && trusted
 }

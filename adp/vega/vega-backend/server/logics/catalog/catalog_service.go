@@ -571,6 +571,10 @@ func (cs *catalogService) checkCatalogPermission(ctx context.Context, catalogID 
 }
 
 func (cs *catalogService) GetByID(ctx context.Context, id string, withSensitiveFields bool) (*interfaces.Catalog, error) {
+	if interfaces.IsTrustedProxyRead(ctx) {
+		return cs.InternalGetByID(ctx, id, withSensitiveFields)
+	}
+
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get catalog")
 	defer span.End()
 

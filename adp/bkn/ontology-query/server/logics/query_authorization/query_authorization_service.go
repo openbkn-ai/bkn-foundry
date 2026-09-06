@@ -6,6 +6,7 @@ package query_authorization
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -666,6 +667,11 @@ func invalidQuery(ctx context.Context, detail string) error {
 }
 
 func dependencyResolutionFailed(ctx context.Context, err error) error {
+	var downstream *rest.HTTPError
+	if errors.As(err, &downstream) &&
+		(downstream.HTTPCode == http.StatusUnauthorized || downstream.HTTPCode == http.StatusForbidden) {
+		return downstream
+	}
 	return rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
 		oerrors.OntologyQuery_InternalError_CheckPermissionFailed).WithErrorDetails(err.Error())
 }
