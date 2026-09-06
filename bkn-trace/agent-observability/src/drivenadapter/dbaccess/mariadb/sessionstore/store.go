@@ -833,6 +833,47 @@ func (t *transaction) ListInteractionsByIDs(interactionIDs []string) map[string]
 	return result
 }
 
+func (t *transaction) ListInteractionsByConversationIDs(conversationIDs []string) map[string][]sessionvo.Interaction {
+	result := make(map[string][]sessionvo.Interaction, len(conversationIDs))
+	if t.err != nil || len(conversationIDs) == 0 {
+		return result
+	}
+	ids := make([]string, 0, len(conversationIDs))
+	seen := make(map[string]struct{}, len(conversationIDs))
+	for _, id := range conversationIDs {
+		if id != "" {
+			if _, found := seen[id]; !found {
+				seen[id] = struct{}{}
+				ids = append(ids, id)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return result
+	}
+	args := make([]any, len(ids))
+	for index, id := range ids {
+		args[index] = id
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	rows, err := t.tx.QueryContext(t.ctx, interactionSelect+` WHERE conversation_id IN (`+placeholders+`)`+listInteractionsOrderBy, args...)
+	if err != nil {
+		t.err = err
+		return result
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		value, scanErr := scanInteractionRows(rows)
+		if scanErr != nil {
+			t.err = scanErr
+			return result
+		}
+		result[value.ConversationID] = append(result[value.ConversationID], value)
+	}
+	t.err = rows.Err()
+	return result
+}
+
 func (t *transaction) NextInteractionOrdinal(conversationID string) uint64 {
 	if t.err != nil {
 		return 0

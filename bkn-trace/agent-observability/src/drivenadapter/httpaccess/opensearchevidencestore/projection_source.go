@@ -27,23 +27,75 @@ func (s *Store) LoadExecutionProjection(ctx context.Context, query iprojectionso
 		return iprojectionsource.Result{}, err
 	}
 	artifactQuery := query
+	terminalArtifactQuery := iprojectionsource.Query{}
+	loadTerminalArtifacts := false
+	loadArtifactQuery := true
 	if len(artifactQuery.AuthorizedInteractionIDs) > 0 {
 		artifactQuery.ConversationIDs = nil
 		artifactQuery.TraceIDs = nil
-	} else if len(artifactQuery.ConversationIDs) > 0 && len(artifactQuery.TraceIDs) == 0 {
+	} else if len(artifactQuery.ConversationIDs) > 0 && len(artifactQuery.InteractionIDs) > 0 {
+		// Preserve the legacy Trace projection for artifacts without interaction_id
+		// (and for completeness), then add the bounded terminal preview facts.
+		terminalArtifactQuery = artifactQuery
+		terminalArtifactQuery.ConversationIDs = nil
+		terminalArtifactQuery.TraceIDs = nil
+		artifactQuery.InteractionIDs = nil
+		artifactQuery.ArtifactTypes = nil
+		loadTerminalArtifacts = true
+	} else if len(artifactQuery.InteractionIDs) > 0 {
+		// Terminal Interaction artifacts are allowed to omit trace_id. Keep the
+		// normal scope boundary, but do not replace this selector with trace IDs.
+		artifactQuery.ConversationIDs = nil
+		artifactQuery.TraceIDs = nil
+	}
+	if len(artifactQuery.AuthorizedInteractionIDs) == 0 && len(artifactQuery.ConversationIDs) > 0 && len(artifactQuery.TraceIDs) == 0 {
 		artifactQuery.TraceIDs = projectionTraceIDs(traces)
 		artifactQuery.ConversationIDs = nil
 		if len(artifactQuery.TraceIDs) == 0 {
-			return iprojectionsource.Result{Traces: traces, Artifacts: []evidencevo.EvidenceArtifact{}, Truncated: evidenceTruncated}, nil
+			loadArtifactQuery = false
 		}
 	}
-	artifacts, artifactTruncated, err := s.listArtifactProjection(ctx, artifactQuery)
-	if err != nil {
-		return iprojectionsource.Result{}, err
+	artifacts := []evidencevo.EvidenceArtifact{}
+	artifactTruncated := false
+	if loadArtifactQuery {
+		artifacts, artifactTruncated, err = s.listArtifactProjection(ctx, artifactQuery)
+		if err != nil {
+			return iprojectionsource.Result{}, err
+		}
+	}
+	if loadTerminalArtifacts {
+		terminalArtifacts, terminalTruncated, terminalErr := s.listArtifactProjection(ctx, terminalArtifactQuery)
+		if terminalErr != nil {
+			return iprojectionsource.Result{}, terminalErr
+		}
+		artifacts = mergeProjectedArtifacts(artifacts, terminalArtifacts)
+		artifactTruncated = artifactTruncated || terminalTruncated
 	}
 	return iprojectionsource.Result{
 		Traces: traces, Artifacts: artifacts, Truncated: evidenceTruncated || artifactTruncated,
 	}, nil
+}
+
+func mergeProjectedArtifacts(groups ...[]evidencevo.EvidenceArtifact) []evidencevo.EvidenceArtifact {
+	byID := make(map[string]evidencevo.EvidenceArtifact)
+	for _, artifacts := range groups {
+		for _, artifact := range artifacts {
+			if _, found := byID[artifact.ArtifactID]; !found {
+				byID[artifact.ArtifactID] = artifact
+			}
+		}
+	}
+	result := make([]evidencevo.EvidenceArtifact, 0, len(byID))
+	for _, artifact := range byID {
+		result = append(result, artifact)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].ObservedAt == result[j].ObservedAt {
+			return result[i].ArtifactID < result[j].ArtifactID
+		}
+		return result[i].ObservedAt < result[j].ObservedAt
+	})
+	return result
 }
 
 func (s *Store) listEvidenceProjection(ctx context.Context, query iprojectionsource.Query) ([]evidencevo.NormalizedTrace, bool, error) {
@@ -196,6 +248,8 @@ func matchesProjectionTrace(trace evidencevo.NormalizedTrace, query iprojections
 func matchesProjectionArtifact(artifact evidencevo.EvidenceArtifact, query iprojectionsource.Query) bool {
 	if query.RequestID != "" && artifact.RequestID != query.RequestID ||
 		query.TraceID != "" && artifact.TraceID != query.TraceID ||
+		len(query.InteractionIDs) > 0 && !containsProjectionID(query.InteractionIDs, artifact.InteractionID) ||
+		len(query.ArtifactTypes) > 0 && !containsArtifactType(query.ArtifactTypes, artifact.ArtifactType) ||
 		query.InteractionID != "" && artifact.InteractionID != query.InteractionID {
 		return false
 	}
@@ -219,6 +273,24 @@ func traceHasInteraction(trace evidencevo.NormalizedTrace, interactionID string)
 	return false
 }
 
+func containsProjectionID(values []string, candidate string) bool {
+	for _, value := range values {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+func containsArtifactType(values []evidencevo.ArtifactType, candidate evidencevo.ArtifactType) bool {
+	for _, value := range values {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
+}
+
 type artifactProjectionHit struct {
 	Source evidencevo.EvidenceArtifact
 	Sort   []any
@@ -234,6 +306,12 @@ func (s *Store) listArtifactProjectionPage(ctx context.Context, query iprojectio
 	must = appendProjectionIdentityFilters(must, query)
 	if query.InteractionID != "" {
 		must = append(must, map[string]any{"bool": exactTermQuery("interaction_id", query.InteractionID)})
+	}
+	if len(query.InteractionIDs) > 0 {
+		must = append(must, map[string]any{"terms": map[string]any{"interaction_id": query.InteractionIDs}})
+	}
+	if len(query.ArtifactTypes) > 0 {
+		must = append(must, map[string]any{"terms": map[string]any{"artifact_type": query.ArtifactTypes}})
 	}
 	if !query.From.IsZero() || !query.To.IsZero() {
 		bounds := map[string]any{}

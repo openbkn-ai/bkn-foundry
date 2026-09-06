@@ -1546,9 +1546,20 @@ func (s *Service) listConversationIdentityPage(ctx context.Context, options evid
 		return evidencevo.ConversationSummaryPage{Entries: []evidencevo.ConversationSummary{}, Total: identityPage.Total, Page: normalizeSummaryPage(options.Page), PageSize: normalizeSummaryLimit(options.Limit)}, true, nil
 	}
 	ids := summaryIdentityIDs(identityPage.Entries)
+	interactionIDs, interactionsByConversation, err := s.listCanonicalInteractionIDs(ctx, ids)
+	if err != nil {
+		return evidencevo.ConversationSummaryPage{}, true, err
+	}
+	terminalArtifactTypes := []evidencevo.ArtifactType(nil)
+	if len(interactionIDs) > 0 {
+		terminalArtifactTypes = []evidencevo.ArtifactType{evidencevo.ArtifactTypeQuestion, evidencevo.ArtifactTypeResult}
+	}
 	requests, _, metadata, err := s.loadProjectedExecutionSummaries(ctx, iprojectionsource.Query{
 		Scope:           options.Scope,
-		ConversationIDs: ids, Limit: selectedSummaryCandidateLimit(len(ids)),
+		ConversationIDs: ids,
+		InteractionIDs:  interactionIDs,
+		ArtifactTypes:   terminalArtifactTypes,
+		Limit:           selectedSummaryCandidateLimit(len(ids)),
 	}, summaryLoadMetadata{})
 	if err != nil {
 		return evidencevo.ConversationSummaryPage{}, true, err
@@ -1575,6 +1586,14 @@ func (s *Service) listConversationIdentityPage(ctx context.Context, options evid
 	if err := s.applyCanonicalConversationState(ctx, entriesForCanonical, grouped); err != nil {
 		return evidencevo.ConversationSummaryPage{}, true, err
 	}
+	for index := range entriesForCanonical {
+		if interactions, found := interactionsByConversation[entriesForCanonical[index].ConversationID]; found {
+			entriesForCanonical[index].InteractionCount = len(interactions)
+			applyFirstCanonicalConversationPreview(
+				&entriesForCanonical[index], grouped[entriesForCanonical[index].ConversationID], interactions,
+			)
+		}
+	}
 	for _, entry := range entriesForCanonical {
 		byID[entry.ConversationID] = entry
 	}
@@ -1591,6 +1610,69 @@ func (s *Service) listConversationIdentityPage(ctx context.Context, options evid
 		page.NextCursor = &next
 	}
 	return page, true, nil
+}
+
+func (s *Service) listCanonicalInteractionIDs(ctx context.Context, conversationIDs []string) ([]string, map[string][]sessionvo.Interaction, error) {
+	byConversation := make(map[string][]sessionvo.Interaction)
+	if s.sessionStore == nil || len(conversationIDs) == 0 {
+		return []string{}, byConversation, nil
+	}
+	if err := s.sessionStore.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+		byConversation = tx.ListInteractionsByConversationIDs(conversationIDs)
+		return nil
+	}); err != nil {
+		return nil, nil, err
+	}
+	ids := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, interactions := range byConversation {
+		for _, interaction := range interactions {
+			if interaction.ID == "" {
+				continue
+			}
+			if _, found := seen[interaction.ID]; found {
+				continue
+			}
+			seen[interaction.ID] = struct{}{}
+			ids = append(ids, interaction.ID)
+		}
+	}
+	sort.Strings(ids)
+	return ids, byConversation, nil
+}
+
+// applyFirstCanonicalConversationPreview makes the list preview describe the
+// first managed turn. A later round must never substitute content when that
+// first turn has no readable terminal artifact.
+func applyFirstCanonicalConversationPreview(
+	entry *evidencevo.ConversationSummary,
+	requests []evidencevo.RequestSummary,
+	interactions []sessionvo.Interaction,
+) {
+	if entry == nil || len(interactions) == 0 {
+		return
+	}
+	first := interactions[0]
+	for _, interaction := range interactions[1:] {
+		if interaction.Ordinal < first.Ordinal || interaction.Ordinal == first.Ordinal && interaction.ID < first.ID {
+			first = interaction
+		}
+	}
+	if first.ID == "" {
+		return
+	}
+	firstRequests := make([]evidencevo.RequestSummary, 0)
+	for _, request := range requests {
+		if request.InteractionID == first.ID {
+			firstRequests = append(firstRequests, request)
+		}
+	}
+	if len(firstRequests) == 0 {
+		entry.QuestionPreview, entry.ResultPreview = "", ""
+		return
+	}
+	summary, _ := aggregateRequestGroup(firstRequests)
+	entry.QuestionPreview, entry.ResultPreview = summary.QuestionPreview, summary.ResultPreview
 }
 
 func canUseSummaryIdentityPage(options evidencevo.SummaryQueryOptions) bool {
