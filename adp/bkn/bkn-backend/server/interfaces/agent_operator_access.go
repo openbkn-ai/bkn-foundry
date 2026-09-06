@@ -17,7 +17,21 @@ const (
 	EXEC_BOX_STATUS_PUBLISHED = "published"
 	// EXEC_SKILL_STATUS_PUBLISHED is the skill lifecycle state that makes it loadable.
 	EXEC_SKILL_STATUS_PUBLISHED = "published"
+	// EXEC_SKILL_STATUS_EDITING is a skill that was published and has been edited since. Its
+	// published version stays in the retrieval index and stays loadable, so it is bindable too:
+	// editing a description must not make a skill unmountable.
+	EXEC_SKILL_STATUS_EDITING = "editing"
 )
+
+// SkillIsBindable reports whether a skill can be bound to a knowledge network.
+//
+// Both published and editing qualify. The execution factory flips published to editing on a
+// metadata edit while keeping the published version in the index, so treating editing as
+// unusable would tell the caller to publish a skill that is already published — and re-publishing
+// would be the only way out of an error the caller did not cause.
+func SkillIsBindable(status string) bool {
+	return status == EXEC_SKILL_STATUS_PUBLISHED || status == EXEC_SKILL_STATUS_EDITING
+}
 
 // SkillBrief is the part of a skill BKN needs to validate a capability binding: whether it
 // exists, and whether it is usable. Everything else stays in the execution factory.

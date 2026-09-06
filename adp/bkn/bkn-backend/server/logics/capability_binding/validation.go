@@ -165,7 +165,7 @@ func (cbs *capabilityBindingService) validateSkill(ctx context.Context, skillID 
 			berrors.BknBackend_CapabilityBinding_TargetNotFound).
 			WithErrorDetails(fmt.Sprintf("skill not found: skill_id=%s", skillID))
 	}
-	if skill.Status != interfaces.EXEC_SKILL_STATUS_PUBLISHED {
+	if !interfaces.SkillIsBindable(skill.Status) {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_TargetNotAvailable).
 			WithErrorDetails(fmt.Sprintf("skill is not published: skill_id=%s status=%s", skillID, skill.Status))
