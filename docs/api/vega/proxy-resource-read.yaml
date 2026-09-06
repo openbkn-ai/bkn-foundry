@@ -1,0 +1,267 @@
+---
+openapi: 3.1.1
+info:
+  title: Vega Proxy Resource Read
+  version: 0.1.0
+  description: |
+    Cluster-internal read endpoints used by ontology-query after it resolves a
+    published knowledge-network model to a physical Vega resource.
+
+    Vega is the final policy enforcement point. Before every physical read it
+    verifies that the managed proxy account is active, still belongs to the
+    stated knowledge network, and currently has the exact resource permission
+    in bkn-safe. These checks are not cached.
+
+    Only schema inspection and filtered resource-data queries are exposed. This
+    surface does not provide resource discovery, raw SQL, write, administration,
+    build, or task operations.
+
+    All identity and BKN context headers are trusted workload credentials. They
+    must be supplied only by ontology-query over the cluster-internal network;
+    they are not accepted as end-user authentication on the public API.
+servers:
+  - url: /api/vega-backend/in/v1
+security: []
+paths:
+  /proxy/resources/{id}/schema:
+    get:
+      summary: Read the minimal schema for a proxied resource
+      description: |
+        Requires `view_detail`. Only an `object_type` child may use this
+        operation. The response deliberately omits resource metadata other than
+        `schema_definition`.
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+        - $ref: "#/components/parameters/AccountID"
+        - $ref: "#/components/parameters/AccountType"
+        - $ref: "#/components/parameters/CallerID"
+        - $ref: "#/components/parameters/CallerType"
+        - $ref: "#/components/parameters/KnowledgeNetworkID"
+        - $ref: "#/components/parameters/ChildType"
+        - $ref: "#/components/parameters/ChildID"
+        - $ref: "#/components/parameters/ProxyVersion"
+        - $ref: "#/components/parameters/TargetType"
+        - $ref: "#/components/parameters/TargetID"
+        - name: x-bkn-operation
+          in: header
+          required: true
+          schema:
+            type: string
+            const: view_detail
+        - $ref: "#/components/parameters/ExecutionID"
+      responses:
+        "200":
+          description: The authorized resource schema
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SchemaResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /proxy/resources/{id}/data:
+    post:
+      summary: Query data from a proxied resource
+      description: |
+        Requires `query_data`. `object_type`, `relation_type`, and `metric`
+        children may use this operation. `X-HTTP-Method-Override` must be `GET`;
+        write overrides are rejected before authorization and physical access.
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+        - $ref: "#/components/parameters/AccountID"
+        - $ref: "#/components/parameters/AccountType"
+        - $ref: "#/components/parameters/CallerID"
+        - $ref: "#/components/parameters/CallerType"
+        - $ref: "#/components/parameters/KnowledgeNetworkID"
+        - $ref: "#/components/parameters/ChildType"
+        - $ref: "#/components/parameters/ChildID"
+        - $ref: "#/components/parameters/ProxyVersion"
+        - $ref: "#/components/parameters/TargetType"
+        - $ref: "#/components/parameters/TargetID"
+        - name: x-bkn-operation
+          in: header
+          required: true
+          schema:
+            type: string
+            const: query_data
+        - $ref: "#/components/parameters/ExecutionID"
+        - name: X-HTTP-Method-Override
+          in: header
+          required: true
+          schema:
+            type: string
+            const: GET
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "resource-data.yaml#/components/schemas/ResourceDataQueryParams"
+      responses:
+        "200":
+          description: Query result
+          content:
+            application/json:
+              schema:
+                $ref: "resource-data.yaml#/components/schemas/ListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "406":
+          $ref: "#/components/responses/NotAcceptable"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+components:
+  parameters:
+    ResourceID:
+      name: id
+      in: path
+      required: true
+      description: Physical Vega resource ID
+      schema:
+        type: string
+    AccountID:
+      name: X-Account-ID
+      in: header
+      required: true
+      description: Active managed proxy account ID
+      schema:
+        type: string
+    AccountType:
+      name: X-Account-Type
+      in: header
+      required: true
+      schema:
+        type: string
+        const: app
+    CallerID:
+      name: x-bkn-caller-id
+      in: header
+      required: true
+      description: Original end-user or workload caller ID
+      schema:
+        type: string
+    CallerType:
+      name: x-bkn-caller-type
+      in: header
+      required: true
+      description: Original caller account type
+      schema:
+        type: string
+    KnowledgeNetworkID:
+      name: x-bkn-kn-id
+      in: header
+      required: true
+      description: Knowledge network managed by the proxy account
+      schema:
+        type: string
+    ChildType:
+      name: x-bkn-child-type
+      in: header
+      required: true
+      schema:
+        type: string
+        enum: [object_type, relation_type, metric]
+    ChildID:
+      name: x-bkn-child-id
+      in: header
+      required: true
+      description: Published knowledge-network child ID
+      schema:
+        type: string
+    ProxyVersion:
+      name: x-bkn-proxy-version
+      in: header
+      required: true
+      description: Current positive version of BKN's knowledge-network-to-proxy mapping, used for trusted-context validation and audit correlation
+      schema:
+        type: integer
+        format: uint64
+        minimum: 1
+    TargetType:
+      name: x-bkn-target-type
+      in: header
+      required: true
+      schema:
+        type: string
+        const: resource
+    TargetID:
+      name: x-bkn-target-id
+      in: header
+      required: true
+      description: Must exactly match the resource ID in the path
+      schema:
+        type: string
+    ExecutionID:
+      name: x-bkn-execution-id
+      in: header
+      required: false
+      description: Optional upstream execution identifier included in the audit event
+      schema:
+        type: string
+  responses:
+    BadRequest:
+      description: Invalid query body
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    Forbidden:
+      description: |
+        The trusted context is invalid, the proxy is inactive or stale, the
+        child-operation pair is not allowed, or the resource policy is absent.
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    NotAcceptable:
+      description: Content-Type is not application/json
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    Conflict:
+      description: Resource or its catalog is not currently queryable
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    InternalServerError:
+      description: Physical resource read failed
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    ServiceUnavailable:
+      description: bkn-safe could not provide a current authorization decision
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+  schemas:
+    SchemaResponse:
+      type: object
+      required: [schema_definition]
+      properties:
+        schema_definition:
+          type: array
+          items:
+            $ref: "resource.yaml#/components/schemas/Property"

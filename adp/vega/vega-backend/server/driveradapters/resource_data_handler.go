@@ -85,24 +85,9 @@ func (r *restHandler) postResourceData(c *gin.Context, visitor hydra.Visitor, s2
 // Generic resource-data query, supports any category.
 func (r *restHandler) queryResourceData(c *gin.Context, ctx context.Context, span trace.Span) {
 	start := time.Now()
-
 	resourceID := c.Param("id")
-
-	var params interfaces.ResourceDataQueryParams
-	if err := common.BindPreciseJSON(c.Request.Body, &params); err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-			WithErrorDetails(err.Error())
-		otellog.LogError(ctx, "Bind resource data query request failed", httpErr)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-
-	if err := ValidateResourceDataQueryParams(ctx, &params); err != nil {
-		httpErr := err.(*rest.HTTPError)
-		otellog.LogError(ctx, "Validate resource data query params failed", httpErr)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
+	params, ok := bindResourceDataQuery(c, ctx, span)
+	if !ok {
 		return
 	}
 
@@ -130,6 +115,62 @@ func (r *restHandler) queryResourceData(c *gin.Context, ctx context.Context, spa
 		rest.ReplyError(c, err)
 		return
 	}
+	r.executeResourceDataQuery(c, ctx, span, resource, params, start)
+}
+
+// queryProxyResourceData reads a resource after the final PEP without falling back to caller authorization.
+func (r *restHandler) queryProxyResourceData(c *gin.Context, ctx context.Context, span trace.Span) {
+	start := time.Now()
+	params, ok := bindResourceDataQuery(c, ctx, span)
+	if !ok {
+		return
+	}
+	resource, err := r.rs.InternalGetByID(ctx, nil, c.Param("id"))
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError_GetFailed)
+		otellog.LogError(ctx, "Get proxy resource failed", httpErr)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if resource == nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
+		otellog.LogError(ctx, "Proxy resource not found", httpErr)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	r.executeResourceDataQuery(c, ctx, span, resource, params, start)
+}
+
+func bindResourceDataQuery(c *gin.Context, ctx context.Context, span trace.Span) (*interfaces.ResourceDataQueryParams, bool) {
+	var params interfaces.ResourceDataQueryParams
+	if err := common.BindPreciseJSON(c.Request.Body, &params); err != nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+			WithErrorDetails(err.Error())
+		otellog.LogError(ctx, "Bind resource data query request failed", httpErr)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return nil, false
+	}
+	if err := ValidateResourceDataQueryParams(ctx, &params); err != nil {
+		httpErr := err.(*rest.HTTPError)
+		otellog.LogError(ctx, "Validate resource data query params failed", httpErr)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return nil, false
+	}
+	return &params, true
+}
+
+func (r *restHandler) executeResourceDataQuery(
+	c *gin.Context,
+	ctx context.Context,
+	span trace.Span,
+	resource *interfaces.Resource,
+	params *interfaces.ResourceDataQueryParams,
+	start time.Time,
+) {
 	warning, err := resourcelogic.EnsureResourceQueryable(ctx, resource)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
@@ -141,7 +182,7 @@ func (r *restHandler) queryResourceData(c *gin.Context, ctx context.Context, spa
 	if warning != "" {
 		otellog.LogWarn(ctx, "Query hit deprecated resource: "+warning)
 	}
-	if err := validateResourceDataQueryGroupByFields(ctx, &params, resource.SchemaDefinition); err != nil {
+	if err := validateResourceDataQueryGroupByFields(ctx, params, resource.SchemaDefinition); err != nil {
 		httpErr := err.(*rest.HTTPError)
 		otellog.LogError(ctx, "Validate resource data group by fields failed", httpErr)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -149,7 +190,7 @@ func (r *restHandler) queryResourceData(c *gin.Context, ctx context.Context, spa
 		return
 	}
 
-	result, err := r.rds.QueryWithPaging(ctx, resource, &params)
+	result, err := r.rds.QueryWithPaging(ctx, resource, params)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		otellog.LogError(ctx, "Query resource data failed", httpErr)
@@ -173,7 +214,7 @@ func (r *restHandler) queryResourceData(c *gin.Context, ctx context.Context, spa
 
 	logger.Debug("Handler queryResourceData Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
-	emitResourceDataEvidence(c, ctx, resource, &params, result)
+	emitResourceDataEvidence(c, ctx, resource, params, result)
 	rest.ReplyOkWithHeaders(c, http.StatusOK, resultData, map[string]string{
 		interfaces.X_REQUEST_TOOK: time.Since(start).String(),
 	})
