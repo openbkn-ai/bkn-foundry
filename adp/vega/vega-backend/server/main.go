@@ -139,6 +139,7 @@ func main() {
 		logics.SetPermissionAccess(permissionAccess)
 		logics.SetUserMgmtAccess(user_mgmt.NewUserMgmtAccess(appSetting))
 	}
+	logics.SetProxyAuthorizationAccess(permission.NewProxyAuthorizationAccess())
 
 	logics.SetBuildTaskAccess(build_task.NewBuildTaskAccess(appSetting))
 	logics.SetCatalogAccess(catalog.NewCatalogAccess(appSetting))

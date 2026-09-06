@@ -18,6 +18,7 @@
 | [health.yaml](health.yaml) | Health | `GET /api/vega-backend/v1/health`, returning the platform version |
 | [resource.yaml](resource.yaml) | Resource | `GET/POST /resources`, `GET/PUT/DELETE /resources/{id(s)}` |
 | [resource-data.yaml](resource-data.yaml) | ResourceData | `POST/PUT /resources/{id}/data`, `GET/PUT/DELETE /resources/{id}/data/{doc_id(s)}` |
+| [proxy-resource-read.yaml](proxy-resource-read.yaml) | ProxyResourceRead | Cluster-internal, read-only proxy access: `GET /proxy/resources/{id}/schema`, `POST /proxy/resources/{id}/data` |
 | [raw-query.yaml](raw-query.yaml) | RawQuery | `POST /resources/query` |
 | [build-task.yaml](build-task.yaml) | BuildTask | `GET/POST /build-tasks`, `GET/DELETE /build-tasks/{id(s)}`, `POST .../start`, `POST .../stop` |
 | [semantic-understanding-task.yaml](semantic-understanding-task.yaml) | SemanticUnderstandingTask | `GET/POST /semantic-understanding-tasks`, `GET/DELETE /semantic-understanding-tasks/{id(s)}` |
@@ -26,5 +27,5 @@
 
 - **OpenAPI version:** 3.1.1.
 - **Error responses:** Every non-2xx response uses the `Error` schema corresponding to `comm-go/rest.BaseError`. Each file currently contains its own definition.
-- **Internal APIs:** Most business operations also have `/api/vega-backend/in/v1/...` routes with the same request and response structures. External APIs use an OAuth token; internal APIs use `X-Account-ID` and `X-Account-Type`. This documentation covers only external APIs. The routes registered in `driveradapters/router.go` are authoritative for the internal surface.
+- **Internal APIs:** Most business operations also have `/api/vega-backend/in/v1/...` routes with the same request and response structures. External APIs use an OAuth token; internal APIs use `X-Account-ID` and `X-Account-Type`. The exception documented here is [proxy-resource-read.yaml](proxy-resource-read.yaml): its two cluster-internal endpoints accept the complete trusted proxy context, perform a fresh bkn-safe check before every physical read, and expose no write or administrative operation. Public routes remove these proxy headers before authenticating the OAuth caller. The routes registered in `driveradapters/router.go` remain authoritative for the internal surface.
 - **Cross-resource actions:** `POST /catalogs/{id}/discover` creates a DiscoverTask and is therefore defined in `discover-task.yaml`.

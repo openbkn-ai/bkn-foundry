@@ -26,6 +26,7 @@ var (
 	KA    interfaces.KafkaAccess
 	MFA   interfaces.ModelFactoryAccess
 	PA    interfaces.PermissionAccess
+	PAA   interfaces.ProxyAuthorizationAccess
 	RA    interfaces.ResourceAccess
 	SUTA  interfaces.SemanticUnderstandingTaskAccess
 	UMA   interfaces.UserMgmtAccess
@@ -73,6 +74,10 @@ func SetModelFactoryAccess(mfa interfaces.ModelFactoryAccess) {
 
 func SetPermissionAccess(pa interfaces.PermissionAccess) {
 	PA = pa
+}
+
+func SetProxyAuthorizationAccess(paa interfaces.ProxyAuthorizationAccess) {
+	PAA = paa
 }
 
 func SetResourceAccess(ra interfaces.ResourceAccess) {

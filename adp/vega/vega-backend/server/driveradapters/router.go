@@ -26,6 +26,7 @@ import (
 	"vega-backend/common/operationaudit"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
+	"vega-backend/logics"
 	"vega-backend/logics/auth"
 	"vega-backend/logics/build_task"
 	"vega-backend/logics/catalog"
@@ -35,6 +36,7 @@ import (
 	"vega-backend/logics/discover_schedule"
 	"vega-backend/logics/discover_task"
 	"vega-backend/logics/local_index"
+	"vega-backend/logics/proxy_authorization"
 	"vega-backend/logics/resource"
 	"vega-backend/logics/resource_data"
 	"vega-backend/logics/semantic_understanding_task"
@@ -48,22 +50,24 @@ type RestHandler interface {
 }
 
 type restHandler struct {
-	appSetting      *common.AppSetting
-	auditRecorder   operationAuditRecorder
-	auditQueryStore operationAuditQueryStore
-	as              interfaces.AuthService
-	bts             interfaces.BuildTaskService
-	cs              interfaces.CatalogService
-	cts             interfaces.ConnectorTypeService
-	ds              interfaces.DatasetService
-	dss             interfaces.DiscoverScheduleService
-	dts             interfaces.DiscoverTaskService
-	hcss            interfaces.CatalogHealthCheckScheduleService
-	lim             interfaces.LocalIndexManager
-	rds             interfaces.ResourceDataService
-	rs              interfaces.ResourceService
-	suts            interfaces.SemanticUnderstandingTaskService
-	ready           atomic.Bool
+	appSetting         *common.AppSetting
+	auditRecorder      operationAuditRecorder
+	auditQueryStore    operationAuditQueryStore
+	proxyAuditRecorder proxyReadAuditRecorder
+	as                 interfaces.AuthService
+	bts                interfaces.BuildTaskService
+	cs                 interfaces.CatalogService
+	cts                interfaces.ConnectorTypeService
+	ds                 interfaces.DatasetService
+	dss                interfaces.DiscoverScheduleService
+	dts                interfaces.DiscoverTaskService
+	hcss               interfaces.CatalogHealthCheckScheduleService
+	lim                interfaces.LocalIndexManager
+	rds                interfaces.ResourceDataService
+	rs                 interfaces.ResourceService
+	pas                interfaces.ProxyAuthorizationService
+	suts               interfaces.SemanticUnderstandingTaskService
+	ready              atomic.Bool
 }
 
 // NewRestHandler creates a new RestHandler.
@@ -79,6 +83,7 @@ func NewRestHandler(appSetting *common.AppSetting) RestHandler {
 	lim := local_index.NewLocalIndexManager(appSetting)
 	rds := resource_data.NewResourceDataService(appSetting)
 	rs := resource.NewResourceService(appSetting)
+	pas := proxy_authorization.NewProxyAuthorizationService(logics.PAA)
 	bts := build_task.NewBuildTaskService(appSetting, rs)
 	suts := semantic_understanding_task.NewSemanticUnderstandingTaskService(appSetting)
 
@@ -97,6 +102,7 @@ func NewRestHandler(appSetting *common.AppSetting) RestHandler {
 		lim:             lim,
 		rds:             rds,
 		rs:              rs,
+		pas:             pas,
 		suts:            suts,
 	}
 	handler.SetReady(true)
@@ -116,7 +122,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 
 	// External API (External
 	apiV1 := c.Group("/api/vega-backend/v1")
-	apiV1.Use(rest.PrivateNoCacheMiddleware())
+	apiV1.Use(rest.PrivateNoCacheMiddleware(), r.stripProxyInternalHeaders())
 	{
 		apiV1.GET("/operation-audits", r.ListOperationAudits)
 		apiV1.GET("/operation-audits/:event_id", r.GetOperationAudit)
@@ -221,6 +227,13 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiInV1 := c.Group("/api/vega-backend/in/v1")
 	apiInV1.Use(rest.PrivateNoCacheMiddleware())
 	{
+		// The proxy surface exposes only schema and data queries, not the full internal resource API.
+		proxyResources := apiInV1.Group("/proxy/resources")
+		{
+			proxyResources.GET("/:id/schema", r.GetResourceSchemaByProxy)
+			proxyResources.POST("/:id/data", r.verifyJsonContentType(), r.PostResourceDataByProxy)
+		}
+
 		// Catalog APIs - Internal
 		catalogs := apiInV1.Group("/catalogs")
 		{
