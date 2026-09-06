@@ -64,3 +64,30 @@ func TestVoluntaryLogoutRecordsAnAccessFact(t *testing.T) {
 		t.Fatalf("logout access fact = %#v, want oauth/logout/success", row)
 	}
 }
+
+func TestDisabledAccountVoluntaryLogoutRecordsAnAccessFact(t *testing.T) {
+	r, _, db, users := newAdminServer(t)
+	const userID = "disabled-logout-user"
+	if err := users.CreateLocalUser(t.Context(), &model.User{
+		ID: userID, Account: userID, Name: "Disabled Logout User", Enabled: true,
+	}, "pw-init0"); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	if err := db.Model(&model.User{}).Where("id = ?", userID).Update("enabled", false).Error; err != nil {
+		t.Fatalf("disable user: %v", err)
+	}
+
+	response := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/logout", nil, userID)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("disabled-account logout status = %d, want %d: %s",
+			response.Code, http.StatusNoContent, response.Body.String())
+	}
+
+	var row model.AccessLog
+	if err := db.First(&row, "actor_id = ?", userID).Error; err != nil {
+		t.Fatalf("read disabled-account logout access fact: %v", err)
+	}
+	if row.Action != "logout" || row.Outcome != "success" || row.AuthMethod != "oauth" {
+		t.Fatalf("disabled-account logout access fact = %#v, want oauth/logout/success", row)
+	}
+}
