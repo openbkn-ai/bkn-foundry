@@ -9,6 +9,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/driveradapters/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	proxyexecution "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/proxy_execution"
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
@@ -42,7 +43,15 @@ func NewRestPrivateHandler() interfaces.HTTPRouterInterface {
 // RegisterRouter internal interface register route.
 func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	mws := []gin.HandlerFunc{}
-	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, middlewareTraceContext, sharedrest.LanguageMiddleware(), sharedrest.PrivateNoCacheMiddleware(), middlewareHeaderAuthContext(r.Hydra))
+	mws = append(mws,
+		middlewareRequestLog(r.Logger),
+		middlewareTrace,
+		middlewareTraceContext,
+		sharedrest.LanguageMiddleware(),
+		sharedrest.PrivateNoCacheMiddleware(),
+		managedProxyExecutionBoundary(proxyexecution.NewAuditLogger(r.Logger)),
+		middlewareHeaderAuthContext(r.Hydra),
+	)
 	engine.Use(mws...)
 	// Operator interface.
 	r.OperatorRestHandler.RegisterPrivate(engine)

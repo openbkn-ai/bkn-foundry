@@ -1,0 +1,217 @@
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+openapi: 3.0.3
+x-internal: true
+info:
+  title: Knowledge Network Managed Proxy Execution API
+  version: 0.1.0
+  description: |
+    Cluster-internal Tool and MCP execution contract used by ontology-query
+    after it resolves a current published ActionSource.
+
+    The caller remains the business principal that submitted an Action or
+    Schedule. X-Account-ID is the knowledge network's managed proxy account
+    and is used only as the effective principal for the bound target.
+
+    Execution Factory validates the complete trusted context and exact route,
+    then rechecks the managed proxy lifecycle and its exact execute grant in
+    bkn-safe immediately before creating or using the outbound client. Missing
+    context, revoked state, denied grants, and authorization dependency errors
+    all fail closed before a third-party request is sent.
+
+    This tokenless surface must remain behind the cluster network boundary.
+    The complete header set is trusted only when supplied by ontology-query; no
+    individual header is a standalone credential.
+servers:
+  - url: /api/agent-operator-integration/internal-v1
+security: []
+paths:
+  /tool-box/{box_id}/proxy/{tool_id}:
+    post:
+      operationId: executeToolAsKnowledgeNetworkProxy
+      summary: Execute a Tool through a managed knowledge-network proxy
+      description: |
+        Only an action_type or logic_property binding may use this route.
+        An action_type call must include its persisted execution ID.
+      parameters:
+        - $ref: '#/components/parameters/BoxID'
+        - $ref: '#/components/parameters/ToolID'
+        - $ref: '#/components/parameters/ProxyAccountID'
+        - $ref: '#/components/parameters/ProxyAccountType'
+        - $ref: '#/components/parameters/CallerID'
+        - $ref: '#/components/parameters/CallerType'
+        - $ref: '#/components/parameters/KnowledgeNetworkID'
+        - $ref: '#/components/parameters/ChildType'
+        - $ref: '#/components/parameters/ChildID'
+        - $ref: '#/components/parameters/ProxyVersion'
+        - $ref: '#/components/parameters/ToolBoxTargetType'
+        - $ref: '#/components/parameters/TargetID'
+        - $ref: '#/components/parameters/ExecuteOperation'
+        - $ref: '#/components/parameters/OptionalExecutionID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolExecutionRequest'
+      responses:
+        '200':
+          description: Tool execution result.
+        '400':
+          description: The execution request or target configuration is invalid.
+        '403':
+          description: The trusted context is invalid, the proxy is inactive, or the exact grant is denied.
+        '503':
+          description: The final authorization check is unavailable.
+  /mcp/proxy/{mcp_id}/tool/call:
+    post:
+      operationId: callMCPToolAsKnowledgeNetworkProxy
+      summary: Call an MCP tool through a managed knowledge-network proxy
+      description: Only an action_type binding with a persisted execution ID may use this route.
+      parameters:
+        - $ref: '#/components/parameters/MCPID'
+        - $ref: '#/components/parameters/ProxyAccountID'
+        - $ref: '#/components/parameters/ProxyAccountType'
+        - $ref: '#/components/parameters/CallerID'
+        - $ref: '#/components/parameters/CallerType'
+        - $ref: '#/components/parameters/KnowledgeNetworkID'
+        - $ref: '#/components/parameters/ActionChildType'
+        - $ref: '#/components/parameters/ChildID'
+        - $ref: '#/components/parameters/ProxyVersion'
+        - $ref: '#/components/parameters/MCPTargetType'
+        - $ref: '#/components/parameters/TargetID'
+        - $ref: '#/components/parameters/ExecuteOperation'
+        - $ref: '#/components/parameters/ExecutionID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MCPToolCallRequest'
+      responses:
+        '200':
+          description: MCP tool call result.
+        '400':
+          description: The call request or target configuration is invalid.
+        '403':
+          description: The trusted context is invalid, the proxy is inactive, or the exact grant is denied.
+        '503':
+          description: The final authorization check is unavailable.
+components:
+  parameters:
+    BoxID:
+      name: box_id
+      in: path
+      required: true
+      schema: { type: string }
+    ToolID:
+      name: tool_id
+      in: path
+      required: true
+      schema: { type: string }
+    MCPID:
+      name: mcp_id
+      in: path
+      required: true
+      schema: { type: string }
+    ProxyAccountID:
+      name: X-Account-ID
+      in: header
+      required: true
+      description: Effective managed proxy account ID.
+      schema: { type: string }
+    ProxyAccountType:
+      name: X-Account-Type
+      in: header
+      required: true
+      schema: { type: string, enum: [app] }
+    CallerID:
+      name: X-BKN-Caller-ID
+      in: header
+      required: true
+      description: Original business caller ID.
+      schema: { type: string }
+    CallerType:
+      name: X-BKN-Caller-Type
+      in: header
+      required: true
+      description: Original business caller type.
+      schema: { type: string }
+    KnowledgeNetworkID:
+      name: X-BKN-KN-ID
+      in: header
+      required: true
+      schema: { type: string }
+    ChildType:
+      name: X-BKN-Child-Type
+      in: header
+      required: true
+      schema: { type: string, enum: [action_type, logic_property] }
+    ActionChildType:
+      name: X-BKN-Child-Type
+      in: header
+      required: true
+      schema: { type: string, enum: [action_type] }
+    ChildID:
+      name: X-BKN-Child-ID
+      in: header
+      required: true
+      description: Published knowledge-network child ID.
+      schema: { type: string }
+    ProxyVersion:
+      name: X-BKN-Proxy-Version
+      in: header
+      required: true
+      description: Positive version of the BKN knowledge-network-to-proxy mapping.
+      schema: { type: integer, format: int64, minimum: 1 }
+    ToolBoxTargetType:
+      name: X-BKN-Target-Type
+      in: header
+      required: true
+      schema: { type: string, enum: [tool_box] }
+    MCPTargetType:
+      name: X-BKN-Target-Type
+      in: header
+      required: true
+      schema: { type: string, enum: [mcp] }
+    TargetID:
+      name: X-BKN-Target-ID
+      in: header
+      required: true
+      description: Must equal the target ID in the route.
+      schema: { type: string }
+    ExecuteOperation:
+      name: X-BKN-Operation
+      in: header
+      required: true
+      schema: { type: string, enum: [execute] }
+    ExecutionID:
+      name: X-BKN-Execution-ID
+      in: header
+      required: true
+      description: Persisted Action or Schedule-trigger execution ID.
+      schema: { type: string }
+    OptionalExecutionID:
+      name: X-BKN-Execution-ID
+      in: header
+      required: false
+      description: Required for action_type; omitted for logic_property.
+      schema: { type: string }
+  schemas:
+    ToolExecutionRequest:
+      type: object
+      additionalProperties: true
+      description: |
+        Existing Tool execution envelope. Business headers configured for the
+        third-party API are allowed; platform identity, trace, and internal BKN
+        headers are removed before the outbound request.
+    MCPToolCallRequest:
+      type: object
+      required: [tool_name]
+      properties:
+        tool_name: { type: string }
+        parameters:
+          type: object
+          additionalProperties: true

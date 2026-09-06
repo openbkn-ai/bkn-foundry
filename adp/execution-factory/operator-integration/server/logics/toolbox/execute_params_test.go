@@ -3,6 +3,7 @@ package toolbox
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -182,5 +183,71 @@ func TestDebugTool_StripsPlatformHeadersBeforeExternalCall(t *testing.T) {
 	got := (*fixture.captured).Headers
 	if len(got) != 1 || got["X-Api-Key"] != "business-secret" {
 		t.Fatalf("external headers = %#v", got)
+	}
+}
+
+type failingProxyExecutionAuthorizer struct {
+	calls int
+	err   error
+}
+
+func (a *failingProxyExecutionAuthorizer) Authorize(context.Context, interfaces.ProxyExecutionContext) error {
+	a.calls++
+	return a.err
+}
+
+type toolProxyExecutionAudit struct {
+	events []interfaces.ProxyExecutionAuditEvent
+}
+
+func (a *toolProxyExecutionAudit) RecordProxyExecution(_ context.Context, event interfaces.ProxyExecutionAuditEvent) {
+	a.events = append(a.events, event)
+}
+
+func TestExecuteToolRechecksManagedProxyImmediatelyBeforeOutbound(t *testing.T) {
+	tests := map[string]error{
+		"grant revoked":        interfaces.ErrProxyExecutionDenied,
+		"bkn-safe unavailable": errors.New("connection refused"),
+	}
+	for name, authorizationErr := range tests {
+		t.Run(name, func(t *testing.T) {
+			fixture := newDebugToolFixture(t, string(interfaces.ToolStatusTypeEnabled))
+			authorizer := &failingProxyExecutionAuthorizer{err: authorizationErr}
+			audit := &toolProxyExecutionAudit{}
+			fixture.service.ProxyAuthorizer = authorizer
+			fixture.service.ProxyAudit = audit
+			ctx := interfaces.WithProxyExecutionContext(context.Background(), interfaces.ProxyExecutionContext{
+				CallerID:     "caller-1",
+				CallerType:   "user",
+				KnowledgeID:  "kn-1",
+				ChildType:    interfaces.ProxyChildTypeAction,
+				ChildID:      "action-1",
+				ProxyID:      "proxy-1",
+				ProxyType:    interfaces.ProxyAccountTypeApp,
+				ProxyVersion: 3,
+				TargetType:   interfaces.ProxyTargetTypeToolBox,
+				TargetID:     "b1",
+				Operation:    interfaces.ProxyOperationExecute,
+				ExecutionID:  "execution-1",
+			})
+
+			response, err := fixture.service.ExecuteTool(ctx, &interfaces.ExecuteToolReq{
+				UserID: "u1", BoxID: "b1", ToolID: "t1",
+			})
+
+			if err == nil || response != nil {
+				t.Fatalf("ExecuteTool() = %+v, %v; want final authorization failure", response, err)
+			}
+			if authorizer.calls != 1 {
+				t.Fatalf("authorizer calls = %d, want 1", authorizer.calls)
+			}
+			if *fixture.captured != nil {
+				t.Fatalf("outbound request = %+v, want none", *fixture.captured)
+			}
+			if len(audit.events) != 1 || audit.events[0].Decision != "deny" ||
+				audit.events[0].ExecutionID != "execution-1" {
+				t.Fatalf("audit events = %+v", audit.events)
+			}
+		})
 	}
 }

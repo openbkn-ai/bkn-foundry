@@ -19,6 +19,12 @@
 
 **All 89 public operations are documented.**
 
+The separate
+[managed-proxy contract](../bkn-safe/proxy-execution-pep.yaml)
+documents the cluster-internal, fail-closed Action and Schedule Tool/MCP
+execution boundary. It is linted but unpublished and is not part of the
+89-operation public API count.
+
 ## Run a function end to end
 
 **1. Read the template.** The entry function must be named `handler`.
