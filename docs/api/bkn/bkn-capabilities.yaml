@@ -13,15 +13,20 @@ info:
 
     A capability is identified by three parts:
 
-    | capability_type | owner_id | capability_id |
+    | capability_type | box_id | capability_id |
     |---|---|---|
     | `skill` | empty | `skill_id` |
     | `function` | `box_id` | `tool_id` |
 
-    `owner_id` is required for a function because a tool id is scoped to its box in the
-    execution factory. A skill has no owning container, so an `owner_id` sent with a skill is
-    dropped rather than stored — keeping it would create a second row for the same skill that
-    the unique key cannot collapse, and repeated mounts would stop being idempotent.
+    `box_id` is required for a function because a tool id is scoped to its box in the execution
+    factory, and it is the same name the execution factory, Context Loader and Studio already
+    use. A skill has no container and omits it.
+
+    The stored column behind it is type-neutral (`f_owner_id`) so a later capability type can
+    bring a different kind of container without a migration; that name does not appear on the
+    wire. A `box_id` sent with a skill is dropped rather than stored — keeping it would create a
+    second row for the same skill that the unique key cannot collapse, and repeated mounts would
+    stop being idempotent.
 
     ## What a binding answers
 
@@ -62,7 +67,7 @@ info:
 
     ## Whole-box mounting
 
-    `{"capability_type": "function", "owner_id": "box-x", "all_tools": true}` mounts every
+    `{"capability_type": "function", "box_id": "box-x", "all_tools": true}` mounts every
     enabled tool of that box. The expansion happens **at write time**: the stored rows are
     ordinary tool-level bindings carrying `bound_as_box: true`, so the read path never expands
     anything and any single row can be released on its own.
@@ -142,7 +147,7 @@ paths:
               - function
             type: string
           in: query
-        - name: owner_id
+        - name: box_id
           description: Filter by owning tool box. Only meaningful for functions.
           schema:
             type: string
@@ -230,7 +235,7 @@ paths:
         '400':
           description: >-
             Empty capability list, unsupported capability_type, missing capability_id, a
-            function without owner_id, or a value longer than its column: owner_id and
+            function without box_id, or a value longer than its column: box_id and
             capability_id are limited to 64 characters and comment to 255. Over-long values are
             rejected here rather than reaching the database, where they would surface as a 500
             under strict SQL mode or be silently truncated into a binding pointing at a
@@ -256,7 +261,7 @@ paths:
       description: |
         Releases by binding ID, comma separated for a batch. IDs that are already gone are not
         an error. Binding IDs are used rather than the capability identity because a
-        tool-level binding needs owner_id as well to be located, and identifiers containing
+        tool-level binding needs box_id as well to be located, and identifiers containing
         special characters would have to be escaped in the path.
       parameters:
         - name: kn_id
@@ -318,8 +323,8 @@ components:
             - skill
             - function
           type: string
-        owner_id:
-          description: Owning tool box ID. Present for functions, empty for skills.
+        box_id:
+          description: Owning tool box ID. Present for functions, absent for skills.
           type: string
         capability_id:
           description: Execution-factory identifier — skill_id for a skill, tool_id for a function
@@ -435,7 +440,7 @@ components:
             - skill
             - function
           type: string
-        owner_id:
+        box_id:
           description: Tool box ID. Required for a function, ignored for a skill.
           type: string
         capability_id:
@@ -444,7 +449,7 @@ components:
           type: string
         all_tools:
           description: >-
-            Mount every enabled tool of the box named by owner_id. Expanded at write time into
+            Mount every enabled tool of the box named by box_id. Expanded at write time into
             one tool-level binding per tool, each with bound_as_box true; tools added to the box
             later are not inherited.
           type: boolean

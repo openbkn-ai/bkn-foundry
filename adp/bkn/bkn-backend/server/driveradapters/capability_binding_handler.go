@@ -196,8 +196,9 @@ func (r *restHandler) ListCapabilities(c *gin.Context, vis hydra.Visitor) {
 		KNID:           knID,
 		Branch:         branch,
 		CapabilityType: c.Query("type"),
-		OwnerID:        c.Query("owner_id"),
-		WithDetail:     strings.EqualFold(strings.TrimSpace(c.Query("with_detail")), "true"),
+		// Either spelling narrows by tool box; box_id is what every other surface calls it.
+		OwnerID:    firstNonEmpty(c.Query("owner_id"), c.Query("box_id")),
+		WithDetail: strings.EqualFold(strings.TrimSpace(c.Query("with_detail")), "true"),
 	})
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
