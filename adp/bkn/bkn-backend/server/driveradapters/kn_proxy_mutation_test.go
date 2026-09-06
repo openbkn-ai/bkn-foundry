@@ -148,8 +148,9 @@ func TestObjectTypeWritesUseKNProxyPublisher(t *testing.T) {
 		if err := handler.deleteObjectTypes(t.Context(), "kn-1", interfaces.MAIN_BRANCH, []string{"ot-1"}); err != nil {
 			t.Fatal(err)
 		}
-		assertProxyMutation(t, publisher, interfaces.ImportMode_Normal, func(changes *interfaces.KN) {
-			if len(changes.ObjectTypes) != 0 {
+		assertProxyMutation(t, publisher, interfaces.ImportMode_Overwrite, func(changes *interfaces.KN) {
+			if len(changes.ObjectTypes) != 1 || changes.ObjectTypes[0].OTID != "ot-1" ||
+				changes.ObjectTypes[0].DataSource != nil {
 				t.Fatalf("delete object type changes = %#v", changes.ObjectTypes)
 			}
 		})
@@ -210,8 +211,8 @@ func TestRelationTypeWritesUseKNProxyPublisher(t *testing.T) {
 		if err := handler.deleteRelationTypes(t.Context(), "kn-1", interfaces.MAIN_BRANCH, []string{"rt-1"}); err != nil {
 			t.Fatal(err)
 		}
-		assertProxyMutation(t, publisher, interfaces.ImportMode_Normal, func(changes *interfaces.KN) {
-			if len(changes.RelationTypes) != 0 {
+		assertProxyMutation(t, publisher, interfaces.ImportMode_Overwrite, func(changes *interfaces.KN) {
+			if len(changes.RelationTypes) != 1 || changes.RelationTypes[0].RTID != "rt-1" {
 				t.Fatalf("delete relation type changes = %#v", changes.RelationTypes)
 			}
 		})
@@ -272,8 +273,9 @@ func TestActionTypeWritesUseKNProxyPublisher(t *testing.T) {
 		if err := handler.deleteActionTypes(t.Context(), "kn-1", interfaces.MAIN_BRANCH, []string{"at-1"}); err != nil {
 			t.Fatal(err)
 		}
-		assertProxyMutation(t, publisher, interfaces.ImportMode_Normal, func(changes *interfaces.KN) {
-			if len(changes.ActionTypes) != 0 {
+		assertProxyMutation(t, publisher, interfaces.ImportMode_Overwrite, func(changes *interfaces.KN) {
+			if len(changes.ActionTypes) != 1 || changes.ActionTypes[0].ATID != "at-1" ||
+				changes.ActionTypes[0].ActionSource.Type != "" {
 				t.Fatalf("delete action type changes = %#v", changes.ActionTypes)
 			}
 		})
@@ -331,8 +333,9 @@ func TestMetricWritesUseKNProxyPublisher(t *testing.T) {
 		if err := handler.deleteMetrics(t.Context(), "kn-1", interfaces.MAIN_BRANCH, []string{"metric-1"}); err != nil {
 			t.Fatal(err)
 		}
-		assertProxyMutation(t, publisher, interfaces.ImportMode_Normal, func(changes *interfaces.KN) {
-			if len(changes.Metrics) != 0 {
+		assertProxyMutation(t, publisher, interfaces.ImportMode_Overwrite, func(changes *interfaces.KN) {
+			if len(changes.Metrics) != 1 || changes.Metrics[0].ID != "metric-1" ||
+				changes.Metrics[0].ScopeRef != "" {
 				t.Fatalf("delete metric changes = %#v", changes.Metrics)
 			}
 		})

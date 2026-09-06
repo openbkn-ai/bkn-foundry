@@ -6,7 +6,9 @@ package proxygrant_test
 
 import (
 	"errors"
+	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -72,6 +74,19 @@ func (f fixture) authorize(t *testing.T, resourceID string, operations ...string
 	}
 	for _, operation := range operations {
 		if err := f.enforcer.GrantObjectPermission(f.grantor, "resource", resourceID, operation); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func (f fixture) grantOperations(t *testing.T, accessorID, resourceID string, operations ...string) {
+	f.grantTypedOperations(t, accessorID, "resource", resourceID, operations...)
+}
+
+func (f fixture) grantTypedOperations(t *testing.T, accessorID, resourceType, resourceID string, operations ...string) {
+	t.Helper()
+	for _, operation := range operations {
+		if err := f.enforcer.GrantObjectPermission(accessorID, resourceType, resourceID, operation); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -158,7 +173,7 @@ func TestSourceIdentityCollisionIsRejected(t *testing.T) {
 	}
 }
 
-func TestRevokingLastSourcePreservesPreexistingManualPolicy(t *testing.T) {
+func TestRevokingLastSourcePreservesButDoesNotTrustUntrackedPolicy(t *testing.T) {
 	f := newFixture(t)
 	f.authorize(t, "r-1", "query_data")
 	if err := f.enforcer.GrantObjectPermission(f.proxyID, "resource", "r-1", "query_data"); err != nil {
@@ -171,11 +186,419 @@ func TestRevokingLastSourcePreservesPreexistingManualPolicy(t *testing.T) {
 	if _, _, err := f.service.Revoke(t.Context(), source.ID, proxygrant.RevokeRequest{GrantorID: f.grantor}); err != nil {
 		t.Fatal(err)
 	}
-	assertAllowed(t, f, true)
+	assertAllowed(t, f, false)
 	var markers int64
 	if err := f.db.Model(&model.ProxyGrantPolicy{}).Count(&markers).Error; err != nil || markers != 0 {
 		t.Fatalf("markers = %d err=%v, want 0", markers, err)
 	}
+}
+
+func TestKNBindingDerivesFromOperationWithoutAuthorize(t *testing.T) {
+	f := newFixture(t)
+	f.grantOperations(t, f.grantor, "r-1", "query_data")
+
+	result, err := f.service.Check(t.Context(), f.request("source-operation", "ot-operation", "r-1"))
+	if err != nil || !result.Allowed {
+		t.Fatalf("operation-only Check() = (%+v, %v), want allowed", result, err)
+	}
+	source, changed, err := f.service.Grant(t.Context(), f.request("source-operation", "ot-operation", "r-1"))
+	if err != nil || !changed || source.GrantedBy != f.grantor {
+		t.Fatalf("operation-only Grant() = (%+v, %v, %v)", source, changed, err)
+	}
+	assertAllowed(t, f, true)
+}
+
+func TestKNBindingDerivesExecuteOperationsWithoutAuthorize(t *testing.T) {
+	f := newFixture(t)
+	for _, resourceType := range []string{"tool_box", "mcp"} {
+		if err := f.db.Create(&model.ResourceType{ID: resourceType, Name: resourceType}).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := f.db.Create(&model.Operation{ResourceTypeID: resourceType, ID: "execute", Name: "execute"}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, test := range []struct {
+		resourceType string
+		resourceID   string
+	}{
+		{resourceType: "tool_box", resourceID: "box-1"},
+		{resourceType: "mcp", resourceID: "mcp-1"},
+	} {
+		t.Run(test.resourceType, func(t *testing.T) {
+			f.grantTypedOperations(t, f.grantor, test.resourceType, test.resourceID, "execute")
+			request := f.request("source-"+test.resourceType, "binding-"+test.resourceType, test.resourceID)
+			request.Source.ResourceType = test.resourceType
+			request.Source.Operation = "execute"
+			request.Source.BindingType = "action_type"
+			decision, err := f.service.Check(t.Context(), request)
+			if err != nil || !decision.Allowed {
+				t.Fatalf("operation-only Check() = (%+v, %v), want allowed", decision, err)
+			}
+			if _, changed, err := f.service.Grant(t.Context(), request); err != nil || !changed {
+				t.Fatalf("operation-only Grant() = changed %v, err %v", changed, err)
+			}
+			allowed, err := f.enforcer.Check(f.proxyID, test.resourceType, test.resourceID, "execute")
+			if err != nil || !allowed {
+				t.Fatalf("proxy execute = %v, err %v", allowed, err)
+			}
+		})
+	}
+}
+
+func TestKNBindingRejectsAuthorizeWithoutOperation(t *testing.T) {
+	f := newFixture(t)
+	f.authorize(t, "r-1")
+
+	result, err := f.service.Check(t.Context(), f.request("source-no-operation", "ot-no-operation", "r-1"))
+	if err != nil || result.Allowed {
+		t.Fatalf("authorize-only Check() = (%+v, %v), want denied", result, err)
+	}
+	if _, _, err := f.service.Grant(t.Context(), f.request("source-no-operation", "ot-no-operation", "r-1")); !errors.Is(err, proxygrant.ErrForbidden) {
+		t.Fatalf("authorize-only Grant() error = %v, want forbidden", err)
+	}
+}
+
+func TestKNBindingFollowsCurrentDelegatorPermission(t *testing.T) {
+	f := newFixture(t)
+	f.grantOperations(t, f.grantor, "r-1", "query_data")
+	request := f.request("source-current", "ot-current", "r-1")
+	if _, _, err := f.service.Grant(t.Context(), request); err != nil {
+		t.Fatal(err)
+	}
+	assertAllowed(t, f, true)
+
+	if err := f.enforcer.RevokeObjectPermission(f.grantor, "resource", "r-1", "query_data"); err != nil {
+		t.Fatal(err)
+	}
+	assertAllowed(t, f, false)
+	var source model.ProxyGrantSource
+	if err := f.db.First(&source, "source_id = ?", request.Source.SourceID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if source.LifecycleStatus != proxygrant.StatusActive {
+		t.Fatalf("source status = %q, want active model binding", source.LifecycleStatus)
+	}
+
+	f.grantOperations(t, f.grantor, "r-1", "query_data")
+	assertAllowed(t, f, true)
+}
+
+func TestKNBindingRemainsAllowedWhileAnotherDelegatorIsValid(t *testing.T) {
+	f := newFixture(t)
+	f.grantOperations(t, f.grantor, "r-1", "query_data")
+	if _, _, err := f.service.Grant(t.Context(), f.request("source-a", "ot-a", "r-1")); err != nil {
+		t.Fatal(err)
+	}
+
+	const second = "builder-2"
+	if err := f.db.Create(&model.User{ID: second, Account: second, Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	f.grantOperations(t, second, "r-1", "query_data")
+	secondRequest := f.request("source-b", "ot-b", "r-1")
+	secondRequest.GrantorID = second
+	if _, _, err := f.service.Grant(t.Context(), secondRequest); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := f.enforcer.RevokeObjectPermission(f.grantor, "resource", "r-1", "query_data"); err != nil {
+		t.Fatal(err)
+	}
+	assertAllowed(t, f, true)
+	if err := f.enforcer.RevokeObjectPermission(second, "resource", "r-1", "query_data"); err != nil {
+		t.Fatal(err)
+	}
+	assertAllowed(t, f, false)
+}
+
+func TestKNBindingTracksRoleAndAccountState(t *testing.T) {
+	f := newFixture(t)
+	const role = "resource-reader"
+	if err := f.enforcer.GrantRolePermission(role, "resource", "r-1", "query_data"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.enforcer.AssignRole(f.grantor, role); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.service.Grant(t.Context(), f.request("source-role", "ot-role", "r-1")); err != nil {
+		t.Fatal(err)
+	}
+	assertAllowed(t, f, true)
+
+	if err := f.enforcer.RemoveRole(f.grantor, role); err != nil {
+		t.Fatal(err)
+	}
+	assertAllowed(t, f, false)
+	if err := f.enforcer.AssignRole(f.grantor, role); err != nil {
+		t.Fatal(err)
+	}
+	assertAllowed(t, f, true)
+
+	if err := f.db.Model(&model.User{}).Where("id = ?", f.grantor).Update("enabled", false).Error; err != nil {
+		t.Fatal(err)
+	}
+	assertAllowed(t, f, false)
+}
+
+func TestKNBindingTracksInheritedOperation(t *testing.T) {
+	f := newFixture(t)
+	if err := f.db.Create(&model.ResourceType{ID: "catalog", Name: "Catalog"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := f.db.Create(&model.Operation{ResourceTypeID: "catalog", ID: "query_data", Name: "query_data"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := f.db.Model(&model.ResourceType{}).Where("id = ?", "resource").Update("parent_type_id", "catalog").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := f.db.Model(&model.Operation{}).
+		Where("resource_type_id = ? AND id = ?", "resource", "query_data").
+		Update("parent_operation_id", "query_data").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := f.db.Create(&model.ResourceParent{
+		ResourceTypeID: "resource", ResourceID: "r-1", ParentTypeID: "catalog", ParentID: "catalog-1",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := f.enforcer.GrantObjectPermission(f.grantor, "catalog", "catalog-1", "query_data"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.service.Grant(t.Context(), f.request("source-inherited", "ot-inherited", "r-1")); err != nil {
+		t.Fatal(err)
+	}
+	assertAllowed(t, f, true)
+
+	if err := f.db.Where("resource_type_id = ? AND resource_id = ?", "resource", "r-1").
+		Delete(&model.ResourceParent{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	assertAllowed(t, f, false)
+}
+
+func TestKNBindingTracksOperationRegistration(t *testing.T) {
+	f := newFixture(t)
+	f.grantOperations(t, f.grantor, "r-1", "query_data")
+	if _, _, err := f.service.Grant(t.Context(), f.request("source-operation-catalog", "ot-operation-catalog", "r-1")); err != nil {
+		t.Fatal(err)
+	}
+	assertAllowed(t, f, true)
+
+	if err := f.db.Where("resource_type_id = ? AND id = ?", "resource", "query_data").
+		Delete(&model.Operation{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	assertAllowed(t, f, false)
+}
+
+func TestSyncTransfersInvalidHistoricalDelegator(t *testing.T) {
+	f := newFixture(t)
+	f.grantOperations(t, f.grantor, "r-1", "query_data")
+	request := f.request("source-transfer", "ot-transfer", "r-1")
+	if _, _, err := f.service.Grant(t.Context(), request); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.enforcer.RevokeObjectPermission(f.grantor, "resource", "r-1", "query_data"); err != nil {
+		t.Fatal(err)
+	}
+
+	const replacement = "builder-2"
+	if err := f.db.Create(&model.User{ID: replacement, Account: replacement, Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	f.grantOperations(t, replacement, "r-1", "query_data")
+	preflight := request
+	preflight.GrantorID = replacement
+	decision, err := f.service.Check(t.Context(), preflight)
+	if err != nil || !decision.Allowed {
+		t.Fatalf("replacement Check() = (%+v, %v), want allowed", decision, err)
+	}
+	result, err := f.service.Sync(t.Context(), proxygrant.SyncRequest{
+		ProxyAccountID: f.proxyID, GrantorID: replacement, Sources: []proxygrant.SourceSpec{request.Source},
+	})
+	if err != nil || result.Transferred != 1 || result.Unchanged != 0 {
+		t.Fatalf("replacement Sync() = (%+v, %v)", result, err)
+	}
+	var source model.ProxyGrantSource
+	if err := f.db.First(&source, "source_id = ?", request.Source.SourceID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if source.GrantedBy != replacement {
+		t.Fatalf("source delegator = %q, want %q", source.GrantedBy, replacement)
+	}
+	assertAllowed(t, f, true)
+}
+
+func TestCheckManyPreservesValidDelegatorAndReturnsAllDeniedSources(t *testing.T) {
+	f := newFixture(t)
+	f.grantOperations(t, f.grantor, "r-retained", "query_data")
+	retained := f.request("source-retained", "ot-retained", "r-retained")
+	if _, _, err := f.service.Grant(t.Context(), retained); err != nil {
+		t.Fatal(err)
+	}
+
+	const editor = "builder-batch"
+	if err := f.db.Create(&model.User{ID: editor, Account: editor, Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	f.grantOperations(t, editor, "r-new", "query_data")
+	newSource := f.request("source-new", "ot-new", "r-new").Source
+	deniedA := f.request("source-denied-a", "ot-denied-a", "r-denied-a").Source
+	deniedB := f.request("source-denied-b", "ot-denied-b", "r-denied-b").Source
+
+	result, err := f.service.CheckMany(t.Context(), proxygrant.BatchCheckRequest{
+		ProxyAccountID: f.proxyID,
+		GrantorID:      editor,
+		Sources:        []proxygrant.SourceSpec{retained.Source, newSource, deniedA, deniedB},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.DeniedSources) != 2 || result.DeniedSources[0].SourceID != deniedA.SourceID ||
+		result.DeniedSources[1].SourceID != deniedB.SourceID {
+		t.Fatalf("denied sources = %#v, want both unavailable sources", result.DeniedSources)
+	}
+}
+
+func TestManagedProxyFilterBatchesSourceValidityQueries(t *testing.T) {
+	f := newFixture(t)
+	const sourceCount = 20
+	refs := make([]authz.ResourceRef, 0, sourceCount)
+	for i := 0; i < sourceCount; i++ {
+		resourceID := fmt.Sprintf("r-batch-%02d", i)
+		f.grantOperations(t, f.grantor, resourceID, "query_data")
+		if _, _, err := f.service.Grant(t.Context(), f.request(
+			fmt.Sprintf("source-batch-%02d", i), fmt.Sprintf("ot-batch-%02d", i), resourceID)); err != nil {
+			t.Fatal(err)
+		}
+		refs = append(refs, authz.ResourceRef{Type: "resource", ID: resourceID})
+	}
+
+	var queryCount atomic.Int64
+	callbackName := "test:count-batched-proxy-filter"
+	if err := f.db.Callback().Query().Before("gorm:query").Register(callbackName, func(*gorm.DB) {
+		queryCount.Add(1)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.db.Callback().Query().Remove(callbackName) })
+
+	filtered, err := f.enforcer.FilterResourceOps(f.proxyID, refs,
+		[]string{"query_data"}, []string{"query_data"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != sourceCount {
+		t.Fatalf("filtered resources = %d, want %d", len(filtered), sourceCount)
+	}
+	if got := queryCount.Load(); got > 6 {
+		t.Fatalf("filter query count = %d, want a bounded batch independent of source count", got)
+	}
+}
+
+func TestSyncPreservesValidHistoricalDelegator(t *testing.T) {
+	f := newFixture(t)
+	f.grantOperations(t, f.grantor, "r-1", "query_data")
+	request := f.request("source-preserve", "ot-preserve", "r-1")
+	if _, _, err := f.service.Grant(t.Context(), request); err != nil {
+		t.Fatal(err)
+	}
+	const editor = "builder-without-data"
+	if err := f.db.Create(&model.User{ID: editor, Account: editor, Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	preflight := request
+	preflight.GrantorID = editor
+	decision, err := f.service.Check(t.Context(), preflight)
+	if err != nil || !decision.Allowed {
+		t.Fatalf("historical Check() = (%+v, %v), want allowed", decision, err)
+	}
+	result, err := f.service.Sync(t.Context(), proxygrant.SyncRequest{
+		ProxyAccountID: f.proxyID, GrantorID: editor, Sources: []proxygrant.SourceSpec{request.Source},
+	})
+	if err != nil || result.Unchanged != 1 || result.Transferred != 0 {
+		t.Fatalf("historical Sync() = (%+v, %v)", result, err)
+	}
+	var source model.ProxyGrantSource
+	if err := f.db.First(&source, "source_id = ?", request.Source.SourceID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if source.GrantedBy != f.grantor {
+		t.Fatalf("source delegator = %q, want original %q", source.GrantedBy, f.grantor)
+	}
+}
+
+func TestGrantTransfersInvalidHistoricalDelegator(t *testing.T) {
+	f := newFixture(t)
+	f.grantOperations(t, f.grantor, "r-1", "query_data")
+	request := f.request("source-grant-transfer", "ot-grant-transfer", "r-1")
+	if _, _, err := f.service.Grant(t.Context(), request); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.enforcer.RevokeObjectPermission(f.grantor, "resource", "r-1", "query_data"); err != nil {
+		t.Fatal(err)
+	}
+
+	const replacement = "builder-grant-replacement"
+	if err := f.db.Create(&model.User{ID: replacement, Account: replacement, Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	f.grantOperations(t, replacement, "r-1", "query_data")
+	request.GrantorID = replacement
+	source, changed, err := f.service.Grant(t.Context(), request)
+	if err != nil || !changed || source.GrantedBy != replacement {
+		t.Fatalf("replacement Grant() = (%+v, %v, %v)", source, changed, err)
+	}
+	assertAllowed(t, f, true)
+}
+
+func TestGrantPreservesValidHistoricalDelegator(t *testing.T) {
+	f := newFixture(t)
+	f.grantOperations(t, f.grantor, "r-1", "query_data")
+	request := f.request("source-grant-preserve", "ot-grant-preserve", "r-1")
+	if _, _, err := f.service.Grant(t.Context(), request); err != nil {
+		t.Fatal(err)
+	}
+
+	const editor = "builder-grant-without-data"
+	if err := f.db.Create(&model.User{ID: editor, Account: editor, Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	request.GrantorID = editor
+	source, changed, err := f.service.Grant(t.Context(), request)
+	if err != nil || changed || source.GrantedBy != f.grantor {
+		t.Fatalf("historical Grant() = (%+v, %v, %v)", source, changed, err)
+	}
+}
+
+func TestReconcileReportsInvalidSourceAndSyncRestoresMaterialization(t *testing.T) {
+	f := newFixture(t)
+	f.grantOperations(t, f.grantor, "r-1", "query_data")
+	request := f.request("source-reconcile-invalid", "ot-reconcile-invalid", "r-1")
+	if _, _, err := f.service.Grant(t.Context(), request); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.enforcer.RevokeObjectPermission(f.grantor, "resource", "r-1", "query_data"); err != nil {
+		t.Fatal(err)
+	}
+	result, err := f.service.Reconcile(t.Context(), proxygrant.ReconcileRequest{
+		ProxyAccountID: f.proxyID, RequestedBy: "system:reconcile",
+	})
+	if err != nil || result.InvalidSources != 1 || result.PoliciesRemoved != 1 {
+		t.Fatalf("invalid Reconcile() = (%+v, %v)", result, err)
+	}
+	assertAllowed(t, f, false)
+
+	f.grantOperations(t, f.grantor, "r-1", "query_data")
+	syncResult, err := f.service.Sync(t.Context(), proxygrant.SyncRequest{
+		ProxyAccountID: f.proxyID, GrantorID: f.grantor, Sources: []proxygrant.SourceSpec{request.Source},
+	})
+	if err != nil || syncResult.Unchanged != 1 {
+		t.Fatalf("restoring Sync() = (%+v, %v)", syncResult, err)
+	}
+	assertAllowed(t, f, true)
 }
 
 func TestRevokingBindingPreservesActiveManualSource(t *testing.T) {
@@ -443,6 +866,17 @@ func assertAllowed(t *testing.T, f fixture, want bool) {
 	allowed, err := f.enforcer.Check(f.proxyID, "resource", "r-1", "query_data")
 	if err != nil || allowed != want {
 		t.Fatalf("proxy allowed = %v err=%v, want %v", allowed, err, want)
+	}
+	operations, err := f.enforcer.AllowedOps(f.proxyID, "resource", "r-1", []string{"query_data"})
+	listed := len(operations) == 1 && operations[0] == "query_data"
+	if err != nil || listed != want {
+		t.Fatalf("proxy operations = %v err=%v, want query_data listed=%v", operations, err, want)
+	}
+	filtered, err := f.enforcer.FilterResourceOps(f.proxyID,
+		[]authz.ResourceRef{{Type: "resource", ID: "r-1"}}, []string{"query_data"}, []string{"query_data"})
+	visible := len(filtered) == 1 && len(filtered[0].Operations) == 1 && filtered[0].Operations[0] == "query_data"
+	if err != nil || visible != want {
+		t.Fatalf("proxy filtered resources = %v err=%v, want visible=%v", filtered, err, want)
 	}
 }
 

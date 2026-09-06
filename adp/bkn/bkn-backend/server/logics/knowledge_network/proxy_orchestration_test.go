@@ -80,6 +80,7 @@ func (s *proxyAccessStub) ListProxyConflicts(context.Context) (map[string][]stri
 
 type managedProxyAccessStub struct {
 	allowed          bool
+	deniedResources  map[string]bool
 	createCount      int
 	disabled         bool
 	disableLifecycle string
@@ -89,6 +90,7 @@ type managedProxyAccessStub struct {
 	synced           []interfaces.ProxyGrantSourceSpec
 	syncCalls        int
 	reconciled       []string
+	reconcileResult  interfaces.ProxyGrantReconcileResult
 	syncErr          error
 	events           *[]string
 }
@@ -142,7 +144,18 @@ func (s *managedProxyAccessStub) Archive(context.Context, string) (*interfaces.M
 }
 func (s *managedProxyAccessStub) CheckGrant(_ context.Context, _, _ string, source interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantCheckResult, error) {
 	s.checked = append(s.checked, source)
-	return interfaces.ProxyGrantCheckResult{Allowed: s.allowed}, nil
+	return interfaces.ProxyGrantCheckResult{Allowed: s.allowed && !s.deniedResources[source.ResourceID]}, nil
+}
+func (s *managedProxyAccessStub) CheckGrants(_ context.Context, _, _ string,
+	sources []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantBatchCheckResult, error) {
+	s.checked = append(s.checked, sources...)
+	result := interfaces.ProxyGrantBatchCheckResult{DeniedSources: []interfaces.ProxyGrantSourceSpec{}}
+	for _, source := range sources {
+		if !s.allowed || s.deniedResources[source.ResourceID] {
+			result.DeniedSources = append(result.DeniedSources, source)
+		}
+	}
+	return result, nil
 }
 func (s *managedProxyAccessStub) SyncGrants(_ context.Context, _, _ string, sources []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantSyncResult, error) {
 	s.syncCalls++
@@ -308,9 +321,17 @@ func TestPrepareProxyImportPreflightsRelationAgainstExistingBoundObject(t *testi
 		t.Fatal(err)
 	}
 	defer service.releaseProxyLock(t.Context(), plan)
-	if len(mpa.checked) != 1 || mpa.checked[0].BindingType != interfaces.MODULE_TYPE_RELATION_TYPE ||
-		mpa.checked[0].ResourceID != "resource-1" {
-		t.Fatalf("import preflight sources = %#v, want new relation grant on existing object resource", mpa.checked)
+	if len(mpa.checked) != 3 {
+		t.Fatalf("import preflight sources = %#v, want complete candidate source set", mpa.checked)
+	}
+	relationChecks := 0
+	for _, source := range mpa.checked {
+		if source.BindingType == interfaces.MODULE_TYPE_RELATION_TYPE && source.ResourceID == "resource-1" {
+			relationChecks++
+		}
+	}
+	if relationChecks != 1 {
+		t.Fatalf("import preflight sources = %#v, want relation grant plus retained object grants", mpa.checked)
 	}
 }
 
@@ -362,13 +383,13 @@ func TestPublishKNChildMutationBypassesProxyOutsideMainBranch(t *testing.T) {
 	}
 }
 
-func TestPublishKNChildMutationRejectsMissingProxyWithoutAuthorize(t *testing.T) {
+func TestPublishKNChildMutationRejectsMissingProxyWithoutModify(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ps := bmock.NewMockPermissionService(ctrl)
-	wantErr := errors.New("authorize denied")
+	wantErr := errors.New("modify denied")
 	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN, ID: "kn-1",
-	}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}).Return(wantErr)
+	}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(wantErr)
 
 	mpa := &managedProxyAccessStub{}
 	service := &knowledgeNetworkService{ps: ps, kpa: &proxyAccessStub{}, mpa: mpa}
@@ -385,7 +406,21 @@ func TestPublishKNChildMutationRejectsMissingProxyWithoutAuthorize(t *testing.T)
 	}
 }
 
-func TestPublishKNChildMutationBackfillsMissingProxyBeforeMutation(t *testing.T) {
+func TestRetryKNProxySyncRequiresModify(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ps := bmock.NewMockPermissionService(ctrl)
+	wantErr := errors.New("modify denied")
+	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_KN, ID: "kn-1",
+	}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(wantErr)
+
+	service := &knowledgeNetworkService{ps: ps, kpa: &proxyAccessStub{}, mpa: &managedProxyAccessStub{}}
+	if _, err := service.RetryKNProxySync(t.Context(), "kn-1"); !errors.Is(err, wantErr) {
+		t.Fatalf("RetryKNProxySync() error = %v, want %v", err, wantErr)
+	}
+}
+
+func TestPublishKNChildMutationCreatesMissingProxyAndSyncsCandidate(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	kna := bmock.NewMockKNAccess(ctrl)
 	cga := bmock.NewMockConceptGroupAccess(ctrl)
@@ -404,25 +439,23 @@ func TestPublishKNChildMutationBackfillsMissingProxyBeforeMutation(t *testing.T)
 		OTID: "ot-1", DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-new"},
 	}}
 	base := &interfaces.KN{KNID: "kn-1", KNName: "network", Branch: interfaces.MAIN_BRANCH}
-	kna.EXPECT().GetKNByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH).Return(base, nil).Times(4)
-	cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(nil, nil).Times(3)
+	kna.EXPECT().GetKNByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH).Return(base, nil).Times(3)
+	cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(nil, nil).Times(2)
 	loadCount := 0
 	ota.EXPECT().ListObjectTypes(gomock.Any(), nil, gomock.Any()).DoAndReturn(
 		func(context.Context, *sql.Tx, interfaces.ObjectTypesQueryParams) ([]*interfaces.ObjectType, error) {
 			loadCount++
-			if loadCount == 3 {
+			if loadCount == 2 {
 				return []*interfaces.ObjectType{objectType}, nil
 			}
 			return nil, nil
-		}).Times(3)
-	rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, nil).Times(3)
-	ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return(nil, nil).Times(3)
-	ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(nil, nil).Times(3)
+		}).Times(2)
+	rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, nil).Times(2)
+	ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return(nil, nil).Times(2)
+	ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(nil, nil).Times(2)
 	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN, ID: "kn-1",
-	}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}).Return(nil)
-	databaseMock.ExpectBegin()
-	databaseMock.ExpectCommit()
+	}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
 	databaseMock.ExpectBegin()
 	databaseMock.ExpectCommit()
 
@@ -443,7 +476,7 @@ func TestPublishKNChildMutationBackfillsMissingProxyBeforeMutation(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !mutationCalled || mpa.createCount != 1 || mpa.syncCalls != 2 {
+	if !mutationCalled || mpa.createCount != 1 || mpa.syncCalls != 1 {
 		t.Fatalf("backfill state: mutation=%t creates=%d syncs=%d", mutationCalled, mpa.createCount, mpa.syncCalls)
 	}
 	if kpa.mapping == nil || kpa.mapping.LifecycleStatus != interfaces.KNProxyLifecycleActive || !kpa.lockReleased {
@@ -605,8 +638,15 @@ func TestPublishKNChildMutationCommitsPendingAndSyncsLatest(t *testing.T) {
 	if len(mpa.synced) != 4 {
 		t.Fatalf("synchronized sources = %#v, want replacement and unchanged resource grants", mpa.synced)
 	}
-	if len(mpa.checked) != 2 || mpa.checked[0].ResourceID != "resource-new" || mpa.checked[1].ResourceID != "resource-new" {
-		t.Fatalf("preflight sources = %#v, want only replacement resource grants", mpa.checked)
+	if len(mpa.checked) != 4 {
+		t.Fatalf("preflight sources = %#v, want complete candidate source set", mpa.checked)
+	}
+	checkedByResource := map[string]int{}
+	for _, source := range mpa.checked {
+		checkedByResource[source.ResourceID]++
+	}
+	if checkedByResource["resource-new"] != 2 || checkedByResource["resource-stable"] != 2 {
+		t.Fatalf("preflight sources = %#v, want replacement and retained resource grants", mpa.checked)
 	}
 	if kpa.syncStatus != interfaces.KNProxySyncReady || kpa.syncedVersion != kpa.pendingVersion {
 		t.Fatalf("sync state = %q %q, pending version %q", kpa.syncStatus, kpa.syncedVersion, kpa.pendingVersion)
@@ -616,7 +656,7 @@ func TestPublishKNChildMutationCommitsPendingAndSyncsLatest(t *testing.T) {
 	}
 }
 
-func TestPublishKNChildMutationDeniedTargetDoesNotMutate(t *testing.T) {
+func TestPublishKNChildMutationInvalidRetainedTargetDoesNotMutate(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	kna := bmock.NewMockKNAccess(ctrl)
 	cga := bmock.NewMockConceptGroupAccess(ctrl)
@@ -631,10 +671,13 @@ func TestPublishKNChildMutationDeniedTargetDoesNotMutate(t *testing.T) {
 	newObjectType := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 		OTID: "ot-1", DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-new"},
 	}}
+	stableObjectType := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+		OTID: "ot-stable", DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-stable"},
+	}}
 	kna.EXPECT().GetKNByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH).
 		Return(&interfaces.KN{KNID: "kn-1", Branch: interfaces.MAIN_BRANCH}, nil)
 	cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(nil, nil)
-	ota.EXPECT().ListObjectTypes(gomock.Any(), nil, gomock.Any()).Return([]*interfaces.ObjectType{oldObjectType}, nil)
+	ota.EXPECT().ListObjectTypes(gomock.Any(), nil, gomock.Any()).Return([]*interfaces.ObjectType{oldObjectType, stableObjectType}, nil)
 	rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, nil)
 	ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return(nil, nil)
 	ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(nil, nil)
@@ -642,7 +685,7 @@ func TestPublishKNChildMutationDeniedTargetDoesNotMutate(t *testing.T) {
 	kpa := &proxyAccessStub{mapping: &interfaces.KNProxyAccount{
 		KNID: "kn-1", ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleActive,
 	}}
-	mpa := &managedProxyAccessStub{allowed: false}
+	mpa := &managedProxyAccessStub{allowed: true, deniedResources: map[string]bool{"resource-stable": true}}
 	service := &knowledgeNetworkService{kna: kna, cga: cga, ota: ota, rta: rta, ata: ata, ma: ma, kpa: kpa, mpa: mpa}
 	ctx := context.WithValue(t.Context(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "grantor-1"})
 	mutationCalled := false
@@ -654,15 +697,21 @@ func TestPublishKNChildMutationDeniedTargetDoesNotMutate(t *testing.T) {
 			return nil
 		})
 	httpErr, ok := err.(*rest.HTTPError)
-	if !ok || httpErr.HTTPCode != http.StatusForbidden {
+	if !ok || httpErr.HTTPCode != http.StatusForbidden ||
+		httpErr.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyPermissionMissing {
 		t.Fatalf("PublishKNChildMutation() error = %#v, want HTTP 403", err)
+	}
+	details, ok := httpErr.BaseError.ErrorDetails.(missingProxyPermissionDetails)
+	if !ok || len(details.MissingPermissions) != 2 || details.MissingPermissions[0].ResourceID != "resource-stable" ||
+		details.MissingPermissions[1].ResourceID != "resource-stable" {
+		t.Fatalf("missing permission details = %#v, want retained target operations", httpErr.BaseError.ErrorDetails)
 	}
 	if mutationCalled || kpa.pendingCount != 0 || !kpa.lockReleased {
 		t.Fatalf("denied mutation state: called=%t pending=%d lock_released=%t",
 			mutationCalled, kpa.pendingCount, kpa.lockReleased)
 	}
-	if len(mpa.checked) != 1 || mpa.checked[0].ResourceID != "resource-new" {
-		t.Fatalf("denied preflight sources = %#v, want replacement target only", mpa.checked)
+	if len(mpa.checked) != 4 {
+		t.Fatalf("denied preflight sources = %#v, want complete candidate source set", mpa.checked)
 	}
 }
 
@@ -702,20 +751,20 @@ func TestPublishKNChildMutationDeleteRevokesRemovedGrantsWithLegacyUnscopedMetri
 		Return([]*interfaces.MetricDefinition{legacyMetric}, nil).Times(2)
 	databaseMock.ExpectBegin()
 	databaseMock.ExpectCommit()
-	databaseMock.ExpectBegin()
-	databaseMock.ExpectCommit()
 
 	kpa := &proxyAccessStub{mapping: &interfaces.KNProxyAccount{
 		KNID: "kn-1", ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleActive,
 	}}
-	mpa := &managedProxyAccessStub{allowed: true}
+	mpa := &managedProxyAccessStub{allowed: true, deniedResources: map[string]bool{"resource-old": true}}
 	service := &knowledgeNetworkService{
 		db: db, kna: kna, cga: cga, ota: ota, rta: rta, ata: ata, ma: ma, kpa: kpa, mpa: mpa,
 	}
 	ctx := context.WithValue(t.Context(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "grantor-1"})
 	mutationCalled := false
 	err = service.PublishKNChildMutation(ctx,
-		&interfaces.KN{KNID: "kn-1", Branch: interfaces.MAIN_BRANCH}, interfaces.ImportMode_Normal,
+		&interfaces.KN{KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, ObjectTypes: []*interfaces.ObjectType{{
+			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot-1"},
+		}}}, interfaces.ImportMode_Overwrite,
 		func(_ context.Context, tx *sql.Tx) error {
 			mutationCalled = true
 			if tx == nil {
@@ -729,7 +778,10 @@ func TestPublishKNChildMutationDeleteRevokesRemovedGrantsWithLegacyUnscopedMetri
 	if !mutationCalled || mpa.syncCalls != 1 || len(mpa.synced) != 0 {
 		t.Fatalf("delete synchronization: mutation=%t calls=%d grants=%#v", mutationCalled, mpa.syncCalls, mpa.synced)
 	}
-	if kpa.pendingCount != 2 || kpa.syncStatus != interfaces.KNProxySyncReady || !kpa.lockReleased {
+	if len(mpa.checked) != 0 {
+		t.Fatalf("delete preflight checked removed sources: %#v", mpa.checked)
+	}
+	if kpa.pendingCount != 1 || kpa.syncStatus != interfaces.KNProxySyncReady || !kpa.lockReleased {
 		t.Fatalf("delete proxy state: pending=%d sync=%q lock_released=%t",
 			kpa.pendingCount, kpa.syncStatus, kpa.lockReleased)
 	}
@@ -850,6 +902,57 @@ func TestPublishKNChildMutationRollsBackPendingWithBusinessFailure(t *testing.T)
 	}
 }
 
+func TestPublishKNChildMutationArchivesNewProxyWhenBusinessWriteFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	kna := bmock.NewMockKNAccess(ctrl)
+	cga := bmock.NewMockConceptGroupAccess(ctrl)
+	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	rta := bmock.NewMockRelationTypeAccess(ctrl)
+	ata := bmock.NewMockActionTypeAccess(ctrl)
+	ma := bmock.NewMockMetricAccess(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	db, databaseMock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	base := &interfaces.KN{KNID: "kn-1", KNName: "network", Branch: interfaces.MAIN_BRANCH}
+	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_KN, ID: "kn-1",
+	}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+	kna.EXPECT().GetKNByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH).Return(base, nil)
+	cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(nil, nil)
+	ota.EXPECT().ListObjectTypes(gomock.Any(), nil, gomock.Any()).Return(nil, nil)
+	rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, nil)
+	ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return(nil, nil)
+	ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(nil, nil)
+	databaseMock.ExpectBegin()
+	databaseMock.ExpectRollback()
+
+	kpa := &proxyAccessStub{}
+	mpa := &managedProxyAccessStub{allowed: true}
+	service := &knowledgeNetworkService{
+		db: db, kna: kna, cga: cga, ota: ota, rta: rta, ata: ata, ma: ma, ps: ps, kpa: kpa, mpa: mpa,
+	}
+	ctx := context.WithValue(t.Context(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "grantor-1"})
+	wantErr := errors.New("business mutation failed")
+	err = service.PublishKNChildMutation(ctx,
+		&interfaces.KN{KNID: "kn-1", KNName: "network", Branch: interfaces.MAIN_BRANCH},
+		interfaces.ImportMode_Normal,
+		func(context.Context, *sql.Tx) error { return wantErr })
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("PublishKNChildMutation() error = %v, want %v", err, wantErr)
+	}
+	if !mpa.disabled || !mpa.archived || kpa.lifecycle != interfaces.KNProxyLifecycleArchived || !kpa.lockReleased {
+		t.Fatalf("compensation state: disabled=%t archived=%t lifecycle=%q lock_released=%t",
+			mpa.disabled, mpa.archived, kpa.lifecycle, kpa.lockReleased)
+	}
+	if err := databaseMock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestFinishProxyPublishReloadsLatestMainModel(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	kna := bmock.NewMockKNAccess(ctrl)
@@ -879,8 +982,8 @@ func TestFinishProxyPublishReloadsLatestMainModel(t *testing.T) {
 
 	service := &knowledgeNetworkService{kna: kna, cga: cga, ota: ota, rta: rta, ata: ata, ma: ma, kpa: kpa, mpa: mpa}
 	plan := &proxyPublishPlan{
-		mapping:   &interfaces.KNProxyAccount{KNID: "kn-1", ProxyAccountID: "proxy-1"},
-		grantorID: "grantor-1", modelVersion: latestVersion,
+		mapping:     &interfaces.KNProxyAccount{KNID: "kn-1", ProxyAccountID: "proxy-1"},
+		delegatorID: "grantor-1", modelVersion: latestVersion,
 	}
 	if err := service.finishProxyPublish(t.Context(), plan); err != nil {
 		t.Fatal(err)
@@ -915,7 +1018,7 @@ func TestFinishProxyPublishFailureRemainsFailClosed(t *testing.T) {
 	ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return(nil, nil)
 	ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(nil, nil)
 	service := &knowledgeNetworkService{kna: kna, cga: cga, ota: ota, rta: rta, ata: ata, ma: ma, kpa: kpa, mpa: mpa}
-	plan := &proxyPublishPlan{mapping: &interfaces.KNProxyAccount{KNID: "kn-1", ProxyAccountID: "proxy-1"}, grantorID: "grantor-1", modelVersion: version}
+	plan := &proxyPublishPlan{mapping: &interfaces.KNProxyAccount{KNID: "kn-1", ProxyAccountID: "proxy-1"}, delegatorID: "grantor-1", modelVersion: version}
 
 	err = service.finishProxyPublish(t.Context(), plan)
 	if err == nil {
@@ -928,7 +1031,7 @@ func TestFinishProxyPublishFailureRemainsFailClosed(t *testing.T) {
 
 func (s *managedProxyAccessStub) ReconcileGrants(_ context.Context, proxyAccountID, _ string) (interfaces.ProxyGrantReconcileResult, error) {
 	s.reconciled = append(s.reconciled, proxyAccountID)
-	return interfaces.ProxyGrantReconcileResult{}, nil
+	return s.reconcileResult, nil
 }
 
 func TestGetKNProxyResolvesMappingWithoutBusinessAuthorize(t *testing.T) {
@@ -1153,7 +1256,7 @@ func TestReconcileKNProxiesReportsMissingOrphanAndConflict(t *testing.T) {
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   "kn-mapped",
 	}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}).Return(nil)
-	mpa := &managedProxyAccessStub{}
+	mpa := &managedProxyAccessStub{reconcileResult: interfaces.ProxyGrantReconcileResult{InvalidSources: 2}}
 	service := &knowledgeNetworkService{kna: kna, kpa: kpa, mpa: mpa, ps: permissionService}
 
 	report, err := service.ReconcileKNProxies(t.Context(), "admin-1")
@@ -1171,6 +1274,9 @@ func TestReconcileKNProxiesReportsMissingOrphanAndConflict(t *testing.T) {
 	}
 	if !reflect.DeepEqual(mpa.reconciled, []string{"proxy-mapped"}) {
 		t.Fatalf("reconciled proxies = %#v, want live authorized mapping only", mpa.reconciled)
+	}
+	if report.AuthorizationDrift["kn-mapped"].InvalidSources != 2 {
+		t.Fatalf("authorization drift = %#v, want invalid sources reported", report.AuthorizationDrift)
 	}
 }
 
@@ -1284,8 +1390,8 @@ func TestFinalizeProxyDeleteRepairsAlreadyArchivedManagedProxy(t *testing.T) {
 	}
 	service := &knowledgeNetworkService{kpa: kpa, mpa: mpa, ps: permissionService}
 	plan := &proxyPublishPlan{
-		mapping:   &interfaces.KNProxyAccount{KNID: "kn-1", ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleDisabling},
-		grantorID: "grantor-1",
+		mapping:     &interfaces.KNProxyAccount{KNID: "kn-1", ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleDisabling},
+		delegatorID: "grantor-1",
 	}
 
 	if err := service.finalizeProxyDelete(t.Context(), plan); err != nil {

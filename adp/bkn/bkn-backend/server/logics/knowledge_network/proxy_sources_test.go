@@ -204,18 +204,3 @@ func TestBuildProxyGrantSourcesIncludesBoundLogicPropertyTool(t *testing.T) {
 		t.Fatalf("logic property sources = %#v", sources)
 	}
 }
-
-func TestAddedProxyGrantSourcesReturnsOnlyNewTargets(t *testing.T) {
-	current := []interfaces.ProxyGrantSourceSpec{
-		{ResourceType: "resource", ResourceID: "resource-stable", Operation: "query_data", SourceType: "kn_proxy_binding", SourceID: "stable"},
-		{ResourceType: "resource", ResourceID: "resource-old", Operation: "query_data", SourceType: "kn_proxy_binding", SourceID: "changed"},
-	}
-	candidate := []interfaces.ProxyGrantSourceSpec{
-		{ResourceType: "resource", ResourceID: "resource-stable", Operation: "query_data", SourceType: "kn_proxy_binding", SourceID: "stable"},
-		{ResourceType: "resource", ResourceID: "resource-new", Operation: "query_data", SourceType: "kn_proxy_binding", SourceID: "changed"},
-	}
-	added := addedProxyGrantSources(current, candidate)
-	if len(added) != 1 || added[0].ResourceID != "resource-new" {
-		t.Fatalf("added sources = %#v, want replacement target only", added)
-	}
-}

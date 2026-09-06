@@ -141,6 +141,21 @@ func TestProxyGrantCheckAndReconcileAPI(t *testing.T) {
 	if w.Code != http.StatusOK || !jsonBool(t, w.Body.Bytes(), "allowed") {
 		t.Fatalf("check = %d body=%s", w.Code, w.Body.String())
 	}
+	w = do(t, r, http.MethodPost, "/api/safe/in/v1/proxy-grant-sources/check-batch", map[string]any{
+		"proxy_account_id": proxy.ProxyAccountID,
+		"grantor_id":       "grantor-check",
+		"sources":          []any{body["source"]},
+	})
+	var batchResult proxygrant.BatchCheckResult
+	if w.Code != http.StatusOK {
+		t.Fatalf("batch check = %d body=%s", w.Code, w.Body.String())
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &batchResult); err != nil {
+		t.Fatal(err)
+	}
+	if len(batchResult.DeniedSources) != 0 {
+		t.Fatalf("batch denied sources = %#v, want none", batchResult.DeniedSources)
+	}
 
 	w = do(t, r, http.MethodPost, "/api/safe/in/v1/proxy-grant-sources/reconcile", map[string]any{
 		"proxy_account_id": proxy.ProxyAccountID,
@@ -148,6 +163,49 @@ func TestProxyGrantCheckAndReconcileAPI(t *testing.T) {
 	})
 	if w.Code != http.StatusOK {
 		t.Fatalf("reconcile = %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestManagedProxyAuthzCheckFollowsKNBindingDelegatorPermission(t *testing.T) {
+	r, enforcer, db := newTestServer(t)
+	proxy, _, err := managedproxy.New(db).Create(t.Context(), managedproxy.CreateRequest{
+		ManagedResourceType: managedproxy.ResourceKnowledgeNetwork,
+		ManagedResourceID:   "kn-api-runtime",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedEnabledUser(t, db, "builder-runtime")
+	seedCatalogOps(t, db, "resource", "query_data")
+	if err := enforcer.GrantObjectPermission("builder-runtime", "resource", "r-runtime", "query_data"); err != nil {
+		t.Fatal(err)
+	}
+	grant := map[string]any{
+		"proxy_account_id": proxy.ProxyAccountID,
+		"grantor_id":       "builder-runtime",
+		"source": map[string]any{
+			"resource_type": "resource", "resource_id": "r-runtime", "operation": "query_data",
+			"source_id": "source-runtime", "kn_id": "kn-api-runtime",
+			"binding_type": "object_type", "binding_id": "ot-runtime",
+		},
+	}
+	if w := do(t, r, http.MethodPost, "/api/safe/in/v1/proxy-grant-sources", grant); w.Code != http.StatusCreated {
+		t.Fatalf("create = %d body=%s", w.Code, w.Body.String())
+	}
+	check := map[string]any{
+		"accessor_id": proxy.ProxyAccountID,
+		"resource":    map[string]any{"type": "resource", "id": "r-runtime"},
+		"operation":   "query_data",
+	}
+	if w := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", check); w.Code != http.StatusOK || !jsonBool(t, w.Body.Bytes(), "allowed") {
+		t.Fatalf("initial check = %d body=%s", w.Code, w.Body.String())
+	}
+
+	if err := enforcer.RevokeObjectPermission("builder-runtime", "resource", "r-runtime", "query_data"); err != nil {
+		t.Fatal(err)
+	}
+	if w := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", check); w.Code != http.StatusOK || jsonBool(t, w.Body.Bytes(), "allowed") {
+		t.Fatalf("check after delegator revoke = %d body=%s", w.Code, w.Body.String())
 	}
 }
 

@@ -120,10 +120,15 @@ type ProxyGrantCheckResult struct {
 	Reason  string `json:"reason,omitempty"`
 }
 
+type ProxyGrantBatchCheckResult struct {
+	DeniedSources []ProxyGrantSourceSpec `json:"denied_sources"`
+}
+
 type ProxyGrantSyncResult struct {
-	Added     int `json:"added"`
-	Revoked   int `json:"revoked"`
-	Unchanged int `json:"unchanged"`
+	Added       int `json:"added"`
+	Transferred int `json:"transferred"`
+	Revoked     int `json:"revoked"`
+	Unchanged   int `json:"unchanged"`
 }
 
 type ProxyGrantReconcileResult struct {
@@ -132,6 +137,7 @@ type ProxyGrantReconcileResult struct {
 	MarkersCreated    int `json:"markers_created"`
 	MarkersRemoved    int `json:"markers_removed"`
 	UntrackedPolicies int `json:"untracked_policies"`
+	InvalidSources    int `json:"invalid_sources"`
 }
 
 // KNProxyReconcileReport identifies BKN mapping defects and reports any
@@ -221,6 +227,7 @@ type ManagedProxyAccess interface {
 	Disable(ctx context.Context, proxyAccountID string) (*ManagedProxyAccount, error)
 	Archive(ctx context.Context, proxyAccountID string) (*ManagedProxyAccount, error)
 	CheckGrant(ctx context.Context, proxyAccountID, grantorID string, source ProxyGrantSourceSpec) (ProxyGrantCheckResult, error)
+	CheckGrants(ctx context.Context, proxyAccountID, grantorID string, sources []ProxyGrantSourceSpec) (ProxyGrantBatchCheckResult, error)
 	SyncGrants(ctx context.Context, proxyAccountID, grantorID string, sources []ProxyGrantSourceSpec) (ProxyGrantSyncResult, error)
 	ReconcileGrants(ctx context.Context, proxyAccountID, requestedBy string) (ProxyGrantReconcileResult, error)
 }

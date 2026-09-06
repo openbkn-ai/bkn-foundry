@@ -74,7 +74,7 @@ func TestManagedProxyAccountLifecycleAPI(t *testing.T) {
 }
 
 func TestManagedProxyStatusControlsAuthorizationDecisions(t *testing.T) {
-	r, enforcer, _ := newTestServer(t)
+	r, enforcer, db := newTestServer(t)
 	w := do(t, r, http.MethodPost, "/api/safe/in/v1/managed-proxy-accounts", map[string]any{
 		"managed_resource_type": managedproxy.ResourceKnowledgeNetwork,
 		"managed_resource_id":   "kn-pep",
@@ -82,6 +82,13 @@ func TestManagedProxyStatusControlsAuthorizationDecisions(t *testing.T) {
 	var account managedproxy.Account
 	_ = json.Unmarshal(w.Body.Bytes(), &account)
 	if err := enforcer.GrantObjectPermission(account.ProxyAccountID, "resource", "r-1", "query_data"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.ProxyGrantSource{
+		ID: "source-pep", ProxyAccountID: account.ProxyAccountID, ResourceType: "resource", ResourceID: "r-1",
+		Operation: "query_data", SourceType: model.ProxyGrantSourceTypeManual, SourceID: "manual-pep",
+		LifecycleStatus: model.ProxyGrantSourceStatusActive,
+	}).Error; err != nil {
 		t.Fatal(err)
 	}
 	check := map[string]any{
@@ -194,6 +201,13 @@ func TestGenericRevokeAndRoleUnbindCannotMutateManagedProxy(t *testing.T) {
 	}
 	seedCatalogOps(t, db, "resource", "query_data")
 	if err := enforcer.GrantObjectPermission(account.ProxyAccountID, "resource", "r-1", "query_data"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.ProxyGrantSource{
+		ID: "source-protected", ProxyAccountID: account.ProxyAccountID, ResourceType: "resource", ResourceID: "r-1",
+		Operation: "query_data", SourceType: model.ProxyGrantSourceTypeManual, SourceID: "manual-protected",
+		LifecycleStatus: model.ProxyGrantSourceStatusActive,
+	}).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Create(&model.Role{ID: "proxy-role", Name: "proxy-role", Source: model.RoleSourceCustom}).Error; err != nil {

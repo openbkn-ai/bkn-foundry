@@ -104,6 +104,17 @@ func (c *safeClient) CheckGrant(ctx context.Context, proxyAccountID, grantorID s
 	return result, err
 }
 
+func (c *safeClient) CheckGrants(ctx context.Context, proxyAccountID, grantorID string,
+	sources []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantBatchCheckResult, error) {
+	var result interfaces.ProxyGrantBatchCheckResult
+	_, err := c.do(ctx, http.MethodPost, "/api/safe/in/v1/proxy-grant-sources/check-batch", map[string]any{
+		"proxy_account_id": proxyAccountID,
+		"grantor_id":       grantorID,
+		"sources":          sources,
+	}, &result)
+	return result, err
+}
+
 func (c *safeClient) SyncGrants(ctx context.Context, proxyAccountID, grantorID string,
 	sources []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantSyncResult, error) {
 	var result interfaces.ProxyGrantSyncResult

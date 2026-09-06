@@ -56,8 +56,15 @@ func (r *restHandler) updateObjectType(ctx context.Context, objectType *interfac
 }
 
 func (r *restHandler) deleteObjectTypes(ctx context.Context, knID, branch string, ids []string) error {
-	changes := &interfaces.KN{KNID: knID, Branch: branch}
-	return r.publishKNChildMutation(ctx, changes, interfaces.ImportMode_Normal, func(mutationCtx context.Context, tx *sql.Tx) error {
+	// Unbound overwrite entries are projection tombstones: they remove the
+	// deleted bindings from the preflight candidate without becoming persisted
+	// rows, because the mutation callback still performs the actual deletion.
+	entries := make([]*interfaces.ObjectType, 0, len(ids))
+	for _, id := range ids {
+		entries = append(entries, &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: id}})
+	}
+	changes := &interfaces.KN{KNID: knID, Branch: branch, ObjectTypes: entries}
+	return r.publishKNChildMutation(ctx, changes, interfaces.ImportMode_Overwrite, func(mutationCtx context.Context, tx *sql.Tx) error {
 		return r.ots.DeleteObjectTypesByIDs(mutationCtx, tx, knID, branch, ids)
 	})
 }
@@ -83,8 +90,12 @@ func (r *restHandler) updateRelationType(ctx context.Context, relationType *inte
 }
 
 func (r *restHandler) deleteRelationTypes(ctx context.Context, knID, branch string, ids []string) error {
-	changes := &interfaces.KN{KNID: knID, Branch: branch}
-	return r.publishKNChildMutation(ctx, changes, interfaces.ImportMode_Normal, func(mutationCtx context.Context, tx *sql.Tx) error {
+	entries := make([]*interfaces.RelationType, 0, len(ids))
+	for _, id := range ids {
+		entries = append(entries, &interfaces.RelationType{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: id}})
+	}
+	changes := &interfaces.KN{KNID: knID, Branch: branch, RelationTypes: entries}
+	return r.publishKNChildMutation(ctx, changes, interfaces.ImportMode_Overwrite, func(mutationCtx context.Context, tx *sql.Tx) error {
 		return r.rts.DeleteRelationTypesByIDs(mutationCtx, tx, knID, branch, ids)
 	})
 }
@@ -110,8 +121,12 @@ func (r *restHandler) updateActionType(ctx context.Context, actionType *interfac
 }
 
 func (r *restHandler) deleteActionTypes(ctx context.Context, knID, branch string, ids []string) error {
-	changes := &interfaces.KN{KNID: knID, Branch: branch}
-	return r.publishKNChildMutation(ctx, changes, interfaces.ImportMode_Normal, func(mutationCtx context.Context, tx *sql.Tx) error {
+	entries := make([]*interfaces.ActionType, 0, len(ids))
+	for _, id := range ids {
+		entries = append(entries, &interfaces.ActionType{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: id}})
+	}
+	changes := &interfaces.KN{KNID: knID, Branch: branch, ActionTypes: entries}
+	return r.publishKNChildMutation(ctx, changes, interfaces.ImportMode_Overwrite, func(mutationCtx context.Context, tx *sql.Tx) error {
 		return r.ats.DeleteActionTypesByIDs(mutationCtx, tx, knID, branch, ids)
 	})
 }
@@ -137,8 +152,12 @@ func (r *restHandler) updateMetric(ctx context.Context, metric *interfaces.Metri
 }
 
 func (r *restHandler) deleteMetrics(ctx context.Context, knID, branch string, ids []string) error {
-	changes := &interfaces.KN{KNID: knID, Branch: branch}
-	return r.publishKNChildMutation(ctx, changes, interfaces.ImportMode_Normal, func(mutationCtx context.Context, tx *sql.Tx) error {
+	entries := make([]*interfaces.MetricDefinition, 0, len(ids))
+	for _, id := range ids {
+		entries = append(entries, &interfaces.MetricDefinition{ID: id})
+	}
+	changes := &interfaces.KN{KNID: knID, Branch: branch, Metrics: entries}
+	return r.publishKNChildMutation(ctx, changes, interfaces.ImportMode_Overwrite, func(mutationCtx context.Context, tx *sql.Tx) error {
 		return r.ms.DeleteMetricsByIDs(mutationCtx, tx, knID, branch, ids)
 	})
 }

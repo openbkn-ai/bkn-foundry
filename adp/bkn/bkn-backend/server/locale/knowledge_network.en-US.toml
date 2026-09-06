@@ -99,6 +99,11 @@ Description = "The requested target is not a current published binding"
 Solution = "Publish the binding and synchronize the proxy permissions before retrying."
 ErrorLink = ""
 
+[BknBackend.KnowledgeNetwork.Proxy.PermissionMissing]
+Description = "The knowledge-network builder lacks one or more downstream operations required by the bindings"
+Solution = "Ask the resource owner to grant the listed operations to the builder, then retry the operation."
+ErrorLink = ""
+
 [BknBackend.KnowledgeNetwork.Proxy.Disabled]
 Description = "The knowledge-network proxy account is not active"
 Solution = "Restore the proxy account or complete the knowledge-network lifecycle operation."

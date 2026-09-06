@@ -72,6 +72,14 @@ type ManagedProxyAccount struct {
 	UpdatedAt           time.Time
 }
 
+const (
+	ProxyGrantSourceTypeKNBinding = "kn_proxy_binding"
+	ProxyGrantSourceTypeManual    = "manual"
+	ProxyGrantSourceTypeAdmin     = "admin"
+	ProxyGrantSourceStatusActive  = "active"
+	ProxyGrantSourceStatusRevoked = "revoked"
+)
+
 // ProxyGrantSource is the durable provenance ledger for one direct permission
 // required by a managed BKN proxy. A binding may require several permissions,
 // and several bindings may require the same permission, so the source identity

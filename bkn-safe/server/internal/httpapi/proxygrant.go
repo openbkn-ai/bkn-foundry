@@ -58,6 +58,18 @@ func registerProxyGrantSources(r *gin.Engine, service *proxygrant.Service) {
 		c.JSON(http.StatusOK, result)
 	})
 
+	group.POST("/check-batch", func(c *gin.Context) {
+		var req proxygrant.BatchCheckRequest
+		if !bind(c, &req) {
+			return
+		}
+		result, err := service.CheckMany(c.Request.Context(), req)
+		if writeProxyGrantError(c, err) {
+			return
+		}
+		c.JSON(http.StatusOK, result)
+	})
+
 	group.POST("/sync", func(c *gin.Context) {
 		var req proxygrant.SyncRequest
 		if !bind(c, &req) {

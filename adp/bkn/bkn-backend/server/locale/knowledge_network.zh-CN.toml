@@ -99,6 +99,11 @@ Description = "请求的目标不是当前已发布绑定"
 Solution = "请先发布绑定并同步代理权限，然后重试。"
 ErrorLink = ""
 
+[BknBackend.KnowledgeNetwork.Proxy.PermissionMissing]
+Description = "知识网络构建者缺少绑定所需的一项或多项底层操作权限"
+Solution = "请资源负责人将列出的操作权限授给构建者，然后重试。"
+ErrorLink = ""
+
 [BknBackend.KnowledgeNetwork.Proxy.Disabled]
 Description = "知识网络代理账号未处于启用状态"
 Solution = "请恢复代理账号，或完成当前知识网络生命周期操作。"

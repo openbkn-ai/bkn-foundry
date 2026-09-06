@@ -116,6 +116,33 @@ func obj(resourceType, id string) string { return resourceType + ":" + id }
 // mapping. With no ownership row recorded the second step finds nothing, which
 // is exactly the pre-#800 decision (#800).
 func (en *Enforcer) Check(accessorID, resourceType, resourceID, op string) (bool, error) {
+	ok, err := en.checkPolicy(accessorID, resourceType, resourceID, op)
+	if err != nil || !ok || en.db == nil {
+		return ok, err
+	}
+	managed, err := en.isManagedProxy(accessorID)
+	if err != nil {
+		return false, err
+	}
+	if !managed {
+		return true, nil
+	}
+	return en.hasCurrentProxySource(accessorID, resourceType, resourceID, op)
+}
+
+func (en *Enforcer) isManagedProxy(accessorID string) (bool, error) {
+	var managed int64
+	if err := en.db.Model(&safemodel.ManagedProxyAccount{}).
+		Where("proxy_account_id = ?", accessorID).Count(&managed).Error; err != nil {
+		return false, err
+	}
+	return managed > 0, nil
+}
+
+// checkPolicy evaluates the current direct, role and hierarchy policy without
+// applying managed-proxy provenance. Delegator validation must use this raw
+// path so a source can never recursively justify itself.
+func (en *Enforcer) checkPolicy(accessorID, resourceType, resourceID, op string) (bool, error) {
 	ok, err := en.e.Enforce(accessorID, obj(resourceType, resourceID), op)
 	if err != nil || ok {
 		return ok, err
@@ -125,6 +152,52 @@ func (en *Enforcer) Check(accessorID, resourceType, resourceID, op string) (bool
 		return false, err
 	}
 	return inherited[op], nil
+}
+
+// hasCurrentProxySource makes the source ledger part of every managed-proxy
+// decision. A historical Casbin Allow is necessary but not sufficient: KN
+// binding sources also depend on their recorded delegator still holding the
+// exact downstream operation. Manual and administrator sources follow their
+// own explicit lifecycle and remain valid while active.
+func (en *Enforcer) hasCurrentProxySource(proxyID, resourceType, resourceID, op string) (bool, error) {
+	var sources []safemodel.ProxyGrantSource
+	if err := en.db.Where(
+		"proxy_account_id = ? AND resource_type = ? AND resource_id = ? AND operation = ? AND lifecycle_status = ?",
+		proxyID, resourceType, resourceID, op, safemodel.ProxyGrantSourceStatusActive,
+	).Find(&sources).Error; err != nil {
+		return false, err
+	}
+	for _, source := range sources {
+		switch source.SourceType {
+		case safemodel.ProxyGrantSourceTypeManual, safemodel.ProxyGrantSourceTypeAdmin:
+			return true, nil
+		case safemodel.ProxyGrantSourceTypeKNBinding:
+			var registered int64
+			if err := en.db.Model(&safemodel.Operation{}).
+				Where("resource_type_id = ? AND id = ?", resourceType, op).Count(&registered).Error; err != nil {
+				return false, err
+			}
+			if registered == 0 {
+				continue
+			}
+			var active int64
+			if err := en.db.Model(&safemodel.User{}).
+				Where("id = ? AND enabled = ?", source.GrantedBy, true).Count(&active).Error; err != nil {
+				return false, err
+			}
+			if active == 0 {
+				continue
+			}
+			allowed, err := en.checkPolicy(source.GrantedBy, resourceType, resourceID, op)
+			if err != nil {
+				return false, err
+			}
+			if allowed {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 // AllowedOps returns, from the candidate ops, those the accessor may perform on
@@ -155,7 +228,24 @@ func (en *Enforcer) AllowedOps(accessorID, resourceType, resourceID string, cand
 			out = append(out, op)
 		}
 	}
-	return out, nil
+	if len(out) == 0 || en.db == nil {
+		return out, nil
+	}
+	managed, err := en.isManagedProxy(accessorID)
+	if err != nil || !managed {
+		return out, err
+	}
+	currentPermissions, err := en.currentProxyPermissions(accessorID)
+	if err != nil {
+		return nil, err
+	}
+	current := out[:0]
+	for _, op := range out {
+		if currentPermissions[proxyPermission{ResourceType: resourceType, ResourceID: resourceID, Operation: op}] {
+			current = append(current, op)
+		}
+	}
+	return current, nil
 }
 
 // GrantRolePermission grants a role an op over a resource-type instance pattern
