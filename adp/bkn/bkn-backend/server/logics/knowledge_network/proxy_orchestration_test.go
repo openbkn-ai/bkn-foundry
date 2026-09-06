@@ -7,15 +7,18 @@ package knowledge_network
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.uber.org/mock/gomock"
 
+	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 	bmock "bkn-backend/interfaces/mock"
 )
@@ -953,6 +956,116 @@ func TestGetKNProxyResolvesMappingWithoutBusinessAuthorize(t *testing.T) {
 	}
 }
 
+func TestGetGovernedKNProxyRequiresAuthorizePermission(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	permissionService := bmock.NewMockPermissionService(ctrl)
+	mapping := &interfaces.KNProxyAccount{KNID: "kn-1", ProxyAccountID: "proxy-1"}
+	permissionService.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_KN,
+		ID:   "kn-1",
+	}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}).Return(nil)
+	service := &knowledgeNetworkService{kpa: &proxyAccessStub{mapping: mapping}, ps: permissionService}
+
+	got, err := service.GetGovernedKNProxy(t.Context(), "kn-1")
+	if err != nil || got.KNID != mapping.KNID || got.ProxyAccountID != mapping.ProxyAccountID {
+		t.Fatalf("GetGovernedKNProxy() = %#v, %v", got, err)
+	}
+}
+
+func TestListGovernedKNProxiesFiltersUnauthorizedMappings(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	permissionService := bmock.NewMockPermissionService(ctrl)
+	mappings := []*interfaces.KNProxyAccount{
+		{KNID: "kn-hidden", ProxyAccountID: "proxy-hidden"},
+		{KNID: "kn-b", ProxyAccountID: "proxy-b"},
+		{KNID: "kn-a", ProxyAccountID: "proxy-a"},
+	}
+	permissionService.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_KN,
+		[]string{"kn-hidden", "kn-b", "kn-a"}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}, true,
+		interfaces.COMMON_OPERATIONS).Return(map[string]interfaces.PermissionResourceOps{
+		"kn-a": {},
+		"kn-b": {},
+	}, nil)
+	service := &knowledgeNetworkService{kpa: &proxyAccessStub{mappings: mappings}, ps: permissionService}
+
+	got, err := service.ListGovernedKNProxies(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Total != 2 || len(got.Entries) != 2 || got.Entries[0].KNID != "kn-a" || got.Entries[1].KNID != "kn-b" {
+		t.Fatalf("ListGovernedKNProxies() = %#v", got)
+	}
+	for _, entry := range got.Entries {
+		if entry.ProxyAccountID == "proxy-hidden" {
+			t.Fatal("unauthorized proxy mapping leaked")
+		}
+	}
+}
+
+func TestGovernedKNProxyViewOmitsInternalFailureDetails(t *testing.T) {
+	mapping := &interfaces.KNProxyAccount{
+		KNID: "kn-1", ProxyAccountID: "proxy-1", LastSyncError: "credential secret",
+		LastGrantorID: "grantor-secret", LockOwner: "lock-owner-secret",
+	}
+	view := interfaces.NewKNProxyGovernanceView(mapping)
+	encoded, err := json.Marshal(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "secret") || strings.Contains(string(encoded), `"last_error":`) ||
+		!strings.Contains(string(encoded), `"last_error_code":"PROXY_SYNC_FAILED"`) {
+		t.Fatalf("public proxy view leaked internal details: %s", encoded)
+	}
+	reconcileView := interfaces.NewKNProxyGovernanceReconcileReport(&interfaces.KNProxyReconcileReport{
+		Errors: map[string]string{"kn-2": "credential secret", "kn-1": "downstream secret"},
+	})
+	encoded, err = json.Marshal(reconcileView)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "secret") || string(encoded) != `{"missing_mappings":[],"orphan_mappings":[],"conflicting_proxy_accounts":{},"authorization_drift":{},"failed_kn_ids":["kn-1","kn-2"]}` {
+		t.Fatalf("public reconcile view leaked internal details: %s", encoded)
+	}
+}
+
+func TestResolveKNProxyBindingReturnsStableStateErrors(t *testing.T) {
+	tests := map[string]struct {
+		mapping *interfaces.KNProxyAccount
+		status  int
+		code    string
+	}{
+		"mapping missing": {
+			status: http.StatusNotFound,
+			code:   berrors.BknBackend_KnowledgeNetwork_ProxyMappingNotFound,
+		},
+		"proxy disabled": {
+			mapping: &interfaces.KNProxyAccount{LifecycleStatus: interfaces.KNProxyLifecycleArchived},
+			status:  http.StatusServiceUnavailable,
+			code:    berrors.BknBackend_KnowledgeNetwork_ProxyDisabled,
+		},
+		"sync failed": {
+			mapping: &interfaces.KNProxyAccount{LifecycleStatus: interfaces.KNProxyLifecycleActive, SyncStatus: interfaces.KNProxySyncFailed},
+			status:  http.StatusServiceUnavailable,
+			code:    berrors.BknBackend_KnowledgeNetwork_ProxySyncFailed,
+		},
+		"sync pending": {
+			mapping: &interfaces.KNProxyAccount{LifecycleStatus: interfaces.KNProxyLifecycleActive, SyncStatus: interfaces.KNProxySyncPending},
+			status:  http.StatusServiceUnavailable,
+			code:    berrors.BknBackend_KnowledgeNetwork_ProxySyncPending,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			service := &knowledgeNetworkService{kpa: &proxyAccessStub{mapping: test.mapping}}
+			_, err := service.ResolveKNProxyBinding(t.Context(), "kn-1", interfaces.KNProxyBinding{})
+			httpErr, ok := err.(*rest.HTTPError)
+			if !ok || httpErr.HTTPCode != test.status || httpErr.BaseError.ErrorCode != test.code {
+				t.Fatalf("ResolveKNProxyBinding() error = %#v, want status %d code %q", err, test.status, test.code)
+			}
+		})
+	}
+}
+
 func TestResolveKNProxyBindingRequiresCurrentPublishedSourceAndSyncedVersion(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	kna := bmock.NewMockKNAccess(ctrl)
@@ -1034,6 +1147,10 @@ func TestReconcileKNProxiesReportsMissingOrphanAndConflict(t *testing.T) {
 	permissionService := bmock.NewMockPermissionService(ctrl)
 	permissionService.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
+		ID:   "kn-live",
+	}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}).Return(nil)
+	permissionService.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   "kn-mapped",
 	}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}).Return(nil)
 	mpa := &managedProxyAccessStub{}
@@ -1054,6 +1171,30 @@ func TestReconcileKNProxiesReportsMissingOrphanAndConflict(t *testing.T) {
 	}
 	if !reflect.DeepEqual(mpa.reconciled, []string{"proxy-mapped"}) {
 		t.Fatalf("reconciled proxies = %#v, want live authorized mapping only", mpa.reconciled)
+	}
+}
+
+func TestReconcileKNProxiesAuthorizesNetworksWithoutMappings(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	kna := bmock.NewMockKNAccess(ctrl)
+	kna.EXPECT().GetAllMainBranchKNs(gomock.Any()).Return(map[string]*interfaces.KN{
+		"kn-unmapped": {KNID: "kn-unmapped", Branch: interfaces.MAIN_BRANCH},
+	}, nil)
+	kpa := &proxyAccessStub{}
+	permissionService := bmock.NewMockPermissionService(ctrl)
+	permissionService.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_KN,
+		ID:   "kn-unmapped",
+	}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}).Return(
+		rest.NewHTTPError(t.Context(), http.StatusForbidden, rest.PublicError_Forbidden))
+	mpa := &managedProxyAccessStub{}
+	service := &knowledgeNetworkService{kna: kna, kpa: kpa, mpa: mpa, ps: permissionService}
+
+	if _, err := service.ReconcileKNProxies(t.Context(), "operator-1"); err == nil {
+		t.Fatal("ReconcileKNProxies() error = nil, want authorization failure for unmapped knowledge network")
+	}
+	if len(mpa.reconciled) != 0 {
+		t.Fatalf("reconciliation mutated proxies before authorization completed: %#v", mpa.reconciled)
 	}
 }
 

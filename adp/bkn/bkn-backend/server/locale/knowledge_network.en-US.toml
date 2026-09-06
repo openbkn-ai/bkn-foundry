@@ -89,6 +89,36 @@ Description = "The Knowledge Network Does Not Exist"
 Solution = "Please try again. If the error occurs again, please submit the work order or contact technical support."
 ErrorLink = ""
 
+[BknBackend.KnowledgeNetwork.Proxy.MappingNotFound]
+Description = "The knowledge-network proxy mapping does not exist"
+Solution = "Synchronize the proxy account for this knowledge network."
+ErrorLink = ""
+
+[BknBackend.KnowledgeNetwork.Proxy.BindingInvalid]
+Description = "The requested target is not a current published binding"
+Solution = "Publish the binding and synchronize the proxy permissions before retrying."
+ErrorLink = ""
+
+[BknBackend.KnowledgeNetwork.Proxy.Disabled]
+Description = "The knowledge-network proxy account is not active"
+Solution = "Restore the proxy account or complete the knowledge-network lifecycle operation."
+ErrorLink = ""
+
+[BknBackend.KnowledgeNetwork.Proxy.SyncFailed]
+Description = "The knowledge-network proxy permission synchronization failed"
+Solution = "Inspect the synchronization error and retry the proxy synchronization."
+ErrorLink = ""
+
+[BknBackend.KnowledgeNetwork.Proxy.SyncPending]
+Description = "The knowledge-network proxy permissions are not synchronized with the published model"
+Solution = "Wait for synchronization to finish or retry the proxy synchronization."
+ErrorLink = ""
+
+[BknBackend.KnowledgeNetwork.Proxy.Unavailable]
+Description = "The knowledge-network proxy service is unavailable"
+Solution = "Try again later; contact an administrator if the problem persists."
+ErrorLink = ""
+
 [BknBackend.KnowledgeNetwork.InternalError]
 Description = "Internal Error"
 Solution = "Please try again. If the error occurs again, please submit the work order or contact technical support."

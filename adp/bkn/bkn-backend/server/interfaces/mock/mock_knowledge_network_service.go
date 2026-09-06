@@ -177,6 +177,21 @@ func (mr *MockKNServiceMockRecorder) GetKNProxy(ctx, knID any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKNProxy", reflect.TypeOf((*MockKNService)(nil).GetKNProxy), ctx, knID)
 }
 
+// GetGovernedKNProxy mocks base method.
+func (m *MockKNService) GetGovernedKNProxy(ctx context.Context, knID string) (*interfaces.KNProxyGovernanceView, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetGovernedKNProxy", ctx, knID)
+	ret0, _ := ret[0].(*interfaces.KNProxyGovernanceView)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetGovernedKNProxy indicates an expected call of GetGovernedKNProxy.
+func (mr *MockKNServiceMockRecorder) GetGovernedKNProxy(ctx, knID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGovernedKNProxy", reflect.TypeOf((*MockKNService)(nil).GetGovernedKNProxy), ctx, knID)
+}
+
 // GetRelationTypePaths mocks base method.
 func (m *MockKNService) GetRelationTypePaths(ctx context.Context, query interfaces.RelationTypePathsBaseOnSource) ([]interfaces.RelationTypePath, error) {
 	m.ctrl.T.Helper()
@@ -221,6 +236,21 @@ func (m *MockKNService) ListKNs(ctx context.Context, query interfaces.KNsQueryPa
 func (mr *MockKNServiceMockRecorder) ListKNs(ctx, query any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListKNs", reflect.TypeOf((*MockKNService)(nil).ListKNs), ctx, query)
+}
+
+// ListGovernedKNProxies mocks base method.
+func (m *MockKNService) ListGovernedKNProxies(ctx context.Context) (*interfaces.KNProxyAccountList, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListGovernedKNProxies", ctx)
+	ret0, _ := ret[0].(*interfaces.KNProxyAccountList)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListGovernedKNProxies indicates an expected call of ListGovernedKNProxies.
+func (mr *MockKNServiceMockRecorder) ListGovernedKNProxies(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListGovernedKNProxies", reflect.TypeOf((*MockKNService)(nil).ListGovernedKNProxies), ctx)
 }
 
 // ListKnSrcs mocks base method.

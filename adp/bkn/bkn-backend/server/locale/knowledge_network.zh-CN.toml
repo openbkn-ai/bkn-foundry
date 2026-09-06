@@ -89,6 +89,36 @@ Description = "业务知识网络不存在"
 Solution = "请检查参数是否正确。"
 ErrorLink = ""
 
+[BknBackend.KnowledgeNetwork.Proxy.MappingNotFound]
+Description = "知识网络代理映射不存在"
+Solution = "请为该知识网络同步代理账号。"
+ErrorLink = ""
+
+[BknBackend.KnowledgeNetwork.Proxy.BindingInvalid]
+Description = "请求的目标不是当前已发布绑定"
+Solution = "请先发布绑定并同步代理权限，然后重试。"
+ErrorLink = ""
+
+[BknBackend.KnowledgeNetwork.Proxy.Disabled]
+Description = "知识网络代理账号未处于启用状态"
+Solution = "请恢复代理账号，或完成当前知识网络生命周期操作。"
+ErrorLink = ""
+
+[BknBackend.KnowledgeNetwork.Proxy.SyncFailed]
+Description = "知识网络代理权限同步失败"
+Solution = "请检查同步错误并重试代理权限同步。"
+ErrorLink = ""
+
+[BknBackend.KnowledgeNetwork.Proxy.SyncPending]
+Description = "知识网络代理权限尚未与已发布模型同步"
+Solution = "请等待同步完成，或重试代理权限同步。"
+ErrorLink = ""
+
+[BknBackend.KnowledgeNetwork.Proxy.Unavailable]
+Description = "知识网络代理服务不可用"
+Solution = "请稍后重试；若问题持续，请联系管理员。"
+ErrorLink = ""
+
 [BknBackend.KnowledgeNetwork.InternalError]
 Description = "内部错误"
 Solution = "请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。"

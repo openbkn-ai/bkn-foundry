@@ -76,3 +76,25 @@ func TestResolveKnowledgeNetworkProxyRejectsIncompleteResponses(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveKnowledgeNetworkProxyPreservesOnlyStableDownstreamErrorContract(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	httpClient := rmock.NewMockHTTPClient(ctrl)
+	httpClient.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(http.StatusServiceUnavailable, []byte(`{
+			"error_code":"BknBackend.KnowledgeNetwork.Proxy.SyncFailed",
+			"description":"must not cross service boundary",
+			"error_details":"proxy-credential-secret"
+		}`), nil)
+	access := &knowledgeNetworkProxyAccess{baseURL: "http://bkn", httpClient: httpClient}
+
+	_, err := access.ResolveKnowledgeNetworkProxy(context.Background(), interfaces.TrustedProxyBinding{KNID: "kn-1"})
+	resolutionErr, ok := err.(*interfaces.KnowledgeNetworkProxyResolveError)
+	if !ok || resolutionErr.StatusCode != http.StatusServiceUnavailable ||
+		resolutionErr.Code != "BknBackend.KnowledgeNetwork.Proxy.SyncFailed" {
+		t.Fatalf("error = %#v", err)
+	}
+	if got := resolutionErr.Error(); got == "" || got == "proxy-credential-secret" {
+		t.Fatalf("unexpected sanitized error string %q", got)
+	}
+}
