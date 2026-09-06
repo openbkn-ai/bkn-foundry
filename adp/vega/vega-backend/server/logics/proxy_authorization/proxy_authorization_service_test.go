@@ -44,10 +44,10 @@ func TestProxyAuthorizationServiceAuthorize(t *testing.T) {
 		ProxyAccountID: "proxy-1", AccountType: interfaces.ProxyAccountTypeApp,
 		ManagedBy: interfaces.ProxyManagerBKN, ManagedResourceType: interfaces.ProxyManagedResourceTypeKN,
 		ManagedResourceID: "kn-1", LifecycleStatus: interfaces.ProxyLifecycleActive,
-		Enabled: true, Version: 3,
+		Enabled: true, Version: 1,
 	}
 
-	t.Run("allows current managed proxy with resource policy", func(t *testing.T) {
+	t.Run("allows independent BKN mapping and bkn-safe lifecycle versions", func(t *testing.T) {
 		access := &fakeProxyAuthorizationAccess{account: active, allowed: true}
 		err := NewProxyAuthorizationService(access).Authorize(context.Background(), request)
 
@@ -65,7 +65,6 @@ func TestProxyAuthorizationServiceAuthorize(t *testing.T) {
 			account.LifecycleStatus = "disabling"
 		}},
 		{name: "different knowledge network", mutate: func(account *interfaces.ManagedProxyAccount) { account.ManagedResourceID = "kn-2" }},
-		{name: "stale proxy version", mutate: func(account *interfaces.ManagedProxyAccount) { account.Version = 4 }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			account := *active

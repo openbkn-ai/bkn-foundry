@@ -46,6 +46,9 @@ func (s *proxyAuthorizationService) Authorize(ctx context.Context, request inter
 }
 
 func matchesCurrentProxy(account *interfaces.ManagedProxyAccount, request interfaces.ProxyReadContext) bool {
+	// request.ProxyVersion is BKN's KN-to-proxy mapping version and is retained
+	// for trusted-context validation and audit. bkn-safe's account Version is an
+	// independent lifecycle counter, so comparing them would reject valid reads.
 	return account != nil &&
 		account.ProxyAccountID == request.ProxyID &&
 		account.AccountType == interfaces.ProxyAccountTypeApp &&
@@ -53,6 +56,5 @@ func matchesCurrentProxy(account *interfaces.ManagedProxyAccount, request interf
 		account.ManagedResourceType == interfaces.ProxyManagedResourceTypeKN &&
 		account.ManagedResourceID == request.KnowledgeID &&
 		account.LifecycleStatus == interfaces.ProxyLifecycleActive &&
-		account.Enabled &&
-		account.Version == request.ProxyVersion
+		account.Enabled
 }

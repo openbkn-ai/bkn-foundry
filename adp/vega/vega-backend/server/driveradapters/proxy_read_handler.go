@@ -26,9 +26,7 @@ import (
 	"vega-backend/interfaces"
 )
 
-var proxyInternalHeaders = []string{
-	interfaces.HTTP_HEADER_ACCOUNT_ID,
-	interfaces.HTTP_HEADER_ACCOUNT_TYPE,
+var trustedProxyContextHeaders = []string{
 	interfaces.HTTPHeaderBKNCallerID,
 	interfaces.HTTPHeaderBKNCallerType,
 	interfaces.HTTPHeaderBKNKnowledgeID,
@@ -74,10 +72,11 @@ func (proxyReadAuditLogger) RecordProxyRead(_ context.Context, event proxyReadAu
 	logger.Infof("proxy read authorization audit: %s", encoded)
 }
 
-// stripProxyInternalHeaders removes proxy identity supplied to public routes so they keep using the OAuth caller.
+// stripProxyInternalHeaders removes trusted BKN context from public routes while
+// preserving X-Account-ID/Type for the existing AUTH_ENABLED=false caller flow.
 func (r *restHandler) stripProxyInternalHeaders() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		for _, header := range proxyInternalHeaders {
+		for _, header := range trustedProxyContextHeaders {
 			c.Request.Header.Del(header)
 		}
 		c.Next()

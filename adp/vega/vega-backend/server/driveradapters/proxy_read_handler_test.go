@@ -15,13 +15,13 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
+	"vega-backend/logics/auth"
 )
 
 type fakeProxyAuthorizationService struct {
@@ -238,20 +238,17 @@ func TestRestHandlerProxyRouteWhitelist(t *testing.T) {
 	}, routes)
 }
 
-func TestRestHandlerPublicAPIRejectsForgedProxyIdentity(t *testing.T) {
+func TestRestHandlerPublicAPIPreservesNoopCallerAndStripsProxyContext(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	as := vmock.NewMockAuthService(ctrl)
 	rs := vmock.NewMockResourceService(ctrl)
-	handler := &restHandler{as: as, rs: rs}
+	handler := &restHandler{as: auth.NewNoopAuthService(nil), rs: rs}
 	engine := gin.New()
 	public := engine.Group("/api/vega-backend/v1", handler.stripProxyInternalHeaders())
 	public.GET("/resources/:id", handler.GetResourcesByEx)
 
-	as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).
-		Return(hydra.Visitor{ID: "caller-1", Type: hydra.VisitorType_User}, nil)
 	rs.EXPECT().GetByIDs(gomock.Any(), []string{"resource-1"}).
 		DoAndReturn(func(ctx context.Context, _ []string) ([]*interfaces.Resource, error) {
 			account := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
@@ -261,11 +258,15 @@ func TestRestHandlerPublicAPIRejectsForgedProxyIdentity(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/v1/resources/resource-1", nil)
 	setProxyReadHeaders(req, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.ProxyChildTypeObjectType)
+	req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "caller-1")
+	req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_TYPE, "user")
 	w := httptest.NewRecorder()
 	engine.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	for _, header := range proxyInternalHeaders {
+	assert.Equal(t, "caller-1", req.Header.Get(interfaces.HTTP_HEADER_ACCOUNT_ID))
+	assert.Equal(t, "user", req.Header.Get(interfaces.HTTP_HEADER_ACCOUNT_TYPE))
+	for _, header := range trustedProxyContextHeaders {
 		assert.Empty(t, req.Header.Get(header), header)
 	}
 }

@@ -28,6 +28,8 @@ type proxyAuthorizationAccess struct {
 }
 
 func NewProxyAuthorizationAccess() interfaces.ProxyAuthorizationAccess {
+	// Managed proxy lifecycle and grant sources are authoritative only in
+	// bkn-safe, independently of the legacy AUTHZ_PROVIDER migration switch.
 	return &proxyAuthorizationAccess{safe: newSafeClient(strings.TrimRight(strings.TrimSpace(os.Getenv("BKN_SAFE_URL")), "/"))}
 }
 

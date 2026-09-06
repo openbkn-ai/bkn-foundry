@@ -9,8 +9,8 @@ info:
 
     Vega is the final policy enforcement point. Before every physical read it
     verifies that the managed proxy account is active, still belongs to the
-    stated knowledge network, has the stated version, and currently has the
-    exact resource permission in bkn-safe. These checks are not cached.
+    stated knowledge network, and currently has the exact resource permission
+    in bkn-safe. These checks are not cached.
 
     Only schema inspection and filtered resource-data queries are exposed. This
     surface does not provide resource discovery, raw SQL, write, administration,
@@ -185,7 +185,7 @@ components:
       name: x-bkn-proxy-version
       in: header
       required: true
-      description: Current positive version of the managed proxy account
+      description: Current positive version of BKN's knowledge-network-to-proxy mapping, used for trusted-context validation and audit correlation
       schema:
         type: integer
         format: uint64
