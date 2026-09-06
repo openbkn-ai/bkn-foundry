@@ -119,7 +119,9 @@ func (oma *ontologyManagerAccess) GetObjectType(ctx context.Context, knID string
 		// Log the exception.
 		otellog.LogError(ctx, fmt.Sprintf("Get object type failed: %v", httpErr), httpErr)
 
-		return emptyObjectType, false, fmt.Errorf("get object type failed: %v", httpErr.Error())
+		// Preserve the status-bearing error so the authorization layer can keep a
+		// caller denial as 401/403 instead of presenting it as a dependency outage.
+		return emptyObjectType, false, httpErr
 	}
 
 	if result == nil {

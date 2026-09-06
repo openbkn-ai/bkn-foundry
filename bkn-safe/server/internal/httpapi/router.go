@@ -222,10 +222,22 @@ func New(deps Deps) *gin.Engine {
 		caps := r.Group("/api/safe/v1", sharedrest.PrivateNoCacheMiddleware(), RequireUser(meVerifier))
 		registerCapabilities(caps, deps.License)
 
-		// Mutating /me (profile PUT, AppKey issue/revoke) uses the RAW verifier so
-		// a revoked/logged-out token cannot edit the profile or mint a long-lived
-		// API key within the read cache's TTL window.
-		meWrites := r.Group("/api/safe/v1/me", sharedrest.PrivateNoCacheMiddleware(), RequireUser(verifier))
+		// Voluntary logout only records an access fact before the browser clears
+		// its session. Keep it on the raw verifier so a locally disabled account
+		// can still record that explicit action; it does not mutate authorization
+		// state and must not be blocked by the active-account write gate below.
+		if deps.AccessLog != nil {
+			meLogout := r.Group("/api/safe/v1/me", sharedrest.PrivateNoCacheMiddleware(), RequireUser(verifier))
+			registerLogout(meLogout, deps.AccessLog, deps.Directory)
+		}
+
+		// Mutating /me (profile PUT, AppKey issue/revoke, object-grant delegation)
+		// uses the RAW verifier so a revoked/logged-out token cannot write within
+		// the read cache's TTL window. The local account check separately makes an
+		// administrator disable effective immediately even while Hydra still
+		// considers an already-issued token active.
+		meWrites := r.Group("/api/safe/v1/me", sharedrest.PrivateNoCacheMiddleware(),
+			RequireUser(verifier), RequireActiveAccount(deps.DB))
 		if deps.Audit != nil {
 			meWrites.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
 		}
@@ -234,9 +246,6 @@ func New(deps Deps) *gin.Engine {
 		// belongs on the raw-verifier group with the rest of the mutating /me
 		// surface — and it must be audited like any other authorization change.
 		registerMeObjectGrants(meWrites, deps.Enforcer, deps.DB, deps.Directory)
-		if deps.AccessLog != nil && deps.Directory != nil {
-			registerLogout(meWrites, deps.AccessLog, deps.Directory)
-		}
 		// Self-service AppKey management (issue/list/revoke own keys).
 		if apiKeys != nil {
 			registerMeAPIKeys(meWrites, apiKeys)

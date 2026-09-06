@@ -337,6 +337,11 @@ func TestObjectGrantsGroupedViews(t *testing.T) {
 // who created a knowledge network (and therefore holds the creator's object
 // grant, opAuthorize included) but holds no admin-authz permission at all.
 func ownerGrantFixture(t *testing.T) (*gin.Engine, *authz.Enforcer) {
+	r, e, _ := ownerGrantFixtureWithDB(t)
+	return r, e
+}
+
+func ownerGrantFixtureWithDB(t *testing.T) (*gin.Engine, *authz.Enforcer, *gorm.DB) {
 	t.Helper()
 	r, e, db, users := newAdminServer(t)
 	ctx := t.Context()
@@ -363,7 +368,7 @@ func ownerGrantFixture(t *testing.T) (*gin.Engine, *authz.Enforcer) {
 			t.Fatal(err)
 		}
 	}
-	return r, e
+	return r, e, db
 }
 
 // The regression: the creator of a knowledge network can share it, without any
@@ -415,6 +420,25 @@ func TestObjectGrantsOwnerMayShareOwnObject(t *testing.T) {
 	}, "u-owner")
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("idempotent owner revoke: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+func TestObjectGrantsDisabledOwnerCannotWrite(t *testing.T) {
+	r, e, db := ownerGrantFixtureWithDB(t)
+	if err := db.Model(&model.User{}).Where("id = ?", "u-owner").Update("enabled", false).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	w := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants", map[string]any{
+		"accessor_id": "u-mate",
+		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"operations":  []string{"view_detail", "query_data"},
+	}, "u-owner")
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("disabled owner share: want 403, got %d (%s)", w.Code, w.Body.String())
+	}
+	if ok, _ := e.Check("u-mate", "knowledge_network", "kn-mine", "view_detail"); ok {
+		t.Error("disabled owner wrote a grant")
 	}
 }
 

@@ -216,6 +216,21 @@ func TestAuthorizeObjectTypeFailsClosedOnModelLookup(t *testing.T) {
 	assertQueryAuthHTTPStatus(t, err, http.StatusServiceUnavailable)
 }
 
+func TestAuthorizeObjectTypePreservesModelPermissionDenial(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	service := &queryAuthorizationService{
+		models:      models,
+		permissions: omock.NewMockPermissionService(ctrl),
+	}
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "orders").Return(
+		interfaces.ObjectType{}, false,
+		rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
+
+	err := service.AuthorizeObjectTypeQuery(context.Background(), "kn-a", "main", "orders")
+	assertQueryAuthHTTPStatus(t, err, http.StatusForbidden)
+}
+
 func TestAuthorizeObjectTypeScopesSameChildIDByKnowledgeNetwork(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	models := omock.NewMockOntologyManagerAccess(ctrl)

@@ -151,11 +151,14 @@ func Test_ontologyManagerAccess_GetObjectType(t *testing.T) {
 
 			mockHTTPClient.EXPECT().
 				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(http.StatusBadRequest, errorBytes, nil)
+				Return(http.StatusForbidden, errorBytes, nil)
 
 			result, exists, err := oma.GetObjectType(ctx, knID, branch, otID)
 
 			So(err, ShouldNotBeNil)
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusForbidden)
 			So(exists, ShouldBeFalse)
 			So(result.OTID, ShouldEqual, "")
 		})

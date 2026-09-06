@@ -1611,6 +1611,16 @@ func TestCatalogServiceDeleteByID(t *testing.T) {
 }
 
 func TestCatalogServiceGetByID(t *testing.T) {
+	t.Run("trusted proxy read skips secondary metadata authorization", func(t *testing.T) {
+		cs, ca, _, _ := newS2SCatalogService(t)
+		want := &interfaces.Catalog{ID: "c1", Internal: false}
+		ca.EXPECT().GetByID(gomock.Any(), "c1").Return(want, nil)
+
+		got, err := cs.GetByID(interfaces.WithTrustedProxyRead(context.Background()), "c1", false)
+		require.NoError(t, err)
+		assert.Same(t, want, got)
+	})
+
 	t.Run("catalog get by ids2 sinternal bypass", func(t *testing.T) {
 		cs, ca, _, ums := newS2SCatalogService(t)
 		ca.EXPECT().GetByID(gomock.Any(), "c1").

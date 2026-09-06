@@ -90,6 +90,7 @@ func (r *restHandler) GetResourceSchemaByProxy(c *gin.Context) {
 	if !r.authorizeProxyRead(c, ctx, request, err) {
 		return
 	}
+	ctx = interfaces.WithTrustedProxyRead(ctx)
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: request.ProxyID, Type: request.ProxyType})
 
 	resource, err := r.rs.InternalGetByID(ctx, nil, request.TargetID)
@@ -127,6 +128,7 @@ func (r *restHandler) PostResourceDataByProxy(c *gin.Context) {
 	if !r.authorizeProxyRead(c, ctx, request, err) {
 		return
 	}
+	ctx = interfaces.WithTrustedProxyRead(ctx)
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: request.ProxyID, Type: request.ProxyType})
 	r.queryProxyResourceData(c, ctx, span)
 }
