@@ -76,10 +76,45 @@ info:
     with no tool to mount is a 400, not a silent success — "I mounted the box" and "nothing
     happened" must not look alike.
 
-    ## Not covered here
+    ## Metadata is backfilled, not stored
 
-    Metadata backfill and dangling marking arrive with the rest of the capability binding work;
-    this file describes the CRUD surface only.
+    A binding stores only the reference. Names, descriptions and statuses are read from the
+    execution factory when the list is served, so they never go stale and the master data stays
+    in one place.
+
+    The reads are shaped around what costs what. Function metadata comes **per tool box**, not
+    per tool: the box endpoint inlines its tools, so a page of twenty function bindings across
+    three boxes costs three calls. Skill names are one call for the whole page. Only a skill's
+    description and status must be read one skill at a time, which is why they are behind
+    `with_detail=true` rather than always paid.
+
+    ## Dangling bindings are marked, never deleted
+
+    A binding whose target has been removed from the execution factory comes back with
+    `status: "missing"`. It is not deleted: removing it silently would erase the evidence that
+    the network once pointed at something, and it is the owner's decision whether to clean it up
+    or restore the capability. When a whole tool box is gone, every binding under it is marked
+    and the box appears in `boxes` with `box_missing: true`.
+
+    This matters because retrieval treats a dangling reference as simply absent — it matches
+    nothing and says nothing. Without the marker the only symptom is "the navigation says four
+    functions but only three ever come back".
+
+    ## Whole-box top-up
+
+    A whole-box mount is expanded at write time and does not follow the box afterwards, so tools
+    added later are not bound. `boxes` reports `total_tools`, `mounted_tools` and
+    `unmounted_tools` per box so the list can show "20 of 23 mounted" and offer to add the rest
+    deliberately. Disabled tools are excluded from the totals: they are not something a top-up
+    would add.
+
+    ## When the execution factory is down
+
+    Listing degrades rather than fails: the bindings come back in full with empty metadata and
+    `metadata_available: false`. Listing memberships is the point of the endpoint and the names
+    are decoration — failing the request would take the mount UI down with the factory. The flag
+    exists so an empty name is not read as a deleted capability; an outage and a deletion must
+    not look alike.
 
     **Prefix aliases**: every path below is also served under `/api/ontology-manager/v1`, and
     the internal face under `/api/bkn-backend/in/v1` and `/api/ontology-manager/in/v1`.
@@ -111,6 +146,14 @@ paths:
           description: Filter by owning tool box. Only meaningful for functions.
           schema:
             type: string
+          in: query
+        - name: with_detail
+          description: >-
+            Also fill description and status. A skill's detail is read one skill at a time, so
+            this is opt-in; function detail arrives with the box response either way.
+          schema:
+            type: boolean
+            default: false
           in: query
         - name: offset
           description: Offset. Defaults to 0.
@@ -299,7 +342,9 @@ components:
           description: Capability description, backfilled from the execution factory
           type: string
         status:
-          description: Capability status in the execution factory, backfilled
+          description: >-
+            Capability status in the execution factory, backfilled. The value `missing` means the
+            target no longer exists there; the binding is reported, not deleted.
           type: string
         owner_name:
           description: Tool box name, backfilled
@@ -316,12 +361,39 @@ components:
           description: Update time in milliseconds
           type: integer
           format: int64
+    CapabilityBoxSummary:
+      description: How much of a tool box this branch has mounted
+      type: object
+      required:
+        - box_id
+        - total_tools
+        - mounted_tools
+        - unmounted_tools
+      properties:
+        box_id:
+          type: string
+        box_name:
+          description: Empty when the execution factory could not be reached
+          type: string
+        box_missing:
+          description: The box no longer exists; every binding under it is missing too
+          type: boolean
+        total_tools:
+          description: Enabled tools currently in the box
+          type: integer
+        mounted_tools:
+          description: Of those, the ones bound to this branch
+          type: integer
+        unmounted_tools:
+          description: What a one-click top-up would add
+          type: integer
     CapabilityBindingList:
       description: Capability binding list
       type: object
       required:
         - entries
         - total_count
+        - metadata_available
       properties:
         entries:
           type: array
@@ -330,6 +402,16 @@ components:
         total_count:
           description: Total matching bindings, ignoring pagination
           type: integer
+        boxes:
+          description: The tool boxes behind the whole-box mounts on this page
+          type: array
+          items:
+            $ref: '#/components/schemas/CapabilityBoxSummary'
+        metadata_available:
+          description: >-
+            False when the execution factory could not be reached. The bindings are still
+            complete; only their names, descriptions and statuses are missing.
+          type: boolean
     AttachCapabilitiesRequest:
       description: Mount request
       type: object

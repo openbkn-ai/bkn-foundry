@@ -9,6 +9,7 @@ package driveradapters
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
@@ -196,6 +197,7 @@ func (r *restHandler) ListCapabilities(c *gin.Context, vis hydra.Visitor) {
 		Branch:         branch,
 		CapabilityType: c.Query("type"),
 		OwnerID:        c.Query("owner_id"),
+		WithDetail:     strings.EqualFold(strings.TrimSpace(c.Query("with_detail")), "true"),
 	})
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)

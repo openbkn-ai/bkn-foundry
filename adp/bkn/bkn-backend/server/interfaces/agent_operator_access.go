@@ -65,6 +65,10 @@ type AgentOperatorAccess interface {
 	// skill does not exist, so the caller can tell "no such skill" from "exists but unpublished"
 	// — the market endpoint collapses both into 404, which is why it is not used here.
 	GetSkillByID(ctx context.Context, skillID string) (*SkillBrief, error)
+	// GetSkillNamesByIDs resolves several skills to their names in one call. Skills that do not
+	// exist are absent from the result rather than present with an empty name, so the difference
+	// between the request and the answer is exactly the set of dangling references.
+	GetSkillNamesByIDs(ctx context.Context, skillIDs []string) (map[string]string, error)
 	// ListBoxTools reads every tool of a tool box in one call, each with its status. It returns
 	// (nil, nil) when the box does not exist. The box endpoint inlines its tools, so validating
 	// and expanding a whole-box mount both cost one request per box rather than one per tool.

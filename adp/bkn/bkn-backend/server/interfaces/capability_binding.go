@@ -74,12 +74,44 @@ type CapabilityBindingsQueryParams struct {
 	CapabilityType string
 	OwnerID        string
 	CapabilityIDs  []string
+	// WithDetail also fills description and status. Names alone cost one call per tool box and
+	// one for all skills; the detail of a skill has to be read one skill at a time, so it is
+	// asked for rather than always paid.
+	WithDetail bool
+}
+
+// CAPABILITY_STATUS_MISSING marks a binding whose target is gone from the execution factory.
+// Such a row is reported, never deleted: removing it silently would erase the only evidence that
+// the network once pointed at something, and retrieval already skips it without saying so.
+const CAPABILITY_STATUS_MISSING = "missing"
+
+// CapabilityBoxSummary reports how much of a tool box this branch has mounted. It exists because
+// a whole-box mount is expanded at write time and does not follow the box afterwards: without
+// this, a tool added to the box later is invisible to the person who mounted it.
+type CapabilityBoxSummary struct {
+	BoxID string `json:"box_id"`
+	// BoxName is empty when the execution factory could not be reached.
+	BoxName string `json:"box_name,omitempty"`
+	// BoxMissing marks a box that no longer exists; every binding under it is missing too.
+	BoxMissing bool `json:"box_missing,omitempty"`
+	// TotalTools counts the enabled tools currently in the box.
+	TotalTools int `json:"total_tools"`
+	// MountedTools counts those already bound to this branch.
+	MountedTools int `json:"mounted_tools"`
+	// UnmountedTools is what a one-click top-up would add.
+	UnmountedTools int `json:"unmounted_tools"`
 }
 
 // CapabilityBindingsList is the list response for GET .../capabilities.
 type CapabilityBindingsList struct {
 	Entries    []*CapabilityBinding `json:"entries"`
 	TotalCount int                  `json:"total_count"`
+	// Boxes summarises the tool boxes behind the whole-box mounts on this page.
+	Boxes []*CapabilityBoxSummary `json:"boxes,omitempty"`
+	// MetadataAvailable is false when the execution factory could not be reached. The bindings
+	// are still returned in full — the names are missing, not the memberships — and the flag
+	// says so explicitly so an empty name is not read as a deleted capability.
+	MetadataAvailable bool `json:"metadata_available"`
 }
 
 // AttachCapabilityEntry is one item of a mount request.

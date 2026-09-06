@@ -70,6 +70,21 @@ func (mr *MockAgentOperatorAccessMockRecorder) GetSkillByID(ctx, skillID any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSkillByID", reflect.TypeOf((*MockAgentOperatorAccess)(nil).GetSkillByID), ctx, skillID)
 }
 
+// GetSkillNamesByIDs mocks base method.
+func (m *MockAgentOperatorAccess) GetSkillNamesByIDs(ctx context.Context, skillIDs []string) (map[string]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSkillNamesByIDs", ctx, skillIDs)
+	ret0, _ := ret[0].(map[string]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSkillNamesByIDs indicates an expected call of GetSkillNamesByIDs.
+func (mr *MockAgentOperatorAccessMockRecorder) GetSkillNamesByIDs(ctx, skillIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSkillNamesByIDs", reflect.TypeOf((*MockAgentOperatorAccess)(nil).GetSkillNamesByIDs), ctx, skillIDs)
+}
+
 // GetToolByID mocks base method.
 func (m *MockAgentOperatorAccess) GetToolByID(ctx context.Context, boxID, toolID string) error {
 	m.ctrl.T.Helper()
