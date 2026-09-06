@@ -9,15 +9,18 @@ package bkn
 import (
 	"bytes"
 	"context"
+	"net/http"
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
 	bknsdk "bkn-backend/bkn-specification/bkn"
 	"bkn-backend/common"
+	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 	"bkn-backend/logics"
 	"bkn-backend/logics/capability_binding"
@@ -120,9 +123,22 @@ func (bs *bknService) exportCapabilities(ctx context.Context, knID, branch strin
 	if list == nil || len(list.Entries) == 0 {
 		return nil, nil
 	}
+	// Names are half the identity and the only half another environment can resolve. When the
+	// execution factory could not be reached they are all empty, and the section would still look
+	// well-formed while resolving to nothing on import. Failing the export says so instead.
+	if !list.MetadataAvailable {
+		return nil, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+			berrors.BknBackend_CapabilityBinding_ExportMetadataUnavailable).
+			WithErrorDetails("capability names are unavailable, so the exported dependency section would not resolve elsewhere")
+	}
 
 	capabilities := &bknsdk.BknCapabilities{}
 	for _, binding := range list.Entries {
+		// A binding whose target is gone has no name to carry, and writing its id alone would
+		// only reappear as a not_found skip wherever the file is imported.
+		if binding.Status == interfaces.CAPABILITY_STATUS_MISSING {
+			continue
+		}
 		switch binding.CapabilityType {
 		case interfaces.CAPABILITY_TYPE_SKILL:
 			capabilities.Skills = append(capabilities.Skills, &bknsdk.BknCapabilitySkill{

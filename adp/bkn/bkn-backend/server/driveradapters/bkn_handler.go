@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -238,7 +239,15 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	// import: a knowledge network whose capabilities are missing is still a knowledge network.
 	// What could not be resolved travels back in the response — a skip that is only logged makes
 	// an import look complete while the SKILLs list is quietly empty.
-	capabilityReport, capErr := r.cbs.ImportCapabilities(ctx, knID, branch, bknNetwork.Capabilities)
+	//
+	// detach asks for the topology without this environment's local identifiers, and a Skill or
+	// tool id is exactly that. Mounting them anyway would leave the one binding kind the caller
+	// asked to drop.
+	declaredCapabilities := bknNetwork.Capabilities
+	if bindingPolicy == bknBindingPolicyDetach {
+		declaredCapabilities = nil
+	}
+	capabilityReport, capErr := r.cbs.ImportCapabilities(ctx, knID, branch, declaredCapabilities)
 	if capErr != nil {
 		logger.Errorf("Upload BKN: capability import failed: kn_id=%s, err=%v", knID, capErr)
 		capabilityReport = &interfaces.CapabilityImportReport{
@@ -354,8 +363,14 @@ func (r *restHandler) DownloadBKN(c *gin.Context) {
 	tarData, err := r.bs.ExportToTar(ctx, kn_id, branch)
 	if err != nil {
 		logger.Errorf("Download BKN failed: %s", err.Error())
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KnowledgeNetwork_InternalError).
-			WithErrorDetails(commonValidationDetail(ctx, "InternalRequestFailed", nil))
+		// An error the service already classified travels as it is. Flattening every failure into
+		// "internal error" hides the one the caller can act on: an export refused because the
+		// execution factory is unreachable is worth retrying, and a generic 500 does not say so.
+		var httpErr *rest.HTTPError
+		if !errors.As(err, &httpErr) {
+			httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KnowledgeNetwork_InternalError).
+				WithErrorDetails(commonValidationDetail(ctx, "InternalRequestFailed", nil))
+		}
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

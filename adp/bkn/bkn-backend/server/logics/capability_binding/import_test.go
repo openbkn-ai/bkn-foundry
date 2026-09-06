@@ -164,3 +164,40 @@ func TestImportResolvesFunctionsByBoxAndToolName(t *testing.T) {
 		So(report.Skipped, ShouldBeEmpty)
 	})
 }
+
+// TestImportSkipsToolInUnpublishedBox pins resolution to the same bar the mount enforces. The
+// mount validates the batch as a unit, so a tool whose box is not published would fail the whole
+// AttachCapabilities call — every Skill that resolved cleanly would be lost with it, and the
+// import would report an execution-factory outage that never happened.
+func TestImportSkipsToolInUnpublishedBox(t *testing.T) {
+	Convey("工具箱未发布时只跳过这一条，其余照常绑定", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		service, cba, aoa := newTestServiceWithFactory(t, ctrl)
+		aoa.EXPECT().GetSkillByID(gomock.Any(), "skill-1").
+			Return(&interfaces.SkillBrief{SkillID: "skill-1", Status: interfaces.EXEC_SKILL_STATUS_PUBLISHED}, nil).AnyTimes()
+		aoa.EXPECT().ListBoxTools(gomock.Any(), "draft-box").Return([]*interfaces.ToolBrief{
+			{BoxID: "draft-box", BoxStatus: "unpublish", ToolID: "tool-1", Name: "BOM 展开",
+				Status: interfaces.EXEC_TOOL_STATUS_ENABLED},
+		}, nil).AnyTimes()
+		cba.EXPECT().GetBindingByCapability(gomock.Any(), gomock.Any(), gomock.Any(),
+			gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
+		cba.EXPECT().CreateBindings(gomock.Any(), gomock.Nil(), gomock.Len(1)).Return(nil)
+
+		report, err := service.ImportCapabilities(context.Background(), "kn1", "main",
+			&bknsdk.BknCapabilities{
+				Skills: []*bknsdk.BknCapabilitySkill{{ID: "skill-1", Name: "交期评估"}},
+				Functions: []*bknsdk.BknCapabilityFunction{{
+					BoxID: "draft-box", ToolID: "tool-1",
+					BoxName: "草稿箱", ToolName: "BOM 展开",
+				}},
+			})
+
+		So(err, ShouldBeNil)
+		So(report.Bound, ShouldEqual, 1)
+		So(len(report.Skipped), ShouldEqual, 1)
+		So(report.Skipped[0].Reason, ShouldEqual, CapabilitySkipUnusable)
+		So(report.Skipped[0].Detail, ShouldContainSubstring, "unpublish")
+	})
+}

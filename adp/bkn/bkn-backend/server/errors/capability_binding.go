@@ -15,6 +15,7 @@ const (
 	BknBackend_CapabilityBinding_TargetNotAvailable                   = "BknBackend.CapabilityBinding.TargetNotAvailable"
 	BknBackend_CapabilityBinding_EmptyToolBox                         = "BknBackend.CapabilityBinding.EmptyToolBox"
 	BknBackend_CapabilityBinding_ExecutionFactoryUnavailable          = "BknBackend.CapabilityBinding.ExecutionFactoryUnavailable"
+	BknBackend_CapabilityBinding_ExportMetadataUnavailable            = "BknBackend.CapabilityBinding.ExportMetadataUnavailable"
 	BknBackend_CapabilityBinding_InternalError                        = "BknBackend.CapabilityBinding.InternalError"
 	BknBackend_CapabilityBinding_InternalError_BeginTransaction       = "BknBackend.CapabilityBinding.InternalError.BeginTransactionFailed"
 	BknBackend_CapabilityBinding_InternalError_CreateBindingsFailed   = "BknBackend.CapabilityBinding.InternalError.CreateBindingsFailed"
@@ -32,6 +33,7 @@ var CapabilityBindingErrCodeList = []string{
 	BknBackend_CapabilityBinding_TargetNotAvailable,
 	BknBackend_CapabilityBinding_EmptyToolBox,
 	BknBackend_CapabilityBinding_ExecutionFactoryUnavailable,
+	BknBackend_CapabilityBinding_ExportMetadataUnavailable,
 	BknBackend_CapabilityBinding_InternalError,
 	BknBackend_CapabilityBinding_InternalError_BeginTransaction,
 	BknBackend_CapabilityBinding_InternalError_CreateBindingsFailed,

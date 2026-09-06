@@ -165,9 +165,8 @@ func (cbs *capabilityBindingService) resolveFunction(ctx context.Context,
 			return "", "", skip(CapabilitySkipUnreachable, err.Error())
 		}
 		if tool := findTool(tools, declared.ToolID); tool != nil {
-			if tool.Status != interfaces.EXEC_TOOL_STATUS_ENABLED {
-				return "", "", skip(CapabilitySkipUnusable,
-					fmt.Sprintf("tool %s is %s", declared.ToolID, tool.Status))
+			if unusable := toolUnusableReason(tool); unusable != "" {
+				return "", "", skip(CapabilitySkipUnusable, unusable)
 			}
 			return declared.BoxID, declared.ToolID, nil
 		}
@@ -205,15 +204,32 @@ func (cbs *capabilityBindingService) resolveFunction(ctx context.Context,
 		return "", "", skip(CapabilitySkipNotFound,
 			fmt.Sprintf("tool box %q has no tool named %q", declared.BoxName, declared.ToolName))
 	case 1:
-		if named[0].Status != interfaces.EXEC_TOOL_STATUS_ENABLED {
-			return "", "", skip(CapabilitySkipUnusable,
-				fmt.Sprintf("tool %q is %s", declared.ToolName, named[0].Status))
+		if unusable := toolUnusableReason(named[0]); unusable != "" {
+			return "", "", skip(CapabilitySkipUnusable, unusable)
 		}
 		return boxes[0].BoxID, named[0].ToolID, nil
 	default:
 		return "", "", skip(CapabilitySkipAmbiguous,
 			fmt.Sprintf("%d tools in %q are named %q", len(named), declared.BoxName, declared.ToolName))
 	}
+}
+
+// toolUnusableReason mirrors what validateTool rejects at mount time, and returns the empty string
+// when the tool is mountable.
+//
+// The two checks have to agree. Resolution that accepted a tool the mount then rejects does not
+// cost that one entry: AttachCapabilities validates the batch as a unit, so a single tool in an
+// unpublished box fails the whole call, and the import reports one execution_factory_unreachable
+// in place of the report — every Skill that resolved cleanly is lost with it, and the reason
+// points at the wrong thing.
+func toolUnusableReason(tool *interfaces.ToolBrief) string {
+	if !boxIsUsable(tool) {
+		return fmt.Sprintf("tool box %s is %s", tool.BoxID, tool.BoxStatus)
+	}
+	if tool.Status != interfaces.EXEC_TOOL_STATUS_ENABLED {
+		return fmt.Sprintf("tool %s is %s", tool.ToolID, tool.Status)
+	}
+	return ""
 }
 
 func findTool(tools []*interfaces.ToolBrief, toolID string) *interfaces.ToolBrief {

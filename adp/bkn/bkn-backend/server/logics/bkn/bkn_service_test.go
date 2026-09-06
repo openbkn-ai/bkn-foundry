@@ -161,11 +161,12 @@ func Test_bknService_ExportCapabilities(t *testing.T) {
 					// No paging: a page of the bindings would ship a subset of what the network
 					// depends on, with nothing to say so.
 					So(q.Limit, ShouldEqual, 0)
-					return &interfaces.CapabilityBindingsList{Entries: []*interfaces.CapabilityBinding{
-						{CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "skill-1", Name: "交期评估"},
-						{CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, OwnerID: "box-1",
-							CapabilityID: "tool-1", Name: "BOM 展开", OwnerName: "供应链计算"},
-					}}, nil
+					return &interfaces.CapabilityBindingsList{MetadataAvailable: true,
+						Entries: []*interfaces.CapabilityBinding{
+							{CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "skill-1", Name: "交期评估"},
+							{CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, OwnerID: "box-1",
+								CapabilityID: "tool-1", Name: "BOM 展开", OwnerName: "供应链计算"},
+						}}, nil
 				})
 
 			data, err := svc.ExportToTar(context.Background(), "kn1", interfaces.MAIN_BRANCH)
@@ -192,6 +193,39 @@ func Test_bknService_ExportCapabilities(t *testing.T) {
 			data, err := svc.ExportToTar(context.Background(), "kn2", interfaces.MAIN_BRANCH)
 			So(err, ShouldBeNil)
 			So(string(data), ShouldNotContainSubstring, "capabilities")
+		})
+
+		Convey("执行工厂不可达时导出失败，不产出只剩 id 的段", func() {
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn3", interfaces.MAIN_BRANCH, interfaces.Mode_Export).
+				Return(&interfaces.KN{KNID: "kn3", KNName: "名字缺失"}, nil)
+			cbs.EXPECT().ListCapabilities(gomock.Any(), gomock.Any()).
+				Return(&interfaces.CapabilityBindingsList{MetadataAvailable: false,
+					Entries: []*interfaces.CapabilityBinding{
+						{CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "skill-1"},
+					}}, nil)
+
+			data, err := svc.ExportToTar(context.Background(), "kn3", interfaces.MAIN_BRANCH)
+			So(err, ShouldNotBeNil)
+			So(data, ShouldBeNil)
+		})
+
+		Convey("目标已消失的绑定不写进依赖段", func() {
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn4", interfaces.MAIN_BRANCH, interfaces.Mode_Export).
+				Return(&interfaces.KN{KNID: "kn4", KNName: "含悬空绑定"}, nil)
+			cbs.EXPECT().ListCapabilities(gomock.Any(), gomock.Any()).
+				Return(&interfaces.CapabilityBindingsList{MetadataAvailable: true,
+					Entries: []*interfaces.CapabilityBinding{
+						{CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "skill-live", Name: "在的"},
+						{CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "skill-gone",
+							Status: interfaces.CAPABILITY_STATUS_MISSING},
+					}}, nil)
+
+			data, err := svc.ExportToTar(context.Background(), "kn4", interfaces.MAIN_BRANCH)
+			So(err, ShouldBeNil)
+			network, err := bknsdk.LoadNetworkFromTar(bytes.NewReader(data))
+			So(err, ShouldBeNil)
+			So(len(network.Capabilities.Skills), ShouldEqual, 1)
+			So(network.Capabilities.Skills[0].ID, ShouldEqual, "skill-live")
 		})
 	})
 }
