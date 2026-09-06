@@ -61,6 +61,10 @@ func (s *stubSearchSchemaBknBackend) ListMetricsByObjectTypes(ctx context.Contex
 	return nil, nil
 }
 
+func (s *stubSearchSchemaBknBackend) ListKNCapabilities(ctx context.Context, knID, branch, capabilityType string) ([]*interfaces.CapabilityRef, error) {
+	return nil, nil
+}
+
 func (s *stubSearchSchemaBknBackend) SearchMetricTypes(ctx context.Context, req *interfaces.QueryConceptsReq) (*interfaces.MetricTypeConcepts, error) {
 	s.searchMetricCalls++
 	if s.searchMetricTypesFunc != nil {

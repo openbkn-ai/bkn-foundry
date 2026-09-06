@@ -518,4 +518,31 @@ type BknBackendAccess interface {
 	// object type has to be exhaustive and authoritative, so this reads the metric
 	// registry itself.
 	ListMetricsByObjectTypes(ctx context.Context, knID string, otIDs []string) ([]*RelatedMetric, error)
+
+	// ListKNCapabilities returns the Skills and Function tools bound to one knowledge network
+	// branch. capabilityType narrows the answer to "skill" or "function"; empty returns both.
+	//
+	// An empty list means the branch has bound nothing, and callers must treat it as an empty
+	// scope rather than an unrestricted one. That is the whole point of the switch away from
+	// object-type recall: the old "no relation type means the whole network" rule made an
+	// unconfigured network look maximally permissive.
+	ListKNCapabilities(ctx context.Context, knID, branch, capabilityType string) ([]*CapabilityRef, error)
 }
+
+// CapabilityRef is one capability a knowledge network branch has bound. Only the reference
+// travels: the master data lives in the execution factory, and Context Loader reads it there
+// directly, so having bkn-backend fill in names would only add a hop.
+//
+// A skill is identified by CapabilityID alone; a function needs BoxID too, because a tool id is
+// scoped to its box.
+type CapabilityRef struct {
+	CapabilityType string `json:"capability_type"`
+	BoxID          string `json:"box_id"`
+	CapabilityID   string `json:"capability_id"`
+}
+
+// Capability types a knowledge network can bind.
+const (
+	CapabilityTypeSkill    = "skill"
+	CapabilityTypeFunction = "function"
+)

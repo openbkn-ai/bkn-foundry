@@ -27,6 +27,10 @@ const (
 	readSkillFileURI = "/internal-v1/skills/%s/files/read"
 	// https://{host}:{port}/api/agent-operator-integration/internal-v1/skills/:skill_id/execute
 	executeSkillURI = "/internal-v1/skills/%s/execute"
+	// https://{host}:{port}/api/agent-operator-integration/internal-v1/skills/search
+	searchSkillsURI = "/internal-v1/skills/search"
+	// https://{host}:{port}/api/agent-operator-integration/internal-v1/skills/names
+	skillNamesURI = "/internal-v1/skills/names"
 
 	defaultSkillPageSize = 20
 	// maxSkillAssetBytes limits one skill asset fetched from object storage. Return
@@ -261,4 +265,90 @@ func firstNonEmptyStr(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// SearchBoundSkills ranks a whitelist of Skills against a query.
+//
+// The call goes to internal-v1 with this service's identity rather than the caller's token, which
+// is safe precisely because the whitelist decides the scope: the ids come from what the knowledge
+// network bound, and Execution Factory returns nothing outside them. Sending no ids returns
+// nothing, so an unreachable binding list cannot silently widen into the whole marketplace.
+func (o *operatorIntegrationClient) SearchBoundSkills(ctx context.Context,
+	req *interfaces.SearchBoundSkillsRequest) ([]interfaces.SkillHit, error) {
+	if req == nil || len(req.SkillIDs) == 0 {
+		return []interfaces.SkillHit{}, nil
+	}
+
+	fullURL := o.baseURL + searchSkillsURI
+	header := o.skillHeader(ctx, "operator.skill.search")
+	header["Content-Type"] = "application/json"
+
+	payload := map[string]any{
+		"query":     req.Query,
+		"skill_ids": req.SkillIDs,
+	}
+	if req.TopK > 0 {
+		payload["top_k"] = req.TopK
+	}
+	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#SearchBoundSkills] URL: %s, whitelist=%d",
+		fullURL, len(req.SkillIDs))
+
+	code, respBody, err := o.httpClient.Post(ctx, fullURL, header, payload)
+	if err != nil {
+		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#SearchBoundSkills] Request failed, err: %v", err)
+		return nil, skillUpstreamError(ctx, code, "SkillSearchRequestFailed", err)
+	}
+
+	var raw struct {
+		Entries []interfaces.SkillHit `json:"entries"`
+	}
+	if err = sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
+		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#SearchBoundSkills] Unmarshal failed, err: %v", err)
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
+			infraErr.LocalizedDetail(ctx, "SkillSearchResponseInvalid"))
+	}
+	if raw.Entries == nil {
+		return []interfaces.SkillHit{}, nil
+	}
+	return raw.Entries, nil
+}
+
+// GetSkillNamesByIDs resolves Skill names from Execution Factory's registry.
+//
+// The endpoint reads the registry rather than the search index, which is what makes it usable as
+// the fallback when the index is missing or stale. Ids it does not know are simply absent.
+func (o *operatorIntegrationClient) GetSkillNamesByIDs(ctx context.Context,
+	skillIDs []string) (map[string]string, error) {
+	names := map[string]string{}
+	if len(skillIDs) == 0 {
+		return names, nil
+	}
+
+	fullURL := o.baseURL + skillNamesURI
+	header := o.skillHeader(ctx, "operator.skill.names")
+	header["Content-Type"] = "application/json"
+
+	code, respBody, err := o.httpClient.Post(ctx, fullURL, header, map[string]any{"ids": skillIDs})
+	if err != nil {
+		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetSkillNamesByIDs] Request failed, err: %v", err)
+		return nil, skillUpstreamError(ctx, code, "SkillNameLookupFailed", err)
+	}
+
+	var raw struct {
+		Entries []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"entries"`
+	}
+	if err = sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
+		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetSkillNamesByIDs] Unmarshal failed, err: %v", err)
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
+			infraErr.LocalizedDetail(ctx, "SkillNameLookupInvalid"))
+	}
+	for _, entry := range raw.Entries {
+		if entry.ID != "" {
+			names[entry.ID] = entry.Name
+		}
+	}
+	return names, nil
 }

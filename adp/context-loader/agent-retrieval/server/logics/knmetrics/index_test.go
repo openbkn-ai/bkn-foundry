@@ -33,6 +33,10 @@ func (s *stubBknBackend) ListMetricsByObjectTypes(_ context.Context, knID string
 	return s.metrics, s.err
 }
 
+func (s *stubBknBackend) ListKNCapabilities(ctx context.Context, knID, branch, capabilityType string) ([]*interfaces.CapabilityRef, error) {
+	return nil, nil
+}
+
 type stubOntologyQuery struct {
 	interfaces.DrivenOntologyQuery
 	resp       *interfaces.MetricQueryDownstreamResp

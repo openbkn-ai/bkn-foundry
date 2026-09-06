@@ -136,15 +136,14 @@
     "ToolNotExecutable": "该工具不在当前可调用的已启用工具列表中：工具可能已停用、所属工具箱未发布，或当前账户无权访问。请先用 search_tools 确认可用的 toolbox_id 与 tool_id。",
     "NoPublishedToolsMatched": "没有匹配的已发布工具。请先在执行工厂注册工具、发布所属工具箱并启用工具，或放宽 query、去掉 toolbox_id 后重试。",
     "ToolSearchTruncated": "匹配的工具超过 limit，仅返回前若干条。请收窄 query 或提高 limit。",
-    "LogicPropertyGenerationFailed": "生成动态参数失败。"
+    "LogicPropertyGenerationFailed": "生成动态参数失败。",
+    "SkillSearchRequestFailed": "技能检索请求失败。",
+    "SkillSearchResponseInvalid": "技能检索响应无效。",
+    "SkillNameLookupFailed": "技能名称查询失败。",
+    "SkillNameLookupInvalid": "技能名称查询响应无效。"
   },
   "find_skills": {
-    "skills_not_modeled": "当前知识网络未建模技能对象类（skills），因此没有可召回的 Skill。如需启用技能召回，请先在该网络中创建 skills 对象类并绑定技能数据。",
-    "network_scope_too_wide": "当前知识网络中的 Skill 不是全局生效，网络级范围未返回结果。请补充 object_type_id；如已定位到实例，再补充 instance_identities 后重试。",
-    "network_no_skills": "当前知识网络下未找到可召回的 Skill。请确认 Skill 是否已创建并在当前知识网络中可见。",
-    "object_type_no_binding": "当前对象类未配置 Skill 绑定关系，无法在该范围内召回 Skill。请确认该对象类是否已绑定 Skill。",
-    "object_type_no_match": "当前对象类范围内未找到可召回的 Skill。可尝试缩小到具体实例范围，或确认该对象类下是否已绑定 Skill。",
-    "instance_no_match": "当前实例范围内未找到可召回的 Skill。可回退到 object_type_id 级别查看该类对象的候选 Skill。",
-    "skill_query_no_match": "当前范围和 skill_query 条件下未找到匹配的 Skill。可尝试放宽或去掉 skill_query 后重试。"
+    "no_bound_skills": "当前知识网络未挂载任何 Skill，因此没有可召回的 Skill。请在知识网络的「SKILLs」中挂载后重试。",
+    "skill_query_no_match": "当前知识网络已挂载的 Skill 中，没有与 skill_query 匹配的结果。可尝试放宽或去掉 skill_query 后重试。"
   }
 }

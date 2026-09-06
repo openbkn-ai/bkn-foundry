@@ -724,3 +724,64 @@ func (b *bknBackendAccess) ListMetricsByObjectTypes(ctx context.Context, knID st
 	}
 	return metrics, nil
 }
+
+// ListKNCapabilities reads the capability bindings of one knowledge network branch from the
+// internal face, which answers with bare references rather than backfilled metadata.
+//
+// A branch that has bound nothing comes back as an empty slice and no error. Callers must not
+// widen that into "everything": an unconfigured network having no scope is the intended answer.
+func (b *bknBackendAccess) ListKNCapabilities(ctx context.Context, knID, branch,
+	capabilityType string) ([]*interfaces.CapabilityRef, error) {
+	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/capabilities", b.baseURL, knID)
+	header := common.GetHeaderForChildOperation(ctx, "bkn.capability.list", 1)
+	header[rest.ContentTypeKey] = rest.ContentTypeJSON
+
+	queryValues := url.Values{}
+	if branch != "" {
+		queryValues.Set("branch", branch)
+	}
+	if capabilityType != "" {
+		queryValues.Set("type", capabilityType)
+	}
+
+	respCode, respBody, err := b.httpClient.GetNoUnmarshal(ctx, src, queryValues, header)
+	if err != nil {
+		b.logger.WithContext(ctx).Errorf("[BknBackendAccess] ListKNCapabilities request failed, err: %v", err)
+		return nil, infraErr.DefaultHTTPError(ctx, respCode,
+			fmt.Sprintf("[BknBackendAccess] ListKNCapabilities request failed, err: %v", err))
+	}
+
+	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
+		b.logger.WithContext(ctx).Errorf("[BknBackendAccess] ListKNCapabilities get resp failed, [%s], %v", src, respBody)
+
+		var baseError interfaces.KnBaseError
+		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
+			b.logger.Errorf("unmalshal KnBaseError failed: %v\n", err)
+			return nil, err
+		}
+		return nil, &infraErr.HTTPError{
+			HTTPCode:     respCode,
+			Code:         baseError.ErrorCode,
+			Description:  baseError.Description,
+			Solution:     baseError.Solution,
+			ErrorLink:    baseError.ErrorLink,
+			ErrorDetails: baseError.ErrorDetails,
+		}
+	}
+
+	if len(respBody) == 0 {
+		return []*interfaces.CapabilityRef{}, nil
+	}
+
+	var response struct {
+		Entries []*interfaces.CapabilityRef `json:"entries"`
+	}
+	if err := sonic.Unmarshal(respBody, &response); err != nil {
+		b.logger.Errorf("[BknBackendAccess] ListKNCapabilities unmarshal failed: %v\n", err)
+		return nil, err
+	}
+	if response.Entries == nil {
+		return []*interfaces.CapabilityRef{}, nil
+	}
+	return response.Entries, nil
+}

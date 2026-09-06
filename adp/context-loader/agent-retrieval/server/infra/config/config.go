@@ -194,11 +194,10 @@ type KnInstanceSearchConfig struct {
 
 // FindSkillsConfig find_skills Skill recall configuration.
 type FindSkillsConfig struct {
-	DefaultTopK        int    `yaml:"default_top_k" default:"10"`
-	MaxTopK            int    `yaml:"max_top_k" default:"20"`
-	RecallTimeoutMs    int    `yaml:"recall_timeout_ms" default:"5000"`
-	TotalTimeoutMs     int    `yaml:"total_timeout_ms" default:"10000"`
-	SkillsObjectTypeID string `yaml:"skills_object_type_id" default:"skills"`
+	DefaultTopK     int `yaml:"default_top_k" default:"10"`
+	MaxTopK         int `yaml:"max_top_k" default:"20"`
+	RecallTimeoutMs int `yaml:"recall_timeout_ms" default:"5000"`
+	TotalTimeoutMs  int `yaml:"total_timeout_ms" default:"10000"`
 }
 
 // SetMachineID sets machine ID
