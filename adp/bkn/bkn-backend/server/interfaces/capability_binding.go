@@ -31,9 +31,14 @@ type CapabilityBinding struct {
 	CapabilityType string `json:"capability_type" mapstructure:"capability_type"`
 	OwnerID        string `json:"owner_id,omitempty" mapstructure:"owner_id"`
 	CapabilityID   string `json:"capability_id" mapstructure:"capability_id"`
-	// BoundAsBox marks a row produced by expanding a whole-box mount. It does not change the
-	// binding semantics — the row is still an ordinary tool-level binding and can be released
-	// on its own — it only lets the list view report how many tools of a box are not mounted.
+	// BoundAsBox records how the row was created: by expanding a whole-box mount rather than by
+	// naming the tool. It is provenance, not current coverage — a tool bound individually and
+	// later included in a whole-box mount keeps the flag false, because that first gesture is
+	// still what created it.
+	//
+	// Anything asking "which tools of this box are bound" must therefore group by box, not
+	// filter on this flag. The row is an ordinary tool-level binding either way and can be
+	// released on its own.
 	BoundAsBox bool   `json:"bound_as_box" mapstructure:"bound_as_box"`
 	Comment    string `json:"comment,omitempty" mapstructure:"comment"`
 
@@ -83,6 +88,11 @@ type AttachCapabilityEntry struct {
 	OwnerID        string `json:"owner_id"`
 	CapabilityID   string `json:"capability_id"`
 	Comment        string `json:"comment"`
+	// AllTools mounts every enabled tool of the box named by OwnerID. It is expanded at write
+	// time into one tool-level binding per tool, so the stored rows carry no box-level scope and
+	// the read path never expands anything. Tools added to the box later are not inherited: a
+	// shared box would otherwise let someone else widen this network's reach.
+	AllTools bool `json:"all_tools"`
 }
 
 // AttachCapabilitiesReq mounts one or more capabilities onto a knowledge network branch.

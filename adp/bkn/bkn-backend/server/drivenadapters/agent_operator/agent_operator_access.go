@@ -202,3 +202,143 @@ func (aoa *agentOperatorAccess) GetMcpToolByName(ctx context.Context, mcpID, too
 	common.LogSafeError(ctx, "MCP tool not found", err)
 	return err
 }
+
+// execFactoryHeaders carries the caller's account to the execution factory. The internal face
+// authenticates by header, not by token.
+func (aoa *agentOperatorAccess) execFactoryHeaders(ctx context.Context) map[string]string {
+	accountInfo := interfaces.AccountInfo{}
+	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
+		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	}
+	return map[string]string{
+		interfaces.CONTENT_TYPE_NAME:        interfaces.CONTENT_TYPE_JSON,
+		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,
+		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
+	}
+}
+
+// GetSkillByID reads a skill from the execution factory (GET .../skills/{skill_id}).
+//
+// A missing skill is (nil, nil) rather than an error: "no such skill" and "exists but
+// unpublished" are different answers to a mount request and the caller has to tell them apart.
+func (aoa *agentOperatorAccess) GetSkillByID(ctx context.Context, skillID string) (*interfaces.SkillBrief, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetSkillByID")
+	defer span.End()
+
+	if skillID == "" {
+		return nil, fmt.Errorf("skill_id is required for skill binding check")
+	}
+
+	url := fmt.Sprintf("%s/skills/%s", aoa.agentOperatorURL, skillID)
+	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{
+		HttpUrl:         url,
+		HttpMethod:      http.MethodGet,
+		HttpContentType: rest.ContentTypeJson,
+	})
+
+	respCode, result, err := aoa.httpClient.GetNoUnmarshal(ctx, url, nil, aoa.execFactoryHeaders(ctx))
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get skill failed")
+		common.LogSafeError(ctx, "Skill binding check request failed", err)
+		return nil, fmt.Errorf("skill binding check failed: %w", err)
+	}
+	if respCode == http.StatusNotFound {
+		oteltrace.AddHttpAttrs4Ok(span, respCode)
+		return nil, nil
+	}
+	if respCode != http.StatusOK {
+		common.LogSafeError(ctx, "Skill binding check failed",
+			fmt.Errorf("skill binding check returned HTTP %d", respCode))
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Get skill failed")
+		return nil, fmt.Errorf("skill binding check returned HTTP %d", respCode)
+	}
+
+	var payload struct {
+		SkillID     string `json:"skill_id"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Status      string `json:"status"`
+	}
+	if err = json.Unmarshal(result, &payload); err != nil {
+		common.LogSafeError(ctx, "Unmarshal skill detail failed", err)
+		return nil, fmt.Errorf("skill binding check failed: %w", err)
+	}
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return &interfaces.SkillBrief{
+		SkillID:     payload.SkillID,
+		Name:        payload.Name,
+		Description: payload.Description,
+		Status:      payload.Status,
+	}, nil
+}
+
+// ListBoxTools reads a tool box and its inlined tools (GET .../tool-box/{box_id}).
+//
+// A missing box is (nil, nil), on the same terms as GetSkillByID.
+func (aoa *agentOperatorAccess) ListBoxTools(ctx context.Context, boxID string) ([]*interfaces.ToolBrief, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListBoxTools")
+	defer span.End()
+
+	if boxID == "" {
+		return nil, fmt.Errorf("box_id is required for tool box lookup")
+	}
+
+	url := fmt.Sprintf("%s/tool-box/%s", aoa.agentOperatorURL, boxID)
+	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{
+		HttpUrl:         url,
+		HttpMethod:      http.MethodGet,
+		HttpContentType: rest.ContentTypeJson,
+	})
+
+	respCode, result, err := aoa.httpClient.GetNoUnmarshal(ctx, url, nil, aoa.execFactoryHeaders(ctx))
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get tool box failed")
+		common.LogSafeError(ctx, "Tool box lookup request failed", err)
+		return nil, fmt.Errorf("tool box lookup failed: %w", err)
+	}
+	if respCode == http.StatusNotFound {
+		oteltrace.AddHttpAttrs4Ok(span, respCode)
+		return nil, nil
+	}
+	if respCode != http.StatusOK {
+		common.LogSafeError(ctx, "Tool box lookup failed",
+			fmt.Errorf("tool box lookup returned HTTP %d", respCode))
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Get tool box failed")
+		return nil, fmt.Errorf("tool box lookup returned HTTP %d", respCode)
+	}
+
+	var payload struct {
+		BoxID      string `json:"box_id"`
+		BoxName    string `json:"box_name"`
+		Status     string `json:"status"`
+		IsInternal bool   `json:"is_internal"`
+		Tools      []struct {
+			ToolID      string `json:"tool_id"`
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			Status      string `json:"status"`
+		} `json:"tools"`
+	}
+	if err = json.Unmarshal(result, &payload); err != nil {
+		common.LogSafeError(ctx, "Unmarshal tool box detail failed", err)
+		return nil, fmt.Errorf("tool box lookup failed: %w", err)
+	}
+
+	tools := make([]*interfaces.ToolBrief, 0, len(payload.Tools))
+	for _, tool := range payload.Tools {
+		tools = append(tools, &interfaces.ToolBrief{
+			BoxID:       payload.BoxID,
+			BoxName:     payload.BoxName,
+			BoxStatus:   payload.Status,
+			BoxInternal: payload.IsInternal,
+			ToolID:      tool.ToolID,
+			Name:        tool.Name,
+			Description: tool.Description,
+			Status:      tool.Status,
+		})
+	}
+	// make() above keeps this non-nil even for a box with no tools, which matters: nil is
+	// reserved for "no such box" and the caller answers the two cases differently.
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return tools, nil
+}
