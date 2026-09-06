@@ -44,6 +44,23 @@ func TestSafeClientUsesManagedInternalContracts(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(interfaces.ProxyGrantCheckResult{Allowed: true})
 	})
+	mux.HandleFunc("/api/safe/in/v1/proxy-grant-sources/check-batch", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			ProxyID string                            `json:"proxy_account_id"`
+			Grantor string                            `json:"grantor_id"`
+			Sources []interfaces.ProxyGrantSourceSpec `json:"sources"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body.ProxyID != "proxy-1" || body.Grantor != "grantor-1" ||
+			len(body.Sources) != 1 || body.Sources[0].BindingID != "ot-1" {
+			t.Fatalf("batch check body = %#v", body)
+		}
+		_ = json.NewEncoder(w).Encode(interfaces.ProxyGrantBatchCheckResult{
+			DeniedSources: body.Sources,
+		})
+	})
 	mux.HandleFunc("/api/safe/in/v1/proxy-grant-sources/sync", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			ProxyID string `json:"proxy_account_id"`
@@ -94,6 +111,14 @@ func TestSafeClientUsesManagedInternalContracts(t *testing.T) {
 	})
 	if err != nil || !result.Allowed {
 		t.Fatalf("CheckGrant() = %#v, %v", result, err)
+	}
+	batchResult, err := client.CheckGrants(t.Context(), "proxy-1", "grantor-1", []interfaces.ProxyGrantSourceSpec{{
+		ResourceType: "resource", ResourceID: "resource-1", Operation: "query_data",
+		SourceType: interfaces.ProxyGrantSourceTypeKNBinding, SourceID: "source-1", KNID: "kn-1",
+		BindingType: interfaces.MODULE_TYPE_OBJECT_TYPE, BindingID: "ot-1",
+	}})
+	if err != nil || len(batchResult.DeniedSources) != 1 || batchResult.DeniedSources[0].BindingID != "ot-1" {
+		t.Fatalf("CheckGrants() = %#v, %v", batchResult, err)
 	}
 	syncResult, err := client.SyncGrants(t.Context(), "proxy-1", "grantor-1", nil)
 	if err != nil || syncResult.Transferred != 1 {

@@ -120,6 +120,10 @@ type ProxyGrantCheckResult struct {
 	Reason  string `json:"reason,omitempty"`
 }
 
+type ProxyGrantBatchCheckResult struct {
+	DeniedSources []ProxyGrantSourceSpec `json:"denied_sources"`
+}
+
 type ProxyGrantSyncResult struct {
 	Added       int `json:"added"`
 	Transferred int `json:"transferred"`
@@ -223,6 +227,7 @@ type ManagedProxyAccess interface {
 	Disable(ctx context.Context, proxyAccountID string) (*ManagedProxyAccount, error)
 	Archive(ctx context.Context, proxyAccountID string) (*ManagedProxyAccount, error)
 	CheckGrant(ctx context.Context, proxyAccountID, grantorID string, source ProxyGrantSourceSpec) (ProxyGrantCheckResult, error)
+	CheckGrants(ctx context.Context, proxyAccountID, grantorID string, sources []ProxyGrantSourceSpec) (ProxyGrantBatchCheckResult, error)
 	SyncGrants(ctx context.Context, proxyAccountID, grantorID string, sources []ProxyGrantSourceSpec) (ProxyGrantSyncResult, error)
 	ReconcileGrants(ctx context.Context, proxyAccountID, requestedBy string) (ProxyGrantReconcileResult, error)
 }

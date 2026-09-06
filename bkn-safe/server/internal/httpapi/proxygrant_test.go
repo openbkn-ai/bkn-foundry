@@ -141,6 +141,21 @@ func TestProxyGrantCheckAndReconcileAPI(t *testing.T) {
 	if w.Code != http.StatusOK || !jsonBool(t, w.Body.Bytes(), "allowed") {
 		t.Fatalf("check = %d body=%s", w.Code, w.Body.String())
 	}
+	w = do(t, r, http.MethodPost, "/api/safe/in/v1/proxy-grant-sources/check-batch", map[string]any{
+		"proxy_account_id": proxy.ProxyAccountID,
+		"grantor_id":       "grantor-check",
+		"sources":          []any{body["source"]},
+	})
+	var batchResult proxygrant.BatchCheckResult
+	if w.Code != http.StatusOK {
+		t.Fatalf("batch check = %d body=%s", w.Code, w.Body.String())
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &batchResult); err != nil {
+		t.Fatal(err)
+	}
+	if len(batchResult.DeniedSources) != 0 {
+		t.Fatalf("batch denied sources = %#v, want none", batchResult.DeniedSources)
+	}
 
 	w = do(t, r, http.MethodPost, "/api/safe/in/v1/proxy-grant-sources/reconcile", map[string]any{
 		"proxy_account_id": proxy.ProxyAccountID,

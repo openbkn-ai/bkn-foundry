@@ -235,13 +235,13 @@ func (en *Enforcer) AllowedOps(accessorID, resourceType, resourceID string, cand
 	if err != nil || !managed {
 		return out, err
 	}
+	currentPermissions, err := en.currentProxyPermissions(accessorID)
+	if err != nil {
+		return nil, err
+	}
 	current := out[:0]
 	for _, op := range out {
-		valid, err := en.hasCurrentProxySource(accessorID, resourceType, resourceID, op)
-		if err != nil {
-			return nil, err
-		}
-		if valid {
+		if currentPermissions[proxyPermission{ResourceType: resourceType, ResourceID: resourceID, Operation: op}] {
 			current = append(current, op)
 		}
 	}

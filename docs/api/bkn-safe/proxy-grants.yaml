@@ -129,6 +129,32 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '500':
           $ref: '#/components/responses/InternalError'
+  /proxy-grant-sources/check-batch:
+    post:
+      tags: [Proxy grant sources]
+      operationId: checkProxyGrantSourceAuthorities
+      summary: Check a complete set of KN binding sources
+      description: |
+        Applies the same retained-delegator and replacement rules as the single-source check,
+        but loads source, operation, user, and delegator state in batches. Insufficient authority
+        is returned in `denied_sources`; the request does not change source or policy state.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchCheckRequest'
+      responses:
+        '200':
+          description: The check completed; an empty denied_sources array means every source is allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchCheckResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /proxy-grant-sources/sync:
     post:
       tags: [Proxy grant sources]
@@ -244,6 +270,23 @@ components:
           description: Compatibility field naming the current actor; stored as `granted_by` when the actor creates, reactivates, or takes over a source.
         source:
           $ref: '#/components/schemas/SourceSpec'
+    BatchCheckRequest:
+      type: object
+      additionalProperties: false
+      required: [proxy_account_id, grantor_id, sources]
+      properties:
+        proxy_account_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        grantor_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceSpec'
     RevokeRequest:
       type: object
       additionalProperties: false
@@ -394,6 +437,16 @@ components:
         reason:
           type: string
           description: Returned only when `allowed=false`; it does not contain target connection details.
+    BatchCheckResult:
+      type: object
+      additionalProperties: false
+      required: [denied_sources]
+      properties:
+        denied_sources:
+          type: array
+          description: Sources that need the current actor to hold the operation but failed that check.
+          items:
+            $ref: '#/components/schemas/SourceSpec'
     SyncResult:
       type: object
       additionalProperties: false

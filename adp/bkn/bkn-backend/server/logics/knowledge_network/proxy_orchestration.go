@@ -242,21 +242,22 @@ func (kns *knowledgeNetworkService) abortCreatedProxy(ctx context.Context, plan 
 
 func (kns *knowledgeNetworkService) preflightProxySources(ctx context.Context, proxyID, delegatorID string,
 	sources []interfaces.ProxyGrantSourceSpec) error {
-	missing := make([]missingProxyPermission, 0)
-	for _, source := range sources {
-		result, err := kns.mpa.CheckGrant(ctx, proxyID, delegatorID, source)
-		if err != nil {
-			return proxyHTTPError(ctx, http.StatusServiceUnavailable, "proxy permission preflight failed")
-		}
-		if !result.Allowed {
-			missing = append(missing, missingProxyPermission{
-				ResourceType: source.ResourceType,
-				ResourceID:   source.ResourceID,
-				Operation:    source.Operation,
-				BindingType:  source.BindingType,
-				BindingID:    source.BindingID,
-			})
-		}
+	if len(sources) == 0 {
+		return nil
+	}
+	result, err := kns.mpa.CheckGrants(ctx, proxyID, delegatorID, sources)
+	if err != nil {
+		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "proxy permission preflight failed")
+	}
+	missing := make([]missingProxyPermission, 0, len(result.DeniedSources))
+	for _, source := range result.DeniedSources {
+		missing = append(missing, missingProxyPermission{
+			ResourceType: source.ResourceType,
+			ResourceID:   source.ResourceID,
+			Operation:    source.Operation,
+			BindingType:  source.BindingType,
+			BindingID:    source.BindingID,
+		})
 	}
 	if len(missing) > 0 {
 		sort.Slice(missing, func(i, j int) bool {
@@ -295,7 +296,13 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	defer kns.releaseProxyLock(context.WithoutCancel(ctx), plan)
+	committed := false
+	defer func() {
+		if plan.createdMapping && !committed {
+			kns.abortCreatedProxy(context.WithoutCancel(ctx), plan)
+		}
+		kns.releaseProxyLock(context.WithoutCancel(ctx), plan)
+	}()
 
 	// Reload after acquiring the publication lock. This prevents a candidate
 	// assembled from a stale model from omitting targets published by a writer
@@ -353,6 +360,7 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 		cleanupCreatedAuthorization()
 		return proxyHTTPError(ctx, http.StatusInternalServerError, "commit child resource publication")
 	}
+	committed = true
 	if cleanupTrackerOwner {
 		_ = cleanupTracker.Cleanup(mutationCtx, kns.ps)
 	}

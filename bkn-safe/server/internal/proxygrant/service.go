@@ -68,6 +68,12 @@ type SyncRequest struct {
 	Sources        []SourceSpec `json:"sources"`
 }
 
+type BatchCheckRequest struct {
+	ProxyAccountID string       `json:"proxy_account_id"`
+	GrantorID      string       `json:"grantor_id"`
+	Sources        []SourceSpec `json:"sources"`
+}
+
 type ReconcileRequest struct {
 	ProxyAccountID string `json:"proxy_account_id"`
 	RequestedBy    string `json:"requested_by"`
@@ -76,6 +82,10 @@ type ReconcileRequest struct {
 type CheckResult struct {
 	Allowed bool   `json:"allowed"`
 	Reason  string `json:"reason,omitempty"`
+}
+
+type BatchCheckResult struct {
+	DeniedSources []SourceSpec `json:"denied_sources"`
 }
 
 type SyncResult struct {
@@ -248,6 +258,162 @@ func (s *Service) Check(ctx context.Context, req GrantRequest) (CheckResult, err
 	})
 	if err != nil {
 		return CheckResult{}, err
+	}
+	return result, nil
+}
+
+// CheckMany validates a complete KN binding source set in one request. Existing
+// source and delegator state is loaded in batches; only sources that need a new
+// or replacement delegator are checked against the current actor.
+func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCheckResult, error) {
+	req.ProxyAccountID = strings.TrimSpace(req.ProxyAccountID)
+	req.GrantorID = strings.TrimSpace(req.GrantorID)
+	if req.ProxyAccountID == "" || req.GrantorID == "" ||
+		len(req.ProxyAccountID) > 64 || len(req.GrantorID) > 64 {
+		return BatchCheckResult{}, ErrInvalidRequest
+	}
+	sources := make([]SourceSpec, 0, len(req.Sources))
+	desired := make(map[sourceKey]SourceSpec, len(req.Sources))
+	for _, raw := range req.Sources {
+		spec, err := normalizeSpec(raw)
+		if err != nil || spec.SourceType != SourceTypeKNProxyBinding {
+			return BatchCheckResult{}, ErrInvalidRequest
+		}
+		key := keyForSpec(spec)
+		if previous, exists := desired[key]; exists {
+			if !sameBinding(previous, spec) {
+				return BatchCheckResult{}, ErrInvalidRequest
+			}
+			continue
+		}
+		desired[key] = spec
+		sources = append(sources, spec)
+	}
+
+	result := BatchCheckResult{DeniedSources: []SourceSpec{}}
+	err := s.enforcer.Transaction(ctx, func(tx *authz.PolicyTransaction) error {
+		mapping, mappingErr := loadProxy(tx.DB(), req.ProxyAccountID)
+		if mappingErr != nil && !errors.Is(mappingErr, ErrProxyInactive) &&
+			!errors.Is(mappingErr, ErrNotFound) && !errors.Is(mappingErr, ErrForbidden) {
+			return mappingErr
+		}
+		if mappingErr == nil && mapping.LifecycleStatus != managedproxy.StatusActive {
+			mappingErr = ErrProxyInactive
+		}
+
+		var rows []model.ProxyGrantSource
+		if mappingErr == nil {
+			if err := tx.DB().Where("proxy_account_id = ? AND source_type = ?",
+				req.ProxyAccountID, SourceTypeKNProxyBinding).Find(&rows).Error; err != nil {
+				return err
+			}
+		}
+		current := make(map[sourceKey]model.ProxyGrantSource, len(rows))
+		for _, row := range rows {
+			current[keyForModel(row)] = row
+		}
+		validCurrent := map[string]bool{}
+		if mappingErr == nil {
+			var err error
+			validCurrent, err = tx.CurrentProxySourceIDs(req.ProxyAccountID)
+			if err != nil {
+				return err
+			}
+		}
+
+		needsActor := make([]SourceSpec, 0, len(sources))
+		allowed := make(map[sourceKey]bool, len(sources))
+		for _, spec := range sources {
+			key := keyForSpec(spec)
+			if mappingErr != nil || spec.KNID != mapping.ManagedResourceID {
+				continue
+			}
+			if row, exists := current[key]; exists {
+				if !sameBinding(specFromModel(row), spec) {
+					return ErrInvalidRequest
+				}
+				if row.LifecycleStatus == StatusActive && validCurrent[row.ID] {
+					allowed[key] = true
+					continue
+				}
+			}
+			needsActor = append(needsActor, spec)
+		}
+
+		actorEligible := len(needsActor) > 0
+		if actorEligible {
+			if err := validateGrantorIdentity(tx.DB(), req.GrantorID); err != nil {
+				if !errors.Is(err, ErrForbidden) {
+					return err
+				}
+				actorEligible = false
+			}
+		}
+		if actorEligible {
+			if err := validateRegisteredOperations(tx.DB(), needsActor); err != nil {
+				return err
+			}
+			resourceSet := map[authz.ResourceRef]bool{}
+			operationSet := map[string]bool{}
+			for _, spec := range needsActor {
+				resourceSet[authz.ResourceRef{Type: spec.ResourceType, ID: spec.ResourceID}] = true
+				operationSet[spec.Operation] = true
+			}
+			resources := make([]authz.ResourceRef, 0, len(resourceSet))
+			for resource := range resourceSet {
+				resources = append(resources, resource)
+			}
+			operations := make([]string, 0, len(operationSet))
+			for operation := range operationSet {
+				operations = append(operations, operation)
+			}
+			filtered, err := tx.FilterResourceOpsRaw(req.GrantorID, resources, operations)
+			if err != nil {
+				return err
+			}
+			actorPermissions := map[permissionKey]bool{}
+			for _, resource := range filtered {
+				for _, operation := range resource.Operations {
+					actorPermissions[permissionKey{
+						ResourceType: resource.Type,
+						ResourceID:   resource.ID,
+						Operation:    operation,
+					}] = true
+				}
+			}
+			for _, spec := range needsActor {
+				if actorPermissions[permissionKey{
+					ResourceType: spec.ResourceType,
+					ResourceID:   spec.ResourceID,
+					Operation:    spec.Operation,
+				}] {
+					allowed[keyForSpec(spec)] = true
+				}
+			}
+		}
+
+		audits := make([]model.ProxyGrantAuditLog, 0, len(sources))
+		for _, spec := range sources {
+			decision := "allow"
+			reason := "actor or retained delegator holds the required operation"
+			if !allowed[keyForSpec(spec)] {
+				decision = "deny"
+				reason = ErrForbidden.Error()
+				result.DeniedSources = append(result.DeniedSources, spec)
+			}
+			audit, err := newAudit("check", decision, reason, req.GrantorID, req.ProxyAccountID, spec)
+			if err != nil {
+				return err
+			}
+			audits = append(audits, audit)
+		}
+		if len(audits) > 0 {
+			return tx.DB().Create(&audits).Error
+		}
+		return nil
+	})
+	if err != nil {
+		return BatchCheckResult{}, err
 	}
 	return result, nil
 }
@@ -600,6 +766,38 @@ func validateRegisteredOperation(db *gorm.DB, spec SourceSpec) error {
 	return nil
 }
 
+func validateRegisteredOperations(db *gorm.DB, specs []SourceSpec) error {
+	resourceTypes := map[string]bool{}
+	operationIDs := map[string]bool{}
+	for _, spec := range specs {
+		resourceTypes[spec.ResourceType] = true
+		operationIDs[spec.Operation] = true
+	}
+	resourceTypeValues := make([]string, 0, len(resourceTypes))
+	for value := range resourceTypes {
+		resourceTypeValues = append(resourceTypeValues, value)
+	}
+	operationValues := make([]string, 0, len(operationIDs))
+	for value := range operationIDs {
+		operationValues = append(operationValues, value)
+	}
+	var registered []model.Operation
+	if err := db.Where("resource_type_id IN ? AND id IN ?", resourceTypeValues, operationValues).
+		Find(&registered).Error; err != nil {
+		return err
+	}
+	available := map[string]bool{}
+	for _, operation := range registered {
+		available[operation.ResourceTypeID+"\x00"+operation.ID] = true
+	}
+	for _, spec := range specs {
+		if !available[spec.ResourceType+"\x00"+spec.Operation] {
+			return ErrInvalidRequest
+		}
+	}
+	return nil
+}
+
 func sourceCurrentlyValid(tx *authz.PolicyTransaction, source model.ProxyGrantSource) (bool, error) {
 	switch source.SourceType {
 	case SourceTypeManual, SourceTypeAdmin:
@@ -902,18 +1100,27 @@ func reconcileProxyIDs(db *gorm.DB, only string) ([]string, error) {
 }
 
 func recordAudit(db *gorm.DB, action, decision, reason, grantorID, proxyID string, spec SourceSpec) error {
+	audit, err := newAudit(action, decision, reason, grantorID, proxyID, spec)
+	if err != nil {
+		return err
+	}
+	return db.Create(&audit).Error
+}
+
+func newAudit(action, decision, reason, grantorID, proxyID string,
+	spec SourceSpec) (model.ProxyGrantAuditLog, error) {
 	if len(reason) > 255 {
 		reason = reason[:255]
 	}
 	id, err := newID()
 	if err != nil {
-		return fmt.Errorf("generate proxy grant audit id: %w", err)
+		return model.ProxyGrantAuditLog{}, fmt.Errorf("generate proxy grant audit id: %w", err)
 	}
-	return db.Create(&model.ProxyGrantAuditLog{
+	return model.ProxyGrantAuditLog{
 		ID: id, Action: action, Decision: decision, Reason: reason, GrantorID: grantorID,
 		ProxyAccountID: proxyID, ResourceType: spec.ResourceType, ResourceID: spec.ResourceID,
 		Operation: spec.Operation, SourceType: spec.SourceType, SourceID: spec.SourceID,
-	}).Error
+	}, nil
 }
 
 func (s *Service) recordDenied(ctx context.Context, action, grantorID, proxyID string, spec SourceSpec, decisionErr error) {

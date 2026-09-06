@@ -229,6 +229,21 @@ func (mr *MockManagedProxyAccessMockRecorder) CheckGrant(ctx, proxyAccountID, gr
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckGrant", reflect.TypeOf((*MockManagedProxyAccess)(nil).CheckGrant), ctx, proxyAccountID, grantorID, source)
 }
 
+// CheckGrants mocks base method.
+func (m *MockManagedProxyAccess) CheckGrants(ctx context.Context, proxyAccountID, grantorID string, sources []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantBatchCheckResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckGrants", ctx, proxyAccountID, grantorID, sources)
+	ret0, _ := ret[0].(interfaces.ProxyGrantBatchCheckResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CheckGrants indicates an expected call of CheckGrants.
+func (mr *MockManagedProxyAccessMockRecorder) CheckGrants(ctx, proxyAccountID, grantorID, sources any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckGrants", reflect.TypeOf((*MockManagedProxyAccess)(nil).CheckGrants), ctx, proxyAccountID, grantorID, sources)
+}
+
 // Create mocks base method.
 func (m *MockManagedProxyAccess) Create(ctx context.Context, knID, name string) (*interfaces.ManagedProxyAccount, bool, error) {
 	m.ctrl.T.Helper()

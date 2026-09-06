@@ -45,6 +45,15 @@ type FilteredResource struct {
 // (#357). Instead the accessor's grants are resolved once and projected onto
 // each resource; TestFilterResourceOpsMatchesCheck pins the two paths together.
 func (en *Enforcer) FilterResourceOps(accessorID string, resources []ResourceRef, visibility, candidates []string) ([]FilteredResource, error) {
+	return en.filterResourceOps(accessorID, resources, visibility, candidates, true)
+}
+
+// filterResourceOps performs the batched Casbin and hierarchy projection. The
+// provenance flag is disabled only while validating the human delegators that
+// back a managed proxy source; those checks must never recurse through proxy
+// provenance.
+func (en *Enforcer) filterResourceOps(accessorID string, resources []ResourceRef, visibility, candidates []string,
+	validateProvenance bool) ([]FilteredResource, error) {
 	idx, err := en.grantIndex(accessorID)
 	if err != nil {
 		return nil, err
@@ -102,22 +111,26 @@ func (en *Enforcer) FilterResourceOps(accessorID string, resources []ResourceRef
 	// it after the batched raw-policy calculation so list/filter decisions stay
 	// identical to Check. Human and ordinary app accessors keep the optimized
 	// path above without per-decision source lookups.
-	if en.db != nil {
+	if validateProvenance && en.db != nil {
 		managed, err := en.isManagedProxy(accessorID)
 		if err != nil {
 			return nil, err
 		}
 		if managed {
+			current, err := en.currentProxyPermissions(accessorID)
+			if err != nil {
+				return nil, err
+			}
 			for resource, allowed := range decided {
 				for operation, rawAllowed := range allowed {
 					if !rawAllowed {
 						continue
 					}
-					current, err := en.hasCurrentProxySource(accessorID, resource.Type, resource.ID, operation)
-					if err != nil {
-						return nil, err
-					}
-					allowed[operation] = current
+					allowed[operation] = current[proxyPermission{
+						ResourceType: resource.Type,
+						ResourceID:   resource.ID,
+						Operation:    operation,
+					}]
 				}
 			}
 		}

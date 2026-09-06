@@ -6,7 +6,9 @@ package proxygrant_test
 
 import (
 	"errors"
+	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -427,6 +429,73 @@ func TestSyncTransfersInvalidHistoricalDelegator(t *testing.T) {
 		t.Fatalf("source delegator = %q, want %q", source.GrantedBy, replacement)
 	}
 	assertAllowed(t, f, true)
+}
+
+func TestCheckManyPreservesValidDelegatorAndReturnsAllDeniedSources(t *testing.T) {
+	f := newFixture(t)
+	f.grantOperations(t, f.grantor, "r-retained", "query_data")
+	retained := f.request("source-retained", "ot-retained", "r-retained")
+	if _, _, err := f.service.Grant(t.Context(), retained); err != nil {
+		t.Fatal(err)
+	}
+
+	const editor = "builder-batch"
+	if err := f.db.Create(&model.User{ID: editor, Account: editor, Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	f.grantOperations(t, editor, "r-new", "query_data")
+	newSource := f.request("source-new", "ot-new", "r-new").Source
+	deniedA := f.request("source-denied-a", "ot-denied-a", "r-denied-a").Source
+	deniedB := f.request("source-denied-b", "ot-denied-b", "r-denied-b").Source
+
+	result, err := f.service.CheckMany(t.Context(), proxygrant.BatchCheckRequest{
+		ProxyAccountID: f.proxyID,
+		GrantorID:      editor,
+		Sources:        []proxygrant.SourceSpec{retained.Source, newSource, deniedA, deniedB},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.DeniedSources) != 2 || result.DeniedSources[0].SourceID != deniedA.SourceID ||
+		result.DeniedSources[1].SourceID != deniedB.SourceID {
+		t.Fatalf("denied sources = %#v, want both unavailable sources", result.DeniedSources)
+	}
+}
+
+func TestManagedProxyFilterBatchesSourceValidityQueries(t *testing.T) {
+	f := newFixture(t)
+	const sourceCount = 20
+	refs := make([]authz.ResourceRef, 0, sourceCount)
+	for i := 0; i < sourceCount; i++ {
+		resourceID := fmt.Sprintf("r-batch-%02d", i)
+		f.grantOperations(t, f.grantor, resourceID, "query_data")
+		if _, _, err := f.service.Grant(t.Context(), f.request(
+			fmt.Sprintf("source-batch-%02d", i), fmt.Sprintf("ot-batch-%02d", i), resourceID)); err != nil {
+			t.Fatal(err)
+		}
+		refs = append(refs, authz.ResourceRef{Type: "resource", ID: resourceID})
+	}
+
+	var queryCount atomic.Int64
+	callbackName := "test:count-batched-proxy-filter"
+	if err := f.db.Callback().Query().Before("gorm:query").Register(callbackName, func(*gorm.DB) {
+		queryCount.Add(1)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.db.Callback().Query().Remove(callbackName) })
+
+	filtered, err := f.enforcer.FilterResourceOps(f.proxyID, refs,
+		[]string{"query_data"}, []string{"query_data"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != sourceCount {
+		t.Fatalf("filtered resources = %d, want %d", len(filtered), sourceCount)
+	}
+	if got := queryCount.Load(); got > 6 {
+		t.Fatalf("filter query count = %d, want a bounded batch independent of source count", got)
+	}
 }
 
 func TestSyncPreservesValidHistoricalDelegator(t *testing.T) {

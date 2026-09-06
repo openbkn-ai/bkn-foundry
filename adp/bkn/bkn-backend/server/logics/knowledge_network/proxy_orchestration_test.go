@@ -146,6 +146,17 @@ func (s *managedProxyAccessStub) CheckGrant(_ context.Context, _, _ string, sour
 	s.checked = append(s.checked, source)
 	return interfaces.ProxyGrantCheckResult{Allowed: s.allowed && !s.deniedResources[source.ResourceID]}, nil
 }
+func (s *managedProxyAccessStub) CheckGrants(_ context.Context, _, _ string,
+	sources []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantBatchCheckResult, error) {
+	s.checked = append(s.checked, sources...)
+	result := interfaces.ProxyGrantBatchCheckResult{DeniedSources: []interfaces.ProxyGrantSourceSpec{}}
+	for _, source := range sources {
+		if !s.allowed || s.deniedResources[source.ResourceID] {
+			result.DeniedSources = append(result.DeniedSources, source)
+		}
+	}
+	return result, nil
+}
 func (s *managedProxyAccessStub) SyncGrants(_ context.Context, _, _ string, sources []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantSyncResult, error) {
 	s.syncCalls++
 	s.synced = append([]interfaces.ProxyGrantSourceSpec(nil), sources...)
@@ -885,6 +896,57 @@ func TestPublishKNChildMutationRollsBackPendingWithBusinessFailure(t *testing.T)
 	}
 	if len(mpa.synced) != 0 || !kpa.lockReleased {
 		t.Fatalf("rollback state: synced=%d lock_released=%t", len(mpa.synced), kpa.lockReleased)
+	}
+	if err := databaseMock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPublishKNChildMutationArchivesNewProxyWhenBusinessWriteFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	kna := bmock.NewMockKNAccess(ctrl)
+	cga := bmock.NewMockConceptGroupAccess(ctrl)
+	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	rta := bmock.NewMockRelationTypeAccess(ctrl)
+	ata := bmock.NewMockActionTypeAccess(ctrl)
+	ma := bmock.NewMockMetricAccess(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	db, databaseMock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	base := &interfaces.KN{KNID: "kn-1", KNName: "network", Branch: interfaces.MAIN_BRANCH}
+	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_KN, ID: "kn-1",
+	}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+	kna.EXPECT().GetKNByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH).Return(base, nil)
+	cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(nil, nil)
+	ota.EXPECT().ListObjectTypes(gomock.Any(), nil, gomock.Any()).Return(nil, nil)
+	rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, nil)
+	ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return(nil, nil)
+	ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(nil, nil)
+	databaseMock.ExpectBegin()
+	databaseMock.ExpectRollback()
+
+	kpa := &proxyAccessStub{}
+	mpa := &managedProxyAccessStub{allowed: true}
+	service := &knowledgeNetworkService{
+		db: db, kna: kna, cga: cga, ota: ota, rta: rta, ata: ata, ma: ma, ps: ps, kpa: kpa, mpa: mpa,
+	}
+	ctx := context.WithValue(t.Context(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "grantor-1"})
+	wantErr := errors.New("business mutation failed")
+	err = service.PublishKNChildMutation(ctx,
+		&interfaces.KN{KNID: "kn-1", KNName: "network", Branch: interfaces.MAIN_BRANCH},
+		interfaces.ImportMode_Normal,
+		func(context.Context, *sql.Tx) error { return wantErr })
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("PublishKNChildMutation() error = %v, want %v", err, wantErr)
+	}
+	if !mpa.disabled || !mpa.archived || kpa.lifecycle != interfaces.KNProxyLifecycleArchived || !kpa.lockReleased {
+		t.Fatalf("compensation state: disabled=%t archived=%t lifecycle=%q lock_released=%t",
+			mpa.disabled, mpa.archived, kpa.lifecycle, kpa.lockReleased)
 	}
 	if err := databaseMock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
