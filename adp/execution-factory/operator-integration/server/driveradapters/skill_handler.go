@@ -41,6 +41,12 @@ func (r *skillRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
 	// Batch names by skill ID. Same handler as the public face; FilterViewableIDs returns
 	// the IDs unchanged on the internal face, so callers see existence, not their own grants.
 	engine.POST("/skills/names", r.SkillHandler.QuerySkillNamesByIDs)
+	// Skill list. Registered here so bkn-backend can resolve a skill by name when importing a
+	// model from another environment, where the ids no longer match. querySkillListPage applies
+	// the per-caller view filter only on the public face, so the internal answer is the same for
+	// every caller — which is what name resolution has to be, or an import would silently skip
+	// capabilities the importer happens not to see.
+	engine.GET("/skills", r.SkillHandler.QuerySkillList)
 	// Query skill details. Registered here for bkn-backend, whose execution-factory client
 	// is pinned to internal-v1. Unlike /skills/market/:skill_id it applies no public_access
 	// filter and reports an unpublished skill through `status` instead of 404.

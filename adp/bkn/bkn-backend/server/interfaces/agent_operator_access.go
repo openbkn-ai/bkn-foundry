@@ -42,6 +42,13 @@ type SkillBrief struct {
 	Status      string
 }
 
+// ToolBoxBrief identifies a tool box without its tools.
+type ToolBoxBrief struct {
+	BoxID  string
+	Name   string
+	Status string
+}
+
 // ToolBrief is one tool of a tool box, with the two lifecycle states that decide whether it can
 // be bound: its own switch and the box's publication state.
 type ToolBrief struct {
@@ -69,6 +76,12 @@ type AgentOperatorAccess interface {
 	// exist are absent from the result rather than present with an empty name, so the difference
 	// between the request and the answer is exactly the set of dangling references.
 	GetSkillNamesByIDs(ctx context.Context, skillIDs []string) (map[string]string, error)
+	// FindSkillsByName looks a skill up by exact name. It returns every match: a name is not
+	// unique in the execution factory, and an importer that picked one at random would bind a
+	// different capability than the model meant.
+	FindSkillsByName(ctx context.Context, name string) ([]*SkillBrief, error)
+	// FindToolBoxesByName looks a tool box up by exact name, with the same rule about duplicates.
+	FindToolBoxesByName(ctx context.Context, name string) ([]*ToolBoxBrief, error)
 	// ListBoxTools reads every tool of a tool box in one call, each with its status. It returns
 	// (nil, nil) when the box does not exist. The box endpoint inlines its tools, so validating
 	// and expanding a whole-box mount both cost one request per box rather than one per tool.

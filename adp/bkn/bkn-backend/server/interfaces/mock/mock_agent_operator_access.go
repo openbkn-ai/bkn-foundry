@@ -41,6 +41,36 @@ func (m *MockAgentOperatorAccess) EXPECT() *MockAgentOperatorAccessMockRecorder 
 	return m.recorder
 }
 
+// FindSkillsByName mocks base method.
+func (m *MockAgentOperatorAccess) FindSkillsByName(ctx context.Context, name string) ([]*interfaces.SkillBrief, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FindSkillsByName", ctx, name)
+	ret0, _ := ret[0].([]*interfaces.SkillBrief)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FindSkillsByName indicates an expected call of FindSkillsByName.
+func (mr *MockAgentOperatorAccessMockRecorder) FindSkillsByName(ctx, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindSkillsByName", reflect.TypeOf((*MockAgentOperatorAccess)(nil).FindSkillsByName), ctx, name)
+}
+
+// FindToolBoxesByName mocks base method.
+func (m *MockAgentOperatorAccess) FindToolBoxesByName(ctx context.Context, name string) ([]*interfaces.ToolBoxBrief, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FindToolBoxesByName", ctx, name)
+	ret0, _ := ret[0].([]*interfaces.ToolBoxBrief)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FindToolBoxesByName indicates an expected call of FindToolBoxesByName.
+func (mr *MockAgentOperatorAccessMockRecorder) FindToolBoxesByName(ctx, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindToolBoxesByName", reflect.TypeOf((*MockAgentOperatorAccess)(nil).FindToolBoxesByName), ctx, name)
+}
+
 // GetMcpToolByName mocks base method.
 func (m *MockAgentOperatorAccess) GetMcpToolByName(ctx context.Context, mcpID, toolName string) error {
 	m.ctrl.T.Helper()

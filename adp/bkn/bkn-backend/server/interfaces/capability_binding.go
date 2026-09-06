@@ -165,3 +165,24 @@ type CapabilityReference struct {
 type CapabilityReferenceList struct {
 	Entries []*CapabilityReference `json:"entries"`
 }
+
+// CapabilitySkip explains why one declared capability could not be bound on import.
+type CapabilitySkip struct {
+	CapabilityType string `json:"capability_type"`
+	// Name is what the model called it — the only part a reader can act on when the ids belong
+	// to another environment.
+	Name          string `json:"name,omitempty"`
+	BoxName       string `json:"box_name,omitempty"`
+	DeclaredID    string `json:"declared_id,omitempty"`
+	DeclaredBoxID string `json:"declared_box_id,omitempty"`
+	Reason        string `json:"reason"`
+	Detail        string `json:"detail,omitempty"`
+}
+
+// CapabilityImportReport is what an import did with the declared capabilities. It travels in the
+// import response: a skipped capability that is only logged makes an import look complete while
+// the network quietly has nothing bound.
+type CapabilityImportReport struct {
+	Bound   int               `json:"bound"`
+	Skipped []*CapabilitySkip `json:"skipped"`
+}

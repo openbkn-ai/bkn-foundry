@@ -26,6 +26,37 @@ type BknNetworkFrontmatter struct {
 
 	Version string `yaml:"version,omitempty"`
 	Branch  string `yaml:"branch,omitempty"`
+
+	// Capabilities declares which Skills and ToolBox tools this network depends on. It is a
+	// dependency declaration, not a payload: the capabilities themselves travel through their own
+	// channels (a skill's package, a tool box's import/export), the way package.json names
+	// dependencies without carrying them.
+	Capabilities *BknCapabilities `yaml:"capabilities,omitempty"`
+}
+
+// BknCapabilities is the capability dependency section of a network.
+type BknCapabilities struct {
+	Skills    []*BknCapabilitySkill    `yaml:"skills,omitempty"`
+	Functions []*BknCapabilityFunction `yaml:"functions,omitempty"`
+}
+
+// BknCapabilitySkill names one skill dependency by both id and name.
+//
+// The id is generated per environment and does not survive a move between them; the name is what
+// makes a cross-environment import resolvable at all. Writing only the id would make this section
+// decoration everywhere except the environment that produced it.
+type BknCapabilitySkill struct {
+	ID   string `yaml:"id,omitempty"`
+	Name string `yaml:"name,omitempty"`
+}
+
+// BknCapabilityFunction names one tool dependency. Both halves of the identity are written twice,
+// as ids for an exact match at home and as names for a fallback elsewhere.
+type BknCapabilityFunction struct {
+	BoxID    string `yaml:"box_id,omitempty"`
+	ToolID   string `yaml:"tool_id,omitempty"`
+	BoxName  string `yaml:"box_name,omitempty"`
+	ToolName string `yaml:"tool_name,omitempty"`
 }
 
 // BknDocument is a parsed network.bkn file: frontmatter + body definitions.

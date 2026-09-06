@@ -10,6 +10,7 @@
 package mock_interfaces
 
 import (
+	bkn "bkn-backend/bkn-specification/bkn"
 	interfaces "bkn-backend/interfaces"
 	context "context"
 	sql "database/sql"
@@ -99,6 +100,21 @@ func (m *MockCapabilityBindingService) GetCapabilityTotalsByType(ctx context.Con
 func (mr *MockCapabilityBindingServiceMockRecorder) GetCapabilityTotalsByType(ctx, knID, branch any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCapabilityTotalsByType", reflect.TypeOf((*MockCapabilityBindingService)(nil).GetCapabilityTotalsByType), ctx, knID, branch)
+}
+
+// ImportCapabilities mocks base method.
+func (m *MockCapabilityBindingService) ImportCapabilities(ctx context.Context, knID, branch string, declared *bkn.BknCapabilities) (*interfaces.CapabilityImportReport, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ImportCapabilities", ctx, knID, branch, declared)
+	ret0, _ := ret[0].(*interfaces.CapabilityImportReport)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ImportCapabilities indicates an expected call of ImportCapabilities.
+func (mr *MockCapabilityBindingServiceMockRecorder) ImportCapabilities(ctx, knID, branch, declared any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ImportCapabilities", reflect.TypeOf((*MockCapabilityBindingService)(nil).ImportCapabilities), ctx, knID, branch, declared)
 }
 
 // ListCapabilities mocks base method.

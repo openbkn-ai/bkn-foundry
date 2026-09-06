@@ -25,6 +25,7 @@ import (
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 	"bkn-backend/logics"
+	"bkn-backend/logics/capability_binding"
 )
 
 const (
@@ -233,9 +234,24 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	audit.NewInfoLog(audit.OPERATION, audit.CREATE, audit.TransforOperator(visitor),
 		interfaces.GenerateKNAuditObject(knID, kn.KNName), "")
 
+	// Capability declarations are resolved after the model is in place, and never fail the
+	// import: a knowledge network whose capabilities are missing is still a knowledge network.
+	// What could not be resolved travels back in the response — a skip that is only logged makes
+	// an import look complete while the SKILLs list is quietly empty.
+	capabilityReport, capErr := r.cbs.ImportCapabilities(ctx, knID, branch, bknNetwork.Capabilities)
+	if capErr != nil {
+		logger.Errorf("Upload BKN: capability import failed: kn_id=%s, err=%v", knID, capErr)
+		capabilityReport = &interfaces.CapabilityImportReport{
+			Skipped: []*interfaces.CapabilitySkip{{
+				Reason: capability_binding.CapabilitySkipUnreachable,
+				Detail: capErr.Error(),
+			}},
+		}
+	}
+
 	logger.Debugf("Upload BKN completed: kn_id=%s", knID)
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
-	rest.ReplyOK(c, http.StatusOK, map[string]string{"kn_id": knID})
+	rest.ReplyOK(c, http.StatusOK, map[string]any{"kn_id": knID, "capabilities": capabilityReport})
 }
 
 // detachBKNExternalBindings keeps the portable model topology while removing
