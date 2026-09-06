@@ -13,9 +13,13 @@ info:
 
     Source records, materialization markers, authorization audit entries, and Casbin Allow
     policies are updated in one database transaction. Replaying the same source is idempotent;
-    multiple sources may share one Allow policy; the policy is removed only when its last active
-    source is revoked and the source service owns that policy. Manual or legacy Allow policies
-    that predate the source are preserved and reported as untracked during reconciliation.
+    multiple sources may share one Allow policy. At runtime, a managed proxy Allow is effective
+    only while at least one active source for the exact permission is currently valid. A
+    `kn_proxy_binding` source is valid while its recorded delegator remains enabled and still has
+    the exact downstream operation; `manual` and `admin` sources follow their explicit lifecycle.
+    Manual or legacy Allow policies that predate the source are preserved and reported as
+    untracked during reconciliation, but an untracked policy alone does not authorize a managed
+    proxy.
 servers:
   - url: /api/safe/in/v1
 security: []
@@ -26,9 +30,12 @@ paths:
       operationId: createProxyGrantSource
       summary: Create or reactivate a proxy grant source
       description: |
-        The grantor must be an enabled, non-managed account and must hold both `authorize` and
-        the operation being delegated on the target. The first creation returns 201; replaying
-        the same source returns 200.
+        For `kn_proxy_binding`, the actor must be enabled, non-managed, and hold the exact operation
+        being delegated; target `authorize` is not required. Replaying an active binding keeps its
+        still-valid historical delegator. If that delegator is no longer valid, an actor holding
+        the exact operation takes over the source. `manual` and `admin` sources continue to require
+        both `authorize` and the delegated operation. The first creation or a delegator transfer
+        returns 201; an unchanged replay returns 200.
       requestBody:
         required: true
         content:
@@ -99,7 +106,12 @@ paths:
     post:
       tags: [Proxy grant sources]
       operationId: checkProxyGrantSourceAuthority
-      summary: Check whether a grantor may establish a source
+      summary: Check whether an actor may establish or retain a source
+      description: |
+        Applies the same source-type rules as creation. A retained `kn_proxy_binding` is allowed
+        when its recorded delegator is still valid even if the current knowledge-network editor
+        does not hold the downstream operation. If the historical delegator is invalid, the
+        current actor must hold that exact operation so synchronization can transfer the source.
       requestBody:
         required: true
         content:
@@ -124,9 +136,11 @@ paths:
       summary: Synchronize the complete source set from the latest published model
       description: |
         `sources` is the proxy account's complete current set of `kn_proxy_binding` sources.
-        Every new source is checked before any mutation. If one source is unauthorized, the
-        entire synchronization is rejected without changing sources or policies. Removed entries
-        do not affect manual sources or other active sources.
+        Every new source and invalid historical delegator is checked before any mutation. A valid
+        historical delegator is preserved; an invalid one is transferred to the sync actor only
+        when that actor holds the exact downstream operation. If one source cannot be established
+        or transferred, the entire synchronization is rejected without changing sources or
+        policies. Removed entries do not affect manual sources or other active sources.
       requestBody:
         required: true
         content:
@@ -156,10 +170,12 @@ paths:
       operationId: reconcileProxyGrantSources
       summary: Repair drift between the source ledger and Casbin Allow policies
       description: |
-        Restores Allow policies missing for active sources and removes source-owned Allow policies
-        that have no active source. Existing policies without a materialization marker are reported
+        Restores Allow policies missing for currently valid active sources and removes source-owned
+        Allow policies that have no currently valid active source. Invalid `kn_proxy_binding`
+        sources remain active as model-binding facts, are counted in `invalid_sources`, and do not
+        authorize runtime access. Existing policies without a materialization marker are reported
         in `untracked_policies` instead of being deleted, avoiding accidental removal of historical
-        manual grants.
+        manual grants; they do not authorize a managed proxy without a valid source.
       requestBody:
         required: true
         content:
@@ -188,7 +204,7 @@ components:
           schema:
             $ref: '../_shared/errors.yaml#/components/schemas/Error'
     Forbidden:
-      description: The grantor lacks `authorize` or the delegated operation on the target, or the source belongs to a different knowledge network
+      description: The source belongs to another knowledge network, or the actor lacks the authority required by the source type (`kn_proxy_binding` requires the exact delegated operation; `manual` and `admin` also require `authorize`)
       content:
         application/json:
           schema:
@@ -225,6 +241,7 @@ components:
           type: string
           minLength: 1
           maxLength: 64
+          description: Compatibility field naming the current actor; stored as `granted_by` when the actor creates, reactivates, or takes over a source.
         source:
           $ref: '#/components/schemas/SourceSpec'
     RevokeRequest:
@@ -236,6 +253,7 @@ components:
           type: string
           minLength: 1
           maxLength: 64
+          description: Compatibility field naming the actor requesting synchronization.
     SyncRequest:
       type: object
       additionalProperties: false
@@ -379,11 +397,15 @@ components:
     SyncResult:
       type: object
       additionalProperties: false
-      required: [added, revoked, unchanged, sources]
+      required: [added, transferred, revoked, unchanged, sources]
       properties:
         added:
           type: integer
           minimum: 0
+        transferred:
+          type: integer
+          minimum: 0
+          description: Active bindings whose invalid historical delegator was replaced by the sync actor.
         revoked:
           type: integer
           minimum: 0
@@ -403,6 +425,7 @@ components:
         - markers_created
         - markers_removed
         - untracked_policies
+        - invalid_sources
       properties:
         policies_restored:
           type: integer
@@ -419,3 +442,7 @@ components:
         untracked_policies:
           type: integer
           minimum: 0
+        invalid_sources:
+          type: integer
+          minimum: 0
+          description: Active binding-source rows whose recorded delegator no longer has the exact downstream operation.

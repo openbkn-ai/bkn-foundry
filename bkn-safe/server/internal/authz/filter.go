@@ -97,6 +97,32 @@ func (en *Enforcer) FilterResourceOps(accessorID string, resources []ResourceRef
 		}
 	}
 
+	// Managed proxies have a second, provenance-aware condition that is not
+	// represented in Casbin: an exact active source must still be valid. Apply
+	// it after the batched raw-policy calculation so list/filter decisions stay
+	// identical to Check. Human and ordinary app accessors keep the optimized
+	// path above without per-decision source lookups.
+	if en.db != nil {
+		managed, err := en.isManagedProxy(accessorID)
+		if err != nil {
+			return nil, err
+		}
+		if managed {
+			for resource, allowed := range decided {
+				for operation, rawAllowed := range allowed {
+					if !rawAllowed {
+						continue
+					}
+					current, err := en.hasCurrentProxySource(accessorID, resource.Type, resource.ID, operation)
+					if err != nil {
+						return nil, err
+					}
+					allowed[operation] = current
+				}
+			}
+		}
+	}
+
 	out := make([]FilteredResource, 0, len(resources))
 	for _, r := range resources {
 		allowed := decided[r]

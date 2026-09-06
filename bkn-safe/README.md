@@ -105,7 +105,10 @@ VS Code / Cursor：打开 `bkn-safe` 根目录，选 **Run and Debug → bkn-saf
   AppKeys, be managed as regular users, or receive grants through the generic Policy API
 - Proxy grant sources (ClusterIP-internal surface) `/api/safe/in/v1/proxy-grant-sources`:
   create and revoke sources, preflight authorization, synchronize the complete published-model
-  source set, and reconcile Casbin Allow policies; the source ledger and policies update atomically
+  source set, and reconcile Casbin Allow policies. A knowledge-network binding derives from the
+  recorded delegator's exact downstream operation (target `authorize` is not required), and a
+  managed proxy decision remains effective only while at least one exact active source is valid;
+  the source ledger and policies update atomically
 - 目录 `/api/safe/v1/directory`：`GET /users/:id`、`POST /names`、`GET /departments`、
   `GET /groups/:id/members`、`POST /search-org`、`POST /users`、`PUT /users/:id/password`
 - 健康：`GET /health/ready`、`/health/alive`

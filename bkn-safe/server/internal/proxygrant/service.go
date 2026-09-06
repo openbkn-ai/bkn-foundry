@@ -26,11 +26,11 @@ import (
 )
 
 const (
-	SourceTypeKNProxyBinding = "kn_proxy_binding"
-	SourceTypeManual         = "manual"
-	SourceTypeAdmin          = "admin"
-	StatusActive             = "active"
-	StatusRevoked            = "revoked"
+	SourceTypeKNProxyBinding = model.ProxyGrantSourceTypeKNBinding
+	SourceTypeManual         = model.ProxyGrantSourceTypeManual
+	SourceTypeAdmin          = model.ProxyGrantSourceTypeAdmin
+	StatusActive             = model.ProxyGrantSourceStatusActive
+	StatusRevoked            = model.ProxyGrantSourceStatusRevoked
 )
 
 var (
@@ -79,10 +79,11 @@ type CheckResult struct {
 }
 
 type SyncResult struct {
-	Added     int                      `json:"added"`
-	Revoked   int                      `json:"revoked"`
-	Unchanged int                      `json:"unchanged"`
-	Sources   []model.ProxyGrantSource `json:"sources"`
+	Added       int                      `json:"added"`
+	Transferred int                      `json:"transferred"`
+	Revoked     int                      `json:"revoked"`
+	Unchanged   int                      `json:"unchanged"`
+	Sources     []model.ProxyGrantSource `json:"sources"`
 }
 
 type ReconcileResult struct {
@@ -91,6 +92,7 @@ type ReconcileResult struct {
 	MarkersCreated    int `json:"markers_created"`
 	MarkersRemoved    int `json:"markers_removed"`
 	UntrackedPolicies int `json:"untracked_policies"`
+	InvalidSources    int `json:"invalid_sources"`
 }
 
 type Service struct {
@@ -102,9 +104,10 @@ func New(db *gorm.DB, enforcer *authz.Enforcer) *Service {
 	return &Service{db: db, enforcer: enforcer}
 }
 
-// Grant adds or reactivates one source. Replaying the same source tuple is a
-// successful no-op. The source, materialization marker, audit row and Casbin
-// policy share the adapter's database transaction.
+// Grant adds or reactivates one source. Replaying a currently valid source tuple
+// is a successful no-op; an invalid KN-binding delegator may be replaced by the
+// current actor. The source, materialization marker, audit row and Casbin policy
+// share the adapter's database transaction.
 func (s *Service) Grant(ctx context.Context, req GrantRequest) (*model.ProxyGrantSource, bool, error) {
 	req.ProxyAccountID = strings.TrimSpace(req.ProxyAccountID)
 	req.GrantorID = strings.TrimSpace(req.GrantorID)
@@ -121,7 +124,7 @@ func (s *Service) Grant(ctx context.Context, req GrantRequest) (*model.ProxyGran
 		if err := validateProxy(tx.DB(), req.ProxyAccountID, spec.KNID, true); err != nil {
 			return err
 		}
-		if err := validateAuthority(tx, req.GrantorID, spec); err != nil {
+		if err := validatePreflightAuthority(tx, req.ProxyAccountID, req.GrantorID, spec); err != nil {
 			return err
 		}
 		row, created, err := grantInTransaction(tx, req.ProxyAccountID, req.GrantorID, spec)
@@ -132,6 +135,20 @@ func (s *Service) Grant(ctx context.Context, req GrantRequest) (*model.ProxyGran
 		reason := "created"
 		if !created {
 			reason = "idempotent replay"
+			if spec.SourceType == SourceTypeKNProxyBinding {
+				valid, validErr := sourceCurrentlyValid(tx, row)
+				if validErr != nil {
+					return validErr
+				}
+				if !valid {
+					if err := tx.DB().Model(&row).Update("granted_by", req.GrantorID).Error; err != nil {
+						return err
+					}
+					row.GrantedBy = req.GrantorID
+					result, changed = row, true
+					reason = "invalid delegator replaced by grant actor"
+				}
+			}
 		}
 		return recordAudit(tx.DB(), "grant", "allow", reason, req.GrantorID, req.ProxyAccountID, spec)
 	})
@@ -194,9 +211,11 @@ func (s *Service) Revoke(ctx context.Context, id string, req RevokeRequest) (*mo
 	return &result, changed, nil
 }
 
-// Check verifies whether the named grantor may create a source without
-// changing policy state. Denials are returned as a normal decision payload and
-// are persisted in the proxy-grant audit log.
+// Check verifies whether the named actor may create or take over a source
+// without changing policy state. A retained KN binding remains valid through
+// its recorded delegator, so another KN editor need not hold that downstream
+// operation unless a new source or delegator transfer is required. Denials are
+// returned as a normal decision payload and persisted in the audit log.
 func (s *Service) Check(ctx context.Context, req GrantRequest) (CheckResult, error) {
 	req.ProxyAccountID = strings.TrimSpace(req.ProxyAccountID)
 	req.GrantorID = strings.TrimSpace(req.GrantorID)
@@ -208,10 +227,10 @@ func (s *Service) Check(ctx context.Context, req GrantRequest) (CheckResult, err
 	result := CheckResult{Allowed: true}
 	err = s.enforcer.Transaction(ctx, func(tx *authz.PolicyTransaction) error {
 		decision := "allow"
-		reason := "grantor holds authorize and requested operation"
+		reason := "actor holds the authority required by the source type"
 		decisionErr := validateProxy(tx.DB(), req.ProxyAccountID, spec.KNID, true)
 		if decisionErr == nil {
-			decisionErr = validateAuthority(tx, req.GrantorID, spec)
+			decisionErr = validatePreflightAuthority(tx, req.ProxyAccountID, req.GrantorID, spec)
 		}
 		if decisionErr != nil {
 			if !errors.Is(decisionErr, ErrForbidden) && !errors.Is(decisionErr, ErrProxyInactive) &&
@@ -234,8 +253,9 @@ func (s *Service) Check(ctx context.Context, req GrantRequest) (CheckResult, err
 }
 
 // Sync replaces the active KN binding source set for one proxy with the latest
-// published-model set. All additions are authorized before any row changes, so
-// one unauthorized target rejects the complete synchronization.
+// published-model set. All additions and required delegator transfers are
+// authorized before any row changes, so one unauthorized target rejects the
+// complete synchronization.
 func (s *Service) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) {
 	req.ProxyAccountID = strings.TrimSpace(req.ProxyAccountID)
 	req.GrantorID = strings.TrimSpace(req.GrantorID)
@@ -273,6 +293,9 @@ func (s *Service) Sync(ctx context.Context, req SyncRequest) (SyncResult, error)
 				return ErrForbidden
 			}
 		}
+		if len(desired) > 0 && mapping.LifecycleStatus != managedproxy.StatusActive {
+			return ErrProxyInactive
+		}
 
 		var rows []model.ProxyGrantSource
 		if err := tx.DB().Where("proxy_account_id = ? AND source_type = ?", req.ProxyAccountID, SourceTypeKNProxyBinding).
@@ -284,25 +307,51 @@ func (s *Service) Sync(ctx context.Context, req SyncRequest) (SyncResult, error)
 			current[keyForModel(row)] = row
 		}
 
-		// Preflight every addition before applying any mutation.
+		// Preflight every addition and every invalid historical delegator before
+		// applying any mutation. A still-valid historical source keeps its original
+		// delegator; an invalid one may be explicitly taken over by this sync actor.
+		transfers := make(map[sourceKey]bool)
 		for key, spec := range desired {
 			if row, ok := current[key]; ok && row.LifecycleStatus == StatusActive {
 				if !sameBinding(specFromModel(row), spec) {
 					return ErrInvalidRequest
 				}
+				valid, err := sourceCurrentlyValid(tx, row)
+				if err != nil {
+					return err
+				}
+				if valid {
+					continue
+				}
+				if err := validateDelegatorOperation(tx, req.GrantorID, spec); err != nil {
+					return err
+				}
+				transfers[key] = true
 				continue
 			}
-			if mapping.LifecycleStatus != managedproxy.StatusActive {
-				return ErrProxyInactive
-			}
-			if err := validateAuthority(tx, req.GrantorID, spec); err != nil {
+			if err := validateDelegatorOperation(tx, req.GrantorID, spec); err != nil {
 				return err
 			}
 		}
 
 		for key, spec := range desired {
 			if row, ok := current[key]; ok && row.LifecycleStatus == StatusActive {
-				result.Unchanged++
+				if transfers[key] {
+					if err := tx.DB().Model(&row).Update("granted_by", req.GrantorID).Error; err != nil {
+						return err
+					}
+					row.GrantedBy = req.GrantorID
+					result.Transferred++
+					if err := recordAudit(tx.DB(), "sync_transfer", "allow", "invalid delegator replaced by sync actor",
+						req.GrantorID, req.ProxyAccountID, spec); err != nil {
+						return err
+					}
+				} else {
+					result.Unchanged++
+				}
+				if err := ensureMaterialized(tx, req.ProxyAccountID, spec); err != nil {
+					return err
+				}
 				continue
 			}
 			row, changed, err := grantInTransaction(tx, req.ProxyAccountID, req.GrantorID, spec)
@@ -466,17 +515,64 @@ func loadProxy(db *gorm.DB, proxyID string) (model.ManagedProxyAccount, error) {
 	return mapping, nil
 }
 
-func validateAuthority(tx *authz.PolicyTransaction, grantorID string, spec SourceSpec) error {
+func validateSourceAuthority(tx *authz.PolicyTransaction, actorID string, spec SourceSpec) error {
+	if spec.SourceType == SourceTypeKNProxyBinding {
+		return validateDelegatorOperation(tx, actorID, spec)
+	}
+	return validateAdministrativeAuthority(tx, actorID, spec)
+}
+
+func validatePreflightAuthority(tx *authz.PolicyTransaction, proxyID, actorID string, spec SourceSpec) error {
+	if spec.SourceType != SourceTypeKNProxyBinding {
+		return validateSourceAuthority(tx, actorID, spec)
+	}
+	var row model.ProxyGrantSource
+	err := tx.DB().Where(
+		"proxy_account_id = ? AND resource_type = ? AND resource_id = ? AND operation = ? AND source_type = ? AND source_id = ?",
+		proxyID, spec.ResourceType, spec.ResourceID, spec.Operation, spec.SourceType, spec.SourceID,
+	).First(&row).Error
+	if err == nil {
+		if !sameBinding(specFromModel(row), spec) {
+			return ErrInvalidRequest
+		}
+		if row.LifecycleStatus == StatusActive {
+			valid, validErr := sourceCurrentlyValid(tx, row)
+			if validErr != nil {
+				return validErr
+			}
+			if valid {
+				return nil
+			}
+		}
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	return validateDelegatorOperation(tx, actorID, spec)
+}
+
+func validateDelegatorOperation(tx *authz.PolicyTransaction, delegatorID string, spec SourceSpec) error {
+	if err := validateGrantorIdentity(tx.DB(), delegatorID); err != nil {
+		return err
+	}
+	if err := validateRegisteredOperation(tx.DB(), spec); err != nil {
+		return err
+	}
+	operation, err := tx.Check(delegatorID, spec.ResourceType, spec.ResourceID, spec.Operation)
+	if err != nil {
+		return err
+	}
+	if !operation {
+		return ErrForbidden
+	}
+	return nil
+}
+
+func validateAdministrativeAuthority(tx *authz.PolicyTransaction, grantorID string, spec SourceSpec) error {
 	if err := validateGrantorIdentity(tx.DB(), grantorID); err != nil {
 		return err
 	}
-	var registered int64
-	if err := tx.DB().Model(&model.Operation{}).
-		Where("resource_type_id = ? AND id = ?", spec.ResourceType, spec.Operation).Count(&registered).Error; err != nil {
+	if err := validateRegisteredOperation(tx.DB(), spec); err != nil {
 		return err
-	}
-	if registered == 0 {
-		return ErrInvalidRequest
 	}
 	authorize, err := tx.Check(grantorID, spec.ResourceType, spec.ResourceID, "authorize")
 	if err != nil {
@@ -490,6 +586,36 @@ func validateAuthority(tx *authz.PolicyTransaction, grantorID string, spec Sourc
 		return ErrForbidden
 	}
 	return nil
+}
+
+func validateRegisteredOperation(db *gorm.DB, spec SourceSpec) error {
+	var registered int64
+	if err := db.Model(&model.Operation{}).
+		Where("resource_type_id = ? AND id = ?", spec.ResourceType, spec.Operation).Count(&registered).Error; err != nil {
+		return err
+	}
+	if registered == 0 {
+		return ErrInvalidRequest
+	}
+	return nil
+}
+
+func sourceCurrentlyValid(tx *authz.PolicyTransaction, source model.ProxyGrantSource) (bool, error) {
+	switch source.SourceType {
+	case SourceTypeManual, SourceTypeAdmin:
+		return source.LifecycleStatus == StatusActive, nil
+	case SourceTypeKNProxyBinding:
+		if source.LifecycleStatus != StatusActive || strings.TrimSpace(source.GrantedBy) == "" {
+			return false, nil
+		}
+		err := validateDelegatorOperation(tx, source.GrantedBy, specFromModel(source))
+		if errors.Is(err, ErrForbidden) || errors.Is(err, ErrInvalidRequest) {
+			return false, nil
+		}
+		return err == nil, err
+	default:
+		return false, nil
+	}
 }
 
 func validateGrantorIdentity(db *gorm.DB, grantorID string) error {
@@ -649,6 +775,18 @@ func reconcileProxy(tx *authz.PolicyTransaction, proxyID, requestedBy string, re
 	}
 	activeByPermission := make(map[permissionKey]model.ProxyGrantSource, len(active))
 	for _, source := range active {
+		valid, err := sourceCurrentlyValid(tx, source)
+		if err != nil {
+			return err
+		}
+		if !valid {
+			result.InvalidSources++
+			if err := recordAudit(tx.DB(), "reconcile_invalid", "deny", "active source has no current delegation authority",
+				requestedBy, proxyID, specFromModel(source)); err != nil {
+				return err
+			}
+			continue
+		}
 		key := permissionForModel(source)
 		if _, exists := activeByPermission[key]; !exists {
 			activeByPermission[key] = source
