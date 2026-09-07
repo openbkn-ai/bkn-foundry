@@ -168,6 +168,7 @@ LogicPropertyParameterPropertyNotFound = "Parameter {{.parameter}} on logic prop
 DataPropertyDisplayNameRequired = "Data property {{.property}} requires display_name."
 DataPropertyDisplayNameTooLong = "Data property {{.property}} has a display_name longer than {{.limit}} characters."
 DataPropertyTypeInvalid = "Data property {{.property}} has unsupported type {{.type}}."
+DataPropertyMaskRuleInvalid = "Data property {{.property}} has invalid mask_rule: {{.reason}}."
 DataPropertyMappedFieldRequired = "Data property {{.property}} requires mapped_field.name."
 DataPropertyIndexConfigUnsupported = "Data property {{.property}} no longer supports index_config; configure index capability on the Vega resource."
 BoundByRelationTypes = "The object type is bound by the following relation types and cannot be deleted: {{.relationTypeNames}}."

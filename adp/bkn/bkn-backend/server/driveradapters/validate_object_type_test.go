@@ -14,6 +14,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 
+	"bkn-backend/common/maskrule"
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 )
@@ -818,6 +819,40 @@ func Test_ValidateDataProperty(t *testing.T) {
 			}
 			err := ValidateDataProperty(ctx, prop, true)
 			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Success with valid mask rule\n", func() {
+			prop := &interfaces.DataProperty{
+				Name:        "email",
+				Type:        "string",
+				DisplayName: "Email",
+				MaskRule:    &maskrule.Rule{Kind: maskrule.KindFixed, Replacement: "保密"},
+			}
+			So(ValidateDataProperty(ctx, prop, true), ShouldBeNil)
+		})
+
+		Convey("Failed with mask rule type mismatch\n", func() {
+			prop := &interfaces.DataProperty{
+				Name:        "payload",
+				Type:        "json",
+				DisplayName: "Payload",
+				MaskRule:    &maskrule.Rule{Kind: maskrule.KindFixed, Replacement: "*"},
+			}
+			So(ValidateDataProperty(ctx, prop, true), ShouldNotBeNil)
+		})
+
+		Convey("Failed with mask rule and missing property type\n", func() {
+			prop := &interfaces.DataProperty{
+				Name:        "secret",
+				DisplayName: "Secret",
+				MaskRule:    &maskrule.Rule{Kind: maskrule.KindFixed, Replacement: "*"},
+			}
+			err := ValidateDataProperty(rest.WithLanguage(ctx, rest.AmericanEnglish), prop, true)
+			So(err, ShouldNotBeNil)
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.BaseError.ErrorDetails, ShouldEqual,
+				"Data property secret has invalid mask_rule: property type is required when mask_rule is set.")
 		})
 
 		Convey("Failed with empty mapped field name\n", func() {

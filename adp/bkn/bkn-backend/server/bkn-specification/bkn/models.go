@@ -6,6 +6,8 @@
 
 package bkn
 
+import "bkn-backend/common/maskrule"
+
 // RelationType mapping types.
 const (
 	RELATION_MAPPING_TYPE_DIRECT              = "direct"
@@ -224,6 +226,7 @@ type DataProperty struct {
 	Type        string
 	Description string
 	MappedField string
+	MaskRule    *maskrule.Rule
 }
 
 // LogicProperty represents a logic property definition.

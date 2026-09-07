@@ -9,6 +9,7 @@ package interfaces
 import (
 	"encoding/json"
 
+	"bkn-backend/common/maskrule"
 	"bkn-backend/interfaces/data_type"
 )
 
@@ -54,11 +55,12 @@ var (
 		LOGIC_PROPERTY_TYPE_TOOL:   true,
 	}
 
-	// Valid property types are integer, unsigned integer, float, decimal, string, text, date, timestamp, time, datetime, boolean, binary, json, vector, point, shape, and ip.
+	// Valid property types are integer, unsigned integer, float, decimal, string, keyword, text, date, timestamp, time, datetime, boolean, binary, json, vector, point, shape, and ip.
 	ValidDataPropertyTypes = map[string]bool{
 		data_type.DATATYPE_INTEGER:          true,
 		data_type.DATATYPE_UNSIGNED_INTEGER: true,
 		data_type.DATATYPE_STRING:           true,
+		data_type.DATATYPE_KEYWORD:          true,
 		data_type.DATATYPE_FLOAT:            true,
 		data_type.DATATYPE_DECIMAL:          true,
 		data_type.DATATYPE_TEXT:             true,
@@ -139,7 +141,8 @@ type DataProperty struct {
 	Type        string `json:"type" mapstructure:"type"`
 	Comment     string `json:"comment" mapstructure:"comment"`
 
-	MappedField *Field `json:"mapped_field,omitempty" mapstructure:"mapped_field,omitempty"`
+	MappedField *Field         `json:"mapped_field,omitempty" mapstructure:"mapped_field,omitempty"`
+	MaskRule    *maskrule.Rule `json:"mask_rule,omitempty" mapstructure:"mask_rule,omitempty"`
 
 	ConditionOperations []string `json:"condition_operations,omitempty"` // Operations supported by string fields
 

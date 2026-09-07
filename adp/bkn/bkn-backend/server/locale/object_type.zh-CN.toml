@@ -168,6 +168,7 @@ LogicPropertyParameterPropertyNotFound = "对象类 {{.objectType}} 的逻辑属
 DataPropertyDisplayNameRequired = "数据属性 {{.property}} 的 display_name 不能为空。"
 DataPropertyDisplayNameTooLong = "数据属性 {{.property}} 的 display_name 长度不能超过 {{.limit}} 个字符。"
 DataPropertyTypeInvalid = "数据属性 {{.property}} 的类型 {{.type}} 无效。"
+DataPropertyMaskRuleInvalid = "数据属性 {{.property}} 的 mask_rule 无效：{{.reason}}。"
 DataPropertyMappedFieldRequired = "数据属性 {{.property}} 的 mapped_field.name 不能为空。"
 DataPropertyIndexConfigUnsupported = "数据属性 {{.property}} 不再支持 index_config；请在 Vega Resource 上配置索引能力。"
 BoundByRelationTypes = "对象类被以下关系类绑定，无法删除：{{.relationTypeNames}}。"

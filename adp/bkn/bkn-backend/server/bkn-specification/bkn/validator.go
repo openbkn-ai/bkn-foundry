@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"bkn-backend/common/maskrule"
 )
 
 // Aligned with adp bkn-backend/interfaces/common.go RegexPattern_NonBuiltin_ID
@@ -86,7 +88,7 @@ var validDisplayKeyTypes = map[string]bool{
 }
 
 var validDataPropertyTypes = map[string]bool{
-	"integer": true, "unsigned integer": true, "string": true, "float": true, "decimal": true,
+	"integer": true, "unsigned integer": true, "string": true, "keyword": true, "float": true, "decimal": true,
 	"text": true, "date": true, "timestamp": true, "time": true, "datetime": true,
 	"boolean": true, "binary": true, "json": true, "vector": true, "point": true, "shape": true, "ip": true,
 }
@@ -421,6 +423,10 @@ func validateObjectTypeDeep(result *ValidationResult, table string, ot *BknObjec
 				appendError(result, table, "data_properties", "invalid_property_type",
 					fmt.Sprintf("data property %q has invalid type %q", dp.Name, dp.Type))
 			}
+		}
+		if err := maskrule.Validate(normType(dp.Type), dp.MaskRule); err != nil {
+			appendError(result, table, "data_properties", "invalid_mask_rule",
+				fmt.Sprintf("data property %q has invalid mask_rule: %s", dp.Name, err))
 		}
 		if dp.MappedField != "" && strings.TrimSpace(dp.MappedField) == "" {
 			appendError(result, table, "data_properties", "invalid_object_type", fmt.Sprintf("mapped_field for %q must not be empty when set", dp.Name))
