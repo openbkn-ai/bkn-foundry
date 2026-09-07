@@ -10,33 +10,6 @@ env:
 bknSafe:
   url: "http://bkn-safe:3000"
 
-# Ingress isolation for the managed-proxy control plane. Keep every legitimate
-# in-cluster caller represented below.
-knProxy:
-  networkPolicy:
-    allowedIngress:
-      - podSelector:
-          matchLabels:
-            module: bkn-backend
-      - podSelector:
-          matchLabels:
-            module: ontology-query
-      - podSelector:
-          matchLabels:
-            app: agent-operator-integration
-      - podSelector:
-          matchLabels:
-            app: agent-retrieval
-      - podSelector:
-          matchLabels:
-            app.kubernetes.io/name: agent-observability
-      - namespaceSelector:
-          matchLabels:
-            kubernetes.io/metadata.name: ingress-nginx
-        podSelector:
-          matchLabels:
-            app.kubernetes.io/name: ingress-nginx
-
 replicaCount: 1
 
 # Node selector.
