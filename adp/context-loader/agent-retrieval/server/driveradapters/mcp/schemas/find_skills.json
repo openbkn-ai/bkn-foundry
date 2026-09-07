@@ -1,33 +1,41 @@
 {
   "input_schema": {
     "type": "object",
-    "required": ["kn_id", "object_type_id"],
+    "required": [
+      "kn_id",
+      "object_type_id"
+    ],
     "properties": {
       "response_format": {
         "type": "string",
-        "enum": ["json", "toon"],
+        "enum": [
+          "json",
+          "toon"
+        ],
         "default": "toon",
         "description": "文本格式：json 或 toon，默认 toon"
       },
       "kn_id": {
         "type": "string",
-        "description": "知识网络 ID。也可改用 X-Kn-ID 请求头传入。"
+        "description": "知识网络 ID（必填）。召回范围是该网络已挂载的 Skill。"
       },
       "object_type_id": {
         "type": "string",
-        "description": "对象类型 ID（必填）。当前版本仅支持对象类级或实例级技能召回，且该对象类型必须存在于当前知识网络中"
+        "description": "**已废弃，不再影响结果**（0.1.5 起）。仍需传入以保持调用签名稳定，传任意存在或不存在的对象类 ID 都不会报错。挂载归属于知识网络分支而非某个对象类。",
+        "deprecated": true
       },
       "instance_identities": {
         "type": "array",
-        "description": "实例标识列表（可选）。提供时进一步缩小至具体实例关联的技能",
+        "description": "**已废弃，不再影响结果**（0.1.5 起）。仍然接受。",
         "items": {
           "type": "object",
           "additionalProperties": true
-        }
+        },
+        "deprecated": true
       },
       "skill_query": {
         "type": "string",
-        "description": "技能查询关键词（可选）。用于语义匹配过滤技能"
+        "description": "可选。在该网络已挂载的 Skill 内按相关性排序。留空则按挂载顺序列出全部已挂载 Skill。"
       },
       "top_k": {
         "type": "integer",

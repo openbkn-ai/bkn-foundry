@@ -2,15 +2,14 @@
 //
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-// Package kntools exposes the published Function tools registered in Execution
-// Factory to an MCP client: search_tools finds them, execute_tool runs one.
+// Package kntools exposes the Function tools a knowledge network has mounted to an MCP client:
+// search_tools finds them, execute_tool runs one.
 //
-// Discovery is a listing today, not a ranked search. Execution Factory has no
-// cross-toolbox tool enumeration endpoint and no tool dataset to embed against,
-// so the search argument filters a caller-visible catalogue this layer walks.
-// The contract is written for what replaces it (#1009): callers pass a natural
-// language query and read back a bounded list, which stays true once ranking
-// moves behind a dataset.
+// Scope is the knowledge network's Function bindings, not the caller's whole visible catalogue.
+// Both are needed and they are intersected: the bindings say which tools this network works with,
+// and the caller's own permissions still decide whether a bound tool can be listed or run. Before
+// this, the two halves of the same MCP session disagreed — Skills narrowed to what the network
+// had mounted while tools stayed at everything the account could see.
 package kntools
 
 import (
@@ -20,8 +19,10 @@ import (
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/permission"
 )
 
 const (
@@ -37,8 +38,11 @@ const (
 
 // SearchToolsReq is the input for search_tools.
 type SearchToolsReq struct {
-	Query     string `json:"query"`      // Optional. Filters by tool name, description, use rule, and toolbox name.
-	ToolboxID string `json:"toolbox_id"` // Optional. Restricts the search to one published toolbox.
+	// KnID is required. Without it there is no scope to narrow to, and answering anyway would
+	// return every tool the account can see — the behaviour this replaced.
+	KnID      string `json:"kn_id"`
+	Query     string `json:"query"`      // Optional. Ranks the mounted tools by name and description.
+	ToolboxID string `json:"toolbox_id"` // Optional. Restricts the search to one toolbox's mounted tools.
 	Limit     int    `json:"limit"`      // Optional. Caps returned tools, default 20, max 100.
 }
 
@@ -63,6 +67,10 @@ type SearchToolsResp struct {
 
 // ExecuteToolReq is the input for execute_tool.
 type ExecuteToolReq struct {
+	// KnID is required and is checked against the bindings before the call runs. Discovery being
+	// narrowed is not a control on its own: a tool id can be held from an earlier session, or
+	// guessed, and execution is the half that changes the world.
+	KnID      string         `json:"kn_id"`
 	ToolboxID string         `json:"toolbox_id"`
 	ToolID    string         `json:"tool_id"`
 	Arguments map[string]any `json:"arguments"`
@@ -75,7 +83,9 @@ type KnToolsService interface {
 }
 
 type knToolsService struct {
-	operator interfaces.DrivenOperatorIntegration
+	operator   interfaces.DrivenOperatorIntegration
+	bknBackend interfaces.BknBackendAccess
+	knAuthz    interfaces.KnowledgeNetworkAuthorizer
 }
 
 var (
@@ -86,20 +96,29 @@ var (
 // NewKnToolsService creates the KnToolsService singleton.
 func NewKnToolsService() KnToolsService {
 	once.Do(func() {
-		service = &knToolsService{operator: drivenadapters.NewOperatorIntegrationClient()}
+		conf := config.NewConfigLoader()
+		service = &knToolsService{
+			operator:   drivenadapters.NewOperatorIntegrationClient(),
+			bknBackend: drivenadapters.NewBknBackendAccess(),
+			knAuthz:    permission.NewKnowledgeNetworkAuthorizer(conf),
+		}
 	})
 	return service
 }
 
-// NewKnToolsServiceWith builds a service over an explicit driven adapter.
-func NewKnToolsServiceWith(operator interfaces.DrivenOperatorIntegration) KnToolsService {
-	return &knToolsService{operator: operator}
+// NewKnToolsServiceWith builds a service over explicit driven adapters.
+func NewKnToolsServiceWith(operator interfaces.DrivenOperatorIntegration,
+	bknBackend interfaces.BknBackendAccess,
+	knAuthz interfaces.KnowledgeNetworkAuthorizer) KnToolsService {
+	return &knToolsService{operator: operator, bknBackend: bknBackend, knAuthz: knAuthz}
 }
 
-// SearchTools returns the callable published Function tools matching a query.
+// SearchTools returns the Function tools this knowledge network has mounted, ranked against a
+// query when one is given.
 func (s *knToolsService) SearchTools(ctx context.Context, req *SearchToolsReq) (*SearchToolsResp, error) {
-	if req == nil {
-		req = &SearchToolsReq{}
+	if req == nil || strings.TrimSpace(req.KnID) == "" {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
+			infraErr.LocalizedDetail(ctx, "ToolScopeKnIDRequired"))
 	}
 	limit := req.Limit
 	if limit < 1 {
@@ -109,19 +128,31 @@ func (s *knToolsService) SearchTools(ctx context.Context, req *SearchToolsReq) (
 		limit = maxSearchLimit
 	}
 
-	toolboxes, err := s.visibleToolboxes(ctx, strings.TrimSpace(req.ToolboxID))
+	refs, err := s.boundToolRefs(ctx, strings.TrimSpace(req.KnID), strings.TrimSpace(req.ToolboxID))
+	if err != nil {
+		return nil, err
+	}
+	if len(refs) == 0 {
+		return &SearchToolsResp{
+			Tools:   []ToolEntry{},
+			Message: infraErr.LocalizedDetail(ctx, "NoBoundToolsInNetwork"),
+		}, nil
+	}
+
+	hits, err := s.operator.SearchBoundTools(ctx, &interfaces.SearchBoundToolsRequest{
+		Query:    strings.TrimSpace(req.Query),
+		ToolRefs: refs,
+		TopK:     limit,
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	matched := s.collectTools(ctx, toolboxes, strings.TrimSpace(req.Query))
-	resp := &SearchToolsResp{TotalMatched: len(matched)}
-	if len(matched) > limit {
-		resp.Tools = matched[:limit]
+	matched := s.describeHits(ctx, hits, limit)
+	resp := &SearchToolsResp{Tools: matched, TotalMatched: len(hits)}
+	if len(hits) > len(matched) {
 		resp.Truncated = true
 		resp.Message = infraErr.LocalizedDetail(ctx, "ToolSearchTruncated")
-	} else {
-		resp.Tools = matched
 	}
 	if len(resp.Tools) == 0 {
 		resp.Tools = []ToolEntry{}
@@ -130,109 +161,161 @@ func (s *knToolsService) SearchTools(ctx context.Context, req *SearchToolsReq) (
 	return resp, nil
 }
 
-// visibleToolboxes resolves the toolboxes to walk. An explicit toolbox_id is
-// taken at face value: the catalogue call below authorizes it as the caller,
-// and looking it up in the directory first would cost a request to learn a name.
-func (s *knToolsService) visibleToolboxes(
-	ctx context.Context, toolboxID string,
-) ([]interfaces.PublishedToolboxSummary, error) {
-	if toolboxID != "" {
-		return []interfaces.PublishedToolboxSummary{{ToolboxID: toolboxID}}, nil
+// boundToolRefs returns the network's Function bindings as "{box_id}/{tool_id}" references.
+//
+// A failure to read them fails the search. Continuing with an empty whitelist would look like a
+// network that mounted nothing, and continuing without one would return the whole catalogue —
+// both answer a question the service cannot currently answer.
+func (s *knToolsService) boundToolRefs(ctx context.Context, knID, toolboxID string) ([]string, error) {
+	// Both entry points come through here, so the per-caller check lives here rather than in each
+	// of them: the network's bindings and the execution factory's ranking are both read with this
+	// service's identity, and without this the scope would be the kn_id the caller typed.
+	if s.knAuthz == nil {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
 	}
-	// The query is deliberately not forwarded as the toolbox name filter: a
-	// matching tool inside a differently named toolbox must still be found.
-	catalogue, err := s.operator.ListPublishedToolboxes(ctx, &interfaces.ListPublishedToolboxesRequest{})
+	if err := s.knAuthz.AuthorizeRead(ctx, knID); err != nil {
+		return nil, err
+	}
+
+	bindings, err := s.bknBackend.ListKNCapabilities(ctx, knID, "", interfaces.CapabilityTypeFunction)
 	if err != nil {
 		return nil, err
 	}
-	if catalogue == nil {
-		return nil, nil
+
+	refs := make([]string, 0, len(bindings))
+	seen := make(map[string]struct{}, len(bindings))
+	for _, binding := range bindings {
+		if binding == nil || binding.CapabilityType != interfaces.CapabilityTypeFunction {
+			continue
+		}
+		boxID := strings.TrimSpace(binding.BoxID)
+		toolID := strings.TrimSpace(binding.CapabilityID)
+		if boxID == "" || toolID == "" {
+			continue
+		}
+		// toolbox_id narrows within the mounted set; it can never reach outside it.
+		if toolboxID != "" && boxID != toolboxID {
+			continue
+		}
+		ref := boxID + "/" + toolID
+		if _, dup := seen[ref]; dup {
+			continue
+		}
+		seen[ref] = struct{}{}
+		refs = append(refs, ref)
 	}
-	return catalogue.Toolboxes, nil
+	return refs, nil
 }
 
-// collectTools walks the toolboxes and keeps the enabled tools that match.
+// describeHits fills in the input schema and use rule the ranking does not carry.
 //
-// A toolbox that fails is skipped rather than failing the search: one revoked
-// or broken toolbox in a wide account would otherwise take down discovery of
-// every other tool the caller can reach.
-func (s *knToolsService) collectTools(
-	ctx context.Context, toolboxes []interfaces.PublishedToolboxSummary, query string,
-) []ToolEntry {
-	if len(toolboxes) == 0 {
+// It reads the caller-visible catalogue with the caller's own token, which is where the second
+// half of the scope comes from: a tool the network mounted but this caller cannot see is absent
+// from that catalogue and is dropped here. Listing it would advertise something execute_tool
+// would then refuse.
+//
+// One request per toolbox behind the hits rather than per hit, and only for toolboxes that
+// survived ranking — at most `limit` hits, so the fan-out is bounded by the page asked for.
+func (s *knToolsService) describeHits(ctx context.Context, hits []interfaces.ToolHit, limit int) []ToolEntry {
+	if len(hits) == 0 {
 		return nil
 	}
-	perToolbox := make([][]ToolEntry, len(toolboxes))
+
+	boxOrder := make([]string, 0, len(hits))
+	seenBox := make(map[string]struct{}, len(hits))
+	for _, hit := range hits {
+		if hit.BoxID == "" {
+			continue
+		}
+		if _, ok := seenBox[hit.BoxID]; ok {
+			continue
+		}
+		seenBox[hit.BoxID] = struct{}{}
+		boxOrder = append(boxOrder, hit.BoxID)
+	}
+
+	// toolbox_name stays empty: the caller-visible tools listing does not carry it, and resolving
+	// it would mean walking the account's whole toolbox directory — the fan-out this change
+	// exists to remove. execute_tool needs the ids, and those are exact.
+	catalogue := make([]map[string]interfaces.PublishedToolSummary, len(boxOrder))
 	slots := make(chan struct{}, toolboxFanoutConcurrency)
 	var wg sync.WaitGroup
-	for i, box := range toolboxes {
+	for i, boxID := range boxOrder {
 		wg.Add(1)
-		go func(i int, box interfaces.PublishedToolboxSummary) {
+		go func(i int, boxID string) {
 			defer wg.Done()
 			slots <- struct{}{}
 			defer func() { <-slots }()
 			listed, err := s.operator.ListPublishedTools(ctx,
-				&interfaces.ListPublishedToolsRequest{ToolboxID: box.ToolboxID})
+				&interfaces.ListPublishedToolsRequest{ToolboxID: boxID})
 			if err != nil || listed == nil {
+				// One toolbox the caller cannot read must not take down discovery of the rest.
 				return
 			}
-			entries := make([]ToolEntry, 0, len(listed.Tools))
+			byID := make(map[string]interfaces.PublishedToolSummary, len(listed.Tools))
 			for _, tool := range listed.Tools {
-				entry := ToolEntry{
-					ToolID:      tool.ToolID,
-					ToolboxID:   box.ToolboxID,
-					ToolboxName: box.Name,
-					Name:        tool.Name,
-					Description: tool.Description,
-					UseRule:     tool.UseRule,
-					InputSchema: tool.InputSchema,
-				}
-				if !matchesQuery(entry, query) {
-					continue
-				}
-				entries = append(entries, entry)
+				byID[tool.ToolID] = tool
 			}
-			perToolbox[i] = entries
-		}(i, box)
+			catalogue[i] = byID
+		}(i, boxID)
 	}
 	wg.Wait()
 
-	// Ordered by toolbox position, so the same catalogue answers the same way twice.
-	matched := make([]ToolEntry, 0, len(toolboxes))
-	for _, entries := range perToolbox {
-		matched = append(matched, entries...)
+	byBox := make(map[string]map[string]interfaces.PublishedToolSummary, len(boxOrder))
+	for i, boxID := range boxOrder {
+		byBox[boxID] = catalogue[i]
 	}
-	return matched
-}
 
-// matchesQuery is literal substring matching, case-insensitive. It is the
-// interim stand-in for semantic recall: it cannot answer "a tool that converts
-// currency" when the tool is named fx_convert, which is exactly why the tool
-// dataset in #1009 replaces it.
-func matchesQuery(entry ToolEntry, query string) bool {
-	if query == "" {
-		return true
-	}
-	needle := strings.ToLower(query)
-	for _, field := range []string{entry.Name, entry.Description, entry.UseRule, entry.ToolboxName} {
-		if strings.Contains(strings.ToLower(field), needle) {
-			return true
+	entries := make([]ToolEntry, 0, len(hits))
+	for _, hit := range hits {
+		tools := byBox[hit.BoxID]
+		if tools == nil {
+			continue
+		}
+		tool, ok := tools[hit.ToolID]
+		if !ok {
+			continue
+		}
+		entries = append(entries, ToolEntry{
+			ToolID:      hit.ToolID,
+			ToolboxID:   hit.BoxID,
+			Name:        tool.Name,
+			Description: tool.Description,
+			UseRule:     tool.UseRule,
+			InputSchema: tool.InputSchema,
+		})
+		if len(entries) >= limit {
+			break
 		}
 	}
-	return false
+	return entries
 }
 
-// ExecuteTool invokes one published Function tool.
+// ExecuteTool invokes one Function tool the knowledge network has mounted.
 //
-// The tool is confirmed against the caller-visible enabled catalogue first. A
-// disabled or unknown tool then fails as a 400 that names the reason, instead of
-// whatever the proxy returns for an id it cannot resolve.
+// Two checks, in order: the tool must be mounted on this network, and it must be in the
+// caller-visible enabled catalogue. Narrowing discovery is not a control by itself — an id
+// outlives the search that produced it — and this is the call that writes.
 func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (map[string]any, error) {
 	if req == nil || strings.TrimSpace(req.ToolboxID) == "" || strings.TrimSpace(req.ToolID) == "" {
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
 			infraErr.LocalizedDetail(ctx, "ToolboxIDAndToolIDRequired"))
 	}
+	if strings.TrimSpace(req.KnID) == "" {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
+			infraErr.LocalizedDetail(ctx, "ToolScopeKnIDRequired"))
+	}
 	toolboxID, toolID := strings.TrimSpace(req.ToolboxID), strings.TrimSpace(req.ToolID)
+
+	refs, err := s.boundToolRefs(ctx, strings.TrimSpace(req.KnID), toolboxID)
+	if err != nil {
+		return nil, err
+	}
+	if !containsRef(refs, toolboxID+"/"+toolID) {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
+			infraErr.LocalizedDetail(ctx, "ToolNotMountedOnNetwork"))
+	}
 
 	listed, err := s.operator.ListPublishedTools(ctx, &interfaces.ListPublishedToolsRequest{ToolboxID: toolboxID})
 	if err != nil {
@@ -248,6 +331,16 @@ func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (
 		ToolID:     toolID,
 		Parameters: req.Arguments,
 	})
+}
+
+// containsRef reports whether the mounted set holds this exact box/tool pair.
+func containsRef(refs []string, ref string) bool {
+	for _, candidate := range refs {
+		if candidate == ref {
+			return true
+		}
+	}
+	return false
 }
 
 func containsTool(listed *interfaces.ListPublishedToolsResponse, toolID string) bool {

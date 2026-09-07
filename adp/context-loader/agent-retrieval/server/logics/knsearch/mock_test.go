@@ -157,6 +157,10 @@ func (m *mockBknBackend) ListMetricsByObjectTypes(ctx context.Context, knID stri
 	return nil, nil
 }
 
+func (m *mockBknBackend) ListKNCapabilities(ctx context.Context, knID, branch, capabilityType string) ([]*interfaces.CapabilityRef, error) {
+	return nil, nil
+}
+
 func (m *mockBknBackend) SearchMetricTypes(ctx context.Context, query *interfaces.QueryConceptsReq) (*interfaces.MetricTypeConcepts, error) {
 	return nil, nil
 }

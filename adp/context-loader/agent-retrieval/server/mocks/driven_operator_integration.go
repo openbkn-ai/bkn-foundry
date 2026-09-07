@@ -131,6 +131,21 @@ func (mr *MockDrivenOperatorIntegrationMockRecorder) GetSkillContent(ctx, skillI
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSkillContent", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).GetSkillContent), ctx, skillID)
 }
 
+// GetSkillNamesByIDs mocks base method.
+func (m *MockDrivenOperatorIntegration) GetSkillNamesByIDs(ctx context.Context, skillIDs []string) (map[string]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSkillNamesByIDs", ctx, skillIDs)
+	ret0, _ := ret[0].(map[string]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSkillNamesByIDs indicates an expected call of GetSkillNamesByIDs.
+func (mr *MockDrivenOperatorIntegrationMockRecorder) GetSkillNamesByIDs(ctx, skillIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSkillNamesByIDs", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).GetSkillNamesByIDs), ctx, skillIDs)
+}
+
 // GetToolDetail mocks base method.
 func (m *MockDrivenOperatorIntegration) GetToolDetail(ctx context.Context, req *interfaces.GetToolDetailRequest) (*interfaces.GetToolDetailResponse, error) {
 	m.ctrl.T.Helper()
@@ -204,4 +219,34 @@ func (m *MockDrivenOperatorIntegration) ReadSkillFile(ctx context.Context, req *
 func (mr *MockDrivenOperatorIntegrationMockRecorder) ReadSkillFile(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadSkillFile", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).ReadSkillFile), ctx, req)
+}
+
+// SearchBoundSkills mocks base method.
+func (m *MockDrivenOperatorIntegration) SearchBoundSkills(ctx context.Context, req *interfaces.SearchBoundSkillsRequest) ([]interfaces.SkillHit, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchBoundSkills", ctx, req)
+	ret0, _ := ret[0].([]interfaces.SkillHit)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchBoundSkills indicates an expected call of SearchBoundSkills.
+func (mr *MockDrivenOperatorIntegrationMockRecorder) SearchBoundSkills(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchBoundSkills", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).SearchBoundSkills), ctx, req)
+}
+
+// SearchBoundTools mocks base method.
+func (m *MockDrivenOperatorIntegration) SearchBoundTools(ctx context.Context, req *interfaces.SearchBoundToolsRequest) ([]interfaces.ToolHit, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchBoundTools", ctx, req)
+	ret0, _ := ret[0].([]interfaces.ToolHit)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchBoundTools indicates an expected call of SearchBoundTools.
+func (mr *MockDrivenOperatorIntegrationMockRecorder) SearchBoundTools(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchBoundTools", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).SearchBoundTools), ctx, req)
 }

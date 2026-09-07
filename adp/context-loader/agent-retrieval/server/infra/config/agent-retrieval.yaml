@@ -75,4 +75,3 @@ find_skills:
   max_top_k: 20
   recall_timeout_ms: 5000
   total_timeout_ms: 10000
-  skills_object_type_id: "skills"

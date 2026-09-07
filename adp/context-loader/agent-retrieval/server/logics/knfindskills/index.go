@@ -4,13 +4,17 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package knfindskills implements the find_skills skill recall service.
+// Package knfindskills implements find_skills over the knowledge network's capability bindings.
+//
+// Recall used to run over a skills object type the user modelled inside the network, and the two
+// implicit rules that came with it — "no relation type means the whole network" and "no relation
+// type means empty" — were the reason the result could not be explained. Scope is now what the
+// network explicitly bound: an unbound network recalls nothing, and there is no shape of the model
+// that quietly widens it.
 package knfindskills
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -24,36 +28,18 @@ import (
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/localize"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/permission"
 )
 
-var requiredSkillsDataProperties = []string{"skill_id", "name"}
-
-// bknBackendObjectTypeNotFoundCode is the error code bkn-backend returns when a
-// requested object type id is absent from the knowledge network. Its batch lookup
-// fails the whole call as soon as one id is missing, so this is exactly what a
-// network with no skills object type looks like from here.
-const bknBackendObjectTypeNotFoundCode = "BknBackend.ObjectType.ObjectTypeNotFound"
-
-// errSkillsNotModeled marks "this knowledge network has no skills object type",
-// which is a property of the network rather than a failure of the call.
-var errSkillsNotModeled = errors.New("skills object type is not modeled in this knowledge network")
-
-// isObjectTypeNotFound reports whether err is bkn-backend saying the object type
-// does not exist. It matches the downstream error code rather than the bare 404,
-// because an unknown kn_id is also a 404 and must keep surfacing as one.
-func isObjectTypeNotFound(err error) bool {
-	var he *infraErr.HTTPError
-	return errors.As(err, &he) &&
-		he.HTTPCode == http.StatusNotFound &&
-		he.Code == bknBackendObjectTypeNotFoundCode
-}
+// defaultTopK bounds a reply when the caller does not.
+const defaultTopK = 10
 
 type findSkillsServiceImpl struct {
-	logger        interfaces.Logger
-	config        *config.Config
-	ontologyQuery interfaces.DrivenOntologyQuery
-	bknBackend    interfaces.BknBackendAccess
-	coordinator   *recallCoordinator
+	logger     interfaces.Logger
+	config     *config.Config
+	bknBackend interfaces.BknBackendAccess
+	operator   interfaces.DrivenOperatorIntegration
+	knAuthz    interfaces.KnowledgeNetworkAuthorizer
 }
 
 var (
@@ -65,19 +51,12 @@ var (
 func NewFindSkillsService() interfaces.IFindSkillsService {
 	fsOnce.Do(func() {
 		cfg := config.NewConfigLoader()
-		oq := drivenadapters.NewOntologyQueryAccess()
-		bkn := drivenadapters.NewBknBackendAccess()
 		findSkillsServiceInst = &findSkillsServiceImpl{
-			logger:        cfg.GetLogger(),
-			config:        cfg,
-			ontologyQuery: oq,
-			bknBackend:    bkn,
-			coordinator: &recallCoordinator{
-				logger:        cfg.GetLogger(),
-				config:        &cfg.FindSkills,
-				ontologyQuery: oq,
-				bknBackend:    bkn,
-			},
+			logger:     cfg.GetLogger(),
+			config:     cfg,
+			bknBackend: drivenadapters.NewBknBackendAccess(),
+			operator:   drivenadapters.NewOperatorIntegrationClient(),
+			knAuthz:    permission.NewKnowledgeNetworkAuthorizer(cfg),
 		}
 	})
 	return findSkillsServiceInst
@@ -87,75 +66,53 @@ func NewFindSkillsService() interfaces.IFindSkillsService {
 func NewFindSkillsServiceWith(
 	logger interfaces.Logger,
 	cfg *config.Config,
-	oq interfaces.DrivenOntologyQuery,
 	bkn interfaces.BknBackendAccess,
+	operator interfaces.DrivenOperatorIntegration,
+	knAuthz interfaces.KnowledgeNetworkAuthorizer,
 ) interfaces.IFindSkillsService {
 	return &findSkillsServiceImpl{
-		logger:        logger,
-		config:        cfg,
-		ontologyQuery: oq,
-		bknBackend:    bkn,
-		coordinator: &recallCoordinator{
-			logger:        logger,
-			config:        &cfg.FindSkills,
-			ontologyQuery: oq,
-			bknBackend:    bkn,
-		},
+		logger:     logger,
+		config:     cfg,
+		bknBackend: bkn,
+		operator:   operator,
+		knAuthz:    knAuthz,
 	}
 }
 
-// FindSkills is the main entry point for skill recall.
-func (s *findSkillsServiceImpl) FindSkills(ctx context.Context, req *interfaces.FindSkillsReq) (*interfaces.FindSkillsResp, error) {
+// FindSkills returns the Skills this knowledge network has bound, ranked against skill_query when
+// one is given.
+//
+// object_type_id is accepted and ignored. It stays in the contract so the MCP surface does not
+// change under callers, but object-type-scoped recall is a later step: today a binding belongs to
+// the network branch, not to one object type, and answering differently per object type would be
+// inventing a scope the data does not carry.
+func (s *findSkillsServiceImpl) FindSkills(ctx context.Context,
+	req *interfaces.FindSkillsReq) (*interfaces.FindSkillsResp, error) {
 	var err error
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 
-	fsCfg := &s.config.FindSkills
-
-	// 1. Normalize & detect recall mode
-	mode, err := NormalizeAndDetectMode(req, fsCfg)
-	if err != nil {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error())
+	if req == nil || strings.TrimSpace(req.KnID) == "" {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, "kn_id is required")
+	}
+	topK := req.TopK
+	if topK <= 0 {
+		topK = defaultTopK
 	}
 
-	// Validate the caller-supplied object type FIRST. A wrong object_type_id is the
-	// caller's error and must keep reporting ObjectTypeNotFound; a missing skills
-	// object type is a property of the network and is answered with an empty result
-	// just below. Running the skills contract first made the two indistinguishable.
-	if req.ObjectTypeID != fsCfg.SkillsObjectTypeID {
-		if err := s.validateObjectTypeExists(ctx, req.KnID, req.ObjectTypeID); err != nil {
-			return nil, err
-		}
+	// The old object-type path got its per-caller check for free: every route ended in an
+	// ontology-query call that authorized the caller against the data. This one reads the
+	// bindings and resolves them in the execution factory, touching neither — so without this
+	// check the answer would be scoped by nothing but the kn_id the caller typed.
+	if s.knAuthz == nil {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+			"knowledge network authorization is not configured")
 	}
-
-	skillsObjType, err := s.loadAndValidateSkillsContract(ctx, req.KnID, fsCfg.SkillsObjectTypeID)
-	if err != nil {
-		// A network that binds no skills has nothing to recall. The caller asked
-		// "what skills does this object type have"; the answer is "none", not a
-		// failure — and reporting bkn-backend's ObjectTypeNotFound sent triage
-		// after the caller's object_type_id, which does exist. See #1224.
-		if errors.Is(err, errSkillsNotModeled) {
-			s.logger.WithContext(ctx).Infof(
-				"[FindSkills] kn_id=%s has no skills object type %q; returning an empty result",
-				req.KnID, fsCfg.SkillsObjectTypeID)
-			return &interfaces.FindSkillsResp{
-				Entries: []*interfaces.SkillItem{},
-				Message: translateMessage(ctx, "find_skills.skills_not_modeled"),
-			}, nil
-		}
+	if err = s.knAuthz.AuthorizeRead(ctx, strings.TrimSpace(req.KnID)); err != nil {
 		return nil, err
 	}
 
-	s.logger.WithContext(ctx).Infof("[FindSkills] kn_id=%s, mode=%d, object_type_id=%s, instance_count=%d, has_skill_query=%v",
-		req.KnID, mode, req.ObjectTypeID, len(req.InstanceIdentities), req.SkillQuery != "")
-
-	// 2. Build skill_query condition (reuse validated skills ObjectType metadata)
-	var skillQueryCond *interfaces.KnCondition
-	if req.SkillQuery != "" {
-		skillQueryCond = BuildSkillQueryCondition(req.SkillQuery, skillsObjType, req.TopK)
-	}
-
-	// 3. Apply total timeout
+	fsCfg := &s.config.FindSkills
 	totalTimeoutMs := fsCfg.TotalTimeoutMs
 	if totalTimeoutMs <= 0 {
 		totalTimeoutMs = 10000
@@ -163,114 +120,143 @@ func (s *findSkillsServiceImpl) FindSkills(ctx context.Context, req *interfaces.
 	recallCtx, cancel := context.WithTimeout(ctx, time.Duration(totalTimeoutMs)*time.Millisecond)
 	defer cancel()
 
-	// 4. Execute recall based on mode
-	var matches []interfaces.SkillMatch
-	var emptyHint interfaces.EmptyResultHint
-	switch mode {
-	case interfaces.RecallModeNetwork:
-		matches, emptyHint, err = s.coordinator.recallNetwork(recallCtx, req, skillQueryCond)
-	case interfaces.RecallModeObjectType:
-		matches, emptyHint, err = s.coordinator.recallObjectType(recallCtx, req, skillQueryCond)
-	case interfaces.RecallModeInstance:
-		matches, emptyHint, err = s.coordinator.recallInstance(recallCtx, req, skillQueryCond)
-	default:
-		err = fmt.Errorf("unknown recall mode: %d", mode)
-	}
-
+	// The binding list is the scope, so a failure to read it fails the call. Falling back to an
+	// unfiltered listing would hand a network every Skill on the platform at exactly the moment
+	// the service could not tell which ones it was allowed to show.
+	refs, err := s.bknBackend.ListKNCapabilities(recallCtx, req.KnID, "", interfaces.CapabilityTypeSkill)
 	if err != nil {
-		s.logger.WithContext(ctx).Errorf("[FindSkills] recall failed: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, err.Error())
+		s.logger.WithContext(ctx).Errorf("[FindSkills] kn_id=%s capability lookup failed: %v", req.KnID, err)
+		return nil, err
 	}
 
-	// 5. Assemble result
-	resp := Assemble(matches, req.TopK)
-
-	// 6. Generate empty-result message
-	if len(resp.Entries) == 0 {
-		msgKey := resolveEmptyResultMessageKey(emptyHint, mode, req.SkillQuery != "")
-		resp.Message = translateMessage(ctx, msgKey)
+	skillIDs := make([]string, 0, len(refs))
+	seen := make(map[string]struct{}, len(refs))
+	for _, ref := range refs {
+		if ref == nil || ref.CapabilityType != interfaces.CapabilityTypeSkill {
+			continue
+		}
+		id := strings.TrimSpace(ref.CapabilityID)
+		if id == "" {
+			continue
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		skillIDs = append(skillIDs, id)
 	}
 
+	if len(skillIDs) == 0 {
+		s.logger.WithContext(ctx).Infof("[FindSkills] kn_id=%s has no bound skills", req.KnID)
+		return &interfaces.FindSkillsResp{
+			Entries: []*interfaces.SkillItem{},
+			Message: translateMessage(ctx, "find_skills.no_bound_skills"),
+		}, nil
+	}
+
+	s.logger.WithContext(ctx).Infof("[FindSkills] kn_id=%s bound=%d has_skill_query=%v",
+		req.KnID, len(skillIDs), req.SkillQuery != "")
+
+	entries, err := s.rank(recallCtx, skillIDs, strings.TrimSpace(req.SkillQuery), topK)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &interfaces.FindSkillsResp{Entries: entries}
+	if len(entries) == 0 {
+		resp.Entries = []*interfaces.SkillItem{}
+		resp.Message = translateMessage(ctx, "find_skills.skill_query_no_match")
+	}
 	s.logger.WithContext(ctx).Infof("[FindSkills] returning %d skills for kn_id=%s", len(resp.Entries), req.KnID)
 	return resp, nil
 }
 
-func (s *findSkillsServiceImpl) loadAndValidateSkillsContract(ctx context.Context, knID, skillsObjectTypeID string) (*interfaces.ObjectType, error) {
-	objectTypes, err := s.bknBackend.GetObjectTypeDetail(ctx, knID, []string{skillsObjectTypeID}, true)
+// rank turns the bound ids into an answer.
+//
+// With a query, Execution Factory ranks the whitelist and its order is the answer. Without one,
+// there is nothing to rank against, so the binding order is kept — it is the order the network
+// declared, which is at least stable and explainable, unlike whatever the index happens to return.
+func (s *findSkillsServiceImpl) rank(ctx context.Context, skillIDs []string, query string,
+	topK int) ([]*interfaces.SkillItem, error) {
+	hits, err := s.operator.SearchBoundSkills(ctx, &interfaces.SearchBoundSkillsRequest{
+		Query:    query,
+		SkillIDs: skillIDs,
+		TopK:     topK,
+	})
 	if err != nil {
-		if isObjectTypeNotFound(err) {
-			return nil, errSkillsNotModeled
-		}
 		return nil, err
 	}
-	if len(objectTypes) == 0 {
-		return nil, errSkillsNotModeled
+
+	byID := make(map[string]interfaces.SkillHit, len(hits))
+	for _, hit := range hits {
+		if hit.SkillID != "" {
+			byID[hit.SkillID] = hit
+		}
 	}
 
-	skillsObjType := objectTypes[0]
-	existingProps := make(map[string]struct{}, len(skillsObjType.DataProperties))
-	for _, prop := range skillsObjType.DataProperties {
-		if prop == nil {
-			continue
+	if query != "" {
+		entries := make([]*interfaces.SkillItem, 0, len(hits))
+		for _, hit := range hits {
+			if hit.SkillID == "" {
+				continue
+			}
+			entries = append(entries, &interfaces.SkillItem{
+				SkillID:     hit.SkillID,
+				Name:        hit.Name,
+				Description: hit.Description,
+			})
+			if len(entries) >= topK {
+				break
+			}
 		}
-		name := strings.TrimSpace(prop.Name)
-		if name == "" {
-			continue
-		}
-		existingProps[name] = struct{}{}
+		return entries, nil
 	}
 
-	var missingProps []string
-	for _, name := range requiredSkillsDataProperties {
-		if _, ok := existingProps[name]; !ok {
-			missingProps = append(missingProps, name)
+	// No query: list what is bound, in binding order. The index can be missing or behind — it is
+	// built asynchronously and a fresh install has none — so anything it did not return is filled
+	// from the registry. Listing a bound Skill by name alone is a degraded answer; omitting it
+	// because an index was not ready is a wrong one.
+	wanted := skillIDs
+	if len(wanted) > topK {
+		wanted = wanted[:topK]
+	}
+	var missing []string
+	for _, id := range wanted {
+		if _, ok := byID[id]; !ok {
+			missing = append(missing, id)
 		}
 	}
-	if len(missingProps) > 0 {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, map[string]interface{}{
-			"kn_id":                   knID,
-			"skills_object_type_id":   skillsObjectTypeID,
-			"missing_data_properties": missingProps,
-			"reason":                  "skills object type contract is incomplete",
+	if len(missing) > 0 {
+		names, nameErr := s.operator.GetSkillNamesByIDs(ctx, missing)
+		if nameErr != nil {
+			// The names are decoration; the memberships are not. Report what the index knew
+			// rather than failing a listing the network is entitled to.
+			s.logger.WithContext(ctx).Warnf("[FindSkills] name fallback failed for %d skills: %v",
+				len(missing), nameErr)
+		} else {
+			for id, name := range names {
+				byID[id] = interfaces.SkillHit{SkillID: id, Name: name}
+			}
+		}
+	}
+
+	entries := make([]*interfaces.SkillItem, 0, len(wanted))
+	for _, id := range wanted {
+		hit, ok := byID[id]
+		if !ok {
+			// Neither the index nor the registry knows this id: the Skill is gone from the
+			// execution factory while the binding survives. Reporting it as a callable Skill
+			// would send the caller after something that cannot run.
+			s.logger.WithContext(ctx).Warnf("[FindSkills] bound skill %s is unknown to the execution factory", id)
+			continue
+		}
+		entries = append(entries, &interfaces.SkillItem{
+			SkillID:     id,
+			Name:        hit.Name,
+			Description: hit.Description,
 		})
 	}
-
-	return skillsObjType, nil
-}
-
-func (s *findSkillsServiceImpl) validateObjectTypeExists(ctx context.Context, knID, objectTypeID string) error {
-	objectTypes, err := s.bknBackend.GetObjectTypeDetail(ctx, knID, []string{objectTypeID}, false)
-	if err != nil {
-		return err
-	}
-	if len(objectTypes) > 0 {
-		return nil
-	}
-
-	return infraErr.DefaultHTTPError(ctx, http.StatusNotFound, map[string]interface{}{
-		"kn_id":          knID,
-		"object_type_id": objectTypeID,
-		"reason":         "object_type_id not found in current knowledge network",
-	})
-}
-
-func resolveEmptyResultMessageKey(hint interfaces.EmptyResultHint, mode interfaces.RecallMode, hasSkillQuery bool) string {
-	if hint != interfaces.HintNone {
-		return string(hint)
-	}
-	if hasSkillQuery {
-		return "find_skills.skill_query_no_match"
-	}
-	switch mode {
-	case interfaces.RecallModeNetwork:
-		return "find_skills.network_no_skills"
-	case interfaces.RecallModeObjectType:
-		return "find_skills.object_type_no_match"
-	case interfaces.RecallModeInstance:
-		return "find_skills.instance_no_match"
-	default:
-		return "find_skills.network_no_skills"
-	}
+	return entries, nil
 }
 
 func translateMessage(ctx context.Context, msgKey string) string {

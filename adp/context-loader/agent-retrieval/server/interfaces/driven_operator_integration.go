@@ -95,6 +95,63 @@ type DrivenOperatorIntegration interface {
 	ListPublishedTools(ctx context.Context, req *ListPublishedToolsRequest) (*ListPublishedToolsResponse, error)
 	// ExecutePublishedTool invokes one enabled Function tool through the public Toolbox proxy.
 	ExecutePublishedTool(ctx context.Context, req *ExecutePublishedToolRequest) (map[string]any, error)
+
+	// SearchBoundSkills ranks the Skills in a whitelist against a query.
+	//
+	// The whitelist is the scope and it is fail-closed on the far side: an empty SkillIDs returns
+	// nothing rather than the whole marketplace. Ranking happens in Execution Factory, which owns
+	// the skill dataset; this side only supplies which Skills the knowledge network bound.
+	SearchBoundSkills(ctx context.Context, req *SearchBoundSkillsRequest) ([]SkillHit, error)
+
+	// GetSkillNamesByIDs resolves Skill names straight from the registry.
+	//
+	// It exists as the floor under SearchBoundSkills: that one reads the skill index, and an
+	// index that was never built answers an unfiltered listing with nothing. A Skill the network
+	// has bound must still be listed by name even then — a name without a description is a
+	// degraded answer, an empty list is a wrong one. Unknown ids are absent from the result.
+	GetSkillNamesByIDs(ctx context.Context, skillIDs []string) (map[string]string, error)
+
+	// SearchBoundTools ranks Function tools inside a whitelist of "{box_id}/{tool_id}" references.
+	//
+	// Like the Skill side, the whitelist is the scope and it is fail-closed on the far side. The
+	// hits carry identity and prose only — the input schema is not part of this answer, and the
+	// caller fetches it for the hits it keeps.
+	SearchBoundTools(ctx context.Context, req *SearchBoundToolsRequest) ([]ToolHit, error)
+}
+
+// SearchBoundToolsRequest asks Execution Factory to rank a bounded set of Function tools.
+type SearchBoundToolsRequest struct {
+	Query string
+	// ToolRefs are flat "{box_id}/{tool_id}" references: a tool id is scoped to its box.
+	ToolRefs []string
+	TopK     int
+}
+
+// ToolHit is one ranked Function tool.
+type ToolHit struct {
+	BoxID       string  `json:"box_id"`
+	ToolID      string  `json:"tool_id"`
+	Name        string  `json:"name"`
+	Description string  `json:"description"`
+	Status      string  `json:"status"`
+	Score       float64 `json:"score"`
+	MatchedBy   string  `json:"matched_by"`
+}
+
+// SearchBoundSkillsRequest asks Execution Factory to rank a bounded set of Skills.
+type SearchBoundSkillsRequest struct {
+	Query    string
+	SkillIDs []string
+	TopK     int
+}
+
+// SkillHit is one ranked Skill.
+type SkillHit struct {
+	SkillID     string  `json:"skill_id"`
+	Name        string  `json:"name"`
+	Description string  `json:"description"`
+	Score       float64 `json:"score"`
+	MatchedBy   string  `json:"matched_by"`
 }
 
 // ==================== Published Function Tool Catalogue ====================

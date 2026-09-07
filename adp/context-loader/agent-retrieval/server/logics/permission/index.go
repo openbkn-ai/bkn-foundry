@@ -165,3 +165,62 @@ func permissionUnavailable(ctx context.Context) error {
 	return infraerrors.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
 		"query authorization is unavailable")
 }
+
+type knowledgeNetworkAuthorizer struct {
+	access interfaces.PermissionAccess
+}
+
+// NewKnowledgeNetworkAuthorizer wires the production Safe adapter.
+func NewKnowledgeNetworkAuthorizer(conf *config.Config) interfaces.KnowledgeNetworkAuthorizer {
+	return NewKnowledgeNetworkAuthorizerWith(drivenadapters.NewPermissionAccess(conf))
+}
+
+// NewKnowledgeNetworkAuthorizerWith allows focused tests to inject the outbound boundary.
+func NewKnowledgeNetworkAuthorizerWith(access interfaces.PermissionAccess) interfaces.KnowledgeNetworkAuthorizer {
+	return &knowledgeNetworkAuthorizer{access: access}
+}
+
+// AuthorizeRead checks view_detail on the network itself.
+//
+// Fail-closed throughout: no subject, an unusable id, or an unavailable authorization service all
+// refuse. An answer built without this check would be scoped only by the kn_id the caller typed.
+func (a *knowledgeNetworkAuthorizer) AuthorizeRead(ctx context.Context, knID string) error {
+	if !config.GetAuthEnabled() {
+		return nil
+	}
+	account, ok := trustedAccount(ctx)
+	if !ok {
+		return infraerrors.DefaultHTTPError(ctx, http.StatusUnauthorized, "request subject is missing or invalid")
+	}
+	knID = strings.TrimSpace(knID)
+	if !validAuthorizationID(knID) {
+		return infraerrors.DefaultHTTPError(ctx, http.StatusBadRequest, "invalid knowledge network id")
+	}
+	if a == nil || a.access == nil {
+		return permissionUnavailable(ctx)
+	}
+
+	response, err := a.access.FilterResources(ctx, interfaces.PermissionFilterRequest{
+		AccessorID: account.AccountID,
+		Resources: []interfaces.PermissionResource{{
+			Type: interfaces.PermissionResourceTypeKnowledgeNetwork,
+			ID:   knID,
+		}},
+		VisibilityOperations: []string{interfaces.PermissionOperationViewDetail},
+		CandidateOperations:  []string{interfaces.PermissionOperationViewDetail},
+	})
+	if err != nil || response.Resources == nil {
+		return permissionUnavailable(ctx)
+	}
+	for _, result := range *response.Resources {
+		if result.ResourceType != interfaces.PermissionResourceTypeKnowledgeNetwork ||
+			result.ResourceID != knID {
+			return permissionUnavailable(ctx)
+		}
+		if contains(result.Operations, interfaces.PermissionOperationViewDetail) {
+			return nil
+		}
+	}
+	return infraerrors.DefaultHTTPError(ctx, http.StatusForbidden,
+		infraerrors.LocalizedDetail(ctx, "KnowledgeNetworkNotAuthorized"))
+}

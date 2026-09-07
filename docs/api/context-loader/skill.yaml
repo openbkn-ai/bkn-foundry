@@ -12,12 +12,15 @@ info:
     常驻上下文），`execute_skill` 在沙箱内执行 SKILL.md 声明的入口命令。不需要知识
     网络上下文时用 `list_skills` 直接翻已发布技能列表。
 
-    Skill 与业务对象的绑定关系建在知识网络里：平台约定该网中存在一个固定的
-    `skills` 对象类，业务对象类通过关系类与它相连，召回就是沿这些关系走。
-    `skills` 对象类由 execution-factory 在注册 Skill 时写入。
+    召回范围就是知识网络显式挂载的 Skill（知识网络的「SKILLs」）。未挂载任何 Skill 的
+    网络召回结果为空，不存在「没配置就等于全网可见」的隐式回退。
+
+    > 0.1.5 起不再依赖网络内自建的 `skills` 对象类与关系路径。`object_type_id` 与
+    > `instance_identities` 仍然接受但不参与召回，也不再校验存在性——挂载归属于网络分支
+    > 而非某个对象类。
 
     **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` AppKey）。
-  version: 0.1.3
+  version: 0.1.5
 servers:
   - url: /api/agent-retrieval/v1
 security:
@@ -38,22 +41,21 @@ paths:
           object_type_id: '{cl_ot_id}'
           top_k: 3
       description: |
-        **召回模式由参数自动决定，不用显式指定**：
+        返回该知识网络已挂载的 Skill。
 
-        | 传入参数 | 模式 |
-        |---|---|
-        | `kn_id` + `object_type_id` | 对象类级：沿对象类与 `skills` 之间的关系路径召回 |
-        | 再加 `instance_identities` | 实例级：从具体实例出发召回，并补充对象类级结果 |
+        **带 `skill_query` 时**，挂载的 Skill ID 作为白名单前置下推到执行工厂的技能检索，
+        按相关性排序返回；**不带时**按挂载顺序列出——列举没有可排序的信号，挂载顺序至少
+        稳定且可解释。
 
-        **`skill_query` 的检索方式随索引能力降级**：对 `skills` 实例的 `name` /
-        `description` 追加文本过滤——BKN 已建向量索引时用 `knn`，已建全文索引时用
-        `match`，都没有时退化为 `like`。
+        执行工厂的技能索引是异步构建的，新装环境可能尚未建好；索引未覆盖到的挂载项会退回
+        注册表按 ID 取名，此时 `description` 可能缺失但条目不会消失。挂载记录还在、但目标
+        Skill 已从执行工厂删除的，不会出现在结果里。
 
-        `skills` 对象类至少要有 `skill_id` 与 `name` 两个数据属性，`description`
-        可选；不满足时返回 400 并在 `details` 里列出缺失属性。
+        `object_type_id` 与 `instance_identities` 仍在契约中但不参与召回，传任意值都不会
+        报错，也不再要求该对象类存在。
 
-        **空结果是 200 不是错误**：没有匹配时返回 `entries: []`，并可能带一个
-        `message` 说明为什么为空（如该对象类未绑定任何 Skill）以及下一步建议。
+        **空结果是 200 不是错误**：网络未挂载任何 Skill 时返回 `entries: []` 并带 `message`
+        指向挂载入口。
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
         - $ref: '#/components/parameters/ResponseFormat'
@@ -64,26 +66,22 @@ paths:
             schema:
               $ref: '#/components/schemas/FindSkillsRequest'
             examples:
-              对象类级:
+              列出已挂载:
                 value:
                   kn_id: kn_legal
-                  object_type_id: contract
                   top_k: 10
-              实例级:
+              带检索词:
                 value:
                   kn_id: kn_legal
-                  object_type_id: contract
-                  instance_identities:
-                    - contract_id: C-2024-001
-                  top_k: 10
-              带语义过滤:
-                value:
-                  kn_id: kn_legal
-                  object_type_id: contract
-                  instance_identities:
-                    - contract_id: C-2024-001
                   skill_query: 合同审查
                   top_k: 5
+              兼容旧调用方:
+                value:
+                  kn_id: kn_legal
+                  object_type_id: contract
+                  instance_identities:
+                    - contract_id: C-2024-001
+                  top_k: 10
       responses:
         '200':
           description: Skill 候选列表，可能为空
@@ -104,14 +102,12 @@ paths:
                 空结果:
                   value:
                     entries: []
-                    message: 当前对象类未配置 Skill 绑定关系，无法在该范围内召回 Skill。请确认该对象类是否已绑定 Skill。
+                    message: 当前知识网络未挂载任何 Skill，因此没有可召回的 Skill。请在知识网络的「SKILLs」中挂载后重试。
             application/toon:
               schema:
                 type: string
         '400':
-          description: |
-            参数错误：缺少 `kn_id` / `object_type_id`，或 `skills` 对象类的数据属性
-            契约不完整（缺 `skill_id` / `name`）
+          description: 参数错误：缺少 `kn_id`
           headers:
             Content-Language:
               $ref: '#/components/headers/ContentLanguage'
@@ -120,18 +116,12 @@ paths:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
               examples:
-                skills契约不完整:
+                缺少kn_id:
                   value:
                     code: Public.BadRequest
                     description: 参数错误
-                    details:
-                      kn_id: kn_legal
-                      skills_object_type_id: skills
-                      missing_data_properties:
-                        - skill_id
-                        - name
-                      reason: skills object type contract is incomplete
-                    solution: 请检查当前知识网络下 skills ObjectType 的数据属性定义，确保至少存在 skill_id 与 name
+                    details: kn_id is required
+                    solution: 请检查参数是否正确
                     link: 无
         '401':
           description: 凭据缺失或无效
@@ -143,7 +133,7 @@ paths:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
         '404':
-          description: 指定对象类不存在，或当前知识网络中缺少 `skills` 对象类
+          description: 指定的知识网络不存在
           headers:
             Content-Language:
               $ref: '#/components/headers/ContentLanguage'
@@ -516,19 +506,19 @@ components:
       required:
         - bkn_context
         - kn_id
-        - object_type_id
       properties:
         bkn_context:
           $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
         kn_id:
           type: string
-          description: 知识网络 ID。
+          description: 知识网络 ID。召回范围是该网络已挂载的 Skill。
           example: kn_legal
         object_type_id:
           type: string
           description: |
-            业务对象类 ID（取自 `search_schema` 返回的概念 ID）。必填，且必须存在于
-            该知识网络中。
+            **已废弃（0.1.5）**：仍然接受，但不参与召回，也不再校验存在性。挂载归属于
+            网络分支而非某个对象类。
+          deprecated: true
           example: contract
         instance_identities:
           type: array
@@ -540,9 +530,7 @@ components:
                 - type: number
                 - type: boolean
           description: |
-            对象实例标识列表，**必须从 `query_object_instance` 或
-            `query_instance_subgraph` 结果里的 `_instance_identity` 取，不可自拼**。
-            传入即切换到实例级召回。
+            **已废弃（0.1.5）**：仍然接受，但不参与召回。
           example:
             - contract_id: C-2024-001
         skill_query:
