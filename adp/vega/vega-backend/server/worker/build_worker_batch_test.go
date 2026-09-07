@@ -153,7 +153,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		require.NoError(t, mockDB.ExpectationsWereMet())
 	})
 
-	t.Run("incremental writes current index and advances task and resource checkpoints atomically", func(t *testing.T) {
+	t.Run("resumed incremental keeps cumulative total and advances checkpoints atomically", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		lim := vmock.NewMockLocalIndexManager(ctrl)
 		bts := vmock.NewMockBuildTaskService(ctrl)
@@ -162,6 +162,110 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		connector := vmock.NewMockTableConnector(ctrl)
 		resource := workerTestResource()
 		resource.SchemaDefinition = append(resource.SchemaDefinition, &interfaces.Property{Name: "payload", Type: interfaces.DataType_Json})
+		resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
+		resource.LocalIndexName = "current-index"
+		resource.SyncMark = `{"mode":"batch","cursor":[{"key":"id","value":8000}]}`
+		task := workerTestFullTask(t, resource)
+		task.ExecuteType = interfaces.BuildTaskExecuteTypeIncremental
+		task.IndexName = resource.LocalIndexName
+		task.Status = interfaces.BuildTaskStatusRunning
+		task.SyncedMark = resource.SyncMark
+		task.SyncedCount = 8000
+		bbw := &batchBuildWorker{lim: lim, bts: bts, rs: rs, cf: cf}
+
+		db, mockDB, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		oldDB := logics.DB
+		logics.DB = db
+		defer func() { logics.DB = oldDB }()
+
+		lim.EXPECT().CheckIndexExist(gomock.Any(), "current-index").Return(true, nil)
+		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "mysql", gomock.Any()).Return(connector, nil)
+		connector.EXPECT().Connect(gomock.Any()).Return(nil)
+		queryCount := 0
+		connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Times(73).DoAndReturn(
+			func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+				queryCount++
+				if queryCount == 73 {
+					return &interfaces.QueryResult{}, nil
+				}
+				require.NotNil(t, params.FilterCondCfg)
+				assert.Equal(t, 1000, params.Limit)
+				assert.Equal(t, queryCount == 1, params.NeedTotal)
+				entries := make([]map[string]any, 1000)
+				firstID := int64(8001 + (queryCount-1)*1000)
+				for index := range entries {
+					entries[index] = map[string]any{
+						"id":      firstID + int64(index),
+						"payload": `{"region":"cn"}`,
+					}
+				}
+				result := &interfaces.QueryResult{Entries: entries}
+				if queryCount == 1 {
+					result.Total = 72000
+				}
+				return result, nil
+			})
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil).Times(73)
+		bts.EXPECT().InternalSetProgress(gomock.Any(), nil, task.ID, gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ *sql.Tx, _ string, progress interfaces.BuildTaskProgress) (bool, error) {
+				require.NotNil(t, progress.TotalCount)
+				assert.EqualValues(t, 80000, *progress.TotalCount)
+				return true, nil
+			})
+		indexedBatches := 0
+		lim.EXPECT().IndexDocuments(gomock.Any(), "current-index", gomock.Any()).Times(72).DoAndReturn(
+			func(_ context.Context, _ string, documents map[string]map[string]any) ([]string, error) {
+				require.Len(t, documents, 1000)
+				for _, document := range documents {
+					assert.Equal(t, map[string]any{"region": "cn"}, document["payload"])
+				}
+				indexedBatches++
+				return nil, nil
+			})
+		newMark := `{"mode":"batch","cursor":[{"key":"id","value":80000}]}`
+		for range 72 {
+			mockDB.ExpectBegin()
+			mockDB.ExpectCommit()
+		}
+		txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
+		rs.EXPECT().InternalGetByID(gomock.Any(), txMatcher, resource.ID).AnyTimes().DoAndReturn(
+			func(context.Context, *sql.Tx, string) (*interfaces.Resource, error) {
+				require.Positive(t, indexedBatches, "checkpoint transaction must start after OpenSearch write")
+				return resource, nil
+			})
+		var finalProgress interfaces.BuildTaskProgress
+		bts.EXPECT().InternalSetProgress(gomock.Any(), txMatcher, task.ID, gomock.Any()).Times(72).DoAndReturn(
+			func(_ context.Context, _ *sql.Tx, _ string, progress interfaces.BuildTaskProgress) (bool, error) {
+				finalProgress = progress
+				return true, nil
+			})
+		rs.EXPECT().InternalUpdateLocalIndexState(gomock.Any(), txMatcher, resource.ID,
+			interfaces.ResourceLocalIndexStatusAvailable, "current-index", gomock.Any()).Return(true, nil).Times(72)
+		bts.EXPECT().InternalMarkCompleted(gomock.Any(), nil, task.ID).Return(true, nil)
+
+		err = bbw.executeBuild(context.Background(), &interfaces.Catalog{ConnectorType: "mysql"}, resource, task)
+
+		require.NoError(t, err)
+		require.NotNil(t, finalProgress.SyncedMark)
+		assert.Equal(t, newMark, *finalProgress.SyncedMark)
+		require.NotNil(t, finalProgress.SyncedCount)
+		assert.EqualValues(t, 80000, *finalProgress.SyncedCount)
+		assert.Equal(t, newMark, task.SyncedMark)
+		assert.Equal(t, newMark, resource.SyncMark)
+		require.NoError(t, mockDB.ExpectationsWereMet())
+	})
+
+	t.Run("fresh incremental keeps connector total without a cursor", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		connector := vmock.NewMockTableConnector(ctrl)
+		resource := workerTestResource()
 		resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
 		resource.LocalIndexName = "current-index"
 		resource.SyncMark = `{"mode":"batch","cursor":[]}`
@@ -185,10 +289,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).DoAndReturn(
 			func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
 				assert.Nil(t, params.FilterCondCfg)
-				return &interfaces.QueryResult{Total: 1, Entries: []map[string]any{{
-					"id":      int64(1),
-					"payload": `{"region":"cn"}`,
-				}}}, nil
+				return &interfaces.QueryResult{Total: 1, Entries: []map[string]any{{"id": int64(1)}}}, nil
 			})
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
 		bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil)
@@ -198,40 +299,83 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 				assert.EqualValues(t, 1, *progress.TotalCount)
 				return true, nil
 			})
-		indexed := false
-		lim.EXPECT().IndexDocuments(gomock.Any(), "current-index", gomock.Any()).DoAndReturn(
-			func(_ context.Context, _ string, documents map[string]map[string]any) ([]string, error) {
-				require.Len(t, documents, 1)
-				for _, document := range documents {
-					assert.Equal(t, map[string]any{"region": "cn"}, document["payload"])
-				}
-				indexed = true
-				return nil, nil
-			})
-		newMark := `{"mode":"batch","cursor":[{"key":"id","value":1}]}`
+		lim.EXPECT().IndexDocuments(gomock.Any(), "current-index", gomock.Any()).Return(nil, nil)
 		mockDB.ExpectBegin()
 		txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
-		rs.EXPECT().InternalGetByID(gomock.Any(), txMatcher, resource.ID).DoAndReturn(
-			func(context.Context, *sql.Tx, string) (*interfaces.Resource, error) {
-				require.True(t, indexed, "checkpoint transaction must start after OpenSearch write")
-				return resource, nil
-			})
-		bts.EXPECT().InternalSetProgress(gomock.Any(), txMatcher, task.ID, gomock.Any()).DoAndReturn(
-			func(_ context.Context, _ *sql.Tx, _ string, progress interfaces.BuildTaskProgress) (bool, error) {
-				require.NotNil(t, progress.SyncedMark)
-				assert.Equal(t, newMark, *progress.SyncedMark)
-				return true, nil
-			})
+		rs.EXPECT().InternalGetByID(gomock.Any(), txMatcher, resource.ID).Return(resource, nil)
+		bts.EXPECT().InternalSetProgress(gomock.Any(), txMatcher, task.ID, gomock.Any()).Return(true, nil)
 		rs.EXPECT().InternalUpdateLocalIndexState(gomock.Any(), txMatcher, resource.ID,
-			interfaces.ResourceLocalIndexStatusAvailable, "current-index", newMark).Return(true, nil)
+			interfaces.ResourceLocalIndexStatusAvailable, "current-index", gomock.Any()).Return(true, nil)
 		mockDB.ExpectCommit()
 		bts.EXPECT().InternalMarkCompleted(gomock.Any(), nil, task.ID).Return(true, nil)
 
 		err = bbw.executeBuild(context.Background(), &interfaces.Catalog{ConnectorType: "mysql"}, resource, task)
 
 		require.NoError(t, err)
-		assert.Equal(t, newMark, task.SyncedMark)
-		assert.Equal(t, newMark, resource.SyncMark)
+		require.NoError(t, mockDB.ExpectationsWereMet())
+	})
+
+	t.Run("resumed full build keeps cumulative total", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		connector := vmock.NewMockTableConnector(ctrl)
+		resource := workerTestResource()
+		resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
+		resource.LocalIndexName = "current-index"
+		resource.SyncMark = `{"mode":"batch","cursor":[{"key":"id","value":8}]}`
+		task := workerTestFullTask(t, resource)
+		task.IndexName = resource.LocalIndexName
+		task.Status = interfaces.BuildTaskStatusRunning
+		task.SyncedMark = resource.SyncMark
+		task.SyncedCount = 8
+		bbw := &batchBuildWorker{lim: lim, bts: bts, rs: rs, cf: cf}
+
+		db, mockDB, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		oldDB := logics.DB
+		logics.DB = db
+		defer func() { logics.DB = oldDB }()
+
+		lim.EXPECT().CheckIndexExist(gomock.Any(), "current-index").Return(true, nil)
+		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "mysql", gomock.Any()).Return(connector, nil)
+		connector.EXPECT().Connect(gomock.Any()).Return(nil)
+		connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+				require.NotNil(t, params.FilterCondCfg)
+				return &interfaces.QueryResult{Total: 2, Entries: []map[string]any{{"id": int64(9)}, {"id": int64(10)}}}, nil
+			})
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil)
+		progressCalls := 0
+		bts.EXPECT().InternalSetProgress(gomock.Any(), nil, task.ID, gomock.Any()).Times(2).DoAndReturn(
+			func(_ context.Context, _ *sql.Tx, _ string, progress interfaces.BuildTaskProgress) (bool, error) {
+				progressCalls++
+				if progressCalls == 1 {
+					require.NotNil(t, progress.TotalCount)
+					assert.EqualValues(t, 10, *progress.TotalCount)
+				} else {
+					require.NotNil(t, progress.SyncedCount)
+					assert.EqualValues(t, 10, *progress.SyncedCount)
+				}
+				return true, nil
+			})
+		lim.EXPECT().IndexDocuments(gomock.Any(), "current-index", gomock.Any()).Return(nil, nil)
+		newMark := `{"mode":"batch","cursor":[{"key":"id","value":10}]}`
+		mockDB.ExpectBegin()
+		txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
+		rs.EXPECT().InternalGetByID(gomock.Any(), txMatcher, resource.ID).Return(resource, nil)
+		rs.EXPECT().InternalUpdateLocalIndexState(gomock.Any(), txMatcher, resource.ID,
+			interfaces.ResourceLocalIndexStatusAvailable, "current-index", newMark).Return(true, nil)
+		bts.EXPECT().InternalMarkCompleted(gomock.Any(), txMatcher, task.ID).Return(true, nil)
+		mockDB.ExpectCommit()
+
+		err = bbw.executeBuild(context.Background(), &interfaces.Catalog{ConnectorType: "mysql"}, resource, task)
+
+		require.NoError(t, err)
 		require.NoError(t, mockDB.ExpectationsWereMet())
 	})
 
