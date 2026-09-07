@@ -115,6 +115,7 @@ func (cbs *capabilityBindingService) backfillFunctions(ctx context.Context,
 			}
 			binding.Name = tool.Name
 			binding.OwnerName = tool.BoxName
+			binding.MetadataType = tool.BoxMetadataType
 			if withDetail {
 				binding.Description = tool.Description
 			}

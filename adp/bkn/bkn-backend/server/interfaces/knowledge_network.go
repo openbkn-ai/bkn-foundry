@@ -220,8 +220,15 @@ type Statistics struct {
 	// Skills and functions are capability bindings, counted as rows of t_kn_capability_binding.
 	// The count carries no dangling judgement: that needs the execution factory and does not
 	// belong on a counting path.
-	SkillsTotal    int `json:"skills_total"`
+	SkillsTotal int `json:"skills_total"`
+	// FunctionsTotal counts bindings to function-kind tool boxes, APIsTotal those to openapi
+	// ones. Both are function bindings in the table; the split is the box's kind, which is what
+	// the workspace shows as two separate lists.
+	//
+	// This narrows what functions_total meant before: it used to be every tool binding. A reader
+	// wanting that number adds the two.
 	FunctionsTotal int `json:"functions_total"`
+	APIsTotal      int `json:"apis_total"`
 	// MCPToolsTotal counts bound MCP Server tools. They are their own type rather than functions:
 	// an MCP tool is addressed by (mcp_id, tool_name) and runs through the MCP proxy, so Studio's
 	// split of functions_total into 函数/API by metadata_type does not apply to them.

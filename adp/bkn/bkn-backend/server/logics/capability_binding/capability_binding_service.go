@@ -253,6 +253,13 @@ func (cbs *capabilityBindingService) ListCapabilities(ctx context.Context,
 			berrors.BknBackend_CapabilityBinding_InvalidCapabilityType).
 			WithErrorDetails(fmt.Sprintf("unsupported capability_type: %s", query.CapabilityType))
 	}
+	if metadataType := strings.TrimSpace(query.MetadataType); metadataType != "" &&
+		metadataType != interfaces.EXEC_BOX_METADATA_TYPE_OPENAPI &&
+		metadataType != interfaces.EXEC_BOX_METADATA_TYPE_FUNCTION {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			berrors.BknBackend_CapabilityBinding_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("unsupported metadata_type: %s", metadataType))
+	}
 
 	entries, err := cbs.cba.ListBindings(ctx, query)
 	if err != nil {
@@ -270,6 +277,20 @@ func (cbs *capabilityBindingService) ListCapabilities(ctx context.Context,
 	}
 
 	backfilled := cbs.backfillMetadata(ctx, query, entries, query.WithDetail)
+
+	// The filter is applied after backfill because the value it filters on lives in the execution
+	// factory, not in the row. TotalCount follows the filtered set: reporting the unfiltered
+	// total next to a filtered page would read as truncation.
+	if metadataType := strings.TrimSpace(query.MetadataType); metadataType != "" {
+		kept := make([]*interfaces.CapabilityBinding, 0, len(entries))
+		for _, entry := range entries {
+			if entry != nil && entry.MetadataType == metadataType {
+				kept = append(kept, entry)
+			}
+		}
+		entries = kept
+		total = len(kept)
+	}
 
 	span.SetStatus(codes.Ok, "")
 	return &interfaces.CapabilityBindingsList{
@@ -292,8 +313,56 @@ func (cbs *capabilityBindingService) GetCapabilityTotalsByType(ctx context.Conte
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_CapabilityBinding_InternalError_GetBindingsTotalFailed).WithErrorDetails(err.Error())
 	}
+
+	// Split the function count by the kind of box each binding belongs to. The kind is not in
+	// these rows — it belongs to the box, in the execution factory — so this costs one call per
+	// box that has bindings, not one per binding, and only on the statistics path.
+	if totals[interfaces.CAPABILITY_TYPE_FUNCTION] > 0 {
+		apis, splitErr := cbs.countAPIBindings(ctx, knID, branch)
+		if splitErr != nil {
+			// A box that cannot be read leaves its bindings counted as functions, which is the
+			// same fallback the count had before this split existed. Failing the whole
+			// statistics block over a decoration would be worse than a count that is briefly
+			// weighted to one side.
+			logger.Warnf("api/function split unavailable for knowledge network[%s]: %v", knID, splitErr)
+		} else {
+			totals[interfaces.CAPABILITY_TYPE_API] = apis
+			totals[interfaces.CAPABILITY_TYPE_FUNCTION] -= apis
+		}
+	}
+
 	span.SetStatus(codes.Ok, "")
 	return totals, nil
+}
+
+// countAPIBindings counts the function bindings whose tool box is an openapi box.
+//
+// A box that cannot be read counts as a function rather than failing: that is the pre-split
+// behaviour, and the dangling marker on the listing is what makes a missing box visible.
+func (cbs *capabilityBindingService) countAPIBindings(ctx context.Context, knID,
+	branch string) (int, error) {
+	perBox, err := cbs.cba.GetFunctionTotalsByOwner(ctx, knID, branch)
+	if err != nil {
+		return 0, err
+	}
+
+	apis := 0
+	for boxID, count := range perBox {
+		if boxID == "" {
+			continue
+		}
+		tools, err := cbs.aoa.ListBoxTools(ctx, boxID)
+		if err != nil {
+			return 0, err
+		}
+		if len(tools) == 0 {
+			continue
+		}
+		if tools[0].BoxMetadataType == interfaces.EXEC_BOX_METADATA_TYPE_OPENAPI {
+			apis += count
+		}
+	}
+	return apis, nil
 }
 
 func (cbs *capabilityBindingService) DeleteCapabilitiesByKnID(ctx context.Context, tx *sql.Tx, knID,

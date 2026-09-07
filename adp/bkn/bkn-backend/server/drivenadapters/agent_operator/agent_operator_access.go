@@ -260,11 +260,12 @@ func (aoa *agentOperatorAccess) ListBoxTools(ctx context.Context, boxID string) 
 	}
 
 	var payload struct {
-		BoxID      string `json:"box_id"`
-		BoxName    string `json:"box_name"`
-		Status     string `json:"status"`
-		IsInternal bool   `json:"is_internal"`
-		Tools      []struct {
+		BoxID        string `json:"box_id"`
+		BoxName      string `json:"box_name"`
+		MetadataType string `json:"metadata_type"`
+		Status       string `json:"status"`
+		IsInternal   bool   `json:"is_internal"`
+		Tools        []struct {
 			ToolID      string `json:"tool_id"`
 			Name        string `json:"name"`
 			Description string `json:"description"`
@@ -279,14 +280,15 @@ func (aoa *agentOperatorAccess) ListBoxTools(ctx context.Context, boxID string) 
 	tools := make([]*interfaces.ToolBrief, 0, len(payload.Tools))
 	for _, tool := range payload.Tools {
 		tools = append(tools, &interfaces.ToolBrief{
-			BoxID:       payload.BoxID,
-			BoxName:     payload.BoxName,
-			BoxStatus:   payload.Status,
-			BoxInternal: payload.IsInternal,
-			ToolID:      tool.ToolID,
-			Name:        tool.Name,
-			Description: tool.Description,
-			Status:      tool.Status,
+			BoxID:           payload.BoxID,
+			BoxName:         payload.BoxName,
+			BoxMetadataType: payload.MetadataType,
+			BoxStatus:       payload.Status,
+			BoxInternal:     payload.IsInternal,
+			ToolID:          tool.ToolID,
+			Name:            tool.Name,
+			Description:     tool.Description,
+			Status:          tool.Status,
 		})
 	}
 	// make() above keeps this non-nil even for a box with no tools, which matters: nil is

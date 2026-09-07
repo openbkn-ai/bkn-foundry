@@ -171,6 +171,16 @@ paths:
           schema:
             type: string
           in: query
+        - name: metadata_type
+          description: >-
+            Narrow function bindings to one kind of tool box: `openapi` or `function`. The value
+            belongs to the box rather than the binding, so the filter is applied after the
+            metadata is backfilled, and `total_count` follows the filtered set. Any other value
+            is a 400.
+          schema:
+            type: string
+            enum: [openapi, function]
+          in: query
         - name: with_detail
           description: >-
             Also fill description and status. A skill's detail is read one skill at a time, so

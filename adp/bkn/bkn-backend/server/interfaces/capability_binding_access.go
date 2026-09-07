@@ -26,5 +26,11 @@ type CapabilityBindingAccess interface {
 	// GetBindingsTotalByType counts each capability type in one query, for the knowledge
 	// network statistics block.
 	GetBindingsTotalByType(ctx context.Context, knID, branch string) (map[string]int, error)
+	// GetFunctionTotalsByOwner counts function bindings per tool box, in one query.
+	//
+	// Splitting the function count into functions and APIs needs the box's metadata_type, which
+	// lives in the execution factory and not in these rows. Grouping by box here keeps that
+	// lookup to one call per box rather than one per binding.
+	GetFunctionTotalsByOwner(ctx context.Context, knID, branch string) (map[string]int, error)
 	DeleteBindingsByKnID(ctx context.Context, tx *sql.Tx, knID, branch string) (int64, error)
 }

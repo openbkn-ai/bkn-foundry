@@ -26,6 +26,10 @@ const (
 	// same line with its type=mcp arm. Folding the two together would leave execute_tool unable
 	// to tell which transport a binding meant.
 	CAPABILITY_TYPE_MCP_TOOL = "mcp_tool"
+	// CAPABILITY_TYPE_API is not a stored type. It is a counting bucket: function bindings whose
+	// tool box is an openapi box. The rows still say "function"; only the statistics separate
+	// them, because that is the split Studio shows.
+	CAPABILITY_TYPE_API = "api"
 )
 
 // CapabilityBinding records that a Skill or a ToolBox tool belongs to a knowledge network.
@@ -52,7 +56,12 @@ type CapabilityBinding struct {
 	Comment    string `json:"comment,omitempty" mapstructure:"comment"`
 
 	// Metadata backfilled from the execution factory on demand; never persisted here.
-	Name        string `json:"name,omitempty" mapstructure:"-"`
+	Name string `json:"name,omitempty" mapstructure:"-"`
+	// MetadataType is the kind of the owning tool box, "openapi" or "function", and is what
+	// splits function bindings into the API and function lists. It is empty for a skill, for an
+	// mcp_tool, and whenever the execution factory could not be reached — in the last case
+	// metadata_available says so, and a reader must not take the blank for "function".
+	MetadataType string `json:"metadata_type,omitempty" mapstructure:"-"`
 	Description string `json:"description,omitempty" mapstructure:"-"`
 	Status      string `json:"status,omitempty" mapstructure:"-"`
 	OwnerName   string `json:"owner_name,omitempty" mapstructure:"-"`
@@ -83,6 +92,10 @@ type CapabilityBindingsQueryParams struct {
 	CapabilityType string
 	OwnerID        string
 	CapabilityIDs  []string
+	// MetadataType narrows function bindings to one kind of tool box. It is applied after the
+	// metadata is backfilled, because the value lives in the execution factory rather than in
+	// the binding row.
+	MetadataType string
 	// WithDetail also fills description and status. Names alone cost one call per tool box and
 	// one for all skills; the detail of a skill has to be read one skill at a time, so it is
 	// asked for rather than always paid.
