@@ -36,6 +36,7 @@ type resourceRef struct {
 // array-vs-map responses, policy-delete double form, public/private split).
 func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 	g := r.Group("/api/safe/v1/authz")
+	registerPropertyLevels(g, e, db)
 
 	// POST /check — single decision. { accessor_id, resource{type,id}, operation } -> { allowed }
 	g.POST("/check", func(c *gin.Context) {
