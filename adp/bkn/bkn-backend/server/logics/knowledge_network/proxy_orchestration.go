@@ -673,66 +673,6 @@ func (kns *knowledgeNetworkService) FinalizeKNProxyDeletion(ctx context.Context,
 	return kns.finalizeProxyDelete(ctx, plan)
 }
 
-// RollbackKNProxy removes all managed grant sources and archives the proxy
-// while preserving the knowledge network and its caller authorization. It is
-// intentionally forward-compatible: the mapping row remains available to a
-// later rollout, which can restore and resynchronize the same managed account.
-func (kns *knowledgeNetworkService) RollbackKNProxy(ctx context.Context, knID string) error {
-	if !kns.proxyOrchestrationEnabled(interfaces.MAIN_BRANCH) {
-		return proxyHTTPError(ctx, http.StatusNotFound, "knowledge network proxy mapping not found")
-	}
-	if err := kns.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   knID,
-	}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}); err != nil {
-		return err
-	}
-	grantorID := accountIDFromContext(ctx)
-	if grantorID == "" {
-		return proxyHTTPError(ctx, http.StatusForbidden, "proxy rollback grantor identity is unavailable")
-	}
-	mapping, err := kns.kpa.Get(ctx, knID)
-	if err != nil {
-		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "load knowledge network proxy rollback state")
-	}
-	if mapping == nil {
-		return nil
-	}
-	lockOwner := uuid.NewString()
-	if err := kns.acquireProxyLock(ctx, knID, lockOwner); err != nil {
-		return err
-	}
-	plan := &proxyPublishPlan{mapping: mapping, delegatorID: grantorID, lockOwner: lockOwner}
-	defer kns.releaseProxyLock(context.WithoutCancel(ctx), plan)
-
-	account, err := kns.mpa.Disable(ctx, mapping.ProxyAccountID)
-	if err != nil {
-		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "disable knowledge network proxy")
-	}
-	accountAlreadyArchived := account.LifecycleStatus == interfaces.KNProxyLifecycleArchived
-	mappingAlreadyArchived := mapping.LifecycleStatus == interfaces.KNProxyLifecycleArchived
-	if !accountAlreadyArchived && !mappingAlreadyArchived {
-		if err := kns.kpa.SetLifecycle(ctx, knID, interfaces.KNProxyLifecycleDisabling,
-			time.Now().UnixMilli()); err != nil {
-			return proxyHTTPError(ctx, http.StatusServiceUnavailable, "record disabled knowledge network proxy")
-		}
-	}
-	if _, err := kns.mpa.SyncGrants(ctx, mapping.ProxyAccountID, plan.delegatorID,
-		[]interfaces.ProxyGrantSourceSpec{}); err != nil {
-		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "clear knowledge network proxy grants")
-	}
-	if !accountAlreadyArchived {
-		if _, err := kns.mpa.Archive(ctx, mapping.ProxyAccountID); err != nil {
-			return proxyHTTPError(ctx, http.StatusServiceUnavailable, "archive knowledge network proxy")
-		}
-	}
-	if err := kns.kpa.SetLifecycle(ctx, knID, interfaces.KNProxyLifecycleArchived,
-		time.Now().UnixMilli()); err != nil {
-		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "record archived knowledge network proxy")
-	}
-	return nil
-}
-
 // RetryKNProxySync re-reads the latest main model and never reuses a stale task's
 // remembered additions or removals.
 func (kns *knowledgeNetworkService) RetryKNProxySync(ctx context.Context, knID string) (*interfaces.KNProxyAccount, error) {

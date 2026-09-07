@@ -201,10 +201,8 @@ func trustedActionProxyContext(execution *interfaces.ActionExecution,
 	if err != nil {
 		return nil, err
 	}
-	if execution.Executor.ID == "" || execution.Executor.Type == "" {
-		return nil, fmt.Errorf("execution caller snapshot is incomplete")
-	}
-	if execution.Proxy == nil || execution.Proxy.ID == "" || execution.Proxy.Type != interfaces.ProxyAccountTypeApp ||
+	if execution.Executor.ID == "" || execution.Executor.Type == "" ||
+		execution.Proxy == nil || execution.Proxy.ID == "" || execution.Proxy.Type != interfaces.ProxyAccountTypeApp ||
 		execution.ProxyVersion <= 0 || execution.ProxyModelVersion == "" ||
 		len(execution.ProxyPermissionSnapshot) != 1 || execution.ProxyPermissionSnapshot[0] != requirement {
 		return nil, fmt.Errorf("execution dual-principal snapshot is incomplete")

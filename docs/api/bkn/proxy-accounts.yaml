@@ -165,21 +165,6 @@ paths:
         '204': { description: Deletion lifecycle finalized. }
         '403': { description: The caller cannot delete this knowledge network. }
         '503': { description: Cleanup remains retryable. }
-  /api/bkn-backend/in/v1/knowledge-networks/{kn_id}/proxy-account/rollback:
-    post:
-      summary: Archive a proxy created by the versioned 0.1.5 migration
-      security: []
-      description: |
-        Clears the complete managed grant-source set, disables and archives the
-        managed account, and retains both the KN caller authorization and the
-        forward-compatible mapping row. Repeated calls are idempotent.
-      parameters:
-        - $ref: '#/components/parameters/KnowledgeNetworkID'
-      responses:
-        '204': { description: The proxy is absent or archived with no active grant sources. }
-        '403': { description: The caller cannot authorize this knowledge network. }
-        '409': { description: Another publication owns the per-network lease. }
-        '503': { description: Rollback remains retryable. }
   /api/bkn-backend/in/v1/proxy-accounts/reconcile:
     post:
       summary: Detect mapping defects and reconcile bkn-safe authorization ledger drift

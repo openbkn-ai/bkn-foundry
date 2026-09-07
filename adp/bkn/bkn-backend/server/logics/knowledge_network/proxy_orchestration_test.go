@@ -1476,68 +1476,6 @@ func TestFinalizeKNProxyDeletionAuthorizesArchivedCleanup(t *testing.T) {
 	}
 }
 
-func TestRollbackKNProxyArchivesWithoutDeletingCallerAuthorization(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	events := []string{}
-	permissionService := bmock.NewMockPermissionService(ctrl)
-	permissionService.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   "kn-1",
-	}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}).DoAndReturn(
-		func(context.Context, interfaces.PermissionResource, []string) error {
-			events = append(events, "permission:check")
-			return nil
-		})
-	kpa := &proxyAccessStub{
-		mapping: &interfaces.KNProxyAccount{
-			KNID: "kn-1", ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleActive,
-		},
-		events: &events,
-	}
-	mpa := &managedProxyAccessStub{events: &events}
-	service := &knowledgeNetworkService{kpa: kpa, mpa: mpa, ps: permissionService}
-	ctx := context.WithValue(t.Context(), interfaces.ACCOUNT_INFO_KEY,
-		interfaces.AccountInfo{ID: "grantor-1", Type: "user"})
-
-	if err := service.RollbackKNProxy(ctx, "kn-1"); err != nil {
-		t.Fatal(err)
-	}
-	want := []string{
-		"permission:check", "proxy:disable", "mapping:disabling", "grants:sync", "proxy:archive", "mapping:archived",
-	}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("rollback events = %#v, want %#v", events, want)
-	}
-	if len(mpa.synced) != 0 {
-		t.Fatalf("rollback desired grants = %#v, want empty", mpa.synced)
-	}
-	if !kpa.lockReleased {
-		t.Fatal("rollback did not release the proxy lock")
-	}
-}
-
-func TestRollbackKNProxyIsIdempotentForArchivedMapping(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	permissionService := bmock.NewMockPermissionService(ctrl)
-	permissionService.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   "kn-1",
-	}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}).Return(nil)
-	service := &knowledgeNetworkService{
-		kpa: &proxyAccessStub{mapping: &interfaces.KNProxyAccount{
-			KNID: "kn-1", ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleArchived,
-		}},
-		mpa: &managedProxyAccessStub{},
-		ps:  permissionService,
-	}
-	ctx := context.WithValue(t.Context(), interfaces.ACCOUNT_INFO_KEY,
-		interfaces.AccountInfo{ID: "grantor-1", Type: "user"})
-
-	if err := service.RollbackKNProxy(ctx, "kn-1"); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestPrepareProxyPublishDeniedPreflightCompensatesNewProxy(t *testing.T) {
 	kpa := &proxyAccessStub{}
 	mpa := &managedProxyAccessStub{allowed: false}

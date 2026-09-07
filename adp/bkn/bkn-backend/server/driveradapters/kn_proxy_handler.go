@@ -140,17 +140,6 @@ func (r *restHandler) FinalizeKNProxyDeletion(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// RollbackKNProxy archives a managed proxy created by the versioned migration
-// without deleting the knowledge network or restoring any revoked permission.
-func (r *restHandler) RollbackKNProxy(c *gin.Context) {
-	ctx, _ := proxyRequestContext(c)
-	if err := r.kns.RollbackKNProxy(ctx, c.Param("kn_id")); err != nil {
-		rest.ReplyError(c, err.(*rest.HTTPError))
-		return
-	}
-	c.Status(http.StatusNoContent)
-}
-
 func (r *restHandler) ReconcileKNProxies(c *gin.Context) {
 	ctx, requestedBy := proxyRequestContext(c)
 	r.reconcileKNProxies(c, ctx, requestedBy, false)

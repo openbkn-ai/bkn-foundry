@@ -30,7 +30,6 @@ usage() {
 Usage:
   $0 stop [options]
   $0 start [options]
-  $0 status [--expected-context CONTEXT] [options]
 
 Control the four application Deployments used by the OpenBKN 0.1.4 to 0.1.5
 knowledge-network data migration. Database and other infrastructure workloads
@@ -47,7 +46,7 @@ EOF
 
 action=${1:-}
 case "$action" in
-  stop|start|status)
+  stop|start)
     shift
     ;;
   -h|--help)
@@ -293,22 +292,7 @@ start_workloads() {
   echo "Migration application workloads are restored."
 }
 
-show_status() {
-  local workload status
-  printf 'context=%s namespace=%s\n' "$expected_context" "$namespace"
-  for workload in "${WORKLOADS[@]}"; do
-    if ! kubectl_ns get deployment "$workload" >/dev/null 2>&1; then
-      printf '%s missing\n' "$workload"
-      continue
-    fi
-    status=$(kubectl_ns get deployment "$workload" -o \
-      jsonpath='{.spec.replicas}{" "}{.status.readyReplicas}{" "}{.status.availableReplicas}')
-    printf '%s desired-ready-available=%s\n' "$workload" "$status"
-  done
-}
-
 case "$action" in
   stop) stop_workloads ;;
   start) start_workloads ;;
-  status) show_status ;;
 esac

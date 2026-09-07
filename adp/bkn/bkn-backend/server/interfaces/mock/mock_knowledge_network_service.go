@@ -132,20 +132,6 @@ func (mr *MockKNServiceMockRecorder) FinalizeKNProxyDeletion(ctx, knID any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FinalizeKNProxyDeletion", reflect.TypeOf((*MockKNService)(nil).FinalizeKNProxyDeletion), ctx, knID)
 }
 
-// RollbackKNProxy mocks base method.
-func (m *MockKNService) RollbackKNProxy(ctx context.Context, knID string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RollbackKNProxy", ctx, knID)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// RollbackKNProxy indicates an expected call of RollbackKNProxy.
-func (mr *MockKNServiceMockRecorder) RollbackKNProxy(ctx, knID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RollbackKNProxy", reflect.TypeOf((*MockKNService)(nil).RollbackKNProxy), ctx, knID)
-}
-
 // GetKNByID mocks base method.
 func (m *MockKNService) GetKNByID(ctx context.Context, knID, branch, mode string) (*interfaces.KN, error) {
 	m.ctrl.T.Helper()
