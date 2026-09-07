@@ -942,7 +942,6 @@ func (ats *actionTypeService) InsertDatasetData(ctx context.Context, actionTypes
 		}
 	}
 
-	documents := []map[string]any{}
 	for _, actionType := range actionTypes {
 		docid := interfaces.GenerateConceptDocuemtnID(actionType.KNID, interfaces.MODULE_TYPE_ACTION_TYPE,
 			actionType.ATID, actionType.Branch)
@@ -987,11 +986,7 @@ func (ats *actionTypeService) InsertDatasetData(ctx context.Context, actionTypes
 
 		// Set document ID
 		doc["_id"] = docid
-		documents = append(documents, doc)
-	}
-
-	for _, document := range documents {
-		if err := ats.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, document["_id"].(string), document); err != nil {
+		if err := ats.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, docid, doc); err != nil {
 			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
 			span.SetStatus(codes.Error, "行动类概念索引写入失败")
 			return err

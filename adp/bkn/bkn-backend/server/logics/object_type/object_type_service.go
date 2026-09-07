@@ -1312,7 +1312,6 @@ func (ots *objectTypeService) InsertDatasetData(ctx context.Context, objectTypes
 		}
 	}
 
-	documents := []map[string]any{}
 	for _, objectType := range objectTypes {
 		docid := interfaces.GenerateConceptDocuemtnID(objectType.KNID, interfaces.MODULE_TYPE_OBJECT_TYPE,
 			objectType.OTID, objectType.Branch)
@@ -1352,11 +1351,7 @@ func (ots *objectTypeService) InsertDatasetData(ctx context.Context, objectTypes
 
 		// Set document ID
 		doc["_id"] = docid
-		documents = append(documents, doc)
-	}
-
-	for _, document := range documents {
-		if err := ots.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, document["_id"].(string), document); err != nil {
+		if err := ots.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, docid, doc); err != nil {
 			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
 			span.SetStatus(codes.Error, "对象类概念索引写入失败")
 			return err

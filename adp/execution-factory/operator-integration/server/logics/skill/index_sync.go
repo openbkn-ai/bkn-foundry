@@ -437,7 +437,6 @@ func (s *skillIndexSync) restoreSkillDatasetFromSource(ctx context.Context) erro
 		if len(skills) == 0 {
 			return nil
 		}
-		documents := make([]map[string]any, 0, len(skills))
 		for _, skill := range skills {
 			if skill == nil {
 				return fmt.Errorf("skill index restore received nil skill")
@@ -451,15 +450,12 @@ func (s *skillIndexSync) restoreSkillDatasetFromSource(ctx context.Context) erro
 				if err != nil {
 					return fmt.Errorf("build skill %s document for index restore: %w", skill.SkillID, err)
 				}
-				documents = append(documents, document)
+				if err := s.vegaClient.WriteDatasetDocument(ctx, s.getDatasetID(), skill.SkillID, document); err != nil {
+					return fmt.Errorf("write skill document for index restore: %w", err)
+				}
 			}
 			cursorUpdateTime = skill.UpdateTime
 			cursorSkillID = skill.SkillID
-		}
-		for _, document := range documents {
-			if err := s.vegaClient.WriteDatasetDocument(ctx, s.getDatasetID(), document["_id"].(string), document); err != nil {
-				return fmt.Errorf("write skill document for index restore: %w", err)
-			}
 		}
 	}
 }

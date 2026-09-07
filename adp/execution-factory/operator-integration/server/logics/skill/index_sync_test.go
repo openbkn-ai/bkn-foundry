@@ -291,7 +291,8 @@ func TestSkillIndexSync(t *testing.T) {
 				return &interfaces.EmbeddingResp{Data: []interfaces.EmbeddingData{{Embedding: []float32{0.1}}}}, nil
 			})
 			writtenIDs := make([]string, 0, 2)
-			mockVegaClient.EXPECT().WriteDatasetDocument(gomock.Any(), executionFactorySkillDataset, gomock.Any(), gomock.Any()).Times(2).DoAndReturn(func(_ context.Context, _ string, _ string, document map[string]any) error {
+			mockVegaClient.EXPECT().WriteDatasetDocument(gomock.Any(), executionFactorySkillDataset, gomock.Any(), gomock.Any()).Times(2).DoAndReturn(func(_ context.Context, _ string, docID string, document map[string]any) error {
+				So(docID, ShouldEqual, document["skill_id"])
 				writtenIDs = append(writtenIDs, document["skill_id"].(string))
 				return nil
 			})

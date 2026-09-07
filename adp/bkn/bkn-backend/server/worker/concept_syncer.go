@@ -589,7 +589,6 @@ func (cs *ConceptSyncer) insertDatasetDataForObjectTypes(ctx context.Context, ob
 		}
 	}
 
-	documents := make([]map[string]any, 0, len(objectTypes))
 	for _, objectType := range objectTypes {
 		docid := interfaces.GenerateConceptDocuemtnID(objectType.KNID, interfaces.MODULE_TYPE_OBJECT_TYPE,
 			objectType.OTID, objectType.Branch)
@@ -626,11 +625,7 @@ func (cs *ConceptSyncer) insertDatasetDataForObjectTypes(ctx context.Context, ob
 
 		// Set document ID
 		doc["_id"] = docid
-		documents = append(documents, doc)
-	}
-
-	for _, document := range documents {
-		if err := cs.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, document["_id"].(string), document); err != nil {
+		if err := cs.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, docid, doc); err != nil {
 			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
 			return err
 		}
@@ -675,7 +670,6 @@ func (cs *ConceptSyncer) insertDatasetDataForActionTypes(ctx context.Context, ac
 		}
 	}
 
-	documents := make([]map[string]any, 0, len(actionTypes))
 	for _, actionType := range actionTypes {
 		docid := interfaces.GenerateConceptDocuemtnID(actionType.KNID, interfaces.MODULE_TYPE_ACTION_TYPE,
 			actionType.ATID, actionType.Branch)
@@ -716,11 +710,7 @@ func (cs *ConceptSyncer) insertDatasetDataForActionTypes(ctx context.Context, ac
 
 		// Set document ID
 		doc["_id"] = docid
-		documents = append(documents, doc)
-	}
-
-	for _, document := range documents {
-		if err := cs.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, document["_id"].(string), document); err != nil {
+		if err := cs.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, docid, doc); err != nil {
 			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
 			return err
 		}
@@ -765,7 +755,6 @@ func (cs *ConceptSyncer) insertDatasetDataForRelationTypes(ctx context.Context, 
 		}
 	}
 
-	documents := make([]map[string]any, 0, len(relationTypes))
 	for _, relationType := range relationTypes {
 		docid := interfaces.GenerateConceptDocuemtnID(relationType.KNID, interfaces.MODULE_TYPE_RELATION_TYPE,
 			relationType.RTID, relationType.Branch)
@@ -786,11 +775,7 @@ func (cs *ConceptSyncer) insertDatasetDataForRelationTypes(ctx context.Context, 
 
 		// Set document ID
 		doc["_id"] = docid
-		documents = append(documents, doc)
-	}
-
-	for _, document := range documents {
-		if err := cs.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, document["_id"].(string), document); err != nil {
+		if err := cs.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, docid, doc); err != nil {
 			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
 			return err
 		}
@@ -835,7 +820,6 @@ func (cs *ConceptSyncer) insertDatasetDataForConceptGroups(ctx context.Context, 
 		}
 	}
 
-	documents := make([]map[string]any, 0, len(conceptGroups))
 	for _, conceptGroup := range conceptGroups {
 		docid := interfaces.GenerateConceptDocuemtnID(conceptGroup.KNID, interfaces.MODULE_TYPE_CONCEPT_GROUP,
 			conceptGroup.CGID, conceptGroup.Branch)
@@ -856,11 +840,7 @@ func (cs *ConceptSyncer) insertDatasetDataForConceptGroups(ctx context.Context, 
 
 		// Set document ID
 		doc["_id"] = docid
-		documents = append(documents, doc)
-	}
-
-	for _, document := range documents {
-		if err := cs.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, document["_id"].(string), document); err != nil {
+		if err := cs.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, docid, doc); err != nil {
 			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
 			return err
 		}
@@ -905,7 +885,6 @@ func (cs *ConceptSyncer) insertDatasetDataForRiskTypes(ctx context.Context, risk
 		}
 	}
 
-	documents := make([]map[string]any, 0, len(riskTypes))
 	for _, riskType := range riskTypes {
 		docid := interfaces.GenerateConceptDocuemtnID(riskType.KNID, interfaces.MODULE_TYPE_RISK_TYPE,
 			riskType.RTID, riskType.Branch)
@@ -926,11 +905,7 @@ func (cs *ConceptSyncer) insertDatasetDataForRiskTypes(ctx context.Context, risk
 
 		// Set document ID
 		doc["_id"] = docid
-		documents = append(documents, doc)
-	}
-
-	for _, document := range documents {
-		if err := cs.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, document["_id"].(string), document); err != nil {
+		if err := cs.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, docid, doc); err != nil {
 			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
 			return err
 		}
@@ -973,7 +948,6 @@ func (cs *ConceptSyncer) insertDatasetDataForMetrics(ctx context.Context, metric
 		}
 	}
 
-	documents := make([]map[string]any, 0, len(metrics))
 	for _, def := range metrics {
 		docid := interfaces.GenerateConceptDocuemtnID(def.KnID, interfaces.MODULE_TYPE_METRIC, def.ID, def.Branch)
 		def.ModuleType = interfaces.MODULE_TYPE_METRIC
@@ -989,11 +963,7 @@ func (cs *ConceptSyncer) insertDatasetDataForMetrics(ctx context.Context, metric
 			return err
 		}
 		doc["_id"] = docid
-		documents = append(documents, doc)
-	}
-
-	for _, document := range documents {
-		if err := cs.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, document["_id"].(string), document); err != nil {
+		if err := cs.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, docid, doc); err != nil {
 			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
 			return err
 		}

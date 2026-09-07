@@ -707,7 +707,8 @@ func TestConceptSyncer_insertDatasetDataForObjectTypes(t *testing.T) {
 				},
 			}
 
-			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
+			expectedDocID := interfaces.GenerateConceptDocuemtnID("kn1", interfaces.MODULE_TYPE_OBJECT_TYPE, "ot1", interfaces.MAIN_BRANCH)
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, expectedDocID, gomock.Any()).Return(nil)
 
 			err := cs.insertDatasetDataForObjectTypes(ctx, objectTypes)
 			So(err, ShouldBeNil)
