@@ -71,6 +71,16 @@ func TestValidateRejectsInvalidRules(t *testing.T) {
 	}
 }
 
+func TestValidateRequiresPropertyTypeForMaskRule(t *testing.T) {
+	err := Validate("", &Rule{Kind: KindFixed, Replacement: "*"})
+	if err == nil {
+		t.Fatal("Validate() error = nil, want missing property type error")
+	}
+	if got, want := err.Error(), "property type is required when mask_rule is set"; got != want {
+		t.Fatalf("Validate() error = %q, want %q", got, want)
+	}
+}
+
 func TestRuleUnmarshalJSONRejectsUnknownFields(t *testing.T) {
 	inputs := []string{
 		`{"kind":"fixed","replacement":"*","keep_strat":1}`,

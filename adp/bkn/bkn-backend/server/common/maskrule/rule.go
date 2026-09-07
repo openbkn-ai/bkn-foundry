@@ -7,6 +7,7 @@ package maskrule
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"unicode"
@@ -126,6 +127,9 @@ var dateGranularities = map[string]map[string]bool{
 func Validate(propertyType string, rule *Rule) error {
 	if rule == nil {
 		return nil
+	}
+	if propertyType == "" {
+		return errors.New("property type is required when mask_rule is set")
 	}
 
 	switch rule.Kind {
