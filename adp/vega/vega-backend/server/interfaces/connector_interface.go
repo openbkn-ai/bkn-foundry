@@ -110,7 +110,7 @@ type IndexConnector interface {
 	ExecuteRawQuery(ctx context.Context, indexName string, query map[string]any) (*RawQueryResponse, error)
 
 	// for index
-	CreateIndex(ctx context.Context, indexName string, schemaDefinition []*Property) error
+	CreateIndex(ctx context.Context, indexName string, schemaDefinition []*Property, mappingMeta map[string]string) error
 	UpdateIndex(ctx context.Context, indexName string, schemaDefinition []*Property) error
 	DeleteIndex(ctx context.Context, indexName string) error
 	CheckIndexExist(ctx context.Context, indexName string) (bool, error)

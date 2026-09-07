@@ -212,7 +212,7 @@ func (c *OpenSearchConnector) TestConnection(ctx context.Context) error {
 }
 
 // Create index
-func (c *OpenSearchConnector) CreateIndex(ctx context.Context, indexName string, schemaDefinition []*interfaces.Property) error {
+func (c *OpenSearchConnector) CreateIndex(ctx context.Context, indexName string, schemaDefinition []*interfaces.Property, mappingMeta map[string]string) error {
 	if err := c.Connect(ctx); err != nil {
 		return err
 	}
@@ -234,6 +234,9 @@ func (c *OpenSearchConnector) CreateIndex(ctx context.Context, indexName string,
 
 	mappings := map[string]any{
 		"properties": properties,
+	}
+	if len(mappingMeta) > 0 {
+		mappings["_meta"] = mappingMeta
 	}
 
 	mapping := map[string]any{

@@ -30,14 +30,14 @@ func TestDatasetServiceIndexLifecycle(t *testing.T) {
 
 	t.Run("create", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
-		lim.EXPECT().CreateIndex(gomock.Any(), "dataset-1", resource.SchemaDefinition).Return(nil)
+		lim.EXPECT().CreateIndex(gomock.Any(), "dataset-1", resource.SchemaDefinition, nil).Return(nil)
 
 		require.NoError(t, ds.Create(ctx, resource))
 	})
 
 	t.Run("create wraps index error", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
-		lim.EXPECT().CreateIndex(gomock.Any(), "dataset-1", resource.SchemaDefinition).Return(errors.New("create failed"))
+		lim.EXPECT().CreateIndex(gomock.Any(), "dataset-1", resource.SchemaDefinition, nil).Return(errors.New("create failed"))
 
 		err := ds.Create(ctx, resource)
 

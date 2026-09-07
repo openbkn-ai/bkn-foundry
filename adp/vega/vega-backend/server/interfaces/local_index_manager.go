@@ -31,7 +31,7 @@ func (e *IndexCapabilitiesUnavailableError) Unwrap() error { return e.Cause }
 type LocalIndexManager interface {
 	ListIndexes(ctx context.Context) ([]*IndexMeta, error)
 	GetIndexMeta(ctx context.Context, index *IndexMeta) error
-	CreateIndex(ctx context.Context, indexName string, schema []*Property) error
+	CreateIndex(ctx context.Context, indexName string, schema []*Property, mappingMeta map[string]string) error
 	UpdateIndex(ctx context.Context, indexName string, schema []*Property) error
 	DeleteIndex(ctx context.Context, indexName string) error
 	CheckIndexExist(ctx context.Context, indexName string) (bool, error)

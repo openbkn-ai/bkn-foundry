@@ -181,7 +181,10 @@ func createManagedLocalIndex(ctx context.Context, lim interfaces.LocalIndexManag
 	if exist {
 		return nil
 	}
-	return lim.CreateIndex(ctx, indexName, schema)
+	return lim.CreateIndex(ctx, indexName, schema, map[string]string{
+		"resource_id":   resource.ID,
+		"build_task_id": buildTask.ID,
+	})
 }
 
 func recreateManagedLocalIndex(ctx context.Context, lim interfaces.LocalIndexManager, indexName string,
@@ -199,7 +202,10 @@ func recreateManagedLocalIndex(ctx context.Context, lim interfaces.LocalIndexMan
 			return fmt.Errorf("delete local index before full rebuild: %w", err)
 		}
 	}
-	return lim.CreateIndex(ctx, indexName, schema)
+	return lim.CreateIndex(ctx, indexName, schema, map[string]string{
+		"resource_id":   resource.ID,
+		"build_task_id": buildTask.ID,
+	})
 }
 
 func requireManagedLocalIndex(ctx context.Context, lim interfaces.LocalIndexManager, indexName string) error {

@@ -90,7 +90,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		}
 
 		lim.EXPECT().CheckIndexExist(gomock.Any(), buildIndexName("r1", "t1")).Return(false, nil)
-		lim.EXPECT().CreateIndex(gomock.Any(), buildIndexName("r1", "t1"), gomock.Any()).
+		lim.EXPECT().CreateIndex(gomock.Any(), buildIndexName("r1", "t1"), gomock.Any(), gomock.Any()).
 			Return(errors.New("opensearch unavailable"))
 
 		err := bbw.executeBuild(context.Background(), &interfaces.Catalog{ID: "c1"}, resource, buildTask)
@@ -118,7 +118,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		defer func() { logics.DB = oldDB }()
 
 		lim.EXPECT().CheckIndexExist(gomock.Any(), indexName).Return(false, nil)
-		lim.EXPECT().CreateIndex(gomock.Any(), indexName, gomock.Any()).Return(nil)
+		lim.EXPECT().CreateIndex(gomock.Any(), indexName, gomock.Any(), gomock.Any()).Return(nil)
 		var progressMarks []string
 		var totalCounts []int64
 		bts.EXPECT().InternalSetProgress(gomock.Any(), nil, task.ID, gomock.Any()).DoAndReturn(

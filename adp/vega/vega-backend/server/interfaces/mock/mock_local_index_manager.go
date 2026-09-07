@@ -72,17 +72,17 @@ func (mr *MockLocalIndexManagerMockRecorder) CreateDocuments(ctx, indexName, doc
 }
 
 // CreateIndex mocks base method.
-func (m *MockLocalIndexManager) CreateIndex(ctx context.Context, indexName string, schema []*interfaces.Property) error {
+func (m *MockLocalIndexManager) CreateIndex(ctx context.Context, indexName string, schema []*interfaces.Property, mappingMeta map[string]string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateIndex", ctx, indexName, schema)
+	ret := m.ctrl.Call(m, "CreateIndex", ctx, indexName, schema, mappingMeta)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CreateIndex indicates an expected call of CreateIndex.
-func (mr *MockLocalIndexManagerMockRecorder) CreateIndex(ctx, indexName, schema any) *gomock.Call {
+func (mr *MockLocalIndexManagerMockRecorder) CreateIndex(ctx, indexName, schema, mappingMeta any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateIndex", reflect.TypeOf((*MockLocalIndexManager)(nil).CreateIndex), ctx, indexName, schema)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateIndex", reflect.TypeOf((*MockLocalIndexManager)(nil).CreateIndex), ctx, indexName, schema, mappingMeta)
 }
 
 // DeleteDocument mocks base method.

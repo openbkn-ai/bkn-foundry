@@ -51,7 +51,7 @@ func (ds *datasetService) Create(ctx context.Context, res *interfaces.Resource) 
 	defer span.End()
 
 	// Call the local index store to create the dataset index, and the index name is resource id
-	err := ds.lim.CreateIndex(ctx, res.ID, res.SchemaDefinition)
+	err := ds.lim.CreateIndex(ctx, res.ID, res.SchemaDefinition, nil)
 	if err != nil {
 		otellog.LogError(ctx, "Create dataset index failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).

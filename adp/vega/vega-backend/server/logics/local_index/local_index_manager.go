@@ -83,8 +83,8 @@ func (lim *localIndexManager) GetIndexMeta(ctx context.Context, index *interface
 	return lim.lic.GetIndexMeta(ctx, index)
 }
 
-func (lim *localIndexManager) CreateIndex(ctx context.Context, indexName string, schema []*interfaces.Property) error {
-	return lim.lic.CreateIndex(ctx, indexName, schema)
+func (lim *localIndexManager) CreateIndex(ctx context.Context, indexName string, schema []*interfaces.Property, mappingMeta map[string]string) error {
+	return lim.lic.CreateIndex(ctx, indexName, schema, mappingMeta)
 }
 
 func (lim *localIndexManager) UpdateIndex(ctx context.Context, indexName string, schema []*interfaces.Property) error {

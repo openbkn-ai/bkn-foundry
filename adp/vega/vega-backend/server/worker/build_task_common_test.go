@@ -164,7 +164,7 @@ func TestPrepareFullBuildIndex(t *testing.T) {
 
 		lim.EXPECT().CheckIndexExist(gomock.Any(), indexName).Return(true, nil)
 		lim.EXPECT().DeleteIndex(gomock.Any(), indexName).Return(nil)
-		lim.EXPECT().CreateIndex(gomock.Any(), indexName, gomock.Any()).Return(nil)
+		lim.EXPECT().CreateIndex(gomock.Any(), indexName, gomock.Any(), gomock.Any()).Return(nil)
 
 		require.NoError(t, recreateManagedLocalIndex(context.Background(), lim, indexName, task, resource))
 	})

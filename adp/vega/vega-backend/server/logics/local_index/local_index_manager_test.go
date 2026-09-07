@@ -37,7 +37,7 @@ func TestLocalIndexManagerDelegatesToIndexConnector(t *testing.T) {
 		document := map[string]any{"id": 1}
 		docIDs := []string{"doc-1"}
 
-		connector.EXPECT().CreateIndex(ctx, "idx", schema).Return(nil)
+		connector.EXPECT().CreateIndex(ctx, "idx", schema, nil).Return(nil)
 		connector.EXPECT().UpdateIndex(ctx, "idx", schema).Return(nil)
 		connector.EXPECT().DeleteIndex(ctx, "idx").Return(nil)
 		connector.EXPECT().CheckIndexExist(ctx, "idx").Return(true, nil)
@@ -48,7 +48,7 @@ func TestLocalIndexManagerDelegatesToIndexConnector(t *testing.T) {
 		connector.EXPECT().DeleteDocument(ctx, "idx", "doc-1").Return(nil)
 		connector.EXPECT().DeleteDocuments(ctx, "idx", "doc-1,doc-2").Return(nil)
 
-		require.NoError(t, manager.CreateIndex(ctx, "idx", schema))
+		require.NoError(t, manager.CreateIndex(ctx, "idx", schema, nil))
 		require.NoError(t, manager.UpdateIndex(ctx, "idx", schema))
 		require.NoError(t, manager.DeleteIndex(ctx, "idx"))
 
