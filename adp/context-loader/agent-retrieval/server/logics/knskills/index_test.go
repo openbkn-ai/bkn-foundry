@@ -7,9 +7,11 @@ package knskills
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 
+	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -274,13 +276,19 @@ func TestKnIDIsRequired(t *testing.T) {
 	op := &fakeOperator{}
 	svc := NewKnSkillsServiceWith(op, &fakeBkn{refs: mounted("sk-1")}, &fakeKnAuthz{})
 
-	if _, err := svc.GetSkillContent(context.Background(), "", "sk-1"); !errors.Is(err, ErrKnIDRequired) {
-		t.Fatalf("缺 kn_id 时 err = %v，want ErrKnIDRequired", err)
+	// A missing argument must surface as a 400: an unclassified error becomes a 500, which reads
+	// as a platform fault rather than a call the caller can fix.
+	assert400 := func(err error, what string) {
+		t.Helper()
+		var he *infraErr.HTTPError
+		if !errors.As(err, &he) || he.HTTPCode != http.StatusBadRequest {
+			t.Fatalf("%s: err = %v，want 400", what, err)
+		}
 	}
-	if _, err := svc.ExecuteSkill(context.Background(),
-		&ExecuteSkillReq{SkillID: "sk-1", EntryShell: "x"}); !errors.Is(err, ErrKnIDRequired) {
-		t.Fatalf("缺 kn_id 时 err = %v，want ErrKnIDRequired", err)
-	}
+	_, err := svc.GetSkillContent(context.Background(), "", "sk-1")
+	assert400(err, "get_skill_content 缺 kn_id")
+	_, err = svc.ExecuteSkill(context.Background(), &ExecuteSkillReq{SkillID: "sk-1", EntryShell: "x"})
+	assert400(err, "execute_skill 缺 kn_id")
 	if op.gotExecReq != nil {
 		t.Fatal("没有范围就不该执行任何东西")
 	}

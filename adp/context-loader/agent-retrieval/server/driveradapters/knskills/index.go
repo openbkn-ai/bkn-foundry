@@ -8,6 +8,8 @@
 package knskills
 
 import (
+	"context"
+	goerrors "errors"
 	"net/http"
 	"sync"
 
@@ -72,6 +74,18 @@ type skillIDReq struct {
 	SkillID string `json:"skill_id" form:"skill_id"`
 }
 
+// replyServiceError keeps an error the service already classified, and only wraps the ones it did
+// not. Wrapping unconditionally nested a whole JSON error object inside the details of another,
+// so the reason a call was refused arrived as an escaped blob.
+func replyServiceError(c *gin.Context, ctx context.Context, err error) {
+	var httpErr *errors.HTTPError
+	if goerrors.As(err, &httpErr) {
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error()))
+}
+
 // GetSkillContent gets the text of SKILL.md + the file list in the package.
 func (h *knSkillsHandler) GetSkillContent(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -105,7 +119,7 @@ func (h *knSkillsHandler) ReadSkillFile(c *gin.Context) {
 	resp, err := h.skills.ReadSkillFile(ctx, req)
 	if err != nil {
 		h.logger.WithContext(ctx).Warnf("[KnSkillsHandler#ReadSkillFile] failed: %v", err)
-		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error()))
+		replyServiceError(c, ctx, err)
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, resp)
@@ -123,7 +137,7 @@ func (h *knSkillsHandler) ExecuteSkill(c *gin.Context) {
 	resp, err := h.skills.ExecuteSkill(ctx, req)
 	if err != nil {
 		h.logger.WithContext(ctx).Warnf("[KnSkillsHandler#ExecuteSkill] failed: %v", err)
-		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error()))
+		replyServiceError(c, ctx, err)
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, resp)

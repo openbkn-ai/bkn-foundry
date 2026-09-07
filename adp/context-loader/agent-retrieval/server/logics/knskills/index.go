@@ -48,10 +48,6 @@ var ErrRelPathRequired = errors.New("rel_path is required")
 // ErrEntryShellRequired identifies a missing entry_shell argument.
 var ErrEntryShellRequired = errors.New("entry_shell is required")
 
-// ErrKnIDRequired identifies a missing kn_id argument. Without it there is no scope to check the
-// Skill against, and answering anyway would be the unscoped behaviour this replaced.
-var ErrKnIDRequired = errors.New("kn_id is required")
-
 type localizedInputError struct {
 	message string
 	cause   error
@@ -254,10 +250,10 @@ func (s *knSkillsService) ListSkills(ctx context.Context, req *ListSkillsReq) (*
 func (s *knSkillsService) requireMounted(ctx context.Context, knID, skillID string) error {
 	knID = strings.TrimSpace(knID)
 	if knID == "" {
-		return localizedInputError{
-			message: infraErr.LocalizedDetail(ctx, "SkillScopeKnIDRequired"),
-			cause:   ErrKnIDRequired,
-		}
+		// A 400, not the bare sentinel: a missing argument is the caller's error, and the REST
+		// layer turns an unclassified error into a 500 that reads as a platform fault.
+		return infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
+			infraErr.LocalizedDetail(ctx, "SkillScopeKnIDRequired"))
 	}
 	if s.knAuthz == nil || s.bknBackend == nil {
 		return infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
