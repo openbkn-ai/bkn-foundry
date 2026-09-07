@@ -412,3 +412,102 @@ func TestAPIFunctionSplit(t *testing.T) {
 		})
 	})
 }
+
+// TestMetadataTypeFilterReachesSQL pins where the filter runs. Filtering the fetched page would
+// paginate over rows the filter then discards: with the default page of ten, a network whose ten
+// newest bindings all belong to the other kind would answer "none bound" while holding plenty.
+func TestMetadataTypeFilterReachesSQL(t *testing.T) {
+	Convey("metadata_type 过滤下推到 SQL", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		Convey("解析成工具集集合后作为查询条件，分页与总数都基于已匹配的行", func() {
+			service, cba, aoa := newTestServiceWithFactory(t, ctrl)
+			cba.EXPECT().GetFunctionTotalsByOwner(gomock.Any(), "kn1", "main").
+				Return(map[string]int{"box-api": 30, "box-fn": 10}, nil)
+			aoa.EXPECT().ListBoxTools(gomock.Any(), "box-api").Return([]*interfaces.ToolBrief{
+				{BoxID: "box-api", BoxMetadataType: interfaces.EXEC_BOX_METADATA_TYPE_OPENAPI},
+			}, nil).AnyTimes()
+			aoa.EXPECT().ListBoxTools(gomock.Any(), "box-fn").Return([]*interfaces.ToolBrief{
+				{BoxID: "box-fn", BoxMetadataType: interfaces.EXEC_BOX_METADATA_TYPE_FUNCTION},
+			}, nil).AnyTimes()
+
+			var gotQuery interfaces.CapabilityBindingsQueryParams
+			cba.EXPECT().ListBindings(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, q interfaces.CapabilityBindingsQueryParams) (
+					[]*interfaces.CapabilityBinding, error) {
+					gotQuery = q
+					return []*interfaces.CapabilityBinding{}, nil
+				})
+			cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(30, nil)
+
+			list, err := service.ListCapabilities(context.Background(),
+				interfaces.CapabilityBindingsQueryParams{
+					KNID: "kn1", Branch: "main",
+					MetadataType: interfaces.EXEC_BOX_METADATA_TYPE_OPENAPI,
+				})
+
+			So(err, ShouldBeNil)
+			So(gotQuery.OwnerIDs, ShouldNotBeNil)
+			So(*gotQuery.OwnerIDs, ShouldResemble, []string{"box-api"})
+			// The kind belongs to a box, so this is a function-only question either way.
+			So(gotQuery.CapabilityType, ShouldEqual, interfaces.CAPABILITY_TYPE_FUNCTION)
+			// The total is the real one, not the size of a filtered page.
+			So(list.TotalCount, ShouldEqual, 30)
+		})
+
+		Convey("没有该类型的工具集时选中空集，而不是不过滤", func() {
+			service, cba, aoa := newTestServiceWithFactory(t, ctrl)
+			cba.EXPECT().GetFunctionTotalsByOwner(gomock.Any(), "kn1", "main").
+				Return(map[string]int{"box-fn": 4}, nil)
+			aoa.EXPECT().ListBoxTools(gomock.Any(), "box-fn").Return([]*interfaces.ToolBrief{
+				{BoxID: "box-fn", BoxMetadataType: interfaces.EXEC_BOX_METADATA_TYPE_FUNCTION},
+			}, nil).AnyTimes()
+
+			var gotQuery interfaces.CapabilityBindingsQueryParams
+			cba.EXPECT().ListBindings(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, q interfaces.CapabilityBindingsQueryParams) (
+					[]*interfaces.CapabilityBinding, error) {
+					gotQuery = q
+					return nil, nil
+				})
+			cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(0, nil)
+
+			_, err := service.ListCapabilities(context.Background(),
+				interfaces.CapabilityBindingsQueryParams{
+					KNID: "kn1", Branch: "main",
+					MetadataType: interfaces.EXEC_BOX_METADATA_TYPE_OPENAPI,
+				})
+
+			So(err, ShouldBeNil)
+			So(gotQuery.OwnerIDs, ShouldNotBeNil)
+			So(len(*gotQuery.OwnerIDs), ShouldEqual, 0)
+		})
+
+		Convey("工具集读不到时归为函数，悬空绑定因此仍在函数列表里可见", func() {
+			service, cba, aoa := newTestServiceWithFactory(t, ctrl)
+			cba.EXPECT().GetFunctionTotalsByOwner(gomock.Any(), "kn1", "main").
+				Return(map[string]int{"box-empty": 2}, nil)
+			// The box exists but reports no tools: its kind is unknown, and unknown means function.
+			aoa.EXPECT().ListBoxTools(gomock.Any(), "box-empty").Return(nil, nil).AnyTimes()
+
+			var gotQuery interfaces.CapabilityBindingsQueryParams
+			cba.EXPECT().ListBindings(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, q interfaces.CapabilityBindingsQueryParams) (
+					[]*interfaces.CapabilityBinding, error) {
+					gotQuery = q
+					return nil, nil
+				})
+			cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(2, nil)
+
+			_, err := service.ListCapabilities(context.Background(),
+				interfaces.CapabilityBindingsQueryParams{
+					KNID: "kn1", Branch: "main",
+					MetadataType: interfaces.EXEC_BOX_METADATA_TYPE_FUNCTION,
+				})
+
+			So(err, ShouldBeNil)
+			So(*gotQuery.OwnerIDs, ShouldResemble, []string{"box-empty"})
+		})
+	})
+}

@@ -92,10 +92,15 @@ type CapabilityBindingsQueryParams struct {
 	CapabilityType string
 	OwnerID        string
 	CapabilityIDs  []string
-	// MetadataType narrows function bindings to one kind of tool box. It is applied after the
-	// metadata is backfilled, because the value lives in the execution factory rather than in
-	// the binding row.
+	// MetadataType narrows function bindings to one kind of tool box. The value lives on the box
+	// in the execution factory, not in the binding row, so the service resolves it to the set of
+	// boxes with that kind and puts them in OwnerIDs — filtering the fetched page instead would
+	// paginate over rows the filter then discards, and a page whose rows all belong to the other
+	// kind would read as "none bound".
 	MetadataType string
+	// OwnerIDs restricts to a set of owners. A non-nil empty slice selects nothing; nil means no
+	// restriction. It is set by the service, not parsed from the query string.
+	OwnerIDs *[]string
 	// WithDetail also fills description and status. Names alone cost one call per tool box and
 	// one for all skills; the detail of a skill has to be read one skill at a time, so it is
 	// asked for rather than always paid.

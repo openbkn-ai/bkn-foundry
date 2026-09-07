@@ -261,6 +261,20 @@ func (cbs *capabilityBindingService) ListCapabilities(ctx context.Context,
 			WithErrorDetails(fmt.Sprintf("unsupported metadata_type: %s", metadataType))
 	}
 
+	// metadata_type reaches SQL as a set of tool boxes. Resolving it here rather than filtering
+	// the fetched page is what keeps paging honest: the page is drawn from rows that already
+	// match, so total_count is the real total and page two exists.
+	if metadataType := strings.TrimSpace(query.MetadataType); metadataType != "" {
+		boxIDs, boxErr := cbs.boxesOfKind(ctx, query.KNID, query.Branch, metadataType)
+		if boxErr != nil {
+			return nil, boxErr
+		}
+		query.OwnerIDs = &boxIDs
+		// The kind belongs to a tool box, so this necessarily selects function bindings only.
+		// Saying so makes the answer the same whether or not the caller also passed type.
+		query.CapabilityType = interfaces.CAPABILITY_TYPE_FUNCTION
+	}
+
 	entries, err := cbs.cba.ListBindings(ctx, query)
 	if err != nil {
 		logger.Errorf("ListBindings in knowledge network[%s] error: %v", query.KNID, err)
@@ -277,20 +291,6 @@ func (cbs *capabilityBindingService) ListCapabilities(ctx context.Context,
 	}
 
 	backfilled := cbs.backfillMetadata(ctx, query, entries, query.WithDetail)
-
-	// The filter is applied after backfill because the value it filters on lives in the execution
-	// factory, not in the row. TotalCount follows the filtered set: reporting the unfiltered
-	// total next to a filtered page would read as truncation.
-	if metadataType := strings.TrimSpace(query.MetadataType); metadataType != "" {
-		kept := make([]*interfaces.CapabilityBinding, 0, len(entries))
-		for _, entry := range entries {
-			if entry != nil && entry.MetadataType == metadataType {
-				kept = append(kept, entry)
-			}
-		}
-		entries = kept
-		total = len(kept)
-	}
 
 	span.SetStatus(codes.Ok, "")
 	return &interfaces.CapabilityBindingsList{
@@ -333,6 +333,44 @@ func (cbs *capabilityBindingService) GetCapabilityTotalsByType(ctx context.Conte
 
 	span.SetStatus(codes.Ok, "")
 	return totals, nil
+}
+
+// boxesOfKind returns the tool boxes of this branch that are of the given kind.
+//
+// A box that cannot be read counts as a function box, matching countAPIBindings and the meaning
+// the single count had before the split. That keeps a dangling binding — one whose tool is gone
+// while its box remains — inside the function list rather than vanishing from both, which is
+// where its missing marker is meant to be seen.
+func (cbs *capabilityBindingService) boxesOfKind(ctx context.Context, knID, branch,
+	metadataType string) ([]string, error) {
+	perBox, err := cbs.cba.GetFunctionTotalsByOwner(ctx, knID, branch)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_CapabilityBinding_InternalError_ListBindingsFailed).
+			WithErrorDetails(err.Error())
+	}
+
+	// Non-nil and possibly empty: no box of that kind must select nothing, not everything.
+	boxIDs := []string{}
+	for boxID := range perBox {
+		if boxID == "" {
+			continue
+		}
+		tools, toolsErr := cbs.aoa.ListBoxTools(ctx, boxID)
+		if toolsErr != nil {
+			return nil, rest.NewHTTPError(ctx, http.StatusBadGateway,
+				berrors.BknBackend_CapabilityBinding_ExecutionFactoryUnavailable).
+				WithErrorDetails(fmt.Sprintf("tool box lookup failed: box_id=%s", boxID))
+		}
+		kind := interfaces.EXEC_BOX_METADATA_TYPE_FUNCTION
+		if len(tools) > 0 && tools[0].BoxMetadataType != "" {
+			kind = tools[0].BoxMetadataType
+		}
+		if kind == metadataType {
+			boxIDs = append(boxIDs, boxID)
+		}
+	}
+	return boxIDs, nil
 }
 
 // countAPIBindings counts the function bindings whose tool box is an openapi box.

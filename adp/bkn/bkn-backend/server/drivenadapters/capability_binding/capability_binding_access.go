@@ -133,6 +133,12 @@ func processBindingQueryCondition(query interfaces.CapabilityBindingsQueryParams
 	if query.OwnerID != "" {
 		builder = builder.Where(sq.Eq{"f_owner_id": query.OwnerID})
 	}
+	// OwnerIDs is how metadata_type reaches SQL: the kind lives on the tool box, so the service
+	// resolves it to a set of boxes and filters on those. An empty non-nil set means "no box has
+	// that kind", which must select nothing rather than everything.
+	if query.OwnerIDs != nil {
+		builder = builder.Where(sq.Eq{"f_owner_id": *query.OwnerIDs})
+	}
 	if len(query.CapabilityIDs) > 0 {
 		builder = builder.Where(sq.Eq{"f_capability_id": query.CapabilityIDs})
 	}
