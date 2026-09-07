@@ -41,12 +41,6 @@ antiAffinity:
 auth:
   enabled: true
 
-# Managed knowledge-network proxy rollout. Keep disabled until the 0.1.5
-# migration verify phase succeeds. Use allowlist for a per-network canary.
-knProxy:
-  mode: "off" # off, allowlist, or all
-  knowledgeNetworks: []
-
 bknSafe:
   url: "http://bkn-safe:3000"
 

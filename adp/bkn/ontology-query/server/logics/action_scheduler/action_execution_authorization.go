@@ -137,9 +137,6 @@ func (s *actionSchedulerService) resolveActionProxyContext(
 	if err != nil {
 		return nil, nil, err
 	}
-	if proxy.UseDirectCaller {
-		return proxy, nil, nil
-	}
 	return proxy, []interfaces.PermissionRequirement{requirement}, nil
 }
 
@@ -207,18 +204,7 @@ func trustedActionProxyContext(execution *interfaces.ActionExecution,
 	if execution.Executor.ID == "" || execution.Executor.Type == "" {
 		return nil, fmt.Errorf("execution caller snapshot is incomplete")
 	}
-	if execution.Proxy == nil {
-		if execution.ProxyVersion != 0 || execution.ProxyModelVersion != "" || len(execution.ProxyPermissionSnapshot) != 0 {
-			return nil, fmt.Errorf("execution direct-caller snapshot is inconsistent")
-		}
-		return &interfaces.TrustedProxyContext{
-			Caller:          execution.Executor,
-			Binding:         binding,
-			ExecutionID:     execution.ID,
-			UseDirectCaller: true,
-		}, nil
-	}
-	if execution.Proxy.ID == "" || execution.Proxy.Type != interfaces.ProxyAccountTypeApp ||
+	if execution.Proxy == nil || execution.Proxy.ID == "" || execution.Proxy.Type != interfaces.ProxyAccountTypeApp ||
 		execution.ProxyVersion <= 0 || execution.ProxyModelVersion == "" ||
 		len(execution.ProxyPermissionSnapshot) != 1 || execution.ProxyPermissionSnapshot[0] != requirement {
 		return nil, fmt.Errorf("execution dual-principal snapshot is incomplete")

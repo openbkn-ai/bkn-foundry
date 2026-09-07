@@ -117,9 +117,6 @@ func (aoa *agentOperatorAccess) ExecuteTool(ctx context.Context, boxID string,
 
 func (aoa *agentOperatorAccess) ExecuteToolAsProxy(ctx context.Context, boxID string,
 	toolID string, execRequest interfaces.ToolExecutionRequest) (any, error) {
-	if proxy, ok := interfaces.TrustedProxyContextFromContext(ctx); ok && proxy.UseDirectCaller {
-		return aoa.ExecuteTool(ctx, boxID, toolID, execRequest)
-	}
 	headers, err := aoa.proxyHeaders(ctx, interfaces.ProxyTargetTypeToolBox, boxID)
 	if err != nil {
 		return nil, err
@@ -200,9 +197,6 @@ func (aoa *agentOperatorAccess) ExecuteMCP(ctx context.Context, mcpID string,
 
 func (aoa *agentOperatorAccess) ExecuteMCPAsProxy(ctx context.Context, mcpID string,
 	toolName string, execRequest interfaces.MCPExecutionRequest) (any, error) {
-	if proxy, ok := interfaces.TrustedProxyContextFromContext(ctx); ok && proxy.UseDirectCaller {
-		return aoa.ExecuteMCP(ctx, mcpID, toolName, execRequest)
-	}
 	headers, err := aoa.proxyHeaders(ctx, interfaces.ProxyTargetTypeMCP, mcpID)
 	if err != nil {
 		return nil, err

@@ -515,8 +515,8 @@ func objectTypeResources(ctx context.Context, knID string,
 	}
 	// The published resource reference must be complete, but Vega owns the
 	// resource-to-catalog authorization fallback because only Vega has the
-	// trusted catalog relationship. It rechecks query_data as the same caller
-	// immediately before reading the resource.
+	// trusted catalog relationship. It rechecks query_data for the managed
+	// proxy immediately before reading the resource.
 	return resources, nil
 }
 
@@ -547,8 +547,8 @@ func relationTypeResources(ctx context.Context, knID, relationTypeID string,
 		return nil, invalidQuery(ctx, err.Error())
 	}
 	// Do not preempt Vega's resource-to-catalog fallback with a direct Safe
-	// resource check. The downstream resource query carries the same caller and
-	// enforces query_data before any physical read.
+	// resource check. The downstream resource query carries the managed proxy
+	// and enforces query_data before any physical read.
 	return resources, nil
 }
 

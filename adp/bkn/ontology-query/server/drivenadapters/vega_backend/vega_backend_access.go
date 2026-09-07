@@ -35,20 +35,6 @@ type vegaBackendAccess struct {
 	baseURL    string
 }
 
-func directCallerHeaders(ctx context.Context, operation string) map[string]string {
-	account, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
-	return common.MergeTraceHeadersForChildOperation(ctx, map[string]string{
-		interfaces.CONTENT_TYPE_NAME:        interfaces.CONTENT_TYPE_JSON,
-		interfaces.HTTP_HEADER_ACCOUNT_ID:   account.ID,
-		interfaces.HTTP_HEADER_ACCOUNT_TYPE: account.Type,
-	}, operation, 1)
-}
-
-func useDirectCaller(ctx context.Context) bool {
-	proxy, ok := interfaces.TrustedProxyContextFromContext(ctx)
-	return ok && proxy.UseDirectCaller
-}
-
 // NewVegaBackendAccess creates vega-backend client (aligned with bkn-backend).
 func NewVegaBackendAccess(appSetting *common.AppSetting) interfaces.VegaBackendAccess {
 	vbOnce.Do(func() {
@@ -102,15 +88,9 @@ func (v *vegaBackendAccess) GetResourceSchema(ctx context.Context,
 	defer span.End()
 
 	httpURL := fmt.Sprintf("%s/proxy/resources/%s/schema", v.baseURL, url.PathEscape(resourceID))
-	headers := directCallerHeaders(ctx, "vega.resource.schema")
-	if !useDirectCaller(ctx) {
-		var err error
-		headers, err = v.buildProxyHeaders(ctx, resourceID, interfaces.PermissionOperationViewDetail)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		httpURL = fmt.Sprintf("%s/resources/%s/schema", v.baseURL, url.PathEscape(resourceID))
+	headers, err := v.buildProxyHeaders(ctx, resourceID, interfaces.PermissionOperationViewDetail)
+	if err != nil {
+		return nil, err
 	}
 	respCode, respData, err := v.httpClient.GetNoUnmarshal(ctx, httpURL, nil, headers)
 	logger.Debugf("GetResourceSchema [%s] code [%d] err [%v]", httpURL, respCode, err)
@@ -135,15 +115,9 @@ func (v *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID st
 	defer span.End()
 
 	httpURL := fmt.Sprintf("%s/proxy/resources/%s/data", v.baseURL, url.PathEscape(resourceID))
-	headers := directCallerHeaders(ctx, "vega.resource.query")
-	if !useDirectCaller(ctx) {
-		var err error
-		headers, err = v.buildProxyHeaders(ctx, resourceID, interfaces.PermissionOperationQueryData)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		httpURL = fmt.Sprintf("%s/resources/%s/data", v.baseURL, url.PathEscape(resourceID))
+	headers, err := v.buildProxyHeaders(ctx, resourceID, interfaces.PermissionOperationQueryData)
+	if err != nil {
+		return nil, err
 	}
 	headers[interfaces.HTTP_HEADER_METHOD_OVERRIDE] = http.MethodGet
 

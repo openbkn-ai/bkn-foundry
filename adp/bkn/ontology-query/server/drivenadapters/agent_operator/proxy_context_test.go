@@ -107,32 +107,6 @@ func TestExecuteToolKeepsDirectCallerSemanticsForNonActionUses(t *testing.T) {
 	}
 }
 
-func TestExecuteToolAsProxyFallsBackToCallerWhenRolloutIsOff(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	httpClient := rmock.NewMockHTTPClient(ctrl)
-	access := &agentOperatorAccess{httpClient: httpClient, appSetting: &commonSettingForProxyTest}
-	caller := interfaces.AccountInfo{ID: "caller-1", Type: "user"}
-	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, caller)
-	ctx = interfaces.WithTrustedProxyContext(ctx, &interfaces.TrustedProxyContext{
-		Caller: caller, UseDirectCaller: true,
-	})
-
-	httpClient.EXPECT().PostNoUnmarshal(gomock.Any(),
-		"http://operator/tool-box/box-1/proxy/tool-1", gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, _ string, headers map[string]string, _ any) (int, []byte, error) {
-			if headers[interfaces.HTTP_HEADER_ACCOUNT_ID] != caller.ID ||
-				headers[interfaces.HTTP_HEADER_ACCOUNT_TYPE] != caller.Type ||
-				headers[interfaces.HTTPHeaderBKNCallerID] != "" {
-				t.Fatalf("unexpected rollout-off headers: %#v", headers)
-			}
-			return http.StatusOK, []byte(`{"status_code":200,"body":{"ok":true}}`), nil
-		})
-
-	if _, err := access.ExecuteToolAsProxy(ctx, "box-1", "tool-1", interfaces.ToolExecutionRequest{}); err != nil {
-		t.Fatalf("ExecuteToolAsProxy() error = %v", err)
-	}
-}
-
 func TestAgentOperatorRejectsForgedOrMissingProxyContextBeforeIO(t *testing.T) {
 	access := &agentOperatorAccess{}
 	if _, err := access.ExecuteToolAsProxy(context.Background(), "box-1", "tool-1", interfaces.ToolExecutionRequest{}); err == nil {

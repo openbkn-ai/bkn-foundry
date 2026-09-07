@@ -24,7 +24,6 @@ type actionPermissionStub struct {
 type actionProxyResolverStub struct {
 	err      error
 	bindings []interfaces.TrustedProxyBinding
-	direct   bool
 }
 
 func attachTestActionProxySnapshot(t *testing.T, execution *interfaces.ActionExecution,
@@ -60,7 +59,6 @@ func (s *actionProxyResolverStub) Resolve(ctx context.Context,
 	return &interfaces.TrustedProxyContext{
 		Caller:                caller,
 		Proxy:                 interfaces.AccountInfo{ID: "test-proxy", Type: interfaces.ProxyAccountTypeApp},
-		UseDirectCaller:       s.direct,
 		ProxyVersion:          2,
 		PublishedModelVersion: "model-v2",
 		Binding:               binding,
@@ -210,24 +208,7 @@ func TestResolveActionProxyContextKeepsDownstreamPermissionSeparate(t *testing.T
 	}
 }
 
-func TestResolveActionProxyContextOmitsProxySnapshotWhenRolloutIsOff(t *testing.T) {
-	resolver := &actionProxyResolverStub{direct: true}
-	service := &actionSchedulerService{proxy: resolver}
-	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
-		interfaces.AccountInfo{ID: "caller-1", Type: "user"})
-	proxy, requirements, err := service.resolveActionProxyContext(ctx, "kn-1", &interfaces.ActionType{
-		ATID:         "at-1",
-		ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box-1", ToolID: "tool-1"},
-	})
-	if err != nil {
-		t.Fatalf("resolveActionProxyContext() error = %v", err)
-	}
-	if !proxy.UseDirectCaller || requirements != nil {
-		t.Fatalf("proxy = %#v, requirements = %#v", proxy, requirements)
-	}
-}
-
-func TestTrustedActionProxyContextRestoresDirectCallerCheckpoint(t *testing.T) {
+func TestTrustedActionProxyContextRejectsMissingProxySnapshot(t *testing.T) {
 	execution := &interfaces.ActionExecution{
 		ID:       "execution-1",
 		KNID:     "kn-1",
@@ -238,12 +219,8 @@ func TestTrustedActionProxyContextRestoresDirectCallerCheckpoint(t *testing.T) {
 		ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box-1", ToolID: "tool-1"},
 	}
 
-	proxy, err := trustedActionProxyContext(execution, actionType)
-	if err != nil {
-		t.Fatalf("trustedActionProxyContext() error = %v", err)
-	}
-	if !proxy.UseDirectCaller || proxy.Caller != execution.Executor || proxy.ExecutionID != execution.ID {
-		t.Fatalf("trustedActionProxyContext() = %#v", proxy)
+	if proxy, err := trustedActionProxyContext(execution, actionType); err == nil || proxy != nil {
+		t.Fatalf("trustedActionProxyContext() = %#v, %v; want missing proxy error", proxy, err)
 	}
 }
 

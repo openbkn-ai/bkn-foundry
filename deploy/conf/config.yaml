@@ -11,11 +11,8 @@ bknSafe:
   authzProvider: bkn-safe
   directoryProvider: bkn-safe
   url: http://bkn-safe:3000
-# Managed proxy rollout is fail-closed. Change to allowlist only after the
-# 0.1.4 -> 0.1.5 migration verify phase succeeds, then move to all.
+# Network policies restrict access to managed-proxy internal endpoints.
 knProxy:
-  mode: "off"
-  knowledgeNetworks: []
   networkPolicy:
     enabled: false
 # accessAddress: sudo deploy.sh writes the real URL to $HOME/.openbkn-ai/config.yaml by default.

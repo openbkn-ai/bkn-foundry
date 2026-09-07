@@ -250,11 +250,7 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 	}
 	executionID := generatedExecutionID.String()
 	actionProxy.ExecutionID = executionID
-	var proxySubject *interfaces.AccountInfo
-	if !actionProxy.UseDirectCaller {
-		value := actionProxy.Proxy
-		proxySubject = &value
-	}
+	proxySubject := actionProxy.Proxy
 	now := time.Now().UnixMilli()
 
 	// Determine trigger type (default to manual if not specified)
@@ -287,7 +283,7 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		StartTime:               now,
 		ActionTypeSnapshot:      actionTypeSnapshot, // Save the action type configuration snapshot used during execution.
 		PermissionSnapshot:      permissionSnapshot,
-		Proxy:                   proxySubject,
+		Proxy:                   &proxySubject,
 		ProxyVersion:            actionProxy.ProxyVersion,
 		ProxyModelVersion:       actionProxy.PublishedModelVersion,
 		ProxyPermissionSnapshot: proxyPermissionSnapshot,

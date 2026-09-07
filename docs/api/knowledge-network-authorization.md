@@ -97,11 +97,9 @@ limit. It must not be used to reject an otherwise valid business request.
 
 ## Subjects and failure behavior
 
-`AUTH_ENABLED` is the only remaining authorization gate. When it is `true`, all
-checks in this contract are enforced; there are no module-specific child,
-query-data, or action-execution rollout switches. An environment running with
-authentication disabled does not provide these fine-grained authorization
-guarantees.
+`AUTH_ENABLED` controls authorization globally. When it is `true`, all checks
+in this contract are enforced. An environment running with authentication
+disabled does not provide these fine-grained authorization guarantees.
 
 Public services derive the subject from their authenticated request. Trusted
 internal calls propagate that subject through their service-to-service identity
@@ -114,18 +112,16 @@ failure, malformed response, incomplete dependency set, or indeterminate
 decision produces no data and invokes no external target. Each service reports
 that failure using its own OpenAPI error contract.
 
-## Rollout prerequisites
+## Upgrade prerequisites
 
-The module-specific PEP rollout switches have been removed. Before upgrading an
-existing environment that runs with authentication enabled, follow the
-[migration guide](../../adp/bkn/bkn-backend/script/migrate_kn_authz/README.md)
+Before upgrading an existing environment that runs with authentication enabled, follow the
+[migration guide](../../adp/bkn/bkn-backend/script/migrate_kn_data/README.md)
 and validate the result.
-Run the dry-run first while the affected services are stopped and both databases
-are backed up. Any validation error or non-zero migration exit blocks the
-upgrade; do not route traffic to the upgraded services with partial authorization
-data. Safe reconstruction is transactional; branch normalization is a separate
-BKN transaction. The script is idempotent, so investigate the report and rerun
-it after a failure.
+The fixed migration command performs validation, caller-authorization migration,
+managed-proxy migration, and result verification in one execution. It does not
+accept a dry-run mode, require a backup marker, or generate a report file. Any
+failure returns a non-zero status and prints the complete error traceback. The
+script is idempotent and can be rerun after the cause of a failure is fixed.
 When authentication is enabled, every participating service must have a valid
 bkn-safe connection before it receives traffic. Exact configuration keys and
 startup validation are documented by the owning service.

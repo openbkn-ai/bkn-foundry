@@ -208,20 +208,6 @@ func GetAuthEnabled() bool {
 	return envVal != "false" && envVal != "0"
 }
 
-// GetKNProxyRollout returns the fail-closed managed-proxy rollout mode and KN
-// allowlist configured by the deployment. The resolver validates the mode.
-func GetKNProxyRollout() (string, []string) {
-	mode := strings.TrimSpace(os.Getenv("KN_PROXY_MODE"))
-	rawAllowlist := strings.Split(os.Getenv("KN_PROXY_KN_ALLOWLIST"), ",")
-	allowlist := make([]string, 0, len(rawAllowlist))
-	for _, knID := range rawAllowlist {
-		if normalized := strings.TrimSpace(knID); normalized != "" {
-			allowlist = append(allowlist, normalized)
-		}
-	}
-	return mode, allowlist
-}
-
 func SetHydraAdminSetting() {
 	if !GetAuthEnabled() {
 		logger.Info("Authentication disabled via AUTH_ENABLED env, skipping hydra-admin configuration")

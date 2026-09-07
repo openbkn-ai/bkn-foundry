@@ -76,12 +76,8 @@ type TrustedProxyBinding struct {
 // TrustedProxyContext keeps the real caller separate from the effective
 // downstream principal used by restricted proxy entry points.
 type TrustedProxyContext struct {
-	Caller AccountInfo `json:"caller"`
-	Proxy  AccountInfo `json:"proxy"`
-	// UseDirectCaller marks the rollback-compatible path selected by the
-	// deployment rollout policy. It is server-derived and is never accepted
-	// from an inbound request.
-	UseDirectCaller       bool                `json:"use_direct_caller,omitempty"`
+	Caller                AccountInfo         `json:"caller"`
+	Proxy                 AccountInfo         `json:"proxy"`
 	ProxyVersion          int64               `json:"proxy_version"`
 	PublishedModelVersion string              `json:"published_model_version"`
 	Binding               TrustedProxyBinding `json:"binding"`
