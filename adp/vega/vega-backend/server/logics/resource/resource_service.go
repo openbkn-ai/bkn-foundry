@@ -451,6 +451,11 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	if err := validateSchemaDefinition(ctx, req.SchemaDefinition); err != nil {
 		return nil, err
 	}
+	if req.Category == interfaces.ResourceCategoryDataset {
+		if err := validateDatasetVectorOutputs(ctx, req.SchemaDefinition); err != nil {
+			return nil, err
+		}
+	}
 	if err := rs.validateIndexConfigModels(ctx, req.SchemaDefinition, req.IndexConfig); err != nil {
 		return nil, err
 	}
@@ -480,6 +485,12 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		UpdateTime:       now,
 	}
 
+	if resource.Category == interfaces.ResourceCategoryDataset {
+		if err := rs.ds.Create(ctx, resource); err != nil {
+			return nil, err
+		}
+	}
+
 	tx, err := rs.db.BeginTx(ctx, nil)
 	if err != nil {
 		otellog.LogError(ctx, "Create resource transaction failed", err)
@@ -492,6 +503,11 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	err = rs.ra.Create(ctx, tx, resource)
 	if err != nil {
 		otellog.LogError(ctx, "Create resource failed", err)
+		if resource.Category == interfaces.ResourceCategoryDataset {
+			if deleteErr := rs.ds.Delete(ctx, resource); deleteErr != nil {
+				logger.Errorf("Delete dataset index after resource creation failed: resource %s: %v", resource.ID, deleteErr)
+			}
+		}
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
 			WithErrorDetails("failed to create resource")
 	}
@@ -501,15 +517,6 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Resource_InternalError_CreateFailed).
 			WithErrorDetails("failed to create resource")
-	}
-
-	switch resource.Category {
-	case interfaces.ResourceCategoryDataset:
-		// create dataset
-		if err := rs.ds.Create(ctx, resource); err != nil {
-			logger.Errorf("Create dataset failed: %v", err)
-			// The failure of dataset creation does not affect resource creation; it only records errors
-		}
 	}
 
 	// Register resources.
@@ -954,10 +961,30 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		span.SetStatus(codes.Error, "Invalid resource update scope")
 		return err
 	}
+	// Older Dataset rows can have a vector feature without its persisted
+	// dimension. Completing that metadata must also pass through the index
+	// mapping update; otherwise the Resource row and physical index contract
+	// could diverge even though this is not a user-requested schema change.
+	legacyDatasetVectorDimensions := resource.Category == interfaces.ResourceCategoryDataset &&
+		hasMissingVectorFeatureDimensions(resource.SchemaDefinition)
 	if buildRelevantChanged {
 		if err := rs.rejectResourceOperationWhenActiveBuildTask(ctx, resource.ID, true); err != nil {
 			span.SetStatus(codes.Error, "Resource has active build task")
 			return err
+		}
+	}
+	if resource.Category == interfaces.ResourceCategoryDataset && buildRelevantChanged {
+		// Existing documents were materialized against the current index contract.
+		// Do not allow a normal Resource update to leave them under a different
+		// mapping or embedding configuration; that requires an explicit rebuild.
+		documents, _, err := rs.ds.ListDocuments(ctx, resource,
+			&interfaces.ResourceDataQueryParams{Limit: 1})
+		if err != nil {
+			return err
+		}
+		if len(documents) > 0 {
+			return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_InvalidParameter_RequestBody).
+				WithErrorDetails("dataset index structure cannot be changed while it contains documents; rebuild the dataset instead")
 		}
 	}
 	previousFingerprint := ""
@@ -997,6 +1024,11 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 
 	if err := validateSchemaDefinition(ctx, resource.SchemaDefinition); err != nil {
 		return err
+	}
+	if resource.Category == interfaces.ResourceCategoryDataset {
+		if err := validateDatasetVectorOutputs(ctx, resource.SchemaDefinition); err != nil {
+			return err
+		}
 	}
 	if err := rs.validateIndexConfigModels(ctx, resource.SchemaDefinition, resource.IndexConfig); err != nil {
 		return err
@@ -1060,6 +1092,14 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		span.SetStatus(codes.Error, "Resource update conflict")
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
 	}
+	if resource.Category == interfaces.ResourceCategoryDataset && (buildRelevantChanged || legacyDatasetVectorDimensions) {
+		// Claim the resource version before changing OpenSearch. The transaction
+		// keeps concurrent updates from publishing an unpersisted mapping while
+		// an OpenSearch rejection still rolls the Resource update back.
+		if err := rs.ds.Update(ctx, resource); err != nil {
+			return err
+		}
+	}
 	if keyFieldsChanged {
 		if resource.SyncMark != "" {
 			updated, err := rs.ra.UpdateLocalIndexState(ctx, tx, resource.ID,
@@ -1095,6 +1135,26 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func hasMissingVectorFeatureDimensions(schema []*interfaces.Property) bool {
+	for _, property := range schema {
+		if property == nil {
+			continue
+		}
+		for _, feature := range property.Features {
+			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
+				continue
+			}
+			if feature.Config == nil {
+				return true
+			}
+			if _, exists := feature.Config["dimension"]; !exists {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func indexConfigKeyFieldsChanged(current, requested *interfaces.ResourceIndexConfig) bool {
@@ -1232,7 +1292,7 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 
 	for _, resource := range resources {
 		if resource.Category == interfaces.ResourceCategoryDataset {
-			if err := rs.ds.Delete(ctx, resource.ID); err != nil {
+			if err := rs.ds.Delete(ctx, resource); err != nil {
 				logger.Errorf("Delete dataset failed after resource deletion: %v", err)
 			}
 		}
@@ -1552,12 +1612,13 @@ func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema
 	if indexConfig != nil {
 		defaultEmbeddingModelID = strings.TrimSpace(indexConfig.DefaultEmbeddingModel)
 	}
-	checkedModelIDs := map[string]struct{}{}
+	models := map[string]*interfaces.SmallModel{}
 	for _, prop := range schema {
 		if prop == nil {
 			continue
 		}
-		for _, feature := range prop.Features {
+		for i := range prop.Features {
+			feature := &prop.Features[i]
 			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
 				continue
 			}
@@ -1581,23 +1642,27 @@ func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema
 					WithErrorDetails(fmt.Sprintf("embedding model is required for vector field %q; set config.embedding_model or index_config.default_embedding_model", fieldName))
 			}
 
-			if _, ok := checkedModelIDs[modelID]; !ok {
-				if _, err := rs.mfs.GetModelByID(ctx, modelID); err != nil {
+			model, ok := models[modelID]
+			if !ok {
+				var err error
+				model, err = rs.mfs.GetModelByID(ctx, modelID)
+				if err != nil || model == nil || model.EmbeddingDim <= 0 {
 					return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 						WithErrorDetails(fmt.Sprintf("embedding model ID %q for field %q not found", modelID, fieldName))
 				}
 
-				checkedModelIDs[modelID] = struct{}{}
+				models[modelID] = model
 			}
+			if feature.Config == nil {
+				feature.Config = map[string]any{}
+			}
+			feature.Config["dimension"] = model.EmbeddingDim
 		}
 	}
 	return nil
 }
 
 func (rs *resourceService) validateIndexConfigAnalyzers(ctx context.Context, schema []*interfaces.Property, indexConfig *interfaces.ResourceIndexConfig) error {
-	if rs.lim == nil {
-		return nil
-	}
 	defaultAnalyzer := ""
 	if indexConfig != nil {
 		defaultAnalyzer = strings.TrimSpace(indexConfig.DefaultFulltextAnalyzer)
@@ -1715,6 +1780,47 @@ func validateSchemaDefinition(ctx context.Context, schema []*interfaces.Property
 	return nil
 }
 
+// validateDatasetVectorOutputs reserves generated *_vector field names for
+// string/text vector features. Dataset does not support ref_property, so a
+// feature always derives from the property it belongs to.
+func validateDatasetVectorOutputs(ctx context.Context, schema []*interfaces.Property) error {
+	logicalFields := make(map[string]struct{}, len(schema))
+	for _, property := range schema {
+		if property != nil {
+			logicalFields[property.Name] = struct{}{}
+		}
+	}
+	generatedFields := make(map[string]string)
+	for _, property := range schema {
+		if property == nil {
+			continue
+		}
+		for _, feature := range property.Features {
+			// HTTP validation rejects this already. Keep the Dataset business
+			// invariant here as well because internal callers can bypass the
+			// HTTP adapter and call the service directly.
+			if feature.RefProperty != "" {
+				return unsupportedResourceUpdateError(ctx, "dataset does not support ref_property")
+			}
+			if property.Type != interfaces.DataType_String && property.Type != interfaces.DataType_Text {
+				continue
+			}
+			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
+				continue
+			}
+			outputField := interfaces.LocalIndexVectorFieldName(property.Name)
+			if _, exists := logicalFields[outputField]; exists {
+				return unsupportedResourceUpdateError(ctx, fmt.Sprintf("dataset vector output field %q conflicts with a logical property", outputField))
+			}
+			if source, exists := generatedFields[outputField]; exists && source != property.Name {
+				return unsupportedResourceUpdateError(ctx, fmt.Sprintf("dataset vector output field %q is generated more than once", outputField))
+			}
+			generatedFields[outputField] = property.Name
+		}
+	}
+	return nil
+}
+
 func validateMutableSchemaUpdate(ctx context.Context, current []*interfaces.Property, requested []*interfaces.Property, allowPropertyAdditions bool) (bool, error) {
 	if !allowPropertyAdditions && len(current) != len(requested) {
 		return false, unsupportedResourceUpdateError(ctx, "schema_definition can only update field display_name, description, and features")
@@ -1761,7 +1867,7 @@ func validateMutableSchemaUpdate(ctx context.Context, current []*interfaces.Prop
 		if !reflect.DeepEqual(currentComparable, requestedComparable) {
 			return false, unsupportedResourceUpdateError(ctx, "schema_definition can only update field display_name, description, and features")
 		}
-		if !reflect.DeepEqual(currentProp.Features, requestedProp.Features) {
+		if !mutableFeaturesEqual(currentProp.Features, requestedProp.Features) {
 			schemaChanged = true
 		}
 	}
@@ -1771,6 +1877,41 @@ func validateMutableSchemaUpdate(ctx context.Context, current []*interfaces.Prop
 		}
 	}
 	return schemaChanged, nil
+}
+
+// mutableFeaturesEqual treats a missing vector dimension in the request as an
+// omitted server-maintained value. A supplied dimension remains part of the
+// comparison, so an explicit mismatch is a schema change.
+func mutableFeaturesEqual(current, requested []interfaces.PropertyFeature) bool {
+	if len(current) != len(requested) {
+		return false
+	}
+	currentCopy := append([]interfaces.PropertyFeature(nil), current...)
+	requestedCopy := append([]interfaces.PropertyFeature(nil), requested...)
+	for i := range currentCopy {
+		if currentCopy[i].FeatureType != interfaces.PropertyFeatureType_Vector ||
+			requestedCopy[i].FeatureType != interfaces.PropertyFeatureType_Vector {
+			continue
+		}
+		if _, supplied := requestedCopy[i].Config["dimension"]; supplied {
+			continue
+		}
+		config := make(map[string]any, len(currentCopy[i].Config))
+		for key, value := range currentCopy[i].Config {
+			if key != "dimension" {
+				config[key] = value
+			}
+		}
+		if len(config) == 0 && len(requestedCopy[i].Config) == 0 {
+			// A legacy nil config and an omitted request config are equivalent once
+			// the server-maintained dimension is excluded from this comparison.
+			currentCopy[i].Config = nil
+			requestedCopy[i].Config = nil
+		} else {
+			currentCopy[i].Config = config
+		}
+	}
+	return reflect.DeepEqual(currentCopy, requestedCopy)
 }
 
 func applyMutableSchemaFields(current []*interfaces.Property, requested []*interfaces.Property, allowPropertyAdditions bool) []*interfaces.Property {

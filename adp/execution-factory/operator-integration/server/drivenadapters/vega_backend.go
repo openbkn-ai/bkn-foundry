@@ -228,33 +228,17 @@ func (v *vegaBackendClient) DeleteResource(ctx context.Context, id string) error
 	return nil
 }
 
-func (v *vegaBackendClient) WriteDatasetDocuments(ctx context.Context, datasetID string, documents []map[string]any) error {
-	src := fmt.Sprintf("%s/v1/resources/%s/data", v.baseURL, url.PathEscape(datasetID))
+func (v *vegaBackendClient) WriteDatasetDocument(ctx context.Context, datasetID, docID string, document map[string]any) error {
+	src := fmt.Sprintf("%s/v1/resources/%s/data/%s", v.baseURL, url.PathEscape(datasetID), url.PathEscape(docID))
 	headers := v.buildHeaders(ctx)
-	headers["X-HTTP-Method-Override"] = "POST"
-	v.logger.WithContext(ctx).Infof("write vega dataset documents, resource_id=%s, documents=%d, url=%s", datasetID, len(documents), src)
-	respCode, respData, err := v.httpClient.PostNoUnmarshal(ctx, src, headers, documents)
+	v.logger.WithContext(ctx).Infof("write vega dataset document, resource_id=%s, doc_id=%s, url=%s", datasetID, docID, src)
+	respCode, respData, err := v.httpClient.PutNoUnmarshal(ctx, src, headers, document)
 	if err != nil {
-		v.logger.WithContext(ctx).Errorf("failed to write vega dataset documents, resource_id=%s, documents=%d, url=%s, err=%v", datasetID, len(documents), src, err)
+		v.logger.WithContext(ctx).Errorf("failed to write vega dataset document, resource_id=%s, doc_id=%s, url=%s, err=%v", datasetID, docID, src, err)
 		return err
 	}
-	if respCode != http.StatusCreated && respCode != http.StatusOK {
-		return fmt.Errorf("write dataset documents failed: %s", string(respData))
-	}
-	return nil
-}
-
-func (v *vegaBackendClient) UpdateDatasetDocuments(ctx context.Context, datasetID string, documents []map[string]any) error {
-	src := fmt.Sprintf("%s/v1/resources/%s/data", v.baseURL, url.PathEscape(datasetID))
-	headers := v.buildHeaders(ctx)
-	v.logger.WithContext(ctx).Infof("update vega dataset documents, resource_id=%s, documents=%d, url=%s", datasetID, len(documents), src)
-	respCode, respData, err := v.httpClient.PutNoUnmarshal(ctx, src, headers, documents)
-	if err != nil {
-		v.logger.WithContext(ctx).Errorf("failed to update vega dataset documents, resource_id=%s, documents=%d, url=%s, err=%v", datasetID, len(documents), src, err)
-		return err
-	}
-	if respCode != http.StatusNoContent && respCode != http.StatusOK {
-		return fmt.Errorf("update dataset documents failed: %s", string(respData))
+	if respCode != http.StatusOK {
+		return fmt.Errorf("write dataset document failed: %s", string(respData))
 	}
 	return nil
 }

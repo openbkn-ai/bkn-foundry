@@ -554,7 +554,6 @@ func (rts *riskTypeService) InsertDatasetData(ctx context.Context, riskTypes []*
 		}
 	}
 
-	documents := make([]map[string]any, 0, len(riskTypes))
 	for _, riskType := range riskTypes {
 		docid := interfaces.GenerateConceptDocuemtnID(riskType.KNID, interfaces.MODULE_TYPE_RISK_TYPE,
 			riskType.RTID, riskType.Branch)
@@ -575,14 +574,11 @@ func (rts *riskTypeService) InsertDatasetData(ctx context.Context, riskTypes []*
 		}
 
 		doc["_id"] = docid
-		documents = append(documents, doc)
-	}
-
-	err := rts.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
-	if err != nil {
-		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
-		span.SetStatus(codes.Error, "风险类概念索引写入失败")
-		return err
+		if err := rts.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, docid, doc); err != nil {
+			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
+			span.SetStatus(codes.Error, "风险类概念索引写入失败")
+			return err
+		}
 	}
 
 	return nil

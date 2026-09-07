@@ -152,11 +152,6 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		{
 			resources.GET("", r.ListResourcesByEx)
 			resources.POST("", r.verifyJsonContentType(), r.CreateResourceByEx)
-			resources.POST("/:id/data", r.verifyJsonContentType(), r.PostResourceDataByEx)
-			resources.PUT("/:id/data", r.verifyJsonContentType(), r.PutResourceDataByEx)
-			resources.GET("/:id/data/:doc_id", r.GetResourceDataDocByEx)
-			resources.PUT("/:id/data/:doc_id", r.verifyJsonContentType(), r.PutResourceDataDocByEx)
-			resources.DELETE("/:id/data/:doc_ids", r.DeleteResourceDataByEx)
 			resources.GET("/:id", r.GetResourcesByEx) // The ID is the resource ID, and multiple resource ids are separated by commas
 			resources.PUT("/:id", r.verifyJsonContentType(), r.UpdateResourceByEx)
 			resources.DELETE("/:id", r.DeleteResourcesByEx) // The ID is the resource ID, and multiple resource ids are separated by commas
@@ -164,6 +159,11 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			resources.POST("/:id/disable", r.DisableResourceByEx)
 			resources.POST("/:id/discover", r.DiscoverResourceByEx)
 			resources.POST("/query", r.verifyJsonContentType(), r.RawQueryByEx)
+
+			resources.POST("/:id/data", r.verifyJsonContentType(), r.PostResourceDataByEx)
+			resources.PUT("/:id/data/:docid", r.verifyJsonContentType(), r.PutResourceDataDocByEx)
+			resources.GET("/:id/data/:docid", r.GetResourceDataDocByEx)
+			resources.DELETE("/:id/data/:docid", r.DeleteResourceDataByEx)
 		}
 
 		// DiscoverTask APIs - External
@@ -259,11 +259,6 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		{
 			resources.GET("", r.ListResourcesByIn)
 			resources.POST("", r.verifyJsonContentType(), r.CreateResourceByIn)
-			resources.POST("/:id/data", r.verifyJsonContentType(), r.PostResourceDataByIn)
-			resources.PUT("/:id/data", r.verifyJsonContentType(), r.PutResourceDataByIn)
-			resources.GET("/:id/data/:doc_id", r.GetResourceDataDocByIn)
-			resources.PUT("/:id/data/:doc_id", r.verifyJsonContentType(), r.PutResourceDataDocByIn)
-			resources.DELETE("/:id/data/:doc_ids", r.DeleteResourceDataByIn)
 			resources.GET("/:id", r.GetResourcesByIn) // The ID is the resource ID, and multiple resource ids are separated by commas
 			resources.PUT("/:id", r.verifyJsonContentType(), r.UpdateResourceByIn)
 			resources.DELETE("/:id", r.DeleteResourcesByIn) // The ID is the resource ID, and multiple resource ids are separated by commas
@@ -271,6 +266,11 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			resources.POST("/:id/disable", r.DisableResourceByIn)
 			resources.POST("/:id/discover", r.DiscoverResourceByIn)
 			resources.POST("/query", r.verifyJsonContentType(), r.RawQueryByIn)
+
+			resources.POST("/:id/data", r.verifyJsonContentType(), r.PostResourceDataByIn)
+			resources.PUT("/:id/data/:docid", r.verifyJsonContentType(), r.PutResourceDataDocByIn)
+			resources.GET("/:id/data/:docid", r.GetResourceDataDocByIn)
+			resources.DELETE("/:id/data/:docid", r.DeleteResourceDataByIn)
 		}
 
 		// DiscoverTask APIs - Internal

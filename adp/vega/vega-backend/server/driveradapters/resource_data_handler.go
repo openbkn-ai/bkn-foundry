@@ -107,14 +107,6 @@ func (r *restHandler) queryResourceData(c *gin.Context, ctx context.Context, spa
 		return
 	}
 
-	// Reading rows needs query_data, not just view_detail. The two were split so
-	// that "may see the structure" and "may read the contents" could differ
-	// (#801); until this is checked the split decides nothing (#571).
-	if err := r.rs.CheckResourcePermission(ctx, resourceID, interfaces.OPERATION_TYPE_QUERY_DATA); err != nil {
-		otellog.LogError(ctx, "Query resource data denied", err)
-		rest.ReplyError(c, err)
-		return
-	}
 	r.executeResourceDataQuery(c, ctx, span, resource, params, start)
 }
 
@@ -163,14 +155,8 @@ func bindResourceDataQuery(c *gin.Context, ctx context.Context, span trace.Span)
 	return &params, true
 }
 
-func (r *restHandler) executeResourceDataQuery(
-	c *gin.Context,
-	ctx context.Context,
-	span trace.Span,
-	resource *interfaces.Resource,
-	params *interfaces.ResourceDataQueryParams,
-	start time.Time,
-) {
+func (r *restHandler) executeResourceDataQuery(c *gin.Context, ctx context.Context, span trace.Span,
+	resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams, start time.Time) {
 	warning, err := resourcelogic.EnsureResourceQueryable(ctx, resource)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
@@ -221,15 +207,15 @@ func (r *restHandler) executeResourceDataQuery(
 }
 
 // createResourceData handles POST /resources/:id/data + Override: POST.
-// Batch create documents; dataset category only.
+// Create one document; dataset category only.
 func (r *restHandler) createResourceData(c *gin.Context, ctx context.Context, span trace.Span) {
 	resource, ok := r.requireDatasetResource(c, ctx, span, c.Param("id"))
 	if !ok {
 		return
 	}
 
-	var documents []map[string]any
-	if err := common.BindPreciseJSON(c.Request.Body, &documents); err != nil {
+	var document map[string]any
+	if err := common.BindPreciseJSON(c.Request.Body, &document); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(err.Error())
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -237,9 +223,9 @@ func (r *restHandler) createResourceData(c *gin.Context, ctx context.Context, sp
 		return
 	}
 
-	docIDs, err := r.ds.CreateDocuments(ctx, resource.ID, documents)
+	docID, err := r.ds.CreateDocument(ctx, resource, document)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError_CreateFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -247,7 +233,7 @@ func (r *restHandler) createResourceData(c *gin.Context, ctx context.Context, sp
 
 	logger.Debug("Handler createResourceData Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusCreated)
-	rest.ReplyOK(c, http.StatusCreated, map[string]any{"ids": docIDs})
+	rest.ReplyOK(c, http.StatusCreated, map[string]any{"id": docID})
 }
 
 // deleteResourceDataByQuery handles POST /resources/:id/data + Override: DELETE.
@@ -287,7 +273,7 @@ func (r *restHandler) deleteResourceDataByQuery(c *gin.Context, ctx context.Cont
 	}
 	params.FilterCondCfg = actualCond
 
-	if err := r.ds.DeleteDocumentsByQuery(ctx, resource.ID, resource, &params); err != nil {
+	if err := r.ds.DeleteDocumentsByQuery(ctx, resource, &params); err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -303,91 +289,9 @@ func (r *restHandler) deleteResourceDataByQuery(c *gin.Context, ctx context.Cont
 
 // =========================== PUT /resources/:id/data ===========================
 
-// PutResourceDataByEx handles PUT /api/vega-backend/v1/resources/:id/data (External).
-// Batch upsert documents; dataset category only. Each document must carry an `id` field.
-func (r *restHandler) PutResourceDataByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
-	if err != nil {
-		return
-	}
-	r.putResourceData(c, visitor, false)
-}
+// =========================== GET /resources/:id/data/:docid ===========================
 
-// PutResourceDataByIn handles PUT /api/vega-backend/in/v1/resources/:id/data (Internal).
-func (r *restHandler) PutResourceDataByIn(c *gin.Context) {
-	visitor := visitor.GenerateVisitor(c)
-	// The internal network /in/ is the S2S boundary within the cluster: mark S2S to allow per-account authentication for internal infrastructure resources by default.
-	r.putResourceData(c, visitor, true)
-}
-
-// putResourceData batch upsert documents. When s2sInternal is true (only for /in/ internal network endpoints),
-// Skip the per-account view_detail check for internal directory resources.
-func (r *restHandler) putResourceData(c *gin.Context, visitor hydra.Visitor, s2sInternal bool) {
-	ctx, span := oteltrace.StartServerSpan(c)
-	defer span.End()
-
-	accountInfo := interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)}
-	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
-	if s2sInternal {
-		ctx = interfaces.WithS2SInternalAccess(ctx)
-	}
-	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
-
-	resource, ok := r.requireDatasetResource(c, ctx, span, c.Param("id"))
-	if !ok {
-		return
-	}
-
-	var documents []map[string]any
-	if err := common.BindPreciseJSON(c.Request.Body, &documents); err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-			WithErrorDetails(err.Error())
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-	if len(documents) == 0 {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-			WithErrorDetails("documents array cannot be empty")
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-
-	// Each document must carry id; collect violators.
-	invalidIndexes := make([]int, 0)
-	for i, doc := range documents {
-		if id, ok := doc["id"].(string); !ok || id == "" {
-			invalidIndexes = append(invalidIndexes, i)
-		}
-	}
-	if len(invalidIndexes) > 0 {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-			WithErrorDetails(map[string]any{
-				"message":         "every document must carry a non-empty `id` field for PUT (update)",
-				"invalid_indexes": invalidIndexes,
-			})
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-
-	docIDs, err := r.ds.UpsertDocuments(ctx, resource.ID, documents)
-	if err != nil {
-		httpErr := err.(*rest.HTTPError)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-
-	logger.Debug("Handler putResourceData Success")
-	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
-	rest.ReplyOK(c, http.StatusOK, map[string]any{"ids": docIDs})
-}
-
-// =========================== GET /resources/:id/data/:doc_id ===========================
-
-// GetResourceDataDocByEx handles GET /api/vega-backend/v1/resources/:id/data/:doc_id (External).
+// GetResourceDataDocByEx handles GET /api/vega-backend/v1/resources/:id/data/:docid (External).
 func (r *restHandler) GetResourceDataDocByEx(c *gin.Context) {
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
@@ -396,14 +300,14 @@ func (r *restHandler) GetResourceDataDocByEx(c *gin.Context) {
 	r.getResourceDataDoc(c, visitor, false)
 }
 
-// GetResourceDataDocByIn handles GET /api/vega-backend/in/v1/resources/:id/data/:doc_id (Internal).
+// GetResourceDataDocByIn handles GET /api/vega-backend/in/v1/resources/:id/data/:docid (Internal).
 func (r *restHandler) GetResourceDataDocByIn(c *gin.Context) {
 	visitor := visitor.GenerateVisitor(c)
 	// The internal network /in/ is the S2S boundary within the cluster: mark S2S to allow per-account authentication for internal infrastructure resources by default.
 	r.getResourceDataDoc(c, visitor, true)
 }
 
-// getResourceDataDoc reads a single document. When s2sInternal is true (only for /in/ internal network endpoints),
+// getResourceDataDoc reads one or more documents. When s2sInternal is true (only for /in/ internal network endpoints),
 // Skip the per-account view_detail check for internal directory resources.
 func (r *restHandler) getResourceDataDoc(c *gin.Context, visitor hydra.Visitor, s2sInternal bool) {
 	ctx, span := oteltrace.StartServerSpan(c)
@@ -421,16 +325,6 @@ func (r *restHandler) getResourceDataDoc(c *gin.Context, visitor hydra.Visitor, 
 		return
 	}
 
-	// Reading one document is reading rows, so it needs query_data for the same
-	// reason the paged query does (#571): loading the resource only proves the
-	// caller may see the table's structure, and this endpoint hands back its
-	// contents.
-	if err := r.rs.CheckResourcePermission(ctx, resource.ID, interfaces.OPERATION_TYPE_QUERY_DATA); err != nil {
-		otellog.LogError(ctx, "Get resource data document denied", err)
-		rest.ReplyError(c, err)
-		return
-	}
-
 	warning, err := resourcelogic.EnsureResourceQueryable(ctx, resource)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
@@ -442,30 +336,39 @@ func (r *restHandler) getResourceDataDoc(c *gin.Context, visitor hydra.Visitor, 
 		otellog.LogWarn(ctx, "Query hit deprecated resource: "+warning)
 	}
 
-	docID := c.Param("doc_id")
-	doc, err := r.ds.GetDocument(ctx, resource.ID, docID)
+	docIDs := parseRawIDs(c.Param("docid"))
+	if len(docIDs) == 0 {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
+			WithErrorDetails("at least one document id is required")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	ignoreMissing := strings.EqualFold(strings.TrimSpace(c.Query("ignore_missing")), "true")
+
+	documents, err := r.ds.GetDocuments(ctx, resource, docIDs, ignoreMissing)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
-	if doc == nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound).
-			WithErrorDetails(fmt.Sprintf("document %s not found", docID))
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
+	entries := make([]map[string]any, 0, len(documents))
+	for _, document := range documents {
+		if document != nil {
+			entries = append(entries, document)
+		}
 	}
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
-	rest.ReplyOK(c, http.StatusOK, doc)
+	rest.ReplyOK(c, http.StatusOK, map[string]any{"entries": entries})
 }
 
-// =========================== PUT /resources/:id/data/:doc_id ===========================
+// =========================== PUT /resources/:id/data/:docid ===========================
 
-// PutResourceDataDocByEx handles PUT /api/vega-backend/v1/resources/:id/data/:doc_id (External).
-// Single-document update; doc_id from path takes precedence over any `id` field in body.
+// PutResourceDataDocByEx handles PUT /api/vega-backend/v1/resources/:id/data/:docid (External).
+// Single-document update; docid from path takes precedence over any `_id` field in body.
 func (r *restHandler) PutResourceDataDocByEx(c *gin.Context) {
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
@@ -474,7 +377,7 @@ func (r *restHandler) PutResourceDataDocByEx(c *gin.Context) {
 	r.putResourceDataDoc(c, visitor, false)
 }
 
-// PutResourceDataDocByIn handles PUT /api/vega-backend/in/v1/resources/:id/data/:doc_id (Internal).
+// PutResourceDataDocByIn handles PUT /api/vega-backend/in/v1/resources/:id/data/:docid (Internal).
 func (r *restHandler) PutResourceDataDocByIn(c *gin.Context) {
 	visitor := visitor.GenerateVisitor(c)
 	// The internal network /in/ is the S2S boundary within the cluster: mark S2S to allow per-account authentication for internal infrastructure resources by default.
@@ -499,7 +402,14 @@ func (r *restHandler) putResourceDataDoc(c *gin.Context, visitor hydra.Visitor, 
 		return
 	}
 
-	docID := c.Param("doc_id")
+	docID := strings.TrimSpace(c.Param("docid"))
+	if docID == "" {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
+			WithErrorDetails("exactly one document id is required")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 
 	var doc map[string]any
 	if err := common.BindPreciseJSON(c.Request.Body, &doc); err != nil {
@@ -512,15 +422,15 @@ func (r *restHandler) putResourceDataDoc(c *gin.Context, visitor hydra.Visitor, 
 	if doc == nil {
 		doc = map[string]any{}
 	}
-	if bodyID, exists := doc["id"]; exists {
+	if bodyID, exists := doc["_id"]; exists {
 		if s, ok := bodyID.(string); !ok || s != docID {
-			logger.Warnf("PutResourceDataDoc: body.id (%v) overridden by path doc_id (%s)", bodyID, docID)
+			logger.Warnf("PutResourceDataDoc: body._id (%v) overridden by path docid (%s)", bodyID, docID)
 		}
 	}
-	doc["id"] = docID
+	doc["_id"] = docID
 
-	if _, err := r.ds.UpsertDocuments(ctx, resource.ID, []map[string]any{doc}); err != nil {
-		httpErr := err.(*rest.HTTPError)
+	if err := r.ds.ReplaceDocument(ctx, resource, docID, doc); err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError_UpdateFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -531,10 +441,11 @@ func (r *restHandler) putResourceDataDoc(c *gin.Context, visitor hydra.Visitor, 
 	rest.ReplyOK(c, http.StatusOK, map[string]any{"id": docID})
 }
 
-// =========================== DELETE /resources/:id/data/:doc_ids ===========================
+// =========================== DELETE /resources/:id/data/:docid ===========================
 
-// DeleteResourceDataByEx handles DELETE /api/vega-backend/v1/resources/:id/data/:doc_ids (External).
-// Best-effort batch delete by IDs; missing IDs are silently skipped.
+// DeleteResourceDataByEx handles DELETE /api/vega-backend/v1/resources/:id/data/:docid (External).
+// Deletes one or more documents by IDs. Missing IDs reject the whole request by default;
+// callers can opt into skipping them with ?ignore_missing=true.
 func (r *restHandler) DeleteResourceDataByEx(c *gin.Context) {
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
@@ -543,7 +454,7 @@ func (r *restHandler) DeleteResourceDataByEx(c *gin.Context) {
 	r.deleteResourceData(c, visitor, false)
 }
 
-// DeleteResourceDataByIn handles DELETE /api/vega-backend/in/v1/resources/:id/data/:doc_ids (Internal).
+// DeleteResourceDataByIn handles DELETE /api/vega-backend/in/v1/resources/:id/data/:docid (Internal).
 func (r *restHandler) DeleteResourceDataByIn(c *gin.Context) {
 	visitor := visitor.GenerateVisitor(c)
 	// The internal network /in/ is the S2S boundary within the cluster: mark S2S to allow per-account authentication for internal infrastructure resources by default.
@@ -568,9 +479,18 @@ func (r *restHandler) deleteResourceData(c *gin.Context, visitor hydra.Visitor, 
 		return
 	}
 
-	// service expects comma-separated string; pass through.
-	docIDs := c.Param("doc_ids")
-	if err := r.ds.DeleteDocuments(ctx, resource.ID, docIDs); err != nil {
+	docIDs := parseRawIDs(c.Param("docid"))
+	if len(docIDs) == 0 {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
+			WithErrorDetails("at least one document id is required")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	ignoreMissing := strings.EqualFold(strings.TrimSpace(c.Query("ignore_missing")), "true")
+
+	if err := r.ds.DeleteDocuments(ctx, resource, docIDs, ignoreMissing); err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

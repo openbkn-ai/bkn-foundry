@@ -112,7 +112,6 @@ func (ms *metricService) InsertDatasetData(ctx context.Context, metrics []*inter
 		}
 	}
 
-	documents := make([]map[string]any, 0, len(metrics))
 	for _, def := range metrics {
 		docid := interfaces.GenerateConceptDocuemtnID(def.KnID, interfaces.MODULE_TYPE_METRIC, def.ID, def.Branch)
 		def.ModuleType = interfaces.MODULE_TYPE_METRIC
@@ -126,13 +125,11 @@ func (ms *metricService) InsertDatasetData(ctx context.Context, metrics []*inter
 			return err
 		}
 		doc["_id"] = docid
-		documents = append(documents, doc)
-	}
-
-	if err := ms.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents); err != nil {
-		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
-		span.SetStatus(codes.Error, "指标概念索引写入失败")
-		return err
+		if err := ms.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, docid, doc); err != nil {
+			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
+			span.SetStatus(codes.Error, "指标概念索引写入失败")
+			return err
+		}
 	}
 	return nil
 }

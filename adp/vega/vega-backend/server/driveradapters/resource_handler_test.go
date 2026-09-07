@@ -266,6 +266,32 @@ func Test_ResourceRestHandler_GetResources(t *testing.T) {
 		assert.Contains(t, w.Body.String(), `"id":"res-2"`)
 	})
 
+	t.Run("normalizes empty, whitespace, and duplicate ids", func(t *testing.T) {
+		engine, _, rs := setupResourceHandlerTest(t)
+		rs.EXPECT().GetByIDs(gomock.Any(), []string{"res-1", "res-2"}).
+			Return([]*interfaces.Resource{{ID: "res-1", Name: "one"}, {ID: "res-2", Name: "two"}}, nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/resources/%20res-1%20,,res-2,res-1", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), `"id":"res-1"`)
+		assert.Contains(t, w.Body.String(), `"id":"res-2"`)
+	})
+
+	t.Run("rejects ids that normalize to empty", func(t *testing.T) {
+		engine, _, _ := setupResourceHandlerTest(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/resources/,,", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+	})
+
 	t.Run("multi-id with a missing id 404s by default", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
 		rs.EXPECT().GetByIDs(gomock.Any(), []string{"res-1", "res-2"}).

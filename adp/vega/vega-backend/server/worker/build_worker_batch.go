@@ -266,9 +266,12 @@ func buildBatchCursorFilter(keys []string, keyValues []interfaces.KeyValue) *int
 func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfaces.Catalog,
 	resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask) error {
 	isIncremental := buildTaskInfo.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental
-	indexName := buildIndexName(resource.ID, buildTaskInfo.ID)
-	if isIncremental {
-		indexName = resource.LocalIndexName
+	indexName := buildTaskInfo.IndexName
+	if indexName == "" {
+		return errors.New("build task target index is missing; create a new task after upgrade")
+	}
+	if isIncremental && indexName != resource.LocalIndexName {
+		return errors.New("resource local index changed before incremental build")
 	}
 	restartFromBeginning := buildTaskInfo.ExecuteType == interfaces.BuildTaskExecuteTypeFull &&
 		buildTaskInfo.SyncedMark == ""

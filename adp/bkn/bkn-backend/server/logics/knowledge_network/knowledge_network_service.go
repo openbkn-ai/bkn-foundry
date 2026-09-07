@@ -1408,9 +1408,9 @@ func (kns *knowledgeNetworkService) InsertDatasetData(ctx context.Context, origK
 	// Set document ID
 	doc["_id"] = docid
 
-	err = kns.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, []map[string]any{doc})
+	err = kns.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, docid, doc)
 	if err != nil {
-		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
+		logger.Errorf("WriteDatasetDocument error: %s", err.Error())
 		span.SetStatus(codes.Error, "业务知识网络概念索引写入失败")
 		return err
 	}

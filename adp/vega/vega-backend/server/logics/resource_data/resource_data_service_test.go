@@ -160,6 +160,10 @@ func TestEnsureResourceQueryableDoesNotExposeStatusMessage(t *testing.T) {
 }
 
 func TestResourceDataServiceQueryWithPagingRejectsUnavailableTableMetadata(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	rs := mock_interfaces.NewMockResourceService(ctrl)
+	rs.EXPECT().CheckResourcePermission(gomock.Any(), "resource-1", interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil).Times(2)
+	rds := &resourceDataService{rs: rs}
 	resource := &interfaces.Resource{
 		ID:                 "resource-1",
 		Enabled:            true,
@@ -171,13 +175,26 @@ func TestResourceDataServiceQueryWithPagingRejectsUnavailableTableMetadata(t *te
 		{},
 		{Paging: interfaces.PagingRequest{Cursor: "existing-cursor"}},
 	} {
-		_, err := (&resourceDataService{}).QueryWithPaging(context.Background(), resource, params)
+		_, err := rds.QueryWithPaging(context.Background(), resource, params)
 
 		var httpErr *rest.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_Resource_MetadataUnavailable, httpErr.BaseError.ErrorCode)
 	}
+}
+
+func TestResourceDataServiceQueryWithPagingRequiresQueryDataPermission(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	rs := mock_interfaces.NewMockResourceService(ctrl)
+	rds := &resourceDataService{rs: rs}
+	denied := rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
+	rs.EXPECT().CheckResourcePermission(gomock.Any(), "resource-1", interfaces.OPERATION_TYPE_QUERY_DATA).Return(denied)
+
+	_, err := rds.QueryWithPaging(context.Background(), &interfaces.Resource{ID: "resource-1"},
+		&interfaces.ResourceDataQueryParams{})
+
+	require.ErrorIs(t, err, denied)
 }
 
 func TestResourceDataServiceQuery(t *testing.T) {
@@ -234,10 +251,11 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		mockDS := mock_interfaces.NewMockDatasetService(ctrl)
 		rds := &resourceDataService{cs: mockCS, ds: mockDS}
 		resource := &interfaces.Resource{
-			ID:        "dataset-1",
-			Enabled:   true,
-			CatalogID: "catalog-1",
-			Category:  interfaces.ResourceCategoryDataset,
+			ID:             "dataset-1",
+			Enabled:        true,
+			CatalogID:      "catalog-1",
+			Category:       interfaces.ResourceCategoryDataset,
+			LocalIndexName: "vega-dataset-index-1",
 			SchemaDefinition: []*interfaces.Property{
 				{Name: "name", Type: interfaces.DataType_String},
 			},
@@ -256,8 +274,8 @@ func TestResourceDataServiceQuery(t *testing.T) {
 
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockDS.EXPECT().ListDocuments(gomock.Any(), "dataset-1", resource, params).
-			DoAndReturn(func(ctx context.Context, resourceID string, gotResource *interfaces.Resource,
+		mockDS.EXPECT().ListDocuments(gomock.Any(), resource, params).
+			DoAndReturn(func(ctx context.Context, gotResource *interfaces.Resource,
 				gotParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 				require.NotNil(t, gotParams.ActualFilterCond)
 				assert.Equal(t, "==", gotParams.ActualFilterCond.GetOperation())
@@ -314,7 +332,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 
 func TestResourceDataServiceRejectsIndexAggregationCursor(t *testing.T) {
 	rds := &resourceDataService{}
-	_, err := rds.QueryWithPaging(context.Background(), &interfaces.Resource{
+	_, err := rds.QueryWithPaging(interfaces.WithTrustedProxyRead(context.Background()), &interfaces.Resource{
 		ID:               "index-1",
 		Enabled:          true,
 		Category:         interfaces.ResourceCategoryIndex,
@@ -361,14 +379,15 @@ func TestResourceDataServiceRejectsOpenSearchCursorWithoutSort(t *testing.T) {
 		Enabled:          true,
 		CatalogID:        "catalog-1",
 		Category:         interfaces.ResourceCategoryDataset,
+		LocalIndexName:   "vega-dataset-index-1",
 		SchemaDefinition: []*interfaces.Property{{Name: "id"}},
 	}
 	mockCS.EXPECT().GetByID(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-	mockDS.EXPECT().ListDocuments(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
+	mockDS.EXPECT().ListDocuments(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
 		Return(nil, int64(0), nil)
 
-	_, err := rds.QueryWithPaging(context.Background(), resource, &interfaces.ResourceDataQueryParams{
+	_, err := rds.QueryWithPaging(interfaces.WithTrustedProxyRead(context.Background()), resource, &interfaces.ResourceDataQueryParams{
 		Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1},
 	})
 	require.Error(t, err)
@@ -391,10 +410,10 @@ func TestResourceDataServiceRejectsOpenSearchFirstPageWindowOverflow(t *testing.
 	}
 	mockCS.EXPECT().GetByID(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-	mockDS.EXPECT().ListDocuments(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
+	mockDS.EXPECT().ListDocuments(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
 		Return(nil, int64(0), nil)
 
-	_, err := rds.QueryWithPaging(context.Background(), resource, &interfaces.ResourceDataQueryParams{
+	_, err := rds.QueryWithPaging(interfaces.WithTrustedProxyRead(context.Background()), resource, &interfaces.ResourceDataQueryParams{
 		Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Offset: interfaces.MaxPageLimit, Limit: 1},
 		Sort:   []*interfaces.SortField{{Field: "id", Direction: "asc"}},
 	})
@@ -414,6 +433,7 @@ func TestDatasetCursorUsesSearchAfterPagination(t *testing.T) {
 		Enabled:          true,
 		CatalogID:        "catalog-1",
 		Category:         interfaces.ResourceCategoryDataset,
+		LocalIndexName:   "vega-dataset-index-1",
 		SchemaDefinition: []*interfaces.Property{{Name: "id"}},
 	}
 	params := &interfaces.ResourceDataQueryParams{
@@ -423,8 +443,8 @@ func TestDatasetCursorUsesSearchAfterPagination(t *testing.T) {
 	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Times(2).
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 	firstPage := true
-	mockDS.EXPECT().ListDocuments(gomock.Any(), "dataset-1", resource, gomock.Any()).Times(2).
-		DoAndReturn(func(_ context.Context, _ string, _ *interfaces.Resource, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+	mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).Times(2).
+		DoAndReturn(func(_ context.Context, _ *interfaces.Resource, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 			assert.Equal(t, 1, pageParams.Limit)
 			if firstPage {
 				firstPage = false
@@ -436,10 +456,10 @@ func TestDatasetCursorUsesSearchAfterPagination(t *testing.T) {
 			return nil, 0, nil
 		})
 
-	first, err := rds.QueryWithPaging(context.Background(), resource, params)
+	first, err := rds.QueryWithPaging(interfaces.WithTrustedProxyRead(context.Background()), resource, params)
 	require.NoError(t, err)
 	require.NotNil(t, first.Paging.NextCursor)
-	final, err := rds.QueryWithPaging(context.Background(), resource, &interfaces.ResourceDataQueryParams{
+	final, err := rds.QueryWithPaging(interfaces.WithTrustedProxyRead(context.Background()), resource, &interfaces.ResourceDataQueryParams{
 		Paging: interfaces.PagingRequest{Cursor: *first.Paging.NextCursor},
 	})
 	require.NoError(t, err)

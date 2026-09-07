@@ -110,7 +110,7 @@ type IndexConnector interface {
 	ExecuteRawQuery(ctx context.Context, indexName string, query map[string]any) (*RawQueryResponse, error)
 
 	// for index
-	CreateIndex(ctx context.Context, indexName string, schemaDefinition []*Property) error
+	CreateIndex(ctx context.Context, indexName string, schemaDefinition []*Property, mappingMeta map[string]string) error
 	UpdateIndex(ctx context.Context, indexName string, schemaDefinition []*Property) error
 	DeleteIndex(ctx context.Context, indexName string) error
 	CheckIndexExist(ctx context.Context, indexName string) (bool, error)
@@ -120,9 +120,10 @@ type IndexConnector interface {
 	CreateDocuments(ctx context.Context, indexName string, documents []map[string]any) ([]string, error)
 	IndexDocuments(ctx context.Context, indexName string, documents map[string]map[string]any) ([]string, error)
 	GetDocument(ctx context.Context, indexName string, docID string) (map[string]any, error)
+	GetDocuments(ctx context.Context, indexName string, docIDs []string) ([]map[string]any, error)
 	DeleteDocument(ctx context.Context, indexName string, docID string) error
 	UpsertDocuments(ctx context.Context, indexName string, updateRequests []map[string]any) ([]string, error)
-	DeleteDocuments(ctx context.Context, indexName string, docIDs string) error
+	DeleteDocuments(ctx context.Context, indexName string, docIDs []string) error
 	DeleteDocumentsByQuery(ctx context.Context, indexName string, params *ResourceDataQueryParams, schemaDefinition []*Property) error
 }
 

@@ -437,7 +437,6 @@ func (s *skillIndexSync) restoreSkillDatasetFromSource(ctx context.Context) erro
 		if len(skills) == 0 {
 			return nil
 		}
-		documents := make([]map[string]any, 0, len(skills))
 		for _, skill := range skills {
 			if skill == nil {
 				return fmt.Errorf("skill index restore received nil skill")
@@ -451,15 +450,12 @@ func (s *skillIndexSync) restoreSkillDatasetFromSource(ctx context.Context) erro
 				if err != nil {
 					return fmt.Errorf("build skill %s document for index restore: %w", skill.SkillID, err)
 				}
-				documents = append(documents, document)
+				if err := s.vegaClient.WriteDatasetDocument(ctx, s.getDatasetID(), skill.SkillID, document); err != nil {
+					return fmt.Errorf("write skill document for index restore: %w", err)
+				}
 			}
 			cursorUpdateTime = skill.UpdateTime
 			cursorSkillID = skill.SkillID
-		}
-		if len(documents) > 0 {
-			if err := s.vegaClient.WriteDatasetDocuments(ctx, s.getDatasetID(), documents); err != nil {
-				return fmt.Errorf("write %d skill documents for index restore: %w", len(documents), err)
-			}
 		}
 	}
 }
@@ -546,7 +542,7 @@ func (s *skillIndexSync) UpsertSkill(ctx context.Context, skill *model.SkillRepo
 	}
 	datasetID := s.getDatasetID()
 	log.Infof("upsert skill index document, skill_id=%s, resource_id=%s", skill.SkillID, datasetID)
-	if err = s.vegaClient.WriteDatasetDocuments(ctx, datasetID, []map[string]any{document}); err != nil {
+	if err = s.vegaClient.WriteDatasetDocument(ctx, datasetID, skill.SkillID, document); err != nil {
 		log.Errorf("write skill index document failed, skill_id=%s, err=%v", skill.SkillID, err)
 		return err
 	}
@@ -566,7 +562,7 @@ func (s *skillIndexSync) UpdateSkill(ctx context.Context, skill *model.SkillRepo
 	}
 	datasetID := s.getDatasetID()
 	log.Infof("update skill index document, skill_id=%s, resource_id=%s", skill.SkillID, datasetID)
-	if err = s.vegaClient.UpdateDatasetDocuments(ctx, datasetID, []map[string]any{document}); err != nil {
+	if err = s.vegaClient.WriteDatasetDocument(ctx, datasetID, skill.SkillID, document); err != nil {
 		log.Errorf("update skill index document failed, skill_id=%s, err=%v", skill.SkillID, err)
 		return err
 	}

@@ -221,12 +221,7 @@ func (r *restHandler) deleteSemanticUnderstandingTasks(c *gin.Context, visitor h
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	ids := make([]string, 0)
-	for _, rawID := range strings.Split(c.Param("ids"), ",") {
-		if id := strings.TrimSpace(rawID); id != "" {
-			ids = append(ids, id)
-		}
-	}
+	ids := parseRawIDs(c.Param("ids"))
 	if len(ids) == 0 {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails("ids path parameter is required")
@@ -236,6 +231,7 @@ func (r *restHandler) deleteSemanticUnderstandingTasks(c *gin.Context, visitor h
 	}
 
 	ignoreMissing := strings.EqualFold(c.Query("ignore_missing"), "true")
+
 	if err := r.suts.DeleteByIDs(ctx, ids, ignoreMissing); err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)

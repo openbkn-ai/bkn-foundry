@@ -257,7 +257,14 @@ func (r *restHandler) getResources(c *gin.Context, visitor hydra.Visitor) {
 
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	ids := strings.Split(c.Param("id"), ",")
+	ids := parseRawIDs(c.Param("id"))
+	if len(ids) == 0 {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
+			WithErrorDetails("at least one resource id is required")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 
 	// By default any missing id 404s the whole request (all-or-nothing), for both
 	// single- and multi-id GETs — matching the strict default of the sibling
@@ -497,16 +504,20 @@ func (r *restHandler) deleteResources(c *gin.Context, visitor hydra.Visitor) {
 
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	rawIDs := strings.Split(c.Param("id"), ",")
+	rawIDs := parseRawIDs(c.Param("id"))
+	if len(rawIDs) == 0 {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
+			WithErrorDetails("at least one resource id is required")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
 	ignoreMissing := strings.EqualFold(c.Query("ignore_missing"), "true")
 
 	// Pre-validate existence; collect ids to delete based on ignore_missing.
 	idsToDelete := make([]string, 0, len(rawIDs))
 	for _, id := range rawIDs {
-		id = strings.TrimSpace(id)
-		if id == "" {
-			continue
-		}
 		exists, err := r.rs.CheckExistByID(ctx, id)
 		if err != nil {
 			httpErr := err.(*rest.HTTPError)

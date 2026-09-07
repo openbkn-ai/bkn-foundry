@@ -423,41 +423,35 @@ func resourceDataQueryRequest(params *interfaces.ResourceDataQueryParams) (*inte
 	return &request, nil
 }
 
-func (vba *vegaBackendAccess) WriteDatasetDocuments(ctx context.Context, datasetID string, documents []map[string]any) error {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "driven layer: Write dataset documents")
+func (vba *vegaBackendAccess) WriteDatasetDocument(ctx context.Context, datasetID, docID string, document map[string]any) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "driven layer: Write dataset document")
 	defer span.End()
 
 	span.SetAttributes(attr.Key("dataset_id").String(datasetID))
-	span.SetAttributes(attr.Key("documents_count").Int(len(documents)))
-
-	httpUrl := fmt.Sprintf("%s/resources/%s/data", vba.baseUrl, url.PathEscape(datasetID))
+	httpURL := fmt.Sprintf("%s/resources/%s/data/%s", vba.baseUrl, url.PathEscape(datasetID), url.PathEscape(docID))
 	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{
-		HttpUrl:         httpUrl,
-		HttpMethod:      http.MethodPost,
+		HttpUrl:         httpURL,
+		HttpMethod:      http.MethodPut,
 		HttpContentType: rest.ContentTypeJson,
 	})
 
-	headers := vba.buildHeaders(ctx)
-	headers[oteltrace.HTTP_HEADER_METHOD_OVERRIDE] = http.MethodPost
-	respCode, respData, err := vba.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, documents)
-	logger.Debugf("WriteDatasetDocuments finished, document count is [%d], response code is [%d], %s",
-		len(documents), respCode, common.SafeErrorSummary(err))
-
+	respCode, respData, err := vba.httpClient.PutNoUnmarshal(ctx, httpURL, vba.buildHeaders(ctx), document)
+	logger.Debugf("WriteDatasetDocument finished, document_id is [%s], response code is [%d], %s",
+		docID, respCode, common.SafeErrorSummary(err))
 	if err != nil {
 		safeErr := fmt.Errorf("Vega dependency request failed")
-		common.LogSafeError(ctx, "WriteDatasetDocuments failed: "+common.SafeErrorSummary(err), safeErr)
-		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http write dataset documents failed")
+		common.LogSafeError(ctx, "WriteDatasetDocument failed: "+common.SafeErrorSummary(err), safeErr)
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http replace dataset document failed")
 		return safeErr
 	}
-
-	if respCode != http.StatusCreated && respCode != http.StatusOK {
-		err := fmt.Errorf("WriteDatasetDocuments returned HTTP %d", respCode)
-		common.LogSafeError(ctx, "WriteDatasetDocuments failed", err)
-		logger.Debugf("WriteDatasetDocuments response: %s", common.SafeTextSummary("response", string(respData)))
-		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 201 or 200")
+	if respCode != http.StatusOK {
+		err := fmt.Errorf("WriteDatasetDocument returned HTTP %d", respCode)
+		common.LogSafeError(ctx, "WriteDatasetDocument failed", err)
+		logger.Debugf("WriteDatasetDocument response: %s", common.SafeTextSummary("response", string(respData)))
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
 		return err
 	}
 
-	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	return nil
 }

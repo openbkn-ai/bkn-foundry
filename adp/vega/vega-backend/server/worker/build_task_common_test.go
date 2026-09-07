@@ -164,7 +164,7 @@ func TestPrepareFullBuildIndex(t *testing.T) {
 
 		lim.EXPECT().CheckIndexExist(gomock.Any(), indexName).Return(true, nil)
 		lim.EXPECT().DeleteIndex(gomock.Any(), indexName).Return(nil)
-		lim.EXPECT().CreateIndex(gomock.Any(), indexName, gomock.Any()).Return(nil)
+		lim.EXPECT().CreateIndex(gomock.Any(), indexName, gomock.Any(), gomock.Any()).Return(nil)
 
 		require.NoError(t, recreateManagedLocalIndex(context.Background(), lim, indexName, task, resource))
 	})
@@ -178,6 +178,22 @@ func TestPrepareFullBuildIndex(t *testing.T) {
 		err := requireManagedLocalIndex(context.Background(), lim, indexName)
 		require.ErrorContains(t, err, "cannot resume full build")
 	})
+}
+
+func TestBuildLocalIndexSchemaBackfillsLegacyVectorDimensionFromTaskSnapshot(t *testing.T) {
+	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{
+		Name: "content", Type: interfaces.DataType_Text,
+		Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector}},
+	}}}
+	task := &interfaces.BuildTask{IndexConfig: &interfaces.BuildTaskIndexConfig{Features: map[string]interfaces.BuildTaskFieldIndexFeature{
+		"content": {Vector: &interfaces.SmallModel{ModelID: "embedding-1", EmbeddingDim: 3}},
+	}}}
+
+	schema, err := buildLocalIndexSchema(task, resource)
+
+	require.NoError(t, err)
+	assert.Equal(t, float64(3), schema[0].Features[0].Config["dimension"])
+	assert.Nil(t, resource.SchemaDefinition[0].Features[0].Config)
 }
 
 func TestCompleteFullBuildTask(t *testing.T) {
@@ -334,6 +350,7 @@ func workerTestFullTask(t *testing.T, resource *interfaces.Resource) *interfaces
 		ResourceID:  resource.ID,
 		Mode:        interfaces.BuildTaskModeBatch,
 		ExecuteType: interfaces.BuildTaskExecuteTypeFull,
+		IndexName:   buildIndexName(resource.ID, "t1"),
 		IndexConfig: &interfaces.BuildTaskIndexConfig{
 			IndexConfigContract: interfaces.IndexConfigContract{
 				PrimaryKeyFields:  []string{"id"},

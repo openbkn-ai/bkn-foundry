@@ -104,7 +104,7 @@ func TestRiskTypeServiceCreateRiskTypesResourceParentLifecycle(t *testing.T) {
 		rta.EXPECT().CreateRiskType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		ps.EXPECT().UpsertResourceParents(gomock.Any(), interfaces.RESOURCE_TYPE_RISK_TYPE,
 			interfaces.RESOURCE_TYPE_KN, parentItems).Return(nil)
-		vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+		vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
 		dbMock.ExpectCommit().WillReturnError(commitErr)
 		ps.EXPECT().DeleteResourceParents(gomock.Any(), interfaces.RESOURCE_TYPE_RISK_TYPE,
 			[]string{"kn-1/risk-1"}).Return(nil)

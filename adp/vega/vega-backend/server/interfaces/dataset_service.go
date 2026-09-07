@@ -14,15 +14,12 @@ import "context"
 type DatasetService interface {
 	Create(ctx context.Context, res *Resource) error
 	Update(ctx context.Context, res *Resource) error
-	Delete(ctx context.Context, id string) error
-	CheckExist(ctx context.Context, id string) (bool, error)
+	Delete(ctx context.Context, res *Resource) error
 
-	ListDocuments(ctx context.Context, indexName string, res *Resource, params *ResourceDataQueryParams) ([]map[string]any, int64, error)
-	GetDocument(ctx context.Context, id string, docID string) (map[string]any, error)
-
-	CreateDocuments(ctx context.Context, id string, documents []map[string]any) ([]string, error)
-	DeleteDocument(ctx context.Context, id string, docID string) error
-	UpsertDocuments(ctx context.Context, id string, updateRequests []map[string]any) ([]string, error)
-	DeleteDocuments(ctx context.Context, id string, docIDs string) error
-	DeleteDocumentsByQuery(ctx context.Context, indexName string, res *Resource, params *ResourceDataQueryParams) error
+	ListDocuments(ctx context.Context, res *Resource, params *ResourceDataQueryParams) ([]map[string]any, int64, error)
+	GetDocuments(ctx context.Context, res *Resource, docIDs []string, ignoreMissing bool) ([]map[string]any, error)
+	CreateDocument(ctx context.Context, res *Resource, document map[string]any) (string, error)
+	ReplaceDocument(ctx context.Context, res *Resource, docID string, document map[string]any) error
+	DeleteDocuments(ctx context.Context, res *Resource, docIDs []string, ignoreMissing bool) error
+	DeleteDocumentsByQuery(ctx context.Context, res *Resource, params *ResourceDataQueryParams) error
 }

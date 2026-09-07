@@ -805,7 +805,6 @@ func (rts *relationTypeService) InsertDatasetData(ctx context.Context, relationT
 		}
 	}
 
-	documents := []map[string]any{}
 	for _, relationType := range relationTypes {
 		docid := interfaces.GenerateConceptDocuemtnID(relationType.KNID, interfaces.MODULE_TYPE_RELATION_TYPE,
 			relationType.RTID, relationType.Branch)
@@ -828,14 +827,11 @@ func (rts *relationTypeService) InsertDatasetData(ctx context.Context, relationT
 
 		// Set document ID
 		doc["_id"] = docid
-		documents = append(documents, doc)
-	}
-
-	err := rts.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
-	if err != nil {
-		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
-		span.SetStatus(codes.Error, "关系类概念索引写入失败")
-		return err
+		if err := rts.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, docid, doc); err != nil {
+			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
+			span.SetStatus(codes.Error, "关系类概念索引写入失败")
+			return err
+		}
 	}
 
 	return nil

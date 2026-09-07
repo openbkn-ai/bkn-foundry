@@ -176,7 +176,7 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 	switch resource.Category {
 	case interfaces.ResourceCategoryDataset:
 		// Call dataset access to list the documents
-		documents, total, err := rds.ds.ListDocuments(ctx, resource.ID, resource, params)
+		documents, total, err := rds.ds.ListDocuments(ctx, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "List dataset documents failed", err)
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
@@ -281,6 +281,13 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 // QueryWithPaging is the sole public resource-data query entrypoint.
 func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+	// Proxy reads have already passed the dedicated proxy PEP. All other callers
+	// must be authorized here so every public query entrypoint has the same gate.
+	if !interfaces.IsTrustedProxyRead(ctx) {
+		if err := rds.rs.CheckResourcePermission(ctx, resource.ID, interfaces.OPERATION_TYPE_QUERY_DATA); err != nil {
+			return nil, err
+		}
+	}
 	if _, err := resourcelogic.EnsureResourceQueryable(ctx, resource); err != nil {
 		return nil, err
 	}

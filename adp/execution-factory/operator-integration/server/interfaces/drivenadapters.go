@@ -884,8 +884,7 @@ type VegaBackendClient interface {
 	GetResourceByID(ctx context.Context, id string) (*VegaResource, error)
 	CreateResource(ctx context.Context, req *VegaResourceRequest) (*VegaResource, error)
 	DeleteResource(ctx context.Context, id string) error
-	WriteDatasetDocuments(ctx context.Context, datasetID string, documents []map[string]any) error
-	UpdateDatasetDocuments(ctx context.Context, datasetID string, documents []map[string]any) error
+	WriteDatasetDocument(ctx context.Context, datasetID, docID string, document map[string]any) error
 	DeleteDatasetDocumentByID(ctx context.Context, datasetID string, docID string) error
 	// QueryDatasetData reads documents out of a dataset. It is the only read path on this
 	// client: everything else here writes, because until skill retrieval (#1260) the execution

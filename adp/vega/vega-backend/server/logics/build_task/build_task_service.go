@@ -330,6 +330,19 @@ func (bts *buildTaskService) newBuildTaskFromCreateRequest(ctx context.Context, 
 		Creator:     accountInfo,
 		CreateTime:  now,
 	}
+	if req.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental {
+		buildTask.IndexName = resource.LocalIndexName
+	} else {
+		indexID, err := uuid.NewV7()
+		if err != nil {
+			return nil, fmt.Errorf("generate build index UUIDv7: %w", err)
+		}
+		buildTask.IndexName = fmt.Sprintf("%s-%s", interfaces.BuildIndexPrefix, indexID)
+	}
+	if buildTask.IndexName == "" {
+		return nil, rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InternalError_CreateFailed).
+			WithErrorDetails("build task target index is unavailable")
+	}
 
 	if err := bts.fillBuildTaskIndexSnapshot(ctx, resource, buildTask); err != nil {
 		return nil, err
@@ -768,6 +781,10 @@ func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset boo
 		span.SetStatus(codes.Error, "Invalid state transition for start")
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
 			WithErrorDetails(fmt.Sprintf("cannot start task in status: %s", buildTask.Status))
+	}
+	if strings.TrimSpace(buildTask.IndexName) == "" {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IndexConfigChanged).
+			WithErrorDetails("build task has no target index after upgrade; create a new build task instead")
 	}
 	if reset && buildTask.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental {
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IncrementalResetUnsupported).

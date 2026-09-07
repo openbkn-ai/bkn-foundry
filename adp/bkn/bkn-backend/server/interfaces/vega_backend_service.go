@@ -18,7 +18,7 @@ type VegaBackendService interface {
 	CreateResource(ctx context.Context, req *VegaResource) error
 	DeleteResource(ctx context.Context, id string) error
 	QueryResourceData(ctx context.Context, resourceID string, params *ResourceDataQueryParams) (*DatasetQueryResponse, error)
-	WriteDatasetDocuments(ctx context.Context, datasetID string, documents []map[string]any) error
+	WriteDatasetDocument(ctx context.Context, datasetID, docID string, document map[string]any) error
 	DeleteDatasetDocumentByID(ctx context.Context, datasetID string, docID string) error
 	DeleteDatasetDocumentsByQuery(ctx context.Context, datasetID string, filterCondition map[string]any) error
 }

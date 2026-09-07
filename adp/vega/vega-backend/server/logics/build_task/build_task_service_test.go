@@ -982,6 +982,24 @@ func TestValidateIncrementalBaseline(t *testing.T) {
 }
 
 func TestBuildTaskServiceStart(t *testing.T) {
+	t.Run("rejects a historical task without an index name", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		service := &buildTaskService{cs: mockCS, bta: mockBTA}
+		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{
+			ID: "task-1", CatalogID: "catalog-1", Status: interfaces.BuildTaskStatusFailed,
+			ExecuteType: interfaces.BuildTaskExecuteTypeFull,
+		}, nil)
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+
+		err := service.Start(context.Background(), "task-1", false)
+
+		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_IndexConfigChanged)
+		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "create a new build task")
+	})
+
 	t.Run("persists full reset before requesting dispatch", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
@@ -998,6 +1016,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 		task := &interfaces.BuildTask{
 			ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1",
 			Status: interfaces.BuildTaskStatusFailed, ExecuteType: interfaces.BuildTaskExecuteTypeFull,
+			IndexName:   "vega-build-test-index",
 			IndexConfig: mustBuildTaskIndexConfig(t, resource),
 		}
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
@@ -1026,6 +1045,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 			CatalogID:   "catalog-1",
 			Status:      interfaces.BuildTaskStatusStopped,
 			ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
+			IndexName:   "vega-build-test-index",
 		}, nil)
 
 		err := service.Start(context.Background(), "task-1", true)
@@ -1047,6 +1067,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 			CatalogID:   "catalog-1",
 			Status:      interfaces.BuildTaskStatusStopped,
 			ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
+			IndexName:   "vega-build-test-index",
 			IndexConfig: mustBuildTaskIndexConfig(t, resource),
 		}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
@@ -1070,6 +1091,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 		task := &interfaces.BuildTask{
 			ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1",
 			Status:      interfaces.BuildTaskStatusStopped,
+			IndexName:   "vega-build-test-index",
 			IndexConfig: mustBuildTaskIndexConfig(t, resource),
 		}
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
@@ -1097,6 +1119,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 				ID:        "task-1",
 				CatalogID: "catalog-1",
 				Status:    interfaces.BuildTaskStatusStopped,
+				IndexName: "vega-build-test-index",
 			}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
@@ -1117,6 +1140,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 				ID:        "task-1",
 				CatalogID: "catalog-1",
 				Status:    interfaces.BuildTaskStatusFailed,
+				IndexName: "vega-build-test-index",
 			}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
@@ -1154,6 +1178,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 				ResourceID: "resource-1",
 				CatalogID:  "catalog-1",
 				Status:     interfaces.BuildTaskStatusStopped,
+				IndexName:  "vega-build-test-index",
 			}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
@@ -1195,6 +1220,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 			ResourceID:  "resource-1",
 			CatalogID:   "catalog-1",
 			Status:      interfaces.BuildTaskStatusStopped,
+			IndexName:   "vega-build-test-index",
 			IndexConfig: mustBuildTaskIndexConfig(t, originalResource),
 		}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
@@ -1220,6 +1246,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 			CatalogID:   "catalog-1",
 			Status:      interfaces.BuildTaskStatusStopped,
 			CreateTime:  100,
+			IndexName:   "vega-build-test-index",
 			IndexConfig: mustBuildTaskIndexConfig(t, resource),
 		}
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
@@ -1244,6 +1271,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 			ResourceID: "resource-1",
 			CatalogID:  "catalog-1",
 			Status:     interfaces.BuildTaskStatusStopped,
+			IndexName:  "vega-build-test-index",
 			IndexConfig: &interfaces.BuildTaskIndexConfig{
 				IndexConfigContract: interfaces.IndexConfigContract{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"id"}},
 				Features:            map[string]interfaces.BuildTaskFieldIndexFeature{},
@@ -1303,6 +1331,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 			ResourceID: "resource-1",
 			CatalogID:  "catalog-1",
 			Status:     interfaces.BuildTaskStatusStopped,
+			IndexName:  "vega-build-test-index",
 			IndexConfig: func() *interfaces.BuildTaskIndexConfig {
 				config := mustBuildTaskIndexConfig(t, resource)
 				config.Features = map[string]interfaces.BuildTaskFieldIndexFeature{

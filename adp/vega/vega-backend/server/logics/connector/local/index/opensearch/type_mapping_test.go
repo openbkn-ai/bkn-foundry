@@ -50,7 +50,7 @@ func TestOpenSearchBuildFieldMappings(t *testing.T) {
 		assert.Equal(t, "scaled_float", decimal["type"])
 		assert.Equal(t, 1000000000000000000.0, decimal["scaling_factor"])
 
-		assert.Equal(t, map[string]any{"type": "knn_vector"}, properties["embedding"])
+		assert.Equal(t, map[string]any{"type": "knn_vector", "method": defaultVectorMethod()}, properties["embedding"])
 
 		body := properties["body"].(map[string]any)
 		assert.Equal(t, "text", body["type"])
@@ -101,7 +101,7 @@ func TestOpenSearchBuildFieldMappings(t *testing.T) {
 		properties, hasVector, err := conn.buildFieldMappings([]*interfaces.Property{
 			{Name: "price", Type: interfaces.DataType_Decimal},
 			{Name: "embedding", Type: interfaces.DataType_Vector, Features: []interfaces.PropertyFeature{
-				{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 3}},
+				{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"embedding_model": "model-1", "dimension": 3}},
 			}},
 			{Name: "location", Type: interfaces.DataType_Point},
 			{Name: "body", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
@@ -115,6 +115,7 @@ func TestOpenSearchBuildFieldMappings(t *testing.T) {
 		assert.Equal(t, 1000000000000000000.0, properties["price"].(map[string]any)["scaling_factor"])
 		assert.Equal(t, "knn_vector", properties["embedding"].(map[string]any)["type"])
 		assert.Equal(t, 3, properties["embedding"].(map[string]any)["dimension"])
+		assert.NotContains(t, properties["embedding"].(map[string]any), "embedding_model")
 		assert.Equal(t, "geo_point", properties["location"].(map[string]any)["type"])
 		bodyFields := properties["body"].(map[string]any)["fields"].(map[string]any)
 		assert.Equal(t, map[string]any{"type": "keyword", "ignore_above": 128}, bodyFields["raw"])
@@ -133,7 +134,19 @@ func TestOpenSearchBuildFieldMappings(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, hasVector)
 		assert.Equal(t, map[string]any{"type": "keyword"}, properties["material_name"])
-		assert.Equal(t, map[string]any{"type": "knn_vector", "dimension": 1024}, properties["material_name_vector"])
+		assert.Equal(t, map[string]any{"type": "knn_vector", "dimension": 1024, "method": defaultVectorMethod()}, properties["material_name_vector"])
+	})
+
+	t.Run("generates a vector mapping from a text vector feature", func(t *testing.T) {
+		properties, hasVector, err := conn.buildFieldMappings([]*interfaces.Property{
+			{Name: "content", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
+				{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 768}},
+			}},
+		})
+
+		require.NoError(t, err)
+		assert.True(t, hasVector)
+		assert.Equal(t, map[string]any{"type": "knn_vector", "dimension": 768, "method": defaultVectorMethod()}, properties["content_vector"])
 	})
 
 	t.Run("rejects unsupported feature type with config", func(t *testing.T) {

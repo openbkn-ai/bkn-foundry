@@ -29,9 +29,6 @@ func (p *embeddingPipeline) enrich(ctx context.Context, documents map[string]map
 	if len(config) == 0 || len(documents) == 0 {
 		return nil
 	}
-	if p == nil || p.mfs == nil {
-		return fmt.Errorf("embedding pipeline is not initialized")
-	}
 	for field, fieldConfig := range config {
 		if fieldConfig == nil || fieldConfig.ModelID == "" {
 			return fmt.Errorf("embedding model is required for vector field %q", field)

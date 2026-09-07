@@ -54,6 +54,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 		resource.LocalIndexName = buildIndexName("r1", "old-task")
 		task := workerTestFullTask(t, resource)
 		task.ExecuteType = interfaces.BuildTaskExecuteTypeIncremental
+		task.IndexName = resource.LocalIndexName
 		task.Status = interfaces.BuildTaskStatusPending
 		lim.EXPECT().CheckIndexExist(gomock.Any(), buildIndexName("r1", "old-task")).
 			Return(false, errors.New("opensearch unavailable"))
@@ -82,14 +83,14 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 			},
 		}
 		buildTask := &interfaces.BuildTask{
-			ID: "t1", ExecuteType: interfaces.BuildTaskExecuteTypeFull,
+			ID: "t1", ExecuteType: interfaces.BuildTaskExecuteTypeFull, IndexName: buildIndexName("r1", "t1"),
 			IndexConfig: &interfaces.BuildTaskIndexConfig{Features: map[string]interfaces.BuildTaskFieldIndexFeature{
 				"content": {Vector: &interfaces.SmallModel{ModelID: "m1", EmbeddingDim: 3}},
 			}},
 		}
 
 		lim.EXPECT().CheckIndexExist(gomock.Any(), buildIndexName("r1", "t1")).Return(false, nil)
-		lim.EXPECT().CreateIndex(gomock.Any(), buildIndexName("r1", "t1"), gomock.Any()).
+		lim.EXPECT().CreateIndex(gomock.Any(), buildIndexName("r1", "t1"), gomock.Any(), gomock.Any()).
 			Return(errors.New("opensearch unavailable"))
 
 		err := bbw.executeBuild(context.Background(), &interfaces.Catalog{ID: "c1"}, resource, buildTask)
@@ -117,7 +118,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		defer func() { logics.DB = oldDB }()
 
 		lim.EXPECT().CheckIndexExist(gomock.Any(), indexName).Return(false, nil)
-		lim.EXPECT().CreateIndex(gomock.Any(), indexName, gomock.Any()).Return(nil)
+		lim.EXPECT().CreateIndex(gomock.Any(), indexName, gomock.Any(), gomock.Any()).Return(nil)
 		var progressMarks []string
 		var totalCounts []int64
 		bts.EXPECT().InternalSetProgress(gomock.Any(), nil, task.ID, gomock.Any()).DoAndReturn(
@@ -166,6 +167,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		resource.SyncMark = `{"mode":"batch","cursor":[]}`
 		task := workerTestFullTask(t, resource)
 		task.ExecuteType = interfaces.BuildTaskExecuteTypeIncremental
+		task.IndexName = resource.LocalIndexName
 		task.Status = interfaces.BuildTaskStatusRunning
 		task.SyncedMark = resource.SyncMark
 		bbw := &batchBuildWorker{lim: lim, bts: bts, rs: rs, cf: cf}
@@ -245,6 +247,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		resource.SyncMark = `{"mode":"batch","cursor":[{"key":"id","value":10}]}`
 		task := workerTestFullTask(t, resource)
 		task.ExecuteType = interfaces.BuildTaskExecuteTypeIncremental
+		task.IndexName = resource.LocalIndexName
 		task.Status = interfaces.BuildTaskStatusRunning
 		task.SyncedMark = resource.SyncMark
 		bbw := &batchBuildWorker{lim: lim, bts: bts, cf: cf}
@@ -483,7 +486,7 @@ func TestBuildLocalIndexSchemaAppliesTaskIndexConfigWithoutMutatingResourceSchem
 				{FeatureName: "fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext},
 			}},
 			{Name: "body", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{
-				{FeatureName: "vector", FeatureType: interfaces.PropertyFeatureType_Vector},
+				{FeatureName: "vector", FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 1024}},
 			}},
 		}}
 		task := &interfaces.BuildTask{
@@ -502,10 +505,9 @@ func TestBuildLocalIndexSchemaAppliesTaskIndexConfigWithoutMutatingResourceSchem
 		require.Len(t, schema[0].Features, 1)
 		assert.Equal(t, interfaces.PropertyFeatureType_Fulltext, schema[0].Features[0].FeatureType)
 		assert.Equal(t, "ik_max_word", schema[0].Features[0].Config["analyzer"])
-		require.Len(t, schema, 3)
-		assert.Equal(t, "body_vector", schema[2].Name)
-		assert.Equal(t, interfaces.DataType_Vector, schema[2].Type)
-		assert.Equal(t, 1024, schema[2].Features[0].Config["dimension"])
+		require.Len(t, schema, 2)
+		require.Len(t, schema[1].Features, 1)
+		assert.Equal(t, 1024, schema[1].Features[0].Config["dimension"])
 		assert.Nil(t, res.SchemaDefinition[0].Features[0].Config)
 		assert.Len(t, res.SchemaDefinition[1].Features, 1)
 	})
@@ -514,11 +516,11 @@ func TestBuildLocalIndexSchemaAppliesTaskIndexConfigWithoutMutatingResourceSchem
 		res := &interfaces.Resource{ID: "r1", SchemaDefinition: []*interfaces.Property{
 			{Name: "title", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{
 				{FeatureName: "fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext},
-				{FeatureName: "vector", FeatureType: interfaces.PropertyFeatureType_Vector},
+				{FeatureName: "vector", FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 768}},
 			}},
 			{Name: "body", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{
 				{FeatureName: "fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext},
-				{FeatureName: "vector", FeatureType: interfaces.PropertyFeatureType_Vector},
+				{FeatureName: "vector", FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 1024}},
 			}},
 		}}
 		task := &interfaces.BuildTask{
@@ -542,11 +544,9 @@ func TestBuildLocalIndexSchemaAppliesTaskIndexConfigWithoutMutatingResourceSchem
 
 		assert.Equal(t, "ik_max_word", schema[0].Features[0].Config["analyzer"])
 		assert.Equal(t, "standard", schema[1].Features[0].Config["analyzer"])
-		vectorDimensions := map[string]any{}
-		for _, prop := range schema {
-			if prop.Type == interfaces.DataType_Vector {
-				vectorDimensions[prop.Name] = prop.Features[0].Config["dimension"]
-			}
+		vectorDimensions := map[string]any{
+			"title_vector": schema[0].Features[1].Config["dimension"],
+			"body_vector":  schema[1].Features[1].Config["dimension"],
 		}
 		assert.Equal(t, map[string]any{
 			"title_vector": 768,

@@ -161,8 +161,8 @@ func (sbw *streamingBuildWorker) Run(ctx context.Context, buildTaskInfo *interfa
 // executeBuild executes the build logic
 func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask, indexName string, database string, sourceIdentifier string) error {
 	// Use the connector name as the Kafka topic prefix
-	topic := fmt.Sprintf("%s-%s.%s", interfaces.BUILD_PREFIX, catalog.ID, sourceIdentifier)
-	groupID := fmt.Sprintf("%s-%s", interfaces.BUILD_PREFIX, resource.ID)
+	topic := fmt.Sprintf("%s-%s.%s", interfaces.BuildTopicPrefix, catalog.ID, sourceIdentifier)
+	groupID := fmt.Sprintf("%s-%s", interfaces.BuildTopicPrefix, resource.ID)
 
 	// Create Kafka topic if it doesn't exist
 	if err := sbw.kafkaAccess.CreateTopic(ctx, topic); err != nil {
@@ -229,7 +229,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 			if needStop {
 				_, _, _ = sbw.httpClient.Put(ctx, fmt.Sprintf("%s/%s/stop",
 					fmt.Sprintf("%s://%s:%d/connectors", sbw.appSetting.KafkaConnectSetting.Protocol, sbw.appSetting.KafkaConnectSetting.Host, sbw.appSetting.KafkaConnectSetting.Port),
-					fmt.Sprintf("%s-%s", interfaces.BUILD_PREFIX, catalog.ID)),
+					fmt.Sprintf("%s-%s", interfaces.BuildTopicPrefix, catalog.ID)),
 					map[string]string{interfaces.CONTENT_TYPE_NAME: interfaces.CONTENT_TYPE_JSON},
 					map[string]interface{}{})
 			}
@@ -383,7 +383,7 @@ func (sbw *streamingBuildWorker) createKafkaConnector(ctx context.Context, catal
 	// get connector
 	kafkaConnectSetting := sbw.appSetting.KafkaConnectSetting
 	// The connector name is bound to the catalog. Under the catalog, multiple resources share one connector, each subscribing to the topic of its own table
-	connectorName := fmt.Sprintf("%s-%s", interfaces.BUILD_PREFIX, catalog.ID)
+	connectorName := fmt.Sprintf("%s-%s", interfaces.BuildTopicPrefix, catalog.ID)
 	connectorUrl := fmt.Sprintf("%s://%s:%d/connectors", kafkaConnectSetting.Protocol, kafkaConnectSetting.Host, kafkaConnectSetting.Port)
 
 	headers := map[string]string{
@@ -470,9 +470,9 @@ func (sbw *streamingBuildWorker) buildConnectorConfig(connectorName string, cata
 			"database.password": catalog.ConnectorCfg["password"],
 			// "column.include.list": ?,
 			"schema.history.internal.kafka.bootstrap.servers": fmt.Sprintf("%s:%d", mqSetting.MQHost, mqSetting.MQPort),
-			"schema.history.internal.kafka.topic":             fmt.Sprintf("%s-schema-changes", interfaces.BUILD_PREFIX),
+			"schema.history.internal.kafka.topic":             fmt.Sprintf("%s-schema-changes", interfaces.BuildTopicPrefix),
 			"include.schema.changes":                          "true",
-			"topic.prefix":                                    fmt.Sprintf("%s-%s", interfaces.BUILD_PREFIX, catalog.ID),
+			"topic.prefix":                                    fmt.Sprintf("%s-%s", interfaces.BuildTopicPrefix, catalog.ID),
 			// "table.include.list": sourceIdentifier,
 			// Do not set table.include.list for a catalog-level shared connector: resources added later
 			// would otherwise miss their initial full snapshot.

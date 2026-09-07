@@ -654,7 +654,7 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			ots.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", true, nil).AnyTimes()
 			rta.EXPECT().CheckRelationTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil).AnyTimes()
 			rta.EXPECT().CreateRelationType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 			smock.ExpectCommit()
 
 			result, err := service.CreateRelationTypes(ctx, nil, relationTypes, interfaces.ImportMode_Normal, true)
@@ -726,7 +726,7 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&interfaces.ObjectType{}, nil).AnyTimes()
 			rta.EXPECT().CreateRelationType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
 			result, err := service.CreateRelationTypes(ctx, nil, relationTypes, interfaces.ImportMode_Ignore, true)
@@ -751,7 +751,7 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&interfaces.ObjectType{}, nil).AnyTimes()
 			rta.EXPECT().UpdateRelationType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 			smock.ExpectCommit()
 
 			result, err := service.CreateRelationTypes(ctx, nil, relationTypes, interfaces.ImportMode_Overwrite, true)
@@ -778,7 +778,7 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&interfaces.ObjectType{}, nil).AnyTimes()
 			rta.EXPECT().CreateRelationType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
 			result, err := service.CreateRelationTypes(ctx, nil, relationTypes, interfaces.ImportMode_Overwrite, true)
@@ -805,7 +805,7 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&interfaces.ObjectType{}, nil).AnyTimes()
 			rta.EXPECT().CreateRelationType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
 			result, err := service.CreateRelationTypes(ctx, nil, relationTypes, interfaces.ImportMode_Normal, true)
@@ -877,7 +877,7 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.ObjectType{}, nil).AnyTimes()
 			rta.EXPECT().CheckRelationTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			rta.EXPECT().CreateRelationType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
 			smock.ExpectRollback()
 
 			result, err := service.CreateRelationTypes(ctx, nil, relationTypes, interfaces.ImportMode_Normal, true)
@@ -933,7 +933,7 @@ func Test_relationTypeService_UpdateRelationType(t *testing.T) {
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.ObjectType{}, nil).AnyTimes()
 			ots.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", true, nil).AnyTimes()
 			rta.EXPECT().UpdateRelationType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
 			err := service.UpdateRelationType(ctx, nil, relationType, false)
@@ -1013,7 +1013,7 @@ func Test_relationTypeService_UpdateRelationType(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.ObjectType{}, nil).AnyTimes()
 			rta.EXPECT().UpdateRelationType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
 			smock.ExpectRollback()
 
 			err := service.UpdateRelationType(ctx, nil, relationType, false)
@@ -1145,13 +1145,13 @@ func Test_relationTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 			err := service.InsertDatasetData(ctx, relationTypes)
 			So(err, ShouldBeNil)
 		})
 
-		Convey("Failed when WriteDatasetDocuments returns error\n", func() {
+		Convey("Failed when WriteDatasetDocument returns error\n", func() {
 			relationTypes := []*interfaces.RelationType{
 				{
 					RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
@@ -1163,7 +1163,7 @@ func Test_relationTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
 
 			err := service.InsertDatasetData(ctx, relationTypes)
 			So(err, ShouldNotBeNil)
@@ -1207,7 +1207,7 @@ func Test_relationTypeService_InsertDatasetData(t *testing.T) {
 
 			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
 			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
-			vbaWithVector.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbaWithVector.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 			err := serviceWithVector.InsertDatasetData(ctx, relationTypes)
 			So(err, ShouldBeNil)

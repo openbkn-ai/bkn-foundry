@@ -79,8 +79,12 @@ func (lim *localIndexManager) ListIndexes(ctx context.Context) ([]*interfaces.In
 	return lim.lic.ListIndexes(ctx)
 }
 
-func (lim *localIndexManager) CreateIndex(ctx context.Context, indexName string, schema []*interfaces.Property) error {
-	return lim.lic.CreateIndex(ctx, indexName, schema)
+func (lim *localIndexManager) GetIndexMeta(ctx context.Context, index *interfaces.IndexMeta) error {
+	return lim.lic.GetIndexMeta(ctx, index)
+}
+
+func (lim *localIndexManager) CreateIndex(ctx context.Context, indexName string, schema []*interfaces.Property, mappingMeta map[string]string) error {
+	return lim.lic.CreateIndex(ctx, indexName, schema, mappingMeta)
 }
 
 func (lim *localIndexManager) UpdateIndex(ctx context.Context, indexName string, schema []*interfaces.Property) error {
@@ -136,6 +140,10 @@ func (lim *localIndexManager) GetDocument(ctx context.Context, indexName string,
 	return lim.lic.GetDocument(ctx, indexName, docID)
 }
 
+func (lim *localIndexManager) GetDocuments(ctx context.Context, indexName string, docIDs []string) ([]map[string]any, error) {
+	return lim.lic.GetDocuments(ctx, indexName, docIDs)
+}
+
 func (lim *localIndexManager) CreateDocuments(ctx context.Context, indexName string, documents []map[string]any) ([]string, error) {
 	return lim.lic.CreateDocuments(ctx, indexName, documents)
 }
@@ -152,7 +160,7 @@ func (lim *localIndexManager) DeleteDocument(ctx context.Context, indexName stri
 	return lim.lic.DeleteDocument(ctx, indexName, docID)
 }
 
-func (lim *localIndexManager) DeleteDocuments(ctx context.Context, indexName string, docIDs string) error {
+func (lim *localIndexManager) DeleteDocuments(ctx context.Context, indexName string, docIDs []string) error {
 	return lim.lic.DeleteDocuments(ctx, indexName, docIDs)
 }
 

@@ -30,7 +30,8 @@ func (e *IndexCapabilitiesUnavailableError) Unwrap() error { return e.Cause }
 //go:generate mockgen -source ../interfaces/local_index_manager.go -destination ../interfaces/mock/mock_local_index_manager.go
 type LocalIndexManager interface {
 	ListIndexes(ctx context.Context) ([]*IndexMeta, error)
-	CreateIndex(ctx context.Context, indexName string, schema []*Property) error
+	GetIndexMeta(ctx context.Context, index *IndexMeta) error
+	CreateIndex(ctx context.Context, indexName string, schema []*Property, mappingMeta map[string]string) error
 	UpdateIndex(ctx context.Context, indexName string, schema []*Property) error
 	DeleteIndex(ctx context.Context, indexName string) error
 	CheckIndexExist(ctx context.Context, indexName string) (bool, error)
@@ -39,10 +40,11 @@ type LocalIndexManager interface {
 
 	ListDocuments(ctx context.Context, indexName string, res *Resource, params *ResourceDataQueryParams) ([]map[string]any, int64, error)
 	GetDocument(ctx context.Context, indexName string, docID string) (map[string]any, error)
+	GetDocuments(ctx context.Context, indexName string, docIDs []string) ([]map[string]any, error)
 	CreateDocuments(ctx context.Context, indexName string, documents []map[string]any) ([]string, error)
 	IndexDocuments(ctx context.Context, indexName string, documents map[string]map[string]any) ([]string, error)
 	UpsertDocuments(ctx context.Context, indexName string, updateRequests []map[string]any) ([]string, error)
 	DeleteDocument(ctx context.Context, indexName string, docID string) error
-	DeleteDocuments(ctx context.Context, indexName string, docIDs string) error
+	DeleteDocuments(ctx context.Context, indexName string, docIDs []string) error
 	DeleteDocumentsByQuery(ctx context.Context, indexName string, res *Resource, params *ResourceDataQueryParams) error
 }
