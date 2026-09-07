@@ -874,7 +874,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
 		gomock.InOrder(
 			mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
-				Return([]*interfaces.Resource{{ID: "r1", Category: interfaces.ResourceCategoryDataset}}, nil),
+				Return([]*interfaces.Resource{{ID: "r1", Category: interfaces.ResourceCategoryDataset, LocalIndexName: "vega-dataset-index-1"}}, nil),
 			mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 				DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, error) {
 					assert.Equal(t, "r1", params.ResourceID)
@@ -883,7 +883,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 					return nil, nil
 				}),
 			mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}).Return(nil),
-			mockDS.EXPECT().Delete(gomock.Any(), "r1").Return(nil),
+			mockDS.EXPECT().Delete(gomock.Any(), "vega-dataset-index-1").Return(nil),
 			mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1"}).Return(nil),
 		)
 
@@ -1040,6 +1040,68 @@ func TestResourceServiceUpdate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
+	})
+	t.Run("updates dataset index mapping before persisting a schema change", func(t *testing.T) {
+		rs, mockRA, mockPS, mockDS, _, mockCS, mockBTA := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
+		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+		resource := &interfaces.Resource{
+			ID:               "r1",
+			CatalogID:        "cat1",
+			Category:         interfaces.ResourceCategoryDataset,
+			Name:             "dataset",
+			LocalIndexName:   "vega-dataset-index-1",
+			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
+		}
+		mockDS.EXPECT().ListDocuments(gomock.Any(), "vega-dataset-index-1", resource, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+				assert.Equal(t, 1, params.Limit)
+				return nil, 0, nil
+			})
+		mockDS.EXPECT().Update(gomock.Any(), resource).Return(nil)
+		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), resource, int64(0)).Return(int64(1), nil)
+
+		err := rs.Update(context.Background(), resource, &interfaces.ResourceRequest{
+			CatalogID: "cat1",
+			Category:  interfaces.ResourceCategoryDataset,
+			Name:      "dataset",
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "id", Type: interfaces.DataType_String},
+				{Name: "content", Type: interfaces.DataType_Text},
+			},
+		})
+
+		require.NoError(t, err)
+	})
+	t.Run("rejects dataset index structure changes when documents exist", func(t *testing.T) {
+		rs, _, mockPS, mockDS, _, _, mockBTA := newTestService(t)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
+		resource := &interfaces.Resource{
+			ID:               "r1",
+			CatalogID:        "cat1",
+			Category:         interfaces.ResourceCategoryDataset,
+			Name:             "dataset",
+			LocalIndexName:   "vega-dataset-index-1",
+			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
+		}
+		mockDS.EXPECT().ListDocuments(gomock.Any(), "vega-dataset-index-1", resource, gomock.Any()).
+			Return([]map[string]any{{"id": "doc-1"}}, int64(1), nil)
+
+		err := rs.Update(context.Background(), resource, &interfaces.ResourceRequest{
+			CatalogID: "cat1",
+			Category:  interfaces.ResourceCategoryDataset,
+			Name:      "dataset",
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "id", Type: interfaces.DataType_String},
+				{Name: "content", Type: interfaces.DataType_Text},
+			},
+		})
+
+		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
+		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 	})
 	t.Run("returns conflict for stale resource", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
@@ -1599,11 +1661,13 @@ func TestResourceServiceUpdate(t *testing.T) {
 		}
 	})
 	t.Run("dataset update allows adding properties", func(t *testing.T) {
-		rs, mockRA, mockPS, _, _, mockCS, mockBTA := newTestService(t)
+		rs, mockRA, mockPS, mockDS, _, mockCS, mockBTA := newTestService(t)
 		expectResourceServiceTransaction(t, rs, true)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
+		mockDS.EXPECT().ListDocuments(gomock.Any(), "vega-build-r1-task-1", gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+		mockDS.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
 		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) (int64, error) {
 				if got.LocalIndexName != "vega-build-r1-task-1" {

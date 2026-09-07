@@ -234,10 +234,11 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		mockDS := mock_interfaces.NewMockDatasetService(ctrl)
 		rds := &resourceDataService{cs: mockCS, ds: mockDS}
 		resource := &interfaces.Resource{
-			ID:        "dataset-1",
-			Enabled:   true,
-			CatalogID: "catalog-1",
-			Category:  interfaces.ResourceCategoryDataset,
+			ID:             "dataset-1",
+			Enabled:        true,
+			CatalogID:      "catalog-1",
+			Category:       interfaces.ResourceCategoryDataset,
+			LocalIndexName: "vega-dataset-index-1",
 			SchemaDefinition: []*interfaces.Property{
 				{Name: "name", Type: interfaces.DataType_String},
 			},
@@ -256,7 +257,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockDS.EXPECT().ListDocuments(gomock.Any(), "dataset-1", resource, params).
+		mockDS.EXPECT().ListDocuments(gomock.Any(), "vega-dataset-index-1", resource, params).
 			DoAndReturn(func(ctx context.Context, resourceID string, gotResource *interfaces.Resource,
 				gotParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 				require.NotNil(t, gotParams.ActualFilterCond)
@@ -361,6 +362,7 @@ func TestResourceDataServiceRejectsOpenSearchCursorWithoutSort(t *testing.T) {
 		Enabled:          true,
 		CatalogID:        "catalog-1",
 		Category:         interfaces.ResourceCategoryDataset,
+		LocalIndexName:   "vega-dataset-index-1",
 		SchemaDefinition: []*interfaces.Property{{Name: "id"}},
 	}
 	mockCS.EXPECT().GetByID(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
@@ -414,6 +416,7 @@ func TestDatasetCursorUsesSearchAfterPagination(t *testing.T) {
 		Enabled:          true,
 		CatalogID:        "catalog-1",
 		Category:         interfaces.ResourceCategoryDataset,
+		LocalIndexName:   "vega-dataset-index-1",
 		SchemaDefinition: []*interfaces.Property{{Name: "id"}},
 	}
 	params := &interfaces.ResourceDataQueryParams{
@@ -423,7 +426,7 @@ func TestDatasetCursorUsesSearchAfterPagination(t *testing.T) {
 	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Times(2).
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 	firstPage := true
-	mockDS.EXPECT().ListDocuments(gomock.Any(), "dataset-1", resource, gomock.Any()).Times(2).
+	mockDS.EXPECT().ListDocuments(gomock.Any(), "vega-dataset-index-1", resource, gomock.Any()).Times(2).
 		DoAndReturn(func(_ context.Context, _ string, _ *interfaces.Resource, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 			assert.Equal(t, 1, pageParams.Limit)
 			if firstPage {

@@ -70,6 +70,21 @@ func (mr *MockDatasetServiceMockRecorder) Create(ctx, res any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockDatasetService)(nil).Create), ctx, res)
 }
 
+// CreateDocument mocks base method.
+func (m *MockDatasetService) CreateDocument(ctx context.Context, res *interfaces.Resource, document map[string]any) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateDocument", ctx, res, document)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateDocument indicates an expected call of CreateDocument.
+func (mr *MockDatasetServiceMockRecorder) CreateDocument(ctx, res, document any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateDocument", reflect.TypeOf((*MockDatasetService)(nil).CreateDocument), ctx, res, document)
+}
+
 // CreateDocuments mocks base method.
 func (m *MockDatasetService) CreateDocuments(ctx context.Context, id string, documents []map[string]any) ([]string, error) {
 	m.ctrl.T.Helper()
@@ -170,6 +185,20 @@ func (m *MockDatasetService) ListDocuments(ctx context.Context, indexName string
 func (mr *MockDatasetServiceMockRecorder) ListDocuments(ctx, indexName, res, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDocuments", reflect.TypeOf((*MockDatasetService)(nil).ListDocuments), ctx, indexName, res, params)
+}
+
+// ReplaceDocument mocks base method.
+func (m *MockDatasetService) ReplaceDocument(ctx context.Context, res *interfaces.Resource, docID string, document map[string]any) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReplaceDocument", ctx, res, docID, document)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReplaceDocument indicates an expected call of ReplaceDocument.
+func (mr *MockDatasetServiceMockRecorder) ReplaceDocument(ctx, res, docID, document any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReplaceDocument", reflect.TypeOf((*MockDatasetService)(nil).ReplaceDocument), ctx, res, docID, document)
 }
 
 // Update mocks base method.

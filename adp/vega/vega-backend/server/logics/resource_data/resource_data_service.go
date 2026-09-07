@@ -176,7 +176,7 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 	switch resource.Category {
 	case interfaces.ResourceCategoryDataset:
 		// Call dataset access to list the documents
-		documents, total, err := rds.ds.ListDocuments(ctx, resource.ID, resource, params)
+		documents, total, err := rds.ds.ListDocuments(ctx, resource.LocalIndexName, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "List dataset documents failed", err)
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).

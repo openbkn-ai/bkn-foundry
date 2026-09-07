@@ -959,6 +959,12 @@ func applyFulltextFeature(fieldProps map[string]any, columnType string, feature 
 func (c *OpenSearchConnector) buildFieldMappings(schemaDefinition []*interfaces.Property) (map[string]any, bool, error) {
 	properties := map[string]any{}
 	hasVectorField := false
+	declaredFields := make(map[string]struct{}, len(schemaDefinition))
+	for _, prop := range schemaDefinition {
+		if prop != nil {
+			declaredFields[prop.Name] = struct{}{}
+		}
+	}
 
 	for _, prop := range schemaDefinition {
 		fieldType := prop.Type
@@ -1045,8 +1051,10 @@ func (c *OpenSearchConnector) buildFieldMappings(schemaDefinition []*interfaces.
 						if prop.Type != interfaces.DataType_Vector {
 							continue
 						}
-						for k, v := range feature.Config {
-							fieldProps[k] = v
+						// Model selection belongs to VEGA. OpenSearch receives only the
+						// resolved vector dimension; it owns the method configuration.
+						if dimension, exists := feature.Config["dimension"]; exists {
+							fieldProps["dimension"] = dimension
 						}
 					default:
 						return nil, false, fmt.Errorf("unsupported feature type: %s", feature.FeatureType)
@@ -1055,8 +1063,55 @@ func (c *OpenSearchConnector) buildFieldMappings(schemaDefinition []*interfaces.
 			}
 		}
 
+		if prop.Type == interfaces.DataType_Vector {
+			if _, exists := fieldProps["method"]; !exists {
+				fieldProps["method"] = defaultVectorMethod()
+			}
+		}
 		properties[prop.Name] = fieldProps
 	}
 
+	// A string/text vector feature describes a generated physical vector field.
+	// Build tasks may already provide that field in schemaDefinition; Dataset
+	// schemas do not, so assemble its mapping here rather than in Resource logic.
+	for _, prop := range schemaDefinition {
+		if prop == nil || (prop.Type != interfaces.DataType_String && prop.Type != interfaces.DataType_Text) {
+			continue
+		}
+		for _, feature := range prop.Features {
+			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
+				continue
+			}
+			generatedName := interfaces.LocalIndexVectorFieldName(prop.Name)
+			if _, exists := declaredFields[generatedName]; exists {
+				continue
+			}
+			dimension, ok := feature.Config["dimension"]
+			if !ok {
+				return nil, false, fmt.Errorf("vector feature for field %q has no resolved dimension", prop.Name)
+			}
+			mapping := map[string]any{
+				"type":      "knn_vector",
+				"dimension": dimension,
+			}
+			for key, value := range feature.Config {
+				if key != "embedding_model" && key != "method" {
+					mapping[key] = value
+				}
+			}
+			mapping["method"] = defaultVectorMethod()
+			properties[generatedName] = mapping
+			hasVectorField = true
+		}
+	}
+
 	return properties, hasVectorField, nil
+}
+
+func defaultVectorMethod() map[string]any {
+	return map[string]any{
+		"name":       "hnsw",
+		"engine":     "lucene",
+		"parameters": map[string]any{"ef_construction": 256},
+	}
 }

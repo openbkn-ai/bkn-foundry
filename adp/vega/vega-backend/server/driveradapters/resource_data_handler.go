@@ -221,15 +221,15 @@ func (r *restHandler) executeResourceDataQuery(
 }
 
 // createResourceData handles POST /resources/:id/data + Override: POST.
-// Batch create documents; dataset category only.
+// Create one document; dataset category only.
 func (r *restHandler) createResourceData(c *gin.Context, ctx context.Context, span trace.Span) {
 	resource, ok := r.requireDatasetResource(c, ctx, span, c.Param("id"))
 	if !ok {
 		return
 	}
 
-	var documents []map[string]any
-	if err := common.BindPreciseJSON(c.Request.Body, &documents); err != nil {
+	var document map[string]any
+	if err := common.BindPreciseJSON(c.Request.Body, &document); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(err.Error())
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -237,9 +237,9 @@ func (r *restHandler) createResourceData(c *gin.Context, ctx context.Context, sp
 		return
 	}
 
-	docIDs, err := r.ds.CreateDocuments(ctx, resource.ID, documents)
+	docID, err := r.ds.CreateDocument(ctx, resource, document)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError_CreateFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -247,7 +247,7 @@ func (r *restHandler) createResourceData(c *gin.Context, ctx context.Context, sp
 
 	logger.Debug("Handler createResourceData Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusCreated)
-	rest.ReplyOK(c, http.StatusCreated, map[string]any{"ids": docIDs})
+	rest.ReplyOK(c, http.StatusCreated, map[string]any{"id": docID})
 }
 
 // deleteResourceDataByQuery handles POST /resources/:id/data + Override: DELETE.
@@ -287,7 +287,7 @@ func (r *restHandler) deleteResourceDataByQuery(c *gin.Context, ctx context.Cont
 	}
 	params.FilterCondCfg = actualCond
 
-	if err := r.ds.DeleteDocumentsByQuery(ctx, resource.ID, resource, &params); err != nil {
+	if err := r.ds.DeleteDocumentsByQuery(ctx, resource.LocalIndexName, resource, &params); err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -372,7 +372,7 @@ func (r *restHandler) putResourceData(c *gin.Context, visitor hydra.Visitor, s2s
 		return
 	}
 
-	docIDs, err := r.ds.UpsertDocuments(ctx, resource.ID, documents)
+	docIDs, err := r.ds.UpsertDocuments(ctx, resource.LocalIndexName, documents)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -443,7 +443,7 @@ func (r *restHandler) getResourceDataDoc(c *gin.Context, visitor hydra.Visitor, 
 	}
 
 	docID := c.Param("doc_id")
-	doc, err := r.ds.GetDocument(ctx, resource.ID, docID)
+	doc, err := r.ds.GetDocument(ctx, resource.LocalIndexName, docID)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -519,8 +519,8 @@ func (r *restHandler) putResourceDataDoc(c *gin.Context, visitor hydra.Visitor, 
 	}
 	doc["id"] = docID
 
-	if _, err := r.ds.UpsertDocuments(ctx, resource.ID, []map[string]any{doc}); err != nil {
-		httpErr := err.(*rest.HTTPError)
+	if err := r.ds.ReplaceDocument(ctx, resource, docID, doc); err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError_UpdateFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -570,7 +570,7 @@ func (r *restHandler) deleteResourceData(c *gin.Context, visitor hydra.Visitor, 
 
 	// service expects comma-separated string; pass through.
 	docIDs := c.Param("doc_ids")
-	if err := r.ds.DeleteDocuments(ctx, resource.ID, docIDs); err != nil {
+	if err := r.ds.DeleteDocuments(ctx, resource.LocalIndexName, docIDs); err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

@@ -30,14 +30,20 @@ func TestDatasetServiceIndexLifecycle(t *testing.T) {
 
 	t.Run("create", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
-		lim.EXPECT().CreateIndex(gomock.Any(), "dataset-1", resource.SchemaDefinition, nil).Return(nil)
+		lim.EXPECT().CreateIndex(gomock.Any(), gomock.Any(), resource.SchemaDefinition, map[string]string{"resource_id": "dataset-1"}).
+			DoAndReturn(func(_ context.Context, indexName string, _ []*interfaces.Property, _ map[string]string) error {
+				assert.Regexp(t, `^vega-dataset-[0-9a-f-]+$`, indexName)
+				return nil
+			})
 
 		require.NoError(t, ds.Create(ctx, resource))
+		assert.Regexp(t, `^vega-dataset-[0-9a-f-]+$`, resource.LocalIndexName)
+		assert.Equal(t, interfaces.ResourceLocalIndexStatusAvailable, resource.LocalIndexStatus)
 	})
 
 	t.Run("create wraps index error", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
-		lim.EXPECT().CreateIndex(gomock.Any(), "dataset-1", resource.SchemaDefinition, nil).Return(errors.New("create failed"))
+		lim.EXPECT().CreateIndex(gomock.Any(), gomock.Any(), resource.SchemaDefinition, map[string]string{"resource_id": "dataset-1"}).Return(errors.New("create failed"))
 
 		err := ds.Create(ctx, resource)
 
@@ -47,7 +53,8 @@ func TestDatasetServiceIndexLifecycle(t *testing.T) {
 
 	t.Run("update uses historical source-id index name", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
-		lim.EXPECT().UpdateIndex(gomock.Any(), "source-dataset-1", resource.SchemaDefinition).Return(nil)
+		resource.LocalIndexName = "vega-dataset-index-1"
+		lim.EXPECT().UpdateIndex(gomock.Any(), "vega-dataset-index-1", resource.SchemaDefinition).Return(nil)
 
 		require.NoError(t, ds.Update(ctx, resource))
 	})

@@ -20,6 +20,8 @@ type DatasetService interface {
 	ListDocuments(ctx context.Context, indexName string, res *Resource, params *ResourceDataQueryParams) ([]map[string]any, int64, error)
 	GetDocument(ctx context.Context, id string, docID string) (map[string]any, error)
 
+	CreateDocument(ctx context.Context, res *Resource, document map[string]any) (string, error)
+	ReplaceDocument(ctx context.Context, res *Resource, docID string, document map[string]any) error
 	CreateDocuments(ctx context.Context, id string, documents []map[string]any) ([]string, error)
 	DeleteDocument(ctx context.Context, id string, docID string) error
 	UpsertDocuments(ctx context.Context, id string, updateRequests []map[string]any) ([]string, error)

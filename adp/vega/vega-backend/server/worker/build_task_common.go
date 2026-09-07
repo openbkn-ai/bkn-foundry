@@ -244,7 +244,7 @@ func buildLocalIndexSchema(buildTask *interfaces.BuildTask, resource *interfaces
 	if err := validateTaskEmbeddingFeatures(schema, buildTask); err != nil {
 		return nil, err
 	}
-	return appendTaskEmbeddingVectorFields(schema, buildTask), nil
+	return schema, nil
 }
 
 func validateBuildTaskSchemaFeatures(resourceCategory string, schema []*interfaces.Property) error {
@@ -279,35 +279,6 @@ func validateBuildTaskSchemaFeatures(resourceCategory string, schema []*interfac
 		}
 	}
 	return nil
-}
-
-func appendTaskEmbeddingVectorFields(schema []*interfaces.Property, buildTask *interfaces.BuildTask) []*interfaces.Property {
-	newSchema := append([]*interfaces.Property{}, schema...)
-	for field, feature := range buildTaskIndexFeatures(buildTask) {
-		if feature.Vector == nil {
-			continue
-		}
-		newSchema = append(newSchema, &interfaces.Property{
-			Name: interfaces.LocalIndexVectorFieldName(field),
-			Type: interfaces.DataType_Vector,
-			Features: []interfaces.PropertyFeature{
-				{
-					FeatureType: interfaces.DataType_Vector,
-					Config: map[string]any{
-						"dimension": feature.Vector.EmbeddingDim,
-						"method": map[string]any{
-							"name":   "hnsw",
-							"engine": "lucene",
-							"parameters": map[string]any{
-								"ef_construction": 256,
-							},
-						},
-					},
-				},
-			},
-		})
-	}
-	return newSchema
 }
 
 func buildTaskIndexFeatures(buildTask *interfaces.BuildTask) map[string]interfaces.BuildTaskFieldIndexFeature {
