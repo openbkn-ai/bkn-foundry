@@ -8,6 +8,7 @@ package worker
 import (
 	"context"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -47,6 +48,7 @@ type indexCleanupCandidate struct {
 	index      *interfaces.IndexMeta
 	resourceID string
 	taskID     string
+	dataset    bool
 	reason     string
 }
 
@@ -132,12 +134,22 @@ func (icw *IndexCleanupWorker) runOnce(ctx context.Context) {
 	candidates := make([]indexCleanupCandidate, 0)
 	for _, index := range indexes {
 		stats.scanned++
-		resourceID, taskID, ok := parseBuildIndexName(index.Name)
-		if !ok || index.CreationTime <= 0 {
+		if index.CreationTime <= 0 || !isManagedIndexName(index.Name) {
 			stats.ignored++
 			continue
 		}
-		candidate, protected, err := icw.classify(ctx, index, resourceID, taskID, resources)
+		if err := icw.lim.GetIndexMeta(ctx, index); err != nil {
+			stats.skipped++
+			continue
+		}
+		resourceID, _ := index.MappingMeta["resource_id"].(string)
+		taskID, _ := index.MappingMeta["build_task_id"].(string)
+		dataset := strings.HasPrefix(index.Name, interfaces.DatasetIndexPrefix+"-")
+		if resourceID == "" || (!dataset && taskID == "") {
+			stats.ignored++
+			continue
+		}
+		candidate, protected, err := icw.classify(ctx, index, resourceID, taskID, dataset, resources)
 		if err != nil {
 			stats.skipped++
 			logger.Errorf("Index cleanup skipped index after ownership lookup failed: index=%s, error=%v", index.Name, err)
@@ -156,7 +168,12 @@ func (icw *IndexCleanupWorker) runOnce(ctx context.Context) {
 			continue
 		}
 		stats.candidate++
-		candidates = append(candidates, indexCleanupCandidate{index: index, resourceID: resourceID, taskID: taskID})
+		candidates = append(candidates, indexCleanupCandidate{
+			index:      index,
+			resourceID: resourceID,
+			taskID:     taskID,
+			dataset:    dataset,
+		})
 	}
 
 	sort.Slice(candidates, func(i, j int) bool {
@@ -200,6 +217,9 @@ func (icw *IndexCleanupWorker) recheckCandidate(ctx context.Context, candidate i
 		resource.LocalIndexName == candidate.index.Name {
 		return false
 	}
+	if candidate.dataset {
+		return resource == nil && time.Since(time.UnixMilli(candidate.index.CreationTime)) >= icw.protectionPeriod
+	}
 	candidateOK, _, err := icw.classifyOwnership(ctx, resource != nil, candidate.resourceID, candidate.taskID)
 	if err != nil || !candidateOK {
 		return false
@@ -226,13 +246,21 @@ func (icw *IndexCleanupWorker) currentReferences(ctx context.Context) (*resource
 }
 
 func (icw *IndexCleanupWorker) classify(ctx context.Context, index *interfaces.IndexMeta, resourceID string,
-	taskID string, resources *resourceIndexSnapshot) (candidate bool, protected bool, err error) {
+	taskID string, dataset bool, resources *resourceIndexSnapshot) (candidate bool, protected bool, err error) {
 	if _, ok := resources.references[index.Name]; ok {
 		return false, true, nil
 	}
 	resource := resources.byID[resourceID]
+	if dataset {
+		return resource == nil, resource != nil, nil
+	}
 	candidate, protected, err = icw.classifyOwnership(ctx, resource != nil, resourceID, taskID)
 	return candidate, protected, err
+}
+
+func isManagedIndexName(name string) bool {
+	return strings.HasPrefix(name, interfaces.DatasetIndexPrefix+"-") ||
+		strings.HasPrefix(name, interfaces.BuildIndexPrefix+"-")
 }
 
 func (icw *IndexCleanupWorker) classifyOwnership(ctx context.Context, resourceExists bool,

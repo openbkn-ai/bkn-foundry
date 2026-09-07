@@ -26,6 +26,10 @@ func TestIndexCleanupWorkerRunOnce(t *testing.T) {
 		rs := vmock.NewMockResourceService(ctrl)
 		bts := vmock.NewMockBuildTaskService(ctrl)
 		lim.EXPECT().ListIndexes(gomock.Any()).Return([]*interfaces.IndexMeta{oldIndex}, nil)
+		lim.EXPECT().GetIndexMeta(gomock.Any(), oldIndex).DoAndReturn(func(_ context.Context, index *interfaces.IndexMeta) error {
+			index.MappingMeta = map[string]any{"resource_id": "r1", "build_task_id": "t1"}
+			return nil
+		})
 		rs.EXPECT().InternalList(gomock.Any(), interfaces.ResourcesQueryParams{}).Return([]*interfaces.ResourceSummary{{ID: "r1", LocalIndexName: "vega-build-r1-t2", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable}}, nil)
 		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusCompleted}, nil)
 
@@ -38,6 +42,10 @@ func TestIndexCleanupWorkerRunOnce(t *testing.T) {
 		rs := vmock.NewMockResourceService(ctrl)
 		bts := vmock.NewMockBuildTaskService(ctrl)
 		lim.EXPECT().ListIndexes(gomock.Any()).Return([]*interfaces.IndexMeta{oldIndex}, nil)
+		lim.EXPECT().GetIndexMeta(gomock.Any(), oldIndex).DoAndReturn(func(_ context.Context, index *interfaces.IndexMeta) error {
+			index.MappingMeta = map[string]any{"resource_id": "r1", "build_task_id": "t1"}
+			return nil
+		})
 		rs.EXPECT().InternalList(gomock.Any(), interfaces.ResourcesQueryParams{}).Return([]*interfaces.ResourceSummary{{ID: "r1"}}, nil)
 		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusCompleted}, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{ID: "r1", LocalIndexName: oldIndex.Name, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable}, nil)
@@ -51,6 +59,10 @@ func TestIndexCleanupWorkerRunOnce(t *testing.T) {
 		rs := vmock.NewMockResourceService(ctrl)
 		bts := vmock.NewMockBuildTaskService(ctrl)
 		lim.EXPECT().ListIndexes(gomock.Any()).Return([]*interfaces.IndexMeta{oldIndex}, nil)
+		lim.EXPECT().GetIndexMeta(gomock.Any(), oldIndex).DoAndReturn(func(_ context.Context, index *interfaces.IndexMeta) error {
+			index.MappingMeta = map[string]any{"resource_id": "r1", "build_task_id": "t1"}
+			return nil
+		})
 		rs.EXPECT().InternalList(gomock.Any(), interfaces.ResourcesQueryParams{}).Return([]*interfaces.ResourceSummary{{ID: "r1", LocalIndexName: oldIndex.Name, LocalIndexStatus: interfaces.ResourceLocalIndexStatusStale}}, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{ID: "r1", LocalIndexName: oldIndex.Name, LocalIndexStatus: interfaces.ResourceLocalIndexStatusStale}, nil)
 		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusCancelled}, nil).Times(2)
@@ -65,6 +77,10 @@ func TestIndexCleanupWorkerRunOnce(t *testing.T) {
 		rs := vmock.NewMockResourceService(ctrl)
 		bts := vmock.NewMockBuildTaskService(ctrl)
 		lim.EXPECT().ListIndexes(gomock.Any()).Return([]*interfaces.IndexMeta{oldIndex}, nil)
+		lim.EXPECT().GetIndexMeta(gomock.Any(), oldIndex).DoAndReturn(func(_ context.Context, index *interfaces.IndexMeta) error {
+			index.MappingMeta = map[string]any{"resource_id": "r1", "build_task_id": "t1"}
+			return nil
+		})
 		rs.EXPECT().InternalList(gomock.Any(), interfaces.ResourcesQueryParams{}).Return(nil, nil)
 		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusRunning,
