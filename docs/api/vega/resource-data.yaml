@@ -9,8 +9,9 @@ info:
 
     1. **通用资源数据查询**：`POST /resources/{id}/data` + `X-HTTP-Method-Override: GET`，
        对任意 category 的 Resource 执行数据查询（filter + 分页）。
-    2. **dataset documents 的写/删/单条访问**：`PUT` / `GET single` / `DELETE` 与
-       `POST` 的 `Override: POST` / `Override: DELETE` 分支，仅对 `Resource.category=dataset` 生效。
+    2. **dataset documents 的写/删/访问**：`POST` 的 `Override: POST` 创建一条文档，
+       `PUT` 完整替换一条文档，`GET` / `DELETE` 支持按逗号分隔的文档 ID 批量操作；
+       它们以及 `POST` 的 `Override: DELETE` 分支，仅对 `Resource.category=dataset` 生效。
 
     **dataset 不顶层化**：dataset 在系统中只是 `Resource.category=dataset` 的特化形态，
     无独立 ID 体系。CRUD 走 `/resources/{id}`，仅 documents 子资源（即本规范）独立 API surface。
@@ -46,13 +47,13 @@ paths:
         | Override | 行为 | category 限制 | body schema |
         |---|---|---|---|
         | `GET` | 列表 / 查询文档 | 任意（兼容现有通用查询） | `ResourceDataQueryParams` |
-        | `POST` | 批量创建文档 | **dataset 强制** | `DocumentArray`（每条 id 可选，无则后端生成） |
+        | `POST` | 创建一条文档 | **dataset 强制** | `Document`（id 可选，无则后端生成） |
         | `DELETE` | 按 filter 删除文档 | **dataset 强制** | `ResourceDataQueryParams`（`filter_condition` 必填非空） |
 
         **`Override: GET` 响应**：200 + `{ entries, total_count, paging }`。cursor 模式通过
         `paging.next_cursor` 续页；`total_count` 仅在 `need_total=true` 时返回。
 
-        **`Override: POST` 响应**：201 + `{ ids: [...] }`。后端为无 id 的文档生成 id。
+        **`Override: POST` 响应**：201 + `{ id }`。后端为未指定 id 的文档生成 id。
 
         **`Override: DELETE` 响应**：204。空 `filter_condition` 拒绝 400 避免误删全表。
 
@@ -76,7 +77,7 @@ paths:
             schema:
               oneOf:
                 - $ref: "#/components/schemas/ResourceDataQueryParams"
-                - $ref: "#/components/schemas/DocumentArray"
+                - $ref: "#/components/schemas/Document"
       responses:
         "200":
           description: Override=GET 查询成功
@@ -89,7 +90,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/IdsResponse"
+                $ref: "#/components/schemas/IdResponse"
         "204":
           description: Override=DELETE 删除成功
         "400":
@@ -104,39 +105,7 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
-    put:
-      summary: 批量 update（upsert）文档
-      description: |
-        批量更新 dataset 文档，**id 强制**：body 数组中每条文档必须带 `id` 字段，缺失整批拒绝。
-
-        语义：upsert——id 存在则替换，不存在则按该 id 创建（service 层调 `UpsertDocuments`）。
-
-        category 限制：仅 `dataset`，否则 400 `VegaBackend.Resource.InternalError.InvalidCategory`。
-        空数组 body 拒绝 400 `VegaBackend.InvalidParameter.RequestBody`。
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/DocumentArray"
-      responses:
-        "200":
-          description: 更新成功
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/IdsResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "406":
-          $ref: "#/components/responses/NotAcceptable"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-  /resources/{id}/data/{doc_ids}:
+  /resources/{id}/data/{docid}:
     parameters:
       - name: id
         description: Resource ID
@@ -144,68 +113,36 @@ paths:
         required: true
         schema:
           type: string
-      - name: doc_ids
+      - name: docid
         description: |
-          文档 ID 列表，逗号分隔（单条即长度 1 的退化情形）。
-          缺失 id 静默跳过；本端点不接受 `?ignore_missing` 参数。
-        in: path
-        required: true
-        schema:
-          type: string
-    delete:
-      summary: 按 ids 批量删除 dataset 文档（best-effort）
-      description: |
-        批量删除 dataset 文档。**best-effort 语义**：
-        - 缺失 id 静默跳过，不返回 404 / 4xx
-        - 不接受 `ignore_missing` 选项
-
-        与 `/build-tasks/{ids}` / `/discover-tasks/{ids}` 的"整体事务 + ignore_missing"
-        不同；documents 场景的 missing 容忍度高，统一行为更简洁。
-
-        category 限制：仅 `dataset`。
-      responses:
-        "204":
-          description: 删除成功
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-  /resources/{id}/data/{doc_id}:
-    # 单条读写走 doc_id；批量删除走上面的 doc_ids。服务端是两条独立路由
-    # （GET / PUT 取 :doc_id，DELETE 取 :doc_ids），不是同一个参数。
-    parameters:
-      - name: id
-        description: Resource ID
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: doc_id
-        description: 单个文档 ID
+          文档 ID 或以逗号分隔的文档 ID 列表。服务端会删除空白项并保留首次出现的 ID；
+          处理后没有 ID 时返回 400。PUT 仅接受单个文档 ID。
         in: path
         required: true
         schema:
           type: string
     get:
-      summary: 获取单条文档
+      summary: 获取一个或多个 dataset 文档
       description: |
-        category 限制：仅 `dataset`。
+        按请求 ID 顺序返回 `{ "entries": [...] }`，单 ID 也使用同一响应结构。
+        默认严格：任一文档不存在即返回 404。`?ignore_missing=true` 时跳过缺失文档。
 
-        文档不存在返回 404 `VegaBackend.Resource.NotFound`（与 resource 不存在共用同一
-        errcode；靠 `error_details: "document {doc_id} not found"` 区分）。
-
-        Resource 当前不可查询时返回 409，状态优先级和 errcode 与列表查询一致。
+        category 限制：仅 `dataset`。Resource 当前不可查询时返回 409，状态优先级和
+        列表查询一致。
+      parameters:
+        - name: ignore_missing
+          description: 容忍缺失文档，跳过而非返回 404；默认 false
+          in: query
+          schema:
+            type: boolean
+            default: false
       responses:
         "200":
-          description: ok
+          description: 获取成功
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Document"
+                $ref: "#/components/schemas/DocumentEntriesResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -217,12 +154,14 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
     put:
-      summary: 单条 update（upsert）文档
+      summary: 完整替换一个 dataset 文档（upsert）
       description: |
-        单条文档更新。**doc_id 以 path 为准**——body 不需要 `id` 字段，即使携带也以 path
-        覆盖（path 与 body id 不一致时仅记 warn log，不报错）。
+        `docid` 是目标文档 ID。body 中的 `id` 会被路径参数覆盖；文档已存在时完整替换，
+        不存在时以该 ID 创建，不支持 patch/merge 更新。
 
-        语义同批量 PUT：upsert（id 存在则替换，不存在则按该 id 创建）。
+        对 `string` / `text` 字段上的 vector Feature：若 body 显式携带派生字段
+        `<field>_vector`，服务端校验后直接使用；否则源文本非空时同步生成向量。生成或
+        校验失败时不会向 OpenSearch 写入该文档。
 
         category 限制：仅 `dataset`。
       requestBody:
@@ -233,7 +172,7 @@ paths:
               $ref: "#/components/schemas/Document"
       responses:
         "200":
-          description: 更新成功
+          description: 替换或创建成功
           content:
             application/json:
               schema:
@@ -246,6 +185,32 @@ paths:
           $ref: "#/components/responses/NotFound"
         "406":
           $ref: "#/components/responses/NotAcceptable"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    delete:
+      summary: 按 ID 删除一个或多个 dataset 文档
+      description: |
+        默认严格：服务端在删除前核验全部文档，任一不存在即返回 404，且不发起删除。
+        `?ignore_missing=true` 时跳过不存在的文档，仅删除已找到的文档。
+
+        这是一请求内的预检语义；预检后发生的并发删除仍可能使底层批量删除失败。
+        category 限制：仅 `dataset`。
+      parameters:
+        - name: ignore_missing
+          description: 容忍缺失文档，跳过而非返回 404；默认 false
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "204":
+          description: 删除成功
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
 components:
@@ -310,20 +275,23 @@ components:
     Document:
       description: |
         文档对象。content 字段集开放，由具体 dataset schema 决定。
-        - 单条 PUT 时不应携带 `id`；如携带，以 path 为准（仅记 warn log）。
-        - 批量 PUT 时**必须**携带 `id`。
-        - 批量 POST（创建）时 `id` 可选，无则后端生成。
+        - `POST /resources/{id}/data`（Override=POST）创建一条文档；`id` 可选。
+        - `PUT /resources/{id}/data/{docid}` 如携带 `id`，以 path 为准。
       type: object
       additionalProperties: true
       properties:
         id:
           description: 文档 ID
           type: string
-    DocumentArray:
-      description: 文档数组
-      type: array
-      items:
-        $ref: "#/components/schemas/Document"
+    DocumentEntriesResponse:
+      description: 按文档 ID 获取的响应；entries 顺序与有效请求 ID 一致。
+      type: object
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/Document"
     ResourceDataQueryParams:
       description: |
         查询 / 删除参数。`Override: GET` 用 filter+分页查询；`Override: DELETE` 用
@@ -465,17 +433,6 @@ components:
         expires_at_sec:
           type: [integer, "null"]
           format: int64
-    IdsResponse:
-      description: 批量写入操作的响应，含成功的文档 ID 数组
-      type: object
-      required:
-        - ids
-      properties:
-        ids:
-          description: 文档 ID 列表
-          type: array
-          items:
-            type: string
     IdResponse:
       description: 单条写入操作的响应。服务端返回的是单数 `id`，不是 `ids` 数组
       type: object

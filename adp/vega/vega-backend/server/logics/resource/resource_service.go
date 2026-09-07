@@ -1764,10 +1764,19 @@ func validateDatasetVectorOutputs(ctx context.Context, schema []*interfaces.Prop
 	}
 	generatedFields := make(map[string]string)
 	for _, property := range schema {
-		if property == nil || (property.Type != interfaces.DataType_String && property.Type != interfaces.DataType_Text) {
+		if property == nil {
 			continue
 		}
 		for _, feature := range property.Features {
+			// HTTP validation rejects this already. Keep the Dataset business
+			// invariant here as well because internal callers can bypass the
+			// HTTP adapter and call the service directly.
+			if feature.RefProperty != "" {
+				return unsupportedResourceUpdateError(ctx, "dataset does not support ref_property")
+			}
+			if property.Type != interfaces.DataType_String && property.Type != interfaces.DataType_Text {
+				continue
+			}
 			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
 				continue
 			}

@@ -144,7 +144,8 @@ paths:
         - `name` 在 catalog 内唯一；冲突返回 409 `VegaBackend.Resource.NameExists`。
         - `category=logicview` 必须给 `logic_definition`。
         - `category=dataset` 必须给非空 `schema_definition`；字段名/长度/重复/类型/特征均会校验，
-          违反返回 400 `VegaBackend.Dataset.*`（详见错误码族）。
+          违反返回 400 `VegaBackend.Dataset.*`（详见错误码族）。Dataset 索引在 Resource
+          入库前创建，成功响应中的 `index_name` 是服务端分配的 `vega-dataset-<uuidv7>`。
       requestBody:
         required: true
         content:
@@ -248,6 +249,8 @@ paths:
         - PUT 中的 `status`、`schema`、`source_identifier`、`source_metadata` 由内部流程管理；即使携带也会被忽略。
         - 必须传入 `expected_update_time` 进行乐观并发控制。该值应取自最近一次查询响应的
           `update_time`；若资源已被其他请求更新，返回 409 `VegaBackend.Resource.UpdateConflict`。
+        - Dataset 已有文档时，不允许通过普通更新改变字段、Feature、embedding 模型或其他索引
+          结构；请求返回 409，需通过显式重建流程处理历史数据。
       requestBody:
         required: true
         content:
@@ -423,7 +426,10 @@ components:
         name:
           type: string
     Property:
-      description: Schema 字段定义
+      description: |
+        Schema 字段定义。Dataset 的 `string` / `text` 字段可带一个 vector Feature；其物理
+        输出字段固定为 `<name>_vector`，仅存在于本地索引，不写回 schema_definition。该输出
+        字段不能与任一逻辑字段重名。
       type: object
       required:
         - name
@@ -459,7 +465,7 @@ components:
             discover 每次刷新，永远反映源端当前值。
           type: string
         features:
-          description: 字段特性集合
+          description: 字段特性集合；同一字段的同类 Feature 最多一个
           type: array
           items:
             $ref: "#/components/schemas/PropertyFeature"
@@ -468,7 +474,10 @@ components:
           type: object
           additionalProperties: true
     PropertyFeature:
-      description: 字段特性（决定字段在索引/查询/向量化中的行为）
+      description: |
+        字段特性（决定字段在索引/查询/向量化中的行为）。vector Feature 只允许出现在
+        `string`、`text` 或 `vector` 类型字段上：前两者生成 `<field>_vector` 派生字段，
+        后者直接使用字段自身。Dataset 不支持 `ref_property`。
       type: object
       required:
         - name
@@ -488,7 +497,7 @@ components:
         description:
           type: string
         ref_property:
-          description: 关联到的字段名（如 vector 特性引用源字段）
+          description: 关联到的字段名；仅 Discover 等资源使用，Dataset 不支持此字段
           type: string
         is_default:
           type: boolean
@@ -497,7 +506,8 @@ components:
         config:
           description: |
             特性配置。`feature_type=vector` 时，`embedding_model` 为模型管理服务中的
-            embedding `model_id`；省略时继承 `index_config.default_embedding_model`。
+            embedding `model_id`；省略时继承 `index_config.default_embedding_model`。服务端在
+            创建/更新时查询模型登记信息并写入只读 `dimension`，调用方不应指定它。
           type: object
           additionalProperties: true
     LogicDefinitionNode:
@@ -551,7 +561,8 @@ components:
 
         - `operations` 是后端计算的"该资源支持的操作集合"，**只读**字段（创建 / 更新
           请求中不接受）。
-        - `index_name` 由构建任务填充，外部一般不直接设置。
+        - `index_name` 是服务端管理的物理索引名：Dataset 创建时分配，BuildTask 也会使用其
+          自己快照的目标索引名；外部请求不应设置。
         - `schema_definition` / `logic_definition` 互斥使用：物理资源用前者，逻辑视图
           用后者。
       type: object

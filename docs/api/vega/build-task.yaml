@@ -20,6 +20,10 @@ info:
     端点设计遵循 [vega-backend/CLAUDE.md] 的"端点设计规则"：批量删除走 path
     （`DELETE /build-tasks/{ids}`，逗号分隔），不提供 `/resources/{id}/build-tasks`
     嵌套列表视图——按父资源过滤一律走 `GET /build-tasks?resource_id={id}`。
+
+    每个新任务均有服务端分配的只读 `index_name`。Full BuildTask 使用新的
+    `vega-build-<uuidv7>` 物理索引；Incremental BuildTask 快照创建时 Resource 的当前
+    `index_name`，不会新建索引。索引名不承载 Resource 或 Task ID，调用方不得根据其解析业务 ID。
   version: 0.1.0
 servers:
   - url: /api/vega-backend/v1
@@ -132,6 +136,7 @@ paths:
         - 当前版本暂不支持 `streaming` 模式。
         - `batch` 模式要求 `primary_key_fields` 和 `incremental_fields` 均非空。
         - 所有字段都需要在 Resource 的 schema 中存在；否则 400。
+        - `index_name` 由服务端分配并在详情、列表响应中返回；请求体不接受该字段。
         - 创建后 status = `pending`。
       requestBody:
         required: true
@@ -405,6 +410,9 @@ components:
           enum:
             - incremental
             - full
+        index_name:
+          description: 服务端分配的目标物理索引名。Full 任务为新的 `vega-build-<uuidv7>`；Incremental 任务为创建时快照的 Resource 当前索引名。
+          type: string
         total_count:
           description: 总数
           type: integer
@@ -455,6 +463,9 @@ components:
         status: { type: string }
         mode: { type: string }
         execute_type: { type: string }
+        index_name:
+          description: 服务端分配的目标物理索引名
+          type: string
         total_count: { type: integer, format: int64 }
         synced_count: { type: integer, format: int64 }
         synced_mark:

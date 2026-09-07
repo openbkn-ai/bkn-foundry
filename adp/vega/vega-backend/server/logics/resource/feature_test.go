@@ -150,6 +150,18 @@ func TestValidateDatasetVectorOutputs(t *testing.T) {
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "conflicts with a logical property")
 	})
+
+	t.Run("rejects ref_property on every dataset feature", func(t *testing.T) {
+		err := validateDatasetVectorOutputs(ctx, []*interfaces.Property{{
+			Name: "content", Type: interfaces.DataType_Text,
+			Features: []interfaces.PropertyFeature{{
+				FeatureType: interfaces.PropertyFeatureType_Fulltext,
+				RefProperty: "other_content",
+			}},
+		}})
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "does not support ref_property")
+	})
 }
 
 func TestMutableFeaturesEqualWithServerManagedDimension(t *testing.T) {
