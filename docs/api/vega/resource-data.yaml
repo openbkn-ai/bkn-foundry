@@ -47,7 +47,7 @@ paths:
         | Override | 行为 | category 限制 | body schema |
         |---|---|---|---|
         | `GET` | 列表 / 查询文档 | 任意（兼容现有通用查询） | `ResourceDataQueryParams` |
-        | `POST` | 创建一条文档 | **dataset 强制** | `Document`（id 可选，无则后端生成） |
+        | `POST` | 创建一条文档 | **dataset 强制** | `Document`（`_id` 可选，无则后端生成） |
         | `DELETE` | 按 filter 删除文档 | **dataset 强制** | `ResourceDataQueryParams`（`filter_condition` 必填非空） |
 
         **`Override: GET` 响应**：200 + `{ entries, total_count, paging }`。cursor 模式通过
@@ -156,7 +156,7 @@ paths:
     put:
       summary: 完整替换一个 dataset 文档（upsert）
       description: |
-        `docid` 是目标文档 ID。body 中的 `id` 会被路径参数覆盖；文档已存在时完整替换，
+        `docid` 是目标文档 ID。body 中的 `_id` 会被路径参数覆盖；文档已存在时完整替换，
         不存在时以该 ID 创建，不支持 patch/merge 更新。
 
         对 `string` / `text` 字段上的 vector Feature：若 body 显式携带派生字段
@@ -275,12 +275,12 @@ components:
     Document:
       description: |
         文档对象。content 字段集开放，由具体 dataset schema 决定。
-        - `POST /resources/{id}/data`（Override=POST）创建一条文档；`id` 可选。
-        - `PUT /resources/{id}/data/{docid}` 如携带 `id`，以 path 为准。
+        - `POST /resources/{id}/data`（Override=POST）创建一条文档；`_id` 可选。
+        - `PUT /resources/{id}/data/{docid}` 如携带 `_id`，以 path 为准。
       type: object
       additionalProperties: true
       properties:
-        id:
+        _id:
           description: 文档 ID
           type: string
     DocumentEntriesResponse:

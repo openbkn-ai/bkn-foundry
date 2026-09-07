@@ -179,6 +179,13 @@ func (ds *datasetService) CreateDocument(ctx context.Context, res *interfaces.Re
 		span.SetStatus(codes.Error, "Materialize dataset document failed")
 		return "", err
 	}
+	if value, exists := materialized["_id"]; exists {
+		docID, ok := value.(string)
+		if !ok || docID == "" {
+			return "", invalidDocumentError(ctx, "document id must be a non-empty string")
+		}
+		materialized["_id"] = docID
+	}
 	docIDs, err := ds.lim.CreateDocuments(ctx, res.LocalIndexName, []map[string]any{materialized})
 	if err != nil {
 		span.SetStatus(codes.Error, "Create dataset document failed")

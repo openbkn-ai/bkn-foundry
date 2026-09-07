@@ -392,7 +392,7 @@ func (r *restHandler) getResourceDataDoc(c *gin.Context, visitor hydra.Visitor, 
 // =========================== PUT /resources/:id/data/:docid ===========================
 
 // PutResourceDataDocByEx handles PUT /api/vega-backend/v1/resources/:id/data/:docid (External).
-// Single-document update; docid from path takes precedence over any `id` field in body.
+// Single-document update; docid from path takes precedence over any `_id` field in body.
 func (r *restHandler) PutResourceDataDocByEx(c *gin.Context) {
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
@@ -446,12 +446,12 @@ func (r *restHandler) putResourceDataDoc(c *gin.Context, visitor hydra.Visitor, 
 	if doc == nil {
 		doc = map[string]any{}
 	}
-	if bodyID, exists := doc["id"]; exists {
+	if bodyID, exists := doc["_id"]; exists {
 		if s, ok := bodyID.(string); !ok || s != docID {
-			logger.Warnf("PutResourceDataDoc: body.id (%v) overridden by path docid (%s)", bodyID, docID)
+			logger.Warnf("PutResourceDataDoc: body._id (%v) overridden by path docid (%s)", bodyID, docID)
 		}
 	}
-	doc["id"] = docID
+	doc["_id"] = docID
 
 	if err := r.ds.ReplaceDocument(ctx, resource, docID, doc); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError_UpdateFailed)

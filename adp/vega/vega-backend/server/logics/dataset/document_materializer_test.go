@@ -33,11 +33,13 @@ func TestMaterializeDocument(t *testing.T) {
 		mfs.EXPECT().GetModelByID(gomock.Any(), "embedding-1").Return(model, nil)
 		mfs.EXPECT().GetVector(gomock.Any(), model, []string{"hello"}).Return([]*interfaces.VectorResp{{Vector: []float32{0.1, 0.2}}}, nil)
 
-		document, err := ds.materializeDocument(context.Background(), resource, map[string]any{"content": "hello"})
+		input := map[string]any{"content": "hello"}
+		document, err := ds.materializeDocument(context.Background(), resource, input)
 
 		require.NoError(t, err)
 		assert.Equal(t, "hello", document["content"])
 		assert.Equal(t, []float32{0.1, 0.2}, document["content_vector"])
+		assert.NotContains(t, input, "content_vector")
 	})
 
 	t.Run("uses an explicit derived vector without inference", func(t *testing.T) {
@@ -59,9 +61,11 @@ func TestMaterializeDocument(t *testing.T) {
 		mfs.EXPECT().GetModelByID(gomock.Any(), "embedding-1").Return(model, nil)
 		mfs.EXPECT().GetVector(gomock.Any(), model, []string{"hello"}).Return(nil, errors.New("inference unavailable"))
 
-		_, err := ds.materializeDocument(context.Background(), resource, map[string]any{"content": "hello"})
+		input := map[string]any{"content": "hello"}
+		_, err := ds.materializeDocument(context.Background(), resource, input)
 
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "inference unavailable")
+		assert.NotContains(t, input, "content_vector")
 	})
 }

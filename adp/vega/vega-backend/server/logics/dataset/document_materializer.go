@@ -28,6 +28,10 @@ func (ds *datasetService) materializeDocument(ctx context.Context, res *interfac
 	if document == nil {
 		return nil, invalidDocumentError(ctx, "document is required")
 	}
+	result := make(map[string]any, len(document))
+	for key, value := range document {
+		result[key] = value
+	}
 	models := map[string]*interfaces.SmallModel{}
 	pending := map[string][]pendingEmbedding{}
 	modelOrder := make([]string, 0)
@@ -45,7 +49,7 @@ func (ds *datasetService) materializeDocument(ctx context.Context, res *interfac
 			// Resource schemas loaded from storage represent JSON numbers as float64.
 			dimension := int(feature.Config["dimension"].(float64))
 			if prop.Type == interfaces.DataType_Vector {
-				if value, exists := document[prop.Name]; exists {
+				if value, exists := result[prop.Name]; exists {
 					if err := validateVector(value, dimension, prop.Name); err != nil {
 						return nil, invalidDocumentError(ctx, err.Error())
 					}
@@ -53,7 +57,7 @@ func (ds *datasetService) materializeDocument(ctx context.Context, res *interfac
 				continue
 			}
 			outputField := interfaces.LocalIndexVectorFieldName(prop.Name)
-			if value, exists := document[outputField]; exists {
+			if value, exists := result[outputField]; exists {
 				// An explicit vector wins over inference, but validate it before it
 				// reaches OpenSearch.
 				if err := validateVector(value, dimension, outputField); err != nil {
@@ -61,7 +65,7 @@ func (ds *datasetService) materializeDocument(ctx context.Context, res *interfac
 				}
 				continue
 			}
-			if text, ok := document[prop.Name].(string); ok && strings.TrimSpace(text) != "" {
+			if text, ok := result[prop.Name].(string); ok && strings.TrimSpace(text) != "" {
 				modelID, _ := feature.Config["embedding_model"].(string)
 				if modelID == "" {
 					modelID = res.IndexConfig.DefaultEmbeddingModel
@@ -113,10 +117,10 @@ func (ds *datasetService) materializeDocument(ctx context.Context, res *interfac
 			if err := validateVector(vector.Vector, requests[i].dimension, requests[i].field); err != nil {
 				return nil, fmt.Errorf("embedding model %q returned invalid vector: %w", modelID, err)
 			}
-			document[requests[i].field] = vector.Vector
+			result[requests[i].field] = vector.Vector
 		}
 	}
-	return document, nil
+	return result, nil
 }
 
 // validateVector protects OpenSearch from invalid caller input or an invalid

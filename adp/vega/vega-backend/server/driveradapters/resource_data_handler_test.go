@@ -481,7 +481,7 @@ func Test_ResourceDataRestHandler_PutResourceDataDoc(t *testing.T) {
 		engine, rs, ds, _ := setupResourceDataHandlerTest(t)
 		resource := sampleDatasetResource()
 		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
-		ds.EXPECT().ReplaceDocument(gomock.Any(), resource, "doc-1", map[string]any{"id": "doc-1", "title": "one"}).Return(nil)
+		ds.EXPECT().ReplaceDocument(gomock.Any(), resource, "doc-1", map[string]any{"_id": "doc-1", "title": "one"}).Return(nil)
 
 		req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/resources/res-1/data/doc-1", strings.NewReader(`{"title":"one"}`))
 		req.Header.Set("Content-Type", "application/json")
@@ -497,7 +497,7 @@ func Test_ResourceDataRestHandler_PutResourceDataDoc(t *testing.T) {
 		engine, rs, ds, _ := setupResourceDataHandlerTest(t)
 		resource := sampleDatasetResource()
 		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
-		ds.EXPECT().ReplaceDocument(gomock.Any(), resource, "doc-1", map[string]any{"id": "doc-1", "title": "one"}).
+		ds.EXPECT().ReplaceDocument(gomock.Any(), resource, "doc-1", map[string]any{"_id": "doc-1", "title": "one"}).
 			Return(errors.New("model registry unavailable"))
 
 		req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/resources/res-1/data/doc-1", strings.NewReader(`{"title":"one"}`))
@@ -513,7 +513,7 @@ func Test_ResourceDataRestHandler_PutResourceDataDoc(t *testing.T) {
 		engine, rs, ds, _ := setupResourceDataHandlerTest(t)
 		resource := sampleDatasetResource()
 		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
-		ds.EXPECT().ReplaceDocument(gomock.Any(), resource, "doc-1,doc-2", map[string]any{"id": "doc-1,doc-2"}).Return(nil)
+		ds.EXPECT().ReplaceDocument(gomock.Any(), resource, "doc-1,doc-2", map[string]any{"_id": "doc-1,doc-2"}).Return(nil)
 
 		req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/resources/res-1/data/doc-1,doc-2", strings.NewReader(`{}`))
 		req.Header.Set("Content-Type", "application/json")
