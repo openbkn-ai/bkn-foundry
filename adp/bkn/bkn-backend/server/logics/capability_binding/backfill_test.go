@@ -351,6 +351,9 @@ func TestAPIFunctionSplit(t *testing.T) {
 
 		Convey("计数按工具集类型分流，且一个工具集只问一次", func() {
 			service, cba, aoa := newTestServiceWithFactory(t, ctrl)
+			// The count also covers capabilities the model uses but nobody mounted, so it reads
+			// the stored rows once to know which of them are already counted.
+			cba.EXPECT().ListBindings(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 			cba.EXPECT().GetBindingsTotalByType(gomock.Any(), "kn1", "main").
 				Return(map[string]int{interfaces.CAPABILITY_TYPE_FUNCTION: 5}, nil)
 			cba.EXPECT().GetFunctionTotalsByOwner(gomock.Any(), "kn1", "main").
@@ -375,6 +378,7 @@ func TestAPIFunctionSplit(t *testing.T) {
 
 		Convey("工具集读不到时算作函数，而不是让整个统计失败", func() {
 			service, cba, aoa := newTestServiceWithFactory(t, ctrl)
+			cba.EXPECT().ListBindings(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 			cba.EXPECT().GetBindingsTotalByType(gomock.Any(), "kn1", "main").
 				Return(map[string]int{interfaces.CAPABILITY_TYPE_FUNCTION: 4}, nil)
 			cba.EXPECT().GetFunctionTotalsByOwner(gomock.Any(), "kn1", "main").

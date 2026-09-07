@@ -66,6 +66,12 @@ type CapabilityBinding struct {
 	Status      string `json:"status,omitempty" mapstructure:"-"`
 	OwnerName   string `json:"owner_name,omitempty" mapstructure:"-"`
 
+	// Sources says why this capability is in the network: mounted explicitly, expanded from a
+	// box, or used by an object type's logic property or an action type. A capability used by
+	// the model but never mounted appears in the list with no manual source and cannot be
+	// released — the way to remove it is to change what uses it.
+	Sources []*CapabilitySource `json:"sources,omitempty" mapstructure:"-"`
+
 	Creator    AccountInfo `json:"creator" mapstructure:"creator"`
 	CreateTime int64       `json:"create_time" mapstructure:"create_time"`
 	Updater    AccountInfo `json:"updater" mapstructure:"updater"`
@@ -105,6 +111,35 @@ type CapabilityBindingsQueryParams struct {
 	// one for all skills; the detail of a skill has to be read one skill at a time, so it is
 	// asked for rather than always paid.
 	WithDetail bool
+}
+
+// Where a capability in the list came from. A capability can have several at once.
+const (
+	// CAPABILITY_SOURCE_MANUAL is an explicit mount. It is the only source that can be released:
+	// the others are consequences of the model and go away by changing it.
+	CAPABILITY_SOURCE_MANUAL = "manual"
+	// CAPABILITY_SOURCE_BOX marks a row produced by expanding a whole-box or whole-server mount.
+	CAPABILITY_SOURCE_BOX = "box"
+	// CAPABILITY_SOURCE_OBJECT_TYPE is a logic property of an object type using the tool.
+	CAPABILITY_SOURCE_OBJECT_TYPE = "object_type"
+	// CAPABILITY_SOURCE_ACTION_TYPE is an action type executing through the tool.
+	CAPABILITY_SOURCE_ACTION_TYPE = "action_type"
+)
+
+// CapabilitySourceRef names one thing that brought a capability into the network.
+type CapabilitySourceRef struct {
+	ID   string `json:"id"`
+	Name string `json:"name,omitempty"`
+	// Property is the logic property using the tool, for an object_type source. Deleting a
+	// property and deleting the object type are different repairs, so the reference says which.
+	Property string `json:"property,omitempty"`
+}
+
+// CapabilitySource is one kind of origin, with what it points at.
+type CapabilitySource struct {
+	Kind string `json:"kind"`
+	// Refs is empty for manual and box: those have nothing else to name.
+	Refs []*CapabilitySourceRef `json:"refs,omitempty"`
 }
 
 // CAPABILITY_STATUS_MISSING marks a binding whose target is gone from the execution factory.

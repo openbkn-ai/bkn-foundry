@@ -46,7 +46,13 @@ type capabilityBindingService struct {
 	db         *sql.DB
 	cba        interfaces.CapabilityBindingAccess
 	aoa        interfaces.AgentOperatorAccess
-	ps         interfaces.PermissionService
+	// ota and ata are read to answer why a capability is in the network. The model is the truth
+	// about what uses a tool, so the answer is computed from it rather than copied into the
+	// binding table — a copy has to be maintained on every edit, and the one that drifts is the
+	// copy.
+	ota interfaces.ObjectTypeAccess
+	ata interfaces.ActionTypeAccess
+	ps  interfaces.PermissionService
 }
 
 func NewCapabilityBindingService(appSetting *common.AppSetting) interfaces.CapabilityBindingService {
@@ -56,6 +62,8 @@ func NewCapabilityBindingService(appSetting *common.AppSetting) interfaces.Capab
 			db:         logics.DB,
 			cba:        logics.CBA,
 			aoa:        logics.AOA,
+			ota:        logics.OTA,
+			ata:        logics.ATA,
 			ps:         permission.NewPermissionService(appSetting),
 		}
 	})
@@ -213,6 +221,13 @@ func (cbs *capabilityBindingService) AttachCapabilities(ctx context.Context, tx 
 	return result, nil
 }
 
+// DetachCapabilities releases explicit mounts by binding id.
+//
+// A capability the model uses but nobody mounted has no row and therefore no id to pass here: it
+// appears in the listing with an empty id and no manual source, and the way to remove it is to
+// change the object type or action type that reaches for it. A capability that is both mounted
+// and used stays in the listing after this call, with only its model sources left — which is why
+// releasing it does not take it out of the network.
 func (cbs *capabilityBindingService) DetachCapabilities(ctx context.Context, tx *sql.Tx, knID, branch string,
 	bindingIDs []string) (int64, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Detach capabilities")
@@ -290,6 +305,11 @@ func (cbs *capabilityBindingService) ListCapabilities(ctx context.Context,
 			berrors.BknBackend_CapabilityBinding_InternalError_GetBindingsTotalFailed).WithErrorDetails(err.Error())
 	}
 
+	// Why each capability is here, and what the model uses that is not mounted at all. Both come
+	// from one read of the branch's object types and action types.
+	sources := cbs.collectProvenance(ctx, query.KNID, query.Branch)
+	entries, total = applyProvenance(entries, total, sources, query)
+
 	backfilled := cbs.backfillMetadata(ctx, query, entries, query.WithDetail)
 
 	span.SetStatus(codes.Ok, "")
@@ -312,6 +332,28 @@ func (cbs *capabilityBindingService) GetCapabilityTotalsByType(ctx context.Conte
 		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_CapabilityBinding_InternalError_GetBindingsTotalFailed).WithErrorDetails(err.Error())
+	}
+
+	// Capabilities the model uses but nobody mounted are in the listing, so they are in the
+	// counts too. A count that disagreed with the list it labels is worse than either number
+	// alone: the workspace would show eight rows under a badge reading five.
+	sources := cbs.collectProvenance(ctx, knID, branch)
+	stored, storedErr := cbs.cba.ListBindings(ctx, interfaces.CapabilityBindingsQueryParams{
+		KNID: knID, Branch: branch,
+		PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: noPagingLimit},
+	})
+	if storedErr != nil {
+		logger.Warnf("capability totals: bindings unreadable for kn_id=%s: %v", knID, storedErr)
+	} else {
+		mounted := make(map[capabilityKey]struct{}, len(stored))
+		for _, binding := range stored {
+			mounted[keyOfBinding(binding)] = struct{}{}
+		}
+		for key := range sources.byCapability {
+			if _, ok := mounted[key]; !ok {
+				totals[key.capabilityType]++
+			}
+		}
 	}
 
 	// Split the function count by the kind of box each binding belongs to. The kind is not in
