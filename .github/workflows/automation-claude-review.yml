@@ -59,6 +59,9 @@ on:
       - 'comm-go/**'
       - 'data-migrator/**'
       - 'deploy/scripts/**'
+      # Migrations run once, against a customer's data, and cannot be rolled
+      # back. They were the one category of change reaching main unreviewed.
+      - '**/migrations/**'
       - '!**/*.md'
   issue_comment:
     types: [created]

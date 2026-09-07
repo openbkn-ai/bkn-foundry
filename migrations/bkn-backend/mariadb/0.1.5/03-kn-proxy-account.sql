@@ -2,6 +2,8 @@
 --
 -- Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
+USE openbkn;
+
 -- Environment-local one-to-one mapping and publication synchronization state.
 CREATE TABLE IF NOT EXISTS t_kn_proxy_account (
   f_kn_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,

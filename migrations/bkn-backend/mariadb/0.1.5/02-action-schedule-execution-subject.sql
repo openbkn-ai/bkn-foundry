@@ -3,6 +3,8 @@
 -- Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
 -- Add the current execution subject used to authorize Schedule triggers.
+USE openbkn;
+
 ALTER TABLE t_action_schedule
   ADD COLUMN IF NOT EXISTS f_execution_subject VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Current execution subject ID' AFTER f_update_time,
   ADD COLUMN IF NOT EXISTS f_execution_subject_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'Current execution subject type' AFTER f_execution_subject;

@@ -1,0 +1,66 @@
+name: lint-migrations
+
+# data-migrator connects without a database parameter, so a `USE` statement is
+# the only thing that puts an upgrade script in a schema. A script that starts
+# straight at its DDL fails the upgrade with "No database selected" — and only
+# the upgrade: fresh installs build from init.sql, which does carry USE. The
+# failure therefore shows up at a customer's upgrade and nowhere before it.
+#
+# data-migrator's own lint has enforced this from the start ("升级文件中第一条
+# 语句必须为 'USE database'"), but nothing ran it, so the rule and three
+# violating scripts coexisted until one had already shipped.
+#
+# Only that one rule is enforced here rather than the whole lint. The rest of
+# data-migrator's checks are written against MySQL and misfire on MariaDB, which
+# is what these files actually target: `TEXT NOT NULL DEFAULT ''` and
+# `json NOT NULL DEFAULT ('{}')` are both legal from MariaDB 10.2 and both
+# rejected by that lint today. Wiring the full lint in means fixing it first;
+# this rule needs nothing and misfires on nothing.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: lint-migrations-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  upgrade-scripts-select-a-database:
+    name: upgrade scripts must select a database
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Every upgrade script starts with USE
+        run: |
+          set -u
+          offenders=""
+
+          # init.sql is the fresh-install snapshot and is excluded by the same
+          # rule in data-migrator: it is executed as the whole schema, not as a
+          # step onto an existing one. Every other .sql under migrations/ is an
+          # upgrade script.
+          while IFS= read -r f; do
+            # First statement, ignoring comments and blank lines. Line comments
+            # are `--`; block comments are not used in these files, but leading
+            # `/*` and ` *` are skipped so one appearing later cannot slip by.
+            first=$(grep -viE '^[[:space:]]*(--|/\*|\*)|^[[:space:]]*$' "$f" | head -1 | tr -d '\r')
+            case "$first" in
+              [Uu][Ss][Ee]*) ;;
+              *) offenders="${offenders}${f}  ->  ${first}"$'\n' ;;
+            esac
+          done < <(find migrations -name '*.sql' ! -name 'init.sql' | sort)
+
+          if [ -n "$offenders" ]; then
+            echo "::error::upgrade scripts without a USE statement would fail an upgrade with 'No database selected'"
+            printf '%s' "$offenders"
+            echo
+            echo "Fix: add 'USE <database>;' as the first statement, matching the init.sql of the same service."
+            exit 1
+          fi
+          echo "Every upgrade script selects a database."
