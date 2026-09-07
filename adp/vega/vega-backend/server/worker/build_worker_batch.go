@@ -418,9 +418,10 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 			firstQuery = false
 			if totalRows > 0 || readRows > 0 {
 				totalCount := int64(totalRows)
-				// 增量任务从已提交 checkpoint 恢复时，连接器返回的只有剩余范围；
-				// SyncedCount 则在同一任务生命周期内持续累计。
-				if isIncremental {
+				// 从已提交 checkpoint 恢复时，连接器返回的只有剩余范围；
+				// SyncedCount 则在同一任务生命周期内持续累计。全量任务未 reset
+				// 重启时同样会恢复 checkpoint，因此不能只按任务类型判断。
+				if len(lastBatchKeyValues) > 0 {
 					totalCount += syncedCount
 				}
 				if _, err := bbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID,
