@@ -60,6 +60,27 @@ func newValidBKNTar(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
+// newBKNTarWithCapabilities builds a tar whose frontmatter declares one Skill, so a test can tell
+// "the section was passed through" apart from "the file never had one".
+func newBKNTarWithCapabilities(t *testing.T) []byte {
+	net := &bknsdk.BknNetwork{
+		BknNetworkFrontmatter: bknsdk.BknNetworkFrontmatter{
+			Type:    "network",
+			ID:      "test-net",
+			Name:    "Test Network",
+			Version: "1.0.0",
+			Capabilities: &bknsdk.BknCapabilities{
+				Skills: []*bknsdk.BknCapabilitySkill{{ID: "skill-1", Name: "交期评估"}},
+			},
+		},
+	}
+	var buf bytes.Buffer
+	if err := bknsdk.WriteNetworkToTar(net, &buf); err != nil {
+		t.Fatalf("failed to create test BKN tar: %v", err)
+	}
+	return buf.Bytes()
+}
+
 // newMultipartRequestWithContentType builds a file-upload request with the specified Content-Type for extension-validation tests.
 func newMultipartRequestWithContentType(t *testing.T, url, filename, contentType string, content []byte) *http.Request {
 	t.Helper()
@@ -355,6 +376,58 @@ func Test_BKNRestHandler_UploadBKN_ExtensionCheck(t *testing.T) {
 			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("kn1", nil)
 
 			req := newMultipartRequestWithContentType(t, url, "test.tgz", "application/gzip", newValidBKNTar(t))
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+		})
+	})
+}
+
+// Test_BKNRestHandler_UploadBKN_BindingPolicyCapabilities pins the capability section to the
+// binding policy. detach asks for the topology without this environment's local identifiers, and
+// a Skill or tool id is exactly that: mounting them anyway would leave behind the one kind of
+// binding the caller asked to drop.
+func Test_BKNRestHandler_UploadBKN_BindingPolicyCapabilities(t *testing.T) {
+	Convey("导入的能力段跟随 binding_policy", t, func() {
+		test := setGinMode()
+		defer test()
+
+		mockCtrl := gomock.NewController(t)
+		defer mockCtrl.Finish()
+
+		as := bmock.NewMockAuthService(mockCtrl)
+		kns := bmock.NewMockKNService(mockCtrl)
+		bs := bmock.NewMockBKNService(mockCtrl)
+		cbs := bmock.NewMockCapabilityBindingService(mockCtrl)
+		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().Return(hydra.Visitor{}, nil)
+		kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			AnyTimes().Return("kn1", nil)
+
+		engine := gin.New()
+		engine.Use(gin.Recovery())
+		handler := &restHandler{appSetting: &common.AppSetting{}, as: as, kns: kns, bs: bs, cbs: cbs}
+		handler.RegisterPublic(engine)
+		url := "/api/bkn-backend/v1/bkns"
+
+		Convey("preserve 时把声明交给解析", func() {
+			cbs.EXPECT().ImportCapabilities(gomock.Any(), "kn1", gomock.Any(), gomock.Not(gomock.Nil())).
+				Return(&interfaces.CapabilityImportReport{}, nil)
+
+			req := newMultipartRequest(t, url+"?binding_policy=preserve", "test.tar",
+				newBKNTarWithCapabilities(t))
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("detach 时不带任何声明", func() {
+			cbs.EXPECT().ImportCapabilities(gomock.Any(), "kn1", gomock.Any(), gomock.Nil()).
+				Return(&interfaces.CapabilityImportReport{}, nil)
+
+			req := newMultipartRequest(t, url+"?binding_policy=detach", "test.tar",
+				newBKNTarWithCapabilities(t))
 			w := httptest.NewRecorder()
 			engine.ServeHTTP(w, req)
 

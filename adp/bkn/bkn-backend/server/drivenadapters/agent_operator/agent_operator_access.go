@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	neturl "net/url"
 	"strings"
 	"sync"
 	"time"
@@ -22,6 +23,10 @@ import (
 	"bkn-backend/common"
 	"bkn-backend/interfaces"
 )
+
+// execFactoryNameLookupPageSize bounds a name lookup. A name that matches more entries than this
+// is ambiguous anyway, and the import refuses to guess between them.
+const execFactoryNameLookupPageSize = 50
 
 var (
 	aoAccessOnce sync.Once
@@ -392,4 +397,94 @@ func (aoa *agentOperatorAccess) GetSkillNamesByIDs(ctx context.Context, skillIDs
 	}
 	oteltrace.AddHttpAttrs4Ok(span, respCode)
 	return names, nil
+}
+
+// FindSkillsByName resolves a skill name to every skill carrying it (GET .../skills?name=).
+//
+// The execution factory filters by substring, so the exact matches are picked out here: a model
+// asking for "交期评估" must not resolve to "交期评估（旧）" because it happens to contain it.
+func (aoa *agentOperatorAccess) FindSkillsByName(ctx context.Context, name string) ([]*interfaces.SkillBrief, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "FindSkillsByName")
+	defer span.End()
+
+	if strings.TrimSpace(name) == "" {
+		return nil, nil
+	}
+	url := fmt.Sprintf("%s/skills?name=%s&page_size=%d", aoa.agentOperatorURL, neturl.QueryEscape(name), execFactoryNameLookupPageSize)
+	respCode, result, err := aoa.httpClient.GetNoUnmarshal(ctx, url, nil, aoa.execFactoryHeaders(ctx))
+	if err != nil {
+		common.LogSafeError(ctx, "Skill name lookup request failed", err)
+		return nil, fmt.Errorf("skill name lookup failed: %w", err)
+	}
+	if respCode != http.StatusOK {
+		return nil, fmt.Errorf("skill name lookup returned HTTP %d", respCode)
+	}
+
+	var payload struct {
+		Data []struct {
+			SkillID     string `json:"skill_id"`
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			Status      string `json:"status"`
+		} `json:"data"`
+	}
+	if err = json.Unmarshal(result, &payload); err != nil {
+		common.LogSafeError(ctx, "Unmarshal skill list failed", err)
+		return nil, fmt.Errorf("skill name lookup failed: %w", err)
+	}
+	matches := make([]*interfaces.SkillBrief, 0, 1)
+	for _, skill := range payload.Data {
+		if skill.Name != name {
+			continue
+		}
+		matches = append(matches, &interfaces.SkillBrief{
+			SkillID:     skill.SkillID,
+			Name:        skill.Name,
+			Description: skill.Description,
+			Status:      skill.Status,
+		})
+	}
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return matches, nil
+}
+
+// FindToolBoxesByName resolves a tool box name (GET .../tool-box/list?name=), exact matches only,
+// on the same terms as FindSkillsByName.
+func (aoa *agentOperatorAccess) FindToolBoxesByName(ctx context.Context, name string) ([]*interfaces.ToolBoxBrief, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "FindToolBoxesByName")
+	defer span.End()
+
+	if strings.TrimSpace(name) == "" {
+		return nil, nil
+	}
+	url := fmt.Sprintf("%s/tool-box/list?name=%s&page_size=%d", aoa.agentOperatorURL, neturl.QueryEscape(name), execFactoryNameLookupPageSize)
+	respCode, result, err := aoa.httpClient.GetNoUnmarshal(ctx, url, nil, aoa.execFactoryHeaders(ctx))
+	if err != nil {
+		common.LogSafeError(ctx, "Tool box name lookup request failed", err)
+		return nil, fmt.Errorf("tool box name lookup failed: %w", err)
+	}
+	if respCode != http.StatusOK {
+		return nil, fmt.Errorf("tool box name lookup returned HTTP %d", respCode)
+	}
+
+	var payload struct {
+		Data []struct {
+			BoxID   string `json:"box_id"`
+			BoxName string `json:"box_name"`
+			Status  string `json:"status"`
+		} `json:"data"`
+	}
+	if err = json.Unmarshal(result, &payload); err != nil {
+		common.LogSafeError(ctx, "Unmarshal tool box list failed", err)
+		return nil, fmt.Errorf("tool box name lookup failed: %w", err)
+	}
+	matches := make([]*interfaces.ToolBoxBrief, 0, 1)
+	for _, box := range payload.Data {
+		if box.BoxName != name {
+			continue
+		}
+		matches = append(matches, &interfaces.ToolBoxBrief{BoxID: box.BoxID, Name: box.BoxName, Status: box.Status})
+	}
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return matches, nil
 }

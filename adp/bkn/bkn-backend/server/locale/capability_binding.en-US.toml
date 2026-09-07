@@ -68,3 +68,8 @@ ErrorLink = ""
 Description = "The execution factory is unreachable; no binding was written"
 Solution = "Retry later. This request produced no partial write."
 ErrorLink = ""
+
+[BknBackend.CapabilityBinding.ExportMetadataUnavailable]
+Description = "Capability names are unavailable, so the export was refused"
+Solution = "Retry once the execution factory is reachable. Nothing was exported and nothing was changed."
+ErrorLink = ""

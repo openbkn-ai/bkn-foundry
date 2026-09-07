@@ -9,6 +9,8 @@ package interfaces
 import (
 	"context"
 	"database/sql"
+
+	"bkn-backend/bkn-specification/bkn"
 )
 
 // CapabilityBindingService owns the knowledge-network side of Skill and Function binding (#1257).
@@ -30,6 +32,10 @@ type CapabilityBindingService interface {
 	// The count is the number of rows; it carries no dangling judgement, which would require
 	// calling the execution factory and does not belong on a counting path.
 	GetCapabilityTotalsByType(ctx context.Context, knID, branch string) (map[string]int, error)
+	// ImportCapabilities resolves a model file's capability declarations against this environment
+	// and mounts what resolves. It never fails the import; the report says what was skipped.
+	ImportCapabilities(ctx context.Context, knID, branch string,
+		declared *bkn.BknCapabilities) (*CapabilityImportReport, error)
 	// DeleteCapabilitiesByKnID clears the bindings of a network without a permission check,
 	// for use by knowledge-network deletion. tx must be non-nil.
 	DeleteCapabilitiesByKnID(ctx context.Context, tx *sql.Tx, knID, branch string) error

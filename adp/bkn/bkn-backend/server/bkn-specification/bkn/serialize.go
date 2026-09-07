@@ -109,6 +109,9 @@ func SerializeBknNetwork(doc *BknNetwork) string {
 	if doc.Branch != "" {
 		_, _ = fmt.Fprintf(&sb, "branch: %s\n", doc.Branch)
 	}
+	if block := serializeCapabilities(doc.Capabilities); block != "" {
+		_, _ = fmt.Fprint(&sb, block)
+	}
 	_, _ = fmt.Fprintf(&sb, "---\n\n")
 
 	_, _ = fmt.Fprintf(&sb, "# %s\n\n", doc.Name)
@@ -543,4 +546,20 @@ func SerializeConceptGroup(cg *BknConceptGroup, otIndex map[string]*BknObjectTyp
 	_, _ = fmt.Fprintf(&sb, "\n")
 
 	return sb.String()
+}
+
+// serializeCapabilities renders the capability dependency section of the frontmatter.
+//
+// The nested block goes through yaml.Marshal rather than being hand-formatted like the scalar
+// fields above it: nesting and quoting are exactly where hand-built YAML breaks, and a name with
+// a colon in it would silently produce a file that no longer parses.
+func serializeCapabilities(capabilities *BknCapabilities) string {
+	if capabilities == nil || (len(capabilities.Skills) == 0 && len(capabilities.Functions) == 0) {
+		return ""
+	}
+	encoded, err := yaml.Marshal(map[string]*BknCapabilities{"capabilities": capabilities})
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
 }

@@ -68,3 +68,8 @@ ErrorLink = ""
 Description = "执行工厂不可达，未写入任何绑定"
 Solution = "请稍后重试；本次请求没有产生部分写入。"
 ErrorLink = ""
+
+[BknBackend.CapabilityBinding.ExportMetadataUnavailable]
+Description = "能力名称不可用，本次导出已被拒绝"
+Solution = "请在执行工厂恢复后重试；本次未导出任何内容，也未改动数据。"
+ErrorLink = ""

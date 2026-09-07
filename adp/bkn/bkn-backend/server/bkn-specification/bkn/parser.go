@@ -466,12 +466,13 @@ func ParseNetworkFile(text string, sourcePath string) (*BknNetwork, error) {
 
 	network := &BknNetwork{
 		BknNetworkFrontmatter: BknNetworkFrontmatter{
-			Type:    strVal(fmData, "type"),
-			ID:      strVal(fmData, "id"),
-			Name:    strVal(fmData, "name"),
-			Tags:    strSliceVal(fmData, "tags"),
-			Version: strVal(fmData, "version"),
-			Branch:  strVal(fmData, "branch"),
+			Type:         strVal(fmData, "type"),
+			ID:           strVal(fmData, "id"),
+			Name:         strVal(fmData, "name"),
+			Tags:         strSliceVal(fmData, "tags"),
+			Version:      strVal(fmData, "version"),
+			Branch:       strVal(fmData, "branch"),
+			Capabilities: parseCapabilities(fmData),
 		},
 		Description: extractBodyDescription(text),
 		RawContent:  text,
@@ -1016,4 +1017,29 @@ func parseConceptGroupObjectTypes(sectionText string) []string {
 	}
 
 	return objectTypes
+}
+
+// parseCapabilities reads the capability dependency section out of already-parsed frontmatter.
+//
+// A malformed section yields nil rather than an error: the section is a dependency declaration,
+// and a network whose model is otherwise valid should still import — with its capabilities
+// reported as unresolvable — instead of being rejected outright. Frontmatter is read as a map, so
+// a reader that predates this section ignores it for free.
+func parseCapabilities(fmData map[string]any) *BknCapabilities {
+	raw, ok := fmData["capabilities"]
+	if !ok || raw == nil {
+		return nil
+	}
+	encoded, err := yaml.Marshal(raw)
+	if err != nil {
+		return nil
+	}
+	capabilities := &BknCapabilities{}
+	if err := yaml.Unmarshal(encoded, capabilities); err != nil {
+		return nil
+	}
+	if len(capabilities.Skills) == 0 && len(capabilities.Functions) == 0 {
+		return nil
+	}
+	return capabilities
 }
