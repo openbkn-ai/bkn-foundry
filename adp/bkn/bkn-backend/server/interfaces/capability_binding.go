@@ -148,3 +148,20 @@ func GenerateCapabilityBindingAuditObject(id string, name string) audit.AuditObj
 		Name: name,
 	}
 }
+
+// CapabilityReference is what a capability binding points at, with nothing else attached.
+//
+// The internal face answers in these rather than full bindings because Context Loader goes to the
+// execution factory for names and statuses anyway: backfilling them here would add a service hop
+// to every recall to produce data the caller is about to fetch itself.
+type CapabilityReference struct {
+	CapabilityType string `json:"capability_type"`
+	// BoxID is the owning tool box of a function reference; absent for a skill.
+	BoxID        string `json:"box_id,omitempty"`
+	CapabilityID string `json:"capability_id"`
+}
+
+// CapabilityReferenceList is the internal resolve response.
+type CapabilityReferenceList struct {
+	Entries []*CapabilityReference `json:"entries"`
+}

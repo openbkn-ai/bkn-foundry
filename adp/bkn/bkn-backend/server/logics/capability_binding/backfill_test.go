@@ -274,3 +274,69 @@ func TestBoxCountsAreBranchScoped(t *testing.T) {
 		So(list.Boxes[0].UnmountedTools, ShouldEqual, 0)
 	})
 }
+
+// TestResolveCapabilities covers the internal face Context Loader calls before retrieval.
+func TestResolveCapabilities(t *testing.T) {
+	Convey("内部解析接口只返回引用", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		Convey("返回引用,不打执行工厂", func() {
+			service, cba, aoa := newTestServiceWithFactory(t, ctrl)
+			// No expectation on the execution-factory client: resolving must not call it. The
+			// caller fetches names itself, and a hop per recall to duplicate that would be paid
+			// on the hottest path in the system.
+			_ = aoa
+			cba.EXPECT().ListBindings(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, q interfaces.CapabilityBindingsQueryParams) ([]*interfaces.CapabilityBinding, error) {
+					// No paging: a page of the scope would be a smaller scope.
+					So(q.Limit, ShouldEqual, 0)
+					return []*interfaces.CapabilityBinding{
+						{CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "s1"},
+						{CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, OwnerID: "box-1", CapabilityID: "t1"},
+					}, nil
+				})
+
+			list, err := service.ResolveCapabilities(context.Background(), "kn1", "main", "")
+
+			So(err, ShouldBeNil)
+			So(len(list.Entries), ShouldEqual, 2)
+			So(list.Entries[0].BoxID, ShouldBeEmpty)
+			So(list.Entries[1].BoxID, ShouldEqual, "box-1")
+		})
+
+		Convey("未绑定任何能力时返回空数组而不是错误", func() {
+			service, cba, _ := newTestServiceWithFactory(t, ctrl)
+			cba.EXPECT().ListBindings(gomock.Any(), gomock.Any()).Return(nil, nil)
+
+			list, err := service.ResolveCapabilities(context.Background(), "kn1", "main", "skill")
+
+			So(err, ShouldBeNil)
+			So(list.Entries, ShouldNotBeNil)
+			So(list.Entries, ShouldBeEmpty)
+		})
+
+		Convey("未知 type 报 400", func() {
+			service, _, _ := newTestServiceWithFactory(t, ctrl)
+
+			_, err := service.ResolveCapabilities(context.Background(), "kn1", "main", "operator")
+
+			So(errorCodeOf(t, err), ShouldContainSubstring, "InvalidCapabilityType")
+		})
+	})
+}
+
+// TestBranchScopedCascade pins that deleting one branch of a knowledge network clears only that
+// branch's bindings. Deleting a branch is how a modeling experiment is thrown away; taking the
+// main branch's capabilities with it would be silent data loss.
+func TestBranchScopedCascade(t *testing.T) {
+	Convey("删分支只清该分支的绑定", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		service, cba, _ := newTestServiceWithFactory(t, ctrl)
+		cba.EXPECT().DeleteBindingsByKnID(gomock.Any(), gomock.Nil(), "kn1", "dev").Return(int64(3), nil)
+
+		So(service.DeleteCapabilitiesByKnID(context.Background(), nil, "kn1", "dev"), ShouldBeNil)
+	})
+}

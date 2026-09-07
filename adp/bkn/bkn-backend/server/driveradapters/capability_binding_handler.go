@@ -56,8 +56,12 @@ func (r *restHandler) ListCapabilitiesByEx(c *gin.Context) {
 	r.ListCapabilities(c, vis)
 }
 
+// ListCapabilitiesByIn answers with bare references rather than the public face's backfilled
+// bindings. Context Loader calls this on every recall to learn what is in scope, and it goes to
+// the execution factory for names itself — backfilling here would add a service hop per recall to
+// produce data the caller is about to fetch.
 func (r *restHandler) ListCapabilitiesByIn(c *gin.Context) {
-	r.ListCapabilities(c, visitor.GenerateVisitor(c))
+	r.ResolveCapabilities(c, visitor.GenerateVisitor(c))
 }
 
 // resolveCapabilityKN parses the shared path parameters and confirms the knowledge network branch
@@ -200,6 +204,31 @@ func (r *restHandler) ListCapabilities(c *gin.Context, vis hydra.Visitor) {
 		OwnerID:    firstNonEmpty(c.Query("owner_id"), c.Query("box_id")),
 		WithDetail: strings.EqualFold(strings.TrimSpace(c.Query("with_detail")), "true"),
 	})
+	if err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, list)
+}
+
+// ResolveCapabilities serves the internal reference list.
+func (r *restHandler) ResolveCapabilities(c *gin.Context, vis hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	accountInfo := interfaces.AccountInfo{ID: vis.ID, Type: string(vis.Type)}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	knID, branch, ok := r.resolveCapabilityKN(c, ctx, span)
+	if !ok {
+		return
+	}
+
+	list, err := r.cbs.ResolveCapabilities(ctx, knID, branch, c.Query("type"))
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)

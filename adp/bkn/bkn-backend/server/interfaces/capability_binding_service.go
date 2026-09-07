@@ -22,6 +22,10 @@ type CapabilityBindingService interface {
 	// DetachCapabilities releases bindings by binding ID and returns how many rows went away.
 	DetachCapabilities(ctx context.Context, tx *sql.Tx, knID, branch string, bindingIDs []string) (int64, error)
 	ListCapabilities(ctx context.Context, query CapabilityBindingsQueryParams) (*CapabilityBindingsList, error)
+	// ResolveCapabilities returns the bare references bound to one branch, for Context Loader to
+	// narrow retrieval with. It carries no metadata and no pagination: the caller needs the whole
+	// scope of a knowledge network, and a page of it would silently narrow that scope further.
+	ResolveCapabilities(ctx context.Context, knID, branch, capabilityType string) (*CapabilityReferenceList, error)
 	// GetCapabilityTotalsByType counts bindings per capability type for the statistics block.
 	// The count is the number of rows; it carries no dangling judgement, which would require
 	// calling the execution factory and does not belong on a counting path.
