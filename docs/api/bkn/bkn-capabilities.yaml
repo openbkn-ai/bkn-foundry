@@ -342,7 +342,9 @@ components:
         - capability_id
       properties:
         id:
-          description: Binding ID, a UUIDv7
+          description: >-
+            Binding ID, a UUIDv7. Empty for a capability the model uses that nobody mounted:
+            there is no stored row behind it. See `releasable`.
           type: string
         kn_id:
           description: Business knowledge network ID
@@ -355,6 +357,7 @@ components:
           enum:
             - skill
             - function
+            - mcp_tool
           type: string
         box_id:
           description: Owning tool box ID. Present for functions, absent for skills.
@@ -368,6 +371,35 @@ components:
             binding semantics: the row is an ordinary tool-level binding and can be released
             on its own.
           type: boolean
+        releasable:
+          description: >-
+            Whether this entry can be released here. False for a capability that is in the
+            network because an object type's logic property or an action type uses it: it has
+            no row and no id, and the way to remove it is to change what `sources` names.
+            Releasing a mounted one removes the mount, not the capability — it stays in the
+            list with only its model sources left.
+          type: boolean
+        sources:
+          description: >-
+            Why this capability is in the network. `manual` is an explicit mount, `box` a
+            whole-box or whole-server expansion, `object_type` and `action_type` a use by the
+            model. Several can appear at once; the object_type refs name the property, because
+            dropping a property and dropping the object type are different repairs.
+          type: array
+          items:
+            type: object
+            properties:
+              kind:
+                enum: [manual, box, object_type, action_type]
+                type: string
+              refs:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string }
+                    name: { type: string }
+                    property: { type: string }
         comment:
           description: Free-text note
           type: string
@@ -486,6 +518,35 @@ components:
             one tool-level binding per tool, each with bound_as_box true; tools added to the box
             later are not inherited.
           type: boolean
+        releasable:
+          description: >-
+            Whether this entry can be released here. False for a capability that is in the
+            network because an object type's logic property or an action type uses it: it has
+            no row and no id, and the way to remove it is to change what `sources` names.
+            Releasing a mounted one removes the mount, not the capability — it stays in the
+            list with only its model sources left.
+          type: boolean
+        sources:
+          description: >-
+            Why this capability is in the network. `manual` is an explicit mount, `box` a
+            whole-box or whole-server expansion, `object_type` and `action_type` a use by the
+            model. Several can appear at once; the object_type refs name the property, because
+            dropping a property and dropping the object type are different repairs.
+          type: array
+          items:
+            type: object
+            properties:
+              kind:
+                enum: [manual, box, object_type, action_type]
+                type: string
+              refs:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string }
+                    name: { type: string }
+                    property: { type: string }
         comment:
           description: Free-text note
           type: string

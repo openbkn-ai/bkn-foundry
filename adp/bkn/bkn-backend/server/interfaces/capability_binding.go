@@ -67,10 +67,16 @@ type CapabilityBinding struct {
 	OwnerName   string `json:"owner_name,omitempty" mapstructure:"-"`
 
 	// Sources says why this capability is in the network: mounted explicitly, expanded from a
-	// box, or used by an object type's logic property or an action type. A capability used by
-	// the model but never mounted appears in the list with no manual source and cannot be
-	// released — the way to remove it is to change what uses it.
+	// box, or used by an object type's logic property or an action type.
 	Sources []*CapabilitySource `json:"sources,omitempty" mapstructure:"-"`
+	// Releasable is false for a capability the model uses that nobody mounted. It has no row and
+	// so no id to release, and the way to remove it is to change the object type or action type
+	// in Sources that reaches for it.
+	//
+	// It is stated rather than left to be inferred from an empty id: a reader that has to work
+	// out what a blank means will eventually work it out wrong, and this one decides whether a
+	// destructive control is shown.
+	Releasable bool `json:"releasable" mapstructure:"-"`
 
 	Creator    AccountInfo `json:"creator" mapstructure:"creator"`
 	CreateTime int64       `json:"create_time" mapstructure:"create_time"`

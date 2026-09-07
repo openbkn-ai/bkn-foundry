@@ -215,6 +215,9 @@ func applyProvenance(entries []*interfaces.CapabilityBinding, sources *provenanc
 			kind = interfaces.CAPABILITY_SOURCE_BOX
 		}
 		entry.Sources = append([]*interfaces.CapabilitySource{{Kind: kind}}, sources.byCapability[key]...)
+		// A stored row can be released, whatever else also uses it. Doing so removes the mount,
+		// not the capability: it stays in the list with only its model sources left.
+		entry.Releasable = true
 	}
 
 	// Deterministic order for what is otherwise a map: the same request must not shuffle its

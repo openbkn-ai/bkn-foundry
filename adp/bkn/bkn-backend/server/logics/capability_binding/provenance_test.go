@@ -48,6 +48,9 @@ func TestApplyProvenance(t *testing.T) {
 
 			So(len(out), ShouldEqual, 1)
 			So(srcOf(out[0], interfaces.CAPABILITY_SOURCE_MANUAL), ShouldNotBeNil)
+			// Releasing it removes the mount, not the capability: it stays in the list with only
+			// the model source left.
+			So(out[0].Releasable, ShouldBeTrue)
 			objectType := srcOf(out[0], interfaces.CAPABILITY_SOURCE_OBJECT_TYPE)
 			So(objectType, ShouldNotBeNil)
 			// The property, not just the object type: dropping one is not dropping the other.
@@ -61,7 +64,9 @@ func TestApplyProvenance(t *testing.T) {
 			So(out[0].CapabilityID, ShouldEqual, "tool-1")
 			So(srcOf(out[0], interfaces.CAPABILITY_SOURCE_MANUAL), ShouldBeNil)
 			So(srcOf(out[0], interfaces.CAPABILITY_SOURCE_OBJECT_TYPE), ShouldNotBeNil)
-			// No row, so no id: that is what tells the caller it cannot be released here.
+			// Said outright rather than left to be read out of an empty id: this is what decides
+			// whether a destructive control is shown.
+			So(out[0].Releasable, ShouldBeFalse)
 			So(out[0].ID, ShouldBeEmpty)
 		})
 
