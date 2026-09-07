@@ -99,6 +99,45 @@ func TestApplyProvenance(t *testing.T) {
 			So(len(out), ShouldEqual, 0)
 		})
 
+		Convey("被多处引用时是一行，来源里列全，不重复成多行", func() {
+			shared := &provenance{available: true, byCapability: map[capabilityKey][]*interfaces.CapabilitySource{
+				key: {
+					{
+						Kind: interfaces.CAPABILITY_SOURCE_OBJECT_TYPE,
+						Refs: []*interfaces.CapabilitySourceRef{
+							{ID: "ot_order", Name: "订单", Property: "risk_score"},
+							{ID: "ot_supplier", Name: "供应商", Property: "credit"},
+						},
+					},
+					{
+						Kind: interfaces.CAPABILITY_SOURCE_ACTION_TYPE,
+						Refs: []*interfaces.CapabilitySourceRef{{ID: "at_dispatch", Name: "派单"}},
+					},
+				},
+			}}
+
+			out := applyProvenance(nil, shared, query)
+
+			// One row, however many things use it: the list is of capabilities, not of uses.
+			So(len(out), ShouldEqual, 1)
+			objectType := srcOf(out[0], interfaces.CAPABILITY_SOURCE_OBJECT_TYPE)
+			So(len(objectType.Refs), ShouldEqual, 2)
+			So(objectType.Refs[0].Property, ShouldEqual, "risk_score")
+			So(objectType.Refs[1].Property, ShouldEqual, "credit")
+			So(srcOf(out[0], interfaces.CAPABILITY_SOURCE_ACTION_TYPE), ShouldNotBeNil)
+		})
+
+		Convey("最后一个引用消失后条目就不在了，无需任何级联清理", func() {
+			// Nothing references it any more — the provenance scan simply stops reporting it,
+			// which is the whole point of computing rather than storing: there is no row left
+			// behind to clean up.
+			empty := &provenance{available: true, byCapability: map[capabilityKey][]*interfaces.CapabilitySource{}}
+
+			out := applyProvenance(nil, empty, query)
+
+			So(len(out), ShouldEqual, 0)
+		})
+
 		Convey("补进来的条目参与分页，不是全部塞进第一页", func() {
 			whole := applyProvenance(nil, usedByModel, query)
 			So(len(whole), ShouldEqual, 1)
