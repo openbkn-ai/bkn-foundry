@@ -941,8 +941,9 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 			berrors.BknBackend_KnowledgeNetwork_InternalError_GetMetricsTotalFailed).WithErrorDetails(err.Error())
 	}
 
-	// Capability binding counts. One grouped query covers both skills and functions.
-	capabilityTotals, err := kns.cba.GetBindingsTotalByType(ctx, kn.KNID, kn.Branch)
+	// Capability binding counts. One grouped query covers every stored type; the service also
+	// splits function bindings into functions and APIs, which needs the owning box's kind.
+	capabilityTotals, err := kns.cbs.GetCapabilityTotalsByType(ctx, kn.KNID, kn.Branch)
 	if err != nil {
 		logger.Errorf("GetBindingsTotalByType in knowledge network[%s] error: %s", kn.KNID, err.Error())
 		span.SetStatus(codes.Error, fmt.Sprintf("GetBindingsTotalByType in knowledge network[%s], error: %v", kn.KNID, err))
@@ -961,6 +962,7 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 		MetricsTotal:   metricsCnt,
 		SkillsTotal:    capabilityTotals[interfaces.CAPABILITY_TYPE_SKILL],
 		FunctionsTotal: capabilityTotals[interfaces.CAPABILITY_TYPE_FUNCTION],
+		APIsTotal:      capabilityTotals[interfaces.CAPABILITY_TYPE_API],
 		MCPToolsTotal:  capabilityTotals[interfaces.CAPABILITY_TYPE_MCP_TOOL],
 	}
 

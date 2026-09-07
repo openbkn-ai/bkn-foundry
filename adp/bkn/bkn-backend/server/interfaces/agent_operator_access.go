@@ -13,6 +13,10 @@ import "context"
 const (
 	// EXEC_TOOL_STATUS_ENABLED is the per-tool switch inside a tool box.
 	EXEC_TOOL_STATUS_ENABLED = "enabled"
+	// EXEC_BOX_METADATA_TYPE_OPENAPI and _FUNCTION are the two kinds of tool box. A binding is
+	// counted and listed as an API or as a function according to its box.
+	EXEC_BOX_METADATA_TYPE_OPENAPI  = "openapi"
+	EXEC_BOX_METADATA_TYPE_FUNCTION = "function"
 	// EXEC_TOOL_STATUS_DISABLED is its opposite. An MCP tool has no switch of its own and is
 	// reported in this same vocabulary, so one reader can filter every capability type alike.
 	EXEC_TOOL_STATUS_DISABLED = "disabled"
@@ -55,14 +59,17 @@ type ToolBoxBrief struct {
 // ToolBrief is one tool of a tool box, with the two lifecycle states that decide whether it can
 // be bound: its own switch and the box's publication state.
 type ToolBrief struct {
-	BoxID       string
-	BoxName     string
-	BoxStatus   string
-	BoxInternal bool
-	ToolID      string
-	Name        string
-	Description string
-	Status      string
+	BoxID   string
+	BoxName string
+	// BoxMetadataType is what kind of tools the box holds: "openapi" or "function". It belongs to
+	// the box, not the tool, and decides which of the two lists a binding appears in.
+	BoxMetadataType string
+	BoxStatus       string
+	BoxInternal     bool
+	ToolID          string
+	Name            string
+	Description     string
+	Status          string
 }
 
 // MCPToolBrief is one tool exposed by an MCP Server.

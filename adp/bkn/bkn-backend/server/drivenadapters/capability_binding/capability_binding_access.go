@@ -133,6 +133,12 @@ func processBindingQueryCondition(query interfaces.CapabilityBindingsQueryParams
 	if query.OwnerID != "" {
 		builder = builder.Where(sq.Eq{"f_owner_id": query.OwnerID})
 	}
+	// OwnerIDs is how metadata_type reaches SQL: the kind lives on the tool box, so the service
+	// resolves it to a set of boxes and filters on those. An empty non-nil set means "no box has
+	// that kind", which must select nothing rather than everything.
+	if query.OwnerIDs != nil {
+		builder = builder.Where(sq.Eq{"f_owner_id": *query.OwnerIDs})
+	}
 	if len(query.CapabilityIDs) > 0 {
 		builder = builder.Where(sq.Eq{"f_capability_id": query.CapabilityIDs})
 	}
@@ -445,4 +451,50 @@ func (ca *capabilityBindingAccess) DeleteBindingsByKnID(ctx context.Context, tx 
 	}
 	span.SetStatus(codes.Ok, "")
 	return rowsAffected, nil
+}
+
+// GetFunctionTotalsByOwner counts function bindings per tool box in one query.
+func (ca *capabilityBindingAccess) GetFunctionTotalsByOwner(ctx context.Context, knID,
+	branch string) (map[string]int, error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "GetFunctionBindingTotalsByOwner")
+	defer span.End()
+
+	sqlStr, vals, err := sq.Select("f_owner_id", "COUNT(f_id)").
+		From(CAPABILITY_BINDING_TABLE_NAME).
+		Where(sq.Eq{"f_kn_id": knID}).
+		Where(sq.Eq{"f_branch": branch}).
+		Where(sq.Eq{"f_capability_type": interfaces.CAPABILITY_TYPE_FUNCTION}).
+		GroupBy("f_owner_id").
+		ToSql()
+	if err != nil {
+		logger.Errorf("GetFunctionTotalsByOwner build sql error: %v", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
+		return nil, err
+	}
+	rows, err := ca.db.Query(sqlStr, vals...)
+	if err != nil {
+		logger.Errorf("GetFunctionTotalsByOwner query error: %v", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	totals := map[string]int{}
+	for rows.Next() {
+		var ownerID string
+		var total int
+		if err := rows.Scan(&ownerID, &total); err != nil {
+			logger.Errorf("GetFunctionTotalsByOwner scan error: %v", common.SafeErrorSummary(err))
+			span.SetStatus(codes.Error, common.SafeErrorSummary(err))
+			return nil, err
+		}
+		totals[ownerID] = total
+	}
+	if err := rows.Err(); err != nil {
+		logger.Errorf("GetFunctionTotalsByOwner rows error: %v", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return totals, nil
 }

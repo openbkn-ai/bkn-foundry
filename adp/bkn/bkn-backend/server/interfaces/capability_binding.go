@@ -26,6 +26,10 @@ const (
 	// same line with its type=mcp arm. Folding the two together would leave execute_tool unable
 	// to tell which transport a binding meant.
 	CAPABILITY_TYPE_MCP_TOOL = "mcp_tool"
+	// CAPABILITY_TYPE_API is not a stored type. It is a counting bucket: function bindings whose
+	// tool box is an openapi box. The rows still say "function"; only the statistics separate
+	// them, because that is the split Studio shows.
+	CAPABILITY_TYPE_API = "api"
 )
 
 // CapabilityBinding records that a Skill or a ToolBox tool belongs to a knowledge network.
@@ -52,7 +56,12 @@ type CapabilityBinding struct {
 	Comment    string `json:"comment,omitempty" mapstructure:"comment"`
 
 	// Metadata backfilled from the execution factory on demand; never persisted here.
-	Name        string `json:"name,omitempty" mapstructure:"-"`
+	Name string `json:"name,omitempty" mapstructure:"-"`
+	// MetadataType is the kind of the owning tool box, "openapi" or "function", and is what
+	// splits function bindings into the API and function lists. It is empty for a skill, for an
+	// mcp_tool, and whenever the execution factory could not be reached — in the last case
+	// metadata_available says so, and a reader must not take the blank for "function".
+	MetadataType string `json:"metadata_type,omitempty" mapstructure:"-"`
 	Description string `json:"description,omitempty" mapstructure:"-"`
 	Status      string `json:"status,omitempty" mapstructure:"-"`
 	OwnerName   string `json:"owner_name,omitempty" mapstructure:"-"`
@@ -83,6 +92,15 @@ type CapabilityBindingsQueryParams struct {
 	CapabilityType string
 	OwnerID        string
 	CapabilityIDs  []string
+	// MetadataType narrows function bindings to one kind of tool box. The value lives on the box
+	// in the execution factory, not in the binding row, so the service resolves it to the set of
+	// boxes with that kind and puts them in OwnerIDs — filtering the fetched page instead would
+	// paginate over rows the filter then discards, and a page whose rows all belong to the other
+	// kind would read as "none bound".
+	MetadataType string
+	// OwnerIDs restricts to a set of owners. A non-nil empty slice selects nothing; nil means no
+	// restriction. It is set by the service, not parsed from the query string.
+	OwnerIDs *[]string
 	// WithDetail also fills description and status. Names alone cost one call per tool box and
 	// one for all skills; the detail of a skill has to be read one skill at a time, so it is
 	// asked for rather than always paid.
