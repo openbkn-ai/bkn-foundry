@@ -2,7 +2,6 @@
 #
 # Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-{{- if .Values.knProxy.networkPolicy.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -20,4 +19,3 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.service.vegaBackend.port }}
-{{- end }}

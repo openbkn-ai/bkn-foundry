@@ -17,11 +17,10 @@ bknSafe:
   directoryProvider: "bkn-safe"
   url: "http://bkn-safe:3000"
 
-# Optional ingress isolation for the internal proxy data plane. Enable only
-# after confirming every legitimate caller is represented below.
+# Ingress isolation for the managed-proxy data plane. Keep every legitimate
+# in-cluster caller represented below.
 knProxy:
   networkPolicy:
-    enabled: false
     allowedIngress:
       - podSelector:
           matchLabels:
@@ -32,6 +31,12 @@ knProxy:
       - podSelector:
           matchLabels:
             app: agent-operator-integration
+      - podSelector:
+          matchLabels:
+            app: agent-retrieval
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: agent-observability
       - namespaceSelector:
           matchLabels:
             kubernetes.io/metadata.name: ingress-nginx
