@@ -20,7 +20,8 @@ type DatasetQueryResponse struct {
 // ResourceSchemaResponse is the restricted subset of Vega resource detail
 // that ontology-query may expose in an object-type context.
 type ResourceSchemaResponse struct {
-	SchemaDefinition []map[string]any `json:"schema_definition"`
+	SchemaDefinition     []map[string]any               `json:"schema_definition"`
+	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
 }
 
 // ResourceDataPagingRequest matches vega-backend paging contract for resource data.

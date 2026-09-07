@@ -23,8 +23,172 @@ type permissionService struct {
 	access interfaces.PermissionAccess
 }
 
+type unrestrictedPropertyAccessService struct{}
+
+const (
+	maxPropertyLevelObjectsPerCall    = 100
+	maxPropertyLevelPropertiesPerItem = 200
+	maxPropertyLevelPropertiesPerCall = 1000
+)
+
 func NewPermissionService(appSetting *common.AppSetting) interfaces.PermissionService {
 	return &permissionService{access: permissionaccess.NewPermissionAccess(appSetting)}
+}
+
+func NewPropertyAccessService(appSetting *common.AppSetting) interfaces.PropertyAccessService {
+	if !common.GetAuthEnabled() {
+		return unrestrictedPropertyAccessService{}
+	}
+	return &permissionService{access: permissionaccess.NewPermissionAccess(appSetting)}
+}
+
+func (unrestrictedPropertyAccessService) ResolvePropertyLevels(_ context.Context,
+	items []interfaces.PropertyLevelsRequestItem) ([]interfaces.PropertyLevelsDecisionEntry, error) {
+	entries := make([]interfaces.PropertyLevelsDecisionEntry, 0, len(items))
+	for _, item := range items {
+		entry := interfaces.PropertyLevelsDecisionEntry{ObjectTypeRef: item.ObjectTypeRef}
+		for _, name := range item.Properties {
+			entry.Properties = append(entry.Properties, interfaces.PropertyAccessDecision{
+				Name: name, Level: interfaces.PropertyAccessFull, Source: "authentication_disabled",
+			})
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
+// ResolvePropertyLevels splits oversized caller plans without weakening the
+// limits enforced by bkn-safe. Chunks for the same object type are never sent
+// in one request because the server rejects duplicate object_type_ref values.
+func (ps *permissionService) ResolvePropertyLevels(ctx context.Context,
+	items []interfaces.PropertyLevelsRequestItem) ([]interfaces.PropertyLevelsDecisionEntry, error) {
+	account, ok := accountFromContext(ctx)
+	if !ok {
+		return nil, permissionDenied(ctx, "request subject is missing")
+	}
+	if ps == nil || ps.access == nil {
+		return nil, permissionUnavailable(ctx, fmt.Errorf("permission access is not configured"))
+	}
+
+	chunks, err := propertyLevelChunks(items)
+	if err != nil {
+		return nil, permissionDenied(ctx, err.Error())
+	}
+	result := make([]interfaces.PropertyLevelsDecisionEntry, 0, len(items))
+	resultIndex := make(map[string]int, len(items))
+	for _, item := range items {
+		resultIndex[item.ObjectTypeRef] = len(result)
+		result = append(result, interfaces.PropertyLevelsDecisionEntry{ObjectTypeRef: item.ObjectTypeRef})
+	}
+
+	for _, batch := range propertyLevelBatches(chunks) {
+		response, err := ps.access.ResolvePropertyLevels(ctx, interfaces.PropertyLevelsRequest{
+			AccessorID: account.ID,
+			Items:      batch,
+		})
+		if err != nil {
+			return nil, permissionUnavailable(ctx, err)
+		}
+		if err := validatePropertyLevelResponse(batch, response.Entries); err != nil {
+			return nil, permissionUnavailable(ctx, err)
+		}
+		for _, entry := range response.Entries {
+			index := resultIndex[entry.ObjectTypeRef]
+			result[index].Properties = append(result[index].Properties, entry.Properties...)
+		}
+	}
+	return result, nil
+}
+
+func propertyLevelChunks(items []interfaces.PropertyLevelsRequestItem) ([]interfaces.PropertyLevelsRequestItem, error) {
+	chunks := make([]interfaces.PropertyLevelsRequestItem, 0, len(items))
+	seenObjects := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		item.ObjectTypeRef = strings.TrimSpace(item.ObjectTypeRef)
+		if item.ObjectTypeRef == "" {
+			return nil, fmt.Errorf("object type reference is required")
+		}
+		if _, exists := seenObjects[item.ObjectTypeRef]; exists {
+			return nil, fmt.Errorf("duplicate object type reference")
+		}
+		seenObjects[item.ObjectTypeRef] = struct{}{}
+		properties := uniqueNonemptyStrings(item.Properties)
+		if len(properties) == 0 {
+			return nil, fmt.Errorf("at least one property is required")
+		}
+		for start := 0; start < len(properties); start += maxPropertyLevelPropertiesPerItem {
+			end := min(start+maxPropertyLevelPropertiesPerItem, len(properties))
+			chunks = append(chunks, interfaces.PropertyLevelsRequestItem{
+				ObjectTypeRef: item.ObjectTypeRef,
+				Properties:    properties[start:end],
+			})
+		}
+	}
+	return chunks, nil
+}
+
+func propertyLevelBatches(chunks []interfaces.PropertyLevelsRequestItem) [][]interfaces.PropertyLevelsRequestItem {
+	var batches [][]interfaces.PropertyLevelsRequestItem
+	var batch []interfaces.PropertyLevelsRequestItem
+	propertyCount := 0
+	seenObjects := map[string]struct{}{}
+	flush := func() {
+		if len(batch) > 0 {
+			batches = append(batches, batch)
+		}
+		batch = nil
+		propertyCount = 0
+		seenObjects = map[string]struct{}{}
+	}
+	for _, chunk := range chunks {
+		_, duplicate := seenObjects[chunk.ObjectTypeRef]
+		if duplicate || len(batch) == maxPropertyLevelObjectsPerCall ||
+			propertyCount+len(chunk.Properties) > maxPropertyLevelPropertiesPerCall {
+			flush()
+		}
+		batch = append(batch, chunk)
+		propertyCount += len(chunk.Properties)
+		seenObjects[chunk.ObjectTypeRef] = struct{}{}
+	}
+	flush()
+	return batches
+}
+
+func validatePropertyLevelResponse(request []interfaces.PropertyLevelsRequestItem,
+	response []interfaces.PropertyLevelsDecisionEntry) error {
+	if len(request) != len(response) {
+		return fmt.Errorf("property-level response entry count mismatch")
+	}
+	for index, item := range request {
+		entry := response[index]
+		if entry.ObjectTypeRef != item.ObjectTypeRef || len(entry.Properties) != len(item.Properties) {
+			return fmt.Errorf("property-level response shape mismatch")
+		}
+		for propertyIndex, name := range item.Properties {
+			decision := entry.Properties[propertyIndex]
+			if decision.Name != name || !decision.Level.Valid() {
+				return fmt.Errorf("property-level response decision mismatch")
+			}
+		}
+	}
+	return nil
+}
+
+func uniqueNonemptyStrings(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
 }
 
 func (ps *permissionService) FilterQueryData(ctx context.Context,

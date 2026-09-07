@@ -134,6 +134,12 @@ resources:
     cpu: 4
     memory: 32Gi
 
+# All replicas must use the same secret so encrypted query cursors survive
+# load balancing. When omitted, a process-local random key is used.
+cursorEncryption:
+  existingSecret: ""
+  secretKey: "cursor-key"
+
 bknTrace:
   evidence:
     ingestUrl: ""

@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +34,7 @@ import (
 	"ontology-query/locale"
 	"ontology-query/logics"
 	"ontology-query/logics/metric"
+	permissionlogic "ontology-query/logics/permission"
 )
 
 var (
@@ -41,27 +43,31 @@ var (
 )
 
 type objectTypeService struct {
-	appSetting *common.AppSetting
-	aoAccess   interfaces.AgentOperatorAccess
-	mfa        interfaces.ModelFactoryAccess
-	omAccess   interfaces.OntologyManagerAccess
-	osa        interfaces.OpenSearchAccess
-	vba        interfaces.VegaBackendAccess
-	mqs        interfaces.MetricQueryService
-	proxy      interfaces.ProxyContextResolver
+	appSetting     *common.AppSetting
+	aoAccess       interfaces.AgentOperatorAccess
+	mfa            interfaces.ModelFactoryAccess
+	omAccess       interfaces.OntologyManagerAccess
+	osa            interfaces.OpenSearchAccess
+	vba            interfaces.VegaBackendAccess
+	mqs            interfaces.MetricQueryService
+	proxy          interfaces.ProxyContextResolver
+	propertyAccess interfaces.PropertyAccessService
+	cursor         *queryCursorCodec
 }
 
 func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeService {
 	otServiceOnce.Do(func() {
 		otService = &objectTypeService{
-			appSetting: appSetting,
-			aoAccess:   logics.AOA,
-			mfa:        logics.MFA,
-			omAccess:   logics.OMA,
-			osa:        logics.OSA,
-			vba:        logics.VBA,
-			mqs:        metric.NewMetricQueryService(appSetting),
-			proxy:      logics.PCR,
+			appSetting:     appSetting,
+			aoAccess:       logics.AOA,
+			mfa:            logics.MFA,
+			omAccess:       logics.OMA,
+			osa:            logics.OSA,
+			vba:            logics.VBA,
+			mqs:            metric.NewMetricQueryService(appSetting),
+			proxy:          logics.PCR,
+			propertyAccess: permissionlogic.NewPropertyAccessService(appSetting),
+			cursor:         newQueryCursorCodec(),
 		}
 	})
 	return otService
@@ -85,6 +91,11 @@ func (ots *objectTypeService) GetObjectTypeSchema(ctx context.Context,
 	if objectType.KNID != "" && objectType.KNID != knID {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("object type belongs to another knowledge network")
+	}
+	objectType.KNID = knID
+	plan, err := buildPropertyAccessPlan(ctx, ots.propertyAccess, objectType, nil, false)
+	if err != nil {
+		return nil, err
 	}
 	if objectType.DataSource == nil || objectType.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE ||
 		strings.TrimSpace(objectType.DataSource.ID) == "" {
@@ -115,6 +126,7 @@ func (ots *objectTypeService) GetObjectTypeSchema(ctx context.Context,
 		return nil, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed)
 	}
+	plan.filterResourceSchema(response)
 	return response, nil
 }
 
@@ -148,11 +160,13 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed)
 	}
 	result := &interfaces.ObjectTypeSampleData{
-		Columns:     []*interfaces.ObjectTypeSampleDataColumn{},
-		Entries:     objects.Datas,
-		Name:        objects.ObjectType.OTName,
-		TotalCount:  objects.TotalCount,
-		SearchAfter: objects.SearchAfter,
+		Columns:              []*interfaces.ObjectTypeSampleDataColumn{},
+		Entries:              objects.Datas,
+		Name:                 objects.ObjectType.OTName,
+		TotalCount:           objects.TotalCount,
+		SearchAfter:          objects.SearchAfter,
+		Cursor:               objects.Cursor,
+		EffectivePermissions: objects.EffectivePermissions,
 	}
 	for _, property := range objects.ObjectType.DataProperties {
 		if strings.TrimSpace(property.Name) == "" {
@@ -202,77 +216,37 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 
 		return resps, httpErr
 	}
+	objectType.KNID = query.KNID
+	if query.ObjectQueryInfo != nil {
+		for _, instanceIdentity := range query.ObjectQueryInfo.InstanceIdentity {
+			for _, key := range objectType.PrimaryKeys {
+				if _, exists := instanceIdentity[key]; !exists {
+					return resps, rest.NewHTTPError(ctx, http.StatusBadRequest,
+						oerrors.OntologyQuery_ObjectType_InvalidParameter).
+						WithErrorDetails("one or more instance identities are invalid")
+				}
+			}
+		}
+	}
+
+	if query.Sort == nil {
+		query.Sort = logics.BuildViewSort(objectType)
+	}
+	plan, err := buildPropertyAccessPlan(ctx, ots.propertyAccess, objectType, query, true)
+	if err != nil {
+		return resps, err
+	}
 
 	// Sort fields can be object type data properties or _score.
 
 	// 3.1 Process the object type and convert it into a view-field to object-type-property mapping.
 	// Mapping from view fields to object type properties.
-	viewFieldPropMap := map[string]string{
-		interfaces.SORT_FIELD_SCORE: interfaces.SORT_FIELD_SCORE, // _score field.
-	}
+	viewFieldPropMap := plan.fieldPropertyMap()
 	// Mapping from object type property names to property names for use in case-to-index queries. Object index field names stay consistent with property names.
-	indexPropMap := map[string]string{
-		interfaces.SORT_FIELD_SCORE: interfaces.SORT_FIELD_SCORE, // _score field.
-	}
-	// Mapping from object type data property names to object type data properties.
-	propMap := map[string]cond.DataProperty{}
+	indexPropMap := make(map[string]string, len(plan.fetchFields))
 	for _, prop := range objectType.DataProperties {
-		propMap[prop.Name] = prop
-		if len(query.Properties) == 0 { // When no property set is specified, treat it as fetching all properties.
-			viewFieldPropMap[prop.MappedField.Name] = prop.Name
+		if _, needed := plan.fetchFields[prop.Name]; needed {
 			indexPropMap[prop.Name] = prop.Name
-		} else {
-			for _, requestProp := range query.Properties {
-				if prop.Name == requestProp {
-					viewFieldPropMap[prop.MappedField.Name] = prop.Name
-					indexPropMap[prop.Name] = prop.Name
-				}
-			}
-		}
-	}
-
-	// Sort fields must be object-type data properties or _score.
-	if len(query.Sort) > 0 {
-		for _, sp := range query.Sort {
-			if _, exists := indexPropMap[sp.Field]; !exists {
-				return resps, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-					WithErrorDetails(locale.ValidationDetail(ctx, "SortPropertyInvalid", map[string]any{"field": sp.Field}))
-			}
-		}
-	}
-	// Requested properties must exist in the object type.
-	if len(query.Properties) > 0 {
-		for _, prop := range query.Properties {
-			if _, exists := propMap[prop]; !exists {
-				return resps, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-					WithErrorDetails(locale.ValidationDetail(ctx, "PropertyNotFound", map[string]any{"property": prop}))
-			}
-		}
-	}
-
-	// Validate data-property query parameters.
-	if query.ObjectQueryInfo != nil {
-		// Every identity must contain the primary-key fields.
-		for i, instanceIdentity := range query.ObjectQueryInfo.InstanceIdentity {
-			for _, key := range objectType.PrimaryKeys {
-				if _, exist := instanceIdentity[key]; !exist {
-					return resps, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-						WithErrorDetails(locale.ValidationDetail(ctx, "InstanceIdentityFieldRequired", map[string]any{
-							"index": i + 1, "field": key,
-						}))
-				}
-			}
-		}
-		// The property list may contain data or logic properties.
-		logicPropMap := make(map[string]bool)
-		for _, prop := range objectType.LogicProperties {
-			logicPropMap[prop.Name] = true
-		}
-		for _, prop := range query.ObjectQueryInfo.Properties {
-			if _, exist := propMap[prop]; !exist && !logicPropMap[prop] {
-				return resps, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-					WithErrorDetails(locale.ValidationDetail(ctx, "PropertyQueryPropertyNotFound", map[string]any{"property": prop}))
-			}
 		}
 	}
 
@@ -286,31 +260,53 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 	if dataSourceType != interfaces.DATA_SOURCE_TYPE_RESOURCE {
 		return resps, logics.UnsupportedObjectTypeDataSourceError(ctx, objectType.OTID, dataSourceType)
 	}
-
-	// 2. Build sort fields.
-	if query.Sort == nil {
-		// Set default values: _score desc and primary key asc.
-		query.Sort = logics.BuildViewSort(objectType)
+	if ots.proxy == nil {
+		return resps, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+			oerrors.OntologyQuery_InternalError_CheckPermissionFailed).
+			WithErrorDetails("knowledge network proxy resolver is not configured")
 	}
+	proxyContext, err := ots.proxy.Resolve(ctx, interfaces.TrustedProxyBinding{
+		KNID:       query.KNID,
+		ChildType:  interfaces.PermissionResourceTypeObjectType,
+		ChildID:    objectType.OTID,
+		TargetType: interfaces.ProxyTargetTypeResource,
+		TargetID:   objectType.DataSource.ID,
+		Operation:  interfaces.PermissionOperationQueryData,
+	})
+	if err != nil {
+		return resps, err
+	}
+	ctx = interfaces.WithTrustedProxyContext(ctx, proxyContext)
+	if query.Cursor != "" {
+		if ots.cursor == nil {
+			return resps, invalidQueryCursorError(ctx)
+		}
+		searchAfter, err := ots.cursor.decode(ctx, query, proxyContext.PublishedModelVersion, query.Cursor)
+		if err != nil {
+			return resps, invalidQueryCursorError(ctx)
+		}
+		query.SearchAfter = searchAfter
+	}
+
 	// 3. Request Vega Resource to get data.
-	err = ots.getObjectsFromResource(ctx, query, objectType, &resps, viewFieldPropMap)
+	err = ots.getObjectsFromResource(ctx, query, objectType, &resps, viewFieldPropMap, plan)
 	if err != nil {
 		return resps, err
 	}
 
-	// 4. Assemble logical properties.
-	if query.IncludeLogicParams && len(objectType.LogicProperties) > 0 {
-		// Process each object's logical properties and set them on the object.
-		err = ots.processLogicProperties(ctx, &resps, objectType)
-		if err != nil {
-			return resps, err
-		}
-	}
-
-	// resps.Datas = objects
-
 	if query.IncludeTypeInfo {
-		resps.ObjectType = &objectType
+		filteredObjectType := plan.filterObjectType(objectType)
+		resps.ObjectType = &filteredObjectType
+	}
+	resps.EffectivePermissions = plan.effective
+	if len(resps.SearchAfter) > 0 {
+		if ots.cursor == nil {
+			return interfaces.Objects{}, propertyDecisionUnavailable(ctx, fmt.Errorf("query cursor codec is not configured"))
+		}
+		resps.Cursor, err = ots.cursor.encode(ctx, query, proxyContext.PublishedModelVersion, resps.SearchAfter)
+		if err != nil {
+			return interfaces.Objects{}, propertyDecisionUnavailable(ctx, err)
+		}
 	}
 
 	logger.Debugf("从对象类[%s]中获取到的数据条数为[%d],耗时: %dms", objectType.OTID, len(resps.Datas), time.Now().UnixMilli()-start)
@@ -318,107 +314,108 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 	return resps, nil
 }
 
-// Process each object's logical properties and set them on the object.
-func (*objectTypeService) processLogicProperties(ctx context.Context, resps *interfaces.Objects,
-	objectType interfaces.ObjectType) error {
+// addLogicProperties builds only outputs whose complete input closure was
+// approved by the access plan. The raw dependency values stay in this local
+// row and are discarded immediately after projection.
+func (*objectTypeService) addLogicProperties(ctx context.Context, object map[string]any,
+	objectType interfaces.ObjectType, plan *propertyAccessPlan) error {
 
 	var err error
 
-	// Process each object's logical properties and set them on the object.
-	for i, object := range resps.Datas {
-		// loop logic prop
-		for _, logicProp := range objectType.LogicProperties {
-			switch logicProp.Type {
-			case interfaces.LOGIC_PROPERTY_TYPE_METRIC:
-				filters := []interfaces.Filter{}
-				dynamicParams := map[string]any{}
-				for _, param := range logicProp.Parameters {
-					switch param.ValueFrom {
-					case interfaces.LOGIC_PARAMS_VALUE_FROM_PROP:
-						value := object[param.Value.(string)]
-						filters = append(filters, interfaces.Filter{
-							Name:      param.Name,
-							Operation: param.Operation,
-							Value:     value,
-						})
-					case interfaces.LOGIC_PARAMS_VALUE_FROM_CONST:
-						// Fixed parameter and.
-						filters = append(filters, interfaces.Filter{
-							Name:      param.Name,
-							Operation: "==",
-							Value:     param.Value,
-						})
-					case interfaces.LOGIC_PARAMS_VALUE_FROM_INPUT:
-						dynamicParams[param.Name] = param
-					}
+	for _, logicProp := range objectType.LogicProperties {
+		if _, allowed := plan.returnLogic[logicProp.Name]; !allowed {
+			continue
+		}
+		switch logicProp.Type {
+		case interfaces.LOGIC_PROPERTY_TYPE_METRIC:
+			filters := []interfaces.Filter{}
+			dynamicParams := map[string]any{}
+			for _, param := range logicProp.Parameters {
+				switch param.ValueFrom {
+				case interfaces.LOGIC_PARAMS_VALUE_FROM_PROP:
+					value := object[param.Value.(string)]
+					filters = append(filters, interfaces.Filter{
+						Name:      param.Name,
+						Operation: param.Operation,
+						Value:     value,
+					})
+				case interfaces.LOGIC_PARAMS_VALUE_FROM_CONST:
+					// Fixed parameter and.
+					filters = append(filters, interfaces.Filter{
+						Name:      param.Name,
+						Operation: "==",
+						Value:     param.Value,
+					})
+				case interfaces.LOGIC_PARAMS_VALUE_FROM_INPUT:
+					dynamicParams[param.Name] = param
 				}
-
-				mProp := interfaces.MetricProperty{
-					PropertyType:    logicProp.Type,
-					MappingSourceId: logicProp.DataSource.ID,
-					Parameters: interfaces.MetricFilters{
-						Filters: filters,
-					},
-					DynamicParams: dynamicParams,
-				}
-				resps.Datas[i][logicProp.Name] = mProp
-
-			case interfaces.LOGIC_PROPERTY_TYPE_TOOL:
-				paramsJson := "{}"
-				dynamicParamsJson := "{}"
-				for _, param := range logicProp.Parameters {
-					switch param.ValueFrom {
-					case interfaces.LOGIC_PARAMS_VALUE_FROM_PROP:
-						value := object[param.Value.(string)]
-						paramsJson, err = sjson.Set(paramsJson, param.Name, value)
-						if err != nil {
-							return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
-								WithErrorDetails(fmt.Sprintf("Error setting logic property[%s]'s parameter path %s: %v",
-									logicProp.Name, param.Name, err.Error()))
-						}
-
-					case interfaces.LOGIC_PARAMS_VALUE_FROM_CONST:
-						paramsJson, err = sjson.Set(paramsJson, param.Name, param.Value)
-						if err != nil {
-							return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
-								WithErrorDetails(fmt.Sprintf("Error setting logic property[%s]'s parameter path %s: %v",
-									logicProp.Name, param.Name, err.Error()))
-						}
-					case interfaces.LOGIC_PARAMS_VALUE_FROM_INPUT:
-						dynamicParamsJson, err = sjson.Set(dynamicParamsJson, param.Name, param)
-						if err != nil {
-							return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
-								WithErrorDetails(fmt.Sprintf("Error setting logic property[%s]'s dynamic parameter path %s: %v",
-									logicProp.Name, param.Name, err.Error()))
-						}
-					}
-				}
-				params := map[string]any{}
-				err = sonic.Unmarshal([]byte(paramsJson), &params)
-				if err != nil {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
-						WithErrorDetails(fmt.Sprintf("failed to Unmarshal logic property[%s]'s paramtersJson to map, %s",
-							logicProp.Name, err.Error()))
-				}
-
-				dynamicParams := map[string]any{}
-				err = sonic.Unmarshal([]byte(dynamicParamsJson), &dynamicParams)
-				if err != nil {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
-						WithErrorDetails(fmt.Sprintf("failed to Unmarshal logic property[%s]'s dynamicParamsJson to map, %s",
-							logicProp.Name, err.Error()))
-				}
-
-				toolProp := interfaces.ToolProperty{
-					PropertyType:  logicProp.Type,
-					Parameters:    params,
-					DynamicParams: dynamicParams,
-				}
-				resps.Datas[i][logicProp.Name] = toolProp
-
-			default:
-				logger.Warnf("系统支持的逻辑属性类型有[metric, tool],当前请求的逻辑属性类型为[%s]，请求将不返回逻辑属性的计算参数", logicProp.Type)
 			}
+
+			mProp := interfaces.MetricProperty{
+				PropertyType:    logicProp.Type,
+				MappingSourceId: logicProp.DataSource.ID,
+				Parameters: interfaces.MetricFilters{
+					Filters: filters,
+				},
+				DynamicParams: dynamicParams,
+			}
+			object[logicProp.Name] = mProp
+
+		case interfaces.LOGIC_PROPERTY_TYPE_TOOL:
+			paramsJson := "{}"
+			dynamicParamsJson := "{}"
+			for _, param := range logicProp.Parameters {
+				switch param.ValueFrom {
+				case interfaces.LOGIC_PARAMS_VALUE_FROM_PROP:
+					value := object[param.Value.(string)]
+					paramsJson, err = sjson.Set(paramsJson, param.Name, value)
+					if err != nil {
+						return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
+							WithErrorDetails(fmt.Sprintf("Error setting logic property[%s]'s parameter path %s: %v",
+								logicProp.Name, param.Name, err.Error()))
+					}
+
+				case interfaces.LOGIC_PARAMS_VALUE_FROM_CONST:
+					paramsJson, err = sjson.Set(paramsJson, param.Name, param.Value)
+					if err != nil {
+						return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
+							WithErrorDetails(fmt.Sprintf("Error setting logic property[%s]'s parameter path %s: %v",
+								logicProp.Name, param.Name, err.Error()))
+					}
+				case interfaces.LOGIC_PARAMS_VALUE_FROM_INPUT:
+					dynamicParamsJson, err = sjson.Set(dynamicParamsJson, param.Name, param)
+					if err != nil {
+						return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
+							WithErrorDetails(fmt.Sprintf("Error setting logic property[%s]'s dynamic parameter path %s: %v",
+								logicProp.Name, param.Name, err.Error()))
+					}
+				}
+			}
+			params := map[string]any{}
+			err = sonic.Unmarshal([]byte(paramsJson), &params)
+			if err != nil {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
+					WithErrorDetails(fmt.Sprintf("failed to Unmarshal logic property[%s]'s paramtersJson to map, %s",
+						logicProp.Name, err.Error()))
+			}
+
+			dynamicParams := map[string]any{}
+			err = sonic.Unmarshal([]byte(dynamicParamsJson), &dynamicParams)
+			if err != nil {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
+					WithErrorDetails(fmt.Sprintf("failed to Unmarshal logic property[%s]'s dynamicParamsJson to map, %s",
+						logicProp.Name, err.Error()))
+			}
+
+			toolProp := interfaces.ToolProperty{
+				PropertyType:  logicProp.Type,
+				Parameters:    params,
+				DynamicParams: dynamicParams,
+			}
+			object[logicProp.Name] = toolProp
+
+		default:
+			logger.Warnf("系统支持的逻辑属性类型有[metric, tool],当前请求的逻辑属性类型为[%s]，请求将不返回逻辑属性的计算参数", logicProp.Type)
 		}
 	}
 	return nil
@@ -463,7 +460,8 @@ func proxyDownstreamErrorCode(statusCode int) string {
 }
 
 func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
-	objectType interfaces.ObjectType, resps *interfaces.Objects, fieldPropMap map[string]string) error {
+	objectType interfaces.ObjectType, resps *interfaces.Objects, fieldPropMap map[string]string,
+	plan *propertyAccessPlan) error {
 
 	resourceSort, err := logics.MapSortFieldsForDataView(ctx, query.Sort, objectType)
 	if err != nil {
@@ -501,6 +499,7 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 	for k := range fieldPropMap {
 		outputFields = append(outputFields, k)
 	}
+	sort.Strings(outputFields)
 	params := &interfaces.ResourceDataQueryParams{
 		NeedTotal: query.NeedTotal,
 		Paging: interfaces.ResourceDataPagingRequest{
@@ -513,24 +512,6 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		FilterCondition: logics.CondCfgToFilterMap(viewQuery.Filters),
 		OutputFields:    outputFields,
 	}
-	if ots.proxy == nil {
-		return rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
-			oerrors.OntologyQuery_InternalError_CheckPermissionFailed).
-			WithErrorDetails("knowledge network proxy resolver is not configured")
-	}
-	proxyContext, err := ots.proxy.Resolve(ctx, interfaces.TrustedProxyBinding{
-		KNID:       query.KNID,
-		ChildType:  interfaces.PermissionResourceTypeObjectType,
-		ChildID:    objectType.OTID,
-		TargetType: interfaces.ProxyTargetTypeResource,
-		TargetID:   objectType.DataSource.ID,
-		Operation:  interfaces.PermissionOperationQueryData,
-	})
-	if err != nil {
-		return err
-	}
-	ctx = interfaces.WithTrustedProxyContext(ctx, proxyContext)
-
 	resp, err := ots.vba.QueryResourceData(ctx, objectType.DataSource.ID, params)
 	if err != nil {
 		// When downstream identifies a caller-side issue (4xx), pass through the original status code and carry its reason upward.
@@ -550,27 +531,20 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 
 	objects := make([]map[string]any, 0, len(resp.Entries))
 	for _, col := range resp.Entries {
-		object := map[string]any{}
+		rawObject := map[string]any{}
 		for k, v := range col {
 			if propName, exists := fieldPropMap[k]; exists {
-				object[propName] = v
+				rawObject[propName] = v
 			}
 		}
-		instanceID, instanceIdentity := logics.GetObjectID(object, &objectType)
-		displayValue := object[objectType.DisplayKey]
-		if !logics.ShouldExcludeSystemProperty(interfaces.SYSTEM_PROPERTY_INSTANCE_ID, query.ExcludeSystemProperties) {
-			object[interfaces.SYSTEM_PROPERTY_INSTANCE_ID] = instanceID
+		if err := ots.addLogicProperties(ctx, rawObject, objectType, plan); err != nil {
+			return err
 		}
-		if !logics.ShouldExcludeSystemProperty(interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY, query.ExcludeSystemProperties) {
-			object[interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY] = instanceIdentity
-		}
-		if !logics.ShouldExcludeSystemProperty(interfaces.SYSTEM_PROPERTY_DISPLAY, query.ExcludeSystemProperties) {
-			object[interfaces.SYSTEM_PROPERTY_DISPLAY] = displayValue
-		}
+		object := plan.projectRow(rawObject, &objectType, query)
 		if len(object) > 0 {
 			objects = append(objects, object)
 		} else {
-			logger.Warnf("resource row could not map to object properties, fieldPropMap: %v", fieldPropMap)
+			logger.Warnf("resource row could not produce a sanitized object for object type [%s/%s]", query.KNID, objectType.OTID)
 		}
 	}
 	resps.TotalCount = resp.TotalCount
@@ -581,7 +555,8 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 
 // getObjectsFromObjectIndex retrieves object data from the object-type index.
 func (ots *objectTypeService) getObjectsFromObjectIndex(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
-	objectType interfaces.ObjectType, resps *interfaces.Objects, indexPropMap map[string]string) error {
+	objectType interfaces.ObjectType, resps *interfaces.Objects, indexPropMap map[string]string,
+	plan *propertyAccessPlan) error {
 
 	objects := []map[string]any{}
 
@@ -612,6 +587,12 @@ func (ots *objectTypeService) getObjectsFromObjectIndex(ctx context.Context, que
 	if err != nil {
 		return err
 	}
+	sourceFields := make([]string, 0, len(indexPropMap))
+	for field := range indexPropMap {
+		sourceFields = append(sourceFields, field)
+	}
+	sort.Strings(sourceFields)
+	dsl["_source"] = sourceFields
 	// Query OpenSearch.
 	osHits, err := ots.osa.SearchData(ctx, objectType.Status.Index, dsl)
 	if err != nil {
@@ -633,36 +614,26 @@ func (ots *objectTypeService) getObjectsFromObjectIndex(ctx context.Context, que
 	// Append each data row to the result.
 	for _, hit := range osHits {
 		// One row is one object.
-		object := map[string]any{}
+		rawObject := map[string]any{}
 		for k, v := range hit.Source {
 			// k is the view field name, and v is this field's value.
 			if propName, exists := indexPropMap[k]; exists {
 				// Set the field only when it belongs to requested properties.
 				// If a mapping exists, assemble it into object properties.
-				object[propName] = v
+				rawObject[propName] = v
 			}
 		}
 		// Add the _score field.
-		object[interfaces.SORT_FIELD_SCORE] = hit.Score
-
-		// Add _instance_id, _instance_identity, and _display fields to the object.
-		instanceID, instanceIdentity := logics.GetObjectID(object, &objectType)
-		displayValue := object[objectType.DisplayKey]
-
-		if !logics.ShouldExcludeSystemProperty(interfaces.SYSTEM_PROPERTY_INSTANCE_ID, query.ExcludeSystemProperties) {
-			object[interfaces.SYSTEM_PROPERTY_INSTANCE_ID] = instanceID
+		rawObject[interfaces.SORT_FIELD_SCORE] = hit.Score
+		if err := ots.addLogicProperties(ctx, rawObject, objectType, plan); err != nil {
+			return err
 		}
-		if !logics.ShouldExcludeSystemProperty(interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY, query.ExcludeSystemProperties) {
-			object[interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY] = instanceIdentity
-		}
-		if !logics.ShouldExcludeSystemProperty(interfaces.SYSTEM_PROPERTY_DISPLAY, query.ExcludeSystemProperties) {
-			object[interfaces.SYSTEM_PROPERTY_DISPLAY] = displayValue
-		}
+		object := plan.projectRow(rawObject, &objectType, query)
 
 		if len(object) > 0 {
 			objects = append(objects, object)
 		} else {
-			logger.Warnf("将视图行数据转成对象时，对象类属性映射的字段没有一个属性能正确映射到视图上，配置的字段属性映射关系为: %v", indexPropMap)
+			logger.Warnf("OpenSearch row could not produce a sanitized object for object type [%s/%s]", query.KNID, objectType.OTID)
 		}
 	}
 
@@ -858,6 +829,11 @@ func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,
 	}
 
 	resps.Datas = datas
+	resps.ObjectType = objects.ObjectType
+	resps.TotalCount = objects.TotalCount
+	resps.SearchAfter = objects.SearchAfter
+	resps.Cursor = objects.Cursor
+	resps.EffectivePermissions = objects.EffectivePermissions
 	return resps, nil
 
 }

@@ -10,6 +10,8 @@ import (
 	"reflect"
 
 	"github.com/bytedance/sonic"
+
+	"ontology-query/common/maskrule"
 )
 
 // Field scope.
@@ -206,7 +208,8 @@ type DataProperty struct {
 	Type        string `json:"type"`
 	Comment     string `json:"comment"`
 
-	MappedField Field `json:"mapped_field"`
+	MappedField Field          `json:"mapped_field"`
+	MaskRule    *maskrule.Rule `json:"mask_rule,omitempty" mapstructure:"mask_rule,omitempty"`
 
 	ConditionOperations []string `json:"condition_operations,omitempty"` // Operations supported by a string field.
 }

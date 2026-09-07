@@ -70,3 +70,25 @@ func TestPermissionAccessFilterResources(t *testing.T) {
 		}
 	})
 }
+
+func TestPermissionAccessResolvePropertyLevels(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/safe/v1/authz/property-levels" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"entries":[{"object_type_ref":"kn-1/customer","properties":[{"name":"mobile","level":"masked","source":"property"}]}]}`))
+	}))
+	defer server.Close()
+	access := &permissionAccess{
+		baseURL:    server.URL,
+		httpClient: rest.NewHTTPClientWithOptions(rest.HttpClientOptions{TimeOut: 1}),
+	}
+	response, err := access.ResolvePropertyLevels(context.Background(), interfaces.PropertyLevelsRequest{
+		AccessorID: "user-1",
+		Items:      []interfaces.PropertyLevelsRequestItem{{ObjectTypeRef: "kn-1/customer", Properties: []string{"mobile"}}},
+	})
+	if err != nil || len(response.Entries) != 1 || response.Entries[0].Properties[0].Level != interfaces.PropertyAccessMasked {
+		t.Fatalf("ResolvePropertyLevels() = %#v, %v", response, err)
+	}
+}

@@ -111,5 +111,7 @@ type PageQuery struct {
 	Offset int `json:"offset"`
 	// UseSearchAfter bool          `json:"use_search_after"` // Business knowledge networks only expose search_after, so this option is unnecessary.
 	Sort []*SortParams `json:"sort"`
+	// Cursor is the opaque, authenticated pagination position exposed by object queries.
+	Cursor string `json:"cursor,omitempty"`
 	SearchAfterParams
 }

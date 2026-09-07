@@ -56,6 +56,21 @@ func (mr *MockPermissionAccessMockRecorder) FilterResources(ctx, request any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FilterResources", reflect.TypeOf((*MockPermissionAccess)(nil).FilterResources), ctx, request)
 }
 
+// ResolvePropertyLevels mocks base method.
+func (m *MockPermissionAccess) ResolvePropertyLevels(ctx context.Context, request interfaces.PropertyLevelsRequest) (interfaces.PropertyLevelsResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolvePropertyLevels", ctx, request)
+	ret0, _ := ret[0].(interfaces.PropertyLevelsResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolvePropertyLevels indicates an expected call of ResolvePropertyLevels.
+func (mr *MockPermissionAccessMockRecorder) ResolvePropertyLevels(ctx, request any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolvePropertyLevels", reflect.TypeOf((*MockPermissionAccess)(nil).ResolvePropertyLevels), ctx, request)
+}
+
 // MockPermissionService is a mock of PermissionService interface.
 type MockPermissionService struct {
 	ctrl     *gomock.Controller
@@ -95,6 +110,20 @@ func (mr *MockPermissionServiceMockRecorder) FilterQueryData(ctx, resources any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FilterQueryData", reflect.TypeOf((*MockPermissionService)(nil).FilterQueryData), ctx, resources)
 }
 
+// RequirePermissions mocks base method.
+func (m *MockPermissionService) RequirePermissions(ctx context.Context, requirements []interfaces.PermissionRequirement) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RequirePermissions", ctx, requirements)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RequirePermissions indicates an expected call of RequirePermissions.
+func (mr *MockPermissionServiceMockRecorder) RequirePermissions(ctx, requirements any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequirePermissions", reflect.TypeOf((*MockPermissionService)(nil).RequirePermissions), ctx, requirements)
+}
+
 // RequireQueryData mocks base method.
 func (m *MockPermissionService) RequireQueryData(ctx context.Context, resources []interfaces.PermissionResource) error {
 	m.ctrl.T.Helper()
@@ -109,8 +138,71 @@ func (mr *MockPermissionServiceMockRecorder) RequireQueryData(ctx, resources any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequireQueryData", reflect.TypeOf((*MockPermissionService)(nil).RequireQueryData), ctx, resources)
 }
 
+// MockPropertyAccessService is a mock of PropertyAccessService interface.
+type MockPropertyAccessService struct {
+	ctrl     *gomock.Controller
+	recorder *MockPropertyAccessServiceMockRecorder
+	isgomock struct{}
+}
+
+// MockPropertyAccessServiceMockRecorder is the mock recorder for MockPropertyAccessService.
+type MockPropertyAccessServiceMockRecorder struct {
+	mock *MockPropertyAccessService
+}
+
+// NewMockPropertyAccessService creates a new mock instance.
+func NewMockPropertyAccessService(ctrl *gomock.Controller) *MockPropertyAccessService {
+	mock := &MockPropertyAccessService{ctrl: ctrl}
+	mock.recorder = &MockPropertyAccessServiceMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockPropertyAccessService) EXPECT() *MockPropertyAccessServiceMockRecorder {
+	return m.recorder
+}
+
+// ResolvePropertyLevels mocks base method.
+func (m *MockPropertyAccessService) ResolvePropertyLevels(ctx context.Context, items []interfaces.PropertyLevelsRequestItem) ([]interfaces.PropertyLevelsDecisionEntry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolvePropertyLevels", ctx, items)
+	ret0, _ := ret[0].([]interfaces.PropertyLevelsDecisionEntry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolvePropertyLevels indicates an expected call of ResolvePropertyLevels.
+func (mr *MockPropertyAccessServiceMockRecorder) ResolvePropertyLevels(ctx, items any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolvePropertyLevels", reflect.TypeOf((*MockPropertyAccessService)(nil).ResolvePropertyLevels), ctx, items)
+}
+
+// MockActionExecutionPermissionService is a mock of ActionExecutionPermissionService interface.
+type MockActionExecutionPermissionService struct {
+	ctrl     *gomock.Controller
+	recorder *MockActionExecutionPermissionServiceMockRecorder
+	isgomock struct{}
+}
+
+// MockActionExecutionPermissionServiceMockRecorder is the mock recorder for MockActionExecutionPermissionService.
+type MockActionExecutionPermissionServiceMockRecorder struct {
+	mock *MockActionExecutionPermissionService
+}
+
+// NewMockActionExecutionPermissionService creates a new mock instance.
+func NewMockActionExecutionPermissionService(ctrl *gomock.Controller) *MockActionExecutionPermissionService {
+	mock := &MockActionExecutionPermissionService{ctrl: ctrl}
+	mock.recorder = &MockActionExecutionPermissionServiceMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockActionExecutionPermissionService) EXPECT() *MockActionExecutionPermissionServiceMockRecorder {
+	return m.recorder
+}
+
 // RequirePermissions mocks base method.
-func (m *MockPermissionService) RequirePermissions(ctx context.Context, requirements []interfaces.PermissionRequirement) error {
+func (m *MockActionExecutionPermissionService) RequirePermissions(ctx context.Context, requirements []interfaces.PermissionRequirement) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RequirePermissions", ctx, requirements)
 	ret0, _ := ret[0].(error)
@@ -118,7 +210,7 @@ func (m *MockPermissionService) RequirePermissions(ctx context.Context, requirem
 }
 
 // RequirePermissions indicates an expected call of RequirePermissions.
-func (mr *MockPermissionServiceMockRecorder) RequirePermissions(ctx, requirements any) *gomock.Call {
+func (mr *MockActionExecutionPermissionServiceMockRecorder) RequirePermissions(ctx, requirements any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequirePermissions", reflect.TypeOf((*MockPermissionService)(nil).RequirePermissions), ctx, requirements)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequirePermissions", reflect.TypeOf((*MockActionExecutionPermissionService)(nil).RequirePermissions), ctx, requirements)
 }

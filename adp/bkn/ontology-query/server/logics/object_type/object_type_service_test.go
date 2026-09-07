@@ -30,6 +30,23 @@ type objectTypeProxyResolverStub struct {
 	err      error
 }
 
+type fullPropertyAccessStub struct{}
+
+func (fullPropertyAccessStub) ResolvePropertyLevels(_ context.Context,
+	items []interfaces.PropertyLevelsRequestItem) ([]interfaces.PropertyLevelsDecisionEntry, error) {
+	entries := make([]interfaces.PropertyLevelsDecisionEntry, 0, len(items))
+	for _, item := range items {
+		entry := interfaces.PropertyLevelsDecisionEntry{ObjectTypeRef: item.ObjectTypeRef}
+		for _, name := range item.Properties {
+			entry.Properties = append(entry.Properties, interfaces.PropertyAccessDecision{
+				Name: name, Level: interfaces.PropertyAccessFull, Source: "test",
+			})
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
 func (s *objectTypeProxyResolverStub) Resolve(ctx context.Context,
 	binding interfaces.TrustedProxyBinding) (*interfaces.TrustedProxyContext, error) {
 	s.bindings = append(s.bindings, binding)
@@ -71,12 +88,13 @@ func TestObjectTypeSchemaUsesPublishedViewDetailBinding(t *testing.T) {
 	models := omock.NewMockOntologyManagerAccess(ctrl)
 	vega := omock.NewMockVegaBackendAccess(ctrl)
 	proxy := &objectTypeProxyResolverStub{}
-	service := &objectTypeService{omAccess: models, vba: vega, proxy: proxy}
+	service := &objectTypeService{omAccess: models, vba: vega, proxy: proxy, propertyAccess: fullPropertyAccessStub{}}
 
 	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "ot-1").Return(
 		interfaces.ObjectType{
 			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 				OTID: "ot-1", DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"},
+				DataProperties: []cond.DataProperty{{Name: "id", Type: "string", MappedField: cond.Field{Name: "id"}}},
 			},
 			KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
 		}, true, nil)
@@ -106,7 +124,7 @@ func TestObjectTypeSampleDataUsesQueryDataProxyBinding(t *testing.T) {
 		Entries: []map[string]any{{"field1": "sample"}}, TotalCount: 1,
 	}}
 	proxy := &objectTypeProxyResolverStub{}
-	service := &objectTypeService{omAccess: models, vba: vega, proxy: proxy}
+	service := &objectTypeService{omAccess: models, vba: vega, proxy: proxy, propertyAccess: fullPropertyAccessStub{}}
 	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "ot-1").Return(
 		interfaces.ObjectType{
 			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
@@ -182,12 +200,13 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 		logics.AOA = aoAccess
 
 		service := &objectTypeService{
-			appSetting: appSetting,
-			omAccess:   omAccess,
-			osa:        osa,
-			mfa:        mfa,
-			aoAccess:   aoAccess,
-			proxy:      &objectTypeProxyResolverStub{},
+			appSetting:     appSetting,
+			omAccess:       omAccess,
+			osa:            osa,
+			mfa:            mfa,
+			aoAccess:       aoAccess,
+			proxy:          &objectTypeProxyResolverStub{},
+			propertyAccess: fullPropertyAccessStub{},
 		}
 
 		ctx := context.Background()
@@ -1242,14 +1261,15 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 		logics.AOA = aoAccess
 
 		service := &objectTypeService{
-			appSetting: appSetting,
-			omAccess:   omAccess,
-			osa:        osa,
-			vba:        vba,
-			mqs:        mqs,
-			mfa:        mfa,
-			aoAccess:   aoAccess,
-			proxy:      &objectTypeProxyResolverStub{},
+			appSetting:     appSetting,
+			omAccess:       omAccess,
+			osa:            osa,
+			vba:            vba,
+			mqs:            mqs,
+			mfa:            mfa,
+			aoAccess:       aoAccess,
+			proxy:          &objectTypeProxyResolverStub{},
+			propertyAccess: fullPropertyAccessStub{},
 		}
 
 		ctx := context.Background()
@@ -1973,13 +1993,15 @@ func TestObjectTypeProxyFailureStopsVegaRead(t *testing.T) {
 	vega := omock.NewMockVegaBackendAccess(ctrl)
 	proxyErr := errors.New("proxy unavailable")
 	service := &objectTypeService{
-		omAccess: models,
-		vba:      vega,
-		proxy:    &objectTypeProxyResolverStub{err: proxyErr},
+		omAccess:       models,
+		vba:            vega,
+		proxy:          &objectTypeProxyResolverStub{err: proxyErr},
+		propertyAccess: fullPropertyAccessStub{},
 	}
 	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "ot-1").Return(
 		interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-			OTID: "ot-1",
+			OTID:           "ot-1",
+			DataProperties: []cond.DataProperty{{Name: "id", MappedField: cond.Field{Name: "id"}}},
 			DataSource: &interfaces.ResourceInfo{
 				Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
 				ID:   "resource-1",
