@@ -51,7 +51,7 @@ func handleGetSkillContent(svc knskills.KnSkillsService) func(ctx context.Contex
 			return mcp.NewToolResultError(knskills.SkillIDRequiredError(ctx).Error()), nil
 		}
 
-		resp, err := svc.GetSkillContent(ctx, skillID)
+		resp, err := svc.GetSkillContent(ctx, getStringArg(req, "kn_id", ""), skillID)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}

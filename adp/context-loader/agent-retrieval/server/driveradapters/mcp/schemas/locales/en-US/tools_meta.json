@@ -107,7 +107,7 @@
   "list_skills": {
     "title": "Skill List",
     "group_title": "Skills",
-    "description": "Browse published skills without a knowledge-network context. Complements find_skills, which recalls by object type or instance: this one pages a list filtered by name or category. Take the skill_id to get_skill_content for SKILL.md, read_skill_file for bundled files, execute_skill to run the entry command."
+    "description": "Browse the platform's published Skills (the marketplace). **Not scoped by knowledge network mounts** — a Skill listed here is not necessarily readable or runnable in the current network. Use find_skills for what this network can actually use; these results are a catalogue, not a permission."
   },
   "get_skill_content": {
     "title": "Skill Content",

@@ -68,6 +68,7 @@ func (h *knSkillsHandler) ListSkills(c *gin.Context) {
 
 // skillIDReq get_skill_content input parameter.
 type skillIDReq struct {
+	KnID    string `json:"kn_id" form:"kn_id"`
 	SkillID string `json:"skill_id" form:"skill_id"`
 }
 
@@ -82,7 +83,7 @@ func (h *knSkillsHandler) GetSkillContent(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.skills.GetSkillContent(ctx, req.SkillID)
+	resp, err := h.skills.GetSkillContent(ctx, req.KnID, req.SkillID)
 	if err != nil {
 		h.logger.WithContext(ctx).Warnf("[KnSkillsHandler#GetSkillContent] failed: %v", err)
 		rest.ReplyError(c, err)

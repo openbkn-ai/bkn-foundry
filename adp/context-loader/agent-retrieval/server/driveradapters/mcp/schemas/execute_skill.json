@@ -2,6 +2,10 @@
   "input_schema": {
     "type": "object",
     "properties": {
+      "kn_id": {
+        "type": "string",
+        "description": "必填。知识网络 ID。Skill 必须已挂载到该网络才能读取/执行——skill_id 会活过产生它的那次调用，也可以从 list_skills 拿到，所以范围要在这里核。"
+      },
       "skill_id": {
         "type": "string",
         "description": "技能 ID（取自 list_skills 或 find_skills 的 skill_id）。"
@@ -17,20 +21,50 @@
         "description": "可选。执行超时秒数。"
       }
     },
-    "required": ["skill_id", "entry_shell"]
+    "required": [
+      "kn_id",
+      "skill_id",
+      "entry_shell"
+    ]
   },
   "output_schema": {
     "type": "object",
     "properties": {
-      "skill_id": { "type": "string" },
-      "exit_code": { "type": "integer", "description": "进程退出码，0 为成功" },
-      "stdout": { "type": "string", "description": "标准输出（超长会截断）" },
-      "stderr": { "type": "string", "description": "标准错误（超长会截断）" },
-      "truncated": { "type": "boolean", "description": "stdout / stderr 是否被截断" },
-      "execution_time": { "type": "integer", "description": "执行耗时（毫秒）" },
-      "work_dir": { "type": "string", "description": "沙箱内工作目录" },
-      "command": { "type": "string", "description": "实际执行的命令" },
-      "mocked": { "type": "boolean", "description": "沙箱不可用时的桩执行标记" }
+      "skill_id": {
+        "type": "string"
+      },
+      "exit_code": {
+        "type": "integer",
+        "description": "进程退出码，0 为成功"
+      },
+      "stdout": {
+        "type": "string",
+        "description": "标准输出（超长会截断）"
+      },
+      "stderr": {
+        "type": "string",
+        "description": "标准错误（超长会截断）"
+      },
+      "truncated": {
+        "type": "boolean",
+        "description": "stdout / stderr 是否被截断"
+      },
+      "execution_time": {
+        "type": "integer",
+        "description": "执行耗时（毫秒）"
+      },
+      "work_dir": {
+        "type": "string",
+        "description": "沙箱内工作目录"
+      },
+      "command": {
+        "type": "string",
+        "description": "实际执行的命令"
+      },
+      "mocked": {
+        "type": "boolean",
+        "description": "沙箱不可用时的桩执行标记"
+      }
     }
   }
 }

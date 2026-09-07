@@ -5,6 +5,11 @@
 // Package knskills provides skill browsing, reading, and execution after
 // find_skills. The latter returns only skill_id, name, and description.
 //
+// Reading and execution are scoped to the knowledge network that mounted the Skill. find_skills
+// narrowing recall is not a control on its own: a skill_id outlives the call that produced it and
+// can be had from list_skills, so the check has to sit where the document is read and where the
+// entry command runs.
+//
 // This layer formats results for models: text detection, size truncation, and
 // empty-result messages. Driven adapters perform the metadata and object-store calls.
 package knskills
@@ -12,6 +17,7 @@ package knskills
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -19,8 +25,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/permission"
 )
 
 const (
@@ -39,6 +47,10 @@ var ErrRelPathRequired = errors.New("rel_path is required")
 
 // ErrEntryShellRequired identifies a missing entry_shell argument.
 var ErrEntryShellRequired = errors.New("entry_shell is required")
+
+// ErrKnIDRequired identifies a missing kn_id argument. Without it there is no scope to check the
+// Skill against, and answering anyway would be the unscoped behaviour this replaced.
+var ErrKnIDRequired = errors.New("kn_id is required")
 
 type localizedInputError struct {
 	message string
@@ -110,6 +122,8 @@ type GetSkillContentResp struct {
 
 // ReadSkillFileReq is the input for read_skill_file.
 type ReadSkillFileReq struct {
+	// KnID is required: the file is read only when the Skill is mounted on this network.
+	KnID    string `json:"kn_id"`
 	SkillID string `json:"skill_id"`
 	RelPath string `json:"rel_path"`
 }
@@ -128,6 +142,8 @@ type ReadSkillFileResp struct {
 
 // ExecuteSkillReq is the input for execute_skill.
 type ExecuteSkillReq struct {
+	// KnID is required and checked before anything runs. This is the call that changes the world.
+	KnID       string `json:"kn_id"`
 	SkillID    string `json:"skill_id"`
 	EntryShell string `json:"entry_shell"`
 	Timeout    int    `json:"timeout"` // seconds, optional.
@@ -148,14 +164,19 @@ type ExecuteSkillResp struct {
 
 // KnSkillsService supports skill browsing, reading, and execution.
 type KnSkillsService interface {
+	// ListSkills browses the platform's published Skills and is deliberately not network-scoped:
+	// mounting one means first being able to see what exists. Its results are a catalogue, not a
+	// permission — everything below refuses a Skill this network has not mounted.
 	ListSkills(ctx context.Context, req *ListSkillsReq) (*ListSkillsResp, error)
-	GetSkillContent(ctx context.Context, skillID string) (*GetSkillContentResp, error)
+	GetSkillContent(ctx context.Context, knID, skillID string) (*GetSkillContentResp, error)
 	ReadSkillFile(ctx context.Context, req *ReadSkillFileReq) (*ReadSkillFileResp, error)
 	ExecuteSkill(ctx context.Context, req *ExecuteSkillReq) (*ExecuteSkillResp, error)
 }
 
 type knSkillsService struct {
-	operator interfaces.DrivenOperatorIntegration
+	operator   interfaces.DrivenOperatorIntegration
+	bknBackend interfaces.BknBackendAccess
+	knAuthz    interfaces.KnowledgeNetworkAuthorizer
 }
 
 var (
@@ -166,14 +187,21 @@ var (
 // NewKnSkillsService creates the KnSkillsService singleton.
 func NewKnSkillsService() KnSkillsService {
 	once.Do(func() {
-		instance = &knSkillsService{operator: drivenadapters.NewOperatorIntegrationClient()}
+		conf := config.NewConfigLoader()
+		instance = &knSkillsService{
+			operator:   drivenadapters.NewOperatorIntegrationClient(),
+			bknBackend: drivenadapters.NewBknBackendAccess(),
+			knAuthz:    permission.NewKnowledgeNetworkAuthorizer(conf),
+		}
 	})
 	return instance
 }
 
 // NewKnSkillsServiceWith creates a service with injected dependencies for tests.
-func NewKnSkillsServiceWith(operator interfaces.DrivenOperatorIntegration) KnSkillsService {
-	return &knSkillsService{operator: operator}
+func NewKnSkillsServiceWith(operator interfaces.DrivenOperatorIntegration,
+	bknBackend interfaces.BknBackendAccess,
+	knAuthz interfaces.KnowledgeNetworkAuthorizer) KnSkillsService {
+	return &knSkillsService{operator: operator, bknBackend: bknBackend, knAuthz: knAuthz}
 }
 
 // ListSkills lists published skills. Unlike find_skills, it does not require a
@@ -213,11 +241,56 @@ func (s *knSkillsService) ListSkills(ctx context.Context, req *ListSkillsReq) (*
 	return out, nil
 }
 
+// requireMounted refuses a Skill the knowledge network has not mounted.
+//
+// Two checks, in this order: the caller may read the network at all, and the network mounted this
+// Skill. Both are needed and neither substitutes for the other — the first stops one network's
+// mounts from being read through another's id, the second stops a skill_id picked up from
+// list_skills or an earlier session from being used here.
+//
+// Fail-closed throughout: a service wired without the authorizer, an unreadable binding list, and
+// an unauthorized caller all refuse. Reading the bindings is the scope, so failing to read them
+// cannot degrade into "allow".
+func (s *knSkillsService) requireMounted(ctx context.Context, knID, skillID string) error {
+	knID = strings.TrimSpace(knID)
+	if knID == "" {
+		return localizedInputError{
+			message: infraErr.LocalizedDetail(ctx, "SkillScopeKnIDRequired"),
+			cause:   ErrKnIDRequired,
+		}
+	}
+	if s.knAuthz == nil || s.bknBackend == nil {
+		return infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+			infraErr.LocalizedDetail(ctx, "SkillAuthorizationUnavailable"))
+	}
+	if err := s.knAuthz.AuthorizeRead(ctx, knID); err != nil {
+		return err
+	}
+
+	refs, err := s.bknBackend.ListKNCapabilities(ctx, knID, "", interfaces.CapabilityTypeSkill)
+	if err != nil {
+		return err
+	}
+	for _, ref := range refs {
+		if ref == nil || ref.CapabilityType != interfaces.CapabilityTypeSkill {
+			continue
+		}
+		if strings.TrimSpace(ref.CapabilityID) == skillID {
+			return nil
+		}
+	}
+	return infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
+		infraErr.LocalizedDetail(ctx, "SkillNotMountedOnNetwork"))
+}
+
 // GetSkillContent returns the skill document and its file list for progressive reading.
-func (s *knSkillsService) GetSkillContent(ctx context.Context, skillID string) (*GetSkillContentResp, error) {
+func (s *knSkillsService) GetSkillContent(ctx context.Context, knID, skillID string) (*GetSkillContentResp, error) {
 	skillID = strings.TrimSpace(skillID)
 	if skillID == "" {
 		return nil, SkillIDRequiredError(ctx)
+	}
+	if err := s.requireMounted(ctx, knID, skillID); err != nil {
+		return nil, err
 	}
 	resp, err := s.operator.GetSkillContent(ctx, skillID)
 	if err != nil {
@@ -259,6 +332,9 @@ func (s *knSkillsService) ReadSkillFile(ctx context.Context, req *ReadSkillFileR
 	if relPath == "" {
 		return nil, RelPathRequiredError(ctx)
 	}
+	if err := s.requireMounted(ctx, req.KnID, skillID); err != nil {
+		return nil, err
+	}
 
 	resp, err := s.operator.ReadSkillFile(ctx, &interfaces.ReadSkillFileRequest{SkillID: skillID, RelPath: relPath})
 	if err != nil {
@@ -295,6 +371,9 @@ func (s *knSkillsService) ExecuteSkill(ctx context.Context, req *ExecuteSkillReq
 	entryShell := strings.TrimSpace(req.EntryShell)
 	if entryShell == "" {
 		return nil, EntryShellRequiredError(ctx)
+	}
+	if err := s.requireMounted(ctx, req.KnID, skillID); err != nil {
+		return nil, err
 	}
 
 	resp, err := s.operator.ExecuteSkill(ctx, &interfaces.ExecuteSkillRequest{
