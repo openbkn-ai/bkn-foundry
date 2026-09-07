@@ -123,15 +123,25 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		require.NoError(t, ds.DeleteDocuments(ctx, resource, []string{"doc-1", "doc-2"}))
 	})
 
-	t.Run("uses caller supplied document id as the OpenSearch id", func(t *testing.T) {
+	t.Run("creates a document with a service generated id", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
-		lim.EXPECT().CreateDocuments(gomock.Any(), "dataset-1", []map[string]any{{"_id": "doc-1"}}).
+		lim.EXPECT().CreateDocuments(gomock.Any(), "dataset-1", []map[string]any{{"title": "one"}}).
 			Return([]string{"doc-1"}, nil)
 
-		docID, err := ds.CreateDocument(ctx, resource, map[string]any{"_id": "doc-1"})
+		docID, err := ds.CreateDocument(ctx, resource, map[string]any{"title": "one"})
 
 		require.NoError(t, err)
 		assert.Equal(t, "doc-1", docID)
+	})
+
+	t.Run("rejects caller supplied document id before materializing or writing", func(t *testing.T) {
+		ds, _ := newDatasetServiceMock(t)
+
+		_, err := ds.CreateDocument(ctx, resource, map[string]any{"_id": "doc-1"})
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 	})
 
 	t.Run("requires catalog resource_manage permission for document mutations", func(t *testing.T) {

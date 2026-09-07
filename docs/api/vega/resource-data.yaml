@@ -47,13 +47,13 @@ paths:
         | Override | 行为 | category 限制 | body schema |
         |---|---|---|---|
         | `GET` | 列表 / 查询文档 | 任意（兼容现有通用查询） | `ResourceDataQueryParams` |
-        | `POST` | 创建一条文档 | **dataset 强制** | `Document`（`_id` 可选，无则后端生成） |
+        | `POST` | 创建一条文档 | **dataset 强制** | `Document`（不得传 `_id`，由后端生成） |
         | `DELETE` | 按 filter 删除文档 | **dataset 强制** | `ResourceDataQueryParams`（`filter_condition` 必填非空） |
 
         **`Override: GET` 响应**：200 + `{ entries, total_count, paging }`。cursor 模式通过
         `paging.next_cursor` 续页；`total_count` 仅在 `need_total=true` 时返回。
 
-        **`Override: POST` 响应**：201 + `{ id }`。后端为未指定 id 的文档生成 id。
+        **`Override: POST` 响应**：201 + `{ id }`。后端生成文档 ID；携带 `_id` 的 body 返回 400。
 
         **`Override: DELETE` 响应**：204。空 `filter_condition` 拒绝 400 避免误删全表。
 
@@ -275,7 +275,7 @@ components:
     Document:
       description: |
         文档对象。content 字段集开放，由具体 dataset schema 决定。
-        - `POST /resources/{id}/data`（Override=POST）创建一条文档；`_id` 可选。
+        - `POST /resources/{id}/data`（Override=POST）创建一条文档；不得携带 `_id`。
         - `PUT /resources/{id}/data/{docid}` 如携带 `_id`，以 path 为准。
       type: object
       additionalProperties: true

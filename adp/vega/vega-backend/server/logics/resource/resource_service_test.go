@@ -1091,6 +1091,37 @@ func TestResourceServiceUpdate(t *testing.T) {
 
 		require.NoError(t, err)
 	})
+	t.Run("does not update dataset mapping when the resource version is stale", func(t *testing.T) {
+		rs, mockRA, mockPS, mockDS, _, mockCS, mockBTA := newTestService(t)
+		expectResourceServiceTransaction(t, rs, false)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
+		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+		resource := &interfaces.Resource{
+			ID:               "r1",
+			CatalogID:        "cat1",
+			Category:         interfaces.ResourceCategoryDataset,
+			Name:             "dataset",
+			LocalIndexName:   "vega-dataset-index-1",
+			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
+		}
+		mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).Return(nil, int64(0), nil)
+		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), resource, int64(42)).Return(int64(0), nil)
+
+		err := rs.Update(context.Background(), resource, &interfaces.ResourceRequest{
+			CatalogID:          "cat1",
+			Category:           interfaces.ResourceCategoryDataset,
+			Name:               "dataset",
+			ExpectedUpdateTime: 42,
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "id", Type: interfaces.DataType_String},
+				{Name: "content", Type: interfaces.DataType_Text},
+			},
+		})
+
+		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_UpdateConflict)
+		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+	})
 	t.Run("rejects dataset index structure changes when documents exist", func(t *testing.T) {
 		rs, _, mockPS, mockDS, _, _, mockBTA := newTestService(t)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)

@@ -1065,14 +1065,6 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 	resource.Updater = accountInfo
 	resource.UpdateTime = now
 
-	if resource.Category == interfaces.ResourceCategoryDataset && buildRelevantChanged {
-		// Update the physical mapping first. If OpenSearch rejects an immutable
-		// mapping change, keep the persisted schema unchanged as well.
-		if err := rs.ds.Update(ctx, resource); err != nil {
-			return err
-		}
-	}
-
 	tx, err := rs.db.BeginTx(ctx, nil)
 	if err != nil {
 		span.SetStatus(codes.Error, "Update resource transaction failed")
@@ -1093,6 +1085,14 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 	if rowsAffected == 0 {
 		span.SetStatus(codes.Error, "Resource update conflict")
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
+	}
+	if resource.Category == interfaces.ResourceCategoryDataset && buildRelevantChanged {
+		// Claim the resource version before changing OpenSearch. The transaction
+		// keeps concurrent updates from publishing an unpersisted mapping while
+		// an OpenSearch rejection still rolls the Resource update back.
+		if err := rs.ds.Update(ctx, resource); err != nil {
+			return err
+		}
 	}
 	if keyFieldsChanged {
 		if resource.SyncMark != "" {
