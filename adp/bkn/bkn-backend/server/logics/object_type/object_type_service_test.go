@@ -587,7 +587,7 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ota.EXPECT().CreateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().CreateObjectTypeStatus(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
 			result, err := service.CreateObjectTypes(ctx, nil, objectTypes, interfaces.ImportMode_Normal, false, true)
@@ -658,7 +658,7 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("ot1", true, nil).Times(2)
 			ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("ot1", true, nil)
 			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 			smock.ExpectCommit()
 
 			result, err := service.CreateObjectTypes(ctx, nil, objectTypes, interfaces.ImportMode_Overwrite, false, true)
@@ -685,7 +685,7 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ota.EXPECT().CreateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().CreateObjectTypeStatus(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
 			result, err := service.CreateObjectTypes(ctx, nil, objectTypes, interfaces.ImportMode_Normal, false, true)
@@ -758,7 +758,7 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ota.EXPECT().CreateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().CreateObjectTypeStatus(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
 
 			result, err := service.CreateObjectTypes(ctx, nil, objectTypes, interfaces.ImportMode_Normal, false, true)
@@ -1395,7 +1395,7 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
 			err := service.UpdateObjectType(ctx, nil, objectType, true)
@@ -1471,7 +1471,7 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
 
 			err := service.UpdateObjectType(ctx, nil, objectType, true)
@@ -1529,7 +1529,7 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().UpdateDataProperties(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
 			err := service.UpdateDataProperties(ctx, objectType, dataProperties, true)
@@ -1559,7 +1559,7 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().UpdateDataProperties(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
 			err := service.UpdateDataProperties(ctx, objectType, dataProperties, false)
@@ -1635,7 +1635,7 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().UpdateDataProperties(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectCommit()
 
 			err := service.UpdateDataProperties(ctx, objectType, dataProperties, true)
@@ -1665,7 +1665,7 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().UpdateDataProperties(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 			err := service.UpdateDataProperties(ctx, objectType, dataProperties, true)
 			So(err, ShouldBeNil)
@@ -1900,7 +1900,7 @@ func Test_objectTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 			err := service.InsertDatasetData(ctx, objectTypes)
 			So(err, ShouldBeNil)
@@ -1918,7 +1918,7 @@ func Test_objectTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			err := service.InsertDatasetData(ctx, objectTypes)
 			So(err, ShouldNotBeNil)
@@ -1962,7 +1962,7 @@ func Test_objectTypeService_InsertDatasetData(t *testing.T) {
 
 			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
 			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
-			vbaWithVector.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbaWithVector.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 			err := serviceWithVector.InsertDatasetData(ctx, objectTypes)
 			So(err, ShouldBeNil)

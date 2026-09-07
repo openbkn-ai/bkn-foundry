@@ -113,3 +113,29 @@ func TestQueryResourceDataPreservesLargeIntegers(t *testing.T) {
 	}
 	assert.False(t, strings.Contains(string(wire), "e+"))
 }
+
+func TestWriteDatasetDocumentUsesSingleDocumentReplace(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
+	access := &vegaBackendAccess{baseUrl: "http://vega", httpClient: mockHTTPClient}
+	document := map[string]any{"_id": "document-1", "name": "one"}
+
+	mockHTTPClient.EXPECT().
+		PutNoUnmarshal(gomock.Any(), "http://vega/resources/dataset-1/data/document-1", gomock.Any(), document).
+		Return(http.StatusOK, []byte(`{}`), nil)
+
+	require.NoError(t, access.WriteDatasetDocument(context.Background(), "dataset-1", "document-1", document))
+}
+
+func TestWriteDatasetDocumentUsesExplicitDocumentID(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
+	access := &vegaBackendAccess{baseUrl: "http://vega", httpClient: mockHTTPClient}
+	document := map[string]any{"name": "one"}
+
+	mockHTTPClient.EXPECT().
+		PutNoUnmarshal(gomock.Any(), "http://vega/resources/dataset-1/data/document-1", gomock.Any(), document).
+		Return(http.StatusOK, []byte(`{}`), nil)
+
+	require.NoError(t, access.WriteDatasetDocument(context.Background(), "dataset-1", "document-1", document))
+}

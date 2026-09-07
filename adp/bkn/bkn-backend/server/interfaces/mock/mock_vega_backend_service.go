@@ -157,16 +157,16 @@ func (mr *MockVegaBackendServiceMockRecorder) QueryResourceData(ctx, resourceID,
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryResourceData", reflect.TypeOf((*MockVegaBackendService)(nil).QueryResourceData), ctx, resourceID, params)
 }
 
-// WriteDatasetDocuments mocks base method.
-func (m *MockVegaBackendService) WriteDatasetDocuments(ctx context.Context, datasetID string, documents []map[string]any) error {
+// WriteDatasetDocument mocks base method.
+func (m *MockVegaBackendService) WriteDatasetDocument(ctx context.Context, datasetID, docID string, document map[string]any) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WriteDatasetDocuments", ctx, datasetID, documents)
+	ret := m.ctrl.Call(m, "WriteDatasetDocument", ctx, datasetID, docID, document)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// WriteDatasetDocuments indicates an expected call of WriteDatasetDocuments.
-func (mr *MockVegaBackendServiceMockRecorder) WriteDatasetDocuments(ctx, datasetID, documents any) *gomock.Call {
+// WriteDatasetDocument indicates an expected call of WriteDatasetDocument.
+func (mr *MockVegaBackendServiceMockRecorder) WriteDatasetDocument(ctx, datasetID, docID, document any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteDatasetDocuments", reflect.TypeOf((*MockVegaBackendService)(nil).WriteDatasetDocuments), ctx, datasetID, documents)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteDatasetDocument", reflect.TypeOf((*MockVegaBackendService)(nil).WriteDatasetDocument), ctx, datasetID, docID, document)
 }

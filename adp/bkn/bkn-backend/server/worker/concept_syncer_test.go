@@ -164,7 +164,7 @@ func TestConceptSyncer_handleKNs(t *testing.T) {
 			cga.EXPECT().GetAllConceptGroupsByKnID(ctx, knID, branch).Return(map[string]*interfaces.ConceptGroup{}, nil)
 
 			kna.EXPECT().UpdateKNDetail(ctx, knID, branch, gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
 
 			err := cs.handleKNs()
 			So(err, ShouldBeNil)
@@ -237,7 +237,7 @@ func TestConceptSyncer_handleKnowledgeNetwork(t *testing.T) {
 			cga.EXPECT().GetAllConceptGroupsByKnID(ctx, knID, branch).Return(map[string]*interfaces.ConceptGroup{}, nil)
 
 			kna.EXPECT().UpdateKNDetail(ctx, knID, branch, gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
 
 			err := cs.handleKnowledgeNetwork(ctx, kn, true)
 			So(err, ShouldBeNil)
@@ -307,7 +307,7 @@ func TestConceptSyncer_handleObjectTypes(t *testing.T) {
 				Entries: []map[string]any{},
 			}
 			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil)
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
 
 			simpleItems, needUpdate, err := cs.handleObjectTypes(ctx, knID, branch)
 			So(err, ShouldBeNil)
@@ -367,7 +367,7 @@ func TestConceptSyncer_handleRelationTypes(t *testing.T) {
 				Entries: []map[string]any{},
 			}
 			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil)
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
 
 			simpleItems, needUpdate, err := cs.handleRelationTypes(ctx, knID, branch)
 			So(err, ShouldBeNil)
@@ -428,7 +428,7 @@ func TestConceptSyncer_handleActionTypes(t *testing.T) {
 				Entries: []map[string]any{},
 			}
 			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil)
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
 
 			simpleItems, needUpdate, err := cs.handleActionTypes(ctx, knID, branch)
 			So(err, ShouldBeNil)
@@ -485,7 +485,7 @@ func TestConceptSyncer_handleConceptGroups(t *testing.T) {
 				Entries: []map[string]any{},
 			}
 			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil)
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
 
 			simpleItems, needUpdate, err := cs.handleConceptGroups(ctx, knID, branch)
 			So(err, ShouldBeNil)
@@ -532,14 +532,14 @@ func TestConceptSyncer_insertDatasetDataForKN(t *testing.T) {
 		}
 
 		Convey("Success inserting KN data", func() {
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
 
 			err := cs.insertDatasetDataForKN(ctx, kn)
 			So(err, ShouldBeNil)
 		})
 
 		Convey("Failed to insert KN data", func() {
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("opensearch error"))
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(errors.New("opensearch error"))
 
 			err := cs.insertDatasetDataForKN(ctx, kn)
 			So(err, ShouldNotBeNil)
@@ -638,7 +638,7 @@ func TestConceptSyncer_insertDatasetDataForKN_WithVector(t *testing.T) {
 		Convey("Success inserting KN data with vector\n", func() {
 			mfs.EXPECT().GetDefaultModel(ctx).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
 			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil).AnyTimes()
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil).AnyTimes()
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 			err := cs.insertDatasetDataForKN(ctx, kn)
 			So(err, ShouldBeNil)
@@ -662,7 +662,7 @@ func TestConceptSyncer_insertDatasetDataForKN_WithVector(t *testing.T) {
 		Convey("Failed when InsertData returns error\n", func() {
 			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
 			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil).AnyTimes()
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("opensearch error")).AnyTimes()
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(errors.New("opensearch error")).AnyTimes()
 
 			err := cs.insertDatasetDataForKN(ctx, kn)
 			So(err, ShouldNotBeNil)
@@ -707,7 +707,7 @@ func TestConceptSyncer_insertDatasetDataForObjectTypes(t *testing.T) {
 				},
 			}
 
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
 
 			err := cs.insertDatasetDataForObjectTypes(ctx, objectTypes)
 			So(err, ShouldBeNil)
@@ -725,7 +725,7 @@ func TestConceptSyncer_insertDatasetDataForObjectTypes(t *testing.T) {
 				},
 			}
 
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("opensearch error"))
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(errors.New("opensearch error"))
 
 			err := cs.insertDatasetDataForObjectTypes(ctx, objectTypes)
 			So(err, ShouldNotBeNil)
@@ -777,7 +777,7 @@ func TestConceptSyncer_insertDatasetDataForObjectTypes_WithVector(t *testing.T) 
 
 			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
 			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil).AnyTimes()
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil).AnyTimes()
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 			err := cs.insertDatasetDataForObjectTypes(ctx, objectTypes)
 			So(err, ShouldBeNil)
@@ -879,7 +879,7 @@ func TestConceptSyncer_insertDatasetDataForRelationTypes(t *testing.T) {
 				},
 			}
 
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
 
 			err := cs.insertDatasetDataForRelationTypes(ctx, relationTypes)
 			So(err, ShouldBeNil)
@@ -897,7 +897,7 @@ func TestConceptSyncer_insertDatasetDataForRelationTypes(t *testing.T) {
 				},
 			}
 
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("opensearch error"))
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(errors.New("opensearch error"))
 
 			err := cs.insertDatasetDataForRelationTypes(ctx, relationTypes)
 			So(err, ShouldNotBeNil)
@@ -949,7 +949,7 @@ func TestConceptSyncer_insertDatasetDataForRelationTypes_WithVector(t *testing.T
 
 			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
 			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
 
 			err := cs.insertDatasetDataForRelationTypes(ctx, relationTypes)
 			So(err, ShouldBeNil)
@@ -1051,7 +1051,7 @@ func TestConceptSyncer_insertDatasetDataForActionTypes(t *testing.T) {
 				},
 			}
 
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
 
 			err := cs.insertDatasetDataForActionTypes(ctx, actionTypes)
 			So(err, ShouldBeNil)
@@ -1069,7 +1069,7 @@ func TestConceptSyncer_insertDatasetDataForActionTypes(t *testing.T) {
 				},
 			}
 
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("opensearch error"))
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(errors.New("opensearch error"))
 
 			err := cs.insertDatasetDataForActionTypes(ctx, actionTypes)
 			So(err, ShouldNotBeNil)
@@ -1121,7 +1121,7 @@ func TestConceptSyncer_insertDatasetDataForActionTypes_WithVector(t *testing.T) 
 
 			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
 			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
 
 			err := cs.insertDatasetDataForActionTypes(ctx, actionTypes)
 			So(err, ShouldBeNil)
@@ -1221,7 +1221,7 @@ func TestConceptSyncer_insertDatasetDataForConceptGroups(t *testing.T) {
 				},
 			}
 
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
 
 			err := cs.insertDatasetDataForConceptGroups(ctx, conceptGroups)
 			So(err, ShouldBeNil)
@@ -1237,7 +1237,7 @@ func TestConceptSyncer_insertDatasetDataForConceptGroups(t *testing.T) {
 				},
 			}
 
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("opensearch error"))
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(errors.New("opensearch error"))
 
 			err := cs.insertDatasetDataForConceptGroups(ctx, conceptGroups)
 			So(err, ShouldNotBeNil)
@@ -1287,7 +1287,7 @@ func TestConceptSyncer_insertDatasetDataForConceptGroups_WithVector(t *testing.T
 
 			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
 			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
 
 			err := cs.insertDatasetDataForConceptGroups(ctx, conceptGroups)
 			So(err, ShouldBeNil)
@@ -1665,7 +1665,7 @@ func TestConceptSyncer_handleKnowledgeNetwork_Errors(t *testing.T) {
 			ata.EXPECT().GetAllActionTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ActionType{}, nil)
 			cga.EXPECT().GetAllConceptGroupsByKnID(ctx, knID, branch).Return(map[string]*interfaces.ConceptGroup{}, nil)
 			kna.EXPECT().UpdateKNDetail(ctx, knID, branch, gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("dataset error"))
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(errors.New("dataset error"))
 
 			err := cs.handleKnowledgeNetwork(ctx, kn, true)
 			So(err, ShouldNotBeNil)
@@ -1718,7 +1718,7 @@ func TestConceptSyncer_handleObjectTypes_Errors(t *testing.T) {
 
 			ota.EXPECT().GetAllObjectTypesByKnID(ctx, knID, branch).Return(objectTypes, nil)
 			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil)
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("dataset error"))
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(errors.New("dataset error"))
 
 			_, _, err := cs.handleObjectTypes(ctx, knID, branch)
 			So(err, ShouldNotBeNil)
@@ -1771,7 +1771,7 @@ func TestConceptSyncer_handleRelationTypes_Errors(t *testing.T) {
 
 			rta.EXPECT().GetAllRelationTypesByKnID(ctx, knID, branch).Return(relationTypes, nil)
 			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil)
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("dataset error"))
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(errors.New("dataset error"))
 
 			_, _, err := cs.handleRelationTypes(ctx, knID, branch)
 			So(err, ShouldNotBeNil)
@@ -1824,7 +1824,7 @@ func TestConceptSyncer_handleActionTypes_Errors(t *testing.T) {
 
 			ata.EXPECT().GetAllActionTypesByKnID(ctx, knID, branch).Return(actionTypes, nil)
 			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil)
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("dataset error"))
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(errors.New("dataset error"))
 
 			_, _, err := cs.handleActionTypes(ctx, knID, branch)
 			So(err, ShouldNotBeNil)
@@ -1875,7 +1875,7 @@ func TestConceptSyncer_handleConceptGroups_Errors(t *testing.T) {
 
 			cga.EXPECT().GetAllConceptGroupsByKnID(ctx, knID, branch).Return(conceptGroups, nil)
 			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil)
-			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("dataset error"))
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(errors.New("dataset error"))
 
 			_, _, err := cs.handleConceptGroups(ctx, knID, branch)
 			So(err, ShouldNotBeNil)

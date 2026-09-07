@@ -283,7 +283,7 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	// Proxy reads have already passed the dedicated proxy PEP. All other callers
 	// must be authorized here so every public query entrypoint has the same gate.
-	if !interfaces.IsTrustedProxyRead(ctx) && rds.rs != nil {
+	if !interfaces.IsTrustedProxyRead(ctx) {
 		if err := rds.rs.CheckResourcePermission(ctx, resource.ID, interfaces.OPERATION_TYPE_QUERY_DATA); err != nil {
 			return nil, err
 		}

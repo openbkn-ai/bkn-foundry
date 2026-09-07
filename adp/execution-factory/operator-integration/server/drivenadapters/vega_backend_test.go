@@ -120,31 +120,30 @@ func TestVegaBackendClient(t *testing.T) {
 			So(client.DeleteResource(ctx, "bkn_execution_factory_skill_dataset"), ShouldBeNil)
 		})
 
-		Convey("writes dataset documents", func() {
-			docs := []map[string]any{
-				{"_id": "skill-1", "skill_id": "skill-1", "name": "demo"},
-			}
-			writeHeaders := map[string]string{
-				"Content-Type":           "application/json",
-				"x-account-id":           "acc-1",
-				"x-account-type":         "user",
-				"X-HTTP-Method-Override": "POST",
-			}
-			httpClient.EXPECT().PostNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/resources/bkn_execution_factory_skill_dataset/data", writeHeaders, docs).
-				Return(http.StatusCreated, []byte(`{}`), nil)
+		Convey("writes a dataset document", func() {
+			document := map[string]any{"_id": "skill-1", "skill_id": "skill-1", "name": "demo"}
+			httpClient.EXPECT().PutNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/resources/bkn_execution_factory_skill_dataset/data/skill-1", headers, document).
+				Return(http.StatusOK, []byte(`{}`), nil)
 
-			err := client.WriteDatasetDocuments(ctx, "bkn_execution_factory_skill_dataset", docs)
+			err := client.WriteDatasetDocument(ctx, "bkn_execution_factory_skill_dataset", "skill-1", document)
 			So(err, ShouldBeNil)
 		})
 
-		Convey("updates dataset documents", func() {
-			docs := []map[string]any{
-				{"_id": "skill-1", "skill_id": "skill-1", "name": "demo-updated"},
-			}
-			httpClient.EXPECT().PutNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/resources/bkn_execution_factory_skill_dataset/data", headers, docs).
+		Convey("uses the explicit document id", func() {
+			document := map[string]any{"name": "demo"}
+			httpClient.EXPECT().PutNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/resources/bkn_execution_factory_skill_dataset/data/skill-1", headers, document).
 				Return(http.StatusOK, []byte(`{}`), nil)
 
-			err := client.UpdateDatasetDocuments(ctx, "bkn_execution_factory_skill_dataset", docs)
+			err := client.WriteDatasetDocument(ctx, "bkn_execution_factory_skill_dataset", "skill-1", document)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("writes a single dataset document", func() {
+			document := map[string]any{"_id": "skill-1", "skill_id": "skill-1", "name": "demo-updated"}
+			httpClient.EXPECT().PutNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/resources/bkn_execution_factory_skill_dataset/data/skill-1", headers, document).
+				Return(http.StatusOK, []byte(`{}`), nil)
+
+			err := client.WriteDatasetDocument(ctx, "bkn_execution_factory_skill_dataset", "skill-1", document)
 			So(err, ShouldBeNil)
 		})
 

@@ -544,9 +544,9 @@ func (cs *ConceptSyncer) insertDatasetDataForKN(ctx context.Context, kn *interfa
 	// Set document ID
 	doc["_id"] = docid
 
-	err = cs.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, []map[string]any{doc})
+	err = cs.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, docid, doc)
 	if err != nil {
-		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
+		logger.Errorf("WriteDatasetDocument error: %s", err.Error())
 		return err
 	}
 
@@ -629,10 +629,11 @@ func (cs *ConceptSyncer) insertDatasetDataForObjectTypes(ctx context.Context, ob
 		documents = append(documents, doc)
 	}
 
-	err := cs.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
-	if err != nil {
-		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
-		return err
+	for _, document := range documents {
+		if err := cs.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, document["_id"].(string), document); err != nil {
+			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
+			return err
+		}
 	}
 
 	return nil
@@ -718,10 +719,11 @@ func (cs *ConceptSyncer) insertDatasetDataForActionTypes(ctx context.Context, ac
 		documents = append(documents, doc)
 	}
 
-	err := cs.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
-	if err != nil {
-		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
-		return err
+	for _, document := range documents {
+		if err := cs.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, document["_id"].(string), document); err != nil {
+			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
+			return err
+		}
 	}
 
 	return nil
@@ -787,10 +789,11 @@ func (cs *ConceptSyncer) insertDatasetDataForRelationTypes(ctx context.Context, 
 		documents = append(documents, doc)
 	}
 
-	err := cs.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
-	if err != nil {
-		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
-		return err
+	for _, document := range documents {
+		if err := cs.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, document["_id"].(string), document); err != nil {
+			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
+			return err
+		}
 	}
 
 	return nil
@@ -856,10 +859,11 @@ func (cs *ConceptSyncer) insertDatasetDataForConceptGroups(ctx context.Context, 
 		documents = append(documents, doc)
 	}
 
-	err := cs.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
-	if err != nil {
-		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
-		return err
+	for _, document := range documents {
+		if err := cs.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, document["_id"].(string), document); err != nil {
+			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
+			return err
+		}
 	}
 
 	return nil
@@ -925,10 +929,11 @@ func (cs *ConceptSyncer) insertDatasetDataForRiskTypes(ctx context.Context, risk
 		documents = append(documents, doc)
 	}
 
-	err := cs.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
-	if err != nil {
-		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
-		return err
+	for _, document := range documents {
+		if err := cs.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, document["_id"].(string), document); err != nil {
+			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
+			return err
+		}
 	}
 
 	return nil
@@ -987,9 +992,11 @@ func (cs *ConceptSyncer) insertDatasetDataForMetrics(ctx context.Context, metric
 		documents = append(documents, doc)
 	}
 
-	if err := cs.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents); err != nil {
-		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
-		return err
+	for _, document := range documents {
+		if err := cs.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, document["_id"].(string), document); err != nil {
+			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
+			return err
+		}
 	}
 	return nil
 }

@@ -100,7 +100,7 @@ func TestSkillIndexSync(t *testing.T) {
 				So(req.Model, ShouldEqual, "text-embedding-v4")
 				return &interfaces.EmbeddingResp{Data: []interfaces.EmbeddingData{{Embedding: []float32{0.1}}}}, nil
 			})
-			mockVegaClient.EXPECT().WriteDatasetDocuments(gomock.Any(), executionFactorySkillDataset, gomock.Any()).Return(nil)
+			mockVegaClient.EXPECT().WriteDatasetDocument(gomock.Any(), executionFactorySkillDataset, gomock.Any(), gomock.Any()).Return(nil)
 			So(syncer.UpsertSkill(context.Background(), &model.SkillRepositoryDB{SkillID: "skill-1", Name: "demo"}), ShouldBeNil)
 			So(descriptionProperty.Features[1].FeatureType, ShouldEqual, "fulltext")
 		})
@@ -189,7 +189,7 @@ func TestSkillIndexSync(t *testing.T) {
 				So(req.Model, ShouldEqual, "text-embedding-v4")
 				return &interfaces.EmbeddingResp{Data: []interfaces.EmbeddingData{{Embedding: []float32{0.1}}}}, nil
 			})
-			mockVegaClient.EXPECT().WriteDatasetDocuments(gomock.Any(), executionFactorySkillDataset, gomock.Any()).Return(nil)
+			mockVegaClient.EXPECT().WriteDatasetDocument(gomock.Any(), executionFactorySkillDataset, gomock.Any(), gomock.Any()).Return(nil)
 			So(syncer.UpsertSkill(context.Background(), &model.SkillRepositoryDB{SkillID: "skill-1", Name: "demo"}), ShouldBeNil)
 		})
 
@@ -291,10 +291,8 @@ func TestSkillIndexSync(t *testing.T) {
 				return &interfaces.EmbeddingResp{Data: []interfaces.EmbeddingData{{Embedding: []float32{0.1}}}}, nil
 			})
 			writtenIDs := make([]string, 0, 2)
-			mockVegaClient.EXPECT().WriteDatasetDocuments(gomock.Any(), executionFactorySkillDataset, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, documents []map[string]any) error {
-				for _, document := range documents {
-					writtenIDs = append(writtenIDs, document["skill_id"].(string))
-				}
+			mockVegaClient.EXPECT().WriteDatasetDocument(gomock.Any(), executionFactorySkillDataset, gomock.Any(), gomock.Any()).Times(2).DoAndReturn(func(_ context.Context, _ string, _ string, document map[string]any) error {
+				writtenIDs = append(writtenIDs, document["skill_id"].(string))
 				return nil
 			})
 
@@ -505,7 +503,7 @@ func TestSkillIndexSync(t *testing.T) {
 		})
 
 		Convey("UpsertSkill writes complete document with _id and vector", func() {
-			var writtenDocs []map[string]any
+			var writtenDoc map[string]any
 			mockModelAPI := mocks.NewMockMFModelAPIClient(ctrl)
 			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
 			syncer := &skillIndexSync{
@@ -521,10 +519,10 @@ func TestSkillIndexSync(t *testing.T) {
 					Data: []interfaces.EmbeddingData{{Embedding: []float32{0.1, 0.2}}},
 				}, nil
 			})
-			mockVegaClient.EXPECT().WriteDatasetDocuments(gomock.Any(), executionFactorySkillDataset, gomock.Any()).
-				DoAndReturn(func(ctx context.Context, datasetID string, documents []map[string]any) error {
+			mockVegaClient.EXPECT().WriteDatasetDocument(gomock.Any(), executionFactorySkillDataset, gomock.Any(), gomock.Any()).
+				DoAndReturn(func(ctx context.Context, datasetID, _ string, document map[string]any) error {
 					So(datasetID, ShouldEqual, executionFactorySkillDataset)
-					writtenDocs = documents
+					writtenDoc = document
 					return nil
 				})
 
@@ -540,15 +538,14 @@ func TestSkillIndexSync(t *testing.T) {
 				UpdateTime:  200,
 			})
 			So(err, ShouldBeNil)
-			So(len(writtenDocs), ShouldEqual, 1)
-			So(writtenDocs[0]["_id"], ShouldEqual, "skill-1")
-			So(writtenDocs[0]["id"], ShouldEqual, "skill-1")
-			So(writtenDocs[0]["skill_id"], ShouldEqual, "skill-1")
-			So(writtenDocs[0]["name"], ShouldEqual, "demo")
-			So(writtenDocs[0]["description"], ShouldEqual, "desc")
-			So(writtenDocs[0]["version"], ShouldEqual, "1.0.0")
-			So(writtenDocs[0]["category"], ShouldEqual, "general")
-			So(writtenDocs[0]["_vector"], ShouldResemble, []float32{0.1, 0.2})
+			So(writtenDoc["_id"], ShouldEqual, "skill-1")
+			So(writtenDoc["id"], ShouldEqual, "skill-1")
+			So(writtenDoc["skill_id"], ShouldEqual, "skill-1")
+			So(writtenDoc["name"], ShouldEqual, "demo")
+			So(writtenDoc["description"], ShouldEqual, "desc")
+			So(writtenDoc["version"], ShouldEqual, "1.0.0")
+			So(writtenDoc["category"], ShouldEqual, "general")
+			So(writtenDoc["_vector"], ShouldResemble, []float32{0.1, 0.2})
 		})
 
 		Convey("DeleteSkill deletes dataset document by skill id", func() {
@@ -584,7 +581,7 @@ func TestSkillIndexSync(t *testing.T) {
 		})
 
 		Convey("UpdateSkill updates complete document with _id and vector", func() {
-			var updatedDocs []map[string]any
+			var updatedDoc map[string]any
 			mockModelAPI := mocks.NewMockMFModelAPIClient(ctrl)
 			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
 			syncer := &skillIndexSync{
@@ -600,10 +597,10 @@ func TestSkillIndexSync(t *testing.T) {
 					Data: []interfaces.EmbeddingData{{Embedding: []float32{0.3, 0.4}}},
 				}, nil
 			})
-			mockVegaClient.EXPECT().UpdateDatasetDocuments(gomock.Any(), executionFactorySkillDataset, gomock.Any()).
-				DoAndReturn(func(ctx context.Context, datasetID string, documents []map[string]any) error {
+			mockVegaClient.EXPECT().WriteDatasetDocument(gomock.Any(), executionFactorySkillDataset, gomock.Any(), gomock.Any()).
+				DoAndReturn(func(ctx context.Context, datasetID, _ string, document map[string]any) error {
 					So(datasetID, ShouldEqual, executionFactorySkillDataset)
-					updatedDocs = documents
+					updatedDoc = document
 					return nil
 				})
 
@@ -619,12 +616,11 @@ func TestSkillIndexSync(t *testing.T) {
 				UpdateTime:  201,
 			})
 			So(err, ShouldBeNil)
-			So(len(updatedDocs), ShouldEqual, 1)
-			So(updatedDocs[0]["_id"], ShouldEqual, "skill-2")
-			So(updatedDocs[0]["id"], ShouldEqual, "skill-2")
-			So(updatedDocs[0]["skill_id"], ShouldEqual, "skill-2")
-			So(updatedDocs[0]["version"], ShouldEqual, "1.0.1")
-			So(updatedDocs[0]["_vector"], ShouldResemble, []float32{0.3, 0.4})
+			So(updatedDoc["_id"], ShouldEqual, "skill-2")
+			So(updatedDoc["id"], ShouldEqual, "skill-2")
+			So(updatedDoc["skill_id"], ShouldEqual, "skill-2")
+			So(updatedDoc["version"], ShouldEqual, "1.0.1")
+			So(updatedDoc["_vector"], ShouldResemble, []float32{0.3, 0.4})
 		})
 	})
 }

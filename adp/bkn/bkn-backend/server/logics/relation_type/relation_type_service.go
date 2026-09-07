@@ -831,11 +831,12 @@ func (rts *relationTypeService) InsertDatasetData(ctx context.Context, relationT
 		documents = append(documents, doc)
 	}
 
-	err := rts.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
-	if err != nil {
-		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
-		span.SetStatus(codes.Error, "关系类概念索引写入失败")
-		return err
+	for _, document := range documents {
+		if err := rts.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, document["_id"].(string), document); err != nil {
+			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
+			span.SetStatus(codes.Error, "关系类概念索引写入失败")
+			return err
+		}
 	}
 
 	return nil

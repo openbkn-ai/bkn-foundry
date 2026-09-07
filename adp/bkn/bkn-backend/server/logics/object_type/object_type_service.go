@@ -1355,11 +1355,12 @@ func (ots *objectTypeService) InsertDatasetData(ctx context.Context, objectTypes
 		documents = append(documents, doc)
 	}
 
-	err := ots.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
-	if err != nil {
-		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
-		span.SetStatus(codes.Error, "对象类概念索引写入失败")
-		return err
+	for _, document := range documents {
+		if err := ots.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, document["_id"].(string), document); err != nil {
+			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
+			span.SetStatus(codes.Error, "对象类概念索引写入失败")
+			return err
+		}
 	}
 
 	return nil

@@ -1139,9 +1139,9 @@ func (cgs *conceptGroupService) InsertDatasetData(ctx context.Context, origConce
 	// Set document ID
 	doc["_id"] = docid
 
-	err = cgs.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, []map[string]any{doc})
+	err = cgs.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, docid, doc)
 	if err != nil {
-		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
+		logger.Errorf("WriteDatasetDocument error: %s", err.Error())
 		span.SetStatus(codes.Error, "概念分组概念索引写入失败")
 		return err
 	}

@@ -30,8 +30,8 @@ type VegaBackendAccess interface {
 	// QueryResourceData queries data from a vega Resource (same HTTP contract as dataset resource data API).
 	QueryResourceData(ctx context.Context, resourceID string, params *ResourceDataQueryParams) (*DatasetQueryResponse, error)
 
-	// WriteDatasetDocuments writes documents to dataset
-	WriteDatasetDocuments(ctx context.Context, datasetID string, documents []map[string]any) error
+	// WriteDatasetDocument writes one document to a dataset.
+	WriteDatasetDocument(ctx context.Context, datasetID, docID string, document map[string]any) error
 
 	// DeleteDatasetDocumentByID deletes a document by ID from dataset
 	DeleteDatasetDocumentByID(ctx context.Context, datasetID string, docID string) error

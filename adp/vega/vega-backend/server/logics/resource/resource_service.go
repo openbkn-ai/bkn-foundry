@@ -1663,9 +1663,6 @@ func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema
 }
 
 func (rs *resourceService) validateIndexConfigAnalyzers(ctx context.Context, schema []*interfaces.Property, indexConfig *interfaces.ResourceIndexConfig) error {
-	if rs.lim == nil {
-		return nil
-	}
 	defaultAnalyzer := ""
 	if indexConfig != nil {
 		defaultAnalyzer = strings.TrimSpace(indexConfig.DefaultFulltextAnalyzer)

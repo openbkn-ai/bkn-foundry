@@ -833,32 +833,18 @@ func (mr *MockVegaBackendClientMockRecorder) UpdateCatalog(ctx, req any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateCatalog", reflect.TypeOf((*MockVegaBackendClient)(nil).UpdateCatalog), ctx, req)
 }
 
-// UpdateDatasetDocuments mocks base method.
-func (m *MockVegaBackendClient) UpdateDatasetDocuments(ctx context.Context, datasetID string, documents []map[string]any) error {
+// WriteDatasetDocument mocks base method.
+func (m *MockVegaBackendClient) WriteDatasetDocument(ctx context.Context, datasetID, docID string, document map[string]any) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateDatasetDocuments", ctx, datasetID, documents)
+	ret := m.ctrl.Call(m, "WriteDatasetDocument", ctx, datasetID, docID, document)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// UpdateDatasetDocuments indicates an expected call of UpdateDatasetDocuments.
-func (mr *MockVegaBackendClientMockRecorder) UpdateDatasetDocuments(ctx, datasetID, documents any) *gomock.Call {
+// WriteDatasetDocument indicates an expected call of WriteDatasetDocument.
+func (mr *MockVegaBackendClientMockRecorder) WriteDatasetDocument(ctx, datasetID, docID, document any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDatasetDocuments", reflect.TypeOf((*MockVegaBackendClient)(nil).UpdateDatasetDocuments), ctx, datasetID, documents)
-}
-
-// WriteDatasetDocuments mocks base method.
-func (m *MockVegaBackendClient) WriteDatasetDocuments(ctx context.Context, datasetID string, documents []map[string]any) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WriteDatasetDocuments", ctx, datasetID, documents)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// WriteDatasetDocuments indicates an expected call of WriteDatasetDocuments.
-func (mr *MockVegaBackendClientMockRecorder) WriteDatasetDocuments(ctx, datasetID, documents any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteDatasetDocuments", reflect.TypeOf((*MockVegaBackendClient)(nil).WriteDatasetDocuments), ctx, datasetID, documents)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteDatasetDocument", reflect.TypeOf((*MockVegaBackendClient)(nil).WriteDatasetDocument), ctx, datasetID, docID, document)
 }
 
 // MockOSSGatewayBackendClient is a mock of OSSGatewayBackendClient interface.

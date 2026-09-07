@@ -129,10 +129,12 @@ func (ms *metricService) InsertDatasetData(ctx context.Context, metrics []*inter
 		documents = append(documents, doc)
 	}
 
-	if err := ms.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents); err != nil {
-		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
-		span.SetStatus(codes.Error, "指标概念索引写入失败")
-		return err
+	for _, document := range documents {
+		if err := ms.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, document["_id"].(string), document); err != nil {
+			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
+			span.SetStatus(codes.Error, "指标概念索引写入失败")
+			return err
+		}
 	}
 	return nil
 }

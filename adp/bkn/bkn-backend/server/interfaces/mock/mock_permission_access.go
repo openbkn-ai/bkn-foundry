@@ -70,34 +70,6 @@ func (mr *MockPermissionAccessMockRecorder) CreateResources(ctx, policies any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateResources", reflect.TypeOf((*MockPermissionAccess)(nil).CreateResources), ctx, policies)
 }
 
-// DeleteResources mocks base method.
-func (m *MockPermissionAccess) DeleteResources(ctx context.Context, resources []interfaces.PermissionResource) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteResources", ctx, resources)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// DeleteResources indicates an expected call of DeleteResources.
-func (mr *MockPermissionAccessMockRecorder) DeleteResources(ctx, resources any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteResources", reflect.TypeOf((*MockPermissionAccess)(nil).DeleteResources), ctx, resources)
-}
-
-// UpsertResourceParents mocks base method.
-func (m *MockPermissionAccess) UpsertResourceParents(ctx context.Context, resourceType, parentType string, items []interfaces.PermissionResourceParent) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpsertResourceParents", ctx, resourceType, parentType, items)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UpsertResourceParents indicates an expected call of UpsertResourceParents.
-func (mr *MockPermissionAccessMockRecorder) UpsertResourceParents(ctx, resourceType, parentType, items any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertResourceParents", reflect.TypeOf((*MockPermissionAccess)(nil).UpsertResourceParents), ctx, resourceType, parentType, items)
-}
-
 // DeleteResourceParents mocks base method.
 func (m *MockPermissionAccess) DeleteResourceParents(ctx context.Context, resourceType string, resourceIDs []string) error {
 	m.ctrl.T.Helper()
@@ -110,6 +82,20 @@ func (m *MockPermissionAccess) DeleteResourceParents(ctx context.Context, resour
 func (mr *MockPermissionAccessMockRecorder) DeleteResourceParents(ctx, resourceType, resourceIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteResourceParents", reflect.TypeOf((*MockPermissionAccess)(nil).DeleteResourceParents), ctx, resourceType, resourceIDs)
+}
+
+// DeleteResources mocks base method.
+func (m *MockPermissionAccess) DeleteResources(ctx context.Context, resources []interfaces.PermissionResource) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteResources", ctx, resources)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteResources indicates an expected call of DeleteResources.
+func (mr *MockPermissionAccessMockRecorder) DeleteResources(ctx, resources any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteResources", reflect.TypeOf((*MockPermissionAccess)(nil).DeleteResources), ctx, resources)
 }
 
 // FilterResources mocks base method.
@@ -125,4 +111,18 @@ func (m *MockPermissionAccess) FilterResources(ctx context.Context, filter inter
 func (mr *MockPermissionAccessMockRecorder) FilterResources(ctx, filter any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FilterResources", reflect.TypeOf((*MockPermissionAccess)(nil).FilterResources), ctx, filter)
+}
+
+// UpsertResourceParents mocks base method.
+func (m *MockPermissionAccess) UpsertResourceParents(ctx context.Context, resourceType, parentType string, items []interfaces.PermissionResourceParent) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertResourceParents", ctx, resourceType, parentType, items)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpsertResourceParents indicates an expected call of UpsertResourceParents.
+func (mr *MockPermissionAccessMockRecorder) UpsertResourceParents(ctx, resourceType, parentType, items any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertResourceParents", reflect.TypeOf((*MockPermissionAccess)(nil).UpsertResourceParents), ctx, resourceType, parentType, items)
 }

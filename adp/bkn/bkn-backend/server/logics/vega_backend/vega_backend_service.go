@@ -58,8 +58,8 @@ func (vbs *vegaBackendService) QueryResourceData(ctx context.Context, resourceID
 	return vbs.vba.QueryResourceData(ctx, resourceID, params)
 }
 
-func (vbs *vegaBackendService) WriteDatasetDocuments(ctx context.Context, datasetID string, documents []map[string]any) error {
-	return vbs.vba.WriteDatasetDocuments(ctx, datasetID, documents)
+func (vbs *vegaBackendService) WriteDatasetDocument(ctx context.Context, datasetID, docID string, document map[string]any) error {
+	return vbs.vba.WriteDatasetDocument(ctx, datasetID, docID, document)
 }
 
 func (vbs *vegaBackendService) DeleteDatasetDocumentByID(ctx context.Context, datasetID string, docID string) error {

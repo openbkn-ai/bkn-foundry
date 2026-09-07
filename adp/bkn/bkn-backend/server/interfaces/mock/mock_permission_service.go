@@ -69,34 +69,6 @@ func (mr *MockPermissionServiceMockRecorder) CreateResources(ctx, resources, ops
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateResources", reflect.TypeOf((*MockPermissionService)(nil).CreateResources), ctx, resources, ops)
 }
 
-// DeleteResources mocks base method.
-func (m *MockPermissionService) DeleteResources(ctx context.Context, resourceType string, ids []string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteResources", ctx, resourceType, ids)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// DeleteResources indicates an expected call of DeleteResources.
-func (mr *MockPermissionServiceMockRecorder) DeleteResources(ctx, resourceType, ids any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteResources", reflect.TypeOf((*MockPermissionService)(nil).DeleteResources), ctx, resourceType, ids)
-}
-
-// UpsertResourceParents mocks base method.
-func (m *MockPermissionService) UpsertResourceParents(ctx context.Context, resourceType, parentType string, items []interfaces.PermissionResourceParent) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpsertResourceParents", ctx, resourceType, parentType, items)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UpsertResourceParents indicates an expected call of UpsertResourceParents.
-func (mr *MockPermissionServiceMockRecorder) UpsertResourceParents(ctx, resourceType, parentType, items any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertResourceParents", reflect.TypeOf((*MockPermissionService)(nil).UpsertResourceParents), ctx, resourceType, parentType, items)
-}
-
 // DeleteResourceParents mocks base method.
 func (m *MockPermissionService) DeleteResourceParents(ctx context.Context, resourceType string, resourceIDs []string) error {
 	m.ctrl.T.Helper()
@@ -109,6 +81,20 @@ func (m *MockPermissionService) DeleteResourceParents(ctx context.Context, resou
 func (mr *MockPermissionServiceMockRecorder) DeleteResourceParents(ctx, resourceType, resourceIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteResourceParents", reflect.TypeOf((*MockPermissionService)(nil).DeleteResourceParents), ctx, resourceType, resourceIDs)
+}
+
+// DeleteResources mocks base method.
+func (m *MockPermissionService) DeleteResources(ctx context.Context, resourceType string, ids []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteResources", ctx, resourceType, ids)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteResources indicates an expected call of DeleteResources.
+func (mr *MockPermissionServiceMockRecorder) DeleteResources(ctx, resourceType, ids any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteResources", reflect.TypeOf((*MockPermissionService)(nil).DeleteResources), ctx, resourceType, ids)
 }
 
 // FilterResources mocks base method.
@@ -138,4 +124,18 @@ func (m *MockPermissionService) UpdateResource(ctx context.Context, resource int
 func (mr *MockPermissionServiceMockRecorder) UpdateResource(ctx, resource any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateResource", reflect.TypeOf((*MockPermissionService)(nil).UpdateResource), ctx, resource)
+}
+
+// UpsertResourceParents mocks base method.
+func (m *MockPermissionService) UpsertResourceParents(ctx context.Context, resourceType, parentType string, items []interfaces.PermissionResourceParent) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertResourceParents", ctx, resourceType, parentType, items)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpsertResourceParents indicates an expected call of UpsertResourceParents.
+func (mr *MockPermissionServiceMockRecorder) UpsertResourceParents(ctx, resourceType, parentType, items any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertResourceParents", reflect.TypeOf((*MockPermissionService)(nil).UpsertResourceParents), ctx, resourceType, parentType, items)
 }

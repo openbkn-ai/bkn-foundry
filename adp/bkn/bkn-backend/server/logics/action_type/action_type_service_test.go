@@ -790,7 +790,7 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 			err := service.InsertDatasetData(ctx, actionTypes)
 			So(err, ShouldBeNil)
@@ -803,7 +803,7 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
-		Convey("Failed when WriteDatasetDocuments returns error\n", func() {
+		Convey("Failed when WriteDatasetDocument returns error\n", func() {
 			actionTypes := []*interfaces.ActionType{
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
@@ -815,7 +815,7 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			err := service.InsertDatasetData(ctx, actionTypes)
 			So(err, ShouldNotBeNil)
@@ -859,7 +859,7 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 
 			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
 			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
-			vbaWithVector.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbaWithVector.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 			err := serviceWithVector.InsertDatasetData(ctx, actionTypes)
 			So(err, ShouldBeNil)
@@ -1096,7 +1096,7 @@ func Test_actionTypeService_UpdateActionType(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ata.EXPECT().UpdateActionType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 			err := service.UpdateActionType(ctx, nil, actionType, false)
 			So(err, ShouldBeNil)
@@ -1149,7 +1149,7 @@ func Test_actionTypeService_UpdateActionType(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ata.EXPECT().UpdateActionType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 			smock.ExpectCommit()
 			err := service.UpdateActionType(ctx, nil, actionType, false)
 			So(err, ShouldNotBeNil)
@@ -1203,7 +1203,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 			ata.EXPECT().CheckActionTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ata.EXPECT().CheckActionTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ata.EXPECT().CreateActionType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ps.EXPECT().CreateResources(gomock.Any(), []interfaces.PermissionResource{{
 				ID: "kn1/at1", Type: interfaces.RESOURCE_TYPE_ACTION_TYPE, Name: "at1",
 			}}, []string{interfaces.OPERATION_TYPE_EXECUTE}).Return(nil)
@@ -1224,7 +1224,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 			ata.EXPECT().CheckActionTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ata.EXPECT().CheckActionTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ata.EXPECT().CreateActionType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ps.EXPECT().CreateResources(gomock.Any(), []interfaces.PermissionResource{{
 				ID: "kn1/at1", Type: interfaces.RESOURCE_TYPE_ACTION_TYPE, Name: "at1",
 			}}, []string{interfaces.OPERATION_TYPE_EXECUTE}).Return(errors.New("safe write failed"))
@@ -1248,7 +1248,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 			ata.EXPECT().CheckActionTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ata.EXPECT().CheckActionTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ata.EXPECT().CreateActionType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ps.EXPECT().CreateResources(gomock.Any(), []interfaces.PermissionResource{{
 				ID: "kn1/at1", Type: interfaces.RESOURCE_TYPE_ACTION_TYPE, Name: "at1",
 			}}, []string{interfaces.OPERATION_TYPE_EXECUTE}).Return(nil)
@@ -1305,7 +1305,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 				atType := at.(*interfaces.ActionType)
 				So(atType.ATID, ShouldNotBeEmpty)
 			}).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ps.EXPECT().CreateResources(gomock.Any(), gomock.Any(), []string{interfaces.OPERATION_TYPE_EXECUTE}).
 				DoAndReturn(func(_ context.Context, resources []interfaces.PermissionResource, _ []string) error {
 					So(len(resources), ShouldEqual, 1)
@@ -1358,7 +1358,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 			ata.EXPECT().CheckActionTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("at1", true, nil).Times(2)
 			ata.EXPECT().CheckActionTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("at1", true, nil)
 			ata.EXPECT().UpdateActionType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
 			smock.ExpectCommit()
 			atIDs, err := service.CreateActionTypes(ctx, nil, actionTypes, mode, false)
 			So(err, ShouldBeNil)
@@ -1382,7 +1382,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 			ata.EXPECT().CheckActionTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ata.EXPECT().CheckActionTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ata.EXPECT().CreateActionType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 			smock.ExpectCommit()
 			atIDs, err := service.CreateActionTypes(ctx, nil, actionTypes, mode, false)
 			So(err, ShouldNotBeNil)

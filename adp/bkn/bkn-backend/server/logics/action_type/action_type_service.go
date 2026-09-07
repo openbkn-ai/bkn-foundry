@@ -990,11 +990,12 @@ func (ats *actionTypeService) InsertDatasetData(ctx context.Context, actionTypes
 		documents = append(documents, doc)
 	}
 
-	err := ats.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
-	if err != nil {
-		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
-		span.SetStatus(codes.Error, "行动类概念索引写入失败")
-		return err
+	for _, document := range documents {
+		if err := ats.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, document["_id"].(string), document); err != nil {
+			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
+			span.SetStatus(codes.Error, "行动类概念索引写入失败")
+			return err
+		}
 	}
 
 	return nil

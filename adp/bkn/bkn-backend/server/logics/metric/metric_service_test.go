@@ -327,7 +327,7 @@ func Test_metricService_UpdateMetric(t *testing.T) {
 			}
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ma.EXPECT().UpdateMetric(gomock.Any(), tx, gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
 
 			err := service.UpdateMetric(ctx, tx, req, false)
 			So(err, ShouldBeNil)
