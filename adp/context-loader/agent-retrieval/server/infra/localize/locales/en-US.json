@@ -147,7 +147,10 @@
     "ToolSearchRequestFailed": "The tool search request failed.",
     "ToolSearchResponseInvalid": "The tool search response is invalid.",
     "KnowledgeNetworkNotAuthorized": "You are not authorized to read this knowledge network.",
-    "ToolAuthorizationUnavailable": "Knowledge network authorization is not configured."
+    "ToolAuthorizationUnavailable": "Knowledge network authorization is not configured.",
+    "SkillScopeKnIDRequired": "kn_id is required: a Skill can only be read or run through a knowledge network that mounted it.",
+    "SkillNotMountedOnNetwork": "This Skill is not mounted on the knowledge network, so it cannot be read or run here. Mount it under SKILLs in the knowledge network first.",
+    "SkillAuthorizationUnavailable": "Knowledge network authorization is not configured."
   },
   "find_skills": {
     "no_bound_skills": "This knowledge network has no Skill mounted, so there is nothing to recall. Mount one under SKILLs in the knowledge network and try again.",

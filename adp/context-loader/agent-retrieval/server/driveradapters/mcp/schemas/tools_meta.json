@@ -173,7 +173,7 @@
     "group": "skill",
     "group_title": "技能",
     "order": 520,
-    "description": "浏览已发布技能（不需要知识网络上下文）。与 find_skills 互补：那条按对象类/实例召回，这条按名称或分类翻列表。拿到 skill_id 后用 get_skill_content 读 SKILL.md，用 read_skill_file 下钻附属文件，用 execute_skill 执行入口命令。"
+    "description": "浏览平台上已发布的 Skill（技能市场），**不受知识网络挂载约束**，列出的 Skill 不一定能在当前知识网络里读取或执行。要拿当前网络可用的 Skill 用 find_skills；本工具的结果是目录，不是权限。"
   },
   "get_skill_content": {
     "name": "get_skill_content",

@@ -9,8 +9,15 @@ info:
 
     召回只是入口。拿到 `skill_id` 之后：`get_skill_content` 读 SKILL.md 正文与包内
     文件清单，`read_skill_file` 按 `rel_path` 单取附属文件（渐进式加载，大文件不必
-    常驻上下文），`execute_skill` 在沙箱内执行 SKILL.md 声明的入口命令。不需要知识
-    网络上下文时用 `list_skills` 直接翻已发布技能列表。
+    常驻上下文），`execute_skill` 在沙箱内执行 SKILL.md 声明的入口命令。
+
+    **这三条都要求 `kn_id`，且 Skill 必须已挂载到该知识网络**（0.1.5 起）。收窄召回本身
+    不构成管控——`skill_id` 会活过产生它的那次调用，也能从 `list_skills` 拿到，所以范围
+    在读取与执行处各核一次。未挂载返回 400。
+
+    `list_skills` 是例外：它翻的是平台已发布技能目录，**不受挂载约束**，用于挂载之前先看
+    见平台上有什么。它的结果是目录，不是权限——列出的 Skill 不一定能在某个知识网络里读取
+    或执行。
 
     召回范围就是知识网络显式挂载的 Skill（知识网络的「SKILLs」）。未挂载任何 Skill 的
     网络召回结果为空，不存在「没配置就等于全网可见」的隐式回退。
@@ -655,13 +662,21 @@ components:
       type: object
       required:
         - bkn_context
+        - kn_id
         - skill_id
       properties:
         bkn_context:
           $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
+        kn_id:
+          type: string
+          description: |
+            知识网络 ID。Skill 必须已挂载到该网络才能读取/执行，未挂载返回 400。
+          example: kn_legal
         skill_id:
           type: string
-          description: Skill ID，取自 `find_skills` 或 `list_skills`。
+          description: |
+            Skill ID。取自 `find_skills`（当前网络已挂载的）或 `list_skills`（平台目录，
+            未必已挂载到本网络）。
           example: skill_contract_review
 
     GetSkillContentResponse:
@@ -711,11 +726,17 @@ components:
       type: object
       required:
         - bkn_context
+        - kn_id
         - skill_id
         - rel_path
       properties:
         bkn_context:
           $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
+        kn_id:
+          type: string
+          description: |
+            知识网络 ID。Skill 必须已挂载到该网络才能读取/执行，未挂载返回 400。
+          example: kn_legal
         skill_id:
           type: string
           example: skill_contract_review
@@ -753,11 +774,17 @@ components:
       type: object
       required:
         - bkn_context
+        - kn_id
         - skill_id
         - entry_shell
       properties:
         bkn_context:
           $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
+        kn_id:
+          type: string
+          description: |
+            知识网络 ID。Skill 必须已挂载到该网络才能读取/执行，未挂载返回 400。
+          example: kn_legal
         skill_id:
           type: string
           example: skill_contract_review

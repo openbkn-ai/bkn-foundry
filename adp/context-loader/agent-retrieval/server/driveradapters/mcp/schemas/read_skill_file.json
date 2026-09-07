@@ -2,9 +2,16 @@
   "input_schema": {
     "type": "object",
     "properties": {
+      "kn_id": {
+        "type": "string",
+        "description": "必填。知识网络 ID。Skill 必须已挂载到该网络才能读取/执行——skill_id 会活过产生它的那次调用，也可以从 list_skills 拿到，所以范围要在这里核。"
+      },
       "response_format": {
         "type": "string",
-        "enum": ["json", "toon"],
+        "enum": [
+          "json",
+          "toon"
+        ],
         "default": "toon",
         "description": "文本格式：json 或 toon，默认 toon"
       },
@@ -17,18 +24,39 @@
         "description": "技能包内相对路径，取自 get_skill_content 返回的 files[].rel_path。不接受包外路径（../ 会被拒）。"
       }
     },
-    "required": ["skill_id", "rel_path"]
+    "required": [
+      "kn_id",
+      "skill_id",
+      "rel_path"
+    ]
   },
   "output_schema": {
     "type": "object",
     "properties": {
-      "skill_id": { "type": "string" },
-      "rel_path": { "type": "string" },
-      "mime_type": { "type": "string" },
-      "file_type": { "type": "string" },
-      "content": { "type": "string", "description": "文件正文。二进制文件不返回此字段，只回 message 说明。" },
-      "truncated": { "type": "boolean", "description": "正文是否因超长被截断" },
-      "message": { "type": "string", "description": "补充说明（二进制未返回正文 / 截断提示）" }
+      "skill_id": {
+        "type": "string"
+      },
+      "rel_path": {
+        "type": "string"
+      },
+      "mime_type": {
+        "type": "string"
+      },
+      "file_type": {
+        "type": "string"
+      },
+      "content": {
+        "type": "string",
+        "description": "文件正文。二进制文件不返回此字段，只回 message 说明。"
+      },
+      "truncated": {
+        "type": "boolean",
+        "description": "正文是否因超长被截断"
+      },
+      "message": {
+        "type": "string",
+        "description": "补充说明（二进制未返回正文 / 截断提示）"
+      }
     }
   }
 }

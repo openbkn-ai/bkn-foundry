@@ -290,6 +290,7 @@
     "input_schema.properties.search_after.description": "Cursor paging, optional: pass the search_after value from the previous response verbatim to fetch the next page. It suits deep paging better than offset."
   },
   "execute_skill": {
+    "input_schema.properties.kn_id.description": "Required. Knowledge network id. The Skill must be mounted on this network to be read or run: a skill_id outlives the call that produced it and can be had from list_skills, so the scope is checked here.",
     "input_schema.properties.skill_id.description": "Skill id, taken from the skill_id of list_skills or find_skills.",
     "input_schema.properties.entry_shell.description": "The entry command to run inside the sandbox. It has to be one of the entries declared in SKILL.md; do not assemble an unrelated command. The skill package is already extracted into the working directory and the command runs relative to it.",
     "input_schema.properties.timeout.description": "Optional. Execution timeout in seconds.",
@@ -330,6 +331,7 @@
     "output_schema.properties.missing.description": "Ids that were requested but matched nothing"
   },
   "get_skill_content": {
+    "input_schema.properties.kn_id.description": "Required. Knowledge network id. The Skill must be mounted on this network to be read or run: a skill_id outlives the call that produced it and can be had from list_skills, so the scope is checked here.",
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
     "input_schema.properties.skill_id.description": "Skill id, taken from the skill_id of list_skills or find_skills.",
     "output_schema.properties.status.description": "Skill status, such as published",
@@ -380,6 +382,7 @@
     "output_schema.properties.overall_ms.description": "Duration in milliseconds"
   },
   "read_skill_file": {
+    "input_schema.properties.kn_id.description": "Required. Knowledge network id. The Skill must be mounted on this network to be read or run: a skill_id outlives the call that produced it and can be had from list_skills, so the scope is checked here.",
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
     "input_schema.properties.skill_id.description": "Skill id, taken from the skill_id of list_skills or find_skills.",
     "input_schema.properties.rel_path.description": "Path relative to the skill package root, taken from files[].rel_path of a get_skill_content response. A path outside the package is rejected, ../ included.",
