@@ -201,3 +201,101 @@ func TestImportSkipsToolInUnpublishedBox(t *testing.T) {
 		So(report.Skipped[0].Detail, ShouldContainSubstring, "unpublish")
 	})
 }
+
+// TestImportResolvesMCPTools covers the MCP arm of a cross-environment import. The server is
+// resolved by id then name; the tool is matched by name either way, because that is how MCP
+// addresses tools and there is no second id to fall back from.
+func TestImportResolvesMCPTools(t *testing.T) {
+	Convey("导入解析 MCP 工具", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		published := []*interfaces.MCPToolBrief{
+			{MCPID: "local-mcp", MCPName: "供应链 MCP",
+				MCPStatus: interfaces.EXEC_BOX_STATUS_PUBLISHED, Name: "expedite"},
+		}
+
+		Convey("同环境:mcp_id 命中", func() {
+			service, cba, aoa := newTestServiceWithFactory(t, ctrl)
+			aoa.EXPECT().ListMCPTools(gomock.Any(), "local-mcp").Return(published, nil).AnyTimes()
+			cba.EXPECT().GetBindingByCapability(gomock.Any(), gomock.Any(), gomock.Any(),
+				gomock.Any(), "local-mcp", "expedite").Return(nil, nil)
+			cba.EXPECT().CreateBindings(gomock.Any(), gomock.Nil(), gomock.Len(1)).Return(nil)
+
+			report, err := service.ImportCapabilities(context.Background(), "kn1", "main",
+				&bknsdk.BknCapabilities{MCPTools: []*bknsdk.BknCapabilityMCPTool{{
+					MCPID: "local-mcp", MCPName: "供应链 MCP", ToolName: "expedite",
+				}}})
+
+			So(err, ShouldBeNil)
+			So(report.Bound, ShouldEqual, 1)
+			So(report.Skipped, ShouldBeEmpty)
+		})
+
+		Convey("跨环境:mcp_id 落空后按服务名兜底", func() {
+			service, cba, aoa := newTestServiceWithFactory(t, ctrl)
+			aoa.EXPECT().ListMCPTools(gomock.Any(), "mcp-from-elsewhere").Return(nil, nil)
+			aoa.EXPECT().FindMCPServersByName(gomock.Any(), "供应链 MCP").
+				Return([]string{"local-mcp"}, nil)
+			aoa.EXPECT().ListMCPTools(gomock.Any(), "local-mcp").Return(published, nil).AnyTimes()
+			cba.EXPECT().GetBindingByCapability(gomock.Any(), gomock.Any(), gomock.Any(),
+				gomock.Any(), "local-mcp", "expedite").Return(nil, nil)
+			cba.EXPECT().CreateBindings(gomock.Any(), gomock.Nil(), gomock.Len(1)).Return(nil)
+
+			report, err := service.ImportCapabilities(context.Background(), "kn1", "main",
+				&bknsdk.BknCapabilities{MCPTools: []*bknsdk.BknCapabilityMCPTool{{
+					MCPID: "mcp-from-elsewhere", MCPName: "供应链 MCP", ToolName: "expedite",
+				}}})
+
+			So(err, ShouldBeNil)
+			So(report.Bound, ShouldEqual, 1)
+		})
+
+		Convey("服务重名时不猜", func() {
+			service, _, aoa := newTestServiceWithFactory(t, ctrl)
+			aoa.EXPECT().ListMCPTools(gomock.Any(), "gone").Return(nil, nil)
+			aoa.EXPECT().FindMCPServersByName(gomock.Any(), "重名").
+				Return([]string{"mcp-a", "mcp-b"}, nil)
+
+			report, err := service.ImportCapabilities(context.Background(), "kn1", "main",
+				&bknsdk.BknCapabilities{MCPTools: []*bknsdk.BknCapabilityMCPTool{{
+					MCPID: "gone", MCPName: "重名", ToolName: "expedite",
+				}}})
+
+			So(err, ShouldBeNil)
+			So(report.Bound, ShouldEqual, 0)
+			So(len(report.Skipped), ShouldEqual, 1)
+			So(report.Skipped[0].Reason, ShouldEqual, CapabilitySkipAmbiguous)
+		})
+
+		Convey("服务在但工具名不在", func() {
+			service, _, aoa := newTestServiceWithFactory(t, ctrl)
+			aoa.EXPECT().ListMCPTools(gomock.Any(), "local-mcp").Return(published, nil).AnyTimes()
+
+			report, err := service.ImportCapabilities(context.Background(), "kn1", "main",
+				&bknsdk.BknCapabilities{MCPTools: []*bknsdk.BknCapabilityMCPTool{{
+					MCPID: "local-mcp", ToolName: "no_such_tool",
+				}}})
+
+			So(err, ShouldBeNil)
+			So(len(report.Skipped), ShouldEqual, 1)
+			So(report.Skipped[0].Reason, ShouldEqual, CapabilitySkipNotFound)
+		})
+
+		Convey("服务未发布时跳过而非让整批失败", func() {
+			service, _, aoa := newTestServiceWithFactory(t, ctrl)
+			aoa.EXPECT().ListMCPTools(gomock.Any(), "draft-mcp").Return([]*interfaces.MCPToolBrief{
+				{MCPID: "draft-mcp", MCPStatus: "unpublish", Name: "expedite"},
+			}, nil).AnyTimes()
+
+			report, err := service.ImportCapabilities(context.Background(), "kn1", "main",
+				&bknsdk.BknCapabilities{MCPTools: []*bknsdk.BknCapabilityMCPTool{{
+					MCPID: "draft-mcp", ToolName: "expedite",
+				}}})
+
+			So(err, ShouldBeNil)
+			So(len(report.Skipped), ShouldEqual, 1)
+			So(report.Skipped[0].Reason, ShouldEqual, CapabilitySkipUnusable)
+		})
+	})
+}

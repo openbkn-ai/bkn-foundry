@@ -45,6 +45,12 @@ func (r *mcpRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
 	// Call the tool of the specified MCP Server POST /api/agent-operator-integration/internal-v1/mcp/proxy/{mcp_id}/tool/call.
 	mcpProxyGroup.POST("/:mcp_id/tool/call", r.MCPPrivateHandler.CallMCPTool)
 
+	// MCP Server listing GET /api/agent-operator-integration/internal-v1/mcp/list, mirroring
+	// /tool-box/list. A cross-environment import resolves a server by name when the id it was
+	// exported with belongs to another environment. Registered before the parameter route so
+	// "list" is not read as an mcp_id.
+	mcpGroup.GET("/list", r.MCPPrivateHandler.QueryMCPServerPage)
+
 	// MCP Server detail GET /api/agent-operator-integration/internal-v1/mcp/{mcp_id}.
 	// The tool listing above does not carry the server's own status, and a caller deciding
 	// whether a tool may be bound has to know whether its server is published — the same

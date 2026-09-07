@@ -41,6 +41,21 @@ func (m *MockAgentOperatorAccess) EXPECT() *MockAgentOperatorAccessMockRecorder 
 	return m.recorder
 }
 
+// FindMCPServersByName mocks base method.
+func (m *MockAgentOperatorAccess) FindMCPServersByName(ctx context.Context, name string) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FindMCPServersByName", ctx, name)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FindMCPServersByName indicates an expected call of FindMCPServersByName.
+func (mr *MockAgentOperatorAccessMockRecorder) FindMCPServersByName(ctx, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindMCPServersByName", reflect.TypeOf((*MockAgentOperatorAccess)(nil).FindMCPServersByName), ctx, name)
+}
+
 // FindSkillsByName mocks base method.
 func (m *MockAgentOperatorAccess) FindSkillsByName(ctx context.Context, name string) ([]*interfaces.SkillBrief, error) {
 	m.ctrl.T.Helper()

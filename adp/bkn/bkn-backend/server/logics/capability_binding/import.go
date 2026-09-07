@@ -77,6 +77,22 @@ func (cbs *capabilityBindingService) ImportCapabilities(ctx context.Context, knI
 		})
 	}
 
+	for _, mcpTool := range declared.MCPTools {
+		if mcpTool == nil {
+			continue
+		}
+		mcpID, toolName, skip := cbs.resolveMCPTool(ctx, mcpTool)
+		if skip != nil {
+			report.Skipped = append(report.Skipped, skip)
+			continue
+		}
+		entries = append(entries, &interfaces.AttachCapabilityEntry{
+			CapabilityType: interfaces.CAPABILITY_TYPE_MCP_TOOL,
+			OwnerID:        mcpID,
+			CapabilityID:   toolName,
+		})
+	}
+
 	if len(entries) == 0 {
 		return report, nil
 	}
@@ -239,4 +255,99 @@ func findTool(tools []*interfaces.ToolBrief, toolID string) *interfaces.ToolBrie
 		}
 	}
 	return nil
+}
+
+// resolveMCPTool resolves one declared MCP tool against this environment.
+//
+// Only the server is resolved by id then name; the tool itself is matched by name either way,
+// because that is how MCP addresses tools. A server name matching several servers is left
+// unresolved for the same reason a Skill name is: picking one would bind something the model did
+// not name.
+func (cbs *capabilityBindingService) resolveMCPTool(ctx context.Context,
+	declared *bknsdk.BknCapabilityMCPTool) (string, string, *interfaces.CapabilitySkip) {
+	toolName := strings.TrimSpace(declared.ToolName)
+	skip := func(reason, detail string) *interfaces.CapabilitySkip {
+		return &interfaces.CapabilitySkip{
+			CapabilityType: interfaces.CAPABILITY_TYPE_MCP_TOOL,
+			Name:           toolName,
+			BoxName:        declared.MCPName,
+			DeclaredID:     toolName,
+			DeclaredBoxID:  declared.MCPID,
+			Reason:         reason,
+			Detail:         detail,
+		}
+	}
+	if toolName == "" {
+		return "", "", skip(CapabilitySkipNotFound, "the declaration carries no tool name")
+	}
+
+	// The id first: in the environment that produced the file it names the server outright.
+	if mcpID := strings.TrimSpace(declared.MCPID); mcpID != "" {
+		tools, err := cbs.aoa.ListMCPTools(ctx, mcpID)
+		if err != nil {
+			return "", "", skip(CapabilitySkipUnreachable, err.Error())
+		}
+		if tools != nil {
+			if unusable := mcpUnusableReason(tools, toolName); unusable != "" {
+				return "", "", skip(CapabilitySkipUnusable, unusable)
+			}
+			for _, tool := range tools {
+				if tool.Name == toolName {
+					return mcpID, toolName, nil
+				}
+			}
+			return "", "", skip(CapabilitySkipNotFound,
+				fmt.Sprintf("mcp server %s exposes no tool named %q", mcpID, toolName))
+		}
+	}
+
+	if strings.TrimSpace(declared.MCPName) == "" {
+		return "", "", skip(CapabilitySkipNotFound,
+			"no mcp server with the declared id, and no server name to fall back to")
+	}
+	servers, err := cbs.aoa.FindMCPServersByName(ctx, declared.MCPName)
+	if err != nil {
+		return "", "", skip(CapabilitySkipUnreachable, err.Error())
+	}
+	switch len(servers) {
+	case 0:
+		return "", "", skip(CapabilitySkipNotFound,
+			fmt.Sprintf("no mcp server named %q", declared.MCPName))
+	case 1:
+	default:
+		return "", "", skip(CapabilitySkipAmbiguous,
+			fmt.Sprintf("%d mcp servers are named %q", len(servers), declared.MCPName))
+	}
+
+	tools, err := cbs.aoa.ListMCPTools(ctx, servers[0])
+	if err != nil {
+		return "", "", skip(CapabilitySkipUnreachable, err.Error())
+	}
+	if tools == nil {
+		return "", "", skip(CapabilitySkipNotFound,
+			fmt.Sprintf("mcp server %q disappeared between lookup and read", declared.MCPName))
+	}
+	if unusable := mcpUnusableReason(tools, toolName); unusable != "" {
+		return "", "", skip(CapabilitySkipUnusable, unusable)
+	}
+	for _, tool := range tools {
+		if tool.Name == toolName {
+			return servers[0], toolName, nil
+		}
+	}
+	return "", "", skip(CapabilitySkipNotFound,
+		fmt.Sprintf("mcp server %q exposes no tool named %q", declared.MCPName, toolName))
+}
+
+// mcpUnusableReason reports why a server's tools cannot be bound, or the empty string when they
+// can. It mirrors toolUnusableReason: resolution has to apply the same bar the mount enforces, or
+// one entry fails the whole batch and takes every cleanly resolved one with it.
+func mcpUnusableReason(tools []*interfaces.MCPToolBrief, toolName string) string {
+	if len(tools) == 0 {
+		return ""
+	}
+	if !mcpIsUsable(tools[0]) {
+		return fmt.Sprintf("mcp server %s is %s", tools[0].MCPID, tools[0].MCPStatus)
+	}
+	return ""
 }

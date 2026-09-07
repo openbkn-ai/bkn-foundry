@@ -106,4 +106,10 @@ type AgentOperatorAccess interface {
 	// missing container and an empty one are different answers, and only the caller knows which
 	// of the two is an error for what it is doing.
 	ListMCPTools(ctx context.Context, mcpID string) ([]*MCPToolBrief, error)
+
+	// FindMCPServersByName returns the ids of MCP Servers with exactly this name.
+	//
+	// Several can share a name, and the caller decides what to do about that: an import refuses
+	// to guess, because binding one of them would bind something the model did not name.
+	FindMCPServersByName(ctx context.Context, name string) ([]string, error)
 }
