@@ -156,8 +156,13 @@ func (s *knToolsService) SearchTools(ctx context.Context, req *SearchToolsReq) (
 	// MCP tools are appended rather than ranked with the rest: the ranking endpoint indexes
 	// toolbox tools and has no notion of an MCP Server, so these are listed and filtered here.
 	// Ranked hits come first so a query that matched something keeps its order at the top.
-	matched = append(matched, s.describeMCPTools(ctx, mcpRefs, query, limit-len(matched))...)
-	total := len(hits) + len(mcpRefs)
+	//
+	// mcpMatched counts what the query kept, not what is mounted. Counting the mounted set would
+	// make total exceed the returned page whenever a query filtered anything out, and the caller
+	// would be told its results were truncated and to narrow a query that was already working.
+	mcpEntries, mcpMatched := s.describeMCPTools(ctx, mcpRefs, query, limit-len(matched))
+	matched = append(matched, mcpEntries...)
+	total := len(hits) + mcpMatched
 	resp := &SearchToolsResp{Tools: matched, TotalMatched: total}
 	if total > len(matched) {
 		resp.Truncated = true
@@ -272,18 +277,18 @@ type mcpRef struct {
 // Matching is literal substring over name and description, the same interim stand-in the toolbox
 // side used before it had an index. One detail call per tool, which is why the caller passes the
 // remaining budget rather than the whole page size.
+// It returns the entries that fit the budget and how many matched the query in total, so the
+// caller can tell "filtered out" apart from "did not fit".
 func (s *knToolsService) describeMCPTools(ctx context.Context, refs []mcpRef, query string,
-	budget int) []ToolEntry {
-	if len(refs) == 0 || budget <= 0 {
-		return nil
+	budget int) ([]ToolEntry, int) {
+	if len(refs) == 0 {
+		return nil, 0
 	}
 	needle := strings.ToLower(strings.TrimSpace(query))
 
 	entries := make([]ToolEntry, 0, len(refs))
+	matched := 0
 	for _, ref := range refs {
-		if len(entries) >= budget {
-			break
-		}
 		detail, err := s.operator.GetMCPToolDetail(ctx, &interfaces.GetMCPToolDetailRequest{
 			McpID: ref.MCPID, ToolName: ref.ToolName,
 		})
@@ -297,6 +302,11 @@ func (s *knToolsService) describeMCPTools(ctx context.Context, refs []mcpRef, qu
 			!strings.Contains(strings.ToLower(detail.Description), needle) {
 			continue
 		}
+		matched++
+		if len(entries) >= budget {
+			// Counted but not returned: that is what makes the truncation flag mean something.
+			continue
+		}
 		entries = append(entries, ToolEntry{
 			ToolID:      ref.ToolName,
 			ToolboxID:   ref.MCPID,
@@ -305,7 +315,7 @@ func (s *knToolsService) describeMCPTools(ctx context.Context, refs []mcpRef, qu
 			InputSchema: detail.InputSchema,
 		})
 	}
-	return entries
+	return entries, matched
 }
 
 func (s *knToolsService) describeHits(ctx context.Context, hits []interfaces.ToolHit, limit int) []ToolEntry {
@@ -408,13 +418,27 @@ func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (
 	// decided here, by the mount that authorized it, rather than guessed from the ids — the two
 	// id spaces do not overlap in any way a caller could rely on.
 	for _, ref := range mcpRefs {
-		if ref.MCPID == toolboxID && ref.ToolName == toolID {
-			return s.operator.CallMCPTool(ctx, &interfaces.CallMCPToolRequest{
-				McpID:      ref.MCPID,
-				ToolName:   ref.ToolName,
-				Parameters: req.Arguments,
-			})
+		if ref.MCPID != toolboxID || ref.ToolName != toolID {
+			continue
 		}
+		// The mount says this network may use the tool; it does not say the tool still works.
+		// A server published at mount time can be taken offline afterwards — bkn-backend then
+		// refuses new bindings, but the existing one survives, and the MCP proxy performs no
+		// status check of its own, so without this the call would still run.
+		//
+		// The server is asked directly. Its tool listing is not a proxy for this question: that
+		// endpoint answers whatever the server's state, so an offline server still lists every
+		// tool it had.
+		usable, err := s.operator.MCPServerIsUsable(ctx, ref.MCPID)
+		if err != nil || !usable {
+			return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
+				infraErr.LocalizedDetail(ctx, "ToolNotExecutable"))
+		}
+		return s.operator.CallMCPTool(ctx, &interfaces.CallMCPToolRequest{
+			McpID:      ref.MCPID,
+			ToolName:   ref.ToolName,
+			Parameters: req.Arguments,
+		})
 	}
 
 	if !containsRef(refs, toolboxID+"/"+toolID) {

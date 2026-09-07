@@ -287,17 +287,15 @@ func (cbs *capabilityBindingService) resolveMCPTool(ctx context.Context,
 		if err != nil {
 			return "", "", skip(CapabilitySkipUnreachable, err.Error())
 		}
-		if tools != nil {
+		// A hit only counts when the server actually exposes the named tool. An id that resolves
+		// to some other environment's server — ids collide across environments, which is the
+		// whole reason names are written alongside them — falls through to the name below rather
+		// than failing here, matching how resolveFunction treats a box that lacks the tool.
+		if hasMCPTool(tools, toolName) {
 			if unusable := mcpUnusableReason(tools, toolName); unusable != "" {
 				return "", "", skip(CapabilitySkipUnusable, unusable)
 			}
-			for _, tool := range tools {
-				if tool.Name == toolName {
-					return mcpID, toolName, nil
-				}
-			}
-			return "", "", skip(CapabilitySkipNotFound,
-				fmt.Sprintf("mcp server %s exposes no tool named %q", mcpID, toolName))
+			return mcpID, toolName, nil
 		}
 	}
 
@@ -327,16 +325,24 @@ func (cbs *capabilityBindingService) resolveMCPTool(ctx context.Context,
 		return "", "", skip(CapabilitySkipNotFound,
 			fmt.Sprintf("mcp server %q disappeared between lookup and read", declared.MCPName))
 	}
+	if !hasMCPTool(tools, toolName) {
+		return "", "", skip(CapabilitySkipNotFound,
+			fmt.Sprintf("mcp server %q exposes no tool named %q", declared.MCPName, toolName))
+	}
 	if unusable := mcpUnusableReason(tools, toolName); unusable != "" {
 		return "", "", skip(CapabilitySkipUnusable, unusable)
 	}
+	return servers[0], toolName, nil
+}
+
+// hasMCPTool reports whether the listing exposes a tool by this exact name.
+func hasMCPTool(tools []*interfaces.MCPToolBrief, toolName string) bool {
 	for _, tool := range tools {
-		if tool.Name == toolName {
-			return servers[0], toolName, nil
+		if tool != nil && tool.Name == toolName {
+			return true
 		}
 	}
-	return "", "", skip(CapabilitySkipNotFound,
-		fmt.Sprintf("mcp server %q exposes no tool named %q", declared.MCPName, toolName))
+	return false
 }
 
 // mcpUnusableReason reports why a server's tools cannot be bound, or the empty string when they

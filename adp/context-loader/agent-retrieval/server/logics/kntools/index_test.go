@@ -35,6 +35,7 @@ type fakeOperator struct {
 	mcpTools       map[string]*interfaces.GetMCPToolDetailResponse
 	mcpDetailCalls []string
 	gotMCPCall     *interfaces.CallMCPToolRequest
+	mcpUnusable    map[string]bool
 }
 
 func (f *fakeOperator) SearchBoundTools(
@@ -58,6 +59,15 @@ func (f *fakeOperator) ListPublishedTools(
 		return nil, err
 	}
 	return f.toolsByBox[req.ToolboxID], nil
+}
+
+func (f *fakeOperator) MCPServerIsUsable(_ context.Context, mcpID string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.mcpUnusable == nil {
+		return true, nil
+	}
+	return !f.mcpUnusable[mcpID], nil
 }
 
 func (f *fakeOperator) GetMCPToolDetail(
@@ -545,4 +555,62 @@ func TestMCPToolsAreSearchableAndCallable(t *testing.T) {
 			t.Fatalf("expected no match, got %+v", miss.Tools)
 		}
 	})
+}
+
+// TestOfflineMCPServerIsNotExecutable pins the second check on the MCP path. The mount says this
+// network may use the tool; it does not say the tool still works. A server published at mount
+// time can be taken offline afterwards — bkn-backend then refuses new bindings, but the existing
+// one survives, and the MCP proxy performs no status check of its own.
+func TestOfflineMCPServerIsNotExecutable(t *testing.T) {
+	op := &fakeOperator{
+		mcpTools: map[string]*interfaces.GetMCPToolDetailResponse{
+			// Still listed: an offline server's tool listing answers exactly as before, which is
+			// why the listing cannot stand in for the status check.
+			"mcp-1/expedite": {Name: "expedite"},
+		},
+		mcpUnusable: map[string]bool{"mcp-1": true},
+		execResp:    map[string]any{"ok": true},
+	}
+	bkn := &fakeBkn{refs: mcpToolRefs("mcp-1/expedite")}
+	svc := NewKnToolsServiceWith(op, bkn, &fakeKnAuthz{})
+
+	_, err := svc.ExecuteTool(context.Background(), &ExecuteToolReq{
+		KnID: "kn1", ToolboxID: "mcp-1", ToolID: "expedite",
+	})
+
+	if err == nil {
+		t.Fatal("下架的 MCP Server，其存量绑定不该还能执行")
+	}
+	if op.gotMCPCall != nil {
+		t.Fatal("不可执行的工具不该到达 MCP proxy")
+	}
+}
+
+// TestMCPTruncationCountsMatchesNotMounts: total is what the query kept, not what is mounted.
+// Counting the mounted set would tell a caller its results were truncated and to narrow a query
+// that was already working.
+func TestMCPTruncationCountsMatchesNotMounts(t *testing.T) {
+	op := &fakeOperator{
+		mcpTools: map[string]*interfaces.GetMCPToolDetailResponse{
+			"mcp-1/expedite":   {Name: "expedite", Description: "催单"},
+			"mcp-1/substitute": {Name: "substitute", Description: "替换"},
+			"mcp-1/cancel":     {Name: "cancel", Description: "取消"},
+		},
+	}
+	bkn := &fakeBkn{refs: mcpToolRefs("mcp-1/expedite", "mcp-1/substitute", "mcp-1/cancel")}
+	svc := NewKnToolsServiceWith(op, bkn, &fakeKnAuthz{})
+
+	resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "催单"})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.Tools) != 1 {
+		t.Fatalf("expected one match, got %+v", resp.Tools)
+	}
+	if resp.TotalMatched != 1 {
+		t.Fatalf("total 应当是命中数而非挂载数，got %d", resp.TotalMatched)
+	}
+	if resp.Truncated {
+		t.Fatal("没有截断却报了截断，调用方会去缩小一个本来就好用的 query")
+	}
 }

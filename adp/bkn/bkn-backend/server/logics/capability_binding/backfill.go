@@ -270,8 +270,16 @@ func (cbs *capabilityBindingService) backfillMCPTools(ctx context.Context,
 			if withDetail {
 				binding.Description = tool.Description
 			}
-			// An MCP tool has no status of its own; it is callable exactly when its server is.
-			binding.Status = serverStatus
+			// An MCP tool has no status of its own; it is callable exactly when its server is
+			// published. The value written here is the tool-level vocabulary the function side
+			// uses (enabled/disabled), not the server's lifecycle state: a reader filtering on
+			// "enabled" would otherwise treat every healthy MCP tool as unusable, and the
+			// server's own state is already carried by owner metadata.
+			if serverStatus == interfaces.EXEC_BOX_STATUS_PUBLISHED {
+				binding.Status = interfaces.EXEC_TOOL_STATUS_ENABLED
+			} else {
+				binding.Status = interfaces.EXEC_TOOL_STATUS_DISABLED
+			}
 		}
 	}
 	return available

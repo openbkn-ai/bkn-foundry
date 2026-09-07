@@ -268,6 +268,29 @@ func TestImportResolvesMCPTools(t *testing.T) {
 			So(report.Skipped[0].Reason, ShouldEqual, CapabilitySkipAmbiguous)
 		})
 
+		Convey("id 撞上了别的服务时按名字继续找", func() {
+			service, cba, aoa := newTestServiceWithFactory(t, ctrl)
+			// Same id exists here, but it is a different server that lacks the tool.
+			aoa.EXPECT().ListMCPTools(gomock.Any(), "collides").Return([]*interfaces.MCPToolBrief{
+				{MCPID: "collides", MCPStatus: interfaces.EXEC_BOX_STATUS_PUBLISHED, Name: "something_else"},
+			}, nil).AnyTimes()
+			aoa.EXPECT().FindMCPServersByName(gomock.Any(), "供应链 MCP").
+				Return([]string{"local-mcp"}, nil)
+			aoa.EXPECT().ListMCPTools(gomock.Any(), "local-mcp").Return(published, nil).AnyTimes()
+			cba.EXPECT().GetBindingByCapability(gomock.Any(), gomock.Any(), gomock.Any(),
+				gomock.Any(), "local-mcp", "expedite").Return(nil, nil)
+			cba.EXPECT().CreateBindings(gomock.Any(), gomock.Nil(), gomock.Len(1)).Return(nil)
+
+			report, err := service.ImportCapabilities(context.Background(), "kn1", "main",
+				&bknsdk.BknCapabilities{MCPTools: []*bknsdk.BknCapabilityMCPTool{{
+					MCPID: "collides", MCPName: "供应链 MCP", ToolName: "expedite",
+				}}})
+
+			So(err, ShouldBeNil)
+			So(report.Bound, ShouldEqual, 1)
+			So(report.Skipped, ShouldBeEmpty)
+		})
+
 		Convey("服务在但工具名不在", func() {
 			service, _, aoa := newTestServiceWithFactory(t, ctrl)
 			aoa.EXPECT().ListMCPTools(gomock.Any(), "local-mcp").Return(published, nil).AnyTimes()

@@ -13,6 +13,9 @@ import "context"
 const (
 	// EXEC_TOOL_STATUS_ENABLED is the per-tool switch inside a tool box.
 	EXEC_TOOL_STATUS_ENABLED = "enabled"
+	// EXEC_TOOL_STATUS_DISABLED is its opposite. An MCP tool has no switch of its own and is
+	// reported in this same vocabulary, so one reader can filter every capability type alike.
+	EXEC_TOOL_STATUS_DISABLED = "disabled"
 	// EXEC_BOX_STATUS_PUBLISHED is the tool box lifecycle state that makes its tools callable.
 	EXEC_BOX_STATUS_PUBLISHED = "published"
 	// EXEC_SKILL_STATUS_PUBLISHED is the skill lifecycle state that makes it loadable.
