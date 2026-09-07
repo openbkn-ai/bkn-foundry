@@ -14,6 +14,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 
+	"bkn-backend/common/maskrule"
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 )
@@ -818,6 +819,26 @@ func Test_ValidateDataProperty(t *testing.T) {
 			}
 			err := ValidateDataProperty(ctx, prop, true)
 			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Success with valid mask rule\n", func() {
+			prop := &interfaces.DataProperty{
+				Name:        "email",
+				Type:        "string",
+				DisplayName: "Email",
+				MaskRule:    &maskrule.Rule{Kind: maskrule.KindFixed, Replacement: "保密"},
+			}
+			So(ValidateDataProperty(ctx, prop, true), ShouldBeNil)
+		})
+
+		Convey("Failed with mask rule type mismatch\n", func() {
+			prop := &interfaces.DataProperty{
+				Name:        "payload",
+				Type:        "json",
+				DisplayName: "Payload",
+				MaskRule:    &maskrule.Rule{Kind: maskrule.KindFixed, Replacement: "*"},
+			}
+			So(ValidateDataProperty(ctx, prop, true), ShouldNotBeNil)
 		})
 
 		Convey("Failed with empty mapped field name\n", func() {

@@ -13,6 +13,7 @@ import (
 
 	bknsdk "bkn-backend/bkn-specification/bkn"
 	cond "bkn-backend/common/condition"
+	"bkn-backend/common/maskrule"
 	"bkn-backend/interfaces"
 )
 
@@ -246,7 +247,7 @@ func Test_ToADPObjectType(t *testing.T) {
 				DisplayKey:     "name",
 				IncrementalKey: "ts",
 				DataProperties: []*bknsdk.DataProperty{
-					{Name: "dp1", DisplayName: "DP1", Type: "string", Description: "ddp", MappedField: "col1"},
+					{Name: "dp1", DisplayName: "DP1", Type: "string", Description: "ddp", MappedField: "col1", MaskRule: &maskrule.Rule{Kind: maskrule.KindFixed, Replacement: "*"}},
 					{Name: "dp2", Type: "int"},
 				},
 				LogicProperties: []*bknsdk.LogicProperty{
@@ -271,6 +272,7 @@ func Test_ToADPObjectType(t *testing.T) {
 			So(adp.DisplayKey, ShouldEqual, "name")
 			So(len(adp.DataProperties), ShouldEqual, 2)
 			So(adp.DataProperties[0].MappedField.Name, ShouldEqual, "col1")
+			So(adp.DataProperties[0].MaskRule.Kind, ShouldEqual, maskrule.KindFixed)
 			So(adp.DataProperties[1].MappedField, ShouldBeNil)
 			So(len(adp.LogicProperties), ShouldEqual, 2)
 			So(adp.LogicProperties[0].DataSource.ID, ShouldEqual, "ds2")
@@ -307,7 +309,7 @@ func Test_ToBKNObjectType(t *testing.T) {
 					PrimaryKeys: []string{"id"}, DisplayKey: "name", IncrementalKey: "ts",
 					DataSource: &interfaces.ResourceInfo{ID: "ds1", Type: "mysql", Name: "DS1"},
 					DataProperties: []*interfaces.DataProperty{
-						{Name: "dp1", MappedField: &interfaces.Field{Name: "col1"}},
+						{Name: "dp1", MappedField: &interfaces.Field{Name: "col1"}, MaskRule: &maskrule.Rule{Kind: maskrule.KindFixed, Replacement: "*"}},
 						{Name: "dp2"},
 					},
 					LogicProperties: []*interfaces.LogicProperty{
@@ -331,6 +333,7 @@ func Test_ToBKNObjectType(t *testing.T) {
 			So(bknObj.PrimaryKeys, ShouldResemble, []string{"id"})
 			So(len(bknObj.DataProperties), ShouldEqual, 2)
 			So(bknObj.DataProperties[0].MappedField, ShouldEqual, "col1")
+			So(bknObj.DataProperties[0].MaskRule.Kind, ShouldEqual, maskrule.KindFixed)
 			So(bknObj.DataProperties[1].MappedField, ShouldBeEmpty)
 			So(len(bknObj.LogicProperties), ShouldEqual, 2)
 			So(bknObj.LogicProperties[0].DataSource.ID, ShouldEqual, "ds2")

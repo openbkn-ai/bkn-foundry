@@ -286,6 +286,7 @@ func ToADPObjectType(knID string, branch string, bknObj *bknsdk.BknObjectType) *
 			DisplayName: dp.DisplayName,
 			Type:        dp.Type,
 			Comment:     dp.Description,
+			MaskRule:    dp.MaskRule,
 		}
 
 		if dp.MappedField != "" {
@@ -373,6 +374,7 @@ func ToBKNObjectType(adpObj *interfaces.ObjectType) *bknsdk.BknObjectType {
 			DisplayName: adpDP.DisplayName,
 			Type:        adpDP.Type,
 			Description: adpDP.Comment,
+			MaskRule:    adpDP.MaskRule,
 		}
 
 		if adpDP.MappedField != nil {

@@ -7,9 +7,12 @@
 package bkn
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
+
+	"bkn-backend/common/maskrule"
 
 	"gopkg.in/yaml.v3"
 )
@@ -259,19 +262,27 @@ func parseDataSource(sectionText string) *ResourceInfo {
 	}
 }
 
-func parseDataProperties(sectionText string) []*DataProperty {
+func parseDataProperties(sectionText string) ([]*DataProperty, error) {
 	rows := parseTable(strings.Split(sectionText, "\n"))
 	var props []*DataProperty
 	for _, row := range rows {
-		props = append(props, &DataProperty{
+		property := &DataProperty{
 			Name:        row["Name"],
 			DisplayName: row["Display Name"],
 			Type:        row["Type"],
 			Description: row["Description"],
 			MappedField: row["Mapped Field"],
-		})
+		}
+		if rawRule := strings.TrimSpace(row["Mask Rule"]); rawRule != "" {
+			var rule maskrule.Rule
+			if err := json.Unmarshal([]byte(rawRule), &rule); err != nil {
+				return nil, fmt.Errorf("data property %q has invalid Mask Rule JSON: %w", property.Name, err)
+			}
+			property.MaskRule = &rule
+		}
+		props = append(props, property)
 	}
-	return props
+	return props, nil
 }
 
 func parseLogicProperties(sectionText string) []*LogicProperty {
@@ -510,7 +521,10 @@ func ParseObjectTypeFile(text string, sourcePath string) (*BknObjectType, error)
 		obj.DataSource = parseDataSource(s)
 	}
 	if s, ok := sections["Data Properties"]; ok {
-		obj.DataProperties = parseDataProperties(s)
+		obj.DataProperties, err = parseDataProperties(s)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if s, ok := sections["Logic Properties"]; ok {
 		obj.LogicProperties = parseLogicProperties(s)

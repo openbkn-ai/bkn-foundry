@@ -18,6 +18,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
+	"bkn-backend/common/maskrule"
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 )
@@ -425,12 +426,16 @@ func ValidateDataProperty(ctx context.Context, dataProperty *interfaces.DataProp
 			WithErrorDetails(objectTypeInvalidDetail(ctx, "DataPropertyDisplayNameTooLong", map[string]any{"property": dataProperty.Name, "limit": interfaces.OBJECT_NAME_MAX_LENGTH}))
 	}
 
-	// When data_property.type is set, it must be a supported type: integer, unsigned integer, float, decimal, string, text, date, timestamp, time, datetime, boolean, binary, json, vector, point, shape, or ip.
+	// When data_property.type is set, it must be a supported type: integer, unsigned integer, float, decimal, string, keyword, text, date, timestamp, time, datetime, boolean, binary, json, vector, point, shape, or ip.
 	if dataProperty.Type != "" {
 		if !interfaces.ValidDataPropertyTypes[dataProperty.Type] {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 				WithErrorDetails(objectTypeInvalidDetail(ctx, "DataPropertyTypeInvalid", map[string]any{"property": dataProperty.Name, "type": dataProperty.Type}))
 		}
+	}
+	if err := maskrule.Validate(dataProperty.Type, dataProperty.MaskRule); err != nil {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+			WithErrorDetails(objectTypeInvalidDetail(ctx, "DataPropertyMaskRuleInvalid", map[string]any{"property": dataProperty.Name, "reason": err.Error()}))
 	}
 
 	// When data_property.mapped_field is set, name is required.

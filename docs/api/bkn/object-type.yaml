@@ -1712,6 +1712,9 @@ components:
         mapped_field:
           $ref: "#/components/schemas/ViewField"
           description: Field name mapped to the data source
+        mask_rule:
+          $ref: "#/components/schemas/MaskRule"
+          description: Optional masking rule used when the effective property access level is masked.
         condition_operations:
           description: |
             Supported filter operations for this property. They are inferred from the property type, such as
@@ -1722,6 +1725,99 @@ components:
           type: array
           items:
             type: string
+    MaskRule:
+      description: |
+        Strongly typed masking rule for a data property. String rules keep string output, round keeps JSON number
+        output, and date_granularity keeps the original date/time string representation. This field is optional;
+        logic properties and unsupported data-property types cannot configure a masking rule.
+      oneOf:
+        - $ref: "#/components/schemas/FixedMaskRule"
+        - $ref: "#/components/schemas/PartialMaskRule"
+        - $ref: "#/components/schemas/EmailMaskRule"
+        - $ref: "#/components/schemas/RoundMaskRule"
+        - $ref: "#/components/schemas/DateGranularityMaskRule"
+      discriminator:
+        propertyName: kind
+        mapping:
+          fixed: "#/components/schemas/FixedMaskRule"
+          partial: "#/components/schemas/PartialMaskRule"
+          email: "#/components/schemas/EmailMaskRule"
+          round: "#/components/schemas/RoundMaskRule"
+          date_granularity: "#/components/schemas/DateGranularityMaskRule"
+    FixedMaskRule:
+      type: object
+      additionalProperties: false
+      required: [kind, replacement]
+      properties:
+        kind:
+          type: string
+          enum: [fixed]
+        replacement:
+          $ref: "#/components/schemas/MaskReplacement"
+    PartialMaskRule:
+      type: object
+      additionalProperties: false
+      required: [kind, keep_start, keep_end, replacement]
+      properties:
+        kind:
+          type: string
+          enum: [partial]
+        keep_start:
+          type: integer
+          minimum: 0
+          maximum: 64
+        keep_end:
+          type: integer
+          minimum: 0
+          maximum: 64
+        replacement:
+          $ref: "#/components/schemas/MaskReplacement"
+    EmailMaskRule:
+      type: object
+      additionalProperties: false
+      required: [kind, local_keep_start, preserve_domain, replacement]
+      properties:
+        kind:
+          type: string
+          enum: [email]
+        local_keep_start:
+          type: integer
+          minimum: 0
+          maximum: 64
+        preserve_domain:
+          type: boolean
+        replacement:
+          $ref: "#/components/schemas/MaskReplacement"
+    RoundMaskRule:
+      type: object
+      additionalProperties: false
+      required: [kind, step]
+      properties:
+        kind:
+          type: string
+          enum: [round]
+        step:
+          description: Finite decimal number greater than zero.
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+    DateGranularityMaskRule:
+      type: object
+      additionalProperties: false
+      required: [kind, granularity]
+      properties:
+        kind:
+          type: string
+          enum: [date_granularity]
+        granularity:
+          description: Must be coarser than the declared property precision.
+          type: string
+          enum: [year, month, day, hour]
+    MaskReplacement:
+      description: One to eight printable Unicode code points.
+      type: string
+      minLength: 1
+      maxLength: 8
     FulltextConfig:
       description: Full-text index configuration
       required:

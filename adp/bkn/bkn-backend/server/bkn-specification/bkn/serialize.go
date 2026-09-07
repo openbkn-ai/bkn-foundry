@@ -8,12 +8,28 @@ package bkn
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 
+	"bkn-backend/common/maskrule"
+
 	"gopkg.in/yaml.v3"
 )
+
+func serializeMaskRule(rule *maskrule.Rule) string {
+	if rule == nil {
+		return ""
+	}
+	data, err := json.Marshal(rule)
+	if err != nil {
+		return ""
+	}
+	// A literal pipe would terminate the Markdown table cell. Its JSON escape
+	// decodes to the same replacement string on the next import.
+	return strings.ReplaceAll(string(data), "|", `\u007c`)
+}
 
 // encodeMetricFormulaYAML encodes a metric formula fenced with Markdown ```yaml code blocks, matching on-disk examples.
 func encodeMetricFormulaYAML(m *MetricFormula) string {
@@ -279,12 +295,29 @@ func SerializeObjectType(ot *BknObjectType) string {
 
 	// Data Properties
 	_, _ = fmt.Fprintf(&sb, "### Data Properties\n\n")
-	_, _ = fmt.Fprintf(&sb, "| Name | Display Name | Type | Description | Mapped Field |\n")
-	_, _ = fmt.Fprintf(&sb, "|------|--------------|------|-------------|--------------|\n")
+	hasMaskRule := false
+	for _, dp := range ot.DataProperties {
+		if dp.MaskRule != nil {
+			hasMaskRule = true
+			break
+		}
+	}
+	if hasMaskRule {
+		_, _ = fmt.Fprintf(&sb, "| Name | Display Name | Type | Description | Mapped Field | Mask Rule |\n")
+		_, _ = fmt.Fprintf(&sb, "|------|--------------|------|-------------|--------------|-----------|\n")
+	} else {
+		_, _ = fmt.Fprintf(&sb, "| Name | Display Name | Type | Description | Mapped Field |\n")
+		_, _ = fmt.Fprintf(&sb, "|------|--------------|------|-------------|--------------|\n")
+	}
 	if len(ot.DataProperties) > 0 {
 		for _, dp := range ot.DataProperties {
-			_, _ = fmt.Fprintf(&sb, "| %s | %s | %s | %s | %s |\n",
-				dp.Name, dp.DisplayName, dp.Type, dp.Description, dp.MappedField)
+			if hasMaskRule {
+				_, _ = fmt.Fprintf(&sb, "| %s | %s | %s | %s | %s | %s |\n",
+					dp.Name, dp.DisplayName, dp.Type, dp.Description, dp.MappedField, serializeMaskRule(dp.MaskRule))
+			} else {
+				_, _ = fmt.Fprintf(&sb, "| %s | %s | %s | %s | %s |\n",
+					dp.Name, dp.DisplayName, dp.Type, dp.Description, dp.MappedField)
+			}
 		}
 	}
 	_, _ = fmt.Fprintf(&sb, "\n")
