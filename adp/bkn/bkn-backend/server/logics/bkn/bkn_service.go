@@ -134,6 +134,14 @@ func (bs *bknService) exportCapabilities(ctx context.Context, knID, branch strin
 
 	capabilities := &bknsdk.BknCapabilities{}
 	for _, binding := range list.Entries {
+		// Only what someone mounted. A capability that is in the list because an object type or
+		// an action type uses it has no binding of its own, and the model file already carries
+		// that object type or action type — exporting it here as a dependency would turn a
+		// reference into an explicit mount on the next import, which is not what the source
+		// network had.
+		if binding.ID == "" {
+			continue
+		}
 		// A binding whose target is gone has no name to carry, and writing its id alone would
 		// only reappear as a not_found skip wherever the file is imported.
 		if binding.Status == interfaces.CAPABILITY_STATUS_MISSING {

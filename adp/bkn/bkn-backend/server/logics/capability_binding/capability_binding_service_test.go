@@ -212,9 +212,15 @@ func TestListCapabilities(t *testing.T) {
 			query := interfaces.CapabilityBindingsQueryParams{
 				KNID: "kn1", Branch: "dev", CapabilityType: interfaces.CAPABILITY_TYPE_SKILL,
 			}
-			cba.EXPECT().ListBindings(gomock.Any(), query).
-				Return([]*interfaces.CapabilityBinding{{ID: "bind-1"}}, nil)
-			cba.EXPECT().GetBindingsTotal(gomock.Any(), query).Return(1, nil)
+			// The listing fetches the whole matching set and pages it in memory, so the query
+			// reaching SQL carries the filters but no window.
+			cba.EXPECT().ListBindings(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, q interfaces.CapabilityBindingsQueryParams) ([]*interfaces.CapabilityBinding, error) {
+					So(q.CapabilityType, ShouldEqual, interfaces.CAPABILITY_TYPE_SKILL)
+					So(q.Limit, ShouldEqual, noPagingLimit)
+					return []*interfaces.CapabilityBinding{{ID: "bind-1"}}, nil
+				})
+			cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
 
 			list, err := service.ListCapabilities(context.Background(), query)
 

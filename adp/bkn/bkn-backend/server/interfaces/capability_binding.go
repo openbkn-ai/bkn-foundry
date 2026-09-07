@@ -66,6 +66,18 @@ type CapabilityBinding struct {
 	Status      string `json:"status,omitempty" mapstructure:"-"`
 	OwnerName   string `json:"owner_name,omitempty" mapstructure:"-"`
 
+	// Sources says why this capability is in the network: mounted explicitly, expanded from a
+	// box, or used by an object type's logic property or an action type.
+	Sources []*CapabilitySource `json:"sources,omitempty" mapstructure:"-"`
+	// Releasable is false for a capability the model uses that nobody mounted. It has no row and
+	// so no id to release, and the way to remove it is to change the object type or action type
+	// in Sources that reaches for it.
+	//
+	// It is stated rather than left to be inferred from an empty id: a reader that has to work
+	// out what a blank means will eventually work it out wrong, and this one decides whether a
+	// destructive control is shown.
+	Releasable bool `json:"releasable" mapstructure:"-"`
+
 	Creator    AccountInfo `json:"creator" mapstructure:"creator"`
 	CreateTime int64       `json:"create_time" mapstructure:"create_time"`
 	Updater    AccountInfo `json:"updater" mapstructure:"updater"`
@@ -107,6 +119,35 @@ type CapabilityBindingsQueryParams struct {
 	WithDetail bool
 }
 
+// Where a capability in the list came from. A capability can have several at once.
+const (
+	// CAPABILITY_SOURCE_MANUAL is an explicit mount. It is the only source that can be released:
+	// the others are consequences of the model and go away by changing it.
+	CAPABILITY_SOURCE_MANUAL = "manual"
+	// CAPABILITY_SOURCE_BOX marks a row produced by expanding a whole-box or whole-server mount.
+	CAPABILITY_SOURCE_BOX = "box"
+	// CAPABILITY_SOURCE_OBJECT_TYPE is a logic property of an object type using the tool.
+	CAPABILITY_SOURCE_OBJECT_TYPE = "object_type"
+	// CAPABILITY_SOURCE_ACTION_TYPE is an action type executing through the tool.
+	CAPABILITY_SOURCE_ACTION_TYPE = "action_type"
+)
+
+// CapabilitySourceRef names one thing that brought a capability into the network.
+type CapabilitySourceRef struct {
+	ID   string `json:"id"`
+	Name string `json:"name,omitempty"`
+	// Property is the logic property using the tool, for an object_type source. Deleting a
+	// property and deleting the object type are different repairs, so the reference says which.
+	Property string `json:"property,omitempty"`
+}
+
+// CapabilitySource is one kind of origin, with what it points at.
+type CapabilitySource struct {
+	Kind string `json:"kind"`
+	// Refs is empty for manual and box: those have nothing else to name.
+	Refs []*CapabilitySourceRef `json:"refs,omitempty"`
+}
+
 // CAPABILITY_STATUS_MISSING marks a binding whose target is gone from the execution factory.
 // Such a row is reported, never deleted: removing it silently would erase the only evidence that
 // the network once pointed at something, and retrieval already skips it without saying so.
@@ -139,6 +180,11 @@ type CapabilityBindingsList struct {
 	// are still returned in full — the names are missing, not the memberships — and the flag
 	// says so explicitly so an empty name is not read as a deleted capability.
 	MetadataAvailable bool `json:"metadata_available"`
+	// SourcesAvailable is false when the branch's object types or action types could not be read.
+	// The mounted capabilities are still listed, but the ones only the model uses are missing and
+	// the sources on the rest are incomplete — an empty sources list would otherwise read as
+	// "nothing uses this", which is the opposite of unknown.
+	SourcesAvailable bool `json:"sources_available"`
 }
 
 // AttachCapabilityEntry is one item of a mount request.

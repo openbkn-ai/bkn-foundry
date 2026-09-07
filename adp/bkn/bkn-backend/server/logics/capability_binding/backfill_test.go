@@ -41,7 +41,7 @@ func TestBackfillFanOut(t *testing.T) {
 			OwnerID: "box-2", CapabilityID: "t9",
 		})
 		cba.EXPECT().ListBindings(gomock.Any(), gomock.Any()).Return(bindings, nil).AnyTimes()
-		cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(4, nil)
+		cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(4, nil).AnyTimes()
 
 		// Four bindings, two boxes: exactly two calls.
 		aoa.EXPECT().ListBoxTools(gomock.Any(), "box-1").Return([]*interfaces.ToolBrief{
@@ -75,7 +75,7 @@ func TestBackfillMarksDangling(t *testing.T) {
 				{ID: "b1", CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, OwnerID: "box-1", CapabilityID: "alive"},
 				{ID: "b2", CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, OwnerID: "box-1", CapabilityID: "deleted"},
 			}, nil).AnyTimes()
-			cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(2, nil)
+			cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(2, nil).AnyTimes()
 			aoa.EXPECT().ListBoxTools(gomock.Any(), "box-1").Return([]*interfaces.ToolBrief{
 				{BoxID: "box-1", ToolID: "alive", Name: "还在", Status: interfaces.EXEC_TOOL_STATUS_ENABLED},
 			}, nil)
@@ -95,7 +95,7 @@ func TestBackfillMarksDangling(t *testing.T) {
 				{ID: "b1", CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, OwnerID: "gone", CapabilityID: "t1"},
 				{ID: "b2", CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, OwnerID: "gone", CapabilityID: "t2"},
 			}, nil).AnyTimes()
-			cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(2, nil)
+			cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(2, nil).AnyTimes()
 			aoa.EXPECT().ListBoxTools(gomock.Any(), "gone").Return(nil, nil)
 
 			list, err := service.ListCapabilities(context.Background(), listQuery())
@@ -113,7 +113,7 @@ func TestBackfillMarksDangling(t *testing.T) {
 				{ID: "b1", CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "alive"},
 				{ID: "b2", CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "deleted"},
 			}, nil).AnyTimes()
-			cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(2, nil)
+			cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(2, nil).AnyTimes()
 			aoa.EXPECT().GetSkillNamesByIDs(gomock.Any(), gomock.Any()).
 				Return(map[string]string{"alive": "还在的技能"}, nil)
 
@@ -143,7 +143,7 @@ func TestBackfillBoxTopUp(t *testing.T) {
 			{ID: "b1", CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, OwnerID: "box-1", CapabilityID: "t1", BoundAsBox: true},
 			{ID: "b2", CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, OwnerID: "box-1", CapabilityID: "t2", BoundAsBox: true},
 		}, nil).AnyTimes()
-		cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(2, nil)
+		cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(2, nil).AnyTimes()
 		aoa.EXPECT().ListBoxTools(gomock.Any(), "box-1").Return([]*interfaces.ToolBrief{
 			{BoxID: "box-1", ToolID: "t1", Status: interfaces.EXEC_TOOL_STATUS_ENABLED},
 			{BoxID: "box-1", ToolID: "t2", Status: interfaces.EXEC_TOOL_STATUS_ENABLED},
@@ -173,7 +173,7 @@ func TestBackfillDegrades(t *testing.T) {
 		cba.EXPECT().ListBindings(gomock.Any(), gomock.Any()).Return([]*interfaces.CapabilityBinding{
 			{ID: "b1", CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, OwnerID: "box-1", CapabilityID: "t1"},
 		}, nil).AnyTimes()
-		cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
+		cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
 		aoa.EXPECT().ListBoxTools(gomock.Any(), "box-1").Return(nil, errors.New("connection refused"))
 
 		list, err := service.ListCapabilities(context.Background(), listQuery())
@@ -245,17 +245,17 @@ func TestBoxCountsAreBranchScoped(t *testing.T) {
 			&interfaces.CapabilityBinding{ID: "b3", CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION,
 				OwnerID: "box-1", CapabilityID: "t3"})
 
-		// First call is the page (limit 2); the second is the box-scoped count with no limit.
+		// Both reads are unlimited now — the listing fetches whole and pages in memory, because a
+		// page is not made of stored rows alone. The box-scoped count is the one carrying OwnerID.
 		cba.EXPECT().ListBindings(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, q interfaces.CapabilityBindingsQueryParams) ([]*interfaces.CapabilityBinding, error) {
-				if q.Limit > 0 {
-					return page, nil
+				if q.OwnerID == "box-1" {
+					So(q.CapabilityType, ShouldEqual, interfaces.CAPABILITY_TYPE_FUNCTION)
+					return everything, nil
 				}
-				So(q.OwnerID, ShouldEqual, "box-1")
-				So(q.CapabilityType, ShouldEqual, interfaces.CAPABILITY_TYPE_FUNCTION)
-				return everything, nil
-			}).Times(2)
-		cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(3, nil)
+				return page, nil
+			}).AnyTimes()
+		cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(3, nil).AnyTimes()
 		aoa.EXPECT().ListBoxTools(gomock.Any(), "box-1").Return([]*interfaces.ToolBrief{
 			{BoxID: "box-1", ToolID: "t1", Status: interfaces.EXEC_TOOL_STATUS_ENABLED},
 			{BoxID: "box-1", ToolID: "t2", Status: interfaces.EXEC_TOOL_STATUS_ENABLED},
@@ -351,6 +351,9 @@ func TestAPIFunctionSplit(t *testing.T) {
 
 		Convey("计数按工具集类型分流，且一个工具集只问一次", func() {
 			service, cba, aoa := newTestServiceWithFactory(t, ctrl)
+			// The count also covers capabilities the model uses but nobody mounted, so it reads
+			// the stored rows once to know which of them are already counted.
+			cba.EXPECT().ListBindings(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 			cba.EXPECT().GetBindingsTotalByType(gomock.Any(), "kn1", "main").
 				Return(map[string]int{interfaces.CAPABILITY_TYPE_FUNCTION: 5}, nil)
 			cba.EXPECT().GetFunctionTotalsByOwner(gomock.Any(), "kn1", "main").
@@ -375,6 +378,7 @@ func TestAPIFunctionSplit(t *testing.T) {
 
 		Convey("工具集读不到时算作函数，而不是让整个统计失败", func() {
 			service, cba, aoa := newTestServiceWithFactory(t, ctrl)
+			cba.EXPECT().ListBindings(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 			cba.EXPECT().GetBindingsTotalByType(gomock.Any(), "kn1", "main").
 				Return(map[string]int{interfaces.CAPABILITY_TYPE_FUNCTION: 4}, nil)
 			cba.EXPECT().GetFunctionTotalsByOwner(gomock.Any(), "kn1", "main").
@@ -396,7 +400,7 @@ func TestAPIFunctionSplit(t *testing.T) {
 					{CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, OwnerID: "box-api",
 						CapabilityID: "t1"},
 				}, nil).AnyTimes()
-			cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
+			cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
 			aoa.EXPECT().ListBoxTools(gomock.Any(), "box-api").Return([]*interfaces.ToolBrief{
 				{BoxID: "box-api", BoxMetadataType: interfaces.EXEC_BOX_METADATA_TYPE_OPENAPI,
 					BoxStatus: interfaces.EXEC_BOX_STATUS_PUBLISHED, ToolID: "t1", Name: "fx",
@@ -439,7 +443,7 @@ func TestMetadataTypeFilterReachesSQL(t *testing.T) {
 					gotQuery = q
 					return []*interfaces.CapabilityBinding{}, nil
 				})
-			cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(30, nil)
+			cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(30, nil).AnyTimes()
 
 			list, err := service.ListCapabilities(context.Background(),
 				interfaces.CapabilityBindingsQueryParams{
@@ -452,8 +456,9 @@ func TestMetadataTypeFilterReachesSQL(t *testing.T) {
 			So(*gotQuery.OwnerIDs, ShouldResemble, []string{"box-api"})
 			// The kind belongs to a box, so this is a function-only question either way.
 			So(gotQuery.CapabilityType, ShouldEqual, interfaces.CAPABILITY_TYPE_FUNCTION)
-			// The total is the real one, not the size of a filtered page.
-			So(list.TotalCount, ShouldEqual, 30)
+			// The stored rows are fetched whole, so the total is the size of the matching set —
+			// the mock returns none, and no model reference matches this box either.
+			So(list.TotalCount, ShouldEqual, 0)
 		})
 
 		Convey("没有该类型的工具集时选中空集，而不是不过滤", func() {
@@ -471,7 +476,7 @@ func TestMetadataTypeFilterReachesSQL(t *testing.T) {
 					gotQuery = q
 					return nil, nil
 				})
-			cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(0, nil)
+			cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
 
 			_, err := service.ListCapabilities(context.Background(),
 				interfaces.CapabilityBindingsQueryParams{
@@ -498,7 +503,7 @@ func TestMetadataTypeFilterReachesSQL(t *testing.T) {
 					gotQuery = q
 					return nil, nil
 				})
-			cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(2, nil)
+			cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).Return(2, nil).AnyTimes()
 
 			_, err := service.ListCapabilities(context.Background(),
 				interfaces.CapabilityBindingsQueryParams{
