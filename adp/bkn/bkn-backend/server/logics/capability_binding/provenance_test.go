@@ -44,10 +44,9 @@ func TestApplyProvenance(t *testing.T) {
 				OwnerID: "box-1", CapabilityID: "tool-1",
 			}}
 
-			out, total := applyProvenance(entries, 1, usedByModel, query)
+			out := applyProvenance(entries, usedByModel, query)
 
 			So(len(out), ShouldEqual, 1)
-			So(total, ShouldEqual, 1)
 			So(srcOf(out[0], interfaces.CAPABILITY_SOURCE_MANUAL), ShouldNotBeNil)
 			objectType := srcOf(out[0], interfaces.CAPABILITY_SOURCE_OBJECT_TYPE)
 			So(objectType, ShouldNotBeNil)
@@ -56,10 +55,9 @@ func TestApplyProvenance(t *testing.T) {
 		})
 
 		Convey("只被引用、没挂载的也在列表里，且没有 manual 来源", func() {
-			out, total := applyProvenance(nil, 0, usedByModel, query)
+			out := applyProvenance(nil, usedByModel, query)
 
 			So(len(out), ShouldEqual, 1)
-			So(total, ShouldEqual, 1)
 			So(out[0].CapabilityID, ShouldEqual, "tool-1")
 			So(srcOf(out[0], interfaces.CAPABILITY_SOURCE_MANUAL), ShouldBeNil)
 			So(srcOf(out[0], interfaces.CAPABILITY_SOURCE_OBJECT_TYPE), ShouldNotBeNil)
@@ -73,7 +71,7 @@ func TestApplyProvenance(t *testing.T) {
 				OwnerID: "box-1", CapabilityID: "tool-1", BoundAsBox: true,
 			}}
 
-			out, _ := applyProvenance(entries, 1, usedByModel, query)
+			out := applyProvenance(entries, usedByModel, query)
 
 			So(srcOf(out[0], interfaces.CAPABILITY_SOURCE_BOX), ShouldNotBeNil)
 			So(srcOf(out[0], interfaces.CAPABILITY_SOURCE_MANUAL), ShouldBeNil)
@@ -83,21 +81,33 @@ func TestApplyProvenance(t *testing.T) {
 			skillQuery := query
 			skillQuery.CapabilityType = interfaces.CAPABILITY_TYPE_SKILL
 
-			out, total := applyProvenance(nil, 0, usedByModel, skillQuery)
+			out := applyProvenance(nil, usedByModel, skillQuery)
 
 			So(len(out), ShouldEqual, 0)
-			So(total, ShouldEqual, 0)
 		})
 
-		Convey("翻页时不重复补，只有最后一页带", func() {
-			paged := query
-			paged.Offset = 10
-			paged.Limit = 10
+		Convey("metadata_type 解析出的工具集集合同样作用于补进来的条目", func() {
+			// The service turns metadata_type into OwnerIDs. Ignoring it here would drop
+			// function-box tools into the API list, and mark rows that are mounted but filtered
+			// out as though nobody had mounted them.
+			otherBoxes := []string{"box-other"}
+			narrowed := query
+			narrowed.OwnerIDs = &otherBoxes
 
-			out, total := applyProvenance(nil, 0, usedByModel, paged)
+			out := applyProvenance(nil, usedByModel, narrowed)
 
 			So(len(out), ShouldEqual, 0)
-			So(total, ShouldEqual, 0)
+		})
+
+		Convey("补进来的条目参与分页，不是全部塞进第一页", func() {
+			whole := applyProvenance(nil, usedByModel, query)
+			So(len(whole), ShouldEqual, 1)
+
+			// The caller pages the whole list, so an offset past it is empty rather than a
+			// second copy of everything.
+			So(len(pageOf(whole, 0, 10)), ShouldEqual, 1)
+			So(len(pageOf(whole, 10, 10)), ShouldEqual, 0)
+			So(len(pageOf(whole, 0, 0)), ShouldEqual, 1)
 		})
 	})
 }

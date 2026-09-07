@@ -163,8 +163,8 @@ func Test_bknService_ExportCapabilities(t *testing.T) {
 					So(q.Limit, ShouldEqual, 0)
 					return &interfaces.CapabilityBindingsList{MetadataAvailable: true,
 						Entries: []*interfaces.CapabilityBinding{
-							{CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "skill-1", Name: "交期评估"},
-							{CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, OwnerID: "box-1",
+							{ID: "b1", CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "skill-1", Name: "交期评估"},
+							{ID: "b2", CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, OwnerID: "box-1",
 								CapabilityID: "tool-1", Name: "BOM 展开", OwnerName: "供应链计算"},
 						}}, nil
 				})
@@ -201,7 +201,7 @@ func Test_bknService_ExportCapabilities(t *testing.T) {
 			cbs.EXPECT().ListCapabilities(gomock.Any(), gomock.Any()).
 				Return(&interfaces.CapabilityBindingsList{MetadataAvailable: false,
 					Entries: []*interfaces.CapabilityBinding{
-						{CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "skill-1"},
+						{ID: "b5", CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "skill-1"},
 					}}, nil)
 
 			data, err := svc.ExportToTar(context.Background(), "kn3", interfaces.MAIN_BRANCH)
@@ -215,8 +215,8 @@ func Test_bknService_ExportCapabilities(t *testing.T) {
 			cbs.EXPECT().ListCapabilities(gomock.Any(), gomock.Any()).
 				Return(&interfaces.CapabilityBindingsList{MetadataAvailable: true,
 					Entries: []*interfaces.CapabilityBinding{
-						{CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "skill-live", Name: "在的"},
-						{CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "skill-gone",
+						{ID: "b3", CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "skill-live", Name: "在的"},
+						{ID: "b4", CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "skill-gone",
 							Status: interfaces.CAPABILITY_STATUS_MISSING},
 					}}, nil)
 
@@ -243,7 +243,7 @@ func Test_bknService_ExportMCPCapabilities(t *testing.T) {
 		cbs.EXPECT().ListCapabilities(gomock.Any(), gomock.Any()).
 			Return(&interfaces.CapabilityBindingsList{MetadataAvailable: true,
 				Entries: []*interfaces.CapabilityBinding{
-					{CapabilityType: interfaces.CAPABILITY_TYPE_MCP_TOOL, OwnerID: "mcp-1",
+					{ID: "b6", CapabilityType: interfaces.CAPABILITY_TYPE_MCP_TOOL, OwnerID: "mcp-1",
 						CapabilityID: "expedite", OwnerName: "供应链 MCP", Name: "expedite"},
 				}}, nil)
 
@@ -259,5 +259,35 @@ func Test_bknService_ExportMCPCapabilities(t *testing.T) {
 		So(tool.MCPName, ShouldEqual, "供应链 MCP")
 		// The tool travels by name only: MCP has no separate id to fall back from.
 		So(tool.ToolName, ShouldEqual, "expedite")
+	})
+}
+
+// Test_bknService_ExportSkipsModelReferences keeps a reference from turning into a mount on the
+// round trip. A capability that is in the listing because an object type or action type uses it
+// has no binding of its own, and the model file already carries that object type or action type.
+func Test_bknService_ExportSkipsModelReferences(t *testing.T) {
+	Convey("导出只带显式挂载，不带模型引用而来的能力", t, func() {
+		svc, mockCtrl, kns, cbs := newTestBKNServiceWithCapabilities(t)
+		defer mockCtrl.Finish()
+
+		kns.EXPECT().GetKNByID(gomock.Any(), "kn5", interfaces.MAIN_BRANCH, interfaces.Mode_Export).
+			Return(&interfaces.KN{KNID: "kn5", KNName: "含引用"}, nil)
+		cbs.EXPECT().ListCapabilities(gomock.Any(), gomock.Any()).
+			Return(&interfaces.CapabilityBindingsList{MetadataAvailable: true,
+				Entries: []*interfaces.CapabilityBinding{
+					{ID: "b1", CapabilityType: interfaces.CAPABILITY_TYPE_SKILL,
+						CapabilityID: "mounted", Name: "挂了的"},
+					// No id: nobody mounted it, an action type reaches for it.
+					{CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, OwnerID: "box-1",
+						CapabilityID: "referenced", Name: "只被引用的"},
+				}}, nil)
+
+		data, err := svc.ExportToTar(context.Background(), "kn5", interfaces.MAIN_BRANCH)
+		So(err, ShouldBeNil)
+
+		network, err := bknsdk.LoadNetworkFromTar(bytes.NewReader(data))
+		So(err, ShouldBeNil)
+		So(len(network.Capabilities.Skills), ShouldEqual, 1)
+		So(len(network.Capabilities.Functions), ShouldEqual, 0)
 	})
 }

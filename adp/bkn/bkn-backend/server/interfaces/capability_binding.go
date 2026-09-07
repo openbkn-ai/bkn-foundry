@@ -174,6 +174,11 @@ type CapabilityBindingsList struct {
 	// are still returned in full — the names are missing, not the memberships — and the flag
 	// says so explicitly so an empty name is not read as a deleted capability.
 	MetadataAvailable bool `json:"metadata_available"`
+	// SourcesAvailable is false when the branch's object types or action types could not be read.
+	// The mounted capabilities are still listed, but the ones only the model uses are missing and
+	// the sources on the rest are incomplete — an empty sources list would otherwise read as
+	// "nothing uses this", which is the opposite of unknown.
+	SourcesAvailable bool `json:"sources_available"`
 }
 
 // AttachCapabilityEntry is one item of a mount request.

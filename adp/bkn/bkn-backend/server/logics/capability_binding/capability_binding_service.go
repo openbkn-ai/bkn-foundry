@@ -290,25 +290,30 @@ func (cbs *capabilityBindingService) ListCapabilities(ctx context.Context,
 		query.CapabilityType = interfaces.CAPABILITY_TYPE_FUNCTION
 	}
 
-	entries, err := cbs.cba.ListBindings(ctx, query)
+	// The stored rows are fetched whole and paged in memory, because the page is not made of them
+	// alone: a capability the model uses without anyone mounting it belongs in the same list, and
+	// there is no way to interleave a computed set with a SQL LIMIT. Paging the query and
+	// appending afterwards would overfill the first page and empty the rest.
+	//
+	// The cost is bounded by one branch's bindings, and the provenance scan below reads that
+	// branch's whole model anyway.
+	fullQuery := query
+	fullQuery.Offset = 0
+	fullQuery.Limit = noPagingLimit
+	entries, err := cbs.cba.ListBindings(ctx, fullQuery)
 	if err != nil {
 		logger.Errorf("ListBindings in knowledge network[%s] error: %v", query.KNID, err)
 		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_CapabilityBinding_InternalError_ListBindingsFailed).WithErrorDetails(err.Error())
 	}
-	total, err := cbs.cba.GetBindingsTotal(ctx, query)
-	if err != nil {
-		logger.Errorf("GetBindingsTotal in knowledge network[%s] error: %v", query.KNID, err)
-		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_CapabilityBinding_InternalError_GetBindingsTotalFailed).WithErrorDetails(err.Error())
-	}
 
 	// Why each capability is here, and what the model uses that is not mounted at all. Both come
 	// from one read of the branch's object types and action types.
 	sources := cbs.collectProvenance(ctx, query.KNID, query.Branch)
-	entries, total = applyProvenance(entries, total, sources, query)
+	entries = applyProvenance(entries, sources, query)
+	total := len(entries)
+	entries = pageOf(entries, query.Offset, query.Limit)
 
 	backfilled := cbs.backfillMetadata(ctx, query, entries, query.WithDetail)
 
@@ -318,6 +323,7 @@ func (cbs *capabilityBindingService) ListCapabilities(ctx context.Context,
 		TotalCount:        total,
 		Boxes:             backfilled.boxes,
 		MetadataAvailable: backfilled.available,
+		SourcesAvailable:  sources.available,
 	}, nil
 }
 

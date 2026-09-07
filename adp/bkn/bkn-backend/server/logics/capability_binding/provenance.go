@@ -8,6 +8,7 @@ package capability_binding
 
 import (
 	"context"
+	"sort"
 	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -190,10 +191,13 @@ func keyOfBinding(binding *interfaces.CapabilityBinding) capabilityKey {
 // The appended ones are ordinary members of the list with no manual source. They cannot be
 // released — there is no row to delete, and the way to remove one is to change the object type or
 // action type that reaches for it.
-func applyProvenance(entries []*interfaces.CapabilityBinding, total int, sources *provenance,
-	query interfaces.CapabilityBindingsQueryParams) ([]*interfaces.CapabilityBinding, int) {
+//
+// It returns the whole set; the caller pages it. Appending after a page was already cut would
+// overfill that page and leave the next one empty.
+func applyProvenance(entries []*interfaces.CapabilityBinding, sources *provenance,
+	query interfaces.CapabilityBindingsQueryParams) []*interfaces.CapabilityBinding {
 	if sources == nil {
-		return entries, total
+		return entries
 	}
 
 	stored := make(map[capabilityKey]struct{}, len(entries))
@@ -213,32 +217,91 @@ func applyProvenance(entries []*interfaces.CapabilityBinding, total int, sources
 		entry.Sources = append([]*interfaces.CapabilitySource{{Kind: kind}}, sources.byCapability[key]...)
 	}
 
-	// Only a page that reaches the end can carry the implicit ones without duplicating them
-	// across pages. Offset zero with everything fetched is the workspace's own request; any
-	// other page shows the stored rows alone.
-	if query.Offset > 0 || (query.Limit > 0 && len(entries) >= query.Limit) {
-		return entries, total
-	}
-
-	for key, refs := range sources.byCapability {
+	// Deterministic order for what is otherwise a map: the same request must not shuffle its
+	// own page boundaries between calls.
+	implicit := make([]capabilityKey, 0, len(sources.byCapability))
+	for key := range sources.byCapability {
 		if _, mounted := stored[key]; mounted {
 			continue
 		}
-		if query.CapabilityType != "" && key.capabilityType != query.CapabilityType {
+		if !matchesQuery(key, query) {
 			continue
 		}
-		if query.OwnerID != "" && key.ownerID != query.OwnerID {
-			continue
+		implicit = append(implicit, key)
+	}
+	sort.Slice(implicit, func(i, j int) bool {
+		if implicit[i].capabilityType != implicit[j].capabilityType {
+			return implicit[i].capabilityType < implicit[j].capabilityType
 		}
+		if implicit[i].ownerID != implicit[j].ownerID {
+			return implicit[i].ownerID < implicit[j].ownerID
+		}
+		return implicit[i].capabilityID < implicit[j].capabilityID
+	})
+
+	for _, key := range implicit {
 		entries = append(entries, &interfaces.CapabilityBinding{
 			KNID:           query.KNID,
 			Branch:         query.Branch,
 			CapabilityType: key.capabilityType,
 			OwnerID:        key.ownerID,
 			CapabilityID:   key.capabilityID,
-			Sources:        refs,
+			Sources:        sources.byCapability[key],
 		})
-		total++
 	}
-	return entries, total
+	return entries
+}
+
+// matchesQuery applies every filter the stored rows went through in SQL.
+//
+// Every one of them, not just the obvious two: metadata_type reaches the query as OwnerIDs, and
+// skipping it would put function-box tools into the API list — and mark rows that are mounted but
+// filtered out as though nobody had mounted them.
+func matchesQuery(key capabilityKey, query interfaces.CapabilityBindingsQueryParams) bool {
+	if query.CapabilityType != "" && key.capabilityType != query.CapabilityType {
+		return false
+	}
+	if query.OwnerID != "" && key.ownerID != query.OwnerID {
+		return false
+	}
+	if query.OwnerIDs != nil {
+		found := false
+		for _, ownerID := range *query.OwnerIDs {
+			if ownerID == key.ownerID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	if len(query.CapabilityIDs) > 0 {
+		found := false
+		for _, capabilityID := range query.CapabilityIDs {
+			if capabilityID == key.capabilityID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+// pageOf cuts the requested window out of the whole list.
+func pageOf(entries []*interfaces.CapabilityBinding, offset, limit int) []*interfaces.CapabilityBinding {
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= len(entries) {
+		return []*interfaces.CapabilityBinding{}
+	}
+	entries = entries[offset:]
+	if limit > 0 && limit < len(entries) {
+		entries = entries[:limit]
+	}
+	return entries
 }
