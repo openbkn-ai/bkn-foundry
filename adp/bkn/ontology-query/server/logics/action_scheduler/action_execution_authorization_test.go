@@ -208,6 +208,22 @@ func TestResolveActionProxyContextKeepsDownstreamPermissionSeparate(t *testing.T
 	}
 }
 
+func TestTrustedActionProxyContextRejectsMissingProxySnapshot(t *testing.T) {
+	execution := &interfaces.ActionExecution{
+		ID:       "execution-1",
+		KNID:     "kn-1",
+		Executor: interfaces.AccountInfo{ID: "caller-1", Type: "user"},
+	}
+	actionType := &interfaces.ActionType{
+		ATID:         "at-1",
+		ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box-1", ToolID: "tool-1"},
+	}
+
+	if proxy, err := trustedActionProxyContext(execution, actionType); err == nil || proxy != nil {
+		t.Fatalf("trustedActionProxyContext() = %#v, %v; want missing proxy error", proxy, err)
+	}
+}
+
 func TestAuthorizeExecutionRequiresSnapshotWhenEnabled(t *testing.T) {
 	t.Setenv("AUTH_ENABLED", "true")
 	err := (&actionSchedulerService{permissions: &actionPermissionStub{}}).authorizeExecution(context.Background(), nil)

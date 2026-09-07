@@ -174,9 +174,9 @@ Before reading data, ontology-query resolves dependencies from the published
 - KN children use `{resource_type}:{kn_id}/{child_id}`.
 - Bound Vega resource references are validated against the published model but
   are not sent directly to Safe by ontology-query. The query is forwarded to
-  Vega as the same caller, and Vega checks `resource:{resource_id}` before any
-  physical read, falling back to the owning catalog's `query_data` grant when
-  the table itself has no direct grant.
+  Vega with the knowledge network's managed proxy identity. Vega verifies the
+  trusted binding and checks the proxy's `resource:{resource_id}` grant before
+  any physical read.
 
 Internal `/api/ontology-query/in/v1` requests must provide both `x-account-id`
 and `x-account-type`. Permission denial returns HTTP 403. Missing subjects,
@@ -187,8 +187,7 @@ infrastructure failures return HTTP 503.
 ### Action-execution authorization
 
 When authentication is enabled, both submission and the real external invocation
-require all of the following for the authenticated execution subject. There is
-no separate action-execution rollout switch:
+require all of the following for the authenticated execution subject:
 
 - `execute` on `action_type:{kn_id}/{action_type_id}`; this operation never
   inherits from the knowledge network;
