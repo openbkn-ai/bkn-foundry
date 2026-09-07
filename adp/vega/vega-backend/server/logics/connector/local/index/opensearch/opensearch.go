@@ -629,6 +629,9 @@ func (c *OpenSearchConnector) GetDocument(ctx context.Context, indexName string,
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.IsError() {
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("failed to get document: %s", resp.String())
 	}
 
@@ -645,6 +648,54 @@ func (c *OpenSearchConnector) GetDocument(ctx context.Context, indexName string,
 	source["_id"] = result["_id"]
 
 	return source, nil
+}
+
+// GetDocuments retrieves documents through OpenSearch _mget. The result keeps
+// the input ID order and represents missing documents with nil entries.
+func (c *OpenSearchConnector) GetDocuments(ctx context.Context, indexName string, docIDs []string) ([]map[string]any, error) {
+	if err := c.Connect(ctx); err != nil {
+		return nil, err
+	}
+	body, err := sonic.Marshal(map[string]any{"ids": docIDs})
+	if err != nil {
+		return nil, fmt.Errorf("marshal document IDs: %w", err)
+	}
+	req := opensearchapi.MgetRequest{Index: indexName, Body: bytes.NewReader(body)}
+	resp, err := req.Do(ctx, c.client)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.IsError() {
+		return nil, fmt.Errorf("failed to get documents: %s", resp.String())
+	}
+
+	var result struct {
+		Documents []struct {
+			ID     string         `json:"_id"`
+			Found  bool           `json:"found"`
+			Source map[string]any `json:"_source"`
+		} `json:"docs"`
+	}
+	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	if len(result.Documents) != len(docIDs) {
+		return nil, fmt.Errorf("multi-get returned %d documents for %d IDs", len(result.Documents), len(docIDs))
+	}
+
+	documents := make([]map[string]any, len(docIDs))
+	for i, document := range result.Documents {
+		if !document.Found {
+			continue
+		}
+		if document.Source == nil {
+			return nil, fmt.Errorf("multi-get document %q has no source", document.ID)
+		}
+		document.Source["_id"] = document.ID
+		documents[i] = document.Source
+	}
+	return documents, nil
 }
 
 // Delete Document
@@ -761,20 +812,13 @@ func (c *OpenSearchConnector) UpsertDocuments(ctx context.Context, indexName str
 }
 
 // Delete Documents
-func (c *OpenSearchConnector) DeleteDocuments(ctx context.Context, indexName string, docIDs string) error {
+func (c *OpenSearchConnector) DeleteDocuments(ctx context.Context, indexName string, docIDs []string) error {
 	if err := c.Connect(ctx); err != nil {
 		return err
 	}
 
-	docIDList := strings.Split(docIDs, ",")
-
 	var bulkBody bytes.Buffer
-	for _, docID := range docIDList {
-		docID = strings.TrimSpace(docID)
-		if docID == "" {
-			continue
-		}
-
+	for _, docID := range docIDs {
 		metadata := map[string]map[string]string{
 			"delete": {
 				"_index": indexName,

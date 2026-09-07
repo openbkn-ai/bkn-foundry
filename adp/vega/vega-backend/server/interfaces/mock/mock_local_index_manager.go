@@ -100,7 +100,7 @@ func (mr *MockLocalIndexManagerMockRecorder) DeleteDocument(ctx, indexName, docI
 }
 
 // DeleteDocuments mocks base method.
-func (m *MockLocalIndexManager) DeleteDocuments(ctx context.Context, indexName, docIDs string) error {
+func (m *MockLocalIndexManager) DeleteDocuments(ctx context.Context, indexName string, docIDs []string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteDocuments", ctx, indexName, docIDs)
 	ret0, _ := ret[0].(error)
@@ -154,6 +154,21 @@ func (m *MockLocalIndexManager) GetDocument(ctx context.Context, indexName, docI
 func (mr *MockLocalIndexManagerMockRecorder) GetDocument(ctx, indexName, docID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDocument", reflect.TypeOf((*MockLocalIndexManager)(nil).GetDocument), ctx, indexName, docID)
+}
+
+// GetDocuments mocks base method.
+func (m *MockLocalIndexManager) GetDocuments(ctx context.Context, indexName string, docIDs []string) ([]map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDocuments", ctx, indexName, docIDs)
+	ret0, _ := ret[0].([]map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDocuments indicates an expected call of GetDocuments.
+func (mr *MockLocalIndexManagerMockRecorder) GetDocuments(ctx, indexName, docIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDocuments", reflect.TypeOf((*MockLocalIndexManager)(nil).GetDocuments), ctx, indexName, docIDs)
 }
 
 // GetIndexCapabilities mocks base method.

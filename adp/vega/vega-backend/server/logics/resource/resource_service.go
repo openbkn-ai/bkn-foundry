@@ -966,7 +966,7 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		// Existing documents were materialized against the current index contract.
 		// Do not allow a normal Resource update to leave them under a different
 		// mapping or embedding configuration; that requires an explicit rebuild.
-		documents, _, err := rs.ds.ListDocuments(ctx, resource.LocalIndexName, resource,
+		documents, _, err := rs.ds.ListDocuments(ctx, resource,
 			&interfaces.ResourceDataQueryParams{Limit: 1})
 		if err != nil {
 			return err
@@ -1261,7 +1261,7 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 
 	for _, resource := range resources {
 		if resource.Category == interfaces.ResourceCategoryDataset {
-			if err := rs.ds.Delete(ctx, resource.LocalIndexName); err != nil {
+			if err := rs.ds.Delete(ctx, resource); err != nil {
 				logger.Errorf("Delete dataset failed after resource deletion: %v", err)
 			}
 		}

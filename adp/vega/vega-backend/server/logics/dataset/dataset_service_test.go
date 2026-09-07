@@ -61,33 +61,25 @@ func TestDatasetServiceIndexLifecycle(t *testing.T) {
 
 	t.Run("delete skips missing index", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
-		lim.EXPECT().CheckIndexExist(gomock.Any(), "dataset-1").Return(false, nil)
+		resource.LocalIndexName = "dataset-1"
+		lim.EXPECT().CheckIndexExist(gomock.Any(), resource.LocalIndexName).Return(false, nil)
 
-		require.NoError(t, ds.Delete(ctx, "dataset-1"))
+		require.NoError(t, ds.Delete(ctx, resource))
 	})
 
 	t.Run("delete existing index", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
-		lim.EXPECT().CheckIndexExist(gomock.Any(), "dataset-1").Return(true, nil)
-		lim.EXPECT().DeleteIndex(gomock.Any(), "dataset-1").Return(nil)
+		resource.LocalIndexName = "dataset-1"
+		lim.EXPECT().CheckIndexExist(gomock.Any(), resource.LocalIndexName).Return(true, nil)
+		lim.EXPECT().DeleteIndex(gomock.Any(), resource.LocalIndexName).Return(nil)
 
-		require.NoError(t, ds.Delete(ctx, "dataset-1"))
-	})
-
-	t.Run("check exist wraps error", func(t *testing.T) {
-		ds, lim := newDatasetServiceMock(t)
-		lim.EXPECT().CheckIndexExist(gomock.Any(), "dataset-1").Return(false, errors.New("check failed"))
-
-		got, err := ds.CheckExist(ctx, "dataset-1")
-
-		assert.False(t, got)
-		assertHTTPError(t, err)
+		require.NoError(t, ds.Delete(ctx, resource))
 	})
 }
 
 func TestDatasetServiceDocumentOperations(t *testing.T) {
 	ctx := context.Background()
-	resource := &interfaces.Resource{ID: "dataset-1"}
+	resource := &interfaces.Resource{ID: "dataset-1", LocalIndexName: "dataset-1"}
 	params := &interfaces.ResourceDataQueryParams{}
 	docs := []map[string]any{{"id": 1}}
 
@@ -95,64 +87,46 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
 		lim.EXPECT().ListDocuments(gomock.Any(), "dataset-1", resource, params).Return(docs, int64(1), nil)
 
-		got, total, err := ds.ListDocuments(ctx, "dataset-1", resource, params)
+		got, total, err := ds.ListDocuments(ctx, resource, params)
 
 		require.NoError(t, err)
 		assert.Equal(t, docs, got)
 		assert.Equal(t, int64(1), total)
 	})
 
-	t.Run("create documents", func(t *testing.T) {
+	t.Run("get documents preserves positions for ignored missing documents", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
-		lim.EXPECT().CreateDocuments(gomock.Any(), "dataset-1", docs).Return([]string{"doc-1"}, nil)
+		lim.EXPECT().GetDocuments(gomock.Any(), "dataset-1", []string{"doc-1", "missing"}).
+			Return([]map[string]any{{"id": "doc-1"}, nil}, nil)
 
-		got, err := ds.CreateDocuments(ctx, "dataset-1", docs)
+		got, err := ds.GetDocuments(ctx, resource, []string{"doc-1", "missing"}, true)
 
 		require.NoError(t, err)
-		assert.Equal(t, []string{"doc-1"}, got)
+		assert.Equal(t, []map[string]any{{"id": "doc-1"}, nil}, got)
 	})
 
-	t.Run("get document", func(t *testing.T) {
+	t.Run("get documents rejects missing documents by default", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
-		doc := map[string]any{"id": 1}
-		lim.EXPECT().GetDocument(gomock.Any(), "dataset-1", "doc-1").Return(doc, nil)
+		lim.EXPECT().GetDocuments(gomock.Any(), "dataset-1", []string{"missing"}).Return([]map[string]any{nil}, nil)
 
-		got, err := ds.GetDocument(ctx, "dataset-1", "doc-1")
-
-		require.NoError(t, err)
-		assert.Equal(t, doc, got)
-	})
-
-	t.Run("delete document", func(t *testing.T) {
-		ds, lim := newDatasetServiceMock(t)
-		lim.EXPECT().DeleteDocument(gomock.Any(), "dataset-1", "doc-1").Return(nil)
-
-		require.NoError(t, ds.DeleteDocument(ctx, "dataset-1", "doc-1"))
-	})
-
-	t.Run("upsert documents returns raw error by current contract", func(t *testing.T) {
-		ds, lim := newDatasetServiceMock(t)
-		lim.EXPECT().UpsertDocuments(gomock.Any(), "dataset-1", docs).Return([]string{"doc-1"}, errors.New("upsert failed"))
-
-		got, err := ds.UpsertDocuments(ctx, "dataset-1", docs)
+		_, err := ds.GetDocuments(ctx, resource, []string{"missing"}, false)
 
 		require.Error(t, err)
-		assert.Equal(t, []string{"doc-1"}, got)
-		assert.Contains(t, err.Error(), "upsert failed")
+		assert.Contains(t, err.Error(), "document missing not found")
 	})
 
 	t.Run("delete documents", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
-		lim.EXPECT().DeleteDocuments(gomock.Any(), "dataset-1", "doc-1,doc-2").Return(nil)
+		lim.EXPECT().DeleteDocuments(gomock.Any(), "dataset-1", []string{"doc-1", "doc-2"}).Return(nil)
 
-		require.NoError(t, ds.DeleteDocuments(ctx, "dataset-1", "doc-1,doc-2"))
+		require.NoError(t, ds.DeleteDocuments(ctx, resource, []string{"doc-1", "doc-2"}))
 	})
 
 	t.Run("delete by query wraps error", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
 		lim.EXPECT().DeleteDocumentsByQuery(gomock.Any(), "dataset-1", resource, params).Return(errors.New("delete failed"))
 
-		err := ds.DeleteDocumentsByQuery(ctx, "dataset-1", resource, params)
+		err := ds.DeleteDocumentsByQuery(ctx, resource, params)
 
 		assertHTTPError(t, err)
 		assert.Contains(t, err.Error(), "delete failed")

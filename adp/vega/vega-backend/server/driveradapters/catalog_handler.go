@@ -299,7 +299,14 @@ func (r *restHandler) getCatalogs(c *gin.Context, visitor hydra.Visitor) {
 
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	ids := strings.Split(c.Param("id"), ",")
+	ids := parseRawIDs(c.Param("id"))
+	if len(ids) == 0 {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
+			WithErrorDetails("at least one catalog id is required")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 
 	catalogs, err := r.cs.GetByIDs(ctx, ids)
 	if err != nil {

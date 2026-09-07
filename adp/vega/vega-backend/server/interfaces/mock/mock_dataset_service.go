@@ -41,21 +41,6 @@ func (m *MockDatasetService) EXPECT() *MockDatasetServiceMockRecorder {
 	return m.recorder
 }
 
-// CheckExist mocks base method.
-func (m *MockDatasetService) CheckExist(ctx context.Context, id string) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CheckExist", ctx, id)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CheckExist indicates an expected call of CheckExist.
-func (mr *MockDatasetServiceMockRecorder) CheckExist(ctx, id any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckExist", reflect.TypeOf((*MockDatasetService)(nil).CheckExist), ctx, id)
-}
-
 // Create mocks base method.
 func (m *MockDatasetService) Create(ctx context.Context, res *interfaces.Resource) error {
 	m.ctrl.T.Helper()
@@ -85,96 +70,67 @@ func (mr *MockDatasetServiceMockRecorder) CreateDocument(ctx, res, document any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateDocument", reflect.TypeOf((*MockDatasetService)(nil).CreateDocument), ctx, res, document)
 }
 
-// CreateDocuments mocks base method.
-func (m *MockDatasetService) CreateDocuments(ctx context.Context, id string, documents []map[string]any) ([]string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateDocuments", ctx, id, documents)
-	ret0, _ := ret[0].([]string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CreateDocuments indicates an expected call of CreateDocuments.
-func (mr *MockDatasetServiceMockRecorder) CreateDocuments(ctx, id, documents any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateDocuments", reflect.TypeOf((*MockDatasetService)(nil).CreateDocuments), ctx, id, documents)
-}
-
 // Delete mocks base method.
-func (m *MockDatasetService) Delete(ctx context.Context, id string) error {
+func (m *MockDatasetService) Delete(ctx context.Context, res *interfaces.Resource) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Delete", ctx, id)
+	ret := m.ctrl.Call(m, "Delete", ctx, res)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Delete indicates an expected call of Delete.
-func (mr *MockDatasetServiceMockRecorder) Delete(ctx, id any) *gomock.Call {
+func (mr *MockDatasetServiceMockRecorder) Delete(ctx, res any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockDatasetService)(nil).Delete), ctx, id)
-}
-
-// DeleteDocument mocks base method.
-func (m *MockDatasetService) DeleteDocument(ctx context.Context, id, docID string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteDocument", ctx, id, docID)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// DeleteDocument indicates an expected call of DeleteDocument.
-func (mr *MockDatasetServiceMockRecorder) DeleteDocument(ctx, id, docID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDocument", reflect.TypeOf((*MockDatasetService)(nil).DeleteDocument), ctx, id, docID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockDatasetService)(nil).Delete), ctx, res)
 }
 
 // DeleteDocuments mocks base method.
-func (m *MockDatasetService) DeleteDocuments(ctx context.Context, id, docIDs string) error {
+func (m *MockDatasetService) DeleteDocuments(ctx context.Context, res *interfaces.Resource, docIDs []string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteDocuments", ctx, id, docIDs)
+	ret := m.ctrl.Call(m, "DeleteDocuments", ctx, res, docIDs)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteDocuments indicates an expected call of DeleteDocuments.
-func (mr *MockDatasetServiceMockRecorder) DeleteDocuments(ctx, id, docIDs any) *gomock.Call {
+func (mr *MockDatasetServiceMockRecorder) DeleteDocuments(ctx, res, docIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDocuments", reflect.TypeOf((*MockDatasetService)(nil).DeleteDocuments), ctx, id, docIDs)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDocuments", reflect.TypeOf((*MockDatasetService)(nil).DeleteDocuments), ctx, res, docIDs)
 }
 
 // DeleteDocumentsByQuery mocks base method.
-func (m *MockDatasetService) DeleteDocumentsByQuery(ctx context.Context, indexName string, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) error {
+func (m *MockDatasetService) DeleteDocumentsByQuery(ctx context.Context, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteDocumentsByQuery", ctx, indexName, res, params)
+	ret := m.ctrl.Call(m, "DeleteDocumentsByQuery", ctx, res, params)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteDocumentsByQuery indicates an expected call of DeleteDocumentsByQuery.
-func (mr *MockDatasetServiceMockRecorder) DeleteDocumentsByQuery(ctx, indexName, res, params any) *gomock.Call {
+func (mr *MockDatasetServiceMockRecorder) DeleteDocumentsByQuery(ctx, res, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDocumentsByQuery", reflect.TypeOf((*MockDatasetService)(nil).DeleteDocumentsByQuery), ctx, indexName, res, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDocumentsByQuery", reflect.TypeOf((*MockDatasetService)(nil).DeleteDocumentsByQuery), ctx, res, params)
 }
 
-// GetDocument mocks base method.
-func (m *MockDatasetService) GetDocument(ctx context.Context, id, docID string) (map[string]any, error) {
+// GetDocuments mocks base method.
+func (m *MockDatasetService) GetDocuments(ctx context.Context, res *interfaces.Resource, docIDs []string, ignoreMissing bool) ([]map[string]any, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetDocument", ctx, id, docID)
-	ret0, _ := ret[0].(map[string]any)
+	ret := m.ctrl.Call(m, "GetDocuments", ctx, res, docIDs, ignoreMissing)
+	ret0, _ := ret[0].([]map[string]any)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetDocument indicates an expected call of GetDocument.
-func (mr *MockDatasetServiceMockRecorder) GetDocument(ctx, id, docID any) *gomock.Call {
+// GetDocuments indicates an expected call of GetDocuments.
+func (mr *MockDatasetServiceMockRecorder) GetDocuments(ctx, res, docIDs, ignoreMissing any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDocument", reflect.TypeOf((*MockDatasetService)(nil).GetDocument), ctx, id, docID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDocuments", reflect.TypeOf((*MockDatasetService)(nil).GetDocuments), ctx, res, docIDs, ignoreMissing)
 }
 
 // ListDocuments mocks base method.
-func (m *MockDatasetService) ListDocuments(ctx context.Context, indexName string, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+func (m *MockDatasetService) ListDocuments(ctx context.Context, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListDocuments", ctx, indexName, res, params)
+	ret := m.ctrl.Call(m, "ListDocuments", ctx, res, params)
 	ret0, _ := ret[0].([]map[string]any)
 	ret1, _ := ret[1].(int64)
 	ret2, _ := ret[2].(error)
@@ -182,9 +138,9 @@ func (m *MockDatasetService) ListDocuments(ctx context.Context, indexName string
 }
 
 // ListDocuments indicates an expected call of ListDocuments.
-func (mr *MockDatasetServiceMockRecorder) ListDocuments(ctx, indexName, res, params any) *gomock.Call {
+func (mr *MockDatasetServiceMockRecorder) ListDocuments(ctx, res, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDocuments", reflect.TypeOf((*MockDatasetService)(nil).ListDocuments), ctx, indexName, res, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDocuments", reflect.TypeOf((*MockDatasetService)(nil).ListDocuments), ctx, res, params)
 }
 
 // ReplaceDocument mocks base method.
@@ -213,19 +169,4 @@ func (m *MockDatasetService) Update(ctx context.Context, res *interfaces.Resourc
 func (mr *MockDatasetServiceMockRecorder) Update(ctx, res any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockDatasetService)(nil).Update), ctx, res)
-}
-
-// UpsertDocuments mocks base method.
-func (m *MockDatasetService) UpsertDocuments(ctx context.Context, id string, updateRequests []map[string]any) ([]string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpsertDocuments", ctx, id, updateRequests)
-	ret0, _ := ret[0].([]string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// UpsertDocuments indicates an expected call of UpsertDocuments.
-func (mr *MockDatasetServiceMockRecorder) UpsertDocuments(ctx, id, updateRequests any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertDocuments", reflect.TypeOf((*MockDatasetService)(nil).UpsertDocuments), ctx, id, updateRequests)
 }

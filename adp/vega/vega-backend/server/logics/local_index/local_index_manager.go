@@ -140,6 +140,10 @@ func (lim *localIndexManager) GetDocument(ctx context.Context, indexName string,
 	return lim.lic.GetDocument(ctx, indexName, docID)
 }
 
+func (lim *localIndexManager) GetDocuments(ctx context.Context, indexName string, docIDs []string) ([]map[string]any, error) {
+	return lim.lic.GetDocuments(ctx, indexName, docIDs)
+}
+
 func (lim *localIndexManager) CreateDocuments(ctx context.Context, indexName string, documents []map[string]any) ([]string, error) {
 	return lim.lic.CreateDocuments(ctx, indexName, documents)
 }
@@ -156,7 +160,7 @@ func (lim *localIndexManager) DeleteDocument(ctx context.Context, indexName stri
 	return lim.lic.DeleteDocument(ctx, indexName, docID)
 }
 
-func (lim *localIndexManager) DeleteDocuments(ctx context.Context, indexName string, docIDs string) error {
+func (lim *localIndexManager) DeleteDocuments(ctx context.Context, indexName string, docIDs []string) error {
 	return lim.lic.DeleteDocuments(ctx, indexName, docIDs)
 }
 

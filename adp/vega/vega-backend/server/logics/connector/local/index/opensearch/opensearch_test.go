@@ -48,6 +48,52 @@ func TestCreateDocumentsSplitsBulkRequestsBySerializedSize(t *testing.T) {
 	assert.Equal(t, "doc-1", document["_id"], "bulk encoding must not mutate the caller's document")
 }
 
+func TestGetDocumentReturnsNilForMissingDocument(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/dataset-1/_doc/missing", r.URL.Path)
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := opensearch.NewClient(opensearch.Config{Addresses: []string{server.URL}})
+	require.NoError(t, err)
+	connector := &OpenSearchConnector{client: client}
+
+	document, err := connector.GetDocument(context.Background(), "dataset-1", "missing")
+
+	require.NoError(t, err)
+	assert.Nil(t, document)
+}
+
+func TestGetDocumentsUsesMgetAndPreservesMissingPositions(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/dataset-1/_mget", r.URL.Path)
+		var body struct {
+			IDs []string `json:"ids"`
+		}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		assert.Equal(t, []string{"doc-1", "missing", "doc-2"}, body.IDs)
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{"docs":[{"_id":"doc-1","found":true,"_source":{"title":"one"}},{"_id":"missing","found":false},{"_id":"doc-2","found":true,"_source":{"title":"two"}}]}`))
+		require.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := opensearch.NewClient(opensearch.Config{Addresses: []string{server.URL}})
+	require.NoError(t, err)
+	connector := &OpenSearchConnector{client: client}
+
+	documents, err := connector.GetDocuments(context.Background(), "dataset-1", []string{"doc-1", "missing", "doc-2"})
+
+	require.NoError(t, err)
+	assert.Equal(t, []map[string]any{
+		{"_id": "doc-1", "title": "one"},
+		nil,
+		{"_id": "doc-2", "title": "two"},
+	}, documents)
+}
+
 func TestEncodeBulkDocumentRejectsSingleDocumentOverByteLimit(t *testing.T) {
 	document := map[string]any{"_id": "doc-1", "content": string(make([]byte, 128))}
 

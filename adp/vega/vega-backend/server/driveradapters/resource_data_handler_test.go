@@ -22,6 +22,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"vega-backend/common"
+	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 )
@@ -301,7 +302,7 @@ func Test_ResourceDataRestHandler_DeleteResourceDataByQuery(t *testing.T) {
 		engine, rs, ds, _ := setupResourceDataHandlerTest(t)
 		resource := sampleDatasetResource()
 		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
-		ds.EXPECT().DeleteDocumentsByQuery(gomock.Any(), "vega-dataset-res-1", resource, gomock.Any()).Return(nil)
+		ds.EXPECT().DeleteDocumentsByQuery(gomock.Any(), resource, gomock.Any()).Return(nil)
 
 		body := `{"filter_condition":{"name":"title","operation":"==","value":"old"}}`
 		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(body))
@@ -346,18 +347,19 @@ func Test_ResourceDataRestHandler_GetResourceDataDoc(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
 
-	t.Run("gets document", func(t *testing.T) {
+	t.Run("gets requested documents in request order", func(t *testing.T) {
 		engine, rs, ds, _ := setupResourceDataHandlerTest(t)
 		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(sampleDatasetResource(), nil)
-		ds.EXPECT().GetDocument(gomock.Any(), "vega-dataset-res-1", "doc-1").Return(map[string]any{"id": "doc-1"}, nil)
+		ds.EXPECT().GetDocuments(gomock.Any(), gomock.Any(), []string{"doc-1", "doc-2"}, false).
+			Return([]map[string]any{{"id": "doc-1"}, {"id": "doc-2"}}, nil)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/resources/res-1/data/doc-1", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/resources/res-1/data/doc-1,doc-2", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusOK, w.Result().StatusCode)
-		assert.Contains(t, w.Body.String(), `"id":"doc-1"`)
+		assert.JSONEq(t, `{"entries":[{"id":"doc-1"},{"id":"doc-2"}]}`, w.Body.String())
 	})
 
 	t.Run("rejects document read without query_data", func(t *testing.T) {
@@ -382,7 +384,9 @@ func Test_ResourceDataRestHandler_GetResourceDataDoc(t *testing.T) {
 	t.Run("returns not found for nil document", func(t *testing.T) {
 		engine, rs, ds, _ := setupResourceDataHandlerTest(t)
 		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(sampleDatasetResource(), nil)
-		ds.EXPECT().GetDocument(gomock.Any(), "vega-dataset-res-1", "missing").Return(nil, nil)
+		ds.EXPECT().GetDocuments(gomock.Any(), gomock.Any(), []string{"missing"}, false).
+			Return(nil, rest.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Resource_NotFound).
+				WithErrorDetails("document missing not found"))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/resources/res-1/data/missing", nil)
 		w := httptest.NewRecorder()
@@ -391,6 +395,48 @@ func Test_ResourceDataRestHandler_GetResourceDataDoc(t *testing.T) {
 
 		require.Equal(t, http.StatusNotFound, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), "document missing not found")
+	})
+
+	t.Run("skips missing documents when ignore_missing is true", func(t *testing.T) {
+		engine, rs, ds, _ := setupResourceDataHandlerTest(t)
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(sampleDatasetResource(), nil)
+		ds.EXPECT().GetDocuments(gomock.Any(), gomock.Any(), []string{"doc-1", "missing"}, true).
+			Return([]map[string]any{{"id": "doc-1"}, nil}, nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/resources/res-1/data/doc-1,missing?ignore_missing=true", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+		assert.JSONEq(t, `{"entries":[{"id":"doc-1"}]}`, w.Body.String())
+	})
+
+	t.Run("normalizes empty, whitespace, and duplicate document ids", func(t *testing.T) {
+		engine, rs, ds, _ := setupResourceDataHandlerTest(t)
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(sampleDatasetResource(), nil)
+		ds.EXPECT().GetDocuments(gomock.Any(), gomock.Any(), []string{"doc-1", "doc-2"}, false).
+			Return([]map[string]any{{"id": "doc-1"}, {"id": "doc-2"}}, nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/resources/res-1/data/%20doc-1%20,,doc-2,doc-1", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+		assert.JSONEq(t, `{"entries":[{"id":"doc-1"},{"id":"doc-2"}]}`, w.Body.String())
+	})
+
+	t.Run("rejects document ids that normalize to empty", func(t *testing.T) {
+		engine, rs, _, _ := setupResourceDataHandlerTest(t)
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(sampleDatasetResource(), nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/resources/res-1/data/,,", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
 	})
 
 	t.Run("rejects document query when resource metadata is unavailable", func(t *testing.T) {
@@ -467,12 +513,44 @@ func Test_ResourceDataRestHandler_DeleteResourceData(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
 
-	t.Run("deletes documents by ids", func(t *testing.T) {
+	t.Run("deletes documents by ids after strict existence preflight", func(t *testing.T) {
 		engine, rs, ds, _ := setupResourceDataHandlerTest(t)
 		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(sampleDatasetResource(), nil)
-		ds.EXPECT().DeleteDocuments(gomock.Any(), "vega-dataset-res-1", "doc-1,doc-2").Return(nil)
+		ds.EXPECT().GetDocuments(gomock.Any(), gomock.Any(), []string{"doc-1", "doc-2"}, false).
+			Return([]map[string]any{{"id": "doc-1"}, {"id": "doc-2"}}, nil)
+		ds.EXPECT().DeleteDocuments(gomock.Any(), gomock.Any(), []string{"doc-1", "doc-2"}).Return(nil)
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/resources/res-1/data/doc-1,doc-2", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+	})
+
+	t.Run("does not delete when a requested document is missing", func(t *testing.T) {
+		engine, rs, ds, _ := setupResourceDataHandlerTest(t)
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(sampleDatasetResource(), nil)
+		ds.EXPECT().GetDocuments(gomock.Any(), gomock.Any(), []string{"doc-1", "missing"}, false).
+			Return(nil, rest.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Resource_NotFound).
+				WithErrorDetails("document missing not found"))
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/resources/res-1/data/doc-1,missing", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNotFound, w.Result().StatusCode)
+	})
+
+	t.Run("skips missing documents for tolerant delete", func(t *testing.T) {
+		engine, rs, ds, _ := setupResourceDataHandlerTest(t)
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(sampleDatasetResource(), nil)
+		ds.EXPECT().GetDocuments(gomock.Any(), gomock.Any(), []string{"doc-1", "missing"}, true).
+			Return([]map[string]any{{"id": "doc-1"}, nil}, nil)
+		ds.EXPECT().DeleteDocuments(gomock.Any(), gomock.Any(), []string{"doc-1"}).Return(nil)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/resources/res-1/data/doc-1,missing?ignore_missing=true", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)
@@ -532,7 +610,8 @@ func Test_ResourceDataRestHandler_S2SInternalAccessMarker(t *testing.T) {
 			url:        "/api/vega-backend/in/v1/resources/res-1/data/doc-1",
 			expectCode: http.StatusNoContent,
 			expectCall: func(ds *vmock.MockDatasetService) {
-				ds.EXPECT().DeleteDocuments(gomock.Any(), "vega-dataset-res-1", "doc-1").Return(nil)
+				ds.EXPECT().GetDocuments(gomock.Any(), gomock.Any(), []string{"doc-1"}, false).Return([]map[string]any{{"id": "doc-1"}}, nil)
+				ds.EXPECT().DeleteDocuments(gomock.Any(), gomock.Any(), []string{"doc-1"}).Return(nil)
 			},
 		},
 		{
@@ -541,7 +620,7 @@ func Test_ResourceDataRestHandler_S2SInternalAccessMarker(t *testing.T) {
 			url:        "/api/vega-backend/in/v1/resources/res-1/data/doc-1",
 			expectCode: http.StatusOK,
 			expectCall: func(ds *vmock.MockDatasetService) {
-				ds.EXPECT().GetDocument(gomock.Any(), "vega-dataset-res-1", "doc-1").Return(map[string]any{"id": "doc-1"}, nil)
+				ds.EXPECT().GetDocuments(gomock.Any(), gomock.Any(), []string{"doc-1"}, false).Return([]map[string]any{{"id": "doc-1"}}, nil)
 			},
 		},
 		{
@@ -589,10 +668,11 @@ func Test_ResourceDataRestHandler_S2SInternalAccessMarker(t *testing.T) {
 
 		var gotS2S bool
 		captureS2S(rs, &gotS2S)
-		ds.EXPECT().DeleteDocuments(gomock.Any(), "vega-dataset-res-1", "doc-1").Return(nil)
+		ds.EXPECT().GetDocuments(gomock.Any(), gomock.Any(), []string{"doc-1"}, false).Return([]map[string]any{{"id": "doc-1"}}, nil)
+		ds.EXPECT().DeleteDocuments(gomock.Any(), gomock.Any(), []string{"doc-1"}).Return(nil)
 
 		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, nil, ds, nil, nil, nil, nil)
-		engine.DELETE("/ex/resources/:id/data/:doc_ids", func(c *gin.Context) {
+		engine.DELETE("/ex/resources/:id/data/:docid", func(c *gin.Context) {
 			handler.deleteResourceData(c, hydra.Visitor{ID: "user-1"}, false)
 		})
 

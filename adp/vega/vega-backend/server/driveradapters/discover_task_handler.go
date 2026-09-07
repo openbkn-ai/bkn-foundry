@@ -193,14 +193,7 @@ func (r *restHandler) deleteDiscoverTasks(c *gin.Context, visitor hydra.Visitor)
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	idsStr := c.Param("ids")
-	ids := make([]string, 0)
-	for _, id := range strings.Split(idsStr, ",") {
-		id = strings.TrimSpace(id)
-		if id != "" {
-			ids = append(ids, id)
-		}
-	}
+	ids := parseRawIDs(c.Param("ids"))
 	if len(ids) == 0 {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails("ids path parameter is required")

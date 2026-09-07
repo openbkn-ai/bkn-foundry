@@ -257,8 +257,8 @@ func TestResourceDataServiceQuery(t *testing.T) {
 
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockDS.EXPECT().ListDocuments(gomock.Any(), "vega-dataset-index-1", resource, params).
-			DoAndReturn(func(ctx context.Context, resourceID string, gotResource *interfaces.Resource,
+		mockDS.EXPECT().ListDocuments(gomock.Any(), resource, params).
+			DoAndReturn(func(ctx context.Context, gotResource *interfaces.Resource,
 				gotParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 				require.NotNil(t, gotParams.ActualFilterCond)
 				assert.Equal(t, "==", gotParams.ActualFilterCond.GetOperation())
@@ -367,7 +367,7 @@ func TestResourceDataServiceRejectsOpenSearchCursorWithoutSort(t *testing.T) {
 	}
 	mockCS.EXPECT().GetByID(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-	mockDS.EXPECT().ListDocuments(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
+	mockDS.EXPECT().ListDocuments(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
 		Return(nil, int64(0), nil)
 
 	_, err := rds.QueryWithPaging(context.Background(), resource, &interfaces.ResourceDataQueryParams{
@@ -393,7 +393,7 @@ func TestResourceDataServiceRejectsOpenSearchFirstPageWindowOverflow(t *testing.
 	}
 	mockCS.EXPECT().GetByID(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-	mockDS.EXPECT().ListDocuments(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
+	mockDS.EXPECT().ListDocuments(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
 		Return(nil, int64(0), nil)
 
 	_, err := rds.QueryWithPaging(context.Background(), resource, &interfaces.ResourceDataQueryParams{
@@ -426,8 +426,8 @@ func TestDatasetCursorUsesSearchAfterPagination(t *testing.T) {
 	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Times(2).
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 	firstPage := true
-	mockDS.EXPECT().ListDocuments(gomock.Any(), "vega-dataset-index-1", resource, gomock.Any()).Times(2).
-		DoAndReturn(func(_ context.Context, _ string, _ *interfaces.Resource, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+	mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).Times(2).
+		DoAndReturn(func(_ context.Context, _ *interfaces.Resource, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 			assert.Equal(t, 1, pageParams.Limit)
 			if firstPage {
 				firstPage = false

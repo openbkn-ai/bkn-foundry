@@ -223,7 +223,7 @@ func Test_DiscoverTaskRestHandler_DeleteDiscoverTasks(t *testing.T) {
 		engine, dts := setup(t)
 		dts.EXPECT().DeleteByIDs(gomock.Any(), []string{"task-1", "task-2"}, true).Return(nil)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/discover-tasks/task-1,task-2?ignore_missing=true", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/discover-tasks/%20task-1%20,,task-2,task-1?ignore_missing=true", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)

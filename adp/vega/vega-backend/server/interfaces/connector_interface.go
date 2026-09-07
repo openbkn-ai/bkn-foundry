@@ -120,9 +120,10 @@ type IndexConnector interface {
 	CreateDocuments(ctx context.Context, indexName string, documents []map[string]any) ([]string, error)
 	IndexDocuments(ctx context.Context, indexName string, documents map[string]map[string]any) ([]string, error)
 	GetDocument(ctx context.Context, indexName string, docID string) (map[string]any, error)
+	GetDocuments(ctx context.Context, indexName string, docIDs []string) ([]map[string]any, error)
 	DeleteDocument(ctx context.Context, indexName string, docID string) error
 	UpsertDocuments(ctx context.Context, indexName string, updateRequests []map[string]any) ([]string, error)
-	DeleteDocuments(ctx context.Context, indexName string, docIDs string) error
+	DeleteDocuments(ctx context.Context, indexName string, docIDs []string) error
 	DeleteDocumentsByQuery(ctx context.Context, indexName string, params *ResourceDataQueryParams, schemaDefinition []*Property) error
 }
 

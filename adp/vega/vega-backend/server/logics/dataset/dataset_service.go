@@ -89,12 +89,12 @@ func (ds *datasetService) Update(ctx context.Context, res *interfaces.Resource) 
 }
 
 // Delete a Dataset.
-func (ds *datasetService) Delete(ctx context.Context, indexName string) error {
+func (ds *datasetService) Delete(ctx context.Context, res *interfaces.Resource) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete dataset")
 	defer span.End()
 
 	// Check dataset exist first
-	exist, err := ds.lim.CheckIndexExist(ctx, indexName)
+	exist, err := ds.lim.CheckIndexExist(ctx, res.LocalIndexName)
 	if err != nil {
 		span.SetStatus(codes.Error, "Check dataset exist failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
@@ -102,7 +102,7 @@ func (ds *datasetService) Delete(ctx context.Context, indexName string) error {
 	}
 	if exist {
 		// Delete from storage
-		if err := ds.lim.DeleteIndex(ctx, indexName); err != nil {
+		if err := ds.lim.DeleteIndex(ctx, res.LocalIndexName); err != nil {
 			span.SetStatus(codes.Error, "Delete dataset failed")
 			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
 				WithErrorDetails(err.Error())
@@ -113,29 +113,13 @@ func (ds *datasetService) Delete(ctx context.Context, indexName string) error {
 	return nil
 }
 
-// CheckExist checks if a dataset exists.
-func (ds *datasetService) CheckExist(ctx context.Context, id string) (bool, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Check dataset exist")
-	defer span.End()
-
-	exist, err := ds.lim.CheckIndexExist(ctx, id)
-	if err != nil {
-		span.SetStatus(codes.Error, "Check dataset exist failed")
-		return false, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
-			WithErrorDetails(err.Error())
-	}
-
-	span.SetStatus(codes.Ok, "")
-	return exist, nil
-}
-
 // ListDocuments lists the documents in the dataset
-func (ds *datasetService) ListDocuments(ctx context.Context, indexName string, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+func (ds *datasetService) ListDocuments(ctx context.Context, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List dataset documents")
 	defer span.End()
 
 	// Call the local index store to list the documents
-	documents, total, err := ds.lim.ListDocuments(ctx, indexName, res, params)
+	documents, total, err := ds.lim.ListDocuments(ctx, res.LocalIndexName, res, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List dataset documents failed")
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
@@ -146,38 +130,35 @@ func (ds *datasetService) ListDocuments(ctx context.Context, indexName string, r
 	return documents, total, nil
 }
 
-// CreateDocuments to batch create dataset documents
-func (ds *datasetService) CreateDocuments(ctx context.Context, indexName string, documents []map[string]any) ([]string, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create dataset documents")
+// GetDocuments retrieves documents in input order. With ignoreMissing enabled,
+// a missing document is represented by a nil entry at the same position.
+func (ds *datasetService) GetDocuments(ctx context.Context, res *interfaces.Resource, docIDs []string, ignoreMissing bool) ([]map[string]any, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get dataset documents")
 	defer span.End()
 
-	// Call the local index store to create documents in batches
-	docIDs, err := ds.lim.CreateDocuments(ctx, indexName, documents)
+	documents := make([]map[string]any, len(docIDs))
+	loadedDocuments, err := ds.lim.GetDocuments(ctx, res.LocalIndexName, docIDs)
 	if err != nil {
-		span.SetStatus(codes.Error, "Create dataset documents failed")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
-			WithErrorDetails(err.Error())
-	}
-
-	span.SetStatus(codes.Ok, "")
-	return docIDs, nil
-}
-
-// GetDocument retrieves the dataset document
-func (ds *datasetService) GetDocument(ctx context.Context, indexName string, docID string) (map[string]any, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get dataset document")
-	defer span.End()
-
-	// Call the local index store to obtain the document
-	document, err := ds.lim.GetDocument(ctx, indexName, docID)
-	if err != nil {
-		span.SetStatus(codes.Error, "Get dataset document failed")
+		span.SetStatus(codes.Error, "Get dataset documents failed")
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 			WithErrorDetails(err.Error())
 	}
+	if len(loadedDocuments) != len(docIDs) {
+		span.SetStatus(codes.Error, "Get dataset documents returned unexpected count")
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
+			WithErrorDetails("local index returned a document count different from the requested IDs")
+	}
+	for i, document := range loadedDocuments {
+		if document == nil && !ignoreMissing {
+			span.SetStatus(codes.Error, "Dataset document not found")
+			return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound).
+				WithErrorDetails(fmt.Sprintf("document %s not found", docIDs[i]))
+		}
+		documents[i] = document
+	}
 
 	span.SetStatus(codes.Ok, "")
-	return document, nil
+	return documents, nil
 }
 
 // CreateDocument materializes a Dataset document and writes it only after all
@@ -225,45 +206,13 @@ func (ds *datasetService) ReplaceDocument(ctx context.Context, res *interfaces.R
 	return nil
 }
 
-// DeleteDocument deletes the dataset document
-func (ds *datasetService) DeleteDocument(ctx context.Context, indexName string, docID string) error {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete dataset document")
-	defer span.End()
-
-	// Call the local index store to delete the document
-	if err := ds.lim.DeleteDocument(ctx, indexName, docID); err != nil {
-		span.SetStatus(codes.Error, "Delete dataset document failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
-			WithErrorDetails(err.Error())
-	}
-
-	span.SetStatus(codes.Ok, "")
-	return nil
-}
-
-// UpsertDocuments batch updates dataset documents
-func (ds *datasetService) UpsertDocuments(ctx context.Context, indexName string, updateRequests []map[string]any) ([]string, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update dataset documents")
-	defer span.End()
-
-	// Call the local index store to update documents in batches
-	docIDs, err := ds.lim.UpsertDocuments(ctx, indexName, updateRequests)
-	if err != nil {
-		span.SetStatus(codes.Error, "Update dataset documents failed")
-		return docIDs, err
-	}
-
-	span.SetStatus(codes.Ok, "")
-	return docIDs, nil
-}
-
 // DeleteDocuments to batch delete dataset documents
-func (ds *datasetService) DeleteDocuments(ctx context.Context, indexName string, docIDs string) error {
+func (ds *datasetService) DeleteDocuments(ctx context.Context, res *interfaces.Resource, docIDs []string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete dataset documents")
 	defer span.End()
 
 	// Call the local index store to batch delete documents
-	if err := ds.lim.DeleteDocuments(ctx, indexName, docIDs); err != nil {
+	if err := ds.lim.DeleteDocuments(ctx, res.LocalIndexName, docIDs); err != nil {
 		span.SetStatus(codes.Error, "Delete dataset documents failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
 			WithErrorDetails(err.Error())
@@ -274,12 +223,12 @@ func (ds *datasetService) DeleteDocuments(ctx context.Context, indexName string,
 }
 
 // DeleteDocumentsByQuery for batch deletion of dataset documents
-func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, indexName string, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) error {
+func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete dataset documents by query")
 	defer span.End()
 
 	// Call the local index store to batch delete documents
-	if err := ds.lim.DeleteDocumentsByQuery(ctx, indexName, res, params); err != nil {
+	if err := ds.lim.DeleteDocumentsByQuery(ctx, res.LocalIndexName, res, params); err != nil {
 		span.SetStatus(codes.Error, "Delete dataset documents failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
 			WithErrorDetails(err.Error())

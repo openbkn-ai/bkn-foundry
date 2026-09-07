@@ -883,7 +883,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 					return nil, nil
 				}),
 			mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}).Return(nil),
-			mockDS.EXPECT().Delete(gomock.Any(), "vega-dataset-index-1").Return(nil),
+			mockDS.EXPECT().Delete(gomock.Any(), gomock.Any()).Return(nil),
 			mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1"}).Return(nil),
 		)
 
@@ -1055,8 +1055,8 @@ func TestResourceServiceUpdate(t *testing.T) {
 			LocalIndexName:   "vega-dataset-index-1",
 			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
 		}
-		mockDS.EXPECT().ListDocuments(gomock.Any(), "vega-dataset-index-1", resource, gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+		mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 				assert.Equal(t, 1, params.Limit)
 				return nil, 0, nil
 			})
@@ -1087,7 +1087,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			LocalIndexName:   "vega-dataset-index-1",
 			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
 		}
-		mockDS.EXPECT().ListDocuments(gomock.Any(), "vega-dataset-index-1", resource, gomock.Any()).
+		mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).
 			Return([]map[string]any{{"id": "doc-1"}}, int64(1), nil)
 
 		err := rs.Update(context.Background(), resource, &interfaces.ResourceRequest{
@@ -1665,7 +1665,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		expectResourceServiceTransaction(t, rs, true)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
-		mockDS.EXPECT().ListDocuments(gomock.Any(), "vega-build-r1-task-1", gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+		mockDS.EXPECT().ListDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
 		mockDS.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
 		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).
