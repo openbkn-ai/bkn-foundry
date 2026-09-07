@@ -782,6 +782,10 @@ func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset boo
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
 			WithErrorDetails(fmt.Sprintf("cannot start task in status: %s", buildTask.Status))
 	}
+	if strings.TrimSpace(buildTask.IndexName) == "" {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IndexConfigChanged).
+			WithErrorDetails("build task has no target index after upgrade; create a new build task instead")
+	}
 	if reset && buildTask.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental {
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IncrementalResetUnsupported).
 			WithErrorDetails("incremental build tasks cannot be reset")

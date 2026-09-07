@@ -284,6 +284,24 @@ func TestBuildFieldMappingsStringFulltextNoConfig(t *testing.T) {
 	})
 }
 
+func TestDeleteDocumentsReturnsBulkItemFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{"errors":true,"items":[{"delete":{"_id":"doc-1","status":404,"error":{"type":"document_missing_exception","reason":"missing"}}}]}`))
+		require.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := opensearch.NewClient(opensearch.Config{Addresses: []string{server.URL}})
+	require.NoError(t, err)
+	connector := &OpenSearchConnector{client: client}
+
+	err = connector.DeleteDocuments(context.Background(), "index-1", []string{"doc-1"})
+
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "document_missing_exception")
+}
+
 func TestBuildFieldMappingsStringKeywordAndFulltext(t *testing.T) {
 	t.Run("string keyword and fulltext keeps keyword config and text subfield", func(t *testing.T) {
 		c := &OpenSearchConnector{}

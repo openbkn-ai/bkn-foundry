@@ -9,6 +9,7 @@ package dataset
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -122,6 +123,25 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		require.NoError(t, ds.DeleteDocuments(ctx, resource, []string{"doc-1", "doc-2"}))
 	})
 
+	t.Run("requires catalog resource_manage permission for document mutations", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		cs := vmock.NewMockCatalogService(ctrl)
+		ps := vmock.NewMockPermissionService(ctrl)
+		ds := &datasetService{lim: lim, cs: cs, ps: ps}
+		denied := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails("Access denied: insufficient permissions for[resource_manage]")
+		cs.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{}, nil)
+		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			ID:   resource.CatalogID,
+		}, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}).Return(denied)
+
+		err := ds.DeleteDocuments(ctx, resource, []string{"doc-1"})
+
+		require.ErrorIs(t, err, denied)
+	})
+
 	t.Run("delete by query wraps error", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
 		lim.EXPECT().DeleteDocumentsByQuery(gomock.Any(), "dataset-1", resource, params).Return(errors.New("delete failed"))
@@ -138,7 +158,11 @@ func newDatasetServiceMock(t *testing.T) (*datasetService, *vmock.MockLocalIndex
 
 	ctrl := gomock.NewController(t)
 	lim := vmock.NewMockLocalIndexManager(ctrl)
-	return &datasetService{lim: lim}, lim
+	cs := vmock.NewMockCatalogService(ctrl)
+	ps := vmock.NewMockPermissionService(ctrl)
+	cs.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{}, nil).AnyTimes()
+	ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	return &datasetService{lim: lim, cs: cs, ps: ps}, lim
 }
 
 func assertHTTPError(t *testing.T, err error) {

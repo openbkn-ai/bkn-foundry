@@ -20,6 +20,7 @@ import (
 	"vega-backend/logics/catalog"
 	"vega-backend/logics/local_index"
 	"vega-backend/logics/model_factory"
+	"vega-backend/logics/permission"
 )
 
 var (
@@ -33,6 +34,7 @@ type datasetService struct {
 	mfs        interfaces.ModelFactoryService
 	ra         interfaces.ResourceAccess
 	cs         interfaces.CatalogService
+	ps         interfaces.PermissionService
 }
 
 // NewDatasetService creates a new DatasetService.
@@ -44,6 +46,7 @@ func NewDatasetService(appSetting *common.AppSetting) interfaces.DatasetService 
 			mfs:        model_factory.NewModelFactoryService(appSetting),
 			ra:         logics.RA,
 			cs:         catalog.NewCatalogService(appSetting),
+			ps:         permission.NewPermissionService(appSetting),
 		}
 	})
 	return dsService
@@ -167,6 +170,10 @@ func (ds *datasetService) CreateDocument(ctx context.Context, res *interfaces.Re
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create dataset document")
 	defer span.End()
 
+	if err := ds.checkDocumentModifyPermission(ctx, res); err != nil {
+		span.SetStatus(codes.Error, "Permission denied")
+		return "", err
+	}
 	materialized, err := ds.materializeDocument(ctx, res, document)
 	if err != nil {
 		span.SetStatus(codes.Error, "Materialize dataset document failed")
@@ -192,6 +199,10 @@ func (ds *datasetService) ReplaceDocument(ctx context.Context, res *interfaces.R
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Replace dataset document")
 	defer span.End()
 
+	if err := ds.checkDocumentModifyPermission(ctx, res); err != nil {
+		span.SetStatus(codes.Error, "Permission denied")
+		return err
+	}
 	materialized, err := ds.materializeDocument(ctx, res, document)
 	if err != nil {
 		span.SetStatus(codes.Error, "Materialize dataset document failed")
@@ -211,6 +222,10 @@ func (ds *datasetService) DeleteDocuments(ctx context.Context, res *interfaces.R
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete dataset documents")
 	defer span.End()
 
+	if err := ds.checkDocumentModifyPermission(ctx, res); err != nil {
+		span.SetStatus(codes.Error, "Permission denied")
+		return err
+	}
 	// Call the local index store to batch delete documents
 	if err := ds.lim.DeleteDocuments(ctx, res.LocalIndexName, docIDs); err != nil {
 		span.SetStatus(codes.Error, "Delete dataset documents failed")
@@ -227,6 +242,10 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete dataset documents by query")
 	defer span.End()
 
+	if err := ds.checkDocumentModifyPermission(ctx, res); err != nil {
+		span.SetStatus(codes.Error, "Permission denied")
+		return err
+	}
 	// Call the local index store to batch delete documents
 	if err := ds.lim.DeleteDocumentsByQuery(ctx, res.LocalIndexName, res, params); err != nil {
 		span.SetStatus(codes.Error, "Delete dataset documents failed")
@@ -236,4 +255,23 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func (ds *datasetService) checkDocumentModifyPermission(ctx context.Context, res *interfaces.Resource) error {
+	internalCatalogs, err := ds.cs.InternalCatalogIDSet(ctx)
+	if err != nil {
+		return err
+	}
+	_, parentInternal := internalCatalogs[res.CatalogID]
+	if parentInternal && interfaces.IsS2SInternalAccess(ctx) {
+		return nil
+	}
+	catalogType := interfaces.AUTH_RESOURCE_TYPE_CATALOG
+	if parentInternal {
+		catalogType = interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG
+	}
+	return ds.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: catalogType,
+		ID:   res.CatalogID,
+	}, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE})
 }

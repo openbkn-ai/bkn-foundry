@@ -844,8 +844,38 @@ func (c *OpenSearchConnector) DeleteDocuments(ctx context.Context, indexName str
 	if resp.IsError() {
 		return fmt.Errorf("failed to delete documents: %s", resp.String())
 	}
+	var result map[string]any
+	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("decode delete documents response: %w", err)
+	}
+	if hasErrors, ok := result["errors"].(bool); ok && hasErrors {
+		return bulkDeleteResponseError(result)
+	}
 
 	return nil
+}
+
+func bulkDeleteResponseError(result map[string]any) error {
+	items, ok := result["items"].([]any)
+	if !ok {
+		return errors.New("bulk delete response contains failed operations")
+	}
+	for _, item := range items {
+		itemMap, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		deleteResult, ok := itemMap["delete"].(map[string]any)
+		if !ok {
+			continue
+		}
+		errorObject, ok := deleteResult["error"].(map[string]any)
+		if !ok {
+			continue
+		}
+		return fmt.Errorf("failed to delete document, error type: %v, reason: %v", errorObject["type"], errorObject["reason"])
+	}
+	return errors.New("bulk delete response contains failed operations")
 }
 
 // Delete Documents By Query

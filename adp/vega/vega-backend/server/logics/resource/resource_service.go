@@ -503,6 +503,11 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	err = rs.ra.Create(ctx, tx, resource)
 	if err != nil {
 		otellog.LogError(ctx, "Create resource failed", err)
+		if resource.Category == interfaces.ResourceCategoryDataset {
+			if deleteErr := rs.ds.Delete(ctx, resource); deleteErr != nil {
+				logger.Errorf("Delete dataset index after resource creation failed: resource %s: %v", resource.ID, deleteErr)
+			}
+		}
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
 			WithErrorDetails("failed to create resource")
 	}

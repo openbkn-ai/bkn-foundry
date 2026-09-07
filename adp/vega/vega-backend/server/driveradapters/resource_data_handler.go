@@ -426,7 +426,14 @@ func (r *restHandler) putResourceDataDoc(c *gin.Context, visitor hydra.Visitor, 
 		return
 	}
 
-	docID := c.Param("docid")
+	docID := strings.TrimSpace(c.Param("docid"))
+	if docID == "" {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
+			WithErrorDetails("exactly one document id is required")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 
 	var doc map[string]any
 	if err := common.BindPreciseJSON(c.Request.Body, &doc); err != nil {

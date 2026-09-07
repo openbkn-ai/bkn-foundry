@@ -44,7 +44,6 @@ func TestMaterializeDocument(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mfs := vmock.NewMockModelFactoryService(ctrl)
 		ds := &datasetService{mfs: mfs}
-		mfs.EXPECT().GetModelByID(gomock.Any(), "embedding-1").Return(&interfaces.SmallModel{ModelID: "embedding-1", EmbeddingDim: 2}, nil)
 
 		document, err := ds.materializeDocument(context.Background(), resource, map[string]any{"content_vector": []any{0.1, 0.2}})
 
@@ -54,14 +53,13 @@ func TestMaterializeDocument(t *testing.T) {
 
 	t.Run("does not write when inference fails", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		lim := vmock.NewMockLocalIndexManager(ctrl)
 		mfs := vmock.NewMockModelFactoryService(ctrl)
-		ds := &datasetService{lim: lim, mfs: mfs}
+		ds := &datasetService{mfs: mfs}
 		model := &interfaces.SmallModel{ModelID: "embedding-1", EmbeddingDim: 2}
 		mfs.EXPECT().GetModelByID(gomock.Any(), "embedding-1").Return(model, nil)
 		mfs.EXPECT().GetVector(gomock.Any(), model, []string{"hello"}).Return(nil, errors.New("inference unavailable"))
 
-		_, err := ds.CreateDocument(context.Background(), resource, map[string]any{"content": "hello"})
+		_, err := ds.materializeDocument(context.Background(), resource, map[string]any{"content": "hello"})
 
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "inference unavailable")

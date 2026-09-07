@@ -695,6 +695,22 @@ func TestResourceServiceCreate(t *testing.T) {
 			t.Fatal("expected error")
 		}
 	})
+	t.Run("deletes dataset index when resource persistence fails", func(t *testing.T) {
+		rs, mockRA, mockPS, mockDS, _, mockCS, _ := newTestService(t)
+		expectResourceServiceTransaction(t, rs, false)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCS.EXPECT().CheckExistByID(gomock.Any(), gomock.Any()).Return(true, nil)
+		mockDS.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(errors.New("insert failed"))
+		mockDS.EXPECT().Delete(gomock.Any(), gomock.Any()).Return(nil)
+
+		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
+			Name:     "test-dataset",
+			Category: interfaces.ResourceCategoryDataset,
+		})
+
+		require.Error(t, err)
+	})
 	t.Run("create rejects missing feature embedding model ID", func(t *testing.T) {
 		rs, _, mockPS, _, _, mockCS, _ := newTestService(t)
 		ctrl := gomock.NewController(t)

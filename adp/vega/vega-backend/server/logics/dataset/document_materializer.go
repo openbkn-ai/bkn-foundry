@@ -42,24 +42,8 @@ func (ds *datasetService) materializeDocument(ctx context.Context, res *interfac
 			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
 				continue
 			}
-			// Resource creation/update persists the dimension. Keep model inheritance
-			// explicit so a feature without an override follows the global default.
 			// Resource schemas loaded from storage represent JSON numbers as float64.
-			modelID, _ := feature.Config["embedding_model"].(string)
-			if modelID == "" {
-				modelID = res.IndexConfig.DefaultEmbeddingModel
-			}
 			dimension := int(feature.Config["dimension"].(float64))
-			if _, exists := models[modelID]; !exists {
-				model, err := ds.mfs.GetModelByID(ctx, modelID)
-				if err != nil {
-					// The registry is an external dependency. Abort before any local
-					// index write so the document is never partially materialized.
-					return nil, fmt.Errorf("get embedding model %q: %w", modelID, err)
-				}
-				models[modelID] = model
-				modelOrder = append(modelOrder, modelID)
-			}
 			if prop.Type == interfaces.DataType_Vector {
 				if value, exists := document[prop.Name]; exists {
 					if err := validateVector(value, dimension, prop.Name); err != nil {
@@ -78,6 +62,20 @@ func (ds *datasetService) materializeDocument(ctx context.Context, res *interfac
 				continue
 			}
 			if text, ok := document[prop.Name].(string); ok && strings.TrimSpace(text) != "" {
+				modelID, _ := feature.Config["embedding_model"].(string)
+				if modelID == "" {
+					modelID = res.IndexConfig.DefaultEmbeddingModel
+				}
+				if _, exists := models[modelID]; !exists {
+					model, err := ds.mfs.GetModelByID(ctx, modelID)
+					if err != nil {
+						// The registry is an external dependency. Abort before any local
+						// index write so the document is never partially materialized.
+						return nil, fmt.Errorf("get embedding model %q: %w", modelID, err)
+					}
+					models[modelID] = model
+					modelOrder = append(modelOrder, modelID)
+				}
 				if _, exists := pending[modelID]; !exists {
 					pending[modelID] = []pendingEmbedding{}
 				}

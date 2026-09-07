@@ -292,6 +292,7 @@ func Test_ResourceDataRestHandler_CreateResourceData(t *testing.T) {
 
 		require.Equal(t, http.StatusInternalServerError, w.Result().StatusCode)
 	})
+
 }
 
 func Test_ResourceDataRestHandler_DeleteResourceDataByQuery(t *testing.T) {
@@ -506,6 +507,21 @@ func Test_ResourceDataRestHandler_PutResourceDataDoc(t *testing.T) {
 		engine.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusInternalServerError, w.Result().StatusCode)
+	})
+
+	t.Run("accepts a comma in a single document id", func(t *testing.T) {
+		engine, rs, ds, _ := setupResourceDataHandlerTest(t)
+		resource := sampleDatasetResource()
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+		ds.EXPECT().ReplaceDocument(gomock.Any(), resource, "doc-1,doc-2", map[string]any{"id": "doc-1,doc-2"}).Return(nil)
+
+		req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/resources/res-1/data/doc-1,doc-2", strings.NewReader(`{}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 	})
 }
 
