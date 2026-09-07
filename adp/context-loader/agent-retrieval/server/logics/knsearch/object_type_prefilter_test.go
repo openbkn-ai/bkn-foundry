@@ -8,6 +8,7 @@ package knsearch
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -180,10 +181,16 @@ func TestFilterObjectTypesByScore_KeepsUnscoredObjectTypes(t *testing.T) {
 
 // End to end: an unscored object type still gets its downstream query.
 func TestSemanticInstanceRetrieval_PreFilterQueriesUnscoredObjectTypes(t *testing.T) {
+	// The retrieval fans out one goroutine per channel, so this callback runs concurrently and
+	// the map it records into needs a lock. Without one the test is a coin flip that reports
+	// "concurrent map writes" as a fatal runtime error rather than a test failure.
+	var queriedMu sync.Mutex
 	queried := map[string]bool{}
 	mockQuery := &mockOntologyQuery{
 		instancesFunc: func(req *interfaces.QueryObjectInstancesReq) (*interfaces.QueryObjectInstancesResp, error) {
+			queriedMu.Lock()
 			queried[req.OtID] = true
+			queriedMu.Unlock()
 			return rowsToResp([]map[string]any{instanceRow(req.OtID, 9)}), nil
 		},
 	}
@@ -198,7 +205,10 @@ func TestSemanticInstanceRetrieval_PreFilterQueriesUnscoredObjectTypes(t *testin
 		&interfaces.KnSearchLocalRequest{KnID: "129", Query: "q"}, types, config); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !queried["shipment"] {
+	queriedMu.Lock()
+	sawShipment := queried["shipment"]
+	queriedMu.Unlock()
+	if !sawShipment {
 		t.Fatal("no instance query was issued for the unscored object type")
 	}
 }

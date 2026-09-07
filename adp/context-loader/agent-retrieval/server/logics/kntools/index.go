@@ -19,8 +19,10 @@ import (
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/permission"
 )
 
 const (
@@ -83,6 +85,7 @@ type KnToolsService interface {
 type knToolsService struct {
 	operator   interfaces.DrivenOperatorIntegration
 	bknBackend interfaces.BknBackendAccess
+	knAuthz    interfaces.KnowledgeNetworkAuthorizer
 }
 
 var (
@@ -93,9 +96,11 @@ var (
 // NewKnToolsService creates the KnToolsService singleton.
 func NewKnToolsService() KnToolsService {
 	once.Do(func() {
+		conf := config.NewConfigLoader()
 		service = &knToolsService{
 			operator:   drivenadapters.NewOperatorIntegrationClient(),
 			bknBackend: drivenadapters.NewBknBackendAccess(),
+			knAuthz:    permission.NewKnowledgeNetworkAuthorizer(conf),
 		}
 	})
 	return service
@@ -103,8 +108,9 @@ func NewKnToolsService() KnToolsService {
 
 // NewKnToolsServiceWith builds a service over explicit driven adapters.
 func NewKnToolsServiceWith(operator interfaces.DrivenOperatorIntegration,
-	bknBackend interfaces.BknBackendAccess) KnToolsService {
-	return &knToolsService{operator: operator, bknBackend: bknBackend}
+	bknBackend interfaces.BknBackendAccess,
+	knAuthz interfaces.KnowledgeNetworkAuthorizer) KnToolsService {
+	return &knToolsService{operator: operator, bknBackend: bknBackend, knAuthz: knAuthz}
 }
 
 // SearchTools returns the Function tools this knowledge network has mounted, ranked against a
@@ -161,6 +167,17 @@ func (s *knToolsService) SearchTools(ctx context.Context, req *SearchToolsReq) (
 // network that mounted nothing, and continuing without one would return the whole catalogue —
 // both answer a question the service cannot currently answer.
 func (s *knToolsService) boundToolRefs(ctx context.Context, knID, toolboxID string) ([]string, error) {
+	// Both entry points come through here, so the per-caller check lives here rather than in each
+	// of them: the network's bindings and the execution factory's ranking are both read with this
+	// service's identity, and without this the scope would be the kn_id the caller typed.
+	if s.knAuthz == nil {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+	}
+	if err := s.knAuthz.AuthorizeRead(ctx, knID); err != nil {
+		return nil, err
+	}
+
 	bindings, err := s.bknBackend.ListKNCapabilities(ctx, knID, "", interfaces.CapabilityTypeFunction)
 	if err != nil {
 		return nil, err

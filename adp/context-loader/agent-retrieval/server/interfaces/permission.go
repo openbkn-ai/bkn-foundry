@@ -7,8 +7,10 @@ package interfaces
 import "context"
 
 const (
-	PermissionResourceTypeObjectType = "object_type"
-	PermissionOperationQueryData     = "query_data"
+	PermissionResourceTypeObjectType       = "object_type"
+	PermissionResourceTypeKnowledgeNetwork = "knowledge_network"
+	PermissionOperationQueryData           = "query_data"
+	PermissionOperationViewDetail          = "view_detail"
 )
 
 // PermissionResource is one concrete bkn-safe authorization resource.
@@ -50,4 +52,17 @@ type PermissionAccess interface {
 // dependency.
 type QueryCandidateAuthorizer interface {
 	FilterObjectTypeIDs(ctx context.Context, knID string, candidateIDs []string) ([]string, error)
+}
+
+// KnowledgeNetworkAuthorizer answers "may this caller read this knowledge network at all".
+//
+// It exists for answers assembled entirely outside ontology-query. Object-type recall got its
+// per-caller check for free, because every path ended in a data query that ontology-query
+// authorized; reading a network's capability bindings and resolving them against the execution
+// factory never touches that, so the check has to be made here or not at all.
+type KnowledgeNetworkAuthorizer interface {
+	// AuthorizeRead returns an error when the caller may not read the network. A network the
+	// caller cannot see is refused rather than answered empty: "you have no Skills mounted" and
+	// "this is not your network" are different facts and must not look alike.
+	AuthorizeRead(ctx context.Context, knID string) error
 }

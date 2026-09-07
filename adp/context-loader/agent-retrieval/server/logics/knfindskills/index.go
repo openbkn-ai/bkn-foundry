@@ -28,6 +28,7 @@ import (
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/localize"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/permission"
 )
 
 // defaultTopK bounds a reply when the caller does not.
@@ -38,6 +39,7 @@ type findSkillsServiceImpl struct {
 	config     *config.Config
 	bknBackend interfaces.BknBackendAccess
 	operator   interfaces.DrivenOperatorIntegration
+	knAuthz    interfaces.KnowledgeNetworkAuthorizer
 }
 
 var (
@@ -54,6 +56,7 @@ func NewFindSkillsService() interfaces.IFindSkillsService {
 			config:     cfg,
 			bknBackend: drivenadapters.NewBknBackendAccess(),
 			operator:   drivenadapters.NewOperatorIntegrationClient(),
+			knAuthz:    permission.NewKnowledgeNetworkAuthorizer(cfg),
 		}
 	})
 	return findSkillsServiceInst
@@ -65,12 +68,14 @@ func NewFindSkillsServiceWith(
 	cfg *config.Config,
 	bkn interfaces.BknBackendAccess,
 	operator interfaces.DrivenOperatorIntegration,
+	knAuthz interfaces.KnowledgeNetworkAuthorizer,
 ) interfaces.IFindSkillsService {
 	return &findSkillsServiceImpl{
 		logger:     logger,
 		config:     cfg,
 		bknBackend: bkn,
 		operator:   operator,
+		knAuthz:    knAuthz,
 	}
 }
 
@@ -93,6 +98,18 @@ func (s *findSkillsServiceImpl) FindSkills(ctx context.Context,
 	topK := req.TopK
 	if topK <= 0 {
 		topK = defaultTopK
+	}
+
+	// The old object-type path got its per-caller check for free: every route ended in an
+	// ontology-query call that authorized the caller against the data. This one reads the
+	// bindings and resolves them in the execution factory, touching neither — so without this
+	// check the answer would be scoped by nothing but the kn_id the caller typed.
+	if s.knAuthz == nil {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+			"knowledge network authorization is not configured")
+	}
+	if err = s.knAuthz.AuthorizeRead(ctx, strings.TrimSpace(req.KnID)); err != nil {
+		return nil, err
 	}
 
 	fsCfg := &s.config.FindSkills

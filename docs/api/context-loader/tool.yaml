@@ -7,18 +7,19 @@ info:
     交给调用方使用：`search_tools` 找到工具并拿回业务入参契约，`execute_tool` 以调用者
     自己的身份执行它。
 
-    **`search_tools` 目前是列举加字面过滤，不是语义召回**。执行工厂没有跨工具箱的工具
-    枚举端点，也还没有可供 embedding 的工具数据集，所以本接口按当前账户可见的已发布
-    工具箱逐个取回已启用工具，再按名称、说明、使用规则与工具箱名做大小写不敏感的子串
-    匹配。「能算汇率的工具」这类问法答不了，换关键词或留空 `query` 通览更有效。契约按
-    「传检索词、拿有界列表」写，等 #1009 的工具数据集落地后换掉排序实现即可，调用方无感。
+    **范围是知识网络挂载的函数**。`kn_id` 必填：两条接口的候选集都取自该知识网络已挂载
+    的 Function 绑定，收窄粒度是**工具**而不是工具箱——同一个工具箱里可以只有部分工具
+    挂到本网络，未挂载的那些既搜不到也调不了。网络未挂载任何函数时返回空列表并给出提示，
+    不会退回「当前账户可见的全部工具」。
 
-    **可见性与权限押在下游**：两条接口都带调用者原始令牌打执行工厂的公开 API，工具箱是否
-    对该账户可见、工具是否允许执行由执行工厂判定，Context Loader 不代为放行。
+    **可见性是两者的交集**：挂载决定这个网络用哪些工具，调用者自身权限决定他能否看到与
+    执行。回填入参 schema 时带调用者原始令牌打执行工厂公开 API，该账户看不到的工具箱里
+    的命中会被丢弃，不会列出一个 `execute_tool` 随后会拒绝的工具。
 
     **`execute_tool` 有不可回滚的副作用**：注册进来的函数可以对外部系统写入。调用前先读
-    `search_tools` 返回的 `description` 与 `use_rule`。服务端先在「当前账户可调用的已启用
-    工具」列表里核对 `tool_id`，不在其中直接 400，不会打到执行代理。
+    `search_tools` 返回的 `description` 与 `use_rule`。服务端执行前先核两道：工具必须已挂载
+    到该知识网络，且在「当前账户可调用的已启用工具」列表里；任一不满足直接 400，不会打到
+    执行代理。收窄检索面本身不构成管控——工具 ID 会活过产生它的那次检索。
 
     **托管 Interaction**：请求体里的 `bkn_context` 可选。带上时，`conversation_id` 与
     `interaction_id` 会随调用透传到执行工厂，被调函数因而落在同一个 Interaction 下，
@@ -44,35 +45,38 @@ paths:
         body:
           limit: 3
       description: |
-        返回当前账户可调用的已发布函数工具。每条命中都带 `tool_id`、`toolbox_id` 与裁剪
-        过的 `input_schema`（只保留业务入参，服务地址等传输信息不下发），可直接用于构造
-        `execute_tool` 调用。
+        返回该知识网络已挂载、且当前账户可调用的函数工具。每条命中都带 `tool_id`、
+        `toolbox_id` 与裁剪过的 `input_schema`（只保留业务入参，服务地址等传输信息不下发），
+        可直接用于构造 `execute_tool` 调用。
 
         `limit` 默认 20、上限 100：每条命中都带一份入参 schema，调大会显著占用上下文。
         命中数超过 `limit` 时 `truncated=true` 并给出 `message`。
 
-        单个工具箱取列表失败时跳过该箱而不是整体失败：一个被撤销或损坏的工具箱不该让
-        调用方看不到其余所有工具。
+        回填 schema 时单个工具箱取列表失败会跳过该箱而不是整体失败：一个被撤销或损坏的
+        工具箱不该让调用方看不到其余所有工具。
 
         **空结果是 200 不是错误**：无匹配时 `tools: []` 并带 `message` 说明。
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
         - $ref: '#/components/parameters/ResponseFormat'
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/SearchToolsRequest'
             examples:
-              全部:
-                value: {}
+              全部已挂载:
+                value:
+                  kn_id: supply_chain
               按关键词:
                 value:
+                  kn_id: supply_chain
                   query: 汇率
                   limit: 10
               限定工具箱:
                 value:
+                  kn_id: supply_chain
                   toolbox_id: box_finance
       responses:
         '200':
@@ -244,18 +248,27 @@ components:
   schemas:
     SearchToolsRequest:
       type: object
+      required:
+        - kn_id
       properties:
         bkn_context:
           $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
+        kn_id:
+          type: string
+          description: |
+            知识网络 ID。工具范围取自该网络已挂载的 Function 绑定；未挂载任何函数时返回
+            空列表并给出提示。
+          example: supply_chain
         query:
           type: string
           description: |
-            可选。按工具名、说明、使用规则与工具箱名匹配，大小写不敏感的字面子串匹配。
-            留空返回当前账户可调用的全部工具。
+            可选。在该网络已挂载的工具内按名称与说明排序。留空则列出全部已挂载工具。
           example: 汇率
         toolbox_id:
           type: string
-          description: 可选。只在该工具箱内检索，取自本接口此前返回的 `toolbox_id`。
+          description: |
+            可选。只在该工具箱已挂载到本网络的工具内检索，不会越出挂载范围。取自本接口
+            此前返回的 `toolbox_id`。
           example: box_finance
         limit:
           type: integer
@@ -269,7 +282,7 @@ components:
       properties:
         tools:
           type: array
-          description: 当前账户可调用的已发布函数工具。
+          description: 该知识网络已挂载、且当前账户可调用的函数工具。
           items:
             $ref: '#/components/schemas/ToolEntry'
         total_matched:
@@ -313,12 +326,18 @@ components:
     ExecuteToolRequest:
       type: object
       required:
+        - kn_id
         - toolbox_id
         - tool_id
         - arguments
       properties:
         bkn_context:
           $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
+        kn_id:
+          type: string
+          description: |
+            知识网络 ID，须与 `search_tools` 所用一致。工具必须已挂载到该网络才可调用。
+          example: supply_chain
         toolbox_id:
           type: string
           description: 工具箱 ID，取自 `search_tools`。

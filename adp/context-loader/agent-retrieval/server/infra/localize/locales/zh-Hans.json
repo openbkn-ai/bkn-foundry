@@ -145,7 +145,9 @@
     "NoBoundToolsInNetwork": "当前知识网络未挂载任何函数工具，因此没有可调用的工具。请在知识网络的「函数」中挂载后重试。",
     "ToolNotMountedOnNetwork": "该工具未挂载到当前知识网络，无法在此调用。",
     "ToolSearchRequestFailed": "工具检索请求失败。",
-    "ToolSearchResponseInvalid": "工具检索响应无效。"
+    "ToolSearchResponseInvalid": "工具检索响应无效。",
+    "KnowledgeNetworkNotAuthorized": "无权访问该知识网络。",
+    "ToolAuthorizationUnavailable": "知识网络授权未配置。"
   },
   "find_skills": {
     "no_bound_skills": "当前知识网络未挂载任何 Skill，因此没有可召回的 Skill。请在知识网络的「SKILLs」中挂载后重试。",

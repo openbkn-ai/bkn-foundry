@@ -59,9 +59,27 @@ func (f *fakeOperator) GetSkillNamesByIDs(_ context.Context, ids []string) (map[
 }
 
 func newService(bkn *fakeBkn, op *fakeOperator) interfaces.IFindSkillsService {
+	return newServiceWithAuthz(bkn, op, &fakeKnAuthz{})
+}
+
+func newServiceWithAuthz(bkn *fakeBkn, op *fakeOperator,
+	authz *fakeKnAuthz) interfaces.IFindSkillsService {
 	cfg := &config.Config{}
 	cfg.FindSkills.TotalTimeoutMs = 5000
-	return NewFindSkillsServiceWith(testLogger{}, cfg, bkn, op)
+	return NewFindSkillsServiceWith(testLogger{}, cfg, bkn, op, authz)
+}
+
+// fakeKnAuthz stands in for the per-caller knowledge-network check.
+type fakeKnAuthz struct {
+	err     error
+	gotKNID string
+	calls   int
+}
+
+func (f *fakeKnAuthz) AuthorizeRead(_ context.Context, knID string) error {
+	f.calls++
+	f.gotKNID = knID
+	return f.err
 }
 
 func skillRefs(ids ...string) []*interfaces.CapabilityRef {
@@ -294,3 +312,43 @@ func (testLogger) Infof(string, ...interface{})                    {}
 func (testLogger) Warnf(string, ...interface{})                    {}
 func (testLogger) Errorf(string, ...interface{})                   {}
 func (l testLogger) WithContext(context.Context) interfaces.Logger { return l }
+
+// TestUnauthorizedNetworkIsRefusedBeforeAnythingIsRead is the check the object-type path used to
+// get for free: every old route ended in an ontology-query call that authorized the caller. This
+// one reads bindings and the execution factory, so a missing check would scope the answer by
+// nothing but the kn_id the caller typed.
+func TestUnauthorizedNetworkIsRefusedBeforeAnythingIsRead(t *testing.T) {
+	bkn := &fakeBkn{refs: skillRefs("s1")}
+	op := &fakeOperator{hits: []interfaces.SkillHit{{SkillID: "s1", Name: "不该看到"}}}
+	authz := &fakeKnAuthz{err: errors.New("forbidden")}
+
+	_, err := newServiceWithAuthz(bkn, op, authz).FindSkills(context.Background(),
+		&interfaces.FindSkillsReq{KnID: "someone-elses-kn"})
+
+	if err == nil {
+		t.Fatal("expected an unauthorized network to be refused")
+	}
+	if bkn.gotKN != "" {
+		t.Fatal("nothing may be read before the caller is authorized")
+	}
+	if op.gotWhitelist != nil {
+		t.Fatal("the execution factory must not be reached either")
+	}
+	if authz.gotKNID != "someone-elses-kn" {
+		t.Fatalf("expected the requested kn_id to be checked, got %q", authz.gotKNID)
+	}
+}
+
+// TestMissingAuthorizerFailsClosed keeps a service that was wired without the check from
+// answering as though the check had passed.
+func TestMissingAuthorizerFailsClosed(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.FindSkills.TotalTimeoutMs = 5000
+	svc := NewFindSkillsServiceWith(testLogger{}, cfg, &fakeBkn{refs: skillRefs("s1")},
+		&fakeOperator{}, nil)
+
+	if _, err := svc.FindSkills(context.Background(),
+		&interfaces.FindSkillsReq{KnID: "kn1"}); err == nil {
+		t.Fatal("expected a service without an authorizer to refuse")
+	}
+}

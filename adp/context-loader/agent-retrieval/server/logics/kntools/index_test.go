@@ -124,7 +124,18 @@ func tools(boxID string, toolIDs ...string) *interfaces.ListPublishedToolsRespon
 }
 
 func newService(bkn *fakeBkn, op *fakeOperator) KnToolsService {
-	return NewKnToolsServiceWith(op, bkn)
+	return NewKnToolsServiceWith(op, bkn, &fakeKnAuthz{})
+}
+
+// fakeKnAuthz stands in for the per-caller knowledge-network check.
+type fakeKnAuthz struct {
+	err     error
+	gotKNID string
+}
+
+func (f *fakeKnAuthz) AuthorizeRead(_ context.Context, knID string) error {
+	f.gotKNID = knID
+	return f.err
 }
 
 // TestSearchNarrowsToTheNetworkBindings is the point of the change: the scope is what the network
@@ -371,5 +382,48 @@ func TestExecuteRequiresBothIDs(t *testing.T) {
 	}
 	if op.executionCount != 0 {
 		t.Fatal("an invalid request must never reach the proxy")
+	}
+}
+
+// TestUnauthorizedNetworkIsRefusedForBothEntryPoints: the bindings and the ranking are both read
+// with this service's identity, so without a per-caller check the scope would be whatever kn_id
+// the caller typed.
+func TestUnauthorizedNetworkIsRefusedForBothEntryPoints(t *testing.T) {
+	for _, name := range []string{"search", "execute"} {
+		bkn := &fakeBkn{refs: functionRefs("box-1/t1")}
+		op := &fakeOperator{
+			hits:       []interfaces.ToolHit{hit("box-1", "t1")},
+			toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{"box-1": tools("box-1", "t1")},
+		}
+		authz := &fakeKnAuthz{err: errors.New("forbidden")}
+		svc := NewKnToolsServiceWith(op, bkn, authz)
+
+		var err error
+		if name == "search" {
+			_, err = svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "someone-elses-kn"})
+		} else {
+			_, err = svc.ExecuteTool(context.Background(), &ExecuteToolReq{
+				KnID: "someone-elses-kn", ToolboxID: "box-1", ToolID: "t1",
+			})
+		}
+
+		if err == nil {
+			t.Fatalf("%s: expected an unauthorized network to be refused", name)
+		}
+		if bkn.gotKN != "" {
+			t.Fatalf("%s: nothing may be read before the caller is authorized", name)
+		}
+		if op.executionCount != 0 {
+			t.Fatalf("%s: nothing may run before the caller is authorized", name)
+		}
+	}
+}
+
+// TestMissingAuthorizerFailsClosed keeps a service wired without the check from answering.
+func TestMissingAuthorizerFailsClosed(t *testing.T) {
+	svc := NewKnToolsServiceWith(&fakeOperator{}, &fakeBkn{refs: functionRefs("box-1/t1")}, nil)
+
+	if _, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1"}); err == nil {
+		t.Fatal("expected a service without an authorizer to refuse")
 	}
 }

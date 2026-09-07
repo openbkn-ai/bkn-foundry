@@ -725,6 +725,10 @@ func (b *bknBackendAccess) ListMetricsByObjectTypes(ctx context.Context, knID st
 	return metrics, nil
 }
 
+// capabilityListNoLimit disables paging on bkn-backend's capability listing. The binding list is
+// a scope, and a scope cannot be a page.
+const capabilityListNoLimit = "-1"
+
 // ListKNCapabilities reads the capability bindings of one knowledge network branch from the
 // internal face, which answers with bare references rather than backfilled metadata.
 //
@@ -743,6 +747,11 @@ func (b *bknBackendAccess) ListKNCapabilities(ctx context.Context, knID, branch,
 	if capabilityType != "" {
 		queryValues.Set("type", capabilityType)
 	}
+	// The whole list, not a page of it. bkn-backend defaults this endpoint to ten rows, and a
+	// page of the bindings is not a scope: the eleventh mounted tool would be invisible to
+	// search_tools and refused by execute_tool as "not mounted on this network", with the
+	// truncation showing up nowhere in the answer. "-1" is that endpoint's disable-paging value.
+	queryValues.Set("limit", capabilityListNoLimit)
 
 	respCode, respBody, err := b.httpClient.GetNoUnmarshal(ctx, src, queryValues, header)
 	if err != nil {
@@ -774,7 +783,8 @@ func (b *bknBackendAccess) ListKNCapabilities(ctx context.Context, knID, branch,
 	}
 
 	var response struct {
-		Entries []*interfaces.CapabilityRef `json:"entries"`
+		Entries    []*interfaces.CapabilityRef `json:"entries"`
+		TotalCount int                         `json:"total_count"`
 	}
 	if err := sonic.Unmarshal(respBody, &response); err != nil {
 		b.logger.Errorf("[BknBackendAccess] ListKNCapabilities unmarshal failed: %v\n", err)
@@ -782,6 +792,14 @@ func (b *bknBackendAccess) ListKNCapabilities(ctx context.Context, knID, branch,
 	}
 	if response.Entries == nil {
 		return []*interfaces.CapabilityRef{}, nil
+	}
+	// A short answer means the scope is not what the caller thinks it is, and every symptom of
+	// that appears far from here — a tool missing from search, or refused by execute as unmounted.
+	// Say so at the boundary where it is still explainable.
+	if response.TotalCount > 0 && len(response.Entries) < response.TotalCount {
+		b.logger.WithContext(ctx).Warnf(
+			"[BknBackendAccess] ListKNCapabilities returned %d of %d bindings for kn_id=%s: scope is incomplete",
+			len(response.Entries), response.TotalCount, knID)
 	}
 	return response.Entries, nil
 }

@@ -145,7 +145,9 @@
     "NoBoundToolsInNetwork": "This knowledge network has no Function tool mounted, so there is nothing to call. Mount one under Functions in the knowledge network and try again.",
     "ToolNotMountedOnNetwork": "This tool is not mounted on the knowledge network, so it cannot be called here.",
     "ToolSearchRequestFailed": "The tool search request failed.",
-    "ToolSearchResponseInvalid": "The tool search response is invalid."
+    "ToolSearchResponseInvalid": "The tool search response is invalid.",
+    "KnowledgeNetworkNotAuthorized": "You are not authorized to read this knowledge network.",
+    "ToolAuthorizationUnavailable": "Knowledge network authorization is not configured."
   },
   "find_skills": {
     "no_bound_skills": "This knowledge network has no Skill mounted, so there is nothing to recall. Mount one under SKILLs in the knowledge network and try again.",
