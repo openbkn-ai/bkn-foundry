@@ -545,4 +545,7 @@ type CapabilityRef struct {
 const (
 	CapabilityTypeSkill    = "skill"
 	CapabilityTypeFunction = "function"
+	// CapabilityTypeMCPTool is one tool of an MCP Server, addressed by (mcp_id, tool_name) and
+	// executed through the MCP proxy rather than the toolbox proxy.
+	CapabilityTypeMCPTool = "mcp_tool"
 )

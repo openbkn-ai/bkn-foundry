@@ -128,29 +128,38 @@ func (s *knToolsService) SearchTools(ctx context.Context, req *SearchToolsReq) (
 		limit = maxSearchLimit
 	}
 
-	refs, err := s.boundToolRefs(ctx, strings.TrimSpace(req.KnID), strings.TrimSpace(req.ToolboxID))
+	refs, mcpRefs, err := s.boundRefs(ctx, strings.TrimSpace(req.KnID), strings.TrimSpace(req.ToolboxID))
 	if err != nil {
 		return nil, err
 	}
-	if len(refs) == 0 {
+	if len(refs) == 0 && len(mcpRefs) == 0 {
 		return &SearchToolsResp{
 			Tools:   []ToolEntry{},
 			Message: infraErr.LocalizedDetail(ctx, "NoBoundToolsInNetwork"),
 		}, nil
 	}
 
-	hits, err := s.operator.SearchBoundTools(ctx, &interfaces.SearchBoundToolsRequest{
-		Query:    strings.TrimSpace(req.Query),
-		ToolRefs: refs,
-		TopK:     limit,
-	})
-	if err != nil {
-		return nil, err
+	query := strings.TrimSpace(req.Query)
+	var hits []interfaces.ToolHit
+	if len(refs) > 0 {
+		hits, err = s.operator.SearchBoundTools(ctx, &interfaces.SearchBoundToolsRequest{
+			Query:    query,
+			ToolRefs: refs,
+			TopK:     limit,
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	matched := s.describeHits(ctx, hits, limit)
-	resp := &SearchToolsResp{Tools: matched, TotalMatched: len(hits)}
-	if len(hits) > len(matched) {
+	// MCP tools are appended rather than ranked with the rest: the ranking endpoint indexes
+	// toolbox tools and has no notion of an MCP Server, so these are listed and filtered here.
+	// Ranked hits come first so a query that matched something keeps its order at the top.
+	matched = append(matched, s.describeMCPTools(ctx, mcpRefs, query, limit-len(matched))...)
+	total := len(hits) + len(mcpRefs)
+	resp := &SearchToolsResp{Tools: matched, TotalMatched: total}
+	if total > len(matched) {
 		resp.Truncated = true
 		resp.Message = infraErr.LocalizedDetail(ctx, "ToolSearchTruncated")
 	}
@@ -167,26 +176,61 @@ func (s *knToolsService) SearchTools(ctx context.Context, req *SearchToolsReq) (
 // network that mounted nothing, and continuing without one would return the whole catalogue —
 // both answer a question the service cannot currently answer.
 func (s *knToolsService) boundToolRefs(ctx context.Context, knID, toolboxID string) ([]string, error) {
+	refs, _, err := s.boundRefs(ctx, knID, toolboxID)
+	return refs, err
+}
+
+// boundRefs returns the network's mounted tools split by transport: toolbox references as
+// "{box_id}/{tool_id}", and MCP tools as (mcp_id, tool_name) pairs.
+//
+// They are read in one call and kept apart because they are called differently — a toolbox tool
+// goes through the toolbox proxy, an MCP tool through the MCP proxy — and the ranking endpoint
+// only understands the first kind.
+func (s *knToolsService) boundRefs(ctx context.Context, knID, toolboxID string) ([]string, []mcpRef, error) {
 	// Both entry points come through here, so the per-caller check lives here rather than in each
 	// of them: the network's bindings and the execution factory's ranking are both read with this
 	// service's identity, and without this the scope would be the kn_id the caller typed.
 	if s.knAuthz == nil {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+		return nil, nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
 			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
 	}
 	if err := s.knAuthz.AuthorizeRead(ctx, knID); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	bindings, err := s.bknBackend.ListKNCapabilities(ctx, knID, "", interfaces.CapabilityTypeFunction)
+	// Empty type: both kinds in one read, rather than one call per capability type.
+	bindings, err := s.bknBackend.ListKNCapabilities(ctx, knID, "", "")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	refs := make([]string, 0, len(bindings))
+	mcpRefs := make([]mcpRef, 0)
 	seen := make(map[string]struct{}, len(bindings))
 	for _, binding := range bindings {
-		if binding == nil || binding.CapabilityType != interfaces.CapabilityTypeFunction {
+		if binding == nil {
+			continue
+		}
+		if binding.CapabilityType == interfaces.CapabilityTypeMCPTool {
+			mcpID := strings.TrimSpace(binding.BoxID)
+			toolName := strings.TrimSpace(binding.CapabilityID)
+			if mcpID == "" || toolName == "" {
+				continue
+			}
+			// toolbox_id narrows within the mounted set for either transport: an MCP Server id
+			// is what owner_id holds for these rows.
+			if toolboxID != "" && mcpID != toolboxID {
+				continue
+			}
+			ref := interfaces.CapabilityTypeMCPTool + ":" + mcpID + "/" + toolName
+			if _, dup := seen[ref]; dup {
+				continue
+			}
+			seen[ref] = struct{}{}
+			mcpRefs = append(mcpRefs, mcpRef{MCPID: mcpID, ToolName: toolName})
+			continue
+		}
+		if binding.CapabilityType != interfaces.CapabilityTypeFunction {
 			continue
 		}
 		boxID := strings.TrimSpace(binding.BoxID)
@@ -205,7 +249,13 @@ func (s *knToolsService) boundToolRefs(ctx context.Context, knID, toolboxID stri
 		seen[ref] = struct{}{}
 		refs = append(refs, ref)
 	}
-	return refs, nil
+	return refs, mcpRefs, nil
+}
+
+// mcpRef is one mounted MCP tool: the server that exposes it and its name.
+type mcpRef struct {
+	MCPID    string
+	ToolName string
 }
 
 // describeHits fills in the input schema and use rule the ranking does not carry.
@@ -217,6 +267,47 @@ func (s *knToolsService) boundToolRefs(ctx context.Context, knID, toolboxID stri
 //
 // One request per toolbox behind the hits rather than per hit, and only for toolboxes that
 // survived ranking — at most `limit` hits, so the fan-out is bounded by the page asked for.
+// describeMCPTools resolves the mounted MCP tools and keeps the ones matching the query.
+//
+// Matching is literal substring over name and description, the same interim stand-in the toolbox
+// side used before it had an index. One detail call per tool, which is why the caller passes the
+// remaining budget rather than the whole page size.
+func (s *knToolsService) describeMCPTools(ctx context.Context, refs []mcpRef, query string,
+	budget int) []ToolEntry {
+	if len(refs) == 0 || budget <= 0 {
+		return nil
+	}
+	needle := strings.ToLower(strings.TrimSpace(query))
+
+	entries := make([]ToolEntry, 0, len(refs))
+	for _, ref := range refs {
+		if len(entries) >= budget {
+			break
+		}
+		detail, err := s.operator.GetMCPToolDetail(ctx, &interfaces.GetMCPToolDetailRequest{
+			McpID: ref.MCPID, ToolName: ref.ToolName,
+		})
+		if err != nil || detail == nil {
+			// One unreachable MCP Server must not take down discovery of everything else, the
+			// same way one unreadable tool box does not.
+			continue
+		}
+		if needle != "" &&
+			!strings.Contains(strings.ToLower(detail.Name), needle) &&
+			!strings.Contains(strings.ToLower(detail.Description), needle) {
+			continue
+		}
+		entries = append(entries, ToolEntry{
+			ToolID:      ref.ToolName,
+			ToolboxID:   ref.MCPID,
+			Name:        detail.Name,
+			Description: detail.Description,
+			InputSchema: detail.InputSchema,
+		})
+	}
+	return entries
+}
+
 func (s *knToolsService) describeHits(ctx context.Context, hits []interfaces.ToolHit, limit int) []ToolEntry {
 	if len(hits) == 0 {
 		return nil
@@ -308,10 +399,24 @@ func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (
 	}
 	toolboxID, toolID := strings.TrimSpace(req.ToolboxID), strings.TrimSpace(req.ToolID)
 
-	refs, err := s.boundToolRefs(ctx, strings.TrimSpace(req.KnID), toolboxID)
+	refs, mcpRefs, err := s.boundRefs(ctx, strings.TrimSpace(req.KnID), toolboxID)
 	if err != nil {
 		return nil, err
 	}
+
+	// An MCP tool runs through the MCP proxy, not the toolbox proxy. Which one a binding meant is
+	// decided here, by the mount that authorized it, rather than guessed from the ids — the two
+	// id spaces do not overlap in any way a caller could rely on.
+	for _, ref := range mcpRefs {
+		if ref.MCPID == toolboxID && ref.ToolName == toolID {
+			return s.operator.CallMCPTool(ctx, &interfaces.CallMCPToolRequest{
+				McpID:      ref.MCPID,
+				ToolName:   ref.ToolName,
+				Parameters: req.Arguments,
+			})
+		}
+	}
+
 	if !containsRef(refs, toolboxID+"/"+toolID) {
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
 			infraErr.LocalizedDetail(ctx, "ToolNotMountedOnNetwork"))
