@@ -488,3 +488,91 @@ func (aoa *agentOperatorAccess) FindToolBoxesByName(ctx context.Context, name st
 	oteltrace.AddHttpAttrs4Ok(span, respCode)
 	return matches, nil
 }
+
+// ListMCPTools reads the tools an MCP Server exposes, together with the server's own status.
+//
+// Two calls, not one: the proxy tool listing carries the tools but not the server's status, and a
+// caller deciding whether a tool may be bound needs both — the same pair boxIsUsable and
+// tool.Status answer for a tool box. A server that does not exist comes back as nil, nil.
+func (aoa *agentOperatorAccess) ListMCPTools(ctx context.Context, mcpID string) ([]*interfaces.MCPToolBrief, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListMCPTools")
+	defer span.End()
+
+	if mcpID == "" {
+		return nil, fmt.Errorf("mcp_id is required for MCP server lookup")
+	}
+
+	detailURL := fmt.Sprintf("%s/mcp/%s", aoa.agentOperatorURL, mcpID)
+	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{
+		HttpUrl:         detailURL,
+		HttpMethod:      http.MethodGet,
+		HttpContentType: rest.ContentTypeJson,
+	})
+
+	respCode, result, err := aoa.httpClient.GetNoUnmarshal(ctx, detailURL, nil, aoa.execFactoryHeaders(ctx))
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get MCP server failed")
+		common.LogSafeError(ctx, "MCP server lookup request failed", err)
+		return nil, fmt.Errorf("MCP server lookup failed: %w", err)
+	}
+	if respCode == http.StatusNotFound {
+		oteltrace.AddHttpAttrs4Ok(span, respCode)
+		return nil, nil
+	}
+	if respCode != http.StatusOK {
+		common.LogSafeError(ctx, "MCP server lookup failed",
+			fmt.Errorf("MCP server lookup returned HTTP %d", respCode))
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Get MCP server failed")
+		return nil, fmt.Errorf("MCP server lookup returned HTTP %d", respCode)
+	}
+
+	var detail struct {
+		BaseInfo struct {
+			MCPID  string `json:"mcp_id"`
+			Name   string `json:"name"`
+			Status string `json:"status"`
+		} `json:"base_info"`
+	}
+	if err = json.Unmarshal(result, &detail); err != nil {
+		common.LogSafeError(ctx, "Unmarshal MCP server detail failed", err)
+		return nil, fmt.Errorf("MCP server lookup failed: %w", err)
+	}
+
+	toolsURL := fmt.Sprintf("%s/mcp/proxy/%s/tools", aoa.agentOperatorURL, mcpID)
+	respCode, result, err = aoa.httpClient.GetNoUnmarshal(ctx, toolsURL, nil, aoa.execFactoryHeaders(ctx))
+	if err != nil {
+		common.LogSafeError(ctx, "MCP tool listing request failed", err)
+		return nil, fmt.Errorf("MCP tool listing failed: %w", err)
+	}
+	if respCode == http.StatusNotFound {
+		return nil, nil
+	}
+	if respCode != http.StatusOK {
+		common.LogSafeError(ctx, "MCP tool listing failed",
+			fmt.Errorf("MCP tool listing returned HTTP %d", respCode))
+		return nil, fmt.Errorf("MCP tool listing returned HTTP %d", respCode)
+	}
+
+	var payload struct {
+		Tools []struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+		} `json:"tools"`
+	}
+	if err = json.Unmarshal(result, &payload); err != nil {
+		common.LogSafeError(ctx, "Unmarshal MCP tool listing failed", err)
+		return nil, fmt.Errorf("MCP tool listing failed: %w", err)
+	}
+
+	tools := make([]*interfaces.MCPToolBrief, 0, len(payload.Tools))
+	for _, tool := range payload.Tools {
+		tools = append(tools, &interfaces.MCPToolBrief{
+			MCPID:       mcpID,
+			MCPName:     detail.BaseInfo.Name,
+			MCPStatus:   detail.BaseInfo.Status,
+			Name:        tool.Name,
+			Description: tool.Description,
+		})
+	}
+	return tools, nil
+}

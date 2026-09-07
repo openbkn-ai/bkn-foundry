@@ -62,6 +62,19 @@ type ToolBrief struct {
 	Status      string
 }
 
+// MCPToolBrief is one tool exposed by an MCP Server.
+//
+// An MCP tool is addressed by name, not by id: that is the MCP protocol's own contract, and it is
+// what ActionSource already uses for type=mcp. The box_id/tool_id pair inside the server's
+// tool_configs is where the tool was assembled from, not how it is called.
+type MCPToolBrief struct {
+	MCPID       string
+	MCPName     string
+	MCPStatus   string
+	Name        string
+	Description string
+}
+
 //go:generate mockgen -source ../interfaces/agent_operator_access.go -destination ../interfaces/mock/mock_agent_operator_access.go -package mock_interfaces
 type AgentOperatorAccess interface {
 	// GetToolByID verifies the tool exists in the tool-box via internal GET .../tool-box/{box_id}/tool/{tool_id}.
@@ -86,4 +99,11 @@ type AgentOperatorAccess interface {
 	// (nil, nil) when the box does not exist. The box endpoint inlines its tools, so validating
 	// and expanding a whole-box mount both cost one request per box rather than one per tool.
 	ListBoxTools(ctx context.Context, boxID string) ([]*ToolBrief, error)
+
+	// ListMCPTools reads every tool an MCP Server exposes, in one call.
+	//
+	// It returns nil (and no error) when the server does not exist, matching ListBoxTools: a
+	// missing container and an empty one are different answers, and only the caller knows which
+	// of the two is an error for what it is doing.
+	ListMCPTools(ctx context.Context, mcpID string) ([]*MCPToolBrief, error)
 }

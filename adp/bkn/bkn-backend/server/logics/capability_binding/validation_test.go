@@ -284,3 +284,102 @@ func TestSkillEditingIsBindable(t *testing.T) {
 		})
 	})
 }
+
+// TestAttachMCPTools covers #1359. An MCP tool is addressed by (mcp_id, tool_name) and runs
+// through the MCP proxy, so it is its own capability type rather than a function binding — the
+// same line ActionSource already draws with its type=mcp arm.
+func TestAttachMCPTools(t *testing.T) {
+	Convey("挂载 MCP 工具", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		published := []*interfaces.MCPToolBrief{
+			{MCPID: "mcp-1", MCPName: "供应链 MCP", MCPStatus: interfaces.EXEC_BOX_STATUS_PUBLISHED,
+				Name: "expedite", Description: "催单"},
+			{MCPID: "mcp-1", MCPName: "供应链 MCP", MCPStatus: interfaces.EXEC_BOX_STATUS_PUBLISHED,
+				Name: "substitute", Description: "替换"},
+		}
+
+		Convey("按名字挂载单个工具", func() {
+			service, cba, aoa := newTestServiceWithFactory(t, ctrl)
+			aoa.EXPECT().ListMCPTools(gomock.Any(), "mcp-1").Return(published, nil).AnyTimes()
+			cba.EXPECT().GetBindingByCapability(gomock.Any(), gomock.Any(), gomock.Any(),
+				gomock.Any(), "mcp-1", "expedite").Return(nil, nil)
+			cba.EXPECT().CreateBindings(gomock.Any(), gomock.Nil(), gomock.Len(1)).Return(nil)
+
+			bound, err := service.AttachCapabilities(context.Background(), nil, "kn1", "main",
+				[]*interfaces.AttachCapabilityEntry{{
+					CapabilityType: interfaces.CAPABILITY_TYPE_MCP_TOOL,
+					OwnerID:        "mcp-1",
+					CapabilityID:   "expedite",
+				}})
+
+			So(err, ShouldBeNil)
+			So(len(bound), ShouldEqual, 1)
+			So(bound[0].CapabilityType, ShouldEqual, interfaces.CAPABILITY_TYPE_MCP_TOOL)
+			So(bound[0].OwnerID, ShouldEqual, "mcp-1")
+			So(bound[0].CapabilityID, ShouldEqual, "expedite")
+		})
+
+		Convey("整个 Server 挂载展开成每个工具一行", func() {
+			service, cba, aoa := newTestServiceWithFactory(t, ctrl)
+			aoa.EXPECT().ListMCPTools(gomock.Any(), "mcp-1").Return(published, nil).AnyTimes()
+			cba.EXPECT().GetBindingByCapability(gomock.Any(), gomock.Any(), gomock.Any(),
+				gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(2)
+			cba.EXPECT().CreateBindings(gomock.Any(), gomock.Nil(), gomock.Len(2)).Return(nil)
+
+			bound, err := service.AttachCapabilities(context.Background(), nil, "kn1", "main",
+				[]*interfaces.AttachCapabilityEntry{{
+					CapabilityType: interfaces.CAPABILITY_TYPE_MCP_TOOL,
+					OwnerID:        "mcp-1",
+					AllTools:       true,
+				}})
+
+			So(err, ShouldBeNil)
+			So(len(bound), ShouldEqual, 2)
+			// Provenance, not coverage: each row is an ordinary tool-level binding.
+			So(bound[0].BoundAsBox, ShouldBeTrue)
+		})
+
+		Convey("Server 不存在、工具名不存在、Server 未发布各自被拒", func() {
+			service, _, aoa := newTestServiceWithFactory(t, ctrl)
+			aoa.EXPECT().ListMCPTools(gomock.Any(), "gone").Return(nil, nil).AnyTimes()
+			aoa.EXPECT().ListMCPTools(gomock.Any(), "mcp-1").Return(published, nil).AnyTimes()
+			aoa.EXPECT().ListMCPTools(gomock.Any(), "mcp-draft").Return([]*interfaces.MCPToolBrief{
+				{MCPID: "mcp-draft", MCPStatus: "unpublish", Name: "whatever"},
+			}, nil).AnyTimes()
+
+			attach := func(mcpID, toolName string) error {
+				_, err := service.AttachCapabilities(context.Background(), nil, "kn1", "main",
+					[]*interfaces.AttachCapabilityEntry{{
+						CapabilityType: interfaces.CAPABILITY_TYPE_MCP_TOOL,
+						OwnerID:        mcpID,
+						CapabilityID:   toolName,
+					}})
+				return err
+			}
+
+			serverGone := attach("gone", "expedite")
+			toolGone := attach("mcp-1", "no_such_tool")
+			notPublished := attach("mcp-draft", "whatever")
+
+			So(httpCodeOf(t, serverGone), ShouldEqual, http.StatusBadRequest)
+			So(httpCodeOf(t, toolGone), ShouldEqual, http.StatusBadRequest)
+			So(httpCodeOf(t, notPublished), ShouldEqual, http.StatusBadRequest)
+			// "publish it" and "check the name" are different repairs and must not look alike.
+			So(errorCodeOf(t, toolGone), ShouldNotEqual, errorCodeOf(t, notPublished))
+		})
+
+		Convey("缺 mcp_id 时拒绝：工具名离开 Server 不成其为身份", func() {
+			service, _, _ := newTestServiceWithFactory(t, ctrl)
+
+			_, err := service.AttachCapabilities(context.Background(), nil, "kn1", "main",
+				[]*interfaces.AttachCapabilityEntry{{
+					CapabilityType: interfaces.CAPABILITY_TYPE_MCP_TOOL,
+					CapabilityID:   "expedite",
+				}})
+
+			So(httpCodeOf(t, err), ShouldEqual, http.StatusBadRequest)
+		})
+	})
+}

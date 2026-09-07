@@ -547,14 +547,19 @@ func (s *mcpServiceImpl) GetDetail(ctx context.Context, req *interfaces.MCPServe
 	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// Check viewing permissions.
-	accessor, err := s.AuthService.GetAccessor(ctx, req.UserID)
-	if err != nil {
-		return
-	}
-	err = s.AuthService.CheckViewPermission(ctx, accessor, req.ID, interfaces.AuthResourceTypeMCP)
-	if err != nil {
-		return
+	// Check viewing permissions on the public face only, matching GetMCPTools in this package.
+	// The internal face is reached by other services resolving a reference they were handed —
+	// bkn-backend validating a capability binding, for one — and the per-caller decision belongs
+	// where that reference was accepted, not here.
+	if icommon.IsPublicAPIFromCtx(ctx) {
+		var accessor *interfaces.AuthAccessor
+		accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)
+		if err != nil {
+			return
+		}
+		if err = s.AuthService.CheckViewPermission(ctx, accessor, req.ID, interfaces.AuthResourceTypeMCP); err != nil {
+			return
+		}
 	}
 
 	mcpConfigDB, err := s.DBMCPServerConfig.SelectByID(ctx, nil, req.ID)

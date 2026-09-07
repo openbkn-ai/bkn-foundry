@@ -961,6 +961,7 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 		MetricsTotal:   metricsCnt,
 		SkillsTotal:    capabilityTotals[interfaces.CAPABILITY_TYPE_SKILL],
 		FunctionsTotal: capabilityTotals[interfaces.CAPABILITY_TYPE_FUNCTION],
+		MCPToolsTotal:  capabilityTotals[interfaces.CAPABILITY_TYPE_MCP_TOOL],
 	}
 
 	span.SetStatus(codes.Ok, "")

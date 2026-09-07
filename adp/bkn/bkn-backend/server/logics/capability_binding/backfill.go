@@ -43,12 +43,15 @@ func (cbs *capabilityBindingService) backfillMetadata(ctx context.Context,
 
 	boxBindings := map[string][]*interfaces.CapabilityBinding{}
 	skillBindings := map[string][]*interfaces.CapabilityBinding{}
+	mcpBindings := map[string][]*interfaces.CapabilityBinding{}
 	for _, binding := range bindings {
 		switch binding.CapabilityType {
 		case interfaces.CAPABILITY_TYPE_FUNCTION:
 			boxBindings[binding.OwnerID] = append(boxBindings[binding.OwnerID], binding)
 		case interfaces.CAPABILITY_TYPE_SKILL:
 			skillBindings[binding.CapabilityID] = append(skillBindings[binding.CapabilityID], binding)
+		case interfaces.CAPABILITY_TYPE_MCP_TOOL:
+			mcpBindings[binding.OwnerID] = append(mcpBindings[binding.OwnerID], binding)
 		}
 	}
 
@@ -59,6 +62,9 @@ func (cbs *capabilityBindingService) backfillMetadata(ctx context.Context,
 	}
 	if len(skillBindings) > 0 {
 		result.available = cbs.backfillSkills(ctx, skillBindings, withDetail) && result.available
+	}
+	if len(mcpBindings) > 0 {
+		result.available = cbs.backfillMCPTools(ctx, mcpBindings, withDetail) && result.available
 	}
 	return result
 }
@@ -216,4 +222,57 @@ func (cbs *capabilityBindingService) countMountedTools(ctx context.Context,
 		mounted[row.CapabilityID] = struct{}{}
 	}
 	return len(mounted), nil
+}
+
+// backfillMCPTools resolves names and descriptions one MCP Server at a time, matching how the
+// function side reads a whole tool box per call rather than a tool at a time.
+//
+// A server that is gone marks every binding under it missing; a name the server no longer exposes
+// marks just that one. The two are different repairs — re-point the binding, or re-publish the
+// server — so they must not look alike.
+func (cbs *capabilityBindingService) backfillMCPTools(ctx context.Context,
+	mcpBindings map[string][]*interfaces.CapabilityBinding, withDetail bool) bool {
+	available := true
+
+	for mcpID, bindings := range mcpBindings {
+		tools, err := cbs.aoa.ListMCPTools(ctx, mcpID)
+		if err != nil {
+			// Unreachable is not absent: leaving the metadata empty and flagging the page keeps a
+			// transient outage from looking like a deleted MCP Server.
+			logger.Warnf("capability metadata backfill: mcp server %s unreachable: %v", mcpID, err)
+			available = false
+			continue
+		}
+		if tools == nil {
+			for _, binding := range bindings {
+				binding.Status = interfaces.CAPABILITY_STATUS_MISSING
+			}
+			continue
+		}
+
+		byName := make(map[string]*interfaces.MCPToolBrief, len(tools))
+		serverName := ""
+		serverStatus := ""
+		for _, tool := range tools {
+			byName[tool.Name] = tool
+			serverName = tool.MCPName
+			serverStatus = tool.MCPStatus
+		}
+
+		for _, binding := range bindings {
+			tool, ok := byName[binding.CapabilityID]
+			if !ok {
+				binding.Status = interfaces.CAPABILITY_STATUS_MISSING
+				continue
+			}
+			binding.Name = tool.Name
+			binding.OwnerName = serverName
+			if withDetail {
+				binding.Description = tool.Description
+			}
+			// An MCP tool has no status of its own; it is callable exactly when its server is.
+			binding.Status = serverStatus
+		}
+	}
+	return available
 }
