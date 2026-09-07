@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/bytedance/sonic"
@@ -164,3 +165,39 @@ func (o *operatorIntegrationClient) CallMCPTool(ctx context.Context, req *interf
 
 	return result, nil
 }
+
+// mcpServerDetailURI reads one MCP Server, including its publication state.
+const mcpServerDetailURI = "/internal-v1/mcp/%s"
+
+// MCPServerIsUsable reports whether the MCP Server is published.
+//
+// A server that cannot be read is reported as unusable rather than assumed fine: this gates a
+// call that runs, and the safe direction when the answer is unknown is to refuse.
+func (o *operatorIntegrationClient) MCPServerIsUsable(ctx context.Context, mcpID string) (bool, error) {
+	if strings.TrimSpace(mcpID) == "" {
+		return false, nil
+	}
+	fullURL := o.baseURL + fmt.Sprintf(mcpServerDetailURI, mcpID)
+	header := common.GetHeaderForChildOperation(ctx, "operator.mcp_server.get", 1)
+
+	code, body, err := o.httpClient.Get(ctx, fullURL, nil, header)
+	if err != nil || code != http.StatusOK {
+		o.logger.WithContext(ctx).Warnf("[OperatorIntegration#MCPServerIsUsable] mcp_id=%s unreadable: code=%d err=%v",
+			mcpID, code, err)
+		return false, nil
+	}
+
+	var payload struct {
+		BaseInfo struct {
+			Status string `json:"status"`
+		} `json:"base_info"`
+	}
+	if err = sonic.Unmarshal(utils.ObjectToByte(body), &payload); err != nil {
+		o.logger.WithContext(ctx).Warnf("[OperatorIntegration#MCPServerIsUsable] unmarshal failed: %v", err)
+		return false, nil
+	}
+	return payload.BaseInfo.Status == mcpServerStatusPublished, nil
+}
+
+// mcpServerStatusPublished is the one state in which an MCP Server's tools are callable.
+const mcpServerStatusPublished = "published"

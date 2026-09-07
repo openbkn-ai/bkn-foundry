@@ -13,6 +13,9 @@ import "context"
 const (
 	// EXEC_TOOL_STATUS_ENABLED is the per-tool switch inside a tool box.
 	EXEC_TOOL_STATUS_ENABLED = "enabled"
+	// EXEC_TOOL_STATUS_DISABLED is its opposite. An MCP tool has no switch of its own and is
+	// reported in this same vocabulary, so one reader can filter every capability type alike.
+	EXEC_TOOL_STATUS_DISABLED = "disabled"
 	// EXEC_BOX_STATUS_PUBLISHED is the tool box lifecycle state that makes its tools callable.
 	EXEC_BOX_STATUS_PUBLISHED = "published"
 	// EXEC_SKILL_STATUS_PUBLISHED is the skill lifecycle state that makes it loadable.
@@ -62,6 +65,19 @@ type ToolBrief struct {
 	Status      string
 }
 
+// MCPToolBrief is one tool exposed by an MCP Server.
+//
+// An MCP tool is addressed by name, not by id: that is the MCP protocol's own contract, and it is
+// what ActionSource already uses for type=mcp. The box_id/tool_id pair inside the server's
+// tool_configs is where the tool was assembled from, not how it is called.
+type MCPToolBrief struct {
+	MCPID       string
+	MCPName     string
+	MCPStatus   string
+	Name        string
+	Description string
+}
+
 //go:generate mockgen -source ../interfaces/agent_operator_access.go -destination ../interfaces/mock/mock_agent_operator_access.go -package mock_interfaces
 type AgentOperatorAccess interface {
 	// GetToolByID verifies the tool exists in the tool-box via internal GET .../tool-box/{box_id}/tool/{tool_id}.
@@ -86,4 +102,17 @@ type AgentOperatorAccess interface {
 	// (nil, nil) when the box does not exist. The box endpoint inlines its tools, so validating
 	// and expanding a whole-box mount both cost one request per box rather than one per tool.
 	ListBoxTools(ctx context.Context, boxID string) ([]*ToolBrief, error)
+
+	// ListMCPTools reads every tool an MCP Server exposes, in one call.
+	//
+	// It returns nil (and no error) when the server does not exist, matching ListBoxTools: a
+	// missing container and an empty one are different answers, and only the caller knows which
+	// of the two is an error for what it is doing.
+	ListMCPTools(ctx context.Context, mcpID string) ([]*MCPToolBrief, error)
+
+	// FindMCPServersByName returns the ids of MCP Servers with exactly this name.
+	//
+	// Several can share a name, and the caller decides what to do about that: an import refuses
+	// to guess, because binding one of them would bind something the model did not name.
+	FindMCPServersByName(ctx context.Context, name string) ([]string, error)
 }

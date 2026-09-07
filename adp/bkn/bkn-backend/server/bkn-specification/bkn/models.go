@@ -40,6 +40,7 @@ type BknNetworkFrontmatter struct {
 type BknCapabilities struct {
 	Skills    []*BknCapabilitySkill    `yaml:"skills,omitempty"`
 	Functions []*BknCapabilityFunction `yaml:"functions,omitempty"`
+	MCPTools  []*BknCapabilityMCPTool  `yaml:"mcp_tools,omitempty"`
 }
 
 // BknCapabilitySkill names one skill dependency by both id and name.
@@ -50,6 +51,17 @@ type BknCapabilities struct {
 type BknCapabilitySkill struct {
 	ID   string `yaml:"id,omitempty"`
 	Name string `yaml:"name,omitempty"`
+}
+
+// BknCapabilityMCPTool names one MCP tool dependency.
+//
+// The tool is identified by name on both sides — that is the MCP protocol's own addressing, so
+// unlike a toolbox tool there is no separate id to fall back from. Only the server needs both:
+// its id is environment-local, its name is what an import elsewhere can resolve against.
+type BknCapabilityMCPTool struct {
+	MCPID    string `yaml:"mcp_id,omitempty"`
+	MCPName  string `yaml:"mcp_name,omitempty"`
+	ToolName string `yaml:"tool_name,omitempty"`
 }
 
 // BknCapabilityFunction names one tool dependency. Both halves of the identity are written twice,

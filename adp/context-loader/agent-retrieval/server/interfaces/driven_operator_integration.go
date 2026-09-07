@@ -117,6 +117,14 @@ type DrivenOperatorIntegration interface {
 	// hits carry identity and prose only — the input schema is not part of this answer, and the
 	// caller fetches it for the hits it keeps.
 	SearchBoundTools(ctx context.Context, req *SearchBoundToolsRequest) ([]ToolHit, error)
+
+	// MCPServerIsUsable reports whether the MCP Server is published, and so whether the tools it
+	// exposes may be called.
+	//
+	// The proxy's tool listing answers regardless of the server's state, so it cannot stand in
+	// for this: a server taken offline after a tool was mounted still lists that tool. The
+	// question has to be put to the server itself.
+	MCPServerIsUsable(ctx context.Context, mcpID string) (bool, error)
 }
 
 // SearchBoundToolsRequest asks Execution Factory to rank a bounded set of Function tools.

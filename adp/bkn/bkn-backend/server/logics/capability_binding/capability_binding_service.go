@@ -103,7 +103,9 @@ func normalizeAttachEntry(ctx context.Context, entry *interfaces.AttachCapabilit
 	switch capabilityType {
 	case interfaces.CAPABILITY_TYPE_SKILL:
 		ownerID = ""
-	case interfaces.CAPABILITY_TYPE_FUNCTION:
+	case interfaces.CAPABILITY_TYPE_FUNCTION, interfaces.CAPABILITY_TYPE_MCP_TOOL:
+		// Both name a tool inside a container — a tool box, or an MCP Server — and the id alone
+		// does not identify one: tool ids are scoped to their box, tool names to their server.
 		if ownerID == "" {
 			return "", "", "", rest.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_CapabilityBinding_NullParameter_OwnerID)

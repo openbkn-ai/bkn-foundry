@@ -16,6 +16,16 @@ const (
 
 	CAPABILITY_TYPE_SKILL    = "skill"
 	CAPABILITY_TYPE_FUNCTION = "function"
+	// CAPABILITY_TYPE_MCP_TOOL is one tool of an MCP Server, addressed by ("mcp_tool", mcp_id,
+	// tool_name).
+	//
+	// It is a type of its own rather than a function binding, even though an MCP Server is
+	// assembled from tool box tools and its tool_configs carry their box_id/tool_id. Those record
+	// where a tool came from; the callable contract is the MCP protocol's, which addresses tools
+	// by name and runs them through /mcp/proxy/{mcp_id}/tool/call. ActionSource already draws the
+	// same line with its type=mcp arm. Folding the two together would leave execute_tool unable
+	// to tell which transport a binding meant.
+	CAPABILITY_TYPE_MCP_TOOL = "mcp_tool"
 )
 
 // CapabilityBinding records that a Skill or a ToolBox tool belongs to a knowledge network.
@@ -29,10 +39,10 @@ type CapabilityBinding struct {
 	KNID           string `json:"kn_id" mapstructure:"kn_id"`
 	Branch         string `json:"branch" mapstructure:"branch"`
 	CapabilityType string `json:"capability_type" mapstructure:"capability_type"`
-	// OwnerID is the container the capability belongs to: the tool box for a function, empty
-	// for a skill. The wire name is box_id, matching what the execution factory, Context Loader
-	// and Studio all call it; the field and its column stay type-neutral so a later capability
-	// type can bring a different kind of container without a migration.
+	// OwnerID is the container the capability belongs to: the tool box for a function, the MCP
+	// Server for an mcp_tool, empty for a skill. The wire name is box_id, matching what the
+	// execution factory, Context Loader and Studio all call it; the column stays type-neutral,
+	// which is what let mcp_tool arrive without a migration.
 	OwnerID      string `json:"box_id,omitempty" mapstructure:"owner_id"`
 	CapabilityID string `json:"capability_id" mapstructure:"capability_id"`
 	// BoundAsBox marks a row produced by expanding a whole-box mount. It does not change the
@@ -58,7 +68,7 @@ type CapabilityBinding struct {
 // (mcp_server, for one) cannot silently skip its own write checks.
 func IsValidCapabilityType(capabilityType string) bool {
 	switch capabilityType {
-	case CAPABILITY_TYPE_SKILL, CAPABILITY_TYPE_FUNCTION:
+	case CAPABILITY_TYPE_SKILL, CAPABILITY_TYPE_FUNCTION, CAPABILITY_TYPE_MCP_TOOL:
 		return true
 	default:
 		return false

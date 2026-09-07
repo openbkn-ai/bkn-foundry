@@ -229,3 +229,35 @@ func Test_bknService_ExportCapabilities(t *testing.T) {
 		})
 	})
 }
+
+// Test_bknService_ExportMCPCapabilities pins the MCP half of the dependency section. An export
+// that dropped it would move a network to another environment with its MCP tools silently
+// unbound, and nothing in the file to say they were ever there.
+func Test_bknService_ExportMCPCapabilities(t *testing.T) {
+	Convey("导出带 MCP 依赖声明", t, func() {
+		svc, mockCtrl, kns, cbs := newTestBKNServiceWithCapabilities(t)
+		defer mockCtrl.Finish()
+
+		kns.EXPECT().GetKNByID(gomock.Any(), "kn-mcp", interfaces.MAIN_BRANCH, interfaces.Mode_Export).
+			Return(&interfaces.KN{KNID: "kn-mcp", KNName: "带 MCP"}, nil)
+		cbs.EXPECT().ListCapabilities(gomock.Any(), gomock.Any()).
+			Return(&interfaces.CapabilityBindingsList{MetadataAvailable: true,
+				Entries: []*interfaces.CapabilityBinding{
+					{CapabilityType: interfaces.CAPABILITY_TYPE_MCP_TOOL, OwnerID: "mcp-1",
+						CapabilityID: "expedite", OwnerName: "供应链 MCP", Name: "expedite"},
+				}}, nil)
+
+		data, err := svc.ExportToTar(context.Background(), "kn-mcp", interfaces.MAIN_BRANCH)
+		So(err, ShouldBeNil)
+
+		network, err := bknsdk.LoadNetworkFromTar(bytes.NewReader(data))
+		So(err, ShouldBeNil)
+		So(network.Capabilities, ShouldNotBeNil)
+		So(len(network.Capabilities.MCPTools), ShouldEqual, 1)
+		tool := network.Capabilities.MCPTools[0]
+		So(tool.MCPID, ShouldEqual, "mcp-1")
+		So(tool.MCPName, ShouldEqual, "供应链 MCP")
+		// The tool travels by name only: MCP has no separate id to fall back from.
+		So(tool.ToolName, ShouldEqual, "expedite")
+	})
+}

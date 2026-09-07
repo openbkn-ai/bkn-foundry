@@ -206,6 +206,21 @@ func (mr *MockDrivenOperatorIntegrationMockRecorder) ListSkills(ctx, req any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSkills", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).ListSkills), ctx, req)
 }
 
+// MCPServerIsUsable mocks base method.
+func (m *MockDrivenOperatorIntegration) MCPServerIsUsable(ctx context.Context, mcpID string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MCPServerIsUsable", ctx, mcpID)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MCPServerIsUsable indicates an expected call of MCPServerIsUsable.
+func (mr *MockDrivenOperatorIntegrationMockRecorder) MCPServerIsUsable(ctx, mcpID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MCPServerIsUsable", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).MCPServerIsUsable), ctx, mcpID)
+}
+
 // ReadSkillFile mocks base method.
 func (m *MockDrivenOperatorIntegration) ReadSkillFile(ctx context.Context, req *interfaces.ReadSkillFileRequest) (*interfaces.ReadSkillFileResponse, error) {
 	m.ctrl.T.Helper()

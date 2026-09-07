@@ -34,10 +34,31 @@ type resolvedCapability struct {
 type boxCache struct {
 	svc    *capabilityBindingService
 	loaded map[string][]*interfaces.ToolBrief
+	mcp    map[string][]*interfaces.MCPToolBrief
 }
 
 func newBoxCache(svc *capabilityBindingService) *boxCache {
-	return &boxCache{svc: svc, loaded: map[string][]*interfaces.ToolBrief{}}
+	return &boxCache{
+		svc:    svc,
+		loaded: map[string][]*interfaces.ToolBrief{},
+		mcp:    map[string][]*interfaces.MCPToolBrief{},
+	}
+}
+
+// mcpTools returns the MCP Server's tools, or nil when the server does not exist. Cached for the
+// same reason box tools are: one request can mount many tools of one server.
+func (c *boxCache) mcpTools(ctx context.Context, mcpID string) ([]*interfaces.MCPToolBrief, error) {
+	if tools, ok := c.mcp[mcpID]; ok {
+		return tools, nil
+	}
+	tools, err := c.svc.aoa.ListMCPTools(ctx, mcpID)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadGateway,
+			berrors.BknBackend_CapabilityBinding_ExecutionFactoryUnavailable).
+			WithErrorDetails(fmt.Sprintf("mcp server lookup failed: mcp_id=%s", mcpID))
+	}
+	c.mcp[mcpID] = tools
+	return tools, nil
 }
 
 // tools returns the box's tools, or nil when the box does not exist. A transport failure is
@@ -78,6 +99,14 @@ func (cbs *capabilityBindingService) resolveEntries(ctx context.Context,
 			resolved = append(resolved, expanded...)
 			continue
 		}
+		if entry != nil && entry.AllTools && strings.TrimSpace(entry.CapabilityType) == interfaces.CAPABILITY_TYPE_MCP_TOOL {
+			expanded, expandErr := cbs.expandMCPServer(ctx, boxes, entry)
+			if expandErr != nil {
+				return nil, expandErr
+			}
+			resolved = append(resolved, expanded...)
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -89,6 +118,10 @@ func (cbs *capabilityBindingService) resolveEntries(ctx context.Context,
 			}
 		case interfaces.CAPABILITY_TYPE_FUNCTION:
 			if err := cbs.validateTool(ctx, boxes, ownerID, capabilityID); err != nil {
+				return nil, err
+			}
+		case interfaces.CAPABILITY_TYPE_MCP_TOOL:
+			if err := cbs.validateMCPTool(ctx, boxes, ownerID, capabilityID); err != nil {
 				return nil, err
 			}
 		}
@@ -211,4 +244,90 @@ func (cbs *capabilityBindingService) validateTool(ctx context.Context, boxes *bo
 // boxes are platform-managed and go through the same publication state, so they need no exemption.
 func boxIsUsable(tool *interfaces.ToolBrief) bool {
 	return tool.BoxStatus == interfaces.EXEC_BOX_STATUS_PUBLISHED
+}
+
+// validateMCPTool checks one tool of an MCP Server, mirroring validateTool.
+//
+// The server must be published and must actually expose a tool by that name. Both halves matter:
+// a name that is not there produces a binding that resolves to nothing, and an unpublished server
+// produces one that resolves to something nobody can call.
+func (cbs *capabilityBindingService) validateMCPTool(ctx context.Context, boxes *boxCache,
+	mcpID, toolName string) error {
+	tools, err := boxes.mcpTools(ctx, mcpID)
+	if err != nil {
+		return err
+	}
+	if tools == nil {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest,
+			berrors.BknBackend_CapabilityBinding_TargetNotFound).
+			WithErrorDetails(fmt.Sprintf("mcp server not found: mcp_id=%s", mcpID))
+	}
+	if len(tools) > 0 && !mcpIsUsable(tools[0]) {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest,
+			berrors.BknBackend_CapabilityBinding_TargetNotAvailable).
+			WithErrorDetails(fmt.Sprintf("mcp server is not published: mcp_id=%s status=%s",
+				mcpID, tools[0].MCPStatus))
+	}
+	for _, tool := range tools {
+		if tool.Name == toolName {
+			return nil
+		}
+	}
+	return rest.NewHTTPError(ctx, http.StatusBadRequest,
+		berrors.BknBackend_CapabilityBinding_TargetNotFound).
+		WithErrorDetails(fmt.Sprintf("mcp tool not found: mcp_id=%s tool_name=%s", mcpID, toolName))
+}
+
+// mcpIsUsable reports whether the MCP Server is in a state that lets its tools be called.
+func mcpIsUsable(tool *interfaces.MCPToolBrief) bool {
+	return tool.MCPStatus == interfaces.EXEC_BOX_STATUS_PUBLISHED
+}
+
+// expandMCPServer turns a whole-server mount into one binding per exposed tool, mirroring
+// expandBox. A server exposing nothing is a 400 rather than a silent success, so "I mounted the
+// server" and "nothing happened" cannot look the same.
+func (cbs *capabilityBindingService) expandMCPServer(ctx context.Context, boxes *boxCache,
+	entry *interfaces.AttachCapabilityEntry) ([]*resolvedCapability, error) {
+	mcpID := strings.TrimSpace(entry.OwnerID)
+	if mcpID == "" {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			berrors.BknBackend_CapabilityBinding_NullParameter_OwnerID)
+	}
+
+	tools, err := boxes.mcpTools(ctx, mcpID)
+	if err != nil {
+		return nil, err
+	}
+	if tools == nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			berrors.BknBackend_CapabilityBinding_TargetNotFound).
+			WithErrorDetails(fmt.Sprintf("mcp server not found: mcp_id=%s", mcpID))
+	}
+	if len(tools) > 0 && !mcpIsUsable(tools[0]) {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			berrors.BknBackend_CapabilityBinding_TargetNotAvailable).
+			WithErrorDetails(fmt.Sprintf("mcp server is not published: mcp_id=%s status=%s",
+				mcpID, tools[0].MCPStatus))
+	}
+
+	comment := strings.TrimSpace(entry.Comment)
+	expanded := make([]*resolvedCapability, 0, len(tools))
+	for _, tool := range tools {
+		if strings.TrimSpace(tool.Name) == "" {
+			continue
+		}
+		expanded = append(expanded, &resolvedCapability{
+			capabilityType: interfaces.CAPABILITY_TYPE_MCP_TOOL,
+			ownerID:        mcpID,
+			capabilityID:   tool.Name,
+			comment:        comment,
+			boundAsBox:     true,
+		})
+	}
+	if len(expanded) == 0 {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			berrors.BknBackend_CapabilityBinding_EmptyToolBox).
+			WithErrorDetails(fmt.Sprintf("mcp server exposes no tool: mcp_id=%s", mcpID))
+	}
+	return expanded, nil
 }

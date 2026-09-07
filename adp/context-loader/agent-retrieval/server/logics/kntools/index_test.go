@@ -32,6 +32,10 @@ type fakeOperator struct {
 	listedToolbox  []string
 	gotExecuteReq  *interfaces.ExecutePublishedToolRequest
 	executionCount int
+	mcpTools       map[string]*interfaces.GetMCPToolDetailResponse
+	mcpDetailCalls []string
+	gotMCPCall     *interfaces.CallMCPToolRequest
+	mcpUnusable    map[string]bool
 }
 
 func (f *fakeOperator) SearchBoundTools(
@@ -55,6 +59,37 @@ func (f *fakeOperator) ListPublishedTools(
 		return nil, err
 	}
 	return f.toolsByBox[req.ToolboxID], nil
+}
+
+func (f *fakeOperator) MCPServerIsUsable(_ context.Context, mcpID string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.mcpUnusable == nil {
+		return true, nil
+	}
+	return !f.mcpUnusable[mcpID], nil
+}
+
+func (f *fakeOperator) GetMCPToolDetail(
+	_ context.Context, req *interfaces.GetMCPToolDetailRequest,
+) (*interfaces.GetMCPToolDetailResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.mcpDetailCalls = append(f.mcpDetailCalls, req.McpID+"/"+req.ToolName)
+	if detail, ok := f.mcpTools[req.McpID+"/"+req.ToolName]; ok {
+		return detail, nil
+	}
+	return nil, errors.New("mcp tool not found")
+}
+
+func (f *fakeOperator) CallMCPTool(
+	_ context.Context, req *interfaces.CallMCPToolRequest,
+) (map[string]any, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.gotMCPCall = req
+	f.executionCount++
+	return f.execResp, f.execErr
 }
 
 func (f *fakeOperator) ExecutePublishedTool(
@@ -82,6 +117,19 @@ func (f *fakeBkn) ListKNCapabilities(_ context.Context, knID, _, capabilityType 
 ) ([]*interfaces.CapabilityRef, error) {
 	f.gotKN, f.gotType = knID, capabilityType
 	return f.refs, f.err
+}
+
+func mcpToolRefs(pairs ...string) []*interfaces.CapabilityRef {
+	refs := make([]*interfaces.CapabilityRef, 0, len(pairs))
+	for _, pair := range pairs {
+		mcpID, toolName := splitPair(pair)
+		refs = append(refs, &interfaces.CapabilityRef{
+			CapabilityType: interfaces.CapabilityTypeMCPTool,
+			BoxID:          mcpID,
+			CapabilityID:   toolName,
+		})
+	}
+	return refs
 }
 
 func functionRefs(pairs ...string) []*interfaces.CapabilityRef {
@@ -162,8 +210,10 @@ func TestSearchNarrowsToTheNetworkBindings(t *testing.T) {
 	if len(resp.Tools) != 1 || resp.Tools[0].ToolID != "mounted" {
 		t.Fatalf("expected only the mounted tool, got %+v", resp.Tools)
 	}
-	if bkn.gotType != interfaces.CapabilityTypeFunction {
-		t.Fatalf("expected the listing narrowed to functions, got %q", bkn.gotType)
+	// Both transports are read in one call, so the listing is no longer narrowed by type; the
+	// split happens here. Asking per type would cost a round trip per capability kind.
+	if bkn.gotType != "" {
+		t.Fatalf("expected one unfiltered listing, got type=%q", bkn.gotType)
 	}
 }
 
@@ -425,5 +475,142 @@ func TestMissingAuthorizerFailsClosed(t *testing.T) {
 
 	if _, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1"}); err == nil {
 		t.Fatal("expected a service without an authorizer to refuse")
+	}
+}
+
+// TestMCPToolsAreSearchableAndCallable covers #1359 on the retrieval side. Mounting an MCP tool
+// that cannot then be found or run is the same as not mounting it.
+func TestMCPToolsAreSearchableAndCallable(t *testing.T) {
+	newSvc := func() (KnToolsService, *fakeOperator) {
+		op := &fakeOperator{
+			mcpTools: map[string]*interfaces.GetMCPToolDetailResponse{
+				"mcp-1/expedite": {Name: "expedite", Description: "催单", InputSchema: map[string]any{"type": "object"}},
+			},
+			execResp: map[string]any{"ok": true},
+		}
+		bkn := &fakeBkn{refs: mcpToolRefs("mcp-1/expedite")}
+		return NewKnToolsServiceWith(op, bkn, &fakeKnAuthz{}), op
+	}
+
+	t.Run("出现在搜索结果并带 input_schema", func(t *testing.T) {
+		svc, _ := newSvc()
+		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1"})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resp.Tools) != 1 || resp.Tools[0].ToolID != "expedite" {
+			t.Fatalf("expected the mounted MCP tool, got %+v", resp.Tools)
+		}
+		if resp.Tools[0].ToolboxID != "mcp-1" {
+			t.Fatalf("expected the MCP server id to travel, got %+v", resp.Tools[0])
+		}
+		if resp.Tools[0].InputSchema == nil {
+			t.Fatal("execute_tool needs the input schema")
+		}
+	})
+
+	t.Run("执行走 MCP proxy 而非工具箱代理", func(t *testing.T) {
+		svc, op := newSvc()
+		out, err := svc.ExecuteTool(context.Background(), &ExecuteToolReq{
+			KnID: "kn1", ToolboxID: "mcp-1", ToolID: "expedite",
+			Arguments: map[string]any{"order": "A-1"},
+		})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if out["ok"] != true {
+			t.Fatalf("expected the tool response, got %+v", out)
+		}
+		if op.gotMCPCall == nil || op.gotMCPCall.ToolName != "expedite" {
+			t.Fatalf("expected the MCP proxy to be used, got %+v", op.gotMCPCall)
+		}
+		if op.gotExecuteReq != nil {
+			t.Fatal("an MCP tool must not go through the toolbox proxy")
+		}
+	})
+
+	t.Run("未挂载的 MCP 工具被拒", func(t *testing.T) {
+		svc, op := newSvc()
+		if _, err := svc.ExecuteTool(context.Background(), &ExecuteToolReq{
+			KnID: "kn1", ToolboxID: "mcp-1", ToolID: "not_mounted",
+		}); err == nil {
+			t.Fatal("expected an unmounted MCP tool to be refused")
+		}
+		if op.executionCount != 0 {
+			t.Fatal("an unmounted MCP tool must never reach the proxy")
+		}
+	})
+
+	t.Run("query 过滤 MCP 工具", func(t *testing.T) {
+		svc, _ := newSvc()
+		hit, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "催单"})
+		if err != nil || len(hit.Tools) != 1 {
+			t.Fatalf("expected a description match, got %+v err=%v", hit, err)
+		}
+		miss, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "完全无关"})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(miss.Tools) != 0 {
+			t.Fatalf("expected no match, got %+v", miss.Tools)
+		}
+	})
+}
+
+// TestOfflineMCPServerIsNotExecutable pins the second check on the MCP path. The mount says this
+// network may use the tool; it does not say the tool still works. A server published at mount
+// time can be taken offline afterwards — bkn-backend then refuses new bindings, but the existing
+// one survives, and the MCP proxy performs no status check of its own.
+func TestOfflineMCPServerIsNotExecutable(t *testing.T) {
+	op := &fakeOperator{
+		mcpTools: map[string]*interfaces.GetMCPToolDetailResponse{
+			// Still listed: an offline server's tool listing answers exactly as before, which is
+			// why the listing cannot stand in for the status check.
+			"mcp-1/expedite": {Name: "expedite"},
+		},
+		mcpUnusable: map[string]bool{"mcp-1": true},
+		execResp:    map[string]any{"ok": true},
+	}
+	bkn := &fakeBkn{refs: mcpToolRefs("mcp-1/expedite")}
+	svc := NewKnToolsServiceWith(op, bkn, &fakeKnAuthz{})
+
+	_, err := svc.ExecuteTool(context.Background(), &ExecuteToolReq{
+		KnID: "kn1", ToolboxID: "mcp-1", ToolID: "expedite",
+	})
+
+	if err == nil {
+		t.Fatal("下架的 MCP Server，其存量绑定不该还能执行")
+	}
+	if op.gotMCPCall != nil {
+		t.Fatal("不可执行的工具不该到达 MCP proxy")
+	}
+}
+
+// TestMCPTruncationCountsMatchesNotMounts: total is what the query kept, not what is mounted.
+// Counting the mounted set would tell a caller its results were truncated and to narrow a query
+// that was already working.
+func TestMCPTruncationCountsMatchesNotMounts(t *testing.T) {
+	op := &fakeOperator{
+		mcpTools: map[string]*interfaces.GetMCPToolDetailResponse{
+			"mcp-1/expedite":   {Name: "expedite", Description: "催单"},
+			"mcp-1/substitute": {Name: "substitute", Description: "替换"},
+			"mcp-1/cancel":     {Name: "cancel", Description: "取消"},
+		},
+	}
+	bkn := &fakeBkn{refs: mcpToolRefs("mcp-1/expedite", "mcp-1/substitute", "mcp-1/cancel")}
+	svc := NewKnToolsServiceWith(op, bkn, &fakeKnAuthz{})
+
+	resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "催单"})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.Tools) != 1 {
+		t.Fatalf("expected one match, got %+v", resp.Tools)
+	}
+	if resp.TotalMatched != 1 {
+		t.Fatalf("total 应当是命中数而非挂载数，got %d", resp.TotalMatched)
+	}
+	if resp.Truncated {
+		t.Fatal("没有截断却报了截断，调用方会去缩小一个本来就好用的 query")
 	}
 }

@@ -152,9 +152,18 @@ func (bs *bknService) exportCapabilities(ctx context.Context, knID, branch strin
 				BoxName:  binding.OwnerName,
 				ToolName: binding.Name,
 			})
+		case interfaces.CAPABILITY_TYPE_MCP_TOOL:
+			// The tool travels by name only: MCP addresses tools by name, so there is no id to
+			// fall back from. The server carries both halves, like a tool box does.
+			capabilities.MCPTools = append(capabilities.MCPTools, &bknsdk.BknCapabilityMCPTool{
+				MCPID:    binding.OwnerID,
+				MCPName:  binding.OwnerName,
+				ToolName: binding.CapabilityID,
+			})
 		}
 	}
-	if len(capabilities.Skills) == 0 && len(capabilities.Functions) == 0 {
+	if len(capabilities.Skills) == 0 && len(capabilities.Functions) == 0 &&
+		len(capabilities.MCPTools) == 0 {
 		return nil, nil
 	}
 	return capabilities, nil
