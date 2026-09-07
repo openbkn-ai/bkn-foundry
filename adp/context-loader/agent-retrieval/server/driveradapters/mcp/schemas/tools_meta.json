@@ -109,7 +109,7 @@
     "group": "skill",
     "group_title": "技能",
     "order": 510,
-    "description": "技能召回。根据知识网络、对象类型、实例上下文等召回匹配的可用技能列表。"
+    "description": "技能召回。返回该知识网络已挂载的 Skill（知识网络的「SKILLs」）；未挂载则返回空，不会退回全平台可见的技能。带 skill_query 时按相关性排序，留空则按挂载顺序列出。"
   },
   "list_knowledge_networks": {
     "name": "list_knowledge_networks",

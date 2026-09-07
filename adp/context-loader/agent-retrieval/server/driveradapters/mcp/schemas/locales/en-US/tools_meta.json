@@ -67,7 +67,7 @@
   "find_skills": {
     "title": "Find Skills",
     "group_title": "Skills",
-    "description": "Find available skills that match a knowledge network, object type, instance context, or user intent."
+    "description": "Skill recall. Returns the Skills this knowledge network has mounted; a network that mounted none returns nothing rather than falling back to every Skill on the platform. With skill_query the hits are ranked; without one they are listed in mount order."
   },
   "list_knowledge_networks": {
     "title": "Knowledge Networks",
