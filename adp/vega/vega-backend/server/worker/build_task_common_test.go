@@ -180,6 +180,22 @@ func TestPrepareFullBuildIndex(t *testing.T) {
 	})
 }
 
+func TestBuildLocalIndexSchemaBackfillsLegacyVectorDimensionFromTaskSnapshot(t *testing.T) {
+	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{
+		Name: "content", Type: interfaces.DataType_Text,
+		Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector}},
+	}}}
+	task := &interfaces.BuildTask{IndexConfig: &interfaces.BuildTaskIndexConfig{Features: map[string]interfaces.BuildTaskFieldIndexFeature{
+		"content": {Vector: &interfaces.SmallModel{ModelID: "embedding-1", EmbeddingDim: 3}},
+	}}}
+
+	schema, err := buildLocalIndexSchema(task, resource)
+
+	require.NoError(t, err)
+	assert.Equal(t, float64(3), schema[0].Features[0].Config["dimension"])
+	assert.Nil(t, resource.SchemaDefinition[0].Features[0].Config)
+}
+
 func TestCompleteFullBuildTask(t *testing.T) {
 	t.Run("completes task and resource update atomically", func(t *testing.T) {
 		ctrl := gomock.NewController(t)

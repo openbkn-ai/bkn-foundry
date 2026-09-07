@@ -107,14 +107,6 @@ func (r *restHandler) queryResourceData(c *gin.Context, ctx context.Context, spa
 		return
 	}
 
-	// Reading rows needs query_data, not just view_detail. The two were split so
-	// that "may see the structure" and "may read the contents" could differ
-	// (#801); until this is checked the split decides nothing (#571).
-	if err := r.rs.CheckResourcePermission(ctx, resourceID, interfaces.OPERATION_TYPE_QUERY_DATA); err != nil {
-		otellog.LogError(ctx, "Query resource data denied", err)
-		rest.ReplyError(c, err)
-		return
-	}
 	r.executeResourceDataQuery(c, ctx, span, resource, params, start)
 }
 
@@ -163,14 +155,8 @@ func bindResourceDataQuery(c *gin.Context, ctx context.Context, span trace.Span)
 	return &params, true
 }
 
-func (r *restHandler) executeResourceDataQuery(
-	c *gin.Context,
-	ctx context.Context,
-	span trace.Span,
-	resource *interfaces.Resource,
-	params *interfaces.ResourceDataQueryParams,
-	start time.Time,
-) {
+func (r *restHandler) executeResourceDataQuery(c *gin.Context, ctx context.Context, span trace.Span,
+	resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams, start time.Time) {
 	warning, err := resourcelogic.EnsureResourceQueryable(ctx, resource)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
@@ -339,16 +325,6 @@ func (r *restHandler) getResourceDataDoc(c *gin.Context, visitor hydra.Visitor, 
 		return
 	}
 
-	// Reading documents is reading rows, so it needs query_data for the same
-	// reason the paged query does (#571): loading the resource only proves the
-	// caller may see the table's structure, and this endpoint hands back its
-	// contents.
-	if err := r.rs.CheckResourcePermission(ctx, resource.ID, interfaces.OPERATION_TYPE_QUERY_DATA); err != nil {
-		otellog.LogError(ctx, "Get resource data document denied", err)
-		rest.ReplyError(c, err)
-		return
-	}
-
 	warning, err := resourcelogic.EnsureResourceQueryable(ctx, resource)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
@@ -514,29 +490,7 @@ func (r *restHandler) deleteResourceData(c *gin.Context, visitor hydra.Visitor, 
 
 	ignoreMissing := strings.EqualFold(strings.TrimSpace(c.Query("ignore_missing")), "true")
 
-	documents, err := r.ds.GetDocuments(ctx, resource, docIDs, ignoreMissing)
-	if err != nil {
-		httpErr := err.(*rest.HTTPError)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-
-	// Strict mode reaches this point only after every requested document has
-	// been found, so DeleteDocuments cannot partially apply a missing-ID batch.
-	// Tolerant mode deletes only the IDs that survived the same preflight.
-	idsToDelete := make([]string, 0, len(docIDs))
-	for i, document := range documents {
-		if document != nil {
-			idsToDelete = append(idsToDelete, docIDs[i])
-		}
-	}
-	if len(idsToDelete) == 0 {
-		oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
-		rest.ReplyOK(c, http.StatusNoContent, nil)
-		return
-	}
-	if err := r.ds.DeleteDocuments(ctx, resource, idsToDelete); err != nil {
+	if err := r.ds.DeleteDocuments(ctx, resource, docIDs, ignoreMissing); err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

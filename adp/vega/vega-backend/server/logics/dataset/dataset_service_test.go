@@ -116,11 +116,43 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		assert.Contains(t, err.Error(), "document missing not found")
 	})
 
+	t.Run("get documents requires query_data permission", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		cs := vmock.NewMockCatalogService(ctrl)
+		ps := vmock.NewMockPermissionService(ctrl)
+		ds := &datasetService{cs: cs, ps: ps}
+		denied := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+		cs.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{}, nil)
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), []string{interfaces.OPERATION_TYPE_QUERY_DATA}).Return(denied)
+
+		_, err := ds.GetDocuments(ctx, resource, []string{"doc-1"}, false)
+
+		require.ErrorIs(t, err, denied)
+	})
+
 	t.Run("delete documents", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
+		lim.EXPECT().GetDocuments(gomock.Any(), "dataset-1", []string{"doc-1", "doc-2"}).
+			Return([]map[string]any{{"id": "doc-1"}, {"id": "doc-2"}}, nil)
 		lim.EXPECT().DeleteDocuments(gomock.Any(), "dataset-1", []string{"doc-1", "doc-2"}).Return(nil)
 
-		require.NoError(t, ds.DeleteDocuments(ctx, resource, []string{"doc-1", "doc-2"}))
+		require.NoError(t, ds.DeleteDocuments(ctx, resource, []string{"doc-1", "doc-2"}, false))
+	})
+
+	t.Run("tolerant delete skips missing documents", func(t *testing.T) {
+		ds, lim := newDatasetServiceMock(t)
+		lim.EXPECT().GetDocuments(gomock.Any(), "dataset-1", []string{"doc-1", "missing"}).
+			Return([]map[string]any{{"id": "doc-1"}, nil}, nil)
+		lim.EXPECT().DeleteDocuments(gomock.Any(), "dataset-1", []string{"doc-1"}).Return(nil)
+
+		require.NoError(t, ds.DeleteDocuments(ctx, resource, []string{"doc-1", "missing"}, true))
+	})
+
+	t.Run("tolerant delete succeeds when all documents are missing", func(t *testing.T) {
+		ds, lim := newDatasetServiceMock(t)
+		lim.EXPECT().GetDocuments(gomock.Any(), "dataset-1", []string{"missing"}).Return([]map[string]any{nil}, nil)
+
+		require.NoError(t, ds.DeleteDocuments(ctx, resource, []string{"missing"}, true))
 	})
 
 	t.Run("creates a document with a service generated id", func(t *testing.T) {
@@ -158,7 +190,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 			ID:   resource.CatalogID,
 		}, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}).Return(denied)
 
-		err := ds.DeleteDocuments(ctx, resource, []string{"doc-1"})
+		err := ds.DeleteDocuments(ctx, resource, []string{"doc-1"}, false)
 
 		require.ErrorIs(t, err, denied)
 	})

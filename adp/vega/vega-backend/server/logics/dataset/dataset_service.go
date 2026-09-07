@@ -139,28 +139,38 @@ func (ds *datasetService) GetDocuments(ctx context.Context, res *interfaces.Reso
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get dataset documents")
 	defer span.End()
 
+	if err := ds.checkDocumentPermission(ctx, res, interfaces.OPERATION_TYPE_QUERY_DATA); err != nil {
+		span.SetStatus(codes.Error, "Permission denied")
+		return nil, err
+	}
+	documents, err := ds.getDocuments(ctx, res, docIDs, ignoreMissing)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get dataset documents failed")
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return documents, nil
+}
+
+func (ds *datasetService) getDocuments(ctx context.Context, res *interfaces.Resource, docIDs []string, ignoreMissing bool) ([]map[string]any, error) {
 	documents := make([]map[string]any, len(docIDs))
 	loadedDocuments, err := ds.lim.GetDocuments(ctx, res.LocalIndexName, docIDs)
 	if err != nil {
-		span.SetStatus(codes.Error, "Get dataset documents failed")
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 			WithErrorDetails(err.Error())
 	}
 	if len(loadedDocuments) != len(docIDs) {
-		span.SetStatus(codes.Error, "Get dataset documents returned unexpected count")
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 			WithErrorDetails("local index returned a document count different from the requested IDs")
 	}
 	for i, document := range loadedDocuments {
 		if document == nil && !ignoreMissing {
-			span.SetStatus(codes.Error, "Dataset document not found")
 			return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound).
 				WithErrorDetails(fmt.Sprintf("document %s not found", docIDs[i]))
 		}
 		documents[i] = document
 	}
 
-	span.SetStatus(codes.Ok, "")
 	return documents, nil
 }
 
@@ -170,7 +180,7 @@ func (ds *datasetService) CreateDocument(ctx context.Context, res *interfaces.Re
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create dataset document")
 	defer span.End()
 
-	if err := ds.checkDocumentModifyPermission(ctx, res); err != nil {
+	if err := ds.checkDocumentPermission(ctx, res, interfaces.OPERATION_TYPE_RESOURCE_MANAGE); err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
 		return "", err
 	}
@@ -202,7 +212,7 @@ func (ds *datasetService) ReplaceDocument(ctx context.Context, res *interfaces.R
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Replace dataset document")
 	defer span.End()
 
-	if err := ds.checkDocumentModifyPermission(ctx, res); err != nil {
+	if err := ds.checkDocumentPermission(ctx, res, interfaces.OPERATION_TYPE_RESOURCE_MANAGE); err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
 		return err
 	}
@@ -220,17 +230,32 @@ func (ds *datasetService) ReplaceDocument(ctx context.Context, res *interfaces.R
 	return nil
 }
 
-// DeleteDocuments to batch delete dataset documents
-func (ds *datasetService) DeleteDocuments(ctx context.Context, res *interfaces.Resource, docIDs []string) error {
+// DeleteDocuments authorizes, validates existence, and deletes Dataset documents.
+func (ds *datasetService) DeleteDocuments(ctx context.Context, res *interfaces.Resource, docIDs []string, ignoreMissing bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete dataset documents")
 	defer span.End()
 
-	if err := ds.checkDocumentModifyPermission(ctx, res); err != nil {
+	if err := ds.checkDocumentPermission(ctx, res, interfaces.OPERATION_TYPE_RESOURCE_MANAGE); err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
 		return err
 	}
+	documents, err := ds.getDocuments(ctx, res, docIDs, ignoreMissing)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get dataset documents failed")
+		return err
+	}
+	idsToDelete := make([]string, 0, len(docIDs))
+	for i, document := range documents {
+		if document != nil {
+			idsToDelete = append(idsToDelete, docIDs[i])
+		}
+	}
+	if len(idsToDelete) == 0 {
+		span.SetStatus(codes.Ok, "")
+		return nil
+	}
 	// Call the local index store to batch delete documents
-	if err := ds.lim.DeleteDocuments(ctx, res.LocalIndexName, docIDs); err != nil {
+	if err := ds.lim.DeleteDocuments(ctx, res.LocalIndexName, idsToDelete); err != nil {
 		span.SetStatus(codes.Error, "Delete dataset documents failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
 			WithErrorDetails(err.Error())
@@ -245,7 +270,7 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete dataset documents by query")
 	defer span.End()
 
-	if err := ds.checkDocumentModifyPermission(ctx, res); err != nil {
+	if err := ds.checkDocumentPermission(ctx, res, interfaces.OPERATION_TYPE_RESOURCE_MANAGE); err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
 		return err
 	}
@@ -260,7 +285,7 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 	return nil
 }
 
-func (ds *datasetService) checkDocumentModifyPermission(ctx context.Context, res *interfaces.Resource) error {
+func (ds *datasetService) checkDocumentPermission(ctx context.Context, res *interfaces.Resource, operation string) error {
 	internalCatalogs, err := ds.cs.InternalCatalogIDSet(ctx)
 	if err != nil {
 		return err
@@ -276,5 +301,5 @@ func (ds *datasetService) checkDocumentModifyPermission(ctx context.Context, res
 	return ds.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: catalogType,
 		ID:   res.CatalogID,
-	}, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE})
+	}, []string{operation})
 }

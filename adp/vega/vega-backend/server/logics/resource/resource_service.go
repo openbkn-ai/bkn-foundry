@@ -961,6 +961,12 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		span.SetStatus(codes.Error, "Invalid resource update scope")
 		return err
 	}
+	// Older Dataset rows can have a vector feature without its persisted
+	// dimension. Completing that metadata must also pass through the index
+	// mapping update; otherwise the Resource row and physical index contract
+	// could diverge even though this is not a user-requested schema change.
+	legacyDatasetVectorDimensions := resource.Category == interfaces.ResourceCategoryDataset &&
+		hasMissingVectorFeatureDimensions(resource.SchemaDefinition)
 	if buildRelevantChanged {
 		if err := rs.rejectResourceOperationWhenActiveBuildTask(ctx, resource.ID, true); err != nil {
 			span.SetStatus(codes.Error, "Resource has active build task")
@@ -1086,7 +1092,7 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		span.SetStatus(codes.Error, "Resource update conflict")
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
 	}
-	if resource.Category == interfaces.ResourceCategoryDataset && buildRelevantChanged {
+	if resource.Category == interfaces.ResourceCategoryDataset && (buildRelevantChanged || legacyDatasetVectorDimensions) {
 		// Claim the resource version before changing OpenSearch. The transaction
 		// keeps concurrent updates from publishing an unpersisted mapping while
 		// an OpenSearch rejection still rolls the Resource update back.
@@ -1129,6 +1135,26 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func hasMissingVectorFeatureDimensions(schema []*interfaces.Property) bool {
+	for _, property := range schema {
+		if property == nil {
+			continue
+		}
+		for _, feature := range property.Features {
+			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
+				continue
+			}
+			if feature.Config == nil {
+				return true
+			}
+			if _, exists := feature.Config["dimension"]; !exists {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func indexConfigKeyFieldsChanged(current, requested *interfaces.ResourceIndexConfig) bool {
@@ -1879,7 +1905,14 @@ func mutableFeaturesEqual(current, requested []interfaces.PropertyFeature) bool 
 				config[key] = value
 			}
 		}
-		currentCopy[i].Config = config
+		if len(config) == 0 && len(requestedCopy[i].Config) == 0 {
+			// A legacy nil config and an omitted request config are equivalent once
+			// the server-maintained dimension is excluded from this comparison.
+			currentCopy[i].Config = nil
+			requestedCopy[i].Config = nil
+		} else {
+			currentCopy[i].Config = config
+		}
 	}
 	return reflect.DeepEqual(currentCopy, requestedCopy)
 }

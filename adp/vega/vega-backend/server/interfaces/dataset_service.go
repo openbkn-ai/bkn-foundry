@@ -20,6 +20,6 @@ type DatasetService interface {
 	GetDocuments(ctx context.Context, res *Resource, docIDs []string, ignoreMissing bool) ([]map[string]any, error)
 	CreateDocument(ctx context.Context, res *Resource, document map[string]any) (string, error)
 	ReplaceDocument(ctx context.Context, res *Resource, docID string, document map[string]any) error
-	DeleteDocuments(ctx context.Context, res *Resource, docIDs []string) error
+	DeleteDocuments(ctx context.Context, res *Resource, docIDs []string, ignoreMissing bool) error
 	DeleteDocumentsByQuery(ctx context.Context, res *Resource, params *ResourceDataQueryParams) error
 }

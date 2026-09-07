@@ -46,8 +46,10 @@ func (ds *datasetService) materializeDocument(ctx context.Context, res *interfac
 			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
 				continue
 			}
-			// Resource schemas loaded from storage represent JSON numbers as float64.
-			dimension := int(feature.Config["dimension"].(float64))
+			dimension, err := vectorFeatureDimension(feature.Config, prop.Name)
+			if err != nil {
+				return nil, invalidDocumentError(ctx, err.Error())
+			}
 			if prop.Type == interfaces.DataType_Vector {
 				if value, exists := result[prop.Name]; exists {
 					if err := validateVector(value, dimension, prop.Name); err != nil {
@@ -121,6 +123,20 @@ func (ds *datasetService) materializeDocument(ctx context.Context, res *interfac
 		}
 	}
 	return result, nil
+}
+
+// vectorFeatureDimension validates persisted schema data before it controls
+// document processing. Legacy rows may predate the dimension field entirely.
+func vectorFeatureDimension(config map[string]any, field string) (int, error) {
+	value, ok := config["dimension"]
+	if !ok {
+		return 0, fmt.Errorf("vector feature for field %q has no valid dimension", field)
+	}
+	dimension, ok := value.(float64)
+	if !ok || math.IsNaN(dimension) || math.IsInf(dimension, 0) || dimension <= 0 || math.Trunc(dimension) != dimension {
+		return 0, fmt.Errorf("vector feature for field %q has no valid dimension", field)
+	}
+	return int(dimension), nil
 }
 
 // validateVector protects OpenSearch from invalid caller input or an invalid

@@ -336,7 +336,7 @@ func validateTaskFulltextFeatures(schema []*interfaces.Property, buildTask *inte
 			if feature.FeatureType != interfaces.PropertyFeatureType_Fulltext {
 				continue
 			}
-			fieldName := indexFeatureFieldName(prop, *feature)
+			fieldName := indexFeatureFieldName(prop, feature)
 			schemaFulltextFields[fieldName] = struct{}{}
 			fulltextConfig, ok := fulltextConfigs[fieldName]
 			if !ok {
@@ -361,10 +361,10 @@ func validateTaskFulltextFeatures(schema []*interfaces.Property, buildTask *inte
 }
 
 func validateTaskEmbeddingFeatures(schema []*interfaces.Property, buildTask *interfaces.BuildTask) error {
-	embeddingFields := map[string]struct{}{}
+	embeddingFields := map[string]*interfaces.SmallModel{}
 	for field, feature := range buildTaskIndexFeatures(buildTask) {
 		if feature.Vector != nil {
-			embeddingFields[field] = struct{}{}
+			embeddingFields[field] = feature.Vector
 		}
 	}
 
@@ -373,14 +373,25 @@ func validateTaskEmbeddingFeatures(schema []*interfaces.Property, buildTask *int
 		if prop == nil {
 			continue
 		}
-		for _, feature := range prop.Features {
+		for i := range prop.Features {
+			feature := &prop.Features[i]
 			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
 				continue
 			}
 			fieldName := indexFeatureFieldName(prop, feature)
 			schemaEmbeddingFields[fieldName] = struct{}{}
-			if _, ok := embeddingFields[fieldName]; !ok {
+			taskModel, ok := embeddingFields[fieldName]
+			if !ok {
 				return fmt.Errorf("resource schema embedding field %q is not in build task index config", fieldName)
+			}
+			// Resource schemas created before vector dimensions became persistent do
+			// not have this value. A build task owns an immutable model snapshot, so
+			// use it to complete only the copied schema used for this task's index.
+			if feature.Config == nil {
+				feature.Config = map[string]any{}
+			}
+			if _, exists := feature.Config["dimension"]; !exists {
+				feature.Config["dimension"] = float64(taskModel.EmbeddingDim)
 			}
 		}
 	}
@@ -392,7 +403,7 @@ func validateTaskEmbeddingFeatures(schema []*interfaces.Property, buildTask *int
 	return nil
 }
 
-func indexFeatureFieldName(prop *interfaces.Property, feature interfaces.PropertyFeature) string {
+func indexFeatureFieldName(prop *interfaces.Property, feature *interfaces.PropertyFeature) string {
 	if feature.RefProperty != "" {
 		return feature.RefProperty
 	}

@@ -1091,6 +1091,42 @@ func TestResourceServiceUpdate(t *testing.T) {
 
 		require.NoError(t, err)
 	})
+	t.Run("updates the dataset mapping when completing a legacy vector dimension", func(t *testing.T) {
+		rs, mockRA, mockPS, mockDS, _, mockCS, _ := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
+		ctrl := gomock.NewController(t)
+		mockMFS := vmock.NewMockModelFactoryService(ctrl)
+		rs.mfs = mockMFS
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+		mockMFS.EXPECT().GetModelByID(gomock.Any(), "embedding-1").
+			Return(&interfaces.SmallModel{ModelID: "embedding-1", EmbeddingDim: 3}, nil)
+		resource := &interfaces.Resource{
+			ID:             "r1",
+			CatalogID:      "cat1",
+			Category:       interfaces.ResourceCategoryDataset,
+			Name:           "dataset",
+			LocalIndexName: "vega-dataset-index-1",
+			SchemaDefinition: []*interfaces.Property{{
+				Name: "content", Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector}},
+			}},
+			IndexConfig: &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "embedding-1"},
+		}
+		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), resource, int64(0)).Return(int64(1), nil)
+		mockDS.EXPECT().Update(gomock.Any(), resource).Return(nil)
+
+		err := rs.Update(context.Background(), resource, &interfaces.ResourceRequest{
+			CatalogID:        "cat1",
+			Category:         interfaces.ResourceCategoryDataset,
+			Name:             "dataset",
+			SchemaDefinition: resource.SchemaDefinition,
+			IndexConfig:      resource.IndexConfig,
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, 3, resource.SchemaDefinition[0].Features[0].Config["dimension"])
+	})
 	t.Run("does not update dataset mapping when the resource version is stale", func(t *testing.T) {
 		rs, mockRA, mockPS, mockDS, _, mockCS, mockBTA := newTestService(t)
 		expectResourceServiceTransaction(t, rs, false)

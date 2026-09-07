@@ -180,6 +180,19 @@ func TestResourceDataServiceQueryWithPagingRejectsUnavailableTableMetadata(t *te
 	}
 }
 
+func TestResourceDataServiceQueryWithPagingRequiresQueryDataPermission(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	rs := mock_interfaces.NewMockResourceService(ctrl)
+	rds := &resourceDataService{rs: rs}
+	denied := rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
+	rs.EXPECT().CheckResourcePermission(gomock.Any(), "resource-1", interfaces.OPERATION_TYPE_QUERY_DATA).Return(denied)
+
+	_, err := rds.QueryWithPaging(context.Background(), &interfaces.Resource{ID: "resource-1"},
+		&interfaces.ResourceDataQueryParams{})
+
+	require.ErrorIs(t, err, denied)
+}
+
 func TestResourceDataServiceQuery(t *testing.T) {
 	t.Run("query rejects disabled catalog", func(t *testing.T) {
 		ctrl := gomock.NewController(t)

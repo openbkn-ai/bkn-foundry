@@ -68,4 +68,18 @@ func TestMaterializeDocument(t *testing.T) {
 		assert.ErrorContains(t, err, "inference unavailable")
 		assert.NotContains(t, input, "content_vector")
 	})
+
+	t.Run("rejects a legacy vector feature without a persisted dimension", func(t *testing.T) {
+		legacy := &interfaces.Resource{
+			LocalIndexName: "vega-dataset-index",
+			SchemaDefinition: []*interfaces.Property{{
+				Name: "content", Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector}},
+			}},
+		}
+
+		_, err := (&datasetService{}).materializeDocument(context.Background(), legacy, map[string]any{"content": "hello"})
+
+		require.ErrorContains(t, err, "no valid dimension")
+	})
 }
