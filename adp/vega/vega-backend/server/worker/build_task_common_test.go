@@ -334,6 +334,7 @@ func workerTestFullTask(t *testing.T, resource *interfaces.Resource) *interfaces
 		ResourceID:  resource.ID,
 		Mode:        interfaces.BuildTaskModeBatch,
 		ExecuteType: interfaces.BuildTaskExecuteTypeFull,
+		IndexName:   buildIndexName(resource.ID, "t1"),
 		IndexConfig: &interfaces.BuildTaskIndexConfig{
 			IndexConfigContract: interfaces.IndexConfigContract{
 				PrimaryKeyFields:  []string{"id"},

@@ -112,7 +112,7 @@ func TestBuildTaskAccessGetByIDs(t *testing.T) {
 		defer func() { _ = db.Close() }()
 		task := sampleBuildTask()
 		values := buildTaskRowValues(task)
-		values[5] = "{"
+		values[6] = "{"
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT " + joinBuildTaskColumns() + " FROM t_build_task WHERE f_id IN (?)")).
 			WithArgs(task.ID).WillReturnRows(sqlmock.NewRows(buildTaskColumns()).AddRow(values...))
 
@@ -787,6 +787,7 @@ func sampleBuildTask() *interfaces.BuildTask {
 		Status:           interfaces.BuildTaskStatusPending,
 		Mode:             interfaces.BuildTaskModeBatch,
 		ExecuteType:      interfaces.BuildTaskExecuteTypeIncremental,
+		IndexName:        "vega-build-index-1",
 		TotalCount:       100,
 		SyncedCount:      80,
 		SyncedMark:       "cursor-1",
@@ -828,6 +829,7 @@ func buildTaskRowValues(task *interfaces.BuildTask) []driver.Value {
 		task.CatalogID,
 		task.Mode,
 		task.ExecuteType,
+		task.IndexName,
 		mustMarshalJSON(task.IndexConfig),
 		task.Status,
 		task.TotalCount,
@@ -846,7 +848,7 @@ func buildTaskRowValues(task *interfaces.BuildTask) []driver.Value {
 
 func buildTaskInsertArgs(task *interfaces.BuildTask) []driver.Value {
 	args := buildTaskRowValues(task)
-	args[5] = sqlmock.AnyArg()
+	args[6] = sqlmock.AnyArg()
 	return args
 }
 
@@ -878,7 +880,7 @@ func joinBuildTaskSummaryColumns() string {
 
 func buildTaskSummaryRowValues(task *interfaces.BuildTask) []driver.Value {
 	values := buildTaskRowValues(task)
-	result := append([]driver.Value{}, values[:5]...)
-	result = append(result, values[6:11]...)
-	return append(result, values[12:]...)
+	result := append([]driver.Value{}, values[:6]...)
+	result = append(result, values[7:12]...)
+	return append(result, values[13:]...)
 }

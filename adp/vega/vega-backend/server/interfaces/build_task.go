@@ -30,7 +30,9 @@ const (
 
 	BUILD_TASK_RETRY_INTERVAL = 5 // Retry interval, unit: seconds
 
-	BUILD_PREFIX = "vega-build"
+	BuildIndexPrefix   = "vega-build"
+	DatasetIndexPrefix = "vega-dataset"
+	BuildTopicPrefix   = "vega-build"
 )
 
 // BUILD_TASK_SORT is a whitelist of supported sort values. Values are unused;
@@ -54,6 +56,7 @@ type BuildTask struct {
 	Status           string                `json:"status"`
 	Mode             string                `json:"mode"`                   // Task mode: streaming/batch
 	ExecuteType      string                `json:"execute_type,omitempty"` // Batch execution type: incremental/full; not applicable to streaming.
+	IndexName        string                `json:"index_name,omitempty"`   // Server-assigned target local index name.
 	TotalCount       int64                 `json:"total_count"`            // Total number of documents
 	SyncedCount      int64                 `json:"synced_count"`           // Number of synchronized documents
 	SyncedMark       string                `json:"synced_mark"`            // Synchronization cursor
@@ -83,6 +86,7 @@ type BuildTaskSummary struct {
 	Status           string      `json:"status"`
 	Mode             string      `json:"mode"`
 	ExecuteType      string      `json:"execute_type,omitempty"`
+	IndexName        string      `json:"index_name,omitempty"`
 	TotalCount       int64       `json:"total_count"`
 	SyncedCount      int64       `json:"synced_count"`
 	SyncedMark       string      `json:"synced_mark"`

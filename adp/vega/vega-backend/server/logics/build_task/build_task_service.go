@@ -330,6 +330,19 @@ func (bts *buildTaskService) newBuildTaskFromCreateRequest(ctx context.Context, 
 		Creator:     accountInfo,
 		CreateTime:  now,
 	}
+	if req.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental {
+		buildTask.IndexName = resource.LocalIndexName
+	} else {
+		indexID, err := uuid.NewV7()
+		if err != nil {
+			return nil, fmt.Errorf("generate build index UUIDv7: %w", err)
+		}
+		buildTask.IndexName = fmt.Sprintf("%s-%s", interfaces.BuildIndexPrefix, indexID)
+	}
+	if buildTask.IndexName == "" {
+		return nil, rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InternalError_CreateFailed).
+			WithErrorDetails("build task target index is unavailable")
+	}
 
 	if err := bts.fillBuildTaskIndexSnapshot(ctx, resource, buildTask); err != nil {
 		return nil, err

@@ -171,6 +171,20 @@ func (mr *MockLocalIndexManagerMockRecorder) GetIndexCapabilities(ctx any) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIndexCapabilities", reflect.TypeOf((*MockLocalIndexManager)(nil).GetIndexCapabilities), ctx)
 }
 
+// GetIndexMeta mocks base method.
+func (m *MockLocalIndexManager) GetIndexMeta(ctx context.Context, index *interfaces.IndexMeta) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetIndexMeta", ctx, index)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// GetIndexMeta indicates an expected call of GetIndexMeta.
+func (mr *MockLocalIndexManagerMockRecorder) GetIndexMeta(ctx, index any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIndexMeta", reflect.TypeOf((*MockLocalIndexManager)(nil).GetIndexMeta), ctx, index)
+}
+
 // IndexDocuments mocks base method.
 func (m *MockLocalIndexManager) IndexDocuments(ctx context.Context, indexName string, documents map[string]map[string]any) ([]string, error) {
 	m.ctrl.T.Helper()

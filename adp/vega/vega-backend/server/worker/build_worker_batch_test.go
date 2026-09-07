@@ -54,6 +54,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 		resource.LocalIndexName = buildIndexName("r1", "old-task")
 		task := workerTestFullTask(t, resource)
 		task.ExecuteType = interfaces.BuildTaskExecuteTypeIncremental
+		task.IndexName = resource.LocalIndexName
 		task.Status = interfaces.BuildTaskStatusPending
 		lim.EXPECT().CheckIndexExist(gomock.Any(), buildIndexName("r1", "old-task")).
 			Return(false, errors.New("opensearch unavailable"))
@@ -82,7 +83,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 			},
 		}
 		buildTask := &interfaces.BuildTask{
-			ID: "t1", ExecuteType: interfaces.BuildTaskExecuteTypeFull,
+			ID: "t1", ExecuteType: interfaces.BuildTaskExecuteTypeFull, IndexName: buildIndexName("r1", "t1"),
 			IndexConfig: &interfaces.BuildTaskIndexConfig{Features: map[string]interfaces.BuildTaskFieldIndexFeature{
 				"content": {Vector: &interfaces.SmallModel{ModelID: "m1", EmbeddingDim: 3}},
 			}},
@@ -166,6 +167,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		resource.SyncMark = `{"mode":"batch","cursor":[]}`
 		task := workerTestFullTask(t, resource)
 		task.ExecuteType = interfaces.BuildTaskExecuteTypeIncremental
+		task.IndexName = resource.LocalIndexName
 		task.Status = interfaces.BuildTaskStatusRunning
 		task.SyncedMark = resource.SyncMark
 		bbw := &batchBuildWorker{lim: lim, bts: bts, rs: rs, cf: cf}
@@ -245,6 +247,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		resource.SyncMark = `{"mode":"batch","cursor":[{"key":"id","value":10}]}`
 		task := workerTestFullTask(t, resource)
 		task.ExecuteType = interfaces.BuildTaskExecuteTypeIncremental
+		task.IndexName = resource.LocalIndexName
 		task.Status = interfaces.BuildTaskStatusRunning
 		task.SyncedMark = resource.SyncMark
 		bbw := &batchBuildWorker{lim: lim, bts: bts, cf: cf}
