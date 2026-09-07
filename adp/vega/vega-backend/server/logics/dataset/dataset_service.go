@@ -294,12 +294,35 @@ func (ds *datasetService) checkDocumentPermission(ctx context.Context, res *inte
 	if parentInternal && interfaces.IsS2SInternalAccess(ctx) {
 		return nil
 	}
+	var resourceErr error
+	if operation == interfaces.OPERATION_TYPE_QUERY_DATA {
+		resourceErr = ds.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: resourceAuthResourceType(parentInternal),
+			ID:   res.ID,
+		}, []string{operation})
+		if resourceErr == nil {
+			return nil
+		}
+	}
 	catalogType := interfaces.AUTH_RESOURCE_TYPE_CATALOG
 	if parentInternal {
 		catalogType = interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG
 	}
-	return ds.ps.CheckPermission(ctx, interfaces.PermissionResource{
+	if err := ds.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: catalogType,
 		ID:   res.CatalogID,
-	}, []string{operation})
+	}, []string{operation}); err != nil {
+		if resourceErr != nil {
+			return resourceErr
+		}
+		return err
+	}
+	return nil
+}
+
+func resourceAuthResourceType(internal bool) string {
+	if internal {
+		return interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE
+	}
+	return interfaces.AUTH_RESOURCE_TYPE_RESOURCE
 }

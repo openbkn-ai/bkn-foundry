@@ -106,6 +106,28 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		assert.Equal(t, []map[string]any{{"id": "doc-1"}, nil}, got)
 	})
 
+	t.Run("get documents allows resource-level query permission", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		cs := vmock.NewMockCatalogService(ctrl)
+		ps := vmock.NewMockPermissionService(ctrl)
+		ds := &datasetService{lim: lim, cs: cs, ps: ps}
+		resource := &interfaces.Resource{ID: "dataset-1", CatalogID: "catalog-1", LocalIndexName: "dataset-1"}
+
+		cs.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{}, nil)
+		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			ID:   resource.ID,
+		}, []string{interfaces.OPERATION_TYPE_QUERY_DATA}).Return(nil)
+		lim.EXPECT().GetDocuments(gomock.Any(), resource.LocalIndexName, []string{"doc-1"}).
+			Return([]map[string]any{{"id": "doc-1"}}, nil)
+
+		documents, err := ds.GetDocuments(ctx, resource, []string{"doc-1"}, false)
+
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"id": "doc-1"}}, documents)
+	})
+
 	t.Run("get documents rejects missing documents by default", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
 		lim.EXPECT().GetDocuments(gomock.Any(), "dataset-1", []string{"missing"}).Return([]map[string]any{nil}, nil)
@@ -123,7 +145,16 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		ds := &datasetService{cs: cs, ps: ps}
 		denied := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
 		cs.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{}, nil)
-		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), []string{interfaces.OPERATION_TYPE_QUERY_DATA}).Return(denied)
+		gomock.InOrder(
+			ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+				Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+				ID:   resource.ID,
+			}, []string{interfaces.OPERATION_TYPE_QUERY_DATA}).Return(denied),
+			ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+				Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+				ID:   resource.CatalogID,
+			}, []string{interfaces.OPERATION_TYPE_QUERY_DATA}).Return(denied),
+		)
 
 		_, err := ds.GetDocuments(ctx, resource, []string{"doc-1"}, false)
 
