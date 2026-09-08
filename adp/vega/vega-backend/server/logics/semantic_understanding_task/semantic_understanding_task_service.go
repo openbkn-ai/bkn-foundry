@@ -606,29 +606,31 @@ func (suts *semanticUnderstandingTaskService) attachUnmaskedSampleRows(ctx conte
 	if input.Options.SamplePolicy == nil || input.Options.SamplePolicy.Masked {
 		return fmt.Errorf("unmasked sample policy is required")
 	}
+	input.SampleRows = []map[string]any{}
 	fields := make([]string, 0, len(resource.SchemaDefinition))
 	for _, property := range resource.SchemaDefinition {
-		if property != nil && property.Name != "" {
+		if !isSemanticUnderstandingExcludedSampleProperty(property) {
 			fields = append(fields, property.Name)
 		}
 	}
-	result, err := suts.rds.QueryWithPaging(ctx, resource,
-		&interfaces.ResourceDataQueryParams{
-			Limit:        input.Options.SamplePolicy.MaxRows,
-			OutputFields: fields,
-		})
-	if err != nil {
-		return fmt.Errorf("read sample rows: %w", err)
-	}
-	input.SampleRows = []map[string]any{}
-	if result != nil && result.Entries != nil {
-		var truncated bool
-		input.SampleRows, truncated, err = limitSemanticUnderstandingSampleRows(result.Entries, resource.SchemaDefinition)
+	if len(fields) > 0 {
+		result, err := suts.rds.QueryWithPaging(ctx, resource,
+			&interfaces.ResourceDataQueryParams{
+				Limit:        input.Options.SamplePolicy.MaxRows,
+				OutputFields: fields,
+			})
 		if err != nil {
-			return fmt.Errorf("limit sample rows: %w", err)
+			return fmt.Errorf("read sample rows: %w", err)
 		}
-		if truncated {
-			logger.Warnf("Semantic sample rows truncated by payload cap: resource_id=%s, category=%s, kept %d of %d rows", resource.ID, resource.Category, len(input.SampleRows), len(result.Entries))
+		if result != nil && result.Entries != nil {
+			var truncated bool
+			input.SampleRows, truncated, err = limitSemanticUnderstandingSampleRows(result.Entries, resource.SchemaDefinition)
+			if err != nil {
+				return fmt.Errorf("limit sample rows: %w", err)
+			}
+			if truncated {
+				logger.Warnf("Semantic sample rows truncated by payload cap: resource_id=%s, category=%s, kept %d of %d rows", resource.ID, resource.Category, len(input.SampleRows), len(result.Entries))
+			}
 		}
 	}
 	inputJSON, _, err := marshalSemanticUnderstandingInput(input)
@@ -643,7 +645,7 @@ func (suts *semanticUnderstandingTaskService) attachUnmaskedSampleRows(ctx conte
 // inference without allowing large text or binary values to exhaust the task
 // input or agent context. It never mutates connector query results.
 func limitSemanticUnderstandingSampleRows(rows []map[string]any, schema []*interfaces.Property) ([]map[string]any, bool, error) {
-	binaryFields := semanticUnderstandingBinarySampleFields(schema)
+	excludedFields := semanticUnderstandingExcludedSampleFields(schema)
 	limited := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
 		if len(limited) >= interfaces.MaxSemanticUnderstandingSampleRows {
@@ -651,7 +653,7 @@ func limitSemanticUnderstandingSampleRows(rows []map[string]any, schema []*inter
 		}
 		limitedRow := make(map[string]any, len(row))
 		for key, value := range row {
-			if binaryFields[key] || isSemanticUnderstandingBinarySampleValue(value) {
+			if excludedFields[key] || isSemanticUnderstandingBinarySampleValue(value) {
 				continue
 			}
 			limitedRow[key] = limitSemanticUnderstandingSampleValue(value)
@@ -675,20 +677,19 @@ func isSemanticUnderstandingBinarySampleValue(value any) bool {
 	return ok
 }
 
-func semanticUnderstandingBinarySampleFields(schema []*interfaces.Property) map[string]bool {
-	binaryFields := make(map[string]bool)
+func semanticUnderstandingExcludedSampleFields(schema []*interfaces.Property) map[string]bool {
+	excludedFields := make(map[string]bool)
 	for _, property := range schema {
-		if property == nil || property.Type != interfaces.DataType_Binary {
+		if !isSemanticUnderstandingExcludedSampleProperty(property) {
 			continue
 		}
-		if property.Name != "" {
-			binaryFields[property.Name] = true
-		}
-		if property.OriginalName != "" {
-			binaryFields[property.OriginalName] = true
-		}
+		excludedFields[property.OriginalName] = true
 	}
-	return binaryFields
+	return excludedFields
+}
+
+func isSemanticUnderstandingExcludedSampleProperty(property *interfaces.Property) bool {
+	return property.Type == interfaces.DataType_Binary || property.Type == interfaces.DataType_Other
 }
 
 func limitSemanticUnderstandingSampleValue(value any) any {

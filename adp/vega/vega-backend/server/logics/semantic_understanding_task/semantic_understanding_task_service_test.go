@@ -249,6 +249,11 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 			OriginalName: "attachment_blob",
 			OriginalType: "bytea",
 			Type:         interfaces.DataType_Binary,
+		}, &interfaces.Property{
+			Name:         "shape",
+			OriginalName: "shape",
+			OriginalType: "geometry",
+			Type:         interfaces.DataType_Other,
 		})
 		task, err := normalizeResourceSemanticUnderstandingRequest(resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
 			IncludeSampleRows: true,
@@ -258,10 +263,11 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		resourceDataService.EXPECT().
 			QueryWithPaging(gomock.Any(), resource, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
-				assert.Equal(t, []string{"order_id", "attachmentBlob"}, params.OutputFields)
+				assert.Equal(t, []string{"order_id"}, params.OutputFields)
 				return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{
 					"order_id":        "o-1",
 					"attachment_blob": string([]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}),
+					"shape":           string([]byte{0x07, 0x08, 0x09}),
 				}}}, nil
 			})
 
@@ -272,6 +278,29 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		require.Len(t, input.SampleRows, 1)
 		assert.Equal(t, "o-1", input.SampleRows[0]["order_id"])
 		assert.NotContains(t, input.SampleRows[0], "attachment_blob")
+		assert.NotContains(t, input.SampleRows[0], "shape")
+	})
+
+	t.Run("skips sample query when every schema field is excluded", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
+		resource := sampleSemanticResource()
+		resource.SchemaDefinition = []*interfaces.Property{
+			{Name: "attachmentBlob", OriginalName: "attachment_blob", Type: interfaces.DataType_Binary},
+			{Name: "shape", OriginalName: "shape", Type: interfaces.DataType_Other},
+		}
+		task, err := normalizeResourceSemanticUnderstandingRequest(resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
+			IncludeSampleRows: true,
+			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},
+		})
+		require.NoError(t, err)
+
+		service := &semanticUnderstandingTaskService{rds: resourceDataService}
+		require.NoError(t, service.attachUnmaskedSampleRows(context.Background(), resource, task))
+		var input interfaces.SemanticUnderstandingResourceAgentInput
+		require.NoError(t, sonic.Unmarshal([]byte(task.Input), &input))
+		assert.Empty(t, input.SampleRows)
 	})
 
 	t.Run("writes an empty sample_rows array when the query has no rows", func(t *testing.T) {
@@ -482,20 +511,40 @@ func TestLimitSemanticUnderstandingSampleRows(t *testing.T) {
 	t.Run("omits binary schema fields regardless of their value encoding", func(t *testing.T) {
 		schema := []*interfaces.Property{
 			{Name: "attachment_blob", OriginalName: "attachment_blob", Type: interfaces.DataType_Binary},
+			{Name: "legacy_blob", OriginalName: "legacy_blob", Type: interfaces.DataType_Binary},
 			{Name: "note", OriginalName: "note", Type: interfaces.DataType_Text},
 		}
 		rows, truncated, err := limitSemanticUnderstandingSampleRows([]map[string]any{
-			{"attachment_blob": string([]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}), "note": "kept"},
-			{"attachment_blob": string([]byte{0x00, 0x01, 0xff}), "note": "kept"},
-			{"attachment_blob": []byte{0x01, 0x02, 0x03}, "note": "kept"},
+			{"attachment_blob": string([]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}), "legacy_blob": []byte{0x07}, "note": "kept"},
+			{"attachment_blob": string([]byte{0x00, 0x01, 0xff}), "legacy_blob": []byte{0x08}, "note": "kept"},
+			{"attachment_blob": []byte{0x01, 0x02, 0x03}, "legacy_blob": []byte{0x09}, "note": "kept"},
 		}, schema)
 
 		require.NoError(t, err)
 		assert.False(t, truncated)
+		require.Len(t, rows, 3)
 		for _, row := range rows {
 			assert.NotContains(t, row, "attachment_blob")
+			assert.NotContains(t, row, "legacy_blob")
 			assert.Equal(t, "kept", row["note"])
 		}
+	})
+
+	t.Run("omits other schema fields", func(t *testing.T) {
+		schema := []*interfaces.Property{
+			{Name: "shape", OriginalName: "shape", OriginalType: "geometry", Type: interfaces.DataType_Other},
+			{Name: "note", OriginalType: "text", Type: interfaces.DataType_Text},
+		}
+		rows, truncated, err := limitSemanticUnderstandingSampleRows([]map[string]any{{
+			"shape": string([]byte{0x01, 0x02, 0x03}),
+			"note":  "kept",
+		}}, schema)
+
+		require.NoError(t, err)
+		assert.False(t, truncated)
+		require.Len(t, rows, 1)
+		assert.NotContains(t, rows[0], "shape")
+		assert.Equal(t, "kept", rows[0]["note"])
 	})
 
 	t.Run("drops trailing rows when the payload exceeds the limit", func(t *testing.T) {
