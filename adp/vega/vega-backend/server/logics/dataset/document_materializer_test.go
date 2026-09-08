@@ -2,13 +2,16 @@ package dataset
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"vega-backend/common"
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 )
@@ -51,6 +54,36 @@ func TestMaterializeDocument(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, []any{0.1, 0.2}, document["content_vector"])
+	})
+
+	t.Run("accepts an explicit derived vector decoded with precise JSON", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mfs := vmock.NewMockModelFactoryService(ctrl)
+		ds := &datasetService{mfs: mfs}
+		var input map[string]any
+		require.NoError(t, common.DecodePreciseJSON(strings.NewReader(`{"content_vector":[0.1,0.2]}`), &input))
+
+		document, err := ds.materializeDocument(context.Background(), resource, input)
+
+		require.NoError(t, err)
+		assert.Equal(t, []any{json.Number("0.1"), json.Number("0.2")}, document["content_vector"])
+	})
+
+	t.Run("accepts a vector field decoded with precise JSON", func(t *testing.T) {
+		resource := &interfaces.Resource{
+			LocalIndexName: "vega-dataset-index",
+			SchemaDefinition: []*interfaces.Property{{
+				Name: "_vector", Type: interfaces.DataType_Vector,
+				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": float64(2)}}},
+			}},
+		}
+		var input map[string]any
+		require.NoError(t, common.DecodePreciseJSON(strings.NewReader(`{"_vector":[0.1,0.2]}`), &input))
+
+		document, err := (&datasetService{}).materializeDocument(context.Background(), resource, input)
+
+		require.NoError(t, err)
+		assert.Equal(t, []any{json.Number("0.1"), json.Number("0.2")}, document["_vector"])
 	})
 
 	t.Run("does not write when inference fails", func(t *testing.T) {
