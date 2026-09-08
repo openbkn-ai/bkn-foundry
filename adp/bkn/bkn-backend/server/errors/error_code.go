@@ -123,4 +123,5 @@ func init() {
 	rest.Register(RiskTypeErrCodeList)
 	rest.Register(MetricErrCodeList)
 	rest.Register(CypherErrCodeList)
+	rest.Register(KNDiffErrCodeList)
 }

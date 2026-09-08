@@ -190,6 +190,11 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		// BKN import and export (RESTful design).
 		apiV1.POST("/bkns", r.UploadBKN)         // Upload a BKN tar archive for import.
 		apiV1.GET("/bkns/:kn_id", r.DownloadBKN) // Download a BKN tar archive for export.
+
+		// Compare two knowledge network branches. The two networks are named in the body rather
+		// than in the path: neither of them is the resource being addressed, and putting one in
+		// the path would suggest the comparison belongs to it.
+		apiV1.POST("/bkns/diff", r.verifyJsonContentType(), r.DiffKNsByEx)
 	}
 
 	bknApiInV1 := c.Group("/api/bkn-backend/in/v1")

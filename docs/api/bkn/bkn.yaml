@@ -127,6 +127,68 @@ paths:
           description: Unauthorized
         '404':
           description: Knowledge network not found
+  /api/bkn-backend/v1/bkns/diff:
+    post:
+      tags:
+        - BKN Import/Export
+      summary: Compare two knowledge network branches
+      description: |
+        Report what differs between two knowledge network branches, definition by definition and
+        field by field. Both networks are named in the body: neither is the resource being
+        addressed, and putting one in the path would suggest the comparison belongs to it.
+
+        Each side is authorized on its own, so a caller who may read one network and not the other
+        is refused exactly as they would be asking for that network directly.
+
+        Definitions are paired by type and id. Two networks built independently share no
+        definition ids — ids are generated per network — so their comparison degrades into
+        "everything created, everything deleted". `lineage` reports that overlap up front, and
+        `fallback_by_name` pairs the remainder by name when the caller opts in.
+
+        Definitions that are identical on both sides are counted in `summary` and left out of
+        `entries`.
+      operationId: diffKNs
+      security:
+        - OAuth2: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [base, target]
+              properties:
+                base:
+                  $ref: '#/components/schemas/KNDiffSideRequest'
+                target:
+                  $ref: '#/components/schemas/KNDiffSideRequest'
+                fallback_by_name:
+                  type: boolean
+                  default: false
+                  description: |
+                    Pair definitions by name once id matching is exhausted. A name match is a
+                    guess: two definitions can carry the same name and mean different things, so
+                    a paired entry reports both ids for a human to check, and an ambiguous name
+                    pairs with nothing.
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KNDiffResult'
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        '401':
+          description: Unauthorized
+        '403':
+          description: The caller may not read one of the two networks
+        '404':
+          description: Knowledge network not found
   /api/bkn-backend/v1/knowledge-networks/names:
     post:
       tags:
@@ -261,6 +323,125 @@ paths:
           description: Unauthorized
 
 components:
+  schemas:
+    KNDiffSideRequest:
+      type: object
+      required: [kn_id]
+      properties:
+        kn_id:
+          type: string
+        branch:
+          type: string
+          default: main
+          description: Branch name. Defaults to main.
+
+    KNDiffSide:
+      type: object
+      description: Echoes what was compared, so a stored result still says what it was.
+      properties:
+        kn_id:
+          type: string
+        branch:
+          type: string
+        name:
+          type: string
+
+    KNDiffValueChange:
+      type: object
+      properties:
+        old:
+          type: string
+        new:
+          type: string
+
+    KNDiffFieldChange:
+      type: object
+      properties:
+        path:
+          type: string
+          description: |
+            Where the difference is, written for a reader rather than for a parser:
+            `data_properties[alt_part].description` names the property by its own name, so a
+            reordered table produces no changes at all.
+          example: data_properties[alt_part].description
+        kind:
+          type: string
+          enum: [create, update, delete]
+        old:
+          type: string
+        new:
+          type: string
+
+    KNDiffDefinition:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [object_type, relation_type, action_type, risk_type, concept_group, metric, network]
+        id:
+          type: string
+        action:
+          type: string
+          enum: [create, update, delete, skip]
+        name:
+          $ref: '#/components/schemas/KNDiffValueChange'
+        paired_by:
+          type: string
+          enum: [id, name]
+          description: How the two sides were matched. `name` means the ids differ and both are reported.
+        base_id:
+          type: string
+        target_id:
+          type: string
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/KNDiffFieldChange'
+
+    KNDiffResult:
+      type: object
+      properties:
+        base:
+          $ref: '#/components/schemas/KNDiffSide'
+        target:
+          $ref: '#/components/schemas/KNDiffSide'
+        summary:
+          type: object
+          description: Counts every definition, including the identical ones left out of entries.
+          properties:
+            created:
+              type: integer
+            updated:
+              type: integer
+            deleted:
+              type: integer
+            unchanged:
+              type: integer
+        lineage:
+          type: object
+          description: |
+            How much of the two networks' identity overlaps. `common_ids` of zero means the two
+            were built independently and the comparison is a wall of creates and deletes rather
+            than a readable result.
+          properties:
+            common_ids:
+              type: integer
+            total_ids:
+              type: integer
+            related:
+              type: boolean
+        network:
+          allOf:
+            - $ref: '#/components/schemas/KNDiffDefinition'
+          description: |
+            The root file, reported on its own. Two different networks always differ here by
+            construction, so it is kept out of the definition counts.
+        entries:
+          type: array
+          description: Definitions that differ. Identical ones are counted in summary only.
+          items:
+            $ref: '#/components/schemas/KNDiffDefinition'
+
   securitySchemes:
     OAuth2:
       type: oauth2
