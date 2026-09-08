@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io/fs"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -20,6 +21,120 @@ import (
 func hashHex(data []byte) string {
 	h := sha256.Sum256(data)
 	return hex.EncodeToString(h[:8])
+}
+
+const (
+	// checksumFormatBodyOnly is the original layout: a definition's checksum covered its body and
+	// nothing else.
+	checksumFormatBodyOnly = 1
+	// checksumFormatWithFrontmatter also covers the frontmatter.
+	checksumFormatWithFrontmatter = 2
+	// checksumFormatCurrent is what new CHECKSUM files declare and what diffing uses.
+	checksumFormatCurrent = checksumFormatWithFrontmatter
+
+	checksumFormatPrefix = "# format:"
+)
+
+// checksumPayload builds the bytes a definition's checksum is taken over.
+//
+// Format 1 hashed the body alone, leaving the whole frontmatter outside the checksum: renaming a
+// definition, retagging it, or rebinding a capability produced a byte-identical hash, so a diff
+// built on these checksums reported "unchanged" for a file that had visibly changed. Format 2
+// folds the frontmatter in. CHECKSUM files written before this change declare no format and are
+// still verified under format 1, so existing packages keep verifying.
+func checksumPayload(fm map[string]any, body string, format int) string {
+	norm := normalizeForChecksum(body)
+	if format < checksumFormatWithFrontmatter {
+		return norm
+	}
+	return canonicalFrontmatter(fm) + "\n" + norm
+}
+
+// canonicalFrontmatter renders parsed frontmatter deterministically. Map keys are sorted at every
+// level: Go map iteration order is random, and without sorting the same file would hash
+// differently from one run to the next.
+func canonicalFrontmatter(fm map[string]any) string {
+	return canonicalValue(fm, "")
+}
+
+func canonicalValue(v any, indent string) string {
+	switch val := v.(type) {
+	case map[string]any:
+		keys := make([]string, 0, len(val))
+		for k := range val {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		var sb strings.Builder
+		for _, k := range keys {
+			sb.WriteString(indent)
+			sb.WriteString(k)
+			if isCompoundValue(val[k]) {
+				sb.WriteString(":\n")
+				sb.WriteString(canonicalValue(val[k], indent+"  "))
+				continue
+			}
+			sb.WriteString(": ")
+			sb.WriteString(scalarString(val[k]))
+			sb.WriteString("\n")
+		}
+		return sb.String()
+	case map[any]any:
+		// Defensive: some YAML decoders hand back interface-keyed maps.
+		converted := make(map[string]any, len(val))
+		for k, item := range val {
+			converted[fmt.Sprint(k)] = item
+		}
+		return canonicalValue(converted, indent)
+	case []any:
+		var sb strings.Builder
+		for _, item := range val {
+			if isCompoundValue(item) {
+				sb.WriteString(indent)
+				sb.WriteString("-\n")
+				sb.WriteString(canonicalValue(item, indent+"  "))
+				continue
+			}
+			sb.WriteString(indent)
+			sb.WriteString("- ")
+			sb.WriteString(scalarString(item))
+			sb.WriteString("\n")
+		}
+		return sb.String()
+	default:
+		return indent + scalarString(v) + "\n"
+	}
+}
+
+func isCompoundValue(v any) bool {
+	switch v.(type) {
+	case map[string]any, map[any]any, []any:
+		return true
+	}
+	return false
+}
+
+func scalarString(v any) string {
+	if v == nil {
+		return ""
+	}
+	return fmt.Sprint(v)
+}
+
+// declaredChecksumFormat reads the format a CHECKSUM file was written under. A file without the
+// header predates format 2 and is verified as format 1.
+func declaredChecksumFormat(content string) int {
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, checksumFormatPrefix) {
+			continue
+		}
+		value := strings.TrimSpace(strings.TrimPrefix(line, checksumFormatPrefix))
+		if n, err := strconv.Atoi(value); err == nil {
+			return n
+		}
+	}
+	return checksumFormatBodyOnly
 }
 
 // GenerateChecksumFile validates BKN inputs, then generates CHECKSUM in
@@ -58,7 +173,7 @@ func GenerateChecksumFileWithFS(fsys FileSystem, root string) (string, error) {
 				entries = append(entries, line)
 			}
 		} else if ext == ".bkn" {
-			lines := computeBknChecksumWithFS(fsys, path)
+			lines := computeBknChecksumWithFS(fsys, path, checksumFormatCurrent)
 			entries = append(entries, lines...)
 		}
 		return nil
@@ -71,6 +186,7 @@ func GenerateChecksumFileWithFS(fsys FileSystem, root string) (string, error) {
 	now := time.Now().Format(time.RFC3339)
 	lines := []string{
 		"# BKN Directory Checksum",
+		fmt.Sprintf("%s %d", checksumFormatPrefix, checksumFormatCurrent),
 		"# generated: " + now,
 	}
 	lines = append(lines, entries...)
@@ -148,6 +264,7 @@ func VerifyChecksumFileWithFS(fsys FileSystem, root string) (bool, []string) {
 		return false, []string{ChecksumFileName + " not found"}
 	}
 
+	format := declaredChecksumFormat(string(data))
 	declared := make(map[string]string)
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
@@ -188,7 +305,7 @@ func VerifyChecksumFileWithFS(fsys FileSystem, root string) (bool, []string) {
 				}
 			}
 		} else if ext == ".bkn" {
-			lines := computeBknChecksumWithFS(fsys, path)
+			lines := computeBknChecksumWithFS(fsys, path, format)
 			for _, line := range lines {
 				parts := strings.SplitN(line, "  ", 2)
 				if len(parts) == 2 {
@@ -230,7 +347,7 @@ func computeSkillChecksumWithFS(fsys FileSystem, path, rel string) string {
 // Format per DESIGN.md:
 //   - network type (no id suffix): "network  sha256:..."
 //   - definition types: "object_type:id  sha256:..."
-func computeBknChecksumWithFS(fsys FileSystem, path string) []string {
+func computeBknChecksumWithFS(fsys FileSystem, path string, format int) []string {
 	data, err := fsys.ReadFile(path)
 	if err != nil {
 		return nil
@@ -254,17 +371,23 @@ func computeBknChecksumWithFS(fsys FileSystem, path string) []string {
 	}
 	id := strings.TrimSpace(fmt.Sprintf("%v", fm["id"]))
 
-	// For network type, use "network" (no :id suffix per DESIGN.md)
-	if typeVal == "network" {
+	// For network type, use "network" (no :id suffix per DESIGN.md).
+	//
+	// The serializer writes "knowledge_network"; only the legacy "network" spelling was matched
+	// here, so the root file contributed no checksum line at all and every change to it — the
+	// capability dependency block included — stayed outside both CHECKSUM and any diff built on
+	// it. Accepting the real spelling is gated on format 2 so that CHECKSUM files written before
+	// this change keep verifying without an "unexpected definition" complaint.
+	if typeVal == "network" || (typeVal == "knowledge_network" && format >= checksumFormatWithFrontmatter) {
 		_, body := splitFrontmatter(content)
-		norm := normalizeForChecksum(body)
+		norm := checksumPayload(fm, body, format)
 		results = append(results, "network  sha256:"+hashHex([]byte(norm)))
 		return results
 	}
 
 	// For definition types, compute checksum based on type and id
 	_, body := splitFrontmatter(content)
-	norm := normalizeForChecksum(body)
+	norm := checksumPayload(fm, body, format)
 
 	switch typeVal {
 	case "object_type":
