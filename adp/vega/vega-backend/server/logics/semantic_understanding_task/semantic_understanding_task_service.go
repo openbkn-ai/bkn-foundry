@@ -606,29 +606,31 @@ func (suts *semanticUnderstandingTaskService) attachUnmaskedSampleRows(ctx conte
 	if input.Options.SamplePolicy == nil || input.Options.SamplePolicy.Masked {
 		return fmt.Errorf("unmasked sample policy is required")
 	}
+	input.SampleRows = []map[string]any{}
 	fields := make([]string, 0, len(resource.SchemaDefinition))
 	for _, property := range resource.SchemaDefinition {
-		if property != nil && property.Name != "" {
+		if !isSemanticUnderstandingExcludedSampleProperty(property) {
 			fields = append(fields, property.Name)
 		}
 	}
-	result, err := suts.rds.QueryWithPaging(ctx, resource,
-		&interfaces.ResourceDataQueryParams{
-			Limit:        input.Options.SamplePolicy.MaxRows,
-			OutputFields: fields,
-		})
-	if err != nil {
-		return fmt.Errorf("read sample rows: %w", err)
-	}
-	input.SampleRows = []map[string]any{}
-	if result != nil && result.Entries != nil {
-		var truncated bool
-		input.SampleRows, truncated, err = limitSemanticUnderstandingSampleRows(result.Entries)
+	if len(fields) > 0 {
+		result, err := suts.rds.QueryWithPaging(ctx, resource,
+			&interfaces.ResourceDataQueryParams{
+				Limit:        input.Options.SamplePolicy.MaxRows,
+				OutputFields: fields,
+			})
 		if err != nil {
-			return fmt.Errorf("limit sample rows: %w", err)
+			return fmt.Errorf("read sample rows: %w", err)
 		}
-		if truncated {
-			logger.Warnf("Semantic sample rows truncated by payload cap: resource_id=%s, category=%s, kept %d of %d rows", resource.ID, resource.Category, len(input.SampleRows), len(result.Entries))
+		if result != nil && result.Entries != nil {
+			var truncated bool
+			input.SampleRows, truncated, err = limitSemanticUnderstandingSampleRows(result.Entries, resource.SchemaDefinition)
+			if err != nil {
+				return fmt.Errorf("limit sample rows: %w", err)
+			}
+			if truncated {
+				logger.Warnf("Semantic sample rows truncated by payload cap: resource_id=%s, category=%s, kept %d of %d rows", resource.ID, resource.Category, len(input.SampleRows), len(result.Entries))
+			}
 		}
 	}
 	inputJSON, _, err := marshalSemanticUnderstandingInput(input)
@@ -642,7 +644,8 @@ func (suts *semanticUnderstandingTaskService) attachUnmaskedSampleRows(ctx conte
 // limitSemanticUnderstandingSampleRows keeps sample data useful for semantic
 // inference without allowing large text or binary values to exhaust the task
 // input or agent context. It never mutates connector query results.
-func limitSemanticUnderstandingSampleRows(rows []map[string]any) ([]map[string]any, bool, error) {
+func limitSemanticUnderstandingSampleRows(rows []map[string]any, schema []*interfaces.Property) ([]map[string]any, bool, error) {
+	excludedFields := semanticUnderstandingExcludedSampleFields(schema)
 	limited := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
 		if len(limited) >= interfaces.MaxSemanticUnderstandingSampleRows {
@@ -650,6 +653,9 @@ func limitSemanticUnderstandingSampleRows(rows []map[string]any) ([]map[string]a
 		}
 		limitedRow := make(map[string]any, len(row))
 		for key, value := range row {
+			if excludedFields[key] || isSemanticUnderstandingBinarySampleValue(value) {
+				continue
+			}
 			limitedRow[key] = limitSemanticUnderstandingSampleValue(value)
 		}
 
@@ -666,27 +672,46 @@ func limitSemanticUnderstandingSampleRows(rows []map[string]any) ([]map[string]a
 	return limited, false, nil
 }
 
+func isSemanticUnderstandingBinarySampleValue(value any) bool {
+	_, ok := value.([]byte)
+	return ok
+}
+
+func semanticUnderstandingExcludedSampleFields(schema []*interfaces.Property) map[string]bool {
+	excludedFields := make(map[string]bool)
+	for _, property := range schema {
+		if !isSemanticUnderstandingExcludedSampleProperty(property) {
+			continue
+		}
+		excludedFields[property.OriginalName] = true
+	}
+	return excludedFields
+}
+
+func isSemanticUnderstandingExcludedSampleProperty(property *interfaces.Property) bool {
+	return property.Type == interfaces.DataType_Binary || property.Type == interfaces.DataType_Other
+}
+
 func limitSemanticUnderstandingSampleValue(value any) any {
 	switch typedValue := value.(type) {
 	case string:
-		// Table connectors convert []byte values to string before returning rows.
-		// Invalid UTF-8 therefore represents binary data in the actual query path.
-		if !utf8.ValidString(typedValue) {
-			return semanticUnderstandingBinarySampleValue(len(typedValue))
-		}
 		return truncateSemanticUnderstandingSampleString(typedValue)
-	case []byte:
-		return semanticUnderstandingBinarySampleValue(len(typedValue))
 	case map[string]any:
 		limited := make(map[string]any, len(typedValue))
 		for key, nestedValue := range typedValue {
+			if isSemanticUnderstandingBinarySampleValue(nestedValue) {
+				continue
+			}
 			limited[key] = limitSemanticUnderstandingSampleValue(nestedValue)
 		}
 		return limited
 	case []any:
-		limited := make([]any, len(typedValue))
-		for index, nestedValue := range typedValue {
-			limited[index] = limitSemanticUnderstandingSampleValue(nestedValue)
+		limited := make([]any, 0, len(typedValue))
+		for _, nestedValue := range typedValue {
+			if isSemanticUnderstandingBinarySampleValue(nestedValue) {
+				continue
+			}
+			limited = append(limited, limitSemanticUnderstandingSampleValue(nestedValue))
 		}
 		return limited
 	default:
@@ -706,10 +731,6 @@ func truncateSemanticUnderstandingSampleString(value string) string {
 		runeCount++
 	}
 	return value
-}
-
-func semanticUnderstandingBinarySampleValue(length int) string {
-	return fmt.Sprintf("[binary content omitted; original length: %d bytes]", length)
 }
 
 func normalizeCatalogSemanticUnderstandingRequest(catalog *interfaces.Catalog, resources []*interfaces.Resource, req *interfaces.CreateSemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, error) {
