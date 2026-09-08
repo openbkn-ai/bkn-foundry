@@ -8,6 +8,10 @@ package interfaces
 
 const (
 	ResourceLocalIndexStatusAvailable = "available"
+	// ResourceLocalIndexStatusUnavailable means the managed index behind the resource cannot serve
+	// anything. Vega sets it when a schema update is classified as build-related, which also clears
+	// the index name: the row survives, the index behind it does not.
+	ResourceLocalIndexStatusUnavailable = "unavailable"
 
 	FieldFeatureType_Keyword  = "keyword"
 	FieldFeatureType_Fulltext = "fulltext"
@@ -68,6 +72,9 @@ type VegaResource struct {
 	Category         string                   `json:"category"`
 	SchemaDefinition []*Property              `json:"schema_definition,omitempty"`
 	IndexConfig      *VegaResourceIndexConfig `json:"index_config,omitempty"`
+	// LocalIndexName names the managed index behind the resource. An empty value means there is
+	// none: the dataset row exists but accepts no writes.
+	LocalIndexName string `json:"index_name,omitempty"`
 	// LocalIndexStatus is the source of truth for whether the managed local index can serve index capabilities.
 	LocalIndexStatus string `json:"local_status"`
 }
