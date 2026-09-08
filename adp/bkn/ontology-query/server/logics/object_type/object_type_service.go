@@ -97,8 +97,9 @@ func (ots *objectTypeService) GetObjectTypeSchema(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	if objectType.DataSource == nil || objectType.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE ||
-		strings.TrimSpace(objectType.DataSource.ID) == "" {
+	if objectType.DataSource == nil || strings.TrimSpace(objectType.DataSource.ID) == "" ||
+		(strings.TrimSpace(objectType.DataSource.Type) != "" &&
+			objectType.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE) {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("object type has no published resource data source")
 	}

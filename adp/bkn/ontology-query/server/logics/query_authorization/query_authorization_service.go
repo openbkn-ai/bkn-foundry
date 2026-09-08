@@ -506,7 +506,8 @@ func objectTypeResources(ctx context.Context, knID string,
 	if objectType.DataSource == nil || strings.TrimSpace(objectType.DataSource.ID) == "" {
 		return nil, dependencyResolutionFailed(ctx, fmt.Errorf("object type %s has no published data source", objectType.OTID))
 	}
-	if objectType.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
+	if sourceType := strings.TrimSpace(objectType.DataSource.Type); sourceType != "" &&
+		sourceType != interfaces.DATA_SOURCE_TYPE_RESOURCE {
 		return nil, dependencyResolutionFailed(ctx,
 			fmt.Errorf("object type %s has unsupported data source type %s", objectType.OTID, objectType.DataSource.Type))
 	}

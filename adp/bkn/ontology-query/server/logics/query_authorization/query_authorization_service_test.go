@@ -179,6 +179,20 @@ func resourceInfo(resourceID string) *interfaces.ResourceInfo {
 	return &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: resourceID}
 }
 
+func TestObjectTypeResourcesSupportsLegacyResourceBindingWithoutType(t *testing.T) {
+	objectType := publishedObjectType("kn-a", "orders", "orders-resource")
+	objectType.DataSource.Type = ""
+
+	resources, err := objectTypeResources(context.Background(), "kn-a", objectType)
+	if err != nil {
+		t.Fatalf("objectTypeResources() error = %v", err)
+	}
+	want := interfaces.KNChildPermissionResource(interfaces.PermissionResourceTypeObjectType, "kn-a", "orders")
+	if len(resources) != 1 || resources[0] != want {
+		t.Fatalf("objectTypeResources() = %#v, want %#v", resources, want)
+	}
+}
+
 func publishedPath(sourceID, sourceResourceID, targetID, targetResourceID,
 	relationTypeID string) interfaces.RelationTypePath {
 	return interfaces.RelationTypePath{

@@ -117,6 +117,33 @@ func TestObjectTypeSchemaUsesPublishedViewDetailBinding(t *testing.T) {
 	}
 }
 
+func TestObjectTypeSchemaSupportsLegacyResourceBindingWithoutType(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	vega := omock.NewMockVegaBackendAccess(ctrl)
+	proxy := &objectTypeProxyResolverStub{}
+	service := &objectTypeService{omAccess: models, vba: vega, proxy: proxy, propertyAccess: fullPropertyAccessStub{}}
+
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "ot-1").Return(
+		interfaces.ObjectType{
+			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+				OTID: "ot-1", DataSource: &interfaces.ResourceInfo{ID: "resource-1"},
+				DataProperties: []cond.DataProperty{{Name: "id", Type: "string", MappedField: cond.Field{Name: "id"}}},
+			},
+			KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
+		}, true, nil)
+	vega.EXPECT().GetResourceSchema(gomock.Any(), "resource-1").Return(
+		&interfaces.ResourceSchemaResponse{SchemaDefinition: []map[string]any{{"name": "id", "type": "string"}}}, nil)
+
+	got, err := service.GetObjectTypeSchema(context.Background(), "kn-1", interfaces.MAIN_BRANCH, "ot-1")
+	if err != nil {
+		t.Fatalf("GetObjectTypeSchema() error = %v", err)
+	}
+	if len(got.SchemaDefinition) != 1 || len(proxy.bindings) != 1 || proxy.bindings[0].TargetID != "resource-1" {
+		t.Fatalf("unexpected schema/proxy binding: %#v %#v", got, proxy.bindings)
+	}
+}
+
 func TestObjectTypeSampleDataUsesQueryDataProxyBinding(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	models := omock.NewMockOntologyManagerAccess(ctrl)
