@@ -104,15 +104,17 @@ func (s *capabilityIndexSync) Init(ctx context.Context) (err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer func() { oteltrace.EndSpan(ctx, err) }()
 
+	// The lock alone is what the race needed: two callers in the rebuild branch at once meant the
+	// second delete removing the dataset the first had just created. Serialising them is enough.
+	//
+	// Deliberately no "already initialised, return early" shortcut. initialized is set only here
+	// and cleared nowhere, so that shortcut would make Init a one-shot: the reconcilers' half-hourly
+	// pass would stop re-checking, and a dataset whose managed index was later lost or invalidated
+	// could not heal until the process restarted — while every write in between answers 400. Being
+	// able to heal is the reason this check exists at all, and re-running it costs one resource
+	// read on an interval measured in half hours.
 	s.initMu.Lock()
 	defer s.initMu.Unlock()
-
-	// A concurrent caller that already finished the work has nothing left to do here. Without this
-	// the second caller would re-run the whole comparison and, on a rebuild round, delete the
-	// dataset the first one just created.
-	if s.isInitialized() {
-		return nil
-	}
 
 	initialized := false
 	defer func() { s.setInitialized(initialized) }()
