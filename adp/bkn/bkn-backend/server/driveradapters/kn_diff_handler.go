@@ -34,6 +34,10 @@ type KNDiffRequestBody struct {
 	// FallbackByName pairs definitions by name once id matching is exhausted. Off by default: a
 	// name match is a guess, and a wrong pair reads exactly like a real modification.
 	FallbackByName bool `json:"fallback_by_name"`
+
+	// IncludeUnchanged also returns the identical definitions, for a caller that lists the whole
+	// model beside the differences.
+	IncludeUnchanged bool `json:"include_unchanged"`
 }
 
 // DiffKNsByEx compares two knowledge network branches (external endpoint).
@@ -78,9 +82,10 @@ func (r *restHandler) diffKNs(c *gin.Context, vis hydra.Visitor) {
 	)
 
 	result, err := r.bs.DiffNetworks(ctx, interfaces.KNDiffRequest{
-		Base:           interfaces.KNRef{KNID: body.Base.KNID, Branch: body.Base.Branch},
-		Target:         interfaces.KNRef{KNID: body.Target.KNID, Branch: body.Target.Branch},
-		FallbackByName: body.FallbackByName,
+		Base:             interfaces.KNRef{KNID: body.Base.KNID, Branch: body.Base.Branch},
+		Target:           interfaces.KNRef{KNID: body.Target.KNID, Branch: body.Target.Branch},
+		FallbackByName:   body.FallbackByName,
+		IncludeUnchanged: body.IncludeUnchanged,
 	})
 	if err != nil {
 		replyHandlerError(c, span, ctx, err)

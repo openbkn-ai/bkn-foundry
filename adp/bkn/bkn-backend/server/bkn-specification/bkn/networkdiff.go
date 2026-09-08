@@ -67,6 +67,10 @@ type Lineage struct {
 
 // NetworkDiff is the whole comparison of two networks.
 type NetworkDiff struct {
+	// includeUnchanged is carried from the options so record knows whether an identical entry is
+	// counted only or also listed.
+	includeUnchanged bool
+
 	Summary DiffSummary      `json:"summary"`
 	Lineage Lineage          `json:"lineage"`
 	Network *DefinitionDiff  `json:"network,omitempty"`
@@ -78,6 +82,11 @@ type DiffOptions struct {
 	// FallbackByName pairs leftover definitions of the same kind by name once id matching is done.
 	// Off by default: it is a heuristic, and a wrong pair reads like a real modification.
 	FallbackByName bool
+
+	// IncludeUnchanged also returns the definitions that are identical on both sides, carrying no
+	// changes. Off by default because a comparison is usually read for what moved; a caller that
+	// lists the whole model beside the differences asks for them.
+	IncludeUnchanged bool
 }
 
 // definitionRef is one comparable definition lifted out of a network.
@@ -94,7 +103,7 @@ type definitionRef struct {
 // summary and left out of Entries: a network has hundreds of definitions and almost all of them
 // are unchanged in any given comparison, so returning them would swamp the response with silence.
 func DiffNetworkModels(base, target *BknNetwork, opts DiffOptions) *NetworkDiff {
-	result := &NetworkDiff{Entries: []DefinitionDiff{}}
+	result := &NetworkDiff{Entries: []DefinitionDiff{}, includeUnchanged: opts.IncludeUnchanged}
 	if base == nil || target == nil {
 		return result
 	}
@@ -169,6 +178,12 @@ func (d *NetworkDiff) record(entry DefinitionDiff) {
 	switch entry.Action {
 	case DiffSkip:
 		d.Summary.Unchanged++
+		if !d.includeUnchanged {
+			return
+		}
+		// An unchanged entry carries no changes: it is here to be listed, not to be read.
+		entry.Changes = nil
+		d.Entries = append(d.Entries, entry)
 		return
 	case DiffCreate:
 		d.Summary.Created++
