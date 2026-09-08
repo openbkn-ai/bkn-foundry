@@ -7,6 +7,7 @@ package object_data_stats
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -253,11 +254,23 @@ func quoteIdentifier(ctx context.Context, name string) (string, error) {
 	return "`" + strings.ReplaceAll(name, "`", "``") + "`", nil
 }
 
-// asInt64 reads a count out of a driver-shaped value. Connectors return counts as any of int64,
-// float64 or a string depending on the driver, and a type switch that missed one would report
-// zero rows for a table that has plenty.
+// asInt64 reads a count out of a driver-shaped value.
+//
+// The vega adapter decodes responses with UseNumber, so every number arrives as a json.Number and
+// not as a float64. Missing that case is not a rounding problem: the switch falls through to zero,
+// and a table with thirty thousand rows is reported as empty with no error anywhere. Connectors
+// also hand back counts as int64, float64, a string or raw bytes depending on the driver, so all
+// of them are accepted.
 func asInt64(value any) int64 {
 	switch v := value.(type) {
+	case json.Number:
+		if parsed, err := v.Int64(); err == nil {
+			return parsed
+		}
+		if parsed, err := v.Float64(); err == nil {
+			return int64(parsed)
+		}
+		return 0
 	case int64:
 		return v
 	case int:
