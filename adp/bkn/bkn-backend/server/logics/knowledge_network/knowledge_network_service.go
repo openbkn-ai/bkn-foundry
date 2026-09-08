@@ -621,10 +621,22 @@ func restrictKNToNavigation(kn *interfaces.KN) {
 	kn.Statistics = nil
 	kn.Operations = nil
 	kn.NavigationOnly = true
+	kn.NavigationStatistics = nil
 	kn.Creator = interfaces.AccountInfo{}
 	kn.Updater = interfaces.AccountInfo{}
 	kn.Vector = nil
 	kn.Score = nil
+}
+
+func navigationStatistics(visibility *knNavigationVisibility) *interfaces.Statistics {
+	return &interfaces.Statistics{
+		CgTotal:       len(visibility.visibleChildRows[interfaces.RESOURCE_TYPE_CONCEPT_GROUP]),
+		OtTotal:       len(visibility.visibleChildRows[interfaces.RESOURCE_TYPE_OBJECT_TYPE]),
+		RtTotal:       len(visibility.visibleChildRows[interfaces.RESOURCE_TYPE_RELATION_TYPE]),
+		AtTotal:       len(visibility.visibleChildRows[interfaces.RESOURCE_TYPE_ACTION_TYPE]),
+		RiskTypeTotal: len(visibility.visibleChildRows[interfaces.RESOURCE_TYPE_RISK_TYPE]),
+		MetricsTotal:  len(visibility.visibleChildRows[interfaces.RESOURCE_TYPE_METRIC]),
+	}
 }
 
 func (kns *knowledgeNetworkService) ListKNs(ctx context.Context, parameter interfaces.KNsQueryParams) ([]*interfaces.KN, int, error) {
@@ -862,6 +874,9 @@ func (kns *knowledgeNetworkService) getKNByID(ctx context.Context, knID string, 
 			}
 		} else if _, childVisible := visibility.childVisibleKNs[kn.KNID]; childVisible && mode == "" {
 			restrictKNToNavigation(kn)
+			// Detail visibility is resolved for this knowledge network only, so the
+			// same result can safely serve include_statistics in the handler.
+			kn.NavigationStatistics = navigationStatistics(visibility)
 		} else {
 			return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
 		}
@@ -951,20 +966,16 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 	// caller; capability bindings have no child authorization resource and must
 	// not be disclosed through the restricted shell.
 	if kn.NavigationOnly {
+		if kn.NavigationStatistics != nil {
+			span.SetStatus(codes.Ok, "")
+			return kn.NavigationStatistics, nil
+		}
 		visibility, err := kns.resolveKNNavigationVisibility(ctx, []string{kn.KNID}, kn.Branch)
 		if err != nil {
 			return nil, err
 		}
-		statistics := &interfaces.Statistics{
-			CgTotal:       len(visibility.visibleChildRows[interfaces.RESOURCE_TYPE_CONCEPT_GROUP]),
-			OtTotal:       len(visibility.visibleChildRows[interfaces.RESOURCE_TYPE_OBJECT_TYPE]),
-			RtTotal:       len(visibility.visibleChildRows[interfaces.RESOURCE_TYPE_RELATION_TYPE]),
-			AtTotal:       len(visibility.visibleChildRows[interfaces.RESOURCE_TYPE_ACTION_TYPE]),
-			RiskTypeTotal: len(visibility.visibleChildRows[interfaces.RESOURCE_TYPE_RISK_TYPE]),
-			MetricsTotal:  len(visibility.visibleChildRows[interfaces.RESOURCE_TYPE_METRIC]),
-		}
 		span.SetStatus(codes.Ok, "")
-		return statistics, nil
+		return navigationStatistics(visibility), nil
 	}
 
 	// Get counts of object, relation, and action types in the business knowledge network.
@@ -1542,6 +1553,16 @@ func (kns *knowledgeNetworkService) GetRelationTypePaths(ctx context.Context,
 	query interfaces.RelationTypePathsBaseOnSource) ([]interfaces.RelationTypePath, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "GetRelationTypePaths")
 	defer span.End()
+
+	// This endpoint returns the complete object/relation topology reachable from
+	// the source object type. A visible child is sufficient for navigation, but
+	// must not grant access to the full knowledge-network graph.
+	if err := kns.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_KN,
+		ID:   query.KNID,
+	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
+		return nil, err
+	}
 
 	// 1. Get the source object type.
 

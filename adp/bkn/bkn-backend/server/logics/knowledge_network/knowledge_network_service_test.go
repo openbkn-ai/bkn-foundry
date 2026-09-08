@@ -929,6 +929,9 @@ func Test_knowledgeNetworkService_ChildPermissionNavigation(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(result.NavigationOnly, ShouldBeTrue)
 		So(result.SkillContent, ShouldBeEmpty)
+		stats, err := service.GetStatByKN(ctx, result)
+		So(err, ShouldBeNil)
+		So(stats.RtTotal, ShouldEqual, 1)
 
 		exportKN := &interfaces.KN{KNID: "kn1", KNName: "Network 1", Branch: interfaces.MAIN_BRANCH}
 		kna.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(exportKN, nil)
@@ -1765,11 +1768,19 @@ func Test_knowledgeNetworkService_GetRelationTypePaths(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		kna := bmock.NewMockKNAccess(mockCtrl)
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
+		ps := bmock.NewMockPermissionService(mockCtrl)
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
 			kna:        kna,
 			ots:        ots,
+			ps:         ps,
+		}
+		allowKNView := func() {
+			ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+				Type: interfaces.RESOURCE_TYPE_KN,
+				ID:   "kn1",
+			}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(nil)
 		}
 
 		Convey("Success getting relation type paths\n", func() {
@@ -1801,6 +1812,7 @@ func Test_knowledgeNetworkService_GetRelationTypePaths(t *testing.T) {
 				},
 			}
 
+			allowKNView()
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&objectType, nil).AnyTimes()
 			kna.EXPECT().GetNeighborPathsBatch(gomock.Any(), gomock.Any(), gomock.Any()).Return(neighborPathsMap, nil)
 
@@ -1824,6 +1836,7 @@ func Test_knowledgeNetworkService_GetRelationTypePaths(t *testing.T) {
 				},
 			}
 
+			allowKNView()
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&objectType, nil).AnyTimes()
 
 			paths, err := service.GetRelationTypePaths(ctx, query)
@@ -1840,6 +1853,7 @@ func Test_knowledgeNetworkService_GetRelationTypePaths(t *testing.T) {
 				PathLength:        1,
 			}
 
+			allowKNView()
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
@@ -1863,6 +1877,7 @@ func Test_knowledgeNetworkService_GetRelationTypePaths(t *testing.T) {
 				},
 			}
 
+			allowKNView()
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&objectType, nil).AnyTimes()
 			kna.EXPECT().GetNeighborPathsBatch(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
@@ -1889,12 +1904,33 @@ func Test_knowledgeNetworkService_GetRelationTypePaths(t *testing.T) {
 				"ot1": {},
 			}
 
+			allowKNView()
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&objectType, nil).AnyTimes()
 			kna.EXPECT().GetNeighborPathsBatch(gomock.Any(), gomock.Any(), gomock.Any()).Return(neighborPathsMap, nil)
 
 			paths, err := service.GetRelationTypePaths(ctx, query)
 			So(err, ShouldBeNil)
 			So(len(paths), ShouldEqual, 1)
+		})
+
+		Convey("Child-only visibility cannot read the complete relation graph\n", func() {
+			query := interfaces.RelationTypePathsBaseOnSource{
+				KNID:              "kn1",
+				Branch:            interfaces.MAIN_BRANCH,
+				SourceObjecTypeId: "ot1",
+				Direction:         "out",
+				PathLength:        1,
+			}
+			ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+				Type: interfaces.RESOURCE_TYPE_KN,
+				ID:   "kn1",
+			}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).
+				Return(rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden))
+
+			paths, err := service.GetRelationTypePaths(ctx, query)
+			So(err, ShouldNotBeNil)
+			So(paths, ShouldBeNil)
+			So(err.(*rest.HTTPError).BaseError.ErrorCode, ShouldEqual, rest.PublicError_Forbidden)
 		})
 	})
 }
