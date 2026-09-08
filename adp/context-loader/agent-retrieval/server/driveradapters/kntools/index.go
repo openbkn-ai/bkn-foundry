@@ -22,6 +22,7 @@ import (
 
 // KnToolsHandler is the HTTP entry for published Function tool search and execution.
 type KnToolsHandler interface {
+	SearchCapabilities(c *gin.Context)
 	SearchTools(c *gin.Context)
 	ExecuteTool(c *gin.Context)
 }
@@ -49,6 +50,23 @@ func NewKnToolsHandler() KnToolsHandler {
 }
 
 // SearchTools finds callable published Function tools.
+// SearchCapabilities ranks every kind the knowledge network mounted against one query (#1388).
+func (h *knToolsHandler) SearchCapabilities(c *gin.Context) {
+	ctx := c.Request.Context()
+	req := &logicsTools.SearchCapabilitiesReq{}
+	// The body is optional; an empty one lists everything the network mounted.
+	_ = c.ShouldBindQuery(req)
+	_ = c.ShouldBindJSON(req)
+
+	resp, err := h.tools.SearchCapabilities(ctx, req)
+	if err != nil {
+		h.logger.WithContext(ctx).Warnf("[KnToolsHandler#SearchCapabilities] failed: %v", err)
+		rest.ReplyError(c, err)
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, resp)
+}
+
 func (h *knToolsHandler) SearchTools(c *gin.Context) {
 	ctx := c.Request.Context()
 	req := &logicsTools.SearchToolsReq{}

@@ -61,6 +61,7 @@ const (
 	toolKeyGetSkillContent          = "get_skill_content"
 	toolKeyReadSkillFile            = "read_skill_file"
 	toolKeyExecuteSkill             = "execute_skill"
+	toolKeySearchCapabilities       = "search_capabilities"
 	toolKeySearchTools              = "search_tools"
 	toolKeyExecuteTool              = "execute_tool"
 	// Bounds the lifetime of mcp-go's in-memory session state.
@@ -199,6 +200,9 @@ func newMCPServerForLocale(lifecycleClient *bkntrace.LifecycleClient, locale str
 	// model reads and runs; a published Function is a business operation someone
 	// registered and published, so discovery and execution are separate tools.
 	toolsService := kntools.NewKnToolsService()
+	// One entry over every kind the network mounted. The two narrow tools below are this call
+	// with types pinned; they stay until callers have moved (#1388).
+	b.add(toolKeySearchCapabilities, handleSearchCapabilities(toolsService))
 	b.add(toolKeySearchTools, handleSearchTools(toolsService))
 	b.add(toolKeyExecuteTool, handleExecuteTool(toolsService))
 

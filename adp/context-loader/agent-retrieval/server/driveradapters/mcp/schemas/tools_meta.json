@@ -109,7 +109,7 @@
     "group": "skill",
     "group_title": "技能",
     "order": 510,
-    "description": "技能召回。返回该知识网络已挂载的 Skill（知识网络的「SKILLs」）；未挂载则返回空，不会退回全平台可见的技能。带 skill_query 时按相关性排序，留空则按挂载顺序列出。"
+    "description": "【将废弃】改用 search_capabilities，它一次覆盖全部四类能力；本工具等价于 search_capabilities 限定在Skill。技能召回。返回该知识网络已挂载的 Skill（知识网络的「SKILLs」）；未挂载则返回空，不会退回全平台可见的技能。带 skill_query 时按相关性排序，留空则按挂载顺序列出。"
   },
   "list_knowledge_networks": {
     "name": "list_knowledge_networks",
@@ -213,13 +213,21 @@
     "group_title": "代码执行",
     "order": 620
   },
+  "search_capabilities": {
+    "name": "search_capabilities",
+    "title": "能力检索",
+    "group": "tool",
+    "group_title": "工具",
+    "order": 555,
+    "description": "检索某个知识网络已挂载的全部能力：Skill、函数工具（含 API 工具）与 MCP 工具，在同一个排序空间里竞争，按相关度混排返回。想找「能做某件事的东西」时用它，不必先猜是 Skill 还是工具。\n每条带 capability_type，据此决定下一步：function / mcp_tool 用 execute_tool 调用（返回带 input_schema），skill 用 get_skill_content 读取、execute_skill 执行。\n可选 types 收窄到 skill / function / mcp_tool；函数工具还可用 metadata_types 再分 openapi（API 工具）与 function。范围是该网络挂载的能力与当前账户可见范围的交集，未挂载则返回空。"
+  },
   "search_tools": {
     "name": "search_tools",
     "title": "工具检索",
     "group": "tool",
     "group_title": "工具",
     "order": 560,
-    "description": "检索某个知识网络已挂载的函数工具（执行工厂 Toolbox Tool）。范围是该网络挂载的工具与当前账户可调用范围的交集，未挂载则返回空。返回 tool_id、toolbox_id 与业务入参 schema，拿到后用 execute_tool 调用。"
+    "description": "【将废弃】改用 search_capabilities，它一次覆盖全部四类能力；本工具等价于 search_capabilities 限定在函数工具与 MCP 工具。检索某个知识网络已挂载的函数工具（执行工厂 Toolbox Tool）。范围是该网络挂载的工具与当前账户可调用范围的交集，未挂载则返回空。返回 tool_id、toolbox_id 与业务入参 schema，拿到后用 execute_tool 调用。"
   },
   "execute_tool": {
     "name": "execute_tool",

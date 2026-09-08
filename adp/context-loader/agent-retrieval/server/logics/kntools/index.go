@@ -82,6 +82,8 @@ type ExecuteToolReq struct {
 
 // KnToolsService is the published Function tool surface.
 type KnToolsService interface {
+	// SearchCapabilities ranks every kind the network mounted against one query (#1388).
+	SearchCapabilities(ctx context.Context, req *SearchCapabilitiesReq) (*SearchCapabilitiesResp, error)
 	SearchTools(ctx context.Context, req *SearchToolsReq) (*SearchToolsResp, error)
 	ExecuteTool(ctx context.Context, req *ExecuteToolReq) (map[string]any, error)
 }
@@ -131,116 +133,54 @@ func (s *knToolsService) warnf(ctx context.Context, format string, args ...any) 
 
 // SearchTools returns the Function tools this knowledge network has mounted, ranked against a
 // query when one is given.
+//
+// It is SearchCapabilities with the kinds pinned — literally, by delegation rather than by
+// resemblance. The two were copies of each other for exactly one review cycle, long enough for a
+// fix to land on one and not the other, which is the argument against keeping two.
+//
+// What stays here is the shape of the answer: search_tools speaks tool_id / toolbox_id /
+// input_schema, and callers, the sandbox SDK and the API contract are written against that.
 func (s *knToolsService) SearchTools(ctx context.Context, req *SearchToolsReq) (*SearchToolsResp, error) {
-	if req == nil || strings.TrimSpace(req.KnID) == "" {
+	if req == nil {
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
 			infraErr.LocalizedDetail(ctx, "ToolScopeKnIDRequired"))
 	}
-	limit := req.Limit
-	if limit < 1 {
-		limit = defaultSearchLimit
-	}
-	if limit > maxSearchLimit {
-		limit = maxSearchLimit
-	}
 
-	refs, mcpRefs, err := s.boundRefs(ctx, strings.TrimSpace(req.KnID), strings.TrimSpace(req.ToolboxID))
-	if err != nil {
-		return nil, err
-	}
-	if len(refs) == 0 && len(mcpRefs) == 0 {
-		return &SearchToolsResp{
-			Tools:   []ToolEntry{},
-			Message: infraErr.LocalizedDetail(ctx, "NoBoundToolsInNetwork"),
-		}, nil
-	}
-
-	query := strings.TrimSpace(req.Query)
-
-	// One ranking over both transports. Before this the two were retrieved separately — toolbox
-	// tools by a SQL LIKE, MCP tools by a literal substring match here — and appended one list
-	// after the other. Neither carried a comparable score, so the order only said which list came
-	// first. Now both are rows in one index and the order means something.
-	searchRefs := make([]interfaces.SearchCapabilityRef, 0, len(refs)+len(mcpRefs))
-	for _, ref := range refs {
-		boxID, toolID, ok := strings.Cut(ref, "/")
-		if !ok {
-			continue
-		}
-		searchRefs = append(searchRefs, interfaces.SearchCapabilityRef{
-			CapabilityType: interfaces.CapabilityTypeFunction,
-			OwnerID:        boxID,
-			CapabilityID:   toolID,
-		})
-	}
-	for _, ref := range mcpRefs {
-		searchRefs = append(searchRefs, interfaces.SearchCapabilityRef{
-			CapabilityType: interfaces.CapabilityTypeMCPTool,
-			OwnerID:        ref.MCPID,
-			CapabilityID:   ref.ToolName,
-		})
-	}
-
-	// One more than the page, purely to learn whether there is a next one. The ranking caps its
-	// answer at top_k, so asking for exactly `limit` makes a full page and a truncated page look
-	// identical — the truncation flag could never fire, and a caller would read one page as the
-	// whole answer.
-	hits, err := s.operator.SearchCapabilities(ctx, &interfaces.SearchCapabilitiesRequest{
-		Query:         query,
-		Refs:          searchRefs,
-		TopK:          limit + 1,
+	inner, err := s.SearchCapabilities(ctx, &SearchCapabilitiesReq{
+		KnID:  req.KnID,
+		Query: req.Query,
+		// The two tool transports, never Skills: this surface answers with input schemas, and a
+		// Skill has none.
 		Types:         []string{interfaces.CapabilityTypeFunction, interfaces.CapabilityTypeMCPTool},
 		MetadataTypes: req.MetadataTypes,
+		Limit:         req.Limit,
+		// The kinds above are this entry point's, not the caller's. Without saying so, an empty
+		// answer would blame a types filter the caller never set and has no way to remove.
+		kindsAreIntrinsic: true,
+		// toolbox_id narrows within the mounted set and can never reach outside it.
+		OwnerID: strings.TrimSpace(req.ToolboxID),
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	more := len(hits) > limit
-	if more {
-		hits = hits[:limit]
+	tools := make([]ToolEntry, 0, len(inner.Capabilities))
+	for _, c := range inner.Capabilities {
+		tools = append(tools, ToolEntry{
+			ToolID:      c.CapabilityID,
+			ToolboxID:   c.OwnerID,
+			Name:        c.Name,
+			Description: c.Description,
+			UseRule:     c.UseRule,
+			InputSchema: c.InputSchema,
+		})
 	}
-
-	matched := s.describeCapabilityHits(ctx, hits, limit)
-	// total is what the query kept, not what is mounted. Counting the mounted set would make the
-	// total exceed the returned page whenever a query filtered anything out, and the caller would
-	// be told its results were truncated and to narrow a query that was already working.
-	total := len(hits)
-	resp := &SearchToolsResp{Tools: matched, TotalMatched: total}
-
-	// An empty answer has several causes and they want opposite fixes. One message for all of
-	// them sent callers to publish a tool box that was already published, or to broaden a query
-	// that had in fact matched. What separates them is how far the answer got: whether anything
-	// was mounted after narrowing, whether the ranking found anything, and whether what it found
-	// survived the visibility check.
-	fitted := total
-	if fitted > limit {
-		fitted = limit
-	}
-	switch {
-	case len(matched) == 0 && total > 0:
-		// The ranking found tools and the caller-visible catalogue listed none of them. An
-		// unreadable catalogue no longer lands here: those hits are kept without a schema.
-		resp.Message = infraErr.LocalizedDetail(ctx, "ToolsMatchedButNotVisible")
-	case len(matched) == 0 && len(req.MetadataTypes) > 0:
-		// Tools are mounted, just none of the requested kind.
-		resp.Message = infraErr.LocalizedDetail(ctx, "NoToolsOfRequestedKind")
-	case len(matched) == 0:
-		resp.Message = infraErr.LocalizedDetail(ctx, "NoPublishedToolsMatched")
-	case more:
-		// The ranking had at least one more than this page. The only case where narrowing the
-		// query, or raising the limit, is the right advice.
-		resp.Truncated = true
-		resp.Message = infraErr.LocalizedDetail(ctx, "ToolSearchTruncated")
-	case len(matched) < fitted:
-		// Some hits that would have fitted were dropped by the visibility check. Not truncation:
-		// telling the caller to narrow the query would not bring them back.
-		resp.Message = infraErr.LocalizedDetail(ctx, "ToolsMatchedButNotVisible")
-	}
-	if len(resp.Tools) == 0 {
-		resp.Tools = []ToolEntry{}
-	}
-	return resp, nil
+	return &SearchToolsResp{
+		Tools:        tools,
+		TotalMatched: inner.TotalMatched,
+		Truncated:    inner.Truncated,
+		Message:      inner.Message,
+	}, nil
 }
 
 // boundToolRefs returns the network's Function bindings as "{box_id}/{tool_id}" references.

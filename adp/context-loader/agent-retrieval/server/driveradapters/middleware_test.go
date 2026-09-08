@@ -356,8 +356,9 @@ func (stubKnSkillsHandler) ExecuteSkill(c *gin.Context)    { c.Status(http.Statu
 
 type stubKnToolsHandler struct{}
 
-func (stubKnToolsHandler) SearchTools(c *gin.Context) { c.Status(http.StatusOK) }
-func (stubKnToolsHandler) ExecuteTool(c *gin.Context) { c.Status(http.StatusOK) }
+func (stubKnToolsHandler) SearchCapabilities(c *gin.Context) { c.Status(http.StatusOK) }
+func (stubKnToolsHandler) SearchTools(c *gin.Context)        { c.Status(http.StatusOK) }
+func (stubKnToolsHandler) ExecuteTool(c *gin.Context)        { c.Status(http.StatusOK) }
 
 type stubKnQueryToolsHandler struct{}
 

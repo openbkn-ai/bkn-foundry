@@ -135,6 +135,8 @@
     "ToolboxIDAndToolIDRequired": "缺少 toolbox_id 或 tool_id 参数，二者都取自 search_tools 的返回。",
     "ToolNotExecutable": "该工具不在当前可调用的已启用工具列表中：工具可能已停用、所属工具箱未发布，或当前账户无权访问。请先用 search_tools 确认可用的 toolbox_id 与 tool_id。",
     "NoPublishedToolsMatched": "没有匹配的已发布工具。请先在执行工厂注册工具、发布所属工具箱并启用工具，或放宽 query、去掉 toolbox_id 后重试。",
+    "NoBoundCapabilitiesInNetwork": "该知识网络未挂载任何能力。请先在知识网络中挂载 Skill、函数工具或 MCP 工具后重试。",
+    "NoCapabilitiesOfRequestedKind": "该知识网络挂载了能力，但没有 types / metadata_types 指定类型的。去掉这两个参数可看到全部已挂载能力。",
     "NoToolsOfRequestedKind": "该知识网络挂载了工具，但没有 metadata_types 指定类型的工具。去掉 metadata_types 可看到全部已挂载工具。",
     "ToolsMatchedButNotVisible": "匹配到工具，但当前调用方对它们没有可见权限，因此未返回。与工具是否已发布无关。",
     "ToolSearchTruncated": "匹配的工具超过 limit，仅返回前若干条。请收窄 query 或提高 limit。",

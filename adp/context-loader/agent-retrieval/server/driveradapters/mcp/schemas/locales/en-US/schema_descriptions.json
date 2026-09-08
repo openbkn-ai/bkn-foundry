@@ -442,5 +442,25 @@
     "input_schema.properties.tool_id.description": "Tool id, taken from a search_tools result.",
     "input_schema.properties.arguments.description": "The tool's business input, filled from the input_schema search_tools returned. Do not put credentials or session ids here; the platform carries those itself.",
     "output_schema.description": "The tool's raw response. A function that fails reports it in the body with HTTP 200, so read the body rather than trusting the call to have succeeded."
+  },
+  "search_capabilities": {
+    "input_schema.properties.kn_id.description": "Required. Knowledge network id. The scope is what that network has mounted; a network that mounted nothing returns nothing.",
+    "input_schema.properties.response_format.description": "Text format: json or toon, default toon",
+    "input_schema.properties.query.description": "Optional. Ranks the mounted capabilities by name and description, all kinds competing in one space. Leave it out to list everything mounted.",
+    "input_schema.properties.types.description": "Optional. Narrows to certain capability kinds. Empty means all three. It narrows within what the network mounted and can never reach outside it.",
+    "input_schema.properties.metadata_types.description": "Optional. Applies to Function tools only: openapi for API tools, function for functions. Empty means both.",
+    "input_schema.properties.limit.description": "Optional. Caps how many are returned, default 20, max 100. Tool hits carry an input schema, so a large page costs context.",
+    "output_schema.properties.capabilities.description": "Capabilities this knowledge network has mounted and this account can see, interleaved by relevance",
+    "output_schema.properties.capabilities.items.properties.capability_type.description": "Decides what to do next: function / mcp_tool are called through execute_tool; a skill is read through get_skill_content and run through execute_skill",
+    "output_schema.properties.capabilities.items.properties.owner_id.description": "The tool box id for a Function tool, the MCP Server id for an MCP tool, empty for a Skill. Pass it to execute_tool as toolbox_id",
+    "output_schema.properties.capabilities.items.properties.capability_id.description": "tool_id for a Function tool, the tool name for an MCP tool, skill_id for a Skill",
+    "output_schema.properties.capabilities.items.properties.metadata_type.description": "Function tools only: openapi for an API tool, function for a function",
+    "output_schema.properties.capabilities.items.properties.name.description": "Capability name",
+    "output_schema.properties.capabilities.items.properties.description.description": "What the capability does",
+    "output_schema.properties.capabilities.items.properties.use_rule.description": "Usage rule, tools only",
+    "output_schema.properties.capabilities.items.properties.input_schema.description": "Business input contract, tools only; fill execute_tool's arguments from it. A Skill carries none: it is read, not called",
+    "output_schema.properties.total_matched.description": "How many capabilities matched, which may exceed the length of capabilities",
+    "output_schema.properties.truncated.description": "True when more matched than the page holds and only the first were returned",
+    "output_schema.properties.message.description": "Why the answer is empty or truncated, named by cause"
   }
 }

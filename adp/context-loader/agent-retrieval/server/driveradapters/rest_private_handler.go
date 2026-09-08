@@ -102,6 +102,7 @@ func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	}
 
 	// Published Function tool surface: find a callable tool, then run it.
+	engine.POST("/kn/search_capabilities", r.KnToolsHandler.SearchCapabilities)
 	engine.POST("/kn/search_tools", r.KnToolsHandler.SearchTools)
 	engine.POST("/kn/execute_tool", r.KnToolsHandler.ExecuteTool)
 
