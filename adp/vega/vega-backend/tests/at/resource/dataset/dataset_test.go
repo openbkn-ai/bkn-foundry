@@ -1140,13 +1140,42 @@ func TestDatasetDocumentsList(t *testing.T) {
 		// 测试vector查询
 		Convey("DD102.32: vector查询 (vector)", func() {
 			testFilterQuery(map[string]any{
-				"operation":   "knn_vector",
-				"field":       "content",
-				"value":       generateVector(768),
-				"value_from":  "const",
-				"limit_key":   "k",
-				"limit_value": 3,
+				"operation":  "knn_vector",
+				"field":      "content",
+				"value":      generateVector(768),
+				"value_from": "const",
+				"k":          3,
 			}, 1)
+		})
+
+		Convey("DD102.32.1: vector查询带过滤条件", func() {
+			query := make(map[string]any)
+			for k, v := range baseQuery {
+				query[k] = v
+			}
+			query["filter_condition"] = map[string]any{
+				"operation":  "knn_vector",
+				"field":      "content",
+				"value":      generateVector(768),
+				"value_from": "const",
+				"k":          3,
+				"sub_conditions": []map[string]any{
+					{
+						"operation":  "false",
+						"field":      "active",
+						"value_from": "const",
+					},
+				},
+			}
+
+			client.SetHeader("X-HTTP-Method-Override", "GET")
+			resp := client.POST("/api/vega-backend/v1/resources/"+resourceID+"/data", query)
+			client.RemoveHeader("X-HTTP-Method-Override")
+			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+
+			entries := resp.Body["entries"].([]any)
+			So(entries, ShouldHaveLength, 1)
+			So(entries[0].(map[string]any)["active"], ShouldBeFalse)
 		})
 
 		// 测试AND里面嵌套OR查询
