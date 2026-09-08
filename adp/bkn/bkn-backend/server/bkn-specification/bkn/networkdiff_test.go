@@ -77,8 +77,11 @@ func TestDiffNetworkModels_ReportsFieldLevelChanges(t *testing.T) {
 	assert.Equal(t, DiffUpdate, edited.Kind)
 	assert.Equal(t, "主料为空，其他为√；", edited.Old)
 
-	assert.Equal(t, DiffCreate, changeByPath(t, entry.Changes, "data_properties[batch_no]").Kind)
-	assert.Equal(t, DiffDelete, changeByPath(t, entry.Changes, "data_properties[alt_method]").Kind)
+	// An added or removed property is reported field by field, not as one rendered cell.
+	assert.Equal(t, DiffCreate, changeByPath(t, entry.Changes, "data_properties[batch_no].display_name").Kind)
+	assert.Equal(t, "批次号", changeByPath(t, entry.Changes, "data_properties[batch_no].display_name").New)
+	assert.Equal(t, DiffDelete, changeByPath(t, entry.Changes, "data_properties[alt_method].display_name").Kind)
+	assert.Equal(t, "替代方式", changeByPath(t, entry.Changes, "data_properties[alt_method].display_name").Old)
 
 	assert.Equal(t, DiffSummary{Updated: 1}, result.Summary)
 }
@@ -183,4 +186,59 @@ func TestSnakeCase(t *testing.T) {
 	assert.Equal(t, "primary_keys", snakeCase("PrimaryKeys"))
 	assert.Equal(t, "mapped_field", snakeCase("MappedField"))
 	assert.Equal(t, "business_domain", snakeCase("BusinessDomain"))
+}
+
+// A definition that exists on one side only is still worth reading: the panel should show what is
+// being added or removed, not an empty state.
+func TestDiffNetworkModels_CreatedDefinitionCarriesItsContent(t *testing.T) {
+	base := networkWith("net-a", "网")
+	target := networkWith("net-a", "网",
+		objectType("batch", "批次", []string{"供应链"}, prop("batch_no", "批次号", "投料批次")))
+
+	result := DiffNetworkModels(base, target, DiffOptions{})
+	require.Len(t, result.Entries, 1)
+	entry := result.Entries[0]
+	assert.Equal(t, DiffCreate, entry.Action)
+	require.NotEmpty(t, entry.Changes, "a created definition must carry its content")
+
+	name := changeByPath(t, entry.Changes, "name")
+	assert.Equal(t, DiffCreate, name.Kind)
+	assert.Empty(t, name.Old)
+	assert.Equal(t, "批次", name.New)
+
+	// The property is reported field by field rather than as one rendered blob.
+	assert.Equal(t, "批次号", changeByPath(t, entry.Changes, "data_properties[batch_no].display_name").New)
+	assert.Equal(t, "投料批次", changeByPath(t, entry.Changes, "data_properties[batch_no].description").New)
+}
+
+func TestDiffNetworkModels_DeletedDefinitionCarriesItsContent(t *testing.T) {
+	base := networkWith("net-a", "网",
+		objectType("batch", "批次", nil, prop("batch_no", "批次号", "投料批次")))
+	target := networkWith("net-a", "网")
+
+	result := DiffNetworkModels(base, target, DiffOptions{})
+	require.Len(t, result.Entries, 1)
+	require.NotEmpty(t, result.Entries[0].Changes)
+	removed := changeByPath(t, result.Entries[0].Changes, "data_properties[batch_no].display_name")
+	assert.Equal(t, DiffDelete, removed.Kind)
+	assert.Equal(t, "批次号", removed.Old)
+	assert.Empty(t, removed.New)
+}
+
+// An added property is reported one field per row. The blob it replaced —
+// "name=abbr display_name=abbr description=..." in a single cell — had to be decoded before a
+// reader could see what was added.
+func TestDiffNetworkModels_AddedPropertyIsReportedFieldByField(t *testing.T) {
+	base := networkWith("net-a", "网", objectType("bom", "产品BOM", nil))
+	target := networkWith("net-a", "网", objectType("bom", "产品BOM", nil,
+		prop("abbr", "缩写", "物理列")))
+
+	result := DiffNetworkModels(base, target, DiffOptions{})
+	require.Len(t, result.Entries, 1)
+	changes := result.Entries[0].Changes
+	assert.Equal(t, "缩写", changeByPath(t, changes, "data_properties[abbr].display_name").New)
+	assert.Equal(t, "物理列", changeByPath(t, changes, "data_properties[abbr].description").New)
+	for _, change := range changes {
+		assert.NotContains(t, change.New, "display_name=", "no rendered struct blob should survive")
+	}
 }

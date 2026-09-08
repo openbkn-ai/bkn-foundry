@@ -23,7 +23,6 @@ var ignoredDiffFields = map[string]bool{
 	"RawContent":                   true,
 	"SkillContent":                 true,
 	"Summary":                      true,
-	"Type":                         true,
 	"HasDataPropertiesSection":     true,
 	"HasKeysSection":               true,
 	"HasScopeSection":              true,
@@ -54,10 +53,10 @@ func diffValues(path string, base, target reflect.Value, out *[]FieldChange) {
 	case !base.IsValid() && !target.IsValid():
 		return
 	case !base.IsValid():
-		appendChange(out, path, DiffCreate, "", renderValue(target))
+		expandOneSided(path, target, DiffCreate, out)
 		return
 	case !target.IsValid():
-		appendChange(out, path, DiffDelete, renderValue(base), "")
+		expandOneSided(path, base, DiffDelete, out)
 		return
 	}
 
@@ -86,7 +85,7 @@ func diffStructs(path string, base, target reflect.Value, out *[]FieldChange) {
 	t := base.Type()
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
-		if field.PkgPath != "" || ignoredDiffFields[field.Name] {
+		if field.PkgPath != "" || skipDiffField(path, field.Name) {
 			continue
 		}
 		// Embedded frontmatter carries id, name and tags. It is part of the definition, not a
@@ -118,14 +117,14 @@ func diffSlices(path string, base, target reflect.Value, out *[]FieldChange) {
 		baseItem := baseByKey[key]
 		targetItem, ok := targetByKey[key]
 		if !ok {
-			appendChange(out, fmt.Sprintf("%s[%s]", path, key), DiffDelete, renderValue(baseItem), "")
+			expandOneSided(fmt.Sprintf("%s[%s]", path, key), baseItem, DiffDelete, out)
 			continue
 		}
 		diffValues(fmt.Sprintf("%s[%s]", path, key), baseItem, targetItem, out)
 	}
 	for _, key := range targetOrder {
 		if _, ok := baseByKey[key]; !ok {
-			appendChange(out, fmt.Sprintf("%s[%s]", path, key), DiffCreate, "", renderValue(targetByKey[key]))
+			expandOneSided(fmt.Sprintf("%s[%s]", path, key), targetByKey[key], DiffCreate, out)
 		}
 	}
 }
@@ -308,4 +307,76 @@ func snakeCase(name string) string {
 		sb.WriteRune(r)
 	}
 	return sb.String()
+}
+
+// expandOneSided reports a value that exists on one side only.
+//
+// A whole added or removed property is reported field by field rather than as one rendered blob.
+// The blob reads as a machine dump — "name=abbr display_name=abbr description=..." in a cell — and
+// a reader has to decode it before they can see what was added. One row per field costs more rows
+// and each of them says one thing.
+func expandOneSided(path string, present reflect.Value, kind DiffAction, out *[]FieldChange) {
+	present = unwrap(present)
+	if !present.IsValid() {
+		return
+	}
+	// A table of structs is expanded per row, keyed the same way a two-sided comparison keys it,
+	// so an added object type lists its properties one by one instead of as a single cell.
+	if present.Kind() == reflect.Slice || present.Kind() == reflect.Array {
+		keyField := sliceKeyField(present, present)
+		if keyField == "" {
+			appendOneSided(out, path, kind, renderValue(present))
+			return
+		}
+		byKey, order := indexByKey(present, keyField)
+		for _, key := range order {
+			expandOneSided(fmt.Sprintf("%s[%s]", path, key), byKey[key], kind, out)
+		}
+		return
+	}
+
+	if present.Kind() != reflect.Struct {
+		appendOneSided(out, path, kind, renderValue(present))
+		return
+	}
+
+	t := present.Type()
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		if field.PkgPath != "" || skipDiffField(path, field.Name) {
+			continue
+		}
+		child := unwrap(present.Field(i))
+		// An empty optional field on the only side that exists says nothing: reporting it would
+		// add a row whose two cells are both blank.
+		if !child.IsValid() || renderValue(child) == "" {
+			continue
+		}
+		childPath := joinPath(path, snakeCase(field.Name))
+		if field.Anonymous {
+			childPath = path
+		}
+		expandOneSided(childPath, child, kind, out)
+	}
+}
+
+// appendOneSided files a change whose other side does not exist.
+func appendOneSided(out *[]FieldChange, path string, kind DiffAction, rendered string) {
+	if kind == DiffCreate {
+		appendChange(out, path, kind, "", rendered)
+		return
+	}
+	appendChange(out, path, kind, rendered, "")
+}
+
+// skipDiffField decides whether a struct field takes part in the comparison.
+//
+// "Type" is skipped only at the top level of a definition, where it repeats the entity kind the
+// entry already carries. Nested, it is a data property's own data type — string, integer — which
+// is one of the first things a reviewer looks for.
+func skipDiffField(path string, name string) bool {
+	if ignoredDiffFields[name] {
+		return true
+	}
+	return path == "" && name == "Type"
 }
