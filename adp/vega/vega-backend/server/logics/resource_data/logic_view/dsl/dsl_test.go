@@ -452,11 +452,25 @@ func TestLogicViewDSLConvertFilterCondition(t *testing.T) {
 			"knn": map[string]any{"embedding": map[string]any{
 				"vector": []float32{0.1},
 				"k":      3,
+				"filter": map[string]any{"bool": map[string]any{"must": []map[string]any{
+					{"term": map[string]any{"active": true}},
+				}}},
 			}},
-			"filter": map[string]any{"bool": map[string]any{"must": []map[string]any{
-				{"term": map[string]any{"active": true}},
-			}}},
 		}, got)
+	})
+
+	t.Run("knn vector accepts direct k", func(t *testing.T) {
+		cfg := dslConditionCfg("embedding", filter_condition.OperationKnnVector, interfaces.ValueFrom_Const, []float32{0.1, 0.2})
+		cfg.RemainCfg = map[string]any{"k": 50}
+		cond := mustDSLCondition(t, cfg, fields)
+
+		got, err := generator.ConvertFilterCondition(context.Background(), cond, fields)
+
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{"knn": map[string]any{"embedding": map[string]any{
+			"vector": []float32{0.1, 0.2},
+			"k":      50,
+		}}}, got)
 	})
 
 	fields = testDSLAdditionalFieldMap()
