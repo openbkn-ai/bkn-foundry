@@ -36,7 +36,10 @@ type SearchCapabilitiesReq struct {
 	// MetadataTypes narrows Function tools to a tool box kind: "openapi" for API tools, "function"
 	// for functions. Empty means both.
 	MetadataTypes []string `json:"metadata_types,omitempty"`
-	Limit         int      `json:"limit"` // Optional. Caps returned capabilities, default 20, max 100.
+	// OwnerID narrows to one owner: a tool box for Function tools, a server for MCP tools. Like
+	// every other filter here it narrows within the mounted set and can never reach outside it.
+	OwnerID string `json:"owner_id,omitempty"`
+	Limit   int    `json:"limit"` // Optional. Caps returned capabilities, default 20, max 100.
 }
 
 // CapabilityEntry is one mounted capability, whatever kind it is.
@@ -83,7 +86,7 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 		limit = maxSearchLimit
 	}
 
-	searchRefs, err := s.allBoundRefs(ctx, strings.TrimSpace(req.KnID))
+	searchRefs, err := s.allBoundRefs(ctx, strings.TrimSpace(req.KnID), strings.TrimSpace(req.OwnerID))
 	if err != nil {
 		return nil, err
 	}
@@ -94,15 +97,24 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 		}, nil
 	}
 
+	// One more than the page, purely to learn whether there is a next one. The ranking caps its
+	// answer at top_k, so asking for exactly `limit` makes a full page and a truncated page look
+	// identical — the truncation flag could never fire, and a caller would read one page as the
+	// whole answer.
 	hits, err := s.operator.SearchCapabilities(ctx, &interfaces.SearchCapabilitiesRequest{
 		Query:         strings.TrimSpace(req.Query),
 		Refs:          searchRefs,
-		TopK:          limit,
+		TopK:          limit + 1,
 		Types:         normalizeKinds(req.Types),
 		MetadataTypes: normalizeKinds(req.MetadataTypes),
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	more := len(hits) > limit
+	if more {
+		hits = hits[:limit]
 	}
 
 	entries := s.describeCapabilities(ctx, hits, limit)
@@ -120,7 +132,7 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 		resp.Message = infraErr.LocalizedDetail(ctx, "NoCapabilitiesOfRequestedKind")
 	case len(entries) == 0:
 		resp.Message = infraErr.LocalizedDetail(ctx, "NoPublishedToolsMatched")
-	case total > limit:
+	case more:
 		resp.Truncated = true
 		resp.Message = infraErr.LocalizedDetail(ctx, "ToolSearchTruncated")
 	case len(entries) < fitted:
@@ -138,7 +150,7 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 // Here they are not called, only ranked, so the split would be noise — and Skills, which boundRefs
 // drops entirely, belong in the answer.
 func (s *knToolsService) allBoundRefs(ctx context.Context,
-	knID string) ([]interfaces.SearchCapabilityRef, error) {
+	knID, ownerID string) ([]interfaces.SearchCapabilityRef, error) {
 	// The per-caller check lives here for the same reason it lives in boundRefs: the bindings and
 	// the ranking are both read with this service's identity, and without it the scope would be
 	// the kn_id the caller typed.
@@ -178,6 +190,11 @@ func (s *knToolsService) allBoundRefs(ctx context.Context,
 				continue
 			}
 		default:
+			continue
+		}
+		// Narrowing to one owner happens here rather than in the ranking, so the whitelist that
+		// leaves this service already is the scope: nothing downstream can widen it back.
+		if ownerID != "" && owner != ownerID {
 			continue
 		}
 		ref := interfaces.SearchCapabilityRef{
