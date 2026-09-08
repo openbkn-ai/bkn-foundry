@@ -10,8 +10,14 @@ root fills with directories that hold no files.
 
 Only empty directories are removed, via ``rmdir``, which fails on a non-empty
 directory. A directory modified more recently than ``--min-age-days`` is left
-alone so that a live conversation is never pulled out from under a running
-execution.
+alone, which keeps active conversations out of the way.
+
+That age check is not a lock. A directory older than the cutoff that is still
+empty can be removed while an execution is running in it, and that execution then
+writes into an unlinked directory and loses the file. The mtime of a directory
+does not change when a process merely chdirs into it, so an idle conversation that
+just started executing looks exactly like an abandoned one. Run this when the
+sandbox is quiet, or keep ``--min-age-days`` well above the longest execution.
 
 Usage:
     python3 prune_empty_workspaces.py /workspace --dry-run

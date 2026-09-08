@@ -210,6 +210,24 @@ class ExecuteCodeCommand:
             )
             return self._workspace_path
 
+    def _artifact_path_prefix(self, scan_root: Path) -> str:
+        """
+        Path segment that turns a scan-root-relative path into a workspace-relative one.
+
+        Args:
+            scan_root: Directory the artifacts were collected from
+
+        Returns:
+            Prefix ending in "/", or an empty string when the scan root is the
+            workspace root or lies outside it
+        """
+        try:
+            relative = scan_root.relative_to(self._workspace_path.resolve())
+        except ValueError:
+            return ""
+        text = relative.as_posix()
+        return "" if text in ("", ".") else text + "/"
+
     async def _execute_with_timeout(
         self,
         execution: Execution,
@@ -266,6 +284,11 @@ class ExecuteCodeCommand:
             include_temp=False,
         )
 
+        # Narrowing the scan must not move the path base: artifact paths stay
+        # relative to the workspace root, which is what the session file endpoints
+        # resolve against.
+        prefix = self._artifact_path_prefix(scan_root)
+
         # Only files that appeared during this execution are artifacts. Files that
         # were already present belong to earlier executions sharing the directory.
         artifacts = []
@@ -274,7 +297,7 @@ class ExecuteCodeCommand:
                 continue
             artifacts.append(
                 Artifact(
-                    path=artifact_data.path,
+                    path=prefix + artifact_data.path,
                     size=artifact_data.size,
                     mime_type=artifact_data.mime_type,
                     type=artifact_data.type,
