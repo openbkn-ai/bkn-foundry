@@ -10,6 +10,7 @@
 package mock_interfaces
 
 import (
+	interfaces "bkn-backend/interfaces"
 	context "context"
 	reflect "reflect"
 
@@ -38,6 +39,21 @@ func NewMockBKNService(ctrl *gomock.Controller) *MockBKNService {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockBKNService) EXPECT() *MockBKNServiceMockRecorder {
 	return m.recorder
+}
+
+// DiffNetworks mocks base method.
+func (m *MockBKNService) DiffNetworks(ctx context.Context, req interfaces.KNDiffRequest) (*interfaces.KNDiffResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DiffNetworks", ctx, req)
+	ret0, _ := ret[0].(*interfaces.KNDiffResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DiffNetworks indicates an expected call of DiffNetworks.
+func (mr *MockBKNServiceMockRecorder) DiffNetworks(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DiffNetworks", reflect.TypeOf((*MockBKNService)(nil).DiffNetworks), ctx, req)
 }
 
 // ExportToTar mocks base method.

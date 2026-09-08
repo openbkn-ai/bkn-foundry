@@ -270,24 +270,22 @@ func diffNetworkFile(base, target *BknNetwork) *DefinitionDiff {
 // it. The overview tables restate every object type and relation type, so comparing them would
 // report each definition twice.
 type networkHeaderView struct {
-	ID             string
-	Name           string
-	Tags           []string
-	Version        string
-	Branch         string
-	BusinessDomain string
-	Description    string
+	ID          string
+	Name        string
+	Tags        []string
+	Version     string
+	Branch      string
+	Description string
 }
 
 func networkHeader(net *BknNetwork) networkHeaderView {
 	return networkHeaderView{
-		ID:             net.ID,
-		Name:           net.Name,
-		Tags:           net.Tags,
-		Version:        net.Version,
-		Branch:         net.Branch,
-		BusinessDomain: net.BusinessDomain,
-		Description:    net.Description,
+		ID:          net.ID,
+		Name:        net.Name,
+		Tags:        net.Tags,
+		Version:     net.Version,
+		Branch:      net.Branch,
+		Description: net.Description,
 	}
 }
 

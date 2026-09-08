@@ -16,4 +16,7 @@ import (
 type BKNService interface {
 	// ExportToTar exports a knowledge network as a tar archive.
 	ExportToTar(ctx context.Context, knID string, branch string) ([]byte, error)
+
+	// DiffNetworks compares two knowledge network branches definition by definition.
+	DiffNetworks(ctx context.Context, req KNDiffRequest) (*KNDiffResult, error)
 }
