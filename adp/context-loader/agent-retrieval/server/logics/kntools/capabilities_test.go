@@ -2,6 +2,7 @@ package kntools
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -112,5 +113,29 @@ func TestSearchCapabilitiesRequiresKnID(t *testing.T) {
 	svc := NewKnToolsServiceWith(&fakeOperator{}, &fakeBkn{}, &fakeKnAuthz{})
 	if _, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{}); err == nil {
 		t.Fatal("缺 kn_id 该被拒绝")
+	}
+}
+
+// TestSkillsExcludedLocallyNotJustDownstream keeps the tool surface from depending on the ranking
+// to honour a filter.
+//
+// search_tools maps every hit into a ToolEntry, so a Skill that slipped through would surface as a
+// tool with an empty toolbox_id — something execute_tool cannot act on. Before the two entry points
+// shared a binding reader this was excluded locally; sending types downstream is not a substitute.
+func TestSkillsExcludedLocallyNotJustDownstream(t *testing.T) {
+	op := &fakeOperator{}
+	bkn := &fakeBkn{refs: append(functionRefs("box-1/t1"), skillRefs("s-1")...)}
+	svc := NewKnToolsServiceWith(op, bkn, &fakeKnAuthz{})
+
+	if _, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "汇率"}); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	for _, ref := range op.gotRefs {
+		if strings.HasPrefix(ref, "skill") || ref == "/s-1" {
+			t.Fatalf("Skill 不该进 search_tools 的白名单: %v", op.gotRefs)
+		}
+	}
+	if len(op.gotRefs) != 1 {
+		t.Fatalf("白名单该只剩那个函数工具, got %v", op.gotRefs)
 	}
 }

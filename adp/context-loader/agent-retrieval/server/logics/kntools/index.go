@@ -154,6 +154,9 @@ func (s *knToolsService) SearchTools(ctx context.Context, req *SearchToolsReq) (
 		Types:         []string{interfaces.CapabilityTypeFunction, interfaces.CapabilityTypeMCPTool},
 		MetadataTypes: req.MetadataTypes,
 		Limit:         req.Limit,
+		// The kinds above are this entry point's, not the caller's. Without saying so, an empty
+		// answer would blame a types filter the caller never set and has no way to remove.
+		kindsAreIntrinsic: true,
 		// toolbox_id narrows within the mounted set and can never reach outside it.
 		OwnerID: strings.TrimSpace(req.ToolboxID),
 	})

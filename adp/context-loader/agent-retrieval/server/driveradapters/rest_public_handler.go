@@ -116,6 +116,10 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	}
 
 	// Published Function tool surface: find a callable tool, then run it.
+	// Registered on both faces, like the two it replaces. Marking them deprecated while offering
+	// the replacement only on the internal face would leave every public caller told to move with
+	// nowhere to move to.
+	engine.POST("/kn/search_capabilities", r.KnToolsHandler.SearchCapabilities)
 	engine.POST("/kn/search_tools", r.KnToolsHandler.SearchTools)
 	engine.POST("/kn/execute_tool", r.KnToolsHandler.ExecuteTool)
 

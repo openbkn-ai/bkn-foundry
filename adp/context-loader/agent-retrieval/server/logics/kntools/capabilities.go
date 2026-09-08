@@ -39,7 +39,12 @@ type SearchCapabilitiesReq struct {
 	// OwnerID narrows to one owner: a tool box for Function tools, a server for MCP tools. Like
 	// every other filter here it narrows within the mounted set and can never reach outside it.
 	OwnerID string `json:"owner_id,omitempty"`
-	Limit   int    `json:"limit"` // Optional. Caps returned capabilities, default 20, max 100.
+	// kindsAreIntrinsic marks Types as belonging to the entry point rather than to the caller.
+	// search_tools always pins them, so a caller that asked for nothing would otherwise be told
+	// its result was empty because of a filter it never set and cannot unset. Unexported: an
+	// entry point declares this, a request body cannot.
+	kindsAreIntrinsic bool
+	Limit             int `json:"limit"` // Optional. Caps returned capabilities, default 20, max 100.
 }
 
 // CapabilityEntry is one mounted capability, whatever kind it is.
@@ -86,7 +91,13 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 		limit = maxSearchLimit
 	}
 
-	searchRefs, err := s.allBoundRefs(ctx, strings.TrimSpace(req.KnID), strings.TrimSpace(req.OwnerID))
+	// The kinds are applied to the whitelist here as well as sent downstream. Sending them alone
+	// would make the scope depend on the ranking honouring a filter — and search_tools maps every
+	// hit into a tool, so a Skill that slipped through would come back as a ToolEntry with an
+	// empty toolbox_id. Before the two entry points shared a binding reader, this was excluded
+	// locally; keep it that way.
+	searchRefs, err := s.allBoundRefs(ctx, strings.TrimSpace(req.KnID),
+		strings.TrimSpace(req.OwnerID), normalizeKinds(req.Types))
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +139,8 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 	switch {
 	case len(entries) == 0 && total > 0:
 		resp.Message = infraErr.LocalizedDetail(ctx, "ToolsMatchedButNotVisible")
-	case len(entries) == 0 && (len(req.Types) > 0 || len(req.MetadataTypes) > 0):
+	case len(entries) == 0 && !req.kindsAreIntrinsic && len(req.Types) > 0,
+		len(entries) == 0 && len(req.MetadataTypes) > 0:
 		resp.Message = infraErr.LocalizedDetail(ctx, "NoCapabilitiesOfRequestedKind")
 	case len(entries) == 0:
 		resp.Message = infraErr.LocalizedDetail(ctx, "NoPublishedToolsMatched")
@@ -150,7 +162,7 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 // Here they are not called, only ranked, so the split would be noise — and Skills, which boundRefs
 // drops entirely, belong in the answer.
 func (s *knToolsService) allBoundRefs(ctx context.Context,
-	knID, ownerID string) ([]interfaces.SearchCapabilityRef, error) {
+	knID, ownerID string, kinds []string) ([]interfaces.SearchCapabilityRef, error) {
 	// The per-caller check lives here for the same reason it lives in boundRefs: the bindings and
 	// the ranking are both read with this service's identity, and without it the scope would be
 	// the kn_id the caller typed.
@@ -168,6 +180,11 @@ func (s *knToolsService) allBoundRefs(ctx context.Context,
 	bindings, err := s.bknBackend.ListKNCapabilities(ctx, knID, "", "")
 	if err != nil {
 		return nil, err
+	}
+
+	wanted := make(map[string]struct{}, len(kinds))
+	for _, kind := range kinds {
+		wanted[kind] = struct{}{}
 	}
 
 	refs := make([]interfaces.SearchCapabilityRef, 0, len(bindings))
@@ -192,8 +209,13 @@ func (s *knToolsService) allBoundRefs(ctx context.Context,
 		default:
 			continue
 		}
-		// Narrowing to one owner happens here rather than in the ranking, so the whitelist that
-		// leaves this service already is the scope: nothing downstream can widen it back.
+		// Narrowing happens here rather than only in the ranking, so the whitelist that leaves
+		// this service already is the scope: nothing downstream can widen it back.
+		if len(wanted) > 0 {
+			if _, ok := wanted[binding.CapabilityType]; !ok {
+				continue
+			}
+		}
 		if ownerID != "" && owner != ownerID {
 			continue
 		}
