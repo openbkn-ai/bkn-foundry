@@ -229,12 +229,15 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 		}
 	}
 
-	if query.Sort == nil {
-		query.Sort = logics.BuildViewSort(objectType)
-	}
+	// Authorize only caller-selected sort fields. The default sort is an internal
+	// stable-pagination detail and must not turn a schema-only primary key into a
+	// rejected user operation.
 	plan, err := buildPropertyAccessPlan(ctx, ots.propertyAccess, objectType, query, true)
 	if err != nil {
 		return resps, err
+	}
+	if query.Sort == nil {
+		query.Sort = logics.BuildViewSort(objectType)
 	}
 
 	// Sort fields can be object type data properties or _score.

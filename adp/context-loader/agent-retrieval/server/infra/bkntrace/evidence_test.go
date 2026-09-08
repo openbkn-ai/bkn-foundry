@@ -442,7 +442,7 @@ func TestBuildQueryObjectInstanceEventsUsesBusinessObjectAndPropertyRefs(t *test
 				"phone":              "18800001111",
 			},
 		},
-		SearchAfter: []any{"cursor_001"},
+		Cursor: "cursor_001",
 	}
 
 	events := BuildQueryObjectInstanceEvents(testTraceContextWithClaim(), req, resp)
@@ -489,22 +489,22 @@ func assertOnlyKeys(t *testing.T, value map[string]any, allowed ...string) {
 	}
 }
 
-func TestQueryObjectConditionHashIncludesSearchAfter(t *testing.T) {
+func TestQueryObjectConditionHashIncludesCursor(t *testing.T) {
 	base := &interfaces.QueryObjectInstancesReq{
-		KnID:        "kn_demo",
-		OtID:        "customer",
-		Limit:       10,
-		SearchAfter: []any{"cursor_page_1"},
+		KnID:   "kn_demo",
+		OtID:   "customer",
+		Limit:  10,
+		Cursor: "cursor_page_1",
 	}
 	next := &interfaces.QueryObjectInstancesReq{
-		KnID:        "kn_demo",
-		OtID:        "customer",
-		Limit:       10,
-		SearchAfter: []any{"cursor_page_2"},
+		KnID:   "kn_demo",
+		OtID:   "customer",
+		Limit:  10,
+		Cursor: "cursor_page_2",
 	}
 
 	if queryObjectConditionHash(base) == queryObjectConditionHash(next) {
-		t.Fatalf("condition hash should differ across search_after pages")
+		t.Fatalf("condition hash should differ across cursor pages")
 	}
 }
 
@@ -531,11 +531,11 @@ func TestQueryObjectTruncatedUsesExplicitNextPageSignals(t *testing.T) {
 	}
 
 	hasNextCursorResp := &interfaces.QueryObjectInstancesResp{
-		Data:        []any{map[string]any{"id": "inst_1"}},
-		SearchAfter: []any{"cursor_next"},
+		Data:   []any{map[string]any{"id": "inst_1"}},
+		Cursor: "cursor_next",
 	}
 	if !queryObjectTruncated(req, hasNextCursorResp) {
-		t.Fatalf("truncated should be true when search_after indicates a next page")
+		t.Fatalf("truncated should be true when cursor indicates a next page")
 	}
 
 	hasMoreOffsetResp := &interfaces.QueryObjectInstancesResp{

@@ -1,3 +1,6 @@
+{{- if and (gt (int .Values.replicaCount) 1) (empty .Values.cursorEncryption.existingSecret) }}
+{{- fail "cursorEncryption.existingSecret is required when replicaCount is greater than 1" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:

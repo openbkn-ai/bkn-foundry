@@ -217,14 +217,13 @@
           "additionalProperties": false
         }
       },
-      "search_after": {
-        "type": "array",
-        "items": {},
-        "description": "游标分页（对象索引/数据视图路径）：传上一次响应返回的 search_after 取下一页；首次不传。仅顺翻，不跳页。"
+      "cursor": {
+        "type": "string",
+        "description": "不透明游标：将上一次响应返回的 cursor 原样传入以获取下一页；首次查询不传。仅支持顺序翻页。"
       },
       "offset": {
         "type": "integer",
-        "description": "偏移翻页（资源/vega 表源路径）：跳过前 N 条，支持跳到任意页。与 search_after 互斥（同传时 search_after 优先）。"
+        "description": "偏移翻页（资源/vega 表源路径）：跳过前 N 条，支持跳到任意页。与 cursor 互斥。"
       },
       "properties": {
         "type": "array",
@@ -268,12 +267,11 @@
       },
       "total_count": {
         "type": "integer",
-        "description": "满足过滤条件的实例总数，不受 limit 限制。判断「一共有多少条」读它，不要靠翻页累加。零命中时是 0（有值），不是字段缺失。字段缺失表示服务端本次没有计算总数——用 search_after 翻页时第二页起即如此，此时不能推断为 0，要总数就回到不带 search_after 的首次查询。"
+        "description": "满足过滤条件的实例总数，不受 limit 限制。判断「一共有多少条」读它，不要靠翻页累加。零命中时是 0（有值），不是字段缺失。字段缺失表示服务端本次没有计算总数——用 cursor 翻页时第二页起即如此，此时不能推断为 0，要总数就回到不带 cursor 的首次查询。"
       },
-      "search_after": {
-        "type": "array",
-        "items": {},
-        "description": "下一页游标：非空时作为下次请求的 search_after 传入以取下一页；为空表示已无更多数据。"
+      "cursor": {
+        "type": "string",
+        "description": "下一页不透明游标：非空时作为下次请求的 cursor 原样传入；为空表示已无更多数据。"
       }
     }
   }

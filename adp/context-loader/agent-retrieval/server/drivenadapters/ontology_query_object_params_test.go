@@ -88,7 +88,7 @@ func TestQueryObjectInstancesResp_TotalCountIsThreeState(t *testing.T) {
 // Can't tell the difference between "zero hit" and "no count". The criteria are in the request: no cursor ⇒ calculated, missing is 0; there is a cursor ⇒ downstream.
 // The total calculation is forced to be turned off and must remain missing.
 func TestQueryObjectInstances_ResolvesAbsentTotalFromRequest(t *testing.T) {
-	convey.Convey("无 search_after 时缺失的总数补成 0", t, func() {
+	convey.Convey("无 cursor 时缺失的总数补成 0", t, func() {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		client, mockHTTP := newObjectQueryClient(t, ctrl)
@@ -102,7 +102,7 @@ func TestQueryObjectInstances_ResolvesAbsentTotalFromRequest(t *testing.T) {
 		convey.So(*resp.TotalCount, convey.ShouldEqual, int64(0))
 	})
 
-	convey.Convey("带 search_after 时保持缺失，不伪造 0", t, func() {
+	convey.Convey("带 cursor 时保持缺失，不伪造 0", t, func() {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		client, mockHTTP := newObjectQueryClient(t, ctrl)
@@ -111,7 +111,7 @@ func TestQueryObjectInstances_ResolvesAbsentTotalFromRequest(t *testing.T) {
 
 		resp, err := client.QueryObjectInstances(context.Background(),
 			&interfaces.QueryObjectInstancesReq{
-				KnID: "kn1", OtID: "ot1", Limit: 10, SearchAfter: []any{"cursor"},
+				KnID: "kn1", OtID: "ot1", Limit: 10, Cursor: "opaque-cursor",
 			})
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(resp.TotalCount, convey.ShouldBeNil)
@@ -129,6 +129,35 @@ func TestQueryObjectInstances_ResolvesAbsentTotalFromRequest(t *testing.T) {
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(resp.TotalCount, convey.ShouldNotBeNil)
 		convey.So(*resp.TotalCount, convey.ShouldEqual, int64(42))
+	})
+}
+
+func TestQueryObjectInstances_ForwardsOpaqueCursorWithoutRawSearchAfter(t *testing.T) {
+	convey.Convey("cursor 原样透传且响应不暴露 search_after", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		client, mockHTTP := newObjectQueryClient(t, ctrl)
+		var bodyJSON []byte
+		mockHTTP.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, _ map[string]string, payload any) (int, []byte, error) {
+				bodyJSON, _ = json.Marshal(payload)
+				return 200, jsonBytes(map[string]any{
+					"datas":  []any{map[string]any{"id": "i1"}},
+					"cursor": "next-opaque-cursor",
+				}), nil
+			})
+
+		resp, err := client.QueryObjectInstances(context.Background(), &interfaces.QueryObjectInstancesReq{
+			KnID: "kn1", OtID: "ot1", Limit: 10, Cursor: "opaque-cursor",
+		})
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(string(bodyJSON), convey.ShouldContainSubstring, `"cursor":"opaque-cursor"`)
+		convey.So(string(bodyJSON), convey.ShouldNotContainSubstring, "search_after")
+		convey.So(resp.Cursor, convey.ShouldEqual, "next-opaque-cursor")
+		responseJSON, marshalErr := json.Marshal(resp)
+		convey.So(marshalErr, convey.ShouldBeNil)
+		convey.So(string(responseJSON), convey.ShouldNotContainSubstring, "search_after")
 	})
 }
 

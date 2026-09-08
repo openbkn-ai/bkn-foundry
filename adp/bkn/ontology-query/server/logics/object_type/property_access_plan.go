@@ -184,10 +184,10 @@ func requestedReturnFields(objectType interfaces.ObjectType,
 	}
 
 	requested := query.Properties
-	if query.ObjectQueryInfo != nil {
+	if query.ObjectQueryInfo != nil && len(query.ObjectQueryInfo.Properties) > 0 {
 		requested = query.ObjectQueryInfo.Properties
 	}
-	if len(requested) == 0 && query.ObjectQueryInfo == nil {
+	if len(requested) == 0 {
 		requested = make([]string, 0, len(objectType.DataProperties))
 		for _, property := range objectType.DataProperties {
 			requested = append(requested, property.Name)
@@ -220,8 +220,12 @@ func requestedReturnFields(objectType interfaces.ObjectType,
 			}
 		}
 	}
-	if query.IncludeLogicParams && query.ObjectQueryInfo == nil {
+	if query.IncludeLogicParams {
 		for _, property := range objectType.LogicProperties {
+			if _, duplicate := seen[property.Name]; duplicate {
+				continue
+			}
+			seen[property.Name] = struct{}{}
 			logicResult = append(logicResult, property.Name)
 		}
 	}

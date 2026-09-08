@@ -40,7 +40,7 @@ func ptcTestTools() []MCPToolInfo {
 				"datas":{"type":"array","items":{"type":"object","properties":{
 					"_display":{"type":"string"},"_instance_id":{"type":"string"}}}},
 				"total_count":{"type":"integer"},
-				"search_after":{"type":"array","items":{}}}}`),
+				"cursor":{"type":"string"}}}`),
 		},
 		{
 			Name: "run_sql", Title: "SQL 查询",
@@ -109,13 +109,13 @@ func TestPTCDigestRendersSignatures(t *testing.T) {
 	if !strings.Contains(digest, "-> {entries[kn_id name], total_count}") {
 		t.Fatalf("数组元素字段未展开:\n%s", digest)
 	}
-	if !strings.Contains(digest, "-> {datas[_display _instance_id], search_after, total_count}") {
+	if !strings.Contains(digest, "-> {cursor, datas[_display _instance_id], total_count}") {
 		t.Fatalf("数组展开或非数组键渲染有误:\n%s", digest)
 	}
 }
 
 // When the element has no declared fields (items is empty, or items only has type), it is rendered by pressing the normal key and cannot be created out of thin air.
-// A pair of empty square brackets - the search_after opaque cursor is intentionally not declared.
+// A pair of empty square brackets is not invented for an opaque array whose items are intentionally undeclared.
 func TestPTCDigestLeavesUndeclaredArraysFlat(t *testing.T) {
 	tools := []MCPToolInfo{{
 		Name: "probe", Group: "g", GroupTitle: "G", Order: 1, Description: "d",

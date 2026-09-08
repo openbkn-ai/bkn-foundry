@@ -38,10 +38,10 @@ type QueryObjectInstancesReq struct {
 	// NeedTotal lets the downstream backfill total_count. Set true unconditionally by driven adapter and not open to the public:
 	// Without it, the caller only knows "Is there a next page?" but does not know the total number of hits and cannot judge the scale of the result.
 	NeedTotal bool `json:"need_total"`
-	// SearchAfter cursor paging: Pass in the search_after returned by the previous page response, which is used to sequentially pull the next page; leave it blank for the first query.
-	// Applicable to object index/data view path (turn forward without page jump).
-	SearchAfter []any `json:"search_after,omitempty"`
-	// Offset offset paging: applicable to resource (vega table source) path, supports jumping to any page; mutually exclusive with search_after.
+	// Cursor is the opaque cursor returned by the previous page response. Leave it
+	// blank for the first query and pass it back unchanged to fetch the next page.
+	Cursor string `json:"cursor,omitempty"`
+	// Offset offset paging: applicable to resource (vega table source) path, supports jumping to any page; mutually exclusive with cursor.
 	Offset int `json:"offset,omitempty"`
 
 	// The following two items are downstream query parameters rather than request body fields, so they are marked json: "-": the entire req structure will be.
@@ -88,12 +88,12 @@ type QueryObjectInstancesResp struct {
 	// Missing field - not counted downstream, not a zero hit.
 	//
 	// The third state must be retained: although driven adapter is fixed with need_total, the downstream.
-	// (BuildDslQuery of ontology-query logics/common.go) when search_after is not empty.
+	// (BuildDslQuery of ontology-query logics/common.go) when the decoded cursor contains a search position.
 	// Will force NeedTotal=false, that is, the total will not be calculated at all from the second page of the cursor. At this time, if according to the value type.
 	// Serializing to 0 is to use "uncalculated" as "zero hit", and it will be inconsistent with non-empty datas.
 	TotalCount *int64 `json:"total_count,omitempty"`
-	// SearchAfter next page cursor: If it is not empty, pass it in as the search_after of the next request to get the next page; if it is empty, it means there is no more data.
-	SearchAfter []any `json:"search_after,omitempty"`
+	// Cursor is an opaque next-page token. Pass it back unchanged; an empty value means there is no more data.
+	Cursor string `json:"cursor,omitempty"`
 }
 
 // StripInstanceScores removes the _score field from each object instance result.

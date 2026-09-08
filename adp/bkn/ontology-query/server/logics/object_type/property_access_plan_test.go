@@ -339,3 +339,72 @@ func TestPropertyAccessPlanRejectsNonFullOperationAndEmptyReturnBeforeRead(t *te
 		t.Fatalf("empty return error = %#v", err)
 	}
 }
+
+func TestPropertyAccessPlanTreatsEmptyObjectQueryPropertiesAsAllFields(t *testing.T) {
+	objectType := accessPlanObjectType()
+	objectType.LogicProperties = []*interfaces.LogicProperty{{
+		Name: "mobile_label",
+		Parameters: []interfaces.Parameter{{
+			ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_PROP,
+			Value:     "mobile",
+		}},
+	}}
+	query := &interfaces.ObjectQueryBaseOnObjectType{
+		CommonQueryParameters: interfaces.CommonQueryParameters{IncludeLogicParams: true},
+		ObjectQueryInfo: &interfaces.ObjectQueryInfo{
+			InstanceIdentity: []map[string]any{{"id": "customer-1"}},
+		},
+	}
+	plan, err := buildPropertyAccessPlan(context.Background(), propertyAccessStub{levels: map[string]interfaces.PropertyAccessLevel{
+		"id": interfaces.PropertyAccessFull, "mobile": interfaces.PropertyAccessFull,
+		"notes": interfaces.PropertyAccessSchema, "secret": interfaces.PropertyAccessNone,
+	}}, objectType, query, true)
+	if err != nil {
+		t.Fatalf("buildPropertyAccessPlan() error = %v", err)
+	}
+	if _, exists := plan.returnData["mobile"]; !exists {
+		t.Fatalf("empty object property selection did not include data fields: %#v", plan.returnData)
+	}
+	if _, exists := plan.returnLogic["mobile_label"]; !exists {
+		t.Fatalf("include_logic_params did not include logic fields: %#v", plan.returnLogic)
+	}
+	if _, exists := plan.fetchFields["mobile"]; !exists {
+		t.Fatalf("action parameter dependency was not fetched: %#v", plan.fetchFields)
+	}
+}
+
+func TestObjectQueryDefaultSortDoesNotRequireFullPrimaryKeyAccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	vega := omock.NewMockVegaBackendAccess(ctrl)
+	objectType := accessPlanObjectType()
+	objectType.DataSource = &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"}
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", "main", "customer").Return(objectType, true, nil)
+	vega.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+			if len(params.Sort) == 0 {
+				t.Fatal("default sort was not added after authorization")
+			}
+			return &interfaces.DatasetQueryResponse{Entries: []map[string]any{{"phone": "visible"}}}, nil
+		})
+	service := &objectTypeService{
+		omAccess: models, vba: vega, proxy: &objectTypeProxyResolverStub{},
+		propertyAccess: propertyAccessStub{levels: map[string]interfaces.PropertyAccessLevel{
+			"id": interfaces.PropertyAccessSchema, "mobile": interfaces.PropertyAccessFull,
+			"notes": interfaces.PropertyAccessSchema, "secret": interfaces.PropertyAccessNone,
+		}},
+	}
+	result, err := service.GetObjectsByObjectTypeID(context.Background(), &interfaces.ObjectQueryBaseOnObjectType{
+		KNID: "kn-1", Branch: "main", ObjectTypeID: "customer", Properties: []string{"mobile"},
+		PageQuery: interfaces.PageQuery{Limit: 10},
+	})
+	if err != nil {
+		t.Fatalf("GetObjectsByObjectTypeID() error = %v", err)
+	}
+	if len(result.Datas) != 1 || result.Datas[0]["mobile"] != "visible" {
+		t.Fatalf("result = %#v", result)
+	}
+	if _, exists := result.Datas[0][interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY]; exists {
+		t.Fatalf("schema-only primary key produced identity: %#v", result.Datas[0])
+	}
+}

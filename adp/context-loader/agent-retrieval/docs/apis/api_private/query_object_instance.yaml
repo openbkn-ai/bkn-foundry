@@ -57,7 +57,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/FirstQueryWithSearchAfter'
+              $ref: '#/components/schemas/ObjectQueryRequest'
         required: true
       responses:
         "200":
@@ -243,8 +243,8 @@ components:
         limit:
           description: 返回的数量，默认值 10。范围 1-10000
           type: integer
-    FirstQueryWithSearchAfter:
-      description: 分页查询的第一次查询请求
+    ObjectQueryRequest:
+      description: 对象实例分页查询请求
       type: object
       required:
         - bkn_context
@@ -273,35 +273,14 @@ components:
         need_total:
           description: 是否需要总数，默认false
           type: boolean
+        cursor:
+          description: 上一页返回的不透明游标；原样传回以获取下一页，首次查询不传。
+          type: string
         properties:
           description: 指定返回的对象属性字段列表，默认返回所有属性。
           type: array
           items:
             type: string
-    PageTurnQueryWithSearchAfter:
-      description: 分页查询的第一次查询请求
-      required:
-      - sort
-      - limit
-      - search_after
-      type: object
-      properties:
-        condition:
-          $ref: '#/components/schemas/Condition'
-          description: 过滤条件
-        sort:
-          $ref: '#/components/schemas/Sort'
-          description: 排序字段，默认使用 @timestamp排序，排序方向为 desc
-        limit:
-          description: 返回的数量，默认值 10。范围 1-10000
-          type: integer
-        need_total:
-          description: 是否需要总数，默认false
-          type: boolean
-        search_after:
-          description: 上次查询返回的最后一个文档的排序值。
-          type: array
-          items: {}
     FulltextConfig:
       description: 全文索引的配置
       required:
@@ -455,7 +434,6 @@ components:
       - groups
       - type
       - datas
-      - search_after
       type: object
       properties:
         object_type:
@@ -469,10 +447,9 @@ components:
         total_count:
           description: 总条数
           type: integer
-        search_after:
-          description: 表示返回的最后一个文档的排序值，获取这个用于下一次 search_after 分页
-          type: array
-          items: {}
+        cursor:
+          description: 下一页不透明游标；原样传回下一次请求以继续翻页。
+          type: string
     ObjectTypeDetail:
       description: 对象类信息
       type: object
