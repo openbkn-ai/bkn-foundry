@@ -66,35 +66,67 @@ func TestBatchCursorReadsAllSameIncrementalValueAcrossPages(t *testing.T) {
 			filter := buildBatchCursorFilter(sync_checkpoint.EffectiveCursorFields([]string{"ingested_at"}, []string{"id"}), cursor)
 			second := make([]int64, 0, count-first)
 			for id := int64(1); id <= int64(count); id++ {
-				if id > cursor[1].Value.(int64) {
+				if matchesStringInt64CursorFilter(t, filter, map[string]any{"ingested_at": "T1", "id": id}) {
 					second = append(second, id)
 				}
 			}
-			assert.Len(t, filter.SubConds, 2)
 			assert.Len(t, second, count-first)
 			assert.Equal(t, count, first+len(second))
 		})
 	}
 
 	t.Run("999 earlier rows plus two equal boundary rows", func(t *testing.T) {
-		type cursorRow struct {
-			time string
-			id   int64
-		}
-		rows := make([]cursorRow, 0, 1001)
+		rows := make([]map[string]any, 0, 1001)
 		for id := int64(1); id <= 999; id++ {
-			rows = append(rows, cursorRow{time: "T0", id: id})
+			rows = append(rows, map[string]any{"ingested_at": "T0", "id": id})
 		}
-		rows = append(rows, cursorRow{time: "T1", id: 1000}, cursorRow{time: "T1", id: 1001})
-		cursor := rows[999]
-		remaining := make([]cursorRow, 0, 1)
+		rows = append(rows,
+			map[string]any{"ingested_at": "T1", "id": int64(1000)},
+			map[string]any{"ingested_at": "T1", "id": int64(1001)})
+		filter := buildBatchCursorFilter(
+			[]string{"ingested_at", "id"},
+			[]interfaces.KeyValue{{Key: "ingested_at", Value: "T1"}, {Key: "id", Value: int64(1000)}},
+		)
+		remaining := make([]map[string]any, 0, 1)
 		for _, row := range rows {
-			if row.time > cursor.time || row.time == cursor.time && row.id > cursor.id {
+			if matchesStringInt64CursorFilter(t, filter, row) {
 				remaining = append(remaining, row)
 			}
 		}
-		assert.Equal(t, []cursorRow{{time: "T1", id: 1001}}, remaining)
+		assert.Equal(t, []map[string]any{{"ingested_at": "T1", "id": int64(1001)}}, remaining)
 	})
+}
+
+func matchesStringInt64CursorFilter(t *testing.T, filter *interfaces.FilterCondCfg, row map[string]any) bool {
+	t.Helper()
+	require.Equal(t, "or", filter.Operation)
+	for _, branch := range filter.SubConds {
+		require.Equal(t, "and", branch.Operation)
+		matches := true
+		for _, condition := range branch.SubConds {
+			actual, exists := row[condition.Name]
+			require.True(t, exists, "row is missing cursor field %q", condition.Name)
+			switch condition.Operation {
+			case "==":
+				matches = matches && actual == condition.ValueOptCfg.Value
+			case "gt":
+				switch expected := condition.ValueOptCfg.Value.(type) {
+				case string:
+					matches = matches && actual.(string) > expected
+				case int64:
+					matches = matches && actual.(int64) > expected
+				default:
+					require.FailNow(t, "unsupported cursor value type", "%T", expected)
+				}
+			default:
+				require.FailNow(t, "unsupported cursor operation", "%s", condition.Operation)
+			}
+		}
+		if matches {
+			return true
+		}
+	}
+	return false
 }
 
 func TestBatchCursorKeepsCompositePrimaryFieldsForResume(t *testing.T) {
