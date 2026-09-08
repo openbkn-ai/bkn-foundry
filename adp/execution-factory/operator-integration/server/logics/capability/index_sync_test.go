@@ -6,6 +6,7 @@ package capability
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -393,5 +394,73 @@ func TestInitStaysRepeatable(t *testing.T) {
 		}
 		So(s.Init(context.Background()), ShouldBeNil)
 		So(s.Init(context.Background()), ShouldBeNil)
+	})
+}
+
+// TestTransientInitFailureDoesNotUnreadyTheService covers the window the periodic Init opened.
+//
+// Init runs on every reconciler pass now. If a failed pass demoted the service, one timed-out call
+// to vega would mark a working index unready for up to the reconcile interval — and a delete
+// dropped in that window is never retried, because the reconcilers derive what should exist from
+// the sources and something already deleted is not in that set. The document would stay in the
+// index and keep answering searches.
+func TestTransientInitFailureDoesNotUnreadyTheService(t *testing.T) {
+	Convey("一次瞬时失败不能把已就绪的索引打回未就绪", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		vega := mocks.NewMockVegaBackendClient(ctrl)
+		modelManager := mocks.NewMockMFModelManager(ctrl)
+		healthy := &interfaces.VegaResource{
+			ID:               capabilityDataset,
+			LocalIndexName:   "vega-dataset-01",
+			LocalIndexStatus: interfaces.VegaLocalIndexAvailable,
+			SchemaDefinition: buildCapabilityIndexSchema(8, defaultFulltextAnalyzer),
+			IndexConfig:      &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: "m-1"},
+		}
+		gomock.InOrder(
+			vega.EXPECT().GetCatalogByID(gomock.Any(), gomock.Any()).
+				Return(&interfaces.VegaCatalog{ID: executionFactoryCatalogID, Enabled: true}, nil),
+			// Second pass: vega times out.
+			vega.EXPECT().GetCatalogByID(gomock.Any(), gomock.Any()).
+				Return(nil, errors.New("vega timed out")),
+		)
+		vega.EXPECT().GetResourceByID(gomock.Any(), capabilityDataset).Return(healthy, nil).Times(1)
+		modelManager.EXPECT().GetDefaultEmbeddingModel(gomock.Any(), gomock.Any()).Return(
+			&interfaces.EmbeddingModel{ModelID: "m-1", ModelName: "embedding", EmbeddingDim: 8}, nil).Times(1)
+
+		s := &capabilityIndexSync{vegaClient: vega, modelManager: modelManager, logger: logger.DefaultLogger()}
+
+		So(s.Init(context.Background()), ShouldBeNil)
+		So(s.isInitialized(), ShouldBeTrue)
+
+		So(s.Init(context.Background()), ShouldNotBeNil)
+		So(s.isInitialized(), ShouldBeTrue)
+	})
+}
+
+// TestDeleteReportsWhenItDidNotHappen keeps a delete from claiming success it did not have.
+//
+// An upsert may be dropped before the dataset exists — the reconcilers write it again on their next
+// pass. A delete has no such path: what is already gone from its source never appears in a desired
+// set again, so a dropped delete leaves the document in the index for good.
+func TestDeleteReportsWhenItDidNotHappen(t *testing.T) {
+	Convey("索引未就绪时的删除必须报错，不能假装成功", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		vega := mocks.NewMockVegaBackendClient(ctrl)
+		vega.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+		s := readySync(vega, nil)
+		s.initialized = false
+
+		So(s.DeleteCapability(context.Background(), skillRef("s-1")), ShouldNotBeNil)
+		So(s.DeleteOwner(context.Background(), interfaces.CapabilityTypeMCPTool, "mcp-1"), ShouldNotBeNil)
+
+		Convey("而写入仍然是跳过——对账器下一轮会补上", func() {
+			err := s.UpsertCapability(context.Background(),
+				&interfaces.CapabilityDocument{CapabilityRef: skillRef("s-1"), Name: "x"})
+			So(err, ShouldBeNil)
+		})
 	})
 }

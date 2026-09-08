@@ -116,8 +116,17 @@ func (s *capabilityIndexSync) Init(ctx context.Context) (err error) {
 	s.initMu.Lock()
 	defer s.initMu.Unlock()
 
-	initialized := false
-	defer func() { s.setInitialized(initialized) }()
+	// Only ever promote. A failed re-check means this pass could not confirm the dataset, not that
+	// the dataset stopped existing — and Init now runs on every reconciler pass, so demoting here
+	// would let one timed-out call to vega mark a working service unready for up to the reconcile
+	// interval. Writes in that window are skipped, and a skipped delete is never retried by
+	// anything: the MCP pass only walks servers that still exist, so a server deleted during it
+	// would leave its tools in the index permanently.
+	defer func() {
+		if err == nil {
+			s.setInitialized(true)
+		}
+	}()
 
 	catalogID, err := s.ensureCatalog(ctx)
 	if err != nil {
@@ -156,7 +165,6 @@ func (s *capabilityIndexSync) Init(ctx context.Context) (err error) {
 				return err
 			}
 		}
-		initialized = true
 		s.logger.WithContext(ctx).Infof("capability dataset ready, resource_id=%s, embedding_model_id=%s, analyzer=%s",
 			capabilityDataset, embeddingModel.ModelID, analyzer)
 		return nil
@@ -170,7 +178,6 @@ func (s *capabilityIndexSync) Init(ctx context.Context) (err error) {
 		s.logger.WithContext(ctx).Errorf("create capability dataset failed, resource_id=%s, err=%v", capabilityDataset, err)
 		return err
 	}
-	initialized = true
 	return nil
 }
 
@@ -468,8 +475,11 @@ func (s *capabilityIndexSync) DeleteCapability(ctx context.Context, ref interfac
 		return err
 	}
 	if !s.isInitialized() {
-		s.logger.WithContext(ctx).Warnf("skip capability index delete, dataset not initialized, key=%s", readableKey(ref))
-		return nil
+		// Deliberately an error, unlike the upsert above. Nothing re-drives a delete: the
+		// reconcilers compute what should exist from the sources, and a capability that is already
+		// gone from its source is not in that set, so a dropped delete leaves the document in the
+		// index for good. The caller has to know it did not happen.
+		return fmt.Errorf("capability index is not ready, delete of %s did not happen", readableKey(ref))
 	}
 	return s.vegaClient.DeleteDatasetDocumentByID(ctx, s.getDatasetID(), capabilityDocID(ref))
 }
@@ -486,9 +496,10 @@ func (s *capabilityIndexSync) DeleteOwner(ctx context.Context, capabilityType, o
 		return fmt.Errorf("capability type and owner ID are required")
 	}
 	if !s.isInitialized() {
-		s.logger.WithContext(ctx).Warnf("skip capability owner purge, dataset not initialized, type=%s, owner=%s",
+		// Same reason as DeleteCapability: an owner that is gone from its source will never appear
+		// in a reconciler's desired set again, so nothing would ever retry this purge.
+		return fmt.Errorf("capability index is not ready, purge of %s %s did not happen",
 			capabilityType, ownerID)
-		return nil
 	}
 
 	indexed, err := s.ListIndexedByOwner(ctx, capabilityType, ownerID)
