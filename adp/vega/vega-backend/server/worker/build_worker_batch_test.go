@@ -18,6 +18,7 @@ import (
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 	"vega-backend/logics"
+	"vega-backend/logics/sync_checkpoint"
 )
 
 func TestBuildBatchCursorFilter(t *testing.T) {
@@ -41,6 +42,19 @@ func TestBuildBatchCursorFilter(t *testing.T) {
 			{Name: "id", Operation: "gt", ValueOptCfg: interfaces.ValueOptCfg{Value: 100, ValueFrom: interfaces.ValueFrom_Const}},
 		},
 	}, filter.SubConds[1])
+}
+
+func TestBuildBatchCursorFilterAppendsPrimaryKeyForSameIncrementalValue(t *testing.T) {
+	keys := sync_checkpoint.EffectiveCursorFields([]string{"ingested_at"}, []string{"id"})
+	filter := buildBatchCursorFilter(keys, []interfaces.KeyValue{{Key: "ingested_at", Value: "T1"}, {Key: "id", Value: int64(1000)}})
+
+	require.Equal(t, []string{"ingested_at", "id"}, keys)
+	require.Len(t, filter.SubConds, 2)
+	assert.Equal(t, "ingested_at", filter.SubConds[1].SubConds[0].Name)
+	assert.Equal(t, "==", filter.SubConds[1].SubConds[0].Operation)
+	assert.Equal(t, "id", filter.SubConds[1].SubConds[1].Name)
+	assert.Equal(t, "gt", filter.SubConds[1].SubConds[1].Operation)
+	assert.Equal(t, int64(1000), filter.SubConds[1].SubConds[1].ValueOptCfg.Value)
 }
 
 func TestBatchBuildWorkerHandleTask(t *testing.T) {
