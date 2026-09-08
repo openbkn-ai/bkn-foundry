@@ -25,10 +25,10 @@ const (
 	// executionFactoryCatalogID is the execution factory's own logical namespace. The capability
 	// dataset lives beside the Skill dataset it will eventually replace.
 	executionFactoryCatalogID   = "bkn_execution_factory_catalog"
-	executionFactoryCatalogDesc = "执行工厂的逻辑命名空间"
+	executionFactoryCatalogDesc = "Execution factory logical namespace"
 
 	capabilityDataset       = "bkn_execution_factory_capability_dataset"
-	capabilityDatasetDesc   = "执行工厂的能力索引数据集：Skill、函数工具、MCP 工具"
+	capabilityDatasetDesc   = "Execution factory capability index: Skills, Function tools and MCP tools"
 	capabilityDatasetStatus = "active"
 
 	// internalCatalogTag marks a built-in catalog. Studio does not read the backend's internal
@@ -178,7 +178,7 @@ func (s *capabilityIndexSync) createDataset(ctx context.Context, catalogID strin
 		ID:               capabilityDataset,
 		CatalogID:        catalogID,
 		Name:             capabilityDataset,
-		Tags:             []string{"execution-factory", "capability", "索引"},
+		Tags:             []string{"execution-factory", "capability", "index"},
 		Description:      capabilityDatasetDesc,
 		Category:         "dataset",
 		Status:           capabilityDatasetStatus,
@@ -221,7 +221,7 @@ func (s *capabilityIndexSync) ensureCatalog(ctx context.Context) (string, error)
 		_, err = s.vegaClient.CreateCatalog(ctx, &interfaces.VegaCatalogRequest{
 			ID:          executionFactoryCatalogID,
 			Name:        executionFactoryCatalogID,
-			Tags:        []string{"execution-factory", "索引", internalCatalogTag},
+			Tags:        []string{"execution-factory", "index", internalCatalogTag},
 			Description: executionFactoryCatalogDesc,
 			// Internal catalogs are visible to super administrators only; a business role's
 			// catalog:* grant cannot match them.
