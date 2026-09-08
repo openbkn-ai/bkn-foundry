@@ -198,13 +198,38 @@ func (s *knToolsService) SearchTools(ctx context.Context, req *SearchToolsReq) (
 	// be told its results were truncated and to narrow a query that was already working.
 	total := len(hits)
 	resp := &SearchToolsResp{Tools: matched, TotalMatched: total}
-	if total > len(matched) {
+
+	// An empty answer has several causes and they want opposite fixes. One message for all of
+	// them sent callers to publish a tool box that was already published, or to broaden a query
+	// that had in fact matched. What separates them is how far the answer got: whether anything
+	// was mounted after narrowing, whether the ranking found anything, and whether what it found
+	// survived the visibility check.
+	fitted := total
+	if fitted > limit {
+		fitted = limit
+	}
+	switch {
+	case len(matched) == 0 && total > 0:
+		// The ranking found tools and the caller-visible catalogue listed none of them. An
+		// unreadable catalogue no longer lands here: those hits are kept without a schema.
+		resp.Message = infraErr.LocalizedDetail(ctx, "ToolsMatchedButNotVisible")
+	case len(matched) == 0 && len(req.MetadataTypes) > 0:
+		// Tools are mounted, just none of the requested kind.
+		resp.Message = infraErr.LocalizedDetail(ctx, "NoToolsOfRequestedKind")
+	case len(matched) == 0:
+		resp.Message = infraErr.LocalizedDetail(ctx, "NoPublishedToolsMatched")
+	case total > limit:
+		// More matched than the page holds. This is the only case where narrowing the query is
+		// the right advice.
 		resp.Truncated = true
 		resp.Message = infraErr.LocalizedDetail(ctx, "ToolSearchTruncated")
+	case len(matched) < fitted:
+		// Some hits that would have fitted were dropped by the visibility check. Not truncation:
+		// telling the caller to narrow the query would not bring them back.
+		resp.Message = infraErr.LocalizedDetail(ctx, "ToolsMatchedButNotVisible")
 	}
 	if len(resp.Tools) == 0 {
 		resp.Tools = []ToolEntry{}
-		resp.Message = infraErr.LocalizedDetail(ctx, "NoPublishedToolsMatched")
 	}
 	return resp, nil
 }

@@ -7,6 +7,7 @@ package kntools
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 
@@ -729,4 +730,68 @@ func TestVisibleCatalogueStillFilters(t *testing.T) {
 	if len(resp.Tools) != 0 {
 		t.Fatalf("目录可读但工具不在其中，说明调用方看不到，不该返回: %+v", resp.Tools)
 	}
+}
+
+// TestEmptyAnswerNamesItsCause covers the message an empty result carries.
+//
+// One message used to cover every empty answer: "register a tool, publish its box, enable it, or
+// broaden the query". It was wrong in most of the cases it was shown for — the box was published,
+// the query had matched — and it sent people to fix things that were not broken.
+func TestEmptyAnswerNamesItsCause(t *testing.T) {
+	// The old message instructed the caller to publish the tool box. Assert on the cause the
+	// message names rather than on a keyword: the accurate text may mention publishing precisely
+	// in order to rule it out.
+	namesVisibility := func(msg string) bool {
+		return strings.Contains(msg, "可见") || strings.Contains(msg, "权限")
+	}
+	tellsToPublish := func(msg string) bool {
+		return strings.Contains(msg, "请先在执行工厂注册工具")
+	}
+
+	t.Run("命中了但调用方看不到", func(t *testing.T) {
+		// The catalogue answers and does not list this tool: the caller cannot see it.
+		op := &fakeOperator{
+			hits: []interfaces.CapabilityHit{hit("box-1", "hidden")},
+			toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{
+				"box-1": {ToolboxID: "box-1", Tools: []interfaces.PublishedToolSummary{{ToolID: "other"}}},
+			},
+		}
+		svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/hidden")}, &fakeKnAuthz{})
+		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "汇率"})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resp.Tools) != 0 {
+			t.Fatalf("这个用例要的是空结果, got %+v", resp.Tools)
+		}
+		if tellsToPublish(resp.Message) || !namesVisibility(resp.Message) {
+			t.Fatalf("命中被可见性挡掉时该说可见性，而不是让人去发布工具箱: %q", resp.Message)
+		}
+	})
+
+	t.Run("类型过滤后为空", func(t *testing.T) {
+		op := &fakeOperator{hits: nil}
+		svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/t1")}, &fakeKnAuthz{})
+		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{
+			KnID: "kn1", Query: "汇率", MetadataTypes: []string{"function"},
+		})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if !strings.Contains(resp.Message, "metadata_types") {
+			t.Fatalf("类型过滤筛空时该点名 metadata_types: %q", resp.Message)
+		}
+	})
+
+	t.Run("确实没有匹配", func(t *testing.T) {
+		op := &fakeOperator{hits: nil}
+		svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/t1")}, &fakeKnAuthz{})
+		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "毫不相关"})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp.Message == "" {
+			t.Fatal("空结果总该给个说法")
+		}
+	})
 }
