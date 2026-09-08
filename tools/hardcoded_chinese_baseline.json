@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "python3 tools/check_hardcoded_chinese.py --update-baseline",
-  "violation_count": 2561,
+  "violation_count": 2537,
   "violations": {
     "adp/bkn/bkn-backend/script/delete_concept_index/script.py": [
       "028026370fec2a882dbb",
@@ -646,32 +646,6 @@
       "7332fccdf1282101949b",
       "bb572e204c0ab4a15dc9",
       "dcd27ad33ed4963522b3"
-    ],
-    "adp/execution-factory/operator-integration/server/logics/skill/index_sync.go": [
-      "2d303d2c6aeff62ca4d5",
-      "3f8a2cc0fe18237a2087",
-      "e9840e8c9d66eec39158",
-      "5f80988cc2c413e9acf5",
-      "7b365dd0654ff12b182b",
-      "ab53bcd7d2d912d8ef56",
-      "73ef5a417e9ec5a52159",
-      "37be04abe17445daf8c8",
-      "d53dffb0773e25d75f1f",
-      "5410cb6560e635db553a",
-      "8e0fdd1ad178434022af",
-      "7c28265a3345fa831c19",
-      "26342738f86c7a1c4e00",
-      "00c2b539da48fb753038",
-      "f5e43874ea04e77fd1c1",
-      "74daa31ebe54d0db22d9",
-      "6b8e820dc18ef9909ed4",
-      "113f418a18610e41e6f9",
-      "3bcb9cdb1285751ae2f6",
-      "7fefea1a89e09643bc3e",
-      "f0c7ba36acf6bd81ffcc",
-      "0ce23092161e5415ebd4",
-      "01f618007130d7824d9c",
-      "a9bb3775ce48277f4481"
     ],
     "adp/execution-factory/operator-integration/server/logics/skill/reader.go": [
       "5e9ba2b55cd7aa48cd6d",

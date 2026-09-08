@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab"
@@ -13,7 +14,10 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/capability"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/capabilityindex"
 	logicscommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/mcp"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/mcpinstance"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/skill"
 )
@@ -29,6 +33,12 @@ type Server struct {
 	config                *config.Config
 	skillIndexSyncService interfaces.SkillIndexSyncService
 	skillIndexBuildWorker interfaces.App
+	// capabilityIndexSync owns the unified capability dataset. It is initialised here rather than
+	// lazily on first write, because a write that arrives before the dataset exists is dropped
+	// with a warning, and nothing retries it until the reconciler's next pass.
+	capabilityIndexSync  interfaces.CapabilityIndexSyncService
+	capabilityReconciler capabilityindex.Reconciler
+	capabilityCancel     context.CancelFunc
 }
 
 // Start Start the service.
@@ -51,6 +61,12 @@ func (s *Server) Start() {
 			}
 		}()
 	}
+	// Initialize the unified capability index. A failure here is logged and retried in the
+	// background: the dataset not existing yet must not stop the service from serving.
+	if err = s.capabilityIndexSync.EnsureInitialized(context.Background()); err != nil {
+		s.config.Logger.Errorf("init capability index sync service failed, error: %v", err)
+	}
+	s.startCapabilityReconciler()
 
 	// Register Route - Health Check.
 	go func() {
@@ -86,11 +102,36 @@ func (s *Server) Start() {
 	go s.MQHandler.Subscribe()
 }
 
+// startCapabilityReconciler starts the periodic reconcile of Function tools and MCP tools.
+func (s *Server) startCapabilityReconciler() {
+	if s.config.CapabilityIndexConfig.DisableReconciler || s.capabilityReconciler == nil {
+		s.config.Logger.Info("capability index reconciler is disabled")
+		return
+	}
+	interval, err := time.ParseDuration(s.config.CapabilityIndexConfig.ReconcileInterval)
+	if err != nil || interval <= 0 {
+		s.config.Logger.Warnf("invalid capability index reconcile interval %q, falling back to 30m: %v",
+			s.config.CapabilityIndexConfig.ReconcileInterval, err)
+		interval = 30 * time.Minute
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	s.capabilityCancel = cancel
+	s.capabilityReconciler.Start(ctx, interval)
+	// The other two halves run from their own packages: MCP next to the client that can list a
+	// remote server, Skills next to the rule that decides which snapshot of a Skill counts.
+	mcp.StartCapabilityReconciler(ctx, interval)
+	skill.StartCapabilityReconciler(ctx, interval)
+	s.config.Logger.Infof("capability index reconciler started, interval=%s", interval)
+}
+
 // Stop stop service.
 func (s *Server) Stop(ctx context.Context) {
 	s.config.Logger.Info("stop agent-operator-integration server")
 	// sandbox.Close() // Close and destroy the sandbox session pool.
 	s.outboxMessageEvent.Stop(ctx)
+	if s.capabilityCancel != nil {
+		s.capabilityCancel()
+	}
 	if s.skillIndexBuildWorker != nil {
 		s.skillIndexBuildWorker.Stop(ctx)
 	}
@@ -111,6 +152,8 @@ func main() {
 		MQHandler:             driveradapters.NewMQHandler(),
 		skillIndexSyncService: skill.NewSkillIndexSyncService(),
 		skillIndexBuildWorker: skill.NewSkillIndexBuildWorker(),
+		capabilityIndexSync:   capability.NewCapabilityIndexSyncService(),
+		capabilityReconciler:  capabilityindex.NewReconciler(),
 	}
 	s.config.Logger.Info("start agent-operator-integration server")
 	if config.OTelProviders != nil {

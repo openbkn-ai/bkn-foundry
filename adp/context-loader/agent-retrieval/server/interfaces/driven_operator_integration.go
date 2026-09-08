@@ -96,16 +96,9 @@ type DrivenOperatorIntegration interface {
 	// ExecutePublishedTool invokes one enabled Function tool through the public Toolbox proxy.
 	ExecutePublishedTool(ctx context.Context, req *ExecutePublishedToolRequest) (map[string]any, error)
 
-	// SearchBoundSkills ranks the Skills in a whitelist against a query.
-	//
-	// The whitelist is the scope and it is fail-closed on the far side: an empty SkillIDs returns
-	// nothing rather than the whole marketplace. Ranking happens in Execution Factory, which owns
-	// the skill dataset; this side only supplies which Skills the knowledge network bound.
-	SearchBoundSkills(ctx context.Context, req *SearchBoundSkillsRequest) ([]SkillHit, error)
-
 	// GetSkillNamesByIDs resolves Skill names straight from the registry.
 	//
-	// It exists as the floor under SearchBoundSkills: that one reads the skill index, and an
+	// It exists as the floor under SearchCapabilities: that one reads the capability index, and an
 	// index that was never built answers an unfiltered listing with nothing. A Skill the network
 	// has bound must still be listed by name even then — a name without a description is a
 	// degraded answer, an empty list is a wrong one. Unknown ids are absent from the result.
@@ -117,6 +110,17 @@ type DrivenOperatorIntegration interface {
 	// hits carry identity and prose only — the input schema is not part of this answer, and the
 	// caller fetches it for the hits it keeps.
 	SearchBoundTools(ctx context.Context, req *SearchBoundToolsRequest) ([]ToolHit, error)
+
+	// SearchCapabilities ranks Skills, Function tools and MCP tools together, in one space.
+	//
+	// It replaces asking three surfaces and concatenating their answers. The three were ordered by
+	// three incomparable rules — an unbounded BM25 score, a SQL LIKE with no score at all, and a
+	// literal substring match — so the combined order only said which list came first. Here one
+	// query runs against one index and the order means something.
+	//
+	// The whitelist is the scope and it is fail-closed on the far side: no refs returns nothing,
+	// never the whole platform.
+	SearchCapabilities(ctx context.Context, req *SearchCapabilitiesRequest) ([]CapabilityHit, error)
 
 	// MCPServerIsUsable reports whether the MCP Server is published, and so whether the tools it
 	// exposes may be called.
@@ -146,20 +150,44 @@ type ToolHit struct {
 	MatchedBy   string  `json:"matched_by"`
 }
 
-// SearchBoundSkillsRequest asks Execution Factory to rank a bounded set of Skills.
-type SearchBoundSkillsRequest struct {
-	Query    string
-	SkillIDs []string
-	TopK     int
+// SearchCapabilityRef is one capability's identity as the retrieval face names it.
+//
+// It carries the same three parts as the binding's CapabilityRef, but the owner is called owner_id
+// rather than box_id: the retrieval index holds all three kinds, and for an MCP tool that field
+// holds a server id, not a box. Keeping them as separate types keeps each wire shape honest
+// instead of making one name mean two things.
+type SearchCapabilityRef struct {
+	CapabilityType string `json:"capability_type"`
+	OwnerID        string `json:"owner_id"`
+	CapabilityID   string `json:"capability_id"`
 }
 
-// SkillHit is one ranked Skill.
-type SkillHit struct {
-	SkillID     string  `json:"skill_id"`
-	Name        string  `json:"name"`
-	Description string  `json:"description"`
-	Score       float64 `json:"score"`
-	MatchedBy   string  `json:"matched_by"`
+// SearchCapabilitiesRequest asks Execution Factory to rank a bounded set of capabilities.
+type SearchCapabilitiesRequest struct {
+	Query string                `json:"query"`
+	Refs  []SearchCapabilityRef `json:"refs"`
+	TopK  int                   `json:"top_k"`
+	// Types narrows the answer to certain capability types. It narrows within Refs and can never
+	// reach outside it; empty means every type in Refs.
+	Types []string `json:"types"`
+	// MetadataTypes narrows Function tools to certain tool box kinds ("openapi" or "function").
+	// The product shows four kinds where the bindings store three: an API tool is a Function
+	// binding whose box is an openapi box. Empty means both.
+	MetadataTypes []string `json:"metadata_types,omitempty"`
+}
+
+// CapabilityHit is one ranked capability.
+//
+// MatchedBy says which retrieval channel found it — the vector one, the lexical one, both, or the
+// whitelist filter alone when there was no query to rank against.
+type CapabilityHit struct {
+	SearchCapabilityRef
+	// MetadataType is the tool box kind for a Function tool, empty for the other kinds.
+	MetadataType string  `json:"metadata_type,omitempty"`
+	Name         string  `json:"name"`
+	Description  string  `json:"description"`
+	MatchedBy    string  `json:"matched_by"`
+	Score        float64 `json:"score"`
 }
 
 // ==================== Published Function Tool Catalogue ====================

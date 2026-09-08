@@ -98,6 +98,15 @@ func (s *mcpServiceImpl) AddMCPServer(ctx context.Context, req *interfaces.MCPSe
 		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("get tx failed, err: %v", err))
 		return
 	}
+	// MCPID is declared up here so the post-commit hook below can see it.
+	var MCPID string
+	// Registered before the commit below so it runs after it — defers are LIFO — because the
+	// index must not be told about a new MCP Server's tools until the transaction has actually committed.
+	defer func() {
+		if err == nil {
+			s.syncMCPCapabilitiesAsync(ctx, MCPID)
+		}
+	}()
 	defer func() {
 		if err != nil {
 			_ = tx.Rollback()
@@ -113,7 +122,7 @@ func (s *mcpServiceImpl) AddMCPServer(ctx context.Context, req *interfaces.MCPSe
 		return nil, err
 	}
 
-	MCPID, err := s.addMCPConfig(ctx, tx, mcpserverConfig)
+	MCPID, err = s.addMCPConfig(ctx, tx, mcpserverConfig)
 	if err != nil {
 		return
 	}
@@ -288,6 +297,13 @@ func (s *mcpServiceImpl) DeleteMCPServer(ctx context.Context, req *interfaces.MC
 		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("get tx failed, err: %v", err))
 		return
 	}
+	// Registered before the commit below so it runs after it — defers are LIFO — because the
+	// index must not be told about a deleted MCP Server until the transaction has actually committed.
+	defer func() {
+		if err == nil {
+			s.forgetMCPCapabilitiesAsync(ctx, req.MCPID)
+		}
+	}()
 	defer func() {
 		if err != nil {
 			_ = tx.Rollback()
@@ -631,6 +647,13 @@ func (s *mcpServiceImpl) UpdateMCPServer(ctx context.Context, req *interfaces.MC
 		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// Registered before the commit below so it runs after it — defers are LIFO — because the
+	// index must not be told about an updated MCP Server's tools until the transaction has actually committed.
+	defer func() {
+		if err == nil {
+			s.syncMCPCapabilitiesAsync(ctx, req.MCPID)
+		}
+	}()
 	defer func() {
 		if err != nil {
 			_ = tx.Rollback()

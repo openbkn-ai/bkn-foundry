@@ -13,6 +13,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/capability"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/category"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/mcpinstance"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
@@ -37,10 +38,12 @@ type mcpServiceImpl struct {
 	CategoryManager           interfaces.CategoryManager
 	AuthService               interfaces.IAuthorizationService
 	ToolService               interfaces.IToolService
-	AuditLog                  interfaces.LogModelOperator[*metric.AuditLogBuilderParams]
-	MCPInstanceService        interfaces.InstanceService
-	ProxyAuthorizer           interfaces.ProxyExecutionAuthorizer
-	ProxyAudit                interfaces.ProxyExecutionAuditRecorder
+	// CapabilityIndex holds this server's tools in the unified capability index (#1370).
+	CapabilityIndex    interfaces.CapabilityIndexSyncService
+	AuditLog           interfaces.LogModelOperator[*metric.AuditLogBuilderParams]
+	MCPInstanceService interfaces.InstanceService
+	ProxyAuthorizer    interfaces.ProxyExecutionAuthorizer
+	ProxyAudit         interfaces.ProxyExecutionAuditRecorder
 }
 
 // NewMCPServiceImpl initializes the MCP service.
@@ -59,6 +62,7 @@ func NewMCPServiceImpl() interfaces.IMCPService {
 			CategoryManager:           category.NewCategoryManager(),
 			AuthService:               auth.NewAuthServiceImpl(),
 			ToolService:               toolbox.NewToolServiceImpl(),
+			CapabilityIndex:           capability.NewCapabilityIndexSyncService(),
 			AuditLog:                  metric.NewAuditLogBuilder(),
 			ProxyAuthorizer: proxyexecution.NewAuthorizer(
 				drivenadapters.NewProxyExecutionAuthorizationAccess(),

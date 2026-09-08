@@ -15,6 +15,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/capabilityindex"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/category"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/intcomp"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metadata"
@@ -52,6 +53,12 @@ type ToolServiceImpl struct {
 	ActionExecutions bkntrace.ExecutionGate
 	ProxyAuthorizer  interfaces.ProxyExecutionAuthorizer
 	ProxyAudit       interfaces.ProxyExecutionAuditRecorder
+	// CapabilityIndex keeps the unified capability index in step with tool writes (#1370).
+	//
+	// Every write below tells it which tools changed, after the transaction has committed. It
+	// re-reads the rows itself, so telling it about a write that was then rolled back is safe:
+	// what it indexes is whatever the table ended up holding.
+	CapabilityIndex capabilityindex.Reconciler
 }
 
 // NewToolServiceImpl creates a toolbox service.
@@ -73,6 +80,7 @@ func NewToolServiceImpl() interfaces.IToolService {
 			AuthService:      auth.NewAuthServiceImpl(),
 			AuditLog:         metric.NewAuditLogBuilder(),
 			MetadataService:  metadata.NewMetadataService(),
+			CapabilityIndex:  capabilityindex.NewReconciler(),
 			ActionEvidence:   bkntrace.NewHTTPEmitter(),
 			ActionExecutions: bkntrace.NewRedisExecutionGate(redisClient),
 			ProxyAuthorizer: proxyexecution.NewAuthorizer(

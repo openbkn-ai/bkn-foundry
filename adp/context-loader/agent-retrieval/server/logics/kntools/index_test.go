@@ -7,6 +7,7 @@ package kntools
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 
@@ -18,7 +19,7 @@ import (
 type fakeOperator struct {
 	interfaces.DrivenOperatorIntegration
 
-	hits       []interfaces.ToolHit
+	hits       []interfaces.CapabilityHit
 	hitsErr    error
 	toolsByBox map[string]*interfaces.ListPublishedToolsResponse
 	toolsErr   map[string]error
@@ -38,12 +39,19 @@ type fakeOperator struct {
 	mcpUnusable    map[string]bool
 }
 
-func (f *fakeOperator) SearchBoundTools(
-	_ context.Context, req *interfaces.SearchBoundToolsRequest,
-) ([]interfaces.ToolHit, error) {
+func (f *fakeOperator) SearchCapabilities(
+	_ context.Context, req *interfaces.SearchCapabilitiesRequest,
+) ([]interfaces.CapabilityHit, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.gotRefs = req.ToolRefs
+	f.gotRefs = make([]string, 0, len(req.Refs))
+	for _, ref := range req.Refs {
+		if ref.CapabilityType == interfaces.CapabilityTypeMCPTool {
+			f.gotRefs = append(f.gotRefs, interfaces.CapabilityTypeMCPTool+":"+ref.OwnerID+"/"+ref.CapabilityID)
+			continue
+		}
+		f.gotRefs = append(f.gotRefs, ref.OwnerID+"/"+ref.CapabilityID)
+	}
 	f.gotQuery = req.Query
 	f.gotTopK = req.TopK
 	return f.hits, f.hitsErr
@@ -154,8 +162,28 @@ func splitPair(pair string) (string, string) {
 	return pair, ""
 }
 
-func hit(boxID, toolID string) interfaces.ToolHit {
-	return interfaces.ToolHit{BoxID: boxID, ToolID: toolID, Name: toolID}
+// mcpHit is one ranked MCP tool as the execution factory now returns it. Ranking and query
+// filtering live there; this side supplies the whitelist and renders what comes back.
+func mcpHit(mcpID, toolName string) interfaces.CapabilityHit {
+	return interfaces.CapabilityHit{
+		SearchCapabilityRef: interfaces.SearchCapabilityRef{
+			CapabilityType: interfaces.CapabilityTypeMCPTool,
+			OwnerID:        mcpID,
+			CapabilityID:   toolName,
+		},
+		Name: toolName,
+	}
+}
+
+func hit(boxID, toolID string) interfaces.CapabilityHit {
+	return interfaces.CapabilityHit{
+		SearchCapabilityRef: interfaces.SearchCapabilityRef{
+			CapabilityType: interfaces.CapabilityTypeFunction,
+			OwnerID:        boxID,
+			CapabilityID:   toolID,
+		},
+		Name: toolID,
+	}
 }
 
 func tools(boxID string, toolIDs ...string) *interfaces.ListPublishedToolsResponse {
@@ -192,7 +220,7 @@ func (f *fakeKnAuthz) AuthorizeRead(_ context.Context, knID string) error {
 func TestSearchNarrowsToTheNetworkBindings(t *testing.T) {
 	bkn := &fakeBkn{refs: functionRefs("box-1/mounted")}
 	op := &fakeOperator{
-		hits:       []interfaces.ToolHit{hit("box-1", "mounted")},
+		hits: []interfaces.CapabilityHit{hit("box-1", "mounted")},
 		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{
 			"box-1": tools("box-1", "mounted", "not_mounted"),
 		},
@@ -221,7 +249,7 @@ func TestSearchNarrowsToTheNetworkBindings(t *testing.T) {
 // nothing gets nothing, not the account's catalogue.
 func TestSearchOnUnmountedNetworkReturnsEmpty(t *testing.T) {
 	bkn := &fakeBkn{refs: []*interfaces.CapabilityRef{}}
-	op := &fakeOperator{hits: []interfaces.ToolHit{hit("box-1", "should_not_appear")}}
+	op := &fakeOperator{hits: []interfaces.CapabilityHit{hit("box-1", "should_not_appear")}}
 
 	resp, err := newService(bkn, op).SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1"})
 
@@ -260,7 +288,7 @@ func TestSearchRequiresKnID(t *testing.T) {
 // "mounted nothing" or "everything".
 func TestBindingLookupFailureFailsTheSearch(t *testing.T) {
 	bkn := &fakeBkn{err: errors.New("bkn-backend unreachable")}
-	op := &fakeOperator{hits: []interfaces.ToolHit{hit("box-1", "t1")}}
+	op := &fakeOperator{hits: []interfaces.CapabilityHit{hit("box-1", "t1")}}
 
 	_, err := newService(bkn, op).SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1"})
 
@@ -276,7 +304,7 @@ func TestBindingLookupFailureFailsTheSearch(t *testing.T) {
 func TestToolboxIDNarrowsWithinTheMountedSet(t *testing.T) {
 	bkn := &fakeBkn{refs: functionRefs("box-1/t1", "box-2/t2")}
 	op := &fakeOperator{
-		hits:       []interfaces.ToolHit{hit("box-2", "t2")},
+		hits:       []interfaces.CapabilityHit{hit("box-2", "t2")},
 		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{"box-2": tools("box-2", "t2")},
 	}
 
@@ -291,12 +319,22 @@ func TestToolboxIDNarrowsWithinTheMountedSet(t *testing.T) {
 	}
 }
 
-// TestUnreadableToolboxDropsItsHits covers the second half of the scope: a mounted tool the caller
-// cannot see is not listed, because execute_tool would refuse it anyway.
-func TestUnreadableToolboxDropsItsHits(t *testing.T) {
+// TestUnreadableToolboxKeepsItsHitsWithoutSchema covers what an unreadable tool box means.
+//
+// It used to mean "drop these hits", on the reading that a tool the caller cannot see should not be
+// listed. But an unreadable catalogue is not a denial — it is an unanswered question, and the two
+// were being treated the same. The visible consequence was a search that reported five matches and
+// returned nothing, blaming an unpublished tool box that was in fact published.
+//
+// Denial is still honoured where it can be observed: a box that answers, without this tool in it,
+// still drops it (see TestVisibleCatalogueStillFilters). What changes is the case where nothing can
+// be observed at all: the hit survives with the name and description the index holds, and without
+// an input schema, because none was read. execute_tool re-checks the caller-visible catalogue
+// before anything runs, so this discloses a name, not an ability.
+func TestUnreadableToolboxKeepsItsHitsWithoutSchema(t *testing.T) {
 	bkn := &fakeBkn{refs: functionRefs("box-1/t1", "box-2/t2")}
 	op := &fakeOperator{
-		hits: []interfaces.ToolHit{hit("box-1", "t1"), hit("box-2", "t2")},
+		hits: []interfaces.CapabilityHit{hit("box-1", "t1"), hit("box-2", "t2")},
 		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{
 			"box-1": tools("box-1", "t1"),
 		},
@@ -308,8 +346,21 @@ func TestUnreadableToolboxDropsItsHits(t *testing.T) {
 	if err != nil {
 		t.Fatalf("one unreadable toolbox must not fail the search, got %v", err)
 	}
-	if len(resp.Tools) != 1 || resp.Tools[0].ToolboxID != "box-1" {
-		t.Fatalf("expected only the readable toolbox's tool, got %+v", resp.Tools)
+	if len(resp.Tools) != 2 {
+		t.Fatalf("读得到的和读不到的都该在，got %+v", resp.Tools)
+	}
+	byBox := map[string]ToolEntry{}
+	for _, e := range resp.Tools {
+		byBox[e.ToolboxID] = e
+	}
+	if byBox["box-1"].InputSchema == nil {
+		t.Fatal("目录读得到的工具应当带 input_schema")
+	}
+	if byBox["box-2"].InputSchema != nil {
+		t.Fatal("目录读不到时不该凭空造出 input_schema")
+	}
+	if byBox["box-2"].Name == "" {
+		t.Fatal("读不到目录时也该保留索引里的名称")
 	}
 }
 
@@ -318,7 +369,7 @@ func TestUnreadableToolboxDropsItsHits(t *testing.T) {
 func TestHitsCarryTheInputSchema(t *testing.T) {
 	bkn := &fakeBkn{refs: functionRefs("box-1/t1")}
 	op := &fakeOperator{
-		hits:       []interfaces.ToolHit{hit("box-1", "t1")},
+		hits:       []interfaces.CapabilityHit{hit("box-1", "t1")},
 		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{"box-1": tools("box-1", "t1")},
 	}
 
@@ -340,7 +391,7 @@ func TestHitsCarryTheInputSchema(t *testing.T) {
 func TestOneRequestPerToolboxNotPerHit(t *testing.T) {
 	bkn := &fakeBkn{refs: functionRefs("box-1/t1", "box-1/t2", "box-1/t3")}
 	op := &fakeOperator{
-		hits: []interfaces.ToolHit{hit("box-1", "t1"), hit("box-1", "t2"), hit("box-1", "t3")},
+		hits: []interfaces.CapabilityHit{hit("box-1", "t1"), hit("box-1", "t2"), hit("box-1", "t3")},
 		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{
 			"box-1": tools("box-1", "t1", "t2", "t3"),
 		},
@@ -442,7 +493,7 @@ func TestUnauthorizedNetworkIsRefusedForBothEntryPoints(t *testing.T) {
 	for _, name := range []string{"search", "execute"} {
 		bkn := &fakeBkn{refs: functionRefs("box-1/t1")}
 		op := &fakeOperator{
-			hits:       []interfaces.ToolHit{hit("box-1", "t1")},
+			hits:       []interfaces.CapabilityHit{hit("box-1", "t1")},
 			toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{"box-1": tools("box-1", "t1")},
 		}
 		authz := &fakeKnAuthz{err: errors.New("forbidden")}
@@ -483,6 +534,7 @@ func TestMissingAuthorizerFailsClosed(t *testing.T) {
 func TestMCPToolsAreSearchableAndCallable(t *testing.T) {
 	newSvc := func() (KnToolsService, *fakeOperator) {
 		op := &fakeOperator{
+			hits: []interfaces.CapabilityHit{mcpHit("mcp-1", "expedite")},
 			mcpTools: map[string]*interfaces.GetMCPToolDetailResponse{
 				"mcp-1/expedite": {Name: "expedite", Description: "催单", InputSchema: map[string]any{"type": "object"}},
 			},
@@ -541,18 +593,31 @@ func TestMCPToolsAreSearchableAndCallable(t *testing.T) {
 		}
 	})
 
-	t.Run("query 过滤 MCP 工具", func(t *testing.T) {
-		svc, _ := newSvc()
-		hit, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "催单"})
-		if err != nil || len(hit.Tools) != 1 {
-			t.Fatalf("expected a description match, got %+v err=%v", hit, err)
+	t.Run("MCP 工具进入统一检索的白名单", func(t *testing.T) {
+		// Ranking and query filtering are the execution factory's job now — both transports are
+		// rows in one index. What this side owes is the whitelist: every mounted MCP tool must
+		// reach it, or the tool is unfindable no matter how good the ranking is.
+		svc, op := newSvc()
+		if _, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "催单"}); err != nil {
+			t.Fatalf("expected no error, got %v", err)
 		}
-		miss, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "完全无关"})
+		if op.gotQuery != "催单" {
+			t.Fatalf("query 没有透传给执行工厂，got %q", op.gotQuery)
+		}
+		if len(op.gotRefs) != 1 || op.gotRefs[0] != "mcp_tool:mcp-1/expedite" {
+			t.Fatalf("挂载的 MCP 工具没进白名单，got %+v", op.gotRefs)
+		}
+	})
+
+	t.Run("检索面返回空就是空，不在本地兜底放宽", func(t *testing.T) {
+		svc, op := newSvc()
+		op.hits = nil
+		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "完全无关"})
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if len(miss.Tools) != 0 {
-			t.Fatalf("expected no match, got %+v", miss.Tools)
+		if len(resp.Tools) != 0 {
+			t.Fatalf("expected no match, got %+v", resp.Tools)
 		}
 	})
 }
@@ -591,6 +656,8 @@ func TestOfflineMCPServerIsNotExecutable(t *testing.T) {
 // that was already working.
 func TestMCPTruncationCountsMatchesNotMounts(t *testing.T) {
 	op := &fakeOperator{
+		// Three tools are mounted; the query kept one, so that is what the ranking returns.
+		hits: []interfaces.CapabilityHit{mcpHit("mcp-1", "expedite")},
 		mcpTools: map[string]*interfaces.GetMCPToolDetailResponse{
 			"mcp-1/expedite":   {Name: "expedite", Description: "催单"},
 			"mcp-1/substitute": {Name: "substitute", Description: "替换"},
@@ -613,4 +680,171 @@ func TestMCPTruncationCountsMatchesNotMounts(t *testing.T) {
 	if resp.Truncated {
 		t.Fatal("没有截断却报了截断，调用方会去缩小一个本来就好用的 query")
 	}
+}
+
+// TestUnreadableCatalogueKeepsTheHit covers the answer that used to contradict itself.
+//
+// The ranking found the tools, so total_matched said five — and the tool list came back empty with
+// "no tools matched; register your tool, publish its box and enable it", while the box was
+// published and its tools enabled. The real cause was that the caller-visible catalogue could not
+// be read at all, which is not the same as the caller being denied. An unreadable catalogue now
+// leaves the hit in place without an input schema.
+func TestUnreadableCatalogueKeepsTheHit(t *testing.T) {
+	op := &fakeOperator{
+		hits:     []interfaces.CapabilityHit{hit("box-1", "t1")},
+		toolsErr: map[string]error{"box-1": errors.New("caller token missing")},
+	}
+	svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/t1")}, &fakeKnAuthz{})
+
+	resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "汇率"})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.Tools) != 1 || resp.Tools[0].ToolID != "t1" {
+		t.Fatalf("命中不该因为读不到目录而消失，got %+v (message=%q)", resp.Tools, resp.Message)
+	}
+	if resp.Tools[0].InputSchema != nil {
+		t.Fatal("读不到目录时不该凭空造出 input_schema")
+	}
+	if resp.TotalMatched != len(resp.Tools) {
+		t.Fatalf("total 与返回条数不该互相矛盾: total=%d tools=%d", resp.TotalMatched, len(resp.Tools))
+	}
+}
+
+// TestVisibleCatalogueStillFilters keeps the second layer where it can actually be evaluated: a
+// readable catalogue that does not list the tool means the caller cannot see it, and advertising it
+// would promise something execute_tool refuses.
+func TestVisibleCatalogueStillFilters(t *testing.T) {
+	op := &fakeOperator{
+		hits: []interfaces.CapabilityHit{hit("box-1", "hidden")},
+		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{
+			"box-1": {ToolboxID: "box-1", Tools: []interfaces.PublishedToolSummary{{ToolID: "other"}}},
+		},
+	}
+	svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/hidden")}, &fakeKnAuthz{})
+
+	resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "汇率"})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.Tools) != 0 {
+		t.Fatalf("目录可读但工具不在其中，说明调用方看不到，不该返回: %+v", resp.Tools)
+	}
+}
+
+// TestEmptyAnswerNamesItsCause covers the message an empty result carries.
+//
+// One message used to cover every empty answer: "register a tool, publish its box, enable it, or
+// broaden the query". It was wrong in most of the cases it was shown for — the box was published,
+// the query had matched — and it sent people to fix things that were not broken.
+func TestEmptyAnswerNamesItsCause(t *testing.T) {
+	// The old message instructed the caller to publish the tool box. Assert on the cause the
+	// message names rather than on a keyword: the accurate text may mention publishing precisely
+	// in order to rule it out.
+	namesVisibility := func(msg string) bool {
+		return strings.Contains(msg, "可见") || strings.Contains(msg, "权限")
+	}
+	tellsToPublish := func(msg string) bool {
+		return strings.Contains(msg, "请先在执行工厂注册工具")
+	}
+
+	t.Run("命中了但调用方看不到", func(t *testing.T) {
+		// The catalogue answers and does not list this tool: the caller cannot see it.
+		op := &fakeOperator{
+			hits: []interfaces.CapabilityHit{hit("box-1", "hidden")},
+			toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{
+				"box-1": {ToolboxID: "box-1", Tools: []interfaces.PublishedToolSummary{{ToolID: "other"}}},
+			},
+		}
+		svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/hidden")}, &fakeKnAuthz{})
+		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "汇率"})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resp.Tools) != 0 {
+			t.Fatalf("这个用例要的是空结果, got %+v", resp.Tools)
+		}
+		if tellsToPublish(resp.Message) || !namesVisibility(resp.Message) {
+			t.Fatalf("命中被可见性挡掉时该说可见性，而不是让人去发布工具箱: %q", resp.Message)
+		}
+	})
+
+	t.Run("类型过滤后为空", func(t *testing.T) {
+		op := &fakeOperator{hits: nil}
+		svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/t1")}, &fakeKnAuthz{})
+		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{
+			KnID: "kn1", Query: "汇率", MetadataTypes: []string{"function"},
+		})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if !strings.Contains(resp.Message, "metadata_types") {
+			t.Fatalf("类型过滤筛空时该点名 metadata_types: %q", resp.Message)
+		}
+	})
+
+	t.Run("确实没有匹配", func(t *testing.T) {
+		op := &fakeOperator{hits: nil}
+		svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/t1")}, &fakeKnAuthz{})
+		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "毫不相关"})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp.Message == "" {
+			t.Fatal("空结果总该给个说法")
+		}
+	})
+}
+
+// TestTruncationIsDetectable covers a flag that had become unreachable.
+//
+// The ranking caps its answer at top_k. Asking for exactly `limit` makes a full page and a
+// truncated page identical, so truncated could never be true and a caller read one page as the
+// whole answer. One extra hit is requested purely to learn whether a next one exists.
+func TestTruncationIsDetectable(t *testing.T) {
+	t.Run("有下一页时报截断，且不把多要的那条返回给调用方", func(t *testing.T) {
+		hits := make([]interfaces.CapabilityHit, 0, 4)
+		for _, id := range []string{"t1", "t2", "t3", "t4"} {
+			hits = append(hits, hit("box-1", id))
+		}
+		op := &fakeOperator{
+			hits: hits,
+			toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{
+				"box-1": tools("box-1", "t1", "t2", "t3", "t4"),
+			},
+		}
+		svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs(
+			"box-1/t1", "box-1/t2", "box-1/t3", "box-1/t4")}, &fakeKnAuthz{})
+
+		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Limit: 3})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if !resp.Truncated {
+			t.Fatal("命中多于一页却没报截断，调用方会把一页当成全部")
+		}
+		if len(resp.Tools) != 3 {
+			t.Fatalf("多要的那条只用来探测，不该返回: %d 条", len(resp.Tools))
+		}
+		if op.gotTopK != 4 {
+			t.Fatalf("该向排序多要一条来探测下一页, got top_k=%d", op.gotTopK)
+		}
+	})
+
+	t.Run("正好一页不报截断", func(t *testing.T) {
+		op := &fakeOperator{
+			hits: []interfaces.CapabilityHit{hit("box-1", "t1")},
+			toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{
+				"box-1": tools("box-1", "t1"),
+			},
+		}
+		svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/t1")}, &fakeKnAuthz{})
+		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Limit: 3})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp.Truncated {
+			t.Fatal("没有下一页却报了截断，调用方会去缩一个本来就好用的 query")
+		}
+	})
 }

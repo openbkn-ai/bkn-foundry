@@ -43,7 +43,11 @@ type SearchToolsReq struct {
 	KnID      string `json:"kn_id"`
 	Query     string `json:"query"`      // Optional. Ranks the mounted tools by name and description.
 	ToolboxID string `json:"toolbox_id"` // Optional. Restricts the search to one toolbox's mounted tools.
-	Limit     int    `json:"limit"`      // Optional. Caps returned tools, default 20, max 100.
+	// MetadataTypes optionally restricts Function tools to certain tool box kinds: "openapi" for
+	// API tools, "function" for functions. Empty means both, plus MCP tools. It exists because the
+	// product presents four kinds where the bindings store three.
+	MetadataTypes []string `json:"metadata_types,omitempty"`
+	Limit         int      `json:"limit"` // Optional. Caps returned tools, default 20, max 100.
 }
 
 // ToolEntry is one callable published Function tool.
@@ -83,6 +87,7 @@ type KnToolsService interface {
 }
 
 type knToolsService struct {
+	logger     interfaces.Logger
 	operator   interfaces.DrivenOperatorIntegration
 	bknBackend interfaces.BknBackendAccess
 	knAuthz    interfaces.KnowledgeNetworkAuthorizer
@@ -98,6 +103,7 @@ func NewKnToolsService() KnToolsService {
 	once.Do(func() {
 		conf := config.NewConfigLoader()
 		service = &knToolsService{
+			logger:     conf.GetLogger(),
 			operator:   drivenadapters.NewOperatorIntegrationClient(),
 			bknBackend: drivenadapters.NewBknBackendAccess(),
 			knAuthz:    permission.NewKnowledgeNetworkAuthorizer(conf),
@@ -111,6 +117,16 @@ func NewKnToolsServiceWith(operator interfaces.DrivenOperatorIntegration,
 	bknBackend interfaces.BknBackendAccess,
 	knAuthz interfaces.KnowledgeNetworkAuthorizer) KnToolsService {
 	return &knToolsService{operator: operator, bknBackend: bknBackend, knAuthz: knAuthz}
+}
+
+// warnf logs when a logger is configured. A service built without one — tests, and any other
+// construction path — must still be able to search; a missing logger is not a reason to panic in
+// the middle of answering.
+func (s *knToolsService) warnf(ctx context.Context, format string, args ...any) {
+	if s.logger == nil {
+		return
+	}
+	s.logger.WithContext(ctx).Warnf(format, args...)
 }
 
 // SearchTools returns the Function tools this knowledge network has mounted, ranked against a
@@ -140,37 +156,89 @@ func (s *knToolsService) SearchTools(ctx context.Context, req *SearchToolsReq) (
 	}
 
 	query := strings.TrimSpace(req.Query)
-	var hits []interfaces.ToolHit
-	if len(refs) > 0 {
-		hits, err = s.operator.SearchBoundTools(ctx, &interfaces.SearchBoundToolsRequest{
-			Query:    query,
-			ToolRefs: refs,
-			TopK:     limit,
-		})
-		if err != nil {
-			return nil, err
+
+	// One ranking over both transports. Before this the two were retrieved separately — toolbox
+	// tools by a SQL LIKE, MCP tools by a literal substring match here — and appended one list
+	// after the other. Neither carried a comparable score, so the order only said which list came
+	// first. Now both are rows in one index and the order means something.
+	searchRefs := make([]interfaces.SearchCapabilityRef, 0, len(refs)+len(mcpRefs))
+	for _, ref := range refs {
+		boxID, toolID, ok := strings.Cut(ref, "/")
+		if !ok {
+			continue
 		}
+		searchRefs = append(searchRefs, interfaces.SearchCapabilityRef{
+			CapabilityType: interfaces.CapabilityTypeFunction,
+			OwnerID:        boxID,
+			CapabilityID:   toolID,
+		})
+	}
+	for _, ref := range mcpRefs {
+		searchRefs = append(searchRefs, interfaces.SearchCapabilityRef{
+			CapabilityType: interfaces.CapabilityTypeMCPTool,
+			OwnerID:        ref.MCPID,
+			CapabilityID:   ref.ToolName,
+		})
 	}
 
-	matched := s.describeHits(ctx, hits, limit)
-	// MCP tools are appended rather than ranked with the rest: the ranking endpoint indexes
-	// toolbox tools and has no notion of an MCP Server, so these are listed and filtered here.
-	// Ranked hits come first so a query that matched something keeps its order at the top.
-	//
-	// mcpMatched counts what the query kept, not what is mounted. Counting the mounted set would
-	// make total exceed the returned page whenever a query filtered anything out, and the caller
-	// would be told its results were truncated and to narrow a query that was already working.
-	mcpEntries, mcpMatched := s.describeMCPTools(ctx, mcpRefs, query, limit-len(matched))
-	matched = append(matched, mcpEntries...)
-	total := len(hits) + mcpMatched
+	// One more than the page, purely to learn whether there is a next one. The ranking caps its
+	// answer at top_k, so asking for exactly `limit` makes a full page and a truncated page look
+	// identical — the truncation flag could never fire, and a caller would read one page as the
+	// whole answer.
+	hits, err := s.operator.SearchCapabilities(ctx, &interfaces.SearchCapabilitiesRequest{
+		Query:         query,
+		Refs:          searchRefs,
+		TopK:          limit + 1,
+		Types:         []string{interfaces.CapabilityTypeFunction, interfaces.CapabilityTypeMCPTool},
+		MetadataTypes: req.MetadataTypes,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	more := len(hits) > limit
+	if more {
+		hits = hits[:limit]
+	}
+
+	matched := s.describeCapabilityHits(ctx, hits, limit)
+	// total is what the query kept, not what is mounted. Counting the mounted set would make the
+	// total exceed the returned page whenever a query filtered anything out, and the caller would
+	// be told its results were truncated and to narrow a query that was already working.
+	total := len(hits)
 	resp := &SearchToolsResp{Tools: matched, TotalMatched: total}
-	if total > len(matched) {
+
+	// An empty answer has several causes and they want opposite fixes. One message for all of
+	// them sent callers to publish a tool box that was already published, or to broaden a query
+	// that had in fact matched. What separates them is how far the answer got: whether anything
+	// was mounted after narrowing, whether the ranking found anything, and whether what it found
+	// survived the visibility check.
+	fitted := total
+	if fitted > limit {
+		fitted = limit
+	}
+	switch {
+	case len(matched) == 0 && total > 0:
+		// The ranking found tools and the caller-visible catalogue listed none of them. An
+		// unreadable catalogue no longer lands here: those hits are kept without a schema.
+		resp.Message = infraErr.LocalizedDetail(ctx, "ToolsMatchedButNotVisible")
+	case len(matched) == 0 && len(req.MetadataTypes) > 0:
+		// Tools are mounted, just none of the requested kind.
+		resp.Message = infraErr.LocalizedDetail(ctx, "NoToolsOfRequestedKind")
+	case len(matched) == 0:
+		resp.Message = infraErr.LocalizedDetail(ctx, "NoPublishedToolsMatched")
+	case more:
+		// The ranking had at least one more than this page. The only case where narrowing the
+		// query, or raising the limit, is the right advice.
 		resp.Truncated = true
 		resp.Message = infraErr.LocalizedDetail(ctx, "ToolSearchTruncated")
+	case len(matched) < fitted:
+		// Some hits that would have fitted were dropped by the visibility check. Not truncation:
+		// telling the caller to narrow the query would not bring them back.
+		resp.Message = infraErr.LocalizedDetail(ctx, "ToolsMatchedButNotVisible")
 	}
 	if len(resp.Tools) == 0 {
 		resp.Tools = []ToolEntry{}
-		resp.Message = infraErr.LocalizedDetail(ctx, "NoPublishedToolsMatched")
 	}
 	return resp, nil
 }
@@ -263,82 +331,46 @@ type mcpRef struct {
 	ToolName string
 }
 
-// describeHits fills in the input schema and use rule the ranking does not carry.
+// describeCapabilityHits fills in the input schema and use rule the ranking does not carry, and
+// keeps the ranked order across both transports.
 //
-// It reads the caller-visible catalogue with the caller's own token, which is where the second
-// half of the scope comes from: a tool the network mounted but this caller cannot see is absent
-// from that catalogue and is dropped here. Listing it would advertise something execute_tool
-// would then refuse.
+// The order is the point: the two kinds come back interleaved by one fused rank, and rebuilding
+// the answer per kind would put them back into two blocks. Each hit is enriched from the surface
+// that owns it — a toolbox tool from the caller-visible tools listing, an MCP tool from the proxy.
 //
-// One request per toolbox behind the hits rather than per hit, and only for toolboxes that
-// survived ranking — at most `limit` hits, so the fan-out is bounded by the page asked for.
-// describeMCPTools resolves the mounted MCP tools and keeps the ones matching the query.
+// That listing is also the second half of the scope, and it is applied where it can be: a tool the
+// network mounted but this caller cannot see is absent from it and is dropped, because listing it
+// would advertise something execute_tool would then refuse.
 //
-// Matching is literal substring over name and description, the same interim stand-in the toolbox
-// side used before it had an index. One detail call per tool, which is why the caller passes the
-// remaining budget rather than the whole page size.
-// It returns the entries that fit the budget and how many matched the query in total, so the
-// caller can tell "filtered out" apart from "did not fit".
-func (s *knToolsService) describeMCPTools(ctx context.Context, refs []mcpRef, query string,
-	budget int) ([]ToolEntry, int) {
-	if len(refs) == 0 {
-		return nil, 0
-	}
-	needle := strings.ToLower(strings.TrimSpace(query))
-
-	entries := make([]ToolEntry, 0, len(refs))
-	matched := 0
-	for _, ref := range refs {
-		detail, err := s.operator.GetMCPToolDetail(ctx, &interfaces.GetMCPToolDetailRequest{
-			McpID: ref.MCPID, ToolName: ref.ToolName,
-		})
-		if err != nil || detail == nil {
-			// One unreachable MCP Server must not take down discovery of everything else, the
-			// same way one unreadable tool box does not.
-			continue
-		}
-		if needle != "" &&
-			!strings.Contains(strings.ToLower(detail.Name), needle) &&
-			!strings.Contains(strings.ToLower(detail.Description), needle) {
-			continue
-		}
-		matched++
-		if len(entries) >= budget {
-			// Counted but not returned: that is what makes the truncation flag mean something.
-			continue
-		}
-		entries = append(entries, ToolEntry{
-			ToolID:      ref.ToolName,
-			ToolboxID:   ref.MCPID,
-			Name:        detail.Name,
-			Description: detail.Description,
-			InputSchema: detail.InputSchema,
-		})
-	}
-	return entries, matched
-}
-
-func (s *knToolsService) describeHits(ctx context.Context, hits []interfaces.ToolHit, limit int) []ToolEntry {
+// Where it cannot be applied at all — the listing is read with the caller's own bearer token, and
+// the internal face never carries one — the hit is kept with the name and description the index
+// already holds, without an input schema. Dropping it instead is what this used to do, and it
+// answered a working query with "no tools matched; publish your tool box first" while the tool box
+// was published and the ranking had found five of its tools. The name of a mounted capability is
+// not the secret here: the caller is already authorized on the network, the whitelist already
+// narrowed to what the network mounted, and execute_tool re-checks the caller-visible catalogue
+// before anything runs.
+func (s *knToolsService) describeCapabilityHits(ctx context.Context,
+	hits []interfaces.CapabilityHit, limit int) []ToolEntry {
 	if len(hits) == 0 {
 		return nil
 	}
 
+	// One request per toolbox behind the hits rather than per hit, and only for toolboxes that
+	// survived ranking — at most `limit` hits, so the fan-out is bounded by the page asked for.
 	boxOrder := make([]string, 0, len(hits))
 	seenBox := make(map[string]struct{}, len(hits))
 	for _, hit := range hits {
-		if hit.BoxID == "" {
+		if hit.CapabilityType != interfaces.CapabilityTypeFunction || hit.OwnerID == "" {
 			continue
 		}
-		if _, ok := seenBox[hit.BoxID]; ok {
+		if _, ok := seenBox[hit.OwnerID]; ok {
 			continue
 		}
-		seenBox[hit.BoxID] = struct{}{}
-		boxOrder = append(boxOrder, hit.BoxID)
+		seenBox[hit.OwnerID] = struct{}{}
+		boxOrder = append(boxOrder, hit.OwnerID)
 	}
 
-	// toolbox_name stays empty: the caller-visible tools listing does not carry it, and resolving
-	// it would mean walking the account's whole toolbox directory — the fan-out this change
-	// exists to remove. execute_tool needs the ids, and those are exact.
 	catalogue := make([]map[string]interfaces.PublishedToolSummary, len(boxOrder))
 	slots := make(chan struct{}, toolboxFanoutConcurrency)
 	var wg sync.WaitGroup
@@ -351,7 +383,10 @@ func (s *knToolsService) describeHits(ctx context.Context, hits []interfaces.Too
 			listed, err := s.operator.ListPublishedTools(ctx,
 				&interfaces.ListPublishedToolsRequest{ToolboxID: boxID})
 			if err != nil || listed == nil {
-				// One toolbox the caller cannot read must not take down discovery of the rest.
+				// Leave this box's slot nil: unreadable, which is not the same as empty. Logged
+				// because a silent drop here is indistinguishable from "the box has no tools",
+				// and the two want opposite fixes.
+				s.warnf(ctx, "[SearchTools] published tool catalogue unreadable, box_id=%s: %v", boxID, err)
 				return
 			}
 			byID := make(map[string]interfaces.PublishedToolSummary, len(listed.Tools))
@@ -370,24 +405,66 @@ func (s *knToolsService) describeHits(ctx context.Context, hits []interfaces.Too
 
 	entries := make([]ToolEntry, 0, len(hits))
 	for _, hit := range hits {
-		tools := byBox[hit.BoxID]
-		if tools == nil {
-			continue
-		}
-		tool, ok := tools[hit.ToolID]
-		if !ok {
-			continue
-		}
-		entries = append(entries, ToolEntry{
-			ToolID:      hit.ToolID,
-			ToolboxID:   hit.BoxID,
-			Name:        tool.Name,
-			Description: tool.Description,
-			UseRule:     tool.UseRule,
-			InputSchema: tool.InputSchema,
-		})
 		if len(entries) >= limit {
 			break
+		}
+		switch hit.CapabilityType {
+		case interfaces.CapabilityTypeFunction:
+			// A readable box with no tools is a non-nil empty map; nil means the catalogue could
+			// not be read at all. The two want opposite answers, so the distinction is the value,
+			// not the presence of the key.
+			tools := byBox[hit.OwnerID]
+			if tools == nil {
+				// The catalogue could not be read, so visibility is unknown rather than denied.
+				entries = append(entries, ToolEntry{
+					ToolID:      hit.CapabilityID,
+					ToolboxID:   hit.OwnerID,
+					Name:        hit.Name,
+					Description: hit.Description,
+				})
+				continue
+			}
+			tool, ok := tools[hit.CapabilityID]
+			if !ok {
+				// The catalogue was read and this tool is not in it: the caller cannot see it.
+				continue
+			}
+			// toolbox_name stays empty: the caller-visible tools listing does not carry it, and
+			// resolving it would mean walking the account's whole toolbox directory — the fan-out
+			// this design exists to remove. execute_tool needs the ids, and those are exact.
+			entries = append(entries, ToolEntry{
+				ToolID:      hit.CapabilityID,
+				ToolboxID:   hit.OwnerID,
+				Name:        tool.Name,
+				Description: tool.Description,
+				UseRule:     tool.UseRule,
+				InputSchema: tool.InputSchema,
+			})
+		case interfaces.CapabilityTypeMCPTool:
+			detail, err := s.operator.GetMCPToolDetail(ctx, &interfaces.GetMCPToolDetailRequest{
+				McpID: hit.OwnerID, ToolName: hit.CapabilityID,
+			})
+			if err != nil || detail == nil {
+				// An unreachable MCP Server is not an empty one. Keep what the index knows so a
+				// server that is briefly down does not make a network's mounted tools vanish from
+				// search; the input schema is simply absent until it answers again.
+				s.warnf(ctx, "[SearchTools] MCP tool detail unavailable, mcp_id=%s, tool=%s: %v",
+					hit.OwnerID, hit.CapabilityID, err)
+				entries = append(entries, ToolEntry{
+					ToolID:      hit.CapabilityID,
+					ToolboxID:   hit.OwnerID,
+					Name:        hit.Name,
+					Description: hit.Description,
+				})
+				continue
+			}
+			entries = append(entries, ToolEntry{
+				ToolID:      hit.CapabilityID,
+				ToolboxID:   hit.OwnerID,
+				Name:        detail.Name,
+				Description: detail.Description,
+				InputSchema: detail.InputSchema,
+			})
 		}
 	}
 	return entries

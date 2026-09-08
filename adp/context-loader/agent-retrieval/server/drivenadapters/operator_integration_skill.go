@@ -27,8 +27,6 @@ const (
 	readSkillFileURI = "/internal-v1/skills/%s/files/read"
 	// https://{host}:{port}/api/agent-operator-integration/internal-v1/skills/:skill_id/execute
 	executeSkillURI = "/internal-v1/skills/%s/execute"
-	// https://{host}:{port}/api/agent-operator-integration/internal-v1/skills/search
-	searchSkillsURI = "/internal-v1/skills/search"
 	// https://{host}:{port}/api/agent-operator-integration/internal-v1/skills/names
 	skillNamesURI = "/internal-v1/skills/names"
 
@@ -265,52 +263,6 @@ func firstNonEmptyStr(values ...string) string {
 		}
 	}
 	return ""
-}
-
-// SearchBoundSkills ranks a whitelist of Skills against a query.
-//
-// The call goes to internal-v1 with this service's identity rather than the caller's token, which
-// is safe precisely because the whitelist decides the scope: the ids come from what the knowledge
-// network bound, and Execution Factory returns nothing outside them. Sending no ids returns
-// nothing, so an unreachable binding list cannot silently widen into the whole marketplace.
-func (o *operatorIntegrationClient) SearchBoundSkills(ctx context.Context,
-	req *interfaces.SearchBoundSkillsRequest) ([]interfaces.SkillHit, error) {
-	if req == nil || len(req.SkillIDs) == 0 {
-		return []interfaces.SkillHit{}, nil
-	}
-
-	fullURL := o.baseURL + searchSkillsURI
-	header := o.skillHeader(ctx, "operator.skill.search")
-	header["Content-Type"] = "application/json"
-
-	payload := map[string]any{
-		"query":     req.Query,
-		"skill_ids": req.SkillIDs,
-	}
-	if req.TopK > 0 {
-		payload["top_k"] = req.TopK
-	}
-	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#SearchBoundSkills] URL: %s, whitelist=%d",
-		fullURL, len(req.SkillIDs))
-
-	code, respBody, err := o.httpClient.Post(ctx, fullURL, header, payload)
-	if err != nil {
-		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#SearchBoundSkills] Request failed, err: %v", err)
-		return nil, skillUpstreamError(ctx, code, "SkillSearchRequestFailed", err)
-	}
-
-	var raw struct {
-		Entries []interfaces.SkillHit `json:"entries"`
-	}
-	if err = sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
-		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#SearchBoundSkills] Unmarshal failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-			infraErr.LocalizedDetail(ctx, "SkillSearchResponseInvalid"))
-	}
-	if raw.Entries == nil {
-		return []interfaces.SkillHit{}, nil
-	}
-	return raw.Entries, nil
 }
 
 // GetSkillNamesByIDs resolves Skill names from Execution Factory's registry.
