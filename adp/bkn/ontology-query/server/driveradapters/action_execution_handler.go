@@ -99,7 +99,7 @@ func (r *restHandler) ExecuteAction(c *gin.Context, visitor hydra.Visitor) {
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
-	otellog.LogInfo(ctx, fmt.Sprintf("行动执行请求参数: [%s,%v]", c.Request.RequestURI, c.Request.Body))
+	otellog.LogInfo(ctx, fmt.Sprintf("Action execution request: [%s]", c.Request.RequestURI))
 
 	// Get path parameters
 	knID := c.Param("kn_id")

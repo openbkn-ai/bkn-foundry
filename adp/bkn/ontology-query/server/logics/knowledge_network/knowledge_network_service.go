@@ -28,6 +28,7 @@ import (
 	"ontology-query/locale"
 	"ontology-query/logics"
 	"ontology-query/logics/object_type"
+	permissionlogic "ontology-query/logics/permission"
 )
 
 var (
@@ -36,21 +37,23 @@ var (
 )
 
 type knowledgeNetworkService struct {
-	appSetting *common.AppSetting
-	omAccess   interfaces.OntologyManagerAccess
-	ots        interfaces.ObjectTypeService
-	vba        interfaces.VegaBackendAccess
-	proxy      interfaces.ProxyContextResolver
+	appSetting     *common.AppSetting
+	omAccess       interfaces.OntologyManagerAccess
+	ots            interfaces.ObjectTypeService
+	vba            interfaces.VegaBackendAccess
+	proxy          interfaces.ProxyContextResolver
+	propertyAccess interfaces.PropertyAccessService
 }
 
 func NewKnowledgeNetworkService(appSetting *common.AppSetting) interfaces.KnowledgeNetworkService {
 	knServiceOnce.Do(func() {
 		knService = &knowledgeNetworkService{
-			appSetting: appSetting,
-			omAccess:   logics.OMA,
-			ots:        object_type.NewObjectTypeService(appSetting),
-			vba:        logics.VBA,
-			proxy:      logics.PCR,
+			appSetting:     appSetting,
+			omAccess:       logics.OMA,
+			ots:            object_type.NewObjectTypeService(appSetting),
+			vba:            logics.VBA,
+			proxy:          logics.PCR,
+			propertyAccess: permissionlogic.NewPropertyAccessService(appSetting),
 		}
 	})
 	return knService
@@ -88,6 +91,9 @@ func (kns *knowledgeNetworkService) SearchSubgraph(ctx context.Context,
 			return resps, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).WithErrorDetails(err.Error())
 		}
+	}
+	if err := kns.requireFullPathInputs(ctx, query.KNID, typePaths); err != nil {
+		return resps, err
 	}
 
 	// 2. Retrieve source object type instances.
@@ -131,7 +137,7 @@ func (kns *knowledgeNetworkService) SearchSubgraph(ctx context.Context,
 
 	// 4. Assemble the final result.
 	objectGraph.TotalCount = startObjects.TotalCount
-	objectGraph.SearchAfter = startObjects.SearchAfter
+	objectGraph.Cursor = startObjects.Cursor
 	objectGraph.CuurentPathNumber = len(objectGraph.RelationPaths)
 
 	span.SetStatus(codes.Ok, "")
@@ -234,6 +240,10 @@ func (kns *knowledgeNetworkService) buildObjectSubgraphByTypePaths(
 		}
 	}
 	typePath.TypeEdges = path.Edges
+	if err := kns.requireFullPathInputs(ctx, query.KNID, []interfaces.RelationTypePath{typePath}); err != nil {
+		typePathsObjectCtx.errCh <- err
+		return
+	}
 
 	// 2. Retrieve source object type instances.
 	startObjectQuery := &interfaces.ObjectQueryBaseOnObjectType{
@@ -299,7 +309,7 @@ func (kns *knowledgeNetworkService) buildObjectSubgraphByTypePaths(
 		RelationPaths:     typePathObjectCtx.relationPaths,
 		Objects:           typePathObjectCtx.objectsMap,
 		TotalCount:        startObjects.TotalCount,
-		SearchAfter:       startObjects.SearchAfter,
+		Cursor:            startObjects.Cursor,
 		CuurentPathNumber: len(typePathObjectCtx.relationPaths),
 	}
 }
@@ -609,10 +619,11 @@ func (kns *knowledgeNetworkService) expandObjectPathsBatch(ctx context.Context,
 						break
 					}
 
-					nextObjectID, uk := logics.GetObjectID(nextObject, nextObjects.ObjectType)
-					if nextObjectID == "" {
+					nextLevelObject, visibleIdentity := levelObjectFromProjectedRow(nextObject, nextObjects)
+					if !visibleIdentity {
 						continue
 					}
+					nextObjectID := nextLevelObject.ObjectID
 
 					// Build a path key to detect cycles.
 					// pathKey := ""
@@ -631,39 +642,12 @@ func (kns *knowledgeNetworkService) expandObjectPathsBatch(ctx context.Context,
 					// If the current object has not been added, add it to the object mapping.
 					_, exists = objectsMap[currentObj.ObjectID]
 					if !exists {
-						objInfo := interfaces.ObjectInfoInSubgraph{
-							ObjectTypeId:   currentObj.ObjectType.OTID,
-							ObjectTypeName: currentObj.ObjectType.OTName,
-							Properties:     currentObj.ObjectData,
-						}
-						if !logics.ShouldExcludeSystemProperty(interfaces.SYSTEM_PROPERTY_INSTANCE_ID, query.ExcludeSystemProperties) {
-							objInfo.InstanceID = currentObj.ObjectID
-						}
-						if !logics.ShouldExcludeSystemProperty(interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY, query.ExcludeSystemProperties) {
-							objInfo.InstanceIdentity = currentObj.ObjectUK
-						}
-						if !logics.ShouldExcludeSystemProperty(interfaces.SYSTEM_PROPERTY_DISPLAY, query.ExcludeSystemProperties) {
-							objInfo.Display = currentObj.ObjectData[currentObj.ObjectType.DisplayKey]
-						}
-						objectsMap[currentObj.ObjectID] = objInfo
+						objectsMap[currentObj.ObjectID] = objectInfoFromLevelObject(currentObj.LevelObject,
+							query.ExcludeSystemProperties)
 					}
 
 					// Add the next-layer object to the object mapping.
-					objInfo := interfaces.ObjectInfoInSubgraph{
-						ObjectTypeId:   nextObjects.ObjectType.OTID,
-						ObjectTypeName: nextObjects.ObjectType.OTName,
-						Properties:     nextObject,
-					}
-					if !logics.ShouldExcludeSystemProperty(interfaces.SYSTEM_PROPERTY_INSTANCE_ID, query.ExcludeSystemProperties) {
-						objInfo.InstanceID = nextObjectID
-					}
-					if !logics.ShouldExcludeSystemProperty(interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY, query.ExcludeSystemProperties) {
-						objInfo.InstanceIdentity = uk
-					}
-					if !logics.ShouldExcludeSystemProperty(interfaces.SYSTEM_PROPERTY_DISPLAY, query.ExcludeSystemProperties) {
-						objInfo.Display = nextObject[nextObjects.ObjectType.DisplayKey]
-					}
-					objectsMap[nextObjectID] = objInfo
+					objectsMap[nextObjectID] = objectInfoFromLevelObject(nextLevelObject, query.ExcludeSystemProperties)
 
 					// Add the new edge to all paths of the current object.
 					newPaths, pathExisted := kns.extendPathsWithNewEdge(query, currentObj.Paths, currentObj.ObjectID, nextObjectID, edge)
@@ -672,15 +656,10 @@ func (kns *knowledgeNetworkService) expandObjectPathsBatch(ctx context.Context,
 					}
 
 					// Record next-layer objects for continued expansion. They must carry ObjectType/ObjectUK because later edges such as filtered_cross_join need to query instances again.
+					nextLevelObject.PathFrom = currentObj.ObjectID
 					nextLevel = append(nextLevel, interfaces.LevelObjectWithPath{
-						LevelObject: interfaces.LevelObject{
-							ObjectID:   nextObjectID,
-							ObjectUK:   uk,
-							ObjectData: nextObject,
-							ObjectType: nextObjects.ObjectType,
-							PathFrom:   currentObj.ObjectID,
-						},
-						Paths: newPaths, // Carry the expanded paths.
+						LevelObject: nextLevelObject,
+						Paths:       newPaths, // Carry the expanded paths.
 					})
 
 				}
@@ -704,8 +683,8 @@ func (kns *knowledgeNetworkService) expandObjectPathsBatch(ctx context.Context,
 	// Initialize first-level objects.
 	var initialLevel []interfaces.LevelObjectWithPath
 	for _, startObjectData := range startObjects.Datas {
-		startObjectID, startObjectUK := logics.GetObjectID(startObjectData, startObjects.ObjectType)
-		if startObjectID == "" {
+		startLevelObject, visibleIdentity := levelObjectFromProjectedRow(startObjectData, startObjects)
+		if !visibleIdentity {
 			continue
 		}
 
@@ -716,14 +695,8 @@ func (kns *knowledgeNetworkService) expandObjectPathsBatch(ctx context.Context,
 		}
 
 		initialLevel = append(initialLevel, interfaces.LevelObjectWithPath{
-			LevelObject: interfaces.LevelObject{
-				ObjectID:   startObjectID,
-				ObjectType: startObjects.ObjectType,
-				ObjectUK:   startObjectUK,
-				ObjectData: startObjectData,
-				PathFrom:   "", // A starting object has no origin.
-			},
-			Paths: []interfaces.RelationPath{initialPath},
+			LevelObject: startLevelObject,
+			Paths:       []interfaces.RelationPath{initialPath},
 		})
 	}
 
@@ -1167,7 +1140,8 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 						relationDownstreamErrorCode(downstream.StatusCode))
 				}
 				return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).WithErrorDetails(err.Error())
+					oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).
+					WithErrorDetails("relation backing resource query failed")
 			}
 			if resp == nil {
 				return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
@@ -1329,6 +1303,9 @@ func (kns *knowledgeNetworkService) SearchSubgraphByObjects(ctx context.Context,
 	if err != nil {
 		return result, err
 	}
+	if err := kns.requireFullRelationInputs(ctx, query.KNID, objectTypeMap, allRelationTypes); err != nil {
+		return result, err
+	}
 
 	// 3. Match relations.
 	relations, objectsInRelations, err := kns.matchRelations(ctx, query, objectsByType, allRelationTypes)
@@ -1403,16 +1380,11 @@ func (kns *knowledgeNetworkService) processInputObjects(ctx context.Context,
 		// Build the LevelObject list.
 		levelObjects := make([]interfaces.LevelObject, 0, len(objects.Datas))
 		for _, objData := range objects.Datas {
-			objectID, uk := logics.GetObjectID(objData, objects.ObjectType)
-			if objectID == "" {
+			levelObject, visibleIdentity := levelObjectFromProjectedRow(objData, objects)
+			if !visibleIdentity {
 				continue
 			}
-			levelObjects = append(levelObjects, interfaces.LevelObject{
-				ObjectID:   objectID,
-				ObjectUK:   uk,
-				ObjectData: objData,
-				ObjectType: objects.ObjectType,
-			})
+			levelObjects = append(levelObjects, levelObject)
 		}
 		objectsByType[otID] = levelObjects
 	}
@@ -1496,7 +1468,7 @@ func (kns *knowledgeNetworkService) matchRelations(ctx context.Context,
 		// Use the relation type source and target object sets to match relations and return matched relations.
 		matchedRelations, err := kns.matchRelationsForPair(ctx, query, sourceObjects, targetObjects, edge)
 		if err != nil {
-			logger.Warnf("匹配关系失败: relationType=%s, error=%v", relationType.RTID, err)
+			logger.Warnf("Relation matching failed for relation type [%s]", relationType.RTID)
 			continue
 		}
 
@@ -1677,20 +1649,7 @@ func (kns *knowledgeNetworkService) buildSubgraphFromObjects(query *interfaces.S
 	// Build the object mapping table.
 	for _, levelObjects := range objectsByType {
 		for _, levelObj := range levelObjects {
-			objInfo := interfaces.ObjectInfoInSubgraph{
-				ObjectTypeId:   levelObj.ObjectType.OTID,
-				ObjectTypeName: levelObj.ObjectType.OTName,
-				Properties:     levelObj.ObjectData,
-			}
-			if !logics.ShouldExcludeSystemProperty(interfaces.SYSTEM_PROPERTY_INSTANCE_ID, query.ExcludeSystemProperties) {
-				objInfo.InstanceID = levelObj.ObjectID
-			}
-			if !logics.ShouldExcludeSystemProperty(interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY, query.ExcludeSystemProperties) {
-				objInfo.InstanceIdentity = levelObj.ObjectUK
-			}
-			if !logics.ShouldExcludeSystemProperty(interfaces.SYSTEM_PROPERTY_DISPLAY, query.ExcludeSystemProperties) {
-				objInfo.Display = levelObj.ObjectData[levelObj.ObjectType.DisplayKey]
-			}
+			objInfo := objectInfoFromLevelObject(levelObj, query.ExcludeSystemProperties)
 
 			// Determine whether it is an isolated object.
 			if objectsInRelations[levelObj.ObjectID] {

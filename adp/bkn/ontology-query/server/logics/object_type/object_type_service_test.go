@@ -1308,7 +1308,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 			So(result, ShouldResemble, map[string]any{"result": "success"})
 		})
 
-		Convey("失败 - 工具执行错误保留具体原因", func() {
+		Convey("失败 - 工具执行错误不回显下游载荷", func() {
 			localizedCtx := rest.WithLanguage(ctx, rest.AmericanEnglish)
 			logicProp := &interfaces.LogicProperty{
 				Name: "logic_prop1",
@@ -1321,14 +1321,14 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 			}
 			toolValue := interfaces.ToolProperty{Parameters: map[string]any{}}
 			aoAccess.EXPECT().ExecuteToolAsProxy(gomock.Any(), "box1", "tool1", gomock.Any()).
-				Return(nil, fmt.Errorf("tool failed"))
+				Return(nil, fmt.Errorf("tool failed with raw-property-watermark-1342"))
 
 			result, err := service.handleToolProperty(localizedCtx, "kn1", "ot1", "logic_prop1", toolValue, logicProp, nil)
 			So(result, ShouldBeNil)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*rest.HTTPError)
 			So(httpErr.BaseError.ErrorDetails, ShouldEqual,
-				"Toolbox box1 tool tool1 failed while evaluating logic property logic_prop1: tool failed")
+				"Toolbox box1 tool tool1 failed while evaluating logic property logic_prop1: tool execution failed")
 		})
 
 		Convey("失败 - 指标动态参数错误保留具体原因", func() {

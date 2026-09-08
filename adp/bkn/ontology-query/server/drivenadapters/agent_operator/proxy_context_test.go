@@ -7,6 +7,7 @@ package agent_operator
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 
 	rmock "github.com/openbkn-ai/bkn-foundry/comm-go/rest/mock"
@@ -81,6 +82,53 @@ func TestExecuteMCPUsesProxyAsEffectivePrincipal(t *testing.T) {
 	_, err := access.ExecuteMCPAsProxy(ctx, "mcp-1", "tool", interfaces.MCPExecutionRequest{})
 	if err != nil {
 		t.Fatalf("ExecuteMCP() error = %v", err)
+	}
+}
+
+func TestToolAndMCPFailuresDoNotReturnRawResultValues(t *testing.T) {
+	const watermark = "raw-property-watermark-1342"
+	tests := []struct {
+		name     string
+		target   string
+		response string
+		execute  func(*agentOperatorAccess, context.Context) error
+	}{
+		{
+			name: "tool", target: "http://operator/tool-box/box-1/proxy/tool-1",
+			response: `{"status_code":500,"body":{"value":"` + watermark + `"}}`,
+			execute: func(access *agentOperatorAccess, ctx context.Context) error {
+				_, err := access.ExecuteToolAsProxy(ctx, "box-1", "tool-1", interfaces.ToolExecutionRequest{})
+				return err
+			},
+		},
+		{
+			name: "mcp", target: "http://operator/mcp/proxy/mcp-1/tool/call",
+			response: `{"content":[{"type":"text","text":"` + watermark + `"}],"is_error":true}`,
+			execute: func(access *agentOperatorAccess, ctx context.Context) error {
+				_, err := access.ExecuteMCPAsProxy(ctx, "mcp-1", "tool", interfaces.MCPExecutionRequest{})
+				return err
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			httpClient := rmock.NewMockHTTPClient(ctrl)
+			access := &agentOperatorAccess{httpClient: httpClient, appSetting: &commonSettingForProxyTest}
+			targetType := interfaces.ProxyTargetTypeToolBox
+			targetID := "box-1"
+			if test.name == "mcp" {
+				targetType = interfaces.ProxyTargetTypeMCP
+				targetID = "mcp-1"
+			}
+			httpClient.EXPECT().PostNoUnmarshal(gomock.Any(), test.target, gomock.Any(), gomock.Any()).
+				Return(http.StatusOK, []byte(test.response), nil)
+
+			err := test.execute(access, actionProxyContext(targetType, targetID))
+			if err == nil || strings.Contains(err.Error(), watermark) {
+				t.Fatalf("failure exposed raw result: %v", err)
+			}
+		})
 	}
 }
 
