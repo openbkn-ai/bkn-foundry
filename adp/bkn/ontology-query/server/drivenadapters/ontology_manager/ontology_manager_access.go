@@ -335,29 +335,8 @@ func (oma *ontologyManagerAccess) GetRelationTypePathsBaseOnSource(ctx context.C
 		// Generate path IDs with simple numbers; they only need to be unique within the current query for later path quotas.
 		response.TypePaths[i].ID = i
 		for j := range response.TypePaths[i].TypeEdges {
-			switch response.TypePaths[i].TypeEdges[j].RelationType.Type {
-			case interfaces.RELATION_TYPE_DIRECT:
-				var directMapping []interfaces.Mapping
-				jsonData, err := sonic.Marshal(response.TypePaths[i].TypeEdges[j].RelationType.MappingRules)
-				if err != nil {
-					return nil, fmt.Errorf("derived Config Marshal error: %s", err.Error())
-				}
-				err = sonic.Unmarshal(jsonData, &directMapping)
-				if err != nil {
-					return nil, fmt.Errorf("derived Config Unmarshal error: %s", err.Error())
-				}
-				response.TypePaths[i].TypeEdges[j].RelationType.MappingRules = directMapping
-			case interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN:
-				var fcj interfaces.FilteredCrossJoinMapping
-				jsonData, err := sonic.Marshal(response.TypePaths[i].TypeEdges[j].RelationType.MappingRules)
-				if err != nil {
-					return nil, fmt.Errorf("derived Config Marshal error: %s", err.Error())
-				}
-				err = sonic.Unmarshal(jsonData, &fcj)
-				if err != nil {
-					return nil, fmt.Errorf("derived Config Unmarshal error: %s", err.Error())
-				}
-				response.TypePaths[i].TypeEdges[j].RelationType.MappingRules = &fcj
+			if err := decodeRelationTypeMappingRules(&response.TypePaths[i].TypeEdges[j].RelationType); err != nil {
+				return nil, err
 			}
 		}
 	}
@@ -366,6 +345,51 @@ func (oma *ontologyManagerAccess) GetRelationTypePathsBaseOnSource(ctx context.C
 	oteltrace.AddHttpAttrs4Ok(span, respCode)
 
 	return response.TypePaths, nil
+}
+
+func decodeRelationTypeMappingRules(relationType *interfaces.RelationType) error {
+	if relationType == nil || relationType.MappingRules == nil {
+		return nil
+	}
+	jsonData, err := sonic.Marshal(relationType.MappingRules)
+	if err != nil {
+		return fmt.Errorf("derived Config Marshal error: %s", err.Error())
+	}
+	switch relationType.Type {
+	case interfaces.RELATION_TYPE_DIRECT:
+		var directMapping []interfaces.Mapping
+		if err := sonic.Unmarshal(jsonData, &directMapping); err != nil {
+			return fmt.Errorf("derived Config Unmarshal error: %s", err.Error())
+		}
+		relationType.MappingRules = directMapping
+		return nil
+	case interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN:
+		var filteredCrossJoin interfaces.FilteredCrossJoinMapping
+		if err := sonic.Unmarshal(jsonData, &filteredCrossJoin); err != nil {
+			return fmt.Errorf("derived Config Unmarshal error: %s", err.Error())
+		}
+		relationType.MappingRules = &filteredCrossJoin
+		return nil
+	}
+	if _, typed := relationType.MappingRules.(*interfaces.InDirectMapping); typed {
+		return nil
+	}
+	if _, typed := relationType.MappingRules.(interfaces.InDirectMapping); typed {
+		return nil
+	}
+	raw, isMap := relationType.MappingRules.(map[string]any)
+	if !isMap {
+		return nil
+	}
+	if _, indirect := raw["backing_data_source"]; !indirect {
+		return nil
+	}
+	var indirectMapping interfaces.InDirectMapping
+	if err := sonic.Unmarshal(jsonData, &indirectMapping); err != nil {
+		return fmt.Errorf("derived Config Unmarshal error: %s", err.Error())
+	}
+	relationType.MappingRules = &indirectMapping
+	return nil
 }
 
 func (oma *ontologyManagerAccess) GetRelationType(ctx context.Context, knID string,
@@ -473,29 +497,8 @@ func (oma *ontologyManagerAccess) GetRelationType(ctx context.Context, knID stri
 		return emptyRelationType, false, nil
 	}
 
-	switch response.RelationTypes[0].Type {
-	case interfaces.RELATION_TYPE_DIRECT:
-		var directMapping []interfaces.Mapping
-		jsonData, err := sonic.Marshal(response.RelationTypes[0].MappingRules)
-		if err != nil {
-			return emptyRelationType, false, fmt.Errorf("derived Config Marshal error: %s", err.Error())
-		}
-		err = sonic.Unmarshal(jsonData, &directMapping)
-		if err != nil {
-			return emptyRelationType, false, fmt.Errorf("derived Config Unmarshal error: %s", err.Error())
-		}
-		response.RelationTypes[0].MappingRules = directMapping
-	case interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN:
-		var fcj interfaces.FilteredCrossJoinMapping
-		jsonData, err := sonic.Marshal(response.RelationTypes[0].MappingRules)
-		if err != nil {
-			return emptyRelationType, false, fmt.Errorf("derived Config Marshal error: %s", err.Error())
-		}
-		err = sonic.Unmarshal(jsonData, &fcj)
-		if err != nil {
-			return emptyRelationType, false, fmt.Errorf("derived Config Unmarshal error: %s", err.Error())
-		}
-		response.RelationTypes[0].MappingRules = &fcj
+	if err := decodeRelationTypeMappingRules(&response.RelationTypes[0]); err != nil {
+		return emptyRelationType, false, err
 	}
 
 	// Add trace attributes for success.
@@ -593,29 +596,8 @@ func (oma *ontologyManagerAccess) ListRelationTypes(ctx context.Context, knID st
 
 	// Convert MappingRules for each relation type.
 	for i := range response.RelationTypes {
-		switch response.RelationTypes[i].Type {
-		case interfaces.RELATION_TYPE_DIRECT:
-			var directMapping []interfaces.Mapping
-			jsonData, err := sonic.Marshal(response.RelationTypes[i].MappingRules)
-			if err != nil {
-				return nil, fmt.Errorf("derived Config Marshal error: %s", err.Error())
-			}
-			err = sonic.Unmarshal(jsonData, &directMapping)
-			if err != nil {
-				return nil, fmt.Errorf("derived Config Unmarshal error: %s", err.Error())
-			}
-			response.RelationTypes[i].MappingRules = directMapping
-		case interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN:
-			var fcj interfaces.FilteredCrossJoinMapping
-			jsonData, err := sonic.Marshal(response.RelationTypes[i].MappingRules)
-			if err != nil {
-				return nil, fmt.Errorf("derived Config Marshal error: %s", err.Error())
-			}
-			err = sonic.Unmarshal(jsonData, &fcj)
-			if err != nil {
-				return nil, fmt.Errorf("derived Config Unmarshal error: %s", err.Error())
-			}
-			response.RelationTypes[i].MappingRules = &fcj
+		if err := decodeRelationTypeMappingRules(&response.RelationTypes[i]); err != nil {
+			return nil, err
 		}
 	}
 

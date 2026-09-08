@@ -24,6 +24,23 @@ import (
 	omock "ontology-query/interfaces/mock"
 )
 
+type fullMetricPropertyAccessStub struct{}
+
+func (fullMetricPropertyAccessStub) ResolvePropertyLevels(_ context.Context,
+	items []interfaces.PropertyLevelsRequestItem) ([]interfaces.PropertyLevelsDecisionEntry, error) {
+	entries := make([]interfaces.PropertyLevelsDecisionEntry, 0, len(items))
+	for _, item := range items {
+		entry := interfaces.PropertyLevelsDecisionEntry{ObjectTypeRef: item.ObjectTypeRef}
+		for _, property := range item.Properties {
+			entry.Properties = append(entry.Properties, interfaces.PropertyAccessDecision{
+				Name: property, Level: interfaces.PropertyAccessFull,
+			})
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
 type metricProxyResolverStub struct {
 	bindings []interfaces.TrustedProxyBinding
 	err      error
@@ -436,10 +453,11 @@ func Test_metricQueryService_QueryMetricData(t *testing.T) {
 		vba := omock.NewMockVegaBackendAccess(ctrl)
 
 		svc := &metricQueryService{
-			appSetting: &common.AppSetting{},
-			oma:        oma,
-			vba:        vba,
-			proxy:      &metricProxyResolverStub{},
+			appSetting:     &common.AppSetting{},
+			oma:            oma,
+			vba:            vba,
+			proxy:          &metricProxyResolverStub{},
+			propertyAccess: fullMetricPropertyAccessStub{},
 		}
 
 		def := &interfaces.MetricDefinition{
@@ -701,10 +719,11 @@ func Test_metricQueryService_DryRunMetricData(t *testing.T) {
 		vba := omock.NewMockVegaBackendAccess(ctrl)
 
 		svc := &metricQueryService{
-			appSetting: &common.AppSetting{},
-			oma:        oma,
-			vba:        vba,
-			proxy:      &metricProxyResolverStub{},
+			appSetting:     &common.AppSetting{},
+			oma:            oma,
+			vba:            vba,
+			proxy:          &metricProxyResolverStub{},
+			propertyAccess: fullMetricPropertyAccessStub{},
 		}
 
 		Convey("Fails when kn_id mismatches metric_config.kn_id\n", func() {

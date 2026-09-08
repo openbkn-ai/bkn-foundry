@@ -149,7 +149,8 @@ func safeObjectQueryShape(query *interfaces.ObjectQueryBaseOnObjectType) map[str
 		"exclude_props_hash":      bkntrace.HashValue(query.ExcludeSystemProperties),
 		"has_actual_condition":    query.ActualCondition != nil,
 		"has_object_query_info":   query.ObjectQueryInfo != nil,
-		"search_after_value_hash": bkntrace.HashValue(query.SearchAfter),
+		"has_cursor":              strings.TrimSpace(query.Cursor) != "",
+		"has_internal_page_state": len(query.SearchAfter) > 0,
 	}
 }
 

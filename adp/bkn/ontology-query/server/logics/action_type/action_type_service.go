@@ -26,6 +26,7 @@ import (
 	"ontology-query/interfaces"
 	"ontology-query/logics"
 	"ontology-query/logics/object_type"
+	propertyaccess "ontology-query/logics/property_access"
 )
 
 var (
@@ -151,6 +152,7 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 			return respActions, nil
 		}
 	}
+	actionReturnProperties, actionDataDependencies := actionPropertyDependencies(actionType, objectType)
 
 	// 3. Handle special logic for add actions.
 	if actionType.ActionType == "add" && len(query.InstanceIdentities) > 0 {
@@ -169,9 +171,11 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 				IncludeTypeInfo:         true,
 				IncludeLogicParams:      query.IncludeLogicParams,
 				ExcludeSystemProperties: query.ExcludeSystemProperties,
+				RequiredFullProperties:  actionDataDependencies,
 			},
 			ObjectQueryInfo: &interfaces.ObjectQueryInfo{
 				InstanceIdentity: query.InstanceIdentities,
+				Properties:       actionReturnProperties,
 			},
 		}
 		instanceObjects, err := ats.ots.GetObjectsByObjectTypeID(ctx, instanceQuery)
@@ -189,7 +193,7 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 				if actionType.Condition != nil {
 					satisfies, err := logics.EvaluateInstanceAgainstCondition(ctx, instanceIdentity, actionType.Condition, &objectType)
 					if err != nil {
-						logger.Errorf("Error evaluating condition for instance[%v], error: %v", instanceIdentity, err)
+						logger.Errorf("Error evaluating add-action condition for action type [%s]", actionType.ATID)
 						continue
 					}
 					if !satisfies {
@@ -251,9 +255,11 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 			IncludeTypeInfo:         true,
 			IncludeLogicParams:      query.IncludeLogicParams,
 			ExcludeSystemProperties: query.ExcludeSystemProperties,
+			RequiredFullProperties:  actionDataDependencies,
 		},
 		ObjectQueryInfo: &interfaces.ObjectQueryInfo{
 			InstanceIdentity: query.InstanceIdentities,
+			Properties:       actionReturnProperties,
 		},
 	}
 	objects, err := ats.ots.GetObjectsByObjectTypeID(ctx, objectQuery)
@@ -340,6 +346,62 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 	}
 
 	return respActions, nil
+}
+
+func actionPropertyDependencies(actionType interfaces.ActionType,
+	objectType interfaces.ObjectType) ([]string, []string) {
+	dataProperties := make(map[string]struct{}, len(objectType.DataProperties))
+	knownProperties := make(map[string]struct{}, len(objectType.DataProperties)+len(objectType.LogicProperties))
+	for _, property := range objectType.DataProperties {
+		dataProperties[property.Name] = struct{}{}
+		knownProperties[property.Name] = struct{}{}
+	}
+	for _, property := range objectType.LogicProperties {
+		if property != nil {
+			knownProperties[property.Name] = struct{}{}
+		}
+	}
+	returnProperties := make([]string, 0, len(actionType.Parameters))
+	fullDependencies := make([]string, 0, len(actionType.Parameters))
+	seen := map[string]struct{}{}
+	for _, parameter := range actionType.Parameters {
+		if parameter.ValueFrom != interfaces.LOGIC_PARAMS_VALUE_FROM_PROP {
+			continue
+		}
+		name, ok := parameter.Value.(string)
+		if !ok || name == "" {
+			continue
+		}
+		if _, exists := knownProperties[name]; !exists {
+			continue
+		}
+		if _, duplicate := seen[name]; duplicate {
+			continue
+		}
+		seen[name] = struct{}{}
+		returnProperties = append(returnProperties, name)
+		if _, isDataProperty := dataProperties[name]; isDataProperty {
+			fullDependencies = append(fullDependencies, name)
+		}
+	}
+	propertyNames := make([]string, 0, len(dataProperties))
+	for name := range dataProperties {
+		propertyNames = append(propertyNames, name)
+	}
+	for _, name := range propertyaccess.CollectConditionFields(actionType.Condition, propertyNames) {
+		if _, isDataProperty := dataProperties[name]; !isDataProperty {
+			continue
+		}
+		if _, duplicate := seen[name]; duplicate {
+			continue
+		}
+		seen[name] = struct{}{}
+		fullDependencies = append(fullDependencies, name)
+	}
+	if len(returnProperties) == 0 {
+		returnProperties = append(returnProperties, objectType.PrimaryKeys...)
+	}
+	return returnProperties, fullDependencies
 }
 
 // buildActionFromInstanceData builds action data from instance data

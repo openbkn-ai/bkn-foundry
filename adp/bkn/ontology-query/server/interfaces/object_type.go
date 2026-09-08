@@ -113,6 +113,10 @@ type CommonQueryParameters struct {
 	IncludeLogicParams      bool
 	IgnoringStore           bool
 	ExcludeSystemProperties []string
+	// RequiredFullProperties are request-local dependency fields. They may be
+	// fetched for an internal calculation but are never made returnable solely
+	// because they appear in this list.
+	RequiredFullProperties []string `json:"-"`
 }
 
 type ObjectTypeWithKeyField struct {

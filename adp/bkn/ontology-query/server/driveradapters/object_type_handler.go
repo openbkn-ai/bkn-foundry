@@ -171,8 +171,8 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 	// Set related API attributes on the trace.
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	// Record API call parameters: c.Request.RequestURI and body.
-	otellog.LogInfo(ctx, fmt.Sprintf("对象数据查询请求参数: [%s,%v]", c.Request.RequestURI, c.Request.Body))
+	// Record only the route; the body may contain full object-property values.
+	otellog.LogInfo(ctx, fmt.Sprintf("Object data query request: [%s]", c.Request.RequestURI))
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
@@ -336,8 +336,8 @@ func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor
 	// Set related API attributes on the trace.
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	// Record API call parameters: c.Request.RequestURI and body.
-	otellog.LogInfo(ctx, fmt.Sprintf("对象属性值查询请求参数: [%s,%v]", c.Request.RequestURI, c.Request.Body))
+	// Record only the route; the body may contain full object-property values.
+	otellog.LogInfo(ctx, fmt.Sprintf("Object property query request: [%s]", c.Request.RequestURI))
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")

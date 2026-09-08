@@ -83,8 +83,8 @@ func (r *restHandler) GetObjectsSubgraph(c *gin.Context, visitor hydra.Visitor) 
 	// Set related API attributes on the trace.
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	// Record API call parameters: c.Request.RequestURI and body.
-	otellog.LogInfo(ctx, fmt.Sprintf("对象子图查询请求参数: [%s,%v]", c.Request.RequestURI, c.Request.Body))
+	// Record only the route; the body may contain full object-property values.
+	otellog.LogInfo(ctx, fmt.Sprintf("Object subgraph query request: [%s]", c.Request.RequestURI))
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
@@ -141,6 +141,12 @@ func (r *restHandler) GetObjectsSubgraph(c *gin.Context, visitor hydra.Visitor) 
 
 		rest.ReplyError(c, httpErr)
 
+		return
+	}
+	if len(query.SearchAfter) > 0 {
+		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails("raw search_after is not accepted; use cursor"))
 		return
 	}
 
@@ -210,8 +216,8 @@ func (r *restHandler) GetObjectsSubgraphByTypePath(c *gin.Context, visitor hydra
 	// Set related API attributes on the trace.
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	// Record API call parameters: c.Request.RequestURI and body.
-	otellog.LogInfo(ctx, fmt.Sprintf("对象子图查询请求参数: [%s,%v]", c.Request.RequestURI, c.Request.Body))
+	// Record only the route; the body may contain full object-property values.
+	otellog.LogInfo(ctx, fmt.Sprintf("Object subgraph path query request: [%s]", c.Request.RequestURI))
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
@@ -269,6 +275,16 @@ func (r *restHandler) GetObjectsSubgraphByTypePath(c *gin.Context, visitor hydra
 		rest.ReplyError(c, httpErr)
 
 		return
+	}
+	for _, path := range paths.TypePaths {
+		for _, objectType := range path.ObjectTypes {
+			if len(objectType.SearchAfter) > 0 {
+				rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest,
+					oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
+					WithErrorDetails("raw search_after is not accepted; use cursor"))
+				return
+			}
+		}
 	}
 	query := interfaces.SubGraphQueryBaseOnTypePath{
 		Paths:                 paths,
@@ -359,8 +375,8 @@ func (r *restHandler) GetObjectsSubgraphByObjects(c *gin.Context, visitor hydra.
 	// Set related API attributes on the trace.
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	// Record API call parameters: c.Request.RequestURI and body.
-	otellog.LogInfo(ctx, fmt.Sprintf("基于一组对象实例组织关系子图查询请求参数: [%s,%v]", c.Request.RequestURI, c.Request.Body))
+	// Record only the route; the body may contain full object-property values.
+	otellog.LogInfo(ctx, fmt.Sprintf("Object-set subgraph query request: [%s]", c.Request.RequestURI))
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")

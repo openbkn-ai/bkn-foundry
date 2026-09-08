@@ -141,7 +141,11 @@ func Test_knowledgeNetworkService_SearchSubgraph(t *testing.T) {
 
 			startObjects := interfaces.Objects{
 				Datas: []map[string]any{
-					{"id": "123"},
+					{
+						"id":                                   "123",
+						interfaces.SYSTEM_PROPERTY_INSTANCE_ID: "ot1-123",
+						interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY: map[string]any{"id": "123"},
+					},
 				},
 				TotalCount: 1,
 				ObjectType: &interfaces.ObjectType{
@@ -274,7 +278,11 @@ func Test_knowledgeNetworkService_SearchSubgraph(t *testing.T) {
 
 			startObjects := interfaces.Objects{
 				Datas: []map[string]any{
-					{"id": "123"},
+					{
+						"id":                                   "123",
+						interfaces.SYSTEM_PROPERTY_INSTANCE_ID: "ot1-123",
+						interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY: map[string]any{"id": "123"},
+					},
 				},
 				TotalCount: 1,
 				ObjectType: &interfaces.ObjectType{
@@ -286,6 +294,22 @@ func Test_knowledgeNetworkService_SearchSubgraph(t *testing.T) {
 			}
 
 			omAccess.EXPECT().GetRelationTypePathsBaseOnSource(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(typePaths, nil)
+			omAccess.EXPECT().GetObjectType(gomock.Any(), knID, branch, sourceObjectTypeID).Return(interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID: sourceObjectTypeID,
+					DataProperties: []cond.DataProperty{
+						{Name: "id"},
+					},
+				},
+			}, true, nil)
+			omAccess.EXPECT().GetObjectType(gomock.Any(), knID, branch, "ot2").Return(interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID: "ot2",
+					DataProperties: []cond.DataProperty{
+						{Name: "target_id"},
+					},
+				},
+			}, true, nil)
 
 			// First call: get the source object in SearchSubgraph.
 			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, q *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
@@ -360,7 +384,11 @@ func Test_knowledgeNetworkService_SearchSubgraphByTypePath(t *testing.T) {
 
 			startObjects := interfaces.Objects{
 				Datas: []map[string]any{
-					{"id": "123"},
+					{
+						"id":                                   "123",
+						interfaces.SYSTEM_PROPERTY_INSTANCE_ID: "ot1-123",
+						interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY: map[string]any{"id": "123"},
+					},
 				},
 				TotalCount: 1,
 				ObjectType: &interfaces.ObjectType{
@@ -862,7 +890,11 @@ func Test_knowledgeNetworkService_buildObjectSubgraph(t *testing.T) {
 
 			startObjects := interfaces.Objects{
 				Datas: []map[string]any{
-					{"id": "123"},
+					{
+						"id":                                   "123",
+						interfaces.SYSTEM_PROPERTY_INSTANCE_ID: "ot1-123",
+						interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY: map[string]any{"id": "123"},
+					},
 				},
 				ObjectType: &interfaces.ObjectType{
 					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
@@ -874,7 +906,11 @@ func Test_knowledgeNetworkService_buildObjectSubgraph(t *testing.T) {
 
 			nextObjects := interfaces.Objects{
 				Datas: []map[string]any{
-					{"target_id": "123", "name": "test"},
+					{
+						"target_id": "123", "name": "test",
+						interfaces.SYSTEM_PROPERTY_INSTANCE_ID:       "ot2-123",
+						interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY: map[string]any{"target_id": "123"},
+					},
 				},
 				ObjectType: &interfaces.ObjectType{
 					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
@@ -957,7 +993,11 @@ func Test_knowledgeNetworkService_buildObjectSubgraph(t *testing.T) {
 
 			startObjects := interfaces.Objects{
 				Datas: []map[string]any{
-					{"id": "123"},
+					{
+						"id":                                   "123",
+						interfaces.SYSTEM_PROPERTY_INSTANCE_ID: "ot1-123",
+						interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY: map[string]any{"id": "123"},
+					},
 				},
 				ObjectType: &interfaces.ObjectType{
 					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
@@ -1037,7 +1077,11 @@ func Test_knowledgeNetworkService_expandObjectPathsBatch(t *testing.T) {
 
 			startObjects := interfaces.Objects{
 				Datas: []map[string]any{
-					{"id": "123"},
+					{
+						"id":                                   "123",
+						interfaces.SYSTEM_PROPERTY_INSTANCE_ID: "ot1-123",
+						interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY: map[string]any{"id": "123"},
+					},
 				},
 				ObjectType: &interfaces.ObjectType{
 					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
@@ -1049,7 +1093,11 @@ func Test_knowledgeNetworkService_expandObjectPathsBatch(t *testing.T) {
 
 			nextObjects := interfaces.Objects{
 				Datas: []map[string]any{
-					{"target_id": "123", "name": "test"},
+					{
+						"target_id": "123", "name": "test",
+						interfaces.SYSTEM_PROPERTY_INSTANCE_ID:       "ot2-123",
+						interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY: map[string]any{"target_id": "123"},
+					},
 				},
 				ObjectType: &interfaces.ObjectType{
 					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{

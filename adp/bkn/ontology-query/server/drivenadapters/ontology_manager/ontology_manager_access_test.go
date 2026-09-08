@@ -54,6 +54,33 @@ func Test_NewOntologyManagerAccess(t *testing.T) {
 	})
 }
 
+func TestDecodeRelationTypeMappingRulesHandlesIndirectMap(t *testing.T) {
+	relationType := interfaces.RelationType{
+		Type: "data_view",
+		MappingRules: map[string]any{
+			"backing_data_source": map[string]any{"type": "resource", "id": "resource-1"},
+			"source_mapping_rules": []any{map[string]any{
+				"source_property": map[string]any{"name": "source_id"},
+			}},
+			"target_mapping_rules": []any{map[string]any{
+				"target_property": map[string]any{"name": "target_id"},
+			}},
+		},
+	}
+
+	if err := decodeRelationTypeMappingRules(&relationType); err != nil {
+		t.Fatalf("decode indirect mapping: %v", err)
+	}
+	indirect, ok := relationType.MappingRules.(*interfaces.InDirectMapping)
+	if !ok || indirect.BackingDataSource == nil || indirect.BackingDataSource.ID != "resource-1" {
+		t.Fatalf("indirect mapping = %#v", relationType.MappingRules)
+	}
+	if len(indirect.SourceMappingRules) != 1 || indirect.SourceMappingRules[0].SourceProp.Name != "source_id" ||
+		len(indirect.TargetMappingRules) != 1 || indirect.TargetMappingRules[0].TargetProp.Name != "target_id" {
+		t.Fatalf("indirect mapping rules = %#v", indirect)
+	}
+}
+
 func Test_ontologyManagerAccess_GetObjectType(t *testing.T) {
 	Convey("Test ontologyManagerAccess GetObjectType", t, func() {
 		mockCtrl := gomock.NewController(t)

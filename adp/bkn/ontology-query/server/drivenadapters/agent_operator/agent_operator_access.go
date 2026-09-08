@@ -138,14 +138,14 @@ func (aoa *agentOperatorAccess) executeTool(ctx context.Context, boxID string,
 
 	start := time.Now().UnixMilli()
 	respCode, result, err = aoa.httpClient.PostNoUnmarshal(ctx, url, headers, execRequest)
-	logger.Debugf("post [%s] with headers[%v] finished, request is [%v] response code is [%d], error is [%v], 耗时: %dms",
-		url, headers, execRequest, respCode, err, time.Now().UnixMilli()-start)
+	logger.Debugf("tool execution [%s/%s] finished with status [%d] in %dms",
+		boxID, toolID, respCode, time.Now().UnixMilli()-start)
 
 	toolResult := executionResult{}
 
 	if err != nil {
-		logger.Errorf("Tool execution request failed: %v", err)
-		return toolResult, fmt.Errorf("tool execution request failed: %v", err)
+		logger.Errorf("Tool execution request failed for [%s/%s]", boxID, toolID)
+		return toolResult, fmt.Errorf("tool execution request failed")
 	}
 
 	if respCode != http.StatusOK {
@@ -160,7 +160,8 @@ func (aoa *agentOperatorAccess) executeTool(ctx context.Context, boxID string,
 				Description:  opError.Description,
 				ErrorDetails: opError.Detail,
 			}}
-		logger.Errorf("Tool execution failed: %v", httpErr.Error())
+		logger.Errorf("Tool execution [%s/%s] failed with status [%d] and code [%s]",
+			boxID, toolID, httpErr.HTTPCode, httpErr.BaseError.ErrorCode)
 		return toolResult, fmt.Errorf("proxy tool execution returned status %d", httpErr.HTTPCode)
 	}
 
@@ -178,12 +179,7 @@ func (aoa *agentOperatorAccess) executeTool(ctx context.Context, boxID string,
 		toolResult.StatusCode < http.StatusMultipleChoices {
 		return toolResult.Body, nil
 	} else {
-		resByte, err := sonic.Marshal(toolResult)
-		if err != nil {
-			logger.Errorf("marshal tool result failed: %v", err)
-			return toolResult, err
-		}
-		return nil, fmt.Errorf("execute tool failed: %v", string(resByte))
+		return nil, fmt.Errorf("execute tool failed with status %d", toolResult.StatusCode)
 	}
 }
 
@@ -218,14 +214,14 @@ func (aoa *agentOperatorAccess) executeMCP(ctx context.Context, mcpID string,
 
 	start := time.Now().UnixMilli()
 	respCode, result, err = aoa.httpClient.PostNoUnmarshal(ctx, url, headers, execRequest)
-	logger.Debugf("post [%s] with headers[%v] finished, request is [%v] response code is [%d], error is [%v], 耗时: %dms",
-		url, headers, execRequest, respCode, err, time.Now().UnixMilli()-start)
+	logger.Debugf("MCP execution [%s/%s] finished with status [%d] in %dms",
+		mcpID, toolName, respCode, time.Now().UnixMilli()-start)
 
 	mcpResult := mcpCallToolResult{}
 
 	if err != nil {
-		logger.Errorf("MCP execution request failed: %v", err)
-		return mcpResult, fmt.Errorf("MCP execution request failed: %v", err)
+		logger.Errorf("MCP execution request failed for [%s/%s]", mcpID, toolName)
+		return mcpResult, fmt.Errorf("MCP execution request failed")
 	}
 
 	if respCode != http.StatusOK {
@@ -240,7 +236,8 @@ func (aoa *agentOperatorAccess) executeMCP(ctx context.Context, mcpID string,
 				Description:  opError.Description,
 				ErrorDetails: opError.Detail,
 			}}
-		logger.Errorf("MCP execution failed: %v", httpErr.Error())
+		logger.Errorf("MCP execution [%s/%s] failed with status [%d] and code [%s]",
+			mcpID, toolName, httpErr.HTTPCode, httpErr.BaseError.ErrorCode)
 		return mcpResult, fmt.Errorf("proxy MCP execution returned status %d", httpErr.HTTPCode)
 	}
 
@@ -255,7 +252,7 @@ func (aoa *agentOperatorAccess) executeMCP(ctx context.Context, mcpID string,
 
 	// The MCP protocol uses is_error to express tool-level failures; there is no HTTP status_code.
 	if mcpResult.IsError {
-		return nil, fmt.Errorf("execute MCP failed: %v", mcpResult.normalize())
+		return nil, fmt.Errorf("execute MCP failed")
 	}
 
 	return mcpResult.normalize(), nil
