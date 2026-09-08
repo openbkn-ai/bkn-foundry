@@ -119,6 +119,13 @@
                 "type": "string"
               },
               "description": "主键属性名；仅 detail_level=full 时出现——默认的 summary 只给骨架与 name+type 的属性表，照这一条去取会拿到 None，要完整字段映射改调 get_object_types"
+            },
+            "effective_permissions": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string",
+                "enum": ["schema", "masked", "full"]
+              }
             }
           },
           "additionalProperties": true

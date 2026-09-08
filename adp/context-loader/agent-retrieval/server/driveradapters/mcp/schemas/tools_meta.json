@@ -149,7 +149,7 @@
     "group": "query",
     "group_title": "实例查询",
     "order": 240,
-    "description": "对知识网络挂载的数据资源执行只读 SQL（MySQL 方言）。标识符需要引用时用反引号；双引号是字符串字面量，不是标识符。注意：已建模指标不要用 SQL 重写口径——指标走 get_object_types 选定后的 query_metric / get_logic_properties_values；run_sql 用于未建成指标的即席聚合与跨表统计。表名用占位符 {{.resource_id}} 引用；vega 会解析成真实表并限量。仅允许单条 SELECT：支持同一 catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合函数；不支持 WITH/CTE、UNION/INTERSECT/EXCEPT、多语句、写入/DDL 和跨目录 join，子查询与窗口函数不在兼容性承诺内。两种拿 resource_id + 物理列的方式：本体路 search_schema（对象类 data_source.id + data_property.column），数据层路 list_resources → describe_resource（直查裸资源，脱离本体）。"
+    "description": "物理资源查询面：按调用者自己的 Vega 数据资源权限，对知识网络挂载的数据资源执行只读 SQL（MySQL 方言），可能返回未经对象属性规则掩码的原始物理列；它不受对象属性 none/schema/masked/full 权限约束，也不得被对象查询工具内部调用。标识符需要引用时用反引号；双引号是字符串字面量，不是标识符。注意：对象实例、子图、逻辑属性和已建模指标必须走对应对象查询工具，不要用 SQL 绕过其语义与属性保护；run_sql 仅用于明确授权的物理资源即席分析。表名用占位符 {{.resource_id}} 引用；Vega 会解析成真实表并限量。仅允许单条 SELECT：支持同一 catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合函数；不支持 WITH/CTE、UNION/INTERSECT/EXCEPT、多语句、写入/DDL 和跨目录 join，子查询与窗口函数不在兼容性承诺内。resource_id 与物理列来自 list_resources → describe_resource。"
   },
   "list_resources": {
     "name": "list_resources",
@@ -157,7 +157,7 @@
     "group": "resource",
     "group_title": "数据资源",
     "order": 410,
-    "description": "数据层资源直查（脱离本体）：列出当前账户有权查看的数据资源（resource_id、name、type、catalog_id）。要「某张知识网络有哪些表」就传 kn_id，一次全返该网络绑定的资源；不传 kn_id 时是账户级资源池分页，可按 catalog_id / type 过滤。资源未建成对象类、或想绕本体直查数据时用。配合 describe_resource + run_sql。"
+    "description": "物理资源查询面：按调用者自己的 Vega 数据资源权限列出可见资源（resource_id、name、type、catalog_id）。该权限边界独立于对象属性 none/schema/masked/full，后续 describe_resource/run_sql 可能暴露对象模型未列出或未掩码的物理列；不得由对象查询工具内部调用。仅在调用者明确要做物理资源分析时使用。传 kn_id 可列出该知识网络绑定的资源；不传时分页列出账户级资源池。"
   },
   "describe_resource": {
     "name": "describe_resource",
@@ -165,7 +165,7 @@
     "group": "resource",
     "group_title": "数据资源",
     "order": 420,
-    "description": "取单个数据资源的物理 schema：connector_type 与列（columns:[{name,type}]）。写 run_sql 前用它拿物理列名。入参 resource_id 取自 list_resources。"
+    "description": "物理资源查询面：按调用者自己的 Vega 数据资源权限返回单个资源的 connector_type 与物理列（columns:[{name,type}]）。它不受对象属性 none/schema/masked/full 权限约束，可能列出对象模型隐藏的物理列，也不得由对象查询工具内部调用。仅在明确的物理资源分析中用于准备 run_sql；resource_id 取自 list_resources。"
   },
   "list_skills": {
     "name": "list_skills",

@@ -24,6 +24,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knmetrics"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knresources"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knrunsql"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/objectpermission"
 )
 
 // KnQueryToolsHandler handle run_sql / list_knowledge_networks / get_kn_detail /.
@@ -40,11 +41,12 @@ type KnQueryToolsHandler interface {
 }
 
 type knQueryToolsHandler struct {
-	logger     interfaces.Logger
-	runSQL     knrunsql.KnRunSQLService
-	resources  knresources.KnResourcesService
-	bknBackend interfaces.BknBackendAccess
-	metrics    knmetrics.KnMetricsService
+	logger       interfaces.Logger
+	runSQL       knrunsql.KnRunSQLService
+	resources    knresources.KnResourcesService
+	bknBackend   interfaces.BknBackendAccess
+	metrics      knmetrics.KnMetricsService
+	schemaAccess interfaces.ObjectSchemaAccess
 }
 
 var (
@@ -57,11 +59,12 @@ func NewKnQueryToolsHandler() KnQueryToolsHandler {
 	once.Do(func() {
 		conf := config.NewConfigLoader()
 		handler = &knQueryToolsHandler{
-			logger:     conf.GetLogger(),
-			runSQL:     knrunsql.NewKnRunSQLService(),
-			resources:  knresources.NewKnResourcesService(),
-			bknBackend: drivenadapters.NewBknBackendAccess(),
-			metrics:    knmetrics.NewKnMetricsService(),
+			logger:       conf.GetLogger(),
+			runSQL:       knrunsql.NewKnRunSQLService(),
+			resources:    knresources.NewKnResourcesService(),
+			bknBackend:   drivenadapters.NewBknBackendAccess(),
+			metrics:      knmetrics.NewKnMetricsService(),
+			schemaAccess: drivenadapters.NewObjectSchemaAccess(),
 		}
 	})
 	return handler
@@ -132,6 +135,12 @@ func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 	resp, err := h.bknBackend.GetKnowledgeNetworkDetail(ctx, req.KnID)
 	if err != nil {
 		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] failed: %v", err)
+		rest.ReplyError(c, err)
+		return
+	}
+	resp.ObjectTypes, err = objectpermission.FilterObjectTypes(ctx, h.schemaAccess, req.KnID, resp.ObjectTypes)
+	if err != nil {
+		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] object property authorization failed: %v", err)
 		rest.ReplyError(c, err)
 		return
 	}
@@ -225,6 +234,13 @@ func (h *knQueryToolsHandler) GetObjectTypes(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
+	matched, err = objectpermission.FilterObjectTypes(ctx, h.schemaAccess, knID, matched)
+	if err != nil {
+		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetObjectTypes] object property authorization failed: %v", err)
+		rest.ReplyError(c, err)
+		return
+	}
+	objectpermission.TrimObjectTypesToIndexBackedOps(matched)
 	// OT-first step 2: scoped metrics with unbound logical properties are only visible here.
 	if err := h.metrics.AttachRelatedMetrics(ctx, knID, matched); err != nil {
 		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetObjectTypes] metric authorization failed: %v", err)

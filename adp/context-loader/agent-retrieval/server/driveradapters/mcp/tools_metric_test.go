@@ -78,7 +78,7 @@ func TestHandleGetObjectTypes_AdvertisesScopedMetrics(t *testing.T) {
 				{ID: "m-001", Name: "产品总数", ScopeRef: "ot-001", MetricType: "atomic"},
 			},
 		}
-		handler := handleGetObjectTypes(bkn, knmetrics.NewKnMetricsServiceWith(nil, bkn, nil))
+		handler := handleGetObjectTypes(bkn, knmetrics.NewKnMetricsServiceWith(nil, bkn, nil), nil)
 
 		result, err := handler(context.Background(), mcpReq(map[string]any{
 			"kn_id":           "kn-001",
@@ -144,7 +144,7 @@ func TestHandleGetObjectTypes_UsesEnrichedEndpoint(t *testing.T) {
 			},
 		}
 
-		handler := handleGetObjectTypes(stub, knmetrics.NewKnMetricsServiceWith(nil, stub, nil))
+		handler := handleGetObjectTypes(stub, knmetrics.NewKnMetricsServiceWith(nil, stub, nil), nil)
 		req := mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{
 			Arguments: map[string]any{
 				"kn_id": "kn1",
@@ -163,7 +163,7 @@ func TestHandleGetObjectTypes_UsesEnrichedEndpoint(t *testing.T) {
 
 func TestHandleGetObjectTypes_AuthorizationDoesNotFallbackOrReportDeniedIDs(t *testing.T) {
 	stub := &capsBknBackend{}
-	handler := handleGetObjectTypes(stub, knmetrics.NewKnMetricsServiceWith(nil, stub, nil))
+	handler := handleGetObjectTypes(stub, knmetrics.NewKnMetricsServiceWith(nil, stub, nil), nil)
 	req := mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{
 		Arguments: map[string]any{
 			"kn_id":           "kn1",

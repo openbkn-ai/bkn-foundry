@@ -9,6 +9,44 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
+type knSearchSchemaAccessStub struct {
+	permissions map[string]interfaces.PropertyAccessLevel
+}
+
+func (s knSearchSchemaAccessStub) GetObjectTypeSchema(context.Context, string, string) (*interfaces.ObjectTypeSchemaResp, error) {
+	return &interfaces.ObjectTypeSchemaResp{EffectivePermissions: s.permissions}, nil
+}
+
+func TestConceptRetrievalUsesAuthorizationSafeObjectSchema(t *testing.T) {
+	detail := &interfaces.KnowledgeNetworkDetail{ObjectTypes: []*interfaces.ObjectType{{
+		ID: "customer", Name: "Customer",
+		DataSource:     &interfaces.ResourceInfo{Type: "resource", ID: "customers"},
+		DataProperties: []*interfaces.DataProperty{{Name: "id"}, {Name: "phone"}, {Name: "secret"}},
+	}}}
+	config := DefaultConceptRetrievalConfig()
+	config.EnableCoarseRecall = boolPtr(false)
+	config.TopK = 1
+	service := &localSearchImpl{
+		logger: &mockLogger{}, bknBackend: &mockBknBackend{networkDetail: detail},
+		schemaAccess: knSearchSchemaAccessStub{permissions: map[string]interfaces.PropertyAccessLevel{
+			"id": interfaces.PropertyAccessFull, "phone": interfaces.PropertyAccessMasked,
+		}},
+	}
+
+	result, err := service.conceptRetrieval(context.Background(), &interfaces.KnSearchLocalRequest{
+		KnID: "kn-1", Query: "customer",
+	}, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.ObjectTypes) != 1 || len(result.ObjectTypes[0].DataProperties) != 2 {
+		t.Fatalf("object schema was not filtered: %#v", result.ObjectTypes)
+	}
+	if result.ObjectTypes[0].EffectivePermissions["phone"] != interfaces.PropertyAccessMasked {
+		t.Fatalf("effective permissions were not propagated: %#v", result.ObjectTypes[0])
+	}
+}
+
 func sameStringSet(got, want []string) bool {
 	if len(got) != len(want) {
 		return false

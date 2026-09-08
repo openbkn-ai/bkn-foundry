@@ -172,8 +172,9 @@ func newMCPServerForLocale(lifecycleClient *bkntrace.LifecycleClient, locale str
 
 	bknBackend := drivenadapters.NewBknBackendAccess()
 	b.add(toolKeyListKnowledgeNetworks, handleListKnowledgeNetworks(bknBackend))
-	b.add(toolKeyGetKnDetail, handleGetKnDetail(bknBackend, metricsService))
-	b.add(toolKeyGetObjectTypes, handleGetObjectTypes(bknBackend, metricsService))
+	schemaAccess := drivenadapters.NewObjectSchemaAccess()
+	b.add(toolKeyGetKnDetail, handleGetKnDetail(bknBackend, metricsService, schemaAccess))
+	b.add(toolKeyGetObjectTypes, handleGetObjectTypes(bknBackend, metricsService, schemaAccess))
 	b.add(toolKeyGetRelationTypes, handleGetRelationTypes(bknBackend))
 
 	runSQLService := knrunsql.NewKnRunSQLService()

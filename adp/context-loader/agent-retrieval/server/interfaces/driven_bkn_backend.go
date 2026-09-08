@@ -102,16 +102,17 @@ type PropertyParameter struct {
 
 // ObjectType Object type structure definition
 type ObjectType struct {
-	ModuleType      string              `json:"module_type"` // Module type
-	ID              string              `json:"id"`          // Object ID
-	Name            string              `json:"name"`        // Object name
-	Tags            []string            `json:"tags"`        // Tags
-	Comment         string              `json:"comment"`     // Comment
-	Score           float64             `json:"_score"`      // Score
-	DataSource      *ResourceInfo       `json:"data_source"`
-	DataProperties  []*DataProperty     `json:"data_properties,omitempty"`  // Data properties
-	LogicProperties []*LogicPropertyDef `json:"logic_properties,omitempty"` // Logic properties
-	PrimaryKeys     []string            `json:"primary_keys"`               // Primary key fields
+	ModuleType           string                         `json:"module_type"` // Module type
+	ID                   string                         `json:"id"`          // Object ID
+	Name                 string                         `json:"name"`        // Object name
+	Tags                 []string                       `json:"tags"`        // Tags
+	Comment              string                         `json:"comment"`     // Comment
+	Score                float64                        `json:"_score"`      // Score
+	DataSource           *ResourceInfo                  `json:"data_source"`
+	DataProperties       []*DataProperty                `json:"data_properties,omitempty"`  // Data properties
+	LogicProperties      []*LogicPropertyDef            `json:"logic_properties,omitempty"` // Logic properties
+	PrimaryKeys          []string                       `json:"primary_keys"`               // Primary key fields
+	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
 
 	// RelatedMetrics are the metrics scoped to this object type (scope_type=object_type,
 	// scope_ref=<this id>). It is filled by get_object_types only: a metric that is not

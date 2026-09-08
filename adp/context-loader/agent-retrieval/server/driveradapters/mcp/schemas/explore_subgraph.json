@@ -188,6 +188,10 @@
         "type": "array",
         "items": {},
         "description": "起点对象类的下一页游标：非空时作为下次请求的 search_after 传入以取下一批起点；为空表示起点已取完。"
+      },
+      "effective_permissions": {
+        "type": "object",
+        "additionalProperties": true
       }
     }
   }

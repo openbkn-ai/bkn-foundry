@@ -51,9 +51,9 @@ func TestObjectDataSourceOutputSchema(t *testing.T) {
 							},
 						}}
 						metrics := knmetrics.NewKnMetricsServiceWith(nil, bkn, nil)
-						handler := handleGetKnDetail(bkn, metrics)
+						handler := handleGetKnDetail(bkn, metrics, nil)
 						if tool == "get_object_types" {
-							handler = handleGetObjectTypes(bkn, metrics)
+							handler = handleGetObjectTypes(bkn, metrics, nil)
 						}
 						result, err := handler(context.Background(), mcpReq(map[string]any{
 							"kn_id": "kn", "ids": []any{"unbound", "bound"},

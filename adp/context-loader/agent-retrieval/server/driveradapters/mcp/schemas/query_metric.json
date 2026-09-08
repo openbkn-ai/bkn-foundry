@@ -161,8 +161,15 @@
         }
       },
       "overall_ms": {
-        "type": "integer",
-        "description": "耗时（毫秒）"
+		"type": "integer",
+		"description": "耗时（毫秒）"
+	  },
+	  "effective_permissions": {
+		"type": "object",
+		"additionalProperties": {
+		  "type": "string",
+		  "enum": ["schema", "masked", "full"]
+		}
       }
     }
   }

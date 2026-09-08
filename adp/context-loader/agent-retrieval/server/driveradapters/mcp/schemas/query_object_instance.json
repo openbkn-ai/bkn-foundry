@@ -265,6 +265,13 @@
           "description": "其余键即该对象类的属性名，随对象类而变——先看 get_object_types / search_schema 的 data_properties，不要凭字段语义猜。"
         }
       },
+      "effective_permissions": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string",
+          "enum": ["schema", "masked", "full"]
+        }
+      },
       "total_count": {
         "type": "integer",
         "description": "满足过滤条件的实例总数，不受 limit 限制。判断「一共有多少条」读它，不要靠翻页累加。零命中时是 0（有值），不是字段缺失。字段缺失表示服务端本次没有计算总数——用 cursor 翻页时第二页起即如此，此时不能推断为 0，要总数就回到不带 cursor 的首次查询。"

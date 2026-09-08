@@ -61,6 +61,30 @@ func TestBackfillConditionOperations_FillsFromDetail(t *testing.T) {
 	}
 }
 
+func TestBackfillConditionOperationsOnlyFillsFullProperties(t *testing.T) {
+	backend := &mockBknBackend{objectDetailResp: []*interfaces.ObjectType{{
+		ID: "teams", DataProperties: []*interfaces.DataProperty{
+			{Name: "team_name", ConditionOperations: []interfaces.KnOperationType{interfaces.KnOperationTypeMatch}},
+			{Name: "team_code", ConditionOperations: []interfaces.KnOperationType{interfaces.KnOperationTypeEqual}},
+		},
+	}}}
+	service := &localSearchImpl{logger: &mockLogger{}, bknBackend: backend}
+	objectType := backfillTestObjectType("teams", nil)
+	objectType.EffectivePermissions = map[string]interfaces.PropertyAccessLevel{
+		"team_name": interfaces.PropertyAccessFull,
+		"team_code": interfaces.PropertyAccessMasked,
+	}
+
+	service.backfillConditionOperations(context.Background(), "kn1", []*interfaces.KnSearchObjectType{objectType}, false)
+
+	if len(objectType.DataProperties[0].ConditionOperations) != 1 {
+		t.Fatalf("full property was not backfilled: %#v", objectType.DataProperties[0])
+	}
+	if len(objectType.DataProperties[1].ConditionOperations) != 0 {
+		t.Fatalf("masked property became queryable: %#v", objectType.DataProperties[1])
+	}
+}
+
 func TestBackfillConditionOperations_SkipsWhenAlreadyPresent(t *testing.T) {
 	backend := &mockBknBackend{}
 	svc := &localSearchImpl{logger: &mockLogger{}, bknBackend: backend}

@@ -40,7 +40,8 @@ type ResolveOptions struct {
 
 // ResolveLogicPropertiesResponse Logic property resolution response
 type ResolveLogicPropertiesResponse struct {
-	Datas []map[string]any `json:"datas"`
+	Datas                []map[string]any               `json:"datas"`
+	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
 
 	// Debug information (returned only when return_debug=true)
 	Debug *ResolveDebugInfo `json:"debug,omitempty"`

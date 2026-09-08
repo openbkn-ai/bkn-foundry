@@ -23,6 +23,7 @@ type localSearchImpl struct {
 	config        *config.Config
 	bknBackend    interfaces.BknBackendAccess
 	ontologyQuery interfaces.DrivenOntologyQuery
+	schemaAccess  interfaces.ObjectSchemaAccess
 	rerankClient  interfaces.DrivenMFModelAPIClient
 	authorizer    interfaces.QueryCandidateAuthorizer
 }
@@ -41,6 +42,7 @@ func NewLocalSearchService() interfaces.IKnSearchLocalService {
 			config:        configLoader,
 			bknBackend:    drivenadapters.NewBknBackendAccess(),
 			ontologyQuery: drivenadapters.NewOntologyQueryAccess(),
+			schemaAccess:  drivenadapters.NewObjectSchemaAccess(),
 			rerankClient:  drivenadapters.NewMFModelAPIClient(),
 			authorizer:    permissionlogic.NewQueryCandidateAuthorizer(configLoader),
 		}

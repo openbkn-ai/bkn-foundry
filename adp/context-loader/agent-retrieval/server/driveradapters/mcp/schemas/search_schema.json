@@ -112,6 +112,13 @@
                 "additionalProperties": true
               },
               "description": "数据属性 [{name, type, condition_operations}]；condition_operations 决定该属性能否用 match / knn 过滤。"
+            },
+            "effective_permissions": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string",
+                "enum": ["schema", "masked", "full"]
+              }
             }
           },
           "additionalProperties": true
