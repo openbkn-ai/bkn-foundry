@@ -3,6 +3,7 @@ package knsearch
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -11,9 +12,13 @@ import (
 
 type knSearchSchemaAccessStub struct {
 	permissions map[string]interfaces.PropertyAccessLevel
+	calls       *int
 }
 
 func (s knSearchSchemaAccessStub) GetObjectTypeSchema(context.Context, string, string) (*interfaces.ObjectTypeSchemaResp, error) {
+	if s.calls != nil {
+		(*s.calls)++
+	}
 	return &interfaces.ObjectTypeSchemaResp{EffectivePermissions: s.permissions}, nil
 }
 
@@ -44,6 +49,44 @@ func TestConceptRetrievalUsesAuthorizationSafeObjectSchema(t *testing.T) {
 	}
 	if result.ObjectTypes[0].EffectivePermissions["phone"] != interfaces.PropertyAccessMasked {
 		t.Fatalf("effective permissions were not propagated: %#v", result.ObjectTypes[0])
+	}
+}
+
+func TestConceptRetrievalAuthorizesOnlySelectedObjectTypes(t *testing.T) {
+	const candidateCount = 100
+	objects := make([]*interfaces.ObjectType, 0, candidateCount)
+	for i := 0; i < candidateCount; i++ {
+		objects = append(objects, &interfaces.ObjectType{
+			ID: fmt.Sprintf("object-%03d", i), Name: fmt.Sprintf("Object %03d", i), Score: float64(candidateCount - i),
+			DataSource:     &interfaces.ResourceInfo{Type: "resource", ID: fmt.Sprintf("view-%03d", i)},
+			DataProperties: []*interfaces.DataProperty{{Name: "visible"}, {Name: "hidden"}},
+		})
+	}
+	config := DefaultConceptRetrievalConfig()
+	config.EnableCoarseRecall = boolPtr(false)
+	config.TopK = 1
+	calls := 0
+	service := &localSearchImpl{
+		logger: &mockLogger{}, bknBackend: &mockBknBackend{networkDetail: &interfaces.KnowledgeNetworkDetail{ObjectTypes: objects}},
+		schemaAccess: knSearchSchemaAccessStub{
+			permissions: map[string]interfaces.PropertyAccessLevel{"visible": interfaces.PropertyAccessFull},
+			calls:       &calls,
+		},
+	}
+
+	result, err := service.conceptRetrieval(context.Background(), &interfaces.KnSearchLocalRequest{
+		KnID: "kn-1", Query: "object",
+	}, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != len(result.ObjectTypes) || calls >= candidateCount {
+		t.Fatalf("schema calls=%d result objects=%d candidates=%d", calls, len(result.ObjectTypes), candidateCount)
+	}
+	for _, objectType := range result.ObjectTypes {
+		if len(objectType.DataProperties) != 1 || objectType.DataProperties[0].Name != "visible" {
+			t.Fatalf("selected object was not filtered: %#v", objectType)
+		}
 	}
 }
 

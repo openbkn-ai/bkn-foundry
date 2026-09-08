@@ -130,15 +130,18 @@ func (s *localSearchImpl) conceptRetrievalByGroups(
 	objects, unmatchedObjectTypes := scope.apply(objects)
 	relations, actions = scope.applyToConcepts(objects, relations, actions)
 	s.logScopeOutcome(ctx, "[Groups]", scope, objects, unmatchedObjectTypes)
-	objects, err = objectpermission.FilterObjectTypes(ctx, s.schemaAccess, req.KnID, objects)
+	// Ranking only renders object names and comments (buildObjectText) and relation
+	// endpoint names (buildRelationDocuments), so it does not need property metadata.
+	// Defer the per-object ontology-query schema lookup until after selection to keep
+	// authorization cost bounded by the response rather than the coarse candidate pool.
+	rankedRelations := s.rankConcepts(ctx, req.Query, objects, relations,
+		config.TopK, req.EnableRerank, req.RerankModel, config.ObjectRerankCandidateLimit)
+	selectedObjects := s.selectObjectTypesForConceptRetrieval(objects, rankedRelations, config.TopK)
+	selectedObjects, err = objectpermission.FilterObjectTypes(ctx, s.schemaAccess, req.KnID, selectedObjects)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("[ConceptRetrieval][Groups] object property authorization failed: %v", err)
 		return nil, err
 	}
-
-	rankedRelations := s.rankConcepts(ctx, req.Query, objects, relations,
-		config.TopK, req.EnableRerank, req.RerankModel, config.ObjectRerankCandidateLimit)
-	selectedObjects := s.selectObjectTypesForConceptRetrieval(objects, rankedRelations, config.TopK)
 
 	brief := boolValue(config.SchemaBrief)
 	objectTypesLocal := s.convertObjectTypesToLocal(selectedObjects, brief, req.IncludeColumns)

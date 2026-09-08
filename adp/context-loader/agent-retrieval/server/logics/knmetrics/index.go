@@ -172,7 +172,6 @@ func (s *knMetricsService) QueryMetric(ctx context.Context, req *interfaces.Quer
 			out.Datas = resp.Datas
 		}
 		out.OverallMs = resp.OverallMs
-		out.EffectivePermissions = resp.EffectivePermissions
 	}
 	return out, nil
 }

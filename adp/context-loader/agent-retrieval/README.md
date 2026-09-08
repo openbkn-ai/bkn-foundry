@@ -19,7 +19,7 @@ Core features are five tools and the Context Loader MCP server:
 
 ## Authorization Boundaries
 
-Object surfaces (`search_schema`, `get_kn_detail`, `get_object_types`, object instances, subgraphs, and logic properties) consume ontology-query's authorization-safe results. Properties at `none` are omitted, `schema` properties expose metadata only, `masked` instance values stay masked, and only `full` properties may be used for filters, sorting, identities, or logic-property dependencies. REST and MCP adapters share these services and return the same effective-permission summary.
+Object surfaces (`search_schema`, `get_kn_detail`, `get_object_types`, object instances, subgraphs, and logic properties) consume ontology-query's authorization-safe results. Properties at `none` are omitted, `schema` properties expose metadata only, `masked` instance values stay masked, and only `full` properties may be used for filters, sorting, identities, or logic-property dependencies. REST and MCP adapters share these services; schema, object-instance, and logic-property responses expose the effective-permission summary supplied by ontology-query.
 
 `list_resources`, `describe_resource`, and `run_sql` are a separate physical-resource surface. They use the caller's own Vega resource permissions, are not constrained by object-property levels, and can expose raw physical columns. Object-query implementations must never call this surface internally; use it only when the caller explicitly requests physical-resource analysis.
 

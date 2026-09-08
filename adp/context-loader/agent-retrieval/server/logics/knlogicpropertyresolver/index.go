@@ -89,9 +89,6 @@ func (s *knLogicPropertyResolverService) ResolveLogicProperties(
 		s.logger.WithContext(ctx).Errorf("[Step 1] object property authorization failed: %v", err)
 		return nil, err
 	}
-	if len(filtered) != 1 {
-		return nil, errors.DefaultHTTPError(ctx, http.StatusForbidden, "object type is unavailable")
-	}
 	objectType = filtered[0]
 	s.logger.WithContext(ctx).Debugf("[Step 1] ✅ 成功")
 

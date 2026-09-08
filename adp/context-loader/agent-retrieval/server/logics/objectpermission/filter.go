@@ -31,8 +31,8 @@ func FilterObjectTypes(ctx context.Context, access interfaces.ObjectSchemaAccess
 		}
 		// ontology-query can only build a property plan for a published resource
 		// binding. Keep an unbound object discoverable, but expose no properties.
-		if objectType.DataSource == nil || objectType.DataSource.Type != "resource" ||
-			strings.TrimSpace(objectType.DataSource.ID) == "" {
+		if objectType.DataSource == nil || strings.TrimSpace(objectType.DataSource.ID) == "" ||
+			(strings.TrimSpace(objectType.DataSource.Type) != "" && objectType.DataSource.Type != "resource") {
 			result = append(result, filterObjectType(objectType, nil))
 			continue
 		}

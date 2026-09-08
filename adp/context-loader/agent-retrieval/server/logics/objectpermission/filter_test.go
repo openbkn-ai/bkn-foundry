@@ -97,3 +97,22 @@ func TestFilterObjectTypesKeepsUnboundObjectWithoutProperties(t *testing.T) {
 		t.Fatalf("unbound object result = %#v", filtered)
 	}
 }
+
+func TestFilterObjectTypesSupportsLegacyBindingWithoutType(t *testing.T) {
+	objects := []*interfaces.ObjectType{{
+		ID:         "legacy",
+		DataSource: &interfaces.ResourceInfo{ID: "legacy-view"},
+		DataProperties: []*interfaces.DataProperty{
+			{Name: "visible"}, {Name: "hidden"},
+		},
+	}}
+	filtered, err := FilterObjectTypes(context.Background(), schemaAccessStub{response: &interfaces.ObjectTypeSchemaResp{
+		EffectivePermissions: map[string]interfaces.PropertyAccessLevel{"visible": interfaces.PropertyAccessFull},
+	}}, "kn-1", objects)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 1 || len(filtered[0].DataProperties) != 1 || filtered[0].DataProperties[0].Name != "visible" {
+		t.Fatalf("legacy resource binding was not authorized: %#v", filtered)
+	}
+}

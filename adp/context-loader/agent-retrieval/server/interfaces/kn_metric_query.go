@@ -60,11 +60,10 @@ type MetricHaving struct {
 // read from related_metrics, and repeating it in every data response is exactly
 // the kind of payload this tool surface trims elsewhere.
 type QueryMetricResp struct {
-	KnID                 string                         `json:"kn_id"`
-	MetricID             string                         `json:"metric_id"`
-	Datas                []*MetricDataSeries            `json:"datas"`
-	OverallMs            int64                          `json:"overall_ms,omitempty"`
-	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
+	KnID      string              `json:"kn_id"`
+	MetricID  string              `json:"metric_id"`
+	Datas     []*MetricDataSeries `json:"datas"`
+	OverallMs int64               `json:"overall_ms,omitempty"`
 }
 
 // MetricDataSeries is one labelled series of a metric result, matching
@@ -93,7 +92,6 @@ type MetricQueryDownstreamReq struct {
 // MetricQueryDownstreamResp is ontology-query's MetricResponse, of which only the
 // series are forwarded.
 type MetricQueryDownstreamResp struct {
-	Datas                []*MetricDataSeries            `json:"datas"`
-	OverallMs            int64                          `json:"overall_ms,omitempty"`
-	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
+	Datas     []*MetricDataSeries `json:"datas"`
+	OverallMs int64               `json:"overall_ms,omitempty"`
 }

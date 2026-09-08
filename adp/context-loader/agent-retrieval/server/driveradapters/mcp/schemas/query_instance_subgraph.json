@@ -230,10 +230,6 @@
           "additionalProperties": true,
           "description": "其余键即该对象类的属性名，随对象类而变——先看 get_object_types / search_schema 的 data_properties，不要凭字段语义猜。"
         }
-      },
-      "effective_permissions": {
-        "type": "object",
-        "additionalProperties": true
       }
     }
   }

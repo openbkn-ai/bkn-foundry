@@ -210,8 +210,7 @@ type QueryInstanceSubgraphReq struct {
 type QueryInstanceSubgraphResp struct {
 	// Use interface{} to directly return the original structure from the underlying interface
 	// Corresponds to PathEntries struct in ontology-query interface
-	Entries              interface{} `json:"entries"`
-	EffectivePermissions any         `json:"effective_permissions,omitempty"`
+	Entries interface{} `json:"entries"`
 }
 
 // ExploreSubgraphReq is the starting point for exploratory subgraph query, corresponding to the downstream SubGraphQueryBaseOnSource.
@@ -283,8 +282,7 @@ type ExploreSubgraphResp struct {
 	// SearchAfter The next page cursor of the starting point object type.
 	SearchAfter []any `json:"search_after,omitempty"`
 	// CurrentPathNumber The current path number of downstream backfill.
-	CurrentPathNumber    int `json:"current_path_number,omitempty"`
-	EffectivePermissions any `json:"effective_permissions,omitempty"`
+	CurrentPathNumber int `json:"current_path_number,omitempty"`
 }
 
 // DrivenOntologyQuery Ontology query interface
