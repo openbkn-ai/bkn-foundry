@@ -414,28 +414,17 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_StreamingUnsupported)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 	})
-	t.Run("rejects resources containing unsupported fields before creating a task", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
-		service := &buildTaskService{rs: mockRS, cs: mockCS}
-
-		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
-			ID:          "resource-1",
-			CatalogID:   "catalog-1",
-			Category:    interfaces.ResourceCategoryTable,
+	t.Run("allows binary and other fields outside build keys", func(t *testing.T) {
+		resource := &interfaces.Resource{
 			IndexConfig: &interfaces.ResourceIndexConfig{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"id"}},
 			SchemaDefinition: []*interfaces.Property{
 				{Name: "id", Type: interfaces.DataType_Integer},
+				{Name: "attachment", Type: interfaces.DataType_Binary, OriginalType: "bytea"},
 				{Name: "interests", Type: interfaces.DataType_Other, OriginalType: "_text"},
 			},
-		}, nil)
+		}
 
-		_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{ResourceID: "resource-1", Mode: interfaces.BuildTaskModeBatch})
-		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_UnsupportedSchemaFields)
-		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "interests (original_type: _text)")
+		require.NoError(t, validateBuildTaskKeyFields(context.Background(), resource))
 	})
 
 	t.Run("rejects an unsupported build key type before creating a task", func(t *testing.T) {
@@ -1267,45 +1256,16 @@ func TestBuildTaskServiceStart(t *testing.T) {
 
 		require.NoError(t, service.Start(context.Background(), "task-1", false))
 	})
-	t.Run("rejects restart when the resource contains an unsupported field", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
-		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
-
-		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{
-			ID:         "task-1",
-			ResourceID: "resource-1",
-			CatalogID:  "catalog-1",
-			Status:     interfaces.BuildTaskStatusStopped,
-			IndexName:  "vega-build-test-index",
-			IndexConfig: &interfaces.BuildTaskIndexConfig{
-				IndexConfigContract: interfaces.IndexConfigContract{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"id"}},
-				Features:            map[string]interfaces.BuildTaskFieldIndexFeature{},
-			},
-		}, nil)
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
-			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
-		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
-			ID:        "resource-1",
-			CatalogID: "catalog-1",
-			IndexConfig: &interfaces.ResourceIndexConfig{
-				PrimaryKeyFields:  []string{"id"},
-				IncrementalFields: []string{"id"},
-			},
+	t.Run("allows excluded fields outside build keys", func(t *testing.T) {
+		resource := &interfaces.Resource{
+			IndexConfig: &interfaces.ResourceIndexConfig{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"id"}},
 			SchemaDefinition: []*interfaces.Property{
 				{Name: "id", Type: interfaces.DataType_Integer},
 				{Name: "interests", Type: interfaces.DataType_Other, OriginalType: "_text"},
 			},
-		}, nil)
+		}
 
-		err := service.Start(context.Background(), "task-1", false)
-		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_UnsupportedSchemaFields)
-		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "interests (original_type: _text)")
+		require.NoError(t, validateBuildTaskKeyFields(context.Background(), resource))
 	})
 	t.Run("rejects unavailable analyzer before updating status or dispatching", func(t *testing.T) {
 		ctrl := gomock.NewController(t)

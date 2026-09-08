@@ -223,19 +223,11 @@ func validateBuildTaskKeyFields(ctx context.Context, resource *interfaces.Resour
 	}
 
 	schemaFields := make(map[string]*interfaces.Property, len(resource.SchemaDefinition))
-	unsupportedFields := make([]string, 0)
 	for _, prop := range resource.SchemaDefinition {
 		if prop == nil {
 			continue
 		}
 		schemaFields[prop.Name] = prop
-		if prop.Type == interfaces.DataType_Other {
-			unsupportedFields = append(unsupportedFields, fmt.Sprintf("%s (original_type: %s)", prop.Name, prop.OriginalType))
-		}
-	}
-	if len(unsupportedFields) > 0 {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_UnsupportedSchemaFields).
-			WithErrorDetails(fmt.Sprintf("resource schema contains unsupported fields: %s", strings.Join(unsupportedFields, ", ")))
 	}
 
 	primaryKeys := make(map[string]struct{}, len(resource.IndexConfig.PrimaryKeyFields))

@@ -196,6 +196,38 @@ func TestBuildLocalIndexSchemaBackfillsLegacyVectorDimensionFromTaskSnapshot(t *
 	assert.Nil(t, resource.SchemaDefinition[0].Features[0].Config)
 }
 
+func TestBuildLocalIndexSchemaExcludesBinaryAndOtherFields(t *testing.T) {
+	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{
+		{Name: "id", Type: interfaces.DataType_Integer},
+		{Name: "attachment", Type: interfaces.DataType_Binary},
+		{Name: "metadata", Type: interfaces.DataType_Other},
+	}}
+
+	schema, err := buildLocalIndexSchema(&interfaces.BuildTask{}, resource)
+
+	require.NoError(t, err)
+	require.Len(t, schema, 1)
+	assert.Equal(t, "id", schema[0].Name)
+	assert.Equal(t, []string{"id"}, buildIndexableFieldNames(resource.SchemaDefinition))
+}
+
+func TestBuildLocalIndexSchemaRetainsFeatureTypeValidationForExcludedFields(t *testing.T) {
+	resource := &interfaces.Resource{
+		Category: interfaces.ResourceCategoryTable,
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "id", Type: interfaces.DataType_Integer},
+			{Name: "attachment", Type: interfaces.DataType_Binary, Features: []interfaces.PropertyFeature{
+				{FeatureType: interfaces.PropertyFeatureType_Fulltext},
+			}},
+		},
+	}
+
+	_, err := buildLocalIndexSchema(&interfaces.BuildTask{}, resource)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `resource schema field "attachment" type "binary" does not support feature type "fulltext"`)
+}
+
 func TestCompleteFullBuildTask(t *testing.T) {
 	t.Run("completes task and resource update atomically", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
