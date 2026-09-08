@@ -13,6 +13,33 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/kntools"
 )
 
+// handleSearchCapabilities handles search_capabilities: one ranking over every kind the knowledge
+// network mounted (#1388). Skills, Function tools and MCP tools share an index and a ranking since
+// #1370; this is the entry that lets an agent see them competing instead of asking twice.
+func handleSearchCapabilities(svc kntools.KnToolsService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		format, err := GetResponseFormatFromRequest(req)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		searchReq := &kntools.SearchCapabilitiesReq{}
+		if err := bindArguments(req, searchReq); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		resp, err := svc.SearchCapabilities(ctx, searchReq)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		result, err := BuildMCPToolResult(resp, format)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return result, nil
+	}
+}
+
 // handleSearchTools handles search_tools calls over the published Function catalogue.
 func handleSearchTools(svc kntools.KnToolsService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

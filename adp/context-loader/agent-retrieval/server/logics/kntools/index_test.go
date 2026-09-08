@@ -140,6 +140,18 @@ func mcpToolRefs(pairs ...string) []*interfaces.CapabilityRef {
 	return refs
 }
 
+// skillRefs builds Skill bindings. boundRefs drops them, so only the unified entry sees these.
+func skillRefs(ids ...string) []*interfaces.CapabilityRef {
+	refs := make([]*interfaces.CapabilityRef, 0, len(ids))
+	for _, id := range ids {
+		refs = append(refs, &interfaces.CapabilityRef{
+			CapabilityType: interfaces.CapabilityTypeSkill,
+			CapabilityID:   id,
+		})
+	}
+	return refs
+}
+
 func functionRefs(pairs ...string) []*interfaces.CapabilityRef {
 	refs := make([]*interfaces.CapabilityRef, 0, len(pairs))
 	for _, pair := range pairs {

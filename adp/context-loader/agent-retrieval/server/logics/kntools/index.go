@@ -82,6 +82,8 @@ type ExecuteToolReq struct {
 
 // KnToolsService is the published Function tool surface.
 type KnToolsService interface {
+	// SearchCapabilities ranks every kind the network mounted against one query (#1388).
+	SearchCapabilities(ctx context.Context, req *SearchCapabilitiesReq) (*SearchCapabilitiesResp, error)
 	SearchTools(ctx context.Context, req *SearchToolsReq) (*SearchToolsResp, error)
 	ExecuteTool(ctx context.Context, req *ExecuteToolReq) (map[string]any, error)
 }

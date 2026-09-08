@@ -65,6 +65,8 @@ var communityTools = []string{
 	"run_code",
 	"run_shell",
 	"run_sql",
+	// One ranking over all four kinds; the two narrow tools below are it with types pinned (#1388).
+	"search_capabilities",
 	"search_instance",
 	"search_schema",
 	"search_tools",

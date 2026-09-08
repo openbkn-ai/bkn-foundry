@@ -67,7 +67,7 @@
   "find_skills": {
     "title": "Find Skills",
     "group_title": "Skills",
-    "description": "Skill recall. Returns the Skills this knowledge network has mounted; a network that mounted none returns nothing rather than falling back to every Skill on the platform. With skill_query the hits are ranked; without one they are listed in mount order."
+    "description": "[Deprecated] Use search_capabilities, which covers all four capability kinds at once; this tool is that call narrowed to Skills. Skill recall. Returns the Skills this knowledge network has mounted; a network that mounted none returns nothing rather than falling back to every Skill on the platform. With skill_query the hits are ranked; without one they are listed in mount order."
   },
   "list_knowledge_networks": {
     "title": "Knowledge Networks",
@@ -132,10 +132,15 @@
     "title": "Run Command",
     "group_title": "Code Execution"
   },
+  "search_capabilities": {
+    "title": "Capability Search",
+    "group_title": "Tools",
+    "description": "Search everything one knowledge network has mounted -- Skills, Function tools (including API tools) and MCP tools -- ranked together in one space and returned interleaved by relevance. Use it when looking for something that can do a job, without first guessing whether it is a Skill or a tool.\nEvery hit carries capability_type, which decides what to do next: function / mcp_tool are called through execute_tool (their hits carry input_schema), a skill is read through get_skill_content and run through execute_skill.\nOptional types narrows to skill / function / mcp_tool; Function tools can be narrowed further with metadata_types into openapi (API tools) and function. The scope is the intersection of what the network mounted and what this account can see, so a network that mounted none returns nothing."
+  },
   "search_tools": {
     "title": "Tool Search",
     "group_title": "Tools",
-    "description": "Search the Function tools one knowledge network has mounted (Execution Factory Toolbox Tools). The scope is the intersection of what the network mounted and what this account can call, so a network that mounted none returns nothing. Each hit carries tool_id, toolbox_id and the business input schema; pass them to execute_tool."
+    "description": "[Deprecated] Use search_capabilities, which covers all four capability kinds at once; this tool is that call narrowed to Function tools and MCP tools. Search the Function tools one knowledge network has mounted (Execution Factory Toolbox Tools). The scope is the intersection of what the network mounted and what this account can call, so a network that mounted none returns nothing. Each hit carries tool_id, toolbox_id and the business input schema; pass them to execute_tool."
   },
   "execute_tool": {
     "title": "Execute Tool",

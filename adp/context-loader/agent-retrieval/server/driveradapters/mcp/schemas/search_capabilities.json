@@ -1,0 +1,120 @@
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "kn_id": {
+        "type": "string",
+        "description": "必填。知识网络 ID。范围取自该网络已挂载的能力，未挂载则返回空。"
+      },
+      "response_format": {
+        "type": "string",
+        "enum": [
+          "json",
+          "toon"
+        ],
+        "default": "toon",
+        "description": "文本格式：json 或 toon，默认 toon"
+      },
+      "query": {
+        "type": "string",
+        "description": "可选。检索词，在该网络已挂载的能力内按名称与说明排序，三类同场竞争。留空则列出全部已挂载能力。"
+      },
+      "types": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "skill",
+            "function",
+            "mcp_tool"
+          ]
+        },
+        "description": "可选。收窄到某几类能力。留空即全部三类。只能在已挂载范围内收窄，不会越出。"
+      },
+      "metadata_types": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "openapi",
+            "function"
+          ]
+        },
+        "description": "可选。仅对函数工具生效：openapi 是 API 工具，function 是函数工具。留空即两者都要。"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "description": "可选。最多返回多少条，默认 20，上限 100。工具类命中带入参 schema，调大会显著占用上下文。"
+      }
+    },
+    "required": [
+      "kn_id"
+    ]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "capabilities": {
+        "type": "array",
+        "description": "本知识网络已挂载、且当前账户可见的能力，按相关度混排",
+        "items": {
+          "type": "object",
+          "properties": {
+            "capability_type": {
+              "type": "string",
+              "enum": [
+                "skill",
+                "function",
+                "mcp_tool"
+              ],
+              "description": "决定下一步怎么用：function / mcp_tool 用 execute_tool 调用；skill 用 get_skill_content 读取、execute_skill 执行"
+            },
+            "owner_id": {
+              "type": "string",
+              "description": "函数工具是所属工具箱 ID，MCP 工具是 MCP Server ID，Skill 为空。调 execute_tool 时作为 toolbox_id 传入"
+            },
+            "capability_id": {
+              "type": "string",
+              "description": "函数工具是 tool_id，MCP 工具是工具名，Skill 是 skill_id"
+            },
+            "metadata_type": {
+              "type": "string",
+              "description": "仅函数工具有：openapi 表示 API 工具，function 表示函数工具"
+            },
+            "name": {
+              "type": "string",
+              "description": "能力名"
+            },
+            "description": {
+              "type": "string",
+              "description": "能力说明"
+            },
+            "use_rule": {
+              "type": "string",
+              "description": "使用规则，仅工具类有"
+            },
+            "input_schema": {
+              "type": "object",
+              "description": "业务入参契约，仅工具类有；execute_tool 的 arguments 按它填。Skill 不带，它是读的不是调的"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "total_matched": {
+        "type": "integer",
+        "description": "匹配到的能力总数，可能大于 capabilities 长度"
+      },
+      "truncated": {
+        "type": "boolean",
+        "description": "为 true 表示命中数超过 limit，只返回了前若干条"
+      },
+      "message": {
+        "type": "string",
+        "description": "空结果或截断说明，按成因给话"
+      }
+    }
+  }
+}
