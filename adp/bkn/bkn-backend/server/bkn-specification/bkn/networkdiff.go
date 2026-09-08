@@ -6,6 +6,7 @@
 package bkn
 
 import (
+	"reflect"
 	"sort"
 )
 
@@ -136,16 +137,21 @@ func DiffNetworkModels(base, target *BknNetwork, opts DiffOptions) *NetworkDiff 
 		leftoverBase, leftoverTarget = pairLeftoversByName(result, leftoverBase, leftoverTarget)
 	}
 
+	// A definition that exists on one side only carries its whole content, field by field, with
+	// the other side blank. Reporting only "this exists on one side" leaves a reader looking at an
+	// empty panel with no way to see what is actually being added or removed.
 	for _, def := range leftoverBase {
 		result.record(DefinitionDiff{
 			Type: def.Kind, ID: def.ID, Action: DiffDelete, PairedBy: "id",
-			Name: ValueChange{Old: def.Name},
+			Name:    ValueChange{Old: def.Name},
+			Changes: describeDefinition(def.Val, DiffDelete),
 		})
 	}
 	for _, def := range leftoverTarget {
 		result.record(DefinitionDiff{
 			Type: def.Kind, ID: def.ID, Action: DiffCreate, PairedBy: "id",
-			Name: ValueChange{New: def.Name},
+			Name:    ValueChange{New: def.Name},
+			Changes: describeDefinition(def.Val, DiffCreate),
 		})
 	}
 
@@ -322,4 +328,13 @@ func collectDefinitions(net *BknNetwork) []definitionRef {
 		}
 	}
 	return defs
+}
+
+// describeDefinition renders a whole definition as one-sided changes, so a created or deleted
+// definition reads the same way as a modified one.
+func describeDefinition(value any, kind DiffAction) []FieldChange {
+	var changes []FieldChange
+	expandOneSided("", reflect.ValueOf(value), kind, &changes)
+	sort.SliceStable(changes, func(i, j int) bool { return changes[i].Path < changes[j].Path })
+	return changes
 }
