@@ -74,6 +74,13 @@
                 "type": "string"
               },
               "description": "主键属性名"
+            },
+            "effective_permissions": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string",
+                "enum": ["schema", "masked", "full"]
+              }
             }
           },
           "additionalProperties": true

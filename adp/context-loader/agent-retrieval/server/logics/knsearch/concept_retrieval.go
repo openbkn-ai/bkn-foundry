@@ -16,6 +16,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/objectpermission"
 )
 
 // objectTypeRelationMultiplier The multiple of the number of object types relative to topK when filtering without relationship/relationship.
@@ -129,10 +130,18 @@ func (s *localSearchImpl) conceptRetrievalByGroups(
 	objects, unmatchedObjectTypes := scope.apply(objects)
 	relations, actions = scope.applyToConcepts(objects, relations, actions)
 	s.logScopeOutcome(ctx, "[Groups]", scope, objects, unmatchedObjectTypes)
-
+	// Ranking only renders object names and comments (buildObjectText) and relation
+	// endpoint names (buildRelationDocuments), so it does not need property metadata.
+	// Defer the per-object ontology-query schema lookup until after selection to keep
+	// authorization cost bounded by the response rather than the coarse candidate pool.
 	rankedRelations := s.rankConcepts(ctx, req.Query, objects, relations,
 		config.TopK, req.EnableRerank, req.RerankModel, config.ObjectRerankCandidateLimit)
 	selectedObjects := s.selectObjectTypesForConceptRetrieval(objects, rankedRelations, config.TopK)
+	selectedObjects, err = objectpermission.FilterObjectTypes(ctx, s.schemaAccess, req.KnID, selectedObjects)
+	if err != nil {
+		s.logger.WithContext(ctx).Errorf("[ConceptRetrieval][Groups] object property authorization failed: %v", err)
+		return nil, err
+	}
 
 	brief := boolValue(config.SchemaBrief)
 	objectTypesLocal := s.convertObjectTypesToLocal(selectedObjects, brief, req.IncludeColumns)
@@ -1122,14 +1131,15 @@ func (s *localSearchImpl) convertObjectTypesToLocal(objects []*interfaces.Object
 			tags = obj.Tags
 		}
 		localObj := &interfaces.KnSearchObjectType{
-			ConceptType: conceptType,
-			ConceptID:   obj.ID,
-			ConceptName: obj.Name,
-			Comment:     obj.Comment,
-			Tags:        tags,
-			DataSource:  dataSource,
-			PrimaryKeys: primaryKeys,
-			Score:       obj.Score,
+			ConceptType:          conceptType,
+			ConceptID:            obj.ID,
+			ConceptName:          obj.Name,
+			Comment:              obj.Comment,
+			Tags:                 tags,
+			DataSource:           dataSource,
+			PrimaryKeys:          primaryKeys,
+			Score:                obj.Score,
+			EffectivePermissions: obj.EffectivePermissions,
 		}
 
 		if len(obj.DataProperties) > 0 {

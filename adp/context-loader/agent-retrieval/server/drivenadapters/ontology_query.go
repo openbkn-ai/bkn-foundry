@@ -44,7 +44,8 @@ const (
 	// repeats, ignoring_store_cache is conditional), and ot_id reaches us straight
 	// from an agent, so an unescaped "?" or "&" in it would smuggle parameters into
 	// the downstream request — the same hazard queryMetricDataURI documents below.
-	queryObjectInstancesURI = "/in/v1/knowledge-networks/%s/object-types/%s"
+	queryObjectInstancesURI  = "/in/v1/knowledge-networks/%s/object-types/%s"
+	queryObjectTypeSchemaURI = "/in/v1/knowledge-networks/%s/object-types/%s/schema"
 	// https://{host}:{port}/api/ontology-query/in/v1/knowledge-networks/:kn_id/object-types/:ot_id/properties
 	queryLogicPropertiesURI = "/in/v1/knowledge-networks/%s/object-types/%s/properties"
 	// https://{host}:{port}/api/ontology-query/v1/knowledge-networks/:kn_id/action-types/:at_id
@@ -77,6 +78,34 @@ func NewOntologyQueryAccess() interfaces.DrivenOntologyQuery {
 		}
 	})
 	return ontologyQuery
+}
+
+// NewObjectSchemaAccess returns the same ontology-query client through the
+// schema-only capability used by Context Loader object surfaces.
+func NewObjectSchemaAccess() interfaces.ObjectSchemaAccess {
+	return NewOntologyQueryAccess().(interfaces.ObjectSchemaAccess)
+}
+
+// GetObjectTypeSchema retrieves the authorization-safe schema and effective
+// property permissions. Response bodies are never logged because even a
+// malformed downstream response may contain protected values.
+func (o *ontologyQueryClient) GetObjectTypeSchema(ctx context.Context, knID, otID string) (*interfaces.ObjectTypeSchemaResp, error) {
+	uri := fmt.Sprintf(queryObjectTypeSchemaURI, url.PathEscape(knID), url.PathEscape(otID))
+	target := o.baseURL + uri
+	header := common.GetHeaderForChildOperationIdentity(ctx, "ontology.object.schema", ontologyQueryIdentity(uri, nil))
+
+	_, respBody, err := o.httpClient.GetBytes(ctx, target, nil, header)
+	if err != nil {
+		o.logger.WithContext(ctx).Warnf("[OntologyQuery#GetObjectTypeSchema] kn=%s ot=%s failed: %v", knID, otID, err)
+		return nil, classifyQueryError(ctx, err)
+	}
+
+	resp := &interfaces.ObjectTypeSchemaResp{}
+	if err := unmarshalPrecise(respBody, resp); err != nil {
+		o.logger.WithContext(ctx).Errorf("[OntologyQuery#GetObjectTypeSchema] invalid response: %v", err)
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+	}
+	return resp, nil
 }
 
 // QueryObjectInstances retrieves detailed data for objects of the specified object type.
@@ -167,7 +196,7 @@ func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *int
 	resp = &interfaces.QueryObjectInstancesResp{}
 	err = unmarshalPrecise(respBody, resp)
 	if err != nil {
-		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryObjectInstances] Unmarshal %s err:%v", string(respBody), err)
+		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryObjectInstances] invalid response: %v", err)
 		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -269,7 +298,7 @@ func classifyActionError(ctx context.Context, err error, fallbackDetailKey strin
 
 // QueryLogicProperties queries logical property values.
 func (o *ontologyQueryClient) QueryLogicProperties(ctx context.Context, req *interfaces.QueryLogicPropertiesReq) (resp *interfaces.QueryLogicPropertiesResp, err error) {
-	uri := fmt.Sprintf(queryLogicPropertiesURI, req.KnID, req.OtID)
+	uri := fmt.Sprintf(queryLogicPropertiesURI, url.PathEscape(req.KnID), url.PathEscape(req.OtID))
 	url := fmt.Sprintf("%s%s", o.baseURL, uri)
 
 	// Build the request body.
@@ -279,10 +308,8 @@ func (o *ontologyQueryClient) QueryLogicProperties(ctx context.Context, req *int
 		"dynamic_params":       req.DynamicParams,
 	}
 
-	// 📤 Log the complete input parameters for calling ontology-query.
-	bodyJSON, _ := sonic.Marshal(body)
-	o.logger.WithContext(ctx).Debugf("  ├─ [ontology-query 调用] URL: %s", url)
-	o.logger.WithContext(ctx).Debugf("  ├─ [ontology-query 请求] Body: %s", string(bodyJSON))
+	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryLogicProperties] kn=%s ot=%s identities=%d properties=%d",
+		req.KnID, req.OtID, len(req.InstanceIdentities), len(req.Properties))
 
 	header := common.GetHeaderForChildOperation(ctx, "ontology.logic_property.query", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
@@ -291,7 +318,7 @@ func (o *ontologyQueryClient) QueryLogicProperties(ctx context.Context, req *int
 	_, respBody, err := o.httpClient.PostBytes(ctx, url, header, body)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("  └─ [ontology-query 响应] ❌ 请求失败: %v", err)
-		return nil, err
+		return nil, classifyQueryError(ctx, err)
 	}
 
 	resp = &interfaces.QueryLogicPropertiesResp{}
@@ -302,9 +329,7 @@ func (o *ontologyQueryClient) QueryLogicProperties(ctx context.Context, req *int
 		return nil, err
 	}
 
-	// 📥 Log the complete output parameters from ontology-query.
-	respJSON, _ := sonic.Marshal(resp)
-	o.logger.WithContext(ctx).Debugf("  └─ [ontology-query 响应] ✅ 成功 (%d 条数据): %s", len(resp.Datas), string(respJSON))
+	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryLogicProperties] succeeded: rows=%d", len(resp.Datas))
 	return resp, nil
 }
 
@@ -528,7 +553,7 @@ func (o *ontologyQueryClient) ExploreSubgraph(ctx context.Context, req *interfac
 
 	resp = &interfaces.ExploreSubgraphResp{}
 	if err = unmarshalPrecise(respBody, resp); err != nil {
-		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ExploreSubgraph] Unmarshal failed, body: %s, err: %v", string(respBody), err)
+		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ExploreSubgraph] invalid response: %v", err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			infraErr.LocalizedDetail(ctx, "SubgraphQueryResponseInvalid"))
 	}
@@ -555,7 +580,7 @@ func (o *ontologyQueryClient) QueryInstanceSubgraph(ctx context.Context, req *in
 		}
 	}
 
-	uri := fmt.Sprintf(queryInstanceSubgraphURI, req.KnID) + queryStr
+	uri := fmt.Sprintf(queryInstanceSubgraphURI, url.PathEscape(req.KnID)) + queryStr
 	url := fmt.Sprintf("%s%s", o.baseURL, uri)
 
 	// Build the request body and pass RelationTypePaths (any) through directly.
@@ -563,10 +588,7 @@ func (o *ontologyQueryClient) QueryInstanceSubgraph(ctx context.Context, req *in
 		"relation_type_paths": req.RelationTypePaths,
 	}
 
-	// Log the request.
-	bodyJSON, _ := sonic.Marshal(body)
-	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryInstanceSubgraph] URL: %s", url)
-	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryInstanceSubgraph] Request Body: %s", string(bodyJSON))
+	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryInstanceSubgraph] kn=%s", req.KnID)
 
 	// Build request headers.
 	header := common.GetHeaderForChildOperationIdentity(ctx, "ontology.subgraph.query", ontologyQueryIdentity(uri, body))
@@ -577,22 +599,18 @@ func (o *ontologyQueryClient) QueryInstanceSubgraph(ctx context.Context, req *in
 	_, respBody, err := o.httpClient.PostBytes(ctx, url, header, body)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryInstanceSubgraph] Request failed, err: %v", err)
-		return nil, err
+		return nil, classifyQueryError(ctx, err)
 	}
 
 	// Parse the response directly into any.
 	resp = &interfaces.QueryInstanceSubgraphResp{}
 	err = unmarshalPrecise(respBody, resp)
 	if err != nil {
-		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryInstanceSubgraph] Unmarshal failed, body: %s, err: %v", string(respBody), err)
+		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryInstanceSubgraph] invalid response: %v", err)
 		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			infraErr.LocalizedDetail(ctx, "SubgraphQueryResponseInvalid"))
 		return nil, err
 	}
-
-	// Log the response.
-	respJSON, _ := sonic.Marshal(resp)
-	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryInstanceSubgraph] Response: %s", string(respJSON))
 
 	return resp, nil
 }
@@ -622,7 +640,7 @@ func (o *ontologyQueryClient) QueryMetricData(ctx context.Context, knID, metricI
 
 	resp = &interfaces.MetricQueryDownstreamResp{}
 	if err = unmarshalPrecise(respBody, resp); err != nil {
-		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryMetricData] Unmarshal %s err:%v", string(respBody), err)
+		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryMetricData] invalid response: %v", err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 	}
 	return resp, nil

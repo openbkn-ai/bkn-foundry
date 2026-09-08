@@ -44,3 +44,36 @@ func TestExecuteActionToolMetaDocumentsDuplicate409(t *testing.T) {
 		})
 	}
 }
+
+func TestPhysicalResourceToolsDocumentIndependentAuthorizationBoundary(t *testing.T) {
+	for _, path := range []string{
+		"schemas/tools_meta.json",
+		"schemas/locales/en-US/tools_meta.json",
+	} {
+		t.Run(path, func(t *testing.T) {
+			raw, err := schemasFS.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read tool metadata: %v", err)
+			}
+			var meta map[string]ToolMeta
+			if err := json.Unmarshal(raw, &meta); err != nil {
+				t.Fatalf("decode tool metadata: %v", err)
+			}
+			for _, name := range []string{"list_resources", "describe_resource", "run_sql"} {
+				desc := strings.ToLower(meta[name].Description)
+				for _, required := range []string{"vega", "none/schema/masked/full"} {
+					if !strings.Contains(desc, required) {
+						t.Fatalf("%s description must document %q boundary: %q", name, required, meta[name].Description)
+					}
+				}
+				if strings.Contains(path, "en-US") {
+					if !strings.Contains(desc, "must never") {
+						t.Fatalf("%s must prohibit internal object-query use: %q", name, meta[name].Description)
+					}
+				} else if !strings.Contains(meta[name].Description, "不得") {
+					t.Fatalf("%s must prohibit internal object-query use: %q", name, meta[name].Description)
+				}
+			}
+		})
+	}
+}

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "python3 tools/check_hardcoded_chinese.py --update-baseline",
-  "violation_count": 2568,
+  "violation_count": 2561,
   "violations": {
     "adp/bkn/bkn-backend/script/delete_concept_index/script.py": [
       "028026370fec2a882dbb",
@@ -553,19 +553,12 @@
     ],
     "adp/context-loader/agent-retrieval/server/drivenadapters/ontology_query.go": [
       "80c2d7316e078d3ba1c2",
-      "c89f1a7cc89d6eeb26ba",
-      "d2189179a2b142665657",
       "88133960fe40db0775c5",
-      "2204241e5905cbcc1903",
-      "0526705c90eee8ed7603"
+      "2204241e5905cbcc1903"
     ],
     "adp/context-loader/agent-retrieval/server/driveradapters/knlogicpropertyresolver/index.go": [
-      "cc0c598b2eab22551c7c",
-      "722f38410c9aa3940bb0",
       "a63b8321a4c9a4dae98e",
-      "98c17b508982c56d4ebd",
-      "94ed1830812560a56fb8",
-      "b4a7f0cb22049922561d"
+      "98c17b508982c56d4ebd"
     ],
     "adp/context-loader/agent-retrieval/server/driveradapters/mcp/schemas/ptc_stub.py": [
       "4832ee9e2db440187753",

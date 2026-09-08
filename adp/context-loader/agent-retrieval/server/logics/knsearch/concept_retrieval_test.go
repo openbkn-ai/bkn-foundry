@@ -3,11 +3,92 @@ package knsearch
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
+
+type knSearchSchemaAccessStub struct {
+	permissions map[string]interfaces.PropertyAccessLevel
+	calls       *int
+}
+
+func (s knSearchSchemaAccessStub) GetObjectTypeSchema(context.Context, string, string) (*interfaces.ObjectTypeSchemaResp, error) {
+	if s.calls != nil {
+		(*s.calls)++
+	}
+	return &interfaces.ObjectTypeSchemaResp{EffectivePermissions: s.permissions}, nil
+}
+
+func TestConceptRetrievalUsesAuthorizationSafeObjectSchema(t *testing.T) {
+	detail := &interfaces.KnowledgeNetworkDetail{ObjectTypes: []*interfaces.ObjectType{{
+		ID: "customer", Name: "Customer",
+		DataSource:     &interfaces.ResourceInfo{Type: "resource", ID: "customers"},
+		DataProperties: []*interfaces.DataProperty{{Name: "id"}, {Name: "phone"}, {Name: "secret"}},
+	}}}
+	config := DefaultConceptRetrievalConfig()
+	config.EnableCoarseRecall = boolPtr(false)
+	config.TopK = 1
+	service := &localSearchImpl{
+		logger: &mockLogger{}, bknBackend: &mockBknBackend{networkDetail: detail},
+		schemaAccess: knSearchSchemaAccessStub{permissions: map[string]interfaces.PropertyAccessLevel{
+			"id": interfaces.PropertyAccessFull, "phone": interfaces.PropertyAccessMasked,
+		}},
+	}
+
+	result, err := service.conceptRetrieval(context.Background(), &interfaces.KnSearchLocalRequest{
+		KnID: "kn-1", Query: "customer",
+	}, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.ObjectTypes) != 1 || len(result.ObjectTypes[0].DataProperties) != 2 {
+		t.Fatalf("object schema was not filtered: %#v", result.ObjectTypes)
+	}
+	if result.ObjectTypes[0].EffectivePermissions["phone"] != interfaces.PropertyAccessMasked {
+		t.Fatalf("effective permissions were not propagated: %#v", result.ObjectTypes[0])
+	}
+}
+
+func TestConceptRetrievalAuthorizesOnlySelectedObjectTypes(t *testing.T) {
+	const candidateCount = 100
+	objects := make([]*interfaces.ObjectType, 0, candidateCount)
+	for i := 0; i < candidateCount; i++ {
+		objects = append(objects, &interfaces.ObjectType{
+			ID: fmt.Sprintf("object-%03d", i), Name: fmt.Sprintf("Object %03d", i), Score: float64(candidateCount - i),
+			DataSource:     &interfaces.ResourceInfo{Type: "resource", ID: fmt.Sprintf("view-%03d", i)},
+			DataProperties: []*interfaces.DataProperty{{Name: "visible"}, {Name: "hidden"}},
+		})
+	}
+	config := DefaultConceptRetrievalConfig()
+	config.EnableCoarseRecall = boolPtr(false)
+	config.TopK = 1
+	calls := 0
+	service := &localSearchImpl{
+		logger: &mockLogger{}, bknBackend: &mockBknBackend{networkDetail: &interfaces.KnowledgeNetworkDetail{ObjectTypes: objects}},
+		schemaAccess: knSearchSchemaAccessStub{
+			permissions: map[string]interfaces.PropertyAccessLevel{"visible": interfaces.PropertyAccessFull},
+			calls:       &calls,
+		},
+	}
+
+	result, err := service.conceptRetrieval(context.Background(), &interfaces.KnSearchLocalRequest{
+		KnID: "kn-1", Query: "object",
+	}, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != len(result.ObjectTypes) || calls >= candidateCount {
+		t.Fatalf("schema calls=%d result objects=%d candidates=%d", calls, len(result.ObjectTypes), candidateCount)
+	}
+	for _, objectType := range result.ObjectTypes {
+		if len(objectType.DataProperties) != 1 || objectType.DataProperties[0].Name != "visible" {
+			t.Fatalf("selected object was not filtered: %#v", objectType)
+		}
+	}
+}
 
 func sameStringSet(got, want []string) bool {
 	if len(got) != len(want) {

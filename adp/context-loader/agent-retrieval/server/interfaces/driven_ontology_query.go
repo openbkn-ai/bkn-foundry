@@ -8,6 +8,30 @@ package interfaces
 
 import "context"
 
+// PropertyAccessLevel is the effective property permission computed by
+// ontology-query. Callers must treat unknown values as denied.
+type PropertyAccessLevel string
+
+const (
+	PropertyAccessNone   PropertyAccessLevel = "none"
+	PropertyAccessSchema PropertyAccessLevel = "schema"
+	PropertyAccessMasked PropertyAccessLevel = "masked"
+	PropertyAccessFull   PropertyAccessLevel = "full"
+)
+
+// ObjectTypeSchemaResp is the authorization-safe schema result returned by
+// ontology-query for one object type.
+type ObjectTypeSchemaResp struct {
+	SchemaDefinition     []map[string]any               `json:"schema_definition"`
+	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
+}
+
+// ObjectSchemaAccess exposes the property authorization plan owned by
+// ontology-query. It is deliberately separate from physical resource access.
+type ObjectSchemaAccess interface {
+	GetObjectTypeSchema(ctx context.Context, knID, otID string) (*ObjectTypeSchemaResp, error)
+}
+
 // KnConceptType Knowledge Network Concept Type
 type KnConceptType string
 
@@ -78,8 +102,9 @@ type FlatFilter struct {
 }
 
 type QueryObjectInstancesResp struct {
-	Data          []any          `json:"datas"`                 // List of object instances
-	ObjectConcept map[string]any `json:"object_type,omitempty"` // Object type definition, controlled by req.include_type_info whether to return.
+	Data                 []any                          `json:"datas"`                 // List of object instances
+	ObjectConcept        map[string]any                 `json:"object_type,omitempty"` // Object type definition, controlled by req.include_type_info whether to return.
+	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
 	// TotalCount The total number of instances that meet the filter conditions, not limited by limit.
 	//
 	// Pointer + omitempty, three-state:
@@ -164,7 +189,8 @@ type QueryLogicPropertiesReq struct {
 
 // QueryLogicPropertiesResp Response for querying logic properties values
 type QueryLogicPropertiesResp struct {
-	Datas []map[string]interface{} `json:"datas"`
+	Datas                []map[string]interface{}       `json:"datas"`
+	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
 }
 
 // QueryInstanceSubgraphReq Subgraph query request

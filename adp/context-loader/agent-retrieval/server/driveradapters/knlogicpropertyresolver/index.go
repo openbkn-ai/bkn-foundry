@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/creasty/defaults"
 	"github.com/gin-gonic/gin"
 	validator "github.com/go-playground/validator/v10"
@@ -105,10 +104,8 @@ func (k *knLogicPropertyResolverHandle) ResolveLogicProperties(c *gin.Context) {
 		return
 	}
 
-	// 📥 Record request input parameters (structured)
-	reqJSON, _ := sonic.Marshal(req)
-	k.Logger.Infof("========== [kn-logic-property-resolver] 请求开始 ==========")
-	k.Logger.Infof("📥 请求参数: %s", string(reqJSON))
+	k.Logger.Infof("[kn-logic-property-resolver] request started: kn=%s ot=%s identities=%d properties=%d",
+		req.KnID, req.OtID, len(req.InstanceIdentities), len(req.Properties))
 
 	// Call the Service layer (record the time taken)
 	startTime := time.Now()
@@ -122,10 +119,7 @@ func (k *knLogicPropertyResolverHandle) ResolveLogicProperties(c *gin.Context) {
 		return
 	}
 
-	// 📤 Record response results.
-	respJSON, _ := sonic.Marshal(resp)
-	k.Logger.Infof("========== [kn-logic-property-resolver] 请求成功 ========== (耗时: %dms)", elapsed)
-	k.Logger.Infof("📤 响应数据: %s", string(respJSON))
+	k.Logger.Infof("[kn-logic-property-resolver] request succeeded: rows=%d elapsed_ms=%d", len(resp.Datas), elapsed)
 
 	// Return a successful response.
 	rest.ReplyOK(c, http.StatusOK, resp)

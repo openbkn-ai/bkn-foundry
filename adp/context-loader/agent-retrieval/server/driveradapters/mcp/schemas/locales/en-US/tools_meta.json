@@ -92,17 +92,17 @@
   "run_sql": {
     "title": "Run SQL",
     "group_title": "Instance Queries",
-    "description": "Run one read-only SELECT statement in MySQL SQL against data resources mounted by a knowledge network. Use table placeholders such as {{.resource_id}} and physical column names. Quote identifiers with backticks when needed; double quotes are string literals, not identifiers. JOIN, WHERE, GROUP BY/HAVING, ORDER BY, LIMIT, and common aggregates are supported within one catalog. WITH/CTE, UNION/INTERSECT/EXCEPT, multiple statements, writes/DDL, and cross-catalog joins are unsupported; subqueries and window functions are not part of the compatibility contract. Do not re-derive a modelled metric in SQL: pick it from get_object_types' related_metrics and call query_metric (or get_logic_properties_values for a bound logic property). run_sql is for ad-hoc aggregation that has not been modelled as a metric."
+    "description": "Physical-resource surface: run one read-only MySQL SELECT under the caller's own Vega resource permissions. It may return raw physical columns and is not constrained by object-property none/schema/masked/full levels; object-query tools must never call it internally. Use object instance, subgraph, logic-property, and metric tools for modeled object queries, and use run_sql only for explicitly authorized physical-resource analysis. Obtain resource ids and columns through list_resources and describe_resource. Use {{.resource_id}} placeholders and physical column names. JOIN, WHERE, GROUP BY/HAVING, ORDER BY, LIMIT, and common aggregates are supported within one catalog; WITH/CTE, set operations, multiple statements, writes/DDL, and cross-catalog joins are unsupported."
   },
   "list_resources": {
     "title": "Data Resources",
     "group_title": "Data Resources",
-    "description": "List visible data-layer resources independent of ontology object types. Pass kn_id to get every resource bound to one knowledge network in a single response; without kn_id this pages the account-wide resource pool. Use it when resources are not modeled as object types or when querying raw data directly."
+    "description": "Physical-resource surface: list resources visible under the caller's own Vega resource permissions. This boundary is independent of object-property none/schema/masked/full levels, and subsequent describe_resource/run_sql calls may expose physical columns that an object model hides or masks; object-query tools must never call it internally. Use only for explicit physical-resource analysis. Pass kn_id for resources bound to one knowledge network, or omit it to page the account-wide pool."
   },
   "describe_resource": {
     "title": "Resource Detail",
     "group_title": "Data Resources",
-    "description": "Describe one data resource's physical schema, including connector type and columns. Use this before writing run_sql against raw resources."
+    "description": "Physical-resource surface: describe connector type and physical columns under the caller's own Vega resource permissions. It is not constrained by object-property none/schema/masked/full levels, may list columns hidden by an object model, and must never be called internally by object-query tools. Use only for explicit physical-resource analysis before run_sql."
   },
   "list_skills": {
     "title": "Skill List",

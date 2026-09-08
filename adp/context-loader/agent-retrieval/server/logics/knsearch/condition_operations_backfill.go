@@ -92,6 +92,10 @@ func (s *localSearchImpl) backfillConditionOperations(
 				if p == nil || len(p.ConditionOperations) > 0 {
 					continue
 				}
+				if objType.EffectivePermissions != nil &&
+					objType.EffectivePermissions[p.Name] != interfaces.PropertyAccessFull {
+					continue
+				}
 				if o, ok := ops[p.Name]; ok {
 					p.ConditionOperations = o
 					filled++

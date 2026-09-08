@@ -17,6 +17,12 @@ Agent Retrieval 是 ADP context-loader 中的检索服务组件，面向知识�
 5. **get_logic_properties_values**：解析逻辑属性并获取属性值
 6. **Context Loader MCP Server**：对外提供上述五个工具，供 Cursor、Claude Desktop 等 MCP 客户端调用
 
+## 权限边界
+
+对象查询面（`search_schema`、`get_kn_detail`、`get_object_types`、对象实例、子图和逻辑属性）统一消费 ontology-query 的授权安全结果：`none` 属性不暴露，`schema` 只暴露元数据，`masked` 实例值保持脱敏，仅 `full` 属性可用于过滤、排序、对象标识或逻辑属性依赖。REST 与 MCP 复用同一服务；Schema、对象实例和逻辑属性响应会返回 ontology-query 提供的有效权限摘要。
+
+`list_resources`、`describe_resource`、`run_sql` 属于独立的物理资源查询面，按调用者自己的 Vega 数据资源权限授权，不受对象属性级别约束，可能暴露原始物理列。对象查询实现不得在内部调用这三个工具；仅当调用者明确要求物理资源分析时使用。
+
 ## 技术架构
 
 ### 技术栈

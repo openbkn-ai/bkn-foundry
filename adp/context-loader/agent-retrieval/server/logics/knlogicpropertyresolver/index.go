@@ -18,6 +18,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/objectpermission"
 )
 
 const (
@@ -30,6 +31,7 @@ type knLogicPropertyResolverService struct {
 	logger              interfaces.Logger
 	bknBackendAccess    interfaces.BknBackendAccess
 	ontologyQueryClient interfaces.DrivenOntologyQuery
+	schemaAccess        interfaces.ObjectSchemaAccess
 	dynamicLLM          *dynamicParamsLLM // Metric and ToolBox-tool dynamic parameter generator.
 }
 
@@ -46,6 +48,7 @@ func NewKnLogicPropertyResolverService() interfaces.IKnLogicPropertyResolverServ
 			logger:              conf.GetLogger(),
 			bknBackendAccess:    drivenadapters.NewBknBackendAccess(),
 			ontologyQueryClient: drivenadapters.NewOntologyQueryAccess(),
+			schemaAccess:        drivenadapters.NewObjectSchemaAccess(),
 			dynamicLLM:          newDynamicParamsLLM(conf.GetLogger(), drivenadapters.NewMFModelAPIClient(), drivenadapters.NewOperatorIntegrationClient()),
 		}
 	})
@@ -81,6 +84,12 @@ func (s *knLogicPropertyResolverService) ResolveLogicProperties(
 		s.logger.WithContext(ctx).Errorf("[Step 1] ❌ 失败: %v", err)
 		return nil, err
 	}
+	filtered, err := objectpermission.FilterObjectTypes(ctx, s.schemaAccess, req.KnID, []*interfaces.ObjectType{objectType})
+	if err != nil {
+		s.logger.WithContext(ctx).Errorf("[Step 1] object property authorization failed: %v", err)
+		return nil, err
+	}
+	objectType = filtered[0]
 	s.logger.WithContext(ctx).Debugf("[Step 1] ✅ 成功")
 
 	// Step 3: Extract logical attribute definitions.
@@ -155,7 +164,8 @@ func (s *knLogicPropertyResolverService) ResolveLogicProperties(
 
 	// Step 6: buildresponse.
 	resp := &interfaces.ResolveLogicPropertiesResponse{
-		Datas: result,
+		Datas:                result.Datas,
+		EffectivePermissions: result.EffectivePermissions,
 	}
 
 	// Return debug information if necessary.
@@ -702,7 +712,7 @@ func (s *knLogicPropertyResolverService) queryLogicProperties(
 	ctx context.Context,
 	req *interfaces.ResolveLogicPropertiesRequest,
 	dynamicParams map[string]interface{},
-) ([]map[string]interface{}, error) {
+) (*interfaces.QueryLogicPropertiesResp, error) {
 	// Buildqueryrequest.
 	queryReq := &interfaces.QueryLogicPropertiesReq{
 		KnID:               req.KnID,
@@ -715,11 +725,9 @@ func (s *knLogicPropertyResolverService) queryLogicProperties(
 	// Call ontology-query service.
 	resp, err := s.ontologyQueryClient.QueryLogicProperties(ctx, queryReq)
 	if err != nil {
-		return nil, errors.DefaultHTTPError(ctx, http.StatusInternalServerError,
-			fmt.Sprintf("query logic properties failed: %v", err))
+		return nil, err
 	}
-
-	return resp.Datas, nil
+	return resp, nil
 }
 
 // buildMissingParamsError build missing parameters error.

@@ -22,6 +22,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knresources"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knrunsql"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knsearch"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/objectpermission"
 )
 
 const (
@@ -558,13 +559,12 @@ func handleDescribeResource(svc knresources.KnResourcesService) func(ctx context
 // handleGetKnDetail handles get_kn_detail tool calls.
 // Pack the knowledge network details (concept group/object type/relation type/action class) of bkn-backend and press.
 // detail_level does progressive cropping: summary (default) returns the skeleton + attribute name, full returns the full amount.
-func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetricsService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetricsService, schemaAccess interfaces.ObjectSchemaAccess) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-
 		knID := getStringArg(req, "kn_id", "")
 		if knID == "" {
 			knID = getKnIDFromHeader(req)
@@ -574,6 +574,10 @@ func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetr
 		}
 
 		resp, err := bkn.GetKnowledgeNetworkDetail(ctx, knID)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		resp.ObjectTypes, err = objectpermission.FilterObjectTypes(ctx, schemaAccess, knID, resp.ObjectTypes)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
@@ -609,7 +613,7 @@ func (a *knDrillArgs) resolveKnID(req mcp.CallToolRequest) string {
 // definition (data/logic properties incl. mappings) of the requested object type
 // ids, plus the metrics scoped to them. Pairs with get_kn_detail summary, which
 // omits that heavy detail.
-func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetricsService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetricsService, schemaAccess interfaces.ObjectSchemaAccess) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
 		if err != nil {
@@ -636,9 +640,13 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
+		matched, err = objectpermission.FilterObjectTypes(ctx, schemaAccess, knID, matched)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		// The same rule as search_schema: only emit underivable operators. Comparison operators (==/in/like/range…)
 		// Determined by the attribute type, repeating each attribute for more than ten times is pure noise - the object type is small and it still occupies the context.
-		trimObjectTypesToIndexBackedOps(matched)
+		objectpermission.TrimObjectTypesToIndexBackedOps(matched)
 
 		// Step 2 of the OT-first metric path: a metric that is not bound to a logic
 		// property is unreachable from the object type without this.
@@ -830,35 +838,4 @@ func missingObjectTypeIDs(requested []string, matched []*interfaces.ObjectType) 
 		}
 	}
 	return missing
-}
-
-// trimObjectTypesToIndexBackedOps converges the operator to those brought by the index.
-//
-// The rules are consistent with search_schema: condition_operations only registers capabilities that cannot be inferred from the attribute type.
-// (match / multi_match / knn, depending on whether the underlying index is built or not). The comparison operator is judged by type, and the server side.
-// There is no amount of information being distributed one by one. This only affects the MCP side; Studio directly connects to BKN and still gets the full amount.
-func trimObjectTypesToIndexBackedOps(objectTypes []*interfaces.ObjectType) {
-	for _, ot := range objectTypes {
-		if ot == nil {
-			continue
-		}
-		for _, p := range ot.DataProperties {
-			if p == nil {
-				continue
-			}
-			p.ConditionOperations = indexBackedConditionOperations(p.ConditionOperations)
-		}
-	}
-}
-
-// indexBackedConditionOperations only retains the operators brought by the index.
-func indexBackedConditionOperations(ops []interfaces.KnOperationType) []interfaces.KnOperationType {
-	var out []interfaces.KnOperationType
-	for _, op := range ops {
-		switch op {
-		case interfaces.KnOperationTypeMatch, interfaces.KnOperationTypeMultiMatch, interfaces.KnOperationTypeKnn:
-			out = append(out, op)
-		}
-	}
-	return out
 }

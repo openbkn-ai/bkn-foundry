@@ -170,16 +170,17 @@ type KnSearchLocalResponse struct {
 
 // KnSearchObjectType object type (local response shape)
 type KnSearchObjectType struct {
-	ConceptType     string                   `json:"concept_type,omitempty"`
-	ConceptID       string                   `json:"concept_id"`
-	ConceptName     string                   `json:"concept_name"`
-	Comment         string                   `json:"comment,omitempty"`
-	Tags            []string                 `json:"tags,omitempty"`
-	DataSource      *ResourceInfo            `json:"data_source,omitempty"`
-	DataProperties  []*KnSearchDataProperty  `json:"data_properties,omitempty"`
-	LogicProperties []*KnSearchLogicProperty `json:"logic_properties,omitempty"`
-	PrimaryKeys     []string                 `json:"primary_keys,omitempty"`
-	SampleData      map[string]any           `json:"sample_data,omitempty"`
+	ConceptType          string                         `json:"concept_type,omitempty"`
+	ConceptID            string                         `json:"concept_id"`
+	ConceptName          string                         `json:"concept_name"`
+	Comment              string                         `json:"comment,omitempty"`
+	Tags                 []string                       `json:"tags,omitempty"`
+	DataSource           *ResourceInfo                  `json:"data_source,omitempty"`
+	DataProperties       []*KnSearchDataProperty        `json:"data_properties,omitempty"`
+	LogicProperties      []*KnSearchLogicProperty       `json:"logic_properties,omitempty"`
+	PrimaryKeys          []string                       `json:"primary_keys,omitempty"`
+	SampleData           map[string]any                 `json:"sample_data,omitempty"`
+	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
 	// Score is concept recall's relevance score for this object type, kept off the wire (json:"-").
 	//
 	// It exists so instance recall can skip object types the query has nothing to do with, before
