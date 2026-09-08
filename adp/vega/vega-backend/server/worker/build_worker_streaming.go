@@ -56,6 +56,8 @@ type streamingBuildWorker struct {
 	stopped     *atomic.Bool
 }
 
+var errStreamingDocumentWrite = errors.New("write streaming document")
+
 func (sbw *streamingBuildWorker) isStopping() bool {
 	return sbw.stopped != nil && sbw.stopped.Load()
 }
@@ -310,25 +312,11 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 				// Determine operation type
 				switch op {
 				case "r", "c":
-					// Full snapshot or create operation
-					// Create document from the after data
-					document := filterBuildDocumentFields(after, outputFields)
-
-					kafkaKeyValues, err := getKafkaKeyValues(buildTaskInfo.IndexConfig.PrimaryKeyFields, keyMap)
-					if err != nil {
-						return fmt.Errorf("extract Kafka key values: %w", err)
-					}
-					docID, err := generateDocumentID(kafkaKeyValues)
-					if err != nil {
-						return fmt.Errorf("generate streaming document ID: %w", err)
-					}
-					if buildTaskHasEmbedding(buildTaskInfo) {
-						if err := pipeline.enrich(ctx, map[string]map[string]any{docID: document}, buildTaskEmbeddingConfig(buildTaskInfo)); err != nil {
-							return fmt.Errorf("vectorize streaming document: %w", err)
+					if err := sbw.handleCreateOperation(ctx, keyMap, after, indexName, buildTaskInfo, pipeline, outputFields); err != nil {
+						if !errors.Is(err, errStreamingDocumentWrite) {
+							return err
 						}
-					}
-					if _, err := sbw.lim.IndexDocuments(ctx, indexName, map[string]map[string]any{docID: document}); err != nil {
-						logger.Errorf("Failed to write document to local index: %v", err)
+						logger.Errorf("Failed to handle streaming create operation: %v", err)
 						time.Sleep(retryInterval)
 						continue
 					}
@@ -542,6 +530,27 @@ func streamingDatabase(catalog *interfaces.Catalog) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported streaming connector type: %s", catalog.ConnectorType)
 	}
+}
+
+func (sbw *streamingBuildWorker) handleCreateOperation(ctx context.Context, keyMap, after map[string]any, indexName string, buildTaskInfo *interfaces.BuildTask, pipeline *embeddingPipeline, outputFields []string) error {
+	document := filterBuildDocumentFields(after, outputFields)
+	kafkaKeyValues, err := getKafkaKeyValues(buildTaskInfo.IndexConfig.PrimaryKeyFields, keyMap)
+	if err != nil {
+		return fmt.Errorf("extract Kafka key values: %w", err)
+	}
+	docID, err := generateDocumentID(kafkaKeyValues)
+	if err != nil {
+		return fmt.Errorf("generate streaming document ID: %w", err)
+	}
+	if buildTaskHasEmbedding(buildTaskInfo) {
+		if err := pipeline.enrich(ctx, map[string]map[string]any{docID: document}, buildTaskEmbeddingConfig(buildTaskInfo)); err != nil {
+			return fmt.Errorf("vectorize streaming document: %w", err)
+		}
+	}
+	if _, err := sbw.lim.IndexDocuments(ctx, indexName, map[string]map[string]any{docID: document}); err != nil {
+		return fmt.Errorf("%w: %w", errStreamingDocumentWrite, err)
+	}
+	return nil
 }
 
 // handleUpdateOperation handles update operations.

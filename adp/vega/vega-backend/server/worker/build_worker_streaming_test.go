@@ -155,6 +155,32 @@ func TestFilterBuildDocumentFieldsExcludesUnsupportedFields(t *testing.T) {
 	assert.Equal(t, map[string]any{"id": 2, "title": "created"}, document)
 }
 
+func TestHandleCreateOperationExcludesUnsupportedFields(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	lim := vmock.NewMockLocalIndexManager(ctrl)
+	worker := &streamingBuildWorker{lim: lim}
+	buildTask := &interfaces.BuildTask{
+		IndexConfig: &interfaces.BuildTaskIndexConfig{
+			IndexConfigContract: interfaces.IndexConfigContract{PrimaryKeyFields: []string{"id"}},
+		},
+	}
+	docID, err := generateDocumentID([]interfaces.KeyValue{{Key: "id", Value: 2}})
+	require.NoError(t, err)
+	lim.EXPECT().IndexDocuments(gomock.Any(), "index-1", map[string]map[string]any{
+		docID: {"id": 2, "title": "created"},
+	}).Return(nil, nil)
+
+	require.NoError(t, worker.handleCreateOperation(
+		context.Background(),
+		map[string]any{"id": 2},
+		map[string]any{"id": 2, "title": "created", "attachment": []byte("blob"), "metadata": []string{"a", "b"}},
+		"index-1",
+		buildTask,
+		&embeddingPipeline{},
+		[]string{"id", "title"},
+	))
+}
+
 func TestHandleUpdateOperationWritesReplacementBeforeDeletingOldDocument(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	lim := vmock.NewMockLocalIndexManager(ctrl)
