@@ -277,6 +277,14 @@ func datasetRebuildReason(dataset *interfaces.VegaResource, expectedSchema []*in
 	if dataset.LocalIndexStatus == interfaces.ResourceLocalIndexStatusUnavailable {
 		return "managed index is unavailable"
 	}
+	// "stale" is deliberately not a reason. It means the index exists and no longer matches a
+	// build-relevant change — vega keeps the index name, and the write path only requires a name,
+	// so documents still land. Rebuilding would delete every concept document to fix an index that
+	// is merely behind, which is the opposite of what this function is for. It does cost retrieval:
+	// VegaResourceIndexCaps reports no capabilities while a resource is stale, so the ranking
+	// degrades until the index is rebuilt through vega's own path. That is a narrower loss than
+	// deleting the data, and it is vega's maintenance concern rather than something to repair by
+	// dropping the resource here.
 	if !deepCompareSchemas(expectedSchema, dataset.SchemaDefinition) {
 		return "schema changed"
 	}

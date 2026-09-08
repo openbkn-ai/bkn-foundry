@@ -144,6 +144,10 @@ func TestInitRecreatesDatasetWhenEmbeddingModelIDDiffers(t *testing.T) {
 		vbs.EXPECT().GetResourceByID(ctx, interfaces.BKN_DATASET_ID).Return(&interfaces.VegaResource{
 			ID:               interfaces.BKN_DATASET_ID,
 			SchemaDefinition: interfaces.GetBKNConceptSchemaDefinition(model.EmbeddingDim, true),
+			// Healthy index: without it the managed-index check short-circuits and this case
+			// never reaches the comparison it exists to exercise.
+			LocalIndexName:   "vega-dataset-01",
+			LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
 			IndexConfig:      &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: model.ModelName},
 		}, nil)
 		vbs.EXPECT().DeleteResource(ctx, interfaces.BKN_DATASET_ID).Return(nil)
@@ -452,6 +456,16 @@ func Test_datasetRebuildReason(t *testing.T) {
 			broken := *healthy
 			broken.LocalIndexName = ""
 			So(datasetRebuildReason(&broken, schema, "model-1"), ShouldNotEqual, "")
+		})
+
+		Convey("stale 不重建——索引还在，写入照常，重建会白白删光概念文档", func() {
+			// vega marks a dataset stale when a build-relevant change lands, and keeps the index
+			// name. The write path only requires a name, so documents still land; what degrades is
+			// retrieval, until vega rebuilds the index through its own path. Deleting the resource
+			// here would trade a degraded ranking for lost data.
+			behind := *healthy
+			behind.LocalIndexStatus = "stale"
+			So(datasetRebuildReason(&behind, schema, "model-1"), ShouldEqual, "")
 		})
 
 		Convey("托管索引不可用要重建", func() {
