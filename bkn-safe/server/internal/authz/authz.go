@@ -834,15 +834,20 @@ func (en *Enforcer) AccessibleResources(accessorID, resourceType, op string) ([]
 	if err != nil {
 		return nil, err
 	}
-	out := ids[:0]
+	resources := make([]ResourceRef, 0, len(ids))
 	for _, id := range ids {
-		allowed, err := en.Check(accessorID, resourceType, id, op)
-		if err != nil {
-			return nil, err
-		}
-		if allowed {
-			out = append(out, id)
-		}
+		resources = append(resources, ResourceRef{Type: resourceType, ID: id})
+	}
+	// The candidate set is collected above from direct and inherited grants,
+	// then filtered in one deny-aware batch. Calling Check for every id here
+	// would turn a resource-list request into N hierarchy/proxy lookups.
+	filtered, err := en.FilterResourceOps(accessorID, resources, []string{op}, nil)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(filtered))
+	for _, resource := range filtered {
+		out = append(out, resource.ID)
 	}
 	return out, nil
 }

@@ -869,6 +869,15 @@ func revokeObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 		if !ok {
 			return
 		}
+		// Deny exceptions are security-administration state. A delegated owner
+		// may revoke ordinary allows, but must not remove an administrator's deny
+		// rule. For a legacy request without effect, keep the owner-facing revoke
+		// behavior by limiting it to allow rows; administrators retain the old
+		// "remove every row" behavior.
+		if req.Effect == authz.EffectDeny && authority != authorityAdminAuthz {
+			replyPublicError(c, http.StatusForbidden)
+			return
+		}
 		if authority != authorityAdminAuthz && !protectAuthorizeHolder(c, e, req.Resource, req.AccessorID) {
 			return
 		}
@@ -882,10 +891,14 @@ func revokeObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		var removed int
-		if req.Effect == "" {
+		if req.Effect == "" && authority == authorityAdminAuthz {
 			removed, err = e.RemoveAccessorResourcePolicies(req.AccessorID, req.Resource.Type, req.Resource.ID)
 		} else {
-			removed, err = e.RemoveAccessorResourcePoliciesForEffect(req.AccessorID, req.Resource.Type, req.Resource.ID, req.Effect)
+			effect := req.Effect
+			if effect == "" {
+				effect = authz.EffectAllow
+			}
+			removed, err = e.RemoveAccessorResourcePoliciesForEffect(req.AccessorID, req.Resource.Type, req.Resource.ID, effect)
 		}
 		if err != nil {
 			serverError(c, err)

@@ -489,6 +489,42 @@ func TestObjectGrantsOwnerMayShareOwnObject(t *testing.T) {
 	}
 }
 
+func TestObjectGrantsOwnerCannotRemoveAdminDeny(t *testing.T) {
+	r, e, _ := ownerGrantFixtureWithDB(t)
+	const readerRole = "kn-reader"
+	if err := e.GrantRolePermission(readerRole, "knowledge_network", "*", "view_detail"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.AssignRole("u-mate", readerRole); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.DenyObjectPermission("u-mate", "knowledge_network", "kn-mine", "view_detail"); err != nil {
+		t.Fatal(err)
+	}
+
+	// A legacy owner revoke still removes only ordinary grants, never the
+	// administrator-installed deny exception.
+	w := tokReq(t, r, http.MethodDelete, "/api/safe/v1/me/object-grants", map[string]any{
+		"accessor_id": "u-mate",
+		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+	}, "u-owner")
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("legacy owner revoke: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
+	if ok, err := e.Check("u-mate", "knowledge_network", "kn-mine", "view_detail"); err != nil || ok {
+		t.Fatalf("owner revoke removed admin deny: allowed=%v err=%v", ok, err)
+	}
+
+	w = tokReq(t, r, http.MethodDelete, "/api/safe/v1/me/object-grants", map[string]any{
+		"accessor_id": "u-mate",
+		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"effect":      "deny",
+	}, "u-owner")
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("owner remove deny: want 403, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
 func TestObjectGrantsDisabledOwnerCannotWrite(t *testing.T) {
 	r, e, db := ownerGrantFixtureWithDB(t)
 	if err := db.Model(&model.User{}).Where("id = ?", "u-owner").Update("enabled", false).Error; err != nil {

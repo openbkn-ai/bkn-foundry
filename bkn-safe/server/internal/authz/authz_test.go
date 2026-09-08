@@ -105,6 +105,24 @@ func TestExplicitDenyOverridesOrdinaryAllows(t *testing.T) {
 	}
 }
 
+func TestAccessibleResourcesFiltersDenyInBatch(t *testing.T) {
+	e := newTestEnforcer(t)
+	const user, role = "alice", "reader-role"
+	mustNoErr(t, e.GrantRolePermission(role, "resource", "*", "view_detail"))
+	mustNoErr(t, e.AssignRole(user, role))
+	mustNoErr(t, e.GrantObjectPermission(user, "resource", "r-1", "view_detail"))
+	mustNoErr(t, e.GrantObjectPermission(user, "resource", "r-2", "view_detail"))
+	mustNoErr(t, e.DenyObjectPermission(user, "resource", "r-1", "view_detail"))
+
+	got, err := e.AccessibleResources(user, "resource", "view_detail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sameSet(got, []string{"r-2"}) {
+		t.Fatalf("accessible resources = %v, want [r-2]", got)
+	}
+}
+
 func TestSuperAdminCannotBeDenied(t *testing.T) {
 	e := newTestEnforcer(t)
 	const user = "break-glass-admin"
