@@ -7,6 +7,7 @@ package permission
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -85,6 +86,41 @@ func TestPermissionServiceRequireQueryData(t *testing.T) {
 		err := (&permissionService{access: access}).RequireQueryData(invalidCtx, resources)
 		assertHTTPStatus(t, err, http.StatusForbidden)
 	})
+}
+
+func TestPropertyLevelBatchingSplitsPerObjectAndRequestLimits(t *testing.T) {
+	properties := make([]string, 401)
+	for index := range properties {
+		properties[index] = fmt.Sprintf("p%d", index)
+	}
+	chunks, err := propertyLevelChunks([]interfaces.PropertyLevelsRequestItem{{
+		ObjectTypeRef: "kn-1/customer", Properties: properties,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) != 3 || len(chunks[0].Properties) != 200 || len(chunks[1].Properties) != 200 || len(chunks[2].Properties) != 1 {
+		t.Fatalf("chunks = %#v", chunks)
+	}
+	batches := propertyLevelBatches(chunks)
+	if len(batches) != 3 {
+		t.Fatalf("same object chunks must use separate requests: %#v", batches)
+	}
+
+	manyObjects := make([]interfaces.PropertyLevelsRequestItem, 101)
+	for index := range manyObjects {
+		manyObjects[index] = interfaces.PropertyLevelsRequestItem{
+			ObjectTypeRef: fmt.Sprintf("kn-1/type-%d", index), Properties: []string{"p"},
+		}
+	}
+	chunks, err = propertyLevelChunks(manyObjects)
+	if err != nil {
+		t.Fatal(err)
+	}
+	batches = propertyLevelBatches(chunks)
+	if len(batches) != 2 || len(batches[0]) != 100 || len(batches[1]) != 1 {
+		t.Fatalf("object batches = %#v", batches)
+	}
 }
 
 func TestPermissionServiceFilterQueryDataReturnsOnlyAllowedCandidatesInRequestOrder(t *testing.T) {

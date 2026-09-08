@@ -1,3 +1,6 @@
+{{- if and (gt (int .Values.replicaCount) 1) (empty .Values.cursorEncryption.existingSecret) }}
+{{- fail "cursorEncryption.existingSecret is required when replicaCount is greater than 1" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -84,6 +87,13 @@ spec:
             value: {{ .Values.env.timezone }}
           - name: LANG
             value: {{ .Values.env.language }}
+          {{- if .Values.cursorEncryption.existingSecret }}
+          - name: BKN_QUERY_CURSOR_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.cursorEncryption.existingSecret | quote }}
+                key: {{ .Values.cursorEncryption.secretKey | quote }}
+          {{- end }}
           {{- if .Values.bknTrace.evidence.ingestUrl }}
           - name: BKN_TRACE_EVIDENCE_INGEST_URL
             value: {{ .Values.bknTrace.evidence.ingestUrl | quote }}

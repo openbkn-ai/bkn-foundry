@@ -55,12 +55,14 @@ type ObjectQueryInfo struct {
 }
 
 type Objects struct {
-	ObjectType      *ObjectType      `json:"object_type,omitempty"`
-	Datas           []map[string]any `json:"datas"`
-	TotalCount      int64            `json:"total_count,omitempty"`
-	SearchAfter     []any            `json:"search_after,omitempty"`
-	OverallMs       int64            `json:"overall_ms"`
-	SearchFromIndex bool             `json:"search_from_index"` // Whether to query the index.
+	ObjectType           *ObjectType                    `json:"object_type,omitempty"`
+	Datas                []map[string]any               `json:"datas"`
+	TotalCount           int64                          `json:"total_count,omitempty"`
+	SearchAfter          []any                          `json:"-"`
+	Cursor               string                         `json:"cursor,omitempty"`
+	OverallMs            int64                          `json:"overall_ms"`
+	SearchFromIndex      bool                           `json:"search_from_index"` // Whether to query the index.
+	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
 }
 
 type ObjectTypeSampleDataColumn struct {
@@ -69,11 +71,13 @@ type ObjectTypeSampleDataColumn struct {
 }
 
 type ObjectTypeSampleData struct {
-	Columns     []*ObjectTypeSampleDataColumn `json:"columns"`
-	Entries     []map[string]any              `json:"entries"`
-	Name        string                        `json:"name"`
-	TotalCount  int64                         `json:"total_count,omitempty"`
-	SearchAfter []any                         `json:"search_after,omitempty"`
+	Columns              []*ObjectTypeSampleDataColumn  `json:"columns"`
+	Entries              []map[string]any               `json:"entries"`
+	Name                 string                         `json:"name"`
+	TotalCount           int64                          `json:"total_count,omitempty"`
+	SearchAfter          []any                          `json:"-"`
+	Cursor               string                         `json:"cursor,omitempty"`
+	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
 }
 
 // Calculation parameters for metric properties.

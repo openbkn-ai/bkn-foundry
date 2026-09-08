@@ -71,7 +71,42 @@ func (pa *permissionAccess) FilterResources(ctx context.Context,
 	return response, nil
 }
 
+func (pa *permissionAccess) ResolvePropertyLevels(ctx context.Context,
+	request interfaces.PropertyLevelsRequest) (interfaces.PropertyLevelsResponse, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ResolvePropertyLevels")
+	defer span.End()
+
+	var response interfaces.PropertyLevelsResponse
+	endpoint, err := pa.endpoint("/api/safe/v1/authz/property-levels")
+	if err != nil {
+		return response, err
+	}
+	respCode, body, err := pa.httpClient.PostNoUnmarshal(ctx, endpoint, map[string]string{
+		interfaces.CONTENT_TYPE_NAME: interfaces.CONTENT_TYPE_JSON,
+	}, request)
+	if err != nil {
+		return response, fmt.Errorf("call bkn-safe property-levels: %w", err)
+	}
+	if respCode != http.StatusOK {
+		return response, fmt.Errorf("bkn-safe property-levels returned status %d", respCode)
+	}
+	if len(body) == 0 {
+		return response, fmt.Errorf("bkn-safe property-levels returned an empty response")
+	}
+	if err := sonic.Unmarshal(body, &response); err != nil {
+		return response, fmt.Errorf("decode bkn-safe property-levels response: %w", err)
+	}
+	if response.Entries == nil {
+		return response, fmt.Errorf("bkn-safe property-levels response omitted entries")
+	}
+	return response, nil
+}
+
 func (pa *permissionAccess) resourceFilterEndpoint() (string, error) {
+	return pa.endpoint("/api/safe/v1/authz/resource-filter")
+}
+
+func (pa *permissionAccess) endpoint(path string) (string, error) {
 	if pa == nil || pa.httpClient == nil {
 		return "", fmt.Errorf("bkn-safe permission client is not configured")
 	}
@@ -79,5 +114,5 @@ func (pa *permissionAccess) resourceFilterEndpoint() (string, error) {
 	if err != nil || parsed == nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
 		return "", fmt.Errorf("BKN_SAFE_BASE_URL is missing or invalid")
 	}
-	return pa.baseURL + "/api/safe/v1/authz/resource-filter", nil
+	return pa.baseURL + path, nil
 }

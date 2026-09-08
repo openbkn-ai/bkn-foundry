@@ -1356,10 +1356,10 @@ func queryObjectConditionHash(req *interfaces.QueryObjectInstancesReq) string {
 		return HashValue(nil)
 	}
 	return HashValue(map[string]any{
-		"condition":    req.Cond,
-		"filters":      req.Filters,
-		"offset":       req.Offset,
-		"search_after": req.SearchAfter,
+		"condition": req.Cond,
+		"cursor":    req.Cursor,
+		"filters":   req.Filters,
+		"offset":    req.Offset,
 	})
 }
 
@@ -1367,11 +1367,11 @@ func queryObjectTruncated(req *interfaces.QueryObjectInstancesReq, resp *interfa
 	if resp == nil {
 		return false
 	}
-	if len(resp.SearchAfter) > 0 {
+	if resp.Cursor != "" {
 		return true
 	}
 	// Missing TotalCount means that the downstream has not calculated the total (this is true from the second page of the cursor), and it is not a zero hit;
-	// This path has been picked up upstream by the SearchAfter branch, so just don't treat nil as 0.
+	// This path has been picked up upstream by the Cursor branch, so just don't treat nil as 0.
 	if req == nil || resp.TotalCount == nil || *resp.TotalCount <= 0 {
 		return false
 	}

@@ -134,6 +134,13 @@ resources:
     cpu: 4
     memory: 32Gi
 
+# All replicas must use the same secret so encrypted query cursors survive
+# load balancing. A single replica may omit it and use a process-local random
+# key; Helm rejects replicaCount > 1 when existingSecret is empty.
+cursorEncryption:
+  existingSecret: ""
+  secretKey: "cursor-key"
+
 bknTrace:
   evidence:
     ingestUrl: ""

@@ -99,7 +99,7 @@ func TestModuleOpenAPIRequiresManagedBKNContext(t *testing.T) {
 		"api_private/find_skills.yaml":                 "FindSkillsRequest",
 		"api_private/get_action_info.yaml":             "ActionRecallRequest",
 		"api_private/get_logic_properties_values.yaml": "ResolveLogicPropertiesRequest",
-		"api_private/query_object_instance.yaml":       "FirstQueryWithSearchAfter",
+		"api_private/query_object_instance.yaml":       "ObjectQueryRequest",
 		"api_private/query_instance_subgraph.yaml":     "SubGraphQueryBaseOnTypePath",
 	}
 	for relativePath, requestSchema := range documents {
