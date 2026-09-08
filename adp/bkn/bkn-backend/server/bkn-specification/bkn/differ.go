@@ -141,7 +141,7 @@ func ComputeNetworkChecksums(fsys FileSystem, root string) (map[string]string, e
 		if ext != ".bkn" {
 			return nil
 		}
-		lines := computeBknChecksumWithFS(fsys, path)
+		lines := computeBknChecksumWithFS(fsys, path, checksumFormatCurrent)
 		for _, line := range lines {
 			parts := splitChecksumLine(line)
 			if parts[0] != "" && parts[1] != "" {
