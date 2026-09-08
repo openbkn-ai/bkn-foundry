@@ -2,6 +2,7 @@ package dataset
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -65,7 +66,7 @@ func TestMaterializeDocument(t *testing.T) {
 		document, err := ds.materializeDocument(context.Background(), resource, input)
 
 		require.NoError(t, err)
-		assert.Equal(t, input["content_vector"], document["content_vector"])
+		assert.Equal(t, []any{json.Number("0.1"), json.Number("0.2")}, document["content_vector"])
 	})
 
 	t.Run("accepts a vector field decoded with precise JSON", func(t *testing.T) {
@@ -82,7 +83,7 @@ func TestMaterializeDocument(t *testing.T) {
 		document, err := (&datasetService{}).materializeDocument(context.Background(), resource, input)
 
 		require.NoError(t, err)
-		assert.Equal(t, input["_vector"], document["_vector"])
+		assert.Equal(t, []any{json.Number("0.1"), json.Number("0.2")}, document["_vector"])
 	})
 
 	t.Run("does not write when inference fails", func(t *testing.T) {
