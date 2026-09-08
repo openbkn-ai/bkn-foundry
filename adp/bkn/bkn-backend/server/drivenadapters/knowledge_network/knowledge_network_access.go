@@ -10,6 +10,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
@@ -31,6 +32,18 @@ import (
 const (
 	KN_TABLE_NAME = "t_knowledge_network"
 )
+
+var knChildResourceTables = []struct {
+	resourceType string
+	tableName    string
+}{
+	{interfaces.RESOURCE_TYPE_CONCEPT_GROUP, "t_concept_group"},
+	{interfaces.RESOURCE_TYPE_OBJECT_TYPE, "t_object_type"},
+	{interfaces.RESOURCE_TYPE_RELATION_TYPE, "t_relation_type"},
+	{interfaces.RESOURCE_TYPE_ACTION_TYPE, "t_action_type"},
+	{interfaces.RESOURCE_TYPE_METRIC, "t_metric_definition"},
+	{interfaces.RESOURCE_TYPE_RISK_TYPE, "t_risk_type"},
+}
 
 var (
 	knAccessOnce sync.Once
@@ -1060,6 +1073,68 @@ func (kna *knowledgeNetworkAccess) ListKnSrcs(ctx context.Context,
 
 	span.SetStatus(codes.Ok, "")
 	return srcs, nil
+}
+
+// ListKNChildResourceCandidates returns the authorization identities of all
+// model children under the requested knowledge networks. The six child tables
+// are read in one round trip so list visibility does not degrade into N+1
+// queries as the number of networks grows.
+func (kna *knowledgeNetworkAccess) ListKNChildResourceCandidates(ctx context.Context,
+	knIDs []string, branch string) ([]interfaces.KNChildResourceCandidate, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Select knowledge network child resources")
+	defer span.End()
+
+	if len(knIDs) == 0 {
+		return []interfaces.KNChildResourceCandidate{}, nil
+	}
+	if branch == "" {
+		branch = interfaces.MAIN_BRANCH
+	}
+
+	queries := make([]string, 0, len(knChildResourceTables))
+	args := make([]any, 0)
+	for _, childTable := range knChildResourceTables {
+		builder := sq.Select().
+			Column(sq.Expr("? AS f_resource_type", childTable.resourceType)).
+			Column("f_kn_id").
+			Column("f_id").
+			From(childTable.tableName).
+			Where(sq.Eq{"f_kn_id": knIDs}).
+			Where(sq.Eq{"f_branch": branch})
+		query, values, err := builder.ToSql()
+		if err != nil {
+			common.LogSafeError(ctx, "Failed to build child resource query", err)
+			return nil, err
+		}
+		queries = append(queries, query)
+		args = append(args, values...)
+	}
+
+	query := strings.Join(queries, " UNION ALL ")
+	otellog.LogInfo(ctx, common.SafeQuerySummary(query, len(args)))
+	rows, err := kna.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		common.LogSafeError(ctx, "Failed to list knowledge network child resources", err)
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	candidates := make([]interfaces.KNChildResourceCandidate, 0)
+	for rows.Next() {
+		candidate := interfaces.KNChildResourceCandidate{}
+		if err := rows.Scan(&candidate.Type, &candidate.KNID, &candidate.ResourceID); err != nil {
+			common.LogSafeError(ctx, "Failed to scan knowledge network child resource", err)
+			return nil, err
+		}
+		candidates = append(candidates, candidate)
+	}
+	if err := rows.Err(); err != nil {
+		common.LogSafeError(ctx, "Failed to iterate knowledge network child resources", err)
+		return nil, err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return candidates, nil
 }
 
 func processConceptGroupRelationsQueryCondition(query interfaces.ConceptGroupRelationsQueryParams, subBuilder sq.SelectBuilder, fieldPrefix string) sq.SelectBuilder {

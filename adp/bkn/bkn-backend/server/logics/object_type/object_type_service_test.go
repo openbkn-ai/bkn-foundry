@@ -1805,12 +1805,10 @@ func Test_objectTypeService_GetObjectTypesMapByIDs(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
-		ps := bmock.NewMockPermissionService(mockCtrl)
 
 		service := &objectTypeService{
 			appSetting: appSetting,
 			ota:        ota,
-			ps:         ps,
 		}
 
 		Convey("Success getting object types map\n", func() {
@@ -1838,7 +1836,6 @@ func Test_objectTypeService_GetObjectTypesMapByIDs(t *testing.T) {
 				},
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(otArr, nil)
 
 			result, err := service.GetObjectTypesMapByIDs(ctx, knID, branch, otIDs, true)
@@ -1849,12 +1846,13 @@ func Test_objectTypeService_GetObjectTypesMapByIDs(t *testing.T) {
 			So(result["ot1"].PropertyMap["prop1"], ShouldEqual, "Property1")
 		})
 
-		Convey("Failed when permission check fails\n", func() {
+		Convey("Failed when object type lookup fails\n", func() {
 			knID := "kn1"
 			branch := interfaces.MAIN_BRANCH
 			otIDs := []string{"ot1"}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_InternalError_CheckPermissionFailed))
+			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			result, err := service.GetObjectTypesMapByIDs(ctx, knID, branch, otIDs, false)
 			So(err, ShouldNotBeNil)

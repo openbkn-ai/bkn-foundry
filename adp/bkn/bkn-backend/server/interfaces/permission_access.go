@@ -93,6 +93,14 @@ type PermissionResourceParent struct {
 	ParentID   string `json:"parent_id"`
 }
 
+// KNChildResourceCandidate ties one persisted child resource to its owning
+// knowledge network for restricted navigation visibility checks.
+type KNChildResourceCandidate struct {
+	KNID       string
+	ResourceID string
+	Type       string
+}
+
 // KNChildResourceID returns the canonical Safe ID for a child resource.
 func KNChildResourceID(knID, childID string) string {
 	return knID + "/" + childID

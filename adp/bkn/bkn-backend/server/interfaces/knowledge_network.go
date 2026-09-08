@@ -130,6 +130,13 @@ type KN struct {
 	Statistics *Statistics `json:"statistics,omitempty"`
 	// Operation permissions.
 	Operations []string `json:"operations,omitempty"`
+	// NavigationOnly marks a shell exposed through a visible child resource.
+	// It is internal state used to calculate permission-filtered statistics.
+	NavigationOnly bool `json:"-" mapstructure:"-"`
+	// NavigationStatistics caches the child visibility result calculated while
+	// loading a navigation-only detail so include_statistics does not repeat the
+	// database and Safe queries in the same request.
+	NavigationStatistics *Statistics `json:"-" mapstructure:"-"`
 
 	// Vector.
 	Vector []float32 `json:"_vector,omitempty"`

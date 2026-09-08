@@ -208,6 +208,21 @@ func (mr *MockKNAccessMockRecorder) ListKNs(ctx, query any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListKNs", reflect.TypeOf((*MockKNAccess)(nil).ListKNs), ctx, query)
 }
 
+// ListKNChildResourceCandidates mocks base method.
+func (m *MockKNAccess) ListKNChildResourceCandidates(ctx context.Context, knIDs []string, branch string) ([]interfaces.KNChildResourceCandidate, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListKNChildResourceCandidates", ctx, knIDs, branch)
+	ret0, _ := ret[0].([]interfaces.KNChildResourceCandidate)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListKNChildResourceCandidates indicates an expected call of ListKNChildResourceCandidates.
+func (mr *MockKNAccessMockRecorder) ListKNChildResourceCandidates(ctx, knIDs, branch any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListKNChildResourceCandidates", reflect.TypeOf((*MockKNAccess)(nil).ListKNChildResourceCandidates), ctx, knIDs, branch)
+}
+
 // ListKnSrcs mocks base method.
 func (m *MockKNAccess) ListKnSrcs(ctx context.Context, query interfaces.KNsQueryParams) ([]interfaces.PermissionResource, error) {
 	m.ctrl.T.Helper()
