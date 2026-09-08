@@ -26,6 +26,7 @@ func TestPostgresqlMapType(t *testing.T) {
 		{"INT4", interfaces.DataType_Integer},
 		{"  text  ", interfaces.DataType_Text},
 		{"jsonb", interfaces.DataType_Json},
+		{"enum", interfaces.DataType_String},
 		// 数组类型：udt_name 形式（带下划线前缀）—— 不识别
 		{"_int4", interfaces.DataType_Other},
 		{"_text", interfaces.DataType_Other},

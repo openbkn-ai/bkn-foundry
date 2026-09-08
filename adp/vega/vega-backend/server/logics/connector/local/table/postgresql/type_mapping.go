@@ -48,6 +48,7 @@ var TypeMapping = map[string]string{
 	"character":         interfaces.DataType_String,
 	"interval":          interfaces.DataType_String,
 	"character varying": interfaces.DataType_String,
+	"enum":              interfaces.DataType_String,
 	"inet":              interfaces.DataType_Ip,
 	"cidr":              interfaces.DataType_Ip,
 

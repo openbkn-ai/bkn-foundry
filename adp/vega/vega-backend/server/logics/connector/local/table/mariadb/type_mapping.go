@@ -47,6 +47,8 @@ var TypeMapping = map[string]string{
 	// String types
 	"char":    interfaces.DataType_String,
 	"varchar": interfaces.DataType_String,
+	"enum":    interfaces.DataType_String,
+	"set":     interfaces.DataType_String,
 
 	// Text types
 	"tinytext":   interfaces.DataType_Text,

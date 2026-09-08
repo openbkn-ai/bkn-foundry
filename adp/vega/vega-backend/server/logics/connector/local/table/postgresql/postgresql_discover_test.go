@@ -116,7 +116,8 @@ func TestPostgresqlConnectorFetchColumns(t *testing.T) {
 			AddRow("code", 1043, "b", "varchar", 68, false, nil, "C", 3, "").
 			AddRow("amount", 1700, "b", "numeric", int64((10<<16)|2)+4, false, nil, "", 4, "").
 			AddRow("occurred_at", 1114, "b", "timestamp", 3, false, nil, "", 5, "").
-			AddRow("legacy_code", 9200, "d", "legacy_code_domain", -1, false, nil, "", 6, ""))
+			AddRow("legacy_code", 9200, "d", "legacy_code_domain", -1, false, nil, "", 6, "").
+			AddRow("status", 9300, "e", "order_status", -1, false, nil, "", 7, "order state"))
 	mock.ExpectQuery(`(?s)WITH RECURSIVE domain_chain.*root\.oid IN \(\$1, \$2\).*pg_catalog\.pg_constraint`).
 		WithArgs(int64(9100), int64(9200)).
 		WillReturnRows(sqlmock.NewRows([]string{
@@ -131,8 +132,8 @@ func TestPostgresqlConnectorFetchColumns(t *testing.T) {
 	if err := connector.fetchColumns(context.Background(), table); err != nil {
 		t.Fatalf("fetchColumns returned error: %v", err)
 	}
-	if len(table.Columns) != 6 {
-		t.Fatalf("expected 6 columns, got %d", len(table.Columns))
+	if len(table.Columns) != 7 {
+		t.Fatalf("expected 7 columns, got %d", len(table.Columns))
 	}
 	column := table.Columns[0]
 	if column.Name != "id" || column.DefaultValue != "" || column.Description != "" || column.Collation != "" {
@@ -157,6 +158,12 @@ func TestPostgresqlConnectorFetchColumns(t *testing.T) {
 	assert.Equal(t, "legacy_code_domain", table.Columns[5].Type)
 	assert.Empty(t, table.Columns[5].AliasType)
 	assert.True(t, table.Columns[5].Nullable)
+	enumColumn := table.Columns[6]
+	assert.Equal(t, "status", enumColumn.Name)
+	assert.Equal(t, "enum", enumColumn.Type)
+	assert.Equal(t, "order_status", enumColumn.AliasType)
+	assert.Equal(t, "order state", enumColumn.Description)
+	assert.Equal(t, interfaces.DataType_String, connector.MapType(enumColumn.Type))
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("sqlmock expectations were not met: %v", err)
 	}

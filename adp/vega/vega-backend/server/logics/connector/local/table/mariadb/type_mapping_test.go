@@ -38,6 +38,16 @@ func TestMariaDBConnectorMapType(t *testing.T) {
 			want:       interfaces.DataType_String,
 		},
 		{
+			name:       "enum with labels",
+			nativeType: "enum('pending','completed')",
+			want:       interfaces.DataType_String,
+		},
+		{
+			name:       "set with labels",
+			nativeType: "set('red','blue')",
+			want:       interfaces.DataType_String,
+		},
+		{
 			name:       "normalizes case and whitespace",
 			nativeType: "  DATETIME  ",
 			want:       interfaces.DataType_Datetime,

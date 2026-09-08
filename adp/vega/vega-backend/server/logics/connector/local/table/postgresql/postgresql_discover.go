@@ -426,7 +426,8 @@ ORDER BY a.attnum`, relKinds)
 		if pkSet[raw.name.String] {
 			column.ColumnKey = "PRI"
 		}
-		if raw.typeKind.String == "d" {
+		switch raw.typeKind.String {
+		case "d":
 			domain, ok := domains[raw.typeOID.Int64]
 			if ok {
 				column.AliasType = raw.typeName.String
@@ -438,6 +439,9 @@ ORDER BY a.attnum`, relKinds)
 				}
 				typeModifier = domain.BaseTypmod
 			}
+		case "e":
+			column.AliasType = raw.typeName.String
+			column.Type = "enum"
 		}
 		switch column.Type {
 		case "bpchar", "varchar":

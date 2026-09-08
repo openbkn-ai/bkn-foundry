@@ -281,6 +281,36 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		assert.NotContains(t, input.SampleRows[0], "shape")
 	})
 
+	t.Run("includes enum columns mapped to string in the task input", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
+		resource := sampleSemanticResource()
+		resource.SchemaDefinition = append(resource.SchemaDefinition, &interfaces.Property{
+			Name:         "status",
+			OriginalName: "status",
+			OriginalType: "enum",
+			Type:         interfaces.DataType_String,
+		})
+		task, err := normalizeResourceSemanticUnderstandingRequest(resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
+			IncludeSampleRows: true,
+			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},
+		})
+		require.NoError(t, err)
+		resourceDataService.EXPECT().
+			QueryWithPaging(gomock.Any(), resource, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+				assert.Equal(t, []string{"order_id", "status"}, params.OutputFields)
+				return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"order_id": "o-1", "status": "pending"}}}, nil
+			})
+
+		service := &semanticUnderstandingTaskService{rds: resourceDataService}
+		require.NoError(t, service.attachUnmaskedSampleRows(context.Background(), resource, task))
+		var input interfaces.SemanticUnderstandingResourceAgentInput
+		require.NoError(t, sonic.Unmarshal([]byte(task.Input), &input))
+		assert.Equal(t, []map[string]any{{"order_id": "o-1", "status": "pending"}}, input.SampleRows)
+	})
+
 	t.Run("skips sample query when every schema field is excluded", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
