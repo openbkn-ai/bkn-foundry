@@ -63,6 +63,25 @@ func TestFilterResourceOpsProjection(t *testing.T) {
 	}
 }
 
+func TestFilterResourceOpsAppliesDenyExceptions(t *testing.T) {
+	e := newTestEnforcer(t)
+	const user, role = "alice", "reader-role"
+	mustNoErr(t, e.GrantRolePermission(role, "knowledge_network", "*", "view_detail"))
+	mustNoErr(t, e.AssignRole(user, role))
+	mustNoErr(t, e.DenyObjectPermission(user, "knowledge_network", "kn-1", "view_detail"))
+
+	got, err := e.FilterResourceOps(user, []ResourceRef{
+		{Type: "knowledge_network", ID: "kn-1"},
+		{Type: "knowledge_network", ID: "kn-2"},
+	}, []string{"view_detail"}, []string{"view_detail"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != "kn-2" {
+		t.Fatalf("filtered resources = %#v, want only kn-2", got)
+	}
+}
+
 // TestFilterResourceOpsVisibility covers the filtering axis: resources missing
 // any visibility op are dropped entirely, not returned with an empty op set.
 func TestFilterResourceOpsVisibility(t *testing.T) {

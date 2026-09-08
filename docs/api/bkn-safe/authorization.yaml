@@ -5,7 +5,7 @@
 openapi: 3.0.3
 info:
   title: bkn-safe internal authorization API
-  version: 0.3.0
+  version: 0.3.1
   description: |
     Internal service-to-service authorization contract used by BKN,
     ontology-query, context-loader, and execution-factory.
@@ -572,6 +572,14 @@ components:
         operations:
           type: array
           items: {type: string}
+        denied_operations:
+          type: array
+          items: {type: string}
+          description: |
+            Explicit deny exceptions on this accessor and resource. Omitted by
+            older servers; clients that do not inspect policy administration
+            details may ignore it. Runtime decision endpoints already apply
+            deny precedence and keep their existing request/response shapes.
     ResourceParentItem:
       type: object
       required: [resource_id, parent_id]

@@ -82,6 +82,23 @@ func TestCheckInheritsThroughTheCatalog(t *testing.T) {
 	}
 }
 
+func TestConcreteDenyBlocksInheritedAllow(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	ownedBy(t, db, "res-in", "cat-1")
+	const user = "alice"
+	mustNoErr(t, e.GrantObjectPermission(user, "catalog", "cat-1", "view_detail"))
+	mustNoErr(t, e.DenyObjectPermission(user, "resource", "res-in", "view_detail"))
+
+	allowed, err := e.Check(user, "resource", "res-in", "view_detail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if allowed {
+		t.Fatal("a concrete deny was restored by an inherited catalog allow")
+	}
+}
+
 // TestInheritanceRefusesSameNameFallback is the escalation this design exists to
 // prevent: "modify" on a catalog means rename the catalog. If it fell back by
 // name, whoever may rename a catalog could rewrite every table in it.

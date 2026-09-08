@@ -15,7 +15,8 @@ bkn-safe 是 OpenBKN 的认证、鉴权和用户目录服务。它配合**上游
 
 1. **认证** —— hydra 的 login/consent/device 验证页；用**自有用户库 + bcrypt** 验密码
    （不调 eacp/anyshare）；在 consent 时把 introspect 的 `ext` claims 注入 token session。
-2. **鉴权** —— Casbin（RBAC + 资源实例，`keyMatch`，只 allow），policy 存 GORM（gorm-adapter）。
+2. **鉴权** —— Casbin（RBAC + 资源实例，`keyMatch`，显式 deny 优先于普通 allow；
+   `super_admin` 作为恢复角色不可被 deny），policy 存 GORM（gorm-adapter）。
 3. **用户管理** —— 自建目录（users/departments/groups/roles）+ 名称解析 + LDAP 连接器（轻）。
 
 ## 目录
@@ -175,6 +176,25 @@ resolver 只能在此基础上收窄；core 会再次取最小档，不能通过
 顺序一致；未知档位、不完整的 Enterprise 结果、账号状态或授权判定不可用均失败关闭。
 该端点与其他 `/authz` 路由一样只存在于 ClusterIP S2S 边界，Helm Ingress 不暴露；
 终端业务请求不得提交或覆盖这里的 `accessor_id`。
+
+## 显式拒绝例外
+
+普通用户和普通角色遵循 `deny > allow > 默认拒绝`。例如角色持有
+`resource:* / view_detail` 时，可通过管理员对象授权接口只禁止 Alice 读取 `r-1`：
+
+```json
+{
+  "accessor_id": "alice",
+  "resource": {"type": "resource", "id": "r-1"},
+  "operations": ["view_detail"],
+  "effect": "deny"
+}
+```
+
+`effect` 不传时仍默认为 `allow`，已有调用无需修改。删除请求不传 `effect` 时清除该
+用户在对象上的全部直接规则；传 `allow` 或 `deny` 时只清除对应类型。历史
+`casbin_rule` 的空 `v3` 会在启动加载前幂等补为 `allow`。`super_admin` 是紧急恢复角色，
+任何 deny 都不会限制其成员。
 
 ## 授权档位（付费能力门控）
 

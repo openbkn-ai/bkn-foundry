@@ -353,9 +353,10 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 		entries := make([]gin.H, 0, len(policies))
 		for _, p := range policies {
 			entries = append(entries, gin.H{
-				"accessor_id": p.AccessorID,
-				"resource":    gin.H{"type": rtype, "id": rid},
-				"operations":  p.Operations,
+				"accessor_id":       p.AccessorID,
+				"resource":          gin.H{"type": rtype, "id": rid},
+				"operations":        p.Operations,
+				"denied_operations": p.DeniedOperations,
 			})
 		}
 		c.JSON(http.StatusOK, gin.H{"entries": entries})
@@ -776,6 +777,9 @@ func grantsJSON(grants []authz.RoleGrant) []gin.H {
 		// every other response rather than showing up empty everywhere.
 		if len(gr.InstanceOperations) > 0 {
 			row["instance_operations"] = gr.InstanceOperations
+		}
+		if len(gr.DeniedOperations) > 0 {
+			row["denied_operations"] = gr.DeniedOperations
 		}
 		out = append(out, row)
 	}

@@ -34,7 +34,8 @@ type ogEntry struct {
 		Type string `json:"type"`
 		ID   string `json:"id"`
 	} `json:"resource"`
-	Operations []string `json:"operations"`
+	Operations       []string `json:"operations"`
+	DeniedOperations []string `json:"denied_operations"`
 }
 
 func listObjectGrants(t *testing.T, r *gin.Engine, query string) []ogEntry {
@@ -138,6 +139,71 @@ func TestObjectGrantsSetListRevoke(t *testing.T) {
 	}
 	if got := listObjectGrants(t, r, ""); len(got) != 0 {
 		t.Fatalf("list after revoke: %+v", got)
+	}
+}
+
+func TestAdminObjectGrantDenyIsBackwardCompatible(t *testing.T) {
+	r, e, db, users := newAdminServer(t)
+	if err := users.CreateLocalUser(t.Context(), &model.User{
+		ID: "alice", Account: "alice-deny", Name: "Alice", Enabled: true,
+	}, "pw-init0"); err != nil {
+		t.Fatal(err)
+	}
+	seedCatalogOps(t, db, "catalog", "view_detail", "modify")
+	const reader = "reader-role"
+	if err := e.GrantRolePermission(reader, "catalog", "*", "view_detail"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.AssignRole("alice", reader); err != nil {
+		t.Fatal(err)
+	}
+
+	w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants", map[string]any{
+		"accessor_id": "alice",
+		"resource":    map[string]any{"type": "catalog", "id": "c1"},
+		"operations":  []string{"view_detail"},
+		"effect":      "deny",
+	})
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("deny: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
+	if ok, err := e.Check("alice", "catalog", "c1", "view_detail"); err != nil || ok {
+		t.Fatalf("denied check = %v, %v; want false", ok, err)
+	}
+	if ok, err := e.Check("alice", "catalog", "c2", "view_detail"); err != nil || !ok {
+		t.Fatalf("sibling check = %v, %v; want true", ok, err)
+	}
+	entries := listObjectGrants(t, r, "?accessor_id=alice&resource_type=catalog&resource_id=c1")
+	if len(entries) != 1 || len(entries[0].Operations) != 0 ||
+		len(entries[0].DeniedOperations) != 1 || entries[0].DeniedOperations[0] != "view_detail" {
+		t.Fatalf("deny-only grant listing = %+v", entries)
+	}
+
+	// A legacy request without effect still means allow and changes only allows;
+	// it must not silently erase the independently managed deny exception.
+	w = adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants", map[string]any{
+		"accessor_id": "alice",
+		"resource":    map[string]any{"type": "catalog", "id": "c1"},
+		"operations":  []string{"modify"},
+	})
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("legacy allow: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
+	entries = listObjectGrants(t, r, "?accessor_id=alice&resource_type=catalog&resource_id=c1")
+	if len(entries) != 1 || len(entries[0].DeniedOperations) != 1 || entries[0].DeniedOperations[0] != "view_detail" {
+		t.Fatalf("deny was not exposed separately: %+v", entries)
+	}
+
+	w = adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/object-grants", map[string]any{
+		"accessor_id": "alice",
+		"resource":    map[string]any{"type": "catalog", "id": "c1"},
+		"effect":      "deny",
+	})
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("remove deny: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
+	if ok, err := e.Check("alice", "catalog", "c1", "view_detail"); err != nil || !ok {
+		t.Fatalf("role allow was not restored after removing deny: %v, %v", ok, err)
 	}
 }
 

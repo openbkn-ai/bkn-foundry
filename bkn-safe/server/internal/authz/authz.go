@@ -6,8 +6,9 @@
 // resource instances, backed by a GORM adapter (policies live in the shared DB).
 //
 // This is a clean redesign, NOT the ISF authorization contract. Kowell only
-// uses the RBAC subset (ISF's deny/condition/obligation/hierarchy/expires are
-// unused), so the model is allow-only.
+// uses the RBAC subset plus an explicit deny effect. Deny overrides ordinary
+// direct, role-derived, public and inherited allows. The seeded super-admin
+// role is handled as a recovery-path bypass before policy evaluation.
 //
 // Object format is "type:id" (e.g. "agent:probe", "agent:*"). The matcher uses
 // keyMatch — NOT keyMatch2: keyMatch2 treats ":" as a named wildcard, which
@@ -44,13 +45,13 @@ const modelConf = `
 r = sub, obj, act
 
 [policy_definition]
-p = sub, obj, act
+p = sub, obj, act, eft
 
 [role_definition]
 g = _, _
 
 [policy_effect]
-e = some(where (p.eft == allow))
+e = some(where (p.eft == allow)) && !some(where (p.eft == deny))
 
 [matchers]
 m = (g(r.sub, p.sub) || p.sub == "` + PublicAccessorID + `") && keyMatch(r.obj, p.obj) && (p.act == "*" || r.act == p.act)
@@ -61,6 +62,16 @@ m = (g(r.sub, p.sub) || p.sub == "` + PublicAccessorID + `") && keyMatch(r.obj, 
 // department id, written by e.g. execution-factory's CreateIntCompPolicyForAllUsers
 // (interfaces.AccessorRootDepartmentID) for built-in toolbox public access.
 const PublicAccessorID = "00000000-0000-0000-0000-000000000000"
+
+// SuperAdminRoleID is the immutable seeded recovery role. Explicit deny rules
+// never constrain its members, so an administrator can always repair a broken
+// authorization configuration.
+const SuperAdminRoleID = "7dcfcc9c-ad02-11e8-aa06-000c29358ad6"
+
+const (
+	EffectAllow = "allow"
+	EffectDeny  = "deny"
+)
 
 // ActAll is the wildcard act: a policy with act "*" grants every operation on
 // the matched object (used for the super-admin "do everything" grant).
@@ -90,6 +101,13 @@ func New(db *gorm.DB) (*Enforcer, error) {
 	adapter, err := gormadapter.NewAdapterByDB(db)
 	if err != nil {
 		return nil, fmt.Errorf("new gorm adapter: %w", err)
+	}
+	// The old three-column model left v3 empty. Normalize those rows before the
+	// four-column model loads them; this is idempotent and keeps every historical
+	// grant effective as an explicit allow.
+	if err := db.Table("casbin_rule").Where("ptype = ? AND (v3 IS NULL OR v3 = '')", "p").
+		Update("v3", EffectAllow).Error; err != nil {
+		return nil, fmt.Errorf("normalize legacy casbin policies: %w", err)
 	}
 	m, err := model.NewModelFromString(modelConf)
 	if err != nil {
@@ -143,11 +161,21 @@ func (en *Enforcer) isManagedProxy(accessorID string) (bool, error) {
 // applying managed-proxy provenance. Delegator validation must use this raw
 // path so a source can never recursively justify itself.
 func (en *Enforcer) checkPolicy(accessorID, resourceType, resourceID, op string) (bool, error) {
-	ok, err := en.e.Enforce(accessorID, obj(resourceType, resourceID), op)
-	if err != nil || ok {
-		return ok, err
+	idx, err := en.grantIndex(accessorID)
+	if err != nil {
+		return false, err
 	}
-	inherited, err := en.inheritedOps(accessorID, resourceType, resourceID, []string{op})
+	if idx.superAdmin {
+		return true, nil
+	}
+	direct := idx.decide(ResourceRef{Type: resourceType, ID: resourceID}, []string{op})
+	if direct[op] == EffectDeny {
+		return false, nil
+	}
+	if direct[op] == EffectAllow {
+		return true, nil
+	}
+	inherited, err := en.inheritedOpsWithIndex(idx, resourceType, resourceID, []string{op})
 	if err != nil {
 		return false, err
 	}
@@ -204,22 +232,28 @@ func (en *Enforcer) hasCurrentProxySource(proxyID, resourceType, resourceID, op 
 // the resource. Mirrors ISF resource-operation (allow_operation): the result is
 // a set; callers must not depend on order.
 func (en *Enforcer) AllowedOps(accessorID, resourceType, resourceID string, candidates []string) ([]string, error) {
+	idx, err := en.grantIndex(accessorID)
+	if err != nil {
+		return nil, err
+	}
+	if idx.superAdmin {
+		return append([]string(nil), candidates...), nil
+	}
 	out := make([]string, 0, len(candidates))
 	missing := make([]string, 0, len(candidates))
+	direct := idx.decide(ResourceRef{Type: resourceType, ID: resourceID}, candidates)
 	for _, op := range candidates {
-		ok, err := en.e.Enforce(accessorID, obj(resourceType, resourceID), op)
-		if err != nil {
-			return nil, err
-		}
-		if ok {
+		if direct[op] == EffectAllow {
 			out = append(out, op)
 			continue
 		}
-		missing = append(missing, op)
+		if direct[op] != EffectDeny {
+			missing = append(missing, op)
+		}
 	}
 	// One climb for everything that missed, rather than one per operation: the
 	// ancestor chain and its operation mapping are the same for all of them.
-	inherited, err := en.inheritedOps(accessorID, resourceType, resourceID, missing)
+	inherited, err := en.inheritedOpsWithIndex(idx, resourceType, resourceID, missing)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +287,7 @@ func (en *Enforcer) AllowedOps(accessorID, resourceType, resourceID string, cand
 func (en *Enforcer) GrantRolePermission(roleID, resourceType, idPattern, op string) error {
 	en.transactionMu.Lock()
 	defer en.transactionMu.Unlock()
-	_, err := en.e.AddPolicy(roleID, obj(resourceType, idPattern), op)
+	_, err := en.e.AddPolicy(roleID, obj(resourceType, idPattern), op, EffectAllow)
 	return err
 }
 
@@ -262,7 +296,7 @@ func (en *Enforcer) GrantRolePermission(roleID, resourceType, idPattern, op stri
 func (en *Enforcer) RevokeRolePermission(roleID, resourceType, idPattern, op string) error {
 	en.transactionMu.Lock()
 	defer en.transactionMu.Unlock()
-	_, err := en.e.RemovePolicy(roleID, obj(resourceType, idPattern), op)
+	_, err := en.e.RemovePolicy(roleID, obj(resourceType, idPattern), op, EffectAllow)
 	return err
 }
 
@@ -272,7 +306,7 @@ func (en *Enforcer) RevokeRolePermission(roleID, resourceType, idPattern, op str
 func (en *Enforcer) Grant(sub, obj, act string) error {
 	en.transactionMu.Lock()
 	defer en.transactionMu.Unlock()
-	_, err := en.e.AddPolicy(sub, obj, act)
+	_, err := en.e.AddPolicy(sub, obj, act, EffectAllow)
 	return err
 }
 
@@ -281,7 +315,16 @@ func (en *Enforcer) Grant(sub, obj, act string) error {
 func (en *Enforcer) GrantObjectPermission(accessorID, resourceType, resourceID, op string) error {
 	en.transactionMu.Lock()
 	defer en.transactionMu.Unlock()
-	_, err := en.e.AddPolicy(accessorID, obj(resourceType, resourceID), op)
+	_, err := en.e.AddPolicy(accessorID, obj(resourceType, resourceID), op, EffectAllow)
+	return err
+}
+
+// DenyObjectPermission adds an explicit per-object exception. Deny overrides
+// every ordinary allow source; only membership in SuperAdminRoleID bypasses it.
+func (en *Enforcer) DenyObjectPermission(accessorID, resourceType, resourceID, op string) error {
+	en.transactionMu.Lock()
+	defer en.transactionMu.Unlock()
+	_, err := en.e.AddPolicy(accessorID, obj(resourceType, resourceID), op, EffectDeny)
 	return err
 }
 
@@ -289,7 +332,7 @@ func (en *Enforcer) GrantObjectPermission(accessorID, resourceType, resourceID, 
 func (en *Enforcer) RevokeObjectPermission(accessorID, resourceType, resourceID, op string) error {
 	en.transactionMu.Lock()
 	defer en.transactionMu.Unlock()
-	_, err := en.e.RemovePolicy(accessorID, obj(resourceType, resourceID), op)
+	_, err := en.e.RemovePolicy(accessorID, obj(resourceType, resourceID), op, EffectAllow)
 	return err
 }
 
@@ -342,6 +385,7 @@ type RoleGrant struct {
 	Object             string
 	Operations         []string
 	InstanceOperations []string
+	DeniedOperations   []string
 }
 
 // RolePermissions lists the policy grants whose subject is the role, grouped by
@@ -362,7 +406,7 @@ func groupGrantsByObject(rows [][]string) []RoleGrant {
 	ops := map[string][]string{}
 	order := make([]string, 0, len(rows))
 	for _, row := range rows {
-		if len(row) < 3 {
+		if len(row) < 3 || (len(row) >= 4 && row[3] == EffectDeny) {
 			continue
 		}
 		o, act := row[1], row[2]
@@ -435,11 +479,25 @@ func (en *Enforcer) EffectivePermissions(accessorID string, q PermQuery) (hasWil
 		return false, nil, err
 	}
 	grouped := groupGrantsByObject(rows)
+	superAdmin, err := en.hasSuperAdminRole(accessorID)
+	if err != nil {
+		return false, nil, err
+	}
 
+	hasDeny := false
+	for _, row := range rows {
+		if policyEffect(row) == EffectDeny {
+			hasDeny = true
+			break
+		}
+	}
 	// Wildcard short-circuit — keyed on a real "*"/"*" grant, not is_admin.
+	// An ordinary wildcard holder with exceptions cannot collapse to one row;
+	// super-admin remains the only principal whose deny rows are intentionally
+	// ignored by the runtime decision.
 	for _, g := range grouped {
 		rtype, _ := splitObjectKey(g.Object)
-		if rtype == ActAll && hasOp(g.Operations, ActAll) {
+		if rtype == ActAll && hasOp(g.Operations, ActAll) && (!hasDeny || superAdmin) {
 			if q.ResourceType == "" {
 				return true, []RoleGrant{{Object: ActAll + ":" + ActAll, Operations: []string{ActAll}}}, nil
 			}
@@ -544,7 +602,51 @@ func (en *Enforcer) EffectivePermissions(accessorID string, q PermQuery) (hasWil
 		// may reach this type, but only through specific objects".
 		out = append(out, RoleGrant{Object: rtype + ":*", Operations: []string{}, InstanceOperations: ops})
 	}
+
+	// Deny exceptions are additive to the legacy response shape. Keep the allow
+	// rows unchanged for old clients, while newer administration clients can
+	// explain why a concrete operation is absent from Check/operations/filter.
+	if !superAdmin && !q.TypeWideOnly {
+		byObject := make(map[string]int, len(out))
+		for i := range out {
+			byObject[out[i].Object] = i
+		}
+		for _, row := range rows {
+			if policyEffect(row) != EffectDeny || len(row) < 3 {
+				continue
+			}
+			rtype, rid := splitObjectKey(row[1])
+			if q.ResourceType != "" && rtype != q.ResourceType {
+				continue
+			}
+			if len(idFilter) > 0 && rid != "*" && !idFilter[rid] {
+				continue
+			}
+			i, ok := byObject[row[1]]
+			if !ok {
+				i = len(out)
+				byObject[row[1]] = i
+				out = append(out, RoleGrant{Object: row[1], Operations: []string{}})
+			}
+			if !hasOp(out[i].DeniedOperations, row[2]) {
+				out[i].DeniedOperations = append(out[i].DeniedOperations, row[2])
+			}
+		}
+	}
 	return false, out, nil
+}
+
+func (en *Enforcer) hasSuperAdminRole(accessorID string) (bool, error) {
+	roles, err := en.e.GetImplicitRolesForUser(accessorID)
+	if err != nil {
+		return false, err
+	}
+	for _, role := range roles {
+		if role == SuperAdminRoleID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // hasOp reports whether ops contains want.
@@ -597,10 +699,14 @@ func (en *Enforcer) RenameOperation(resourceType, oldOp, newOp string) (int, err
 		if len(object) <= len(prefix) || object[:len(prefix)] != prefix {
 			continue
 		}
-		if _, err := en.e.RemovePolicy(row[0], object, oldOp); err != nil {
+		effect := EffectAllow
+		if len(row) >= 4 && row[3] != "" {
+			effect = row[3]
+		}
+		if _, err := en.e.RemovePolicy(row[0], object, oldOp, effect); err != nil {
 			return moved, err
 		}
-		if _, err := en.e.AddPolicy(row[0], object, newOp); err != nil {
+		if _, err := en.e.AddPolicy(row[0], object, newOp, effect); err != nil {
 			return moved, err
 		}
 		moved++
@@ -640,21 +746,21 @@ func (en *Enforcer) BackfillImpliedOperation(resourceType, holderOp, impliedOp s
 	prefix := resourceType + ":"
 	var added []BackfilledGrant
 	for _, row := range rows {
-		if len(row) < 3 {
+		if len(row) < 3 || (len(row) >= 4 && row[3] == EffectDeny) {
 			continue
 		}
 		object := row[1]
 		if len(object) <= len(prefix) || object[:len(prefix)] != prefix {
 			continue
 		}
-		has, err := en.e.HasPolicy(row[0], object, impliedOp)
+		has, err := en.e.HasPolicy(row[0], object, impliedOp, EffectAllow)
 		if err != nil {
 			return added, err
 		}
 		if has {
 			continue
 		}
-		if _, err := en.e.AddPolicy(row[0], object, impliedOp); err != nil {
+		if _, err := en.e.AddPolicy(row[0], object, impliedOp, EffectAllow); err != nil {
 			return added, err
 		}
 		added = append(added, BackfilledGrant{AccessorID: row[0], ResourceID: object[len(prefix):]})
@@ -724,7 +830,21 @@ func (en *Enforcer) RemoveResourcePolicies(resourceType, resourceID string) erro
 // built on this endpoint would lose rows that Check allows — and every caller
 // keeps working unchanged instead of having to learn about the hierarchy.
 func (en *Enforcer) AccessibleResources(accessorID, resourceType, op string) ([]string, error) {
-	return en.accessibleResources(accessorID, resourceType, op, map[string]bool{})
+	ids, err := en.accessibleResources(accessorID, resourceType, op, map[string]bool{})
+	if err != nil {
+		return nil, err
+	}
+	out := ids[:0]
+	for _, id := range ids {
+		allowed, err := en.Check(accessorID, resourceType, id, op)
+		if err != nil {
+			return nil, err
+		}
+		if allowed {
+			out = append(out, id)
+		}
+	}
+	return out, nil
 }
 
 // accessibleResources is AccessibleResources plus the visited-type set that
@@ -738,7 +858,7 @@ func (en *Enforcer) accessibleResources(accessorID, resourceType, op string, vis
 	seen := map[string]bool{}
 	out := make([]string, 0, len(perms))
 	for _, p := range perms {
-		if len(p) < 3 {
+		if len(p) < 3 || (len(p) >= 4 && p[3] == EffectDeny) {
 			continue
 		}
 		o, act := p[1], p[2]
@@ -771,35 +891,43 @@ func (en *Enforcer) accessibleResources(accessorID, resourceType, op string, vis
 
 // ResourcePolicy is one accessor's grant set on a single resource instance.
 type ResourcePolicy struct {
-	AccessorID string
-	Operations []string
+	AccessorID       string
+	Operations       []string
+	DeniedOperations []string
 }
 
 // ResourcePolicies lists the per-accessor grants on a concrete resource
 // instance, grouping the raw (sub, obj, act) rows by accessor. Order of
 // accessors follows first appearance; ops within an accessor follow row order.
-// Mirrors ISF list-policy for one resource (bkn-safe has no expiry/condition,
-// so callers treat entries as never-expiring allow-only).
+// Mirrors ISF list-policy for one resource (bkn-safe has no expiry/condition).
+// Allows retain the legacy Operations field; deny exceptions are additive.
 func (en *Enforcer) ResourcePolicies(resourceType, resourceID string) ([]ResourcePolicy, error) {
 	rows, err := en.e.GetFilteredPolicy(1, obj(resourceType, resourceID))
 	if err != nil {
 		return nil, err
 	}
 	bySub := map[string][]string{}
+	deniedBySub := map[string][]string{}
+	seenSub := map[string]bool{}
 	order := make([]string, 0, len(rows))
 	for _, row := range rows {
 		if len(row) < 3 {
 			continue
 		}
 		sub, act := row[0], row[2]
-		if _, ok := bySub[sub]; !ok {
+		if !seenSub[sub] {
 			order = append(order, sub)
+			seenSub[sub] = true
 		}
-		bySub[sub] = append(bySub[sub], act)
+		if len(row) >= 4 && row[3] == EffectDeny {
+			deniedBySub[sub] = append(deniedBySub[sub], act)
+		} else {
+			bySub[sub] = append(bySub[sub], act)
+		}
 	}
 	out := make([]ResourcePolicy, 0, len(order))
 	for _, sub := range order {
-		out = append(out, ResourcePolicy{AccessorID: sub, Operations: bySub[sub]})
+		out = append(out, ResourcePolicy{AccessorID: sub, Operations: bySub[sub], DeniedOperations: deniedBySub[sub]})
 	}
 	return out, nil
 }
@@ -808,10 +936,11 @@ func (en *Enforcer) ResourcePolicies(resourceType, resourceID string) ([]Resourc
 // the cross-product cell of the object-level authorization matrix (who can do
 // what on which specific object). Powers the admin authorization overview.
 type ObjectGrant struct {
-	AccessorID   string
-	ResourceType string
-	ResourceID   string
-	Operations   []string
+	AccessorID       string
+	ResourceType     string
+	ResourceID       string
+	Operations       []string
+	DeniedOperations []string
 }
 
 // ListObjectGrants enumerates concrete per-object accessor grants across all
@@ -833,6 +962,7 @@ func (en *Enforcer) ListObjectGrants(accessorID, resourceType, resourceID string
 	}
 	type key struct{ sub, rtype, rid string }
 	ops := map[key][]string{}
+	deniedOps := map[key][]string{}
 	seen := map[key]map[string]bool{}
 	order := make([]key, 0, len(rows))
 	for _, row := range rows {
@@ -855,37 +985,58 @@ func (en *Enforcer) ListObjectGrants(accessorID, resourceType, resourceID string
 			order = append(order, k)
 			seen[k] = map[string]bool{}
 		}
-		if seen[k][act] {
+		effectKey := act + "\x00" + policyEffect(row)
+		if seen[k][effectKey] {
 			continue
 		}
-		seen[k][act] = true
-		ops[k] = append(ops[k], act)
+		seen[k][effectKey] = true
+		if policyEffect(row) == EffectDeny {
+			deniedOps[k] = append(deniedOps[k], act)
+		} else {
+			ops[k] = append(ops[k], act)
+		}
 	}
 	out := make([]ObjectGrant, 0, len(order))
 	for _, k := range order {
 		out = append(out, ObjectGrant{
-			AccessorID: k.sub, ResourceType: k.rtype, ResourceID: k.rid, Operations: ops[k],
+			AccessorID: k.sub, ResourceType: k.rtype, ResourceID: k.rid,
+			Operations: ops[k], DeniedOperations: deniedOps[k],
 		})
 	}
 	return out, nil
 }
 
-// SetObjectPermissions replaces an accessor's entire op set on one concrete
-// resource instance: it drops every existing (accessor, object) p-line and adds
-// one per op. The "edit a grant" write behind the admin object-grant page
-// (POST /policies only adds, never prunes). Passing no ops clears the grant.
+// SetObjectPermissions replaces an accessor's allow operation set on one
+// concrete resource instance. Deny exceptions are managed independently by
+// SetObjectPermissionsForEffect. Passing no ops clears the allow set.
 func (en *Enforcer) SetObjectPermissions(accessorID, resourceType, resourceID string, ops []string) error {
+	return en.SetObjectPermissionsForEffect(accessorID, resourceType, resourceID, ops, EffectAllow)
+}
+
+// SetObjectPermissionsForEffect replaces only one effect's operation set. This
+// preserves deny exceptions while legacy callers update allows, and vice versa.
+func (en *Enforcer) SetObjectPermissionsForEffect(accessorID, resourceType, resourceID string, ops []string, effect string) error {
 	en.transactionMu.Lock()
 	defer en.transactionMu.Unlock()
-	if _, err := en.removeAccessorResourcePolicies(accessorID, resourceType, resourceID); err != nil {
+	if effect != EffectAllow && effect != EffectDeny {
+		return fmt.Errorf("invalid policy effect %q", effect)
+	}
+	if _, err := en.e.RemoveFilteredPolicy(0, accessorID, obj(resourceType, resourceID), "", effect); err != nil {
 		return err
 	}
 	for _, op := range ops {
-		if _, err := en.e.AddPolicy(accessorID, obj(resourceType, resourceID), op); err != nil {
+		if _, err := en.e.AddPolicy(accessorID, obj(resourceType, resourceID), op, effect); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func policyEffect(row []string) string {
+	if len(row) >= 4 && row[3] == EffectDeny {
+		return EffectDeny
+	}
+	return EffectAllow
 }
 
 // RemoveAccessorResourcePolicies drops every op one accessor holds on one
@@ -902,6 +1053,27 @@ func (en *Enforcer) RemoveAccessorResourcePolicies(accessorID, resourceType, res
 	en.transactionMu.Lock()
 	defer en.transactionMu.Unlock()
 	return en.removeAccessorResourcePolicies(accessorID, resourceType, resourceID)
+}
+
+// RemoveAccessorResourcePoliciesForEffect removes only allow or deny rows,
+// allowing an administrator to clear an exception without disturbing grants.
+func (en *Enforcer) RemoveAccessorResourcePoliciesForEffect(accessorID, resourceType, resourceID, effect string) (int, error) {
+	if effect != EffectAllow && effect != EffectDeny {
+		return 0, fmt.Errorf("invalid policy effect %q", effect)
+	}
+	en.transactionMu.Lock()
+	defer en.transactionMu.Unlock()
+	rows, err := en.e.GetFilteredPolicy(0, accessorID, obj(resourceType, resourceID), "", effect)
+	if err != nil {
+		return 0, err
+	}
+	if len(rows) == 0 {
+		return 0, nil
+	}
+	if _, err := en.e.RemoveFilteredPolicy(0, accessorID, obj(resourceType, resourceID), "", effect); err != nil {
+		return 0, err
+	}
+	return len(rows), nil
 }
 
 func (en *Enforcer) removeAccessorResourcePolicies(accessorID, resourceType, resourceID string) (int, error) {

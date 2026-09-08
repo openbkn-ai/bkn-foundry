@@ -81,6 +81,72 @@ func TestRoleGrantAndWildcard(t *testing.T) {
 	}
 }
 
+func TestExplicitDenyOverridesOrdinaryAllows(t *testing.T) {
+	e := newTestEnforcer(t)
+	const user, role = "alice", "reader-role"
+	mustNoErr(t, e.GrantRolePermission(role, "resource", "*", "view_detail"))
+	mustNoErr(t, e.AssignRole(user, role))
+	mustNoErr(t, e.GrantObjectPermission(user, "resource", "r-1", "view_detail"))
+	mustNoErr(t, e.DenyObjectPermission(user, "resource", "r-1", "view_detail"))
+
+	denied, err := e.Check(user, "resource", "r-1", "view_detail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if denied {
+		t.Fatal("an exact user deny did not override the role's type-wide allow")
+	}
+	allowed, err := e.Check(user, "resource", "r-2", "view_detail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !allowed {
+		t.Fatal("the deny exception leaked to a sibling resource")
+	}
+}
+
+func TestSuperAdminCannotBeDenied(t *testing.T) {
+	e := newTestEnforcer(t)
+	const user = "break-glass-admin"
+	mustNoErr(t, e.AssignRole(user, SuperAdminRoleID))
+	mustNoErr(t, e.GrantRolePermission(SuperAdminRoleID, "", "*", ActAll))
+	mustNoErr(t, e.DenyObjectPermission(user, "resource", "r-1", "view_detail"))
+
+	allowed, err := e.Check(user, "resource", "r-1", "view_detail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !allowed {
+		t.Fatal("the seeded super-admin recovery role was constrained by deny")
+	}
+}
+
+func TestLegacyPolicyWithoutEffectIsNormalizedToAllow(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	_ = e
+	if err := db.Exec(
+		"INSERT INTO casbin_rule (ptype, v0, v1, v2, v3) VALUES (?, ?, ?, ?, '')",
+		"p", "legacy-user", "resource:r-1", "view_detail",
+	).Error; err != nil {
+		t.Fatalf("insert legacy policy: %v", err)
+	}
+	reloaded, err := New(db)
+	if err != nil {
+		t.Fatalf("reload legacy policy: %v", err)
+	}
+	allowed, err := reloaded.Check("legacy-user", "resource", "r-1", "view_detail")
+	if err != nil || !allowed {
+		t.Fatalf("legacy policy decision = %v, %v; want true", allowed, err)
+	}
+	var effect string
+	if err := db.Raw("SELECT v3 FROM casbin_rule WHERE v0 = ?", "legacy-user").Scan(&effect).Error; err != nil {
+		t.Fatal(err)
+	}
+	if effect != EffectAllow {
+		t.Fatalf("legacy effect = %q, want %q", effect, EffectAllow)
+	}
+}
+
 // TestPublicAccessorGrant covers the root-department-as-everyone convention:
 // a policy whose subject is PublicAccessorID matches ANY requesting subject,
 // scoped strictly to the granted object and op (ISF "grant to root department

@@ -259,9 +259,10 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 		entries := make([]gin.H, 0, len(policies))
 		for _, p := range policies {
 			entries = append(entries, gin.H{
-				"accessor_id": p.AccessorID,
-				"resource":    gin.H{"type": resourceType, "id": resourceID},
-				"operations":  p.Operations,
+				"accessor_id":       p.AccessorID,
+				"resource":          gin.H{"type": resourceType, "id": resourceID},
+				"operations":        p.Operations,
+				"denied_operations": p.DeniedOperations,
 			})
 		}
 		c.JSON(http.StatusOK, gin.H{"entries": entries})
@@ -364,7 +365,9 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 		// count — and stays far under 1024. Op ids contain no ",", so splitting the
 		// result on "," below is safe.
 		rowsSQL := "SELECT v0 AS accessor, " + rtypeExpr + " AS rtype, " + ridExpr + " AS rid, " +
-			"GROUP_CONCAT(DISTINCT v2) AS ops FROM casbin_rule WHERE " + whereSQL +
+			"COALESCE(GROUP_CONCAT(DISTINCT CASE WHEN v3 = 'deny' THEN NULL ELSE v2 END), '') AS ops, " +
+			"COALESCE(GROUP_CONCAT(DISTINCT CASE WHEN v3 = 'deny' THEN v2 ELSE NULL END), '') AS denied_ops " +
+			"FROM casbin_rule WHERE " + whereSQL +
 			" GROUP BY v0, v1 ORDER BY v0, v1"
 		rowArgs := append([]any{}, args...)
 		if _, limitSet := c.GetQuery("limit"); limitSet {
@@ -384,10 +387,11 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 		}
 
 		var rows []struct {
-			Accessor string
-			Rtype    string
-			Rid      string
-			Ops      string
+			Accessor  string
+			Rtype     string
+			Rid       string
+			Ops       string
+			DeniedOps string
 		}
 		if err := qdb.Raw(rowsSQL, rowArgs...).Scan(&rows).Error; err != nil {
 			serverError(c, err)
@@ -401,9 +405,10 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 				ops = strings.Split(row.Ops, ",")
 			}
 			entries = append(entries, gin.H{
-				"accessor_id": row.Accessor,
-				"resource":    gin.H{"type": row.Rtype, "id": row.Rid},
-				"operations":  ops,
+				"accessor_id":       row.Accessor,
+				"resource":          gin.H{"type": row.Rtype, "id": row.Rid},
+				"operations":        ops,
+				"denied_operations": splitGrantOps(row.DeniedOps),
 			})
 		}
 		resp["entries"] = entries
@@ -411,9 +416,10 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 		c.JSON(http.StatusOK, resp)
 	})
 
-	// POST /object-grants — set (replace) a user's exact op set on one concrete
-	// resource instance. { accessor_id, resource{type,id}, operations:[...] }
-	// Upsert semantics: the grant's ops become exactly `operations`. An empty
+	// POST /object-grants — set (replace) a user's exact allow or deny op set on
+	// one concrete resource instance. { accessor_id, resource, operations,
+	// effect?:"allow"|"deny" }. Missing effect remains allow for compatibility.
+	// Upsert semantics: that effect's ops become exactly `operations`. An empty
 	// list is rejected (use DELETE to revoke) so an accidental empty body can't
 	// silently wipe a grant.
 	g.POST("/object-grants", setObjectGrantHandler(e, db))
@@ -460,7 +466,9 @@ func listGroupedObjectGrants(c *gin.Context, qdb *gorm.DB, groupBy, whereSQL str
 	// the fixed operation vocabulary (a comma-free ~dozen ids), so the result
 	// stays well under group_concat_max_len and splits cleanly on ",".
 	sql := "SELECT " + keyCol + " AS k, COUNT(DISTINCT " + cntCol + ") AS cnt, " +
-		"GROUP_CONCAT(DISTINCT v2) AS ops FROM casbin_rule WHERE " + whereSQL +
+		"COALESCE(GROUP_CONCAT(DISTINCT CASE WHEN v3 = 'deny' THEN NULL ELSE v2 END), '') AS ops, " +
+		"COALESCE(GROUP_CONCAT(DISTINCT CASE WHEN v3 = 'deny' THEN v2 ELSE NULL END), '') AS denied_ops " +
+		"FROM casbin_rule WHERE " + whereSQL +
 		" GROUP BY " + keyCol + " ORDER BY " + keyCol
 	rowArgs := append([]any{}, args...)
 	if _, limitSet := c.GetQuery("limit"); limitSet {
@@ -480,9 +488,10 @@ func listGroupedObjectGrants(c *gin.Context, qdb *gorm.DB, groupBy, whereSQL str
 	}
 
 	var rows []struct {
-		K   string
-		Cnt int64
-		Ops string
+		K         string
+		Cnt       int64
+		Ops       string
+		DeniedOps string
 	}
 	if err := qdb.Raw(sql, rowArgs...).Scan(&rows).Error; err != nil {
 		serverError(c, err)
@@ -498,19 +507,28 @@ func listGroupedObjectGrants(c *gin.Context, qdb *gorm.DB, groupBy, whereSQL str
 		if groupBy == "object" {
 			rtype, rid, _ := strings.Cut(r.K, ":")
 			groups = append(groups, gin.H{
-				"object":        gin.H{"type": rtype, "id": rid},
-				"grantee_count": r.Cnt,
-				"operations":    ops,
+				"object":            gin.H{"type": rtype, "id": rid},
+				"grantee_count":     r.Cnt,
+				"operations":        ops,
+				"denied_operations": splitGrantOps(r.DeniedOps),
 			})
 		} else {
 			groups = append(groups, gin.H{
-				"accessor_id":  r.K,
-				"object_count": r.Cnt,
-				"operations":   ops,
+				"accessor_id":       r.K,
+				"object_count":      r.Cnt,
+				"operations":        ops,
+				"denied_operations": splitGrantOps(r.DeniedOps),
 			})
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"groups": groups, "total": total})
+}
+
+func splitGrantOps(value string) []string {
+	if value == "" {
+		return []string{}
+	}
+	return strings.Split(value, ",")
 }
 
 // isUserAccessor reports whether id is a known user row (real user or app
@@ -599,9 +617,10 @@ func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, 
 		entries := make([]gin.H, 0, len(policies))
 		for _, policy := range policies {
 			entry := gin.H{
-				"accessor_id": policy.AccessorID,
-				"resource":    gin.H{"type": ref.Type, "id": ref.ID},
-				"operations":  policy.Operations,
+				"accessor_id":       policy.AccessorID,
+				"resource":          gin.H{"type": ref.Type, "id": ref.ID},
+				"operations":        policy.Operations,
+				"denied_operations": policy.DeniedOperations,
 			}
 			// A row whose subject is a role, or a user since deleted, resolves to
 			// nothing. It is still shown — hiding a grant that exists would be
@@ -695,6 +714,7 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 			AccessorID string      `json:"accessor_id" binding:"required"`
 			Resource   resourceRef `json:"resource" binding:"required"`
 			Operations []string    `json:"operations" binding:"required"`
+			Effect     string      `json:"effect"`
 		}
 		if !bind(c, &req) {
 			return
@@ -704,6 +724,13 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		if len(req.Operations) == 0 {
+			replyPublicError(c, http.StatusBadRequest)
+			return
+		}
+		if req.Effect == "" {
+			req.Effect = authz.EffectAllow
+		}
+		if req.Effect != authz.EffectAllow && req.Effect != authz.EffectDeny {
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
@@ -729,6 +756,13 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 		// the object named in the BODY, which middleware cannot see.
 		authority, ok := resolveGrantAuthority(c, e, "grant", req.Resource)
 		if !ok {
+			return
+		}
+		// Explicit exceptions are security administration, not delegation: an
+		// object owner may share what they hold but may not install deny rules on
+		// another account.
+		if req.Effect == authz.EffectDeny && authority != authorityAdminAuthz {
+			replyPublicError(c, http.StatusForbidden)
 			return
 		}
 		if authority != authorityAdminAuthz && !protectAuthorizeHolder(c, e, req.Resource, req.AccessorID) {
@@ -767,10 +801,13 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 		// quietly absorbs. Upsert semantics make this self-healing: a console that
 		// clears view_detail while leaving resource_manage ticked sends a set this
 		// puts back, instead of storing a grant nothing can use.
-		ops, err := impliedOps(db.WithContext(c.Request.Context()), req.Resource.Type, req.Operations)
-		if err != nil {
-			serverError(c, err)
-			return
+		ops := req.Operations
+		if req.Effect == authz.EffectAllow {
+			ops, err = impliedOps(db.WithContext(c.Request.Context()), req.Resource.Type, req.Operations)
+			if err != nil {
+				serverError(c, err)
+				return
+			}
 		}
 		// Checked against the EXPANDED set, not what was asked for: the implication
 		// pass can add operations, and a delegate must not acquire one that way
@@ -788,8 +825,9 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 		if implied := addedOps(req.Operations, ops); len(implied) > 0 {
 			outcome["implied_operations"] = implied
 		}
+		outcome["effect"] = req.Effect
 		setAuditOutcome(c, outcome)
-		if err := e.SetObjectPermissions(req.AccessorID, req.Resource.Type, req.Resource.ID, ops); err != nil {
+		if err := e.SetObjectPermissionsForEffect(req.AccessorID, req.Resource.Type, req.Resource.ID, ops, req.Effect); err != nil {
 			serverError(c, err)
 			return
 		}
@@ -802,11 +840,16 @@ func revokeObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 		var req struct {
 			AccessorID string      `json:"accessor_id" binding:"required"`
 			Resource   resourceRef `json:"resource" binding:"required"`
+			Effect     string      `json:"effect"`
 		}
 		if !bind(c, &req) {
 			return
 		}
 		if !isConcreteResourceID(req.Resource.ID) {
+			replyPublicError(c, http.StatusBadRequest)
+			return
+		}
+		if req.Effect != "" && req.Effect != authz.EffectAllow && req.Effect != authz.EffectDeny {
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
@@ -838,7 +881,12 @@ func revokeObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
-		removed, err := e.RemoveAccessorResourcePolicies(req.AccessorID, req.Resource.Type, req.Resource.ID)
+		var removed int
+		if req.Effect == "" {
+			removed, err = e.RemoveAccessorResourcePolicies(req.AccessorID, req.Resource.Type, req.Resource.ID)
+		} else {
+			removed, err = e.RemoveAccessorResourcePoliciesForEffect(req.AccessorID, req.Resource.Type, req.Resource.ID, req.Effect)
+		}
 		if err != nil {
 			serverError(c, err)
 			return
