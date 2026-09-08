@@ -293,13 +293,14 @@ func (s *capabilityIndexSync) resolveEmbeddingModel(ctx context.Context) (*inter
 
 // resolveAnalyzer picks the full-text analyzer for a dataset being created.
 //
-// It is "standard", the same analyzer the Skill dataset and the concept dataset already use, so
-// this index is no worse than what it replaces. Standard splits Chinese character by character,
-// which is why a query two characters longer stops matching — but switching to a Chinese analyzer
-// is a platform-wide decision that also governs the concept index, and it cannot be probed from
-// here: vega exposes its analyzer capabilities only on the public face, behind OAuth, while the
-// execution factory talks to the internal one. Whichever analyzer is chosen, it is decided once
-// per dataset and read back afterwards (see schemaAnalyzer), never re-derived into a rebuild.
+// It is not probed. Vega exposes its analyzer capabilities only on the public face behind OAuth,
+// while the execution factory talks to the internal one — but there is nothing to probe: the
+// platform's own OpenSearch image carries the IK analyzer, so it is part of the baseline.
+//
+// Whatever is chosen here is decided once per dataset and read back afterwards (see
+// schemaAnalyzer), never re-derived. That matters more than the choice itself: making the analyzer
+// a live decision would turn a deployment difference into a schema difference, and a schema
+// difference rebuilds the index.
 func (s *capabilityIndexSync) resolveAnalyzer(_ context.Context) string {
 	return defaultFulltextAnalyzer
 }

@@ -16,9 +16,15 @@ const (
 	// capabilityKeySeparator joins the three-part identity into the single keyword the whitelist
 	// filters on. It is a byte that cannot appear in any of the three parts.
 	capabilityKeySeparator = "\x1f"
-	// defaultFulltextAnalyzer is the analyzer a new dataset is built with. See resolveAnalyzer for
-	// why it is not probed.
-	defaultFulltextAnalyzer = "standard"
+	// defaultFulltextAnalyzer is the analyzer a new dataset is built with.
+	//
+	// The platform ships OpenSearch with the IK Chinese analyzer baked into its image
+	// (deploy/scripts/lib/common.sh pins that rebuild), so this is part of the baseline rather
+	// than an optional plugin. It matters: "standard" splits Chinese one character at a time, so
+	// a description containing 汇总 scores against a query about 汇率 on the shared 汇, while a
+	// query two characters longer has each character's contribution diluted until the right
+	// document stops matching. Both were observed on the test server before this was changed.
+	defaultFulltextAnalyzer = "ik_max_word"
 )
 
 // capabilityKey is the readable composite identity stored on every document.
