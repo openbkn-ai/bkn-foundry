@@ -3,6 +3,7 @@
 # Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
 import gzip
+import hashlib
 import io
 import json
 import os
@@ -475,19 +476,41 @@ class PreMigrationBackupTest(unittest.TestCase):
             "safe": DBConfig("127.0.0.1", 3306, "root", "safe-secret", "safe"),
         }
 
+    def test_streams_a_real_dump_process_into_a_valid_gzip_archive(self):
+        content = b"-- dump from a real child process\n"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            executable = root / "fake-mariadb-dump"
+            executable.write_text(
+                "#!/bin/sh\nprintf '%s\\n' '-- dump from a real child process'\n",
+                encoding="utf-8",
+            )
+            executable.chmod(0o700)
+
+            backup = migration.create_pre_migration_backup(
+                {"bkn": self.configs["bkn"]},
+                backup_root=root / "backups",
+                dump_executable=str(executable),
+            )
+
+            with gzip.open(backup.path / "bkn.sql.gz", "rb") as source:
+                self.assertEqual(content, source.read())
+
     def test_creates_verified_secret_free_backups_without_overwriting(self):
         calls = []
 
-        def dump(command, stdout, stderr, env, check):
-            del stderr, check
+        def dump(command, stdout, stderr, env):
             calls.append((command, env))
-            stdout.write(b"-- complete logical dump\n")
-            return SimpleNamespace(returncode=0, stderr=b"")
+            self.assertIs(migration.subprocess.PIPE, stdout)
+            return SimpleNamespace(
+                stdout=io.BytesIO(b"-- complete logical dump\n"),
+                wait=lambda: 0,
+            )
 
         instant = datetime(2026, 9, 8, 12, 30, tzinfo=timezone.utc)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            with patch.object(migration.subprocess, "run", side_effect=dump):
+            with patch.object(migration.subprocess, "Popen", side_effect=dump):
                 first = migration.create_pre_migration_backup(
                     self.configs,
                     backup_root=root,
@@ -531,16 +554,17 @@ class PreMigrationBackupTest(unittest.TestCase):
             self.assertIn(environment["MYSQL_PWD"], {"bkn-secret", "safe-secret"})
 
     def test_removes_an_incomplete_backup_and_redacts_dump_errors(self):
-        def failed_dump(command, stdout, stderr, env, check):
-            del command, stdout, stderr, env, check
+        def failed_dump(command, stdout, stderr, env):
+            del command, stdout, env
+            stderr.write(b"authentication rejected for bkn-secret")
             return SimpleNamespace(
-                returncode=1,
-                stderr=b"authentication rejected for bkn-secret",
+                stdout=io.BytesIO(),
+                wait=lambda: 1,
             )
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            with patch.object(migration.subprocess, "run", side_effect=failed_dump):
+            with patch.object(migration.subprocess, "Popen", side_effect=failed_dump):
                 with self.assertRaises(migration.MigrationError) as context:
                     migration.create_pre_migration_backup(
                         self.configs,
@@ -552,35 +576,28 @@ class PreMigrationBackupTest(unittest.TestCase):
             self.assertIn("<redacted>", str(context.exception))
             self.assertEqual([], list(root.iterdir()))
 
-    def test_checksum_verification_failure_stops_and_removes_backup(self):
-        def dump(command, stdout, stderr, env, check):
-            del command, stderr, env, check
-            stdout.write(b"-- complete logical dump\n")
-            return SimpleNamespace(returncode=0, stderr=b"")
-
+    def test_validates_archive_against_the_independent_source_checksum(self):
+        content = b"-- complete logical dump\n"
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            with ExitStack() as stack:
-                stack.enter_context(
-                    patch.object(migration.subprocess, "run", side_effect=dump)
-                )
-                stack.enter_context(
-                    patch.object(
-                        migration,
-                        "sha256_file",
-                        side_effect=["first", "second"],
-                    )
-                )
-                with self.assertRaisesRegex(
-                    migration.MigrationError, "checksum verification failed"
-                ):
-                    migration.create_pre_migration_backup(
-                        self.configs,
-                        backup_root=root,
-                        dump_executable="/usr/bin/mariadb-dump",
-                    )
+            archive = Path(directory) / "backup.sql.gz"
+            with gzip.open(archive, "wb") as output:
+                output.write(content)
 
-            self.assertEqual([], list(root.iterdir()))
+            migration.validate_backup_archive(
+                archive,
+                "bkn",
+                "openbkn",
+                hashlib.sha256(content).hexdigest(),
+            )
+            with self.assertRaisesRegex(
+                migration.MigrationError, "checksum verification failed"
+            ):
+                migration.validate_backup_archive(
+                    archive,
+                    "bkn",
+                    "openbkn",
+                    hashlib.sha256(b"different source").hexdigest(),
+                )
 
 
 class OneShotMigrationTest(unittest.TestCase):

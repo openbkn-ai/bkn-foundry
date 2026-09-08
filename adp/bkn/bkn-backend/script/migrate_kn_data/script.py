@@ -16,6 +16,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import traceback
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -1660,19 +1661,30 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def validate_backup_archive(path: Path, role: str, database: str) -> None:
-    """Read the complete gzip stream so truncation and empty dumps fail closed."""
+def validate_backup_archive(
+    path: Path,
+    role: str,
+    database: str,
+    expected_content_sha256: str,
+) -> None:
+    """Verify the complete gzip stream against its independently captured digest."""
     has_content = False
+    content_digest = hashlib.sha256()
     try:
         with gzip.open(path, "rb") as backup_content:
             for block in iter(lambda: backup_content.read(1024 * 1024), b""):
                 has_content = has_content or bool(block)
+                content_digest.update(block)
     except (EOFError, OSError) as error:
         raise MigrationError(
             f"database backup is invalid for {role}/{database}"
         ) from error
     if not has_content:
         raise MigrationError(f"database backup is empty for {role}/{database}")
+    if content_digest.hexdigest() != expected_content_sha256:
+        raise MigrationError(
+            f"database backup checksum verification failed for {role}/{database}"
+        )
 
 
 def backup_directory(root: Path, timestamp: str) -> Path:
@@ -1755,29 +1767,56 @@ def create_pre_migration_backup(
                 os.O_WRONLY | os.O_CREAT | os.O_EXCL,
                 0o600,
             )
+            content_digest = hashlib.sha256()
             with os.fdopen(descriptor, "wb") as raw_output:
-                with gzip.GzipFile(fileobj=raw_output, mode="wb") as output:
-                    result = subprocess.run(
+                with tempfile.TemporaryFile() as error_output:
+                    process = subprocess.Popen(
                         command,
-                        stdout=output,
-                        stderr=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        stderr=error_output,
                         env=child_environment,
-                        check=False,
                     )
-            if result.returncode != 0:
-                detail = result.stderr.decode("utf-8", errors="replace").strip()
+                    if process.stdout is None:
+                        process.kill()
+                        process.wait()
+                        raise MigrationError(
+                            f"database backup output is unavailable for "
+                            f"{role}/{config.database}"
+                        )
+                    try:
+                        with process.stdout:
+                            with gzip.GzipFile(
+                                fileobj=raw_output, mode="wb"
+                            ) as output:
+                                for block in iter(
+                                    lambda: process.stdout.read(1024 * 1024), b""
+                                ):
+                                    content_digest.update(block)
+                                    output.write(block)
+                        return_code = process.wait()
+                    except Exception:
+                        try:
+                            process.kill()
+                        except OSError:
+                            pass
+                        process.wait()
+                        raise
+                    error_output.seek(0)
+                    error_detail = error_output.read()
+            if return_code != 0:
+                detail = error_detail.decode("utf-8", errors="replace").strip()
                 detail = redact_secrets(detail, configs.values())
                 raise MigrationError(
                     f"database backup failed for {role}/{config.database}: "
                     f"{detail or 'dump command returned a non-zero exit code'}"
                 )
-            validate_backup_archive(archive, role, config.database)
+            validate_backup_archive(
+                archive,
+                role,
+                config.database,
+                content_digest.hexdigest(),
+            )
             checksum = sha256_file(archive)
-            if sha256_file(archive) != checksum:
-                raise MigrationError(
-                    f"database backup checksum verification failed for "
-                    f"{role}/{config.database}"
-                )
             command_text = restore_command(config, archive)
             restore_commands.append(command_text)
             entries.append(
