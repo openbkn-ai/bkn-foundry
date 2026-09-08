@@ -242,3 +242,23 @@ func TestDiffNetworkModels_AddedPropertyIsReportedFieldByField(t *testing.T) {
 		assert.NotContains(t, change.New, "display_name=", "no rendered struct blob should survive")
 	}
 }
+
+// A reader listing the whole model beside the differences needs the identical definitions too.
+// They are counted either way; only their presence in the list changes.
+func TestDiffNetworkModels_IncludeUnchangedListsIdenticalDefinitions(t *testing.T) {
+	shared := objectType("bom", "产品BOM", nil, prop("alt_part", "替代件", "主料为空"))
+	base := networkWith("net-a", "网", shared)
+	target := networkWith("net-a", "网", shared)
+
+	without := DiffNetworkModels(base, target, DiffOptions{})
+	assert.Empty(t, without.Entries)
+	assert.Equal(t, 1, without.Summary.Unchanged)
+
+	with := DiffNetworkModels(base, target, DiffOptions{IncludeUnchanged: true})
+	require.Len(t, with.Entries, 1)
+	assert.Equal(t, DiffSkip, with.Entries[0].Action)
+	assert.Equal(t, "bom", with.Entries[0].ID)
+	// An identical entry is there to be listed, not read: it carries no field rows.
+	assert.Empty(t, with.Entries[0].Changes)
+	assert.Equal(t, 1, with.Summary.Unchanged, "the count does not change with the option")
+}

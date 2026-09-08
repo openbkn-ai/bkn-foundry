@@ -170,6 +170,15 @@ paths:
                     guess: two definitions can carry the same name and mean different things, so
                     a paired entry reports both ids for a human to check, and an ambiguous name
                     pairs with nothing.
+                include_unchanged:
+                  type: boolean
+                  default: false
+                  description: |
+                    Also return the definitions that are identical on both sides. They carry no
+                    changes — they are there to be listed, not read — and the counts in `summary`
+                    are the same either way. A caller that shows the whole model beside the
+                    differences asks for them; one that shows only what moved does not pay for
+                    them.
       responses:
         '200':
           description: ok

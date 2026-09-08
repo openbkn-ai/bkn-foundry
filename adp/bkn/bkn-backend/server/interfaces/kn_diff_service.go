@@ -24,6 +24,10 @@ type KNDiffRequest struct {
 	// default because it is a guess: two definitions can carry the same name and mean different
 	// things, and a wrong pair reads exactly like a real modification.
 	FallbackByName bool `json:"fallback_by_name,omitempty"`
+
+	// IncludeUnchanged also returns the definitions that are identical on both sides, so a caller
+	// can list the whole model beside the differences instead of only what moved.
+	IncludeUnchanged bool `json:"include_unchanged,omitempty"`
 }
 
 // KNDiffSide echoes what was compared, so a stored result still says what it was.

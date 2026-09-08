@@ -121,7 +121,10 @@ func (bs *bknService) DiffNetworks(ctx context.Context, req interfaces.KNDiffReq
 		return nil, err
 	}
 
-	diff := bknsdk.DiffNetworkModels(base, target, bknsdk.DiffOptions{FallbackByName: req.FallbackByName})
+	diff := bknsdk.DiffNetworkModels(base, target, bknsdk.DiffOptions{
+		FallbackByName:   req.FallbackByName,
+		IncludeUnchanged: req.IncludeUnchanged,
+	})
 
 	logger.Debugf("BKN DiffNetworks Completed: created=%d updated=%d deleted=%d unchanged=%d common_ids=%d",
 		diff.Summary.Created, diff.Summary.Updated, diff.Summary.Deleted, diff.Summary.Unchanged,
