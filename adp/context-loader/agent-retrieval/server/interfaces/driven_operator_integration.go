@@ -118,6 +118,17 @@ type DrivenOperatorIntegration interface {
 	// caller fetches it for the hits it keeps.
 	SearchBoundTools(ctx context.Context, req *SearchBoundToolsRequest) ([]ToolHit, error)
 
+	// SearchCapabilities ranks Skills, Function tools and MCP tools together, in one space.
+	//
+	// It replaces asking three surfaces and concatenating their answers. The three were ordered by
+	// three incomparable rules — an unbounded BM25 score, a SQL LIKE with no score at all, and a
+	// literal substring match — so the combined order only said which list came first. Here one
+	// query runs against one index and the order means something.
+	//
+	// The whitelist is the scope and it is fail-closed on the far side: no refs returns nothing,
+	// never the whole platform.
+	SearchCapabilities(ctx context.Context, req *SearchCapabilitiesRequest) ([]CapabilityHit, error)
+
 	// MCPServerIsUsable reports whether the MCP Server is published, and so whether the tools it
 	// exposes may be called.
 	//
@@ -144,6 +155,40 @@ type ToolHit struct {
 	Status      string  `json:"status"`
 	Score       float64 `json:"score"`
 	MatchedBy   string  `json:"matched_by"`
+}
+
+// SearchCapabilityRef is one capability's identity as the retrieval face names it.
+//
+// It carries the same three parts as the binding's CapabilityRef, but the owner is called owner_id
+// rather than box_id: the retrieval index holds all three kinds, and for an MCP tool that field
+// holds a server id, not a box. Keeping them as separate types keeps each wire shape honest
+// instead of making one name mean two things.
+type SearchCapabilityRef struct {
+	CapabilityType string `json:"capability_type"`
+	OwnerID        string `json:"owner_id"`
+	CapabilityID   string `json:"capability_id"`
+}
+
+// SearchCapabilitiesRequest asks Execution Factory to rank a bounded set of capabilities.
+type SearchCapabilitiesRequest struct {
+	Query string                `json:"query"`
+	Refs  []SearchCapabilityRef `json:"refs"`
+	TopK  int                   `json:"top_k"`
+	// Types narrows the answer to certain capability types. It narrows within Refs and can never
+	// reach outside it; empty means every type in Refs.
+	Types []string `json:"types"`
+}
+
+// CapabilityHit is one ranked capability.
+//
+// MatchedBy says which retrieval channel found it — the vector one, the lexical one, both, or the
+// whitelist filter alone when there was no query to rank against.
+type CapabilityHit struct {
+	SearchCapabilityRef
+	Name        string  `json:"name"`
+	Description string  `json:"description"`
+	MatchedBy   string  `json:"matched_by"`
+	Score       float64 `json:"score"`
 }
 
 // SearchBoundSkillsRequest asks Execution Factory to rank a bounded set of Skills.

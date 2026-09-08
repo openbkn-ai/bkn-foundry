@@ -132,7 +132,9 @@ func (s *capabilityIndexSync) Init(ctx context.Context) (err error) {
 		if err := s.ensureDatasetCatalogEnabled(ctx, resource, catalogID); err != nil {
 			return err
 		}
-		if !sameDatasetDefinition(resource, embeddingModel, analyzer) {
+		if reason := rebuildReason(resource, embeddingModel, analyzer); reason != "" {
+			s.logger.WithContext(ctx).Infof("rebuilding capability dataset, resource_id=%s, reason=%s",
+				capabilityDataset, reason)
 			if err := s.rebuildDataset(ctx, resource.CatalogID, embeddingModel, analyzer); err != nil {
 				return err
 			}
@@ -316,6 +318,30 @@ func validateEmbeddingModel(model *interfaces.EmbeddingModel) (*interfaces.Embed
 		return nil, fmt.Errorf("embedding model dimension must be positive")
 	}
 	return model, nil
+}
+
+// rebuildReason says why an adopted dataset cannot be used as it stands, or "" when it can.
+//
+// A dataset row can outlive the index behind it. Vega assigns a managed index when the dataset is
+// created, and a dataset created by a build that did not — or one whose index was lost — comes back
+// as a row with no index name and a local status of unavailable. It accepts no writes at all, and
+// the failure is a 400 on every document rather than anything visible at startup. Adopting such a
+// row and carrying on means retrying forever; the only way out is to build the dataset again.
+func rebuildReason(resource *interfaces.VegaResource,
+	embeddingModel *interfaces.EmbeddingModel, analyzer string) string {
+	if resource == nil {
+		return "resource is missing"
+	}
+	if strings.TrimSpace(resource.LocalIndexName) == "" {
+		return "dataset has no managed index"
+	}
+	if resource.LocalIndexStatus == interfaces.VegaLocalIndexUnavailable {
+		return "managed index is unavailable"
+	}
+	if !sameDatasetDefinition(resource, embeddingModel, analyzer) {
+		return "schema or embedding model changed"
+	}
+	return ""
 }
 
 // sameDatasetDefinition compares the managed definition, not just the embedding model reference.

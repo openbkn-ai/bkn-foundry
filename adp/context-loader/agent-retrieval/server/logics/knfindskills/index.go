@@ -173,35 +173,56 @@ func (s *findSkillsServiceImpl) FindSkills(ctx context.Context,
 
 // rank turns the bound ids into an answer.
 //
-// With a query, Execution Factory ranks the whitelist and its order is the answer. Without one,
-// there is nothing to rank against, so the binding order is kept — it is the order the network
-// declared, which is at least stable and explainable, unlike whatever the index happens to return.
+// With a query, Execution Factory ranks the whitelist in the unified capability index and its
+// order is the answer. Skills are asked for by type rather than by a Skill-only endpoint: the
+// index holds all three kinds in one ranking space, and narrowing by type is how this surface
+// stays about Skills without going back to a separate ranking of its own.
+//
+// Without a query there is nothing to rank against, so the binding order is kept — it is the order
+// the network declared, which is at least stable and explainable, unlike whatever the index
+// happens to return.
 func (s *findSkillsServiceImpl) rank(ctx context.Context, skillIDs []string, query string,
 	topK int) ([]*interfaces.SkillItem, error) {
-	hits, err := s.operator.SearchBoundSkills(ctx, &interfaces.SearchBoundSkillsRequest{
-		Query:    query,
-		SkillIDs: skillIDs,
-		TopK:     topK,
-	})
-	if err != nil {
-		return nil, err
+	refs := make([]interfaces.SearchCapabilityRef, 0, len(skillIDs))
+	for _, id := range skillIDs {
+		refs = append(refs, interfaces.SearchCapabilityRef{
+			CapabilityType: interfaces.CapabilityTypeSkill,
+			CapabilityID:   id,
+		})
 	}
 
-	byID := make(map[string]interfaces.SkillHit, len(hits))
+	hits, err := s.operator.SearchCapabilities(ctx, &interfaces.SearchCapabilitiesRequest{
+		Query: query,
+		Refs:  refs,
+		TopK:  topK,
+		Types: []string{interfaces.CapabilityTypeSkill},
+	})
+	if err != nil {
+		if query != "" {
+			return nil, err
+		}
+		// An unfiltered listing must not fail because the index was unreachable: the memberships
+		// are known from the bindings, and the registry can still name them. Ranking has nothing
+		// to fall back to, so a query still surfaces the error.
+		s.logger.WithContext(ctx).Warnf("[FindSkills] capability search failed, falling back to the registry: %v", err)
+		hits = nil
+	}
+
+	byID := make(map[string]interfaces.CapabilityHit, len(hits))
 	for _, hit := range hits {
-		if hit.SkillID != "" {
-			byID[hit.SkillID] = hit
+		if hit.CapabilityType == interfaces.CapabilityTypeSkill && hit.CapabilityID != "" {
+			byID[hit.CapabilityID] = hit
 		}
 	}
 
 	if query != "" {
 		entries := make([]*interfaces.SkillItem, 0, len(hits))
 		for _, hit := range hits {
-			if hit.SkillID == "" {
+			if hit.CapabilityType != interfaces.CapabilityTypeSkill || hit.CapabilityID == "" {
 				continue
 			}
 			entries = append(entries, &interfaces.SkillItem{
-				SkillID:     hit.SkillID,
+				SkillID:     hit.CapabilityID,
 				Name:        hit.Name,
 				Description: hit.Description,
 			})
@@ -235,7 +256,13 @@ func (s *findSkillsServiceImpl) rank(ctx context.Context, skillIDs []string, que
 				len(missing), nameErr)
 		} else {
 			for id, name := range names {
-				byID[id] = interfaces.SkillHit{SkillID: id, Name: name}
+				byID[id] = interfaces.CapabilityHit{
+					SearchCapabilityRef: interfaces.SearchCapabilityRef{
+						CapabilityType: interfaces.CapabilityTypeSkill,
+						CapabilityID:   id,
+					},
+					Name: name,
+				}
 			}
 		}
 	}

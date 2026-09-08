@@ -34,8 +34,9 @@ func (f *fakeBkn) ListKNCapabilities(_ context.Context, knID, _, capabilityType 
 type fakeOperator struct {
 	interfaces.DrivenOperatorIntegration
 
-	hits     []interfaces.SkillHit
+	hits     []interfaces.CapabilityHit
 	hitsErr  error
+	gotTypes []string
 	names    map[string]string
 	namesErr error
 
@@ -45,9 +46,13 @@ type fakeOperator struct {
 	gotNameIDs   []string
 }
 
-func (f *fakeOperator) SearchBoundSkills(_ context.Context,
-	req *interfaces.SearchBoundSkillsRequest) ([]interfaces.SkillHit, error) {
-	f.gotWhitelist = req.SkillIDs
+func (f *fakeOperator) SearchCapabilities(_ context.Context,
+	req *interfaces.SearchCapabilitiesRequest) ([]interfaces.CapabilityHit, error) {
+	f.gotWhitelist = make([]string, 0, len(req.Refs))
+	for _, ref := range req.Refs {
+		f.gotWhitelist = append(f.gotWhitelist, ref.CapabilityID)
+	}
+	f.gotTypes = req.Types
 	f.gotQuery = req.Query
 	return f.hits, f.hitsErr
 }
@@ -125,7 +130,7 @@ func TestUnboundNetworkRecallsNothing(t *testing.T) {
 // which ones it may show.
 func TestBindingListFailureFailsTheCall(t *testing.T) {
 	bkn := &fakeBkn{err: errors.New("bkn-backend unreachable")}
-	op := &fakeOperator{hits: []interfaces.SkillHit{{SkillID: "s1", Name: "不该出现"}}}
+	op := &fakeOperator{hits: []interfaces.CapabilityHit{{SearchCapabilityRef: interfaces.SearchCapabilityRef{CapabilityType: interfaces.CapabilityTypeSkill, CapabilityID: "s1"}, Name: "不该出现", Description: ""}}}
 
 	resp, err := newService(bkn, op).FindSkills(context.Background(),
 		&interfaces.FindSkillsReq{KnID: "kn1"})
@@ -142,9 +147,9 @@ func TestBindingListFailureFailsTheCall(t *testing.T) {
 // that the ranked order coming back is the answer.
 func TestQueryPassesTheWhitelistAndKeepsRankOrder(t *testing.T) {
 	bkn := &fakeBkn{refs: skillRefs("s1", "s2", "s3")}
-	op := &fakeOperator{hits: []interfaces.SkillHit{
-		{SkillID: "s3", Name: "第三", Description: "d3", Score: 9},
-		{SkillID: "s1", Name: "第一", Description: "d1", Score: 4},
+	op := &fakeOperator{hits: []interfaces.CapabilityHit{
+		{SearchCapabilityRef: interfaces.SearchCapabilityRef{CapabilityType: interfaces.CapabilityTypeSkill, CapabilityID: "s3"}, Name: "第三", Description: "d3"},
+		{SearchCapabilityRef: interfaces.SearchCapabilityRef{CapabilityType: interfaces.CapabilityTypeSkill, CapabilityID: "s1"}, Name: "第一", Description: "d1"},
 	}}
 
 	resp, err := newService(bkn, op).FindSkills(context.Background(),
@@ -171,10 +176,10 @@ func TestQueryPassesTheWhitelistAndKeepsRankOrder(t *testing.T) {
 // The index order is neither stable nor explainable, and a listing has nothing to rank by.
 func TestNoQueryKeepsBindingOrder(t *testing.T) {
 	bkn := &fakeBkn{refs: skillRefs("s1", "s2", "s3")}
-	op := &fakeOperator{hits: []interfaces.SkillHit{
-		{SkillID: "s3", Name: "第三"},
-		{SkillID: "s1", Name: "第一"},
-		{SkillID: "s2", Name: "第二"},
+	op := &fakeOperator{hits: []interfaces.CapabilityHit{
+		{SearchCapabilityRef: interfaces.SearchCapabilityRef{CapabilityType: interfaces.CapabilityTypeSkill, CapabilityID: "s3"}, Name: "第三", Description: ""},
+		{SearchCapabilityRef: interfaces.SearchCapabilityRef{CapabilityType: interfaces.CapabilityTypeSkill, CapabilityID: "s1"}, Name: "第一", Description: ""},
+		{SearchCapabilityRef: interfaces.SearchCapabilityRef{CapabilityType: interfaces.CapabilityTypeSkill, CapabilityID: "s2"}, Name: "第二", Description: ""},
 	}}
 
 	resp, err := newService(bkn, op).FindSkills(context.Background(),
@@ -198,7 +203,7 @@ func TestNoQueryKeepsBindingOrder(t *testing.T) {
 func TestMissingIndexFallsBackToTheRegistry(t *testing.T) {
 	bkn := &fakeBkn{refs: skillRefs("s1", "s2")}
 	op := &fakeOperator{
-		hits:  []interfaces.SkillHit{},
+		hits:  []interfaces.CapabilityHit{},
 		names: map[string]string{"s1": "第一", "s2": "第二"},
 	}
 
@@ -224,7 +229,7 @@ func TestMissingIndexFallsBackToTheRegistry(t *testing.T) {
 func TestSkillGoneFromFactoryIsDropped(t *testing.T) {
 	bkn := &fakeBkn{refs: skillRefs("s1", "gone")}
 	op := &fakeOperator{
-		hits:  []interfaces.SkillHit{{SkillID: "s1", Name: "第一"}},
+		hits:  []interfaces.CapabilityHit{{SearchCapabilityRef: interfaces.SearchCapabilityRef{CapabilityType: interfaces.CapabilityTypeSkill, CapabilityID: "s1"}, Name: "第一", Description: ""}},
 		names: map[string]string{},
 	}
 
@@ -243,7 +248,7 @@ func TestSkillGoneFromFactoryIsDropped(t *testing.T) {
 // it, without inventing an object-type scope the bindings do not carry.
 func TestObjectTypeIDIsAcceptedAndIgnored(t *testing.T) {
 	bkn := &fakeBkn{refs: skillRefs("s1")}
-	op := &fakeOperator{hits: []interfaces.SkillHit{{SkillID: "s1", Name: "第一"}}}
+	op := &fakeOperator{hits: []interfaces.CapabilityHit{{SearchCapabilityRef: interfaces.SearchCapabilityRef{CapabilityType: interfaces.CapabilityTypeSkill, CapabilityID: "s1"}, Name: "第一", Description: ""}}}
 
 	resp, err := newService(bkn, op).FindSkills(context.Background(),
 		&interfaces.FindSkillsReq{KnID: "kn1", ObjectTypeID: "whatever_does_not_exist"})
@@ -260,7 +265,7 @@ func TestObjectTypeIDIsAcceptedAndIgnored(t *testing.T) {
 // hundreds of bound Skills does not pay for names it will not return.
 func TestTopKBoundsAListing(t *testing.T) {
 	bkn := &fakeBkn{refs: skillRefs("s1", "s2", "s3", "s4")}
-	op := &fakeOperator{hits: []interfaces.SkillHit{}, names: map[string]string{
+	op := &fakeOperator{hits: []interfaces.CapabilityHit{}, names: map[string]string{
 		"s1": "一", "s2": "二", "s3": "三", "s4": "四",
 	}}
 
@@ -282,8 +287,8 @@ func TestTopKBoundsAListing(t *testing.T) {
 // otherwise be sent twice and listed twice.
 func TestDuplicateBindingsCollapse(t *testing.T) {
 	bkn := &fakeBkn{refs: skillRefs("s1", "s1", "s2")}
-	op := &fakeOperator{hits: []interfaces.SkillHit{
-		{SkillID: "s1", Name: "第一"}, {SkillID: "s2", Name: "第二"},
+	op := &fakeOperator{hits: []interfaces.CapabilityHit{
+		{SearchCapabilityRef: interfaces.SearchCapabilityRef{CapabilityType: interfaces.CapabilityTypeSkill, CapabilityID: "s1"}, Name: "第一", Description: ""}, {SearchCapabilityRef: interfaces.SearchCapabilityRef{CapabilityType: interfaces.CapabilityTypeSkill, CapabilityID: "s2"}, Name: "第二", Description: ""},
 	}}
 
 	resp, err := newService(bkn, op).FindSkills(context.Background(),
@@ -319,7 +324,7 @@ func (l testLogger) WithContext(context.Context) interfaces.Logger { return l }
 // nothing but the kn_id the caller typed.
 func TestUnauthorizedNetworkIsRefusedBeforeAnythingIsRead(t *testing.T) {
 	bkn := &fakeBkn{refs: skillRefs("s1")}
-	op := &fakeOperator{hits: []interfaces.SkillHit{{SkillID: "s1", Name: "不该看到"}}}
+	op := &fakeOperator{hits: []interfaces.CapabilityHit{{SearchCapabilityRef: interfaces.SearchCapabilityRef{CapabilityType: interfaces.CapabilityTypeSkill, CapabilityID: "s1"}, Name: "不该看到", Description: ""}}}
 	authz := &fakeKnAuthz{err: errors.New("forbidden")}
 
 	_, err := newServiceWithAuthz(bkn, op, authz).FindSkills(context.Background(),

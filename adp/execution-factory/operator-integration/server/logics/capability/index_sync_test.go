@@ -217,3 +217,52 @@ func TestListIndexedByOwnerScopesTheRead(t *testing.T) {
 		So(err, ShouldBeNil)
 	})
 }
+
+// TestRebuildReasonCatchesAnUnwritableDataset covers the state a dataset row can be left in after
+// an upgrade: the row exists, so it is adopted, but nothing behind it can accept a write.
+//
+// This is not hypothetical. On a deployment whose vega predated managed index names, the dataset
+// row carried no index name at all, and every document write came back 400 "dataset resource has
+// no available local index" — forever, because adoption never questioned the row.
+func TestRebuildReasonCatchesAnUnwritableDataset(t *testing.T) {
+	Convey("接手存量数据集时要看它能不能写", t, func() {
+		model := &interfaces.EmbeddingModel{ModelID: "m-1", ModelName: "embedding", EmbeddingDim: 8}
+		healthy := &interfaces.VegaResource{
+			ID:               capabilityDataset,
+			LocalIndexName:   "vega-dataset-01",
+			LocalIndexStatus: interfaces.VegaLocalIndexAvailable,
+			SchemaDefinition: buildCapabilityIndexSchema(8, defaultFulltextAnalyzer),
+			IndexConfig:      &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: "m-1"},
+		}
+
+		Convey("健康的数据集不重建", func() {
+			So(rebuildReason(healthy, model, defaultFulltextAnalyzer), ShouldEqual, "")
+		})
+
+		Convey("没有托管索引名要重建", func() {
+			broken := *healthy
+			broken.LocalIndexName = ""
+			So(rebuildReason(&broken, model, defaultFulltextAnalyzer), ShouldNotEqual, "")
+		})
+
+		Convey("托管索引不可用要重建", func() {
+			broken := *healthy
+			broken.LocalIndexStatus = interfaces.VegaLocalIndexUnavailable
+			So(rebuildReason(&broken, model, defaultFulltextAnalyzer), ShouldNotEqual, "")
+		})
+
+		Convey("embedding 模型变了要重建", func() {
+			changed := *healthy
+			changed.IndexConfig = &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: "m-2"}
+			So(rebuildReason(&changed, model, defaultFulltextAnalyzer), ShouldNotEqual, "")
+		})
+
+		Convey("分词器不同不算重建理由——它只在建库时定一次", func() {
+			adopted := *healthy
+			adopted.SchemaDefinition = buildCapabilityIndexSchema(8, "ik_max_word")
+			// The caller reads the analyzer back off the resource, so the comparison is made
+			// against the analyzer the dataset already has, not against a freshly resolved one.
+			So(rebuildReason(&adopted, model, "ik_max_word"), ShouldEqual, "")
+		})
+	})
+}

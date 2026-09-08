@@ -871,7 +871,18 @@ type VegaResource struct {
 	SourceIdentifier string                   `json:"source_identifier"`
 	SchemaDefinition []VegaProperty           `json:"schema_definition,omitempty"`
 	IndexConfig      *VegaResourceIndexConfig `json:"index_config,omitempty"`
+	// LocalIndexName and LocalIndexStatus describe the managed index behind a dataset. A dataset
+	// whose index is missing or unavailable exists as a row but rejects every write, so a caller
+	// adopting an existing dataset has to look at these rather than at the row alone.
+	LocalIndexName   string `json:"index_name,omitempty"`
+	LocalIndexStatus string `json:"local_status,omitempty"`
 }
+
+// Managed local index states reported by vega.
+const (
+	VegaLocalIndexAvailable   = "available"
+	VegaLocalIndexUnavailable = "unavailable"
+)
 
 type VegaBackendClient interface {
 	GetCatalogByID(ctx context.Context, id string) (*VegaCatalog, error)

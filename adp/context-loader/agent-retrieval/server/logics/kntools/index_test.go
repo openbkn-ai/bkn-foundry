@@ -18,7 +18,7 @@ import (
 type fakeOperator struct {
 	interfaces.DrivenOperatorIntegration
 
-	hits       []interfaces.ToolHit
+	hits       []interfaces.CapabilityHit
 	hitsErr    error
 	toolsByBox map[string]*interfaces.ListPublishedToolsResponse
 	toolsErr   map[string]error
@@ -38,12 +38,19 @@ type fakeOperator struct {
 	mcpUnusable    map[string]bool
 }
 
-func (f *fakeOperator) SearchBoundTools(
-	_ context.Context, req *interfaces.SearchBoundToolsRequest,
-) ([]interfaces.ToolHit, error) {
+func (f *fakeOperator) SearchCapabilities(
+	_ context.Context, req *interfaces.SearchCapabilitiesRequest,
+) ([]interfaces.CapabilityHit, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.gotRefs = req.ToolRefs
+	f.gotRefs = make([]string, 0, len(req.Refs))
+	for _, ref := range req.Refs {
+		if ref.CapabilityType == interfaces.CapabilityTypeMCPTool {
+			f.gotRefs = append(f.gotRefs, interfaces.CapabilityTypeMCPTool+":"+ref.OwnerID+"/"+ref.CapabilityID)
+			continue
+		}
+		f.gotRefs = append(f.gotRefs, ref.OwnerID+"/"+ref.CapabilityID)
+	}
 	f.gotQuery = req.Query
 	f.gotTopK = req.TopK
 	return f.hits, f.hitsErr
@@ -154,8 +161,28 @@ func splitPair(pair string) (string, string) {
 	return pair, ""
 }
 
-func hit(boxID, toolID string) interfaces.ToolHit {
-	return interfaces.ToolHit{BoxID: boxID, ToolID: toolID, Name: toolID}
+// mcpHit is one ranked MCP tool as the execution factory now returns it. Ranking and query
+// filtering live there; this side supplies the whitelist and renders what comes back.
+func mcpHit(mcpID, toolName string) interfaces.CapabilityHit {
+	return interfaces.CapabilityHit{
+		SearchCapabilityRef: interfaces.SearchCapabilityRef{
+			CapabilityType: interfaces.CapabilityTypeMCPTool,
+			OwnerID:        mcpID,
+			CapabilityID:   toolName,
+		},
+		Name: toolName,
+	}
+}
+
+func hit(boxID, toolID string) interfaces.CapabilityHit {
+	return interfaces.CapabilityHit{
+		SearchCapabilityRef: interfaces.SearchCapabilityRef{
+			CapabilityType: interfaces.CapabilityTypeFunction,
+			OwnerID:        boxID,
+			CapabilityID:   toolID,
+		},
+		Name: toolID,
+	}
 }
 
 func tools(boxID string, toolIDs ...string) *interfaces.ListPublishedToolsResponse {
@@ -192,7 +219,7 @@ func (f *fakeKnAuthz) AuthorizeRead(_ context.Context, knID string) error {
 func TestSearchNarrowsToTheNetworkBindings(t *testing.T) {
 	bkn := &fakeBkn{refs: functionRefs("box-1/mounted")}
 	op := &fakeOperator{
-		hits:       []interfaces.ToolHit{hit("box-1", "mounted")},
+		hits: []interfaces.CapabilityHit{hit("box-1", "mounted")},
 		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{
 			"box-1": tools("box-1", "mounted", "not_mounted"),
 		},
@@ -221,7 +248,7 @@ func TestSearchNarrowsToTheNetworkBindings(t *testing.T) {
 // nothing gets nothing, not the account's catalogue.
 func TestSearchOnUnmountedNetworkReturnsEmpty(t *testing.T) {
 	bkn := &fakeBkn{refs: []*interfaces.CapabilityRef{}}
-	op := &fakeOperator{hits: []interfaces.ToolHit{hit("box-1", "should_not_appear")}}
+	op := &fakeOperator{hits: []interfaces.CapabilityHit{hit("box-1", "should_not_appear")}}
 
 	resp, err := newService(bkn, op).SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1"})
 
@@ -260,7 +287,7 @@ func TestSearchRequiresKnID(t *testing.T) {
 // "mounted nothing" or "everything".
 func TestBindingLookupFailureFailsTheSearch(t *testing.T) {
 	bkn := &fakeBkn{err: errors.New("bkn-backend unreachable")}
-	op := &fakeOperator{hits: []interfaces.ToolHit{hit("box-1", "t1")}}
+	op := &fakeOperator{hits: []interfaces.CapabilityHit{hit("box-1", "t1")}}
 
 	_, err := newService(bkn, op).SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1"})
 
@@ -276,7 +303,7 @@ func TestBindingLookupFailureFailsTheSearch(t *testing.T) {
 func TestToolboxIDNarrowsWithinTheMountedSet(t *testing.T) {
 	bkn := &fakeBkn{refs: functionRefs("box-1/t1", "box-2/t2")}
 	op := &fakeOperator{
-		hits:       []interfaces.ToolHit{hit("box-2", "t2")},
+		hits:       []interfaces.CapabilityHit{hit("box-2", "t2")},
 		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{"box-2": tools("box-2", "t2")},
 	}
 
@@ -296,7 +323,7 @@ func TestToolboxIDNarrowsWithinTheMountedSet(t *testing.T) {
 func TestUnreadableToolboxDropsItsHits(t *testing.T) {
 	bkn := &fakeBkn{refs: functionRefs("box-1/t1", "box-2/t2")}
 	op := &fakeOperator{
-		hits: []interfaces.ToolHit{hit("box-1", "t1"), hit("box-2", "t2")},
+		hits: []interfaces.CapabilityHit{hit("box-1", "t1"), hit("box-2", "t2")},
 		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{
 			"box-1": tools("box-1", "t1"),
 		},
@@ -318,7 +345,7 @@ func TestUnreadableToolboxDropsItsHits(t *testing.T) {
 func TestHitsCarryTheInputSchema(t *testing.T) {
 	bkn := &fakeBkn{refs: functionRefs("box-1/t1")}
 	op := &fakeOperator{
-		hits:       []interfaces.ToolHit{hit("box-1", "t1")},
+		hits:       []interfaces.CapabilityHit{hit("box-1", "t1")},
 		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{"box-1": tools("box-1", "t1")},
 	}
 
@@ -340,7 +367,7 @@ func TestHitsCarryTheInputSchema(t *testing.T) {
 func TestOneRequestPerToolboxNotPerHit(t *testing.T) {
 	bkn := &fakeBkn{refs: functionRefs("box-1/t1", "box-1/t2", "box-1/t3")}
 	op := &fakeOperator{
-		hits: []interfaces.ToolHit{hit("box-1", "t1"), hit("box-1", "t2"), hit("box-1", "t3")},
+		hits: []interfaces.CapabilityHit{hit("box-1", "t1"), hit("box-1", "t2"), hit("box-1", "t3")},
 		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{
 			"box-1": tools("box-1", "t1", "t2", "t3"),
 		},
@@ -442,7 +469,7 @@ func TestUnauthorizedNetworkIsRefusedForBothEntryPoints(t *testing.T) {
 	for _, name := range []string{"search", "execute"} {
 		bkn := &fakeBkn{refs: functionRefs("box-1/t1")}
 		op := &fakeOperator{
-			hits:       []interfaces.ToolHit{hit("box-1", "t1")},
+			hits:       []interfaces.CapabilityHit{hit("box-1", "t1")},
 			toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{"box-1": tools("box-1", "t1")},
 		}
 		authz := &fakeKnAuthz{err: errors.New("forbidden")}
@@ -483,6 +510,7 @@ func TestMissingAuthorizerFailsClosed(t *testing.T) {
 func TestMCPToolsAreSearchableAndCallable(t *testing.T) {
 	newSvc := func() (KnToolsService, *fakeOperator) {
 		op := &fakeOperator{
+			hits: []interfaces.CapabilityHit{mcpHit("mcp-1", "expedite")},
 			mcpTools: map[string]*interfaces.GetMCPToolDetailResponse{
 				"mcp-1/expedite": {Name: "expedite", Description: "催单", InputSchema: map[string]any{"type": "object"}},
 			},
@@ -541,18 +569,31 @@ func TestMCPToolsAreSearchableAndCallable(t *testing.T) {
 		}
 	})
 
-	t.Run("query 过滤 MCP 工具", func(t *testing.T) {
-		svc, _ := newSvc()
-		hit, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "催单"})
-		if err != nil || len(hit.Tools) != 1 {
-			t.Fatalf("expected a description match, got %+v err=%v", hit, err)
+	t.Run("MCP 工具进入统一检索的白名单", func(t *testing.T) {
+		// Ranking and query filtering are the execution factory's job now — both transports are
+		// rows in one index. What this side owes is the whitelist: every mounted MCP tool must
+		// reach it, or the tool is unfindable no matter how good the ranking is.
+		svc, op := newSvc()
+		if _, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "催单"}); err != nil {
+			t.Fatalf("expected no error, got %v", err)
 		}
-		miss, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "完全无关"})
+		if op.gotQuery != "催单" {
+			t.Fatalf("query 没有透传给执行工厂，got %q", op.gotQuery)
+		}
+		if len(op.gotRefs) != 1 || op.gotRefs[0] != "mcp_tool:mcp-1/expedite" {
+			t.Fatalf("挂载的 MCP 工具没进白名单，got %+v", op.gotRefs)
+		}
+	})
+
+	t.Run("检索面返回空就是空，不在本地兜底放宽", func(t *testing.T) {
+		svc, op := newSvc()
+		op.hits = nil
+		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "完全无关"})
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if len(miss.Tools) != 0 {
-			t.Fatalf("expected no match, got %+v", miss.Tools)
+		if len(resp.Tools) != 0 {
+			t.Fatalf("expected no match, got %+v", resp.Tools)
 		}
 	})
 }
@@ -591,6 +632,8 @@ func TestOfflineMCPServerIsNotExecutable(t *testing.T) {
 // that was already working.
 func TestMCPTruncationCountsMatchesNotMounts(t *testing.T) {
 	op := &fakeOperator{
+		// Three tools are mounted; the query kept one, so that is what the ranking returns.
+		hits: []interfaces.CapabilityHit{mcpHit("mcp-1", "expedite")},
 		mcpTools: map[string]*interfaces.GetMCPToolDetailResponse{
 			"mcp-1/expedite":   {Name: "expedite", Description: "催单"},
 			"mcp-1/substitute": {Name: "substitute", Description: "替换"},
