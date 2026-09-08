@@ -1,5 +1,4 @@
 // Copyright openbkn.ai
-// Copyright The kweaver.ai Authors.
 
 package objectpermission
 
