@@ -127,3 +127,76 @@ func Test_BKNRestHandler_DiffKNs(t *testing.T) {
 		})
 	})
 }
+
+func Test_BKNRestHandler_ObjectDataStats(t *testing.T) {
+	Convey("Test BKNHandler ObjectDataStats\n", t, func() {
+		test := setGinMode()
+		defer test()
+
+		engine := gin.New()
+		engine.Use(gin.Recovery())
+
+		mockCtrl := gomock.NewController(t)
+		defer mockCtrl.Finish()
+
+		as := bmock.NewMockAuthService(mockCtrl)
+		odss := bmock.NewMockObjectDataStatsService(mockCtrl)
+
+		handler := MockNewBKNRestHandler(&common.AppSetting{}, as, bmock.NewMockKNService(mockCtrl), bmock.NewMockBKNService(mockCtrl))
+		handler.odss = odss
+		handler.RegisterPublic(engine)
+
+		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().Return(hydra.Visitor{}, nil)
+
+		url := "/api/bkn-backend/v1/bkns/diff/object-data-stats"
+		post := func(body string) *httptest.ResponseRecorder {
+			req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+			return w
+		}
+
+		Convey("Success returns both sides and the delta\n", func() {
+			distinct := int64(1150)
+			odss.EXPECT().ObjectDataStats(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ any, req interfaces.ObjectDataStatsRequest) (*interfaces.ObjectDataStatsResult, error) {
+					So(req.Base.OTID, ShouldEqual, "bom")
+					So(req.Base.Branch, ShouldEqual, interfaces.MAIN_BRANCH)
+					return &interfaces.ObjectDataStatsResult{
+						Base:   &interfaces.ObjectDataStats{RowCount: 1000},
+						Target: &interfaces.ObjectDataStats{RowCount: 1200, PrimaryKeyDistinct: &distinct},
+						Delta:  interfaces.ObjectDataStatsDelta{RowCount: 200},
+					}, nil
+				})
+
+			w := post(`{"base":{"kn_id":"kn1","ot_id":"bom"},"target":{"kn_id":"kn2","ot_id":"bom"}}`)
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+
+			var payload interfaces.ObjectDataStatsResult
+			So(json.Unmarshal(w.Body.Bytes(), &payload), ShouldBeNil)
+			So(payload.Base.RowCount, ShouldEqual, 1000)
+			So(payload.Delta.RowCount, ShouldEqual, 200)
+			So(*payload.Target.PrimaryKeyDistinct, ShouldEqual, 1150)
+		})
+
+		Convey("Failed when a side names no object type\n", func() {
+			So(post(`{"base":{"kn_id":"kn1"},"target":{"kn_id":"kn2","ot_id":"bom"}}`).Result().StatusCode,
+				ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("Failed when a side names no network\n", func() {
+			So(post(`{"base":{"ot_id":"bom"},"target":{"kn_id":"kn2","ot_id":"bom"}}`).Result().StatusCode,
+				ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("A refusal from the service keeps its own status\n", func() {
+			notFound := rest.NewHTTPError(context.Background(), http.StatusNotFound,
+				berrors.BknBackend_KNDiff_ObjectTypeNotFound)
+			odss.EXPECT().ObjectDataStats(gomock.Any(), gomock.Any()).Return(nil, notFound)
+
+			So(post(`{"base":{"kn_id":"kn1","ot_id":"bom"},"target":{"kn_id":"kn2","ot_id":"bom"}}`).Result().StatusCode,
+				ShouldEqual, http.StatusNotFound)
+		})
+	})
+}

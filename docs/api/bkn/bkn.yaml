@@ -189,6 +189,61 @@ paths:
           description: The caller may not read one of the two networks
         '404':
           description: Knowledge network not found
+  /api/bkn-backend/v1/bkns/diff/object-data-stats:
+    post:
+      tags:
+        - BKN Import/Export
+      summary: Count the data behind one object type on each side of a comparison
+      description: |
+        Report how much data sits behind two object types: the row count of each bound resource and
+        the number of distinct primary keys in it.
+
+        This is a separate call from the comparison because it queries the customer's own database.
+        A comparison opens without paying for it, and pays only for the object type someone
+        actually opens.
+
+        Two numbers is the whole of it on purpose. Per-column statistics — null rates, value
+        distributions — cost another pass over the table for every column, and this runs while
+        someone waits with a comparison open.
+
+        `same_resource` is true when both object types are bound to the same resource. The two
+        sides are then reading one table and every number matches by construction, which is not a
+        finding about the data. `duplicate_keys` is rows minus distinct keys: a non-zero value
+        means the resource holds rows the model believes are the same object.
+      operationId: objectDataStats
+      security:
+        - OAuth2: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [base, target]
+              properties:
+                base:
+                  $ref: '#/components/schemas/ObjectDataStatsSideRequest'
+                target:
+                  $ref: '#/components/schemas/ObjectDataStatsSideRequest'
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObjectDataStatsResult'
+        '400':
+          description: Invalid request, or an object type bound to no data resource
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        '401':
+          description: Unauthorized
+        '403':
+          description: The caller may not query data in one of the two networks
+        '404':
+          description: The object type does not exist in that branch
   /api/bkn-backend/v1/knowledge-networks/names:
     post:
       tags:
@@ -334,6 +389,70 @@ components:
           type: string
           default: main
           description: Branch name. Defaults to main.
+
+    ObjectDataStatsSideRequest:
+      type: object
+      required: [kn_id, ot_id]
+      properties:
+        kn_id:
+          type: string
+        branch:
+          type: string
+          default: main
+        ot_id:
+          type: string
+
+    ObjectDataStats:
+      type: object
+      properties:
+        kn_id:
+          type: string
+        branch:
+          type: string
+        ot_id:
+          type: string
+        ot_name:
+          type: string
+        resource_id:
+          type: string
+        primary_keys:
+          type: array
+          items:
+            type: string
+        row_count:
+          type: integer
+          format: int64
+        primary_key_distinct:
+          type: integer
+          format: int64
+          description: |
+            Absent when the object type declares no primary key: there is nothing to count
+            distinct values of, and zero would read as "every row is a duplicate".
+        duplicate_keys:
+          type: integer
+          format: int64
+          description: Rows minus distinct keys. Non-zero means the resource holds rows the model believes are the same object.
+
+    ObjectDataStatsResult:
+      type: object
+      properties:
+        base:
+          $ref: '#/components/schemas/ObjectDataStats'
+        target:
+          $ref: '#/components/schemas/ObjectDataStats'
+        same_resource:
+          type: boolean
+          description: Both object types are bound to the same resource, so the two sides read one table and every number matches by construction.
+        delta:
+          type: object
+          description: Target minus base.
+          properties:
+            row_count:
+              type: integer
+              format: int64
+            primary_key_distinct:
+              type: integer
+              format: int64
 
     KNDiffSide:
       type: object
