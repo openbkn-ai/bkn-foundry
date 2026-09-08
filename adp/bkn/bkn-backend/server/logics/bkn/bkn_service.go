@@ -51,6 +51,29 @@ func (bs *bknService) ExportToTar(ctx context.Context, knID string, branch strin
 
 	logger.Debugf("BKN ExportToTar Start: kn_id=%s", knID)
 
+	bknNetwork, err := bs.buildNetwork(ctx, knID, branch)
+	if err != nil {
+		return nil, err
+	}
+
+	var buf bytes.Buffer
+	err = bknsdk.WriteNetworkToTar(bknNetwork, &buf)
+	if err != nil {
+		otellog.LogError(ctx, "BKN ExportToTar failed", err)
+		return nil, err
+	}
+	tarData := buf.Bytes()
+
+	logger.Debugf("BKN ExportToTar Completed: size=%d", len(tarData))
+	span.SetStatus(codes.Ok, "")
+	return tarData, nil
+}
+
+// buildNetwork assembles the complete in-memory model of one knowledge network branch.
+//
+// Export and comparison must see the same thing. Assembling the model separately for each caller
+// is how the two drift: a section added to the export quietly stops being compared.
+func (bs *bknService) buildNetwork(ctx context.Context, knID string, branch string) (*bknsdk.BknNetwork, error) {
 	kn, err := bs.kns.GetKNByID(ctx, knID, branch, interfaces.Mode_Export)
 	if err != nil {
 		otellog.LogError(ctx, "BKN GetKNByID failed", err)
@@ -77,15 +100,36 @@ func (bs *bknService) ExportToTar(ctx context.Context, knID string, branch strin
 		bknNetwork.Metrics = append(bknNetwork.Metrics, logics.ToBKNMetricDefinition(m))
 	}
 
-	var buf bytes.Buffer
-	err = bknsdk.WriteNetworkToTar(bknNetwork, &buf)
+	return bknNetwork, nil
+}
+
+// DiffNetworks compares two knowledge network branches and reports what differs.
+//
+// Both sides are loaded through GetKNByID, so each is authorized on its own: a caller who may read
+// one network and not the other is refused exactly as they would be asking for that network
+// directly, and a comparison cannot be used to read a network sideways.
+func (bs *bknService) DiffNetworks(ctx context.Context, req interfaces.KNDiffRequest) (*interfaces.KNDiffResult, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BKN网络对比")
+	defer span.End()
+
+	base, err := bs.buildNetwork(ctx, req.Base.KNID, req.Base.Branch)
 	if err != nil {
-		otellog.LogError(ctx, "BKN ExportToTar failed", err)
 		return nil, err
 	}
-	tarData := buf.Bytes()
+	target, err := bs.buildNetwork(ctx, req.Target.KNID, req.Target.Branch)
+	if err != nil {
+		return nil, err
+	}
 
-	logger.Debugf("BKN ExportToTar Completed: size=%d", len(tarData))
+	diff := bknsdk.DiffNetworkModels(base, target, bknsdk.DiffOptions{FallbackByName: req.FallbackByName})
+
+	logger.Debugf("BKN DiffNetworks Completed: created=%d updated=%d deleted=%d unchanged=%d common_ids=%d",
+		diff.Summary.Created, diff.Summary.Updated, diff.Summary.Deleted, diff.Summary.Unchanged,
+		diff.Lineage.CommonIDs)
 	span.SetStatus(codes.Ok, "")
-	return tarData, nil
+	return &interfaces.KNDiffResult{
+		Base:        interfaces.KNDiffSide{KNID: req.Base.KNID, Branch: req.Base.Branch, Name: base.Name},
+		Target:      interfaces.KNDiffSide{KNID: req.Target.KNID, Branch: req.Target.Branch, Name: target.Name},
+		NetworkDiff: diff,
+	}, nil
 }

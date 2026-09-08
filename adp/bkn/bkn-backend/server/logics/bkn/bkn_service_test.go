@@ -126,3 +126,79 @@ func Test_bknService_ExportToTar(t *testing.T) {
 		})
 	})
 }
+
+func Test_bknService_DiffNetworks(t *testing.T) {
+	Convey("Test bknService DiffNetworks\n", t, func() {
+		svc, mockCtrl, kns := newTestBKNService(t)
+		defer mockCtrl.Finish()
+
+		baseKN := &interfaces.KN{
+			KNID: "kn1", KNName: "供应链主网", Branch: "main",
+			ObjectTypes: []*interfaces.ObjectType{{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "bom", OTName: "产品BOM"},
+			}},
+		}
+		targetKN := &interfaces.KN{
+			KNID: "kn2", KNName: "供应链主网（试点）", Branch: "main",
+			ObjectTypes: []*interfaces.ObjectType{{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "bom", OTName: "产品物料清单"},
+			}},
+		}
+
+		Convey("Both sides are loaded and the definition difference is reported\n", func() {
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", "main", interfaces.Mode_Export).Return(baseKN, nil)
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn2", "main", interfaces.Mode_Export).Return(targetKN, nil)
+
+			result, err := svc.DiffNetworks(context.Background(), interfaces.KNDiffRequest{
+				Base:   interfaces.KNRef{KNID: "kn1", Branch: "main"},
+				Target: interfaces.KNRef{KNID: "kn2", Branch: "main"},
+			})
+			So(err, ShouldBeNil)
+			So(result, ShouldNotBeNil)
+			So(result.Base.Name, ShouldEqual, "供应链主网")
+			So(result.Target.Name, ShouldEqual, "供应链主网（试点）")
+			So(result.Summary.Updated, ShouldEqual, 1)
+			So(len(result.Entries), ShouldEqual, 1)
+			So(result.Entries[0].ID, ShouldEqual, "bom")
+			// The two networks carry different ids and names; that difference is reported on its
+			// own rather than counted with the definitions.
+			So(result.Network, ShouldNotBeNil)
+			So(result.Network.Action, ShouldEqual, bknsdk.DiffUpdate)
+			So(result.Lineage.CommonIDs, ShouldEqual, 1)
+		})
+
+		Convey("A caller who cannot read the base network is refused before the target is touched\n", func() {
+			denied := rest.NewHTTPError(context.Background(), http.StatusForbidden, berrors.BknBackend_KnowledgeNetwork_InvalidParameter)
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", "main", interfaces.Mode_Export).Return(nil, denied)
+
+			result, err := svc.DiffNetworks(context.Background(), interfaces.KNDiffRequest{
+				Base:   interfaces.KNRef{KNID: "kn1", Branch: "main"},
+				Target: interfaces.KNRef{KNID: "kn2", Branch: "main"},
+			})
+			So(err, ShouldNotBeNil)
+			So(result, ShouldBeNil)
+		})
+
+		Convey("Name fallback is passed through to the differ\n", func() {
+			renamedID := &interfaces.KN{
+				KNID: "kn2", KNName: "供应链主网（试点）", Branch: "main",
+				ObjectTypes: []*interfaces.ObjectType{{
+					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "0193-uuid", OTName: "产品BOM"},
+				}},
+			}
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", "main", interfaces.Mode_Export).Return(baseKN, nil)
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn2", "main", interfaces.Mode_Export).Return(renamedID, nil)
+
+			result, err := svc.DiffNetworks(context.Background(), interfaces.KNDiffRequest{
+				Base:           interfaces.KNRef{KNID: "kn1", Branch: "main"},
+				Target:         interfaces.KNRef{KNID: "kn2", Branch: "main"},
+				FallbackByName: true,
+			})
+			So(err, ShouldBeNil)
+			So(len(result.Entries), ShouldEqual, 1)
+			So(result.Entries[0].PairedBy, ShouldEqual, "name")
+			So(result.Entries[0].BaseID, ShouldEqual, "bom")
+			So(result.Entries[0].TargetID, ShouldEqual, "0193-uuid")
+		})
+	})
+}
