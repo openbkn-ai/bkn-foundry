@@ -1,0 +1,219 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+package capability
+
+import (
+	"context"
+	"fmt"
+	"testing"
+
+	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/mock/gomock"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
+)
+
+// readySync builds a sync service that already believes its dataset exists.
+func readySync(vega interfaces.VegaBackendClient, modelAPI interfaces.MFModelAPIClient) *capabilityIndexSync {
+	return &capabilityIndexSync{
+		vegaClient:  vega,
+		modelAPI:    modelAPI,
+		logger:      logger.DefaultLogger(),
+		initialized: true,
+		datasetID:   capabilityDataset,
+	}
+}
+
+func indexEntry(ref interfaces.CapabilityRef, name string) map[string]any {
+	return map[string]any{
+		"capability_type": ref.CapabilityType,
+		"owner_id":        ref.OwnerID,
+		"capability_id":   ref.CapabilityID,
+		"name":            name,
+		"description":     name + " desc",
+	}
+}
+
+// TestUpsertRejectsUnaddressableIdentity keeps rows the index cannot address out of it.
+func TestUpsertRejectsUnaddressableIdentity(t *testing.T) {
+	Convey("身份不合法的能力不写入", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		vega := mocks.NewMockVegaBackendClient(ctrl)
+		vega.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+		sync := readySync(vega, mocks.NewMockMFModelAPIClient(ctrl))
+
+		Convey("未知类型", func() {
+			err := sync.UpsertCapability(context.Background(), &interfaces.CapabilityDocument{
+				CapabilityRef: interfaces.CapabilityRef{CapabilityType: "api", CapabilityID: "x"},
+			})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("函数工具缺 owner", func() {
+			err := sync.UpsertCapability(context.Background(), &interfaces.CapabilityDocument{
+				CapabilityRef: interfaces.CapabilityRef{
+					CapabilityType: interfaces.CapabilityTypeFunction, CapabilityID: "tool-1",
+				},
+			})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Skill 允许 owner 为空", func() {
+			modelAPI := mocks.NewMockMFModelAPIClient(ctrl)
+			modelAPI.EXPECT().Embeddings(gomock.Any(), gomock.Any()).Return(&interfaces.EmbeddingResp{
+				Data: []interfaces.EmbeddingData{{Embedding: []float32{0.1}}},
+			}, nil)
+			writeVega := mocks.NewMockVegaBackendClient(ctrl)
+			writeVega.EXPECT().WriteDatasetDocument(gomock.Any(), capabilityDataset,
+				capabilityDocID(skillRef("s-1")), gomock.Any()).Return(nil)
+
+			err := readySync(writeVega, modelAPI).UpsertCapability(context.Background(),
+				&interfaces.CapabilityDocument{CapabilityRef: skillRef("s-1"), Name: "标准补货"})
+			So(err, ShouldBeNil)
+		})
+	})
+}
+
+// TestUpsertIsDroppedBeforeTheDatasetExists covers the case where a write arrives before Init has
+// managed to create the dataset. Dropping it with a warning is deliberate: failing the tool or
+// Skill write over an index that is not ready yet would be worse, and the reconciler re-drives it.
+func TestUpsertIsDroppedBeforeTheDatasetExists(t *testing.T) {
+	Convey("数据集未就绪时跳过写入而不是报错", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		vega := mocks.NewMockVegaBackendClient(ctrl)
+		vega.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+		sync := readySync(vega, mocks.NewMockMFModelAPIClient(ctrl))
+		sync.initialized = false
+
+		err := sync.UpsertCapability(context.Background(),
+			&interfaces.CapabilityDocument{CapabilityRef: skillRef("s-1"), Name: "标准补货"})
+		So(err, ShouldBeNil)
+	})
+}
+
+// TestListIndexedPagesByKey covers the scan that both the reconciler and DeleteOwner stand on.
+//
+// The cursor is capability_key rather than capability_id because only the key is unique: a tool id
+// is unique inside its box, so paging on the id would skip the rest of a run of equal ids that
+// straddled a page boundary.
+func TestListIndexedPagesByKey(t *testing.T) {
+	Convey("索引扫描按 capability_key 翻页", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		vega := mocks.NewMockVegaBackendClient(ctrl)
+
+		// Two boxes hold a tool of the same id: paging on capability_id would lose one of them.
+		first := make([]map[string]any, 0, ownerScanBatch)
+		for i := 0; i < ownerScanBatch; i++ {
+			first = append(first, indexEntry(functionRef(fmt.Sprintf("box-%03d", i), "same-tool"), "tool"))
+		}
+		last := functionRef(fmt.Sprintf("box-%03d", ownerScanBatch-1), "same-tool")
+
+		call := 0
+		vega.EXPECT().QueryDatasetData(gomock.Any(), capabilityDataset, gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ string, params *interfaces.VegaDataQueryParams) (*interfaces.VegaDataQueryResp, error) {
+				call++
+				So(params.Sort[0].Field, ShouldEqual, "capability_key")
+				subs, _ := params.FilterCondition["sub_conditions"].([]map[string]any)
+				if call == 1 {
+					So(len(subs), ShouldEqual, 1)
+					return &interfaces.VegaDataQueryResp{Entries: first}, nil
+				}
+				// The second page asks for keys strictly after the last one seen.
+				So(len(subs), ShouldEqual, 2)
+				So(subs[1]["field"], ShouldEqual, "capability_key")
+				So(subs[1]["operation"], ShouldEqual, "gt")
+				So(subs[1]["value"], ShouldEqual, capabilityKey(last))
+				return &interfaces.VegaDataQueryResp{Entries: []map[string]any{
+					indexEntry(functionRef("box-999", "another"), "another"),
+				}}, nil
+			}).Times(2)
+
+		indexed, err := readySync(vega, nil).ListIndexed(context.Background(), interfaces.CapabilityTypeFunction)
+		So(err, ShouldBeNil)
+		So(len(indexed), ShouldEqual, ownerScanBatch+1)
+	})
+}
+
+// TestListIndexedStopsWhenNothingAdvances stops a full page of unreadable rows from looping on
+// itself forever.
+func TestListIndexedStopsWhenNothingAdvances(t *testing.T) {
+	Convey("整页都读不出身份时停止而不是空转", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		junk := make([]map[string]any, 0, ownerScanBatch)
+		for i := 0; i < ownerScanBatch; i++ {
+			junk = append(junk, map[string]any{"capability_type": "", "capability_id": ""})
+		}
+		vega := mocks.NewMockVegaBackendClient(ctrl)
+		vega.EXPECT().QueryDatasetData(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(&interfaces.VegaDataQueryResp{Entries: junk}, nil).Times(1)
+
+		indexed, err := readySync(vega, nil).ListIndexed(context.Background(), interfaces.CapabilityTypeFunction)
+		So(err, ShouldBeNil)
+		So(indexed, ShouldBeEmpty)
+	})
+}
+
+// TestDeleteOwnerPagesPastOnePage covers a purge of an owner holding more rows than one page.
+func TestDeleteOwnerPagesPastOnePage(t *testing.T) {
+	Convey("按 owner 清除会翻完所有页", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		full := make([]map[string]any, 0, ownerScanBatch)
+		for i := 0; i < ownerScanBatch; i++ {
+			full = append(full, indexEntry(functionRef("box-1", fmt.Sprintf("tool-%04d", i)), "tool"))
+		}
+		tail := []map[string]any{indexEntry(functionRef("box-1", "tool-9999"), "tool")}
+
+		vega := mocks.NewMockVegaBackendClient(ctrl)
+		call := 0
+		vega.EXPECT().QueryDatasetData(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ string, params *interfaces.VegaDataQueryParams) (*interfaces.VegaDataQueryResp, error) {
+				call++
+				if call == 1 {
+					return &interfaces.VegaDataQueryResp{Entries: full}, nil
+				}
+				return &interfaces.VegaDataQueryResp{Entries: tail}, nil
+			}).Times(2)
+		vega.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), capabilityDataset, gomock.Any()).
+			Return(nil).Times(ownerScanBatch + 1)
+
+		err := readySync(vega, nil).DeleteOwner(context.Background(), interfaces.CapabilityTypeFunction, "box-1")
+		So(err, ShouldBeNil)
+	})
+}
+
+// TestListIndexedByOwnerScopesTheRead keeps the reconciler from scanning a whole capability type
+// once per owner.
+func TestListIndexedByOwnerScopesTheRead(t *testing.T) {
+	Convey("按 owner 扫描把 owner 下推到查询里", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		vega := mocks.NewMockVegaBackendClient(ctrl)
+		vega.EXPECT().QueryDatasetData(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ string, params *interfaces.VegaDataQueryParams) (*interfaces.VegaDataQueryResp, error) {
+				subs, _ := params.FilterCondition["sub_conditions"].([]map[string]any)
+				So(len(subs), ShouldEqual, 2)
+				So(subs[1]["field"], ShouldEqual, "owner_id")
+				So(subs[1]["value"], ShouldEqual, "mcp-1")
+				return &interfaces.VegaDataQueryResp{Entries: nil}, nil
+			}).Times(1)
+
+		_, err := readySync(vega, nil).ListIndexedByOwner(context.Background(),
+			interfaces.CapabilityTypeMCPTool, "mcp-1")
+		So(err, ShouldBeNil)
+	})
+}

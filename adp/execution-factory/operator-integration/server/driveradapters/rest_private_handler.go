@@ -22,6 +22,7 @@ type restPrivateHandler struct {
 	ImpexHandler        common.ImpexHandler
 	Logger              interfaces.Logger
 	SkillRestHandler    SkillRestHandler
+	CapabilityHandler   CapabilityRestHandler
 	Hydra               interfaces.Hydra
 }
 
@@ -36,6 +37,7 @@ func NewRestPrivateHandler() interfaces.HTTPRouterInterface {
 		ImpexHandler:        common.NewImpexHandler(),
 		Logger:              config.NewConfigLoader().GetLogger(),
 		SkillRestHandler:    NewSkillRestHandler(),
+		CapabilityHandler:   NewCapabilityRestHandler(),
 		Hydra:               drivenadapters.NewHydra(),
 	}
 }
@@ -61,6 +63,8 @@ func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	r.MCPRestHandler.RegisterPrivate(engine)
 	// Skill interface.
 	r.SkillRestHandler.RegisterPrivate(engine)
+	// Unified capability retrieval.
+	r.CapabilityHandler.RegisterPrivate(engine)
 	// Temporary upgrade interface - only used when upgrading from an older version to 5.0.0.3.
 	engine.GET("/upgrade/v5003/migrate-history", r.UpgradeHandler.MigrateHistoryData)
 	// V0.6.0 -> V0.7.0 upgrade interface.

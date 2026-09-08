@@ -106,6 +106,9 @@ func (s *ToolServiceImpl) CreateTool(ctx context.Context, req *interfaces.Create
 		resp.SuccessIDs = append(resp.SuccessIDs, toolID)
 		detils = append(detils, metric.AuditLogToolDetil{ToolID: toolID, ToolName: tool.Name})
 	}
+	// Index what was actually created. saveToolToBox commits per tool, so the successful ids are
+	// the committed ones and the failed ones never existed.
+	s.syncToolsIndex(ctx, toolBox.BoxID, resp.SuccessIDs)
 	// Record audit log.
 	go func() {
 		accountAuthContext, ok := common.GetAccountAuthContextFromCtx(ctx)

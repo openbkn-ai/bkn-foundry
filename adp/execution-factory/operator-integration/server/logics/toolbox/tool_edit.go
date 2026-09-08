@@ -92,6 +92,8 @@ func (s *ToolServiceImpl) UpdateTool(ctx context.Context, req *interfaces.Update
 	if err != nil {
 		return
 	}
+	// updateToolMetadata owns and commits its own transaction, so the row is durable here.
+	s.syncToolsIndex(ctx, req.BoxID, []string{req.ToolID})
 	// Record audit log.
 	go func() {
 		accountAuthContext, ok := common.GetAccountAuthContextFromCtx(ctx)

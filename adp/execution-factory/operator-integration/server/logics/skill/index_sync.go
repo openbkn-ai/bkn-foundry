@@ -12,6 +12,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/capability"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
@@ -30,14 +31,22 @@ const (
 )
 
 type skillIndexSync struct {
-	modelManager interfaces.MFModelManager
-	modelAPI     interfaces.MFModelAPIClient
-	vegaClient   interfaces.VegaBackendClient
-	skillRepo    model.ISkillRepository
-	releaseRepo  model.ISkillReleaseDB
-	logger       interfaces.Logger
-	mu           sync.RWMutex
-	initialized  bool
+	// capabilitySync mirrors every Skill write into the unified capability index (#1370).
+	//
+	// It is driven from here rather than from a reconciler of its own because this is the one
+	// place every Skill write already passes through — create, update, delete, the full index
+	// build and the periodic scan — and because the rule for which snapshot of a Skill counts
+	// (published release, editing with a release, neither) lives here. A second implementation of
+	// that rule is a second answer to the same question.
+	capabilitySync interfaces.CapabilityIndexSyncService
+	modelManager   interfaces.MFModelManager
+	modelAPI       interfaces.MFModelAPIClient
+	vegaClient     interfaces.VegaBackendClient
+	skillRepo      model.ISkillRepository
+	releaseRepo    model.ISkillReleaseDB
+	logger         interfaces.Logger
+	mu             sync.RWMutex
+	initialized    bool
 	// datasetID is the dataset ID actually used by this process; an empty value means it has not been parsed yet, and the default value is used.
 	datasetID string
 	// embeddingModelName is the model name accepted by the embeddings API. It must not be replaced by embeddingModelID.
@@ -58,12 +67,13 @@ func NewSkillIndexSyncService() interfaces.SkillIndexSyncService {
 	ssOnce.Do(func() {
 		conf := config.NewConfigLoader()
 		syncer := &skillIndexSync{
-			modelManager: drivenadapters.NewMFModelManager(),
-			modelAPI:     drivenadapters.NewMFModelAPIClient(),
-			vegaClient:   drivenadapters.NewVegaBackendClient(),
-			skillRepo:    dbaccess.NewSkillRepositoryDB(),
-			releaseRepo:  dbaccess.NewSkillReleaseDB(),
-			logger:       conf.GetLogger(),
+			capabilitySync: capability.NewCapabilityIndexSyncService(),
+			modelManager:   drivenadapters.NewMFModelManager(),
+			modelAPI:       drivenadapters.NewMFModelAPIClient(),
+			vegaClient:     drivenadapters.NewVegaBackendClient(),
+			skillRepo:      dbaccess.NewSkillRepositoryDB(),
+			releaseRepo:    dbaccess.NewSkillReleaseDB(),
+			logger:         conf.GetLogger(),
 		}
 		ssInstance = syncer
 	})
@@ -453,6 +463,7 @@ func (s *skillIndexSync) restoreSkillDatasetFromSource(ctx context.Context) erro
 				if err := s.vegaClient.WriteDatasetDocument(ctx, s.getDatasetID(), skill.SkillID, document); err != nil {
 					return fmt.Errorf("write skill document for index restore: %w", err)
 				}
+				s.mirrorCapability(ctx, payload)
 			}
 			cursorUpdateTime = skill.UpdateTime
 			cursorSkillID = skill.SkillID
@@ -546,6 +557,7 @@ func (s *skillIndexSync) UpsertSkill(ctx context.Context, skill *model.SkillRepo
 		log.Errorf("write skill index document failed, skill_id=%s, err=%v", skill.SkillID, err)
 		return err
 	}
+	s.mirrorCapability(ctx, skill)
 	return nil
 }
 
@@ -566,6 +578,7 @@ func (s *skillIndexSync) UpdateSkill(ctx context.Context, skill *model.SkillRepo
 		log.Errorf("update skill index document failed, skill_id=%s, err=%v", skill.SkillID, err)
 		return err
 	}
+	s.mirrorCapability(ctx, skill)
 	return nil
 }
 
@@ -580,6 +593,7 @@ func (s *skillIndexSync) DeleteSkill(ctx context.Context, skillID string) error 
 		s.logger.WithContext(ctx).Errorf("delete skill index document failed, skill_id=%s, err=%v", skillID, err)
 		return err
 	}
+	s.forgetCapability(ctx, skillID)
 	return nil
 }
 
@@ -607,6 +621,50 @@ func (s *skillIndexSync) retryInit() {
 		}
 		s.logger.Info("skill index sync service init retry succeeded")
 		return
+	}
+}
+
+// mirrorCapability writes the Skill into the unified capability index.
+//
+// A failure is logged, not returned: the Skill dataset is still the authority for find_skills, and
+// refusing a Skill write because the newer index was unreachable would trade a working path for a
+// half-built one. The reconciler and the periodic full scan re-drive it.
+func (s *skillIndexSync) mirrorCapability(ctx context.Context, skill *model.SkillRepositoryDB) {
+	if s.capabilitySync == nil || skill == nil {
+		return
+	}
+	err := s.capabilitySync.UpsertCapability(ctx, &interfaces.CapabilityDocument{
+		CapabilityRef: interfaces.CapabilityRef{
+			CapabilityType: interfaces.CapabilityTypeSkill,
+			CapabilityID:   skill.SkillID,
+		},
+		Name:        skill.Name,
+		Description: skill.Description,
+		Version:     skill.Version,
+		Category:    skill.Category,
+		CreateUser:  skill.CreateUser,
+		CreateTime:  skill.CreateTime,
+		UpdateUser:  skill.UpdateUser,
+		UpdateTime:  skill.UpdateTime,
+	})
+	if err != nil {
+		s.logger.WithContext(ctx).Warnf("mirror skill into capability index failed, skill_id=%s, err=%v",
+			skill.SkillID, err)
+	}
+}
+
+// forgetCapability removes the Skill from the unified capability index.
+func (s *skillIndexSync) forgetCapability(ctx context.Context, skillID string) {
+	if s.capabilitySync == nil {
+		return
+	}
+	err := s.capabilitySync.DeleteCapability(ctx, interfaces.CapabilityRef{
+		CapabilityType: interfaces.CapabilityTypeSkill,
+		CapabilityID:   skillID,
+	})
+	if err != nil {
+		s.logger.WithContext(ctx).Warnf("remove skill from capability index failed, skill_id=%s, err=%v",
+			skillID, err)
 	}
 }
 

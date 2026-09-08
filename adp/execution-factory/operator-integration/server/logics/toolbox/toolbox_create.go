@@ -45,6 +45,15 @@ func (s *ToolServiceImpl) CreateToolBox(ctx context.Context, req *interfaces.Cre
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// boxID is declared up here so the post-commit hook below can see it.
+	var boxID string
+	// Registered before the commit below so it runs after it — defers are LIFO — because the
+	// index must not be told about a new tool box until the transaction has actually committed.
+	defer func() {
+		if err == nil {
+			s.syncBoxIndex(ctx, boxID)
+		}
+	}()
 	defer func() {
 		if err != nil {
 			_ = tx.Rollback()
@@ -67,7 +76,6 @@ func (s *ToolServiceImpl) CreateToolBox(ctx context.Context, req *interfaces.Cre
 		UpdateTime:   time.Now().UnixNano(),
 		MetadataType: string(req.MetadataType),
 	}
-	var boxID string
 	boxID, err = s.ToolBoxDB.InsertToolBox(ctx, tx, toolBox)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("insert toolbox failed, err: %v", err)

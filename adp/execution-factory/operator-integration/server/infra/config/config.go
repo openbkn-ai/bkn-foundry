@@ -51,6 +51,18 @@ type Config struct {
 	AIGenerationConfig      AIGenerationConfig        `yaml:"ai_generation_config"`
 	OSSGatewayBackendConfig OSSGatewayBackendConfig   `yaml:"oss-gateway-backend"`
 	SkillIndexBuildConfig   SkillIndexBuildConfig     `yaml:"skill_index_build"`
+	CapabilityIndexConfig   CapabilityIndexConfig     `yaml:"capability_index"`
+}
+
+// CapabilityIndexConfig governs the reconciler that keeps Function tools and MCP tools in the
+// capability index.
+//
+// A pass lists every registered MCP Server over the network, so the interval is a real cost, not
+// just a freshness knob. Skills are not reconciled here — they are written at their own sync
+// point.
+type CapabilityIndexConfig struct {
+	EnableReconciler  bool   `yaml:"enable_reconciler" default:"true"`
+	ReconcileInterval string `yaml:"reconcile_interval" default:"30m"`
 }
 
 type SkillIndexBuildConfig struct {

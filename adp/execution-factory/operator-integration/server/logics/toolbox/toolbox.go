@@ -121,6 +121,13 @@ func (s *ToolServiceImpl) DeleteBoxByID(ctx context.Context, req *interfaces.Del
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// Registered before the commit below so it runs after it — defers are LIFO — because the
+	// index must not be told about a deleted tool box until the transaction has actually committed.
+	defer func() {
+		if err == nil {
+			s.forgetBoxIndex(ctx, req.BoxID)
+		}
+	}()
 	defer func() {
 		if err != nil {
 			_ = tx.Rollback()
@@ -426,6 +433,13 @@ func (s *ToolServiceImpl) DeleteBoxTool(ctx context.Context, req *interfaces.Bat
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// Registered before the commit below so it runs after it — defers are LIFO — because the
+	// index must not be told about deleted tools until the transaction has actually committed.
+	defer func() {
+		if err == nil {
+			s.syncToolsIndex(ctx, req.BoxID, req.ToolIDs)
+		}
+	}()
 	defer func() {
 		if err != nil {
 			_ = tx.Rollback()
