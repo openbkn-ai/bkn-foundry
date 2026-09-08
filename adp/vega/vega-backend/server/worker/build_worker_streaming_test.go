@@ -170,6 +170,37 @@ func TestHandleUpdateOperationWritesReplacementBeforeDeletingOldDocument(t *test
 		"index-1",
 		buildTask,
 		&embeddingPipeline{},
+		[]string{"id", "title"},
+	))
+}
+
+func TestHandleUpdateOperationExcludesUnsupportedFields(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	lim := vmock.NewMockLocalIndexManager(ctrl)
+	worker := &streamingBuildWorker{lim: lim}
+	buildTask := &interfaces.BuildTask{
+		IndexConfig: &interfaces.BuildTaskIndexConfig{
+			IndexConfigContract: interfaces.IndexConfigContract{PrimaryKeyFields: []string{"id"}},
+		},
+	}
+	newID, err := generateDocumentID([]interfaces.KeyValue{{Key: "id", Value: 2}})
+	require.NoError(t, err)
+	oldID, err := generateDocumentID([]interfaces.KeyValue{{Key: "id", Value: 1}})
+	require.NoError(t, err)
+
+	gomock.InOrder(
+		lim.EXPECT().IndexDocuments(gomock.Any(), "index-1", map[string]map[string]any{newID: {"id": 2}}).Return(nil, nil),
+		lim.EXPECT().DeleteDocument(gomock.Any(), "index-1", oldID).Return(nil),
+	)
+
+	require.NoError(t, worker.handleUpdateOperation(
+		context.Background(),
+		map[string]any{"id": 1},
+		map[string]any{"id": 2, "attachment": []byte("blob"), "metadata": []string{"a", "b"}},
+		"index-1",
+		buildTask,
+		&embeddingPipeline{},
+		[]string{"id"},
 	))
 }
 
@@ -197,6 +228,7 @@ func TestHandleUpdateOperationKeepsOldDocumentWhenReplacementWriteFails(t *testi
 		"index-1",
 		buildTask,
 		&embeddingPipeline{},
+		[]string{"id"},
 	)
 	require.ErrorContains(t, err, "write failed")
 }

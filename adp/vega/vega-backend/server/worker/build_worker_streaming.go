@@ -178,12 +178,8 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 
 	logger.Infof("Started Kafka subscription for topic %s with group ID %s", topic, groupID)
 
-	fieldMap := map[string]*interfaces.Property{}
-	for _, prop := range resource.SchemaDefinition {
-		fieldMap[prop.Name] = prop
-	}
-
 	pipeline := &embeddingPipeline{mfs: sbw.mfs}
+	outputFields := buildIndexableFieldNames(resource.SchemaDefinition)
 
 	err = sbw.createKafkaConnector(ctx, catalog, resource, database, sourceIdentifier)
 	if err != nil {
@@ -316,10 +312,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 				case "r", "c":
 					// Full snapshot or create operation
 					// Create document from the after data
-					document := make(map[string]any)
-					for k, v := range after {
-						document[k] = v
-					}
+					document := filterBuildDocumentFields(after, outputFields)
 
 					kafkaKeyValues, err := getKafkaKeyValues(buildTaskInfo.IndexConfig.PrimaryKeyFields, keyMap)
 					if err != nil {
@@ -341,7 +334,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 					}
 				case "u":
 					// Update operation
-					if err := sbw.handleUpdateOperation(ctx, keyMap, after, indexName, buildTaskInfo, pipeline); err != nil {
+					if err := sbw.handleUpdateOperation(ctx, keyMap, after, indexName, buildTaskInfo, pipeline, outputFields); err != nil {
 						logger.Errorf("Failed to handle update operation: %v", err)
 						time.Sleep(retryInterval)
 						continue
@@ -552,7 +545,7 @@ func streamingDatabase(catalog *interfaces.Catalog) (string, error) {
 }
 
 // handleUpdateOperation handles update operations.
-func (sbw *streamingBuildWorker) handleUpdateOperation(ctx context.Context, keyMap, after map[string]any, indexName string, buildTaskInfo *interfaces.BuildTask, pipeline *embeddingPipeline) error {
+func (sbw *streamingBuildWorker) handleUpdateOperation(ctx context.Context, keyMap, after map[string]any, indexName string, buildTaskInfo *interfaces.BuildTask, pipeline *embeddingPipeline, outputFields []string) error {
 	documentIDFields := buildTaskInfo.IndexConfig.PrimaryKeyFields
 	kafkaKeyValues, err := getKafkaKeyValues(documentIDFields, keyMap)
 	if err != nil {
@@ -564,10 +557,7 @@ func (sbw *streamingBuildWorker) handleUpdateOperation(ctx context.Context, keyM
 	}
 
 	// Create updated document from the after data
-	document := make(map[string]any)
-	for k, v := range after {
-		document[k] = v
-	}
+	document := filterBuildDocumentFields(after, outputFields)
 
 	newKeyValues, err := extractKeyValues(documentIDFields, document)
 	if err != nil {
@@ -593,6 +583,16 @@ func (sbw *streamingBuildWorker) handleUpdateOperation(ctx context.Context, keyM
 	}
 
 	return nil
+}
+
+func filterBuildDocumentFields(document map[string]any, outputFields []string) map[string]any {
+	filtered := make(map[string]any, len(outputFields))
+	for _, field := range outputFields {
+		if value, exists := document[field]; exists {
+			filtered[field] = value
+		}
+	}
+	return filtered
 }
 
 // handleDeleteOperation handles deletion operations.
