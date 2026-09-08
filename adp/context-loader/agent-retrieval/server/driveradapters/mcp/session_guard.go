@@ -141,10 +141,7 @@ func guardBusinessToolCallWithCompletion(
 			status = receiptStatus(ensured.Receipt)
 		}
 		if status == "completed" || status == "failed" {
-			replay := map[string]any{"operation": ensured.Operation, "receipt": ensured.Receipt}
-			result := mcpsdk.NewToolResultStructured(replay, "operation is terminal; durable receipt reused")
-			result.IsError = status == "failed"
-			return result, nil
+			return receiptTerminalToolError(status, ensured.Operation, ensured.Receipt), nil
 		}
 		if ensured != nil && !ensured.Execute && status == "pending" {
 			return receiptPendingToolError(ensured.Receipt), nil
@@ -190,13 +187,7 @@ func guardBusinessToolCallWithCompletion(
 			return result, nil
 		}
 		if completed != nil {
-			if structured, ok := result.StructuredContent.(map[string]any); ok {
-				structured["bkn_receipt"] = completed.Receipt
-			} else {
-				result.StructuredContent = map[string]any{
-					"result": result.StructuredContent, "bkn_receipt": completed.Receipt,
-				}
-			}
+			attachReceipt(result, completed.Receipt)
 		}
 		return result, nil
 	}
@@ -335,6 +326,70 @@ func receiptPendingToolError(receipt any) *mcpsdk.CallToolResult {
 		Retryable: true, RequiredAction: "poll_receipt",
 	}
 	return lifecycleToolErrorWithDetails(errorValue, map[string]any{"receipt": receipt})
+}
+
+// receiptTerminalToolError replays a terminal operation without re-executing the tool.
+//
+// A lost response leaves nothing but the durable receipt: the tool did not run again, so there is no
+// payload in the shape its output schema declares. Returning that receipt as a successful structured
+// result made every schema-validating host reject the call, and handed an agent a receipt where it
+// had asked for rows. It travels as a lifecycle error instead -- hosts skip output validation on
+// error results, and the caller is told plainly that this operation is already terminal.
+func receiptTerminalToolError(status string, operation any, receipt any) *mcpsdk.CallToolResult {
+	errorValue := lifecycleError{
+		Code:           "receipt_terminal",
+		Message:        "operation is terminal; durable receipt reused, the tool was not re-executed",
+		CurrentStatus:  status,
+		RequiredAction: "read_receipt",
+	}
+	return lifecycleToolErrorWithDetails(errorValue, map[string]any{
+		"operation": operation, "receipt": receipt,
+	})
+}
+
+// attachReceipt hangs the durable receipt on a tool result without reshaping the tool's own payload.
+//
+// Business handlers hand back their response struct as structured content, so the map assertion used
+// to miss and the whole payload got nested under "result". That silently broke the contract every
+// tool publishes in its output schema, and search_instance -- the only schema with a required field
+// -- failed validation outright on hosts that check it. Marshalling the struct into a map keeps the
+// tool's own fields at the top level, which is where both the schema and the agent look for them.
+//
+// Payloads that are not JSON objects (text-only or errored results) have no shape worth preserving,
+// so they keep the nested envelope rather than losing the receipt.
+func attachReceipt(result *mcpsdk.CallToolResult, receipt any) {
+	if structured, ok := result.StructuredContent.(map[string]any); ok {
+		structured["bkn_receipt"] = receipt
+		return
+	}
+	if payload, ok := structuredContentAsMap(result.StructuredContent); ok {
+		payload["bkn_receipt"] = receipt
+		result.StructuredContent = payload
+		return
+	}
+	result.StructuredContent = map[string]any{
+		"result": result.StructuredContent, "bkn_receipt": receipt,
+	}
+}
+
+// structuredContentAsMap re-reads a structured payload as a JSON object.
+//
+// The decode keeps wide integers as json.Number rather than rounding them through float64: this
+// round-trip sits on the way out to the client, and is the last place the precision the driven
+// adapters preserved could still be lost.
+func structuredContentAsMap(value any) (map[string]any, bool) {
+	if value == nil {
+		return nil, false
+	}
+	raw, err := sonic.ConfigStd.Marshal(value)
+	if err != nil {
+		return nil, false
+	}
+	var payload map[string]any
+	if err := common.UnmarshalPreciseJSON(raw, &payload); err != nil || payload == nil {
+		return nil, false
+	}
+	return payload, true
 }
 
 func receiptStatus(receipt any) string {
