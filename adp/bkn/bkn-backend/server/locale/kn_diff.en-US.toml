@@ -4,6 +4,23 @@ Description = "Invalid knowledge network comparison request"
 Solution = "Please check the request body."
 ErrorLink = ""
 
+[BknBackend.KNDiff.ObjectTypeNotFound]
+Description = "The object type does not exist in that knowledge network branch"
+Solution = "Please check kn_id, branch and ot_id."
+ErrorLink = ""
+
+[BknBackend.KNDiff.DataStatsUnavailable]
+Description = "The object type has no data resource to count"
+Solution = "Please bind the object type to a data resource before comparing its data."
+ErrorLink = ""
+
+[BknBackend.KNDiff.DataStatsQueryFailed]
+Description = "Failed to count the data behind the object type"
+Solution = "Please retry later or contact the administrator."
+ErrorLink = ""
+
 [BknBackend.KNDiff.InvalidParameter.Detail]
 BaseKNIDRequired = "base.kn_id is required."
 TargetKNIDRequired = "target.kn_id is required."
+BaseObjectTypeRequired = "base.ot_id is required."
+TargetObjectTypeRequired = "target.ot_id is required."

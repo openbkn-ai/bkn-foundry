@@ -35,6 +35,7 @@ import (
 	"bkn-backend/logics/cypher"
 	"bkn-backend/logics/knowledge_network"
 	metriclogics "bkn-backend/logics/metric"
+	"bkn-backend/logics/object_data_stats"
 	"bkn-backend/logics/object_type"
 	"bkn-backend/logics/relation_type"
 	"bkn-backend/logics/risk_type"
@@ -65,6 +66,7 @@ type restHandler struct {
 	bs                      interfaces.BKNService
 	projectionGrantVerifier *bkntrace.ProjectionGrantVerifier
 	cqs                     interfaces.CypherQueryService
+	odss                    interfaces.ObjectDataStatsService
 }
 
 func NewRestHandler(appSetting *common.AppSetting, auditStore *operationaudit.Store) RestHandler {
@@ -104,6 +106,7 @@ func NewRestHandler(appSetting *common.AppSetting, auditStore *operationaudit.St
 		bs:                      bkn.NewBKNService(appSetting),
 		projectionGrantVerifier: projectionVerifier,
 		cqs:                     cypher.NewCypherQueryService(appSetting),
+		odss:                    object_data_stats.NewObjectDataStatsService(appSetting),
 	}
 	return r
 }
@@ -229,6 +232,11 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		// than in the path: neither of them is the resource being addressed, and putting one in
 		// the path would suggest the comparison belongs to it.
 		apiV1.POST("/bkns/diff", r.verifyJsonContentType(), r.DiffKNsByEx)
+
+		// Count the data behind one object type on each side of a comparison. It is a separate
+		// call because it queries the customer's own database: a comparison opens without paying
+		// for it, and pays only for the object type someone actually opens.
+		apiV1.POST("/bkns/diff/object-data-stats", r.verifyJsonContentType(), r.ObjectDataStatsByEx)
 	}
 
 	bknApiInV1 := c.Group("/api/bkn-backend/in/v1")

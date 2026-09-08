@@ -121,3 +121,95 @@ func knDiffValidationDetail(ctx context.Context, name string) string {
 		nil,
 	)
 }
+
+// ObjectDataStatsRequestBody is the request body of the object data statistics endpoint.
+type ObjectDataStatsRequestBody struct {
+	Base   ObjectDataStatsSideRequest `json:"base"`
+	Target ObjectDataStatsSideRequest `json:"target"`
+}
+
+// ObjectDataStatsSideRequest names one object type.
+type ObjectDataStatsSideRequest struct {
+	KNID   string `json:"kn_id"`
+	Branch string `json:"branch"`
+	OTID   string `json:"ot_id"`
+}
+
+// ObjectDataStatsByEx counts the data behind one object type on each side of a comparison.
+func (r *restHandler) ObjectDataStatsByEx(c *gin.Context) {
+	vis, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.objectDataStats(c, vis)
+}
+
+// objectDataStats reports the row and key counts of two object types.
+//
+// It is a separate call from the comparison rather than part of it. Counting runs against the
+// customer's own database, and folding it into the comparison would make opening a comparison pay
+// for every object type in the network to answer a question about the one someone opens.
+func (r *restHandler) objectDataStats(c *gin.Context, vis hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	accountInfo := interfaces.AccountInfo{ID: vis.ID, Type: string(vis.Type)}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	var body ObjectDataStatsRequestBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	if httpErr := validateObjectDataStatsBody(ctx, &body); httpErr != nil {
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	span.SetAttributes(
+		attr.Key("base_ot_id").String(body.Base.OTID),
+		attr.Key("target_ot_id").String(body.Target.OTID),
+	)
+
+	result, err := r.odss.ObjectDataStats(ctx, interfaces.ObjectDataStatsRequest{
+		Base:   interfaces.ObjectTypeRef{KNID: body.Base.KNID, Branch: body.Base.Branch, OTID: body.Base.OTID},
+		Target: interfaces.ObjectTypeRef{KNID: body.Target.KNID, Branch: body.Target.Branch, OTID: body.Target.OTID},
+	})
+	if err != nil {
+		replyHandlerError(c, span, ctx, err)
+		return
+	}
+
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, result)
+}
+
+func validateObjectDataStatsBody(ctx context.Context, body *ObjectDataStatsRequestBody) *rest.HTTPError {
+	sides := []struct {
+		side  *ObjectDataStatsSideRequest
+		knKey string
+		otKey string
+	}{
+		{&body.Base, "BaseKNIDRequired", "BaseObjectTypeRequired"},
+		{&body.Target, "TargetKNIDRequired", "TargetObjectTypeRequired"},
+	}
+	for _, entry := range sides {
+		if entry.side.KNID == "" {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNDiff_InvalidParameter).
+				WithErrorDetails(knDiffValidationDetail(ctx, entry.knKey))
+		}
+		if entry.side.OTID == "" {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNDiff_InvalidParameter).
+				WithErrorDetails(knDiffValidationDetail(ctx, entry.otKey))
+		}
+		if entry.side.Branch == "" {
+			entry.side.Branch = interfaces.MAIN_BRANCH
+		}
+	}
+	return nil
+}
