@@ -66,7 +66,7 @@ func TestMetricRequiresFullFilterGroupSortAndTimeInputs(t *testing.T) {
 	}
 	query := &interfaces.MetricQueryRequest{
 		Condition:          &cond.CondCfg{Name: "status", Operation: cond.OperationEq},
-		AnalysisDimensions: []string{"region"},
+		AnalysisDimensions: []string{"region", "legacy_missing_dimension"},
 		OrderBy:            []interfaces.MetricOrderBy{{Property: "__value"}},
 		Time:               &interfaces.MetricTimeWindow{},
 	}

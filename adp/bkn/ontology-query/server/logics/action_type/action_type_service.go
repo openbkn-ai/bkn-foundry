@@ -351,8 +351,15 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 func actionPropertyDependencies(actionType interfaces.ActionType,
 	objectType interfaces.ObjectType) ([]string, []string) {
 	dataProperties := make(map[string]struct{}, len(objectType.DataProperties))
+	knownProperties := make(map[string]struct{}, len(objectType.DataProperties)+len(objectType.LogicProperties))
 	for _, property := range objectType.DataProperties {
 		dataProperties[property.Name] = struct{}{}
+		knownProperties[property.Name] = struct{}{}
+	}
+	for _, property := range objectType.LogicProperties {
+		if property != nil {
+			knownProperties[property.Name] = struct{}{}
+		}
 	}
 	returnProperties := make([]string, 0, len(actionType.Parameters))
 	fullDependencies := make([]string, 0, len(actionType.Parameters))
@@ -363,6 +370,9 @@ func actionPropertyDependencies(actionType interfaces.ActionType,
 		}
 		name, ok := parameter.Value.(string)
 		if !ok || name == "" {
+			continue
+		}
+		if _, exists := knownProperties[name]; !exists {
 			continue
 		}
 		if _, duplicate := seen[name]; duplicate {

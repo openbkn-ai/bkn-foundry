@@ -12,9 +12,11 @@ import (
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"go.uber.org/mock/gomock"
 
 	cond "ontology-query/common/condition"
 	"ontology-query/interfaces"
+	omock "ontology-query/interfaces/mock"
 )
 
 type relationPropertyAccessStub struct {
@@ -57,6 +59,39 @@ func TestRelationMappingRequiresFullPropertiesOnBothSides(t *testing.T) {
 	httpError, ok := err.(*rest.HTTPError)
 	if !ok || httpError.HTTPCode != http.StatusBadRequest {
 		t.Fatalf("relation property access error = %#v", err)
+	}
+}
+
+func TestPathAccessHydratesSparseRequestObjectTypes(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	oma := omock.NewMockOntologyManagerAccess(ctrl)
+	source := *relationAccessObjectType("source", "join_key")
+	target := *relationAccessObjectType("target", "foreign_key")
+	oma.EXPECT().GetObjectType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "source").
+		Return(source, true, nil)
+	oma.EXPECT().GetObjectType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "target").
+		Return(target, true, nil)
+	service := &knowledgeNetworkService{
+		omAccess: oma,
+		propertyAccess: relationPropertyAccessStub{levels: map[string]interfaces.PropertyAccessLevel{
+			"kn-1/source/join_key":    interfaces.PropertyAccessFull,
+			"kn-1/target/foreign_key": interfaces.PropertyAccessFull,
+		}},
+	}
+	path := interfaces.RelationTypePath{
+		ObjectTypes: []interfaces.ObjectTypeWithKeyField{{OTID: "source"}, {OTID: "target"}},
+		TypeEdges: []interfaces.TypeEdge{{RelationType: interfaces.RelationType{
+			RTID: "relation", SourceObjectTypeID: "source", TargetObjectTypeID: "target",
+			MappingRules: []interfaces.Mapping{{
+				SourceProp: interfaces.SimpleProperty{Name: "join_key"},
+				TargetProp: interfaces.SimpleProperty{Name: "foreign_key"},
+			}},
+		}}},
+	}
+
+	if err := service.requireFullPathInputs(context.Background(), "kn-1", interfaces.MAIN_BRANCH,
+		[]interfaces.RelationTypePath{path}); err != nil {
+		t.Fatalf("sparse path object types were not hydrated: %v", err)
 	}
 }
 

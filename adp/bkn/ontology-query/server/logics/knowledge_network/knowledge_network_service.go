@@ -92,7 +92,7 @@ func (kns *knowledgeNetworkService) SearchSubgraph(ctx context.Context,
 				oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).WithErrorDetails(err.Error())
 		}
 	}
-	if err := kns.requireFullPathInputs(ctx, query.KNID, typePaths); err != nil {
+	if err := kns.requireFullPathInputs(ctx, query.KNID, query.Branch, typePaths); err != nil {
 		return resps, err
 	}
 
@@ -240,7 +240,7 @@ func (kns *knowledgeNetworkService) buildObjectSubgraphByTypePaths(
 		}
 	}
 	typePath.TypeEdges = path.Edges
-	if err := kns.requireFullPathInputs(ctx, query.KNID, []interfaces.RelationTypePath{typePath}); err != nil {
+	if err := kns.requireFullPathInputs(ctx, query.KNID, query.Branch, []interfaces.RelationTypePath{typePath}); err != nil {
 		typePathsObjectCtx.errCh <- err
 		return
 	}

@@ -18,6 +18,7 @@ func TestActionPropertyDependenciesRequireOnlyDataInputsToBeFull(t *testing.T) {
 		Parameters: []interfaces.Parameter{
 			{Name: "body.id", ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_PROP, Value: "id"},
 			{Name: "body.risk", ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_PROP, Value: "risk_score"},
+			{Name: "body.legacy", ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_PROP, Value: "deleted_property"},
 		},
 	}
 	objectType := interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{

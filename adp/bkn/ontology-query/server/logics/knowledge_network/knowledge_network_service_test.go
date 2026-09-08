@@ -294,6 +294,22 @@ func Test_knowledgeNetworkService_SearchSubgraph(t *testing.T) {
 			}
 
 			omAccess.EXPECT().GetRelationTypePathsBaseOnSource(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(typePaths, nil)
+			omAccess.EXPECT().GetObjectType(gomock.Any(), knID, branch, sourceObjectTypeID).Return(interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID: sourceObjectTypeID,
+					DataProperties: []cond.DataProperty{
+						{Name: "id"},
+					},
+				},
+			}, true, nil)
+			omAccess.EXPECT().GetObjectType(gomock.Any(), knID, branch, "ot2").Return(interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID: "ot2",
+					DataProperties: []cond.DataProperty{
+						{Name: "target_id"},
+					},
+				},
+			}, true, nil)
 
 			// First call: get the source object in SearchSubgraph.
 			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, q *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {

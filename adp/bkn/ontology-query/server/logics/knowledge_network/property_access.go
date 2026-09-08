@@ -18,15 +18,58 @@ import (
 
 type relationPropertyRequirements map[string]map[string]struct{}
 
-func (kns *knowledgeNetworkService) requireFullPathInputs(ctx context.Context, knID string,
+func (kns *knowledgeNetworkService) requireFullPathInputs(ctx context.Context, knID, branch string,
 	paths []interfaces.RelationTypePath) error {
 	objectTypes := map[string]*interfaces.ObjectType{}
+	pathObjectTypes := map[string]interfaces.ObjectTypeWithKeyField{}
 	requirements := relationPropertyRequirements{}
 	for _, path := range paths {
 		for _, pathObjectType := range path.ObjectTypes {
-			objectType := interfaces.ObjectType{ObjectTypeWithKeyField: pathObjectType, KNID: knID}
-			objectTypes[pathObjectType.OTID] = &objectType
-			propertyNames := dataPropertyNames(objectType)
+			copy := interfaces.ObjectType{
+				ObjectTypeWithKeyField: pathObjectType,
+				KNID:                   knID,
+				Branch:                 branch,
+			}
+			objectTypes[pathObjectType.OTID] = &copy
+			pathObjectTypes[pathObjectType.OTID] = pathObjectType
+		}
+	}
+	resolve := func(objectTypeID string) error {
+		objectType := objectTypes[objectTypeID]
+		if objectType != nil && len(objectType.DataProperties) > 0 {
+			return nil
+		}
+		pathObjectType, exists := pathObjectTypes[objectTypeID]
+		if !exists {
+			pathObjectType = interfaces.ObjectTypeWithKeyField{OTID: objectTypeID}
+		}
+		resolved, found, err := kns.resolvePathObjectType(ctx, knID, branch, pathObjectType)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return rest.NewHTTPError(ctx, http.StatusNotFound,
+				oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
+		}
+		objectTypes[objectTypeID] = &resolved
+		return nil
+	}
+	for _, path := range paths {
+		for _, pathObjectType := range path.ObjectTypes {
+			needsSchema := pathObjectType.ActualCondition != nil
+			for _, sort := range pathObjectType.Sort {
+				if sort != nil && sort.Field != interfaces.SORT_FIELD_SCORE {
+					needsSchema = true
+					break
+				}
+			}
+			if needsSchema {
+				if err := resolve(pathObjectType.OTID); err != nil {
+					return err
+				}
+			}
+			objectType := objectTypes[pathObjectType.OTID]
+			propertyNames := dataPropertyNames(*objectType)
 			addRelationFields(requirements, pathObjectType.OTID,
 				propertyaccess.CollectConditionFields(pathObjectType.ActualCondition, propertyNames)...)
 			for _, sort := range pathObjectType.Sort {
@@ -36,10 +79,48 @@ func (kns *knowledgeNetworkService) requireFullPathInputs(ctx context.Context, k
 			}
 		}
 		for _, edge := range path.TypeEdges {
+			if _, ok := edge.RelationType.MappingRules.(*interfaces.FilteredCrossJoinMapping); ok {
+				if err := resolve(edge.RelationType.SourceObjectTypeID); err != nil {
+					return err
+				}
+				if err := resolve(edge.RelationType.TargetObjectTypeID); err != nil {
+					return err
+				}
+			}
 			addRelationMappingRequirements(requirements, edge.RelationType, objectTypes)
 		}
 	}
+	for objectTypeID := range requirements {
+		if err := resolve(objectTypeID); err != nil {
+			return err
+		}
+	}
 	return kns.requireFullRelationProperties(ctx, knID, objectTypes, requirements)
+}
+
+func (kns *knowledgeNetworkService) resolvePathObjectType(ctx context.Context, knID, branch string,
+	pathObjectType interfaces.ObjectTypeWithKeyField) (interfaces.ObjectType, bool, error) {
+	if len(pathObjectType.DataProperties) > 0 {
+		return interfaces.ObjectType{
+			ObjectTypeWithKeyField: pathObjectType,
+			KNID:                   knID,
+			Branch:                 branch,
+		}, true, nil
+	}
+	if kns.omAccess == nil {
+		return interfaces.ObjectType{}, false, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+			oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).
+			WithErrorDetails("object type schema resolver is not configured")
+	}
+	objectType, exists, err := kns.omAccess.GetObjectType(ctx, knID, branch, pathObjectType.OTID)
+	if err != nil {
+		return interfaces.ObjectType{}, false, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).
+			WithErrorDetails("failed to load object type schema for relation access")
+	}
+	objectType.KNID = knID
+	objectType.Branch = branch
+	return objectType, exists, nil
 }
 
 func (kns *knowledgeNetworkService) requireFullRelationInputs(ctx context.Context, knID string,

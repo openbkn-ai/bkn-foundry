@@ -45,7 +45,13 @@ func (s *metricQueryService) requireFullMetricInputs(ctx context.Context, object
 	}
 	if query != nil {
 		required = append(required, propertyaccess.CollectConditionFields(query.Condition, propertyNames)...)
-		required = append(required, query.AnalysisDimensions...)
+		definedDimensions := metricDefinedDimensions(definition)
+		for _, dimension := range query.AnalysisDimensions {
+			dimension = strings.TrimSpace(dimension)
+			if _, defined := definedDimensions[dimension]; defined {
+				required = append(required, dimension)
+			}
+		}
 		for _, order := range query.OrderBy {
 			if strings.TrimSpace(order.Property) != "__value" {
 				required = append(required, order.Property)
@@ -61,6 +67,26 @@ func (s *metricQueryService) requireFullMetricInputs(ctx context.Context, object
 		return metricPropertyAccessError(ctx, "the metric depends on a property unavailable for this operation")
 	}
 	return nil
+}
+
+func metricDefinedDimensions(definition *interfaces.MetricDefinition) map[string]struct{} {
+	defined := map[string]struct{}{}
+	if definition == nil {
+		return defined
+	}
+	if definition.CalculationFormula != nil {
+		for _, group := range definition.CalculationFormula.GroupBy {
+			if name := strings.TrimSpace(group.Property); name != "" {
+				defined[name] = struct{}{}
+			}
+		}
+	}
+	for _, dimension := range definition.AnalysisDimensions {
+		if name := strings.TrimSpace(dimension.Name); name != "" {
+			defined[name] = struct{}{}
+		}
+	}
+	return defined
 }
 
 func metricPropertyAccessError(ctx context.Context, detail string) error {
