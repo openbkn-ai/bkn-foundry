@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
@@ -85,12 +86,8 @@ func Init(ctx context.Context, appSetting *common.AppSetting, vbs interfaces.Veg
 		logger.Infof("Dataset %s created successfully, ID: %s", interfaces.BKN_DATASET_NAME, interfaces.BKN_DATASET_ID)
 	} else {
 		logger.Infof("Dataset %s found, ID: %s", interfaces.BKN_DATASET_NAME, dataset.ID)
-		// Compare the schema and the resource-level embedding model reference.
-		// Vega interprets DefaultEmbeddingModel as a model ID, so a historical
-		// model name must trigger recreation even when the schema is unchanged.
-		if !deepCompareSchemas(expectedSchema, dataset.SchemaDefinition) ||
-			!sameDefaultEmbeddingModel(dataset.IndexConfig, defaultEmbeddingModel) {
-			logger.Infof("Dataset definition mismatch detected, deleting and recreating dataset...")
+		if reason := datasetRebuildReason(dataset, expectedSchema, defaultEmbeddingModel); reason != "" {
+			logger.Infof("Dataset needs rebuilding (%s), deleting and recreating dataset...", reason)
 			// Delete dataset
 			err = vbs.DeleteResource(ctx, dataset.ID)
 			if err != nil {
@@ -107,7 +104,7 @@ func Init(ctx context.Context, appSetting *common.AppSetting, vbs interfaces.Veg
 			}
 			logger.Infof("Dataset %s recreated successfully, ID: %s", interfaces.BKN_DATASET_NAME, interfaces.BKN_DATASET_ID)
 		} else {
-			logger.Infof("Dataset definition matches, no need to recreate dataset")
+			logger.Infof("Dataset definition matches and its index is usable, no need to recreate dataset")
 		}
 	}
 
@@ -254,4 +251,45 @@ func comparePropertyFeature(f1, f2 *interfaces.PropertyFeature) bool {
 	}
 
 	return true
+}
+
+// datasetRebuildReason says why an adopted concept dataset cannot be used as it stands, or "" when
+// it can.
+//
+// The schema and embedding model comparisons are the historical ones: vega interprets
+// DefaultEmbeddingModel as a model ID, so a stored model name has to force a rebuild even when the
+// schema is unchanged.
+//
+// The two index checks are the ones that were missing. A dataset row can outlive the index behind
+// it: vega clears the managed index name and marks it unavailable whenever a schema update is
+// classified as build-related. The row then still matches on schema and model, so adoption used to
+// accept it and every concept write afterwards failed with 400 "dataset resource has no available
+// local index" — permanently, because nothing here questioned the row again. Recovery meant a human
+// deleting the resource by hand, which first meant knowing this mechanism exists.
+func datasetRebuildReason(dataset *interfaces.VegaResource, expectedSchema []*interfaces.Property,
+	defaultEmbeddingModel string) string {
+	if dataset == nil {
+		return "resource is missing"
+	}
+	if strings.TrimSpace(dataset.LocalIndexName) == "" {
+		return "dataset has no managed index"
+	}
+	if dataset.LocalIndexStatus == interfaces.ResourceLocalIndexStatusUnavailable {
+		return "managed index is unavailable"
+	}
+	// "stale" is deliberately not a reason. It means the index exists and no longer matches a
+	// build-relevant change — vega keeps the index name, and the write path only requires a name,
+	// so documents still land. Rebuilding would delete every concept document to fix an index that
+	// is merely behind, which is the opposite of what this function is for. It does cost retrieval:
+	// VegaResourceIndexCaps reports no capabilities while a resource is stale, so the ranking
+	// degrades until the index is rebuilt through vega's own path. That is a narrower loss than
+	// deleting the data, and it is vega's maintenance concern rather than something to repair by
+	// dropping the resource here.
+	if !deepCompareSchemas(expectedSchema, dataset.SchemaDefinition) {
+		return "schema changed"
+	}
+	if !sameDefaultEmbeddingModel(dataset.IndexConfig, defaultEmbeddingModel) {
+		return "embedding model changed"
+	}
+	return ""
 }

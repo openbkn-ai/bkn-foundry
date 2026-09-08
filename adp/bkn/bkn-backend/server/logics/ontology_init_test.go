@@ -144,6 +144,10 @@ func TestInitRecreatesDatasetWhenEmbeddingModelIDDiffers(t *testing.T) {
 		vbs.EXPECT().GetResourceByID(ctx, interfaces.BKN_DATASET_ID).Return(&interfaces.VegaResource{
 			ID:               interfaces.BKN_DATASET_ID,
 			SchemaDefinition: interfaces.GetBKNConceptSchemaDefinition(model.EmbeddingDim, true),
+			// Healthy index: without it the managed-index check short-circuits and this case
+			// never reaches the comparison it exists to exercise.
+			LocalIndexName:   "vega-dataset-01",
+			LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
 			IndexConfig:      &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: model.ModelName},
 		}, nil)
 		vbs.EXPECT().DeleteResource(ctx, interfaces.BKN_DATASET_ID).Return(nil)
@@ -179,6 +183,10 @@ func TestInitKeepsDatasetWhenSchemaAndEmbeddingModelIDMatch(t *testing.T) {
 			ID:               interfaces.BKN_DATASET_ID,
 			SchemaDefinition: interfaces.GetBKNConceptSchemaDefinition(model.EmbeddingDim, true),
 			IndexConfig:      &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: model.ModelID},
+			// A dataset is only keepable when the index behind it can still be written. A row that
+			// matches on schema and model but has no managed index accepts nothing.
+			LocalIndexName:   "vega-dataset-01",
+			LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
 		}, nil)
 
 		err := Init(ctx, &common.AppSetting{ServerSetting: common.ServerSetting{DefaultSmallModelEnabled: true}}, vbs)
@@ -416,6 +424,70 @@ func Test_deepCompareSchemas(t *testing.T) {
 			s1 := []*interfaces.Property{{Name: "id", Type: "long"}}
 			s2 := []*interfaces.Property{{Name: "id", Type: "keyword"}}
 			So(deepCompareSchemas(s1, s2), ShouldBeFalse)
+		})
+	})
+}
+
+// ── datasetRebuildReason ──────────────────────────────────────────────────────
+
+// A concept dataset row can outlive the index behind it. Vega clears the managed index name and
+// marks it unavailable whenever a schema update is classified as build-related, and the row that
+// remains still matches on schema and embedding model. Adoption used to accept such a row, and
+// every concept write afterwards failed with 400 "dataset resource has no available local index" —
+// permanently, because startup never questioned the row again. Observed on a real environment:
+// creating a knowledge network answered InsertOpenSearchDataFailed / WriteDatasetDocument returned
+// HTTP 400, and the only way out was a human deleting the resource by hand.
+func Test_datasetRebuildReason(t *testing.T) {
+	Convey("接手存量概念数据集前要先问它还能不能写\n", t, func() {
+		schema := []*interfaces.Property{{Name: "name", Type: "text"}}
+		healthy := &interfaces.VegaResource{
+			ID:               interfaces.BKN_DATASET_ID,
+			SchemaDefinition: schema,
+			IndexConfig:      &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: "model-1"},
+			LocalIndexName:   "vega-dataset-01",
+			LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+		}
+
+		Convey("健康的数据集不重建", func() {
+			So(datasetRebuildReason(healthy, schema, "model-1"), ShouldEqual, "")
+		})
+
+		Convey("托管索引名为空要重建", func() {
+			broken := *healthy
+			broken.LocalIndexName = ""
+			So(datasetRebuildReason(&broken, schema, "model-1"), ShouldNotEqual, "")
+		})
+
+		Convey("stale 不重建——索引还在，写入照常，重建会白白删光概念文档", func() {
+			// vega marks a dataset stale when a build-relevant change lands, and keeps the index
+			// name. The write path only requires a name, so documents still land; what degrades is
+			// retrieval, until vega rebuilds the index through its own path. Deleting the resource
+			// here would trade a degraded ranking for lost data.
+			behind := *healthy
+			behind.LocalIndexStatus = "stale"
+			So(datasetRebuildReason(&behind, schema, "model-1"), ShouldEqual, "")
+		})
+
+		Convey("托管索引不可用要重建", func() {
+			broken := *healthy
+			broken.LocalIndexStatus = interfaces.ResourceLocalIndexStatusUnavailable
+			So(datasetRebuildReason(&broken, schema, "model-1"), ShouldNotEqual, "")
+		})
+
+		Convey("schema 变了要重建", func() {
+			changed := *healthy
+			So(datasetRebuildReason(&changed, []*interfaces.Property{{Name: "other", Type: "text"}}, "model-1"),
+				ShouldNotEqual, "")
+		})
+
+		Convey("embedding 模型变了要重建", func() {
+			changed := *healthy
+			changed.IndexConfig = &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: "model-2"}
+			So(datasetRebuildReason(&changed, schema, "model-1"), ShouldNotEqual, "")
+		})
+
+		Convey("资源不存在要重建", func() {
+			So(datasetRebuildReason(nil, schema, "model-1"), ShouldNotEqual, "")
 		})
 	})
 }
