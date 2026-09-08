@@ -71,9 +71,18 @@ func (en *Enforcer) filterResourceOps(accessorID string, resources []ResourceRef
 	}
 
 	decided := map[ResourceRef]map[string]bool{}
+	terminal := map[ResourceRef]map[string]bool{}
 	for _, r := range resources {
 		if _, done := decided[r]; !done {
-			decided[r] = idx.allowed(r, union)
+			decided[r] = map[string]bool{}
+			terminal[r] = map[string]bool{}
+			for op, effect := range idx.decide(r, union) {
+				if effect == EffectAllow {
+					decided[r][op] = true
+				} else if effect == EffectDeny {
+					terminal[r][op] = true
+				}
+			}
 		}
 	}
 
@@ -86,7 +95,7 @@ func (en *Enforcer) filterResourceOps(accessorID string, resources []ResourceRef
 	for r, allowed := range decided {
 		var missing []string
 		for _, op := range union {
-			if !allowed[op] {
+			if !allowed[op] && !terminal[r][op] {
 				missing = append(missing, op)
 			}
 		}
@@ -94,8 +103,8 @@ func (en *Enforcer) filterResourceOps(accessorID string, resources []ResourceRef
 			stillMissing[r] = missing
 		}
 	}
-	inherited, err := en.climb(func(node ResourceRef, ops []string) (map[string]bool, error) {
-		return idx.allowed(node, ops), nil
+	inherited, err := en.climb(func(node ResourceRef, ops []string) (map[string]string, error) {
+		return idx.decide(node, ops), nil
 	}, stillMissing)
 	if err != nil {
 		return nil, err
@@ -165,6 +174,7 @@ func (en *Enforcer) filterResourceOps(accessorID string, resources []ResourceRef
 type grantRow struct {
 	object string
 	act    string
+	effect string
 }
 
 // grantIndex is an accessor's effective grant set, split by whether the object
@@ -172,8 +182,9 @@ type grantRow struct {
 // the (few) wildcard patterns are walked per resource, which keeps a list page
 // linear in resources rather than resources x policies.
 type grantIndex struct {
-	exact    map[string][]string // object key -> acts
-	wildcard []grantRow
+	exact      map[string][]grantRow // object key -> rules
+	wildcard   []grantRow
+	superAdmin bool
 }
 
 // grantIndex collects every policy row that can satisfy the matcher's subject
@@ -196,17 +207,25 @@ func (en *Enforcer) grantIndex(accessorID string) (*grantIndex, error) {
 		return nil, err
 	}
 
-	idx := &grantIndex{exact: make(map[string][]string, len(rows))}
+	superAdmin, err := en.hasSuperAdminRole(accessorID)
+	if err != nil {
+		return nil, err
+	}
+	idx := &grantIndex{exact: make(map[string][]grantRow, len(rows)), superAdmin: superAdmin}
 	for _, row := range append(rows, public...) {
-		if len(row) < 3 {
+		if len(row) < 4 {
 			continue
 		}
-		object, act := row[1], row[2]
+		object, act, effect := row[1], row[2], row[3]
+		if effect == "" {
+			effect = EffectAllow
+		}
+		rule := grantRow{object: object, act: act, effect: effect}
 		if hasWildcard(object) {
-			idx.wildcard = append(idx.wildcard, grantRow{object: object, act: act})
+			idx.wildcard = append(idx.wildcard, rule)
 			continue
 		}
-		idx.exact[object] = append(idx.exact[object], act)
+		idx.exact[object] = append(idx.exact[object], rule)
 	}
 	return idx, nil
 }
@@ -214,28 +233,36 @@ func (en *Enforcer) grantIndex(accessorID string) (*grantIndex, error) {
 // allowed reports, for one resource, which of ops the grants cover. It mirrors
 // the matcher's remaining two clauses: keyMatch(r.obj, p.obj) — via the same
 // util.KeyMatch the model uses — and (p.act == "*" || r.act == p.act).
-func (idx *grantIndex) allowed(r ResourceRef, ops []string) map[string]bool {
-	out := make(map[string]bool, len(ops))
+func (idx *grantIndex) decide(r ResourceRef, ops []string) map[string]string {
+	out := make(map[string]string, len(ops))
+	if idx.superAdmin {
+		for _, op := range ops {
+			out[op] = EffectAllow
+		}
+		return out
+	}
 	object := obj(r.Type, r.ID)
-	grant := func(act string) {
-		if act == ActAll {
+	apply := func(rule grantRow) {
+		if rule.act == ActAll {
 			for _, op := range ops {
-				out[op] = true
+				if rule.effect == EffectDeny || out[op] == "" {
+					out[op] = rule.effect
+				}
 			}
 			return
 		}
 		for _, op := range ops {
-			if op == act {
-				out[op] = true
+			if op == rule.act && (rule.effect == EffectDeny || out[op] == "") {
+				out[op] = rule.effect
 			}
 		}
 	}
-	for _, act := range idx.exact[object] {
-		grant(act)
+	for _, rule := range idx.exact[object] {
+		apply(rule)
 	}
 	for _, row := range idx.wildcard {
 		if util.KeyMatch(object, row.object) {
-			grant(row.act)
+			apply(row)
 		}
 	}
 	return out

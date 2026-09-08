@@ -179,7 +179,19 @@ func registerMeReads(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *di
 		}
 		result := make([]knowledgeNetworkGrantJSON, 0, len(grants))
 		for _, grant := range grants {
-			operations := append([]string(nil), grant.Operations...)
+			denied := make(map[string]bool, len(grant.DeniedOperations))
+			for _, operation := range grant.DeniedOperations {
+				denied[operation] = true
+			}
+			operations := make([]string, 0, len(grant.Operations))
+			for _, operation := range grant.Operations {
+				if !denied[operation] {
+					operations = append(operations, operation)
+				}
+			}
+			if len(operations) == 0 {
+				continue
+			}
 			sort.Strings(operations)
 			result = append(result, knowledgeNetworkGrantJSON{
 				KnowledgeNetworkID: grant.ResourceID,

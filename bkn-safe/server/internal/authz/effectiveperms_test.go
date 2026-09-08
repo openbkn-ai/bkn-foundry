@@ -330,3 +330,24 @@ func TestEffectivePermissionsTypeWideOnlyInstanceOnlyType(t *testing.T) {
 		t.Errorf("no synthetic type row without TypeWideOnly: %+v", grants)
 	}
 }
+
+func TestEffectivePermissionsReportsDenyExceptionsAdditively(t *testing.T) {
+	e := newTestEnforcer(t)
+	const user, role = "alice", "reader-role"
+	mustNoErr(t, e.GrantRolePermission(role, "resource", "*", "view_detail"))
+	mustNoErr(t, e.AssignRole(user, role))
+	mustNoErr(t, e.DenyObjectPermission(user, "resource", "r-1", "view_detail"))
+
+	_, grants, err := e.EffectivePermissions(user, PermQuery{})
+	mustNoErr(t, err)
+	var exception *RoleGrant
+	for i := range grants {
+		if grants[i].Object == "resource:r-1" {
+			exception = &grants[i]
+			break
+		}
+	}
+	if exception == nil || !eqOps(exception.DeniedOperations, "view_detail") {
+		t.Fatalf("deny exception missing from effective permissions: %+v", grants)
+	}
+}

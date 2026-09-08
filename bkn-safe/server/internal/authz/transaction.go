@@ -36,16 +36,16 @@ func (tx *PolicyTransaction) Check(accessorID, resourceType, resourceID, operati
 }
 
 func (tx *PolicyTransaction) HasObjectPermission(accessorID, resourceType, resourceID, operation string) (bool, error) {
-	return tx.enforcer.e.HasPolicy(accessorID, obj(resourceType, resourceID), operation)
+	return tx.enforcer.e.HasPolicy(accessorID, obj(resourceType, resourceID), operation, EffectAllow)
 }
 
 func (tx *PolicyTransaction) GrantObjectPermission(accessorID, resourceType, resourceID, operation string) error {
-	_, err := tx.enforcer.e.AddPolicy(accessorID, obj(resourceType, resourceID), operation)
+	_, err := tx.enforcer.e.AddPolicy(accessorID, obj(resourceType, resourceID), operation, EffectAllow)
 	return err
 }
 
 func (tx *PolicyTransaction) RevokeObjectPermission(accessorID, resourceType, resourceID, operation string) error {
-	_, err := tx.enforcer.e.RemovePolicy(accessorID, obj(resourceType, resourceID), operation)
+	_, err := tx.enforcer.e.RemovePolicy(accessorID, obj(resourceType, resourceID), operation, EffectAllow)
 	return err
 }
 

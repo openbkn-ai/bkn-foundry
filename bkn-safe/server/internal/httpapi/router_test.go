@@ -102,6 +102,55 @@ func TestAuthzCheckEndpoint(t *testing.T) {
 	}
 }
 
+func TestAuthzEndpointsApplyDenyWithoutChangingBusinessRequests(t *testing.T) {
+	r, e, db := newTestServer(t)
+	const user, role = "alice", "reader-role"
+	seedEnabledUser(t, db, user)
+	if err := db.Create(&model.Operation{ResourceTypeID: "resource", ID: "view_detail", Name: "view_detail"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantRolePermission(role, "resource", "*", "view_detail"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.AssignRole(user, role); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.DenyObjectPermission(user, "resource", "r-1", "view_detail"); err != nil {
+		t.Fatal(err)
+	}
+
+	check := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", map[string]any{
+		"accessor_id": user,
+		"resource":    map[string]string{"type": "resource", "id": "r-1"},
+		"operation":   "view_detail",
+	})
+	var decision struct {
+		Allowed bool `json:"allowed"`
+	}
+	if check.Code != http.StatusOK || json.Unmarshal(check.Body.Bytes(), &decision) != nil || decision.Allowed {
+		t.Fatalf("deny check response = %d %s", check.Code, check.Body.String())
+	}
+
+	filter := do(t, r, http.MethodPost, "/api/safe/v1/authz/resource-filter", map[string]any{
+		"accessor_id":           user,
+		"resource_type":         "resource",
+		"resource_ids":          []string{"r-1", "r-2"},
+		"visibility_operations": []string{"view_detail"},
+		"candidate_operations":  []string{"view_detail"},
+	})
+	var filtered struct {
+		Resources []struct {
+			ID string `json:"resource_id"`
+		} `json:"resources"`
+	}
+	if filter.Code != http.StatusOK || json.Unmarshal(filter.Body.Bytes(), &filtered) != nil {
+		t.Fatalf("deny filter response = %d %s", filter.Code, filter.Body.String())
+	}
+	if len(filtered.Resources) != 1 || filtered.Resources[0].ID != "r-2" {
+		t.Fatalf("deny filter resources = %+v, want only r-2", filtered.Resources)
+	}
+}
+
 func TestDirectoryNamesEndpoint(t *testing.T) {
 	r, _, db := newTestServer(t)
 	db.Create(&model.User{ID: "u1", Account: "alice", Name: "Alice", Enabled: true})
