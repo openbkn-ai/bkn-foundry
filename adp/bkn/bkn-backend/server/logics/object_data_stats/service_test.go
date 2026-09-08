@@ -7,6 +7,7 @@ package object_data_stats
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -171,6 +172,12 @@ func Test_objectDataStatsService_ObjectDataStats(t *testing.T) {
 
 func Test_asInt64_ReadsEveryDriverShape(t *testing.T) {
 	Convey("Counts come back shaped differently per driver\n", t, func() {
+		// The vega adapter decodes with UseNumber, so this is the shape that actually arrives in
+		// production. Missing it reported an empty table for a resource with thirty rows, and
+		// nothing failed while it did so.
+		So(asInt64(json.Number("30")), ShouldEqual, 30)
+		So(asInt64(json.Number("30.0")), ShouldEqual, 30)
+		So(asInt64(json.Number("not a number")), ShouldEqual, 0)
 		So(asInt64(int64(7)), ShouldEqual, 7)
 		So(asInt64(7), ShouldEqual, 7)
 		So(asInt64(float64(7)), ShouldEqual, 7)
