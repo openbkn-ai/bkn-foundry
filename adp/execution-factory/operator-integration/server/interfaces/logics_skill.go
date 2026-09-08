@@ -492,28 +492,5 @@ const (
 // SkillIDs is mandatory and fail-closed: an empty or missing list returns no results rather than
 // the whole platform. The execution factory never learns which knowledge network the whitelist
 // came from — the caller owns that meaning.
-type SearchSkillsReq struct {
-	Query    string   `json:"query"`
-	SkillIDs []string `json:"skill_ids"`
-	TopK     int      `json:"top_k"`
-}
 
 // SearchSkillHit is one retrieved skill.
-type SearchSkillHit struct {
-	SkillID     string  `json:"skill_id"`
-	Name        string  `json:"name"`
-	Description string  `json:"description"`
-	Score       float64 `json:"score"`
-	MatchedBy   string  `json:"matched_by"`
-}
-
-type SearchSkillsResp struct {
-	Entries []*SearchSkillHit `json:"entries"`
-}
-
-// SkillSearchService queries the skill index built by SkillIndexBuildService.
-//
-//go:generate mockgen -source ../interfaces/logics_skill.go -destination ../mocks/logics_skill.go -package mocks
-type SkillSearchService interface {
-	SearchSkills(ctx context.Context, req *SearchSkillsReq) (*SearchSkillsResp, error)
-}

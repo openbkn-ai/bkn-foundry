@@ -28,7 +28,6 @@ type SkillHandler interface {
 	QuerySkillMarketList(c *gin.Context)
 	GetSkillMarketDetail(c *gin.Context)
 	GetSkillDetail(c *gin.Context)
-	SearchSkills(c *gin.Context)
 	GetSkillContent(c *gin.Context)
 	GetSkillReleaseHistory(c *gin.Context)
 	ReadSkillFile(c *gin.Context)
@@ -46,7 +45,6 @@ type skillHandler struct {
 	Reader            interfaces.SkillReader
 	MgmtReader        interfaces.SkillManagementReader
 	IndexBuildService interfaces.SkillIndexBuildService
-	SearchService     interfaces.SkillSearchService
 }
 
 var (
@@ -66,7 +64,6 @@ func NewSkillHandler() SkillHandler {
 			Reader:            logicsskill.NewSkillReader(),
 			MgmtReader:        logicsskill.NewSkillManagementReader(),
 			IndexBuildService: logicsskill.NewSkillIndexBuildService(),
-			SearchService:     logicsskill.NewSkillSearchService(),
 		}
 	})
 	return h

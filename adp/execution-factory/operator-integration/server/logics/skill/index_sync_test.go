@@ -2,634 +2,141 @@ package skill
 
 import (
 	"context"
-	"errors"
+	"database/sql"
 	"testing"
+
+	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
-	. "github.com/smartystreets/goconvey/convey"
-	"go.uber.org/mock/gomock"
 )
 
-func TestSkillIndexSync(t *testing.T) {
-	Convey("SkillIndexSync", t, func() {
+// The Skill dataset is retired (#1370): Skills are documents in the unified capability index, and
+// the lifecycle this file used to cover — the dataset's own schema, embedding model, rebuild and
+// restore — belongs to that index and is tested with it. What remains here is the seam: turning a
+// Skill row into a capability document, and deciding which snapshot of a Skill counts.
+
+func newSync(capabilitySync interfaces.CapabilityIndexSyncService,
+	releaseRepo model.ISkillReleaseDB) *skillIndexSync {
+	return &skillIndexSync{
+		capabilitySync: capabilitySync,
+		releaseRepo:    releaseRepo,
+		logger:         logger.DefaultLogger(),
+	}
+}
+
+// TestSkillIsWrittenAsACapability locks the identity a Skill takes in the shared index. Getting the
+// owner wrong would collide a Skill with a Function tool of the same id.
+func TestSkillIsWrittenAsACapability(t *testing.T) {
+	Convey("Skill 以三段式身份写入能力索引", t, func() {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		Convey("EnsureDataset creates catalog and resource when absent", func() {
-			var createdCatalog *interfaces.VegaCatalogRequest
-			var createdResource *interfaces.VegaResourceRequest
-			mockModelManager := mocks.NewMockMFModelManager(ctrl)
-			mockModelAPI := mocks.NewMockMFModelAPIClient(ctrl)
-			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
-			syncer := &skillIndexSync{
-				modelManager: mockModelManager,
-				modelAPI:     mockModelAPI,
-				vegaClient:   mockVegaClient,
-				logger:       logger.DefaultLogger(),
-			}
-			configureEmptySkillDatasetRestore(ctrl, syncer)
-			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).Return(nil, nil)
-			mockVegaClient.EXPECT().CreateCatalog(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, req *interfaces.VegaCatalogRequest) (*interfaces.VegaCatalog, error) {
-				createdCatalog = req
-				return &interfaces.VegaCatalog{ID: req.ID}, nil
-			})
-			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).Return(nil, nil)
-			// The system is not configured by default -> fallback by name "embedding".
-			mockModelManager.EXPECT().GetDefaultEmbeddingModel(gomock.Any(), interfaces.SmallModelTypeEmbedding).
-				Return(nil, nil)
-			mockModelManager.EXPECT().GetEmbeddingModel(gomock.Any(), interfaces.SmallModelTypeEmbedding, interfaces.SmallModelTypeEmbedding).
-				Return(&interfaces.EmbeddingModel{ModelID: "embedding-model-id", ModelName: "text-embedding-v4", EmbeddingDim: 768}, nil)
-			mockVegaClient.EXPECT().CreateResource(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, req *interfaces.VegaResourceRequest) (*interfaces.VegaResource, error) {
-				createdResource = req
-				return &interfaces.VegaResource{ID: req.ID}, nil
-			})
-
-			err := syncer.Init(context.Background())
-			So(err, ShouldBeNil)
-			So(createdCatalog, ShouldNotBeNil)
-			So(createdCatalog.ID, ShouldEqual, executionFactoryCatalogID)
-			// The logical directory must be enabled, otherwise the dataset read and write under it will be rejected by vega 409.
-			So(createdCatalog.Enabled, ShouldBeTrue)
-			So(createdCatalog.Internal, ShouldBeTrue)
-			// internal tag: Studio relies on it to recognize the built-in directory (the front end does not read the internal field)
-			So(createdCatalog.Tags, ShouldContain, internalCatalogTag)
-			So(createdResource, ShouldNotBeNil)
-			So(createdResource.ID, ShouldEqual, executionFactorySkillDataset)
-			So(createdResource.Status, ShouldEqual, executionFactoryDatasetStatus)
-			// The model snapshot enters the resource level index_config: tag will be returned by vega's ':' check.
-			// The feature config of the vector attribute will be copied into knn_vector mapping, causing index creation to fail.
-			for _, tag := range createdResource.Tags {
-				So(tag, ShouldNotContainSubstring, ":")
-			}
-			So(createdResource.IndexConfig, ShouldNotBeNil)
-			So(createdResource.IndexConfig.DefaultEmbeddingModel, ShouldEqual, "embedding-model-id")
-			for _, property := range createdResource.SchemaDefinition {
-				for _, feature := range property.Features {
-					So(feature.RefProperty, ShouldBeEmpty)
-				}
-			}
-			So(len(createdResource.SchemaDefinition), ShouldEqual, 10)
-			var nameProperty interfaces.VegaProperty
-			var descriptionProperty interfaces.VegaProperty
-			for _, property := range createdResource.SchemaDefinition {
-				switch property.Name {
-				case "name":
-					nameProperty = property
-				case "description":
-					descriptionProperty = property
-				}
-			}
-			So(nameProperty.Name, ShouldEqual, "name")
-			So(descriptionProperty.Name, ShouldEqual, "description")
-			So(len(nameProperty.Features), ShouldEqual, 2)
-			So(len(descriptionProperty.Features), ShouldEqual, 2)
-			So(nameProperty.Features[0].Name, ShouldEqual, "keyword_name")
-			So(nameProperty.Features[0].FeatureType, ShouldEqual, "keyword")
-			So(nameProperty.Features[0].Config["ignore_above"], ShouldEqual, 1024)
-			So(nameProperty.Features[1].Name, ShouldEqual, "fulltext_name")
-			So(nameProperty.Features[1].FeatureType, ShouldEqual, "fulltext")
-			So(descriptionProperty.Features[0].Name, ShouldEqual, "keyword_description")
-			So(descriptionProperty.Features[0].FeatureType, ShouldEqual, "keyword")
-			So(descriptionProperty.Features[0].Config["ignore_above"], ShouldEqual, 1024)
-			So(descriptionProperty.Features[1].Name, ShouldEqual, "fulltext_description")
-
-			mockModelAPI.EXPECT().Embeddings(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *interfaces.EmbeddingReq) (*interfaces.EmbeddingResp, error) {
-				So(req.Model, ShouldEqual, "text-embedding-v4")
-				return &interfaces.EmbeddingResp{Data: []interfaces.EmbeddingData{{Embedding: []float32{0.1}}}}, nil
-			})
-			mockVegaClient.EXPECT().WriteDatasetDocument(gomock.Any(), executionFactorySkillDataset, gomock.Any(), gomock.Any()).Return(nil)
-			So(syncer.UpsertSkill(context.Background(), &model.SkillRepositoryDB{SkillID: "skill-1", Name: "demo"}), ShouldBeNil)
-			So(descriptionProperty.Features[1].FeatureType, ShouldEqual, "fulltext")
-		})
-
-		Convey("Init rebuilds a dataset without an embedding model ID", func() {
-			mockModelManager := mocks.NewMockMFModelManager(ctrl)
-			mockModelAPI := mocks.NewMockMFModelAPIClient(ctrl)
-			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
-			syncer := &skillIndexSync{
-				modelManager: mockModelManager,
-				modelAPI:     mockModelAPI,
-				vegaClient:   mockVegaClient,
-				logger:       logger.DefaultLogger(),
-			}
-			configureEmptySkillDatasetRestore(ctrl, syncer)
-			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).
-				Return(&interfaces.VegaCatalog{
-					ID:      executionFactoryCatalogID,
-					Name:    executionFactoryCatalogID,
-					Tags:    []string{internalCatalogTag},
-					Enabled: true,
-				}, nil)
-			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).
-				Return(&interfaces.VegaResource{ID: executionFactorySkillDataset, Name: executionFactorySkillDataset}, nil)
-			mockModelManager.EXPECT().GetDefaultEmbeddingModel(gomock.Any(), interfaces.SmallModelTypeEmbedding).
-				Return(&interfaces.EmbeddingModel{ModelID: "embedding-model-id", ModelName: "text-embedding-v4", EmbeddingDim: 768}, nil)
-			mockVegaClient.EXPECT().DeleteResource(gomock.Any(), executionFactorySkillDataset).Return(nil)
-			mockVegaClient.EXPECT().CreateResource(gomock.Any(), gomock.Any()).Return(&interfaces.VegaResource{ID: executionFactorySkillDataset}, nil)
-
-			err := syncer.Init(context.Background())
-			So(err, ShouldBeNil)
-			So(syncer.isInitialized(), ShouldBeTrue)
-			So(syncer.getDatasetID(), ShouldEqual, executionFactorySkillDataset)
-		})
-
-		Convey("Init rebuilds when the stored embedding model is not the current model ID", func() {
-			mockModelManager := mocks.NewMockMFModelManager(ctrl)
-			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
-			syncer := &skillIndexSync{modelManager: mockModelManager, vegaClient: mockVegaClient, logger: logger.DefaultLogger()}
-			configureEmptySkillDatasetRestore(ctrl, syncer)
-			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).
-				Return(&interfaces.VegaCatalog{
-					ID:      executionFactoryCatalogID,
-					Name:    executionFactoryCatalogID,
-					Tags:    []string{internalCatalogTag},
-					Enabled: true,
-				}, nil)
-			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).
-				Return(&interfaces.VegaResource{
-					ID:          executionFactorySkillDataset,
-					Name:        executionFactorySkillDataset,
-					CatalogID:   executionFactoryCatalogID,
-					Category:    "dataset",
-					Status:      executionFactoryDatasetStatus,
-					IndexConfig: &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: "text-embedding-v4"},
-				}, nil)
-			mockModelManager.EXPECT().GetDefaultEmbeddingModel(gomock.Any(), interfaces.SmallModelTypeEmbedding).
-				Return(&interfaces.EmbeddingModel{ModelID: "embedding-model-id", ModelName: "text-embedding-v4", EmbeddingDim: 768}, nil)
-			mockVegaClient.EXPECT().DeleteResource(gomock.Any(), executionFactorySkillDataset).Return(nil)
-			mockVegaClient.EXPECT().CreateResource(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *interfaces.VegaResourceRequest) (*interfaces.VegaResource, error) {
-				So(req.IndexConfig.DefaultEmbeddingModel, ShouldEqual, "embedding-model-id")
-				return &interfaces.VegaResource{ID: req.ID}, nil
-			})
-
-			So(syncer.Init(context.Background()), ShouldBeNil)
-			So(syncer.getEmbeddingModelName(), ShouldEqual, "text-embedding-v4")
-		})
-
-		Convey("Init keeps a dataset when the stored embedding model matches the current model ID", func() {
-			mockModelManager := mocks.NewMockMFModelManager(ctrl)
-			mockModelAPI := mocks.NewMockMFModelAPIClient(ctrl)
-			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
-			syncer := &skillIndexSync{modelManager: mockModelManager, modelAPI: mockModelAPI, vegaClient: mockVegaClient, logger: logger.DefaultLogger()}
-			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).
-				Return(&interfaces.VegaCatalog{ID: executionFactoryCatalogID, Name: executionFactoryCatalogID, Tags: []string{internalCatalogTag}, Enabled: true}, nil)
-			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).
-				Return(&interfaces.VegaResource{
-					ID:               executionFactorySkillDataset,
-					SchemaDefinition: buildSkillIndexSchema(768),
-					IndexConfig:      &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: "embedding-model-id"},
-				}, nil)
-			mockModelManager.EXPECT().GetDefaultEmbeddingModel(gomock.Any(), interfaces.SmallModelTypeEmbedding).
-				Return(&interfaces.EmbeddingModel{ModelID: "embedding-model-id", ModelName: "text-embedding-v4", EmbeddingDim: 768}, nil)
-			So(syncer.Init(context.Background()), ShouldBeNil)
-			mockModelAPI.EXPECT().Embeddings(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *interfaces.EmbeddingReq) (*interfaces.EmbeddingResp, error) {
-				So(req.Model, ShouldEqual, "text-embedding-v4")
-				return &interfaces.EmbeddingResp{Data: []interfaces.EmbeddingData{{Embedding: []float32{0.1}}}}, nil
-			})
-			mockVegaClient.EXPECT().WriteDatasetDocument(gomock.Any(), executionFactorySkillDataset, gomock.Any(), gomock.Any()).Return(nil)
-			So(syncer.UpsertSkill(context.Background(), &model.SkillRepositoryDB{SkillID: "skill-1", Name: "demo"}), ShouldBeNil)
-		})
-
-		Convey("Init rebuilds when the stored schema differs despite matching embedding model ID", func() {
-			mockModelManager := mocks.NewMockMFModelManager(ctrl)
-			mockModelAPI := mocks.NewMockMFModelAPIClient(ctrl)
-			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
-			mockSkillRepo := mocks.NewMockISkillRepository(ctrl)
-			mockReleaseRepo := mocks.NewMockISkillReleaseDB(ctrl)
-			syncer := &skillIndexSync{
-				modelManager: mockModelManager,
-				modelAPI:     mockModelAPI,
-				vegaClient:   mockVegaClient,
-				skillRepo:    mockSkillRepo,
-				releaseRepo:  mockReleaseRepo,
-				logger:       logger.DefaultLogger(),
-			}
-			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).
-				Return(&interfaces.VegaCatalog{ID: executionFactoryCatalogID, Name: executionFactoryCatalogID, Tags: []string{internalCatalogTag}, Enabled: true}, nil)
-			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).
-				Return(&interfaces.VegaResource{
-					ID: executionFactorySkillDataset,
-					SchemaDefinition: []interfaces.VegaProperty{
-						{Name: "obsolete", Type: "keyword"},
-					},
-					IndexConfig: &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: "embedding-model-id"},
-				}, nil)
-			mockModelManager.EXPECT().GetDefaultEmbeddingModel(gomock.Any(), interfaces.SmallModelTypeEmbedding).
-				Return(&interfaces.EmbeddingModel{ModelID: "embedding-model-id", ModelName: "text-embedding-v4", EmbeddingDim: 768}, nil)
-			mockVegaClient.EXPECT().DeleteResource(gomock.Any(), executionFactorySkillDataset).Return(nil)
-			mockVegaClient.EXPECT().CreateResource(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *interfaces.VegaResourceRequest) (*interfaces.VegaResource, error) {
-				So(req.SchemaDefinition, ShouldResemble, buildSkillIndexSchema(768))
-				So(req.IndexConfig.DefaultEmbeddingModel, ShouldEqual, "embedding-model-id")
-				return &interfaces.VegaResource{ID: req.ID}, nil
-			})
-			mockSkillRepo.EXPECT().SelectSkillBuildPage(gomock.Any(), gomock.Nil(), int64(0), "", skillIndexBuildBatchSize).Return(nil, nil)
-
-			So(syncer.Init(context.Background()), ShouldBeNil)
-		})
-
-		Convey("Init restores the dataset when recreation previously failed after deletion", func() {
-			mockModelManager := mocks.NewMockMFModelManager(ctrl)
-			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
-			mockSkillRepo := mocks.NewMockISkillRepository(ctrl)
-			mockReleaseRepo := mocks.NewMockISkillReleaseDB(ctrl)
-			syncer := &skillIndexSync{
-				modelManager: mockModelManager,
-				vegaClient:   mockVegaClient,
-				skillRepo:    mockSkillRepo,
-				releaseRepo:  mockReleaseRepo,
-				logger:       logger.DefaultLogger(),
-			}
-			catalog := &interfaces.VegaCatalog{ID: executionFactoryCatalogID, Name: executionFactoryCatalogID, Tags: []string{internalCatalogTag}, Enabled: true}
-			model := &interfaces.EmbeddingModel{ModelID: "embedding-model-id", ModelName: "text-embedding-v4", EmbeddingDim: 768}
-			gomock.InOrder(
-				mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).Return(catalog, nil),
-				mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).Return(&interfaces.VegaResource{ID: executionFactorySkillDataset}, nil),
-				mockModelManager.EXPECT().GetDefaultEmbeddingModel(gomock.Any(), interfaces.SmallModelTypeEmbedding).Return(model, nil),
-				mockVegaClient.EXPECT().DeleteResource(gomock.Any(), executionFactorySkillDataset).Return(nil),
-				mockVegaClient.EXPECT().CreateResource(gomock.Any(), gomock.Any()).Return(nil, errors.New("vega unavailable")),
-				mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).Return(catalog, nil),
-				mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).Return(nil, nil),
-				mockModelManager.EXPECT().GetDefaultEmbeddingModel(gomock.Any(), interfaces.SmallModelTypeEmbedding).Return(model, nil),
-				mockVegaClient.EXPECT().CreateResource(gomock.Any(), gomock.Any()).Return(&interfaces.VegaResource{ID: executionFactorySkillDataset}, nil),
-				mockSkillRepo.EXPECT().SelectSkillBuildPage(gomock.Any(), gomock.Nil(), int64(0), "", skillIndexBuildBatchSize).Return(nil, nil),
-			)
-
-			So(syncer.Init(context.Background()), ShouldNotBeNil)
-			So(syncer.isRestorePending(), ShouldBeTrue)
-			So(syncer.Init(context.Background()), ShouldBeNil)
-			So(syncer.isRestorePending(), ShouldBeFalse)
-			So(syncer.isInitialized(), ShouldBeTrue)
-		})
-
-		Convey("restoreSkillDatasetFromSource restores published snapshots and skips non-indexable skills", func() {
-			mockModelAPI := mocks.NewMockMFModelAPIClient(ctrl)
-			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
-			mockSkillRepo := mocks.NewMockISkillRepository(ctrl)
-			mockReleaseRepo := mocks.NewMockISkillReleaseDB(ctrl)
-			syncer := &skillIndexSync{
-				modelAPI:           mockModelAPI,
-				vegaClient:         mockVegaClient,
-				skillRepo:          mockSkillRepo,
-				releaseRepo:        mockReleaseRepo,
-				logger:             logger.DefaultLogger(),
-				datasetID:          executionFactorySkillDataset,
-				embeddingModelName: "text-embedding-v4",
-			}
-			mockSkillRepo.EXPECT().SelectSkillBuildPage(gomock.Any(), gomock.Nil(), int64(0), "", skillIndexBuildBatchSize).Return([]*model.SkillRepositoryDB{
-				{SkillID: "published", Name: "draft-name", Status: interfaces.BizStatusPublished.String(), UpdateTime: 10},
-				{SkillID: "editing", Name: "draft-editing", Status: interfaces.BizStatusEditing.String(), UpdateTime: 20},
-				{SkillID: "offline", Name: "offline", Status: interfaces.BizStatusOffline.String(), UpdateTime: 30},
-			}, nil)
-			mockSkillRepo.EXPECT().SelectSkillBuildPage(gomock.Any(), gomock.Nil(), int64(30), "offline", skillIndexBuildBatchSize).Return(nil, nil)
-			mockReleaseRepo.EXPECT().SelectBySkillID(gomock.Any(), gomock.Nil(), "published").Return(&model.SkillReleaseDB{SkillID: "published", Name: "published-name", Description: "published-desc"}, nil)
-			mockReleaseRepo.EXPECT().SelectBySkillID(gomock.Any(), gomock.Nil(), "editing").Return(&model.SkillReleaseDB{SkillID: "editing", Name: "editing-name", Description: "editing-desc"}, nil)
-			mockModelAPI.EXPECT().Embeddings(gomock.Any(), gomock.Any()).Times(2).DoAndReturn(func(_ context.Context, req *interfaces.EmbeddingReq) (*interfaces.EmbeddingResp, error) {
-				So(req.Model, ShouldEqual, "text-embedding-v4")
-				return &interfaces.EmbeddingResp{Data: []interfaces.EmbeddingData{{Embedding: []float32{0.1}}}}, nil
-			})
-			writtenIDs := make([]string, 0, 2)
-			mockVegaClient.EXPECT().WriteDatasetDocument(gomock.Any(), executionFactorySkillDataset, gomock.Any(), gomock.Any()).Times(2).DoAndReturn(func(_ context.Context, _ string, docID string, document map[string]any) error {
-				So(docID, ShouldEqual, document["skill_id"])
-				writtenIDs = append(writtenIDs, document["skill_id"].(string))
+		index := mocks.NewMockCapabilityIndexSyncService(ctrl)
+		var written *interfaces.CapabilityDocument
+		index.EXPECT().UpsertCapability(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, doc *interfaces.CapabilityDocument) error {
+				written = doc
 				return nil
-			})
+			}).Times(1)
 
-			So(syncer.restoreSkillDatasetFromSource(context.Background()), ShouldBeNil)
-			So(writtenIDs, ShouldResemble, []string{"published", "editing"})
-		})
+		skill := &model.SkillRepositoryDB{
+			SkillID: "skill-1", Name: "库存阈值预警通知", Description: "库存低于阈值时通知负责人",
+			Version: "v3", Category: "supply", CreateUser: "u1", UpdateUser: "u2",
+			CreateTime: 11, UpdateTime: 22,
+		}
+		So(newSync(index, nil).UpsertSkill(context.Background(), skill), ShouldBeNil)
 
-		Convey("rejects incomplete embedding models before creating a dataset", func() {
-			for _, embeddingModel := range []*interfaces.EmbeddingModel{
-				{ModelName: "text-embedding-v4", EmbeddingDim: 768},
-				{ModelID: "embedding-model-id", EmbeddingDim: 768},
-				{ModelID: "embedding-model-id", ModelName: "text-embedding-v4"},
-			} {
-				_, err := validateEmbeddingModel(embeddingModel)
-				So(err, ShouldNotBeNil)
-			}
-		})
-
-		Convey("Init fails when the catalog cannot be enabled, so the retry loop takes over", func() {
-			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
-			syncer := &skillIndexSync{vegaClient: mockVegaClient, logger: logger.DefaultLogger()}
-			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).
-				Return(&interfaces.VegaCatalog{
-					ID:      executionFactoryCatalogID,
-					Name:    executionFactoryCatalogID,
-					Tags:    []string{internalCatalogTag},
-					Enabled: false,
-				}, nil)
-			mockVegaClient.EXPECT().EnableCatalog(gomock.Any(), executionFactoryCatalogID).Return(errors.New("vega 500"))
-
-			// Data reading and writing in the disabled directory will be rejected by vega 409, and cannot be marked as initialized with this status.
-			So(syncer.Init(context.Background()), ShouldNotBeNil)
-			So(syncer.isInitialized(), ShouldBeFalse)
-		})
-
-		// When the data set is hung in another directory, writing is governed by its own parent directory, and disabled must be enabled.
-		Convey("Init enables the dataset's own catalog when it lives elsewhere", func() {
-			mockModelManager := mocks.NewMockMFModelManager(ctrl)
-			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
-			syncer := &skillIndexSync{modelManager: mockModelManager, vegaClient: mockVegaClient, logger: logger.DefaultLogger()}
-			configureEmptySkillDatasetRestore(ctrl, syncer)
-			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).
-				Return(&interfaces.VegaCatalog{
-					ID:      executionFactoryCatalogID,
-					Name:    executionFactoryCatalogID,
-					Tags:    []string{internalCatalogTag},
-					Enabled: true,
-				}, nil)
-			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).
-				Return(&interfaces.VegaResource{
-					ID:        executionFactorySkillDataset,
-					Name:      executionFactorySkillDataset,
-					CatalogID: "other_catalog",
-				}, nil)
-			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), "other_catalog").
-				Return(&interfaces.VegaCatalog{ID: "other_catalog", Name: "other_catalog", Enabled: false}, nil)
-			mockVegaClient.EXPECT().EnableCatalog(gomock.Any(), "other_catalog").Return(nil)
-			mockModelManager.EXPECT().GetDefaultEmbeddingModel(gomock.Any(), interfaces.SmallModelTypeEmbedding).Return(&interfaces.EmbeddingModel{ModelID: "embedding-model-id", ModelName: "text-embedding-v4", EmbeddingDim: 768}, nil)
-			mockVegaClient.EXPECT().DeleteResource(gomock.Any(), executionFactorySkillDataset).Return(nil)
-			mockVegaClient.EXPECT().CreateResource(gomock.Any(), gomock.Any()).Return(&interfaces.VegaResource{ID: executionFactorySkillDataset}, nil)
-
-			So(syncer.Init(context.Background()), ShouldBeNil)
-			So(syncer.getDatasetID(), ShouldEqual, executionFactorySkillDataset)
-		})
-
-		Convey("Init fails when the dataset points to a missing catalog", func() {
-			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
-			syncer := &skillIndexSync{vegaClient: mockVegaClient, logger: logger.DefaultLogger()}
-			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).
-				Return(&interfaces.VegaCatalog{
-					ID:      executionFactoryCatalogID,
-					Name:    executionFactoryCatalogID,
-					Tags:    []string{internalCatalogTag},
-					Enabled: true,
-				}, nil)
-			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).
-				Return(&interfaces.VegaResource{ID: executionFactorySkillDataset, CatalogID: "ghost_catalog"}, nil)
-			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), "ghost_catalog").Return(nil, nil)
-
-			err := syncer.Init(context.Background())
-			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "missing catalog")
-			So(syncer.isInitialized(), ShouldBeFalse)
-		})
-
-		Convey("Init skips the internal tag backfill when the catalog already has 5 tags", func() {
-			var reconciled *interfaces.VegaCatalogRequest
-			mockModelManager := mocks.NewMockMFModelManager(ctrl)
-			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
-			syncer := &skillIndexSync{modelManager: mockModelManager, vegaClient: mockVegaClient, logger: logger.DefaultLogger()}
-			configureEmptySkillDatasetRestore(ctrl, syncer)
-			fullTags := []string{"a", "b", "c", "d", "e"}
-			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).
-				Return(&interfaces.VegaCatalog{
-					ID:         executionFactoryCatalogID,
-					Name:       "stale_display_name",
-					Tags:       fullTags,
-					Enabled:    true,
-					UpdateTime: 123,
-				}, nil)
-			mockVegaClient.EXPECT().UpdateCatalog(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, req *interfaces.VegaCatalogRequest) error {
-				reconciled = req
-				return nil
-			})
-			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).
-				Return(&interfaces.VegaResource{ID: executionFactorySkillDataset}, nil)
-			mockModelManager.EXPECT().GetDefaultEmbeddingModel(gomock.Any(), interfaces.SmallModelTypeEmbedding).Return(&interfaces.EmbeddingModel{ModelID: "embedding-model-id", ModelName: "text-embedding-v4", EmbeddingDim: 768}, nil)
-			mockVegaClient.EXPECT().DeleteResource(gomock.Any(), executionFactorySkillDataset).Return(nil)
-			mockVegaClient.EXPECT().CreateResource(gomock.Any(), gomock.Any()).Return(&interfaces.VegaResource{ID: executionFactorySkillDataset}, nil)
-
-			So(syncer.Init(context.Background()), ShouldBeNil)
-			// If the tag exceeds the limit, don’t block it. The main goal of changing the name cannot be taken away with 400.
-			So(reconciled, ShouldNotBeNil)
-			So(reconciled.Name, ShouldEqual, executionFactoryCatalogID)
-			So(reconciled.Tags, ShouldResemble, fullTags)
-			So(reconciled.ExpectedUpdateTime, ShouldEqual, int64(123))
-		})
-
-		Convey("Init backfills the internal tag when only the tag is missing", func() {
-			var reconciled *interfaces.VegaCatalogRequest
-			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
-			mockModelManager := mocks.NewMockMFModelManager(ctrl)
-			syncer := &skillIndexSync{
-				modelManager: mockModelManager,
-				vegaClient:   mockVegaClient,
-				logger:       logger.DefaultLogger(),
-			}
-			configureEmptySkillDatasetRestore(ctrl, syncer)
-			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).
-				Return(&interfaces.VegaCatalog{
-					ID:         executionFactoryCatalogID,
-					Name:       executionFactoryCatalogID,
-					Tags:       []string{"execution-factory", "索引"},
-					Enabled:    true,
-					UpdateTime: 456,
-				}, nil)
-			mockVegaClient.EXPECT().UpdateCatalog(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, req *interfaces.VegaCatalogRequest) error {
-				reconciled = req
-				return nil
-			})
-			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).
-				Return(&interfaces.VegaResource{ID: executionFactorySkillDataset, Name: executionFactorySkillDataset}, nil)
-			mockModelManager.EXPECT().GetDefaultEmbeddingModel(gomock.Any(), interfaces.SmallModelTypeEmbedding).Return(&interfaces.EmbeddingModel{ModelID: "embedding-model-id", ModelName: "text-embedding-v4", EmbeddingDim: 768}, nil)
-			mockVegaClient.EXPECT().DeleteResource(gomock.Any(), executionFactorySkillDataset).Return(nil)
-			mockVegaClient.EXPECT().CreateResource(gomock.Any(), gomock.Any()).Return(&interfaces.VegaResource{ID: executionFactorySkillDataset}, nil)
-
-			err := syncer.Init(context.Background())
-			So(err, ShouldBeNil)
-			So(reconciled, ShouldNotBeNil)
-			So(reconciled.Tags, ShouldResemble, []string{"execution-factory", "索引", internalCatalogTag})
-			So(reconciled.ExpectedUpdateTime, ShouldEqual, int64(456))
-		})
-
-		Convey("Init survives a failed catalog rename, which is cosmetic", func() {
-			mockModelManager := mocks.NewMockMFModelManager(ctrl)
-			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
-			syncer := &skillIndexSync{
-				modelManager: mockModelManager,
-				vegaClient:   mockVegaClient,
-				logger:       logger.DefaultLogger(),
-			}
-			configureEmptySkillDatasetRestore(ctrl, syncer)
-			resource := &interfaces.VegaResource{ID: executionFactorySkillDataset, Name: executionFactorySkillDataset}
-			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).
-				Return(&interfaces.VegaCatalog{ID: executionFactoryCatalogID, Name: "stale_display_name", Enabled: true}, nil)
-			mockVegaClient.EXPECT().UpdateCatalog(gomock.Any(), gomock.Any()).Return(errors.New("vega 500"))
-			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).Return(resource, nil)
-			mockModelManager.EXPECT().GetDefaultEmbeddingModel(gomock.Any(), interfaces.SmallModelTypeEmbedding).Return(&interfaces.EmbeddingModel{ModelID: "embedding-model-id", ModelName: "text-embedding-v4", EmbeddingDim: 768}, nil)
-			mockVegaClient.EXPECT().DeleteResource(gomock.Any(), executionFactorySkillDataset).Return(nil)
-			mockVegaClient.EXPECT().CreateResource(gomock.Any(), gomock.Any()).Return(&interfaces.VegaResource{ID: executionFactorySkillDataset}, nil)
-
-			err := syncer.Init(context.Background())
-			So(err, ShouldBeNil)
-			So(syncer.isInitialized(), ShouldBeTrue)
-			So(syncer.getDatasetID(), ShouldEqual, executionFactorySkillDataset)
-		})
-
-		Convey("Init rebuilds a legacy dataset without index_config", func() {
-			mockModelManager := mocks.NewMockMFModelManager(ctrl)
-			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
-			syncer := &skillIndexSync{modelManager: mockModelManager, vegaClient: mockVegaClient, logger: logger.DefaultLogger()}
-			configureEmptySkillDatasetRestore(ctrl, syncer)
-			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).
-				Return(&interfaces.VegaCatalog{
-					ID:      executionFactoryCatalogID,
-					Name:    executionFactoryCatalogID,
-					Tags:    []string{internalCatalogTag},
-					Enabled: true,
-				}, nil)
-			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).
-				Return(&interfaces.VegaResource{
-					ID:        executionFactorySkillDataset,
-					Name:      executionFactorySkillDataset,
-					CatalogID: executionFactoryCatalogID,
-					Category:  "dataset",
-					Status:    executionFactoryDatasetStatus,
-				}, nil)
-			mockModelManager.EXPECT().GetDefaultEmbeddingModel(gomock.Any(), interfaces.SmallModelTypeEmbedding).
-				Return(&interfaces.EmbeddingModel{ModelID: "embedding-model-id", ModelName: "text-embedding-v4", EmbeddingDim: 768}, nil)
-			mockVegaClient.EXPECT().DeleteResource(gomock.Any(), executionFactorySkillDataset).Return(nil)
-			mockVegaClient.EXPECT().CreateResource(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *interfaces.VegaResourceRequest) (*interfaces.VegaResource, error) {
-				So(req.IndexConfig.DefaultEmbeddingModel, ShouldEqual, "embedding-model-id")
-				return &interfaces.VegaResource{ID: req.ID}, nil
-			})
-
-			So(syncer.Init(context.Background()), ShouldBeNil)
-			So(syncer.getEmbeddingModelName(), ShouldEqual, "text-embedding-v4")
-		})
-
-		Convey("UpsertSkill writes complete document with _id and vector", func() {
-			var writtenDoc map[string]any
-			mockModelAPI := mocks.NewMockMFModelAPIClient(ctrl)
-			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
-			syncer := &skillIndexSync{
-				modelAPI:    mockModelAPI,
-				vegaClient:  mockVegaClient,
-				logger:      logger.DefaultLogger(),
-				initialized: true,
-			}
-			mockModelAPI.EXPECT().Embeddings(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, req *interfaces.EmbeddingReq) (*interfaces.EmbeddingResp, error) {
-				So(req.Model, ShouldEqual, interfaces.SmallModelTypeEmbedding)
-				So(req.Input, ShouldResemble, []string{"demo\ndesc"})
-				return &interfaces.EmbeddingResp{
-					Data: []interfaces.EmbeddingData{{Embedding: []float32{0.1, 0.2}}},
-				}, nil
-			})
-			mockVegaClient.EXPECT().WriteDatasetDocument(gomock.Any(), executionFactorySkillDataset, gomock.Any(), gomock.Any()).
-				DoAndReturn(func(ctx context.Context, datasetID, _ string, document map[string]any) error {
-					So(datasetID, ShouldEqual, executionFactorySkillDataset)
-					writtenDoc = document
-					return nil
-				})
-
-			err := syncer.UpsertSkill(context.Background(), &model.SkillRepositoryDB{
-				SkillID:     "skill-1",
-				Name:        "demo",
-				Description: "desc",
-				Version:     "1.0.0",
-				Category:    "general",
-				CreateUser:  "u1",
-				CreateTime:  100,
-				UpdateUser:  "u2",
-				UpdateTime:  200,
-			})
-			So(err, ShouldBeNil)
-			So(writtenDoc["_id"], ShouldEqual, "skill-1")
-			So(writtenDoc["id"], ShouldEqual, "skill-1")
-			So(writtenDoc["skill_id"], ShouldEqual, "skill-1")
-			So(writtenDoc["name"], ShouldEqual, "demo")
-			So(writtenDoc["description"], ShouldEqual, "desc")
-			So(writtenDoc["version"], ShouldEqual, "1.0.0")
-			So(writtenDoc["category"], ShouldEqual, "general")
-			So(writtenDoc["_vector"], ShouldResemble, []float32{0.1, 0.2})
-		})
-
-		Convey("DeleteSkill deletes dataset document by skill id", func() {
-			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
-			syncer := &skillIndexSync{
-				vegaClient:  mockVegaClient,
-				logger:      logger.DefaultLogger(),
-				initialized: true,
-			}
-			mockVegaClient.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), executionFactorySkillDataset, "skill-1").Return(nil)
-
-			err := syncer.DeleteSkill(context.Background(), "skill-1")
-			So(err, ShouldBeNil)
-		})
-
-		Convey("UpsertSkill fails when embedding result is empty", func() {
-			mockModelAPI := mocks.NewMockMFModelAPIClient(ctrl)
-			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
-			syncer := &skillIndexSync{
-				modelAPI:    mockModelAPI,
-				vegaClient:  mockVegaClient,
-				logger:      logger.DefaultLogger(),
-				initialized: true,
-			}
-			mockModelAPI.EXPECT().Embeddings(gomock.Any(), gomock.Any()).Return(&interfaces.EmbeddingResp{}, nil)
-
-			err := syncer.UpsertSkill(context.Background(), &model.SkillRepositoryDB{
-				SkillID: "skill-1",
-				Name:    "demo",
-			})
-			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "embedding result is empty")
-		})
-
-		Convey("UpdateSkill updates complete document with _id and vector", func() {
-			var updatedDoc map[string]any
-			mockModelAPI := mocks.NewMockMFModelAPIClient(ctrl)
-			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
-			syncer := &skillIndexSync{
-				modelAPI:    mockModelAPI,
-				vegaClient:  mockVegaClient,
-				logger:      logger.DefaultLogger(),
-				initialized: true,
-			}
-			mockModelAPI.EXPECT().Embeddings(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, req *interfaces.EmbeddingReq) (*interfaces.EmbeddingResp, error) {
-				So(req.Model, ShouldEqual, interfaces.SmallModelTypeEmbedding)
-				So(req.Input, ShouldResemble, []string{"demo\ndesc"})
-				return &interfaces.EmbeddingResp{
-					Data: []interfaces.EmbeddingData{{Embedding: []float32{0.3, 0.4}}},
-				}, nil
-			})
-			mockVegaClient.EXPECT().WriteDatasetDocument(gomock.Any(), executionFactorySkillDataset, gomock.Any(), gomock.Any()).
-				DoAndReturn(func(ctx context.Context, datasetID, _ string, document map[string]any) error {
-					So(datasetID, ShouldEqual, executionFactorySkillDataset)
-					updatedDoc = document
-					return nil
-				})
-
-			err := syncer.UpdateSkill(context.Background(), &model.SkillRepositoryDB{
-				SkillID:     "skill-2",
-				Name:        "demo",
-				Description: "desc",
-				Version:     "1.0.1",
-				Category:    "general",
-				CreateUser:  "u1",
-				CreateTime:  101,
-				UpdateUser:  "u2",
-				UpdateTime:  201,
-			})
-			So(err, ShouldBeNil)
-			So(updatedDoc["_id"], ShouldEqual, "skill-2")
-			So(updatedDoc["id"], ShouldEqual, "skill-2")
-			So(updatedDoc["skill_id"], ShouldEqual, "skill-2")
-			So(updatedDoc["version"], ShouldEqual, "1.0.1")
-			So(updatedDoc["_vector"], ShouldResemble, []float32{0.3, 0.4})
-		})
+		So(written.CapabilityType, ShouldEqual, interfaces.CapabilityTypeSkill)
+		So(written.CapabilityID, ShouldEqual, "skill-1")
+		// A Skill belongs to the platform, not to a box or a server.
+		So(written.OwnerID, ShouldEqual, "")
+		So(written.Name, ShouldEqual, "库存阈值预警通知")
+		So(written.Description, ShouldEqual, "库存低于阈值时通知负责人")
+		So(written.Version, ShouldEqual, "v3")
+		So(written.Category, ShouldEqual, "supply")
+		So(written.UpdateTime, ShouldEqual, int64(22))
 	})
 }
 
-func configureEmptySkillDatasetRestore(ctrl *gomock.Controller, syncer *skillIndexSync) {
-	skillRepo := mocks.NewMockISkillRepository(ctrl)
-	skillRepo.EXPECT().SelectSkillBuildPage(gomock.Any(), gomock.Nil(), gomock.Any(), gomock.Any(), skillIndexBuildBatchSize).
-		AnyTimes().Return(nil, nil)
-	syncer.skillRepo = skillRepo
-	syncer.releaseRepo = mocks.NewMockISkillReleaseDB(ctrl)
+// TestUpdateAndDeleteAddressTheSameDocument keeps an update from creating a second row and a delete
+// from missing the one that exists.
+func TestUpdateAndDeleteAddressTheSameDocument(t *testing.T) {
+	Convey("更新与删除指向同一份文档", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		index := mocks.NewMockCapabilityIndexSyncService(ctrl)
+		index.EXPECT().UpsertCapability(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, doc *interfaces.CapabilityDocument) error {
+				So(doc.CapabilityID, ShouldEqual, "skill-1")
+				return nil
+			})
+		index.EXPECT().DeleteCapability(gomock.Any(), interfaces.CapabilityRef{
+			CapabilityType: interfaces.CapabilityTypeSkill, CapabilityID: "skill-1",
+		}).Return(nil)
+
+		svc := newSync(index, nil)
+		So(svc.UpdateSkill(context.Background(), &model.SkillRepositoryDB{SkillID: "skill-1"}), ShouldBeNil)
+		So(svc.DeleteSkill(context.Background(), "skill-1"), ShouldBeNil)
+	})
+}
+
+// TestSkillIndexPayloadPicksTheRunnableSnapshot covers the rule that decides what the index holds.
+//
+// It has to match what a caller would actually run: an editing Skill with no published release is
+// not runnable, so indexing it would advertise something that cannot be invoked.
+func TestSkillIndexPayloadPicksTheRunnableSnapshot(t *testing.T) {
+	Convey("索引持有的是可运行的那份快照", t, func() {
+		release := &model.SkillReleaseDB{SkillID: "skill-1", Name: "已发布版", Version: "v2"}
+		withRelease := &stubSkillReleaseRepo{
+			selectBySkillID: func(context.Context, *sql.Tx, string) (*model.SkillReleaseDB, error) {
+				return release, nil
+			},
+		}
+		withoutRelease := &stubSkillReleaseRepo{
+			selectBySkillID: func(context.Context, *sql.Tx, string) (*model.SkillReleaseDB, error) {
+				return nil, nil
+			},
+		}
+
+		Convey("已发布且有 release：取 release", func() {
+			payload, err := newSync(nil, withRelease).skillIndexPayload(context.Background(),
+				&model.SkillRepositoryDB{SkillID: "skill-1", Status: interfaces.BizStatusPublished.String()})
+			So(err, ShouldBeNil)
+			So(payload.Name, ShouldEqual, "已发布版")
+		})
+
+		Convey("已发布但没有 release：退回本体", func() {
+			payload, err := newSync(nil, withoutRelease).skillIndexPayload(context.Background(),
+				&model.SkillRepositoryDB{SkillID: "skill-1", Name: "本体", Status: interfaces.BizStatusPublished.String()})
+			So(err, ShouldBeNil)
+			So(payload.Name, ShouldEqual, "本体")
+		})
+
+		Convey("编辑中但有已发布 release：取 release", func() {
+			payload, err := newSync(nil, withRelease).skillIndexPayload(context.Background(),
+				&model.SkillRepositoryDB{SkillID: "skill-1", Status: interfaces.BizStatusEditing.String()})
+			So(err, ShouldBeNil)
+			So(payload.Name, ShouldEqual, "已发布版")
+		})
+
+		Convey("编辑中且从未发布：不入索引", func() {
+			payload, err := newSync(nil, withoutRelease).skillIndexPayload(context.Background(),
+				&model.SkillRepositoryDB{SkillID: "skill-1", Status: interfaces.BizStatusEditing.String()})
+			So(err, ShouldBeNil)
+			So(payload, ShouldBeNil)
+		})
+
+		Convey("已删除：不入索引", func() {
+			payload, err := newSync(nil, withRelease).skillIndexPayload(context.Background(),
+				&model.SkillRepositoryDB{SkillID: "skill-1", IsDeleted: true,
+					Status: interfaces.BizStatusPublished.String()})
+			So(err, ShouldBeNil)
+			So(payload, ShouldBeNil)
+		})
+	})
 }

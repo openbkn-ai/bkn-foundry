@@ -236,21 +236,6 @@ func (mr *MockDrivenOperatorIntegrationMockRecorder) ReadSkillFile(ctx, req any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadSkillFile", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).ReadSkillFile), ctx, req)
 }
 
-// SearchBoundSkills mocks base method.
-func (m *MockDrivenOperatorIntegration) SearchBoundSkills(ctx context.Context, req *interfaces.SearchBoundSkillsRequest) ([]interfaces.SkillHit, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SearchBoundSkills", ctx, req)
-	ret0, _ := ret[0].([]interfaces.SkillHit)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// SearchBoundSkills indicates an expected call of SearchBoundSkills.
-func (mr *MockDrivenOperatorIntegrationMockRecorder) SearchBoundSkills(ctx, req any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchBoundSkills", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).SearchBoundSkills), ctx, req)
-}
-
 // SearchBoundTools mocks base method.
 func (m *MockDrivenOperatorIntegration) SearchBoundTools(ctx context.Context, req *interfaces.SearchBoundToolsRequest) ([]interfaces.ToolHit, error) {
 	m.ctrl.T.Helper()
