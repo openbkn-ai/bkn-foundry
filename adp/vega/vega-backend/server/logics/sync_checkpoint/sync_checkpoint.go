@@ -19,6 +19,23 @@ import (
 
 const ModeBatch = "batch"
 
+// EffectiveCursorFields appends primary key fields absent from the configured
+// incremental cursor. A declared primary key is trusted to make the cursor unique.
+func EffectiveCursorFields(incrementalFields, primaryKeyFields []string) []string {
+	fields := append([]string(nil), incrementalFields...)
+	seen := make(map[string]struct{}, len(incrementalFields)+len(primaryKeyFields))
+	for _, field := range incrementalFields {
+		seen[field] = struct{}{}
+	}
+	for _, field := range primaryKeyFields {
+		if _, exists := seen[field]; !exists {
+			fields = append(fields, field)
+			seen[field] = struct{}{}
+		}
+	}
+	return fields
+}
+
 // SyncCheckpoint is shared by Task execution progress and the Resource's
 // committed incremental baseline.
 type SyncCheckpoint struct {

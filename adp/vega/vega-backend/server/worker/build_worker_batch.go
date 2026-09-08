@@ -307,13 +307,14 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 
 	primaryKeyFields := buildTaskInfo.IndexConfig.PrimaryKeyFields
 	incrementalFields := buildTaskInfo.IndexConfig.IncrementalFields
+	effectiveCursorFields := sync_checkpoint.EffectiveCursorFields(incrementalFields, primaryKeyFields)
 	var lastBatchKeyValues []interfaces.KeyValue
 	if lastSyncedMark != "" {
 		checkpoint, err := sync_checkpoint.DecodeBatch(lastSyncedMark)
 		if err != nil {
 			return fmt.Errorf("decode synced mark: %w", err)
 		}
-		if err := sync_checkpoint.ValidateCursor(checkpoint, incrementalFields, resource.SchemaDefinition); err != nil {
+		if err := sync_checkpoint.ValidateCursor(checkpoint, effectiveCursorFields, resource.SchemaDefinition); err != nil {
 			return fmt.Errorf("validate synced mark: %w", err)
 		}
 		lastBatchKeyValues = checkpoint.Cursor
@@ -338,8 +339,8 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 	}
 
 	// Build sort fields
-	sortFields := make([]*interfaces.SortField, len(incrementalFields))
-	for i, field := range incrementalFields {
+	sortFields := make([]*interfaces.SortField, len(effectiveCursorFields))
+	for i, field := range effectiveCursorFields {
 		sortFields[i] = &interfaces.SortField{
 			Field: field,
 		}
@@ -391,7 +392,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 
 		// Add filter condition for batch fields if we have last values
 		if len(lastBatchKeyValues) > 0 {
-			params.FilterCondCfg = buildBatchCursorFilter(incrementalFields, lastBatchKeyValues)
+			params.FilterCondCfg = buildBatchCursorFilter(effectiveCursorFields, lastBatchKeyValues)
 
 			// Convert FilterCondCfg to ActualFilterCond
 			fieldMap := map[string]*interfaces.Property{}
@@ -434,7 +435,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 		if readRows > 0 {
 			// Update lastBatchKeyValues with the last values in this batch
 			lastItem := result.Entries[readRows-1]
-			lastBatchKeyValues, err = extractKeyValues(incrementalFields, lastItem)
+			lastBatchKeyValues, err = extractKeyValues(effectiveCursorFields, lastItem)
 			if err != nil {
 				return fmt.Errorf("extract cursor key values: %w", err)
 			}

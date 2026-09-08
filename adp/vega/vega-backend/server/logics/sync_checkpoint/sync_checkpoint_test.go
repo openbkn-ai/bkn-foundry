@@ -28,6 +28,13 @@ func TestEncodeBatch(t *testing.T) {
 	assert.Empty(t, checkpoint.Cursor)
 }
 
+func TestEffectiveCursorFields(t *testing.T) {
+	assert.Equal(t, []string{"updated_at", "tenant_id", "id"},
+		EffectiveCursorFields([]string{"updated_at", "tenant_id"}, []string{"tenant_id", "id"}))
+	assert.Equal(t, []string{"updated_at", "id", "tenant_id"},
+		EffectiveCursorFields([]string{"updated_at", "id"}, []string{"tenant_id", "id"}))
+}
+
 func TestDecodeBatch(t *testing.T) {
 	t.Run("empty mark means no checkpoint", func(t *testing.T) {
 		checkpoint, err := DecodeBatch("")
