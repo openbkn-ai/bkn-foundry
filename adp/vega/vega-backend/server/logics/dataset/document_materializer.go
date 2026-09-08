@@ -2,6 +2,7 @@ package dataset
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"strings"
@@ -151,8 +152,11 @@ func validateVector(value any, dimension int, field string) error {
 		}
 		vector = make([]float32, len(values))
 		for i, value := range values {
-			number, ok := value.(float64)
-			if !ok || math.IsNaN(number) || math.IsInf(number, 0) {
+			number, ok := vectorElementNumber(value)
+			if !ok {
+				return fmt.Errorf("vector field %q contains a non-numeric value", field)
+			}
+			if math.IsNaN(number) || math.IsInf(number, 0) {
 				return fmt.Errorf("vector field %q contains a non-finite number", field)
 			}
 			vector[i] = float32(number)
@@ -167,6 +171,42 @@ func validateVector(value any, dimension int, field string) error {
 		}
 	}
 	return nil
+}
+
+// vectorElementNumber accepts values produced by precise JSON decoding and by
+// internal callers before they are converted to the local index representation.
+func vectorElementNumber(value any) (float64, bool) {
+	switch number := value.(type) {
+	case float64:
+		return number, true
+	case float32:
+		return float64(number), true
+	case json.Number:
+		parsed, err := number.Float64()
+		return parsed, err == nil
+	case int:
+		return float64(number), true
+	case int8:
+		return float64(number), true
+	case int16:
+		return float64(number), true
+	case int32:
+		return float64(number), true
+	case int64:
+		return float64(number), true
+	case uint:
+		return float64(number), true
+	case uint8:
+		return float64(number), true
+	case uint16:
+		return float64(number), true
+	case uint32:
+		return float64(number), true
+	case uint64:
+		return float64(number), true
+	default:
+		return 0, false
+	}
 }
 
 func invalidDocumentError(ctx context.Context, details string) error {
