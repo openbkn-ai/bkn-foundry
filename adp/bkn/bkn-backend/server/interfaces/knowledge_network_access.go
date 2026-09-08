@@ -32,6 +32,7 @@ type KNAccess interface {
 	// filtering and is only used to display names on object-level authorization pages. Missing IDs are skipped and
 	// empty IDs return empty entries.
 	GetKNNamesByIDs(ctx context.Context, ids []string, branch string) ([]*KNNameEntry, error)
+	ListKNChildResourceCandidates(ctx context.Context, knIDs []string, branch string) ([]KNChildResourceCandidate, error)
 
 	ListKnSrcs(ctx context.Context, query KNsQueryParams) ([]PermissionResource, error)
 }

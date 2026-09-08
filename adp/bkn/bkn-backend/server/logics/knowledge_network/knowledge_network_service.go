@@ -543,6 +543,90 @@ func (kns *knowledgeNetworkService) ValidateKN(ctx context.Context, kn *interfac
 	return nil
 }
 
+type knNavigationVisibility struct {
+	operations       map[string]interfaces.PermissionResourceOps
+	childVisibleKNs  map[string]struct{}
+	visibleChildRows map[string]map[string]interfaces.PermissionResourceOps
+}
+
+func (kns *knowledgeNetworkService) resolveKNNavigationVisibility(ctx context.Context,
+	knIDs []string, branch string) (*knNavigationVisibility, error) {
+	visibility := &knNavigationVisibility{
+		operations:       map[string]interfaces.PermissionResourceOps{},
+		childVisibleKNs:  map[string]struct{}{},
+		visibleChildRows: map[string]map[string]interfaces.PermissionResourceOps{},
+	}
+	if len(knIDs) == 0 {
+		return visibility, nil
+	}
+
+	operations, err := kns.ps.FilterResources(ctx, interfaces.RESOURCE_TYPE_KN, knIDs,
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
+	if err != nil {
+		return nil, err
+	}
+	visibility.operations = operations
+
+	restrictedKNIDs := make([]string, 0, len(knIDs))
+	for _, knID := range knIDs {
+		if _, ok := operations[knID]; !ok {
+			restrictedKNIDs = append(restrictedKNIDs, knID)
+		}
+	}
+	if len(restrictedKNIDs) == 0 {
+		return visibility, nil
+	}
+
+	candidates, err := kns.kna.ListKNChildResourceCandidates(ctx, restrictedKNIDs, branch)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+	}
+	resourceIDsByType := make(map[string][]string)
+	for _, candidate := range candidates {
+		if !interfaces.IsValidAuthorizationID(candidate.KNID) ||
+			!interfaces.IsValidAuthorizationID(candidate.ResourceID) {
+			continue
+		}
+		canonicalID := interfaces.KNChildResourceID(candidate.KNID, candidate.ResourceID)
+		resourceIDsByType[candidate.Type] = append(resourceIDsByType[candidate.Type], canonicalID)
+	}
+
+	for resourceType, resourceIDs := range resourceIDsByType {
+		matched, err := permission.FilterKNChildResourceIDs(ctx, kns.ps, resourceType,
+			common.DuplicateSlice(resourceIDs), interfaces.OPERATION_TYPE_VIEW_DETAIL,
+			permission.KNChildOperationCandidates(resourceType))
+		if err != nil {
+			return nil, err
+		}
+		visibility.visibleChildRows[resourceType] = matched
+	}
+	for _, candidate := range candidates {
+		canonicalID := interfaces.KNChildResourceID(candidate.KNID, candidate.ResourceID)
+		if _, ok := visibility.visibleChildRows[candidate.Type][canonicalID]; ok {
+			visibility.childVisibleKNs[candidate.KNID] = struct{}{}
+		}
+	}
+	return visibility, nil
+}
+
+func restrictKNToNavigation(kn *interfaces.KN) {
+	kn.SkillContent = ""
+	kn.ConceptGroups = nil
+	kn.ObjectTypes = nil
+	kn.RelationTypes = nil
+	kn.ActionTypes = nil
+	kn.RiskTypes = nil
+	kn.Metrics = nil
+	kn.Statistics = nil
+	kn.Operations = nil
+	kn.NavigationOnly = true
+	kn.Creator = interfaces.AccountInfo{}
+	kn.Updater = interfaces.AccountInfo{}
+	kn.Vector = nil
+	kn.Score = nil
+}
+
 func (kns *knowledgeNetworkService) ListKNs(ctx context.Context, parameter interfaces.KNsQueryParams) ([]*interfaces.KN, int, error) {
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "查询业务知识网络列表")
@@ -571,9 +655,7 @@ func (kns *knowledgeNetworkService) ListKNs(ctx context.Context, parameter inter
 		KNIDs = append(KNIDs, m.KNID)
 	}
 
-	// Filter objects by view permission. The filtered length is the total, so no separate total query is needed.
-	matchResoucesMap, err := kns.ps.FilterResources(ctx, interfaces.RESOURCE_TYPE_KN, KNIDs,
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
+	visibility, err := kns.resolveKNNavigationVisibility(ctx, KNIDs, parameter.Branch)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
 		return []*interfaces.KN{}, 0, err
@@ -581,7 +663,9 @@ func (kns *knowledgeNetworkService) ListKNs(ctx context.Context, parameter inter
 
 	visibleKNIDs := make([]string, 0, len(KNArr))
 	for _, kn := range KNArr {
-		if _, exist := matchResoucesMap[kn.KNID]; exist {
+		_, directlyVisible := visibility.operations[kn.KNID]
+		_, childVisible := visibility.childVisibleKNs[kn.KNID]
+		if directlyVisible || childVisible {
 			visibleKNIDs = append(visibleKNIDs, kn.KNID)
 		}
 	}
@@ -623,20 +707,28 @@ func (kns *knowledgeNetworkService) ListKNs(ctx context.Context, parameter inter
 			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
 	}
 	for _, kn := range KNs {
-		kn.Operations = matchResoucesMap[kn.KNID].Operations
+		if resource, directlyVisible := visibility.operations[kn.KNID]; directlyVisible {
+			kn.Operations = resource.Operations
+		} else {
+			restrictKNToNavigation(kn)
+		}
 	}
 
 	accountInfos := make([]*interfaces.AccountInfo, 0, len(KNs)*2)
 	for _, kn := range KNs {
-		accountInfos = append(accountInfos, &kn.Creator, &kn.Updater)
+		if _, directlyVisible := visibility.operations[kn.KNID]; directlyVisible {
+			accountInfos = append(accountInfos, &kn.Creator, &kn.Updater)
+		}
 	}
 
-	err = kns.ums.GetAccountNames(ctx, accountInfos)
-	if err != nil {
-		span.SetStatus(codes.Error, "GetAccountNames error")
+	if len(accountInfos) > 0 {
+		err = kns.ums.GetAccountNames(ctx, accountInfos)
+		if err != nil {
+			span.SetStatus(codes.Error, "GetAccountNames error")
 
-		return []*interfaces.KN{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+			return []*interfaces.KN{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+		}
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -754,27 +846,24 @@ func (kns *knowledgeNetworkService) getKNByID(ctx context.Context, knID string, 
 	}
 
 	if enforceUserPermission {
-		// Filter objects by view permission. The filtered length is the total, so no separate total query is needed.
-		matchResoucesMap, err := kns.ps.FilterResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{kn.KNID},
-			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
+		visibility, err := kns.resolveKNNavigationVisibility(ctx, []string{kn.KNID}, branch)
 		if err != nil {
 			span.SetStatus(codes.Error, "Filter resources error")
 			return nil, err
 		}
 
-		if resrc, exist := matchResoucesMap[kn.KNID]; exist {
-			kn.Operations = resrc.Operations // Operations currently allowed for the user
+		if resource, directlyVisible := visibility.operations[kn.KNID]; directlyVisible {
+			kn.Operations = resource.Operations
+			accountInfos := []*interfaces.AccountInfo{&kn.Creator, &kn.Updater}
+			if err = kns.ums.GetAccountNames(ctx, accountInfos); err != nil {
+				span.SetStatus(codes.Error, "GetAccountNames error")
+				return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+			}
+		} else if _, childVisible := visibility.childVisibleKNs[kn.KNID]; childVisible && mode == "" {
+			restrictKNToNavigation(kn)
 		} else {
 			return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
-		}
-
-		accountInfos := []*interfaces.AccountInfo{&kn.Creator, &kn.Updater}
-		err = kns.ums.GetAccountNames(ctx, accountInfos)
-		if err != nil {
-			span.SetStatus(codes.Error, "GetAccountNames error")
-
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
 		}
 	}
 
@@ -856,6 +945,27 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 	// Get business knowledge networks.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, fmt.Sprintf("查询业务知识网络[%s]信息", kn.KNID))
 	defer span.End()
+
+	// A navigation-only network has no network-level view_detail operation.
+	// Return only counts of child resources that are actually visible to the
+	// caller; capability bindings have no child authorization resource and must
+	// not be disclosed through the restricted shell.
+	if kn.NavigationOnly {
+		visibility, err := kns.resolveKNNavigationVisibility(ctx, []string{kn.KNID}, kn.Branch)
+		if err != nil {
+			return nil, err
+		}
+		statistics := &interfaces.Statistics{
+			CgTotal:       len(visibility.visibleChildRows[interfaces.RESOURCE_TYPE_CONCEPT_GROUP]),
+			OtTotal:       len(visibility.visibleChildRows[interfaces.RESOURCE_TYPE_OBJECT_TYPE]),
+			RtTotal:       len(visibility.visibleChildRows[interfaces.RESOURCE_TYPE_RELATION_TYPE]),
+			AtTotal:       len(visibility.visibleChildRows[interfaces.RESOURCE_TYPE_ACTION_TYPE]),
+			RiskTypeTotal: len(visibility.visibleChildRows[interfaces.RESOURCE_TYPE_RISK_TYPE]),
+			MetricsTotal:  len(visibility.visibleChildRows[interfaces.RESOURCE_TYPE_METRIC]),
+		}
+		span.SetStatus(codes.Ok, "")
+		return statistics, nil
+	}
 
 	// Get counts of object, relation, and action types in the business knowledge network.
 	otCnt, err := kns.ota.GetObjectTypesTotal(ctx, interfaces.ObjectTypesQueryParams{

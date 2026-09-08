@@ -69,7 +69,7 @@ func CheckKNChildBatchPermission(ctx context.Context, ps interfaces.PermissionSe
 	}
 
 	resourceIDs := interfaces.KNChildResourceIDs(knID, childIDs)
-	matched, err := filterKNChildResourceIDs(ctx, ps, resourceType, resourceIDs, childOperation)
+	matched, err := FilterKNChildResourceIDs(ctx, ps, resourceType, resourceIDs, childOperation)
 	if err != nil {
 		return err
 	}
@@ -104,7 +104,7 @@ func FilterKNChildIDs(ctx context.Context, ps interfaces.PermissionService,
 	}
 
 	resourceIDs := interfaces.KNChildResourceIDs(knID, validChildIDs)
-	matched, err := filterKNChildResourceIDs(ctx, ps, resourceType, resourceIDs, operation)
+	matched, err := FilterKNChildResourceIDs(ctx, ps, resourceType, resourceIDs, operation)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +166,7 @@ func FilterAndPaginateKNChildren[T any](ctx context.Context, ps interfaces.Permi
 	}
 
 	resourceIDs := interfaces.KNChildResourceIDs(knID, childIDs)
-	matched, err := filterKNChildResourceIDs(ctx, ps, resourceType,
+	matched, err := FilterKNChildResourceIDs(ctx, ps, resourceType,
 		resourceIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL)
 	if err != nil {
 		return nil, 0, err
@@ -211,7 +211,7 @@ func FilterAndPaginateKNChildrenWithOperations[T any](ctx context.Context, ps in
 	}
 
 	resourceIDs := interfaces.KNChildResourceIDs(knID, childIDs)
-	matched, err := filterKNChildResourceIDs(ctx, ps, resourceType, resourceIDs,
+	matched, err := FilterKNChildResourceIDs(ctx, ps, resourceType, resourceIDs,
 		interfaces.OPERATION_TYPE_VIEW_DETAIL, candidateOperations)
 	if err != nil {
 		return nil, 0, nil, err
@@ -235,7 +235,7 @@ func GetKNChildOperations(ctx context.Context, ps interfaces.PermissionService,
 		return nil, err
 	}
 	canonicalID := interfaces.KNChildResourceID(knID, childID)
-	matched, err := filterKNChildResourceIDs(ctx, ps, resourceType, []string{canonicalID},
+	matched, err := FilterKNChildResourceIDs(ctx, ps, resourceType, []string{canonicalID},
 		interfaces.OPERATION_TYPE_VIEW_DETAIL, KNChildOperationCandidates(resourceType))
 	if err != nil {
 		return nil, err
@@ -247,7 +247,10 @@ func GetKNChildOperations(ctx context.Context, ps interfaces.PermissionService,
 	return resourceOps.Operations, nil
 }
 
-func filterKNChildResourceIDs(ctx context.Context, ps interfaces.PermissionService,
+// FilterKNChildResourceIDs filters canonical child resource IDs in bounded
+// batches. It is shared by child list endpoints and parent navigation
+// visibility so both paths evaluate the same Safe contract.
+func FilterKNChildResourceIDs(ctx context.Context, ps interfaces.PermissionService,
 	resourceType string, resourceIDs []string, operation string, candidateOperations ...[]string) (map[string]interfaces.PermissionResourceOps, error) {
 
 	fullOperations := []string{operation}

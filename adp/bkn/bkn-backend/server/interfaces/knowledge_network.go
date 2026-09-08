@@ -130,6 +130,9 @@ type KN struct {
 	Statistics *Statistics `json:"statistics,omitempty"`
 	// Operation permissions.
 	Operations []string `json:"operations,omitempty"`
+	// NavigationOnly marks a shell exposed through a visible child resource.
+	// It is internal state used to calculate permission-filtered statistics.
+	NavigationOnly bool `json:"-" mapstructure:"-"`
 
 	// Vector.
 	Vector []float32 `json:"_vector,omitempty"`

@@ -1225,21 +1225,15 @@ func (ots *objectTypeService) handleObjectTypeImportMode(ctx context.Context, mo
 	return creates, updates, nil
 }
 
-// Internal use without permission checks.
+// GetObjectTypesMapByIDs resolves object metadata for an already-authorized
+// relation or action response. It deliberately performs no independent object
+// permission check: callers expose only the simple object reference and mapped
+// property display names required to render the authorized parent resource.
 func (ots *objectTypeService) GetObjectTypesMapByIDs(ctx context.Context, knID string,
 	branch string, otIDs []string, needPropMap bool) (map[string]*interfaces.ObjectType, error) {
 	// Get object types.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, fmt.Sprintf("查询对象类[%v]信息", otIDs))
 	defer span.End()
-
-	// Check whether the user ID can modify the business knowledge network.
-	err := ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   knID,
-	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
-	if err != nil {
-		return map[string]*interfaces.ObjectType{}, err
-	}
 
 	// De-duplicate IDs before querying.
 	otIDs = common.DuplicateSlice(otIDs)

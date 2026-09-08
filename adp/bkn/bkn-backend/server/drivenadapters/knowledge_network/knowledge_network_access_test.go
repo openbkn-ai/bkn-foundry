@@ -11,6 +11,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -849,6 +850,58 @@ func Test_knowledgeNetworkAccess_ListKnSrcs(t *testing.T) {
 				t.Errorf("there were unfulfilled expectations: %s", err)
 			}
 		})
+	})
+}
+
+func Test_knowledgeNetworkAccess_ListKNChildResourceCandidates(t *testing.T) {
+	Convey("List child authorization identities for multiple knowledge networks", t, func() {
+		appSetting := &common.AppSetting{}
+		kna, smock := MockNewKNAccess(appSetting)
+		knIDs := []string{"kn1", "kn2"}
+
+		queries := make([]string, 0, len(knChildResourceTables))
+		for _, childTable := range knChildResourceTables {
+			query, _, err := sq.Select().
+				Column(sq.Expr("? AS f_resource_type", childTable.resourceType)).
+				Column("f_kn_id").
+				Column("f_id").
+				From(childTable.tableName).
+				Where(sq.Eq{"f_kn_id": knIDs}).
+				Where(sq.Eq{"f_branch": interfaces.MAIN_BRANCH}).
+				ToSql()
+			So(err, ShouldBeNil)
+			queries = append(queries, query)
+		}
+		expectedSQL := strings.Join(queries, " UNION ALL ")
+		rows := sqlmock.NewRows([]string{"f_resource_type", "f_kn_id", "f_id"}).
+			AddRow(interfaces.RESOURCE_TYPE_OBJECT_TYPE, "kn1", "ot1").
+			AddRow(interfaces.RESOURCE_TYPE_RELATION_TYPE, "kn2", "rt1")
+		smock.ExpectQuery(expectedSQL).WithArgs(
+			interfaces.RESOURCE_TYPE_CONCEPT_GROUP, "kn1", "kn2", interfaces.MAIN_BRANCH,
+			interfaces.RESOURCE_TYPE_OBJECT_TYPE, "kn1", "kn2", interfaces.MAIN_BRANCH,
+			interfaces.RESOURCE_TYPE_RELATION_TYPE, "kn1", "kn2", interfaces.MAIN_BRANCH,
+			interfaces.RESOURCE_TYPE_ACTION_TYPE, "kn1", "kn2", interfaces.MAIN_BRANCH,
+			interfaces.RESOURCE_TYPE_METRIC, "kn1", "kn2", interfaces.MAIN_BRANCH,
+			interfaces.RESOURCE_TYPE_RISK_TYPE, "kn1", "kn2", interfaces.MAIN_BRANCH,
+		).WillReturnRows(rows)
+
+		candidates, err := kna.ListKNChildResourceCandidates(testCtx, knIDs, interfaces.MAIN_BRANCH)
+		So(err, ShouldBeNil)
+		So(candidates, ShouldResemble, []interfaces.KNChildResourceCandidate{
+			{Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE, KNID: "kn1", ResourceID: "ot1"},
+			{Type: interfaces.RESOURCE_TYPE_RELATION_TYPE, KNID: "kn2", ResourceID: "rt1"},
+		})
+		So(smock.ExpectationsWereMet(), ShouldBeNil)
+	})
+
+	Convey("Empty knowledge network input avoids a database query", t, func() {
+		appSetting := &common.AppSetting{}
+		kna, smock := MockNewKNAccess(appSetting)
+
+		candidates, err := kna.ListKNChildResourceCandidates(testCtx, nil, interfaces.MAIN_BRANCH)
+		So(err, ShouldBeNil)
+		So(candidates, ShouldResemble, []interfaces.KNChildResourceCandidate{})
+		So(smock.ExpectationsWereMet(), ShouldBeNil)
 	})
 }
 
