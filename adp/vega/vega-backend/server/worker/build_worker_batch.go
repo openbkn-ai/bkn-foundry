@@ -349,6 +349,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 	embeddingConfig := buildTaskEmbeddingConfig(buildTaskInfo)
 	hasEmbedding := len(embeddingConfig) > 0
 	pipeline := &embeddingPipeline{mfs: bbw.mfs}
+	outputFields := buildIndexableFieldNames(resource.SchemaDefinition)
 
 	syncedCount := buildTaskInfo.SyncedCount
 	for {
@@ -385,9 +386,10 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 		}
 
 		params := &interfaces.ResourceDataQueryParams{
-			Limit:     batchSize,
-			Sort:      sortFields,
-			NeedTotal: firstQuery,
+			Limit:        batchSize,
+			Sort:         sortFields,
+			NeedTotal:    firstQuery,
+			OutputFields: outputFields,
 		}
 
 		// Add filter condition for batch fields if we have last values

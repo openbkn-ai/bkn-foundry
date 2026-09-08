@@ -228,7 +228,6 @@ func buildLocalIndexSchema(buildTask *interfaces.BuildTask, resource *interfaces
 		}
 		schema = schemaDefinition
 	}
-
 	// Legacy resources that have never been updated still contain self-references. Without normalization,
 	// dataset resources violate the ref_property restriction and keyword self-references on text fields
 	// fail ref type validation (keyword requires string), preventing build task creation. Apply this only
@@ -244,7 +243,27 @@ func buildLocalIndexSchema(buildTask *interfaces.BuildTask, resource *interfaces
 	if err := validateTaskEmbeddingFeatures(schema, buildTask); err != nil {
 		return nil, err
 	}
-	return schema, nil
+	return buildIndexableSchema(schema), nil
+}
+
+func buildIndexableSchema(schema []*interfaces.Property) []*interfaces.Property {
+	indexable := make([]*interfaces.Property, 0, len(schema))
+	for _, prop := range schema {
+		if prop == nil || prop.Type == interfaces.DataType_Binary || prop.Type == interfaces.DataType_Other {
+			continue
+		}
+		indexable = append(indexable, prop)
+	}
+	return indexable
+}
+
+func buildIndexableFieldNames(schema []*interfaces.Property) []string {
+	indexableSchema := buildIndexableSchema(schema)
+	fields := make([]string, 0, len(indexableSchema))
+	for _, prop := range indexableSchema {
+		fields = append(fields, prop.Name)
+	}
+	return fields
 }
 
 func validateBuildTaskSchemaFeatures(resourceCategory string, schema []*interfaces.Property) error {

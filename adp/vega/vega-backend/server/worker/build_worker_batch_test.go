@@ -206,6 +206,10 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		cf := vmock.NewMockConnectorFactory(ctrl)
 		connector := vmock.NewMockTableConnector(ctrl)
 		resource := workerTestResource()
+		resource.SchemaDefinition = append(resource.SchemaDefinition,
+			&interfaces.Property{Name: "attachment", Type: interfaces.DataType_Binary},
+			&interfaces.Property{Name: "metadata", Type: interfaces.DataType_Other},
+		)
 		task := workerTestFullTask(t, resource)
 		indexName := buildIndexName(resource.ID, task.ID)
 		bbw := &batchBuildWorker{lim: lim, bts: bts, rs: rs, cf: cf}
@@ -233,7 +237,12 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 			}).Times(2)
 		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "mysql", gomock.Any()).Return(connector, nil)
 		connector.EXPECT().Connect(gomock.Any()).Return(nil)
-		connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Return(&interfaces.QueryResult{Total: 0}, nil)
+		connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+				assert.Equal(t, []string{"id"}, params.OutputFields)
+				return &interfaces.QueryResult{Total: 0}, nil
+			},
+		)
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
 		bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil)
 		mockDB.ExpectBegin()
