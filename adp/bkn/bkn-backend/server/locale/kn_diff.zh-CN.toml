@@ -1,0 +1,9 @@
+# 知识网络对比
+[BknBackend.KNDiff.InvalidParameter]
+Description = "知识网络对比请求参数无效"
+Solution = "请检查请求体。"
+ErrorLink = ""
+
+[BknBackend.KNDiff.InvalidParameter.Detail]
+BaseKNIDRequired = "base.kn_id 不能为空。"
+TargetKNIDRequired = "target.kn_id 不能为空。"

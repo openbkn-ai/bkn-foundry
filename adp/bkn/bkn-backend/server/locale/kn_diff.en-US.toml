@@ -1,0 +1,9 @@
+# Knowledge network comparison
+[BknBackend.KNDiff.InvalidParameter]
+Description = "Invalid knowledge network comparison request"
+Solution = "Please check the request body."
+ErrorLink = ""
+
+[BknBackend.KNDiff.InvalidParameter.Detail]
+BaseKNIDRequired = "base.kn_id is required."
+TargetKNIDRequired = "target.kn_id is required."
