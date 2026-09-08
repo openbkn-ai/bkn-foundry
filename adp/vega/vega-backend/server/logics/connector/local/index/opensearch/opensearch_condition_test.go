@@ -231,13 +231,37 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 				"embedding": map[string]any{
 					"vector": []float32{0.1, 0.2},
 					"k":      3,
+					"filter": map[string]any{
+						"bool": map[string]any{
+							"must": []map[string]any{
+								{"term": map[string]any{"is_active": true}},
+							},
+						},
+					},
 				},
 			},
-			"filter": map[string]any{
-				"bool": map[string]any{
-					"must": []map[string]any{
-						{"term": map[string]any{"is_active": true}},
-					},
+		}, got)
+	})
+
+	t.Run("uses direct k when limit key is absent", func(t *testing.T) {
+		cfg := &interfaces.FilterCondCfg{
+			Name:      "embedding",
+			Operation: filter_condition.OperationKnnVector,
+			ValueOptCfg: interfaces.ValueOptCfg{
+				ValueFrom: interfaces.ValueFrom_Const,
+				Value:     []float32{0.1, 0.2},
+			},
+			RemainCfg: map[string]any{"k": 50},
+		}
+
+		got, err := conn.ConvertFilterCondition(mustOSCondition(t, cfg), schema)
+
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{
+			"knn": map[string]any{
+				"embedding": map[string]any{
+					"vector": []float32{0.1, 0.2},
+					"k":      50,
 				},
 			},
 		}, got)
