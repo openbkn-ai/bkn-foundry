@@ -224,6 +224,10 @@ type ExecuteFunctionRequest struct {
 	Event map[string]any `json:"event"`
 	// Timeout Execution timeout, unit seconds.
 	Timeout int `json:"timeout,omitempty"`
+	// WorkingDirectory execution directory, relative to the workspace root.
+	// The sandbox scopes artifact collection to it, so leaving it empty makes every
+	// execution scan the shared workspace root.
+	WorkingDirectory string `json:"working_directory,omitempty"`
 }
 
 // ExecuteFunctionResponse Sandbox code execution result.

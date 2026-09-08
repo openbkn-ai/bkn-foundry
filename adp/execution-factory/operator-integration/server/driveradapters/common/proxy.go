@@ -98,6 +98,7 @@ func (h *unifiedProxyHandler) FunctionExecute(c *gin.Context) {
 		Event:                 req.Event,
 		Language:              req.Language,
 		Timeout:               req.Timeout,
+		WorkingDirectory:      req.WorkingDirectory,
 		EnvVars:               buildFunctionExecutionEnv(c, req),
 		Dependencies:          req.Dependencies,
 		PythonPackageIndexURL: req.DependenciesURL,

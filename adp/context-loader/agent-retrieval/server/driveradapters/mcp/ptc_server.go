@@ -119,6 +119,7 @@ func handlePTCExecuteForLocale(
 
 		resp, err := executor.ExecuteFunction(ctx, &interfaces.ExecuteFunctionRequest{
 			Code: code, Language: tool.Language, Event: event, Timeout: timeout,
+			WorkingDirectory: ptcWorkdirRelative(businessContext),
 		})
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
@@ -180,6 +181,15 @@ func buildPTCCode(
 // It must match the stub's _configure implementation exactly so run_code and
 // run_shell share files.
 func ptcWorkdir(businessContext map[string]any) string {
+	return "/workspace/" + ptcWorkdirRelative(businessContext)
+}
+
+// ptcWorkdirRelative returns the same directory relative to the workspace root.
+//
+// The sandbox scopes artifact collection to the working directory it is given, so
+// every execution must state it. Deriving it only inside the executed code leaves
+// the executor scanning the shared workspace root.
+func ptcWorkdirRelative(businessContext map[string]any) string {
 	conversation, _ := businessContext["conversation_id"].(string)
 	var safe strings.Builder
 	for _, r := range strings.TrimSpace(conversation) {
@@ -194,9 +204,9 @@ func ptcWorkdir(businessContext map[string]any) string {
 		}
 	}
 	if safe.Len() == 0 {
-		return "/workspace/shared"
+		return "shared"
 	}
-	return "/workspace/conv-" + safe.String()
+	return "conv-" + safe.String()
 }
 
 // ptcBusinessContextArg extracts bkn_context.

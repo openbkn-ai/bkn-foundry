@@ -115,6 +115,94 @@ class TestExecuteCodeCommand:
         mock_artifact_scanner_port.snapshot.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_execute_scans_only_the_working_directory(
+        self,
+        mock_isolation_port,
+        mock_artifact_scanner_port,
+        mock_callback_port,
+        mock_heartbeat_port,
+        tmp_path,
+    ):
+        """Artifact scanning stays inside the execution's working directory."""
+        command = ExecuteCodeCommand(
+            isolation_port=mock_isolation_port,
+            artifact_scanner_port=mock_artifact_scanner_port,
+            callback_port=mock_callback_port,
+            heartbeat_port=mock_heartbeat_port,
+            workspace_path=tmp_path,
+            control_plane_url="http://localhost:8000",
+        )
+        request = ExecutionRequest(
+            execution_id="exec_scope",
+            session_id="session_scope",
+            code="print('hello')",
+            language="python",
+            timeout=10,
+            working_directory="conv-abc",
+        )
+
+        await command.execute(request)
+
+        expected = (tmp_path / "conv-abc").resolve()
+        # The directory did not exist beforehand; the command creates it so that the
+        # first execution of a conversation does not fail.
+        assert expected.is_dir()
+        mock_artifact_scanner_port.snapshot.assert_called_once_with(expected)
+        assert mock_artifact_scanner_port.collect_artifacts.call_args.kwargs[
+            "workspace_path"
+        ] == expected
+
+    @pytest.mark.asyncio
+    async def test_execute_excludes_pre_existing_files(
+        self,
+        mock_isolation_port,
+        mock_artifact_scanner_port,
+        mock_callback_port,
+        mock_heartbeat_port,
+        tmp_path,
+    ):
+        """Files present before execution are not reported as its artifacts."""
+        stale = Mock()
+        stale.path = "stale.json"
+        stale.size = 10
+        stale.mime_type = "application/json"
+        stale.type = ArtifactType.ARTIFACT
+        stale.created_at = datetime.now()
+        stale.checksum = None
+
+        fresh = Mock()
+        fresh.path = "fresh.json"
+        fresh.size = 20
+        fresh.mime_type = "application/json"
+        fresh.type = ArtifactType.ARTIFACT
+        fresh.created_at = datetime.now()
+        fresh.checksum = None
+
+        mock_artifact_scanner_port.snapshot.return_value = {"stale.json"}
+        mock_artifact_scanner_port.collect_artifacts.return_value = [stale, fresh]
+
+        command = ExecuteCodeCommand(
+            isolation_port=mock_isolation_port,
+            artifact_scanner_port=mock_artifact_scanner_port,
+            callback_port=mock_callback_port,
+            heartbeat_port=mock_heartbeat_port,
+            workspace_path=tmp_path,
+            control_plane_url="http://localhost:8000",
+        )
+        request = ExecutionRequest(
+            execution_id="exec_diff",
+            session_id="session_diff",
+            code="print('hello')",
+            language="python",
+            timeout=10,
+            working_directory="conv-abc",
+        )
+
+        result = await command.execute(request)
+
+        assert [artifact.path for artifact in result.artifacts] == ["fresh.json"]
+
+    @pytest.mark.asyncio
     async def test_execute_with_artifacts(
         self,
         command,

@@ -146,6 +146,12 @@ func TestPTCRunCodeWrapsIntoHandler(t *testing.T) {
 	if !strings.Contains(executor.last.Code, "_configure(event)") {
 		t.Fatal("未调用 _configure，工作目录与凭据都不会注入")
 	}
+	// The sandbox scopes artifact collection to the working directory it is given.
+	// Leaving it empty makes the executor scan the shared workspace root and report
+	// other conversations' files as this execution's output.
+	if executor.last.WorkingDirectory != "conv-conv_a" {
+		t.Fatalf("未下发会话工作目录: %q", executor.last.WorkingDirectory)
+	}
 	// Credentials and session context use event instead of env_vars: sandbox session pooling and reuse, env will use the previous.
 	// The caller's value remains in the container.
 	if executor.last.Event["token"] != "tok-123" {
@@ -189,6 +195,11 @@ func TestPTCRunShellGetsNoToken(t *testing.T) {
 	}
 	if !strings.HasSuffix(executor.last.Code, "ls -la") {
 		t.Fatalf("命令未拼在后面:\n%s", executor.last.Code)
+	}
+	// The cd inside the command only moves the shell. The executor needs the same
+	// directory declared on the request to scope artifact collection to it.
+	if executor.last.WorkingDirectory != "conv-conv_a" {
+		t.Fatalf("未下发会话工作目录: %q", executor.last.WorkingDirectory)
 	}
 }
 

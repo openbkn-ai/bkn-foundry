@@ -55,7 +55,8 @@ class Artifact:
     Also adds frozen=True for immutability (hexagonal architecture).
 
     Attributes:
-        path: Relative path from workspace root
+        path: Relative path from the execution's working directory, which is the
+            workspace root when the request did not name one
         size: File size in bytes
         mime_type: MIME type of the file
         type: Category of artifact
@@ -227,8 +228,15 @@ class ExecutionContext:
             normalized = _normalize_working_directory(self.working_directory)
             object.__setattr__(self, "working_directory", normalized)
 
-    def resolve_working_directory_path(self) -> Path:
-        """Resolve the execution directory on the host filesystem."""
+    def resolve_working_directory_path(self, create: bool = False) -> Path:
+        """
+        Resolve the execution directory on the host filesystem.
+
+        Args:
+            create: Create the directory when it does not exist yet. Callers that
+                own the execution (rather than merely reading its cwd) pass True so
+                that the first execution of a new working directory does not fail.
+        """
         if self.working_directory in (None, ".", ""):
             target = self.workspace_path
         else:
@@ -241,6 +249,11 @@ class ExecutionContext:
             resolved.relative_to(workspace_root)
         except ValueError as exc:
             raise ValueError("working_directory must stay within workspace root") from exc
+
+        # Only a caller-supplied subdirectory is created. The workspace root is
+        # provisioned at startup; creating it here would mask a misconfigured mount.
+        if create and self.working_directory not in (None, ".", "") and not resolved.exists():
+            resolved.mkdir(parents=True, exist_ok=True)
 
         if not resolved.exists():
             raise ValueError(f"working_directory does not exist: {self.working_directory}")
