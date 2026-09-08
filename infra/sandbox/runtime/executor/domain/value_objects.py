@@ -55,8 +55,7 @@ class Artifact:
     Also adds frozen=True for immutability (hexagonal architecture).
 
     Attributes:
-        path: Relative path from the execution's working directory, which is the
-            workspace root when the request did not name one
+        path: Relative path from workspace root
         size: File size in bytes
         mime_type: MIME type of the file
         type: Category of artifact

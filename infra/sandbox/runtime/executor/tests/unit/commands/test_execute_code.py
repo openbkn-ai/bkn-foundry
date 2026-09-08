@@ -200,6 +200,50 @@ class TestExecuteCodeCommand:
 
         result = await command.execute(request)
 
+        # Narrowing the scan must not move the path base: the session file endpoints
+        # resolve artifact paths against the workspace root.
+        assert [artifact.path for artifact in result.artifacts] == [
+            "conv-abc/fresh.json"
+        ]
+
+    @pytest.mark.asyncio
+    async def test_execute_keeps_workspace_relative_paths_without_working_directory(
+        self,
+        mock_isolation_port,
+        mock_artifact_scanner_port,
+        mock_callback_port,
+        mock_heartbeat_port,
+        tmp_path,
+    ):
+        """Without a working directory the scan root is the workspace root."""
+        fresh = Mock()
+        fresh.path = "fresh.json"
+        fresh.size = 20
+        fresh.mime_type = "application/json"
+        fresh.type = ArtifactType.ARTIFACT
+        fresh.created_at = datetime.now()
+        fresh.checksum = None
+        mock_artifact_scanner_port.collect_artifacts.return_value = [fresh]
+
+        command = ExecuteCodeCommand(
+            isolation_port=mock_isolation_port,
+            artifact_scanner_port=mock_artifact_scanner_port,
+            callback_port=mock_callback_port,
+            heartbeat_port=mock_heartbeat_port,
+            workspace_path=tmp_path,
+            control_plane_url="http://localhost:8000",
+        )
+        request = ExecutionRequest(
+            execution_id="exec_root",
+            session_id="session_root",
+            code="print('hello')",
+            language="python",
+            timeout=10,
+        )
+
+        result = await command.execute(request)
+
+        mock_artifact_scanner_port.snapshot.assert_called_once_with(tmp_path.resolve())
         assert [artifact.path for artifact in result.artifacts] == ["fresh.json"]
 
     @pytest.mark.asyncio
