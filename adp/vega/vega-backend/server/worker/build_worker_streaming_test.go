@@ -141,6 +141,20 @@ func TestGetKafkaKeyValuesUsesConfiguredDocumentIDFields(t *testing.T) {
 	}, values)
 }
 
+func TestFilterBuildDocumentFieldsExcludesUnsupportedFields(t *testing.T) {
+	document := filterBuildDocumentFields(
+		map[string]any{
+			"id":         2,
+			"title":      "created",
+			"attachment": []byte("blob"),
+			"metadata":   []string{"a", "b"},
+		},
+		[]string{"id", "title"},
+	)
+
+	assert.Equal(t, map[string]any{"id": 2, "title": "created"}, document)
+}
+
 func TestHandleUpdateOperationWritesReplacementBeforeDeletingOldDocument(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	lim := vmock.NewMockLocalIndexManager(ctrl)
