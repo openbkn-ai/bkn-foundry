@@ -250,6 +250,37 @@ class TestExecutionContext:
         with pytest.raises(ValueError, match="working_directory does not exist"):
             context.resolve_working_directory_path()
 
+    def test_resolve_working_directory_path_creates_when_requested(self, tmp_path: Path):
+        """create=True provisions a missing working directory instead of raising."""
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        context = ExecutionContext(
+            workspace_path=workspace,
+            session_id="session_001",
+            execution_id="exec_001",
+            control_plane_url="http://localhost:8000",
+            working_directory="conv-abc",
+        )
+
+        resolved = context.resolve_working_directory_path(create=True)
+
+        assert resolved == (workspace / "conv-abc").resolve()
+        assert resolved.is_dir()
+
+    def test_resolve_working_directory_path_create_skips_workspace_root(self, tmp_path: Path):
+        """create=True never provisions the workspace root itself."""
+        workspace = tmp_path / "workspace"
+        context = ExecutionContext(
+            workspace_path=workspace,
+            session_id="session_001",
+            execution_id="exec_001",
+            control_plane_url="http://localhost:8000",
+        )
+
+        with pytest.raises(ValueError, match="working_directory does not exist"):
+            context.resolve_working_directory_path(create=True)
+        assert not workspace.exists()
+
 
 class TestExecutionResult:
     """Tests for ExecutionResult value object."""

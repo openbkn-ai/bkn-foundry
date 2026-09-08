@@ -57,6 +57,9 @@ func (o *operatorIntegrationClient) ExecuteFunction(
 	if req.Timeout > 0 {
 		body["timeout"] = req.Timeout
 	}
+	if req.WorkingDirectory != "" {
+		body["working_directory"] = req.WorkingDirectory
+	}
 
 	fullURL := o.baseURL + executeFunctionURI
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#ExecuteFunction] URL: %s, language: %s", fullURL, req.Language)

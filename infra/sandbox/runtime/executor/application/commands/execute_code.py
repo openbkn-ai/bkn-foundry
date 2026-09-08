@@ -24,8 +24,6 @@ from executor.domain.ports import (
     ICallbackPort,
     IHeartbeatPort,
 )
-from executor.domain.services import ArtifactCollector
-
 
 logger = structlog.get_logger(__name__)
 
@@ -116,8 +114,14 @@ class ExecuteCodeCommand:
         # Start heartbeat
         await self._heartbeat_port.start_heartbeat(execution_id=execution.execution_id)
 
-        # Create artifact collector with pre-execution snapshot
-        base_snapshot = self._artifact_scanner_port.snapshot(self._workspace_path)
+        # Artifact scanning is scoped to the execution's working directory. The
+        # workspace root is shared by every session on this node, so scanning it
+        # walks unrelated directories and reports their files as this execution's
+        # output.
+        scan_root = self._resolve_scan_root(context)
+
+        # Snapshot before execution; artifacts are the files that appear after it.
+        base_snapshot = self._artifact_scanner_port.snapshot(scan_root)
 
         try:
             # Execute with timeout
@@ -125,6 +129,7 @@ class ExecuteCodeCommand:
                 execution=execution,
                 timeout_seconds=request.timeout,
                 base_snapshot=base_snapshot,
+                scan_root=scan_root,
             )
 
             # Mark as completed
@@ -180,11 +185,37 @@ class ExecuteCodeCommand:
             # Remove from active executions
             self._active_executions.discard(execution.execution_id)
 
+    def _resolve_scan_root(self, context: ExecutionContext) -> Path:
+        """
+        Directory used for both the pre-execution snapshot and artifact collection.
+
+        Creates the working directory when it is missing so that the first
+        execution in a new one succeeds. Falls back to the workspace root when the
+        working directory cannot be resolved, which keeps callers that send no
+        working directory behaving as before.
+
+        Args:
+            context: Execution context
+
+        Returns:
+            Absolute path to scan for artifacts
+        """
+        try:
+            return context.resolve_working_directory_path(create=True)
+        except (ValueError, OSError) as exc:
+            logger.warning(
+                "Failed to resolve working directory, scanning workspace root",
+                working_directory=context.working_directory,
+                error=str(exc),
+            )
+            return self._workspace_path
+
     async def _execute_with_timeout(
         self,
         execution: Execution,
         timeout_seconds: int,
         base_snapshot: set,
+        scan_root: Path,
     ) -> ExecutionResult:
         """
         Execute code with timeout enforcement.
@@ -193,6 +224,7 @@ class ExecuteCodeCommand:
             execution: Execution entity
             timeout_seconds: Timeout in seconds
             base_snapshot: Pre-execution file snapshot
+            scan_root: Directory scanned for artifacts
 
         Returns:
             ExecutionResult
@@ -201,7 +233,7 @@ class ExecuteCodeCommand:
             asyncio.TimeoutError: If execution exceeds timeout
         """
         return await asyncio.wait_for(
-            self._execute_internal(execution, base_snapshot),
+            self._execute_internal(execution, base_snapshot, scan_root),
             timeout=timeout_seconds,
         )
 
@@ -209,6 +241,7 @@ class ExecuteCodeCommand:
         self,
         execution: Execution,
         base_snapshot: set,
+        scan_root: Path,
     ) -> ExecutionResult:
         """
         Internal execution logic.
@@ -216,6 +249,7 @@ class ExecuteCodeCommand:
         Args:
             execution: Execution entity
             base_snapshot: Pre-execution file snapshot
+            scan_root: Directory scanned for artifacts
 
         Returns:
             ExecutionResult
@@ -227,14 +261,17 @@ class ExecuteCodeCommand:
         from executor.domain.value_objects import Artifact, ArtifactType
 
         artifacts_data = self._artifact_scanner_port.collect_artifacts(
-            workspace_path=execution.context.workspace_path,
+            workspace_path=scan_root,
             include_hidden=False,
             include_temp=False,
         )
 
-        # Convert to Artifact value objects
+        # Only files that appeared during this execution are artifacts. Files that
+        # were already present belong to earlier executions sharing the directory.
         artifacts = []
         for artifact_data in artifacts_data:
+            if artifact_data.path in base_snapshot:
+                continue
             artifacts.append(
                 Artifact(
                     path=artifact_data.path,

@@ -31,18 +31,22 @@ type StreamProcessor interface {
 
 // FunctionProxyExecuteCodeReq function proxy execution code request.
 type FunctionProxyExecuteCodeReq struct {
-	Code            string            `json:"code" validate:"required"`                                      // Execute code.
-	Event           map[string]any    `json:"event" validate:"required"`                                     // event.
-	Language        string            `json:"language" default:"python"`                                     // execution language.
-	Timeout         int               `json:"timeout,omitempty"`                                             // Timeout time in seconds.
-	Source          string            `json:"source,omitempty"`                                              // execution source.
-	TaskID          string            `json:"task_id,omitempty"`                                             // Task ID.
-	CapabilityID    string            `json:"capability_id,omitempty"`                                       // Capability ID.
-	CapabilityName  string            `json:"capability_name,omitempty"`                                     // Ability name.
-	UserID          string            `json:"user_id,omitempty"`                                             // User ID.
-	UserName        string            `json:"user_name,omitempty"`                                           // Username.
-	Dependencies    []*DependencyInfo `json:"dependencies,omitempty"`                                        // Depend on resources.
-	DependenciesURL string            `json:"dependencies_url,omitempty" default:"https://pypi.org/simple/"` // Installation source URL.
+	Code     string         `json:"code" validate:"required"`  // Execute code.
+	Event    map[string]any `json:"event" validate:"required"` // event.
+	Language string         `json:"language" default:"python"` // execution language.
+	Timeout  int            `json:"timeout,omitempty"`         // Timeout time in seconds.
+	// WorkingDirectory execution directory, relative to the workspace root. The sandbox
+	// runs the code there and scopes artifact collection to it, so callers that keep
+	// per-conversation files must send it instead of relying on the code to chdir.
+	WorkingDirectory string            `json:"working_directory,omitempty"`
+	Source           string            `json:"source,omitempty"`                                              // execution source.
+	TaskID           string            `json:"task_id,omitempty"`                                             // Task ID.
+	CapabilityID     string            `json:"capability_id,omitempty"`                                       // Capability ID.
+	CapabilityName   string            `json:"capability_name,omitempty"`                                     // Ability name.
+	UserID           string            `json:"user_id,omitempty"`                                             // User ID.
+	UserName         string            `json:"user_name,omitempty"`                                           // Username.
+	Dependencies     []*DependencyInfo `json:"dependencies,omitempty"`                                        // Depend on resources.
+	DependenciesURL  string            `json:"dependencies_url,omitempty" default:"https://pypi.org/simple/"` // Installation source URL.
 	// The following three items are used by sandbox_sdk.bkn in the sandbox to call BKN and converted into process-level environment variables for this execution.
 	//
 	// Use environment variables instead of events: event is the business input parameter of the user function, and mixing credentials in it will pollute its.

@@ -183,8 +183,12 @@ def collect_artifacts(
     - Artifact type classification (artifact/log/output)
     - Optional checksum calculation
 
+    The caller decides the scan root. Passing the execution's working directory
+    rather than the shared workspace root keeps the walk proportional to that one
+    execution and keeps other sessions' files out of the result.
+
     Args:
-        workspace_path: Path to workspace directory
+        workspace_path: Directory to scan; paths are reported relative to it
         include_checksum: Whether to calculate SHA256 checksums (slower)
 
     Returns:
