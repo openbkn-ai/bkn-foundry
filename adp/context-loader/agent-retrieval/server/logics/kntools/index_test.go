@@ -814,7 +814,10 @@ func TestEmptyAnswerNamesItsCause(t *testing.T) {
 		}
 	})
 
-	t.Run("调用方自己传了 metadata_types 才该点名它", func(t *testing.T) {
+	t.Run("只传了 metadata_types 时，提示不得连带点名 types", func(t *testing.T) {
+		// The branch fires correctly, but its text used to name both filters. search_tools sets
+		// types itself and exposes no input for it, so half of "drop these two parameters" is
+		// advice the caller cannot follow — the same defect one level down.
 		op := &fakeOperator{hits: nil}
 		svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/t1")}, &fakeKnAuthz{})
 		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{
@@ -825,6 +828,9 @@ func TestEmptyAnswerNamesItsCause(t *testing.T) {
 		}
 		if !strings.Contains(resp.Message, "metadata_types") {
 			t.Fatalf("这次确实是调用方筛空的，该点名: %q", resp.Message)
+		}
+		if strings.Contains(resp.Message, "types /") || strings.Contains(resp.Message, "/ metadata_types") {
+			t.Fatalf("不该连带让调用方去掉它设不了的 types: %q", resp.Message)
 		}
 	})
 }

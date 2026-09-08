@@ -139,9 +139,14 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 	switch {
 	case len(entries) == 0 && total > 0:
 		resp.Message = infraErr.LocalizedDetail(ctx, "ToolsMatchedButNotVisible")
-	case len(entries) == 0 && !req.kindsAreIntrinsic && len(req.Types) > 0,
-		len(entries) == 0 && len(req.MetadataTypes) > 0:
+	case len(entries) == 0 && !req.kindsAreIntrinsic && len(req.Types) > 0:
+		// Both filters are the caller's, so both can be named.
 		resp.Message = infraErr.LocalizedDetail(ctx, "NoCapabilitiesOfRequestedKind")
+	case len(entries) == 0 && len(req.MetadataTypes) > 0:
+		// Only the tool box kind was the caller's. Naming types here would repeat the original
+		// mistake one level down: search_tools sets types itself and exposes no input for it, so
+		// "drop these two parameters" is advice half of which cannot be followed.
+		resp.Message = infraErr.LocalizedDetail(ctx, "NoToolsOfRequestedKind")
 	case len(entries) == 0:
 		resp.Message = infraErr.LocalizedDetail(ctx, "NoPublishedToolsMatched")
 	case more:
