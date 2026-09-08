@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -18,6 +19,7 @@ import (
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 	"vega-backend/logics"
+	"vega-backend/logics/sync_checkpoint"
 )
 
 func TestBuildBatchCursorFilter(t *testing.T) {
@@ -41,6 +43,104 @@ func TestBuildBatchCursorFilter(t *testing.T) {
 			{Name: "id", Operation: "gt", ValueOptCfg: interfaces.ValueOptCfg{Value: 100, ValueFrom: interfaces.ValueFrom_Const}},
 		},
 	}, filter.SubConds[1])
+}
+
+func TestBuildBatchCursorFilterAppendsPrimaryKeyForSameIncrementalValue(t *testing.T) {
+	keys := sync_checkpoint.EffectiveCursorFields([]string{"ingested_at"}, []string{"id"})
+	filter := buildBatchCursorFilter(keys, []interfaces.KeyValue{{Key: "ingested_at", Value: "T1"}, {Key: "id", Value: int64(1000)}})
+
+	require.Equal(t, []string{"ingested_at", "id"}, keys)
+	require.Len(t, filter.SubConds, 2)
+	assert.Equal(t, "ingested_at", filter.SubConds[1].SubConds[0].Name)
+	assert.Equal(t, "==", filter.SubConds[1].SubConds[0].Operation)
+	assert.Equal(t, "id", filter.SubConds[1].SubConds[1].Name)
+	assert.Equal(t, "gt", filter.SubConds[1].SubConds[1].Operation)
+	assert.Equal(t, int64(1000), filter.SubConds[1].SubConds[1].ValueOptCfg.Value)
+}
+
+func TestBatchCursorReadsAllSameIncrementalValueAcrossPages(t *testing.T) {
+	for _, count := range []int{999, 1000, 1001, 1500} {
+		t.Run(fmt.Sprintf("%d same values", count), func(t *testing.T) {
+			first := min(count, 1000)
+			cursor := []interfaces.KeyValue{{Key: "ingested_at", Value: "T1"}, {Key: "id", Value: int64(first)}}
+			filter := buildBatchCursorFilter(sync_checkpoint.EffectiveCursorFields([]string{"ingested_at"}, []string{"id"}), cursor)
+			second := make([]int64, 0, count-first)
+			for id := int64(1); id <= int64(count); id++ {
+				if matchesStringInt64CursorFilter(t, filter, map[string]any{"ingested_at": "T1", "id": id}) {
+					second = append(second, id)
+				}
+			}
+			assert.Len(t, second, count-first)
+			assert.Equal(t, count, first+len(second))
+		})
+	}
+
+	t.Run("999 earlier rows plus two equal boundary rows", func(t *testing.T) {
+		rows := make([]map[string]any, 0, 1001)
+		for id := int64(1); id <= 999; id++ {
+			rows = append(rows, map[string]any{"ingested_at": "T0", "id": id})
+		}
+		rows = append(rows,
+			map[string]any{"ingested_at": "T1", "id": int64(1000)},
+			map[string]any{"ingested_at": "T1", "id": int64(1001)})
+		filter := buildBatchCursorFilter(
+			[]string{"ingested_at", "id"},
+			[]interfaces.KeyValue{{Key: "ingested_at", Value: "T1"}, {Key: "id", Value: int64(1000)}},
+		)
+		remaining := make([]map[string]any, 0, 1)
+		for _, row := range rows {
+			if matchesStringInt64CursorFilter(t, filter, row) {
+				remaining = append(remaining, row)
+			}
+		}
+		assert.Equal(t, []map[string]any{{"ingested_at": "T1", "id": int64(1001)}}, remaining)
+	})
+}
+
+func matchesStringInt64CursorFilter(t *testing.T, filter *interfaces.FilterCondCfg, row map[string]any) bool {
+	t.Helper()
+	require.Equal(t, "or", filter.Operation)
+	for _, branch := range filter.SubConds {
+		require.Equal(t, "and", branch.Operation)
+		matches := true
+		for _, condition := range branch.SubConds {
+			actual, exists := row[condition.Name]
+			require.True(t, exists, "row is missing cursor field %q", condition.Name)
+			switch condition.Operation {
+			case "==":
+				matches = matches && actual == condition.ValueOptCfg.Value
+			case "gt":
+				switch expected := condition.ValueOptCfg.Value.(type) {
+				case string:
+					matches = matches && actual.(string) > expected
+				case int64:
+					matches = matches && actual.(int64) > expected
+				default:
+					require.FailNow(t, "unsupported cursor value type", "%T", expected)
+				}
+			default:
+				require.FailNow(t, "unsupported cursor operation", "%s", condition.Operation)
+			}
+		}
+		if matches {
+			return true
+		}
+	}
+	return false
+}
+
+func TestBatchCursorKeepsCompositePrimaryFieldsForResume(t *testing.T) {
+	keys := sync_checkpoint.EffectiveCursorFields(
+		[]string{"updated_at", "tenant_id"}, []string{"tenant_id", "id"},
+	)
+	cursor := []interfaces.KeyValue{{Key: "updated_at", Value: "T1"}, {Key: "tenant_id", Value: "tenant-a"}, {Key: "id", Value: int64(1000)}}
+	filter := buildBatchCursorFilter(keys, cursor)
+
+	require.Equal(t, []string{"updated_at", "tenant_id", "id"}, keys)
+	require.Len(t, filter.SubConds, 3)
+	assert.Equal(t, "id", filter.SubConds[2].SubConds[2].Name)
+	assert.Equal(t, "gt", filter.SubConds[2].SubConds[2].Operation)
+	assert.Equal(t, int64(1000), filter.SubConds[2].SubConds[2].ValueOptCfg.Value)
 }
 
 func TestBatchBuildWorkerHandleTask(t *testing.T) {
@@ -444,6 +544,117 @@ func TestBatchBuildWorkerRejectsIncrementalCheckpointWhenIndexChanged(t *testing
 
 	require.ErrorContains(t, err, "resource local index changed during incremental build")
 	assert.Equal(t, `{"mode":"batch","cursor":[]}`, resource.SyncMark)
+	require.NoError(t, mockDB.ExpectationsWereMet())
+}
+
+func TestBatchBuildWorkerReadsSameIncrementalValueAcrossPages(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	lim := vmock.NewMockLocalIndexManager(ctrl)
+	bts := vmock.NewMockBuildTaskService(ctrl)
+	rs := vmock.NewMockResourceService(ctrl)
+	cf := vmock.NewMockConnectorFactory(ctrl)
+	connector := vmock.NewMockTableConnector(ctrl)
+	resource := workerTestResource()
+	resource.SchemaDefinition = append(resource.SchemaDefinition,
+		&interfaces.Property{Name: "ingested_at", Type: interfaces.DataType_Timestamp})
+	resource.IndexConfig.IncrementalFields = []string{"ingested_at"}
+	resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
+	resource.LocalIndexName = "current-index"
+	resource.SyncMark = `{"mode":"batch","cursor":[{"key":"ingested_at","value":"T0"},{"key":"id","value":20}]}`
+	task := workerTestFullTask(t, resource)
+	task.IndexConfig.IncrementalFields = []string{"ingested_at"}
+	task.ExecuteType = interfaces.BuildTaskExecuteTypeIncremental
+	task.IndexName = resource.LocalIndexName
+	task.Status = interfaces.BuildTaskStatusRunning
+	task.SyncedMark = resource.SyncMark
+	bbw := &batchBuildWorker{lim: lim, bts: bts, rs: rs, cf: cf}
+
+	db, mockDB, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	oldDB := logics.DB
+	logics.DB = db
+	defer func() { logics.DB = oldDB }()
+
+	lim.EXPECT().CheckIndexExist(gomock.Any(), "current-index").Return(true, nil)
+	cf.EXPECT().CreateConnectorInstance(gomock.Any(), "mysql", gomock.Any()).Return(connector, nil)
+	connector.EXPECT().Connect(gomock.Any()).Return(nil)
+	sourceRows := make([]map[string]any, 1500)
+	for i := range sourceRows {
+		sourceRows[i] = map[string]any{"id": int64(i + 21), "ingested_at": "T1"}
+	}
+	queryCount := 0
+	connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Times(2).DoAndReturn(
+		func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+			queryCount++
+			require.Len(t, params.Sort, 2)
+			assert.Equal(t, "ingested_at", params.Sort[0].Field)
+			assert.Equal(t, "id", params.Sort[1].Field)
+			require.NotNil(t, params.FilterCondCfg)
+			if queryCount == 2 {
+				require.Len(t, params.FilterCondCfg.SubConds, 2)
+				idCondition := params.FilterCondCfg.SubConds[1].SubConds[1]
+				assert.Equal(t, "id", idCondition.Name)
+				assert.Equal(t, "gt", idCondition.Operation)
+				assert.Equal(t, int64(1020), idCondition.ValueOptCfg.Value)
+			}
+			cursorTime := params.FilterCondCfg.SubConds[0].SubConds[0].ValueOptCfg.Value.(string)
+			cursorID := params.FilterCondCfg.SubConds[1].SubConds[1].ValueOptCfg.Value.(int64)
+			entries := make([]map[string]any, 0, params.Limit)
+			for _, row := range sourceRows {
+				rowTime := row["ingested_at"].(string)
+				rowID := row["id"].(int64)
+				if rowTime > cursorTime || rowTime == cursorTime && rowID > cursorID {
+					entries = append(entries, row)
+					if len(entries) == params.Limit {
+						break
+					}
+				}
+			}
+			result := &interfaces.QueryResult{Entries: entries}
+			if queryCount == 1 {
+				result.Total = int64(len(sourceRows))
+			}
+			return result, nil
+		})
+	connector.EXPECT().Close(gomock.Any()).Return(nil)
+	bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil).Times(2)
+	bts.EXPECT().InternalSetProgress(gomock.Any(), nil, task.ID, gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *sql.Tx, _ string, progress interfaces.BuildTaskProgress) (bool, error) {
+			require.NotNil(t, progress.TotalCount)
+			assert.EqualValues(t, 1500, *progress.TotalCount)
+			return true, nil
+		})
+	batchSizes := make([]int, 0, 2)
+	lim.EXPECT().IndexDocuments(gomock.Any(), "current-index", gomock.Any()).Times(2).DoAndReturn(
+		func(_ context.Context, _ string, documents map[string]map[string]any) ([]string, error) {
+			batchSizes = append(batchSizes, len(documents))
+			return nil, nil
+		})
+	for range 2 {
+		mockDB.ExpectBegin()
+		mockDB.ExpectCommit()
+	}
+	txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
+	rs.EXPECT().InternalGetByID(gomock.Any(), txMatcher, resource.ID).Times(2).Return(resource, nil)
+	var finalProgress interfaces.BuildTaskProgress
+	bts.EXPECT().InternalSetProgress(gomock.Any(), txMatcher, task.ID, gomock.Any()).Times(2).DoAndReturn(
+		func(_ context.Context, _ *sql.Tx, _ string, progress interfaces.BuildTaskProgress) (bool, error) {
+			finalProgress = progress
+			return true, nil
+		})
+	rs.EXPECT().InternalUpdateLocalIndexState(gomock.Any(), txMatcher, resource.ID,
+		interfaces.ResourceLocalIndexStatusAvailable, "current-index", gomock.Any()).Return(true, nil).Times(2)
+	bts.EXPECT().InternalMarkCompleted(gomock.Any(), nil, task.ID).Return(true, nil)
+
+	err = bbw.executeBuild(context.Background(), &interfaces.Catalog{ConnectorType: "mysql"}, resource, task)
+
+	require.NoError(t, err)
+	assert.Equal(t, []int{1000, 500}, batchSizes)
+	require.NotNil(t, finalProgress.SyncedCount)
+	assert.EqualValues(t, 1500, *finalProgress.SyncedCount)
+	require.NotNil(t, finalProgress.SyncedMark)
+	assert.JSONEq(t, `{"mode":"batch","cursor":[{"key":"ingested_at","value":"T1"},{"key":"id","value":1520}]}`, *finalProgress.SyncedMark)
 	require.NoError(t, mockDB.ExpectationsWereMet())
 }
 

@@ -482,10 +482,12 @@ components:
       type: object
       properties:
         primary_key_fields:
+          description: Source row identity fields; absent fields are appended to the internal batch cursor.
           type: array
           items:
             type: string
         incremental_fields:
+          description: Ordered incremental cursor fields before any missing primary key fields are appended internally.
           type: array
           items:
             type: string

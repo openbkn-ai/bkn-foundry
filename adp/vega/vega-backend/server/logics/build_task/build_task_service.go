@@ -457,7 +457,8 @@ func validateIncrementalBaseline(ctx context.Context, resource *interfaces.Resou
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IncrementalBaselineUnavailable).
 			WithErrorDetails(fmt.Sprintf("invalid incremental checkpoint: %v", err))
 	}
-	if err := sync_checkpoint.ValidateCursor(checkpoint, resource.IndexConfig.IncrementalFields, resource.SchemaDefinition); err != nil {
+	effectiveCursorFields := sync_checkpoint.EffectiveCursorFields(resource.IndexConfig.IncrementalFields, resource.IndexConfig.PrimaryKeyFields)
+	if err := sync_checkpoint.ValidateCursor(checkpoint, effectiveCursorFields, resource.SchemaDefinition); err != nil {
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IncrementalBaselineUnavailable).
 			WithErrorDetails(fmt.Sprintf("invalid incremental checkpoint: %v", err))
 	}

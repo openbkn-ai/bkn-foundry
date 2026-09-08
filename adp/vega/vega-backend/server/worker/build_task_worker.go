@@ -449,8 +449,10 @@ func validateIncrementalBatchResource(resource *interfaces.Resource, task *inter
 	if err != nil {
 		return fmt.Errorf("invalid incremental checkpoint: %w", err)
 	}
+	effectiveCursorFields := sync_checkpoint.EffectiveCursorFields(
+		resource.IndexConfig.IncrementalFields, resource.IndexConfig.PrimaryKeyFields)
 	if err := sync_checkpoint.ValidateCursor(checkpoint,
-		resource.IndexConfig.IncrementalFields, resource.SchemaDefinition); err != nil {
+		effectiveCursorFields, resource.SchemaDefinition); err != nil {
 		return fmt.Errorf("invalid incremental checkpoint: %w", err)
 	}
 	return nil
