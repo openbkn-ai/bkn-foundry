@@ -2,16 +2,25 @@
 #
 # Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
+import gzip
+import hashlib
 import io
+import json
+import os
+import tempfile
 import unittest
-from contextlib import redirect_stderr
-from datetime import datetime
+from contextlib import ExitStack, redirect_stderr
+from datetime import datetime, timezone
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import script as migration
 
 from script import (
+    BackupResult,
+    DBConfig,
     GrantIndex,
     KN_CREATOR_OPERATIONS,
     NETWORK_BUILDER_ROLE_ID,
@@ -377,7 +386,222 @@ class ProxyPlanTest(unittest.TestCase):
         )
 
 
+class DatabaseConfigurationTest(unittest.TestCase):
+    def test_explicit_settings_take_precedence_over_server_environment(self):
+        environment = {
+            "BKN_DB_HOST": "explicit-host",
+            "BKN_DB_PORT": "4406",
+            "BKN_DB_USER": "explicit-user",
+            "BKN_DB_PASSWORD": "explicit-secret",
+            "BKN_DB_NAME": "explicit-bkn",
+            "MARIADB_HOST": "server-host",
+            "MARIADB_PORT_NUMBER": "3307",
+            "MARIADB_USER": "server-user",
+            "MARIADB_PASSWORD": "server-secret",
+            "MARIADB_DATABASE": "server-bkn",
+        }
+
+        with patch.dict(os.environ, environment, clear=True):
+            bkn_config, safe_config = migration.database_configs()
+
+        self.assertEqual(
+            DBConfig(
+                "explicit-host",
+                4406,
+                "explicit-user",
+                "explicit-secret",
+                "explicit-bkn",
+            ),
+            bkn_config,
+        )
+        self.assertEqual(
+            DBConfig(
+                "explicit-host", 4406, "explicit-user", "explicit-secret", "safe"
+            ),
+            safe_config,
+        )
+
+    def test_reads_server_password_file_and_reuses_connection_for_safe(self):
+        with tempfile.TemporaryDirectory() as directory:
+            password_file = Path(directory) / "mariadb-password"
+            password_file.write_text("file-secret\n", encoding="utf-8")
+            environment = {
+                "MARIADB_HOST": "127.0.0.9",
+                "MARIADB_PORT_NUMBER": "3308",
+                "MARIADB_USER": "server-user",
+                "MARIADB_PASSWORD_FILE": str(password_file),
+                "MARIADB_DATABASE": "server-bkn",
+            }
+
+            with patch.dict(os.environ, environment, clear=True):
+                bkn_config, safe_config = migration.database_configs()
+
+        self.assertEqual("file-secret", bkn_config.password)
+        self.assertEqual("server-bkn", bkn_config.database)
+        self.assertEqual("safe", safe_config.database)
+        self.assertEqual(bkn_config.host, safe_config.host)
+        self.assertEqual(bkn_config.port, safe_config.port)
+        self.assertEqual(bkn_config.user, safe_config.user)
+        self.assertEqual(bkn_config.password, safe_config.password)
+
+    def test_prefers_server_root_credentials_when_both_accounts_are_available(self):
+        environment = {
+            "MARIADB_USER": "application-user",
+            "MARIADB_PASSWORD": "application-secret",
+            "MARIADB_ROOT_PASSWORD": "root-secret",
+        }
+
+        with patch.dict(os.environ, environment, clear=True):
+            bkn_config, safe_config = migration.database_configs()
+
+        self.assertEqual("root", bkn_config.user)
+        self.assertEqual("root-secret", bkn_config.password)
+        self.assertEqual("root", safe_config.user)
+        self.assertEqual("root-secret", safe_config.password)
+
+    def test_reports_an_unreadable_password_file_without_exposing_a_secret(self):
+        environment = {"BKN_DB_PASSWORD_FILE": "/missing/password-file"}
+
+        with patch.dict(os.environ, environment, clear=True):
+            with self.assertRaisesRegex(
+                migration.MigrationError, "BKN_DB_PASSWORD_FILE"
+            ):
+                migration.database_configs()
+
+
+class PreMigrationBackupTest(unittest.TestCase):
+    def setUp(self):
+        self.configs = {
+            "bkn": DBConfig("127.0.0.1", 3306, "root", "bkn-secret", "openbkn"),
+            "safe": DBConfig("127.0.0.1", 3306, "root", "safe-secret", "safe"),
+        }
+
+    def test_streams_a_real_dump_process_into_a_valid_gzip_archive(self):
+        content = b"-- dump from a real child process\n"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            executable = root / "fake-mariadb-dump"
+            executable.write_text(
+                "#!/bin/sh\nprintf '%s\\n' '-- dump from a real child process'\n",
+                encoding="utf-8",
+            )
+            executable.chmod(0o700)
+
+            backup = migration.create_pre_migration_backup(
+                {"bkn": self.configs["bkn"]},
+                backup_root=root / "backups",
+                dump_executable=str(executable),
+            )
+
+            with gzip.open(backup.path / "bkn.sql.gz", "rb") as source:
+                self.assertEqual(content, source.read())
+
+    def test_creates_verified_secret_free_backups_without_overwriting(self):
+        calls = []
+
+        def dump(command, stdout, stderr, env):
+            calls.append((command, env))
+            self.assertIs(migration.subprocess.PIPE, stdout)
+            return SimpleNamespace(
+                stdout=io.BytesIO(b"-- complete logical dump\n"),
+                wait=lambda: 0,
+            )
+
+        instant = datetime(2026, 9, 8, 12, 30, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch.object(migration.subprocess, "Popen", side_effect=dump):
+                first = migration.create_pre_migration_backup(
+                    self.configs,
+                    backup_root=root,
+                    now=instant,
+                    dump_executable="/usr/bin/mariadb-dump",
+                )
+                second = migration.create_pre_migration_backup(
+                    self.configs,
+                    backup_root=root,
+                    now=instant,
+                    dump_executable="/usr/bin/mariadb-dump",
+                )
+
+            self.assertEqual("20260908_123000", first.path.name)
+            self.assertEqual("20260908_123000-01", second.path.name)
+            self.assertEqual(0o700, first.path.stat().st_mode & 0o777)
+            manifest_path = first.path / "manifest.json"
+            self.assertEqual(0o600, manifest_path.stat().st_mode & 0o777)
+            manifest = json.loads(manifest_path.read_text())
+            serialized_manifest = json.dumps(manifest)
+            self.assertNotIn("bkn-secret", serialized_manifest)
+            self.assertNotIn("safe-secret", serialized_manifest)
+            self.assertEqual(2, len(manifest["databases"]))
+            for entry in manifest["databases"]:
+                archive = first.path / entry["archive"]
+                self.assertEqual(0o600, archive.stat().st_mode & 0o777)
+                self.assertEqual(entry["sha256"], migration.sha256_file(archive))
+                with gzip.open(archive, "rb") as source:
+                    self.assertEqual(b"-- complete logical dump\n", source.read())
+            for command in first.restore_commands:
+                self.assertIn("gzip -dc", command)
+                self.assertIn("| mariadb", command)
+                self.assertNotIn("bkn-secret", command)
+                self.assertNotIn("safe-secret", command)
+
+        self.assertEqual(4, len(calls))
+        for command, environment in calls:
+            command_text = " ".join(command)
+            self.assertNotIn("bkn-secret", command_text)
+            self.assertNotIn("safe-secret", command_text)
+            self.assertIn(environment["MYSQL_PWD"], {"bkn-secret", "safe-secret"})
+
+    def test_removes_an_incomplete_backup_and_redacts_dump_errors(self):
+        def failed_dump(command, stdout, stderr, env):
+            del command, stdout, env
+            stderr.write(b"authentication rejected for bkn-secret")
+            return SimpleNamespace(
+                stdout=io.BytesIO(),
+                wait=lambda: 1,
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch.object(migration.subprocess, "Popen", side_effect=failed_dump):
+                with self.assertRaises(migration.MigrationError) as context:
+                    migration.create_pre_migration_backup(
+                        self.configs,
+                        backup_root=root,
+                        dump_executable="/usr/bin/mariadb-dump",
+                    )
+
+            self.assertNotIn("bkn-secret", str(context.exception))
+            self.assertIn("<redacted>", str(context.exception))
+            self.assertEqual([], list(root.iterdir()))
+
+    def test_validates_archive_against_the_independent_source_checksum(self):
+        content = b"-- complete logical dump\n"
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / "backup.sql.gz"
+            with gzip.open(archive, "wb") as output:
+                output.write(content)
+
+            migration.validate_backup_archive(
+                archive,
+                "bkn",
+                "openbkn",
+                hashlib.sha256(content).hexdigest(),
+            )
+            with self.assertRaisesRegex(
+                migration.MigrationError, "checksum verification failed"
+            ):
+                migration.validate_backup_archive(
+                    archive,
+                    "bkn",
+                    "openbkn",
+                    hashlib.sha256(b"different source").hexdigest(),
+                )
+
+
 class OneShotMigrationTest(unittest.TestCase):
+    @patch.object(migration, "create_pre_migration_backup")
     @patch.object(migration, "verify_proxy_plan")
     @patch.object(migration, "apply_proxy_plan", return_value={"mappings_ready": 0})
     @patch.object(migration, "apply_safe_plan", return_value=(0, 0))
@@ -402,13 +626,24 @@ class OneShotMigrationTest(unittest.TestCase):
         apply_safe_plan_mock,
         apply_proxy_plan_mock,
         verify_proxy_plan,
+        create_pre_migration_backup,
     ):
         bkn_connection = MagicMock()
         safe_connection = MagicMock()
         connect_database.side_effect = [bkn_connection, safe_connection]
+        events = []
+        create_pre_migration_backup.side_effect = lambda configs: (
+            events.append("backup")
+            or BackupResult(Path("/backup/20260908_120000"), ())
+        )
+        normalize_branches.side_effect = lambda *args, **kwargs: (
+            events.append("first-write") or 0
+        )
 
         self.assertEqual(0, migration.run())
 
+        self.assertEqual(["backup", "first-write"], events)
+        create_pre_migration_backup.assert_called_once()
         apply_safe_plan_mock.assert_called_once()
         apply_proxy_plan_mock.assert_called_once()
         self.assertEqual(
@@ -418,6 +653,75 @@ class OneShotMigrationTest(unittest.TestCase):
         verify_proxy_plan.assert_called_once()
         safe_connection.commit.assert_called_once_with()
         bkn_connection.commit.assert_called_once_with()
+
+    def test_backup_failure_prevents_all_migration_writes(self):
+        bkn_connection = MagicMock()
+        safe_connection = MagicMock()
+        configs = (
+            DBConfig("127.0.0.1", 3306, "root", "", "openbkn"),
+            DBConfig("127.0.0.1", 3306, "root", "", "safe"),
+        )
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch.object(migration, "database_configs", return_value=configs)
+            )
+            stack.enter_context(
+                patch.object(
+                    migration,
+                    "connect_database",
+                    side_effect=[bkn_connection, safe_connection],
+                )
+            )
+            stack.enter_context(
+                patch.object(migration, "load_resources", return_value=[])
+            )
+            stack.enter_context(
+                patch.object(migration, "load_accounts", return_value={})
+            )
+            stack.enter_context(
+                patch.object(migration, "count_branch_updates", return_value=0)
+            )
+            stack.enter_context(
+                patch.object(
+                    migration, "load_existing_safe_counts", return_value=(0, 0)
+                )
+            )
+            stack.enter_context(
+                patch.object(
+                    migration, "build_plan", return_value=MigrationPlan({}, 0)
+                )
+            )
+            stack.enter_context(
+                patch.object(
+                    migration,
+                    "load_proxy_plan",
+                    return_value=ProxyMigrationPlan(),
+                )
+            )
+            stack.enter_context(
+                patch.object(
+                    migration,
+                    "create_pre_migration_backup",
+                    side_effect=migration.MigrationError("backup failed"),
+                )
+            )
+            normalize_branches = stack.enter_context(
+                patch.object(migration, "normalize_branches")
+            )
+            apply_safe_plan_mock = stack.enter_context(
+                patch.object(migration, "apply_safe_plan")
+            )
+            apply_proxy_plan_mock = stack.enter_context(
+                patch.object(migration, "apply_proxy_plan")
+            )
+            with self.assertRaisesRegex(migration.MigrationError, "backup failed"):
+                migration.run()
+
+        normalize_branches.assert_not_called()
+        apply_safe_plan_mock.assert_not_called()
+        apply_proxy_plan_mock.assert_not_called()
+        bkn_connection.close.assert_called_once_with()
+        safe_connection.close.assert_called_once_with()
 
     @patch.object(migration, "run", side_effect=RuntimeError("database write failed"))
     def test_command_prints_the_complete_traceback_on_failure(self, run):

@@ -7,15 +7,21 @@
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import os
 import secrets
+import shlex
+import shutil
+import subprocess
 import sys
+import tempfile
 import traceback
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Iterable, Optional
 
 
@@ -25,6 +31,7 @@ NETWORK_BUILDER_ROLE_ID = "1572fb82-526f-11f0-bde6-e674ec8dde71"
 MIGRATION_GRANTOR_ID = "266c6a42-6131-4d62-8f39-853e7093701c"
 PUBLIC_ACCESSOR_ID = "00000000-0000-0000-0000-000000000000"
 PROXY_SOURCE_TYPE = "kn_proxy_binding"
+BACKUP_ROOT_ENV = "OPENBKN_MIGRATION_BACKUP_DIR"
 KN_CREATOR_OPERATIONS = (
     "view_detail",
     "modify",
@@ -80,6 +87,12 @@ class DBConfig:
     user: str
     password: str
     database: str
+
+
+@dataclass(frozen=True)
+class BackupResult:
+    path: Path
+    restore_commands: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -1500,23 +1513,358 @@ def verify_proxy_plan(
                 raise MigrationError(f"proxy mapping verification failed for {network.kn_id}")
 
 
-def database_config(prefix: str, default_name: str) -> DBConfig:
-    """Build one database configuration from environment variables."""
-    fallback_prefix = "BKN_DB" if prefix == "SAFE_DB" else prefix
+def first_environment_value(names: Iterable[str], default: str) -> str:
+    """Return the first explicitly defined environment value."""
+    for name in names:
+        if name in os.environ:
+            return os.environ[name]
+    return default
 
-    def setting(name: str, default: str) -> str:
-        return os.getenv(
-            f"{prefix}_{name}",
-            os.getenv(f"{fallback_prefix}_{name}", default),
+
+def password_from_environment(names: Iterable[str], default: str = "") -> str:
+    """Resolve a password without putting its value in command-line arguments."""
+    for name in names:
+        if name not in os.environ:
+            continue
+        if not name.endswith("_FILE"):
+            return os.environ[name]
+        password_path = Path(os.environ[name])
+        try:
+            return password_path.read_text(encoding="utf-8").rstrip("\r\n")
+        except OSError as error:
+            raise MigrationError(
+                f"cannot read database password file configured by {name}: "
+                f"{password_path}"
+            ) from error
+    return default
+
+
+def database_config(
+    prefix: str, default_name: str, fallback: Optional[DBConfig] = None
+) -> DBConfig:
+    """Build one database configuration from explicit or server environment values."""
+    if prefix == "SAFE_DB" and fallback is None:
+        fallback = database_config("BKN_DB", "openbkn")
+
+    if fallback is not None:
+        host = first_environment_value((f"{prefix}_HOST",), fallback.host)
+        port_text = first_environment_value((f"{prefix}_PORT",), str(fallback.port))
+        user = first_environment_value((f"{prefix}_USER",), fallback.user)
+        password = password_from_environment(
+            (f"{prefix}_PASSWORD", f"{prefix}_PASSWORD_FILE"),
+            fallback.password,
+        )
+    else:
+        host = first_environment_value(
+            (f"{prefix}_HOST", "MARIADB_HOST", "MARIADB_HOSTNAME"),
+            "127.0.0.1",
+        )
+        port_text = first_environment_value(
+            (f"{prefix}_PORT", "MARIADB_PORT_NUMBER", "MARIADB_PORT"),
+            "3306",
+        )
+        explicit_user = os.environ.get(f"{prefix}_USER")
+        mariadb_user = os.environ.get("MARIADB_USER")
+        mariadb_password_defined = any(
+            name in os.environ
+            for name in ("MARIADB_PASSWORD", "MARIADB_PASSWORD_FILE")
+        )
+        root_password_defined = any(
+            name in os.environ
+            for name in ("MARIADB_ROOT_PASSWORD", "MARIADB_ROOT_PASSWORD_FILE")
+        )
+        if explicit_user is not None:
+            user = explicit_user
+        elif root_password_defined:
+            user = "root"
+        elif mariadb_user is not None and mariadb_password_defined:
+            user = mariadb_user
+        else:
+            user = "root"
+
+        if user == mariadb_user and mariadb_password_defined:
+            standard_password_sources = (
+                "MARIADB_PASSWORD",
+                "MARIADB_PASSWORD_FILE",
+            )
+        elif user == "root":
+            standard_password_sources = (
+                "MARIADB_ROOT_PASSWORD",
+                "MARIADB_ROOT_PASSWORD_FILE",
+                "MARIADB_PASSWORD",
+                "MARIADB_PASSWORD_FILE",
+            )
+        else:
+            standard_password_sources = ()
+        password = password_from_environment(
+            (
+                f"{prefix}_PASSWORD",
+                f"{prefix}_PASSWORD_FILE",
+                *standard_password_sources,
+            )
         )
 
+    try:
+        port = int(port_text)
+    except ValueError as error:
+        raise MigrationError(
+            f"invalid database port for {prefix}: {port_text!r}"
+        ) from error
+    if port < 1 or port > 65535:
+        raise MigrationError(f"invalid database port for {prefix}: {port}")
+
+    database_names = (f"{prefix}_NAME",)
+    if fallback is None:
+        database_names += ("MARIADB_DATABASE",)
     return DBConfig(
-        host=setting("HOST", "localhost"),
-        port=int(setting("PORT", "3306")),
-        user=setting("USER", "root"),
-        password=setting("PASSWORD", ""),
-        database=os.getenv(f"{prefix}_NAME", default_name),
+        host=host,
+        port=port,
+        user=user,
+        password=password,
+        database=first_environment_value(database_names, default_name),
     )
+
+
+def database_configs() -> tuple[DBConfig, DBConfig]:
+    """Resolve BKN and bkn-safe connections from one server environment."""
+    bkn_config = database_config("BKN_DB", "openbkn")
+    safe_config = database_config("SAFE_DB", "safe", fallback=bkn_config)
+    return bkn_config, safe_config
+
+
+def find_dump_executable() -> str:
+    """Find a compatible logical-backup client."""
+    for name in ("mariadb-dump", "mysqldump"):
+        executable = shutil.which(name)
+        if executable:
+            return executable
+    raise MigrationError(
+        "database backup requires mariadb-dump or mysqldump in PATH"
+    )
+
+
+def redact_secrets(message: str, configs: Iterable[DBConfig]) -> str:
+    """Remove resolved passwords from an external command error."""
+    redacted = message
+    for config in configs:
+        if config.password:
+            redacted = redacted.replace(config.password, "<redacted>")
+    return redacted
+
+
+def sha256_file(path: Path) -> str:
+    """Calculate the SHA-256 checksum of a backup archive."""
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for block in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def validate_backup_archive(
+    path: Path,
+    role: str,
+    database: str,
+    expected_content_sha256: str,
+) -> None:
+    """Verify the complete gzip stream against its independently captured digest."""
+    has_content = False
+    content_digest = hashlib.sha256()
+    try:
+        with gzip.open(path, "rb") as backup_content:
+            for block in iter(lambda: backup_content.read(1024 * 1024), b""):
+                has_content = has_content or bool(block)
+                content_digest.update(block)
+    except (EOFError, OSError) as error:
+        raise MigrationError(
+            f"database backup is invalid for {role}/{database}"
+        ) from error
+    if not has_content:
+        raise MigrationError(f"database backup is empty for {role}/{database}")
+    if content_digest.hexdigest() != expected_content_sha256:
+        raise MigrationError(
+            f"database backup checksum verification failed for {role}/{database}"
+        )
+
+
+def backup_directory(root: Path, timestamp: str) -> Path:
+    """Create a new timestamped directory without overwriting an older backup."""
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        raise MigrationError(f"cannot create backup root: {root}") from error
+    for suffix in range(1000):
+        name = timestamp if suffix == 0 else f"{timestamp}-{suffix:02d}"
+        candidate = root / name
+        try:
+            candidate.mkdir(mode=0o700)
+            return candidate
+        except FileExistsError:
+            continue
+        except OSError as error:
+            raise MigrationError(
+                f"cannot create backup directory: {candidate}"
+            ) from error
+    raise MigrationError(f"cannot allocate a unique backup directory under {root}")
+
+
+def restore_command(config: DBConfig, archive: Path) -> str:
+    """Build a password-free restore command for operator guidance."""
+    return " ".join(
+        (
+            "gzip -dc",
+            shlex.quote(str(archive)),
+            "| mariadb",
+            f"--host={shlex.quote(config.host)}",
+            f"--port={config.port}",
+            f"--user={shlex.quote(config.user)}",
+        )
+    )
+
+
+def create_pre_migration_backup(
+    configs: dict[str, DBConfig],
+    backup_root: Optional[Path] = None,
+    now: Optional[datetime] = None,
+    dump_executable: Optional[str] = None,
+) -> BackupResult:
+    """Create verified logical backups before any migration write is attempted."""
+    if not configs:
+        raise MigrationError("no databases were configured for backup")
+    root = backup_root or Path(
+        os.getenv(BACKUP_ROOT_ENV, str(Path(__file__).resolve().parent / "backups"))
+    )
+    instant = now or datetime.now(timezone.utc)
+    timestamp = instant.astimezone(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    executable = dump_executable or find_dump_executable()
+    target = backup_directory(root, timestamp)
+    entries = []
+    restore_commands = []
+    created_files = []
+    try:
+        for role, config in configs.items():
+            archive = target / f"{role}.sql.gz"
+            created_files.append(archive)
+            command = [
+                executable,
+                f"--host={config.host}",
+                f"--port={config.port}",
+                f"--user={config.user}",
+                "--single-transaction",
+                "--routines",
+                "--events",
+                "--triggers",
+                "--hex-blob",
+                "--databases",
+                config.database,
+            ]
+            child_environment = os.environ.copy()
+            child_environment.pop("MYSQL_PWD", None)
+            if config.password:
+                child_environment["MYSQL_PWD"] = config.password
+            descriptor = os.open(
+                archive,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                0o600,
+            )
+            content_digest = hashlib.sha256()
+            with os.fdopen(descriptor, "wb") as raw_output:
+                with tempfile.TemporaryFile() as error_output:
+                    process = subprocess.Popen(
+                        command,
+                        stdout=subprocess.PIPE,
+                        stderr=error_output,
+                        env=child_environment,
+                    )
+                    if process.stdout is None:
+                        process.kill()
+                        process.wait()
+                        raise MigrationError(
+                            f"database backup output is unavailable for "
+                            f"{role}/{config.database}"
+                        )
+                    try:
+                        with process.stdout:
+                            with gzip.GzipFile(
+                                fileobj=raw_output, mode="wb"
+                            ) as output:
+                                for block in iter(
+                                    lambda: process.stdout.read(1024 * 1024), b""
+                                ):
+                                    content_digest.update(block)
+                                    output.write(block)
+                        return_code = process.wait()
+                    except Exception:
+                        try:
+                            process.kill()
+                        except OSError:
+                            pass
+                        process.wait()
+                        raise
+                    error_output.seek(0)
+                    error_detail = error_output.read()
+            if return_code != 0:
+                detail = error_detail.decode("utf-8", errors="replace").strip()
+                detail = redact_secrets(detail, configs.values())
+                raise MigrationError(
+                    f"database backup failed for {role}/{config.database}: "
+                    f"{detail or 'dump command returned a non-zero exit code'}"
+                )
+            validate_backup_archive(
+                archive,
+                role,
+                config.database,
+                content_digest.hexdigest(),
+            )
+            checksum = sha256_file(archive)
+            command_text = restore_command(config, archive)
+            restore_commands.append(command_text)
+            entries.append(
+                {
+                    "role": role,
+                    "database": config.database,
+                    "host": config.host,
+                    "port": config.port,
+                    "user": config.user,
+                    "archive": archive.name,
+                    "size_bytes": archive.stat().st_size,
+                    "sha256": checksum,
+                    "restore_command": command_text,
+                }
+            )
+
+        manifest = target / "manifest.json"
+        manifest_content = json.dumps(
+            {
+                "format_version": 1,
+                "created_at": instant.astimezone(timezone.utc).isoformat(),
+                "dump_utility": Path(executable).name,
+                "databases": entries,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        manifest_content += "\n"
+        descriptor = os.open(
+            manifest,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+            output.write(manifest_content)
+        return BackupResult(target, tuple(restore_commands))
+    except Exception:
+        for path in reversed(created_files):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        try:
+            (target / "manifest.json").unlink(missing_ok=True)
+            target.rmdir()
+        except OSError:
+            pass
+        raise
 
 
 def format_failures(failures: Iterable[Failure]) -> str:
@@ -1533,8 +1881,9 @@ def run() -> int:
     bkn_connection = None
     safe_connection = None
     try:
-        bkn_connection = connect_database(database_config("BKN_DB", "openbkn"))
-        safe_connection = connect_database(database_config("SAFE_DB", "safe"))
+        bkn_config, safe_config = database_configs()
+        bkn_connection = connect_database(bkn_config)
+        safe_connection = connect_database(safe_config)
         rows = load_resources(bkn_connection)
         creator_ids = [
             row.creator_id.strip()
@@ -1561,6 +1910,14 @@ def run() -> int:
             raise MigrationError(
                 "migration validation failed:\n" + format_failures(failures)
             )
+
+        backup = create_pre_migration_backup(
+            {"bkn": bkn_config, "safe": safe_config}
+        )
+        print(f"Pre-migration backup created: {backup.path}")
+        print("Set MYSQL_PWD from the same environment, then restore if needed:")
+        for command in backup.restore_commands:
+            print(f"  {command}")
 
         try:
             normalize_branches(bkn_connection, commit=False)
