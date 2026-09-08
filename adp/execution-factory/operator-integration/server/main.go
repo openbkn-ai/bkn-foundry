@@ -104,7 +104,7 @@ func (s *Server) Start() {
 
 // startCapabilityReconciler starts the periodic reconcile of Function tools and MCP tools.
 func (s *Server) startCapabilityReconciler() {
-	if !s.config.CapabilityIndexConfig.EnableReconciler || s.capabilityReconciler == nil {
+	if s.config.CapabilityIndexConfig.DisableReconciler || s.capabilityReconciler == nil {
 		s.config.Logger.Info("capability index reconciler is disabled")
 		return
 	}

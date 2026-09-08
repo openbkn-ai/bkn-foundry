@@ -22,10 +22,19 @@ import (
 const (
 	defaultSearchTopK = 10
 	maxSearchTopK     = 100
-	// maxSearchWhitelist bounds one request. OpenSearch accepts far more terms
-	// (index.max_terms_count defaults to 65536); this keeps a single query small enough to read
-	// in a log. Past this point the caller should resolve the whitelist server-side.
-	maxSearchWhitelist = 1000
+	// maxSearchWhitelist bounds one request, well inside the engine's own limit
+	// (index.max_terms_count defaults to 65536).
+	//
+	// It used to be 1000, chosen so one query stayed readable in a log. That was affordable while
+	// callers sent one tool box at a time; it is not now that the whitelist is everything a
+	// knowledge network mounted, because a network past the line loses search entirely rather than
+	// degrading. Readability is not worth an outage.
+	//
+	// Beyond this the request still fails rather than being trimmed. The whitelist is the scope:
+	// answering from an arbitrary slice of it would rank within a subset nobody chose and look
+	// like a complete answer. A network with more mounted capabilities than this is telling us
+	// something the retrieval face cannot fix on its own.
+	maxSearchWhitelist = 10000
 	// rrfK is the reciprocal-rank-fusion constant. 60 is the value the instance retrieval path
 	// uses, kept the same so the two fused rankings behave alike.
 	rrfK = 60
@@ -91,7 +100,8 @@ func (s *capabilitySearchService) SearchCapabilities(ctx context.Context,
 	}
 	if len(keys) > maxSearchWhitelist {
 		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest,
-			fmt.Sprintf("refs exceeds the maximum of %d entries", maxSearchWhitelist))
+			fmt.Sprintf("refs exceeds the maximum of %d entries; the whitelist is the scope and "+
+				"cannot be trimmed without answering from a subset nobody chose", maxSearchWhitelist))
 		return nil, err
 	}
 

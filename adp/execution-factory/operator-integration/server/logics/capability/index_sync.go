@@ -64,6 +64,11 @@ type capabilityIndexSync struct {
 	// cannot rebuild the index back and forth.
 	analyzer  string
 	retryOnce sync.Once
+	// initMu serialises Init. Three reconcilers call EnsureInitialized on their own goroutines,
+	// and the rebuild branch is a delete followed by a create: run twice at once, the second
+	// delete removes the dataset the first just created, and initialized flips back to false in
+	// between — which is when writes are dropped with a warning instead of landing.
+	initMu sync.Mutex
 }
 
 var (
@@ -98,6 +103,16 @@ func (s *capabilityIndexSync) EnsureInitialized(ctx context.Context) error {
 func (s *capabilityIndexSync) Init(ctx context.Context) (err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer func() { oteltrace.EndSpan(ctx, err) }()
+
+	s.initMu.Lock()
+	defer s.initMu.Unlock()
+
+	// A concurrent caller that already finished the work has nothing left to do here. Without this
+	// the second caller would re-run the whole comparison and, on a rebuild round, delete the
+	// dataset the first one just created.
+	if s.isInitialized() {
+		return nil
+	}
 
 	initialized := false
 	defer func() { s.setInitialized(initialized) }()

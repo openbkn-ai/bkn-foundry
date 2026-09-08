@@ -61,7 +61,12 @@ type Config struct {
 // just a freshness knob. Skills are not reconciled here — they are written at their own sync
 // point.
 type CapabilityIndexConfig struct {
-	EnableReconciler  bool   `yaml:"enable_reconciler" default:"true"`
+	// DisableReconciler turns the periodic passes off. It is phrased as a disable rather than an
+	// enable because defaults.Set runs after the YAML is unmarshalled and fills every zero value:
+	// with `default:"true"` an explicit `false` is the zero value and gets overwritten, so the
+	// switch could not be turned off at all. Every other boolean in this file defaults to false
+	// for the same reason.
+	DisableReconciler bool   `yaml:"disable_reconciler" default:"false"`
 	ReconcileInterval string `yaml:"reconcile_interval" default:"30m"`
 }
 

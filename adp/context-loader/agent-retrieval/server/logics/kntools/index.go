@@ -181,15 +181,24 @@ func (s *knToolsService) SearchTools(ctx context.Context, req *SearchToolsReq) (
 		})
 	}
 
+	// One more than the page, purely to learn whether there is a next one. The ranking caps its
+	// answer at top_k, so asking for exactly `limit` makes a full page and a truncated page look
+	// identical — the truncation flag could never fire, and a caller would read one page as the
+	// whole answer.
 	hits, err := s.operator.SearchCapabilities(ctx, &interfaces.SearchCapabilitiesRequest{
 		Query:         query,
 		Refs:          searchRefs,
-		TopK:          limit,
+		TopK:          limit + 1,
 		Types:         []string{interfaces.CapabilityTypeFunction, interfaces.CapabilityTypeMCPTool},
 		MetadataTypes: req.MetadataTypes,
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	more := len(hits) > limit
+	if more {
+		hits = hits[:limit]
 	}
 
 	matched := s.describeCapabilityHits(ctx, hits, limit)
@@ -218,9 +227,9 @@ func (s *knToolsService) SearchTools(ctx context.Context, req *SearchToolsReq) (
 		resp.Message = infraErr.LocalizedDetail(ctx, "NoToolsOfRequestedKind")
 	case len(matched) == 0:
 		resp.Message = infraErr.LocalizedDetail(ctx, "NoPublishedToolsMatched")
-	case total > limit:
-		// More matched than the page holds. This is the only case where narrowing the query is
-		// the right advice.
+	case more:
+		// The ranking had at least one more than this page. The only case where narrowing the
+		// query, or raising the limit, is the right advice.
 		resp.Truncated = true
 		resp.Message = infraErr.LocalizedDetail(ctx, "ToolSearchTruncated")
 	case len(matched) < fitted:

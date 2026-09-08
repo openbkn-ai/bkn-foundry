@@ -795,3 +795,56 @@ func TestEmptyAnswerNamesItsCause(t *testing.T) {
 		}
 	})
 }
+
+// TestTruncationIsDetectable covers a flag that had become unreachable.
+//
+// The ranking caps its answer at top_k. Asking for exactly `limit` makes a full page and a
+// truncated page identical, so truncated could never be true and a caller read one page as the
+// whole answer. One extra hit is requested purely to learn whether a next one exists.
+func TestTruncationIsDetectable(t *testing.T) {
+	t.Run("有下一页时报截断，且不把多要的那条返回给调用方", func(t *testing.T) {
+		hits := make([]interfaces.CapabilityHit, 0, 4)
+		for _, id := range []string{"t1", "t2", "t3", "t4"} {
+			hits = append(hits, hit("box-1", id))
+		}
+		op := &fakeOperator{
+			hits: hits,
+			toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{
+				"box-1": tools("box-1", "t1", "t2", "t3", "t4"),
+			},
+		}
+		svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs(
+			"box-1/t1", "box-1/t2", "box-1/t3", "box-1/t4")}, &fakeKnAuthz{})
+
+		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Limit: 3})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if !resp.Truncated {
+			t.Fatal("命中多于一页却没报截断，调用方会把一页当成全部")
+		}
+		if len(resp.Tools) != 3 {
+			t.Fatalf("多要的那条只用来探测，不该返回: %d 条", len(resp.Tools))
+		}
+		if op.gotTopK != 4 {
+			t.Fatalf("该向排序多要一条来探测下一页, got top_k=%d", op.gotTopK)
+		}
+	})
+
+	t.Run("正好一页不报截断", func(t *testing.T) {
+		op := &fakeOperator{
+			hits: []interfaces.CapabilityHit{hit("box-1", "t1")},
+			toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{
+				"box-1": tools("box-1", "t1"),
+			},
+		}
+		svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/t1")}, &fakeKnAuthz{})
+		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Limit: 3})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if resp.Truncated {
+			t.Fatal("没有下一页却报了截断，调用方会去缩一个本来就好用的 query")
+		}
+	})
+}

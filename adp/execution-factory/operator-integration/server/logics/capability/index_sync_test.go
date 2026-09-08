@@ -7,6 +7,7 @@ package capability
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -264,5 +265,46 @@ func TestRebuildReasonCatchesAnUnwritableDataset(t *testing.T) {
 			// against the analyzer the dataset already has, not against a freshly resolved one.
 			So(rebuildReason(&adopted, model, "ik_max_word"), ShouldEqual, "")
 		})
+	})
+}
+
+// TestInitIsSerialised covers what three reconcilers calling EnsureInitialized at once can do to a
+// rebuild.
+//
+// The rebuild branch deletes and then creates. Run twice concurrently, the second delete removes
+// the dataset the first just created, and initialized flips back to false in between — the window
+// in which every write is dropped with a warning instead of landing.
+func TestInitIsSerialised(t *testing.T) {
+	Convey("Init 并发进入只做一次", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		vega := mocks.NewMockVegaBackendClient(ctrl)
+		modelManager := mocks.NewMockMFModelManager(ctrl)
+
+		vega.EXPECT().GetCatalogByID(gomock.Any(), gomock.Any()).
+			Return(&interfaces.VegaCatalog{ID: executionFactoryCatalogID, Enabled: true}, nil).Times(1)
+		vega.EXPECT().GetResourceByID(gomock.Any(), capabilityDataset).Return(nil, nil).Times(1)
+		modelManager.EXPECT().GetDefaultEmbeddingModel(gomock.Any(), gomock.Any()).Return(
+			&interfaces.EmbeddingModel{ModelID: "m-1", ModelName: "embedding", EmbeddingDim: 8}, nil).Times(1)
+		// The dataset is created once, not once per caller.
+		vega.EXPECT().CreateResource(gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
+
+		s := &capabilityIndexSync{
+			vegaClient:   vega,
+			modelManager: modelManager,
+			logger:       logger.DefaultLogger(),
+		}
+
+		var wg sync.WaitGroup
+		for i := 0; i < 3; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_ = s.Init(context.Background())
+			}()
+		}
+		wg.Wait()
+		So(s.isInitialized(), ShouldBeTrue)
 	})
 }
