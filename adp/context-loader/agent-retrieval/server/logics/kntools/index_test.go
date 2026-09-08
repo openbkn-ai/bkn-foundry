@@ -795,7 +795,11 @@ func TestEmptyAnswerNamesItsCause(t *testing.T) {
 		}
 	})
 
-	t.Run("确实没有匹配", func(t *testing.T) {
+	t.Run("确实没有匹配：不能怪到调用方没传过的参数上", func(t *testing.T) {
+		// search_tools pins the kinds when it delegates. If that counted as a caller's filter,
+		// this answer would tell the caller to drop a types parameter it never set and cannot set.
+		// Asserting only that a message exists is what let the wrong branch through review: every
+		// branch satisfies it.
 		op := &fakeOperator{hits: nil}
 		svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/t1")}, &fakeKnAuthz{})
 		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "毫不相关"})
@@ -804,6 +808,29 @@ func TestEmptyAnswerNamesItsCause(t *testing.T) {
 		}
 		if resp.Message == "" {
 			t.Fatal("空结果总该给个说法")
+		}
+		if strings.Contains(resp.Message, "types") {
+			t.Fatalf("不该让调用方去改它传不了的参数: %q", resp.Message)
+		}
+	})
+
+	t.Run("只传了 metadata_types 时，提示不得连带点名 types", func(t *testing.T) {
+		// The branch fires correctly, but its text used to name both filters. search_tools sets
+		// types itself and exposes no input for it, so half of "drop these two parameters" is
+		// advice the caller cannot follow — the same defect one level down.
+		op := &fakeOperator{hits: nil}
+		svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/t1")}, &fakeKnAuthz{})
+		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{
+			KnID: "kn1", Query: "汇率", MetadataTypes: []string{"function"},
+		})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if !strings.Contains(resp.Message, "metadata_types") {
+			t.Fatalf("这次确实是调用方筛空的，该点名: %q", resp.Message)
+		}
+		if strings.Contains(resp.Message, "types /") || strings.Contains(resp.Message, "/ metadata_types") {
+			t.Fatalf("不该连带让调用方去掉它设不了的 types: %q", resp.Message)
 		}
 	})
 }
