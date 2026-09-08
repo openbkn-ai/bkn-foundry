@@ -170,6 +170,10 @@ type SearchCapabilitiesRequest struct {
 	// Types narrows the answer to certain capability types. It narrows within Refs and can never
 	// reach outside it; empty means every type in Refs.
 	Types []string `json:"types"`
+	// MetadataTypes narrows Function tools to certain tool box kinds ("openapi" or "function").
+	// The product shows four kinds where the bindings store three: an API tool is a Function
+	// binding whose box is an openapi box. Empty means both.
+	MetadataTypes []string `json:"metadata_types,omitempty"`
 }
 
 // CapabilityHit is one ranked capability.
@@ -178,10 +182,12 @@ type SearchCapabilitiesRequest struct {
 // whitelist filter alone when there was no query to rank against.
 type CapabilityHit struct {
 	SearchCapabilityRef
-	Name        string  `json:"name"`
-	Description string  `json:"description"`
-	MatchedBy   string  `json:"matched_by"`
-	Score       float64 `json:"score"`
+	// MetadataType is the tool box kind for a Function tool, empty for the other kinds.
+	MetadataType string  `json:"metadata_type,omitempty"`
+	Name         string  `json:"name"`
+	Description  string  `json:"description"`
+	MatchedBy    string  `json:"matched_by"`
+	Score        float64 `json:"score"`
 }
 
 // ==================== Published Function Tool Catalogue ====================

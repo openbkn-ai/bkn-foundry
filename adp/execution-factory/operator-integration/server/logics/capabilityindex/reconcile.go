@@ -55,6 +55,9 @@ type reconciler struct {
 	logger    interfaces.Logger
 	indexSync interfaces.CapabilityIndexSyncService
 	toolRepo  model.IToolDB
+	// boxRepo answers what kind of tool box a tool belongs to. The product splits Function tools
+	// into "API tools" and "functions" by that kind, and the tool row does not carry it.
+	boxRepo model.IToolboxDB
 	// running keeps two passes from overlapping: a pass reads every tool box, and a slow one must
 	// not have the next tick start a second walk on top of it.
 	running sync.Mutex
@@ -73,6 +76,7 @@ func NewReconciler() Reconciler {
 			logger:    conf.GetLogger(),
 			indexSync: capability.NewCapabilityIndexSyncService(),
 			toolRepo:  dbaccess.NewToolDB(),
+			boxRepo:   dbaccess.NewToolboxDB(),
 		}
 	})
 	return instance
@@ -127,6 +131,7 @@ func (r *reconciler) reconcileTools(ctx context.Context) error {
 		return err
 	}
 
+	kinds := r.boxKinds(ctx, boxIDs)
 	desired := make(map[interfaces.CapabilityRef]*interfaces.CapabilityDocument)
 	for _, boxID := range boxIDs {
 		boxID = strings.TrimSpace(boxID)
@@ -143,7 +148,7 @@ func (r *reconciler) reconcileTools(ctx context.Context) error {
 			if tool == nil || tool.IsDeleted {
 				continue
 			}
-			desired[toolRef(tool.BoxID, tool.ToolID)] = toolDocument(tool)
+			desired[toolRef(tool.BoxID, tool.ToolID)] = toolDocument(tool, kinds[tool.BoxID])
 		}
 	}
 	return r.apply(ctx, interfaces.CapabilityTypeFunction, desired, nil)
@@ -183,6 +188,7 @@ func (r *reconciler) SyncTools(ctx context.Context, boxID string, toolIDs []stri
 		return err
 	}
 
+	kind := r.boxKinds(ctx, []string{boxID})[boxID]
 	var errs []error
 	live := make(map[string]struct{}, len(tools))
 	for _, tool := range tools {
@@ -190,7 +196,7 @@ func (r *reconciler) SyncTools(ctx context.Context, boxID string, toolIDs []stri
 			continue
 		}
 		live[tool.ToolID] = struct{}{}
-		if err := r.indexSync.UpsertCapability(ctx, toolDocument(tool)); err != nil {
+		if err := r.indexSync.UpsertCapability(ctx, toolDocument(tool, kind)); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -221,12 +227,13 @@ func (r *reconciler) SyncBox(ctx context.Context, boxID string) error {
 	if err != nil {
 		return err
 	}
+	kind := r.boxKinds(ctx, []string{boxID})[boxID]
 	desired := make(map[interfaces.CapabilityRef]*interfaces.CapabilityDocument, len(tools))
 	for _, tool := range tools {
 		if tool == nil || tool.IsDeleted {
 			continue
 		}
-		desired[toolRef(tool.BoxID, tool.ToolID)] = toolDocument(tool)
+		desired[toolRef(tool.BoxID, tool.ToolID)] = toolDocument(tool, kind)
 	}
 
 	indexed, err := r.indexSync.ListIndexedByOwner(ctx, interfaces.CapabilityTypeFunction, boxID)
@@ -295,6 +302,28 @@ func (r *reconciler) ForgetBoxAsync(ctx context.Context, boxID string) {
 	}()
 }
 
+// boxKinds reads the tool box kind for the given boxes.
+//
+// A box that cannot be read yields no entry rather than a guess: writing the wrong kind would put
+// an API tool in the functions list and vice versa, and a blank is at least visibly missing.
+func (r *reconciler) boxKinds(ctx context.Context, boxIDs []string) map[string]string {
+	kinds := make(map[string]string, len(boxIDs))
+	if r.boxRepo == nil || len(boxIDs) == 0 {
+		return kinds
+	}
+	boxes, err := r.boxRepo.SelectListByBoxIDs(ctx, boxIDs)
+	if err != nil {
+		r.logger.WithContext(ctx).Warnf("read tool box kinds failed, boxes=%d, err=%v", len(boxIDs), err)
+		return kinds
+	}
+	for _, box := range boxes {
+		if box != nil {
+			kinds[box.BoxID] = box.MetadataType
+		}
+	}
+	return kinds
+}
+
 func toolRef(boxID, toolID string) interfaces.CapabilityRef {
 	return interfaces.CapabilityRef{
 		CapabilityType: interfaces.CapabilityTypeFunction,
@@ -303,9 +332,10 @@ func toolRef(boxID, toolID string) interfaces.CapabilityRef {
 	}
 }
 
-func toolDocument(tool *model.ToolDB) *interfaces.CapabilityDocument {
+func toolDocument(tool *model.ToolDB, metadataType string) *interfaces.CapabilityDocument {
 	return &interfaces.CapabilityDocument{
 		CapabilityRef: toolRef(tool.BoxID, tool.ToolID),
+		MetadataType:  metadataType,
 		Name:          tool.Name,
 		Description:   tool.Description,
 		CreateUser:    tool.CreateUser,
@@ -338,7 +368,10 @@ func (r *reconciler) apply(ctx context.Context, capabilityType string,
 		existing, ok := current[ref]
 		// Name and description are the whole embedding input, so an unchanged pair means an
 		// unchanged vector. Skipping those is what keeps a pass from re-embedding the platform.
-		if ok && existing.Name == doc.Name && existing.Description == doc.Description {
+		// The kind is compared too: it is not part of the vector, but a box converted between
+		// openapi and function would otherwise keep its old label forever.
+		if ok && existing.Name == doc.Name && existing.Description == doc.Description &&
+			existing.MetadataType == doc.MetadataType {
 			continue
 		}
 		if err := r.indexSync.UpsertCapability(ctx, doc); err != nil {

@@ -318,9 +318,19 @@ func TestToolboxIDNarrowsWithinTheMountedSet(t *testing.T) {
 	}
 }
 
-// TestUnreadableToolboxDropsItsHits covers the second half of the scope: a mounted tool the caller
-// cannot see is not listed, because execute_tool would refuse it anyway.
-func TestUnreadableToolboxDropsItsHits(t *testing.T) {
+// TestUnreadableToolboxKeepsItsHitsWithoutSchema covers what an unreadable tool box means.
+//
+// It used to mean "drop these hits", on the reading that a tool the caller cannot see should not be
+// listed. But an unreadable catalogue is not a denial — it is an unanswered question, and the two
+// were being treated the same. The visible consequence was a search that reported five matches and
+// returned nothing, blaming an unpublished tool box that was in fact published.
+//
+// Denial is still honoured where it can be observed: a box that answers, without this tool in it,
+// still drops it (see TestVisibleCatalogueStillFilters). What changes is the case where nothing can
+// be observed at all: the hit survives with the name and description the index holds, and without
+// an input schema, because none was read. execute_tool re-checks the caller-visible catalogue
+// before anything runs, so this discloses a name, not an ability.
+func TestUnreadableToolboxKeepsItsHitsWithoutSchema(t *testing.T) {
 	bkn := &fakeBkn{refs: functionRefs("box-1/t1", "box-2/t2")}
 	op := &fakeOperator{
 		hits: []interfaces.CapabilityHit{hit("box-1", "t1"), hit("box-2", "t2")},
@@ -335,8 +345,21 @@ func TestUnreadableToolboxDropsItsHits(t *testing.T) {
 	if err != nil {
 		t.Fatalf("one unreadable toolbox must not fail the search, got %v", err)
 	}
-	if len(resp.Tools) != 1 || resp.Tools[0].ToolboxID != "box-1" {
-		t.Fatalf("expected only the readable toolbox's tool, got %+v", resp.Tools)
+	if len(resp.Tools) != 2 {
+		t.Fatalf("读得到的和读不到的都该在，got %+v", resp.Tools)
+	}
+	byBox := map[string]ToolEntry{}
+	for _, e := range resp.Tools {
+		byBox[e.ToolboxID] = e
+	}
+	if byBox["box-1"].InputSchema == nil {
+		t.Fatal("目录读得到的工具应当带 input_schema")
+	}
+	if byBox["box-2"].InputSchema != nil {
+		t.Fatal("目录读不到时不该凭空造出 input_schema")
+	}
+	if byBox["box-2"].Name == "" {
+		t.Fatal("读不到目录时也该保留索引里的名称")
 	}
 }
 
@@ -655,5 +678,55 @@ func TestMCPTruncationCountsMatchesNotMounts(t *testing.T) {
 	}
 	if resp.Truncated {
 		t.Fatal("没有截断却报了截断，调用方会去缩小一个本来就好用的 query")
+	}
+}
+
+// TestUnreadableCatalogueKeepsTheHit covers the answer that used to contradict itself.
+//
+// The ranking found the tools, so total_matched said five — and the tool list came back empty with
+// "no tools matched; register your tool, publish its box and enable it", while the box was
+// published and its tools enabled. The real cause was that the caller-visible catalogue could not
+// be read at all, which is not the same as the caller being denied. An unreadable catalogue now
+// leaves the hit in place without an input schema.
+func TestUnreadableCatalogueKeepsTheHit(t *testing.T) {
+	op := &fakeOperator{
+		hits:     []interfaces.CapabilityHit{hit("box-1", "t1")},
+		toolsErr: map[string]error{"box-1": errors.New("caller token missing")},
+	}
+	svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/t1")}, &fakeKnAuthz{})
+
+	resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "汇率"})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.Tools) != 1 || resp.Tools[0].ToolID != "t1" {
+		t.Fatalf("命中不该因为读不到目录而消失，got %+v (message=%q)", resp.Tools, resp.Message)
+	}
+	if resp.Tools[0].InputSchema != nil {
+		t.Fatal("读不到目录时不该凭空造出 input_schema")
+	}
+	if resp.TotalMatched != len(resp.Tools) {
+		t.Fatalf("total 与返回条数不该互相矛盾: total=%d tools=%d", resp.TotalMatched, len(resp.Tools))
+	}
+}
+
+// TestVisibleCatalogueStillFilters keeps the second layer where it can actually be evaluated: a
+// readable catalogue that does not list the tool means the caller cannot see it, and advertising it
+// would promise something execute_tool refuses.
+func TestVisibleCatalogueStillFilters(t *testing.T) {
+	op := &fakeOperator{
+		hits: []interfaces.CapabilityHit{hit("box-1", "hidden")},
+		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{
+			"box-1": {ToolboxID: "box-1", Tools: []interfaces.PublishedToolSummary{{ToolID: "other"}}},
+		},
+	}
+	svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/hidden")}, &fakeKnAuthz{})
+
+	resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "汇率"})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.Tools) != 0 {
+		t.Fatalf("目录可读但工具不在其中，说明调用方看不到，不该返回: %+v", resp.Tools)
 	}
 }

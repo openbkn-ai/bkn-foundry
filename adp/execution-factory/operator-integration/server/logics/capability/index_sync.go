@@ -535,7 +535,8 @@ func (s *capabilityIndexSync) listIndexed(ctx context.Context,
 			FilterCondition: map[string]any{"operation": "and", "sub_conditions": conditions},
 			Paging:          &interfaces.VegaDataPaging{Mode: vegaPagingModeSingle, Limit: ownerScanBatch},
 			Sort:            []*interfaces.VegaDataSort{{Field: "capability_key", Direction: "asc"}},
-			OutputFields:    []string{"capability_type", "owner_id", "capability_id", "name", "description"},
+			OutputFields: []string{"capability_type", "owner_id", "capability_id",
+				"metadata_type", "name", "description"},
 		})
 		if err != nil {
 			return nil, fmt.Errorf("read indexed capabilities of type %s: %w", capabilityType, err)
@@ -555,6 +556,7 @@ func (s *capabilityIndexSync) listIndexed(ctx context.Context,
 			}
 			indexed = append(indexed, interfaces.IndexedCapability{
 				CapabilityRef: ref,
+				MetadataType:  stringField(entry, "metadata_type"),
 				Name:          stringField(entry, "name"),
 				Description:   stringField(entry, "description"),
 			})
@@ -596,6 +598,7 @@ func (s *capabilityIndexSync) buildDocument(ctx context.Context,
 		"owner_id":        strings.TrimSpace(ref.OwnerID),
 		"capability_id":   strings.TrimSpace(ref.CapabilityID),
 		"capability_key":  capabilityKey(ref),
+		"metadata_type":   doc.MetadataType,
 		"name":            doc.Name,
 		"description":     doc.Description,
 		"version":         doc.Version,

@@ -133,6 +133,7 @@ func buildCapabilityIndexSchema(dimension int, analyzer string) []interfaces.Veg
 		keywordProperty("capability_type", "能力类型：skill / function / mcp_tool"),
 		keywordProperty("owner_id", "能力归属：函数工具的工具箱、MCP 工具的服务端，Skill 为空"),
 		keywordProperty("capability_id", "能力在归属内的标识"),
+		keywordProperty("metadata_type", "函数工具的工具箱类型：openapi / function；Skill 与 MCP 工具为空"),
 		keywordProperty("capability_key", "三段式身份的复合键，白名单过滤的落点"),
 		searchableProperty("name", "能力名称", analyzer),
 		searchableProperty("description", "能力描述", analyzer),

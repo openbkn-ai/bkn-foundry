@@ -192,3 +192,85 @@ func TestSyncBoxScopesTheIndexRead(t *testing.T) {
 		So(newReconciler(toolRepo, index).SyncBox(context.Background(), "box-1"), ShouldBeNil)
 	})
 }
+
+// TestToolCarriesItsBoxKind covers the field that lets retrieval express the product's four kinds.
+//
+// A tool row does not say what kind of box it lives in, and the split the UI shows — API tools
+// versus functions — is exactly that. Without it on the document, retrieval can only offer three
+// kinds where every list in the product offers four.
+func TestToolCarriesItsBoxKind(t *testing.T) {
+	Convey("函数工具带上所属工具箱的类型", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		toolRepo := mocks.NewMockIToolDB(ctrl)
+		toolRepo.EXPECT().SelectToolBoxIDsByFilter(gomock.Any(), gomock.Any()).
+			Return([]string{"box-api", "box-fn"}, nil)
+		toolRepo.EXPECT().SelectToolByBoxID(gomock.Any(), "box-api").
+			Return([]*model.ToolDB{tool("box-api", "t-api", "汇率换算", "描述")}, nil)
+		toolRepo.EXPECT().SelectToolByBoxID(gomock.Any(), "box-fn").
+			Return([]*model.ToolDB{tool("box-fn", "t-fn", "库存计算", "描述")}, nil)
+
+		boxRepo := mocks.NewMockIToolboxDB(ctrl)
+		boxRepo.EXPECT().SelectListByBoxIDs(gomock.Any(), []string{"box-api", "box-fn"}).
+			Return([]*model.ToolboxDB{
+				{BoxID: "box-api", MetadataType: "openapi"},
+				{BoxID: "box-fn", MetadataType: "function"},
+			}, nil)
+
+		index := mocks.NewMockCapabilityIndexSyncService(ctrl)
+		index.EXPECT().ListIndexed(gomock.Any(), interfaces.CapabilityTypeFunction).
+			Return(nil, nil)
+		written := map[string]string{}
+		index.EXPECT().UpsertCapability(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, doc *interfaces.CapabilityDocument) error {
+				written[doc.CapabilityID] = doc.MetadataType
+				return nil
+			}).Times(2)
+
+		r := newReconciler(toolRepo, index)
+		r.boxRepo = boxRepo
+		So(r.reconcileTools(context.Background()), ShouldBeNil)
+
+		So(written["t-api"], ShouldEqual, "openapi")
+		So(written["t-fn"], ShouldEqual, "function")
+	})
+}
+
+// TestBoxKindChangeIsRewritten keeps a converted tool box from carrying its old label forever. The
+// kind is not part of the embedding, so the "name and description are unchanged" shortcut would
+// otherwise skip it.
+func TestBoxKindChangeIsRewritten(t *testing.T) {
+	Convey("工具箱类型变了要重写文档", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		toolRepo := mocks.NewMockIToolDB(ctrl)
+		toolRepo.EXPECT().SelectToolBoxIDsByFilter(gomock.Any(), gomock.Any()).Return([]string{"box-1"}, nil)
+		toolRepo.EXPECT().SelectToolByBoxID(gomock.Any(), "box-1").
+			Return([]*model.ToolDB{tool("box-1", "t-1", "汇率换算", "描述")}, nil)
+
+		boxRepo := mocks.NewMockIToolboxDB(ctrl)
+		boxRepo.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).
+			Return([]*model.ToolboxDB{{BoxID: "box-1", MetadataType: "openapi"}}, nil)
+
+		index := mocks.NewMockCapabilityIndexSyncService(ctrl)
+		// Same name and description, older kind.
+		index.EXPECT().ListIndexed(gomock.Any(), interfaces.CapabilityTypeFunction).Return(
+			[]interfaces.IndexedCapability{{
+				CapabilityRef: toolRef("box-1", "t-1"),
+				MetadataType:  "function",
+				Name:          "汇率换算",
+				Description:   "描述",
+			}}, nil)
+		index.EXPECT().UpsertCapability(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, doc *interfaces.CapabilityDocument) error {
+				So(doc.MetadataType, ShouldEqual, "openapi")
+				return nil
+			}).Times(1)
+
+		r := newReconciler(toolRepo, index)
+		r.boxRepo = boxRepo
+		So(r.reconcileTools(context.Background()), ShouldBeNil)
+	})
+}

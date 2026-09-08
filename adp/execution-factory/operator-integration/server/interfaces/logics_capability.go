@@ -46,14 +46,19 @@ type CapabilityRef struct {
 // rather than given a per-kind schema: one schema is the declaration of what a capability has.
 type CapabilityDocument struct {
 	CapabilityRef
-	Name        string
-	Description string
-	Version     string
-	Category    string
-	CreateUser  string
-	CreateTime  int64
-	UpdateUser  string
-	UpdateTime  int64
+	// MetadataType is the tool box's kind for a Function tool — "openapi" or "function" — and is
+	// empty for the other two. It exists because the product shows four kinds where the bindings
+	// store three: an API tool is a function binding whose box is an openapi box, and without this
+	// field retrieval cannot express the split that every list in the UI shows.
+	MetadataType string
+	Name         string
+	Description  string
+	Version      string
+	Category     string
+	CreateUser   string
+	CreateTime   int64
+	UpdateUser   string
+	UpdateTime   int64
 }
 
 // SearchCapabilitiesReq asks for the capabilities in Refs that best answer Query.
@@ -64,6 +69,15 @@ type SearchCapabilitiesReq struct {
 	// Types optionally narrows the result to certain capability types. Empty means all three.
 	// It narrows within Refs and can never reach outside it.
 	Types []string `json:"types"`
+	// MetadataTypes optionally narrows Function tools to certain tool box kinds ("openapi" or
+	// "function"). It is a second filter rather than more values in Types, because "function" in
+	// Types means every Function binding: redefining it to mean function-box-only would silently
+	// drop every API tool from callers that ask for tools today.
+	//
+	// The product's four kinds are therefore addressed as the bindings address them — API tools
+	// are Types=["function"] with MetadataTypes=["openapi"] — which is the same mapping the
+	// capability binding list already applies.
+	MetadataTypes []string `json:"metadata_types"`
 }
 
 // SearchCapabilitiesResp is one page of ranked capabilities.
@@ -74,10 +88,11 @@ type SearchCapabilitiesResp struct {
 // CapabilityHit is one ranked capability.
 type CapabilityHit struct {
 	CapabilityRef
-	Name        string  `json:"name"`
-	Description string  `json:"description"`
-	MatchedBy   string  `json:"matched_by"`
-	Score       float64 `json:"score"`
+	MetadataType string  `json:"metadata_type,omitempty"`
+	Name         string  `json:"name"`
+	Description  string  `json:"description"`
+	MatchedBy    string  `json:"matched_by"`
+	Score        float64 `json:"score"`
 }
 
 // IndexedCapability is what the index already holds for one capability, without its vector.
@@ -87,8 +102,9 @@ type CapabilityHit struct {
 // vectorised again.
 type IndexedCapability struct {
 	CapabilityRef
-	Name        string
-	Description string
+	MetadataType string
+	Name         string
+	Description  string
 }
 
 // CapabilityIndexSyncService keeps the capability index in step with the execution factory's own

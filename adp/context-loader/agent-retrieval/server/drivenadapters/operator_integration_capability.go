@@ -42,6 +42,9 @@ func (o *operatorIntegrationClient) SearchCapabilities(ctx context.Context,
 	if len(req.Types) > 0 {
 		payload["types"] = req.Types
 	}
+	if len(req.MetadataTypes) > 0 {
+		payload["metadata_types"] = req.MetadataTypes
+	}
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#SearchCapabilities] URL: %s, whitelist=%d, types=%v",
 		fullURL, len(req.Refs), req.Types)
 

@@ -360,3 +360,86 @@ func TestSchemaAnalyzerIsReadBack(t *testing.T) {
 		})
 	})
 }
+
+// TestMetadataTypeNarrowsFunctionTools covers the product's four-kind split.
+//
+// The bindings store three capability types; the UI shows four, because a Function binding whose
+// tool box is an openapi box is presented as an API tool. Retrieval has to be able to say that,
+// and it says it with a second filter rather than a fourth value in Types: "function" in Types
+// means every Function binding, and redefining it to mean function-box-only would silently drop
+// every API tool from callers that ask for tools today.
+func TestMetadataTypeNarrowsFunctionTools(t *testing.T) {
+	Convey("按工具箱类型收窄函数工具", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		vega := mocks.NewMockVegaBackendClient(ctrl)
+		modelAPI := mocks.NewMockMFModelAPIClient(ctrl)
+		embeddingOnce(modelAPI)
+
+		conditions := make(chan map[string]any, 2)
+		vega.EXPECT().QueryDatasetData(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ string, params *interfaces.VegaDataQueryParams) (*interfaces.VegaDataQueryResp, error) {
+				conditions <- params.FilterCondition
+				return &interfaces.VegaDataQueryResp{Entries: []map[string]any{}}, nil
+			}).Times(2)
+
+		_, err := newSearch(vega, modelAPI).SearchCapabilities(context.Background(), &interfaces.SearchCapabilitiesReq{
+			Query:         "汇率",
+			Refs:          []interfaces.CapabilityRef{functionRef("box-1", "tool-1")},
+			Types:         []string{interfaces.CapabilityTypeFunction},
+			MetadataTypes: []string{"openapi", "openapi", " "},
+		})
+		So(err, ShouldBeNil)
+		close(conditions)
+
+		for cond := range conditions {
+			// The kind filter rides inside whichever channel it is: for knn it sits in the
+			// sub_conditions, for the lexical channel in the outer and.
+			var scope map[string]any
+			if cond["operation"] == "knn_vector" {
+				subs, ok := cond["sub_conditions"].([]map[string]any)
+				So(ok, ShouldBeTrue)
+				scope = subs[0]
+			} else {
+				subs, ok := cond["sub_conditions"].([]map[string]any)
+				So(ok, ShouldBeTrue)
+				scope = subs[0]
+			}
+			So(scope["operation"], ShouldEqual, "and")
+			pair, ok := scope["sub_conditions"].([]map[string]any)
+			So(ok, ShouldBeTrue)
+			So(len(pair), ShouldEqual, 2)
+			So(pair[0]["field"], ShouldEqual, "capability_key")
+			So(pair[1]["field"], ShouldEqual, "metadata_type")
+			// Blanks and duplicates never reach the engine.
+			So(pair[1]["value"], ShouldResemble, []string{"openapi"})
+		}
+	})
+}
+
+// TestNoMetadataTypeLeavesTheScopeAlone keeps the whitelist a single readable terms filter when no
+// kind was asked for. A caller asking for tools must still get API tools.
+func TestNoMetadataTypeLeavesTheScopeAlone(t *testing.T) {
+	Convey("不传工具箱类型时白名单保持单一 terms", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		vega := mocks.NewMockVegaBackendClient(ctrl)
+		modelAPI := mocks.NewMockMFModelAPIClient(ctrl)
+		modelAPI.EXPECT().Embeddings(gomock.Any(), gomock.Any()).Times(0)
+
+		vega.EXPECT().QueryDatasetData(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ string, params *interfaces.VegaDataQueryParams) (*interfaces.VegaDataQueryResp, error) {
+				So(params.FilterCondition["field"], ShouldEqual, "capability_key")
+				return &interfaces.VegaDataQueryResp{Entries: nil}, nil
+			}).Times(1)
+
+		_, err := newSearch(vega, modelAPI).SearchCapabilities(context.Background(),
+			&interfaces.SearchCapabilitiesReq{
+				Refs:  []interfaces.CapabilityRef{functionRef("box-1", "tool-1")},
+				Types: []string{interfaces.CapabilityTypeFunction},
+			})
+		So(err, ShouldBeNil)
+	})
+}

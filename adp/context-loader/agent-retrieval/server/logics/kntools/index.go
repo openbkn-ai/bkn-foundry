@@ -43,7 +43,11 @@ type SearchToolsReq struct {
 	KnID      string `json:"kn_id"`
 	Query     string `json:"query"`      // Optional. Ranks the mounted tools by name and description.
 	ToolboxID string `json:"toolbox_id"` // Optional. Restricts the search to one toolbox's mounted tools.
-	Limit     int    `json:"limit"`      // Optional. Caps returned tools, default 20, max 100.
+	// MetadataTypes optionally restricts Function tools to certain tool box kinds: "openapi" for
+	// API tools, "function" for functions. Empty means both, plus MCP tools. It exists because the
+	// product presents four kinds where the bindings store three.
+	MetadataTypes []string `json:"metadata_types,omitempty"`
+	Limit         int      `json:"limit"` // Optional. Caps returned tools, default 20, max 100.
 }
 
 // ToolEntry is one callable published Function tool.
@@ -83,6 +87,7 @@ type KnToolsService interface {
 }
 
 type knToolsService struct {
+	logger     interfaces.Logger
 	operator   interfaces.DrivenOperatorIntegration
 	bknBackend interfaces.BknBackendAccess
 	knAuthz    interfaces.KnowledgeNetworkAuthorizer
@@ -98,6 +103,7 @@ func NewKnToolsService() KnToolsService {
 	once.Do(func() {
 		conf := config.NewConfigLoader()
 		service = &knToolsService{
+			logger:     conf.GetLogger(),
 			operator:   drivenadapters.NewOperatorIntegrationClient(),
 			bknBackend: drivenadapters.NewBknBackendAccess(),
 			knAuthz:    permission.NewKnowledgeNetworkAuthorizer(conf),
@@ -111,6 +117,16 @@ func NewKnToolsServiceWith(operator interfaces.DrivenOperatorIntegration,
 	bknBackend interfaces.BknBackendAccess,
 	knAuthz interfaces.KnowledgeNetworkAuthorizer) KnToolsService {
 	return &knToolsService{operator: operator, bknBackend: bknBackend, knAuthz: knAuthz}
+}
+
+// warnf logs when a logger is configured. A service built without one — tests, and any other
+// construction path — must still be able to search; a missing logger is not a reason to panic in
+// the middle of answering.
+func (s *knToolsService) warnf(ctx context.Context, format string, args ...any) {
+	if s.logger == nil {
+		return
+	}
+	s.logger.WithContext(ctx).Warnf(format, args...)
 }
 
 // SearchTools returns the Function tools this knowledge network has mounted, ranked against a
@@ -166,10 +182,11 @@ func (s *knToolsService) SearchTools(ctx context.Context, req *SearchToolsReq) (
 	}
 
 	hits, err := s.operator.SearchCapabilities(ctx, &interfaces.SearchCapabilitiesRequest{
-		Query: query,
-		Refs:  searchRefs,
-		TopK:  limit,
-		Types: []string{interfaces.CapabilityTypeFunction, interfaces.CapabilityTypeMCPTool},
+		Query:         query,
+		Refs:          searchRefs,
+		TopK:          limit,
+		Types:         []string{interfaces.CapabilityTypeFunction, interfaces.CapabilityTypeMCPTool},
+		MetadataTypes: req.MetadataTypes,
 	})
 	if err != nil {
 		return nil, err
@@ -287,9 +304,18 @@ type mcpRef struct {
 // the answer per kind would put them back into two blocks. Each hit is enriched from the surface
 // that owns it — a toolbox tool from the caller-visible tools listing, an MCP tool from the proxy.
 //
-// The caller-visible listing is also the second half of the scope: a tool the network mounted but
-// this caller cannot see is absent from it and is dropped here. Listing it would advertise
-// something execute_tool would then refuse.
+// That listing is also the second half of the scope, and it is applied where it can be: a tool the
+// network mounted but this caller cannot see is absent from it and is dropped, because listing it
+// would advertise something execute_tool would then refuse.
+//
+// Where it cannot be applied at all — the listing is read with the caller's own bearer token, and
+// the internal face never carries one — the hit is kept with the name and description the index
+// already holds, without an input schema. Dropping it instead is what this used to do, and it
+// answered a working query with "no tools matched; publish your tool box first" while the tool box
+// was published and the ranking had found five of its tools. The name of a mounted capability is
+// not the secret here: the caller is already authorized on the network, the whitelist already
+// narrowed to what the network mounted, and execute_tool re-checks the caller-visible catalogue
+// before anything runs.
 func (s *knToolsService) describeCapabilityHits(ctx context.Context,
 	hits []interfaces.CapabilityHit, limit int) []ToolEntry {
 	if len(hits) == 0 {
@@ -323,7 +349,10 @@ func (s *knToolsService) describeCapabilityHits(ctx context.Context,
 			listed, err := s.operator.ListPublishedTools(ctx,
 				&interfaces.ListPublishedToolsRequest{ToolboxID: boxID})
 			if err != nil || listed == nil {
-				// One toolbox the caller cannot read must not take down discovery of the rest.
+				// Leave this box's slot nil: unreadable, which is not the same as empty. Logged
+				// because a silent drop here is indistinguishable from "the box has no tools",
+				// and the two want opposite fixes.
+				s.warnf(ctx, "[SearchTools] published tool catalogue unreadable, box_id=%s: %v", boxID, err)
 				return
 			}
 			byID := make(map[string]interfaces.PublishedToolSummary, len(listed.Tools))
@@ -347,12 +376,23 @@ func (s *knToolsService) describeCapabilityHits(ctx context.Context,
 		}
 		switch hit.CapabilityType {
 		case interfaces.CapabilityTypeFunction:
+			// A readable box with no tools is a non-nil empty map; nil means the catalogue could
+			// not be read at all. The two want opposite answers, so the distinction is the value,
+			// not the presence of the key.
 			tools := byBox[hit.OwnerID]
 			if tools == nil {
+				// The catalogue could not be read, so visibility is unknown rather than denied.
+				entries = append(entries, ToolEntry{
+					ToolID:      hit.CapabilityID,
+					ToolboxID:   hit.OwnerID,
+					Name:        hit.Name,
+					Description: hit.Description,
+				})
 				continue
 			}
 			tool, ok := tools[hit.CapabilityID]
 			if !ok {
+				// The catalogue was read and this tool is not in it: the caller cannot see it.
 				continue
 			}
 			// toolbox_name stays empty: the caller-visible tools listing does not carry it, and
@@ -371,8 +411,17 @@ func (s *knToolsService) describeCapabilityHits(ctx context.Context,
 				McpID: hit.OwnerID, ToolName: hit.CapabilityID,
 			})
 			if err != nil || detail == nil {
-				// One unreachable MCP Server must not take down discovery of everything else, the
-				// same way one unreadable tool box does not.
+				// An unreachable MCP Server is not an empty one. Keep what the index knows so a
+				// server that is briefly down does not make a network's mounted tools vanish from
+				// search; the input schema is simply absent until it answers again.
+				s.warnf(ctx, "[SearchTools] MCP tool detail unavailable, mcp_id=%s, tool=%s: %v",
+					hit.OwnerID, hit.CapabilityID, err)
+				entries = append(entries, ToolEntry{
+					ToolID:      hit.CapabilityID,
+					ToolboxID:   hit.OwnerID,
+					Name:        hit.Name,
+					Description: hit.Description,
+				})
 				continue
 			}
 			entries = append(entries, ToolEntry{

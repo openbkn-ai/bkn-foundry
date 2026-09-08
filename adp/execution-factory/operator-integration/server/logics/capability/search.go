@@ -109,6 +109,17 @@ func (s *capabilitySearchService) SearchCapabilities(ctx context.Context,
 		"value":      keys,
 		"value_from": "const",
 	}
+	// The tool box kind narrows Function tools further. It is ANDed with the whitelist rather than
+	// folded into it: the whitelist is the scope and must stay one readable terms filter.
+	if kinds := normalizeStrings(req.MetadataTypes); len(kinds) > 0 {
+		whitelist = map[string]any{
+			"operation": "and",
+			"sub_conditions": []map[string]any{
+				whitelist,
+				{"field": "metadata_type", "operation": "in", "value": kinds, "value_from": "const"},
+			},
+		}
+	}
 
 	query := strings.TrimSpace(req.Query)
 	if query == "" {
@@ -305,8 +316,9 @@ func (s *capabilitySearchService) fetch(ctx context.Context, condition map[strin
 		FilterCondition: condition,
 		// Vega accepts only "single" or "cursor" here. A whitelist-scoped top_k has no second
 		// page to walk.
-		Paging:       &interfaces.VegaDataPaging{Mode: vegaPagingModeSingle, Limit: topK},
-		OutputFields: []string{"capability_type", "owner_id", "capability_id", "name", "description"},
+		Paging: &interfaces.VegaDataPaging{Mode: vegaPagingModeSingle, Limit: topK},
+		OutputFields: []string{"capability_type", "owner_id", "capability_id",
+			"metadata_type", "name", "description"},
 	})
 	if err != nil {
 		return nil, err
@@ -351,6 +363,24 @@ func whitelistKeys(refs []interfaces.CapabilityRef, types []string) []string {
 	return keys
 }
 
+// normalizeStrings trims, drops blanks and de-duplicates, preserving order.
+func normalizeStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, dup := seen[value]; dup {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
 func toHit(entry map[string]any, matchedBy string) *interfaces.CapabilityHit {
 	ref := interfaces.CapabilityRef{
 		CapabilityType: stringField(entry, "capability_type"),
@@ -362,6 +392,7 @@ func toHit(entry map[string]any, matchedBy string) *interfaces.CapabilityHit {
 	}
 	return &interfaces.CapabilityHit{
 		CapabilityRef: ref,
+		MetadataType:  stringField(entry, "metadata_type"),
 		Name:          stringField(entry, "name"),
 		Description:   stringField(entry, "description"),
 		MatchedBy:     matchedBy,
