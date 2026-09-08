@@ -623,7 +623,7 @@ func (suts *semanticUnderstandingTaskService) attachUnmaskedSampleRows(ctx conte
 	input.SampleRows = []map[string]any{}
 	if result != nil && result.Entries != nil {
 		var truncated bool
-		input.SampleRows, truncated, err = limitSemanticUnderstandingSampleRows(result.Entries)
+		input.SampleRows, truncated, err = limitSemanticUnderstandingSampleRows(result.Entries, resource.SchemaDefinition)
 		if err != nil {
 			return fmt.Errorf("limit sample rows: %w", err)
 		}
@@ -642,7 +642,8 @@ func (suts *semanticUnderstandingTaskService) attachUnmaskedSampleRows(ctx conte
 // limitSemanticUnderstandingSampleRows keeps sample data useful for semantic
 // inference without allowing large text or binary values to exhaust the task
 // input or agent context. It never mutates connector query results.
-func limitSemanticUnderstandingSampleRows(rows []map[string]any) ([]map[string]any, bool, error) {
+func limitSemanticUnderstandingSampleRows(rows []map[string]any, schema []*interfaces.Property) ([]map[string]any, bool, error) {
+	binaryFields := semanticUnderstandingBinarySampleFields(schema)
 	limited := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
 		if len(limited) >= interfaces.MaxSemanticUnderstandingSampleRows {
@@ -650,6 +651,9 @@ func limitSemanticUnderstandingSampleRows(rows []map[string]any) ([]map[string]a
 		}
 		limitedRow := make(map[string]any, len(row))
 		for key, value := range row {
+			if binaryFields[key] || isSemanticUnderstandingBinarySampleValue(value) {
+				continue
+			}
 			limitedRow[key] = limitSemanticUnderstandingSampleValue(value)
 		}
 
@@ -666,27 +670,47 @@ func limitSemanticUnderstandingSampleRows(rows []map[string]any) ([]map[string]a
 	return limited, false, nil
 }
 
+func isSemanticUnderstandingBinarySampleValue(value any) bool {
+	_, ok := value.([]byte)
+	return ok
+}
+
+func semanticUnderstandingBinarySampleFields(schema []*interfaces.Property) map[string]bool {
+	binaryFields := make(map[string]bool)
+	for _, property := range schema {
+		if property == nil || property.Type != interfaces.DataType_Binary {
+			continue
+		}
+		if property.Name != "" {
+			binaryFields[property.Name] = true
+		}
+		if property.OriginalName != "" {
+			binaryFields[property.OriginalName] = true
+		}
+	}
+	return binaryFields
+}
+
 func limitSemanticUnderstandingSampleValue(value any) any {
 	switch typedValue := value.(type) {
 	case string:
-		// Table connectors convert []byte values to string before returning rows.
-		// Invalid UTF-8 therefore represents binary data in the actual query path.
-		if !utf8.ValidString(typedValue) {
-			return semanticUnderstandingBinarySampleValue(len(typedValue))
-		}
 		return truncateSemanticUnderstandingSampleString(typedValue)
-	case []byte:
-		return semanticUnderstandingBinarySampleValue(len(typedValue))
 	case map[string]any:
 		limited := make(map[string]any, len(typedValue))
 		for key, nestedValue := range typedValue {
+			if isSemanticUnderstandingBinarySampleValue(nestedValue) {
+				continue
+			}
 			limited[key] = limitSemanticUnderstandingSampleValue(nestedValue)
 		}
 		return limited
 	case []any:
-		limited := make([]any, len(typedValue))
-		for index, nestedValue := range typedValue {
-			limited[index] = limitSemanticUnderstandingSampleValue(nestedValue)
+		limited := make([]any, 0, len(typedValue))
+		for _, nestedValue := range typedValue {
+			if isSemanticUnderstandingBinarySampleValue(nestedValue) {
+				continue
+			}
+			limited = append(limited, limitSemanticUnderstandingSampleValue(nestedValue))
 		}
 		return limited
 	default:
@@ -706,10 +730,6 @@ func truncateSemanticUnderstandingSampleString(value string) string {
 		runeCount++
 	}
 	return value
-}
-
-func semanticUnderstandingBinarySampleValue(length int) string {
-	return fmt.Sprintf("[binary content omitted; original length: %d bytes]", length)
 }
 
 func normalizeCatalogSemanticUnderstandingRequest(catalog *interfaces.Catalog, resources []*interfaces.Resource, req *interfaces.CreateSemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, error) {
