@@ -25,6 +25,7 @@ import (
 	"ontology-query/interfaces"
 	"ontology-query/locale"
 	"ontology-query/logics"
+	permissionlogic "ontology-query/logics/permission"
 )
 
 var (
@@ -33,22 +34,24 @@ var (
 )
 
 type metricQueryService struct {
-	appSetting *common.AppSetting
-	oma        interfaces.OntologyManagerAccess
-	mfa        interfaces.ModelFactoryAccess
-	vba        interfaces.VegaBackendAccess
-	proxy      interfaces.ProxyContextResolver
+	appSetting     *common.AppSetting
+	oma            interfaces.OntologyManagerAccess
+	mfa            interfaces.ModelFactoryAccess
+	vba            interfaces.VegaBackendAccess
+	proxy          interfaces.ProxyContextResolver
+	propertyAccess interfaces.PropertyAccessService
 }
 
 // NewMetricQueryService constructs the metric query service (same pattern as NewObjectTypeService / bkn-backend NewMetricService).
 func NewMetricQueryService(appSetting *common.AppSetting) interfaces.MetricQueryService {
 	metricQueryServiceOnce.Do(func() {
 		metricQueryServiceInst = &metricQueryService{
-			appSetting: appSetting,
-			oma:        logics.OMA,
-			mfa:        logics.MFA,
-			vba:        logics.VBA,
-			proxy:      logics.PCR,
+			appSetting:     appSetting,
+			oma:            logics.OMA,
+			mfa:            logics.MFA,
+			vba:            logics.VBA,
+			proxy:          logics.PCR,
+			propertyAccess: permissionlogic.NewPropertyAccessService(appSetting),
 		}
 	})
 	return metricQueryServiceInst
@@ -528,7 +531,7 @@ func getProportionTotalEntries(ctx context.Context, entries []map[string]any) (f
 		f, err := common.AnyToFloat64(v)
 		if err != nil {
 			return 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
-				WithErrorDetails(err.Error())
+				WithErrorDetails("metric aggregate value has an invalid type")
 		}
 		total += f
 	}
@@ -544,7 +547,7 @@ func appendMetricValue(ctx context.Context, v any, values *[]any) (float64, erro
 	f, err := common.AnyToFloat64(v)
 	if err != nil {
 		return 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
-			WithErrorDetails(err.Error())
+			WithErrorDetails("metric aggregate value has an invalid type")
 	}
 	*values = append(*values, f)
 	return f, nil
@@ -569,13 +572,13 @@ func entryTimeToMillis(v any, calendarStep *string) (int64, error) {
 		}
 		t, err := time.ParseInLocation(time.RFC3339, s, loc)
 		if err != nil {
-			return 0, err
+			return 0, fmt.Errorf("time field has an invalid format")
 		}
 		return t.UnixMilli(), nil
 	}
 	f, err := common.AnyToFloat64(v)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("time field has an invalid type")
 	}
 	return int64(f), nil
 }
@@ -744,8 +747,13 @@ func (s *metricQueryService) executeMetric(ctx context.Context, knID string, bra
 	if !ok {
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_Metric_ObjectTypeNotFound)
 	}
+	ot.KNID = knID
+	ot.Branch = branch
 	if ot.DataSource == nil || ot.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE || ot.DataSource.ID == "" {
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidDataSource)
+	}
+	if err := s.requireFullMetricInputs(ctx, ot, def, metricQuery); err != nil {
+		return interfaces.MetricData{}, err
 	}
 	if s.proxy == nil {
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
@@ -780,13 +788,13 @@ func (s *metricQueryService) executeMetric(ctx context.Context, knID string, bra
 	start := time.Now().UnixMilli()
 	datas, err := s.vba.QueryResourceData(ctx, ot.DataSource.ID, params)
 	if err != nil {
-		logger.Errorf("QueryResourceData: %v", err)
+		logger.Errorf("Metric resource query failed for resource [%s]", ot.DataSource.ID)
 		if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
 			return interfaces.MetricData{}, rest.NewHTTPError(ctx, downstream.StatusCode,
 				metricDownstreamErrorCode(downstream.StatusCode))
 		}
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
-			WithErrorDetails(err.Error())
+			WithErrorDetails("metric resource query failed")
 	}
 	if datas == nil {
 		return interfaces.MetricData{}, nil
@@ -820,13 +828,13 @@ func (s *metricQueryService) executeMetric(ctx context.Context, knID string, bra
 
 		samePeriodDatas, err = s.vba.QueryResourceData(ctx, ot.DataSource.ID, params)
 		if err != nil {
-			logger.Errorf("QueryResourceData: %v", err)
+			logger.Errorf("Metric comparison resource query failed for resource [%s]", ot.DataSource.ID)
 			if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
 				return interfaces.MetricData{}, rest.NewHTTPError(ctx, downstream.StatusCode,
 					metricDownstreamErrorCode(downstream.StatusCode))
 			}
 			return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
-				WithErrorDetails(err.Error())
+				WithErrorDetails("metric comparison resource query failed")
 		}
 		if samePeriodDatas == nil {
 			return interfaces.MetricData{}, nil
@@ -1145,7 +1153,7 @@ func convert2TimeSeries(ctx context.Context, def interfaces.MetricDefinition, da
 				f, ferr := common.AnyToFloat64(v)
 				if ferr != nil {
 					return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
-						WithErrorDetails(ferr.Error())
+						WithErrorDetails("metric aggregate value has an invalid type")
 				}
 				ts.Values[idx] = f
 			}
@@ -1171,13 +1179,18 @@ func toFloat64ForMetricValue(ctx context.Context, v any) (float64, error) {
 	if v == nil {
 		return 0, nil
 	}
-	return common.AnyToFloat64(v)
+	f, err := common.AnyToFloat64(v)
+	if err != nil {
+		return 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
+			WithErrorDetails("metric aggregate value has an invalid type")
+	}
+	return f, nil
 }
 
 func toMillisAny(v any) (int64, error) {
 	f, err := common.AnyToFloat64(v)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("metric time value has an invalid type")
 	}
 	return int64(f), nil
 }

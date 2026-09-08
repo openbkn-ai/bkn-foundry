@@ -525,7 +525,8 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 				proxyDownstreamErrorCode(downstream.StatusCode))
 		}
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).WithErrorDetails(err.Error())
+			oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).
+			WithErrorDetails("object resource query failed")
 	}
 	if resp == nil {
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
@@ -599,10 +600,10 @@ func (ots *objectTypeService) getObjectsFromObjectIndex(ctx context.Context, que
 	// Query OpenSearch.
 	osHits, err := ots.osa.SearchData(ctx, objectType.Status.Index, dsl)
 	if err != nil {
-		logger.Errorf("SearchData error: %s", err.Error())
+		logger.Errorf("OpenSearch object query failed for index [%s]", objectType.Status.Index)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			oerrors.OntologyQuery_InternalError_SearchDataFromOpensearchFailed).
-			WithErrorDetails(fmt.Sprintf("search data from opensearch error: %s", err.Error()))
+			WithErrorDetails("OpenSearch object query failed")
 	}
 
 	// Decide whether to query the total based on NeedTotal.
@@ -994,15 +995,15 @@ func (ots *objectTypeService) handleToolProperty(ctx context.Context,
 			oerrors.OntologyQuery_ObjectType_InternalError_ExecuteToolFailed).
 			WithErrorDetails(locale.ValidationDetail(ctx, "ToolExecutionFailed", map[string]any{
 				"property": propName, "toolbox": logicProp.DataSource.BoxID, "tool": logicProp.DataSource.ToolID,
-				"error": err.Error(),
+				"error": "tool execution failed",
 			}))
 	}
 
 	if logicProp.DataSource.ResultPath != "" {
 		toolResult, err = jsonpath.Get(logicProp.DataSource.ResultPath, toolResult)
 		if err != nil {
-			logger.Warnf("extract tool result with path %q failed for logic property %s: %v",
-				logicProp.DataSource.ResultPath, propName, err)
+			logger.Warnf("extract tool result with path %q failed for logic property %s",
+				logicProp.DataSource.ResultPath, propName)
 			return nil, nil
 		}
 	}

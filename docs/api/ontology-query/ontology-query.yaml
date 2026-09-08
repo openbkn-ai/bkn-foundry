@@ -114,11 +114,11 @@ paths:
         - name: need_total
           in: query
           schema: { type: boolean, default: true }
-        - name: search_after
+        - name: cursor
           in: query
           description: >-
-            Pagination cursor. Accepts the legacy comma-separated form or a JSON array when a string value contains a comma.
-            Numeric literals are preserved exactly.
+            Opaque authenticated pagination cursor returned by the previous response.
+            Raw search_after values are rejected.
           schema: { type: string }
       responses:
         '200':
@@ -142,9 +142,7 @@ paths:
                     type: array
                     items: { type: object, additionalProperties: true }
                   total_count: { type: integer, format: int64 }
-                  search_after:
-                    type: array
-                    items: {}
+                  cursor: { type: string }
         '403': { description: "Caller query_data is denied, or the managed proxy lacks resource query_data (`OntologyQuery.Proxy.PermissionDenied`)." }
         '404': { description: The published object type or proxy mapping does not exist (`OntologyQuery.Proxy.MappingNotFound` for the latter). }
         '503': { description: "Proxy binding is invalid, disabled, pending, failed, or unavailable; see the stable `OntologyQuery.Proxy.*` error code." }
@@ -156,8 +154,8 @@ paths:
           application/json:
             schema:
               oneOf:
-              - $ref: '#/components/schemas/FirstQueryWithSearchAfter'
-              - $ref: '#/components/schemas/PageTurnQueryWithSearchAfter'
+              - $ref: '#/components/schemas/FirstObjectQuery'
+              - $ref: '#/components/schemas/PageTurnQueryWithCursor'
             examples:
               获取指定对象类的对象实例-第一次请求-含属性计算参数-含对象类信息:
                 value:
@@ -176,10 +174,7 @@ paths:
                   limit: 10
               获取指定对象类的对象实例-非第一次请求-含属性计算参数-含对象类信息:
                 value:
-                  search_after:
-                  - 20250922_020907_00027_qe7sf
-                  - xdb6f0e5f5ba7449ab94822da9f008386
-                  - "1"
+                  cursor: opaque-authenticated-cursor
                   condition:
                     operation: and
                     sub_conditions:
@@ -584,10 +579,7 @@ paths:
                       pod_status: Running
                       component: aladdin-tika-2.7.0
                     total_count: 1
-                    search_after:
-                    - 20251103_070016_00004_5pjz5
-                    - x6f100cb5d44b4bb19facd4036759b509
-                    - "1"
+                    cursor: opaque-authenticated-cursor
                 获取指定对象类的对象实例-非第一次请求-含属性计算参数-含对象类信息:
                   value:
                     object_type:
@@ -917,10 +909,7 @@ paths:
                       pod_status: Running
                       component: aladdin-tika-2.7.0
                     total_count: 1
-                    search_after:
-                    - 20251103_070016_00004_5pjz5
-                    - x6f100cb5d44b4bb19facd4036759b509
-                    - "1"
+                    cursor: opaque-authenticated-cursor
           description: ok
         "401":
           $ref: '#/components/responses/Unauthorized'
@@ -2018,10 +2007,7 @@ paths:
                         target_object_id: comment-1.030792168521e+12
                       length: 2
                     total_count: 151043
-                    search_after:
-                    - 20251111_011029_00002_5pjz5
-                    - xf97a0a1dcbab4f26b1944122eed84b98
-                    - "2"
+                    cursor: opaque-authenticated-cursor
                     current_path_number: 44
                     overall_ms: 4204
                 基于路径获取对象子图-response:
@@ -2190,10 +2176,7 @@ paths:
                           target_object_id: comment-32489
                         length: 2
                       total_count: 58415
-                      search_after:
-                      - 20251111_011249_00079_5pjz5
-                      - xec0f2bb02b7a46e99548d56096dad813
-                      - "1"
+                      cursor: opaque-authenticated-cursor
                       current_path_number: 1
                       overall_ms: 0
           description: 对象子图
@@ -3234,7 +3217,7 @@ components:
         need_total:
           description: 是否需要总数，默认false
           type: boolean
-    FirstQueryWithSearchAfter:
+    FirstObjectQuery:
       description: 分页查询的第一次查询请求
       required:
       - limit
@@ -3796,11 +3779,11 @@ components:
           - '<'
           - '<='
           type: string
-    PageTurnQueryWithSearchAfter:
-      description: 分页查询的第一次查询请求
+    PageTurnQueryWithCursor:
+      description: 使用上一页返回的不透明游标继续分页查询
       required:
       - limit
-      - search_after
+      - cursor
       type: object
       properties:
         condition:
@@ -3817,10 +3800,9 @@ components:
         need_total:
           description: 是否需要总数，默认false
           type: boolean
-        search_after:
-          description: 上次查询返回的最后一个文档的排序值。
-          type: array
-          items: {}
+        cursor:
+          description: 上次查询返回的不透明且经过认证的分页游标；原始 search_after 不被接受
+          type: string
         properties:
           description: 指定需要输出的属性集。默认为全部数据属性
           type: array
@@ -3882,6 +3864,9 @@ components:
         limit:
           description: "对象类获取对象数量的限制,默认10"
           type: integer
+        cursor:
+          description: 上次查询返回的不透明且经过认证的对象分页游标；第一次查询不传此字段
+          type: string
     TypeEdge:
       description: 路径中的边信息。通过关系类id确定边，通过路径的起点和终点来确定当前路径的方向为正向还是反向，与关系类的起终点一致为正向，相反则为反向。
       required:
@@ -3930,7 +3915,6 @@ components:
       - objects
       - relation_paths
       - total_count
-      - search_after
       type: object
       properties:
         objects:
@@ -3951,10 +3935,9 @@ components:
         total_count:
           description: 起点对象类的总条数
           type: integer
-        search_after:
-          description: 表示返回的最后一个起点类对象的排序值，获取这个用于下一次 search_after 分页
-          type: array
-          items: {}
+        cursor:
+          description: 不透明且经过认证的起点对象分页游标；后续请求应回传此值，原始 search_after 不被接受
+          type: string
     ObjectSubGraphWithTypePathsResponse:
       description: 基于路径获取对象子图的返回体
       type: array
@@ -4192,7 +4175,6 @@ components:
       - groups
       - type
       - datas
-      - search_after
       type: object
       properties:
         object_type:
@@ -4206,10 +4188,9 @@ components:
         total_count:
           description: 总条数
           type: integer
-        search_after:
-          description: 表示返回的最后一个文档的排序值，获取这个用于下一次 search_after 分页
-          type: array
-          items: {}
+        cursor:
+          description: 下一页使用的不透明且经过认证的分页游标
+          type: string
     ObjectPropertiesValuesResponse:
       description: 节点（对象类）信息
       required:
@@ -4439,10 +4420,9 @@ components:
         need_total:
           description: 是否需要(起点类)总数，默认false。
           type: boolean
-        search_after:
-          description: 上次查询返回的最后一个起点类对象的排序值。只对起点类生效。第一次查询不传此字段
-          type: array
-          items: {}
+        cursor:
+          description: 上次查询返回的不透明且经过认证的起点对象分页游标；第一次查询不传此字段
+          type: string
     SubGraphQueryBaseOnObjects:
       description: 基于一组对象实例探索关系子图的请求体
       required:

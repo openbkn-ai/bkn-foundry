@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "python3 tools/check_hardcoded_chinese.py --update-baseline",
-  "violation_count": 2571,
+  "violation_count": 2561,
   "violations": {
     "adp/bkn/bkn-backend/script/delete_concept_index/script.py": [
       "028026370fec2a882dbb",
@@ -445,10 +445,6 @@
       "a2eedfd4aacc2ca35672",
       "c8c4eaa48d64dfec085d"
     ],
-    "adp/bkn/ontology-query/server/drivenadapters/agent_operator/agent_operator_access.go": [
-      "bad6bfc3db631c457fa9",
-      "cd343de7416a9c0c6cc9"
-    ],
     "adp/bkn/ontology-query/server/drivenadapters/ontology_manager/ontology_manager_access.go": [
       "49646d83f3e2788626a4",
       "2e5d52f606551526d4b7",
@@ -460,20 +456,7 @@
       "2f385b90471272736c46"
     ],
     "adp/bkn/ontology-query/server/driveradapters/action_execution_handler.go": [
-      "6c4de3013836af1726ab",
       "671a1bffcc81972cd055"
-    ],
-    "adp/bkn/ontology-query/server/driveradapters/action_type_handler.go": [
-      "d1a1948571e19df90e64"
-    ],
-    "adp/bkn/ontology-query/server/driveradapters/knowledge_network_handler.go": [
-      "7eadd4d0df413509b096",
-      "c37f6408063e18a9dacf",
-      "41e6cfc878d512338c57"
-    ],
-    "adp/bkn/ontology-query/server/driveradapters/object_type_handler.go": [
-      "49566cf42169e08b6997",
-      "ed632f333a445e97e3ac"
     ],
     "adp/bkn/ontology-query/server/logics/action_logs/action_logs_service.go": [
       "237a18f6008ed440ad00",
@@ -505,8 +488,7 @@
       "bb7246fbafc5aceee86d",
       "a054db70390818eae8cf",
       "acac143daa35f27737fe",
-      "bb4674867bb77fdfeb3d",
-      "e0f49b04b4cf04e2d294"
+      "bb4674867bb77fdfeb3d"
     ],
     "adp/bkn/ontology-query/server/logics/object_type/object_type_service.go": [
       "42e8ec9b530d59b832a9",

@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -18,6 +17,7 @@ import (
 	oerrors "ontology-query/errors"
 	"ontology-query/interfaces"
 	"ontology-query/logics"
+	propertyaccess "ontology-query/logics/property_access"
 )
 
 type propertyAccessPlan struct {
@@ -48,43 +48,22 @@ func buildPropertyAccessPlan(ctx context.Context, resolver interfaces.PropertyAc
 		effective:        map[string]interfaces.PropertyAccessLevel{},
 		allPrimaryFull:   len(objectType.PrimaryKeys) > 0,
 	}
-	propertyNames := make([]string, 0, len(objectType.DataProperties))
 	for _, property := range objectType.DataProperties {
 		plan.properties[property.Name] = property
-		propertyNames = append(propertyNames, property.Name)
 	}
-	if len(propertyNames) > 0 {
-		if resolver == nil {
-			return nil, propertyDecisionUnavailable(ctx, fmt.Errorf("property access resolver is not configured"))
+	accessPlan, err := propertyaccess.Build(ctx, resolver, []interfaces.ObjectType{objectType})
+	if err != nil {
+		return nil, err
+	}
+	objectTypeRef := propertyaccess.ObjectTypeRef(objectType.KNID, objectType.OTID)
+	for name := range plan.properties {
+		decision, exists := accessPlan.Decision(objectTypeRef, name)
+		if !exists {
+			return nil, propertyDecisionUnavailable(ctx, fmt.Errorf("property-level response decision mismatch"))
 		}
-		entries, err := resolver.ResolvePropertyLevels(ctx, []interfaces.PropertyLevelsRequestItem{{
-			ObjectTypeRef: objectType.KNID + "/" + objectType.OTID,
-			Properties:    propertyNames,
-		}})
-		if err != nil {
-			return nil, err
-		}
-		if len(entries) != 1 || entries[0].ObjectTypeRef != objectType.KNID+"/"+objectType.OTID ||
-			len(entries[0].Properties) != len(propertyNames) {
-			return nil, propertyDecisionUnavailable(ctx, fmt.Errorf("property-level response shape mismatch"))
-		}
-		for index, name := range propertyNames {
-			decision := entries[0].Properties[index]
-			if decision.Name != name || !decision.Level.Valid() {
-				return nil, propertyDecisionUnavailable(ctx, fmt.Errorf("property-level response decision mismatch"))
-			}
-			if decision.Level == interfaces.PropertyAccessMasked {
-				property := plan.properties[name]
-				if err := maskrule.Validate(property.Type, property.MaskRule); err != nil {
-					logger.Warnf("Data property [%s/%s/%s] has unusable mask_rule and is downgraded to schema: %v",
-						objectType.KNID, objectType.OTID, name, err)
-					decision.Level = interfaces.PropertyAccessSchema
-				}
-			}
-			plan.decisions[name] = decision
-			if decision.Level != interfaces.PropertyAccessNone {
-				plan.effective[name] = decision.Level
-			}
+		plan.decisions[name] = decision
+		if decision.Level != interfaces.PropertyAccessNone {
+			plan.effective[name] = decision.Level
 		}
 	}
 
@@ -110,7 +89,18 @@ func buildPropertyAccessPlan(ctx context.Context, resolver interfaces.PropertyAc
 		}
 	}
 
-	collectOperationFields(query.ActualCondition, plan.operationFields, plan.properties)
+	propertyNames := make([]string, 0, len(plan.properties))
+	for name := range plan.properties {
+		propertyNames = append(propertyNames, name)
+	}
+	for _, name := range propertyaccess.CollectConditionFields(query.ActualCondition, propertyNames) {
+		plan.operationFields[name] = struct{}{}
+	}
+	for _, name := range query.RequiredFullProperties {
+		plan.operationFields[name] = struct{}{}
+		plan.dependencyFields[name] = struct{}{}
+		plan.fetchFields[name] = struct{}{}
+	}
 	for _, sort := range query.Sort {
 		if sort != nil && sort.Field != "" && sort.Field != interfaces.SORT_FIELD_SCORE {
 			plan.operationFields[sort.Field] = struct{}{}
@@ -163,7 +153,8 @@ func buildPropertyAccessPlan(ctx context.Context, resolver interfaces.PropertyAc
 			plan.fetchFields[objectType.DisplayKey] = struct{}{}
 		}
 	}
-	plan.scoreVisible = !logics.ShouldExcludeSystemProperty(interfaces.SORT_FIELD_SCORE, query.ExcludeSystemProperties)
+	plan.scoreVisible = conditionProducesScore(query.ActualCondition) &&
+		!logics.ShouldExcludeSystemProperty(interfaces.SORT_FIELD_SCORE, query.ExcludeSystemProperties)
 
 	if len(plan.returnData) == 0 && len(plan.returnLogic) == 0 {
 		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
@@ -260,56 +251,21 @@ func logicPropertyDependencies(property *interfaces.LogicProperty,
 	return dependencies, true
 }
 
-func collectOperationFields(condition *cond.CondCfg, result map[string]struct{}, properties map[string]cond.DataProperty) {
+func conditionProducesScore(condition *cond.CondCfg) bool {
 	if condition == nil {
-		return
+		return false
 	}
-	if condition.Operation == cond.OperationMultiMatch {
-		fields, exists := condition.RemainCfg["fields"]
-		if !exists {
-			for name := range properties {
-				result[name] = struct{}{}
-			}
-		} else {
-			for _, name := range stringValues(fields) {
-				if name == "*" {
-					for propertyName := range properties {
-						result[propertyName] = struct{}{}
-					}
-				} else {
-					result[name] = struct{}{}
-				}
-			}
-		}
-	} else if condition.Name == "*" {
-		for name := range properties {
-			result[name] = struct{}{}
-		}
-	} else if strings.TrimSpace(condition.Name) != "" {
-		result[condition.Name] = struct{}{}
+	if condition.Operation == cond.OperationKNN || condition.Operation == cond.OperationKNNVector ||
+		condition.Operation == cond.OperationMultiMatch || condition.Operation == cond.OperationMatch ||
+		condition.Operation == cond.OperationMatchPhrase {
+		return true
 	}
 	for _, child := range condition.SubConds {
-		collectOperationFields(child, result, properties)
-	}
-}
-
-func stringValues(value any) []string {
-	switch values := value.(type) {
-	case []string:
-		return values
-	case []any:
-		result := make([]string, 0, len(values))
-		for _, value := range values {
-			if text, ok := value.(string); ok {
-				result = append(result, text)
-			}
+		if conditionProducesScore(child) {
+			return true
 		}
-		return result
-	case string:
-		return []string{values}
-	default:
-		return nil
 	}
+	return false
 }
 
 func (plan *propertyAccessPlan) fieldPropertyMap() map[string]string {

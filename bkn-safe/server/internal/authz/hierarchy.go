@@ -46,7 +46,7 @@ type climber struct {
 // nothing inherited are absent, so a caller reads it as an overlay on what it
 // already decided.
 func (en *Enforcer) climb(
-	decide func(ResourceRef, []string) (map[string]bool, error),
+	decide func(ResourceRef, []string) (map[string]string, error),
 	want map[ResourceRef][]string,
 ) (map[ResourceRef]map[string]bool, error) {
 	if en.db == nil || len(want) == 0 {
@@ -102,7 +102,7 @@ func (en *Enforcer) climb(
 
 		// Two resources under the same catalog asking about the same operations
 		// are one decision, not two. On a list page that is the common case.
-		verdicts := map[string]map[string]bool{}
+		verdicts := map[string]map[string]string{}
 		next := make([]*climber, 0, len(active))
 		for _, c := range active {
 			parent, ok := parents[c.node]
@@ -135,16 +135,23 @@ func (en *Enforcer) climb(
 
 			ask := distinctSorted(translated)
 			key := parent.Type + "\x00" + parent.ID + "\x00" + strings.Join(ask, "\x00")
-			allowed, cached := verdicts[key]
+			decisions, cached := verdicts[key]
 			if !cached {
-				allowed, err = decide(parent, ask)
+				decisions, err = decide(parent, ask)
 				if err != nil {
 					return nil, err
 				}
-				verdicts[key] = allowed
+				verdicts[key] = decisions
 			}
 			for asked, up := range translated {
-				if !allowed[up] {
+				effect := decisions[up]
+				if effect == EffectDeny {
+					// A deny encountered anywhere on the explicit inheritance
+					// path is terminal; a broader ancestor cannot restore it.
+					delete(translated, asked)
+					continue
+				}
+				if effect != EffectAllow {
 					continue
 				}
 				if found[c.origin] == nil {
@@ -395,31 +402,25 @@ func distinctSorted(m map[string]string) []string {
 
 // enforceOn is the single-decision evaluator handed to climb: it asks casbin
 // about one ancestor node, exactly as Check asks about the resource itself.
-func (en *Enforcer) enforceOn(accessorID string) func(ResourceRef, []string) (map[string]bool, error) {
-	return func(node ResourceRef, ops []string) (map[string]bool, error) {
-		out := make(map[string]bool, len(ops))
-		for _, op := range ops {
-			ok, err := en.e.Enforce(accessorID, obj(node.Type, node.ID), op)
-			if err != nil {
-				return nil, err
-			}
-			if ok {
-				out[op] = true
-			}
-		}
-		return out, nil
-	}
-}
-
 // inheritedOps reports which of the missing operations the accessor holds on an
 // ancestor of the resource. The single-resource entry point behind Check and
 // AllowedOps.
 func (en *Enforcer) inheritedOps(accessorID, resourceType, resourceID string, missing []string) (map[string]bool, error) {
+	idx, err := en.grantIndex(accessorID)
+	if err != nil {
+		return nil, err
+	}
+	return en.inheritedOpsWithIndex(idx, resourceType, resourceID, missing)
+}
+
+func (en *Enforcer) inheritedOpsWithIndex(idx *grantIndex, resourceType, resourceID string, missing []string) (map[string]bool, error) {
 	if len(missing) == 0 {
 		return nil, nil
 	}
 	r := ResourceRef{Type: resourceType, ID: resourceID}
-	found, err := en.climb(en.enforceOn(accessorID), map[ResourceRef][]string{r: missing})
+	found, err := en.climb(func(node ResourceRef, ops []string) (map[string]string, error) {
+		return idx.decide(node, ops), nil
+	}, map[ResourceRef][]string{r: missing})
 	if err != nil {
 		return nil, err
 	}
@@ -448,9 +449,8 @@ type OwnershipFlip struct {
 
 // PreviewOwnership answers "who would gain and lose what" BEFORE any ownership
 // row is written. It exists because recording ownership is the moment
-// inheritance starts applying, and there is no flag to stage that (an
-// allow-only engine has nothing to tighten), so the confirmation has to happen
-// before the write rather than after it.
+// inheritance starts applying, and there is no flag to stage that, so the
+// confirmation has to happen before the write rather than after it.
 //
 // links maps each proposed resource id to its proposed parent id. limit caps
 // the returned slice; the total is always exact, so a caller can say "3 shown

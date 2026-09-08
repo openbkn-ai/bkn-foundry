@@ -948,6 +948,15 @@ func TestValidateIncrementalBaseline(t *testing.T) {
 			resource.SyncMark = validMark
 			return resource
 		}()},
+		{name: "accepts checkpoint with appended primary key", resource: func() *interfaces.Resource {
+			resource := buildTaskTestResource()
+			resource.IndexConfig.IncrementalFields = []string{"updated_at"}
+			resource.SchemaDefinition = append(resource.SchemaDefinition, &interfaces.Property{Name: "updated_at", Type: interfaces.DataType_Timestamp})
+			resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
+			resource.LocalIndexName = "resource-1-index"
+			resource.SyncMark = `{"mode":"batch","cursor":[{"key":"updated_at","value":"2026-09-08T10:00:00Z"},{"key":"id","value":1}]}`
+			return resource
+		}()},
 		{name: "rejects unavailable index", resource: func() *interfaces.Resource {
 			resource := buildTaskTestResource()
 			resource.SyncMark = validMark

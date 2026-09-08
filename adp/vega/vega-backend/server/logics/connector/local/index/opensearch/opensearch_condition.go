@@ -1078,11 +1078,14 @@ func (c *OpenSearchConnector) ConvertFilterConditionKnnVector(condition interfac
 		},
 	}
 
-	// Add limit_key and limit_value
+	// Add limit_key and limit_value. A direct k is also accepted for compatibility
+	// with the OpenSearch DSL and takes effect only when the generic limit config is absent.
 	if limitKey, ok := cond.Cfg.RemainCfg["limit_key"].(string); ok && limitKey != "" {
 		if limitValue, ok := cond.Cfg.RemainCfg["limit_value"]; ok {
 			knnQuery[cond.FilterFieldName].(map[string]any)[limitKey] = limitValue
 		}
+	} else if k, ok := cond.Cfg.RemainCfg["k"]; ok {
+		knnQuery[cond.FilterFieldName].(map[string]any)["k"] = k
 	} else {
 		// Use the default value
 		knnQuery[cond.FilterFieldName].(map[string]any)["k"] = 10
@@ -1099,14 +1102,11 @@ func (c *OpenSearchConnector) ConvertFilterConditionKnnVector(condition interfac
 			filterQueries = append(filterQueries, subQuery)
 		}
 
-		return map[string]any{
-			"knn": knnQuery,
-			"filter": map[string]any{
-				"bool": map[string]any{
-					"must": filterQueries,
-				},
+		knnQuery[cond.FilterFieldName].(map[string]any)["filter"] = map[string]any{
+			"bool": map[string]any{
+				"must": filterQueries,
 			},
-		}, nil
+		}
 	}
 
 	return map[string]any{

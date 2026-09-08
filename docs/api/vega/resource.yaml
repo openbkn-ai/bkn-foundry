@@ -785,10 +785,12 @@ components:
       type: object
       properties:
         primary_key_fields:
+          description: Must identify a unique source row. Fields absent from incremental_fields are appended to the internal batch cursor.
           type: array
           items:
             type: string
         incremental_fields:
+          description: Ordered incremental cursor fields. The service appends any missing primary_key_fields internally for batch pagination.
           type: array
           items:
             type: string

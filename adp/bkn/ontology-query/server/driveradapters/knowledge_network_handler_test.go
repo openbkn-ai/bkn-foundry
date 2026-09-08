@@ -268,6 +268,23 @@ func Test_RestHandler_GetObjectsSubgraph(t *testing.T) {
 			So(w.Code, ShouldEqual, http.StatusBadRequest)
 		})
 
+		Convey("失败 - 原始 search_after 不可作为分页状态", func() {
+			invalidQuery := subgraphQuery
+			invalidQuery.SearchAfter = []any{"raw-property-watermark-1342"}
+			reqParamByte, _ := sonic.Marshal(invalidQuery)
+			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
+			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
+			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = req
+			c.Params = gin.Params{{Key: "kn_id", Value: knID}}
+
+			handler.GetObjectsSubgraph(c, hydra.Visitor{ID: "user1", Type: hydra.VisitorType_User})
+
+			So(w.Code, ShouldEqual, http.StatusBadRequest)
+		})
+
 		Convey("失败 - 起点对象类ID为空", func() {
 			invalidQuery := interfaces.SubGraphQueryBaseOnSource{
 				SourceObjecTypeId: "",
@@ -415,6 +432,26 @@ func Test_RestHandler_GetObjectsSubgraphByTypePath(t *testing.T) {
 				Type: hydra.VisitorType_User,
 			}
 			handler.GetObjectsSubgraphByTypePath(c, visitor)
+
+			So(w.Code, ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("失败 - 路径对象不接受原始 search_after", func() {
+			invalidQuery := pathsQuery
+			invalidQuery.TypePaths = append([]interfaces.QueryRelationTypePath(nil), pathsQuery.TypePaths...)
+			invalidQuery.TypePaths[0].ObjectTypes = append([]interfaces.ObjectTypeWithKeyField(nil),
+				pathsQuery.TypePaths[0].ObjectTypes...)
+			invalidQuery.TypePaths[0].ObjectTypes[0].SearchAfter = []any{"raw-property-watermark-1342"}
+			reqParamByte, _ := sonic.Marshal(invalidQuery)
+			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
+			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
+			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = req
+			c.Params = gin.Params{{Key: "kn_id", Value: knID}}
+
+			handler.GetObjectsSubgraphByTypePath(c, hydra.Visitor{ID: "user1", Type: hydra.VisitorType_User})
 
 			So(w.Code, ShouldEqual, http.StatusBadRequest)
 		})
