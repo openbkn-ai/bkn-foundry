@@ -251,6 +251,11 @@ func TestAnalyzeRejections(t *testing.T) {
 		{"MATCH (a:Order) RETURN count(*)", "count(*)"},
 		{"MATCH (a:Order) RETURN a.id + 1", "arithmetic"},
 		{"MATCH (a:Order) RETURN $parameter", "query parameters"},
+		{"MATCH (a:Order) RETURN CASE a.x WHEN 1 THEN 2 ELSE 3 END", "CASE"},
+		{"MATCH (a:Order) RETURN [x IN [1, 2] | x]", "list comprehensions"},
+		{"MATCH (a:Order) RETURN [(a)-[:R]->(b:Customer) | b.id]", "pattern comprehensions"},
+		{"MATCH (a:Order) WHERE all(x IN [1] WHERE x = 1) RETURN a.id", "quantified expressions"},
+		{"MATCH (a:Order) RETURN a.x IS NULL", "IS NULL"},
 		{"MATCH (a:Order) RETURN a.items[0]", "list indexing"},
 		{"MATCH (a:Order) RETURN a.x.y", "nested property access"},
 		{"MATCH (a:Order) RETURN 1", "only variable.property references"},
@@ -308,6 +313,54 @@ func TestAnalyzeRejectsUnicodeEscapesThatAreNotCodePoints(t *testing.T) {
 			_, err := analyze(t, tc.query)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("Analyze(%q) = %v, want a rejection mentioning %q", tc.query, err, tc.want)
+			}
+		})
+	}
+}
+
+// Every escape the grammar allows is decoded here, and the two malformed
+// forms are refused rather than passed through as text.
+func TestAnalyzeStringEscapes(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		where string
+		want  string
+	}{
+		{name: "backspace", where: `a.name = '\b'`, want: "\b"},
+		{name: "form feed", where: `a.name = '\f'`, want: "\f"},
+		{name: "carriage return", where: `a.name = '\r'`, want: "\r"},
+		{name: "newline", where: `a.name = '\n'`, want: "\n"},
+		{name: "double quote", where: `a.name = '\"'`, want: `"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			query := mustAnalyze(t, "MATCH (a:Order) WHERE "+tc.where+" RETURN a.id")
+			if got := query.Where[0].Right.String; got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// The lexer refuses a malformed escape before the decoder ever sees it, so
+// these branches are a second line rather than the first. They are exercised
+// directly: reaching them through a query is not possible, and a test that
+// pretended otherwise would be asserting the lexer instead.
+func TestDecodeStringLiteralRefusesMalformedEscapes(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		literal string
+		want    string
+	}{
+		{name: "unknown escape", literal: `'\q'`, want: "unknown escape sequence"},
+		{name: "trailing backslash", literal: "'a\\'", want: "trailing backslash"},
+		{name: "incomplete unicode escape", literal: `'\u41'`, want: "incomplete unicode escape"},
+		{name: "invalid unicode digits", literal: `'\uzzzz'`, want: "invalid unicode escape"},
+		{name: "not a literal at all", literal: `'`, want: "malformed string literal"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := decodeStringLiteral(tc.literal)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("decodeStringLiteral(%s) = %v, want an error mentioning %q", tc.literal, err, tc.want)
 			}
 		})
 	}
