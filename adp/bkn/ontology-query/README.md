@@ -189,6 +189,7 @@ infrastructure failures return HTTP 503.
 When authentication is enabled, both submission and the real external invocation
 require all of the following for the authenticated execution subject:
 
+- `execute` on `knowledge_network:{kn_id}`;
 - `execute` on `action_type:{kn_id}/{action_type_id}`; this operation never
   inherits from the knowledge network;
 - `execute` on the referenced `tool_box` or `mcp` resource;
