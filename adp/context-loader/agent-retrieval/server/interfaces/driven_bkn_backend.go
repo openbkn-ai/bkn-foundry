@@ -8,6 +8,7 @@ package interfaces
 
 import (
 	"context"
+	"strings"
 )
 
 // KnOperationType Business knowledge network operator
@@ -291,6 +292,65 @@ type KnowledgeNetworkDetail struct {
 	ObjectTypes   []*ObjectType   `json:"object_types"`   // Object types
 	RelationTypes []*RelationType `json:"relation_types"` // Relation types
 	ActionTypes   []*ActionType   `json:"action_types"`   // Action types
+	// MountedCapabilities counts what the network mounted, by kind. This tool answers "what is
+	// this network", and without it the answer stopped at the concept model: a network with three
+	// Skills and twenty one tools read as one that had none, and an agent had no reason to go
+	// looking. The platform's own export format carries these as part of the network, so leaving
+	// them out here made two surfaces disagree about what a knowledge network is.
+	//
+	// Counts, not the catalogue, for the same reason RelatedMetricCount is: enough to know the
+	// layer is there and worth a call to search_capabilities, without carrying an input schema per
+	// tool into every "describe this network" answer.
+	MountedCapabilities *MountedCapabilityCounts `json:"mounted_capabilities,omitempty"`
+}
+
+// MountedCapabilityCounts is how many capabilities of each kind a network has mounted.
+//
+// It is a property of the network rather than of the caller, like RelatedMetricCount: which
+// capabilities this account may see or run is search_capabilities' question, and answering it in
+// two places would be two answers to maintain.
+type MountedCapabilityCounts struct {
+	Total    int `json:"total"`
+	Skill    int `json:"skill"`
+	Function int `json:"function"`
+	MCPTool  int `json:"mcp_tool"`
+}
+
+// AttachMountedCapabilities records what the network mounted, by kind.
+//
+// Left absent rather than zeroed when the bindings could not be read: absent means unknown, a
+// present zero means the network really has mounted nothing. Collapsing the two would tell an
+// agent a network is empty because a lookup failed.
+func (d *KnowledgeNetworkDetail) AttachMountedCapabilities(refs []*CapabilityRef) {
+	if d == nil {
+		return
+	}
+	d.MountedCapabilities = CountMountedCapabilities(refs)
+}
+
+// CountMountedCapabilities tallies bindings by kind, ignoring anything malformed.
+//
+// A binding with no capability id is not a mount anyone can act on, and counting it would promise
+// a capability search_capabilities will never return.
+func CountMountedCapabilities(refs []*CapabilityRef) *MountedCapabilityCounts {
+	counts := &MountedCapabilityCounts{}
+	for _, ref := range refs {
+		if ref == nil || strings.TrimSpace(ref.CapabilityID) == "" {
+			continue
+		}
+		switch ref.CapabilityType {
+		case CapabilityTypeSkill:
+			counts.Skill++
+		case CapabilityTypeFunction:
+			counts.Function++
+		case CapabilityTypeMCPTool:
+			counts.MCPTool++
+		default:
+			continue
+		}
+		counts.Total++
+	}
+	return counts
 }
 
 // Detail levels for get_kn_detail progressive disclosure.

@@ -25,6 +25,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knresources"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knrunsql"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/objectpermission"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/permission"
 )
 
 // KnQueryToolsHandler handle run_sql / list_knowledge_networks / get_kn_detail /.
@@ -47,6 +48,7 @@ type knQueryToolsHandler struct {
 	bknBackend   interfaces.BknBackendAccess
 	metrics      knmetrics.KnMetricsService
 	schemaAccess interfaces.ObjectSchemaAccess
+	knAuthz      interfaces.KnowledgeNetworkAuthorizer
 }
 
 var (
@@ -65,6 +67,7 @@ func NewKnQueryToolsHandler() KnQueryToolsHandler {
 			bknBackend:   drivenadapters.NewBknBackendAccess(),
 			metrics:      knmetrics.NewKnMetricsService(),
 			schemaAccess: drivenadapters.NewObjectSchemaAccess(),
+			knAuthz:      permission.NewKnowledgeNetworkAuthorizer(conf),
 		}
 	})
 	return handler
@@ -149,6 +152,18 @@ func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] metric authorization failed: %v", err)
 		rest.ReplyError(c, err)
 		return
+	}
+	// The mounted Skills and tools, counted like the metrics above — but gated first. Those
+	// counts inherit their scope from object types that already survived FilterObjectTypes; the
+	// bindings have none, and are read with this service's identity, so every other reader of
+	// them authorizes the caller first. A refusal omits the field rather than failing the call:
+	// absent means unknown, which is what it must also mean for a list this call could not read.
+	if err := h.knAuthz.AuthorizeRead(ctx, req.KnID); err != nil {
+		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] capability counts withheld: %v", err)
+	} else if refs, err := h.bknBackend.ListKNCapabilities(ctx, req.KnID, "", ""); err == nil {
+		resp.AttachMountedCapabilities(refs)
+	} else {
+		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] capability bindings unreadable: %v", err)
 	}
 	detailLevel := req.DetailLevel
 	if detailLevel == "" {

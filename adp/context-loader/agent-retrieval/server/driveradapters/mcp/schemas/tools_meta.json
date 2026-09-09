@@ -117,7 +117,7 @@
     "group": "discovery",
     "group_title": "网络与 Schema",
     "order": 120,
-    "description": "获取知识网络 schema（概念组、对象类型含 data_source.id、关系类型、行动类型）。**概念组带 name/tags/comment，是收敛检索范围的入口：先据此选出 1-3 个相关分组，再传给 search_schema 的 search_scope.concept_groups。**默认 detail_level=summary：返回骨架 + 每个属性仅 name+type（不含 display_name/comment/字段映射/查询算子/映射规则）——足够理解结构与规划查询，体积小。需要某对象的完整字段映射（含 comment）时调 get_object_types，需要关系的 mapping_rules 时调 get_relation_types。detail_level=full 一次拿全量（体积大，慎用）。对象类条目附带 related_metric_count（该对象类下已建模指标数），用来判断是否值得下钻取指标。"
+    "description": "获取知识网络 schema（概念组、对象类型含 data_source.id、关系类型、行动类型）。**概念组带 name/tags/comment，是收敛检索范围的入口：先据此选出 1-3 个相关分组，再传给 search_schema 的 search_scope.concept_groups。**默认 detail_level=summary：返回骨架 + 每个属性仅 name+type（不含 display_name/comment/字段映射/查询算子/映射规则）——足够理解结构与规划查询，体积小。需要某对象的完整字段映射（含 comment）时调 get_object_types，需要关系的 mapping_rules 时调 get_relation_types。detail_level=full 一次拿全量（体积大，慎用）。对象类条目附带 related_metric_count（该对象类下已建模指标数），用来判断是否值得下钻取指标。**顶层附带 mounted_capabilities**：该网络已挂载的能力按类型计数（skill / function / mcp_tool，function 含 API 工具）。它只回答「有没有、有多少」——要具体能力用 search_capabilities，那里带名称、说明与调用所需的 input_schema。该字段缺席表示这次没读到绑定或无权读该网络，不等于没挂。**它数的是挂载,不是你能调用的数量**:某个工具箱你看不到时，search_capabilities 会少返回几条，两个数字对不上是正常的。"
   },
   "get_object_types": {
     "name": "get_object_types",

@@ -21,6 +21,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/extension/mcptool"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	logicsKar "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knactionrecall"
 	logicsKlp "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knlogicpropertyresolver"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knmetrics"
@@ -30,6 +31,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knsearch"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knskills"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/kntools"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/permission"
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
@@ -168,7 +170,8 @@ func newMCPServerForLocale(lifecycleClient *bkntrace.LifecycleClient, locale str
 	bknBackend := drivenadapters.NewBknBackendAccess()
 	b.add(toolKeyListKnowledgeNetworks, handleListKnowledgeNetworks(bknBackend))
 	schemaAccess := drivenadapters.NewObjectSchemaAccess()
-	b.add(toolKeyGetKnDetail, handleGetKnDetail(bknBackend, metricsService, schemaAccess))
+	b.add(toolKeyGetKnDetail, handleGetKnDetail(bknBackend, metricsService, schemaAccess,
+		permission.NewKnowledgeNetworkAuthorizer(config.NewConfigLoader())))
 	b.add(toolKeyGetObjectTypes, handleGetObjectTypes(bknBackend, metricsService, schemaAccess))
 	b.add(toolKeyGetRelationTypes, handleGetRelationTypes(bknBackend))
 

@@ -11,6 +11,7 @@ import (
 	"github.com/bytedance/sonic"
 	validator "github.com/go-playground/validator/v10"
 	"github.com/mark3labs/mcp-go/mcp"
+	"log"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
@@ -558,7 +559,7 @@ func handleDescribeResource(svc knresources.KnResourcesService) func(ctx context
 // handleGetKnDetail handles get_kn_detail tool calls.
 // Pack the knowledge network details (concept group/object type/relation type/action class) of bkn-backend and press.
 // detail_level does progressive cropping: summary (default) returns the skeleton + attribute name, full returns the full amount.
-func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetricsService, schemaAccess interfaces.ObjectSchemaAccess) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetricsService, schemaAccess interfaces.ObjectSchemaAccess, knAuthz interfaces.KnowledgeNetworkAuthorizer) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
 		if err != nil {
@@ -584,6 +585,27 @@ func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetr
 		// carrying the metric list itself at this level.
 		if err := metrics.AttachRelatedMetricCounts(ctx, knID, resp.ObjectTypes); err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
+		}
+		// The mounted Skills and tools, counted the same way — but gated first.
+		//
+		// The metric counts beside this one inherit their scope: they are counted under object
+		// types that already survived FilterObjectTypes. The bindings have no such upstream
+		// filter, and they are read over the internal face with this service's identity, which is
+		// why every other reader of them authorizes the caller first. Counting them here without
+		// that check would answer a question about a network on the strength of the id someone
+		// typed.
+		//
+		// A refusal omits the field rather than failing the call: the concept model is already
+		// filtered per caller and is still a correct answer to "what is this network". Absent
+		// means unknown either way, which is what it has to mean for an unreadable list too.
+		if err := knAuthz.AuthorizeRead(ctx, knID); err != nil {
+			log.Printf("WARN: get_kn_detail capability counts withheld for kn %s: %v", knID, err)
+		} else if refs, err := bkn.ListKNCapabilities(ctx, knID, "", ""); err == nil {
+			resp.AttachMountedCapabilities(refs)
+		} else {
+			// Logged because an absent field and a silently dropped error look identical to
+			// whoever reads the answer, and only one of them is worth investigating.
+			log.Printf("WARN: get_kn_detail capability bindings unreadable for kn %s: %v", knID, err)
 		}
 		resp.Slim(getStringArg(req, "detail_level", interfaces.DetailLevelSummary))
 		result, err := BuildMCPToolResult(resp, format)

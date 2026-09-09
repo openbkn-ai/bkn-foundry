@@ -20,8 +20,14 @@ import (
 // to its object types.
 type stubMetricBknBackend struct {
 	interfaces.BknBackendAccess
-	detail  *interfaces.KnowledgeNetworkDetail
-	metrics []*interfaces.RelatedMetric
+	detail       *interfaces.KnowledgeNetworkDetail
+	metrics      []*interfaces.RelatedMetric
+	capabilities []*interfaces.CapabilityRef
+	capErr       error
+}
+
+func (s *stubMetricBknBackend) ListKNCapabilities(_ context.Context, _, _, _ string) ([]*interfaces.CapabilityRef, error) {
+	return s.capabilities, s.capErr
 }
 
 func (s *stubMetricBknBackend) GetKnowledgeNetworkDetail(_ context.Context, _ string) (*interfaces.KnowledgeNetworkDetail, error) {
