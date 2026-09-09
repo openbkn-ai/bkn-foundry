@@ -23,7 +23,7 @@ import (
 type Plan struct {
 	Tables   []PlanTable
 	Joins    []PlanJoin
-	Where    []PlanCondition
+	Where    PlanPredicate
 	Select   []PlanColumn
 	Distinct bool
 	OrderBy  []PlanOrder
@@ -61,13 +61,55 @@ type PlanColumn struct {
 	Alias  string
 }
 
-// PlanCondition is one WHERE term.
+// PlanPredicate is the WHERE tree with every name resolved and every parameter
+// bound. Generation walks it and formats; it looks nothing up.
+type PlanPredicate interface {
+	planPredicate()
+}
+
+// PlanCondition is one comparison of a column against a value.
 type PlanCondition struct {
 	Table    int
 	Column   string
 	Operator string
 	Value    Literal
 }
+
+func (PlanCondition) planPredicate() {}
+
+// PlanLogical is AND or OR over two or more conditions.
+type PlanLogical struct {
+	Operator string
+	Operands []PlanPredicate
+}
+
+func (PlanLogical) planPredicate() {}
+
+// PlanNegation is NOT over one condition.
+type PlanNegation struct {
+	Operand PlanPredicate
+}
+
+func (PlanNegation) planPredicate() {}
+
+// PlanNullCheck is IS NULL, or IS NOT NULL when negated.
+type PlanNullCheck struct {
+	Table   int
+	Column  string
+	Negated bool
+}
+
+func (PlanNullCheck) planPredicate() {}
+
+// PlanMembership is IN over values written in the query.
+type PlanMembership struct {
+	Table   int
+	Column  string
+	Values  []Literal
+	Negated bool
+}
+
+func (PlanMembership) planPredicate() {}
 
 // PlanOrder is one ORDER BY term.
 type PlanOrder struct {
@@ -98,17 +140,25 @@ func planErrorf(pos Position, format string, args ...any) error {
 // built so far, and which variable names them.
 type planner struct {
 	schema     *Schema
+	parameters map[string]any
 	plan       *Plan
 	objectType []*interfaces.ObjectType // per table, parallel to plan.Tables
 	tableOf    map[string]int           // variable name to table index
 }
 
+// CompileOptions carries what the query itself does not: the values its
+// parameters stand for.
+type CompileOptions struct {
+	Parameters map[string]any
+}
+
 // Compile binds a query to a knowledge network and produces its plan.
-func Compile(query *Query, schema *Schema) (*Plan, error) {
+func Compile(query *Query, schema *Schema, options CompileOptions) (*Plan, error) {
 	p := &planner{
-		schema:  schema,
-		plan:    &Plan{Distinct: query.Distinct, Skip: query.Skip, Limit: query.Limit},
-		tableOf: map[string]int{},
+		schema:     schema,
+		parameters: options.Parameters,
+		plan:       &Plan{Distinct: query.Distinct, Skip: query.Skip, Limit: query.Limit},
+		tableOf:    map[string]int{},
 	}
 	if err := p.planPattern(query.Pattern); err != nil {
 		return nil, err
@@ -230,20 +280,98 @@ func (p *planner) addJoin(edge EdgeRef, left, right int) error {
 	return nil
 }
 
-func (p *planner) planWhere(comparisons []Comparison) error {
-	for _, comparison := range comparisons {
-		table, column, err := p.resolveProperty(comparison.Left)
-		if err != nil {
-			return err
-		}
-		p.plan.Where = append(p.plan.Where, PlanCondition{
-			Table:    table,
-			Column:   column,
-			Operator: comparison.Operator,
-			Value:    comparison.Right,
-		})
+func (p *planner) planWhere(predicate Predicate) error {
+	if predicate == nil {
+		return nil
 	}
+	planned, err := p.planPredicate(predicate)
+	if err != nil {
+		return err
+	}
+	p.plan.Where = planned
 	return nil
+}
+
+func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
+	switch node := predicate.(type) {
+	case Comparison:
+		table, column, err := p.resolveProperty(node.Left)
+		if err != nil {
+			return nil, err
+		}
+		value, err := p.resolveValue(node.Right, node.Pos)
+		if err != nil {
+			return nil, err
+		}
+		return PlanCondition{Table: table, Column: column, Operator: node.Operator, Value: value}, nil
+
+	case LogicalOperator:
+		operands := make([]PlanPredicate, 0, len(node.Operands))
+		for _, operand := range node.Operands {
+			planned, err := p.planPredicate(operand)
+			if err != nil {
+				return nil, err
+			}
+			operands = append(operands, planned)
+		}
+		return PlanLogical{Operator: node.Operator, Operands: operands}, nil
+
+	case Negation:
+		operand, err := p.planPredicate(node.Operand)
+		if err != nil {
+			return nil, err
+		}
+		return PlanNegation{Operand: operand}, nil
+
+	case NullCheck:
+		table, column, err := p.resolveProperty(node.Property)
+		if err != nil {
+			return nil, err
+		}
+		return PlanNullCheck{Table: table, Column: column, Negated: node.Negated}, nil
+
+	case Membership:
+		table, column, err := p.resolveProperty(node.Property)
+		if err != nil {
+			return nil, err
+		}
+		values := make([]Literal, 0, len(node.Values))
+		for _, value := range node.Values {
+			resolved, err := p.resolveValue(value, node.Pos)
+			if err != nil {
+				return nil, err
+			}
+			values = append(values, resolved)
+		}
+		return PlanMembership{Table: table, Column: column, Values: values, Negated: node.Negated}, nil
+
+	default:
+		return nil, planErrorf(predicate.predicatePosition(), "unsupported predicate %T", predicate)
+	}
+}
+
+// resolveValue turns what the query wrote into the value the statement will
+// carry. A parameter is looked up here, once, so generation only ever sees
+// literals and the escaping rules apply to both the same way.
+func (p *planner) resolveValue(value Operand, pos Position) (Literal, error) {
+	if value.Literal != nil {
+		return *value.Literal, nil
+	}
+	if value.Parameter == nil {
+		return Literal{}, planErrorf(pos, "a comparison with no value")
+	}
+
+	name := value.Parameter.Name
+	supplied, ok := p.parameters[name]
+	if !ok {
+		return Literal{}, planErrorf(value.Parameter.Pos, "parameter %q was not supplied", name)
+	}
+	literal, err := literalFromParameter(supplied)
+	if err != nil {
+		return Literal{}, planErrorf(value.Parameter.Pos, "parameter %q %v", name, err)
+	}
+	literal.Pos = value.Parameter.Pos
+	return literal, nil
 }
 
 func (p *planner) planReturn(projections []Projection) error {

@@ -101,7 +101,7 @@ MATCH (o:probe_order) RETURN o
 MATCH (o:probe_order) RETURN count(*)
 MATCH (o:probe_order) RETURN sum(o.o_amount)
 MATCH (o:probe_order) RETURN o.o_amount + 1
-MATCH (o:probe_order) RETURN $param
+MATCH (o:probe_order) RETURN (o.o_key)
 MATCH (o:probe_order) RETURN o.o_state[0]
 MATCH (o:probe_order) RETURN o.a.b
 MATCH (o:probe_order) RETURN 1
@@ -110,12 +110,28 @@ MATCH (o:probe_order) RETURN [x IN [1, 2] | x]
 MATCH (o:probe_order) WHERE any(x IN [1] WHERE x = 1) RETURN o.o_key
 MATCH (o:probe_order) RETURN [(o)-[:probe_direct]->(i:probe_item) | i.i_key]
 
+# predicates
+MATCH (o:probe_order) WHERE o.o_key = 10774 OR o.o_key = 10963 RETURN o.o_key AS k
+MATCH (o:probe_order) WHERE NOT o.o_state = 'refunding' RETURN o.o_key AS k LIMIT 2
+MATCH (o:probe_order) WHERE NOT NOT o.o_state = 'refunding' RETURN o.o_key AS k LIMIT 2
+MATCH (o:probe_order) WHERE o.o_key IN [10774, 10963] RETURN o.o_key AS k
+MATCH (o:probe_order) WHERE NOT o.o_key IN [10774] RETURN o.o_key AS k LIMIT 2
+MATCH (o:probe_order) WHERE o.o_key IN [] RETURN o.o_key AS k
+MATCH (o:probe_order) WHERE o.o_state IS NULL RETURN o.o_key AS k LIMIT 2
+MATCH (o:probe_order) WHERE o.o_state IS NOT NULL RETURN o.o_key AS k LIMIT 2
+MATCH (o:probe_order) WHERE (o.o_key = 10774 OR o.o_key = 10963) AND o.o_amount > 0 RETURN o.o_key AS k
+MATCH (o:probe_order) WHERE NOT (o.o_key = 10774 OR o.o_key = 10963) RETURN o.o_key AS k LIMIT 2
+MATCH (o:probe_order) WHERE o.o_state = $state RETURN o.o_key AS k LIMIT 2
+MATCH (o:probe_order) WHERE o.o_key IN [$first, 10963] RETURN o.o_key AS k
+
 # reject-where
-MATCH (o:probe_order) WHERE o.o_key = 1 OR o.o_key = 2 RETURN o.o_key
 MATCH (o:probe_order) WHERE o.o_key = 1 XOR o.o_key = 2 RETURN o.o_key
-MATCH (o:probe_order) WHERE NOT o.o_key = 1 RETURN o.o_key
-MATCH (o:probe_order) WHERE o.o_key IN [1, 2] RETURN o.o_key
-MATCH (o:probe_order) WHERE o.o_state IS NULL RETURN o.o_key
+MATCH (o:probe_order) WHERE o.o_key IN o.o_chan RETURN o.o_key
+MATCH (o:probe_order) WHERE o.o_key IN [o.o_chan] RETURN o.o_key
+MATCH (o:probe_order) WHERE o.o_key IN [1, null] RETURN o.o_key
+MATCH (o:probe_order) WHERE 1 IS NULL RETURN o.o_key
+MATCH (o:probe_order) WHERE o.o_amount > -$floor RETURN o.o_key
+MATCH (o:probe_order) WHERE o.o_state = $0 RETURN o.o_key
 MATCH (o:probe_order) WHERE o.o_state STARTS WITH 'a' RETURN o.o_key
 MATCH (o:probe_order) WHERE o.o_state CONTAINS 'a' RETURN o.o_key
 MATCH (o:probe_order) WHERE o.o_key < o.o_chan < o.o_amount RETURN o.o_key

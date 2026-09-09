@@ -65,13 +65,16 @@ func TestAnalyzeFullQuery(t *testing.T) {
 		t.Fatal("DISTINCT was dropped")
 	}
 
-	if len(query.Where) != 2 {
-		t.Fatalf("predicates = %d, want 2", len(query.Where))
+	conjunction, ok := query.Where.(LogicalOperator)
+	if !ok || conjunction.Operator != "AND" || len(conjunction.Operands) != 2 {
+		t.Fatalf("where = %+v, want an AND of two comparisons", query.Where)
 	}
-	if p := query.Where[0]; p.Left.String() != "a.amount" || p.Operator != ">" || p.Right.Integer != 100 {
+	if p := conjunction.Operands[0].(Comparison); p.Left.String() != "a.amount" ||
+		p.Operator != ">" || p.Right.Literal.Integer != 100 {
 		t.Fatalf("first predicate = %+v", p)
 	}
-	if p := query.Where[1]; p.Left.String() != "b.name" || p.Operator != "=" || p.Right.String != "Acme" {
+	if p := conjunction.Operands[1].(Comparison); p.Left.String() != "b.name" ||
+		p.Operator != "=" || p.Right.Literal.String != "Acme" {
 		t.Fatalf("second predicate = %+v", p)
 	}
 
@@ -202,7 +205,7 @@ func TestAnalyzeLiterals(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			query := mustAnalyze(t, "MATCH (a:Order) WHERE "+tc.where+" RETURN a.id")
-			tc.check(t, query.Where[0].Right)
+			tc.check(t, *query.Where.(Comparison).Right.Literal)
 		})
 	}
 }
@@ -210,7 +213,7 @@ func TestAnalyzeLiterals(t *testing.T) {
 func TestAnalyzeComparisonOperators(t *testing.T) {
 	for _, operator := range []string{"=", "<>", "<", ">", "<=", ">="} {
 		query := mustAnalyze(t, "MATCH (a:Order) WHERE a.amount "+operator+" 1 RETURN a.id")
-		if got := query.Where[0].Operator; got != operator {
+		if got := query.Where.(Comparison).Operator; got != operator {
 			t.Fatalf("operator = %q, want %q", got, operator)
 		}
 	}
@@ -250,29 +253,25 @@ func TestAnalyzeRejections(t *testing.T) {
 		{"MATCH (a:Order) RETURN count(a.id)", "function calls"},
 		{"MATCH (a:Order) RETURN count(*)", "count(*)"},
 		{"MATCH (a:Order) RETURN a.id + 1", "arithmetic"},
-		{"MATCH (a:Order) RETURN $parameter", "query parameters"},
 		{"MATCH (a:Order) RETURN CASE a.x WHEN 1 THEN 2 ELSE 3 END", "CASE"},
 		{"MATCH (a:Order) RETURN [x IN [1, 2] | x]", "list comprehensions"},
 		{"MATCH (a:Order) RETURN [(a)-[:R]->(b:Customer) | b.id]", "pattern comprehensions"},
 		{"MATCH (a:Order) WHERE all(x IN [1] WHERE x = 1) RETURN a.id", "quantified expressions"},
-		{"MATCH (a:Order) RETURN a.x IS NULL", "IS NULL"},
+		{"MATCH (a:Order) RETURN a.x IS NULL", "a condition here"},
 		{"MATCH (a:Order) RETURN a.items[0]", "list indexing"},
 		{"MATCH (a:Order) RETURN a.x.y", "nested property access"},
 		{"MATCH (a:Order) RETURN 1", "only variable.property references"},
-		{"MATCH (a:Order) WHERE a.x = 1 OR a.y = 2 RETURN a.id", "OR"},
 		{"MATCH (a:Order) WHERE a.x = 1 XOR a.y = 2 RETURN a.id", "XOR"},
-		{"MATCH (a:Order) WHERE NOT a.x = 1 RETURN a.id", "NOT"},
-		{"MATCH (a:Order) WHERE a.x IN [1, 2] RETURN a.id", "IN"},
-		{"MATCH (a:Order) WHERE a.x IS NULL RETURN a.id", "IS NULL"},
 		{"MATCH (a:Order) WHERE a.x STARTS WITH 'A' RETURN a.id", "STARTS WITH"},
 		{"MATCH (a:Order) WHERE a.x = a.y RETURN a.id", "against a literal"},
 		{"MATCH (a:Order) WHERE a.x = null RETURN a.id", "comparing against null"},
+		{"MATCH (a:Order) WHERE a.x = 1 XOR a.y = 2 RETURN a.id", "XOR"},
 		{"MATCH (a:Order) WHERE a.x < a.y < a.z RETURN a.id", "chained comparisons"},
 		{"MATCH (a:Order) WHERE a.x RETURN a.id", "non-comparison predicate"},
 		{"MATCH (a:Order) WHERE a.x = [1] RETURN a.id", "list and map literals"},
 		{"MATCH (a:Order) WHERE (a)-[:R]->(:Customer) RETURN a.id", "pattern predicates"},
 		{"MATCH (a:Order) WHERE EXISTS { (a)-[:R]->(:Customer) } RETURN a.id", "EXISTS subqueries"},
-		{"MATCH (a:Order) WHERE (a.x = 1) RETURN a.id", "parenthesized expressions"},
+		{"MATCH (a:Order) RETURN (a.x)", "parenthesized expressions"},
 		{"MATCH (a:Order) RETURN a.id LIMIT 1 + 1", "arithmetic"},
 		{"MATCH (a:Order) RETURN a.id LIMIT 'ten'", "non-integer LIMIT"},
 		{"MATCH (a:Order) RETURN a.id SKIP -1", "negative SKIP"},
@@ -334,7 +333,7 @@ func TestAnalyzeStringEscapes(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			query := mustAnalyze(t, "MATCH (a:Order) WHERE "+tc.where+" RETURN a.id")
-			if got := query.Where[0].Right.String; got != tc.want {
+			if got := query.Where.(Comparison).Right.Literal.String; got != tc.want {
 				t.Fatalf("got %q, want %q", got, tc.want)
 			}
 		})
@@ -369,7 +368,7 @@ func TestDecodeStringLiteralRefusesMalformedEscapes(t *testing.T) {
 // A rejection has to say where, because a long query has many places the same
 // construct could appear.
 func TestAnalyzeRejectionCarriesPosition(t *testing.T) {
-	_, err := analyze(t, "MATCH (a:Order)\nWHERE NOT a.paid = true\nRETURN a.id")
+	_, err := analyze(t, "MATCH (a:Order)\nWHERE a.name STARTS WITH 'A'\nRETURN a.id")
 	unsupported, ok := err.(*Unsupported)
 	if !ok {
 		t.Fatalf("error = %T (%v), want *Unsupported", err, err)

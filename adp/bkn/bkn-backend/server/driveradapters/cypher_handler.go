@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -24,9 +25,14 @@ import (
 )
 
 // CypherQueryRequest is the request body of a Cypher query. Paging is written
-// in the query itself, with SKIP and LIMIT, so there is nothing else to carry.
+// in the query itself, with SKIP and LIMIT, so there is nothing else to carry
+// beyond the values the query refers to.
 type CypherQueryRequest struct {
 	Query string `json:"query"`
+	// Parameters supply what the query writes as $name. They are values only:
+	// a parameter changes which rows come back, never which resource or
+	// column is read.
+	Parameters map[string]any `json:"parameters"`
 }
 
 func (r *restHandler) RunCypherQueryByEx(c *gin.Context) {
@@ -54,7 +60,12 @@ func (r *restHandler) RunCypherQuery(c *gin.Context, vis hydra.Visitor) {
 	span.SetAttributes(attr.Key("kn_id").String(knID), attr.Key("branch").String(branch))
 
 	var body CypherQueryRequest
-	if err := c.ShouldBindJSON(&body); err != nil {
+	// Numbers are decoded as json.Number rather than float64: a parameter may
+	// carry an identifier that does not survive a float, and comparing it
+	// against the wrong value is worse than refusing it.
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.UseNumber()
+	if err := decoder.Decode(&body); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -74,9 +85,10 @@ func (r *restHandler) RunCypherQuery(c *gin.Context, vis hydra.Visitor) {
 	}
 
 	result, err := r.cqs.Query(ctx, interfaces.CypherQuery{
-		KNID:   knID,
-		Branch: branch,
-		Query:  body.Query,
+		KNID:       knID,
+		Branch:     branch,
+		Query:      body.Query,
+		Parameters: body.Parameters,
 	})
 	if err != nil {
 		replyHandlerError(c, span, ctx, err)

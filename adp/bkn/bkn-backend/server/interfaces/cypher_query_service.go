@@ -24,6 +24,10 @@ type CypherQuery struct {
 	KNID   string
 	Branch string
 	Query  string
+	// Parameters supply the values the query refers to as $name. They are
+	// values only: a parameter can change which rows come back, never which
+	// resource or column is read.
+	Parameters map[string]any
 }
 
 // CypherQueryResult carries the rows a query produced. The generated SQL is
