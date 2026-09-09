@@ -106,9 +106,10 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 				assert.Equal(t, 0, params.Offset)
 				assert.Equal(t, 2, params.Limit)
 				return &interfaces.ResourceDataQueryResult{
-					Entries:    []map[string]any{{"id": "doc-1"}},
-					TotalCount: 1,
-					Paging:     &interfaces.PagingResponse{},
+					Entries:     []map[string]any{{"id": "doc-1"}},
+					TotalCount:  1,
+					Paging:      &interfaces.PagingResponse{},
+					QuerySource: interfaces.ResourceQuerySourceLocalIndex,
 				}, nil
 			})
 
@@ -121,6 +122,7 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 
 		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), `"entries"`)
+		assert.Contains(t, w.Body.String(), `"query_source":"local_index"`)
 		assert.Contains(t, w.Body.String(), `"total_count":1`)
 	})
 
@@ -211,6 +213,84 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 
 		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), "VegaBackend.InvalidParameter.GroupBy")
+	})
+
+	t.Run("rejects binary group by fields", func(t *testing.T) {
+		engine, rs, _, _ := setupResourceDataHandlerTest(t)
+		resource := sampleDatasetResource()
+		resource.SchemaDefinition = []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Binary}}
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data",
+			strings.NewReader(`{"group_by":[{"property":"payload"}]}`))
+		req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "binary field \\\"payload\\\" cannot be used in group_by")
+	})
+
+	t.Run("rejects other group by fields", func(t *testing.T) {
+		engine, rs, _, _ := setupResourceDataHandlerTest(t)
+		resource := sampleDatasetResource()
+		resource.SchemaDefinition = []*interfaces.Property{{Name: "metadata", Type: interfaces.DataType_Other}}
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data",
+			strings.NewReader(`{"group_by":[{"property":"metadata"}]}`))
+		req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "other field \\\"metadata\\\" cannot be used in group_by")
+	})
+
+	t.Run("rejects binary output fields in aggregation queries", func(t *testing.T) {
+		engine, rs, _, _ := setupResourceDataHandlerTest(t)
+		resource := sampleDatasetResource()
+		resource.SchemaDefinition = []*interfaces.Property{
+			{Name: "score", Type: interfaces.DataType_Integer},
+			{Name: "payload", Type: interfaces.DataType_Binary},
+		}
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data",
+			strings.NewReader(`{"aggregation":{"property":"score","aggr":"sum"},"output_fields":["payload"]}`))
+		req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "Binary field \\\"payload\\\" cannot be requested by an aggregation query")
+	})
+
+	t.Run("rejects other output fields in aggregation queries", func(t *testing.T) {
+		engine, rs, _, _ := setupResourceDataHandlerTest(t)
+		resource := sampleDatasetResource()
+		resource.SchemaDefinition = []*interfaces.Property{
+			{Name: "score", Type: interfaces.DataType_Integer},
+			{Name: "metadata", Type: interfaces.DataType_Other},
+		}
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data",
+			strings.NewReader(`{"aggregation":{"property":"score","aggr":"sum"},"output_fields":["metadata"]}`))
+		req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "Other field \\\"metadata\\\" cannot be requested by an aggregation query")
 	})
 
 	t.Run("preserves total count requested by cursor session", func(t *testing.T) {

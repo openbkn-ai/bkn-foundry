@@ -3,6 +3,7 @@ package resource_data
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -187,7 +188,7 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 	case interfaces.ResourceCategoryTable:
 		// Only an available managed index may be queried. Stale index names are
 		// retained for diagnostics and must fall back to the source.
-		if interfaces.HasAvailableLocalIndex(resource) {
+		if interfaces.HasAvailableLocalIndex(resource) && !shouldIgnoreLocalIndex(params) {
 			// Call the local index manager to list the build product documentation
 			documents, total, err := rds.lim.ListDocuments(ctx, resource.LocalIndexName, resource, params)
 			if err != nil {
@@ -197,7 +198,7 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 			}
 
 			span.SetStatus(codes.Ok, "")
-			return documents, total, nil
+			return normalizeIndexedUnavailableQueryValues(documents, resource, params), total, nil
 		}
 
 		// Prepare the sort parameter
@@ -218,8 +219,13 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 				WithErrorDetails(err.Error())
 		}
 
+		normalized, normalizeErr := normalizeBinaryQueryValues(data, resource, params)
+		if normalizeErr != nil {
+			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
+				WithErrorDetails("binary query result normalization failed")
+		}
 		span.SetStatus(codes.Ok, "")
-		return data, total, nil
+		return normalized, total, nil
 
 	case interfaces.ResourceCategoryIndex:
 		data, total, err := rds.QueryData(ctx, catalog, resource, params)
@@ -278,6 +284,90 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 	}
 }
 
+func normalizeBinaryQueryValues(entries []map[string]any, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) ([]map[string]any, error) {
+	if resource == nil {
+		return entries, nil
+	}
+	binaryFields := make([]*interfaces.Property, 0)
+	for _, prop := range resource.SchemaDefinition {
+		if prop.Type == interfaces.DataType_Binary && shouldIncludeOutputField(params, prop.Name) {
+			binaryFields = append(binaryFields, prop)
+		}
+	}
+	binaryMode := interfaces.BinaryModeMetadata
+	if params.BinaryMode != nil {
+		binaryMode = *params.BinaryMode
+	}
+	for _, entry := range entries {
+		for _, prop := range binaryFields {
+			value, exists := entry[prop.Name]
+			if !exists || value == nil {
+				continue
+			}
+			if binaryMode == interfaces.BinaryModeMetadata {
+				length, ok := value.(int64)
+				if !ok {
+					return nil, fmt.Errorf("binary field %q returned %T byte length", prop.Name, value)
+				}
+				entry[prop.Name] = interfaces.ResourceValue{
+					Mode:       interfaces.ResourceValueModeMetadata,
+					ByteLength: &length,
+				}
+				continue
+			}
+			bytes, ok := value.([]byte)
+			if !ok {
+				return nil, fmt.Errorf("binary field %q returned %T instead of []byte", prop.Name, value)
+			}
+			length := int64(len(bytes))
+			data := base64.StdEncoding.EncodeToString(bytes)
+			entry[prop.Name] = interfaces.ResourceValue{
+				Mode:       interfaces.ResourceValueModeContent,
+				ByteLength: &length,
+				Data:       &data,
+			}
+		}
+	}
+	return entries, nil
+}
+
+func normalizeIndexedUnavailableQueryValues(entries []map[string]any, resource *interfaces.Resource,
+	params *interfaces.ResourceDataQueryParams) []map[string]any {
+	if resource == nil {
+		return entries
+	}
+	unavailableFields := make([]*interfaces.Property, 0)
+	for _, prop := range resource.SchemaDefinition {
+		if (prop.Type == interfaces.DataType_Binary || prop.Type == interfaces.DataType_Other) &&
+			shouldIncludeOutputField(params, prop.Name) {
+			unavailableFields = append(unavailableFields, prop)
+		}
+	}
+	for _, entry := range entries {
+		for _, prop := range unavailableFields {
+			entry[prop.Name] = interfaces.ResourceValue{
+				Mode: interfaces.ResourceValueModeUnavailable,
+			}
+		}
+	}
+	return entries
+}
+
+func shouldIncludeOutputField(params *interfaces.ResourceDataQueryParams, field string) bool {
+	if params == nil {
+		return true
+	}
+	if len(params.OutputFields) == 0 {
+		return !isIndexAggregateQuery(params)
+	}
+	for _, outputField := range params.OutputFields {
+		if outputField == field {
+			return true
+		}
+	}
+	return false
+}
+
 // QueryWithPaging is the sole public resource-data query entrypoint.
 func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
@@ -292,18 +382,28 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 		return nil, err
 	}
 	if resource.Category == interfaces.ResourceCategoryLogicView {
-		return rds.lvs.QueryWithPaging(ctx, resource, params)
+		result, err := rds.lvs.QueryWithPaging(ctx, resource, params)
+		if result != nil {
+			result.QuerySource = resourceQuerySource(resource, params)
+		}
+		return result, err
 	}
-	paginationCategory := resourceDataPaginationCategory(resource)
+	paginationCategory := resourceDataPaginationCategory(resource, params)
 	if params.Paging.Cursor != "" {
 		if !resourceDataCursorSupported(resource.Category) {
 			return nil, rest.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_InvalidParameter).
 				WithErrorDetails("cursor paging is not implemented for this resource category")
 		}
-		return querylogic.ExecuteResourceDataCursorContinuation(ctx, accountIDFromContext(ctx), resource, params.Paging.Cursor,
+		querySource := ""
+		result, err := querylogic.ExecuteResourceDataCursorContinuation(ctx, accountIDFromContext(ctx), resource, params.Paging.Cursor,
 			func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+				querySource = resourceQuerySource(resource, pageParams)
 				return rds.query(pageCtx, resource, pageParams)
 			})
+		if result != nil {
+			result.QuerySource = querySource
+		}
+		return result, err
 	}
 	if paginationCategory == interfaces.ResourceCategoryIndex && !isIndexAggregateQuery(params) {
 		limit := params.Paging.EffectiveLimit()
@@ -322,10 +422,16 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 					WithErrorDetails("cursor paging does not support index aggregation queries")
 			}
-			return querylogic.ExecuteInitialResourceDataCursorWithCategory(ctx, accountIDFromContext(ctx), resource, paginationCategory, params,
+			querySource := ""
+			result, err := querylogic.ExecuteInitialResourceDataCursorWithCategory(ctx, accountIDFromContext(ctx), resource, paginationCategory, params,
 				func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+					querySource = resourceQuerySource(resource, pageParams)
 					return rds.query(pageCtx, resource, pageParams)
 				})
+			if result != nil {
+				result.QuerySource = querySource
+			}
+			return result, err
 		}
 		return nil, rest.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor paging is not implemented for this resource category")
@@ -335,23 +441,43 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 	if err != nil {
 		return nil, err
 	}
-	return &interfaces.ResourceDataQueryResult{Entries: entries, TotalCount: total, Paging: &interfaces.PagingResponse{}}, nil
+	return &interfaces.ResourceDataQueryResult{
+		Entries:     entries,
+		TotalCount:  total,
+		Paging:      &interfaces.PagingResponse{},
+		QuerySource: resourceQuerySource(resource, params),
+	}, nil
 }
 
 func isIndexAggregateQuery(params *interfaces.ResourceDataQueryParams) bool {
 	return params.Aggregation != nil || len(params.GroupBy) > 0 || params.Having != nil
 }
 
-func resourceDataPaginationCategory(resource *interfaces.Resource) string {
+func resourceDataPaginationCategory(resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) string {
 	if resource == nil {
 		return ""
 	}
+	ignoreLocalIndex := shouldIgnoreLocalIndex(params)
 	if resource.Category == interfaces.ResourceCategoryDataset ||
 		resource.Category == interfaces.ResourceCategoryIndex ||
-		(resource.Category == interfaces.ResourceCategoryTable && interfaces.HasAvailableLocalIndex(resource)) {
+		(resource.Category == interfaces.ResourceCategoryTable &&
+			interfaces.HasAvailableLocalIndex(resource) && !ignoreLocalIndex) {
 		return interfaces.ResourceCategoryIndex
 	}
 	return resource.Category
+}
+
+func resourceQuerySource(resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) string {
+	ignoreLocalIndex := shouldIgnoreLocalIndex(params)
+	if resource != nil && resource.Category == interfaces.ResourceCategoryTable &&
+		interfaces.HasAvailableLocalIndex(resource) && !ignoreLocalIndex {
+		return interfaces.ResourceQuerySourceLocalIndex
+	}
+	return interfaces.ResourceQuerySourceSource
+}
+
+func shouldIgnoreLocalIndex(params *interfaces.ResourceDataQueryParams) bool {
+	return params != nil && params.IgnoreLocalIndex != nil && *params.IgnoreLocalIndex
 }
 
 func resourceDataCursorSupported(category string) bool {

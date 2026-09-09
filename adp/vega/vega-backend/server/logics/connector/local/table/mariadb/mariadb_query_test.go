@@ -152,7 +152,7 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 		sql, _, err := builder.ToSql()
 		require.NoError(t, err)
 		assert.Equal(t,
-			"SELECT `id`, `key`, `created_at` FROM `yanfeng_kb`.`fact` LIMIT 10 OFFSET 0",
+			"SELECT `id` AS `id`, `key` AS `key`, `created_at` AS `created` FROM `yanfeng_kb`.`fact` LIMIT 10 OFFSET 0",
 			sql)
 	})
 
@@ -163,7 +163,7 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 
 		sql, _, err := builder.ToSql()
 		require.NoError(t, err)
-		assert.Equal(t, "SELECT `key`, `created_at` FROM `yanfeng_kb`.`fact` LIMIT 5 OFFSET 0", sql)
+		assert.Equal(t, "SELECT `key` AS `key`, `created_at` AS `created` FROM `yanfeng_kb`.`fact` LIMIT 5 OFFSET 0", sql)
 	})
 
 	t.Run("sort quotes the column and maps to its original name", func(t *testing.T) {
@@ -177,7 +177,7 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 		sql, _, err := builder.ToSql()
 		require.NoError(t, err)
 		assert.Equal(t,
-			"SELECT `id` FROM `yanfeng_kb`.`fact` ORDER BY `created_at` DESC LIMIT 5 OFFSET 0",
+			"SELECT `id` AS `id` FROM `yanfeng_kb`.`fact` ORDER BY `created_at` DESC LIMIT 5 OFFSET 0",
 			sql)
 	})
 
@@ -206,7 +206,7 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 		sql, _, err := builder.ToSql()
 		require.NoError(t, err)
 		assert.Equal(t,
-			"SELECT `content_vector` FROM `yanfeng_kb`.`fact` ORDER BY `content_vector` DESC LIMIT 5 OFFSET 0",
+			"SELECT `content_vector` AS `content_vector` FROM `yanfeng_kb`.`fact` ORDER BY `content_vector` DESC LIMIT 5 OFFSET 0",
 			sql)
 	})
 
@@ -231,7 +231,7 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 		sql, _, err := builder.ToSql()
 		require.NoError(t, err)
 		assert.Equal(t,
-			"SELECT `id`, `content_vector` FROM `yanfeng_kb`.`fact` LIMIT 10 OFFSET 0",
+			"SELECT `id` AS `id`, `content_vector` AS `content_vector` FROM `yanfeng_kb`.`fact` LIMIT 10 OFFSET 0",
 			sql)
 	})
 
@@ -246,7 +246,7 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 		sql, _, err := builder.ToSql()
 		require.NoError(t, err)
 		assert.Equal(t,
-			"SELECT `key`, COUNT(`id`) AS `cnt` FROM `yanfeng_kb`.`fact` GROUP BY `key` LIMIT 20 OFFSET 0",
+			"SELECT `key` AS `key`, COUNT(`id`) AS `cnt` FROM `yanfeng_kb`.`fact` GROUP BY `key` LIMIT 20 OFFSET 0",
 			sql)
 	})
 
@@ -263,7 +263,7 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 		sql, _, err := builder.ToSql()
 		require.NoError(t, err)
 		assert.Equal(t,
-			"SELECT `key`, COUNT(`id`) AS `created` FROM `yanfeng_kb`.`fact` GROUP BY `key` "+
+			"SELECT `key` AS `key`, COUNT(`id`) AS `created` FROM `yanfeng_kb`.`fact` GROUP BY `key` "+
 				"ORDER BY `created` DESC LIMIT 20 OFFSET 0",
 			sql)
 	})
@@ -280,7 +280,7 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 		sql, _, err := builder.ToSql()
 		require.NoError(t, err)
 		assert.Equal(t,
-			"SELECT `key`, COUNT(`id`) AS `cnt` FROM `yanfeng_kb`.`fact` GROUP BY `key` LIMIT 20 OFFSET 0",
+			"SELECT `key` AS `key`, COUNT(`id`) AS `cnt` FROM `yanfeng_kb`.`fact` GROUP BY `key` LIMIT 20 OFFSET 0",
 			sql)
 	})
 
@@ -302,8 +302,9 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 
 func TestMariaDBConvertValue(t *testing.T) {
 	t.Run("maria dbconvert value", func(t *testing.T) {
-		assert.Equal(t, "hello", convertValue([]byte("hello")))
-		assert.Equal(t, int64(1), convertValue(int64(1)))
-		assert.Nil(t, convertValue(nil))
+		assert.Equal(t, "hello", convertValue([]byte("hello"), false))
+		assert.Equal(t, []byte("hello"), convertValue([]byte("hello"), true))
+		assert.Equal(t, int64(1), convertValue(int64(1), false))
+		assert.Nil(t, convertValue(nil, false))
 	})
 }

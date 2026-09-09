@@ -21,8 +21,11 @@ import (
 )
 
 // convertValue converts []byte to string for MariaDB driver compatibility
-func convertValue(v any) any {
+func convertValue(v any, preserveBinary bool) any {
 	if b, ok := v.([]byte); ok {
+		if preserveBinary {
+			return b
+		}
 		return string(b)
 	}
 	return v
@@ -87,7 +90,7 @@ func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sql string) (*inte
 
 		row := make(map[string]any)
 		for i, col := range columns {
-			row[col] = convertValue(values[i])
+			row[col] = convertValue(values[i], false)
 		}
 		response.Entries = append(response.Entries, row)
 	}
@@ -136,7 +139,8 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 			selectFields = append(selectFields, dateFmt+" AS "+quoteColumnName(groupByItem.Property))
 			selected[groupByItem.Property] = struct{}{}
 		} else {
-			selectFields = append(selectFields, quoteColumnName(column))
+			selectFields = append(selectFields,
+				quoteColumnName(column)+" AS "+quoteColumnName(groupByItem.Property))
 			selected[groupByItem.Property] = struct{}{}
 		}
 	}
@@ -172,17 +176,34 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 	}
 
 	// Select every field when the query is neither aggregated nor grouped
+	selectField := func(name string) string {
+		column := quoteColumnName(originalName(name))
+		if prop := fieldMap[name]; prop != nil && prop.Type == interfaces.DataType_Binary {
+			if params.BinaryMode == nil {
+				return "NULL AS " + quoteColumnName(name)
+			}
+			switch *params.BinaryMode {
+			case interfaces.BinaryModeMetadata:
+				return "OCTET_LENGTH(" + column + ") AS " + quoteColumnName(name)
+			case interfaces.BinaryModeContent:
+				return column + " AS " + quoteColumnName(name)
+			default:
+				return "NULL AS " + quoteColumnName(name)
+			}
+		}
+		return column + " AS " + quoteColumnName(name)
+	}
 	if len(params.GroupBy) == 0 && params.Aggregation == nil {
 		if len(params.OutputFields) > 0 {
 			for _, outName := range params.OutputFields {
-				selectFields = append(selectFields, quoteColumnName(originalName(outName)))
+				selectFields = append(selectFields, selectField(outName))
 			}
 		} else if len(selectFields) == 0 {
 			// No output fields specified, so query them all. This branch needs the
 			// originalName fallback too, or a property with an empty original_name
 			// renders as an empty identifier and breaks the statement.
 			for _, prop := range resource.SchemaDefinition {
-				selectFields = append(selectFields, quoteColumnName(originalName(prop.Name)))
+				selectFields = append(selectFields, selectField(prop.Name))
 			}
 		}
 	} else if len(params.OutputFields) > 0 {
@@ -191,7 +212,7 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 			if _, found := selected[outName]; found {
 				continue
 			}
-			selectFields = append(selectFields, quoteColumnName(originalName(outName)))
+			selectFields = append(selectFields, selectField(outName))
 			selected[outName] = struct{}{}
 		}
 	}
@@ -322,6 +343,14 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 	}
 	result.Columns = columns
 
+	binaryContentColumns := map[string]bool{}
+	if params.BinaryMode != nil && *params.BinaryMode == interfaces.BinaryModeContent {
+		for _, prop := range resource.SchemaDefinition {
+			if prop != nil && prop.Type == interfaces.DataType_Binary {
+				binaryContentColumns[prop.Name] = true
+			}
+		}
+	}
 	for rows.Next() {
 		values := make([]any, len(columns))
 		valuePtrs := make([]any, len(columns))
@@ -335,7 +364,7 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 
 		row := make(map[string]any)
 		for i, col := range columns {
-			row[col] = convertValue(values[i])
+			row[col] = convertValue(values[i], binaryContentColumns[col])
 		}
 		result.Entries = append(result.Entries, row)
 	}

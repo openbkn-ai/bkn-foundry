@@ -74,6 +74,59 @@ func TestPostgresqlConnectorExecuteQueryQuotesCalendarIntervalIdentifiers(t *tes
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestPostgresqlConnectorExecuteQueryAliasesGroupByFields(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	connector := &PostgresqlConnector{db: db, connected: true}
+	resource := &interfaces.Resource{
+		SourceIdentifier: "public.events",
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "groupKey", OriginalName: "group_key"},
+			{Name: "id", OriginalName: "id"},
+		},
+	}
+	params := &interfaces.ResourceDataQueryParams{
+		GroupBy:     []*interfaces.GroupByItem{{Property: "groupKey"}},
+		Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count"},
+		Limit:       20,
+	}
+	expectedQuery := "SELECT \"group_key\" AS \"groupKey\", COUNT(\"id\") AS \"__value\" " +
+		"FROM \"public\".\"events\" GROUP BY \"group_key\" LIMIT 20 OFFSET 0"
+	mock.ExpectQuery(expectedQuery).
+		WillReturnRows(sqlmock.NewRows([]string{"groupKey", "__value"}).AddRow("priority", 1))
+
+	result, err := connector.ExecuteQuery(context.Background(), resource, params)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"groupKey", "__value"}, result.Columns)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestPostgresqlConnectorExecuteQueryConvertsAliasedTimezoneField(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	connector := &PostgresqlConnector{db: db, connected: true}
+	resource := &interfaces.Resource{
+		SourceIdentifier: "public.events",
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "createdAt", OriginalName: "created_at", OriginalType: "timestamptz"},
+		},
+	}
+	params := &interfaces.ResourceDataQueryParams{Limit: 1}
+	utc := time.Date(2026, 9, 9, 8, 0, 0, 0, time.UTC)
+	mock.ExpectQuery("SELECT \"created_at\" AS \"createdAt\" FROM \"public\".\"events\" LIMIT 1 OFFSET 0").
+		WillReturnRows(sqlmock.NewRows([]string{"createdAt"}).AddRow(utc))
+
+	result, err := connector.ExecuteQuery(context.Background(), resource, params)
+	require.NoError(t, err)
+	require.Len(t, result.Entries, 1)
+	assert.Equal(t, utc.Local(), result.Entries[0]["createdAt"])
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestPostgresqlBuildHavingCondition(t *testing.T) {
 	connector := &PostgresqlConnector{}
 	tests := []struct {
@@ -144,14 +197,14 @@ func TestPostgresqlConvertValue(t *testing.T) {
 		utc := time.Date(2026, 7, 9, 8, 0, 0, 0, time.UTC)
 		converted := convertValue(utc, "created_at", map[string]string{
 			"created_at": "timestamptz",
-		})
+		}, false)
 
 		require.IsType(t, time.Time{}, converted)
 		assert.Equal(t, utc.Local(), converted)
-		assert.Equal(t, "hello", convertValue([]byte("hello"), "name", map[string]string{"name": "varchar"}))
-		assert.Equal(t, "hello", convertValue([]byte("hello"), "unknown", map[string]string{}))
-		assert.Equal(t, int64(1), convertValue(int64(1), "count", map[string]string{"count": "int8"}))
-		assert.Nil(t, convertValue(nil, "name", map[string]string{"name": "varchar"}))
+		assert.Equal(t, "hello", convertValue([]byte("hello"), "name", map[string]string{"name": "varchar"}, false))
+		assert.Equal(t, []byte("hello"), convertValue([]byte("hello"), "name", map[string]string{"name": "bytea"}, true))
+		assert.Equal(t, int64(1), convertValue(int64(1), "count", map[string]string{"count": "int8"}, false))
+		assert.Nil(t, convertValue(nil, "name", map[string]string{"name": "varchar"}, false))
 	})
 }
 
