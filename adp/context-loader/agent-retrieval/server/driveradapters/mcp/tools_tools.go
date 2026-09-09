@@ -6,6 +6,7 @@ package mcp
 
 import (
 	"context"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 
@@ -26,6 +27,13 @@ func handleSearchCapabilities(svc kntools.KnToolsService) func(ctx context.Conte
 		searchReq := &kntools.SearchCapabilitiesReq{}
 		if err := bindArguments(req, searchReq); err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
+		}
+		// Every other tool on this surface takes the network from the X-Kn-ID header when the
+		// arguments omit it, and clients configure it once per connection rather than repeating
+		// it on each call — our own CLI among them. find_skills honoured it; the two narrow tool
+		// searches never did, so consolidating onto this one has to pick the behaviour up.
+		if strings.TrimSpace(searchReq.KnID) == "" {
+			searchReq.KnID = getKnIDFromHeader(req)
 		}
 
 		resp, err := svc.SearchCapabilities(ctx, searchReq)
@@ -50,6 +58,9 @@ func handleExecuteTool(svc kntools.KnToolsService) func(ctx context.Context, req
 		execReq := &kntools.ExecuteToolReq{}
 		if err := bindArguments(req, execReq); err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
+		}
+		if strings.TrimSpace(execReq.KnID) == "" {
+			execReq.KnID = getKnIDFromHeader(req)
 		}
 
 		resp, err := svc.ExecuteTool(ctx, execReq)
