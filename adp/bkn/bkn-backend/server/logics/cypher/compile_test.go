@@ -7,6 +7,7 @@
 package cypher
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -26,6 +27,8 @@ func modelSchema(t *testing.T) *Schema {
 		dataProperty("region", "f_region"),
 		dataProperty("amount", "f_total"),
 	)
+	order.PrimaryKeys = []string{"id"}
+
 	customer := objectType("ot_customer", "Customer", resource("res_customer", "customers"),
 		dataProperty("code", "f_code"),
 		dataProperty("region", "f_region"),
@@ -421,11 +424,30 @@ func TestCompileMultiHop(t *testing.T) {
 		}
 	})
 
-	t.Run("hops going the same way cannot repeat an edge", func(t *testing.T) {
+	// Two hops in the same direction coincide on a row that points at itself,
+	// so they need the condition as much as opposing hops do.
+	t.Run("hops going the same way over a self relation", func(t *testing.T) {
 		got := mustCompile(t,
 			"MATCH (a:Order)-[:FOLLOWS]->(b:Order)-[:FOLLOWS]->(c:Order) RETURN a.id AS id")
-		if strings.Contains(got, "WHERE") {
-			t.Fatalf("got %s, want no distinctness condition", got)
+		want := "WHERE NOT (t0.`f_id` = t1.`f_id` AND t1.`f_id` = t2.`f_id`)"
+		if !strings.Contains(got, want) {
+			t.Fatalf("got  %s\nwant it to contain %s", got, want)
+		}
+	})
+
+	// Hops with another hop between them can be the same relationship too, so
+	// every pair is compared rather than only neighbours.
+	t.Run("hops that are not neighbours", func(t *testing.T) {
+		got := mustCompile(t,
+			"MATCH (a:Order)-[:FOLLOWS]->(b:Order)-[:FOLLOWS]->(c:Order)-[:FOLLOWS]->(d:Order) RETURN a.id AS id")
+		for _, want := range []string{
+			"NOT (t0.`f_id` = t1.`f_id` AND t1.`f_id` = t2.`f_id`)",
+			"NOT (t0.`f_id` = t2.`f_id` AND t1.`f_id` = t3.`f_id`)",
+			"NOT (t1.`f_id` = t2.`f_id` AND t2.`f_id` = t3.`f_id`)",
+		} {
+			if !strings.Contains(got, want) {
+				t.Fatalf("got  %s\nwant it to contain %s", got, want)
+			}
 		}
 	})
 
@@ -447,7 +469,7 @@ func TestCompileMultiHopRejections(t *testing.T) {
 		{
 			name:  "an undirected hop beside one of the same type",
 			query: "MATCH (a:Item)-[:BELONGS_TO]-(o:Order)-[:BELONGS_TO]-(b:Item) RETURN a.id",
-			want:  "cannot be checked for traversing the same relationship",
+			want:  "cannot have one of them undirected",
 		},
 		{
 			name:  "a middle node the relations do not connect",
@@ -461,5 +483,20 @@ func TestCompileMultiHopRejections(t *testing.T) {
 				t.Fatalf("compile(%q) = %v, want a rejection mentioning %q", tc.query, err, tc.want)
 			}
 		})
+	}
+}
+
+// Every relationship is a join, and the row limit bounds what comes back
+// rather than what the database does to produce it.
+func TestCompileRefusesAVeryLongPath(t *testing.T) {
+	query := "MATCH (n0:Order)"
+	for i := 1; i <= interfaces.CYPHER_MAX_PATH_LENGTH+1; i++ {
+		query += fmt.Sprintf("-[:FOLLOWS]->(n%d:Order)", i)
+	}
+	query += " RETURN n0.id"
+
+	_, err := compile(t, query, GenerateOptions{})
+	if err == nil || !strings.Contains(err.Error(), "a path this long") {
+		t.Fatalf("compile = %v, want a rejection naming the path length", err)
 	}
 }

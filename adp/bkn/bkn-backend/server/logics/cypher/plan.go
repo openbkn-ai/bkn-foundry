@@ -176,6 +176,9 @@ type planner struct {
 	schema     *Schema
 	parameters map[string]any
 	plan       *Plan
+	// hops records what each relationship of the pattern ended up connecting,
+	// which is what the relationship-uniqueness rule compares.
+	hops []plannedHop
 	// distinctness holds the conditions that keep one pattern from traversing
 	// the same relationship twice. They are conditions, but they come from the
 	// pattern rather than from anything the author wrote.
@@ -227,45 +230,79 @@ func (p *planner) planPattern(pattern Pattern) error {
 	return p.keepRelationshipsDistinct(pattern)
 }
 
-// keepRelationshipsDistinct adds what Cypher requires and SQL does not: one
-// pattern may not traverse the same relationship twice.
+// keepRelationshipsDistinct adds what Cypher requires and SQL has no notion
+// of: one pattern may not traverse the same relationship twice.
 //
-// Two adjacent hops over the same relation type can only be the same edge when
-// they meet the shared node from the same side -- both arriving or both
-// leaving. Then the edges are the same exactly when the two far nodes are the
-// same row, so saying the far nodes differ says the relationships differ.
-// Nothing else in a linear path can repeat an edge.
+// A relationship here is a pair of rows -- one on the relation's source side,
+// one on its target side -- so two hops over the same relation type are the
+// same relationship exactly when both pairs coincide. Every pair of such hops
+// is compared, not only neighbouring ones: hops with another hop between them
+// can coincide just as easily, and two hops in the same direction coincide on
+// a row that points at itself.
 func (p *planner) keepRelationshipsDistinct(pattern Pattern) error {
-	for i := 0; i+1 < len(pattern.Edges); i++ {
-		first, second := pattern.Edges[i], pattern.Edges[i+1]
-		if first.Type != second.Type {
-			continue
+	if err := p.refuseUndirectedRepeats(pattern); err != nil {
+		return err
+	}
+	for i := 0; i < len(p.hops); i++ {
+		for j := i + 1; j < len(p.hops); j++ {
+			if p.hops[i].relationType != p.hops[j].relationType {
+				continue
+			}
+			distinct, err := p.differentEdges(p.hops[i], p.hops[j])
+			if err != nil {
+				return err
+			}
+			p.distinctness = append(p.distinctness, distinct)
 		}
-		if first.Direction == Undirected || second.Direction == Undirected {
-			// Which reading matched decides whether the edge repeats, and a
-			// condition cannot ask that after the fact.
-			return planErrorf(second.Pos,
-				"two undirected hops over %q cannot be checked for traversing the same relationship; write the directions out",
-				second.Type)
-		}
-		// The shared node is entered by the first hop and left by the second.
-		// They meet it from the same side when the arrows disagree.
-		if first.Direction == second.Direction {
-			continue
-		}
-
-		distinct, err := p.differentRows(i, i+2, second.Pos)
-		if err != nil {
-			return err
-		}
-		p.distinctness = append(p.distinctness, distinct)
 	}
 	return nil
 }
 
-// differentRows says two tables hold different rows of the same object type,
-// using the primary key, which is the only thing that identifies a row here.
-func (p *planner) differentRows(left, right int, pos Position) (PlanPredicate, error) {
+// refuseUndirectedRepeats turns away the one shape the rule cannot be stated
+// for: which reading of an undirected hop matched decides whether it repeats
+// another hop, and a condition cannot ask that after the fact.
+func (p *planner) refuseUndirectedRepeats(pattern Pattern) error {
+	for i, edge := range pattern.Edges {
+		if edge.Direction != Undirected {
+			continue
+		}
+		for j, other := range pattern.Edges {
+			if i == j || other.Type != edge.Type {
+				continue
+			}
+			return planErrorf(edge.Pos,
+				"a pattern with two hops over %q cannot have one of them undirected; write the directions out",
+				edge.Type)
+		}
+	}
+	return nil
+}
+
+// differentEdges says two hops did not traverse the same relationship: their
+// source rows and their target rows are not both the same.
+func (p *planner) differentEdges(first, second plannedHop) (PlanPredicate, error) {
+	var same []PlanPredicate
+	for _, side := range [][2]int{{first.source, second.source}, {first.target, second.target}} {
+		if side[0] == side[1] {
+			// Both hops meet the same table on this side, so the rows are the
+			// same by construction and there is nothing to compare.
+			continue
+		}
+		equal, err := p.sameRow(side[0], side[1], second.pos)
+		if err != nil {
+			return nil, err
+		}
+		same = append(same, equal...)
+	}
+	if len(same) == 1 {
+		return PlanNegation{Operand: same[0]}, nil
+	}
+	return PlanNegation{Operand: PlanLogical{Operator: "AND", Operands: same}}, nil
+}
+
+// sameRow compares two tables of one object type by primary key, which is the
+// only thing that identifies a row here.
+func (p *planner) sameRow(left, right int, pos Position) ([]PlanPredicate, error) {
 	keys := p.objectType[left].PrimaryKeys
 	if len(keys) == 0 {
 		return nil, planErrorf(pos,
@@ -273,7 +310,7 @@ func (p *planner) differentRows(left, right int, pos Position) (PlanPredicate, e
 			p.objectType[left].OTID)
 	}
 
-	same := make([]PlanPredicate, 0, len(keys))
+	equal := make([]PlanPredicate, 0, len(keys))
 	for _, key := range keys {
 		leftColumn, err := p.schema.Column(p.objectType[left], key)
 		if err != nil {
@@ -283,16 +320,22 @@ func (p *planner) differentRows(left, right int, pos Position) (PlanPredicate, e
 		if err != nil {
 			return nil, &PlanError{Pos: pos, Err: err}
 		}
-		same = append(same, PlanColumnComparison{
+		equal = append(equal, PlanColumnComparison{
 			LeftTable: left, LeftColumn: leftColumn,
 			Operator:   "=",
 			RightTable: right, RightColumn: rightColumn,
 		})
 	}
-	if len(same) == 1 {
-		return PlanNegation{Operand: same[0]}, nil
-	}
-	return PlanNegation{Operand: PlanLogical{Operator: "AND", Operands: same}}, nil
+	return equal, nil
+}
+
+// plannedHop is one relationship of the pattern after direction is settled:
+// which table holds the relation's source rows and which holds its targets.
+type plannedHop struct {
+	relationType string
+	source       int
+	target       int
+	pos          Position
 }
 
 func (p *planner) addTable(node NodeRef) error {
@@ -366,6 +409,18 @@ func (p *planner) addJoin(edge EdgeRef, left, right int) error {
 			return err
 		}
 		join.Readings = append(join.Readings, keys)
+		// One hop is recorded per edge, not per reading. An undirected edge
+		// has two readings and no recorded hop: a lone one has nothing to
+		// coincide with, and one beside another over the same relation type
+		// is refused before this.
+		if edge.Direction != Undirected {
+			p.hops = append(p.hops, plannedHop{
+				relationType: relationType.RTID,
+				source:       source,
+				target:       target,
+				pos:          edge.Pos,
+			})
+		}
 	}
 
 	if len(join.Readings) == 0 {

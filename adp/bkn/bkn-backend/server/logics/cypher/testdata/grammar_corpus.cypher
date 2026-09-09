@@ -96,6 +96,10 @@ MATCH (o:probe_order {o_state: null}) RETURN o.o_key
 MATCH (o:probe_order {o_state: o.o_chan}) RETURN o.o_key
 MATCH (o:probe_order $props) RETURN o.o_key
 MATCH (a:probe_item)-[:probe_direct]-(o:probe_order)-[:probe_direct]-(b:probe_item) RETURN a.i_key
+MATCH (o:probe_order) RETURN o.o_key AS k ORDER BY ``
+MATCH (o:probe_order) RETURN o.o_key AS ``
+MATCH (o:probe_order) RETURN count(*) AS n ORDER BY o.o_amount
+MATCH (o:probe_order) RETURN o.o_key AS k ORDER BY count(*)
 
 # reject-pattern
 MATCH (o) RETURN o.o_key

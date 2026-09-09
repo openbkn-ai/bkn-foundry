@@ -15,6 +15,7 @@ import (
 
 	"github.com/antlr4-go/antlr/v4"
 
+	"bkn-backend/interfaces"
 	"bkn-backend/logics/cypher/parsing"
 )
 
@@ -153,7 +154,16 @@ func analyzePattern(ctx parsing.IOC_PatternContext) (*Pattern, []Predicate, erro
 	pattern.Nodes = append(pattern.Nodes, *node)
 	inline := conditions
 
-	for i, chain := range element.AllOC_PatternElementChain() {
+	chains := element.AllOC_PatternElementChain()
+	if len(chains) > interfaces.CYPHER_MAX_PATH_LENGTH {
+		// Every relationship is a join. The row limit bounds what comes back,
+		// not what the database does to produce it, so the length of the path
+		// is bounded here instead.
+		return nil, nil, unsupportedf(ctx, "a path this long",
+			"a path may hold at most %d relationships, got %d",
+			interfaces.CYPHER_MAX_PATH_LENGTH, len(chains))
+	}
+	for i, chain := range chains {
 		edge, err := analyzeRelationship(chain.OC_RelationshipPattern())
 		if err != nil {
 			return nil, nil, err
