@@ -76,7 +76,7 @@ func (services *propertyGrantManagementServices) EffectivePropertyLevels(
 		AccessorID: operatorID,
 		Items: []permdata.RequestItem{{
 			ObjectTypeRef: objectTypeRef,
-			Properties:    append([]string(nil), propertyNames...),
+			Properties:    uniqueStrings(propertyNames),
 			BaseLevel:     basePropertyLevel(operations),
 		}},
 	})
