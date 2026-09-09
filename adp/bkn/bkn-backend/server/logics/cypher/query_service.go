@@ -160,14 +160,25 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 		return "", 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
 	}
 
-	// The page asked of vega-backend is bounded here rather than inferred from
-	// the check above, so the conversion to int cannot depend on a limit that
-	// was validated several stages earlier.
-	rowLimit := interfaces.CYPHER_DEFAULT_LIMIT
-	if plan.Limit != nil && *plan.Limit > 0 && *plan.Limit <= interfaces.CYPHER_MAX_LIMIT {
-		rowLimit = int(*plan.Limit)
+	return sql, pageSize(plan.Limit), nil
+}
+
+// pageSize is how many rows to ask vega-backend for. The statement's own LIMIT
+// governs the result; this only has to be wide enough not to cut it short.
+//
+// The limit is read into a local and bounded against the same local that is
+// converted, rather than relying on the ceiling checked several stages
+// earlier: int is 32 bits on some targets, and an argument for why a widening
+// conversion is safe should not live in another function.
+func pageSize(limit *int64) int {
+	if limit == nil {
+		return interfaces.CYPHER_DEFAULT_LIMIT
 	}
-	return sql, rowLimit, nil
+	rows := *limit
+	if rows <= 0 || rows > interfaces.CYPHER_MAX_LIMIT {
+		return interfaces.CYPHER_DEFAULT_LIMIT
+	}
+	return int(rows)
 }
 
 func validateQueryText(ctx context.Context, query string) error {
