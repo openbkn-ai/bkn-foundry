@@ -212,3 +212,73 @@ func TestListingDropsSkillsTheRegistryDoesNotKnow(t *testing.T) {
 		t.Fatalf("注册表不认识的技能该被丢掉, got %+v", resp.Capabilities)
 	}
 }
+
+// TestListingDoesNotLetTheIndexDecideMembership is the parity control for retiring find_skills.
+//
+// find_skills listed the bindings and used the index only to describe them, so a Skill that was
+// mounted but not yet indexed still appeared. The index is built asynchronously and a fresh
+// install has none (#1323); if it decided membership, mounting a capability and listing it right
+// afterwards would come back empty and look like the mount had failed.
+func TestListingDoesNotLetTheIndexDecideMembership(t *testing.T) {
+	op := &fakeOperator{
+		// The index knows one of the three. The other two were mounted more recently than the
+		// last build.
+		hits: []interfaces.CapabilityHit{hit("box-1", "t1")},
+		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{
+			"box-1": tools("box-1", "t1", "t2"),
+		},
+		skillNames: map[string]string{"s-new": "刚挂上的技能"},
+	}
+	bkn := &fakeBkn{refs: append(functionRefs("box-1/t1", "box-1/t2"), skillRefs("s-new")...)}
+	svc := NewKnToolsServiceWith(op, bkn, &fakeKnAuthz{})
+
+	resp, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1"})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.Capabilities) != 3 {
+		t.Fatalf("挂了三个就该列三个，索引落后不该让它们消失, got %+v", resp.Capabilities)
+	}
+	ids := []string{
+		resp.Capabilities[0].CapabilityID,
+		resp.Capabilities[1].CapabilityID,
+		resp.Capabilities[2].CapabilityID,
+	}
+	// Binding order, so the answer does not reorder itself as the index catches up.
+	want := []string{"t1", "t2", "s-new"}
+	for i := range want {
+		if ids[i] != want[i] {
+			t.Fatalf("该按绑定顺序返回, want %v got %v", want, ids)
+		}
+	}
+	// The index missed t2, but the catalogue still describes it: a listed tool has to be callable.
+	if resp.Capabilities[1].InputSchema == nil {
+		t.Fatalf("索引没收录的工具也该从目录补上 input_schema, got %+v", resp.Capabilities[1])
+	}
+	if resp.Capabilities[2].Name != "刚挂上的技能" {
+		t.Fatalf("索引没收录的技能该从注册表补名, got %q", resp.Capabilities[2].Name)
+	}
+}
+
+// TestMetadataFilterIsNotSilentlyDropped guards the one filter the bindings cannot answer.
+//
+// metadata_type distinguishes an API tool from a function and lives only in the index document.
+// Listing from the bindings when the index is unreachable would return every Function tool while
+// the caller had asked for one kind — worse than an error, because nothing in the answer says the
+// filter did not run.
+func TestMetadataFilterIsNotSilentlyDropped(t *testing.T) {
+	op := &fakeOperator{
+		hitsErr: errors.New("dataset resource has no available local index"),
+		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{
+			"box-1": tools("box-1", "t1"),
+		},
+	}
+	bkn := &fakeBkn{refs: functionRefs("box-1/t1")}
+	svc := NewKnToolsServiceWith(op, bkn, &fakeKnAuthz{})
+
+	if _, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{
+		KnID: "kn1", MetadataTypes: []string{"openapi"},
+	}); err == nil {
+		t.Fatal("索引不可用时 metadata_types 无从判定，必须报错而不是当没传")
+	}
+}

@@ -106,23 +106,31 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 	// identical — the truncation flag could never fire, and a caller would read one page as the
 	// whole answer.
 	query := strings.TrimSpace(req.Query)
+	// metadata_type lives only in the index document — a binding carries the capability type, not
+	// the tool box kind behind it. So this is the one filter that cannot be answered without the
+	// ranking, and a listing that quietly skipped it would return precisely what the caller
+	// excluded. Everything else (kinds, owner) was already applied to the whitelist above.
+	metadataTypes := normalizeKinds(req.MetadataTypes)
+	listing := query == "" && len(metadataTypes) == 0
+
 	hits, err := s.operator.SearchCapabilities(ctx, &interfaces.SearchCapabilitiesRequest{
 		Query:         query,
 		Refs:          searchRefs,
 		TopK:          limit + 1,
 		Types:         normalizeKinds(req.Types),
-		MetadataTypes: normalizeKinds(req.MetadataTypes),
+		MetadataTypes: metadataTypes,
 	})
 	if err != nil {
-		// Ranking has nothing to fall back to, so a query still surfaces the error. An unfiltered
-		// listing does not need the index at all: the bindings already say what is mounted and the
-		// catalogue can name it. A fresh install has no index yet (#1323), and refusing to list a
-		// network's own capabilities because of that is a wrong answer, not a degraded one.
-		if query != "" {
+		// A ranking has nothing to degrade to, and neither has a filter only the index can
+		// evaluate. Both surface the error rather than answering a different question.
+		if !listing {
 			return nil, err
 		}
 		s.warnf(ctx, "[SearchCapabilities] capability search failed, listing from the bindings: %v", err)
-		hits = s.listingHits(ctx, searchRefs, limit+1)
+		hits = nil
+	}
+	if listing {
+		hits = s.listingHits(ctx, searchRefs, hits, limit+1)
 	}
 
 	more := len(hits) > limit
@@ -297,34 +305,50 @@ func (s *knToolsService) describeCapabilities(ctx context.Context,
 	return entries
 }
 
-// listingHits answers an unfiltered listing without the index, in binding order.
+// listingHits answers a listing from the mounted set, in binding order, using the index only for
+// what it can add.
 //
-// Binding order is not a ranking, but with no query there is nothing to rank against, and it is
-// the order the network declared: stable and explainable, unlike whatever a half-built index
-// happens to hold. Tool names are left empty because describeCapabilities fills them from the
+// With no query there is nothing to rank against, so membership is the bindings' to decide, not
+// the index's. This is what find_skills did and what search_capabilities has to keep now that it
+// is the only entry: the index is built asynchronously and a fresh install has none (#1323), so
+// letting it decide membership makes a capability that is mounted but not yet indexed invisible —
+// a wrong answer, where binding order is merely an unranked one.
+//
+// Index hits still carry the name, description and metadata_type, so they are merged in wherever
+// the index knew the capability. Tools the index missed are named by describeCapabilities from the
 // catalogue; Skills are named here, since nothing downstream looks them up.
 //
-// A Skill the registry cannot name is dropped rather than listed. The binding survives deletion in
-// the execution factory, so listing it would send the caller after something that cannot run.
+// A Skill neither the index nor the registry knows is dropped rather than listed. The binding
+// outlives deletion in the execution factory, so listing it would send the caller after something
+// that cannot run.
 func (s *knToolsService) listingHits(ctx context.Context, refs []interfaces.SearchCapabilityRef,
-	limit int) []interfaces.CapabilityHit {
+	ranked []interfaces.CapabilityHit, limit int) []interfaces.CapabilityHit {
 	if len(refs) > limit {
 		refs = refs[:limit]
 	}
-	skillIDs := make([]string, 0, len(refs))
+	known := make(map[interfaces.SearchCapabilityRef]interfaces.CapabilityHit, len(ranked))
+	for _, hit := range ranked {
+		known[hit.SearchCapabilityRef] = hit
+	}
+
+	missingSkills := make([]string, 0, len(refs))
 	for _, ref := range refs {
-		if ref.CapabilityType == interfaces.CapabilityTypeSkill {
-			skillIDs = append(skillIDs, ref.CapabilityID)
+		if ref.CapabilityType != interfaces.CapabilityTypeSkill {
+			continue
+		}
+		if _, ok := known[ref]; !ok {
+			missingSkills = append(missingSkills, ref.CapabilityID)
 		}
 	}
 	var names map[string]string
-	if len(skillIDs) > 0 {
-		resolved, err := s.operator.GetSkillNamesByIDs(ctx, skillIDs)
+	if len(missingSkills) > 0 {
+		resolved, err := s.operator.GetSkillNamesByIDs(ctx, missingSkills)
 		if err != nil {
-			// The names are decoration; the memberships are not. Without them no Skill can be
-			// told apart from a dead binding, so the listing keeps the tools and drops the rest.
+			// The names are decoration; the memberships are not. Without them a Skill the index
+			// has not reached cannot be told apart from a dead binding, so those are dropped and
+			// everything else still answers.
 			s.warnf(ctx, "[SearchCapabilities] skill name lookup failed for %d skills: %v",
-				len(skillIDs), err)
+				len(missingSkills), err)
 		} else {
 			names = resolved
 		}
@@ -332,6 +356,10 @@ func (s *knToolsService) listingHits(ctx context.Context, refs []interfaces.Sear
 
 	hits := make([]interfaces.CapabilityHit, 0, len(refs))
 	for _, ref := range refs {
+		if hit, ok := known[ref]; ok {
+			hits = append(hits, hit)
+			continue
+		}
 		hit := interfaces.CapabilityHit{SearchCapabilityRef: ref}
 		if ref.CapabilityType == interfaces.CapabilityTypeSkill {
 			name, ok := names[ref.CapabilityID]
