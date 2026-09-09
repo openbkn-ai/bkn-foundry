@@ -168,3 +168,88 @@ func TestCompileNegatedEmptyMembership(t *testing.T) {
 		t.Fatalf("got %s, want a condition that matches everything", sql)
 	}
 }
+
+// Cypher defines an inline property map as the equalities it stands for, so
+// that is what it compiles to -- and it means the planner and the generator
+// have one shape to handle rather than two.
+func TestCompileInlineProperties(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		query string
+		want  string
+	}{
+		{
+			name:  "one property",
+			query: "MATCH (o:Order {region: 'eu'}) RETURN o.id AS id",
+			want:  "WHERE t0.`f_region` = 'eu'",
+		},
+		{
+			name:  "several properties",
+			query: "MATCH (o:Order {region: 'eu', amount: 100}) RETURN o.id AS id",
+			want:  "WHERE t0.`f_region` = 'eu' AND t0.`f_total` = 100",
+		},
+		{
+			name:  "alongside a WHERE",
+			query: "MATCH (o:Order {region: 'eu'}) WHERE o.amount > 10 RETURN o.id AS id",
+			want:  "WHERE t0.`f_region` = 'eu' AND t0.`f_total` > 10",
+		},
+		{
+			name:  "on an anonymous node",
+			query: "MATCH (o:Order)-[:PLACED_BY]->(:Customer {name: 'Acme'}) RETURN o.id AS id",
+			want:  "WHERE t1.`f_name` = 'Acme'",
+		},
+		{
+			name:  "on both ends",
+			query: "MATCH (o:Order {region: 'eu'})-[:PLACED_BY]->(c:Customer {name: 'Acme'}) RETURN o.id AS id",
+			want:  "WHERE t0.`f_region` = 'eu' AND t1.`f_name` = 'Acme'",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := mustCompile(t, tc.query)
+			if !strings.Contains(got, tc.want) {
+				t.Fatalf("got  %s\nwant it to contain %s", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCompileInlinePropertyRejections(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		query string
+		want  string
+	}{
+		{
+			name:  "unknown property",
+			query: "MATCH (o:Order {nope: 1}) RETURN o.id",
+			want:  `has no property "nope"`,
+		},
+		{
+			name:  "null",
+			query: "MATCH (o:Order {region: null}) RETURN o.id",
+			want:  "null in a property map",
+		},
+		{
+			name:  "a property instead of a value",
+			query: "MATCH (o:Order {region: o.id}) RETURN o.id",
+			want:  "a property map holding something other than a value",
+		},
+		{
+			name:  "a parameter in place of the whole map",
+			query: "MATCH (o:Order $props) RETURN o.id",
+			want:  "a parameter in place of a property map",
+		},
+		{
+			name:  "on a relationship, which has no properties here",
+			query: "MATCH (o:Order)-[:PLACED_BY {since: 1}]->(c:Customer) RETURN o.id",
+			want:  "inline property maps",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := compile(t, tc.query, GenerateOptions{})
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("compile(%q) = %v, want a rejection mentioning %q", tc.query, err, tc.want)
+			}
+		})
+	}
+}

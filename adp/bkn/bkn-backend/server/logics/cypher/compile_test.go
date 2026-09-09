@@ -21,6 +21,7 @@ func modelSchema(t *testing.T) *Schema {
 
 	order := objectType("ot_order", "Order", resource("res_order", "orders"),
 		dataProperty("id", "f_id"),
+		dataProperty("previous_id", "f_prev"),
 		dataProperty("customer_code", "f_cust_code"),
 		dataProperty("region", "f_region"),
 		dataProperty("amount", "f_total"),
@@ -46,6 +47,30 @@ func modelSchema(t *testing.T) *Schema {
 		},
 	}
 
+	item := objectType("ot_item", "Item", resource("res_item", "items"),
+		dataProperty("id", "f_id"),
+		dataProperty("order_id", "f_order"),
+	)
+	item.PrimaryKeys = []string{"id"}
+
+	belongsTo := relationType("rt_belongs_to", "BELONGS_TO")
+	belongsTo.SourceObjectTypeID = "ot_item"
+	belongsTo.TargetObjectTypeID = "ot_order"
+	belongsTo.MappingRules = []interfaces.Mapping{{
+		SourceProp: interfaces.SimpleProperty{Name: "order_id"},
+		TargetProp: interfaces.SimpleProperty{Name: "id"},
+	}}
+
+	// A relation from an object type to itself: an undirected pattern over it
+	// cannot be settled by the object types, so both readings stay open.
+	follows := relationType("rt_follows", "FOLLOWS")
+	follows.SourceObjectTypeID = "ot_order"
+	follows.TargetObjectTypeID = "ot_order"
+	follows.MappingRules = []interfaces.Mapping{{
+		SourceProp: interfaces.SimpleProperty{Name: "id"},
+		TargetProp: interfaces.SimpleProperty{Name: "previous_id"},
+	}}
+
 	nearby := relationType("rt_nearby", "NEARBY")
 	nearby.Type = interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN
 	nearby.SourceObjectTypeID = "ot_order"
@@ -57,8 +82,8 @@ func modelSchema(t *testing.T) *Schema {
 	unmapped.TargetObjectTypeID = "ot_customer"
 
 	return testSchema(t, &fakeSchemaSource{
-		objectTypes:   []*interfaces.ObjectType{order, customer},
-		relationTypes: []*interfaces.RelationType{placedBy, nearby, unmapped},
+		objectTypes:   []*interfaces.ObjectType{order, customer, item},
+		relationTypes: []*interfaces.RelationType{placedBy, belongsTo, follows, nearby, unmapped},
 	})
 }
 
@@ -286,7 +311,7 @@ func TestCompileRejections(t *testing.T) {
 		{
 			name:  "relationship written backwards",
 			query: "MATCH (c:Customer)-[:PLACED_BY]->(o:Order) RETURN o.id",
-			want:  "but the pattern starts it at",
+			want:  "does not connect",
 		},
 		{
 			name:  "filtered cross join",
@@ -331,5 +356,110 @@ func TestCompileRejectionCarriesPosition(t *testing.T) {
 	}
 	if planError.Pos.Line != 2 {
 		t.Fatalf("line = %d, want 2", planError.Pos.Line)
+	}
+}
+
+// An undirected relationship leaves open which node is the relation's source.
+// Where the object types settle it, the join is the one reading that fits;
+// where they do not, it is either.
+func TestCompileUndirected(t *testing.T) {
+	t.Run("object types settle the direction", func(t *testing.T) {
+		got := mustCompile(t, "MATCH (o:Order)-[:PLACED_BY]-(c:Customer) RETURN o.id AS id")
+		want := "SELECT t0.`f_id` AS `id` FROM {{.res_order}} t0 " +
+			"JOIN {{.res_customer}} t1 ON t0.`f_cust_code` = t1.`f_code` AND t0.`f_region` = t1.`f_region`"
+		if got != want {
+			t.Fatalf("got  %s\nwant %s", got, want)
+		}
+	})
+
+	t.Run("written the other way round is the same join", func(t *testing.T) {
+		got := mustCompile(t, "MATCH (c:Customer)-[:PLACED_BY]-(o:Order) RETURN o.id AS id")
+		want := "SELECT t1.`f_id` AS `id` FROM {{.res_customer}} t0 " +
+			"JOIN {{.res_order}} t1 ON t0.`f_code` = t1.`f_cust_code` AND t0.`f_region` = t1.`f_region`"
+		if got != want {
+			t.Fatalf("got  %s\nwant %s", got, want)
+		}
+	})
+
+	t.Run("a self relation matches either reading", func(t *testing.T) {
+		got := mustCompile(t, "MATCH (a:Order)-[:FOLLOWS]-(b:Order) RETURN a.id AS id")
+		want := "SELECT t0.`f_id` AS `id` FROM {{.res_order}} t0 " +
+			"JOIN {{.res_order}} t1 ON (t0.`f_id` = t1.`f_prev`) OR (t0.`f_prev` = t1.`f_id`)"
+		if got != want {
+			t.Fatalf("got  %s\nwant %s", got, want)
+		}
+	})
+}
+
+// A path of several hops becomes a chain of joins in pattern order. The
+// interesting part is not the chain but what Cypher requires on top of it: one
+// pattern may not traverse the same relationship twice.
+func TestCompileMultiHop(t *testing.T) {
+	t.Run("two hops over different relations", func(t *testing.T) {
+		got := mustCompile(t,
+			"MATCH (i:Item)-[:BELONGS_TO]->(o:Order)-[:PLACED_BY]->(c:Customer) RETURN c.name AS customer")
+		want := "SELECT t2.`f_name` AS `customer` FROM {{.res_item}} t0 " +
+			"JOIN {{.res_order}} t1 ON t0.`f_order` = t1.`f_id` " +
+			"JOIN {{.res_customer}} t2 ON t1.`f_cust_code` = t2.`f_code` AND t1.`f_region` = t2.`f_region`"
+		if got != want {
+			t.Fatalf("got  %s\nwant %s", got, want)
+		}
+	})
+
+	t.Run("hops meeting a node from the same side cannot be the same edge", func(t *testing.T) {
+		// Both hops arrive at the middle order, so the two outer items would
+		// otherwise be free to be the same row -- which is the same
+		// relationship walked out and back.
+		got := mustCompile(t,
+			"MATCH (a:Item)-[:BELONGS_TO]->(o:Order)<-[:BELONGS_TO]-(b:Item) RETURN a.id AS a, b.id AS b")
+		want := "SELECT t0.`f_id` AS `a`, t2.`f_id` AS `b` FROM {{.res_item}} t0 " +
+			"JOIN {{.res_order}} t1 ON t0.`f_order` = t1.`f_id` " +
+			"JOIN {{.res_item}} t2 ON t1.`f_id` = t2.`f_order` " +
+			"WHERE NOT t0.`f_id` = t2.`f_id`"
+		if got != want {
+			t.Fatalf("got  %s\nwant %s", got, want)
+		}
+	})
+
+	t.Run("hops going the same way cannot repeat an edge", func(t *testing.T) {
+		got := mustCompile(t,
+			"MATCH (a:Order)-[:FOLLOWS]->(b:Order)-[:FOLLOWS]->(c:Order) RETURN a.id AS id")
+		if strings.Contains(got, "WHERE") {
+			t.Fatalf("got %s, want no distinctness condition", got)
+		}
+	})
+
+	t.Run("a distinctness condition joins the query's own", func(t *testing.T) {
+		got := mustCompile(t,
+			"MATCH (a:Item)-[:BELONGS_TO]->(o:Order)<-[:BELONGS_TO]-(b:Item) WHERE o.amount > 10 RETURN a.id AS a")
+		if !strings.Contains(got, "WHERE NOT t0.`f_id` = t2.`f_id` AND t1.`f_total` > 10") {
+			t.Fatalf("got %s", got)
+		}
+	})
+}
+
+func TestCompileMultiHopRejections(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		query string
+		want  string
+	}{
+		{
+			name:  "an undirected hop beside one of the same type",
+			query: "MATCH (a:Item)-[:BELONGS_TO]-(o:Order)-[:BELONGS_TO]-(b:Item) RETURN a.id",
+			want:  "cannot be checked for traversing the same relationship",
+		},
+		{
+			name:  "a middle node the relations do not connect",
+			query: "MATCH (i:Item)-[:BELONGS_TO]->(o:Order)-[:BELONGS_TO]->(c:Customer) RETURN i.id",
+			want:  "does not connect",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := compile(t, tc.query, GenerateOptions{})
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("compile(%q) = %v, want a rejection mentioning %q", tc.query, err, tc.want)
+			}
+		})
 	}
 }

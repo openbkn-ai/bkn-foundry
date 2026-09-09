@@ -82,18 +82,30 @@ MATCH (o:probe_order) REMOVE o.o_state RETURN o.o_key
 MERGE (o:probe_order) RETURN o.o_key
 MERGE (o:probe_order) ON CREATE SET o.o_state = 'x' RETURN o.o_key
 
+# patterns (phase three)
+MATCH (o:probe_order {o_state: 'refunding'}) RETURN o.o_key AS k LIMIT 2
+MATCH (o:probe_order {o_state: 'refunding', o_chan: 1}) RETURN o.o_key AS k LIMIT 2
+MATCH (i:probe_item)-[:probe_direct]->(o:probe_order {o_state: 'refunding'}) RETURN i.i_key AS k LIMIT 2
+MATCH (i:probe_item)-[:probe_direct]-(o:probe_order) RETURN i.i_key AS k LIMIT 2
+MATCH (o:probe_order)-[:probe_direct]-(i:probe_item) RETURN i.i_key AS k LIMIT 2
+MATCH (a:probe_item)-[:probe_direct]->(o:probe_order)<-[:probe_direct]-(b:probe_item) RETURN a.i_key AS a, b.i_key AS b LIMIT 3
+
+# reject-pattern (phase three)
+MATCH (o:probe_order {nope: 1}) RETURN o.o_key
+MATCH (o:probe_order {o_state: null}) RETURN o.o_key
+MATCH (o:probe_order {o_state: o.o_chan}) RETURN o.o_key
+MATCH (o:probe_order $props) RETURN o.o_key
+MATCH (a:probe_item)-[:probe_direct]-(o:probe_order)-[:probe_direct]-(b:probe_item) RETURN a.i_key
+
 # reject-pattern
 MATCH (o) RETURN o.o_key
 MATCH (o:probe_order:probe_item) RETURN o.o_key
-MATCH (o:probe_order {o_key: 1}) RETURN o.o_key
-MATCH (i:probe_item)-[:probe_direct]-(o:probe_order) RETURN i.i_key
 MATCH (i:probe_item)<-[:probe_direct]->(o:probe_order) RETURN i.i_key
 MATCH (i:probe_item)-->(o:probe_order) RETURN i.i_key
 MATCH (i:probe_item)-[r:probe_direct]->(o:probe_order) RETURN i.i_key
 MATCH (i:probe_item)-[:probe_direct*1..3]->(o:probe_order) RETURN i.i_key
 MATCH (i:probe_item)-[:probe_direct|:probe_direct2]->(o:probe_order) RETURN i.i_key
 MATCH (i:probe_item)-[:probe_direct {x: 1}]->(o:probe_order) RETURN i.i_key
-MATCH (c:probe_channel)-[:probe_fcj]->(o:probe_order)-[:probe_direct]->(i:probe_item) RETURN o.o_key
 
 # aggregates
 MATCH (o:probe_order) RETURN count(*) AS n

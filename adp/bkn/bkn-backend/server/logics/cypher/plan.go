@@ -42,10 +42,14 @@ type PlanTable struct {
 }
 
 // PlanJoin joins two tables on the key pairs of a direct relation type.
+//
+// Readings holds one set of key pairs per way the relation can be read. A
+// directed pattern has one; an undirected one between two nodes of the same
+// object type has two, and a row matches if either holds.
 type PlanJoin struct {
-	Left  int
-	Right int
-	Keys  []PlanJoinKey
+	Left     int
+	Right    int
+	Readings [][]PlanJoinKey
 }
 
 // PlanJoinKey is one equality between a column of the left table and a column
@@ -124,6 +128,19 @@ type PlanMembership struct {
 
 func (PlanMembership) planPredicate() {}
 
+// PlanColumnComparison compares two columns. The analyzer does not produce one
+// -- a query comparing two properties is refused -- but the planner needs it
+// to say that two hops of a pattern did not traverse the same relationship.
+type PlanColumnComparison struct {
+	LeftTable   int
+	LeftColumn  string
+	Operator    string
+	RightTable  int
+	RightColumn string
+}
+
+func (PlanColumnComparison) planPredicate() {}
+
 // PlanOrder is one ORDER BY term: a column, an aggregate, or the name of an
 // output column. Ordering by the output name is how a grouped result is sorted
 // by something the query already computed, without computing it twice.
@@ -159,8 +176,12 @@ type planner struct {
 	schema     *Schema
 	parameters map[string]any
 	plan       *Plan
-	objectType []*interfaces.ObjectType // per table, parallel to plan.Tables
-	tableOf    map[string]int           // variable name to table index
+	// distinctness holds the conditions that keep one pattern from traversing
+	// the same relationship twice. They are conditions, but they come from the
+	// pattern rather than from anything the author wrote.
+	distinctness []PlanPredicate
+	objectType   []*interfaces.ObjectType // per table, parallel to plan.Tables
+	tableOf      map[string]int           // variable name to table index
 }
 
 // CompileOptions carries what the query itself does not: the values its
@@ -203,7 +224,75 @@ func (p *planner) planPattern(pattern Pattern) error {
 			return err
 		}
 	}
+	return p.keepRelationshipsDistinct(pattern)
+}
+
+// keepRelationshipsDistinct adds what Cypher requires and SQL does not: one
+// pattern may not traverse the same relationship twice.
+//
+// Two adjacent hops over the same relation type can only be the same edge when
+// they meet the shared node from the same side -- both arriving or both
+// leaving. Then the edges are the same exactly when the two far nodes are the
+// same row, so saying the far nodes differ says the relationships differ.
+// Nothing else in a linear path can repeat an edge.
+func (p *planner) keepRelationshipsDistinct(pattern Pattern) error {
+	for i := 0; i+1 < len(pattern.Edges); i++ {
+		first, second := pattern.Edges[i], pattern.Edges[i+1]
+		if first.Type != second.Type {
+			continue
+		}
+		if first.Direction == Undirected || second.Direction == Undirected {
+			// Which reading matched decides whether the edge repeats, and a
+			// condition cannot ask that after the fact.
+			return planErrorf(second.Pos,
+				"two undirected hops over %q cannot be checked for traversing the same relationship; write the directions out",
+				second.Type)
+		}
+		// The shared node is entered by the first hop and left by the second.
+		// They meet it from the same side when the arrows disagree.
+		if first.Direction == second.Direction {
+			continue
+		}
+
+		distinct, err := p.differentRows(i, i+2, second.Pos)
+		if err != nil {
+			return err
+		}
+		p.distinctness = append(p.distinctness, distinct)
+	}
 	return nil
+}
+
+// differentRows says two tables hold different rows of the same object type,
+// using the primary key, which is the only thing that identifies a row here.
+func (p *planner) differentRows(left, right int, pos Position) (PlanPredicate, error) {
+	keys := p.objectType[left].PrimaryKeys
+	if len(keys) == 0 {
+		return nil, planErrorf(pos,
+			"object type %q has no primary key, so this pattern cannot be checked for traversing the same relationship twice",
+			p.objectType[left].OTID)
+	}
+
+	same := make([]PlanPredicate, 0, len(keys))
+	for _, key := range keys {
+		leftColumn, err := p.schema.Column(p.objectType[left], key)
+		if err != nil {
+			return nil, &PlanError{Pos: pos, Err: err}
+		}
+		rightColumn, err := p.schema.Column(p.objectType[right], key)
+		if err != nil {
+			return nil, &PlanError{Pos: pos, Err: err}
+		}
+		same = append(same, PlanColumnComparison{
+			LeftTable: left, LeftColumn: leftColumn,
+			Operator:   "=",
+			RightTable: right, RightColumn: rightColumn,
+		})
+	}
+	if len(same) == 1 {
+		return PlanNegation{Operand: same[0]}, nil
+	}
+	return PlanNegation{Operand: PlanLogical{Operator: "AND", Operands: same}}, nil
 }
 
 func (p *planner) addTable(node NodeRef) error {
@@ -239,7 +328,9 @@ func (p *planner) addTable(node NodeRef) error {
 
 // addJoin turns one relationship of the pattern into a join. The relation type
 // decides which side is source and which is target; the arrow in the query
-// decides which pattern node plays which role, and the two must agree.
+// decides which pattern node plays which role. An undirected relationship
+// leaves that open, so every reading the object types allow is kept and the
+// row matches if any of them holds.
 func (p *planner) addJoin(edge EdgeRef, left, right int) error {
 	relationType, err := p.schema.ResolveRelationType(edge.Type)
 	if err != nil {
@@ -255,57 +346,90 @@ func (p *planner) addJoin(edge EdgeRef, left, right int) error {
 			relationType.RTName, relationType.Type)
 	}
 
-	source, target := left, right
-	if edge.Direction == Incoming {
-		source, target = right, left
-	}
-	if got, want := p.objectType[source].OTID, relationType.SourceObjectTypeID; got != want {
-		return planErrorf(edge.Pos,
-			"relation type %q goes from %q to %q, but the pattern starts it at %q",
-			relationType.RTName, relationType.SourceObjectTypeID, relationType.TargetObjectTypeID, got)
-	}
-	if got, want := p.objectType[target].OTID, relationType.TargetObjectTypeID; got != want {
-		return planErrorf(edge.Pos,
-			"relation type %q goes from %q to %q, but the pattern ends it at %q",
-			relationType.RTName, relationType.SourceObjectTypeID, relationType.TargetObjectTypeID, got)
-	}
-
 	mappings, ok := relationType.MappingRules.([]interfaces.Mapping)
 	if !ok || len(mappings) == 0 {
 		return planErrorf(edge.Pos, "relation type %q has no key mapping to join on", relationType.RTName)
 	}
 
 	join := PlanJoin{Left: left, Right: right}
-	for _, mapping := range mappings {
-		sourceColumn, err := p.schema.Column(p.objectType[source], mapping.SourceProp.Name)
+	for _, forwards := range p.readings(edge.Direction) {
+		source, target := left, right
+		if !forwards {
+			source, target = right, left
+		}
+		if p.objectType[source].OTID != relationType.SourceObjectTypeID ||
+			p.objectType[target].OTID != relationType.TargetObjectTypeID {
+			continue
+		}
+		keys, err := p.joinKeys(mappings, source, target, forwards)
 		if err != nil {
-			return &PlanError{Pos: edge.Pos, Err: err}
+			return err
 		}
-		targetColumn, err := p.schema.Column(p.objectType[target], mapping.TargetProp.Name)
-		if err != nil {
-			return &PlanError{Pos: edge.Pos, Err: err}
-		}
-		// Keys are stored left-to-right in pattern order, so the generator
-		// does not have to know the direction again.
-		leftColumn, rightColumn := sourceColumn, targetColumn
-		if edge.Direction == Incoming {
-			leftColumn, rightColumn = targetColumn, sourceColumn
-		}
-		join.Keys = append(join.Keys, PlanJoinKey{LeftColumn: leftColumn, RightColumn: rightColumn})
+		join.Readings = append(join.Readings, keys)
+	}
+
+	if len(join.Readings) == 0 {
+		return planErrorf(edge.Pos,
+			"relation type %q goes from %q to %q, which does not connect %q and %q the way this pattern reads it",
+			relationType.RTName, relationType.SourceObjectTypeID, relationType.TargetObjectTypeID,
+			p.objectType[left].OTID, p.objectType[right].OTID)
 	}
 	p.plan.Joins = append(p.plan.Joins, join)
 	return nil
 }
 
+// readings lists the ways an edge may be read: one for a directed pattern,
+// both for an undirected one.
+func (p *planner) readings(direction Direction) []bool {
+	switch direction {
+	case Outgoing:
+		return []bool{true}
+	case Incoming:
+		return []bool{false}
+	default:
+		return []bool{true, false}
+	}
+}
+
+func (p *planner) joinKeys(mappings []interfaces.Mapping, source, target int, forwards bool) ([]PlanJoinKey, error) {
+	keys := make([]PlanJoinKey, 0, len(mappings))
+	for _, mapping := range mappings {
+		sourceColumn, err := p.schema.Column(p.objectType[source], mapping.SourceProp.Name)
+		if err != nil {
+			return nil, &PlanError{Err: err}
+		}
+		targetColumn, err := p.schema.Column(p.objectType[target], mapping.TargetProp.Name)
+		if err != nil {
+			return nil, &PlanError{Err: err}
+		}
+		// Keys are stored left-to-right in pattern order, so the generator
+		// does not have to know the direction again.
+		leftColumn, rightColumn := sourceColumn, targetColumn
+		if !forwards {
+			leftColumn, rightColumn = targetColumn, sourceColumn
+		}
+		keys = append(keys, PlanJoinKey{LeftColumn: leftColumn, RightColumn: rightColumn})
+	}
+	return keys, nil
+}
+
 func (p *planner) planWhere(predicate Predicate) error {
-	if predicate == nil {
-		return nil
+	conditions := p.distinctness
+	if predicate != nil {
+		planned, err := p.planPredicate(predicate)
+		if err != nil {
+			return err
+		}
+		conditions = append(conditions, planned)
 	}
-	planned, err := p.planPredicate(predicate)
-	if err != nil {
-		return err
+
+	switch len(conditions) {
+	case 0:
+	case 1:
+		p.plan.Where = conditions[0]
+	default:
+		p.plan.Where = PlanLogical{Operator: "AND", Operands: conditions}
 	}
-	p.plan.Where = planned
 	return nil
 }
 

@@ -143,13 +143,26 @@ func (g *generator) writeFrom() {
 		g.out.WriteString(" JOIN ")
 		g.out.WriteString(g.table(join.Right))
 		g.out.WriteString(" ON ")
-		for i, key := range join.Keys {
-			if i > 0 {
-				g.out.WriteString(" AND ")
+		for r, reading := range join.Readings {
+			if r > 0 {
+				g.out.WriteString(" OR ")
 			}
-			g.out.WriteString(g.column(join.Left, key.LeftColumn))
-			g.out.WriteString(" = ")
-			g.out.WriteString(g.column(join.Right, key.RightColumn))
+			// One reading needs no parentheses; several do, because they are
+			// joined by OR and each is a conjunction of key pairs.
+			if len(join.Readings) > 1 {
+				g.out.WriteString("(")
+			}
+			for i, key := range reading {
+				if i > 0 {
+					g.out.WriteString(" AND ")
+				}
+				g.out.WriteString(g.column(join.Left, key.LeftColumn))
+				g.out.WriteString(" = ")
+				g.out.WriteString(g.column(join.Right, key.RightColumn))
+			}
+			if len(join.Readings) > 1 {
+				g.out.WriteString(")")
+			}
 		}
 	}
 }
@@ -177,6 +190,14 @@ func (g *generator) writePredicate(predicate PlanPredicate, nested bool) error {
 		g.out.WriteString(node.Operator)
 		g.out.WriteString(" ")
 		g.out.WriteString(value)
+		return nil
+
+	case PlanColumnComparison:
+		g.out.WriteString(g.column(node.LeftTable, node.LeftColumn))
+		g.out.WriteString(" ")
+		g.out.WriteString(node.Operator)
+		g.out.WriteString(" ")
+		g.out.WriteString(g.column(node.RightTable, node.RightColumn))
 		return nil
 
 	case PlanNullCheck:
