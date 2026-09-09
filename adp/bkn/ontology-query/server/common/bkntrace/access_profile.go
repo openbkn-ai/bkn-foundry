@@ -95,7 +95,7 @@ func getBknSafe(ctx context.Context, client *http.Client, url, authorization str
 }
 
 func builtInRoles(values []string) []string {
-	allowed := map[string]struct{}{"super_admin": {}, "admin": {}, "security": {}, "audit": {}, "network_builder": {}, "normal_user": {}}
+	allowed := map[string]struct{}{"super_admin": {}, "admin": {}, "security": {}, "audit": {}, "network_builder": {}}
 	roles := make([]string, 0, len(values))
 	seen := map[string]struct{}{}
 	for _, value := range values {

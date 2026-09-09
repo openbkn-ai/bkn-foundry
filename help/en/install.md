@@ -423,7 +423,7 @@ openbkn admin role add-member <roleId> -u alice
 openbkn admin role remove-member <roleId> -u alice
 ```
 
-Always run **`role list` first** and use the **roleId** values from the output (role name strings such as `super_admin` / `normal_user`). For **quick start or POC**, to avoid 403s from missing roles, often assign **every** role in `role list` to a new user with one `openbkn admin user assign-role <userId> <roleId>` per entry. In **production**, grant least privilege; verify with `openbkn admin user roles <userId>`.
+Always run **`role list` first** and use the **roleId** values from the output (role name strings such as `super_admin` / `network_builder`). For **quick start or POC**, to avoid 403s from missing roles, often assign **every** role in `role list` to a new user with one `openbkn admin user assign-role <userId> <roleId>` per entry. In **production**, grant least privilege; verify with `openbkn admin user roles <userId>`.
 
 #### Models (LLM / Embedding)
 

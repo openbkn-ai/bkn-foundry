@@ -54,6 +54,8 @@ var deprecatedSeedRoleIDs = []string{
 	"3fb94948-5169-11f0-b662-3a7bdba2913f", // AI administrator
 }
 
+const normalUserRoleID = "b5f9ac3e-992c-4bbd-8126-95e87e51c46e"
+
 // AdminUserID is the built-in admin user's id, exported so callers can protect
 // it — the user-admin API refuses to delete or disable it (deleting the only
 // super-admin would lock everyone out). Same UUID as the S2S fallback identity.
@@ -128,6 +130,12 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 	if err := seedCatalog(db); err != nil {
 		return fmt.Errorf("seed catalog: %w", err)
 	}
+	if err := reconcileDeprecatedSeedRoles(db, enforcer); err != nil {
+		return fmt.Errorf("reconcile deprecated seed roles: %w", err)
+	}
+	if err := ReconcileWithdrawnNormalUserRole(db, enforcer); err != nil {
+		return fmt.Errorf("reconcile withdrawn normal user role: %w", err)
+	}
 	if err := reconcileSeedRoles(db, enforcer); err != nil {
 		return fmt.Errorf("reconcile seed roles: %w", err)
 	}
@@ -148,6 +156,50 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 	}
 	if err := seedBusinessProvenanceOwner(db); err != nil {
 		return fmt.Errorf("seed business provenance owner: %w", err)
+	}
+	return nil
+}
+
+func reconcileDeprecatedSeedRoles(db *gorm.DB, enforcer *authz.Enforcer) error {
+	for _, roleID := range deprecatedSeedRoleIDs {
+		if err := enforcer.RemoveRoleCompletely(roleID); err != nil {
+			return err
+		}
+		if err := db.Delete(&model.Role{}, "id = ?", roleID).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ReconcileWithdrawnNormalUserRole removes the withdrawn normal_user role and
+// every Casbin policy or membership bound to it. It is idempotent and logs only
+// when a persisted role, binding, or policy is actually removed.
+func ReconcileWithdrawnNormalUserRole(db *gorm.DB, enforcer *authz.Enforcer) error {
+	var roleCount, bindingCount, policyCount int64
+	if err := db.Model(&model.Role{}).Where("id = ?", normalUserRoleID).Count(&roleCount).Error; err != nil {
+		return err
+	}
+	if err := db.Table("casbin_rule").Where("ptype = ? AND v1 = ?", "g", normalUserRoleID).Count(&bindingCount).Error; err != nil {
+		return err
+	}
+	if err := db.Table("casbin_rule").Where("ptype = ? AND v0 = ?", "p", normalUserRoleID).Count(&policyCount).Error; err != nil {
+		return err
+	}
+
+	if err := enforcer.RemoveRoleCompletely(normalUserRoleID); err != nil {
+		return err
+	}
+	if err := db.Delete(&model.Role{}, "id = ?", normalUserRoleID).Error; err != nil {
+		return err
+	}
+	if roleCount+bindingCount+policyCount > 0 {
+		slog.Info("removed withdrawn built-in role",
+			"role_id", normalUserRoleID,
+			"roles", roleCount,
+			"bindings", bindingCount,
+			"policies", policyCount,
+		)
 	}
 	return nil
 }
@@ -253,14 +305,6 @@ func reconcileSeedRoles(db *gorm.DB, enforcer *authz.Enforcer) error {
 		}
 	}
 
-	for _, roleID := range deprecatedSeedRoleIDs {
-		if err := enforcer.RemoveRoleCompletely(roleID); err != nil {
-			return err
-		}
-		if err := db.Delete(&model.Role{}, "id = ?", roleID).Error; err != nil {
-			return err
-		}
-	}
 	return nil
 }
 

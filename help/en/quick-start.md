@@ -39,7 +39,7 @@ Use this when you want a custom username, custom role set, or simply prefer not 
 npm install -g @openbkn/bkn-sdk
 # admin initial password: generated at install, recorded as bknSafe.initialPassword in ~/.openbkn-ai/config.yaml
 openbkn auth login <platform-url> -u admin -p '<initial-password>' -k
-openbkn admin role list                                           # all roles and roleIds (e.g. super_admin, normal_user)
+openbkn admin role list                                           # all roles and roleIds (e.g. super_admin, network_builder)
 openbkn admin user create --login <new-username>                  # initial password is generated and returned ONCE (initial_password); first sign-in forces a change
 # Quick start / PoC: assign every roleId from role list to avoid API 403s due to missing roles
 openbkn admin user assign-role <userId> <roleId>

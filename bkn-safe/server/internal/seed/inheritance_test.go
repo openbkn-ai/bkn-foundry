@@ -17,12 +17,9 @@ import (
 // asserted against the real seed rather than argued: turning inheritance on must
 // not widen what any SEEDED role can do to a data table.
 //
-// It holds today because of how the two roles are already granted —
-// network_builder holds every inheritable operation on resource:* directly, and
-// normal_user's catalog grant (view_detail) is one it already holds on
-// resource:* too. Neither fact is obvious from reading grants.json, and either
-// could be broken by a future edit that looks harmless, which is why this is a
-// test and not a comment.
+// It holds today because network_builder holds every inheritable operation on
+// resource:* directly. That fact is not obvious from reading grants.json, and a
+// future edit could break it, which is why this is a test and not a comment.
 //
 // The residual widening lives in per-object catalog grants made through the
 // admin console, which no seed file can predict.

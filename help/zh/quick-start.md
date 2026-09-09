@@ -45,7 +45,7 @@ sudo bash ./onboard.sh -y     # 非交互（按默认）
 npm install -g @openbkn/bkn-sdk
 # admin 初始密码：安装时生成，记录在 ~/.openbkn-ai/config.yaml 的 bknSafe.initialPassword
 openbkn auth login <平台地址> -u admin -p '<初始密码>' -k
-openbkn admin role list                                       # 列出全部角色及 roleId（如 super_admin、normal_user）
+openbkn admin role list                                       # 列出全部角色及 roleId（如 super_admin、network_builder）
 openbkn admin user create --login <新用户名>                  # 初始密码随机生成，仅在创建响应中返回一次（initial_password），首次登录强制改密
 # 快速开始/POC：把 role list 中每个 roleId 都挂上，避免后续 API 因缺角色被拒
 openbkn admin user assign-role <userId> <roleId>

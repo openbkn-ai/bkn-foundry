@@ -1,5 +1,5 @@
 {
-  "_comment": "Studio 0.1.0 role -> permission grants. super_admin gets wildcard. admin/security/audit are three-admin roles. network_builder has business build permissions. normal_user holds NO data grants at all (#513): catalogs, data resources and knowledge networks are visible only when granted explicitly, because a type-wide allow cannot be narrowed by an object grant in an allow-only engine. What it does keep is the capability surface — tools, models, agents — where a type-wide grant leaks no data and revoking it would only make the platform unusable.",
+  "_comment": "Studio 0.1.0 role -> permission grants. super_admin gets wildcard. admin/security/audit are three-admin roles. network_builder has business build permissions.",
   "grants": [
     {
       "role_id": "7dcfcc9c-ad02-11e8-aa06-000c29358ad6",
@@ -222,56 +222,6 @@
       "resource_type": "agent_tpl",
       "id_pattern": "*",
       "operations": ["publish", "unpublish", "unpublish_other_user_agent_tpl"]
-    },
-
-    {
-      "role_id": "b5f9ac3e-992c-4bbd-8126-95e87e51c46e",
-      "role_name": "normal_user",
-      "resource_type": "small_model",
-      "id_pattern": "*",
-      "operations": ["display", "execute"]
-    },
-    {
-      "role_id": "b5f9ac3e-992c-4bbd-8126-95e87e51c46e",
-      "role_name": "normal_user",
-      "resource_type": "large_model",
-      "id_pattern": "*",
-      "operations": ["display", "execute"]
-    },
-    {
-      "role_id": "b5f9ac3e-992c-4bbd-8126-95e87e51c46e",
-      "role_name": "normal_user",
-      "resource_type": "operator",
-      "id_pattern": "*",
-      "operations": ["view", "execute"]
-    },
-    {
-      "role_id": "b5f9ac3e-992c-4bbd-8126-95e87e51c46e",
-      "role_name": "normal_user",
-      "resource_type": "skill",
-      "id_pattern": "*",
-      "operations": ["view", "execute"]
-    },
-    {
-      "role_id": "b5f9ac3e-992c-4bbd-8126-95e87e51c46e",
-      "role_name": "normal_user",
-      "resource_type": "mcp",
-      "id_pattern": "*",
-      "operations": ["view", "execute"]
-    },
-    {
-      "role_id": "b5f9ac3e-992c-4bbd-8126-95e87e51c46e",
-      "role_name": "normal_user",
-      "resource_type": "tool_box",
-      "id_pattern": "*",
-      "operations": ["view", "execute"]
-    },
-    {
-      "role_id": "b5f9ac3e-992c-4bbd-8126-95e87e51c46e",
-      "role_name": "normal_user",
-      "resource_type": "agent",
-      "id_pattern": "*",
-      "operations": ["use"]
     }
   ]
 }
