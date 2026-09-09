@@ -488,6 +488,27 @@ func TestCatalogResourceOperationSplit(t *testing.T) {
 	}
 }
 
+func TestKnowledgeNetworkDeclaresExecuteOperation(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	var count int64
+	if err := db.Model(&model.Operation{}).
+		Where("resource_type_id = ? AND id = ?", "knowledge_network", "execute").
+		Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("knowledge_network execute operation count = %d, want 1", count)
+	}
+}
+
 // network_builder has type-wide create only. Every operation on an existing KN
 // comes from a concrete instance grant written by the owning service.
 func TestNetworkBuilderOnlyCreatesKnowledgeNetworksTypeWide(t *testing.T) {

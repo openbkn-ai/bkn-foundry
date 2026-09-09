@@ -69,11 +69,18 @@ func (s *actionSchedulerService) resolveActionPermissionRequirements(ctx context
 		return nil, actionPermissionInvalid(ctx, err.Error())
 	}
 
-	requirements := []interfaces.PermissionRequirement{{
-		ResourceType: interfaces.PermissionResourceTypeActionType,
-		ResourceID:   knID + "/" + actionType.ATID,
-		Operation:    interfaces.PermissionOperationExecute,
-	}}
+	requirements := []interfaces.PermissionRequirement{
+		{
+			ResourceType: interfaces.PermissionResourceTypeKnowledgeNetwork,
+			ResourceID:   knID,
+			Operation:    interfaces.PermissionOperationExecute,
+		},
+		{
+			ResourceType: interfaces.PermissionResourceTypeActionType,
+			ResourceID:   knID + "/" + actionType.ATID,
+			Operation:    interfaces.PermissionOperationExecute,
+		},
+	}
 	objectTypeIDs := []string{actionType.ObjectTypeID}
 	if actionType.Affect != nil {
 		objectTypeIDs = append(objectTypeIDs, actionType.Affect.ObjectTypeID)

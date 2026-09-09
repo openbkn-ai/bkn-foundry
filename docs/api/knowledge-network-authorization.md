@@ -69,7 +69,7 @@ concrete `action_type:{kn_id}/{action_type_id}` resource.
 | Modify child | `modify` on the canonical child |
 | Delete child | `delete` on every target; a batch is all-or-nothing |
 | Query object, relation, metric, or action data | `query_data` on every dependency resolved from the published model |
-| Submit or invoke an action | action-type `execute` AND execution-resource `execute` AND all data dependencies `query_data` |
+| Submit or invoke an action | knowledge-network `execute` AND action-type `execute` AND execution-resource `execute` AND all data dependencies `query_data` |
 | Manage action schedules or tasks | `task_manage` on the applicable action type or knowledge network |
 
 An action execution stores the authenticated execution subject. The worker

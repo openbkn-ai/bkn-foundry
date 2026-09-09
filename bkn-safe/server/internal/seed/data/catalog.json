@@ -92,7 +92,8 @@
         {"id": "delete", "name": "删除"},
         {"id": "query_data", "name": "数据查询"},
         {"id": "authorize", "name": "授权"},
-        {"id": "task_manage", "name": "任务管理"}
+        {"id": "task_manage", "name": "任务管理"},
+        {"id": "execute", "name": "执行"}
       ]
     },
     {
