@@ -24,6 +24,7 @@ type Plan struct {
 	Tables   []PlanTable
 	Joins    []PlanJoin
 	Where    PlanPredicate
+	GroupBy  []PlanColumn
 	Select   []PlanColumn
 	Distinct bool
 	OrderBy  []PlanOrder
@@ -54,11 +55,23 @@ type PlanJoinKey struct {
 	RightColumn string
 }
 
-// PlanColumn is one output column.
+// PlanColumn is one output column: a column of a table, or an aggregate over
+// one. Exactly one of the two is set.
 type PlanColumn struct {
-	Table  int
-	Column string
-	Alias  string
+	Table     int
+	Column    string
+	Alias     string
+	Aggregate *PlanAggregate
+}
+
+// PlanAggregate is COUNT, SUM, AVG, MIN or MAX. Star is count(*), which counts
+// rows and names no column.
+type PlanAggregate struct {
+	Function string
+	Distinct bool
+	Star     bool
+	Table    int
+	Column   string
 }
 
 // PlanPredicate is the WHERE tree with every name resolved and every parameter
@@ -111,10 +124,14 @@ type PlanMembership struct {
 
 func (PlanMembership) planPredicate() {}
 
-// PlanOrder is one ORDER BY term.
+// PlanOrder is one ORDER BY term: a column, an aggregate, or the name of an
+// output column. Ordering by the output name is how a grouped result is sorted
+// by something the query already computed, without computing it twice.
 type PlanOrder struct {
 	Table      int
 	Column     string
+	Aggregate  *PlanAggregate
+	Alias      string
 	Descending bool
 }
 
@@ -377,50 +394,143 @@ func (p *planner) resolveValue(value Operand, pos Position) (Literal, error) {
 func (p *planner) planReturn(projections []Projection) error {
 	seen := make(map[string]bool, len(projections))
 	for _, projection := range projections {
-		table, column, err := p.resolveProperty(projection.Property)
+		column, err := p.planProjection(projection)
 		if err != nil {
 			return err
 		}
 		if seen[projection.Alias] {
 			// Two columns with one name would make the result unreadable by
 			// key, and the caller reads rows as objects.
-			return planErrorf(projection.Property.Pos,
+			return planErrorf(projectionPosition(projection),
 				"column name %q is returned twice; give one of them a different alias", projection.Alias)
 		}
 		seen[projection.Alias] = true
-		p.plan.Select = append(p.plan.Select, PlanColumn{Table: table, Column: column, Alias: projection.Alias})
+		p.plan.Select = append(p.plan.Select, *column)
 	}
+	p.planGrouping()
 	return nil
+}
+
+func (p *planner) planProjection(projection Projection) (*PlanColumn, error) {
+	if projection.Aggregate != nil {
+		aggregate, err := p.planAggregate(*projection.Aggregate)
+		if err != nil {
+			return nil, err
+		}
+		return &PlanColumn{Alias: projection.Alias, Aggregate: aggregate}, nil
+	}
+
+	table, column, err := p.resolveProperty(*projection.Property)
+	if err != nil {
+		return nil, err
+	}
+	return &PlanColumn{Table: table, Column: column, Alias: projection.Alias}, nil
+}
+
+func (p *planner) planAggregate(aggregate Aggregate) (*PlanAggregate, error) {
+	if aggregate.Property == nil {
+		return &PlanAggregate{Function: aggregate.Function, Star: true}, nil
+	}
+	table, column, err := p.resolveProperty(*aggregate.Property)
+	if err != nil {
+		return nil, err
+	}
+	return &PlanAggregate{
+		Function: aggregate.Function,
+		Distinct: aggregate.Distinct,
+		Table:    table,
+		Column:   column,
+	}, nil
+}
+
+// planGrouping derives GROUP BY from what is returned, which is where Cypher
+// puts it: aggregating anything groups by everything else returned. Deriving
+// it rather than accepting one is also what stops a statement from grouping by
+// something the caller never sees.
+func (p *planner) planGrouping() {
+	aggregates := 0
+	for _, column := range p.plan.Select {
+		if column.Aggregate != nil {
+			aggregates++
+		}
+	}
+	// Either nothing is aggregated, or everything is and the result is one
+	// row. Neither needs a GROUP BY.
+	if aggregates == 0 || aggregates == len(p.plan.Select) {
+		return
+	}
+	for _, column := range p.plan.Select {
+		if column.Aggregate == nil {
+			p.plan.GroupBy = append(p.plan.GroupBy, column)
+		}
+	}
+}
+
+func projectionPosition(projection Projection) Position {
+	if projection.Aggregate != nil {
+		return projection.Aggregate.Pos
+	}
+	return projection.Property.Pos
 }
 
 func (p *planner) planOrderBy(keys []SortKey) error {
 	for _, key := range keys {
-		table, column, err := p.resolveProperty(key.Property)
+		order, err := p.planSortKey(key)
 		if err != nil {
 			return err
 		}
-		// DISTINCT collapses rows before they are ordered, so sorting by
-		// something that was not returned has no defined answer: both MySQL
-		// and PostgreSQL refuse the statement. Refusing it here says which
-		// key is the problem, instead of letting the database report a
-		// statement the caller never wrote.
-		if p.plan.Distinct && !p.isProjected(table, column) {
-			return planErrorf(key.Property.Pos,
-				"%s is not returned, and DISTINCT can only be sorted by a returned value; add it to RETURN or drop DISTINCT",
-				key.Property)
-		}
-		p.plan.OrderBy = append(p.plan.OrderBy, PlanOrder{
-			Table:      table,
-			Column:     column,
-			Descending: key.Descending,
-		})
+		order.Descending = key.Descending
+		p.plan.OrderBy = append(p.plan.OrderBy, *order)
 	}
 	return nil
 }
 
+func (p *planner) planSortKey(key SortKey) (*PlanOrder, error) {
+	switch {
+	case key.Aggregate != nil:
+		aggregate, err := p.planAggregate(*key.Aggregate)
+		if err != nil {
+			return nil, err
+		}
+		return &PlanOrder{Aggregate: aggregate}, nil
+
+	case key.Alias != "":
+		// A bare name in ORDER BY is a returned column. It is the only way to
+		// sort a grouped result by something the query already computed, and
+		// checking it here keeps an unknown name from reaching the database.
+		for _, column := range p.plan.Select {
+			if column.Alias == key.Alias {
+				return &PlanOrder{Alias: key.Alias}, nil
+			}
+		}
+		return nil, planErrorf(key.Pos,
+			"%q is not returned by this query, so there is nothing to sort by", key.Alias)
+
+	default:
+		table, column, err := p.resolveProperty(*key.Property)
+		if err != nil {
+			return nil, err
+		}
+		// DISTINCT and grouping both collapse rows before they are ordered,
+		// so sorting by something that survived neither has no defined
+		// answer, and both MySQL and PostgreSQL refuse the statement.
+		// Refusing it here says which key is the problem.
+		if (p.plan.Distinct || len(p.plan.GroupBy) > 0) && !p.isProjected(table, column) {
+			collapsed := "DISTINCT"
+			if len(p.plan.GroupBy) > 0 {
+				collapsed = "an aggregate"
+			}
+			return nil, planErrorf(key.Property.Pos,
+				"%s is not returned, and a query with %s can only be sorted by a returned value; add it to RETURN",
+				key.Property, collapsed)
+		}
+		return &PlanOrder{Table: table, Column: column}, nil
+	}
+}
+
 func (p *planner) isProjected(table int, column string) bool {
 	for _, projected := range p.plan.Select {
-		if projected.Table == table && projected.Column == column {
+		if projected.Aggregate == nil && projected.Table == table && projected.Column == column {
 			return true
 		}
 	}

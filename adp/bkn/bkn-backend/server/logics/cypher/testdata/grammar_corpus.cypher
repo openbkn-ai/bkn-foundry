@@ -95,11 +95,28 @@ MATCH (i:probe_item)-[:probe_direct|:probe_direct2]->(o:probe_order) RETURN i.i_
 MATCH (i:probe_item)-[:probe_direct {x: 1}]->(o:probe_order) RETURN i.i_key
 MATCH (c:probe_channel)-[:probe_fcj]->(o:probe_order)-[:probe_direct]->(i:probe_item) RETURN o.o_key
 
+# aggregates
+MATCH (o:probe_order) RETURN count(*) AS n
+MATCH (o:probe_order) RETURN count(o.o_state) AS n
+MATCH (o:probe_order) RETURN count(DISTINCT o.o_state) AS n
+MATCH (o:probe_order) RETURN o.o_state AS s, count(*) AS n
+MATCH (o:probe_order) RETURN o.o_state AS s, count(*) AS n ORDER BY n DESC LIMIT 5
+MATCH (o:probe_order) RETURN o.o_state AS s, count(*) AS n ORDER BY count(*) DESC LIMIT 5
+MATCH (o:probe_order) RETURN sum(o.o_amount) AS total, avg(o.o_amount) AS mean, min(o.o_amount) AS lo, max(o.o_amount) AS hi
+MATCH (i:probe_item)-[:probe_direct]->(o:probe_order) RETURN o.o_state AS s, count(*) AS n
+MATCH (o:probe_order) WHERE o.o_amount > 100 RETURN o.o_state AS s, count(*) AS n
+
+# reject-aggregate
+MATCH (o:probe_order) RETURN o.o_state AS s, count(*) AS n ORDER BY o.o_amount
+MATCH (o:probe_order) RETURN o.o_state AS s, count(*) AS n ORDER BY nope
+MATCH (o:probe_order) RETURN sum(1) AS n
+MATCH (o:probe_order) RETURN collect(o.o_state) AS n
+MATCH (o:probe_order) RETURN max(o.o_amount, o.o_state) AS n
+
 # reject-expr
 MATCH (o:probe_order) RETURN *
 MATCH (o:probe_order) RETURN o
-MATCH (o:probe_order) RETURN count(*)
-MATCH (o:probe_order) RETURN sum(o.o_amount)
+MATCH (o:probe_order) RETURN lower(o.o_state)
 MATCH (o:probe_order) RETURN o.o_amount + 1
 MATCH (o:probe_order) RETURN (o.o_key)
 MATCH (o:probe_order) RETURN o.o_state[0]

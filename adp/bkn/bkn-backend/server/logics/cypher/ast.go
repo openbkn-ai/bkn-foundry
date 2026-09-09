@@ -194,15 +194,47 @@ func (o Operand) describe() string {
 	return "an empty operand"
 }
 
-// Projection is one RETURN item. Alias is what the column is called in the
-// result; it defaults to the source text of the property reference.
+// Projection is one RETURN item: a property, or an aggregate over one. Alias
+// is what the column is called in the result; it defaults to the source text
+// of what was projected.
 type Projection struct {
-	Property PropertyRef
-	Alias    string
+	Property  *PropertyRef
+	Aggregate *Aggregate
+	Alias     string
 }
 
-// SortKey is one ORDER BY item.
+// Aggregate is count, sum, avg, min or max. Property is nil for count(*),
+// which counts rows rather than values.
+type Aggregate struct {
+	// Function is the SQL spelling, taken from a fixed set. Name is what the
+	// author wrote, which is what an unaliased column is called: a result read
+	// by key should carry the name the query used.
+	Function string
+	Name     string
+	Distinct bool
+	Property *PropertyRef
+	Pos      Position
+}
+
+// String renders the aggregate the way it was written, which is what an
+// unaliased column is named after.
+func (a Aggregate) String() string {
+	inner := "*"
+	if a.Property != nil {
+		inner = a.Property.String()
+	}
+	if a.Distinct {
+		inner = "DISTINCT " + inner
+	}
+	return a.Name + "(" + inner + ")"
+}
+
+// SortKey is one ORDER BY item. It is a property, an aggregate written out
+// again, or the name of something the query returns.
 type SortKey struct {
-	Property   PropertyRef
+	Property   *PropertyRef
+	Aggregate  *Aggregate
+	Alias      string
 	Descending bool
+	Pos        Position
 }

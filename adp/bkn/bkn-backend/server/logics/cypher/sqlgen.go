@@ -67,6 +67,7 @@ func Generate(plan *Plan, options GenerateOptions) (string, error) {
 	if err := g.writeWhere(); err != nil {
 		return "", err
 	}
+	g.writeGroupBy()
 	g.writeOrderBy()
 	g.writeLimit(options.DefaultLimit)
 	if g.err != nil {
@@ -91,9 +92,44 @@ func (g *generator) writeSelect() {
 		if i > 0 {
 			g.out.WriteString(", ")
 		}
-		g.out.WriteString(g.column(column.Table, column.Column))
+		g.out.WriteString(g.selectExpression(column))
 		g.out.WriteString(" AS ")
 		g.out.WriteString(g.identifier(column.Alias))
+	}
+}
+
+func (g *generator) selectExpression(column PlanColumn) string {
+	if column.Aggregate != nil {
+		return g.aggregate(*column.Aggregate)
+	}
+	return g.column(column.Table, column.Column)
+}
+
+// aggregate writes COUNT, SUM, AVG, MIN or MAX. The function name comes from a
+// fixed set rather than from the query, so nothing the caller wrote reaches
+// the statement as SQL.
+func (g *generator) aggregate(aggregate PlanAggregate) string {
+	if aggregate.Star {
+		return aggregate.Function + "(*)"
+	}
+	inner := g.column(aggregate.Table, aggregate.Column)
+	if aggregate.Distinct {
+		inner = "DISTINCT " + inner
+	}
+	return aggregate.Function + "(" + inner + ")"
+}
+
+// writeGroupBy writes the grouping the planner derived from what is returned.
+func (g *generator) writeGroupBy() {
+	if len(g.plan.GroupBy) == 0 {
+		return
+	}
+	g.out.WriteString(" GROUP BY ")
+	for i, column := range g.plan.GroupBy {
+		if i > 0 {
+			g.out.WriteString(", ")
+		}
+		g.out.WriteString(g.column(column.Table, column.Column))
 	}
 }
 
@@ -225,7 +261,17 @@ func (g *generator) writeOrderBy() {
 		if i > 0 {
 			g.out.WriteString(", ")
 		}
-		g.out.WriteString(g.column(order.Table, order.Column))
+		switch {
+		case order.Aggregate != nil:
+			g.out.WriteString(g.aggregate(*order.Aggregate))
+		case order.Alias != "":
+			// Sorting by the output name rather than by the expression: both
+			// dialects accept it, and it keeps a grouped result from
+			// computing the same aggregate twice.
+			g.out.WriteString(g.identifier(order.Alias))
+		default:
+			g.out.WriteString(g.column(order.Table, order.Column))
+		}
 		if order.Descending {
 			g.out.WriteString(" DESC")
 		}

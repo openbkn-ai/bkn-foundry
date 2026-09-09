@@ -249,27 +249,24 @@ func analyzeProjectionBody(query *Query, ctx parsing.IOC_ProjectionBodyContext) 
 		return unsupportedf(items, "RETURN *", "list the properties to return")
 	}
 	for _, item := range items.AllOC_ProjectionItem() {
-		property, err := analyzePropertyRef(item.OC_Expression())
+		projection, err := analyzeProjection(item.OC_Expression())
 		if err != nil {
 			return err
 		}
-		projection := Projection{Property: *property, Alias: property.String()}
 		if variable := item.OC_Variable(); variable != nil {
 			projection.Alias = identifier(variable.GetText())
 		}
-		query.Return = append(query.Return, projection)
+		query.Return = append(query.Return, *projection)
 	}
 
 	if order := ctx.OC_Order(); order != nil {
 		for _, item := range order.AllOC_SortItem() {
-			property, err := analyzePropertyRef(item.OC_Expression())
+			key, err := analyzeSortKey(item.OC_Expression())
 			if err != nil {
 				return err
 			}
-			query.OrderBy = append(query.OrderBy, SortKey{
-				Property:   *property,
-				Descending: item.DESCENDING() != nil || item.DESC() != nil,
-			})
+			key.Descending = item.DESCENDING() != nil || item.DESC() != nil
+			query.OrderBy = append(query.OrderBy, *key)
 		}
 	}
 	if skip := ctx.OC_Skip(); skip != nil {
@@ -304,6 +301,172 @@ func analyzeRowCount(ctx parsing.IOC_ExpressionContext, clause string) (int64, e
 		return 0, unsupportedf(ctx, "a negative "+clause, "%s must not be negative", clause)
 	}
 	return value.literal.Integer, nil
+}
+
+// analyzeProjection reads one RETURN item: a property, or an aggregate over
+// one. The alias defaults to what was written, which is how Cypher names a
+// column nobody named.
+func analyzeProjection(ctx parsing.IOC_ExpressionContext) (*Projection, error) {
+	if aggregate, ok, err := analyzeAggregate(ctx); err != nil {
+		return nil, err
+	} else if ok {
+		return &Projection{Aggregate: aggregate, Alias: aggregate.String()}, nil
+	}
+
+	property, err := analyzePropertyRef(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &Projection{Property: property, Alias: property.String()}, nil
+}
+
+// analyzeSortKey reads one ORDER BY item. Besides a property it accepts the
+// name of a returned column and an aggregate written out again, because with
+// aggregates in RETURN those are the only ways to say what to sort by.
+func analyzeSortKey(ctx parsing.IOC_ExpressionContext) (*SortKey, error) {
+	if aggregate, ok, err := analyzeAggregate(ctx); err != nil {
+		return nil, err
+	} else if ok {
+		return &SortKey{Aggregate: aggregate, Pos: aggregate.Pos}, nil
+	}
+
+	if name, ok := bareVariable(ctx); ok {
+		return &SortKey{Alias: name, Pos: positionOf(ctx)}, nil
+	}
+
+	property, err := analyzePropertyRef(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &SortKey{Property: property, Pos: property.Pos}, nil
+}
+
+// bareVariable reports a term that is nothing but a name. In ORDER BY that is
+// a reference to a returned column; everywhere else it is a whole node, which
+// the analyzer refuses.
+func bareVariable(ctx parsing.IOC_ExpressionContext) (string, bool) {
+	atom, ok := singleExpressionAtom(ctx)
+	if !ok || len(atom.propertyLookups) > 0 {
+		return "", false
+	}
+	variable := atom.atom.OC_Variable()
+	if variable == nil {
+		return "", false
+	}
+	return identifier(variable.GetText()), true
+}
+
+// aggregateFunctions are the ones whose SQL spelling is the same and whose
+// meaning over a grouped result matches. Anything else stays a function call,
+// which is refused.
+var aggregateFunctions = map[string]string{
+	"count": "COUNT",
+	"sum":   "SUM",
+	"avg":   "AVG",
+	"min":   "MIN",
+	"max":   "MAX",
+}
+
+// analyzeAggregate reads count(*), count(x.p), sum(x.p) and their DISTINCT
+// forms. It reports whether the term was an aggregate at all, so a caller can
+// fall through to reading a plain property.
+func analyzeAggregate(ctx parsing.IOC_ExpressionContext) (*Aggregate, bool, error) {
+	term, ok := singleExpressionAtom(ctx)
+	if !ok {
+		return nil, false, nil
+	}
+	if len(term.propertyLookups) > 0 {
+		return nil, false, nil
+	}
+
+	// count(*) is its own shape in the grammar rather than a function call.
+	if count := term.atom.COUNT(); count != nil {
+		return &Aggregate{Function: "COUNT", Name: count.GetText(), Pos: positionOf(term.atom)}, true, nil
+	}
+
+	invocation := term.atom.OC_FunctionInvocation()
+	if invocation == nil {
+		return nil, false, nil
+	}
+	written := identifier(invocation.OC_FunctionName().GetText())
+	name := strings.ToLower(written)
+	function, isAggregate := aggregateFunctions[name]
+	if !isAggregate {
+		return nil, false, nil
+	}
+
+	arguments := invocation.AllOC_Expression()
+	if len(arguments) != 1 {
+		return nil, false, unsupportedf(invocation, "an aggregate over "+strconv.Itoa(len(arguments))+" arguments",
+			"%s takes one property", name)
+	}
+	property, err := analyzePropertyRef(arguments[0])
+	if err != nil {
+		return nil, false, err
+	}
+	return &Aggregate{
+		Function: function,
+		Name:     written,
+		Distinct: invocation.DISTINCT() != nil,
+		Property: property,
+		Pos:      positionOf(invocation),
+	}, true, nil
+}
+
+// expressionAtom is one term stripped of the precedence chain around it: the
+// atom itself and the property lookups applied to it.
+type expressionAtom struct {
+	atom            parsing.IOC_AtomContext
+	propertyLookups []parsing.IOC_PropertyLookupContext
+}
+
+// singleExpressionAtom descends an expression that is one term, reporting
+// false for anything with an operator in it.
+func singleExpressionAtom(ctx parsing.IOC_ExpressionContext) (expressionAtom, bool) {
+	xors := ctx.OC_OrExpression().AllOC_XorExpression()
+	if len(xors) != 1 {
+		return expressionAtom{}, false
+	}
+	ands := xors[0].AllOC_AndExpression()
+	if len(ands) != 1 {
+		return expressionAtom{}, false
+	}
+	nots := ands[0].AllOC_NotExpression()
+	if len(nots) != 1 || len(nots[0].AllNOT()) > 0 {
+		return expressionAtom{}, false
+	}
+	comparison := nots[0].OC_ComparisonExpression()
+	if len(comparison.AllOC_PartialComparisonExpression()) > 0 {
+		return expressionAtom{}, false
+	}
+	stringListNull := comparison.OC_StringListNullPredicateExpression()
+	if len(stringListNull.AllOC_StringPredicateExpression())+
+		len(stringListNull.AllOC_ListPredicateExpression())+
+		len(stringListNull.AllOC_NullPredicateExpression()) > 0 {
+		return expressionAtom{}, false
+	}
+	multiplications := stringListNull.OC_AddOrSubtractExpression().AllOC_MultiplyDivideModuloExpression()
+	if len(multiplications) != 1 {
+		return expressionAtom{}, false
+	}
+	powers := multiplications[0].AllOC_PowerOfExpression()
+	if len(powers) != 1 {
+		return expressionAtom{}, false
+	}
+	unaries := powers[0].AllOC_UnaryAddOrSubtractExpression()
+	if len(unaries) != 1 {
+		return expressionAtom{}, false
+	}
+	listOperator := unaries[0].OC_ListOperatorExpression()
+	if listOperator.GetChildCount() > 1 {
+		return expressionAtom{}, false
+	}
+	propertyOrLabels := listOperator.OC_PropertyOrLabelsExpression()
+	if propertyOrLabels.OC_NodeLabels() != nil {
+		return expressionAtom{}, false
+	}
+	return expressionAtom{atom: propertyOrLabels.OC_Atom(),
+		propertyLookups: propertyOrLabels.AllOC_PropertyLookup()}, true
 }
 
 func analyzePropertyRef(ctx parsing.IOC_ExpressionContext) (*PropertyRef, error) {
