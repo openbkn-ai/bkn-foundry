@@ -25,7 +25,7 @@ const maxSafeResponseBytes = 4 << 20
 
 var builtInRoles = map[string]struct{}{
 	"super_admin": {}, "admin": {}, "security": {}, "audit": {},
-	"network_builder": {}, "normal_user": {},
+	"network_builder": {},
 }
 
 var networkManagementOperations = map[string]struct{}{

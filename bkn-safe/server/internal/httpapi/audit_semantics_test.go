@@ -46,7 +46,7 @@ func TestAuditDetailTargetPromotesBusinessObjectIdentifiers(t *testing.T) {
 		wantID   string
 	}{
 		{"object-grants", `{"accessor_id":"user-a","resource":{"type":"knowledge_network","id":"supplychain_hd0202"}}`, "supplychain_hd0202"},
-		{"role-bindings", `{"accessor_id":"user-a","role_id":"normal_user"}`, "user-a"},
+		{"role-bindings", `{"accessor_id":"user-a","role_id":"role-a"}`, "user-a"},
 	}
 	for _, test := range tests {
 		if got := auditDetailTargetID(test.resource, test.detail); got != test.wantID {

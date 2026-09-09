@@ -389,7 +389,7 @@ func TestApplyReconcilesDeprecatedSeedRoles(t *testing.T) {
 	}
 }
 
-func TestReconcileDeprecatedRolesRemovesWithdrawnNormalUserRole(t *testing.T) {
+func TestReconcileWithdrawnNormalUserRole(t *testing.T) {
 	db := newDB(t)
 	e, err := authz.New(db)
 	if err != nil {
@@ -397,7 +397,7 @@ func TestReconcileDeprecatedRolesRemovesWithdrawnNormalUserRole(t *testing.T) {
 	}
 
 	const (
-		normalUserRole = "b5f9ac3e-992c-4bbd-8126-95e87e51c46e"
+		normalUserRole = normalUserRoleID
 		user           = "u-withdrawn-role"
 	)
 	if err := e.AssignRole(user, normalUserRole); err != nil {
@@ -412,8 +412,8 @@ func TestReconcileDeprecatedRolesRemovesWithdrawnNormalUserRole(t *testing.T) {
 		t.Fatal("test setup failed: withdrawn role grant did not take effect")
 	}
 
-	if err := ReconcileDeprecatedRoles(db, e); err != nil {
-		t.Fatalf("reconcile deprecated roles: %v", err)
+	if err := ReconcileWithdrawnNormalUserRole(db, e); err != nil {
+		t.Fatalf("reconcile withdrawn normal user role: %v", err)
 	}
 
 	if ok, err := e.Check(user, "admin-user", "u1", "create"); err != nil {

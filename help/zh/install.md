@@ -425,7 +425,7 @@ openbkn admin role add-member <roleId> -u alice
 openbkn admin role remove-member <roleId> -u alice
 ```
 
-**赋权前务必先看 `role list`**，记下每条角色的 **roleId**（与名称如 `super_admin`、`normal_user` 等对应关系以你环境输出为准）。**快速开始/POC** 为减少「缺角色导致接口 403」，常对新用户**依次**执行 `openbkn admin user assign-role <userId> <roleId>`，把 `role list` 中的角色**全部**挂到该用户上；**生产**请按最小权限只赋业务所需角色，并用 `openbkn admin user roles <userId>` 复查。
+**赋权前务必先看 `role list`**，记下每条角色的 **roleId**（与名称如 `super_admin`、`network_builder` 等对应关系以你环境输出为准）。**快速开始/POC** 为减少「缺角色导致接口 403」，常对新用户**依次**执行 `openbkn admin user assign-role <userId> <roleId>`，把 `role list` 中的角色**全部**挂到该用户上；**生产**请按最小权限只赋业务所需角色，并用 `openbkn admin user roles <userId>` 复查。
 
 #### 模型（LLM / Embedding）
 

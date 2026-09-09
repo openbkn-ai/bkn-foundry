@@ -263,11 +263,10 @@ func (en *Enforcer) inheritedResources(accessorID, resourceType, op string, visi
 	// probe the type-wide case FIRST (vega's resolveOps and the operator
 	// integration both check obj="<type>:*" and skip enumeration when it holds),
 	// so this branch is only reached by an accessor holding the wildcard on the
-	// PARENT type but not on the type itself — which no seeded role is. #513
-	// creates exactly that state if it revokes normal_user's resource:* while
-	// leaving catalog:*, and the size question has to be answered there rather
-	// than by quietly truncating here: a short list would read as "these are the
-	// tables you may see".
+	// PARENT type but not on the type itself. A custom role can create that state,
+	// and the size question has to be answered there rather than by quietly
+	// truncating it: a short list would read as "these are the tables you may
+	// see".
 	wide, err := en.e.Enforce(accessorID, obj(parentType, "*"), parentOp)
 	if err != nil {
 		return nil, err

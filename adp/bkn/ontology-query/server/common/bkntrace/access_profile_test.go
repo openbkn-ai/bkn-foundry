@@ -38,7 +38,7 @@ func TestResolveAccessProfile(t *testing.T) {
 	if !profile.IsOutboxAdmin() {
 		t.Fatal("IsOutboxAdmin() = false, want true")
 	}
-	if len(profile.Roles) != 2 || profile.Roles[0] != "admin" || profile.Roles[1] != "normal_user" {
+	if len(profile.Roles) != 1 || profile.Roles[0] != "admin" {
 		t.Fatalf("Roles = %#v, want sorted built-in roles", profile.Roles)
 	}
 }

@@ -287,8 +287,8 @@ func TestEffectivePermissionsTypeWideOnly(t *testing.T) {
 func TestEffectivePermissionsTypeWideOnlyInstanceOnlyType(t *testing.T) {
 	e := newTestEnforcer(t)
 	const user = "u-obj"
-	// Mirrors the shipped normal_user role: capability types type-wide, no data
-	// grants at all — data types are reachable only through object grants.
+	// Models a capability-only role: data types are reachable only through object
+	// grants.
 	mustNoErr(t, e.GrantRolePermission("role-normal", "tool_box", "*", "view"))
 	mustNoErr(t, e.AssignRole(user, "role-normal"))
 	mustNoErr(t, e.GrantObjectPermission(user, "knowledge_network", "kn-1", "view_detail"))
