@@ -1,0 +1,237 @@
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+openapi: 3.0.3
+info:
+  title: BKN Safe Enterprise Property Grant Management API
+  version: 0.1.0
+  description: |
+    Manages sparse property-level restrictions for one user or role on one
+    object type. This surface is mounted only when the Enterprise
+    `perm_object_level` capability is assembled and licensed.
+
+    A platform authorization administrator may manage user grants without a
+    property ceiling. A caller holding `authorize` on the concrete object type
+    may manage user grants only up to their own effective, base-clamped level.
+    Role targets require the platform `admin-role:permissions` permission.
+servers:
+  - url: /api/safe/v1/admin
+security:
+  - BearerAuth: []
+paths:
+  /property-grants:
+    get:
+      tags: [Property grants]
+      operationId: listPropertyGrants
+      summary: List explicit property grants for one subject and object type
+      parameters:
+        - $ref: '#/components/parameters/AccessorType'
+        - $ref: '#/components/parameters/AccessorID'
+        - $ref: '#/components/parameters/ObjectTypeRef'
+      responses:
+        '200':
+          description: Explicit sparse grants, including expired entries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GrantSnapshot'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          description: Missing or invalid bearer token
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Capability is not assembled or the live licence is below Enterprise
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      tags: [Property grants]
+      operationId: patchPropertyGrants
+      summary: Apply an atomic batch of sparse property-grant changes
+      description: |
+        Every change describes the complete desired explicit row for one
+        property. `inherit` deletes that row. Omitted expiry and source metadata
+        are cleared. The batch and its audit records commit in one transaction.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchRequest'
+      responses:
+        '200':
+          description: Updated explicit grant snapshot and number of changed rows
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/GrantSnapshot'
+                  - type: object
+                    required: [changed]
+                    properties:
+                      changed:
+                        type: integer
+                        minimum: 0
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          description: Missing or invalid bearer token
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Capability is not assembled or the live licence is below Enterprise
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  parameters:
+    AccessorType:
+      name: accessor_type
+      in: query
+      required: true
+      schema:
+        type: string
+        enum: [user, role]
+    AccessorID:
+      name: accessor_id
+      in: query
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+    ObjectTypeRef:
+      name: object_type_ref
+      in: query
+      required: true
+      description: Canonical `<knowledge-network-id>/<object-type-id>` reference
+      schema:
+        type: string
+        pattern: '^[a-z0-9][a-z0-9_-]{0,39}/[a-z0-9][a-z0-9_-]{0,39}$'
+  schemas:
+    Subject:
+      type: object
+      required: [type, id]
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          enum: [user, role]
+        id:
+          type: string
+          minLength: 1
+          maxLength: 128
+    StoredLevel:
+      type: string
+      enum: [none, schema, masked, full]
+    ChangeLevel:
+      type: string
+      enum: [inherit, none, schema, masked, full]
+    GrantEntry:
+      type: object
+      required: [property_name, level, created_at, updated_at]
+      properties:
+        property_name:
+          type: string
+        level:
+          $ref: '#/components/schemas/StoredLevel'
+        expires_at:
+          type: string
+          format: date-time
+        source:
+          type: string
+        source_ref:
+          type: string
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    GrantSnapshot:
+      type: object
+      required: [accessor, object_type_ref, entries]
+      properties:
+        accessor:
+          $ref: '#/components/schemas/Subject'
+        object_type_ref:
+          type: string
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/GrantEntry'
+    GrantChange:
+      type: object
+      required: [property_name, level]
+      additionalProperties: false
+      properties:
+        property_name:
+          type: string
+        level:
+          $ref: '#/components/schemas/ChangeLevel'
+        expires_at:
+          type: string
+          format: date-time
+        source:
+          type: string
+          maxLength: 64
+        source_ref:
+          type: string
+          maxLength: 256
+    PatchRequest:
+      type: object
+      required: [accessor, object_type_ref, reason, changes]
+      additionalProperties: false
+      properties:
+        accessor:
+          $ref: '#/components/schemas/Subject'
+        object_type_ref:
+          type: string
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 512
+        changes:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/GrantChange'
+    ManagementError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+  responses:
+    InvalidRequest:
+      description: Invalid target, JSON body, change, expiry, or batch shape
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ManagementError'
+    Forbidden:
+      description: Caller lacks platform authority or object-type delegation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ManagementError'
+    InternalError:
+      description: Property-grant management failed without committing a partial batch
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ManagementError'
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer

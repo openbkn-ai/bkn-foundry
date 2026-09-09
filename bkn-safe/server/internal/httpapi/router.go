@@ -17,6 +17,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/adminwrite"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permdata"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/accesslog"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
@@ -169,6 +170,22 @@ func New(deps Deps) *gin.Engine {
 		}
 		if adminwrite.Mount(gatedAdmin, newAdminWriteServices(deps.Enforcer, deps.DB)) {
 			slog.Info("rbac_basic admin write routes mounted (enterprise build)")
+		}
+		// Property-grant management deliberately does not reuse gatedAdmin:
+		// callers holding authorize on this concrete object type may manage user
+		// restrictions without being platform administrators. The Enterprise
+		// gate still runs first, before authentication, so an unavailable paid
+		// surface is indistinguishable from Community's unmounted route.
+		propertyGrantAdmin := r.Group("/api/safe/v1/admin", permdata.ManagementGate(),
+			sharedrest.PrivateNoCacheMiddleware(), RequireUser(verifier), RequireActiveAccount(deps.DB))
+		if deps.Audit != nil {
+			propertyGrantAdmin.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
+		}
+		if permdata.MountManagement(propertyGrantAdmin, newPropertyGrantManagementServices(deps.Enforcer), func(c *gin.Context) (string, bool) {
+			operatorID := c.GetString(ctxAccessorID)
+			return operatorID, operatorID != ""
+		}) {
+			slog.Info("property-grant management routes mounted (enterprise build)")
 		}
 		// Global AppKey oversight: list/revoke any user's keys.
 		if apiKeys != nil {
