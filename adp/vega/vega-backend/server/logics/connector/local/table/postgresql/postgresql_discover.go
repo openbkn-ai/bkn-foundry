@@ -24,6 +24,7 @@ var postgresqlTableRelKinds = []string{"r", "v", "f", "m", "p"}
 
 type postgresqlDomainMetadata struct {
 	BaseType        string
+	BaseTypeKind    string
 	BaseTypmod      int64
 	NotNull         bool
 	DefaultValue    sql.NullString
@@ -87,6 +88,7 @@ domain_checks AS (
 )
 SELECT root.oid AS domain_oid,
        base_type.typname AS base_type,
+       base_type.typtype::text AS base_type_kind,
        resolved.base_typmod,
        resolved.domain_not_null,
        COALESCE(pg_catalog.pg_get_expr(root.typdefaultbin, 0), root.typdefault) AS domain_default,
@@ -105,11 +107,12 @@ ORDER BY root.oid`, strings.Join(placeholders, ", "))
 
 	for rows.Next() {
 		var domainOID, baseTypmod sql.NullInt64
-		var baseType, defaultValue, checkConstraint sql.NullString
+		var baseType, baseTypeKind, defaultValue, checkConstraint sql.NullString
 		var notNull sql.NullBool
 		if err := rows.Scan(
 			&domainOID,
 			&baseType,
+			&baseTypeKind,
 			&baseTypmod,
 			&notNull,
 			&defaultValue,
@@ -117,12 +120,13 @@ ORDER BY root.oid`, strings.Join(placeholders, ", "))
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan PostgreSQL domain metadata: %w", err)
 		}
-		if !domainOID.Valid || !baseType.Valid || !baseTypmod.Valid ||
+		if !domainOID.Valid || !baseType.Valid || !baseTypeKind.Valid || !baseTypmod.Valid ||
 			!notNull.Valid || !checkConstraint.Valid {
 			return nil, fmt.Errorf("required PostgreSQL domain metadata contains NULL")
 		}
 		metadata[domainOID.Int64] = postgresqlDomainMetadata{
 			BaseType:        baseType.String,
+			BaseTypeKind:    baseTypeKind.String,
 			BaseTypmod:      baseTypmod.Int64,
 			NotNull:         notNull.Bool,
 			DefaultValue:    defaultValue,
@@ -426,7 +430,8 @@ ORDER BY a.attnum`, relKinds)
 		if pkSet[raw.name.String] {
 			column.ColumnKey = "PRI"
 		}
-		if raw.typeKind.String == "d" {
+		switch raw.typeKind.String {
+		case "d":
 			domain, ok := domains[raw.typeOID.Int64]
 			if ok {
 				column.AliasType = raw.typeName.String
@@ -437,7 +442,13 @@ ORDER BY a.attnum`, relKinds)
 					column.DefaultValue = domain.DefaultValue.String
 				}
 				typeModifier = domain.BaseTypmod
+				if domain.BaseTypeKind == "e" {
+					column.Type = "enum"
+				}
 			}
+		case "e":
+			column.AliasType = raw.typeName.String
+			column.Type = "enum"
 		}
 		switch column.Type {
 		case "bpchar", "varchar":

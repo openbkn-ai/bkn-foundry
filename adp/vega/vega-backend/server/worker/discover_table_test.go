@@ -276,6 +276,37 @@ func TestEnrichTableMetadataPreservesBusinessMetadata(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestEnrichTableMetadataUsesNormalizedEnumType(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	rs := vmock.NewMockResourceService(ctrl)
+	dh := &DiscoverTaskWorker{rs: rs}
+	resource := &interfaces.Resource{ID: "r1", SourceIdentifier: "public.orders"}
+	connector := vmock.NewMockTableConnector(ctrl)
+	connector.EXPECT().
+		GetTableMeta(gomock.Any(), &interfaces.TableMeta{Name: "orders", Schema: "public"}).
+		DoAndReturn(func(_ context.Context, table *interfaces.TableMeta) error {
+			table.Columns = []interfaces.TableColumnMeta{{
+				Name: "status", Type: "enum", AliasType: "order_status",
+			}}
+			return nil
+		})
+	connector.EXPECT().MapType("enum").Return(interfaces.DataType_String)
+	rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), nil, gomock.AssignableToTypeOf(&interfaces.Resource{}), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ *sql.Tx, updated *interfaces.Resource, _ int64) error {
+			require.Len(t, updated.SchemaDefinition, 1)
+			assert.Equal(t, interfaces.DataType_String, updated.SchemaDefinition[0].Type)
+			assert.Equal(t, "enum", updated.SchemaDefinition[0].OriginalType)
+			return nil
+		})
+
+	err := dh.enrichTableMetadata(context.Background(), &interfaces.DiscoverTask{}, connector, []tableDiscoverItem{{
+		resource:  resource,
+		tableMeta: &interfaces.TableMeta{Name: "orders", Schema: "public"},
+	}}, &interfaces.DiscoverResult{}, &discoverTaskReconcileProgress{lastProgress: 95})
+
+	require.NoError(t, err)
+}
+
 func TestEnrichTableMetadataSynchronizesSourceDescriptions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	rs := vmock.NewMockResourceService(ctrl)
