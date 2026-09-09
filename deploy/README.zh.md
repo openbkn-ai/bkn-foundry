@@ -193,10 +193,18 @@ sudo bash ./deploy.sh openbkn install --latest --registry=swr
 sudo bash ./deploy.sh openbkn install --version_file=/tmp/m.yaml --registry=swr
 ```
 
-> 手工把 BKN 镜像搬进离线集群：每个已发布版本都带单架构 tag
-> `<image>:<version>-amd64` 与 `<image>:<version>-arm64`。在任意机器上直接
-> `docker pull` 其一（不用 `--platform`，不用 skopeo），`docker save` 后导入目标节点，
-> 并打回 `<image>:<version>` 这个 tag。
+> 手工把 BKN 镜像搬进离线集群：0.1.5 起发布的版本都带单架构 tag
+> `<image>:<version>-amd64` 与 `<image>:<version>-arm64`（更早的版本只有多架构的
+> `<image>:<version>`）。在任意机器上按目标节点架构 `docker pull` 其一（不用 `--platform`，
+> 不用 skopeo），打回不带后缀的版本 tag，再导入节点的 containerd（k3s 上用 `k3s ctr`）：
+>
+> ```bash
+> docker pull ghcr.io/openbkn-ai/bkn-backend:0.1.5-arm64
+> docker tag  ghcr.io/openbkn-ai/bkn-backend:0.1.5-arm64 ghcr.io/openbkn-ai/bkn-backend:0.1.5
+> docker save ghcr.io/openbkn-ai/bkn-backend:0.1.5 -o bkn-backend.tar
+> # 目标节点上：
+> ctr -n k8s.io images import bkn-backend.tar
+> ```
 
 > 提交的迁移会修复 DB schema 漂移（如 `vega-backend` 0.9.x），但只在 **data-migrator
 > pre-install job 运行时**生效——即走 `openbkn install`，不是裸 `kubectl set image`。

@@ -15,6 +15,19 @@ name: reusable-build
 # alive as long as the list they back — and they double as a plain
 # `docker pull` handle for users who need a specific architecture without
 # skopeo or `--platform`.
+#
+# The list is assembled from the digests each leg just pushed, not by
+# resolving the arch tags again: versions are not unique per run (release/*
+# branches build `X.Y.Z-release`, a `v*` tag can be rebuilt), and no caller
+# sets `concurrency`, so two runs of one version can interleave. Reading
+# tags back could pair an amd64 image from one commit with an arm64 image
+# from another; digests pin the list to this run's own builds. What remains
+# is that a leg can fail after the other already pushed its arch tag — then
+# `:<version>` keeps pointing at the previous list until the version builds
+# cleanly again, and the arch tag is ahead of it for that window.
+#
+# `ubuntu-24.04-arm` is GitHub-hosted and free for public repositories only;
+# a private fork of this workflow needs its own arm64 runner behind that label.
 
 on:
   workflow_call:
@@ -86,14 +99,15 @@ jobs:
       - name: Resolve platforms to native runners
         id: matrix
         shell: bash
+        env:
+          PLATFORMS: ${{ inputs.platforms }}
         run: |
           set -euo pipefail
-          # ubuntu-24.04-arm is GitHub-hosted and free for public repositories.
           # Anything outside this table has no native runner here, so fail loud
           # instead of silently falling back to emulation.
           entries=()
           archs=()
-          IFS=',' read -ra platforms <<< "${{ inputs.platforms }}"
+          IFS=',' read -ra platforms <<< "${PLATFORMS}"
           for platform in "${platforms[@]}"; do
             platform="$(echo "${platform}" | xargs)"
             case "${platform}" in
@@ -161,20 +175,26 @@ jobs:
       - name: Compute arch image tags
         id: tags
         shell: bash
+        env:
+          IMAGE: ${{ inputs.image-name }}
+          VERSION: ${{ inputs.version }}
+          ARCH: ${{ matrix.arch }}
+          SWR_REPO: ${{ inputs.swr-registry }}/${{ inputs.swr-namespace }}
         run: |
           # Arch-suffixed tags are the manifest list's children and are left in
           # the registry on purpose: deleting them breaks the list that
           # references their digests.
           {
             echo "tags<<EOF"
-            echo "ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}:${{ inputs.version }}-${{ matrix.arch }}"
+            echo "ghcr.io/${{ github.repository_owner }}/${IMAGE}:${VERSION}-${ARCH}"
             if [ "${{ needs.setup.outputs.swr }}" = "true" ]; then
-              echo "${{ inputs.swr-registry }}/${{ inputs.swr-namespace }}/${{ inputs.image-name }}:${{ inputs.version }}-${{ matrix.arch }}"
+              echo "${SWR_REPO}/${IMAGE}:${VERSION}-${ARCH}"
             fi
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
       - name: Build and push image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: ${{ inputs.service-path }}/${{ inputs.context }}
@@ -196,6 +216,34 @@ jobs:
           # exporter.
           outputs: type=image,oci-mediatypes=false,push=${{ inputs.publish }}
 
+      # The manifest job pins the list to these digests (see header). One file
+      # per leg, named by arch; the artifact name carries the image so several
+      # reusable-build calls in one workflow run don't collide.
+      - name: Record image digest
+        if: ${{ inputs.publish }}
+        shell: bash
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DIGEST}" ]; then
+            echo "::error::build-push-action reported no image digest for ${ARCH}"
+            exit 1
+          fi
+          mkdir -p "${RUNNER_TEMP}/digests"
+          printf '%s\n' "${DIGEST}" > "${RUNNER_TEMP}/digests/${ARCH}"
+          echo "${ARCH}: ${DIGEST}"
+
+      - name: Upload image digest
+        if: ${{ inputs.publish }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ inputs.image-name }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
   # Unions the per-arch images under the plain `:<version>` tag. Skipped on
   # verify-only runs, where nothing was pushed.
   manifest:
@@ -206,6 +254,13 @@ jobs:
       contents: read
       packages: write
     steps:
+      - name: Download image digests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: digest-${{ inputs.image-name }}-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
@@ -223,27 +278,37 @@ jobs:
 
       - name: Union arch images into the version tag
         shell: bash
+        env:
+          IMAGE: ${{ inputs.image-name }}
+          VERSION: ${{ inputs.version }}
+          ARCHS: ${{ needs.setup.outputs.archs }}
+          SWR_REPO: ${{ inputs.swr-registry }}/${{ inputs.swr-namespace }}
+          DIGEST_DIR: ${{ runner.temp }}/digests
         run: |
           set -euo pipefail
-          VERSION="${{ inputs.version }}"
-          read -ra ARCHS <<< "${{ needs.setup.outputs.archs }}"
+          read -ra archs <<< "${ARCHS}"
+          # Children are addressed by the digests the legs recorded, so the list
+          # can only ever contain this run's own images (see header). The same
+          # manifest bytes went to both registries, so one digest per arch
+          # serves GHCR and SWR alike.
           # `docker manifest` emits application/vnd.docker.distribution.manifest.list.v2+json,
           # the legacy list format SWR accepts. `buildx imagetools create` would
           # infer its media types from the sources instead, so the format SWR
           # depends on would rest on inference rather than on the tool's
-          # contract. `--amend` keeps a re-run of this job idempotent.
+          # contract. The runner is fresh, so each run assembles the list from
+          # scratch; nothing local to amend.
           union() {
             local repo="$1"
             local children=()
-            for arch in "${ARCHS[@]}"; do
-              children+=("${repo}:${VERSION}-${arch}")
+            for arch in "${archs[@]}"; do
+              children+=("${repo}@$(cat "${DIGEST_DIR}/${arch}")")
             done
-            docker manifest create --amend "${repo}:${VERSION}" "${children[@]}"
+            docker manifest create "${repo}:${VERSION}" "${children[@]}"
             docker manifest push "${repo}:${VERSION}"
             echo "Pushed multi-arch ${repo}:${VERSION}"
             docker manifest inspect "${repo}:${VERSION}" | head -30
           }
-          union "ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}"
+          union "ghcr.io/${{ github.repository_owner }}/${IMAGE}"
           if [ "${{ needs.setup.outputs.swr }}" = "true" ]; then
-            union "${{ inputs.swr-registry }}/${{ inputs.swr-namespace }}/${{ inputs.image-name }}"
+            union "${SWR_REPO}/${IMAGE}"
           fi
