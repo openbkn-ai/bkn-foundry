@@ -1,5 +1,34 @@
 name: reusable-build
 
+# Each architecture builds on a runner of its own architecture, then the legs
+# are stitched into one multi-arch tag. The previous single-job build asked one
+# amd64 runner for `platforms: linux/amd64,linux/arm64`, which ran the arm64 leg
+# under QEMU. None of the Dockerfiles cross-compile (no `--platform=$BUILDPLATFORM`
+# builder stage), so `go build` with CGO and every `pip install` were interpreted
+# instruction by instruction: bkn-backend spent 16 minutes in the build step,
+# almost all of it in the arm64 leg.
+#
+# Registry shape after this change: every published version has the plain
+# `:<version>` manifest list (what charts and deploys reference) plus one
+# arch-suffixed tag per leg, `:<version>-amd64` / `:<version>-arm64`. The
+# suffixed tags are the list's children — a retention policy must keep them
+# alive as long as the list they back — and they double as a plain
+# `docker pull` handle for users who need a specific architecture without
+# skopeo or `--platform`.
+#
+# The list is assembled from the digests each leg just pushed, not by
+# resolving the arch tags again: versions are not unique per run (release/*
+# branches build `X.Y.Z-release`, a `v*` tag can be rebuilt), and no caller
+# sets `concurrency`, so two runs of one version can interleave. Reading
+# tags back could pair an amd64 image from one commit with an arm64 image
+# from another; digests pin the list to this run's own builds. What remains
+# is that a leg can fail after the other already pushed its arch tag — then
+# `:<version>` keeps pointing at the previous list until the version builds
+# cleanly again, and the arch tag is ahead of it for that window.
+#
+# `ubuntu-24.04-arm` is GitHub-hosted and free for public repositories only;
+# a private fork of this workflow needs its own arm64 runner behind that label.
+
 on:
   workflow_call:
     inputs:
@@ -17,7 +46,7 @@ on:
       platforms:
         type: string
         default: 'linux/amd64,linux/arm64'
-        description: 'Docker platforms'
+        description: 'Docker platforms (comma-separated; each gets a native runner)'
       image-name:
         type: string
         required: true
@@ -54,20 +83,77 @@ on:
         required: false
 
 jobs:
-  build:
+  # Turns the `platforms` input into the build matrix and settles the SWR
+  # decision once, so the legs and the manifest job agree on both.
+  setup:
     runs-on: ubuntu-latest
+    env:
+      # Surfaced so a step can test credential presence — secrets aren't
+      # allowed in `if:` directly. Empty when the SWR secrets aren't set.
+      SWR_USERNAME: ${{ secrets.HUAWEI_SWR_USERNAME }}
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      archs: ${{ steps.matrix.outputs.archs }}
+      swr: ${{ steps.swr.outputs.swr }}
+    steps:
+      - name: Resolve platforms to native runners
+        id: matrix
+        shell: bash
+        env:
+          PLATFORMS: ${{ inputs.platforms }}
+        run: |
+          set -euo pipefail
+          # Anything outside this table has no native runner here, so fail loud
+          # instead of silently falling back to emulation.
+          entries=()
+          archs=()
+          IFS=',' read -ra platforms <<< "${PLATFORMS}"
+          for platform in "${platforms[@]}"; do
+            platform="$(echo "${platform}" | xargs)"
+            case "${platform}" in
+              linux/amd64) arch=amd64; runner=ubuntu-latest ;;
+              linux/arm64) arch=arm64; runner=ubuntu-24.04-arm ;;
+              *)
+                echo "::error::No native runner mapped for platform '${platform}' (supported: linux/amd64, linux/arm64)"
+                exit 1 ;;
+            esac
+            entries+=("{\"arch\":\"${arch}\",\"platform\":\"${platform}\",\"runner\":\"${runner}\"}")
+            archs+=("${arch}")
+          done
+          matrix="[$(IFS=,; echo "${entries[*]}")]"
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+          echo "archs=${archs[*]}" >> "$GITHUB_OUTPUT"
+          echo "Build matrix: ${matrix}"
+
+      - name: Decide SWR mirror
+        id: swr
+        shell: bash
+        run: |
+          # SWR mirror only when publishing AND credentials present.
+          if [ "${{ inputs.publish }}" = "true" ] && [ -n "${SWR_USERNAME}" ]; then
+            echo "swr=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "swr=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # One leg per architecture, each on a runner that natively speaks it. Every
+  # leg publishes an arch-suffixed tag; the manifest job below unions them into
+  # the plain `:<version>` tag.
+  build:
+    name: build ${{ matrix.arch }}
+    needs: setup
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
-    env:
-      # Surfaced so step `if:` can test credential presence — secrets aren't
-      # allowed in `if:` directly. Empty when the SWR secrets aren't set.
-      SWR_USERNAME: ${{ secrets.HUAWEI_SWR_USERNAME }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include: ${{ fromJSON(needs.setup.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-qemu-action@v3
-
+      # No setup-qemu-action: each runner builds only its own architecture.
       - uses: docker/setup-buildx-action@v3
 
       - name: Login to GHCR
@@ -79,35 +165,45 @@ jobs:
           password: ${{ github.token }}
 
       - name: Login to Huawei SWR
-        if: ${{ inputs.publish && env.SWR_USERNAME != '' }}
+        if: ${{ needs.setup.outputs.swr == 'true' }}
         uses: docker/login-action@v3
         with:
           registry: ${{ inputs.swr-registry }}
           username: ${{ secrets.HUAWEI_SWR_USERNAME }}
           password: ${{ secrets.HUAWEI_SWR_PASSWORD }}
 
-      - name: Compute image tags
+      - name: Compute arch image tags
         id: tags
-        # GHCR always; SWR mirror only when publishing AND credentials present.
+        shell: bash
+        env:
+          IMAGE: ${{ inputs.image-name }}
+          VERSION: ${{ inputs.version }}
+          ARCH: ${{ matrix.arch }}
+          SWR_REPO: ${{ inputs.swr-registry }}/${{ inputs.swr-namespace }}
         run: |
+          # Arch-suffixed tags are the manifest list's children and are left in
+          # the registry on purpose: deleting them breaks the list that
+          # references their digests.
           {
             echo "tags<<EOF"
-            echo "ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}:${{ inputs.version }}"
-            if [ "${{ inputs.publish }}" = "true" ] && [ -n "${SWR_USERNAME}" ]; then
-              echo "${{ inputs.swr-registry }}/${{ inputs.swr-namespace }}/${{ inputs.image-name }}:${{ inputs.version }}"
+            echo "ghcr.io/${{ github.repository_owner }}/${IMAGE}:${VERSION}-${ARCH}"
+            if [ "${{ needs.setup.outputs.swr }}" = "true" ]; then
+              echo "${SWR_REPO}/${IMAGE}:${VERSION}-${ARCH}"
             fi
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
       - name: Build and push image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: ${{ inputs.service-path }}/${{ inputs.context }}
           file: ${{ inputs.service-path }}/${{ inputs.dockerfile }}
-          platforms: ${{ inputs.platforms }}
+          platforms: ${{ matrix.platform }}
           build-args: ${{ inputs.build-args }}
           target: ${{ inputs.target }}
-          push: ${{ inputs.publish }}
+          # Attestations would turn the result into an index even with
+          # oci-mediatypes off, which is the shape SWR refuses.
           provenance: false
           sbom: false
           tags: ${{ steps.tags.outputs.tags }}
@@ -116,4 +212,125 @@ jobs:
           # attestations/annotations were needed); Huawei SWR rejects the OCI
           # image index with "Invalid image, fail to parse 'manifest.json'".
           # GHCR accepts Docker media types fine, so one setting fixes both.
-          outputs: type=image,oci-mediatypes=false
+          # `outputs` replaces `push:` here: the two would each add an image
+          # exporter.
+          outputs: type=image,oci-mediatypes=false,push=${{ inputs.publish }}
+
+      # The manifest job pins the list to these digests (see header). One file
+      # per leg, named by arch; the artifact name carries the image so several
+      # reusable-build calls in one workflow run don't collide. `__` is the
+      # delimiter because image names use `-` and can be prefixes of each other
+      # (vega-backend / vega-backend-python-base in one run): the manifest job
+      # matches `digest__<image>__*`, and `digest__vega-backend__*` cannot
+      # match `digest__vega-backend-python-base__amd64`.
+      - name: Record image digest
+        if: ${{ inputs.publish }}
+        shell: bash
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DIGEST}" ]; then
+            echo "::error::build-push-action reported no image digest for ${ARCH}"
+            exit 1
+          fi
+          mkdir -p "${RUNNER_TEMP}/digests"
+          printf '%s\n' "${DIGEST}" > "${RUNNER_TEMP}/digests/${ARCH}"
+          echo "${ARCH}: ${DIGEST}"
+
+      - name: Upload image digest
+        if: ${{ inputs.publish }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest__${{ inputs.image-name }}__${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Unions the per-arch images under the plain `:<version>` tag. Skipped on
+  # verify-only runs, where nothing was pushed.
+  manifest:
+    needs: [setup, build]
+    if: ${{ inputs.publish }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # No merge-multiple: each artifact unpacks into its own directory named
+      # after the artifact, and the union step reads the exact
+      # `digest__<image>__<arch>/<arch>` path. Even if the pattern ever
+      # over-matched, another image's digest could not be read by mistake.
+      - name: Download image digests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: digest__${{ inputs.image-name }}__*
+          path: ${{ runner.temp }}/digests
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Login to Huawei SWR
+        if: ${{ needs.setup.outputs.swr == 'true' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.swr-registry }}
+          username: ${{ secrets.HUAWEI_SWR_USERNAME }}
+          password: ${{ secrets.HUAWEI_SWR_PASSWORD }}
+
+      - name: Union arch images into the version tag
+        shell: bash
+        env:
+          IMAGE: ${{ inputs.image-name }}
+          VERSION: ${{ inputs.version }}
+          ARCHS: ${{ needs.setup.outputs.archs }}
+          SWR_REPO: ${{ inputs.swr-registry }}/${{ inputs.swr-namespace }}
+          DIGEST_DIR: ${{ runner.temp }}/digests
+        run: |
+          set -euo pipefail
+          read -ra archs <<< "${ARCHS}"
+          # Children are addressed by the digests the legs recorded, so the list
+          # can only ever contain this run's own images (see header). The same
+          # manifest bytes went to both registries, so one digest per arch
+          # serves GHCR and SWR alike.
+          digest_for() {
+            cat "${DIGEST_DIR}/digest__${IMAGE}__${1}/${1}"
+          }
+          for arch in "${archs[@]}"; do
+            file="${DIGEST_DIR}/digest__${IMAGE}__${arch}/${arch}"
+            if [ ! -f "${file}" ]; then
+              echo "::error::missing digest for ${IMAGE} ${arch} (expected ${file})"
+              exit 1
+            fi
+            if ! [[ "$(digest_for "${arch}")" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::malformed digest for ${IMAGE} ${arch}: $(digest_for "${arch}")"
+              exit 1
+            fi
+            echo "${arch}: $(digest_for "${arch}")"
+          done
+          # `docker manifest` emits application/vnd.docker.distribution.manifest.list.v2+json,
+          # the legacy list format SWR accepts. `buildx imagetools create` would
+          # infer its media types from the sources instead, so the format SWR
+          # depends on would rest on inference rather than on the tool's
+          # contract. The runner is fresh, so each run assembles the list from
+          # scratch; nothing local to amend.
+          union() {
+            local repo="$1"
+            local children=()
+            for arch in "${archs[@]}"; do
+              children+=("${repo}@$(digest_for "${arch}")")
+            done
+            docker manifest create "${repo}:${VERSION}" "${children[@]}"
+            docker manifest push "${repo}:${VERSION}"
+            echo "Pushed multi-arch ${repo}:${VERSION}"
+            docker manifest inspect "${repo}:${VERSION}" | head -30
+          }
+          union "ghcr.io/${{ github.repository_owner }}/${IMAGE}"
+          if [ "${{ needs.setup.outputs.swr }}" = "true" ]; then
+            union "${SWR_REPO}/${IMAGE}"
+          fi
