@@ -51,9 +51,11 @@ func dataProperty(name, column string) *interfaces.DataProperty {
 func relationType(id, name string) *interfaces.RelationType {
 	return &interfaces.RelationType{
 		RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
-			RTID:   id,
-			RTName: name,
-			Type:   interfaces.RELATION_TYPE_DIRECT,
+			RTID:               id,
+			RTName:             name,
+			Type:               interfaces.RELATION_TYPE_DIRECT,
+			SourceObjectTypeID: "ot_order",
+			TargetObjectTypeID: "ot_customer",
 		},
 	}
 }
@@ -124,7 +126,10 @@ func TestResolveLabelSelfMatchIsNotAmbiguous(t *testing.T) {
 }
 
 func TestResolveRelationType(t *testing.T) {
-	src := &fakeSchemaSource{relationTypes: []*interfaces.RelationType{
+	src := &fakeSchemaSource{objectTypes: []*interfaces.ObjectType{
+		objectType("ot_order", "Order", resource("res_order", "orders")),
+		objectType("ot_customer", "Customer", resource("res_customer", "customers")),
+	}, relationTypes: []*interfaces.RelationType{
 		relationType("rt_placed", "PLACED"),
 		relationType("rt_shadow", "rt_placed"),
 	}}

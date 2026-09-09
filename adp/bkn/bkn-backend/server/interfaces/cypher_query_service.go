@@ -17,6 +17,10 @@ const (
 	CYPHER_MAX_LIMIT = 10000
 	// CYPHER_DEFAULT_TIMEOUT_SEC bounds one statement at the connector.
 	CYPHER_DEFAULT_TIMEOUT_SEC = 30
+	// CYPHER_MAX_PATH_LENGTH bounds how many relationships one pattern may
+	// hold. Each is a join, and the row limit bounds what comes back rather
+	// than what it costs to produce, so the number of joins is bounded here.
+	CYPHER_MAX_PATH_LENGTH = 8
 )
 
 // CypherQuery is one read-only query against a knowledge network.
@@ -24,6 +28,10 @@ type CypherQuery struct {
 	KNID   string
 	Branch string
 	Query  string
+	// Parameters supply the values the query refers to as $name. They are
+	// values only: a parameter can change which rows come back, never which
+	// resource or column is read.
+	Parameters map[string]any
 }
 
 // CypherQueryResult carries the rows a query produced. The generated SQL is

@@ -170,12 +170,17 @@ func dataPropertyNames(ot *interfaces.ObjectType) []string {
 	return names
 }
 
+// suggestObjectTypes offers both ids and names, because a label may be written
+// either way and the near miss is as likely to be on one as on the other.
 func (s *Schema) suggestObjectTypes(label string) string {
-	names := make([]string, 0, len(s.objectTypesByID))
-	for id := range s.objectTypesByID {
-		names = append(names, id)
+	candidates := make([]string, 0, 2*len(s.objectTypesByID))
+	for id, ot := range s.objectTypesByID {
+		candidates = append(candidates, id)
+		if ot.OTName != "" && ot.OTName != id {
+			candidates = append(candidates, ot.OTName)
+		}
 	}
-	return suggest(label, names)
+	return suggest(label, candidates)
 }
 
 // suggest offers near matches so a typo does not read as a modelling gap. It
