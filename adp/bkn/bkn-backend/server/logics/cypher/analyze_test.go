@@ -376,3 +376,30 @@ func TestAnalyzeRejectionCarriesPosition(t *testing.T) {
 		t.Fatalf("line = %d, want 2", unsupported.Pos.Line)
 	}
 }
+
+// The grammar allows a pair of backticks with nothing between them, so an
+// empty name can be written wherever a name can. It refers to nothing, and
+// letting one through reached SQL as an empty identifier -- a 500 the caller
+// could not act on -- or, in ORDER BY, a nil dereference.
+func TestAnalyzeRejectsEmptyNames(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		query string
+		want  string
+	}{
+		{name: "variable", query: "MATCH (``:Order) RETURN o.id", want: "an empty variable name"},
+		{name: "label", query: "MATCH (o:``) RETURN o.id", want: "an empty label"},
+		{name: "property", query: "MATCH (o:Order) RETURN o.``", want: "an empty property name"},
+		{name: "column name", query: "MATCH (o:Order) RETURN o.id AS ``", want: "an empty column name"},
+		{name: "sort key", query: "MATCH (o:Order) RETURN o.id AS id ORDER BY ``", want: "an empty variable name"},
+		{name: "relationship type", query: "MATCH (o:Order)-[:``]->(c:Customer) RETURN o.id", want: "an empty relationship type"},
+		{name: "parameter", query: "MATCH (o:Order) WHERE o.id = $`` RETURN o.id", want: "an empty parameter name"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := analyze(t, tc.query)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Analyze(%q) = %v, want a rejection mentioning %q", tc.query, err, tc.want)
+			}
+		})
+	}
+}

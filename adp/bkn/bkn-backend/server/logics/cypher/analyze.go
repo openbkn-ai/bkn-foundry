@@ -172,7 +172,11 @@ func analyzeNode(ctx parsing.IOC_NodePatternContext) (*NodeRef, error) {
 	}
 	node := &NodeRef{Pos: positionOf(ctx)}
 	if variable := ctx.OC_Variable(); variable != nil {
-		node.Variable = identifier(variable.GetText())
+		name, err := namedIdentifier(variable, "variable name")
+		if err != nil {
+			return nil, err
+		}
+		node.Variable = name
 	}
 
 	labels := ctx.OC_NodeLabels()
@@ -187,7 +191,11 @@ func analyzeNode(ctx parsing.IOC_NodePatternContext) (*NodeRef, error) {
 		return nil, unsupportedf(ctx, "multiple labels on one node",
 			"a node maps to exactly one object type, got %d labels", len(all))
 	}
-	node.Label = identifier(all[0].OC_LabelName().GetText())
+	label, err := namedIdentifier(all[0].OC_LabelName(), "label")
+	if err != nil {
+		return nil, err
+	}
+	node.Label = label
 	return node, nil
 }
 
@@ -235,7 +243,11 @@ func analyzeRelationship(ctx parsing.IOC_RelationshipPatternContext) (*EdgeRef, 
 		return nil, unsupportedf(detail, "alternative relationship types",
 			"a relationship maps to exactly one relation type, got %d", len(names))
 	}
-	edge.Type = identifier(names[0].GetText())
+	relationshipType, err := namedIdentifier(names[0], "relationship type")
+	if err != nil {
+		return nil, err
+	}
+	edge.Type = relationshipType
 	return edge, nil
 }
 
@@ -254,7 +266,11 @@ func analyzeProjectionBody(query *Query, ctx parsing.IOC_ProjectionBodyContext) 
 			return err
 		}
 		if variable := item.OC_Variable(); variable != nil {
-			projection.Alias = identifier(variable.GetText())
+			alias, err := namedIdentifier(variable, "column name")
+			if err != nil {
+				return err
+			}
+			projection.Alias = alias
 		}
 		query.Return = append(query.Return, *projection)
 	}
@@ -353,7 +369,11 @@ func bareVariable(ctx parsing.IOC_ExpressionContext) (string, bool) {
 	if variable == nil {
 		return "", false
 	}
-	return identifier(variable.GetText()), true
+	name := identifier(variable.GetText())
+	// The grammar allows a pair of backticks with nothing between them. An
+	// empty name refers to nothing, so it is left for the property path to
+	// refuse by name rather than taken as a reference.
+	return name, name != ""
 }
 
 // aggregateFunctions are the ones whose SQL spelling is the same and whose
@@ -902,11 +922,15 @@ func analyzeAtomOperand(ctx parsing.IOC_PropertyOrLabelsExpressionContext) (oper
 			}
 			return operand{parameter: &ParameterRef{Name: name, Pos: positionOf(parameter)}}, nil
 		}
-		if atom.OC_Variable() != nil {
+		if variable := atom.OC_Variable(); variable != nil {
+			name, err := namedIdentifier(variable, "variable name")
+			if err != nil {
+				return operand{}, err
+			}
 			// A bare variable is a whole node, which cannot be projected or
 			// compared as a value.
 			return operand{}, unsupportedf(ctx, "referring to a node as a value",
-				"use %s.property", identifier(atom.OC_Variable().GetText()))
+				"use %s.property", name)
 		}
 		return analyzeAtomLiteral(atom)
 	case 1:
@@ -915,9 +939,17 @@ func analyzeAtomOperand(ctx parsing.IOC_PropertyOrLabelsExpressionContext) (oper
 			return operand{}, unsupportedf(ctx, "property access on an expression",
 				"only variable.property references are supported")
 		}
+		name, err := namedIdentifier(variable, "variable name")
+		if err != nil {
+			return operand{}, err
+		}
+		property, err := namedIdentifier(lookups[0].OC_PropertyKeyName(), "property name")
+		if err != nil {
+			return operand{}, err
+		}
 		return operand{property: &PropertyRef{
-			Variable: identifier(variable.GetText()),
-			Property: identifier(lookups[0].OC_PropertyKeyName().GetText()),
+			Variable: name,
+			Property: property,
 			Pos:      positionOf(ctx),
 		}}, nil
 	default:
@@ -1003,18 +1035,34 @@ func describeAtom(ctx parsing.IOC_AtomContext) string {
 // positional parameter, and the request carries parameters by name.
 func parameterName(ctx parsing.IOC_ParameterContext) (string, error) {
 	if symbolic := ctx.OC_SymbolicName(); symbolic != nil {
-		return identifier(symbolic.GetText()), nil
+		return namedIdentifier(symbolic, "parameter name")
 	}
 	return "", unsupportedf(ctx, "positional parameters", "name the parameter, as in $value")
 }
 
 // identifier strips the backticks of an escaped symbolic name, where a literal
 // backtick is written doubled.
+//
+// The grammar allows a pair of backticks with nothing between them, so this can
+// produce an empty name. Callers reject that: an empty name matches nothing in
+// the model, and letting one through reaches SQL as an empty identifier, which
+// the database rejects with an error the caller cannot act on.
 func identifier(text string) string {
 	if len(text) >= 2 && strings.HasPrefix(text, "`") && strings.HasSuffix(text, "`") {
 		return strings.ReplaceAll(text[1:len(text)-1], "``", "`")
 	}
 	return text
+}
+
+// namedIdentifier is identifier for the places where an empty name is not a
+// name at all: a variable, a label, a property, an alias.
+func namedIdentifier(ctx antlr.ParserRuleContext, kind string) (string, error) {
+	name := identifier(ctx.GetText())
+	if name == "" {
+		return "", unsupportedf(ctx, "an empty "+kind,
+			"a pair of backticks with nothing between them names nothing")
+	}
+	return name, nil
 }
 
 // decodeStringLiteral turns the source form of a string literal into its

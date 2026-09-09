@@ -488,6 +488,14 @@ func (p *planner) planOrderBy(keys []SortKey) error {
 func (p *planner) planSortKey(key SortKey) (*PlanOrder, error) {
 	switch {
 	case key.Aggregate != nil:
+		// Sorting by an aggregate over a projection that has none would group
+		// the whole result into one row on the way to ordering it, quietly
+		// answering a different question than the one asked.
+		if !p.aggregating() {
+			return nil, planErrorf(key.Pos,
+				"sorting by %s needs the query to return an aggregate too; add it to RETURN",
+				key.Aggregate)
+		}
 		aggregate, err := p.planAggregate(*key.Aggregate)
 		if err != nil {
 			return nil, err
@@ -495,6 +503,7 @@ func (p *planner) planSortKey(key SortKey) (*PlanOrder, error) {
 		return &PlanOrder{Aggregate: aggregate}, nil
 
 	case key.Alias != "":
+		// An empty name never reaches here: the analyzer refuses one.
 		// A bare name in ORDER BY is a returned column. It is the only way to
 		// sort a grouped result by something the query already computed, and
 		// checking it here keeps an unknown name from reaching the database.
@@ -506,18 +515,20 @@ func (p *planner) planSortKey(key SortKey) (*PlanOrder, error) {
 		return nil, planErrorf(key.Pos,
 			"%q is not returned by this query, so there is nothing to sort by", key.Alias)
 
-	default:
+	case key.Property != nil:
 		table, column, err := p.resolveProperty(*key.Property)
 		if err != nil {
 			return nil, err
 		}
-		// DISTINCT and grouping both collapse rows before they are ordered,
-		// so sorting by something that survived neither has no defined
-		// answer, and both MySQL and PostgreSQL refuse the statement.
-		// Refusing it here says which key is the problem.
-		if (p.plan.Distinct || len(p.plan.GroupBy) > 0) && !p.isProjected(table, column) {
+		// DISTINCT and aggregation both collapse rows before they are
+		// ordered, so sorting by a value that survived neither has no defined
+		// answer, and both MySQL and PostgreSQL refuse the statement. The
+		// test is on aggregating rather than on GROUP BY, because a query
+		// that aggregates every column derives no GROUP BY and collapses just
+		// as hard.
+		if (p.plan.Distinct || p.aggregating()) && !p.isProjected(table, column) {
 			collapsed := "DISTINCT"
-			if len(p.plan.GroupBy) > 0 {
+			if p.aggregating() {
 				collapsed = "an aggregate"
 			}
 			return nil, planErrorf(key.Property.Pos,
@@ -525,7 +536,25 @@ func (p *planner) planSortKey(key SortKey) (*PlanOrder, error) {
 				key.Property, collapsed)
 		}
 		return &PlanOrder{Table: table, Column: column}, nil
+
+	default:
+		// The three forms above are the whole set the analyzer produces.
+		// Saying so here means a fourth one added later fails as an error
+		// rather than as a nil dereference in whichever branch it fell into.
+		return nil, planErrorf(key.Pos, "this sort key names nothing to sort by")
 	}
+}
+
+// aggregating reports whether the projection collapses rows. A GROUP BY is not
+// the test: aggregating every column derives no GROUP BY and still collapses
+// the result to a single row.
+func (p *planner) aggregating() bool {
+	for _, column := range p.plan.Select {
+		if column.Aggregate != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *planner) isProjected(table int, column string) bool {

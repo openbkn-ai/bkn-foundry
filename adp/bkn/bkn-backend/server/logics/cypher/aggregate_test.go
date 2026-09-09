@@ -151,3 +151,35 @@ func TestCompileDuplicateAliasOnAggregatePointsAtIt(t *testing.T) {
 		t.Fatalf("line = %d, want 3", planError.Pos.Line)
 	}
 }
+
+// Aggregation collapses rows whether or not it derives a GROUP BY, so the
+// ordering rule has to test for aggregation rather than for grouping.
+func TestCompileOrderingUnderAggregation(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		query string
+		want  string
+	}{
+		{
+			// Every column aggregated derives no GROUP BY and collapses to one
+			// row, which used to slip past a check that looked at GROUP BY.
+			name:  "all aggregated, sorted by a column",
+			query: "MATCH (o:Order) RETURN count(*) AS n ORDER BY o.amount",
+			want:  "can only be sorted by a returned value",
+		},
+		{
+			// Sorting by an aggregate the projection does not have would group
+			// the whole result on the way to ordering it.
+			name:  "no aggregate returned, sorted by one",
+			query: "MATCH (o:Order) RETURN o.id AS id ORDER BY count(*)",
+			want:  "needs the query to return an aggregate too",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := compile(t, tc.query, GenerateOptions{})
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("compile(%q) = %v, want a rejection mentioning %q", tc.query, err, tc.want)
+			}
+		})
+	}
+}
