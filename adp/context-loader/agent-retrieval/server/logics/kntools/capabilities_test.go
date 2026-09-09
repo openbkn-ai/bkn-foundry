@@ -349,3 +349,46 @@ func TestEmptyKindFilterDoesNotClaimAnEmptyNetwork(t *testing.T) {
 		t.Fatalf("挂了能力但被类型筛空，和压根没挂，不该给同一句话: %q", filtered.Message)
 	}
 }
+
+// TestEmptyResultNamesTheFilterTheCallerSet pins the whole family of empty-result advice.
+//
+// The fix for an empty result is to drop the filter that caused it, so naming a different one is
+// advice that cannot be followed. This has been wrong three ways already: a pinned kinds filter
+// the caller could not unset, a network with capabilities reported as empty, and a caller who
+// narrowed by owner told to remove types.
+func TestEmptyResultNamesTheFilterTheCallerSet(t *testing.T) {
+	// Mounted, so nothing here can be blamed on an empty network.
+	newSvc := func() KnToolsService {
+		return NewKnToolsServiceWith(&fakeOperator{}, &fakeBkn{refs: functionRefs("box-1/t1")}, &fakeKnAuthz{})
+	}
+	ask := func(t *testing.T, req *SearchCapabilitiesReq) string {
+		t.Helper()
+		resp, err := newSvc().SearchCapabilities(context.Background(), req)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(resp.Capabilities) != 0 {
+			t.Fatalf("这些用例要的都是空结果, got %+v", resp.Capabilities)
+		}
+		return resp.Message
+	}
+
+	byKind := ask(t, &SearchCapabilitiesReq{KnID: "kn1", Types: []string{interfaces.CapabilityTypeMCPTool}})
+	byOwner := ask(t, &SearchCapabilitiesReq{KnID: "kn1", OwnerID: "box-does-not-exist"})
+	byBoth := ask(t, &SearchCapabilitiesReq{
+		KnID: "kn1", Types: []string{interfaces.CapabilityTypeMCPTool}, OwnerID: "box-does-not-exist",
+	})
+
+	if strings.Contains(byOwner, "types") {
+		t.Fatalf("只按 owner_id 收窄时，不该让调用方去掉它没传的 types: %q", byOwner)
+	}
+	if !strings.Contains(byOwner, "owner_id") {
+		t.Fatalf("该点名调用方设的那个过滤器: %q", byOwner)
+	}
+	if !strings.Contains(byKind, "types") || strings.Contains(byKind, "owner_id") {
+		t.Fatalf("只按类型收窄时该只点名类型: %q", byKind)
+	}
+	if !strings.Contains(byBoth, "owner_id") || !strings.Contains(byBoth, "types") {
+		t.Fatalf("两个都设了就该都点名: %q", byBoth)
+	}
+}

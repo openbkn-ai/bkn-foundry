@@ -101,7 +101,13 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 		// lacks, sends them to fix something that is not broken.
 		message := "NoBoundCapabilitiesInNetwork"
 		if mounted > 0 {
-			message = "NoCapabilitiesOfRequestedKind"
+			// The network has capabilities; the filters took them all out. Name the ones the
+			// caller set, not whichever pair happens to be first in the message catalogue.
+			if key, ok := narrowedAwayMessage(req); ok {
+				message = key
+			} else {
+				message = "NoCapabilitiesOfRequestedKind"
+			}
 		}
 		return &SearchCapabilitiesResp{
 			Capabilities: []CapabilityEntry{},
@@ -166,14 +172,12 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 	if fitted > limit {
 		fitted = limit
 	}
+	narrowedKey, narrowed := narrowedAwayMessage(req)
 	switch {
 	case len(entries) == 0 && total > 0:
 		resp.Message = infraErr.LocalizedDetail(ctx, "ToolsMatchedButNotVisible")
-	// Both filters are the caller's now that no entry point pins kinds of its own, so the message
-	// may name either without telling anyone to drop a parameter they cannot set.
-	case len(entries) == 0 && len(req.Types) > 0,
-		len(entries) == 0 && len(req.MetadataTypes) > 0:
-		resp.Message = infraErr.LocalizedDetail(ctx, "NoCapabilitiesOfRequestedKind")
+	case len(entries) == 0 && narrowed:
+		resp.Message = infraErr.LocalizedDetail(ctx, narrowedKey)
 	case len(entries) == 0:
 		resp.Message = infraErr.LocalizedDetail(ctx, "NoPublishedToolsMatched")
 	case more:
@@ -398,6 +402,26 @@ func (s *knToolsService) listingHits(ctx context.Context, refs []interfaces.Sear
 		hits = append(hits, hit)
 	}
 	return hits
+}
+
+// narrowedAwayMessage names the filters the caller actually set.
+//
+// An empty result caused by a filter has to say which one, because the fix is to drop that filter
+// and nothing else. Telling someone who narrowed by owner to remove `types / metadata_types` is
+// the same defect as the message that told them to mount capabilities they already had: advice
+// pointing at a parameter they never touched.
+func narrowedAwayMessage(req *SearchCapabilitiesReq) (string, bool) {
+	kinds := len(req.Types) > 0 || len(req.MetadataTypes) > 0
+	owner := strings.TrimSpace(req.OwnerID) != ""
+	switch {
+	case kinds && owner:
+		return "NoCapabilitiesForFilters", true
+	case kinds:
+		return "NoCapabilitiesOfRequestedKind", true
+	case owner:
+		return "NoCapabilitiesForOwner", true
+	}
+	return "", false
 }
 
 // normalizeKinds trims, drops blanks and de-duplicates.

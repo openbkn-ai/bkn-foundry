@@ -137,6 +137,8 @@
     "NoPublishedToolsMatched": "没有匹配的已发布工具。请先在执行工厂注册工具、发布所属工具箱并启用工具，或放宽 query、去掉 toolbox_id 后重试。",
     "NoBoundCapabilitiesInNetwork": "该知识网络未挂载任何能力。请先在知识网络中挂载 Skill、函数工具或 MCP 工具后重试。",
     "NoCapabilitiesOfRequestedKind": "该知识网络挂载了能力，但没有 types / metadata_types 指定类型的。去掉这两个参数可看到全部已挂载能力。",
+    "NoCapabilitiesForOwner": "该知识网络挂载了能力，但 owner_id 指定的来源下没有。去掉 owner_id 可看到全部已挂载能力。",
+    "NoCapabilitiesForFilters": "该知识网络挂载了能力，但没有同时满足 types / metadata_types 与 owner_id 的。放宽或去掉这些参数可看到全部已挂载能力。",
     "ToolsMatchedButNotVisible": "匹配到工具，但当前调用方对它们没有可见权限，因此未返回。与工具是否已发布无关。",
     "ToolSearchTruncated": "匹配的工具超过 limit，仅返回前若干条。请收窄 query 或提高 limit。",
     "LogicPropertyGenerationFailed": "生成动态参数失败。",

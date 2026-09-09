@@ -137,6 +137,8 @@
     "NoPublishedToolsMatched": "No published tools matched. Register a tool in Execution Factory, publish its toolbox and enable the tool, or broaden query and drop toolbox_id, then retry.",
     "NoBoundCapabilitiesInNetwork": "This knowledge network has no capability mounted. Mount a Skill, a Function tool or an MCP tool first, then retry.",
     "NoCapabilitiesOfRequestedKind": "The knowledge network has capabilities mounted, but none of the kinds named in types / metadata_types. Drop both to see everything it mounted.",
+    "NoCapabilitiesForOwner": "This knowledge network has mounted capabilities, but none under the owner_id you gave. Drop owner_id to see everything it mounted.",
+    "NoCapabilitiesForFilters": "This knowledge network has mounted capabilities, but none matching both the types / metadata_types and the owner_id you gave. Relax or drop these parameters to see everything it mounted.",
     "ToolsMatchedButNotVisible": "Tools matched, but this caller cannot see them, so none were returned. This is a permission, not an unpublished tool.",
     "ToolSearchTruncated": "More tools matched than limit allows; only the first ones are returned. Narrow query or raise limit.",
     "LogicPropertyGenerationFailed": "Unable to generate dynamic parameters.",
