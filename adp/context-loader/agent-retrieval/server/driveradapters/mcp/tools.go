@@ -11,6 +11,7 @@ import (
 	"github.com/bytedance/sonic"
 	validator "github.com/go-playground/validator/v10"
 	"github.com/mark3labs/mcp-go/mcp"
+	"log"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
@@ -584,6 +585,16 @@ func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetr
 		// carrying the metric list itself at this level.
 		if err := metrics.AttachRelatedMetricCounts(ctx, knID, resp.ObjectTypes); err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
+		}
+		// The mounted Skills and tools, counted the same way. An unreadable binding list does not
+		// fail the call: the concept model is still a correct answer to "what is this network",
+		// and the field stays absent to say the count is unknown rather than zero.
+		if refs, err := bkn.ListKNCapabilities(ctx, knID, "", ""); err == nil {
+			resp.AttachMountedCapabilities(refs)
+		} else {
+			// Logged because an absent field and a silently dropped error look identical to
+			// whoever reads the answer, and only one of them is worth investigating.
+			log.Printf("WARN: get_kn_detail capability bindings unreadable for kn %s: %v", knID, err)
 		}
 		resp.Slim(getStringArg(req, "detail_level", interfaces.DetailLevelSummary))
 		result, err := BuildMCPToolResult(resp, format)

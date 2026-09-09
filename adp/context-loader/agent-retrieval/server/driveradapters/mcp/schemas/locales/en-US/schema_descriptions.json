@@ -46,7 +46,12 @@
     "output_schema.properties.action_types.items.properties.comment.description": "Description. Present only with detail_level=full: the default summary returns the skeleton plus a name+type property table, so reading this field there yields None. Call get_object_types for the complete field mapping.",
     "output_schema.properties.action_types.items.properties.object_type_id.description": "Id of the object type it belongs to",
     "output_schema.properties.concept_groups.items.properties.tags.description": "Group tags. Read together with name and comment when choosing a group.",
-    "output_schema.properties.concept_groups.items.properties.comment.description": "What the group is about. Judge relevance from this instead of expanding object_type_ids."
+    "output_schema.properties.concept_groups.items.properties.comment.description": "What the group is about. Judge relevance from this instead of expanding object_type_ids.",
+    "output_schema.properties.mounted_capabilities.description": "How many capabilities this knowledge network has mounted, by kind. It answers whether the layer is there and how big it is; for the capabilities themselves use search_capabilities. An absent field means the bindings could not be read on this call, which is not the same as none being mounted.",
+    "output_schema.properties.mounted_capabilities.properties.total.description": "Total mounted capabilities.",
+    "output_schema.properties.mounted_capabilities.properties.skill.description": "Skills, read with get_skill_content and run with execute_skill.",
+    "output_schema.properties.mounted_capabilities.properties.function.description": "Function tools, API tools included (metadata_type=openapi), called through execute_tool.",
+    "output_schema.properties.mounted_capabilities.properties.mcp_tool.description": "MCP tools, also called through execute_tool."
   },
   "get_logic_properties_values": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",

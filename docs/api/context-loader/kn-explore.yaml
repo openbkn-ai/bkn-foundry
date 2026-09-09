@@ -100,6 +100,10 @@ paths:
         被剥掉的细节按需用 `get_object_types` / `get_relation_types` 取回。
         对象类条目带 `related_metric_count`（该对象类下已建模指标数），`>0` 才值得
         为取指标下钻。
+
+        顶层带 `mounted_capabilities`：该网络已挂载的 Skill 与工具按类型计数。两个
+        `detail_level` 都会返回——它是网络的形状，不是可以剥掉的细节。同样只给计数：
+        要具体能力用 `search_capabilities`。
       parameters:
         - $ref: '#/components/parameters/ResponseFormat'
         - $ref: '#/components/parameters/XKnID'
@@ -415,6 +419,32 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ActionType'
+        mounted_capabilities:
+          $ref: '#/components/schemas/MountedCapabilityCounts'
+
+    MountedCapabilityCounts:
+      type: object
+      description: |
+        该知识网络已挂载的能力数量，按类型分。只回答「有没有、有多少」——要具体能力
+        用 [tool.yaml](tool.yaml) 的 `search_capabilities`，那里带名称、说明与调用所需的
+        `input_schema`。
+
+        **字段缺席表示这次没读到绑定，不等于没挂**：present 的 `total: 0` 才是「确实一个
+        都没挂」。把两者合成一个值，会因为一次查询失败就告诉调用方这个网络是空的。
+      properties:
+        total:
+          type: integer
+          description: 已挂载能力总数。
+        skill:
+          type: integer
+          description: Skill 数量。用 `get_skill_content` 读、`execute_skill` 执行。
+        function:
+          type: integer
+          description: |
+            函数工具数量，含 `metadata_type=openapi` 的 API 工具。用 `execute_tool` 调用。
+        mcp_tool:
+          type: integer
+          description: MCP 工具数量。同样用 `execute_tool` 调用。
 
     ObjectTypesResponse:
       type: object

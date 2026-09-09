@@ -72,7 +72,7 @@
   "get_kn_detail": {
     "title": "Network Structure",
     "group_title": "Networks & Schema",
-    "description": "Get full knowledge network details, including concept groups, object types, relation types, and action types. Use this when a known kn_id needs a complete schema snapshot. Object type entries carry related_metric_count, the number of metrics modelled on that object type, so you can tell whether drilling in for metrics is worth it. Concept groups carry name/tags/comment and are the entry point for narrowing recall: pick the 1-3 relevant groups here, then pass them to search_schema's search_scope.concept_groups."
+    "description": "Get full knowledge network details, including concept groups, object types, relation types, and action types. Use this when a known kn_id needs a complete schema snapshot. Object type entries carry related_metric_count, the number of metrics modelled on that object type, so you can tell whether drilling in for metrics is worth it. Concept groups carry name/tags/comment and are the entry point for narrowing recall: pick the 1-3 relevant groups here, then pass them to search_schema's search_scope.concept_groups. The top level carries mounted_capabilities: how many capabilities the network has mounted, by kind (skill / function / mcp_tool, where function covers API tools). It answers whether the layer is there and how big it is; for the capabilities themselves — names, descriptions and the input_schema needed to call one — use search_capabilities. An absent field means the bindings could not be read on this call, which is not the same as none being mounted."
   },
   "get_object_types": {
     "title": "Object Type Detail",

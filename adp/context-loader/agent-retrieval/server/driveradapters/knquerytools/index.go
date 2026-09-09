@@ -150,6 +150,13 @@ func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
+	// The mounted Skills and tools, counted like the metrics above. A binding list this call
+	// could not read leaves the field absent — unknown, not zero.
+	if refs, err := h.bknBackend.ListKNCapabilities(ctx, req.KnID, "", ""); err == nil {
+		resp.AttachMountedCapabilities(refs)
+	} else {
+		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] capability bindings unreadable: %v", err)
+	}
 	detailLevel := req.DetailLevel
 	if detailLevel == "" {
 		detailLevel = interfaces.DetailLevelSummary
