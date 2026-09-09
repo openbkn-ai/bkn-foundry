@@ -95,13 +95,30 @@ MATCH (i:probe_item)-[:probe_direct|:probe_direct2]->(o:probe_order) RETURN i.i_
 MATCH (i:probe_item)-[:probe_direct {x: 1}]->(o:probe_order) RETURN i.i_key
 MATCH (c:probe_channel)-[:probe_fcj]->(o:probe_order)-[:probe_direct]->(i:probe_item) RETURN o.o_key
 
+# aggregates
+MATCH (o:probe_order) RETURN count(*) AS n
+MATCH (o:probe_order) RETURN count(o.o_state) AS n
+MATCH (o:probe_order) RETURN count(DISTINCT o.o_state) AS n
+MATCH (o:probe_order) RETURN o.o_state AS s, count(*) AS n
+MATCH (o:probe_order) RETURN o.o_state AS s, count(*) AS n ORDER BY n DESC LIMIT 5
+MATCH (o:probe_order) RETURN o.o_state AS s, count(*) AS n ORDER BY count(*) DESC LIMIT 5
+MATCH (o:probe_order) RETURN sum(o.o_amount) AS total, avg(o.o_amount) AS mean, min(o.o_amount) AS lo, max(o.o_amount) AS hi
+MATCH (i:probe_item)-[:probe_direct]->(o:probe_order) RETURN o.o_state AS s, count(*) AS n
+MATCH (o:probe_order) WHERE o.o_amount > 100 RETURN o.o_state AS s, count(*) AS n
+
+# reject-aggregate
+MATCH (o:probe_order) RETURN o.o_state AS s, count(*) AS n ORDER BY o.o_amount
+MATCH (o:probe_order) RETURN o.o_state AS s, count(*) AS n ORDER BY nope
+MATCH (o:probe_order) RETURN sum(1) AS n
+MATCH (o:probe_order) RETURN collect(o.o_state) AS n
+MATCH (o:probe_order) RETURN max(o.o_amount, o.o_state) AS n
+
 # reject-expr
 MATCH (o:probe_order) RETURN *
 MATCH (o:probe_order) RETURN o
-MATCH (o:probe_order) RETURN count(*)
-MATCH (o:probe_order) RETURN sum(o.o_amount)
+MATCH (o:probe_order) RETURN lower(o.o_state)
 MATCH (o:probe_order) RETURN o.o_amount + 1
-MATCH (o:probe_order) RETURN $param
+MATCH (o:probe_order) RETURN (o.o_key)
 MATCH (o:probe_order) RETURN o.o_state[0]
 MATCH (o:probe_order) RETURN o.a.b
 MATCH (o:probe_order) RETURN 1
@@ -110,12 +127,28 @@ MATCH (o:probe_order) RETURN [x IN [1, 2] | x]
 MATCH (o:probe_order) WHERE any(x IN [1] WHERE x = 1) RETURN o.o_key
 MATCH (o:probe_order) RETURN [(o)-[:probe_direct]->(i:probe_item) | i.i_key]
 
+# predicates
+MATCH (o:probe_order) WHERE o.o_key = 10774 OR o.o_key = 10963 RETURN o.o_key AS k
+MATCH (o:probe_order) WHERE NOT o.o_state = 'refunding' RETURN o.o_key AS k LIMIT 2
+MATCH (o:probe_order) WHERE NOT NOT o.o_state = 'refunding' RETURN o.o_key AS k LIMIT 2
+MATCH (o:probe_order) WHERE o.o_key IN [10774, 10963] RETURN o.o_key AS k
+MATCH (o:probe_order) WHERE NOT o.o_key IN [10774] RETURN o.o_key AS k LIMIT 2
+MATCH (o:probe_order) WHERE o.o_key IN [] RETURN o.o_key AS k
+MATCH (o:probe_order) WHERE o.o_state IS NULL RETURN o.o_key AS k LIMIT 2
+MATCH (o:probe_order) WHERE o.o_state IS NOT NULL RETURN o.o_key AS k LIMIT 2
+MATCH (o:probe_order) WHERE (o.o_key = 10774 OR o.o_key = 10963) AND o.o_amount > 0 RETURN o.o_key AS k
+MATCH (o:probe_order) WHERE NOT (o.o_key = 10774 OR o.o_key = 10963) RETURN o.o_key AS k LIMIT 2
+MATCH (o:probe_order) WHERE o.o_state = $state RETURN o.o_key AS k LIMIT 2
+MATCH (o:probe_order) WHERE o.o_key IN [$first, 10963] RETURN o.o_key AS k
+
 # reject-where
-MATCH (o:probe_order) WHERE o.o_key = 1 OR o.o_key = 2 RETURN o.o_key
 MATCH (o:probe_order) WHERE o.o_key = 1 XOR o.o_key = 2 RETURN o.o_key
-MATCH (o:probe_order) WHERE NOT o.o_key = 1 RETURN o.o_key
-MATCH (o:probe_order) WHERE o.o_key IN [1, 2] RETURN o.o_key
-MATCH (o:probe_order) WHERE o.o_state IS NULL RETURN o.o_key
+MATCH (o:probe_order) WHERE o.o_key IN o.o_chan RETURN o.o_key
+MATCH (o:probe_order) WHERE o.o_key IN [o.o_chan] RETURN o.o_key
+MATCH (o:probe_order) WHERE o.o_key IN [1, null] RETURN o.o_key
+MATCH (o:probe_order) WHERE 1 IS NULL RETURN o.o_key
+MATCH (o:probe_order) WHERE o.o_amount > -$floor RETURN o.o_key
+MATCH (o:probe_order) WHERE o.o_state = $0 RETURN o.o_key
 MATCH (o:probe_order) WHERE o.o_state STARTS WITH 'a' RETURN o.o_key
 MATCH (o:probe_order) WHERE o.o_state CONTAINS 'a' RETURN o.o_key
 MATCH (o:probe_order) WHERE o.o_key < o.o_chan < o.o_amount RETURN o.o_key

@@ -145,7 +145,7 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 		return "", 0, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
 	}
 
-	plan, err := Compile(analyzed, schema)
+	plan, err := Compile(analyzed, schema, CompileOptions{Parameters: query.Parameters})
 	if err != nil {
 		return "", 0, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_InvalidQuery).
 			WithErrorDetails(err.Error())

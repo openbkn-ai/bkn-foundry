@@ -23,7 +23,8 @@ import (
 type Plan struct {
 	Tables   []PlanTable
 	Joins    []PlanJoin
-	Where    []PlanCondition
+	Where    PlanPredicate
+	GroupBy  []PlanColumn
 	Select   []PlanColumn
 	Distinct bool
 	OrderBy  []PlanOrder
@@ -54,14 +55,32 @@ type PlanJoinKey struct {
 	RightColumn string
 }
 
-// PlanColumn is one output column.
+// PlanColumn is one output column: a column of a table, or an aggregate over
+// one. Exactly one of the two is set.
 type PlanColumn struct {
-	Table  int
-	Column string
-	Alias  string
+	Table     int
+	Column    string
+	Alias     string
+	Aggregate *PlanAggregate
 }
 
-// PlanCondition is one WHERE term.
+// PlanAggregate is COUNT, SUM, AVG, MIN or MAX. Star is count(*), which counts
+// rows and names no column.
+type PlanAggregate struct {
+	Function string
+	Distinct bool
+	Star     bool
+	Table    int
+	Column   string
+}
+
+// PlanPredicate is the WHERE tree with every name resolved and every parameter
+// bound. Generation walks it and formats; it looks nothing up.
+type PlanPredicate interface {
+	planPredicate()
+}
+
+// PlanCondition is one comparison of a column against a value.
 type PlanCondition struct {
 	Table    int
 	Column   string
@@ -69,10 +88,50 @@ type PlanCondition struct {
 	Value    Literal
 }
 
-// PlanOrder is one ORDER BY term.
+func (PlanCondition) planPredicate() {}
+
+// PlanLogical is AND or OR over two or more conditions.
+type PlanLogical struct {
+	Operator string
+	Operands []PlanPredicate
+}
+
+func (PlanLogical) planPredicate() {}
+
+// PlanNegation is NOT over one condition.
+type PlanNegation struct {
+	Operand PlanPredicate
+}
+
+func (PlanNegation) planPredicate() {}
+
+// PlanNullCheck is IS NULL, or IS NOT NULL when negated.
+type PlanNullCheck struct {
+	Table   int
+	Column  string
+	Negated bool
+}
+
+func (PlanNullCheck) planPredicate() {}
+
+// PlanMembership is IN over values written in the query.
+type PlanMembership struct {
+	Table   int
+	Column  string
+	Values  []Literal
+	Negated bool
+}
+
+func (PlanMembership) planPredicate() {}
+
+// PlanOrder is one ORDER BY term: a column, an aggregate, or the name of an
+// output column. Ordering by the output name is how a grouped result is sorted
+// by something the query already computed, without computing it twice.
 type PlanOrder struct {
 	Table      int
 	Column     string
+	Aggregate  *PlanAggregate
+	Alias      string
 	Descending bool
 }
 
@@ -98,17 +157,25 @@ func planErrorf(pos Position, format string, args ...any) error {
 // built so far, and which variable names them.
 type planner struct {
 	schema     *Schema
+	parameters map[string]any
 	plan       *Plan
 	objectType []*interfaces.ObjectType // per table, parallel to plan.Tables
 	tableOf    map[string]int           // variable name to table index
 }
 
+// CompileOptions carries what the query itself does not: the values its
+// parameters stand for.
+type CompileOptions struct {
+	Parameters map[string]any
+}
+
 // Compile binds a query to a knowledge network and produces its plan.
-func Compile(query *Query, schema *Schema) (*Plan, error) {
+func Compile(query *Query, schema *Schema, options CompileOptions) (*Plan, error) {
 	p := &planner{
-		schema:  schema,
-		plan:    &Plan{Distinct: query.Distinct, Skip: query.Skip, Limit: query.Limit},
-		tableOf: map[string]int{},
+		schema:     schema,
+		parameters: options.Parameters,
+		plan:       &Plan{Distinct: query.Distinct, Skip: query.Skip, Limit: query.Limit},
+		tableOf:    map[string]int{},
 	}
 	if err := p.planPattern(query.Pattern); err != nil {
 		return nil, err
@@ -230,69 +297,269 @@ func (p *planner) addJoin(edge EdgeRef, left, right int) error {
 	return nil
 }
 
-func (p *planner) planWhere(comparisons []Comparison) error {
-	for _, comparison := range comparisons {
-		table, column, err := p.resolveProperty(comparison.Left)
-		if err != nil {
-			return err
-		}
-		p.plan.Where = append(p.plan.Where, PlanCondition{
-			Table:    table,
-			Column:   column,
-			Operator: comparison.Operator,
-			Value:    comparison.Right,
-		})
+func (p *planner) planWhere(predicate Predicate) error {
+	if predicate == nil {
+		return nil
 	}
+	planned, err := p.planPredicate(predicate)
+	if err != nil {
+		return err
+	}
+	p.plan.Where = planned
 	return nil
+}
+
+func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
+	switch node := predicate.(type) {
+	case Comparison:
+		table, column, err := p.resolveProperty(node.Left)
+		if err != nil {
+			return nil, err
+		}
+		value, err := p.resolveValue(node.Right, node.Pos)
+		if err != nil {
+			return nil, err
+		}
+		return PlanCondition{Table: table, Column: column, Operator: node.Operator, Value: value}, nil
+
+	case LogicalOperator:
+		operands := make([]PlanPredicate, 0, len(node.Operands))
+		for _, operand := range node.Operands {
+			planned, err := p.planPredicate(operand)
+			if err != nil {
+				return nil, err
+			}
+			operands = append(operands, planned)
+		}
+		return PlanLogical{Operator: node.Operator, Operands: operands}, nil
+
+	case Negation:
+		operand, err := p.planPredicate(node.Operand)
+		if err != nil {
+			return nil, err
+		}
+		return PlanNegation{Operand: operand}, nil
+
+	case NullCheck:
+		table, column, err := p.resolveProperty(node.Property)
+		if err != nil {
+			return nil, err
+		}
+		return PlanNullCheck{Table: table, Column: column, Negated: node.Negated}, nil
+
+	case Membership:
+		table, column, err := p.resolveProperty(node.Property)
+		if err != nil {
+			return nil, err
+		}
+		values := make([]Literal, 0, len(node.Values))
+		for _, value := range node.Values {
+			resolved, err := p.resolveValue(value, node.Pos)
+			if err != nil {
+				return nil, err
+			}
+			values = append(values, resolved)
+		}
+		return PlanMembership{Table: table, Column: column, Values: values, Negated: node.Negated}, nil
+
+	default:
+		return nil, planErrorf(predicate.predicatePosition(), "unsupported predicate %T", predicate)
+	}
+}
+
+// resolveValue turns what the query wrote into the value the statement will
+// carry. A parameter is looked up here, once, so generation only ever sees
+// literals and the escaping rules apply to both the same way.
+func (p *planner) resolveValue(value Operand, pos Position) (Literal, error) {
+	if value.Literal != nil {
+		return *value.Literal, nil
+	}
+	if value.Parameter == nil {
+		return Literal{}, planErrorf(pos, "a comparison with no value")
+	}
+
+	name := value.Parameter.Name
+	supplied, ok := p.parameters[name]
+	if !ok {
+		return Literal{}, planErrorf(value.Parameter.Pos, "parameter %q was not supplied", name)
+	}
+	literal, err := literalFromParameter(supplied)
+	if err != nil {
+		return Literal{}, planErrorf(value.Parameter.Pos, "parameter %q %v", name, err)
+	}
+	literal.Pos = value.Parameter.Pos
+	return literal, nil
 }
 
 func (p *planner) planReturn(projections []Projection) error {
 	seen := make(map[string]bool, len(projections))
 	for _, projection := range projections {
-		table, column, err := p.resolveProperty(projection.Property)
+		column, err := p.planProjection(projection)
 		if err != nil {
 			return err
 		}
 		if seen[projection.Alias] {
 			// Two columns with one name would make the result unreadable by
 			// key, and the caller reads rows as objects.
-			return planErrorf(projection.Property.Pos,
+			return planErrorf(projectionPosition(projection),
 				"column name %q is returned twice; give one of them a different alias", projection.Alias)
 		}
 		seen[projection.Alias] = true
-		p.plan.Select = append(p.plan.Select, PlanColumn{Table: table, Column: column, Alias: projection.Alias})
+		p.plan.Select = append(p.plan.Select, *column)
 	}
+	p.planGrouping()
 	return nil
+}
+
+func (p *planner) planProjection(projection Projection) (*PlanColumn, error) {
+	if projection.Aggregate != nil {
+		aggregate, err := p.planAggregate(*projection.Aggregate)
+		if err != nil {
+			return nil, err
+		}
+		return &PlanColumn{Alias: projection.Alias, Aggregate: aggregate}, nil
+	}
+
+	table, column, err := p.resolveProperty(*projection.Property)
+	if err != nil {
+		return nil, err
+	}
+	return &PlanColumn{Table: table, Column: column, Alias: projection.Alias}, nil
+}
+
+func (p *planner) planAggregate(aggregate Aggregate) (*PlanAggregate, error) {
+	if aggregate.Property == nil {
+		return &PlanAggregate{Function: aggregate.Function, Star: true}, nil
+	}
+	table, column, err := p.resolveProperty(*aggregate.Property)
+	if err != nil {
+		return nil, err
+	}
+	return &PlanAggregate{
+		Function: aggregate.Function,
+		Distinct: aggregate.Distinct,
+		Table:    table,
+		Column:   column,
+	}, nil
+}
+
+// planGrouping derives GROUP BY from what is returned, which is where Cypher
+// puts it: aggregating anything groups by everything else returned. Deriving
+// it rather than accepting one is also what stops a statement from grouping by
+// something the caller never sees.
+func (p *planner) planGrouping() {
+	aggregates := 0
+	for _, column := range p.plan.Select {
+		if column.Aggregate != nil {
+			aggregates++
+		}
+	}
+	// Either nothing is aggregated, or everything is and the result is one
+	// row. Neither needs a GROUP BY.
+	if aggregates == 0 || aggregates == len(p.plan.Select) {
+		return
+	}
+	for _, column := range p.plan.Select {
+		if column.Aggregate == nil {
+			p.plan.GroupBy = append(p.plan.GroupBy, column)
+		}
+	}
+}
+
+func projectionPosition(projection Projection) Position {
+	if projection.Aggregate != nil {
+		return projection.Aggregate.Pos
+	}
+	return projection.Property.Pos
 }
 
 func (p *planner) planOrderBy(keys []SortKey) error {
 	for _, key := range keys {
-		table, column, err := p.resolveProperty(key.Property)
+		order, err := p.planSortKey(key)
 		if err != nil {
 			return err
 		}
-		// DISTINCT collapses rows before they are ordered, so sorting by
-		// something that was not returned has no defined answer: both MySQL
-		// and PostgreSQL refuse the statement. Refusing it here says which
-		// key is the problem, instead of letting the database report a
-		// statement the caller never wrote.
-		if p.plan.Distinct && !p.isProjected(table, column) {
-			return planErrorf(key.Property.Pos,
-				"%s is not returned, and DISTINCT can only be sorted by a returned value; add it to RETURN or drop DISTINCT",
-				key.Property)
-		}
-		p.plan.OrderBy = append(p.plan.OrderBy, PlanOrder{
-			Table:      table,
-			Column:     column,
-			Descending: key.Descending,
-		})
+		order.Descending = key.Descending
+		p.plan.OrderBy = append(p.plan.OrderBy, *order)
 	}
 	return nil
 }
 
+func (p *planner) planSortKey(key SortKey) (*PlanOrder, error) {
+	switch {
+	case key.Aggregate != nil:
+		// Sorting by an aggregate over a projection that has none would group
+		// the whole result into one row on the way to ordering it, quietly
+		// answering a different question than the one asked.
+		if !p.aggregating() {
+			return nil, planErrorf(key.Pos,
+				"sorting by %s needs the query to return an aggregate too; add it to RETURN",
+				key.Aggregate)
+		}
+		aggregate, err := p.planAggregate(*key.Aggregate)
+		if err != nil {
+			return nil, err
+		}
+		return &PlanOrder{Aggregate: aggregate}, nil
+
+	case key.Alias != "":
+		// An empty name never reaches here: the analyzer refuses one.
+		// A bare name in ORDER BY is a returned column. It is the only way to
+		// sort a grouped result by something the query already computed, and
+		// checking it here keeps an unknown name from reaching the database.
+		for _, column := range p.plan.Select {
+			if column.Alias == key.Alias {
+				return &PlanOrder{Alias: key.Alias}, nil
+			}
+		}
+		return nil, planErrorf(key.Pos,
+			"%q is not returned by this query, so there is nothing to sort by", key.Alias)
+
+	case key.Property != nil:
+		table, column, err := p.resolveProperty(*key.Property)
+		if err != nil {
+			return nil, err
+		}
+		// DISTINCT and aggregation both collapse rows before they are
+		// ordered, so sorting by a value that survived neither has no defined
+		// answer, and both MySQL and PostgreSQL refuse the statement. The
+		// test is on aggregating rather than on GROUP BY, because a query
+		// that aggregates every column derives no GROUP BY and collapses just
+		// as hard.
+		if (p.plan.Distinct || p.aggregating()) && !p.isProjected(table, column) {
+			collapsed := "DISTINCT"
+			if p.aggregating() {
+				collapsed = "an aggregate"
+			}
+			return nil, planErrorf(key.Property.Pos,
+				"%s is not returned, and a query with %s can only be sorted by a returned value; add it to RETURN",
+				key.Property, collapsed)
+		}
+		return &PlanOrder{Table: table, Column: column}, nil
+
+	default:
+		// The three forms above are the whole set the analyzer produces.
+		// Saying so here means a fourth one added later fails as an error
+		// rather than as a nil dereference in whichever branch it fell into.
+		return nil, planErrorf(key.Pos, "this sort key names nothing to sort by")
+	}
+}
+
+// aggregating reports whether the projection collapses rows. A GROUP BY is not
+// the test: aggregating every column derives no GROUP BY and still collapses
+// the result to a single row.
+func (p *planner) aggregating() bool {
+	for _, column := range p.plan.Select {
+		if column.Aggregate != nil {
+			return true
+		}
+	}
+	return false
+}
+
 func (p *planner) isProjected(table int, column string) bool {
 	for _, projected := range p.plan.Select {
-		if projected.Table == table && projected.Column == column {
+		if projected.Aggregate == nil && projected.Table == table && projected.Column == column {
 			return true
 		}
 	}

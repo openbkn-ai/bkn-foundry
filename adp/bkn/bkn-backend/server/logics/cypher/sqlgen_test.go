@@ -42,10 +42,10 @@ func TestGenerateRejectsNullBytes(t *testing.T) {
 	inValue := &Plan{
 		Tables: []PlanTable{{Alias: "t0", ResourceID: "res"}},
 		Select: []PlanColumn{{Table: 0, Column: "f_id", Alias: "id"}},
-		Where: []PlanCondition{{
+		Where: PlanCondition{
 			Table: 0, Column: "f_name", Operator: "=",
 			Value: Literal{Kind: LiteralString, String: "a\x00b"},
-		}},
+		},
 	}
 	if _, err := Generate(inValue, GenerateOptions{}); err == nil ||
 		!strings.Contains(err.Error(), "null byte") {
@@ -59,9 +59,9 @@ func TestGenerateRefusesLiteralsTheAnalyzerNeverProduces(t *testing.T) {
 	plan := &Plan{
 		Tables: []PlanTable{{Alias: "t0", ResourceID: "res"}},
 		Select: []PlanColumn{{Table: 0, Column: "f_id", Alias: "id"}},
-		Where: []PlanCondition{{
+		Where: PlanCondition{
 			Table: 0, Column: "f_name", Operator: "=", Value: Literal{Kind: LiteralNull},
-		}},
+		},
 	}
 	if _, err := Generate(plan, GenerateOptions{}); err == nil ||
 		!strings.Contains(err.Error(), "null") {

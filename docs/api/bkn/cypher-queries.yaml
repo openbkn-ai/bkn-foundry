@@ -7,8 +7,8 @@ info:
     Read-only Cypher queries over the instance data of a knowledge network.
     A query is compiled into a single SQL statement and executed through vega-backend, so the
     subset accepted here is what compiles that way: one MATCH over a path of at most one
-    relationship, a WHERE of properties compared against literals, and a projection of
-    properties. Everything else is refused by name rather than approximated.
+    relationship, a WHERE over properties, and a projection of properties and aggregates of
+    them. Everything else is refused by name rather than approximated.
     Paging is written in the query itself with SKIP and LIMIT; there is no paging parameter.
     Exposed under /api/bkn-backend/v1 (OAuth2) and /api/ontology-manager/v1 (alias), with the
     branch query parameter defaulting to main.
@@ -120,19 +120,39 @@ components:
       required:
         - query
       properties:
+        parameters:
+          type: object
+          additionalProperties: true
+          description: |-
+            Values for the $name references in the query. A parameter is a value and never an
+            identifier: it can change which rows come back, never which resource or column is
+            read. Strings, numbers and booleans are accepted; a null is refused, because IS
+            NULL says that and a comparison against null never matches.
+          example:
+            region: "eu"
+            floor: 100
         query:
           type: string
           maxLength: 8192
           description: |-
             The Cypher query. Supported shape:
             MATCH (a:Label)[-[:RELATION]->(b:Label)]
-            [WHERE a.property <op> literal AND ...]
-            RETURN [DISTINCT] a.property [AS alias], ...
-            [ORDER BY a.property [DESC]] [SKIP n] [LIMIT n]
-            Comparison operators are =, <>, <, >, <= and >=, with a literal on the right.
+            [WHERE <condition>]
+            RETURN [DISTINCT] a.property | aggregate(a.property) [AS alias], ...
+            [ORDER BY a.property | alias | aggregate(a.property) [DESC]] [SKIP n] [LIMIT n]
+
+            A condition compares a property with =, <>, <, >, <= or >= against a literal or a
+            parameter, or tests it with IN [ ... ], IS NULL or IS NOT NULL. Conditions combine
+            with AND, OR and NOT, and parentheses group them. XOR is not supported.
+
+            Aggregates are count, sum, avg, min and max, each also in its DISTINCT form, plus
+            count(*). Cypher has no GROUP BY: aggregating anything groups by everything else
+            the query returns. A grouped or DISTINCT result can only be sorted by a value it
+            returns.
+
             Relationships must be directed and name exactly one relation type; nodes must
             name exactly one object type.
-          example: "MATCH (o:order)-[:rel_order_item_order]->(i:order_item) WHERE o.amount > 100 RETURN o.order_id AS id, i.item_id AS item ORDER BY o.amount DESC LIMIT 20"
+          example: "MATCH (o:order)-[:rel_order_item_order]->(i:order_item) WHERE o.status IN ['paid', 'shipped'] AND o.amount > $floor RETURN o.status AS status, count(*) AS orders ORDER BY orders DESC LIMIT 20"
     CypherQueryResult:
       type: object
       properties:

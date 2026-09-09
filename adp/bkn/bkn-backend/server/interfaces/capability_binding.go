@@ -62,9 +62,9 @@ type CapabilityBinding struct {
 	// mcp_tool, and whenever the execution factory could not be reached — in the last case
 	// metadata_available says so, and a reader must not take the blank for "function".
 	MetadataType string `json:"metadata_type,omitempty" mapstructure:"-"`
-	Description string `json:"description,omitempty" mapstructure:"-"`
-	Status      string `json:"status,omitempty" mapstructure:"-"`
-	OwnerName   string `json:"owner_name,omitempty" mapstructure:"-"`
+	Description  string `json:"description,omitempty" mapstructure:"-"`
+	Status       string `json:"status,omitempty" mapstructure:"-"`
+	OwnerName    string `json:"owner_name,omitempty" mapstructure:"-"`
 
 	// Sources says why this capability is in the network: mounted explicitly, expanded from a
 	// box, or used by an object type's logic property or an action type.

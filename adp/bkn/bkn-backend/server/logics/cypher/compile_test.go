@@ -72,7 +72,7 @@ func compile(t *testing.T, query string, options GenerateOptions) (string, error
 	if err != nil {
 		return "", err
 	}
-	plan, err := Compile(analyzed, modelSchema(t))
+	plan, err := Compile(analyzed, modelSchema(t), CompileOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -236,7 +236,7 @@ func TestGeneratePostgres(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
-	plan, err := Compile(analyzed, modelSchema(t))
+	plan, err := Compile(analyzed, modelSchema(t), CompileOptions{})
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}

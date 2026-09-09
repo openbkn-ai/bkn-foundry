@@ -67,6 +67,7 @@ func Generate(plan *Plan, options GenerateOptions) (string, error) {
 	if err := g.writeWhere(); err != nil {
 		return "", err
 	}
+	g.writeGroupBy()
 	g.writeOrderBy()
 	g.writeLimit(options.DefaultLimit)
 	if g.err != nil {
@@ -91,9 +92,44 @@ func (g *generator) writeSelect() {
 		if i > 0 {
 			g.out.WriteString(", ")
 		}
-		g.out.WriteString(g.column(column.Table, column.Column))
+		g.out.WriteString(g.selectExpression(column))
 		g.out.WriteString(" AS ")
 		g.out.WriteString(g.identifier(column.Alias))
+	}
+}
+
+func (g *generator) selectExpression(column PlanColumn) string {
+	if column.Aggregate != nil {
+		return g.aggregate(*column.Aggregate)
+	}
+	return g.column(column.Table, column.Column)
+}
+
+// aggregate writes COUNT, SUM, AVG, MIN or MAX. The function name comes from a
+// fixed set rather than from the query, so nothing the caller wrote reaches
+// the statement as SQL.
+func (g *generator) aggregate(aggregate PlanAggregate) string {
+	if aggregate.Star {
+		return aggregate.Function + "(*)"
+	}
+	inner := g.column(aggregate.Table, aggregate.Column)
+	if aggregate.Distinct {
+		inner = "DISTINCT " + inner
+	}
+	return aggregate.Function + "(" + inner + ")"
+}
+
+// writeGroupBy writes the grouping the planner derived from what is returned.
+func (g *generator) writeGroupBy() {
+	if len(g.plan.GroupBy) == 0 {
+		return
+	}
+	g.out.WriteString(" GROUP BY ")
+	for i, column := range g.plan.GroupBy {
+		if i > 0 {
+			g.out.WriteString(", ")
+		}
+		g.out.WriteString(g.column(column.Table, column.Column))
 	}
 }
 
@@ -119,24 +155,100 @@ func (g *generator) writeFrom() {
 }
 
 func (g *generator) writeWhere() error {
-	if len(g.plan.Where) == 0 {
+	if g.plan.Where == nil {
 		return nil
 	}
 	g.out.WriteString(" WHERE ")
-	for i, condition := range g.plan.Where {
-		if i > 0 {
-			g.out.WriteString(" AND ")
-		}
-		value, err := g.literal(condition.Value)
+	return g.writePredicate(g.plan.Where, false)
+}
+
+// writePredicate writes one node of the condition tree. Parentheses are added
+// where an operator sits inside another one, rather than everywhere: a reader
+// comparing the statement to the query should see the same shape.
+func (g *generator) writePredicate(predicate PlanPredicate, nested bool) error {
+	switch node := predicate.(type) {
+	case PlanCondition:
+		value, err := g.literal(node.Value)
 		if err != nil {
 			return err
 		}
-		g.out.WriteString(g.column(condition.Table, condition.Column))
+		g.out.WriteString(g.column(node.Table, node.Column))
 		g.out.WriteString(" ")
-		g.out.WriteString(condition.Operator)
+		g.out.WriteString(node.Operator)
 		g.out.WriteString(" ")
 		g.out.WriteString(value)
+		return nil
+
+	case PlanNullCheck:
+		g.out.WriteString(g.column(node.Table, node.Column))
+		if node.Negated {
+			g.out.WriteString(" IS NOT NULL")
+			return nil
+		}
+		g.out.WriteString(" IS NULL")
+		return nil
+
+	case PlanMembership:
+		return g.writeMembership(node)
+
+	case PlanNegation:
+		g.out.WriteString("NOT ")
+		return g.writePredicate(node.Operand, true)
+
+	case PlanLogical:
+		if nested {
+			g.out.WriteString("(")
+		}
+		for i, operand := range node.Operands {
+			if i > 0 {
+				g.out.WriteString(" ")
+				g.out.WriteString(node.Operator)
+				g.out.WriteString(" ")
+			}
+			if err := g.writePredicate(operand, true); err != nil {
+				return err
+			}
+		}
+		if nested {
+			g.out.WriteString(")")
+		}
+		return nil
+
+	default:
+		return fmt.Errorf("cannot generate a %T condition", predicate)
 	}
+}
+
+func (g *generator) writeMembership(node PlanMembership) error {
+	if len(node.Values) == 0 {
+		// SQL has no empty IN list. Cypher says an empty list matches nothing,
+		// so that is written out as a constant rather than left to the parser
+		// of whichever database receives it.
+		if node.Negated {
+			g.out.WriteString("1 = 1")
+			return nil
+		}
+		g.out.WriteString("1 = 0")
+		return nil
+	}
+
+	g.out.WriteString(g.column(node.Table, node.Column))
+	if node.Negated {
+		g.out.WriteString(" NOT IN (")
+	} else {
+		g.out.WriteString(" IN (")
+	}
+	for i, value := range node.Values {
+		if i > 0 {
+			g.out.WriteString(", ")
+		}
+		written, err := g.literal(value)
+		if err != nil {
+			return err
+		}
+		g.out.WriteString(written)
+	}
+	g.out.WriteString(")")
 	return nil
 }
 
@@ -149,7 +261,17 @@ func (g *generator) writeOrderBy() {
 		if i > 0 {
 			g.out.WriteString(", ")
 		}
-		g.out.WriteString(g.column(order.Table, order.Column))
+		switch {
+		case order.Aggregate != nil:
+			g.out.WriteString(g.aggregate(*order.Aggregate))
+		case order.Alias != "":
+			// Sorting by the output name rather than by the expression: both
+			// dialects accept it, and it keeps a grouped result from
+			// computing the same aggregate twice.
+			g.out.WriteString(g.identifier(order.Alias))
+		default:
+			g.out.WriteString(g.column(order.Table, order.Column))
+		}
 		if order.Descending {
 			g.out.WriteString(" DESC")
 		}
