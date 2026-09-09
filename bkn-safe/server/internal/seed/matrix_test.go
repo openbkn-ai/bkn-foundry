@@ -32,25 +32,25 @@ func TestRoleResourceMatrix(t *testing.T) {
 	// a representative, granted op per resource type (positive case uses these).
 	repOp := map[string]string{
 		"agent": "use", "agent_tpl": "publish",
-		"stream_data_pipeline": "create", "catalog": "create",
+		"stream_data_pipeline": "create", "catalog": "authorize",
 		// 数据表上不再有 create/modify/delete：建表判目录的 resource_manage，
 		// 改删判这张表再回落到目录（#801）。
 		"resource":       "view_detail",
-		"connector_type": "create", "knowledge_network": "create",
+		"connector_type": "create", "data_flow": "view", "knowledge_network": "execute",
 		"concept_group": "view_detail", "object_type": "query_data", "relation_type": "query_data",
 		"action_type": "execute", "metric": "query_data", "risk_type": "view_detail",
 		"tool_box": "execute", "mcp": "execute", "operator": "execute", "skill": "execute",
-		"small_model": "execute",
-	}
-	networkBuilderAllowed := make(map[string]string, len(repOp))
-	for resourceType, operation := range repOp {
-		networkBuilderAllowed[resourceType] = operation
-	}
-	for _, childType := range []string{"concept_group", "object_type", "relation_type", "action_type", "metric", "risk_type"} {
-		delete(networkBuilderAllowed, childType)
+		"small_model": "execute", "large_model": "execute",
 	}
 	roleAllowed := map[string]map[string]string{
-		networkBuilder: networkBuilderAllowed,
+		networkBuilder: {
+			"catalog":           "authorize",
+			"knowledge_network": "execute",
+			"operator":          "execute",
+			"tool_box":          "execute",
+			"skill":             "execute",
+			"mcp":               "execute",
+		},
 	}
 	allTypes := make([]string, 0, len(repOp))
 	for tpe := range repOp {
