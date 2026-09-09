@@ -81,7 +81,7 @@ Token 可通过 `openbkn auth token` 命令获取。配置保存后，Cursor 会
 | `get_action_info` | 取行动类信息、入参 Schema 与执行结果 Schema（`output_schema`） |
 | `execute_action` | 执行行动类 |
 | `get_action_execution` / `list_action_executions` | 查询行动执行状态与历史 |
-| `find_skills` | 按对象类召回可用 Skill |
+| `search_capabilities` | 在一个排序空间里检索该网络已挂载的全部能力:Skill、函数工具、API 工具与 MCP 工具 |
 | `list_knowledge_networks` | 列出知识网络 |
 | `list_resources` / `describe_resource` | 列出与描述 Vega 资源 |
 | `run_sql` | 直接对资源执行 SQL |

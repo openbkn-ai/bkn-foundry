@@ -64,11 +64,6 @@
     "group_title": "Actions",
     "description": "List action execution history, filterable by action type, status, and trigger type, with pagination."
   },
-  "find_skills": {
-    "title": "Find Skills",
-    "group_title": "Skills",
-    "description": "[Deprecated] Use search_capabilities, which covers all four capability kinds at once; this tool is that call narrowed to Skills. Skill recall. Returns the Skills this knowledge network has mounted; a network that mounted none returns nothing rather than falling back to every Skill on the platform. With skill_query the hits are ranked; without one they are listed in mount order."
-  },
   "list_knowledge_networks": {
     "title": "Knowledge Networks",
     "group_title": "Networks & Schema",
@@ -107,7 +102,7 @@
   "list_skills": {
     "title": "Skill List",
     "group_title": "Skills",
-    "description": "Browse the platform's published Skills (the marketplace). **Not scoped by knowledge network mounts** — a Skill listed here is not necessarily readable or runnable in the current network. Use find_skills for what this network can actually use; these results are a catalogue, not a permission."
+    "description": "Browse the platform's published Skills (the marketplace). **Not scoped by knowledge network mounts** — a Skill listed here is not necessarily readable or runnable in the current network. Use search_capabilities for what this network can actually use; these results are a catalogue, not a permission."
   },
   "get_skill_content": {
     "title": "Skill Content",
@@ -137,14 +132,9 @@
     "group_title": "Tools",
     "description": "Search everything one knowledge network has mounted -- Skills, Function tools (including API tools) and MCP tools -- ranked together in one space and returned interleaved by relevance. Use it when looking for something that can do a job, without first guessing whether it is a Skill or a tool.\nEvery hit carries capability_type, which decides what to do next: function / mcp_tool are called through execute_tool (their hits carry input_schema), a skill is read through get_skill_content and run through execute_skill.\nOptional types narrows to skill / function / mcp_tool; Function tools can be narrowed further with metadata_types into openapi (API tools) and function. The scope is the intersection of what the network mounted and what this account can see, so a network that mounted none returns nothing."
   },
-  "search_tools": {
-    "title": "Tool Search",
-    "group_title": "Tools",
-    "description": "[Deprecated] Use search_capabilities, which covers all four capability kinds at once; this tool is that call narrowed to Function tools and MCP tools. Search the Function tools one knowledge network has mounted (Execution Factory Toolbox Tools). The scope is the intersection of what the network mounted and what this account can call, so a network that mounted none returns nothing. Each hit carries tool_id, toolbox_id and the business input schema; pass them to execute_tool."
-  },
   "execute_tool": {
     "title": "Execute Tool",
     "group_title": "Tools",
-    "description": "Invoke one Function tool mounted on the knowledge network, as the calling principal, and return its raw response. kn_id, toolbox_id and tool_id must come from search_tools, and arguments follows the input_schema it returned. A tool may write to external systems irreversibly, so read its description and use_rule before calling."
+    "description": "Invoke one Function tool mounted on the knowledge network, as the calling principal, and return its raw response. kn_id, toolbox_id and tool_id must come from search_capabilities, and arguments follows the input_schema it returned. A tool may write to external systems irreversibly, so read its description and use_rule before calling."
   }
 }

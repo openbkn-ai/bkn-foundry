@@ -16,13 +16,13 @@ import (
 // search_capabilities asks one question over everything a knowledge network mounted: what can do
 // this? (#1388)
 //
-// find_skills and search_tools each answer for their own kind, so an agent asking about currency
-// conversion through search_tools never sees the Skill that does it. The index and the ranking
-// have been shared since #1370 — the split survived only in the entry points, and it put the
-// burden of merging two incomparable answers back on the agent.
+// find_skills and search_tools each answered for their own kind, so an agent asking about
+// currency conversion through search_tools never saw the Skill that did it. The index and the
+// ranking have been shared since #1370 — the split survived only in the entry points, and it put
+// the burden of merging two incomparable answers back on the agent.
 //
-// The two narrow tools remain and still work. They are this call with types pinned, which is why
-// they cost nothing to keep during the migration and nothing to delete after it.
+// Both were this call with types pinned, by delegation rather than resemblance, and were removed
+// once their callers moved (#1401).
 
 // SearchCapabilitiesReq is the input for search_capabilities.
 type SearchCapabilitiesReq struct {
@@ -39,12 +39,7 @@ type SearchCapabilitiesReq struct {
 	// OwnerID narrows to one owner: a tool box for Function tools, a server for MCP tools. Like
 	// every other filter here it narrows within the mounted set and can never reach outside it.
 	OwnerID string `json:"owner_id,omitempty"`
-	// kindsAreIntrinsic marks Types as belonging to the entry point rather than to the caller.
-	// search_tools always pins them, so a caller that asked for nothing would otherwise be told
-	// its result was empty because of a filter it never set and cannot unset. Unexported: an
-	// entry point declares this, a request body cannot.
-	kindsAreIntrinsic bool
-	Limit             int `json:"limit"` // Optional. Caps returned capabilities, default 20, max 100.
+	Limit   int    `json:"limit"` // Optional. Caps returned capabilities, default 20, max 100.
 }
 
 // CapabilityEntry is one mounted capability, whatever kind it is.
@@ -92,19 +87,31 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 	}
 
 	// The kinds are applied to the whitelist here as well as sent downstream. Sending them alone
-	// would make the scope depend on the ranking honouring a filter — and search_tools maps every
-	// hit into a tool, so a Skill that slipped through would come back as a ToolEntry with an
-	// empty toolbox_id. Before the two entry points shared a binding reader, this was excluded
-	// locally; keep it that way.
-	searchRefs, err := s.allBoundRefs(ctx, strings.TrimSpace(req.KnID),
+	// would make the scope depend on the ranking honouring a filter, which is not a scope at all:
+	// a kind the caller excluded would come back on any hit the ranking let through.
+	searchRefs, mounted, err := s.allBoundRefs(ctx, strings.TrimSpace(req.KnID),
 		strings.TrimSpace(req.OwnerID), normalizeKinds(req.Types))
 	if err != nil {
 		return nil, err
 	}
 	if len(searchRefs) == 0 {
+		// "This network mounted nothing" and "your filters excluded everything it mounted" want
+		// opposite next steps — go mount something, versus drop a filter. Telling a network with
+		// twenty four capabilities that it has none, because the caller asked for the one kind it
+		// lacks, sends them to fix something that is not broken.
+		message := "NoBoundCapabilitiesInNetwork"
+		if mounted > 0 {
+			// The network has capabilities; the filters took them all out. Name the ones the
+			// caller set, not whichever pair happens to be first in the message catalogue.
+			if key, ok := narrowedAwayMessage(req); ok {
+				message = key
+			} else {
+				message = "NoCapabilitiesOfRequestedKind"
+			}
+		}
 		return &SearchCapabilitiesResp{
 			Capabilities: []CapabilityEntry{},
-			Message:      infraErr.LocalizedDetail(ctx, "NoBoundCapabilitiesInNetwork"),
+			Message:      infraErr.LocalizedDetail(ctx, message),
 		}, nil
 	}
 
@@ -112,15 +119,44 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 	// answer at top_k, so asking for exactly `limit` makes a full page and a truncated page look
 	// identical — the truncation flag could never fire, and a caller would read one page as the
 	// whole answer.
+	query := strings.TrimSpace(req.Query)
+	// metadata_type lives only in the index document — a binding carries the capability type, not
+	// the tool box kind behind it. So this is the one filter that cannot be answered without the
+	// ranking, and a listing that quietly skipped it would return precisely what the caller
+	// excluded. Everything else (kinds, owner) was already applied to the whitelist above.
+	metadataTypes := normalizeKinds(req.MetadataTypes)
+	listing := query == "" && len(metadataTypes) == 0
+
+	// A listing pages the mounted set itself and then asks the ranking to describe exactly that
+	// page. Asking the ranking for a page instead returns the top `limit` for an empty query,
+	// which is a different subset from the first `limit` bindings — the page would come back
+	// mostly undescribed, and how much of it was described would depend on `limit`.
+	askRefs, askTopK := searchRefs, limit+1
+	if listing {
+		if len(askRefs) > limit+1 {
+			askRefs = askRefs[:limit+1]
+		}
+		askTopK = len(askRefs)
+	}
+
 	hits, err := s.operator.SearchCapabilities(ctx, &interfaces.SearchCapabilitiesRequest{
-		Query:         strings.TrimSpace(req.Query),
-		Refs:          searchRefs,
-		TopK:          limit + 1,
+		Query:         query,
+		Refs:          askRefs,
+		TopK:          askTopK,
 		Types:         normalizeKinds(req.Types),
-		MetadataTypes: normalizeKinds(req.MetadataTypes),
+		MetadataTypes: metadataTypes,
 	})
 	if err != nil {
-		return nil, err
+		// A ranking has nothing to degrade to, and neither has a filter only the index can
+		// evaluate. Both surface the error rather than answering a different question.
+		if !listing {
+			return nil, err
+		}
+		s.warnf(ctx, "[SearchCapabilities] capability search failed, listing from the bindings: %v", err)
+		hits = nil
+	}
+	if listing {
+		hits = s.listingHits(ctx, askRefs, hits, limit+1)
 	}
 
 	more := len(hits) > limit
@@ -136,17 +172,12 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 	if fitted > limit {
 		fitted = limit
 	}
+	narrowedKey, narrowed := narrowedAwayMessage(req)
 	switch {
 	case len(entries) == 0 && total > 0:
 		resp.Message = infraErr.LocalizedDetail(ctx, "ToolsMatchedButNotVisible")
-	case len(entries) == 0 && !req.kindsAreIntrinsic && len(req.Types) > 0:
-		// Both filters are the caller's, so both can be named.
-		resp.Message = infraErr.LocalizedDetail(ctx, "NoCapabilitiesOfRequestedKind")
-	case len(entries) == 0 && len(req.MetadataTypes) > 0:
-		// Only the tool box kind was the caller's. Naming types here would repeat the original
-		// mistake one level down: search_tools sets types itself and exposes no input for it, so
-		// "drop these two parameters" is advice half of which cannot be followed.
-		resp.Message = infraErr.LocalizedDetail(ctx, "NoToolsOfRequestedKind")
+	case len(entries) == 0 && narrowed:
+		resp.Message = infraErr.LocalizedDetail(ctx, narrowedKey)
 	case len(entries) == 0:
 		resp.Message = infraErr.LocalizedDetail(ctx, "NoPublishedToolsMatched")
 	case more:
@@ -166,17 +197,20 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 // boundRefs splits Function and MCP tools apart because they are called through different proxies.
 // Here they are not called, only ranked, so the split would be noise — and Skills, which boundRefs
 // drops entirely, belong in the answer.
+// The second return value is how many capabilities the network mounted before any narrowing, so
+// an empty whitelist can say which of the two happened: a network that mounted nothing, or filters
+// that excluded everything it has. They call for opposite next steps.
 func (s *knToolsService) allBoundRefs(ctx context.Context,
-	knID, ownerID string, kinds []string) ([]interfaces.SearchCapabilityRef, error) {
+	knID, ownerID string, kinds []string) ([]interfaces.SearchCapabilityRef, int, error) {
 	// The per-caller check lives here for the same reason it lives in boundRefs: the bindings and
 	// the ranking are both read with this service's identity, and without it the scope would be
 	// the kn_id the caller typed.
 	if s.knAuthz == nil {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+		return nil, 0, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
 			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
 	}
 	if err := s.knAuthz.AuthorizeRead(ctx, knID); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	// A failure to read the bindings fails the call. Continuing with an empty whitelist would look
@@ -184,7 +218,7 @@ func (s *knToolsService) allBoundRefs(ctx context.Context,
 	// platform — both answer a question this service cannot currently answer.
 	bindings, err := s.bknBackend.ListKNCapabilities(ctx, knID, "", "")
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	wanted := make(map[string]struct{}, len(kinds))
@@ -194,6 +228,7 @@ func (s *knToolsService) allBoundRefs(ctx context.Context,
 
 	refs := make([]interfaces.SearchCapabilityRef, 0, len(bindings))
 	seen := make(map[interfaces.SearchCapabilityRef]struct{}, len(bindings))
+	mounted := 0
 	for _, binding := range bindings {
 		if binding == nil {
 			continue
@@ -214,6 +249,7 @@ func (s *knToolsService) allBoundRefs(ctx context.Context,
 		default:
 			continue
 		}
+		mounted++
 		// Narrowing happens here rather than only in the ranking, so the whitelist that leaves
 		// this service already is the scope: nothing downstream can widen it back.
 		if len(wanted) > 0 {
@@ -235,7 +271,7 @@ func (s *knToolsService) allBoundRefs(ctx context.Context,
 		seen[ref] = struct{}{}
 		refs = append(refs, ref)
 	}
-	return refs, nil
+	return refs, mounted, nil
 }
 
 // describeCapabilities enriches the ranked hits in place, keeping the fused order.
@@ -282,9 +318,9 @@ func (s *knToolsService) describeCapabilities(ctx context.Context,
 		}
 		described, ok := byRef[hit.OwnerID+"/"+hit.CapabilityID]
 		if !ok {
-			// The tool was dropped by the visibility rule. Skipping it here keeps this endpoint's
-			// scope identical to search_tools': listing it would advertise something execute_tool
-			// refuses.
+			// The tool was dropped by the visibility rule. Skipping it keeps this endpoint's answer
+			// to what execute_tool will accept: listing it would advertise a call that gets
+			// refused.
 			continue
 		}
 		if described.Name != "" {
@@ -296,6 +332,96 @@ func (s *knToolsService) describeCapabilities(ctx context.Context,
 		entries = append(entries, entry)
 	}
 	return entries
+}
+
+// listingHits answers a listing from the mounted set, in binding order, using the index only for
+// what it can add.
+//
+// With no query there is nothing to rank against, so membership is the bindings' to decide, not
+// the index's. This is what find_skills did and what search_capabilities has to keep now that it
+// is the only entry: the index is built asynchronously and a fresh install has none (#1323), so
+// letting it decide membership makes a capability that is mounted but not yet indexed invisible —
+// a wrong answer, where binding order is merely an unranked one.
+//
+// Index hits still carry the name, description and metadata_type, so they are merged in wherever
+// the index knew the capability. Tools the index missed are named by describeCapabilities from the
+// catalogue; Skills are named here, since nothing downstream looks them up.
+//
+// A Skill neither the index nor the registry knows is dropped rather than listed. The binding
+// outlives deletion in the execution factory, so listing it would send the caller after something
+// that cannot run.
+func (s *knToolsService) listingHits(ctx context.Context, refs []interfaces.SearchCapabilityRef,
+	ranked []interfaces.CapabilityHit, limit int) []interfaces.CapabilityHit {
+	if len(refs) > limit {
+		refs = refs[:limit]
+	}
+	known := make(map[interfaces.SearchCapabilityRef]interfaces.CapabilityHit, len(ranked))
+	for _, hit := range ranked {
+		known[hit.SearchCapabilityRef] = hit
+	}
+
+	missingSkills := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		if ref.CapabilityType != interfaces.CapabilityTypeSkill {
+			continue
+		}
+		if _, ok := known[ref]; !ok {
+			missingSkills = append(missingSkills, ref.CapabilityID)
+		}
+	}
+	var names map[string]string
+	if len(missingSkills) > 0 {
+		resolved, err := s.operator.GetSkillNamesByIDs(ctx, missingSkills)
+		if err != nil {
+			// The names are decoration; the memberships are not. Without them a Skill the index
+			// has not reached cannot be told apart from a dead binding, so those are dropped and
+			// everything else still answers.
+			s.warnf(ctx, "[SearchCapabilities] skill name lookup failed for %d skills: %v",
+				len(missingSkills), err)
+		} else {
+			names = resolved
+		}
+	}
+
+	hits := make([]interfaces.CapabilityHit, 0, len(refs))
+	for _, ref := range refs {
+		if hit, ok := known[ref]; ok {
+			hits = append(hits, hit)
+			continue
+		}
+		hit := interfaces.CapabilityHit{SearchCapabilityRef: ref}
+		if ref.CapabilityType == interfaces.CapabilityTypeSkill {
+			name, ok := names[ref.CapabilityID]
+			if !ok {
+				s.warnf(ctx, "[SearchCapabilities] bound skill %s is unknown to the execution factory",
+					ref.CapabilityID)
+				continue
+			}
+			hit.Name = name
+		}
+		hits = append(hits, hit)
+	}
+	return hits
+}
+
+// narrowedAwayMessage names the filters the caller actually set.
+//
+// An empty result caused by a filter has to say which one, because the fix is to drop that filter
+// and nothing else. Telling someone who narrowed by owner to remove `types / metadata_types` is
+// the same defect as the message that told them to mount capabilities they already had: advice
+// pointing at a parameter they never touched.
+func narrowedAwayMessage(req *SearchCapabilitiesReq) (string, bool) {
+	kinds := len(req.Types) > 0 || len(req.MetadataTypes) > 0
+	owner := strings.TrimSpace(req.OwnerID) != ""
+	switch {
+	case kinds && owner:
+		return "NoCapabilitiesForFilters", true
+	case kinds:
+		return "NoCapabilitiesOfRequestedKind", true
+	case owner:
+		return "NoCapabilitiesForOwner", true
+	}
+	return "", false
 }
 
 // normalizeKinds trims, drops blanks and de-duplicates.

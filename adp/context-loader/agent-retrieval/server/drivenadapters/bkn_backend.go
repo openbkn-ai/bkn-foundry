@@ -749,7 +749,7 @@ func (b *bknBackendAccess) ListKNCapabilities(ctx context.Context, knID, branch,
 	}
 	// The whole list, not a page of it. bkn-backend defaults this endpoint to ten rows, and a
 	// page of the bindings is not a scope: the eleventh mounted tool would be invisible to
-	// search_tools and refused by execute_tool as "not mounted on this network", with the
+	// search_capabilities and refused by execute_tool as "not mounted on this network", with the
 	// truncation showing up nowhere in the answer. "-1" is that endpoint's disable-paging value.
 	queryValues.Set("limit", capabilityListNoLimit)
 

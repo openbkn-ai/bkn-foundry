@@ -14,7 +14,6 @@ import (
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knactionrecall"
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knfindskills"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knlogicpropertyresolver"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knqueryobjectinstance"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knquerysubgraph"
@@ -35,7 +34,6 @@ type restPrivateHandler struct {
 	KnQuerySubgraphHandler         knquerysubgraph.KnQuerySubgraphHandler
 	KnSearchHandler                knsearch.KnSearchHandler
 	MCPProxyHandler                mcpproxy.MCPProxyHandler
-	KnFindSkillsHandler            knfindskills.KnFindSkillsHandler
 	KnQueryToolsHandler            knquerytools.KnQueryToolsHandler
 	KnSkillsHandler                knskills.KnSkillsHandler
 	KnToolsHandler                 kntools.KnToolsHandler
@@ -52,7 +50,6 @@ func NewRestPrivateHandler(logger interfaces.Logger) interfaces.HTTPRouterInterf
 		KnQuerySubgraphHandler:         knquerysubgraph.NewKnQuerySubgraphHandler(),
 		KnSearchHandler:                knsearch.NewKnSearchHandler(),
 		MCPProxyHandler:                mcpproxy.NewMCPProxyHandler(),
-		KnFindSkillsHandler:            knfindskills.NewKnFindSkillsHandler(),
 		KnQueryToolsHandler:            knquerytools.NewKnQueryToolsHandler(),
 		KnSkillsHandler:                knskills.NewKnSkillsHandler(),
 		KnToolsHandler:                 kntools.NewKnToolsHandler(),
@@ -78,7 +75,6 @@ func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	engine.POST("/kn/search_schema", r.KnSearchHandler.SearchSchema)
 	engine.POST("/kn/search_instance", r.KnSearchHandler.SearchInstance)
 	engine.POST("/kn/kn_search", r.KnSearchHandler.KnSearch)
-	engine.POST("/kn/find_skills", r.KnFindSkillsHandler.FindSkills)
 
 	// At the same time, it serves as the entrance to MCP tool + operator-integration toolbox (OpenAPI HTTP)
 	engine.POST("/kn/run_sql", r.KnQueryToolsHandler.RunSQL)
@@ -90,7 +86,7 @@ func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	engine.POST("/kn/list_resources", r.KnQueryToolsHandler.ListResources)
 	engine.POST("/kn/describe_resource", r.KnQueryToolsHandler.DescribeResource)
 
-	// Skills: browse/read files/execute (drill-down link after find_skills)
+	// Skills: browse/read files/execute (drill-down link after search_capabilities)
 	engine.POST("/kn/list_skills", r.KnSkillsHandler.ListSkills)
 	engine.POST("/kn/get_skill_content", r.KnSkillsHandler.GetSkillContent)
 	engine.POST("/kn/read_skill_file", r.KnSkillsHandler.ReadSkillFile)
@@ -103,7 +99,6 @@ func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 
 	// Published Function tool surface: find a callable tool, then run it.
 	engine.POST("/kn/search_capabilities", r.KnToolsHandler.SearchCapabilities)
-	engine.POST("/kn/search_tools", r.KnToolsHandler.SearchTools)
 	engine.POST("/kn/execute_tool", r.KnToolsHandler.ExecuteTool)
 
 	// MCP Proxy

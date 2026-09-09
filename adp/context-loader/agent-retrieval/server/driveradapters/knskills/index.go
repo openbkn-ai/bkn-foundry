@@ -52,7 +52,7 @@ func NewKnSkillsHandler() KnSkillsHandler {
 	return handlerInst
 }
 
-// ListSkills Browse published skills (no knowledge network context required, complementary to find_skills).
+// ListSkills Browse published skills (no knowledge network context required, complementary to search_capabilities).
 func (h *knSkillsHandler) ListSkills(c *gin.Context) {
 	ctx := c.Request.Context()
 	req := &logicsSkills.ListSkillsReq{}

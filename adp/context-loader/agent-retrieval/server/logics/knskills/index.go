@@ -3,10 +3,10 @@
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
 // Package knskills provides skill browsing, reading, and execution after
-// find_skills. The latter returns only skill_id, name, and description.
+// search_capabilities. The latter returns only capability_id, name, and description for a Skill.
 //
-// Reading and execution are scoped to the knowledge network that mounted the Skill. find_skills
-// narrowing recall is not a control on its own: a skill_id outlives the call that produced it and
+// Reading and execution are scoped to the knowledge network that mounted the Skill. Narrowing
+// recall is not a control on its own: a skill_id outlives the call that produced it and
 // can be had from list_skills, so the check has to sit where the document is read and where the
 // entry command runs.
 //
@@ -200,7 +200,7 @@ func NewKnSkillsServiceWith(operator interfaces.DrivenOperatorIntegration,
 	return &knSkillsService{operator: operator, bknBackend: bknBackend, knAuthz: knAuthz}
 }
 
-// ListSkills lists published skills. Unlike find_skills, it does not require a
+// ListSkills lists published skills. Unlike search_capabilities, it does not require a
 // knowledge-network context.
 func (s *knSkillsService) ListSkills(ctx context.Context, req *ListSkillsReq) (*ListSkillsResp, error) {
 	if req == nil {

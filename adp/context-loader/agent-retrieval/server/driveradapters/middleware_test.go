@@ -341,12 +341,6 @@ func (stubKnSearchHandler) KnSearch(c *gin.Context) {
 	c.String(http.StatusOK, "ok")
 }
 
-type stubKnFindSkillsHandler struct{}
-
-func (stubKnFindSkillsHandler) FindSkills(c *gin.Context) {
-	c.Status(http.StatusOK)
-}
-
 type stubKnSkillsHandler struct{}
 
 func (stubKnSkillsHandler) ListSkills(c *gin.Context)      { c.Status(http.StatusOK) }
@@ -357,7 +351,6 @@ func (stubKnSkillsHandler) ExecuteSkill(c *gin.Context)    { c.Status(http.Statu
 type stubKnToolsHandler struct{}
 
 func (stubKnToolsHandler) SearchCapabilities(c *gin.Context) { c.Status(http.StatusOK) }
-func (stubKnToolsHandler) SearchTools(c *gin.Context)        { c.Status(http.StatusOK) }
 func (stubKnToolsHandler) ExecuteTool(c *gin.Context)        { c.Status(http.StatusOK) }
 
 type stubKnQueryToolsHandler struct{}
@@ -385,7 +378,6 @@ func TestRestPublicHandler_AppliesResponseFormatMiddleware(t *testing.T) {
 			KnQueryObjectInstanceHandler:   stubQueryObjectInstanceHandler{},
 			KnQuerySubgraphHandler:         stubQuerySubgraphHandler{},
 			KnSearchHandler:                stubKnSearchHandler{},
-			KnFindSkillsHandler:            stubKnFindSkillsHandler{},
 			KnQueryToolsHandler:            stubKnQueryToolsHandler{},
 			KnSkillsHandler:                stubKnSkillsHandler{},
 			KnToolsHandler:                 stubKnToolsHandler{},

@@ -37,6 +37,25 @@ type fakeOperator struct {
 	mcpDetailCalls []string
 	gotMCPCall     *interfaces.CallMCPToolRequest
 	mcpUnusable    map[string]bool
+	skillNames     map[string]string
+	skillNamesErr  error
+}
+
+func (f *fakeOperator) GetSkillNamesByIDs(
+	_ context.Context, skillIDs []string,
+) (map[string]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.skillNamesErr != nil {
+		return nil, f.skillNamesErr
+	}
+	out := make(map[string]string, len(skillIDs))
+	for _, id := range skillIDs {
+		if name, ok := f.skillNames[id]; ok {
+			out[id] = name
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeOperator) SearchCapabilities(
@@ -238,8 +257,8 @@ func TestSearchNarrowsToTheNetworkBindings(t *testing.T) {
 		},
 	}
 
-	resp, err := newService(bkn, op).SearchTools(context.Background(),
-		&SearchToolsReq{KnID: "kn1", Query: "x"})
+	resp, err := newService(bkn, op).SearchCapabilities(context.Background(),
+		&SearchCapabilitiesReq{KnID: "kn1", Query: "x"})
 
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -247,8 +266,8 @@ func TestSearchNarrowsToTheNetworkBindings(t *testing.T) {
 	if len(op.gotRefs) != 1 || op.gotRefs[0] != "box-1/mounted" {
 		t.Fatalf("expected the mounted ref as the whitelist, got %v", op.gotRefs)
 	}
-	if len(resp.Tools) != 1 || resp.Tools[0].ToolID != "mounted" {
-		t.Fatalf("expected only the mounted tool, got %+v", resp.Tools)
+	if len(resp.Capabilities) != 1 || resp.Capabilities[0].CapabilityID != "mounted" {
+		t.Fatalf("expected only the mounted tool, got %+v", resp.Capabilities)
 	}
 	// Both transports are read in one call, so the listing is no longer narrowed by type; the
 	// split happens here. Asking per type would cost a round trip per capability kind.
@@ -263,13 +282,13 @@ func TestSearchOnUnmountedNetworkReturnsEmpty(t *testing.T) {
 	bkn := &fakeBkn{refs: []*interfaces.CapabilityRef{}}
 	op := &fakeOperator{hits: []interfaces.CapabilityHit{hit("box-1", "should_not_appear")}}
 
-	resp, err := newService(bkn, op).SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1"})
+	resp, err := newService(bkn, op).SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1"})
 
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if len(resp.Tools) != 0 {
-		t.Fatalf("expected no tools, got %+v", resp.Tools)
+	if len(resp.Capabilities) != 0 {
+		t.Fatalf("expected no tools, got %+v", resp.Capabilities)
 	}
 	if resp.Message == "" {
 		t.Fatal("an empty result must say why")
@@ -285,7 +304,7 @@ func TestSearchRequiresKnID(t *testing.T) {
 	bkn := &fakeBkn{refs: functionRefs("box-1/t1")}
 	op := &fakeOperator{}
 
-	_, err := newService(bkn, op).SearchTools(context.Background(), &SearchToolsReq{Query: "x"})
+	_, err := newService(bkn, op).SearchCapabilities(context.Background(), &SearchCapabilitiesReq{Query: "x"})
 
 	if err == nil {
 		t.Fatal("expected a request without kn_id to fail")
@@ -302,7 +321,7 @@ func TestBindingLookupFailureFailsTheSearch(t *testing.T) {
 	bkn := &fakeBkn{err: errors.New("bkn-backend unreachable")}
 	op := &fakeOperator{hits: []interfaces.CapabilityHit{hit("box-1", "t1")}}
 
-	_, err := newService(bkn, op).SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1"})
+	_, err := newService(bkn, op).SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1"})
 
 	if err == nil {
 		t.Fatal("expected the search to fail")
@@ -320,8 +339,8 @@ func TestToolboxIDNarrowsWithinTheMountedSet(t *testing.T) {
 		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{"box-2": tools("box-2", "t2")},
 	}
 
-	_, err := newService(bkn, op).SearchTools(context.Background(),
-		&SearchToolsReq{KnID: "kn1", ToolboxID: "box-2"})
+	_, err := newService(bkn, op).SearchCapabilities(context.Background(),
+		&SearchCapabilitiesReq{KnID: "kn1", OwnerID: "box-2"})
 
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -353,17 +372,17 @@ func TestUnreadableToolboxKeepsItsHitsWithoutSchema(t *testing.T) {
 		toolsErr: map[string]error{"box-2": errors.New("forbidden")},
 	}
 
-	resp, err := newService(bkn, op).SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1"})
+	resp, err := newService(bkn, op).SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1"})
 
 	if err != nil {
 		t.Fatalf("one unreadable toolbox must not fail the search, got %v", err)
 	}
-	if len(resp.Tools) != 2 {
-		t.Fatalf("读得到的和读不到的都该在，got %+v", resp.Tools)
+	if len(resp.Capabilities) != 2 {
+		t.Fatalf("读得到的和读不到的都该在，got %+v", resp.Capabilities)
 	}
-	byBox := map[string]ToolEntry{}
-	for _, e := range resp.Tools {
-		byBox[e.ToolboxID] = e
+	byBox := map[string]CapabilityEntry{}
+	for _, e := range resp.Capabilities {
+		byBox[e.OwnerID] = e
 	}
 	if byBox["box-1"].InputSchema == nil {
 		t.Fatal("目录读得到的工具应当带 input_schema")
@@ -385,15 +404,15 @@ func TestHitsCarryTheInputSchema(t *testing.T) {
 		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{"box-1": tools("box-1", "t1")},
 	}
 
-	resp, err := newService(bkn, op).SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1"})
+	resp, err := newService(bkn, op).SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1"})
 
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if len(resp.Tools) != 1 || resp.Tools[0].InputSchema == nil {
-		t.Fatalf("expected the input schema to travel, got %+v", resp.Tools)
+	if len(resp.Capabilities) != 1 || resp.Capabilities[0].InputSchema == nil {
+		t.Fatalf("expected the input schema to travel, got %+v", resp.Capabilities)
 	}
-	if resp.Tools[0].Description == "" {
+	if resp.Capabilities[0].Description == "" {
 		t.Fatal("expected the description to travel")
 	}
 }
@@ -409,8 +428,8 @@ func TestOneRequestPerToolboxNotPerHit(t *testing.T) {
 		},
 	}
 
-	if _, err := newService(bkn, op).SearchTools(context.Background(),
-		&SearchToolsReq{KnID: "kn1"}); err != nil {
+	if _, err := newService(bkn, op).SearchCapabilities(context.Background(),
+		&SearchCapabilitiesReq{KnID: "kn1"}); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 	if len(op.listedToolbox) != 1 {
@@ -513,7 +532,7 @@ func TestUnauthorizedNetworkIsRefusedForBothEntryPoints(t *testing.T) {
 
 		var err error
 		if name == "search" {
-			_, err = svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "someone-elses-kn"})
+			_, err = svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "someone-elses-kn"})
 		} else {
 			_, err = svc.ExecuteTool(context.Background(), &ExecuteToolReq{
 				KnID: "someone-elses-kn", ToolboxID: "box-1", ToolID: "t1",
@@ -536,7 +555,7 @@ func TestUnauthorizedNetworkIsRefusedForBothEntryPoints(t *testing.T) {
 func TestMissingAuthorizerFailsClosed(t *testing.T) {
 	svc := NewKnToolsServiceWith(&fakeOperator{}, &fakeBkn{refs: functionRefs("box-1/t1")}, nil)
 
-	if _, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1"}); err == nil {
+	if _, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1"}); err == nil {
 		t.Fatal("expected a service without an authorizer to refuse")
 	}
 }
@@ -558,17 +577,17 @@ func TestMCPToolsAreSearchableAndCallable(t *testing.T) {
 
 	t.Run("出现在搜索结果并带 input_schema", func(t *testing.T) {
 		svc, _ := newSvc()
-		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1"})
+		resp, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1"})
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if len(resp.Tools) != 1 || resp.Tools[0].ToolID != "expedite" {
-			t.Fatalf("expected the mounted MCP tool, got %+v", resp.Tools)
+		if len(resp.Capabilities) != 1 || resp.Capabilities[0].CapabilityID != "expedite" {
+			t.Fatalf("expected the mounted MCP tool, got %+v", resp.Capabilities)
 		}
-		if resp.Tools[0].ToolboxID != "mcp-1" {
-			t.Fatalf("expected the MCP server id to travel, got %+v", resp.Tools[0])
+		if resp.Capabilities[0].OwnerID != "mcp-1" {
+			t.Fatalf("expected the MCP server id to travel, got %+v", resp.Capabilities[0])
 		}
-		if resp.Tools[0].InputSchema == nil {
+		if resp.Capabilities[0].InputSchema == nil {
 			t.Fatal("execute_tool needs the input schema")
 		}
 	})
@@ -610,7 +629,7 @@ func TestMCPToolsAreSearchableAndCallable(t *testing.T) {
 		// rows in one index. What this side owes is the whitelist: every mounted MCP tool must
 		// reach it, or the tool is unfindable no matter how good the ranking is.
 		svc, op := newSvc()
-		if _, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "催单"}); err != nil {
+		if _, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1", Query: "催单"}); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if op.gotQuery != "催单" {
@@ -624,12 +643,12 @@ func TestMCPToolsAreSearchableAndCallable(t *testing.T) {
 	t.Run("检索面返回空就是空，不在本地兜底放宽", func(t *testing.T) {
 		svc, op := newSvc()
 		op.hits = nil
-		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "完全无关"})
+		resp, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1", Query: "完全无关"})
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if len(resp.Tools) != 0 {
-			t.Fatalf("expected no match, got %+v", resp.Tools)
+		if len(resp.Capabilities) != 0 {
+			t.Fatalf("expected no match, got %+v", resp.Capabilities)
 		}
 	})
 }
@@ -679,12 +698,12 @@ func TestMCPTruncationCountsMatchesNotMounts(t *testing.T) {
 	bkn := &fakeBkn{refs: mcpToolRefs("mcp-1/expedite", "mcp-1/substitute", "mcp-1/cancel")}
 	svc := NewKnToolsServiceWith(op, bkn, &fakeKnAuthz{})
 
-	resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "催单"})
+	resp, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1", Query: "催单"})
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if len(resp.Tools) != 1 {
-		t.Fatalf("expected one match, got %+v", resp.Tools)
+	if len(resp.Capabilities) != 1 {
+		t.Fatalf("expected one match, got %+v", resp.Capabilities)
 	}
 	if resp.TotalMatched != 1 {
 		t.Fatalf("total 应当是命中数而非挂载数，got %d", resp.TotalMatched)
@@ -708,18 +727,18 @@ func TestUnreadableCatalogueKeepsTheHit(t *testing.T) {
 	}
 	svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/t1")}, &fakeKnAuthz{})
 
-	resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "汇率"})
+	resp, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1", Query: "汇率"})
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if len(resp.Tools) != 1 || resp.Tools[0].ToolID != "t1" {
-		t.Fatalf("命中不该因为读不到目录而消失，got %+v (message=%q)", resp.Tools, resp.Message)
+	if len(resp.Capabilities) != 1 || resp.Capabilities[0].CapabilityID != "t1" {
+		t.Fatalf("命中不该因为读不到目录而消失，got %+v (message=%q)", resp.Capabilities, resp.Message)
 	}
-	if resp.Tools[0].InputSchema != nil {
+	if resp.Capabilities[0].InputSchema != nil {
 		t.Fatal("读不到目录时不该凭空造出 input_schema")
 	}
-	if resp.TotalMatched != len(resp.Tools) {
-		t.Fatalf("total 与返回条数不该互相矛盾: total=%d tools=%d", resp.TotalMatched, len(resp.Tools))
+	if resp.TotalMatched != len(resp.Capabilities) {
+		t.Fatalf("total 与返回条数不该互相矛盾: total=%d tools=%d", resp.TotalMatched, len(resp.Capabilities))
 	}
 }
 
@@ -735,12 +754,12 @@ func TestVisibleCatalogueStillFilters(t *testing.T) {
 	}
 	svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/hidden")}, &fakeKnAuthz{})
 
-	resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "汇率"})
+	resp, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1", Query: "汇率"})
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if len(resp.Tools) != 0 {
-		t.Fatalf("目录可读但工具不在其中，说明调用方看不到，不该返回: %+v", resp.Tools)
+	if len(resp.Capabilities) != 0 {
+		t.Fatalf("目录可读但工具不在其中，说明调用方看不到，不该返回: %+v", resp.Capabilities)
 	}
 }
 
@@ -769,12 +788,12 @@ func TestEmptyAnswerNamesItsCause(t *testing.T) {
 			},
 		}
 		svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/hidden")}, &fakeKnAuthz{})
-		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "汇率"})
+		resp, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1", Query: "汇率"})
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if len(resp.Tools) != 0 {
-			t.Fatalf("这个用例要的是空结果, got %+v", resp.Tools)
+		if len(resp.Capabilities) != 0 {
+			t.Fatalf("这个用例要的是空结果, got %+v", resp.Capabilities)
 		}
 		if tellsToPublish(resp.Message) || !namesVisibility(resp.Message) {
 			t.Fatalf("命中被可见性挡掉时该说可见性，而不是让人去发布工具箱: %q", resp.Message)
@@ -784,7 +803,7 @@ func TestEmptyAnswerNamesItsCause(t *testing.T) {
 	t.Run("类型过滤后为空", func(t *testing.T) {
 		op := &fakeOperator{hits: nil}
 		svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/t1")}, &fakeKnAuthz{})
-		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{
+		resp, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{
 			KnID: "kn1", Query: "汇率", MetadataTypes: []string{"function"},
 		})
 		if err != nil {
@@ -796,13 +815,12 @@ func TestEmptyAnswerNamesItsCause(t *testing.T) {
 	})
 
 	t.Run("确实没有匹配：不能怪到调用方没传过的参数上", func(t *testing.T) {
-		// search_tools pins the kinds when it delegates. If that counted as a caller's filter,
-		// this answer would tell the caller to drop a types parameter it never set and cannot set.
-		// Asserting only that a message exists is what let the wrong branch through review: every
-		// branch satisfies it.
+		// A caller who filtered nothing must not be told to drop a filter. The branch that names
+		// types has to stay conditional on the caller having set one — asserting only that some
+		// message exists is what let the wrong branch through review: every branch satisfies it.
 		op := &fakeOperator{hits: nil}
 		svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/t1")}, &fakeKnAuthz{})
-		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "毫不相关"})
+		resp, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1", Query: "毫不相关"})
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -814,13 +832,13 @@ func TestEmptyAnswerNamesItsCause(t *testing.T) {
 		}
 	})
 
-	t.Run("只传了 metadata_types 时，提示不得连带点名 types", func(t *testing.T) {
-		// The branch fires correctly, but its text used to name both filters. search_tools sets
-		// types itself and exposes no input for it, so half of "drop these two parameters" is
-		// advice the caller cannot follow — the same defect one level down.
+	t.Run("类型过滤筛空时点名过滤参数", func(t *testing.T) {
+		// This used to need a caveat: search_tools pinned types itself and exposed no input for
+		// it, so naming both filters gave advice half of which could not be followed. With no
+		// entry point pinning kinds (#1401), every filter named here is one the caller set.
 		op := &fakeOperator{hits: nil}
 		svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/t1")}, &fakeKnAuthz{})
-		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{
+		resp, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{
 			KnID: "kn1", Query: "汇率", MetadataTypes: []string{"function"},
 		})
 		if err != nil {
@@ -828,9 +846,6 @@ func TestEmptyAnswerNamesItsCause(t *testing.T) {
 		}
 		if !strings.Contains(resp.Message, "metadata_types") {
 			t.Fatalf("这次确实是调用方筛空的，该点名: %q", resp.Message)
-		}
-		if strings.Contains(resp.Message, "types /") || strings.Contains(resp.Message, "/ metadata_types") {
-			t.Fatalf("不该连带让调用方去掉它设不了的 types: %q", resp.Message)
 		}
 	})
 }
@@ -855,15 +870,15 @@ func TestTruncationIsDetectable(t *testing.T) {
 		svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs(
 			"box-1/t1", "box-1/t2", "box-1/t3", "box-1/t4")}, &fakeKnAuthz{})
 
-		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Limit: 3})
+		resp, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1", Limit: 3})
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if !resp.Truncated {
 			t.Fatal("命中多于一页却没报截断，调用方会把一页当成全部")
 		}
-		if len(resp.Tools) != 3 {
-			t.Fatalf("多要的那条只用来探测，不该返回: %d 条", len(resp.Tools))
+		if len(resp.Capabilities) != 3 {
+			t.Fatalf("多要的那条只用来探测，不该返回: %d 条", len(resp.Capabilities))
 		}
 		if op.gotTopK != 4 {
 			t.Fatalf("该向排序多要一条来探测下一页, got top_k=%d", op.gotTopK)
@@ -878,7 +893,7 @@ func TestTruncationIsDetectable(t *testing.T) {
 			},
 		}
 		svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/t1")}, &fakeKnAuthz{})
-		resp, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Limit: 3})
+		resp, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1", Limit: 3})
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}

@@ -2,8 +2,8 @@
 //
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-// Package kntools provides the internal REST portal for the published Function
-// tool surface: search_tools and execute_tool. These share their service layer
+// Package kntools provides the internal REST portal for the mounted capability
+// surface: search_capabilities and execute_tool. These share their service layer
 // with the MCP tools of the same name, so both faces answer identically.
 package kntools
 
@@ -23,7 +23,6 @@ import (
 // KnToolsHandler is the HTTP entry for published Function tool search and execution.
 type KnToolsHandler interface {
 	SearchCapabilities(c *gin.Context)
-	SearchTools(c *gin.Context)
 	ExecuteTool(c *gin.Context)
 }
 
@@ -49,7 +48,6 @@ func NewKnToolsHandler() KnToolsHandler {
 	return handlerInst
 }
 
-// SearchTools finds callable published Function tools.
 // SearchCapabilities ranks every kind the knowledge network mounted against one query (#1388).
 func (h *knToolsHandler) SearchCapabilities(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -61,22 +59,6 @@ func (h *knToolsHandler) SearchCapabilities(c *gin.Context) {
 	resp, err := h.tools.SearchCapabilities(ctx, req)
 	if err != nil {
 		h.logger.WithContext(ctx).Warnf("[KnToolsHandler#SearchCapabilities] failed: %v", err)
-		rest.ReplyError(c, err)
-		return
-	}
-	rest.ReplyOK(c, http.StatusOK, resp)
-}
-
-func (h *knToolsHandler) SearchTools(c *gin.Context) {
-	ctx := c.Request.Context()
-	req := &logicsTools.SearchToolsReq{}
-	// The body is optional; an empty one lists everything the caller can call.
-	_ = c.ShouldBindQuery(req)
-	_ = c.ShouldBindJSON(req)
-
-	resp, err := h.tools.SearchTools(ctx, req)
-	if err != nil {
-		h.logger.WithContext(ctx).Warnf("[KnToolsHandler#SearchTools] failed: %v", err)
 		rest.ReplyError(c, err)
 		return
 	}

@@ -2,8 +2,8 @@
 //
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-// Package kntools exposes the Function tools a knowledge network has mounted to an MCP client:
-// search_tools finds them, execute_tool runs one.
+// Package kntools exposes the capabilities a knowledge network has mounted to an MCP client:
+// search_capabilities finds them, execute_tool runs a Function or MCP tool.
 //
 // Scope is the knowledge network's Function bindings, not the caller's whole visible catalogue.
 // Both are needed and they are intersected: the bindings say which tools this network works with,
@@ -36,21 +36,11 @@ const (
 	toolboxFanoutConcurrency = 5
 )
 
-// SearchToolsReq is the input for search_tools.
-type SearchToolsReq struct {
-	// KnID is required. Without it there is no scope to narrow to, and answering anyway would
-	// return every tool the account can see — the behaviour this replaced.
-	KnID      string `json:"kn_id"`
-	Query     string `json:"query"`      // Optional. Ranks the mounted tools by name and description.
-	ToolboxID string `json:"toolbox_id"` // Optional. Restricts the search to one toolbox's mounted tools.
-	// MetadataTypes optionally restricts Function tools to certain tool box kinds: "openapi" for
-	// API tools, "function" for functions. Empty means both, plus MCP tools. It exists because the
-	// product presents four kinds where the bindings store three.
-	MetadataTypes []string `json:"metadata_types,omitempty"`
-	Limit         int      `json:"limit"` // Optional. Caps returned tools, default 20, max 100.
-}
-
-// ToolEntry is one callable published Function tool.
+// ToolEntry is one callable published Function or MCP tool, as the catalogue describes it.
+//
+// It is the enrichment describeCapabilityHits produces: what a tool needs to be callable, which a
+// Skill does not carry. search_capabilities folds it into CapabilityEntry rather than answering in
+// two shapes.
 type ToolEntry struct {
 	ToolID      string         `json:"tool_id"`
 	ToolboxID   string         `json:"toolbox_id"`
@@ -59,14 +49,6 @@ type ToolEntry struct {
 	Description string         `json:"description,omitempty"`
 	UseRule     string         `json:"use_rule,omitempty"`
 	InputSchema map[string]any `json:"input_schema,omitempty"`
-}
-
-// SearchToolsResp is the search_tools result.
-type SearchToolsResp struct {
-	Tools        []ToolEntry `json:"tools"`
-	TotalMatched int         `json:"total_matched"`
-	Truncated    bool        `json:"truncated,omitempty"`
-	Message      string      `json:"message,omitempty"`
 }
 
 // ExecuteToolReq is the input for execute_tool.
@@ -84,7 +66,6 @@ type ExecuteToolReq struct {
 type KnToolsService interface {
 	// SearchCapabilities ranks every kind the network mounted against one query (#1388).
 	SearchCapabilities(ctx context.Context, req *SearchCapabilitiesReq) (*SearchCapabilitiesResp, error)
-	SearchTools(ctx context.Context, req *SearchToolsReq) (*SearchToolsResp, error)
 	ExecuteTool(ctx context.Context, req *ExecuteToolReq) (map[string]any, error)
 }
 
@@ -129,58 +110,6 @@ func (s *knToolsService) warnf(ctx context.Context, format string, args ...any) 
 		return
 	}
 	s.logger.WithContext(ctx).Warnf(format, args...)
-}
-
-// SearchTools returns the Function tools this knowledge network has mounted, ranked against a
-// query when one is given.
-//
-// It is SearchCapabilities with the kinds pinned — literally, by delegation rather than by
-// resemblance. The two were copies of each other for exactly one review cycle, long enough for a
-// fix to land on one and not the other, which is the argument against keeping two.
-//
-// What stays here is the shape of the answer: search_tools speaks tool_id / toolbox_id /
-// input_schema, and callers, the sandbox SDK and the API contract are written against that.
-func (s *knToolsService) SearchTools(ctx context.Context, req *SearchToolsReq) (*SearchToolsResp, error) {
-	if req == nil {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
-			infraErr.LocalizedDetail(ctx, "ToolScopeKnIDRequired"))
-	}
-
-	inner, err := s.SearchCapabilities(ctx, &SearchCapabilitiesReq{
-		KnID:  req.KnID,
-		Query: req.Query,
-		// The two tool transports, never Skills: this surface answers with input schemas, and a
-		// Skill has none.
-		Types:         []string{interfaces.CapabilityTypeFunction, interfaces.CapabilityTypeMCPTool},
-		MetadataTypes: req.MetadataTypes,
-		Limit:         req.Limit,
-		// The kinds above are this entry point's, not the caller's. Without saying so, an empty
-		// answer would blame a types filter the caller never set and has no way to remove.
-		kindsAreIntrinsic: true,
-		// toolbox_id narrows within the mounted set and can never reach outside it.
-		OwnerID: strings.TrimSpace(req.ToolboxID),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	tools := make([]ToolEntry, 0, len(inner.Capabilities))
-	for _, c := range inner.Capabilities {
-		tools = append(tools, ToolEntry{
-			ToolID:      c.CapabilityID,
-			ToolboxID:   c.OwnerID,
-			Name:        c.Name,
-			Description: c.Description,
-			UseRule:     c.UseRule,
-			InputSchema: c.InputSchema,
-		})
-	}
-	return &SearchToolsResp{
-		Tools:        tools,
-		TotalMatched: inner.TotalMatched,
-		Truncated:    inner.Truncated,
-		Message:      inner.Message,
-	}, nil
 }
 
 // boundToolRefs returns the network's Function bindings as "{box_id}/{tool_id}" references.
@@ -326,7 +255,7 @@ func (s *knToolsService) describeCapabilityHits(ctx context.Context,
 				// Leave this box's slot nil: unreadable, which is not the same as empty. Logged
 				// because a silent drop here is indistinguishable from "the box has no tools",
 				// and the two want opposite fixes.
-				s.warnf(ctx, "[SearchTools] published tool catalogue unreadable, box_id=%s: %v", boxID, err)
+				s.warnf(ctx, "[SearchCapabilities] published tool catalogue unreadable, box_id=%s: %v", boxID, err)
 				return
 			}
 			byID := make(map[string]interfaces.PublishedToolSummary, len(listed.Tools))
@@ -388,7 +317,7 @@ func (s *knToolsService) describeCapabilityHits(ctx context.Context,
 				// An unreachable MCP Server is not an empty one. Keep what the index knows so a
 				// server that is briefly down does not make a network's mounted tools vanish from
 				// search; the input schema is simply absent until it answers again.
-				s.warnf(ctx, "[SearchTools] MCP tool detail unavailable, mcp_id=%s, tool=%s: %v",
+				s.warnf(ctx, "[SearchCapabilities] MCP tool detail unavailable, mcp_id=%s, tool=%s: %v",
 					hit.OwnerID, hit.CapabilityID, err)
 				entries = append(entries, ToolEntry{
 					ToolID:      hit.CapabilityID,

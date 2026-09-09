@@ -77,7 +77,7 @@ Once configured, MCP clients can discover and call these tools (your deployment 
 | `get_action_info` | Get action type definition, input schema and result schema (`output_schema`) |
 | `execute_action` | Execute an action type |
 | `get_action_execution` / `list_action_executions` | Action execution status and history |
-| `find_skills` | Recall skills bound to an object type |
+| `search_capabilities` | Rank every capability the network mounted — Skills, Function tools, API tools and MCP tools — in one space |
 | `list_knowledge_networks` | List knowledge networks |
 | `list_resources` / `describe_resource` | List and describe Vega resources |
 | `run_sql` | Run SQL directly against a resource |
