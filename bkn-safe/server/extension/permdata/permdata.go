@@ -254,4 +254,5 @@ func load() Resolver {
 func reset() {
 	implementation = atomic.Value{}
 	minEdition = ""
+	resetManagement()
 }
