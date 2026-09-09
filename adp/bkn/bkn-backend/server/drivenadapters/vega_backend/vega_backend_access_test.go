@@ -9,6 +9,7 @@ package vega_backend
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -229,4 +230,59 @@ func TestRawQueryRejectsIncompleteRequest(t *testing.T) {
 
 	_, err = access.RawQuery(ctx, &interfaces.RawQueryRequest{Query: "SELECT 1 FROM {{.r1}}"})
 	require.Error(t, err, "an unset dialect would silently take vega's postgres default")
+}
+
+// Three ways the dependency can fail. In each of them the statement, which
+// names physical tables and columns, must not travel back to the caller: it is
+// summarised into the log instead.
+func TestRawQueryDoesNotReturnDependencyDetail(t *testing.T) {
+	const statement = "SELECT o.order_id FROM {{.r1}} o WHERE o.email = 'a@example.com'"
+
+	for _, tc := range []struct {
+		name     string
+		respond  func() (int, []byte, error)
+		leakFree []string
+	}{
+		{
+			name:    "transport failure",
+			respond: func() (int, []byte, error) { return 0, nil, errors.New("dial tcp 10.0.0.1:13014: refused") },
+			// The transport's own message may quote the request it carried.
+			leakFree: []string{"10.0.0.1", "order_id", "a@example.com"},
+		},
+		{
+			name: "error status with a body",
+			respond: func() (int, []byte, error) {
+				return http.StatusBadRequest, []byte(`{"error_details":"syntax error near 'o.email'"}`), nil
+			},
+			leakFree: []string{"o.email", "syntax error", "a@example.com"},
+		},
+		{
+			name:     "body that is not the expected shape",
+			respond:  func() (int, []byte, error) { return http.StatusOK, []byte(`not json`), nil },
+			leakFree: []string{"a@example.com", "order_id"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mockCtrl := gomock.NewController(t)
+			mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
+			mockHTTPClient.EXPECT().
+				PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(context.Context, string, map[string]string, any) (int, []byte, error) {
+					return tc.respond()
+				})
+
+			access := &vegaBackendAccess{httpClient: mockHTTPClient, baseUrl: "http://vega"}
+			ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+				interfaces.AccountInfo{ID: "user-42", Type: "user"})
+
+			_, err := access.RawQuery(ctx, &interfaces.RawQueryRequest{
+				Query:        statement,
+				InputDialect: interfaces.VEGA_DIALECT_MYSQL,
+			})
+			require.Error(t, err)
+			for _, forbidden := range tc.leakFree {
+				assert.NotContains(t, err.Error(), forbidden)
+			}
+		})
+	}
 }
