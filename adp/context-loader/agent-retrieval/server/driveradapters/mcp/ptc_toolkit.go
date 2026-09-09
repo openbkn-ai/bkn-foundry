@@ -248,6 +248,48 @@ func ptcSignature(tool MCPToolInfo) string {
 	return fmt.Sprintf("%s(%s)", tool.Name, strings.Join(parts, ", "))
 }
 
+// ptcToleratedParams lists the plumbing parameters a tool's schema declares. The stub
+// accepts them as trailing optional arguments and ignores the value: the runtime injects
+// this session's own bkn_context. A model that has just used the MCP surface, where every
+// business tool requires bkn_context, carries that habit into its script, and a TypeError
+// for passing it costs the whole round.
+func ptcToleratedParams(raw json.RawMessage) []string {
+	var schema struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	if len(raw) == 0 || json.Unmarshal(raw, &schema) != nil {
+		return nil
+	}
+	names := make([]string, 0, len(ptcPlumbingParams))
+	for name := range schema.Properties {
+		if ptcPlumbingParams[name] {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// ptcStubSignature is ptcSignature plus the tolerated plumbing parameters. Only the
+// executable stub carries them; the digest shown to the model stays without them, so it
+// keeps telling the model not to pass bkn_context.
+func ptcStubSignature(tool MCPToolInfo) string {
+	signature := ptcSignature(tool)
+	tolerated := ptcToleratedParams(tool.InputSchema)
+	if len(tolerated) == 0 {
+		return signature
+	}
+	parts := make([]string, 0, len(tolerated))
+	for _, name := range tolerated {
+		parts = append(parts, name+": dict = None")
+	}
+	separator := ", "
+	if strings.HasSuffix(signature, "()") {
+		separator = ""
+	}
+	return strings.TrimSuffix(signature, ")") + separator + strings.Join(parts, ", ") + ")"
+}
+
 // ptcReturnKeys Render return value top-level keys. Key names are not uniform among tools (some list classes are called entries,
 // Some are called data), and the model cannot be inferred - if it is not written out, the first call will fail with a KeyError.
 // ptcReturnKeys renders the return structure, and the array keys expand one layer of element fields downwards.
@@ -442,12 +484,15 @@ func renderPTCStub(tools []MCPToolInfo) string {
 	b.WriteString(mustReadMCPStaticResource("ptc_stub.py"))
 	for _, t := range tools {
 		params := ptcParams(t.InputSchema)
-		fmt.Fprintf(&b, "\n\ndef %s -> dict:\n", ptcSignature(t))
+		fmt.Fprintf(&b, "\n\ndef %s -> dict:\n", ptcStubSignature(t))
 		b.WriteString(`    """` + escapePyDocstring(strings.TrimSpace(t.Description)) + "\n")
 		for _, p := range params {
 			if p.desc != "" {
 				fmt.Fprintf(&b, "\n    %s: %s\n", p.name, escapePyDocstring(strings.TrimSpace(p.desc)))
 			}
+		}
+		for _, name := range ptcToleratedParams(t.InputSchema) {
+			fmt.Fprintf(&b, "\n    %s: accepted for parity with the MCP call shape and ignored; the runtime injects this session's own.\n", name)
 		}
 		b.WriteString(`    """` + "\n")
 		args := make([]string, 0, len(params))
