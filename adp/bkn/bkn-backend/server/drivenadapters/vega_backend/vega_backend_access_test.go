@@ -9,6 +9,7 @@ package vega_backend
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -138,4 +139,150 @@ func TestWriteDatasetDocumentUsesExplicitDocumentID(t *testing.T) {
 		Return(http.StatusOK, []byte(`{}`), nil)
 
 	require.NoError(t, access.WriteDatasetDocument(context.Background(), "dataset-1", "document-1", document))
+}
+
+// The admin fallback in buildHeaders would authorize a read as the platform
+// instead of as the caller, turning vega's per-resource check off without any
+// signal. Raw query must refuse before reaching the network.
+func TestRawQueryRefusesWithoutCallerIdentity(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
+	// No PostNoUnmarshal expectation: reaching the network is itself the bug.
+
+	access := &vegaBackendAccess{httpClient: mockHTTPClient, baseUrl: "http://vega"}
+
+	for _, tc := range []struct {
+		name string
+		ctx  context.Context
+	}{
+		{"no identity at all", context.Background()},
+		{"identity present but empty", context.WithValue(context.Background(),
+			interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{})},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := access.RawQuery(tc.ctx, &interfaces.RawQueryRequest{
+				Query:        "SELECT 1 FROM {{.r1}}",
+				InputDialect: interfaces.VEGA_DIALECT_MYSQL,
+			})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "identity")
+		})
+	}
+}
+
+func TestRawQueryForwardsCallerIdentityAndDialect(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
+
+	var gotHeaders map[string]string
+	var gotBody any
+	mockHTTPClient.EXPECT().
+		PostNoUnmarshal(gomock.Any(), "http://vega/resources/query", gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, headers map[string]string, body any) (int, []byte, error) {
+			gotHeaders, gotBody = headers, body
+			return http.StatusOK, []byte(`{
+				"columns":[{"name":"order_id","type":"integer"}],
+				"entries":[{"order_id":9223372036854775807}],
+				"total_count":1
+			}`), nil
+		})
+
+	access := &vegaBackendAccess{httpClient: mockHTTPClient, baseUrl: "http://vega"}
+	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+		interfaces.AccountInfo{ID: "user-42", Type: "user"})
+
+	resp, err := access.RawQuery(ctx, &interfaces.RawQueryRequest{
+		Query:        "SELECT o.order_id FROM {{.r1}} o",
+		InputDialect: interfaces.VEGA_DIALECT_POSTGRES,
+	})
+	require.NoError(t, err)
+
+	// The end user, never the admin constant.
+	assert.Equal(t, "user-42", gotHeaders[interfaces.HTTP_HEADER_ACCOUNT_ID])
+	assert.Equal(t, "user", gotHeaders[interfaces.HTTP_HEADER_ACCOUNT_TYPE])
+	assert.NotEqual(t, interfaces.ADMIN_ACCOUNT_ID, gotHeaders[interfaces.HTTP_HEADER_ACCOUNT_ID])
+
+	sent, ok := gotBody.(*interfaces.RawQueryRequest)
+	require.True(t, ok)
+	assert.Equal(t, interfaces.VEGA_QUERY_FORMAT_SQL, sent.QueryFormat, "query_format defaults to sql")
+	assert.Equal(t, interfaces.VEGA_DIALECT_POSTGRES, sent.InputDialect, "dialect must reach vega unchanged")
+
+	require.Len(t, resp.Columns, 1)
+	assert.Equal(t, "order_id", resp.Columns[0].Name)
+	// Ids must survive as written rather than being narrowed through float64.
+	assert.Equal(t, "9223372036854775807", toJSONNumberString(t, resp.Entries[0]["order_id"]))
+}
+
+func toJSONNumberString(t *testing.T, v any) string {
+	t.Helper()
+	n, ok := v.(json.Number)
+	require.True(t, ok, "expected json.Number, got %T", v)
+	return n.String()
+}
+
+func TestRawQueryRejectsIncompleteRequest(t *testing.T) {
+	access := &vegaBackendAccess{baseUrl: "http://vega"}
+	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+		interfaces.AccountInfo{ID: "user-42", Type: "user"})
+
+	_, err := access.RawQuery(ctx, &interfaces.RawQueryRequest{InputDialect: interfaces.VEGA_DIALECT_MYSQL})
+	require.Error(t, err)
+
+	_, err = access.RawQuery(ctx, &interfaces.RawQueryRequest{Query: "SELECT 1 FROM {{.r1}}"})
+	require.Error(t, err, "an unset dialect would silently take vega's postgres default")
+}
+
+// Three ways the dependency can fail. In each of them the statement, which
+// names physical tables and columns, must not travel back to the caller: it is
+// summarised into the log instead.
+func TestRawQueryDoesNotReturnDependencyDetail(t *testing.T) {
+	const statement = "SELECT o.order_id FROM {{.r1}} o WHERE o.email = 'a@example.com'"
+
+	for _, tc := range []struct {
+		name     string
+		respond  func() (int, []byte, error)
+		leakFree []string
+	}{
+		{
+			name:    "transport failure",
+			respond: func() (int, []byte, error) { return 0, nil, errors.New("dial tcp 10.0.0.1:13014: refused") },
+			// The transport's own message may quote the request it carried.
+			leakFree: []string{"10.0.0.1", "order_id", "a@example.com"},
+		},
+		{
+			name: "error status with a body",
+			respond: func() (int, []byte, error) {
+				return http.StatusBadRequest, []byte(`{"error_details":"syntax error near 'o.email'"}`), nil
+			},
+			leakFree: []string{"o.email", "syntax error", "a@example.com"},
+		},
+		{
+			name:     "body that is not the expected shape",
+			respond:  func() (int, []byte, error) { return http.StatusOK, []byte(`not json`), nil },
+			leakFree: []string{"a@example.com", "order_id"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mockCtrl := gomock.NewController(t)
+			mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
+			mockHTTPClient.EXPECT().
+				PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(context.Context, string, map[string]string, any) (int, []byte, error) {
+					return tc.respond()
+				})
+
+			access := &vegaBackendAccess{httpClient: mockHTTPClient, baseUrl: "http://vega"}
+			ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+				interfaces.AccountInfo{ID: "user-42", Type: "user"})
+
+			_, err := access.RawQuery(ctx, &interfaces.RawQueryRequest{
+				Query:        statement,
+				InputDialect: interfaces.VEGA_DIALECT_MYSQL,
+			})
+			require.Error(t, err)
+			for _, forbidden := range tc.leakFree {
+				assert.NotContains(t, err.Error(), forbidden)
+			}
+		})
+	}
 }

@@ -1,0 +1,40 @@
+# Cypher
+[BknBackend.Cypher.InvalidParameter]
+Description = "Invalid Cypher query request"
+Solution = "Please check the request body and query parameters."
+ErrorLink = ""
+
+[BknBackend.Cypher.SyntaxError]
+Description = "The Cypher query could not be parsed"
+Solution = "Please correct the query at the reported position."
+ErrorLink = ""
+
+[BknBackend.Cypher.Unsupported]
+Description = "The Cypher query uses a construct this interface does not support"
+Solution = "Please rewrite the query using the supported read-only subset."
+ErrorLink = ""
+
+[BknBackend.Cypher.InvalidQuery]
+Description = "The Cypher query does not match the knowledge network model"
+Solution = "Please check the labels, relationship types and properties against the model."
+ErrorLink = ""
+
+[BknBackend.Cypher.LimitExceeded]
+Description = "The requested LIMIT is above the maximum this interface returns"
+Solution = "Please lower LIMIT and page through the result."
+ErrorLink = ""
+
+[BknBackend.Cypher.InternalError]
+Description = "Failed to compile the Cypher query"
+Solution = "Please contact the administrator."
+ErrorLink = ""
+
+[BknBackend.Cypher.QueryFailed]
+Description = "Failed to run the compiled query"
+Solution = "Please retry later or contact the administrator."
+ErrorLink = ""
+
+[BknBackend.Cypher.InvalidParameter.Detail]
+QueryRequired = "query is required."
+QueryTooLong = "query must not exceed {{.max}} characters."
+LimitExceeded = "LIMIT must not exceed {{.max}}."
