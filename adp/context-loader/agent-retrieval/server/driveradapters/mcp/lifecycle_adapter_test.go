@@ -576,8 +576,8 @@ func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 				t.Fatalf("downstream failure was not preserved: %#v", result)
 			}
 			structured := result.StructuredContent.(map[string]any)
-			receipt, ok := structured["bkn_receipt"].(bkntrace.Receipt)
-			if !ok || receipt.ReceiptStatus != "failed" {
+			receipt, ok := structured["bkn_receipt"].(map[string]any)
+			if !ok || receipt["receipt_status"] != "failed" {
 				t.Fatalf("real adapter did not return failed receipt: %#v", structured)
 			}
 		})
