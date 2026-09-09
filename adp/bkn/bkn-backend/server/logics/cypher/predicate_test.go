@@ -147,3 +147,24 @@ func TestCompilePredicateRejections(t *testing.T) {
 		})
 	}
 }
+
+// An empty list matches nothing, so its negation matches everything. Both are
+// written out because SQL has no empty IN to say either with.
+func TestCompileNegatedEmptyMembership(t *testing.T) {
+	if got := compileWhere(t, "NOT o.region IN []"); got != "NOT 1 = 0" {
+		t.Fatalf("got %s", got)
+	}
+
+	plan := &Plan{
+		Tables: []PlanTable{{Alias: "t0", ResourceID: "res"}},
+		Select: []PlanColumn{{Table: 0, Column: "f_id", Alias: "id"}},
+		Where:  PlanMembership{Table: 0, Column: "f_region", Negated: true},
+	}
+	sql, err := Generate(plan, GenerateOptions{})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if !strings.HasSuffix(sql, "WHERE 1 = 1") {
+		t.Fatalf("got %s, want a condition that matches everything", sql)
+	}
+}

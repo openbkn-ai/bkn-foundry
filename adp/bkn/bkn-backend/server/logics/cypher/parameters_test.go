@@ -164,3 +164,37 @@ func TestCompileParameterRejections(t *testing.T) {
 		})
 	}
 }
+
+// JSON has one number type and no bound, so a value that is neither an integer
+// nor representable as a float has to be refused rather than truncated into
+// one that compares against the wrong rows.
+func TestParameterNumbers(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		value json.Number
+		want  Literal
+	}{
+		{name: "integer", value: json.Number("42"), want: Literal{Kind: LiteralInteger, Integer: 42}},
+		{name: "float", value: json.Number("1.5"), want: Literal{Kind: LiteralFloat, Float: 1.5}},
+		{
+			name:  "beyond int64 falls back to a float",
+			value: json.Number("100000000000000000000"),
+			want:  Literal{Kind: LiteralFloat, Float: 1e20},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := literalFromParameter(tc.value)
+			if err != nil {
+				t.Fatalf("literalFromParameter(%s): %v", tc.value, err)
+			}
+			if got != tc.want {
+				t.Fatalf("got %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+
+	if _, err := literalFromParameter(json.Number("not a number")); err == nil ||
+		!strings.Contains(err.Error(), "not a number this interface can carry") {
+		t.Fatalf("a malformed number must be refused, got %v", err)
+	}
+}

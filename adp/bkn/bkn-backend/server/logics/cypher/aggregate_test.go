@@ -138,3 +138,16 @@ func TestCompileAggregateRejections(t *testing.T) {
 		})
 	}
 }
+
+// The duplicate-name check has to point at the item that repeats the name,
+// whichever kind it is.
+func TestCompileDuplicateAliasOnAggregatePointsAtIt(t *testing.T) {
+	_, err := compile(t, "MATCH (o:Order)\nRETURN o.id AS x,\ncount(*) AS x", GenerateOptions{})
+	planError, ok := err.(*PlanError)
+	if !ok {
+		t.Fatalf("error = %T (%v), want *PlanError", err, err)
+	}
+	if planError.Pos.Line != 3 {
+		t.Fatalf("line = %d, want 3", planError.Pos.Line)
+	}
+}
