@@ -96,7 +96,6 @@ func TestModuleOpenAPIRequiresManagedBKNContext(t *testing.T) {
 	documents := map[string]string{
 		"api_private/kn_search.yaml":                   "KnSearchCompatRequest",
 		"api_private/search_schema.yaml":               "SearchSchemaRequest",
-		"api_private/find_skills.yaml":                 "FindSkillsRequest",
 		"api_private/get_action_info.yaml":             "ActionRecallRequest",
 		"api_private/get_logic_properties_values.yaml": "ResolveLogicPropertiesRequest",
 		"api_private/query_object_instance.yaml":       "ObjectQueryRequest",

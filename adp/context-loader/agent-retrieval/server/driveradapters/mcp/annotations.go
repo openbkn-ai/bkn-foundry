@@ -87,7 +87,6 @@ var toolAnnotations = map[string]func() mcp.ToolAnnotation{
 	toolKeyExecuteAction:        arbitraryEffectTool,
 
 	// Skills: the catalogue and the files are readable; running one is not.
-	toolKeyFindSkills:      readOnlyTool,
 	toolKeyListSkills:      readOnlyTool,
 	toolKeyGetSkillContent: readOnlyTool,
 	toolKeyReadSkillFile:   readOnlyTool,
@@ -97,7 +96,6 @@ var toolAnnotations = map[string]func() mcp.ToolAnnotation{
 	// code a third party registered, against whatever systems it was wired to.
 	// Retrieval only: it ranks what the network already mounted and writes nothing.
 	toolKeySearchCapabilities: readOnlyTool,
-	toolKeySearchTools:        readOnlyTool,
 	toolKeyExecuteTool:        arbitraryEffectTool,
 
 	// Execution: the caller supplies the program.

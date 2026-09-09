@@ -1,23 +1,26 @@
 ---
 openapi: 3.0.3
 info:
-  title: 已发布工具的检索与调用
+  title: 已挂载能力的检索与调用
   description: |
-    把执行工厂里已注册、已发布的**函数工具**（Toolbox Tool，`metadata_type=function`）
-    交给调用方使用：`search_tools` 找到工具并拿回业务入参契约，`execute_tool` 以调用者
-    自己的身份执行它。
+    把知识网络已挂载的能力交给调用方使用：`search_capabilities` 在一个排序空间里检索
+    全部四类能力——Skill、函数工具、API 工具（`metadata_type=openapi`）与 MCP 工具——
+    `execute_tool` 以调用者自己的身份执行其中的工具类能力。Skill 的读取与执行在
+    [skill.yaml](skill.yaml)。
 
-    **范围是知识网络挂载的函数**。`kn_id` 必填：两条接口的候选集都取自该知识网络已挂载
-    的 Function 绑定，收窄粒度是**工具**而不是工具箱——同一个工具箱里可以只有部分工具
-    挂到本网络，未挂载的那些既搜不到也调不了。网络未挂载任何函数时返回空列表并给出提示，
-    不会退回「当前账户可见的全部工具」。
+    检索面**只有这一条**。曾经的 `search_tools` 与 `find_skills` 是本接口按类型钉死的
+    两个窄入口，各自只看自己那一类，跨类型比较得调两次再自行合并；两者已随 #1401 删除。
+
+    **范围是知识网络的挂载**。`kn_id` 必填：候选集取自该知识网络的能力绑定，收窄粒度是
+    **能力**而不是工具箱——同一个工具箱里可以只有部分工具挂到本网络，未挂载的那些既搜不到
+    也调不了。网络未挂载任何能力时返回空列表并给出提示，不会退回「当前账户可见的全部工具」。
 
     **可见性是两者的交集**：挂载决定这个网络用哪些工具，调用者自身权限决定他能否看到与
     执行。回填入参 schema 时带调用者原始令牌打执行工厂公开 API，该账户看不到的工具箱里
     的命中会被丢弃，不会列出一个 `execute_tool` 随后会拒绝的工具。
 
     **`execute_tool` 有不可回滚的副作用**：注册进来的函数可以对外部系统写入。调用前先读
-    `search_tools` 返回的 `description` 与 `use_rule`。服务端执行前先核两道：工具必须已挂载
+    `search_capabilities` 返回的 `description` 与 `use_rule`。服务端执行前先核两道：工具必须已挂载
     到该知识网络，且在「当前账户可调用的已启用工具」列表里；任一不满足直接 400，不会打到
     执行代理。收窄检索面本身不构成管控——工具 ID 会活过产生它的那次检索。
 
@@ -33,29 +36,39 @@ security:
   - OAuth2: []
   - AppKey: []
 paths:
-  /kn/search_tools:
+  /kn/search_capabilities:
     post:
       tags:
-        - Tool
-      summary: 检索可调用的已发布函数工具
-      operationId: searchTools
+        - Capability
+      summary: 检索该知识网络已挂载的全部能力
+      operationId: searchCapabilities
       x-contract-probe:
         readonly: true
         order: 1
         body:
           limit: 3
       description: |
-        返回该知识网络已挂载、且当前账户可调用的函数工具。每条命中都带 `tool_id`、
-        `toolbox_id` 与裁剪过的 `input_schema`（只保留业务入参，服务地址等传输信息不下发），
-        可直接用于构造 `execute_tool` 调用。
+        在一个排序空间里返回该知识网络已挂载、且当前账户可见的能力：Skill、函数工具、
+        API 工具与 MCP 工具混排，按相关度给出，而不是每类一段。
 
-        `limit` 默认 20、上限 100：每条命中都带一份入参 schema，调大会显著占用上下文。
+        每条带 `capability_type`，据此决定下一步：`function` 与 `mcp_tool` 用
+        `execute_tool` 调用（命中带裁剪过的 `input_schema`，只保留业务入参，服务地址等
+        传输信息不下发），`skill` 用 `get_skill_content` 读取、`execute_skill` 执行。
+
+        `types` 按能力类型收窄；函数工具还可用 `metadata_types` 再分 `openapi`（API 工具）
+        与 `function`。两者都只在挂载集内收窄，越不出去。
+
+        `limit` 默认 20、上限 100：工具类命中都带一份入参 schema，调大会显著占用上下文。
         命中数超过 `limit` 时 `truncated=true` 并给出 `message`。
 
         回填 schema 时单个工具箱取列表失败会跳过该箱而不是整体失败：一个被撤销或损坏的
-        工具箱不该让调用方看不到其余所有工具。
+        工具箱不该让调用方看不到其余所有能力。
 
-        **空结果是 200 不是错误**：无匹配时 `tools: []` 并带 `message` 说明。
+        **不带 `query` 时不依赖检索索引**：没有查询词就没有要排序的东西，此时按绑定顺序
+        列出挂载集，名称从执行工厂注册表补齐。索引未建成、落后或不可达都不会让一个网络
+        列不出自己挂了什么。带 `query` 时索引不可用则报错——排序没有可退化的东西。
+
+        **空结果是 200 不是错误**：无匹配时 `capabilities: []` 并带 `message` 说明。
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
         - $ref: '#/components/parameters/ResponseFormat'
@@ -64,7 +77,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SearchToolsRequest'
+              $ref: '#/components/schemas/SearchCapabilitiesRequest'
             examples:
               全部已挂载:
                 value:
@@ -74,24 +87,41 @@ paths:
                   kn_id: supply_chain
                   query: 汇率
                   limit: 10
-              限定工具箱:
+              只要技能:
                 value:
                   kn_id: supply_chain
-                  toolbox_id: box_finance
+                  types:
+                    - skill
+              只要 API 工具:
+                value:
+                  kn_id: supply_chain
+                  types:
+                    - function
+                  metadata_types:
+                    - openapi
+              限定来源:
+                value:
+                  kn_id: supply_chain
+                  owner_id: box_finance
       responses:
         '200':
-          description: 可调用的已发布工具列表，可能为空
+          description: 该网络已挂载且当前账户可见的能力，可能为空
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SearchToolsResponse'
+                $ref: '#/components/schemas/SearchCapabilitiesResponse'
               examples:
                 有结果:
                   value:
-                    tools:
-                      - tool_id: tool_fx_convert
-                        toolbox_id: box_finance
-                        toolbox_name: 财务工具箱
+                    capabilities:
+                      - capability_type: skill
+                        capability_id: skill_fx_report
+                        name: 汇率月报
+                        description: 汇总当月各币种结算汇率并出报表
+                      - capability_type: function
+                        owner_id: box_finance
+                        capability_id: tool_fx_convert
+                        metadata_type: function
                         name: fx_convert
                         description: 按指定日期汇率换算金额
                         use_rule: 只用于已结算币种，未结算单据先调 settle_order
@@ -108,10 +138,10 @@ paths:
                                       type: string
                                     to:
                                       type: string
-                    total_matched: 1
+                    total_matched: 2
                 空结果:
                   value:
-                    tools: []
+                    capabilities: []
                     total_matched: 0
                     message: 没有匹配的已发布工具。请先在执行工厂注册工具、发布所属工具箱并启用工具，或放宽 query、去掉 toolbox_id 后重试。
             application/toon:
@@ -142,7 +172,7 @@ paths:
       description: |
         以调用者身份执行工具，返回工具的原始响应。
 
-        `toolbox_id` 与 `tool_id` 必须取自 `search_tools`；`arguments` 按其返回的
+        `toolbox_id` 与 `tool_id` 必须取自 `search_capabilities`（`owner_id` / `capability_id`）；`arguments` 按其返回的
         `input_schema` 填，只放业务参数——令牌、会话 id 等传输信息由平台携带，写进
         `arguments` 既不生效也会被记进调用参数。
 
@@ -246,7 +276,7 @@ components:
         type: string
 
   schemas:
-    SearchToolsRequest:
+    SearchCapabilitiesRequest:
       type: object
       required:
         - kn_id
@@ -256,38 +286,62 @@ components:
         kn_id:
           type: string
           description: |
-            知识网络 ID。工具范围取自该网络已挂载的 Function 绑定；未挂载任何函数时返回
-            空列表并给出提示。
+            知识网络 ID。范围取自该网络的能力绑定；未挂载任何能力时返回空列表并给出提示。
           example: supply_chain
         query:
           type: string
           description: |
-            可选。在该网络已挂载的工具内按名称与说明排序。留空则列出全部已挂载工具。
+            可选。在该网络已挂载的能力内按名称与说明排序。留空则按绑定顺序列出全部。
           example: 汇率
-        toolbox_id:
+        types:
+          type: array
+          description: |
+            可选。收窄到某几类能力，留空为全部。只在挂载集内收窄，越不出去。
+          items:
+            type: string
+            enum:
+              - skill
+              - function
+              - mcp_tool
+          example:
+            - skill
+        metadata_types:
+          type: array
+          description: |
+            可选。把 `function` 类再分开：`openapi` 是 API 工具，`function` 是函数。
+            留空为两者都要。与 `types` 是并且关系。
+          items:
+            type: string
+            enum:
+              - openapi
+              - function
+          example:
+            - openapi
+        owner_id:
           type: string
           description: |
-            可选。只在该工具箱已挂载到本网络的工具内检索，不会越出挂载范围。取自本接口
-            此前返回的 `toolbox_id`。
+            可选。只看某个来源：函数工具的工具箱、MCP 工具的 Server。Skill 没有来源，
+            传了这个就不会返回 Skill。取自本接口此前返回的 `owner_id`。
           example: box_finance
         limit:
           type: integer
           minimum: 1
           maximum: 100
           default: 20
-          description: 可选。最多返回多少个工具。每条命中都带入参 schema。
+          description: 可选。最多返回多少条。工具类命中都带入参 schema。
 
-    SearchToolsResponse:
+    SearchCapabilitiesResponse:
       type: object
       properties:
-        tools:
+        capabilities:
           type: array
-          description: 该知识网络已挂载、且当前账户可调用的函数工具。
+          description: |
+            该知识网络已挂载、且当前账户可见的能力，四类混排，顺序即相关度顺序。
           items:
-            $ref: '#/components/schemas/ToolEntry'
+            $ref: '#/components/schemas/CapabilityEntry'
         total_matched:
           type: integer
-          description: 匹配到的工具总数，可能大于 `tools` 长度。
+          description: 匹配到的能力总数，可能大于 `capabilities` 长度。
         truncated:
           type: boolean
           description: 为 true 表示命中数超过 `limit`，只返回了前若干条。
@@ -295,32 +349,50 @@ components:
           type: string
           description: 空结果或截断说明。
 
-    ToolEntry:
+    CapabilityEntry:
       type: object
       properties:
-        tool_id:
+        capability_type:
           type: string
-          description: 工具 ID，连同 `toolbox_id` 一起传给 `execute_tool`。
-        toolbox_id:
+          enum:
+            - skill
+            - function
+            - mcp_tool
+          description: |
+            这条是什么，决定怎么用它：`function` 与 `mcp_tool` 走 `execute_tool`，
+            `skill` 走 `get_skill_content` 读、`execute_skill` 执行。
+        owner_id:
           type: string
-          description: 所属工具箱 ID，`execute_tool` 必填。
-        toolbox_name:
+          description: |
+            来源：函数工具的工具箱 ID、MCP 工具的 Server ID。Skill 为空。调
+            `execute_tool` 时作为 `toolbox_id` 传回。
+        capability_id:
           type: string
-          description: 所属工具箱名称。
+          description: |
+            能力 ID。调 `execute_tool` 时作为 `tool_id` 传回；Skill 则是 `skill_id`。
+        metadata_type:
+          type: string
+          enum:
+            - openapi
+            - function
+          description: |
+            仅 `function` 类有：`openapi` 是 API 工具，`function` 是函数。产品面把这两者
+            分开展示，绑定里它们是同一类。
         name:
           type: string
-          description: 工具名。
+          description: 名称。
         description:
           type: string
-          description: 工具说明。
+          description: 说明。
         use_rule:
           type: string
-          description: 使用规则，注册者对调用时机与约束的说明。
+          description: 使用规则，注册者对调用时机与约束的说明。仅工具类有。
         input_schema:
           type: object
           description: |
             业务入参契约，取自工具 OpenAPI 规格的 `parameters` / `request_body` /
-            `components.schemas`，服务地址等传输信息已裁掉。
+            `components.schemas`，服务地址等传输信息已裁掉。仅工具类有——Skill 是读来
+            执行的，不按参数调用。
           additionalProperties: true
 
     ExecuteToolRequest:
@@ -336,17 +408,17 @@ components:
         kn_id:
           type: string
           description: |
-            知识网络 ID，须与 `search_tools` 所用一致。工具必须已挂载到该网络才可调用。
+            知识网络 ID，须与 `search_capabilities` 所用一致。工具必须已挂载到该网络才可调用。
           example: supply_chain
         toolbox_id:
           type: string
-          description: 工具箱 ID，取自 `search_tools`。
+          description: 工具箱 ID，取自 `search_capabilities` 的 `owner_id`。
           example: box_finance
         tool_id:
           type: string
-          description: 工具 ID，取自 `search_tools`。
+          description: 工具 ID，取自 `search_capabilities` 的 `capability_id`。
           example: tool_fx_convert
         arguments:
           type: object
-          description: 工具的业务入参，按 `search_tools` 返回的 `input_schema` 填写。
+          description: 工具的业务入参，按 `search_capabilities` 返回的 `input_schema` 填写。
           additionalProperties: true

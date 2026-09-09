@@ -36,7 +36,6 @@ func TestRestPublicHandler_RegistersSearchSchemaRoute(t *testing.T) {
 			KnQueryObjectInstanceHandler:   stubQueryObjectInstanceHandler{},
 			KnQuerySubgraphHandler:         stubQuerySubgraphHandler{},
 			KnSearchHandler:                stubKnSearchHandler{},
-			KnFindSkillsHandler:            stubKnFindSkillsHandler{},
 			KnQueryToolsHandler:            stubKnQueryToolsHandler{},
 			KnSkillsHandler:                stubKnSkillsHandler{},
 			KnToolsHandler:                 stubKnToolsHandler{},

@@ -8,7 +8,7 @@ info:
 
     与算子 / 工具的区别：算子和工具是**可调用的函数**，Skill 是**给 Agent 读的
     工作手册 + 随手册附带的可执行文件**。召回入口在 context-loader 的
-    `find_skills`，那边只返回最小元数据；真正的内容读取与下载在这里。
+    `search_capabilities`，那边只返回最小元数据；真正的内容读取与下载在这里。
 
     **三条读取路径，别用错**：
 
@@ -331,8 +331,8 @@ paths:
       operationId: deleteSkill
       description: |
         删除技能及其全部版本。已被 Agent 挂载的技能删除后装载会失败；
-        knowledge network 里的 `skills` 对象类记录也会随之失效
-        （context-loader 的 `find_skills` 依赖它）。
+        指向它的知识网络能力绑定会变成悬空引用——`search_capabilities` 列不出来，
+        `execute_skill` 也执行不了。
       parameters:
         - $ref: '#/components/parameters/SkillID'
       responses:
@@ -827,7 +827,7 @@ paths:
       summary: 创建技能索引构建任务
       operationId: createSkillIndexBuildTask
       description: |
-        重建技能的检索索引——`find_skills` 的语义召回依赖它。
+        重建技能的检索索引——`search_capabilities` 的语义召回依赖它。
 
         `execute_type` 决定范围：`full` 全量重建，`incremental` 只处理游标之后
         变更的技能。任务异步执行，用返回的 `task_id` 查进度。

@@ -8,19 +8,6 @@
     "output_schema.properties.columns.items.properties.type.description": "Physical column data type.",
     "output_schema.properties.columns.items.properties.description.description": "Human-readable column description."
   },
-  "find_skills": {
-    "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
-    "input_schema.properties.kn_id.description": "Required. Knowledge network id. Recall is scoped to the Skills this network has mounted.",
-    "input_schema.properties.object_type_id.description": "**Deprecated and ignored** since 0.1.5. Still required so the call signature stays stable; any value works, existing or not. A mount belongs to the network branch, not to one object type.",
-    "input_schema.properties.instance_identities.description": "**Deprecated and ignored** since 0.1.5. Still accepted.",
-    "input_schema.properties.skill_query.description": "Optional. Ranks the Skills this network has mounted. Leave it empty to list all of them in mount order.",
-    "input_schema.properties.top_k.description": "Maximum number of matched skills to return.",
-    "output_schema.properties.entries.description": "Matched skill entries.",
-    "output_schema.properties.entries.items.properties.skill_id.description": "Unique skill id.",
-    "output_schema.properties.entries.items.properties.name.description": "Skill display name.",
-    "output_schema.properties.entries.items.properties.description.description": "Skill description.",
-    "output_schema.properties.message.description": "Additional recall message or diagnostic note."
-  },
   "get_action_info": {
     "input_schema.properties.response_format.description": "Response format is ignored; this tool always returns JSON-compatible tool definitions.",
     "input_schema.properties.kn_id.description": "Knowledge network id. Can also be supplied by the X-Kn-ID request header.",
@@ -291,7 +278,7 @@
   },
   "execute_skill": {
     "input_schema.properties.kn_id.description": "Required. Knowledge network id. The Skill must be mounted on this network to be read or run: a skill_id outlives the call that produced it and can be had from list_skills, so the scope is checked here.",
-    "input_schema.properties.skill_id.description": "Skill id, taken from the skill_id of list_skills or find_skills.",
+    "input_schema.properties.skill_id.description": "Skill id, taken from the skill_id of list_skills or search_capabilities.",
     "input_schema.properties.entry_shell.description": "The entry command to run inside the sandbox. It has to be one of the entries declared in SKILL.md; do not assemble an unrelated command. The skill package is already extracted into the working directory and the command runs relative to it.",
     "input_schema.properties.timeout.description": "Optional. Execution timeout in seconds.",
     "output_schema.properties.exit_code.description": "Process exit code; 0 means success",
@@ -333,7 +320,7 @@
   "get_skill_content": {
     "input_schema.properties.kn_id.description": "Required. Knowledge network id. The Skill must be mounted on this network to be read or run: a skill_id outlives the call that produced it and can be had from list_skills, so the scope is checked here.",
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
-    "input_schema.properties.skill_id.description": "Skill id, taken from the skill_id of list_skills or find_skills.",
+    "input_schema.properties.skill_id.description": "Skill id, taken from the skill_id of list_skills or search_capabilities.",
     "output_schema.properties.status.description": "Skill status, such as published",
     "output_schema.properties.content.description": "The body of SKILL.md: how to use the skill and its entry commands",
     "output_schema.properties.truncated.description": "Whether the body was truncated for length",
@@ -384,7 +371,7 @@
   "read_skill_file": {
     "input_schema.properties.kn_id.description": "Required. Knowledge network id. The Skill must be mounted on this network to be read or run: a skill_id outlives the call that produced it and can be had from list_skills, so the scope is checked here.",
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
-    "input_schema.properties.skill_id.description": "Skill id, taken from the skill_id of list_skills or find_skills.",
+    "input_schema.properties.skill_id.description": "Skill id, taken from the skill_id of list_skills or search_capabilities.",
     "input_schema.properties.rel_path.description": "Path relative to the skill package root, taken from files[].rel_path of a get_skill_content response. A path outside the package is rejected, ../ included.",
     "output_schema.properties.content.description": "The file body. A binary file omits this field and returns only a message.",
     "output_schema.properties.truncated.description": "Whether the body was truncated for length",
@@ -418,29 +405,11 @@
     "output_schema.properties.object_types.items.properties.data_properties.description": "Data properties [{name, type, condition_operations}]; condition_operations decides whether the property can be filtered with match or knn.",
     "output_schema.properties.message.description": "A note from retrieval, present in two cases: (1) there was no hit, and this says why it is empty; (2) **there are results but the results themselves need explaining** — for example the deployment configured a relevance threshold that could not run because the reranker was unavailable, so the instances below are unfiltered recall. **Read this field even when nodes is non-empty**: it is what separates a filtered result from one that could not be filtered."
   },
-  "search_tools": {
-    "input_schema.properties.kn_id.description": "Required. Knowledge network id. The scope is the Function tools this network has mounted; a network that mounted none returns nothing.",
-    "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
-    "input_schema.properties.query.description": "Optional. Ranks the tools this network has mounted by name and description. Leave it empty to list every mounted tool.",
-    "input_schema.properties.toolbox_id.description": "Optional. Restricts the search to that toolbox's mounted tools; it can never reach outside what the network mounted.",
-    "input_schema.properties.limit.description": "Optional. Caps how many tools come back. Defaults to 20, maximum 100. Every hit carries its input schema, so a large limit costs a lot of context.",
-    "output_schema.properties.tools.description": "The Function tools this knowledge network mounted that this account can also call",
-    "output_schema.properties.tools.items.properties.tool_id.description": "Tool id, passed to execute_tool together with toolbox_id",
-    "output_schema.properties.tools.items.properties.toolbox_id.description": "Id of the owning toolbox, required by execute_tool",
-    "output_schema.properties.tools.items.properties.toolbox_name.description": "Owning toolbox name; may be empty.",
-    "output_schema.properties.tools.items.properties.name.description": "Tool name",
-    "output_schema.properties.tools.items.properties.description.description": "What the tool does",
-    "output_schema.properties.tools.items.properties.use_rule.description": "Use rule: what its author says about when and how to call it",
-    "output_schema.properties.tools.items.properties.input_schema.description": "The business input contract, with service topology trimmed out. Fill execute_tool's arguments from it",
-    "output_schema.properties.total_matched.description": "How many tools matched, which can exceed the length of tools",
-    "output_schema.properties.truncated.description": "True when more tools matched than limit allows and only the first ones were returned",
-    "output_schema.properties.message.description": "Explains an empty or truncated result"
-  },
   "execute_tool": {
-    "input_schema.properties.kn_id.description": "Required. Knowledge network id, the same one search_tools was called with. The tool must be mounted on that network to be callable here.",
-    "input_schema.properties.toolbox_id.description": "Toolbox id, taken from a search_tools result.",
-    "input_schema.properties.tool_id.description": "Tool id, taken from a search_tools result.",
-    "input_schema.properties.arguments.description": "The tool's business input, filled from the input_schema search_tools returned. Do not put credentials or session ids here; the platform carries those itself.",
+    "input_schema.properties.kn_id.description": "Required. Knowledge network id, the same one search_capabilities was called with. The tool must be mounted on that network to be callable here.",
+    "input_schema.properties.toolbox_id.description": "Toolbox id, taken from a search_capabilities result.",
+    "input_schema.properties.tool_id.description": "Tool id, taken from a search_capabilities result.",
+    "input_schema.properties.arguments.description": "The tool's business input, filled from the input_schema search_capabilities returned. Do not put credentials or session ids here; the platform carries those itself.",
     "output_schema.description": "The tool's raw response. A function that fails reports it in the body with HTTP 200, so read the body rather than trusting the call to have succeeded."
   },
   "search_capabilities": {

@@ -19,8 +19,8 @@ import (
 // TestListKNCapabilities_ReadsTheWholeListNotAPage pins the disable-paging parameter.
 //
 // bkn-backend defaults this endpoint to ten rows. A page of the bindings is not a scope: the
-// eleventh mounted tool would be missing from search_tools and refused by execute_tool as "not
-// mounted", and nothing in either answer would point at paging.
+// eleventh mounted tool would be missing from search_capabilities and refused by execute_tool as
+// "not mounted", and nothing in either answer would point at paging.
 func TestListKNCapabilities_ReadsTheWholeListNotAPage(t *testing.T) {
 	convey.Convey("读绑定列表时关闭分页", t, func() {
 		client, mockHTTP, ctrl := newMetricsTestClient(t)

@@ -132,12 +132,11 @@
     "ToolExecutionRequestFailed": "Unable to execute the published tool.",
     "ToolExecutionResponseInvalid": "The published tool response is invalid.",
     "ToolboxIDRequired": "toolbox_id is required.",
-    "ToolboxIDAndToolIDRequired": "toolbox_id and tool_id are required. Both come from a search_tools result.",
-    "ToolNotExecutable": "This tool is not in the enabled catalogue you can call: it may be disabled, its toolbox may be unpublished, or this account may not have access. Confirm a callable toolbox_id and tool_id with search_tools first.",
+    "ToolboxIDAndToolIDRequired": "toolbox_id and tool_id are required. Both come from a search_capabilities result (owner_id / capability_id).",
+    "ToolNotExecutable": "This tool is not in the enabled catalogue you can call: it may be disabled, its toolbox may be unpublished, or this account may not have access. Confirm a callable owner_id and capability_id with search_capabilities first.",
     "NoPublishedToolsMatched": "No published tools matched. Register a tool in Execution Factory, publish its toolbox and enable the tool, or broaden query and drop toolbox_id, then retry.",
     "NoBoundCapabilitiesInNetwork": "This knowledge network has no capability mounted. Mount a Skill, a Function tool or an MCP tool first, then retry.",
     "NoCapabilitiesOfRequestedKind": "The knowledge network has capabilities mounted, but none of the kinds named in types / metadata_types. Drop both to see everything it mounted.",
-    "NoToolsOfRequestedKind": "The knowledge network has tools mounted, but none of the kinds named in metadata_types. Drop metadata_types to see everything it mounted.",
     "ToolsMatchedButNotVisible": "Tools matched, but this caller cannot see them, so none were returned. This is a permission, not an unpublished tool.",
     "ToolSearchTruncated": "More tools matched than limit allows; only the first ones are returned. Narrow query or raise limit.",
     "LogicPropertyGenerationFailed": "Unable to generate dynamic parameters.",
@@ -155,9 +154,5 @@
     "SkillScopeKnIDRequired": "kn_id is required: a Skill can only be read or run through a knowledge network that mounted it.",
     "SkillNotMountedOnNetwork": "This Skill is not mounted on the knowledge network, so it cannot be read or run here. Mount it under SKILLs in the knowledge network first.",
     "SkillAuthorizationUnavailable": "Knowledge network authorization is not configured."
-  },
-  "find_skills": {
-    "no_bound_skills": "This knowledge network has no Skill mounted, so there is nothing to recall. Mount one under SKILLs in the knowledge network and try again.",
-    "skill_query_no_match": "None of the Skills mounted on this knowledge network match skill_query. Try relaxing or dropping skill_query."
   }
 }

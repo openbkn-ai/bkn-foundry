@@ -16,8 +16,8 @@
 | [instance-subgraph.yaml](instance-subgraph.yaml) | Instance-subgraph queries | `POST /kn/query_instance_subgraph` |
 | [logic-property.yaml](logic-property.yaml) | Logical-property evaluation and metric queries | `POST /kn/logic-property-resolver`, `POST /kn/query_metric` |
 | [action.yaml](action.yaml) | Action retrieval and execution | `POST /kn/get_action_info`, `POST /kn/execute_action`, `POST /kn/get_action_execution`, `POST /kn/list_action_executions` |
-| [skill.yaml](skill.yaml) | Skill retrieval and reading | `POST /kn/find_skills`, `POST /kn/list_skills`, `POST /kn/get_skill_content`, `POST /kn/read_skill_file`, `POST /kn/execute_skill` |
-| [tool.yaml](tool.yaml) | Published-tool retrieval and execution | `POST /kn/search_tools`, `POST /kn/execute_tool` |
+| [skill.yaml](skill.yaml) | Skill reading and execution | `POST /kn/list_skills`, `POST /kn/get_skill_content`, `POST /kn/read_skill_file`, `POST /kn/execute_skill` |
+| [tool.yaml](tool.yaml) | Mounted-capability retrieval and tool execution | `POST /kn/search_capabilities`, `POST /kn/execute_tool` |
 | [data-access.yaml](data-access.yaml) | Direct data access | `POST /kn/list_resources`, `POST /kn/describe_resource`, `POST /kn/run_sql` |
 | [mcp.yaml](mcp.yaml) | MCP service | `GET /mcp/info`, `POST /mcp` |
 
@@ -30,10 +30,9 @@ get_object_types         → inspect physical property columns, allowed operator
 query_object_instance    → retrieve instances and read the primary key from _instance_identity
   ├→ logic-property-resolver → evaluate metric or operator logical properties
   ├→ get_action_info → execute_action → get_action_execution → complete an action flow
-  ├→ find_skills            → retrieve loadable Skills
-  │    └→ get_skill_content → read_skill_file → execute_skill
-  └→ search_tools           → find published Function tools
-       └→ execute_tool      → run one as the calling principal
+  └→ search_capabilities    → rank every kind the network mounted in one space
+       ├→ capability_type=skill → get_skill_content → read_skill_file → execute_skill
+       └→ capability_type=function | mcp_tool → execute_tool → run one as the calling principal
 ```
 
 For modeled metrics, prefer the ontology contract rather than rebuilding the
@@ -90,8 +89,9 @@ a running environment:
 | `get_skill_content` | Requires the `skill_id` of a published Skill |
 | `read_skill_file` | Also requires an existing `rel_path` inside the Skill package |
 
-Among the 16 probed operations, `get_action_info`, `get_action_execution`, and
-`find_skills` require action types, execution records, or a `skills` object type
-in the environment. Without them, the report marks the operation as missing
-probe parameters or returns 404, so it remains unverified. `list_skills`
+Among the probed operations, `get_action_info` and `get_action_execution`
+require action types or execution records in the environment. Without them, the
+report marks the operation as missing probe parameters or returns 404, so it
+remains unverified. `search_capabilities` returns an empty list plus `message`
+when the network has mounted nothing. `list_skills`
 normally returns an empty list plus `message` when no Skill is published.

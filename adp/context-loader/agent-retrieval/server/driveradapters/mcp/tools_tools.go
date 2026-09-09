@@ -40,31 +40,6 @@ func handleSearchCapabilities(svc kntools.KnToolsService) func(ctx context.Conte
 	}
 }
 
-// handleSearchTools handles search_tools calls over the published Function catalogue.
-func handleSearchTools(svc kntools.KnToolsService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		format, err := GetResponseFormatFromRequest(req)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		searchReq := &kntools.SearchToolsReq{}
-		if err := bindArguments(req, searchReq); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		resp, err := svc.SearchTools(ctx, searchReq)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		result, err := BuildMCPToolResult(resp, format)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return result, nil
-	}
-}
-
 // handleExecuteTool runs one published Function tool.
 //
 // The managed Interaction on the request context travels to Execution Factory

@@ -6,7 +6,7 @@ package interfaces
 
 // ==================== Skill Browse / Read / Execute (Execution Factory) ====================.
 //
-// find_skills only returns skill_id + name + description. After getting it, there is no way to go: neither SKILL.md can be read,
+// search_capabilities only returns capability_id + name + description for a Skill. After getting it, there is no way to go: neither SKILL.md can be read,
 // Attached files cannot be listed, nor can scripts be executed. What is added here is the outbound contract of that link - the execution factory.
 // (operator-integration) internal-v1 skill interface.
 //

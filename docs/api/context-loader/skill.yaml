@@ -1,15 +1,16 @@
 ---
 openapi: 3.0.3
 info:
-  title: Skill 召回
+  title: Skill 读取与执行
   description: |
-    按业务上下文召回 Skill 候选。Agent 在运行时传入知识网络与对象类（可再加具体
-    实例），拿回一批相关 Skill 的最小元数据（`skill_id` / `name` / `description`），
-    再决定装载哪一个。
+    读取并执行知识网络已挂载的 Skill。**召回不在这里**：找 Skill 用
+    [tool.yaml](tool.yaml) 的 `search_capabilities`（`types: [skill]`），它把 Skill 与
+    工具放在同一个排序空间里，返回 `capability_id` / `name` / `description` 这样的最小
+    元数据。曾经的 `find_skills` 是它按类型钉死的窄入口，已随 #1401 删除。
 
-    召回只是入口。拿到 `skill_id` 之后：`get_skill_content` 读 SKILL.md 正文与包内
-    文件清单，`read_skill_file` 按 `rel_path` 单取附属文件（渐进式加载，大文件不必
-    常驻上下文），`execute_skill` 在沙箱内执行 SKILL.md 声明的入口命令。
+    拿到 `skill_id` 之后：`get_skill_content` 读 SKILL.md 正文与包内文件清单，
+    `read_skill_file` 按 `rel_path` 单取附属文件（渐进式加载，大文件不必常驻上下文），
+    `execute_skill` 在沙箱内执行 SKILL.md 声明的入口命令。
 
     **这三条都要求 `kn_id`，且 Skill 必须已挂载到该知识网络**（0.1.5 起）。收窄召回本身
     不构成管控——`skill_id` 会活过产生它的那次调用，也能从 `list_skills` 拿到，所以范围
@@ -19,13 +20,6 @@ info:
     见平台上有什么。它的结果是目录，不是权限——列出的 Skill 不一定能在某个知识网络里读取
     或执行。
 
-    召回范围就是知识网络显式挂载的 Skill（知识网络的「SKILLs」）。未挂载任何 Skill 的
-    网络召回结果为空，不存在「没配置就等于全网可见」的隐式回退。
-
-    > 0.1.5 起不再依赖网络内自建的 `skills` 对象类与关系路径。`object_type_id` 与
-    > `instance_identities` 仍然接受但不参与召回，也不再校验存在性——挂载归属于网络分支
-    > 而非某个对象类。
-
     **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` AppKey）。
   version: 0.1.5
 servers:
@@ -34,139 +28,6 @@ security:
   - OAuth2: []
   - AppKey: []
 paths:
-  /kn/find_skills:
-    post:
-      tags:
-        - Skill
-      summary: 按业务上下文召回 Skill
-      operationId: findSkills
-      x-contract-probe:
-        readonly: true
-        order: 3
-        body:
-          kn_id: '{cl_kn_id}'
-          object_type_id: '{cl_ot_id}'
-          top_k: 3
-      description: |
-        返回该知识网络已挂载的 Skill。
-
-        **带 `skill_query` 时**，挂载的 Skill ID 作为白名单前置下推到执行工厂的技能检索，
-        按相关性排序返回；**不带时**按挂载顺序列出——列举没有可排序的信号，挂载顺序至少
-        稳定且可解释。
-
-        执行工厂的技能索引是异步构建的，新装环境可能尚未建好；索引未覆盖到的挂载项会退回
-        注册表按 ID 取名，此时 `description` 可能缺失但条目不会消失。挂载记录还在、但目标
-        Skill 已从执行工厂删除的，不会出现在结果里。
-
-        `object_type_id` 与 `instance_identities` 仍在契约中但不参与召回，传任意值都不会
-        报错，也不再要求该对象类存在。
-
-        **空结果是 200 不是错误**：网络未挂载任何 Skill 时返回 `entries: []` 并带 `message`
-        指向挂载入口。
-      parameters:
-        - $ref: '#/components/parameters/AcceptLanguage'
-        - $ref: '#/components/parameters/ResponseFormat'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/FindSkillsRequest'
-            examples:
-              列出已挂载:
-                value:
-                  kn_id: kn_legal
-                  top_k: 10
-              带检索词:
-                value:
-                  kn_id: kn_legal
-                  skill_query: 合同审查
-                  top_k: 5
-              兼容旧调用方:
-                value:
-                  kn_id: kn_legal
-                  object_type_id: contract
-                  instance_identities:
-                    - contract_id: C-2024-001
-                  top_k: 10
-      responses:
-        '200':
-          description: Skill 候选列表，可能为空
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FindSkillsResponse'
-              examples:
-                有候选:
-                  value:
-                    entries:
-                      - skill_id: skill_contract_review
-                        name: 合同审查
-                        description: 对合同条款进行全面审查，识别风险点
-                      - skill_id: skill_clause_extract
-                        name: 关键条款提取
-                        description: 提取合同中的关键条款和义务
-                空结果:
-                  value:
-                    entries: []
-                    message: 当前知识网络未挂载任何 Skill，因此没有可召回的 Skill。请在知识网络的「SKILLs」中挂载后重试。
-            application/toon:
-              schema:
-                type: string
-        '400':
-          description: 参数错误：缺少 `kn_id`
-          headers:
-            Content-Language:
-              $ref: '#/components/headers/ContentLanguage'
-          content:
-            application/json:
-              schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
-              examples:
-                缺少kn_id:
-                  value:
-                    code: Public.BadRequest
-                    description: 参数错误
-                    details: kn_id is required
-                    solution: 请检查参数是否正确
-                    link: 无
-        '401':
-          description: 凭据缺失或无效
-          headers:
-            Content-Language:
-              $ref: '#/components/headers/ContentLanguage'
-          content:
-            application/json:
-              schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
-        '404':
-          description: 指定的知识网络不存在
-          headers:
-            Content-Language:
-              $ref: '#/components/headers/ContentLanguage'
-          content:
-            application/json:
-              schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
-        '502':
-          description: 上游服务不可用（BKN 或 ontology-query 异常）
-          headers:
-            Content-Language:
-              $ref: '#/components/headers/ContentLanguage'
-          content:
-            application/json:
-              schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
-        '500':
-          description: 服务内部错误
-          headers:
-            Content-Language:
-              $ref: '#/components/headers/ContentLanguage'
-          content:
-            application/json:
-              schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
-
   /kn/list_skills:
     post:
       tags:
@@ -179,8 +40,8 @@ paths:
         body:
           page_size: 3
       description: |
-        翻已发布 Skill 列表，不需要知识网络上下文。与 `find_skills` 互补：那条按对象类
-        / 实例召回，这条按名称或分类分页浏览。
+        翻已发布 Skill 列表，不需要知识网络上下文。与 `search_capabilities` 互补：那条在
+        某个网络已挂载的能力里按相关度召回，这条按名称或分类分页浏览整个平台目录。
 
         只返回**已发布**状态的 Skill；草稿态不出现在这里。
 
@@ -508,90 +369,6 @@ components:
         type: string
 
   schemas:
-    FindSkillsRequest:
-      type: object
-      required:
-        - bkn_context
-        - kn_id
-      properties:
-        bkn_context:
-          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
-        kn_id:
-          type: string
-          description: 知识网络 ID。召回范围是该网络已挂载的 Skill。
-          example: kn_legal
-        object_type_id:
-          type: string
-          description: |
-            **已废弃（0.1.5）**：仍然接受，但不参与召回，也不再校验存在性。挂载归属于
-            网络分支而非某个对象类。
-          deprecated: true
-          example: contract
-        instance_identities:
-          type: array
-          items:
-            type: object
-            additionalProperties:
-              oneOf:
-                - type: string
-                - type: number
-                - type: boolean
-          description: |
-            **已废弃（0.1.5）**：仍然接受，但不参与召回。
-          example:
-            - contract_id: C-2024-001
-        skill_query:
-          type: string
-          description: |
-            Skill 语义过滤词，对 `skills` 实例的 `name` / `description` 追加文本过滤。
-            检索方式按索引能力降级：向量索引用 `knn`，全文索引用 `match`，否则 `like`。
-          example: 合同审查
-        top_k:
-          type: integer
-          default: 10
-          minimum: 1
-          maximum: 20
-          description: 最多返回的 Skill 数量。
-
-    FindSkillsResponse:
-      type: object
-      required:
-        - entries
-      properties:
-        entries:
-          type: array
-          items:
-            $ref: '#/components/schemas/SkillItem'
-          description: |
-            Skill 候选列表。排序：先按命中层级（实例级优先于对象类级），再按相关性
-            分数降序；同优先级同分数时按 `skill_id` 字典序，保证顺序稳定。
-            无匹配时为空数组。
-        message:
-          type: string
-          description: |
-            空结果说明。仅当 `entries` 为空且返回 200 时出现，用于告诉调用方为什么
-            没有结果与下一步建议；`entries` 非空时不返回。文案随请求的 `Accept-Language`
-            头本地化。
-
-    SkillItem:
-      type: object
-      required:
-        - skill_id
-        - name
-      properties:
-        skill_id:
-          type: string
-          description: Skill 唯一标识，由 execution-factory 写入 `skills` 对象类时确定。
-          example: skill_contract_review
-        name:
-          type: string
-          description: Skill 名称。
-          example: 合同审查
-        description:
-          type: string
-          description: Skill 功能描述。BKN 中无该属性时不返回，也不影响召回。
-          example: 对合同条款进行全面审查，识别风险点
-
     ListSkillsRequest:
       type: object
       properties:
@@ -675,7 +452,7 @@ components:
         skill_id:
           type: string
           description: |
-            Skill ID。取自 `find_skills`（当前网络已挂载的）或 `list_skills`（平台目录，
+            Skill ID。取自 `search_capabilities`（当前网络已挂载的）或 `list_skills`（平台目录，
             未必已挂载到本网络）。
           example: skill_contract_review
 

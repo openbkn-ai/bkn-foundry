@@ -9,7 +9,6 @@ package mcp
 import (
 	"context"
 	"github.com/bytedance/sonic"
-	"github.com/creasty/defaults"
 	validator "github.com/go-playground/validator/v10"
 	"github.com/mark3labs/mcp-go/mcp"
 
@@ -735,58 +734,6 @@ func bindPreciseArguments(req mcp.CallToolRequest, target any) error {
 		return err
 	}
 	return common.UnmarshalPreciseJSON(data, target)
-}
-
-// handleFindSkills returns a tool handler for find_skills.
-func handleFindSkills(service interfaces.IFindSkillsService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		authCtx, ok := common.GetAccountAuthContextFromCtx(ctx)
-		if !ok {
-			return mcp.NewToolResultError("authentication required"), nil
-		}
-
-		knID := getStringArg(req, "kn_id", "")
-		if knID == "" {
-			knID = getKnIDFromHeader(req)
-		}
-		if knID == "" {
-			return mcp.NewToolResultError(
-				"kn_id is required (pass kn_id in body or configure X-Kn-ID header)",
-			), nil
-		}
-
-		format, err := GetResponseFormatFromRequest(req)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		findReq := &interfaces.FindSkillsReq{}
-		if err := bindArguments(req, findReq); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		findReq.AccountID = authCtx.AccountID
-		findReq.AccountType = string(authCtx.AccountType)
-		findReq.KnID = knID
-
-		if err := defaults.Set(findReq); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		if err := validator.New().Struct(findReq); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		resp, err := service.FindSkills(ctx, findReq)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		result, err := BuildMCPToolResult(resp, format)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return result, nil
-	}
 }
 
 // handleQueryMetric handles query_metric tool calls: compute one modelled metric

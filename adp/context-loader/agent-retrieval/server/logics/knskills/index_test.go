@@ -216,9 +216,9 @@ func TestExecuteSkillRequiresEntryShellAndTruncatesStreams(t *testing.T) {
 	}
 }
 
-// TestUnmountedSkillIsRefusedOnEveryEntry is the control this change exists for. find_skills
-// narrowing recall is not enough on its own: a skill_id outlives the call that produced it, and
-// list_skills hands out every id on the platform.
+// TestUnmountedSkillIsRefusedOnEveryEntry is the control this change exists for. Narrowing
+// recall is not enough on its own: a skill_id outlives the call that produced it, and list_skills
+// hands out every id on the platform.
 func TestUnmountedSkillIsRefusedOnEveryEntry(t *testing.T) {
 	newSvc := func() (KnSkillsService, *fakeOperator) {
 		op := &fakeOperator{

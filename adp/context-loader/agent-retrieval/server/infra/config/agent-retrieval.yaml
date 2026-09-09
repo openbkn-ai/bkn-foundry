@@ -70,8 +70,3 @@ mf_model_api:
   private_protocol: "http"
   private_host: "mf-model-api.openbkn"
   private_port: 9898
-find_skills:
-  default_top_k: 10
-  max_top_k: 20
-  recall_timeout_ms: 5000
-  total_timeout_ms: 10000

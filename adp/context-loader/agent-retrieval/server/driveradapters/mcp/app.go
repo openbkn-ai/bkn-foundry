@@ -22,7 +22,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	logicsKar "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knactionrecall"
-	logicsFs "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knfindskills"
 	logicsKlp "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knlogicpropertyresolver"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knmetrics"
 	logicsKqs "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knquerysubgraph"
@@ -49,7 +48,6 @@ const (
 	toolKeyExecuteAction            = "execute_action"
 	toolKeyGetActionExecution       = "get_action_execution"
 	toolKeyListActionExecutions     = "list_action_executions"
-	toolKeyFindSkills               = "find_skills"
 	toolKeyListKnowledgeNetworks    = "list_knowledge_networks"
 	toolKeyGetKnDetail              = "get_kn_detail"
 	toolKeyGetObjectTypes           = "get_object_types"
@@ -62,7 +60,6 @@ const (
 	toolKeyReadSkillFile            = "read_skill_file"
 	toolKeyExecuteSkill             = "execute_skill"
 	toolKeySearchCapabilities       = "search_capabilities"
-	toolKeySearchTools              = "search_tools"
 	toolKeyExecuteTool              = "execute_tool"
 	// Bounds the lifetime of mcp-go's in-memory session state.
 	mcpSessionIdleTTL = 30 * time.Minute
@@ -165,9 +162,6 @@ func newMCPServerForLocale(lifecycleClient *bkntrace.LifecycleClient, locale str
 	b.add(toolKeyGetActionExecution, handleGetActionExecution(getActionInfoService))
 	b.add(toolKeyListActionExecutions, handleListActionExecutions(getActionInfoService))
 
-	findSkillsService := logicsFs.NewFindSkillsService()
-	b.add(toolKeyFindSkills, handleFindSkills(findSkillsService))
-
 	metricsService := knmetrics.NewKnMetricsService()
 	b.add(toolKeyQueryMetric, handleQueryMetric(metricsService))
 
@@ -185,7 +179,7 @@ func newMCPServerForLocale(lifecycleClient *bkntrace.LifecycleClient, locale str
 	b.add(toolKeyListResources, handleListResources(resourcesService))
 	b.add(toolKeyDescribeResource, handleDescribeResource(resourcesService))
 
-	// The skill surface: find_skills returns only ID, name, and description; the
+	// The skill surface: search_capabilities returns only ID, name, and description; the
 	// following tools are used after a client has selected a skill.
 	skillsService := knskills.NewKnSkillsService()
 	b.add(toolKeyListSkills, handleListSkills(skillsService))
@@ -200,10 +194,9 @@ func newMCPServerForLocale(lifecycleClient *bkntrace.LifecycleClient, locale str
 	// model reads and runs; a published Function is a business operation someone
 	// registered and published, so discovery and execution are separate tools.
 	toolsService := kntools.NewKnToolsService()
-	// One entry over every kind the network mounted. The two narrow tools below are this call
-	// with types pinned; they stay until callers have moved (#1388).
+	// One entry over every kind the network mounted. find_skills and search_tools were this call
+	// with types pinned and were removed once callers moved (#1401).
 	b.add(toolKeySearchCapabilities, handleSearchCapabilities(toolsService))
-	b.add(toolKeySearchTools, handleSearchTools(toolsService))
 	b.add(toolKeyExecuteTool, handleExecuteTool(toolsService))
 
 	// The lifecycle tools are registered straight onto the server by the tracing

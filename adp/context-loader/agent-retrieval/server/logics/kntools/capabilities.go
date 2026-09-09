@@ -16,13 +16,13 @@ import (
 // search_capabilities asks one question over everything a knowledge network mounted: what can do
 // this? (#1388)
 //
-// find_skills and search_tools each answer for their own kind, so an agent asking about currency
-// conversion through search_tools never sees the Skill that does it. The index and the ranking
-// have been shared since #1370 — the split survived only in the entry points, and it put the
-// burden of merging two incomparable answers back on the agent.
+// find_skills and search_tools each answered for their own kind, so an agent asking about
+// currency conversion through search_tools never saw the Skill that did it. The index and the
+// ranking have been shared since #1370 — the split survived only in the entry points, and it put
+// the burden of merging two incomparable answers back on the agent.
 //
-// The two narrow tools remain and still work. They are this call with types pinned, which is why
-// they cost nothing to keep during the migration and nothing to delete after it.
+// Both were this call with types pinned, by delegation rather than resemblance, and were removed
+// once their callers moved (#1401).
 
 // SearchCapabilitiesReq is the input for search_capabilities.
 type SearchCapabilitiesReq struct {
@@ -39,12 +39,7 @@ type SearchCapabilitiesReq struct {
 	// OwnerID narrows to one owner: a tool box for Function tools, a server for MCP tools. Like
 	// every other filter here it narrows within the mounted set and can never reach outside it.
 	OwnerID string `json:"owner_id,omitempty"`
-	// kindsAreIntrinsic marks Types as belonging to the entry point rather than to the caller.
-	// search_tools always pins them, so a caller that asked for nothing would otherwise be told
-	// its result was empty because of a filter it never set and cannot unset. Unexported: an
-	// entry point declares this, a request body cannot.
-	kindsAreIntrinsic bool
-	Limit             int `json:"limit"` // Optional. Caps returned capabilities, default 20, max 100.
+	Limit   int    `json:"limit"` // Optional. Caps returned capabilities, default 20, max 100.
 }
 
 // CapabilityEntry is one mounted capability, whatever kind it is.
@@ -92,10 +87,8 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 	}
 
 	// The kinds are applied to the whitelist here as well as sent downstream. Sending them alone
-	// would make the scope depend on the ranking honouring a filter — and search_tools maps every
-	// hit into a tool, so a Skill that slipped through would come back as a ToolEntry with an
-	// empty toolbox_id. Before the two entry points shared a binding reader, this was excluded
-	// locally; keep it that way.
+	// would make the scope depend on the ranking honouring a filter, which is not a scope at all:
+	// a kind the caller excluded would come back on any hit the ranking let through.
 	searchRefs, err := s.allBoundRefs(ctx, strings.TrimSpace(req.KnID),
 		strings.TrimSpace(req.OwnerID), normalizeKinds(req.Types))
 	if err != nil {
@@ -112,15 +105,24 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 	// answer at top_k, so asking for exactly `limit` makes a full page and a truncated page look
 	// identical — the truncation flag could never fire, and a caller would read one page as the
 	// whole answer.
+	query := strings.TrimSpace(req.Query)
 	hits, err := s.operator.SearchCapabilities(ctx, &interfaces.SearchCapabilitiesRequest{
-		Query:         strings.TrimSpace(req.Query),
+		Query:         query,
 		Refs:          searchRefs,
 		TopK:          limit + 1,
 		Types:         normalizeKinds(req.Types),
 		MetadataTypes: normalizeKinds(req.MetadataTypes),
 	})
 	if err != nil {
-		return nil, err
+		// Ranking has nothing to fall back to, so a query still surfaces the error. An unfiltered
+		// listing does not need the index at all: the bindings already say what is mounted and the
+		// catalogue can name it. A fresh install has no index yet (#1323), and refusing to list a
+		// network's own capabilities because of that is a wrong answer, not a degraded one.
+		if query != "" {
+			return nil, err
+		}
+		s.warnf(ctx, "[SearchCapabilities] capability search failed, listing from the bindings: %v", err)
+		hits = s.listingHits(ctx, searchRefs, limit+1)
 	}
 
 	more := len(hits) > limit
@@ -139,14 +141,11 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 	switch {
 	case len(entries) == 0 && total > 0:
 		resp.Message = infraErr.LocalizedDetail(ctx, "ToolsMatchedButNotVisible")
-	case len(entries) == 0 && !req.kindsAreIntrinsic && len(req.Types) > 0:
-		// Both filters are the caller's, so both can be named.
+	// Both filters are the caller's now that no entry point pins kinds of its own, so the message
+	// may name either without telling anyone to drop a parameter they cannot set.
+	case len(entries) == 0 && len(req.Types) > 0,
+		len(entries) == 0 && len(req.MetadataTypes) > 0:
 		resp.Message = infraErr.LocalizedDetail(ctx, "NoCapabilitiesOfRequestedKind")
-	case len(entries) == 0 && len(req.MetadataTypes) > 0:
-		// Only the tool box kind was the caller's. Naming types here would repeat the original
-		// mistake one level down: search_tools sets types itself and exposes no input for it, so
-		// "drop these two parameters" is advice half of which cannot be followed.
-		resp.Message = infraErr.LocalizedDetail(ctx, "NoToolsOfRequestedKind")
 	case len(entries) == 0:
 		resp.Message = infraErr.LocalizedDetail(ctx, "NoPublishedToolsMatched")
 	case more:
@@ -282,9 +281,9 @@ func (s *knToolsService) describeCapabilities(ctx context.Context,
 		}
 		described, ok := byRef[hit.OwnerID+"/"+hit.CapabilityID]
 		if !ok {
-			// The tool was dropped by the visibility rule. Skipping it here keeps this endpoint's
-			// scope identical to search_tools': listing it would advertise something execute_tool
-			// refuses.
+			// The tool was dropped by the visibility rule. Skipping it keeps this endpoint's answer
+			// to what execute_tool will accept: listing it would advertise a call that gets
+			// refused.
 			continue
 		}
 		if described.Name != "" {
@@ -296,6 +295,56 @@ func (s *knToolsService) describeCapabilities(ctx context.Context,
 		entries = append(entries, entry)
 	}
 	return entries
+}
+
+// listingHits answers an unfiltered listing without the index, in binding order.
+//
+// Binding order is not a ranking, but with no query there is nothing to rank against, and it is
+// the order the network declared: stable and explainable, unlike whatever a half-built index
+// happens to hold. Tool names are left empty because describeCapabilities fills them from the
+// catalogue; Skills are named here, since nothing downstream looks them up.
+//
+// A Skill the registry cannot name is dropped rather than listed. The binding survives deletion in
+// the execution factory, so listing it would send the caller after something that cannot run.
+func (s *knToolsService) listingHits(ctx context.Context, refs []interfaces.SearchCapabilityRef,
+	limit int) []interfaces.CapabilityHit {
+	if len(refs) > limit {
+		refs = refs[:limit]
+	}
+	skillIDs := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		if ref.CapabilityType == interfaces.CapabilityTypeSkill {
+			skillIDs = append(skillIDs, ref.CapabilityID)
+		}
+	}
+	var names map[string]string
+	if len(skillIDs) > 0 {
+		resolved, err := s.operator.GetSkillNamesByIDs(ctx, skillIDs)
+		if err != nil {
+			// The names are decoration; the memberships are not. Without them no Skill can be
+			// told apart from a dead binding, so the listing keeps the tools and drops the rest.
+			s.warnf(ctx, "[SearchCapabilities] skill name lookup failed for %d skills: %v",
+				len(skillIDs), err)
+		} else {
+			names = resolved
+		}
+	}
+
+	hits := make([]interfaces.CapabilityHit, 0, len(refs))
+	for _, ref := range refs {
+		hit := interfaces.CapabilityHit{SearchCapabilityRef: ref}
+		if ref.CapabilityType == interfaces.CapabilityTypeSkill {
+			name, ok := names[ref.CapabilityID]
+			if !ok {
+				s.warnf(ctx, "[SearchCapabilities] bound skill %s is unknown to the execution factory",
+					ref.CapabilityID)
+				continue
+			}
+			hit.Name = name
+		}
+		hits = append(hits, hit)
+	}
+	return hits
 }
 
 // normalizeKinds trims, drops blanks and de-duplicates.

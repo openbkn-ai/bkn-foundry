@@ -2,6 +2,7 @@ package kntools
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -116,26 +117,98 @@ func TestSearchCapabilitiesRequiresKnID(t *testing.T) {
 	}
 }
 
-// TestSkillsExcludedLocallyNotJustDownstream keeps the tool surface from depending on the ranking
+// TestKindFilterNarrowsTheWhitelistNotJustTheRanking keeps the scope from depending on the ranking
 // to honour a filter.
 //
-// search_tools maps every hit into a ToolEntry, so a Skill that slipped through would surface as a
-// tool with an empty toolbox_id — something execute_tool cannot act on. Before the two entry points
-// shared a binding reader this was excluded locally; sending types downstream is not a substitute.
-func TestSkillsExcludedLocallyNotJustDownstream(t *testing.T) {
+// A kind the caller excluded must never leave this service in the whitelist. Sending types
+// downstream is not a substitute: it makes the scope conditional on the index reading a field,
+// and a Skill that slipped through would come back where the caller asked for tools only.
+func TestKindFilterNarrowsTheWhitelistNotJustTheRanking(t *testing.T) {
 	op := &fakeOperator{}
 	bkn := &fakeBkn{refs: append(functionRefs("box-1/t1"), skillRefs("s-1")...)}
 	svc := NewKnToolsServiceWith(op, bkn, &fakeKnAuthz{})
 
-	if _, err := svc.SearchTools(context.Background(), &SearchToolsReq{KnID: "kn1", Query: "汇率"}); err != nil {
+	if _, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{
+		KnID: "kn1", Query: "汇率",
+		Types: []string{interfaces.CapabilityTypeFunction, interfaces.CapabilityTypeMCPTool},
+	}); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 	for _, ref := range op.gotRefs {
 		if strings.HasPrefix(ref, "skill") || ref == "/s-1" {
-			t.Fatalf("Skill 不该进 search_tools 的白名单: %v", op.gotRefs)
+			t.Fatalf("排除掉的类型不该进白名单: %v", op.gotRefs)
 		}
 	}
 	if len(op.gotRefs) != 1 {
 		t.Fatalf("白名单该只剩那个函数工具, got %v", op.gotRefs)
+	}
+}
+
+// TestListingSurvivesAnUnreachableIndex keeps the degradation find_skills had, which this endpoint
+// inherited when find_skills was deleted (#1401): with no query there is nothing to rank, so an
+// index that is down, behind, or not built yet (#1323) must not stop a network from listing what
+// it mounted.
+func TestListingSurvivesAnUnreachableIndex(t *testing.T) {
+	op := &fakeOperator{
+		hitsErr: errors.New("dataset resource has no available local index"),
+		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{
+			"box-1": tools("box-1", "t1"),
+		},
+		skillNames: map[string]string{"s-fx": "汇率换算"},
+	}
+	bkn := &fakeBkn{refs: append(functionRefs("box-1/t1"), skillRefs("s-fx")...)}
+	svc := NewKnToolsServiceWith(op, bkn, &fakeKnAuthz{})
+
+	resp, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1"})
+	if err != nil {
+		t.Fatalf("列表不该因索引不可用而失败, got %v", err)
+	}
+	if len(resp.Capabilities) != 2 {
+		t.Fatalf("挂载的两个都该列出, got %+v", resp.Capabilities)
+	}
+	// Binding order, not index order: with no query there is nothing else to order by.
+	if resp.Capabilities[0].CapabilityType != interfaces.CapabilityTypeFunction ||
+		resp.Capabilities[1].CapabilityType != interfaces.CapabilityTypeSkill {
+		t.Fatalf("该按绑定顺序返回, got %+v", resp.Capabilities)
+	}
+	// The Skill carries no schema of its own, so a name from the registry is the whole answer —
+	// an unnamed entry would be indistinguishable from a dead binding.
+	if resp.Capabilities[1].Name != "汇率换算" {
+		t.Fatalf("技能名该从注册表补上, got %q", resp.Capabilities[1].Name)
+	}
+}
+
+// TestRankingStillFailsWhenTheIndexIsDown guards the other half: a query is a ranking request, and
+// there is nothing to degrade to. Answering it from the bindings would return the mounted set in
+// declaration order and call it a search result.
+func TestRankingStillFailsWhenTheIndexIsDown(t *testing.T) {
+	op := &fakeOperator{hitsErr: errors.New("dataset resource has no available local index")}
+	bkn := &fakeBkn{refs: skillRefs("s-fx")}
+	svc := NewKnToolsServiceWith(op, bkn, &fakeKnAuthz{})
+
+	if _, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{
+		KnID: "kn1", Query: "汇率",
+	}); err == nil {
+		t.Fatal("带 query 时索引不可用必须报错,不能悄悄退化成列表")
+	}
+}
+
+// TestListingDropsSkillsTheRegistryDoesNotKnow covers the binding that outlived its Skill. The
+// mount survives deletion in the execution factory, and listing it would send the caller to
+// get_skill_content for something that is gone.
+func TestListingDropsSkillsTheRegistryDoesNotKnow(t *testing.T) {
+	op := &fakeOperator{
+		hitsErr:    errors.New("index down"),
+		skillNames: map[string]string{"s-alive": "在的技能"},
+	}
+	bkn := &fakeBkn{refs: skillRefs("s-alive", "s-deleted")}
+	svc := NewKnToolsServiceWith(op, bkn, &fakeKnAuthz{})
+
+	resp, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1"})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.Capabilities) != 1 || resp.Capabilities[0].CapabilityID != "s-alive" {
+		t.Fatalf("注册表不认识的技能该被丢掉, got %+v", resp.Capabilities)
 	}
 }
