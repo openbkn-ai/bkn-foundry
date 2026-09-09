@@ -5,6 +5,7 @@
 package seed
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -60,6 +61,13 @@ func TestApplySeedsRolesCatalogGrants(t *testing.T) {
 		if r.Name != name {
 			t.Errorf("role %s name = %q, want %q", id, r.Name, name)
 		}
+	}
+	var networkBuilder model.Role
+	if err := db.First(&networkBuilder, "id = ?", "1572fb82-526f-11f0-bde6-e674ec8dde71").Error; err != nil {
+		t.Fatal(err)
+	}
+	if networkBuilder.Description != "负责数据、知识和执行工厂资产的业务网络构建者。" {
+		t.Errorf("network_builder description = %q", networkBuilder.Description)
 	}
 
 	// agent and Studio admin resource types + their operations seeded.
@@ -509,9 +517,7 @@ func TestKnowledgeNetworkDeclaresExecuteOperation(t *testing.T) {
 	}
 }
 
-// network_builder has type-wide create only. Every operation on an existing KN
-// comes from a concrete instance grant written by the owning service.
-func TestNetworkBuilderOnlyCreatesKnowledgeNetworksTypeWide(t *testing.T) {
+func TestNetworkBuilderManagesKnowledgeNetworksTypeWide(t *testing.T) {
 	db := newDB(t)
 	e, err := authz.New(db)
 	if err != nil {
@@ -528,47 +534,18 @@ func TestNetworkBuilderOnlyCreatesKnowledgeNetworksTypeWide(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if ok, err := e.Check(builder, "knowledge_network", network, "create"); err != nil {
-		t.Fatal(err)
-	} else if !ok {
-		t.Error("network_builder must retain type-wide knowledge_network/create")
-	}
-	for _, op := range []string{"view_detail", "modify", "delete", "query_data", "authorize", "task_manage"} {
+	for _, op := range []string{"view_detail", "create", "modify", "delete", "query_data", "authorize", "task_manage", "execute"} {
 		ok, err := e.Check(builder, "knowledge_network", network, op)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if ok {
-			t.Errorf("network_builder must not hold type-wide knowledge_network/%s", op)
-		}
-	}
-
-	// The creator's own grant is untouched: existing-network authority comes
-	// from this instance-level path.
-	const creator = "u-creator"
-	for _, op := range []string{"view_detail", "modify", "delete", "query_data", "authorize", "task_manage"} {
-		if err := e.GrantObjectPermission(creator, "knowledge_network", network, op); err != nil {
-			t.Fatal(err)
-		}
-		if ok, err := e.Check(creator, "knowledge_network", network, op); err != nil {
-			t.Fatal(err)
-		} else if !ok {
-			t.Errorf("creator's object-level knowledge_network/%s grant must be effective", op)
+		if !ok {
+			t.Errorf("network_builder lost type-wide knowledge_network/%s", op)
 		}
 	}
 }
 
-// The same rule as knowledge networks, arrived at the same way: a type-wide
-// `authorize` on catalog let every network_builder hand out a catalog somebody
-// else created, because casbin's keyMatch makes `catalog:*` match every id.
-// Observed on a live deployment — an account whose only role is network_builder
-// saw the share control on catalogs created by the administrator, and the write
-// behind it succeeded.
-//
-// The creator is unaffected: vega writes COMMON_OPERATIONS, `authorize`
-// included, as a `catalog:<id>` object grant at create time, and the owner
-// surface reads exactly that.
-func TestNetworkBuilderCannotShareCatalogsItDidNotCreate(t *testing.T) {
+func TestNetworkBuilderManagesCatalogsTypeWide(t *testing.T) {
 	db := newDB(t)
 	e, err := authz.New(db)
 	if err != nil {
@@ -585,30 +562,44 @@ func TestNetworkBuilderCannotShareCatalogsItDidNotCreate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if ok, err := e.Check(builder, "catalog", catalog, "authorize"); err != nil {
-		t.Fatal(err)
-	} else if ok {
-		t.Error("network_builder must not hold type-wide authorize on catalogs")
-	}
-
-	// Everything else the role needs to run the business plane stays.
-	for _, op := range []string{"view_detail", "create", "modify", "delete", "task_manage", "resource_manage", "query_data"} {
+	for _, op := range []string{"view_detail", "create", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data"} {
 		ok, err := e.Check(builder, "catalog", catalog, op)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !ok {
-			t.Errorf("network_builder lost %q on catalog", op)
+			t.Errorf("network_builder lost type-wide catalog/%s", op)
 		}
 	}
+}
 
-	// A catalog the builder created carries the grant on the instance instead.
-	if err := e.GrantObjectPermission(builder, "catalog", "cat-mine", "authorize"); err != nil {
+func TestNetworkBuilderPermissionMatrixMatchesBusinessBuilderRole(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if ok, err := e.Check(builder, "catalog", "cat-mine", "authorize"); err != nil {
+	if err := Apply(db, e); err != nil {
 		t.Fatal(err)
-	} else if !ok {
-		t.Error("the creator's own object grant must still authorize sharing")
+	}
+
+	grants, err := e.RolePermissions("1572fb82-526f-11f0-bde6-e674ec8dde71")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make(map[string][]string, len(grants))
+	for _, grant := range grants {
+		got[grant.Object] = grant.Operations
+	}
+	want := map[string][]string{
+		"catalog:*":           {"view_detail", "create", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data"},
+		"knowledge_network:*": {"view_detail", "create", "modify", "delete", "query_data", "authorize", "task_manage", "execute"},
+		"operator:*":          {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},
+		"tool_box:*":          {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},
+		"skill:*":             {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},
+		"mcp:*":               {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("network_builder grants = %#v, want %#v", got, want)
 	}
 }
