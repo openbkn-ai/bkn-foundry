@@ -282,3 +282,40 @@ func TestMetadataFilterIsNotSilentlyDropped(t *testing.T) {
 		t.Fatal("索引不可用时 metadata_types 无从判定，必须报错而不是当没传")
 	}
 }
+
+// TestListingAsksTheIndexAboutThePageItReturns catches a mismatch that only shows up under a
+// small limit.
+//
+// A listing pages the mounted set in binding order, but the ranking pages by relevance. Asking it
+// for `limit` hits and then keeping the first `limit` bindings selects two different subsets, so
+// most of the returned page has no index entry to describe it and comes back unnamed — and how
+// much of it is named depends on limit, which is how this got past a large-limit check.
+func TestListingAsksTheIndexAboutThePageItReturns(t *testing.T) {
+	op := &fakeOperator{
+		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{
+			"box-1": tools("box-1", "t1", "t2", "t3", "t4", "t5"),
+		},
+	}
+	bkn := &fakeBkn{refs: functionRefs("box-1/t1", "box-1/t2", "box-1/t3", "box-1/t4", "box-1/t5")}
+	svc := NewKnToolsServiceWith(op, bkn, &fakeKnAuthz{})
+
+	resp, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{
+		KnID: "kn1", Limit: 2,
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	// The page plus the one extra used to detect a next page — nothing wider.
+	want := []string{"box-1/t1", "box-1/t2", "box-1/t3"}
+	if len(op.gotRefs) != len(want) {
+		t.Fatalf("索引该只被问这一页, want %v got %v", want, op.gotRefs)
+	}
+	for i := range want {
+		if op.gotRefs[i] != want[i] {
+			t.Fatalf("问索引的正是要返回的那一页, want %v got %v", want, op.gotRefs)
+		}
+	}
+	if len(resp.Capabilities) != 2 || !resp.Truncated {
+		t.Fatalf("该返回一页并报截断, got %d truncated=%v", len(resp.Capabilities), resp.Truncated)
+	}
+}

@@ -113,10 +113,22 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 	metadataTypes := normalizeKinds(req.MetadataTypes)
 	listing := query == "" && len(metadataTypes) == 0
 
+	// A listing pages the mounted set itself and then asks the ranking to describe exactly that
+	// page. Asking the ranking for a page instead returns the top `limit` for an empty query,
+	// which is a different subset from the first `limit` bindings — the page would come back
+	// mostly undescribed, and how much of it was described would depend on `limit`.
+	askRefs, askTopK := searchRefs, limit+1
+	if listing {
+		if len(askRefs) > limit+1 {
+			askRefs = askRefs[:limit+1]
+		}
+		askTopK = len(askRefs)
+	}
+
 	hits, err := s.operator.SearchCapabilities(ctx, &interfaces.SearchCapabilitiesRequest{
 		Query:         query,
-		Refs:          searchRefs,
-		TopK:          limit + 1,
+		Refs:          askRefs,
+		TopK:          askTopK,
 		Types:         normalizeKinds(req.Types),
 		MetadataTypes: metadataTypes,
 	})
@@ -130,7 +142,7 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 		hits = nil
 	}
 	if listing {
-		hits = s.listingHits(ctx, searchRefs, hits, limit+1)
+		hits = s.listingHits(ctx, askRefs, hits, limit+1)
 	}
 
 	more := len(hits) > limit
