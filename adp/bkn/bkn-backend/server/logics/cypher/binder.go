@@ -23,6 +23,11 @@ type Schema struct {
 	KNID   string
 	Branch string
 
+	// hadObjectTypes records whether the network held any object type before
+	// the caller's visibility was applied, which is what separates "you may
+	// read nothing here" from "there is nothing here".
+	hadObjectTypes bool
+
 	objectTypesByID   map[string]*interfaces.ObjectType
 	objectTypesByName map[string]*interfaces.ObjectType
 
@@ -54,6 +59,7 @@ func LoadSchema(ctx context.Context, kn KNSchemaSource, visibility Visibility, k
 	if err != nil {
 		return nil, err
 	}
+	hadObjectTypes := len(objectTypes) > 0
 	objectTypes, relationTypes, err = applyVisibility(ctx, visibility, knID, objectTypes, relationTypes)
 	if err != nil {
 		return nil, err
@@ -62,6 +68,7 @@ func LoadSchema(ctx context.Context, kn KNSchemaSource, visibility Visibility, k
 	s := &Schema{
 		KNID:                knID,
 		Branch:              branch,
+		hadObjectTypes:      hadObjectTypes,
 		objectTypesByID:     make(map[string]*interfaces.ObjectType, len(objectTypes)),
 		objectTypesByName:   make(map[string]*interfaces.ObjectType, len(objectTypes)),
 		relationTypesByID:   make(map[string]*interfaces.RelationType, len(relationTypes)),
@@ -132,10 +139,13 @@ type KNSchemaSource interface {
 	AllRelationTypes(ctx context.Context, knID, branch string) ([]*interfaces.RelationType, error)
 }
 
-// Empty reports a schema with no readable object type, which means the caller
-// may read nothing in this knowledge network rather than that the network is
-// empty.
-func (s *Schema) Empty() bool { return len(s.objectTypesByID) == 0 }
+// NothingReadable reports a network that holds object types of which the
+// caller may read none. An empty network is not that case: there every label
+// really is unknown, and saying so is both true and more useful than a
+// refusal.
+func (s *Schema) NothingReadable() bool {
+	return s.hadObjectTypes && len(s.objectTypesByID) == 0
+}
 
 // ResolveLabel maps a Cypher label to an object type.
 //
@@ -239,12 +249,17 @@ func dataPropertyNames(ot *interfaces.ObjectType) []string {
 	return names
 }
 
+// suggestObjectTypes offers both ids and names, because a label may be written
+// either way and the near miss is as likely to be on one as on the other.
 func (s *Schema) suggestObjectTypes(label string) string {
-	names := make([]string, 0, len(s.objectTypesByID))
-	for id := range s.objectTypesByID {
-		names = append(names, id)
+	candidates := make([]string, 0, 2*len(s.objectTypesByID))
+	for id, ot := range s.objectTypesByID {
+		candidates = append(candidates, id)
+		if ot.OTName != "" && ot.OTName != id {
+			candidates = append(candidates, ot.OTName)
+		}
 	}
-	return suggest(label, names)
+	return suggest(label, candidates)
 }
 
 // suggest offers near matches so a typo does not read as a modelling gap. It

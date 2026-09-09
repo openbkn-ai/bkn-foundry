@@ -38,6 +38,11 @@ type GenerateOptions struct {
 	// DefaultLimit caps a query that did not ask for a limit. Without it a
 	// pattern over two large resources would stream an unbounded result
 	// through the whole path.
+	//
+	// It also keeps ORDER BY meaningful: vega-backend runs this statement
+	// inside a derived table, and MySQL is free to drop the ordering of one
+	// that has no LIMIT. Removing the default would therefore cost sorted
+	// results, not just a row cap.
 	DefaultLimit int64
 }
 

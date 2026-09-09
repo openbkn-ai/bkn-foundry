@@ -312,6 +312,10 @@ func analyzePropertyRef(ctx parsing.IOC_ExpressionContext) (*PropertyRef, error)
 		return nil, err
 	}
 	if value.property == nil {
+		if value.literal == nil {
+			return nil, unsupportedf(ctx, "an expression here",
+				"only variable.property references are supported")
+		}
 		return nil, unsupportedf(ctx, "an expression here",
 			"only variable.property references are supported, got %s", value.literal.describe())
 	}

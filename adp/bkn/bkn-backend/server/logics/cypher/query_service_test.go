@@ -161,6 +161,23 @@ func TestQueryAuthorizesEachObjectType(t *testing.T) {
 	}
 }
 
+// An empty knowledge network is not a refusal: there the label really is
+// unknown, and saying so is both true and more useful.
+func TestQueryOnEmptyNetworkReportsAnUnknownLabel(t *testing.T) {
+	service := testService(t, &recordingVega{}, &stubPermission{})
+	service.schema = &fakeSchemaSource{}
+
+	_, err := service.Query(context.Background(), interfaces.CypherQuery{
+		KNID: "kn_1", Query: "MATCH (o:Order) RETURN o.id",
+	})
+	if got := statusOf(t, err); got != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", got)
+	}
+	if !strings.Contains(err.Error(), "unknown label") {
+		t.Fatalf("error = %v, want it to read as an unknown label", err)
+	}
+}
+
 // A caller who may read nothing in the network is told so, rather than being
 // told that every label they name does not exist.
 func TestQueryRefusesWhenNothingIsReadable(t *testing.T) {

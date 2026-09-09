@@ -138,10 +138,10 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 	if err != nil {
 		return "", 0, err
 	}
-	if schema.Empty() {
-		// Nothing in this network is readable by this caller. Saying so is
-		// better than reporting every label as unknown, and reveals nothing:
-		// they already knew which network they asked about.
+	if schema.NothingReadable() {
+		// The network holds concepts and this caller may read none of them.
+		// Saying so is better than reporting every label as unknown, and
+		// reveals nothing: they already knew which network they asked about.
 		return "", 0, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
 	}
 
