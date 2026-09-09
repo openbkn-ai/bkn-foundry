@@ -160,11 +160,14 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 		return "", 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
 	}
 
-	rowLimit := int64(interfaces.CYPHER_DEFAULT_LIMIT)
-	if plan.Limit != nil {
-		rowLimit = *plan.Limit
+	// The page asked of vega-backend is bounded here rather than inferred from
+	// the check above, so the conversion to int cannot depend on a limit that
+	// was validated several stages earlier.
+	rowLimit := interfaces.CYPHER_DEFAULT_LIMIT
+	if plan.Limit != nil && *plan.Limit > 0 && *plan.Limit <= interfaces.CYPHER_MAX_LIMIT {
+		rowLimit = int(*plan.Limit)
 	}
-	return sql, int(rowLimit), nil
+	return sql, rowLimit, nil
 }
 
 func validateQueryText(ctx context.Context, query string) error {

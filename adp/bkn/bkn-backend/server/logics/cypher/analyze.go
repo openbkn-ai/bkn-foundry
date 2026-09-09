@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf16"
 
 	"github.com/antlr4-go/antlr/v4"
@@ -675,12 +676,18 @@ func decodeStringLiteral(text string) (string, error) {
 }
 
 // decodeUnicodeEscape reads the four- or eight-digit form after \u. The
-// eight-digit form is tried first because a valid one starts with four digits
-// that would otherwise be read as the short form.
+// eight-digit form is tried first because the lexer matches greedily: eight
+// hex digits are one escape, not a four-digit escape followed by four literal
+// characters, and reading them the other way would silently produce a
+// different string.
 func decodeUnicodeEscape(rest string) (int, rune, error) {
 	if len(rest) >= 8 {
 		if value, err := strconv.ParseUint(rest[:8], 16, 32); err == nil {
-			return 8, rune(value), nil
+			decoded, err := codePoint(value, rest[:8])
+			if err != nil {
+				return 0, 0, err
+			}
+			return 8, decoded, nil
 		}
 	}
 	if len(rest) < 4 {
@@ -690,9 +697,25 @@ func decodeUnicodeEscape(rest string) (int, rune, error) {
 	if err != nil {
 		return 0, 0, fmt.Errorf("invalid unicode escape sequence \\u%s", rest[:4])
 	}
-	decoded := rune(value)
-	if utf16.IsSurrogate(decoded) {
-		return 0, 0, fmt.Errorf("unpaired surrogate in unicode escape sequence \\u%s", rest[:4])
+	decoded, err := codePoint(value, rest[:4])
+	if err != nil {
+		return 0, 0, err
 	}
 	return 4, decoded, nil
+}
+
+// codePoint turns a parsed escape into a rune, refusing the values that are
+// not one. Eight hex digits reach well past the last code point, and a rune is
+// a signed 32-bit value, so converting without this check would wrap a large
+// escape into a negative rune that later encodes as a replacement character --
+// a query that silently means something else instead of an error.
+func codePoint(value uint64, digits string) (rune, error) {
+	if value > unicode.MaxRune {
+		return 0, fmt.Errorf("unicode escape sequence \\u%s is beyond the last code point", digits)
+	}
+	decoded := rune(value)
+	if utf16.IsSurrogate(decoded) {
+		return 0, fmt.Errorf("unpaired surrogate in unicode escape sequence \\u%s", digits)
+	}
+	return decoded, nil
 }

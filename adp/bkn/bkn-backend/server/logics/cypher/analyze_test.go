@@ -171,6 +171,26 @@ func TestAnalyzeLiterals(t *testing.T) {
 			},
 		},
 		{
+			name:  "eight-digit unicode escape",
+			where: `a.name = '\U0001F600'`,
+			check: func(t *testing.T, l Literal) {
+				if l.String != "\U0001F600" {
+					t.Fatalf("got %q", l.String)
+				}
+			},
+		},
+		{
+			name:  "four-digit unicode escape",
+			where: `a.name = '\u0041b'`,
+			check: func(t *testing.T, l Literal) {
+				// Four hex digits then a non-hex character: the short form,
+				// with the character after it kept as itself.
+				if l.String != "Ab" {
+					t.Fatalf("got %q", l.String)
+				}
+			},
+		},
+		{
 			name:  "double quoted",
 			where: `a.name = "quoted"`,
 			check: func(t *testing.T, l Literal) {
@@ -259,6 +279,35 @@ func TestAnalyzeRejections(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("Analyze(%q) = %v, want rejection mentioning %q", tc.query, err, tc.want)
+			}
+		})
+	}
+}
+
+// An escape past the last code point used to wrap into a negative rune and
+// encode as a replacement character, which would have made the query mean
+// something other than what was written.
+func TestAnalyzeRejectsUnicodeEscapesThatAreNotCodePoints(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		query string
+		want  string
+	}{
+		{
+			name:  "beyond the last code point",
+			query: `MATCH (a:Order) WHERE a.name = '\uFFFFFFFF' RETURN a.id`,
+			want:  "beyond the last code point",
+		},
+		{
+			name:  "unpaired surrogate",
+			query: `MATCH (a:Order) WHERE a.name = '\uD800' RETURN a.id`,
+			want:  "unpaired surrogate",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := analyze(t, tc.query)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Analyze(%q) = %v, want a rejection mentioning %q", tc.query, err, tc.want)
 			}
 		})
 	}
