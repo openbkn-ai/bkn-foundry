@@ -261,7 +261,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			return
 		}
 		for _, op := range ops {
-			if err := e.GrantObjectPermission(req.AccessorID, req.Resource.Type, req.Resource.ID, op); err != nil {
+			if err := e.GrantSystemObjectPermission(req.AccessorID, req.Resource.Type, req.Resource.ID, op); err != nil {
 				serverError(c, err)
 				return
 			}

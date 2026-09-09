@@ -267,11 +267,11 @@ func (en *Enforcer) inheritedResources(accessorID, resourceType, op string, visi
 	// and the size question has to be answered there rather than by quietly
 	// truncating it: a short list would read as "these are the tables you may
 	// see".
-	wide, err := en.e.Enforce(accessorID, obj(parentType, "*"), parentOp)
+	idx, err := en.grantIndex(accessorID)
 	if err != nil {
 		return nil, err
 	}
-	if wide {
+	if idx.decide(ResourceRef{Type: parentType, ID: "*"}, []string{parentOp})[parentOp] == EffectAllow {
 		return en.childrenOf(resourceType, parentType, nil)
 	}
 
@@ -319,6 +319,7 @@ func (en *Enforcer) publicInstances(resourceType, op string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	rows = activePolicyRows(rows)
 	prefix := resourceType + ":"
 	seen := map[string]bool{}
 	out := make([]string, 0, len(rows))
@@ -574,6 +575,10 @@ func (en *Enforcer) PreviewOwnership(resourceType, parentType string, links map[
 			have[c.ID] = set
 		}
 
+		directIdx, err := en.grantIndex(sub)
+		if err != nil {
+			return nil, 0, err
+		}
 		for _, child := range children {
 			gained := map[string]bool{}
 			for _, childOp := range childOps {
@@ -597,11 +602,7 @@ func (en *Enforcer) PreviewOwnership(resourceType, parentType string, links map[
 				if !have[child][op] || gained[op] {
 					continue
 				}
-				direct, err := en.e.Enforce(sub, obj(resourceType, child), op)
-				if err != nil {
-					return nil, 0, err
-				}
-				if !direct {
+				if directIdx.decide(ResourceRef{Type: resourceType, ID: child}, []string{op})[op] != EffectAllow {
 					record(sub, child, op, FlipRevoke)
 				}
 			}

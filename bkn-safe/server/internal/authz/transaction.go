@@ -36,17 +36,21 @@ func (tx *PolicyTransaction) Check(accessorID, resourceType, resourceID, operati
 }
 
 func (tx *PolicyTransaction) HasObjectPermission(accessorID, resourceType, resourceID, operation string) (bool, error) {
-	return tx.enforcer.e.HasPolicy(accessorID, obj(resourceType, resourceID), operation, EffectAllow)
+	rows, err := tx.enforcer.e.GetFilteredPolicy(0, accessorID, obj(resourceType, resourceID), operation, EffectAllow)
+	if err != nil {
+		return false, err
+	}
+	return len(activePolicyRows(rows)) > 0, nil
 }
 
 func (tx *PolicyTransaction) GrantObjectPermission(accessorID, resourceType, resourceID, operation string) error {
-	_, err := tx.enforcer.e.AddPolicy(accessorID, obj(resourceType, resourceID), operation, EffectAllow)
-	return err
+	return tx.enforcer.addPolicy(accessorID, obj(resourceType, resourceID), operation, EffectAllow,
+		PolicySourceSystemDerived, AuthoritySourceSystem)
 }
 
 func (tx *PolicyTransaction) RevokeObjectPermission(accessorID, resourceType, resourceID, operation string) error {
-	_, err := tx.enforcer.e.RemovePolicy(accessorID, obj(resourceType, resourceID), operation, EffectAllow)
-	return err
+	return tx.enforcer.removePolicy(accessorID, obj(resourceType, resourceID), operation, EffectAllow,
+		PolicySourceSystemDerived, AuthoritySourceSystem)
 }
 
 // Transaction runs fn inside the gorm-adapter transaction used by Casbin. The

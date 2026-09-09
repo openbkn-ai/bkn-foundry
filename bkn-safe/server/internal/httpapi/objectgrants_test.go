@@ -83,15 +83,28 @@ func TestObjectGrantsSetListRevoke(t *testing.T) {
 
 	// set: grant u-1 two ops on catalog c1
 	w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants", map[string]any{
-		"accessor_id": "u-1",
-		"resource":    map[string]any{"type": "catalog", "id": "c1"},
-		"operations":  []string{"view_detail", "modify"},
+		"accessor_id":      "u-1",
+		"resource":         map[string]any{"type": "catalog", "id": "c1"},
+		"operations":       []string{"view_detail", "modify"},
+		"policy_source":    "community_bundle",
+		"authority_source": "owner_delegate",
 	})
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("grant: want 204, got %d (%s)", w.Code, w.Body.String())
 	}
 	if ok, _ := e.Check("u-1", "catalog", "c1", "modify"); !ok {
 		t.Fatal("grant did not take effect at enforce time")
+	}
+	// Provenance is a server-side property. Unknown JSON fields are ignored and
+	// cannot turn this administrator write into a bundle or owner-owned rule.
+	records, err := e.PolicyRecords(authz.PolicyFilter{AccessorID: "u-1", Object: "catalog:c1"})
+	if err != nil || len(records) != 2 {
+		t.Fatalf("policy provenance = %+v, %v; want two server-derived rows", records, err)
+	}
+	for _, record := range records {
+		if record.PolicySource != authz.PolicySourceProfessionalRule || record.AuthoritySource != authz.AuthoritySourceAdminAuthz {
+			t.Fatalf("ordinary request forged policy provenance: %+v", record)
+		}
 	}
 
 	// list (no filter) returns the grant
@@ -778,7 +791,9 @@ func TestObjectGrantsDelegateCannotStripAuthorizeHolder(t *testing.T) {
 	}
 
 	// A plain grantee stays revocable — undoing a share is the point.
-	if err := e.GrantObjectPermission("u-mate", "knowledge_network", "kn-mine", "view_detail"); err != nil {
+	if err := e.GrantProfessionalObjectPermission(
+		"u-mate", "knowledge_network", "kn-mine", "view_detail", authz.EffectAllow, authz.AuthoritySourceOwnerDelegate,
+	); err != nil {
 		t.Fatal(err)
 	}
 	w = tokReq(t, r, http.MethodDelete, "/api/safe/v1/me/object-grants", map[string]any{
@@ -787,6 +802,9 @@ func TestObjectGrantsDelegateCannotStripAuthorizeHolder(t *testing.T) {
 	}, "u-stranger")
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("revoking a plain grantee: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
+	if ok, _ := e.Check("u-mate", "knowledge_network", "kn-mine", "view_detail"); ok {
+		t.Fatal("delegate revoke left its owner-managed grant effective")
 	}
 
 	// The grant side erases just as thoroughly: POST replaces the whole op set, so

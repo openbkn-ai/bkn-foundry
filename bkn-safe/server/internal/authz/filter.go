@@ -6,6 +6,7 @@ package authz
 
 import (
 	"github.com/casbin/casbin/v2/util"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
 
 // ResourceRef names one concrete resource instance ("type:id").
@@ -211,6 +212,9 @@ func (en *Enforcer) grantIndex(accessorID string) (*grantIndex, error) {
 	if err != nil {
 		return nil, err
 	}
+	edition := entitlement.Current()
+	rows = activePolicyRowsForEdition(rows, edition)
+	public = activePolicyRowsForEdition(public, edition)
 	idx := &grantIndex{exact: make(map[string][]grantRow, len(rows)), superAdmin: superAdmin}
 	for _, row := range append(rows, public...) {
 		if len(row) < 4 {
