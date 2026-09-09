@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -36,17 +37,33 @@ func (v *recordingVega) RawQuery(_ context.Context, req *interfaces.RawQueryRequ
 	return &interfaces.RawQueryResponse{}, nil
 }
 
+// stubPermission answers the child-resource filter the way bkn-safe would.
+// denied lists knowledge-network child ids (object types, relation types) the
+// caller may not query; everything else passes.
 type stubPermission struct {
 	interfaces.PermissionService
-	resource   interfaces.PermissionResource
+	filtered   []string
 	operations []string
+	denied     map[string]bool
 	err        error
 }
 
-func (p *stubPermission) CheckPermission(_ context.Context, resource interfaces.PermissionResource, ops []string) error {
-	p.resource = resource
+func (p *stubPermission) FilterResources(_ context.Context, _ string, ids []string,
+	ops []string, _ bool, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
+
+	p.filtered = append(p.filtered, ids...)
 	p.operations = ops
-	return p.err
+	if p.err != nil {
+		return nil, p.err
+	}
+	matched := map[string]interfaces.PermissionResourceOps{}
+	for _, id := range ids {
+		if p.denied[id] {
+			continue
+		}
+		matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: ops}
+	}
+	return matched, nil
 }
 
 func testService(t *testing.T, vega *recordingVega, permission *stubPermission) *cypherQueryService {
@@ -122,12 +139,35 @@ func TestQueryAppliesDefaultLimit(t *testing.T) {
 	}
 }
 
-// The knowledge network is checked here for query_data; vega-backend checks
-// each resource for view_detail with the caller's own identity. Neither check
-// replaces the other.
-func TestQueryChecksKNPermissionBeforeCompiling(t *testing.T) {
+// Object types are authorized individually, for query_data, and the schema is
+// built from what came back. vega-backend then checks each resource for
+// view_detail under the caller's own identity; neither check replaces the
+// other.
+func TestQueryAuthorizesEachObjectType(t *testing.T) {
 	vega := &recordingVega{}
-	permission := &stubPermission{err: rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)}
+	permission := &stubPermission{}
+	service := testService(t, vega, permission)
+
+	if _, err := service.Query(context.Background(), interfaces.CypherQuery{
+		KNID: "kn_1", Query: "MATCH (o:Order) RETURN o.id",
+	}); err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if want := interfaces.KNChildResourceID("kn_1", "ot_order"); !slices.Contains(permission.filtered, want) {
+		t.Fatalf("filtered = %v, want it to contain %q", permission.filtered, want)
+	}
+	if len(permission.operations) != 1 || permission.operations[0] != interfaces.OPERATION_TYPE_QUERY_DATA {
+		t.Fatalf("checked operations = %v", permission.operations)
+	}
+}
+
+// A caller who may read nothing in the network is told so, rather than being
+// told that every label they name does not exist.
+func TestQueryRefusesWhenNothingIsReadable(t *testing.T) {
+	vega := &recordingVega{}
+	permission := &stubPermission{denied: map[string]bool{
+		interfaces.KNChildResourceID("kn_1", "ot_order"): true,
+	}}
 	service := testService(t, vega, permission)
 
 	_, err := service.Query(context.Background(), interfaces.CypherQuery{
@@ -136,14 +176,38 @@ func TestQueryChecksKNPermissionBeforeCompiling(t *testing.T) {
 	if got := statusOf(t, err); got != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", got)
 	}
-	if permission.resource.Type != interfaces.RESOURCE_TYPE_KN || permission.resource.ID != "kn_1" {
-		t.Fatalf("checked resource = %+v", permission.resource)
-	}
-	if len(permission.operations) != 1 || permission.operations[0] != interfaces.OPERATION_TYPE_QUERY_DATA {
-		t.Fatalf("checked operations = %v", permission.operations)
-	}
 	if vega.request != nil {
 		t.Fatal("a denied query still reached vega-backend")
+	}
+}
+
+// An object type the caller may not query is absent from the schema rather
+// than refused, so the endpoint cannot be used to find out what a model holds.
+func TestQueryHidesUnreadableObjectTypes(t *testing.T) {
+	vega := &recordingVega{}
+	permission := &stubPermission{denied: map[string]bool{
+		interfaces.KNChildResourceID("kn_1", "ot_secret"): true,
+	}}
+	service := testService(t, vega, permission)
+	service.schema = &fakeSchemaSource{objectTypes: []*interfaces.ObjectType{
+		objectType("ot_order", "Order", resource("res_order", "orders"), dataProperty("id", "f_id")),
+		objectType("ot_secret", "Secret", resource("res_secret", "secrets"), dataProperty("id", "f_id")),
+	}}
+
+	_, err := service.Query(context.Background(), interfaces.CypherQuery{
+		KNID: "kn_1", Query: "MATCH (s:Secret) RETURN s.id",
+	})
+	if err == nil {
+		t.Fatal("a hidden object type was queryable")
+	}
+	if got := statusOf(t, err); got != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 naming it unknown", got)
+	}
+	if !strings.Contains(err.Error(), "unknown label") {
+		t.Fatalf("error = %v, want it to read as an unknown label", err)
+	}
+	if vega.request != nil {
+		t.Fatal("a hidden object type still reached vega-backend")
 	}
 }
 

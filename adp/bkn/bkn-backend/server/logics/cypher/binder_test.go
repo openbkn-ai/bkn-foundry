@@ -51,9 +51,11 @@ func dataProperty(name, column string) *interfaces.DataProperty {
 func relationType(id, name string) *interfaces.RelationType {
 	return &interfaces.RelationType{
 		RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
-			RTID:   id,
-			RTName: name,
-			Type:   interfaces.RELATION_TYPE_DIRECT,
+			RTID:               id,
+			RTName:             name,
+			Type:               interfaces.RELATION_TYPE_DIRECT,
+			SourceObjectTypeID: "ot_order",
+			TargetObjectTypeID: "ot_customer",
 		},
 	}
 }
@@ -62,9 +64,29 @@ func resource(id, name string) *interfaces.ResourceInfo {
 	return &interfaces.ResourceInfo{ID: id, Name: name}
 }
 
+// allowAll stands in for the permission filter in tests that are about
+// resolution rather than about who may read what.
+type allowAll struct{}
+
+func (allowAll) PermittedObjectTypes(_ context.Context, _ string, otIDs []string) (map[string]bool, error) {
+	return permitAll(otIDs), nil
+}
+
+func (allowAll) PermittedRelationTypes(_ context.Context, _ string, rtIDs []string) (map[string]bool, error) {
+	return permitAll(rtIDs), nil
+}
+
+func permitAll(ids []string) map[string]bool {
+	permitted := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		permitted[id] = true
+	}
+	return permitted
+}
+
 func testSchema(t *testing.T, src *fakeSchemaSource) *Schema {
 	t.Helper()
-	s, err := LoadSchema(context.Background(), src, "kn_test", "main")
+	s, err := LoadSchema(context.Background(), src, allowAll{}, "kn_test", "main")
 	if err != nil {
 		t.Fatalf("LoadSchema: %v", err)
 	}
@@ -124,7 +146,10 @@ func TestResolveLabelSelfMatchIsNotAmbiguous(t *testing.T) {
 }
 
 func TestResolveRelationType(t *testing.T) {
-	src := &fakeSchemaSource{relationTypes: []*interfaces.RelationType{
+	src := &fakeSchemaSource{objectTypes: []*interfaces.ObjectType{
+		objectType("ot_order", "Order", resource("res_order", "orders")),
+		objectType("ot_customer", "Customer", resource("res_customer", "customers")),
+	}, relationTypes: []*interfaces.RelationType{
 		relationType("rt_placed", "PLACED"),
 		relationType("rt_shadow", "rt_placed"),
 	}}

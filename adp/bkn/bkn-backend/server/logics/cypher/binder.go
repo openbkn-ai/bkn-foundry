@@ -30,14 +30,31 @@ type Schema struct {
 	relationTypesByName map[string]*interfaces.RelationType
 }
 
+// Visibility answers which of a knowledge network's object types and relation
+// types this caller may read data from.
+//
+// It is applied while the schema is being built rather than after the query is
+// compiled, so a concept the caller cannot query is simply not there. That
+// makes "you may not read this" and "no such thing" the same answer, which is
+// what keeps the endpoint from being a way to enumerate a model that the
+// caller has no access to.
+type Visibility interface {
+	PermittedObjectTypes(ctx context.Context, knID string, otIDs []string) (map[string]bool, error)
+	PermittedRelationTypes(ctx context.Context, knID string, rtIDs []string) (map[string]bool, error)
+}
+
 // LoadSchema reads every object type and relation type of one knowledge
-// network and indexes them by id and by name.
-func LoadSchema(ctx context.Context, kn KNSchemaSource, knID, branch string) (*Schema, error) {
+// network that the caller may query, and indexes them by id and by name.
+func LoadSchema(ctx context.Context, kn KNSchemaSource, visibility Visibility, knID, branch string) (*Schema, error) {
 	objectTypes, err := kn.AllObjectTypes(ctx, knID, branch)
 	if err != nil {
 		return nil, err
 	}
 	relationTypes, err := kn.AllRelationTypes(ctx, knID, branch)
+	if err != nil {
+		return nil, err
+	}
+	objectTypes, relationTypes, err = applyVisibility(ctx, visibility, knID, objectTypes, relationTypes)
 	if err != nil {
 		return nil, err
 	}
@@ -61,12 +78,64 @@ func LoadSchema(ctx context.Context, kn KNSchemaSource, knID, branch string) (*S
 	return s, nil
 }
 
+func applyVisibility(ctx context.Context, visibility Visibility, knID string,
+	objectTypes []*interfaces.ObjectType, relationTypes []*interfaces.RelationType) (
+	[]*interfaces.ObjectType, []*interfaces.RelationType, error) {
+
+	if visibility == nil {
+		return objectTypes, relationTypes, nil
+	}
+
+	otIDs := make([]string, 0, len(objectTypes))
+	for _, ot := range objectTypes {
+		otIDs = append(otIDs, ot.OTID)
+	}
+	permittedObjectTypes, err := visibility.PermittedObjectTypes(ctx, knID, otIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	visibleObjectTypes := make([]*interfaces.ObjectType, 0, len(objectTypes))
+	for _, ot := range objectTypes {
+		if permittedObjectTypes[ot.OTID] {
+			visibleObjectTypes = append(visibleObjectTypes, ot)
+		}
+	}
+
+	rtIDs := make([]string, 0, len(relationTypes))
+	for _, rt := range relationTypes {
+		rtIDs = append(rtIDs, rt.RTID)
+	}
+	permittedRelationTypes, err := visibility.PermittedRelationTypes(ctx, knID, rtIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	visibleRelationTypes := make([]*interfaces.RelationType, 0, len(relationTypes))
+	for _, rt := range relationTypes {
+		// A relation type whose endpoints the caller cannot read is dropped
+		// too: a join would otherwise return rows of a hidden object type
+		// through the relation's own permission.
+		if !permittedRelationTypes[rt.RTID] {
+			continue
+		}
+		if !permittedObjectTypes[rt.SourceObjectTypeID] || !permittedObjectTypes[rt.TargetObjectTypeID] {
+			continue
+		}
+		visibleRelationTypes = append(visibleRelationTypes, rt)
+	}
+	return visibleObjectTypes, visibleRelationTypes, nil
+}
+
 // KNSchemaSource is the slice of the modelling services the compiler needs.
 // Narrowing it to two reads keeps the compiler from reaching into write paths.
 type KNSchemaSource interface {
 	AllObjectTypes(ctx context.Context, knID, branch string) ([]*interfaces.ObjectType, error)
 	AllRelationTypes(ctx context.Context, knID, branch string) ([]*interfaces.RelationType, error)
 }
+
+// Empty reports a schema with no readable object type, which means the caller
+// may read nothing in this knowledge network rather than that the network is
+// empty.
+func (s *Schema) Empty() bool { return len(s.objectTypesByID) == 0 }
 
 // ResolveLabel maps a Cypher label to an object type.
 //

@@ -59,12 +59,15 @@ func NewCypherQueryService(appSetting *common.AppSetting) interfaces.CypherQuery
 // Query compiles a Cypher query against one knowledge network and runs the
 // resulting statement through vega-backend.
 //
-// Authorization is checked twice on purpose, and neither check subsumes the
-// other. Here it is query_data on the knowledge network, which is what the
-// caller asked to read. In vega-backend it is view_detail per resource, using
-// the caller's own identity, which is what the statement will actually touch.
-// A model that binds an object type to a resource the caller cannot read is
-// therefore stopped down there, not here.
+// Authorization happens at two levels and neither subsumes the other. Here it
+// is query_data on each object type and relation type, applied by building the
+// schema out of only what the caller may read, so a concept they have no
+// access to is absent rather than refused -- the endpoint cannot be used to
+// find out what a model contains. A network-wide grant still works, because
+// query_data on a child inherits from query_data on its parent network.
+// In vega-backend it is view_detail per resource under the caller's own
+// identity, which is what the statement will actually touch, so a model that
+// binds an object type to a resource the caller cannot read is stopped there.
 func (s *cypherQueryService) Query(ctx context.Context, query interfaces.CypherQuery) (*interfaces.CypherQueryResult, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Compile and run Cypher query")
 	defer span.End()
@@ -72,13 +75,6 @@ func (s *cypherQueryService) Query(ctx context.Context, query interfaces.CypherQ
 	if err := validateQueryText(ctx, query.Query); err != nil {
 		return nil, err
 	}
-	if err := s.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   query.KNID,
-	}, []string{interfaces.OPERATION_TYPE_QUERY_DATA}); err != nil {
-		return nil, err
-	}
-
 	sql, rowLimit, err := s.compile(ctx, query)
 	if err != nil {
 		return nil, err
@@ -138,9 +134,15 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 			WithErrorDetails(detail(ctx, "LimitExceeded", map[string]any{"max": interfaces.CYPHER_MAX_LIMIT}))
 	}
 
-	schema, err := LoadSchema(ctx, s.schema, query.KNID, query.Branch)
+	schema, err := LoadSchema(ctx, s.schema, &permissionVisibility{ps: s.ps}, query.KNID, query.Branch)
 	if err != nil {
 		return "", 0, err
+	}
+	if schema.Empty() {
+		// Nothing in this network is readable by this caller. Saying so is
+		// better than reporting every label as unknown, and reveals nothing:
+		// they already knew which network they asked about.
+		return "", 0, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
 	}
 
 	plan, err := Compile(analyzed, schema)

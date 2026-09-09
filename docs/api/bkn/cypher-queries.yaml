@@ -22,9 +22,16 @@ paths:
       summary: Run a read-only Cypher query
       description: |-
         Compiles a Cypher query against the knowledge network's model and returns the rows it
-        produces. Requires application/json content type and the query_data operation on the
-        knowledge network; each resource the statement reads is additionally checked for
-        view_detail by vega-backend under the caller's own identity.
+        produces. Requires application/json content type and the query_data operation on each
+        object type and relation type the query names; a network-wide query_data grant covers
+        them, since the child operation inherits from its parent network. Each resource the
+        statement reads is additionally checked for view_detail by vega-backend under the
+        caller's own identity.
+
+        A concept the caller may not query is absent from the model the query is compiled
+        against, so naming it reads as an unknown label rather than as a refusal: this
+        endpoint cannot be used to find out what a model contains. A caller who may read
+        nothing in the network gets 403.
 
         Labels and relationship types accept either the id or the name of the object type or
         relation type. Properties are addressed by property name; display names and logic
@@ -79,7 +86,7 @@ paths:
         "401":
           description: Unauthorized
         "403":
-          description: The caller lacks query_data on the knowledge network, or carries no identity.
+          description: The caller may query nothing in this knowledge network, or carries no identity.
           content:
             application/json:
               schema:
