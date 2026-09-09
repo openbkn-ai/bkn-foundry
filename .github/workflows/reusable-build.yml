@@ -218,7 +218,11 @@ jobs:
 
       # The manifest job pins the list to these digests (see header). One file
       # per leg, named by arch; the artifact name carries the image so several
-      # reusable-build calls in one workflow run don't collide.
+      # reusable-build calls in one workflow run don't collide. `__` is the
+      # delimiter because image names use `-` and can be prefixes of each other
+      # (vega-backend / vega-backend-python-base in one run): the manifest job
+      # matches `digest__<image>__*`, and `digest__vega-backend__*` cannot
+      # match `digest__vega-backend-python-base__amd64`.
       - name: Record image digest
         if: ${{ inputs.publish }}
         shell: bash
@@ -239,7 +243,7 @@ jobs:
         if: ${{ inputs.publish }}
         uses: actions/upload-artifact@v4
         with:
-          name: digest-${{ inputs.image-name }}-${{ matrix.arch }}
+          name: digest__${{ inputs.image-name }}__${{ matrix.arch }}
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
@@ -254,12 +258,15 @@ jobs:
       contents: read
       packages: write
     steps:
+      # No merge-multiple: each artifact unpacks into its own directory named
+      # after the artifact, and the union step reads the exact
+      # `digest__<image>__<arch>/<arch>` path. Even if the pattern ever
+      # over-matched, another image's digest could not be read by mistake.
       - name: Download image digests
         uses: actions/download-artifact@v4
         with:
-          pattern: digest-${{ inputs.image-name }}-*
+          pattern: digest__${{ inputs.image-name }}__*
           path: ${{ runner.temp }}/digests
-          merge-multiple: true
 
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -291,6 +298,21 @@ jobs:
           # can only ever contain this run's own images (see header). The same
           # manifest bytes went to both registries, so one digest per arch
           # serves GHCR and SWR alike.
+          digest_for() {
+            cat "${DIGEST_DIR}/digest__${IMAGE}__${1}/${1}"
+          }
+          for arch in "${archs[@]}"; do
+            file="${DIGEST_DIR}/digest__${IMAGE}__${arch}/${arch}"
+            if [ ! -f "${file}" ]; then
+              echo "::error::missing digest for ${IMAGE} ${arch} (expected ${file})"
+              exit 1
+            fi
+            if ! [[ "$(digest_for "${arch}")" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::malformed digest for ${IMAGE} ${arch}: $(digest_for "${arch}")"
+              exit 1
+            fi
+            echo "${arch}: $(digest_for "${arch}")"
+          done
           # `docker manifest` emits application/vnd.docker.distribution.manifest.list.v2+json,
           # the legacy list format SWR accepts. `buildx imagetools create` would
           # infer its media types from the sources instead, so the format SWR
@@ -301,7 +323,7 @@ jobs:
             local repo="$1"
             local children=()
             for arch in "${archs[@]}"; do
-              children+=("${repo}@$(cat "${DIGEST_DIR}/${arch}")")
+              children+=("${repo}@$(digest_for "${arch}")")
             done
             docker manifest create "${repo}:${VERSION}" "${children[@]}"
             docker manifest push "${repo}:${VERSION}"
