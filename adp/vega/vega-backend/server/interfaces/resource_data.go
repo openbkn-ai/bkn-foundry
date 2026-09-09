@@ -32,10 +32,9 @@ const (
 	ResourceQuerySourceLocalIndex = "local_index"
 	ResourceQuerySourceSource     = "source"
 
-	ResourceValueModeUnavailable  = "unavailable"
-	ResourceValueModeNotRequested = "not_requested"
-	ResourceValueModeMetadata     = "metadata"
-	ResourceValueModeContent      = "content"
+	ResourceValueModeUnavailable = "unavailable"
+	ResourceValueModeMetadata    = "metadata"
+	ResourceValueModeContent     = "content"
 )
 
 // SortField represents a field to sort by.

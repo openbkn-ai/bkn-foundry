@@ -394,8 +394,7 @@ components:
         entries:
           description: |
             文档条目。Binary 或无法索引的字段可返回 `ResourceValue`：`unavailable` 表示该字段
-            不在本地索引中；`not_requested` 表示未请求 Binary 值；`metadata` / `content` 分别表示
-            Binary 长度或 Base64 内容。
+            不在本地索引中；`metadata` / `content` 分别表示 Binary 长度或 Base64 内容。
           type: array
           items:
             $ref: "#/components/schemas/Document"
@@ -417,7 +416,7 @@ components:
       properties:
         mode:
           type: string
-          enum: [unavailable, not_requested, metadata, content]
+          enum: [unavailable, metadata, content]
         byte_length:
           description: Binary 字段的字节长度。
           type: integer

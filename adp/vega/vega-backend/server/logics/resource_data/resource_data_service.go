@@ -294,19 +294,13 @@ func normalizeBinaryQueryValues(entries []map[string]any, resource *interfaces.R
 			binaryFields = append(binaryFields, prop)
 		}
 	}
-	binaryMode := ""
+	binaryMode := interfaces.BinaryModeMetadata
 	if params.BinaryMode != nil {
 		binaryMode = *params.BinaryMode
 	}
 	for _, entry := range entries {
 		for _, prop := range binaryFields {
 			value, exists := entry[prop.Name]
-			if binaryMode == "" {
-				entry[prop.Name] = interfaces.ResourceValue{
-					Mode: interfaces.ResourceValueModeNotRequested,
-				}
-				continue
-			}
 			if !exists || value == nil {
 				continue
 			}
