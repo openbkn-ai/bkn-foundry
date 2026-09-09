@@ -242,6 +242,33 @@ def test_internal_queries_carry_parent_without_reusing_operation_id(monkeypatch)
             assert "operation_key" not in ctx
 
 
+def test_model_supplied_bkn_context_is_ignored(monkeypatch):
+    """A script that mirrors the MCP call shape passes bkn_context; the runtime's own must win, not a TypeError."""
+    from sandbox_sdk import _bkn_tools
+
+    monkeypatch.setenv("BKN_TOKEN", "test-token")
+    monkeypatch.setenv("BKN_SANDBOX_MCP_URL", "http://svc/mcp/")
+    monkeypatch.setenv("BKN_CONVERSATION_ID", "conv_runtime")
+    monkeypatch.setenv("BKN_INTERACTION_ID", "int_runtime")
+    monkeypatch.setattr(_bkn_tools, "_ensure_session", lambda: None)
+    monkeypatch.setattr(_bkn_tools, "_configure",
+                        lambda event: monkeypatch.setattr(_bkn_tools, "_CFG", dict(event)))
+    calls = []
+
+    def rpc(method, params):
+        calls.append(params)
+        return {"result": {"content": [{"type": "text", "text": '{"datas": []}'}]}}
+
+    monkeypatch.setattr(_bkn_tools, "_rpc", rpc)
+    bkn.configure_runtime({})
+    bkn.query_object_instance(
+        kn_id="kn_test", ot_id="bom",
+        bkn_context={"conversation_id": "conv_model", "interaction_id": "int_model"})
+    assert calls[-1]["arguments"]["bkn_context"] == {
+        "conversation_id": "conv_runtime", "interaction_id": "int_runtime",
+    }
+
+
 def test_explicit_runtime_parent_wins(monkeypatch):
     monkeypatch.setenv("BKN_PARENT_OPERATION_ID", "op_env")
     bkn.configure_runtime({"bkn": {"parent_operation_id": "op_explicit"}})
