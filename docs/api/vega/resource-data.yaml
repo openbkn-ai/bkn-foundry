@@ -317,11 +317,11 @@ components:
             type: string
         binary_mode:
           description: |
-            Binary 字段的返回形式。省略时不读取 Binary 值，字段值返回
-            `{ "mode": "not_requested" }`；`metadata` 返回字节长度；`content` 返回
+            Binary 字段的返回形式。省略时按 `metadata` 处理并返回字节长度；`content` 返回
             Base64 编码内容与字节长度。cursor 续页不得重复传递。
           type: string
           enum: [metadata, content]
+          default: metadata
         ignore_local_index:
           description: |
             是否跳过可用的本地索引并查询表的原始数据源；默认 `false`。仅对 table resource
