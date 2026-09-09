@@ -69,7 +69,7 @@
     "input_schema.properties.additional_context.description": "Optional extra context for resolving ambiguous logic properties.",
     "input_schema.properties.llm_model.description": "Optional LLM model override for property resolution.",
     "output_schema.properties.datas.description": "Resolved logic property values.",
-    "output_schema.properties.datas.items.properties._display.description": "Human-readable display name, chosen by the server from the display fields of the object type.",
+    "output_schema.properties.datas.items.properties._display.description": "Human-readable display name, chosen by the server from the display fields of the object type. Its type follows that display property (a number, a boolean, or a string such as a date) and it is null when the row's display field is empty.",
     "output_schema.properties.datas.items.properties._instance_id.description": "Globally unique instance id, usable directly with query_instance_subgraph.",
     "output_schema.properties.datas.items.properties._instance_identity.description": "The field values that form the primary key of this instance",
     "output_schema.properties.datas.items.description": "Every other key is a property name of that object type and varies with it. Read data_properties from get_object_types or search_schema first; do not guess from the field semantics."
@@ -137,7 +137,7 @@
     "input_schema.properties.relation_type_paths.items.properties.relation_types.items.properties.target_object_type_id.description": "Target object type id for the relation.",
     "input_schema.properties.relation_type_paths.items.properties.limit.description": "Maximum subgraph results for this path.",
     "output_schema.properties.entries.description": "Subgraph query results.",
-    "output_schema.properties.entries.items.properties._display.description": "Human-readable display name, chosen by the server from the display fields of the object type.",
+    "output_schema.properties.entries.items.properties._display.description": "Human-readable display name, chosen by the server from the display fields of the object type. Its type follows that display property (a number, a boolean, or a string such as a date) and it is null when the row's display field is empty.",
     "output_schema.properties.entries.items.properties._instance_id.description": "Globally unique instance id, usable directly with query_instance_subgraph.",
     "output_schema.properties.entries.items.properties._instance_identity.description": "The field values that form the primary key of this instance",
     "output_schema.properties.entries.items.description": "Every other key is a property name of that object type and varies with it. Read data_properties from get_object_types or search_schema first; do not guess from the field semantics."
@@ -196,7 +196,7 @@
     "output_schema.properties.search_after.description": "Cursor for the next page.",
     "input_schema.properties.condition.properties.limit_key.description": "knn only: the key naming the neighbour count, always k. It appears together with limit_value.",
     "input_schema.properties.condition.properties.limit_value.description": "knn only: how many nearest neighbours to take. The server applies a default when it is omitted.",
-    "output_schema.properties.datas.items.properties._display.description": "Human-readable display name, chosen by the server from the display fields of the object type.",
+    "output_schema.properties.datas.items.properties._display.description": "Human-readable display name, chosen by the server from the display fields of the object type. Its type follows that display property (a number, a boolean, or a string such as a date) and it is null when the row's display field is empty.",
     "output_schema.properties.datas.items.properties._instance_id.description": "Globally unique instance id, usable directly with query_instance_subgraph.",
     "output_schema.properties.datas.items.properties._instance_identity.description": "The field values that form the primary key of this instance",
     "output_schema.properties.datas.items.description": "Every other key is a property name of that object type and varies with it. Read data_properties from get_object_types or search_schema first; do not guess from the field semantics."
@@ -209,7 +209,7 @@
     "output_schema.properties.entries.description": "Result rows.",
     "output_schema.properties.total_count.description": "Number of returned rows.",
     "output_schema.properties.warnings.description": "Warnings produced while validating or executing SQL.",
-    "output_schema.properties.entries.items.properties._display.description": "Human-readable display name, chosen by the server from the display fields of the object type.",
+    "output_schema.properties.entries.items.properties._display.description": "Human-readable display name, chosen by the server from the display fields of the object type. Its type follows that display property (a number, a boolean, or a string such as a date) and it is null when the row's display field is empty.",
     "output_schema.properties.entries.items.properties._instance_id.description": "Globally unique instance id, usable directly with query_instance_subgraph.",
     "output_schema.properties.entries.items.properties._instance_identity.description": "The field values that form the primary key of this instance",
     "output_schema.properties.entries.items.description": "Every other key is a property name of that object type and varies with it. Read data_properties from get_object_types or search_schema first; do not guess from the field semantics."
