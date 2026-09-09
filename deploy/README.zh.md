@@ -193,6 +193,11 @@ sudo bash ./deploy.sh openbkn install --latest --registry=swr
 sudo bash ./deploy.sh openbkn install --version_file=/tmp/m.yaml --registry=swr
 ```
 
+> 手工把 BKN 镜像搬进离线集群：每个已发布版本都带单架构 tag
+> `<image>:<version>-amd64` 与 `<image>:<version>-arm64`。在任意机器上直接
+> `docker pull` 其一（不用 `--platform`，不用 skopeo），`docker save` 后导入目标节点，
+> 并打回 `<image>:<version>` 这个 tag。
+
 > 提交的迁移会修复 DB schema 漂移（如 `vega-backend` 0.9.x），但只在 **data-migrator
 > pre-install job 运行时**生效——即走 `openbkn install`，不是裸 `kubectl set image`。
 

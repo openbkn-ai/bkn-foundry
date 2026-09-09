@@ -198,6 +198,12 @@ sudo bash ./deploy.sh openbkn install --latest --registry=swr
 sudo bash ./deploy.sh openbkn install --version_file=/tmp/m.yaml --registry=swr
 ```
 
+> Moving BKN images into an air-gapped cluster by hand: every published version
+> also carries single-architecture tags, `<image>:<version>-amd64` and
+> `<image>:<version>-arm64`. `docker pull` one of those on any machine (no
+> `--platform`, no skopeo), `docker save` it, and import it on the target node
+> under the plain `<image>:<version>` tag.
+
 > The committed migrations fix any DB-schema drift (e.g. `vega-backend` 0.9.x), but
 > only run when the **data-migrator pre-install job** runs — i.e. via `openbkn install`,
 > not a bare `kubectl set image`.
