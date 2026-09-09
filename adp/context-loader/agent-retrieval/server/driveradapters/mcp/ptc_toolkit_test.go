@@ -7,6 +7,9 @@ package mcp
 
 import (
 	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -594,5 +597,55 @@ func TestPTCHintsCoverRoutingTools(t *testing.T) {
 		if joined := strings.Join(bundle.PTCHints("explore_subgraph"), " "); !strings.Contains(joined, "backward") {
 			t.Fatalf("%s: explore_subgraph hint does not mention backward: %s", locale, joined)
 		}
+	}
+}
+
+// A model that has just used the MCP surface, where every business tool requires bkn_context,
+// carries that habit into its run_code script. The digest tells it not to, but a TypeError for
+// passing it costs the whole round, so the stub accepts the argument and lets the runtime's own
+// context win. The digest itself must not grow the parameter: it keeps saying "do not pass it".
+func TestPTCStubToleratesModelSuppliedBKNContext(t *testing.T) {
+	tools := ptcUsableTools(&MCPInfo{Tools: ptcTestTools()})
+	stub := renderPTCStub(tools)
+	want := "def query_object_instance(kn_id: str, ot_id: str, limit: int = None, response_format: str = 'json', bkn_context: dict = None) -> dict:"
+	if !strings.Contains(stub, want) {
+		t.Fatalf("stub 应把 bkn_context 作为可忽略的尾参数接受:\n%s", stub)
+	}
+	// A tool whose schema never carried bkn_context does not grow one.
+	if !strings.Contains(stub, "def run_sql(sql: str) -> dict:") {
+		t.Fatalf("没有 bkn_context 的工具签名不该变:\n%s", stub)
+	}
+	if strings.Contains(stub, `"bkn_context": bkn_context`) {
+		t.Fatal("模型传入的 bkn_context 不能进入调用参数，运行时那份才是会话身份")
+	}
+	if digest := renderPTCDigest(tools); strings.Contains(digest, "bkn_context") {
+		t.Fatalf("摘要签名不应出现 bkn_context:\n%s", digest)
+	}
+
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 not available; signature checked textually only")
+	}
+	script := stub + `
+_CFG["bkn"] = {"conversation_id": "conv_runtime", "interaction_id": "int_runtime"}
+_calls = []
+def _rpc(method, params, notify=False):
+    _calls.append(params)
+    return {"result": {"content": [{"type": "text", "text": "{\"datas\": []}"}]}}
+_ensure_session = lambda: None
+query_object_instance(kn_id="kn", ot_id="ot",
+                      bkn_context={"conversation_id": "conv_model", "interaction_id": "int_model"})
+print(json.dumps(_calls[-1]["arguments"]["bkn_context"], sort_keys=True))
+`
+	path := filepath.Join(t.TempDir(), "stub_probe.py")
+	if err := os.WriteFile(path, []byte(script), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command(python, path).CombinedOutput()
+	if err != nil {
+		t.Fatalf("stub 在 Python 里执行失败: %v\n%s", err, out)
+	}
+	if got := strings.TrimSpace(string(out)); got != `{"conversation_id": "conv_runtime", "interaction_id": "int_runtime"}` {
+		t.Fatalf("运行时的 bkn_context 必须胜出，实际发出: %s", got)
 	}
 }
