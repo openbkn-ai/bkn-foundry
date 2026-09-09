@@ -6,9 +6,9 @@ info:
   description: |-
     Read-only Cypher queries over the instance data of a knowledge network.
     A query is compiled into a single SQL statement and executed through vega-backend, so the
-    subset accepted here is what compiles that way: one MATCH over a path of at most one
-    relationship, a WHERE over properties, and a projection of properties and aggregates of
-    them. Everything else is refused by name rather than approximated.
+    subset accepted here is what compiles that way: one MATCH over a single path, a WHERE over
+    properties, and a projection of properties and aggregates of them. Everything else is
+    refused by name rather than approximated.
     Paging is written in the query itself with SKIP and LIMIT; there is no paging parameter.
     Exposed under /api/bkn-backend/v1 (OAuth2) and /api/ontology-manager/v1 (alias), with the
     branch query parameter defaulting to main.
@@ -136,7 +136,7 @@ components:
           maxLength: 8192
           description: |-
             The Cypher query. Supported shape:
-            MATCH (a:Label)[-[:RELATION]->(b:Label)]
+            MATCH (a:Label [{property: value, ...}]) [-[:RELATION]-(b:Label) ...]
             [WHERE <condition>]
             RETURN [DISTINCT] a.property | aggregate(a.property) [AS alias], ...
             [ORDER BY a.property | alias | aggregate(a.property) [DESC]] [SKIP n] [LIMIT n]
@@ -150,8 +150,18 @@ components:
             the query returns. A grouped or DISTINCT result can only be sorted by a value it
             returns.
 
-            Relationships must be directed and name exactly one relation type; nodes must
-            name exactly one object type.
+            A path may contain several relationships. Each names exactly one relation type and
+            may be written -[:R]->, <-[:R]- or undirected as -[:R]-; each node names exactly
+            one object type and may carry an inline property map, which means the equalities
+            it stands for.
+
+            Cypher forbids one pattern from traversing the same relationship twice, and that
+            is enforced: every pair of hops over one relation type must differ in its source
+            row or its target row, which needs those object types to have a primary key.
+            Where one of the hops is undirected the requirement cannot be stated, and the
+            query is refused rather than answered with paths Cypher would not return. A path
+            may hold at most eight relationships, because each one is a join and the row
+            limit bounds what comes back rather than what it costs to produce.
           example: "MATCH (o:order)-[:rel_order_item_order]->(i:order_item) WHERE o.status IN ['paid', 'shipped'] AND o.amount > $floor RETURN o.status AS status, count(*) AS orders ORDER BY orders DESC LIMIT 20"
     CypherQueryResult:
       type: object

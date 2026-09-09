@@ -30,6 +30,9 @@ const (
 	Outgoing Direction = iota
 	// Incoming is (a)<-[:R]-(b): b is the relation's source.
 	Incoming
+	// Undirected is (a)-[:R]-(b): either node may be the source, and which
+	// readings are possible depends on what the relation type connects.
+	Undirected
 )
 
 // Query is one accepted read-only query.
@@ -55,7 +58,11 @@ type Pattern struct {
 type NodeRef struct {
 	Variable string
 	Label    string
-	Pos      Position
+	// Anonymous marks a variable the compiler invented for a node the query
+	// did not name, so a message about it can say "the node" rather than
+	// quote a name the author never wrote.
+	Anonymous bool
+	Pos       Position
 }
 
 // EdgeRef is one relationship of the pattern.

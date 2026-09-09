@@ -15,6 +15,7 @@ import (
 
 	"github.com/antlr4-go/antlr/v4"
 
+	"bkn-backend/interfaces"
 	"bkn-backend/logics/cypher/parsing"
 )
 
@@ -101,35 +102,42 @@ func Analyze(tree parsing.IOC_CypherContext) (*Query, error) {
 	}
 
 	query := &Query{}
-	pattern, err := analyzePattern(match.OC_Pattern())
+	pattern, inline, err := analyzePattern(match.OC_Pattern())
 	if err != nil {
 		return nil, err
 	}
 	query.Pattern = *pattern
 
 	if where := match.OC_Where(); where != nil {
-		query.Where, err = analyzePredicate(where.OC_Expression())
+		written, err := analyzePredicate(where.OC_Expression())
 		if err != nil {
 			return nil, err
 		}
+		inline = append(inline, written)
 	}
+	// Conditions from the pattern and from WHERE mean the same thing and are
+	// joined the way Cypher joins them.
+	query.Where = combine("AND", inline, positionOf(match))
 	if err := analyzeProjectionBody(query, returning.OC_ProjectionBody()); err != nil {
 		return nil, err
 	}
 	return query, nil
 }
 
-func analyzePattern(ctx parsing.IOC_PatternContext) (*Pattern, error) {
+// analyzePattern reads the path and the conditions written inside it. Inline
+// property maps come back as ordinary conditions, which is what Cypher defines
+// them to be.
+func analyzePattern(ctx parsing.IOC_PatternContext) (*Pattern, []Predicate, error) {
 	parts := ctx.AllOC_PatternPart()
 	if len(parts) != 1 {
 		// Several comma-separated parts is a cartesian product between them,
 		// which the planner has no shape for yet.
-		return nil, unsupportedf(ctx, "multiple pattern parts",
+		return nil, nil, unsupportedf(ctx, "multiple pattern parts",
 			"MATCH must contain a single path, got %d comma-separated patterns", len(parts))
 	}
 	part := parts[0]
 	if part.OC_Variable() != nil {
-		return nil, unsupported(part, "path variables")
+		return nil, nil, unsupported(part, "path variables")
 	}
 
 	element := part.OC_AnonymousPatternPart().OC_PatternElement()
@@ -139,64 +147,137 @@ func analyzePattern(ctx parsing.IOC_PatternContext) (*Pattern, error) {
 	}
 
 	pattern := &Pattern{}
-	node, err := analyzeNode(element.OC_NodePattern())
+	node, conditions, err := analyzeNode(element.OC_NodePattern(), 0)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	pattern.Nodes = append(pattern.Nodes, *node)
+	inline := conditions
 
 	chains := element.AllOC_PatternElementChain()
-	if len(chains) > 1 {
-		// Multi-hop needs a join order decision the planner does not make yet.
-		return nil, unsupportedf(ctx, "multi-hop patterns",
-			"a path may contain at most one relationship, got %d", len(chains))
+	if len(chains) > interfaces.CYPHER_MAX_PATH_LENGTH {
+		// Every relationship is a join. The row limit bounds what comes back,
+		// not what the database does to produce it, so the length of the path
+		// is bounded here instead.
+		return nil, nil, unsupportedf(ctx, "a path this long",
+			"a path may hold at most %d relationships, got %d",
+			interfaces.CYPHER_MAX_PATH_LENGTH, len(chains))
 	}
-	for _, chain := range chains {
+	for i, chain := range chains {
 		edge, err := analyzeRelationship(chain.OC_RelationshipPattern())
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		node, err := analyzeNode(chain.OC_NodePattern())
+		node, conditions, err := analyzeNode(chain.OC_NodePattern(), i+1)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		pattern.Edges = append(pattern.Edges, *edge)
 		pattern.Nodes = append(pattern.Nodes, *node)
+		inline = append(inline, conditions...)
 	}
-	return pattern, nil
+	return pattern, inline, nil
 }
 
-func analyzeNode(ctx parsing.IOC_NodePatternContext) (*NodeRef, error) {
-	if ctx.OC_Properties() != nil {
-		return nil, unsupportedf(ctx, "inline property maps", "write the condition in WHERE instead")
-	}
+func analyzeNode(ctx parsing.IOC_NodePatternContext, index int) (*NodeRef, []Predicate, error) {
 	node := &NodeRef{Pos: positionOf(ctx)}
 	if variable := ctx.OC_Variable(); variable != nil {
 		name, err := namedIdentifier(variable, "variable name")
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		node.Variable = name
+	}
+
+	var conditions []Predicate
+	if properties := ctx.OC_Properties(); properties != nil {
+		if node.Variable == "" {
+			// An inline map on an anonymous node still has to name something
+			// the planner can resolve. The name is unwritable in Cypher, so it
+			// cannot collide with one the author chose.
+			node.Variable = anonymousVariable(index)
+			node.Anonymous = true
+		}
+		var err error
+		conditions, err = analyzeInlineProperties(properties, node.Variable)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	labels := ctx.OC_NodeLabels()
 	if labels == nil {
 		// Without a label there is no object type, and without an object type
 		// there is no table to read.
-		return nil, unsupportedf(ctx, "nodes without a label",
+		return nil, nil, unsupportedf(ctx, "nodes without a label",
 			"every node must name one object type, as in (n:ObjectType)")
 	}
 	all := labels.AllOC_NodeLabel()
 	if len(all) != 1 {
-		return nil, unsupportedf(ctx, "multiple labels on one node",
+		return nil, nil, unsupportedf(ctx, "multiple labels on one node",
 			"a node maps to exactly one object type, got %d labels", len(all))
 	}
 	label, err := namedIdentifier(all[0].OC_LabelName(), "label")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	node.Label = label
-	return node, nil
+	return node, conditions, nil
+}
+
+// anonymousVariable names a node the query did not name. A backtick cannot
+// appear unescaped in a Cypher identifier, so the name is unreachable from a
+// query and cannot shadow one.
+func anonymousVariable(index int) string {
+	return "`anonymous-" + strconv.Itoa(index)
+}
+
+// analyzeInlineProperties reads (n:Label {a: 1, b: $b}) as the equalities it
+// stands for. Cypher defines it as exactly that, and turning it into
+// conditions here means the planner and the generator have one shape to
+// handle rather than two.
+func analyzeInlineProperties(ctx parsing.IOC_PropertiesContext, variable string) ([]Predicate, error) {
+	if ctx.OC_Parameter() != nil {
+		return nil, unsupportedf(ctx, "a parameter in place of a property map",
+			"write the properties out, as in {name: $name}")
+	}
+	literal := ctx.OC_MapLiteral()
+	if literal == nil {
+		return nil, unsupported(ctx, "this property map")
+	}
+
+	keys := literal.AllOC_PropertyKeyName()
+	values := literal.AllOC_Expression()
+	conditions := make([]Predicate, 0, len(keys))
+	for i, key := range keys {
+		value, err := analyzeOperand(values[i])
+		if err != nil {
+			return nil, err
+		}
+		if value.operand() == nil {
+			return nil, unsupportedf(values[i], "a property map holding something other than a value",
+				"inline properties take literals or parameters")
+		}
+		if value.literal != nil && value.literal.Kind == LiteralNull {
+			return nil, unsupportedf(values[i], "null in a property map",
+				"a null there matches nothing; write IS NULL in WHERE if that is the intent")
+		}
+		property, err := namedIdentifier(key, "property name")
+		if err != nil {
+			return nil, err
+		}
+		conditions = append(conditions, Comparison{
+			Left: PropertyRef{
+				Variable: variable,
+				Property: property,
+				Pos:      positionOf(key),
+			},
+			Operator: "=",
+			Right:    *value.operand(),
+			Pos:      positionOf(key),
+		})
+	}
+	return conditions, nil
 }
 
 func analyzeRelationship(ctx parsing.IOC_RelationshipPatternContext) (*EdgeRef, error) {
@@ -211,10 +292,7 @@ func analyzeRelationship(ctx parsing.IOC_RelationshipPatternContext) (*EdgeRef, 
 	case left:
 		edge.Direction = Incoming
 	default:
-		// A relation type has a source and a target, so an undirected pattern
-		// would have to be compiled as a union of both readings.
-		return nil, unsupportedf(ctx, "undirected relationships",
-			"write either -[:TYPE]-> or <-[:TYPE]-")
+		edge.Direction = Undirected
 	}
 
 	detail := ctx.OC_RelationshipDetail()
@@ -557,7 +635,12 @@ func analyzeAndPredicate(ctx parsing.IOC_AndExpressionContext) (Predicate, error
 // combine keeps a single operand as itself rather than wrapping it in an
 // operator with nothing to combine, so the tree carries only what was written.
 func combine(operator string, operands []Predicate, pos Position) Predicate {
-	if len(operands) == 1 {
+	switch len(operands) {
+	case 0:
+		// A query with neither a WHERE nor inline properties has no condition
+		// at all, which is not the same as one that is always true.
+		return nil
+	case 1:
 		return operands[0]
 	}
 	return LogicalOperator{Operator: operator, Operands: operands, Pos: pos}
