@@ -51,7 +51,10 @@ func validateResourceRequestSchema(ctx context.Context, req *interfaces.Resource
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_SchemaDefinition).
 				WithErrorDetails("schema_definition is required and must contain at least one field")
 		}
-		return validateSchemaProperties(ctx, req.SchemaDefinition, false)
+		if err := validateSchemaProperties(ctx, req.SchemaDefinition, false); err != nil {
+			return err
+		}
+		return validateDatasetSchemaTypes(ctx, req.SchemaDefinition)
 	default:
 		// Only raw resources support ref_property, and only their legacy data can contain
 		// self-references. Normalize this branch alone: dataset ref_property already returned
@@ -61,6 +64,16 @@ func validateResourceRequestSchema(ctx context.Context, req *interfaces.Resource
 		resourcelogic.NormalizeSelfReferencingFeatures(req.SchemaDefinition)
 		return validateSchemaProperties(ctx, req.SchemaDefinition, true)
 	}
+}
+
+func validateDatasetSchemaTypes(ctx context.Context, props []*interfaces.Property) error {
+	for _, prop := range props {
+		if prop.Type == interfaces.DataType_Binary || prop.Type == interfaces.DataType_Other {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldType).
+				WithErrorDetails(fmt.Sprintf("Dataset field %q type %q is not supported", prop.Name, prop.Type))
+		}
+	}
+	return nil
 }
 
 // validateSchemaProperties verifies the name, type and Feature of the schema field.

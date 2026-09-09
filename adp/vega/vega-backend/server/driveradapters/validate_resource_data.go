@@ -34,6 +34,9 @@ func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.Res
 			return err
 		}
 	}
+	if err := validateBinaryMode(ctx, params.BinaryMode); err != nil {
+		return err
+	}
 
 	err := validateResourceDataPaging(ctx, params)
 	if err != nil {
@@ -70,6 +73,14 @@ func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.Res
 	}
 
 	return nil
+}
+
+func validateBinaryMode(ctx context.Context, mode *string) error {
+	if mode == nil || *mode == interfaces.BinaryModeMetadata || *mode == interfaces.BinaryModeContent {
+		return nil
+	}
+	return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+		WithErrorDetails("binary_mode must be either metadata or content")
 }
 
 func validateResourceDataPaging(ctx context.Context, params *interfaces.ResourceDataQueryParams) error {
@@ -117,14 +128,14 @@ func validateResourceDataCursorContinuation(ctx context.Context, params *interfa
 	paging := params.Paging
 	if paging.Mode != "" || paging.Offset != 0 || paging.Limit != 0 || paging.KeepAliveSec != 0 ||
 		params.FilterCondition != nil || len(params.Sort) != 0 || len(params.OutputFields) != 0 ||
-		params.Aggregation != nil || len(params.GroupBy) != 0 || params.Having != nil {
+		params.Aggregation != nil || len(params.GroupBy) != 0 || params.Having != nil ||
+		params.BinaryMode != nil || params.IgnoreLocalIndex != nil {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor continuation must contain only paging.cursor")
 	}
 	params.Offset = 0
 	params.Limit = 0
-	// The initial request freezes this value in the cursor session. A value on
-	// continuation is accepted for request-shape consistency but cannot change it.
+	// The initial request freezes this value in the cursor session.
 	params.NeedTotal = false
 	return nil
 }
@@ -351,21 +362,53 @@ func validateAggregateParams(ctx context.Context, params *interfaces.ResourceDat
 	return nil
 }
 
-// validateResourceDataQueryGroupByFields verifies that group-by fields are declared by the resource.
+// validateResourceDataQueryGroupByFields verifies fields whose validity depends on the resource schema.
 // It runs after the resource is loaded so request-level validation can remain resource independent.
 func validateResourceDataQueryGroupByFields(ctx context.Context, params *interfaces.ResourceDataQueryParams,
 	schemaDefinition []*interfaces.Property) error {
-	fields := make(map[string]struct{}, len(schemaDefinition))
+	fields := make(map[string]string, len(schemaDefinition))
 	for _, property := range schemaDefinition {
 		if property != nil && property.Name != "" {
-			fields[property.Name] = struct{}{}
+			fields[property.Name] = property.Type
 		}
 	}
 
 	for _, groupByItem := range params.GroupBy {
-		if _, ok := fields[groupByItem.Property]; !ok {
+		fieldType, ok := fields[groupByItem.Property]
+		if !ok {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_GroupBy).
 				WithErrorDetails(fmt.Sprintf("GroupBy property %q is not defined by the resource", groupByItem.Property))
+		}
+		if fieldType == interfaces.DataType_Binary || fieldType == interfaces.DataType_Other {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_GroupBy).
+				WithErrorDetails(fmt.Sprintf("%s field %q cannot be used in group_by", fieldType, groupByItem.Property))
+		}
+	}
+
+	if !isAggregateQuery(params) {
+		return nil
+	}
+	if params.Aggregation != nil && fields[params.Aggregation.Property] == interfaces.DataType_Binary {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Aggregation).
+			WithErrorDetails(fmt.Sprintf("Binary field %q cannot be used in aggregation", params.Aggregation.Property))
+	}
+	groupByFields := make(map[string]struct{}, len(params.GroupBy))
+	for _, groupByItem := range params.GroupBy {
+		groupByFields[groupByItem.Property] = struct{}{}
+	}
+	for _, outputField := range params.OutputFields {
+		fieldType := fields[outputField]
+		if fieldType == interfaces.DataType_Binary {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+				WithErrorDetails(fmt.Sprintf("Binary field %q cannot be requested by an aggregation query", outputField))
+		}
+		if fieldType == interfaces.DataType_Other {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+				WithErrorDetails(fmt.Sprintf("Other field %q cannot be requested by an aggregation query", outputField))
+		}
+		if _, grouped := groupByFields[outputField]; !grouped {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+				WithErrorDetails(fmt.Sprintf("Output field %q must be included in group_by for an aggregation query", outputField))
 		}
 	}
 

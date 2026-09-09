@@ -248,6 +248,18 @@ func TestValidateResourceRequestDatasetSchema(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	for _, dataType := range []string{interfaces.DataType_Binary, interfaces.DataType_Other} {
+		t.Run("ValidateResourceRequest rejects unsupported dataset type "+dataType, func(t *testing.T) {
+			err := ValidateResourceRequest(ctx, baseReq([]*interfaces.Property{
+				{Name: "unsupported", Type: dataType},
+			}))
+			require.Error(t, err)
+			assert.ErrorContains(t, err, "unsupported")
+			assert.ErrorContains(t, err, dataType)
+			assert.ErrorContains(t, err, "not supported")
+		})
+	}
+
 	t.Run("ValidateResourceRequest rejects dataset feature ref_property", func(t *testing.T) {
 		err := ValidateResourceRequest(ctx, baseReq([]*interfaces.Property{
 			{Name: "content_keyword", Type: interfaces.DataType_String},

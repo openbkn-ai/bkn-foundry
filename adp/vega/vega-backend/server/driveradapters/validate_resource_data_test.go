@@ -137,6 +137,14 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 				Paging:      interfaces.PagingRequest{Cursor: "opaque-cursor"},
 				Aggregation: &interfaces.Aggregation{Property: "score", Aggr: "sum"},
 			},
+			"binary mode": {
+				Paging:     interfaces.PagingRequest{Cursor: "opaque-cursor"},
+				BinaryMode: stringPtr(interfaces.BinaryModeContent),
+			},
+			"ignore local index": {
+				Paging:           interfaces.PagingRequest{Cursor: "opaque-cursor"},
+				IgnoreLocalIndex: boolPtr(false),
+			},
 		} {
 			t.Run(name, func(t *testing.T) {
 				require.Error(t, ValidateResourceDataQueryParams(ctx, params))
@@ -171,6 +179,26 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 			})
 		}
 	})
+}
+
+func TestValidateBinaryMode(t *testing.T) {
+	ctx := context.Background()
+	require.NoError(t, validateBinaryMode(ctx, nil))
+	for _, mode := range []string{interfaces.BinaryModeMetadata, interfaces.BinaryModeContent} {
+		require.NoError(t, validateBinaryMode(ctx, &mode))
+	}
+	mode := "raw"
+	err := validateBinaryMode(ctx, &mode)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "binary_mode must be either metadata or content")
+}
+
+func stringPtr(value string) *string {
+	return &value
+}
+
+func boolPtr(value bool) *bool {
+	return &value
 }
 
 func TestValidateFormat(t *testing.T) {

@@ -315,6 +315,19 @@ components:
           type: array
           items:
             type: string
+        binary_mode:
+          description: |
+            Binary 字段的返回形式。省略时不读取 Binary 值，字段值返回
+            `{ "mode": "not_requested" }`；`metadata` 返回字节长度；`content` 返回
+            Base64 编码内容与字节长度。cursor 续页不得重复传递。
+          type: string
+          enum: [metadata, content]
+        ignore_local_index:
+          description: |
+            是否跳过可用的本地索引并查询表的原始数据源；默认 `false`。仅对 table resource
+            生效。cursor 续页不得重复传递。
+          type: boolean
+          default: false
         need_total:
           description: 是否在响应里携带 total_count。cursor 首次请求的值会被冻结；续页携带的值被忽略。
           type: boolean
@@ -374,8 +387,15 @@ components:
       required:
         - entries
       properties:
+        query_source:
+          description: 本次查询实际使用的数据路径。`local_index` 表示 table 的本地索引；`source` 表示未使用该本地索引。
+          type: string
+          enum: [local_index, source]
         entries:
-          description: 文档条目
+          description: |
+            文档条目。Binary 或无法索引的字段可返回 `ResourceValue`：`unavailable` 表示该字段
+            不在本地索引中；`not_requested` 表示未请求 Binary 值；`metadata` / `content` 分别表示
+            Binary 长度或 Base64 内容。
           type: array
           items:
             $ref: "#/components/schemas/Document"
@@ -390,6 +410,20 @@ components:
           type: array
           items:
             type: string
+    ResourceValue:
+      description: Binary 或无法索引字段的特殊值表示。
+      type: object
+      required: [mode]
+      properties:
+        mode:
+          type: string
+          enum: [unavailable, not_requested, metadata, content]
+        byte_length:
+          description: Binary 字段的字节长度。
+          type: integer
+          format: int64
+        data:
+          description: 字段内容；Binary 内容为 Base64 编码字符串。
     PagingRequest:
       description: 首次请求使用 offset 和 limit；cursor 续页以 cursor 定位，need_total 可携带但不会覆盖首次请求冻结值，其余查询参数不得重传。
       type: object

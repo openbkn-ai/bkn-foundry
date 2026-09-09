@@ -19,15 +19,18 @@ import (
 	"vega-backend/logics/connector/local/table"
 )
 
-func convertRawValue(v any) any {
+func convertRawValue(v any, preserveBinary bool) any {
 	if b, ok := v.([]byte); ok {
+		if preserveBinary {
+			return b
+		}
 		return string(b)
 	}
 	return v
 }
 
 // convertValue converts time values with time zones to the current time zone and handles other types
-func convertValue(v any, colName string, origTypeMap map[string]string) any {
+func convertValue(v any, colName string, origTypeMap map[string]string, preserveBinary bool) any {
 	if v == nil {
 		return nil
 	}
@@ -35,7 +38,7 @@ func convertValue(v any, colName string, origTypeMap map[string]string) any {
 	// Obtain the original type information from origTypeMap
 	origType, ok := origTypeMap[colName]
 	if !ok {
-		return convertRawValue(v)
+		return convertRawValue(v, preserveBinary)
 	}
 
 	// Only time types with time zones need to be converted
@@ -47,7 +50,7 @@ func convertValue(v any, colName string, origTypeMap map[string]string) any {
 	}
 
 	if !needsConversion {
-		return convertRawValue(v)
+		return convertRawValue(v, preserveBinary)
 	}
 
 	// Processing time type
@@ -56,7 +59,7 @@ func convertValue(v any, colName string, origTypeMap map[string]string) any {
 		// Convert to the local time zone
 		return t.Local()
 	default:
-		return convertRawValue(v)
+		return convertRawValue(v, preserveBinary)
 	}
 }
 
@@ -119,7 +122,7 @@ func (c *PostgresqlConnector) ExecuteRawSQL(ctx context.Context, sql string) (*i
 
 		row := make(map[string]any)
 		for i, col := range columns {
-			row[col] = convertValue(values[i], col, nil)
+			row[col] = convertValue(values[i], col, nil, false)
 		}
 		response.Entries = append(response.Entries, row)
 	}
@@ -193,7 +196,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 			selectFields = append(selectFields,
 				c.buildDateFormat(column, groupByItem.CalendarInterval)+" AS "+quoteColumnName(groupByItem.Property))
 		} else {
-			selectFields = append(selectFields, column)
+			selectFields = append(selectFields, column+" AS "+quoteColumnName(groupByItem.Property))
 		}
 	}
 
@@ -222,19 +225,32 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 	}
 
 	// If it is not an aggregated query and GROUP BY is not specified, add all fields
+	selectField := func(name string) string {
+		column := quoteColumnName(originalName(name))
+		if prop := fieldMap[name]; prop != nil && prop.Type == interfaces.DataType_Binary {
+			if params.BinaryMode == nil {
+				return "NULL AS " + quoteColumnName(name)
+			}
+			switch *params.BinaryMode {
+			case interfaces.BinaryModeMetadata:
+				return "octet_length(" + column + ") AS " + quoteColumnName(name)
+			case interfaces.BinaryModeContent:
+				return column + " AS " + quoteColumnName(name)
+			default:
+				return "NULL AS " + quoteColumnName(name)
+			}
+		}
+		return column + " AS " + quoteColumnName(name)
+	}
 	if len(params.GroupBy) == 0 && params.Aggregation == nil {
 		if len(params.OutputFields) > 0 {
 			for _, field := range params.OutputFields {
-				if prop, ok := fieldMap[field]; ok {
-					selectFields = append(selectFields, prop.OriginalName)
-				} else {
-					selectFields = append(selectFields, field)
-				}
+				selectFields = append(selectFields, selectField(field))
 			}
 		} else if len(selectFields) == 0 {
 			// If no output field is specified, all fields will be queried
 			for _, prop := range resource.SchemaDefinition {
-				selectFields = append(selectFields, prop.OriginalName)
+				selectFields = append(selectFields, selectField(prop.Name))
 			}
 		}
 	}
@@ -324,6 +340,14 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 	}
 	result.Columns = columns
 
+	binaryContentColumns := map[string]bool{}
+	if params.BinaryMode != nil && *params.BinaryMode == interfaces.BinaryModeContent {
+		for _, prop := range resource.SchemaDefinition {
+			if prop != nil && prop.Type == interfaces.DataType_Binary {
+				binaryContentColumns[prop.Name] = true
+			}
+		}
+	}
 	for rows.Next() {
 		values := make([]any, len(columns))
 		valuePtrs := make([]any, len(columns))
@@ -337,7 +361,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 
 		row := make(map[string]any)
 		for i, col := range columns {
-			row[col] = convertValue(values[i], col, origTypeMap)
+			row[col] = convertValue(values[i], col, origTypeMap, binaryContentColumns[col])
 		}
 		result.Entries = append(result.Entries, row)
 	}

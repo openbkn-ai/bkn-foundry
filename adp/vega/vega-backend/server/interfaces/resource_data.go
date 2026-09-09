@@ -25,6 +25,17 @@ const (
 	CALENDAR_UNIT_MONTH   = "month"
 	CALENDAR_UNIT_QUARTER = "quarter"
 	CALENDAR_UNIT_YEAR    = "year"
+
+	BinaryModeMetadata = "metadata"
+	BinaryModeContent  = "content"
+
+	ResourceQuerySourceLocalIndex = "local_index"
+	ResourceQuerySourceSource     = "source"
+
+	ResourceValueModeUnavailable  = "unavailable"
+	ResourceValueModeNotRequested = "not_requested"
+	ResourceValueModeMetadata     = "metadata"
+	ResourceValueModeContent      = "content"
 )
 
 // SortField represents a field to sort by.
@@ -70,7 +81,9 @@ type ResourceDataQueryParams struct {
 
 	FilterCondition any `json:"filter_condition,omitempty"`
 
-	OutputFields []string `json:"output_fields"` // Specify the list of fields for output
+	OutputFields     []string `json:"output_fields"` // Specify the list of fields for output
+	BinaryMode       *string  `json:"binary_mode,omitempty"`
+	IgnoreLocalIndex *bool    `json:"ignore_local_index,omitempty"`
 
 	NeedTotal   bool          `json:"need_total,omitempty"`
 	Format      string        `json:"-"`
@@ -95,8 +108,18 @@ type ResourceDataQueryParams struct {
 // logic-view queries. Paging follows the same single/cursor contract as raw
 // queries.
 type ResourceDataQueryResult struct {
-	Entries    []map[string]any
-	TotalCount int64
-	Paging     *PagingResponse
-	NeedTotal  bool
+	Entries     []map[string]any
+	TotalCount  int64
+	Paging      *PagingResponse
+	NeedTotal   bool
+	QuerySource string
+}
+
+// ResourceValue is the JSON representation of a resource field that needs
+// special handling. Binary content uses Base64 data; byte_length applies only
+// to Binary fields.
+type ResourceValue struct {
+	Mode       string `json:"mode"`
+	ByteLength *int64 `json:"byte_length,omitempty"`
+	Data       any    `json:"data,omitempty"`
 }

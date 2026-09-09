@@ -229,6 +229,8 @@ func TestResourceDataServiceQuery(t *testing.T) {
 			LocalIndexName:   "vega-build-resource-1-task-1",
 			SchemaDefinition: []*interfaces.Property{
 				{Name: "name"},
+				{Name: "blob", Type: interfaces.DataType_Binary},
+				{Name: "native_value", Type: interfaces.DataType_Other},
 			},
 		}
 		params := &interfaces.ResourceDataQueryParams{}
@@ -242,7 +244,43 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		rows, total, err := rds.query(context.Background(), resource, params)
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), total)
-		assert.Equal(t, wantRows, rows)
+		assert.Equal(t, "openbkn", rows[0]["name"])
+		assert.Equal(t, interfaces.ResourceValue{Mode: interfaces.ResourceValueModeUnavailable}, rows[0]["blob"])
+		assert.Equal(t, interfaces.ResourceValue{Mode: interfaces.ResourceValueModeUnavailable}, rows[0]["native_value"])
+	})
+
+	t.Run("force source bypasses local index and returns binary metadata", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCF := mock_interfaces.NewMockConnectorFactory(ctrl)
+		mockConn := mock_interfaces.NewMockTableConnector(ctrl)
+		rds := &resourceDataService{cs: mockCS, cf: mockCF}
+		resource := &interfaces.Resource{
+			ID:               "resource-1",
+			Enabled:          true,
+			CatalogID:        "catalog-1",
+			Category:         interfaces.ResourceCategoryTable,
+			LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+			LocalIndexName:   "vega-build-resource-1-task-1",
+			SchemaDefinition: []*interfaces.Property{{Name: "blob", Type: interfaces.DataType_Binary}},
+		}
+		ignoreLocalIndex := true
+		binaryMode := interfaces.BinaryModeMetadata
+		params := &interfaces.ResourceDataQueryParams{IgnoreLocalIndex: &ignoreLocalIndex, BinaryMode: &binaryMode}
+
+		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+		mockCF.EXPECT().CreateConnectorInstance(gomock.Any(), gomock.Any(), gomock.Any()).Return(mockConn, nil)
+		mockConn.EXPECT().Connect(gomock.Any()).Return(nil)
+		mockConn.EXPECT().Close(gomock.Any()).Return(nil)
+		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, params).
+			Return(&interfaces.QueryResult{Entries: []map[string]any{{"blob": int64(12)}}, Total: 1}, nil)
+
+		rows, total, err := rds.query(context.Background(), resource, params)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), total)
+		length := int64(12)
+		assert.Equal(t, interfaces.ResourceValue{Mode: interfaces.ResourceValueModeMetadata, ByteLength: &length}, rows[0]["blob"])
 	})
 
 	t.Run("query dataset builds actual filter condition and delegates", func(t *testing.T) {
@@ -330,6 +368,41 @@ func TestResourceDataServiceQuery(t *testing.T) {
 	})
 }
 
+func TestNormalizeResourceValuesRespectOutputFields(t *testing.T) {
+	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{
+		{Name: "id", Type: interfaces.DataType_Integer},
+		{Name: "blob", Type: interfaces.DataType_Binary},
+		{Name: "native_value", Type: interfaces.DataType_Other},
+	}}
+	params := &interfaces.ResourceDataQueryParams{OutputFields: []string{"id"}}
+
+	sourceRows := []map[string]any{{"id": int64(1)}}
+	normalizedSourceRows, err := normalizeBinaryQueryValues(sourceRows, resource, params)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"id": int64(1)}, normalizedSourceRows[0])
+
+	indexedRows := normalizeIndexedUnavailableQueryValues([]map[string]any{{"id": int64(1)}}, resource, params)
+	assert.Equal(t, map[string]any{"id": int64(1)}, indexedRows[0])
+}
+
+func TestNormalizeResourceValuesDoesNotAddFieldsToAggregateResults(t *testing.T) {
+	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{
+		{Name: "blob", Type: interfaces.DataType_Binary},
+		{Name: "native_value", Type: interfaces.DataType_Other},
+	}}
+	params := &interfaces.ResourceDataQueryParams{
+		Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count"},
+	}
+
+	sourceRows := []map[string]any{{"__value": int64(1)}}
+	normalizedSourceRows, err := normalizeBinaryQueryValues(sourceRows, resource, params)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"__value": int64(1)}, normalizedSourceRows[0])
+
+	indexedRows := normalizeIndexedUnavailableQueryValues([]map[string]any{{"__value": int64(1)}}, resource, params)
+	assert.Equal(t, map[string]any{"__value": int64(1)}, indexedRows[0])
+}
+
 func TestResourceDataServiceRejectsIndexAggregationCursor(t *testing.T) {
 	rds := &resourceDataService{}
 	_, err := rds.QueryWithPaging(interfaces.WithTrustedProxyRead(context.Background()), &interfaces.Resource{
@@ -364,7 +437,7 @@ func TestResourceDataPaginationCategoryUsesPhysicalEngine(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, resourceDataPaginationCategory(tt.resource))
+			assert.Equal(t, tt.want, resourceDataPaginationCategory(tt.resource, &interfaces.ResourceDataQueryParams{}))
 		})
 	}
 }
