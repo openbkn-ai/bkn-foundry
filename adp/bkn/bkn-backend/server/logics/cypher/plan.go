@@ -271,6 +271,16 @@ func (p *planner) planOrderBy(keys []SortKey) error {
 		if err != nil {
 			return err
 		}
+		// DISTINCT collapses rows before they are ordered, so sorting by
+		// something that was not returned has no defined answer: both MySQL
+		// and PostgreSQL refuse the statement. Refusing it here says which
+		// key is the problem, instead of letting the database report a
+		// statement the caller never wrote.
+		if p.plan.Distinct && !p.isProjected(table, column) {
+			return planErrorf(key.Property.Pos,
+				"%s is not returned, and DISTINCT can only be sorted by a returned value; add it to RETURN or drop DISTINCT",
+				key.Property)
+		}
 		p.plan.OrderBy = append(p.plan.OrderBy, PlanOrder{
 			Table:      table,
 			Column:     column,
@@ -278,6 +288,15 @@ func (p *planner) planOrderBy(keys []SortKey) error {
 		})
 	}
 	return nil
+}
+
+func (p *planner) isProjected(table int, column string) bool {
+	for _, projected := range p.plan.Select {
+		if projected.Table == table && projected.Column == column {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *planner) resolveProperty(ref PropertyRef) (int, string, error) {

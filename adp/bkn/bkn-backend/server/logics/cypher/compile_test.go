@@ -123,10 +123,22 @@ func TestCompileJoinIncoming(t *testing.T) {
 	}
 }
 
+// Sorting by a returned value stays allowed under DISTINCT, whether it is
+// named by its alias in RETURN or written out again in ORDER BY.
+func TestCompileDistinctSortedByReturnedValue(t *testing.T) {
+	got := mustCompile(t, "MATCH (o:Order) RETURN DISTINCT o.region AS r ORDER BY o.region DESC")
+	want := "SELECT DISTINCT t0.`f_region` AS `r` FROM {{.res_order}} t0 ORDER BY t0.`f_region` DESC"
+	if got != want {
+		t.Fatalf("got  %s\nwant %s", got, want)
+	}
+}
+
+// Without DISTINCT, sorting by a column that is not returned is ordinary SQL
+// and stays allowed.
 func TestCompileClauses(t *testing.T) {
-	got := mustCompile(t, `MATCH (o:Order) RETURN DISTINCT o.region AS region
+	got := mustCompile(t, `MATCH (o:Order) RETURN o.region AS region
 		ORDER BY o.region DESC, o.amount SKIP 20 LIMIT 10`)
-	want := "SELECT DISTINCT t0.`f_region` AS `region` FROM {{.res_order}} t0 " +
+	want := "SELECT t0.`f_region` AS `region` FROM {{.res_order}} t0 " +
 		"ORDER BY t0.`f_region` DESC, t0.`f_total` LIMIT 10 OFFSET 20"
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
@@ -285,6 +297,11 @@ func TestCompileRejections(t *testing.T) {
 			name:  "relation without key mapping",
 			query: "MATCH (o:Order)-[:UNMAPPED]->(c:Customer) RETURN o.id",
 			want:  "no key mapping",
+		},
+		{
+			name:  "distinct sorted by something it does not return",
+			query: "MATCH (o:Order) RETURN DISTINCT o.region AS r ORDER BY o.amount",
+			want:  "DISTINCT can only be sorted by a returned value",
 		},
 		{
 			name:  "unknown relation type",
