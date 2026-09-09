@@ -91,8 +91,16 @@ paths:
 
         | 级别 | 保留 | 剥掉 |
         |---|---|---|
+        | `outline` | 概念组 + 对象类 / 关系类 / 行动类骨架（`id` / `name` / `comment` / `tags` / `data_source` / `related_metric_count`） | 全部属性（`data_properties` / `logic_properties`），其余同 `summary` |
         | `summary`（默认） | 骨架 + 每个属性的 `name` / `type` | 属性的 `display_name` / `comment` / `mapped_field` / `condition_operations`，逻辑属性的 `data_source` / `parameters`，关系类的 `mapping_rules` 与起终点对象类详情 |
         | `full` | 全部 | —— |
+
+        **`concept_groups` 决定返回哪一部分**：传分组 id（也接受 name）后，`object_types`
+        只留组内对象类，`relation_types` 只留任一端在组内的关系（通往别组的边仍可见），
+        `action_types` 跟随对象类；`concept_groups` 清单本身不裁，仍是完整索引。没匹配上的
+        名字回 `missing_concept_groups`，此时空的 `object_types` 表示分组不存在，不是分组为空。
+        大网推荐 `outline`（不传分组）看全貌，再按 1-3 个分组分批取 `summary`。
+        `detail_level` 不在 `outline` / `summary` / `full` 之内直接 400。
 
         两种级别都会**去掉 `concept_groups` 里嵌套的对象类 / 关系类 / 行动类副本**：
         这些是顶层数组的重复拷贝，概念组只保留 `object_type_ids` 作为分组边界。
@@ -121,6 +129,11 @@ paths:
                 value:
                   kn_id: kn_medical
                   detail_level: full
+              大网分批:
+                value:
+                  kn_id: kn_medical
+                  detail_level: summary
+                  concept_groups: [cg_clinical, cg_billing]
       responses:
         '200':
           description: 知识网络详情

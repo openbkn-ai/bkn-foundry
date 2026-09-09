@@ -302,6 +302,11 @@ type KnowledgeNetworkDetail struct {
 	// layer is there and worth a call to search_capabilities, without carrying an input schema per
 	// tool into every "describe this network" answer.
 	MountedCapabilities *MountedCapabilityCounts `json:"mounted_capabilities,omitempty"`
+	// MissingConceptGroups lists the concept_groups the caller asked for that matched no
+	// group by id or name. Present only when the caller filtered by group: an empty
+	// object_types list must be readable as "the group you named does not exist" rather
+	// than "the group is empty", which are different next calls.
+	MissingConceptGroups []string `json:"missing_concept_groups,omitempty"`
 }
 
 // MountedCapabilityCounts is how many capabilities of each kind a network has mounted.
@@ -355,9 +360,23 @@ func CountMountedCapabilities(refs []*CapabilityRef) *MountedCapabilityCounts {
 
 // Detail levels for get_kn_detail progressive disclosure.
 const (
-	DetailLevelSummary = "summary" // skeleton + property name/type/comment (default)
+	DetailLevelOutline = "outline" // groups + object/relation/action skeletons, no properties at all
+	DetailLevelSummary = "summary" // skeleton + property name/type (default)
 	DetailLevelFull    = "full"    // everything, incl. field mappings / operators / mapping rules
 )
+
+// DetailLevels lists the accepted detail_level values, smallest first.
+var DetailLevels = []string{DetailLevelOutline, DetailLevelSummary, DetailLevelFull}
+
+// ValidDetailLevel reports whether level is one of DetailLevels.
+func ValidDetailLevel(level string) bool {
+	for _, known := range DetailLevels {
+		if level == known {
+			return true
+		}
+	}
+	return false
+}
 
 // Slim trims a get_kn_detail response for progressive disclosure.
 //
@@ -391,6 +410,16 @@ func (d *KnowledgeNetworkDetail) Slim(level string) {
 		if o == nil {
 			continue
 		}
+		// outline answers "what is in this network" and nothing more: the property
+		// tables are what make summary grow with the network (a few hundred object
+		// types carry thousands of rows), and an agent choosing which groups to open
+		// does not need them yet. Properties come back with concept_groups + summary,
+		// or per object via get_object_types.
+		if level == DetailLevelOutline {
+			o.DataProperties = nil
+			o.LogicProperties = nil
+			continue
+		}
 		// summary keeps only name+type per property so the array is flat and uniform
 		// (TOON then renders it as a compact table); drop display_name/comment and the
 		// heavy mapped_field/operators/logic sources. Full detail via get_object_types.
@@ -421,6 +450,83 @@ func (d *KnowledgeNetworkDetail) Slim(level string) {
 		r.SourceObjectType = nil
 		r.TargetObjectType = nil
 	}
+}
+
+// FilterConceptGroups keeps only the schema that belongs to the named concept groups
+// (matched by id, or by name as a fallback) and records the names that matched
+// nothing in MissingConceptGroups.
+//
+// Object types are kept when any selected group lists them. Relation types are kept
+// when either endpoint survived: an agent opening one group needs to see the edges
+// that leave it to plan a path into the next, and relation entries are light once
+// Slim has dropped their mapping rules. Action types follow their object type. The
+// concept_groups list itself is left whole — it is the index the caller chooses from.
+//
+// A network with no concept groups, or a request naming none that exist, comes back
+// with empty schema arrays and every name under MissingConceptGroups, which is the
+// signal to call again without the filter.
+func (d *KnowledgeNetworkDetail) FilterConceptGroups(groups []string) {
+	if d == nil || len(groups) == 0 {
+		return
+	}
+	byKey := make(map[string]*ConceptGroup, len(d.ConceptGroups)*2)
+	for _, g := range d.ConceptGroups {
+		if g != nil {
+			byKey[g.ID] = g
+		}
+	}
+	for _, g := range d.ConceptGroups {
+		if g != nil && g.Name != "" {
+			if _, exists := byKey[g.Name]; !exists {
+				byKey[g.Name] = g
+			}
+		}
+	}
+	keep := make(map[string]bool)
+	seen := make(map[string]bool, len(groups))
+	missing := []string{}
+	for _, key := range groups {
+		g, ok := byKey[key]
+		if !ok {
+			missing = append(missing, key)
+			continue
+		}
+		if seen[g.ID] {
+			continue
+		}
+		seen[g.ID] = true
+		for _, id := range g.ObjectTypeIDs {
+			keep[id] = true
+		}
+		// Nested copies are dropped by Slim, but a caller may filter before it runs.
+		for _, o := range g.ObjectTypes {
+			if o != nil {
+				keep[o.ID] = true
+			}
+		}
+	}
+	objectTypes := d.ObjectTypes[:0:0]
+	for _, o := range d.ObjectTypes {
+		if o != nil && keep[o.ID] {
+			objectTypes = append(objectTypes, o)
+		}
+	}
+	d.ObjectTypes = objectTypes
+	relationTypes := d.RelationTypes[:0:0]
+	for _, r := range d.RelationTypes {
+		if r != nil && (keep[r.SourceObjectTypeID] || keep[r.TargetObjectTypeID]) {
+			relationTypes = append(relationTypes, r)
+		}
+	}
+	d.RelationTypes = relationTypes
+	actionTypes := d.ActionTypes[:0:0]
+	for _, a := range d.ActionTypes {
+		if a != nil && keep[a.ObjectTypeID] {
+			actionTypes = append(actionTypes, a)
+		}
+	}
+	d.ActionTypes = actionTypes
+	d.MissingConceptGroups = missing
 }
 
 // ObjectTypesResp is the get_object_types response: the requested object types in

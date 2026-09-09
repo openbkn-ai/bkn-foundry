@@ -5,4 +5,4 @@
  * See the LICENSE file in the project root for details.
  */
 
-Use .get() for optional response fields. Prefer run_sql for database-side aggregation; use run_shell only to inspect files or the sandbox environment. Keep intermediate results in the sandbox work directory instead of printing large payloads.
+Use .get() for optional response fields. Prefer run_sql for database-side aggregation; use run_shell only to inspect files or the sandbox environment. Keep intermediate results in the sandbox work directory instead of printing large payloads. stdout keeps only its first 20000 and last 8000 characters (the middle is cut and the omission marked); stderr keeps its last 6000. Print the answer last, never inside a large dump.

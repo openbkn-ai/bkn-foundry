@@ -329,6 +329,26 @@ components:
             是否附带命中对象类的精简定义。默认附带——不附带的话，要读懂返回的实例
             还得再调一次 `get_object_types`，而那一趟会把同一个 query 的概念召回重跑一遍。
 
+        properties:
+          type: array
+          items:
+            type: string
+          description: |
+            只返回这些属性（名字来自上一次返回的 `properties` 键，或 `search_schema` /
+            `get_object_types` 的 `data_properties.name`）；`_instance_id` 始终保留。
+            不传时按默认选择：先丢空值，再按名字序最多留 `max_properties_per_instance` 个。
+        max_property_chars:
+          type: integer
+          minimum: 1
+          maximum: 4000
+          default: 300
+          description: 每个字符串属性值最多保留的字符数，超出以 `…` 截断。答案在长文本字段里时调大。
+        max_properties_per_instance:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 20
+          description: 不传 `properties` 时每条实例最多带几个属性（丢掉空值后按名字序截取）。
     SearchInstanceResponse:
       type: object
       required:

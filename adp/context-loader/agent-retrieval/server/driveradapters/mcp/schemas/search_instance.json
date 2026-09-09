@@ -60,7 +60,28 @@
       "include_object_types": {
         "type": "boolean",
         "default": true,
-        "description": "是否附带命中对象类的精简定义（属性名与类型），默认附带。关掉只在你已经拿着这些对象类的 Schema 时才划算——否则要读懂返回的实例还得再调一次 get_object_types。"
+        "description": "是否附带命中对象类的精简定义（属性名与类型、索引算子；逻辑属性只留名字与类型，不带 data_source/parameters），默认附带。关掉只在你已经拿着这些对象类的 Schema 时才划算——否则要读懂返回的实例还得再调一次 get_object_types。"
+      },
+      "properties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "只返回这些属性（属性名来自上一次返回的 properties 键、或 search_schema / get_object_types 的 data_properties.name）；_instance_id 始终保留。不传时按默认选择：先丢空值，再按名字序最多留 max_properties_per_instance 个。知道要看哪几列之后就传它——50 行 × 20 列变 50 行 × 3 列，这是本工具最大的省法。"
+      },
+      "max_property_chars": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 4000,
+        "default": 300,
+        "description": "每个字符串属性值最多保留的字符数，超出以 … 截断，默认 300。答案藏在长文本字段里（备注、正文、原文块）时调大；否则长字段是单次返回里最大的体积来源。"
+      },
+      "max_properties_per_instance": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 200,
+        "default": 20,
+        "description": "不传 properties 时每条实例最多带几个属性（丢掉空值后按名字序截取），默认 20。"
       }
     },
     "required": [
@@ -86,7 +107,7 @@
             "properties": {
               "type": "object",
               "additionalProperties": true,
-              "description": "实例属性。字段含义见 search_schema / get_object_types 返回的对象类定义。"
+              "description": "实例属性。默认丢空值、每条最多 max_properties_per_instance 个、字符串值截到 max_property_chars 字符（末尾 …）；传 properties 可精确投影。_instance_identity / _display 与 unique_identities / instance_name 重复，不再出现。字段含义见 search_schema / get_object_types 返回的对象类定义。"
             },
             "rank": {
               "type": "integer",

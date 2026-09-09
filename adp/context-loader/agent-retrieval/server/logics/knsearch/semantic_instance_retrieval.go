@@ -1195,24 +1195,58 @@ func (s *localSearchImpl) filterNodesByScore(nodes []*interfaces.KnSearchNode, t
 	return filtered
 }
 
-// filterNodeProperties filter node properties.
+// filterNodeProperties bounds what each node carries back to the caller.
+//
+// Three cuts, in order:
+//  1. Duplicates go: _instance_identity repeats unique_identities and _display repeats
+//     instance_name, both already on the node.
+//  2. Either the caller's projection (config.Properties, plus _instance_id which the subgraph
+//     tools take as input) or, without one, the empty values are dropped first and the remainder
+//     is capped at MaxPropertiesPerInstance in name order. Dropping empties before capping is
+//     what keeps a wide table from filling its twenty slots with attr_text_009: null while the
+//     one populated column falls off the end.
+//  3. String values are cut at MaxPropertyValueLength characters with an ellipsis.
 func (s *localSearchImpl) filterNodeProperties(nodes []*interfaces.KnSearchNode, config *interfaces.KnSearchPropertyFilterConfig) []*interfaces.KnSearchNode {
+	projection := make(map[string]bool, len(config.Properties))
+	for _, name := range config.Properties {
+		projection[name] = true
+	}
 	for _, node := range nodes {
-		if len(node.Properties) > config.MaxPropertiesPerInstance {
-			keys := make([]string, 0, len(node.Properties))
-			for key := range node.Properties {
-				keys = append(keys, key)
-			}
-			sort.Strings(keys)
-
-			newProps := make(map[string]any)
-			for i, key := range keys {
-				if i >= config.MaxPropertiesPerInstance {
-					break
+		if len(node.UniqueIdentities) > 0 {
+			delete(node.Properties, "_instance_identity")
+		}
+		if node.InstanceName != "" {
+			delete(node.Properties, "_display")
+		}
+		if len(projection) > 0 {
+			kept := make(map[string]any, len(projection)+1)
+			for key, value := range node.Properties {
+				if projection[key] || key == "_instance_id" {
+					kept[key] = value
 				}
-				newProps[key] = node.Properties[key]
 			}
-			node.Properties = newProps
+			node.Properties = kept
+		} else {
+			for key, value := range node.Properties {
+				if isEmptyPropertyValue(value) {
+					delete(node.Properties, key)
+				}
+			}
+			if config.MaxPropertiesPerInstance > 0 && len(node.Properties) > config.MaxPropertiesPerInstance {
+				keys := make([]string, 0, len(node.Properties))
+				for key := range node.Properties {
+					keys = append(keys, key)
+				}
+				sort.Strings(keys)
+				newProps := make(map[string]any, config.MaxPropertiesPerInstance)
+				for i, key := range keys {
+					if i >= config.MaxPropertiesPerInstance {
+						break
+					}
+					newProps[key] = node.Properties[key]
+				}
+				node.Properties = newProps
+			}
 		}
 
 		// Truncate overly long attribute values.
@@ -1228,6 +1262,22 @@ func (s *localSearchImpl) filterNodeProperties(nodes []*interfaces.KnSearchNode,
 		}
 	}
 	return nodes
+}
+
+// isEmptyPropertyValue reports values that carry no information for a reader: null, blank
+// strings, and empty collections. Zero numbers and false are kept — they are answers.
+func isEmptyPropertyValue(value any) bool {
+	switch v := value.(type) {
+	case nil:
+		return true
+	case string:
+		return strings.TrimSpace(v) == ""
+	case []any:
+		return len(v) == 0
+	case map[string]any:
+		return len(v) == 0
+	}
+	return false
 }
 
 // knnAllowedFor determines whether a certain object type sends vector conditions this round.

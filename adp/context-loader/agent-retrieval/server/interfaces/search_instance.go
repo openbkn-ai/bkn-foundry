@@ -40,6 +40,22 @@ type SearchInstanceReq struct {
 	// Turning it off is only worthwhile if the caller already has the schema for these object types.
 	IncludeObjectTypes *bool `json:"include_object_types,omitempty" default:"true"`
 
+	// Properties projects every returned node's properties down to these names. Empty means the
+	// default selection (non-empty values, capped by MaxPropertiesPerInstance). _instance_id is
+	// kept regardless because it is what the subgraph tools take as input.
+	//
+	// This is the knob that turns 50 rows × 20 columns into 50 rows × 3 columns once the caller
+	// knows which columns answer the question; the per-row cap below can only choose columns blind.
+	Properties []string `json:"properties,omitempty"`
+	// MaxPropertyChars cuts every string property value to this many characters (an ellipsis marks
+	// the cut). 1..MaxPropertyCharsCeiling, default DefaultMaxPropertyChars. Raise it when the
+	// answer is inside a long text field; otherwise long fields are the single largest cost of a
+	// result — one 20-column row of free text is ten thousand characters.
+	MaxPropertyChars *int `json:"max_property_chars,omitempty" default:"300"`
+	// MaxPropertiesPerInstance caps how many properties each node carries when Properties is not
+	// set. 1..MaxPropertiesPerInstanceCeiling, default DefaultMaxPropertiesPerInstance.
+	MaxPropertiesPerInstance *int `json:"max_properties_per_instance,omitempty" default:"20"`
+
 	// Rerank: Whether to perform cross-encoder refinement on the recall results. The default is off.
 	//
 	// Leave it to the caller rather than the deployer: only the person who initiated the query knows whether the query is more accurate or faster this time.
@@ -57,6 +73,14 @@ type SearchInstanceReq struct {
 	// REST callers (direct consumers like Studio) still get the full amount.
 	IndexOpsOnly bool `json:"-"`
 }
+
+// Bounds for the per-node property knobs on the search_instance tool surface.
+const (
+	DefaultMaxPropertyChars         = 300
+	MaxPropertyCharsCeiling         = 4000
+	DefaultMaxPropertiesPerInstance = 20
+	MaxPropertiesPerInstanceCeiling = 200
+)
 
 // SearchInstanceResp search_instance response.
 //

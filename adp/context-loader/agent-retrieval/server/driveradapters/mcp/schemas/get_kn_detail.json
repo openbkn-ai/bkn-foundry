@@ -18,11 +18,19 @@
       "detail_level": {
         "type": "string",
         "enum": [
+          "outline",
           "summary",
           "full"
         ],
         "default": "summary",
-        "description": "详情级别。summary（默认）：对象类/关系类/行动类骨架 + 每个属性仅 name+type（扁平同构，TOON 渲染成紧凑表格），不含 display_name/comment/字段映射/查询算子/映射规则，足够理解 schema 与规划查询；需要某对象完整字段映射（含 comment）改调 get_object_types，要关系 mapping_rules 改调 get_relation_types。full：一次返回全量（体积大，慎用）。"
+        "description": "详情级别。outline：概念组 + 对象类/关系类/行动类骨架（id/name/comment/tags/data_source/related_metric_count），不含任何属性——体积最小，适合大网第一眼、或只为选概念组时用；随后带 concept_groups 再调 summary 拿属性。summary（默认）：骨架 + 每个属性仅 name+type（扁平同构，TOON 渲染成紧凑表格），不含 display_name/comment/字段映射/查询算子/映射规则，足够理解 schema 与规划查询；需要某对象完整字段映射（含 comment）改调 get_object_types，要关系 mapping_rules 改调 get_relation_types。full：一次返回全量（体积大，慎用）。"
+      },
+      "concept_groups": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "只返回这些概念组内的 schema（传分组 id，也接受 name；来自本工具返回的 concept_groups[]）。object_types 只留组内对象类，relation_types 留任一端在组内的关系（能看到通往别组的边），action_types 跟随对象类；concept_groups 清单本身不裁，仍是完整索引。没匹配上的名字回 missing_concept_groups——此时 object_types 为空表示分组名不存在，不是分组为空。大网推荐用法：先 detail_level=outline 不传分组看全貌，再按 1-3 个相关分组分批取 summary，代替一次拉整网。"
       }
     },
     "required": [
@@ -213,6 +221,13 @@
             "description": "MCP 工具数量，同样用 execute_tool 调用"
           }
         }
+      },
+      "missing_concept_groups": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "入参 concept_groups 里没匹配上任何分组（按 id 或 name）的名字。仅在传了 concept_groups 时出现。"
       }
     }
   }

@@ -10,6 +10,7 @@ package knquerytools
 
 import (
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/gin-gonic/gin"
@@ -116,12 +117,14 @@ func (h *knQueryToolsHandler) ListKnowledgeNetworks(c *gin.Context) {
 
 // getKnDetailReq get_kn_detail input parameter.
 type getKnDetailReq struct {
-	KnID        string `json:"kn_id" form:"kn_id"`
-	DetailLevel string `json:"detail_level" form:"detail_level"` // Summary (default)| full.
+	KnID          string   `json:"kn_id" form:"kn_id"`
+	DetailLevel   string   `json:"detail_level" form:"detail_level"`     // outline | summary (default) | full.
+	ConceptGroups []string `json:"concept_groups" form:"concept_groups"` // Narrow the schema arrays to these groups (id or name).
 }
 
 // GetKnDetail Gets knowledge network details (concept group/object type/relation type/action class).
-// detail_level=summary (default) returns the skeleton + attribute name, full returns the full amount.
+// detail_level=outline returns groups and type skeletons without properties, summary (default) adds the
+// property name+type table, full returns everything. concept_groups narrows the schema arrays to the named groups.
 func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 	ctx := c.Request.Context()
 	req := &getKnDetailReq{}
@@ -132,6 +135,15 @@ func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 	}
 	if req.KnID == "" {
 		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, "kn_id is required"))
+		return
+	}
+	detailLevel := req.DetailLevel
+	if detailLevel == "" {
+		detailLevel = interfaces.DetailLevelSummary
+	}
+	if !interfaces.ValidDetailLevel(detailLevel) {
+		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest,
+			"detail_level must be one of "+strings.Join(interfaces.DetailLevels, ", ")))
 		return
 	}
 
@@ -147,6 +159,8 @@ func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
+	// Narrow before the per-object enrichment below; the metric counts are looked up per surviving object type.
+	resp.FilterConceptGroups(req.ConceptGroups)
 	// Only the count is attached but not the details: it is enough for the Agent to judge which object type is worthy of drill-down metrics.
 	if err := h.metrics.AttachRelatedMetricCounts(ctx, req.KnID, resp.ObjectTypes); err != nil {
 		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] metric authorization failed: %v", err)
@@ -164,10 +178,6 @@ func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 		resp.AttachMountedCapabilities(refs)
 	} else {
 		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] capability bindings unreadable: %v", err)
-	}
-	detailLevel := req.DetailLevel
-	if detailLevel == "" {
-		detailLevel = interfaces.DetailLevelSummary
 	}
 	resp.Slim(detailLevel)
 	rest.ReplyOK(c, http.StatusOK, resp)

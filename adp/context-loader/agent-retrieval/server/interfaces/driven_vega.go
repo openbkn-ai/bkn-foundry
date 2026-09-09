@@ -47,6 +47,9 @@ type VegaRawQueryResp struct {
 	TotalCount *int64              `json:"total_count,omitempty" toon:"total_count,omitempty"`
 	Warnings   []string            `json:"warnings,omitempty" toon:"warnings,omitempty"`
 	Paging     *VegaPagingResponse `json:"paging,omitempty" toon:"paging,omitempty"`
+	// NextOffset is set when the call's row cap cut the result: pass it back as
+	// offset to read the next page. Absent means every matching row was returned.
+	NextOffset *int `json:"next_offset,omitempty" toon:"next_offset,omitempty"`
 }
 
 // TOONValue returns a shallow response copy whose dynamic entries are safe for

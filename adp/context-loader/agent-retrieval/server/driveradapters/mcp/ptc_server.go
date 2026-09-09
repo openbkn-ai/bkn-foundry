@@ -90,6 +90,31 @@ func handlePTCExecute(
 	return handlePTCExecuteForLocale(executor, toolkit, tool, loadMCPLocaleBundle(defaultMCPLocale))
 }
 
+// Bounds on what one run_code / run_shell hands back.
+//
+// The generic envelope cuts a result from the front, which is the wrong end for a program: the
+// final print and the traceback are at the end. A script that dumped a whole result set before
+// printing its answer used to lose the answer to the cut and keep the dump. stdout keeps its head
+// (what the script inspected first) and its tail (what it concluded); stderr keeps only its tail,
+// where the exception is. The sum stays under the envelope so the envelope never fires on top.
+const (
+	ptcStdoutHeadChars = 20000
+	ptcStdoutTailChars = 8000
+	ptcStderrTailChars = 6000
+)
+
+// boundPTCStream keeps at most head characters from the start and tail from the end of text,
+// marking the omitted middle. head 0 keeps only the tail.
+func boundPTCStream(text string, head, tail int, name string) string {
+	runes := []rune(text)
+	if len(runes) <= head+tail {
+		return text
+	}
+	omitted := len(runes) - head - tail
+	marker := fmt.Sprintf("\n…[%s truncated: %d characters omitted here. Print less: write large results to a file and print counts, keys or the first rows instead]…\n", name, omitted)
+	return string(runes[:head]) + marker + string(runes[len(runes)-tail:])
+}
+
 func handlePTCExecuteForLocale(
 	executor interfaces.DrivenOperatorIntegration, toolkit *PTCToolkit, tool PTCTool, locale *mcpLocaleBundle,
 ) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -126,7 +151,9 @@ func handlePTCExecuteForLocale(
 		}
 
 		payload := map[string]any{
-			"stdout": resp.Stdout, "stderr": resp.Stderr, "exit_code": resp.ExitCode,
+			"stdout":    boundPTCStream(resp.Stdout, ptcStdoutHeadChars, ptcStdoutTailChars, "stdout"),
+			"stderr":    boundPTCStream(resp.Stderr, 0, ptcStderrTailChars, "stderr"),
+			"exit_code": resp.ExitCode,
 		}
 		// A non-zero exit code is a tool error. Return stderr so the caller can
 		// correct its script instead of blindly retrying.

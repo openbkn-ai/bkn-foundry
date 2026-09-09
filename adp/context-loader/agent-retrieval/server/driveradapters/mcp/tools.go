@@ -8,10 +8,12 @@ package mcp
 
 import (
 	"context"
+	"fmt"
 	"github.com/bytedance/sonic"
 	validator "github.com/go-playground/validator/v10"
 	"github.com/mark3labs/mcp-go/mcp"
 	"log"
+	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
@@ -558,7 +560,9 @@ func handleDescribeResource(svc knresources.KnResourcesService) func(ctx context
 
 // handleGetKnDetail handles get_kn_detail tool calls.
 // Pack the knowledge network details (concept group/object type/relation type/action class) of bkn-backend and press.
-// detail_level does progressive cropping: summary (default) returns the skeleton + attribute name, full returns the full amount.
+// detail_level does progressive cropping: outline returns groups and type skeletons without properties,
+// summary (default) adds the property name+type table, full returns everything. concept_groups narrows the
+// schema arrays to the named groups so a large network can be read one group at a time.
 func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetricsService, schemaAccess interfaces.ObjectSchemaAccess, knAuthz interfaces.KnowledgeNetworkAuthorizer) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
@@ -572,6 +576,11 @@ func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetr
 		if knID == "" {
 			return mcp.NewToolResultError("kn_id is required"), nil
 		}
+		detailLevel := getStringArg(req, "detail_level", interfaces.DetailLevelSummary)
+		if !interfaces.ValidDetailLevel(detailLevel) {
+			return mcp.NewToolResultError(fmt.Sprintf("detail_level must be one of %s", strings.Join(interfaces.DetailLevels, ", "))), nil
+		}
+		conceptGroups := req.GetStringSlice("concept_groups", nil)
 
 		resp, err := bkn.GetKnowledgeNetworkDetail(ctx, knID)
 		if err != nil {
@@ -581,6 +590,9 @@ func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetr
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
+		// Narrow before the per-object enrichment below: the metric counts are looked up
+		// per surviving object type, so filtering first is also the cheaper order.
+		resp.FilterConceptGroups(conceptGroups)
 		// Counts only: which object types have metrics worth drilling into, without
 		// carrying the metric list itself at this level.
 		if err := metrics.AttachRelatedMetricCounts(ctx, knID, resp.ObjectTypes); err != nil {
@@ -607,7 +619,7 @@ func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetr
 			// whoever reads the answer, and only one of them is worth investigating.
 			log.Printf("WARN: get_kn_detail capability bindings unreadable for kn %s: %v", knID, err)
 		}
-		resp.Slim(getStringArg(req, "detail_level", interfaces.DetailLevelSummary))
+		resp.Slim(detailLevel)
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil

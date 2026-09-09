@@ -155,6 +155,9 @@ type KnSearchPropertyFilterConfig struct {
 	MaxPropertiesPerInstance int   `json:"max_properties_per_instance" default:"20"`
 	MaxPropertyValueLength   int   `json:"max_property_value_length" default:"500"`
 	EnablePropertyFilter     *bool `json:"enable_property_filter" default:"true"`
+	// Properties, when set, is an explicit projection: only these property names (plus _instance_id)
+	// survive, and MaxPropertiesPerInstance does not apply. Request-scoped; never a deployment default.
+	Properties []string `json:"properties,omitempty"`
 }
 
 // ==================== Response Structures ====================

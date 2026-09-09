@@ -8,6 +8,7 @@ package knsearch
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -67,6 +68,18 @@ func NormalizeSearchInstanceReq(req *interfaces.SearchInstanceReq) (*interfaces.
 	if req.MaxInstancesPerType == nil || *req.MaxInstancesPerType <= 0 {
 		return nil, errors.New("max_instances_per_type must be greater than 0")
 	}
+	if req.MaxPropertyChars == nil || *req.MaxPropertyChars < 1 || *req.MaxPropertyChars > interfaces.MaxPropertyCharsCeiling {
+		return nil, fmt.Errorf("max_property_chars must be between 1 and %d", interfaces.MaxPropertyCharsCeiling)
+	}
+	if req.MaxPropertiesPerInstance == nil || *req.MaxPropertiesPerInstance < 1 || *req.MaxPropertiesPerInstance > interfaces.MaxPropertiesPerInstanceCeiling {
+		return nil, fmt.Errorf("max_properties_per_instance must be between 1 and %d", interfaces.MaxPropertiesPerInstanceCeiling)
+	}
+	properties := make([]string, 0, len(req.Properties))
+	for _, name := range req.Properties {
+		if name = strings.TrimSpace(name); name != "" {
+			properties = append(properties, name)
+		}
+	}
 
 	onlySchema := false
 	return &interfaces.KnSearchReq{
@@ -96,6 +109,13 @@ func NormalizeSearchInstanceReq(req *interfaces.SearchInstanceReq) (*interfaces.
 			SemanticInstanceRetrieval: &interfaces.KnSearchSemanticInstanceRetrievalConfig{
 				PerTypeInstanceLimit: *req.MaxInstancesPerType,
 				InstanceRerankMode:   instanceRerankModeFromFlag(req.Rerank),
+			},
+			// Per-node payload bounds are the caller's to set: only the caller knows whether the
+			// answer is in a long text field or in three of twenty columns.
+			PropertyFilter: &interfaces.KnSearchPropertyFilterConfig{
+				MaxPropertiesPerInstance: *req.MaxPropertiesPerInstance,
+				MaxPropertyValueLength:   *req.MaxPropertyChars,
+				Properties:               properties,
 			},
 		},
 	}, nil
@@ -156,6 +176,7 @@ func objectTypesOfNodes(objectTypes, nodes []any) []any {
 		}
 		id, _ := otMap["concept_id"].(string)
 		if _, ok := hit[strings.TrimSpace(id)]; ok {
+			slimLogicProperties(otMap)
 			kept = append(kept, ot)
 		}
 	}
@@ -163,6 +184,23 @@ func objectTypesOfNodes(objectTypes, nodes []any) []any {
 		return nil
 	}
 	return kept
+}
+
+// slimLogicProperties keeps a logic property's name/type/comment and drops its data_source and
+// parameters. This tool's object types exist to read the rows next to them; how a logic property
+// is computed is get_object_types' answer, and on a metric-heavy network those two fields were
+// most of the object_types section.
+func slimLogicProperties(objectType map[string]any) {
+	props, ok := objectType["logic_properties"].([]any)
+	if !ok {
+		return
+	}
+	for _, prop := range props {
+		if m, ok := prop.(map[string]any); ok {
+			delete(m, "data_source")
+			delete(m, "parameters")
+		}
+	}
 }
 
 // instanceRerankModeFromFlag maps the switch on the tool surface to the fine ranking position.

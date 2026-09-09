@@ -220,6 +220,9 @@ func mergePropertyFilterConfig(base, user *interfaces.KnSearchPropertyFilterConf
 	if user.EnablePropertyFilter != nil {
 		base.EnablePropertyFilter = user.EnablePropertyFilter
 	}
+	if len(user.Properties) > 0 {
+		base.Properties = user.Properties
+	}
 }
 
 func boolPtr(value bool) *bool {

@@ -167,8 +167,10 @@ paths:
            守卫不是完整 SQL 解析器，是纵深防御的一层：vega 侧另有基于 SQLGlot AST 的
            只读策略做最终裁决（拒绝非顶层 SELECT、WITH/CTE、集合运算等），两层都不可省。
 
-        **不分页**：固定单次返回，上限 10000 行。要更多数据请在 SQL 里自己收敛
-        （聚合、加条件、加 LIMIT）。
+        **按页返回**：每次最多返回 `limit` 行（默认 200，上限 10000），叠加在 SQL 自身的
+        `LIMIT` 之上；结果被截断时带 `next_offset` 与一条 `warnings`，把 `next_offset` 作为
+        `offset` 再调即取下一页。分页只是缓冲，优先在 SQL 里收敛（聚合、加条件、加 LIMIT），
+        别把整表一页页翻回来。`limit` 超出 1-10000 或 `offset` 为负直接 400。
       parameters:
         - $ref: '#/components/parameters/ResponseFormat'
       requestBody:
@@ -364,12 +366,23 @@ components:
         query_timeout:
           type: integer
           description: 查询超时（秒）。不传走下游默认。
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 10000
+          default: 200
+          description: 本次最多返回的行数，叠加在 SQL 自身的 `LIMIT` 之上（取更小者）。
+        offset:
+          type: integer
+          minimum: 0
+          default: 0
+          description: 跳过结果集前 `offset` 行；传上一页返回的 `next_offset` 翻页。
 
     RunSQLResponse:
       type: object
       description: |
-        vega 原始查询的结果。本接口固定用单次返回模式（上限 10000 行），
-        因此 `paging.next_cursor` 恒为空。
+        vega 原始查询的结果。本接口固定用单次返回模式，因此 `paging.next_cursor` 恒为空；
+        翻页看 `next_offset`。
       properties:
         columns:
           type: array
@@ -391,6 +404,9 @@ components:
           items:
             type: string
           description: 下游返回的告警。
+        next_offset:
+          type: integer
+          description: 行数被 `limit` 截断时才出现；作为 `offset` 再调一次取下一页。不出现表示已返回全部匹配行。
         paging:
           $ref: '#/components/schemas/PagingResponse'
 
