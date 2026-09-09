@@ -13,9 +13,19 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knmetrics"
 )
 
+// stubKnAuthz answers the network read check. The zero value allows.
+type stubKnAuthz struct{ err error }
+
+func (s stubKnAuthz) AuthorizeRead(_ context.Context, _ string) error { return s.err }
+
 func knDetailWithCapabilities(t *testing.T, bkn *stubMetricBknBackend, level string) map[string]any {
 	t.Helper()
-	handler := handleGetKnDetail(bkn, knmetrics.NewKnMetricsServiceWith(nil, bkn, nil), &mcpObjectSchemaAccessStub{})
+	return knDetailAs(t, bkn, level, stubKnAuthz{})
+}
+
+func knDetailAs(t *testing.T, bkn *stubMetricBknBackend, level string, authz stubKnAuthz) map[string]any {
+	t.Helper()
+	handler := handleGetKnDetail(bkn, knmetrics.NewKnMetricsServiceWith(nil, bkn, nil), &mcpObjectSchemaAccessStub{}, authz)
 	result, err := handler(context.Background(), mcpReq(map[string]any{
 		"kn_id": "kn-001", "response_format": "json", "detail_level": level,
 	}))
@@ -105,5 +115,34 @@ func TestKnDetailIgnoresUnusableBindings(t *testing.T) {
 	counts := knDetailWithCapabilities(t, bkn, interfaces.DetailLevelSummary)["mounted_capabilities"].(map[string]any)
 	if counts["total"] != float64(1) || counts["skill"] != float64(1) {
 		t.Fatalf("只有那条可用的该被计入, got %v", counts)
+	}
+}
+
+// TestKnDetailWithholdsCountsFromAnUnauthorizedCaller keeps this field from being the one place
+// the bindings answer without a per-caller check.
+//
+// The metric counts beside it inherit their scope from object types FilterObjectTypes already
+// filtered. The bindings have no such upstream filter and are read with the service's identity,
+// so every other reader of them authorizes first. Withheld, not zero: the caller is not told the
+// network is empty, only that this call did not establish the count.
+func TestKnDetailWithholdsCountsFromAnUnauthorizedCaller(t *testing.T) {
+	bkn := &stubMetricBknBackend{
+		detail:       &interfaces.KnowledgeNetworkDetail{ID: "kn-001"},
+		capabilities: capabilityRefs(interfaces.CapabilityTypeSkill, "s1", "s2"),
+	}
+
+	denied := knDetailAs(t, bkn, interfaces.DetailLevelSummary, stubKnAuthz{err: errors.New("forbidden")})
+	if got, present := denied["mounted_capabilities"]; present {
+		t.Fatalf("无权读该网络时不该给出挂载计数, got %v", got)
+	}
+	// The rest of the answer is unchanged: the concept model is filtered per caller already, and
+	// failing the whole call would be a behaviour change this field does not justify.
+	if denied["id"] != "kn-001" {
+		t.Fatalf("其余部分该照常返回, got %v", denied["id"])
+	}
+
+	allowed := knDetailAs(t, bkn, interfaces.DetailLevelSummary, stubKnAuthz{})
+	if allowed["mounted_capabilities"] == nil {
+		t.Fatal("有权时该给出计数")
 	}
 }

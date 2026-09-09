@@ -60,7 +60,7 @@ func TestObjectDataSourceOutputSchema(t *testing.T) {
 						}}
 						metrics := knmetrics.NewKnMetricsServiceWith(nil, bkn, nil)
 						schemaAccess := &mcpObjectSchemaAccessStub{permissions: map[string]interfaces.PropertyAccessLevel{"id": interfaces.PropertyAccessFull}}
-						handler := handleGetKnDetail(bkn, metrics, schemaAccess)
+						handler := handleGetKnDetail(bkn, metrics, schemaAccess, stubKnAuthz{})
 						if tool == "get_object_types" {
 							handler = handleGetObjectTypes(bkn, metrics, schemaAccess)
 						}

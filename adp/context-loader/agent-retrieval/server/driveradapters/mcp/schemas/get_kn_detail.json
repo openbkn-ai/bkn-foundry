@@ -194,7 +194,7 @@
       },
       "mounted_capabilities": {
         "type": "object",
-        "description": "该知识网络已挂载的能力数量，按类型分。只回答有没有、有多少；要具体能力用 search_capabilities。字段缺席表示这次没读到绑定，不等于没挂。",
+        "description": "该知识网络已挂载的能力数量，按类型分。只回答有没有、有多少；要具体能力用 search_capabilities。字段缺席表示这次没读到绑定或无权读该网络，不等于没挂。数的是挂载而非你可调用的数量——看不到的工具箱会让 search_capabilities 少返回几条，两个数字对不上是正常的。",
         "properties": {
           "total": {
             "type": "integer",
