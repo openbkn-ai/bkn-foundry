@@ -249,8 +249,8 @@
           "type": "object",
           "properties": {
             "_display": {
-              "type": "string",
-              "description": "给人看的展示名，由服务端按对象类的展示字段挑出。"
+              "type": ["string", "number", "boolean", "null"],
+              "description": "给人看的展示名，由服务端按对象类的展示字段挑出；类型随展示字段而变（数值、布尔或日期等字符串），该行展示字段为空时为 null。"
             },
             "_instance_id": {
               "type": "string",
