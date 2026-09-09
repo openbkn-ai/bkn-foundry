@@ -92,6 +92,12 @@ func Boot(opts Options) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("init authz: %w", err)
 	}
+	// Run withdrawn-role cleanup independently of seed_on_start. This is an
+	// upgrade migration for bkn-safe-owned data, whereas seed_on_start only
+	// controls whether the current catalog and role matrix are reconciled.
+	if err := seed.ReconcileDeprecatedRoles(db, enforcer); err != nil {
+		return nil, fmt.Errorf("reconcile deprecated roles: %w", err)
+	}
 
 	if cfg.SeedOnStart {
 		if err := seed.Apply(db, enforcer); err != nil {

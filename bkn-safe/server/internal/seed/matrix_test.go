@@ -26,7 +26,6 @@ func TestRoleResourceMatrix(t *testing.T) {
 
 	const (
 		networkBuilder = "1572fb82-526f-11f0-bde6-e674ec8dde71"
-		normalUser     = "b5f9ac3e-992c-4bbd-8126-95e87e51c46e"
 		superAdmin     = "7dcfcc9c-ad02-11e8-aa06-000c29358ad6"
 	)
 
@@ -52,17 +51,6 @@ func TestRoleResourceMatrix(t *testing.T) {
 	}
 	roleAllowed := map[string]map[string]string{
 		networkBuilder: networkBuilderAllowed,
-		// The data types (catalog / resource / knowledge_network) are absent on
-		// purpose: the ordinary role holds no data grant, and visibility comes
-		// only from an explicit grant (#513).
-		normalUser: {
-			"agent":       "use",
-			"tool_box":    "execute",
-			"mcp":         "execute",
-			"operator":    "execute",
-			"skill":       "execute",
-			"small_model": "execute",
-		},
 	}
 	allTypes := make([]string, 0, len(repOp))
 	for tpe := range repOp {
@@ -70,7 +58,7 @@ func TestRoleResourceMatrix(t *testing.T) {
 	}
 
 	// Each role's user; plus super-admin and an unroled user.
-	roles := []string{networkBuilder, normalUser}
+	roles := []string{networkBuilder}
 	for _, role := range roles {
 		user := "u-" + role
 		if err := e.AssignRole(user, role); err != nil {

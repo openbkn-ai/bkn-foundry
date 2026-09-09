@@ -40,11 +40,11 @@ func TestApplySeedsRolesCatalogGrants(t *testing.T) {
 		t.Fatalf("apply seed: %v", err)
 	}
 
-	// 6 Studio roles, with the preserved three-admin UUIDs present.
+	// 5 Studio roles, with the preserved three-admin UUIDs present.
 	var roleCount int64
 	db.Model(&model.Role{}).Count(&roleCount)
-	if roleCount != 6 {
-		t.Errorf("role count = %d, want 6", roleCount)
+	if roleCount != 5 {
+		t.Errorf("role count = %d, want 5", roleCount)
 	}
 	for id, name := range map[string]string{
 		"7dcfcc9c-ad02-11e8-aa06-000c29358ad6": "super_admin",
@@ -52,7 +52,6 @@ func TestApplySeedsRolesCatalogGrants(t *testing.T) {
 		"d8998f72-ad03-11e8-aa06-000c29358ad6": "security",
 		"def246f2-ad03-11e8-aa06-000c29358ad6": "audit",
 		"1572fb82-526f-11f0-bde6-e674ec8dde71": "network_builder",
-		"b5f9ac3e-992c-4bbd-8126-95e87e51c46e": "normal_user",
 	} {
 		var r model.Role
 		if err := db.First(&r, "id = ?", id).Error; err != nil {
@@ -106,7 +105,6 @@ func TestSeededRoleGrants(t *testing.T) {
 		security       = "d8998f72-ad03-11e8-aa06-000c29358ad6"
 		audit          = "def246f2-ad03-11e8-aa06-000c29358ad6"
 		networkBuilder = "1572fb82-526f-11f0-bde6-e674ec8dde71"
-		normalUser     = "b5f9ac3e-992c-4bbd-8126-95e87e51c46e"
 	)
 	cases := []struct {
 		name, role, typ, id, op string
@@ -128,14 +126,6 @@ func TestSeededRoleGrants(t *testing.T) {
 		{"network-builder manages catalog", networkBuilder, "catalog", "x", "create", true},
 		{"network-builder manages skill", networkBuilder, "skill", "s1", "publish", true},
 		{"network-builder not system users", networkBuilder, "admin-user", "x", "create", false},
-		// The data surface defaults to nothing (#513); capabilities are unchanged.
-		{"normal-user cannot query knowledge by default", normalUser, "knowledge_network", "kn1", "query_data", false},
-		{"normal-user cannot view a catalog by default", normalUser, "catalog", "c1", "view_detail", false},
-		{"normal-user cannot view a data resource by default", normalUser, "resource", "r1", "view_detail", false},
-		{"normal-user can execute skill", normalUser, "skill", "s1", "execute", true},
-		{"normal-user can use agent", normalUser, "agent", "a1", "use", true},
-		{"normal-user cannot create catalog", normalUser, "catalog", "x", "create", false},
-		{"normal-user cannot publish skill", normalUser, "skill", "s1", "publish", false},
 		{"super-admin does anything (agent)", superAdmin, "agent", "x", "use", true},
 		{"super-admin does anything (any type/op)", superAdmin, "whatever", "z", "some_random_op", true},
 	}
@@ -172,7 +162,6 @@ func TestAdminRoleCombinationGrantsRoleCatalogRead(t *testing.T) {
 	for _, roleID := range []string{
 		"d2bd2082-ad03-11e8-aa06-000c29358ad6", // admin
 		"1572fb82-526f-11f0-bde6-e674ec8dde71", // network_builder
-		"b5f9ac3e-992c-4bbd-8126-95e87e51c46e", // normal_user
 	} {
 		if err := e.AssignRole(owner, roleID); err != nil {
 			t.Fatal(err)
@@ -185,7 +174,6 @@ func TestAdminRoleCombinationGrantsRoleCatalogRead(t *testing.T) {
 	}{
 		{"role catalog read", "admin-role", "view", true},
 		{"user list read", "admin-user", "view", true},
-		{"large model display", "large_model", "display", true},
 		{"role creation remains restricted", "admin-role", "create", false},
 		{"role permission changes remain restricted", "admin-role", "permissions", false},
 	}
@@ -352,8 +340,8 @@ func TestApplyIdempotent(t *testing.T) {
 	}
 	var roleCount int64
 	db.Model(&model.Role{}).Count(&roleCount)
-	if roleCount != 6 {
-		t.Errorf("role count after re-seed = %d, want 6", roleCount)
+	if roleCount != 5 {
+		t.Errorf("role count after re-seed = %d, want 5", roleCount)
 	}
 }
 
@@ -401,7 +389,7 @@ func TestApplyReconcilesDeprecatedSeedRoles(t *testing.T) {
 	}
 }
 
-func TestApplyReconcilesCurrentSeedRoleGrants(t *testing.T) {
+func TestReconcileDeprecatedRolesRemovesWithdrawnNormalUserRole(t *testing.T) {
 	db := newDB(t)
 	e, err := authz.New(db)
 	if err != nil {
@@ -410,7 +398,7 @@ func TestApplyReconcilesCurrentSeedRoleGrants(t *testing.T) {
 
 	const (
 		normalUserRole = "b5f9ac3e-992c-4bbd-8126-95e87e51c46e"
-		user           = "u-stale-grant"
+		user           = "u-withdrawn-role"
 	)
 	if err := e.AssignRole(user, normalUserRole); err != nil {
 		t.Fatal(err)
@@ -421,25 +409,24 @@ func TestApplyReconcilesCurrentSeedRoleGrants(t *testing.T) {
 	if ok, err := e.Check(user, "admin-user", "u1", "create"); err != nil {
 		t.Fatal(err)
 	} else if !ok {
-		t.Fatal("test setup failed: stale grant did not take effect")
+		t.Fatal("test setup failed: withdrawn role grant did not take effect")
 	}
 
-	if err := Apply(db, e); err != nil {
-		t.Fatalf("apply: %v", err)
+	if err := ReconcileDeprecatedRoles(db, e); err != nil {
+		t.Fatalf("reconcile deprecated roles: %v", err)
 	}
 
 	if ok, err := e.Check(user, "admin-user", "u1", "create"); err != nil {
 		t.Fatal(err)
 	} else if ok {
-		t.Fatal("stale current-role grant still allows admin-user create")
+		t.Fatal("withdrawn role policy or binding still allows admin-user create")
 	}
-	// Assert the rebuild half with a grant the role actually holds: the data
-	// surface is gone (#513), so using catalog here would test the revocation
-	// instead, which is another test's job.
-	if ok, err := e.Check(user, "skill", "s1", "execute"); err != nil {
+	var count int64
+	if err := db.Model(&model.Role{}).Where("id = ?", normalUserRole).Count(&count).Error; err != nil {
 		t.Fatal(err)
-	} else if !ok {
-		t.Fatal("normal_user desired grant was not restored after reconcile")
+	}
+	if count != 0 {
+		t.Fatal("withdrawn normal_user role still exists after reconcile")
 	}
 }
 
@@ -498,100 +485,6 @@ func TestCatalogResourceOperationSplit(t *testing.T) {
 	}
 	if len(resourceOps) != 2 {
 		t.Errorf("resource declares %d operations, want exactly view_detail and query_data", len(resourceOps))
-	}
-}
-
-// TestSeedRevokesNormalUserDataGrants pins #513: the ordinary role holds no
-// data grant at all, so an object grant is finally the thing that decides.
-//
-// The point is not tidiness. In an allow-only engine a type-wide allow cannot be
-// narrowed by an object grant, so as long as normal_user held resource:* every
-// per-object configuration an administrator made was dead on arrival.
-//
-// The capability surface stays: tools, models and agents leak no data through a
-// type-wide grant, and revoking those would only leave a platform where a signed-in
-// user cannot invoke a model.
-func TestSeedRevokesNormalUserDataGrants(t *testing.T) {
-	db := newDB(t)
-	e, err := authz.New(db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := Apply(db, e); err != nil {
-		t.Fatal(err)
-	}
-
-	const (
-		normalUser     = "b5f9ac3e-992c-4bbd-8126-95e87e51c46e"
-		networkBuilder = "1572fb82-526f-11f0-bde6-e674ec8dde71"
-	)
-	user := "u-normal"
-	if err := e.AssignRole(user, normalUser); err != nil {
-		t.Fatal(err)
-	}
-
-	// The data surface: not one grant should be left.
-	for _, tc := range []struct{ rtype, op string }{
-		{"catalog", "view_detail"},
-		{"resource", "view_detail"},
-		{"resource", "query_data"},
-		{"knowledge_network", "view_detail"},
-		{"knowledge_network", "query_data"},
-	} {
-		allowed, err := e.Check(user, tc.rtype, "x-1", tc.op)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if allowed {
-			t.Errorf("normal_user still holds %s/%s by default — object grants stay overridden by it", tc.rtype, tc.op)
-		}
-	}
-
-	// Granted explicitly, it must be visible — otherwise revoking the wildcard
-	// leaves no working path to see anything at all.
-	if err := e.GrantObjectPermission(user, "catalog", "c-1", "view_detail"); err != nil {
-		t.Fatal(err)
-	}
-	allowed, err := e.Check(user, "catalog", "c-1", "view_detail")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !allowed {
-		t.Error("an explicit catalog grant still does not grant access — the convergence would leave no usable path")
-	}
-
-	// The capability surface is untouched: revoking it buys no safety and leaves a
-	// signed-in user unable to invoke a model.
-	for _, tc := range []struct{ rtype, op string }{
-		{"skill", "execute"},
-		{"tool_box", "execute"},
-		{"large_model", "execute"},
-		{"small_model", "execute"},
-		{"agent", "use"},
-	} {
-		allowed, err := e.Check(user, tc.rtype, "x-1", tc.op)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !allowed {
-			t.Errorf("normal_user lost the capability %s/%s — that is not convergence, it is an unusable platform", tc.rtype, tc.op)
-		}
-	}
-
-	// The builder is unaffected. Creating a table is judged on the target catalog
-	// now (#801): a table has to be created inside one, so "may create a table"
-	// and "may act on this catalog" were always the same question — and the old
-	// resource:*/create could not answer which catalog it would land in.
-	builder := "u-builder"
-	if err := e.AssignRole(builder, networkBuilder); err != nil {
-		t.Fatal(err)
-	}
-	allowed, err = e.Check(builder, "catalog", "c-1", "resource_manage")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !allowed {
-		t.Error("network_builder lost catalog resource_manage — creating a data table would 403 after upgrade")
 	}
 }
 
