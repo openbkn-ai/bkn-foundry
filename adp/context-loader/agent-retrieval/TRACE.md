@@ -51,7 +51,7 @@ Different transports preserve the native shape of the business response, so Rece
 | --- | --- | --- |
 | REST is executed normally for the first time | Response headers `bkn-receipt-id`, `bkn-operation-id` | The business response body remains unchanged; the caller uses the ID to query the complete Receipt |
 | REST terminal replay or pending | JSON response body field `receipt` | The downstream will no longer be executed and the persistent state will be returned |
-| MCP executes normally | `structuredContent.bkn_receipt` | Returned together with tool structured results |
+| MCP executes normally | `structuredContent.bkn_receipt` | Returned together with tool structured results as a projection: `receipt_status`, `evidence_durability`, `observed_evidence_refs`, `business_refs`, plus `partial_reasons` when set. The complete Receipt stays in Core |
 | MCP terminal replay or pending | `receipt` field of text content JSON | The downstream is no longer executed and the persistent state is returned; the error result does not carry `structuredContent` |
 
 `receipt_status` indicates whether the business Attempt has been completed, and `evidence_durability` indicates whether the evidence has received Core durable ACK. The two cannot be mixed:

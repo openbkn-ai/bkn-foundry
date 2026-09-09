@@ -572,6 +572,122 @@ func TestSessionGuardKeepsDeclaredToolShapeWhenAttachingReceipt(t *testing.T) {
 	}
 }
 
+// TestSessionGuardAttachesOnlyTheReceiptFieldsACallerReads pins the projection of the receipt.
+//
+// Core's receipt carries the whole lifecycle record, and every managed call used to echo all of it
+// into the agent's context. Nothing on the caller side reads the owner, request and trace ids,
+// row version or timestamps: the registered lifecycle tools take no receipt id, and the agent-side
+// evidence recorder keys on status, durability and the evidence references alone.
+func TestSessionGuardAttachesOnlyTheReceiptFieldsACallerReads(t *testing.T) {
+	durable := bkntrace.Receipt{
+		ReceiptID:            "rcpt_1",
+		SchemaVersion:        "3.0.0",
+		Owner:                bkntrace.Owner{ApplicationPrincipalID: "app-1", EffectiveSubjectID: "user-1"},
+		ConversationID:       "conv-1",
+		InteractionID:        "int-1",
+		OperationID:          "op-1",
+		Attempt:              1,
+		OperationKey:         "mcp:abc",
+		ToolName:             "run_sql",
+		ReceiptStatus:        "completed",
+		EvidenceDurability:   "durable",
+		Required:             true,
+		RequestID:            "req-1",
+		TraceID:              strings.Repeat("a", 32),
+		CausationEventIDs:    []string{},
+		ObservedEvidenceRefs: []string{"evt_1"},
+		BusinessRefs: []bkntrace.BusinessRef{{
+			RefType: "data_resource", RefID: "resource:r1", Version: "unversioned",
+		}},
+		ArtifactRefs:   []string{},
+		PartialReasons: []string{},
+	}
+	guarded := guardBusinessToolCallWithCompletion(
+		func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {
+			return &operationResult{
+				Created: true, Execute: true,
+				Operation: map[string]any{"operation_id": "op-1", "attempt": float64(1)},
+				Receipt:   map[string]any{"receipt_id": "rcpt_1", "receipt_status": "pending"},
+			}, nil, nil
+		},
+		func(_ context.Context, ensured *operationResult, _ *mcpsdk.CallToolResult) (*operationResult, *lifecycleError, error) {
+			return &operationResult{Operation: ensured.Operation, Receipt: durable}, nil, nil
+		},
+		nil,
+		func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			return mcpsdk.NewToolResultStructured(map[string]any{"answer": "ok"}, `{"answer":"ok"}`), nil
+		},
+	)
+
+	result, err := guarded(context.Background(), validBusinessToolRequest())
+	if err != nil {
+		t.Fatalf("guard returned protocol error: %v", err)
+	}
+	structured := result.StructuredContent.(map[string]any)
+	receipt, ok := structured["bkn_receipt"].(map[string]any)
+	if !ok {
+		t.Fatalf("receipt is not a JSON object: %#v", structured["bkn_receipt"])
+	}
+	if len(receipt) != 4 {
+		t.Fatalf("projection leaked fields no caller reads: %#v", receipt)
+	}
+	if receipt["receipt_status"] != "completed" || receipt["evidence_durability"] != "durable" {
+		t.Fatalf("status or durability dropped by the projection: %#v", receipt)
+	}
+	if refs, ok := receipt["observed_evidence_refs"].([]any); !ok || len(refs) != 1 || refs[0] != "evt_1" {
+		t.Fatalf("observed_evidence_refs dropped by the projection: %#v", receipt)
+	}
+	// The agent-side recorder reads ref_type, ref_id and version off each business reference.
+	businessRefs, ok := receipt["business_refs"].([]any)
+	if !ok || len(businessRefs) != 1 {
+		t.Fatalf("business_refs dropped by the projection: %#v", receipt)
+	}
+	ref := businessRefs[0].(map[string]any)
+	if ref["ref_type"] != "data_resource" || ref["ref_id"] != "resource:r1" || ref["version"] != "unversioned" {
+		t.Fatalf("business reference reshaped by the projection: %#v", ref)
+	}
+}
+
+// TestSessionGuardKeepsPartialReasonsOnTheReceipt: a partial result is the one piece of the
+// receipt the agent itself must read, so it survives the projection whenever Core sets it.
+func TestSessionGuardKeepsPartialReasonsOnTheReceipt(t *testing.T) {
+	guarded := guardBusinessToolCallWithCompletion(
+		func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {
+			return &operationResult{
+				Created: true, Execute: true,
+				Operation: map[string]any{"operation_id": "op-1", "attempt": float64(1)},
+				Receipt:   map[string]any{"receipt_id": "rcpt_1", "receipt_status": "pending"},
+			}, nil, nil
+		},
+		func(_ context.Context, ensured *operationResult, _ *mcpsdk.CallToolResult) (*operationResult, *lifecycleError, error) {
+			return &operationResult{
+				Operation: ensured.Operation,
+				Receipt: bkntrace.Receipt{
+					ReceiptID: "rcpt_1", ReceiptStatus: "completed", EvidenceDurability: "pending",
+					PartialReasons: []string{"evidence_ack_pending"},
+				},
+			}, nil, nil
+		},
+		nil,
+		func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			return mcpsdk.NewToolResultStructured(map[string]any{"answer": "ok"}, `{"answer":"ok"}`), nil
+		},
+	)
+
+	result, err := guarded(context.Background(), validBusinessToolRequest())
+	if err != nil {
+		t.Fatalf("guard returned protocol error: %v", err)
+	}
+	receipt := result.StructuredContent.(map[string]any)["bkn_receipt"].(map[string]any)
+	reasons, ok := receipt["partial_reasons"].([]any)
+	if !ok || len(reasons) != 1 || reasons[0] != "evidence_ack_pending" {
+		t.Fatalf("partial_reasons dropped by the projection: %#v", receipt)
+	}
+	if _, leaked := receipt["receipt_id"]; leaked {
+		t.Fatalf("projection leaked a field no caller reads: %#v", receipt)
+	}
+}
+
 func TestSessionGuardPreservesBusinessResultWhenTerminalTraceWriteFails(t *testing.T) {
 	businessResult := mcpsdk.NewToolResultStructured(
 		map[string]any{"answer": "ok", "rows": []any{map[string]any{"material_code": "101-000015"}}},
