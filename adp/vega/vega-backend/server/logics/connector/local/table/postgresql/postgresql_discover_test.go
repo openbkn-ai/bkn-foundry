@@ -117,13 +117,15 @@ func TestPostgresqlConnectorFetchColumns(t *testing.T) {
 			AddRow("amount", 1700, "b", "numeric", int64((10<<16)|2)+4, false, nil, "", 4, "").
 			AddRow("occurred_at", 1114, "b", "timestamp", 3, false, nil, "", 5, "").
 			AddRow("legacy_code", 9200, "d", "legacy_code_domain", -1, false, nil, "", 6, "").
-			AddRow("status", 9300, "e", "order_status", -1, false, nil, "", 7, "order state"))
-	mock.ExpectQuery(`(?s)WITH RECURSIVE domain_chain.*root\.oid IN \(\$1, \$2\).*pg_catalog\.pg_constraint`).
-		WithArgs(int64(9100), int64(9200)).
+			AddRow("status", 9300, "e", "order_status", -1, false, nil, "", 7, "order state").
+			AddRow("state", 9400, "d", "order_state_domain", -1, false, nil, "", 8, "state domain"))
+	mock.ExpectQuery(`(?s)WITH RECURSIVE domain_chain.*root\.oid IN \(\$1, \$2, \$3\).*pg_catalog\.pg_constraint`).
+		WithArgs(int64(9100), int64(9200), int64(9400)).
 		WillReturnRows(sqlmock.NewRows([]string{
-			"domain_oid", "base_type", "base_typmod", "domain_not_null", "domain_default", "check_constraint",
+			"domain_oid", "base_type", "base_type_kind", "base_typmod", "domain_not_null", "domain_default", "check_constraint",
 		}).
-			AddRow(9100, "int4", -1, true, "42", "CHECK ((VALUE > 0)); CHECK ((VALUE < 1000))"))
+			AddRow(9100, "int4", "b", -1, true, "42", "CHECK ((VALUE > 0)); CHECK ((VALUE < 1000))").
+			AddRow(9400, "order_status", "e", -1, false, nil, ""))
 	mock.ExpectQuery("SELECT kcu.column_name").
 		WithArgs("appdb", "public", "orders").
 		WillReturnRows(sqlmock.NewRows([]string{"column_name"}).AddRow("id"))
@@ -132,8 +134,8 @@ func TestPostgresqlConnectorFetchColumns(t *testing.T) {
 	if err := connector.fetchColumns(context.Background(), table); err != nil {
 		t.Fatalf("fetchColumns returned error: %v", err)
 	}
-	if len(table.Columns) != 7 {
-		t.Fatalf("expected 7 columns, got %d", len(table.Columns))
+	if len(table.Columns) != 8 {
+		t.Fatalf("expected 8 columns, got %d", len(table.Columns))
 	}
 	column := table.Columns[0]
 	if column.Name != "id" || column.DefaultValue != "" || column.Description != "" || column.Collation != "" {
@@ -164,6 +166,10 @@ func TestPostgresqlConnectorFetchColumns(t *testing.T) {
 	assert.Equal(t, "order_status", enumColumn.AliasType)
 	assert.Equal(t, "order state", enumColumn.Description)
 	assert.Equal(t, interfaces.DataType_String, connector.MapType(enumColumn.Type))
+	domainEnumColumn := table.Columns[7]
+	assert.Equal(t, "enum", domainEnumColumn.Type)
+	assert.Equal(t, "order_state_domain", domainEnumColumn.AliasType)
+	assert.Equal(t, interfaces.DataType_String, connector.MapType(domainEnumColumn.Type))
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("sqlmock expectations were not met: %v", err)
 	}
@@ -179,9 +185,9 @@ func TestPostgresqlConnectorFetchDomainMetadata(t *testing.T) {
 	})
 
 	rows := sqlmock.NewRows([]string{
-		"domain_oid", "base_type", "base_typmod", "domain_not_null", "domain_default", "check_constraint",
+		"domain_oid", "base_type", "base_type_kind", "base_typmod", "domain_not_null", "domain_default", "check_constraint",
 	}).
-		AddRow(9100, "int4", -1, true, "42",
+		AddRow(9100, "int4", "b", -1, true, "42",
 			"CHECK ((VALUE > 0)); CHECK (((VALUE)::integer < 1000))")
 
 	mock.ExpectQuery(`(?s)WITH RECURSIVE domain_chain.*root\.oid IN \(\$1\).*pg_catalog\.pg_constraint`).
@@ -195,6 +201,7 @@ func TestPostgresqlConnectorFetchDomainMetadata(t *testing.T) {
 
 	domain := metadata[9100]
 	assert.Equal(t, "int4", domain.BaseType)
+	assert.Equal(t, "b", domain.BaseTypeKind)
 	assert.Equal(t, int64(-1), domain.BaseTypmod)
 	assert.True(t, domain.NotNull)
 	require.True(t, domain.DefaultValue.Valid)
