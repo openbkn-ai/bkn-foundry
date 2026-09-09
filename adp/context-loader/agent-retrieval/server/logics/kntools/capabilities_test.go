@@ -319,3 +319,33 @@ func TestListingAsksTheIndexAboutThePageItReturns(t *testing.T) {
 		t.Fatalf("该返回一页并报截断, got %d truncated=%v", len(resp.Capabilities), resp.Truncated)
 	}
 }
+
+// TestEmptyKindFilterDoesNotClaimAnEmptyNetwork separates the two ways a whitelist ends up empty.
+//
+// Filters are applied to the bindings before the search runs, so asking a well-stocked network for
+// a kind it lacks empties the whitelist just like an unmounted network does. Reporting both as
+// "this network has mounted nothing" sends the caller to mount capabilities that are already
+// there, instead of to the filter they set.
+func TestEmptyKindFilterDoesNotClaimAnEmptyNetwork(t *testing.T) {
+	svc := NewKnToolsServiceWith(&fakeOperator{}, &fakeBkn{refs: functionRefs("box-1/t1")}, &fakeKnAuthz{})
+
+	filtered, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{
+		KnID: "kn1", Types: []string{interfaces.CapabilityTypeMCPTool},
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(filtered.Capabilities) != 0 {
+		t.Fatalf("这个用例要的是空结果, got %+v", filtered.Capabilities)
+	}
+
+	empty := NewKnToolsServiceWith(&fakeOperator{}, &fakeBkn{refs: nil}, &fakeKnAuthz{})
+	unmounted, err := empty.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1"})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if filtered.Message == unmounted.Message {
+		t.Fatalf("挂了能力但被类型筛空，和压根没挂，不该给同一句话: %q", filtered.Message)
+	}
+}

@@ -89,15 +89,23 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 	// The kinds are applied to the whitelist here as well as sent downstream. Sending them alone
 	// would make the scope depend on the ranking honouring a filter, which is not a scope at all:
 	// a kind the caller excluded would come back on any hit the ranking let through.
-	searchRefs, err := s.allBoundRefs(ctx, strings.TrimSpace(req.KnID),
+	searchRefs, mounted, err := s.allBoundRefs(ctx, strings.TrimSpace(req.KnID),
 		strings.TrimSpace(req.OwnerID), normalizeKinds(req.Types))
 	if err != nil {
 		return nil, err
 	}
 	if len(searchRefs) == 0 {
+		// "This network mounted nothing" and "your filters excluded everything it mounted" want
+		// opposite next steps — go mount something, versus drop a filter. Telling a network with
+		// twenty four capabilities that it has none, because the caller asked for the one kind it
+		// lacks, sends them to fix something that is not broken.
+		message := "NoBoundCapabilitiesInNetwork"
+		if mounted > 0 {
+			message = "NoCapabilitiesOfRequestedKind"
+		}
 		return &SearchCapabilitiesResp{
 			Capabilities: []CapabilityEntry{},
-			Message:      infraErr.LocalizedDetail(ctx, "NoBoundCapabilitiesInNetwork"),
+			Message:      infraErr.LocalizedDetail(ctx, message),
 		}, nil
 	}
 
@@ -185,17 +193,20 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 // boundRefs splits Function and MCP tools apart because they are called through different proxies.
 // Here they are not called, only ranked, so the split would be noise — and Skills, which boundRefs
 // drops entirely, belong in the answer.
+// The second return value is how many capabilities the network mounted before any narrowing, so
+// an empty whitelist can say which of the two happened: a network that mounted nothing, or filters
+// that excluded everything it has. They call for opposite next steps.
 func (s *knToolsService) allBoundRefs(ctx context.Context,
-	knID, ownerID string, kinds []string) ([]interfaces.SearchCapabilityRef, error) {
+	knID, ownerID string, kinds []string) ([]interfaces.SearchCapabilityRef, int, error) {
 	// The per-caller check lives here for the same reason it lives in boundRefs: the bindings and
 	// the ranking are both read with this service's identity, and without it the scope would be
 	// the kn_id the caller typed.
 	if s.knAuthz == nil {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+		return nil, 0, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
 			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
 	}
 	if err := s.knAuthz.AuthorizeRead(ctx, knID); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	// A failure to read the bindings fails the call. Continuing with an empty whitelist would look
@@ -203,7 +214,7 @@ func (s *knToolsService) allBoundRefs(ctx context.Context,
 	// platform — both answer a question this service cannot currently answer.
 	bindings, err := s.bknBackend.ListKNCapabilities(ctx, knID, "", "")
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	wanted := make(map[string]struct{}, len(kinds))
@@ -213,6 +224,7 @@ func (s *knToolsService) allBoundRefs(ctx context.Context,
 
 	refs := make([]interfaces.SearchCapabilityRef, 0, len(bindings))
 	seen := make(map[interfaces.SearchCapabilityRef]struct{}, len(bindings))
+	mounted := 0
 	for _, binding := range bindings {
 		if binding == nil {
 			continue
@@ -233,6 +245,7 @@ func (s *knToolsService) allBoundRefs(ctx context.Context,
 		default:
 			continue
 		}
+		mounted++
 		// Narrowing happens here rather than only in the ranking, so the whitelist that leaves
 		// this service already is the scope: nothing downstream can widen it back.
 		if len(wanted) > 0 {
@@ -254,7 +267,7 @@ func (s *knToolsService) allBoundRefs(ctx context.Context,
 		seen[ref] = struct{}{}
 		refs = append(refs, ref)
 	}
-	return refs, nil
+	return refs, mounted, nil
 }
 
 // describeCapabilities enriches the ranked hits in place, keeping the fused order.
