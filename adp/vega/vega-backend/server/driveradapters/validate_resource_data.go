@@ -37,6 +37,10 @@ func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.Res
 	if err := validateBinaryMode(ctx, params.BinaryMode); err != nil {
 		return err
 	}
+	if params.BinaryMode == nil {
+		defaultBinaryMode := interfaces.BinaryModeMetadata
+		params.BinaryMode = &defaultBinaryMode
+	}
 
 	err := validateResourceDataPaging(ctx, params)
 	if err != nil {

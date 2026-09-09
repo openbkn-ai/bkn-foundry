@@ -122,7 +122,7 @@ func (c *PostgresqlConnector) ExecuteRawSQL(ctx context.Context, sql string) (*i
 
 		row := make(map[string]any)
 		for i, col := range columns {
-			row[col] = convertValue(values[i], col, nil, false)
+			row[col] = convertRawValue(values[i], false)
 		}
 		response.Entries = append(response.Entries, row)
 	}
@@ -155,19 +155,12 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		return property
 	}
 
-	// Build the origTypeMap in advance to only store the correspondence between column names and primitive types
-	origTypeMap := map[string]string{}
-	if resource.SourceMetadata != nil {
-		if columnsAny, ok := resource.SourceMetadata["columns"].([]any); ok {
-			for _, colAny := range columnsAny {
-				if col, ok := colAny.(map[string]any); ok {
-					if name, ok := col["name"].(string); ok {
-						if origType, ok := col["original_type"].(string); ok {
-							origTypeMap[name] = origType
-						}
-					}
-				}
-			}
+	// Results are always aliased to property names, so retain original types by
+	// the same logical names instead of re-reading source metadata.
+	origTypeMap := make(map[string]string, len(resource.SchemaDefinition))
+	for _, prop := range resource.SchemaDefinition {
+		if prop.OriginalType != "" {
+			origTypeMap[prop.Name] = prop.OriginalType
 		}
 	}
 

@@ -29,6 +29,8 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, interfaces.Format_Original, params.Format)
 		assert.Equal(t, interfaces.DefaultPageLimit, params.Limit)
+		require.NotNil(t, params.BinaryMode)
+		assert.Equal(t, interfaces.BinaryModeMetadata, *params.BinaryMode)
 	})
 
 	t.Run("maps legacy top-level limit into paging", func(t *testing.T) {

@@ -103,6 +103,30 @@ func TestPostgresqlConnectorExecuteQueryAliasesGroupByFields(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestPostgresqlConnectorExecuteQueryConvertsAliasedTimezoneField(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	connector := &PostgresqlConnector{db: db, connected: true}
+	resource := &interfaces.Resource{
+		SourceIdentifier: "public.events",
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "createdAt", OriginalName: "created_at", OriginalType: "timestamptz"},
+		},
+	}
+	params := &interfaces.ResourceDataQueryParams{Limit: 1}
+	utc := time.Date(2026, 9, 9, 8, 0, 0, 0, time.UTC)
+	mock.ExpectQuery("SELECT \"created_at\" AS \"createdAt\" FROM \"public\".\"events\" LIMIT 1 OFFSET 0").
+		WillReturnRows(sqlmock.NewRows([]string{"createdAt"}).AddRow(utc))
+
+	result, err := connector.ExecuteQuery(context.Background(), resource, params)
+	require.NoError(t, err)
+	require.Len(t, result.Entries, 1)
+	assert.Equal(t, utc.Local(), result.Entries[0]["createdAt"])
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestPostgresqlBuildHavingCondition(t *testing.T) {
 	connector := &PostgresqlConnector{}
 	tests := []struct {
