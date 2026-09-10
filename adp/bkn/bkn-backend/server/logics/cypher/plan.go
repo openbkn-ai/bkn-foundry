@@ -222,8 +222,8 @@ func (p *planner) planPattern(pattern Pattern) error {
 			return err
 		}
 	}
-	for i, edge := range pattern.Edges {
-		if err := p.addJoin(edge, i, i+1); err != nil {
+	for _, edge := range pattern.Edges {
+		if err := p.addJoin(edge, edge.Left, edge.Right); err != nil {
 			return err
 		}
 	}

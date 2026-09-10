@@ -137,32 +137,92 @@ func (g *generator) writeFrom() {
 	g.out.WriteString(" FROM ")
 	g.out.WriteString(g.table(0))
 
-	// The pattern is a linear path, so each join attaches the next table to
-	// one already in the statement and the tables come out in pattern order.
-	for _, join := range g.plan.Joins {
-		g.out.WriteString(" JOIN ")
-		g.out.WriteString(g.table(join.Right))
-		g.out.WriteString(" ON ")
-		for r, reading := range join.Readings {
-			if r > 0 {
-				g.out.WriteString(" OR ")
+	joined := make([]bool, len(g.plan.Tables))
+	joined[0] = true
+	used := make([]bool, len(g.plan.Joins))
+
+	// A pattern is a graph, not a chain, so the tables are emitted in an order
+	// where each one joins to a table already in the statement. Anything left
+	// over belongs to a shape the query never connected, and is written as a
+	// cross join rather than silently dropped.
+	for pending := len(g.plan.Tables) - 1; pending > 0; pending-- {
+		next, join := g.nextJoinable(joined, used)
+		if join < 0 {
+			next = g.firstUnjoined(joined)
+			g.out.WriteString(" CROSS JOIN ")
+			g.out.WriteString(g.table(next))
+			joined[next] = true
+			continue
+		}
+		g.writeJoin(g.plan.Joins[join], next)
+		joined[next] = true
+		used[join] = true
+	}
+
+	// Joins between two tables that are both in already still have to be
+	// written, or the condition they carry is lost.
+	for i, join := range g.plan.Joins {
+		if used[i] {
+			continue
+		}
+		g.out.WriteString(" AND ")
+		g.writeJoinCondition(join)
+	}
+}
+
+// nextJoinable finds a table not yet in the statement that some unused join
+// attaches to one that is.
+func (g *generator) nextJoinable(joined, used []bool) (table int, join int) {
+	for i, candidate := range g.plan.Joins {
+		if used[i] {
+			continue
+		}
+		if joined[candidate.Left] && !joined[candidate.Right] {
+			return candidate.Right, i
+		}
+		if joined[candidate.Right] && !joined[candidate.Left] {
+			return candidate.Left, i
+		}
+	}
+	return -1, -1
+}
+
+func (g *generator) firstUnjoined(joined []bool) int {
+	for i, in := range joined {
+		if !in {
+			return i
+		}
+	}
+	return 0
+}
+
+func (g *generator) writeJoin(join PlanJoin, table int) {
+	g.out.WriteString(" JOIN ")
+	g.out.WriteString(g.table(table))
+	g.out.WriteString(" ON ")
+	g.writeJoinCondition(join)
+}
+
+func (g *generator) writeJoinCondition(join PlanJoin) {
+	for r, reading := range join.Readings {
+		if r > 0 {
+			g.out.WriteString(" OR ")
+		}
+		// One reading needs no parentheses; several do, because they are
+		// joined by OR and each is a conjunction of key pairs.
+		if len(join.Readings) > 1 {
+			g.out.WriteString("(")
+		}
+		for i, key := range reading {
+			if i > 0 {
+				g.out.WriteString(" AND ")
 			}
-			// One reading needs no parentheses; several do, because they are
-			// joined by OR and each is a conjunction of key pairs.
-			if len(join.Readings) > 1 {
-				g.out.WriteString("(")
-			}
-			for i, key := range reading {
-				if i > 0 {
-					g.out.WriteString(" AND ")
-				}
-				g.out.WriteString(g.column(join.Left, key.LeftColumn))
-				g.out.WriteString(" = ")
-				g.out.WriteString(g.column(join.Right, key.RightColumn))
-			}
-			if len(join.Readings) > 1 {
-				g.out.WriteString(")")
-			}
+			g.out.WriteString(g.column(join.Left, key.LeftColumn))
+			g.out.WriteString(" = ")
+			g.out.WriteString(g.column(join.Right, key.RightColumn))
+		}
+		if len(join.Readings) > 1 {
+			g.out.WriteString(")")
 		}
 	}
 }

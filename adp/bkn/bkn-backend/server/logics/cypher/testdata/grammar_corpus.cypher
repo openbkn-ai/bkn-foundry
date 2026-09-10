@@ -67,8 +67,6 @@ MATCH (o:probe_order) RETURN o.o_key UNION MATCH (p:probe_order) RETURN p.o_key
 MATCH (o:probe_order) WITH o RETURN o.o_key
 UNWIND [1, 2] AS x RETURN x
 CALL db.labels() YIELD label RETURN label
-MATCH (o:probe_order) MATCH (i:probe_item) RETURN o.o_key
-MATCH (o:probe_order), (i:probe_item) RETURN o.o_key
 MATCH p = (o:probe_order) RETURN o.o_key
 CALL db.labels()
 CALL db.labels() YIELD label AS l RETURN l
@@ -89,6 +87,17 @@ MATCH (i:probe_item)-[:probe_direct]->(o:probe_order {o_state: 'refunding'}) RET
 MATCH (i:probe_item)-[:probe_direct]-(o:probe_order) RETURN i.i_key AS k LIMIT 2
 MATCH (o:probe_order)-[:probe_direct]-(i:probe_item) RETURN i.i_key AS k LIMIT 2
 MATCH (a:probe_item)-[:probe_direct]->(o:probe_order)<-[:probe_direct]-(b:probe_item) RETURN a.i_key AS a, b.i_key AS b LIMIT 3
+
+# multi-pattern
+MATCH (i:probe_item)-[:probe_direct]->(o:probe_order), (o)-[:probe_direct2]->(p:probe_order) RETURN o.o_key AS k LIMIT 2
+MATCH (i:probe_item)-[:probe_direct]->(o:probe_order) MATCH (o {o_state: 'refunding'}) RETURN i.i_key AS k LIMIT 2
+MATCH (o:probe_order), (c:probe_channel) RETURN o.o_key AS k, c.c_key AS c LIMIT 2
+MATCH (o:probe_order) MATCH (c:probe_channel) RETURN o.o_key AS k LIMIT 2
+
+# reject-multi-pattern
+MATCH (o:probe_order) MATCH (x)-[:probe_direct]->(c:probe_channel) RETURN o.o_key
+MATCH (o:probe_order) MATCH (o:probe_channel) RETURN o.o_key
+MATCH (o:probe_order) OPTIONAL MATCH (o)-[:probe_direct]->(i:probe_item) RETURN o.o_key
 
 # reject-pattern (phase three)
 MATCH (o:probe_order {nope: 1}) RETURN o.o_key
