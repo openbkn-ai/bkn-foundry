@@ -70,12 +70,8 @@ func TestApplySeedsRolesCatalogGrants(t *testing.T) {
 		t.Errorf("network_builder description = %q", networkBuilder.Description)
 	}
 
-	// agent and Studio admin resource types + their operations seeded.
+	// Retained Studio admin resource types and their operations are seeded.
 	var opCount int64
-	db.Model(&model.Operation{}).Where("resource_type_id = ?", "agent").Count(&opCount)
-	if opCount == 0 {
-		t.Error("expected agent operations seeded")
-	}
 	db.Model(&model.Operation{}).Where("resource_type_id = ?", "admin-user").Count(&opCount)
 	if opCount == 0 {
 		t.Error("expected admin-user operations seeded")
@@ -92,6 +88,65 @@ func TestApplySeedsRolesCatalogGrants(t *testing.T) {
 	}
 	if !ok {
 		t.Error("network_builder should be able to create knowledge networks after seed")
+	}
+}
+
+// TestApplyRemovesWithdrawnResourceTypes proves an upgraded deployment does
+// not retain the retired vocabulary or any role/object grant that names it.
+func TestApplyRemovesWithdrawnResourceTypes(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := map[string]string{
+		"agent": "use", "agent_tpl": "publish", "stream_data_pipeline": "view_detail",
+	}
+	for resourceType, operation := range legacy {
+		if err := db.Create(&model.ResourceType{ID: resourceType, Name: resourceType}).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Create(&model.Operation{ResourceTypeID: resourceType, ID: operation, Name: operation}).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := e.GrantObjectPermission("legacy-user", resourceType, "old-1", operation); err != nil {
+			t.Fatal(err)
+		}
+		if err := e.GrantRolePermission("legacy-role", resourceType, "*", operation); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := Apply(db, e); err != nil {
+		t.Fatalf("apply upgrade seed: %v", err)
+	}
+	for resourceType, operation := range legacy {
+		var typeCount, operationCount, grantCount int64
+		if err := db.Model(&model.ResourceType{}).Where("id = ?", resourceType).Count(&typeCount).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Model(&model.Operation{}).Where("resource_type_id = ?", resourceType).Count(&operationCount).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Model(&model.AuthorizationGrant{}).Where("object LIKE ?", resourceType+":%").Count(&grantCount).Error; err != nil {
+			t.Fatal(err)
+		}
+		if typeCount != 0 || operationCount != 0 || grantCount != 0 {
+			t.Errorf("withdrawn %s remains: types=%d operations=%d grants=%d", resourceType, typeCount, operationCount, grantCount)
+		}
+		if ok, err := e.Check("legacy-user", resourceType, "old-1", operation); err != nil || ok {
+			t.Errorf("direct %s permission remains: allow=%v err=%v", resourceType, ok, err)
+		}
+	}
+	if err := e.AssignRole("legacy-role-user", "legacy-role"); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := e.Check("legacy-role-user", "agent", "old-1", "use"); err != nil || ok {
+		t.Errorf("role permission for withdrawn type remains: allow=%v err=%v", ok, err)
+	}
+
+	if err := Apply(db, e); err != nil {
+		t.Fatalf("second apply must remain idempotent: %v", err)
 	}
 }
 
@@ -134,7 +189,7 @@ func TestSeededRoleGrants(t *testing.T) {
 		{"network-builder manages catalog", networkBuilder, "catalog", "x", "create", true},
 		{"network-builder manages skill", networkBuilder, "skill", "s1", "publish", true},
 		{"network-builder not system users", networkBuilder, "admin-user", "x", "create", false},
-		{"super-admin does anything (agent)", superAdmin, "agent", "x", "use", true},
+		{"super-admin does anything (withdrawn type)", superAdmin, "agent", "x", "use", true},
 		{"super-admin does anything (any type/op)", superAdmin, "whatever", "z", "some_random_op", true},
 	}
 	for _, c := range cases {

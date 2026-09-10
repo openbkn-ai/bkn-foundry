@@ -392,6 +392,26 @@ func (en *Enforcer) removePolicyGrants(filter PolicyFilter) (int, error) {
 	return removedProjections, nil
 }
 
+func (en *Enforcer) removePolicyGrantsByObjectPrefix(prefix string) (int, error) {
+	var rows []safemodel.AuthorizationGrant
+	if err := en.db.Model(&safemodel.AuthorizationGrant{}).
+		Where("object LIKE ?", prefix+"%").
+		Order("grant_id").Find(&rows).Error; err != nil {
+		return 0, err
+	}
+	removedProjections := 0
+	for _, row := range rows {
+		_, projectionRemoved, err := en.revokePolicyGrant(row.GrantID)
+		if err != nil {
+			return removedProjections, err
+		}
+		if projectionRemoved {
+			removedProjections++
+		}
+	}
+	return removedProjections, nil
+}
+
 func (en *Enforcer) replacePolicyGrantSlice(filter PolicyFilter, desired []PolicyGrant) error {
 	var existing []safemodel.AuthorizationGrant
 	if err := applyPolicyFilter(en.db.Model(&safemodel.AuthorizationGrant{}), filter).

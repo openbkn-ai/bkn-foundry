@@ -31,8 +31,7 @@ func TestRoleResourceMatrix(t *testing.T) {
 
 	// a representative, granted op per resource type (positive case uses these).
 	repOp := map[string]string{
-		"agent": "use", "agent_tpl": "publish",
-		"stream_data_pipeline": "create", "catalog": "authorize",
+		"catalog": "authorize",
 		// 数据表上不再有 create/modify/delete：建表判目录的 resource_manage，
 		// 改删判这张表再回落到目录（#801）。
 		"resource":       "view_detail",
