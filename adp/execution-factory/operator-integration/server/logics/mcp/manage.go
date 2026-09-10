@@ -836,6 +836,14 @@ func (s *mcpServiceImpl) UpdateMCPStatus(ctx context.Context, req *interfaces.Up
 		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// Registered before the commit below so it runs after it — defers are LIFO. Publishing is what
+	// admits a server's tools to the capability index and taking it offline is what removes them
+	// (#1443); either must follow the committed status, never precede it.
+	defer func() {
+		if err == nil {
+			s.syncMCPCapabilitiesAsync(ctx, req.MCPID)
+		}
+	}()
 	defer func() {
 		if err != nil {
 			_ = tx.Rollback()

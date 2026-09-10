@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 
@@ -168,6 +169,72 @@ func (o *operatorIntegrationClient) CallMCPTool(ctx context.Context, req *interf
 
 // mcpServerDetailURI reads one MCP Server, including its publication state.
 const mcpServerDetailURI = "/internal-v1/mcp/%s"
+
+// toolBoxDetailURI reads one tool box, including its publication state.
+const toolBoxDetailURI = "/internal-v1/tool-box/%s"
+
+// toolBoxToolsURI lists the tools of one box; status=enabled narrows to the callable ones.
+const toolBoxToolsURI = "/internal-v1/tool-box/%s/tools/list"
+
+// ToolBoxLifecycle reads whether the box is published and which tools are enabled.
+//
+// Two internal reads: the box for its state, the tools listing narrowed to enabled. Neither needs
+// a caller token, so this answers on the internal face where the caller-visible listing cannot,
+// and it fails closed — a box or a listing that cannot be read yields unpublished / no tools.
+//
+// The listing is asked with all=true, which the execution factory answers in one page with no
+// limit or offset (dbaccess/tool.go applies paging only when all is unset). So the enabled set is
+// complete from a single request, and EnabledKnown is always true from this adapter. An earlier
+// version walked page/page_size here; the server ignores both under all=true, so that walk made
+// five identical full queries and then wrongly reported a large box's set as a prefix.
+func (o *operatorIntegrationClient) ToolBoxLifecycle(ctx context.Context, boxID string) (*interfaces.ToolBoxLifecycle, error) {
+	out := &interfaces.ToolBoxLifecycle{EnabledTools: map[string]struct{}{}, EnabledKnown: true}
+	if strings.TrimSpace(boxID) == "" {
+		return out, nil
+	}
+	header := common.GetHeaderForChildOperation(ctx, "operator.tool_box.get", 1)
+
+	code, body, err := o.httpClient.Get(ctx, o.baseURL+fmt.Sprintf(toolBoxDetailURI, boxID), nil, header)
+	if err != nil || code != http.StatusOK {
+		o.logger.WithContext(ctx).Warnf("[OperatorIntegration#ToolBoxLifecycle] box_id=%s unreadable: code=%d err=%v",
+			boxID, code, err)
+		return out, nil
+	}
+	var box struct {
+		Status string `json:"status"`
+	}
+	if err = sonic.Unmarshal(utils.ObjectToByte(body), &box); err != nil {
+		o.logger.WithContext(ctx).Warnf("[OperatorIntegration#ToolBoxLifecycle] unmarshal box failed: %v", err)
+		return out, nil
+	}
+	out.Published = box.Status == mcpServerStatusPublished
+	if !out.Published {
+		return out, nil
+	}
+
+	query := url.Values{"all": {"true"}, "status": {"enabled"}}
+	code, body, err = o.httpClient.Get(ctx, o.baseURL+fmt.Sprintf(toolBoxToolsURI, boxID), query, header)
+	if err != nil || code != http.StatusOK {
+		o.logger.WithContext(ctx).Warnf("[OperatorIntegration#ToolBoxLifecycle] box_id=%s tools unreadable: code=%d err=%v",
+			boxID, code, err)
+		return &interfaces.ToolBoxLifecycle{EnabledTools: map[string]struct{}{}}, nil
+	}
+	var listed struct {
+		Tools []struct {
+			ToolID string `json:"tool_id"`
+		} `json:"tools"`
+	}
+	if err = sonic.Unmarshal(utils.ObjectToByte(body), &listed); err != nil {
+		o.logger.WithContext(ctx).Warnf("[OperatorIntegration#ToolBoxLifecycle] unmarshal tools failed: %v", err)
+		return &interfaces.ToolBoxLifecycle{EnabledTools: map[string]struct{}{}}, nil
+	}
+	for _, tool := range listed.Tools {
+		if id := strings.TrimSpace(tool.ToolID); id != "" {
+			out.EnabledTools[id] = struct{}{}
+		}
+	}
+	return out, nil
+}
 
 // MCPServerIsUsable reports whether the MCP Server is published.
 //

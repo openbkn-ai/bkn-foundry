@@ -265,3 +265,18 @@ func (mr *MockDrivenOperatorIntegrationMockRecorder) SearchCapabilities(ctx, req
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchCapabilities", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).SearchCapabilities), ctx, req)
 }
+
+// ToolBoxLifecycle mocks base method.
+func (m *MockDrivenOperatorIntegration) ToolBoxLifecycle(ctx context.Context, boxID string) (*interfaces.ToolBoxLifecycle, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ToolBoxLifecycle", ctx, boxID)
+	ret0, _ := ret[0].(*interfaces.ToolBoxLifecycle)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ToolBoxLifecycle indicates an expected call of ToolBoxLifecycle.
+func (mr *MockDrivenOperatorIntegrationMockRecorder) ToolBoxLifecycle(ctx, boxID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ToolBoxLifecycle", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).ToolBoxLifecycle), ctx, boxID)
+}

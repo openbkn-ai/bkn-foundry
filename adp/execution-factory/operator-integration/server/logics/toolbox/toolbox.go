@@ -300,6 +300,10 @@ func (s *ToolServiceImpl) UpdateToolBoxStatus(ctx context.Context, req *interfac
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, "update toolbox status failed")
 		return
 	}
+	// Publication is what admits a box's tools to the capability index and withdrawal is what
+	// removes them (#1443). The sync reads the box back and applies the admission rule, so one
+	// call serves every transition.
+	s.syncBoxIndex(ctx, req.BoxID)
 	// Record audit log.
 	if operation != "" {
 		go func() {
@@ -666,6 +670,14 @@ func (s *ToolServiceImpl) UpdateToolStatus(ctx context.Context, req *interfaces.
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// Registered before the commit defer below so it runs after it — defers are LIFO — because a
+	// disabled tool must leave the index, and a re-enabled one return, only once the status has
+	// actually committed (#1443).
+	defer func() {
+		if err == nil {
+			s.syncToolsIndex(ctx, req.BoxID, toolIDs)
+		}
+	}()
 	defer func() {
 		if err != nil {
 			_ = tx.Rollback()

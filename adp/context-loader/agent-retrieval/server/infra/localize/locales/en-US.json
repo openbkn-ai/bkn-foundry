@@ -141,6 +141,8 @@
     "NoCapabilitiesForFilters": "This knowledge network has mounted capabilities, but none matching both the types / metadata_types and the owner_id you gave. Relax or drop these parameters to see everything it mounted.",
     "ToolsMatchedButNotVisible": "Tools matched, but this caller cannot see them, so none were returned. This is a permission, not an unpublished tool.",
     "ToolSearchTruncated": "More tools matched than limit allows; only the first ones are returned. Narrow query or raise limit.",
+    "CapabilityStatusUnverified": "The matched capabilities belong to a tool box or MCP Server that is withdrawn, or whose publication state could not be confirmed, so none were returned. This is not a permission problem: confirm in Execution Factory that the owning tool box / MCP Server is published.",
+    "CapabilityResultIncomplete": "Some matched capabilities were dropped because their tool box or MCP Server is withdrawn, and one bounded refill still fell short of limit. The result is incomplete; narrow the query or retry later.",
     "LogicPropertyGenerationFailed": "Unable to generate dynamic parameters.",
     "SkillSearchRequestFailed": "The skill search request failed.",
     "SkillSearchResponseInvalid": "The skill search response is invalid.",

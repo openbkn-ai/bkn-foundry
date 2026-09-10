@@ -141,6 +141,8 @@
     "NoCapabilitiesForFilters": "该知识网络挂载了能力，但没有同时满足 types / metadata_types 与 owner_id 的。放宽或去掉这些参数可看到全部已挂载能力。",
     "ToolsMatchedButNotVisible": "匹配到工具，但当前调用方对它们没有可见权限，因此未返回。与工具是否已发布无关。",
     "ToolSearchTruncated": "匹配的工具超过 limit，仅返回前若干条。请收窄 query 或提高 limit。",
+    "CapabilityStatusUnverified": "匹配到的能力所属的工具箱或 MCP Server 已下线，或其发布状态无法确认，因此未返回。这不是权限问题：请到执行工厂确认所属工具箱 / MCP Server 已发布。",
+    "CapabilityResultIncomplete": "部分匹配到的能力因所属工具箱或 MCP Server 已下线而被剔除，一次有界补召回后仍不足 limit。结果不完整；请收窄 query 或稍后重试。",
     "LogicPropertyGenerationFailed": "生成动态参数失败。",
     "SkillSearchRequestFailed": "技能检索请求失败。",
     "SkillSearchResponseInvalid": "技能检索响应无效。",
