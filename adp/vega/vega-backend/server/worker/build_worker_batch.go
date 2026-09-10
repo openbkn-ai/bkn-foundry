@@ -241,25 +241,28 @@ func (bbw *batchBuildWorker) completeIncrementalBuildTask(ctx context.Context, t
 }
 
 // buildBatchCursorFilter builds a lexicographic cursor filter for composite keys.
-func buildBatchCursorFilter(keys []string, keyValues []interfaces.KeyValue) *interfaces.FilterCondCfg {
+func buildBatchCursorFilter(keys []string, keyValues []interfaces.KeyValue) (*interfaces.FilterCondCfg, error) {
+	if len(keys) != len(keyValues) {
+		return nil, fmt.Errorf("batch cursor key count %d does not match value count %d", len(keys), len(keyValues))
+	}
 	branches := make([]*interfaces.FilterCondCfg, 0, len(keys))
 	for i, key := range keys {
 		subConditions := make([]*interfaces.FilterCondCfg, 0, i+1)
 		for j := 0; j < i; j++ {
 			subConditions = append(subConditions, &interfaces.FilterCondCfg{
-				Name:        keys[j],
+				Name:        keys[j], //nolint:gosec // keyValues length is checked to equal keys above.
 				Operation:   "==",
-				ValueOptCfg: interfaces.ValueOptCfg{Value: keyValues[j].Value, ValueFrom: interfaces.ValueFrom_Const},
+				ValueOptCfg: interfaces.ValueOptCfg{Value: keyValues[j].Value, ValueFrom: interfaces.ValueFrom_Const}, //nolint:gosec // keyValues length is checked to equal keys above.
 			})
 		}
 		subConditions = append(subConditions, &interfaces.FilterCondCfg{
 			Name:        key,
 			Operation:   "gt",
-			ValueOptCfg: interfaces.ValueOptCfg{Value: keyValues[i].Value, ValueFrom: interfaces.ValueFrom_Const},
+			ValueOptCfg: interfaces.ValueOptCfg{Value: keyValues[i].Value, ValueFrom: interfaces.ValueFrom_Const}, //nolint:gosec // keyValues length is checked to equal keys above.
 		})
 		branches = append(branches, &interfaces.FilterCondCfg{Operation: "and", SubConds: subConditions})
 	}
-	return &interfaces.FilterCondCfg{Operation: "or", SubConds: branches}
+	return &interfaces.FilterCondCfg{Operation: "or", SubConds: branches}, nil
 }
 
 // executeBuild executes the build logic
@@ -394,7 +397,11 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 
 		// Add filter condition for batch fields if we have last values
 		if len(lastBatchKeyValues) > 0 {
-			params.FilterCondCfg = buildBatchCursorFilter(effectiveCursorFields, lastBatchKeyValues)
+			filter, err := buildBatchCursorFilter(effectiveCursorFields, lastBatchKeyValues)
+			if err != nil {
+				return err
+			}
+			params.FilterCondCfg = filter
 
 			// Convert FilterCondCfg to ActualFilterCond
 			fieldMap := map[string]*interfaces.Property{}

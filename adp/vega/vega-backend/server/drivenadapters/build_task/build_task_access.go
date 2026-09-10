@@ -498,6 +498,10 @@ func (bta *buildTaskAccess) InternalList(ctx context.Context,
 	builder := sq.Select(buildTaskSummaryColumns()...).From(BUILD_TASK_TABLE_NAME)
 	builder = applyBuildTaskFilters(builder, params).
 		OrderBy(buildOrderByClause(params.Sort, params.Direction))
+
+	if params.Offset < 0 {
+		return nil, fmt.Errorf("build task offset must not be negative")
+	}
 	if params.Limit > 0 {
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}

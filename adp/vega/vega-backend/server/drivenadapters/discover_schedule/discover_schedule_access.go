@@ -311,10 +311,15 @@ func (dsa *discoverScheduleAccess) List(ctx context.Context, params interfaces.D
 	} else {
 		builder = builder.OrderBy("f_update_time DESC")
 	}
+
 	// Pagination
+	if params.Offset < 0 {
+		return nil, 0, fmt.Errorf("discover schedule offset must not be negative")
+	}
 	if params.Limit > 0 {
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}
+
 	// Build query
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {

@@ -23,10 +23,11 @@ import (
 )
 
 func TestBuildBatchCursorFilter(t *testing.T) {
-	filter := buildBatchCursorFilter(
+	filter, err := buildBatchCursorFilter(
 		[]string{"customer_id", "id"},
 		[]interfaces.KeyValue{{Key: "customer_id", Value: "customer-1"}, {Key: "id", Value: 100}},
 	)
+	require.NoError(t, err)
 
 	require.Equal(t, "or", filter.Operation)
 	require.Len(t, filter.SubConds, 2)
@@ -45,9 +46,19 @@ func TestBuildBatchCursorFilter(t *testing.T) {
 	}, filter.SubConds[1])
 }
 
+func TestBuildBatchCursorFilterRejectsMismatchedCursor(t *testing.T) {
+	filter, err := buildBatchCursorFilter(
+		[]string{"customer_id", "id"},
+		[]interfaces.KeyValue{{Key: "customer_id", Value: "customer-1"}},
+	)
+	require.Error(t, err)
+	assert.Nil(t, filter)
+}
+
 func TestBuildBatchCursorFilterAppendsPrimaryKeyForSameIncrementalValue(t *testing.T) {
 	keys := sync_checkpoint.EffectiveCursorFields([]string{"ingested_at"}, []string{"id"})
-	filter := buildBatchCursorFilter(keys, []interfaces.KeyValue{{Key: "ingested_at", Value: "T1"}, {Key: "id", Value: int64(1000)}})
+	filter, err := buildBatchCursorFilter(keys, []interfaces.KeyValue{{Key: "ingested_at", Value: "T1"}, {Key: "id", Value: int64(1000)}})
+	require.NoError(t, err)
 
 	require.Equal(t, []string{"ingested_at", "id"}, keys)
 	require.Len(t, filter.SubConds, 2)
@@ -63,7 +74,8 @@ func TestBatchCursorReadsAllSameIncrementalValueAcrossPages(t *testing.T) {
 		t.Run(fmt.Sprintf("%d same values", count), func(t *testing.T) {
 			first := min(count, 1000)
 			cursor := []interfaces.KeyValue{{Key: "ingested_at", Value: "T1"}, {Key: "id", Value: int64(first)}}
-			filter := buildBatchCursorFilter(sync_checkpoint.EffectiveCursorFields([]string{"ingested_at"}, []string{"id"}), cursor)
+			filter, err := buildBatchCursorFilter(sync_checkpoint.EffectiveCursorFields([]string{"ingested_at"}, []string{"id"}), cursor)
+			require.NoError(t, err)
 			second := make([]int64, 0, count-first)
 			for id := int64(1); id <= int64(count); id++ {
 				if matchesStringInt64CursorFilter(t, filter, map[string]any{"ingested_at": "T1", "id": id}) {
@@ -83,10 +95,11 @@ func TestBatchCursorReadsAllSameIncrementalValueAcrossPages(t *testing.T) {
 		rows = append(rows,
 			map[string]any{"ingested_at": "T1", "id": int64(1000)},
 			map[string]any{"ingested_at": "T1", "id": int64(1001)})
-		filter := buildBatchCursorFilter(
+		filter, err := buildBatchCursorFilter(
 			[]string{"ingested_at", "id"},
 			[]interfaces.KeyValue{{Key: "ingested_at", Value: "T1"}, {Key: "id", Value: int64(1000)}},
 		)
+		require.NoError(t, err)
 		remaining := make([]map[string]any, 0, 1)
 		for _, row := range rows {
 			if matchesStringInt64CursorFilter(t, filter, row) {
@@ -134,7 +147,8 @@ func TestBatchCursorKeepsCompositePrimaryFieldsForResume(t *testing.T) {
 		[]string{"updated_at", "tenant_id"}, []string{"tenant_id", "id"},
 	)
 	cursor := []interfaces.KeyValue{{Key: "updated_at", Value: "T1"}, {Key: "tenant_id", Value: "tenant-a"}, {Key: "id", Value: int64(1000)}}
-	filter := buildBatchCursorFilter(keys, cursor)
+	filter, err := buildBatchCursorFilter(keys, cursor)
+	require.NoError(t, err)
 
 	require.Equal(t, []string{"updated_at", "tenant_id", "id"}, keys)
 	require.Len(t, filter.SubConds, 3)

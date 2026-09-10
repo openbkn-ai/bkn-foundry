@@ -244,10 +244,15 @@ func (ds *datasetService) DeleteDocuments(ctx context.Context, res *interfaces.R
 		span.SetStatus(codes.Error, "Get dataset documents failed")
 		return err
 	}
+	if len(documents) != len(docIDs) {
+		span.SetStatus(codes.Error, "Get dataset documents returned inconsistent count")
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
+			WithErrorDetails("dataset document count does not match requested IDs")
+	}
 	idsToDelete := make([]string, 0, len(docIDs))
 	for i, document := range documents {
 		if document != nil {
-			idsToDelete = append(idsToDelete, docIDs[i])
+			idsToDelete = append(idsToDelete, docIDs[i]) //nolint:gosec // Document count is checked against docIDs above.
 		}
 	}
 	if len(idsToDelete) == 0 {

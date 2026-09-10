@@ -45,6 +45,7 @@ func (c *PostgresqlConnector) fetchDomainMetadata(ctx context.Context,
 		args[i] = oid
 	}
 
+	//nolint:gosec // PostgreSQL placeholders are generated locally; OID values are driver-bound.
 	query := fmt.Sprintf(`
 WITH RECURSIVE domain_chain AS (
     SELECT root.oid AS domain_oid,
@@ -290,6 +291,7 @@ func (c *PostgresqlConnector) findTableByIdentifier(ctx context.Context, schema,
 
 func (c *PostgresqlConnector) fetchTableStatus(ctx context.Context, table *interfaces.TableMeta) error {
 	relKinds := "'" + strings.Join(postgresqlTableRelKinds, "', '") + "'"
+	//nolint:gosec // Relation kinds are static constants, not user input.
 	query := fmt.Sprintf(`
 SELECT c.relkind::text,
        obj_description(c.oid, 'pg_class') AS description,
@@ -340,6 +342,7 @@ WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind IN (%s)`, relKinds)
 
 func (c *PostgresqlConnector) fetchColumns(ctx context.Context, table *interfaces.TableMeta) error {
 	relKinds := "'" + strings.Join(postgresqlTableRelKinds, "', '") + "'"
+	//nolint:gosec // Relation kinds are static constants, not user input.
 	query := fmt.Sprintf(`
 SELECT a.attname AS column_name,
        a.atttypid AS type_oid,

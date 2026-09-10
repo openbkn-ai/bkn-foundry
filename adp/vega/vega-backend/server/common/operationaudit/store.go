@@ -120,7 +120,7 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 		{"actor_id", filter.ActorID}, {"action", filter.Action}, {"target_type", filter.TargetType}, {"target_id", filter.TargetID}, {"outcome", filter.Outcome},
 	} {
 		if strings.TrimSpace(condition.value) != "" {
-			query += " AND " + condition.column + "=?"
+			query += " AND " + condition.column + "=?" //nolint:gosec // column is selected from the static list above; value is bound.
 			args = append(args, strings.TrimSpace(condition.value))
 		}
 	}

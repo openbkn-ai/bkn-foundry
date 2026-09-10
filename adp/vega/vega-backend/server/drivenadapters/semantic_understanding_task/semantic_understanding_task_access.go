@@ -339,6 +339,10 @@ func (suta *semanticUnderstandingTaskAccess) InternalList(ctx context.Context,
 		From(SEMANTIC_UNDERSTANDING_TASK_TABLE_NAME)
 	builder = applySemanticUnderstandingTaskFilters(builder, params).
 		OrderBy(buildOrderByClause(params.Sort, params.Direction))
+
+	if params.Offset < 0 {
+		return nil, fmt.Errorf("semantic understanding task offset must not be negative")
+	}
 	if params.Limit > 0 {
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}

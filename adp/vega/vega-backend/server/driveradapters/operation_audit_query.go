@@ -134,12 +134,12 @@ func operationAuditReader(ctx context.Context, authorization, expectedActorID st
 	if baseURL == "" || strings.TrimSpace(authorization) == "" || strings.TrimSpace(expectedActorID) == "" {
 		return false
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/api/safe/v1/me", nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/api/safe/v1/me", nil) //nolint:gosec // baseURL is deployment configuration, not request input.
 	if err != nil {
 		return false
 	}
 	request.Header.Set("Authorization", authorization)
-	response, err := (&http.Client{Timeout: 3 * time.Second}).Do(request)
+	response, err := (&http.Client{Timeout: 3 * time.Second}).Do(request) //nolint:gosec // Request URL is built from deployment configuration.
 	if err != nil {
 		return false
 	}

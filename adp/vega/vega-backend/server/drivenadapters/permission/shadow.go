@@ -347,9 +347,9 @@ func MaybeShadow(inner interfaces.PermissionAccess) (interfaces.PermissionAccess
 	}
 	sc := newSafeClient(safeURL)
 	if provider == "shadow" {
-		log.Printf("[authz] provider=shadow; ISF authoritative, comparing bkn-safe at %s", safeURL)
+		log.Printf("[authz] provider=shadow; ISF authoritative, comparing bkn-safe at %s", safeURL) //nolint:gosec // URL is deployment configuration, not request input.
 		return &shadowPermissionAccess{PermissionAccess: inner, safe: sc}, nil
 	}
-	log.Printf("[authz] provider=bkn-safe (authoritative) at %s", safeURL)
+	log.Printf("[authz] provider=bkn-safe (authoritative) at %s", safeURL) //nolint:gosec // URL is deployment configuration, not request input.
 	return &safePermissionAccess{safe: sc}, nil
 }
