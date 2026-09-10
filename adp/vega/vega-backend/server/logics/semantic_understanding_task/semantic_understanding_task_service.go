@@ -609,11 +609,15 @@ func (suts *semanticUnderstandingTaskService) attachUnmaskedSampleRows(ctx conte
 	input.SampleRows = []map[string]any{}
 	fields := make([]string, 0, len(resource.SchemaDefinition))
 	for _, property := range resource.SchemaDefinition {
-		if !isSemanticUnderstandingExcludedSampleProperty(property) {
+		if property != nil && !isSemanticUnderstandingExcludedSampleProperty(property) {
 			fields = append(fields, property.Name)
 		}
 	}
-	if len(fields) > 0 {
+	if len(fields) == 0 && len(input.SampleContext.OmittedFields) > 0 {
+		// No query is needed: every field was deliberately excluded by policy.
+		// This is distinct from a connector that could not provide samples.
+		input.SampleContext.Status = interfaces.SemanticUnderstandingSampleStatusAllFieldsOmittedByPolicy
+	} else if len(fields) > 0 {
 		result, err := suts.rds.QueryWithPaging(ctx, resource,
 			&interfaces.ResourceDataQueryParams{
 				Limit:        input.Options.SamplePolicy.MaxRows,
@@ -622,11 +626,19 @@ func (suts *semanticUnderstandingTaskService) attachUnmaskedSampleRows(ctx conte
 		if err != nil {
 			return fmt.Errorf("read sample rows: %w", err)
 		}
-		if result != nil && result.Entries != nil {
+		if result != nil {
 			var truncated bool
 			input.SampleRows, truncated, err = limitSemanticUnderstandingSampleRows(result.Entries, resource.SchemaDefinition)
 			if err != nil {
 				return fmt.Errorf("limit sample rows: %w", err)
+			}
+			switch {
+			case len(result.Entries) == 0:
+				input.SampleContext.Status = interfaces.SemanticUnderstandingSampleStatusNoRows
+			case truncated && len(input.SampleRows) == 0:
+				input.SampleContext.Status = interfaces.SemanticUnderstandingSampleStatusPayloadLimited
+			default:
+				input.SampleContext.Status = interfaces.SemanticUnderstandingSampleStatusAvailable
 			}
 			if truncated {
 				logger.Warnf("Semantic sample rows truncated by payload cap: resource_id=%s, category=%s, kept %d of %d rows", resource.ID, resource.Category, len(input.SampleRows), len(result.Entries))
@@ -689,6 +701,9 @@ func semanticUnderstandingExcludedSampleFields(schema []*interfaces.Property) ma
 }
 
 func isSemanticUnderstandingExcludedSampleProperty(property *interfaces.Property) bool {
+	if property == nil {
+		return false
+	}
 	return property.Type == interfaces.DataType_Binary || property.Type == interfaces.DataType_Other
 }
 
@@ -790,8 +805,9 @@ func defaultSemanticUnderstandingRequest() *interfaces.CreateSemanticUnderstandi
 
 func buildResourceSemanticUnderstandingInput(resource *interfaces.Resource, req *interfaces.CreateSemanticUnderstandingTaskRequest) (string, string, error) {
 	input := interfaces.SemanticUnderstandingResourceAgentInput{
-		Resource:   buildResourceAgentInputResource(resource),
-		SampleRows: []map[string]any{},
+		Resource:      buildResourceAgentInputResource(resource),
+		SampleRows:    []map[string]any{},
+		SampleContext: buildSemanticUnderstandingSampleContext(resource, req.IncludeSampleRows),
 		Options: interfaces.SemanticUnderstandingResourceAgentInputOptions{
 			Language:            interfaces.DefaultSemanticUnderstandingLanguage,
 			ApplyMode:           req.ApplyMode,
@@ -801,6 +817,38 @@ func buildResourceSemanticUnderstandingInput(resource *interfaces.Resource, req 
 		},
 	}
 	return marshalSemanticUnderstandingInput(input)
+}
+
+func buildSemanticUnderstandingSampleContext(resource *interfaces.Resource, includeSampleRows bool) interfaces.SemanticUnderstandingSampleContext {
+	context := interfaces.SemanticUnderstandingSampleContext{
+		Status:        interfaces.SemanticUnderstandingSampleStatusNotRequested,
+		OmittedFields: []interfaces.SemanticUnderstandingSampleOmission{},
+	}
+	if !includeSampleRows {
+		return context
+	}
+
+	context.Status = interfaces.SemanticUnderstandingSampleStatusUnavailable
+	fieldCount := 0
+	for _, property := range resource.SchemaDefinition {
+		if property == nil {
+			continue
+		}
+		fieldCount++
+		if !isSemanticUnderstandingExcludedSampleProperty(property) {
+			continue
+		}
+		context.OmittedFields = append(context.OmittedFields, interfaces.SemanticUnderstandingSampleOmission{
+			Name:         property.Name,
+			OriginalName: property.OriginalName,
+			Type:         property.Type,
+			Reason:       interfaces.SemanticUnderstandingSampleOmissionReasonPolicy,
+		})
+	}
+	if fieldCount > 0 && len(context.OmittedFields) == fieldCount {
+		context.Status = interfaces.SemanticUnderstandingSampleStatusAllFieldsOmittedByPolicy
+	}
+	return context
 }
 
 func buildCatalogSemanticUnderstandingInput(catalog *interfaces.Catalog, resources []*interfaces.Resource, req *interfaces.CreateSemanticUnderstandingTaskRequest) (string, string, error) {

@@ -199,14 +199,32 @@ components:
         resource_name: { type: string }
         agent_task_id: { type: string }
         agent_id: { type: string }
-        input: { type: string }
+        input:
+          type: string
+          description: >-
+            JSON-encoded audited Agent input. Resource-scoped inputs include
+            sample_context.status and sample_context.omitted_fields. Status
+            values not_requested, available, no_rows, unavailable,
+            payload_limited, and all_fields_omitted_by_policy distinguish the
+            sample state from field values
+            deliberately omitted by the sampling safety policy.
         input_hash: { type: string }
         status: { type: string, enum: [pending, running, completed, failed, cancelled] }
         apply_mode: { type: string, enum: [dry_run, fill_empty, force] }
-        result_json: { type: string }
+        result_json:
+          type: string
+          description: >-
+            JSON-encoded Agent result. Resource results may include
+            warning_details entries with stable code and params fields in
+            addition to legacy free-text warnings.
         confidence_threshold: { type: number, format: double }
         confidence: { type: number, format: double }
-        confidence_detail_json: { type: string }
+        confidence_detail_json:
+          type: string
+          description: >-
+            JSON-encoded confidence details. Resource details may include
+            warning_details; code sample_omitted_by_policy identifies a field
+            whose sample value Vega deliberately excluded by policy.
         apply_detail_json: { type: string }
         applied: { type: boolean }
         failure_detail: { type: string }

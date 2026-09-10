@@ -239,9 +239,6 @@ Description = "执行查询失败"
 Solution = "请联系管理员"
 ErrorLink = ""
 
-[VegaBackend.Validation.Detail]
-MultiCatalogJoinNotSupported = "暂不支持多数据源 JOIN，计划使用 Trino/DuckDB 实现。"
-
 [VegaBackend.OperationAudit.InvalidRange]
 Description = "操作审计查询时间范围无效。"
 Solution = "请提供不超过 30 天的有效 RFC3339 时间范围。"
@@ -271,3 +268,10 @@ ErrorLink = ""
 Description = "未找到操作审计事件。"
 Solution = "请检查 event_id 和查询范围。"
 ErrorLink = ""
+
+[VegaBackend.Validation.Detail]
+MultiCatalogJoinNotSupported = "暂不支持多数据源 JOIN，计划使用 Trino/DuckDB 实现。"
+SemanticUnderstandingInsufficientSampleDataSingular = "字段 {{.fields}} 的样本数据不足。"
+SemanticUnderstandingInsufficientSampleDataPlural = "字段 {{.fields}} 的样本数据不足。"
+SemanticUnderstandingFieldSeparator = "、"
+SemanticUnderstandingMissingSamplePattern = "(?:缺少|没有|无|未提供|无法获取|未能获取|获取不到)(?:可用的?)?样本(?:数据|值)?|样本(?:数据|值|数量)?(?:缺失|不足|不可用|未提供|无法获取|未获取)"
