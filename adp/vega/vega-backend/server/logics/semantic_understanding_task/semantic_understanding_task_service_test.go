@@ -143,7 +143,7 @@ func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
 			FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ string, inputHash string) (*interfaces.SemanticUnderstandingTask, error) {
 				findHash = inputHash
-				return nil, nil
+				return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 			})
 		taskAccess.EXPECT().
 			Create(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.SemanticUnderstandingTask{})).
@@ -563,7 +563,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 				findCount++
 				if findCount == 1 {
 					firstInputHash = inputHash
-					return nil, nil
+					return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 				}
 				assert.Equal(t, firstInputHash, inputHash)
 				return createdTask, nil

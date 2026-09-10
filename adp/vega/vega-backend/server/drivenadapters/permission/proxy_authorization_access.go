@@ -49,7 +49,7 @@ func (a *proxyAuthorizationAccess) GetManagedProxy(ctx context.Context, proxyID 
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, nil
+		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return nil, fmt.Errorf("bkn-safe GET %s: status %d", path, resp.StatusCode)

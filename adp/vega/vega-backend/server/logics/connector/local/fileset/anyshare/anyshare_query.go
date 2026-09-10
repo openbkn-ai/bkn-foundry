@@ -170,7 +170,7 @@ func (c *AnyShareConnector) SearchFiles(ctx context.Context, docID, keyword stri
 // Note: Only the first sort field is used, as the API supports single field sorting
 func processSortParams(sort []*interfaces.SortField) (map[string]interface{}, error) {
 	if len(sort) == 0 {
-		return nil, nil
+		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 
 	// Define allowed fields for sorting
@@ -193,7 +193,7 @@ func processSortParams(sort []*interfaces.SortField) (map[string]interface{}, er
 	// Use the first sort field
 	s := sort[0]
 	if s == nil {
-		return nil, nil
+		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 
 	// Validate field

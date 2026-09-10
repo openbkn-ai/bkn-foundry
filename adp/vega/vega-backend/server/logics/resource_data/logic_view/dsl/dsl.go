@@ -295,7 +295,7 @@ func (g *logicViewDSLGenerator) buildDSLCondition(ctx context.Context, filters *
 	}
 
 	if filterCond == nil {
-		return nil, nil
+		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 
 	dslCond, err := g.ConvertFilterCondition(ctx, filterCond, fieldMap)

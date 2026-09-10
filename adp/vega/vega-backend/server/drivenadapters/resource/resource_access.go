@@ -378,7 +378,7 @@ func (ra *resourceAccess) GetByID(ctx context.Context, tx *sql.Tx, id string) (*
 	resource, err := scanResource(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "")
-		return nil, nil
+		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 	if err != nil {
 		logger.Errorf("Scan resource failed: %v", err)
@@ -551,7 +551,7 @@ func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name 
 	resource, err := scanResource(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "")
-		return nil, nil
+		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 	if err != nil {
 		logger.Errorf("Scan resource failed: %v", err)

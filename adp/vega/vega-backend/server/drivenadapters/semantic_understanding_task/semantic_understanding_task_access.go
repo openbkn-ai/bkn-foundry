@@ -220,7 +220,7 @@ func (suta *semanticUnderstandingTaskAccess) GetByID(ctx context.Context, id str
 	task, err := scanSemanticUnderstandingTask(suta.db.QueryRowContext(ctx, sqlStr, vals...))
 	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "Semantic understanding task not found")
-		return nil, nil
+		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 	if err != nil {
 		otellog.LogError(ctx, "Get semantic understanding task failed", err)
@@ -293,7 +293,7 @@ func (suta *semanticUnderstandingTaskAccess) FindActiveByInputHash(ctx context.C
 	task, err := scanSemanticUnderstandingTask(suta.db.QueryRowContext(ctx, sqlStr, vals...))
 	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "Active semantic understanding task not found")
-		return nil, nil
+		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 	if err != nil {
 		otellog.LogError(ctx, "Find active semantic understanding task failed", err)

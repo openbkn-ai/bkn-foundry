@@ -283,7 +283,7 @@ func (dta *discoverTaskAccess) GetByID(ctx context.Context, id string) (*interfa
 	task, err := scanDiscoverTask(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "")
-		return nil, nil
+		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 	if err != nil {
 		logger.Errorf("Scan discover_task failed: %v", err)

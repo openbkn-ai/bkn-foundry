@@ -238,7 +238,7 @@ func (bta *buildTaskAccess) GetByID(ctx context.Context, id string) (*interfaces
 	buildTask, err := scanBuildTask(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "Build task not found")
-		return nil, nil
+		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 
 	if err != nil {
