@@ -55,7 +55,7 @@ func TestBuildBatchCursorFilterAppendsPrimaryKeyForSameIncrementalValue(t *testi
 	assert.Equal(t, "==", filter.SubConds[1].SubConds[0].Operation)
 	assert.Equal(t, "id", filter.SubConds[1].SubConds[1].Name)
 	assert.Equal(t, "gt", filter.SubConds[1].SubConds[1].Operation)
-	assert.Equal(t, int64(1000), filter.SubConds[1].SubConds[1].ValueOptCfg.Value)
+	assert.Equal(t, int64(1000), filter.SubConds[1].SubConds[1].Value)
 }
 
 func TestBatchCursorReadsAllSameIncrementalValueAcrossPages(t *testing.T) {
@@ -108,9 +108,9 @@ func matchesStringInt64CursorFilter(t *testing.T, filter *interfaces.FilterCondC
 			require.True(t, exists, "row is missing cursor field %q", condition.Name)
 			switch condition.Operation {
 			case "==":
-				matches = matches && actual == condition.ValueOptCfg.Value
+				matches = matches && actual == condition.Value
 			case "gt":
-				switch expected := condition.ValueOptCfg.Value.(type) {
+				switch expected := condition.Value.(type) {
 				case string:
 					matches = matches && actual.(string) > expected
 				case int64:
@@ -140,7 +140,7 @@ func TestBatchCursorKeepsCompositePrimaryFieldsForResume(t *testing.T) {
 	require.Len(t, filter.SubConds, 3)
 	assert.Equal(t, "id", filter.SubConds[2].SubConds[2].Name)
 	assert.Equal(t, "gt", filter.SubConds[2].SubConds[2].Operation)
-	assert.Equal(t, int64(1000), filter.SubConds[2].SubConds[2].ValueOptCfg.Value)
+	assert.Equal(t, int64(1000), filter.SubConds[2].SubConds[2].Value)
 }
 
 func TestBatchBuildWorkerHandleTask(t *testing.T) {
@@ -605,10 +605,10 @@ func TestBatchBuildWorkerReadsSameIncrementalValueAcrossPages(t *testing.T) {
 				idCondition := params.FilterCondCfg.SubConds[1].SubConds[1]
 				assert.Equal(t, "id", idCondition.Name)
 				assert.Equal(t, "gt", idCondition.Operation)
-				assert.Equal(t, int64(1020), idCondition.ValueOptCfg.Value)
+				assert.Equal(t, int64(1020), idCondition.Value)
 			}
-			cursorTime := params.FilterCondCfg.SubConds[0].SubConds[0].ValueOptCfg.Value.(string)
-			cursorID := params.FilterCondCfg.SubConds[1].SubConds[1].ValueOptCfg.Value.(int64)
+			cursorTime := params.FilterCondCfg.SubConds[0].SubConds[0].Value.(string)
+			cursorID := params.FilterCondCfg.SubConds[1].SubConds[1].Value.(int64)
 			entries := make([]map[string]any, 0, params.Paging.Limit)
 			for _, row := range sourceRows {
 				rowTime := row["ingested_at"].(string)

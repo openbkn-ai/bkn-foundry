@@ -208,7 +208,7 @@ func operationAuditActorName(ctx context.Context, authorization, expectedActorID
 	if err != nil {
 		return ""
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		return ""
 	}

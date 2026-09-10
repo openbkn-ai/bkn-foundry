@@ -503,7 +503,7 @@ func postJSON(ingestURL string, timeout time.Duration, payload any) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= http.StatusBadRequest {
 		response := struct {
 			Code string `json:"code"`

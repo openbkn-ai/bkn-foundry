@@ -1178,6 +1178,10 @@ func (ra *resourceAccess) DeleteByCatalogID(ctx context.Context, tx *sql.Tx, cat
 	sqlStr, vals, err := sq.Delete(RESOURCE_TABLE_NAME).
 		Where(sq.Eq{"f_catalog_id": catalogID}).
 		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return err
+	}
 
 	if tx != nil {
 		_, err = tx.ExecContext(ctx, sqlStr, vals...)

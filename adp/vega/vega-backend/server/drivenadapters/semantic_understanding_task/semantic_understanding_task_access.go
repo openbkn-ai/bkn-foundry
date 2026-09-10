@@ -579,8 +579,6 @@ func buildOrderByClause(sort, direction string) string {
 		column = "f_finish_time"
 	case interfaces.SemanticUnderstandingTaskSortCreateTime:
 		column = "f_create_time"
-	default:
-		column = "f_create_time"
 	}
 
 	dir := "DESC"

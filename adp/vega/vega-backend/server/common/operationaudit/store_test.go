@@ -19,7 +19,7 @@ import (
 func TestStoreRecordUsesStableEventIDForIdempotency(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	store := &Store{db: db}
 	now := time.Date(2026, 8, 13, 9, 0, 0, 0, time.UTC)
 	entry := Entry{EventID: EventID("req-a", "POST", "/catalogs"), EventTime: now, RecordedAt: now, ActorID: "user-a", ActorName: "管理员", ActorType: "user", AuthMethod: "oauth", RequestID: "req-a", SourceChannel: "api", Method: "POST", Action: "create", TargetType: "catalog", TargetID: "catalog:req-a", TargetName: "供应链数据源", Outcome: "success"}
@@ -36,7 +36,7 @@ func TestStoreRecordUsesStableEventIDForIdempotency(t *testing.T) {
 func TestStoreRecordRejectsUnboundedFailureMessage(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	store := &Store{db: db}
 	entry := Entry{EventID: "evt-a", EventTime: time.Now(), RecordedAt: time.Now(), ActorID: "user-a", ActorName: "管理员", RequestID: "req-a", Action: "create", TargetType: "catalog", TargetID: "catalog-a", Outcome: "failure", FailureMessage: string(make([]byte, 513))}
 	err = store.Record(context.Background(), entry)

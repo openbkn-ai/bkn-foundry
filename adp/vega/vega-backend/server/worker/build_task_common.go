@@ -316,16 +316,6 @@ func buildTaskHasEmbedding(buildTask *interfaces.BuildTask) bool {
 	return false
 }
 
-// The hasFulltextFeature determines whether a field already has the fulltext feature.
-func hasFulltextFeature(prop *interfaces.Property) bool {
-	for _, f := range prop.Features {
-		if f.FeatureType == interfaces.PropertyFeatureType_Fulltext {
-			return true
-		}
-	}
-	return false
-}
-
 // analyzerOf returns the analyzer name from fulltext feature configuration, or an empty string when absent.
 func analyzerOf(config map[string]any) string {
 	if config == nil {

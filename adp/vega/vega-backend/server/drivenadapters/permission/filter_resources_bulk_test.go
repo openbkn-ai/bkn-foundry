@@ -148,7 +148,7 @@ func TestFilterResourcesReportsCandidateOperations(t *testing.T) {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		w.Header().Set("Content-Type", "application/json")
 		if strings.HasSuffix(r.URL.Path, "/check") {
-			_, _ = w.Write([]byte(fmt.Sprintf(`{"allowed":%t}`, held[body.Operation])))
+			_, _ = fmt.Fprintf(w, `{"allowed":%t}`, held[body.Operation])
 			return
 		}
 		_, _ = w.Write([]byte(`{"resources":[]}`))

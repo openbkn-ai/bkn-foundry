@@ -437,8 +437,8 @@ func (lvs *logicViewService) executeCompositeViewByDSL(ctx context.Context, view
 			QueryTimeoutSec:        int(params.Timeout.Seconds()),
 			NeedTotal:              params.NeedTotal,
 			Paging:                 paging,
-			ResourceDataResourceID: view.Resource.ID,
-			ResourceDataUpdateTime: view.Resource.UpdateTime,
+			ResourceDataResourceID: view.ID,
+			ResourceDataUpdateTime: view.UpdateTime,
 		}
 		res, err := lvs.qs.Execute(ctx, &req)
 		if err != nil {
@@ -512,8 +512,8 @@ func (lvs *logicViewService) executeCompositeViewBySQL(ctx context.Context, view
 			QueryTimeoutSec:        int(params.Timeout.Seconds()),
 			NeedTotal:              params.NeedTotal,
 			Paging:                 paging,
-			ResourceDataResourceID: view.Resource.ID,
-			ResourceDataUpdateTime: view.Resource.UpdateTime,
+			ResourceDataResourceID: view.ID,
+			ResourceDataUpdateTime: view.UpdateTime,
 		}
 		res, err := lvs.qs.Execute(ctx, &req)
 		if err != nil {

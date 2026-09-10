@@ -138,7 +138,7 @@ func TestBuildTaskServiceFillBuildTaskIndexSnapshot(t *testing.T) {
 		err := service.fillBuildTaskIndexSnapshot(context.Background(), &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{
 			Name: "title", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, RefProperty: "title"}},
 		}}}, buildTask)
-		requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_EmbeddingModel)
+		_ = requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_EmbeddingModel)
 	})
 	t.Run("rejects duplicate feature type", func(t *testing.T) {
 		service := &buildTaskService{}
@@ -504,7 +504,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 			Mode:       interfaces.BuildTaskModeBatch,
 		})
 
-		requireHTTPError(t, err, verrors.VegaBackend_BuildTask_Exist)
+		_ = requireHTTPError(t, err, verrors.VegaBackend_BuildTask_Exist)
 	})
 	t.Run("creates incremental task from resource baseline", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -568,7 +568,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 			Mode:       interfaces.BuildTaskModeStreaming,
 		})
 
-		requireHTTPError(t, err, verrors.VegaBackend_BuildTask_StreamingUnsupported)
+		_ = requireHTTPError(t, err, verrors.VegaBackend_BuildTask_StreamingUnsupported)
 	})
 	t.Run("rejects execute type for streaming", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -590,7 +590,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 			ExecuteType: interfaces.BuildTaskExecuteTypeFull,
 		})
 
-		requireHTTPError(t, err, verrors.VegaBackend_BuildTask_StreamingUnsupported)
+		_ = requireHTTPError(t, err, verrors.VegaBackend_BuildTask_StreamingUnsupported)
 	})
 	t.Run("caches default embedding SmallModel by model ID", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -1083,7 +1083,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
 
 		err := service.Start(context.Background(), "task-1", false)
-		requireHTTPError(t, err, verrors.VegaBackend_BuildTask_IncrementalBaselineUnavailable)
+		_ = requireHTTPError(t, err, verrors.VegaBackend_BuildTask_IncrementalBaselineUnavailable)
 	})
 
 	t.Run("returns conflict when status changes before start update", func(t *testing.T) {
@@ -1168,7 +1168,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 				Return(&interfaces.BuildTask{ID: "task-1", CatalogID: "catalog-1", Status: status}, nil)
 
 			err := service.Start(context.Background(), "task-1", false)
-			requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidStateTransition)
+			_ = requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidStateTransition)
 		})
 	}
 	t.Run("rejects another active task for resource", func(t *testing.T) {
@@ -1202,7 +1202,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 			})
 
 		err := service.Start(context.Background(), "task-1", false)
-		requireHTTPError(t, err, verrors.VegaBackend_BuildTask_Exist)
+		_ = requireHTTPError(t, err, verrors.VegaBackend_BuildTask_Exist)
 	})
 	t.Run("rejects changed index config", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -1236,7 +1236,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(currentResource, nil)
 
 		err := service.Start(context.Background(), "task-1", false)
-		requireHTTPError(t, err, verrors.VegaBackend_BuildTask_IndexConfigChanged)
+		_ = requireHTTPError(t, err, verrors.VegaBackend_BuildTask_IndexConfigChanged)
 	})
 	t.Run("restart does not depend on newer completed tasks", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -1386,8 +1386,8 @@ func mustBuildTaskIndexConfig(t *testing.T, resource *interfaces.Resource) *inte
 		Features:            map[string]interfaces.BuildTaskFieldIndexFeature{},
 	}
 	if resource.IndexConfig != nil {
-		config.IndexConfigContract.PrimaryKeyFields = append([]string(nil), resource.IndexConfig.PrimaryKeyFields...)
-		config.IndexConfigContract.IncrementalFields = append([]string(nil), resource.IndexConfig.IncrementalFields...)
+		config.PrimaryKeyFields = append([]string(nil), resource.IndexConfig.PrimaryKeyFields...)
+		config.IncrementalFields = append([]string(nil), resource.IndexConfig.IncrementalFields...)
 	}
 	return config
 }
@@ -1450,7 +1450,7 @@ func TestBuildTaskServiceStop(t *testing.T) {
 				Return(&interfaces.BuildTask{ID: "task-1", CatalogID: "catalog-1", Status: status}, nil)
 
 			err := service.Stop(context.Background(), "task-1")
-			requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidStateTransition)
+			_ = requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidStateTransition)
 		})
 	}
 }
@@ -1507,7 +1507,7 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 		svc := &buildTaskService{bta: bta}
 		bta.EXPECT().GetByIDs(gomock.Any(), []string{"t1"}).Return(nil, errors.New("database unavailable"))
 
-		requireHTTPError(t, svc.DeleteByIDs(context.Background(), []string{"t1"}, false), verrors.VegaBackend_BuildTask_InternalError_GetFailed)
+		_ = requireHTTPError(t, svc.DeleteByIDs(context.Background(), []string{"t1"}, false), verrors.VegaBackend_BuildTask_InternalError_GetFailed)
 	})
 
 	t.Run("reports missing ids unless ignored", func(t *testing.T) {
@@ -1567,7 +1567,7 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 			cs.EXPECT().CheckTaskPermission(gomock.Any(), "c1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 			bta.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(tt.result, tt.err)
 
-			requireHTTPError(t, svc.DeleteByIDs(context.Background(), []string{"t1"}, false), verrors.VegaBackend_BuildTask_InternalError_DeleteFailed)
+			_ = requireHTTPError(t, svc.DeleteByIDs(context.Background(), []string{"t1"}, false), verrors.VegaBackend_BuildTask_InternalError_DeleteFailed)
 		})
 	}
 }

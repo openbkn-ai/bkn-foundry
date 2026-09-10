@@ -137,7 +137,7 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 	if err != nil {
 		return Page{}, fmt.Errorf("list operation audit: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	entries := make([]Entry, 0, limit+1)
 	for rows.Next() {
 		var entry Entry

@@ -49,7 +49,7 @@ type indexCleanupCandidate struct {
 	resourceID string
 	taskID     string
 	dataset    bool
-	reason     string
+	reason     string //nolint:unused // Reserved for cleanup audit details.
 }
 
 type indexCleanupStats struct {

@@ -124,7 +124,7 @@ func (r *restHandler) requireOperationAuditReader(c *gin.Context) bool {
 func replyOperationAuditError(c *gin.Context, status int, code string, details any) {
 	err := rest.NewHTTPError(c.Request.Context(), status, code)
 	if details != nil {
-		err.WithErrorDetails(details)
+		err = err.WithErrorDetails(details)
 	}
 	rest.ReplyError(c, err)
 }
@@ -143,7 +143,7 @@ func operationAuditReader(ctx context.Context, authorization, expectedActorID st
 	if err != nil {
 		return false
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		return false
 	}

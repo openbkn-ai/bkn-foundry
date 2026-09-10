@@ -180,7 +180,7 @@ func TestValidateIndexConfigKeyFields(t *testing.T) {
 		err := validateIndexConfigKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
 			PrimaryKeyFields: []string{"id", "id"},
 		})
-		requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter_PrimaryKeyFields)
+		_ = requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter_PrimaryKeyFields)
 
 		err = validateIndexConfigKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
 			IncrementalFields: []string{"body"},
