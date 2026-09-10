@@ -5,6 +5,7 @@
 package authz
 
 import (
+	"context"
 	"sort"
 	"strings"
 
@@ -21,8 +22,8 @@ type proxyPermission struct {
 // permissions for one managed proxy with a bounded number of database reads.
 // Delegator policy and hierarchy checks are grouped by delegator instead of by
 // source, which keeps list filtering proportional to the number of delegators.
-func (en *Enforcer) currentProxyPermissions(proxyID string) (map[proxyPermission]bool, error) {
-	sources, valid, err := en.currentProxySourceIDs(proxyID)
+func (en *Enforcer) currentProxyPermissions(ctx context.Context, proxyID string) (map[proxyPermission]bool, error) {
+	sources, valid, err := en.currentProxySourceIDs(ctx, proxyID)
 	if err != nil {
 		return nil, err
 	}
@@ -42,20 +43,20 @@ func (en *Enforcer) currentProxyPermissions(proxyID string) (map[proxyPermission
 
 // currentProxySourceIDs returns the active source rows and the subset whose
 // lifecycle and delegator authority are still valid.
-func (en *Enforcer) currentProxySourceIDs(proxyID string) ([]safemodel.ProxyGrantSource, map[string]bool, error) {
+func (en *Enforcer) currentProxySourceIDs(ctx context.Context, proxyID string) ([]safemodel.ProxyGrantSource, map[string]bool, error) {
 	var sources []safemodel.ProxyGrantSource
-	if err := en.db.Where("proxy_account_id = ? AND lifecycle_status = ?",
+	if err := en.db.WithContext(ctx).Where("proxy_account_id = ? AND lifecycle_status = ?",
 		proxyID, safemodel.ProxyGrantSourceStatusActive).Find(&sources).Error; err != nil {
 		return nil, nil, err
 	}
-	valid, err := en.validProxySourceIDs(sources)
+	valid, err := en.validProxySourceIDs(ctx, sources)
 	return sources, valid, err
 }
 
 // CurrentProxySourceIDs exposes the batched validity projection to provenance
 // services already running inside the same authorization transaction.
 func (tx *PolicyTransaction) CurrentProxySourceIDs(proxyID string) (map[string]bool, error) {
-	_, valid, err := tx.enforcer.currentProxySourceIDs(proxyID)
+	_, valid, err := tx.enforcer.currentProxySourceIDs(context.Background(), proxyID)
 	return valid, err
 }
 
@@ -64,10 +65,10 @@ func (tx *PolicyTransaction) CurrentProxySourceIDs(proxyID string) (map[string]b
 // enabled, non-managed identity before using it.
 func (tx *PolicyTransaction) FilterResourceOpsRaw(accessorID string, resources []ResourceRef,
 	candidates []string) ([]FilteredResource, error) {
-	return tx.enforcer.filterResourceOps(accessorID, resources, nil, candidates, false)
+	return tx.enforcer.filterResourceOps(context.Background(), accessorID, resources, nil, candidates, ScopeEffective, false)
 }
 
-func (en *Enforcer) validProxySourceIDs(sources []safemodel.ProxyGrantSource) (map[string]bool, error) {
+func (en *Enforcer) validProxySourceIDs(ctx context.Context, sources []safemodel.ProxyGrantSource) (map[string]bool, error) {
 	valid := make(map[string]bool, len(sources))
 	byDelegator := map[string][]safemodel.ProxyGrantSource{}
 	resourceTypes := map[string]bool{}
@@ -97,7 +98,7 @@ func (en *Enforcer) validProxySourceIDs(sources []safemodel.ProxyGrantSource) (m
 		Operation    string
 	}
 	var registeredRows []safemodel.Operation
-	if err := en.db.Where("resource_type_id IN ? AND id IN ?", sortedKeys(resourceTypes), sortedKeys(operations)).
+	if err := en.db.WithContext(ctx).Where("resource_type_id IN ? AND id IN ?", sortedKeys(resourceTypes), sortedKeys(operations)).
 		Find(&registeredRows).Error; err != nil {
 		return nil, err
 	}
@@ -108,7 +109,7 @@ func (en *Enforcer) validProxySourceIDs(sources []safemodel.ProxyGrantSource) (m
 
 	delegatorIDs := sortedKeys(delegators)
 	var users []safemodel.User
-	if err := en.db.Where("id IN ? AND enabled = ?", delegatorIDs, true).Find(&users).Error; err != nil {
+	if err := en.db.WithContext(ctx).Where("id IN ? AND enabled = ?", delegatorIDs, true).Find(&users).Error; err != nil {
 		return nil, err
 	}
 	enabled := make(map[string]bool, len(users))
@@ -116,7 +117,7 @@ func (en *Enforcer) validProxySourceIDs(sources []safemodel.ProxyGrantSource) (m
 		enabled[user.ID] = true
 	}
 	var managed []safemodel.ManagedProxyAccount
-	if err := en.db.Where("proxy_account_id IN ?", delegatorIDs).Find(&managed).Error; err != nil {
+	if err := en.db.WithContext(ctx).Where("proxy_account_id IN ?", delegatorIDs).Find(&managed).Error; err != nil {
 		return nil, err
 	}
 	for _, account := range managed {
@@ -140,7 +141,8 @@ func (en *Enforcer) validProxySourceIDs(sources []safemodel.ProxyGrantSource) (m
 		if len(resources) == 0 {
 			continue
 		}
-		allowed, err := en.filterResourceOps(delegator, resources, nil, sortedKeys(candidateSet), false)
+		allowed, err := en.filterResourceOps(ctx, delegator, resources, nil,
+			sortedKeys(candidateSet), ScopeEffective, false)
 		if err != nil {
 			return nil, err
 		}

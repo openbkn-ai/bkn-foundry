@@ -107,7 +107,7 @@ func registerResourceParents(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB)
 			for _, r := range rows {
 				links[r.ResourceID] = r.ParentID
 			}
-			flips, total, err := e.PreviewOwnership(req.ResourceType, req.ParentType, links, maxPreviewFlips)
+			flips, total, err := e.PreviewOwnershipContext(c.Request.Context(), req.ResourceType, req.ParentType, links, maxPreviewFlips)
 			if err != nil {
 				serverError(c, err)
 				return

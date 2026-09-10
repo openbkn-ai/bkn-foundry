@@ -7,6 +7,7 @@ package permobject
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/openbkn-ai/licverify"
@@ -17,12 +18,12 @@ import (
 // fake stands in for the ee implementation. Core must be testable with a fake
 // in the socket — that is the point of depending on the interface, not on ee.
 type fake struct {
-	decision Decision
+	decision LocalOpinion
 	err      error
 	seen     Request
 }
 
-func (f *fake) Decide(_ context.Context, req Request) (Decision, error) {
+func (f *fake) Decide(_ context.Context, req Request) (LocalOpinion, error) {
 	f.seen = req
 	return f.decision, f.err
 }
@@ -49,12 +50,12 @@ func TestCommunityBuildAbstains(t *testing.T) {
 	on := true
 	licensed(t, &on)
 	// Nothing registered: this is a community binary, the code is not present.
-	d, err := Decide(context.Background(), Request{AccessorID: "u1", CoreVerdict: true})
+	d, err := Decide(context.Background(), Request{AccessorID: "u1", CoreDecision: "allow", CoreBasis: "direct"})
 	if err != nil {
 		t.Fatalf("Decide err = %v, want nil", err)
 	}
-	if d != Abstain {
-		t.Fatalf("Decide = %v, want Abstain — core's verdict must stand", d)
+	if d != (LocalOpinion{}) {
+		t.Fatalf("Decide = %v, want empty opinion — core's result must stand", d)
 	}
 	if Available() {
 		t.Fatal("Available() must be false with an empty socket")
@@ -64,38 +65,36 @@ func TestCommunityBuildAbstains(t *testing.T) {
 func TestRegisteredDenyOverridesCoreAllow(t *testing.T) {
 	on := true
 	licensed(t, &on)
-	register(&fake{decision: Deny})
+	register(&fake{decision: LocalOpinion{Direct: Deny}})
 
-	d, err := Decide(context.Background(), Request{AccessorID: "u1", CoreVerdict: true})
+	d, err := Decide(context.Background(), Request{AccessorID: "u1", CoreDecision: "allow", CoreBasis: "direct"})
 	if err != nil {
 		t.Fatalf("Decide err = %v", err)
 	}
-	if got := Apply(true, d); got {
-		t.Fatal("an ee deny must override core's allow — that is the gap core cannot express")
+	if d.Direct != Deny {
+		t.Fatal("the provider's direct deny must be preserved for Core's same-resource merge")
 	}
 }
 
-func TestRegisteredAllowOverridesCoreDeny(t *testing.T) {
+func TestRegisteredAllowDoesNotFoldOverCoreDeny(t *testing.T) {
 	on := true
 	licensed(t, &on)
-	register(&fake{decision: Allow})
+	register(&fake{decision: LocalOpinion{Direct: Allow}})
 
-	d, _ := Decide(context.Background(), Request{AccessorID: "u1", CoreVerdict: false})
-	if got := Apply(false, d); !got {
-		t.Fatal("an ee allow must override core's deny")
+	d, _ := Decide(context.Background(), Request{AccessorID: "u1", CoreDecision: "deny", CoreBasis: "direct"})
+	if d.Direct != Allow {
+		t.Fatal("the socket must return the EE source opinion without replacing Core's explicit deny")
 	}
 }
 
-func TestAbstainLeavesCoreVerdictAlone(t *testing.T) {
+func TestAbstainLeavesCoreDecisionAlone(t *testing.T) {
 	on := true
 	licensed(t, &on)
-	register(&fake{decision: Abstain})
+	register(&fake{decision: LocalOpinion{}})
 
-	for _, core := range []bool{true, false} {
-		d, _ := Decide(context.Background(), Request{CoreVerdict: core})
-		if got := Apply(core, d); got != core {
-			t.Fatalf("Apply(%v, Abstain) = %v, want %v", core, got, core)
-		}
+	d, _ := Decide(context.Background(), Request{CoreDecision: "deny", CoreBasis: "direct"})
+	if d != (LocalOpinion{}) {
+		t.Fatalf("abstaining provider = %v, want empty opinion", d)
 	}
 }
 
@@ -103,21 +102,21 @@ func TestErrorFailsClosed(t *testing.T) {
 	on := true
 	licensed(t, &on)
 	wantErr := errors.New("ee store unreachable")
-	register(&fake{decision: Allow, err: wantErr})
+	register(&fake{decision: LocalOpinion{Direct: Allow}, err: wantErr})
 
-	d, err := Decide(context.Background(), Request{CoreVerdict: true})
+	d, err := Decide(context.Background(), Request{CoreDecision: "allow", CoreBasis: "direct"})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Decide err = %v, want %v surfaced to the caller", err, wantErr)
 	}
-	if d != Deny {
-		t.Fatalf("Decide = %v on error, want Deny — reverting to core's looser verdict would hand out access the enterprise policy revoked", d)
+	if d.Direct != Deny || d.Wildcard != Deny {
+		t.Fatalf("Decide = %v on error, want fail-closed deny opinion", d)
 	}
 }
 
 func TestLapsedLicenseFallsBackToCommunityBehaviour(t *testing.T) {
 	on := true
 	licensed(t, &on)
-	register(&fake{decision: Deny})
+	register(&fake{decision: LocalOpinion{Direct: Deny}})
 
 	if !Available() {
 		t.Fatal("capability should be available while licensed")
@@ -129,26 +128,30 @@ func TestLapsedLicenseFallsBackToCommunityBehaviour(t *testing.T) {
 	if Available() {
 		t.Fatal("capability must go dark when the license lapses")
 	}
-	d, err := Decide(context.Background(), Request{CoreVerdict: true})
+	d, err := Decide(context.Background(), Request{CoreDecision: "allow", CoreBasis: "direct"})
 	if err != nil {
 		t.Fatalf("Decide err = %v, want nil", err)
 	}
-	if d != Abstain {
-		t.Fatalf("Decide = %v after the license lapsed, want Abstain", d)
+	if d != (LocalOpinion{}) {
+		t.Fatalf("Decide = %v after the license lapsed, want empty opinion", d)
 	}
 }
 
-func TestRequestCarriesCoreVerdictToEE(t *testing.T) {
+func TestRequestCarriesStructuredCoreDecisionToEE(t *testing.T) {
 	on := true
 	licensed(t, &on)
-	f := &fake{decision: Abstain}
+	f := &fake{}
 	register(f)
 
-	req := Request{AccessorID: "u1", ResourceType: "knowledge_network", ResourceID: "kn1", Op: "view_detail", CoreVerdict: true}
+	req := Request{
+		AccessorID: "u1", AccessorIDs: []string{"u1", "reader-role"},
+		ResourceType: "knowledge_network", ResourceID: "kn1", Op: "view_detail",
+		CoreDecision: "allow", CoreBasis: "bundle",
+	}
 	if _, err := Decide(context.Background(), req); err != nil {
 		t.Fatal(err)
 	}
-	if f.seen != req {
+	if !reflect.DeepEqual(f.seen, req) {
 		t.Fatalf("ee saw %+v, want %+v", f.seen, req)
 	}
 }
@@ -181,14 +184,14 @@ func TestRegisterNilPanics(t *testing.T) {
 func TestSecondRegistrationPanics(t *testing.T) {
 	on := true
 	licensed(t, &on)
-	register(&fake{decision: Allow})
+	register(&fake{decision: LocalOpinion{Direct: Allow}})
 
 	defer func() {
 		if recover() == nil {
 			t.Fatal("第二次 Register 必须 panic——否则第一个实现被静默丢弃，启动日志里没有任何痕迹")
 		}
 	}()
-	register(&fake{decision: Deny})
+	register(&fake{decision: LocalOpinion{Direct: Deny}})
 }
 
 // A capability registered without a tier would be a paid capability registered
@@ -235,7 +238,7 @@ func TestHigherTiersInheritTheCapability(t *testing.T) {
 			entitlement.SetGateForTest(entitlement.GateFunc(func() entitlement.Snapshot {
 				return entitlement.Snapshot{Licensed: true, Edition: ed}
 			}))
-			register(&fake{decision: Deny})
+			register(&fake{decision: LocalOpinion{Direct: Deny}})
 			if !Available() {
 				t.Fatalf("%s 拿不到企业能力——上层档位必须继承下层", ed)
 			}
@@ -251,17 +254,17 @@ func TestPaidButLowerTierFallsBackToCore(t *testing.T) {
 	entitlement.SetGateForTest(entitlement.GateFunc(func() entitlement.Snapshot {
 		return entitlement.Snapshot{Licensed: true, Edition: licverify.EditionProfessional}
 	}))
-	register(&fake{decision: Deny})
+	register(&fake{decision: LocalOpinion{Direct: Deny}})
 
 	if Available() {
 		t.Fatal("专业档不该拿到企业能力")
 	}
-	d, err := Decide(context.Background(), Request{CoreVerdict: true})
+	d, err := Decide(context.Background(), Request{CoreDecision: "allow", CoreBasis: "direct"})
 	if err != nil {
 		t.Fatalf("Decide err = %v, want nil", err)
 	}
-	if d != Abstain {
-		t.Fatalf("Decide = %v，want Abstain——档位不够要回落 core 判定", d)
+	if d != (LocalOpinion{}) {
+		t.Fatalf("Decide = %v，want empty opinion——档位不够要回落 core 判定", d)
 	}
 }
 

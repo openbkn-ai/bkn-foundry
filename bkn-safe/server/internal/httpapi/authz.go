@@ -41,11 +41,21 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 	// POST /check — single decision. { accessor_id, resource{type,id}, operation } -> { allowed }
 	g.POST("/check", func(c *gin.Context) {
 		var req struct {
-			AccessorID string      `json:"accessor_id" binding:"required"`
-			Resource   resourceRef `json:"resource" binding:"required"`
-			Operation  string      `json:"operation" binding:"required"`
+			AccessorID      string      `json:"accessor_id" binding:"required"`
+			Resource        resourceRef `json:"resource" binding:"required"`
+			Operation       string      `json:"operation" binding:"required"`
+			EvaluationScope string      `json:"evaluation_scope"`
 		}
 		if !bind(c, &req) {
+			return
+		}
+		scope, err := authz.ParseEvaluationScope(req.EvaluationScope)
+		if err != nil {
+			replyPublicError(c, http.StatusBadRequest)
+			return
+		}
+		if scope == authz.ScopeLocal && !validateLocalScope(c,
+			[]authz.ResourceRef{{Type: req.Resource.Type, ID: req.Resource.ID}}, []string{req.Operation}) {
 			return
 		}
 		active, err := activeAccount(c, db, req.AccessorID)
@@ -57,12 +67,29 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			c.JSON(http.StatusOK, gin.H{"allowed": false})
 			return
 		}
-		ok, err := e.Check(req.AccessorID, req.Resource.Type, req.Resource.ID, req.Operation)
+		var decision authz.Evaluation
+		if scope == authz.ScopeLocal {
+			decision, err = e.LocalDecision(c.Request.Context(), req.AccessorID,
+				req.Resource.Type, req.Resource.ID, req.Operation)
+		} else {
+			decision, err = e.OperationDecision(c.Request.Context(), req.AccessorID,
+				req.Resource.Type, req.Resource.ID, req.Operation)
+		}
 		if err != nil {
 			serverError(c, err)
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"allowed": ok})
+		response := gin.H{
+			"allowed":          decision.Allowed(),
+			"evaluation_scope": decision.Scope,
+			"decision":         decision.Decision,
+			"basis":            decision.Basis,
+		}
+		if decision.DeniedRequirement != "" {
+			response["denied_requirement"] = decision.DeniedRequirement
+			response["requirement_basis"] = decision.RequirementBasis
+		}
+		c.JSON(http.StatusOK, response)
 	})
 
 	// POST /operations — which ops the accessor may perform on a resource.
@@ -89,7 +116,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			serverError(c, err)
 			return
 		}
-		allowed, err := e.AllowedOps(req.AccessorID, req.Resource.Type, req.Resource.ID, candidates)
+		allowed, err := e.AllowedOpsContext(c.Request.Context(), req.AccessorID, req.Resource.Type, req.Resource.ID, candidates)
 		if err != nil {
 			serverError(c, err)
 			return
@@ -127,8 +154,14 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			ResourceIDs          []string      `json:"resource_ids"`
 			VisibilityOperations []string      `json:"visibility_operations"`
 			CandidateOperations  []string      `json:"candidate_operations"`
+			EvaluationScope      string        `json:"evaluation_scope"`
 		}
 		if !bind(c, &req) {
+			return
+		}
+		scope, err := authz.ParseEvaluationScope(req.EvaluationScope)
+		if err != nil {
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		req.VisibilityOperations = uniqueStrings(req.VisibilityOperations)
@@ -147,6 +180,10 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			}
 		}
 		refs = uniqueResourceRefs(refs)
+		requestedOperations := uniqueStrings(append(append([]string{}, req.VisibilityOperations...), req.CandidateOperations...))
+		if scope == authz.ScopeLocal && !validateLocalScope(c, refs, requestedOperations) {
+			return
+		}
 		active, err := activeAccount(c, db, req.AccessorID)
 		if err != nil {
 			replyPublicError(c, http.StatusServiceUnavailable)
@@ -164,15 +201,33 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 		out := make([]gin.H, 0, len(refs))
 		appendResults := func(results []authz.FilteredResource) {
 			for _, r := range results {
-				out = append(out, gin.H{
+				entry := gin.H{
 					"resource_type": r.Type,
 					"resource_id":   r.ID,
 					"operations":    r.Operations,
-				})
+				}
+				if scope == authz.ScopeLocal {
+					decisions := make([]gin.H, 0, len(r.Decisions))
+					for _, decision := range r.Decisions {
+						item := gin.H{
+							"operation": decision.Operation,
+							"decision":  decision.Decision,
+							"basis":     decision.Basis,
+						}
+						if decision.DeniedRequirement != "" {
+							item["denied_requirement"] = decision.DeniedRequirement
+							item["requirement_basis"] = decision.RequirementBasis
+						}
+						decisions = append(decisions, item)
+					}
+					entry["decisions"] = decisions
+				}
+				out = append(out, entry)
 			}
 		}
 		if len(req.CandidateOperations) > 0 {
-			results, err := e.FilterResourceOps(req.AccessorID, refs, req.VisibilityOperations, req.CandidateOperations)
+			results, err := e.FilterResourceOpsScoped(c.Request.Context(), req.AccessorID,
+				refs, req.VisibilityOperations, req.CandidateOperations, scope)
 			if err != nil {
 				serverError(c, err)
 				return
@@ -198,11 +253,15 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 				return
 			}
 			candidates = uniqueStrings(candidates)
+			if scope == authz.ScopeLocal {
+				candidates = approvedVegaLocalOperations(rtype, candidates)
+			}
 			catalogCandidates[rtype] = candidates
 		}
 		resultsByResource := make(map[authz.ResourceRef]authz.FilteredResource, len(refs))
 		for _, rtype := range order {
-			results, err := e.FilterResourceOps(req.AccessorID, byType[rtype], req.VisibilityOperations, catalogCandidates[rtype])
+			results, err := e.FilterResourceOpsScoped(c.Request.Context(), req.AccessorID,
+				byType[rtype], req.VisibilityOperations, catalogCandidates[rtype], scope)
 			if err != nil {
 				serverError(c, err)
 				return

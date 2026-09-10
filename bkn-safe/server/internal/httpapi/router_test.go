@@ -40,6 +40,20 @@ func newTestServer(t *testing.T) (*gin.Engine, *authz.Enforcer, *gorm.DB) {
 	return r, e, db
 }
 
+func doWithCallerService(t *testing.T, r *gin.Engine, method, path string, body any, caller string) *httptest.ResponseRecorder {
+	t.Helper()
+	var buf bytes.Buffer
+	if body != nil {
+		_ = json.NewEncoder(&buf).Encode(body)
+	}
+	req := httptest.NewRequest(method, path, &buf)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-caller-service", caller)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	return w
+}
+
 func seedEnabledUser(t *testing.T, db *gorm.DB, id string) {
 	t.Helper()
 	if err := db.Create(&model.User{ID: id, Account: id, Enabled: true}).Error; err != nil {

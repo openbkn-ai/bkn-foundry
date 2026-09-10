@@ -5,15 +5,23 @@
 openapi: 3.0.3
 info:
   title: bkn-safe internal authorization API
-  version: 0.3.1
+  version: 0.5.0
   description: |
     Internal service-to-service authorization contract used by BKN,
     ontology-query, context-loader, and execution-factory.
 
-    This surface is deliberately tokenless and must be reachable only through
-    the cluster network boundary. Callers authenticate their own public request
-    first and pass the resulting concrete `accessor_id`; clients must never
-    expose these endpoints directly through an ingress.
+    This API is tokenless and belongs exclusively to the platform-internal
+    network trust boundary defined by bkn-foundry #333. Callers authenticate
+    their own public request first and pass the resulting concrete
+    `accessor_id`; clients must never expose these endpoints through an Ingress.
+
+    Local authorization is a narrower intermediate mode for Vega's
+    Resource-to-Catalog orchestration. It accepts only concrete `resource` and
+    `catalog` references plus their approved operations. It does not introduce
+    a service credential and does not trust `x-caller-service` or another
+    caller-supplied service-name header for authorization. Sandbox and customer
+    workloads must be isolated from this internal face by NetworkPolicy before
+    local mode is deployed.
 
     Knowledge-network roots use `{kn_id}`. Child resources use
     `{kn_id}/{child_id}`. The supported KN resource types are
@@ -33,6 +41,15 @@ paths:
     post:
       operationId: checkAuthorization
       summary: Check one resource operation
+      description: |
+        `evaluation_scope` defaults to `effective`, which invokes the final
+        `operation_decision` used by ordinary business callers. `local` inspects
+        only base rules on the requested resource, skipping parent fallback and
+        operation requirements. It is available only on the platform-internal
+        network face for the Resource→Catalog relation Vega owns. The local result
+        is input to Vega's parent fallback, not a final authorization result;
+        neither local `allow` nor local `none` may by itself authorize a
+        business operation.
       requestBody:
         required: true
         content:
@@ -49,7 +66,12 @@ paths:
                   operation: query_data
       responses:
         '200':
-          description: Decision. Unknown and disabled accounts return `allowed=false`.
+          description: |
+            Structured decision. `allowed` remains backward compatible and is
+            true exactly when `decision=allow`. Unknown and disabled accounts
+            preserve their existing `{allowed:false}` response and omit the
+            structured fields, so account state is not misreported as a local
+            policy miss or an effective default deny.
           content:
             application/json:
               schema:
@@ -93,6 +115,16 @@ paths:
         Its `operations` value is the allowed subset of candidate operations.
         An empty visibility list returns every requested resource. Omitting
         candidate operations uses each resource type's operation catalog.
+
+        `evaluation_scope=local` is available only on the platform-internal
+        network face. It accepts only concrete Resource/Catalog references and
+        their approved operations, returns every requested resource regardless
+        of visibility, and adds one `decisions` entry for every visibility or
+        candidate operation, including explicit `deny` and `none`. Vega uses
+        those entries to perform the parent fallback it owns; it must not treat
+        local `allowed` as final. Out-of-bound local shapes return 400 and never
+        fall back to effective evaluation.
+        Omitting the scope keeps the historical effective response shape.
 
         The response preserves first-seen candidate order and de-duplicates
         resources and operations. An unknown or disabled account returns an
@@ -426,11 +458,24 @@ components:
         resource:
           $ref: '#/components/schemas/ResourceRef'
         operation: {type: string}
+        evaluation_scope:
+          $ref: '#/components/schemas/EvaluationScope'
     CheckResponse:
       type: object
       required: [allowed]
       properties:
         allowed: {type: boolean}
+        evaluation_scope:
+          $ref: '#/components/schemas/EvaluationScope'
+        decision:
+          $ref: '#/components/schemas/AuthorizationDecision'
+        basis:
+          $ref: '#/components/schemas/DecisionBasis'
+        denied_requirement:
+          type: string
+          description: Present when the final decision is denied because this direct required operation was denied.
+        requirement_basis:
+          $ref: '#/components/schemas/DecisionBasis'
     OperationsRequest:
       type: object
       required: [accessor_id, resource]
@@ -464,6 +509,8 @@ components:
         candidate_operations:
           type: array
           items: {type: string}
+        evaluation_scope:
+          $ref: '#/components/schemas/EvaluationScope'
     FilteredResource:
       type: object
       required: [resource_type, resource_id, operations]
@@ -473,6 +520,11 @@ components:
         operations:
           type: array
           items: {type: string}
+        decisions:
+          type: array
+          description: Present only for `evaluation_scope=local`.
+          items:
+            $ref: '#/components/schemas/OperationDecision'
     ResourceFilterResponse:
       type: object
       required: [resources]
@@ -481,6 +533,43 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FilteredResource'
+    EvaluationScope:
+      type: string
+      enum: [effective, local]
+      default: effective
+      description: |
+        Effective invokes the final operation decision. Local is a
+        platform-internal base intermediate result and accepts only:
+        `resource` with `view_detail|query_data`, or `catalog` with
+        `view_detail|modify|delete|authorize|task_manage|resource_manage|query_data`.
+        It relies on the internal network boundary rather than service
+        credentials; `x-caller-service` is audit metadata and never changes the
+        decision. An out-of-bound local shape returns 400.
+    AuthorizationDecision:
+      type: string
+      enum: [allow, deny, none]
+      description: "`none` is valid only for local evaluation."
+    DecisionBasis:
+      type: string
+      enum: [direct, inherited, bundle, wildcard, default, requires, none]
+      description: |
+        `none` accompanies only a local `none`; `default` accompanies only an
+        effective deny produced when no rule or trusted parent decides;
+        `requires` denotes a final denial caused by a denied direct prerequisite.
+    OperationDecision:
+      type: object
+      required: [operation, decision, basis]
+      properties:
+        operation: {type: string}
+        decision:
+          $ref: '#/components/schemas/AuthorizationDecision'
+        basis:
+          $ref: '#/components/schemas/DecisionBasis'
+        denied_requirement:
+          type: string
+          description: Present with `basis=requires`; names the denied direct prerequisite operation.
+        requirement_basis:
+          $ref: '#/components/schemas/DecisionBasis'
     PropertyAccessLevel:
       type: string
       enum: [none, schema, masked, full]

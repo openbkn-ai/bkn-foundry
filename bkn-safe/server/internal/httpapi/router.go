@@ -69,9 +69,10 @@ func New(deps Deps) *gin.Engine {
 	r.GET("/health/ready", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 	r.GET("/health/alive", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 
-	// Internal authz API (service-to-service, ClusterIP, unauthenticated):
-	// check/operations/policies/resources. Callers (DA/vega) resolve identity at
-	// their own boundary and pass accessor_id.
+	// Internal authz API (service-to-service, ClusterIP, unauthenticated). The
+	// local intermediate mode relies on the platform network boundary (#333),
+	// never on a caller-supplied service-name header. Callers resolve the end-user
+	// identity at their own boundary and pass accessor_id.
 	registerAuthz(r, deps.Enforcer, deps.DB)
 
 	// AppKey (user-issued API key) store. Verification is internal, tokenless and
