@@ -141,6 +141,13 @@ type PlanColumnComparison struct {
 
 func (PlanColumnComparison) planPredicate() {}
 
+// PlanNever is a condition that never holds. It says so explicitly rather than
+// leaving an empty operator list behind, which would generate SQL that does
+// not parse.
+type PlanNever struct{}
+
+func (PlanNever) planPredicate() {}
+
 // PlanOrder is one ORDER BY term: a column, an aggregate, or the name of an
 // output column. Ordering by the output name is how a grouped result is sorted
 // by something the query already computed, without computing it twice.
@@ -222,8 +229,8 @@ func (p *planner) planPattern(pattern Pattern) error {
 			return err
 		}
 	}
-	for i, edge := range pattern.Edges {
-		if err := p.addJoin(edge, i, i+1); err != nil {
+	for _, edge := range pattern.Edges {
+		if err := p.addJoin(edge, edge.Left, edge.Right); err != nil {
 			return err
 		}
 	}
@@ -294,10 +301,17 @@ func (p *planner) differentEdges(first, second plannedHop) (PlanPredicate, error
 		}
 		same = append(same, equal...)
 	}
-	if len(same) == 1 {
+	switch len(same) {
+	case 0:
+		// The two hops meet the same tables on both sides, so they are the
+		// same relationship by construction. Cypher requires them to be
+		// different, which nothing can satisfy.
+		return PlanNever{}, nil
+	case 1:
 		return PlanNegation{Operand: same[0]}, nil
+	default:
+		return PlanNegation{Operand: PlanLogical{Operator: "AND", Operands: same}}, nil
 	}
-	return PlanNegation{Operand: PlanLogical{Operator: "AND", Operands: same}}, nil
 }
 
 // sameRow compares two tables of one object type by primary key, which is the

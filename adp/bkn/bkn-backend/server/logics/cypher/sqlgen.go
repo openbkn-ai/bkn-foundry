@@ -81,6 +81,11 @@ type generator struct {
 	plan    *Plan
 	out     strings.Builder
 	err     error
+	// deferred holds joins whose tables are both in the statement already, or
+	// which connect a table to itself. They carry a condition but attach no
+	// table, so they belong in WHERE rather than in the FROM list -- appending
+	// them there produced SQL that does not parse.
+	deferred []PlanJoin
 }
 
 func (g *generator) writeSelect() {
@@ -137,42 +142,122 @@ func (g *generator) writeFrom() {
 	g.out.WriteString(" FROM ")
 	g.out.WriteString(g.table(0))
 
-	// The pattern is a linear path, so each join attaches the next table to
-	// one already in the statement and the tables come out in pattern order.
-	for _, join := range g.plan.Joins {
-		g.out.WriteString(" JOIN ")
-		g.out.WriteString(g.table(join.Right))
-		g.out.WriteString(" ON ")
-		for r, reading := range join.Readings {
-			if r > 0 {
-				g.out.WriteString(" OR ")
+	joined := make([]bool, len(g.plan.Tables))
+	joined[0] = true
+	used := make([]bool, len(g.plan.Joins))
+
+	// A pattern is a graph, not a chain, so the tables are emitted in an order
+	// where each one joins to a table already in the statement. Anything left
+	// over belongs to a shape the query never connected, and is written as a
+	// cross join rather than silently dropped.
+	for pending := len(g.plan.Tables) - 1; pending > 0; pending-- {
+		next, join := g.nextJoinable(joined, used)
+		if join < 0 {
+			next = g.firstUnjoined(joined)
+			g.out.WriteString(" CROSS JOIN ")
+			g.out.WriteString(g.table(next))
+			joined[next] = true
+			continue
+		}
+		g.writeJoin(g.plan.Joins[join], next)
+		joined[next] = true
+		used[join] = true
+	}
+
+	// A join that attached no table still carries a condition: a cycle closing
+	// on tables already read, or a relationship from a node to itself. It is
+	// kept for WHERE, where a condition can stand on its own.
+	for i, join := range g.plan.Joins {
+		if !used[i] {
+			g.deferred = append(g.deferred, join)
+		}
+	}
+}
+
+// nextJoinable finds a table not yet in the statement that some unused join
+// attaches to one that is.
+func (g *generator) nextJoinable(joined, used []bool) (table int, join int) {
+	for i, candidate := range g.plan.Joins {
+		if used[i] {
+			continue
+		}
+		if joined[candidate.Left] && !joined[candidate.Right] {
+			return candidate.Right, i
+		}
+		if joined[candidate.Right] && !joined[candidate.Left] {
+			return candidate.Left, i
+		}
+	}
+	return -1, -1
+}
+
+func (g *generator) firstUnjoined(joined []bool) int {
+	for i, in := range joined {
+		if !in {
+			return i
+		}
+	}
+	return 0
+}
+
+func (g *generator) writeJoin(join PlanJoin, table int) {
+	g.out.WriteString(" JOIN ")
+	g.out.WriteString(g.table(table))
+	g.out.WriteString(" ON ")
+	g.writeJoinCondition(join)
+}
+
+func (g *generator) writeJoinCondition(join PlanJoin) {
+	for r, reading := range join.Readings {
+		if r > 0 {
+			g.out.WriteString(" OR ")
+		}
+		// One reading needs no parentheses; several do, because they are
+		// joined by OR and each is a conjunction of key pairs.
+		if len(join.Readings) > 1 {
+			g.out.WriteString("(")
+		}
+		for i, key := range reading {
+			if i > 0 {
+				g.out.WriteString(" AND ")
 			}
-			// One reading needs no parentheses; several do, because they are
-			// joined by OR and each is a conjunction of key pairs.
-			if len(join.Readings) > 1 {
-				g.out.WriteString("(")
-			}
-			for i, key := range reading {
-				if i > 0 {
-					g.out.WriteString(" AND ")
-				}
-				g.out.WriteString(g.column(join.Left, key.LeftColumn))
-				g.out.WriteString(" = ")
-				g.out.WriteString(g.column(join.Right, key.RightColumn))
-			}
-			if len(join.Readings) > 1 {
-				g.out.WriteString(")")
-			}
+			g.out.WriteString(g.column(join.Left, key.LeftColumn))
+			g.out.WriteString(" = ")
+			g.out.WriteString(g.column(join.Right, key.RightColumn))
+		}
+		if len(join.Readings) > 1 {
+			g.out.WriteString(")")
 		}
 	}
 }
 
 func (g *generator) writeWhere() error {
-	if g.plan.Where == nil {
+	if g.plan.Where == nil && len(g.deferred) == 0 {
 		return nil
 	}
 	g.out.WriteString(" WHERE ")
-	return g.writePredicate(g.plan.Where, false)
+
+	for i, join := range g.deferred {
+		if i > 0 {
+			g.out.WriteString(" AND ")
+		}
+		// A deferred join's condition is a disjunction when the relationship
+		// is undirected, so it is parenthesised beside the rest.
+		if len(join.Readings) > 1 {
+			g.out.WriteString("(")
+		}
+		g.writeJoinCondition(join)
+		if len(join.Readings) > 1 {
+			g.out.WriteString(")")
+		}
+	}
+	if g.plan.Where == nil {
+		return nil
+	}
+	if len(g.deferred) > 0 {
+		g.out.WriteString(" AND ")
+	}
+	return g.writePredicate(g.plan.Where, len(g.deferred) > 0)
 }
 
 // writePredicate writes one node of the condition tree. Parentheses are added
@@ -198,6 +283,10 @@ func (g *generator) writePredicate(predicate PlanPredicate, nested bool) error {
 		g.out.WriteString(node.Operator)
 		g.out.WriteString(" ")
 		g.out.WriteString(g.column(node.RightTable, node.RightColumn))
+		return nil
+
+	case PlanNever:
+		g.out.WriteString("1 = 0")
 		return nil
 
 	case PlanNullCheck:

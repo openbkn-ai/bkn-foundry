@@ -302,9 +302,9 @@ func TestCompileRejections(t *testing.T) {
 			want:  `variable "x" is not defined`,
 		},
 		{
-			name:  "variable reused",
+			name:  "one variable given two labels",
 			query: "MATCH (o:Order)-[:PLACED_BY]->(o:Customer) RETURN o.id",
-			want:  "already bound",
+			want:  "one variable with two labels",
 		},
 		{
 			name:  "duplicate output column",
@@ -488,7 +488,7 @@ func TestCompileMultiHopRejections(t *testing.T) {
 
 // Every relationship is a join, and the row limit bounds what comes back
 // rather than what the database does to produce it.
-func TestCompileRefusesAVeryLongPath(t *testing.T) {
+func TestCompileRefusesAVeryLargePattern(t *testing.T) {
 	query := "MATCH (n0:Order)"
 	for i := 1; i <= interfaces.CYPHER_MAX_PATH_LENGTH+1; i++ {
 		query += fmt.Sprintf("-[:FOLLOWS]->(n%d:Order)", i)
@@ -496,7 +496,162 @@ func TestCompileRefusesAVeryLongPath(t *testing.T) {
 	query += " RETURN n0.id"
 
 	_, err := compile(t, query, GenerateOptions{})
-	if err == nil || !strings.Contains(err.Error(), "a path this long") {
+	if err == nil || !strings.Contains(err.Error(), "a pattern this large") {
 		t.Fatalf("compile = %v, want a rejection naming the path length", err)
+	}
+}
+
+// A variable written twice is one node, whether the second mention is in
+// another comma-separated path or in another MATCH. That is what lets a query
+// describe a shape that is not a single chain: one node with two
+// relationships leaving it.
+func TestCompileSharedVariableJoinsThePaths(t *testing.T) {
+	branching := "SELECT t2.`f_name` AS `customer` FROM {{.res_item}} t0 " +
+		"JOIN {{.res_order}} t1 ON t0.`f_order` = t1.`f_id` " +
+		"JOIN {{.res_customer}} t2 ON t1.`f_cust_code` = t2.`f_code` AND t1.`f_region` = t2.`f_region`"
+
+	for _, tc := range []struct {
+		name  string
+		query string
+	}{
+		{
+			name: "comma-separated paths sharing a variable",
+			query: "MATCH (i:Item)-[:BELONGS_TO]->(o:Order), (o)-[:PLACED_BY]->(c:Customer) " +
+				"RETURN c.name AS customer",
+		},
+		{
+			name: "two MATCH clauses sharing a variable",
+			query: "MATCH (i:Item)-[:BELONGS_TO]->(o:Order) MATCH (o)-[:PLACED_BY]->(c:Customer) " +
+				"RETURN c.name AS customer",
+		},
+		{
+			// The same shape written as one chain, which is what the two
+			// above have to compile to.
+			name: "the same shape as a single path",
+			query: "MATCH (i:Item)-[:BELONGS_TO]->(o:Order)-[:PLACED_BY]->(c:Customer) " +
+				"RETURN c.name AS customer",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := mustCompile(t, tc.query); got != branching {
+				t.Fatalf("got  %s\nwant %s", got, branching)
+			}
+		})
+	}
+}
+
+// Two relationships leaving one node is the shape a chain cannot express, and
+// the reason the pattern is held as a graph.
+func TestCompileBranchingPattern(t *testing.T) {
+	got := mustCompile(t, "MATCH (o:Order)-[:PLACED_BY]->(c:Customer), (i:Item)-[:BELONGS_TO]->(o) "+
+		"RETURN c.name AS customer, i.id AS item")
+	want := "SELECT t1.`f_name` AS `customer`, t2.`f_id` AS `item` FROM {{.res_order}} t0 " +
+		"JOIN {{.res_customer}} t1 ON t0.`f_cust_code` = t1.`f_code` AND t0.`f_region` = t1.`f_region` " +
+		"JOIN {{.res_item}} t2 ON t2.`f_order` = t0.`f_id`"
+	if got != want {
+		t.Fatalf("got  %s\nwant %s", got, want)
+	}
+}
+
+// Paths that share nothing are a cartesian product, which Cypher means and SQL
+// spells CROSS JOIN. It is written out rather than left implicit so a reader
+// sees the cost.
+func TestCompileUnconnectedPaths(t *testing.T) {
+	got := mustCompile(t, "MATCH (o:Order), (c:Customer) RETURN o.id AS o, c.name AS c")
+	want := "SELECT t0.`f_id` AS `o`, t1.`f_name` AS `c` FROM {{.res_order}} t0 " +
+		"CROSS JOIN {{.res_customer}} t1"
+	if got != want {
+		t.Fatalf("got  %s\nwant %s", got, want)
+	}
+}
+
+// A second mention carries conditions of its own, and they apply to the node
+// it refers to rather than to a new one.
+func TestCompileSecondMentionCarriesConditions(t *testing.T) {
+	got := mustCompile(t, "MATCH (i:Item)-[:BELONGS_TO]->(o:Order) MATCH (o {region: 'eu'}) RETURN i.id AS id")
+	if !strings.Contains(got, "WHERE t1.`f_region` = 'eu'") {
+		t.Fatalf("got %s", got)
+	}
+	if strings.Count(got, "{{.res_order}}") != 1 {
+		t.Fatalf("the order table was read twice: %s", got)
+	}
+}
+
+func TestCompileMultiPatternRejections(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		query string
+		want  string
+	}{
+		{
+			name:  "a first mention without a label",
+			query: "MATCH (o:Order) MATCH (x)-[:PLACED_BY]->(c:Customer) RETURN o.id",
+			want:  "a node that names nothing",
+		},
+		{
+			name:  "a second mention contradicting the first",
+			query: "MATCH (o:Order) MATCH (o:Customer) RETURN o.id",
+			want:  "one variable with two labels",
+		},
+		{
+			name:  "OPTIONAL MATCH among them",
+			query: "MATCH (o:Order) OPTIONAL MATCH (o)-[:PLACED_BY]->(c:Customer) RETURN o.id",
+			want:  "OPTIONAL MATCH",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := compile(t, tc.query, GenerateOptions{})
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("compile(%q) = %v, want a rejection mentioning %q", tc.query, err, tc.want)
+			}
+		})
+	}
+}
+
+// A relationship that attaches no new table still carries a condition. It used
+// to be appended to the FROM list, which produced SQL that does not parse as
+// soon as the list did not end in an ON clause.
+func TestCompileJoinsThatAttachNoTable(t *testing.T) {
+	t.Run("a node related to itself", func(t *testing.T) {
+		got := mustCompile(t, "MATCH (a:Order)-[:FOLLOWS]->(a) RETURN a.id AS id")
+		want := "SELECT t0.`f_id` AS `id` FROM {{.res_order}} t0 WHERE t0.`f_id` = t0.`f_prev`"
+		if got != want {
+			t.Fatalf("got  %s\nwant %s", got, want)
+		}
+	})
+
+	t.Run("a cycle closing on tables already read", func(t *testing.T) {
+		got := mustCompile(t,
+			"MATCH (a:Order)-[:FOLLOWS]->(b:Order)-[:FOLLOWS]->(c:Order), (a)-[:FOLLOWS]->(c) "+
+				"RETURN a.id AS id")
+		if !strings.Contains(got, "WHERE t0.`f_id` = t2.`f_prev` AND ") {
+			t.Fatalf("the closing relationship did not become a condition: %s", got)
+		}
+		if strings.Contains(got, "t2 AND") || strings.Contains(got, "JOIN {{.res_order}} t2 ON t1.`f_id` = t2.`f_prev` AND t0") {
+			t.Fatalf("a condition was appended to the FROM list: %s", got)
+		}
+	})
+
+	t.Run("beside a cross join", func(t *testing.T) {
+		got := mustCompile(t,
+			"MATCH (a:Order)-[:FOLLOWS]->(b:Order), (a)-[:FOLLOWS]->(b), (d:Customer) "+
+				"RETURN d.name AS n")
+		if !strings.Contains(got, "CROSS JOIN {{.res_customer}} t2 WHERE ") {
+			t.Fatalf("a condition landed after the cross join: %s", got)
+		}
+	})
+}
+
+// Two relationships of one type between the same pair of nodes are the same
+// relationship by construction, and Cypher requires them to be different. That
+// asks for something nothing satisfies, which is said once rather than left as
+// an empty operator.
+func TestCompileTwoIdenticalRelationshipsMatchNothing(t *testing.T) {
+	got := mustCompile(t, "MATCH (a:Order)-[:FOLLOWS]->(b:Order), (a)-[:FOLLOWS]->(b) RETURN a.id AS id")
+	if !strings.HasSuffix(got, "1 = 0") {
+		t.Fatalf("got %s, want a condition that matches nothing", got)
+	}
+	if strings.Contains(got, "NOT ()") {
+		t.Fatalf("an empty negation reached the statement: %s", got)
 	}
 }
