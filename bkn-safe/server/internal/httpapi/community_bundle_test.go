@@ -27,6 +27,11 @@ func TestCommunityBundleHTTPReadPathsAgree(t *testing.T) {
 	if err := e.GrantCommunityBundle(user, "knowledge_network", "kn-1", authz.AuthoritySourceAdminAuthz); err != nil {
 		t.Fatal(err)
 	}
+	// The legacy row overlaps one projected bundle operation. Read APIs expose
+	// the effective operation once rather than leaking duplicate source rows.
+	if err := e.GrantObjectPermission(user, "knowledge_network", "kn-1", "view_detail"); err != nil {
+		t.Fatal(err)
+	}
 
 	check := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", map[string]any{
 		"accessor_id": user,

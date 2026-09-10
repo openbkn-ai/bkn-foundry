@@ -80,8 +80,10 @@ func projectCommunityBundleRows(rows [][]string, combineSubjects bool) [][]strin
 	bundles := make([]bundleProjection, 0)
 	seenBundle := map[bundleKey]bool{}
 	var rowsBySubject map[string][][]string
+	var indexBySubject map[string]*grantIndex
 	if !combineSubjects {
 		rowsBySubject = map[string][][]string{}
+		indexBySubject = map[string]*grantIndex{}
 	}
 	for _, row := range rows {
 		if !combineSubjects && len(row) > 0 {
@@ -125,7 +127,11 @@ func projectCommunityBundleRows(rows [][]string, combineSubjects bool) [][]strin
 		}
 		idx := combined
 		if !combineSubjects {
-			idx = newGrantIndex(rowsBySubject[bundle.key.subject], false)
+			idx = indexBySubject[bundle.key.subject]
+			if idx == nil {
+				idx = newGrantIndex(rowsBySubject[bundle.key.subject], false)
+				indexBySubject[bundle.key.subject] = idx
+			}
 		}
 		decision := idx.decide(ResourceRef{Type: resourceType, ID: resourceID}, ops)
 		for _, op := range ops {

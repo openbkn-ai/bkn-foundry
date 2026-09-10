@@ -943,6 +943,7 @@ func (en *Enforcer) ResourcePolicies(resourceType, resourceID string) ([]Resourc
 	bySub := map[string][]string{}
 	deniedBySub := map[string][]string{}
 	seenSub := map[string]bool{}
+	seenOperation := map[string]map[string]bool{}
 	order := make([]string, 0, len(rows))
 	for _, row := range rows {
 		if len(row) < 3 {
@@ -952,8 +953,15 @@ func (en *Enforcer) ResourcePolicies(resourceType, resourceID string) ([]Resourc
 		if !seenSub[sub] {
 			order = append(order, sub)
 			seenSub[sub] = true
+			seenOperation[sub] = map[string]bool{}
 		}
-		if len(row) >= 4 && row[3] == EffectDeny {
+		effect := policyEffect(row)
+		effectKey := act + "\x00" + effect
+		if seenOperation[sub][effectKey] {
+			continue
+		}
+		seenOperation[sub][effectKey] = true
+		if effect == EffectDeny {
 			deniedBySub[sub] = append(deniedBySub[sub], act)
 		} else {
 			bySub[sub] = append(bySub[sub], act)
