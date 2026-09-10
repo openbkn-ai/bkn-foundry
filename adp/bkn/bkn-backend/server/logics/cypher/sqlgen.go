@@ -81,6 +81,11 @@ type generator struct {
 	plan    *Plan
 	out     strings.Builder
 	err     error
+	// deferred holds joins whose tables are both in the statement already, or
+	// which connect a table to itself. They carry a condition but attach no
+	// table, so they belong in WHERE rather than in the FROM list -- appending
+	// them there produced SQL that does not parse.
+	deferred []PlanJoin
 }
 
 func (g *generator) writeSelect() {
@@ -159,14 +164,13 @@ func (g *generator) writeFrom() {
 		used[join] = true
 	}
 
-	// Joins between two tables that are both in already still have to be
-	// written, or the condition they carry is lost.
+	// A join that attached no table still carries a condition: a cycle closing
+	// on tables already read, or a relationship from a node to itself. It is
+	// kept for WHERE, where a condition can stand on its own.
 	for i, join := range g.plan.Joins {
-		if used[i] {
-			continue
+		if !used[i] {
+			g.deferred = append(g.deferred, join)
 		}
-		g.out.WriteString(" AND ")
-		g.writeJoinCondition(join)
 	}
 }
 
@@ -228,11 +232,32 @@ func (g *generator) writeJoinCondition(join PlanJoin) {
 }
 
 func (g *generator) writeWhere() error {
-	if g.plan.Where == nil {
+	if g.plan.Where == nil && len(g.deferred) == 0 {
 		return nil
 	}
 	g.out.WriteString(" WHERE ")
-	return g.writePredicate(g.plan.Where, false)
+
+	for i, join := range g.deferred {
+		if i > 0 {
+			g.out.WriteString(" AND ")
+		}
+		// A deferred join's condition is a disjunction when the relationship
+		// is undirected, so it is parenthesised beside the rest.
+		if len(join.Readings) > 1 {
+			g.out.WriteString("(")
+		}
+		g.writeJoinCondition(join)
+		if len(join.Readings) > 1 {
+			g.out.WriteString(")")
+		}
+	}
+	if g.plan.Where == nil {
+		return nil
+	}
+	if len(g.deferred) > 0 {
+		g.out.WriteString(" AND ")
+	}
+	return g.writePredicate(g.plan.Where, len(g.deferred) > 0)
 }
 
 // writePredicate writes one node of the condition tree. Parentheses are added
@@ -258,6 +283,10 @@ func (g *generator) writePredicate(predicate PlanPredicate, nested bool) error {
 		g.out.WriteString(node.Operator)
 		g.out.WriteString(" ")
 		g.out.WriteString(g.column(node.RightTable, node.RightColumn))
+		return nil
+
+	case PlanNever:
+		g.out.WriteString("1 = 0")
 		return nil
 
 	case PlanNullCheck:

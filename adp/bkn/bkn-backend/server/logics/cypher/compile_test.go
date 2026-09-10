@@ -607,3 +607,51 @@ func TestCompileMultiPatternRejections(t *testing.T) {
 		})
 	}
 }
+
+// A relationship that attaches no new table still carries a condition. It used
+// to be appended to the FROM list, which produced SQL that does not parse as
+// soon as the list did not end in an ON clause.
+func TestCompileJoinsThatAttachNoTable(t *testing.T) {
+	t.Run("a node related to itself", func(t *testing.T) {
+		got := mustCompile(t, "MATCH (a:Order)-[:FOLLOWS]->(a) RETURN a.id AS id")
+		want := "SELECT t0.`f_id` AS `id` FROM {{.res_order}} t0 WHERE t0.`f_id` = t0.`f_prev`"
+		if got != want {
+			t.Fatalf("got  %s\nwant %s", got, want)
+		}
+	})
+
+	t.Run("a cycle closing on tables already read", func(t *testing.T) {
+		got := mustCompile(t,
+			"MATCH (a:Order)-[:FOLLOWS]->(b:Order)-[:FOLLOWS]->(c:Order), (a)-[:FOLLOWS]->(c) "+
+				"RETURN a.id AS id")
+		if !strings.Contains(got, "WHERE t0.`f_id` = t2.`f_prev` AND ") {
+			t.Fatalf("the closing relationship did not become a condition: %s", got)
+		}
+		if strings.Contains(got, "t2 AND") || strings.Contains(got, "JOIN {{.res_order}} t2 ON t1.`f_id` = t2.`f_prev` AND t0") {
+			t.Fatalf("a condition was appended to the FROM list: %s", got)
+		}
+	})
+
+	t.Run("beside a cross join", func(t *testing.T) {
+		got := mustCompile(t,
+			"MATCH (a:Order)-[:FOLLOWS]->(b:Order), (a)-[:FOLLOWS]->(b), (d:Customer) "+
+				"RETURN d.name AS n")
+		if !strings.Contains(got, "CROSS JOIN {{.res_customer}} t2 WHERE ") {
+			t.Fatalf("a condition landed after the cross join: %s", got)
+		}
+	})
+}
+
+// Two relationships of one type between the same pair of nodes are the same
+// relationship by construction, and Cypher requires them to be different. That
+// asks for something nothing satisfies, which is said once rather than left as
+// an empty operator.
+func TestCompileTwoIdenticalRelationshipsMatchNothing(t *testing.T) {
+	got := mustCompile(t, "MATCH (a:Order)-[:FOLLOWS]->(b:Order), (a)-[:FOLLOWS]->(b) RETURN a.id AS id")
+	if !strings.HasSuffix(got, "1 = 0") {
+		t.Fatalf("got %s, want a condition that matches nothing", got)
+	}
+	if strings.Contains(got, "NOT ()") {
+		t.Fatalf("an empty negation reached the statement: %s", got)
+	}
+}

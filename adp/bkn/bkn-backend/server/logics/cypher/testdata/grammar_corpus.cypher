@@ -94,6 +94,9 @@ MATCH (i:probe_item)-[:probe_direct]->(o:probe_order) MATCH (o {o_state: 'refund
 MATCH (o:probe_order), (c:probe_channel) RETURN o.o_key AS k, c.c_key AS c LIMIT 2
 MATCH (o:probe_order) MATCH (c:probe_channel) RETURN o.o_key AS k LIMIT 2
 
+MATCH (o:probe_order)-[:probe_direct2]->(o) RETURN o.o_key AS k LIMIT 2
+MATCH (i:probe_item)-[:probe_direct]->(o:probe_order), (i)-[:probe_direct]->(o) RETURN i.i_key AS k LIMIT 2
+
 # reject-multi-pattern
 MATCH (o:probe_order) MATCH (x)-[:probe_direct]->(c:probe_channel) RETURN o.o_key
 MATCH (o:probe_order) MATCH (o:probe_channel) RETURN o.o_key
