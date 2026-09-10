@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -177,19 +176,17 @@ const toolBoxDetailURI = "/internal-v1/tool-box/%s"
 // toolBoxToolsURI lists the tools of one box; status=enabled narrows to the callable ones.
 const toolBoxToolsURI = "/internal-v1/tool-box/%s/tools/list"
 
-// toolBoxToolsPageSize is the largest page the listing accepts, and toolBoxToolsMaxPages bounds
-// the walk. A box with more enabled tools than the walk covers is reported with EnabledKnown
-// false: the walk stays bounded, and the tools it did not reach are unknown, not withdrawn.
-const (
-	toolBoxToolsPageSize = 100
-	toolBoxToolsMaxPages = 5
-)
-
 // ToolBoxLifecycle reads whether the box is published and which tools are enabled.
 //
 // Two internal reads: the box for its state, the tools listing narrowed to enabled. Neither needs
 // a caller token, so this answers on the internal face where the caller-visible listing cannot,
 // and it fails closed — a box or a listing that cannot be read yields unpublished / no tools.
+//
+// The listing is asked with all=true, which the execution factory answers in one page with no
+// limit or offset (dbaccess/tool.go applies paging only when all is unset). So the enabled set is
+// complete from a single request, and EnabledKnown is always true from this adapter. An earlier
+// version walked page/page_size here; the server ignores both under all=true, so that walk made
+// five identical full queries and then wrongly reported a large box's set as a prefix.
 func (o *operatorIntegrationClient) ToolBoxLifecycle(ctx context.Context, boxID string) (*interfaces.ToolBoxLifecycle, error) {
 	out := &interfaces.ToolBoxLifecycle{EnabledTools: map[string]struct{}{}, EnabledKnown: true}
 	if strings.TrimSpace(boxID) == "" {
@@ -215,42 +212,27 @@ func (o *operatorIntegrationClient) ToolBoxLifecycle(ctx context.Context, boxID 
 		return out, nil
 	}
 
-	for page := 1; page <= toolBoxToolsMaxPages; page++ {
-		query := url.Values{
-			"all":       {"true"},
-			"status":    {"enabled"},
-			"page":      {strconv.Itoa(page)},
-			"page_size": {strconv.Itoa(toolBoxToolsPageSize)},
-		}
-		code, body, err = o.httpClient.Get(ctx, o.baseURL+fmt.Sprintf(toolBoxToolsURI, boxID), query, header)
-		if err != nil || code != http.StatusOK {
-			o.logger.WithContext(ctx).Warnf("[OperatorIntegration#ToolBoxLifecycle] box_id=%s tools unreadable: code=%d err=%v",
-				boxID, code, err)
-			return &interfaces.ToolBoxLifecycle{EnabledTools: map[string]struct{}{}}, nil
-		}
-		var listed struct {
-			Tools []struct {
-				ToolID string `json:"tool_id"`
-			} `json:"tools"`
-		}
-		if err = sonic.Unmarshal(utils.ObjectToByte(body), &listed); err != nil {
-			o.logger.WithContext(ctx).Warnf("[OperatorIntegration#ToolBoxLifecycle] unmarshal tools failed: %v", err)
-			return &interfaces.ToolBoxLifecycle{EnabledTools: map[string]struct{}{}}, nil
-		}
-		for _, tool := range listed.Tools {
-			if id := strings.TrimSpace(tool.ToolID); id != "" {
-				out.EnabledTools[id] = struct{}{}
-			}
-		}
-		if len(listed.Tools) < toolBoxToolsPageSize {
-			return out, nil
+	query := url.Values{"all": {"true"}, "status": {"enabled"}}
+	code, body, err = o.httpClient.Get(ctx, o.baseURL+fmt.Sprintf(toolBoxToolsURI, boxID), query, header)
+	if err != nil || code != http.StatusOK {
+		o.logger.WithContext(ctx).Warnf("[OperatorIntegration#ToolBoxLifecycle] box_id=%s tools unreadable: code=%d err=%v",
+			boxID, code, err)
+		return &interfaces.ToolBoxLifecycle{EnabledTools: map[string]struct{}{}}, nil
+	}
+	var listed struct {
+		Tools []struct {
+			ToolID string `json:"tool_id"`
+		} `json:"tools"`
+	}
+	if err = sonic.Unmarshal(utils.ObjectToByte(body), &listed); err != nil {
+		o.logger.WithContext(ctx).Warnf("[OperatorIntegration#ToolBoxLifecycle] unmarshal tools failed: %v", err)
+		return &interfaces.ToolBoxLifecycle{EnabledTools: map[string]struct{}{}}, nil
+	}
+	for _, tool := range listed.Tools {
+		if id := strings.TrimSpace(tool.ToolID); id != "" {
+			out.EnabledTools[id] = struct{}{}
 		}
 	}
-	// Every page was full: the listing may continue past the bound. Say so rather than let a
-	// tool beyond it read as disabled.
-	o.logger.WithContext(ctx).Warnf("[OperatorIntegration#ToolBoxLifecycle] box_id=%s has more than %d enabled tools; enablement beyond that is unknown",
-		boxID, toolBoxToolsPageSize*toolBoxToolsMaxPages)
-	out.EnabledKnown = false
 	return out, nil
 }
 
