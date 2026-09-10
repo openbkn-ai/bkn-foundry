@@ -31,6 +31,16 @@ const (
 	MaxSemanticUnderstandingSampleRows              int     = 20
 	MaxSemanticUnderstandingSampleValueRunes        int     = 128
 	MaxSemanticUnderstandingSamplePayloadBytes      int     = 128 * 1024
+
+	SemanticUnderstandingSampleStatusNotRequested             string = "not_requested"
+	SemanticUnderstandingSampleStatusAvailable                string = "available"
+	SemanticUnderstandingSampleStatusNoRows                   string = "no_rows"
+	SemanticUnderstandingSampleStatusUnavailable              string = "unavailable"
+	SemanticUnderstandingSampleStatusPayloadLimited           string = "payload_limited"
+	SemanticUnderstandingSampleStatusAllFieldsOmittedByPolicy string = "all_fields_omitted_by_policy"
+
+	SemanticUnderstandingSampleOmissionReasonPolicy       string = "omitted_by_policy"
+	SemanticUnderstandingWarningCodeSampleOmittedByPolicy string = "sample_omitted_by_policy"
 )
 
 var (
@@ -119,9 +129,34 @@ type CreateSemanticUnderstandingTaskRequest struct {
 // resource semantic-understanding agent. It is shared by task creation and
 // worker-side result quality evaluation.
 type SemanticUnderstandingResourceAgentInput struct {
-	Resource   SemanticUnderstandingResourceAgentInputResource `json:"resource"`
-	SampleRows []map[string]any                                `json:"sample_rows"`
-	Options    SemanticUnderstandingResourceAgentInputOptions  `json:"options"`
+	Resource      SemanticUnderstandingResourceAgentInputResource `json:"resource"`
+	SampleRows    []map[string]any                                `json:"sample_rows"`
+	SampleContext SemanticUnderstandingSampleContext              `json:"sample_context"`
+	Options       SemanticUnderstandingResourceAgentInputOptions  `json:"options"`
+}
+
+// SemanticUnderstandingSampleContext distinguishes an empty data set from
+// samples that could not be read and values intentionally excluded by policy.
+type SemanticUnderstandingSampleContext struct {
+	Status        string                                `json:"status"`
+	OmittedFields []SemanticUnderstandingSampleOmission `json:"omitted_fields"`
+}
+
+type SemanticUnderstandingSampleOmission struct {
+	Name         string `json:"name"`
+	OriginalName string `json:"original_name,omitempty"`
+	Type         string `json:"type"`
+	Reason       string `json:"reason"`
+}
+
+type SemanticUnderstandingWarningDetail struct {
+	Code   string                                   `json:"code"`
+	Params SemanticUnderstandingWarningDetailParams `json:"params"`
+}
+
+type SemanticUnderstandingWarningDetailParams struct {
+	FieldName string `json:"field_name"`
+	FieldType string `json:"field_type"`
 }
 
 type SemanticUnderstandingResourceAgentInputResource struct {
