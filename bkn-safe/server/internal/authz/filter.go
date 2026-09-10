@@ -176,6 +176,7 @@ type grantRow struct {
 	object string
 	act    string
 	effect string
+	source PolicySource
 }
 
 // grantIndex is an accessor's effective grant set, split by whether the object
@@ -215,8 +216,12 @@ func (en *Enforcer) grantIndex(accessorID string) (*grantIndex, error) {
 	edition := entitlement.Current()
 	rows = activePolicyRowsForEdition(rows, edition)
 	public = activePolicyRowsForEdition(public, edition)
+	return newGrantIndex(append(rows, public...), superAdmin), nil
+}
+
+func newGrantIndex(rows [][]string, superAdmin bool) *grantIndex {
 	idx := &grantIndex{exact: make(map[string][]grantRow, len(rows)), superAdmin: superAdmin}
-	for _, row := range append(rows, public...) {
+	for _, row := range rows {
 		if len(row) < 4 {
 			continue
 		}
@@ -224,14 +229,14 @@ func (en *Enforcer) grantIndex(accessorID string) (*grantIndex, error) {
 		if effect == "" {
 			effect = EffectAllow
 		}
-		rule := grantRow{object: object, act: act, effect: effect}
+		rule := grantRow{object: object, act: act, effect: effect, source: policySourceOf(row)}
 		if hasWildcard(object) {
 			idx.wildcard = append(idx.wildcard, rule)
 			continue
 		}
 		idx.exact[object] = append(idx.exact[object], rule)
 	}
-	return idx, nil
+	return idx
 }
 
 // allowed reports, for one resource, which of ops the grants cover. It mirrors
@@ -247,6 +252,20 @@ func (idx *grantIndex) decide(r ResourceRef, ops []string) map[string]string {
 	}
 	object := obj(r.Type, r.ID)
 	apply := func(rule grantRow) {
+		if rule.source == PolicySourceCommunityBundle {
+			// A bundle is valid only as one exact, allow-only logical policy.
+			// Keeping the check here makes malformed wildcard/concrete-op bundle
+			// rows fail closed rather than acquiring ordinary Casbin semantics.
+			if rule.object != object || rule.act != ActFullBusinessAccess || rule.effect != EffectAllow {
+				return
+			}
+			for _, op := range ops {
+				if communityBundleAllows(r.Type, op) && out[op] == "" {
+					out[op] = EffectAllow
+				}
+			}
+			return
+		}
 		if rule.act == ActAll {
 			for _, op := range ops {
 				if rule.effect == EffectDeny || out[op] == "" {

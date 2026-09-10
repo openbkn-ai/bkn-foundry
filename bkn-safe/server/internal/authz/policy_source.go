@@ -197,15 +197,34 @@ func (en *Enforcer) GrantSystemObjectPermission(accessorID, resourceType, resour
 	return en.addPolicy(accessorID, obj(resourceType, resourceID), operation, EffectAllow, PolicySourceSystemDerived, AuthoritySourceSystem)
 }
 
-// GrantCommunityBundle records the one logical Community grant. Expansion of
-// full_business_access belongs to #1427's shared grant-index implementation.
+// GrantCommunityBundle records one logical Community grant on a reviewed
+// top-level resource. It never materializes the whitelist into operation rows.
 func (en *Enforcer) GrantCommunityBundle(accessorID, resourceType, resourceID string, authority AuthoritySource) error {
 	if authority != AuthoritySourceAdminAuthz && authority != AuthoritySourceOwnerDelegate {
 		return fmt.Errorf("community bundle authority %q is not permitted", authority)
 	}
+	if err := validateCommunityBundleTarget(resourceType, resourceID); err != nil {
+		return err
+	}
 	en.transactionMu.Lock()
 	defer en.transactionMu.Unlock()
 	return en.addPolicy(accessorID, obj(resourceType, resourceID), ActFullBusinessAccess, EffectAllow, PolicySourceCommunityBundle, authority)
+}
+
+// RemoveCommunityBundle removes only the logical bundle owned by one trusted
+// authority. Legacy, system-derived and Professional rows on the same resource
+// remain untouched.
+func (en *Enforcer) RemoveCommunityBundle(accessorID, resourceType, resourceID string, authority AuthoritySource) (bool, error) {
+	if authority != AuthoritySourceAdminAuthz && authority != AuthoritySourceOwnerDelegate {
+		return false, fmt.Errorf("community bundle authority %q is not permitted", authority)
+	}
+	if err := validateCommunityBundleTarget(resourceType, resourceID); err != nil {
+		return false, err
+	}
+	en.transactionMu.Lock()
+	defer en.transactionMu.Unlock()
+	return en.e.RemovePolicy(accessorID, obj(resourceType, resourceID), ActFullBusinessAccess,
+		EffectAllow, string(PolicySourceCommunityBundle), string(authority))
 }
 
 // SetProfessionalObjectPermissions replaces only one trusted source slice. An

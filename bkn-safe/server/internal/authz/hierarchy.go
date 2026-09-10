@@ -328,7 +328,7 @@ func (en *Enforcer) publicInstances(resourceType, op string) ([]string, error) {
 			continue
 		}
 		o, act := row[1], row[2]
-		if act != op && act != ActAll {
+		if act != op && act != ActAll && !isCommunityBundleRow(row) {
 			continue
 		}
 		if len(o) <= len(prefix) || o[:len(prefix)] != prefix {
