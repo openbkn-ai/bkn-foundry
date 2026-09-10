@@ -330,6 +330,13 @@ func TestCommunityBundleDoesNotExpandLegacyOrAcceptChildTargets(t *testing.T) {
 			t.Errorf("GrantCommunityBundle(%q,%q) succeeded; want rejection", target.resourceType, target.resourceID)
 		}
 	}
+	if err := e.GrantCommunityBundle("u-1", "knowledge_network", "kn-1", AuthoritySourceOwnerDelegate); err == nil {
+		t.Error("owner delegate wrote the protected Community bundle source")
+	}
+	if removed, err := e.RemoveCommunityBundle("bundle-holder", "knowledge_network", "kn-1",
+		AuthoritySourceOwnerDelegate); err == nil || removed {
+		t.Fatalf("owner delegate removed the protected Community bundle: removed=%v err=%v", removed, err)
+	}
 	records, err := e.PolicyRecords(PolicyFilter{AccessorID: "u-1"})
 	if err != nil || len(records) != 0 {
 		t.Fatalf("invalid targets produced policies: %+v, %v", records, err)

@@ -42,6 +42,11 @@ Description = "An internal service error occurred."
 Solution = "Try again later; contact an administrator if the problem persists."
 ErrorLink = ""
 
+[unsupported_grant_shape]
+Description = "This object grant request shape is not supported."
+Solution = "Use a top-level full business access grant."
+ErrorLink = ""
+
 [BknSafe.Auth]
 AccountPlaceholder = "Account"
 PasswordPlaceholder = "Password"

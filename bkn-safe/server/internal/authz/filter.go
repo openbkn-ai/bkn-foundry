@@ -16,8 +16,8 @@ import (
 
 // ResourceRef names one concrete resource instance ("type:id").
 type ResourceRef struct {
-	Type string
-	ID   string
+	Type string `json:"type"`
+	ID   string `json:"id"`
 }
 
 // FilteredResource is one visible resource plus the subset of the candidate

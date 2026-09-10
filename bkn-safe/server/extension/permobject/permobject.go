@@ -211,4 +211,5 @@ func load() Authorizer {
 func reset() {
 	impl = atomic.Value{}
 	minEdition = ""
+	resetManagement()
 }

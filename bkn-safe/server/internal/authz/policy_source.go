@@ -92,6 +92,7 @@ type PolicyRecord struct {
 
 // PolicyFilter narrows a provenance listing. Zero fields match every grant.
 type PolicyFilter struct {
+	GrantID         string
 	AccessorID      string
 	Object          string
 	Operation       string
@@ -352,6 +353,9 @@ func (en *Enforcer) revokePolicyGrant(grantID string) (bool, bool, error) {
 }
 
 func applyPolicyFilter(q *gorm.DB, filter PolicyFilter) *gorm.DB {
+	if filter.GrantID != "" {
+		q = q.Where("grant_id = ?", filter.GrantID)
+	}
 	if filter.AccessorID != "" {
 		q = q.Where("accessor_id = ?", filter.AccessorID)
 	}
@@ -534,7 +538,7 @@ func (en *Enforcer) GrantSystemObjectPermission(accessorID, resourceType, resour
 // GrantCommunityBundle records one logical Community grant on a reviewed
 // top-level resource. It never materializes the whitelist into operation rows.
 func (en *Enforcer) GrantCommunityBundle(accessorID, resourceType, resourceID string, authority AuthoritySource) error {
-	if authority != AuthoritySourceAdminAuthz && authority != AuthoritySourceOwnerDelegate {
+	if authority != AuthoritySourceAdminAuthz && authority != AuthoritySourceSystem {
 		return fmt.Errorf("community bundle authority %q is not permitted", authority)
 	}
 	if err := validateCommunityBundleTarget(resourceType, resourceID); err != nil {
@@ -548,7 +552,7 @@ func (en *Enforcer) GrantCommunityBundle(accessorID, resourceType, resourceID st
 // authority. Legacy, system-derived and Professional rows on the same resource
 // remain untouched.
 func (en *Enforcer) RemoveCommunityBundle(accessorID, resourceType, resourceID string, authority AuthoritySource) (bool, error) {
-	if authority != AuthoritySourceAdminAuthz && authority != AuthoritySourceOwnerDelegate {
+	if authority != AuthoritySourceAdminAuthz && authority != AuthoritySourceSystem {
 		return false, fmt.Errorf("community bundle authority %q is not permitted", authority)
 	}
 	if err := validateCommunityBundleTarget(resourceType, resourceID); err != nil {

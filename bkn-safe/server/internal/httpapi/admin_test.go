@@ -20,6 +20,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/adminwrite"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/finegrained"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/accesslog"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
@@ -73,10 +74,12 @@ func newAdminServer(t *testing.T) (*gin.Engine, *authz.Enforcer, *gorm.DB, *auth
 	// chain, so they register the routes and put the tier in force — the
 	// entitlement layer has its own tests in extension/adminwrite.
 	adminwrite.ResetForTest()
+	finegrained.ResetForTest()
 	entitlement.SetGateForTest(entitlement.GateFunc(func() entitlement.Snapshot {
 		return entitlement.Snapshot{Licensed: true, Edition: licverify.EditionProfessional}
 	}))
 	adminwrite.RegisterMounter(licverify.EditionProfessional, adminwrite.Routes)
+	finegrained.Register(licverify.EditionProfessional)
 	r := New(Deps{
 		Enforcer: e, DB: db, Directory: directory.New(db), Users: users,
 		Audit:         audit.New(db),
@@ -207,7 +210,7 @@ func TestThreeAdminRolesUseEndpointLevelPermissions(t *testing.T) {
 		"resource":    gin.H{"type": "catalog", "id": "c1"},
 		"operations":  []string{"view_detail"},
 	}
-	revokeObject := gin.H{"accessor_id": "grant-target-user", "resource": gin.H{"type": "catalog", "id": "c1"}}
+	revokeObject := gin.H{"grant_id": "unknown-grant"}
 	rolePermission := gin.H{"resource": gin.H{"type": "catalog", "id": "*"}, "operations": []string{"view_detail"}}
 	const (
 		rolePermsPath = "/api/safe/v1/admin/roles/target-role/permissions"
