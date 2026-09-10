@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
+	"gorm.io/gorm"
 )
 
 // DirectRequirements returns the catalog-declared, same-resource prerequisites
@@ -17,12 +18,25 @@ import (
 // a requirement that itself declares requirements.
 func (en *Enforcer) DirectRequirements(ctx context.Context, resourceType string,
 	operations []string) (map[string][]string, error) {
-	result := make(map[string][]string, len(operations))
 	if en.db == nil || len(operations) == 0 {
-		return result, nil
+		return make(map[string][]string, len(operations)), nil
 	}
+	return directRequirements(en.db.WithContext(ctx), resourceType, operations)
+}
+
+// DirectRequirements reads prerequisites through the transaction connection.
+// Mutation workflows use this form so the catalog snapshot and policy changes
+// belong to the same database transaction.
+func (tx *PolicyTransaction) DirectRequirements(ctx context.Context, resourceType string,
+	operations []string) (map[string][]string, error) {
+	return directRequirements(tx.db.WithContext(ctx), resourceType, operations)
+}
+
+func directRequirements(db *gorm.DB, resourceType string,
+	operations []string) (map[string][]string, error) {
+	result := make(map[string][]string, len(operations))
 	var rows []model.Operation
-	if err := en.db.WithContext(ctx).
+	if err := db.
 		Where("resource_type_id = ? AND id IN ?", resourceType, distinctOperations(operations)).
 		Find(&rows).Error; err != nil {
 		return nil, err

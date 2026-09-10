@@ -170,8 +170,11 @@ func (s *Service) Grant(ctx context.Context, req GrantRequest) (*model.ProxyGran
 			}
 			if keyForModel(row) == targetKey {
 				result = row
+				// Preserve the public replay contract: repairing a missing derived
+				// prerequisite does not turn an existing target source from 200 into
+				// 201 Created.
+				changed = rowChanged
 			}
-			changed = changed || rowChanged
 			if err := recordAudit(tx.DB(), "grant", "allow", reason,
 				req.GrantorID, req.ProxyAccountID, candidate); err != nil {
 				return err
@@ -215,7 +218,7 @@ func (s *Service) Revoke(ctx context.Context, id string, req RevokeRequest) (*mo
 		if err := validateGrantorIdentity(tx.DB(), req.GrantorID); err != nil {
 			return err
 		}
-		row, revoked, err := revokeByID(tx, id)
+		row, revoked, required, err := s.revokeWithRequirements(ctx, tx, id)
 		if err != nil {
 			return err
 		}
@@ -223,9 +226,23 @@ func (s *Service) Revoke(ctx context.Context, id string, req RevokeRequest) (*mo
 		spec := specFromModel(row)
 		reason := "revoked"
 		if !revoked {
-			reason = "idempotent replay"
+			if row.LifecycleStatus == StatusActive {
+				reason = "retained because another active source requires it"
+			} else {
+				reason = "idempotent replay"
+			}
 		}
-		return recordAudit(tx.DB(), "revoke", "allow", reason, req.GrantorID, row.ProxyAccountID, spec)
+		if err := recordAudit(tx.DB(), "revoke", "allow", reason,
+			req.GrantorID, row.ProxyAccountID, spec); err != nil {
+			return err
+		}
+		for _, dependency := range required {
+			if err := recordAudit(tx.DB(), "revoke_required", "allow", "required by revoked source",
+				req.GrantorID, row.ProxyAccountID, specFromModel(dependency)); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		if !errors.Is(err, authz.ErrPolicyReloadAfterCommit) {
@@ -1015,6 +1032,92 @@ func ensureMaterialized(tx *authz.PolicyTransaction, proxyID string, spec Source
 		return err
 	}
 	return tx.DB().Model(&marker).Update("policy_owned", true).Error
+}
+
+// revokeWithRequirements retires one source together with the direct
+// prerequisite sources that Grant synthesized for the same published-model
+// binding. A prerequisite remains active while another operation in that same
+// source family still requires it; revokeByID then preserves the shared Casbin
+// policy when an independent source family still grants the permission.
+func (s *Service) revokeWithRequirements(ctx context.Context, tx *authz.PolicyTransaction,
+	id string) (model.ProxyGrantSource, bool, []model.ProxyGrantSource, error) {
+	var target model.ProxyGrantSource
+	if err := tx.DB().Clauses(clause.Locking{Strength: "UPDATE"}).First(&target, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return target, false, nil, ErrNotFound
+		}
+		return target, false, nil, err
+	}
+
+	var activeFamily []model.ProxyGrantSource
+	if err := tx.DB().Where(
+		"proxy_account_id = ? AND resource_type = ? AND resource_id = ? AND source_type = ? AND source_id = ? AND kn_id = ? AND binding_type = ? AND binding_id = ? AND lifecycle_status = ?",
+		target.ProxyAccountID, target.ResourceType, target.ResourceID, target.SourceType,
+		target.SourceID, target.KNID, target.BindingType, target.BindingID, StatusActive,
+	).Find(&activeFamily).Error; err != nil {
+		return target, false, nil, err
+	}
+	operations := make([]string, 0, len(activeFamily)+1)
+	operations = append(operations, target.Operation)
+	for _, source := range activeFamily {
+		operations = append(operations, source.Operation)
+	}
+	requirements, err := tx.DirectRequirements(ctx, target.ResourceType, operations)
+	if err != nil {
+		return target, false, nil, err
+	}
+	// A normalized prerequisite cannot be removed while another active operation
+	// in the same source family still depends on it. This mirrors whole-set and
+	// role-grant normalization and prevents a caller that sees the derived row in
+	// Sync output from breaking the stored invariant by deleting its id directly.
+	if target.LifecycleStatus == StatusActive {
+		for _, source := range activeFamily {
+			if source.ID == target.ID {
+				continue
+			}
+			for _, required := range requirements[source.Operation] {
+				if required == target.Operation {
+					return target, false, nil, nil
+				}
+			}
+		}
+	}
+
+	target, changed, err := revokeByID(tx, id)
+	if err != nil {
+		return target, false, nil, err
+	}
+
+	stillRequired := make(map[string]bool)
+	activeByOperation := make(map[string]model.ProxyGrantSource, len(activeFamily))
+	for _, source := range activeFamily {
+		if source.ID == target.ID {
+			continue
+		}
+		activeByOperation[source.Operation] = source
+		for _, required := range requirements[source.Operation] {
+			stillRequired[required] = true
+		}
+	}
+	var revokedRequirements []model.ProxyGrantSource
+	for _, required := range requirements[target.Operation] {
+		if stillRequired[required] {
+			continue
+		}
+		source, exists := activeByOperation[required]
+		if !exists {
+			continue
+		}
+		revoked, dependencyChanged, err := revokeByID(tx, source.ID)
+		if err != nil {
+			return target, false, nil, err
+		}
+		if dependencyChanged {
+			changed = true
+			revokedRequirements = append(revokedRequirements, revoked)
+		}
+	}
+	return target, changed, revokedRequirements, nil
 }
 
 func revokeByID(tx *authz.PolicyTransaction, id string) (model.ProxyGrantSource, bool, error) {
