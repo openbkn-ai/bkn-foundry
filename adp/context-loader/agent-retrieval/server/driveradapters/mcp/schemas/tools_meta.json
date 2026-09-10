@@ -151,6 +151,14 @@
     "order": 240,
     "description": "对知识网络挂载的数据资源执行只读 SQL（MySQL 方言）。标识符需要引用时用反引号；双引号是字符串字面量，不是标识符。注意：已建模指标不要用 SQL 重写口径——指标走 get_object_types 选定后的 query_metric / get_logic_properties_values；run_sql 用于未建成指标的即席聚合与跨表统计。表名用占位符 {{.resource_id}} 引用；vega 会解析成真实表并限量。仅允许单条 SELECT：支持同一 catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合函数；不支持 WITH/CTE、UNION/INTERSECT/EXCEPT、多语句、写入/DDL 和跨目录 join，子查询与窗口函数不在兼容性承诺内。两种拿 resource_id + 物理列的方式：本体路 search_schema（对象类 data_source.id + data_property.column），数据层路 list_resources → describe_resource（直查裸资源，脱离本体）。"
   },
+  "run_cypher": {
+    "name": "run_cypher",
+    "title": "Cypher 查询",
+    "group": "query",
+    "group_title": "实例查询",
+    "order": 245,
+    "description": "按知识网络的**模型**提问：用对象类名与关系类名写 Cypher，服务端编译成一条只读 SQL 执行。与 run_sql 的分工——本工具走模型（标签=对象类、关系=已建模的关联、属性=逻辑属性名），不需要知道物理表名与物理列名；run_sql 留给模型表达不了的口径。\n支持的写法：MATCH 一个或多个路径（可用逗号分隔，也可写多个 MATCH；同名变量指同一个节点，不共享变量则是笛卡尔积）；关系写 -[:R]->、<-[:R]- 或无向 -[:R]-，必须指名一个关系类；节点必须指名一个对象类，首次出现要带标签，可带内联属性 {prop: value}；WHERE 支持 =、<>、<、>、<=、>=、IN [...]、IS NULL / IS NOT NULL，用 AND / OR / NOT 组合，括号分组；值可写字面量或参数 $name（参数在 parameters 里传，只能是值，不能当表名列名）；RETURN 支持属性、别名 AS、DISTINCT，以及聚合 count/sum/avg/min/max（含 count(*) 与 DISTINCT 形式）——Cypher 没有 GROUP BY，聚合时按 RETURN 里其余列自动分组；ORDER BY 可用属性、返回列名或聚合；SKIP / LIMIT 分页。\n不支持（会以 400 明确报出用了哪个构造）：OPTIONAL MATCH、WITH、UNION、变长路径 [:R*1..3]、XOR、STARTS WITH / CONTAINS / ENDS WITH、返回整个节点 RETURN n、函数调用与算术表达式、关系变量 -[r:R]->。一个模式最多 8 条关系；不写 LIMIT 默认 1000 行，LIMIT 上限 10000。被聚合或 DISTINCT 折叠过的结果只能按返回的值排序。"
+  },
   "list_resources": {
     "name": "list_resources",
     "title": "数据资源列表",

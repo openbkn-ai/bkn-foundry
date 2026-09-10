@@ -104,6 +104,7 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	// These are available both as MCP tools and through the operator-integration
 	// toolbox (OpenAPI HTTP) entry point.
 	engine.POST("/kn/run_sql", r.KnQueryToolsHandler.RunSQL)
+	engine.POST("/kn/run_cypher", r.KnQueryToolsHandler.RunCypher)
 	engine.POST("/kn/list_knowledge_networks", r.KnQueryToolsHandler.ListKnowledgeNetworks)
 	engine.POST("/kn/get_kn_detail", r.KnQueryToolsHandler.GetKnDetail)
 	engine.POST("/kn/get_object_types", r.KnQueryToolsHandler.GetObjectTypes)

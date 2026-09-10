@@ -63,6 +63,10 @@ func (m *testBknBackend) ListKnowledgeNetworks(ctx context.Context, req *interfa
 	return &interfaces.ListKnResp{}, nil
 }
 
+func (m *testBknBackend) RunCypherQuery(context.Context, *interfaces.CypherQueryReq) (*interfaces.CypherQueryResp, error) {
+	return &interfaces.CypherQueryResp{}, nil
+}
+
 func (m *testBknBackend) SearchObjectTypes(ctx context.Context, req *interfaces.QueryConceptsReq) (*interfaces.ObjectTypeConcepts, error) {
 	return nil, nil
 }

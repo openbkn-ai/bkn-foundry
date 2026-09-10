@@ -11,6 +11,7 @@
 | [kn-explore.yaml](kn-explore.yaml) | 知识网络浏览 | `POST /kn/list_knowledge_networks`、`POST /kn/get_kn_detail`、`POST /kn/get_object_types`、`POST /kn/get_relation_types` |
 | [object-instance.yaml](object-instance.yaml) | 对象实例查询 | `POST /kn/query_object_instance` |
 | [instance-subgraph.yaml](instance-subgraph.yaml) | 实例子图查询 | `POST /kn/query_instance_subgraph` |
+| [cypher.yaml](cypher.yaml) | Cypher 查询 | `POST /kn/run_cypher` |
 | [logic-property.yaml](logic-property.yaml) | 逻辑属性求值与指标取数 | `POST /kn/logic-property-resolver`、`POST /kn/query_metric` |
 | [action.yaml](action.yaml) | 行动召回与执行 | `POST /kn/get_action_info`、`POST /kn/execute_action`、`POST /kn/get_action_execution`、`POST /kn/list_action_executions` |
 | [skill.yaml](skill.yaml) | Skill 召回与读取 | `POST /kn/find_skills`、`POST /kn/list_skills`、`POST /kn/get_skill_content`、`POST /kn/read_skill_file`、`POST /kn/execute_skill` |
@@ -44,6 +45,8 @@ Skill 面另有一条不依赖知识网络的入口：`list_skills` 直接翻已
 
 绕开本体直查数据：`list_resources` → `describe_resource` → `run_sql`。
 
+跨对象类的多跳取数：`search_schema` → `run_cypher`（标签写对象类、关系写关系类、属性写逻辑属性名，不碰 `resource_id` 与物理列名）。子集表达不了的口径才落回 `run_sql`。
+
 ## 约定
 
 - **OpenAPI 版本**：3.0.3。
@@ -65,7 +68,7 @@ make api-contract-diff CONTRACT_FACE=ex CONTRACT_SSH=root@<host> \
      CONTRACT_ARGS="--include-probe-post --token $TOKEN"
 ```
 
-25 个操作里 **16 个在探测范围内**，其余 9 个不探测，原因如下——它们的响应结构
+26 个操作里 **16 个在探测范围内**，其余 10 个不探测，原因如下——它们的响应结构
 **未经实机验证**，改动时请人工核对：
 
 | 端点 | 不探测的原因 |
@@ -75,6 +78,7 @@ make api-contract-diff CONTRACT_FACE=ex CONTRACT_SSH=root@<host> \
 | `logic-property-resolver` | 同上，且需要真实实例标识才能求值 |
 | `query_metric` | 需要环境里存在已建模指标，`metric_id` 无法自动合成 |
 | `run_sql` | 需要针对具体资源构造有意义的 SQL，无法自动合成 |
+| `run_cypher` | 需要针对具体对象类与关系类构造有意义的语句，无法自动合成 |
 | `POST /mcp` | JSON-RPC 会话语义，不是普通请求 / 响应结构 |
 | `execute_skill` | **有副作用**，会在沙箱内真的执行命令 |
 | `get_skill_content` | 需要环境里存在已发布 Skill 的真实 `skill_id` |

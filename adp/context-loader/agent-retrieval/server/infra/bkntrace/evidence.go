@@ -311,6 +311,34 @@ func EmitRunSQLEvents(ctx context.Context, logger interfaces.Logger, sql string,
 	return submitAndReturnFirstEventID(ctx, logger, nil, BuildRunSQLEvents(ctx, sql, resourceIDs, resp))
 }
 
+// EmitRunCypherEvents records one compiled Cypher query as observed data
+// access. The generated SQL and the resources it touched stay inside
+// bkn-backend, so the evidence names the knowledge network the query ran
+// against and hashes the query text -- enough to tie an answer back to what
+// was asked, without re-exposing the physical model.
+func EmitRunCypherEvents(ctx context.Context, logger interfaces.Logger, knID, query string, rowCount int) string {
+	if !EvidenceEnabled() {
+		return ""
+	}
+	return submitAndReturnFirstEventID(ctx, logger, nil, BuildRunCypherEvents(ctx, knID, query, rowCount))
+}
+
+// RunCypherFailure describes why one Cypher query produced no rows.
+type RunCypherFailure struct {
+	Stage   string
+	Code    string
+	Summary string
+}
+
+// EmitRunCypherFailure records a refused or failed Cypher query. A refusal is
+// evidence too: it says the answer was not supported by data.
+func EmitRunCypherFailure(ctx context.Context, logger interfaces.Logger, knID, query string, failure RunCypherFailure) string {
+	if !EvidenceEnabled() {
+		return ""
+	}
+	return submitAndReturnFirstEventID(ctx, logger, nil, BuildRunCypherFailureEvents(ctx, knID, query, failure))
+}
+
 type RunSQLFailure struct {
 	Stage   string
 	Code    string
@@ -500,6 +528,55 @@ func BuildRunSQLFailureEvents(ctx context.Context, sql string, resourceIDs []str
 		"error_code":         failure.Code,
 		"safe_error_summary": failure.Summary,
 	}, "", ec.causationEventID)
+	event["bkn.trace.schema.version"] = "2.2.0"
+	return []Event{event}
+}
+
+// BuildRunCypherEvents builds the observed-data event for one Cypher query.
+func BuildRunCypherEvents(ctx context.Context, knID, query string, rowCount int) []Event {
+	return buildRunCypherEvent(ctx, knID, query, map[string]any{
+		"row_count": rowCount,
+		"truncated": false,
+	})
+}
+
+// BuildRunCypherFailureEvents builds the observed-data event for a Cypher
+// query that was refused or failed.
+func BuildRunCypherFailureEvents(ctx context.Context, knID, query string, failure RunCypherFailure) []Event {
+	return buildRunCypherEvent(ctx, knID, query, map[string]any{
+		"row_count":          0,
+		"truncated":          false,
+		"status":             "error",
+		"error_stage":        failure.Stage,
+		"error_code":         failure.Code,
+		"safe_error_summary": failure.Summary,
+	})
+}
+
+func buildRunCypherEvent(ctx context.Context, knID, query string, extra map[string]any) []Event {
+	ec, ok := contextFromRequest(ctx, nil)
+	if !ok {
+		return nil
+	}
+	refs := []map[string]any{}
+	if knID = strings.TrimSpace(knID); knID != "" {
+		refs = append(refs, map[string]any{
+			"ref_id": "kn:" + knID, "ref_type": "knowledge_network",
+			"source_system": ModuleName, "validity": "observed",
+			"version_status": "unversioned", "visibility": "visible",
+		})
+	}
+	payload := map[string]any{
+		"query_hash":     HashValue(strings.TrimSpace(query)),
+		"query_type":     "cypher",
+		"version_status": "unversioned",
+		"resource_refs":  refs,
+		"field_refs":     []map[string]any{},
+	}
+	for key, value := range extra {
+		payload[key] = value
+	}
+	event := buildEvent(ec, "data.query.observed", "context.run_cypher", payload, "", ec.causationEventID)
 	event["bkn.trace.schema.version"] = "2.2.0"
 	return []Event{event}
 }

@@ -1,0 +1,192 @@
+---
+openapi: 3.0.3
+info:
+  title: Cypher 查询
+  description: |
+    用只读 Cypher 查知识网络：标签是对象类，关系类型是关系类，属性是逻辑属性名。
+    本服务不自带查询语言实现——它把请求带着调用方身份转给 bkn-backend，由那边按
+    知识网络的模型把 Cypher 编译成一条 SQL 下发，再把行返回来。
+
+    与其他查询入口的分工：
+
+    - [object-instance.yaml](object-instance.yaml) 的 `query_object_instance`：
+      单个对象类的平面过滤，不跨关系。
+    - [instance-subgraph.yaml](instance-subgraph.yaml) 的 `query_instance_subgraph`
+      / `explore_subgraph`：要的是**子图**（节点 + 边的拓扑）。
+    - 本接口：要的是**表**（按路径过滤后投影出的行，可聚合、可排序、可分页），
+      路径与条件写在一句 Cypher 里。
+    - [data-access.yaml](data-access.yaml) 的 `run_sql`：绕开本体直查物理表。
+      本接口表达不了的口径（CTE、UNION、窗口函数）或资源没建成对象类时才落到那里。
+
+    **不需要 `resource_id`，也不需要物理列名**——名字全部取自
+    [schema-search.yaml](schema-search.yaml) 的 `search_schema` 或
+    [kn-explore.yaml](kn-explore.yaml) 的 `get_object_types` / `get_relation_types`。
+
+    **授权**：由 bkn-backend 按调用方账户裁决（知识网络的数据查询权限，以及再往下
+    vega 对每个资源的读取权限）。本服务只做转发，不放大调用方能读的范围。
+
+    **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` AppKey）。
+  version: 0.1.4
+servers:
+  - url: /api/agent-retrieval/v1
+security:
+  - OAuth2: []
+  - AppKey: []
+paths:
+  /kn/run_cypher:
+    post:
+      tags:
+        - Cypher
+      summary: 对知识网络执行只读 Cypher
+      operationId: runCypher
+      description: |
+        编译并执行一条只读 Cypher 语句。**支持的子集**：
+
+        - **MATCH**：一个或多个 MATCH 子句；一个 MATCH 里可以写逗号分隔的多条路径。
+          同名变量指同一个节点；不共享变量的两部分是笛卡尔积。
+        - **节点**：变量首次出现时必须带标签（对象类 id 或名称），可带内联属性
+          `{prop: value}`。
+        - **关系**：`-[:R]->`、`<-[:R]-`、无向 `-[:R]-`，每条必须指名一个关系类；
+          一个模式最多 8 条关系。关系变量（`-[r:R]->`）不支持。
+        - **WHERE**：`=` `<>` `<` `>` `<=` `>=`、`IN [...]`、`IS NULL` / `IS NOT NULL`，
+          用 `AND` / `OR` / `NOT` 组合，可加括号。值可写 `$name` 参数。
+        - **RETURN**：属性、`AS` 别名、`DISTINCT`，以及 `count` / `sum` / `avg` /
+          `min` / `max`（含 `count(*)` 与 `DISTINCT` 形式）。有聚合时按 RETURN 中其余
+          列自动分组——这是 Cypher 的隐式 GROUP BY，无需也不能自己写 GROUP BY。
+        - **ORDER BY / SKIP / LIMIT**：ORDER BY 可用属性、返回列名或聚合。结果被聚合
+          或 DISTINCT 折叠后，只能按返回的值排序。
+
+        **不支持**（会被拒绝，报错指名是哪个语法与位置）：`OPTIONAL MATCH`、`WITH`、
+        `UNION`、变长路径 `[:R*1..3]`、`XOR`、`STARTS WITH` / `CONTAINS` / `ENDS WITH`、
+        返回整个节点、函数调用与算术表达式、写操作（`CREATE` / `MERGE` / `DELETE` /
+        `SET` / `REMOVE`）。
+
+        **行数**：不写 `LIMIT` 默认返回 1000 行；`LIMIT` 不得超过 10000。
+
+        **关系唯一性**：按 openCypher 语义，同一条路径里共用同一关系类的多跳互不相同，
+        编译器会自动补上主键不等的条件，调用方不必自己写。
+      parameters:
+        - $ref: '#/components/parameters/ResponseFormat'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunCypherRequest'
+            examples:
+              两跳带过滤:
+                value:
+                  kn_id: kn_retail
+                  query: >-
+                    MATCH (c:customer)<-[:rel_order_customer]-(o:order)-[:rel_order_item_order]->(i:order_item)
+                    WHERE c.city = 'Shanghai' AND o.status IN ['paid', 'shipped']
+                    RETURN c.name AS customer, o.order_no AS order_no, i.sku AS sku
+                    LIMIT 100
+              聚合与参数:
+                value:
+                  kn_id: kn_retail
+                  query: >-
+                    MATCH (c:customer)<-[:rel_order_customer]-(o:order)
+                    WHERE o.amount > $floor
+                    RETURN c.city AS city, count(*) AS orders, sum(o.amount) AS amount
+                    ORDER BY amount DESC LIMIT 20
+                  parameters:
+                    floor: 100
+      responses:
+        '200':
+          description: 查询结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunCypherResponse'
+            application/toon:
+              schema:
+                type: string
+        '400':
+          description: |
+            缺少 `kn_id` / `query`，或语句用了不支持的语法、引用了不存在的对象类 /
+            关系类 / 属性。编译器的拒绝原样透传，`error_details` 里带构造名与位置。
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '403':
+          description: 账户没有该知识网络的数据查询权限
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '500':
+          description: 服务内部错误，或下游依赖故障
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+    AppKey:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
+
+  parameters:
+    ResponseFormat:
+      name: response_format
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - json
+          - toon
+        default: json
+      description: 响应格式。`toon` 返回 `application/toon`，同构数组压成表格，省 token。
+
+  schemas:
+    RunCypherRequest:
+      type: object
+      required:
+        - kn_id
+        - query
+      properties:
+        bkn_context:
+          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
+        kn_id:
+          type: string
+          description: 知识网络 ID，来自 `list_knowledge_networks`。
+        branch:
+          type: string
+          description: 分支名。不传按主分支查。
+        query:
+          type: string
+          description: 只读 Cypher 语句，语法子集见端点说明。
+        parameters:
+          type: object
+          additionalProperties: true
+          description: |
+            语句里 `$name` 的取值。只能是字符串、数字或布尔值——参数是值，不会变成
+            表名或列名，因此不能用来拼标签、关系类型或属性名。`null` 会被拒绝：
+            判空写 `IS NULL`。
+
+    RunCypherResponse:
+      type: object
+      properties:
+        columns:
+          type: array
+          description: 输出列，顺序与 `RETURN` 一致。
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                description: 列名。写了 `AS` 就是别名，否则是属性引用的原文。
+              type:
+                type: string
+                description: 列的数据类型。
+        entries:
+          type: array
+          description: 结果行，按列名取值。
+          items:
+            type: object
+            additionalProperties: true
