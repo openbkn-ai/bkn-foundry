@@ -286,7 +286,7 @@ async def delete_model(request: Request, model_para: dict = Body(...)):
 @private_route.get("/small-model/get")
 async def get_info(request: Request, model_id):
     userId, language, role = await get_user_info(request)
-    return await small_model_controller.get_info(model_id, userId, role)
+    return await small_model_controller.get_info(model_id, userId, role, trusted_app=(role == "app"))
 
 
 @private_route.get("/small-model/list")
