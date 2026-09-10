@@ -65,13 +65,16 @@ func TestAnalyzeFullQuery(t *testing.T) {
 		t.Fatal("DISTINCT was dropped")
 	}
 
-	if len(query.Where) != 2 {
-		t.Fatalf("predicates = %d, want 2", len(query.Where))
+	conjunction, ok := query.Where.(LogicalOperator)
+	if !ok || conjunction.Operator != "AND" || len(conjunction.Operands) != 2 {
+		t.Fatalf("where = %+v, want an AND of two comparisons", query.Where)
 	}
-	if p := query.Where[0]; p.Left.String() != "a.amount" || p.Operator != ">" || p.Right.Integer != 100 {
+	if p := conjunction.Operands[0].(Comparison); p.Left.String() != "a.amount" ||
+		p.Operator != ">" || p.Right.Literal.Integer != 100 {
 		t.Fatalf("first predicate = %+v", p)
 	}
-	if p := query.Where[1]; p.Left.String() != "b.name" || p.Operator != "=" || p.Right.String != "Acme" {
+	if p := conjunction.Operands[1].(Comparison); p.Left.String() != "b.name" ||
+		p.Operator != "=" || p.Right.Literal.String != "Acme" {
 		t.Fatalf("second predicate = %+v", p)
 	}
 
@@ -171,6 +174,26 @@ func TestAnalyzeLiterals(t *testing.T) {
 			},
 		},
 		{
+			name:  "eight-digit unicode escape",
+			where: `a.name = '\U0001F600'`,
+			check: func(t *testing.T, l Literal) {
+				if l.String != "\U0001F600" {
+					t.Fatalf("got %q", l.String)
+				}
+			},
+		},
+		{
+			name:  "four-digit unicode escape",
+			where: `a.name = '\u0041b'`,
+			check: func(t *testing.T, l Literal) {
+				// Four hex digits then a non-hex character: the short form,
+				// with the character after it kept as itself.
+				if l.String != "Ab" {
+					t.Fatalf("got %q", l.String)
+				}
+			},
+		},
+		{
 			name:  "double quoted",
 			where: `a.name = "quoted"`,
 			check: func(t *testing.T, l Literal) {
@@ -182,7 +205,7 @@ func TestAnalyzeLiterals(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			query := mustAnalyze(t, "MATCH (a:Order) WHERE "+tc.where+" RETURN a.id")
-			tc.check(t, query.Where[0].Right)
+			tc.check(t, *query.Where.(Comparison).Right.Literal)
 		})
 	}
 }
@@ -190,7 +213,7 @@ func TestAnalyzeLiterals(t *testing.T) {
 func TestAnalyzeComparisonOperators(t *testing.T) {
 	for _, operator := range []string{"=", "<>", "<", ">", "<=", ">="} {
 		query := mustAnalyze(t, "MATCH (a:Order) WHERE a.amount "+operator+" 1 RETURN a.id")
-		if got := query.Where[0].Operator; got != operator {
+		if got := query.Where.(Comparison).Operator; got != operator {
 			t.Fatalf("operator = %q, want %q", got, operator)
 		}
 	}
@@ -216,38 +239,35 @@ func TestAnalyzeRejections(t *testing.T) {
 		{"MATCH p = (a:Order) RETURN a.id", "path variables"},
 		{"MATCH (a) RETURN a.id", "nodes without a label"},
 		{"MATCH (a:Order:Invoice) RETURN a.id", "multiple labels"},
-		{"MATCH (a:Order {id: 1}) RETURN a.id", "inline property maps"},
-		{"MATCH (a:Order)-[:R]-(b:Customer) RETURN a.id", "undirected relationships"},
 		{"MATCH (a:Order)<-[:R]->(b:Customer) RETURN a.id", "pointing both ways"},
 		{"MATCH (a:Order)-->(b:Customer) RETURN a.id", "relationships without a type"},
 		{"MATCH (a:Order)-[r:R]->(b:Customer) RETURN a.id", "relationship variables"},
 		{"MATCH (a:Order)-[:R*1..3]->(b:Customer) RETURN a.id", "variable-length"},
 		{"MATCH (a:Order)-[:R|:S]->(b:Customer) RETURN a.id", "alternative relationship types"},
 		{"MATCH (a:Order)-[:R {x: 1}]->(b:Customer) RETURN a.id", "inline property maps"},
-		{"MATCH (a:Order)-[:R]->(b:C)-[:S]->(c:D) RETURN a.id", "multi-hop"},
 		{"MATCH (a:Order) RETURN *", "RETURN *"},
 		{"MATCH (a:Order) RETURN a", "referring to a node as a value"},
-		{"MATCH (a:Order) RETURN count(a.id)", "function calls"},
-		{"MATCH (a:Order) RETURN count(*)", "count(*)"},
+		{"MATCH (a:Order) RETURN lower(a.id)", "function calls"},
 		{"MATCH (a:Order) RETURN a.id + 1", "arithmetic"},
-		{"MATCH (a:Order) RETURN $parameter", "query parameters"},
+		{"MATCH (a:Order) RETURN CASE a.x WHEN 1 THEN 2 ELSE 3 END", "CASE"},
+		{"MATCH (a:Order) RETURN [x IN [1, 2] | x]", "list comprehensions"},
+		{"MATCH (a:Order) RETURN [(a)-[:R]->(b:Customer) | b.id]", "pattern comprehensions"},
+		{"MATCH (a:Order) WHERE all(x IN [1] WHERE x = 1) RETURN a.id", "quantified expressions"},
+		{"MATCH (a:Order) RETURN a.x IS NULL", "a condition here"},
 		{"MATCH (a:Order) RETURN a.items[0]", "list indexing"},
 		{"MATCH (a:Order) RETURN a.x.y", "nested property access"},
 		{"MATCH (a:Order) RETURN 1", "only variable.property references"},
-		{"MATCH (a:Order) WHERE a.x = 1 OR a.y = 2 RETURN a.id", "OR"},
 		{"MATCH (a:Order) WHERE a.x = 1 XOR a.y = 2 RETURN a.id", "XOR"},
-		{"MATCH (a:Order) WHERE NOT a.x = 1 RETURN a.id", "NOT"},
-		{"MATCH (a:Order) WHERE a.x IN [1, 2] RETURN a.id", "IN"},
-		{"MATCH (a:Order) WHERE a.x IS NULL RETURN a.id", "IS NULL"},
 		{"MATCH (a:Order) WHERE a.x STARTS WITH 'A' RETURN a.id", "STARTS WITH"},
 		{"MATCH (a:Order) WHERE a.x = a.y RETURN a.id", "against a literal"},
 		{"MATCH (a:Order) WHERE a.x = null RETURN a.id", "comparing against null"},
+		{"MATCH (a:Order) WHERE a.x = 1 XOR a.y = 2 RETURN a.id", "XOR"},
 		{"MATCH (a:Order) WHERE a.x < a.y < a.z RETURN a.id", "chained comparisons"},
 		{"MATCH (a:Order) WHERE a.x RETURN a.id", "non-comparison predicate"},
 		{"MATCH (a:Order) WHERE a.x = [1] RETURN a.id", "list and map literals"},
 		{"MATCH (a:Order) WHERE (a)-[:R]->(:Customer) RETURN a.id", "pattern predicates"},
 		{"MATCH (a:Order) WHERE EXISTS { (a)-[:R]->(:Customer) } RETURN a.id", "EXISTS subqueries"},
-		{"MATCH (a:Order) WHERE (a.x = 1) RETURN a.id", "parenthesized expressions"},
+		{"MATCH (a:Order) RETURN (a.x)", "parenthesized expressions"},
 		{"MATCH (a:Order) RETURN a.id LIMIT 1 + 1", "arithmetic"},
 		{"MATCH (a:Order) RETURN a.id LIMIT 'ten'", "non-integer LIMIT"},
 		{"MATCH (a:Order) RETURN a.id SKIP -1", "negative SKIP"},
@@ -264,15 +284,119 @@ func TestAnalyzeRejections(t *testing.T) {
 	}
 }
 
+// An escape past the last code point used to wrap into a negative rune and
+// encode as a replacement character, which would have made the query mean
+// something other than what was written.
+func TestAnalyzeRejectsUnicodeEscapesThatAreNotCodePoints(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		query string
+		want  string
+	}{
+		{
+			name:  "beyond the last code point",
+			query: `MATCH (a:Order) WHERE a.name = '\uFFFFFFFF' RETURN a.id`,
+			want:  "beyond the last code point",
+		},
+		{
+			name:  "unpaired surrogate",
+			query: `MATCH (a:Order) WHERE a.name = '\uD800' RETURN a.id`,
+			want:  "unpaired surrogate",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := analyze(t, tc.query)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Analyze(%q) = %v, want a rejection mentioning %q", tc.query, err, tc.want)
+			}
+		})
+	}
+}
+
+// Every escape the grammar allows is decoded here, and the two malformed
+// forms are refused rather than passed through as text.
+func TestAnalyzeStringEscapes(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		where string
+		want  string
+	}{
+		{name: "backspace", where: `a.name = '\b'`, want: "\b"},
+		{name: "form feed", where: `a.name = '\f'`, want: "\f"},
+		{name: "carriage return", where: `a.name = '\r'`, want: "\r"},
+		{name: "newline", where: `a.name = '\n'`, want: "\n"},
+		{name: "double quote", where: `a.name = '\"'`, want: `"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			query := mustAnalyze(t, "MATCH (a:Order) WHERE "+tc.where+" RETURN a.id")
+			if got := query.Where.(Comparison).Right.Literal.String; got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// The lexer refuses a malformed escape before the decoder ever sees it, so
+// these branches are a second line rather than the first. They are exercised
+// directly: reaching them through a query is not possible, and a test that
+// pretended otherwise would be asserting the lexer instead.
+func TestDecodeStringLiteralRefusesMalformedEscapes(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		literal string
+		want    string
+	}{
+		{name: "unknown escape", literal: `'\q'`, want: "unknown escape sequence"},
+		{name: "trailing backslash", literal: "'a\\'", want: "trailing backslash"},
+		{name: "incomplete unicode escape", literal: `'\u41'`, want: "incomplete unicode escape"},
+		{name: "invalid unicode digits", literal: `'\uzzzz'`, want: "invalid unicode escape"},
+		{name: "not a literal at all", literal: `'`, want: "malformed string literal"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := decodeStringLiteral(tc.literal)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("decodeStringLiteral(%s) = %v, want an error mentioning %q", tc.literal, err, tc.want)
+			}
+		})
+	}
+}
+
 // A rejection has to say where, because a long query has many places the same
 // construct could appear.
 func TestAnalyzeRejectionCarriesPosition(t *testing.T) {
-	_, err := analyze(t, "MATCH (a:Order)\nWHERE NOT a.paid = true\nRETURN a.id")
+	_, err := analyze(t, "MATCH (a:Order)\nWHERE a.name STARTS WITH 'A'\nRETURN a.id")
 	unsupported, ok := err.(*Unsupported)
 	if !ok {
 		t.Fatalf("error = %T (%v), want *Unsupported", err, err)
 	}
 	if unsupported.Pos.Line != 2 {
 		t.Fatalf("line = %d, want 2", unsupported.Pos.Line)
+	}
+}
+
+// The grammar allows a pair of backticks with nothing between them, so an
+// empty name can be written wherever a name can. It refers to nothing, and
+// letting one through reached SQL as an empty identifier -- a 500 the caller
+// could not act on -- or, in ORDER BY, a nil dereference.
+func TestAnalyzeRejectsEmptyNames(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		query string
+		want  string
+	}{
+		{name: "variable", query: "MATCH (``:Order) RETURN o.id", want: "an empty variable name"},
+		{name: "label", query: "MATCH (o:``) RETURN o.id", want: "an empty label"},
+		{name: "property", query: "MATCH (o:Order) RETURN o.``", want: "an empty property name"},
+		{name: "column name", query: "MATCH (o:Order) RETURN o.id AS ``", want: "an empty column name"},
+		{name: "sort key", query: "MATCH (o:Order) RETURN o.id AS id ORDER BY ``", want: "an empty variable name"},
+		{name: "relationship type", query: "MATCH (o:Order)-[:``]->(c:Customer) RETURN o.id", want: "an empty relationship type"},
+		{name: "parameter", query: "MATCH (o:Order) WHERE o.id = $`` RETURN o.id", want: "an empty parameter name"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := analyze(t, tc.query)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Analyze(%q) = %v, want a rejection mentioning %q", tc.query, err, tc.want)
+			}
+		})
 	}
 }

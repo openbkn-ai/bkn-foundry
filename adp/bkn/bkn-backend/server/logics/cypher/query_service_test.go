@@ -36,6 +36,8 @@ func (v *recordingVega) RawQuery(_ context.Context, req *interfaces.RawQueryRequ
 	return &interfaces.RawQueryResponse{}, nil
 }
 
+// stubPermission answers the knowledge-network permission check the way the
+// permission service would.
 type stubPermission struct {
 	interfaces.PermissionService
 	resource   interfaces.PermissionResource
@@ -155,7 +157,7 @@ func TestQueryRejections(t *testing.T) {
 	}{
 		{name: "empty", query: "", status: http.StatusBadRequest},
 		{name: "syntax error", query: "MATCH (o:Order RETURN o.id", status: http.StatusBadRequest},
-		{name: "outside the subset", query: "MATCH (o:Order) RETURN count(*)", status: http.StatusBadRequest},
+		{name: "outside the subset", query: "MATCH (o:Order) RETURN lower(o.id)", status: http.StatusBadRequest},
 		{name: "not in the model", query: "MATCH (i:Invoice) RETURN i.id", status: http.StatusBadRequest},
 		{name: "writing", query: "CREATE (o:Order) RETURN o.id", status: http.StatusBadRequest},
 		{name: "limit above the ceiling", query: "MATCH (o:Order) RETURN o.id LIMIT 20000", status: http.StatusBadRequest},
