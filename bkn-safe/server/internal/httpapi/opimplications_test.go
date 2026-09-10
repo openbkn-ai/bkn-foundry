@@ -324,8 +324,23 @@ func TestRevokeSetIsOrderIndependent(t *testing.T) {
 			if err := svc.GrantRolePermission(ctx, "r-3", "catalog", "c1", "resource_manage"); err != nil {
 				t.Fatal(err)
 			}
+			catalogQueries := 0
+			callback := "test:count-reverse-requirements:" + strings.Join(ops, ",")
+			if err := db.Callback().Query().Before("gorm:query").Register(callback, func(tx *gorm.DB) {
+				if tx.Statement.Table == "operations" {
+					catalogQueries++
+				}
+			}); err != nil {
+				t.Fatal(err)
+			}
 			if err := revoker.RevokeRolePermissions(ctx, "r-3", "catalog", "c1", ops); err != nil {
 				t.Fatalf("revoke %v: %v", ops, err)
+			}
+			if err := db.Callback().Query().Remove(callback); err != nil {
+				t.Fatal(err)
+			}
+			if catalogQueries != 1 {
+				t.Fatalf("reverse requirement catalog queries = %d, want 1 for the complete revoke set", catalogQueries)
 			}
 			for _, op := range []string{"view_detail", "resource_manage"} {
 				if ok, _ := e.Check("r-3", "catalog", "c1", op); ok {

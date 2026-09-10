@@ -141,6 +141,49 @@ func TestGrantIsIdempotentAndLastSourceRevokesOwnedPolicy(t *testing.T) {
 	}
 }
 
+func TestGrantAndSyncNormalizeDirectOperationRequirements(t *testing.T) {
+	f := newFixture(t)
+	if err := f.db.Model(&model.Operation{}).
+		Where("resource_type_id = ? AND id = ?", "resource", "query_data").
+		Update("implied_operation_ids", "view_detail").Error; err != nil {
+		t.Fatal(err)
+	}
+	f.grantOperations(t, f.grantor, "r-1", "query_data", "view_detail")
+	request := f.request("source-required", "ot-required", "r-1")
+
+	source, changed, err := f.service.Grant(t.Context(), request)
+	if err != nil || !changed || source.Operation != "query_data" {
+		t.Fatalf("normalized Grant() = (%+v, %v, %v)", source, changed, err)
+	}
+	var active []model.ProxyGrantSource
+	if err := f.db.Where("proxy_account_id = ? AND source_id = ? AND lifecycle_status = ?",
+		f.proxyID, request.Source.SourceID, proxygrant.StatusActive).Order("operation").Find(&active).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 2 || active[0].Operation != "query_data" || active[1].Operation != "view_detail" {
+		t.Fatalf("normalized active sources = %+v, want query_data and view_detail", active)
+	}
+	for _, operation := range []string{"query_data", "view_detail"} {
+		if allowed, err := f.enforcer.Check(f.proxyID, "resource", "r-1", operation); err != nil || !allowed {
+			t.Fatalf("proxy %s = %v, %v; want allowed", operation, allowed, err)
+		}
+	}
+
+	replay, err := f.service.Sync(t.Context(), proxygrant.SyncRequest{
+		ProxyAccountID: f.proxyID, GrantorID: f.grantor, Sources: []proxygrant.SourceSpec{request.Source},
+	})
+	if err != nil || replay.Added != 0 || replay.Revoked != 0 || replay.Unchanged != 2 || len(replay.Sources) != 2 {
+		t.Fatalf("normalized Sync() = (%+v, %v)", replay, err)
+	}
+
+	if err := f.enforcer.RevokeObjectPermission(f.grantor, "resource", "r-1", "view_detail"); err != nil {
+		t.Fatal(err)
+	}
+	if allowed, err := f.enforcer.Check(f.proxyID, "resource", "r-1", "query_data"); err != nil || allowed {
+		t.Fatalf("proxy query_data after delegator prerequisite revoke = %v, %v; want denied", allowed, err)
+	}
+}
+
 func TestSourceIdentityCollisionIsRejected(t *testing.T) {
 	f := newFixture(t)
 	f.authorize(t, "r-1", "query_data")

@@ -68,8 +68,34 @@ func (en *Enforcer) NormalizeOperations(ctx context.Context, resourceType string
 // keep a retained operation and its prerequisite together.
 func (en *Enforcer) RequiringOperations(ctx context.Context, resourceType string,
 	operations []string) ([]string, error) {
+	byRequirement, err := en.RequiringOperationsByRequirement(ctx, resourceType, operations)
+	if err != nil {
+		return nil, err
+	}
+	out := distinctOperations(operations)
+	seen := make(map[string]bool, len(out))
+	for _, operation := range out {
+		seen[operation] = true
+	}
+	for _, operation := range operations {
+		for _, requiring := range byRequirement[operation] {
+			if !seen[requiring] {
+				seen[requiring] = true
+				out = append(out, requiring)
+			}
+		}
+	}
+	return out, nil
+}
+
+// RequiringOperationsByRequirement returns the direct reverse dependency list
+// for every requested prerequisite. It loads the catalog once so callers that
+// revoke a set do not repeat the same resource-type query per operation.
+func (en *Enforcer) RequiringOperationsByRequirement(ctx context.Context, resourceType string,
+	operations []string) (map[string][]string, error) {
+	result := make(map[string][]string, len(operations))
 	if en.db == nil || len(operations) == 0 {
-		return distinctOperations(operations), nil
+		return result, nil
 	}
 	var rows []model.Operation
 	if err := en.db.WithContext(ctx).
@@ -81,23 +107,16 @@ func (en *Enforcer) RequiringOperations(ctx context.Context, resourceType string
 	for _, operation := range operations {
 		wanted[operation] = true
 	}
-	out := distinctOperations(operations)
-	seen := make(map[string]bool, len(out)+len(rows))
-	for _, operation := range out {
-		seen[operation] = true
-	}
 	// Seed rejects multi-level declarations, so one pass is the complete reverse
 	// set and intentionally does not turn this into a recursive dependency graph.
 	for _, row := range rows {
 		for _, required := range splitOperationIDs(row.RequiredOperationIDs) {
-			if wanted[required] && !seen[row.ID] {
-				seen[row.ID] = true
-				out = append(out, row.ID)
-				break
+			if wanted[required] {
+				result[required] = append(result[required], row.ID)
 			}
 		}
 	}
-	return out, nil
+	return result, nil
 }
 
 func (en *Enforcer) requirementsFor(ctx context.Context,

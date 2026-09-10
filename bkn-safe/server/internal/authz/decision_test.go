@@ -7,14 +7,40 @@ package authz
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 
 	"github.com/openbkn-ai/licverify"
+	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permobject"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
+
+func TestProxyProvenanceSkipsDatabaseWhenEveryDecisionIsDenied(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	var queries atomic.Int64
+	const callback = "test:denied-proxy-provenance-query-count"
+	if err := db.Callback().Query().Before("gorm:query").Register(callback, func(*gorm.DB) {
+		queries.Add(1)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Callback().Query().Remove(callback) })
+
+	decisions := map[ResourceRef]map[string]Evaluation{
+		{Type: "resource", ID: "r-1"}: {
+			"view_detail": {Scope: ScopeEffective, Decision: DecisionDeny, Basis: BasisDefault},
+		},
+	}
+	if err := e.applyManagedProxyProvenanceToBatch(t.Context(), "u-denied", decisions); err != nil {
+		t.Fatal(err)
+	}
+	if got := queries.Load(); got != 0 {
+		t.Fatalf("denied provenance queries = %d, want 0", got)
+	}
+}
 
 func requireDecision(t *testing.T, got Evaluation, decision Decision, basis DecisionBasis) {
 	t.Helper()

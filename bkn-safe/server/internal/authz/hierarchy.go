@@ -317,6 +317,24 @@ func (en *Enforcer) applyManagedProxyProvenanceToBatch(ctx context.Context, acce
 	if en.db == nil {
 		return nil
 	}
+	// Deny is already final for provenance purposes. Avoid touching the proxy
+	// tables on the common rejection path, matching the former single-decision
+	// implementation and keeping failed checks cheap.
+	hasAllow := false
+	for _, operations := range decisions {
+		for _, decision := range operations {
+			if decision.Allowed() {
+				hasAllow = true
+				break
+			}
+		}
+		if hasAllow {
+			break
+		}
+	}
+	if !hasAllow {
+		return nil
+	}
 	managed, err := en.isManagedProxyContext(ctx, accessorID)
 	if err != nil || !managed {
 		return err

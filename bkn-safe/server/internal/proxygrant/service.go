@@ -127,6 +127,11 @@ func (s *Service) Grant(ctx context.Context, req GrantRequest) (*model.ProxyGran
 		return nil, false, ErrInvalidRequest
 	}
 	req.Source = spec
+	normalized, _, err := s.normalizeRequiredSources(ctx, []SourceSpec{spec})
+	if err != nil {
+		return nil, false, err
+	}
+	targetKey := keyForSpec(spec)
 
 	var result model.ProxyGrantSource
 	var changed bool
@@ -134,33 +139,45 @@ func (s *Service) Grant(ctx context.Context, req GrantRequest) (*model.ProxyGran
 		if err := validateProxy(tx.DB(), req.ProxyAccountID, spec.KNID, true); err != nil {
 			return err
 		}
-		if err := validatePreflightAuthority(tx, req.ProxyAccountID, req.GrantorID, spec); err != nil {
-			return err
-		}
-		row, created, err := grantInTransaction(tx, req.ProxyAccountID, req.GrantorID, spec)
-		if err != nil {
-			return err
-		}
-		result, changed = row, created
-		reason := "created"
-		if !created {
-			reason = "idempotent replay"
-			if spec.SourceType == SourceTypeKNProxyBinding {
-				valid, validErr := sourceCurrentlyValid(tx, row)
-				if validErr != nil {
-					return validErr
-				}
-				if !valid {
-					if err := tx.DB().Model(&row).Update("granted_by", req.GrantorID).Error; err != nil {
-						return err
-					}
-					row.GrantedBy = req.GrantorID
-					result, changed = row, true
-					reason = "invalid delegator replaced by grant actor"
-				}
+		for _, candidate := range normalized {
+			if err := validatePreflightAuthority(tx, req.ProxyAccountID, req.GrantorID, candidate); err != nil {
+				return err
 			}
 		}
-		return recordAudit(tx.DB(), "grant", "allow", reason, req.GrantorID, req.ProxyAccountID, spec)
+		for _, candidate := range normalized {
+			row, created, err := grantInTransaction(tx, req.ProxyAccountID, req.GrantorID, candidate)
+			if err != nil {
+				return err
+			}
+			rowChanged := created
+			reason := "created"
+			if !created {
+				reason = "idempotent replay"
+				if candidate.SourceType == SourceTypeKNProxyBinding {
+					valid, validErr := sourceCurrentlyValid(tx, row)
+					if validErr != nil {
+						return validErr
+					}
+					if !valid {
+						if err := tx.DB().Model(&row).Update("granted_by", req.GrantorID).Error; err != nil {
+							return err
+						}
+						row.GrantedBy = req.GrantorID
+						rowChanged = true
+						reason = "invalid delegator replaced by grant actor"
+					}
+				}
+			}
+			if keyForModel(row) == targetKey {
+				result = row
+			}
+			changed = changed || rowChanged
+			if err := recordAudit(tx.DB(), "grant", "allow", reason,
+				req.GrantorID, req.ProxyAccountID, candidate); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		if !errors.Is(err, authz.ErrPolicyReloadAfterCommit) {
@@ -234,13 +251,20 @@ func (s *Service) Check(ctx context.Context, req GrantRequest) (CheckResult, err
 		len(req.ProxyAccountID) > 64 || len(req.GrantorID) > 64 {
 		return CheckResult{}, ErrInvalidRequest
 	}
+	normalized, _, err := s.normalizeRequiredSources(ctx, []SourceSpec{spec})
+	if err != nil {
+		return CheckResult{}, err
+	}
 	result := CheckResult{Allowed: true}
 	err = s.enforcer.Transaction(ctx, func(tx *authz.PolicyTransaction) error {
 		decision := "allow"
 		reason := "actor holds the authority required by the source type"
 		decisionErr := validateProxy(tx.DB(), req.ProxyAccountID, spec.KNID, true)
-		if decisionErr == nil {
-			decisionErr = validatePreflightAuthority(tx, req.ProxyAccountID, req.GrantorID, spec)
+		for _, candidate := range normalized {
+			if decisionErr != nil {
+				break
+			}
+			decisionErr = validatePreflightAuthority(tx, req.ProxyAccountID, req.GrantorID, candidate)
 		}
 		if decisionErr != nil {
 			if !errors.Is(decisionErr, ErrForbidden) && !errors.Is(decisionErr, ErrProxyInactive) &&
@@ -289,9 +313,14 @@ func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCh
 		desired[key] = spec
 		sources = append(sources, spec)
 	}
+	explicitSources := sources
+	sources, requiredBySource, err := s.normalizeRequiredSources(ctx, explicitSources)
+	if err != nil {
+		return BatchCheckResult{}, err
+	}
 
 	result := BatchCheckResult{DeniedSources: []SourceSpec{}}
-	err := s.enforcer.Transaction(ctx, func(tx *authz.PolicyTransaction) error {
+	err = s.enforcer.Transaction(ctx, func(tx *authz.PolicyTransaction) error {
 		mapping, mappingErr := loadProxy(tx.DB(), req.ProxyAccountID)
 		if mappingErr != nil && !errors.Is(mappingErr, ErrProxyInactive) &&
 			!errors.Is(mappingErr, ErrNotFound) && !errors.Is(mappingErr, ErrForbidden) {
@@ -392,11 +421,16 @@ func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCh
 			}
 		}
 
-		audits := make([]model.ProxyGrantAuditLog, 0, len(sources))
-		for _, spec := range sources {
+		audits := make([]model.ProxyGrantAuditLog, 0, len(explicitSources))
+		for _, spec := range explicitSources {
 			decision := "allow"
 			reason := "actor or retained delegator holds the required operation"
-			if !allowed[keyForSpec(spec)] {
+			key := keyForSpec(spec)
+			isAllowed := allowed[key]
+			for _, required := range requiredBySource[key] {
+				isAllowed = isAllowed && allowed[required]
+			}
+			if !isAllowed {
 				decision = "deny"
 				reason = ErrForbidden.Error()
 				result.DeniedSources = append(result.DeniedSources, spec)
@@ -429,6 +463,7 @@ func (s *Service) Sync(ctx context.Context, req SyncRequest) (SyncResult, error)
 		len(req.ProxyAccountID) > 64 || len(req.GrantorID) > 64 {
 		return SyncResult{}, ErrInvalidRequest
 	}
+	explicit := make([]SourceSpec, 0, len(req.Sources))
 	desired := make(map[sourceKey]SourceSpec, len(req.Sources))
 	for _, raw := range req.Sources {
 		spec, err := normalizeSpec(raw)
@@ -442,11 +477,22 @@ func (s *Service) Sync(ctx context.Context, req SyncRequest) (SyncResult, error)
 		if previous, exists := desired[key]; exists && !sameBinding(previous, spec) {
 			return SyncResult{}, ErrInvalidRequest
 		}
+		if _, exists := desired[key]; !exists {
+			explicit = append(explicit, spec)
+		}
 		desired[key] = spec
+	}
+	normalized, _, err := s.normalizeRequiredSources(ctx, explicit)
+	if err != nil {
+		return SyncResult{}, err
+	}
+	desired = make(map[sourceKey]SourceSpec, len(normalized))
+	for _, spec := range normalized {
+		desired[keyForSpec(spec)] = spec
 	}
 
 	var result SyncResult
-	err := s.enforcer.Transaction(ctx, func(tx *authz.PolicyTransaction) error {
+	err = s.enforcer.Transaction(ctx, func(tx *authz.PolicyTransaction) error {
 		mapping, err := loadProxy(tx.DB(), req.ProxyAccountID)
 		if err != nil {
 			return err
@@ -608,6 +654,62 @@ type permissionKey struct {
 	ResourceType   string
 	ResourceID     string
 	Operation      string
+}
+
+// normalizeRequiredSources expands each explicitly requested source with one
+// source for every direct operation prerequisite. Keeping the same source
+// identity and binding makes provenance validation, Sync replacement and
+// Reconcile operate on the normalized permissions exactly like explicit ones.
+// The returned reverse index lets CheckMany report a denied explicit source
+// when any source that would be added for its prerequisites is unavailable.
+func (s *Service) normalizeRequiredSources(ctx context.Context,
+	explicit []SourceSpec) ([]SourceSpec, map[sourceKey][]sourceKey, error) {
+	operationsByType := make(map[string][]string)
+	for _, spec := range explicit {
+		operationsByType[spec.ResourceType] = append(operationsByType[spec.ResourceType], spec.Operation)
+	}
+	requirementsByType := make(map[string]map[string][]string, len(operationsByType))
+	for resourceType, operations := range operationsByType {
+		requirements, err := s.enforcer.DirectRequirements(ctx, resourceType, operations)
+		if err != nil {
+			return nil, nil, err
+		}
+		requirementsByType[resourceType] = requirements
+	}
+
+	normalized := make([]SourceSpec, 0, len(explicit))
+	byKey := make(map[sourceKey]SourceSpec, len(explicit))
+	appendUnique := func(spec SourceSpec) error {
+		key := keyForSpec(spec)
+		if previous, exists := byKey[key]; exists {
+			if !sameBinding(previous, spec) {
+				return ErrInvalidRequest
+			}
+			return nil
+		}
+		byKey[key] = spec
+		normalized = append(normalized, spec)
+		return nil
+	}
+	for _, spec := range explicit {
+		if err := appendUnique(spec); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	requiredBySource := make(map[sourceKey][]sourceKey, len(explicit))
+	for _, spec := range explicit {
+		target := keyForSpec(spec)
+		for _, operation := range requirementsByType[spec.ResourceType][spec.Operation] {
+			required := spec
+			required.Operation = operation
+			if err := appendUnique(required); err != nil {
+				return nil, nil, err
+			}
+			requiredBySource[target] = append(requiredBySource[target], keyForSpec(required))
+		}
+	}
+	return normalized, requiredBySource, nil
 }
 
 func normalizeSpec(spec SourceSpec) (SourceSpec, error) {

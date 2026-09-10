@@ -188,15 +188,15 @@ func (s *adminWriteServices) RevokeRolePermissions(ctx context.Context,
 			remaining[op] = true
 		}
 	}
+	requiringByOperation, err := s.e.RequiringOperationsByRequirement(ctx, resourceType, ops)
+	if err != nil {
+		return err
+	}
 
 	for _, op := range ops {
-		requiring, err := s.e.RequiringOperations(ctx, resourceType, []string{op})
-		if err != nil {
-			return err
-		}
 		retainedBy := ""
-		for _, other := range requiring {
-			if other != op && remaining[other] {
+		for _, other := range requiringByOperation[op] {
+			if remaining[other] {
 				retainedBy = other
 				break
 			}
