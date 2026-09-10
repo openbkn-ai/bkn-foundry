@@ -6,18 +6,14 @@
 // authorization and advanced role control, implemented in the private ee code
 // line (openbkn-ee) and absent from community binaries.
 //
-// The socket layers on top of core's verdict rather than replacing it. Core's
-// casbin model is allow-only: a policy line grants, nothing revokes, and a
-// grant has no validity window. Those two gaps are exactly what the enterprise
-// tier adds, so the interface is a second opinion applied after core has
-// decided, not a substitute enforcer. Keeping it at the decision boundary is
-// deliberate — open-core-gating §2 puts sockets at capability entry points,
-// never inside business logic, because few sockets are what makes two code
-// lines maintainable.
+// The socket contributes one structured local opinion to core's evaluator. It
+// neither replaces core nor folds over a final bool: core must merge all local
+// sources before parent fallback, otherwise an Enterprise allow could revive a
+// Professional explicit deny.
 //
-// The exact community/enterprise split line for object grants is still open in
-// #278; this socket covers the advanced half (explicit deny, time-bounded
-// grants) and does not presume where that line lands.
+// Core remains authoritative for Community and Professional rules; this socket
+// contributes the current Enterprise/Industry object-rule source, including
+// time-bounded rules stored by openbkn-ee.
 package permobject
 
 import (
@@ -35,18 +31,16 @@ import (
 // tier is what decides (ee-design.md §3.1), and this is a display name.
 const Capability = "perm_object_level"
 
-// Decision is the ee layer's verdict on top of core's.
+// Decision is the ee layer's opinion for one local specificity.
 type Decision uint8
 
 const (
-	// Abstain: the ee layer has no opinion; core's verdict stands unchanged.
+	// Abstain: the ee layer has no opinion at this specificity.
 	// Community builds always abstain because nothing is plugged in.
 	Abstain Decision = iota
-	// Allow: grant access core would have refused (a grant core's allow-only
-	// model cannot express on its own).
+	// Allow: at least one current Enterprise source allows the operation.
 	Allow
-	// Deny: refuse access core would have permitted. This is the direction
-	// core structurally cannot express, and the main reason the socket exists.
+	// Deny: at least one current Enterprise source denies the operation.
 	Deny
 )
 
@@ -61,16 +55,52 @@ func (d Decision) String() string {
 	}
 }
 
+// CoreDecision and CoreBasis are the stable structured vocabulary Core passes
+// to an Enterprise provider. They mirror the public authorization contract but
+// remain declared at the socket boundary so openbkn-ee never imports Core's
+// internal packages.
+type CoreDecision string
+
+const (
+	CoreAllow CoreDecision = "allow"
+	CoreDeny  CoreDecision = "deny"
+	CoreNone  CoreDecision = "none"
+)
+
+type CoreBasis string
+
+const (
+	CoreBasisDirect   CoreBasis = "direct"
+	CoreBasisBundle   CoreBasis = "bundle"
+	CoreBasisWildcard CoreBasis = "wildcard"
+	CoreBasisNone     CoreBasis = "none"
+)
+
 // Request is one authorization question, already resolved to its subject and
 // object by core.
 type Request struct {
-	AccessorID   string
+	AccessorID string
+	// AccessorIDs contains the concrete accessor plus all transitive Core roles
+	// and the public subject. Providers use it to merge EE rules written to the
+	// same subject vocabulary; AccessorID remains the original caller.
+	AccessorIDs  []string
 	ResourceType string
 	ResourceID   string
 	Op           string
-	// CoreVerdict is what core's casbin model decided. The ee layer sees it so
-	// it can restrict an allow without re-deriving it.
-	CoreVerdict bool
+	// CoreDecision and CoreBasis are Core's structured local result before the
+	// EE source is merged. They are diagnostic context only: providers return
+	// their own opinion and must not apply parent fallback or produce a final
+	// authorization result.
+	CoreDecision CoreDecision
+	CoreBasis    CoreBasis
+}
+
+// LocalOpinion separates exact-instance rules from type-wide wildcard rules.
+// Core needs both because wildcard deny is terminal while wildcard allow is
+// deliberately postponed until after parent fallback.
+type LocalOpinion struct {
+	Direct   Decision
+	Wildcard Decision
 }
 
 // Authorizer is what the ee code line implements.
@@ -78,7 +108,7 @@ type Request struct {
 // Decide must be safe for concurrent use and must not block on I/O that can
 // hang — it sits on the authorization hot path.
 type Authorizer interface {
-	Decide(ctx context.Context, req Request) (Decision, error)
+	Decide(ctx context.Context, req Request) (LocalOpinion, error)
 }
 
 // impl holds the registered implementation. atomic.Value keeps the read path
@@ -142,13 +172,13 @@ func Available() bool {
 
 // Decide asks the ee layer for a second opinion. Community builds, clusters
 // below the required tier, and clusters whose license lapsed after startup all
-// get Abstain with a nil error, which leaves core's verdict untouched — the
+// get an empty opinion with a nil error, which leaves core's result untouched — the
 // community authorization behaviour is the fallback, exactly as the downgrade
 // path requires.
 //
-// Note this is Abstain, not the 404 the HTTP sockets answer with (ee-design.md
+// Note this is an abstaining opinion, not the 404 the HTTP sockets answer with (ee-design.md
 // §4.4). Nothing here is a request entry point: it is one layer inside a
-// decision, and falling back to core's verdict is invisible from outside, so
+// decision, and falling back to core's result is invisible from outside, so
 // there is no paid surface to hide.
 //
 // An error from the ee layer returns Deny. The socket only ever runs in an
@@ -156,29 +186,16 @@ func Available() bool {
 // transient failure that silently reverted to core's more permissive verdict
 // would hand out access the enterprise policy revoked. Callers must surface
 // the error rather than treat the denial as a plain policy outcome.
-func Decide(ctx context.Context, req Request) (Decision, error) {
+func Decide(ctx context.Context, req Request) (LocalOpinion, error) {
 	a := load()
 	if a == nil || !entitlement.AtLeast(minEdition) {
-		return Abstain, nil
+		return LocalOpinion{}, nil
 	}
 	d, err := a.Decide(ctx, req)
 	if err != nil {
-		return Deny, err
+		return LocalOpinion{Direct: Deny, Wildcard: Deny}, err
 	}
 	return d, nil
-}
-
-// Apply folds a decision into core's verdict. It is the one place the layering
-// rule lives, so call sites do not each re-implement it.
-func Apply(coreVerdict bool, d Decision) bool {
-	switch d {
-	case Allow:
-		return true
-	case Deny:
-		return false
-	default:
-		return coreVerdict
-	}
 }
 
 func load() Authorizer {

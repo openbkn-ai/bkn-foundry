@@ -5,6 +5,7 @@
 package authz
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"sort"
@@ -27,28 +28,28 @@ const maxHierarchyDepth = 64
 // level's mapping ("modify" on a table becomes "resource_manage" on its
 // catalog), and the caller's spelling is what the answer must be keyed by.
 type climber struct {
-	origin  ResourceRef
-	node    ResourceRef
-	ops     map[string]string
-	visited map[ResourceRef]bool
+	origin   ResourceRef
+	node     ResourceRef
+	ops      map[string]string
+	fallback map[string]Evaluation
+	visited  map[ResourceRef]bool
 }
 
 // climb resolves, for a batch of resources, which of the still-missing
 // operations the accessor holds through an ancestor.
 //
-// decide answers "which of these ops does the accessor hold on this one node".
-// Passing it in is what lets the single-decision path (casbin Enforce) and the
-// list-page path (the pre-resolved grant index) share one walk: the two must
-// never disagree about inheritance, and the only way to guarantee that is for
-// them to run the same code.
+// decide answers the structured local result for each op on this one node.
+// Passing it in lets the single-decision and list-page paths share one walk:
+// they must never disagree about inheritance, and the only way to guarantee
+// that is for them to run the same code.
 //
-// The returned map contains only operations that were found — resources with
-// nothing inherited are absent, so a caller reads it as an overlay on what it
-// already decided.
+// The returned map contains only inherited allow or deny decisions. Resources
+// with no parent conclusion are absent, so the caller can apply the child's
+// deferred wildcard allow or the effective default deny.
 func (en *Enforcer) climb(
-	decide func(ResourceRef, []string) (map[string]string, error),
+	decide func(ResourceRef, []string) (map[string]Evaluation, error),
 	want map[ResourceRef][]string,
-) (map[ResourceRef]map[string]bool, error) {
+) (map[ResourceRef]map[string]Evaluation, error) {
 	if en.db == nil || len(want) == 0 {
 		return nil, nil
 	}
@@ -62,12 +63,24 @@ func (en *Enforcer) climb(
 			pending[op] = op // at the resource itself, no translation has happened yet
 		}
 		active = append(active, &climber{
-			origin: r, node: r, ops: pending,
+			origin: r, node: r, ops: pending, fallback: map[string]Evaluation{},
 			visited: map[ResourceRef]bool{r: true},
 		})
 	}
 
-	found := map[ResourceRef]map[string]bool{}
+	found := map[ResourceRef]map[string]Evaluation{}
+	resolveFallback := func(c *climber, asked string) {
+		fallback, ok := c.fallback[asked]
+		if !ok {
+			return
+		}
+		if found[c.origin] == nil {
+			found[c.origin] = map[string]Evaluation{}
+		}
+		fallback.Scope = ScopeEffective
+		fallback.Basis = BasisInherited
+		found[c.origin][asked] = fallback
+	}
 	for level := 0; len(active) > 0 && level < maxHierarchyDepth; level++ {
 		// The operation mapping is consulted BEFORE the ownership rows, and the
 		// order matters for cost: a type that inherits nothing (every type but
@@ -87,7 +100,14 @@ func (en *Enforcer) climb(
 		}
 		inheriting := make([]*climber, 0, len(active))
 		for _, c := range active {
-			if len(opMaps[c.node.Type]) > 0 {
+			mapping := opMaps[c.node.Type]
+			for asked, here := range c.ops {
+				if mapping[here] == "" {
+					resolveFallback(c, asked)
+					delete(c.ops, asked)
+				}
+			}
+			if len(c.ops) > 0 {
 				inheriting = append(inheriting, c)
 			}
 		}
@@ -102,11 +122,14 @@ func (en *Enforcer) climb(
 
 		// Two resources under the same catalog asking about the same operations
 		// are one decision, not two. On a list page that is the common case.
-		verdicts := map[string]map[string]string{}
+		verdicts := map[string]map[string]Evaluation{}
 		next := make([]*climber, 0, len(active))
 		for _, c := range active {
 			parent, ok := parents[c.node]
 			if !ok {
+				for asked := range c.ops {
+					resolveFallback(c, asked)
+				}
 				continue // top of the chain: nothing above to inherit from
 			}
 			if c.visited[parent] {
@@ -116,6 +139,9 @@ func (en *Enforcer) climb(
 				slog.Warn("resource hierarchy has a cycle; stopping the climb",
 					"origin_type", c.origin.Type, "origin_id", c.origin.ID,
 					"repeated_type", parent.Type, "repeated_id", parent.ID)
+				for asked := range c.ops {
+					resolveFallback(c, asked)
+				}
 				continue
 			}
 			translated := map[string]string{}
@@ -144,21 +170,29 @@ func (en *Enforcer) climb(
 				verdicts[key] = decisions
 			}
 			for asked, up := range translated {
-				effect := decisions[up]
-				if effect == EffectDeny {
-					// A deny encountered anywhere on the explicit inheritance
-					// path is terminal; a broader ancestor cannot restore it.
+				decision := decisions[up]
+				switch {
+				case decision.Decision == DecisionDeny:
+					if found[c.origin] == nil {
+						found[c.origin] = map[string]Evaluation{}
+					}
+					decision.Scope = ScopeEffective
+					decision.Basis = BasisInherited
+					found[c.origin][asked] = decision
 					delete(translated, asked)
-					continue
+				case decision.Decision == DecisionAllow && decision.Basis != BasisWildcard:
+					if found[c.origin] == nil {
+						found[c.origin] = map[string]Evaluation{}
+					}
+					decision.Scope = ScopeEffective
+					decision.Basis = BasisInherited
+					found[c.origin][asked] = decision
+					delete(translated, asked)
+				case decision.Decision == DecisionAllow && decision.Basis == BasisWildcard:
+					// The parent's wildcard allow is itself behind the parent's
+					// parent. Remember it only as a fallback while climbing on.
+					c.fallback[asked] = decision
 				}
-				if effect != EffectAllow {
-					continue
-				}
-				if found[c.origin] == nil {
-					found[c.origin] = map[string]bool{}
-				}
-				found[c.origin][asked] = true
-				delete(translated, asked)
 			}
 			if len(translated) == 0 {
 				continue // everything this resource still wanted was answered here
@@ -174,6 +208,64 @@ func (en *Enforcer) climb(
 			"depth", maxHierarchyDepth, "unfinished", len(active))
 	}
 	return found, nil
+}
+
+// evaluateWithIndex is the one local/hierarchical/effective implementation
+// shared by Check, AllowedOps and resource filtering. The input is batched so
+// hierarchy rows and parent decisions remain bounded for list-page calls.
+func (en *Enforcer) evaluateWithIndex(ctx context.Context, accessorID string, idx *grantIndex,
+	want map[ResourceRef][]string, scope EvaluationScope) (map[ResourceRef]map[string]Evaluation, error) {
+	local := make(map[ResourceRef]map[string]Evaluation, len(want))
+	for resource, ops := range want {
+		decisions, err := en.localDecisions(ctx, accessorID, idx, resource, ops)
+		if err != nil {
+			return nil, err
+		}
+		local[resource] = decisions
+	}
+	if scope == ScopeLocal {
+		return local, nil
+	}
+
+	missing := map[ResourceRef][]string{}
+	for resource, ops := range want {
+		for _, op := range ops {
+			d := local[resource][op]
+			if d.Decision == DecisionNone || (d.Decision == DecisionAllow && d.Basis == BasisWildcard) {
+				missing[resource] = append(missing[resource], op)
+			}
+		}
+	}
+	inherited, err := en.climb(func(node ResourceRef, ops []string) (map[string]Evaluation, error) {
+		return en.localDecisions(ctx, accessorID, idx, node, ops)
+	}, missing)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(map[ResourceRef]map[string]Evaluation, len(want))
+	for resource, ops := range want {
+		out[resource] = make(map[string]Evaluation, len(ops))
+		for _, op := range ops {
+			d := local[resource][op]
+			if d.Decision != DecisionNone && !(d.Decision == DecisionAllow && d.Basis == BasisWildcard) {
+				d.Scope = ScopeEffective
+				out[resource][op] = d
+				continue
+			}
+			if parentDecision, ok := inherited[resource][op]; ok {
+				out[resource][op] = parentDecision
+				continue
+			}
+			if d.Decision == DecisionAllow && d.Basis == BasisWildcard {
+				d.Scope = ScopeEffective
+				out[resource][op] = d
+				continue
+			}
+			out[resource][op] = defaultDeny()
+		}
+	}
+	return out, nil
 }
 
 // parentsOf loads the single-hop parent of every node the climbers currently
@@ -400,33 +492,6 @@ func distinctSorted(m map[string]string) []string {
 	return out
 }
 
-// enforceOn is the single-decision evaluator handed to climb: it asks casbin
-// about one ancestor node, exactly as Check asks about the resource itself.
-// inheritedOps reports which of the missing operations the accessor holds on an
-// ancestor of the resource. The single-resource entry point behind Check and
-// AllowedOps.
-func (en *Enforcer) inheritedOps(accessorID, resourceType, resourceID string, missing []string) (map[string]bool, error) {
-	idx, err := en.grantIndex(accessorID)
-	if err != nil {
-		return nil, err
-	}
-	return en.inheritedOpsWithIndex(idx, resourceType, resourceID, missing)
-}
-
-func (en *Enforcer) inheritedOpsWithIndex(idx *grantIndex, resourceType, resourceID string, missing []string) (map[string]bool, error) {
-	if len(missing) == 0 {
-		return nil, nil
-	}
-	r := ResourceRef{Type: resourceType, ID: resourceID}
-	found, err := en.climb(func(node ResourceRef, ops []string) (map[string]string, error) {
-		return idx.decide(node, ops), nil
-	}, map[ResourceRef][]string{r: missing})
-	if err != nil {
-		return nil, err
-	}
-	return found[r], nil
-}
-
 // Ownership flip directions. A preview reports both because a synchroniser
 // keys its "safe to push" decision on the total: counting only widening would
 // let a re-parenting that REMOVES someone's access report zero.
@@ -602,7 +667,8 @@ func (en *Enforcer) PreviewOwnership(resourceType, parentType string, links map[
 				if !have[child][op] || gained[op] {
 					continue
 				}
-				if directIdx.decide(ResourceRef{Type: resourceType, ID: child}, []string{op})[op] != EffectAllow {
+				direct := mergeLocalParts(directIdx.localParts(ResourceRef{Type: resourceType, ID: child}, []string{op}), []string{op})[op]
+				if direct.Decision != DecisionAllow || direct.Basis == BasisWildcard {
 					record(sub, child, op, FlipRevoke)
 				}
 			}

@@ -5,6 +5,7 @@
 package authz
 
 import (
+	"context"
 	"sort"
 	"strings"
 
@@ -64,7 +65,7 @@ func (tx *PolicyTransaction) CurrentProxySourceIDs(proxyID string) (map[string]b
 // enabled, non-managed identity before using it.
 func (tx *PolicyTransaction) FilterResourceOpsRaw(accessorID string, resources []ResourceRef,
 	candidates []string) ([]FilteredResource, error) {
-	return tx.enforcer.filterResourceOps(accessorID, resources, nil, candidates, false)
+	return tx.enforcer.filterResourceOps(context.Background(), accessorID, resources, nil, candidates, ScopeEffective, false)
 }
 
 func (en *Enforcer) validProxySourceIDs(sources []safemodel.ProxyGrantSource) (map[string]bool, error) {
@@ -140,7 +141,8 @@ func (en *Enforcer) validProxySourceIDs(sources []safemodel.ProxyGrantSource) (m
 		if len(resources) == 0 {
 			continue
 		}
-		allowed, err := en.filterResourceOps(delegator, resources, nil, sortedKeys(candidateSet), false)
+		allowed, err := en.filterResourceOps(context.Background(), delegator, resources, nil,
+			sortedKeys(candidateSet), ScopeEffective, false)
 		if err != nil {
 			return nil, err
 		}

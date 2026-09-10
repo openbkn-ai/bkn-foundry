@@ -5,8 +5,13 @@
 package authz
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/casbin/casbin/v2/util"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
+
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permobject"
 )
 
 // ResourceRef names one concrete resource instance ("type:id").
@@ -21,6 +26,7 @@ type FilteredResource struct {
 	Type       string
 	ID         string
 	Operations []string
+	Decisions  []OperationDecision
 }
 
 // FilterResourceOps answers, for a batch of resource instances at once: which
@@ -46,15 +52,28 @@ type FilteredResource struct {
 // (#357). Instead the accessor's grants are resolved once and projected onto
 // each resource; TestFilterResourceOpsMatchesCheck pins the two paths together.
 func (en *Enforcer) FilterResourceOps(accessorID string, resources []ResourceRef, visibility, candidates []string) ([]FilteredResource, error) {
-	return en.filterResourceOps(accessorID, resources, visibility, candidates, true)
+	return en.filterResourceOps(context.Background(), accessorID, resources, visibility, candidates, ScopeEffective, true)
+}
+
+// FilterResourceOpsScoped is the structured variant used by the HTTP API.
+// Effective keeps the historical filtering/projection response. Local returns
+// every requested resource and one decision for every requested operation, so
+// a caller can distinguish an explicit deny from absence before doing its own
+// trusted parent fallback.
+func (en *Enforcer) FilterResourceOpsScoped(ctx context.Context, accessorID string, resources []ResourceRef,
+	visibility, candidates []string, scope EvaluationScope) ([]FilteredResource, error) {
+	return en.filterResourceOps(ctx, accessorID, resources, visibility, candidates, scope, true)
 }
 
 // filterResourceOps performs the batched Casbin and hierarchy projection. The
 // provenance flag is disabled only while validating the human delegators that
 // back a managed proxy source; those checks must never recurse through proxy
 // provenance.
-func (en *Enforcer) filterResourceOps(accessorID string, resources []ResourceRef, visibility, candidates []string,
-	validateProvenance bool) ([]FilteredResource, error) {
+func (en *Enforcer) filterResourceOps(ctx context.Context, accessorID string, resources []ResourceRef,
+	visibility, candidates []string, scope EvaluationScope, validateProvenance bool) ([]FilteredResource, error) {
+	if scope != ScopeEffective && scope != ScopeLocal {
+		return nil, fmt.Errorf("unsupported evaluation scope %q", scope)
+	}
 	idx, err := en.grantIndex(accessorID)
 	if err != nil {
 		return nil, err
@@ -71,49 +90,15 @@ func (en *Enforcer) filterResourceOps(accessorID string, resources []ResourceRef
 		union = append(union, op)
 	}
 
-	decided := map[ResourceRef]map[string]bool{}
-	terminal := map[ResourceRef]map[string]bool{}
+	want := make(map[ResourceRef][]string, len(resources))
 	for _, r := range resources {
-		if _, done := decided[r]; !done {
-			decided[r] = map[string]bool{}
-			terminal[r] = map[string]bool{}
-			for op, effect := range idx.decide(r, union) {
-				if effect == EffectAllow {
-					decided[r][op] = true
-				} else if effect == EffectDeny {
-					terminal[r][op] = true
-				}
-			}
+		if _, done := want[r]; !done {
+			want[r] = union
 		}
 	}
-
-	// Everything not granted on the resource itself gets one batched walk up the
-	// hierarchy — the same walk Check uses, so a list page and a detail page
-	// cannot disagree about an inherited grant. Skipping this would not merely
-	// lose operations: a resource visible only through its catalog would vanish
-	// from the page entirely, which reads as data loss rather than as a denial.
-	stillMissing := map[ResourceRef][]string{}
-	for r, allowed := range decided {
-		var missing []string
-		for _, op := range union {
-			if !allowed[op] && !terminal[r][op] {
-				missing = append(missing, op)
-			}
-		}
-		if len(missing) > 0 {
-			stillMissing[r] = missing
-		}
-	}
-	inherited, err := en.climb(func(node ResourceRef, ops []string) (map[string]string, error) {
-		return idx.decide(node, ops), nil
-	}, stillMissing)
+	decided, err := en.evaluateWithIndex(ctx, accessorID, idx, want, scope)
 	if err != nil {
 		return nil, err
-	}
-	for r, ops := range inherited {
-		for op := range ops {
-			decided[r][op] = true
-		}
 	}
 
 	// Managed proxies have a second, provenance-aware condition that is not
@@ -131,16 +116,21 @@ func (en *Enforcer) filterResourceOps(accessorID string, resources []ResourceRef
 			if err != nil {
 				return nil, err
 			}
-			for resource, allowed := range decided {
-				for operation, rawAllowed := range allowed {
-					if !rawAllowed {
+			for resource, decisions := range decided {
+				for operation, decision := range decisions {
+					if !decision.Allowed() {
 						continue
 					}
-					allowed[operation] = current[proxyPermission{
+					if current[proxyPermission{
 						ResourceType: resource.Type,
 						ResourceID:   resource.ID,
 						Operation:    operation,
-					}]
+					}] {
+						continue
+					}
+					decisions[operation] = Evaluation{
+						Scope: scope, Decision: DecisionDeny, Basis: BasisDirect,
+					}
 				}
 			}
 		}
@@ -148,10 +138,26 @@ func (en *Enforcer) filterResourceOps(accessorID string, resources []ResourceRef
 
 	out := make([]FilteredResource, 0, len(resources))
 	for _, r := range resources {
-		allowed := decided[r]
+		resourceDecisions := decided[r]
+		if scope == ScopeLocal {
+			item := FilteredResource{Type: r.Type, ID: r.ID}
+			for _, op := range candidates {
+				if resourceDecisions[op].Allowed() {
+					item.Operations = append(item.Operations, op)
+				}
+			}
+			for _, op := range union {
+				d := resourceDecisions[op]
+				item.Decisions = append(item.Decisions, OperationDecision{
+					Operation: op, Decision: d.Decision, Basis: d.Basis,
+				})
+			}
+			out = append(out, item)
+			continue
+		}
 		visible := true
 		for _, op := range visibility {
-			if !allowed[op] {
+			if !resourceDecisions[op].Allowed() {
 				visible = false
 				break
 			}
@@ -161,7 +167,7 @@ func (en *Enforcer) filterResourceOps(accessorID string, resources []ResourceRef
 		}
 		ops := make([]string, 0, len(candidates))
 		for _, op := range candidates {
-			if allowed[op] {
+			if resourceDecisions[op].Allowed() {
 				ops = append(ops, op)
 			}
 		}
@@ -186,6 +192,7 @@ type grantRow struct {
 type grantIndex struct {
 	exact      map[string][]grantRow // object key -> rules
 	wildcard   []grantRow
+	subjects   []string
 	superAdmin bool
 }
 
@@ -213,10 +220,23 @@ func (en *Enforcer) grantIndex(accessorID string) (*grantIndex, error) {
 	if err != nil {
 		return nil, err
 	}
+	roles, err := en.e.GetImplicitRolesForUser(accessorID)
+	if err != nil {
+		return nil, err
+	}
 	edition := entitlement.Current()
 	rows = activePolicyRowsForEdition(rows, edition)
 	public = activePolicyRowsForEdition(public, edition)
-	return newGrantIndex(append(rows, public...), superAdmin), nil
+	idx := newGrantIndex(append(rows, public...), superAdmin)
+	seenSubject := map[string]bool{}
+	for _, subject := range append(append([]string{accessorID}, roles...), PublicAccessorID) {
+		if subject == "" || seenSubject[subject] {
+			continue
+		}
+		seenSubject[subject] = true
+		idx.subjects = append(idx.subjects, subject)
+	}
+	return idx, nil
 }
 
 func newGrantIndex(rows [][]string, superAdmin bool) *grantIndex {
@@ -239,19 +259,27 @@ func newGrantIndex(rows [][]string, superAdmin bool) *grantIndex {
 	return idx
 }
 
-// allowed reports, for one resource, which of ops the grants cover. It mirrors
-// the matcher's remaining two clauses: keyMatch(r.obj, p.obj) — via the same
-// util.KeyMatch the model uses — and (p.act == "*" || r.act == p.act).
-func (idx *grantIndex) decide(r ResourceRef, ops []string) map[string]string {
-	out := make(map[string]string, len(ops))
+type localParts struct {
+	direct   map[string]Evaluation
+	wildcard map[string]Evaluation
+}
+
+// localParts keeps exact-instance and wildcard rules separate. A wildcard deny
+// is terminal, but a wildcard allow is only a fallback after parent traversal;
+// collapsing them here was the old source of parent-deny bypasses.
+func (idx *grantIndex) localParts(r ResourceRef, ops []string) localParts {
+	parts := localParts{
+		direct:   make(map[string]Evaluation, len(ops)),
+		wildcard: make(map[string]Evaluation, len(ops)),
+	}
 	if idx.superAdmin {
 		for _, op := range ops {
-			out[op] = EffectAllow
+			parts.direct[op] = Evaluation{Scope: ScopeLocal, Decision: DecisionAllow, Basis: BasisDirect}
 		}
-		return out
+		return parts
 	}
 	object := obj(r.Type, r.ID)
-	apply := func(rule grantRow) {
+	apply := func(target map[string]Evaluation, basis DecisionBasis, rule grantRow) {
 		if rule.source == PolicySourceCommunityBundle {
 			// A bundle is valid only as one exact, allow-only logical policy.
 			// Keeping the check here makes malformed wildcard/concrete-op bundle
@@ -260,32 +288,113 @@ func (idx *grantIndex) decide(r ResourceRef, ops []string) map[string]string {
 				return
 			}
 			for _, op := range ops {
-				if communityBundleAllows(r.Type, op) && out[op] == "" {
-					out[op] = EffectAllow
-				}
-			}
-			return
-		}
-		if rule.act == ActAll {
-			for _, op := range ops {
-				if rule.effect == EffectDeny || out[op] == "" {
-					out[op] = rule.effect
+				if communityBundleAllows(r.Type, op) && target[op].Decision == "" {
+					target[op] = Evaluation{Scope: ScopeLocal, Decision: DecisionAllow, Basis: BasisBundle}
 				}
 			}
 			return
 		}
 		for _, op := range ops {
-			if op == rule.act && (rule.effect == EffectDeny || out[op] == "") {
-				out[op] = rule.effect
+			if rule.act != ActAll && op != rule.act {
+				continue
+			}
+			current := target[op]
+			if rule.effect == EffectDeny {
+				target[op] = Evaluation{Scope: ScopeLocal, Decision: DecisionDeny, Basis: basis}
+				continue
+			}
+			if current.Decision == "" || (current.Basis == BasisBundle && basis == BasisDirect) {
+				target[op] = Evaluation{Scope: ScopeLocal, Decision: DecisionAllow, Basis: basis}
 			}
 		}
 	}
 	for _, rule := range idx.exact[object] {
-		apply(rule)
+		apply(parts.direct, BasisDirect, rule)
 	}
 	for _, row := range idx.wildcard {
 		if util.KeyMatch(object, row.object) {
-			apply(row)
+			apply(parts.wildcard, BasisWildcard, row)
+		}
+	}
+	return parts
+}
+
+func mergeLocalParts(parts localParts, ops []string) map[string]Evaluation {
+	out := make(map[string]Evaluation, len(ops))
+	for _, op := range ops {
+		direct, wildcard := parts.direct[op], parts.wildcard[op]
+		switch {
+		case direct.Decision == DecisionDeny:
+			out[op] = direct
+		case wildcard.Decision == DecisionDeny:
+			out[op] = wildcard
+		case direct.Decision == DecisionAllow:
+			out[op] = direct
+		case wildcard.Decision == DecisionAllow:
+			out[op] = wildcard
+		default:
+			out[op] = noneEvaluation(ScopeLocal)
+		}
+	}
+	return out
+}
+
+// localDecisions merges all same-resource Core and Enterprise sources before
+// hierarchy evaluation. The Enterprise provider returns exact and wildcard
+// opinions separately so Core retains the documented wildcard fallback order.
+func (en *Enforcer) localDecisions(ctx context.Context, accessorID string, idx *grantIndex,
+	r ResourceRef, ops []string) (map[string]Evaluation, error) {
+	parts := idx.localParts(r, ops)
+	if idx.superAdmin || !permobject.Available() {
+		return mergeLocalParts(parts, ops), nil
+	}
+	coreDecisions := mergeLocalParts(parts, ops)
+	for _, op := range ops {
+		core := coreDecisions[op]
+		opinion, err := permobject.Decide(ctx, permobject.Request{
+			AccessorID: accessorID, AccessorIDs: append([]string(nil), idx.subjects...),
+			ResourceType: r.Type, ResourceID: r.ID, Op: op,
+			CoreDecision: permobject.CoreDecision(core.Decision), CoreBasis: permobject.CoreBasis(core.Basis),
+		})
+		if err != nil {
+			return nil, err
+		}
+		mergeOpinion := func(target map[string]Evaluation, decision permobject.Decision, basis DecisionBasis) error {
+			switch decision {
+			case permobject.Abstain:
+				return nil
+			case permobject.Deny:
+				target[op] = Evaluation{Scope: ScopeLocal, Decision: DecisionDeny, Basis: basis}
+			case permobject.Allow:
+				if target[op].Decision != DecisionDeny {
+					target[op] = Evaluation{Scope: ScopeLocal, Decision: DecisionAllow, Basis: basis}
+				}
+			default:
+				return fmt.Errorf("permobject returned invalid decision %d", decision)
+			}
+			return nil
+		}
+		if err := mergeOpinion(parts.direct, opinion.Direct, BasisDirect); err != nil {
+			return nil, err
+		}
+		if err := mergeOpinion(parts.wildcard, opinion.Wildcard, BasisWildcard); err != nil {
+			return nil, err
+		}
+	}
+	return mergeLocalParts(parts, ops), nil
+}
+
+// decide is retained for migration/projection helpers that only need the local
+// Core effect. It delegates to the same structured local implementation.
+func (idx *grantIndex) decide(r ResourceRef, ops []string) map[string]string {
+	structured := mergeLocalParts(idx.localParts(r, ops), ops)
+	out := make(map[string]string, len(ops))
+	for op, d := range structured {
+		switch d.Decision {
+		case DecisionAllow:
+			out[op] = EffectAllow
+		case DecisionDeny:
+			out[op] = EffectDeny
 		}
 	}
 	return out

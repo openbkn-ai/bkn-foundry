@@ -5,7 +5,7 @@
 openapi: 3.0.3
 info:
   title: bkn-safe internal authorization API
-  version: 0.3.1
+  version: 0.4.0
   description: |
     Internal service-to-service authorization contract used by BKN,
     ontology-query, context-loader, and execution-factory.
@@ -33,6 +33,12 @@ paths:
     post:
       operationId: checkAuthorization
       summary: Check one resource operation
+      description: |
+        `evaluation_scope` defaults to `effective`, which is the final decision
+        used by ordinary business callers. `local` inspects only rules on the
+        requested resource and is reserved for trusted callers that own a
+        parent relation bkn-safe does not know. A local `none` is never an
+        authorization grant.
       requestBody:
         required: true
         content:
@@ -49,7 +55,12 @@ paths:
                   operation: query_data
       responses:
         '200':
-          description: Decision. Unknown and disabled accounts return `allowed=false`.
+          description: |
+            Structured decision. `allowed` remains backward compatible and is
+            true exactly when `decision=allow`. Unknown and disabled accounts
+            preserve their existing `{allowed:false}` response and omit the
+            structured fields, so account state is not misreported as a local
+            policy miss or an effective default deny.
           content:
             application/json:
               schema:
@@ -93,6 +104,12 @@ paths:
         Its `operations` value is the allowed subset of candidate operations.
         An empty visibility list returns every requested resource. Omitting
         candidate operations uses each resource type's operation catalog.
+
+        `evaluation_scope=local` returns every requested resource regardless
+        of visibility and adds one `decisions` entry for every visibility or
+        candidate operation, including explicit `deny` and `none`. Trusted
+        callers use those entries to perform a parent fallback they own.
+        Omitting the scope keeps the historical effective response shape.
 
         The response preserves first-seen candidate order and de-duplicates
         resources and operations. An unknown or disabled account returns an
@@ -426,11 +443,19 @@ components:
         resource:
           $ref: '#/components/schemas/ResourceRef'
         operation: {type: string}
+        evaluation_scope:
+          $ref: '#/components/schemas/EvaluationScope'
     CheckResponse:
       type: object
       required: [allowed]
       properties:
         allowed: {type: boolean}
+        evaluation_scope:
+          $ref: '#/components/schemas/EvaluationScope'
+        decision:
+          $ref: '#/components/schemas/AuthorizationDecision'
+        basis:
+          $ref: '#/components/schemas/DecisionBasis'
     OperationsRequest:
       type: object
       required: [accessor_id, resource]
@@ -464,6 +489,8 @@ components:
         candidate_operations:
           type: array
           items: {type: string}
+        evaluation_scope:
+          $ref: '#/components/schemas/EvaluationScope'
     FilteredResource:
       type: object
       required: [resource_type, resource_id, operations]
@@ -473,6 +500,11 @@ components:
         operations:
           type: array
           items: {type: string}
+        decisions:
+          type: array
+          description: Present only for `evaluation_scope=local`.
+          items:
+            $ref: '#/components/schemas/OperationDecision'
     ResourceFilterResponse:
       type: object
       required: [resources]
@@ -481,6 +513,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FilteredResource'
+    EvaluationScope:
+      type: string
+      enum: [effective, local]
+      default: effective
+    AuthorizationDecision:
+      type: string
+      enum: [allow, deny, none]
+      description: "`none` is valid only for local evaluation."
+    DecisionBasis:
+      type: string
+      enum: [direct, inherited, bundle, wildcard, default, none]
+      description: |
+        `none` accompanies only a local `none`; `default` accompanies only an
+        effective deny produced when no rule or trusted parent decides.
+    OperationDecision:
+      type: object
+      required: [operation, decision, basis]
+      properties:
+        operation: {type: string}
+        decision:
+          $ref: '#/components/schemas/AuthorizationDecision'
+        basis:
+          $ref: '#/components/schemas/DecisionBasis'
     PropertyAccessLevel:
       type: string
       enum: [none, schema, masked, full]

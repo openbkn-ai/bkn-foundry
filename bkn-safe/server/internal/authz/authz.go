@@ -5,10 +5,12 @@
 // Package authz is bkn-safe's authorization engine: a Casbin RBAC model with
 // resource instances, backed by a GORM adapter (policies live in the shared DB).
 //
-// This is a clean redesign, NOT the ISF authorization contract. Kowell only
-// uses the RBAC subset plus an explicit deny effect. Deny overrides ordinary
-// direct, role-derived, public and inherited allows. The seeded super-admin
-// role is handled as a recovery-path bypass before policy evaluation.
+// This is a clean redesign, NOT the ISF authorization contract. Casbin stores
+// policies and resolves transitive roles; the shared grant index performs the
+// actual local/hierarchical/effective decision so logical bundles and wildcard
+// fallback cannot drift across endpoints. A deny wins within one resource,
+// while a more-specific child allow intentionally precedes a parent deny. The
+// seeded super-admin role remains a recovery-path bypass.
 //
 // Object format is "type:id" (e.g. "agent:probe", "agent:*"). The matcher uses
 // keyMatch — NOT keyMatch2: keyMatch2 treats ":" as a named wildcard, which
@@ -145,18 +147,8 @@ func obj(resourceType, id string) string { return resourceType + ":" + id }
 // mapping. With no ownership row recorded the second step finds nothing, which
 // is exactly the pre-#800 decision (#800).
 func (en *Enforcer) Check(accessorID, resourceType, resourceID, op string) (bool, error) {
-	ok, err := en.checkPolicy(accessorID, resourceType, resourceID, op)
-	if err != nil || !ok || en.db == nil {
-		return ok, err
-	}
-	managed, err := en.isManagedProxy(accessorID)
-	if err != nil {
-		return false, err
-	}
-	if !managed {
-		return true, nil
-	}
-	return en.hasCurrentProxySource(accessorID, resourceType, resourceID, op)
+	decision, err := en.Evaluate(context.Background(), accessorID, resourceType, resourceID, op, ScopeEffective)
+	return decision.Allowed(), err
 }
 
 func (en *Enforcer) isManagedProxy(accessorID string) (bool, error) {
@@ -176,21 +168,13 @@ func (en *Enforcer) checkPolicy(accessorID, resourceType, resourceID, op string)
 	if err != nil {
 		return false, err
 	}
-	if idx.superAdmin {
-		return true, nil
-	}
-	direct := idx.decide(ResourceRef{Type: resourceType, ID: resourceID}, []string{op})
-	if direct[op] == EffectDeny {
-		return false, nil
-	}
-	if direct[op] == EffectAllow {
-		return true, nil
-	}
-	inherited, err := en.inheritedOpsWithIndex(idx, resourceType, resourceID, []string{op})
+	resource := ResourceRef{Type: resourceType, ID: resourceID}
+	all, err := en.evaluateWithIndex(context.Background(), accessorID, idx,
+		map[ResourceRef][]string{resource: {op}}, ScopeEffective)
 	if err != nil {
 		return false, err
 	}
-	return inherited[op], nil
+	return all[resource][op].Allowed(), nil
 }
 
 // hasCurrentProxySource makes the source ledger part of every managed-proxy
@@ -247,29 +231,15 @@ func (en *Enforcer) AllowedOps(accessorID, resourceType, resourceID string, cand
 	if err != nil {
 		return nil, err
 	}
-	if idx.superAdmin {
-		return append([]string(nil), candidates...), nil
-	}
-	out := make([]string, 0, len(candidates))
-	missing := make([]string, 0, len(candidates))
-	direct := idx.decide(ResourceRef{Type: resourceType, ID: resourceID}, candidates)
-	for _, op := range candidates {
-		if direct[op] == EffectAllow {
-			out = append(out, op)
-			continue
-		}
-		if direct[op] != EffectDeny {
-			missing = append(missing, op)
-		}
-	}
-	// One climb for everything that missed, rather than one per operation: the
-	// ancestor chain and its operation mapping are the same for all of them.
-	inherited, err := en.inheritedOpsWithIndex(idx, resourceType, resourceID, missing)
+	resource := ResourceRef{Type: resourceType, ID: resourceID}
+	all, err := en.evaluateWithIndex(context.Background(), accessorID, idx,
+		map[ResourceRef][]string{resource: candidates}, ScopeEffective)
 	if err != nil {
 		return nil, err
 	}
-	for _, op := range missing {
-		if inherited[op] {
+	out := make([]string, 0, len(candidates))
+	for _, op := range candidates {
+		if all[resource][op].Allowed() {
 			out = append(out, op)
 		}
 	}
@@ -325,7 +295,8 @@ func (en *Enforcer) GrantObjectPermission(accessorID, resourceType, resourceID, 
 }
 
 // DenyObjectPermission adds an explicit per-object exception. Deny overrides
-// every ordinary allow source; only membership in SuperAdminRoleID bypasses it.
+// every allow on the same resource; only membership in SuperAdminRoleID
+// bypasses it. Parent and child precedence is resolved separately.
 func (en *Enforcer) DenyObjectPermission(accessorID, resourceType, resourceID, op string) error {
 	return en.addDefaultGrant(context.Background(), accessorID, obj(resourceType, resourceID), op, EffectDeny,
 		PolicySourceLegacy, AuthoritySourceMigration)
