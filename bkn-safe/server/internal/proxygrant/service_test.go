@@ -163,6 +163,9 @@ func TestGrantAndSyncNormalizeDirectOperationRequirements(t *testing.T) {
 	if len(active) != 2 || active[0].Operation != "query_data" || active[1].Operation != "view_detail" {
 		t.Fatalf("normalized active sources = %+v, want query_data and view_detail", active)
 	}
+	if active[0].RequirementDerived || !active[1].RequirementDerived {
+		t.Fatalf("normalized source origins = %+v, want explicit query_data and derived view_detail", active)
+	}
 	for _, operation := range []string{"query_data", "view_detail"} {
 		if allowed, err := f.enforcer.Check(f.proxyID, "resource", "r-1", operation); err != nil || !allowed {
 			t.Fatalf("proxy %s = %v, %v; want allowed", operation, allowed, err)
@@ -176,8 +179,8 @@ func TestGrantAndSyncNormalizeDirectOperationRequirements(t *testing.T) {
 		t.Fatalf("normalized Sync() = (%+v, %v)", replay, err)
 	}
 	if _, changed, err := f.service.Revoke(t.Context(), active[1].ID,
-		proxygrant.RevokeRequest{GrantorID: f.grantor}); err != nil || changed {
-		t.Fatalf("direct prerequisite Revoke() = (%v, %v), want retained", changed, err)
+		proxygrant.RevokeRequest{GrantorID: f.grantor}); !errors.Is(err, proxygrant.ErrSourceRequired) || changed {
+		t.Fatalf("direct prerequisite Revoke() = (%v, %v), want required-source conflict", changed, err)
 	}
 	if allowed, err := f.enforcer.Check(f.proxyID, "resource", "r-1", "query_data"); err != nil || !allowed {
 		t.Fatalf("proxy query_data after retained prerequisite revoke = %v, %v; want allowed", allowed, err)
@@ -215,9 +218,75 @@ func TestGrantAndSyncNormalizeDirectOperationRequirements(t *testing.T) {
 			t.Fatalf("proxy %s after normalized revoke = %v, %v; want denied", operation, allowed, err)
 		}
 	}
+	viewRequest := request
+	viewRequest.Source.Operation = "view_detail"
+	reactivated, changed, err := f.service.Grant(t.Context(), viewRequest)
+	if err != nil || !changed || reactivated.RequirementDerived {
+		t.Fatalf("explicit prerequisite reactivation = (%+v, %v, %v), want explicit source",
+			reactivated, changed, err)
+	}
 	if _, changed, err := f.service.Revoke(t.Context(), source.ID,
 		proxygrant.RevokeRequest{GrantorID: f.grantor}); err != nil || changed {
 		t.Fatalf("replayed normalized Revoke() = (%v, %v), want unchanged", changed, err)
+	}
+	if err := f.db.First(&reactivated, "id = ?", reactivated.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if reactivated.LifecycleStatus != proxygrant.StatusActive || reactivated.RequirementDerived {
+		t.Fatalf("replayed target revoke changed reactivated explicit prerequisite: %+v", reactivated)
+	}
+}
+
+func TestRevokePreservesExplicitRequirementAndReplayIsStrictNoOp(t *testing.T) {
+	f := newFixture(t)
+	if err := f.db.Model(&model.Operation{}).
+		Where("resource_type_id = ? AND id = ?", "resource", "query_data").
+		Update("implied_operation_ids", "view_detail").Error; err != nil {
+		t.Fatal(err)
+	}
+	f.grantOperations(t, f.grantor, "r-1", "query_data", "view_detail")
+
+	queryRequest := f.request("source-explicit-required", "ot-explicit-required", "r-1")
+	viewRequest := queryRequest
+	viewRequest.Source.Operation = "view_detail"
+	viewSource, changed, err := f.service.Grant(t.Context(), viewRequest)
+	if err != nil || !changed || viewSource.RequirementDerived {
+		t.Fatalf("explicit prerequisite Grant() = (%+v, %v, %v)", viewSource, changed, err)
+	}
+	querySource, changed, err := f.service.Grant(t.Context(), queryRequest)
+	if err != nil || !changed || querySource.RequirementDerived {
+		t.Fatalf("target Grant() = (%+v, %v, %v)", querySource, changed, err)
+	}
+	if err := f.db.First(&viewSource, "id = ?", viewSource.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if viewSource.RequirementDerived {
+		t.Fatalf("explicit prerequisite was demoted by target grant: %+v", viewSource)
+	}
+
+	if _, changed, err := f.service.Revoke(t.Context(), querySource.ID,
+		proxygrant.RevokeRequest{GrantorID: f.grantor}); err != nil || !changed {
+		t.Fatalf("target Revoke() = (%v, %v)", changed, err)
+	}
+	if err := f.db.First(&viewSource, "id = ?", viewSource.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if viewSource.LifecycleStatus != proxygrant.StatusActive || viewSource.RequirementDerived {
+		t.Fatalf("explicit prerequisite after target revoke = %+v, want active explicit source", viewSource)
+	}
+	if allowed, err := f.enforcer.Check(f.proxyID, "resource", "r-1", "view_detail"); err != nil || !allowed {
+		t.Fatalf("explicit prerequisite permission after target revoke = %v, %v; want allowed", allowed, err)
+	}
+
+	if _, changed, err := f.service.Revoke(t.Context(), querySource.ID,
+		proxygrant.RevokeRequest{GrantorID: f.grantor}); err != nil || changed {
+		t.Fatalf("replayed target Revoke() = (%v, %v), want strict no-op", changed, err)
+	}
+	if err := f.db.First(&viewSource, "id = ?", viewSource.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if viewSource.LifecycleStatus != proxygrant.StatusActive {
+		t.Fatalf("replayed target revoke changed explicit prerequisite: %+v", viewSource)
 	}
 }
 

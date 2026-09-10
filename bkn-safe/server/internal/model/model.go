@@ -102,6 +102,12 @@ type ProxyGrantSource struct {
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
 	RevokedAt       *time.Time `json:"revoked_at,omitempty" gorm:"index"`
+
+	// RequirementDerived distinguishes a prerequisite synthesized by operation
+	// normalization from an operation explicitly requested by the caller. The
+	// distinction is durable so revoking an operation never cascades into an
+	// independently requested permission that happens to share its source tuple.
+	RequirementDerived bool `json:"requirement_derived" gorm:"not null;default:false"`
 }
 
 // TableName keeps the schema name frozen to the singular name used by the
