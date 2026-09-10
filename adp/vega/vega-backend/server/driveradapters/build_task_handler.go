@@ -67,7 +67,7 @@ func (r *restHandler) createBuildTask(c *gin.Context, visitor hydra.Visitor) {
 
 	taskID, err := r.bts.Create(ctx, &req)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_BuildTask_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -110,7 +110,7 @@ func (r *restHandler) getBuildTask(c *gin.Context, visitor hydra.Visitor) {
 	taskID := c.Param("id")
 	buildTask, err := r.bts.GetByID(ctx, taskID)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_BuildTask_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -195,7 +195,7 @@ func (r *restHandler) listBuildTasks(c *gin.Context, visitor hydra.Visitor) {
 
 	params, err := parseBuildTaskListParams(ctx, c)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_BuildTask_InternalError_GetFailed)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), nil)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -205,7 +205,7 @@ func (r *restHandler) listBuildTasks(c *gin.Context, visitor hydra.Visitor) {
 
 	tasks, total, err := r.bts.List(ctx, params)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_BuildTask_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -258,7 +258,7 @@ func (r *restHandler) deleteBuildTasks(c *gin.Context, visitor hydra.Visitor) {
 	ignoreMissing := strings.EqualFold(c.Query("ignore_missing"), "true")
 
 	if err := r.bts.DeleteByIDs(ctx, ids, ignoreMissing); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_BuildTask_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -310,7 +310,7 @@ func (r *restHandler) startBuildTask(c *gin.Context, visitor hydra.Visitor) {
 	}
 
 	if err := r.bts.Start(ctx, taskID, req.Reset); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_BuildTask_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -351,7 +351,7 @@ func (r *restHandler) stopBuildTask(c *gin.Context, visitor hydra.Visitor) {
 
 	taskID := c.Param("id")
 	if err := r.bts.Stop(ctx, taskID); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_BuildTask_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

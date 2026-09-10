@@ -1359,7 +1359,8 @@ func assertCatalogDisabledError(t *testing.T, err error) {
 func requireHTTPError(t *testing.T, err error, wantErrorCode string) *rest.HTTPError {
 	t.Helper()
 	require.Error(t, err)
-	httpErr, ok := err.(*rest.HTTPError)
+	var httpErr *rest.HTTPError
+	ok := errors.As(err, &httpErr)
 	require.Truef(t, ok, "expected HTTPError, got %T", err)
 	assert.Equal(t, wantErrorCode, httpErr.BaseError.ErrorCode)
 	return httpErr

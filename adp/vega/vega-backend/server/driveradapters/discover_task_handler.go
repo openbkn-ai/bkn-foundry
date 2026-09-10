@@ -98,7 +98,7 @@ func (r *restHandler) listDiscoverTasks(c *gin.Context, visitor hydra.Visitor) {
 
 	params, err := parseDiscoverTaskListParams(ctx, c)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), nil)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -205,7 +205,7 @@ func (r *restHandler) deleteDiscoverTasks(c *gin.Context, visitor hydra.Visitor)
 	ignoreMissing := strings.EqualFold(c.Query("ignore_missing"), "true")
 
 	if err := r.dts.DeleteByIDs(ctx, ids, ignoreMissing); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

@@ -324,7 +324,7 @@ func (rqs *rawQueryService) resourceSourceIdentifiers(ctx context.Context, resou
 	for _, resourceID := range resourceIDs {
 		resource, err := rqs.rs.GetByID(ctx, resourceID)
 		if err != nil {
-			return nil, err.(*rest.HTTPError)
+			return nil, err
 		}
 		if resource == nil || strings.TrimSpace(resource.SourceIdentifier) == "" {
 			return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
@@ -475,7 +475,7 @@ func (rqs *rawQueryService) prepareOpenSearchCursorQuery(ctx context.Context, re
 
 	resource, err := rqs.rs.GetByID(ctx, resourceID)
 	if err != nil {
-		return nil, "", nil, "", err.(*rest.HTTPError)
+		return nil, "", nil, "", err
 	}
 	if resource == nil {
 		return nil, "", nil, "", rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
@@ -487,7 +487,7 @@ func (rqs *rawQueryService) prepareOpenSearchCursorQuery(ctx context.Context, re
 	}
 	catalog, err := rqs.cs.GetByID(ctx, resource.CatalogID, true)
 	if err != nil {
-		return nil, "", nil, "", err.(*rest.HTTPError)
+		return nil, "", nil, "", err
 	}
 	if catalog == nil {
 		return nil, "", nil, "", rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
@@ -622,7 +622,7 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 
 	resource, err := rqs.rs.GetByID(queryCtx, resourceID)
 	if err != nil {
-		return nil, err.(*rest.HTTPError)
+		return nil, err
 	}
 	if resource == nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
@@ -635,7 +635,7 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 
 	catalog, err := rqs.cs.GetByID(queryCtx, resource.CatalogID, true)
 	if err != nil {
-		return nil, err.(*rest.HTTPError)
+		return nil, err
 	}
 	if catalog == nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
@@ -776,7 +776,7 @@ func (rqs *rawQueryService) checkSameDataSource(ctx context.Context, resourceIDs
 	// Get all resources
 	resources, err := rqs.rs.GetByIDs(ctx, resourceIDs)
 	if err != nil {
-		return nil, nil, err.(*rest.HTTPError)
+		return nil, nil, err
 	}
 	if len(resources) != len(resourceIDs) {
 		resourceMap := make(map[string]bool)
@@ -816,7 +816,7 @@ func (rqs *rawQueryService) checkSameDataSource(ctx context.Context, resourceIDs
 
 	catalog, err := rqs.cs.GetByID(ctx, catalogID, true)
 	if err != nil {
-		return nil, nil, err.(*rest.HTTPError)
+		return nil, nil, err
 	}
 	if catalog == nil {
 		return nil, nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
@@ -848,7 +848,7 @@ func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context
 		// Load resource metadata.
 		resource, err := rqs.rs.GetByID(ctx, resourceID)
 		if err != nil {
-			return "", err.(*rest.HTTPError)
+			return "", err
 		}
 		if resource == nil {
 			return "", rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).

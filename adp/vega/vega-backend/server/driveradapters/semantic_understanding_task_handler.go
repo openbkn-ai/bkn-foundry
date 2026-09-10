@@ -90,7 +90,7 @@ func (r *restHandler) createSemanticUnderstandingTask(c *gin.Context, visitor hy
 		return
 	}
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_SemanticUnderstandingTask_InternalError_DeleteFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -128,7 +128,7 @@ func (r *restHandler) listSemanticUnderstandingTasks(c *gin.Context, visitor hyd
 
 	params, err := parseSemanticUnderstandingTaskListParams(ctx, c)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_SemanticUnderstandingTask_InternalError_DeleteFailed)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), nil)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -138,7 +138,7 @@ func (r *restHandler) listSemanticUnderstandingTasks(c *gin.Context, visitor hyd
 
 	tasks, total, err := r.suts.List(ctx, params)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_SemanticUnderstandingTask_InternalError_DeleteFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -179,7 +179,7 @@ func (r *restHandler) getSemanticUnderstandingTask(c *gin.Context, visitor hydra
 
 	task, err := r.suts.GetByID(ctx, c.Param("id"))
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_SemanticUnderstandingTask_InternalError_DeleteFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -233,7 +233,7 @@ func (r *restHandler) deleteSemanticUnderstandingTasks(c *gin.Context, visitor h
 	ignoreMissing := strings.EqualFold(c.Query("ignore_missing"), "true")
 
 	if err := r.suts.DeleteByIDs(ctx, ids, ignoreMissing); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_SemanticUnderstandingTask_InternalError_DeleteFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

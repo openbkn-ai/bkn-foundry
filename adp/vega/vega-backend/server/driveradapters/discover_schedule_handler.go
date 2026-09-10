@@ -62,7 +62,7 @@ func (r *restHandler) createDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 	}
 
 	if err := ValidateDiscoverScheduleRequest(ctx, &req); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -70,7 +70,7 @@ func (r *restHandler) createDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 
 	catalog, err := r.cs.GetByID(ctx, req.CatalogID, false)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -138,7 +138,7 @@ func (r *restHandler) listDiscoverSchedules(c *gin.Context, visitor hydra.Visito
 	pageParam, err := validatePaginationQueryParams(ctx,
 		offset, limit, sort, direction, interfaces.DISCOVER_SCHEDULE_SORT)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), nil)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -271,13 +271,13 @@ func (r *restHandler) updateDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 	}
 
 	if err := ValidateDiscoverScheduleRequest(ctx, &req); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if err := validateExpectedUpdateTime(ctx, req.ExpectedUpdateTime); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

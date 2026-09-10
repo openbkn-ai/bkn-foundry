@@ -43,16 +43,16 @@ func NewRateLimitError(err error, message string) *RateLimitError {
 		RetryAfter: 5.0, // Default 5 seconds
 	}
 
-	switch err {
-	case ErrGlobalLimitExceeded:
+	switch {
+	case errors.Is(err, ErrGlobalLimitExceeded):
 		rateErr.HTTPStatus = http.StatusTooManyRequests
 		rateErr.LimitType = "global"
 		rateErr.RetryAfter = 5.0
-	case ErrCatalogLimitExceeded:
+	case errors.Is(err, ErrCatalogLimitExceeded):
 		rateErr.HTTPStatus = http.StatusTooManyRequests
 		rateErr.LimitType = "catalog"
 		rateErr.RetryAfter = 10.0
-	case ErrQueueTimeout:
+	case errors.Is(err, ErrQueueTimeout):
 		rateErr.HTTPStatus = http.StatusServiceUnavailable
 		rateErr.LimitType = "queue"
 		rateErr.RetryAfter = 30.0

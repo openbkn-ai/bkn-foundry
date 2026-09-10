@@ -10,6 +10,7 @@ package connector_type
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -151,7 +152,7 @@ func (cta *connectorTypeAccess) GetByType(ctx context.Context, tp string) (*inte
 
 	row := cta.db.QueryRowContext(ctx, sqlStr, vals...)
 	ct, err := scanConnectorType(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "")
 		return nil, nil
 	}
@@ -184,7 +185,7 @@ func (cta *connectorTypeAccess) GetByName(ctx context.Context, name string) (*in
 
 	row := cta.db.QueryRowContext(ctx, sqlStr, vals...)
 	ct, err := scanConnectorType(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "")
 		return nil, nil
 	}

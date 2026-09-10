@@ -69,7 +69,7 @@ func (r *restHandler) listCatalogAuthResources(ctx context.Context, span trace.S
 
 	entries, total, err := r.cs.ListAuthResources(ctx, query)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -91,7 +91,7 @@ func (r *restHandler) listResourceAuthResources(ctx context.Context, span trace.
 
 	entries, total, err := r.rs.ListAuthResources(ctx, query)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -113,7 +113,7 @@ func (r *restHandler) listConnectorTypeAuthResources(ctx context.Context, span t
 
 	entries, total, err := r.cts.ListAuthResources(ctx, query)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -135,7 +135,7 @@ func parseAuthResourceQuery(ctx context.Context, span trace.Span, c *gin.Context
 
 	pageParam, err := validatePaginationQueryParams(ctx, offset, limit, sort, direction, interfaces.AuthResourceSort)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), nil)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)

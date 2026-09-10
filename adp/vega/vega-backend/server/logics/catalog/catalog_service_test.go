@@ -688,7 +688,8 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		cs := &catalogService{ca: ca, ps: ps}
 		result, err := cs.TestConnection(context.Background(), "missing")
 
-		httpErr, ok := err.(*rest.HTTPError)
+		var httpErr *rest.HTTPError
+		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
 		assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
 		assert.Nil(t, result)

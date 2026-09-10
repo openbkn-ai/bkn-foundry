@@ -10,6 +10,7 @@ package build_task
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -235,7 +236,7 @@ func (bta *buildTaskAccess) GetByID(ctx context.Context, id string) (*interfaces
 
 	row := bta.db.QueryRowContext(ctx, sqlStr, vals...)
 	buildTask, err := scanBuildTask(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "Build task not found")
 		return nil, nil
 	}
@@ -474,7 +475,7 @@ func (bta *buildTaskAccess) GetStatusByID(ctx context.Context, id string) (strin
 	}
 
 	err = bta.db.QueryRowContext(ctx, sqlStr, vals...).Scan(&status)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "Build task not found")
 		return "", fmt.Errorf("build task not found")
 	}

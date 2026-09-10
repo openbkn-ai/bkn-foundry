@@ -10,6 +10,7 @@ package resource
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -375,7 +376,7 @@ func (ra *resourceAccess) GetByID(ctx context.Context, tx *sql.Tx, id string) (*
 		row = ra.db.QueryRowContext(ctx, sqlStr, vals...)
 	}
 	resource, err := scanResource(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "")
 		return nil, nil
 	}
@@ -548,7 +549,7 @@ func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name 
 
 	row := ra.db.QueryRowContext(ctx, sqlStr, vals...)
 	resource, err := scanResource(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "")
 		return nil, nil
 	}

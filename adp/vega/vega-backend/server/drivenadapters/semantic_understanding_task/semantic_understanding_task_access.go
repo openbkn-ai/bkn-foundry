@@ -9,6 +9,7 @@ package semantic_understanding_task
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -217,7 +218,7 @@ func (suta *semanticUnderstandingTaskAccess) GetByID(ctx context.Context, id str
 	}
 
 	task, err := scanSemanticUnderstandingTask(suta.db.QueryRowContext(ctx, sqlStr, vals...))
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "Semantic understanding task not found")
 		return nil, nil
 	}
@@ -290,7 +291,7 @@ func (suta *semanticUnderstandingTaskAccess) FindActiveByInputHash(ctx context.C
 	}
 
 	task, err := scanSemanticUnderstandingTask(suta.db.QueryRowContext(ctx, sqlStr, vals...))
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "Active semantic understanding task not found")
 		return nil, nil
 	}

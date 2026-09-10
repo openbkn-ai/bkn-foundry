@@ -10,6 +10,7 @@ package discover_task
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -200,7 +201,7 @@ func (dta *discoverTaskAccess) GetScheduledTaskStrategy(ctx context.Context, sch
 
 	var strategy string
 	err = dta.db.QueryRowContext(ctx, sqlStr, vals...).Scan(&strategy)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "")
 		return "", nil
 	}
@@ -280,7 +281,7 @@ func (dta *discoverTaskAccess) GetByID(ctx context.Context, id string) (*interfa
 
 	row := dta.db.QueryRowContext(ctx, sqlStr, vals...)
 	task, err := scanDiscoverTask(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "")
 		return nil, nil
 	}

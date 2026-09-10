@@ -9,6 +9,7 @@ package discover_schedule
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -241,7 +242,7 @@ func (dsa *discoverScheduleAccess) GetByID(ctx context.Context, id string) (*int
 	// Execute query
 	row := dsa.db.QueryRowContext(ctx, sqlStr, vals...)
 	schedule, err := scanDiscoverSchedule(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "")
 		return nil, nil
 	}

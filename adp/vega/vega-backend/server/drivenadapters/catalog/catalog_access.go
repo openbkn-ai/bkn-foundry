@@ -10,6 +10,7 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -291,7 +292,7 @@ func (ca *catalogAccess) GetByID(ctx context.Context, id string) (*interfaces.Ca
 
 	row := ca.db.QueryRowContext(ctx, sqlStr, vals...)
 	catalog, err := scanCatalog(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "")
 		return nil, nil
 	}
@@ -408,7 +409,7 @@ func (ca *catalogAccess) GetByName(ctx context.Context, name string) (*interface
 
 	row := ca.db.QueryRowContext(ctx, sqlStr, vals...)
 	catalog, err := scanCatalog(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "")
 		return nil, nil
 	}
