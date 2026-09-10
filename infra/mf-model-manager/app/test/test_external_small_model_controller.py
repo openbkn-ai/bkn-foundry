@@ -327,15 +327,24 @@ class TestGetInfo(TestCase):
             "f_default": 0,
         }
 
-    def test_get_info_private_skips_display_permission(self):
+    def test_get_info_trusted_app_skips_display_permission(self):
         small_model_dao.get_model_info_by_id = mock.Mock(return_value=[self._model_row()])
         small_model_controller.permission_manager.check_single_permission = mock.AsyncMock(return_value=False)
 
-        res = asyncio.run(small_model_controller.get_info("1", "kn-app", "app", private=True))
+        res = asyncio.run(small_model_controller.get_info("1", "kn-app", "app", trusted_app=True))
 
         self.assertEqual(res.status_code, 200)
         self.assertEqual(json.loads(res.body)["model_id"], "1")
         small_model_controller.permission_manager.check_single_permission.assert_not_awaited()
+
+    def test_get_info_private_user_still_requires_display_permission(self):
+        small_model_dao.get_model_info_by_id = mock.Mock(return_value=[self._model_row()])
+        small_model_controller.permission_manager.check_single_permission = mock.AsyncMock(return_value=False)
+
+        res = asyncio.run(small_model_controller.get_info("1", "user-1", "user", trusted_app=False))
+
+        self.assertEqual(res.status_code, 403)
+        small_model_dao.get_model_info_by_id.assert_not_called()
 
     def test_get_info_public_still_requires_display_permission(self):
         small_model_dao.get_model_info_by_id = mock.Mock(return_value=[self._model_row()])

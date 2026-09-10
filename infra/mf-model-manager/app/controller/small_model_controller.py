@@ -307,10 +307,10 @@ async def get_info_list(order, rule, page, size, model_name, model_type, model_s
         return JSONResponse(status_code=400, content=error_dict)
 
 
-async def get_info(model_id, user_id, role, private=False):
+async def get_info(model_id, user_id, role, trusted_app=False):
     try:
         try:
-            if not private:
+            if not trusted_app:
                 permission = await permission_manager.check_single_permission(user_id=user_id, resource_id=model_id,
                                                                               operations="display",
                                                                               resource_type="small_model",
