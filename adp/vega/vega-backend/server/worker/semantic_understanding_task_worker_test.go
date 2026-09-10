@@ -22,6 +22,7 @@ import (
 
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
+	vegalocale "vega-backend/locale"
 )
 
 type accountIDContextMatcher struct {
@@ -1049,6 +1050,8 @@ func TestAssessResourceSemanticResultQuality(t *testing.T) {
 }
 
 func TestReconcileResourceSemanticSampleWarnings(t *testing.T) {
+	vegalocale.Register()
+
 	t.Run("replaces policy-omission free text with a structured warning", func(t *testing.T) {
 		input := `{
 			"resource": {"schema_definition": []},
@@ -1069,7 +1072,7 @@ func TestReconcileResourceSemanticSampleWarnings(t *testing.T) {
 			"resource": {"display_name": "订单", "description": "订单"},
 			"fields": [],
 			"warnings": [
-				"字段 attachment_blob 缺少样本数据，基于名称和类型推断",
+				"字段attachment_blob缺少样本数据，基于名称和类型推断",
 				"字段 note 确实没有可用样本"
 			]
 		}`
@@ -1077,16 +1080,16 @@ func TestReconcileResourceSemanticSampleWarnings(t *testing.T) {
 			"resource": {"display_name": "订单", "description": "订单"},
 			"fields": [],
 			"warnings": [
-				"字段 attachment_blob 缺少样本数据，基于名称和类型推断",
+				"字段attachment_blob缺少样本数据，基于名称和类型推断",
 				"字段 note 确实没有可用样本"
 			]
 		}`
 
-		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(result, detail, input)
+		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(context.Background(), result, detail, input)
 
 		require.NoError(t, err)
 		for _, payload := range []string{gotResult, gotDetail} {
-			assert.NotContains(t, payload, "attachment_blob 缺少样本数据")
+			assert.NotContains(t, payload, "字段attachment_blob缺少样本数据")
 			assert.Contains(t, payload, "字段 note 确实没有可用样本")
 			assert.JSONEq(t, `[{"code":"sample_omitted_by_policy","params":{"field_name":"attachment_blob","field_type":"binary"}}]`, extractWarningDetailsForTest(t, payload))
 		}
@@ -1097,7 +1100,7 @@ func TestReconcileResourceSemanticSampleWarnings(t *testing.T) {
 		result := `{"confidence":0.8,"resource":{},"fields":[],"warnings":["字段 note 缺少样本数据"]}`
 		detail := `{"warnings":["字段 note 缺少样本数据"]}`
 
-		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(result, detail, input)
+		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(context.Background(), result, detail, input)
 
 		require.NoError(t, err)
 		assert.JSONEq(t, result, gotResult)
@@ -1122,7 +1125,7 @@ func TestReconcileResourceSemanticSampleWarnings(t *testing.T) {
 		result := `{"confidence":0.8,"resource":{},"fields":[],"warnings":["字段 attachment_blob 缺少样本数据"]}`
 		detail := `{"warnings":["字段 attachment_blob 缺少样本数据"]}`
 
-		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(result, detail, input)
+		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(context.Background(), result, detail, input)
 
 		require.NoError(t, err)
 		assert.JSONEq(t, result, gotResult)
@@ -1151,7 +1154,7 @@ func TestReconcileResourceSemanticSampleWarnings(t *testing.T) {
 		result := `{"confidence":0.8,"resource":{},"fields":[],"warnings":["` + warning + `"]}`
 		detail := `{"warnings":["` + warning + `"]}`
 
-		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(result, detail, input)
+		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(context.Background(), result, detail, input)
 
 		require.NoError(t, err)
 		for _, payload := range []string{gotResult, gotDetail} {
@@ -1179,11 +1182,34 @@ func TestReconcileResourceSemanticSampleWarnings(t *testing.T) {
 		result := `{"confidence":0.8,"resource":{},"fields":[],"warnings":["字段 attachment_blob 缺少样本数据"]}`
 		detail := `{"warnings":["字段 attachment_blob 缺少样本数据"]}`
 
-		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(result, detail, input)
+		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(context.Background(), result, detail, input)
 
 		require.NoError(t, err)
 		for _, payload := range []string{gotResult, gotDetail} {
 			assert.NotContains(t, payload, "attachment_blob 缺少样本数据")
+			assert.JSONEq(t, `[{"code":"sample_omitted_by_policy","params":{"field_name":"attachment_blob","field_type":"binary"}}]`, extractWarningDetailsForTest(t, payload))
+		}
+	})
+
+	t.Run("removes unnamed missing-sample warnings when every field was omitted by policy", func(t *testing.T) {
+		input := `{
+			"resource": {"schema_definition": []},
+			"sample_rows": [],
+			"sample_context": {
+				"status": "all_fields_omitted_by_policy",
+				"omitted_fields": [{"name":"attachmentBlob","original_name":"attachment_blob","type":"binary","reason":"omitted_by_policy"}]
+			},
+			"options": {"include_sample_rows": true}
+		}`
+		warning := "没有可用样本数据，无法推断字段语义"
+		result := `{"confidence":0.8,"resource":{},"fields":[],"warnings":["` + warning + `"]}`
+		detail := `{"warnings":["` + warning + `"]}`
+
+		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(context.Background(), result, detail, input)
+
+		require.NoError(t, err)
+		for _, payload := range []string{gotResult, gotDetail} {
+			assert.NotContains(t, payload, warning)
 			assert.JSONEq(t, `[{"code":"sample_omitted_by_policy","params":{"field_name":"attachment_blob","field_type":"binary"}}]`, extractWarningDetailsForTest(t, payload))
 		}
 	})
@@ -1201,11 +1227,32 @@ func TestReconcileResourceSemanticSampleWarnings(t *testing.T) {
 		result := `{"confidence":0.8,"resource":{},"fields":[],"warnings":["validation sample unavailable"]}`
 		detail := `{"warnings":["validation sample unavailable"]}`
 
-		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(result, detail, input)
+		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(context.Background(), result, detail, input)
 
 		require.NoError(t, err)
 		assert.Contains(t, gotResult, "validation sample unavailable")
 		assert.Contains(t, gotDetail, "validation sample unavailable")
+	})
+
+	t.Run("preserves warnings that only contain a generic omitted field name", func(t *testing.T) {
+		input := `{
+			"resource": {"schema_definition": []},
+			"sample_rows": [{"id": "1"}],
+			"sample_context": {
+				"status": "available",
+				"omitted_fields": [{"name":"data","original_name":"data","type":"binary","reason":"omitted_by_policy"}]
+			},
+			"options": {"language":"en-US","include_sample_rows": true}
+		}`
+		warning := "No sample data is available for the source."
+		result := `{"confidence":0.8,"resource":{},"fields":[],"warnings":["` + warning + `"]}`
+		detail := `{"warnings":["` + warning + `"]}`
+
+		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(context.Background(), result, detail, input)
+
+		require.NoError(t, err)
+		assert.Contains(t, gotResult, warning)
+		assert.Contains(t, gotDetail, warning)
 	})
 
 	t.Run("preserves metadata evidence warnings for policy-omitted fields", func(t *testing.T) {
@@ -1227,7 +1274,7 @@ func TestReconcileResourceSemanticSampleWarnings(t *testing.T) {
 		result := `{"confidence":0.4,"resource":{},"fields":[],"warnings":["` + warning + `"]}`
 		detail := `{"warnings":["` + warning + `"]}`
 
-		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(result, detail, input)
+		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(context.Background(), result, detail, input)
 
 		require.NoError(t, err)
 		assert.Contains(t, gotResult, warning)
@@ -1257,7 +1304,7 @@ func TestReconcileResourceSemanticSampleWarnings(t *testing.T) {
 		result := `{"confidence":0.4,"resource":{},"fields":[],"warnings":["` + warning + `"]}`
 		detail := `{"warnings":["` + warning + `"]}`
 
-		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(result, detail, input)
+		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(context.Background(), result, detail, input)
 
 		require.NoError(t, err)
 		assert.NotContains(t, gotResult, warning)
@@ -1291,7 +1338,7 @@ func TestReconcileResourceSemanticSampleWarnings(t *testing.T) {
 		result := `{"confidence":0.4,"resource":{},"fields":[],"warnings":["` + warning + `"]}`
 		detail := `{"warnings":["` + warning + `"]}`
 
-		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(result, detail, input)
+		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(context.Background(), result, detail, input)
 
 		require.NoError(t, err)
 		assert.NotContains(t, gotResult, warning)

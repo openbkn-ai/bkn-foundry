@@ -239,9 +239,6 @@ Description = "Query execution failed"
 Solution = "Please contact the administrator"
 ErrorLink = ""
 
-[VegaBackend.Validation.Detail]
-MultiCatalogJoinNotSupported = "Cross-catalog JOIN is not supported yet; Trino or DuckDB support is planned."
-
 [VegaBackend.OperationAudit.InvalidRange]
 Description = "The operation-audit time range is invalid."
 Solution = "Provide a valid RFC3339 time range no longer than 30 days."
@@ -271,3 +268,10 @@ ErrorLink = ""
 Description = "The operation-audit event was not found."
 Solution = "Check the event_id and scope."
 ErrorLink = ""
+
+[VegaBackend.Validation.Detail]
+MultiCatalogJoinNotSupported = "Cross-catalog JOIN is not supported yet; Trino or DuckDB support is planned."
+SemanticUnderstandingInsufficientSampleDataSingular = "The {{.fields}} field has insufficient sample data."
+SemanticUnderstandingInsufficientSampleDataPlural = "The {{.fields}} fields have insufficient sample data."
+SemanticUnderstandingFieldSeparator = " and "
+SemanticUnderstandingMissingSamplePattern = "(?i)\\b(?:missing|absent|unavailable|insufficient)\\s+samples?(?:\\s+(?:data|values?))?\\b|\\b(?:no|without|lack|lacks|lacking)\\s+(?:of\\s+)?samples?(?:\\s+(?:data|values?))?\\b|\\bsamples?(?:\\s+(?:data|values?))?\\s+(?:(?:is|are|was|were)\\s+)?(?:missing|absent|unavailable|insufficient|not\\s+available|not\\s+provided)\\b"
