@@ -67,6 +67,21 @@ func (tx *PolicyTransaction) RemoveSeedRolePermissions(roleID string) error {
 	return err
 }
 
+// RemovePoliciesForResourceTypes removes every durable grant and its Casbin
+// projection for the supplied resource-type prefixes. It is reserved for
+// startup migrations that withdraw an entire resource type from the platform.
+func (tx *PolicyTransaction) RemovePoliciesForResourceTypes(resourceTypes ...string) (int, error) {
+	removed := 0
+	for _, resourceType := range resourceTypes {
+		count, err := tx.enforcer.removePolicyGrantsByObjectPrefix(resourceType + ":")
+		if err != nil {
+			return removed, err
+		}
+		removed += count
+	}
+	return removed, nil
+}
+
 func (tx *PolicyTransaction) GrantObjectPermission(accessorID, resourceType, resourceID, operation string) error {
 	return tx.enforcer.addPolicy(accessorID, obj(resourceType, resourceID), operation, EffectAllow,
 		PolicySourceSystemDerived, AuthoritySourceSystem)

@@ -28,8 +28,7 @@ func TestCommunityBundleWhitelistOperationsExistInCatalog(t *testing.T) {
 		}
 	}
 	for _, resourceType := range []string{
-		"catalog", "knowledge_network", "stream_data_pipeline", "connector_type",
-		"tool_box", "mcp", "operator", "skill", "small_model", "large_model", "agent", "agent_tpl",
+		"catalog", "knowledge_network", "connector_type", "tool_box", "mcp", "operator", "skill", "small_model", "large_model",
 	} {
 		operations, ok := authz.CommunityBundleOperations(resourceType)
 		if !ok {

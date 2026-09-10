@@ -54,6 +54,12 @@ var deprecatedSeedRoleIDs = []string{
 	"3fb94948-5169-11f0-b662-3a7bdba2913f", // AI administrator
 }
 
+var withdrawnResourceTypes = []string{
+	"agent",
+	"agent_tpl",
+	"stream_data_pipeline",
+}
+
 const normalUserRoleID = "b5f9ac3e-992c-4bbd-8126-95e87e51c46e"
 
 // AdminUserID is the built-in admin user's id, exported so callers can protect
@@ -127,6 +133,9 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 	if err := seedRoles(db); err != nil {
 		return fmt.Errorf("seed roles: %w", err)
 	}
+	if err := reconcileWithdrawnResourceTypes(enforcer); err != nil {
+		return fmt.Errorf("reconcile withdrawn resource types: %w", err)
+	}
 	if err := seedCatalog(db); err != nil {
 		return fmt.Errorf("seed catalog: %w", err)
 	}
@@ -158,6 +167,33 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 		return fmt.Errorf("seed business provenance owner: %w", err)
 	}
 	return nil
+}
+
+// reconcileWithdrawnResourceTypes removes resource types that are no longer
+// supported, including every persisted role/object grant that could otherwise
+// survive an upgrade without a matching catalog entry. Audit records are kept.
+func reconcileWithdrawnResourceTypes(enforcer *authz.Enforcer) error {
+	return enforcer.Transaction(context.Background(), func(tx *authz.PolicyTransaction) error {
+		removedPolicies, err := tx.RemovePoliciesForResourceTypes(withdrawnResourceTypes...)
+		if err != nil {
+			return err
+		}
+		db := tx.DB()
+		if err := db.Where("resource_type_id IN ? OR parent_type_id IN ?", withdrawnResourceTypes, withdrawnResourceTypes).
+			Delete(&model.ResourceParent{}).Error; err != nil {
+			return err
+		}
+		if err := db.Where("resource_type_id IN ?", withdrawnResourceTypes).Delete(&model.Operation{}).Error; err != nil {
+			return err
+		}
+		if err := db.Where("id IN ?", withdrawnResourceTypes).Delete(&model.ResourceType{}).Error; err != nil {
+			return err
+		}
+		if removedPolicies > 0 {
+			slog.Info("removed policies for withdrawn resource types", "resource_types", withdrawnResourceTypes, "projections", removedPolicies)
+		}
+		return nil
+	})
 }
 
 func reconcileDeprecatedSeedRoles(db *gorm.DB, enforcer *authz.Enforcer) error {
@@ -678,10 +714,9 @@ var legacyOperationRenames = []struct {
 	resourceType string
 	from, to     string
 }{
-	// Data query was spelled data_query on these two types and query_data on
+	// Data query was spelled data_query on knowledge networks and query_data on
 	// catalog/resource. One vocabulary, one spelling.
 	{"knowledge_network", "data_query", "query_data"},
-	{"stream_data_pipeline", "data_query", "query_data"},
 }
 
 // renameLegacyOperations migrates object grants onto the corrected spellings.

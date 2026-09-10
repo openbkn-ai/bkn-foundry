@@ -14,22 +14,15 @@ import "fmt"
 // Keep the slice order stable. It is used by permission-read projections and
 // therefore becomes the order returned to API consumers.
 var communityBundleOperations = map[string][]string{
-	"catalog":              {"view_detail", "modify", "delete", "query_data", "resource_manage", "task_manage"},
-	"knowledge_network":    {"view_detail", "modify", "delete", "query_data", "execute"},
-	"stream_data_pipeline": {"view_detail", "modify", "delete", "query_data"},
-	"connector_type":       {"view_detail", "modify", "delete", "task_manage"},
-	"tool_box":             {"view", "modify", "delete", "publish", "unpublish", "execute"},
-	"mcp":                  {"view", "modify", "delete", "publish", "unpublish", "execute"},
-	"operator":             {"view", "modify", "delete", "publish", "unpublish", "execute"},
-	"skill":                {"view", "modify", "delete", "publish", "unpublish", "execute"},
-	"small_model":          {"display", "modify", "delete", "execute"},
-	"large_model":          {"display", "modify", "delete", "execute"},
-	"agent": {
-		"use", "publish", "unpublish", "publish_to_be_skill_agent",
-		"publish_to_be_web_sdk_agent", "publish_to_be_api_agent",
-		"publish_to_be_data_flow_agent", "see_trajectory_analysis",
-	},
-	"agent_tpl": {"publish", "unpublish"},
+	"catalog":           {"view_detail", "modify", "delete", "query_data", "resource_manage", "task_manage"},
+	"knowledge_network": {"view_detail", "modify", "delete", "query_data", "execute"},
+	"connector_type":    {"view_detail", "modify", "delete", "task_manage"},
+	"tool_box":          {"view", "modify", "delete", "publish", "unpublish", "execute"},
+	"mcp":               {"view", "modify", "delete", "publish", "unpublish", "execute"},
+	"operator":          {"view", "modify", "delete", "publish", "unpublish", "execute"},
+	"skill":             {"view", "modify", "delete", "publish", "unpublish", "execute"},
+	"small_model":       {"display", "modify", "delete", "execute"},
+	"large_model":       {"display", "modify", "delete", "execute"},
 }
 
 // CommunityBundleOperations returns a copy of the reviewed operation whitelist
