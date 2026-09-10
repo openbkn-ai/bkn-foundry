@@ -1222,7 +1222,7 @@ func TestReconcileResourceSemanticSampleWarnings(t *testing.T) {
 				"status": "available",
 				"omitted_fields": [{"name":"id","type":"binary","reason":"omitted_by_policy"}]
 			},
-			"options": {"include_sample_rows": true}
+			"options": {"language":"en-US","include_sample_rows": true}
 		}`
 		result := `{"confidence":0.8,"resource":{},"fields":[],"warnings":["validation sample unavailable"]}`
 		detail := `{"warnings":["validation sample unavailable"]}`
