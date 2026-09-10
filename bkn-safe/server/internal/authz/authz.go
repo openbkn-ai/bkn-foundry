@@ -402,7 +402,7 @@ func (en *Enforcer) RolePermissions(roleID string) ([]RoleGrant, error) {
 	if err != nil {
 		return nil, err
 	}
-	return groupGrantsByObject(activePolicyRows(rows)), nil
+	return groupGrantsByObject(projectCommunityBundleRows(activePolicyRows(rows), false)), nil
 }
 
 // groupGrantsByObject collapses raw (sub, obj, act) policy rows into per-object
@@ -486,6 +486,7 @@ func (en *Enforcer) EffectivePermissions(accessorID string, q PermQuery) (hasWil
 		return false, nil, err
 	}
 	rows = activePolicyRows(rows)
+	rows = projectCommunityBundleRows(rows, true)
 	grouped := groupGrantsByObject(rows)
 	superAdmin, err := en.hasSuperAdminRole(accessorID)
 	if err != nil {
@@ -791,12 +792,16 @@ func (en *Enforcer) BackfillImpliedOperation(resourceType, holderOp, impliedOp s
 	return added, err
 }
 
-// RemoveRolePermissions purges only the p-lines owned by a role, preserving its
-// member bindings. Seed uses this before re-applying the built-in permission
-// matrix so removed grants do not linger across upgrades.
+// RemoveRolePermissions purges only the role_permission p-lines owned by a
+// role, preserving both its member bindings and independently managed policy
+// sources. Seed uses this before re-applying the built-in permission matrix so
+// removed seeded grants do not linger across upgrades without erasing a
+// Community bundle or another resource grant assigned to the same role.
 func (en *Enforcer) RemoveRolePermissions(roleID string) error {
 	return en.Transaction(context.Background(), func(tx *PolicyTransaction) error {
-		_, err := tx.enforcer.removePolicyGrants(PolicyFilter{AccessorID: roleID})
+		_, err := tx.enforcer.removePolicyGrants(PolicyFilter{
+			AccessorID: roleID, PolicySource: PolicySourceRolePermission,
+		})
 		return err
 	})
 }
@@ -889,7 +894,7 @@ func (en *Enforcer) accessibleResources(accessorID, resourceType, op string, vis
 			continue
 		}
 		o, act := p[1], p[2]
-		if act != op && act != ActAll {
+		if act != op && act != ActAll && !isCommunityBundleRow(p) {
 			continue
 		}
 		if len(o) <= len(prefix) || o[:len(prefix)] != prefix {
@@ -934,9 +939,11 @@ func (en *Enforcer) ResourcePolicies(resourceType, resourceID string) ([]Resourc
 		return nil, err
 	}
 	rows = activePolicyRows(rows)
+	rows = projectCommunityBundleRows(rows, false)
 	bySub := map[string][]string{}
 	deniedBySub := map[string][]string{}
 	seenSub := map[string]bool{}
+	seenOperation := map[string]map[string]bool{}
 	order := make([]string, 0, len(rows))
 	for _, row := range rows {
 		if len(row) < 3 {
@@ -946,8 +953,15 @@ func (en *Enforcer) ResourcePolicies(resourceType, resourceID string) ([]Resourc
 		if !seenSub[sub] {
 			order = append(order, sub)
 			seenSub[sub] = true
+			seenOperation[sub] = map[string]bool{}
 		}
-		if len(row) >= 4 && row[3] == EffectDeny {
+		effect := policyEffect(row)
+		effectKey := act + "\x00" + effect
+		if seenOperation[sub][effectKey] {
+			continue
+		}
+		seenOperation[sub][effectKey] = true
+		if effect == EffectDeny {
 			deniedBySub[sub] = append(deniedBySub[sub], act)
 		} else {
 			bySub[sub] = append(bySub[sub], act)
@@ -989,6 +1003,7 @@ func (en *Enforcer) ListObjectGrants(accessorID, resourceType, resourceID string
 		return nil, err
 	}
 	rows = activePolicyRows(rows)
+	rows = projectCommunityBundleRows(rows, false)
 	type key struct{ sub, rtype, rid string }
 	ops := map[key][]string{}
 	deniedOps := map[key][]string{}

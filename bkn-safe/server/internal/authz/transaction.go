@@ -61,7 +61,9 @@ func (tx *PolicyTransaction) GrantSeedPolicy(roleID, object, operation string) e
 }
 
 func (tx *PolicyTransaction) RemoveSeedRolePermissions(roleID string) error {
-	_, err := tx.enforcer.removePolicyGrants(PolicyFilter{AccessorID: roleID})
+	_, err := tx.enforcer.removePolicyGrants(PolicyFilter{
+		AccessorID: roleID, PolicySource: PolicySourceRolePermission,
+	})
 	return err
 }
 

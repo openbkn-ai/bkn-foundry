@@ -603,3 +603,49 @@ func TestNetworkBuilderPermissionMatrixMatchesBusinessBuilderRole(t *testing.T) 
 		t.Fatalf("network_builder grants = %#v, want %#v", got, want)
 	}
 }
+
+func TestSeedReconciliationPreservesCommunityBundleAssignedToBuiltInRole(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	const roleID = "1572fb82-526f-11f0-bde6-e674ec8dde71"
+	if err := e.GrantCommunityBundle(roleID, "knowledge_network", "kn-role-bundle", authz.AuthoritySourceAdminAuthz); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantRolePermission(roleID, "knowledge_network", "kn-stale", "obsolete_seed_operation"); err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	records, err := e.PolicyRecords(authz.PolicyFilter{
+		AccessorID:   roleID,
+		Object:       "knowledge_network:kn-role-bundle",
+		PolicySource: authz.PolicySourceCommunityBundle,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 || records[0].Operation != authz.ActFullBusinessAccess {
+		t.Fatalf("bundle after seed reconciliation = %+v; want one logical bundle", records)
+	}
+	stale, err := e.PolicyRecords(authz.PolicyFilter{
+		AccessorID:   roleID,
+		Object:       "knowledge_network:kn-stale",
+		Operation:    "obsolete_seed_operation",
+		PolicySource: authz.PolicySourceRolePermission,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stale) != 0 {
+		t.Fatalf("obsolete seeded role grant survived reconciliation: %+v", stale)
+	}
+}
