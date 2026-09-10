@@ -117,6 +117,9 @@ func TestResourceFilterLocalReturnsEveryDecision(t *testing.T) {
 	if len(decoded.Resources) != 2 {
 		t.Fatalf("local filter returned %d resources, want every input: %s", len(decoded.Resources), response.Body.String())
 	}
+	if strings.Contains(response.Body.String(), `"operations":null`) {
+		t.Fatalf("local filter must encode an empty operation set as []: %s", response.Body.String())
+	}
 	byID := map[string]map[string][2]string{}
 	for _, resource := range decoded.Resources {
 		byID[resource.ResourceID] = map[string][2]string{}

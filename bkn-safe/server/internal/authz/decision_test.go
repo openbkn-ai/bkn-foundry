@@ -6,6 +6,7 @@ package authz
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/openbkn-ai/licverify"
@@ -128,6 +129,32 @@ func TestRemovingChildRuleRestoresParentFallback(t *testing.T) {
 type structuredEEFake struct {
 	opinion permobject.LocalOpinion
 	seen    permobject.Request
+}
+
+type contextEEFake struct{}
+
+func (contextEEFake) Decide(ctx context.Context, _ permobject.Request) (permobject.LocalOpinion, error) {
+	return permobject.LocalOpinion{}, ctx.Err()
+}
+
+func TestAllowedOpsContextReachesEnterpriseProvider(t *testing.T) {
+	permobject.ResetForTest()
+	entitlement.SetGateForTest(entitlement.GateFunc(func() entitlement.Snapshot {
+		return entitlement.Snapshot{Licensed: true, Edition: licverify.EditionEnterprise}
+	}))
+	t.Cleanup(func() {
+		permobject.ResetForTest()
+		entitlement.ResetForTest()
+	})
+	permobject.Register(licverify.EditionEnterprise, contextEEFake{})
+
+	e := newTestEnforcer(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err := e.AllowedOpsContext(ctx, "context-user", "resource", "r-1", []string{"view_detail"})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("AllowedOpsContext error = %v, want context.Canceled", err)
+	}
 }
 
 func (f *structuredEEFake) Decide(_ context.Context, req permobject.Request) (permobject.LocalOpinion, error) {

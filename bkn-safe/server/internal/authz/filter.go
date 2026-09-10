@@ -107,12 +107,12 @@ func (en *Enforcer) filterResourceOps(ctx context.Context, accessorID string, re
 	// identical to Check. Human and ordinary app accessors keep the optimized
 	// path above without per-decision source lookups.
 	if validateProvenance && en.db != nil {
-		managed, err := en.isManagedProxy(accessorID)
+		managed, err := en.isManagedProxyContext(ctx, accessorID)
 		if err != nil {
 			return nil, err
 		}
 		if managed {
-			current, err := en.currentProxyPermissions(accessorID)
+			current, err := en.currentProxyPermissions(ctx, accessorID)
 			if err != nil {
 				return nil, err
 			}
@@ -140,7 +140,7 @@ func (en *Enforcer) filterResourceOps(ctx context.Context, accessorID string, re
 	for _, r := range resources {
 		resourceDecisions := decided[r]
 		if scope == ScopeLocal {
-			item := FilteredResource{Type: r.Type, ID: r.ID}
+			item := FilteredResource{Type: r.Type, ID: r.ID, Operations: make([]string, 0, len(candidates))}
 			for _, op := range candidates {
 				if resourceDecisions[op].Allowed() {
 					item.Operations = append(item.Operations, op)
@@ -171,7 +171,12 @@ func (en *Enforcer) filterResourceOps(ctx context.Context, accessorID string, re
 				ops = append(ops, op)
 			}
 		}
-		out = append(out, FilteredResource{Type: r.Type, ID: r.ID, Operations: ops})
+		structured := make([]OperationDecision, 0, len(union))
+		for _, op := range union {
+			d := resourceDecisions[op]
+			structured = append(structured, OperationDecision{Operation: op, Decision: d.Decision, Basis: d.Basis})
+		}
+		out = append(out, FilteredResource{Type: r.Type, ID: r.ID, Operations: ops, Decisions: structured})
 	}
 	return out, nil
 }

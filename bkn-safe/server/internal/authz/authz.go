@@ -147,13 +147,18 @@ func obj(resourceType, id string) string { return resourceType + ":" + id }
 // mapping. With no ownership row recorded the second step finds nothing, which
 // is exactly the pre-#800 decision (#800).
 func (en *Enforcer) Check(accessorID, resourceType, resourceID, op string) (bool, error) {
-	decision, err := en.Evaluate(context.Background(), accessorID, resourceType, resourceID, op, ScopeEffective)
+	return en.CheckContext(context.Background(), accessorID, resourceType, resourceID, op)
+}
+
+// CheckContext is the request-aware boolean compatibility entry point.
+func (en *Enforcer) CheckContext(ctx context.Context, accessorID, resourceType, resourceID, op string) (bool, error) {
+	decision, err := en.Evaluate(ctx, accessorID, resourceType, resourceID, op, ScopeEffective)
 	return decision.Allowed(), err
 }
 
-func (en *Enforcer) isManagedProxy(accessorID string) (bool, error) {
+func (en *Enforcer) isManagedProxyContext(ctx context.Context, accessorID string) (bool, error) {
 	var managed int64
-	if err := en.db.Model(&safemodel.ManagedProxyAccount{}).
+	if err := en.db.WithContext(ctx).Model(&safemodel.ManagedProxyAccount{}).
 		Where("proxy_account_id = ?", accessorID).Count(&managed).Error; err != nil {
 		return false, err
 	}
@@ -163,13 +168,13 @@ func (en *Enforcer) isManagedProxy(accessorID string) (bool, error) {
 // checkPolicy evaluates the current direct, role and hierarchy policy without
 // applying managed-proxy provenance. Delegator validation must use this raw
 // path so a source can never recursively justify itself.
-func (en *Enforcer) checkPolicy(accessorID, resourceType, resourceID, op string) (bool, error) {
+func (en *Enforcer) checkPolicy(ctx context.Context, accessorID, resourceType, resourceID, op string) (bool, error) {
 	idx, err := en.grantIndex(accessorID)
 	if err != nil {
 		return false, err
 	}
 	resource := ResourceRef{Type: resourceType, ID: resourceID}
-	all, err := en.evaluateWithIndex(context.Background(), accessorID, idx,
+	all, err := en.evaluateWithIndex(ctx, accessorID, idx,
 		map[ResourceRef][]string{resource: {op}}, ScopeEffective)
 	if err != nil {
 		return false, err
@@ -182,9 +187,9 @@ func (en *Enforcer) checkPolicy(accessorID, resourceType, resourceID, op string)
 // binding sources also depend on their recorded delegator still holding the
 // exact downstream operation. Manual and administrator sources follow their
 // own explicit lifecycle and remain valid while active.
-func (en *Enforcer) hasCurrentProxySource(proxyID, resourceType, resourceID, op string) (bool, error) {
+func (en *Enforcer) hasCurrentProxySource(ctx context.Context, proxyID, resourceType, resourceID, op string) (bool, error) {
 	var sources []safemodel.ProxyGrantSource
-	if err := en.db.Where(
+	if err := en.db.WithContext(ctx).Where(
 		"proxy_account_id = ? AND resource_type = ? AND resource_id = ? AND operation = ? AND lifecycle_status = ?",
 		proxyID, resourceType, resourceID, op, safemodel.ProxyGrantSourceStatusActive,
 	).Find(&sources).Error; err != nil {
@@ -196,7 +201,7 @@ func (en *Enforcer) hasCurrentProxySource(proxyID, resourceType, resourceID, op 
 			return true, nil
 		case safemodel.ProxyGrantSourceTypeKNBinding:
 			var registered int64
-			if err := en.db.Model(&safemodel.Operation{}).
+			if err := en.db.WithContext(ctx).Model(&safemodel.Operation{}).
 				Where("resource_type_id = ? AND id = ?", resourceType, op).Count(&registered).Error; err != nil {
 				return false, err
 			}
@@ -204,14 +209,14 @@ func (en *Enforcer) hasCurrentProxySource(proxyID, resourceType, resourceID, op 
 				continue
 			}
 			var active int64
-			if err := en.db.Model(&safemodel.User{}).
+			if err := en.db.WithContext(ctx).Model(&safemodel.User{}).
 				Where("id = ? AND enabled = ?", source.GrantedBy, true).Count(&active).Error; err != nil {
 				return false, err
 			}
 			if active == 0 {
 				continue
 			}
-			allowed, err := en.checkPolicy(source.GrantedBy, resourceType, resourceID, op)
+			allowed, err := en.checkPolicy(ctx, source.GrantedBy, resourceType, resourceID, op)
 			if err != nil {
 				return false, err
 			}
@@ -227,12 +232,18 @@ func (en *Enforcer) hasCurrentProxySource(proxyID, resourceType, resourceID, op 
 // the resource. Mirrors ISF resource-operation (allow_operation): the result is
 // a set; callers must not depend on order.
 func (en *Enforcer) AllowedOps(accessorID, resourceType, resourceID string, candidates []string) ([]string, error) {
+	return en.AllowedOpsContext(context.Background(), accessorID, resourceType, resourceID, candidates)
+}
+
+// AllowedOpsContext is the request-aware form used by HTTP handlers. The
+// compatibility method above deliberately retains Background for old callers.
+func (en *Enforcer) AllowedOpsContext(ctx context.Context, accessorID, resourceType, resourceID string, candidates []string) ([]string, error) {
 	idx, err := en.grantIndex(accessorID)
 	if err != nil {
 		return nil, err
 	}
 	resource := ResourceRef{Type: resourceType, ID: resourceID}
-	all, err := en.evaluateWithIndex(context.Background(), accessorID, idx,
+	all, err := en.evaluateWithIndex(ctx, accessorID, idx,
 		map[ResourceRef][]string{resource: candidates}, ScopeEffective)
 	if err != nil {
 		return nil, err
@@ -246,11 +257,11 @@ func (en *Enforcer) AllowedOps(accessorID, resourceType, resourceID string, cand
 	if len(out) == 0 || en.db == nil {
 		return out, nil
 	}
-	managed, err := en.isManagedProxy(accessorID)
+	managed, err := en.isManagedProxyContext(ctx, accessorID)
 	if err != nil || !managed {
 		return out, err
 	}
-	currentPermissions, err := en.currentProxyPermissions(accessorID)
+	currentPermissions, err := en.currentProxyPermissions(ctx, accessorID)
 	if err != nil {
 		return nil, err
 	}

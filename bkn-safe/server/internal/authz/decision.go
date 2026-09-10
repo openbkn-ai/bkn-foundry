@@ -10,8 +10,10 @@ import (
 )
 
 // EvaluationScope selects how far authorization evaluation may look. Local is
-// intentionally not a final authorization answer: it exists for trusted
-// callers, such as Vega, that own a parent relation bkn-safe does not know.
+// intentionally not a final authorization answer: it exists on the internal
+// ClusterIP trust surface for callers, such as Vega, that own a parent relation
+// bkn-safe does not know. A caller must never authorize a business operation
+// from the local result alone.
 type EvaluationScope string
 
 const (
@@ -80,6 +82,27 @@ func defaultDeny() Evaluation {
 	return Evaluation{Scope: ScopeEffective, Decision: DecisionDeny, Basis: BasisDefault}
 }
 
+// resolveEffective applies the one documented local/parent/wildcard order to a
+// local result and an optional inherited result. Keeping this final merge in a
+// helper lets dry-run hierarchy previews evaluate a proposed parent with the
+// same semantics as the persisted hierarchy path.
+func resolveEffective(local Evaluation, inherited Evaluation, hasInherited bool) Evaluation {
+	if local.Decision != "" && local.Decision != DecisionNone && !(local.Decision == DecisionAllow && local.Basis == BasisWildcard) {
+		local.Scope = ScopeEffective
+		return local
+	}
+	if hasInherited {
+		inherited.Scope = ScopeEffective
+		inherited.Basis = BasisInherited
+		return inherited
+	}
+	if local.Decision == DecisionAllow && local.Basis == BasisWildcard {
+		local.Scope = ScopeEffective
+		return local
+	}
+	return defaultDeny()
+}
+
 // Evaluate returns a structured decision and applies managed-proxy provenance.
 // Check is the compatibility boolean wrapper over this entry point.
 func (en *Enforcer) Evaluate(ctx context.Context, accessorID, resourceType, resourceID, op string,
@@ -101,14 +124,14 @@ func (en *Enforcer) Evaluate(ctx context.Context, accessorID, resourceType, reso
 	if !decision.Allowed() || en.db == nil {
 		return decision, nil
 	}
-	managed, err := en.isManagedProxy(accessorID)
+	managed, err := en.isManagedProxyContext(ctx, accessorID)
 	if err != nil {
 		return Evaluation{}, err
 	}
 	if !managed {
 		return decision, nil
 	}
-	current, err := en.hasCurrentProxySource(accessorID, resourceType, resourceID, op)
+	current, err := en.hasCurrentProxySource(ctx, accessorID, resourceType, resourceID, op)
 	if err != nil {
 		return Evaluation{}, err
 	}

@@ -101,7 +101,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			serverError(c, err)
 			return
 		}
-		allowed, err := e.AllowedOps(req.AccessorID, req.Resource.Type, req.Resource.ID, candidates)
+		allowed, err := e.AllowedOpsContext(c.Request.Context(), req.AccessorID, req.Resource.Type, req.Resource.ID, candidates)
 		if err != nil {
 			serverError(c, err)
 			return

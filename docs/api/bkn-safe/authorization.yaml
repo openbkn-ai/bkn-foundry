@@ -36,9 +36,11 @@ paths:
       description: |
         `evaluation_scope` defaults to `effective`, which is the final decision
         used by ordinary business callers. `local` inspects only rules on the
-        requested resource and is reserved for trusted callers that own a
-        parent relation bkn-safe does not know. A local `none` is never an
-        authorization grant.
+        requested resource and is reserved for callers on this internal
+        ClusterIP trust surface that own a parent relation bkn-safe does not
+        know. It is input to that caller's parent fallback, not a final
+        authorization result; neither local `allow` nor local `none` may by
+        itself authorize a business operation.
       requestBody:
         required: true
         content:
@@ -107,8 +109,10 @@ paths:
 
         `evaluation_scope=local` returns every requested resource regardless
         of visibility and adds one `decisions` entry for every visibility or
-        candidate operation, including explicit `deny` and `none`. Trusted
-        callers use those entries to perform a parent fallback they own.
+        candidate operation, including explicit `deny` and `none`. Callers on
+        this internal ClusterIP trust surface use those entries to perform a
+        parent fallback they own; they must not treat local `allowed` as the
+        final authorization result.
         Omitting the scope keeps the historical effective response shape.
 
         The response preserves first-seen candidate order and de-duplicates

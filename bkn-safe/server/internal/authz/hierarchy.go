@@ -247,22 +247,8 @@ func (en *Enforcer) evaluateWithIndex(ctx context.Context, accessorID string, id
 	for resource, ops := range want {
 		out[resource] = make(map[string]Evaluation, len(ops))
 		for _, op := range ops {
-			d := local[resource][op]
-			if d.Decision != DecisionNone && !(d.Decision == DecisionAllow && d.Basis == BasisWildcard) {
-				d.Scope = ScopeEffective
-				out[resource][op] = d
-				continue
-			}
-			if parentDecision, ok := inherited[resource][op]; ok {
-				out[resource][op] = parentDecision
-				continue
-			}
-			if d.Decision == DecisionAllow && d.Basis == BasisWildcard {
-				d.Scope = ScopeEffective
-				out[resource][op] = d
-				continue
-			}
-			out[resource][op] = defaultDeny()
+			parentDecision, inheritedOK := inherited[resource][op]
+			out[resource][op] = resolveEffective(local[resource][op], parentDecision, inheritedOK)
 		}
 	}
 	return out, nil
@@ -527,6 +513,11 @@ type OwnershipFlip struct {
 // therefore the child. A preview that only read the immediate parent would
 // under-report, and a safety preview that under-reports is worse than none.
 func (en *Enforcer) PreviewOwnership(resourceType, parentType string, links map[string]string, limit int) ([]OwnershipFlip, int, error) {
+	return en.PreviewOwnershipContext(context.Background(), resourceType, parentType, links, limit)
+}
+
+// PreviewOwnershipContext is the request-aware form used by the HTTP API.
+func (en *Enforcer) PreviewOwnershipContext(ctx context.Context, resourceType, parentType string, links map[string]string, limit int) ([]OwnershipFlip, int, error) {
 	if en.db == nil || len(links) == 0 {
 		return nil, 0, nil
 	}
@@ -566,9 +557,10 @@ func (en *Enforcer) PreviewOwnership(resourceType, parentType string, links map[
 		parentRefs = append(parentRefs, ResourceRef{Type: parentType, ID: id})
 	}
 
-	// Which children are being MOVED. Only those can lose anything: a resource
-	// that had no parent, or keeps the one it has, cannot stop reaching a grant
-	// it already reaches.
+	// Which children are being MOVED. Their old parents must be included in the
+	// candidate scan because moving can remove an inherited grant. First-time
+	// registration can also remove a wildcard fallback when the proposed parent
+	// explicitly denies, so wildcard subjects remain candidates independently.
 	current, err := en.currentParents(resourceType, children)
 	if err != nil {
 		return nil, 0, err
@@ -613,21 +605,21 @@ func (en *Enforcer) PreviewOwnership(resourceType, parentType string, links map[
 		// What the subject may do on the proposed parents — through direct
 		// grants, roles, wildcards, the grant-to-everyone subject, AND the
 		// parents' own ancestors. This is the enforcer's answer, not a row scan.
-		onParents, err := en.FilterResourceOps(sub, parentRefs, nil, parentOps)
+		onParents, err := en.FilterResourceOpsScoped(ctx, sub, parentRefs, nil, parentOps, ScopeEffective)
 		if err != nil {
 			return nil, 0, err
 		}
-		heldOnParent := make(map[string]map[string]bool, len(onParents))
+		parentDecisions := make(map[string]map[string]Evaluation, len(onParents))
 		for _, p := range onParents {
-			set := make(map[string]bool, len(p.Operations))
-			for _, op := range p.Operations {
-				set[op] = true
+			set := make(map[string]Evaluation, len(p.Decisions))
+			for _, decision := range p.Decisions {
+				set[decision.Operation] = Evaluation{Scope: ScopeEffective, Decision: decision.Decision, Basis: decision.Basis}
 			}
-			heldOnParent[p.ID] = set
+			parentDecisions[p.ID] = set
 		}
 		// What the subject may do on the children TODAY, including whatever the
 		// current ownership rows already confer.
-		onChildren, err := en.FilterResourceOps(sub, childRefs, nil, childOps)
+		onChildren, err := en.FilterResourceOpsScoped(ctx, sub, childRefs, nil, childOps, ScopeEffective)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -640,35 +632,31 @@ func (en *Enforcer) PreviewOwnership(resourceType, parentType string, links map[
 			have[c.ID] = set
 		}
 
-		directIdx, err := en.grantIndex(sub)
+		localChildren, err := en.FilterResourceOpsScoped(ctx, sub, childRefs, nil, childOps, ScopeLocal)
 		if err != nil {
 			return nil, 0, err
 		}
+		local := make(map[string]map[string]Evaluation, len(localChildren))
+		for _, child := range localChildren {
+			set := make(map[string]Evaluation, len(child.Decisions))
+			for _, decision := range child.Decisions {
+				set[decision.Operation] = Evaluation{Scope: ScopeLocal, Decision: decision.Decision, Basis: decision.Basis}
+			}
+			local[child.ID] = set
+		}
 		for _, child := range children {
-			gained := map[string]bool{}
-			for _, childOp := range childOps {
-				if heldOnParent[links[child]][mapping[childOp]] {
-					gained[childOp] = true
-				}
-			}
 			for _, op := range childOps {
-				if gained[op] && !have[child][op] {
+				parentDecision := parentDecisions[links[child]][mapping[op]]
+				// A default parent deny means that no parent rule decided. In that
+				// case the child's wildcard allow remains the documented fallback;
+				// only a non-default parent result participates as inherited.
+				hasInherited := parentDecision.Basis != BasisDefault && parentDecision.Decision != DecisionNone
+				after := resolveEffective(local[child][op], parentDecision, hasInherited).Allowed()
+				before := have[child][op]
+				switch {
+				case after && !before:
 					record(sub, child, op, FlipGrant)
-				}
-			}
-			if !moved[child] {
-				continue
-			}
-			// A move can take access away: what the subject holds today may have
-			// come from the OLD parent, and the new one need not confer it. What
-			// survives is the grant on the resource itself plus what the new
-			// parent confers.
-			for _, op := range childOps {
-				if !have[child][op] || gained[op] {
-					continue
-				}
-				direct := mergeLocalParts(directIdx.localParts(ResourceRef{Type: resourceType, ID: child}, []string{op}), []string{op})[op]
-				if direct.Decision != DecisionAllow || direct.Basis == BasisWildcard {
+				case !after && before:
 					record(sub, child, op, FlipRevoke)
 				}
 			}

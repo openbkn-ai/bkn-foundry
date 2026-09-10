@@ -100,7 +100,7 @@ func resolveGrantAuthority(c *gin.Context, e *authz.Enforcer, adminOp string, re
 		replyPublicError(c, http.StatusUnauthorized)
 		return "", false
 	}
-	admin, err := e.Check(sub, "admin-authz", "*", adminOp)
+	admin, err := e.CheckContext(c.Request.Context(), sub, "admin-authz", "*", adminOp)
 	if err != nil {
 		serverError(c, err)
 		return "", false
@@ -131,7 +131,7 @@ func resolveGrantAuthority(c *gin.Context, e *authz.Enforcer, adminOp string, re
 			}
 		}
 	}
-	ok, err := e.Check(sub, ref.Type, ref.ID, opAuthorize)
+	ok, err := e.CheckContext(c.Request.Context(), sub, ref.Type, ref.ID, opAuthorize)
 	if err != nil {
 		serverError(c, err)
 		return "", false
@@ -205,7 +205,7 @@ func restrictDelegatedOps(c *gin.Context, e *authz.Enforcer, ref resourceRef, op
 			return false
 		}
 	}
-	held, err := e.AllowedOps(c.GetString(ctxAccessorID), ref.Type, ref.ID, ops)
+	held, err := e.AllowedOpsContext(c.Request.Context(), c.GetString(ctxAccessorID), ref.Type, ref.ID, ops)
 	if err != nil {
 		serverError(c, err)
 		return false
