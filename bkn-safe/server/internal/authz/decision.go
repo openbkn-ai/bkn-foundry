@@ -10,10 +10,10 @@ import (
 )
 
 // EvaluationScope selects how far authorization evaluation may look. Local is
-// intentionally not a final authorization answer: it exists on the internal
-// ClusterIP trust surface for callers, such as Vega, that own a parent relation
-// bkn-safe does not know. A caller must never authorize a business operation
-// from the local result alone.
+// intentionally not a final authorization answer: it is exposed only through
+// the authenticated Vega path because Vega owns a parent relation bkn-safe does
+// not know. A caller must never authorize a business operation from the local
+// result alone.
 type EvaluationScope string
 
 const (
@@ -55,23 +55,28 @@ const (
 	BasisBundle    DecisionBasis = "bundle"
 	BasisWildcard  DecisionBasis = "wildcard"
 	BasisDefault   DecisionBasis = "default"
+	BasisRequires  DecisionBasis = "requires"
 	BasisNone      DecisionBasis = "none"
 )
 
 // Evaluation is one structured authorization result.
 type Evaluation struct {
-	Scope    EvaluationScope
-	Decision Decision
-	Basis    DecisionBasis
+	Scope             EvaluationScope
+	Decision          Decision
+	Basis             DecisionBasis
+	DeniedRequirement string
+	RequirementBasis  DecisionBasis
 }
 
 func (d Evaluation) Allowed() bool { return d.Decision == DecisionAllow }
 
 // OperationDecision is the resource-filter projection for one operation.
 type OperationDecision struct {
-	Operation string
-	Decision  Decision
-	Basis     DecisionBasis
+	Operation         string
+	Decision          Decision
+	Basis             DecisionBasis
+	DeniedRequirement string
+	RequirementBasis  DecisionBasis
 }
 
 func noneEvaluation(scope EvaluationScope) Evaluation {
@@ -103,24 +108,42 @@ func resolveEffective(local Evaluation, inherited Evaluation, hasInherited bool)
 	return defaultDeny()
 }
 
-// Evaluate returns a structured decision and applies managed-proxy provenance.
-// Check is the compatibility boolean wrapper over this entry point.
-func (en *Enforcer) Evaluate(ctx context.Context, accessorID, resourceType, resourceID, op string,
-	scope EvaluationScope) (Evaluation, error) {
-	if scope != ScopeEffective && scope != ScopeLocal {
-		return Evaluation{}, fmt.Errorf("unsupported evaluation scope %q", scope)
-	}
+// LocalDecision returns only the rules attached to the requested resource. It
+// deliberately skips parent traversal, default deny and operation requires.
+// Only the authenticated Vega orchestration endpoint may expose this result.
+func (en *Enforcer) LocalDecision(ctx context.Context, accessorID, resourceType, resourceID, op string) (Evaluation, error) {
 	idx, err := en.grantIndex(accessorID)
 	if err != nil {
 		return Evaluation{}, err
 	}
 	resource := ResourceRef{Type: resourceType, ID: resourceID}
-	all, err := en.evaluateWithIndex(ctx, accessorID, idx,
-		map[ResourceRef][]string{resource: {op}}, scope)
+	all, err := en.localDecisionsWithIndex(ctx, accessorID, idx,
+		map[ResourceRef][]string{resource: {op}})
 	if err != nil {
 		return Evaluation{}, err
 	}
-	decision := all[resource][op]
+	return en.applyManagedProxyProvenance(ctx, accessorID, resource, op, all[resource][op])
+}
+
+// OperationDecision is the only final authorization entry point. #1429 adds
+// direct operation-requires evaluation here; callers must not substitute the
+// base-effective layer or they would bypass those prerequisites.
+func (en *Enforcer) OperationDecision(ctx context.Context, accessorID, resourceType, resourceID, op string) (Evaluation, error) {
+	idx, err := en.grantIndex(accessorID)
+	if err != nil {
+		return Evaluation{}, err
+	}
+	resource := ResourceRef{Type: resourceType, ID: resourceID}
+	all, err := en.operationDecisionsWithIndex(ctx, accessorID, idx,
+		map[ResourceRef][]string{resource: {op}})
+	if err != nil {
+		return Evaluation{}, err
+	}
+	return en.applyManagedProxyProvenance(ctx, accessorID, resource, op, all[resource][op])
+}
+
+func (en *Enforcer) applyManagedProxyProvenance(ctx context.Context, accessorID string,
+	resource ResourceRef, op string, decision Evaluation) (Evaluation, error) {
 	if !decision.Allowed() || en.db == nil {
 		return decision, nil
 	}
@@ -131,7 +154,7 @@ func (en *Enforcer) Evaluate(ctx context.Context, accessorID, resourceType, reso
 	if !managed {
 		return decision, nil
 	}
-	current, err := en.hasCurrentProxySource(ctx, accessorID, resourceType, resourceID, op)
+	current, err := en.hasCurrentProxySource(ctx, accessorID, resource.Type, resource.ID, op)
 	if err != nil {
 		return Evaluation{}, err
 	}
@@ -140,5 +163,5 @@ func (en *Enforcer) Evaluate(ctx context.Context, accessorID, resourceType, reso
 	}
 	// Managed proxy access is source-backed and exact. An obsolete Casbin allow
 	// therefore becomes an explicit local denial rather than a default miss.
-	return Evaluation{Scope: scope, Decision: DecisionDeny, Basis: BasisDirect}, nil
+	return Evaluation{Scope: decision.Scope, Decision: DecisionDeny, Basis: BasisDirect}, nil
 }

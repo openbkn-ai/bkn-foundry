@@ -152,7 +152,7 @@ func (en *Enforcer) Check(accessorID, resourceType, resourceID, op string) (bool
 
 // CheckContext is the request-aware boolean compatibility entry point.
 func (en *Enforcer) CheckContext(ctx context.Context, accessorID, resourceType, resourceID, op string) (bool, error) {
-	decision, err := en.Evaluate(ctx, accessorID, resourceType, resourceID, op, ScopeEffective)
+	decision, err := en.OperationDecision(ctx, accessorID, resourceType, resourceID, op)
 	return decision.Allowed(), err
 }
 
@@ -174,8 +174,8 @@ func (en *Enforcer) checkPolicy(ctx context.Context, accessorID, resourceType, r
 		return false, err
 	}
 	resource := ResourceRef{Type: resourceType, ID: resourceID}
-	all, err := en.evaluateWithIndex(ctx, accessorID, idx,
-		map[ResourceRef][]string{resource: {op}}, ScopeEffective)
+	all, err := en.operationDecisionsWithIndex(ctx, accessorID, idx,
+		map[ResourceRef][]string{resource: {op}})
 	if err != nil {
 		return false, err
 	}
@@ -243,8 +243,8 @@ func (en *Enforcer) AllowedOpsContext(ctx context.Context, accessorID, resourceT
 		return nil, err
 	}
 	resource := ResourceRef{Type: resourceType, ID: resourceID}
-	all, err := en.evaluateWithIndex(ctx, accessorID, idx,
-		map[ResourceRef][]string{resource: candidates}, ScopeEffective)
+	all, err := en.operationDecisionsWithIndex(ctx, accessorID, idx,
+		map[ResourceRef][]string{resource: candidates})
 	if err != nil {
 		return nil, err
 	}

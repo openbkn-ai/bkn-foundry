@@ -33,7 +33,7 @@ func TestStructuredDecisionPriority(t *testing.T) {
 
 	// A parent deny is more specific than the child's type-wide allow.
 	mustNoErr(t, e.DenyObjectPermission(user, "catalog", "cat-1", "view_detail"))
-	got, err := e.Evaluate(t.Context(), user, "resource", "res-1", "view_detail", ScopeEffective)
+	got, err := e.OperationDecision(t.Context(), user, "resource", "res-1", "view_detail")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestStructuredDecisionPriority(t *testing.T) {
 
 	// An exact child allow is more specific than the parent deny.
 	mustNoErr(t, e.GrantObjectPermission(user, "resource", "res-1", "view_detail"))
-	got, err = e.Evaluate(t.Context(), user, "resource", "res-1", "view_detail", ScopeEffective)
+	got, err = e.OperationDecision(t.Context(), user, "resource", "res-1", "view_detail")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestStructuredDecisionPriority(t *testing.T) {
 
 	// A type-wide deny is terminal even when an exact allow also exists.
 	mustNoErr(t, e.DenyObjectPermission(user, "resource", "*", "view_detail"))
-	got, err = e.Evaluate(t.Context(), user, "resource", "res-1", "view_detail", ScopeEffective)
+	got, err = e.OperationDecision(t.Context(), user, "resource", "res-1", "view_detail")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestLocalAndEffectiveScopes(t *testing.T) {
 	mustNoErr(t, e.GrantRolePermission("reader", "resource", "*", "view_detail"))
 	mustNoErr(t, e.AssignRole(user, "reader"))
 
-	local, err := e.Evaluate(t.Context(), user, "resource", "r-1", "view_detail", ScopeLocal)
+	local, err := e.LocalDecision(t.Context(), user, "resource", "r-1", "view_detail")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestLocalAndEffectiveScopes(t *testing.T) {
 		t.Fatalf("local = %+v", local)
 	}
 
-	missing, err := e.Evaluate(t.Context(), user, "resource", "r-1", "modify", ScopeLocal)
+	missing, err := e.LocalDecision(t.Context(), user, "resource", "r-1", "modify")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestLocalAndEffectiveScopes(t *testing.T) {
 		t.Fatal("local none must never set allowed=true")
 	}
 
-	effective, err := e.Evaluate(t.Context(), user, "resource", "r-1", "modify", ScopeEffective)
+	effective, err := e.OperationDecision(t.Context(), user, "resource", "r-1", "modify")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestCommunityBundleHasStructuredBundleBasis(t *testing.T) {
 	if err := e.GrantCommunityBundle(user, "knowledge_network", "kn-1", AuthoritySourceAdminAuthz); err != nil {
 		t.Fatal(err)
 	}
-	got, err := e.Evaluate(t.Context(), user, "knowledge_network", "kn-1", "query_data", ScopeLocal)
+	got, err := e.LocalDecision(t.Context(), user, "knowledge_network", "kn-1", "query_data")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,14 +112,14 @@ func TestRemovingChildRuleRestoresParentFallback(t *testing.T) {
 	mustNoErr(t, e.DenyObjectPermission(user, "catalog", "cat-1", "view_detail"))
 	mustNoErr(t, e.GrantObjectPermission(user, "resource", "res-1", "view_detail"))
 
-	direct, err := e.Evaluate(t.Context(), user, "resource", "res-1", "view_detail", ScopeEffective)
+	direct, err := e.OperationDecision(t.Context(), user, "resource", "res-1", "view_detail")
 	if err != nil {
 		t.Fatal(err)
 	}
 	requireDecision(t, direct, DecisionAllow, BasisDirect)
 
 	mustNoErr(t, e.RevokeObjectPermission(user, "resource", "res-1", "view_detail"))
-	fallback, err := e.Evaluate(t.Context(), user, "resource", "res-1", "view_detail", ScopeEffective)
+	fallback, err := e.OperationDecision(t.Context(), user, "resource", "res-1", "view_detail")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestEnterpriseOpinionMergesBeforeParentFallback(t *testing.T) {
 	mustNoErr(t, e.AssignRole(user, role))
 	mustNoErr(t, e.DenyObjectPermission(user, "knowledge_network", "kn-1", "view_detail"))
 
-	got, err := e.Evaluate(t.Context(), user, "knowledge_network", "kn-1", "view_detail", ScopeLocal)
+	got, err := e.LocalDecision(t.Context(), user, "knowledge_network", "kn-1", "view_detail")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +199,7 @@ func TestEnterpriseOpinionMergesBeforeParentFallback(t *testing.T) {
 	fake.opinion = permobject.LocalOpinion{Direct: permobject.Deny}
 	const other = "enterprise-allow-user"
 	mustNoErr(t, e.GrantObjectPermission(other, "knowledge_network", "kn-2", "view_detail"))
-	got, err = e.Evaluate(t.Context(), other, "knowledge_network", "kn-2", "view_detail", ScopeLocal)
+	got, err = e.LocalDecision(t.Context(), other, "knowledge_network", "kn-2", "view_detail")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +211,7 @@ func TestEnterpriseOpinionMergesBeforeParentFallback(t *testing.T) {
 	const fallbackUser = "enterprise-wildcard-user"
 	ownedBy(t, db, "enterprise-res", "enterprise-cat")
 	mustNoErr(t, e.DenyObjectPermission(fallbackUser, "catalog", "enterprise-cat", "view_detail"))
-	got, err = e.Evaluate(t.Context(), fallbackUser, "resource", "enterprise-res", "view_detail", ScopeEffective)
+	got, err = e.OperationDecision(t.Context(), fallbackUser, "resource", "enterprise-res", "view_detail")
 	if err != nil {
 		t.Fatal(err)
 	}

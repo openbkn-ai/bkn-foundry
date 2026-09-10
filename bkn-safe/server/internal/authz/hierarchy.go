@@ -210,11 +210,11 @@ func (en *Enforcer) climb(
 	return found, nil
 }
 
-// evaluateWithIndex is the one local/hierarchical/effective implementation
-// shared by Check, AllowedOps and resource filtering. The input is batched so
-// hierarchy rows and parent decisions remain bounded for list-page calls.
-func (en *Enforcer) evaluateWithIndex(ctx context.Context, accessorID string, idx *grantIndex,
-	want map[ResourceRef][]string, scope EvaluationScope) (map[ResourceRef]map[string]Evaluation, error) {
+// localDecisionsWithIndex is the single batched local layer. It intentionally
+// has no scope switch: callers cannot accidentally turn a local answer into a
+// final authorization result by changing an argument.
+func (en *Enforcer) localDecisionsWithIndex(ctx context.Context, accessorID string, idx *grantIndex,
+	want map[ResourceRef][]string) (map[ResourceRef]map[string]Evaluation, error) {
 	local := make(map[ResourceRef]map[string]Evaluation, len(want))
 	for resource, ops := range want {
 		decisions, err := en.localDecisions(ctx, accessorID, idx, resource, ops)
@@ -223,8 +223,17 @@ func (en *Enforcer) evaluateWithIndex(ctx context.Context, accessorID string, id
 		}
 		local[resource] = decisions
 	}
-	if scope == ScopeLocal {
-		return local, nil
+	return local, nil
+}
+
+// baseEffectiveDecisionsWithIndex resolves local rules, trusted parents and
+// default deny. It is an internal calculation layer, not the business answer:
+// operationDecisionsWithIndex is the only final batch entry point.
+func (en *Enforcer) baseEffectiveDecisionsWithIndex(ctx context.Context, accessorID string, idx *grantIndex,
+	want map[ResourceRef][]string) (map[ResourceRef]map[string]Evaluation, error) {
+	local, err := en.localDecisionsWithIndex(ctx, accessorID, idx, want)
+	if err != nil {
+		return nil, err
 	}
 
 	missing := map[ResourceRef][]string{}
@@ -252,6 +261,14 @@ func (en *Enforcer) evaluateWithIndex(ctx context.Context, accessorID string, id
 		}
 	}
 	return out, nil
+}
+
+// operationDecisionsWithIndex is the sole final batch decision layer used by
+// checks, AllowedOps and resource filtering. #1429 will enforce direct
+// operation requirements here, after base-effective decisions are available.
+func (en *Enforcer) operationDecisionsWithIndex(ctx context.Context, accessorID string, idx *grantIndex,
+	want map[ResourceRef][]string) (map[ResourceRef]map[string]Evaluation, error) {
+	return en.baseEffectiveDecisionsWithIndex(ctx, accessorID, idx, want)
 }
 
 // parentsOf loads the single-hop parent of every node the climbers currently

@@ -5,15 +5,21 @@
 openapi: 3.0.3
 info:
   title: bkn-safe internal authorization API
-  version: 0.4.0
+  version: 0.5.0
   description: |
     Internal service-to-service authorization contract used by BKN,
     ontology-query, context-loader, and execution-factory.
 
-    This surface is deliberately tokenless and must be reachable only through
-    the cluster network boundary. Callers authenticate their own public request
-    first and pass the resulting concrete `accessor_id`; clients must never
-    expose these endpoints directly through an ingress.
+    Effective authorization remains tokenless and must be reachable only
+    through the cluster network boundary. Callers authenticate their own public
+    request first and pass the resulting concrete `accessor_id`; clients must
+    never expose these endpoints directly through an ingress.
+
+    Local authorization is a narrower privileged mode. It additionally requires
+    the Vega service bearer credential, accepts only concrete `resource` and
+    `catalog` references plus their approved operations, and never trusts a
+    caller-supplied service-name header as identity. If the server has no Vega
+    credential configured, local mode fails closed.
 
     Knowledge-network roots use `{kn_id}`. Child resources use
     `{kn_id}/{child_id}`. The supported KN resource types are
@@ -34,13 +40,14 @@ paths:
       operationId: checkAuthorization
       summary: Check one resource operation
       description: |
-        `evaluation_scope` defaults to `effective`, which is the final decision
-        used by ordinary business callers. `local` inspects only rules on the
-        requested resource and is reserved for callers on this internal
-        ClusterIP trust surface that own a parent relation bkn-safe does not
-        know. It is input to that caller's parent fallback, not a final
-        authorization result; neither local `allow` nor local `none` may by
-        itself authorize a business operation.
+        `evaluation_scope` defaults to `effective`, which invokes the final
+        `operation_decision` used by ordinary business callers. `local` inspects
+        only base rules on the requested resource, skipping parent fallback and
+        operation requirements. It is available only to an authenticated Vega
+        workload for the Resource→Catalog relation Vega owns. The local result
+        is input to Vega's parent fallback, not a final authorization result;
+        neither local `allow` nor local `none` may by itself authorize a
+        business operation.
       requestBody:
         required: true
         content:
@@ -69,6 +76,10 @@ paths:
                 $ref: '#/components/schemas/CheckResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/LocalCredentialRequired'
+        '403':
+          $ref: '#/components/responses/LocalScopeForbidden'
         '500':
           $ref: '#/components/responses/InternalError'
         '503':
@@ -107,12 +118,12 @@ paths:
         An empty visibility list returns every requested resource. Omitting
         candidate operations uses each resource type's operation catalog.
 
-        `evaluation_scope=local` returns every requested resource regardless
-        of visibility and adds one `decisions` entry for every visibility or
-        candidate operation, including explicit `deny` and `none`. Callers on
-        this internal ClusterIP trust surface use those entries to perform a
-        parent fallback they own; they must not treat local `allowed` as the
-        final authorization result.
+        `evaluation_scope=local` requires the Vega bearer credential, accepts
+        only concrete Resource/Catalog references and their approved operations,
+        returns every requested resource regardless of visibility, and adds one
+        `decisions` entry for every visibility or candidate operation, including
+        explicit `deny` and `none`. Vega uses those entries to perform the parent
+        fallback it owns; it must not treat local `allowed` as final.
         Omitting the scope keeps the historical effective response shape.
 
         The response preserves first-seen candidate order and de-duplicates
@@ -144,6 +155,10 @@ paths:
                 $ref: '#/components/schemas/ResourceFilterResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/LocalCredentialRequired'
+        '403':
+          $ref: '#/components/responses/LocalScopeForbidden'
         '500':
           $ref: '#/components/responses/InternalError'
         '503':
@@ -397,6 +412,12 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 components:
+  securitySchemes:
+    VegaLocalCredential:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque service credential
+      description: Required only when `evaluation_scope=local`; configured in bkn-safe as `SAFE_AUTHZ_VEGA_SERVICE_TOKEN`.
   responses:
     BadRequest:
       description: Malformed or unsafe request.
@@ -412,6 +433,18 @@ components:
             $ref: '#/components/schemas/BknSafeError'
     AuthorizationUnavailable:
       description: Account state cannot be read; no permission is granted.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BknSafeError'
+    LocalCredentialRequired:
+      description: Local scope requires a valid Vega workload bearer credential.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BknSafeError'
+    LocalScopeForbidden:
+      description: The authenticated workload, resource, or operation is outside the Vega local-scope contract.
       content:
         application/json:
           schema:
@@ -459,6 +492,11 @@ components:
         decision:
           $ref: '#/components/schemas/AuthorizationDecision'
         basis:
+          $ref: '#/components/schemas/DecisionBasis'
+        denied_requirement:
+          type: string
+          description: Present when the final decision is denied because this direct required operation was denied.
+        requirement_basis:
           $ref: '#/components/schemas/DecisionBasis'
     OperationsRequest:
       type: object
@@ -521,16 +559,22 @@ components:
       type: string
       enum: [effective, local]
       default: effective
+      description: |
+        Effective invokes the final operation decision. Local is a
+        Vega-authenticated base intermediate result and accepts only:
+        `resource` with `view_detail|query_data`, or `catalog` with
+        `view_detail|modify|delete|authorize|task_manage|resource_manage|query_data`.
     AuthorizationDecision:
       type: string
       enum: [allow, deny, none]
       description: "`none` is valid only for local evaluation."
     DecisionBasis:
       type: string
-      enum: [direct, inherited, bundle, wildcard, default, none]
+      enum: [direct, inherited, bundle, wildcard, default, requires, none]
       description: |
         `none` accompanies only a local `none`; `default` accompanies only an
-        effective deny produced when no rule or trusted parent decides.
+        effective deny produced when no rule or trusted parent decides;
+        `requires` denotes a final denial caused by a denied direct prerequisite.
     OperationDecision:
       type: object
       required: [operation, decision, basis]
@@ -539,6 +583,11 @@ components:
         decision:
           $ref: '#/components/schemas/AuthorizationDecision'
         basis:
+          $ref: '#/components/schemas/DecisionBasis'
+        denied_requirement:
+          type: string
+          description: Present with `basis=requires`; names the denied direct prerequisite operation.
+        requirement_basis:
           $ref: '#/components/schemas/DecisionBasis'
     PropertyAccessLevel:
       type: string

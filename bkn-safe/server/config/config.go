@@ -15,9 +15,18 @@ type Config struct {
 	Hydra    HydraConfig
 	LDAP     LDAPConfig
 	License  LicenseConfig `yaml:"license"`
+	Authz    AuthzConfig   `yaml:"authz"`
 	// SeedOnStart controls whether roles/resource-types/operations/grants are
 	// seeded into the DB at startup (idempotent). Default true.
 	SeedOnStart bool `yaml:"seed_on_start"`
+}
+
+// AuthzConfig contains credentials for narrowly privileged internal decision
+// modes. Ordinary effective authorization calls remain tokenless on ClusterIP.
+type AuthzConfig struct {
+	// VegaServiceToken authenticates Vega before exposing local Resource/Catalog
+	// decisions. Empty disables local scope and fails those requests closed.
+	VegaServiceToken string `yaml:"vega_service_token"`
 }
 
 // LicenseConfig points bkn-safe at the license-server (activation + renewal).

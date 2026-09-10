@@ -96,7 +96,12 @@ func (en *Enforcer) filterResourceOps(ctx context.Context, accessorID string, re
 			want[r] = union
 		}
 	}
-	decided, err := en.evaluateWithIndex(ctx, accessorID, idx, want, scope)
+	var decided map[ResourceRef]map[string]Evaluation
+	if scope == ScopeLocal {
+		decided, err = en.localDecisionsWithIndex(ctx, accessorID, idx, want)
+	} else {
+		decided, err = en.operationDecisionsWithIndex(ctx, accessorID, idx, want)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -150,6 +155,7 @@ func (en *Enforcer) filterResourceOps(ctx context.Context, accessorID string, re
 				d := resourceDecisions[op]
 				item.Decisions = append(item.Decisions, OperationDecision{
 					Operation: op, Decision: d.Decision, Basis: d.Basis,
+					DeniedRequirement: d.DeniedRequirement, RequirementBasis: d.RequirementBasis,
 				})
 			}
 			out = append(out, item)
@@ -174,7 +180,10 @@ func (en *Enforcer) filterResourceOps(ctx context.Context, accessorID string, re
 		structured := make([]OperationDecision, 0, len(union))
 		for _, op := range union {
 			d := resourceDecisions[op]
-			structured = append(structured, OperationDecision{Operation: op, Decision: d.Decision, Basis: d.Basis})
+			structured = append(structured, OperationDecision{
+				Operation: op, Decision: d.Decision, Basis: d.Basis,
+				DeniedRequirement: d.DeniedRequirement, RequirementBasis: d.RequirementBasis,
+			})
 		}
 		out = append(out, FilteredResource{Type: r.Type, ID: r.ID, Operations: ops, Decisions: structured})
 	}

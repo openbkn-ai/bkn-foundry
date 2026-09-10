@@ -27,6 +27,8 @@ db:
 hydra:
   admin_url: http://hydra-admin:4445
   public_url: http://hydra-public:4444
+authz:
+  vega_service_token: file-vega-secret
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -46,6 +48,9 @@ hydra:
 	}
 	if cfg.License.ServerURL != "https://license.openbkn.ai" {
 		t.Fatalf("license server_url = %q", cfg.License.ServerURL)
+	}
+	if cfg.Authz.VegaServiceToken != "file-vega-secret" {
+		t.Fatalf("authz vega_service_token = %q", cfg.Authz.VegaServiceToken)
 	}
 }
 
@@ -90,5 +95,16 @@ license:
 	}
 	if cfg.License.ServerURL != "" {
 		t.Fatalf("license server_url = %q, want empty offline deployment", cfg.License.ServerURL)
+	}
+}
+
+func TestVegaServiceTokenLoadsFromSecretEnvironment(t *testing.T) {
+	t.Setenv("SAFE_AUTHZ_VEGA_SERVICE_TOKEN", "vega-secret")
+	cfg, err := config.LoadWithOptions(config.LoadOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Authz.VegaServiceToken != "vega-secret" {
+		t.Fatalf("vega service token = %q", cfg.Authz.VegaServiceToken)
 	}
 }

@@ -23,6 +23,12 @@ import (
 )
 
 func newTestServer(t *testing.T) (*gin.Engine, *authz.Enforcer, *gorm.DB) {
+	return newTestServerForWorkload(t, vegaWorkloadIdentity)
+}
+
+const testWorkloadToken = "test-vega-local-scope-token"
+
+func newTestServerForWorkload(t *testing.T, workload string) (*gin.Engine, *authz.Enforcer, *gorm.DB) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -36,8 +42,25 @@ func newTestServer(t *testing.T) (*gin.Engine, *authz.Enforcer, *gorm.DB) {
 	if err != nil {
 		t.Fatalf("authz: %v", err)
 	}
-	r := New(Deps{Enforcer: e, DB: db, Directory: directory.New(db)})
+	r := New(Deps{
+		Enforcer: e, DB: db, Directory: directory.New(db),
+		WorkloadAuthenticator: NewStaticBearerWorkloadAuthenticator(workload, testWorkloadToken),
+	})
 	return r, e, db
+}
+
+func doWithWorkloadCredential(t *testing.T, r *gin.Engine, method, path string, body any, token string) *httptest.ResponseRecorder {
+	t.Helper()
+	var buf bytes.Buffer
+	if body != nil {
+		_ = json.NewEncoder(&buf).Encode(body)
+	}
+	req := httptest.NewRequest(method, path, &buf)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	return w
 }
 
 func seedEnabledUser(t *testing.T, db *gorm.DB, id string) {

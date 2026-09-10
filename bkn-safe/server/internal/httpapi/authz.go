@@ -34,7 +34,7 @@ type resourceRef struct {
 // registerAuthz mounts bkn-safe's clean authorization API under /api/safe/v1/authz.
 // This is a redesign — it deliberately drops ISF's quirks (GET-in-body,
 // array-vs-map responses, policy-delete double form, public/private split).
-func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
+func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, workloadAuth WorkloadAuthenticator) {
 	g := r.Group("/api/safe/v1/authz")
 	registerPropertyLevels(g, e, db)
 
@@ -54,6 +54,10 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
+		if scope == authz.ScopeLocal && !authorizeLocalScope(c, workloadAuth,
+			[]authz.ResourceRef{{Type: req.Resource.Type, ID: req.Resource.ID}}, []string{req.Operation}) {
+			return
+		}
 		active, err := activeAccount(c, db, req.AccessorID)
 		if err != nil {
 			replyPublicError(c, http.StatusServiceUnavailable)
@@ -63,18 +67,29 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			c.JSON(http.StatusOK, gin.H{"allowed": false})
 			return
 		}
-		decision, err := e.Evaluate(c.Request.Context(), req.AccessorID,
-			req.Resource.Type, req.Resource.ID, req.Operation, scope)
+		var decision authz.Evaluation
+		if scope == authz.ScopeLocal {
+			decision, err = e.LocalDecision(c.Request.Context(), req.AccessorID,
+				req.Resource.Type, req.Resource.ID, req.Operation)
+		} else {
+			decision, err = e.OperationDecision(c.Request.Context(), req.AccessorID,
+				req.Resource.Type, req.Resource.ID, req.Operation)
+		}
 		if err != nil {
 			serverError(c, err)
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{
+		response := gin.H{
 			"allowed":          decision.Allowed(),
 			"evaluation_scope": decision.Scope,
 			"decision":         decision.Decision,
 			"basis":            decision.Basis,
-		})
+		}
+		if decision.DeniedRequirement != "" {
+			response["denied_requirement"] = decision.DeniedRequirement
+			response["requirement_basis"] = decision.RequirementBasis
+		}
+		c.JSON(http.StatusOK, response)
 	})
 
 	// POST /operations — which ops the accessor may perform on a resource.
@@ -165,6 +180,10 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			}
 		}
 		refs = uniqueResourceRefs(refs)
+		requestedOperations := uniqueStrings(append(append([]string{}, req.VisibilityOperations...), req.CandidateOperations...))
+		if scope == authz.ScopeLocal && !authorizeLocalScope(c, workloadAuth, refs, requestedOperations) {
+			return
+		}
 		active, err := activeAccount(c, db, req.AccessorID)
 		if err != nil {
 			replyPublicError(c, http.StatusServiceUnavailable)
@@ -190,11 +209,16 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 				if scope == authz.ScopeLocal {
 					decisions := make([]gin.H, 0, len(r.Decisions))
 					for _, decision := range r.Decisions {
-						decisions = append(decisions, gin.H{
+						item := gin.H{
 							"operation": decision.Operation,
 							"decision":  decision.Decision,
 							"basis":     decision.Basis,
-						})
+						}
+						if decision.DeniedRequirement != "" {
+							item["denied_requirement"] = decision.DeniedRequirement
+							item["requirement_basis"] = decision.RequirementBasis
+						}
+						decisions = append(decisions, item)
 					}
 					entry["decisions"] = decisions
 				}
@@ -229,6 +253,9 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 				return
 			}
 			candidates = uniqueStrings(candidates)
+			if scope == authz.ScopeLocal {
+				candidates = approvedVegaLocalOperations(rtype, candidates)
+			}
 			catalogCandidates[rtype] = candidates
 		}
 		resultsByResource := make(map[authz.ResourceRef]authz.FilteredResource, len(refs))
