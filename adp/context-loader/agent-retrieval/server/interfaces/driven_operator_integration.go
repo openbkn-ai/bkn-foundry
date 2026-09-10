@@ -223,6 +223,10 @@ type ListPublishedToolboxesResponse struct {
 type ToolBoxLifecycle struct {
 	Published    bool
 	EnabledTools map[string]struct{}
+	// EnabledKnown is false when the enabled-tools walk hit its page bound before the listing
+	// ended. The set is then a prefix, not the answer, and a tool missing from it is unknown
+	// rather than disabled. Callers must not read absence as withdrawal in that case.
+	EnabledKnown bool
 }
 
 // ListPublishedToolsRequest lists the enabled Function tools of one published

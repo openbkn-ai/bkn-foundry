@@ -364,8 +364,8 @@ func TestReconcileLeavesUnpublishedBoxesOutOfTheDesiredSet(t *testing.T) {
 	})
 }
 
-func TestAnUnreadableBoxIsNotAdmitted(t *testing.T) {
-	Convey("读不到工具箱状态:当作未发布,不写入(不能把不知道当作可调用)", t, func() {
+func TestAnUnreadableBoxLeavesTheIndexAlone(t *testing.T) {
+	Convey("读不到工具箱状态:既不写也不删,把错误交出去(读失败不是「未发布」)", t, func() {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		toolRepo := mocks.NewMockIToolDB(ctrl)
@@ -373,10 +373,29 @@ func TestAnUnreadableBoxIsNotAdmitted(t *testing.T) {
 			Return([]*model.ToolDB{tool("box-1", "t-1", "工具", "描述")}, nil)
 		boxRepo := mocks.NewMockIToolboxDB(ctrl)
 		boxRepo.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("db down"))
+		// No UpsertCapability and no DeleteCapability expectation: any call fails the test.
 		index := mocks.NewMockCapabilityIndexSyncService(ctrl)
-		index.EXPECT().DeleteCapability(gomock.Any(), toolRef("box-1", "t-1")).Return(nil)
 		r := newReconciler(toolRepo, index)
 		r.boxRepo = boxRepo
-		So(r.SyncTools(context.Background(), "box-1", []string{"t-1"}), ShouldBeNil)
+		So(r.SyncTools(context.Background(), "box-1", []string{"t-1"}), ShouldNotBeNil)
+	})
+}
+
+// TestReconcileDoesNotPurgeWhenBoxesAreUnreadable is the full-pass version of the same rule, and
+// the one with the blast radius: read as "every box is unpublished", one failed query would empty
+// the whole function index.
+func TestReconcileDoesNotPurgeWhenBoxesAreUnreadable(t *testing.T) {
+	Convey("全量对账里工具箱读失败:中止这一轮,不 apply(否则整份索引被清空)", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		toolRepo := mocks.NewMockIToolDB(ctrl)
+		toolRepo.EXPECT().SelectToolBoxIDsByFilter(gomock.Any(), gomock.Any()).Return([]string{"box-1", "box-2"}, nil)
+		boxRepo := mocks.NewMockIToolboxDB(ctrl)
+		boxRepo.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("db down"))
+		// Neither ListIndexed nor any write/delete may be reached.
+		index := mocks.NewMockCapabilityIndexSyncService(ctrl)
+		r := newReconciler(toolRepo, index)
+		r.boxRepo = boxRepo
+		So(r.reconcileTools(context.Background()), ShouldNotBeNil)
 	})
 }

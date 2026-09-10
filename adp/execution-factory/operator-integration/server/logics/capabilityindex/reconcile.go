@@ -131,7 +131,13 @@ func (r *reconciler) reconcileTools(ctx context.Context) error {
 		return err
 	}
 
-	boxes := r.boxInfos(ctx, boxIDs)
+	boxes, err := r.boxInfos(ctx, boxIDs)
+	if err != nil {
+		// Same rule as an unreadable tool list below: an incomplete desired set applied as if it
+		// were complete is a purge, and a box read that failed would make every tool look
+		// unpublished. Stop here; the index keeps what it has until a pass can read everything.
+		return err
+	}
 	desired := make(map[interfaces.CapabilityRef]*interfaces.CapabilityDocument)
 	for _, boxID := range boxIDs {
 		boxID = strings.TrimSpace(boxID)
@@ -188,7 +194,13 @@ func (r *reconciler) SyncTools(ctx context.Context, boxID string, toolIDs []stri
 		return err
 	}
 
-	box := r.boxInfos(ctx, []string{boxID})[boxID]
+	boxes, err := r.boxInfos(ctx, []string{boxID})
+	if err != nil {
+		// The box's state decides whether these tools are written or removed; without it neither
+		// is safe. Leave the index as it is — the next event or the full pass will read it again.
+		return err
+	}
+	box := boxes[boxID]
 	var errs []error
 	live := make(map[string]struct{}, len(tools))
 	for _, tool := range tools {
@@ -230,7 +242,11 @@ func (r *reconciler) SyncBox(ctx context.Context, boxID string) error {
 	if err != nil {
 		return err
 	}
-	box := r.boxInfos(ctx, []string{boxID})[boxID]
+	boxes, err := r.boxInfos(ctx, []string{boxID})
+	if err != nil {
+		return err
+	}
+	box := boxes[boxID]
 	desired := make(map[interfaces.CapabilityRef]*interfaces.CapabilityDocument, len(tools))
 	for _, tool := range tools {
 		if !admissible(tool, box) {
@@ -314,18 +330,20 @@ type boxInfo struct {
 
 // boxInfos reads the boxes behind a batch of tools in one query.
 //
-// A box that cannot be read is reported as unpublished. That is the only safe default: the index
-// exists so an agent can find something to call, and a box whose state is unknown is not
-// something anyone can promise is callable. The next pass reads it again.
-func (r *reconciler) boxInfos(ctx context.Context, boxIDs []string) map[string]boxInfo {
+// A read that fails is an error, not an empty answer. The distinction matters because of what the
+// callers do with a box they cannot find: they treat it as unpublished and remove its tools. That
+// is right for a box that is genuinely gone, and catastrophic for a query that merely failed —
+// applied to a full pass, one database hiccup would read as "every box is unpublished" and purge
+// the whole function index until the next successful pass re-embedded everything. So a failed
+// read stops the caller from touching the index at all; the next event or pass reads again.
+func (r *reconciler) boxInfos(ctx context.Context, boxIDs []string) (map[string]boxInfo, error) {
 	infos := make(map[string]boxInfo, len(boxIDs))
 	if r.boxRepo == nil || len(boxIDs) == 0 {
-		return infos
+		return infos, nil
 	}
 	boxes, err := r.boxRepo.SelectListByBoxIDs(ctx, boxIDs)
 	if err != nil {
-		r.logger.WithContext(ctx).Warnf("read tool boxes failed, boxes=%d, err=%v", len(boxIDs), err)
-		return infos
+		return nil, err
 	}
 	for _, box := range boxes {
 		if box != nil {
@@ -335,7 +353,7 @@ func (r *reconciler) boxInfos(ctx context.Context, boxIDs []string) map[string]b
 			}
 		}
 	}
-	return infos
+	return infos, nil
 }
 
 // admissible is the one rule for whether a tool belongs in the capability index (#1443).

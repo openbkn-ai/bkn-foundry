@@ -394,6 +394,7 @@ func (s *knToolsService) dropWithdrawnOwners(ctx context.Context,
 	// drop it, but that listing needs a caller token the internal face never has (#1443).
 	published := make([]bool, len(order))
 	enabled := make([]map[string]struct{}, len(order))
+	enabledKnown := make([]bool, len(order))
 	slots := make(chan struct{}, toolboxFanoutConcurrency)
 	var wg sync.WaitGroup
 	for i, key := range order {
@@ -418,6 +419,7 @@ func (s *knToolsService) dropWithdrawnOwners(ctx context.Context,
 			}
 			published[i] = true
 			enabled[i] = state.EnabledTools
+			enabledKnown[i] = state.EnabledKnown
 		}(i, key)
 	}
 	wg.Wait()
@@ -438,7 +440,11 @@ func (s *knToolsService) dropWithdrawnOwners(ctx context.Context,
 			dropped++
 			continue
 		}
-		if hit.CapabilityType == interfaces.CapabilityTypeFunction {
+		// Enablement is only enforced where it is known. A box too large for the bounded walk
+		// reports its enabled set as a prefix; a tool outside it is unknown, and unknown here is
+		// kept — the box is confirmed published, and the index itself now admits only enabled
+		// tools, so this check is a guard against index lag, not the only gate.
+		if hit.CapabilityType == interfaces.CapabilityTypeFunction && enabledKnown[i] {
 			if _, on := enabled[i][hit.CapabilityID]; !on {
 				s.warnf(ctx, "[SearchCapabilities] tool withheld: %s/%s not enabled", hit.OwnerID, hit.CapabilityID)
 				dropped++

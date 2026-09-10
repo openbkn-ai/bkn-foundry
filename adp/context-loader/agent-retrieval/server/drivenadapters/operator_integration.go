@@ -178,11 +178,11 @@ const toolBoxDetailURI = "/internal-v1/tool-box/%s"
 const toolBoxToolsURI = "/internal-v1/tool-box/%s/tools/list"
 
 // toolBoxToolsPageSize is the largest page the listing accepts, and toolBoxToolsMaxPages bounds
-// the walk: a box past that many enabled tools is not read further, and its remaining tools are
-// treated as not offered rather than the walk becoming unbounded.
+// the walk. A box with more enabled tools than the walk covers is reported with EnabledKnown
+// false: the walk stays bounded, and the tools it did not reach are unknown, not withdrawn.
 const (
 	toolBoxToolsPageSize = 100
-	toolBoxToolsMaxPages = 3
+	toolBoxToolsMaxPages = 5
 )
 
 // ToolBoxLifecycle reads whether the box is published and which tools are enabled.
@@ -191,7 +191,7 @@ const (
 // a caller token, so this answers on the internal face where the caller-visible listing cannot,
 // and it fails closed — a box or a listing that cannot be read yields unpublished / no tools.
 func (o *operatorIntegrationClient) ToolBoxLifecycle(ctx context.Context, boxID string) (*interfaces.ToolBoxLifecycle, error) {
-	out := &interfaces.ToolBoxLifecycle{EnabledTools: map[string]struct{}{}}
+	out := &interfaces.ToolBoxLifecycle{EnabledTools: map[string]struct{}{}, EnabledKnown: true}
 	if strings.TrimSpace(boxID) == "" {
 		return out, nil
 	}
@@ -243,9 +243,14 @@ func (o *operatorIntegrationClient) ToolBoxLifecycle(ctx context.Context, boxID 
 			}
 		}
 		if len(listed.Tools) < toolBoxToolsPageSize {
-			break
+			return out, nil
 		}
 	}
+	// Every page was full: the listing may continue past the bound. Say so rather than let a
+	// tool beyond it read as disabled.
+	o.logger.WithContext(ctx).Warnf("[OperatorIntegration#ToolBoxLifecycle] box_id=%s has more than %d enabled tools; enablement beyond that is unknown",
+		boxID, toolBoxToolsPageSize*toolBoxToolsMaxPages)
+	out.EnabledKnown = false
 	return out, nil
 }
 

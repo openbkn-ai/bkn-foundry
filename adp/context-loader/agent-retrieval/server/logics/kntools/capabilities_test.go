@@ -566,3 +566,25 @@ func TestDisabledToolInAPublishedBoxIsNotOffered(t *testing.T) {
 		t.Fatalf("停用的工具不该出现,同箱启用的照常, got %+v", resp.Capabilities)
 	}
 }
+
+// TestUnknownEnablementIsNotReadAsDisabled covers a box larger than the bounded enabled-tools
+// walk. The set that came back is a prefix; a tool outside it must be kept, not withheld — the box
+// is confirmed published and the index only admits enabled tools, so silently dropping the tail of
+// a large box would be a defect of the gate, not a safety margin.
+func TestUnknownEnablementIsNotReadAsDisabled(t *testing.T) {
+	op := &fakeOperator{
+		hits:              []interfaces.CapabilityHit{hit("box-big", "t-beyond")},
+		toolsByBox:        map[string]*interfaces.ListPublishedToolsResponse{"box-big": tools("box-big", "t-beyond")},
+		boxDisabledTools:  map[string]map[string]bool{"box-big": {"t-beyond": true}}, // absent from the prefix
+		boxEnabledUnknown: map[string]bool{"box-big": true},
+	}
+	svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-big/t-beyond")}, &fakeKnAuthz{})
+
+	resp, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1", Query: "x"})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.Capabilities) != 1 {
+		t.Fatalf("启用集只是前缀时,不在前缀里的工具该保留而不是当停用, got %+v", resp.Capabilities)
+	}
+}

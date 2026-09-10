@@ -45,6 +45,8 @@ type fakeOperator struct {
 	boxUnpublished   map[string]bool
 	boxStatusErr     map[string]error
 	boxDisabledTools map[string]map[string]bool
+	// boxEnabledUnknown marks a box whose enabled-tools walk overflowed: the set is a prefix.
+	boxEnabledUnknown map[string]bool
 	// hitsByCall, when set, serves a different ranking per SearchCapabilities call, in order; the
 	// last one repeats. gotTopKs records the top_k of every call so a test can pin how many pages
 	// were asked for and how wide.
@@ -65,7 +67,7 @@ func (f *fakeOperator) ToolBoxLifecycle(_ context.Context, boxID string) (*inter
 	// The execution factory's own records are independent of the caller-visible catalogue, so
 	// enablement is modelled from every tool the fake ranking knows about, minus the ones named
 	// disabled — not from toolsByBox, which stands for the token-gated listing.
-	out := &interfaces.ToolBoxLifecycle{Published: !f.boxUnpublished[boxID], EnabledTools: map[string]struct{}{}}
+	out := &interfaces.ToolBoxLifecycle{Published: !f.boxUnpublished[boxID], EnabledTools: map[string]struct{}{}, EnabledKnown: !f.boxEnabledUnknown[boxID]}
 	pages := append([][]interfaces.CapabilityHit{f.hits}, f.hitsByCall...)
 	for _, page := range pages {
 		for _, h := range page {
