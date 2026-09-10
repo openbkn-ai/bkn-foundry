@@ -320,7 +320,14 @@ func auditDetailTargetID(resource, detail string) string {
 		return ""
 	}
 	switch resource {
-	case "object-grants":
+	case "object-grants", "enterprise-object-grants":
+		ref, _ := body["resource"].(map[string]any)
+		id, _ := ref["id"].(string)
+		if id == "" {
+			id, _ = body["grant_id"].(string)
+		}
+		return id
+	case "explain":
 		ref, _ := body["resource"].(map[string]any)
 		id, _ := ref["id"].(string)
 		return id
@@ -363,7 +370,7 @@ func accessorNameByID(ctx context.Context, dir *directory.Service, id string) st
 // Method (carried separately) distinguishes create/update/delete.
 func auditTarget(fullPath string) (resource, action string) {
 	rest := fullPath
-	for _, prefix := range []string{adminPathPrefix, "/api/safe/v1/me/"} {
+	for _, prefix := range []string{adminPathPrefix, "/api/safe/v1/me/", "/api/safe/v1/authz/"} {
 		if strings.HasPrefix(fullPath, prefix) {
 			rest = strings.TrimPrefix(fullPath, prefix)
 			break
@@ -408,6 +415,15 @@ func auditAction(method, fullPath string) string {
 			return "revoke"
 		}
 		return "grant"
+	case "/api/safe/v1/me/object-grants":
+		if method == http.MethodDelete {
+			return "revoke"
+		}
+		return "grant"
+	case "/api/safe/v1/admin/enterprise-object-grants":
+		return "revoke"
+	case "/api/safe/v1/authz/explain":
+		return "explain"
 	case "/api/safe/v1/admin/roles/:id/permissions":
 		if method == http.MethodDelete {
 			return "revoke_permission"

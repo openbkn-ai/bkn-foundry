@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/managedproxy"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
@@ -217,10 +218,10 @@ func TestGenericRevokeAndRoleUnbindCannotMutateManagedProxy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w := adminReq(t, r, http.MethodDelete, objectGrantsPath, gin.H{
-		"accessor_id": account.ProxyAccountID,
-		"resource":    gin.H{"type": "resource", "id": "r-1"},
+	grantID := oneGrantID(t, enforcer, authz.PolicyFilter{
+		AccessorID: account.ProxyAccountID, Object: "resource:r-1", Operation: "query_data",
 	})
+	w := adminReq(t, r, http.MethodDelete, objectGrantsPath, gin.H{"grant_id": grantID})
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("generic revoke = %d body=%s, want 403", w.Code, w.Body.String())
 	}

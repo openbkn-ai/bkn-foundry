@@ -25,6 +25,10 @@ func TestAuditActionUsesStableBusinessSemantics(t *testing.T) {
 		{http.MethodDelete, "/api/safe/v1/admin/role-bindings", "unbind_role"},
 		{http.MethodPost, "/api/safe/v1/admin/object-grants", "grant"},
 		{http.MethodDelete, "/api/safe/v1/admin/object-grants", "revoke"},
+		{http.MethodPost, "/api/safe/v1/me/object-grants", "grant"},
+		{http.MethodDelete, "/api/safe/v1/me/object-grants", "revoke"},
+		{http.MethodDelete, "/api/safe/v1/admin/enterprise-object-grants", "revoke"},
+		{http.MethodPost, "/api/safe/v1/authz/explain", "explain"},
 		{http.MethodPost, "/api/safe/v1/admin/roles/:id/permissions", "grant_permission"},
 		{http.MethodDelete, "/api/safe/v1/admin/roles/:id/permissions", "revoke_permission"},
 		{http.MethodPost, "/api/safe/v1/admin/license/import", "import"},
@@ -46,6 +50,9 @@ func TestAuditDetailTargetPromotesBusinessObjectIdentifiers(t *testing.T) {
 		wantID   string
 	}{
 		{"object-grants", `{"accessor_id":"user-a","resource":{"type":"knowledge_network","id":"supplychain_hd0202"}}`, "supplychain_hd0202"},
+		{"object-grants", `{"grant_id":"grant-a"}`, "grant-a"},
+		{"enterprise-object-grants", `{"grant_id":"ee-grant-a"}`, "ee-grant-a"},
+		{"explain", `{"accessor_id":"user-a","resource":{"type":"catalog","id":"catalog-a"}}`, "catalog-a"},
 		{"role-bindings", `{"accessor_id":"user-a","role_id":"role-a"}`, "user-a"},
 	}
 	for _, test := range tests {

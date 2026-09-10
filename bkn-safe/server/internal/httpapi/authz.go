@@ -437,6 +437,45 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 	}
 }
 
+// registerAuthzExplain mounts the authenticated administrator-only diagnostic
+// endpoint separately from the tokenless ClusterIP authorization surface.
+func registerAuthzExplain(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
+	g.POST("/explain", RequirePermission(e, "admin-authz", "view"), func(c *gin.Context) {
+		var req struct {
+			AccessorID string      `json:"accessor_id" binding:"required"`
+			Resource   resourceRef `json:"resource" binding:"required"`
+			Operation  string      `json:"operation" binding:"required"`
+		}
+		if !bind(c, &req) {
+			return
+		}
+		active, err := activeAccount(c, db, req.AccessorID)
+		if err != nil {
+			replyPublicError(c, http.StatusServiceUnavailable)
+			return
+		}
+		if !active {
+			c.JSON(http.StatusOK, gin.H{
+				"accessor_id": req.AccessorID, "resource_type": req.Resource.Type,
+				"resource_id": req.Resource.ID, "operation": req.Operation,
+				"evaluation": gin.H{
+					"scope": authz.ScopeEffective, "decision": authz.DecisionDeny, "basis": authz.BasisDefault,
+				},
+				"steps": []authz.ExplanationStep{}, "requirements": []authz.RequirementExplanation{},
+				"account_active": false,
+			})
+			return
+		}
+		explanation, err := e.ExplainOperation(c.Request.Context(), req.AccessorID,
+			req.Resource.Type, req.Resource.ID, req.Operation)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, explanation)
+	})
+}
+
 // registerRoleBindings mounts the accessor↔role binding endpoints (bind / list /
 // unbind). Admin-only — mounted under the /admin group behind RequireAdmin.
 func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {

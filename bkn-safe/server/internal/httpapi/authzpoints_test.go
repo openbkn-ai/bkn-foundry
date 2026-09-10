@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
@@ -51,7 +52,7 @@ func TestAdminConsoleGateAloneAuthorizesNothing(t *testing.T) {
 		"resource":    gin.H{"type": "catalog", "id": "c1"},
 		"operations":  []string{"view_detail"},
 	}
-	revokeBody := gin.H{"accessor_id": "grantee-1", "resource": gin.H{"type": "catalog", "id": "c1"}}
+	revokeBody := gin.H{"grant_id": "unknown-grant"}
 	bindBody := gin.H{"accessor_id": "grantee-1", "role_id": roleID}
 	permBody := gin.H{"resource": gin.H{"type": "catalog", "id": "*"}, "operations": []string{"view_detail"}}
 	rolePerms := "/api/safe/v1/admin/roles/" + roleID + "/permissions"
@@ -225,8 +226,7 @@ func TestPolicyReadPoints(t *testing.T) {
 	}
 }
 
-// Revoke is idempotent for the caller (204 whether or not it matched) but the
-// difference is recorded for the auditor: Detail carries _outcome.removed.
+// Revoke is stable-identity scoped and idempotent for platform administrators.
 func TestObjectGrantRevokeSemantics(t *testing.T) {
 	r, e, db, users := newAdminServer(t)
 	if err := users.CreateLocalUser(t.Context(),
@@ -240,32 +240,36 @@ func TestObjectGrantRevokeSemantics(t *testing.T) {
 		}
 	}
 
-	// An unregistered resource type is a typo, not a no-op revoke.
+	// The former tuple-shaped delete contract is rejected; callers must select a
+	// stable grant identity from a direct read.
 	if w := adminReq(t, r, http.MethodDelete, objectGrantsPath, gin.H{
 		"accessor_id": "grantee-1", "resource": gin.H{"type": "nope", "id": "c1"},
 	}); w.Code != http.StatusBadRequest {
-		t.Fatalf("unknown type: want 400, got %d: %s", w.Code, w.Body.String())
+		t.Fatalf("tuple revoke: want 400, got %d: %s", w.Code, w.Body.String())
 	}
+	grantID := oneGrantID(t, e, authz.PolicyFilter{
+		AccessorID: "grantee-1", Object: "catalog:c1", Operation: "view_detail",
+	})
 
 	clearAuditLog(t, db)
-	if w := adminReq(t, r, http.MethodDelete, objectGrantsPath, gin.H{
-		"accessor_id": "grantee-1", "resource": gin.H{"type": "catalog", "id": "c1"},
-	}); w.Code != http.StatusNoContent {
+	if w := adminReq(t, r, http.MethodDelete, objectGrantsPath, gin.H{"grant_id": grantID}); w.Code != http.StatusNoContent {
 		t.Fatalf("revoke: want 204, got %d: %s", w.Code, w.Body.String())
 	}
-	if detail := onlyAuditDetail(t, db); !strings.Contains(detail, `"removed":2`) {
-		t.Fatalf("effective revoke: want _outcome.removed=2 in audit detail, got %s", detail)
+	if detail := onlyAuditDetail(t, db); !strings.Contains(detail, `"removed":true`) ||
+		!strings.Contains(detail, `"grant_id":"`+grantID+`"`) {
+		t.Fatalf("effective revoke: want stable identity and removed=true, got %s", detail)
+	}
+	if allowed, _ := e.Check("grantee-1", "catalog", "c1", "modify"); !allowed {
+		t.Fatal("revoking one grant removed its sibling operation")
 	}
 
 	// Same request again: still 204, but the audit trail shows it matched nothing.
 	clearAuditLog(t, db)
-	if w := adminReq(t, r, http.MethodDelete, objectGrantsPath, gin.H{
-		"accessor_id": "grantee-1", "resource": gin.H{"type": "catalog", "id": "c1"},
-	}); w.Code != http.StatusNoContent {
+	if w := adminReq(t, r, http.MethodDelete, objectGrantsPath, gin.H{"grant_id": grantID}); w.Code != http.StatusNoContent {
 		t.Fatalf("repeat revoke: want 204, got %d: %s", w.Code, w.Body.String())
 	}
-	if detail := onlyAuditDetail(t, db); !strings.Contains(detail, `"removed":0`) {
-		t.Fatalf("repeat revoke: want _outcome.removed=0 in audit detail, got %s", detail)
+	if detail := onlyAuditDetail(t, db); !strings.Contains(detail, `"removed":false`) {
+		t.Fatalf("repeat revoke: want _outcome.removed=false in audit detail, got %s", detail)
 	}
 }
 

@@ -33,6 +33,10 @@ func replyPublicErrorDetails(c *gin.Context, status int, details any) {
 	writeLocalizedError(c, status, details)
 }
 
+func replyUnsupportedGrantShape(c *gin.Context) {
+	httperrors.WriteCode(c, http.StatusBadRequest, httperrors.UnsupportedGrantShape, nil)
+}
+
 func replyInternalError(c *gin.Context) {
 	replyPublicError(c, http.StatusInternalServerError)
 }

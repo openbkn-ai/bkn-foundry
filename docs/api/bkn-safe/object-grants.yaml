@@ -1,0 +1,428 @@
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+openapi: 3.0.3
+info:
+  title: BKN Safe Object Grant Management API
+  version: 1.0.0
+  description: |
+    Manages source-scoped object grants. Community accepts only a logical
+    `full_business_access` bundle on reviewed top-level resource types. When
+    the assembled `perm_fine_grained` capability is licensed at Professional
+    or above, the same write route also accepts per-operation allow/deny sets
+    and BKN child resources.
+
+    Callers cannot choose `policy_source` or `authority_source`. The service
+    derives both from the authenticated management path. Revocation targets one
+    stable `grant_id`; it never deletes a Casbin tuple or a sibling source.
+servers:
+  - url: /api/safe/v1
+security:
+  - BearerAuth: []
+paths:
+  /admin/object-grants:
+    get:
+      operationId: listObjectGrants
+      summary: List direct Core object grants
+      parameters:
+        - {name: accessor_id, in: query, schema: {type: string}}
+        - {name: resource_type, in: query, schema: {type: string}}
+        - {name: resource_id, in: query, schema: {type: string}}
+        - {name: search, in: query, schema: {type: string}}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500}}
+        - {name: group_by, in: query, schema: {type: string, enum: [object, grantee]}}
+        - {name: include_summary, in: query, schema: {type: boolean, default: false}}
+      responses:
+        '200':
+          description: Direct grants grouped by accessor and resource
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required: [entries, total]
+                    properties:
+                      entries:
+                        type: array
+                        items: {$ref: '#/components/schemas/ObjectGrantSet'}
+                      total: {type: integer}
+                      summary:
+                        type: object
+                        required: [grants, objects, grantees]
+                        properties:
+                          grants: {type: integer}
+                          objects: {type: integer}
+                          grantees: {type: integer}
+                  - type: object
+                    required: [groups, total]
+                    properties:
+                      groups:
+                        type: array
+                        items:
+                          type: object
+                          description: Object or grantee aggregate selected by `group_by`.
+                      total: {type: integer}
+        '401': {description: Missing or invalid bearer token}
+        '403': {description: Caller lacks `admin-authz:view`}
+        '500': {$ref: '#/components/responses/InternalError'}
+    post:
+      operationId: setObjectGrant
+      summary: Atomically set one trusted source slice
+      description: |
+        Community shape uses `bundle` and omits `operations` and `effect`.
+        Fine-grained shape uses `operations` and optional `effect`. A request
+        carrying a paid shape while the capability is absent or unavailable
+        returns the exact edition-neutral `unsupported_grant_shape` response.
+        Allow writes add every direct runtime requirement atomically. The
+        normalized direct set and its stable identities are available from GET.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - {$ref: '#/components/schemas/CommunityGrantRequest'}
+                - {$ref: '#/components/schemas/FineGrainedGrantRequest'}
+      responses:
+        '204':
+          description: Source-scoped grant set stored atomically
+        '400':
+          description: Invalid request or unavailable paid request shape
+          content:
+            application/json:
+              schema: {$ref: '../_shared/errors.yaml#/components/schemas/Error'}
+        '401': {description: Missing or invalid bearer token}
+        '403': {description: Caller lacks grant authority or attempts escalation}
+        '500': {$ref: '#/components/responses/InternalError'}
+    delete:
+      operationId: revokeObjectGrant
+      summary: Revoke exactly one stable Core grant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GrantIDRequest'}
+      responses:
+        '204': {description: Grant was removed, or an authorized platform administrator named an already-absent ID}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {description: Missing or invalid bearer token}
+        '403': {description: Caller cannot manage the selected source}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /admin/object-grants/preview:
+    post:
+      operationId: previewCommunityBundleGrant
+      summary: Compare a Community bundle with direct legacy rows
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - {$ref: '#/components/schemas/CommunityGrantRequest'}
+      responses:
+        '200':
+          description: Read-only bundle expansion and legacy difference
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accessor_id, resource, bundle, bundle_operations, added_operations, legacy_grants]
+                properties:
+                  accessor_id: {type: string}
+                  resource: {$ref: '#/components/schemas/ResourceRef'}
+                  bundle: {$ref: '#/components/schemas/CommunityBundle'}
+                  bundle_operations: {type: array, items: {type: string}}
+                  added_operations: {type: array, items: {type: string}}
+                  legacy_grants: {type: array, items: {$ref: '#/components/schemas/GrantRecord'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {description: Missing or invalid bearer token}
+        '403': {description: Caller lacks `admin-authz:view`}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /admin/enterprise-object-grants:
+    get:
+      operationId: inventoryEnterpriseObjectGrants
+      summary: Inventory classified historical Enterprise object rules
+      responses:
+        '200':
+          description: Active, dormant/experimental, and invalid entries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries, total]
+                properties:
+                  entries:
+                    type: array
+                    items: {$ref: '#/components/schemas/EnterpriseInventoryEntry'}
+                  total: {type: integer, minimum: 0}
+        '401': {description: Missing or invalid bearer token}
+        '403': {description: Caller lacks `admin-authz:view`}
+        '404': {description: Enterprise management provider is absent or unavailable}
+        '500': {$ref: '#/components/responses/InternalError'}
+    delete:
+      operationId: revokeEnterpriseObjectGrant
+      summary: Revoke exactly one Enterprise Rule.ID/grant_id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [grant_id, reason]
+              properties:
+                grant_id: {type: string, minLength: 1}
+                reason: {type: string, minLength: 1, maxLength: 512}
+      responses:
+        '204': {description: Selected Enterprise rule was revoked}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {description: Missing or invalid bearer token}
+        '403': {description: Caller lacks `admin-authz:revoke`}
+        '404': {description: Enterprise management provider is absent or unavailable}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /me/object-grants:
+    get:
+      operationId: listDelegatedObjectGrants
+      summary: List direct grants on one resource the caller may authorize
+      parameters:
+        - name: resource_type
+          in: query
+          required: true
+          schema: {type: string, minLength: 1}
+        - name: resource_id
+          in: query
+          required: true
+          schema: {type: string, minLength: 1}
+      responses:
+        '200':
+          description: Direct grants on the selected resource
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries]
+                properties:
+                  entries:
+                    type: array
+                    items: {$ref: '#/components/schemas/ObjectGrantSet'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {description: Missing or invalid bearer token}
+        '403': {description: Caller lacks final authorize and target-view decisions}
+        '500': {$ref: '#/components/responses/InternalError'}
+    post:
+      operationId: setDelegatedObjectGrant
+      summary: Replace one owner-delegated Professional allow set
+      description: |
+        The caller must have a final `authorize` decision on the management
+        root, a final view decision on the target resource, and every requested
+        operation including its direct runtime requirements. The target must be
+        an enabled user. Delegates cannot write deny or authorize, target a
+        role/public accessor, or change admin, system, legacy, or bundle sources.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/FineGrainedGrantRequest'}
+      responses:
+        '204': {description: Owner-delegated Professional source slice stored atomically}
+        '400': {description: Invalid target or request, including an unavailable fine-grained shape}
+        '401': {description: Missing or invalid bearer token}
+        '403': {description: Caller lacks authority or attempts escalation}
+        '500': {$ref: '#/components/responses/InternalError'}
+    delete:
+      operationId: revokeDelegatedObjectGrant
+      summary: Revoke one owner-delegated Professional grant
+      description: |
+        Only an existing `professional_rule` allow written through
+        `owner_delegate` can establish delegated revoke authority. A missing or
+        protected stable ID returns 403 rather than revealing its lifecycle.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GrantIDRequest'}
+      responses:
+        '204': {description: Selected owner-delegated grant removed}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {description: Missing or invalid bearer token}
+        '403': {description: Caller cannot manage the selected source}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /me/grantable-users:
+    get:
+      operationId: searchGrantableUsers
+      summary: Search enabled user targets for one authorized resource
+      parameters:
+        - name: resource_type
+          in: query
+          required: true
+          schema: {type: string, minLength: 1}
+        - name: resource_id
+          in: query
+          required: true
+          schema: {type: string, minLength: 1}
+        - name: search
+          in: query
+          required: true
+          schema: {type: string, minLength: 1}
+      responses:
+        '200':
+          description: At most 20 matching enabled users
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [users]
+                properties:
+                  users:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, account, name]
+                      properties:
+                        id: {type: string}
+                        account: {type: string}
+                        name: {type: string}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {description: Missing or invalid bearer token}
+        '403': {description: Caller cannot view or authorize the selected resource}
+        '500': {$ref: '#/components/responses/InternalError'}
+components:
+  schemas:
+    ResourceRef:
+      type: object
+      required: [type, id]
+      additionalProperties: false
+      properties:
+        type: {type: string, minLength: 1}
+        id: {type: string, minLength: 1}
+    CommunityBundle:
+      type: string
+      enum: [full_business_access]
+    CommunityGrantRequest:
+      type: object
+      required: [accessor_id, resource, bundle]
+      description: |
+        Source and authority metadata are server-derived. If an older client
+        sends such fields, the server ignores them; they cannot select the
+        stored source.
+      properties:
+        accessor_id: {type: string, minLength: 1}
+        resource: {$ref: '#/components/schemas/ResourceRef'}
+        bundle: {$ref: '#/components/schemas/CommunityBundle'}
+    FineGrainedGrantRequest:
+      type: object
+      required: [accessor_id, resource, operations]
+      description: |
+        Source and authority metadata are server-derived. If an older client
+        sends such fields, the server ignores them; they cannot select the
+        stored source.
+      properties:
+        accessor_id: {type: string, minLength: 1}
+        resource: {$ref: '#/components/schemas/ResourceRef'}
+        operations:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {type: string, minLength: 1}
+        effect:
+          type: string
+          enum: [allow, deny]
+          default: allow
+    GrantIDRequest:
+      type: object
+      required: [grant_id]
+      properties:
+        grant_id: {type: string, minLength: 1, maxLength: 64}
+    GrantRecord:
+      type: object
+      required: [grant_id, accessor_id, operation, effect, policy_source, authority_source, active, inherited]
+      properties:
+        grant_id: {type: string}
+        accessor_id: {type: string}
+        operation: {type: string}
+        effect: {type: string, enum: [allow, deny]}
+        policy_source:
+          type: string
+          enum: [community_bundle, professional_rule, legacy, system_derived, role_permission]
+        authority_source:
+          type: string
+          enum: [admin_authz, owner_delegate, system, migration]
+        active: {type: boolean}
+        inherited: {type: boolean}
+    ObjectGrantSet:
+      type: object
+      required: [accessor_id, resource, operations, denied_operations, grants, effective_decisions]
+      properties:
+        accessor_id: {type: string}
+        resource: {$ref: '#/components/schemas/ResourceRef'}
+        bundle: {$ref: '#/components/schemas/CommunityBundle'}
+        operations: {type: array, items: {type: string}}
+        denied_operations: {type: array, items: {type: string}}
+        grants: {type: array, items: {$ref: '#/components/schemas/GrantRecord'}}
+        effective_decisions:
+          type: array
+          items: {$ref: '#/components/schemas/EffectiveDecision'}
+    EffectiveDecision:
+      type: object
+      required: [operation, decision, basis]
+      properties:
+        operation: {type: string}
+        decision: {type: string, enum: [allow, deny]}
+        basis: {type: string, enum: [direct, inherited, bundle, wildcard, default, requires]}
+        requires: {type: array, items: {type: string}}
+        denied_requirement: {type: string}
+        requirement_basis: {type: string, enum: [direct, inherited, bundle, wildcard, default]}
+        inherited_from:
+          type: object
+          required: [resource, operation]
+          properties:
+            resource: {$ref: '#/components/schemas/ResourceRef'}
+            operation: {type: string}
+    EnterpriseInventoryEntry:
+      type: object
+      required:
+        - grant_id
+        - rule_id
+        - accessor_id
+        - subject_type
+        - resource_type
+        - resource_id
+        - operation
+        - effect
+        - classification
+        - activation_state
+        - runtime_eligible
+      properties:
+        grant_id: {type: string}
+        rule_id: {type: string}
+        accessor_id: {type: string}
+        subject_type: {type: string, enum: [user, role, department, unknown]}
+        resource_type: {type: string}
+        resource_id: {type: string}
+        operation: {type: string}
+        effect: {type: string, enum: [allow, deny]}
+        expires_at: {type: string, format: date-time}
+        classification: {type: string}
+        activation_state:
+          type: string
+          description: Persisted lifecycle state, for example inactive, active, or revoked.
+        runtime_eligible:
+          type: boolean
+          description: True only after row and authoritative subject classification checks both pass.
+        inactive_reason: {type: string}
+  responses:
+    BadRequest:
+      description: Invalid JSON, target, operation, bundle, or grant identity
+      content:
+        application/json:
+          schema: {$ref: '../_shared/errors.yaml#/components/schemas/Error'}
+    InternalError:
+      description: Object-grant operation failed without committing a partial change
+      content:
+        application/json:
+          schema: {$ref: '../_shared/errors.yaml#/components/schemas/Error'}
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer

@@ -5,18 +5,23 @@
 package httpapi
 
 import (
+	"bytes"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/adminwrite"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/finegrained"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
+	"github.com/openbkn-ai/licverify"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -48,12 +53,96 @@ func newCommunityServer(t *testing.T) (*gin.Engine, *authz.Enforcer) {
 	}
 	// Explicitly clear the socket and register NOTHING — the community build.
 	adminwrite.ResetForTest()
+	finegrained.ResetForTest()
 	r := New(Deps{
 		Enforcer: e, DB: db, Directory: directory.New(db), Users: auth.NewUserStore(db),
 		Audit:         audit.New(db),
 		TokenVerifier: stubVerifier{},
 	})
 	return r, e
+}
+
+func TestUnavailableFineGrainedShapesHaveIdenticalResponse(t *testing.T) {
+	shapes := []struct {
+		name    string
+		request gin.H
+	}{
+		{
+			name: "operations",
+			request: gin.H{
+				"accessor_id": adminSub,
+				"resource":    gin.H{"type": "catalog", "id": "c-1"},
+				"operations":  []string{"view_detail"},
+			},
+		},
+		{
+			name: "deny",
+			request: gin.H{
+				"accessor_id": adminSub,
+				"resource":    gin.H{"type": "catalog", "id": "c-1"},
+				"operations":  []string{"view_detail"},
+				"effect":      authz.EffectDeny,
+			},
+		},
+		{
+			name: "child resource",
+			request: gin.H{
+				"accessor_id": adminSub,
+				"resource":    gin.H{"type": "object_type", "id": "kn-1/order"},
+				"bundle":      authz.ActFullBusinessAccess,
+			},
+		},
+		{
+			name: "paid shape is gated before target validation",
+			request: gin.H{
+				"accessor_id": adminSub,
+				"resource":    gin.H{"type": "catalog", "id": "*"},
+				"operations":  []string{"view_detail"},
+			},
+		},
+	}
+	t.Cleanup(entitlement.ResetForTest)
+
+	for _, shape := range shapes {
+		t.Run(shape.name, func(t *testing.T) {
+			community, _ := newCommunityServer(t)
+			entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
+			communityResponse := adminReq(t, community, http.MethodPost,
+				"/api/safe/v1/admin/object-grants", shape.request)
+
+			unassembledEE, _ := newCommunityServer(t)
+			entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionProfessional))
+			unassembledResponse := adminReq(t, unassembledEE, http.MethodPost,
+				"/api/safe/v1/admin/object-grants", shape.request)
+
+			assembledLow, _, _, _ := newAdminServer(t)
+			entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
+			assembledLowResponse := adminReq(t, assembledLow, http.MethodPost,
+				"/api/safe/v1/admin/object-grants", shape.request)
+
+			responses := []*httptest.ResponseRecorder{communityResponse, unassembledResponse, assembledLowResponse}
+			for _, response := range responses {
+				if response.Code != http.StatusBadRequest || !bytes.Equal(response.Body.Bytes(), communityResponse.Body.Bytes()) {
+					t.Fatalf("unavailable shape response = %d %q; want byte-identical 400 %q",
+						response.Code, response.Body.Bytes(), communityResponse.Body.Bytes())
+				}
+			}
+			if !bytes.Contains(communityResponse.Body.Bytes(), []byte(`"error_code":"unsupported_grant_shape"`)) {
+				t.Fatalf("response lacks stable error code: %s", communityResponse.Body.String())
+			}
+		})
+	}
+
+	community, _ := newCommunityServer(t)
+	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
+	legalCommunity := adminReq(t, community, http.MethodPost, "/api/safe/v1/admin/object-grants", gin.H{
+		"accessor_id": adminSub,
+		"resource":    gin.H{"type": "catalog", "id": "c-1"},
+		"bundle":      authz.ActFullBusinessAccess,
+	})
+	if legalCommunity.Code != http.StatusNoContent {
+		t.Fatalf("legal Community bundle = %d %s", legalCommunity.Code, legalCommunity.Body.String())
+	}
 }
 
 // TestCommunityBuildOmitsRbacBasicWriteRoutes is the two-binary contract: with

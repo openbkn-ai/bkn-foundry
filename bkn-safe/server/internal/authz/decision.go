@@ -61,12 +61,12 @@ const (
 
 // Evaluation is one structured authorization result.
 type Evaluation struct {
-	Scope             EvaluationScope
-	Decision          Decision
-	Basis             DecisionBasis
-	Requirements      []string
-	DeniedRequirement string
-	RequirementBasis  DecisionBasis
+	Scope             EvaluationScope `json:"scope"`
+	Decision          Decision        `json:"decision"`
+	Basis             DecisionBasis   `json:"basis"`
+	Requirements      []string        `json:"requires,omitempty"`
+	DeniedRequirement string          `json:"denied_requirement,omitempty"`
+	RequirementBasis  DecisionBasis   `json:"requirement_basis,omitempty"`
 }
 
 func (d Evaluation) Allowed() bool { return d.Decision == DecisionAllow }
