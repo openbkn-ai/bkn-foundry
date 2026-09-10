@@ -160,8 +160,6 @@ func Boot(opts Options) (*App, error) {
 			Audit:     auditStore,
 			AccessLog: accessLogStore,
 			License:   licSvc,
-			WorkloadAuthenticator: httpapi.NewStaticBearerWorkloadAuthenticator(
-				"vega", cfg.Authz.VegaServiceToken),
 		},
 	}, nil
 }

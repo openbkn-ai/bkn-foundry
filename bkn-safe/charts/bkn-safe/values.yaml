@@ -106,10 +106,6 @@ clientSeed:
 
 config:
   seedOnStart: true
-  # Shared only with Vega for authenticated evaluation_scope=local requests.
-  # Empty disables local scope; ordinary effective calls are unaffected.
-  authz:
-    vegaServiceToken: ""
   # Platform initial password (BKN_SAFE_INITIAL_PASSWORD). deploy.sh generates a
   # random one per install and records it as bknSafe.initialPassword in
   # config.yaml. Empty = the server generates a random admin password at seed

@@ -34,7 +34,7 @@ type resourceRef struct {
 // registerAuthz mounts bkn-safe's clean authorization API under /api/safe/v1/authz.
 // This is a redesign — it deliberately drops ISF's quirks (GET-in-body,
 // array-vs-map responses, policy-delete double form, public/private split).
-func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, workloadAuth WorkloadAuthenticator) {
+func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 	g := r.Group("/api/safe/v1/authz")
 	registerPropertyLevels(g, e, db)
 
@@ -54,7 +54,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, workloadAuth W
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
-		if scope == authz.ScopeLocal && !authorizeLocalScope(c, workloadAuth,
+		if scope == authz.ScopeLocal && !validateLocalScope(c,
 			[]authz.ResourceRef{{Type: req.Resource.Type, ID: req.Resource.ID}}, []string{req.Operation}) {
 			return
 		}
@@ -181,7 +181,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, workloadAuth W
 		}
 		refs = uniqueResourceRefs(refs)
 		requestedOperations := uniqueStrings(append(append([]string{}, req.VisibilityOperations...), req.CandidateOperations...))
-		if scope == authz.ScopeLocal && !authorizeLocalScope(c, workloadAuth, refs, requestedOperations) {
+		if scope == authz.ScopeLocal && !validateLocalScope(c, refs, requestedOperations) {
 			return
 		}
 		active, err := activeAccount(c, db, req.AccessorID)

@@ -33,8 +33,3 @@ ldap:
   bind_password: ""
   base_dn: ""
   user_filter: "(uid=%s)"
-
-authz:
-  # Required only for Vega's evaluation_scope=local orchestration. Effective
-  # authorization calls keep the existing tokenless ClusterIP contract.
-  vega_service_token: "<shared-with-vega>"

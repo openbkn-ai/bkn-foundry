@@ -54,7 +54,7 @@ func TestCheckEvaluationScopes(t *testing.T) {
 
 	request["operation"] = "query_data"
 	request["evaluation_scope"] = "local"
-	response = doWithWorkloadCredential(t, r, http.MethodPost, "/api/safe/v1/authz/check", request, testWorkloadToken)
+	response = do(t, r, http.MethodPost, "/api/safe/v1/authz/check", request)
 	got = decodeCheckDecision(t, response.Body.Bytes())
 	if got.Allowed || got.EvaluationScope != "local" || got.Decision != "none" || got.Basis != "none" {
 		t.Fatalf("local miss = %+v", got)
@@ -96,7 +96,7 @@ func TestResourceFilterLocalReturnsEveryDecision(t *testing.T) {
 		"candidate_operations":  []string{"view_detail", "query_data"},
 		"evaluation_scope":      "local",
 	}
-	response := doWithWorkloadCredential(t, r, http.MethodPost, "/api/safe/v1/authz/resource-filter", body, testWorkloadToken)
+	response := do(t, r, http.MethodPost, "/api/safe/v1/authz/resource-filter", body)
 	if response.Code != http.StatusOK {
 		t.Fatalf("local filter = %d %s", response.Code, response.Body.String())
 	}
@@ -147,9 +147,12 @@ func TestResourceFilterLocalReturnsEveryDecision(t *testing.T) {
 	}
 }
 
-func TestLocalScopeRequiresVegaCredentialAndApprovedBoundary(t *testing.T) {
-	r, _, db := newTestServer(t)
+func TestLocalScopeUsesInternalTrustBoundaryAndValidatesShape(t *testing.T) {
+	r, enforcer, db := newTestServer(t)
 	seedEnabledUser(t, db, "local-user")
+	if err := enforcer.GrantObjectPermission("local-user", "resource", "resource-1", "view_detail"); err != nil {
+		t.Fatal(err)
+	}
 	request := map[string]any{
 		"accessor_id":      "local-user",
 		"resource":         map[string]string{"type": "resource", "id": "resource-1"},
@@ -157,27 +160,33 @@ func TestLocalScopeRequiresVegaCredentialAndApprovedBoundary(t *testing.T) {
 		"evaluation_scope": "local",
 	}
 
-	if response := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", request); response.Code != http.StatusUnauthorized {
-		t.Fatalf("missing credential = %d %s, want 401", response.Code, response.Body.String())
-	}
-	if response := doWithWorkloadCredential(t, r, http.MethodPost, "/api/safe/v1/authz/check", request, "forged"); response.Code != http.StatusUnauthorized {
-		t.Fatalf("forged credential = %d %s, want 401", response.Code, response.Body.String())
+	withoutHeader := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", request)
+	withForgedHeader := doWithCallerService(t, r, http.MethodPost, "/api/safe/v1/authz/check", request, "not-vega")
+	if withoutHeader.Code != http.StatusOK || withForgedHeader.Code != http.StatusOK ||
+		withoutHeader.Body.String() != withForgedHeader.Body.String() {
+		t.Fatalf("caller-service header changed local decision: missing=%d %s forged=%d %s",
+			withoutHeader.Code, withoutHeader.Body.String(), withForgedHeader.Code, withForgedHeader.Body.String())
 	}
 
-	otherRouter, _, otherDB := newTestServerForWorkload(t, "ontology-query")
-	seedEnabledUser(t, otherDB, "local-user")
-	if response := doWithWorkloadCredential(t, otherRouter, http.MethodPost, "/api/safe/v1/authz/check", request, testWorkloadToken); response.Code != http.StatusForbidden {
-		t.Fatalf("non-Vega workload = %d %s, want 403", response.Code, response.Body.String())
+	request["resource"] = map[string]string{"type": "catalog", "id": "catalog-1"}
+	request["operation"] = "resource_manage"
+	if response := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", request); response.Code != http.StatusOK {
+		t.Fatalf("approved Catalog operation = %d %s, want 200", response.Code, response.Body.String())
 	}
 
 	request["resource"] = map[string]string{"type": "object_type", "id": "kn-1/type-1"}
-	if response := doWithWorkloadCredential(t, r, http.MethodPost, "/api/safe/v1/authz/check", request, testWorkloadToken); response.Code != http.StatusForbidden {
-		t.Fatalf("non-Vega resource = %d %s, want 403", response.Code, response.Body.String())
+	request["operation"] = "view_detail"
+	if response := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", request); response.Code != http.StatusBadRequest {
+		t.Fatalf("non-Vega resource = %d %s, want 400", response.Code, response.Body.String())
+	}
+	request["resource"] = map[string]string{"type": "resource", "id": "*"}
+	if response := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", request); response.Code != http.StatusBadRequest {
+		t.Fatalf("wildcard Resource id = %d %s, want 400", response.Code, response.Body.String())
 	}
 	request["resource"] = map[string]string{"type": "resource", "id": "resource-1"}
 	request["operation"] = "modify"
-	if response := doWithWorkloadCredential(t, r, http.MethodPost, "/api/safe/v1/authz/check", request, testWorkloadToken); response.Code != http.StatusForbidden {
-		t.Fatalf("unapproved Resource operation = %d %s, want 403", response.Code, response.Body.String())
+	if response := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", request); response.Code != http.StatusBadRequest {
+		t.Fatalf("unapproved Resource operation = %d %s, want 400", response.Code, response.Body.String())
 	}
 
 	delete(request, "evaluation_scope")
@@ -195,8 +204,8 @@ func TestLocalResourceFilterRejectsAnyOutOfBoundaryDecision(t *testing.T) {
 		"candidate_operations": []string{"view_detail", "modify"},
 		"evaluation_scope":     "local",
 	}
-	response := doWithWorkloadCredential(t, r, http.MethodPost, "/api/safe/v1/authz/resource-filter", body, testWorkloadToken)
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("mixed approved/unapproved local batch = %d %s, want 403", response.Code, response.Body.String())
+	response := do(t, r, http.MethodPost, "/api/safe/v1/authz/resource-filter", body)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("mixed approved/unapproved local batch = %d %s, want 400", response.Code, response.Body.String())
 	}
 }

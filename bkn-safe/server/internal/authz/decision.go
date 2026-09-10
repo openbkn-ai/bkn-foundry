@@ -10,10 +10,10 @@ import (
 )
 
 // EvaluationScope selects how far authorization evaluation may look. Local is
-// intentionally not a final authorization answer: it is exposed only through
-// the authenticated Vega path because Vega owns a parent relation bkn-safe does
-// not know. A caller must never authorize a business operation from the local
-// result alone.
+// intentionally not a final authorization answer: it is exposed only on the
+// platform-internal network face because Vega owns a parent relation bkn-safe
+// does not know. A caller must never authorize a business operation from the
+// local result alone.
 type EvaluationScope string
 
 const (
@@ -110,7 +110,7 @@ func resolveEffective(local Evaluation, inherited Evaluation, hasInherited bool)
 
 // LocalDecision returns only the rules attached to the requested resource. It
 // deliberately skips parent traversal, default deny and operation requires.
-// Only the authenticated Vega orchestration endpoint may expose this result.
+// Only the network- and shape-restricted Vega orchestration path may expose it.
 func (en *Enforcer) LocalDecision(ctx context.Context, accessorID, resourceType, resourceID, op string) (Evaluation, error) {
 	idx, err := en.grantIndex(accessorID)
 	if err != nil {

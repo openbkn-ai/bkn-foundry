@@ -108,9 +108,6 @@ func applyEnv(cfg *Config) {
 	if v, ok := envBool("SAFE_LICENSE_INSECURE_SKIP_VERIFY"); ok {
 		cfg.License.InsecureSkipVerify = v
 	}
-	if v := os.Getenv("SAFE_AUTHZ_VEGA_SERVICE_TOKEN"); v != "" {
-		cfg.Authz.VegaServiceToken = v
-	}
 }
 
 func envInt(k string) (int, bool) {

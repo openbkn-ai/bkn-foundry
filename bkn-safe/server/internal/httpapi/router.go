@@ -50,10 +50,6 @@ type Deps struct {
 	// License is the cluster license hub. When nil, the license admin and
 	// internal distribution endpoints are not mounted.
 	License *license.Service
-	// WorkloadAuthenticator verifies the bearer credential required before a
-	// caller may request local authorization decisions. Nil fails local scope
-	// closed; effective calls retain the existing tokenless ClusterIP contract.
-	WorkloadAuthenticator WorkloadAuthenticator
 }
 
 // New builds the gin engine with all routes mounted.
@@ -73,11 +69,11 @@ func New(deps Deps) *gin.Engine {
 	r.GET("/health/ready", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 	r.GET("/health/alive", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 
-	// Internal authz API (service-to-service, ClusterIP): effective calls retain
-	// the historical tokenless contract; the privileged local decision mode also
-	// verifies Vega's workload credential. Callers resolve the end-user identity
-	// at their own boundary and pass accessor_id.
-	registerAuthz(r, deps.Enforcer, deps.DB, deps.WorkloadAuthenticator)
+	// Internal authz API (service-to-service, ClusterIP, unauthenticated). The
+	// local intermediate mode relies on the platform network boundary (#333),
+	// never on a caller-supplied service-name header. Callers resolve the end-user
+	// identity at their own boundary and pass accessor_id.
+	registerAuthz(r, deps.Enforcer, deps.DB)
 
 	// AppKey (user-issued API key) store. Verification is internal, tokenless and
 	// ClusterIP-only (same trust face as /authz) — the Context Loader MCP/REST

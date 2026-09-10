@@ -23,12 +23,6 @@ import (
 )
 
 func newTestServer(t *testing.T) (*gin.Engine, *authz.Enforcer, *gorm.DB) {
-	return newTestServerForWorkload(t, vegaWorkloadIdentity)
-}
-
-const testWorkloadToken = "test-vega-local-scope-token"
-
-func newTestServerForWorkload(t *testing.T, workload string) (*gin.Engine, *authz.Enforcer, *gorm.DB) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -42,14 +36,11 @@ func newTestServerForWorkload(t *testing.T, workload string) (*gin.Engine, *auth
 	if err != nil {
 		t.Fatalf("authz: %v", err)
 	}
-	r := New(Deps{
-		Enforcer: e, DB: db, Directory: directory.New(db),
-		WorkloadAuthenticator: NewStaticBearerWorkloadAuthenticator(workload, testWorkloadToken),
-	})
+	r := New(Deps{Enforcer: e, DB: db, Directory: directory.New(db)})
 	return r, e, db
 }
 
-func doWithWorkloadCredential(t *testing.T, r *gin.Engine, method, path string, body any, token string) *httptest.ResponseRecorder {
+func doWithCallerService(t *testing.T, r *gin.Engine, method, path string, body any, caller string) *httptest.ResponseRecorder {
 	t.Helper()
 	var buf bytes.Buffer
 	if body != nil {
@@ -57,7 +48,7 @@ func doWithWorkloadCredential(t *testing.T, r *gin.Engine, method, path string, 
 	}
 	req := httptest.NewRequest(method, path, &buf)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("x-caller-service", caller)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	return w
