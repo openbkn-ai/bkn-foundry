@@ -546,12 +546,42 @@ type ListKnResp struct {
 	TotalCount int64      `json:"total_count"`
 }
 
+// CypherQueryReq asks bkn-backend to compile one read-only Cypher query
+// against a knowledge network and run it.
+type CypherQueryReq struct {
+	KnID   string `json:"-"`
+	Branch string `json:"-"`
+	Query  string `json:"query"`
+	// Parameters supply what the query writes as $name. They are values only:
+	// a parameter changes which rows come back, never which resource or
+	// column is read.
+	Parameters map[string]any `json:"parameters,omitempty"`
+}
+
+// CypherQueryColumn is one output column of a Cypher query.
+type CypherQueryColumn struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+// CypherQueryResp carries the rows a Cypher query produced. The generated SQL
+// is deliberately absent: it names physical tables and columns, which a caller
+// is not entitled to just because they may read the data.
+type CypherQueryResp struct {
+	Columns []CypherQueryColumn `json:"columns"`
+	Entries []map[string]any    `json:"entries"`
+}
+
 type BknBackendAccess interface {
 	// GetKnowledgeNetworkDetail Get knowledge network detail with full schema (include_detail=true, mode=export)
 	GetKnowledgeNetworkDetail(ctx context.Context, knID string) (*KnowledgeNetworkDetail, error)
 
 	// ListKnowledgeNetworks lists knowledge networks (used to discover kn_id)
 	ListKnowledgeNetworks(ctx context.Context, req *ListKnReq) (resp *ListKnResp, err error)
+
+	// RunCypherQuery compiles a read-only Cypher query against a knowledge
+	// network and returns its rows.
+	RunCypherQuery(ctx context.Context, req *CypherQueryReq) (*CypherQueryResp, error)
 
 	// SearchObjectTypes Search object types
 	SearchObjectTypes(ctx context.Context, query *QueryConceptsReq) (objectTypes *ObjectTypeConcepts, err error)

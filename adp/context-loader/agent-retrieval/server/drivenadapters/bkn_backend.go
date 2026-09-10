@@ -167,6 +167,61 @@ func (b *bknBackendAccess) GetKnowledgeNetworkDetail(ctx context.Context, knID s
 	return result, nil
 }
 
+// RunCypherQuery compiles a read-only Cypher query against a knowledge network
+// and returns its rows.
+//
+// The caller's identity travels in the headers this builder produces, so the
+// authorization bkn-backend performs -- query_data on every object type and
+// relation type the query names, inherited from a grant on the network, and
+// view_detail per resource further down in vega-backend -- is the caller's
+// own. Proxying the query does not widen what the caller may read; it only
+// saves them from having to speak SQL.
+func (b *bknBackendAccess) RunCypherQuery(ctx context.Context, req *interfaces.CypherQueryReq) (*interfaces.CypherQueryResp, error) {
+	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/cypher-queries", b.baseURL, req.KnID)
+	if branch := strings.TrimSpace(req.Branch); branch != "" {
+		src = fmt.Sprintf("%s?branch=%s", src, url.QueryEscape(branch))
+	}
+	header := common.GetHeaderForChildOperation(ctx, "bkn.cypher.query", 1)
+	header[rest.ContentTypeKey] = rest.ContentTypeJSON
+
+	respCode, respBody, err := b.httpClient.PostNoUnmarshal(ctx, src, header, req)
+	if err != nil {
+		b.logger.WithContext(ctx).Errorf("[BknBackendAccess] RunCypherQuery request failed, err: %v", err)
+		return nil, infraErr.DefaultHTTPError(ctx, respCode,
+			fmt.Sprintf("[BknBackendAccess] RunCypherQuery request failed, err: %v", err))
+	}
+
+	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
+		// A refusal from the compiler names the construct and its position,
+		// and that is the whole value of it to a caller writing a query, so it
+		// is carried through rather than flattened into a generic failure.
+		var baseError interfaces.KnBaseError
+		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
+			b.logger.Errorf("[BknBackendAccess] RunCypherQuery unmarshal KnBaseError failed: %v\n", err)
+			return nil, infraErr.DefaultHTTPError(ctx, respCode,
+				fmt.Sprintf("[BknBackendAccess] RunCypherQuery failed, [%s]", src))
+		}
+		return nil, &infraErr.HTTPError{
+			HTTPCode:     respCode,
+			Code:         baseError.ErrorCode,
+			Description:  baseError.Description,
+			Solution:     baseError.Solution,
+			ErrorLink:    baseError.ErrorLink,
+			ErrorDetails: baseError.ErrorDetails,
+		}
+	}
+
+	resp := &interfaces.CypherQueryResp{}
+	if len(respBody) == 0 {
+		return resp, nil
+	}
+	if err := sonic.Unmarshal(respBody, resp); err != nil {
+		b.logger.Errorf("[BknBackendAccess] RunCypherQuery unmarshal response failed: %v\n", err)
+		return nil, err
+	}
+	return resp, nil
+}
+
 // SearchObjectTypes searches object types.
 func (b *bknBackendAccess) SearchObjectTypes(ctx context.Context, query *interfaces.QueryConceptsReq) (objectTypes *interfaces.ObjectTypeConcepts, err error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/object-types", b.baseURL, query.KnID)

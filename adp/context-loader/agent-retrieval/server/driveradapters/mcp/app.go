@@ -23,6 +23,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	logicsKar "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knactionrecall"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/kncypher"
 	logicsKlp "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knlogicpropertyresolver"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knmetrics"
 	logicsKqs "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knquerysubgraph"
@@ -55,6 +56,7 @@ const (
 	toolKeyGetObjectTypes           = "get_object_types"
 	toolKeyGetRelationTypes         = "get_relation_types"
 	toolKeyRunSQL                   = "run_sql"
+	toolKeyRunCypher                = "run_cypher"
 	toolKeyListResources            = "list_resources"
 	toolKeyDescribeResource         = "describe_resource"
 	toolKeyListSkills               = "list_skills"
@@ -177,6 +179,9 @@ func newMCPServerForLocale(lifecycleClient *bkntrace.LifecycleClient, locale str
 
 	runSQLService := knrunsql.NewKnRunSQLService()
 	b.add(toolKeyRunSQL, handleRunSQL(runSQLService))
+
+	cypherService := kncypher.NewKnCypherService()
+	b.add(toolKeyRunCypher, handleRunCypher(cypherService))
 
 	resourcesService := knresources.NewKnResourcesService()
 	b.add(toolKeyListResources, handleListResources(resourcesService))

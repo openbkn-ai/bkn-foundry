@@ -64,6 +64,8 @@ var communityTools = []string{
 	// Code execution tools: listed on the same surface as business tools, and models are selected based on the nature of the task.
 	// Not subject to MCP_EXECUTE_SKILL_ENABLED, so they go into baseline but execute_skill does not.
 	"run_code",
+	// Cypher over the model, compiled by bkn-backend.
+	"run_cypher",
 	"run_shell",
 	"run_sql",
 	// One ranking over all four kinds; the two narrow tools below are it with types pinned (#1388).

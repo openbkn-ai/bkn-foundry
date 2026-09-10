@@ -5,6 +5,11 @@
  * See the LICENSE file in the project root for details.
  */
 {
+  "run_cypher": [
+    "标签写对象类 id/名称，关系写关系类 id/名称，属性写逻辑属性名，都不是物理列名。",
+    "无 OPTIONAL MATCH / WITH / UNION / 变长路径；不写 LIMIT 默认 1000 行。",
+    "run_cypher(kn_id=\"<kn_id>\", query=\"MATCH (p:player)-[:rel_goal_player]->(g:goal) RETURN p.name AS name, count(*) AS goals ORDER BY goals DESC LIMIT 10\")"
+  ],
   "run_sql": [
     "表名必须写成 {{.<resource_id>}} 占位符，id 取自 search_schema 的 data_source.id",
     "或 list_resources 的 resource_id；不可原样写 'resource_id' 字面量。",
