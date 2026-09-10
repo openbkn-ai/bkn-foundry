@@ -618,6 +618,9 @@ func TestSeedReconciliationPreservesCommunityBundleAssignedToBuiltInRole(t *test
 	if err := e.GrantCommunityBundle(roleID, "knowledge_network", "kn-role-bundle", authz.AuthoritySourceAdminAuthz); err != nil {
 		t.Fatal(err)
 	}
+	if err := e.GrantRolePermission(roleID, "knowledge_network", "kn-stale", "obsolete_seed_operation"); err != nil {
+		t.Fatal(err)
+	}
 	if err := Apply(db, e); err != nil {
 		t.Fatal(err)
 	}
@@ -632,5 +635,17 @@ func TestSeedReconciliationPreservesCommunityBundleAssignedToBuiltInRole(t *test
 	}
 	if len(records) != 1 || records[0].Operation != authz.ActFullBusinessAccess {
 		t.Fatalf("bundle after seed reconciliation = %+v; want one logical bundle", records)
+	}
+	stale, err := e.PolicyRecords(authz.PolicyFilter{
+		AccessorID:   roleID,
+		Object:       "knowledge_network:kn-stale",
+		Operation:    "obsolete_seed_operation",
+		PolicySource: authz.PolicySourceRolePermission,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stale) != 0 {
+		t.Fatalf("obsolete seeded role grant survived reconciliation: %+v", stale)
 	}
 }

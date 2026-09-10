@@ -246,6 +246,66 @@ func TestCommunityBundleProfessionalDenyAndLegacyRemainIndependent(t *testing.T)
 	}
 }
 
+func TestCommunityBundleStableGrantSurvivesReloadAndRevokesIndependently(t *testing.T) {
+	useEdition(t, licverify.EditionCommunity)
+	e, db := newTestEnforcerDB(t)
+	const user = "stable-bundle-holder"
+
+	mustNoErr(t, e.GrantCommunityBundle(user, "knowledge_network", "kn-1", AuthoritySourceAdminAuthz))
+	mustNoErr(t, e.GrantObjectPermission(user, "knowledge_network", "kn-1", "view_detail"))
+	records, err := e.PolicyRecords(PolicyFilter{AccessorID: user, Object: "knowledge_network:kn-1"})
+	if err != nil || len(records) != 2 {
+		t.Fatalf("persisted grants = %+v, %v; want bundle and legacy grants", records, err)
+	}
+	var bundleID, legacyID string
+	for _, record := range records {
+		switch record.PolicySource {
+		case PolicySourceCommunityBundle:
+			bundleID = record.GrantID
+		case PolicySourceLegacy:
+			legacyID = record.GrantID
+		}
+	}
+	if bundleID == "" || legacyID == "" || bundleID == legacyID {
+		t.Fatalf("grant identities = bundle %q legacy %q; want distinct stable ids", bundleID, legacyID)
+	}
+
+	reloaded, err := New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloadedRecords, err := reloaded.PolicyRecords(PolicyFilter{AccessorID: user, Object: "knowledge_network:kn-1"})
+	if err != nil || len(reloadedRecords) != 2 {
+		t.Fatalf("reloaded grants = %+v, %v; want two independent records", reloadedRecords, err)
+	}
+	reloadedIDs := map[string]bool{}
+	for _, record := range reloadedRecords {
+		reloadedIDs[record.GrantID] = true
+	}
+	if !reloadedIDs[bundleID] || !reloadedIDs[legacyID] {
+		t.Fatalf("reloaded grant ids = %v; want bundle %q and legacy %q", reloadedIDs, bundleID, legacyID)
+	}
+	if ok, err := reloaded.Check(user, "knowledge_network", "kn-1", "execute"); err != nil || !ok {
+		t.Fatalf("reloaded bundle execute = %v, %v; want true", ok, err)
+	}
+
+	removed, err := reloaded.RevokePolicy(bundleID)
+	if err != nil || !removed {
+		t.Fatalf("RevokePolicy(bundle) = %v, %v; want true", removed, err)
+	}
+	if ok, err := reloaded.Check(user, "knowledge_network", "kn-1", "execute"); err != nil || ok {
+		t.Fatalf("revoked bundle execute = %v, %v; want false", ok, err)
+	}
+	if ok, err := reloaded.Check(user, "knowledge_network", "kn-1", "view_detail"); err != nil || !ok {
+		t.Fatalf("revoking bundle removed legacy sibling: allowed=%v err=%v", ok, err)
+	}
+	remaining, err := reloaded.PolicyRecords(PolicyFilter{AccessorID: user, Object: "knowledge_network:kn-1"})
+	if err != nil || len(remaining) != 1 || remaining[0].GrantID != legacyID ||
+		remaining[0].PolicySource != PolicySourceLegacy {
+		t.Fatalf("remaining grants = %+v, %v; want only legacy %q", remaining, err, legacyID)
+	}
+}
+
 func TestCommunityBundleDoesNotExpandLegacyOrAcceptChildTargets(t *testing.T) {
 	useEdition(t, licverify.EditionCommunity)
 	e := newTestEnforcer(t)
