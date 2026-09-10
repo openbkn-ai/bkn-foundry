@@ -827,13 +827,13 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 		}
 		outcome["effect"] = req.Effect
 		setAuditOutcome(c, outcome)
-		policyAuthority := authz.AuthoritySourceOwnerDelegate
-		if authority == authorityAdminAuthz {
-			policyAuthority = authz.AuthoritySourceAdminAuthz
-		}
-		if err := e.SetProfessionalObjectPermissions(
-			req.AccessorID, req.Resource.Type, req.Resource.ID, ops, req.Effect, policyAuthority,
-		); err != nil {
+		// #1426 introduces trusted provenance and edition-aware decision APIs but
+		// does not change this route's public write contract. Keep writes in the
+		// active legacy compatibility slice until #1430 atomically adds Community
+		// bundle-only validation and the Professional capability gate. Writing a
+		// Professional row here today would return 204 in Community while storing
+		// a rule that Check and every permission read intentionally ignore.
+		if err := e.SetObjectPermissionsForEffect(req.AccessorID, req.Resource.Type, req.Resource.ID, ops, req.Effect); err != nil {
 			serverError(c, err)
 			return
 		}
@@ -899,14 +899,6 @@ func revokeObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 		var removed int
 		if req.Effect == "" && authority == authorityAdminAuthz {
 			removed, err = e.RemoveAccessorResourcePolicies(req.AccessorID, req.Resource.Type, req.Resource.ID)
-		} else if authority != authorityAdminAuthz {
-			effect := req.Effect
-			if effect == "" {
-				effect = authz.EffectAllow
-			}
-			removed, err = e.RemoveProfessionalObjectPermissions(
-				req.AccessorID, req.Resource.Type, req.Resource.ID, effect, authz.AuthoritySourceOwnerDelegate,
-			)
 		} else {
 			effect := req.Effect
 			if effect == "" {
