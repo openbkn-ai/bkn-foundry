@@ -548,6 +548,37 @@ func (en *Enforcer) GrantCommunityBundle(accessorID, resourceType, resourceID st
 		EffectAllow, PolicySourceCommunityBundle, authority)
 }
 
+// GrantKnowledgeNetworkCreatorPermissions atomically installs the two grants
+// owned by the knowledge-network creation lifecycle. The business permissions
+// remain one logical Community bundle, while authorize is system-derived and
+// therefore cannot be revoked through ordinary owner delegation.
+func (en *Enforcer) GrantKnowledgeNetworkCreatorPermissions(ctx context.Context, accessorID, resourceID string) error {
+	if err := validateCommunityBundleTarget("knowledge_network", resourceID); err != nil {
+		return err
+	}
+	return en.Transaction(ctx, func(tx *PolicyTransaction) error {
+		if err := tx.enforcer.addPolicy(accessorID, obj("knowledge_network", resourceID), ActFullBusinessAccess,
+			EffectAllow, PolicySourceCommunityBundle, AuthoritySourceSystem); err != nil {
+			return err
+		}
+		return tx.enforcer.addPolicy(accessorID, obj("knowledge_network", resourceID), "authorize",
+			EffectAllow, PolicySourceSystemDerived, AuthoritySourceSystem)
+	})
+}
+
+// GrantActionTypeCreatorPermission records the creator's historical direct
+// execute authority with trusted lifecycle provenance. Parent fallback is only
+// consulted when no direct action rule exists.
+func (en *Enforcer) GrantActionTypeCreatorPermission(ctx context.Context, accessorID, resourceID string) error {
+	if resourceID == "" || hasWildcard(resourceID) {
+		return fmt.Errorf("action type creator permission requires a concrete resource id")
+	}
+	return en.Transaction(ctx, func(tx *PolicyTransaction) error {
+		return tx.enforcer.addPolicy(accessorID, obj("action_type", resourceID), "execute",
+			EffectAllow, PolicySourceSystemDerived, AuthoritySourceSystem)
+	})
+}
+
 // RemoveCommunityBundle removes only the logical bundle owned by one trusted
 // authority. Legacy, system-derived and Professional rows on the same resource
 // remain untouched.

@@ -45,15 +45,14 @@
       "id": "knowledge_network",
       "name": "知识网络",
       "_source": "bkn",
-      "_note": "The knowledge network is the authorization root for its domain resources; child instances inherit through ResourceParent.",
+      "_note": "The knowledge network is the authorization root for its domain resources; child instances inherit through ResourceParent. authorize is only defined at this root.",
       "operations": [
         {"id": "view_detail", "name": "查看详情"},
         {"id": "create", "name": "创建"},
-        {"id": "modify", "name": "修改"},
-        {"id": "delete", "name": "删除"},
+        {"id": "modify", "name": "修改", "requires": ["view_detail"]},
+        {"id": "delete", "name": "删除", "requires": ["view_detail"]},
         {"id": "query_data", "name": "数据查询"},
-        {"id": "authorize", "name": "授权"},
-        {"id": "task_manage", "name": "任务管理"},
+        {"id": "authorize", "name": "授权", "requires": ["view_detail"]},
         {"id": "execute", "name": "执行"}
       ]
     },
@@ -64,10 +63,8 @@
       "parent_type": "knowledge_network",
       "operations": [
         {"id": "view_detail", "name": "View Details", "parent_operation": "view_detail"},
-        {"id": "modify", "name": "Modify", "parent_operation": "modify"},
-        {"id": "delete", "name": "Delete", "parent_operation": "modify"},
-        {"id": "authorize", "name": "Authorize", "parent_operation": "authorize"},
-        {"id": "task_manage", "name": "Manage Tasks", "parent_operation": "task_manage"}
+        {"id": "modify", "name": "Modify", "parent_operation": "modify", "requires": ["view_detail"]},
+        {"id": "delete", "name": "Delete", "parent_operation": "modify", "requires": ["view_detail"]}
       ]
     },
     {
@@ -78,10 +75,8 @@
       "operations": [
         {"id": "view_detail", "name": "View Details", "parent_operation": "view_detail"},
         {"id": "query_data", "name": "Query Data", "parent_operation": "query_data"},
-        {"id": "modify", "name": "Modify", "parent_operation": "modify"},
-        {"id": "delete", "name": "Delete", "parent_operation": "modify"},
-        {"id": "authorize", "name": "Authorize", "parent_operation": "authorize"},
-        {"id": "task_manage", "name": "Manage Tasks", "parent_operation": "task_manage"}
+        {"id": "modify", "name": "Modify", "parent_operation": "modify", "requires": ["view_detail"]},
+        {"id": "delete", "name": "Delete", "parent_operation": "modify", "requires": ["view_detail"]}
       ]
     },
     {
@@ -92,25 +87,21 @@
       "operations": [
         {"id": "view_detail", "name": "View Details", "parent_operation": "view_detail"},
         {"id": "query_data", "name": "Query Data", "parent_operation": "query_data"},
-        {"id": "modify", "name": "Modify", "parent_operation": "modify"},
-        {"id": "delete", "name": "Delete", "parent_operation": "modify"},
-        {"id": "authorize", "name": "Authorize", "parent_operation": "authorize"},
-        {"id": "task_manage", "name": "Manage Tasks", "parent_operation": "task_manage"}
+        {"id": "modify", "name": "Modify", "parent_operation": "modify", "requires": ["view_detail"]},
+        {"id": "delete", "name": "Delete", "parent_operation": "modify", "requires": ["view_detail"]}
       ]
     },
     {
       "id": "action_type",
       "name": "Action Type",
       "_source": "bkn",
-      "_note": "execute deliberately has no parent_operation and must be granted on a concrete Action Type instance",
+      "_note": "execute first evaluates the concrete Action Type and falls back to execute on its owning knowledge network when no direct rule exists",
       "parent_type": "knowledge_network",
       "operations": [
         {"id": "view_detail", "name": "View Details", "parent_operation": "view_detail"},
-        {"id": "modify", "name": "Modify", "parent_operation": "modify"},
-        {"id": "delete", "name": "Delete", "parent_operation": "modify"},
-        {"id": "authorize", "name": "Authorize", "parent_operation": "authorize"},
-        {"id": "task_manage", "name": "Manage Tasks", "parent_operation": "task_manage"},
-        {"id": "execute", "name": "Execute"}
+        {"id": "modify", "name": "Modify", "parent_operation": "modify", "requires": ["view_detail"]},
+        {"id": "delete", "name": "Delete", "parent_operation": "modify", "requires": ["view_detail"]},
+        {"id": "execute", "name": "Execute", "parent_operation": "execute"}
       ]
     },
     {
@@ -121,10 +112,8 @@
       "operations": [
         {"id": "view_detail", "name": "View Details", "parent_operation": "view_detail"},
         {"id": "query_data", "name": "Query Data", "parent_operation": "query_data"},
-        {"id": "modify", "name": "Modify", "parent_operation": "modify"},
-        {"id": "delete", "name": "Delete", "parent_operation": "modify"},
-        {"id": "authorize", "name": "Authorize", "parent_operation": "authorize"},
-        {"id": "task_manage", "name": "Manage Tasks", "parent_operation": "task_manage"}
+        {"id": "modify", "name": "Modify", "parent_operation": "modify", "requires": ["view_detail"]},
+        {"id": "delete", "name": "Delete", "parent_operation": "modify", "requires": ["view_detail"]}
       ]
     },
     {
@@ -134,10 +123,8 @@
       "parent_type": "knowledge_network",
       "operations": [
         {"id": "view_detail", "name": "View Details", "parent_operation": "view_detail"},
-        {"id": "modify", "name": "Modify", "parent_operation": "modify"},
-        {"id": "delete", "name": "Delete", "parent_operation": "modify"},
-        {"id": "authorize", "name": "Authorize", "parent_operation": "authorize"},
-        {"id": "task_manage", "name": "Manage Tasks", "parent_operation": "task_manage"}
+        {"id": "modify", "name": "Modify", "parent_operation": "modify", "requires": ["view_detail"]},
+        {"id": "delete", "name": "Delete", "parent_operation": "modify", "requires": ["view_detail"]}
       ]
     },
     {

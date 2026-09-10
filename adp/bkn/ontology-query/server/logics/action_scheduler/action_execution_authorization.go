@@ -71,11 +71,6 @@ func (s *actionSchedulerService) resolveActionPermissionRequirements(ctx context
 
 	requirements := []interfaces.PermissionRequirement{
 		{
-			ResourceType: interfaces.PermissionResourceTypeKnowledgeNetwork,
-			ResourceID:   knID,
-			Operation:    interfaces.PermissionOperationExecute,
-		},
-		{
 			ResourceType: interfaces.PermissionResourceTypeActionType,
 			ResourceID:   knID + "/" + actionType.ATID,
 			Operation:    interfaces.PermissionOperationExecute,

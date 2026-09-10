@@ -68,7 +68,7 @@ func TestResolveOperationAuditProfileIncludesReadableIdentityAndDirectNetworkGra
 		case "/api/safe/v1/me":
 			_, _ = w.Write([]byte(`{"id":"user-1","account":"alice","name":"Alice Zhang","enabled":true,"roles":["network_builder","custom"]}`))
 		case "/api/safe/v1/me/knowledge-network-grants":
-			_, _ = w.Write([]byte(`{"grants":[{"knowledge_network_id":"kn-b","operations":["query"]},{"knowledge_network_id":"kn-a","operations":["modify"]},{"knowledge_network_id":"*","operations":["modify"]}]}`))
+			_, _ = w.Write([]byte(`{"grants":[{"knowledge_network_id":"kn-b","operations":["query"]},{"knowledge_network_id":"kn-legacy","operations":["task_manage"]},{"knowledge_network_id":"kn-a","operations":["modify"]},{"knowledge_network_id":"*","operations":["modify"]}]}`))
 		default:
 			http.NotFound(w, r)
 		}

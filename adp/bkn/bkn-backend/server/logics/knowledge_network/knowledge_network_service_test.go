@@ -1975,7 +1975,8 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
 			ps.EXPECT().CreateResources(gomock.Any(), []interfaces.PermissionResource{{
 				ID: "kn1", Type: interfaces.RESOURCE_TYPE_KN, Name: "kn1",
-			}}, interfaces.KN_CREATOR_OPERATIONS).Return(nil)
+			}}, []string{interfaces.OPERATION_TYPE_FULL_BUSINESS_ACCESS,
+				interfaces.OPERATION_TYPE_AUTHORIZE}).Return(nil)
 			smock.ExpectCommit()
 
 			knID, err := service.CreateKN(ctx, kn, mode, true)

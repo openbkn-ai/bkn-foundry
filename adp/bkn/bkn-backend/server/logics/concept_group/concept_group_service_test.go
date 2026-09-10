@@ -303,7 +303,7 @@ func Test_conceptGroupService_ListConceptGroups(t *testing.T) {
 			DoAndReturn(func(_ context.Context, _ string, ids, _ []string, _ bool, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
 				matched := make(map[string]interfaces.PermissionResourceOps, len(ids))
 				for _, id := range ids {
-					matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE, interfaces.OPERATION_TYPE_AUTHORIZE}}
+					matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE}}
 				}
 				return matched, nil
 			}).AnyTimes()
@@ -522,7 +522,7 @@ func Test_conceptGroupService_GetConceptGroupByID(t *testing.T) {
 			DoAndReturn(func(_ context.Context, _ string, ids, _ []string, _ bool, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
 				matched := make(map[string]interfaces.PermissionResourceOps, len(ids))
 				for _, id := range ids {
-					matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE, interfaces.OPERATION_TYPE_AUTHORIZE}}
+					matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE}}
 				}
 				return matched, nil
 			}).AnyTimes()

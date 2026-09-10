@@ -315,6 +315,35 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
+		// BKN creation requests use server-owned provenance. The caller selects
+		// only the lifecycle shape; policy_source and authority_source never come
+		// from the request body.
+		if req.Resource.Type == "knowledge_network" && slices.Contains(req.Operations, authz.ActFullBusinessAccess) {
+			if !isConcreteResourceID(req.Resource.ID) ||
+				!sameOperationSet(req.Operations, []string{authz.ActFullBusinessAccess, "authorize"}) {
+				replyPublicError(c, http.StatusBadRequest)
+				return
+			}
+			if err := e.GrantKnowledgeNetworkCreatorPermissions(c.Request.Context(), req.AccessorID, req.Resource.ID); err != nil {
+				serverError(c, err)
+				return
+			}
+			c.Status(http.StatusNoContent)
+			return
+		}
+		if req.Resource.Type == "action_type" && slices.Contains(req.Operations, "execute") {
+			if !isConcreteResourceID(req.Resource.ID) || !sameOperationSet(req.Operations, []string{"execute"}) {
+				replyPublicError(c, http.StatusBadRequest)
+				return
+			}
+			if err := e.GrantActionTypeCreatorPermission(c.Request.Context(), req.AccessorID, req.Resource.ID); err != nil {
+				serverError(c, err)
+				return
+			}
+			c.Status(http.StatusNoContent)
+			return
+		}
+
 		auditPolicyWriteShape(c, db, "POST", req.AccessorID, req.Resource, req.Operations)
 		// Normalize direct requirements here too (#1121). This route is the one a service
 		// calls directly, so leaving it out would keep the very bypass the rule
@@ -325,10 +354,9 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			serverError(c, err)
 			return
 		}
-		// Keep the existing generic create-resource route on its compatibility
-		// source until #1430 replaces the request contract with explicit
-		// edition-aware bundle and Professional writers. The normalized set is one
-		// transaction, so target and requirements cannot become partially visible.
+		// Keep non-BKN lifecycle callers on the compatibility source. The
+		// normalized set is one transaction, so target and requirements cannot
+		// become partially visible.
 		if err := e.GrantNormalizedObjectPermissions(c.Request.Context(), req.AccessorID,
 			req.Resource.Type, req.Resource.ID, ops); err != nil {
 			serverError(c, err)
@@ -707,10 +735,21 @@ func rejectWildcardGrant(resourceType string, operations []string) error {
 	return nil
 }
 
-// rejectTypeWideActionExecute keeps execution authority instance-scoped. A KN
-// grant deliberately does not inherit to action_type/execute, and accepting an
-// action_type wildcard here would bypass that boundary for every Action Type,
-// including instances created later.
+func sameOperationSet(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for _, operation := range want {
+		if !slices.Contains(got, operation) {
+			return false
+		}
+	}
+	return true
+}
+
+// rejectTypeWideActionExecute keeps direct execution authority instance-scoped.
+// Parent fallback is bounded by a concrete KN; an action_type wildcard would
+// instead bypass that boundary for every Action Type, including future ones.
 func rejectTypeWideActionExecute(resourceType, resourceID string, operations []string) error {
 	if resourceType != "action_type" || !strings.Contains(resourceID, "*") {
 		return nil

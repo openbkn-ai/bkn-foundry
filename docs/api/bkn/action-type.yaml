@@ -6,8 +6,10 @@ info:
   description: |
     Action types use `action_type:{kn_id}/{action_type_id}`. Reads and lists
     require `view_detail`; updates and deletes use `modify` and `delete`.
-    `execute` requires a direct concrete Action Type grant and never inherits
-    from the knowledge network. See `../knowledge-network-authorization.md`.
+    `execute` first evaluates the concrete Action Type rule; when no direct
+    rule exists it falls back to `execute` on the owning knowledge network.
+    A direct child allow or deny takes precedence, and a deny wins when both
+    effects exist on the same resource. See `../knowledge-network-authorization.md`.
 security:
   - OAuth2: []
 paths:

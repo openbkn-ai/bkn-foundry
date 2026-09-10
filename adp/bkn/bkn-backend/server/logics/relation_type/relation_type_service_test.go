@@ -33,7 +33,6 @@ func allowAllRelationPermissionResources(_ context.Context, _ string, ids, _ []s
 			interfaces.OPERATION_TYPE_QUERY_DATA,
 			interfaces.OPERATION_TYPE_MODIFY,
 			interfaces.OPERATION_TYPE_DELETE,
-			interfaces.OPERATION_TYPE_AUTHORIZE,
 		}}
 	}
 	return matched, nil
