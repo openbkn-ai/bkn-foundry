@@ -1039,7 +1039,11 @@ func projectDirectGrantOps(resourceType string, operations []string) []string {
 	for _, operation := range operations {
 		projected := []string{operation}
 		if operation == authz.ActFullBusinessAccess {
-			projected, _ = authz.CommunityBundleOperations(resourceType)
+		if operation == authz.ActFullBusinessAccess {
+			if bundleOps, supported := authz.CommunityBundleOperations(resourceType); supported {
+				projected = bundleOps
+			}
+		}
 		}
 		for _, item := range projected {
 			if !seen[item] {
