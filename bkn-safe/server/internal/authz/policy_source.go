@@ -5,12 +5,19 @@
 package authz
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
+	safemodel "github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 	"github.com/openbkn-ai/licverify"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // PolicySource identifies the product or lifecycle layer that owns a policy.
@@ -46,26 +53,44 @@ const (
 
 var (
 	// ErrPolicySourceMigrationRequired is returned before Casbin loads when a
-	// persisted business policy has not been assigned trusted provenance. The
-	// offline migration owns that classification; startup must not infer it.
+	// persisted business policy has not been assigned trusted provenance and a
+	// stable grant identity. The offline migration owns that classification;
+	// startup must not infer or synthesize it.
 	ErrPolicySourceMigrationRequired = errors.New("casbin policy provenance migration required")
 )
 
-// PolicyRecord is the durable identity and provenance of one Casbin p-line.
-// ID is the adapter's stable primary key. Active is derived from the live
-// edition at read time and is never persisted.
-type PolicyRecord struct {
-	ID              uint
+// PolicyGrant is one independently managed Core grant. GrantID and CreatedBy
+// are mandatory for source-aware writers; compatibility writers derive a
+// deterministic ID and use their trusted authority as the creator identity.
+type PolicyGrant struct {
+	GrantID         string
 	AccessorID      string
 	Object          string
 	Operation       string
 	Effect          string
 	PolicySource    PolicySource
 	AuthoritySource AuthoritySource
+	CreatedBy       string
+}
+
+// PolicyRecord is the durable identity and provenance of one Core grant.
+// Active is derived from the live edition at read time and is never persisted.
+// Several records may project to the same Casbin p-line.
+type PolicyRecord struct {
+	GrantID         string
+	AccessorID      string
+	Object          string
+	Operation       string
+	Effect          string
+	PolicySource    PolicySource
+	AuthoritySource AuthoritySource
+	CreatedBy       string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 	Active          bool
 }
 
-// PolicyFilter narrows a provenance listing. Zero fields match every p-line.
+// PolicyFilter narrows a provenance listing. Zero fields match every grant.
 type PolicyFilter struct {
 	AccessorID      string
 	Object          string
@@ -89,6 +114,15 @@ type casbinPolicyRow struct {
 }
 
 func (casbinPolicyRow) TableName() string { return "casbin_rule" }
+
+type policyTupleKey struct {
+	AccessorID      string
+	Object          string
+	Operation       string
+	Effect          string
+	PolicySource    string
+	AuthoritySource string
+}
 
 func validatePolicySource(source PolicySource) error {
 	switch source {
@@ -159,23 +193,305 @@ func activePolicyRowsForEdition(rows [][]string, edition licverify.Edition) [][]
 	return out
 }
 
+func validatePolicyGrant(grant PolicyGrant) error {
+	if strings.TrimSpace(grant.GrantID) == "" || len(grant.GrantID) > 64 {
+		return fmt.Errorf("invalid grant id")
+	}
+	if strings.TrimSpace(grant.AccessorID) == "" || len(grant.AccessorID) > 64 {
+		return fmt.Errorf("invalid grant accessor")
+	}
+	if strings.TrimSpace(grant.Object) == "" || len(grant.Object) > 255 {
+		return fmt.Errorf("invalid grant object")
+	}
+	if strings.TrimSpace(grant.Operation) == "" || len(grant.Operation) > 64 {
+		return fmt.Errorf("invalid grant operation")
+	}
+	if strings.TrimSpace(grant.CreatedBy) == "" || len(grant.CreatedBy) > 64 {
+		return fmt.Errorf("invalid grant creator")
+	}
+	if grant.Effect != EffectAllow && grant.Effect != EffectDeny {
+		return fmt.Errorf("invalid policy effect %q", grant.Effect)
+	}
+	return validatePolicyProvenance(grant.PolicySource, grant.AuthoritySource)
+}
+
+func policyProjectionKey(sub, object, operation, effect string, source PolicySource, authority AuthoritySource) string {
+	sum := sha256.Sum256([]byte(strings.Join([]string{
+		sub, object, operation, effect, string(source), string(authority),
+	}, "\x00")))
+	return hex.EncodeToString(sum[:])
+}
+
+func deterministicGrantID(sub, object, operation, effect string, source PolicySource, authority AuthoritySource) string {
+	return policyProjectionKey(sub, object, operation, effect, source, authority)
+}
+
+func deterministicPolicyGrant(sub, object, operation, effect string, source PolicySource, authority AuthoritySource) PolicyGrant {
+	return PolicyGrant{
+		GrantID:    deterministicGrantID(sub, object, operation, effect, source, authority),
+		AccessorID: sub, Object: object, Operation: operation, Effect: effect,
+		PolicySource: source, AuthoritySource: authority, CreatedBy: string(authority),
+	}
+}
+
+func grantModel(grant PolicyGrant) safemodel.AuthorizationGrant {
+	return safemodel.AuthorizationGrant{
+		GrantID: grant.GrantID,
+		ProjectionKey: policyProjectionKey(grant.AccessorID, grant.Object, grant.Operation, grant.Effect,
+			grant.PolicySource, grant.AuthoritySource),
+		AccessorID: grant.AccessorID, Object: grant.Object,
+		Operation: grant.Operation, Effect: grant.Effect, PolicySource: string(grant.PolicySource),
+		AuthoritySource: string(grant.AuthoritySource), CreatedBy: grant.CreatedBy,
+	}
+}
+
+func policyGrant(row safemodel.AuthorizationGrant) PolicyGrant {
+	return PolicyGrant{
+		GrantID: row.GrantID, AccessorID: row.AccessorID, Object: row.Object,
+		Operation: row.Operation, Effect: row.Effect, PolicySource: PolicySource(row.PolicySource),
+		AuthoritySource: AuthoritySource(row.AuthoritySource), CreatedBy: row.CreatedBy,
+	}
+}
+
+func samePolicyGrant(left, right PolicyGrant) bool {
+	return left.GrantID == right.GrantID && left.AccessorID == right.AccessorID &&
+		left.Object == right.Object && left.Operation == right.Operation && left.Effect == right.Effect &&
+		left.PolicySource == right.PolicySource && left.AuthoritySource == right.AuthoritySource &&
+		left.CreatedBy == right.CreatedBy
+}
+
+func (en *Enforcer) addPolicyGrant(grant PolicyGrant) (bool, error) {
+	if err := validatePolicyGrant(grant); err != nil {
+		return false, err
+	}
+	row := grantModel(grant)
+	result := en.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	if result.RowsAffected == 0 {
+		var existing safemodel.AuthorizationGrant
+		if err := en.db.First(&existing, "grant_id = ?", grant.GrantID).Error; err != nil {
+			return false, err
+		}
+		if !samePolicyGrant(grant, policyGrant(existing)) {
+			return false, fmt.Errorf("grant id %q already belongs to another policy", grant.GrantID)
+		}
+		return false, nil
+	}
+	has, err := en.e.HasPolicy(grant.AccessorID, grant.Object, grant.Operation, grant.Effect,
+		string(grant.PolicySource), string(grant.AuthoritySource))
+	if err != nil {
+		return false, err
+	}
+	if !has {
+		if _, err := en.e.AddPolicy(grant.AccessorID, grant.Object, grant.Operation, grant.Effect,
+			string(grant.PolicySource), string(grant.AuthoritySource)); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
 func (en *Enforcer) addPolicy(sub, object, operation, effect string, source PolicySource, authority AuthoritySource) error {
-	if effect != EffectAllow && effect != EffectDeny {
-		return fmt.Errorf("invalid policy effect %q", effect)
-	}
-	if err := validatePolicyProvenance(source, authority); err != nil {
-		return err
-	}
-	_, err := en.e.AddPolicy(sub, object, operation, effect, string(source), string(authority))
+	_, err := en.addPolicyGrant(deterministicPolicyGrant(sub, object, operation, effect, source, authority))
 	return err
 }
 
-func (en *Enforcer) removePolicy(sub, object, operation, effect string, source PolicySource, authority AuthoritySource) error {
-	if err := validatePolicyProvenance(source, authority); err != nil {
+// GrantPolicy stores an explicit stable grant identity. It is the source-aware
+// entry point for management services; identical tuples with distinct GrantID
+// values remain independently revocable.
+func (en *Enforcer) GrantPolicy(ctx context.Context, grant PolicyGrant) (bool, error) {
+	var created bool
+	err := en.Transaction(ctx, func(tx *PolicyTransaction) error {
+		var err error
+		created, err = tx.enforcer.addPolicyGrant(grant)
+		return err
+	})
+	return created, err
+}
+
+func (en *Enforcer) revokePolicyGrant(grantID string) (bool, bool, error) {
+	var target safemodel.AuthorizationGrant
+	err := en.db.First(&target, "grant_id = ?", grantID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, false, nil
+	}
+	if err != nil {
+		return false, false, err
+	}
+	// Lock every sibling in a stable order before deleting one. The existence
+	// decision and Casbin projection removal therefore share this transaction.
+	var siblings []safemodel.AuthorizationGrant
+	if err := en.db.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("projection_key = ? AND accessor_id = ? AND object = ? AND operation = ? AND effect = ? AND policy_source = ? AND authority_source = ?",
+			target.ProjectionKey, target.AccessorID, target.Object, target.Operation, target.Effect,
+			target.PolicySource, target.AuthoritySource).
+		Order("grant_id").Find(&siblings).Error; err != nil {
+		return false, false, err
+	}
+	found := false
+	for _, sibling := range siblings {
+		if sibling.GrantID == grantID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return false, false, nil
+	}
+	if err := en.db.Delete(&safemodel.AuthorizationGrant{}, "grant_id = ?", grantID).Error; err != nil {
+		return false, false, err
+	}
+	if len(siblings) > 1 {
+		return true, false, nil
+	}
+	removed, err := en.e.RemovePolicy(target.AccessorID, target.Object, target.Operation, target.Effect,
+		target.PolicySource, target.AuthoritySource)
+	return true, removed, err
+}
+
+func applyPolicyFilter(q *gorm.DB, filter PolicyFilter) *gorm.DB {
+	if filter.AccessorID != "" {
+		q = q.Where("accessor_id = ?", filter.AccessorID)
+	}
+	if filter.Object != "" {
+		q = q.Where("object = ?", filter.Object)
+	}
+	if filter.Operation != "" {
+		q = q.Where("operation = ?", filter.Operation)
+	}
+	if filter.Effect != "" {
+		q = q.Where("effect = ?", filter.Effect)
+	}
+	if filter.PolicySource != "" {
+		q = q.Where("policy_source = ?", filter.PolicySource)
+	}
+	if filter.AuthoritySource != "" {
+		q = q.Where("authority_source = ?", filter.AuthoritySource)
+	}
+	return q
+}
+
+func (en *Enforcer) removePolicyGrants(filter PolicyFilter) (int, error) {
+	var rows []safemodel.AuthorizationGrant
+	if err := applyPolicyFilter(en.db.Model(&safemodel.AuthorizationGrant{}), filter).
+		Order("grant_id").Find(&rows).Error; err != nil {
+		return 0, err
+	}
+	removedProjections := 0
+	for _, row := range rows {
+		_, projectionRemoved, err := en.revokePolicyGrant(row.GrantID)
+		if err != nil {
+			return removedProjections, err
+		}
+		if projectionRemoved {
+			removedProjections++
+		}
+	}
+	return removedProjections, nil
+}
+
+func (en *Enforcer) replacePolicyGrantSlice(filter PolicyFilter, desired []PolicyGrant) error {
+	var existing []safemodel.AuthorizationGrant
+	if err := applyPolicyFilter(en.db.Model(&safemodel.AuthorizationGrant{}), filter).
+		Order("grant_id").Find(&existing).Error; err != nil {
 		return err
 	}
-	_, err := en.e.RemovePolicy(sub, object, operation, effect, string(source), string(authority))
+	wanted := make(map[string]PolicyGrant, len(desired))
+	for _, grant := range desired {
+		if err := validatePolicyGrant(grant); err != nil {
+			return err
+		}
+		wanted[grant.GrantID] = grant
+	}
+	for _, row := range existing {
+		grant, keep := wanted[row.GrantID]
+		if keep && samePolicyGrant(policyGrant(row), grant) {
+			delete(wanted, row.GrantID)
+			continue
+		}
+		if _, _, err := en.revokePolicyGrant(row.GrantID); err != nil {
+			return err
+		}
+	}
+	for _, grant := range desired {
+		if _, pending := wanted[grant.GrantID]; !pending {
+			continue
+		}
+		if _, err := en.addPolicyGrant(grant); err != nil {
+			return err
+		}
+		delete(wanted, grant.GrantID)
+	}
+	return nil
+}
+
+func (en *Enforcer) removePolicy(sub, object, operation, effect string, source PolicySource, authority AuthoritySource) error {
+	_, err := en.removePolicyGrants(PolicyFilter{
+		AccessorID: sub, Object: object, Operation: operation, Effect: effect,
+		PolicySource: source, AuthoritySource: authority,
+	})
 	return err
+}
+
+func (en *Enforcer) addDefaultGrant(ctx context.Context, sub, object, operation, effect string, source PolicySource, authority AuthoritySource) error {
+	return en.Transaction(ctx, func(tx *PolicyTransaction) error {
+		return tx.enforcer.addPolicy(sub, object, operation, effect, source, authority)
+	})
+}
+
+func (en *Enforcer) removeDefaultGrant(ctx context.Context, sub, object, operation, effect string, source PolicySource, authority AuthoritySource) error {
+	return en.Transaction(ctx, func(tx *PolicyTransaction) error {
+		return tx.enforcer.removePolicy(sub, object, operation, effect, source, authority)
+	})
+}
+
+func (en *Enforcer) validateGrantProjection() error {
+	var policyRows []casbinPolicyRow
+	if err := en.db.Table("casbin_rule").Where("ptype = ?", "p").Find(&policyRows).Error; err != nil {
+		return err
+	}
+	var grantRows []safemodel.AuthorizationGrant
+	if err := en.db.Find(&grantRows).Error; err != nil {
+		return err
+	}
+	projectionCounts := make(map[policyTupleKey]int, len(policyRows))
+	grantCounts := make(map[policyTupleKey]int, len(grantRows))
+	key := func(sub, object, operation, effect, source, authority string) policyTupleKey {
+		return policyTupleKey{sub, object, operation, effect, source, authority}
+	}
+	for _, row := range policyRows {
+		if err := validatePolicyProvenance(PolicySource(row.V4), AuthoritySource(row.V5)); err != nil {
+			return fmt.Errorf("%w: policy id %d: %v", ErrPolicySourceMigrationRequired, row.ID, err)
+		}
+		projectionCounts[key(row.V0, row.V1, row.V2, row.V3, row.V4, row.V5)]++
+	}
+	for _, row := range grantRows {
+		grant := policyGrant(row)
+		if err := validatePolicyGrant(grant); err != nil {
+			return fmt.Errorf("%w: grant id %q: %v", ErrPolicySourceMigrationRequired, row.GrantID, err)
+		}
+		wantProjectionKey := policyProjectionKey(row.AccessorID, row.Object, row.Operation, row.Effect,
+			PolicySource(row.PolicySource), AuthoritySource(row.AuthoritySource))
+		if row.ProjectionKey != wantProjectionKey {
+			return fmt.Errorf("%w: grant id %q has an invalid projection key", ErrPolicySourceMigrationRequired, row.GrantID)
+		}
+		grantCounts[key(row.AccessorID, row.Object, row.Operation, row.Effect, row.PolicySource, row.AuthoritySource)]++
+	}
+	for tuple, count := range projectionCounts {
+		if count != 1 || grantCounts[tuple] == 0 {
+			return fmt.Errorf("%w: casbin projection has %d rows and %d grants",
+				ErrPolicySourceMigrationRequired, count, grantCounts[tuple])
+		}
+	}
+	for tuple, count := range grantCounts {
+		if count > 0 && projectionCounts[tuple] != 1 {
+			return fmt.Errorf("%w: grant tuple has %d grants and %d casbin projections",
+				ErrPolicySourceMigrationRequired, count, projectionCounts[tuple])
+		}
+	}
+	return nil
 }
 
 // GrantProfessionalObjectPermission writes a trusted Professional rule. The
@@ -185,16 +501,14 @@ func (en *Enforcer) GrantProfessionalObjectPermission(accessorID, resourceType, 
 	if authority != AuthoritySourceAdminAuthz && authority != AuthoritySourceOwnerDelegate {
 		return fmt.Errorf("professional rule authority %q is not permitted", authority)
 	}
-	en.transactionMu.Lock()
-	defer en.transactionMu.Unlock()
-	return en.addPolicy(accessorID, obj(resourceType, resourceID), operation, effect, PolicySourceProfessionalRule, authority)
+	return en.addDefaultGrant(context.Background(), accessorID, obj(resourceType, resourceID), operation, effect,
+		PolicySourceProfessionalRule, authority)
 }
 
 // GrantSystemObjectPermission records a lifecycle-derived permission.
 func (en *Enforcer) GrantSystemObjectPermission(accessorID, resourceType, resourceID, operation string) error {
-	en.transactionMu.Lock()
-	defer en.transactionMu.Unlock()
-	return en.addPolicy(accessorID, obj(resourceType, resourceID), operation, EffectAllow, PolicySourceSystemDerived, AuthoritySourceSystem)
+	return en.addDefaultGrant(context.Background(), accessorID, obj(resourceType, resourceID), operation, EffectAllow,
+		PolicySourceSystemDerived, AuthoritySourceSystem)
 }
 
 // GrantCommunityBundle records the one logical Community grant. Expansion of
@@ -203,9 +517,8 @@ func (en *Enforcer) GrantCommunityBundle(accessorID, resourceType, resourceID st
 	if authority != AuthoritySourceAdminAuthz && authority != AuthoritySourceOwnerDelegate {
 		return fmt.Errorf("community bundle authority %q is not permitted", authority)
 	}
-	en.transactionMu.Lock()
-	defer en.transactionMu.Unlock()
-	return en.addPolicy(accessorID, obj(resourceType, resourceID), ActFullBusinessAccess, EffectAllow, PolicySourceCommunityBundle, authority)
+	return en.addDefaultGrant(context.Background(), accessorID, obj(resourceType, resourceID), ActFullBusinessAccess,
+		EffectAllow, PolicySourceCommunityBundle, authority)
 }
 
 // SetProfessionalObjectPermissions replaces only one trusted source slice. An
@@ -218,18 +531,18 @@ func (en *Enforcer) SetProfessionalObjectPermissions(accessorID, resourceType, r
 	if effect != EffectAllow && effect != EffectDeny {
 		return fmt.Errorf("invalid policy effect %q", effect)
 	}
-	en.transactionMu.Lock()
-	defer en.transactionMu.Unlock()
-	if _, err := en.e.RemoveFilteredPolicy(0, accessorID, obj(resourceType, resourceID), "", effect,
-		string(PolicySourceProfessionalRule), string(authority)); err != nil {
-		return err
-	}
-	for _, operation := range operations {
-		if err := en.addPolicy(accessorID, obj(resourceType, resourceID), operation, effect, PolicySourceProfessionalRule, authority); err != nil {
-			return err
+	return en.Transaction(context.Background(), func(tx *PolicyTransaction) error {
+		filter := PolicyFilter{
+			AccessorID: accessorID, Object: obj(resourceType, resourceID), Effect: effect,
+			PolicySource: PolicySourceProfessionalRule, AuthoritySource: authority,
 		}
-	}
-	return nil
+		desired := make([]PolicyGrant, 0, len(operations))
+		for _, operation := range operations {
+			desired = append(desired, deterministicPolicyGrant(accessorID, obj(resourceType, resourceID), operation,
+				effect, PolicySourceProfessionalRule, authority))
+		}
+		return tx.enforcer.replacePolicyGrantSlice(filter, desired)
+	})
 }
 
 // RemoveProfessionalObjectPermissions removes only the slice managed by one
@@ -242,53 +555,34 @@ func (en *Enforcer) RemoveProfessionalObjectPermissions(accessorID, resourceType
 	if effect != EffectAllow && effect != EffectDeny {
 		return 0, fmt.Errorf("invalid policy effect %q", effect)
 	}
-	en.transactionMu.Lock()
-	defer en.transactionMu.Unlock()
-	rows, err := en.e.GetFilteredPolicy(0, accessorID, obj(resourceType, resourceID), "", effect,
-		string(PolicySourceProfessionalRule), string(authority))
-	if err != nil || len(rows) == 0 {
-		return 0, err
-	}
-	if _, err := en.e.RemoveFilteredPolicy(0, accessorID, obj(resourceType, resourceID), "", effect,
-		string(PolicySourceProfessionalRule), string(authority)); err != nil {
-		return 0, err
-	}
-	return len(rows), nil
+	removed := 0
+	err := en.Transaction(context.Background(), func(tx *PolicyTransaction) error {
+		var err error
+		removed, err = tx.enforcer.removePolicyGrants(PolicyFilter{
+			AccessorID: accessorID, Object: obj(resourceType, resourceID), Effect: effect,
+			PolicySource: PolicySourceProfessionalRule, AuthoritySource: authority,
+		})
+		return err
+	})
+	return removed, err
 }
 
 // PolicyRecords lists persisted policy configuration, including inactive
 // Professional rows and legacy rows. It never rewrites configuration.
 func (en *Enforcer) PolicyRecords(filter PolicyFilter) ([]PolicyRecord, error) {
-	q := en.db.Table("casbin_rule").Where("ptype = ?", "p")
-	if filter.AccessorID != "" {
-		q = q.Where("v0 = ?", filter.AccessorID)
-	}
-	if filter.Object != "" {
-		q = q.Where("v1 = ?", filter.Object)
-	}
-	if filter.Operation != "" {
-		q = q.Where("v2 = ?", filter.Operation)
-	}
-	if filter.Effect != "" {
-		q = q.Where("v3 = ?", filter.Effect)
-	}
-	if filter.PolicySource != "" {
-		q = q.Where("v4 = ?", filter.PolicySource)
-	}
-	if filter.AuthoritySource != "" {
-		q = q.Where("v5 = ?", filter.AuthoritySource)
-	}
-	var rows []casbinPolicyRow
-	if err := q.Order("id").Find(&rows).Error; err != nil {
+	var rows []safemodel.AuthorizationGrant
+	if err := applyPolicyFilter(en.db.Model(&safemodel.AuthorizationGrant{}), filter).
+		Order("created_at, grant_id").Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	edition := entitlement.Current()
 	out := make([]PolicyRecord, 0, len(rows))
 	for _, row := range rows {
-		source := PolicySource(row.V4)
+		source := PolicySource(row.PolicySource)
 		out = append(out, PolicyRecord{
-			ID: row.ID, AccessorID: row.V0, Object: row.V1, Operation: row.V2,
-			Effect: row.V3, PolicySource: source, AuthoritySource: AuthoritySource(row.V5),
+			GrantID: row.GrantID, AccessorID: row.AccessorID, Object: row.Object, Operation: row.Operation,
+			Effect: row.Effect, PolicySource: source, AuthoritySource: AuthoritySource(row.AuthoritySource),
+			CreatedBy: row.CreatedBy, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 			Active: policySourceActive(source, edition),
 		})
 	}
@@ -298,17 +592,12 @@ func (en *Enforcer) PolicyRecords(filter PolicyFilter) ([]PolicyRecord, error) {
 // RevokePolicy removes exactly one stable policy identity. It is the only
 // mutation supported for legacy rows and cannot remove a sibling source with
 // the same subject/resource/operation tuple.
-func (en *Enforcer) RevokePolicy(id uint) (bool, error) {
-	en.transactionMu.Lock()
-	defer en.transactionMu.Unlock()
-	var row casbinPolicyRow
-	err := en.db.Table("casbin_rule").Where("id = ? AND ptype = ?", id, "p").Take(&row).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	removed, err := en.e.RemovePolicy(row.V0, row.V1, row.V2, row.V3, row.V4, row.V5)
+func (en *Enforcer) RevokePolicy(grantID string) (bool, error) {
+	var removed bool
+	err := en.Transaction(context.Background(), func(tx *PolicyTransaction) error {
+		var err error
+		removed, _, err = tx.enforcer.revokePolicyGrant(grantID)
+		return err
+	})
 	return removed, err
 }
