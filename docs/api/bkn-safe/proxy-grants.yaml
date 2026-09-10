@@ -81,6 +81,10 @@ paths:
       description: |
         Repeated revocation is idempotent. The Allow policy is preserved while another active
         source remains; revoking the final source removes only policies owned by this service.
+        A prerequisite synthesized from an operation requirement is revoked together with its
+        target unless another active operation still requires it. An explicitly requested source
+        is never cascade-revoked. Revoking a prerequisite that an active source still requires
+        returns 409 and leaves it active.
       requestBody:
         required: true
         content:
@@ -100,6 +104,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalError'
   /proxy-grant-sources/check:
@@ -242,7 +248,7 @@ components:
           schema:
             $ref: '../_shared/errors.yaml#/components/schemas/Error'
     Conflict:
-      description: The proxy account is disabled or archived and cannot receive a new grant source
+      description: The proxy account is inactive, or the requested source is still required by another active operation
       content:
         application/json:
           schema:
@@ -384,6 +390,7 @@ components:
         - kn_id
         - binding_type
         - binding_id
+        - requirement_derived
         - granted_by
         - lifecycle_status
         - created_at
@@ -412,6 +419,9 @@ components:
           type: string
         binding_id:
           type: string
+        requirement_derived:
+          type: boolean
+          description: True only when the source was synthesized from an operation prerequisite.
         granted_by:
           type: string
         lifecycle_status:

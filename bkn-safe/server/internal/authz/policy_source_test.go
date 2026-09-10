@@ -454,7 +454,7 @@ func TestLegacyPolicyCannotBeExpandedInPlace(t *testing.T) {
 	e := newTestEnforcer(t)
 	mustNoErr(t, e.GrantObjectPermission("u-1", "catalog", "c-1", "resource_manage"))
 
-	added, err := e.BackfillImpliedOperation("catalog", "resource_manage", "view_detail")
+	added, err := e.BackfillRequiredOperation("catalog", "resource_manage", "view_detail")
 	if err != nil || len(added) != 0 {
 		t.Fatalf("legacy backfill = %+v, %v; want no in-place expansion", added, err)
 	}

@@ -64,6 +64,7 @@ type Evaluation struct {
 	Scope             EvaluationScope
 	Decision          Decision
 	Basis             DecisionBasis
+	Requirements      []string
 	DeniedRequirement string
 	RequirementBasis  DecisionBasis
 }
@@ -75,6 +76,7 @@ type OperationDecision struct {
 	Operation         string
 	Decision          Decision
 	Basis             DecisionBasis
+	Requirements      []string
 	DeniedRequirement string
 	RequirementBasis  DecisionBasis
 }
@@ -122,12 +124,21 @@ func (en *Enforcer) LocalDecision(ctx context.Context, accessorID, resourceType,
 	if err != nil {
 		return Evaluation{}, err
 	}
-	return en.applyManagedProxyProvenance(ctx, accessorID, resource, op, all[resource][op])
+	decision, err := en.applyManagedProxyProvenance(ctx, accessorID, resource, op, all[resource][op])
+	if err != nil {
+		return Evaluation{}, err
+	}
+	requires, err := en.DirectRequirements(ctx, resourceType, []string{op})
+	if err != nil {
+		return Evaluation{}, err
+	}
+	decision.Requirements = requires[op]
+	return decision, nil
 }
 
-// OperationDecision is the only final authorization entry point. #1429 adds
-// direct operation-requires evaluation here; callers must not substitute the
-// base-effective layer or they would bypass those prerequisites.
+// OperationDecision is the only final authorization entry point. Callers must
+// not substitute the base-effective layer or they would bypass direct operation
+// prerequisites.
 func (en *Enforcer) OperationDecision(ctx context.Context, accessorID, resourceType, resourceID, op string) (Evaluation, error) {
 	idx, err := en.grantIndex(accessorID)
 	if err != nil {
@@ -135,11 +146,11 @@ func (en *Enforcer) OperationDecision(ctx context.Context, accessorID, resourceT
 	}
 	resource := ResourceRef{Type: resourceType, ID: resourceID}
 	all, err := en.operationDecisionsWithIndex(ctx, accessorID, idx,
-		map[ResourceRef][]string{resource: {op}})
+		map[ResourceRef][]string{resource: {op}}, true)
 	if err != nil {
 		return Evaluation{}, err
 	}
-	return en.applyManagedProxyProvenance(ctx, accessorID, resource, op, all[resource][op])
+	return all[resource][op], nil
 }
 
 func (en *Enforcer) applyManagedProxyProvenance(ctx context.Context, accessorID string,
@@ -163,5 +174,9 @@ func (en *Enforcer) applyManagedProxyProvenance(ctx context.Context, accessorID 
 	}
 	// Managed proxy access is source-backed and exact. An obsolete Casbin allow
 	// therefore becomes an explicit local denial rather than a default miss.
-	return Evaluation{Scope: decision.Scope, Decision: DecisionDeny, Basis: BasisDirect}, nil
+	decision.Decision = DecisionDeny
+	decision.Basis = BasisDirect
+	decision.DeniedRequirement = ""
+	decision.RequirementBasis = ""
+	return decision, nil
 }

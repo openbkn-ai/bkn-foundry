@@ -96,11 +96,19 @@ func (en *Enforcer) filterResourceOps(ctx context.Context, accessorID string, re
 			want[r] = union
 		}
 	}
+	var requirements map[string]map[string][]string
+	if scope == ScopeLocal {
+		requirements, err = en.requirementsFor(ctx, want)
+		if err != nil {
+			return nil, err
+		}
+		want = expandWithRequirements(want, requirements)
+	}
 	var decided map[ResourceRef]map[string]Evaluation
 	if scope == ScopeLocal {
 		decided, err = en.localDecisionsWithIndex(ctx, accessorID, idx, want)
 	} else {
-		decided, err = en.operationDecisionsWithIndex(ctx, accessorID, idx, want)
+		decided, err = en.operationDecisionsWithIndex(ctx, accessorID, idx, want, validateProvenance)
 	}
 	if err != nil {
 		return nil, err
@@ -111,7 +119,7 @@ func (en *Enforcer) filterResourceOps(ctx context.Context, accessorID string, re
 	// it after the batched raw-policy calculation so list/filter decisions stay
 	// identical to Check. Human and ordinary app accessors keep the optimized
 	// path above without per-decision source lookups.
-	if validateProvenance && en.db != nil {
+	if scope == ScopeLocal && validateProvenance && en.db != nil {
 		managed, err := en.isManagedProxyContext(ctx, accessorID)
 		if err != nil {
 			return nil, err
@@ -151,10 +159,12 @@ func (en *Enforcer) filterResourceOps(ctx context.Context, accessorID string, re
 					item.Operations = append(item.Operations, op)
 				}
 			}
-			for _, op := range union {
+			for _, op := range want[r] {
 				d := resourceDecisions[op]
+				d.Requirements = append([]string(nil), requirements[r.Type][op]...)
 				item.Decisions = append(item.Decisions, OperationDecision{
 					Operation: op, Decision: d.Decision, Basis: d.Basis,
+					Requirements:      d.Requirements,
 					DeniedRequirement: d.DeniedRequirement, RequirementBasis: d.RequirementBasis,
 				})
 			}
@@ -182,6 +192,7 @@ func (en *Enforcer) filterResourceOps(ctx context.Context, accessorID string, re
 			d := resourceDecisions[op]
 			structured = append(structured, OperationDecision{
 				Operation: op, Decision: d.Decision, Basis: d.Basis,
+				Requirements:      d.Requirements,
 				DeniedRequirement: d.DeniedRequirement, RequirementBasis: d.RequirementBasis,
 			})
 		}

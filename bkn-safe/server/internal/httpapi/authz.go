@@ -85,6 +85,9 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			"decision":         decision.Decision,
 			"basis":            decision.Basis,
 		}
+		if len(decision.Requirements) > 0 {
+			response["requires"] = decision.Requirements
+		}
 		if decision.DeniedRequirement != "" {
 			response["denied_requirement"] = decision.DeniedRequirement
 			response["requirement_basis"] = decision.RequirementBasis
@@ -214,6 +217,9 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 							"decision":  decision.Decision,
 							"basis":     decision.Basis,
 						}
+						if len(decision.Requirements) > 0 {
+							item["requires"] = decision.Requirements
+						}
 						if decision.DeniedRequirement != "" {
 							item["denied_requirement"] = decision.DeniedRequirement
 							item["requirement_basis"] = decision.RequirementBasis
@@ -310,25 +316,23 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			return
 		}
 		auditPolicyWriteShape(c, db, "POST", req.AccessorID, req.Resource, req.Operations)
-		// Expand implications here too (#1121). This route is the one a service
+		// Normalize direct requirements here too (#1121). This route is the one a service
 		// calls directly, so leaving it out would keep the very bypass the rule
 		// exists to close: a caller could still write catalog.resource_manage
 		// alone and produce a grant that reaches nothing.
-		ops, err := impliedOps(db.WithContext(c.Request.Context()), req.Resource.Type, req.Operations)
+		ops, err := e.NormalizeOperations(c.Request.Context(), req.Resource.Type, req.Operations)
 		if err != nil {
 			serverError(c, err)
 			return
 		}
-		for _, op := range ops {
-			// Keep the existing generic create-resource route on its compatibility
-			// source until #1430 replaces the request contract with explicit
-			// edition-aware bundle and Professional writers. Classifying every
-			// operation arriving here as lifecycle-derived would make it immune to
-			// the current object-grant whole-set editor.
-			if err := e.GrantObjectPermission(req.AccessorID, req.Resource.Type, req.Resource.ID, op); err != nil {
-				serverError(c, err)
-				return
-			}
+		// Keep the existing generic create-resource route on its compatibility
+		// source until #1430 replaces the request contract with explicit
+		// edition-aware bundle and Professional writers. The normalized set is one
+		// transaction, so target and requirements cannot become partially visible.
+		if err := e.GrantNormalizedObjectPermissions(c.Request.Context(), req.AccessorID,
+			req.Resource.Type, req.Resource.ID, ops); err != nil {
+			serverError(c, err)
+			return
 		}
 		c.Status(http.StatusNoContent)
 	})

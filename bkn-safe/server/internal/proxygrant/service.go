@@ -38,6 +38,7 @@ var (
 	ErrForbidden      = errors.New("proxy grant is forbidden")
 	ErrNotFound       = errors.New("proxy grant source not found")
 	ErrProxyInactive  = errors.New("managed proxy is not active")
+	ErrSourceRequired = errors.New("proxy grant source is required by another active source")
 )
 
 // SourceSpec is one published-model binding's need for one concrete operation.
@@ -127,6 +128,11 @@ func (s *Service) Grant(ctx context.Context, req GrantRequest) (*model.ProxyGran
 		return nil, false, ErrInvalidRequest
 	}
 	req.Source = spec
+	normalized, _, err := s.normalizeRequiredSources(ctx, []SourceSpec{spec})
+	if err != nil {
+		return nil, false, err
+	}
+	targetKey := keyForSpec(spec)
 
 	var result model.ProxyGrantSource
 	var changed bool
@@ -134,33 +140,49 @@ func (s *Service) Grant(ctx context.Context, req GrantRequest) (*model.ProxyGran
 		if err := validateProxy(tx.DB(), req.ProxyAccountID, spec.KNID, true); err != nil {
 			return err
 		}
-		if err := validatePreflightAuthority(tx, req.ProxyAccountID, req.GrantorID, spec); err != nil {
-			return err
-		}
-		row, created, err := grantInTransaction(tx, req.ProxyAccountID, req.GrantorID, spec)
-		if err != nil {
-			return err
-		}
-		result, changed = row, created
-		reason := "created"
-		if !created {
-			reason = "idempotent replay"
-			if spec.SourceType == SourceTypeKNProxyBinding {
-				valid, validErr := sourceCurrentlyValid(tx, row)
-				if validErr != nil {
-					return validErr
-				}
-				if !valid {
-					if err := tx.DB().Model(&row).Update("granted_by", req.GrantorID).Error; err != nil {
-						return err
-					}
-					row.GrantedBy = req.GrantorID
-					result, changed = row, true
-					reason = "invalid delegator replaced by grant actor"
-				}
+		for _, candidate := range normalized {
+			if err := validatePreflightAuthority(tx, req.ProxyAccountID, req.GrantorID, candidate); err != nil {
+				return err
 			}
 		}
-		return recordAudit(tx.DB(), "grant", "allow", reason, req.GrantorID, req.ProxyAccountID, spec)
+		for _, candidate := range normalized {
+			row, created, err := grantInTransaction(tx, req.ProxyAccountID, req.GrantorID,
+				candidate, keyForSpec(candidate) != targetKey)
+			if err != nil {
+				return err
+			}
+			rowChanged := created
+			reason := "created"
+			if !created {
+				reason = "idempotent replay"
+				if candidate.SourceType == SourceTypeKNProxyBinding {
+					valid, validErr := sourceCurrentlyValid(tx, row)
+					if validErr != nil {
+						return validErr
+					}
+					if !valid {
+						if err := tx.DB().Model(&row).Update("granted_by", req.GrantorID).Error; err != nil {
+							return err
+						}
+						row.GrantedBy = req.GrantorID
+						rowChanged = true
+						reason = "invalid delegator replaced by grant actor"
+					}
+				}
+			}
+			if keyForModel(row) == targetKey {
+				result = row
+				// Preserve the public replay contract: repairing a missing derived
+				// prerequisite does not turn an existing target source from 200 into
+				// 201 Created.
+				changed = rowChanged
+			}
+			if err := recordAudit(tx.DB(), "grant", "allow", reason,
+				req.GrantorID, req.ProxyAccountID, candidate); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		if !errors.Is(err, authz.ErrPolicyReloadAfterCommit) {
@@ -198,7 +220,7 @@ func (s *Service) Revoke(ctx context.Context, id string, req RevokeRequest) (*mo
 		if err := validateGrantorIdentity(tx.DB(), req.GrantorID); err != nil {
 			return err
 		}
-		row, revoked, err := revokeByID(tx, id)
+		row, revoked, required, err := s.revokeWithRequirements(ctx, tx, id)
 		if err != nil {
 			return err
 		}
@@ -206,9 +228,23 @@ func (s *Service) Revoke(ctx context.Context, id string, req RevokeRequest) (*mo
 		spec := specFromModel(row)
 		reason := "revoked"
 		if !revoked {
-			reason = "idempotent replay"
+			if row.LifecycleStatus == StatusActive {
+				reason = "retained because another active source requires it"
+			} else {
+				reason = "idempotent replay"
+			}
 		}
-		return recordAudit(tx.DB(), "revoke", "allow", reason, req.GrantorID, row.ProxyAccountID, spec)
+		if err := recordAudit(tx.DB(), "revoke", "allow", reason,
+			req.GrantorID, row.ProxyAccountID, spec); err != nil {
+			return err
+		}
+		for _, dependency := range required {
+			if err := recordAudit(tx.DB(), "revoke_required", "allow", "required by revoked source",
+				req.GrantorID, row.ProxyAccountID, specFromModel(dependency)); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		if !errors.Is(err, authz.ErrPolicyReloadAfterCommit) {
@@ -234,13 +270,20 @@ func (s *Service) Check(ctx context.Context, req GrantRequest) (CheckResult, err
 		len(req.ProxyAccountID) > 64 || len(req.GrantorID) > 64 {
 		return CheckResult{}, ErrInvalidRequest
 	}
+	normalized, _, err := s.normalizeRequiredSources(ctx, []SourceSpec{spec})
+	if err != nil {
+		return CheckResult{}, err
+	}
 	result := CheckResult{Allowed: true}
 	err = s.enforcer.Transaction(ctx, func(tx *authz.PolicyTransaction) error {
 		decision := "allow"
 		reason := "actor holds the authority required by the source type"
 		decisionErr := validateProxy(tx.DB(), req.ProxyAccountID, spec.KNID, true)
-		if decisionErr == nil {
-			decisionErr = validatePreflightAuthority(tx, req.ProxyAccountID, req.GrantorID, spec)
+		for _, candidate := range normalized {
+			if decisionErr != nil {
+				break
+			}
+			decisionErr = validatePreflightAuthority(tx, req.ProxyAccountID, req.GrantorID, candidate)
 		}
 		if decisionErr != nil {
 			if !errors.Is(decisionErr, ErrForbidden) && !errors.Is(decisionErr, ErrProxyInactive) &&
@@ -289,9 +332,14 @@ func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCh
 		desired[key] = spec
 		sources = append(sources, spec)
 	}
+	explicitSources := sources
+	sources, requiredBySource, err := s.normalizeRequiredSources(ctx, explicitSources)
+	if err != nil {
+		return BatchCheckResult{}, err
+	}
 
 	result := BatchCheckResult{DeniedSources: []SourceSpec{}}
-	err := s.enforcer.Transaction(ctx, func(tx *authz.PolicyTransaction) error {
+	err = s.enforcer.Transaction(ctx, func(tx *authz.PolicyTransaction) error {
 		mapping, mappingErr := loadProxy(tx.DB(), req.ProxyAccountID)
 		if mappingErr != nil && !errors.Is(mappingErr, ErrProxyInactive) &&
 			!errors.Is(mappingErr, ErrNotFound) && !errors.Is(mappingErr, ErrForbidden) {
@@ -392,11 +440,16 @@ func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCh
 			}
 		}
 
-		audits := make([]model.ProxyGrantAuditLog, 0, len(sources))
-		for _, spec := range sources {
+		audits := make([]model.ProxyGrantAuditLog, 0, len(explicitSources))
+		for _, spec := range explicitSources {
 			decision := "allow"
 			reason := "actor or retained delegator holds the required operation"
-			if !allowed[keyForSpec(spec)] {
+			key := keyForSpec(spec)
+			isAllowed := allowed[key]
+			for _, required := range requiredBySource[key] {
+				isAllowed = isAllowed && allowed[required]
+			}
+			if !isAllowed {
 				decision = "deny"
 				reason = ErrForbidden.Error()
 				result.DeniedSources = append(result.DeniedSources, spec)
@@ -429,6 +482,7 @@ func (s *Service) Sync(ctx context.Context, req SyncRequest) (SyncResult, error)
 		len(req.ProxyAccountID) > 64 || len(req.GrantorID) > 64 {
 		return SyncResult{}, ErrInvalidRequest
 	}
+	explicit := make([]SourceSpec, 0, len(req.Sources))
 	desired := make(map[sourceKey]SourceSpec, len(req.Sources))
 	for _, raw := range req.Sources {
 		spec, err := normalizeSpec(raw)
@@ -442,11 +496,26 @@ func (s *Service) Sync(ctx context.Context, req SyncRequest) (SyncResult, error)
 		if previous, exists := desired[key]; exists && !sameBinding(previous, spec) {
 			return SyncResult{}, ErrInvalidRequest
 		}
+		if _, exists := desired[key]; !exists {
+			explicit = append(explicit, spec)
+		}
 		desired[key] = spec
+	}
+	explicitKeys := make(map[sourceKey]bool, len(desired))
+	for key := range desired {
+		explicitKeys[key] = true
+	}
+	normalized, _, err := s.normalizeRequiredSources(ctx, explicit)
+	if err != nil {
+		return SyncResult{}, err
+	}
+	desired = make(map[sourceKey]SourceSpec, len(normalized))
+	for _, spec := range normalized {
+		desired[keyForSpec(spec)] = spec
 	}
 
 	var result SyncResult
-	err := s.enforcer.Transaction(ctx, func(tx *authz.PolicyTransaction) error {
+	err = s.enforcer.Transaction(ctx, func(tx *authz.PolicyTransaction) error {
 		mapping, err := loadProxy(tx.DB(), req.ProxyAccountID)
 		if err != nil {
 			return err
@@ -502,17 +571,27 @@ func (s *Service) Sync(ctx context.Context, req SyncRequest) (SyncResult, error)
 
 		for key, spec := range desired {
 			if row, ok := current[key]; ok && row.LifecycleStatus == StatusActive {
+				requirementDerived := !explicitKeys[key]
 				if transfers[key] {
-					if err := tx.DB().Model(&row).Update("granted_by", req.GrantorID).Error; err != nil {
+					if err := tx.DB().Model(&row).Updates(map[string]any{
+						"granted_by": req.GrantorID, "requirement_derived": requirementDerived,
+					}).Error; err != nil {
 						return err
 					}
 					row.GrantedBy = req.GrantorID
+					row.RequirementDerived = requirementDerived
 					result.Transferred++
 					if err := recordAudit(tx.DB(), "sync_transfer", "allow", "invalid delegator replaced by sync actor",
 						req.GrantorID, req.ProxyAccountID, spec); err != nil {
 						return err
 					}
 				} else {
+					if row.RequirementDerived != requirementDerived {
+						if err := tx.DB().Model(&row).Update("requirement_derived", requirementDerived).Error; err != nil {
+							return err
+						}
+						row.RequirementDerived = requirementDerived
+					}
 					result.Unchanged++
 				}
 				if err := ensureMaterialized(tx, req.ProxyAccountID, spec); err != nil {
@@ -520,9 +599,17 @@ func (s *Service) Sync(ctx context.Context, req SyncRequest) (SyncResult, error)
 				}
 				continue
 			}
-			row, changed, err := grantInTransaction(tx, req.ProxyAccountID, req.GrantorID, spec)
+			row, changed, err := grantInTransaction(tx, req.ProxyAccountID, req.GrantorID,
+				spec, !explicitKeys[key])
 			if err != nil {
 				return err
+			}
+			requirementDerived := !explicitKeys[key]
+			if row.RequirementDerived != requirementDerived {
+				if err := tx.DB().Model(&row).Update("requirement_derived", requirementDerived).Error; err != nil {
+					return err
+				}
+				row.RequirementDerived = requirementDerived
 			}
 			if changed {
 				result.Added++
@@ -608,6 +695,62 @@ type permissionKey struct {
 	ResourceType   string
 	ResourceID     string
 	Operation      string
+}
+
+// normalizeRequiredSources expands each explicitly requested source with one
+// source for every direct operation prerequisite. Keeping the same source
+// identity and binding makes provenance validation, Sync replacement and
+// Reconcile operate on the normalized permissions exactly like explicit ones.
+// The returned reverse index lets CheckMany report a denied explicit source
+// when any source that would be added for its prerequisites is unavailable.
+func (s *Service) normalizeRequiredSources(ctx context.Context,
+	explicit []SourceSpec) ([]SourceSpec, map[sourceKey][]sourceKey, error) {
+	operationsByType := make(map[string][]string)
+	for _, spec := range explicit {
+		operationsByType[spec.ResourceType] = append(operationsByType[spec.ResourceType], spec.Operation)
+	}
+	requirementsByType := make(map[string]map[string][]string, len(operationsByType))
+	for resourceType, operations := range operationsByType {
+		requirements, err := s.enforcer.DirectRequirements(ctx, resourceType, operations)
+		if err != nil {
+			return nil, nil, err
+		}
+		requirementsByType[resourceType] = requirements
+	}
+
+	normalized := make([]SourceSpec, 0, len(explicit))
+	byKey := make(map[sourceKey]SourceSpec, len(explicit))
+	appendUnique := func(spec SourceSpec) error {
+		key := keyForSpec(spec)
+		if previous, exists := byKey[key]; exists {
+			if !sameBinding(previous, spec) {
+				return ErrInvalidRequest
+			}
+			return nil
+		}
+		byKey[key] = spec
+		normalized = append(normalized, spec)
+		return nil
+	}
+	for _, spec := range explicit {
+		if err := appendUnique(spec); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	requiredBySource := make(map[sourceKey][]sourceKey, len(explicit))
+	for _, spec := range explicit {
+		target := keyForSpec(spec)
+		for _, operation := range requirementsByType[spec.ResourceType][spec.Operation] {
+			required := spec
+			required.Operation = operation
+			if err := appendUnique(required); err != nil {
+				return nil, nil, err
+			}
+			requiredBySource[target] = append(requiredBySource[target], keyForSpec(required))
+		}
+	}
+	return normalized, requiredBySource, nil
 }
 
 func normalizeSpec(spec SourceSpec) (SourceSpec, error) {
@@ -834,7 +977,8 @@ func validateGrantorIdentity(db *gorm.DB, grantorID string) error {
 	return nil
 }
 
-func grantInTransaction(tx *authz.PolicyTransaction, proxyID, grantorID string, spec SourceSpec) (model.ProxyGrantSource, bool, error) {
+func grantInTransaction(tx *authz.PolicyTransaction, proxyID, grantorID string, spec SourceSpec,
+	requirementDerived bool) (model.ProxyGrantSource, bool, error) {
 	var row model.ProxyGrantSource
 	err := tx.DB().Where(
 		"proxy_account_id = ? AND resource_type = ? AND resource_id = ? AND operation = ? AND source_type = ? AND source_id = ?",
@@ -854,7 +998,8 @@ func grantInTransaction(tx *authz.PolicyTransaction, proxyID, grantorID string, 
 			ID: id, ProxyAccountID: proxyID, ResourceType: spec.ResourceType,
 			ResourceID: spec.ResourceID, Operation: spec.Operation, SourceType: spec.SourceType,
 			SourceID: spec.SourceID, KNID: spec.KNID, BindingType: spec.BindingType,
-			BindingID: spec.BindingID, GrantedBy: grantorID, LifecycleStatus: StatusActive,
+			BindingID: spec.BindingID, RequirementDerived: requirementDerived,
+			GrantedBy: grantorID, LifecycleStatus: StatusActive,
 		}
 		if err := tx.DB().Create(&row).Error; err != nil {
 			return row, false, err
@@ -865,15 +1010,26 @@ func grantInTransaction(tx *authz.PolicyTransaction, proxyID, grantorID string, 
 	case row.LifecycleStatus == StatusRevoked:
 		if err := tx.DB().Model(&row).Updates(map[string]any{
 			"kn_id": spec.KNID, "binding_type": spec.BindingType, "binding_id": spec.BindingID,
-			"granted_by": grantorID, "lifecycle_status": StatusActive, "revoked_at": nil,
+			"requirement_derived": requirementDerived, "granted_by": grantorID,
+			"lifecycle_status": StatusActive, "revoked_at": nil,
 		}).Error; err != nil {
 			return row, false, err
 		}
 		row.KNID, row.BindingType, row.BindingID = spec.KNID, spec.BindingType, spec.BindingID
+		row.RequirementDerived = requirementDerived
 		row.GrantedBy, row.LifecycleStatus, row.RevokedAt = grantorID, StatusActive, nil
 		changed = true
 	case row.LifecycleStatus != StatusActive:
 		return row, false, ErrInvalidRequest
+	case row.RequirementDerived && !requirementDerived:
+		// An explicit grant promotes a synthesized prerequisite. Never demote an
+		// explicit row from the additive Grant endpoint; full Sync performs that
+		// transition only when its authoritative source set omits the operation.
+		if err := tx.DB().Model(&row).Update("requirement_derived", false).Error; err != nil {
+			return row, false, err
+		}
+		row.RequirementDerived = false
+		changed = true
 	}
 	if err := ensureMaterialized(tx, proxyID, spec); err != nil {
 		return row, false, err
@@ -913,6 +1069,96 @@ func ensureMaterialized(tx *authz.PolicyTransaction, proxyID string, spec Source
 		return err
 	}
 	return tx.DB().Model(&marker).Update("policy_owned", true).Error
+}
+
+// revokeWithRequirements retires one source together with the direct
+// prerequisite sources that Grant synthesized for the same published-model
+// binding. A prerequisite remains active while another operation in that same
+// source family still requires it; revokeByID then preserves the shared Casbin
+// policy when an independent source family still grants the permission.
+func (s *Service) revokeWithRequirements(ctx context.Context, tx *authz.PolicyTransaction,
+	id string) (model.ProxyGrantSource, bool, []model.ProxyGrantSource, error) {
+	var target model.ProxyGrantSource
+	if err := tx.DB().Clauses(clause.Locking{Strength: "UPDATE"}).First(&target, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return target, false, nil, ErrNotFound
+		}
+		return target, false, nil, err
+	}
+	// Replaying deletion of an already-revoked target is a strict no-op. In
+	// particular, it must not cascade into prerequisites that were explicitly
+	// granted or reactivated after the original target revocation.
+	if target.LifecycleStatus == StatusRevoked {
+		return target, false, nil, nil
+	}
+
+	var activeFamily []model.ProxyGrantSource
+	if err := tx.DB().Where(
+		"proxy_account_id = ? AND resource_type = ? AND resource_id = ? AND source_type = ? AND source_id = ? AND kn_id = ? AND binding_type = ? AND binding_id = ? AND lifecycle_status = ?",
+		target.ProxyAccountID, target.ResourceType, target.ResourceID, target.SourceType,
+		target.SourceID, target.KNID, target.BindingType, target.BindingID, StatusActive,
+	).Find(&activeFamily).Error; err != nil {
+		return target, false, nil, err
+	}
+	operations := make([]string, 0, len(activeFamily)+1)
+	operations = append(operations, target.Operation)
+	for _, source := range activeFamily {
+		operations = append(operations, source.Operation)
+	}
+	requirements, err := tx.DirectRequirements(ctx, target.ResourceType, operations)
+	if err != nil {
+		return target, false, nil, err
+	}
+	// A normalized prerequisite cannot be removed while another active operation
+	// in the same source family still depends on it. This mirrors whole-set and
+	// role-grant normalization and prevents a caller that sees the derived row in
+	// Sync output from breaking the stored invariant by deleting its id directly.
+	for _, source := range activeFamily {
+		if source.ID == target.ID {
+			continue
+		}
+		for _, required := range requirements[source.Operation] {
+			if required == target.Operation {
+				return target, false, nil, ErrSourceRequired
+			}
+		}
+	}
+
+	target, changed, err := revokeByID(tx, id)
+	if err != nil {
+		return target, false, nil, err
+	}
+
+	stillRequired := make(map[string]bool)
+	activeByOperation := make(map[string]model.ProxyGrantSource, len(activeFamily))
+	for _, source := range activeFamily {
+		if source.ID == target.ID {
+			continue
+		}
+		activeByOperation[source.Operation] = source
+		for _, required := range requirements[source.Operation] {
+			stillRequired[required] = true
+		}
+	}
+	var revokedRequirements []model.ProxyGrantSource
+	for _, required := range requirements[target.Operation] {
+		if stillRequired[required] {
+			continue
+		}
+		source, exists := activeByOperation[required]
+		if !exists || !source.RequirementDerived {
+			continue
+		}
+		revoked, dependencyChanged, err := revokeByID(tx, source.ID)
+		if err != nil {
+			return target, false, nil, err
+		}
+		if dependencyChanged {
+			changed = true
+			revokedRequirements = append(revokedRequirements, revoked)
+		}
+	}
+	return target, changed, revokedRequirements, nil
 }
 
 func revokeByID(tx *authz.PolicyTransaction, id string) (model.ProxyGrantSource, bool, error) {

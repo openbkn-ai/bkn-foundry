@@ -16,46 +16,47 @@ import (
 	"github.com/openbkn-ai/licverify"
 )
 
-func TestValidateImplicationsRejectsAuthoringMistakes(t *testing.T) {
+func TestValidateRequirementsRejectsAuthoringMistakes(t *testing.T) {
 	cases := []struct {
 		name    string
 		catalog catalog
 		wantErr string
 	}{
 		{
-			name: "implies an operation the type does not declare",
+			name: "requires an operation the type does not declare",
 			catalog: catalog{ResourceTypes: []catalogResourceType{
 				{ID: "catalog", Operations: []catalogOperation{
-					{ID: "resource_manage", Implies: []string{"view_detail"}},
+					{ID: "resource_manage", Requires: []string{"view_detail"}},
 				}},
 			}},
 			wantErr: "does not declare",
 		},
 		{
-			name: "self implication",
+			name: "self requirement",
 			catalog: catalog{ResourceTypes: []catalogResourceType{
 				{ID: "catalog", Operations: []catalogOperation{
-					{ID: "resource_manage", Implies: []string{"resource_manage"}},
+					{ID: "resource_manage", Requires: []string{"resource_manage"}},
 				}},
 			}},
-			wantErr: "implies itself",
+			wantErr: "requires itself",
 		},
 		{
-			name: "cycle",
+			name: "multi-level requirement",
 			catalog: catalog{ResourceTypes: []catalogResourceType{
 				{ID: "catalog", Operations: []catalogOperation{
-					{ID: "a", Implies: []string{"b"}},
-					{ID: "b", Implies: []string{"a"}},
+					{ID: "a", Requires: []string{"b"}},
+					{ID: "b", Requires: []string{"c"}},
+					{ID: "c"},
 				}},
 			}},
-			wantErr: "cycle",
+			wantErr: "itself declares requires",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := validateImplications(tc.catalog)
+			err := validateRequirements(tc.catalog)
 			if err == nil {
-				t.Fatalf("validateImplications accepted %s", tc.name)
+				t.Fatalf("validateRequirements accepted %s", tc.name)
 			}
 			if !strings.Contains(err.Error(), tc.wantErr) {
 				t.Errorf("error = %q, want it to mention %q", err, tc.wantErr)
@@ -64,19 +65,32 @@ func TestValidateImplicationsRejectsAuthoringMistakes(t *testing.T) {
 	}
 }
 
+func TestValidateRequirementsAcceptsMultipleDirectPrerequisites(t *testing.T) {
+	c := catalog{ResourceTypes: []catalogResourceType{
+		{ID: "release", Operations: []catalogOperation{
+			{ID: "view"},
+			{ID: "approve"},
+			{ID: "publish", Requires: []string{"view", "approve"}},
+		}},
+	}}
+	if err := validateRequirements(c); err != nil {
+		t.Fatalf("valid direct requirements were rejected: %v", err)
+	}
+}
+
 // TestShippedCatalogBindsResourceManageToViewDetail is the regression guard on
 // the product rule (#1121): managing the tables in a catalog is unreachable
 // without the right to open the catalog, because every management route loads
 // its target first and that load is a view_detail judgement. Dropping the
-// implication would let the console hand out a grant whose every route answers
+// missing requirement would let the console hand out a grant whose every route answers
 // 403 while naming a permission the operator never meant to withhold.
 func TestShippedCatalogBindsResourceManageToViewDetail(t *testing.T) {
 	var c catalog
 	if err := json.Unmarshal(catalogJSON, &c); err != nil {
 		t.Fatalf("parse catalog.json: %v", err)
 	}
-	if err := validateImplications(c); err != nil {
-		t.Fatalf("shipped catalog.json declares an invalid implication: %v", err)
+	if err := validateRequirements(c); err != nil {
+		t.Fatalf("shipped catalog.json declares an invalid requirement: %v", err)
 	}
 	for _, rt := range c.ResourceTypes {
 		if rt.ID != "catalog" {
@@ -86,8 +100,8 @@ func TestShippedCatalogBindsResourceManageToViewDetail(t *testing.T) {
 			if op.ID != "resource_manage" {
 				continue
 			}
-			if len(op.Implies) != 1 || op.Implies[0] != "view_detail" {
-				t.Fatalf("catalog.resource_manage implies %v, want [view_detail]", op.Implies)
+			if len(op.Requires) != 1 || op.Requires[0] != "view_detail" {
+				t.Fatalf("catalog.resource_manage requires %v, want [view_detail]", op.Requires)
 			}
 			return
 		}
@@ -111,8 +125,8 @@ func TestSeedPersistsImplications(t *testing.T) {
 	if err := db.First(&row, "resource_type_id = ? AND id = ?", "catalog", "resource_manage").Error; err != nil {
 		t.Fatalf("load operation: %v", err)
 	}
-	if row.ImpliedOperationIDs != "view_detail" {
-		t.Fatalf("implied_operation_ids = %q, want %q", row.ImpliedOperationIDs, "view_detail")
+	if row.RequiredOperationIDs != "view_detail" {
+		t.Fatalf("required operation ids = %q, want %q", row.RequiredOperationIDs, "view_detail")
 	}
 }
 
@@ -157,7 +171,7 @@ func TestBackfillRepairsGrantsWrittenBeforeTheRule(t *testing.T) {
 		t.Fatal("backfill dropped the operation it was repairing")
 	}
 	if ok, _ := e.Check("u-2", "catalog", "c2", "view_detail"); ok {
-		t.Fatal("backfill widened a grant that implies nothing")
+		t.Fatal("backfill widened a grant that requires nothing")
 	}
 
 	// Idempotent: a start with nothing left to repair changes nothing.
@@ -215,7 +229,7 @@ func TestBackfillAuditLabelsMatchTheSurfaceThatShowsTheGrant(t *testing.T) {
 	}
 
 	// One row of each shape, all holding the management verb without the
-	// visibility it implies.
+	// visibility it requires.
 	if err := e.GrantProfessionalObjectPermission(
 		"u-1", "catalog", "c1", "resource_manage", authz.EffectAllow, authz.AuthoritySourceAdminAuthz,
 	); err != nil {

@@ -102,6 +102,12 @@ type ProxyGrantSource struct {
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
 	RevokedAt       *time.Time `json:"revoked_at,omitempty" gorm:"index"`
+
+	// RequirementDerived distinguishes a prerequisite synthesized by operation
+	// normalization from an operation explicitly requested by the caller. The
+	// distinction is durable so revoking an operation never cascades into an
+	// independently requested permission that happens to share its source tuple.
+	RequirementDerived bool `json:"requirement_derived" gorm:"not null;default:false"`
 }
 
 // TableName keeps the schema name frozen to the singular name used by the
@@ -256,16 +262,15 @@ type Operation struct {
 	// name would turn the right to rename a catalog into the right to rewrite
 	// every table in it. Empty = the operation does not inherit at all (#800).
 	ParentOperationID string `gorm:"size:64"`
-	// ImpliedOperationIDs are operations on the SAME type that come with this one
-	// and cannot sensibly be held without it: resource_manage on a catalog also
-	// grants view_detail, because managing the tables inside a catalog is
-	// unreachable without the right to open it — every management route loads the
-	// target first, and that load is a view_detail judgement (#1121).
+	// RequiredOperationIDs are direct prerequisites on the SAME resource type.
+	// They are enforced at runtime and also added when an allow set is written, so
+	// a saved grant remains usable and later deny/role changes cannot bypass the
+	// prerequisite. The first version deliberately permits one layer only.
 	//
-	// Comma-separated operation ids, resolved when the grant is written rather
-	// than when it is enforced, so the policy table stores what the accessor
-	// actually holds and a reader need not replay a rule to know it.
-	ImpliedOperationIDs string `gorm:"size:512"`
+	// The legacy database column name is retained to keep upgrades schema-only:
+	// the former "implies" rule represented the same stored edge, but enforced it
+	// only while writing. Seed rewrites the authoritative values on every start.
+	RequiredOperationIDs string `gorm:"column:implied_operation_ids;size:512"`
 }
 
 // ResourceParent records that ONE concrete resource instance sits under one

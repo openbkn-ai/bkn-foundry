@@ -24,11 +24,19 @@ func TestProxyGrantSourceLifecycleAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	seedEnabledUser(t, db, "grantor-api")
-	seedCatalogOps(t, db, "resource", "authorize", "query_data")
+	seedCatalogOps(t, db, "resource", "authorize", "query_data", "view_detail")
+	if err := db.Model(&model.Operation{}).
+		Where("resource_type_id = ? AND id = ?", "resource", "query_data").
+		Update("implied_operation_ids", "view_detail").Error; err != nil {
+		t.Fatal(err)
+	}
 	if err := enforcer.GrantObjectPermission("grantor-api", "resource", "r-api", "authorize"); err != nil {
 		t.Fatal(err)
 	}
 	if err := enforcer.GrantObjectPermission("grantor-api", "resource", "r-api", "query_data"); err != nil {
+		t.Fatal(err)
+	}
+	if err := enforcer.GrantObjectPermission("grantor-api", "resource", "r-api", "view_detail"); err != nil {
 		t.Fatal(err)
 	}
 	body := map[string]any{
@@ -50,6 +58,20 @@ func TestProxyGrantSourceLifecycleAPI(t *testing.T) {
 	}
 	if source.ID == "" || source.GrantedBy != "grantor-api" || source.LifecycleStatus != proxygrant.StatusActive {
 		t.Fatalf("source = %+v", source)
+	}
+	var prerequisite model.ProxyGrantSource
+	if err := db.First(&prerequisite,
+		"proxy_account_id = ? AND source_id = ? AND operation = ?",
+		proxy.ProxyAccountID, "source-api", "view_detail").Error; err != nil {
+		t.Fatal(err)
+	}
+	if !prerequisite.RequirementDerived {
+		t.Fatalf("prerequisite = %+v, want requirement-derived source", prerequisite)
+	}
+	w = do(t, r, http.MethodDelete, "/api/safe/in/v1/proxy-grant-sources/"+prerequisite.ID,
+		map[string]any{"grantor_id": "grantor-api"})
+	if w.Code != http.StatusConflict {
+		t.Fatalf("required prerequisite revoke = %d body=%s, want 409", w.Code, w.Body.String())
 	}
 
 	w = do(t, r, http.MethodPost, "/api/safe/in/v1/proxy-grant-sources", body)
