@@ -228,6 +228,17 @@ func (b *patternBuilder) addNode(ctx parsing.IOC_NodePatternContext) (int, error
 			"the first mention of a node must name its object type, as in (n:ObjectType)")
 	}
 
+	if len(b.pattern.Nodes) >= interfaces.CYPHER_MAX_PATTERN_NODES {
+		// Every node is a table. One that no relationship reaches is joined to
+		// the rest by nothing at all, so it multiplies the rows the database
+		// walks; an aggregate then leaves the trailing LIMIT with nothing to
+		// cut. The relationship bound above does not see those nodes, so the
+		// count of tables is bounded here.
+		return 0, unsupportedf(ctx, "a pattern this large",
+			"a pattern may name at most %d nodes",
+			interfaces.CYPHER_MAX_PATTERN_NODES)
+	}
+
 	index := len(b.pattern.Nodes)
 	b.pattern.Nodes = append(b.pattern.Nodes, *node)
 	if node.Variable != "" {

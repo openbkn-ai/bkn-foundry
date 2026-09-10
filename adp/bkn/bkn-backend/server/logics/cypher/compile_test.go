@@ -501,6 +501,33 @@ func TestCompileRefusesAVeryLargePattern(t *testing.T) {
 	}
 }
 
+// Relationships are not the only cost. A node that no relationship reaches is
+// a table joined to the rest by nothing, and an aggregate leaves the trailing
+// LIMIT with nothing to cut, so the tables have to be bounded too.
+func TestCompileRefusesTooManyNodes(t *testing.T) {
+	query := "MATCH (n0:Order)"
+	for i := 1; i <= interfaces.CYPHER_MAX_PATTERN_NODES; i++ {
+		query += ", (:Order)"
+	}
+	query += " RETURN count(*) AS n"
+
+	_, err := compile(t, query, GenerateOptions{})
+	if err == nil || !strings.Contains(err.Error(), "a pattern this large") {
+		t.Fatalf("compile = %v, want a rejection naming the pattern size", err)
+	}
+
+	// The bound is on the tables, not on how the query is written: a path of
+	// the longest allowed length names exactly CYPHER_MAX_PATTERN_NODES nodes
+	// and still compiles.
+	longest := "MATCH (n0:Order)"
+	for i := 1; i <= interfaces.CYPHER_MAX_PATH_LENGTH; i++ {
+		longest += fmt.Sprintf("-[:FOLLOWS]->(n%d:Order)", i)
+	}
+	if _, err := compile(t, longest+" RETURN n0.id", GenerateOptions{}); err != nil {
+		t.Fatalf("compile(longest allowed path) = %v, want it accepted", err)
+	}
+}
+
 // A variable written twice is one node, whether the second mention is in
 // another comma-separated path or in another MATCH. That is what lets a query
 // describe a shape that is not a single chain: one node with two
