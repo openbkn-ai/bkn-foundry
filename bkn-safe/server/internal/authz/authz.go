@@ -33,6 +33,7 @@ import (
 // modelConf is the RBAC + resource-instance Casbin model.
 //
 //	r = sub, obj, act   sub=accessorID, obj="type:id", act=operation
+//	p = sub, obj, act, eft, policy_source, authority_source
 //	g = _, _            user/app -> role (UUID-preserved)
 //
 // The matcher also accepts policies whose subject is PublicAccessorID: ISF's
@@ -45,7 +46,7 @@ const modelConf = `
 r = sub, obj, act
 
 [policy_definition]
-p = sub, obj, act, eft
+p = sub, obj, act, eft, policy_source, authority_source
 
 [role_definition]
 g = _, _
@@ -108,6 +109,18 @@ func New(db *gorm.DB) (*Enforcer, error) {
 	if err := db.Table("casbin_rule").Where("ptype = ? AND (v3 IS NULL OR v3 = '')", "p").
 		Update("v3", EffectAllow).Error; err != nil {
 		return nil, fmt.Errorf("normalize legacy casbin policies: %w", err)
+	}
+	// Provenance classification belongs to the coordinated offline migration.
+	// Refuse to load a mixed/unknown policy store instead of guessing a source
+	// during startup and silently changing production authorization semantics.
+	var rows []casbinPolicyRow
+	if err := db.Table("casbin_rule").Where("ptype = ?", "p").Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("validate casbin policy provenance: %w", err)
+	}
+	for _, row := range rows {
+		if err := validatePolicyProvenance(PolicySource(row.V4), AuthoritySource(row.V5)); err != nil {
+			return nil, fmt.Errorf("%w: policy id %d: %v", ErrPolicySourceMigrationRequired, row.ID, err)
+		}
 	}
 	m, err := model.NewModelFromString(modelConf)
 	if err != nil {
@@ -287,8 +300,7 @@ func (en *Enforcer) AllowedOps(accessorID, resourceType, resourceID string, cand
 func (en *Enforcer) GrantRolePermission(roleID, resourceType, idPattern, op string) error {
 	en.transactionMu.Lock()
 	defer en.transactionMu.Unlock()
-	_, err := en.e.AddPolicy(roleID, obj(resourceType, idPattern), op, EffectAllow)
-	return err
+	return en.addPolicy(roleID, obj(resourceType, idPattern), op, EffectAllow, PolicySourceRolePermission, AuthoritySourceAdminAuthz)
 }
 
 // RevokeRolePermission removes a role's op over a resource-type instance
@@ -296,8 +308,7 @@ func (en *Enforcer) GrantRolePermission(roleID, resourceType, idPattern, op stri
 func (en *Enforcer) RevokeRolePermission(roleID, resourceType, idPattern, op string) error {
 	en.transactionMu.Lock()
 	defer en.transactionMu.Unlock()
-	_, err := en.e.RemovePolicy(roleID, obj(resourceType, idPattern), op, EffectAllow)
-	return err
+	return en.removePolicy(roleID, obj(resourceType, idPattern), op, EffectAllow, PolicySourceRolePermission, AuthoritySourceAdminAuthz)
 }
 
 // Grant adds a raw (sub, obj, act) policy. obj is the full object pattern
@@ -306,17 +317,17 @@ func (en *Enforcer) RevokeRolePermission(roleID, resourceType, idPattern, op str
 func (en *Enforcer) Grant(sub, obj, act string) error {
 	en.transactionMu.Lock()
 	defer en.transactionMu.Unlock()
-	_, err := en.e.AddPolicy(sub, obj, act, EffectAllow)
-	return err
+	return en.addPolicy(sub, obj, act, EffectAllow, PolicySourceRolePermission, AuthoritySourceSystem)
 }
 
-// GrantObjectPermission grants an accessor an op over one concrete resource
-// instance (the CreateResources pattern). Idempotent.
+// GrantObjectPermission is the compatibility writer for call sites that
+// predate trusted provenance. It marks their rows legacy/migration so it never
+// invents a Community bundle. New lifecycle and management flows use the
+// source-specific writers in policy_source.go. Idempotent.
 func (en *Enforcer) GrantObjectPermission(accessorID, resourceType, resourceID, op string) error {
 	en.transactionMu.Lock()
 	defer en.transactionMu.Unlock()
-	_, err := en.e.AddPolicy(accessorID, obj(resourceType, resourceID), op, EffectAllow)
-	return err
+	return en.addPolicy(accessorID, obj(resourceType, resourceID), op, EffectAllow, PolicySourceLegacy, AuthoritySourceMigration)
 }
 
 // DenyObjectPermission adds an explicit per-object exception. Deny overrides
@@ -324,15 +335,16 @@ func (en *Enforcer) GrantObjectPermission(accessorID, resourceType, resourceID, 
 func (en *Enforcer) DenyObjectPermission(accessorID, resourceType, resourceID, op string) error {
 	en.transactionMu.Lock()
 	defer en.transactionMu.Unlock()
-	_, err := en.e.AddPolicy(accessorID, obj(resourceType, resourceID), op, EffectDeny)
-	return err
+	return en.addPolicy(accessorID, obj(resourceType, resourceID), op, EffectDeny, PolicySourceLegacy, AuthoritySourceMigration)
 }
 
-// RevokeObjectPermission removes a concrete per-object grant.
+// RevokeObjectPermission removes every allow source for one concrete tuple.
+// It is retained for lifecycle reconciliation code written before policies had
+// provenance. New management flows that mean "one source" use RevokePolicy.
 func (en *Enforcer) RevokeObjectPermission(accessorID, resourceType, resourceID, op string) error {
 	en.transactionMu.Lock()
 	defer en.transactionMu.Unlock()
-	_, err := en.e.RemovePolicy(accessorID, obj(resourceType, resourceID), op, EffectAllow)
+	_, err := en.e.RemoveFilteredPolicy(0, accessorID, obj(resourceType, resourceID), op, EffectAllow)
 	return err
 }
 
@@ -395,7 +407,7 @@ func (en *Enforcer) RolePermissions(roleID string) ([]RoleGrant, error) {
 	if err != nil {
 		return nil, err
 	}
-	return groupGrantsByObject(rows), nil
+	return groupGrantsByObject(activePolicyRows(rows)), nil
 }
 
 // groupGrantsByObject collapses raw (sub, obj, act) policy rows into per-object
@@ -478,6 +490,7 @@ func (en *Enforcer) EffectivePermissions(accessorID string, q PermQuery) (hasWil
 	if err != nil {
 		return false, nil, err
 	}
+	rows = activePolicyRows(rows)
 	grouped := groupGrantsByObject(rows)
 	superAdmin, err := en.hasSuperAdminRole(accessorID)
 	if err != nil {
@@ -703,10 +716,11 @@ func (en *Enforcer) RenameOperation(resourceType, oldOp, newOp string) (int, err
 		if len(row) >= 4 && row[3] != "" {
 			effect = row[3]
 		}
-		if _, err := en.e.RemovePolicy(row[0], object, oldOp, effect); err != nil {
+		source, authority := policySourceOf(row), authoritySourceOf(row)
+		if _, err := en.e.RemovePolicy(row[0], object, oldOp, effect, string(source), string(authority)); err != nil {
 			return moved, err
 		}
-		if _, err := en.e.AddPolicy(row[0], object, newOp, effect); err != nil {
+		if err := en.addPolicy(row[0], object, newOp, effect, source, authority); err != nil {
 			return moved, err
 		}
 		moved++
@@ -753,14 +767,21 @@ func (en *Enforcer) BackfillImpliedOperation(resourceType, holderOp, impliedOp s
 		if len(object) <= len(prefix) || object[:len(prefix)] != prefix {
 			continue
 		}
-		has, err := en.e.HasPolicy(row[0], object, impliedOp, EffectAllow)
+		source, authority := policySourceOf(row), authoritySourceOf(row)
+		// Compatibility and logical-bundle rows are immutable snapshots of their
+		// own contracts. Runtime requires (#1429) handles reachability without
+		// expanding legacy, and bundle expansion belongs only in the grant index.
+		if source == PolicySourceLegacy || source == PolicySourceCommunityBundle {
+			continue
+		}
+		has, err := en.e.HasPolicy(row[0], object, impliedOp, EffectAllow, string(source), string(authority))
 		if err != nil {
 			return added, err
 		}
 		if has {
 			continue
 		}
-		if _, err := en.e.AddPolicy(row[0], object, impliedOp, EffectAllow); err != nil {
+		if err := en.addPolicy(row[0], object, impliedOp, EffectAllow, source, authority); err != nil {
 			return added, err
 		}
 		added = append(added, BackfilledGrant{AccessorID: row[0], ResourceID: object[len(prefix):]})
@@ -859,6 +880,7 @@ func (en *Enforcer) accessibleResources(accessorID, resourceType, op string, vis
 	if err != nil {
 		return nil, err
 	}
+	perms = activePolicyRows(perms)
 	prefix := resourceType + ":"
 	seen := map[string]bool{}
 	out := make([]string, 0, len(perms))
@@ -911,6 +933,7 @@ func (en *Enforcer) ResourcePolicies(resourceType, resourceID string) ([]Resourc
 	if err != nil {
 		return nil, err
 	}
+	rows = activePolicyRows(rows)
 	bySub := map[string][]string{}
 	deniedBySub := map[string][]string{}
 	seenSub := map[string]bool{}
@@ -965,6 +988,7 @@ func (en *Enforcer) ListObjectGrants(accessorID, resourceType, resourceID string
 	if err != nil {
 		return nil, err
 	}
+	rows = activePolicyRows(rows)
 	type key struct{ sub, rtype, rid string }
 	ops := map[key][]string{}
 	deniedOps := map[key][]string{}
@@ -1018,19 +1042,23 @@ func (en *Enforcer) SetObjectPermissions(accessorID, resourceType, resourceID st
 	return en.SetObjectPermissionsForEffect(accessorID, resourceType, resourceID, ops, EffectAllow)
 }
 
-// SetObjectPermissionsForEffect replaces only one effect's operation set. This
-// preserves deny exceptions while legacy callers update allows, and vice versa.
+// SetObjectPermissionsForEffect is the compatibility whole-set writer. It only
+// replaces the legacy/migration slice, preserving every independently owned
+// source. The edition-aware management API migrates to
+// SetProfessionalObjectPermissions in #1430.
 func (en *Enforcer) SetObjectPermissionsForEffect(accessorID, resourceType, resourceID string, ops []string, effect string) error {
 	en.transactionMu.Lock()
 	defer en.transactionMu.Unlock()
 	if effect != EffectAllow && effect != EffectDeny {
 		return fmt.Errorf("invalid policy effect %q", effect)
 	}
-	if _, err := en.e.RemoveFilteredPolicy(0, accessorID, obj(resourceType, resourceID), "", effect); err != nil {
+	if _, err := en.e.RemoveFilteredPolicy(0, accessorID, obj(resourceType, resourceID), "", effect,
+		string(PolicySourceLegacy), string(AuthoritySourceMigration)); err != nil {
 		return err
 	}
 	for _, op := range ops {
-		if _, err := en.e.AddPolicy(accessorID, obj(resourceType, resourceID), op, effect); err != nil {
+		if err := en.addPolicy(accessorID, obj(resourceType, resourceID), op, effect,
+			PolicySourceLegacy, AuthoritySourceMigration); err != nil {
 			return err
 		}
 	}

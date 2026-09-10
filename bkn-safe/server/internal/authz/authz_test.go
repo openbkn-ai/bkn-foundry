@@ -143,8 +143,8 @@ func TestLegacyPolicyWithoutEffectIsNormalizedToAllow(t *testing.T) {
 	e, db := newTestEnforcerDB(t)
 	_ = e
 	if err := db.Exec(
-		"INSERT INTO casbin_rule (ptype, v0, v1, v2, v3) VALUES (?, ?, ?, ?, '')",
-		"p", "legacy-user", "resource:r-1", "view_detail",
+		"INSERT INTO casbin_rule (ptype, v0, v1, v2, v3, v4, v5) VALUES (?, ?, ?, ?, '', ?, ?)",
+		"p", "legacy-user", "resource:r-1", "view_detail", PolicySourceLegacy, AuthoritySourceMigration,
 	).Error; err != nil {
 		t.Fatalf("insert legacy policy: %v", err)
 	}

@@ -14,6 +14,8 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
+	"github.com/openbkn-ai/licverify"
 )
 
 // seedCatalogOps registers operation ids for a resource type so the
@@ -83,15 +85,29 @@ func TestObjectGrantsSetListRevoke(t *testing.T) {
 
 	// set: grant u-1 two ops on catalog c1
 	w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants", map[string]any{
-		"accessor_id": "u-1",
-		"resource":    map[string]any{"type": "catalog", "id": "c1"},
-		"operations":  []string{"view_detail", "modify"},
+		"accessor_id":      "u-1",
+		"resource":         map[string]any{"type": "catalog", "id": "c1"},
+		"operations":       []string{"view_detail", "modify"},
+		"policy_source":    "community_bundle",
+		"authority_source": "owner_delegate",
 	})
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("grant: want 204, got %d (%s)", w.Code, w.Body.String())
 	}
 	if ok, _ := e.Check("u-1", "catalog", "c1", "modify"); !ok {
 		t.Fatal("grant did not take effect at enforce time")
+	}
+	// Provenance is a server-side property. Until #1430 switches this existing
+	// route to the edition-aware request contract, unknown JSON fields cannot
+	// turn its compatibility write into a bundle or Professional rule.
+	records, err := e.PolicyRecords(authz.PolicyFilter{AccessorID: "u-1", Object: "catalog:c1"})
+	if err != nil || len(records) != 2 {
+		t.Fatalf("policy provenance = %+v, %v; want two server-derived rows", records, err)
+	}
+	for _, record := range records {
+		if record.PolicySource != authz.PolicySourceLegacy || record.AuthoritySource != authz.AuthoritySourceMigration {
+			t.Fatalf("ordinary request forged policy provenance: %+v", record)
+		}
 	}
 
 	// list (no filter) returns the grant
@@ -139,6 +155,35 @@ func TestObjectGrantsSetListRevoke(t *testing.T) {
 	}
 	if got := listObjectGrants(t, r, ""); len(got) != 0 {
 		t.Fatalf("list after revoke: %+v", got)
+	}
+}
+
+func TestCommunityObjectGrantCompatibilityWriteIsImmediatelyEffective(t *testing.T) {
+	r, e, db, _ := newAdminServer(t)
+	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
+	t.Cleanup(entitlement.ResetForTest)
+	seedCatalogOps(t, db, "catalog", "view_detail", "modify")
+	if err := db.Create(&model.User{ID: "community-user", Account: "community-user", Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants", map[string]any{
+		"accessor_id": "community-user",
+		"resource":    map[string]any{"type": "catalog", "id": "c-community"},
+		"operations":  []string{"view_detail", "modify"},
+	})
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("Community grant = %d %s; want 204", w.Code, w.Body.String())
+	}
+	for _, operation := range []string{"view_detail", "modify"} {
+		allowed, err := e.Check("community-user", "catalog", "c-community", operation)
+		if err != nil || !allowed {
+			t.Fatalf("Community grant Check(%q) = %v, %v; want true", operation, allowed, err)
+		}
+	}
+	grants := listObjectGrants(t, r, "?accessor_id=community-user&resource_type=catalog&resource_id=c-community")
+	if len(grants) != 1 || len(grants[0].Operations) != 2 {
+		t.Fatalf("Community grant listing = %+v; want one visible two-operation grant", grants)
 	}
 }
 
@@ -787,6 +832,9 @@ func TestObjectGrantsDelegateCannotStripAuthorizeHolder(t *testing.T) {
 	}, "u-stranger")
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("revoking a plain grantee: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
+	if ok, _ := e.Check("u-mate", "knowledge_network", "kn-mine", "view_detail"); ok {
+		t.Fatal("delegate revoke left its owner-managed grant effective")
 	}
 
 	// The grant side erases just as thoroughly: POST replaces the whole op set, so

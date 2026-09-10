@@ -827,6 +827,12 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 		}
 		outcome["effect"] = req.Effect
 		setAuditOutcome(c, outcome)
+		// #1426 introduces trusted provenance and edition-aware decision APIs but
+		// does not change this route's public write contract. Keep writes in the
+		// active legacy compatibility slice until #1430 atomically adds Community
+		// bundle-only validation and the Professional capability gate. Writing a
+		// Professional row here today would return 204 in Community while storing
+		// a rule that Check and every permission read intentionally ignore.
 		if err := e.SetObjectPermissionsForEffect(req.AccessorID, req.Resource.Type, req.Resource.ID, ops, req.Effect); err != nil {
 			serverError(c, err)
 			return

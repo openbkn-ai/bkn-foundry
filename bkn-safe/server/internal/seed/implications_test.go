@@ -12,6 +12,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
+	"github.com/openbkn-ai/licverify"
 )
 
 func TestValidateImplicationsRejectsAuthoringMistakes(t *testing.T) {
@@ -119,6 +121,8 @@ func TestSeedPersistsImplications(t *testing.T) {
 // resource_manage, reaches nothing, and nobody tells the administrator to
 // re-save it.
 func TestBackfillRepairsGrantsWrittenBeforeTheRule(t *testing.T) {
+	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionProfessional))
+	t.Cleanup(entitlement.ResetForTest)
 	db := newDB(t)
 	e, err := authz.New(db)
 	if err != nil {
@@ -130,11 +134,15 @@ func TestBackfillRepairsGrantsWrittenBeforeTheRule(t *testing.T) {
 
 	// The shape an operator could produce before #1121: management without the
 	// visibility every management route needs.
-	if err := e.GrantObjectPermission("u-1", "catalog", "c1", "resource_manage"); err != nil {
+	if err := e.GrantProfessionalObjectPermission(
+		"u-1", "catalog", "c1", "resource_manage", authz.EffectAllow, authz.AuthoritySourceAdminAuthz,
+	); err != nil {
 		t.Fatal(err)
 	}
 	// An unrelated grant on the same type must come through untouched.
-	if err := e.GrantObjectPermission("u-2", "catalog", "c2", "query_data"); err != nil {
+	if err := e.GrantProfessionalObjectPermission(
+		"u-2", "catalog", "c2", "query_data", authz.EffectAllow, authz.AuthoritySourceAdminAuthz,
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -192,6 +200,8 @@ func TestBackfillRepairsGrantsWrittenBeforeTheRule(t *testing.T) {
 // construction will never contain it. GET /object-grants excludes role
 // subjects, the public accessor and type-wide "type:*" rows alike.
 func TestBackfillAuditLabelsMatchTheSurfaceThatShowsTheGrant(t *testing.T) {
+	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionProfessional))
+	t.Cleanup(entitlement.ResetForTest)
 	db := newDB(t)
 	e, err := authz.New(db)
 	if err != nil {
@@ -206,13 +216,15 @@ func TestBackfillAuditLabelsMatchTheSurfaceThatShowsTheGrant(t *testing.T) {
 
 	// One row of each shape, all holding the management verb without the
 	// visibility it implies.
-	if err := e.GrantObjectPermission("u-1", "catalog", "c1", "resource_manage"); err != nil {
+	if err := e.GrantProfessionalObjectPermission(
+		"u-1", "catalog", "c1", "resource_manage", authz.EffectAllow, authz.AuthoritySourceAdminAuthz,
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := e.GrantRolePermission("role-x", "catalog", "*", "resource_manage"); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.GrantObjectPermission(authz.PublicAccessorID, "catalog", "c2", "resource_manage"); err != nil {
+	if err := e.GrantSystemObjectPermission(authz.PublicAccessorID, "catalog", "c2", "resource_manage"); err != nil {
 		t.Fatal(err)
 	}
 

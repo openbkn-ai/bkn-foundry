@@ -261,6 +261,11 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			return
 		}
 		for _, op := range ops {
+			// Keep the existing generic create-resource route on its compatibility
+			// source until #1430 replaces the request contract with explicit
+			// edition-aware bundle and Professional writers. Classifying every
+			// operation arriving here as lifecycle-derived would make it immune to
+			// the current object-grant whole-set editor.
 			if err := e.GrantObjectPermission(req.AccessorID, req.Resource.Type, req.Resource.ID, op); err != nil {
 				serverError(c, err)
 				return

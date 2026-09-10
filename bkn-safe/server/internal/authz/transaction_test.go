@@ -25,7 +25,8 @@ func TestPolicyTransactionSerializesOrdinaryPolicyWrites(t *testing.T) {
 		})
 	}()
 	<-entered
-	allowed, err := e.e.HasPolicy("proxy", obj("resource", "r-1"), "query_data", EffectAllow)
+	allowed, err := e.e.HasPolicy("proxy", obj("resource", "r-1"), "query_data", EffectAllow,
+		string(PolicySourceSystemDerived), string(AuthoritySourceSystem))
 	if err != nil || allowed {
 		t.Fatalf("uncommitted policy was visible: allowed=%v err=%v", allowed, err)
 	}
@@ -49,11 +50,14 @@ func TestPolicyTransactionSerializesOrdinaryPolicyWrites(t *testing.T) {
 	}
 	for _, check := range []struct {
 		accessor, resource, operation string
+		source                        PolicySource
+		authority                     AuthoritySource
 	}{
-		{"proxy", "r-1", "query_data"},
-		{"user", "r-2", "view_detail"},
+		{"proxy", "r-1", "query_data", PolicySourceSystemDerived, AuthoritySourceSystem},
+		{"user", "r-2", "view_detail", PolicySourceLegacy, AuthoritySourceMigration},
 	} {
-		allowed, err := e.e.HasPolicy(check.accessor, obj("resource", check.resource), check.operation, EffectAllow)
+		allowed, err := e.e.HasPolicy(check.accessor, obj("resource", check.resource), check.operation, EffectAllow,
+			string(check.source), string(check.authority))
 		if err != nil || !allowed {
 			t.Fatalf("Check(%q, %q, %q) = %v, %v", check.accessor, check.resource, check.operation, allowed, err)
 		}
