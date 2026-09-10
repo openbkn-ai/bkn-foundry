@@ -76,7 +76,12 @@ type EdgeRef struct {
 	Direction Direction
 	Left      int
 	Right     int
-	Pos       Position
+	// Clause is which MATCH wrote this relationship. Several MATCH clauses
+	// describe one shape, but Cypher's rule that a pattern may not traverse
+	// the same relationship twice holds inside a single MATCH and not between
+	// two of them, so the hops have to remember where they came from.
+	Clause int
+	Pos    Position
 }
 
 // PropertyRef is a variable.property reference.

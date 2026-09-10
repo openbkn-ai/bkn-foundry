@@ -238,21 +238,27 @@ func (p *planner) planPattern(pattern Pattern) error {
 }
 
 // keepRelationshipsDistinct adds what Cypher requires and SQL has no notion
-// of: one pattern may not traverse the same relationship twice.
+// of: one MATCH may not traverse the same relationship twice.
 //
 // A relationship here is a pair of rows -- one on the relation's source side,
 // one on its target side -- so two hops over the same relation type are the
 // same relationship exactly when both pairs coincide. Every pair of such hops
-// is compared, not only neighbouring ones: hops with another hop between them
-// can coincide just as easily, and two hops in the same direction coincide on
-// a row that points at itself.
+// within one MATCH is compared, not only neighbouring ones: hops with another
+// hop between them can coincide just as easily, and two hops in the same
+// direction coincide on a row that points at itself.
+//
+// Hops from different MATCH clauses are left alone. The rule is scoped to a
+// clause in openCypher, and applying it across clauses would quietly drop rows
+// a caller asked for: `MATCH (a)-[:R]->(b) MATCH (a)-[:R]->(c)` is how one asks
+// for every pair of things a reaches, b = c included.
 func (p *planner) keepRelationshipsDistinct(pattern Pattern) error {
 	if err := p.refuseUndirectedRepeats(pattern); err != nil {
 		return err
 	}
 	for i := 0; i < len(p.hops); i++ {
 		for j := i + 1; j < len(p.hops); j++ {
-			if p.hops[i].relationType != p.hops[j].relationType {
+			if p.hops[i].clause != p.hops[j].clause ||
+				p.hops[i].relationType != p.hops[j].relationType {
 				continue
 			}
 			distinct, err := p.differentEdges(p.hops[i], p.hops[j])
@@ -267,14 +273,16 @@ func (p *planner) keepRelationshipsDistinct(pattern Pattern) error {
 
 // refuseUndirectedRepeats turns away the one shape the rule cannot be stated
 // for: which reading of an undirected hop matched decides whether it repeats
-// another hop, and a condition cannot ask that after the fact.
+// another hop, and a condition cannot ask that after the fact. Like the rule
+// itself this looks inside one MATCH only -- two undirected hops in separate
+// clauses never had to be distinct.
 func (p *planner) refuseUndirectedRepeats(pattern Pattern) error {
 	for i, edge := range pattern.Edges {
 		if edge.Direction != Undirected {
 			continue
 		}
 		for j, other := range pattern.Edges {
-			if i == j || other.Type != edge.Type {
+			if i == j || other.Clause != edge.Clause || other.Type != edge.Type {
 				continue
 			}
 			return planErrorf(edge.Pos,
@@ -349,6 +357,7 @@ type plannedHop struct {
 	relationType string
 	source       int
 	target       int
+	clause       int
 	pos          Position
 }
 
@@ -432,6 +441,7 @@ func (p *planner) addJoin(edge EdgeRef, left, right int) error {
 				relationType: relationType.RTID,
 				source:       source,
 				target:       target,
+				clause:       edge.Clause,
 				pos:          edge.Pos,
 			})
 		}

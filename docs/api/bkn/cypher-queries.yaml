@@ -161,11 +161,14 @@ components:
             one object type and may carry an inline property map, which means the equalities
             it stands for.
 
-            Cypher forbids one pattern from traversing the same relationship twice, and that
-            is enforced: every pair of hops over one relation type must differ in its source
-            row or its target row, which needs those object types to have a primary key.
-            Where one of the hops is undirected the requirement cannot be stated, and the
-            query is refused rather than answered with paths Cypher would not return. One query's patterns
+            Cypher forbids one MATCH from traversing the same relationship twice, and that
+            is enforced: within one MATCH, every pair of hops over one relation type must
+            differ in its source row or its target row, which needs those object types to
+            have a primary key. Where one of the hops is undirected the requirement cannot
+            be stated, and the query is refused rather than answered with paths Cypher would
+            not return. Hops in different MATCH clauses are not compared: writing
+            `MATCH (a)-[:R]->(b) MATCH (a)-[:R]->(c)` is how one asks for every pair of
+            things a reaches, b and c being the same included. One query's patterns
             may hold at most eight relationships and nine nodes, because each relationship is
             a join and each node is a table -- one that no relationship reaches is joined to
             the rest by nothing -- and the row limit bounds what comes back rather than what

@@ -460,6 +460,42 @@ func TestCompileMultiHop(t *testing.T) {
 	})
 }
 
+// openCypher scopes the uniqueness rule to one MATCH. Applying it across
+// clauses would drop rows a caller asked for, and the two shapes below are how
+// a caller asks for them.
+func TestCompileUniquenessIsScopedToOneMatch(t *testing.T) {
+	t.Run("two MATCH clauses may reach the same row", func(t *testing.T) {
+		got := mustCompile(t,
+			"MATCH (i:Item)-[:BELONGS_TO]->(b:Order) MATCH (i)-[:BELONGS_TO]->(c:Order) RETURN b.id AS b, c.id AS c")
+		if strings.Contains(got, "NOT") {
+			t.Fatalf("uniqueness leaked across MATCH clauses: %s", got)
+		}
+	})
+
+	t.Run("comma-separated parts of one MATCH may not", func(t *testing.T) {
+		// The same two paths written in one clause are one pattern, so the
+		// rule applies and b and c have to differ.
+		got := mustCompile(t,
+			"MATCH (i:Item)-[:BELONGS_TO]->(b:Order), (i)-[:BELONGS_TO]->(c:Order) RETURN b.id AS b, c.id AS c")
+		if !strings.Contains(got, "WHERE NOT t1.`f_id` = t2.`f_id`") {
+			t.Fatalf("got %s", got)
+		}
+	})
+
+	t.Run("an undirected hop is only refused beside one in its own MATCH", func(t *testing.T) {
+		if _, err := compile(t,
+			"MATCH (a:Order)-[:FOLLOWS]-(b:Order) MATCH (c:Order)-[:FOLLOWS]-(d:Order) RETURN a.id AS a, c.id AS c",
+			GenerateOptions{}); err != nil {
+			t.Fatalf("compile = %v, want two undirected hops in separate clauses accepted", err)
+		}
+		if _, err := compile(t,
+			"MATCH (a:Order)-[:FOLLOWS]-(b:Order), (c:Order)-[:FOLLOWS]-(d:Order) RETURN a.id AS a",
+			GenerateOptions{}); err == nil {
+			t.Fatal("compile = nil, want the same two hops refused inside one MATCH")
+		}
+	})
+}
+
 func TestCompileMultiHopRejections(t *testing.T) {
 	for _, tc := range []struct {
 		name  string

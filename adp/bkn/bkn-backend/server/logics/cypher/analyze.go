@@ -143,14 +143,21 @@ type patternBuilder struct {
 	inline    []Predicate
 	nodeOf    map[string]int
 	anonymous int
+	// clause counts the MATCH clauses read so far, and stamps the
+	// relationships each one writes. Nodes are deliberately not stamped: a
+	// variable is one node wherever it is written, which is what makes several
+	// MATCH clauses one shape.
+	clause int
 }
 
 func newPatternBuilder() *patternBuilder {
 	return &patternBuilder{nodeOf: map[string]int{}}
 }
 
-// addPattern reads one MATCH's worth of comma-separated paths.
+// addPattern reads one MATCH's worth of comma-separated paths. Everything it
+// reads belongs to one clause, which is what the uniqueness rule is scoped to.
 func (b *patternBuilder) addPattern(ctx parsing.IOC_PatternContext) error {
+	defer func() { b.clause++ }()
 	for _, part := range ctx.AllOC_PatternPart() {
 		if part.OC_Variable() != nil {
 			return unsupported(part, "path variables")
@@ -191,6 +198,7 @@ func (b *patternBuilder) addPath(element parsing.IOC_PatternElementContext) erro
 				interfaces.CYPHER_MAX_PATH_LENGTH)
 		}
 		edge.Left, edge.Right = left, right
+		edge.Clause = b.clause
 		b.pattern.Edges = append(b.pattern.Edges, *edge)
 		left = right
 	}
