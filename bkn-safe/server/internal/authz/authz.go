@@ -402,7 +402,7 @@ func (en *Enforcer) RolePermissions(roleID string) ([]RoleGrant, error) {
 	if err != nil {
 		return nil, err
 	}
-	return groupGrantsByObject(activePolicyRows(rows)), nil
+	return groupGrantsByObject(projectCommunityBundleRows(activePolicyRows(rows), false)), nil
 }
 
 // groupGrantsByObject collapses raw (sub, obj, act) policy rows into per-object
@@ -486,6 +486,7 @@ func (en *Enforcer) EffectivePermissions(accessorID string, q PermQuery) (hasWil
 		return false, nil, err
 	}
 	rows = activePolicyRows(rows)
+	rows = projectCommunityBundleRows(rows, true)
 	grouped := groupGrantsByObject(rows)
 	superAdmin, err := en.hasSuperAdminRole(accessorID)
 	if err != nil {
@@ -889,7 +890,7 @@ func (en *Enforcer) accessibleResources(accessorID, resourceType, op string, vis
 			continue
 		}
 		o, act := p[1], p[2]
-		if act != op && act != ActAll {
+		if act != op && act != ActAll && !isCommunityBundleRow(p) {
 			continue
 		}
 		if len(o) <= len(prefix) || o[:len(prefix)] != prefix {
@@ -934,6 +935,7 @@ func (en *Enforcer) ResourcePolicies(resourceType, resourceID string) ([]Resourc
 		return nil, err
 	}
 	rows = activePolicyRows(rows)
+	rows = projectCommunityBundleRows(rows, false)
 	bySub := map[string][]string{}
 	deniedBySub := map[string][]string{}
 	seenSub := map[string]bool{}
@@ -989,6 +991,7 @@ func (en *Enforcer) ListObjectGrants(accessorID, resourceType, resourceID string
 		return nil, err
 	}
 	rows = activePolicyRows(rows)
+	rows = projectCommunityBundleRows(rows, false)
 	type key struct{ sub, rtype, rid string }
 	ops := map[key][]string{}
 	deniedOps := map[key][]string{}

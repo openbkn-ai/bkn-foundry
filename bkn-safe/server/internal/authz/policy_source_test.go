@@ -141,7 +141,7 @@ func TestPolicySourcesFollowLiveEditionWithoutRewritingRows(t *testing.T) {
 	mustNoErr(t, e.GrantSystemObjectPermission("u-system", "resource", "r-1", "view_detail"))
 	mustNoErr(t, e.GrantRolePermission("role-reader", "resource", "r-1", "view_detail"))
 	mustNoErr(t, e.AssignRole("u-role", "role-reader"))
-	mustNoErr(t, e.GrantCommunityBundle("u-bundle", "resource", "r-1", AuthoritySourceAdminAuthz))
+	mustNoErr(t, e.GrantCommunityBundle("u-bundle", "catalog", "c-1", AuthoritySourceAdminAuthz))
 	mustNoErr(t, e.GrantProfessionalObjectPermission(
 		"u-professional", "resource", "r-1", "view_detail", EffectAllow, AuthoritySourceAdminAuthz,
 	))
@@ -152,9 +152,13 @@ func TestPolicySourcesFollowLiveEditionWithoutRewritingRows(t *testing.T) {
 		{"u-legacy", "view_detail"},
 		{"u-system", "view_detail"},
 		{"u-role", "view_detail"},
-		{"u-bundle", ActFullBusinessAccess},
+		{"u-bundle", "view_detail"},
 	} {
-		allowed, err := e.Check(tc.user, "resource", "r-1", tc.operation)
+		resourceType, resourceID := "resource", "r-1"
+		if tc.user == "u-bundle" {
+			resourceType, resourceID = "catalog", "c-1"
+		}
+		allowed, err := e.Check(tc.user, resourceType, resourceID, tc.operation)
 		if err != nil || !allowed {
 			t.Fatalf("Community Check(%s,%s) = %v, %v; want true", tc.user, tc.operation, allowed, err)
 		}
