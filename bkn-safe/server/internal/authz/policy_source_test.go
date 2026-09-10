@@ -96,7 +96,10 @@ func TestNewRejectsStableGrantWithoutPolicyProjection(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := db.Create(&safemodel.AuthorizationGrant{
-		GrantID: "grant-1", AccessorID: "u-1", Object: "resource:r-1", Operation: "view_detail",
+		GrantID: "grant-1",
+		ProjectionKey: policyProjectionKey("u-1", "resource:r-1", "view_detail", EffectAllow,
+			PolicySourceProfessionalRule, AuthoritySourceAdminAuthz),
+		AccessorID: "u-1", Object: "resource:r-1", Operation: "view_detail",
 		Effect: EffectAllow, PolicySource: string(PolicySourceProfessionalRule),
 		AuthoritySource: string(AuthoritySourceAdminAuthz), CreatedBy: "admin-1",
 	}).Error; err != nil {
@@ -106,6 +109,27 @@ func TestNewRejectsStableGrantWithoutPolicyProjection(t *testing.T) {
 	_, err = New(db)
 	if !errors.Is(err, ErrPolicySourceMigrationRequired) {
 		t.Fatalf("New() error = %v, want ErrPolicySourceMigrationRequired", err)
+	}
+}
+
+func TestNewDoesNotReportDatabaseFailureAsMigrationRequired(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(db); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Migrator().DropTable(&safemodel.AuthorizationGrant{}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = New(db)
+	if err == nil || errors.Is(err, ErrPolicySourceMigrationRequired) {
+		t.Fatalf("New() error = %v, want a database error distinct from migration required", err)
 	}
 }
 
@@ -355,6 +379,45 @@ func TestGrantIDCannotBeReusedForAnotherPolicy(t *testing.T) {
 	allowed, checkErr := e.Check("u-1", "resource", "r-1", "view_detail")
 	if checkErr != nil || !allowed {
 		t.Fatalf("conflict changed original grant: allowed=%v err=%v", allowed, checkErr)
+	}
+}
+
+func TestRenameOperationRekeysDerivedGrantAndPreservesExplicitGrantID(t *testing.T) {
+	useEdition(t, licverify.EditionProfessional)
+	e := newTestEnforcer(t)
+	mustNoErr(t, e.GrantObjectPermission("u-derived", "resource", "r-1", "old_operation"))
+	explicit := PolicyGrant{
+		GrantID: "explicit-grant", AccessorID: "u-explicit", Object: "resource:r-1", Operation: "old_operation",
+		Effect: EffectAllow, PolicySource: PolicySourceProfessionalRule,
+		AuthoritySource: AuthoritySourceAdminAuthz, CreatedBy: "admin-1",
+	}
+	created, err := e.GrantPolicy(t.Context(), explicit)
+	if err != nil || !created {
+		t.Fatalf("GrantPolicy(explicit) = %v, %v; want created", created, err)
+	}
+
+	moved, err := e.RenameOperation("resource", "old_operation", "new_operation")
+	if err != nil || moved != 2 {
+		t.Fatalf("RenameOperation() = %d, %v; want two", moved, err)
+	}
+	derived, err := e.PolicyRecords(PolicyFilter{AccessorID: "u-derived"})
+	wantDerivedID := deterministicGrantID("u-derived", "resource:r-1", "new_operation", EffectAllow,
+		PolicySourceLegacy, AuthoritySourceMigration)
+	if err != nil || len(derived) != 1 || derived[0].GrantID != wantDerivedID || derived[0].Operation != "new_operation" {
+		t.Fatalf("renamed derived grant = %+v, %v; want id %q", derived, err, wantDerivedID)
+	}
+	explicitRows, err := e.PolicyRecords(PolicyFilter{AccessorID: "u-explicit"})
+	if err != nil || len(explicitRows) != 1 || explicitRows[0].GrantID != explicit.GrantID ||
+		explicitRows[0].Operation != "new_operation" {
+		t.Fatalf("renamed explicit grant = %+v, %v; want stable explicit id", explicitRows, err)
+	}
+
+	// A stale caller may still submit the old spelling. It must create its old
+	// deterministic identity instead of colliding with the renamed grant.
+	mustNoErr(t, e.GrantObjectPermission("u-derived", "resource", "r-1", "old_operation"))
+	rows, err := e.PolicyRecords(PolicyFilter{AccessorID: "u-derived"})
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("old spelling replay after rename = %+v, %v; want two independent grants", rows, err)
 	}
 }
 

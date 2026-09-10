@@ -115,7 +115,10 @@ func New(db *gorm.DB) (*Enforcer, error) {
 	// offline migration. Refuse to load an unclassified or partially projected
 	// store instead of guessing ownership during startup.
 	if err := (&Enforcer{db: db}).validateGrantProjection(); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrPolicySourceMigrationRequired, err)
+		if errors.Is(err, ErrPolicySourceMigrationRequired) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("validate authorization grant projection: %w", err)
 	}
 	m, err := model.NewModelFromString(modelConf)
 	if err != nil {
@@ -700,18 +703,26 @@ func (en *Enforcer) RenameOperation(resourceType, oldOp, newOp string) (int, err
 			if len(row.Object) <= len(prefix) || row.Object[:len(prefix)] != prefix {
 				continue
 			}
+			source, authority := PolicySource(row.PolicySource), AuthoritySource(row.AuthoritySource)
+			derivedID := row.GrantID == deterministicGrantID(row.AccessorID, row.Object, oldOp, row.Effect, source, authority)
 			createdAt := row.CreatedAt
 			if _, _, err := tx.enforcer.revokePolicyGrant(row.GrantID); err != nil {
 				return err
 			}
 			grant := policyGrant(row)
 			grant.Operation = newOp
-			if _, err := tx.enforcer.addPolicyGrant(grant); err != nil {
+			if derivedID {
+				grant.GrantID = deterministicGrantID(row.AccessorID, row.Object, newOp, row.Effect, source, authority)
+			}
+			created, err := tx.enforcer.addPolicyGrant(grant)
+			if err != nil {
 				return err
 			}
-			if err := tx.db.Model(&safemodel.AuthorizationGrant{}).Where("grant_id = ?", row.GrantID).
-				Update("created_at", createdAt).Error; err != nil {
-				return err
+			if created {
+				if err := tx.db.Model(&safemodel.AuthorizationGrant{}).Where("grant_id = ?", grant.GrantID).
+					Update("created_at", createdAt).Error; err != nil {
+					return err
+				}
 			}
 			moved++
 		}

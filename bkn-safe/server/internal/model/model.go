@@ -149,15 +149,18 @@ func (ProxyGrantAuditLog) TableName() string { return "proxy_grant_audit_log" }
 // intentionally carry the same authorization tuple: grant_id identifies the
 // independently managed source, while Casbin needs only one projection of that
 // tuple for runtime matching. A revoke deletes the shared projection only after
-// the final matching grant row disappears.
+// the final matching grant row disappears. ProjectionKey is a fixed-width hash
+// used only to narrow exact-tuple lookups; the query still verifies every tuple
+// field, so correctness never depends on hash uniqueness.
 type AuthorizationGrant struct {
 	GrantID         string `json:"grant_id" gorm:"primaryKey;size:64"`
-	AccessorID      string `json:"accessor_id" gorm:"size:64;index:idx_authorization_grant_tuple,priority:1"`
-	Object          string `json:"object" gorm:"size:255;index:idx_authorization_grant_tuple,priority:2"`
-	Operation       string `json:"operation" gorm:"size:64;index:idx_authorization_grant_tuple,priority:3"`
-	Effect          string `json:"effect" gorm:"size:16;index:idx_authorization_grant_tuple,priority:4"`
-	PolicySource    string `json:"policy_source" gorm:"size:32;index:idx_authorization_grant_tuple,priority:5"`
-	AuthoritySource string `json:"authority_source" gorm:"size:32;index:idx_authorization_grant_tuple,priority:6"`
+	ProjectionKey   string `json:"projection_key" gorm:"size:64;index"`
+	AccessorID      string `json:"accessor_id" gorm:"size:64;index:idx_authorization_grant_scope,priority:1"`
+	Object          string `json:"object" gorm:"size:255"`
+	Operation       string `json:"operation" gorm:"size:64"`
+	Effect          string `json:"effect" gorm:"size:16;index:idx_authorization_grant_scope,priority:2"`
+	PolicySource    string `json:"policy_source" gorm:"size:32;index:idx_authorization_grant_scope,priority:3"`
+	AuthoritySource string `json:"authority_source" gorm:"size:32;index:idx_authorization_grant_scope,priority:4"`
 	CreatedBy       string `json:"created_by" gorm:"size:64;index"`
 	CreatedAt       time.Time
 	UpdatedAt       time.Time

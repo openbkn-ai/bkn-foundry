@@ -215,11 +215,15 @@ func validatePolicyGrant(grant PolicyGrant) error {
 	return validatePolicyProvenance(grant.PolicySource, grant.AuthoritySource)
 }
 
-func deterministicGrantID(sub, object, operation, effect string, source PolicySource, authority AuthoritySource) string {
+func policyProjectionKey(sub, object, operation, effect string, source PolicySource, authority AuthoritySource) string {
 	sum := sha256.Sum256([]byte(strings.Join([]string{
 		sub, object, operation, effect, string(source), string(authority),
 	}, "\x00")))
 	return hex.EncodeToString(sum[:])
+}
+
+func deterministicGrantID(sub, object, operation, effect string, source PolicySource, authority AuthoritySource) string {
+	return policyProjectionKey(sub, object, operation, effect, source, authority)
 }
 
 func deterministicPolicyGrant(sub, object, operation, effect string, source PolicySource, authority AuthoritySource) PolicyGrant {
@@ -232,7 +236,10 @@ func deterministicPolicyGrant(sub, object, operation, effect string, source Poli
 
 func grantModel(grant PolicyGrant) safemodel.AuthorizationGrant {
 	return safemodel.AuthorizationGrant{
-		GrantID: grant.GrantID, AccessorID: grant.AccessorID, Object: grant.Object,
+		GrantID: grant.GrantID,
+		ProjectionKey: policyProjectionKey(grant.AccessorID, grant.Object, grant.Operation, grant.Effect,
+			grant.PolicySource, grant.AuthoritySource),
+		AccessorID: grant.AccessorID, Object: grant.Object,
 		Operation: grant.Operation, Effect: grant.Effect, PolicySource: string(grant.PolicySource),
 		AuthoritySource: string(grant.AuthoritySource), CreatedBy: grant.CreatedBy,
 	}
@@ -317,8 +324,9 @@ func (en *Enforcer) revokePolicyGrant(grantID string) (bool, bool, error) {
 	// decision and Casbin projection removal therefore share this transaction.
 	var siblings []safemodel.AuthorizationGrant
 	if err := en.db.Clauses(clause.Locking{Strength: "UPDATE"}).
-		Where("accessor_id = ? AND object = ? AND operation = ? AND effect = ? AND policy_source = ? AND authority_source = ?",
-			target.AccessorID, target.Object, target.Operation, target.Effect, target.PolicySource, target.AuthoritySource).
+		Where("projection_key = ? AND accessor_id = ? AND object = ? AND operation = ? AND effect = ? AND policy_source = ? AND authority_source = ?",
+			target.ProjectionKey, target.AccessorID, target.Object, target.Operation, target.Effect,
+			target.PolicySource, target.AuthoritySource).
 		Order("grant_id").Find(&siblings).Error; err != nil {
 		return false, false, err
 	}
@@ -455,25 +463,32 @@ func (en *Enforcer) validateGrantProjection() error {
 	}
 	for _, row := range policyRows {
 		if err := validatePolicyProvenance(PolicySource(row.V4), AuthoritySource(row.V5)); err != nil {
-			return fmt.Errorf("policy id %d: %w", row.ID, err)
+			return fmt.Errorf("%w: policy id %d: %v", ErrPolicySourceMigrationRequired, row.ID, err)
 		}
 		projectionCounts[key(row.V0, row.V1, row.V2, row.V3, row.V4, row.V5)]++
 	}
 	for _, row := range grantRows {
 		grant := policyGrant(row)
 		if err := validatePolicyGrant(grant); err != nil {
-			return fmt.Errorf("grant id %q: %w", row.GrantID, err)
+			return fmt.Errorf("%w: grant id %q: %v", ErrPolicySourceMigrationRequired, row.GrantID, err)
+		}
+		wantProjectionKey := policyProjectionKey(row.AccessorID, row.Object, row.Operation, row.Effect,
+			PolicySource(row.PolicySource), AuthoritySource(row.AuthoritySource))
+		if row.ProjectionKey != wantProjectionKey {
+			return fmt.Errorf("%w: grant id %q has an invalid projection key", ErrPolicySourceMigrationRequired, row.GrantID)
 		}
 		grantCounts[key(row.AccessorID, row.Object, row.Operation, row.Effect, row.PolicySource, row.AuthoritySource)]++
 	}
 	for tuple, count := range projectionCounts {
 		if count != 1 || grantCounts[tuple] == 0 {
-			return fmt.Errorf("casbin projection has %d rows and %d grants", count, grantCounts[tuple])
+			return fmt.Errorf("%w: casbin projection has %d rows and %d grants",
+				ErrPolicySourceMigrationRequired, count, grantCounts[tuple])
 		}
 	}
 	for tuple, count := range grantCounts {
 		if count > 0 && projectionCounts[tuple] != 1 {
-			return fmt.Errorf("grant tuple has %d grants and %d casbin projections", count, projectionCounts[tuple])
+			return fmt.Errorf("%w: grant tuple has %d grants and %d casbin projections",
+				ErrPolicySourceMigrationRequired, count, projectionCounts[tuple])
 		}
 	}
 	return nil

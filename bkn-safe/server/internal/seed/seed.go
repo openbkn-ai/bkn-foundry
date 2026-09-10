@@ -136,7 +136,7 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 	if err := ReconcileWithdrawnNormalUserRole(db, enforcer); err != nil {
 		return fmt.Errorf("reconcile withdrawn normal user role: %w", err)
 	}
-	if err := reconcileSeedRoles(db, enforcer); err != nil {
+	if err := reconcileSeedRoles(enforcer); err != nil {
 		return fmt.Errorf("reconcile seed roles: %w", err)
 	}
 	if err := renameLegacyOperations(enforcer); err != nil {
@@ -293,19 +293,19 @@ func seedRoles(db *gorm.DB) error {
 	}).Create(&rows).Error
 }
 
-func reconcileSeedRoles(db *gorm.DB, enforcer *authz.Enforcer) error {
+func reconcileSeedRoles(enforcer *authz.Enforcer) error {
 	var roles []roleSeed
 	if err := json.Unmarshal(rolesJSON, &roles); err != nil {
 		return err
 	}
-
-	for _, r := range roles {
-		if err := enforcer.RemoveRolePermissions(r.ID); err != nil {
-			return err
+	return enforcer.Transaction(context.Background(), func(tx *authz.PolicyTransaction) error {
+		for _, r := range roles {
+			if err := tx.RemoveSeedRolePermissions(r.ID); err != nil {
+				return err
+			}
 		}
-	}
-
-	return nil
+		return nil
+	})
 }
 
 func seedCatalog(db *gorm.DB) error {
@@ -632,22 +632,23 @@ func seedGrants(enforcer *authz.Enforcer) error {
 	if err := json.Unmarshal(grantsJSON, &g); err != nil {
 		return err
 	}
-	for _, gr := range g.Grants {
-		// Build the object pattern. Empty resource_type => a pure wildcard
-		// object (e.g. "*"), used for the super-admin "do everything" grant;
-		// otherwise "type:idPattern".
-		obj := gr.ResourceType + ":" + gr.IDPattern
-		if gr.ResourceType == "" {
-			obj = gr.IDPattern
-		}
-		for _, op := range gr.Operations {
-			// AddPolicy is idempotent (no-op if the rule already exists).
-			if err := enforcer.Grant(gr.RoleID, obj, op); err != nil {
-				return err
+	return enforcer.Transaction(context.Background(), func(tx *authz.PolicyTransaction) error {
+		for _, gr := range g.Grants {
+			// Build the object pattern. Empty resource_type => a pure wildcard
+			// object (e.g. "*"), used for the super-admin "do everything" grant;
+			// otherwise "type:idPattern".
+			object := gr.ResourceType + ":" + gr.IDPattern
+			if gr.ResourceType == "" {
+				object = gr.IDPattern
+			}
+			for _, operation := range gr.Operations {
+				if err := tx.GrantSeedPolicy(gr.RoleID, object, operation); err != nil {
+					return err
+				}
 			}
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 // seedRoleBindings binds accessors (users/apps) to roles via Casbin's grouping

@@ -52,6 +52,19 @@ func (tx *PolicyTransaction) RevokePolicy(grantID string) (bool, error) {
 	return removed, err
 }
 
+// GrantSeedPolicy and RemoveSeedRolePermissions let startup reconcile the
+// complete built-in role matrix in two batch transactions rather than opening
+// and reloading Casbin once per operation.
+func (tx *PolicyTransaction) GrantSeedPolicy(roleID, object, operation string) error {
+	return tx.enforcer.addPolicy(roleID, object, operation, EffectAllow,
+		PolicySourceRolePermission, AuthoritySourceSystem)
+}
+
+func (tx *PolicyTransaction) RemoveSeedRolePermissions(roleID string) error {
+	_, err := tx.enforcer.removePolicyGrants(PolicyFilter{AccessorID: roleID})
+	return err
+}
+
 func (tx *PolicyTransaction) GrantObjectPermission(accessorID, resourceType, resourceID, operation string) error {
 	return tx.enforcer.addPolicy(accessorID, obj(resourceType, resourceID), operation, EffectAllow,
 		PolicySourceSystemDerived, AuthoritySourceSystem)
