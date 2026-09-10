@@ -790,13 +790,15 @@ func (en *Enforcer) BackfillImpliedOperation(resourceType, holderOp, impliedOp s
 	return added, nil
 }
 
-// RemoveRolePermissions purges only the p-lines owned by a role, preserving its
-// member bindings. Seed uses this before re-applying the built-in permission
-// matrix so removed grants do not linger across upgrades.
+// RemoveRolePermissions purges only the role_permission p-lines owned by a
+// role, preserving both its member bindings and independently managed policy
+// sources. Seed uses this before re-applying the built-in permission matrix so
+// removed seeded grants do not linger across upgrades without erasing a
+// Community bundle or another resource grant assigned to the same role.
 func (en *Enforcer) RemoveRolePermissions(roleID string) error {
 	en.transactionMu.Lock()
 	defer en.transactionMu.Unlock()
-	_, err := en.e.RemoveFilteredPolicy(0, roleID)
+	_, err := en.e.RemoveFilteredPolicy(0, roleID, "", "", "", string(PolicySourceRolePermission))
 	return err
 }
 

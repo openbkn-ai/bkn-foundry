@@ -180,6 +180,23 @@ func TestCommunityBundleDecisionPathsAndParentFallbackAgree(t *testing.T) {
 	assertBusinessOps(t, grants[0].Operations, candidates[:5])
 }
 
+func TestCommunityBundleCombinedProjectionPreservesAnOriginSubject(t *testing.T) {
+	rows := [][]string{{
+		"bundle-role", "knowledge_network:kn-1", ActFullBusinessAccess,
+		EffectAllow, string(PolicySourceCommunityBundle), string(AuthoritySourceAdminAuthz),
+	}}
+
+	projected := projectCommunityBundleRows(rows, true)
+	if len(projected) == 0 {
+		t.Fatal("combined bundle projection is empty")
+	}
+	for _, row := range projected {
+		if len(row) == 0 || row[0] != "bundle-role" {
+			t.Fatalf("combined bundle projection = %+v; want subject bundle-role", row)
+		}
+	}
+}
+
 func TestCommunityBundleProfessionalDenyAndLegacyRemainIndependent(t *testing.T) {
 	edition := useEdition(t, licverify.EditionProfessional)
 	e := newTestEnforcer(t)

@@ -73,11 +73,18 @@ func communityBundleAllows(resourceType, operation string) bool {
 func projectCommunityBundleRows(rows [][]string, combineSubjects bool) [][]string {
 	out := make([][]string, 0, len(rows))
 	type bundleKey struct{ subject, object string }
-	bundles := make([]bundleKey, 0)
+	type bundleProjection struct {
+		key         bundleKey
+		emitSubject string
+	}
+	bundles := make([]bundleProjection, 0)
 	seenBundle := map[bundleKey]bool{}
-	rowsBySubject := map[string][][]string{}
+	var rowsBySubject map[string][][]string
+	if !combineSubjects {
+		rowsBySubject = map[string][][]string{}
+	}
 	for _, row := range rows {
-		if len(row) > 0 {
+		if !combineSubjects && len(row) > 0 {
 			rowsBySubject[row[0]] = append(rowsBySubject[row[0]], row)
 		}
 		if !isCommunityBundleSourceRow(row) {
@@ -101,25 +108,31 @@ func projectCommunityBundleRows(rows [][]string, combineSubjects bool) [][]strin
 			continue
 		}
 		seenBundle[key] = true
-		bundles = append(bundles, key)
+		bundles = append(bundles, bundleProjection{key: key, emitSubject: row[0]})
 	}
-	combined := newGrantIndex(rows, false)
+	if len(bundles) == 0 {
+		return out
+	}
+	var combined *grantIndex
+	if combineSubjects {
+		combined = newGrantIndex(rows, false)
+	}
 	for _, bundle := range bundles {
-		resourceType, resourceID := splitObjectKey(bundle.object)
+		resourceType, resourceID := splitObjectKey(bundle.key.object)
 		ops, ok := CommunityBundleOperations(resourceType)
 		if !ok || resourceID == "" || hasWildcard(resourceID) {
 			continue
 		}
 		idx := combined
 		if !combineSubjects {
-			idx = newGrantIndex(rowsBySubject[bundle.subject], false)
+			idx = newGrantIndex(rowsBySubject[bundle.key.subject], false)
 		}
 		decision := idx.decide(ResourceRef{Type: resourceType, ID: resourceID}, ops)
 		for _, op := range ops {
 			if decision[op] != EffectAllow {
 				continue
 			}
-			out = append(out, []string{bundle.subject, bundle.object, op, EffectAllow,
+			out = append(out, []string{bundle.emitSubject, bundle.key.object, op, EffectAllow,
 				string(PolicySourceCommunityBundle), string(AuthoritySourceSystem)})
 		}
 	}
