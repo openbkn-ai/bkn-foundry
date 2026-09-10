@@ -226,7 +226,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		resourceDataService.EXPECT().
 			QueryWithPaging(gomock.Any(), resource, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
-				assert.Equal(t, 2, params.Limit)
+				assert.Equal(t, 2, params.Paging.Limit)
 				assert.Equal(t, []string{"order_id"}, params.OutputFields)
 				return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"order_id": "o-1"}, {"order_id": "o-2"}}}, nil
 			})

@@ -59,8 +59,8 @@ func (g *logicViewDSLGenerator) BuildDSL(ctx context.Context, query interfaces.R
 
 	var dsl interfaces.DSLCfg
 	// Set the pagination parameters and track_total_hits
-	dsl.From = query.Offset
-	dsl.Size = query.Limit
+	dsl.From = query.Paging.Offset
+	dsl.Size = query.Paging.Limit
 	if query.NeedTotal {
 		dsl.TrackTotalHits = true
 	}

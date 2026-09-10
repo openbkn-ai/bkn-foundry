@@ -179,7 +179,7 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 	if err != nil {
 		return nil, cursorSessionLimitError(ctx)
 	}
-	session.Offset = req.Paging.Offset
+	session.PageOffset = req.Paging.Offset
 	session.TotalCount = totalCount
 	session.HasTotalCount = req.NeedTotal
 	session.NeedTotal = req.NeedTotal
@@ -344,16 +344,16 @@ func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *i
 	defer cancel()
 
 	result, err := rqs.executeSQL(pageCtx, catalog, session.CompiledSQL, interfaces.PagingModeCursor, &rawSQLBuildOptions{
-		offset: session.Offset,
-		limit:  session.Limit + 1,
+		offset: session.PageOffset,
+		limit:  session.PageLimit + 1,
 	})
 	if err != nil {
 		return nil, err
 	}
-	hasNext := len(result.Entries) > session.Limit
+	hasNext := len(result.Entries) > session.PageLimit
 	if hasNext {
-		result.Entries = result.Entries[:session.Limit]
-		session.Offset += session.Limit
+		result.Entries = result.Entries[:session.PageLimit]
+		session.PageOffset += session.PageLimit
 		rawQueryCursorSessions.markPageSuccess(session)
 		result.Paging = cursorPagingResponse(session)
 	} else {
@@ -400,7 +400,7 @@ func (rqs *rawQueryService) executeInitialOpenSearchCursor(ctx context.Context, 
 	bindCursorResource(session, req)
 	session.OpenSearchQuery = query
 	session.OpenSearchIndex = indexName
-	session.Offset = req.Paging.Offset
+	session.PageOffset = req.Paging.Offset
 	session.NeedTotal = req.NeedTotal
 	session.Lock()
 	defer session.Unlock()
@@ -562,17 +562,17 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 		// Real OpenSearch responses provide an exact total on the first page.
 		// Retain the fallback for connector implementations that omit it.
 		hasMoreResults := !session.HasTotalCount ||
-			int64(session.Offset+len(result.Entries)) < session.TotalCount
-		hasNext = len(result.Entries) == session.Limit && hasMoreResults && len(result.SearchAfter) > 0
+			int64(session.PageOffset+len(result.Entries)) < session.TotalCount
+		hasNext = len(result.Entries) == session.PageLimit && hasMoreResults && len(result.SearchAfter) > 0
 	} else {
 		// Without an exact total, a full page may be the final page. Preserve
 		// the cursor and let one final empty request close that exact-multiple
 		// case; this keeps size within OpenSearch's result-window limit.
-		hasNext = len(result.Entries) == session.Limit && len(result.SearchAfter) > 0
+		hasNext = len(result.Entries) == session.PageLimit && len(result.SearchAfter) > 0
 	}
 	if hasNext {
 		session.SearchAfter = append([]any(nil), result.SearchAfter...)
-		session.Offset += len(result.Entries)
+		session.PageOffset += len(result.Entries)
 		rawQueryCursorSessions.markPageSuccess(session)
 		result.Paging = cursorPagingResponse(session)
 	} else {

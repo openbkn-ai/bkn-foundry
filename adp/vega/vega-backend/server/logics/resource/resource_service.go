@@ -978,7 +978,9 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		// Do not allow a normal Resource update to leave them under a different
 		// mapping or embedding configuration; that requires an explicit rebuild.
 		documents, _, err := rs.ds.ListDocuments(ctx, resource,
-			&interfaces.ResourceDataQueryParams{Limit: 1})
+			&interfaces.ResourceDataQueryParams{
+				Paging: interfaces.PagingRequest{Limit: 1},
+			})
 		if err != nil {
 			return err
 		}

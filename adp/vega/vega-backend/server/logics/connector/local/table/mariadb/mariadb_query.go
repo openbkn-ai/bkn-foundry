@@ -283,9 +283,9 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 
 	// Add LIMIT and OFFSET
 	if params.CursorEncoded == "" {
-		builder = builder.Offset(uint64(params.Offset))
+		builder = builder.Offset(uint64(params.Paging.Offset))
 	}
-	return builder.Limit(uint64(params.Limit)), nil
+	return builder.Limit(uint64(params.Paging.Limit)), nil
 }
 
 func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource,

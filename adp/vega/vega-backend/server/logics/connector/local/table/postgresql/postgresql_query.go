@@ -304,9 +304,9 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 
 	// Add LIMIT and OFFSET
 	if params.CursorEncoded == "" {
-		builder = builder.Offset(uint64(params.Offset))
+		builder = builder.Offset(uint64(params.Paging.Offset))
 	}
-	builder = builder.Limit(uint64(params.Limit))
+	builder = builder.Limit(uint64(params.Paging.Limit))
 
 	// Build SQL and execute it
 	query, args, err := builder.ToSql()

@@ -30,8 +30,8 @@ func TestExecuteResourceDataCursorContinuation(t *testing.T) {
 		}}
 		var offsets []int
 		executor := func(_ context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
-			offsets = append(offsets, pageParams.Offset)
-			if pageParams.Offset == 0 {
+			offsets = append(offsets, pageParams.Paging.Offset)
+			if pageParams.Paging.Offset == 0 {
 				return []map[string]any{{"id": 1}, {"id": 2}, {"id": 3}}, 3, nil
 			}
 			return []map[string]any{{"id": 3}}, 3, nil
@@ -60,7 +60,7 @@ func TestExecuteResourceDataCursorContinuation(t *testing.T) {
 			Paging:    interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1},
 		}
 		executor := func(_ context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
-			if pageParams.Offset == 0 {
+			if pageParams.Paging.Offset == 0 {
 				assert.True(t, pageParams.NeedTotal)
 				return []map[string]any{{"id": 1}, {"id": 2}}, 2, nil
 			}
@@ -108,7 +108,7 @@ func TestExecuteResourceDataCursorContinuation(t *testing.T) {
 		resource := &interfaces.Resource{ID: "index-1", CatalogID: "catalog-1"}
 		var continuationSearchAfter []any
 		executor := func(_ context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
-			if pageParams.Offset == 0 {
+			if pageParams.Paging.Offset == 0 {
 				pageParams.SearchAfter = []any{"sort-2"}
 				return []map[string]any{{"id": 1}, {"id": 2}}, 2, nil
 			}
@@ -141,7 +141,7 @@ func TestExecuteResourceDataCursorContinuation(t *testing.T) {
 		}
 		pageIndex := 0
 		executor := func(_ context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
-			require.Equal(t, 1, pageParams.Limit)
+			require.Equal(t, 1, pageParams.Paging.Limit)
 			if pageIndex > 0 {
 				require.Equal(t, pages[pageIndex-1].searchAfter, pageParams.SearchAfter)
 			}
@@ -207,7 +207,7 @@ func TestExecuteInitialResourceDataCursorWithCategory(t *testing.T) {
 			interfaces.ResourceCategoryIndex,
 			&interfaces.ResourceDataQueryParams{NeedTotal: true, Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}},
 			func(_ context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
-				assert.Equal(t, 1, pageParams.Limit)
+				assert.Equal(t, 1, pageParams.Paging.Limit)
 				assert.True(t, pageParams.NeedTotal)
 				pageParams.SearchAfter = []any{"sort-1"}
 				return []map[string]any{{"id": 1}}, 2, nil

@@ -300,7 +300,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 					return &interfaces.QueryResult{}, nil
 				}
 				require.NotNil(t, params.FilterCondCfg)
-				assert.Equal(t, 1000, params.Limit)
+				assert.Equal(t, 1000, params.Paging.Limit)
 				assert.Equal(t, queryCount == 1, params.NeedTotal)
 				entries := make([]map[string]any, 1000)
 				firstID := int64(8001 + (queryCount-1)*1000)
@@ -609,13 +609,13 @@ func TestBatchBuildWorkerReadsSameIncrementalValueAcrossPages(t *testing.T) {
 			}
 			cursorTime := params.FilterCondCfg.SubConds[0].SubConds[0].ValueOptCfg.Value.(string)
 			cursorID := params.FilterCondCfg.SubConds[1].SubConds[1].ValueOptCfg.Value.(int64)
-			entries := make([]map[string]any, 0, params.Limit)
+			entries := make([]map[string]any, 0, params.Paging.Limit)
 			for _, row := range sourceRows {
 				rowTime := row["ingested_at"].(string)
 				rowID := row["id"].(int64)
 				if rowTime > cursorTime || rowTime == cursorTime && rowID > cursorID {
 					entries = append(entries, row)
-					if len(entries) == params.Limit {
+					if len(entries) == params.Paging.Limit {
 						break
 					}
 				}

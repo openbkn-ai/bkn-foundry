@@ -305,6 +305,9 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 
 	params := &interfaces.ResourceDataQueryParams{
 		FilterCondition: fc,
+		Paging: interfaces.ResourceDataPagingRequest{
+			Mode: "single",
+		},
 	}
 
 	// Handle aggregation.
@@ -394,7 +397,7 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 	}
 	// If limit is absent, query all records.
 	if metricQuery != nil && metricQuery.Limit != nil && *metricQuery.Limit > 0 {
-		params.Limit = *metricQuery.Limit
+		params.Paging.Limit = *metricQuery.Limit
 	}
 	return params, trend, nil
 }

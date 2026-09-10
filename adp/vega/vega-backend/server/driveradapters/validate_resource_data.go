@@ -89,29 +89,17 @@ func validateBinaryMode(ctx context.Context, mode *string) error {
 
 func validateResourceDataPaging(ctx context.Context, params *interfaces.ResourceDataQueryParams) error {
 	paging := params.Paging
-	// Backward compatibility: map deprecated top-level limit/offset into paging
-	// when the caller has not provided a paging object (foundry#475).
-	if paging.Cursor == "" && paging.Mode == "" && paging.Limit == 0 && paging.Offset == 0 {
-		if params.LegacyLimit != 0 || params.LegacyOffset != 0 {
-			paging.Limit = params.LegacyLimit
-			paging.Offset = params.LegacyOffset
-		}
-	}
 	if paging.Mode == interfaces.PagingModeCursor && paging.Limit == 0 {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
 			WithErrorDetails("paging.limit is required for cursor paging")
 	}
 	params.Paging = paging.Normalized()
-	params.Offset = params.Paging.Offset
-	params.Limit = params.Paging.Limit
-	params.LegacyLimit = 0
-	params.LegacyOffset = 0
 	if params.Paging.Mode == interfaces.PagingModeCursor {
-		if params.Offset < 0 {
+		if params.Paging.Offset < 0 {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Offset).
 				WithErrorDetails("paging.offset must not be negative")
 		}
-		if params.Limit < interfaces.MinPageLimit || params.Limit > interfaces.MaxPageLimit {
+		if params.Paging.Limit < interfaces.MinPageLimit || params.Paging.Limit > interfaces.MaxPageLimit {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
 				WithErrorDetails(fmt.Sprintf("paging.limit must be in the range of [%d,%d] for cursor paging", interfaces.MinPageLimit, interfaces.MaxPageLimit))
 		}
@@ -125,7 +113,7 @@ func validateResourceDataPaging(ctx context.Context, params *interfaces.Resource
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("paging.mode must be either single or cursor")
 	}
-	return validatePaginationParams(ctx, params.Offset, params.Limit)
+	return validatePaginationParams(ctx, params.Paging.Offset, params.Paging.Limit)
 }
 
 func validateResourceDataCursorContinuation(ctx context.Context, params *interfaces.ResourceDataQueryParams) error {
@@ -137,8 +125,6 @@ func validateResourceDataCursorContinuation(ctx context.Context, params *interfa
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor continuation must contain only paging.cursor")
 	}
-	params.Offset = 0
-	params.Limit = 0
 	// The initial request freezes this value in the cursor session.
 	params.NeedTotal = false
 	return nil

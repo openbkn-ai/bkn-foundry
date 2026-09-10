@@ -140,8 +140,8 @@ func (v *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID st
 	return &response, nil
 }
 
-// normalizeResourceDataQueryParams copies Limit/Offset helpers into paging so the
-// outbound body matches vega-backend's paging contract (DefaultPageLimit otherwise).
+// normalizeResourceDataQueryParams applies the default paging mode without
+// changing the caller-owned request.
 func normalizeResourceDataQueryParams(params *interfaces.ResourceDataQueryParams) *interfaces.ResourceDataQueryParams {
 	if params == nil {
 		return &interfaces.ResourceDataQueryParams{
@@ -151,15 +151,6 @@ func normalizeResourceDataQueryParams(params *interfaces.ResourceDataQueryParams
 	request := *params
 	if request.Paging.Cursor == "" && request.Paging.Mode == "" {
 		request.Paging.Mode = "single"
-		if request.Paging.Limit == 0 {
-			request.Paging.Limit = request.Limit
-		}
-		if request.Paging.Offset == 0 {
-			request.Paging.Offset = request.Offset
-		}
 	}
-	// Keep helpers out of the wire payload (json:"-"), paging carries the values.
-	request.Limit = 0
-	request.Offset = 0
 	return &request
 }

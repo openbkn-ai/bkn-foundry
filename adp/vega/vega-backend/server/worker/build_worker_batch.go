@@ -386,7 +386,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 		}
 
 		params := &interfaces.ResourceDataQueryParams{
-			Limit:        batchSize,
+			Paging:       interfaces.PagingRequest{Limit: batchSize},
 			Sort:         sortFields,
 			NeedTotal:    firstQuery,
 			OutputFields: outputFields,

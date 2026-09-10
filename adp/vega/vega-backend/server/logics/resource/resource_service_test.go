@@ -1073,7 +1073,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		}
 		mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
-				assert.Equal(t, 1, params.Limit)
+				assert.Equal(t, 1, params.Paging.Limit)
 				return nil, 0, nil
 			})
 		mockDS.EXPECT().Update(gomock.Any(), resource).Return(nil)

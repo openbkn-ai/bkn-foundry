@@ -449,7 +449,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 					bucket = map[string]any{
 						"terms": map[string]any{
 							"field": gb.Property,
-							"size":  nestedTermsSize(i, n, params.Limit),
+							"size":  nestedTermsSize(i, n, params.Paging.Limit),
 						},
 					}
 				}
@@ -606,12 +606,12 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 		if params.NeedTotal {
 			query["track_total_hits"] = true
 		}
-		if params.Offset > 0 && params.SearchAfter == nil {
-			query["from"] = params.Offset
+		if params.Paging.Offset > 0 && params.SearchAfter == nil {
+			query["from"] = params.Paging.Offset
 		}
 
-		if params.Limit > 0 {
-			query["size"] = params.Limit
+		if params.Paging.Limit > 0 {
+			query["size"] = params.Paging.Limit
 		}
 
 		// Handle search_after
@@ -851,8 +851,8 @@ func (c *OpenSearchConnector) flattenNestedGroupByRows(rootAgg map[string]any, p
 		}
 		rows = append(rows, c.collectGroupByRowsFromBucket(bm, 0, params, aggAlias, nil)...)
 	}
-	if params.Limit > 0 && len(rows) > params.Limit {
-		rows = rows[:params.Limit]
+	if params.Paging.Limit > 0 && len(rows) > params.Paging.Limit {
+		rows = rows[:params.Paging.Limit]
 	}
 	return rows
 }

@@ -61,7 +61,7 @@ func TestPostgresqlConnectorExecuteQueryQuotesCalendarIntervalIdentifiers(t *tes
 		GroupBy:     []*interfaces.GroupByItem{{Property: "createdAt", CalendarInterval: interfaces.CALENDAR_UNIT_DAY}},
 		Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count"},
 		Sort:        []*interfaces.SortField{{Field: "createdAt", Direction: interfaces.ASC_DIRECTION}},
-		Limit:       20,
+		Paging:      interfaces.PagingRequest{Limit: 20},
 	}
 	expectedQuery := "SELECT to_char(date_trunc('day',\"createdAt\"),'YYYY-MM-DD') AS \"createdAt\", COUNT(\"id\") AS \"__value\" " +
 		"FROM \"public\".\"events\" GROUP BY to_char(date_trunc('day',\"createdAt\"),'YYYY-MM-DD') ORDER BY to_char(date_trunc('day',\"createdAt\"),'YYYY-MM-DD') ASC LIMIT 20 OFFSET 0"
@@ -90,7 +90,7 @@ func TestPostgresqlConnectorExecuteQueryAliasesGroupByFields(t *testing.T) {
 	params := &interfaces.ResourceDataQueryParams{
 		GroupBy:     []*interfaces.GroupByItem{{Property: "groupKey"}},
 		Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count"},
-		Limit:       20,
+		Paging:      interfaces.PagingRequest{Limit: 20},
 	}
 	expectedQuery := "SELECT \"group_key\" AS \"groupKey\", COUNT(\"id\") AS \"__value\" " +
 		"FROM \"public\".\"events\" GROUP BY \"group_key\" LIMIT 20 OFFSET 0"
@@ -115,7 +115,7 @@ func TestPostgresqlConnectorExecuteQueryConvertsAliasedTimezoneField(t *testing.
 			{Name: "createdAt", OriginalName: "created_at", OriginalType: "timestamptz"},
 		},
 	}
-	params := &interfaces.ResourceDataQueryParams{Limit: 1}
+	params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 1}}
 	utc := time.Date(2026, 9, 9, 8, 0, 0, 0, time.UTC)
 	mock.ExpectQuery("SELECT \"created_at\" AS \"createdAt\" FROM \"public\".\"events\" LIMIT 1 OFFSET 0").
 		WillReturnRows(sqlmock.NewRows([]string{"createdAt"}).AddRow(utc))

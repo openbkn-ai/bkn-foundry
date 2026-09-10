@@ -70,7 +70,8 @@ func (c *AnyShareConnector) ExecuteQuery(ctx context.Context, resource *interfac
 	}
 
 	// Call SearchFiles to get results
-	files, err := c.SearchFiles(ctx, docID, keyword, dimension, model, custom, condition, params.Limit, params.Offset, sortParams, params.OutputFields)
+	files, err := c.SearchFiles(ctx, docID, keyword, dimension, model, custom, condition,
+		params.Paging.Limit, params.Paging.Offset, sortParams, params.OutputFields)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 

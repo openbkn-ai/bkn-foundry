@@ -28,27 +28,21 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, interfaces.Format_Original, params.Format)
-		assert.Equal(t, interfaces.DefaultPageLimit, params.Limit)
+		assert.Equal(t, interfaces.DefaultPageLimit, params.Paging.Limit)
 		require.NotNil(t, params.BinaryMode)
 		assert.Equal(t, interfaces.BinaryModeMetadata, *params.BinaryMode)
 	})
 
-	t.Run("maps legacy top-level limit into paging", func(t *testing.T) {
-		params := &interfaces.ResourceDataQueryParams{
-			LegacyLimit:  10000,
-			LegacyOffset: 10,
-		}
+	t.Run("ignores deprecated top-level pagination fields", func(t *testing.T) {
+		var params interfaces.ResourceDataQueryParams
+		require.NoError(t, common.UnmarshalPreciseJSON([]byte(`{"limit":10000,"offset":10}`), &params))
 
-		err := ValidateResourceDataQueryParams(ctx, params)
+		err := ValidateResourceDataQueryParams(ctx, &params)
 
 		require.NoError(t, err)
-		assert.Equal(t, 10000, params.Limit)
-		assert.Equal(t, 10, params.Offset)
 		assert.Equal(t, interfaces.PagingModeSingle, params.Paging.Mode)
-		assert.Equal(t, 10000, params.Paging.Limit)
-		assert.Equal(t, 10, params.Paging.Offset)
-		assert.Equal(t, 0, params.LegacyLimit)
-		assert.Equal(t, 0, params.LegacyOffset)
+		assert.Equal(t, interfaces.DefaultPageLimit, params.Paging.Limit)
+		assert.Zero(t, params.Paging.Offset)
 	})
 
 	t.Run("accepts valid flat query with filter and aggregation", func(t *testing.T) {
@@ -99,15 +93,15 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 			Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Offset: 50, Limit: interfaces.MinPageLimit},
 		}
 		require.NoError(t, ValidateResourceDataQueryParams(ctx, initial))
-		assert.Equal(t, 50, initial.Offset)
+		assert.Equal(t, 50, initial.Paging.Offset)
 
 		continuation := &interfaces.ResourceDataQueryParams{
 			Paging:    interfaces.PagingRequest{Cursor: "opaque-cursor"},
 			NeedTotal: true,
 		}
 		require.NoError(t, ValidateResourceDataQueryParams(ctx, continuation))
-		assert.Zero(t, continuation.Offset)
-		assert.Zero(t, continuation.Limit)
+		assert.Zero(t, continuation.Paging.Offset)
+		assert.Zero(t, continuation.Paging.Limit)
 		assert.False(t, continuation.NeedTotal)
 	})
 
@@ -159,20 +153,20 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 			name   string
 			params *interfaces.ResourceDataQueryParams
 		}{
-			{name: "invalid format", params: &interfaces.ResourceDataQueryParams{Format: "csv", Limit: 10}},
+			{name: "invalid format", params: &interfaces.ResourceDataQueryParams{Format: "csv", Paging: interfaces.PagingRequest{Limit: 10}}},
 			{name: "negative offset", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Offset: -1, Limit: 10}}},
 			{name: "cursor continuation has first-page fields", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Cursor: "opaque-cursor", Limit: 10}}},
 			{name: "cursor size is zero", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor}}},
 			{name: "invalid sort direction", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 10}, Sort: []*interfaces.SortField{{Field: "name", Direction: "up"}}}},
-			{name: "missing filter operation", params: &interfaces.ResourceDataQueryParams{Limit: 10, FilterCondition: map[string]any{"field": "name"}}},
-			{name: "unsupported filter operation", params: &interfaces.ResourceDataQueryParams{Limit: 10, FilterCondition: map[string]any{"field": "name", "operation": "bad"}}},
-			{name: "filter operation needs field name", params: &interfaces.ResourceDataQueryParams{Limit: 10, FilterCondition: map[string]any{"operation": filter_condition.OperationEqual, "value": "alice"}}},
-			{name: "filter operation needs value", params: &interfaces.ResourceDataQueryParams{Limit: 10, FilterCondition: map[string]any{"field": "name", "operation": filter_condition.OperationEqual}}},
-			{name: "single value operation rejects array", params: &interfaces.ResourceDataQueryParams{Limit: 10, FilterCondition: map[string]any{"field": "name", "operation": filter_condition.OperationEqual, "value": []any{"a"}}}},
-			{name: "fixed array operation needs array", params: &interfaces.ResourceDataQueryParams{Limit: 10, FilterCondition: map[string]any{"field": "age", "operation": filter_condition.OperationRange, "value": 1}}},
-			{name: "fixed array operation needs required length", params: &interfaces.ResourceDataQueryParams{Limit: 10, FilterCondition: map[string]any{"field": "age", "operation": filter_condition.OperationRange, "value": []any{1}}}},
-			{name: "non sub condition operation rejects sub conditions", params: &interfaces.ResourceDataQueryParams{Limit: 10, FilterCondition: map[string]any{"field": "name", "operation": filter_condition.OperationEqual, "value": "a", "sub_conditions": []any{map[string]any{"operation": filter_condition.OperationTrue, "field": "active"}}}}},
-			{name: "too many sub conditions", params: &interfaces.ResourceDataQueryParams{Limit: 10, FilterCondition: map[string]any{"operation": filter_condition.OperationAnd, "sub_conditions": manyFilterConditions()}}},
+			{name: "missing filter operation", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 10}, FilterCondition: map[string]any{"field": "name"}}},
+			{name: "unsupported filter operation", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 10}, FilterCondition: map[string]any{"field": "name", "operation": "bad"}}},
+			{name: "filter operation needs field name", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 10}, FilterCondition: map[string]any{"operation": filter_condition.OperationEqual, "value": "alice"}}},
+			{name: "filter operation needs value", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 10}, FilterCondition: map[string]any{"field": "name", "operation": filter_condition.OperationEqual}}},
+			{name: "single value operation rejects array", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 10}, FilterCondition: map[string]any{"field": "name", "operation": filter_condition.OperationEqual, "value": []any{"a"}}}},
+			{name: "fixed array operation needs array", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 10}, FilterCondition: map[string]any{"field": "age", "operation": filter_condition.OperationRange, "value": 1}}},
+			{name: "fixed array operation needs required length", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 10}, FilterCondition: map[string]any{"field": "age", "operation": filter_condition.OperationRange, "value": []any{1}}}},
+			{name: "non sub condition operation rejects sub conditions", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 10}, FilterCondition: map[string]any{"field": "name", "operation": filter_condition.OperationEqual, "value": "a", "sub_conditions": []any{map[string]any{"operation": filter_condition.OperationTrue, "field": "active"}}}}},
+			{name: "too many sub conditions", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 10}, FilterCondition: map[string]any{"operation": filter_condition.OperationAnd, "sub_conditions": manyFilterConditions()}}},
 		}
 
 		for _, tt := range tests {

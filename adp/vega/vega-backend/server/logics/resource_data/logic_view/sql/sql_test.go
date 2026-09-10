@@ -292,7 +292,7 @@ func TestLogicViewSQLBuilderApplyParams(t *testing.T) {
 			},
 			Sort:      []*interfaces.SortField{{Field: "age", Direction: interfaces.DESC_DIRECTION}},
 			QueryType: interfaces.QueryType_Standard,
-			Limit:     20,
+			Paging:    interfaces.PagingRequest{Limit: 20},
 		}, view)
 
 		require.NoError(t, err)
@@ -305,7 +305,7 @@ func TestLogicViewSQLBuilderApplyParams(t *testing.T) {
 
 		err := builder.ApplyParams(context.Background(), &interfaces.ResourceDataQueryParams{
 			QueryType: interfaces.QueryType_Stream,
-			Limit:     20,
+			Paging:    interfaces.PagingRequest{Limit: 20},
 		}, view)
 
 		require.NoError(t, err)

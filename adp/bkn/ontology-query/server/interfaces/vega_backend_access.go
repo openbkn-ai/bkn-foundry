@@ -36,14 +36,11 @@ type ResourceDataPagingRequest struct {
 // ResourceDataQueryParams is the JSON body for the restricted
 // POST /proxy/resources/:id/data endpoint.
 // Analytics fields align with resource_data_query_analytics_schema.md (aggregate mode).
-// Pagination must be sent via Paging (vega HTTP contract); Limit/Offset are local helpers
-// that are normalized into Paging before the request is marshaled.
+// Pagination must be sent via Paging to match the Vega HTTP contract.
 type ResourceDataQueryParams struct {
 	FilterCondition map[string]any            `json:"filter_condition,omitempty"`
 	SearchAfter     []any                     `json:"search_after,omitempty"`
 	Paging          ResourceDataPagingRequest `json:"paging,omitempty"`
-	Offset          int                       `json:"-"`
-	Limit           int                       `json:"-"`
 	NeedTotal       bool                      `json:"need_total,omitempty"`
 	Sort            []*SortParams             `json:"sort,omitempty"`
 	OutputFields    []string                  `json:"output_fields,omitempty"`

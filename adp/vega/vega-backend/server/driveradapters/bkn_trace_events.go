@@ -127,8 +127,6 @@ func resourceDataArtifactContent(
 		"catalog_id":  resource.CatalogID,
 	}
 	if params != nil {
-		queryContent["offset"] = params.Offset
-		queryContent["limit"] = params.Limit
 		queryContent["paging"] = params.Paging
 		queryContent["sort"] = params.Sort
 		queryContent["filter_condition"] = params.FilterCondition
@@ -242,8 +240,6 @@ func safeResourceDataQueryShape(params *interfaces.ResourceDataQueryParams) map[
 		return nil
 	}
 	return map[string]any{
-		"offset":                params.Offset,
-		"limit":                 params.Limit,
 		"paging_hash":           bkntrace.HashValue(params.Paging),
 		"sort_hash":             bkntrace.HashValue(params.Sort),
 		"filter_hash":           bkntrace.HashValue(params.FilterCondition),
