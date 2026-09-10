@@ -37,6 +37,7 @@ ContextLoader 知识网络查询工具集使用指南。
 - 单对象类过滤 + 排序 + 分页（field op value，可 and/or 组合）→ query_object_instance；比较算子（==/!=/in/>/range/like/regex 等）按属性 type 自行判断，索引算子 match / knn 才看属性的 condition_operations——该键缺失只说明字段没建索引，不代表不能过滤；like/not_like 是字面子串包含（不要自己拼 %），要通配用 regex（锚定与大小写敏感性随资源存储而变，「包含」写 .*词.*）。
 - 聚合 / 统计 / 排名（SUM、COUNT、AVG、GROUP BY、按聚合值排序、跨表 join）→ run_sql（MySQL 只读 SQL）；表名用占位符 {{.<data_source.id>}}，<data_source.id> 必须替换成 search_schema 返回的真实 id 值（禁止照抄字面 resource_id；JOIN 多表时每个表用各自不同的 id）；列名用 search_schema 的 data_property.column（物理列，需 include_columns=true 获取），不是 name（逻辑名）。query_object_instance 不支持聚合。
 - 已知路径长什么样（说得出经过哪几个对象类、走哪几条关系类）→ query_instance_subgraph，按路径模板批量取数，可逐节点加过滤与排序。
+- 跨对象类的多跳查询、路径上带过滤、或要在路径结果上聚合 → run_cypher（只读 Cypher）。标签写对象类 id 或名称，关系写关系类 id 或名称，属性写逻辑属性名——都用 search_schema / get_object_types / get_relation_types 返回的名字，不需要 resource_id，也不需要物理列名，关系怎么 join 由服务端按关系类定义补。支持多个 MATCH、逗号分隔的多条路径、WHERE（= <> < > <= >=、IN、IS NULL、AND/OR/NOT、$参数）、RETURN（AS 别名、DISTINCT、count/sum/avg/min/max，聚合按 RETURN 中其余列自动分组）、ORDER BY / SKIP / LIMIT。不支持 OPTIONAL MATCH、WITH、UNION、变长路径 [:R*1..3]、函数与算术、返回整个节点；一个模式最多 8 条关系。被拒时报错会指名是哪个语法，按提示改写或退回 run_sql。
 - 不知道拓扑、要发现关联（「这张订单牵连到什么」「这个供应商两跳内碰到谁」）→ explore_subgraph，只给起点对象类 + 方向 + 跳数，路径由引擎散。**别为了用 query_instance_subgraph 去先枚举关系类拼路径**，那是把探索硬凑成取数，路径一长就组合爆炸。
 - 对象可执行行动召回 → get_action_info。
 
@@ -53,6 +54,8 @@ ContextLoader 知识网络查询工具集使用指南。
 - describe_resource 取某 resource 的物理列（columns）与 connector_type。
 - 然后 run_sql：表名用占位符 {{.<resource_id>}}，列名用 describe_resource 返回的物理列名。
 即数据层链路：list_resources → describe_resource → run_sql（无需 search_schema/对象类）。与本体路（search_schema）互补，两者都喂给 run_sql。
+
+run_cypher 与 run_sql 的分工：能用对象类和关系类说清楚的查询走 run_cypher（走模型，不碰物理表名和列名）；run_cypher 子集表达不了的口径（CTE、UNION、窗口函数、复杂表达式）或资源根本没建成对象类时，才落 run_sql。
 
 提示：聚合类问题（如「每个 X 的 Y 总数/排名」）直接走 run_sql，不要用 query_object_instance 的 sort 近似。
 

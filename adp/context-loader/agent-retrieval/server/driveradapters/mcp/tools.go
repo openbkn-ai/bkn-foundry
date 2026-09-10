@@ -17,6 +17,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/kncypher"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knmetrics"
 	logicsKqs "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knquerysubgraph"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knresources"
@@ -489,6 +490,39 @@ func handleRunSQL(svc knrunsql.KnRunSQLService) func(ctx context.Context, req mc
 		}
 
 		resp, err := svc.RunSQL(ctx, sqlReq)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		result, err := BuildMCPToolResult(resp, format)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return result, nil
+	}
+}
+
+// handleRunCypher handles run_cypher tool calls.
+// Read-only Cypher over the knowledge network's model: bkn-backend compiles the
+// query against the object and relation types and runs the SQL it produces.
+// A refusal names the construct it refused, so it is returned to the caller
+// verbatim rather than folded into a generic failure.
+func handleRunCypher(svc kncypher.KnCypherService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		format, err := GetResponseFormatFromRequest(req)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		// Precise binding: parameters carry the caller's own values, and a
+		// large integer that arrives as a float no longer matches the row it
+		// was meant to select.
+		cypherReq := &kncypher.RunCypherReq{}
+		if err := bindPreciseArguments(req, cypherReq); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		resp, err := svc.RunCypher(ctx, cypherReq)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}

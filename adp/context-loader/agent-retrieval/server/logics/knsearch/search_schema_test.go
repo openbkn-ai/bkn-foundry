@@ -33,6 +33,10 @@ func (s *stubSearchSchemaBknBackend) ListKnowledgeNetworks(_ context.Context, _ 
 	return &interfaces.ListKnResp{}, nil
 }
 
+func (s *stubSearchSchemaBknBackend) RunCypherQuery(context.Context, *interfaces.CypherQueryReq) (*interfaces.CypherQueryResp, error) {
+	return &interfaces.CypherQueryResp{}, nil
+}
+
 func (s *stubSearchSchemaBknBackend) SearchObjectTypes(_ context.Context, _ *interfaces.QueryConceptsReq) (*interfaces.ObjectTypeConcepts, error) {
 	return nil, nil
 }

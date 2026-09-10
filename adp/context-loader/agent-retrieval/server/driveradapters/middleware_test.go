@@ -244,6 +244,7 @@ func (stubKnSkillsHandler) ExecuteSkill(c *gin.Context)    { c.Status(http.Statu
 type stubKnQueryToolsHandler struct{}
 
 func (stubKnQueryToolsHandler) RunSQL(c *gin.Context)                { c.Status(http.StatusOK) }
+func (stubKnQueryToolsHandler) RunCypher(c *gin.Context)             { c.Status(http.StatusOK) }
 func (stubKnQueryToolsHandler) ListKnowledgeNetworks(c *gin.Context) { c.Status(http.StatusOK) }
 func (stubKnQueryToolsHandler) GetKnDetail(c *gin.Context)           { c.Status(http.StatusOK) }
 func (stubKnQueryToolsHandler) GetObjectTypes(c *gin.Context)        { c.Status(http.StatusOK) }

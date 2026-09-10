@@ -5,6 +5,12 @@
  * See the LICENSE file in the project root for details.
  */
 {
+  "run_cypher": [
+    "Labels are object type ids or names, relationship types are relation type ids or names,",
+    "and properties are logical property names, never physical columns.",
+    "No OPTIONAL MATCH / WITH / UNION / variable-length paths; without LIMIT the query returns 1000 rows.",
+    "run_cypher(kn_id=\"<kn_id>\", query=\"MATCH (p:player)-[:rel_goal_player]->(g:goal) RETURN p.name AS name, count(*) AS goals ORDER BY goals DESC LIMIT 10\")"
+  ],
   "run_sql": [
     "Use {{.<resource_id>}} as the table placeholder. Get the ID from search_schema.data_source.id",
     "or from list_resources.resource_id; never use the literal string 'resource_id'.",
