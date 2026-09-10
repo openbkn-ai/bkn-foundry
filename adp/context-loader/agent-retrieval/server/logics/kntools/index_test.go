@@ -37,8 +37,51 @@ type fakeOperator struct {
 	mcpDetailCalls []string
 	gotMCPCall     *interfaces.CallMCPToolRequest
 	mcpUnusable    map[string]bool
+	mcpStatusErr   map[string]error
 	skillNames     map[string]string
 	skillNamesErr  error
+	// Lifecycle of tool boxes (#1443). The zero value answers "published" for every box, so tests
+	// that are not about withdrawal do not become tests of an unpublished box.
+	boxUnpublished   map[string]bool
+	boxStatusErr     map[string]error
+	boxDisabledTools map[string]map[string]bool
+	// hitsByCall, when set, serves a different ranking per SearchCapabilities call, in order; the
+	// last one repeats. gotTopKs records the top_k of every call so a test can pin how many pages
+	// were asked for and how wide.
+	hitsByCall  [][]interfaces.CapabilityHit
+	searchCalls int
+	gotTopKs    []int
+}
+
+// ToolBoxLifecycle answers from boxUnpublished / boxStatusErr, and from toolsByBox for which
+// tools are enabled — unless boxDisabledTools names a tool, which is then withheld even though
+// the caller-visible listing (toolsByBox) still shows it. That is the internal-face case.
+func (f *fakeOperator) ToolBoxLifecycle(_ context.Context, boxID string) (*interfaces.ToolBoxLifecycle, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err, ok := f.boxStatusErr[boxID]; ok {
+		return nil, err
+	}
+	// The execution factory's own records are independent of the caller-visible catalogue, so
+	// enablement is modelled from every tool the fake ranking knows about, minus the ones named
+	// disabled — not from toolsByBox, which stands for the token-gated listing.
+	out := &interfaces.ToolBoxLifecycle{Published: !f.boxUnpublished[boxID], EnabledTools: map[string]struct{}{}}
+	pages := append([][]interfaces.CapabilityHit{f.hits}, f.hitsByCall...)
+	for _, page := range pages {
+		for _, h := range page {
+			if h.CapabilityType == interfaces.CapabilityTypeFunction && h.OwnerID == boxID && !f.boxDisabledTools[boxID][h.CapabilityID] {
+				out.EnabledTools[h.CapabilityID] = struct{}{}
+			}
+		}
+	}
+	if listed := f.toolsByBox[boxID]; listed != nil {
+		for _, tool := range listed.Tools {
+			if !f.boxDisabledTools[boxID][tool.ToolID] {
+				out.EnabledTools[tool.ToolID] = struct{}{}
+			}
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeOperator) GetSkillNamesByIDs(
@@ -73,6 +116,15 @@ func (f *fakeOperator) SearchCapabilities(
 	}
 	f.gotQuery = req.Query
 	f.gotTopK = req.TopK
+	f.gotTopKs = append(f.gotTopKs, req.TopK)
+	call := f.searchCalls
+	f.searchCalls++
+	if len(f.hitsByCall) > 0 {
+		if call >= len(f.hitsByCall) {
+			call = len(f.hitsByCall) - 1
+		}
+		return f.hitsByCall[call], f.hitsErr
+	}
 	return f.hits, f.hitsErr
 }
 
@@ -91,6 +143,9 @@ func (f *fakeOperator) ListPublishedTools(
 func (f *fakeOperator) MCPServerIsUsable(_ context.Context, mcpID string) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err, ok := f.mcpStatusErr[mcpID]; ok {
+		return false, err
+	}
 	if f.mcpUnusable == nil {
 		return true, nil
 	}

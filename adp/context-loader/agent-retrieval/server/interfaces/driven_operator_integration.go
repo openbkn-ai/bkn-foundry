@@ -122,6 +122,13 @@ type DrivenOperatorIntegration interface {
 	// never the whole platform.
 	SearchCapabilities(ctx context.Context, req *SearchCapabilitiesRequest) ([]CapabilityHit, error)
 
+	// ToolBoxLifecycle reads a tool box's publication state and which of its tools are enabled,
+	// over the internal face with this service's identity, so it answers on both faces (#1443).
+	// A box that cannot be read comes back unpublished with no enabled tools: this gates what is
+	// offered for calling, and unknown is not callable. The caller-visible tools listing cannot
+	// stand in for it — it needs a caller token the internal face never carries.
+	ToolBoxLifecycle(ctx context.Context, boxID string) (*ToolBoxLifecycle, error)
+
 	// MCPServerIsUsable reports whether the MCP Server is published, and so whether the tools it
 	// exposes may be called.
 	//
@@ -209,6 +216,13 @@ type PublishedToolboxSummary struct {
 // ListPublishedToolboxesResponse is the caller-visible toolbox directory.
 type ListPublishedToolboxesResponse struct {
 	Toolboxes []PublishedToolboxSummary `json:"toolboxes"`
+}
+
+// ToolBoxLifecycle is what decides whether a box's tools may be offered: the box is published,
+// and the tool itself is enabled. Both are read from the execution factory's own records.
+type ToolBoxLifecycle struct {
+	Published    bool
+	EnabledTools map[string]struct{}
 }
 
 // ListPublishedToolsRequest lists the enabled Function tools of one published

@@ -164,7 +164,44 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 		hits = hits[:limit]
 	}
 
-	entries := s.describeCapabilities(ctx, hits, limit)
+	entries, withdrawn := s.describeCapabilities(ctx, hits, limit)
+	// One bounded refill (#1443). A withdrawn owner's tools can still sit in the ranking until the
+	// next reconcile, and dropping them here would hand back a short page while the ranking held
+	// more that qualify. Ask once more for a wider page — capped, never the whole index — and
+	// describe again; if that is still short, the answer says so instead of trimming quietly.
+	if withdrawn > 0 && more && len(entries) < limit {
+		wider := limit * refillFactor
+		if wider > maxSearchLimit {
+			wider = maxSearchLimit
+		}
+		refillRefs := searchRefs
+		if listing && len(refillRefs) > wider+1 {
+			refillRefs = refillRefs[:wider+1]
+		}
+		again, err := s.operator.SearchCapabilities(ctx, &interfaces.SearchCapabilitiesRequest{
+			Query:         query,
+			Refs:          refillRefs,
+			TopK:          wider + 1,
+			Types:         normalizeKinds(req.Types),
+			MetadataTypes: metadataTypes,
+		})
+		if err == nil {
+			if listing {
+				again = s.listingHits(ctx, refillRefs, again, wider+1)
+			}
+			more = len(again) > wider
+			if more {
+				again = again[:wider]
+			}
+			hits = again
+			entries, withdrawn = s.describeCapabilities(ctx, hits, limit)
+			if len(entries) > limit {
+				entries = entries[:limit]
+			}
+		} else {
+			s.warnf(ctx, "[SearchCapabilities] refill after withdrawn owners failed: %v", err)
+		}
+	}
 	total := len(hits)
 	resp := &SearchCapabilitiesResp{Capabilities: entries, TotalMatched: total}
 
@@ -174,12 +211,22 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 	}
 	narrowedKey, narrowed := narrowedAwayMessage(req)
 	switch {
+	case len(entries) == 0 && withdrawn > 0:
+		// Everything the ranking found belongs to an owner that is no longer published, or whose
+		// state could not be confirmed. Neither is a permission problem, and saying it was would
+		// send the caller to the wrong fix.
+		resp.Message = infraErr.LocalizedDetail(ctx, "CapabilityStatusUnverified")
 	case len(entries) == 0 && total > 0:
 		resp.Message = infraErr.LocalizedDetail(ctx, "ToolsMatchedButNotVisible")
 	case len(entries) == 0 && narrowed:
 		resp.Message = infraErr.LocalizedDetail(ctx, narrowedKey)
 	case len(entries) == 0:
 		resp.Message = infraErr.LocalizedDetail(ctx, "NoPublishedToolsMatched")
+	case withdrawn > 0 && len(entries) < limit && more:
+		// Short after the one refill allowed, with more still in the ranking: incomplete, and
+		// said so. A second refill is not attempted — bounded means bounded.
+		resp.Truncated = true
+		resp.Message = infraErr.LocalizedDetail(ctx, "CapabilityResultIncomplete")
 	case more:
 		resp.Truncated = true
 		resp.Message = infraErr.LocalizedDetail(ctx, "ToolSearchTruncated")
@@ -280,9 +327,9 @@ func (s *knToolsService) allBoundRefs(ctx context.Context,
 // than called. Rebuilding the answer per kind would put the two back into two blocks and undo the
 // one ranking this endpoint exists to deliver.
 func (s *knToolsService) describeCapabilities(ctx context.Context,
-	hits []interfaces.CapabilityHit, limit int) []CapabilityEntry {
+	hits []interfaces.CapabilityHit, limit int) ([]CapabilityEntry, int) {
 	if len(hits) == 0 {
-		return nil
+		return nil, 0
 	}
 
 	toolHits := make([]interfaces.CapabilityHit, 0, len(hits))
@@ -293,7 +340,7 @@ func (s *knToolsService) describeCapabilities(ctx context.Context,
 	}
 	// describeCapabilityHits owns the catalogue fan-out and the visibility rule; reusing it keeps
 	// one answer to "may this caller see this tool" instead of two.
-	described := s.describeCapabilityHits(ctx, toolHits, len(toolHits))
+	described, withdrawn := s.describeCapabilityHits(ctx, toolHits, len(toolHits))
 	byRef := make(map[string]ToolEntry, len(described))
 	for _, entry := range described {
 		byRef[entry.ToolboxID+"/"+entry.ToolID] = entry
@@ -331,7 +378,7 @@ func (s *knToolsService) describeCapabilities(ctx context.Context,
 		entry.InputSchema = described.InputSchema
 		entries = append(entries, entry)
 	}
-	return entries
+	return entries, withdrawn
 }
 
 // listingHits answers a listing from the mounted set, in binding order, using the index only for

@@ -392,3 +392,177 @@ func TestEmptyResultNamesTheFilterTheCallerSet(t *testing.T) {
 		t.Fatalf("两个都设了就该都点名: %q", byBoth)
 	}
 }
+
+// The lifecycle gate (#1443). The index can hold a tool for up to one reconcile after its owner
+// was withdrawn, and the ranking will return it; these pin that such a hit is never offered, that
+// "could not confirm" counts as withdrawn, and that the answer says why.
+
+func mcpRefs(mcpID string, names ...string) []*interfaces.CapabilityRef {
+	refs := make([]*interfaces.CapabilityRef, 0, len(names))
+	for _, name := range names {
+		refs = append(refs, &interfaces.CapabilityRef{
+			CapabilityType: interfaces.CapabilityTypeMCPTool, BoxID: mcpID, CapabilityID: name,
+		})
+	}
+	return refs
+}
+
+func TestWithdrawnToolBoxIsNotOffered(t *testing.T) {
+	op := &fakeOperator{
+		hits: []interfaces.CapabilityHit{hit("box-gone", "t1"), hit("box-live", "t2")},
+		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{
+			"box-gone": tools("box-gone", "t1"), "box-live": tools("box-live", "t2"),
+		},
+		boxUnpublished: map[string]bool{"box-gone": true},
+	}
+	bkn := &fakeBkn{refs: functionRefs("box-gone/t1", "box-live/t2")}
+	svc := NewKnToolsServiceWith(op, bkn, &fakeKnAuthz{})
+
+	resp, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1", Query: "x"})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.Capabilities) != 1 || resp.Capabilities[0].OwnerID != "box-live" {
+		t.Fatalf("下线工具箱的工具不该出现,在线的照常, got %+v", resp.Capabilities)
+	}
+}
+
+func TestUnconfirmedOwnerCountsAsWithdrawn(t *testing.T) {
+	op := &fakeOperator{
+		hits:         []interfaces.CapabilityHit{hit("box-1", "t1")},
+		toolsByBox:   map[string]*interfaces.ListPublishedToolsResponse{"box-1": tools("box-1", "t1")},
+		boxStatusErr: map[string]error{"box-1": errors.New("execution factory unreachable")},
+	}
+	svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/t1")}, &fakeKnAuthz{})
+
+	resp, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1", Query: "x"})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.Capabilities) != 0 {
+		t.Fatalf("状态核不到的不能当可用, got %+v", resp.Capabilities)
+	}
+	// The two empty-result messages point at opposite fixes: one at the owner's publication
+	// state, the other at the caller's permission. This must be the former.
+	if !strings.Contains(resp.Message, "发布") && !strings.Contains(resp.Message, "publish") {
+		t.Fatalf("该说清是发布状态问题, got %q", resp.Message)
+	}
+	if strings.Contains(resp.Message, "可见权限") || strings.Contains(resp.Message, "cannot see") {
+		t.Fatalf("不是可见权限问题,不该用那条文案, got %q", resp.Message)
+	}
+}
+
+func TestWithdrawnMCPServerIsNotOfferedButAnUnreachableOneIs(t *testing.T) {
+	op := &fakeOperator{
+		hits:        []interfaces.CapabilityHit{mcpHit("mcp-off", "a"), mcpHit("mcp-quiet", "b")},
+		mcpUnusable: map[string]bool{"mcp-off": true},
+		// mcp-quiet is published but answers no detail: runtime health, not lifecycle.
+		mcpTools: map[string]*interfaces.GetMCPToolDetailResponse{},
+	}
+	bkn := &fakeBkn{refs: append(mcpRefs("mcp-off", "a"), mcpRefs("mcp-quiet", "b")...)}
+	svc := NewKnToolsServiceWith(op, bkn, &fakeKnAuthz{})
+
+	resp, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1", Query: "x"})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.Capabilities) != 1 || resp.Capabilities[0].OwnerID != "mcp-quiet" {
+		t.Fatalf("下线的 server 不该出现;已发布但暂时没应答的该保留, got %+v", resp.Capabilities)
+	}
+}
+
+func TestOneBoundedRefillAfterWithdrawal(t *testing.T) {
+	// limit=2. First page: two hits, both from a withdrawn box, and more behind. The refill asks
+	// once for limit*3 (+1 probe) and finds the live ones.
+	first := []interfaces.CapabilityHit{hit("box-gone", "t1"), hit("box-gone", "t2"), hit("box-live", "t3")}
+	second := []interfaces.CapabilityHit{
+		hit("box-gone", "t1"), hit("box-gone", "t2"), hit("box-live", "t3"), hit("box-live", "t4"),
+	}
+	op := &fakeOperator{
+		hitsByCall: [][]interfaces.CapabilityHit{first, second},
+		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{
+			"box-live": tools("box-live", "t3", "t4"), "box-gone": tools("box-gone", "t1", "t2"),
+		},
+		boxUnpublished: map[string]bool{"box-gone": true},
+	}
+	bkn := &fakeBkn{refs: functionRefs("box-gone/t1", "box-gone/t2", "box-live/t3", "box-live/t4")}
+	svc := NewKnToolsServiceWith(op, bkn, &fakeKnAuthz{})
+
+	resp, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1", Query: "x", Limit: 2})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if op.searchCalls != 2 {
+		t.Fatalf("剔除后不足该补召回一次,且只一次, got %d calls", op.searchCalls)
+	}
+	if op.gotTopKs[1] != 2*refillFactor+1 {
+		t.Fatalf("补召回宽度该是 limit*%d+1, got %v", refillFactor, op.gotTopKs)
+	}
+	if len(resp.Capabilities) != 2 || resp.Capabilities[0].CapabilityID != "t3" || resp.Capabilities[1].CapabilityID != "t4" {
+		t.Fatalf("补召回后该拿满 limit 个在线工具, got %+v", resp.Capabilities)
+	}
+}
+
+func TestRefillStillShortIsSaidNotHidden(t *testing.T) {
+	// Even the wider page is all withdrawn except one, and the ranking has more: say incomplete.
+	page := []interfaces.CapabilityHit{hit("box-gone", "t1"), hit("box-gone", "t2"), hit("box-live", "t3")}
+	wider := []interfaces.CapabilityHit{
+		hit("box-gone", "t1"), hit("box-gone", "t2"), hit("box-live", "t3"),
+		hit("box-gone", "t5"), hit("box-gone", "t6"), hit("box-gone", "t7"), hit("box-gone", "t8"),
+	}
+	op := &fakeOperator{
+		hitsByCall:     [][]interfaces.CapabilityHit{page, wider},
+		toolsByBox:     map[string]*interfaces.ListPublishedToolsResponse{"box-live": tools("box-live", "t3")},
+		boxUnpublished: map[string]bool{"box-gone": true},
+	}
+	bkn := &fakeBkn{refs: functionRefs("box-gone/t1", "box-gone/t2", "box-live/t3", "box-gone/t5", "box-gone/t6", "box-gone/t7", "box-gone/t8")}
+	svc := NewKnToolsServiceWith(op, bkn, &fakeKnAuthz{})
+
+	resp, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1", Query: "x", Limit: 2})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if op.searchCalls != 2 {
+		t.Fatalf("有界:只补一次, got %d", op.searchCalls)
+	}
+	if len(resp.Capabilities) != 1 || !resp.Truncated {
+		t.Fatalf("仍不足时该返回能拿到的并标记不完整, got n=%d truncated=%v", len(resp.Capabilities), resp.Truncated)
+	}
+	if !strings.Contains(resp.Message, "不完整") && !strings.Contains(resp.Message, "incomplete") {
+		t.Fatalf("该明说结果不完整, got %q", resp.Message)
+	}
+}
+
+func TestNoRefillWhenNothingWasWithdrawn(t *testing.T) {
+	op := &fakeOperator{
+		hits:       []interfaces.CapabilityHit{hit("box-1", "t1"), hit("box-1", "t2"), hit("box-1", "t3")},
+		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{"box-1": tools("box-1", "t1", "t2", "t3")},
+	}
+	svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/t1", "box-1/t2", "box-1/t3")}, &fakeKnAuthz{})
+	if _, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1", Query: "x", Limit: 2}); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if op.searchCalls != 1 {
+		t.Fatalf("没有剔除就不该补召回, got %d", op.searchCalls)
+	}
+}
+
+// TestDisabledToolInAPublishedBoxIsNotOffered is the internal-face case: there the caller-visible
+// listing cannot be read (no caller token), so tool-level enablement has to come from the
+// execution factory's own records, or a disabled tool in a published box would be offered.
+func TestDisabledToolInAPublishedBoxIsNotOffered(t *testing.T) {
+	op := &fakeOperator{
+		hits:             []interfaces.CapabilityHit{hit("box-1", "t-on"), hit("box-1", "t-off")},
+		toolsByBox:       map[string]*interfaces.ListPublishedToolsResponse{"box-1": tools("box-1", "t-on", "t-off")},
+		boxDisabledTools: map[string]map[string]bool{"box-1": {"t-off": true}},
+	}
+	svc := NewKnToolsServiceWith(op, &fakeBkn{refs: functionRefs("box-1/t-on", "box-1/t-off")}, &fakeKnAuthz{})
+
+	resp, err := svc.SearchCapabilities(context.Background(), &SearchCapabilitiesReq{KnID: "kn1"})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.Capabilities) != 1 || resp.Capabilities[0].CapabilityID != "t-on" {
+		t.Fatalf("停用的工具不该出现,同箱启用的照常, got %+v", resp.Capabilities)
+	}
+}

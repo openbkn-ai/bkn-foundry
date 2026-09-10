@@ -18,8 +18,23 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
 )
 
+// tool is an enabled tool: the ordinary case. Tests about admission set Status themselves.
 func tool(boxID, toolID, name, description string) *model.ToolDB {
-	return &model.ToolDB{BoxID: boxID, ToolID: toolID, Name: name, Description: description}
+	return &model.ToolDB{BoxID: boxID, ToolID: toolID, Name: name, Description: description,
+		Status: string(interfaces.ToolStatusTypeEnabled)}
+}
+
+// publishedBoxes answers every box as published, with no kind. It is the box repository for
+// tests that are not about admission, so the rule (#1443) does not turn every existing test into
+// a test of an unpublished box.
+type publishedBoxes struct{ model.IToolboxDB }
+
+func (publishedBoxes) SelectListByBoxIDs(_ context.Context, boxIDs []string, _ ...string) ([]*model.ToolboxDB, error) {
+	out := make([]*model.ToolboxDB, 0, len(boxIDs))
+	for _, id := range boxIDs {
+		out = append(out, &model.ToolboxDB{BoxID: id, Status: string(interfaces.BizStatusPublished)})
+	}
+	return out, nil
 }
 
 func indexed(boxID, toolID, name, description string) interfaces.IndexedCapability {
@@ -31,7 +46,7 @@ func indexed(boxID, toolID, name, description string) interfaces.IndexedCapabili
 }
 
 func newReconciler(toolRepo model.IToolDB, index interfaces.CapabilityIndexSyncService) *reconciler {
-	return &reconciler{logger: logger.DefaultLogger(), indexSync: index, toolRepo: toolRepo}
+	return &reconciler{logger: logger.DefaultLogger(), indexSync: index, toolRepo: toolRepo, boxRepo: publishedBoxes{}}
 }
 
 // TestReconcileSkipsUnchangedRows keeps a pass from re-embedding the whole platform. Name and
@@ -214,8 +229,8 @@ func TestToolCarriesItsBoxKind(t *testing.T) {
 		boxRepo := mocks.NewMockIToolboxDB(ctrl)
 		boxRepo.EXPECT().SelectListByBoxIDs(gomock.Any(), []string{"box-api", "box-fn"}).
 			Return([]*model.ToolboxDB{
-				{BoxID: "box-api", MetadataType: "openapi"},
-				{BoxID: "box-fn", MetadataType: "function"},
+				{BoxID: "box-api", MetadataType: "openapi", Status: "published"},
+				{BoxID: "box-fn", MetadataType: "function", Status: "published"},
 			}, nil)
 
 		index := mocks.NewMockCapabilityIndexSyncService(ctrl)
@@ -252,7 +267,7 @@ func TestBoxKindChangeIsRewritten(t *testing.T) {
 
 		boxRepo := mocks.NewMockIToolboxDB(ctrl)
 		boxRepo.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).
-			Return([]*model.ToolboxDB{{BoxID: "box-1", MetadataType: "openapi"}}, nil)
+			Return([]*model.ToolboxDB{{BoxID: "box-1", MetadataType: "openapi", Status: "published"}}, nil)
 
 		index := mocks.NewMockCapabilityIndexSyncService(ctrl)
 		// Same name and description, older kind.
@@ -272,5 +287,96 @@ func TestBoxKindChangeIsRewritten(t *testing.T) {
 		r := newReconciler(toolRepo, index)
 		r.boxRepo = boxRepo
 		So(r.reconcileTools(context.Background()), ShouldBeNil)
+	})
+}
+
+// The admission rule (#1443): the index holds what an agent can call, which is a tool that is
+// enabled inside a published box. Every writer applies it, and a tool that stops qualifying is
+// removed on that event rather than left for the next full pass to re-assert.
+
+func TestSyncBoxPurgesAnUnpublishedBox(t *testing.T) {
+	Convey("工具箱未发布/下线:SyncBox 删掉它已索引的全部文档,不写任何新文档", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		toolRepo := mocks.NewMockIToolDB(ctrl)
+		toolRepo.EXPECT().SelectToolByBoxID(gomock.Any(), "box-1").
+			Return([]*model.ToolDB{tool("box-1", "t-1", "工具一", "描述"), tool("box-1", "t-2", "工具二", "描述")}, nil)
+		boxRepo := mocks.NewMockIToolboxDB(ctrl)
+		boxRepo.EXPECT().SelectListByBoxIDs(gomock.Any(), []string{"box-1"}).
+			Return([]*model.ToolboxDB{{BoxID: "box-1", MetadataType: "openapi", Status: "offline"}}, nil)
+		index := mocks.NewMockCapabilityIndexSyncService(ctrl)
+		index.EXPECT().ListIndexedByOwner(gomock.Any(), interfaces.CapabilityTypeFunction, "box-1").
+			Return([]interfaces.IndexedCapability{indexed("box-1", "t-1", "工具一", "描述"), indexed("box-1", "t-2", "工具二", "描述")}, nil)
+		index.EXPECT().DeleteCapability(gomock.Any(), toolRef("box-1", "t-1")).Return(nil)
+		index.EXPECT().DeleteCapability(gomock.Any(), toolRef("box-1", "t-2")).Return(nil)
+		r := newReconciler(toolRepo, index)
+		r.boxRepo = boxRepo
+		So(r.SyncBox(context.Background(), "box-1"), ShouldBeNil)
+	})
+}
+
+func TestSyncToolsRemovesADisabledToolAndKeepsItsSibling(t *testing.T) {
+	Convey("同一箱内:停用的工具被删,启用的照常写入", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		disabled := tool("box-1", "t-off", "停用了", "描述")
+		disabled.Status = string(interfaces.ToolStatusTypeDisabled)
+		toolRepo := mocks.NewMockIToolDB(ctrl)
+		toolRepo.EXPECT().SelectToolBoxByID(gomock.Any(), "box-1", gomock.Any()).
+			Return([]*model.ToolDB{tool("box-1", "t-on", "启用中", "描述"), disabled}, nil)
+		index := mocks.NewMockCapabilityIndexSyncService(ctrl)
+		index.EXPECT().UpsertCapability(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, doc *interfaces.CapabilityDocument) error {
+				So(doc.CapabilityID, ShouldEqual, "t-on")
+				return nil
+			})
+		index.EXPECT().DeleteCapability(gomock.Any(), toolRef("box-1", "t-off")).Return(nil)
+		So(newReconciler(toolRepo, index).SyncTools(context.Background(), "box-1", []string{"t-on", "t-off"}), ShouldBeNil)
+	})
+}
+
+func TestReconcileLeavesUnpublishedBoxesOutOfTheDesiredSet(t *testing.T) {
+	Convey("全量对账:未发布箱的工具不在期望集里,索引中已有的会被删", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		toolRepo := mocks.NewMockIToolDB(ctrl)
+		toolRepo.EXPECT().SelectToolBoxIDsByFilter(gomock.Any(), gomock.Any()).Return([]string{"box-live", "box-draft"}, nil)
+		toolRepo.EXPECT().SelectToolByBoxID(gomock.Any(), "box-live").Return([]*model.ToolDB{tool("box-live", "t-live", "在线", "描述")}, nil)
+		toolRepo.EXPECT().SelectToolByBoxID(gomock.Any(), "box-draft").Return([]*model.ToolDB{tool("box-draft", "t-draft", "草稿", "描述")}, nil)
+		boxRepo := mocks.NewMockIToolboxDB(ctrl)
+		boxRepo.EXPECT().SelectListByBoxIDs(gomock.Any(), []string{"box-live", "box-draft"}).
+			Return([]*model.ToolboxDB{
+				{BoxID: "box-live", MetadataType: "openapi", Status: "published"},
+				{BoxID: "box-draft", MetadataType: "openapi", Status: "unpublish"},
+			}, nil)
+		index := mocks.NewMockCapabilityIndexSyncService(ctrl)
+		index.EXPECT().ListIndexed(gomock.Any(), interfaces.CapabilityTypeFunction).Return(
+			[]interfaces.IndexedCapability{indexed("box-draft", "t-draft", "草稿", "描述")}, nil)
+		index.EXPECT().UpsertCapability(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, doc *interfaces.CapabilityDocument) error {
+				So(doc.OwnerID, ShouldEqual, "box-live")
+				return nil
+			})
+		index.EXPECT().DeleteCapability(gomock.Any(), toolRef("box-draft", "t-draft")).Return(nil)
+		r := newReconciler(toolRepo, index)
+		r.boxRepo = boxRepo
+		So(r.reconcileTools(context.Background()), ShouldBeNil)
+	})
+}
+
+func TestAnUnreadableBoxIsNotAdmitted(t *testing.T) {
+	Convey("读不到工具箱状态:当作未发布,不写入(不能把不知道当作可调用)", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		toolRepo := mocks.NewMockIToolDB(ctrl)
+		toolRepo.EXPECT().SelectToolBoxByID(gomock.Any(), "box-1", gomock.Any()).
+			Return([]*model.ToolDB{tool("box-1", "t-1", "工具", "描述")}, nil)
+		boxRepo := mocks.NewMockIToolboxDB(ctrl)
+		boxRepo.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("db down"))
+		index := mocks.NewMockCapabilityIndexSyncService(ctrl)
+		index.EXPECT().DeleteCapability(gomock.Any(), toolRef("box-1", "t-1")).Return(nil)
+		r := newReconciler(toolRepo, index)
+		r.boxRepo = boxRepo
+		So(r.SyncTools(context.Background(), "box-1", []string{"t-1"}), ShouldBeNil)
 	})
 }

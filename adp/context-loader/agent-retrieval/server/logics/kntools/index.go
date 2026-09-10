@@ -30,6 +30,9 @@ const (
 	// hit carries its trimmed input schema, so ten hits are ten OpenAPI bodies.
 	defaultSearchLimit = 20
 	maxSearchLimit     = 100
+	// refillFactor bounds the one wider page asked for after withdrawn owners left a short result
+	// (#1443): three pages' worth, and never past maxSearchLimit.
+	refillFactor = 3
 	// toolboxFanoutConcurrency bounds the catalogue walk. One request per
 	// visible toolbox is the shape until a tool dataset exists; keep the burst
 	// off Execution Factory small enough that a wide account cannot stall it.
@@ -219,10 +222,24 @@ type mcpRef struct {
 // not the secret here: the caller is already authorized on the network, the whitelist already
 // narrowed to what the network mounted, and execute_tool re-checks the caller-visible catalogue
 // before anything runs.
+//
+// Lifecycle comes first and is a different question from visibility (#1443). Whether a box or an
+// MCP Server is published is read over the internal face with this service's identity, so it is
+// answered on both faces and it fails closed: an owner whose state cannot be confirmed is not
+// offered. The index is a catalogue that can lag behind a withdrawal by up to one reconcile, and
+// this is the check that keeps a withdrawn tool from being recommended in that window. Visibility
+// — may this caller see this tool — keeps the behaviour described above. The count of hits removed
+// for lifecycle reasons is returned so the answer can say the result is incomplete rather than
+// silently short.
 func (s *knToolsService) describeCapabilityHits(ctx context.Context,
-	hits []interfaces.CapabilityHit, limit int) []ToolEntry {
+	hits []interfaces.CapabilityHit, limit int) ([]ToolEntry, int) {
 	if len(hits) == 0 {
-		return nil
+		return nil, 0
+	}
+
+	hits, dropped := s.dropWithdrawnOwners(ctx, hits)
+	if len(hits) == 0 {
+		return nil, dropped
 	}
 
 	// One request per toolbox behind the hits rather than per hit, and only for toolboxes that
@@ -336,7 +353,101 @@ func (s *knToolsService) describeCapabilityHits(ctx context.Context,
 			})
 		}
 	}
-	return entries
+	return entries, dropped
+}
+
+// dropWithdrawnOwners removes every hit whose owner — a tool box or an MCP Server — is not
+// currently published, and reports how many it removed.
+//
+// One status read per distinct owner, not per hit, and only for owners the ranking returned. A
+// read that fails counts as unpublished: this decides what is offered for calling, and the safe
+// direction when the answer is unknown is to withhold. An MCP Server that is published but does
+// not answer its tool listing is a different case and is handled where the listing is read —
+// that is runtime health, not lifecycle, and the two must not be confused.
+func (s *knToolsService) dropWithdrawnOwners(ctx context.Context,
+	hits []interfaces.CapabilityHit) ([]interfaces.CapabilityHit, int) {
+	type owner struct{ kind, id string }
+	order := make([]owner, 0, len(hits))
+	seen := make(map[owner]struct{}, len(hits))
+	for _, hit := range hits {
+		if hit.OwnerID == "" {
+			continue
+		}
+		switch hit.CapabilityType {
+		case interfaces.CapabilityTypeFunction, interfaces.CapabilityTypeMCPTool:
+		default:
+			continue
+		}
+		key := owner{hit.CapabilityType, hit.OwnerID}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		order = append(order, key)
+	}
+	if len(order) == 0 {
+		return hits, 0
+	}
+
+	// One slot per owner: published or not, and for a tool box which of its tools are enabled.
+	// A disabled tool inside a published box is withdrawn too — the caller-visible listing would
+	// drop it, but that listing needs a caller token the internal face never has (#1443).
+	published := make([]bool, len(order))
+	enabled := make([]map[string]struct{}, len(order))
+	slots := make(chan struct{}, toolboxFanoutConcurrency)
+	var wg sync.WaitGroup
+	for i, key := range order {
+		wg.Add(1)
+		go func(i int, key owner) {
+			defer wg.Done()
+			slots <- struct{}{}
+			defer func() { <-slots }()
+			if key.kind == interfaces.CapabilityTypeMCPTool {
+				ok, err := s.operator.MCPServerIsUsable(ctx, key.id)
+				if err != nil || !ok {
+					s.warnf(ctx, "[SearchCapabilities] owner withheld: mcp server %s not published (err=%v)", key.id, err)
+					return
+				}
+				published[i] = true
+				return
+			}
+			state, err := s.operator.ToolBoxLifecycle(ctx, key.id)
+			if err != nil || state == nil || !state.Published {
+				s.warnf(ctx, "[SearchCapabilities] owner withheld: tool box %s not published (err=%v)", key.id, err)
+				return
+			}
+			published[i] = true
+			enabled[i] = state.EnabledTools
+		}(i, key)
+	}
+	wg.Wait()
+
+	live := make(map[owner]int, len(order))
+	for i, key := range order {
+		live[key] = i
+	}
+	kept := make([]interfaces.CapabilityHit, 0, len(hits))
+	dropped := 0
+	for _, hit := range hits {
+		i, gated := live[owner{hit.CapabilityType, hit.OwnerID}]
+		if !gated {
+			kept = append(kept, hit)
+			continue
+		}
+		if !published[i] {
+			dropped++
+			continue
+		}
+		if hit.CapabilityType == interfaces.CapabilityTypeFunction {
+			if _, on := enabled[i][hit.CapabilityID]; !on {
+				s.warnf(ctx, "[SearchCapabilities] tool withheld: %s/%s not enabled", hit.OwnerID, hit.CapabilityID)
+				dropped++
+				continue
+			}
+		}
+		kept = append(kept, hit)
+	}
+	return kept, dropped
 }
 
 // ExecuteTool invokes one Function tool the knowledge network has mounted.
