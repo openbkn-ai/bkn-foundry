@@ -148,6 +148,13 @@ func TestLegacyPolicyWithoutEffectIsNormalizedToAllow(t *testing.T) {
 	).Error; err != nil {
 		t.Fatalf("insert legacy policy: %v", err)
 	}
+	if err := db.Create(&model.AuthorizationGrant{
+		GrantID: "migrated-legacy-grant", AccessorID: "legacy-user", Object: "resource:r-1",
+		Operation: "view_detail", Effect: EffectAllow, PolicySource: string(PolicySourceLegacy),
+		AuthoritySource: string(AuthoritySourceMigration), CreatedBy: string(AuthoritySourceMigration),
+	}).Error; err != nil {
+		t.Fatalf("insert migrated grant identity: %v", err)
+	}
 	reloaded, err := New(db)
 	if err != nil {
 		t.Fatalf("reload legacy policy: %v", err)

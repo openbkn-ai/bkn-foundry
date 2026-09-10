@@ -43,6 +43,15 @@ func (tx *PolicyTransaction) HasObjectPermission(accessorID, resourceType, resou
 	return len(activePolicyRows(rows)) > 0, nil
 }
 
+func (tx *PolicyTransaction) GrantPolicy(grant PolicyGrant) (bool, error) {
+	return tx.enforcer.addPolicyGrant(grant)
+}
+
+func (tx *PolicyTransaction) RevokePolicy(grantID string) (bool, error) {
+	removed, _, err := tx.enforcer.revokePolicyGrant(grantID)
+	return removed, err
+}
+
 func (tx *PolicyTransaction) GrantObjectPermission(accessorID, resourceType, resourceID, operation string) error {
 	return tx.enforcer.addPolicy(accessorID, obj(resourceType, resourceID), operation, EffectAllow,
 		PolicySourceSystemDerived, AuthoritySourceSystem)

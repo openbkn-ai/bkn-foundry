@@ -4,8 +4,9 @@
 
 // Package model holds bkn-safe's GORM domain model. This is a CLEAN redesign
 // (not the ISF schema): users/credentials/departments/groups/roles/memberships
-// plus the resource-type + operation catalog. Casbin policies live in the
-// adapter's own table (casbin_rule), not here.
+// plus the resource-type + operation catalog. Casbin's matcher projection lives
+// in the adapter-owned casbin_rule table; AuthorizationGrant is the durable
+// identity and provenance of each independently managed grant.
 package model
 
 import "time"
@@ -143,6 +144,26 @@ type ProxyGrantAuditLog struct {
 }
 
 func (ProxyGrantAuditLog) TableName() string { return "proxy_grant_audit_log" }
+
+// AuthorizationGrant is the authoritative Core grant record. Several rows may
+// intentionally carry the same authorization tuple: grant_id identifies the
+// independently managed source, while Casbin needs only one projection of that
+// tuple for runtime matching. A revoke deletes the shared projection only after
+// the final matching grant row disappears.
+type AuthorizationGrant struct {
+	GrantID         string `json:"grant_id" gorm:"primaryKey;size:64"`
+	AccessorID      string `json:"accessor_id" gorm:"size:64;index:idx_authorization_grant_tuple,priority:1"`
+	Object          string `json:"object" gorm:"size:255;index:idx_authorization_grant_tuple,priority:2"`
+	Operation       string `json:"operation" gorm:"size:64;index:idx_authorization_grant_tuple,priority:3"`
+	Effect          string `json:"effect" gorm:"size:16;index:idx_authorization_grant_tuple,priority:4"`
+	PolicySource    string `json:"policy_source" gorm:"size:32;index:idx_authorization_grant_tuple,priority:5"`
+	AuthoritySource string `json:"authority_source" gorm:"size:32;index:idx_authorization_grant_tuple,priority:6"`
+	CreatedBy       string `json:"created_by" gorm:"size:64;index"`
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+func (AuthorizationGrant) TableName() string { return "authorization_grant" }
 
 // Role source values. system|business roles are SEEDED built-ins (their UUIDs
 // are hardcoded in DA/flow-automation, such as application, data, and AI administrators) and are
@@ -358,6 +379,6 @@ func AllModels() []any {
 		&Group{}, &GroupMember{}, &ResourceType{}, &Operation{},
 		&AuditLog{}, &AccessLog{}, &APIKey{}, &License{}, &ResourceParent{},
 		&ManagedProxyAccount{}, &ProxyGrantSource{}, &ProxyGrantPolicy{},
-		&ProxyGrantAuditLog{},
+		&ProxyGrantAuditLog{}, &AuthorizationGrant{},
 	}
 }

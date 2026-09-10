@@ -5,6 +5,7 @@
 package authz
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -61,6 +62,41 @@ func TestPolicyTransactionSerializesOrdinaryPolicyWrites(t *testing.T) {
 		if err != nil || !allowed {
 			t.Fatalf("Check(%q, %q, %q) = %v, %v", check.accessor, check.resource, check.operation, allowed, err)
 		}
+	}
+}
+
+func TestPolicyTransactionRollsBackGrantIdentityAndProjectionTogether(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	rollback := errors.New("force rollback")
+	grant := PolicyGrant{
+		GrantID: "grant-rollback", AccessorID: "u-1", Object: "resource:r-1", Operation: "view_detail",
+		Effect: EffectAllow, PolicySource: PolicySourceProfessionalRule,
+		AuthoritySource: AuthoritySourceAdminAuthz, CreatedBy: "admin-1",
+	}
+	err := e.Transaction(t.Context(), func(tx *PolicyTransaction) error {
+		created, err := tx.GrantPolicy(grant)
+		if err != nil || !created {
+			t.Fatalf("transactional GrantPolicy() = %v, %v; want created", created, err)
+		}
+		return rollback
+	})
+	if !errors.Is(err, rollback) {
+		t.Fatalf("Transaction() error = %v, want rollback", err)
+	}
+	var grants, projections int64
+	if err := db.Table("authorization_grant").Where("grant_id = ?", grant.GrantID).Count(&grants).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Table("casbin_rule").Where("ptype = ? AND v0 = ? AND v1 = ?", "p", grant.AccessorID, grant.Object).
+		Count(&projections).Error; err != nil {
+		t.Fatal(err)
+	}
+	if grants != 0 || projections != 0 {
+		t.Fatalf("rolled-back state: grants=%d projections=%d; want both zero", grants, projections)
+	}
+	allowed, checkErr := e.Check("u-1", "resource", "r-1", "view_detail")
+	if checkErr != nil || allowed {
+		t.Fatalf("rolled-back grant visible: allowed=%v err=%v", allowed, checkErr)
 	}
 }
 
