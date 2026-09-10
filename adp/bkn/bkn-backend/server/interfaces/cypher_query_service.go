@@ -21,6 +21,13 @@ const (
 	// hold. Each is a join, and the row limit bounds what comes back rather
 	// than what it costs to produce, so the number of joins is bounded here.
 	CYPHER_MAX_PATH_LENGTH = 8
+	// CYPHER_MAX_PATTERN_NODES bounds how many nodes one query's patterns may
+	// hold. Relationships are not the only cost: a node that no relationship
+	// reaches is a table of its own, joined to the rest with nothing to
+	// constrain it, so bounding relationships alone leaves the number of
+	// tables open. Nine is what a path of CYPHER_MAX_PATH_LENGTH
+	// relationships needs.
+	CYPHER_MAX_PATTERN_NODES = CYPHER_MAX_PATH_LENGTH + 1
 )
 
 // CypherQuery is one read-only query against a knowledge network.
