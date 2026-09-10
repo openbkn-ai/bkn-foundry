@@ -223,3 +223,30 @@ def test_shipped_artifact_is_importable_and_versioned():
     for name in ("list_knowledge_networks", "query_object_instance",
                  "run_sql", "list_resources"):
         assert callable(getattr(_bkn_tools, name)), name
+
+
+def test_model_supplied_bkn_context_is_ignored(monkeypatch):
+    """A script that mirrors the MCP call shape passes bkn_context; the runtime's own must win, not a TypeError."""
+    from sandbox_sdk import _bkn_tools
+
+    monkeypatch.setenv("BKN_TOKEN", "test-token")
+    monkeypatch.setenv("BKN_SANDBOX_MCP_URL", "http://svc/mcp/")
+    monkeypatch.setenv("BKN_CONVERSATION_ID", "conv_runtime")
+    monkeypatch.setenv("BKN_INTERACTION_ID", "int_runtime")
+    monkeypatch.setattr(_bkn_tools, "_ensure_session", lambda: None)
+    monkeypatch.setattr(_bkn_tools, "_configure",
+                        lambda event: monkeypatch.setattr(_bkn_tools, "_CFG", dict(event)))
+    calls = []
+
+    def rpc(method, params):
+        calls.append(params)
+        return {"result": {"content": [{"type": "text", "text": '{"datas": []}'}]}}
+
+    monkeypatch.setattr(_bkn_tools, "_rpc", rpc)
+    bkn.configure_runtime({})
+    bkn.query_object_instance(
+        kn_id="kn_test", ot_id="bom",
+        bkn_context={"conversation_id": "conv_model", "interaction_id": "int_model"})
+    assert calls[-1]["arguments"]["bkn_context"] == {
+        "conversation_id": "conv_runtime", "interaction_id": "int_runtime",
+    }
