@@ -125,19 +125,14 @@ func (s *adminWriteServices) GrantRolePermission(ctx context.Context, roleID, re
 	if resourceType == adminConsoleResourceType {
 		return adminwrite.ErrAdminConsolePermission
 	}
-	// A role granted resource_manage gets view_detail with it (#1121): the
+	// A role granted resource_manage gets its required view_detail (#1121): the
 	// management routes load their target first, so without it the role holds a
 	// verb it can never reach.
-	ops, err := impliedOps(s.db.WithContext(ctx), resourceType, []string{op})
+	ops, err := s.e.NormalizeOperations(ctx, resourceType, []string{op})
 	if err != nil {
 		return err
 	}
-	for _, granted := range ops {
-		if err := s.e.GrantRolePermission(role.ID, resourceType, resourceID, granted); err != nil {
-			return err
-		}
-	}
-	return nil
+	return s.e.GrantNormalizedRolePermissions(ctx, role.ID, resourceType, resourceID, ops)
 }
 
 // RevokeRolePermission revokes one operation.
@@ -152,7 +147,7 @@ func (s *adminWriteServices) RevokeRolePermission(ctx context.Context, roleID, r
 // RevokeRolePermissions revokes a set of operations from a custom role over one
 // resource pattern.
 //
-// An operation stays if something the role is LEFT WITH implies it (#1121):
+// An operation stays if something the role is LEFT WITH requires it (#1121):
 // dropping view_detail while resource_manage remains would leave a verb whose
 // every route answers 403, the grant this rule exists to prevent. Retaining is
 // also what the whole-set object-grant surface does for the same edit, so the
@@ -166,7 +161,7 @@ func (s *adminWriteServices) RevokeRolePermission(ctx context.Context, roleID, r
 // computed once, before anything is removed, so both orders drop both.
 //
 // Dropping view_detail alone stays reachable: revoke resource_manage first, and
-// the next revoke is honoured because nothing left implies view_detail.
+// the next revoke is honoured because nothing left requires view_detail.
 func (s *adminWriteServices) RevokeRolePermissions(ctx context.Context,
 	roleID, resourceType, resourceID string, ops []string) error {
 
@@ -195,21 +190,21 @@ func (s *adminWriteServices) RevokeRolePermissions(ctx context.Context,
 	}
 
 	for _, op := range ops {
-		implying, err := impliedBy(s.db.WithContext(ctx), resourceType, []string{op})
+		requiring, err := s.e.RequiringOperations(ctx, resourceType, []string{op})
 		if err != nil {
 			return err
 		}
 		retainedBy := ""
-		for _, other := range implying {
+		for _, other := range requiring {
 			if other != op && remaining[other] {
 				retainedBy = other
 				break
 			}
 		}
 		if retainedBy != "" {
-			slog.Info("kept an operation the role still implies",
+			slog.Info("kept an operation another retained role operation requires",
 				"role_id", role.ID, "resource_type", resourceType, "resource_id", resourceID,
-				"operation", op, "implied_by", retainedBy)
+				"operation", op, "required_by", retainedBy)
 			continue
 		}
 		if err := s.e.RevokeRolePermission(role.ID, resourceType, resourceID, op); err != nil {

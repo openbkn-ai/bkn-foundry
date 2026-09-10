@@ -16,27 +16,27 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
-// seedCatalogOpImplies registers one operation that carries same-type
-// implications, the shape catalog.json gives resource_manage.
-func seedCatalogOpImplies(t *testing.T, db *gorm.DB, resourceType, op string, implies string) {
+// seedCatalogOpRequires registers one operation with direct same-type
+// requirements, the shape catalog.json gives resource_manage.
+func seedCatalogOpRequires(t *testing.T, db *gorm.DB, resourceType, op string, requires string) {
 	t.Helper()
 	row := model.Operation{
 		ResourceTypeID: resourceType, ID: op, Name: op,
-		ImpliedOperationIDs: implies,
+		RequiredOperationIDs: requires,
 	}
 	if err := db.Create(&row).Error; err != nil {
 		t.Fatalf("seed op %s/%s: %v", resourceType, op, err)
 	}
 }
 
-func TestObjectGrantResourceManageImpliesViewDetail(t *testing.T) {
+func TestObjectGrantResourceManageRequiresViewDetail(t *testing.T) {
 	r, e, db, users := newAdminServer(t)
 	if err := users.CreateLocalUser(t.Context(),
 		&model.User{ID: "u-1", Account: "alice", Name: "Alice", Enabled: true}, "pw-init0"); err != nil {
 		t.Fatal(err)
 	}
 	seedCatalogOps(t, db, "catalog", "view_detail", "query_data")
-	seedCatalogOpImplies(t, db, "catalog", "resource_manage", "view_detail")
+	seedCatalogOpRequires(t, db, "catalog", "resource_manage", "view_detail")
 
 	// Granting only resource_manage must still leave the grantee able to open the
 	// catalog: every management route loads its target first, and that load is a
@@ -73,10 +73,10 @@ func TestObjectGrantResourceManageImpliesViewDetail(t *testing.T) {
 		t.Fatalf("re-grant: want 204, got %d", w.Code)
 	}
 	if ok, _ := e.Check("u-1", "catalog", "c1", "view_detail"); !ok {
-		t.Fatal("re-grant dropped the implied op")
+		t.Fatal("re-grant dropped the required op")
 	}
 
-	// The implication runs one way only: view_detail must not drag the
+	// The requirement runs one way only: view_detail must not drag the
 	// management verb in behind it.
 	w = adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants", map[string]any{
 		"accessor_id": "u-1",
@@ -98,7 +98,7 @@ func TestObjectGrantResourceManageImpliesViewDetail(t *testing.T) {
 func TestRolePermissionImplicationDirections(t *testing.T) {
 	_, e, db, _ := newAdminServer(t)
 	seedCatalogOps(t, db, "catalog", "view_detail", "query_data")
-	seedCatalogOpImplies(t, db, "catalog", "resource_manage", "view_detail")
+	seedCatalogOpRequires(t, db, "catalog", "resource_manage", "view_detail")
 	if err := db.Create(&model.Role{ID: "r-1", Name: "custom", Source: model.RoleSourceCustom}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestRolePermissionImplicationDirections(t *testing.T) {
 	}
 
 	// Revoking view_detail while resource_manage is held does NOT remove it: the
-	// operation is still implied, and dropping it would leave a verb whose every
+	// operation is still required, and dropping it would leave a verb whose every
 	// route answers 403. This is what the whole-set object-grant surface already
 	// does for the same edit, and it makes the outcome independent of the order
 	// a console sends its pair of requests in — see the sequence below.
@@ -147,7 +147,7 @@ func TestRolePermissionImplicationDirections(t *testing.T) {
 	}
 
 	// Revoking the implying verb first is honoured immediately, and view_detail
-	// can then be revoked too, because nothing implies it any more.
+	// can then be revoked too, because nothing requires it any more.
 	if err := svc.RevokeRolePermission(ctx, "r-1", "catalog", "c1", "resource_manage"); err != nil {
 		t.Fatalf("revoke resource_manage: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestRolePermissionSaveOrderDoesNotChangeTheResult(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			_, e, db, _ := newAdminServer(t)
 			seedCatalogOps(t, db, "catalog", "view_detail", "query_data")
-			seedCatalogOpImplies(t, db, "catalog", "resource_manage", "view_detail")
+			seedCatalogOpRequires(t, db, "catalog", "resource_manage", "view_detail")
 			if err := db.Create(&model.Role{ID: "r-2", Name: "custom", Source: model.RoleSourceCustom}).Error; err != nil {
 				t.Fatal(err)
 			}
@@ -207,17 +207,17 @@ func TestRolePermissionSaveOrderDoesNotChangeTheResult(t *testing.T) {
 	}
 }
 
-// TestObjectGrantAuditNamesTheImpliedOperation: the audit Detail snapshots the
-// request body, so an implied operation would otherwise land on the accessor
+// TestObjectGrantAuditNamesTheRequiredOperation: the audit Detail snapshots the
+// request body, so a required operation would otherwise land on the accessor
 // with nothing in the trail saying where it came from.
-func TestObjectGrantAuditNamesTheImpliedOperation(t *testing.T) {
+func TestObjectGrantAuditNamesTheRequiredOperation(t *testing.T) {
 	r, _, db, users := newAdminServer(t)
 	if err := users.CreateLocalUser(t.Context(),
 		&model.User{ID: "u-9", Account: "carol", Name: "Carol", Enabled: true}, "pw-init0"); err != nil {
 		t.Fatal(err)
 	}
 	seedCatalogOps(t, db, "catalog", "view_detail", "query_data")
-	seedCatalogOpImplies(t, db, "catalog", "resource_manage", "view_detail")
+	seedCatalogOpRequires(t, db, "catalog", "resource_manage", "view_detail")
 
 	w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants", map[string]any{
 		"accessor_id": "u-9",
@@ -237,19 +237,19 @@ func TestObjectGrantAuditNamesTheImpliedOperation(t *testing.T) {
 	if total != 1 {
 		t.Fatalf("audit rows = %d, want 1", total)
 	}
-	if !strings.Contains(entries[0].Detail, "implied_operations") ||
+	if !strings.Contains(entries[0].Detail, "required_operations") ||
 		!strings.Contains(entries[0].Detail, "view_detail") {
-		t.Fatalf("audit detail does not name the implied operation: %s", entries[0].Detail)
+		t.Fatalf("audit detail does not name the required operation: %s", entries[0].Detail)
 	}
 }
 
-func TestImpliedOpsAndImpliedBy(t *testing.T) {
-	_, _, db, _ := newAdminServer(t)
+func TestNormalizeAndRequiringOperations(t *testing.T) {
+	_, e, db, _ := newAdminServer(t)
 	seedCatalogOps(t, db, "catalog", "view_detail", "query_data")
-	seedCatalogOpImplies(t, db, "catalog", "resource_manage", "view_detail")
+	seedCatalogOpRequires(t, db, "catalog", "resource_manage", "view_detail")
 	seedCatalogOps(t, db, "connector_type", "view_detail", "modify")
 
-	got, err := impliedOps(db, "catalog", []string{"resource_manage"})
+	got, err := e.NormalizeOperations(t.Context(), "catalog", []string{"resource_manage"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +257,7 @@ func TestImpliedOpsAndImpliedBy(t *testing.T) {
 		t.Fatalf("forward closure: %+v", got)
 	}
 
-	got, err = impliedBy(db, "catalog", []string{"view_detail"})
+	got, err = e.RequiringOperations(t.Context(), "catalog", []string{"view_detail"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,25 +265,25 @@ func TestImpliedOpsAndImpliedBy(t *testing.T) {
 		t.Fatalf("reverse closure: %+v", got)
 	}
 
-	// A type that declares no implications is returned untouched, which is every
+	// A type that declares no requirements is returned untouched, which is every
 	// type but catalog today.
-	got, err = impliedOps(db, "connector_type", []string{"modify"})
+	got, err = e.NormalizeOperations(t.Context(), "connector_type", []string{"modify"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got) != 1 || got[0] != "modify" {
-		t.Fatalf("no-implication type: %+v", got)
+		t.Fatalf("no-requirement type: %+v", got)
 	}
 }
 
-// TestInternalPolicyGrantExpandsImplications covers the third write face. It is
+// TestInternalPolicyGrantNormalizesRequirements covers the third write face. It is
 // the one a service calls directly, and it was missed on the first pass: found
 // by driving a real deployment, where a grant written through it came back
 // carrying resource_manage alone.
-func TestInternalPolicyGrantExpandsImplications(t *testing.T) {
+func TestInternalPolicyGrantNormalizesRequirements(t *testing.T) {
 	r, e, db, _ := newAdminServer(t)
 	seedCatalogOps(t, db, "catalog", "view_detail", "query_data")
-	seedCatalogOpImplies(t, db, "catalog", "resource_manage", "view_detail")
+	seedCatalogOpRequires(t, db, "catalog", "resource_manage", "view_detail")
 
 	w := do(t, r, http.MethodPost, "/api/safe/v1/authz/policies", map[string]any{
 		"accessor_id": "svc-created",
@@ -314,7 +314,7 @@ func TestRevokeSetIsOrderIndependent(t *testing.T) {
 		t.Run(strings.Join(ops, ","), func(t *testing.T) {
 			_, e, db, _ := newAdminServer(t)
 			seedCatalogOps(t, db, "catalog", "view_detail", "query_data")
-			seedCatalogOpImplies(t, db, "catalog", "resource_manage", "view_detail")
+			seedCatalogOpRequires(t, db, "catalog", "resource_manage", "view_detail")
 			if err := db.Create(&model.Role{ID: "r-3", Name: "custom", Source: model.RoleSourceCustom}).Error; err != nil {
 				t.Fatal(err)
 			}
@@ -336,13 +336,13 @@ func TestRevokeSetIsOrderIndependent(t *testing.T) {
 	}
 }
 
-// TestRevokeSetKeepsAnOperationTheRemainderImplies is the other half: dropping
+// TestRevokeSetKeepsAnOperationTheRemainderRequires is the other half: dropping
 // only view_detail while resource_manage is kept must leave view_detail in
 // place, or the role is left holding a verb that answers 403 everywhere.
-func TestRevokeSetKeepsAnOperationTheRemainderImplies(t *testing.T) {
+func TestRevokeSetKeepsAnOperationTheRemainderRequires(t *testing.T) {
 	_, e, db, _ := newAdminServer(t)
 	seedCatalogOps(t, db, "catalog", "view_detail", "query_data")
-	seedCatalogOpImplies(t, db, "catalog", "resource_manage", "view_detail")
+	seedCatalogOpRequires(t, db, "catalog", "resource_manage", "view_detail")
 	if err := db.Create(&model.Role{ID: "r-4", Name: "custom", Source: model.RoleSourceCustom}).Error; err != nil {
 		t.Fatal(err)
 	}

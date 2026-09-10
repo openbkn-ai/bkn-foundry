@@ -264,11 +264,80 @@ func (en *Enforcer) baseEffectiveDecisionsWithIndex(ctx context.Context, accesso
 }
 
 // operationDecisionsWithIndex is the sole final batch decision layer used by
-// checks, AllowedOps and resource filtering. #1429 will enforce direct
-// operation requirements here, after base-effective decisions are available.
+// checks, AllowedOps and resource filtering. It evaluates each direct operation
+// requirement from the same base-effective batch without recursively applying
+// that requirement's own metadata.
 func (en *Enforcer) operationDecisionsWithIndex(ctx context.Context, accessorID string, idx *grantIndex,
-	want map[ResourceRef][]string) (map[ResourceRef]map[string]Evaluation, error) {
-	return en.baseEffectiveDecisionsWithIndex(ctx, accessorID, idx, want)
+	want map[ResourceRef][]string, validateProvenance bool) (map[ResourceRef]map[string]Evaluation, error) {
+	requires, err := en.requirementsFor(ctx, want)
+	if err != nil {
+		return nil, err
+	}
+	expanded := expandWithRequirements(want, requires)
+	base, err := en.baseEffectiveDecisionsWithIndex(ctx, accessorID, idx, expanded)
+	if err != nil {
+		return nil, err
+	}
+	if validateProvenance {
+		if err := en.applyManagedProxyProvenanceToBatch(ctx, accessorID, base); err != nil {
+			return nil, err
+		}
+	}
+
+	out := make(map[ResourceRef]map[string]Evaluation, len(want))
+	for resource, operations := range want {
+		out[resource] = make(map[string]Evaluation, len(operations))
+		for _, operation := range operations {
+			decision := base[resource][operation]
+			decision.Requirements = append([]string(nil), requires[resource.Type][operation]...)
+			if decision.Allowed() {
+				for _, required := range decision.Requirements {
+					requirement := base[resource][required]
+					if requirement.Allowed() {
+						continue
+					}
+					decision.Decision = DecisionDeny
+					decision.Basis = BasisRequires
+					decision.DeniedRequirement = required
+					decision.RequirementBasis = requirement.Basis
+					break
+				}
+			}
+			out[resource][operation] = decision
+		}
+	}
+	return out, nil
+}
+
+// applyManagedProxyProvenanceToBatch makes source validity part of every base
+// decision, including prerequisites. Applying it only to the target after the
+// requires check would let an obsolete view grant satisfy a modify prerequisite.
+func (en *Enforcer) applyManagedProxyProvenanceToBatch(ctx context.Context, accessorID string,
+	decisions map[ResourceRef]map[string]Evaluation) error {
+	if en.db == nil {
+		return nil
+	}
+	managed, err := en.isManagedProxyContext(ctx, accessorID)
+	if err != nil || !managed {
+		return err
+	}
+	current, err := en.currentProxyPermissions(ctx, accessorID)
+	if err != nil {
+		return err
+	}
+	for resource, operations := range decisions {
+		for operation, decision := range operations {
+			if !decision.Allowed() || current[proxyPermission{
+				ResourceType: resource.Type, ResourceID: resource.ID, Operation: operation,
+			}] {
+				continue
+			}
+			decision.Decision = DecisionDeny
+			decision.Basis = BasisDirect
+			operations[operation] = decision
+		}
+	}
+	return nil
 }
 
 // parentsOf loads the single-hop parent of every node the climbers currently

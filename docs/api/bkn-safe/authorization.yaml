@@ -45,8 +45,11 @@ paths:
         `evaluation_scope` defaults to `effective`, which invokes the final
         `operation_decision` used by ordinary business callers. `local` inspects
         only base rules on the requested resource, skipping parent fallback and
-        operation requirements. It is available only on the platform-internal
-        network face for the Resource→Catalog relation Vega owns. The local result
+        runtime enforcement of operation requirements. The response still lists
+        the target operation's direct `requires`, so the trusted Vega client can
+        apply them after its Resource→Catalog base merge. It is available only
+        on the platform-internal network face for the Resource→Catalog relation
+        Vega owns. The local result
         is input to Vega's parent fallback, not a final authorization result;
         neither local `allow` nor local `none` may by itself authorize a
         business operation.
@@ -120,7 +123,8 @@ paths:
         network face. It accepts only concrete Resource/Catalog references and
         their approved operations, returns every requested resource regardless
         of visibility, and adds one `decisions` entry for every visibility or
-        candidate operation, including explicit `deny` and `none`. Vega uses
+        candidate operation and every direct requirement, including explicit
+        `deny` and `none`. Each target entry also lists its `requires`. Vega uses
         those entries to perform the parent fallback it owns; it must not treat
         local `allowed` as final. Out-of-bound local shapes return 400 and never
         fall back to effective evaluation.
@@ -471,6 +475,10 @@ components:
           $ref: '#/components/schemas/AuthorizationDecision'
         basis:
           $ref: '#/components/schemas/DecisionBasis'
+        requires:
+          type: array
+          items: {type: string}
+          description: Direct same-resource prerequisites declared by the operation catalog; omitted when empty.
         denied_requirement:
           type: string
           description: Present when the final decision is denied because this direct required operation was denied.
@@ -565,6 +573,10 @@ components:
           $ref: '#/components/schemas/AuthorizationDecision'
         basis:
           $ref: '#/components/schemas/DecisionBasis'
+        requires:
+          type: array
+          items: {type: string}
+          description: Direct same-resource prerequisites. Local callers evaluate their returned decisions after trusted parent merging.
         denied_requirement:
           type: string
           description: Present with `basis=requires`; names the denied direct prerequisite operation.

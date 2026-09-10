@@ -153,8 +153,8 @@ func requireAnyPermission(svc Services, points ...PermissionPoint) gin.HandlerFu
 // RoleSetRevoker is an OPTIONAL extension of Services: revoke a SET of
 // operations from a role over one resource pattern, in a single call.
 //
-// The set is what makes the answer correct. An operation another operation
-// implies cannot be dropped while that implying operation is kept (#1121), and
+// The set is what makes the answer correct. An operation required by another
+// operation cannot be dropped while that requiring operation is kept (#1121), and
 // deciding that one operation at a time — against the live state, where an
 // operation earlier in the caller's list is still held — makes the outcome
 // depend on the order: revoking ["view_detail", "resource_manage"] keeps

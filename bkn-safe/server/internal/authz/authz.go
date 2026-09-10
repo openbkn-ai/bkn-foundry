@@ -175,7 +175,7 @@ func (en *Enforcer) checkPolicy(ctx context.Context, accessorID, resourceType, r
 	}
 	resource := ResourceRef{Type: resourceType, ID: resourceID}
 	all, err := en.operationDecisionsWithIndex(ctx, accessorID, idx,
-		map[ResourceRef][]string{resource: {op}})
+		map[ResourceRef][]string{resource: {op}}, false)
 	if err != nil {
 		return false, err
 	}
@@ -244,7 +244,7 @@ func (en *Enforcer) AllowedOpsContext(ctx context.Context, accessorID, resourceT
 	}
 	resource := ResourceRef{Type: resourceType, ID: resourceID}
 	all, err := en.operationDecisionsWithIndex(ctx, accessorID, idx,
-		map[ResourceRef][]string{resource: candidates})
+		map[ResourceRef][]string{resource: candidates}, true)
 	if err != nil {
 		return nil, err
 	}
@@ -254,24 +254,7 @@ func (en *Enforcer) AllowedOpsContext(ctx context.Context, accessorID, resourceT
 			out = append(out, op)
 		}
 	}
-	if len(out) == 0 || en.db == nil {
-		return out, nil
-	}
-	managed, err := en.isManagedProxyContext(ctx, accessorID)
-	if err != nil || !managed {
-		return out, err
-	}
-	currentPermissions, err := en.currentProxyPermissions(ctx, accessorID)
-	if err != nil {
-		return nil, err
-	}
-	current := out[:0]
-	for _, op := range out {
-		if currentPermissions[proxyPermission{ResourceType: resourceType, ResourceID: resourceID, Operation: op}] {
-			current = append(current, op)
-		}
-	}
-	return current, nil
+	return out, nil
 }
 
 // GrantRolePermission grants a role an op over a resource-type instance pattern
@@ -279,6 +262,22 @@ func (en *Enforcer) AllowedOpsContext(ctx context.Context, accessorID, resourceT
 func (en *Enforcer) GrantRolePermission(roleID, resourceType, idPattern, op string) error {
 	return en.addDefaultGrant(context.Background(), roleID, obj(resourceType, idPattern), op, EffectAllow,
 		PolicySourceRolePermission, AuthoritySourceAdminAuthz)
+}
+
+// GrantNormalizedRolePermissions atomically persists the normalized role operation set
+// supplied by the administration service. Target and requirements must never
+// become partially visible between separate policy reloads.
+func (en *Enforcer) GrantNormalizedRolePermissions(ctx context.Context, roleID, resourceType, idPattern string,
+	operations []string) error {
+	return en.Transaction(ctx, func(tx *PolicyTransaction) error {
+		for _, operation := range operations {
+			if err := tx.enforcer.addPolicy(roleID, obj(resourceType, idPattern), operation, EffectAllow,
+				PolicySourceRolePermission, AuthoritySourceAdminAuthz); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // RevokeRolePermission removes a role's op over a resource-type instance
@@ -303,6 +302,21 @@ func (en *Enforcer) Grant(sub, obj, act string) error {
 func (en *Enforcer) GrantObjectPermission(accessorID, resourceType, resourceID, op string) error {
 	return en.addDefaultGrant(context.Background(), accessorID, obj(resourceType, resourceID), op, EffectAllow,
 		PolicySourceLegacy, AuthoritySourceMigration)
+}
+
+// GrantNormalizedObjectPermissions is the atomic compatibility writer for a
+// normalized allow set. New edition-aware sources use source-specific writers.
+func (en *Enforcer) GrantNormalizedObjectPermissions(ctx context.Context, accessorID, resourceType, resourceID string,
+	operations []string) error {
+	return en.Transaction(ctx, func(tx *PolicyTransaction) error {
+		for _, operation := range operations {
+			if err := tx.enforcer.addPolicy(accessorID, obj(resourceType, resourceID), operation, EffectAllow,
+				PolicySourceLegacy, AuthoritySourceMigration); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // DenyObjectPermission adds an explicit per-object exception. Deny overrides
@@ -714,16 +728,16 @@ func (en *Enforcer) RenameOperation(resourceType, oldOp, newOp string) (int, err
 	return moved, err
 }
 
-// BackfilledGrant names one policy row that gained an implied operation, so the
+// BackfilledGrant names one policy row that gained a required operation, so the
 // caller can record each repair in the audit trail rather than only counting it.
 type BackfilledGrant struct {
 	AccessorID string
 	ResourceID string
 }
 
-// BackfillImpliedOperation adds impliedOp to every policy row on a resource type
-// that already grants holderOp and does not yet grant the implied one. Returns
-// the rows that gained the operation, so an upgrade that did something is both
+// BackfillRequiredOperation adds requiredOp to every eligible policy row on a
+// resource type that already grants holderOp and does not yet grant the
+// prerequisite. Returns the rows that gained the operation, so an upgrade that did something is both
 // visible in the log and recordable per grant.
 //
 // The rule it repairs is enforced when a grant is WRITTEN (see the grant paths
@@ -734,9 +748,9 @@ type BackfilledGrant struct {
 // backfill the fix would apply to new grants only, and an administrator would
 // have to re-save each old one without ever being told to.
 //
-// Idempotent: once every holder row carries the implied operation it adds
-// nothing, at the cost of one filtered read per declared implication per start.
-func (en *Enforcer) BackfillImpliedOperation(resourceType, holderOp, impliedOp string) ([]BackfilledGrant, error) {
+// Idempotent: once every holder row carries the required operation it adds
+// nothing, at the cost of one filtered read per declared requirement per start.
+func (en *Enforcer) BackfillRequiredOperation(resourceType, holderOp, requiredOp string) ([]BackfilledGrant, error) {
 	var added []BackfilledGrant
 	err := en.Transaction(context.Background(), func(tx *PolicyTransaction) error {
 		var rows []safemodel.AuthorizationGrant
@@ -757,9 +771,9 @@ func (en *Enforcer) BackfillImpliedOperation(resourceType, holderOp, impliedOp s
 				continue
 			}
 			grant := policyGrant(row)
-			grant.GrantID = deterministicGrantID(row.GrantID, row.Object, impliedOp, EffectAllow,
+			grant.GrantID = deterministicGrantID(row.GrantID, row.Object, requiredOp, EffectAllow,
 				source, AuthoritySource(row.AuthoritySource))
-			grant.Operation = impliedOp
+			grant.Operation = requiredOp
 			grant.Effect = EffectAllow
 			created, err := tx.enforcer.addPolicyGrant(grant)
 			if err != nil {

@@ -493,7 +493,9 @@ func TestManagedProxyFilterBatchesSourceValidityQueries(t *testing.T) {
 	if len(filtered) != sourceCount {
 		t.Fatalf("filtered resources = %d, want %d", len(filtered), sourceCount)
 	}
-	if got := queryCount.Load(); got > 6 {
+	// Runtime requires adds one batched operation-catalog lookup for the resource
+	// type. The bound stays independent of both source and resource counts.
+	if got := queryCount.Load(); got > 7 {
 		t.Fatalf("filter query count = %d, want a bounded batch independent of source count", got)
 	}
 }

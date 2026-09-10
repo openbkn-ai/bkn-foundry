@@ -796,34 +796,34 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 				return
 			}
 		}
-		// Add the operations the requested ones imply (#1121). Expanded after
+		// Add the operations directly required by the requested ones (#1121). Expanded after
 		// validation so a typo is still a 400 rather than something the expansion
 		// quietly absorbs. Upsert semantics make this self-healing: a console that
 		// clears view_detail while leaving resource_manage ticked sends a set this
 		// puts back, instead of storing a grant nothing can use.
 		ops := req.Operations
 		if req.Effect == authz.EffectAllow {
-			ops, err = impliedOps(db.WithContext(c.Request.Context()), req.Resource.Type, req.Operations)
+			ops, err = e.NormalizeOperations(c.Request.Context(), req.Resource.Type, req.Operations)
 			if err != nil {
 				serverError(c, err)
 				return
 			}
 		}
-		// Checked against the EXPANDED set, not what was asked for: the implication
+		// Checked against the EXPANDED set, not what was asked for: normalization
 		// pass can add operations, and a delegate must not acquire one that way
 		// that it could not have named directly.
 		if authority != authorityAdminAuthz && !restrictDelegatedOps(c, e, req.Resource, ops) {
 			return
 		}
 		// The audit Detail snapshots the request body, so without this the trail
-		// would say only what was asked for and an implied operation would appear
+		// would say only what was asked for and a required operation would appear
 		// on the accessor with nothing recording where it came from — the one
 		// question ("why can this account see this catalog?") the trail exists to
 		// answer. The seed's back-fill records its own repairs for the same
 		// reason; this keeps the two paths saying the same thing.
 		outcome := map[string]any{"via": string(authority)}
-		if implied := addedOps(req.Operations, ops); len(implied) > 0 {
-			outcome["implied_operations"] = implied
+		if required := addedOps(req.Operations, ops); len(required) > 0 {
+			outcome["required_operations"] = required
 		}
 		outcome["effect"] = req.Effect
 		setAuditOutcome(c, outcome)
@@ -839,6 +839,22 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 		}
 		c.Status(http.StatusNoContent)
 	}
+}
+
+// addedOps returns the members of normalized that were not in requested, in
+// normalized order — the direct requirements added on top of the requested set.
+func addedOps(requested, normalized []string) []string {
+	asked := make(map[string]bool, len(requested))
+	for _, op := range requested {
+		asked[op] = true
+	}
+	var out []string
+	for _, op := range normalized {
+		if !asked[op] {
+			out = append(out, op)
+		}
+	}
+	return out
 }
 
 func revokeObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {

@@ -12,6 +12,7 @@ import (
 	"github.com/openbkn-ai/licverify"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permobject"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
 
@@ -124,6 +125,154 @@ func TestRemovingChildRuleRestoresParentFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 	requireDecision(t, fallback, DecisionDeny, BasisInherited)
+}
+
+func TestOperationRequiresIsEnforcedAcrossFinalEntryPoints(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	if err := db.Create(&[]model.Operation{
+		{ResourceTypeID: "document", ID: "view", Name: "view"},
+		{ResourceTypeID: "document", ID: "modify", Name: "modify", RequiredOperationIDs: "view"},
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	const user, allowRole, denyRole, resource = "requires-user", "document-editor", "document-hidden", "doc-1"
+	mustNoErr(t, e.GrantRolePermission(allowRole, "document", resource, "modify"))
+	mustNoErr(t, e.GrantRolePermission(allowRole, "document", resource, "view"))
+	mustNoErr(t, e.DenyObjectPermission(denyRole, "document", resource, "view"))
+	mustNoErr(t, e.AssignRole(user, allowRole))
+	mustNoErr(t, e.AssignRole(user, denyRole))
+
+	decision, err := e.OperationDecision(t.Context(), user, "document", resource, "modify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireDecision(t, decision, DecisionDeny, BasisRequires)
+	if decision.DeniedRequirement != "view" || decision.RequirementBasis != BasisDirect {
+		t.Fatalf("requires reason = %+v", decision)
+	}
+	if len(decision.Requirements) != 1 || decision.Requirements[0] != "view" {
+		t.Fatalf("requirements = %v, want [view]", decision.Requirements)
+	}
+
+	allowed, err := e.AllowedOps(user, "document", resource, []string{"modify", "view"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(allowed) != 0 {
+		t.Fatalf("AllowedOps = %v, want no final operations", allowed)
+	}
+
+	filtered, err := e.FilterResourceOps(user,
+		[]ResourceRef{{Type: "document", ID: resource}}, nil, []string{"modify"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 1 || len(filtered[0].Operations) != 0 ||
+		len(filtered[0].Decisions) != 1 || filtered[0].Decisions[0].Basis != BasisRequires {
+		t.Fatalf("FilterResourceOps = %+v", filtered)
+	}
+
+	// Removing the later prerequisite deny restores the untouched modify allow;
+	// no authorization rewrite is needed.
+	if _, err := e.RemoveAccessorResourcePoliciesForEffect(denyRole, "document", resource, EffectDeny); err != nil {
+		t.Fatal(err)
+	}
+	decision, err = e.OperationDecision(t.Context(), user, "document", resource, "modify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireDecision(t, decision, DecisionAllow, BasisDirect)
+}
+
+func TestLocalDecisionReportsButDoesNotExecuteRequirements(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	if err := db.Create(&[]model.Operation{
+		{ResourceTypeID: "catalog", ID: "view_detail"},
+		{ResourceTypeID: "catalog", ID: "resource_manage", RequiredOperationIDs: "view_detail"},
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	const user, resource = "local-requires-user", "catalog-1"
+	mustNoErr(t, e.GrantObjectPermission(user, "catalog", resource, "resource_manage"))
+	mustNoErr(t, e.DenyObjectPermission(user, "catalog", resource, "view_detail"))
+
+	local, err := e.LocalDecision(t.Context(), user, "catalog", resource, "resource_manage")
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireDecision(t, local, DecisionAllow, BasisDirect)
+	if len(local.Requirements) != 1 || local.Requirements[0] != "view_detail" {
+		t.Fatalf("local requirements = %v", local.Requirements)
+	}
+
+	batch, err := e.FilterResourceOpsScoped(t.Context(), user,
+		[]ResourceRef{{Type: "catalog", ID: resource}}, nil, []string{"resource_manage"}, ScopeLocal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(batch) != 1 || len(batch[0].Decisions) != 2 {
+		t.Fatalf("local batch = %+v", batch)
+	}
+	byOperation := map[string]OperationDecision{}
+	for _, decision := range batch[0].Decisions {
+		byOperation[decision.Operation] = decision
+	}
+	if byOperation["resource_manage"].Decision != DecisionAllow ||
+		byOperation["view_detail"].Decision != DecisionDeny {
+		t.Fatalf("local decisions = %+v", byOperation)
+	}
+}
+
+func TestOperationsWithoutDeclaredRequirementsStayIndependent(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	operations := []string{"query_data", "execute", "use", "create", "public_access"}
+	rows := make([]model.Operation, 0, len(operations)+1)
+	rows = append(rows, model.Operation{ResourceTypeID: "tool", ID: "view"})
+	for _, operation := range operations {
+		rows = append(rows, model.Operation{ResourceTypeID: "tool", ID: operation})
+	}
+	if err := db.Create(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	const user = "independent-user"
+	mustNoErr(t, e.DenyObjectPermission(user, "tool", "tool-1", "view"))
+	for _, operation := range operations {
+		mustNoErr(t, e.GrantObjectPermission(user, "tool", "tool-1", operation))
+		decision, err := e.OperationDecision(t.Context(), user, "tool", "tool-1", operation)
+		if err != nil {
+			t.Fatal(err)
+		}
+		requireDecision(t, decision, DecisionAllow, BasisDirect)
+		if len(decision.Requirements) != 0 {
+			t.Fatalf("%s unexpectedly requires %v", operation, decision.Requirements)
+		}
+	}
+}
+
+func TestOperationSupportsMultipleDirectRequirements(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	if err := db.Create(&[]model.Operation{
+		{ResourceTypeID: "release", ID: "view"},
+		{ResourceTypeID: "release", ID: "approve"},
+		{ResourceTypeID: "release", ID: "publish", RequiredOperationIDs: "view,approve"},
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	const user = "publisher"
+	for _, operation := range []string{"publish", "view", "approve"} {
+		mustNoErr(t, e.GrantObjectPermission(user, "release", "release-1", operation))
+	}
+	mustNoErr(t, e.DenyObjectPermission(user, "release", "release-1", "approve"))
+
+	decision, err := e.OperationDecision(t.Context(), user, "release", "release-1", "publish")
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireDecision(t, decision, DecisionDeny, BasisRequires)
+	if decision.DeniedRequirement != "approve" || len(decision.Requirements) != 2 ||
+		decision.Requirements[0] != "view" || decision.Requirements[1] != "approve" {
+		t.Fatalf("multi-requirement decision = %+v", decision)
+	}
 }
 
 type structuredEEFake struct {
