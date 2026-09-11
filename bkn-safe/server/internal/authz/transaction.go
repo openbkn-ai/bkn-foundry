@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/casbin/casbin/v2"
 	casbinmodel "github.com/casbin/casbin/v2/model"
@@ -86,6 +87,14 @@ func (tx *PolicyTransaction) RemovePoliciesForResourceTypes(resourceTypes ...str
 // for one withdrawn operation while preserving the resource type's other
 // grants. It is reserved for startup vocabulary migrations.
 func (tx *PolicyTransaction) RemovePoliciesForOperation(resourceType, operation string) (int, error) {
+	resourceType = strings.TrimSpace(resourceType)
+	operation = strings.TrimSpace(operation)
+	if resourceType == "" {
+		return 0, errors.New("resource type is required")
+	}
+	if operation == "" {
+		return 0, errors.New("operation is required")
+	}
 	return tx.enforcer.removePolicyGrantsByObjectPrefixAndOperation(resourceType+":", operation)
 }
 
