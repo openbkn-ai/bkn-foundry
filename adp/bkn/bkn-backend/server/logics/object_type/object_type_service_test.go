@@ -1391,7 +1391,10 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+				Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+				ID:   interfaces.KNChildResourceID("kn1", "ot1"),
+			}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
 			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -1531,7 +1534,7 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
-			err := service.UpdateDataProperties(ctx, objectType, dataProperties, true)
+			err := service.UpdateDataProperties(ctx, objectType, dataProperties)
 			So(err, ShouldBeNil)
 		})
 
@@ -1561,7 +1564,7 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
-			err := service.UpdateDataProperties(ctx, objectType, dataProperties, false)
+			err := service.UpdateDataProperties(ctx, objectType, dataProperties)
 			So(err, ShouldBeNil)
 		})
 
@@ -1578,7 +1581,7 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_InternalError_CheckPermissionFailed))
 
-			err := service.UpdateDataProperties(ctx, objectType, dataProperties, true)
+			err := service.UpdateDataProperties(ctx, objectType, dataProperties)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -1607,7 +1610,7 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 			ota.EXPECT().UpdateDataProperties(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectCommit()
 
-			err := service.UpdateDataProperties(ctx, objectType, dataProperties, true)
+			err := service.UpdateDataProperties(ctx, objectType, dataProperties)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -1637,7 +1640,7 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectCommit()
 
-			err := service.UpdateDataProperties(ctx, objectType, dataProperties, true)
+			err := service.UpdateDataProperties(ctx, objectType, dataProperties)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -1666,7 +1669,7 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 			ota.EXPECT().UpdateDataProperties(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
-			err := service.UpdateDataProperties(ctx, objectType, dataProperties, true)
+			err := service.UpdateDataProperties(ctx, objectType, dataProperties)
 			So(err, ShouldBeNil)
 			So(len(objectType.DataProperties), ShouldEqual, 2)
 		})

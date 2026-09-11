@@ -33,6 +33,21 @@ func TestKNImportPermissionPrecheckedIsScopedToMarkedContext(t *testing.T) {
 	}
 }
 
+func TestDependencyValidationPermissionPrecheckedIsScopedToMarkedContext(t *testing.T) {
+	ctx := context.Background()
+	if DependencyValidationPermissionPrechecked(ctx) {
+		t.Fatal("plain context must require validation endpoint authorization")
+	}
+
+	marked := WithDependencyValidationPermissionPrechecked(ctx)
+	if !DependencyValidationPermissionPrechecked(marked) {
+		t.Fatal("marked dependency validation context must skip the duplicate authorization check")
+	}
+	if DependencyValidationPermissionPrechecked(ctx) {
+		t.Fatal("marking a derived context must not mutate its parent")
+	}
+}
+
 func TestValidateKNChildAuthorizationIDsRejectsAmbiguousIDs(t *testing.T) {
 	if err := ValidateKNChildAuthorizationIDs(context.Background(), "kn-1", []string{"bad/id"}); err == nil {
 		t.Fatal("canonical child authorization must reject ambiguous child IDs")

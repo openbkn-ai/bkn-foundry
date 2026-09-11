@@ -484,7 +484,7 @@ func Test_ObjectTypeRestHandler_UpdateDataProperties(t *testing.T) {
 					OTName: "object1",
 				},
 			}, nil)
-			ots.EXPECT().UpdateDataProperties(gomock.Any(), gomock.Any(), gomock.Any(), true).Return(nil)
+			ots.EXPECT().UpdateDataProperties(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 			reqParamByte, _ := sonic.Marshal(requestData)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
@@ -503,7 +503,7 @@ func Test_ObjectTypeRestHandler_UpdateDataProperties(t *testing.T) {
 					OTName: "object1",
 				},
 			}, nil)
-			ots.EXPECT().UpdateDataProperties(gomock.Any(), gomock.Any(), gomock.Any(), false).Return(nil)
+			ots.EXPECT().UpdateDataProperties(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 			reqParamByte, _ := sonic.Marshal(requestData)
 			req := httptest.NewRequest(http.MethodPut, url+"?strict_mode=false", bytes.NewReader(reqParamByte))

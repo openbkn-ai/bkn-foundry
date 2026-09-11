@@ -232,7 +232,8 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 	return rtIDs, nil
 }
 
-// ValidateRelationTypes checks dependency existence only; does not write to the database.
+// ValidateRelationTypes authorizes the validation request and checks dependency
+// existence without writing to the database.
 func (rts *relationTypeService) ValidateRelationTypes(ctx context.Context, knID string, branch string,
 	relationTypes []*interfaces.RelationType, strictMode bool, batch *interfaces.BatchIDIndex, mode string) error {
 
@@ -244,13 +245,17 @@ func (rts *relationTypeService) ValidateRelationTypes(ctx context.Context, knID 
 		return nil
 	}
 
-	err := rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   knID,
-	}, []string{interfaces.OPERATION_TYPE_MODIFY})
-	if err != nil {
-		return err
+	var err error
+	if !permission.DependencyValidationPermissionPrechecked(ctx) {
+		err = rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: interfaces.RESOURCE_TYPE_KN,
+			ID:   knID,
+		}, []string{interfaces.OPERATION_TYPE_MODIFY})
+		if err != nil {
+			return err
+		}
 	}
+	ctx = permission.WithDependencyValidationPermissionPrechecked(ctx)
 	_, _, err = rts.handleRelationTypeImportMode(ctx, mode, relationTypes)
 	if err != nil {
 		return err

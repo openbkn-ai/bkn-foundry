@@ -319,7 +319,8 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 	return otIDs, nil
 }
 
-// ValidateObjectTypes checks dependency existence only; does not write to the database.
+// ValidateObjectTypes authorizes the validation request and checks dependency
+// existence without writing to the database.
 func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID string, branch string,
 	objectTypes []*interfaces.ObjectType, strictMode bool, batch *interfaces.BatchIDIndex, mode string) error {
 
@@ -330,13 +331,17 @@ func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID stri
 		return nil
 	}
 
-	err := ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   knID,
-	}, []string{interfaces.OPERATION_TYPE_MODIFY})
-	if err != nil {
-		return err
+	var err error
+	if !permission.DependencyValidationPermissionPrechecked(ctx) {
+		err = ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: interfaces.RESOURCE_TYPE_KN,
+			ID:   knID,
+		}, []string{interfaces.OPERATION_TYPE_MODIFY})
+		if err != nil {
+			return err
+		}
 	}
+	ctx = permission.WithDependencyValidationPermissionPrechecked(ctx)
 
 	_, _, err = ots.handleObjectTypeImportMode(ctx, mode, objectTypes)
 	if err != nil {
@@ -847,16 +852,17 @@ func (ots *objectTypeService) UpdateObjectType(ctx context.Context, tx *sql.Tx, 
 
 // Update object type data properties.
 func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
-	objectType *interfaces.ObjectType, dataProperties []*interfaces.DataProperty, strictMode bool) error {
+	objectType *interfaces.ObjectType, dataProperties []*interfaces.DataProperty) error {
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update object type")
 	defer span.End()
 
-	// Check whether the user ID can modify the business knowledge network.
-	err := ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   objectType.KNID,
-	}, []string{interfaces.OPERATION_TYPE_MODIFY})
+	if err := permission.ValidateKNChildAuthorizationIDs(ctx, objectType.KNID, []string{objectType.OTID}); err != nil {
+		return err
+	}
+	resource := interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		objectType.KNID, objectType.OTID)
+	err := ots.ps.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_MODIFY})
 	if err != nil {
 		return err
 	}

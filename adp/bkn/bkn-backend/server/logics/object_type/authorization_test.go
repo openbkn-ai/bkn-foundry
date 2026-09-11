@@ -75,6 +75,26 @@ func TestObjectTypeSingleResourceAuthorization(t *testing.T) {
 	}
 }
 
+func TestUpdateDataPropertiesRequiresCanonicalObjectTypeModify(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ps := bmock.NewMockPermissionService(ctrl)
+	denied := errors.New("denied")
+	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		ID:   "kn-1/ot-1",
+	}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(denied)
+
+	service := &objectTypeService{ps: ps}
+	err := service.UpdateDataProperties(context.Background(), &interfaces.ObjectType{
+		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot-1"},
+		KNID:                   "kn-1",
+		Branch:                 interfaces.MAIN_BRANCH,
+	}, nil)
+	if !errors.Is(err, denied) {
+		t.Fatalf("UpdateDataProperties() error = %v, want %v", err, denied)
+	}
+}
+
 func TestObjectTypeMultiResourceDetailRequiresEveryChildPermission(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ota := bmock.NewMockObjectTypeAccess(ctrl)
