@@ -110,6 +110,36 @@ func TestShippedCatalogBindsResourceManageToViewDetail(t *testing.T) {
 	t.Fatal("catalog type missing from catalog.json")
 }
 
+func TestShippedConnectorTypeDeclaresViewRequirements(t *testing.T) {
+	var c catalog
+	if err := json.Unmarshal(catalogJSON, &c); err != nil {
+		t.Fatalf("parse catalog.json: %v", err)
+	}
+	if err := validateRequirements(c); err != nil {
+		t.Fatalf("shipped catalog.json declares an invalid requirement: %v", err)
+	}
+
+	operations := map[string][]string{}
+	for _, resourceType := range c.ResourceTypes {
+		if resourceType.ID != "connector_type" {
+			continue
+		}
+		for _, operation := range resourceType.Operations {
+			operations[operation.ID] = operation.Requires
+		}
+	}
+	for _, operation := range []string{"modify", "delete", "authorize", "task_manage"} {
+		if got := operations[operation]; len(got) != 1 || got[0] != "view_detail" {
+			t.Errorf("connector_type/%s requires %v, want [view_detail]", operation, got)
+		}
+	}
+	for _, operation := range []string{"create", "view_detail"} {
+		if got := operations[operation]; len(got) != 0 {
+			t.Errorf("connector_type/%s unexpectedly requires %v", operation, got)
+		}
+	}
+}
+
 // TestSeedPersistsImplications proves the declaration survives the seed, since
 // the grant paths read it from the operations table rather than from the file.
 func TestSeedPersistsImplications(t *testing.T) {
@@ -127,6 +157,55 @@ func TestSeedPersistsImplications(t *testing.T) {
 	}
 	if row.RequiredOperationIDs != "view_detail" {
 		t.Fatalf("required operation ids = %q, want %q", row.RequiredOperationIDs, "view_detail")
+	}
+}
+
+func TestConnectorTypeRequirementsApplyToChecksAndLists(t *testing.T) {
+	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionProfessional))
+	t.Cleanup(entitlement.ResetForTest)
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+
+	const user = "connector-operator"
+	if err := e.GrantProfessionalObjectPermission(
+		user, "connector_type", "remote-api", "task_manage", authz.EffectAllow, authz.AuthoritySourceAdminAuthz,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantProfessionalObjectPermission(
+		user, "connector_type", "remote-api", "view_detail", authz.EffectAllow, authz.AuthoritySourceAdminAuthz,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantProfessionalObjectPermission(
+		user, "connector_type", "remote-api", "view_detail", authz.EffectDeny, authz.AuthoritySourceAdminAuthz,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	decision, err := e.OperationDecision(t.Context(), user, "connector_type", "remote-api", "task_manage")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Decision != authz.DecisionDeny || decision.Basis != authz.BasisRequires ||
+		decision.DeniedRequirement != "view_detail" {
+		t.Fatalf("task_manage decision = %+v; want requires deny on view_detail", decision)
+	}
+	ids, err := e.AccessibleResources(user, "connector_type", "task_manage")
+	if err != nil || len(ids) != 0 {
+		t.Fatalf("AccessibleResources(task_manage) = %v, %v; want none", ids, err)
+	}
+	filtered, err := e.FilterResourceOps(user,
+		[]authz.ResourceRef{{Type: "connector_type", ID: "remote-api"}}, nil, []string{"task_manage"})
+	if err != nil || len(filtered) != 1 || len(filtered[0].Operations) != 0 ||
+		len(filtered[0].Decisions) != 1 || filtered[0].Decisions[0].Basis != authz.BasisRequires {
+		t.Fatalf("FilterResourceOps(task_manage) = %+v, %v", filtered, err)
 	}
 }
 

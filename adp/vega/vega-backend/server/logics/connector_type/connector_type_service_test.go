@@ -118,6 +118,19 @@ func TestConnectorTypeServiceRegister(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "database unavailable")
 	})
+
+	t.Run("checks type-level create permission before side effects", func(t *testing.T) {
+		service, _, ps := newTestConnectorTypeService(t)
+		denied := errors.New("create denied")
+		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
+			ID:   interfaces.RESOURCE_ID_ALL,
+		}, []string{interfaces.OPERATION_TYPE_CREATE}).Return(denied)
+
+		err := service.Register(context.Background(), &interfaces.ConnectorTypeReq{Type: "remote-api"})
+
+		require.ErrorIs(t, err, denied)
+	})
 }
 
 func TestConnectorTypeServiceGetByType(t *testing.T) {
@@ -490,7 +503,7 @@ func TestConnectorTypeServiceDeleteByType(t *testing.T) {
 }
 
 func TestConnectorTypeServiceSetEnabled(t *testing.T) {
-	t.Run("set enabled checks permission and updates access", func(t *testing.T) {
+	t.Run("set enabled checks task management permission and updates access", func(t *testing.T) {
 		service, cta, ps := newTestConnectorTypeService(t)
 		connectorFactory := vmock.NewMockConnectorFactory(gomock.NewController(t))
 		service.cf = connectorFactory
@@ -498,12 +511,25 @@ func TestConnectorTypeServiceSetEnabled(t *testing.T) {
 			CheckPermission(gomock.Any(), interfaces.PermissionResource{
 				Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
 				ID:   "remote-api",
-			}, []string{interfaces.OPERATION_TYPE_MODIFY}).
+			}, []string{interfaces.OPERATION_TYPE_TASK_MANAGE}).
 			Return(nil)
 		cta.EXPECT().SetEnabled(gomock.Any(), "remote-api", true).Return(nil)
 		connectorFactory.EXPECT().SetConnectorEnabled("remote-api", true)
 
 		require.NoError(t, service.SetEnabled(context.Background(), "remote-api", true))
+	})
+
+	t.Run("permission denial prevents enabled-state changes", func(t *testing.T) {
+		service, _, ps := newTestConnectorTypeService(t)
+		denied := errors.New("task management denied")
+		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
+			ID:   "remote-api",
+		}, []string{interfaces.OPERATION_TYPE_TASK_MANAGE}).Return(denied)
+
+		err := service.SetEnabled(context.Background(), "remote-api", true)
+
+		require.ErrorIs(t, err, denied)
 	})
 
 	t.Run("set enabled wraps access error", func(t *testing.T) {
