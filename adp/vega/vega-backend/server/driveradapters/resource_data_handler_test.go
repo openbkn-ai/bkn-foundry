@@ -293,6 +293,91 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "Other field \\\"metadata\\\" cannot be requested by an aggregation query")
 	})
 
+	t.Run("accepts group fields and the aggregate alias as output fields", func(t *testing.T) {
+		engine, rs, _, rds := setupResourceDataHandlerTest(t)
+		resource := sampleDatasetResource()
+		resource.SchemaDefinition = []*interfaces.Property{
+			{Name: "department", Type: interfaces.DataType_String},
+			{Name: "amount", Type: interfaces.DataType_Integer},
+		}
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+		rds.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+				assert.Equal(t, []string{"department", "total"}, params.OutputFields)
+				return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{}}, nil
+			})
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data",
+			strings.NewReader(`{"group_by":[{"property":"department"}],"aggregation":{"property":"amount","aggr":"sum","alias":"total"},"output_fields":["department","total"]}`))
+		req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+	})
+
+	for _, tt := range []struct {
+		name      string
+		fieldType string
+		wantError string
+	}{
+		{
+			name:      "binary",
+			fieldType: interfaces.DataType_Binary,
+			wantError: "Binary field \\\"result\\\" cannot be requested by an aggregation query",
+		},
+		{
+			name:      "other",
+			fieldType: interfaces.DataType_Other,
+			wantError: "Other field \\\"result\\\" cannot be requested by an aggregation query",
+		},
+	} {
+		t.Run("rejects aggregate aliases shadowing "+tt.name+" fields", func(t *testing.T) {
+			engine, rs, _, _ := setupResourceDataHandlerTest(t)
+			resource := sampleDatasetResource()
+			resource.SchemaDefinition = []*interfaces.Property{
+				{Name: "score", Type: interfaces.DataType_Integer},
+				{Name: "result", Type: tt.fieldType},
+			}
+			rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+
+			req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data",
+				strings.NewReader(`{"aggregation":{"property":"score","aggr":"count","alias":"result"},"output_fields":["result"]}`))
+			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			engine.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+			assert.Contains(t, w.Body.String(), tt.wantError)
+		})
+	}
+
+	t.Run("rejects non-grouped plain output fields in aggregation queries", func(t *testing.T) {
+		engine, rs, _, _ := setupResourceDataHandlerTest(t)
+		resource := sampleDatasetResource()
+		resource.SchemaDefinition = []*interfaces.Property{
+			{Name: "department", Type: interfaces.DataType_String},
+			{Name: "region", Type: interfaces.DataType_String},
+			{Name: "amount", Type: interfaces.DataType_Integer},
+		}
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data",
+			strings.NewReader(`{"group_by":[{"property":"department"}],"aggregation":{"property":"amount","aggr":"sum","alias":"total"},"output_fields":["region"]}`))
+		req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "must be a group_by field or aggregate alias")
+	})
+
 	t.Run("preserves total count requested by cursor session", func(t *testing.T) {
 		engine, rs, _, rds := setupResourceDataHandlerTest(t)
 		resource := sampleDatasetResource()

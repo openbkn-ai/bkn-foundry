@@ -271,11 +271,11 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 			sql)
 	})
 
-	t.Run("output_fields already selected as an alias are not duplicated", func(t *testing.T) {
+	t.Run("aggregate output_fields do not alter the grouped and aggregate projection", func(t *testing.T) {
 		builder, err := connector.buildSelectBuilder(resource, &interfaces.ResourceDataQueryParams{
 			GroupBy:      []*interfaces.GroupByItem{{Property: "key"}},
 			Aggregation:  &interfaces.Aggregation{Property: "id", Aggr: "count", Alias: "cnt"},
-			OutputFields: []string{"key", "cnt"},
+			OutputFields: []string{"key", "cnt", "created"},
 			Paging:       interfaces.PagingRequest{Limit: 20},
 		}, fieldMap, nil)
 		require.NoError(t, err)
@@ -284,6 +284,21 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t,
 			"SELECT `key` AS `key`, COUNT(`id`) AS `cnt` FROM `yanfeng_kb`.`fact` GROUP BY `key` LIMIT 20 OFFSET 0",
+			sql)
+	})
+
+	t.Run("count star having output_fields do not alter the aggregate projection", func(t *testing.T) {
+		builder, err := connector.buildSelectBuilder(resource, &interfaces.ResourceDataQueryParams{
+			Having:       &interfaces.HavingClause{Field: "count(*)", Operation: ">=", Value: 3},
+			OutputFields: []string{"created"},
+			Paging:       interfaces.PagingRequest{Limit: 20},
+		}, fieldMap, nil)
+		require.NoError(t, err)
+
+		sql, _, err := builder.ToSql()
+		require.NoError(t, err)
+		assert.Equal(t,
+			"SELECT COUNT(*) AS `__value` FROM `yanfeng_kb`.`fact` HAVING COUNT(*) >= 3 LIMIT 20 OFFSET 0",
 			sql)
 	})
 

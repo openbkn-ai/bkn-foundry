@@ -130,8 +130,6 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 
 	// Construct the SELECT clause
 	selectFields := []string{}
-	// Output names already selected (column or alias), used to de-duplicate output_fields
-	selected := map[string]struct{}{}
 
 	// Add the GROUP BY field (when aggregating queries)
 	for _, groupByItem := range params.GroupBy {
@@ -140,11 +138,9 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 		if groupByItem.CalendarInterval != "" {
 			dateFmt := c.buildDateFormat(groupByItem.Property, quoteColumnName(column), groupByItem.CalendarInterval)
 			selectFields = append(selectFields, dateFmt+" AS "+quoteColumnName(groupByItem.Property))
-			selected[groupByItem.Property] = struct{}{}
 		} else {
 			selectFields = append(selectFields,
 				quoteColumnName(column)+" AS "+quoteColumnName(groupByItem.Property))
-			selected[groupByItem.Property] = struct{}{}
 		}
 	}
 
@@ -170,12 +166,10 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 		}
 
 		selectFields = append(selectFields, aggFunc+" AS "+quoteColumnName(aggAlias))
-		selected[aggAlias] = struct{}{}
 	} else if params.Having != nil && params.Having.Field == "count(*)" {
 		// When HAVING uses count(*), add the COUNT(*) aggregate automatically
 		aggAlias = "__value"
 		selectFields = append(selectFields, "COUNT(*) AS "+quoteColumnName(aggAlias))
-		selected[aggAlias] = struct{}{}
 	}
 
 	// Select every field when the query is neither aggregated nor grouped
@@ -196,7 +190,10 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 		}
 		return column + " AS " + quoteColumnName(name)
 	}
-	if len(params.GroupBy) == 0 && params.Aggregation == nil {
+	// output_fields controls detail-query projection only. Aggregate projection is
+	// defined by group_by, aggregation, or count(*) having; appending any other
+	// plain field would violate aggregate semantics and differs from PostgreSQL.
+	if len(params.GroupBy) == 0 && params.Aggregation == nil && params.Having == nil {
 		if len(params.OutputFields) > 0 {
 			for _, outName := range params.OutputFields {
 				selectFields = append(selectFields, selectField(outName))
@@ -208,15 +205,6 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 			for _, prop := range resource.SchemaDefinition {
 				selectFields = append(selectFields, selectField(prop.Name))
 			}
-		}
-	} else if len(params.OutputFields) > 0 {
-		// For aggregate or GROUP BY queries, make sure output_fields end up in selectFields
-		for _, outName := range params.OutputFields {
-			if _, found := selected[outName]; found {
-				continue
-			}
-			selectFields = append(selectFields, selectField(outName))
-			selected[outName] = struct{}{}
 		}
 	}
 
