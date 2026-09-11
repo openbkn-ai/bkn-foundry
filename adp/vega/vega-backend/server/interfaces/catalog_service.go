@@ -20,6 +20,8 @@ type CatalogService interface {
 	GetByIDs(ctx context.Context, ids []string) ([]*Catalog, error)
 	// List lists Catalogs with filters.
 	List(ctx context.Context, params CatalogsQueryParams) ([]*CatalogSummary, int64, error)
+	// ListConnectorTypeStats groups visible catalogs matching params by connector type.
+	ListConnectorTypeStats(ctx context.Context, params CatalogsQueryParams) ([]*CatalogConnectorTypeStat, error)
 	// Update updates a Catalog.
 	Update(ctx context.Context, catalog *Catalog, req *CatalogRequest, allowUnhealthy bool) error
 	// SetEnabled updates Catalog enabled state.

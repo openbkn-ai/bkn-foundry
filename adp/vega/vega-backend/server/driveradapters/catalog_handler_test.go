@@ -178,6 +178,26 @@ func Test_CatalogRestHandler_ListCatalogs(t *testing.T) {
 	})
 }
 
+func Test_CatalogRestHandler_ListCatalogConnectorTypeStats(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	engine, cs, _ := setupCatalogHandlerTest(t)
+	cs.EXPECT().ListConnectorTypeStats(gomock.Any(), interfaces.CatalogsQueryParams{Name: "orders"}).Return([]*interfaces.CatalogConnectorTypeStat{
+		{CatalogType: interfaces.CatalogTypePhysical, CatalogCount: 2, ConnectorType: "mariadb"},
+		{CatalogType: interfaces.CatalogTypePhysical, CatalogCount: 3, ConnectorType: "mysql"},
+	}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/catalogs/stats/by-connector-type?name=orders", nil)
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Result().StatusCode)
+	assert.Contains(t, w.Body.String(), `"connector_type":"mysql"`)
+	assert.Contains(t, w.Body.String(), `"catalog_type":"physical"`)
+	assert.Contains(t, w.Body.String(), `"catalog_count":3`)
+}
+
 func Test_CatalogRestHandler_SetCatalogEnabled(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()

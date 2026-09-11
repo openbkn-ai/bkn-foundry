@@ -60,6 +60,46 @@ servers:
 security:
   - OAuth2: []
 paths:
+  /catalogs/stats/by-connector-type:
+    get:
+      summary: 按连接器类型统计可见 catalog
+      description: |
+        返回当前用户具有 `view_detail` 权限的 catalog，按 `catalog_type` 与 `connector_type` 聚合后的数量。
+        `catalog_type=logical` 的条目没有关联连接器，其 `connector_type` 固定为空字符串。
+        该接口仅供目录树首层展示使用，不返回 catalog 详情或连接配置。
+      parameters:
+        - name: name
+          in: query
+          description: 按 catalog 名称模糊过滤后再聚合
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries]
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      required: [catalog_type, connector_type, catalog_count]
+                      properties:
+                        catalog_type:
+                          type: string
+                          enum: [physical, logical]
+                        connector_type:
+                          type: string
+                        catalog_count:
+                          type: integer
+                          format: int64
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
   /catalogs:
     get:
       summary: 获取 catalog 列表

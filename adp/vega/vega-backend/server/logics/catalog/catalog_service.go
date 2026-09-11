@@ -880,6 +880,56 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 	return catalogs, total, nil
 }
 
+// ListConnectorTypeStats returns one count per catalog and connector type after applying catalog view permissions.
+func (cs *catalogService) ListConnectorTypeStats(ctx context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.CatalogConnectorTypeStat, error) {
+	refs, err := cs.ca.ListConnectorTypePermissionRefs(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	if len(refs) == 0 {
+		return []*interfaces.CatalogConnectorTypeStat{}, nil
+	}
+	ids := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		ids = append(ids, ref.CatalogID)
+	}
+	internalSet, err := cs.InternalCatalogIDSet(ctx)
+	if err != nil {
+		return nil, err
+	}
+	allowed, err := cs.filterCatalogResources(ctx, ids, internalSet,
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
+	if err != nil {
+		return nil, err
+	}
+
+	type statKey struct {
+		catalogType   string
+		connectorType string
+	}
+	counts := make(map[statKey]int64)
+	for _, ref := range refs {
+		if _, ok := allowed[ref.CatalogID]; ok {
+			counts[statKey{catalogType: ref.CatalogType, connectorType: ref.ConnectorType}]++
+		}
+	}
+	stats := make([]*interfaces.CatalogConnectorTypeStat, 0, len(counts))
+	for key, catalogCount := range counts {
+		stats = append(stats, &interfaces.CatalogConnectorTypeStat{
+			CatalogType:   key.catalogType,
+			ConnectorType: key.connectorType,
+			CatalogCount:  catalogCount,
+		})
+	}
+	sort.Slice(stats, func(left, right int) bool {
+		if stats[left].CatalogType != stats[right].CatalogType {
+			return stats[left].CatalogType < stats[right].CatalogType
+		}
+		return stats[left].ConnectorType < stats[right].ConnectorType
+	})
+	return stats, nil
+}
+
 // Update updates a Catalog.
 func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalog, req *interfaces.CatalogRequest, allowUnhealthy bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update catalog")
