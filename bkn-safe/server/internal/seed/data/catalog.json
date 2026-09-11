@@ -2,6 +2,34 @@
   "_comment": "Resource-type + operation catalog, extracted from each service's enums/consts (2026-06-03). Exact op id strings are the seed source of truth. NOTE: 'view' (exec-factory, flow-automation) and 'view_detail' (vega/bkn/pipeline) are DIFFERENT op strings and are not normalized. Role-to-permission grants are maintained in grants.json for the Studio 0.1.0 role model.",
   "resource_types": [
     {
+      "id": "agent",
+      "name": "数据智能体",
+      "_note": "Standalone authorization root. The operation vocabulary is compatibility-sensitive: use is the execution permission; system, built-in, and cross-owner operations remain explicit and are not part of the Community business bundle.",
+      "operations": [
+        {"id": "use", "name": "使用Agent"},
+        {"id": "publish", "name": "发布Agent"},
+        {"id": "unpublish", "name": "取消发布Agent"},
+        {"id": "unpublish_other_user_agent", "name": "取消发布其他用户的Agent"},
+        {"id": "publish_to_be_skill_agent", "name": "发布为技能Agent"},
+        {"id": "publish_to_be_web_sdk_agent", "name": "发布为Web SDK Agent"},
+        {"id": "publish_to_be_api_agent", "name": "发布为API Agent"},
+        {"id": "publish_to_be_data_flow_agent", "name": "发布为数据流Agent"},
+        {"id": "create_system_agent", "name": "创建系统Agent"},
+        {"id": "mgnt_built_in_agent", "name": "内置Agent管理"},
+        {"id": "see_trajectory_analysis", "name": "查看轨迹分析"}
+      ]
+    },
+    {
+      "id": "agent_tpl",
+      "name": "数据智能体模板",
+      "_note": "Standalone authorization root. Cross-owner template operations are explicit system/admin permissions and are excluded from the Community business bundle.",
+      "operations": [
+        {"id": "publish", "name": "发布Agent模板"},
+        {"id": "unpublish", "name": "取消发布Agent模板"},
+        {"id": "unpublish_other_user_agent_tpl", "name": "取消发布其他用户Agent模板"}
+      ]
+    },
+    {
       "id": "catalog",
       "name": "数据目录",
       "_source": "vega",

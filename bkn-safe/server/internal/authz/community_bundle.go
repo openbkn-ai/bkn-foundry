@@ -23,6 +23,12 @@ var communityBundleOperations = map[string][]string{
 	"skill":             {"view", "modify", "delete", "publish", "unpublish", "execute"},
 	"small_model":       {"display", "modify", "delete", "execute"},
 	"large_model":       {"display", "modify", "delete", "execute"},
+	"agent": {
+		"use", "publish", "unpublish", "publish_to_be_skill_agent",
+		"publish_to_be_web_sdk_agent", "publish_to_be_api_agent",
+		"publish_to_be_data_flow_agent", "see_trajectory_analysis",
+	},
+	"agent_tpl": {"publish", "unpublish"},
 }
 
 // CommunityBundleOperations returns a copy of the reviewed operation whitelist
