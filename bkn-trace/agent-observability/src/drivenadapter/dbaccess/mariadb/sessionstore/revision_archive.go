@@ -31,7 +31,7 @@ func readRevisionArchive(ctx context.Context, tx *sql.Tx, id string) (revisionAr
 	if err != nil {
 		return result, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	remaining := maxBytes
 	for rows.Next() {
 		v := sessionvo.SealedRevisionInput{InteractionID: id}
@@ -87,12 +87,13 @@ func verifyRevisionArchiveForPurge(ctx context.Context, tx *sql.Tx, id string, p
 	for locks.Next() {
 		var revisionID string
 		if err = locks.Scan(&revisionID); err != nil {
-			locks.Close()
+			_ = locks.Close()
 			return err
 		}
 	}
 	err = locks.Err()
-	if closeErr := locks.Close(); err == nil {
+	closeErr := locks.Close()
+	if err == nil {
 		err = closeErr
 	}
 	if err != nil {
