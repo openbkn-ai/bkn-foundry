@@ -273,14 +273,15 @@ func (c *safeClient) allowedAll(ctx context.Context, accessorID, rtype, rid stri
 }
 
 func (c *safeClient) do(ctx context.Context, method, path string, body, out any) error {
-	return c.doWithHeaders(ctx, method, path, body, out, nil)
+	return c.doWithHeaders(ctx, method, path, body, out, nil, false)
 }
 
 func (c *safeClient) doLocal(ctx context.Context, method, path string, body, out any) error {
-	return c.doWithHeaders(ctx, method, path, body, out, map[string]string{"x-caller-service": "vega"})
+	return c.doWithHeaders(ctx, method, path, body, out, map[string]string{"x-caller-service": "vega"}, true)
 }
 
-func (c *safeClient) doWithHeaders(ctx context.Context, method, path string, body, out any, extraHeaders map[string]string) error {
+func (c *safeClient) doWithHeaders(ctx context.Context, method, path string, body, out any,
+	extraHeaders map[string]string, requireResponseBody bool) error {
 	b, _ := sonic.Marshal(body)
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bytes.NewReader(b))
 	if err != nil {
@@ -298,9 +299,15 @@ func (c *safeClient) doWithHeaders(ctx context.Context, method, path string, bod
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	data, _ := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read bkn-safe %s %s response: %w", method, path, err)
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("bkn-safe %s %s: %d: %s", method, path, resp.StatusCode, data)
+	}
+	if requireResponseBody && out != nil && len(data) == 0 {
+		return fmt.Errorf("bkn-safe %s %s returned an empty response body", method, path)
 	}
 	if out != nil && len(data) > 0 {
 		return sonic.Unmarshal(data, out)

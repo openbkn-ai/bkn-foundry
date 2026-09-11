@@ -308,6 +308,36 @@ func TestSafeClientLocalDecision(t *testing.T) {
 		require.ErrorIs(t, err, interfaces.ErrPermissionAccountNotActive)
 	})
 
+	t.Run("rejects an empty success response as a protocol error", func(t *testing.T) {
+		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+
+		_, err := client.localDecision(context.Background(), interfaces.LocalPermissionCheck{
+			Accessor:  interfaces.PermissionAccessor{ID: "u1"},
+			Resource:  interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"},
+			Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+		})
+
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, interfaces.ErrPermissionAccountNotActive)
+		assert.Contains(t, err.Error(), "empty response body")
+	})
+
+	t.Run("returns a response body read error", func(t *testing.T) {
+		client := newSafeReadErrorClient()
+
+		_, err := client.localDecision(context.Background(), interfaces.LocalPermissionCheck{
+			Accessor:  interfaces.PermissionAccessor{ID: "u1"},
+			Resource:  interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"},
+			Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+		})
+
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, interfaces.ErrPermissionAccountNotActive)
+		assert.ErrorIs(t, err, io.ErrUnexpectedEOF)
+	})
+
 	for name, response := range map[string]string{
 		"wrong evaluation scope":    `{"allowed":false,"evaluation_scope":"effective","decision":"deny","basis":"direct"}`,
 		"inconsistent allowed flag": `{"allowed":true,"evaluation_scope":"local","decision":"deny","basis":"direct"}`,
@@ -371,6 +401,38 @@ func TestSafeClientLocalResourceDecisions(t *testing.T) {
 		})
 
 		require.ErrorIs(t, err, interfaces.ErrPermissionAccountNotActive)
+	})
+
+	t.Run("rejects an empty success response as a protocol error", func(t *testing.T) {
+		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+
+		_, err := client.localResourceDecisions(context.Background(), interfaces.LocalPermissionFilter{
+			Accessor:     interfaces.PermissionAccessor{ID: "u1"},
+			ResourceType: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			ResourceIDs:  []string{"resource-1"},
+			Operations:   []string{interfaces.OPERATION_TYPE_VIEW_DETAIL},
+		})
+
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, interfaces.ErrPermissionAccountNotActive)
+		assert.Contains(t, err.Error(), "empty response body")
+	})
+
+	t.Run("returns a response body read error", func(t *testing.T) {
+		client := newSafeReadErrorClient()
+
+		_, err := client.localResourceDecisions(context.Background(), interfaces.LocalPermissionFilter{
+			Accessor:     interfaces.PermissionAccessor{ID: "u1"},
+			ResourceType: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			ResourceIDs:  []string{"resource-1"},
+			Operations:   []string{interfaces.OPERATION_TYPE_VIEW_DETAIL},
+		})
+
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, interfaces.ErrPermissionAccountNotActive)
+		assert.ErrorIs(t, err, io.ErrUnexpectedEOF)
 	})
 
 	t.Run("rejects a partially omitted resource instead of treating it as none", func(t *testing.T) {
@@ -828,6 +890,22 @@ func newSafeTestClient(t *testing.T, handler http.HandlerFunc) *safeClient {
 	}
 }
 
+func newSafeReadErrorClient() *safeClient {
+	return &safeClient{
+		baseURL: "http://safe.test",
+		http: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     make(http.Header),
+					Body:       readErrorBody{},
+					Request:    req,
+				}, nil
+			}),
+		},
+	}
+}
+
 func boolJSON(value bool) string {
 	if value {
 		return "true"
@@ -847,4 +925,14 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
+}
+
+type readErrorBody struct{}
+
+func (readErrorBody) Read([]byte) (int, error) {
+	return 0, io.ErrUnexpectedEOF
+}
+
+func (readErrorBody) Close() error {
+	return nil
 }
