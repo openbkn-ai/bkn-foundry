@@ -1,0 +1,33 @@
+{
+  "lifecycle_evidence": [
+    {
+      "kind": "knowledge_network_owner",
+      "accessor_id": "owner-user-id",
+      "object": "knowledge_network:knowledge-network-id",
+      "operation": "authorize",
+      "evidence_ref": "bkn-backend:t_knowledge_network:knowledge-network-id"
+    },
+    {
+      "kind": "action_type_creator",
+      "accessor_id": "creator-user-id",
+      "object": "action_type:action-type-id",
+      "operation": "execute",
+      "evidence_ref": "bkn-backend:t_action_type:action-type-id"
+    }
+  ],
+  "ee": {
+    "assembly": {
+      "was_assembled": false,
+      "evidence_ref": "release-ledger-reference"
+    },
+    "rule_evidence": [
+      {
+        "grant_id": "historical-ee-grant-id",
+        "expected_subject_type": "user",
+        "published_writer_evidence": "published-writer-audit-reference",
+        "runtime_usage_evidence": "historical-runtime-decision-reference"
+      }
+    ],
+    "activation": null
+  }
+}
