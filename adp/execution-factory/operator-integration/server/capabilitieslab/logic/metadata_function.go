@@ -11,6 +11,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab/model"
 )
 
+//nolint:unused // Retained as a public metadata extraction helper for future callers.
 func functionCodeFromToolMetadata(tool *client.ToolDetail) string {
 	metadata := functionMetadataFromTool(tool)
 	return metadata.Code

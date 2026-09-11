@@ -72,8 +72,8 @@ func OperationAudit(recorder interface {
 			FailureCode:    failureCode,
 			FailureMessage: failureMessage,
 		}
-		if err := recorder.Record(c.Request.Context(), entry); err != nil { /* management result is never rolled back for audit failure */
-		}
+		// The management result is never rolled back for audit failure.
+		_ = recorder.Record(c.Request.Context(), entry)
 	}
 }
 

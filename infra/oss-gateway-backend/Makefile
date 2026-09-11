@@ -1,9 +1,10 @@
-.PHONY: help build run test test-coverage clean docker-build docker-up docker-down
+.PHONY: help build run lint test test-coverage clean docker-build docker-up docker-down
 
 help:
 	@echo "Available commands:"
 	@echo "  make build         - Build the application"
 	@echo "  make run           - Run the server"
+	@echo "  make lint          - Run golangci-lint"
 	@echo "  make test          - Run tests"
 	@echo "  make test-coverage - Run tests with coverage report"
 	@echo "  make clean         - Clean build artifacts"
@@ -16,6 +17,9 @@ build:
 
 run:
 	go run main.go
+
+lint:
+	golangci-lint run ./...
 
 test:
 	go test -v ./...

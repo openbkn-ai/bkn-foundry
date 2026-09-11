@@ -110,7 +110,7 @@ func (level *Level) UnmarshalJSON(data []byte) error {
 	}
 	var value string
 	if err := json.Unmarshal(data, &value); err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalidLevel, err)
+		return fmt.Errorf("%w: %w", ErrInvalidLevel, err)
 	}
 	parsed, err := Parse(value)
 	if err != nil {

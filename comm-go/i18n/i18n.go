@@ -129,6 +129,7 @@ func loadCatalog(localeDir string, configuredDefaultLocale string) (*catalog, er
 
 		filename := filepath.Join(localeDir, entry.Name())
 		logger.Infof("load locale file: %s", filename)
+		//nolint:gosec // filename is joined from the configured locale directory and a validated entry name.
 		contents, readErr := os.ReadFile(filename)
 		if readErr != nil {
 			errs = append(errs, fmt.Errorf("read locale file %s: %w", filename, readErr))
@@ -247,8 +248,8 @@ func validateCatalog(loaded *catalog) error {
 }
 
 func validateTemplateFields(baseLocale, locale, messageID string, baseMessage, message *Message) error {
-	baseFields := templateFields(baseMessage.template.Tree.Root)
-	fields := templateFields(message.template.Tree.Root)
+	baseFields := templateFields(baseMessage.template.Root)
+	fields := templateFields(message.template.Root)
 	if len(baseFields) != len(fields) {
 		return fmt.Errorf("locale %s messageId %s template field count differs from %s", locale, messageID, baseLocale)
 	}

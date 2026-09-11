@@ -102,6 +102,7 @@ func TestUnknownMinEditionPanics(t *testing.T) {
 	// unrecognised tier ranks with community, so every licence clears it and the
 	// paid entry is free. Caught in MarkAssembled, one place for every socket.
 	msg := mustPanic(t, "misspelt MinEdition", func() {
+		//nolint:misspell // Intentionally invalid edition for validation coverage.
 		r.Add("probe", "context_probe", licverify.Edition("enterprize"), entry{"probe"})
 	})
 	if !strings.Contains(msg, "unknown edition") {

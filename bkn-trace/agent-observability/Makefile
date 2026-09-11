@@ -23,7 +23,7 @@ OPENSEARCH_INTEGRATION_PACKAGE := ./src/drivenadapter/httpaccess/opensearchproje
 	docker-build helm-lint helm-package check-swag-version gen-swag check-swag view-swag clean-swag
 
 lint:
-	GOCACHE=$(GOCACHE) go vet ./...
+	GOCACHE=$(GOCACHE) golangci-lint run ./...
 
 license-check:
 	python3 scripts/check_license_headers.py

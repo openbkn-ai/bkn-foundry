@@ -57,6 +57,7 @@ func DefaultGate() Gate {
 func defaultHubGate() (*HubGate, error) {
 	base := os.Getenv("BKN_SAFE_URL")
 	if base == "" {
+		//nolint:nilnil // An unset hub deliberately selects community mode.
 		return nil, nil
 	}
 

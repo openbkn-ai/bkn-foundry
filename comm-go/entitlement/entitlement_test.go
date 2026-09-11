@@ -169,6 +169,7 @@ func TestMarkAssembledRejectsAnUnknownEdition(t *testing.T) {
 	// through to 0), so AtLeast(min) is true for every licence and the paid
 	// capability silently becomes free.
 	msg := mustPanic(t, "misspelt MinEdition", func() {
+		//nolint:misspell // Intentionally invalid edition for validation coverage.
 		MarkAssembled("audit", licverify.Edition("enterprize"))
 	})
 	if !strings.Contains(msg, "unknown edition") {

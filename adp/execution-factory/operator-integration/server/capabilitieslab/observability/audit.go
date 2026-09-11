@@ -32,5 +32,5 @@ func WriteAuditEvent(event AuditEvent) {
 		return
 	}
 
-	fmt.Fprintln(os.Stdout, string(payload))
+	_, _ = fmt.Fprintln(os.Stdout, string(payload))
 }

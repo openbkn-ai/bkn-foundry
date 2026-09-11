@@ -9,7 +9,6 @@ import (
 
 	"github.com/creasty/defaults"
 	"github.com/google/uuid"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	icommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
@@ -81,7 +80,7 @@ func (s *ToolServiceImpl) importPostProcess(ctx context.Context, createBoxMap, u
 		// Record design logs and subsequent notifications (internal calls are not recorded)
 		if accessor != nil {
 			go func() {
-				accountAuthContext, ok := common.GetAccountAuthContextFromCtx(ctx)
+				accountAuthContext, ok := icommon.GetAccountAuthContextFromCtx(ctx)
 				if !ok {
 					s.Logger.WithContext(ctx).Warnf("[importPostProcess] GetAccountAuthContextFromCtx err :%v", err)
 					return
@@ -137,7 +136,7 @@ func (s *ToolServiceImpl) importPostProcess(ctx context.Context, createBoxMap, u
 		// Record design logs and subsequent notifications (internal calls are not recorded)
 		if accessor != nil {
 			go func() {
-				accountAuthContext, ok := common.GetAccountAuthContextFromCtx(ctx)
+				accountAuthContext, ok := icommon.GetAccountAuthContextFromCtx(ctx)
 				if !ok {
 					s.Logger.WithContext(ctx).Warnf("[importPostProcess] GetAccountAuthContextFromCtx err :%v", err)
 					return

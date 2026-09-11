@@ -156,6 +156,8 @@ func NewDB(dbConfig *DBConfig) (*DB, error) {
 
 // FOR UT
 func (db *DB) Close() error {
-	db.reader.Close()
+	if err := db.reader.Close(); err != nil {
+		return err
+	}
 	return db.writer.Close()
 }

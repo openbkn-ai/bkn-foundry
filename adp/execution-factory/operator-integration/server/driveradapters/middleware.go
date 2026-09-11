@@ -167,6 +167,7 @@ func safeRequestBodySummary(contentType string, body []byte) map[string]interfac
 	return summary
 }
 
+//nolint:unused // Retained for request payload decoding extensions.
 func byteToInterface(byt []byte) interface{} {
 	m := map[string]interface{}{}
 	err := jsoniter.Unmarshal(byt, &m)

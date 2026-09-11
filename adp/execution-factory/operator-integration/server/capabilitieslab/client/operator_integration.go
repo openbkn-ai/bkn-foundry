@@ -64,7 +64,7 @@ func (c *OperatorIntegrationClient) Ping(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= http.StatusBadRequest {
 		return fmt.Errorf("upstream health status %d", resp.StatusCode)
@@ -502,7 +502,7 @@ func (c *OperatorIntegrationClient) doJSONWithUser(
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	payload, err := io.ReadAll(res.Body)
 	if err != nil {

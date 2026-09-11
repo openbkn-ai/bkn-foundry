@@ -94,7 +94,7 @@ func ParsePypi(ctx context.Context, req *ParsePypiReq) (resp *ParsePypiResp, err
 		return nil, errors.NewHTTPError(ctx, http.StatusInternalServerError, errors.ErrExtPypiRepoUnavailable,
 			map[string]interface{}{"error": err.Error(), "url": url})
 	}
-	defer rsp.Body.Close()
+	defer func() { _ = rsp.Body.Close() }()
 	if rsp.StatusCode == http.StatusNotFound {
 		return &ParsePypiResp{
 			PackageName: packageName,

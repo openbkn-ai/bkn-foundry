@@ -71,7 +71,7 @@ func (c *OperatorIntegrationClient) ExecuteFunction(
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	payload, err := io.ReadAll(res.Body)
 	if err != nil {

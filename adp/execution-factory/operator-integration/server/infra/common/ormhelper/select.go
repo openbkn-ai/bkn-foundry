@@ -367,7 +367,7 @@ func (s *SelectBuilder) First(ctx context.Context, dest interface{}) error {
 
 	// Field map scanning using reflection.
 	destValue := reflect.ValueOf(dest)
-	if destValue.Kind() != reflect.Ptr {
+	if destValue.Kind() != reflect.Pointer {
 		return fmt.Errorf("dest must be a pointer")
 	}
 

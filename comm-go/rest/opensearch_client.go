@@ -42,6 +42,7 @@ func NewOpenSearchClient(cfg OpenSearchClientConfig) *opensearch.Client {
 		ExpectContinueTimeout: 30 * time.Second, // Wait time for the first response.
 		MaxIdleConnsPerHost:   500,              // Maximum idle connections per host.
 		TLSHandshakeTimeout:   30 * time.Second,
+		//nolint:gosec // Existing deployments may use self-signed certificates.
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},

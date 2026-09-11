@@ -193,7 +193,7 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 	var needUpdate bool
 	switch req.MetadataType {
 	case interfaces.MetadataTypeAPI:
-		needUpdate = req.OpenAPIInput != nil && req.OpenAPIInput.Data != nil
+		needUpdate = req.OpenAPIInput != nil && req.Data != nil
 	case interfaces.MetadataTypeFunc:
 		// Only changing dependencies and parameter definitions without changing the code is also legal editing, so it is no longer required to include code.
 		// When code is empty, the stored code will be used, see resolveFunctionCode below.

@@ -66,7 +66,7 @@ func (s *structScanner) ScanOne(row *sql.Row, dest interface{}) error {
 // ScanOneWithColumns scans a single row into a structure (supports field mapping)
 func (s *structScanner) ScanOneWithColumns(row *sql.Row, dest interface{}, columns []string) error {
 	destValue := reflect.ValueOf(dest)
-	if destValue.Kind() != reflect.Ptr {
+	if destValue.Kind() != reflect.Pointer {
 		return fmt.Errorf("dest must be a pointer")
 	}
 
@@ -89,7 +89,7 @@ func (s *structScanner) ScanOneWithColumns(row *sql.Row, dest interface{}, colum
 // ScanMany scans multiple rows into structure slices.
 func (s *structScanner) ScanMany(rows *sql.Rows, dest interface{}) error {
 	destValue := reflect.ValueOf(dest)
-	if destValue.Kind() != reflect.Ptr {
+	if destValue.Kind() != reflect.Pointer {
 		return fmt.Errorf("dest must be a pointer")
 	}
 
@@ -105,7 +105,7 @@ func (s *structScanner) ScanMany(rows *sql.Rows, dest interface{}) error {
 	// If it is a pointer type, get the actual structure type.
 	structType := elemType
 	isPointer := false
-	if elemType.Kind() == reflect.Ptr {
+	if elemType.Kind() == reflect.Pointer {
 		isPointer = true
 		structType = elemType.Elem()
 	}

@@ -26,5 +26,6 @@ func (dmStmt DMStmt) Exec(args []driver.Value) (driver.Result, error) {
 	if os.Getenv("RDS_SDK_DEBUG") == "true" {
 		fmt.Println("stmt exec: ", args)
 	}
+	//nolint:staticcheck // driver.Stmt requires the legacy Exec method.
 	return dmStmt.Stmt.Exec(args)
 }
