@@ -187,11 +187,10 @@ components:
       additionalProperties: false
       properties:
         accessor:
+          $ref: '#/components/schemas/Subject'
         object_type_ref:
           type: string
           pattern: '^[a-z0-9][a-z0-9_-]{0,39}/[a-z0-9][a-z0-9_-]{0,39}$'
-        object_type_ref:
-          type: string
         reason:
           type: string
           minLength: 1

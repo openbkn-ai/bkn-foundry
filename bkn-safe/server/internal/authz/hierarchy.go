@@ -5,6 +5,7 @@
 package authz
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"sort"
@@ -27,28 +28,28 @@ const maxHierarchyDepth = 64
 // level's mapping ("modify" on a table becomes "resource_manage" on its
 // catalog), and the caller's spelling is what the answer must be keyed by.
 type climber struct {
-	origin  ResourceRef
-	node    ResourceRef
-	ops     map[string]string
-	visited map[ResourceRef]bool
+	origin   ResourceRef
+	node     ResourceRef
+	ops      map[string]string
+	fallback map[string]Evaluation
+	visited  map[ResourceRef]bool
 }
 
 // climb resolves, for a batch of resources, which of the still-missing
 // operations the accessor holds through an ancestor.
 //
-// decide answers "which of these ops does the accessor hold on this one node".
-// Passing it in is what lets the single-decision path (casbin Enforce) and the
-// list-page path (the pre-resolved grant index) share one walk: the two must
-// never disagree about inheritance, and the only way to guarantee that is for
-// them to run the same code.
+// decide answers the structured local result for each op on this one node.
+// Passing it in lets the single-decision and list-page paths share one walk:
+// they must never disagree about inheritance, and the only way to guarantee
+// that is for them to run the same code.
 //
-// The returned map contains only operations that were found — resources with
-// nothing inherited are absent, so a caller reads it as an overlay on what it
-// already decided.
+// The returned map contains only inherited allow or deny decisions. Resources
+// with no parent conclusion are absent, so the caller can apply the child's
+// deferred wildcard allow or the effective default deny.
 func (en *Enforcer) climb(
-	decide func(ResourceRef, []string) (map[string]string, error),
+	decide func(ResourceRef, []string) (map[string]Evaluation, error),
 	want map[ResourceRef][]string,
-) (map[ResourceRef]map[string]bool, error) {
+) (map[ResourceRef]map[string]Evaluation, error) {
 	if en.db == nil || len(want) == 0 {
 		return nil, nil
 	}
@@ -62,12 +63,24 @@ func (en *Enforcer) climb(
 			pending[op] = op // at the resource itself, no translation has happened yet
 		}
 		active = append(active, &climber{
-			origin: r, node: r, ops: pending,
+			origin: r, node: r, ops: pending, fallback: map[string]Evaluation{},
 			visited: map[ResourceRef]bool{r: true},
 		})
 	}
 
-	found := map[ResourceRef]map[string]bool{}
+	found := map[ResourceRef]map[string]Evaluation{}
+	resolveFallback := func(c *climber, asked string) {
+		fallback, ok := c.fallback[asked]
+		if !ok {
+			return
+		}
+		if found[c.origin] == nil {
+			found[c.origin] = map[string]Evaluation{}
+		}
+		fallback.Scope = ScopeEffective
+		fallback.Basis = BasisInherited
+		found[c.origin][asked] = fallback
+	}
 	for level := 0; len(active) > 0 && level < maxHierarchyDepth; level++ {
 		// The operation mapping is consulted BEFORE the ownership rows, and the
 		// order matters for cost: a type that inherits nothing (every type but
@@ -87,7 +100,14 @@ func (en *Enforcer) climb(
 		}
 		inheriting := make([]*climber, 0, len(active))
 		for _, c := range active {
-			if len(opMaps[c.node.Type]) > 0 {
+			mapping := opMaps[c.node.Type]
+			for asked, here := range c.ops {
+				if mapping[here] == "" {
+					resolveFallback(c, asked)
+					delete(c.ops, asked)
+				}
+			}
+			if len(c.ops) > 0 {
 				inheriting = append(inheriting, c)
 			}
 		}
@@ -102,11 +122,14 @@ func (en *Enforcer) climb(
 
 		// Two resources under the same catalog asking about the same operations
 		// are one decision, not two. On a list page that is the common case.
-		verdicts := map[string]map[string]string{}
+		verdicts := map[string]map[string]Evaluation{}
 		next := make([]*climber, 0, len(active))
 		for _, c := range active {
 			parent, ok := parents[c.node]
 			if !ok {
+				for asked := range c.ops {
+					resolveFallback(c, asked)
+				}
 				continue // top of the chain: nothing above to inherit from
 			}
 			if c.visited[parent] {
@@ -116,6 +139,9 @@ func (en *Enforcer) climb(
 				slog.Warn("resource hierarchy has a cycle; stopping the climb",
 					"origin_type", c.origin.Type, "origin_id", c.origin.ID,
 					"repeated_type", parent.Type, "repeated_id", parent.ID)
+				for asked := range c.ops {
+					resolveFallback(c, asked)
+				}
 				continue
 			}
 			translated := map[string]string{}
@@ -144,21 +170,29 @@ func (en *Enforcer) climb(
 				verdicts[key] = decisions
 			}
 			for asked, up := range translated {
-				effect := decisions[up]
-				if effect == EffectDeny {
-					// A deny encountered anywhere on the explicit inheritance
-					// path is terminal; a broader ancestor cannot restore it.
+				decision := decisions[up]
+				switch {
+				case decision.Decision == DecisionDeny:
+					if found[c.origin] == nil {
+						found[c.origin] = map[string]Evaluation{}
+					}
+					decision.Scope = ScopeEffective
+					decision.Basis = BasisInherited
+					found[c.origin][asked] = decision
 					delete(translated, asked)
-					continue
+				case decision.Decision == DecisionAllow && decision.Basis != BasisWildcard:
+					if found[c.origin] == nil {
+						found[c.origin] = map[string]Evaluation{}
+					}
+					decision.Scope = ScopeEffective
+					decision.Basis = BasisInherited
+					found[c.origin][asked] = decision
+					delete(translated, asked)
+				case decision.Decision == DecisionAllow && decision.Basis == BasisWildcard:
+					// The parent's wildcard allow is itself behind the parent's
+					// parent. Remember it only as a fallback while climbing on.
+					c.fallback[asked] = decision
 				}
-				if effect != EffectAllow {
-					continue
-				}
-				if found[c.origin] == nil {
-					found[c.origin] = map[string]bool{}
-				}
-				found[c.origin][asked] = true
-				delete(translated, asked)
 			}
 			if len(translated) == 0 {
 				continue // everything this resource still wanted was answered here
@@ -174,6 +208,154 @@ func (en *Enforcer) climb(
 			"depth", maxHierarchyDepth, "unfinished", len(active))
 	}
 	return found, nil
+}
+
+// localDecisionsWithIndex is the single batched local layer. It intentionally
+// has no scope switch: callers cannot accidentally turn a local answer into a
+// final authorization result by changing an argument.
+func (en *Enforcer) localDecisionsWithIndex(ctx context.Context, accessorID string, idx *grantIndex,
+	want map[ResourceRef][]string) (map[ResourceRef]map[string]Evaluation, error) {
+	local := make(map[ResourceRef]map[string]Evaluation, len(want))
+	for resource, ops := range want {
+		decisions, err := en.localDecisions(ctx, accessorID, idx, resource, ops)
+		if err != nil {
+			return nil, err
+		}
+		local[resource] = decisions
+	}
+	return local, nil
+}
+
+// baseEffectiveDecisionsWithIndex resolves local rules, trusted parents and
+// default deny. It is an internal calculation layer, not the business answer:
+// operationDecisionsWithIndex is the only final batch entry point.
+func (en *Enforcer) baseEffectiveDecisionsWithIndex(ctx context.Context, accessorID string, idx *grantIndex,
+	want map[ResourceRef][]string) (map[ResourceRef]map[string]Evaluation, error) {
+	local, err := en.localDecisionsWithIndex(ctx, accessorID, idx, want)
+	if err != nil {
+		return nil, err
+	}
+
+	missing := map[ResourceRef][]string{}
+	for resource, ops := range want {
+		for _, op := range ops {
+			d := local[resource][op]
+			if d.Decision == DecisionNone || (d.Decision == DecisionAllow && d.Basis == BasisWildcard) {
+				missing[resource] = append(missing[resource], op)
+			}
+		}
+	}
+	inherited, err := en.climb(func(node ResourceRef, ops []string) (map[string]Evaluation, error) {
+		return en.localDecisions(ctx, accessorID, idx, node, ops)
+	}, missing)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(map[ResourceRef]map[string]Evaluation, len(want))
+	for resource, ops := range want {
+		out[resource] = make(map[string]Evaluation, len(ops))
+		for _, op := range ops {
+			parentDecision, inheritedOK := inherited[resource][op]
+			out[resource][op] = resolveEffective(local[resource][op], parentDecision, inheritedOK)
+		}
+	}
+	return out, nil
+}
+
+// operationDecisionsWithIndex is the sole final batch decision layer used by
+// checks, AllowedOps and resource filtering. It evaluates each direct operation
+// requirement from the same base-effective batch without recursively applying
+// that requirement's own metadata.
+func (en *Enforcer) operationDecisionsWithIndex(ctx context.Context, accessorID string, idx *grantIndex,
+	want map[ResourceRef][]string, validateProvenance bool) (map[ResourceRef]map[string]Evaluation, error) {
+	requires, err := en.requirementsFor(ctx, want)
+	if err != nil {
+		return nil, err
+	}
+	expanded := expandWithRequirements(want, requires)
+	base, err := en.baseEffectiveDecisionsWithIndex(ctx, accessorID, idx, expanded)
+	if err != nil {
+		return nil, err
+	}
+	if validateProvenance {
+		if err := en.applyManagedProxyProvenanceToBatch(ctx, accessorID, base); err != nil {
+			return nil, err
+		}
+	}
+
+	out := make(map[ResourceRef]map[string]Evaluation, len(want))
+	for resource, operations := range want {
+		out[resource] = make(map[string]Evaluation, len(operations))
+		for _, operation := range operations {
+			decision := base[resource][operation]
+			decision.Requirements = append([]string(nil), requires[resource.Type][operation]...)
+			if decision.Allowed() {
+				for _, required := range decision.Requirements {
+					requirement := base[resource][required]
+					if requirement.Allowed() {
+						continue
+					}
+					decision.Decision = DecisionDeny
+					decision.Basis = BasisRequires
+					decision.DeniedRequirement = required
+					decision.RequirementBasis = requirement.Basis
+					break
+				}
+			}
+			out[resource][operation] = decision
+		}
+	}
+	return out, nil
+}
+
+// applyManagedProxyProvenanceToBatch makes source validity part of every base
+// decision, including prerequisites. Applying it only to the target after the
+// requires check would let an obsolete view grant satisfy a modify prerequisite.
+func (en *Enforcer) applyManagedProxyProvenanceToBatch(ctx context.Context, accessorID string,
+	decisions map[ResourceRef]map[string]Evaluation) error {
+	if en.db == nil {
+		return nil
+	}
+	// Deny is already final for provenance purposes. Avoid touching the proxy
+	// tables on the common rejection path, matching the former single-decision
+	// implementation and keeping failed checks cheap.
+	hasAllow := false
+	for _, operations := range decisions {
+		for _, decision := range operations {
+			if decision.Allowed() {
+				hasAllow = true
+				break
+			}
+		}
+		if hasAllow {
+			break
+		}
+	}
+	if !hasAllow {
+		return nil
+	}
+	managed, err := en.isManagedProxyContext(ctx, accessorID)
+	if err != nil || !managed {
+		return err
+	}
+	current, err := en.currentProxyPermissions(ctx, accessorID)
+	if err != nil {
+		return err
+	}
+	for resource, operations := range decisions {
+		for operation, decision := range operations {
+			if !decision.Allowed() || current[proxyPermission{
+				ResourceType: resource.Type, ResourceID: resource.ID, Operation: operation,
+			}] {
+				continue
+			}
+			decision.Decision = DecisionDeny
+			decision.Basis = BasisDirect
+			operations[operation] = decision
+		}
+	}
+	return nil
 }
 
 // parentsOf loads the single-hop parent of every node the climbers currently
@@ -267,11 +449,11 @@ func (en *Enforcer) inheritedResources(accessorID, resourceType, op string, visi
 	// and the size question has to be answered there rather than by quietly
 	// truncating it: a short list would read as "these are the tables you may
 	// see".
-	wide, err := en.e.Enforce(accessorID, obj(parentType, "*"), parentOp)
+	idx, err := en.grantIndex(accessorID)
 	if err != nil {
 		return nil, err
 	}
-	if wide {
+	if idx.decide(ResourceRef{Type: parentType, ID: "*"}, []string{parentOp})[parentOp] == EffectAllow {
 		return en.childrenOf(resourceType, parentType, nil)
 	}
 
@@ -319,6 +501,7 @@ func (en *Enforcer) publicInstances(resourceType, op string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	rows = activePolicyRows(rows)
 	prefix := resourceType + ":"
 	seen := map[string]bool{}
 	out := make([]string, 0, len(rows))
@@ -327,7 +510,7 @@ func (en *Enforcer) publicInstances(resourceType, op string) ([]string, error) {
 			continue
 		}
 		o, act := row[1], row[2]
-		if act != op && act != ActAll {
+		if act != op && act != ActAll && !isCommunityBundleRow(row) {
 			continue
 		}
 		if len(o) <= len(prefix) || o[:len(prefix)] != prefix {
@@ -399,33 +582,6 @@ func distinctSorted(m map[string]string) []string {
 	return out
 }
 
-// enforceOn is the single-decision evaluator handed to climb: it asks casbin
-// about one ancestor node, exactly as Check asks about the resource itself.
-// inheritedOps reports which of the missing operations the accessor holds on an
-// ancestor of the resource. The single-resource entry point behind Check and
-// AllowedOps.
-func (en *Enforcer) inheritedOps(accessorID, resourceType, resourceID string, missing []string) (map[string]bool, error) {
-	idx, err := en.grantIndex(accessorID)
-	if err != nil {
-		return nil, err
-	}
-	return en.inheritedOpsWithIndex(idx, resourceType, resourceID, missing)
-}
-
-func (en *Enforcer) inheritedOpsWithIndex(idx *grantIndex, resourceType, resourceID string, missing []string) (map[string]bool, error) {
-	if len(missing) == 0 {
-		return nil, nil
-	}
-	r := ResourceRef{Type: resourceType, ID: resourceID}
-	found, err := en.climb(func(node ResourceRef, ops []string) (map[string]string, error) {
-		return idx.decide(node, ops), nil
-	}, map[ResourceRef][]string{r: missing})
-	if err != nil {
-		return nil, err
-	}
-	return found[r], nil
-}
-
 // Ownership flip directions. A preview reports both because a synchroniser
 // keys its "safe to push" decision on the total: counting only widening would
 // let a re-parenting that REMOVES someone's access report zero.
@@ -461,6 +617,11 @@ type OwnershipFlip struct {
 // therefore the child. A preview that only read the immediate parent would
 // under-report, and a safety preview that under-reports is worse than none.
 func (en *Enforcer) PreviewOwnership(resourceType, parentType string, links map[string]string, limit int) ([]OwnershipFlip, int, error) {
+	return en.PreviewOwnershipContext(context.Background(), resourceType, parentType, links, limit)
+}
+
+// PreviewOwnershipContext is the request-aware form used by the HTTP API.
+func (en *Enforcer) PreviewOwnershipContext(ctx context.Context, resourceType, parentType string, links map[string]string, limit int) ([]OwnershipFlip, int, error) {
 	if en.db == nil || len(links) == 0 {
 		return nil, 0, nil
 	}
@@ -500,9 +661,10 @@ func (en *Enforcer) PreviewOwnership(resourceType, parentType string, links map[
 		parentRefs = append(parentRefs, ResourceRef{Type: parentType, ID: id})
 	}
 
-	// Which children are being MOVED. Only those can lose anything: a resource
-	// that had no parent, or keeps the one it has, cannot stop reaching a grant
-	// it already reaches.
+	// Which children are being MOVED. Their old parents must be included in the
+	// candidate scan because moving can remove an inherited grant. First-time
+	// registration can also remove a wildcard fallback when the proposed parent
+	// explicitly denies, so wildcard subjects remain candidates independently.
 	current, err := en.currentParents(resourceType, children)
 	if err != nil {
 		return nil, 0, err
@@ -547,21 +709,21 @@ func (en *Enforcer) PreviewOwnership(resourceType, parentType string, links map[
 		// What the subject may do on the proposed parents — through direct
 		// grants, roles, wildcards, the grant-to-everyone subject, AND the
 		// parents' own ancestors. This is the enforcer's answer, not a row scan.
-		onParents, err := en.FilterResourceOps(sub, parentRefs, nil, parentOps)
+		onParents, err := en.FilterResourceOpsScoped(ctx, sub, parentRefs, nil, parentOps, ScopeEffective)
 		if err != nil {
 			return nil, 0, err
 		}
-		heldOnParent := make(map[string]map[string]bool, len(onParents))
+		parentDecisions := make(map[string]map[string]Evaluation, len(onParents))
 		for _, p := range onParents {
-			set := make(map[string]bool, len(p.Operations))
-			for _, op := range p.Operations {
-				set[op] = true
+			set := make(map[string]Evaluation, len(p.Decisions))
+			for _, decision := range p.Decisions {
+				set[decision.Operation] = Evaluation{Scope: ScopeEffective, Decision: decision.Decision, Basis: decision.Basis}
 			}
-			heldOnParent[p.ID] = set
+			parentDecisions[p.ID] = set
 		}
 		// What the subject may do on the children TODAY, including whatever the
 		// current ownership rows already confer.
-		onChildren, err := en.FilterResourceOps(sub, childRefs, nil, childOps)
+		onChildren, err := en.FilterResourceOpsScoped(ctx, sub, childRefs, nil, childOps, ScopeEffective)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -574,34 +736,31 @@ func (en *Enforcer) PreviewOwnership(resourceType, parentType string, links map[
 			have[c.ID] = set
 		}
 
+		localChildren, err := en.FilterResourceOpsScoped(ctx, sub, childRefs, nil, childOps, ScopeLocal)
+		if err != nil {
+			return nil, 0, err
+		}
+		local := make(map[string]map[string]Evaluation, len(localChildren))
+		for _, child := range localChildren {
+			set := make(map[string]Evaluation, len(child.Decisions))
+			for _, decision := range child.Decisions {
+				set[decision.Operation] = Evaluation{Scope: ScopeLocal, Decision: decision.Decision, Basis: decision.Basis}
+			}
+			local[child.ID] = set
+		}
 		for _, child := range children {
-			gained := map[string]bool{}
-			for _, childOp := range childOps {
-				if heldOnParent[links[child]][mapping[childOp]] {
-					gained[childOp] = true
-				}
-			}
 			for _, op := range childOps {
-				if gained[op] && !have[child][op] {
+				parentDecision := parentDecisions[links[child]][mapping[op]]
+				// A default parent deny means that no parent rule decided. In that
+				// case the child's wildcard allow remains the documented fallback;
+				// only a non-default parent result participates as inherited.
+				hasInherited := parentDecision.Basis != BasisDefault && parentDecision.Decision != DecisionNone
+				after := resolveEffective(local[child][op], parentDecision, hasInherited).Allowed()
+				before := have[child][op]
+				switch {
+				case after && !before:
 					record(sub, child, op, FlipGrant)
-				}
-			}
-			if !moved[child] {
-				continue
-			}
-			// A move can take access away: what the subject holds today may have
-			// come from the OLD parent, and the new one need not confer it. What
-			// survives is the grant on the resource itself plus what the new
-			// parent confers.
-			for _, op := range childOps {
-				if !have[child][op] || gained[op] {
-					continue
-				}
-				direct, err := en.e.Enforce(sub, obj(resourceType, child), op)
-				if err != nil {
-					return nil, 0, err
-				}
-				if !direct {
+				case !after && before:
 					record(sub, child, op, FlipRevoke)
 				}
 			}

@@ -46,6 +46,10 @@ func (vbs *vegaBackendService) GetResourceByID(ctx context.Context, id string) (
 	return vbs.vba.GetResourceByID(ctx, id)
 }
 
+func (vbs *vegaBackendService) GetResourceSchema(ctx context.Context, id, operation string) (*interfaces.VegaResource, error) {
+	return vbs.vba.GetResourceSchema(ctx, id, operation)
+}
+
 func (vbs *vegaBackendService) CreateResource(ctx context.Context, req *interfaces.VegaResource) error {
 	return vbs.vba.CreateResource(ctx, req)
 }

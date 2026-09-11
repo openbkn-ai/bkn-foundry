@@ -71,3 +71,81 @@ func TestConceptGroupSingleResourceAuthorization(t *testing.T) {
 		})
 	}
 }
+
+func TestConceptGroupMembershipWritesRequireCanonicalGroupModify(t *testing.T) {
+	for _, strictMode := range []bool{true, false} {
+		t.Run(map[bool]string{true: "strict", false: "non-strict"}[strictMode], func(t *testing.T) {
+			for _, operation := range []struct {
+				name   string
+				invoke func(*conceptGroupService, context.Context) error
+			}{
+				{
+					name: "add",
+					invoke: func(service *conceptGroupService, ctx context.Context) error {
+						_, err := service.AddObjectTypesToConceptGroup(ctx, nil, "kn-1", interfaces.MAIN_BRANCH,
+							"cg-1", []interfaces.ID{{ID: "ot-1"}}, interfaces.ImportMode_Normal, strictMode)
+						return err
+					},
+				},
+				{
+					name: "delete",
+					invoke: func(service *conceptGroupService, ctx context.Context) error {
+						return service.DeleteObjectTypesFromGroup(ctx, nil, "kn-1", interfaces.MAIN_BRANCH,
+							"cg-1", []string{"ot-1"})
+					},
+				},
+			} {
+				t.Run(operation.name, func(t *testing.T) {
+					ctrl := gomock.NewController(t)
+					ps := bmock.NewMockPermissionService(ctrl)
+					denied := errors.New("denied")
+					ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+						Type: interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
+						ID:   "kn-1/cg-1",
+					}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(denied)
+
+					service := &conceptGroupService{ps: ps}
+					if err := operation.invoke(service, context.Background()); !errors.Is(err, denied) {
+						t.Fatalf("operation error = %v, want %v", err, denied)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestConceptGroupRelationReadRequiresCanonicalGroupView(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ps := bmock.NewMockPermissionService(ctrl)
+	denied := errors.New("denied")
+	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
+		ID:   "kn-1/cg-1",
+	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(denied)
+
+	service := &conceptGroupService{ps: ps}
+	_, err := service.ListConceptGroupRelations(context.Background(), interfaces.ConceptGroupRelationsQueryParams{
+		KNID:  "kn-1",
+		CGIDs: []string{"cg-1"},
+	})
+	if !errors.Is(err, denied) {
+		t.Fatalf("ListConceptGroupRelations() error = %v, want %v", err, denied)
+	}
+}
+
+func TestPublicConceptGroupValidationRequiresParentKNModify(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ps := bmock.NewMockPermissionService(ctrl)
+	denied := errors.New("denied")
+	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_KN,
+		ID:   "kn-1",
+	}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(denied)
+
+	service := &conceptGroupService{ps: ps}
+	err := service.ValidateConceptGroups(context.Background(), "kn-1", interfaces.MAIN_BRANCH,
+		[]*interfaces.ConceptGroup{{CGID: "cg-1"}}, true, nil, interfaces.ImportMode_Normal)
+	if !errors.Is(err, denied) {
+		t.Fatalf("ValidateConceptGroups() error = %v, want %v", err, denied)
+	}
+}

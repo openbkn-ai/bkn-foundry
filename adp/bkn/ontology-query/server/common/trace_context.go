@@ -193,15 +193,6 @@ func sanitizeBusinessTraceID(value string) string {
 	return value
 }
 
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value = strings.TrimSpace(value); value != "" {
-			return value
-		}
-	}
-	return ""
-}
-
 func sanitizeBaggage(baggage map[string]string) map[string]string {
 	if len(baggage) == 0 {
 		return nil

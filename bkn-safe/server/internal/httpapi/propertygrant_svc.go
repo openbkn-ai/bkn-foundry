@@ -27,18 +27,18 @@ func (services *propertyGrantManagementServices) AuthorizeUserGrants(
 	ctx context.Context,
 	operatorID, objectTypeRef string,
 ) (permdata.UserGrantAuthority, error) {
-	canGrant, err := services.enforcer.Check(operatorID, "admin-authz", "*", "grant")
+	canGrant, err := services.enforcer.CheckContext(ctx, operatorID, "admin-authz", "*", "grant")
 	if err != nil {
 		return permdata.UserGrantAuthority{}, err
 	}
-	canRevoke, err := services.enforcer.Check(operatorID, "admin-authz", "*", "revoke")
+	canRevoke, err := services.enforcer.CheckContext(ctx, operatorID, "admin-authz", "*", "revoke")
 	if err != nil {
 		return permdata.UserGrantAuthority{}, err
 	}
 	if canGrant && canRevoke {
 		return permdata.UserGrantAuthority{Allowed: true, Unrestricted: true}, nil
 	}
-	allowed, err := services.enforcer.Check(operatorID, "object_type", objectTypeRef, opAuthorize)
+	allowed, err := services.enforcer.CheckContext(ctx, operatorID, "object_type", objectTypeRef, opAuthorize)
 	if err != nil {
 		return permdata.UserGrantAuthority{}, err
 	}
@@ -52,7 +52,7 @@ func (services *propertyGrantManagementServices) AuthorizePlatformRoleGrants(
 	ctx context.Context,
 	operatorID string,
 ) (bool, error) {
-	return services.enforcer.Check(operatorID, "admin-role", "*", "permissions")
+	return services.enforcer.CheckContext(ctx, operatorID, "admin-role", "*", "permissions")
 }
 
 // EffectivePropertyLevels resolves the operator through the same base-level
@@ -62,9 +62,9 @@ func (services *propertyGrantManagementServices) EffectivePropertyLevels(
 	operatorID, objectTypeRef string,
 	propertyNames []string,
 ) (map[string]propertyaccess.Level, error) {
-	allowed, err := services.enforcer.FilterResourceOps(operatorID,
+	allowed, err := services.enforcer.FilterResourceOpsScoped(ctx, operatorID,
 		[]authz.ResourceRef{{Type: "object_type", ID: objectTypeRef}}, nil,
-		[]string{"view_detail", "query_data"})
+		[]string{"view_detail", "query_data"}, authz.ScopeEffective)
 	if err != nil {
 		return nil, err
 	}

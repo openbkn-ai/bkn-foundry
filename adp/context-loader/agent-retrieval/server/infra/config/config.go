@@ -65,7 +65,7 @@ type ObservabilityConfig struct {
 	TraceEnabled             bool                   `mapstructure:"traceEnabled"`
 	TraceProvider            string                 `mapstructure:"traceProvider"`
 	LogEnabled               bool                   `mapstructure:"logEnabled"`
-	HttpTraceFeedIngesterURL string                 `mapstructure:"httpTraceFeedIngesterUrl"`
+	HttpTraceFeedIngesterURL string                 `mapstructure:"httpTraceFeedIngesterUrl"` //nolint:staticcheck // Kept for configuration compatibility.
 	GrpcTraceFeedIngesterURL string                 `mapstructure:"grpcTraceFeedIngesterUrl"`
 }
 
@@ -120,7 +120,7 @@ func buildServiceURL(protocol, host string, port int, basePath, servicePath stri
 	buf.WriteString(protocol)
 	buf.WriteString("://")
 	buf.WriteString(host)
-	if port != 0 && !((protocol == "https" && port == 443) || (protocol == "http" && port == 80)) {
+	if port != 0 && (protocol != "https" || port != 443) && (protocol != "http" || port != 80) {
 		fmt.Fprintf(&buf, ":%d", port)
 	}
 	basePath = strings.TrimRight(basePath, "/")

@@ -261,6 +261,9 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 				kns.abortCreatedProxy(context.WithoutCancel(ctx), proxyPlan)
 			}
 		}()
+		if proxyPlan != nil {
+			ctx = interfaces.WithVerifiedDependencySources(ctx, proxyPlan.resolvedSources)
+		}
 	}
 
 	tx, err := kns.db.Begin()
@@ -270,7 +273,7 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 			berrors.BknBackend_KnowledgeNetwork_InternalError_BeginTransactionFailed).
 			WithErrorDetails(err.Error())
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Process creation.
 	if isCreate {
@@ -291,9 +294,8 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 				if err != nil {
 					logger.Errorf("CreateObjectTypes error: %s", err.Error())
 					span.SetStatus(codes.Error, "创建业务知识网络概念分组失败")
-					return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-						berrors.BknBackend_KnowledgeNetwork_InternalError_CreateObjectTypesFailed).
-						WithErrorDetails(err.Error())
+					return "", logics.PreserveHTTPError(ctx, err,
+						berrors.BknBackend_KnowledgeNetwork_InternalError_CreateObjectTypesFailed)
 				}
 			}
 		}
@@ -303,9 +305,8 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 			if err != nil {
 				logger.Errorf("CreateObjectTypes error: %s", err.Error())
 				span.SetStatus(codes.Error, "创建业务知识网络对象类失败")
-				return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_KnowledgeNetwork_InternalError_CreateObjectTypesFailed).
-					WithErrorDetails(err.Error())
+				return "", logics.PreserveHTTPError(ctx, err,
+					berrors.BknBackend_KnowledgeNetwork_InternalError_CreateObjectTypesFailed)
 			}
 		}
 
@@ -314,9 +315,8 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 			if err != nil {
 				logger.Errorf("CreateRelationTypes error: %s", err.Error())
 				span.SetStatus(codes.Error, "创建业务知识网络关系类失败")
-				return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_KnowledgeNetwork_InternalError_CreateRelationTypesFailed).
-					WithErrorDetails(err.Error())
+				return "", logics.PreserveHTTPError(ctx, err,
+					berrors.BknBackend_KnowledgeNetwork_InternalError_CreateRelationTypesFailed)
 			}
 		}
 
@@ -325,9 +325,8 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 			if err != nil {
 				logger.Errorf("CreateActionTypes error: %s", err.Error())
 				span.SetStatus(codes.Error, "创建业务知识网络动作类失败")
-				return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_KnowledgeNetwork_InternalError_CreateActionTypesFailed).
-					WithErrorDetails(err.Error())
+				return "", logics.PreserveHTTPError(ctx, err,
+					berrors.BknBackend_KnowledgeNetwork_InternalError_CreateActionTypesFailed)
 			}
 		}
 
@@ -370,9 +369,8 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 				if err != nil {
 					logger.Errorf("CreateObjectTypes error: %s", err.Error())
 					span.SetStatus(codes.Error, "创建业务知识网络概念分组失败")
-					return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-						berrors.BknBackend_KnowledgeNetwork_InternalError_CreateObjectTypesFailed).
-						WithErrorDetails(err.Error())
+					return "", logics.PreserveHTTPError(ctx, err,
+						berrors.BknBackend_KnowledgeNetwork_InternalError_CreateObjectTypesFailed)
 				}
 			}
 		}
@@ -382,9 +380,8 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 			if err != nil {
 				logger.Errorf("CreateObjectTypes error: %s", err.Error())
 				span.SetStatus(codes.Error, "创建业务知识网络对象类失败")
-				return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_KnowledgeNetwork_InternalError_CreateObjectTypesFailed).
-					WithErrorDetails(err.Error())
+				return "", logics.PreserveHTTPError(ctx, err,
+					berrors.BknBackend_KnowledgeNetwork_InternalError_CreateObjectTypesFailed)
 			}
 		}
 
@@ -393,9 +390,8 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 			if err != nil {
 				logger.Errorf("CreateRelationTypes error: %s", err.Error())
 				span.SetStatus(codes.Error, "创建业务知识网络关系类失败")
-				return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_KnowledgeNetwork_InternalError_CreateRelationTypesFailed).
-					WithErrorDetails(err.Error())
+				return "", logics.PreserveHTTPError(ctx, err,
+					berrors.BknBackend_KnowledgeNetwork_InternalError_CreateRelationTypesFailed)
 			}
 		}
 
@@ -404,9 +400,8 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 			if err != nil {
 				logger.Errorf("CreateActionTypes error: %s", err.Error())
 				span.SetStatus(codes.Error, "创建业务知识网络动作类失败")
-				return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_KnowledgeNetwork_InternalError_CreateActionTypesFailed).
-					WithErrorDetails(err.Error())
+				return "", logics.PreserveHTTPError(ctx, err,
+					berrors.BknBackend_KnowledgeNetwork_InternalError_CreateActionTypesFailed)
 			}
 		}
 
@@ -608,6 +603,30 @@ func (kns *knowledgeNetworkService) resolveKNNavigationVisibility(ctx context.Co
 		}
 	}
 	return visibility, nil
+}
+
+func (kns *knowledgeNetworkService) ResolveKNReadAccess(ctx context.Context,
+	knID string, branch string) (interfaces.KNReadAccessMode, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Resolve knowledge network read access")
+	defer span.End()
+
+	visibility, err := kns.resolveKNNavigationVisibility(ctx, []string{knID}, branch)
+	if err != nil {
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
+		return "", err
+	}
+	if _, ok := visibility.operations[knID]; ok {
+		span.SetStatus(codes.Ok, "")
+		return interfaces.KN_READ_ACCESS_FULL, nil
+	}
+	if _, ok := visibility.childVisibleKNs[knID]; ok {
+		span.SetStatus(codes.Ok, "")
+		return interfaces.KN_READ_ACCESS_NAVIGATION_ONLY, nil
+	}
+
+	err = rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+	span.SetStatus(codes.Error, common.SafeErrorSummary(err))
+	return "", err
 }
 
 func restrictKNToNavigation(kn *interfaces.KN) {
@@ -1224,7 +1243,7 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 			WithErrorDetails(err.Error())
 	}
 
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Delete business knowledge networks.
 	rowsAffect, err := kns.kna.DeleteKN(ctx, tx, kn.KNID, kn.Branch)

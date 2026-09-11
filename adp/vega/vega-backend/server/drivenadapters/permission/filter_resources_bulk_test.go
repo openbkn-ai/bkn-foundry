@@ -20,27 +20,51 @@ import (
 	"vega-backend/interfaces"
 )
 
-// bknSafeStub mocks the two bkn-safe authz endpoints the adapter uses and counts
-// the round-trips, so tests can assert they do NOT scale with the resource count.
+// bknSafeStub mocks bkn-safe's effective resource filter and counts the
+// round-trips, so tests can assert they do NOT scale with the resource count.
 type bknSafeStub struct {
-	wildcard   bool     // obj="*" check result
-	accessible []string // ids returned by /authz/resources
-	checkCalls atomic.Int32
-	listCalls  atomic.Int32
+	allowAll    bool
+	allowedIDs  []string
+	filterCalls atomic.Int32
 }
 
 func (b *bknSafeStub) server() *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodPost && r.URL.Path == "/api/safe/v1/authz/check":
-			b.checkCalls.Add(1)
-			_ = json.NewEncoder(w).Encode(map[string]bool{"allowed": b.wildcard})
-		case r.Method == http.MethodGet && r.URL.Path == "/api/safe/v1/authz/resources":
-			b.listCalls.Add(1)
-			_ = json.NewEncoder(w).Encode(map[string][]string{"ids": b.accessible})
-		default:
+		if r.Method != http.MethodPost || r.URL.Path != "/api/safe/v1/authz/resource-filter" {
 			w.WriteHeader(http.StatusNotFound)
+			return
 		}
+		b.filterCalls.Add(1)
+		var req struct {
+			Resources            []interfaces.PermissionResource `json:"resources"`
+			VisibilityOperations []string                        `json:"visibility_operations"`
+			CandidateOperations  []string                        `json:"candidate_operations"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		allowedIDs := make(map[string]bool, len(b.allowedIDs))
+		for _, id := range b.allowedIDs {
+			allowedIDs[id] = true
+		}
+		resources := make([]map[string]any, 0, len(req.Resources))
+		for _, resource := range req.Resources {
+			allowed := b.allowAll || allowedIDs[resource.ID]
+			if len(req.VisibilityOperations) > 0 && !allowed {
+				continue
+			}
+			operations := []string{}
+			if allowed {
+				operations = append(operations, req.CandidateOperations...)
+			}
+			resources = append(resources, map[string]any{
+				"resource_type": resource.Type,
+				"resource_id":   resource.ID,
+				"operations":    operations,
+			})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"resources": resources})
 	}))
 }
 
@@ -59,8 +83,8 @@ func TestSafeFilterResourcesIsBulk(t *testing.T) {
 	const op = interfaces.OPERATION_TYPE_VIEW_DETAIL
 	ctx := context.Background()
 
-	t.Run("concrete grants: one check + one id-set fetch for any resource count", func(t *testing.T) {
-		stub := &bknSafeStub{wildcard: false, accessible: []string{"r1", "r5"}}
+	t.Run("concrete grants: one effective filter for any resource count", func(t *testing.T) {
+		stub := &bknSafeStub{allowedIDs: []string{"r1", "r5"}}
 		srv := stub.server()
 		defer srv.Close()
 
@@ -77,15 +101,13 @@ func TestSafeFilterResourcesIsBulk(t *testing.T) {
 		if len(got) != 2 || got["r1"].Operations[0] != op || got["r5"].Operations[0] != op {
 			t.Fatalf("want only r1,r5 with [%s]; got %+v", op, got)
 		}
-		// One op, one resource type -> one wildcard probe + one id-set fetch,
-		// independent of the 100 resources filtered.
-		if c, l := stub.checkCalls.Load(), stub.listCalls.Load(); c != 1 || l != 1 {
-			t.Fatalf("round-trips must not scale with resource count: checks=%d lists=%d", c, l)
+		if calls := stub.filterCalls.Load(); calls != 1 {
+			t.Fatalf("round-trips must not scale with resource count: filters=%d", calls)
 		}
 	})
 
-	t.Run("wildcard grant: everything passes without fetching the id set", func(t *testing.T) {
-		stub := &bknSafeStub{wildcard: true, accessible: []string{"unused"}}
+	t.Run("wildcard grant: everything passes in one effective filter", func(t *testing.T) {
+		stub := &bknSafeStub{allowAll: true}
 		srv := stub.server()
 		defer srv.Close()
 
@@ -101,15 +123,15 @@ func TestSafeFilterResourcesIsBulk(t *testing.T) {
 		if len(got) != 100 {
 			t.Fatalf("wildcard grant must pass every resource, got %d", len(got))
 		}
-		if c, l := stub.checkCalls.Load(), stub.listCalls.Load(); c != 1 || l != 0 {
-			t.Fatalf("wildcard: want 1 check and no id-set fetch, got checks=%d lists=%d", c, l)
+		if calls := stub.filterCalls.Load(); calls != 1 {
+			t.Fatalf("wildcard: want 1 effective filter, got %d", calls)
 		}
 	})
 
 	// GetResourcesOperations keeps every requested resource (even with no ops),
 	// unlike FilterResources which drops the unauthorized ones.
 	t.Run("GetResourcesOperations keeps unauthorized resources with empty ops", func(t *testing.T) {
-		stub := &bknSafeStub{wildcard: false, accessible: []string{"r1"}}
+		stub := &bknSafeStub{allowedIDs: []string{"r1"}}
 		srv := stub.server()
 		defer srv.Close()
 
@@ -136,22 +158,13 @@ func TestSafeFilterResourcesIsBulk(t *testing.T) {
 // 那些。只解析可见性动词的话,operations 恒等于 view_detail,界面上除了「查看」
 // 之外每个按钮都是暗的——持有取数权与目录管理权的账号也一样。
 func TestFilterResourcesReportsCandidateOperations(t *testing.T) {
-	held := map[string]bool{
-		interfaces.OPERATION_TYPE_VIEW_DETAIL: true,
-		interfaces.OPERATION_TYPE_QUERY_DATA:  true,
-	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			Resource  struct{ ID string } `json:"resource"`
-			Operation string              `json:"operation"`
-		}
-		_ = json.NewDecoder(r.Body).Decode(&body)
 		w.Header().Set("Content-Type", "application/json")
-		if strings.HasSuffix(r.URL.Path, "/check") {
-			_, _ = w.Write([]byte(fmt.Sprintf(`{"allowed":%t}`, held[body.Operation])))
+		if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/resource-filter") {
+			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		_, _ = w.Write([]byte(`{"resources":[]}`))
+		_, _ = w.Write([]byte(`{"resources":[{"resource_type":"resource","resource_id":"r-1","operations":["view_detail","query_data"]}]}`))
 	}))
 	defer srv.Close()
 
@@ -176,5 +189,86 @@ func TestFilterResourcesReportsCandidateOperations(t *testing.T) {
 	want := []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA}
 	if !reflect.DeepEqual(entry.Operations, want) {
 		t.Fatalf("operations = %v, want %v(候选集里持有的那些,不含没授的 delete)", entry.Operations, want)
+	}
+}
+
+// A type-wide operation grant can depend on a prerequisite held only on one
+// concrete resource. The final answer therefore cannot be inferred by checking
+// type:* and enumerating concrete grants independently; bkn-safe must evaluate
+// the supplied resource as one effective decision.
+func TestFilterResourcesCombinesWildcardOperationWithConcreteRequirement(t *testing.T) {
+	var filterCalls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/safe/v1/authz/check":
+			// modify on connector_type:* is denied because view_detail exists only
+			// on remote-api, not on the wildcard pseudo-resource.
+			_, _ = w.Write([]byte(`{"allowed":false}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/safe/v1/authz/resources":
+			if r.URL.Query().Get("operation") == interfaces.OPERATION_TYPE_VIEW_DETAIL {
+				_, _ = w.Write([]byte(`{"ids":["remote-api"]}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"ids":[]}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/api/safe/v1/authz/resource-filter":
+			filterCalls.Add(1)
+			var body struct {
+				AccessorID           string                          `json:"accessor_id"`
+				Resources            []interfaces.PermissionResource `json:"resources"`
+				VisibilityOperations []string                        `json:"visibility_operations"`
+				CandidateOperations  []string                        `json:"candidate_operations"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("decode resource-filter request: %v", err)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			if body.AccessorID != "legacy-user" ||
+				!reflect.DeepEqual(body.Resources, []interfaces.PermissionResource{{Type: "connector_type", ID: "remote-api"}}) ||
+				!reflect.DeepEqual(body.VisibilityOperations, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}) ||
+				!reflect.DeepEqual(body.CandidateOperations, []string{
+					interfaces.OPERATION_TYPE_VIEW_DETAIL,
+					interfaces.OPERATION_TYPE_MODIFY,
+					interfaces.OPERATION_TYPE_DELETE,
+					interfaces.OPERATION_TYPE_AUTHORIZE,
+				}) {
+				t.Errorf("resource-filter request = %+v", body)
+			}
+			_, _ = w.Write([]byte(`{"resources":[{"resource_type":"connector_type","resource_id":"remote-api","operations":["view_detail","modify","delete","authorize"]}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	pa := &safePermissionAccess{safe: newSafeClient(srv.URL)}
+	got, err := pa.FilterResources(context.Background(), interfaces.PermissionResourcesFilter{
+		Accessor:  interfaces.PermissionAccessor{ID: "legacy-user", Type: interfaces.ACCESSOR_TYPE_USER},
+		Resources: []interfaces.PermissionResource{{Type: "connector_type", ID: "remote-api"}},
+		Operations: []string{
+			interfaces.OPERATION_TYPE_VIEW_DETAIL,
+		},
+		CandidateOperations: []string{
+			interfaces.OPERATION_TYPE_VIEW_DETAIL,
+			interfaces.OPERATION_TYPE_MODIFY,
+			interfaces.OPERATION_TYPE_DELETE,
+			interfaces.OPERATION_TYPE_AUTHORIZE,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		interfaces.OPERATION_TYPE_VIEW_DETAIL,
+		interfaces.OPERATION_TYPE_MODIFY,
+		interfaces.OPERATION_TYPE_DELETE,
+		interfaces.OPERATION_TYPE_AUTHORIZE,
+	}
+	if !reflect.DeepEqual(got["remote-api"].Operations, want) {
+		t.Fatalf("operations = %v, want %v", got["remote-api"].Operations, want)
+	}
+	if calls := filterCalls.Load(); calls != 1 {
+		t.Fatalf("resource-filter calls = %d, want 1", calls)
 	}
 }

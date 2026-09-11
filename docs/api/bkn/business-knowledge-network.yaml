@@ -8,6 +8,11 @@ info:
     `knowledge_network:*:create`; detail, list, update, and delete use the
     corresponding instance operations. Lists are authorization-filtered before
     total and pagination. See `../knowledge-network-authorization.md`.
+
+    Main-branch import and overwrite perform Proxy source preflight before strict child validation.
+    The effective delegator chosen for retained or new sources is reused for the corresponding
+    operation-scoped dependency lookup. Nested child dependency errors keep their 400/403/502/503
+    status and child error code instead of being rewritten as a generic knowledge-network error.
 security:
   - OAuth2: []
 paths:
@@ -124,6 +129,14 @@ paths:
               example:
                 id: "example-knowledge-network-id"
           description: Creation succeeded
+        "400":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadRequest"
+        "403":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyForbidden"
+        "502":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadGateway"
+        "503":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyUnavailable"
       summary: Create a business knowledge network
   /api/bkn-backend/v1/knowledge-networks/{kn_id}:
     get:
@@ -295,7 +308,7 @@ paths:
         Validates only knowledge network dependency existence and does not persist data. It validates all dependencies including object types, relation types, action types, and concept groups.
         The server builds one BatchIDIndex from the four top-level request buckets and nested concept_groups buckets, allowing references to types present only in nested groups.
 
-        Response: HTTP 200 indicates processing completed. valid=true means validation passed; valid=false means validation failed or an error occurred, with detail explaining the cause. Invalid bodies, invalid strict_mode, missing knowledge networks, and authorization failures return non-2xx responses.
+        Response: HTTP 200 uses valid and detail for ordinary model validation. Nested strict dependency failures return the documented 400/403/502/503 error envelope, whose error_details includes a safe dependency_kind.
 
         Internal API: the corresponding internal path uses the same request and response contract, resolves the caller from headers, and does not use OAuth.
       parameters:
@@ -331,7 +344,7 @@ paths:
               $ref: "#/components/schemas/ValidateKNRequestBody"
       responses:
         "200":
-          description: Validation result returned. Both pass and fail can return 200.
+          description: Ordinary model-validation result. Strict dependency failures use the non-2xx responses below.
           content:
             application/json:
               schema:
@@ -346,7 +359,13 @@ paths:
                     type: string
                     description: Explanation when valid is false
         "400":
-          description: Invalid request parameters, such as an invalid body, unparseable strict_mode, or invalid import_mode or mode. This is not a business validation result.
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadRequest"
+        "403":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyForbidden"
+        "502":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadGateway"
+        "503":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyUnavailable"
 components:
   securitySchemes:
     OAuth2:
@@ -1035,6 +1054,25 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Mapping"
+    IndirectMappingRule:
+      description: 关系类型为 indirect 时的匹配规则
+      required:
+        - backing_data_source
+        - source_mapping_rules
+        - target_mapping_rules
+      type: object
+      properties:
+        backing_data_source:
+          $ref: "#/components/schemas/DataSource"
+          description: 数据来源资源
+        source_mapping_rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/Mapping"
+        target_mapping_rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/Mapping"
     ReqObjectType:
       description: Object type creation information
       required:
@@ -1256,14 +1294,16 @@ components:
           description: Relation type
           enum:
             - direct
+            - indirect
             - filtered_cross_join
           type: string
         mapping_rules:
           oneOf:
             - $ref: "#/components/schemas/m"
               type: array
+            - $ref: "#/components/schemas/IndirectMappingRule"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
-          description: "Matching rules for the relation. direct uses key mapping; filtered_cross_join (FCJ) uses FilteredCrossJoinMappingRule with side-specific conditions. A direct mapping maps source object property 1 to target object property 1."
+          description: "Matching rules for the relation. direct uses key mapping; indirect uses IndirectMappingRule backed by a resource; filtered_cross_join (FCJ) uses FilteredCrossJoinMappingRule with side-specific conditions."
     UpdateRelationType:
       description: Relation type update information
       required:
@@ -1309,13 +1349,15 @@ components:
           description: Relation type
           enum:
             - direct
+            - indirect
             - filtered_cross_join
           type: string
         mapping_rules:
           oneOf:
             - $ref: "#/components/schemas/Object"
+            - $ref: "#/components/schemas/IndirectMappingRule"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
-          description: "Matching rules for the relation. direct uses key mapping; filtered_cross_join (FCJ) uses FilteredCrossJoinMappingRule. A direct mapping maps source object property 1 to target object property 1."
+          description: "Matching rules for the relation. direct uses key mapping; indirect uses IndirectMappingRule backed by a resource; filtered_cross_join (FCJ) uses FilteredCrossJoinMappingRule."
     ReqActionType:
       description: Action type creation information
       required:
@@ -1737,13 +1779,15 @@ components:
           description: Relation type
           enum:
             - direct
+            - indirect
             - filtered_cross_join
           type: string
         mapping_rules:
           oneOf:
             - $ref: "#/components/schemas/Object"
+            - $ref: "#/components/schemas/IndirectMappingRule"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
-          description: "Matching rules for the relation. direct uses key mapping; filtered_cross_join (FCJ) uses FilteredCrossJoinMappingRule. A direct mapping maps source object property 1 to target object property 1."
+          description: "Matching rules for the relation. direct uses key mapping; indirect uses IndirectMappingRule backed by a resource; filtered_cross_join (FCJ) uses FilteredCrossJoinMappingRule."
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:

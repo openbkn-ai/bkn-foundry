@@ -127,6 +127,24 @@ info:
     exists so an empty name is not read as a deleted capability; an outage and a deletion must
     not look alike.
 
+    ## Navigation-only knowledge networks
+
+    A caller who cannot view the knowledge-network detail but can view at least one child
+    resource may open the network as a navigation-only shell. For that caller, the public list
+    returns a canonical empty result (`entries: []`, `total_count: 0`, `boxes: []`) for every
+    supported capability filter. Capability bindings belong to the network detail and have no
+    child-level authorization resource, so the service does not read binding rows, model
+    provenance, or execution-factory metadata in this mode. This avoids both a misleading
+    permission error in the shell and disclosure of capabilities the caller cannot view.
+
+    Both `metadata_available` and `sources_available` are true in this canonical empty result:
+    there are no returned rows or sources left unresolved, so the result is complete. These flags
+    do not imply that the execution-factory or model-provenance dependencies were called.
+
+    A caller with neither knowledge-network detail access nor any visible child still receives
+    403. Authentication and permission-service failures also remain errors; they are never
+    converted to an empty list.
+
     ## The internal face answers differently
 
     `GET /api/bkn-backend/in/v1/knowledge-networks/{kn_id}/capabilities` returns **bare
@@ -221,7 +239,10 @@ paths:
           in: query
       responses:
         '200':
-          description: Capability bindings of this branch
+          description: >-
+            Capability bindings of this branch for a knowledge-network detail reader. A
+            navigation-only caller who reaches the network through a visible child receives a
+            canonical empty result without binding, provenance, or metadata lookup.
           content:
             application/json:
               schema:
@@ -229,7 +250,9 @@ paths:
         '400':
           description: Invalid capability type or pagination parameter
         '403':
-          description: The caller cannot view this knowledge network
+          description: >-
+            The caller can view neither the knowledge-network detail nor any child resource in
+            this network.
         '404':
           description: Knowledge network or branch not found
       operationId: listCapabilities
@@ -463,6 +486,7 @@ components:
       required:
         - entries
         - total_count
+        - boxes
         - metadata_available
       properties:
         entries:

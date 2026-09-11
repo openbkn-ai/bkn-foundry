@@ -409,7 +409,8 @@ func (cts *connectorTypeService) SetEnabled(ctx context.Context, tp string, enab
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Set enabled connector type")
 	defer span.End()
 
-	// Determine whether the userid has the permission to be modified
+	// Enabled is part of the connector definition, so changing it uses modify.
+	// The permission catalog also requires view_detail for this operation.
 	err := cts.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
 		ID:   tp,

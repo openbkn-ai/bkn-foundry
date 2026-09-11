@@ -280,6 +280,15 @@ func (rta *relationTypeAccess) ListRelationTypes(ctx context.Context, query inte
 			}
 			relationType.MappingRules = mappings
 		}
+		if relationType.Type == interfaces.RELATION_TYPE_INDIRECT {
+			var mappings interfaces.InDirectMapping
+			err = sonic.Unmarshal(mappingRulesBytes, &mappings)
+			if err != nil {
+				common.LogSafeError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
+				return []*interfaces.RelationType{}, err
+			}
+			relationType.MappingRules = &mappings
+		}
 		if relationType.Type == interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN {
 			var fcj interfaces.FilteredCrossJoinMapping
 			err = sonic.Unmarshal(mappingRulesBytes, &fcj)
@@ -417,6 +426,15 @@ func (rta *relationTypeAccess) GetRelationTypeByID(ctx context.Context, knID str
 		}
 		relationType.MappingRules = mappings
 	}
+	if relationType.Type == interfaces.RELATION_TYPE_INDIRECT {
+		var mappings interfaces.InDirectMapping
+		err = sonic.Unmarshal(mappingRulesBytes, &mappings)
+		if err != nil {
+			common.LogSafeError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
+			return nil, err
+		}
+		relationType.MappingRules = &mappings
+	}
 	if relationType.Type == interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN {
 		var fcj interfaces.FilteredCrossJoinMapping
 		err = sonic.Unmarshal(mappingRulesBytes, &fcj)
@@ -527,6 +545,15 @@ func (rta *relationTypeAccess) GetRelationTypesByIDs(ctx context.Context, knID s
 				return []*interfaces.RelationType{}, err
 			}
 			relationType.MappingRules = mappings
+		}
+		if relationType.Type == interfaces.RELATION_TYPE_INDIRECT {
+			var mappings interfaces.InDirectMapping
+			err = sonic.Unmarshal(mappingRulesBytes, &mappings)
+			if err != nil {
+				common.LogSafeError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
+				return []*interfaces.RelationType{}, err
+			}
+			relationType.MappingRules = &mappings
 		}
 		if relationType.Type == interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN {
 			var fcj interfaces.FilteredCrossJoinMapping
@@ -888,6 +915,15 @@ func (rta *relationTypeAccess) GetAllRelationTypesByKnID(ctx context.Context, kn
 				return map[string]*interfaces.RelationType{}, err
 			}
 			relationType.MappingRules = mappings
+		}
+		if relationType.Type == interfaces.RELATION_TYPE_INDIRECT {
+			var mappings interfaces.InDirectMapping
+			err = sonic.Unmarshal(mappingRulesBytes, &mappings)
+			if err != nil {
+				common.LogSafeError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
+				return map[string]*interfaces.RelationType{}, err
+			}
+			relationType.MappingRules = &mappings
 		}
 		if relationType.Type == interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN {
 			var fcj interfaces.FilteredCrossJoinMapping

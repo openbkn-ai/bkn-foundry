@@ -62,6 +62,7 @@ func (dmConn *DMConn) Prepare(query string) (driver.Stmt, error) {
 }
 
 func (dmConn *DMConn) Begin() (driver.Tx, error) {
+	//nolint:staticcheck // driver.Conn requires the legacy Begin method.
 	return dmConn.Conn.Begin()
 }
 

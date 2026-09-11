@@ -232,6 +232,7 @@ func validateCalendarStep(raw string) error {
 	return nil
 }
 
+//nolint:unused // Retained for metric diagnostics.
 func (s *knMetricsService) warnf(ctx context.Context, format string, args ...any) {
 	if s.logger == nil {
 		return

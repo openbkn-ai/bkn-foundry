@@ -111,6 +111,13 @@ type CatalogSummary struct {
 	Operations []string `json:"operations"`
 }
 
+// CatalogConnectorTypeStat is the number of catalogs visible to the caller for one connector type.
+type CatalogConnectorTypeStat struct {
+	CatalogType   string `json:"catalog_type"`
+	ConnectorType string `json:"connector_type"`
+	CatalogCount  int64  `json:"catalog_count"`
+}
+
 // CatalogsQueryParams holds catalog list query parameters.
 type CatalogsQueryParams struct {
 	PaginationQueryParams

@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/casbin/casbin/v2"
 	casbinmodel "github.com/casbin/casbin/v2/model"
@@ -36,17 +37,75 @@ func (tx *PolicyTransaction) Check(accessorID, resourceType, resourceID, operati
 }
 
 func (tx *PolicyTransaction) HasObjectPermission(accessorID, resourceType, resourceID, operation string) (bool, error) {
-	return tx.enforcer.e.HasPolicy(accessorID, obj(resourceType, resourceID), operation, EffectAllow)
+	rows, err := tx.enforcer.e.GetFilteredPolicy(0, accessorID, obj(resourceType, resourceID), operation, EffectAllow)
+	if err != nil {
+		return false, err
+	}
+	return len(activePolicyRows(rows)) > 0, nil
+}
+
+func (tx *PolicyTransaction) GrantPolicy(grant PolicyGrant) (bool, error) {
+	return tx.enforcer.addPolicyGrant(grant)
+}
+
+func (tx *PolicyTransaction) RevokePolicy(grantID string) (bool, error) {
+	removed, _, err := tx.enforcer.revokePolicyGrant(grantID)
+	return removed, err
+}
+
+// GrantSeedPolicy and RemoveSeedRolePermissions let startup reconcile the
+// complete built-in role matrix in two batch transactions rather than opening
+// and reloading Casbin once per operation.
+func (tx *PolicyTransaction) GrantSeedPolicy(roleID, object, operation string) error {
+	return tx.enforcer.addPolicy(roleID, object, operation, EffectAllow,
+		PolicySourceRolePermission, AuthoritySourceSystem)
+}
+
+func (tx *PolicyTransaction) RemoveSeedRolePermissions(roleID string) error {
+	_, err := tx.enforcer.removePolicyGrants(PolicyFilter{
+		AccessorID: roleID, PolicySource: PolicySourceRolePermission,
+	})
+	return err
+}
+
+// RemovePoliciesForResourceTypes removes every durable grant and its Casbin
+// projection for the supplied resource-type prefixes. It is reserved for
+// startup migrations that withdraw an entire resource type from the platform.
+func (tx *PolicyTransaction) RemovePoliciesForResourceTypes(resourceTypes ...string) (int, error) {
+	removed := 0
+	for _, resourceType := range resourceTypes {
+		count, err := tx.enforcer.removePolicyGrantsByObjectPrefix(resourceType + ":")
+		if err != nil {
+			return removed, err
+		}
+		removed += count
+	}
+	return removed, nil
+}
+
+// RemovePoliciesForOperation removes every durable grant and Casbin projection
+// for one withdrawn operation while preserving the resource type's other
+// grants. It is reserved for startup vocabulary migrations.
+func (tx *PolicyTransaction) RemovePoliciesForOperation(resourceType, operation string) (int, error) {
+	resourceType = strings.TrimSpace(resourceType)
+	operation = strings.TrimSpace(operation)
+	if resourceType == "" {
+		return 0, errors.New("resource type is required")
+	}
+	if operation == "" {
+		return 0, errors.New("operation is required")
+	}
+	return tx.enforcer.removePolicyGrantsByObjectPrefixAndOperation(resourceType+":", operation)
 }
 
 func (tx *PolicyTransaction) GrantObjectPermission(accessorID, resourceType, resourceID, operation string) error {
-	_, err := tx.enforcer.e.AddPolicy(accessorID, obj(resourceType, resourceID), operation, EffectAllow)
-	return err
+	return tx.enforcer.addPolicy(accessorID, obj(resourceType, resourceID), operation, EffectAllow,
+		PolicySourceSystemDerived, AuthoritySourceSystem)
 }
 
 func (tx *PolicyTransaction) RevokeObjectPermission(accessorID, resourceType, resourceID, operation string) error {
-	_, err := tx.enforcer.e.RemovePolicy(accessorID, obj(resourceType, resourceID), operation, EffectAllow)
-	return err
+	return tx.enforcer.removePolicy(accessorID, obj(resourceType, resourceID), operation, EffectAllow,
+		PolicySourceSystemDerived, AuthoritySourceSystem)
 }
 
 // Transaction runs fn inside the gorm-adapter transaction used by Casbin. The

@@ -61,7 +61,7 @@ func (a *SQLGlotAdapter) ValidateDerivedTable(ctx context.Context, sql string, d
 }
 
 func (a *SQLGlotAdapter) validateSQL(ctx context.Context, sql, dialect, mode string) error {
-	cmd := exec.CommandContext(ctx, "python3", "-c", validationScript, sql, dialect, mode)
+	cmd := exec.CommandContext(ctx, "python3", "-c", validationScript, sql, dialect, mode) //nolint:gosec // Static script; untrusted values are argv, not shell input.
 
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -98,7 +98,7 @@ func (a *SQLGlotAdapter) ValidateTableReferences(ctx context.Context, sql string
 	if err != nil {
 		return err
 	}
-	cmd := exec.CommandContext(ctx, "python3", "-c", tableReferenceValidationScript, sql, inputDialect, string(allowedJSON))
+	cmd := exec.CommandContext(ctx, "python3", "-c", tableReferenceValidationScript, sql, inputDialect, string(allowedJSON)) //nolint:gosec // Static script; untrusted values are argv, not shell input.
 
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -139,7 +139,7 @@ type resourceIDExtractionResult struct {
 // occur in SQL Table nodes. Comments and string literals are intentionally
 // left untouched before parsing, so they can never establish a binding.
 func ExtractTableResourceIDs(ctx context.Context, sql string, inputDialect string) ([]string, error) {
-	cmd := exec.CommandContext(ctx, "python3", "-c", resourceIDExtractionScript, sql, inputDialect)
+	cmd := exec.CommandContext(ctx, "python3", "-c", resourceIDExtractionScript, sql, inputDialect) //nolint:gosec // Static script; untrusted values are argv, not shell input.
 
 	var out bytes.Buffer
 	cmd.Stdout = &out

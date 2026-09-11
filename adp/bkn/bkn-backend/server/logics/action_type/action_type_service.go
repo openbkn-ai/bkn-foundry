@@ -142,12 +142,17 @@ func (ats *actionTypeService) validateActionSourceStrict(ctx context.Context, at
 		if err := ats.aoa.GetToolByID(ctx, src.BoxID, src.ToolID); err != nil {
 			logger.Errorf("validate action type tool binding failed: action_type=%s box_id=%s tool_id=%s err=%v",
 				at.ATName, src.BoxID, src.ToolID, err)
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+			invalidErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 				WithErrorDetails(invalidParameterDetail(ctx, "ToolBindingInvalid", map[string]any{
 					"actionType": at.ATName,
 					"boxID":      src.BoxID,
 					"toolID":     src.ToolID,
 				}))
+			// The execution-factory internal metadata endpoint does not perform
+			// caller resource authorization. A 403 therefore indicates an
+			// internal identity/configuration failure, not a user-scoped denial.
+			return logics.MapDependencyError(ctx, err, false, invalidErr,
+				berrors.BknBackend_ActionType_InternalError)
 		}
 	case interfaces.ACTION_SOURCE_TYPE_MCP:
 		if src.McpID == "" || src.ToolName == "" {
@@ -156,12 +161,17 @@ func (ats *actionTypeService) validateActionSourceStrict(ctx context.Context, at
 		if err := ats.aoa.GetMcpToolByName(ctx, src.McpID, src.ToolName); err != nil {
 			logger.Errorf("validate action type MCP tool binding failed: action_type=%s mcp_id=%s tool_name=%s err=%v",
 				at.ATName, src.McpID, src.ToolName, err)
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+			invalidErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 				WithErrorDetails(invalidParameterDetail(ctx, "MCPBindingInvalid", map[string]any{
 					"actionType": at.ATName,
 					"mcpID":      src.McpID,
 					"toolName":   src.ToolName,
 				}))
+			// The execution-factory internal metadata endpoint does not perform
+			// caller resource authorization. A 403 therefore indicates an
+			// internal identity/configuration failure, not a user-scoped denial.
+			return logics.MapDependencyError(ctx, err, false, invalidErr,
+				berrors.BknBackend_ActionType_InternalError)
 		}
 	}
 	return nil
@@ -349,7 +359,8 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 	return atIDs, nil
 }
 
-// ValidateActionTypes checks dependency existence only; does not write to the database.
+// ValidateActionTypes authorizes the validation request and checks dependency
+// existence without writing to the database.
 func (ats *actionTypeService) ValidateActionTypes(ctx context.Context, knID string, branch string,
 	actionTypes []*interfaces.ActionType, strictMode bool, batch *interfaces.BatchIDIndex, mode string) error {
 
@@ -361,13 +372,17 @@ func (ats *actionTypeService) ValidateActionTypes(ctx context.Context, knID stri
 		return nil
 	}
 
-	err := ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   knID,
-	}, []string{interfaces.OPERATION_TYPE_MODIFY})
-	if err != nil {
-		return err
+	var err error
+	if !permission.DependencyValidationPermissionPrechecked(ctx) {
+		err = ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: interfaces.RESOURCE_TYPE_KN,
+			ID:   knID,
+		}, []string{interfaces.OPERATION_TYPE_MODIFY})
+		if err != nil {
+			return err
+		}
 	}
+	ctx = permission.WithDependencyValidationPermissionPrechecked(ctx)
 	_, _, err = ats.handleActionTypeImportMode(ctx, mode, actionTypes)
 	if err != nil {
 		return err

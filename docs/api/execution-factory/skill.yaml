@@ -29,14 +29,15 @@ info:
     **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` 前缀的
     AppKey）。
 
-    **内部面（`internal-v1`）的读授权按档位**：`/content` 与 `/files/read` 在公开面
+    **内部面（`internal-v1`）的读授权按档位**：原有 `/content` 与 `/files/read` 在公开面
     一律按账户判定（`execute` / `public_access` / `view` 三者有其一），内部面则看
     `SKILL_INTERNAL_READ_AUTHZ`——`shadow`（默认）查了但不拦、判定不通过只打日志，
-    `enforce` 与公开面一致返回 403，`off` 完全不查。分档是为了不打断存量内部调用方：
-    context-loader 已把这两个接口包成 MCP 工具，`skill_id` 由调用方自填，内部面无条件
-    放行等于任意账户可读任意技能全文，但直接翻强制会误伤，先影子观察再翻。
+    `enforce` 与公开面一致返回 403，`off` 完全不查。分档是为了不打断其它存量内部调用方。
+    新增的 `/internal-v1/caller/skills/...` 专供已有可信账户头的服务间调用：它不受该兼容
+    档位影响，而是与公开面一样按真实调用者强制授权。context-loader 有 bearer 时走公开面，
+    只有可信账户头时走该 caller-scoped 内部面；两者都不会切换成服务身份绕过权限判断。
     调用方没带账户身份时任何档位都跳过判定——那是「无从判断」，不是「判定为无权」。
-    `/execute` 不受该档位影响，一直按账户强制。
+    `/execute` 不受该档位影响，一直按账户强制且只认 `execute`，`public_access` 不能执行。
 
     内部面另有两个只读元数据接口：`GET /skills/{skill_id}` 与 `POST /skills/names`。
     它们不做调用者维度的判定，答的是「技能是否存在、什么状态」，供 bkn-backend 校验
@@ -208,6 +209,60 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BatchNamesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /skills/available:
+    get:
+      tags:
+        - Skill
+      summary: 查询调用者可发现的已发布技能
+      operationId: listAvailableSkills
+      description: |
+        从技能发布版本表分页列出当前调用者拥有 `view` 权限的技能，供 Agent 能力发现使用。
+        该接口读取已发布快照，不读取工作区仓库行的当前状态；因此已发布技能在编辑下一版本时
+        仍可被发现。它与 `/skills/market` 的区别是权限口径：本接口只认 `view`，市场接口只认
+        `public_access`。
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortOrder'
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按发布版本名称过滤。
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按分类过滤。
+        - name: create_user
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按创建人过滤。
+        - name: all
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: 忽略分页返回全部。
+      responses:
+        '200':
+          description: 可发现技能分页列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillPage'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':

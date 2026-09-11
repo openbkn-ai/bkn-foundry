@@ -46,8 +46,11 @@ type Query struct {
 	Limit    *int64
 }
 
-// Pattern is a linear path. Edges[i] connects Nodes[i] to Nodes[i+1], so
-// len(Edges) is always len(Nodes)-1.
+// Pattern is what one MATCH describes: the nodes it names and the
+// relationships between them. It is a graph rather than a path, because a
+// query may write several paths that share a variable -- (a)-->(b), (a)-->(c)
+// is one node with two relationships, and no ordering of a single chain says
+// that.
 type Pattern struct {
 	Nodes []NodeRef
 	Edges []EdgeRef
@@ -65,11 +68,20 @@ type NodeRef struct {
 	Pos       Position
 }
 
-// EdgeRef is one relationship of the pattern.
+// EdgeRef is one relationship of the pattern. Left and Right index into the
+// pattern's nodes, so a relationship can connect any two of them rather than
+// only neighbours in a list.
 type EdgeRef struct {
 	Type      string
 	Direction Direction
-	Pos       Position
+	Left      int
+	Right     int
+	// Clause is which MATCH wrote this relationship. Several MATCH clauses
+	// describe one shape, but Cypher's rule that a pattern may not traverse
+	// the same relationship twice holds inside a single MATCH and not between
+	// two of them, so the hops have to remember where they came from.
+	Clause int
+	Pos    Position
 }
 
 // PropertyRef is a variable.property reference.
@@ -189,16 +201,6 @@ type Operand struct {
 type ParameterRef struct {
 	Name string
 	Pos  Position
-}
-
-func (o Operand) describe() string {
-	if o.Parameter != nil {
-		return "parameter $" + o.Parameter.Name
-	}
-	if o.Literal != nil {
-		return o.Literal.describe()
-	}
-	return "an empty operand"
 }
 
 // Projection is one RETURN item: a property, or an aggregate over one. Alias

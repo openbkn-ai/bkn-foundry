@@ -115,7 +115,7 @@ func (h *aiGenerationHandler) FunctionAIGeneration(c *gin.Context) {
 			// Check if it is a closing tag.
 			if isEndMarker(msg) {
 				// Send SSE end tag.
-				fmt.Fprintf(w, "%s\n\n", msg)
+				_, _ = fmt.Fprintf(w, "%s\n\n", msg)
 				flushIfSupported(w)
 				return false
 			}
@@ -146,7 +146,7 @@ func (h *aiGenerationHandler) FunctionAIGeneration(c *gin.Context) {
 					return false
 				}
 			}
-			fmt.Fprintf(w, "%s\n\n", msg)
+			_, _ = fmt.Fprintf(w, "%s\n\n", msg)
 			flushIfSupported(w)
 			return true
 		case err, ok := <-errorChan:

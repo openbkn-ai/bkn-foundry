@@ -300,6 +300,10 @@ func (s *ToolServiceImpl) UpdateToolBoxStatus(ctx context.Context, req *interfac
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, "update toolbox status failed")
 		return
 	}
+	// Publication is what admits a box's tools to the capability index and withdrawal is what
+	// removes them (#1443). The sync reads the box back and applies the admission rule, so one
+	// call serves every transition.
+	s.syncBoxIndex(ctx, req.BoxID)
 	// Record audit log.
 	if operation != "" {
 		go func() {
@@ -336,7 +340,9 @@ func (s *ToolServiceImpl) GetBoxTool(ctx context.Context, req *interfaces.GetToo
 		"box_id":  req.BoxID,
 		"tool_id": req.ToolID,
 	})
-	// If it is an external interface, verify whether it has the viewing and public access rights of the tool it belongs to.
+	// Tool metadata is also runtime input: an execute-only caller must be able to
+	// obtain the schema needed to invoke the tool without gaining toolbox-list
+	// visibility. Top-level discovery remains filtered by view.
 	if infracommon.IsPublicAPIFromCtx(ctx) {
 		var accessor *interfaces.AuthAccessor
 		accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)
@@ -344,7 +350,8 @@ func (s *ToolServiceImpl) GetBoxTool(ctx context.Context, req *interfaces.GetToo
 			return
 		}
 		var authorized bool
-		authorized, err = s.AuthService.OperationCheckAny(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox, interfaces.AuthOperationTypeView, interfaces.AuthOperationTypePublicAccess)
+		authorized, err = s.AuthService.OperationCheckAny(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox,
+			interfaces.AuthOperationTypeView, interfaces.AuthOperationTypePublicAccess, interfaces.AuthOperationTypeExecute)
 		if err != nil {
 			return
 		}
@@ -488,7 +495,8 @@ func (s *ToolServiceImpl) QueryToolList(ctx context.Context, req *interfaces.Que
 	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// If it is an external interface, verify whether it has the viewing and public access rights to the toolbox it belongs to.
+	// The tools of a known box are executable metadata, so execute is sufficient
+	// even when the caller cannot discover the box in the top-level view list.
 	if infracommon.IsPublicAPIFromCtx(ctx) {
 		var accessor *interfaces.AuthAccessor
 		accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)
@@ -496,7 +504,8 @@ func (s *ToolServiceImpl) QueryToolList(ctx context.Context, req *interfaces.Que
 			return
 		}
 		var authorized bool
-		authorized, err = s.AuthService.OperationCheckAny(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox, interfaces.AuthOperationTypeView, interfaces.AuthOperationTypePublicAccess)
+		authorized, err = s.AuthService.OperationCheckAny(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox,
+			interfaces.AuthOperationTypeView, interfaces.AuthOperationTypePublicAccess, interfaces.AuthOperationTypeExecute)
 		if err != nil {
 			return
 		}
@@ -666,6 +675,14 @@ func (s *ToolServiceImpl) UpdateToolStatus(ctx context.Context, req *interfaces.
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// Registered before the commit defer below so it runs after it — defers are LIFO — because a
+	// disabled tool must leave the index, and a re-enabled one return, only once the status has
+	// actually committed (#1443).
+	defer func() {
+		if err == nil {
+			s.syncToolsIndex(ctx, req.BoxID, toolIDs)
+		}
+	}()
 	defer func() {
 		if err != nil {
 			_ = tx.Rollback()

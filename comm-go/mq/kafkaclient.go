@@ -156,7 +156,7 @@ func (kc *OpenBKNKafkaClient) createTopic(topic string) {
 		return
 	}
 
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 }
 
 func (kc *OpenBKNKafkaClient) Pub(topic string, msg []byte) (err error) {
@@ -209,7 +209,7 @@ func (kc *OpenBKNKafkaClient) Sub(topic string, channel string, handler MessageH
 			Timeout:       ConnTimeout,
 		},
 	})
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 	go func() {

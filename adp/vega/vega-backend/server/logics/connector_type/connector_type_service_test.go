@@ -118,6 +118,19 @@ func TestConnectorTypeServiceRegister(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "database unavailable")
 	})
+
+	t.Run("checks type-level create permission before side effects", func(t *testing.T) {
+		service, _, ps := newTestConnectorTypeService(t)
+		denied := errors.New("create denied")
+		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
+			ID:   interfaces.RESOURCE_ID_ALL,
+		}, []string{interfaces.OPERATION_TYPE_CREATE}).Return(denied)
+
+		err := service.Register(context.Background(), &interfaces.ConnectorTypeReq{Type: "remote-api"})
+
+		require.ErrorIs(t, err, denied)
+	})
 }
 
 func TestConnectorTypeServiceGetByType(t *testing.T) {
@@ -208,7 +221,8 @@ func TestConnectorTypeServiceGetByType(t *testing.T) {
 
 		require.Nil(t, got)
 		require.Error(t, err)
-		httpErr, ok := err.(*rest.HTTPError)
+		var httpErr *rest.HTTPError
+		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
 		assert.Equal(t, http.StatusServiceUnavailable, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_ConnectorType_FieldConfigUnavailable, httpErr.BaseError.ErrorCode)
@@ -489,7 +503,7 @@ func TestConnectorTypeServiceDeleteByType(t *testing.T) {
 }
 
 func TestConnectorTypeServiceSetEnabled(t *testing.T) {
-	t.Run("set enabled checks permission and updates access", func(t *testing.T) {
+	t.Run("set enabled checks modify permission and updates access", func(t *testing.T) {
 		service, cta, ps := newTestConnectorTypeService(t)
 		connectorFactory := vmock.NewMockConnectorFactory(gomock.NewController(t))
 		service.cf = connectorFactory
@@ -503,6 +517,19 @@ func TestConnectorTypeServiceSetEnabled(t *testing.T) {
 		connectorFactory.EXPECT().SetConnectorEnabled("remote-api", true)
 
 		require.NoError(t, service.SetEnabled(context.Background(), "remote-api", true))
+	})
+
+	t.Run("permission denial prevents enabled-state changes", func(t *testing.T) {
+		service, _, ps := newTestConnectorTypeService(t)
+		denied := errors.New("modify denied")
+		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
+			ID:   "remote-api",
+		}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(denied)
+
+		err := service.SetEnabled(context.Background(), "remote-api", true)
+
+		require.ErrorIs(t, err, denied)
 	})
 
 	t.Run("set enabled wraps access error", func(t *testing.T) {

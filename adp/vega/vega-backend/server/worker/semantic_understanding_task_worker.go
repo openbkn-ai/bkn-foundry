@@ -21,9 +21,11 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"vega-backend/common"
 	"vega-backend/interfaces"
+	"vega-backend/locale"
 	"vega-backend/logics"
 	"vega-backend/logics/bkn_agent"
 	"vega-backend/logics/catalog"
@@ -31,7 +33,9 @@ import (
 	"vega-backend/logics/semantic_understanding_task"
 )
 
-var semanticUnderstandingSourceIdentifierPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+var (
+	semanticUnderstandingSourceIdentifierPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+)
 
 const (
 	semanticTaskPollInterval   = 30 * time.Second
@@ -338,6 +342,15 @@ func (sutw *SemanticUnderstandingTaskWorker) Run(ctx context.Context, taskID str
 		return nil
 	}
 	if taskInfo.Scope == interfaces.SemanticUnderstandingTaskScopeResource {
+		resultJSON, confidenceDetailJSON, err = reconcileResourceSemanticSampleWarnings(
+			ctx, resultJSON, confidenceDetailJSON, taskInfo.Input,
+		)
+		if err != nil {
+			if _, updateErr := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+				return fmt.Errorf("mark semantic understanding task failed after sample warning reconciliation error: %w", updateErr)
+			}
+			return nil
+		}
 		resultJSON, confidence, confidenceDetailJSON, err = assessResourceSemanticResultQuality(
 			resultJSON, taskInfo.Input, confidenceDetailJSON, confidence,
 		)
@@ -353,7 +366,7 @@ func (sutw *SemanticUnderstandingTaskWorker) Run(ctx context.Context, taskID str
 	taskInfo.Confidence = confidence
 	if err := sutw.applyAndMark(ctx, taskInfo, confidenceDetailJSON); err != nil {
 		if _, updateErr := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
-			return fmt.Errorf("apply semantic understanding result: %w; mark task failed: %v", err, updateErr)
+			return fmt.Errorf("apply semantic understanding result: %w; mark task failed: %w", err, updateErr)
 		}
 		return err
 	}
@@ -405,9 +418,8 @@ func (sutw *SemanticUnderstandingTaskWorker) waitAgentTaskResult(ctx context.Con
 	return nil, fmt.Errorf("agent task %s did not finish after %d polls", agentTaskID, agentTaskMaxPolls)
 }
 
-func (sutw *SemanticUnderstandingTaskWorker) taskParentExists(
-	ctx context.Context, task *interfaces.SemanticUnderstandingTask,
-) (bool, error) {
+func (sutw *SemanticUnderstandingTaskWorker) taskParentExists(ctx context.Context,
+	task *interfaces.SemanticUnderstandingTask) (bool, error) {
 	if task.Scope == interfaces.SemanticUnderstandingTaskScopeResource {
 		resourceInfo, err := sutw.rs.InternalGetByID(ctx, nil, task.ResourceID)
 		if err != nil {
@@ -536,6 +548,247 @@ func parseBknAgentResult(agentTask *interfaces.BknAgentTask) (string, float64, s
 	}
 
 	return string(result), confidence, detailStr, nil
+}
+
+// reconcileResourceSemanticSampleWarnings replaces an agent's misleading
+// "missing sample" text with a stable warning code when Vega itself omitted
+// the field by policy. Legacy tasks without explicit omission evidence retain
+// their original output.
+func reconcileResourceSemanticSampleWarnings(ctx context.Context,
+	resultJSON, confidenceDetailJSON, inputJSON string) (string, string, error) {
+	var input interfaces.SemanticUnderstandingResourceAgentInput
+	if err := sonic.Unmarshal([]byte(inputJSON), &input); err != nil {
+		return resultJSON, confidenceDetailJSON, nil //nolint:nilerr // Malformed legacy snapshots must not alter completed results.
+	}
+	if input.SampleContext.Status != interfaces.SemanticUnderstandingSampleStatusAvailable &&
+		input.SampleContext.Status != interfaces.SemanticUnderstandingSampleStatusPayloadLimited &&
+		input.SampleContext.Status != interfaces.SemanticUnderstandingSampleStatusAllFieldsOmittedByPolicy &&
+		input.SampleContext.Status != interfaces.SemanticUnderstandingSampleStatusUnavailable {
+		return resultJSON, confidenceDetailJSON, nil
+	}
+	omissions := make([]interfaces.SemanticUnderstandingSampleOmission, 0, len(input.SampleContext.OmittedFields))
+	for _, omission := range input.SampleContext.OmittedFields {
+		if omission.Reason == interfaces.SemanticUnderstandingSampleOmissionReasonPolicy {
+			omissions = append(omissions, omission)
+		}
+	}
+	if len(omissions) == 0 {
+		return resultJSON, confidenceDetailJSON, nil
+	}
+	ctx = rest.WithLanguage(ctx, input.Options.Language)
+	allFieldsOmittedByPolicy := input.SampleContext.Status == interfaces.SemanticUnderstandingSampleStatusAllFieldsOmittedByPolicy
+
+	resultJSON, err := reconcileResourceSemanticSampleWarningPayload(
+		ctx, resultJSON, omissions, input.Resource.SchemaDefinition, allFieldsOmittedByPolicy,
+	)
+	if err != nil {
+		return "", "", fmt.Errorf("reconcile resource semantic result warnings failed: %w", err)
+	}
+	confidenceDetailJSON, err = reconcileResourceSemanticSampleWarningPayload(
+		ctx, confidenceDetailJSON, omissions, input.Resource.SchemaDefinition, allFieldsOmittedByPolicy,
+	)
+	if err != nil {
+		return "", "", fmt.Errorf("reconcile resource semantic confidence warnings failed: %w", err)
+	}
+	return resultJSON, confidenceDetailJSON, nil
+}
+
+func reconcileResourceSemanticSampleWarningPayload(ctx context.Context, payload string,
+	omissions []interfaces.SemanticUnderstandingSampleOmission,
+	fields []interfaces.SemanticUnderstandingResourceAgentInputProperty,
+	allFieldsOmittedByPolicy bool) (string, error) {
+	object := map[string]sonic.NoCopyRawMessage{}
+	if err := sonic.Unmarshal([]byte(payload), &object); err != nil {
+		return "", err
+	}
+
+	warnings := []string{}
+	if rawWarnings, ok := object["warnings"]; ok {
+		if err := sonic.Unmarshal(rawWarnings, &warnings); err != nil {
+			return "", fmt.Errorf("unmarshal warnings: %w", err)
+		}
+	}
+	filteredWarnings := make([]string, 0, len(warnings))
+	for _, warning := range warnings {
+		reconciledWarning, keep := reconcileSemanticUnderstandingOmittedSampleWarning(
+			ctx, warning, omissions, fields, allFieldsOmittedByPolicy,
+		)
+		if keep {
+			filteredWarnings = append(filteredWarnings, reconciledWarning)
+		}
+	}
+	warningsJSON, err := sonic.Marshal(filteredWarnings)
+	if err != nil {
+		return "", fmt.Errorf("marshal warnings: %w", err)
+	}
+	object["warnings"] = warningsJSON
+
+	warningDetails := []sonic.NoCopyRawMessage{}
+	if rawDetails, ok := object["warning_details"]; ok {
+		if err := sonic.Unmarshal(rawDetails, &warningDetails); err != nil {
+			return "", fmt.Errorf("unmarshal warning details: %w", err)
+		}
+	}
+	for _, omission := range omissions {
+		fieldName := omission.OriginalName
+		if fieldName == "" {
+			fieldName = omission.Name
+		}
+		detail := interfaces.SemanticUnderstandingWarningDetail{
+			Code: interfaces.SemanticUnderstandingWarningCodeSampleOmittedByPolicy,
+			Params: interfaces.SemanticUnderstandingWarningDetailParams{
+				FieldName: fieldName,
+				FieldType: omission.Type,
+			},
+		}
+		if semanticUnderstandingWarningDetailExists(warningDetails, detail) {
+			continue
+		}
+		rawDetail, err := sonic.Marshal(detail)
+		if err != nil {
+			return "", fmt.Errorf("marshal warning detail: %w", err)
+		}
+		warningDetails = append(warningDetails, rawDetail)
+	}
+	warningDetailsJSON, err := sonic.Marshal(warningDetails)
+	if err != nil {
+		return "", fmt.Errorf("marshal warning details: %w", err)
+	}
+	object["warning_details"] = warningDetailsJSON
+
+	result, err := sonic.MarshalString(object)
+	if err != nil {
+		return "", err
+	}
+	return result, nil
+}
+
+func semanticUnderstandingWarningDetailExists(rawDetails []sonic.NoCopyRawMessage, expected interfaces.SemanticUnderstandingWarningDetail) bool {
+	for _, rawDetail := range rawDetails {
+		var detail interfaces.SemanticUnderstandingWarningDetail
+		if err := sonic.Unmarshal(rawDetail, &detail); err == nil &&
+			detail.Code == expected.Code && detail.Params == expected.Params {
+			return true
+		}
+	}
+	return false
+}
+
+func reconcileSemanticUnderstandingOmittedSampleWarning(ctx context.Context, warning string,
+	omissions []interfaces.SemanticUnderstandingSampleOmission,
+	fields []interfaces.SemanticUnderstandingResourceAgentInputProperty,
+	allFieldsOmittedByPolicy bool) (string, bool) {
+	if !semanticUnderstandingWarningClaimsMissingSample(ctx, warning) {
+		return warning, true
+	}
+	omittedFieldMentioned := false
+	for _, omission := range omissions {
+		if semanticUnderstandingWarningMentionsOmittedField(warning, omission) {
+			omittedFieldMentioned = true
+			break
+		}
+	}
+	if !omittedFieldMentioned && !allFieldsOmittedByPolicy {
+		return warning, true
+	}
+	nonOmittedFieldNames := make([]string, 0)
+	for _, field := range fields {
+		if isSemanticUnderstandingOmittedField(field, omissions) {
+			continue
+		}
+		switch {
+		case containsSemanticUnderstandingFieldName(warning, field.OriginalName):
+			nonOmittedFieldNames = append(nonOmittedFieldNames, field.OriginalName)
+		case containsSemanticUnderstandingFieldName(warning, field.Name):
+			nonOmittedFieldNames = append(nonOmittedFieldNames, field.Name)
+		}
+	}
+	if len(nonOmittedFieldNames) == 0 {
+		return "", false
+	}
+	return formatSemanticUnderstandingMissingSampleWarning(ctx, nonOmittedFieldNames), true
+}
+
+func semanticUnderstandingWarningMentionsOmittedField(warning string,
+	omission interfaces.SemanticUnderstandingSampleOmission) bool {
+	return !isSemanticUnderstandingGenericSampleTerm(omission.Name) &&
+		containsSemanticUnderstandingFieldName(warning, omission.Name) ||
+		!isSemanticUnderstandingGenericSampleTerm(omission.OriginalName) &&
+			containsSemanticUnderstandingFieldName(warning, omission.OriginalName)
+}
+
+func isSemanticUnderstandingGenericSampleTerm(fieldName string) bool {
+	switch strings.ToLower(fieldName) {
+	case "data", "value", "values", "content", "sample", "samples":
+		return true
+	default:
+		return false
+	}
+}
+
+func formatSemanticUnderstandingMissingSampleWarning(ctx context.Context, fieldNames []string) string {
+	messageName := "SemanticUnderstandingInsufficientSampleDataSingular"
+	if len(fieldNames) > 1 {
+		messageName = "SemanticUnderstandingInsufficientSampleDataPlural"
+	}
+	separator := locale.ValidationDetail(ctx, "SemanticUnderstandingFieldSeparator", nil)
+	return locale.ValidationDetail(ctx, messageName, map[string]interface{}{"fields": strings.Join(fieldNames, separator)})
+}
+
+func isSemanticUnderstandingOmittedField(field interfaces.SemanticUnderstandingResourceAgentInputProperty,
+	omissions []interfaces.SemanticUnderstandingSampleOmission) bool {
+	for _, omission := range omissions {
+		if equalSemanticUnderstandingFieldName(field.Name, omission.Name) ||
+			equalSemanticUnderstandingFieldName(field.Name, omission.OriginalName) ||
+			equalSemanticUnderstandingFieldName(field.OriginalName, omission.Name) ||
+			equalSemanticUnderstandingFieldName(field.OriginalName, omission.OriginalName) {
+			return true
+		}
+	}
+	return false
+}
+
+func equalSemanticUnderstandingFieldName(left, right string) bool {
+	return left != "" && right != "" && strings.EqualFold(left, right)
+}
+
+func semanticUnderstandingWarningClaimsMissingSample(ctx context.Context, warning string) bool {
+	pattern, err := regexp.Compile(locale.ValidationDetail(ctx, "SemanticUnderstandingMissingSamplePattern", nil))
+	return err == nil && pattern.MatchString(warning)
+}
+
+func containsSemanticUnderstandingFieldName(value, fieldName string) bool {
+	if fieldName == "" {
+		return false
+	}
+	value = strings.ToLower(value)
+	fieldName = strings.ToLower(fieldName)
+	for offset := 0; offset <= len(value)-len(fieldName); {
+		index := strings.Index(value[offset:], fieldName)
+		if index < 0 {
+			return false
+		}
+		index += offset
+		if semanticUnderstandingIdentifierBoundary(value, index, index+len(fieldName)) {
+			return true
+		}
+		offset = index + len(fieldName)
+	}
+	return false
+}
+
+func semanticUnderstandingIdentifierBoundary(value string, start, end int) bool {
+	if start > 0 && isSemanticUnderstandingIdentifierByte(value[start-1]) {
+		return false
+	}
+	if end < len(value) && isSemanticUnderstandingIdentifierByte(value[end]) {
+		return false
+	}
+	return true
+}
+
+func isSemanticUnderstandingIdentifierByte(value byte) bool {
+	return value >= 'a' && value <= 'z' || value >= '0' && value <= '9' || value == '_'
 }
 
 // assessResourceSemanticResultQuality records when an otherwise valid agent

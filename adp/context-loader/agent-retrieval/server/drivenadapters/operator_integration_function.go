@@ -8,8 +8,10 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/utils"
@@ -25,11 +27,63 @@ import (
 // so this request carries the original caller bearer token.
 const executeFunctionURI = "/v1/function/execute"
 
-// ErrCallerTokenMissing indicates that the caller token is absent from context.
-//
-// Do not silently fall back to a service identity because that would bypass
-// Execution Factory's execute permission check.
-var ErrCallerTokenMissing = fmt.Errorf("caller token is required for sandbox execution")
+// ErrCallerTokenMissing indicates that a public caller token is absent from context.
+var (
+	ErrCallerTokenMissing    = fmt.Errorf("caller token is required for execution-factory authorization")
+	ErrCallerIdentityMissing = fmt.Errorf("trusted caller identity is required for execution-factory authorization")
+	// Arbitrary function execution has no equivalent caller-scoped internal
+	// endpoint. Capability resources use the trusted internal caller routes, but
+	// this operation must still carry the original bearer token.
+	ErrInternalCapabilityAuthorizationUnsupported = fmt.Errorf(
+		"function execution is not supported on the internal API without a caller token")
+)
+
+func (o *operatorIntegrationClient) callerAuthorizationHeader(
+	ctx context.Context, operationName string,
+) (map[string]string, error) {
+	header := o.skillHeader(ctx, operationName)
+	token, ok := common.GetRawTokenFromCtx(ctx)
+	if !ok {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusUnauthorized, ErrCallerTokenMissing.Error())
+	}
+	header["Authorization"] = "Bearer " + token
+	return header, nil
+}
+
+// capabilityAuthorizationHeader authenticates a caller-scoped Execution
+// Factory request. Public traffic forwards the original bearer token; internal
+// traffic carries the trusted account headers already produced by skillHeader.
+func (o *operatorIntegrationClient) capabilityAuthorizationHeader(
+	ctx context.Context, operationName string,
+) (map[string]string, error) {
+	return o.capabilityAuthorizationHeaderForAuthMode(ctx, operationName, config.GetAuthEnabled())
+}
+
+func (o *operatorIntegrationClient) capabilityAuthorizationHeaderForAuthMode(
+	ctx context.Context, operationName string, authEnabled bool,
+) (map[string]string, error) {
+	if _, ok := common.GetRawTokenFromCtx(ctx); ok {
+		return o.callerAuthorizationHeader(ctx, operationName)
+	}
+	if common.IsPublicAPIFromCtx(ctx) {
+		if authEnabled {
+			return o.callerAuthorizationHeader(ctx, operationName)
+		}
+		return o.skillHeader(ctx, operationName), nil
+	}
+	authContext, ok := common.GetAccountAuthContextFromCtx(ctx)
+	if !ok || strings.TrimSpace(authContext.AccountID) == "" || strings.TrimSpace(string(authContext.AccountType)) == "" {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusUnauthorized, ErrCallerIdentityMissing.Error())
+	}
+	return o.skillHeader(ctx, operationName), nil
+}
+
+func capabilityURI(ctx context.Context, publicURI, internalURI string) string {
+	if _, ok := common.GetRawTokenFromCtx(ctx); ok || common.IsPublicAPIFromCtx(ctx) {
+		return publicURI
+	}
+	return internalURI
+}
 
 // ExecuteFunction executes code in the sandbox.
 func (o *operatorIntegrationClient) ExecuteFunction(
@@ -39,14 +93,15 @@ func (o *operatorIntegrationClient) ExecuteFunction(
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
 			infraErr.LocalizedDetail(ctx, "FunctionCodeRequired"))
 	}
-
-	token, ok := common.GetRawTokenFromCtx(ctx)
-	if !ok {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusUnauthorized, ErrCallerTokenMissing.Error())
+	if _, hasCallerToken := common.GetRawTokenFromCtx(ctx); !common.IsPublicAPIFromCtx(ctx) && !hasCallerToken {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusForbidden,
+			ErrInternalCapabilityAuthorizationUnsupported.Error())
 	}
 
-	header := o.skillHeader(ctx, "operator.function.execute")
-	header["Authorization"] = "Bearer " + token
+	header, err := o.callerAuthorizationHeader(ctx, "operator.function.execute")
+	if err != nil {
+		return nil, err
+	}
 
 	event := req.Event
 	if event == nil {

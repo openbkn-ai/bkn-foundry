@@ -100,7 +100,7 @@ func authorizePermission(c *gin.Context, e *authz.Enforcer, resourceType, op str
 		abortPublicError(c, http.StatusUnauthorized)
 		return false
 	}
-	ok, err := e.Check(sub, resourceType, "*", op)
+	ok, err := e.CheckContext(c.Request.Context(), sub, resourceType, "*", op)
 	if err != nil {
 		abortInternalError(c)
 		return false
@@ -141,7 +141,7 @@ func RequireAnyPermission(e *authz.Enforcer, points ...PermissionPoint) gin.Hand
 			return
 		}
 		for i, p := range points {
-			ok, err := e.Check(sub, p.ResourceType, "*", p.Op)
+			ok, err := e.CheckContext(c.Request.Context(), sub, p.ResourceType, "*", p.Op)
 			if err != nil {
 				abortInternalError(c)
 				return

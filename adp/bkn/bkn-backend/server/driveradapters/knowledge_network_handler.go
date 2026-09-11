@@ -338,6 +338,9 @@ func (r *restHandler) ValidateKN(c *gin.Context, visitor hydra.Visitor) {
 		}
 	}
 	if err = r.kns.ValidateKN(ctx, &kn, strictMode, mode); err != nil {
+		if replyDependencyValidationError(c, span, err) {
+			return
+		}
 		oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 		rest.ReplyOK(c, http.StatusOK, map[string]any{"valid": false, "detail": err.Error()})
 		return

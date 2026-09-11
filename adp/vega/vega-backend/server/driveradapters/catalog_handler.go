@@ -74,6 +74,38 @@ func (r *restHandler) ListCatalogsByIn(c *gin.Context) {
 	r.listCatalogs(c, visitor)
 }
 
+// ListCatalogConnectorTypeStatsByEx handles GET /api/vega-backend/v1/catalogs/stats/by-connector-type.
+func (r *restHandler) ListCatalogConnectorTypeStatsByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.listCatalogConnectorTypeStats(c, visitor)
+}
+
+// ListCatalogConnectorTypeStatsByIn handles GET /api/vega-backend/in/v1/catalogs/stats/by-connector-type.
+func (r *restHandler) ListCatalogConnectorTypeStatsByIn(c *gin.Context) {
+	r.listCatalogConnectorTypeStats(c, visitor.GenerateVisitor(c))
+}
+
+func (r *restHandler) listCatalogConnectorTypeStats(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)})
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	params := interfaces.CatalogsQueryParams{Name: strings.TrimSpace(c.Query("name"))}
+	entries, err := r.cs.ListConnectorTypeStats(ctx, params)
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, map[string]any{"entries": entries})
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+}
+
 // listCatalogs is the shared implementation
 func (r *restHandler) listCatalogs(c *gin.Context, visitor hydra.Visitor) {
 	ctx, span := oteltrace.StartServerSpan(c)
@@ -115,7 +147,7 @@ func (r *restHandler) listCatalogs(c *gin.Context, visitor hydra.Visitor) {
 	pageParam, err := validatePaginationQueryParams(ctx,
 		offset, limit, sort, direction, interfaces.CATALOG_SORT)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), nil)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -133,7 +165,7 @@ func (r *restHandler) listCatalogs(c *gin.Context, visitor hydra.Visitor) {
 	}
 
 	if err := ValidateCatalogListQueryParams(ctx, params); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), nil)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -143,7 +175,7 @@ func (r *restHandler) listCatalogs(c *gin.Context, visitor hydra.Visitor) {
 
 	entries, total, err := r.cs.List(ctx, params)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -201,7 +233,7 @@ func (r *restHandler) createCatalog(c *gin.Context, visitor hydra.Visitor) {
 	}
 
 	if err := ValidateCatalogRequest(ctx, &req); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -209,7 +241,7 @@ func (r *restHandler) createCatalog(c *gin.Context, visitor hydra.Visitor) {
 
 	allowUnhealthy, err := parseAllowUnhealthy(ctx, c)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -250,7 +282,7 @@ func (r *restHandler) createCatalog(c *gin.Context, visitor hydra.Visitor) {
 
 	id, err := r.cs.Create(ctx, &req, allowUnhealthy)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -310,7 +342,7 @@ func (r *restHandler) getCatalogs(c *gin.Context, visitor hydra.Visitor) {
 
 	catalogs, err := r.cs.GetByIDs(ctx, ids)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -401,13 +433,13 @@ func (r *restHandler) updateCatalog(c *gin.Context, visitor hydra.Visitor) {
 	}
 
 	if err := ValidateCatalogRequest(ctx, &req); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if err := validateExpectedUpdateTime(ctx, req.ExpectedUpdateTime); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -415,7 +447,7 @@ func (r *restHandler) updateCatalog(c *gin.Context, visitor hydra.Visitor) {
 
 	allowUnhealthy, err := parseAllowUnhealthy(ctx, c)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -424,7 +456,7 @@ func (r *restHandler) updateCatalog(c *gin.Context, visitor hydra.Visitor) {
 	// Check if id exists
 	catalog, err := r.cs.GetByID(ctx, id, false)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -452,7 +484,7 @@ func (r *restHandler) updateCatalog(c *gin.Context, visitor hydra.Visitor) {
 	if req.Name != catalog.Name {
 		exists, err := r.cs.CheckExistByName(ctx, req.Name)
 		if err != nil {
-			httpErr := err.(*rest.HTTPError)
+			httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return
@@ -467,7 +499,7 @@ func (r *restHandler) updateCatalog(c *gin.Context, visitor hydra.Visitor) {
 	}
 
 	if err := r.cs.Update(ctx, catalog, &req, allowUnhealthy); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -527,7 +559,7 @@ func (r *restHandler) setCatalogEnabled(c *gin.Context, visitor hydra.Visitor, e
 	id := c.Param("id")
 	catalog, err := r.cs.GetByID(ctx, id, false)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -540,7 +572,7 @@ func (r *restHandler) setCatalogEnabled(c *gin.Context, visitor hydra.Visitor, e
 	}
 
 	if err := r.cs.SetEnabled(ctx, catalog, enabled); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -597,7 +629,7 @@ func (r *restHandler) deleteCatalog(c *gin.Context, visitor hydra.Visitor) {
 
 	dryRun, err := parseDryRun(ctx, c)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -606,7 +638,7 @@ func (r *restHandler) deleteCatalog(c *gin.Context, visitor hydra.Visitor) {
 	// Check if catalog exists before choosing dry-run or deletion behavior.
 	exists, err := r.cs.CheckExistByID(ctx, id)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -622,7 +654,7 @@ func (r *restHandler) deleteCatalog(c *gin.Context, visitor hydra.Visitor) {
 	if dryRun {
 		result, err := r.cs.GetDeletionImpact(ctx, id)
 		if err != nil {
-			httpErr := err.(*rest.HTTPError)
+			httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return
@@ -634,7 +666,7 @@ func (r *restHandler) deleteCatalog(c *gin.Context, visitor hydra.Visitor) {
 	}
 
 	if err := r.cs.DeleteByID(ctx, id); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -684,7 +716,7 @@ func (r *restHandler) getCatalogHealthStatus(c *gin.Context, visitor hydra.Visit
 
 	catalog, err := r.cs.GetByID(ctx, id, false)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -736,7 +768,7 @@ func (r *restHandler) testConnectionConfig(c *gin.Context, visitor hydra.Visitor
 
 	status, err := r.cs.TestConnectionConfig(ctx, &req)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -783,7 +815,7 @@ func (r *restHandler) testConnection(c *gin.Context, visitor hydra.Visitor) {
 
 	status, err := r.cs.TestConnection(ctx, id)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -867,7 +899,7 @@ func (r *restHandler) discoverCatalogResources(c *gin.Context, visitor hydra.Vis
 	// Get catalog to verify it exists
 	catalog, err := r.cs.GetByID(ctx, id, false)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

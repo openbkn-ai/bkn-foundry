@@ -44,6 +44,7 @@ type ISkillReleaseDB interface {
 	SelectBySkillID(ctx context.Context, tx *sql.Tx, skillID string) (release *SkillReleaseDB, err error)
 	SelectListPage(ctx context.Context, tx *sql.Tx, filter map[string]interface{},
 		sort *ormhelper.SortParams, cursor *ormhelper.CursorParams) (releases []*SkillReleaseDB, err error)
+	SelectIDsByWhereClause(ctx context.Context, tx *sql.Tx, filter map[string]interface{}) ([]string, error)
 	CountByWhereClause(ctx context.Context, tx *sql.Tx, filter map[string]interface{}) (count int64, err error)
 	DeleteBySkillID(ctx context.Context, tx *sql.Tx, skillID string) error
 }

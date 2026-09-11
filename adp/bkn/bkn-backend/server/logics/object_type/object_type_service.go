@@ -84,11 +84,23 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 	if objectType.DataSource != nil && objectType.DataSource.ID != "" {
 		switch objectType.DataSource.Type {
 		case interfaces.DATA_SOURCE_TYPE_RESOURCE:
-			res, err := ots.vbs.GetResourceByID(ctx, objectType.DataSource.ID)
+			lookupCtx := interfaces.WithDependencyBindingScope(ctx, objectType.KNID,
+				interfaces.MODULE_TYPE_OBJECT_TYPE, objectType.OTID)
+			_, controlledLookup := interfaces.VerifiedDependencyAccount(lookupCtx, "resource", objectType.DataSource.ID,
+				interfaces.OPERATION_TYPE_VIEW_DETAIL)
+			res, err := ots.vbs.GetResourceSchema(lookupCtx, objectType.DataSource.ID, interfaces.OPERATION_TYPE_VIEW_DETAIL)
 			if err != nil {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest,
+				detailKey := "ResourceLookupFailed"
+				if kind, ok := logics.DependencyErrorKind(err); ok && kind == interfaces.DependencyNotFound {
+					detailKey = "ResourceNotFound"
+				}
+				invalidErr := rest.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(invalidParameterDetail(ctx, "ResourceLookupFailed", map[string]any{"objectType": objectType.OTName, "resource": objectType.DataSource.ID}))
+					WithErrorDetails(invalidParameterDetail(ctx, detailKey, map[string]any{
+						"objectType": objectType.OTName, "resource": objectType.DataSource.ID,
+					}))
+				return logics.MapDependencyError(ctx, err, !controlledLookup, invalidErr,
+					berrors.BknBackend_ObjectType_InternalError)
 			}
 			if res == nil {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest,
@@ -112,8 +124,13 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 					WithErrorDetails(invalidParameterDetail(ctx, "LogicPropertyDataSourceRequired", map[string]any{"objectType": objectType.OTName, "property": lp.Name}))
 			}
 			if err := ots.aoa.GetToolByID(ctx, lp.DataSource.BoxID, lp.DataSource.ToolID); err != nil {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+				invalidErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 					WithErrorDetails(invalidParameterDetail(ctx, "ToolLookupFailed", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "box": lp.DataSource.BoxID, "tool": lp.DataSource.ToolID}))
+				// The execution-factory internal metadata endpoint does not perform
+				// caller resource authorization. A 403 therefore indicates an
+				// internal identity/configuration failure, not a user-scoped denial.
+				return logics.MapDependencyError(ctx, err, false, invalidErr,
+					berrors.BknBackend_ObjectType_InternalError)
 			}
 		}
 	}
@@ -319,7 +336,8 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 	return otIDs, nil
 }
 
-// ValidateObjectTypes checks dependency existence only; does not write to the database.
+// ValidateObjectTypes authorizes the validation request and checks dependency
+// existence without writing to the database.
 func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID string, branch string,
 	objectTypes []*interfaces.ObjectType, strictMode bool, batch *interfaces.BatchIDIndex, mode string) error {
 
@@ -330,13 +348,17 @@ func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID stri
 		return nil
 	}
 
-	err := ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   knID,
-	}, []string{interfaces.OPERATION_TYPE_MODIFY})
-	if err != nil {
-		return err
+	var err error
+	if !permission.DependencyValidationPermissionPrechecked(ctx) {
+		err = ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: interfaces.RESOURCE_TYPE_KN,
+			ID:   knID,
+		}, []string{interfaces.OPERATION_TYPE_MODIFY})
+		if err != nil {
+			return err
+		}
 	}
+	ctx = permission.WithDependencyValidationPermissionPrechecked(ctx)
 
 	_, _, err = ots.handleObjectTypeImportMode(ctx, mode, objectTypes)
 	if err != nil {
@@ -847,16 +869,17 @@ func (ots *objectTypeService) UpdateObjectType(ctx context.Context, tx *sql.Tx, 
 
 // Update object type data properties.
 func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
-	objectType *interfaces.ObjectType, dataProperties []*interfaces.DataProperty, strictMode bool) error {
+	objectType *interfaces.ObjectType, dataProperties []*interfaces.DataProperty) error {
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update object type")
 	defer span.End()
 
-	// Check whether the user ID can modify the business knowledge network.
-	err := ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   objectType.KNID,
-	}, []string{interfaces.OPERATION_TYPE_MODIFY})
+	if err := permission.ValidateKNChildAuthorizationIDs(ctx, objectType.KNID, []string{objectType.OTID}); err != nil {
+		return err
+	}
+	resource := interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		objectType.KNID, objectType.OTID)
+	err := ots.ps.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_MODIFY})
 	if err != nil {
 		return err
 	}
@@ -1643,14 +1666,14 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 					objectType.OTID, objectType.DataSource.ID, err))
 			} else {
 				objectType.DataSource.Name = res.Name
-				fieldsMap := logics.VegaResourceSchemaToFieldsMap(res)
+				propertiesMap := logics.VegaResourceSchemaToPropertiesMap(res)
 				indexCaps := logics.VegaResourceIndexCaps(res)
 				dslView := &interfaces.DataView{QueryType: interfaces.VIEW_QueryType_DSL}
 				for j, prop := range objectType.DataProperties {
 					if prop.MappedField != nil {
-						if field, exists := fieldsMap[prop.MappedField.Name]; exists {
-							objectType.DataProperties[j].MappedField.DisplayName = field.DisplayName
-							objectType.DataProperties[j].MappedField.Type = field.Type
+						if property, exists := propertiesMap[prop.MappedField.Name]; exists {
+							objectType.DataProperties[j].MappedField.DisplayName = property.DisplayName
+							objectType.DataProperties[j].MappedField.Type = property.Type
 						}
 					}
 					ops := ots.processConditionOperations(objectType, prop, dslView)

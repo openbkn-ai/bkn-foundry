@@ -5,15 +5,25 @@
 openapi: 3.0.3
 info:
   title: bkn-safe internal authorization API
-  version: 0.3.1
+  version: 0.5.0
   description: |
     Internal service-to-service authorization contract used by BKN,
     ontology-query, context-loader, and execution-factory.
 
-    This surface is deliberately tokenless and must be reachable only through
-    the cluster network boundary. Callers authenticate their own public request
-    first and pass the resulting concrete `accessor_id`; clients must never
-    expose these endpoints directly through an ingress.
+    The decision and resource-directory routes are tokenless and belong
+    exclusively to the platform-internal network trust boundary defined by
+    bkn-foundry #333. Callers authenticate their own public request first and
+    pass the resulting concrete `accessor_id`; clients must never expose those
+    endpoints through an Ingress. `/explain` is the explicit exception: it is
+    a bearer-token administrator diagnostic guarded by `admin-authz:view`.
+
+    Local authorization is a narrower intermediate mode for Vega's
+    Resource-to-Catalog orchestration. It accepts only concrete `resource` and
+    `catalog` references plus their approved operations. It does not introduce
+    a service credential and does not trust `x-caller-service` or another
+    caller-supplied service-name header for authorization. Sandbox and customer
+    workloads must be isolated from this internal face by NetworkPolicy before
+    local mode is deployed.
 
     Knowledge-network roots use `{kn_id}`. Child resources use
     `{kn_id}/{child_id}`. The supported KN resource types are
@@ -33,6 +43,18 @@ paths:
     post:
       operationId: checkAuthorization
       summary: Check one resource operation
+      description: |
+        `evaluation_scope` defaults to `effective`, which invokes the final
+        `operation_decision` used by ordinary business callers. `local` inspects
+        only base rules on the requested resource, skipping parent fallback and
+        runtime enforcement of operation requirements. The response still lists
+        the target operation's direct `requires`, so the trusted Vega client can
+        apply them after its Resource→Catalog base merge. It is available only
+        on the platform-internal network face for the Resource→Catalog relation
+        Vega owns. The local result
+        is input to Vega's parent fallback, not a final authorization result;
+        neither local `allow` nor local `none` may by itself authorize a
+        business operation.
       requestBody:
         required: true
         content:
@@ -49,7 +71,12 @@ paths:
                   operation: query_data
       responses:
         '200':
-          description: Decision. Unknown and disabled accounts return `allowed=false`.
+          description: |
+            Structured decision. `allowed` remains backward compatible and is
+            true exactly when `decision=allow`. Unknown and disabled accounts
+            preserve their existing `{allowed:false}` response and omit the
+            structured fields, so account state is not misreported as a local
+            policy miss or an effective default deny.
           content:
             application/json:
               schema:
@@ -93,6 +120,17 @@ paths:
         Its `operations` value is the allowed subset of candidate operations.
         An empty visibility list returns every requested resource. Omitting
         candidate operations uses each resource type's operation catalog.
+
+        `evaluation_scope=local` is available only on the platform-internal
+        network face. It accepts only concrete Resource/Catalog references and
+        their approved operations, returns every requested resource regardless
+        of visibility, and adds one `decisions` entry for every visibility or
+        candidate operation and every direct requirement, including explicit
+        `deny` and `none`. Each target entry also lists its `requires`. Vega uses
+        those entries to perform the parent fallback it owns; it must not treat
+        local `allowed` as final. Out-of-bound local shapes return 400 and never
+        fall back to effective evaluation.
+        Omitting the scope keeps the historical effective response shape.
 
         The response preserves first-seen candidate order and de-duplicates
         resources and operations. An unknown or disabled account returns an
@@ -217,6 +255,17 @@ paths:
         Wildcard resource types and wildcard operations are rejected.
         `action_type:*:execute` is also rejected; Action Type execute grants
         must target a concrete `{kn_id}/{action_type_id}`.
+
+        BKN creation uses two server-recognized lifecycle shapes. A newly
+        created knowledge network sends `[full_business_access, authorize]`;
+        bkn-safe atomically stores the logical Community bundle and a
+        system-derived `authorize` grant. A newly created Action Type sends
+        `[execute]`, stored as system-derived direct execution authority.
+        Policy and authority sources are selected by bkn-safe and are never
+        accepted from the request body. Other requests that pass the wildcard
+        guards retain the compatibility policy writer, except that a knowledge
+        network request containing `full_business_access` must match the exact
+        lifecycle shape above or it is rejected with `400`.
       requestBody:
         required: true
         content:
@@ -375,7 +424,43 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '500':
           $ref: '#/components/responses/InternalError'
+  /explain:
+    post:
+      operationId: explainAuthorization
+      summary: Explain one final operation decision
+      description: |
+        Authenticated administrator diagnostic endpoint. Unlike the other
+        routes in this document, this route is not tokenless: the caller must
+        hold `admin-authz:view`. It returns matching user/role/public Core
+        grants, wildcard and parent fallback, Community bundle expansion, and
+        each direct runtime requirement. The response never includes property
+        names, masking rules, or data values and does not persist a proof chain.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExplainRequest'
+      responses:
+        '200':
+          description: On-demand structured explanation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExplainResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401': {description: Missing or invalid bearer token}
+        '403': {description: Caller lacks `admin-authz:view`}
+        '500':
+          $ref: '#/components/responses/InternalError'
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
   responses:
     BadRequest:
       description: Malformed or unsafe request.
@@ -426,11 +511,28 @@ components:
         resource:
           $ref: '#/components/schemas/ResourceRef'
         operation: {type: string}
+        evaluation_scope:
+          $ref: '#/components/schemas/EvaluationScope'
     CheckResponse:
       type: object
       required: [allowed]
       properties:
         allowed: {type: boolean}
+        evaluation_scope:
+          $ref: '#/components/schemas/EvaluationScope'
+        decision:
+          $ref: '#/components/schemas/AuthorizationDecision'
+        basis:
+          $ref: '#/components/schemas/DecisionBasis'
+        requires:
+          type: array
+          items: {type: string}
+          description: Direct same-resource prerequisites declared by the operation catalog; omitted when empty.
+        denied_requirement:
+          type: string
+          description: Present when the final decision is denied because this direct required operation was denied.
+        requirement_basis:
+          $ref: '#/components/schemas/DecisionBasis'
     OperationsRequest:
       type: object
       required: [accessor_id, resource]
@@ -464,6 +566,8 @@ components:
         candidate_operations:
           type: array
           items: {type: string}
+        evaluation_scope:
+          $ref: '#/components/schemas/EvaluationScope'
     FilteredResource:
       type: object
       required: [resource_type, resource_id, operations]
@@ -473,6 +577,11 @@ components:
         operations:
           type: array
           items: {type: string}
+        decisions:
+          type: array
+          description: Present only for `evaluation_scope=local`.
+          items:
+            $ref: '#/components/schemas/OperationDecision'
     ResourceFilterResponse:
       type: object
       required: [resources]
@@ -481,6 +590,47 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FilteredResource'
+    EvaluationScope:
+      type: string
+      enum: [effective, local]
+      default: effective
+      description: |
+        Effective invokes the final operation decision. Local is a
+        platform-internal base intermediate result and accepts only:
+        `resource` with `view_detail|query_data`, or `catalog` with
+        `view_detail|modify|delete|authorize|task_manage|resource_manage|query_data`.
+        It relies on the internal network boundary rather than service
+        credentials; `x-caller-service` is audit metadata and never changes the
+        decision. An out-of-bound local shape returns 400.
+    AuthorizationDecision:
+      type: string
+      enum: [allow, deny, none]
+      description: "`none` is valid only for local evaluation."
+    DecisionBasis:
+      type: string
+      enum: [direct, inherited, bundle, wildcard, default, requires, none]
+      description: |
+        `none` accompanies only a local `none`; `default` accompanies only an
+        effective deny produced when no rule or trusted parent decides;
+        `requires` denotes a final denial caused by a denied direct prerequisite.
+    OperationDecision:
+      type: object
+      required: [operation, decision, basis]
+      properties:
+        operation: {type: string}
+        decision:
+          $ref: '#/components/schemas/AuthorizationDecision'
+        basis:
+          $ref: '#/components/schemas/DecisionBasis'
+        requires:
+          type: array
+          items: {type: string}
+          description: Direct same-resource prerequisites. Local callers evaluate their returned decisions after trusted parent merging.
+        denied_requirement:
+          type: string
+          description: Present with `basis=requires`; names the denied direct prerequisite operation.
+        requirement_basis:
+          $ref: '#/components/schemas/DecisionBasis'
     PropertyAccessLevel:
       type: string
       enum: [none, schema, masked, full]
@@ -580,6 +730,71 @@ components:
             older servers; clients that do not inspect policy administration
             details may ignore it. Runtime decision endpoints already apply
             deny precedence and keep their existing request/response shapes.
+    ExplainRequest:
+      type: object
+      required: [accessor_id, resource, operation]
+      additionalProperties: false
+      properties:
+        accessor_id: {type: string, minLength: 1}
+        resource:
+          $ref: '#/components/schemas/ResourceRef'
+        operation: {type: string, minLength: 1}
+    ExplainEvaluation:
+      type: object
+      required: [scope, decision, basis]
+      properties:
+        scope: {type: string, enum: [effective]}
+        decision: {$ref: '#/components/schemas/AuthorizationDecision'}
+        basis: {$ref: '#/components/schemas/DecisionBasis'}
+        requires: {type: array, items: {type: string}}
+        denied_requirement: {type: string}
+        requirement_basis: {$ref: '#/components/schemas/DecisionBasis'}
+    ExplainGrant:
+      type: object
+      required: [grant_id, subject_id, subject_kind, object, operation, effect, policy_source, authority_source, match]
+      properties:
+        grant_id: {type: string}
+        subject_id: {type: string}
+        subject_kind: {type: string, enum: [user, role, public]}
+        object: {type: string}
+        operation: {type: string}
+        effect: {type: string, enum: [allow, deny]}
+        policy_source: {type: string}
+        authority_source: {type: string}
+        match: {type: string, enum: [direct, wildcard, bundle]}
+    ExplainStep:
+      type: object
+      required: [resource_type, resource_id, operation, decision, basis, matched_grants]
+      properties:
+        resource_type: {type: string}
+        resource_id: {type: string}
+        operation: {type: string}
+        decision: {$ref: '#/components/schemas/AuthorizationDecision'}
+        basis: {$ref: '#/components/schemas/DecisionBasis'}
+        matched_grants: {type: array, items: {$ref: '#/components/schemas/ExplainGrant'}}
+        inherited_from: {$ref: '#/components/schemas/ResourceRef'}
+        parent_operation: {type: string}
+    ExplainRequirement:
+      type: object
+      required: [operation, evaluation, steps]
+      properties:
+        operation: {type: string}
+        evaluation: {$ref: '#/components/schemas/ExplainEvaluation'}
+        steps: {type: array, items: {$ref: '#/components/schemas/ExplainStep'}}
+    ExplainResponse:
+      type: object
+      required: [accessor_id, resource_type, resource_id, operation, evaluation, steps, requirements]
+      properties:
+        accessor_id: {type: string}
+        resource_type: {type: string}
+        resource_id: {type: string}
+        operation: {type: string}
+        evaluation: {$ref: '#/components/schemas/ExplainEvaluation'}
+        steps: {type: array, items: {$ref: '#/components/schemas/ExplainStep'}}
+        requirements: {type: array, items: {$ref: '#/components/schemas/ExplainRequirement'}}
+        account_active:
+          type: boolean
+          description: False only when the requested accessor is absent or disabled.
     ResourceParentItem:
       type: object
       required: [resource_id, parent_id]

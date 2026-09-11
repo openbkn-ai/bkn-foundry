@@ -89,29 +89,17 @@ func validateBinaryMode(ctx context.Context, mode *string) error {
 
 func validateResourceDataPaging(ctx context.Context, params *interfaces.ResourceDataQueryParams) error {
 	paging := params.Paging
-	// Backward compatibility: map deprecated top-level limit/offset into paging
-	// when the caller has not provided a paging object (foundry#475).
-	if paging.Cursor == "" && paging.Mode == "" && paging.Limit == 0 && paging.Offset == 0 {
-		if params.LegacyLimit != 0 || params.LegacyOffset != 0 {
-			paging.Limit = params.LegacyLimit
-			paging.Offset = params.LegacyOffset
-		}
-	}
 	if paging.Mode == interfaces.PagingModeCursor && paging.Limit == 0 {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
 			WithErrorDetails("paging.limit is required for cursor paging")
 	}
 	params.Paging = paging.Normalized()
-	params.Offset = params.Paging.Offset
-	params.Limit = params.Paging.Limit
-	params.LegacyLimit = 0
-	params.LegacyOffset = 0
 	if params.Paging.Mode == interfaces.PagingModeCursor {
-		if params.Offset < 0 {
+		if params.Paging.Offset < 0 {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Offset).
 				WithErrorDetails("paging.offset must not be negative")
 		}
-		if params.Limit < interfaces.MinPageLimit || params.Limit > interfaces.MaxPageLimit {
+		if params.Paging.Limit < interfaces.MinPageLimit || params.Paging.Limit > interfaces.MaxPageLimit {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
 				WithErrorDetails(fmt.Sprintf("paging.limit must be in the range of [%d,%d] for cursor paging", interfaces.MinPageLimit, interfaces.MaxPageLimit))
 		}
@@ -125,7 +113,7 @@ func validateResourceDataPaging(ctx context.Context, params *interfaces.Resource
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("paging.mode must be either single or cursor")
 	}
-	return validatePaginationParams(ctx, params.Offset, params.Limit)
+	return validatePaginationParams(ctx, params.Paging.Offset, params.Paging.Limit)
 }
 
 func validateResourceDataCursorContinuation(ctx context.Context, params *interfaces.ResourceDataQueryParams) error {
@@ -137,8 +125,6 @@ func validateResourceDataCursorContinuation(ctx context.Context, params *interfa
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor continuation must contain only paging.cursor")
 	}
-	params.Offset = 0
-	params.Limit = 0
 	// The initial request freezes this value in the cursor session.
 	params.NeedTotal = false
 	return nil
@@ -396,9 +382,21 @@ func validateResourceDataQueryGroupByFields(ctx context.Context, params *interfa
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Aggregation).
 			WithErrorDetails(fmt.Sprintf("Binary field %q cannot be used in aggregation", params.Aggregation.Property))
 	}
-	groupByFields := make(map[string]struct{}, len(params.GroupBy))
+	// Aggregate results always contain the grouping dimensions and the aggregate
+	// value. output_fields may name those outputs, but cannot introduce another
+	// plain resource field into the projection.
+	validOutputFields := make(map[string]struct{}, len(params.GroupBy)+1)
 	for _, groupByItem := range params.GroupBy {
-		groupByFields[groupByItem.Property] = struct{}{}
+		validOutputFields[groupByItem.Property] = struct{}{}
+	}
+	if params.Aggregation != nil {
+		aggregateAlias := params.Aggregation.Alias
+		if aggregateAlias == "" {
+			aggregateAlias = "__value"
+		}
+		validOutputFields[aggregateAlias] = struct{}{}
+	} else if params.Having != nil && params.Having.Field == "count(*)" {
+		validOutputFields["__value"] = struct{}{}
 	}
 	for _, outputField := range params.OutputFields {
 		fieldType := fields[outputField]
@@ -410,10 +408,11 @@ func validateResourceDataQueryGroupByFields(ctx context.Context, params *interfa
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 				WithErrorDetails(fmt.Sprintf("Other field %q cannot be requested by an aggregation query", outputField))
 		}
-		if _, grouped := groupByFields[outputField]; !grouped {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("Output field %q must be included in group_by for an aggregation query", outputField))
+		if _, valid := validOutputFields[outputField]; valid {
+			continue
 		}
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("Output field %q must be a group_by field or aggregate alias for an aggregation query", outputField))
 	}
 
 	return nil

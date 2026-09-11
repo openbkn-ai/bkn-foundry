@@ -93,7 +93,7 @@ func (r *restHandler) queryResourceData(c *gin.Context, ctx context.Context, spa
 
 	resource, err := r.rs.GetByID(ctx, resourceID)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		otellog.LogError(ctx, "Get resource failed", httpErr)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -146,7 +146,7 @@ func bindResourceDataQuery(c *gin.Context, ctx context.Context, span trace.Span)
 		return nil, false
 	}
 	if err := ValidateResourceDataQueryParams(ctx, &params); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		otellog.LogError(ctx, "Validate resource data query params failed", httpErr)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -159,7 +159,7 @@ func (r *restHandler) executeResourceDataQuery(c *gin.Context, ctx context.Conte
 	resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams, start time.Time) {
 	warning, err := resourcelogic.EnsureResourceQueryable(ctx, resource)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		otellog.LogError(ctx, "Resource is not queryable", httpErr)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -169,7 +169,7 @@ func (r *restHandler) executeResourceDataQuery(c *gin.Context, ctx context.Conte
 		otellog.LogWarn(ctx, "Query hit deprecated resource: "+warning)
 	}
 	if err := validateResourceDataQueryGroupByFields(ctx, params, resource.SchemaDefinition); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		otellog.LogError(ctx, "Validate resource data group by fields failed", httpErr)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -178,7 +178,7 @@ func (r *restHandler) executeResourceDataQuery(c *gin.Context, ctx context.Conte
 
 	result, err := r.rds.QueryWithPaging(ctx, resource, params)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		otellog.LogError(ctx, "Query resource data failed", httpErr)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -275,7 +275,7 @@ func (r *restHandler) deleteResourceDataByQuery(c *gin.Context, ctx context.Cont
 	params.FilterCondCfg = actualCond
 
 	if err := r.ds.DeleteDocumentsByQuery(ctx, resource, &params); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -328,7 +328,7 @@ func (r *restHandler) getResourceDataDoc(c *gin.Context, visitor hydra.Visitor, 
 
 	warning, err := resourcelogic.EnsureResourceQueryable(ctx, resource)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -350,7 +350,7 @@ func (r *restHandler) getResourceDataDoc(c *gin.Context, visitor hydra.Visitor, 
 
 	documents, err := r.ds.GetDocuments(ctx, resource, docIDs, ignoreMissing)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -492,7 +492,7 @@ func (r *restHandler) deleteResourceData(c *gin.Context, visitor hydra.Visitor, 
 	ignoreMissing := strings.EqualFold(strings.TrimSpace(c.Query("ignore_missing")), "true")
 
 	if err := r.ds.DeleteDocuments(ctx, resource, docIDs, ignoreMissing); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -510,7 +510,7 @@ func (r *restHandler) deleteResourceData(c *gin.Context, visitor hydra.Visitor, 
 func (r *restHandler) requireDatasetResource(c *gin.Context, ctx context.Context, span trace.Span, id string) (*interfaces.Resource, bool) {
 	resource, err := r.rs.GetByID(ctx, id)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return nil, false

@@ -24,6 +24,7 @@ import (
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 	bmock "bkn-backend/interfaces/mock"
+	rootlogics "bkn-backend/logics"
 	"bkn-backend/logics/permission"
 )
 
@@ -982,6 +983,88 @@ func Test_knowledgeNetworkService_ChildPermissionNavigation(t *testing.T) {
 		So(stats.MetricsTotal, ShouldEqual, 1)
 		So(stats.RtTotal, ShouldEqual, 0)
 		So(stats.SkillsTotal, ShouldEqual, 0)
+	})
+}
+
+func Test_knowledgeNetworkService_ResolveKNReadAccess(t *testing.T) {
+	Convey("Resolve knowledge network read access", t, func() {
+		ctx := context.Background()
+		mockCtrl := gomock.NewController(t)
+		defer mockCtrl.Finish()
+
+		kna := bmock.NewMockKNAccess(mockCtrl)
+		ps := bmock.NewMockPermissionService(mockCtrl)
+		service := &knowledgeNetworkService{kna: kna, ps: ps}
+		knID := "kn1"
+		branch := interfaces.MAIN_BRANCH
+
+		Convey("A network detail reader receives full access", func() {
+			ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_KN, []string{knID},
+				[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS).
+				Return(map[string]interfaces.PermissionResourceOps{
+					knID: {ResourceID: knID, Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+				}, nil)
+
+			mode, err := service.ResolveKNReadAccess(ctx, knID, branch)
+
+			So(err, ShouldBeNil)
+			So(mode, ShouldEqual, interfaces.KN_READ_ACCESS_FULL)
+		})
+
+		Convey("A visible child receives navigation-only access", func() {
+			canonicalID := interfaces.KNChildResourceID(knID, "ot1")
+			ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_KN, []string{knID},
+				[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS).
+				Return(map[string]interfaces.PermissionResourceOps{}, nil)
+			kna.EXPECT().ListKNChildResourceCandidates(gomock.Any(), []string{knID}, branch).
+				Return([]interfaces.KNChildResourceCandidate{{
+					KNID: knID, ResourceID: "ot1", Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+				}}, nil)
+			ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE, []string{canonicalID},
+				[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true,
+				permission.KNChildOperationCandidates(interfaces.RESOURCE_TYPE_OBJECT_TYPE)).
+				Return(map[string]interfaces.PermissionResourceOps{
+					canonicalID: {ResourceID: canonicalID, Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+				}, nil)
+
+			mode, err := service.ResolveKNReadAccess(ctx, knID, branch)
+
+			So(err, ShouldBeNil)
+			So(mode, ShouldEqual, interfaces.KN_READ_ACCESS_NAVIGATION_ONLY)
+		})
+
+		Convey("A caller with neither network nor child visibility is forbidden", func() {
+			canonicalID := interfaces.KNChildResourceID(knID, "ot1")
+			ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_KN, []string{knID},
+				[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS).
+				Return(map[string]interfaces.PermissionResourceOps{}, nil)
+			kna.EXPECT().ListKNChildResourceCandidates(gomock.Any(), []string{knID}, branch).
+				Return([]interfaces.KNChildResourceCandidate{{
+					KNID: knID, ResourceID: "ot1", Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+				}}, nil)
+			ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE, []string{canonicalID},
+				[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true,
+				permission.KNChildOperationCandidates(interfaces.RESOURCE_TYPE_OBJECT_TYPE)).
+				Return(map[string]interfaces.PermissionResourceOps{}, nil)
+
+			mode, err := service.ResolveKNReadAccess(ctx, knID, branch)
+
+			So(mode, ShouldBeEmpty)
+			So(err, ShouldNotBeNil)
+			So(err.(*rest.HTTPError).HTTPCode, ShouldEqual, http.StatusForbidden)
+		})
+
+		Convey("A permission dependency failure is not downgraded", func() {
+			dependencyErr := rest.NewHTTPError(ctx, http.StatusServiceUnavailable, rest.PublicError_ServiceUnavailable)
+			ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_KN, []string{knID},
+				[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS).
+				Return(nil, dependencyErr)
+
+			mode, err := service.ResolveKNReadAccess(ctx, knID, branch)
+
+			So(mode, ShouldBeEmpty)
+			So(err, ShouldEqual, dependencyErr)
+		})
 	})
 }
 
@@ -1975,7 +2058,8 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
 			ps.EXPECT().CreateResources(gomock.Any(), []interfaces.PermissionResource{{
 				ID: "kn1", Type: interfaces.RESOURCE_TYPE_KN, Name: "kn1",
-			}}, interfaces.KN_CREATOR_OPERATIONS).Return(nil)
+			}}, []string{interfaces.OPERATION_TYPE_FULL_BUSINESS_ACCESS,
+				interfaces.OPERATION_TYPE_AUTHORIZE}).Return(nil)
 			smock.ExpectCommit()
 
 			knID, err := service.CreateKN(ctx, kn, mode, true)
@@ -2255,12 +2339,21 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			kna.EXPECT().CheckKNExistByID(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ots.EXPECT().CreateObjectTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			childErr := rootlogics.MapDependencyError(ctx,
+				interfaces.NewDependencyError("vega", "get_resource_schema", interfaces.DependencyTimeout, 0),
+				false,
+				rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter),
+				berrors.BknBackend_ObjectType_InternalError)
+			ots.EXPECT().CreateObjectTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, childErr)
 			smock.ExpectRollback()
 
 			knID, err := service4.CreateKN(ctx, kn, mode, true)
 			So(err, ShouldNotBeNil)
 			So(knID, ShouldEqual, "")
+			So(err, ShouldEqual, childErr)
+			httpErr := err.(*rest.HTTPError)
+			details := httpErr.BaseError.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
+			So(details.Kind, ShouldEqual, interfaces.DependencyTimeout)
 		})
 
 		Convey("Failed when CreateRelationTypes fails\n", func() {

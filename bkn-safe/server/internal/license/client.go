@@ -66,7 +66,7 @@ func activate(ctx context.Context, hc *http.Client, serverURL, licText, fp strin
 	if err != nil {
 		return "", fmt.Errorf("license: activate request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var out struct {
 		License string `json:"license"`
 		Error   string `json:"error"`

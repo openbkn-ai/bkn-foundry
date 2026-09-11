@@ -8,6 +8,14 @@ info:
     require `view_detail`; data reads require `query_data`; updates and deletes
     use `modify` and `delete`. Lists and searches are filtered before total and
     pagination. See `../knowledge-network-authorization.md`.
+
+    With `strict_mode=true`, resource-backed object types read only the Vega schema under
+    `view_detail`. Main-branch publication reuses the effective delegator selected by Proxy
+    preflight instead of requiring the current editor to repeat the downstream permission.
+    Missing bindings return 400; a current-user permission denial returns 403; controlled lookup
+    failures return 502, and timeout/unavailable dependencies return 503. Downstream bodies are
+    never copied into the public response. Tool-backed logical properties use the same 400/502/503
+    dependency classification.
 security:
   - OAuth2: []
 paths:
@@ -645,6 +653,14 @@ paths:
             default: true
           in: query
       responses:
+        "400":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadRequest"
+        "403":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyForbidden"
+        "502":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadGateway"
+        "503":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyUnavailable"
         "201":
           content:
             application/json:
@@ -1332,6 +1348,14 @@ paths:
       responses:
         "204":
           description: ok
+        "400":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadRequest"
+        "403":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyForbidden"
+        "502":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadGateway"
+        "503":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyUnavailable"
       summary: Update an object type
     parameters:
       - name: kn_id
@@ -1521,6 +1545,7 @@ paths:
           description: Unauthorized
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/object-types/{ob_id}/data_properties/{property_names}:
     put:
+      description: Requires effective `modify` on `object_type:{kn_id}/{ob_id}`. Before the write, `strict_mode` controls request validation for vector-index embedding-model dependencies; it never bypasses authorization.
       parameters:
         - name: branch
           description: Branch. Uses main when omitted.
@@ -1573,7 +1598,7 @@ paths:
         In that case, use full knowledge-network validation with the same structure as the create API, or concept-group validation with nested object_types, relation_types, and action_types. The server derives BatchIDIndex from the submitted JSON, making entries visible within the same create transaction.
         Relation-mapping validation requires object type data properties. If a batch declares only object type IDs without property definitions, existence validation may pass while mapping-rule validation is reduced.
 
-        Response: HTTP 200 with valid set to true indicates success. When valid is false, detail contains the server error message. Invalid parameters, authentication failures, and missing resources still return non-2xx statuses.
+        Response: HTTP 200 with valid set to true indicates success. Ordinary model validation failures use valid=false and detail. Strict dependency failures return the documented 400/403/502/503 error envelope, whose error_details includes a safe dependency_kind.
 
         Internal API: POST /api/bkn-backend/in/v1/.../object-types/validation. Other behavior is the same; the caller is resolved from headers and OAuth is not required.
       parameters:
@@ -1615,7 +1640,7 @@ paths:
                     type: object
       responses:
         "200":
-          description: Validation result returned. Both pass and fail can return 200.
+          description: Ordinary model-validation result. Strict dependency failures use the non-2xx responses below.
           content:
             application/json:
               schema:
@@ -1629,7 +1654,13 @@ paths:
                     type: string
                     description: Explanation when valid is false (error.Error()).
         "400":
-          description: Invalid request parameters and similar errors. A business validation failure is represented by 200 plus valid false and detail, not this status.
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadRequest"
+        "403":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyForbidden"
+        "502":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadGateway"
+        "503":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyUnavailable"
 components:
   securitySchemes:
     OAuth2:

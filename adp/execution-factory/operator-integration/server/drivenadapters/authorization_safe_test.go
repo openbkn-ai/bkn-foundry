@@ -22,8 +22,9 @@ func fakeAuthz(t *testing.T) *httptest.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/safe/v1/authz/check", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			AccessorID string `json:"accessor_id"`
-			Resource   struct {
+			AccessorID      string `json:"accessor_id"`
+			EvaluationScope string `json:"evaluation_scope"`
+			Resource        struct {
 				Type string `json:"type"`
 				ID   string `json:"id"`
 			} `json:"resource"`
@@ -34,6 +35,7 @@ func fakeAuthz(t *testing.T) *httptest.Server {
 			return
 		}
 		allowed := req.AccessorID == "admin" &&
+			req.EvaluationScope == "effective" &&
 			req.Resource.Type == "skill" &&
 			req.Resource.ID == interfaces.ResourceIDAll &&
 			req.Operation == "view"
@@ -65,6 +67,7 @@ func fakeAuthz(t *testing.T) *httptest.Server {
 			} `json:"resources"`
 			VisibilityOperations []string `json:"visibility_operations"`
 			CandidateOperations  []string `json:"candidate_operations"`
+			EvaluationScope      string   `json:"evaluation_scope"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -72,7 +75,8 @@ func fakeAuthz(t *testing.T) *httptest.Server {
 		}
 		if req.AccessorID != "u1" || len(req.Resources) != 2 || req.Resources[0].Type != "skill" || req.Resources[0].ID != "s1" ||
 			len(req.VisibilityOperations) != 1 || req.VisibilityOperations[0] != "view" ||
-			len(req.CandidateOperations) != 1 || req.CandidateOperations[0] != "authorize" {
+			len(req.CandidateOperations) != 1 || req.CandidateOperations[0] != "authorize" ||
+			req.EvaluationScope != "effective" {
 			http.Error(w, "unexpected resource filter request", http.StatusBadRequest)
 			return
 		}

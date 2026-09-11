@@ -9,12 +9,15 @@ package relation_type
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"bkn-backend/common"
@@ -33,7 +36,6 @@ func allowAllRelationPermissionResources(_ context.Context, _ string, ids, _ []s
 			interfaces.OPERATION_TYPE_QUERY_DATA,
 			interfaces.OPERATION_TYPE_MODIFY,
 			interfaces.OPERATION_TYPE_DELETE,
-			interfaces.OPERATION_TYPE_AUTHORIZE,
 		}}
 	}
 	return matched, nil
@@ -162,6 +164,7 @@ func Test_relationTypeService_GetRelationTypesByIDs(t *testing.T) {
 			DoAndReturn(allowAllRelationPermissionResources).AnyTimes()
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
 		ums := bmock.NewMockUserMgmtService(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		service := &relationTypeService{
 			appSetting: appSetting,
@@ -169,6 +172,7 @@ func Test_relationTypeService_GetRelationTypesByIDs(t *testing.T) {
 			ps:         ps,
 			ots:        ots,
 			ums:        ums,
+			vbs:        vbs,
 		}
 
 		Convey("Success getting relation types by IDs\n", func() {
@@ -311,6 +315,55 @@ func Test_relationTypeService_GetRelationTypesByIDs(t *testing.T) {
 			So(len(result), ShouldEqual, 1)
 			So(result[0].SourceObjectType.OTID, ShouldEqual, "ot1")
 			So(result[0].TargetObjectType.OTID, ShouldEqual, "ot2")
+		})
+
+		Convey("Degrades when backing resource lookup fails for INDIRECT type\n", func() {
+			knID := "kn1"
+			branch := interfaces.MAIN_BRANCH
+			rtIDs := []string{"rt1"}
+			rtArr := []*interfaces.RelationType{{
+				RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
+					RTID:               "rt1",
+					RTName:             "rt1",
+					Type:               interfaces.RELATION_TYPE_INDIRECT,
+					SourceObjectTypeID: "ot1",
+					TargetObjectTypeID: "ot2",
+					MappingRules: &interfaces.InDirectMapping{
+						BackingDataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource1"},
+						SourceMappingRules: []interfaces.Mapping{{
+							SourceProp: interfaces.SimpleProperty{Name: "source_prop"},
+							TargetProp: interfaces.SimpleProperty{Name: "resource_source_prop"},
+						}},
+						TargetMappingRules: []interfaces.Mapping{{
+							SourceProp: interfaces.SimpleProperty{Name: "resource_target_prop"},
+							TargetProp: interfaces.SimpleProperty{Name: "target_prop"},
+						}},
+					},
+				},
+			}}
+
+			rta.EXPECT().GetRelationTypesByIDs(gomock.Any(), knID, branch, rtIDs).Return(rtArr, nil)
+			ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), knID, branch, []string{"ot1", "ot2"}, true).Return(map[string]*interfaces.ObjectType{
+				"ot1": {
+					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1", OTName: "Source"},
+					PropertyMap:            map[string]string{"source_prop": "Source Property"},
+				},
+				"ot2": {
+					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot2", OTName: "Target"},
+					PropertyMap:            map[string]string{"target_prop": "Target Property"},
+				},
+			}, nil)
+			vbs.EXPECT().GetResourceByID(gomock.Any(), "resource1").Return(nil, errors.New("vega unavailable"))
+			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+			result, err := service.GetRelationTypesByIDs(ctx, knID, branch, rtIDs)
+			So(err, ShouldBeNil)
+			So(result, ShouldHaveLength, 1)
+			So(result[0].SourceObjectType.OTName, ShouldEqual, "Source")
+			So(result[0].TargetObjectType.OTName, ShouldEqual, "Target")
+			mappingRules := result[0].MappingRules.(*interfaces.InDirectMapping)
+			So(mappingRules.SourceMappingRules[0].SourceProp.DisplayName, ShouldEqual, "Source Property")
+			So(mappingRules.TargetMappingRules[0].TargetProp.DisplayName, ShouldEqual, "Target Property")
 		})
 	})
 }
@@ -929,14 +982,17 @@ func Test_relationTypeService_UpdateRelationType(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+				Type: interfaces.RESOURCE_TYPE_RELATION_TYPE,
+				ID:   interfaces.KNChildResourceID("kn1", "rt1"),
+			}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.ObjectType{}, nil).AnyTimes()
 			ots.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", true, nil).AnyTimes()
 			rta.EXPECT().UpdateRelationType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
-			err := service.UpdateRelationType(ctx, nil, relationType, false)
+			err := service.UpdateRelationType(ctx, nil, relationType, true)
 			So(err, ShouldBeNil)
 		})
 
@@ -1885,6 +1941,98 @@ func Test_relationTypeService_validateDependency(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 	})
+}
+
+func TestRelationTypeStrictBackingResourceDependencyErrorMapping(t *testing.T) {
+	tests := []struct {
+		name       string
+		kind       interfaces.DependencyErrorKind
+		controlled bool
+		status     int
+		code       string
+	}{
+		{name: "missing binding", kind: interfaces.DependencyNotFound, status: http.StatusBadRequest, code: berrors.BknBackend_RelationType_InvalidParameter},
+		{name: "invalid binding", kind: interfaces.DependencyInvalidBinding, status: http.StatusBadRequest, code: berrors.BknBackend_RelationType_InvalidParameter},
+		{name: "current editor forbidden", kind: interfaces.DependencyForbidden, status: http.StatusForbidden, code: rest.PublicError_Forbidden},
+		{name: "resolved delegator forbidden", kind: interfaces.DependencyForbidden, controlled: true, status: http.StatusBadGateway, code: berrors.BknBackend_RelationType_InternalError},
+		{name: "timeout", kind: interfaces.DependencyTimeout, status: http.StatusServiceUnavailable, code: berrors.BknBackend_RelationType_InternalError},
+		{name: "unavailable", kind: interfaces.DependencyUnavailable, status: http.StatusServiceUnavailable, code: berrors.BknBackend_RelationType_InternalError},
+		{name: "downstream failure", kind: interfaces.DependencyDownstreamError, status: http.StatusBadGateway, code: berrors.BknBackend_RelationType_InternalError},
+		{name: "invalid response", kind: interfaces.DependencyInvalidResponse, status: http.StatusBadGateway, code: berrors.BknBackend_RelationType_InternalError},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			vbs := bmock.NewMockVegaBackendService(ctrl)
+			vbs.EXPECT().GetResourceSchema(gomock.Any(), "resource-1", interfaces.OPERATION_TYPE_QUERY_DATA).
+				Return(nil, interfaces.NewDependencyError("vega", "get_resource_schema", tc.kind, 0))
+			service := &relationTypeService{vbs: vbs}
+			ctx := context.Background()
+			if tc.controlled {
+				ctx = interfaces.WithVerifiedDependencySources(ctx, []interfaces.ProxyGrantResolvedSource{{
+					ProxyGrantSourceSpec: interfaces.ProxyGrantSourceSpec{
+						ResourceType: "resource", ResourceID: "resource-1", Operation: interfaces.OPERATION_TYPE_QUERY_DATA,
+						KNID: "kn-1", BindingType: interfaces.MODULE_TYPE_RELATION_TYPE, BindingID: "rt-1",
+					},
+					GrantedBy: "historical-grantor",
+				}})
+			}
+			relationType := &interfaces.RelationType{
+				RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
+					RTID: "rt-1", RTName: "orders", Type: interfaces.RELATION_TYPE_INDIRECT,
+					MappingRules: &interfaces.InDirectMapping{BackingDataSource: &interfaces.ResourceInfo{
+						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1",
+					}},
+				},
+				KNID: "kn-1",
+			}
+
+			err := service.validateDependency(ctx, nil, relationType, true, nil)
+
+			var httpErr *rest.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, tc.status, httpErr.HTTPCode)
+			assert.Equal(t, tc.code, httpErr.BaseError.ErrorCode)
+		})
+	}
+}
+
+func TestRelationTypeStrictLookupUsesBindingScopedDelegator(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	vbs := bmock.NewMockVegaBackendService(ctrl)
+	vbs.EXPECT().GetResourceSchema(gomock.Any(), "resource-1", interfaces.OPERATION_TYPE_QUERY_DATA).
+		DoAndReturn(func(ctx context.Context, _, _ string) (*interfaces.VegaResource, error) {
+			account, ok := interfaces.VerifiedDependencyAccount(ctx, "resource", "resource-1",
+				interfaces.OPERATION_TYPE_QUERY_DATA)
+			require.True(t, ok)
+			assert.Equal(t, "relation-grantor", account.ID)
+			return &interfaces.VegaResource{ID: "resource-1", Name: "orders"}, nil
+		})
+	service := &relationTypeService{vbs: vbs}
+	ctx := interfaces.WithVerifiedDependencySources(context.Background(), []interfaces.ProxyGrantResolvedSource{
+		{ProxyGrantSourceSpec: interfaces.ProxyGrantSourceSpec{
+			ResourceType: "resource", ResourceID: "resource-1", Operation: interfaces.OPERATION_TYPE_QUERY_DATA,
+			KNID: "kn-1", BindingType: interfaces.MODULE_TYPE_OBJECT_TYPE, BindingID: "ot-1",
+		}, GrantedBy: "object-grantor"},
+		{ProxyGrantSourceSpec: interfaces.ProxyGrantSourceSpec{
+			ResourceType: "resource", ResourceID: "resource-1", Operation: interfaces.OPERATION_TYPE_QUERY_DATA,
+			KNID: "kn-1", BindingType: interfaces.MODULE_TYPE_RELATION_TYPE, BindingID: "rt-1",
+		}, GrantedBy: "relation-grantor"},
+	})
+	relationType := &interfaces.RelationType{
+		RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
+			RTID: "rt-1", RTName: "orders", Type: interfaces.RELATION_TYPE_INDIRECT,
+			MappingRules: &interfaces.InDirectMapping{BackingDataSource: &interfaces.ResourceInfo{
+				Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1",
+			}},
+		},
+		KNID: "kn-1",
+	}
+
+	err := service.validateDependency(ctx, nil, relationType, true, nil)
+
+	require.NoError(t, err)
 }
 
 func Test_relationTypeService_ValidateRelationTypes(t *testing.T) {

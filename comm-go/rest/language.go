@@ -27,9 +27,9 @@ const (
 type key string
 
 const (
-	LanguageKey           key = "language"
-	AcceptLanguageHeader      = "Accept-Language"
-	ContentLanguageHeader     = "Content-Language"
+	LanguageKey           = key("language")
+	AcceptLanguageHeader  = "Accept-Language"
+	ContentLanguageHeader = "Content-Language"
 )
 
 var (

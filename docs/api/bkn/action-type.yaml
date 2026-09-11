@@ -6,8 +6,15 @@ info:
   description: |
     Action types use `action_type:{kn_id}/{action_type_id}`. Reads and lists
     require `view_detail`; updates and deletes use `modify` and `delete`.
-    `execute` requires a direct concrete Action Type grant and never inherits
-    from the knowledge network. See `../knowledge-network-authorization.md`.
+    `execute` first evaluates the concrete Action Type rule; when no direct
+    rule exists it falls back to `execute` on the owning knowledge network.
+    A direct child allow or deny takes precedence, and a deny wins when both
+    effects exist on the same resource. See `../knowledge-network-authorization.md`.
+
+    Strict Tool Box and MCP binding validation uses controlled execution-factory existence
+    lookups. A missing or unpublished binding returns 400. Permission/configuration failures,
+    downstream 5xx responses, and invalid responses return 502; timeout or unavailable failures
+    return 503. Raw dependency response bodies are not included in public errors.
 security:
   - OAuth2: []
 paths:
@@ -218,6 +225,14 @@ paths:
             default: main
           in: query
       responses:
+        "400":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadRequest"
+        "403":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyForbidden"
+        "502":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadGateway"
+        "503":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyUnavailable"
         "200":
           content:
             application/json:
@@ -393,6 +408,14 @@ paths:
       responses:
         "204":
           description: ok
+        "400":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadRequest"
+        "403":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyForbidden"
+        "502":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadGateway"
+        "503":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyUnavailable"
       summary: Update an action type
     parameters:
       - name: kn_id
@@ -467,7 +490,7 @@ paths:
       description: |
         Validates only action type dependency existence and does not persist data. It validates dependencies such as bound and affected object types.
 
-        Response: HTTP 200 with valid and detail follows the other validation APIs. Parameter and authentication errors are non-2xx.
+        Response: HTTP 200 uses valid and detail for ordinary model validation. Strict dependency failures return the documented 400/403/502/503 error envelope, whose error_details includes a safe dependency_kind.
 
         Internal API: the corresponding internal path resolves the caller from headers and does not use OAuth.
       parameters:
@@ -509,7 +532,7 @@ paths:
                     type: object
       responses:
         "200":
-          description: Validation result returned. Both pass and fail can return 200.
+          description: Ordinary model-validation result. Strict dependency failures use the non-2xx responses below.
           content:
             application/json:
               schema:
@@ -523,7 +546,13 @@ paths:
                     type: string
                     description: Explanation when valid is false
         "400":
-          description: Invalid request parameters and similar errors. Business validation failures use 200 with valid=false.
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadRequest"
+        "403":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyForbidden"
+        "502":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadGateway"
+        "503":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyUnavailable"
 components:
   securitySchemes:
     OAuth2:

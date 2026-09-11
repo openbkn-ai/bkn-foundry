@@ -44,9 +44,11 @@ type SortParams struct {
 
 // CursorParams cursor parameters.
 type CursorParams struct {
-	Field     string    `json:"field,omitempty"`     // Cursor field name (the caller is responsible for passing in the correct field name)
-	Value     any       `json:"value,omitempty"`     // cursor value.
-	Direction SortOrder `json:"direction,omitempty"` // Cursor direction, default ASC.
+	Field           string    `json:"field,omitempty"`             // Cursor field name (the caller is responsible for passing in the correct field name)
+	Value           any       `json:"value,omitempty"`             // Cursor value.
+	TieBreakerField string    `json:"tie_breaker_field,omitempty"` // Unique field used to disambiguate equal cursor values.
+	TieBreakerValue any       `json:"tie_breaker_value,omitempty"` // Tie-breaker cursor value.
+	Direction       SortOrder `json:"direction,omitempty"`         // Cursor direction, default ASC.
 }
 
 // QueryResult general query results.

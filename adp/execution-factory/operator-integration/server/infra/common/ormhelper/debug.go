@@ -13,7 +13,7 @@ func DebugFieldMapping(structPtr interface{}) {
 	}
 
 	destValue := reflect.ValueOf(structPtr)
-	if destValue.Kind() != reflect.Ptr {
+	if destValue.Kind() != reflect.Pointer {
 		fmt.Println("参数必须是结构体指针")
 		return
 	}
@@ -65,7 +65,7 @@ func DebugColumnMapping(structPtr interface{}, columns []string) {
 	}
 
 	destValue := reflect.ValueOf(structPtr)
-	if destValue.Kind() != reflect.Ptr {
+	if destValue.Kind() != reflect.Pointer {
 		fmt.Println("参数必须是结构体指针")
 		return
 	}

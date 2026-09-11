@@ -139,7 +139,7 @@ func (s *safeUserManagement) post(ctx context.Context, path string, body, out an
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("bkn-safe POST %s: %d: %s", path, resp.StatusCode, data)

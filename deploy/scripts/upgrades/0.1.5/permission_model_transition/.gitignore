@@ -1,0 +1,5 @@
+# Local reports and logical database backups are operational evidence.
+# They must be stored on a protected volume, never committed.
+backups/
+reports/
+authz_migrate/authz-migrate

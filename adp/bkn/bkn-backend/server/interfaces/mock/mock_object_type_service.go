@@ -253,17 +253,17 @@ func (mr *MockObjectTypeServiceMockRecorder) SearchObjectTypes(ctx, query any) *
 }
 
 // UpdateDataProperties mocks base method.
-func (m *MockObjectTypeService) UpdateDataProperties(ctx context.Context, objectType *interfaces.ObjectType, dataProperties []*interfaces.DataProperty, strictMode bool) error {
+func (m *MockObjectTypeService) UpdateDataProperties(ctx context.Context, objectType *interfaces.ObjectType, dataProperties []*interfaces.DataProperty) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateDataProperties", ctx, objectType, dataProperties, strictMode)
+	ret := m.ctrl.Call(m, "UpdateDataProperties", ctx, objectType, dataProperties)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateDataProperties indicates an expected call of UpdateDataProperties.
-func (mr *MockObjectTypeServiceMockRecorder) UpdateDataProperties(ctx, objectType, dataProperties, strictMode any) *gomock.Call {
+func (mr *MockObjectTypeServiceMockRecorder) UpdateDataProperties(ctx, objectType, dataProperties any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDataProperties", reflect.TypeOf((*MockObjectTypeService)(nil).UpdateDataProperties), ctx, objectType, dataProperties, strictMode)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDataProperties", reflect.TypeOf((*MockObjectTypeService)(nil).UpdateDataProperties), ctx, objectType, dataProperties)
 }
 
 // UpdateObjectType mocks base method.

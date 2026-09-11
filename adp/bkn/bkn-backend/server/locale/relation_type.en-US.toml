@@ -70,7 +70,7 @@ Solution = "Please try again. If the error occurs again, please submit the work 
 ErrorLink = ""
 
 [BknBackend.RelationType.InvalidParameter.Detail]
-TypeNotSupported = "Relation type must be {{.directType}} or {{.crossJoinType}}; received {{.type}}."
+TypeNotSupported = "Relation type must be {{.directType}}, {{.indirectType}}, or {{.crossJoinType}}; received {{.type}}."
 SourceObjectTypeIDRequired = "source_object_type_id is required for a relation type."
 TargetObjectTypeIDRequired = "target_object_type_id is required for a relation type."
 MappingRulesRequired = "mapping_rules is required for a relation type."
@@ -86,6 +86,8 @@ BackingDataSourceRequired = "backing_data_source is required for an indirect rel
 BackingDataSourceTypeRequired = "backing_data_source.type is required."
 BackingDataSourceTypeInvalid = "backing_data_source.type must be {{.expected}}; received {{.actual}}."
 BackingDataSourceIDRequired = "backing_data_source.id is required."
+BackingDataSourceNotFound = "The backing resource {{.resource}} does not exist."
+BackingPropertyNotFound = "The property {{.property}} does not exist on backing resource {{.resource}}."
 SourceMappingRulesRequired = "source_mapping_rules is required for an indirect relation type."
 SourceMappingSourcePropertyRequired = "source_mapping_rules[{{.index}}].source_property.name is required."
 SourceMappingBridgePropertyRequired = "source_mapping_rules[{{.index}}].target_property.name is required."

@@ -1,5 +1,5 @@
 # BKN Directory Checksum
-# generated: 2026-08-04T17:17:22+08:00
+# generated: 2026-09-11T14:08:37+08:00
 SKILL.md  sha256:08301dfb5f554f2a
 action_type:assess_department  sha256:ddcfd628ac7fb792
 action_type:delete_department  sha256:e96c729c1b099924
@@ -17,6 +17,7 @@ object_type:employee  sha256:0bf1f14b0274b8ea
 object_type:employee_resource  sha256:7084404af040425e
 object_type:relation  sha256:b87a52fad3d3bbf9
 object_type:skill  sha256:ae627aad3deb6b8c
+relation_type:emp_dept_indirect  sha256:a65451bb38f768ef
 relation_type:emp_dept_resource  sha256:1c9a2007e3f32d8b
 relation_type:emp_skill  sha256:41187a1389b20af5
 relation_type:source_object_type_id  sha256:3517043fa1a34614

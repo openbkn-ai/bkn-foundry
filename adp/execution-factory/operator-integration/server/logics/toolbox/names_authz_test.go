@@ -13,6 +13,44 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+func TestToolRuntimeMetadataAllowsExecuteOnlyAuthorization(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	authService := mocks.NewMockIAuthorizationService(ctrl)
+	toolBoxDB := mocks.NewMockIToolboxDB(ctrl)
+	toolDB := mocks.NewMockIToolDB(ctrl)
+	svc := &ToolServiceImpl{
+		Logger:      logger.DefaultLogger(),
+		ToolBoxDB:   toolBoxDB,
+		ToolDB:      toolDB,
+		AuthService: authService,
+	}
+	ctx := common.SetPublicAPIToCtx(context.Background(), true)
+	accessor := &interfaces.AuthAccessor{ID: "user-1"}
+
+	authService.EXPECT().GetAccessor(gomock.Any(), "user-1").Return(accessor, nil).Times(2)
+	authService.EXPECT().OperationCheckAny(
+		gomock.Any(), accessor, "box-1", interfaces.AuthResourceTypeToolBox,
+		interfaces.AuthOperationTypeView,
+		interfaces.AuthOperationTypePublicAccess,
+		interfaces.AuthOperationTypeExecute,
+	).Return(true, nil).Times(2)
+	toolBoxDB.EXPECT().SelectToolBox(gomock.Any(), "box-1").
+		Return(true, &model.ToolboxDB{BoxID: "box-1"}, nil).Times(2)
+	toolDB.EXPECT().SelectTool(gomock.Any(), "missing-tool").Return(false, nil, nil)
+	toolDB.EXPECT().CountToolByBoxID(gomock.Any(), "box-1", gomock.Any()).Return(int64(0), nil)
+
+	if _, err := svc.GetBoxTool(ctx, &interfaces.GetToolReq{
+		UserID: "user-1", BoxID: "box-1", ToolID: "missing-tool",
+	}); err == nil {
+		t.Fatal("missing tool should still return an error after authorization succeeds")
+	}
+	if _, err := svc.QueryToolList(ctx, &interfaces.QueryToolListReq{
+		UserID: "user-1", BoxID: "box-1", Page: 1, PageSize: 20,
+	}); err != nil {
+		t.Fatalf("execute-authorized tool metadata list failed: %v", err)
+	}
+}
+
 // TestGetToolBoxNamesByIDsAuthz covers #345: batch name filtering based on viewing permissions to avoid enumerating all toolbox names.
 func TestGetToolBoxNamesByIDsAuthz(t *testing.T) {
 	Convey("工具箱批量取名授权过滤", t, func() {

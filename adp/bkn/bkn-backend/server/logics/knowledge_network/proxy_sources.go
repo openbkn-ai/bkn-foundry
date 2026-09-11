@@ -31,11 +31,28 @@ func buildProxyGrantSources(kn *interfaces.KN) ([]interfaces.ProxyGrantSourceSpe
 		return nil, "", fmt.Errorf("knowledge network is required")
 	}
 
-	objectResources := make(map[string]string, len(kn.ObjectTypes))
-	objectTypes := make(map[string]struct{}, len(kn.ObjectTypes))
+	// Whole-network imports persist concept-group children through the same
+	// object/relation/action services as top-level children. Include both
+	// representations so proxy preflight covers every strict lookup that can
+	// run later in the request.
+	projectedObjectTypes := append([]*interfaces.ObjectType(nil), kn.ObjectTypes...)
+	projectedRelationTypes := append([]*interfaces.RelationType(nil), kn.RelationTypes...)
+	projectedActionTypes := append([]*interfaces.ActionType(nil), kn.ActionTypes...)
+	for _, conceptGroup := range kn.ConceptGroups {
+		if conceptGroup == nil {
+			continue
+		}
+		projectedObjectTypes = append(projectedObjectTypes, conceptGroup.ObjectTypes...)
+		projectedRelationTypes = append(projectedRelationTypes, conceptGroup.RelationTypes...)
+		projectedActionTypes = append(projectedActionTypes, conceptGroup.ActionTypes...)
+	}
+
+	objectResources := make(map[string]string, len(projectedObjectTypes))
+	objectTypes := make(map[string]struct{}, len(projectedObjectTypes))
 	sources := make([]interfaces.ProxyGrantSourceSpec, 0)
 	bindings := make([]proxyModelBinding, 0)
 	seen := make(map[string]struct{})
+	seenBindings := make(map[string]struct{})
 
 	add := func(bindingType, bindingID, resourceType, resourceID, operation, detail string) error {
 		bindingID = strings.TrimSpace(bindingID)
@@ -59,13 +76,18 @@ func buildProxyGrantSources(kn *interfaces.KN) ([]interfaces.ProxyGrantSourceSpe
 			seen[key] = struct{}{}
 			sources = append(sources, spec)
 		}
-		bindings = append(bindings, proxyModelBinding{
+		binding := proxyModelBinding{
 			Type: bindingType, ID: bindingID, TargetType: resourceType, TargetID: resourceID, Detail: detail,
-		})
+		}
+		bindingKey := strings.Join([]string{binding.Type, binding.ID, binding.TargetType, binding.TargetID, binding.Detail}, "\x00")
+		if _, ok := seenBindings[bindingKey]; !ok {
+			seenBindings[bindingKey] = struct{}{}
+			bindings = append(bindings, binding)
+		}
 		return nil
 	}
 
-	for _, objectType := range kn.ObjectTypes {
+	for _, objectType := range projectedObjectTypes {
 		if objectType == nil {
 			continue
 		}
@@ -111,7 +133,7 @@ func buildProxyGrantSources(kn *interfaces.KN) ([]interfaces.ProxyGrantSourceSpe
 		}
 	}
 
-	for _, relationType := range kn.RelationTypes {
+	for _, relationType := range projectedRelationTypes {
 		if relationType == nil {
 			continue
 		}
@@ -177,7 +199,7 @@ func buildProxyGrantSources(kn *interfaces.KN) ([]interfaces.ProxyGrantSourceSpe
 		}
 	}
 
-	for _, actionType := range kn.ActionTypes {
+	for _, actionType := range projectedActionTypes {
 		if actionType == nil || strings.TrimSpace(actionType.ActionSource.Type) == "" {
 			continue
 		}

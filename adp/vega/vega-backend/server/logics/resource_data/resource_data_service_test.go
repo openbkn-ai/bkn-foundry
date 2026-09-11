@@ -518,7 +518,7 @@ func TestDatasetCursorUsesSearchAfterPagination(t *testing.T) {
 	firstPage := true
 	mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).Times(2).
 		DoAndReturn(func(_ context.Context, _ *interfaces.Resource, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
-			assert.Equal(t, 1, pageParams.Limit)
+			assert.Equal(t, 1, pageParams.Paging.Limit)
 			if firstPage {
 				firstPage = false
 				assert.Empty(t, pageParams.SearchAfter)

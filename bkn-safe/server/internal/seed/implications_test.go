@@ -6,54 +6,58 @@ package seed
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
+	"github.com/openbkn-ai/licverify"
 )
 
-func TestValidateImplicationsRejectsAuthoringMistakes(t *testing.T) {
+func TestValidateRequirementsRejectsAuthoringMistakes(t *testing.T) {
 	cases := []struct {
 		name    string
 		catalog catalog
 		wantErr string
 	}{
 		{
-			name: "implies an operation the type does not declare",
+			name: "requires an operation the type does not declare",
 			catalog: catalog{ResourceTypes: []catalogResourceType{
 				{ID: "catalog", Operations: []catalogOperation{
-					{ID: "resource_manage", Implies: []string{"view_detail"}},
+					{ID: "resource_manage", Requires: []string{"view_detail"}},
 				}},
 			}},
 			wantErr: "does not declare",
 		},
 		{
-			name: "self implication",
+			name: "self requirement",
 			catalog: catalog{ResourceTypes: []catalogResourceType{
 				{ID: "catalog", Operations: []catalogOperation{
-					{ID: "resource_manage", Implies: []string{"resource_manage"}},
+					{ID: "resource_manage", Requires: []string{"resource_manage"}},
 				}},
 			}},
-			wantErr: "implies itself",
+			wantErr: "requires itself",
 		},
 		{
-			name: "cycle",
+			name: "multi-level requirement",
 			catalog: catalog{ResourceTypes: []catalogResourceType{
 				{ID: "catalog", Operations: []catalogOperation{
-					{ID: "a", Implies: []string{"b"}},
-					{ID: "b", Implies: []string{"a"}},
+					{ID: "a", Requires: []string{"b"}},
+					{ID: "b", Requires: []string{"c"}},
+					{ID: "c"},
 				}},
 			}},
-			wantErr: "cycle",
+			wantErr: "itself declares requires",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := validateImplications(tc.catalog)
+			err := validateRequirements(tc.catalog)
 			if err == nil {
-				t.Fatalf("validateImplications accepted %s", tc.name)
+				t.Fatalf("validateRequirements accepted %s", tc.name)
 			}
 			if !strings.Contains(err.Error(), tc.wantErr) {
 				t.Errorf("error = %q, want it to mention %q", err, tc.wantErr)
@@ -62,19 +66,32 @@ func TestValidateImplicationsRejectsAuthoringMistakes(t *testing.T) {
 	}
 }
 
+func TestValidateRequirementsAcceptsMultipleDirectPrerequisites(t *testing.T) {
+	c := catalog{ResourceTypes: []catalogResourceType{
+		{ID: "release", Operations: []catalogOperation{
+			{ID: "view"},
+			{ID: "approve"},
+			{ID: "publish", Requires: []string{"view", "approve"}},
+		}},
+	}}
+	if err := validateRequirements(c); err != nil {
+		t.Fatalf("valid direct requirements were rejected: %v", err)
+	}
+}
+
 // TestShippedCatalogBindsResourceManageToViewDetail is the regression guard on
 // the product rule (#1121): managing the tables in a catalog is unreachable
 // without the right to open the catalog, because every management route loads
 // its target first and that load is a view_detail judgement. Dropping the
-// implication would let the console hand out a grant whose every route answers
+// missing requirement would let the console hand out a grant whose every route answers
 // 403 while naming a permission the operator never meant to withhold.
 func TestShippedCatalogBindsResourceManageToViewDetail(t *testing.T) {
 	var c catalog
 	if err := json.Unmarshal(catalogJSON, &c); err != nil {
 		t.Fatalf("parse catalog.json: %v", err)
 	}
-	if err := validateImplications(c); err != nil {
-		t.Fatalf("shipped catalog.json declares an invalid implication: %v", err)
+	if err := validateRequirements(c); err != nil {
+		t.Fatalf("shipped catalog.json declares an invalid requirement: %v", err)
 	}
 	for _, rt := range c.ResourceTypes {
 		if rt.ID != "catalog" {
@@ -84,14 +101,90 @@ func TestShippedCatalogBindsResourceManageToViewDetail(t *testing.T) {
 			if op.ID != "resource_manage" {
 				continue
 			}
-			if len(op.Implies) != 1 || op.Implies[0] != "view_detail" {
-				t.Fatalf("catalog.resource_manage implies %v, want [view_detail]", op.Implies)
+			if len(op.Requires) != 1 || op.Requires[0] != "view_detail" {
+				t.Fatalf("catalog.resource_manage requires %v, want [view_detail]", op.Requires)
 			}
 			return
 		}
 		t.Fatal("catalog type no longer declares resource_manage")
 	}
 	t.Fatal("catalog type missing from catalog.json")
+}
+
+func TestShippedConnectorTypeDeclaresViewRequirements(t *testing.T) {
+	var c catalog
+	if err := json.Unmarshal(catalogJSON, &c); err != nil {
+		t.Fatalf("parse catalog.json: %v", err)
+	}
+	if err := validateRequirements(c); err != nil {
+		t.Fatalf("shipped catalog.json declares an invalid requirement: %v", err)
+	}
+	operations := map[string][]string{}
+	for _, resourceType := range c.ResourceTypes {
+		if resourceType.ID != "connector_type" {
+			continue
+		}
+		for _, operation := range resourceType.Operations {
+			operations[operation.ID] = operation.Requires
+		}
+	}
+	for _, operation := range []string{"modify", "delete", "authorize"} {
+		if got := operations[operation]; len(got) != 1 || got[0] != "view_detail" {
+			t.Errorf("connector_type/%s requires %v, want [view_detail]", operation, got)
+		}
+	}
+	for _, operation := range []string{"create", "view_detail"} {
+		if got := operations[operation]; len(got) != 0 {
+			t.Errorf("connector_type/%s unexpectedly requires %v", operation, got)
+		}
+	}
+	if _, ok := operations["task_manage"]; ok {
+		t.Error("connector_type unexpectedly declares task_manage without a task lifecycle entry")
+	}
+}
+
+func TestShippedIndependentResourceFamiliesDeclareViewRequirements(t *testing.T) {
+	var c catalog
+	if err := json.Unmarshal(catalogJSON, &c); err != nil {
+		t.Fatalf("parse catalog.json: %v", err)
+	}
+	if err := validateRequirements(c); err != nil {
+		t.Fatalf("shipped catalog.json declares an invalid requirement: %v", err)
+	}
+
+	types := map[string]map[string][]string{}
+	for _, resourceType := range c.ResourceTypes {
+		operations := map[string][]string{}
+		for _, operation := range resourceType.Operations {
+			operations[operation.ID] = operation.Requires
+		}
+		types[resourceType.ID] = operations
+	}
+
+	for _, resourceType := range []string{"tool_box", "mcp", "operator", "skill"} {
+		for _, operation := range []string{"modify", "delete", "publish", "unpublish", "authorize"} {
+			if got := types[resourceType][operation]; len(got) != 1 || got[0] != "view" {
+				t.Errorf("%s/%s requires %v, want [view]", resourceType, operation, got)
+			}
+		}
+		for _, operation := range []string{"create", "view", "public_access", "execute"} {
+			if got := types[resourceType][operation]; len(got) != 0 {
+				t.Errorf("%s/%s unexpectedly requires %v", resourceType, operation, got)
+			}
+		}
+	}
+	for _, resourceType := range []string{"small_model", "large_model"} {
+		for _, operation := range []string{"modify", "delete"} {
+			if got := types[resourceType][operation]; len(got) != 1 || got[0] != "display" {
+				t.Errorf("%s/%s requires %v, want [display]", resourceType, operation, got)
+			}
+		}
+		for _, operation := range []string{"create", "display", "execute"} {
+			if got := types[resourceType][operation]; len(got) != 0 {
+				t.Errorf("%s/%s unexpectedly requires %v", resourceType, operation, got)
+			}
+		}
+	}
 }
 
 // TestSeedPersistsImplications proves the declaration survives the seed, since
@@ -109,8 +202,190 @@ func TestSeedPersistsImplications(t *testing.T) {
 	if err := db.First(&row, "resource_type_id = ? AND id = ?", "catalog", "resource_manage").Error; err != nil {
 		t.Fatalf("load operation: %v", err)
 	}
-	if row.ImpliedOperationIDs != "view_detail" {
-		t.Fatalf("implied_operation_ids = %q, want %q", row.ImpliedOperationIDs, "view_detail")
+	if row.RequiredOperationIDs != "view_detail" {
+		t.Fatalf("required operation ids = %q, want %q", row.RequiredOperationIDs, "view_detail")
+	}
+}
+
+func TestConnectorTypeRequirementsApplyToChecksAndLists(t *testing.T) {
+	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionProfessional))
+	t.Cleanup(entitlement.ResetForTest)
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	const user = "connector-operator"
+	if err := e.GrantProfessionalObjectPermission(
+		user, "connector_type", "remote-api", "modify", authz.EffectAllow, authz.AuthoritySourceAdminAuthz,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantProfessionalObjectPermission(
+		user, "connector_type", "remote-api", "view_detail", authz.EffectAllow, authz.AuthoritySourceAdminAuthz,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantProfessionalObjectPermission(
+		user, "connector_type", "remote-api", "view_detail", authz.EffectDeny, authz.AuthoritySourceAdminAuthz,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	decision, err := e.OperationDecision(t.Context(), user, "connector_type", "remote-api", "modify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Decision != authz.DecisionDeny || decision.Basis != authz.BasisRequires ||
+		decision.DeniedRequirement != "view_detail" {
+		t.Fatalf("modify decision = %+v; want requires deny on view_detail", decision)
+	}
+	ids, err := e.AccessibleResources(user, "connector_type", "modify")
+	if err != nil || len(ids) != 0 {
+		t.Fatalf("AccessibleResources(modify) = %v, %v; want none", ids, err)
+	}
+	filtered, err := e.FilterResourceOps(user,
+		[]authz.ResourceRef{{Type: "connector_type", ID: "remote-api"}}, nil, []string{"modify"})
+	if err != nil || len(filtered) != 1 || len(filtered[0].Operations) != 0 ||
+		len(filtered[0].Decisions) != 1 || filtered[0].Decisions[0].Basis != authz.BasisRequires {
+		t.Fatalf("FilterResourceOps(modify) = %+v, %v", filtered, err)
+	}
+
+	// Legacy grants are immutable snapshots, so startup deliberately does not
+	// add view_detail beside a type-wide modify grant. Effective evaluation must
+	// still combine that grant with view_detail held on a concrete connector.
+	const legacyUser = "legacy-connector-operator"
+	if err := e.GrantObjectPermission(legacyUser, "connector_type", "*", "modify"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantObjectPermission(legacyUser, "connector_type", "remote-api", "view_detail"); err != nil {
+		t.Fatal(err)
+	}
+	if allowed, err := e.Check(legacyUser, "connector_type", "remote-api", "modify"); err != nil || !allowed {
+		t.Fatalf("legacy Check(remote-api, modify) = %v, %v; want true", allowed, err)
+	}
+	filtered, err = e.FilterResourceOps(legacyUser,
+		[]authz.ResourceRef{{Type: "connector_type", ID: "remote-api"}},
+		[]string{"view_detail"}, []string{"view_detail", "modify"})
+	if err != nil || len(filtered) != 1 ||
+		!reflect.DeepEqual(filtered[0].Operations, []string{"view_detail", "modify"}) {
+		t.Fatalf("legacy FilterResourceOps(remote-api) = %+v, %v; want view_detail and modify", filtered, err)
+	}
+}
+
+func TestSeedPrunesWithdrawnConnectorTaskManageGrants(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.Create(&model.Operation{
+		ResourceTypeID: "connector_type", ID: "task_manage", Name: "任务管理",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantObjectPermission("legacy-connector-operator", "connector_type", "remote-api", "task_manage"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantObjectPermission("decoy-operator", "connectorXtype", "remote-api", "task_manage"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	var operationCount int64
+	if err := db.Model(&model.Operation{}).
+		Where("resource_type_id = ? AND id = ?", "connector_type", "task_manage").
+		Count(&operationCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if operationCount != 0 {
+		t.Fatalf("connector_type/task_manage operation count = %d; want 0", operationCount)
+	}
+	records, err := e.PolicyRecords(authz.PolicyFilter{
+		AccessorID: "legacy-connector-operator",
+		Operation:  "task_manage",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("withdrawn connector task_manage grants survived: %+v", records)
+	}
+	allowed, err := e.Check("legacy-connector-operator", "connector_type", "remote-api", "task_manage")
+	if err != nil || allowed {
+		t.Fatalf("withdrawn connector task_manage check = %v, %v; want false", allowed, err)
+	}
+	allowed, err = e.Check("decoy-operator", "connectorXtype", "remote-api", "task_manage")
+	if err != nil || !allowed {
+		t.Fatalf("neighbor resource type grant was removed: allowed=%v err=%v", allowed, err)
+	}
+}
+
+func TestIndependentResourceRequirementsApplyToChecksAndLists(t *testing.T) {
+	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionProfessional))
+	t.Cleanup(entitlement.ResetForTest)
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+
+	viewByType := map[string]string{
+		"tool_box": "view", "mcp": "view", "operator": "view", "skill": "view",
+		"small_model": "display", "large_model": "display",
+	}
+	for resourceType, viewOperation := range viewByType {
+		t.Run(resourceType, func(t *testing.T) {
+			user := "requires-" + resourceType
+			resourceID := resourceType + "-1"
+			if err := e.GrantProfessionalObjectPermission(
+				user, resourceType, resourceID, "modify", authz.EffectAllow, authz.AuthoritySourceAdminAuthz,
+			); err != nil {
+				t.Fatal(err)
+			}
+			if err := e.GrantProfessionalObjectPermission(
+				user, resourceType, resourceID, viewOperation, authz.EffectAllow, authz.AuthoritySourceAdminAuthz,
+			); err != nil {
+				t.Fatal(err)
+			}
+			if err := e.GrantProfessionalObjectPermission(
+				user, resourceType, resourceID, viewOperation, authz.EffectDeny, authz.AuthoritySourceAdminAuthz,
+			); err != nil {
+				t.Fatal(err)
+			}
+
+			decision, err := e.OperationDecision(t.Context(), user, resourceType, resourceID, "modify")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if decision.Decision != authz.DecisionDeny || decision.Basis != authz.BasisRequires ||
+				decision.DeniedRequirement != viewOperation {
+				t.Fatalf("modify decision = %+v; want requires deny on %s", decision, viewOperation)
+			}
+			ids, err := e.AccessibleResources(user, resourceType, "modify")
+			if err != nil || len(ids) != 0 {
+				t.Fatalf("AccessibleResources(modify) = %v, %v; want none", ids, err)
+			}
+			filtered, err := e.FilterResourceOps(user,
+				[]authz.ResourceRef{{Type: resourceType, ID: resourceID}}, nil, []string{"modify"})
+			if err != nil || len(filtered) != 1 || len(filtered[0].Operations) != 0 ||
+				len(filtered[0].Decisions) != 1 || filtered[0].Decisions[0].Basis != authz.BasisRequires {
+				t.Fatalf("FilterResourceOps(modify) = %+v, %v", filtered, err)
+			}
+		})
 	}
 }
 
@@ -119,6 +394,8 @@ func TestSeedPersistsImplications(t *testing.T) {
 // resource_manage, reaches nothing, and nobody tells the administrator to
 // re-save it.
 func TestBackfillRepairsGrantsWrittenBeforeTheRule(t *testing.T) {
+	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionProfessional))
+	t.Cleanup(entitlement.ResetForTest)
 	db := newDB(t)
 	e, err := authz.New(db)
 	if err != nil {
@@ -130,11 +407,15 @@ func TestBackfillRepairsGrantsWrittenBeforeTheRule(t *testing.T) {
 
 	// The shape an operator could produce before #1121: management without the
 	// visibility every management route needs.
-	if err := e.GrantObjectPermission("u-1", "catalog", "c1", "resource_manage"); err != nil {
+	if err := e.GrantProfessionalObjectPermission(
+		"u-1", "catalog", "c1", "resource_manage", authz.EffectAllow, authz.AuthoritySourceAdminAuthz,
+	); err != nil {
 		t.Fatal(err)
 	}
 	// An unrelated grant on the same type must come through untouched.
-	if err := e.GrantObjectPermission("u-2", "catalog", "c2", "query_data"); err != nil {
+	if err := e.GrantProfessionalObjectPermission(
+		"u-2", "catalog", "c2", "query_data", authz.EffectAllow, authz.AuthoritySourceAdminAuthz,
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -149,7 +430,7 @@ func TestBackfillRepairsGrantsWrittenBeforeTheRule(t *testing.T) {
 		t.Fatal("backfill dropped the operation it was repairing")
 	}
 	if ok, _ := e.Check("u-2", "catalog", "c2", "view_detail"); ok {
-		t.Fatal("backfill widened a grant that implies nothing")
+		t.Fatal("backfill widened a grant that requires nothing")
 	}
 
 	// Idempotent: a start with nothing left to repair changes nothing.
@@ -192,6 +473,8 @@ func TestBackfillRepairsGrantsWrittenBeforeTheRule(t *testing.T) {
 // construction will never contain it. GET /object-grants excludes role
 // subjects, the public accessor and type-wide "type:*" rows alike.
 func TestBackfillAuditLabelsMatchTheSurfaceThatShowsTheGrant(t *testing.T) {
+	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionProfessional))
+	t.Cleanup(entitlement.ResetForTest)
 	db := newDB(t)
 	e, err := authz.New(db)
 	if err != nil {
@@ -205,14 +488,16 @@ func TestBackfillAuditLabelsMatchTheSurfaceThatShowsTheGrant(t *testing.T) {
 	}
 
 	// One row of each shape, all holding the management verb without the
-	// visibility it implies.
-	if err := e.GrantObjectPermission("u-1", "catalog", "c1", "resource_manage"); err != nil {
+	// visibility it requires.
+	if err := e.GrantProfessionalObjectPermission(
+		"u-1", "catalog", "c1", "resource_manage", authz.EffectAllow, authz.AuthoritySourceAdminAuthz,
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := e.GrantRolePermission("role-x", "catalog", "*", "resource_manage"); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.GrantObjectPermission(authz.PublicAccessorID, "catalog", "c2", "resource_manage"); err != nil {
+	if err := e.GrantSystemObjectPermission(authz.PublicAccessorID, "catalog", "c2", "resource_manage"); err != nil {
 		t.Fatal(err)
 	}
 

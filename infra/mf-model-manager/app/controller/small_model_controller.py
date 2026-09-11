@@ -307,15 +307,16 @@ async def get_info_list(order, rule, page, size, model_name, model_type, model_s
         return JSONResponse(status_code=400, content=error_dict)
 
 
-async def get_info(model_id, user_id, role):
+async def get_info(model_id, user_id, role, trusted_app=False):
     try:
         try:
-            permission = await permission_manager.check_single_permission(user_id=user_id, resource_id=model_id,
-                                                                          operations="display",
-                                                                          resource_type="small_model",
-                                                                          role=role)
-            if not permission:
-                return JSONResponse(status_code=403, content=NotPermissionError)
+            if not trusted_app:
+                permission = await permission_manager.check_single_permission(user_id=user_id, resource_id=model_id,
+                                                                              operations="display",
+                                                                              resource_type="small_model",
+                                                                              role=role)
+                if not permission:
+                    return JSONResponse(status_code=403, content=NotPermissionError)
             original_res = small_model_dao.get_model_info_by_id(model_id)
         except Exception as e:
             StandLogger.error(ModelFactory_MyPymysqlPool_Connection_ConnectError_Error["description"])

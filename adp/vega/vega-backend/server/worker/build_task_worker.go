@@ -408,7 +408,7 @@ func (btw *BuildTaskWorker) claimIncrementalBatchTask(ctx context.Context, task 
 		return false, resource, fmt.Errorf("reload resource before incremental claim: %w", err)
 	}
 	if err := validateIncrementalBatchResource(current, task); err != nil {
-		return false, resource, fmt.Errorf("%w: %v", errIncrementalBatchResourceInvalid, err)
+		return false, resource, fmt.Errorf("%w: %w", errIncrementalBatchResourceInvalid, err)
 	}
 
 	claimed, err := btw.bts.InternalMarkRunning(ctx, tx, task.ID)

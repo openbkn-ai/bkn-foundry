@@ -87,26 +87,31 @@ func callerFuncName(skip int) (string, string) {
 
 // StartNamedClientSpan starts a SpanKindClient span with a caller-provided name.
 func StartNamedClientSpan(ctx context.Context, name string) (context.Context, trace.Span) {
+	//nolint:spancheck // Ownership of the returned span belongs to the caller.
 	return otel.Tracer(InstrumentationName).Start(ctx, name, trace.WithSpanKind(trace.SpanKindClient))
 }
 
 // StartNamedInternalSpan starts a SpanKindInternal span with a caller-provided name.
 func StartNamedInternalSpan(ctx context.Context, name string) (context.Context, trace.Span) {
+	//nolint:spancheck // Ownership of the returned span belongs to the caller.
 	return otel.Tracer(InstrumentationName).Start(ctx, name, trace.WithSpanKind(trace.SpanKindInternal))
 }
 
 // StartNamedServerSpan starts a SpanKindServer span with a caller-provided name.
 func StartNamedServerSpan(ctx context.Context, name string) (context.Context, trace.Span) {
+	//nolint:spancheck // Ownership of the returned span belongs to the caller.
 	return otel.Tracer(InstrumentationName).Start(ctx, name, trace.WithSpanKind(trace.SpanKindServer))
 }
 
 // StartNamedProducerSpan starts a SpanKindProducer span with a caller-provided name.
 func StartNamedProducerSpan(ctx context.Context, name string) (context.Context, trace.Span) {
+	//nolint:spancheck // Ownership of the returned span belongs to the caller.
 	return otel.Tracer(InstrumentationName).Start(ctx, name, trace.WithSpanKind(trace.SpanKindProducer))
 }
 
 // StartNamedConsumerSpan starts a SpanKindConsumer span with a caller-provided name.
 func StartNamedConsumerSpan(ctx context.Context, name string) (context.Context, trace.Span) {
+	//nolint:spancheck // Ownership of the returned span belongs to the caller.
 	return otel.Tracer(InstrumentationName).Start(ctx, name, trace.WithSpanKind(trace.SpanKindConsumer))
 }
 

@@ -10,6 +10,7 @@ package discover_task
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -200,7 +201,7 @@ func (dta *discoverTaskAccess) GetScheduledTaskStrategy(ctx context.Context, sch
 
 	var strategy string
 	err = dta.db.QueryRowContext(ctx, sqlStr, vals...).Scan(&strategy)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "")
 		return "", nil
 	}
@@ -280,9 +281,9 @@ func (dta *discoverTaskAccess) GetByID(ctx context.Context, id string) (*interfa
 
 	row := dta.db.QueryRowContext(ctx, sqlStr, vals...)
 	task, err := scanDiscoverTask(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "")
-		return nil, nil
+		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 	if err != nil {
 		logger.Errorf("Scan discover_task failed: %v", err)
@@ -330,6 +331,10 @@ func (dta *discoverTaskAccess) InternalList(ctx context.Context, params interfac
 		From(DISCOVER_TASK_TABLE_NAME)
 	builder = applyDiscoverTaskFilters(builder, params).
 		OrderBy(buildOrderByClause(params.Sort, params.Direction))
+
+	if params.Offset < 0 {
+		return nil, fmt.Errorf("discover task offset must not be negative")
+	}
 	if params.Limit > 0 {
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}

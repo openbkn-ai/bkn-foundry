@@ -175,6 +175,27 @@ func (cs *catalogService) filterCatalogResources(ctx context.Context, ids []stri
 	return result, nil
 }
 
+// filterCatalogResourcesInBatches filters catalog permissions without exceeding the permission-service request size.
+func (cs *catalogService) filterCatalogResourcesInBatches(ctx context.Context, ids []string,
+	internalSet map[string]struct{}, ops []string, allowOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
+
+	result := make(map[string]interfaces.PermissionResourceOps, len(ids))
+	for start := 0; start < len(ids); start += catalogAuthResourcePermissionBatchSize {
+		end := start + catalogAuthResourcePermissionBatchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		matched, err := cs.filterCatalogResources(ctx, ids[start:end], internalSet, ops, allowOperation)
+		if err != nil {
+			return nil, err
+		}
+		for id, resourceOps := range matched {
+			result[id] = resourceOps
+		}
+	}
+	return result, nil
+}
+
 // Create creates a new Catalog.
 func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogRequest, allowUnhealthy bool) (string, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create catalog")
@@ -300,7 +321,8 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	}
 	if err != nil {
 		otellog.LogError(ctx, "Create catalog transaction failed", err)
-		if httpErr, ok := err.(*rest.HTTPError); ok {
+		var httpErr *rest.HTTPError
+		if errors.As(err, &httpErr) {
 			return "", httpErr
 		}
 		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
@@ -777,31 +799,11 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 		return []*interfaces.CatalogSummary{}, 0, err
 	}
 
-	// Filter permissions using batch processing, with 10,000 ids processed in each batch
-	batchSize := 10000
-	// All authorized catalogs and their operation permissions
-	matchResourceOpsMap := make(map[string]interfaces.PermissionResourceOps)
-
-	for i := 0; i < len(ids); i += batchSize {
-		end := i + batchSize
-		if end > len(ids) {
-			end = len(ids)
-		}
-		batchIDs := ids[i:end]
-
-		var batchMatchResources map[string]interfaces.PermissionResourceOps
-		// Verify the operation permissions of the permission management
-		batchMatchResources, err = cs.filterCatalogResources(ctx, batchIDs, internalSet,
-			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
-		if err != nil {
-			span.SetStatus(codes.Error, "Filter resources error")
-			return []*interfaces.CatalogSummary{}, 0, err
-		}
-
-		// Merge results
-		for _, resourceOps := range batchMatchResources {
-			matchResourceOpsMap[resourceOps.ResourceID] = resourceOps
-		}
+	matchResourceOpsMap, err := cs.filterCatalogResourcesInBatches(ctx, ids, internalSet,
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
+	if err != nil {
+		span.SetStatus(codes.Error, "Filter resources error")
+		return []*interfaces.CatalogSummary{}, 0, err
 	}
 
 	// Extract the catalog ID with permission and keep it in the same order as the ids
@@ -877,6 +879,56 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 
 	span.SetStatus(codes.Ok, "")
 	return catalogs, total, nil
+}
+
+// ListConnectorTypeStats returns one count per catalog and connector type after applying catalog view permissions.
+func (cs *catalogService) ListConnectorTypeStats(ctx context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.CatalogConnectorTypeStat, error) {
+	refs, err := cs.ca.ListConnectorTypePermissionRefs(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	if len(refs) == 0 {
+		return []*interfaces.CatalogConnectorTypeStat{}, nil
+	}
+	ids := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		ids = append(ids, ref.CatalogID)
+	}
+	internalSet, err := cs.InternalCatalogIDSet(ctx)
+	if err != nil {
+		return nil, err
+	}
+	allowed, err := cs.filterCatalogResourcesInBatches(ctx, ids, internalSet,
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
+	if err != nil {
+		return nil, err
+	}
+
+	type statKey struct {
+		catalogType   string
+		connectorType string
+	}
+	counts := make(map[statKey]int64)
+	for _, ref := range refs {
+		if _, ok := allowed[ref.CatalogID]; ok {
+			counts[statKey{catalogType: ref.CatalogType, connectorType: ref.ConnectorType}]++
+		}
+	}
+	stats := make([]*interfaces.CatalogConnectorTypeStat, 0, len(counts))
+	for key, catalogCount := range counts {
+		stats = append(stats, &interfaces.CatalogConnectorTypeStat{
+			CatalogType:   key.catalogType,
+			ConnectorType: key.connectorType,
+			CatalogCount:  catalogCount,
+		})
+	}
+	sort.Slice(stats, func(left, right int) bool {
+		if stats[left].CatalogType != stats[right].CatalogType {
+			return stats[left].CatalogType < stats[right].CatalogType
+		}
+		return stats[left].ConnectorType < stats[right].ConnectorType
+	})
+	return stats, nil
 }
 
 // Update updates a Catalog.

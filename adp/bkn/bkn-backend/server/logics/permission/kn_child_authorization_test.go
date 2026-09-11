@@ -33,6 +33,21 @@ func TestKNImportPermissionPrecheckedIsScopedToMarkedContext(t *testing.T) {
 	}
 }
 
+func TestDependencyValidationPermissionPrecheckedIsScopedToMarkedContext(t *testing.T) {
+	ctx := context.Background()
+	if DependencyValidationPermissionPrechecked(ctx) {
+		t.Fatal("plain context must require validation endpoint authorization")
+	}
+
+	marked := WithDependencyValidationPermissionPrechecked(ctx)
+	if !DependencyValidationPermissionPrechecked(marked) {
+		t.Fatal("marked dependency validation context must skip the duplicate authorization check")
+	}
+	if DependencyValidationPermissionPrechecked(ctx) {
+		t.Fatal("marking a derived context must not mutate its parent")
+	}
+}
+
 func TestValidateKNChildAuthorizationIDsRejectsAmbiguousIDs(t *testing.T) {
 	if err := ValidateKNChildAuthorizationIDs(context.Background(), "kn-1", []string{"bad/id"}); err == nil {
 		t.Fatal("canonical child authorization must reject ambiguous child IDs")
@@ -44,19 +59,29 @@ type childCandidate struct {
 }
 
 func TestKNChildOperationCandidatesMatchResourceContract(t *testing.T) {
-	wantChild := []string{
+	wantSchemaChild := []string{
 		interfaces.OPERATION_TYPE_VIEW_DETAIL,
 		interfaces.OPERATION_TYPE_QUERY_DATA,
 		interfaces.OPERATION_TYPE_MODIFY,
 		interfaces.OPERATION_TYPE_DELETE,
-		interfaces.OPERATION_TYPE_AUTHORIZE,
 	}
-	if got := KNChildOperationCandidates(interfaces.RESOURCE_TYPE_RELATION_TYPE); !reflect.DeepEqual(got, wantChild) {
-		t.Fatalf("relation type operations = %#v, want %#v", got, wantChild)
+	if got := KNChildOperationCandidates(interfaces.RESOURCE_TYPE_RELATION_TYPE); !reflect.DeepEqual(got, wantSchemaChild) {
+		t.Fatalf("relation type operations = %#v, want %#v", got, wantSchemaChild)
 	}
-	wantAction := append(append([]string{}, wantChild...), interfaces.OPERATION_TYPE_TASK_MANAGE, interfaces.OPERATION_TYPE_EXECUTE)
+	wantStructuralChild := []string{
+		interfaces.OPERATION_TYPE_VIEW_DETAIL,
+		interfaces.OPERATION_TYPE_MODIFY,
+		interfaces.OPERATION_TYPE_DELETE,
+	}
+	if got := KNChildOperationCandidates(interfaces.RESOURCE_TYPE_RISK_TYPE); !reflect.DeepEqual(got, wantStructuralChild) {
+		t.Fatalf("risk type operations = %#v, want %#v", got, wantStructuralChild)
+	}
+	wantAction := append(append([]string{}, wantStructuralChild...), interfaces.OPERATION_TYPE_EXECUTE)
 	if got := KNChildOperationCandidates(interfaces.RESOURCE_TYPE_ACTION_TYPE); !reflect.DeepEqual(got, wantAction) {
 		t.Fatalf("action type operations = %#v, want %#v", got, wantAction)
+	}
+	if got := KNChildOperationCandidates("unknown"); len(got) != 0 {
+		t.Fatalf("unknown resource operations = %#v, want none", got)
 	}
 }
 
@@ -67,16 +92,12 @@ func TestFilterAndPaginateKNChildrenWithOperationsProjectsCanonicalOperations(t 
 		[]string{"kn-1/action-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true,
 		[]string{
 			interfaces.OPERATION_TYPE_VIEW_DETAIL,
-			interfaces.OPERATION_TYPE_QUERY_DATA,
 			interfaces.OPERATION_TYPE_MODIFY,
 			interfaces.OPERATION_TYPE_DELETE,
-			interfaces.OPERATION_TYPE_AUTHORIZE,
-			interfaces.OPERATION_TYPE_TASK_MANAGE,
 			interfaces.OPERATION_TYPE_EXECUTE,
 		}).Return(map[string]interfaces.PermissionResourceOps{
 		"kn-1/action-1": {ResourceID: "kn-1/action-1", Operations: []string{
 			interfaces.OPERATION_TYPE_VIEW_DETAIL,
-			interfaces.OPERATION_TYPE_AUTHORIZE,
 			interfaces.OPERATION_TYPE_EXECUTE,
 		}},
 	}, nil)
@@ -92,7 +113,6 @@ func TestFilterAndPaginateKNChildrenWithOperationsProjectsCanonicalOperations(t 
 	}
 	if got := operations["kn-1/action-1"].Operations; !reflect.DeepEqual(got, []string{
 		interfaces.OPERATION_TYPE_VIEW_DETAIL,
-		interfaces.OPERATION_TYPE_AUTHORIZE,
 		interfaces.OPERATION_TYPE_EXECUTE,
 	}) {
 		t.Fatalf("operations = %#v", got)
@@ -109,7 +129,6 @@ func TestGetKNChildOperationsUsesCanonicalDetailResource(t *testing.T) {
 			interfaces.OPERATION_TYPE_QUERY_DATA,
 			interfaces.OPERATION_TYPE_MODIFY,
 			interfaces.OPERATION_TYPE_DELETE,
-			interfaces.OPERATION_TYPE_AUTHORIZE,
 		}).Return(map[string]interfaces.PermissionResourceOps{
 		"kn-1/metric-1": {ResourceID: "kn-1/metric-1", Operations: []string{
 			interfaces.OPERATION_TYPE_VIEW_DETAIL,

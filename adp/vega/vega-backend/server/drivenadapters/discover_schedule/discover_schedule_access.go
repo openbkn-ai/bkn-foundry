@@ -9,6 +9,7 @@ package discover_schedule
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -241,9 +242,9 @@ func (dsa *discoverScheduleAccess) GetByID(ctx context.Context, id string) (*int
 	// Execute query
 	row := dsa.db.QueryRowContext(ctx, sqlStr, vals...)
 	schedule, err := scanDiscoverSchedule(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "")
-		return nil, nil
+		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 	if err != nil {
 		logger.Errorf("Scan discover_schedule failed: %v", err)
@@ -310,10 +311,15 @@ func (dsa *discoverScheduleAccess) List(ctx context.Context, params interfaces.D
 	} else {
 		builder = builder.OrderBy("f_update_time DESC")
 	}
+
 	// Pagination
+	if params.Offset < 0 {
+		return nil, 0, fmt.Errorf("discover schedule offset must not be negative")
+	}
 	if params.Limit > 0 {
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}
+
 	// Build query
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {

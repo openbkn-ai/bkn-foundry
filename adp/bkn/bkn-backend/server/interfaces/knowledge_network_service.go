@@ -15,6 +15,10 @@ import (
 type KNService interface {
 	CheckKNExistByID(ctx context.Context, knID string, branch string) (string, bool, error)
 	CheckKNExistByName(ctx context.Context, knName string, branch string) (string, bool, error)
+	// ResolveKNReadAccess returns full access when the caller can read the network
+	// detail, navigation-only access when a visible child exposes only the shell,
+	// and forbidden when neither condition is met. The network must already exist.
+	ResolveKNReadAccess(ctx context.Context, knID string, branch string) (KNReadAccessMode, error)
 	CreateKN(ctx context.Context, kn *KN, mode string, strictMode bool) (string, error)
 	ListKNs(ctx context.Context, query KNsQueryParams) ([]*KN, int, error)
 	GetKNByID(ctx context.Context, knID string, branch string, mode string) (*KN, error)

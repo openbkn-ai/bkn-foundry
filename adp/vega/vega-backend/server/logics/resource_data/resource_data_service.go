@@ -126,7 +126,8 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 				resource.CatalogID, acquireErr)
 
 			// Return a rate limiting error
-			if rateErr, ok := acquireErr.(*rate.RateLimitError); ok {
+			var rateErr *rate.RateLimitError
+			if errors.As(acquireErr, &rateErr) {
 				httpErr := rest.NewHTTPError(ctx, rateErr.HTTPStatus, verrors.VegaBackend_Query_ConcurrencyLimitExceeded).
 					WithErrorDetails(rateErr.Message)
 				otellog.LogError(ctx, "Concurrency limit exceeded", httpErr)

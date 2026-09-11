@@ -2,7 +2,9 @@ name: release-infra-mf-model-manager
 
 # Image FROM ghcr.io/<owner>/model-factory-base:v2 (built by
 # release-infra-model-factory-base.yml); that base build must have published first.
-# test stack = chart-only: unit tests have pre-existing failures tracked in issue #2.
+# The reusable test job still lints the chart. The focused authz-unit job runs
+# the permission regression suite inside the same runtime base image used by
+# the service without making unrelated legacy tests a release gate.
 
 on:
   push:
@@ -32,8 +34,23 @@ jobs:
       service-path: infra/mf-model-manager
       stack: chart-only
 
+  authz-unit:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/openbkn-ai/model-factory-base:v2
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run permission authorization regression tests
+        working-directory: infra/mf-model-manager
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-test.txt
+          python -m unittest -v app.test.test_permission_manager_authz
+
   build:
-    needs: test
+    needs: [test, authz-unit]
     uses: ./.github/workflows/reusable-build.yml
     secrets: inherit
     with:

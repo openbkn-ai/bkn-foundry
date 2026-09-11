@@ -142,6 +142,21 @@ func (mr *MockVegaBackendServiceMockRecorder) GetResourceByID(ctx, id any) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetResourceByID", reflect.TypeOf((*MockVegaBackendService)(nil).GetResourceByID), ctx, id)
 }
 
+// GetResourceSchema mocks base method.
+func (m *MockVegaBackendService) GetResourceSchema(ctx context.Context, id, operation string) (*interfaces.VegaResource, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetResourceSchema", ctx, id, operation)
+	ret0, _ := ret[0].(*interfaces.VegaResource)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetResourceSchema indicates an expected call of GetResourceSchema.
+func (mr *MockVegaBackendServiceMockRecorder) GetResourceSchema(ctx, id, operation any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetResourceSchema", reflect.TypeOf((*MockVegaBackendService)(nil).GetResourceSchema), ctx, id, operation)
+}
+
 // QueryResourceData mocks base method.
 func (m *MockVegaBackendService) QueryResourceData(ctx context.Context, resourceID string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
 	m.ctrl.T.Helper()

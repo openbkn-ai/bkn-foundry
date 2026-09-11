@@ -7,6 +7,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -14,12 +15,17 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
+	"github.com/openbkn-ai/licverify"
 )
 
 // seedCatalogOps registers operation ids for a resource type so the
 // object-grant op-validation has a catalog to check against.
 func seedCatalogOps(t *testing.T, db *gorm.DB, resourceType string, ops ...string) {
 	t.Helper()
+	if err := db.FirstOrCreate(&model.ResourceType{ID: resourceType, Name: resourceType}).Error; err != nil {
+		t.Fatalf("seed resource type %s: %v", resourceType, err)
+	}
 	for _, op := range ops {
 		row := model.Operation{ResourceTypeID: resourceType, ID: op, Name: op}
 		if err := db.Create(&row).Error; err != nil {
@@ -36,6 +42,14 @@ type ogEntry struct {
 	} `json:"resource"`
 	Operations       []string `json:"operations"`
 	DeniedOperations []string `json:"denied_operations"`
+	Grants           []struct {
+		GrantID         string `json:"grant_id"`
+		Operation       string `json:"operation"`
+		PolicySource    string `json:"policy_source"`
+		AuthoritySource string `json:"authority_source"`
+		Active          bool   `json:"active"`
+		Inherited       bool   `json:"inherited"`
+	} `json:"grants"`
 }
 
 func listObjectGrants(t *testing.T, r *gin.Engine, query string) []ogEntry {
@@ -73,6 +87,15 @@ func listObjectGrantsBody(t *testing.T, r *gin.Engine, query string) struct {
 	return body
 }
 
+func oneGrantID(t *testing.T, e *authz.Enforcer, filter authz.PolicyFilter) string {
+	t.Helper()
+	records, err := e.PolicyRecords(filter)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("grant lookup = %+v, %v; want exactly one", records, err)
+	}
+	return records[0].GrantID
+}
+
 func TestObjectGrantsSetListRevoke(t *testing.T) {
 	r, e, db, users := newAdminServer(t)
 	ctx := t.Context()
@@ -83,9 +106,11 @@ func TestObjectGrantsSetListRevoke(t *testing.T) {
 
 	// set: grant u-1 two ops on catalog c1
 	w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants", map[string]any{
-		"accessor_id": "u-1",
-		"resource":    map[string]any{"type": "catalog", "id": "c1"},
-		"operations":  []string{"view_detail", "modify"},
+		"accessor_id":      "u-1",
+		"resource":         map[string]any{"type": "catalog", "id": "c1"},
+		"operations":       []string{"view_detail", "modify"},
+		"policy_source":    "community_bundle",
+		"authority_source": "owner_delegate",
 	})
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("grant: want 204, got %d (%s)", w.Code, w.Body.String())
@@ -93,11 +118,28 @@ func TestObjectGrantsSetListRevoke(t *testing.T) {
 	if ok, _ := e.Check("u-1", "catalog", "c1", "modify"); !ok {
 		t.Fatal("grant did not take effect at enforce time")
 	}
+	// Provenance is derived by the trusted route. Unknown client fields cannot
+	// forge either source dimension.
+	records, err := e.PolicyRecords(authz.PolicyFilter{AccessorID: "u-1", Object: "catalog:c1"})
+	if err != nil || len(records) != 2 {
+		t.Fatalf("policy provenance = %+v, %v; want two server-derived rows", records, err)
+	}
+	for _, record := range records {
+		if record.PolicySource != authz.PolicySourceProfessionalRule || record.AuthoritySource != authz.AuthoritySourceAdminAuthz {
+			t.Fatalf("ordinary request forged policy provenance: %+v", record)
+		}
+	}
 
 	// list (no filter) returns the grant
 	entries := listObjectGrants(t, r, "")
 	if len(entries) != 1 || entries[0].AccessorID != "u-1" || entries[0].Resource.ID != "c1" || len(entries[0].Operations) != 2 {
 		t.Fatalf("unexpected list: %+v", entries)
+	}
+	if len(entries[0].Grants) != 2 || entries[0].Grants[0].GrantID == "" ||
+		entries[0].Grants[0].PolicySource != string(authz.PolicySourceProfessionalRule) ||
+		entries[0].Grants[0].AuthoritySource != string(authz.AuthoritySourceAdminAuthz) ||
+		!entries[0].Grants[0].Active || entries[0].Grants[0].Inherited {
+		t.Fatalf("direct grant metadata = %+v", entries[0].Grants)
 	}
 	// filtered lists
 	if got := listObjectGrants(t, r, "?accessor_id=u-1"); len(got) != 1 {
@@ -127,10 +169,11 @@ func TestObjectGrantsSetListRevoke(t *testing.T) {
 	}
 
 	// revoke
-	w = adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/object-grants", map[string]any{
-		"accessor_id": "u-1",
-		"resource":    map[string]any{"type": "catalog", "id": "c1"},
+	grantID := oneGrantID(t, e, authz.PolicyFilter{
+		AccessorID: "u-1", Object: "catalog:c1", Operation: "view_detail",
+		PolicySource: authz.PolicySourceProfessionalRule, AuthoritySource: authz.AuthoritySourceAdminAuthz,
 	})
+	w = adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/object-grants", map[string]any{"grant_id": grantID})
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("revoke: want 204, got %d (%s)", w.Code, w.Body.String())
 	}
@@ -139,6 +182,116 @@ func TestObjectGrantsSetListRevoke(t *testing.T) {
 	}
 	if got := listObjectGrants(t, r, ""); len(got) != 0 {
 		t.Fatalf("list after revoke: %+v", got)
+	}
+}
+
+func TestObjectGrantAllowAtomicallyAddsDirectRequirements(t *testing.T) {
+	r, e, db, users := newAdminServer(t)
+	if err := users.CreateLocalUser(t.Context(), &model.User{
+		ID: "required-user", Account: "required-user", Enabled: true,
+	}, "pw-init0"); err != nil {
+		t.Fatal(err)
+	}
+	seedCatalogOps(t, db, "catalog", "view_detail", "modify")
+	if err := db.Model(&model.Operation{}).
+		Where("resource_type_id = ? AND id = ?", "catalog", "modify").
+		Update("implied_operation_ids", "view_detail").Error; err != nil {
+		t.Fatal(err)
+	}
+	if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants", map[string]any{
+		"accessor_id": "required-user",
+		"resource":    map[string]any{"type": "catalog", "id": "c-required"},
+		"operations":  []string{"modify"},
+	}); w.Code != http.StatusNoContent {
+		t.Fatalf("normalized grant = %d %s", w.Code, w.Body.String())
+	}
+	records, err := e.PolicyRecords(authz.PolicyFilter{
+		AccessorID: "required-user", Object: "catalog:c-required",
+		PolicySource: authz.PolicySourceProfessionalRule,
+	})
+	if err != nil || len(records) != 2 {
+		t.Fatalf("normalized records = %+v, %v; want modify and view_detail", records, err)
+	}
+	for _, operation := range []string{"modify", "view_detail"} {
+		if allowed, err := e.Check("required-user", "catalog", "c-required", operation); err != nil || !allowed {
+			t.Fatalf("normalized %s decision = %v, %v", operation, allowed, err)
+		}
+	}
+}
+
+func TestCommunityObjectGrantCompatibilityWriteIsImmediatelyEffective(t *testing.T) {
+	r, e, db, _ := newAdminServer(t)
+	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
+	t.Cleanup(entitlement.ResetForTest)
+	seedCatalogOps(t, db, "catalog", "view_detail", "modify")
+	if err := db.Create(&model.User{ID: "community-user", Account: "community-user", Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants", map[string]any{
+		"accessor_id": "community-user",
+		"resource":    map[string]any{"type": "catalog", "id": "c-community"},
+		"bundle":      authz.ActFullBusinessAccess,
+	})
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("Community grant = %d %s; want 204", w.Code, w.Body.String())
+	}
+	for _, operation := range []string{"view_detail", "modify", "query_data", "resource_manage"} {
+		allowed, err := e.Check("community-user", "catalog", "c-community", operation)
+		if err != nil || !allowed {
+			t.Fatalf("Community grant Check(%q) = %v, %v; want true", operation, allowed, err)
+		}
+	}
+	grants := listObjectGrants(t, r, "?accessor_id=community-user&resource_type=catalog&resource_id=c-community")
+	if len(grants) != 1 || len(grants[0].Operations) != 6 {
+		t.Fatalf("Community grant listing = %+v; want one projected bundle grant", grants)
+	}
+}
+
+func TestBundlePreviewAndLegacyRevokePreserveSiblingSource(t *testing.T) {
+	r, e, db, users := newAdminServer(t)
+	if err := users.CreateLocalUser(t.Context(), &model.User{
+		ID: "legacy-user", Account: "legacy-user", Enabled: true,
+	}, "pw-init0"); err != nil {
+		t.Fatal(err)
+	}
+	seedCatalogOps(t, db, "catalog", "view_detail", "modify", "delete", "query_data", "resource_manage", "task_manage")
+	if err := e.GrantObjectPermission("legacy-user", "catalog", "c-legacy", "view_detail"); err != nil {
+		t.Fatal(err)
+	}
+	legacyID := oneGrantID(t, e, authz.PolicyFilter{
+		AccessorID: "legacy-user", Object: "catalog:c-legacy", Operation: "view_detail",
+		PolicySource: authz.PolicySourceLegacy,
+	})
+
+	preview := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants/preview", map[string]any{
+		"accessor_id": "legacy-user",
+		"resource":    map[string]any{"type": "catalog", "id": "c-legacy"},
+		"bundle":      authz.ActFullBusinessAccess,
+	})
+	if preview.Code != http.StatusOK || !strings.Contains(preview.Body.String(), legacyID) ||
+		strings.Contains(preview.Body.String(), `"added_operations":["view_detail"`) {
+		t.Fatalf("bundle preview = %d %s", preview.Code, preview.Body.String())
+	}
+
+	if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants", map[string]any{
+		"accessor_id": "legacy-user",
+		"resource":    map[string]any{"type": "catalog", "id": "c-legacy"},
+		"bundle":      authz.ActFullBusinessAccess,
+	}); w.Code != http.StatusNoContent {
+		t.Fatalf("bundle grant = %d %s", w.Code, w.Body.String())
+	}
+	records, err := e.PolicyRecords(authz.PolicyFilter{AccessorID: "legacy-user", Object: "catalog:c-legacy"})
+	if err != nil || len(records) != 2 {
+		t.Fatalf("coexisting sources = %+v, %v", records, err)
+	}
+	if w := adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/object-grants", map[string]any{
+		"grant_id": legacyID,
+	}); w.Code != http.StatusNoContent {
+		t.Fatalf("legacy revoke = %d %s", w.Code, w.Body.String())
+	}
+	if allowed, err := e.Check("legacy-user", "catalog", "c-legacy", "view_detail"); err != nil || !allowed {
+		t.Fatalf("bundle sibling after legacy revoke = %v, %v", allowed, err)
 	}
 }
 
@@ -194,11 +347,12 @@ func TestAdminObjectGrantDenyIsBackwardCompatible(t *testing.T) {
 		t.Fatalf("deny was not exposed separately: %+v", entries)
 	}
 
-	w = adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/object-grants", map[string]any{
-		"accessor_id": "alice",
-		"resource":    map[string]any{"type": "catalog", "id": "c1"},
-		"effect":      "deny",
+	denyGrantID := oneGrantID(t, e, authz.PolicyFilter{
+		AccessorID: "alice", Object: "catalog:c1", Operation: "view_detail",
+		Effect: authz.EffectDeny, PolicySource: authz.PolicySourceProfessionalRule,
+		AuthoritySource: authz.AuthoritySourceAdminAuthz,
 	})
+	w = adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/object-grants", map[string]any{"grant_id": denyGrantID})
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("remove deny: want 204, got %d (%s)", w.Code, w.Body.String())
 	}
@@ -216,6 +370,9 @@ func TestObjectGrantsValidation(t *testing.T) {
 	if err := db.Create(&model.Department{ID: "dep-1", Name: "Data"}).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := db.Create(&model.Role{ID: "role-1", Name: "Readers", Source: "custom"}).Error; err != nil {
+		t.Fatal(err)
+	}
 	seedCatalogOps(t, db, "catalog", "view_detail")
 
 	cases := []struct {
@@ -223,6 +380,7 @@ func TestObjectGrantsValidation(t *testing.T) {
 		body map[string]any
 	}{
 		{"department grantee", map[string]any{"accessor_id": "dep-1", "resource": map[string]any{"type": "catalog", "id": "c1"}, "operations": []string{"view_detail"}}},
+		{"role grantee", map[string]any{"accessor_id": "role-1", "resource": map[string]any{"type": "catalog", "id": "c1"}, "operations": []string{"view_detail"}}},
 		{"unknown user", map[string]any{"accessor_id": "ghost", "resource": map[string]any{"type": "catalog", "id": "c1"}, "operations": []string{"view_detail"}}},
 		{"wildcard id", map[string]any{"accessor_id": "u-1", "resource": map[string]any{"type": "catalog", "id": "*"}, "operations": []string{"view_detail"}}},
 		{"unknown type", map[string]any{"accessor_id": "u-1", "resource": map[string]any{"type": "nope", "id": "c1"}, "operations": []string{"view_detail"}}},
@@ -251,6 +409,10 @@ func TestObjectGrantsExcludesRolesAndWildcards(t *testing.T) {
 	}
 	// a concrete grant to a ROLE (should be excluded)
 	_ = e.GrantRolePermission("role-x", "catalog", "c9", "view_detail")
+	roleGrantID := oneGrantID(t, e, authz.PolicyFilter{
+		AccessorID: "role-x", Object: "catalog:c9", Operation: "view_detail",
+		PolicySource: authz.PolicySourceRolePermission,
+	})
 	// a type-wide grant to the user (id "*", should be excluded)
 	_ = e.GrantRolePermission("u-1", "catalog", "*", "view_detail")
 	// a concrete grant to the USER (should be included)
@@ -259,6 +421,14 @@ func TestObjectGrantsExcludesRolesAndWildcards(t *testing.T) {
 	entries := listObjectGrants(t, r, "")
 	if len(entries) != 1 || entries[0].AccessorID != "u-1" || entries[0].Resource.ID != "c1" {
 		t.Fatalf("listing must contain only the user concrete grant, got %+v", entries)
+	}
+	if w := adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/object-grants", map[string]any{
+		"grant_id": roleGrantID,
+	}); w.Code != http.StatusForbidden {
+		t.Fatalf("generic role revoke = %d %s; want dedicated role API", w.Code, w.Body.String())
+	}
+	if allowed, err := e.Check("role-x", "catalog", "c9", "view_detail"); err != nil || !allowed {
+		t.Fatalf("generic object route removed a role permission: allowed=%v err=%v", allowed, err)
 	}
 }
 
@@ -400,8 +570,9 @@ func TestObjectGrantsGroupedViews(t *testing.T) {
 }
 
 // ownerGrantFixture builds the situation the owner path exists for: a builder
-// who created a knowledge network (and therefore holds the creator's object
-// grant, opAuthorize included) but holds no admin-authz permission at all.
+// who created a knowledge network (and therefore holds the Community business
+// bundle plus a separate system-derived authorize grant) but holds no
+// admin-authz permission at all.
 func ownerGrantFixture(t *testing.T) (*gin.Engine, *authz.Enforcer) {
 	r, e, _ := ownerGrantFixtureWithDB(t)
 	return r, e
@@ -428,11 +599,19 @@ func ownerGrantFixtureWithDB(t *testing.T) (*gin.Engine, *authz.Enforcer, *gorm.
 	// instance, so a test can ask for an operation that is valid yet unheld.
 	seedCatalogOps(t, db, "knowledge_network",
 		"view_detail", "create", "modify", "delete", "query_data", "authorize", "task_manage")
-	// Exactly what bkn-backend writes to a newly created KN instance.
-	for _, op := range []string{"view_detail", "modify", "delete", "query_data", "authorize", "task_manage"} {
-		if err := e.GrantObjectPermission("u-owner", "knowledge_network", "kn-mine", op); err != nil {
-			t.Fatal(err)
-		}
+	if err := db.Model(&model.Operation{}).
+		Where("resource_type_id = ? AND id = ?", "knowledge_network", "authorize").
+		Update("implied_operation_ids", "view_detail").Error; err != nil {
+		t.Fatal(err)
+	}
+	// The new-resource contract keeps business access and management authority
+	// in independently managed sources.
+	if err := e.GrantCommunityBundle("u-owner", "knowledge_network", "kn-mine",
+		authz.AuthoritySourceSystem); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantSystemObjectPermission("u-owner", "knowledge_network", "kn-mine", "authorize"); err != nil {
+		t.Fatal(err)
 	}
 	return r, e, db
 }
@@ -469,9 +648,12 @@ func TestObjectGrantsOwnerMayShareOwnObject(t *testing.T) {
 	}
 
 	// And can take it back.
+	grantID := oneGrantID(t, e, authz.PolicyFilter{
+		AccessorID: "u-mate", Object: "knowledge_network:kn-mine", Operation: "view_detail",
+		PolicySource: authz.PolicySourceProfessionalRule, AuthoritySource: authz.AuthoritySourceOwnerDelegate,
+	})
 	w = tokReq(t, r, http.MethodDelete, "/api/safe/v1/me/object-grants", map[string]any{
-		"accessor_id": "u-mate",
-		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"grant_id": grantID,
 	}, "u-owner")
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("owner revoke: want 204, got %d (%s)", w.Code, w.Body.String())
@@ -479,13 +661,115 @@ func TestObjectGrantsOwnerMayShareOwnObject(t *testing.T) {
 	if ok, _ := e.Check("u-mate", "knowledge_network", "kn-mine", "view_detail"); ok {
 		t.Error("owner revoke did not remove the grant")
 	}
-	// DELETE is idempotent when the direct grant is already absent.
+	// After the source row is gone, a delegated caller cannot prove that the
+	// opaque id belonged to an object it manages. Only platform administrators
+	// receive idempotent success for an already-absent id.
 	w = tokReq(t, r, http.MethodDelete, "/api/safe/v1/me/object-grants", map[string]any{
+		"grant_id": grantID,
+	}, "u-owner")
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("repeat owner revoke: want 403, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+func TestObjectGrantsUseKnowledgeNetworkAsChildAuthorizationRoot(t *testing.T) {
+	r, e, db := ownerGrantFixtureWithDB(t)
+	if err := db.Create(&model.ResourceType{
+		ID: "object_type", Name: "object_type", ParentTypeID: "knowledge_network",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	seedCatalogOps(t, db, "object_type", "view_detail", "modify", "delete", "query_data", "authorize")
+	if err := db.Model(&model.Operation{}).
+		Where("resource_type_id = ? AND id = ?", "object_type", "view_detail").
+		Update("parent_operation_id", "view_detail").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.ResourceParent{
+		ResourceTypeID: "object_type", ResourceID: "kn-mine/order",
+		ParentTypeID: "knowledge_network", ParentID: "kn-mine",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, operation := range []string{"view_detail", "modify", "query_data"} {
+		if err := e.GrantObjectPermission("u-owner", "object_type", "kn-mine/order", operation); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	w := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants", map[string]any{
 		"accessor_id": "u-mate",
-		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"resource":    map[string]any{"type": "object_type", "id": "kn-mine/order"},
+		"operations":  []string{"modify"},
 	}, "u-owner")
 	if w.Code != http.StatusNoContent {
-		t.Fatalf("idempotent owner revoke: want 204, got %d (%s)", w.Code, w.Body.String())
+		t.Fatalf("child grant via KN authorize = %d %s", w.Code, w.Body.String())
+	}
+	if allowed, _ := e.Check("u-mate", "object_type", "kn-mine/order", "modify"); !allowed {
+		t.Fatal("child grant did not become effective")
+	}
+	if err := e.GrantProfessionalObjectPermission("u-mate", "knowledge_network", "kn-mine", "query_data",
+		authz.EffectDeny, authz.AuthoritySourceAdminAuthz); err != nil {
+		t.Fatal(err)
+	}
+	if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants", map[string]any{
+		"accessor_id": "u-mate",
+		"resource":    map[string]any{"type": "object_type", "id": "kn-mine/order"},
+		"operations":  []string{"query_data"},
+	}, "u-owner"); w.Code != http.StatusNoContent {
+		t.Fatalf("owner child allow over parent admin deny = %d %s; want 204", w.Code, w.Body.String())
+	}
+	if allowed, err := e.Check("u-mate", "object_type", "kn-mine/order", "query_data"); err != nil || !allowed {
+		t.Fatalf("specific child allow did not override parent deny: allowed=%v err=%v", allowed, err)
+	}
+
+	if err := db.Create(&model.ResourceParent{
+		ResourceTypeID: "object_type", ResourceID: "kn-mine/hidden",
+		ParentTypeID: "knowledge_network", ParentID: "kn-mine",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := e.DenyObjectPermission("u-owner", "object_type", "kn-mine/hidden", "view_detail"); err != nil {
+		t.Fatal(err)
+	}
+	if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants", map[string]any{
+		"accessor_id": "u-mate",
+		"resource":    map[string]any{"type": "object_type", "id": "kn-mine/hidden"},
+		"operations":  []string{"query_data"},
+	}, "u-owner"); w.Code != http.StatusForbidden {
+		t.Fatalf("grant on invisible child = %d %s; want 403", w.Code, w.Body.String())
+	}
+	if w := tokReq(t, r, http.MethodGet,
+		"/api/safe/v1/me/object-grants?resource_type=object_type&resource_id=kn-mine/hidden",
+		nil, "u-owner"); w.Code != http.StatusForbidden {
+		t.Fatalf("read grants on invisible child = %d %s; want 403", w.Code, w.Body.String())
+	}
+	if err := db.Model(&model.Operation{}).
+		Where("resource_type_id = ? AND id = ?", "object_type", "modify").
+		Update("implied_operation_ids", "delete").Error; err != nil {
+		t.Fatal(err)
+	}
+	if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants", map[string]any{
+		"accessor_id": "u-mate",
+		"resource":    map[string]any{"type": "object_type", "id": "kn-mine/order"},
+		"operations":  []string{"modify"},
+	}, "u-owner"); w.Code != http.StatusForbidden {
+		t.Fatalf("grant with an unheld runtime requirement = %d %s; want 403", w.Code, w.Body.String())
+	}
+
+	if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants", map[string]any{
+		"accessor_id": "u-mate",
+		"resource":    map[string]any{"type": "object_type", "id": "kn-mine/order"},
+		"operations":  []string{"authorize"},
+	}); w.Code != http.StatusForbidden {
+		t.Fatalf("BKN child authorize = %d %s; want 403", w.Code, w.Body.String())
+	}
+	if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants", map[string]any{
+		"accessor_id": "u-mate",
+		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"operations":  []string{"authorize"},
+	}); w.Code != http.StatusNoContent {
+		t.Fatalf("platform-managed root authorize = %d %s; want 204", w.Code, w.Body.String())
 	}
 }
 
@@ -502,23 +786,24 @@ func TestObjectGrantsOwnerCannotRemoveAdminDeny(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// A legacy owner revoke still removes only ordinary grants, never the
-	// administrator-installed deny exception.
+	denyGrantID := oneGrantID(t, e, authz.PolicyFilter{
+		AccessorID: "u-mate", Object: "knowledge_network:kn-mine",
+		Operation: "view_detail", Effect: authz.EffectDeny,
+	})
+	// A delegated owner cannot revoke an administrator/legacy source by naming
+	// its stable identity.
 	w := tokReq(t, r, http.MethodDelete, "/api/safe/v1/me/object-grants", map[string]any{
-		"accessor_id": "u-mate",
-		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"grant_id": denyGrantID,
 	}, "u-owner")
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("legacy owner revoke: want 204, got %d (%s)", w.Code, w.Body.String())
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("legacy owner revoke: want 403, got %d (%s)", w.Code, w.Body.String())
 	}
 	if ok, err := e.Check("u-mate", "knowledge_network", "kn-mine", "view_detail"); err != nil || ok {
 		t.Fatalf("owner revoke removed admin deny: allowed=%v err=%v", ok, err)
 	}
 
 	w = tokReq(t, r, http.MethodDelete, "/api/safe/v1/me/object-grants", map[string]any{
-		"accessor_id": "u-mate",
-		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
-		"effect":      "deny",
+		"grant_id": denyGrantID,
 	}, "u-owner")
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("owner remove deny: want 403, got %d (%s)", w.Code, w.Body.String())
@@ -582,6 +867,23 @@ func TestObjectGrantsOwnerLimits(t *testing.T) {
 				"accessor_id": "u-mate",
 				"resource":    map[string]any{"type": "knowledge_network", "id": "kn-theirs"},
 				"operations":  []string{"view_detail"},
+			},
+		},
+		{
+			"cannot write deny",
+			map[string]any{
+				"accessor_id": "u-mate",
+				"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+				"operations":  []string{"view_detail"},
+				"effect":      authz.EffectDeny,
+			},
+		},
+		{
+			"cannot change protected bundle source",
+			map[string]any{
+				"accessor_id": "u-mate",
+				"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+				"bundle":      authz.ActFullBusinessAccess,
 			},
 		},
 	}
@@ -751,11 +1053,9 @@ func TestObjectGrantsOwnerDirectoryLookups(t *testing.T) {
 	}
 }
 
-// A delegate may take back what it shared, but must not strip another holder of
-// `authorize` — the creator included. Revoking removes every op the accessor has
-// on the object, and a delegate cannot grant `authorize` back, so without this
-// rule anyone trusted with one object could take it from the person who made it.
-func TestObjectGrantsDelegateCannotStripAuthorizeHolder(t *testing.T) {
+// Stable source slicing lets a delegate manage an ordinary owner-written row
+// for a user who also holds authorize, without touching that protected sibling.
+func TestObjectGrantsDelegateCannotMutateProtectedSources(t *testing.T) {
 	r, e := ownerGrantFixture(t)
 	// u-stranger holds type-wide authorize on the whole type, with no direct
 	// stake in this particular network.
@@ -766,9 +1066,11 @@ func TestObjectGrantsDelegateCannotStripAuthorizeHolder(t *testing.T) {
 	}
 
 	// The creator holds authorize on kn-mine and must survive.
+	authorizeGrantID := oneGrantID(t, e, authz.PolicyFilter{
+		AccessorID: "u-owner", Object: "knowledge_network:kn-mine", Operation: "authorize",
+	})
 	w := tokReq(t, r, http.MethodDelete, "/api/safe/v1/me/object-grants", map[string]any{
-		"accessor_id": "u-owner",
-		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"grant_id": authorizeGrantID,
 	}, "u-stranger")
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("stripping the creator: want 403, got %d (%s)", w.Code, w.Body.String())
@@ -778,34 +1080,44 @@ func TestObjectGrantsDelegateCannotStripAuthorizeHolder(t *testing.T) {
 	}
 
 	// A plain grantee stays revocable — undoing a share is the point.
-	if err := e.GrantObjectPermission("u-mate", "knowledge_network", "kn-mine", "view_detail"); err != nil {
-		t.Fatal(err)
-	}
-	w = tokReq(t, r, http.MethodDelete, "/api/safe/v1/me/object-grants", map[string]any{
+	if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants", map[string]any{
 		"accessor_id": "u-mate",
 		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"operations":  []string{"view_detail"},
+	}, "u-stranger"); w.Code != http.StatusNoContent {
+		t.Fatalf("seed owner-managed grant: %d %s", w.Code, w.Body.String())
+	}
+	plaintGrantID := oneGrantID(t, e, authz.PolicyFilter{
+		AccessorID: "u-mate", Object: "knowledge_network:kn-mine", Operation: "view_detail",
+		PolicySource: authz.PolicySourceProfessionalRule, AuthoritySource: authz.AuthoritySourceOwnerDelegate,
+	})
+	w = tokReq(t, r, http.MethodDelete, "/api/safe/v1/me/object-grants", map[string]any{
+		"grant_id": plaintGrantID,
 	}, "u-stranger")
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("revoking a plain grantee: want 204, got %d (%s)", w.Code, w.Body.String())
 	}
+	if ok, _ := e.Check("u-mate", "knowledge_network", "kn-mine", "view_detail"); ok {
+		t.Fatal("delegate revoke left its owner-managed grant effective")
+	}
 
-	// The grant side erases just as thoroughly: POST replaces the whole op set, so
-	// writing view_detail onto the creator would drop its authorize in one move.
+	// POST replaces only the owner_delegate Professional slice. Granting an
+	// ordinary operation to the creator is safe because its protected authorize
+	// row belongs to a different source slice.
 	if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants", map[string]any{
 		"accessor_id": "u-owner",
 		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
 		"operations":  []string{"view_detail"},
-	}, "u-stranger"); w.Code != http.StatusForbidden {
-		t.Fatalf("overwriting the creator's grant: want 403, got %d (%s)", w.Code, w.Body.String())
+	}, "u-stranger"); w.Code != http.StatusNoContent {
+		t.Fatalf("source-scoped grant to the creator: want 204, got %d (%s)", w.Code, w.Body.String())
 	}
 	if ok, _ := e.Check("u-owner", "knowledge_network", "kn-mine", "authorize"); !ok {
-		t.Fatal("the creator lost authorize through the grant path")
+		t.Fatal("the creator lost its protected authorize sibling through the grant path")
 	}
 
 	// An administrator is still able to do both.
 	if w := adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/object-grants", map[string]any{
-		"accessor_id": "u-owner",
-		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"grant_id": authorizeGrantID,
 	}); w.Code != http.StatusNoContent {
 		t.Fatalf("administrator revoking an authorize holder: want 204, got %d", w.Code)
 	}
@@ -856,9 +1168,11 @@ func TestObjectGrantsDelegateCannotWriteWildcardOrTouchPublic(t *testing.T) {
 	if err := e.GrantObjectPermission(authz.PublicAccessorID, "knowledge_network", "kn-mine", "view_detail"); err != nil {
 		t.Fatal(err)
 	}
+	publicGrantID := oneGrantID(t, e, authz.PolicyFilter{
+		AccessorID: authz.PublicAccessorID, Object: "knowledge_network:kn-mine", Operation: "view_detail",
+	})
 	if w := tokReq(t, r, http.MethodDelete, "/api/safe/v1/me/object-grants", map[string]any{
-		"accessor_id": authz.PublicAccessorID,
-		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"grant_id": publicGrantID,
 	}, "u-owner"); w.Code != http.StatusForbidden {
 		t.Fatalf("delegate deleting the public row: want 403, got %d (%s)", w.Code, w.Body.String())
 	}
@@ -867,8 +1181,7 @@ func TestObjectGrantsDelegateCannotWriteWildcardOrTouchPublic(t *testing.T) {
 	}
 	// An administrator may still remove it.
 	if w := adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/object-grants", map[string]any{
-		"accessor_id": authz.PublicAccessorID,
-		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"grant_id": publicGrantID,
 	}); w.Code != http.StatusNoContent {
 		t.Errorf("administrator removing the public row: want 204, got %d", w.Code)
 	}

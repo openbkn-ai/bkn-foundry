@@ -48,7 +48,8 @@ func (s *mcpServiceImpl) GetMCPTools(ctx context.Context, req *interfaces.MCPPro
 		"mcp_id":  req.MCPID,
 		"user_id": req.UserID,
 	})
-	// If it is a public interface, check the public access or viewing permissions. Internal interfaces are not checked temporarily.
+	// The tool schema is required to invoke a known MCP server, so execute-only
+	// callers may read it without gaining top-level MCP discovery visibility.
 	if common.IsPublicAPIFromCtx(ctx) {
 		var accessor *interfaces.AuthAccessor
 		accessor, err = s.AuthService.GetAccessor(ctx, "")
@@ -56,7 +57,8 @@ func (s *mcpServiceImpl) GetMCPTools(ctx context.Context, req *interfaces.MCPPro
 			return
 		}
 		var authorized bool
-		authorized, err = s.AuthService.OperationCheckAny(ctx, accessor, req.MCPID, interfaces.AuthResourceTypeMCP, interfaces.AuthOperationTypeView, interfaces.AuthOperationTypePublicAccess)
+		authorized, err = s.AuthService.OperationCheckAny(ctx, accessor, req.MCPID, interfaces.AuthResourceTypeMCP,
+			interfaces.AuthOperationTypeView, interfaces.AuthOperationTypePublicAccess, interfaces.AuthOperationTypeExecute)
 		if err != nil {
 			return
 		}

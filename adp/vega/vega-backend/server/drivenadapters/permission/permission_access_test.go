@@ -264,6 +264,273 @@ func TestSafeClientCheckOne(t *testing.T) {
 	})
 }
 
+func TestSafeClientLocalDecision(t *testing.T) {
+	t.Run("sends a typed local request and returns structured decision", func(t *testing.T) {
+		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/api/safe/v1/authz/check", r.URL.Path)
+			assert.Equal(t, "vega", r.Header.Get("x-caller-service"))
+			var body localCheckRequest
+			decodeRequestJSON(t, r, &body)
+			assert.Equal(t, "local", body.EvaluationScope)
+			assert.Equal(t, "u1", body.AccessorID)
+			assert.Equal(t, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, body.Resource.Type)
+			assert.Equal(t, "resource-1", body.Resource.ID)
+			assert.Equal(t, interfaces.OPERATION_TYPE_VIEW_DETAIL, body.Operation)
+			_, _ = w.Write([]byte(`{"allowed":true,"evaluation_scope":"local","decision":"allow","basis":"direct","requires":["query_data"]}`))
+		})
+
+		got, err := client.localDecision(context.Background(), interfaces.LocalPermissionCheck{
+			Accessor:  interfaces.PermissionAccessor{Type: interfaces.ACCESSOR_TYPE_USER, ID: "u1"},
+			Resource:  interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"},
+			Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, interfaces.PermissionOperationDecision{
+			Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+			Decision:  interfaces.PermissionDecisionAllow,
+			Basis:     interfaces.PermissionBasisDirect,
+			Requires:  []string{interfaces.OPERATION_TYPE_QUERY_DATA},
+		}, got)
+	})
+
+	t.Run("maps the inactive account compatibility response to a refusal", func(t *testing.T) {
+		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"allowed":false}`))
+		})
+
+		_, err := client.localDecision(context.Background(), interfaces.LocalPermissionCheck{
+			Accessor:  interfaces.PermissionAccessor{ID: "disabled-user"},
+			Resource:  interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"},
+			Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+		})
+
+		require.ErrorIs(t, err, interfaces.ErrPermissionAccountNotActive)
+	})
+
+	t.Run("rejects an empty success response as a protocol error", func(t *testing.T) {
+		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+
+		_, err := client.localDecision(context.Background(), interfaces.LocalPermissionCheck{
+			Accessor:  interfaces.PermissionAccessor{ID: "u1"},
+			Resource:  interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"},
+			Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+		})
+
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, interfaces.ErrPermissionAccountNotActive)
+		assert.Contains(t, err.Error(), "empty response body")
+	})
+
+	t.Run("returns a response body read error", func(t *testing.T) {
+		client := newSafeReadErrorClient()
+
+		_, err := client.localDecision(context.Background(), interfaces.LocalPermissionCheck{
+			Accessor:  interfaces.PermissionAccessor{ID: "u1"},
+			Resource:  interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"},
+			Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+		})
+
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, interfaces.ErrPermissionAccountNotActive)
+		assert.ErrorIs(t, err, io.ErrUnexpectedEOF)
+	})
+
+	for name, response := range map[string]string{
+		"empty object":  `{}`,
+		"null document": `null`,
+		"null allowed":  `{"allowed":null}`,
+	} {
+		t.Run("rejects "+name+" as a protocol error", func(t *testing.T) {
+			client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(response))
+			})
+
+			_, err := client.localDecision(context.Background(), interfaces.LocalPermissionCheck{
+				Accessor:  interfaces.PermissionAccessor{ID: "u1"},
+				Resource:  interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"},
+				Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+			})
+
+			require.Error(t, err)
+			assert.NotErrorIs(t, err, interfaces.ErrPermissionAccountNotActive)
+			assert.Contains(t, err.Error(), "required allowed field")
+		})
+	}
+
+	for name, response := range map[string]string{
+		"wrong evaluation scope":    `{"allowed":false,"evaluation_scope":"effective","decision":"deny","basis":"direct"}`,
+		"inconsistent allowed flag": `{"allowed":true,"evaluation_scope":"local","decision":"deny","basis":"direct"}`,
+		"locally enforced requires": `{"allowed":false,"evaluation_scope":"local","decision":"deny","basis":"direct","denied_requirement":"view_detail"}`,
+	} {
+		t.Run(name+" is an infrastructure error", func(t *testing.T) {
+			client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(response))
+			})
+
+			_, err := client.localDecision(context.Background(), interfaces.LocalPermissionCheck{
+				Accessor:  interfaces.PermissionAccessor{ID: "u1"},
+				Resource:  interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"},
+				Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+			})
+
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestSafeClientLocalResourceDecisions(t *testing.T) {
+	t.Run("returns every requested decision including none", func(t *testing.T) {
+		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/api/safe/v1/authz/resource-filter", r.URL.Path)
+			assert.Equal(t, "vega", r.Header.Get("x-caller-service"))
+			var body localFilterRequest
+			decodeRequestJSON(t, r, &body)
+			assert.Equal(t, "local", body.EvaluationScope)
+			assert.Empty(t, body.VisibilityOperations)
+			assert.ElementsMatch(t, []string{"resource-1", "resource-2"}, body.ResourceIDs)
+			assert.Equal(t, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, body.CandidateOperations)
+			_, _ = w.Write([]byte(`{"resources":[` +
+				`{"resource_type":"resource","resource_id":"resource-1","decisions":[{"operation":"view_detail","decision":"deny","basis":"direct"}]},` +
+				`{"resource_type":"resource","resource_id":"resource-2","decisions":[{"operation":"view_detail","decision":"none","basis":"none"}]}` +
+				`]}`))
+		})
+
+		got, err := client.localResourceDecisions(context.Background(), interfaces.LocalPermissionFilter{
+			Accessor:     interfaces.PermissionAccessor{ID: "u1"},
+			ResourceType: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			ResourceIDs:  []string{"resource-1", "resource-2", "resource-1"},
+			Operations:   []string{interfaces.OPERATION_TYPE_VIEW_DETAIL},
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, interfaces.PermissionDecisionDeny, got["resource-1"][interfaces.OPERATION_TYPE_VIEW_DETAIL].Decision)
+		assert.Equal(t, interfaces.PermissionDecisionNone, got["resource-2"][interfaces.OPERATION_TYPE_VIEW_DETAIL].Decision)
+	})
+
+	t.Run("maps an empty inactive account response to a refusal", func(t *testing.T) {
+		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"resources":[]}`))
+		})
+
+		_, err := client.localResourceDecisions(context.Background(), interfaces.LocalPermissionFilter{
+			Accessor:     interfaces.PermissionAccessor{ID: "u1"},
+			ResourceType: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			ResourceIDs:  []string{"resource-1"},
+			Operations:   []string{interfaces.OPERATION_TYPE_VIEW_DETAIL},
+		})
+
+		require.ErrorIs(t, err, interfaces.ErrPermissionAccountNotActive)
+	})
+
+	t.Run("rejects an empty success response as a protocol error", func(t *testing.T) {
+		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+
+		_, err := client.localResourceDecisions(context.Background(), interfaces.LocalPermissionFilter{
+			Accessor:     interfaces.PermissionAccessor{ID: "u1"},
+			ResourceType: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			ResourceIDs:  []string{"resource-1"},
+			Operations:   []string{interfaces.OPERATION_TYPE_VIEW_DETAIL},
+		})
+
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, interfaces.ErrPermissionAccountNotActive)
+		assert.Contains(t, err.Error(), "empty response body")
+	})
+
+	t.Run("returns a response body read error", func(t *testing.T) {
+		client := newSafeReadErrorClient()
+
+		_, err := client.localResourceDecisions(context.Background(), interfaces.LocalPermissionFilter{
+			Accessor:     interfaces.PermissionAccessor{ID: "u1"},
+			ResourceType: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			ResourceIDs:  []string{"resource-1"},
+			Operations:   []string{interfaces.OPERATION_TYPE_VIEW_DETAIL},
+		})
+
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, interfaces.ErrPermissionAccountNotActive)
+		assert.ErrorIs(t, err, io.ErrUnexpectedEOF)
+	})
+
+	for name, response := range map[string]string{
+		"empty object":   `{}`,
+		"null document":  `null`,
+		"null resources": `{"resources":null}`,
+	} {
+		t.Run("rejects "+name+" as a protocol error", func(t *testing.T) {
+			client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(response))
+			})
+
+			_, err := client.localResourceDecisions(context.Background(), interfaces.LocalPermissionFilter{
+				Accessor:     interfaces.PermissionAccessor{ID: "u1"},
+				ResourceType: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+				ResourceIDs:  []string{"resource-1"},
+				Operations:   []string{interfaces.OPERATION_TYPE_VIEW_DETAIL},
+			})
+
+			require.Error(t, err)
+			assert.NotErrorIs(t, err, interfaces.ErrPermissionAccountNotActive)
+			assert.Contains(t, err.Error(), "required resources field")
+		})
+	}
+
+	t.Run("rejects a partially omitted resource instead of treating it as none", func(t *testing.T) {
+		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"resources":[{"resource_type":"resource","resource_id":"resource-1",` +
+				`"decisions":[{"operation":"view_detail","decision":"none","basis":"none"}]}]}`))
+		})
+
+		_, err := client.localResourceDecisions(context.Background(), interfaces.LocalPermissionFilter{
+			Accessor:     interfaces.PermissionAccessor{ID: "u1"},
+			ResourceType: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			ResourceIDs:  []string{"resource-1", "resource-2"},
+			Operations:   []string{interfaces.OPERATION_TYPE_VIEW_DETAIL},
+		})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "omitted requested resource resource:resource-2")
+	})
+
+	t.Run("rejects an omitted operation instead of treating it as none", func(t *testing.T) {
+		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"resources":[{"resource_type":"resource","resource_id":"resource-1","decisions":[]}]}`))
+		})
+
+		_, err := client.localResourceDecisions(context.Background(), interfaces.LocalPermissionFilter{
+			Accessor:     interfaces.PermissionAccessor{ID: "u1"},
+			ResourceType: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			ResourceIDs:  []string{"resource-1"},
+			Operations:   []string{interfaces.OPERATION_TYPE_VIEW_DETAIL},
+		})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "omitted resource:resource-1 operation view_detail")
+	})
+
+	t.Run("rejects an omitted required operation", func(t *testing.T) {
+		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"resources":[{"resource_type":"catalog","resource_id":"catalog-1",` +
+				`"decisions":[{"operation":"resource_manage","decision":"allow","basis":"direct","requires":["view_detail"]}]}]}`))
+		})
+
+		_, err := client.localResourceDecisions(context.Background(), interfaces.LocalPermissionFilter{
+			Accessor:     interfaces.PermissionAccessor{ID: "u1"},
+			ResourceType: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			ResourceIDs:  []string{"catalog-1"},
+			Operations:   []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE},
+		})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "omitted catalog:catalog-1 required operation view_detail")
+	})
+}
+
 func TestSafeClientAllowedOps(t *testing.T) {
 	t.Run("returns allowed subset", func(t *testing.T) {
 		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
@@ -401,20 +668,10 @@ func TestSafePermissionAccessCheckPermission(t *testing.T) {
 
 func TestSafePermissionAccessFilterResources(t *testing.T) {
 	t.Run("returns resources with allowed operations", func(t *testing.T) {
-		// 鉴权按 op 批量解析：先探类型级通配（此处无），再取该 op 的可访问 id 集
 		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-			switch r.URL.Path {
-			case "/api/safe/v1/authz/check":
-				_, _ = w.Write([]byte(`{"allowed":false}`)) // 无类型级通配授权
-			case "/api/safe/v1/authz/resources":
-				if r.URL.Query().Get("operation") == interfaces.OPERATION_TYPE_VIEW_DETAIL {
-					_, _ = w.Write([]byte(`{"ids":["resource-1"]}`))
-					return
-				}
-				_, _ = w.Write([]byte(`{"ids":[]}`))
-			default:
-				w.WriteHeader(http.StatusNotFound)
-			}
+			assert.Equal(t, http.MethodPost, r.Method)
+			assert.Equal(t, "/api/safe/v1/authz/resource-filter", r.URL.Path)
+			_, _ = w.Write([]byte(`{"resources":[{"resource_type":"resource","resource_id":"resource-1","operations":["view_detail"]}]}`))
 		})
 		access := &safePermissionAccess{safe: client}
 
@@ -437,12 +694,32 @@ func TestSafePermissionAccessFilterResources(t *testing.T) {
 			},
 		}, got)
 	})
+
+	t.Run("accepts an explicit empty resource list", func(t *testing.T) {
+		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"resources":[]}`))
+		})
+		access := &safePermissionAccess{safe: client}
+
+		got, err := access.FilterResources(context.Background(), samplePermissionResourcesFilter())
+
+		require.NoError(t, err)
+		assert.Empty(t, got)
+	})
+
+	t.Run("rejects invalid resource filter responses", func(t *testing.T) {
+		assertRejectsInvalidResourceFilterResponses(t, func(access *safePermissionAccess) (map[string]interfaces.PermissionResourceOps, error) {
+			return access.FilterResources(context.Background(), samplePermissionResourcesFilter())
+		})
+	})
 }
 
 func TestSafePermissionAccessGetResourcesOperations(t *testing.T) {
 	t.Run("returns all resources with operation slices", func(t *testing.T) {
 		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-			_, _ = w.Write([]byte(`{"allowed":false}`))
+			assert.Equal(t, http.MethodPost, r.Method)
+			assert.Equal(t, "/api/safe/v1/authz/resource-filter", r.URL.Path)
+			_, _ = w.Write([]byte(`{"resources":[{"resource_type":"resource","resource_id":"resource-1","operations":[]}]}`))
 		})
 		access := &safePermissionAccess{safe: client}
 
@@ -456,6 +733,26 @@ func TestSafePermissionAccessGetResourcesOperations(t *testing.T) {
 		assert.Equal(t, map[string]interfaces.PermissionResourceOps{
 			"resource-1": {ResourceID: "resource-1", Operations: []string{}},
 		}, got)
+	})
+
+	t.Run("accepts an explicit empty resource list", func(t *testing.T) {
+		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"resources":[]}`))
+		})
+		access := &safePermissionAccess{safe: client}
+
+		got, err := access.GetResourcesOperations(context.Background(), samplePermissionResourcesFilter())
+
+		require.NoError(t, err)
+		assert.Equal(t, map[string]interfaces.PermissionResourceOps{
+			"resource-1": {ResourceID: "resource-1", Operations: []string{}},
+		}, got)
+	})
+
+	t.Run("rejects invalid resource filter responses", func(t *testing.T) {
+		assertRejectsInvalidResourceFilterResponses(t, func(access *safePermissionAccess) (map[string]interfaces.PermissionResourceOps, error) {
+			return access.GetResourcesOperations(context.Background(), samplePermissionResourcesFilter())
+		})
 	})
 }
 
@@ -572,6 +869,8 @@ func TestMaybeShadow(t *testing.T) {
 		require.NoError(t, err)
 		require.IsType(t, &shadowPermissionAccess{}, got)
 		assert.Same(t, inner, got.(*shadowPermissionAccess).PermissionAccess)
+		_, exposesLocal := got.(interfaces.LocalPermissionAccess)
+		assert.False(t, exposesLocal, "shadow mode must keep ISF authoritative")
 	})
 
 	t.Run("returns safe access in bkn safe mode", func(t *testing.T) {
@@ -666,6 +965,58 @@ func newSafeTestClient(t *testing.T, handler http.HandlerFunc) *safeClient {
 	}
 }
 
+func newSafeReadErrorClient() *safeClient {
+	return &safeClient{
+		baseURL: "http://safe.test",
+		http: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     make(http.Header),
+					Body:       readErrorBody{},
+					Request:    req,
+				}, nil
+			}),
+		},
+	}
+}
+
+func assertRejectsInvalidResourceFilterResponses(t *testing.T,
+	call func(*safePermissionAccess) (map[string]interfaces.PermissionResourceOps, error)) {
+	t.Helper()
+
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{name: "empty body", body: ""},
+		{name: "missing resources field", body: `{}`},
+		{name: "null response", body: `null`},
+		{name: "null resources field", body: `{"resources":null}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(tc.body))
+			})
+
+			got, err := call(&safePermissionAccess{safe: client})
+
+			require.Error(t, err)
+			assert.Nil(t, got)
+		})
+	}
+
+	t.Run("response body read failure", func(t *testing.T) {
+		client := newSafeReadErrorClient()
+
+		got, err := call(&safePermissionAccess{safe: client})
+
+		require.Error(t, err)
+		assert.ErrorIs(t, err, io.ErrUnexpectedEOF)
+		assert.Nil(t, got)
+	})
+}
+
 func boolJSON(value bool) string {
 	if value {
 		return "true"
@@ -685,4 +1036,14 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
+}
+
+type readErrorBody struct{}
+
+func (readErrorBody) Read([]byte) (int, error) {
+	return 0, io.ErrUnexpectedEOF
+}
+
+func (readErrorBody) Close() error {
+	return nil
 }

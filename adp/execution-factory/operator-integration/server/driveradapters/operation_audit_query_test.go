@@ -41,6 +41,7 @@ func (s *executionAuditQueryStoreStub) Get(_ context.Context, _ string) (operati
 	return operationaudit.Entry{}, s.found, nil
 }
 
+//nolint:unused // Retained for audit query tests that need user-management responses.
 type executionAuditUserManagementStub struct {
 	user *interfaces.UserInfo
 	err  error
@@ -88,18 +89,22 @@ func TestExecutionOperationAuditUsesSharedAdminCapability(t *testing.T) {
 	}
 }
 
+//nolint:unused // Retained with the user-management test stub.
 func (s executionAuditUserManagementStub) GetAppInfo(context.Context, string) (*interfaces.AppInfo, error) {
 	return nil, nil
 }
 
+//nolint:unused // Retained with the user-management test stub.
 func (s executionAuditUserManagementStub) GetUserInfo(context.Context, string, ...string) (*interfaces.UserInfo, error) {
 	return s.user, s.err
 }
 
+//nolint:unused // Retained with the user-management test stub.
 func (s executionAuditUserManagementStub) GetUsersInfo(context.Context, []string, []string) ([]*interfaces.UserInfo, error) {
 	return nil, nil
 }
 
+//nolint:unused // Retained with the user-management test stub.
 func (s executionAuditUserManagementStub) GetUsersName(context.Context, []string) (map[string]string, error) {
 	return nil, nil
 }

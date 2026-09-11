@@ -118,10 +118,10 @@ func TestPublishedCatalogueReadsAsTheCaller(t *testing.T) {
 }
 
 // Falling back to this service's own identity would disclose another caller's
-// inventory and skip Execution Factory's execute check, so a request with no
-// caller token must fail rather than degrade.
-func TestPublishedToolSurfaceRefusesWithoutACallerToken(t *testing.T) {
-	convey.Convey("no caller token means no call at all", t, func() {
+// inventory and skip Execution Factory's execute check, so a request with
+// neither a token nor trusted account context must fail rather than degrade.
+func TestPublishedToolSurfaceRefusesWithoutCallerIdentity(t *testing.T) {
+	convey.Convey("no caller identity means no call at all", t, func() {
 		client, _ := toolsTestClient(t)
 		ctx := context.Background()
 

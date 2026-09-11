@@ -784,9 +784,34 @@ func TestPreviewOwnershipKeepsDirectGrantsOnReparent(t *testing.T) {
 	}
 }
 
-// TestPreviewOwnershipFirstRegistrationCannotRevoke: a resource that had no
-// parent cannot lose anything, so the report must be grants only.
-func TestPreviewOwnershipFirstRegistrationCannotRevoke(t *testing.T) {
+// TestPreviewOwnershipKeepsWildcardGrantOnReparent covers the decision order
+// introduced by #1428: a child type-wide allow remains the fallback when the
+// proposed parent has no rule. The preview must not report that allow as lost
+// merely because it is wildcard-based.
+func TestPreviewOwnershipKeepsWildcardGrantOnReparent(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	ownedBy(t, db, "res-1", "cat-old")
+
+	const role = "role-builder"
+	mustNoErr(t, e.GrantRolePermission(role, "catalog", "cat-old", "resource_manage"))
+	mustNoErr(t, e.GrantRolePermission(role, "resource", "*", "modify"))
+
+	flips, total, err := e.PreviewOwnership("resource", "catalog", map[string]string{"res-1": "cat-new"}, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 || len(flips) != 1 {
+		t.Fatalf("flips = %+v (total %d), want only the inherited delete revoke", flips, total)
+	}
+	if got := flips[0]; got.AccessorID != role || got.ResourceID != "res-1" || got.Operation != "delete" || got.Direction != FlipRevoke {
+		t.Fatalf("flip = %+v, want role-builder/res-1/delete revoke", got)
+	}
+}
+
+// TestPreviewOwnershipFirstRegistrationWithoutConflictDoesNotRevoke: adding a
+// parent grant to an unowned resource reports widening only.
+func TestPreviewOwnershipFirstRegistrationWithoutConflictDoesNotRevoke(t *testing.T) {
 	e, db := newTestEnforcerDB(t)
 	declareCatalogHierarchy(t, db)
 
@@ -801,5 +826,25 @@ func TestPreviewOwnershipFirstRegistrationCannotRevoke(t *testing.T) {
 		if f.Direction != FlipGrant {
 			t.Errorf("first registration reported %+v", f)
 		}
+	}
+}
+
+func TestPreviewOwnershipReportsWildcardLossFromNewParentDeny(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+
+	const role = "role-reader"
+	mustNoErr(t, e.GrantRolePermission(role, "resource", "*", "view_detail"))
+	mustNoErr(t, e.DenyObjectPermission(role, "catalog", "cat-1", "view_detail"))
+
+	flips, total, err := e.PreviewOwnership("resource", "catalog", map[string]string{"res-1": "cat-1"}, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 || len(flips) != 1 {
+		t.Fatalf("flips = %+v (total %d), want the wildcard view_detail revoke", flips, total)
+	}
+	if got := flips[0]; got.AccessorID != role || got.ResourceID != "res-1" || got.Operation != "view_detail" || got.Direction != FlipRevoke {
+		t.Fatalf("flip = %+v, want role-reader/res-1/view_detail revoke", got)
 	}
 }

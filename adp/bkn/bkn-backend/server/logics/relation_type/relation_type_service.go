@@ -232,7 +232,8 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 	return rtIDs, nil
 }
 
-// ValidateRelationTypes checks dependency existence only; does not write to the database.
+// ValidateRelationTypes authorizes the validation request and checks dependency
+// existence without writing to the database.
 func (rts *relationTypeService) ValidateRelationTypes(ctx context.Context, knID string, branch string,
 	relationTypes []*interfaces.RelationType, strictMode bool, batch *interfaces.BatchIDIndex, mode string) error {
 
@@ -244,13 +245,17 @@ func (rts *relationTypeService) ValidateRelationTypes(ctx context.Context, knID 
 		return nil
 	}
 
-	err := rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   knID,
-	}, []string{interfaces.OPERATION_TYPE_MODIFY})
-	if err != nil {
-		return err
+	var err error
+	if !permission.DependencyValidationPermissionPrechecked(ctx) {
+		err = rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: interfaces.RESOURCE_TYPE_KN,
+			ID:   knID,
+		}, []string{interfaces.OPERATION_TYPE_MODIFY})
+		if err != nil {
+			return err
+		}
 	}
+	ctx = permission.WithDependencyValidationPermissionPrechecked(ctx)
 	_, _, err = rts.handleRelationTypeImportMode(ctx, mode, relationTypes)
 	if err != nil {
 		return err
@@ -445,6 +450,48 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 					}
 					// Add display names to target fields in mappings.
 					relationType.MappingRules.([]interfaces.Mapping)[k].TargetProp.DisplayName = targetObj.PropertyMap[m.TargetProp.Name]
+				}
+			}
+
+		case interfaces.RELATION_TYPE_INDIRECT:
+			mappingRules := relationType.MappingRules.(*interfaces.InDirectMapping)
+			var propertiesMap map[string]*interfaces.Property
+			if mappingRules.BackingDataSource != nil && mappingRules.BackingDataSource.ID != "" {
+				if mappingRules.BackingDataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
+					return []*interfaces.RelationType{}, logics.UnsupportedRelationBackingDataSourceError(ctx, relationType.RTID, mappingRules.BackingDataSource.Type)
+				}
+				res, err := rts.vbs.GetResourceByID(ctx, mappingRules.BackingDataSource.ID)
+				if err != nil || res == nil {
+					otellog.LogWarn(ctx, fmt.Sprintf("Relation type [%s]'s backing vega Resource %s not found, error: %v", relationType.RTID, mappingRules.BackingDataSource.ID, err))
+					if sourceObj == nil && targetObj == nil {
+						continue
+					}
+				} else {
+					mappingRules.BackingDataSource.Name = res.Name
+					propertiesMap = logics.VegaResourceSchemaToPropertiesMap(res)
+				}
+			}
+
+			for k, m := range mappingRules.SourceMappingRules {
+				if sourceObj != nil {
+					relationType.SourceObjectType = interfaces.SimpleObjectType{OTID: relationType.SourceObjectTypeID, OTName: sourceObj.OTName, Icon: sourceObj.Icon, Color: sourceObj.Color}
+					mappingRules.SourceMappingRules[k].SourceProp.DisplayName = sourceObj.PropertyMap[m.SourceProp.Name]
+				}
+				if propertiesMap != nil {
+					if property, ok := propertiesMap[m.TargetProp.Name]; ok && property != nil {
+						mappingRules.SourceMappingRules[k].TargetProp.DisplayName = property.DisplayName
+					}
+				}
+			}
+			for k, m := range mappingRules.TargetMappingRules {
+				if propertiesMap != nil {
+					if property, ok := propertiesMap[m.SourceProp.Name]; ok && property != nil {
+						mappingRules.TargetMappingRules[k].SourceProp.DisplayName = property.DisplayName
+					}
+				}
+				if targetObj != nil {
+					relationType.TargetObjectType = interfaces.SimpleObjectType{OTID: relationType.TargetObjectTypeID, OTName: targetObj.OTName, Icon: targetObj.Icon, Color: targetObj.Color}
+					mappingRules.TargetMappingRules[k].TargetProp.DisplayName = targetObj.PropertyMap[m.TargetProp.Name]
 				}
 			}
 
@@ -1256,6 +1303,56 @@ func (rts *relationTypeService) validateDependency(ctx context.Context, tx *sql.
 				if targetObjectType != nil {
 					// Check that target properties exist in target object type data properties.
 					if _, exist := targetObjectType.PropertyMap[mapping.TargetProp.Name]; !exist {
+						return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+							WithErrorDetails(invalidParameterDetail(ctx, "TargetPropertyNotFound", map[string]any{"property": mapping.TargetProp.Name, "objectType": targetObjectType.OTName}))
+					}
+				}
+			}
+		case interfaces.RELATION_TYPE_INDIRECT:
+			mappingRules := relationType.MappingRules.(*interfaces.InDirectMapping)
+			if mappingRules.BackingDataSource == nil {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+					WithErrorDetails(invalidParameterDetail(ctx, "BackingDataSourceRequired", nil))
+			}
+			if mappingRules.BackingDataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
+				return logics.UnsupportedRelationBackingDataSourceError(ctx, relationType.RTID, mappingRules.BackingDataSource.Type)
+			}
+			lookupCtx := interfaces.WithDependencyBindingScope(ctx, relationType.KNID,
+				interfaces.MODULE_TYPE_RELATION_TYPE, relationType.RTID)
+			_, controlledLookup := interfaces.VerifiedDependencyAccount(lookupCtx, "resource", mappingRules.BackingDataSource.ID,
+				interfaces.OPERATION_TYPE_QUERY_DATA)
+			res, err := rts.vbs.GetResourceSchema(lookupCtx, mappingRules.BackingDataSource.ID,
+				interfaces.OPERATION_TYPE_QUERY_DATA)
+			if err != nil {
+				invalidErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+					WithErrorDetails(invalidParameterDetail(ctx, "BackingDataSourceNotFound", map[string]any{"resource": mappingRules.BackingDataSource.ID}))
+				return logics.MapDependencyError(ctx, err, !controlledLookup, invalidErr,
+					berrors.BknBackend_RelationType_InternalError)
+			}
+			if res == nil {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+					WithErrorDetails(invalidParameterDetail(ctx, "BackingDataSourceNotFound", map[string]any{"resource": mappingRules.BackingDataSource.ID}))
+			}
+			propertiesMap := logics.VegaResourceSchemaToPropertiesMap(res)
+			for _, mapping := range mappingRules.SourceMappingRules {
+				if sourceObjectType != nil {
+					if _, exists := sourceObjectType.PropertyMap[mapping.SourceProp.Name]; !exists {
+						return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+							WithErrorDetails(invalidParameterDetail(ctx, "SourcePropertyNotFound", map[string]any{"property": mapping.SourceProp.Name, "objectType": sourceObjectType.OTName}))
+					}
+				}
+				if _, exists := propertiesMap[mapping.TargetProp.Name]; !exists {
+					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+						WithErrorDetails(invalidParameterDetail(ctx, "BackingPropertyNotFound", map[string]any{"property": mapping.TargetProp.Name, "resource": res.Name}))
+				}
+			}
+			for _, mapping := range mappingRules.TargetMappingRules {
+				if _, exists := propertiesMap[mapping.SourceProp.Name]; !exists {
+					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+						WithErrorDetails(invalidParameterDetail(ctx, "BackingPropertyNotFound", map[string]any{"property": mapping.SourceProp.Name, "resource": res.Name}))
+				}
+				if targetObjectType != nil {
+					if _, exists := targetObjectType.PropertyMap[mapping.TargetProp.Name]; !exists {
 						return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 							WithErrorDetails(invalidParameterDetail(ctx, "TargetPropertyNotFound", map[string]any{"property": mapping.TargetProp.Name, "objectType": targetObjectType.OTName}))
 					}

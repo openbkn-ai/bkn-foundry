@@ -182,9 +182,15 @@ func TestListByOwnerExcludesOthers(t *testing.T) {
 	ctx := context.Background()
 	seedUser(t, db, "u-1", true, model.AccountTypeOther)
 	seedUser(t, db, "u-2", true, model.AccountTypeOther)
-	s.Issue(ctx, "u-1", "a", nil)
-	s.Issue(ctx, "u-1", "b", nil)
-	s.Issue(ctx, "u-2", "c", nil)
+	if _, _, err := s.Issue(ctx, "u-1", "a", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Issue(ctx, "u-1", "b", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Issue(ctx, "u-2", "c", nil); err != nil {
+		t.Fatal(err)
+	}
 
 	mine, err := s.ListByOwner(ctx, "u-1")
 	if err != nil || len(mine) != 2 {

@@ -11,8 +11,15 @@ linters:
     # Go 官方与基础正确性检查
     - govet
     - copyloopvar
+    - durationcheck
+    - errcheck
+    - errorlint
+    - ineffassign
     - nilerr
     - nilnesserr
+    - nilnil
+    - staticcheck
+    - unused
 
     # 资源释放与上下文相关检查
     - bodyclose
@@ -30,6 +37,7 @@ linters:
     - gochecksumtype
     - gomoddirectives
     - goprintffuncname
+    - gosec
     - loggercheck
     - makezero
     - mirror
@@ -42,9 +50,6 @@ linters:
     paths:
       - interfaces/mock
       - tests
-
-# 以下检查存在历史存量问题，完成清债后逐项启用，禁止用目录级排除掩盖：
-# durationcheck、errcheck、errorlint、ineffassign、staticcheck、unused。
 
 formatters:
   enable:

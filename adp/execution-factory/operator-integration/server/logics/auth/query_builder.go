@@ -464,14 +464,14 @@ func (b *QueryBuilder[T, PT]) selectListWithIncrementalFetch(ctx context.Context
 		return nil, err
 	}
 
-	// Load data in batches until enough authorized data is found or all data is processed.
+	// Scan all data so the response reports an exact authorized total and page metadata.
 	queryTimes := allTotalCount / int64(interfaces.MaxQuerySize)
 	if allTotalCount%int64(interfaces.MaxQuerySize) != 0 {
 		queryTimes++
 	}
 	var cursorValue *T
 	var processTimes int64
-	for processTimes <= queryTimes && foundCount < targetEnd {
+	for processTimes <= queryTimes {
 		// Load a batch of data.
 		batchData, err := b.queryBatchFunc(ctx, interfaces.MaxQuerySize, 0, cursorValue)
 		if err != nil {

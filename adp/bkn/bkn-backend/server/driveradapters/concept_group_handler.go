@@ -28,6 +28,17 @@ import (
 	"bkn-backend/interfaces"
 )
 
+// updateConceptGroupRequest mirrors the public UpdateConceptGroup schema.
+// Membership changes use the dedicated relationship endpoints and must not be
+// smuggled into this metadata-only update.
+type updateConceptGroupRequest struct {
+	Name    string   `json:"name"`
+	Tags    []string `json:"tags"`
+	Comment string   `json:"comment"`
+	Icon    string   `json:"icon"`
+	Color   string   `json:"color"`
+}
+
 // Create concept groups (internal).
 func (r *restHandler) CreateConceptGroupByIn(c *gin.Context) {
 	logger.Debug("Handler CreateConceptGroupByIn Start")
@@ -300,6 +311,9 @@ func (r *restHandler) ValidateConceptGroups(c *gin.Context, visitor hydra.Visito
 		}
 	}
 	if err = r.cgs.ValidateConceptGroups(ctx, knID, branch, conceptGroups, strictMode, nil, mode); err != nil {
+		if replyDependencyValidationError(c, span, err) {
+			return
+		}
 		oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 		rest.ReplyOK(c, http.StatusOK, map[string]any{"valid": false, "detail": err.Error()})
 		return
@@ -383,9 +397,10 @@ func (r *restHandler) UpdateConceptGroup(c *gin.Context, visitor hydra.Visitor) 
 	cgID := c.Param("cg_id")
 	span.SetAttributes(attr.Key("cg_id").String(cgID))
 
-	// Bind request parameters.
-	cg := interfaces.ConceptGroup{}
-	err = c.ShouldBindJSON(&cg)
+	// Bind only the fields declared by the UpdateConceptGroup API. Concept
+	// membership is updated through its dedicated relationship endpoints.
+	requestData := updateConceptGroupRequest{}
+	err = c.ShouldBindJSON(&requestData)
 	if err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ConceptGroup_InvalidParameter).
 			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
@@ -399,9 +414,18 @@ func (r *restHandler) UpdateConceptGroup(c *gin.Context, visitor hydra.Visitor) 
 		return
 	}
 
-	cg.CGID = cgID
-	cg.KNID = knID
-	cg.Branch = branch // Read the concept group branch from the query parameter.
+	cg := interfaces.ConceptGroup{
+		CGID:   cgID,
+		CGName: requestData.Name,
+		CommonInfo: interfaces.CommonInfo{
+			Tags:    requestData.Tags,
+			Comment: requestData.Comment,
+			Icon:    requestData.Icon,
+			Color:   requestData.Color,
+		},
+		KNID:   knID,
+		Branch: branch,
+	}
 
 	// Record API request parameters: c.Request.RequestURI and body.
 	otellog.LogInfo(ctx, fmt.Sprintf("修改概念分组请求参数: [%s, %v]", c.Request.RequestURI, cg))

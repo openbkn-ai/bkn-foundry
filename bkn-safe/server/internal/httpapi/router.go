@@ -18,6 +18,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/adminwrite"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permdata"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permobject"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/accesslog"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
@@ -69,9 +70,10 @@ func New(deps Deps) *gin.Engine {
 	r.GET("/health/ready", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 	r.GET("/health/alive", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 
-	// Internal authz API (service-to-service, ClusterIP, unauthenticated):
-	// check/operations/policies/resources. Callers (DA/vega) resolve identity at
-	// their own boundary and pass accessor_id.
+	// Internal authz API (service-to-service, ClusterIP, unauthenticated). The
+	// local intermediate mode relies on the platform network boundary (#333),
+	// never on a caller-supplied service-name header. Callers resolve the end-user
+	// identity at their own boundary and pass accessor_id.
 	registerAuthz(r, deps.Enforcer, deps.DB)
 
 	// AppKey (user-issued API key) store. Verification is internal, tokenless and
@@ -123,6 +125,13 @@ func New(deps Deps) *gin.Engine {
 		meVerifier = newCachingVerifier(meVerifier, verifierCacheTTL)
 	}
 	if deps.Enforcer != nil && verifier != nil && deps.Users != nil && deps.Directory != nil {
+		authzExplain := r.Group("/api/safe/v1/authz", sharedrest.PrivateNoCacheMiddleware(),
+			RequireUser(verifier), RequireActiveAccount(deps.DB))
+		if deps.Audit != nil {
+			authzExplain.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
+		}
+		registerAuthzExplain(authzExplain, deps.Enforcer, deps.DB)
+
 		admin := r.Group("/api/safe/v1/admin", sharedrest.PrivateNoCacheMiddleware(), RequireAdmin(verifier, deps.Enforcer), RequireActiveAccount(deps.DB))
 		// Audit every mutating admin request. Use() must precede the route
 		// registrations below: gin snapshots the group's handler chain at
@@ -152,6 +161,14 @@ func New(deps Deps) *gin.Engine {
 		registerRoleBindings(admin, deps.Enforcer, deps.DB)
 		registerRoles(admin, deps.Enforcer, deps.DB)
 		registerObjectGrants(admin, deps.Enforcer, deps.DB)
+		if permobject.ManagementRegistered() {
+			enterpriseObjectGrants := r.Group("/api/safe/v1/admin", permobject.ManagementGate(),
+				sharedrest.PrivateNoCacheMiddleware(), RequireUser(verifier), RequireActiveAccount(deps.DB))
+			if deps.Audit != nil {
+				enterpriseObjectGrants.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
+			}
+			registerEnterpriseObjectGrants(enterpriseObjectGrants, deps.Enforcer)
+		}
 		// rbac_basic write routes (custom role create/update/delete + role
 		// permission grant/revoke) are mounted by the enterprise build through
 		// the adminwrite socket. In a community binary no mounter was registered,

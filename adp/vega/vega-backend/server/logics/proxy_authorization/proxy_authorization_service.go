@@ -27,7 +27,7 @@ func (s *proxyAuthorizationService) Authorize(ctx context.Context, request inter
 
 	account, err := s.access.GetManagedProxy(ctx, request.ProxyID)
 	if err != nil {
-		return fmt.Errorf("%w: load managed proxy: %v", interfaces.ErrProxyAuthorizationUnavailable, err)
+		return fmt.Errorf("%w: load managed proxy: %w", interfaces.ErrProxyAuthorizationUnavailable, err)
 	}
 	if !matchesCurrentProxy(account, request) {
 		return interfaces.ErrProxyAuthorizationDenied
@@ -35,7 +35,7 @@ func (s *proxyAuthorizationService) Authorize(ctx context.Context, request inter
 
 	allowed, err := s.access.CheckPermission(ctx, request.ProxyID, request.TargetType, request.TargetID, request.Operation)
 	if err != nil {
-		return fmt.Errorf("%w: check resource policy: %v", interfaces.ErrProxyAuthorizationUnavailable, err)
+		return fmt.Errorf("%w: check resource policy: %w", interfaces.ErrProxyAuthorizationUnavailable, err)
 	}
 	if !allowed {
 		return interfaces.ErrProxyAuthorizationDenied

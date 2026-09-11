@@ -383,6 +383,7 @@ func sanitizeBaggage(baggage map[string]string) map[string]string {
 	return cleaned
 }
 
+//nolint:unused // Retained for context fallback extensions.
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if value = strings.TrimSpace(value); value != "" {

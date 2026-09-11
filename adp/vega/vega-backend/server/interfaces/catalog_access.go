@@ -29,6 +29,8 @@ type CatalogAccess interface {
 	List(ctx context.Context, params CatalogsQueryParams) ([]*CatalogSummary, int64, error)
 	// ListPermissionRefs lists the minimal relations needed before list authorization.
 	ListPermissionRefs(ctx context.Context, params CatalogsQueryParams) ([]CatalogPermissionRef, error)
+	// ListConnectorTypePermissionRefs lists the fields needed to aggregate connector types after authorization.
+	ListConnectorTypePermissionRefs(ctx context.Context, params CatalogsQueryParams) ([]CatalogConnectorTypePermissionRef, error)
 	// ListInternalIDs lists the ids of all internal system directories (grouped by internal_catalog type when used for permission verification).
 	ListInternalIDs(ctx context.Context) ([]string, error)
 	// Update updates a Catalog.

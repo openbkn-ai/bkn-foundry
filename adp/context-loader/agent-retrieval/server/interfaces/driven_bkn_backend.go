@@ -522,7 +522,7 @@ func (d *KnowledgeNetworkDetail) FilterRelationTypes(ids []string) (matched []*R
 	return matched, missing
 }
 
-// BknBackendAccess BKN backend ontology management interface
+// ListKnReq describes a knowledge-network list request.
 // ListKnReq lists the query parameters of the knowledge network.
 type ListKnReq struct {
 	NamePattern string `json:"name_pattern,omitempty"` // Fuzzy-filter by name.

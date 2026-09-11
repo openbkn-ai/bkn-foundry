@@ -133,35 +133,3 @@ func TestSemanticTaskListPushesTheVisibleCatalogsIntoTheQuery(t *testing.T) {
 		assert.Zero(t, total)
 	})
 }
-
-// allowAllIDs 让批量鉴权对传进来的每个 id 都放行——给那些不以授权为主题的用例
-// 用,免得每条都去铺一遍权限桩。
-func allowAllIDs(_ context.Context, ids []string, _ string) (map[string]bool, error) {
-	out := make(map[string]bool, len(ids))
-	for _, id := range ids {
-		out[id] = true
-	}
-	return out, nil
-}
-
-// allowOnlyIDs 只放行指定的 id,其余一律拒。
-func allowOnlyIDs(allowed ...string) func(context.Context, []string, string) (map[string]bool, error) {
-	set := make(map[string]bool, len(allowed))
-	for _, id := range allowed {
-		set[id] = true
-	}
-	return func(_ context.Context, ids []string, _ string) (map[string]bool, error) {
-		out := make(map[string]bool, len(ids))
-		for _, id := range ids {
-			if set[id] {
-				out[id] = true
-			}
-		}
-		return out, nil
-	}
-}
-
-// denyAllIDs 一个都不放行。
-func denyAllIDs(_ context.Context, _ []string, _ string) (map[string]bool, error) {
-	return map[string]bool{}, nil
-}

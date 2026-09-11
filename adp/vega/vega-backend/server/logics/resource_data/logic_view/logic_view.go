@@ -223,7 +223,7 @@ func (lvs *logicViewService) queryDerivedLogicView(ctx context.Context, view *in
 	}
 	if fromResource.Category == interfaces.ResourceCategoryIndex &&
 		params.Aggregation == nil && len(params.GroupBy) == 0 && params.Having == nil {
-		paging := rawPaging(params)
+		paging := params.Paging
 		limit := paging.EffectiveLimit()
 		if limit <= interfaces.MaxPageLimit && paging.Offset > interfaces.MaxPageLimit-limit {
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
@@ -429,7 +429,7 @@ func (lvs *logicViewService) executeCompositeViewByDSL(ctx context.Context, view
 		for resourceID := range view.RefResources {
 			dslMap["resource_id"] = resourceID
 		}
-		paging := rawPaging(params)
+		paging := params.Paging
 		req := interfaces.RawQueryRequest{
 			Query:                  dslMap,
 			QueryFormat:            interfaces.QueryFormatDSL,
@@ -437,8 +437,8 @@ func (lvs *logicViewService) executeCompositeViewByDSL(ctx context.Context, view
 			QueryTimeoutSec:        int(params.Timeout.Seconds()),
 			NeedTotal:              params.NeedTotal,
 			Paging:                 paging,
-			ResourceDataResourceID: view.Resource.ID,
-			ResourceDataUpdateTime: view.Resource.UpdateTime,
+			ResourceDataResourceID: view.ID,
+			ResourceDataUpdateTime: view.UpdateTime,
 		}
 		res, err := lvs.qs.Execute(ctx, &req)
 		if err != nil {
@@ -502,7 +502,7 @@ func (lvs *logicViewService) executeCompositeViewBySQL(ctx context.Context, view
 	logger.Infof("executeCompositeViewBySQL Final SQL: [%s]", query.SafeQuerySummary(finalSql))
 
 	if view.IsSingleSource {
-		paging := rawPaging(params)
+		paging := params.Paging
 		req := interfaces.RawQueryRequest{
 			Query:       finalSql,
 			QueryFormat: interfaces.QueryFormatSQL,
@@ -512,8 +512,8 @@ func (lvs *logicViewService) executeCompositeViewBySQL(ctx context.Context, view
 			QueryTimeoutSec:        int(params.Timeout.Seconds()),
 			NeedTotal:              params.NeedTotal,
 			Paging:                 paging,
-			ResourceDataResourceID: view.Resource.ID,
-			ResourceDataUpdateTime: view.Resource.UpdateTime,
+			ResourceDataResourceID: view.ID,
+			ResourceDataUpdateTime: view.UpdateTime,
 		}
 		res, err := lvs.qs.Execute(ctx, &req)
 		if err != nil {
@@ -534,18 +534,9 @@ func (lvs *logicViewService) executeCompositeViewBySQL(ctx context.Context, view
 // pages. This prevents a generated LIMIT/from from competing with cursor state.
 func withoutPagingLimit(params *interfaces.ResourceDataQueryParams) interfaces.ResourceDataQueryParams {
 	copy := *params
-	copy.Offset = 0
-	copy.Limit = 0
+	copy.Paging.Offset = 0
+	copy.Paging.Limit = 0
 	return copy
-}
-
-func rawPaging(params *interfaces.ResourceDataQueryParams) interfaces.PagingRequest {
-	paging := params.Paging
-	if paging.Mode == "" && paging.Cursor == "" && paging.Limit == 0 && (params.Offset != 0 || params.Limit != 0) {
-		paging.Offset = params.Offset
-		paging.Limit = params.Limit
-	}
-	return paging
 }
 
 func (lvs *logicViewService) executeIndexQuery(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource,

@@ -140,7 +140,7 @@ func operationAuditRange(c *gin.Context) (time.Time, time.Time, bool) {
 func replyOperationAuditError(c *gin.Context, status int, code string, details any) {
 	err := rest.NewHTTPError(c.Request.Context(), status, code)
 	if details != nil {
-		err.WithErrorDetails(details)
+		err = err.WithErrorDetails(details)
 	}
 	rest.ReplyError(c, err)
 }

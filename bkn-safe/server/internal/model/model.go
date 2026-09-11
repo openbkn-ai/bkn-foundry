@@ -4,11 +4,16 @@
 
 // Package model holds bkn-safe's GORM domain model. This is a CLEAN redesign
 // (not the ISF schema): users/credentials/departments/groups/roles/memberships
-// plus the resource-type + operation catalog. Casbin policies live in the
-// adapter's own table (casbin_rule), not here.
+// plus the resource-type + operation catalog. Casbin's matcher projection lives
+// in the adapter-owned casbin_rule table; AuthorizationGrant is the durable
+// identity and provenance of each independently managed grant.
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/migrationcontract"
+)
 
 // Source distinguishes locally-managed identities from federated (LDAP) ones.
 type Source string
@@ -101,6 +106,12 @@ type ProxyGrantSource struct {
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
 	RevokedAt       *time.Time `json:"revoked_at,omitempty" gorm:"index"`
+
+	// RequirementDerived distinguishes a prerequisite synthesized by operation
+	// normalization from an operation explicitly requested by the caller. The
+	// distinction is durable so revoking an operation never cascades into an
+	// independently requested permission that happens to share its source tuple.
+	RequirementDerived bool `json:"requirement_derived" gorm:"not null;default:false"`
 }
 
 // TableName keeps the schema name frozen to the singular name used by the
@@ -143,6 +154,34 @@ type ProxyGrantAuditLog struct {
 }
 
 func (ProxyGrantAuditLog) TableName() string { return "proxy_grant_audit_log" }
+
+// AuthorizationGrant is the authoritative Core grant record. Several rows may
+// intentionally carry the same authorization tuple: grant_id identifies the
+// independently managed source, while Casbin needs only one projection of that
+// tuple for runtime matching. A revoke deletes the shared projection only after
+// the final matching grant row disappears. ProjectionKey is a fixed-width hash
+// used only to narrow exact-tuple lookups; the query still verifies every tuple
+// field, so correctness never depends on hash uniqueness.
+type AuthorizationGrant struct {
+	GrantID         string `json:"grant_id" gorm:"primaryKey;size:64"`
+	ProjectionKey   string `json:"projection_key" gorm:"size:64;index"`
+	AccessorID      string `json:"accessor_id" gorm:"size:64;index:idx_authorization_grant_scope,priority:1"`
+	Object          string `json:"object" gorm:"size:255"`
+	Operation       string `json:"operation" gorm:"size:64"`
+	Effect          string `json:"effect" gorm:"size:16;index:idx_authorization_grant_scope,priority:2"`
+	PolicySource    string `json:"policy_source" gorm:"size:32;index:idx_authorization_grant_scope,priority:3"`
+	AuthoritySource string `json:"authority_source" gorm:"size:32;index:idx_authorization_grant_scope,priority:4"`
+	CreatedBy       string `json:"created_by" gorm:"size:64;index"`
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+func (AuthorizationGrant) TableName() string { return "authorization_grant" }
+
+// AuthorizationMigrationMarker aliases the public runtime receipt contract.
+// The offline writer lives under deploy; bkn-safe owns only storage and startup
+// validation of that receipt.
+type AuthorizationMigrationMarker = migrationcontract.Marker
 
 // Role source values. system|business roles are SEEDED built-ins (their UUIDs
 // are hardcoded in DA/flow-automation, such as application, data, and AI administrators) and are
@@ -232,16 +271,15 @@ type Operation struct {
 	// name would turn the right to rename a catalog into the right to rewrite
 	// every table in it. Empty = the operation does not inherit at all (#800).
 	ParentOperationID string `gorm:"size:64"`
-	// ImpliedOperationIDs are operations on the SAME type that come with this one
-	// and cannot sensibly be held without it: resource_manage on a catalog also
-	// grants view_detail, because managing the tables inside a catalog is
-	// unreachable without the right to open it — every management route loads the
-	// target first, and that load is a view_detail judgement (#1121).
+	// RequiredOperationIDs are direct prerequisites on the SAME resource type.
+	// They are enforced at runtime and also added when an allow set is written, so
+	// a saved grant remains usable and later deny/role changes cannot bypass the
+	// prerequisite. The first version deliberately permits one layer only.
 	//
-	// Comma-separated operation ids, resolved when the grant is written rather
-	// than when it is enforced, so the policy table stores what the accessor
-	// actually holds and a reader need not replay a rule to know it.
-	ImpliedOperationIDs string `gorm:"size:512"`
+	// The legacy database column name is retained to keep upgrades schema-only:
+	// the former "implies" rule represented the same stored edge, but enforced it
+	// only while writing. Seed rewrites the authoritative values on every start.
+	RequiredOperationIDs string `gorm:"column:implied_operation_ids;size:512"`
 }
 
 // ResourceParent records that ONE concrete resource instance sits under one
@@ -358,6 +396,6 @@ func AllModels() []any {
 		&Group{}, &GroupMember{}, &ResourceType{}, &Operation{},
 		&AuditLog{}, &AccessLog{}, &APIKey{}, &License{}, &ResourceParent{},
 		&ManagedProxyAccount{}, &ProxyGrantSource{}, &ProxyGrantPolicy{},
-		&ProxyGrantAuditLog{},
+		&ProxyGrantAuditLog{}, &AuthorizationGrant{},
 	}
 }

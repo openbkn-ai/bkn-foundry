@@ -25,6 +25,3 @@ go.work
 go.work.sum
 # Test result output (per TESTING spec)
 test-result/
-
-# Local logical dumps created by the knowledge-network migration command
-script/migrate_kn_data/backups/

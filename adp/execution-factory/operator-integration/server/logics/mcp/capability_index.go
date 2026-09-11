@@ -30,11 +30,6 @@ func (s *mcpServiceImpl) syncMCPCapabilities(ctx context.Context, mcpID string) 
 		return nil
 	}
 
-	resp, err := s.GetMCPTools(ctx, &interfaces.MCPProxyToolListRequest{MCPID: mcpID})
-	if err != nil {
-		return err
-	}
-
 	config, err := s.DBMCPServerConfig.SelectByID(ctx, nil, mcpID)
 	if err != nil {
 		return err
@@ -42,6 +37,19 @@ func (s *mcpServiceImpl) syncMCPCapabilities(ctx context.Context, mcpID string) 
 	if config == nil {
 		// The server is gone: nothing to describe the tools with, and nothing should remain.
 		return s.CapabilityIndex.DeleteOwner(ctx, interfaces.CapabilityTypeMCPTool, mcpID)
+	}
+	// Only a published server's tools are callable, so only a published server is indexed
+	// (#1443). Anything else — a draft, an offline server — is purged rather than skipped:
+	// skipping would leave the documents written while it was published, and the next full
+	// pass would keep them alive for as long as the server existed. The remote listing is not
+	// attempted for such a server; there is nothing to write.
+	if config.Status != string(interfaces.BizStatusPublished) {
+		return s.CapabilityIndex.DeleteOwner(ctx, interfaces.CapabilityTypeMCPTool, mcpID)
+	}
+
+	resp, err := s.GetMCPTools(ctx, &interfaces.MCPProxyToolListRequest{MCPID: mcpID})
+	if err != nil {
+		return err
 	}
 
 	desired := make(map[string]*interfaces.CapabilityDocument)

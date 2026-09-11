@@ -35,7 +35,7 @@ const (
 const (
 	envEvidenceIngestURL       = "BKN_TRACE_EVIDENCE_INGEST_URL"
 	envArtifactIngestURL       = "BKN_TRACE_ARTIFACT_INGEST_URL"
-	envEvidenceIngestToken     = "BKN_TRACE_EVIDENCE_INGEST_TOKEN"
+	envEvidenceIngestToken     = "BKN_TRACE_EVIDENCE_INGEST_TOKEN" //nolint:gosec // Environment variable name, not a credential value.
 	envEvidenceIngestTimeoutMS = "BKN_TRACE_EVIDENCE_TIMEOUT_MS"
 )
 
@@ -503,7 +503,7 @@ func postJSON(ingestURL string, timeout time.Duration, payload any) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= http.StatusBadRequest {
 		response := struct {
 			Code string `json:"code"`

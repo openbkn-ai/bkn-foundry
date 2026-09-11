@@ -10,6 +10,7 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -291,9 +292,9 @@ func (ca *catalogAccess) GetByID(ctx context.Context, id string) (*interfaces.Ca
 
 	row := ca.db.QueryRowContext(ctx, sqlStr, vals...)
 	catalog, err := scanCatalog(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "")
-		return nil, nil
+		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 	if err != nil {
 		logger.Errorf("Scan catalog failed: %v", err)
@@ -408,9 +409,9 @@ func (ca *catalogAccess) GetByName(ctx context.Context, name string) (*interface
 
 	row := ca.db.QueryRowContext(ctx, sqlStr, vals...)
 	catalog, err := scanCatalog(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "")
-		return nil, nil
+		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 	if err != nil {
 		logger.Errorf("Scan catalog failed: %v", err)
@@ -460,6 +461,43 @@ func (ca *catalogAccess) ListPermissionRefs(ctx context.Context, params interfac
 		return nil, err
 	}
 
+	span.SetStatus(codes.Ok, "")
+	return refs, nil
+}
+
+func (ca *catalogAccess) ListConnectorTypePermissionRefs(ctx context.Context, params interfaces.CatalogsQueryParams) ([]interfaces.CatalogConnectorTypePermissionRef, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List catalog connector type permission refs")
+	defer span.End()
+
+	builder := sq.Select("f_id", "f_type", "f_connector_type").
+		From(CATALOG_TABLE_NAME)
+	builder = applyCatalogFilters(builder, params)
+
+	sqlStr, vals, err := builder.ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return nil, err
+	}
+	rows, err := ca.db.QueryContext(ctx, sqlStr, vals...)
+	if err != nil {
+		span.SetStatus(codes.Error, "Query failed")
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	refs := make([]interfaces.CatalogConnectorTypePermissionRef, 0)
+	for rows.Next() {
+		var ref interfaces.CatalogConnectorTypePermissionRef
+		if err := rows.Scan(&ref.CatalogID, &ref.CatalogType, &ref.ConnectorType); err != nil {
+			span.SetStatus(codes.Error, "Scan row failed")
+			return nil, err
+		}
+		refs = append(refs, ref)
+	}
+	if err := rows.Err(); err != nil {
+		span.SetStatus(codes.Error, "Rows iteration failed")
+		return nil, err
+	}
 	span.SetStatus(codes.Ok, "")
 	return refs, nil
 }

@@ -8,6 +8,7 @@ package resource
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -86,8 +87,8 @@ func TestEnsureResourceQueryable(t *testing.T) {
 				if err == nil {
 					t.Fatalf("expected error, got nil")
 				}
-				he, ok := err.(*rest.HTTPError)
-				if !ok {
+				var he *rest.HTTPError
+				if !errors.As(err, &he) {
 					t.Fatalf("expected *rest.HTTPError, got %T", err)
 				}
 				if he.HTTPCode != http.StatusConflict {

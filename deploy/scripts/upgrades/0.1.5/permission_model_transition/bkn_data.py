@@ -3,10 +3,11 @@
 #
 # Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-"""Migrate OpenBKN 0.1.4 knowledge-network data offline for OpenBKN 0.1.5."""
+"""Implement the BKN step of the OpenBKN 0.1.5 permission transition."""
 
 from __future__ import annotations
 
+import argparse
 import gzip
 import hashlib
 import json
@@ -27,19 +28,13 @@ from typing import Any, Iterable, Optional
 
 MAIN_BRANCH = "main"
 KN_RESOURCE_TYPE = "knowledge_network"
-NETWORK_BUILDER_ROLE_ID = "1572fb82-526f-11f0-bde6-e674ec8dde71"
 MIGRATION_GRANTOR_ID = "266c6a42-6131-4d62-8f39-853e7093701c"
 PUBLIC_ACCESSOR_ID = "00000000-0000-0000-0000-000000000000"
 PROXY_SOURCE_TYPE = "kn_proxy_binding"
 BACKUP_ROOT_ENV = "OPENBKN_MIGRATION_BACKUP_DIR"
-KN_CREATOR_OPERATIONS = (
-    "view_detail",
-    "modify",
-    "delete",
-    "query_data",
-    "authorize",
-    "task_manage",
-)
+EFFECT_ALLOW = "allow"
+POLICY_SOURCE_SYSTEM_DERIVED = "system_derived"
+AUTHORITY_SOURCE_SYSTEM = "system"
 
 
 @dataclass(frozen=True)
@@ -47,7 +42,6 @@ class ResourceSpec:
     resource_type: str
     table: str
     root: bool = False
-    creator_operations: tuple[str, ...] = ()
 
 
 RESOURCE_SPECS = (
@@ -55,12 +49,11 @@ RESOURCE_SPECS = (
         KN_RESOURCE_TYPE,
         "t_knowledge_network",
         root=True,
-        creator_operations=KN_CREATOR_OPERATIONS,
     ),
     ResourceSpec("concept_group", "t_concept_group"),
     ResourceSpec("object_type", "t_object_type"),
     ResourceSpec("relation_type", "t_relation_type"),
-    ResourceSpec("action_type", "t_action_type", creator_operations=("execute",)),
+    ResourceSpec("action_type", "t_action_type"),
     ResourceSpec("metric", "t_metric_definition"),
     ResourceSpec("risk_type", "t_risk_type"),
 )
@@ -102,8 +95,6 @@ class ResourceRow:
     resource_id: str
     kn_id: str
     branch: str
-    creator_id: str = ""
-    creator_type: str = ""
 
     @property
     def normalized_branch(self) -> str:
@@ -114,25 +105,6 @@ class ResourceRow:
         if self.resource_type == KN_RESOURCE_TYPE:
             return self.resource_id
         return f"{self.kn_id}/{self.resource_id}"
-
-
-@dataclass(frozen=True)
-class SafeAccount:
-    account_id: str
-    enabled: bool
-    account_type: str
-
-
-@dataclass(frozen=True, order=True)
-class Policy:
-    accessor_id: str
-    resource_type: str
-    resource_id: str
-    operation: str
-
-    @property
-    def object_key(self) -> str:
-        return f"{self.resource_type}:{self.resource_id}"
 
 
 @dataclass(frozen=True, order=True)
@@ -155,10 +127,8 @@ class Failure:
 class MigrationPlan:
     resources: dict[str, int]
     branch_updates: int
-    policies: list[Policy] = field(default_factory=list)
     parents: list[ResourceParent] = field(default_factory=list)
     failures: list[Failure] = field(default_factory=list)
-    existing_policies: int = 0
     existing_parents: int = 0
 
 
@@ -221,6 +191,12 @@ def stable_proxy_source_id(kn_id: str, binding_type: str, binding_id: str) -> st
     """Match BKN Backend's stable source identity calculation."""
     raw = "\x00".join((kn_id, binding_type, binding_id)).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
+
+
+def stable_proxy_account_id(kn_id: str) -> str:
+    """Derive the same new proxy identity in dry-run and apply."""
+    raw = f"openbkn-0.1.5-bkn-proxy\x00{kn_id}".encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:32]
 
 
 def derive_proxy_sources(
@@ -532,23 +508,12 @@ def is_valid_row_id(row: ResourceRow) -> bool:
     return len(f"{row.resource_type}:{row.safe_id}".encode("utf-8")) <= 100
 
 
-def creator_matches_account(creator_type: str, account: SafeAccount) -> bool:
-    """Check whether a BKN creator type maps to the Safe account row."""
-    if creator_type == "app":
-        return account.account_type == "app"
-    if creator_type == "user":
-        return account.account_type != "app"
-    return False
-
-
 def build_plan(
     rows: Sequence[ResourceRow],
-    accounts: Mapping[str, SafeAccount],
     branch_updates: int,
-    existing_policies: int = 0,
     existing_parents: int = 0,
 ) -> MigrationPlan:
-    """Build and validate the desired authorization state."""
+    """Build and validate authoritative BKN resource-parent state."""
     failures: list[Failure] = []
     grouped: dict[tuple[str, str], list[ResourceRow]] = defaultdict(list)
     valid_rows: list[ResourceRow] = []
@@ -588,20 +553,10 @@ def build_plan(
         if row.resource_type == KN_RESOURCE_TYPE
         and (row.resource_type, row.safe_id) not in conflicted
     }
-    policies: set[Policy] = {
-        Policy(
-            NETWORK_BUILDER_ROLE_ID,
-            KN_RESOURCE_TYPE,
-            "*",
-            "create",
-        )
-    }
     parents: set[ResourceParent] = set()
-    spec_by_type = {spec.resource_type: spec for spec in RESOURCE_SPECS}
 
     for row in valid_rows:
-        spec = spec_by_type[row.resource_type]
-        if not spec.root:
+        if row.resource_type != KN_RESOURCE_TYPE:
             if (row.kn_id, row.normalized_branch) not in root_keys:
                 failures.append(
                     Failure(
@@ -621,61 +576,6 @@ def build_plan(
                 )
             )
 
-        if not spec.creator_operations:
-            continue
-        creator_type = row.creator_type.strip()
-        creator_id = row.creator_id.strip()
-        account = accounts.get(creator_id)
-        if (
-            not creator_id
-            or creator_id != row.creator_id
-            or creator_type != row.creator_type
-            or creator_type not in {"user", "app"}
-        ):
-            failures.append(
-                Failure(
-                    "invalid_creator",
-                    row.resource_type,
-                    row.safe_id,
-                    f"creator ID or type is invalid; creator_type={creator_type!r}",
-                )
-            )
-            continue
-        if account is None:
-            failures.append(
-                Failure(
-                    "creator_not_found",
-                    row.resource_type,
-                    row.safe_id,
-                    f"creator {creator_id!r} does not exist in bkn-safe",
-                )
-            )
-            continue
-        if not account.enabled:
-            failures.append(
-                Failure(
-                    "creator_disabled",
-                    row.resource_type,
-                    row.safe_id,
-                    f"creator {creator_id!r} is disabled in bkn-safe",
-                )
-            )
-            continue
-        if not creator_matches_account(creator_type, account):
-            failures.append(
-                Failure(
-                    "creator_type_mismatch",
-                    row.resource_type,
-                    row.safe_id,
-                    f"creator_type={creator_type!r}, safe account_type={account.account_type!r}",
-                )
-            )
-            continue
-        for operation in spec.creator_operations:
-            policies.add(
-                Policy(creator_id, row.resource_type, row.safe_id, operation)
-            )
-
     resource_counts = Counter(row.resource_type for row in rows)
     return MigrationPlan(
         resources={
@@ -683,10 +583,8 @@ def build_plan(
             for spec in RESOURCE_SPECS
         },
         branch_updates=branch_updates,
-        policies=sorted(policies),
         parents=sorted(parents),
         failures=failures,
-        existing_policies=existing_policies,
         existing_parents=existing_parents,
     )
 
@@ -718,20 +616,12 @@ def load_resources(connection) -> list[ResourceRow]:
         for spec in RESOURCE_SPECS:
             if spec.root:
                 query = (
-                    "SELECT f_id AS resource_id, '' AS kn_id, f_branch AS branch, "
-                    "f_creator AS creator_id, f_creator_type AS creator_type "
+                    "SELECT f_id AS resource_id, '' AS kn_id, f_branch AS branch "
                     f"FROM `{spec.table}` ORDER BY f_id, f_branch"
-                )
-            elif spec.creator_operations:
-                query = (
-                    "SELECT f_id AS resource_id, f_kn_id AS kn_id, f_branch AS branch, "
-                    "f_creator AS creator_id, f_creator_type AS creator_type "
-                    f"FROM `{spec.table}` ORDER BY f_kn_id, f_id, f_branch"
                 )
             else:
                 query = (
-                    "SELECT f_id AS resource_id, f_kn_id AS kn_id, f_branch AS branch, "
-                    "'' AS creator_id, '' AS creator_type "
+                    "SELECT f_id AS resource_id, f_kn_id AS kn_id, f_branch AS branch "
                     f"FROM `{spec.table}` ORDER BY f_kn_id, f_id, f_branch"
                 )
             cursor.execute(query)
@@ -743,38 +633,9 @@ def load_resources(connection) -> list[ResourceRow]:
                         resource_id=normalize_text(item["resource_id"]),
                         kn_id=normalize_text(item["kn_id"]),
                         branch=normalize_text(item["branch"]),
-                        creator_id=normalize_text(item["creator_id"]),
-                        creator_type=normalize_text(item["creator_type"]),
                     )
                 )
     return rows
-
-
-def chunks(values: Sequence[str], size: int = 500) -> Iterable[Sequence[str]]:
-    """Yield bounded SQL parameter batches."""
-    for offset in range(0, len(values), size):
-        yield values[offset : offset + size]
-
-
-def load_accounts(connection, creator_ids: Sequence[str]) -> dict[str, SafeAccount]:
-    """Load the Safe account rows referenced by creator policies."""
-    accounts: dict[str, SafeAccount] = {}
-    unique_ids = sorted({item for item in creator_ids if item})
-    with connection.cursor() as cursor:
-        for batch in chunks(unique_ids):
-            placeholders = ",".join(["%s"] * len(batch))
-            cursor.execute(
-                f"SELECT id, enabled, account_type FROM users WHERE id IN ({placeholders})",
-                tuple(batch),
-            )
-            for item in cursor.fetchall():
-                account_id = normalize_text(item["id"])
-                accounts[account_id] = SafeAccount(
-                    account_id=account_id,
-                    enabled=bool(item["enabled"]),
-                    account_type=normalize_text(item["account_type"]),
-                )
-    return accounts
 
 
 def table_exists(connection, table: str) -> bool:
@@ -791,6 +652,7 @@ def require_safe_proxy_schema(connection) -> None:
         "managed_proxy_accounts",
         "proxy_grant_source",
         "proxy_grant_policy",
+        "authorization_grant",
         "casbin_rule",
         "resource_parents",
         "operations",
@@ -1036,7 +898,7 @@ def load_proxy_plan(
                 continue
             create_account = False
         else:
-            proxy_id = secrets.token_hex(16)
+            proxy_id = stable_proxy_account_id(kn_id)
             create_account = True
         plan.networks.append(
             ProxyNetworkPlan(
@@ -1064,35 +926,17 @@ def count_branch_updates(connection) -> int:
     return total
 
 
-def typed_policy_predicate() -> tuple[str, tuple[str, ...]]:
-    """Return the SQL predicate and parameters for the seven KN object types."""
-    resource_types = tuple(spec.resource_type for spec in RESOURCE_SPECS)
-    placeholders = ",".join(["%s"] * len(resource_types))
-    return (
-        f"ptype = 'p' AND LOCATE(':', v1) > 0 "
-        f"AND SUBSTRING_INDEX(v1, ':', 1) IN ({placeholders})",
-        resource_types,
-    )
-
-
-def load_existing_safe_counts(connection) -> tuple[int, int]:
-    """Count Safe rows that the migration will replace."""
-    predicate, parameters = typed_policy_predicate()
+def load_existing_parent_count(connection) -> int:
+    """Count BKN resource-parent rows that the migration will reconcile."""
     resource_types = tuple(spec.resource_type for spec in RESOURCE_SPECS)
     placeholders = ",".join(["%s"] * len(resource_types))
     with connection.cursor() as cursor:
-        cursor.execute(
-            f"SELECT COUNT(*) AS count FROM casbin_rule WHERE {predicate}",
-            parameters,
-        )
-        policy_count = int(cursor.fetchone()["count"])
         cursor.execute(
             "SELECT COUNT(*) AS count FROM resource_parents "
             f"WHERE resource_type_id IN ({placeholders})",
             resource_types,
         )
-        parent_count = int(cursor.fetchone()["count"])
-    return policy_count, parent_count
+        return int(cursor.fetchone()["count"])
 
 
 def normalize_branches(connection, commit: bool = True) -> int:
@@ -1114,18 +958,18 @@ def normalize_branches(connection, commit: bool = True) -> int:
         raise
 
 
-def apply_safe_plan(
+def apply_parent_plan(
     connection, plan: MigrationPlan, commit: bool = True
-) -> tuple[int, int]:
-    """Replace all seven KN policy and parent sets in one Safe transaction."""
-    predicate, parameters = typed_policy_predicate()
+) -> int:
+    """Replace only authoritative BKN resource-parent rows.
+
+    Caller authorization policies belong to the versioned authorization
+    migration and must remain untouched here.
+    """
     resource_types = tuple(spec.resource_type for spec in RESOURCE_SPECS)
     placeholders = ",".join(["%s"] * len(resource_types))
     try:
         with connection.cursor() as cursor:
-            deleted_policies = cursor.execute(
-                f"DELETE FROM casbin_rule WHERE {predicate}", parameters
-            )
             deleted_parents = cursor.execute(
                 "DELETE FROM resource_parents "
                 f"WHERE resource_type_id IN ({placeholders})",
@@ -1146,22 +990,6 @@ def apply_safe_plan(
                         for item in plan.parents
                     ],
                 )
-            if plan.policies:
-                cursor.executemany(
-                    "INSERT INTO casbin_rule (ptype, v0, v1, v2, v3, v4, v5) "
-                    "VALUES ('p', %s, %s, %s, '', '', '')",
-                    [
-                        (item.accessor_id, item.object_key, item.operation)
-                        for item in plan.policies
-                    ],
-                )
-
-            cursor.execute(
-                f"SELECT COUNT(*) AS count FROM casbin_rule WHERE {predicate}",
-                parameters,
-            )
-            if int(cursor.fetchone()["count"]) != len(plan.policies):
-                raise MigrationError("policy verification failed")
             cursor.execute(
                 "SELECT COUNT(*) AS count FROM resource_parents "
                 f"WHERE resource_type_id IN ({placeholders})",
@@ -1171,7 +999,7 @@ def apply_safe_plan(
                 raise MigrationError("resource-parent verification failed")
         if commit:
             connection.commit()
-        return deleted_policies, deleted_parents
+        return deleted_parents
     except Exception:
         connection.rollback()
         raise
@@ -1182,10 +1010,117 @@ def casbin_policy_exists(
 ) -> bool:
     cursor.execute(
         "SELECT COUNT(*) AS count FROM casbin_rule WHERE ptype = 'p' "
-        "AND v0 = %s AND v1 = %s AND v2 = %s",
-        (proxy_id, f"{resource_type}:{resource_id}", operation),
+        "AND v0 = %s AND v1 = %s AND v2 = %s AND v3 = %s AND v4 = %s AND v5 = %s",
+        (
+            proxy_id,
+            f"{resource_type}:{resource_id}",
+            operation,
+            EFFECT_ALLOW,
+            POLICY_SOURCE_SYSTEM_DERIVED,
+            AUTHORITY_SOURCE_SYSTEM,
+        ),
     )
     return int(cursor.fetchone()["count"]) > 0
+
+
+def proxy_projection_key(
+    proxy_id: str, resource_type: str, resource_id: str, operation: str
+) -> str:
+    """Match bkn-safe's stable grant and projection identity."""
+    payload = "\x00".join(
+        (
+            proxy_id,
+            f"{resource_type}:{resource_id}",
+            operation,
+            EFFECT_ALLOW,
+            POLICY_SOURCE_SYSTEM_DERIVED,
+            AUTHORITY_SOURCE_SYSTEM,
+        )
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def ensure_proxy_grant(
+    cursor,
+    proxy_id: str,
+    resource_type: str,
+    resource_id: str,
+    operation: str,
+    timestamp: datetime,
+) -> None:
+    """Create or validate the stable grant owned by a managed proxy source."""
+    grant_id = proxy_projection_key(proxy_id, resource_type, resource_id, operation)
+    object_key = f"{resource_type}:{resource_id}"
+    cursor.execute(
+        "SELECT projection_key, accessor_id, object, operation, effect, policy_source, "
+        "authority_source, created_by FROM authorization_grant WHERE grant_id = %s",
+        (grant_id,),
+    )
+    row = cursor.fetchone()
+    expected = (
+        grant_id,
+        proxy_id,
+        object_key,
+        operation,
+        EFFECT_ALLOW,
+        POLICY_SOURCE_SYSTEM_DERIVED,
+        AUTHORITY_SOURCE_SYSTEM,
+        AUTHORITY_SOURCE_SYSTEM,
+    )
+    if row is not None:
+        actual = (
+            normalize_text(row["projection_key"]),
+            normalize_text(row["accessor_id"]),
+            normalize_text(row["object"]),
+            normalize_text(row["operation"]),
+            normalize_text(row["effect"]),
+            normalize_text(row["policy_source"]),
+            normalize_text(row["authority_source"]),
+            normalize_text(row["created_by"]),
+        )
+        if actual != expected:
+            raise MigrationError(f"managed proxy grant identity conflict: {grant_id}")
+        return
+    cursor.execute(
+        "INSERT INTO authorization_grant "
+        "(grant_id, projection_key, accessor_id, object, operation, effect, policy_source, "
+        "authority_source, created_by, created_at, updated_at) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+        (
+            grant_id,
+            grant_id,
+            proxy_id,
+            object_key,
+            operation,
+            EFFECT_ALLOW,
+            POLICY_SOURCE_SYSTEM_DERIVED,
+            AUTHORITY_SOURCE_SYSTEM,
+            AUTHORITY_SOURCE_SYSTEM,
+            timestamp,
+            timestamp,
+        ),
+    )
+
+
+def upgrade_owned_unclassified_proxy_policy(
+    cursor, proxy_id: str, resource_type: str, resource_id: str, operation: str
+) -> bool:
+    """Upgrade a proxy row created by the pre-provenance migration in place."""
+    updated = cursor.execute(
+        "UPDATE casbin_rule SET v3 = %s, v4 = %s, v5 = %s WHERE ptype = 'p' "
+        "AND v0 = %s AND v1 = %s AND v2 = %s AND v3 = '' AND v4 = '' AND v5 = ''",
+        (
+            EFFECT_ALLOW,
+            POLICY_SOURCE_SYSTEM_DERIVED,
+            AUTHORITY_SOURCE_SYSTEM,
+            proxy_id,
+            f"{resource_type}:{resource_id}",
+            operation,
+        ),
+    )
+    if updated > 1:
+        raise MigrationError("multiple unclassified managed proxy policies found")
+    return updated == 1
 
 
 def sync_proxy_sources(
@@ -1285,6 +1220,7 @@ def sync_proxy_sources(
         for row in current_rows
     )
     policies_created = 0
+    policies_upgraded = 0
     policies_removed = 0
     for resource_type, resource_id, operation in sorted(permission_keys):
         cursor.execute(
@@ -1308,6 +1244,16 @@ def sync_proxy_sources(
             operation,
         )
         if active_sources:
+            if marker is not None and bool(marker["policy_owned"]) and not policy_exists:
+                policy_exists = upgrade_owned_unclassified_proxy_policy(
+                    cursor,
+                    network.proxy_account_id,
+                    resource_type,
+                    resource_id,
+                    operation,
+                )
+                if policy_exists:
+                    policies_upgraded += 1
             if marker is None:
                 cursor.execute(
                     "INSERT INTO proxy_grant_policy "
@@ -1318,7 +1264,7 @@ def sync_proxy_sources(
                         resource_type,
                         resource_id,
                         operation,
-                        not policy_exists,
+                        True,
                         timestamp,
                         timestamp,
                     ),
@@ -1326,11 +1272,14 @@ def sync_proxy_sources(
             if not policy_exists:
                 cursor.execute(
                     "INSERT INTO casbin_rule (ptype, v0, v1, v2, v3, v4, v5) "
-                    "VALUES ('p', %s, %s, %s, '', '', '')",
+                    "VALUES ('p', %s, %s, %s, %s, %s, %s)",
                     (
                         network.proxy_account_id,
                         f"{resource_type}:{resource_id}",
                         operation,
+                        EFFECT_ALLOW,
+                        POLICY_SOURCE_SYSTEM_DERIVED,
+                        AUTHORITY_SOURCE_SYSTEM,
                     ),
                 )
                 if marker is not None and not bool(marker["policy_owned"]):
@@ -1347,20 +1296,57 @@ def sync_proxy_sources(
                         ),
                     )
                 policies_created += 1
+            ensure_proxy_grant(
+                cursor,
+                network.proxy_account_id,
+                resource_type,
+                resource_id,
+                operation,
+                timestamp,
+            )
             continue
         if marker is None:
             continue
-        if bool(marker["policy_owned"]) and policy_exists:
+        if bool(marker["policy_owned"]):
+            if policy_exists:
+                removed = cursor.execute(
+                    "DELETE FROM casbin_rule WHERE ptype = 'p' AND v0 = %s "
+                    "AND v1 = %s AND v2 = %s AND v3 = %s AND v4 = %s AND v5 = %s",
+                    (
+                        network.proxy_account_id,
+                        f"{resource_type}:{resource_id}",
+                        operation,
+                        EFFECT_ALLOW,
+                        POLICY_SOURCE_SYSTEM_DERIVED,
+                        AUTHORITY_SOURCE_SYSTEM,
+                    ),
+                )
+            else:
+                removed = cursor.execute(
+                    "DELETE FROM casbin_rule WHERE ptype = 'p' AND v0 = %s "
+                    "AND v1 = %s AND v2 = %s AND v3 = '' AND v4 = '' AND v5 = ''",
+                    (
+                        network.proxy_account_id,
+                        f"{resource_type}:{resource_id}",
+                        operation,
+                    ),
+                )
+                if removed > 1:
+                    raise MigrationError(
+                        "multiple unclassified managed proxy policies found"
+                    )
             cursor.execute(
-                "DELETE FROM casbin_rule WHERE ptype = 'p' AND v0 = %s "
-                "AND v1 = %s AND v2 = %s",
+                "DELETE FROM authorization_grant WHERE grant_id = %s",
                 (
-                    network.proxy_account_id,
-                    f"{resource_type}:{resource_id}",
-                    operation,
+                    proxy_projection_key(
+                        network.proxy_account_id,
+                        resource_type,
+                        resource_id,
+                        operation,
+                    ),
                 ),
             )
-            policies_removed += 1
+            policies_removed += removed
         cursor.execute(
             "DELETE FROM proxy_grant_policy WHERE proxy_account_id = %s "
             "AND resource_type = %s AND resource_id = %s AND operation = %s",
@@ -1371,6 +1357,7 @@ def sync_proxy_sources(
         "sources_reactivated": reactivated,
         "sources_revoked": revoked,
         "policies_created": policies_created,
+        "policies_upgraded": policies_upgraded,
         "policies_removed": policies_removed,
     }
 
@@ -1876,8 +1863,72 @@ def format_failures(failures: Iterable[Failure]) -> str:
     )
 
 
-def run() -> int:
-    """Plan, apply, and verify the complete offline migration in one execution."""
+def migration_report(
+    mode: str,
+    plan: MigrationPlan,
+    proxy_plan: ProxyMigrationPlan,
+    backup: Optional[BackupResult] = None,
+    proxy_result: Optional[Mapping[str, int]] = None,
+) -> dict[str, Any]:
+    """Return a deterministic report for the release-level orchestrator."""
+    result: dict[str, Any] = {
+        "mode": mode,
+        "resources": plan.resources,
+        "blank_branches": plan.branch_updates,
+        "resource_parents": {
+            "existing": plan.existing_parents,
+            "planned": len(plan.parents),
+        },
+        "managed_proxies": {
+            "networks": len(proxy_plan.networks),
+            "sources": sum(len(network.sources) for network in proxy_plan.networks),
+            "planned": [
+                {
+                    "knowledge_network_id": network.kn_id,
+                    "proxy_account_id": network.proxy_account_id,
+                    "create_account": network.create_account,
+                    "model_version": network.model_version,
+                    "permissions": [
+                        {
+                            "resource_type": source.resource_type,
+                            "resource_id": source.resource_id,
+                            "operation": source.operation,
+                            "source_id": source.source_id,
+                            "binding_type": source.binding_type,
+                            "binding_id": source.binding_id,
+                        }
+                        for source in network.sources
+                    ],
+                }
+                for network in proxy_plan.networks
+            ],
+        },
+    }
+    if backup is not None:
+        result["backup"] = {
+            "path": str(backup.path),
+            "restore_commands": list(backup.restore_commands),
+        }
+    if proxy_result is not None:
+        result["managed_proxies"]["applied"] = dict(proxy_result)
+    return result
+
+
+def write_report(report: Mapping[str, Any], output_path: str = "") -> None:
+    """Write one machine-readable step report."""
+    content = json.dumps(report, indent=2, sort_keys=True) + "\n"
+    if output_path:
+        path = Path(output_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        return
+    print(content, end="")
+
+
+def run(mode: str = "apply", report_path: str = "") -> int:
+    """Plan or apply the BKN portion of the release-specific migration."""
+    if mode not in {"dry-run", "apply"}:
+        raise MigrationError(f"unsupported migration mode: {mode}")
     bkn_connection = None
     safe_connection = None
     try:
@@ -1885,21 +1936,11 @@ def run() -> int:
         bkn_connection = connect_database(bkn_config)
         safe_connection = connect_database(safe_config)
         rows = load_resources(bkn_connection)
-        creator_ids = [
-            row.creator_id.strip()
-            for row in rows
-            if row.resource_type in {KN_RESOURCE_TYPE, "action_type"}
-        ]
-        accounts = load_accounts(safe_connection, creator_ids)
         branch_updates = count_branch_updates(bkn_connection)
-        existing_policies, existing_parents = load_existing_safe_counts(
-            safe_connection
-        )
+        existing_parents = load_existing_parent_count(safe_connection)
         plan = build_plan(
             rows,
-            accounts,
             branch_updates,
-            existing_policies,
             existing_parents,
         )
         proxy_plan = load_proxy_plan(
@@ -1911,18 +1952,18 @@ def run() -> int:
                 "migration validation failed:\n" + format_failures(failures)
             )
 
+        if mode == "dry-run":
+            write_report(migration_report(mode, plan, proxy_plan), report_path)
+            return 0
+
         backup = create_pre_migration_backup(
             {"bkn": bkn_config, "safe": safe_config}
         )
-        print(f"Pre-migration backup created: {backup.path}")
-        print("Set MYSQL_PWD from the same environment, then restore if needed:")
-        for command in backup.restore_commands:
-            print(f"  {command}")
 
         try:
             normalize_branches(bkn_connection, commit=False)
-            apply_safe_plan(safe_connection, plan, commit=False)
-            apply_proxy_plan(
+            apply_parent_plan(safe_connection, plan, commit=False)
+            proxy_result = apply_proxy_plan(
                 bkn_connection,
                 safe_connection,
                 proxy_plan,
@@ -1936,7 +1977,10 @@ def run() -> int:
             bkn_connection.rollback()
             raise
 
-        print("Knowledge-network data migration completed successfully.")
+        write_report(
+            migration_report(mode, plan, proxy_plan, backup, proxy_result),
+            report_path,
+        )
         return 0
     finally:
         if bkn_connection is not None:
@@ -1945,10 +1989,21 @@ def run() -> int:
             safe_connection.close()
 
 
-def main() -> int:
-    """Run the fixed one-shot migration command."""
+def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+    """Parse the private BKN step arguments used by the deploy orchestrator."""
+    parser = argparse.ArgumentParser(
+        description="Run the BKN step of the OpenBKN 0.1.5 permission migration."
+    )
+    parser.add_argument("--mode", choices=("dry-run", "apply"), required=True)
+    parser.add_argument("--report", default="", help="write the JSON step report here")
+    return parser.parse_args(argv)
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    """Run the private BKN migration step."""
     try:
-        return run()
+        args = parse_args(argv)
+        return run(args.mode, args.report)
     except KeyboardInterrupt:
         print("Migration interrupted.", file=sys.stderr)
         return 130

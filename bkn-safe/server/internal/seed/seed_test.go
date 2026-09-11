@@ -70,11 +70,15 @@ func TestApplySeedsRolesCatalogGrants(t *testing.T) {
 		t.Errorf("network_builder description = %q", networkBuilder.Description)
 	}
 
-	// agent and Studio admin resource types + their operations seeded.
+	// Retained Studio admin and Agent resource types are seeded.
 	var opCount int64
 	db.Model(&model.Operation{}).Where("resource_type_id = ?", "agent").Count(&opCount)
-	if opCount == 0 {
-		t.Error("expected agent operations seeded")
+	if opCount != 11 {
+		t.Errorf("agent operation count = %d, want 11", opCount)
+	}
+	db.Model(&model.Operation{}).Where("resource_type_id = ?", "agent_tpl").Count(&opCount)
+	if opCount != 3 {
+		t.Errorf("agent_tpl operation count = %d, want 3", opCount)
 	}
 	db.Model(&model.Operation{}).Where("resource_type_id = ?", "admin-user").Count(&opCount)
 	if opCount == 0 {
@@ -92,6 +96,109 @@ func TestApplySeedsRolesCatalogGrants(t *testing.T) {
 	}
 	if !ok {
 		t.Error("network_builder should be able to create knowledge networks after seed")
+	}
+}
+
+// TestApplyRemovesWithdrawnResourceTypes proves an upgraded deployment does
+// not retain the retired vocabulary or any role/object grant that names it.
+func TestApplyRemovesWithdrawnResourceTypes(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := map[string]string{"stream_data_pipeline": "view_detail"}
+	for resourceType, operation := range legacy {
+		if err := db.Create(&model.ResourceType{ID: resourceType, Name: resourceType}).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Create(&model.Operation{ResourceTypeID: resourceType, ID: operation, Name: operation}).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := e.GrantObjectPermission("legacy-user", resourceType, "old-1", operation); err != nil {
+			t.Fatal(err)
+		}
+		if err := e.GrantRolePermission("legacy-role", resourceType, "*", operation); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := Apply(db, e); err != nil {
+		t.Fatalf("apply upgrade seed: %v", err)
+	}
+	for resourceType, operation := range legacy {
+		var typeCount, operationCount, grantCount int64
+		if err := db.Model(&model.ResourceType{}).Where("id = ?", resourceType).Count(&typeCount).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Model(&model.Operation{}).Where("resource_type_id = ?", resourceType).Count(&operationCount).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Model(&model.AuthorizationGrant{}).Where("object LIKE ?", resourceType+":%").Count(&grantCount).Error; err != nil {
+			t.Fatal(err)
+		}
+		if typeCount != 0 || operationCount != 0 || grantCount != 0 {
+			t.Errorf("withdrawn %s remains: types=%d operations=%d grants=%d", resourceType, typeCount, operationCount, grantCount)
+		}
+		if ok, err := e.Check("legacy-user", resourceType, "old-1", operation); err != nil || ok {
+			t.Errorf("direct %s permission remains: allow=%v err=%v", resourceType, ok, err)
+		}
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatalf("second apply must remain idempotent: %v", err)
+	}
+}
+
+// TestApplyRestoresAgentTypesWithoutDeletingExistingGrants guards the upgrade
+// path from #1458: Agent types are active again, so startup must preserve any
+// compatible grant that predates the restored directory and fill in the full
+// reviewed operation vocabulary around it.
+func TestApplyRestoresAgentTypesWithoutDeletingExistingGrants(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for resourceType, operation := range map[string]string{
+		"agent": "use", "agent_tpl": "publish",
+	} {
+		if err := db.Create(&model.ResourceType{ID: resourceType, Name: "legacy " + resourceType}).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Create(&model.Operation{ResourceTypeID: resourceType, ID: operation, Name: operation}).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := e.GrantObjectPermission("legacy-user", resourceType, "old-1", operation); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := Apply(db, e); err != nil {
+		t.Fatalf("apply upgrade seed: %v", err)
+	}
+
+	wantCounts := map[string]int64{"agent": 11, "agent_tpl": 3}
+	for resourceType, operation := range map[string]string{
+		"agent": "use", "agent_tpl": "publish",
+	} {
+		var resourceTypeRow model.ResourceType
+		if err := db.First(&resourceTypeRow, "id = ?", resourceType).Error; err != nil {
+			t.Fatalf("load restored type %s: %v", resourceType, err)
+		}
+		if resourceTypeRow.ParentTypeID != "" {
+			t.Errorf("%s parent = %q, want standalone root", resourceType, resourceTypeRow.ParentTypeID)
+		}
+		var operationCount int64
+		if err := db.Model(&model.Operation{}).Where("resource_type_id = ?", resourceType).
+			Count(&operationCount).Error; err != nil {
+			t.Fatal(err)
+		}
+		if operationCount != wantCounts[resourceType] {
+			t.Errorf("%s operation count = %d, want %d", resourceType, operationCount, wantCounts[resourceType])
+		}
+		if ok, err := e.Check("legacy-user", resourceType, "old-1", operation); err != nil || !ok {
+			t.Errorf("compatible %s grant was not preserved: allow=%v err=%v", resourceType, ok, err)
+		}
 	}
 }
 
@@ -134,7 +241,7 @@ func TestSeededRoleGrants(t *testing.T) {
 		{"network-builder manages catalog", networkBuilder, "catalog", "x", "create", true},
 		{"network-builder manages skill", networkBuilder, "skill", "s1", "publish", true},
 		{"network-builder not system users", networkBuilder, "admin-user", "x", "create", false},
-		{"super-admin does anything (agent)", superAdmin, "agent", "x", "use", true},
+		{"super-admin manages agents", superAdmin, "agent", "x", "use", true},
 		{"super-admin does anything (any type/op)", superAdmin, "whatever", "z", "some_random_op", true},
 	}
 	for _, c := range cases {
@@ -534,7 +641,7 @@ func TestNetworkBuilderManagesKnowledgeNetworksTypeWide(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, op := range []string{"view_detail", "create", "modify", "delete", "query_data", "authorize", "task_manage", "execute"} {
+	for _, op := range []string{"view_detail", "create", "modify", "delete", "query_data", "authorize", "execute"} {
 		ok, err := e.Check(builder, "knowledge_network", network, op)
 		if err != nil {
 			t.Fatal(err)
@@ -593,7 +700,7 @@ func TestNetworkBuilderPermissionMatrixMatchesBusinessBuilderRole(t *testing.T) 
 	}
 	want := map[string][]string{
 		"catalog:*":           {"view_detail", "create", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data"},
-		"knowledge_network:*": {"view_detail", "create", "modify", "delete", "query_data", "authorize", "task_manage", "execute"},
+		"knowledge_network:*": {"view_detail", "create", "modify", "delete", "query_data", "authorize", "execute"},
 		"operator:*":          {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},
 		"tool_box:*":          {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},
 		"skill:*":             {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},
@@ -601,5 +708,51 @@ func TestNetworkBuilderPermissionMatrixMatchesBusinessBuilderRole(t *testing.T) 
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("network_builder grants = %#v, want %#v", got, want)
+	}
+}
+
+func TestSeedReconciliationPreservesCommunityBundleAssignedToBuiltInRole(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	const roleID = "1572fb82-526f-11f0-bde6-e674ec8dde71"
+	if err := e.GrantCommunityBundle(roleID, "knowledge_network", "kn-role-bundle", authz.AuthoritySourceAdminAuthz); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantRolePermission(roleID, "knowledge_network", "kn-stale", "obsolete_seed_operation"); err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	records, err := e.PolicyRecords(authz.PolicyFilter{
+		AccessorID:   roleID,
+		Object:       "knowledge_network:kn-role-bundle",
+		PolicySource: authz.PolicySourceCommunityBundle,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 || records[0].Operation != authz.ActFullBusinessAccess {
+		t.Fatalf("bundle after seed reconciliation = %+v; want one logical bundle", records)
+	}
+	stale, err := e.PolicyRecords(authz.PolicyFilter{
+		AccessorID:   roleID,
+		Object:       "knowledge_network:kn-stale",
+		Operation:    "obsolete_seed_operation",
+		PolicySource: authz.PolicySourceRolePermission,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stale) != 0 {
+		t.Fatalf("obsolete seeded role grant survived reconciliation: %+v", stale)
 	}
 }

@@ -22,6 +22,11 @@ const (
 	MethodNotAllowed   = "BknSafe.MethodNotAllowed"
 	ServiceUnavailable = "BknSafe.ServiceUnavailable"
 	InternalError      = "BknSafe.InternalError"
+	// UnsupportedGrantShape is intentionally edition-neutral. The shared
+	// object-grant route returns this exact code for paid request shapes when
+	// they are not assembled or not currently licensed; it must not disclose a
+	// capability name or an upgrade hint.
+	UnsupportedGrantShape = "unsupported_grant_shape"
 
 	AdminWriteInvalid                         = "BknSafe.AdminWrite.Invalid"
 	AdminWriteImmutable                       = "BknSafe.AdminWrite.Immutable"
@@ -41,6 +46,7 @@ var (
 		MethodNotAllowed,
 		ServiceUnavailable,
 		InternalError,
+		UnsupportedGrantShape,
 		AdminWriteInvalid,
 		AdminWriteImmutable,
 		AdminWriteNoUpdatableFields,

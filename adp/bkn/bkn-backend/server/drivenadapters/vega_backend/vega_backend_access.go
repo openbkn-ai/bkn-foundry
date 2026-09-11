@@ -87,7 +87,7 @@ func (vba *vegaBackendAccess) GetCatalogByID(ctx context.Context, id string) (*i
 	if err != nil {
 		common.LogSafeError(ctx, "GetCatalogByID http request failed", err)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get catalog by ID failed")
-		return nil, fmt.Errorf("Vega dependency request failed")
+		return nil, fmt.Errorf("vega dependency request failed")
 	}
 
 	if respCode == http.StatusNotFound {
@@ -134,7 +134,7 @@ func (vba *vegaBackendAccess) CreateCatalog(ctx context.Context, req *interfaces
 	if err != nil {
 		common.LogSafeError(ctx, "CreateCatalog http request failed", err)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http create catalog failed")
-		return nil, fmt.Errorf("Vega dependency request failed")
+		return nil, fmt.Errorf("vega dependency request failed")
 	}
 
 	if respCode != http.StatusCreated && respCode != http.StatusOK {
@@ -176,7 +176,7 @@ func (vba *vegaBackendAccess) GetResourceByID(ctx context.Context, id string) (*
 	if err != nil {
 		common.LogSafeError(ctx, "GetResourceByID http request failed", err)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get resource by ID failed")
-		return nil, fmt.Errorf("Vega dependency request failed")
+		return nil, fmt.Errorf("vega dependency request failed")
 	}
 
 	if respCode == http.StatusNotFound {
@@ -210,6 +210,92 @@ func (vba *vegaBackendAccess) GetResourceByID(ctx context.Context, id string) (*
 	return resourceData.Entries[0], nil
 }
 
+// GetResourceSchema reads only the schema required by strict model validation.
+// A resolved historical delegator from bkn-safe takes precedence over the
+// current editor, and Vega rechecks the exact declared operation.
+func (vba *vegaBackendAccess) GetResourceSchema(ctx context.Context, id, operation string) (*interfaces.VegaResource, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "driven layer: Get resource schema")
+	defer span.End()
+
+	if id == "" || (operation != interfaces.OPERATION_TYPE_VIEW_DETAIL && operation != interfaces.OPERATION_TYPE_QUERY_DATA) {
+		return nil, interfaces.NewDependencyError("vega", "get_resource_schema",
+			interfaces.DependencyInvalidBinding, 0)
+	}
+
+	httpURL := fmt.Sprintf("%s/resources/%s/schema", vba.baseUrl, url.PathEscape(id))
+	params := url.Values{"operation": []string{operation}}
+	account := interfaces.AccountInfo{}
+	if resolvedAccount, ok := interfaces.VerifiedDependencyAccount(ctx, "resource", id, operation); ok {
+		account = resolvedAccount
+	} else if interfaces.HasVerifiedDependencySources(ctx) {
+		return nil, interfaces.NewDependencyError("vega", "get_resource_schema",
+			interfaces.DependencyInvalidResponse, 0)
+	} else if value := ctx.Value(interfaces.ACCOUNT_INFO_KEY); value != nil {
+		account, _ = value.(interfaces.AccountInfo)
+	}
+	if account.ID == "" || account.Type == "" {
+		return nil, interfaces.NewDependencyError("vega", "get_resource_schema",
+			interfaces.DependencyForbidden, http.StatusForbidden)
+	}
+	headers := map[string]string{
+		interfaces.CONTENT_TYPE_NAME:        interfaces.CONTENT_TYPE_JSON,
+		interfaces.HTTP_HEADER_ACCOUNT_ID:   account.ID,
+		interfaces.HTTP_HEADER_ACCOUNT_TYPE: account.Type,
+	}
+
+	respCode, respData, err := vba.httpClient.GetNoUnmarshal(ctx, httpURL, params, headers)
+	logger.Debugf("GetResourceSchema finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
+	if err != nil {
+		common.LogSafeError(ctx, "GetResourceSchema request failed", err)
+		kind := interfaces.DependencyTransportKind(err)
+		return nil, interfaces.NewDependencyError("vega", "get_resource_schema", kind, respCode)
+	}
+
+	kind := dependencyKindForStatus(respCode)
+	if kind != "" {
+		logger.Debugf("GetResourceSchema response: %s", common.SafeTextSummary("response", string(respData)))
+		return nil, interfaces.NewDependencyError("vega", "get_resource_schema", kind, respCode)
+	}
+
+	var payload struct {
+		ID               string                  `json:"id"`
+		Name             string                  `json:"name"`
+		SchemaDefinition *[]*interfaces.Property `json:"schema_definition"`
+	}
+	if err := vegaResponseJSON.Unmarshal(respData, &payload); err != nil || payload.ID != id ||
+		payload.Name == "" || payload.SchemaDefinition == nil {
+		invalidErr := interfaces.NewDependencyError("vega", "get_resource_schema",
+			interfaces.DependencyInvalidResponse, respCode)
+		if err != nil {
+			common.LogSafeError(ctx, "GetResourceSchema response was invalid", err)
+		} else {
+			common.LogSafeError(ctx, "GetResourceSchema response was invalid", invalidErr)
+		}
+		return nil, invalidErr
+	}
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return &interfaces.VegaResource{
+		ID: payload.ID, Name: payload.Name, SchemaDefinition: *payload.SchemaDefinition,
+	}, nil
+}
+
+func dependencyKindForStatus(status int) interfaces.DependencyErrorKind {
+	switch status {
+	case http.StatusOK:
+		return ""
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return interfaces.DependencyForbidden
+	case http.StatusNotFound:
+		return interfaces.DependencyNotFound
+	case http.StatusRequestTimeout, http.StatusGatewayTimeout:
+		return interfaces.DependencyTimeout
+	case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable:
+		return interfaces.DependencyUnavailable
+	default:
+		return interfaces.DependencyDownstreamError
+	}
+}
+
 func (vba *vegaBackendAccess) CreateResource(ctx context.Context, req *interfaces.VegaResource) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "driven layer: Create resource")
 	defer span.End()
@@ -230,7 +316,7 @@ func (vba *vegaBackendAccess) CreateResource(ctx context.Context, req *interface
 	if err != nil {
 		common.LogSafeError(ctx, "CreateResource http request failed", err)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http create resource failed")
-		return fmt.Errorf("Vega dependency request failed")
+		return fmt.Errorf("vega dependency request failed")
 	}
 
 	if respCode != http.StatusCreated && respCode != http.StatusOK {
@@ -272,7 +358,7 @@ func (vba *vegaBackendAccess) DeleteResource(ctx context.Context, id string) err
 	if err != nil {
 		common.LogSafeError(ctx, "DeleteResource http request failed", err)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http delete resource failed")
-		return fmt.Errorf("Vega dependency request failed")
+		return fmt.Errorf("vega dependency request failed")
 	}
 
 	if respCode != http.StatusNoContent && respCode != http.StatusOK {
@@ -307,7 +393,7 @@ func (vba *vegaBackendAccess) DeleteDatasetDocumentByID(ctx context.Context, dat
 	if err != nil {
 		common.LogSafeError(ctx, "DeleteDatasetDocumentByID http request failed", err)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http delete dataset document by ID failed")
-		return fmt.Errorf("Vega dependency request failed")
+		return fmt.Errorf("vega dependency request failed")
 	}
 
 	if respCode != http.StatusNoContent && respCode != http.StatusOK {
@@ -345,7 +431,7 @@ func (vba *vegaBackendAccess) DeleteDatasetDocumentsByQuery(ctx context.Context,
 	logger.Debugf("DeleteDatasetDocumentsByQuery finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
 
 	if err != nil {
-		safeErr := fmt.Errorf("Vega dependency request failed")
+		safeErr := fmt.Errorf("vega dependency request failed")
 		common.LogSafeError(ctx, "DeleteDatasetDocumentsByQuery failed: "+common.SafeErrorSummary(err), safeErr)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http delete dataset documents by query failed")
 		return safeErr
@@ -387,7 +473,7 @@ func (vba *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID 
 	logger.Debugf("QueryDatasetData finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
 
 	if err != nil {
-		safeErr := fmt.Errorf("Vega dependency request failed")
+		safeErr := fmt.Errorf("vega dependency request failed")
 		common.LogSafeError(ctx, "QueryDatasetData failed: "+common.SafeErrorSummary(err), safeErr)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http query dataset data failed")
 		return nil, safeErr
@@ -439,7 +525,7 @@ func (vba *vegaBackendAccess) WriteDatasetDocument(ctx context.Context, datasetI
 	logger.Debugf("WriteDatasetDocument finished, document_id is [%s], response code is [%d], %s",
 		docID, respCode, common.SafeErrorSummary(err))
 	if err != nil {
-		safeErr := fmt.Errorf("Vega dependency request failed")
+		safeErr := fmt.Errorf("vega dependency request failed")
 		common.LogSafeError(ctx, "WriteDatasetDocument failed: "+common.SafeErrorSummary(err), safeErr)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http replace dataset document failed")
 		return safeErr
@@ -518,7 +604,7 @@ func (vba *vegaBackendAccess) RawQuery(ctx context.Context, req *interfaces.RawQ
 	if err != nil {
 		// The statement carries physical table and column names, so it never
 		// reaches the caller; only the summary goes to the log.
-		safeErr := fmt.Errorf("Vega dependency request failed")
+		safeErr := fmt.Errorf("vega dependency request failed")
 		common.LogSafeError(ctx, "RawQuery failed: "+common.SafeErrorSummary(err), safeErr)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http raw query failed")
 		return nil, safeErr

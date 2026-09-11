@@ -19,7 +19,7 @@ func TestEnqueueUsesCurrentEpochFromStreamState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new sql mock: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repository := &Repository{
 		db: db,
@@ -72,7 +72,7 @@ func TestEnqueueRejectsZeroEpoch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new sql mock: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repository := &Repository{
 		db:      db,
 		config:  Config{ProducerID: "bkn-backend", ProducerStreamID: "bkn-backend"},
@@ -121,7 +121,7 @@ func TestClaimHeadOfLineBlocksLaterSequenceDuringBackoff(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new sql mock: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repository := &Repository{db: db, config: Config{ProducerStreamID: "stream-0"}, dialect: dialectMariaDB}
 	now := time.Now().UTC()
 
@@ -152,7 +152,7 @@ func TestCompleteRejectsStaleLeaseToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new sql mock: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repository := &Repository{db: db}
 	record := &Record{OutboxID: 9, LeaseToken: "stale-lease"}
 	query := regexp.QuoteMeta("UPDATE " + tableOutbox + " SET status = ?, delivered_at = ?, lease_token = NULL, locked_until = NULL, updated_at = ?, state_version = state_version + 1 WHERE outbox_id = ? AND status = ? AND lease_token = ?")
@@ -177,7 +177,7 @@ func TestCleanupOnlyDeletesCompletedStates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new sql mock: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repository := &Repository{db: db, dialect: dialectMariaDB}
 	now := time.Now().UTC()
 
@@ -219,7 +219,7 @@ func TestCountUsesListFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new sql mock: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repository := &Repository{db: db}
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM " + tableOutbox + " WHERE 1=1 AND status IN (?)")).
 		WithArgs(StatusRetry).

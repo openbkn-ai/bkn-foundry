@@ -122,7 +122,8 @@ func TestDiscoverTaskServiceGetAndList(t *testing.T) {
 		got, err := service.GetByID(context.Background(), "task-1")
 
 		require.Nil(t, got)
-		httpErr, ok := err.(*rest.HTTPError)
+		var httpErr *rest.HTTPError
+		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
 		assert.Equal(t, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
 	})
@@ -173,7 +174,8 @@ func TestDiscoverTaskServiceGetAndList(t *testing.T) {
 
 		require.Nil(t, got)
 		assert.Zero(t, total)
-		httpErr, ok := err.(*rest.HTTPError)
+		var httpErr *rest.HTTPError
+		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
 		assert.Equal(t, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
 	})

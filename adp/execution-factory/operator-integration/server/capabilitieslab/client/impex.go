@@ -40,7 +40,7 @@ func (c *OperatorIntegrationClient) ExportImpex(
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	payload, err := io.ReadAll(res.Body)
 	if err != nil {
@@ -102,7 +102,7 @@ func (c *OperatorIntegrationClient) ImportImpex(
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	payload, err := io.ReadAll(res.Body)
 	if err != nil {

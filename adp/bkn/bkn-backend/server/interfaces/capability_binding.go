@@ -104,6 +104,10 @@ type CapabilityBindingsQueryParams struct {
 	CapabilityType string
 	OwnerID        string
 	CapabilityIDs  []string
+	// ReadAccessMode is authorization state resolved by the public knowledge-network
+	// boundary. Navigation-only access may render an empty section but may not read
+	// binding, provenance, or metadata data.
+	ReadAccessMode KNReadAccessMode
 	// MetadataType narrows function bindings to one kind of tool box. The value lives on the box
 	// in the execution factory, not in the binding row, so the service resolves it to the set of
 	// boxes with that kind and puts them in OwnerIDs — filtering the fetched page instead would
@@ -175,7 +179,7 @@ type CapabilityBindingsList struct {
 	Entries    []*CapabilityBinding `json:"entries"`
 	TotalCount int                  `json:"total_count"`
 	// Boxes summarises the tool boxes behind the whole-box mounts on this page.
-	Boxes []*CapabilityBoxSummary `json:"boxes,omitempty"`
+	Boxes []*CapabilityBoxSummary `json:"boxes"`
 	// MetadataAvailable is false when the execution factory could not be reached. The bindings
 	// are still returned in full — the names are missing, not the memberships — and the flag
 	// says so explicitly so an empty name is not read as a deleted capability.

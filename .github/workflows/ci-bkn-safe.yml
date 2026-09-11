@@ -1,6 +1,6 @@
 name: ci-bkn-safe
 
-# Compile + unit-test gate for PRs touching bkn-safe. The suite is hermetic
+# Compile + unit-test + lint gate for PRs touching bkn-safe. The suite is hermetic
 # (in-memory sqlite, no external services), so it needs no harness setup — it
 # was simply never wired in. While it was not, a seed invariant regressed on
 # main and stayed red for three days unnoticed (#254 changed the code without
@@ -11,6 +11,7 @@ on:
     paths:
       - 'bkn-safe/**'
       - '.github/workflows/ci-bkn-safe.yml'
+      - '.github/actions/golangci-lint/**'
 
 concurrency:
   group: ci-bkn-safe-${{ github.ref }}
@@ -19,13 +20,25 @@ concurrency:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: bkn-safe/server
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: bkn-safe/server/go.mod
-      - run: go build ./...
-      - run: go test ./...
+      - name: Build server
+        working-directory: bkn-safe/server
+        run: go build ./...
+      - name: Test all bkn-safe modules
+        working-directory: bkn-safe
+        run: make test
+      # The action installs the repository-pinned binary for the following
+      # Make target while also linting the smallest standalone module once.
+      - name: Bootstrap golangci-lint
+        uses: ./.github/actions/golangci-lint
+        env:
+          GOWORK: 'off'
+        with:
+          working-directory: bkn-safe/cmd/authz-shadow
+      - name: Lint all bkn-safe modules through the Makefile
+        working-directory: bkn-safe
+        run: make lint

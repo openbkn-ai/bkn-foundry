@@ -19,7 +19,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// The resource_id input parameter of ErrResourceIDRequired describe_resource is empty.
+// ErrResourceIDRequired reports an empty resource_id input parameter.
 var ErrResourceIDRequired = errors.New("resource_id is required")
 
 // ErrKnBackendUnavailable Querying by kn_id requires an ontology side dependency, but it is not injected.
@@ -51,7 +51,7 @@ type UnresolvedBinding struct {
 	Reason       string `json:"reason,omitempty"`      // missing: Reason for downstream return.
 }
 
-// Lite resource entries for ResourceLite list_resources.
+// ResourceLite describes a lightweight resource entry.
 type ResourceLite struct {
 	ResourceID string `json:"resource_id"`
 	Name       string `json:"name"`

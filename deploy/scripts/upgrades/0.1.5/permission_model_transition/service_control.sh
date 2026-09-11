@@ -5,14 +5,16 @@
 
 set -euo pipefail
 
-readonly STATE_FORMAT="openbkn-kn-migration-workloads-v1"
+readonly STATE_FORMAT="openbkn-permission-model-transition-workloads-v1"
 readonly -a WORKLOADS=(
+  vega-backend
   ontology-query
   agent-operator-integration
   bkn-backend
   bkn-safe
 )
 readonly -a STOP_ORDER=(
+  vega-backend
   ontology-query
   agent-operator-integration
   bkn-backend
@@ -21,6 +23,7 @@ readonly -a STOP_ORDER=(
 readonly -a START_ORDER=(
   bkn-safe
   bkn-backend
+  vega-backend
   ontology-query
   agent-operator-integration
 )
@@ -29,16 +32,18 @@ usage() {
   cat <<EOF
 Usage:
   $0 stop [options]
+  $0 verify-stopped [options]
   $0 start [options]
 
-Control the four application Deployments used by the OpenBKN 0.1.4 to 0.1.5
-knowledge-network data migration. Database and other infrastructure workloads
-are not changed.
+Control the application Deployments used by the OpenBKN 0.1.4 to 0.1.5
+permission-model transition. Database and other infrastructure workloads are
+not changed. External gateways and CronJobs must be closed separately as
+documented in README.md.
 
 Options:
   --namespace NAMESPACE       Kubernetes namespace (default: openbkn)
   --expected-context CONTEXT  Optional explicit context safety check
-  --state-file PATH           Replica snapshot (default: /tmp/openbkn-kn-data-migration-workloads.tsv)
+  --state-file PATH           Replica snapshot (default: /tmp/openbkn-permission-model-transition-workloads.tsv)
   --timeout-seconds SECONDS   Stop/start timeout per Deployment (default: 300)
   -h, --help                  Show this help
 EOF
@@ -46,7 +51,7 @@ EOF
 
 action=${1:-}
 case "$action" in
-  stop|start)
+  stop|verify-stopped|start)
     shift
     ;;
   -h|--help)
@@ -61,7 +66,7 @@ esac
 
 namespace=${OPENBKN_MIGRATION_NAMESPACE:-openbkn}
 expected_context=
-state_file=${OPENBKN_MIGRATION_STATE_FILE:-/tmp/openbkn-kn-data-migration-workloads.tsv}
+state_file=${OPENBKN_MIGRATION_STATE_FILE:-/tmp/openbkn-permission-model-transition-workloads.tsv}
 timeout_seconds=${OPENBKN_MIGRATION_TIMEOUT_SECONDS:-300}
 
 while (( $# > 0 )); do
@@ -274,6 +279,25 @@ stop_workloads() {
   echo "Migration application workloads are stopped."
 }
 
+verify_workloads_stopped() {
+  read_state
+  require_workloads
+  local workload status replicas ready available
+  for workload in "${WORKLOADS[@]}"; do
+    status=$(kubectl_ns get deployment "$workload" -o \
+      jsonpath='{.status.replicas}{" "}{.status.readyReplicas}{" "}{.status.availableReplicas}')
+    read -r replicas ready available <<< "$status"
+    replicas=${replicas:-0}
+    ready=${ready:-0}
+    available=${available:-0}
+    if [[ $replicas != 0 || $ready != 0 || $available != 0 ]]; then
+      echo "Deployment is not stopped: $namespace/$workload" >&2
+      return 1
+    fi
+  done
+  echo "Migration application workloads are confirmed stopped."
+}
+
 start_workloads() {
   read_state
   require_workloads
@@ -294,5 +318,6 @@ start_workloads() {
 
 case "$action" in
   stop) stop_workloads ;;
+  verify-stopped) verify_workloads_stopped ;;
   start) start_workloads ;;
 esac

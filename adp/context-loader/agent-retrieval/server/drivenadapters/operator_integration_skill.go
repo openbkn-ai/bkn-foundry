@@ -19,14 +19,14 @@ import (
 )
 
 const (
-	// https://{host}:{port}/api/agent-operator-integration/internal-v1/skills/market
-	listSkillsURI = "/internal-v1/skills/market"
-	// https://{host}:{port}/api/agent-operator-integration/internal-v1/skills/:skill_id/content
-	getSkillContentURI = "/internal-v1/skills/%s/content"
-	// https://{host}:{port}/api/agent-operator-integration/internal-v1/skills/:skill_id/files/read
-	readSkillFileURI = "/internal-v1/skills/%s/files/read"
-	// https://{host}:{port}/api/agent-operator-integration/internal-v1/skills/:skill_id/execute
-	executeSkillURI = "/internal-v1/skills/%s/execute"
+	listSkillsURI              = "/v1/skills/available"
+	listSkillsInternalURI      = "/internal-v1/caller/skills/available"
+	getSkillContentURI         = "/v1/skills/%s/content"
+	getSkillContentInternalURI = "/internal-v1/caller/skills/%s/content"
+	readSkillFileURI           = "/v1/skills/%s/files/read"
+	readSkillFileInternalURI   = "/internal-v1/caller/skills/%s/files/read"
+	executeSkillURI            = "/v1/skills/%s/execute"
+	executeSkillInternalURI    = "/internal-v1/caller/skills/%s/execute"
 	// https://{host}:{port}/api/agent-operator-integration/internal-v1/skills/names
 	skillNamesURI = "/internal-v1/skills/names"
 
@@ -58,11 +58,13 @@ func (o *operatorIntegrationClient) ListSkills(ctx context.Context, req *interfa
 	if req.Category != "" {
 		query.Set("category", req.Category)
 	}
-
-	fullURL := o.baseURL + listSkillsURI
+	fullURL := o.baseURL + capabilityURI(ctx, listSkillsURI, listSkillsInternalURI)
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#ListSkills] URL: %s?%s", fullURL, query.Encode())
 
-	header := o.skillHeader(ctx, "operator.skill.list")
+	header, err := o.capabilityAuthorizationHeader(ctx, "operator.skill.list")
+	if err != nil {
+		return nil, err
+	}
 	code, respBody, err := o.httpClient.Get(ctx, fullURL, query, header)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ListSkills] Request failed, err: %v", err)
@@ -110,10 +112,14 @@ func (o *operatorIntegrationClient) ListSkills(ctx context.Context, req *interfa
 // GetSkillContent returns the skill document body and its file list.
 // Execution Factory returns a presigned URL, which this client follows to get the body.
 func (o *operatorIntegrationClient) GetSkillContent(ctx context.Context, skillID string) (*interfaces.GetSkillContentResponse, error) {
-	fullURL := o.baseURL + fmt.Sprintf(getSkillContentURI, url.PathEscape(skillID))
+	fullURL := o.baseURL + fmt.Sprintf(
+		capabilityURI(ctx, getSkillContentURI, getSkillContentInternalURI), url.PathEscape(skillID))
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#GetSkillContent] URL: %s", fullURL)
 
-	header := o.skillHeader(ctx, "operator.skill.content")
+	header, err := o.capabilityAuthorizationHeader(ctx, "operator.skill.content")
+	if err != nil {
+		return nil, err
+	}
 	code, respBody, err := o.httpClient.Get(ctx, fullURL, nil, header)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetSkillContent] Request failed, err: %v", err)
@@ -146,10 +152,14 @@ func (o *operatorIntegrationClient) GetSkillContent(ctx context.Context, skillID
 
 // ReadSkillFile reads one file from a skill package using the same two-hop flow.
 func (o *operatorIntegrationClient) ReadSkillFile(ctx context.Context, req *interfaces.ReadSkillFileRequest) (*interfaces.ReadSkillFileResponse, error) {
-	fullURL := o.baseURL + fmt.Sprintf(readSkillFileURI, url.PathEscape(req.SkillID))
+	fullURL := o.baseURL + fmt.Sprintf(
+		capabilityURI(ctx, readSkillFileURI, readSkillFileInternalURI), url.PathEscape(req.SkillID))
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#ReadSkillFile] URL: %s, RelPath: %s", fullURL, req.RelPath)
 
-	header := o.skillHeader(ctx, "operator.skill.file_read")
+	header, err := o.capabilityAuthorizationHeader(ctx, "operator.skill.file_read")
+	if err != nil {
+		return nil, err
+	}
 	// Execution Factory requires the rel_path field; sending path returns 400.
 	code, respBody, err := o.httpClient.Post(ctx, fullURL, header, map[string]string{"rel_path": req.RelPath})
 	if err != nil {
@@ -184,12 +194,16 @@ func (o *operatorIntegrationClient) ReadSkillFile(ctx context.Context, req *inte
 }
 
 // ExecuteSkill runs a skill entry command in the sandbox. Execution Factory
-// enforces account authorization (execute / public_access).
+// requires the caller's execute permission; public_access only permits reads.
 func (o *operatorIntegrationClient) ExecuteSkill(ctx context.Context, req *interfaces.ExecuteSkillRequest) (*interfaces.ExecuteSkillResponse, error) {
-	fullURL := o.baseURL + fmt.Sprintf(executeSkillURI, url.PathEscape(req.SkillID))
+	fullURL := o.baseURL + fmt.Sprintf(
+		capabilityURI(ctx, executeSkillURI, executeSkillInternalURI), url.PathEscape(req.SkillID))
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#ExecuteSkill] URL: %s", fullURL)
 
-	header := o.skillHeader(ctx, "operator.skill.execute")
+	header, err := o.capabilityAuthorizationHeader(ctx, "operator.skill.execute")
+	if err != nil {
+		return nil, err
+	}
 	body := map[string]any{"entry_shell": req.EntryShell}
 	if req.Timeout > 0 {
 		body["timeout"] = req.Timeout

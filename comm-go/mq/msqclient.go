@@ -61,7 +61,7 @@ func AuthMechanism(mechanism string) ClientOpt {
 		switch (interface{})(client).(type) {
 		case *OpenBKNKafkaClient:
 			if _, ok := map[string]struct{}{"PLAIN": {}, "SCRAM-SHA-256": {}, "SCRAM-SHA-512": {}}[strings.ToUpper(mechanism)]; !ok {
-				err := fmt.Errorf("unsupported mechanism[%s] for kafka client.", mechanism)
+				err := fmt.Errorf("unsupported mechanism[%s] for kafka client", mechanism)
 				log.Println(err)
 				return err
 			}
@@ -92,6 +92,7 @@ func clientCert(tlsConfig *tls.Config, certFile, keyFile string) error {
 
 // Load root certificate from caFile into tlsConfig
 func rootCAs(tlsConfig *tls.Config, caFile string) error {
+	//nolint:gosec // caFile is explicit caller-provided TLS configuration.
 	caCrt, err := os.ReadFile(caFile)
 	if err != nil || caCrt == nil {
 		return fmt.Errorf("error loading or parsing rootCA file: %w", err)
@@ -236,6 +237,7 @@ func NewOpenBKNMQClientFromFile(configFile string) (OpenBKNMQClient, error) {
 		return nil, err
 	}
 	info := new(OpenBKNMQInfo)
+	//nolint:gosec // fp is the explicit caller-provided client configuration path.
 	config, err := os.ReadFile(fp)
 	if err != nil {
 		return nil, err

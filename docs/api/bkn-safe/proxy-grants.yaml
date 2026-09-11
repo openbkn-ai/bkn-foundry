@@ -81,6 +81,10 @@ paths:
       description: |
         Repeated revocation is idempotent. The Allow policy is preserved while another active
         source remains; revoking the final source removes only policies owned by this service.
+        A prerequisite synthesized from an operation requirement is revoked together with its
+        target unless another active operation still requires it. An explicitly requested source
+        is never cascade-revoked. Revoking a prerequisite that an active source still requires
+        returns 409 and leaves it active.
       requestBody:
         required: true
         content:
@@ -100,6 +104,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalError'
   /proxy-grant-sources/check:
@@ -138,6 +144,10 @@ paths:
         Applies the same retained-delegator and replacement rules as the single-source check,
         but loads source, operation, user, and delegator state in batches. Insufficient authority
         is returned in `denied_sources`; the request does not change source or policy state.
+        `resolved_sources` records the enabled effective delegator for every allowed normalized
+        source so the publishing service can perform a least-privilege dependency lookup. This
+        response contract is required by bkn-backend and is not backward compatible with an older
+        bkn-safe that omits the field.
       requestBody:
         required: true
         content:
@@ -242,7 +252,7 @@ components:
           schema:
             $ref: '../_shared/errors.yaml#/components/schemas/Error'
     Conflict:
-      description: The proxy account is disabled or archived and cannot receive a new grant source
+      description: The proxy account is inactive, or the requested source is still required by another active operation
       content:
         application/json:
           schema:
@@ -384,6 +394,7 @@ components:
         - kn_id
         - binding_type
         - binding_id
+        - requirement_derived
         - granted_by
         - lifecycle_status
         - created_at
@@ -412,6 +423,9 @@ components:
           type: string
         binding_id:
           type: string
+        requirement_derived:
+          type: boolean
+          description: True only when the source was synthesized from an operation prerequisite.
         granted_by:
           type: string
         lifecycle_status:
@@ -440,13 +454,64 @@ components:
     BatchCheckResult:
       type: object
       additionalProperties: false
-      required: [denied_sources]
+      required: [denied_sources, resolved_sources]
       properties:
         denied_sources:
           type: array
           description: Sources that need the current actor to hold the operation but failed that check.
           items:
             $ref: '#/components/schemas/SourceSpec'
+        resolved_sources:
+          type: array
+          description: Allowed explicit and derived sources with the effective delegator selected by preflight.
+          items:
+            $ref: '#/components/schemas/ResolvedSource'
+    ResolvedSource:
+      type: object
+      additionalProperties: false
+      required:
+        - resource_type
+        - resource_id
+        - operation
+        - source_id
+        - kn_id
+        - binding_type
+        - binding_id
+        - granted_by
+      properties:
+        resource_type:
+          type: string
+          enum: [resource, tool_box, mcp]
+        resource_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        operation:
+          type: string
+          enum: [view_detail, query_data, execute]
+        source_type:
+          type: string
+          enum: [kn_proxy_binding, manual, admin]
+          default: kn_proxy_binding
+        source_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        kn_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        binding_type:
+          type: string
+          minLength: 1
+          maxLength: 64
+        binding_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        granted_by:
+          type: string
+          minLength: 1
     SyncResult:
       type: object
       additionalProperties: false

@@ -86,97 +86,174 @@ func Analyze(tree parsing.IOC_CypherContext) (*Query, error) {
 	}
 
 	reading := part.AllOC_ReadingClause()
-	if len(reading) != 1 {
-		return nil, unsupportedf(part, "multiple reading clauses",
-			"a query must have exactly one MATCH, got %d reading clauses", len(reading))
-	}
-	match := reading[0].OC_Match()
-	if match == nil {
-		if reading[0].OC_Unwind() != nil {
-			return nil, unsupported(reading[0], "UNWIND")
-		}
-		return nil, unsupported(reading[0], "procedure calls")
-	}
-	if match.OPTIONAL() != nil {
-		return nil, unsupported(match, "OPTIONAL MATCH")
+	if len(reading) == 0 {
+		return nil, unsupportedf(part, "a query without MATCH", "add a MATCH clause")
 	}
 
 	query := &Query{}
-	pattern, inline, err := analyzePattern(match.OC_Pattern())
-	if err != nil {
-		return nil, err
-	}
-	query.Pattern = *pattern
+	builder := newPatternBuilder()
+	var inline []Predicate
+	var lastMatch parsing.IOC_MatchContext
 
-	if where := match.OC_Where(); where != nil {
-		written, err := analyzePredicate(where.OC_Expression())
-		if err != nil {
+	// Several MATCH clauses describe one shape, the same way several
+	// comma-separated paths inside one MATCH do: a variable written in both
+	// is the same node, so they meet at it rather than multiplying.
+	for _, clause := range reading {
+		match := clause.OC_Match()
+		if match == nil {
+			if clause.OC_Unwind() != nil {
+				return nil, unsupported(clause, "UNWIND")
+			}
+			return nil, unsupported(clause, "procedure calls")
+		}
+		if match.OPTIONAL() != nil {
+			return nil, unsupported(match, "OPTIONAL MATCH")
+		}
+		if err := builder.addPattern(match.OC_Pattern()); err != nil {
 			return nil, err
 		}
-		inline = append(inline, written)
+		if where := match.OC_Where(); where != nil {
+			written, err := analyzePredicate(where.OC_Expression())
+			if err != nil {
+				return nil, err
+			}
+			inline = append(inline, written)
+		}
+		lastMatch = match
 	}
+	query.Pattern = builder.pattern
+	inline = append(builder.inline, inline...)
+
 	// Conditions from the pattern and from WHERE mean the same thing and are
 	// joined the way Cypher joins them.
-	query.Where = combine("AND", inline, positionOf(match))
+	query.Where = combine("AND", inline, positionOf(lastMatch))
 	if err := analyzeProjectionBody(query, returning.OC_ProjectionBody()); err != nil {
 		return nil, err
 	}
 	return query, nil
 }
 
-// analyzePattern reads the path and the conditions written inside it. Inline
-// property maps come back as ordinary conditions, which is what Cypher defines
-// them to be.
-func analyzePattern(ctx parsing.IOC_PatternContext) (*Pattern, []Predicate, error) {
-	parts := ctx.AllOC_PatternPart()
-	if len(parts) != 1 {
-		// Several comma-separated parts is a cartesian product between them,
-		// which the planner has no shape for yet.
-		return nil, nil, unsupportedf(ctx, "multiple pattern parts",
-			"MATCH must contain a single path, got %d comma-separated patterns", len(parts))
-	}
-	part := parts[0]
-	if part.OC_Variable() != nil {
-		return nil, nil, unsupported(part, "path variables")
-	}
+// patternBuilder collects everything the MATCH clauses describe into one
+// pattern. It exists because a variable written twice means one node: the
+// second mention joins to the first rather than introducing another table,
+// and that is true across comma-separated parts and across MATCH clauses
+// alike.
+type patternBuilder struct {
+	pattern   Pattern
+	inline    []Predicate
+	nodeOf    map[string]int
+	anonymous int
+	// clause counts the MATCH clauses read so far, and stamps the
+	// relationships each one writes. Nodes are deliberately not stamped: a
+	// variable is one node wherever it is written, which is what makes several
+	// MATCH clauses one shape.
+	clause int
+}
 
-	element := part.OC_AnonymousPatternPart().OC_PatternElement()
-	// A parenthesized pattern element wraps the real one; unwrap to the node.
-	for element.OC_NodePattern() == nil {
-		element = element.OC_PatternElement()
-	}
+func newPatternBuilder() *patternBuilder {
+	return &patternBuilder{nodeOf: map[string]int{}}
+}
 
-	pattern := &Pattern{}
-	node, conditions, err := analyzeNode(element.OC_NodePattern(), 0)
+// addPattern reads one MATCH's worth of comma-separated paths. Everything it
+// reads belongs to one clause, which is what the uniqueness rule is scoped to.
+func (b *patternBuilder) addPattern(ctx parsing.IOC_PatternContext) error {
+	defer func() { b.clause++ }()
+	for _, part := range ctx.AllOC_PatternPart() {
+		if part.OC_Variable() != nil {
+			return unsupported(part, "path variables")
+		}
+		element := part.OC_AnonymousPatternPart().OC_PatternElement()
+		// A parenthesized pattern element wraps the real one; unwrap to the node.
+		for element.OC_NodePattern() == nil {
+			element = element.OC_PatternElement()
+		}
+		if err := b.addPath(element); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (b *patternBuilder) addPath(element parsing.IOC_PatternElementContext) error {
+	left, err := b.addNode(element.OC_NodePattern())
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
-	pattern.Nodes = append(pattern.Nodes, *node)
-	inline := conditions
 
-	chains := element.AllOC_PatternElementChain()
-	if len(chains) > interfaces.CYPHER_MAX_PATH_LENGTH {
-		// Every relationship is a join. The row limit bounds what comes back,
-		// not what the database does to produce it, so the length of the path
-		// is bounded here instead.
-		return nil, nil, unsupportedf(ctx, "a path this long",
-			"a path may hold at most %d relationships, got %d",
-			interfaces.CYPHER_MAX_PATH_LENGTH, len(chains))
-	}
-	for i, chain := range chains {
+	for _, chain := range element.AllOC_PatternElementChain() {
 		edge, err := analyzeRelationship(chain.OC_RelationshipPattern())
 		if err != nil {
-			return nil, nil, err
+			return err
 		}
-		node, conditions, err := analyzeNode(chain.OC_NodePattern(), i+1)
+		right, err := b.addNode(chain.OC_NodePattern())
 		if err != nil {
-			return nil, nil, err
+			return err
 		}
-		pattern.Edges = append(pattern.Edges, *edge)
-		pattern.Nodes = append(pattern.Nodes, *node)
-		inline = append(inline, conditions...)
+		if len(b.pattern.Edges) >= interfaces.CYPHER_MAX_PATH_LENGTH {
+			// Every relationship is a join. The row limit bounds what comes
+			// back, not what the database does to produce it, so the number of
+			// relationships is bounded here instead.
+			return unsupportedf(chain, "a pattern this large",
+				"a pattern may hold at most %d relationships",
+				interfaces.CYPHER_MAX_PATH_LENGTH)
+		}
+		edge.Left, edge.Right = left, right
+		edge.Clause = b.clause
+		b.pattern.Edges = append(b.pattern.Edges, *edge)
+		left = right
 	}
-	return pattern, inline, nil
+	return nil
+}
+
+// addNode returns the index of the node this pattern position refers to. A
+// variable already seen names the node it named before -- that is how two
+// paths become one shape -- and a label written again there has to agree with
+// the one it was declared with.
+func (b *patternBuilder) addNode(ctx parsing.IOC_NodePatternContext) (int, error) {
+	node, conditions, err := analyzeNode(ctx, b.anonymous)
+	if err != nil {
+		return 0, err
+	}
+	if node.Anonymous {
+		b.anonymous++
+	}
+
+	if node.Variable != "" && !node.Anonymous {
+		if existing, seen := b.nodeOf[node.Variable]; seen {
+			declared := b.pattern.Nodes[existing]
+			if node.Label != "" && node.Label != declared.Label {
+				return 0, unsupportedf(ctx, "one variable with two labels",
+					"%q is already %q here", node.Variable, declared.Label)
+			}
+			b.inline = append(b.inline, conditions...)
+			return existing, nil
+		}
+	}
+	if node.Label == "" {
+		// A first mention has to say what it is: without a label there is no
+		// object type, and without an object type there is no table to read.
+		return 0, unsupportedf(ctx, "a node that names nothing",
+			"the first mention of a node must name its object type, as in (n:ObjectType)")
+	}
+
+	if len(b.pattern.Nodes) >= interfaces.CYPHER_MAX_PATTERN_NODES {
+		// Every node is a table. One that no relationship reaches is joined to
+		// the rest by nothing at all, so it multiplies the rows the database
+		// walks; an aggregate then leaves the trailing LIMIT with nothing to
+		// cut. The relationship bound above does not see those nodes, so the
+		// count of tables is bounded here.
+		return 0, unsupportedf(ctx, "a pattern this large",
+			"a pattern may name at most %d nodes",
+			interfaces.CYPHER_MAX_PATTERN_NODES)
+	}
+
+	index := len(b.pattern.Nodes)
+	b.pattern.Nodes = append(b.pattern.Nodes, *node)
+	if node.Variable != "" {
+		b.nodeOf[node.Variable] = index
+	}
+	b.inline = append(b.inline, conditions...)
+	return index, nil
 }
 
 func analyzeNode(ctx parsing.IOC_NodePatternContext, index int) (*NodeRef, []Predicate, error) {
@@ -207,10 +284,10 @@ func analyzeNode(ctx parsing.IOC_NodePatternContext, index int) (*NodeRef, []Pre
 
 	labels := ctx.OC_NodeLabels()
 	if labels == nil {
-		// Without a label there is no object type, and without an object type
-		// there is no table to read.
-		return nil, nil, unsupportedf(ctx, "nodes without a label",
-			"every node must name one object type, as in (n:ObjectType)")
+		// A node with no label may still be a second mention of one already
+		// declared; the builder decides, because only it knows what came
+		// before.
+		return node, conditions, nil
 	}
 	all := labels.AllOC_NodeLabel()
 	if len(all) != 1 {

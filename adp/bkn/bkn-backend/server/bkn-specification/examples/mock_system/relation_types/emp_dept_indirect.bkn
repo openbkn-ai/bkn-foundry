@@ -1,0 +1,35 @@
+---
+type: relation_type
+id: emp_dept_indirect
+name: 员工-部门（间接关联）
+tags: [example]
+---
+
+## RelationType: 员工-部门（间接关联）
+
+员工通过中间 Resource 的员工和部门字段关联部门。
+
+### Endpoint
+
+| Source | Target | Type |
+|--------|--------|------|
+| employee_resource | department_resource | indirect |
+
+### Backing Resource
+
+| Type | ID |
+|------|----|
+| resource | employee_department_mapping_resource |
+
+### Source Mapping
+
+| Source Property | Resource Property |
+|-----------------|-------------------|
+| employee_id | employee_id |
+
+### Target Mapping
+
+| Resource Property | Target Property |
+|-------------------|-----------------|
+| department_id | department_id |
+

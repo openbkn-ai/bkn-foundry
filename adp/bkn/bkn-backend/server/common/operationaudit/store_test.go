@@ -20,7 +20,7 @@ func TestRecordPersistsOneBoundedManagementFact(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new sql mock: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	store := NewStore(db, "MARIADB")
 	eventTime := time.Date(2026, 8, 13, 10, 0, 0, 0, time.UTC)
 
@@ -65,7 +65,7 @@ func TestRecordRejectsUnboundedOrUnregisteredFactsBeforeSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new sql mock: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	store := NewStore(db, "MARIADB")
 
 	for _, entry := range []Entry{
@@ -87,7 +87,7 @@ func TestListPushesNetworkAndKeysetScopeIntoSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new sql mock: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	store := NewStore(db, "MARIADB")
 	from := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
 	to := from.Add(7 * 24 * time.Hour)
@@ -122,7 +122,7 @@ func TestGetRequiresAuthorizedNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new sql mock: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	store := NewStore(db, "MARIADB")
 	eventTime := time.Date(2026, 8, 13, 10, 0, 0, 0, time.UTC)
 

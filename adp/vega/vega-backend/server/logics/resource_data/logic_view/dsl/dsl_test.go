@@ -24,8 +24,7 @@ func TestLogicViewDSLBuildDSL(t *testing.T) {
 		generator := NewlogicViewDSLGenerator(view)
 
 		got, err := generator.BuildDSL(context.Background(), interfaces.ResourceDataQueryParams{
-			Offset:    5,
-			Limit:     10,
+			Paging:    interfaces.PagingRequest{Offset: 5, Limit: 10},
 			NeedTotal: true,
 			Sort: []*interfaces.SortField{
 				{Field: "title", Direction: interfaces.ASC_DIRECTION},
@@ -54,7 +53,7 @@ func TestLogicViewDSLBuildDSL(t *testing.T) {
 		generator := NewlogicViewDSLGenerator(view)
 
 		got, err := generator.BuildDSL(context.Background(), interfaces.ResourceDataQueryParams{
-			Limit:     10,
+			Paging:    interfaces.PagingRequest{Limit: 10},
 			QueryType: interfaces.QueryType_Stream,
 			Sort: []*interfaces.SortField{
 				{Field: "_id", Direction: interfaces.ASC_DIRECTION},
@@ -74,8 +73,8 @@ func TestLogicViewDSLBuildDSL(t *testing.T) {
 		generator := NewlogicViewDSLGenerator(view)
 
 		got, err := generator.BuildDSL(context.Background(), interfaces.ResourceDataQueryParams{
-			Limit: 10,
-			Sort:  []*interfaces.SortField{{Field: "body", Direction: interfaces.ASC_DIRECTION}},
+			Paging: interfaces.PagingRequest{Limit: 10},
+			Sort:   []*interfaces.SortField{{Field: "body", Direction: interfaces.ASC_DIRECTION}},
 		}, view, map[string][]string{"resource-1": {"idx"}})
 
 		require.NoError(t, err)
@@ -91,8 +90,8 @@ func TestLogicViewDSLBuildDSL(t *testing.T) {
 		generator := NewlogicViewDSLGenerator(view)
 
 		got, err := generator.BuildDSL(context.Background(), interfaces.ResourceDataQueryParams{
-			Limit: 10,
-			Sort:  []*interfaces.SortField{{Field: "blob", Direction: interfaces.ASC_DIRECTION}},
+			Paging: interfaces.PagingRequest{Limit: 10},
+			Sort:   []*interfaces.SortField{{Field: "blob", Direction: interfaces.ASC_DIRECTION}},
 		}, view, map[string][]string{"resource-1": {"idx"}})
 
 		require.Error(t, err)

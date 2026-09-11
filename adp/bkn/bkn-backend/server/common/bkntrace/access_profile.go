@@ -128,7 +128,7 @@ func ResolveOperationAuditProfile(ctx context.Context, authorization, expectedAc
 			continue
 		}
 		for _, operation := range grant.Operations {
-			if operation == "modify" || operation == "authorize" || operation == "task_manage" {
+			if operation == "modify" || operation == "authorize" {
 				networks[grant.KnowledgeNetworkID] = struct{}{}
 				break
 			}
@@ -194,7 +194,7 @@ func getBknSafe(ctx context.Context, client *http.Client, url, authorization str
 	if err != nil {
 		return err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxBknSafeResponseBytes))
 		return fmt.Errorf("BKN Safe returned status %d", response.StatusCode)

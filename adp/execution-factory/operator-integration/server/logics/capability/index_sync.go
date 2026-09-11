@@ -35,7 +35,6 @@ const (
 	// flag and keys its "built-in" rendering off this tag.
 	internalCatalogTag = "internal"
 	// vegaMaxTags mirrors vega's TAGS_MAX_NUMBER; exceeding it fails the whole update with 400.
-	vegaMaxTags = 5
 
 	// ownerScanBatch bounds one page when reading an owner's documents back for deletion.
 	ownerScanBatch = 500

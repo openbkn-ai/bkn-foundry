@@ -110,8 +110,9 @@ paths:
         provides:
           box_id: data[0].box_id
       description: |
-        分页列出当前主体获授权访问的工具箱。`metadata_type` 过滤用于「函数工具工作台只列函数
-        工具箱」这类场景。
+        分页列出当前主体拥有 `view` 权限的工具箱。`metadata_type` 过滤用于「函数工具工作台
+        只列函数工具箱」这类场景。只有 `execute`、没有 `view` 的工具箱不会出现在顶层目录中；
+        已知其 ID 的运行时仍可读取具体工具元数据并执行。
 
         条目里的 `tools` 是**工具名字符串数组**，不是工具对象也不是 ID——要工具详情
         得再调 `GET /tool-box/{box_id}/tools/list`。
@@ -394,7 +395,10 @@ paths:
         - ToolBox
       summary: 查询工具详情
       operationId: getTool
-      description: 取单个工具的完整定义，含元数据、全局参数与使用规则。
+      description: |
+        取单个工具的完整定义，含元数据、全局参数与使用规则。该定义也是调用工具所需的运行时
+        输入，因此对所属工具箱拥有 `view`、`public_access` 或 `execute` 任一权限即可读取；
+        这不会让 execute-only 工具箱出现在顶层目录中。
       parameters:
         - $ref: '#/components/parameters/BoxID'
         - $ref: '#/components/parameters/ToolID'
@@ -407,6 +411,8 @@ paths:
                 $ref: '#/components/schemas/ToolInfo'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -456,7 +462,9 @@ paths:
       summary: 分页查询箱内工具
       operationId: listBoxTools
       description: |
-        列出工具箱里的工具。
+        列出工具箱里的工具。对已知工具箱拥有 `view`、`public_access` 或 `execute` 任一权限
+        即可读取，因为工具定义是执行时构造参数所需的元数据；顶层工具箱目录仍只按 `view`
+        过滤。
 
         **响应的数据字段叫 `tools` 不是 `data`**，还多一个 `box_id`——与本服务其他
         分页接口（含同模块的 `/tool-box/market/tools`）不一致，解析时注意。
@@ -514,6 +522,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -1067,6 +1077,12 @@ components:
             $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
     Unauthorized:
       description: 凭据缺失或无效
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+    Forbidden:
+      description: 当前主体缺少所需资源权限
       content:
         application/json:
           schema:

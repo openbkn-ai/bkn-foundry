@@ -97,6 +97,29 @@ func TestCatalogAccessListPermissionRefs(t *testing.T) {
 	})
 }
 
+func TestCatalogAccessListConnectorTypePermissionRefs(t *testing.T) {
+	t.Run("returns filtered connector type permission refs", func(t *testing.T) {
+		access, mock, cleanup := newCatalogAccessMock(t)
+		defer cleanup()
+
+		params := interfaces.CatalogsQueryParams{Name: "orders"}
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_type, f_connector_type FROM t_catalog WHERE f_name LIKE ?")).
+			WithArgs("%orders%").
+			WillReturnRows(sqlmock.NewRows([]string{"f_id", "f_type", "f_connector_type"}).
+				AddRow("logical-1", interfaces.CatalogTypeLogical, "").
+				AddRow("mysql-1", interfaces.CatalogTypePhysical, "mysql"))
+
+		got, err := access.ListConnectorTypePermissionRefs(context.Background(), params)
+
+		require.NoError(t, err)
+		assert.Equal(t, []interfaces.CatalogConnectorTypePermissionRef{
+			{CatalogID: "logical-1", CatalogType: interfaces.CatalogTypeLogical, ConnectorType: ""},
+			{CatalogID: "mysql-1", CatalogType: interfaces.CatalogTypePhysical, ConnectorType: "mysql"},
+		}, got)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
 func TestCatalogAccessListInternalIDs(t *testing.T) {
 	t.Run("returns internal catalog ids", func(t *testing.T) {
 		access, mock, cleanup := newCatalogAccessMock(t)

@@ -4,6 +4,7 @@
     {
       "id": "agent",
       "name": "数据智能体",
+      "_note": "Standalone authorization root. The operation vocabulary is compatibility-sensitive: use is the execution permission; system, built-in, and cross-owner operations remain explicit and are not part of the Community business bundle.",
       "operations": [
         {"id": "use", "name": "使用Agent"},
         {"id": "publish", "name": "发布Agent"},
@@ -21,6 +22,7 @@
     {
       "id": "agent_tpl",
       "name": "数据智能体模板",
+      "_note": "Standalone authorization root. Cross-owner template operations are explicit system/admin permissions and are excluded from the Community business bundle.",
       "operations": [
         {"id": "publish", "name": "发布Agent模板"},
         {"id": "unpublish", "name": "取消发布Agent模板"},
@@ -28,23 +30,10 @@
       ]
     },
     {
-      "id": "stream_data_pipeline",
-      "name": "流式数据管道",
-      "_source": "pipeline-mgmt",
-      "operations": [
-        {"id": "view_detail", "name": "查看详情"},
-        {"id": "create", "name": "创建"},
-        {"id": "modify", "name": "修改"},
-        {"id": "delete", "name": "删除"},
-        {"id": "authorize", "name": "授权"},
-        {"id": "query_data", "name": "数据查询"}
-      ]
-    },
-    {
       "id": "catalog",
       "name": "数据目录",
       "_source": "vega",
-      "_note": "create/modify/delete 只针对目录本身;管理目录下的数据表用 resource_manage;query_data 是「目录下的表默认可取数」,它能一次性放开整个目录的数据,界面上不要与 view_detail 捆绑勾选(#800 / #801)。resource_manage 是例外:它 implies view_detail,授出时自动带上,因为每条管理路由都先加载目标,而那一次加载判的就是 view_detail,只给 resource_manage 的授权谁也用不了(#1121)",
+      "_note": "create/modify/delete 只针对目录本身;管理目录下的数据表用 resource_manage;query_data 是「目录下的表默认可取数」,它能一次性放开整个目录的数据,界面上不要与 view_detail 捆绑勾选(#800 / #801)。resource_manage 是例外:它 requires view_detail,写入时自动补齐且运行时强制检查,因为每条管理路由都先加载目标,而那一次加载判的就是 view_detail,只给 resource_manage 的授权谁也用不了(#1121)",
       "operations": [
         {"id": "view_detail", "name": "查看详情"},
         {"id": "create", "name": "创建目录"},
@@ -52,7 +41,7 @@
         {"id": "delete", "name": "删除目录"},
         {"id": "authorize", "name": "授权"},
         {"id": "task_manage", "name": "任务管理"},
-        {"id": "resource_manage", "name": "管理目录下的数据表", "implies": ["view_detail"]},
+        {"id": "resource_manage", "name": "管理目录下的数据表", "requires": ["view_detail"]},
         {"id": "query_data", "name": "查询目录下的表数据"}
       ]
     },
@@ -74,25 +63,23 @@
       "operations": [
         {"id": "view_detail", "name": "查看详情"},
         {"id": "create", "name": "创建"},
-        {"id": "modify", "name": "修改"},
-        {"id": "delete", "name": "删除"},
-        {"id": "authorize", "name": "授权"},
-        {"id": "task_manage", "name": "任务管理"}
+        {"id": "modify", "name": "修改", "requires": ["view_detail"]},
+        {"id": "delete", "name": "删除", "requires": ["view_detail"]},
+        {"id": "authorize", "name": "授权", "requires": ["view_detail"]}
       ]
     },
     {
       "id": "knowledge_network",
       "name": "知识网络",
       "_source": "bkn",
-      "_note": "The knowledge network is the authorization root for its domain resources; child instances inherit through ResourceParent.",
+      "_note": "The knowledge network is the authorization root for its domain resources; child instances inherit through ResourceParent. authorize is only defined at this root.",
       "operations": [
         {"id": "view_detail", "name": "查看详情"},
         {"id": "create", "name": "创建"},
-        {"id": "modify", "name": "修改"},
-        {"id": "delete", "name": "删除"},
+        {"id": "modify", "name": "修改", "requires": ["view_detail"]},
+        {"id": "delete", "name": "删除", "requires": ["view_detail"]},
         {"id": "query_data", "name": "数据查询"},
-        {"id": "authorize", "name": "授权"},
-        {"id": "task_manage", "name": "任务管理"},
+        {"id": "authorize", "name": "授权", "requires": ["view_detail"]},
         {"id": "execute", "name": "执行"}
       ]
     },
@@ -103,10 +90,8 @@
       "parent_type": "knowledge_network",
       "operations": [
         {"id": "view_detail", "name": "View Details", "parent_operation": "view_detail"},
-        {"id": "modify", "name": "Modify", "parent_operation": "modify"},
-        {"id": "delete", "name": "Delete", "parent_operation": "modify"},
-        {"id": "authorize", "name": "Authorize", "parent_operation": "authorize"},
-        {"id": "task_manage", "name": "Manage Tasks", "parent_operation": "task_manage"}
+        {"id": "modify", "name": "Modify", "parent_operation": "modify", "requires": ["view_detail"]},
+        {"id": "delete", "name": "Delete", "parent_operation": "modify", "requires": ["view_detail"]}
       ]
     },
     {
@@ -117,10 +102,8 @@
       "operations": [
         {"id": "view_detail", "name": "View Details", "parent_operation": "view_detail"},
         {"id": "query_data", "name": "Query Data", "parent_operation": "query_data"},
-        {"id": "modify", "name": "Modify", "parent_operation": "modify"},
-        {"id": "delete", "name": "Delete", "parent_operation": "modify"},
-        {"id": "authorize", "name": "Authorize", "parent_operation": "authorize"},
-        {"id": "task_manage", "name": "Manage Tasks", "parent_operation": "task_manage"}
+        {"id": "modify", "name": "Modify", "parent_operation": "modify", "requires": ["view_detail"]},
+        {"id": "delete", "name": "Delete", "parent_operation": "modify", "requires": ["view_detail"]}
       ]
     },
     {
@@ -131,25 +114,21 @@
       "operations": [
         {"id": "view_detail", "name": "View Details", "parent_operation": "view_detail"},
         {"id": "query_data", "name": "Query Data", "parent_operation": "query_data"},
-        {"id": "modify", "name": "Modify", "parent_operation": "modify"},
-        {"id": "delete", "name": "Delete", "parent_operation": "modify"},
-        {"id": "authorize", "name": "Authorize", "parent_operation": "authorize"},
-        {"id": "task_manage", "name": "Manage Tasks", "parent_operation": "task_manage"}
+        {"id": "modify", "name": "Modify", "parent_operation": "modify", "requires": ["view_detail"]},
+        {"id": "delete", "name": "Delete", "parent_operation": "modify", "requires": ["view_detail"]}
       ]
     },
     {
       "id": "action_type",
       "name": "Action Type",
       "_source": "bkn",
-      "_note": "execute deliberately has no parent_operation and must be granted on a concrete Action Type instance",
+      "_note": "execute first evaluates the concrete Action Type and falls back to execute on its owning knowledge network when no direct rule exists",
       "parent_type": "knowledge_network",
       "operations": [
         {"id": "view_detail", "name": "View Details", "parent_operation": "view_detail"},
-        {"id": "modify", "name": "Modify", "parent_operation": "modify"},
-        {"id": "delete", "name": "Delete", "parent_operation": "modify"},
-        {"id": "authorize", "name": "Authorize", "parent_operation": "authorize"},
-        {"id": "task_manage", "name": "Manage Tasks", "parent_operation": "task_manage"},
-        {"id": "execute", "name": "Execute"}
+        {"id": "modify", "name": "Modify", "parent_operation": "modify", "requires": ["view_detail"]},
+        {"id": "delete", "name": "Delete", "parent_operation": "modify", "requires": ["view_detail"]},
+        {"id": "execute", "name": "Execute", "parent_operation": "execute"}
       ]
     },
     {
@@ -160,10 +139,8 @@
       "operations": [
         {"id": "view_detail", "name": "View Details", "parent_operation": "view_detail"},
         {"id": "query_data", "name": "Query Data", "parent_operation": "query_data"},
-        {"id": "modify", "name": "Modify", "parent_operation": "modify"},
-        {"id": "delete", "name": "Delete", "parent_operation": "modify"},
-        {"id": "authorize", "name": "Authorize", "parent_operation": "authorize"},
-        {"id": "task_manage", "name": "Manage Tasks", "parent_operation": "task_manage"}
+        {"id": "modify", "name": "Modify", "parent_operation": "modify", "requires": ["view_detail"]},
+        {"id": "delete", "name": "Delete", "parent_operation": "modify", "requires": ["view_detail"]}
       ]
     },
     {
@@ -173,10 +150,8 @@
       "parent_type": "knowledge_network",
       "operations": [
         {"id": "view_detail", "name": "View Details", "parent_operation": "view_detail"},
-        {"id": "modify", "name": "Modify", "parent_operation": "modify"},
-        {"id": "delete", "name": "Delete", "parent_operation": "modify"},
-        {"id": "authorize", "name": "Authorize", "parent_operation": "authorize"},
-        {"id": "task_manage", "name": "Manage Tasks", "parent_operation": "task_manage"}
+        {"id": "modify", "name": "Modify", "parent_operation": "modify", "requires": ["view_detail"]},
+        {"id": "delete", "name": "Delete", "parent_operation": "modify", "requires": ["view_detail"]}
       ]
     },
     {
@@ -185,12 +160,12 @@
       "_source": "execution-factory",
       "operations": [
         {"id": "create", "name": "创建"},
-        {"id": "modify", "name": "修改"},
-        {"id": "delete", "name": "删除"},
+        {"id": "modify", "name": "修改", "requires": ["view"]},
+        {"id": "delete", "name": "删除", "requires": ["view"]},
         {"id": "view", "name": "查看"},
-        {"id": "publish", "name": "发布"},
-        {"id": "unpublish", "name": "取消发布"},
-        {"id": "authorize", "name": "授权"},
+        {"id": "publish", "name": "发布", "requires": ["view"]},
+        {"id": "unpublish", "name": "取消发布", "requires": ["view"]},
+        {"id": "authorize", "name": "授权", "requires": ["view"]},
         {"id": "public_access", "name": "公共访问"},
         {"id": "execute", "name": "执行"}
       ]
@@ -201,12 +176,12 @@
       "_source": "execution-factory",
       "operations": [
         {"id": "create", "name": "创建"},
-        {"id": "modify", "name": "修改"},
-        {"id": "delete", "name": "删除"},
+        {"id": "modify", "name": "修改", "requires": ["view"]},
+        {"id": "delete", "name": "删除", "requires": ["view"]},
         {"id": "view", "name": "查看"},
-        {"id": "publish", "name": "发布"},
-        {"id": "unpublish", "name": "取消发布"},
-        {"id": "authorize", "name": "授权"},
+        {"id": "publish", "name": "发布", "requires": ["view"]},
+        {"id": "unpublish", "name": "取消发布", "requires": ["view"]},
+        {"id": "authorize", "name": "授权", "requires": ["view"]},
         {"id": "public_access", "name": "公共访问"},
         {"id": "execute", "name": "执行"}
       ]
@@ -217,12 +192,12 @@
       "_source": "execution-factory + flow-automation (ops 取并集; flow-automation 仅用 execute)",
       "operations": [
         {"id": "create", "name": "创建"},
-        {"id": "modify", "name": "修改"},
-        {"id": "delete", "name": "删除"},
+        {"id": "modify", "name": "修改", "requires": ["view"]},
+        {"id": "delete", "name": "删除", "requires": ["view"]},
         {"id": "view", "name": "查看"},
-        {"id": "publish", "name": "发布"},
-        {"id": "unpublish", "name": "取消发布"},
-        {"id": "authorize", "name": "授权"},
+        {"id": "publish", "name": "发布", "requires": ["view"]},
+        {"id": "unpublish", "name": "取消发布", "requires": ["view"]},
+        {"id": "authorize", "name": "授权", "requires": ["view"]},
         {"id": "public_access", "name": "公共访问"},
         {"id": "execute", "name": "执行"}
       ]
@@ -233,12 +208,12 @@
       "_source": "execution-factory",
       "operations": [
         {"id": "create", "name": "创建"},
-        {"id": "modify", "name": "修改"},
-        {"id": "delete", "name": "删除"},
+        {"id": "modify", "name": "修改", "requires": ["view"]},
+        {"id": "delete", "name": "删除", "requires": ["view"]},
         {"id": "view", "name": "查看"},
-        {"id": "publish", "name": "发布"},
-        {"id": "unpublish", "name": "取消发布"},
-        {"id": "authorize", "name": "授权"},
+        {"id": "publish", "name": "发布", "requires": ["view"]},
+        {"id": "unpublish", "name": "取消发布", "requires": ["view"]},
+        {"id": "authorize", "name": "授权", "requires": ["view"]},
         {"id": "public_access", "name": "公共访问"},
         {"id": "execute", "name": "执行"}
       ]
@@ -246,24 +221,24 @@
     {
       "id": "small_model",
       "name": "小模型",
-      "_source": "mf-model-manager (app/utils/permission_manager.py)",
+      "_source": "mf-model-manager + mf-model-api",
       "operations": [
         {"id": "create", "name": "创建"},
         {"id": "display", "name": "查看"},
-        {"id": "modify", "name": "修改"},
-        {"id": "delete", "name": "删除"},
+        {"id": "modify", "name": "修改", "requires": ["display"]},
+        {"id": "delete", "name": "删除", "requires": ["display"]},
         {"id": "execute", "name": "调用/执行"}
       ]
     },
     {
       "id": "large_model",
       "name": "大模型",
-      "_source": "mf-model-manager (LLM); object-grant 词表项 — enforce 仍需 mf-model-manager 接 /authz/check 才生效",
+      "_source": "mf-model-manager + mf-model-api",
       "operations": [
         {"id": "create", "name": "创建"},
         {"id": "display", "name": "查看"},
-        {"id": "modify", "name": "修改"},
-        {"id": "delete", "name": "删除"},
+        {"id": "modify", "name": "修改", "requires": ["display"]},
+        {"id": "delete", "name": "删除", "requires": ["display"]},
         {"id": "execute", "name": "调用/执行"}
       ]
     },

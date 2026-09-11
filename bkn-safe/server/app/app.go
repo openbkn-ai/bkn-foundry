@@ -37,6 +37,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authzgate"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/httpapi"
@@ -60,6 +61,10 @@ type App struct {
 	enforcer *authz.Enforcer
 	deps     httpapi.Deps
 	licSvc   *license.Service
+	// freshAuthorizationStore is captured before AutoMigrate creates the
+	// Casbin/marker schema. An old but empty store must still run the explicit
+	// offline migration and therefore is never inferred as fresh later.
+	freshAuthorizationStore bool
 }
 
 // Boot brings up config, database, authz, the license hub, and the license
@@ -84,6 +89,7 @@ func Boot(opts Options) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
+	freshAuthorizationStore := authzgate.IsFreshAuthorizationStore(db)
 	if err := database.Migrate(db); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
@@ -146,10 +152,11 @@ func Boot(opts Options) (*App, error) {
 	}
 
 	return &App{
-		cfg:      cfg,
-		db:       db,
-		enforcer: enforcer,
-		licSvc:   licSvc,
+		cfg:                     cfg,
+		db:                      db,
+		enforcer:                enforcer,
+		licSvc:                  licSvc,
+		freshAuthorizationStore: freshAuthorizationStore,
 		deps: httpapi.Deps{
 			Enforcer:  enforcer,
 			DB:        db,
@@ -176,10 +183,24 @@ func (a *App) Addr() string { return a.cfg.HTTPAddr }
 // Run closes the extension registry and serves until the listener fails.
 // Registering an extension after this point panics, by design.
 func (a *App) Run() error {
+	// Enterprise Setup calls happen between Boot and Run. Checking here lets a
+	// fresh Enterprise install record present_empty after its private table has
+	// been created, while an upgraded store still needs the offline marker before
+	// any listener can accept traffic.
+	if err := a.ensureAuthorizationMigrationReady(context.Background()); err != nil {
+		return fmt.Errorf("authorization migration gate: %w", err)
+	}
 	entitlement.Freeze()
 	slog.Info("extensions assembled", "assembled", entitlement.Assembled())
 
 	r := httpapi.New(a.deps)
 	slog.Info("bkn-safe listening", "addr", a.cfg.HTTPAddr)
 	return r.Run(a.cfg.HTTPAddr)
+}
+
+func (a *App) ensureAuthorizationMigrationReady(ctx context.Context) error {
+	if err := authzgate.SeedFreshInstallMarker(ctx, a.db, a.freshAuthorizationStore); err != nil {
+		return err
+	}
+	return authzgate.VerifyCurrentMarker(ctx, a.db)
 }

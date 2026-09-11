@@ -146,7 +146,7 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 
 	t.Run("detail query quotes every column and the table", func(t *testing.T) {
 		builder, err := connector.buildSelectBuilder(resource,
-			&interfaces.ResourceDataQueryParams{Limit: 10}, fieldMap, nil)
+			&interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 10}}, fieldMap, nil)
 		require.NoError(t, err)
 
 		sql, _, err := builder.ToSql()
@@ -158,7 +158,10 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 
 	t.Run("output_fields resolve to quoted original names", func(t *testing.T) {
 		builder, err := connector.buildSelectBuilder(resource,
-			&interfaces.ResourceDataQueryParams{OutputFields: []string{"key", "created"}, Limit: 5}, fieldMap, nil)
+			&interfaces.ResourceDataQueryParams{
+				OutputFields: []string{"key", "created"},
+				Paging:       interfaces.PagingRequest{Limit: 5},
+			}, fieldMap, nil)
 		require.NoError(t, err)
 
 		sql, _, err := builder.ToSql()
@@ -170,7 +173,7 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 		builder, err := connector.buildSelectBuilder(resource, &interfaces.ResourceDataQueryParams{
 			OutputFields: []string{"id"},
 			Sort:         []*interfaces.SortField{{Field: "created", Direction: interfaces.DESC_DIRECTION}},
-			Limit:        5,
+			Paging:       interfaces.PagingRequest{Limit: 5},
 		}, fieldMap, nil)
 		require.NoError(t, err)
 
@@ -199,7 +202,7 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 		builder, err := connector.buildSelectBuilder(schemaless, &interfaces.ResourceDataQueryParams{
 			OutputFields: []string{"content_vector"},
 			Sort:         []*interfaces.SortField{{Field: "content_vector", Direction: interfaces.DESC_DIRECTION}},
-			Limit:        5,
+			Paging:       interfaces.PagingRequest{Limit: 5},
 		}, schemalessFields, nil)
 		require.NoError(t, err)
 
@@ -225,7 +228,7 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 		}
 
 		builder, err := connector.buildSelectBuilder(schemaless,
-			&interfaces.ResourceDataQueryParams{Limit: 10}, schemalessFields, nil)
+			&interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 10}}, schemalessFields, nil)
 		require.NoError(t, err)
 
 		sql, _, err := builder.ToSql()
@@ -239,7 +242,7 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 		builder, err := connector.buildSelectBuilder(resource, &interfaces.ResourceDataQueryParams{
 			GroupBy:     []*interfaces.GroupByItem{{Property: "key"}},
 			Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count", Alias: "cnt"},
-			Limit:       20,
+			Paging:      interfaces.PagingRequest{Limit: 20},
 		}, fieldMap, nil)
 		require.NoError(t, err)
 
@@ -256,7 +259,7 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 			GroupBy:     []*interfaces.GroupByItem{{Property: "key"}},
 			Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count", Alias: "created"},
 			Sort:        []*interfaces.SortField{{Field: "created", Direction: interfaces.DESC_DIRECTION}},
-			Limit:       20,
+			Paging:      interfaces.PagingRequest{Limit: 20},
 		}, fieldMap, nil)
 		require.NoError(t, err)
 
@@ -268,12 +271,12 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 			sql)
 	})
 
-	t.Run("output_fields already selected as an alias are not duplicated", func(t *testing.T) {
+	t.Run("aggregate output_fields do not alter the grouped and aggregate projection", func(t *testing.T) {
 		builder, err := connector.buildSelectBuilder(resource, &interfaces.ResourceDataQueryParams{
 			GroupBy:      []*interfaces.GroupByItem{{Property: "key"}},
 			Aggregation:  &interfaces.Aggregation{Property: "id", Aggr: "count", Alias: "cnt"},
-			OutputFields: []string{"key", "cnt"},
-			Limit:        20,
+			OutputFields: []string{"key", "cnt", "created"},
+			Paging:       interfaces.PagingRequest{Limit: 20},
 		}, fieldMap, nil)
 		require.NoError(t, err)
 
@@ -284,10 +287,25 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 			sql)
 	})
 
+	t.Run("count star having output_fields do not alter the aggregate projection", func(t *testing.T) {
+		builder, err := connector.buildSelectBuilder(resource, &interfaces.ResourceDataQueryParams{
+			Having:       &interfaces.HavingClause{Field: "count(*)", Operation: ">=", Value: 3},
+			OutputFields: []string{"created"},
+			Paging:       interfaces.PagingRequest{Limit: 20},
+		}, fieldMap, nil)
+		require.NoError(t, err)
+
+		sql, _, err := builder.ToSql()
+		require.NoError(t, err)
+		assert.Equal(t,
+			"SELECT COUNT(*) AS `__value` FROM `yanfeng_kb`.`fact` HAVING COUNT(*) >= 3 LIMIT 20 OFFSET 0",
+			sql)
+	})
+
 	t.Run("calendar interval keeps the date_format expression over a quoted column", func(t *testing.T) {
 		builder, err := connector.buildSelectBuilder(resource, &interfaces.ResourceDataQueryParams{
 			GroupBy: []*interfaces.GroupByItem{{Property: "created", CalendarInterval: interfaces.CALENDAR_UNIT_DAY}},
-			Limit:   20,
+			Paging:  interfaces.PagingRequest{Limit: 20},
 		}, fieldMap, nil)
 		require.NoError(t, err)
 

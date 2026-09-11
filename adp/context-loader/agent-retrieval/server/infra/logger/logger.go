@@ -74,7 +74,7 @@ func (l *SimpleLogger) WithContext(ctx context.Context) interfaces.Logger { //no
 	return l
 }
 
-// Output.
+// Output writes a log entry.
 func (l *SimpleLogger) Output(calldepth int, s string) error {
 	return log.Output(calldepth, s)
 }

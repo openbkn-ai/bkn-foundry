@@ -30,7 +30,7 @@ var knownObjectTypeSections = map[string]bool{
 var knownRelationTypeSections = map[string]bool{
 	"Endpoint":         true,
 	"Mapping Rules":    true,
-	"Mapping View":     true,
+	"Backing Resource": true,
 	"Source Mapping":   true,
 	"Target Mapping":   true,
 	"Source Condition": true,
@@ -585,6 +585,36 @@ func ParseRelationTypeFile(text string, sourcePath string) (*BknRelationType, er
 			}
 			rel.MappingRules = DirectMappingRule(rules)
 		}
+	case RELATION_MAPPING_TYPE_INDIRECT:
+		indirect := &InDirectMappingRule{}
+		if s, ok := sections["Backing Resource"]; ok {
+			rows := parseTable(strings.Split(s, "\n"))
+			if len(rows) > 0 {
+				indirect.BackingDataSource = &ResourceInfo{
+					Type: rows[0]["Type"],
+					ID:   rows[0]["ID"],
+				}
+			}
+		}
+		if s, ok := sections["Source Mapping"]; ok {
+			rows := parseTable(strings.Split(s, "\n"))
+			for _, row := range rows {
+				sp, rp := row["Source Property"], row["Resource Property"]
+				if sp != "" || rp != "" {
+					indirect.SourceMappingRules = append(indirect.SourceMappingRules, MappingRule{SourceProperty: sp, TargetProperty: rp})
+				}
+			}
+		}
+		if s, ok := sections["Target Mapping"]; ok {
+			rows := parseTable(strings.Split(s, "\n"))
+			for _, row := range rows {
+				rp, tp := row["Resource Property"], row["Target Property"]
+				if rp != "" || tp != "" {
+					indirect.TargetMappingRules = append(indirect.TargetMappingRules, MappingRule{SourceProperty: rp, TargetProperty: tp})
+				}
+			}
+		}
+		rel.MappingRules = indirect
 	case RELATION_MAPPING_TYPE_FILTERED_CROSS_JOIN:
 		mapping := &FilteredCrossJoinMapping{}
 		if s, ok := sections["Source Condition"]; ok {

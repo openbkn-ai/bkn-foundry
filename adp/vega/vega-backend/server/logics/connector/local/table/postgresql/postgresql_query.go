@@ -139,6 +139,9 @@ func (c *PostgresqlConnector) ExecuteRawSQL(ctx context.Context, sql string) (*i
 // ExecuteQuery performs single-table queries.
 func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+	if params.Paging.Offset < 0 || params.Paging.Limit < 0 {
+		return nil, fmt.Errorf("paging offset and limit must not be negative")
+	}
 
 	if err := c.Connect(ctx); err != nil {
 		return nil, err
@@ -304,9 +307,9 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 
 	// Add LIMIT and OFFSET
 	if params.CursorEncoded == "" {
-		builder = builder.Offset(uint64(params.Offset))
+		builder = builder.Offset(uint64(params.Paging.Offset))
 	}
-	builder = builder.Limit(uint64(params.Limit))
+	builder = builder.Limit(uint64(params.Paging.Limit))
 
 	// Build SQL and execute it
 	query, args, err := builder.ToSql()

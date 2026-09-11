@@ -193,6 +193,7 @@ func (c *OperatorIntegrationClient) RegisterSkill(
 	}
 	mimeType := payload.MimeType
 	if mimeType == "" {
+		//nolint:ineffassign // Retained for multipart MIME-type support.
 		mimeType = "application/octet-stream"
 	}
 
@@ -224,7 +225,7 @@ func (c *OperatorIntegrationClient) RegisterSkill(
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	payloadBytes, err := io.ReadAll(res.Body)
 	if err != nil {

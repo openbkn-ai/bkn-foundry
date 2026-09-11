@@ -23,6 +23,49 @@ servers:
   - url: /api/vega-backend/in/v1
 security: []
 paths:
+  /resources/{id}/schema:
+    get:
+      summary: Read a resource schema for strict dependency validation
+      description: |
+        Cluster-internal endpoint used by bkn-backend after it derives a binding target from the
+        candidate model. The caller identity is the effective delegator returned by bkn-safe
+        preflight. Vega rechecks exactly the requested `view_detail` or `query_data` operation and
+        returns only the resource identity, name, and schema. It does not expose the unrestricted
+        internal resource detail API.
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+        - name: operation
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [view_detail, query_data]
+        - name: X-Account-ID
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-Account-Type
+          in: header
+          required: true
+          schema:
+            type: string
+            const: user
+      responses:
+        "200":
+          description: The operation-authorized resource schema
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DependencySchemaResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
   /proxy/resources/{id}/schema:
     get:
       summary: Read the minimal schema for a proxied resource
@@ -261,6 +304,18 @@ components:
       type: object
       required: [schema_definition]
       properties:
+        schema_definition:
+          type: array
+          items:
+            $ref: "resource.yaml#/components/schemas/Property"
+    DependencySchemaResponse:
+      type: object
+      required: [id, name, schema_definition]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
         schema_definition:
           type: array
           items:

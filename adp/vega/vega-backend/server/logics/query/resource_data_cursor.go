@@ -31,7 +31,7 @@ func ExecuteInitialResourceDataCursorWithCategory(ctx context.Context, accountID
 		return nil, cursorSessionLimitError(ctx)
 	}
 	session.ResourceDataCategory = paginationCategory
-	session.Offset = params.Paging.Offset
+	session.PageOffset = params.Paging.Offset
 	session.Lock()
 	defer session.Unlock()
 	result, err := executeResourceDataCursorPage(ctx, session, execute)
@@ -68,15 +68,17 @@ func ExecuteResourceDataCursorContinuation(ctx context.Context, accountID string
 func executeResourceDataCursorPage(ctx context.Context, session *interfaces.CursorSession,
 	execute ResourceDataPageExecutor) (*interfaces.ResourceDataQueryResult, error) {
 	params := cloneResourceDataQueryParams(session.ResourceDataParams)
-	params.Offset = session.Offset
 	params.NeedTotal = session.ResourceDataParams.NeedTotal && !session.HasTotalCount
-	params.Limit = session.Limit + 1
+	params.Paging = interfaces.PagingRequest{
+		Mode:   interfaces.PagingModeSingle,
+		Offset: session.PageOffset,
+		Limit:  session.PageLimit + 1,
+	}
 	if session.ResourceDataCategory == interfaces.ResourceCategoryIndex {
 		// OpenSearch uses search_after and must not request limit+1: size plus
 		// the first-page offset can otherwise exceed max_result_window.
-		params.Limit = session.Limit
+		params.Paging.Limit = session.PageLimit
 	}
-	params.Paging = interfaces.PagingRequest{}
 	params.SearchAfter = append([]any(nil), session.SearchAfter...)
 	entries, total, err := execute(ctx, params)
 	if err != nil {
@@ -90,13 +92,13 @@ func executeResourceDataCursorPage(ctx context.Context, session *interfaces.Curs
 	if session.HasTotalCount {
 		responseTotal = session.TotalCount
 	}
-	hasNext := len(entries) > session.Limit
+	hasNext := len(entries) > session.PageLimit
 	if session.ResourceDataCategory == interfaces.ResourceCategoryIndex {
 		if session.HasTotalCount {
-			hasNext = len(entries) == session.Limit &&
-				int64(session.Offset+len(entries)) < session.TotalCount && len(params.SearchAfter) > 0
+			hasNext = len(entries) == session.PageLimit &&
+				int64(session.PageOffset+len(entries)) < session.TotalCount && len(params.SearchAfter) > 0
 		} else {
-			hasNext = len(entries) == session.Limit && len(params.SearchAfter) > 0
+			hasNext = len(entries) == session.PageLimit && len(params.SearchAfter) > 0
 		}
 	}
 	if !hasNext {
@@ -104,9 +106,9 @@ func executeResourceDataCursorPage(ctx context.Context, session *interfaces.Curs
 		return &interfaces.ResourceDataQueryResult{Entries: entries, TotalCount: responseTotal, Paging: &interfaces.PagingResponse{}, NeedTotal: session.ResourceDataParams.NeedTotal}, nil
 	}
 	if session.ResourceDataCategory != interfaces.ResourceCategoryIndex {
-		entries = entries[:session.Limit]
+		entries = entries[:session.PageLimit]
 	}
-	session.Offset += len(entries)
+	session.PageOffset += len(entries)
 	if len(params.SearchAfter) > 0 {
 		session.SearchAfter = append([]any(nil), params.SearchAfter...)
 	}

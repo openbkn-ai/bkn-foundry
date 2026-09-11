@@ -243,13 +243,12 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 			if err != nil {
 				logger.Errorf("CreateObjectTypes error: %s", err.Error())
 				span.SetStatus(codes.Error, "创建对象类失败")
-				return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_ConceptGroup_InternalError_CreateObjectTypesFailed).
-					WithErrorDetails(err.Error())
+				return "", logics.PreserveHTTPError(ctx, err,
+					berrors.BknBackend_ConceptGroup_InternalError_CreateObjectTypesFailed)
 			}
 
 			// Import path: process group-to-concept relationships.
-			_, err = cgs.AddObjectTypesToConceptGroup(ctx, tx, conceptGroup.KNID, conceptGroup.Branch, conceptGroup.CGID, otIDs, mode, strictMode)
+			_, err = cgs.addObjectTypesToConceptGroup(ctx, tx, conceptGroup.KNID, conceptGroup.Branch, conceptGroup.CGID, otIDs, mode, strictMode)
 			if err != nil {
 				logger.Errorf("AddObjectTypesToConceptGroup error: %s", err.Error())
 				span.SetStatus(codes.Error, "创建概念分组与对象类的关系失败")
@@ -264,9 +263,8 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 			if err != nil {
 				logger.Errorf("CreateRelationTypes error: %s", err.Error())
 				span.SetStatus(codes.Error, "创建关系类失败")
-				return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_ConceptGroup_InternalError_CreateRelationTypesFailed).
-					WithErrorDetails(err.Error())
+				return "", logics.PreserveHTTPError(ctx, err,
+					berrors.BknBackend_ConceptGroup_InternalError_CreateRelationTypesFailed)
 			}
 		}
 
@@ -275,9 +273,8 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 			if err != nil {
 				logger.Errorf("CreateActionTypes error: %s", err.Error())
 				span.SetStatus(codes.Error, "创建概念分组动作类失败")
-				return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_ConceptGroup_InternalError_CreateActionTypesFailed).
-					WithErrorDetails(err.Error())
+				return "", logics.PreserveHTTPError(ctx, err,
+					berrors.BknBackend_ConceptGroup_InternalError_CreateActionTypesFailed)
 			}
 		}
 	}
@@ -299,13 +296,12 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 			if err != nil {
 				logger.Errorf("CreateObjectTypes error: %s", err.Error())
 				span.SetStatus(codes.Error, "创建对象类失败")
-				return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_ConceptGroup_InternalError_CreateObjectTypesFailed).
-					WithErrorDetails(err.Error())
+				return "", logics.PreserveHTTPError(ctx, err,
+					berrors.BknBackend_ConceptGroup_InternalError_CreateObjectTypesFailed)
 			}
 			// Import path: create only relationships between this group and current object types.
 			// Updating groups requires full synchronization.
-			_, err = cgs.AddObjectTypesToConceptGroup(ctx, tx, conceptGroup.KNID, conceptGroup.Branch, conceptGroup.CGID, otIDs, mode, strictMode)
+			_, err = cgs.addObjectTypesToConceptGroup(ctx, tx, conceptGroup.KNID, conceptGroup.Branch, conceptGroup.CGID, otIDs, mode, strictMode)
 			if err != nil {
 				logger.Errorf("AddObjectTypesToConceptGroup error: %s", err.Error())
 				span.SetStatus(codes.Error, "创建概念分组与对象类的关系失败")
@@ -320,9 +316,8 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 			if err != nil {
 				logger.Errorf("CreateRelationTypes error: %s", err.Error())
 				span.SetStatus(codes.Error, "创建关系类失败")
-				return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_ConceptGroup_InternalError_CreateRelationTypesFailed).
-					WithErrorDetails(err.Error())
+				return "", logics.PreserveHTTPError(ctx, err,
+					berrors.BknBackend_ConceptGroup_InternalError_CreateRelationTypesFailed)
 			}
 		}
 
@@ -331,9 +326,8 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 			if err != nil {
 				logger.Errorf("CreateActionTypes error: %s", err.Error())
 				span.SetStatus(codes.Error, "创建动作类失败")
-				return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_ConceptGroup_InternalError_CreateActionTypesFailed).
-					WithErrorDetails(err.Error())
+				return "", logics.PreserveHTTPError(ctx, err,
+					berrors.BknBackend_ConceptGroup_InternalError_CreateActionTypesFailed)
 			}
 		}
 	}
@@ -354,7 +348,8 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 	return conceptGroup.CGID, nil
 }
 
-// ValidateConceptGroups checks concept-group dependency existence only; does not write to the database.
+// ValidateConceptGroups authorizes the validation request and checks dependency
+// existence without writing to the database.
 func (cgs *conceptGroupService) ValidateConceptGroups(ctx context.Context, knID string, branch string,
 	conceptGroups []*interfaces.ConceptGroup, strictMode bool, parentBatch *interfaces.BatchIDIndex, mode string) error {
 
@@ -373,6 +368,20 @@ func (cgs *conceptGroupService) ValidateConceptGroups(ctx context.Context, knID 
 	if err != nil {
 		return err
 	}
+
+	return cgs.validateConceptGroupDependencies(ctx, knID, branch, conceptGroups, strictMode, parentBatch, mode)
+}
+
+// validateConceptGroupDependencies is the authorization-free dependency check
+// used after the enclosing write path has authorized its canonical target.
+func (cgs *conceptGroupService) validateConceptGroupDependencies(ctx context.Context, knID string, branch string,
+	conceptGroups []*interfaces.ConceptGroup, strictMode bool, parentBatch *interfaces.BatchIDIndex, mode string) error {
+
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "validateConceptGroupDependencies")
+	defer span.End()
+
+	var err error
+	ctx = permission.WithDependencyValidationPermissionPrechecked(ctx)
 
 	effectiveBatch := parentBatch
 	if effectiveBatch == nil {
@@ -708,7 +717,7 @@ func (cgs *conceptGroupService) UpdateConceptGroup(ctx context.Context, tx *sql.
 	}
 
 	if strictMode {
-		if err := cgs.ValidateConceptGroups(ctx, conceptGroup.KNID, conceptGroup.Branch,
+		if err := cgs.validateConceptGroupDependencies(ctx, conceptGroup.KNID, conceptGroup.Branch,
 			[]*interfaces.ConceptGroup{conceptGroup}, strictMode, nil, interfaces.ImportMode_Overwrite); err != nil {
 			return err
 		}
@@ -1152,6 +1161,18 @@ func (cgs *conceptGroupService) InsertDatasetData(ctx context.Context, origConce
 // Add object types to the specified concept group.
 func (cgs *conceptGroupService) AddObjectTypesToConceptGroup(ctx context.Context, tx *sql.Tx, knID string, branch string,
 	cgID string, otIDs []interfaces.ID, importMode string, strictMode bool) ([]string, error) {
+	if err := permission.ValidateKNChildAuthorizationIDs(ctx, knID, []string{cgID}); err != nil {
+		return nil, err
+	}
+	resource := interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_CONCEPT_GROUP, knID, cgID)
+	if err := cgs.ps.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_MODIFY}); err != nil {
+		return nil, err
+	}
+	return cgs.addObjectTypesToConceptGroup(ctx, tx, knID, branch, cgID, otIDs, importMode, strictMode)
+}
+
+func (cgs *conceptGroupService) addObjectTypesToConceptGroup(ctx context.Context, tx *sql.Tx, knID string, branch string,
+	cgID string, otIDs []interfaces.ID, importMode string, strictMode bool) ([]string, error) {
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "添加对象类到概念分组中")
 	defer span.End()
@@ -1317,11 +1338,29 @@ func (cgs *conceptGroupService) ListConceptGroupRelations(ctx context.Context,
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "查询概念与分组的关系列表")
 	defer span.End()
 
-	// Check whether the user ID can view the business knowledge network.
-	err := cgs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   query.KNID,
-	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
+	var err error
+	if len(query.CGIDs) == 0 {
+		err = cgs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: interfaces.RESOURCE_TYPE_KN,
+			ID:   query.KNID,
+		}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
+	} else {
+		if err = permission.ValidateKNChildAuthorizationIDs(ctx, query.KNID, query.CGIDs); err == nil {
+			checked := make(map[string]struct{}, len(query.CGIDs))
+			for _, cgID := range query.CGIDs {
+				if _, ok := checked[cgID]; ok {
+					continue
+				}
+				checked[cgID] = struct{}{}
+				resource := interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
+					query.KNID, cgID)
+				if err = cgs.ps.CheckPermission(ctx, resource,
+					[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
+					break
+				}
+			}
+		}
+	}
 	if err != nil {
 		return []interfaces.ConceptGroupRelation{}, err
 	}
@@ -1396,11 +1435,11 @@ func (cgs *conceptGroupService) DeleteObjectTypesFromGroup(ctx context.Context, 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete concept group relations")
 	defer span.End()
 
-	// Check whether the user ID can modify the business knowledge network.
-	err := cgs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   knID,
-	}, []string{interfaces.OPERATION_TYPE_MODIFY})
+	if err := permission.ValidateKNChildAuthorizationIDs(ctx, knID, []string{cgID}); err != nil {
+		return err
+	}
+	resource := interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_CONCEPT_GROUP, knID, cgID)
+	err := cgs.ps.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_MODIFY})
 	if err != nil {
 		return err
 	}

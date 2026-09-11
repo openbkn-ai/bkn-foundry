@@ -64,7 +64,7 @@ Display Key: pod_name
 
 | Type | ID | Name |
 |------|-----|------|
-| data_view | pod_info_view | pod_info_view |
+| resource | pod_info_resource | pod_info_resource |
 ```
 
 Heading levels are fixed: `#` for network title, `##` for type definitions (`ObjectType:` / `RelationType:` / `ActionType:`), `###` for sections within a type (Data Properties, Keys, Endpoint, etc.).

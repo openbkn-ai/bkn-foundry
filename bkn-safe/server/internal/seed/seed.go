@@ -54,6 +54,17 @@ var deprecatedSeedRoleIDs = []string{
 	"3fb94948-5169-11f0-b662-3a7bdba2913f", // AI administrator
 }
 
+var withdrawnResourceTypes = []string{
+	"stream_data_pipeline",
+}
+
+var withdrawnOperations = []struct {
+	resourceType string
+	operation    string
+}{
+	{"connector_type", "task_manage"},
+}
+
 const normalUserRoleID = "b5f9ac3e-992c-4bbd-8126-95e87e51c46e"
 
 // AdminUserID is the built-in admin user's id, exported so callers can protect
@@ -99,10 +110,10 @@ type catalogOperation struct {
 	// ParentOperation is the operation checked on the parent instance when this
 	// one is not granted on the instance itself. Empty = no inheritance.
 	ParentOperation string `json:"parent_operation"`
-	// Implies lists operations on the SAME type that are granted along with this
-	// one and cannot be taken away while it is held (#1121). Empty for almost
-	// every operation; see model.Operation.ImpliedOperationIDs.
-	Implies []string `json:"implies"`
+	// Requires lists direct prerequisites on the SAME type. They are enforced at
+	// runtime and normalized into allow writes. The first version permits one
+	// layer only; a required operation may not declare its own requirements.
+	Requires []string `json:"requires"`
 }
 
 type grantsFile struct {
@@ -127,6 +138,12 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 	if err := seedRoles(db); err != nil {
 		return fmt.Errorf("seed roles: %w", err)
 	}
+	if err := reconcileWithdrawnResourceTypes(enforcer); err != nil {
+		return fmt.Errorf("reconcile withdrawn resource types: %w", err)
+	}
+	if err := reconcileWithdrawnOperations(enforcer); err != nil {
+		return fmt.Errorf("reconcile withdrawn operations: %w", err)
+	}
 	if err := seedCatalog(db); err != nil {
 		return fmt.Errorf("seed catalog: %w", err)
 	}
@@ -136,7 +153,7 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 	if err := ReconcileWithdrawnNormalUserRole(db, enforcer); err != nil {
 		return fmt.Errorf("reconcile withdrawn normal user role: %w", err)
 	}
-	if err := reconcileSeedRoles(db, enforcer); err != nil {
+	if err := reconcileSeedRoles(enforcer); err != nil {
 		return fmt.Errorf("reconcile seed roles: %w", err)
 	}
 	if err := renameLegacyOperations(enforcer); err != nil {
@@ -145,8 +162,8 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 	if err := seedGrants(enforcer); err != nil {
 		return fmt.Errorf("seed grants: %w", err)
 	}
-	if err := backfillImpliedOperations(db, enforcer); err != nil {
-		return fmt.Errorf("backfill implied operations: %w", err)
+	if err := backfillRequiredOperations(db, enforcer); err != nil {
+		return fmt.Errorf("backfill required operations: %w", err)
 	}
 	if err := seedRoleBindings(enforcer); err != nil {
 		return fmt.Errorf("seed role bindings: %w", err)
@@ -158,6 +175,55 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 		return fmt.Errorf("seed business provenance owner: %w", err)
 	}
 	return nil
+}
+
+// reconcileWithdrawnOperations removes stale grants before pruning their
+// catalog rows. Leaving those grants behind would keep an invisible permission
+// active in the policy engine on upgraded deployments.
+func reconcileWithdrawnOperations(enforcer *authz.Enforcer) error {
+	return enforcer.Transaction(context.Background(), func(tx *authz.PolicyTransaction) error {
+		for _, withdrawn := range withdrawnOperations {
+			removed, err := tx.RemovePoliciesForOperation(withdrawn.resourceType, withdrawn.operation)
+			if err != nil {
+				return err
+			}
+			if removed > 0 {
+				slog.Info("removed policies for withdrawn operation",
+					"resource_type", withdrawn.resourceType,
+					"operation", withdrawn.operation,
+					"projections", removed,
+				)
+			}
+		}
+		return nil
+	})
+}
+
+// reconcileWithdrawnResourceTypes removes resource types that are no longer
+// supported, including every persisted role/object grant that could otherwise
+// survive an upgrade without a matching catalog entry. Audit records are kept.
+func reconcileWithdrawnResourceTypes(enforcer *authz.Enforcer) error {
+	return enforcer.Transaction(context.Background(), func(tx *authz.PolicyTransaction) error {
+		removedPolicies, err := tx.RemovePoliciesForResourceTypes(withdrawnResourceTypes...)
+		if err != nil {
+			return err
+		}
+		db := tx.DB()
+		if err := db.Where("resource_type_id IN ? OR parent_type_id IN ?", withdrawnResourceTypes, withdrawnResourceTypes).
+			Delete(&model.ResourceParent{}).Error; err != nil {
+			return err
+		}
+		if err := db.Where("resource_type_id IN ?", withdrawnResourceTypes).Delete(&model.Operation{}).Error; err != nil {
+			return err
+		}
+		if err := db.Where("id IN ?", withdrawnResourceTypes).Delete(&model.ResourceType{}).Error; err != nil {
+			return err
+		}
+		if removedPolicies > 0 {
+			slog.Info("removed policies for withdrawn resource types", "resource_types", withdrawnResourceTypes, "projections", removedPolicies)
+		}
+		return nil
+	})
 }
 
 func reconcileDeprecatedSeedRoles(db *gorm.DB, enforcer *authz.Enforcer) error {
@@ -293,19 +359,19 @@ func seedRoles(db *gorm.DB) error {
 	}).Create(&rows).Error
 }
 
-func reconcileSeedRoles(db *gorm.DB, enforcer *authz.Enforcer) error {
+func reconcileSeedRoles(enforcer *authz.Enforcer) error {
 	var roles []roleSeed
 	if err := json.Unmarshal(rolesJSON, &roles); err != nil {
 		return err
 	}
-
-	for _, r := range roles {
-		if err := enforcer.RemoveRolePermissions(r.ID); err != nil {
-			return err
+	return enforcer.Transaction(context.Background(), func(tx *authz.PolicyTransaction) error {
+		for _, r := range roles {
+			if err := tx.RemoveSeedRolePermissions(r.ID); err != nil {
+				return err
+			}
 		}
-	}
-
-	return nil
+		return nil
+	})
 }
 
 func seedCatalog(db *gorm.DB) error {
@@ -317,7 +383,7 @@ func seedCatalog(db *gorm.DB) error {
 	// or a parent_operation the parent does not define would otherwise be stored
 	// and then silently deny at enforce time, which reads as "the grant does not
 	// work" rather than "the catalog is wrong".
-	if err := validateImplications(c); err != nil {
+	if err := validateRequirements(c); err != nil {
 		return err
 	}
 	if err := validateHierarchy(c); err != nil {
@@ -336,8 +402,8 @@ func seedCatalog(db *gorm.DB) error {
 			declared = append(declared, op.ID)
 			opRow := model.Operation{
 				ResourceTypeID: rt.ID, ID: op.ID, Name: op.Name,
-				ParentOperationID:   op.ParentOperation,
-				ImpliedOperationIDs: strings.Join(op.Implies, ","),
+				ParentOperationID:    op.ParentOperation,
+				RequiredOperationIDs: strings.Join(op.Requires, ","),
 			}
 			if err := db.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "resource_type_id"}, {Name: "id"}},
@@ -427,54 +493,37 @@ func validateHierarchy(c catalog) error {
 	return nil
 }
 
-// validateImplications checks the same-type implications declared in
-// catalog.json: every implied operation is declared on the same type, no
-// operation implies itself, and the implication graph is acyclic.
+// validateRequirements checks the same-type prerequisites declared in
+// catalog.json: every requirement is declared on the same type, is not the
+// target itself, and does not itself declare requirements. The last rule keeps
+// the first implementation strictly one layer instead of silently calculating
+// only part of a dependency graph.
 //
-// The failure this guards against is silent. An implication naming an operation
+// The failure this guards against is silent. A requirement naming an operation
 // the type does not declare would expand a grant into an op no check ever asks
-// about, and a cycle would make the expansion at grant time loop; both are
-// authoring mistakes in an embedded file, so refusing to boot is the honest
-// response.
-func validateImplications(c catalog) error {
+// about, while a multi-level declaration would make a one-layer runtime result
+// incomplete. Both are authoring mistakes in an embedded file, so refusing to
+// boot is the honest response.
+func validateRequirements(c catalog) error {
 	for _, rt := range c.ResourceTypes {
 		declared := make(map[string]bool, len(rt.Operations))
-		implies := make(map[string][]string, len(rt.Operations))
+		requires := make(map[string][]string, len(rt.Operations))
 		for _, op := range rt.Operations {
 			declared[op.ID] = true
-			implies[op.ID] = op.Implies
+			requires[op.ID] = op.Requires
 		}
 		for _, op := range rt.Operations {
-			for _, implied := range op.Implies {
-				if implied == op.ID {
-					return fmt.Errorf("operation %s/%s implies itself", rt.ID, op.ID)
+			for _, required := range op.Requires {
+				if required == op.ID {
+					return fmt.Errorf("operation %s/%s requires itself", rt.ID, op.ID)
 				}
-				if !declared[implied] {
-					return fmt.Errorf("operation %s/%s implies %q, which %s does not declare",
-						rt.ID, op.ID, implied, rt.ID)
+				if !declared[required] {
+					return fmt.Errorf("operation %s/%s requires %q, which %s does not declare",
+						rt.ID, op.ID, required, rt.ID)
 				}
-			}
-		}
-		// Walk every chain with a step budget of the operation count, the same
-		// shape the parent-chain check uses.
-		for start := range implies {
-			seen := map[string]bool{}
-			queue := []string{start}
-			for steps := 0; len(queue) > 0; steps++ {
-				if steps > len(implies) {
-					return fmt.Errorf("operation implication chain has a cycle in %q", rt.ID)
-				}
-				cur := queue[0]
-				queue = queue[1:]
-				for _, next := range implies[cur] {
-					if next == start {
-						return fmt.Errorf("operation implication chain has a cycle at %s/%s", rt.ID, start)
-					}
-					if seen[next] {
-						continue
-					}
-					seen[next] = true
-					queue = append(queue, next)
+				if len(requires[required]) > 0 {
+					return fmt.Errorf("operation %s/%s requires %s/%s, which itself declares requires",
+						rt.ID, op.ID, rt.ID, required)
 				}
 			}
 		}
@@ -482,22 +531,23 @@ func validateImplications(c catalog) error {
 	return nil
 }
 
-// backfillImpliedOperations repairs grants written before an implication was
-// declared: every policy row holding an operation now marked as implying others
-// gains the implied ones.
+// backfillRequiredOperations repairs grants written before a prerequisite was
+// declared: every eligible allow holding an operation gains its direct required
+// operations. Legacy and logical bundles keep their compatibility contracts;
+// runtime requires still prevents either from bypassing a later deny.
 //
-// The implication is applied when a grant is written, so without this the fix
+// The requirement is normalized when a grant is written, so without this the fix
 // would reach new grants only. For catalog.resource_manage that would leave the
 // reported defect standing for everyone who had already been granted it — the
 // grant reaches nothing on its own, and nothing tells the administrator to
 // re-save it. Runs after seedGrants so the rebuilt role matrix is in place, and
 // it is idempotent, so a start with nothing to repair costs one filtered read
-// per declared implication.
+// per declared requirement.
 //
 // Deliberately NOT symmetric with revocation: this only ever adds. A row that
 // an administrator has since narrowed on purpose is repaired back to a usable
 // shape rather than left as a permission that answers 403 everywhere.
-func backfillImpliedOperations(db *gorm.DB, enforcer *authz.Enforcer) error {
+func backfillRequiredOperations(db *gorm.DB, enforcer *authz.Enforcer) error {
 	var c catalog
 	if err := json.Unmarshal(catalogJSON, &c); err != nil {
 		return err
@@ -511,37 +561,18 @@ func backfillImpliedOperations(db *gorm.DB, enforcer *authz.Enforcer) error {
 		return err
 	}
 	for _, rt := range c.ResourceTypes {
-		implies := make(map[string][]string, len(rt.Operations))
 		for _, op := range rt.Operations {
-			if len(op.Implies) > 0 {
-				implies[op.ID] = op.Implies
-			}
-		}
-		for holder := range implies {
-			// Transitive: an operation implying one that implies another must
-			// backfill both. validateImplications has already refused a cycle, and
-			// the visited set keeps this terminating regardless.
-			seen := map[string]bool{holder: true}
-			queue := append([]string(nil), implies[holder]...)
-			for len(queue) > 0 {
-				implied := queue[0]
-				queue = queue[1:]
-				if seen[implied] {
-					continue
-				}
-				seen[implied] = true
-				queue = append(queue, implies[implied]...)
-
-				added, err := enforcer.BackfillImpliedOperation(rt.ID, holder, implied)
+			for _, required := range op.Requires {
+				added, err := enforcer.BackfillRequiredOperation(rt.ID, op.ID, required)
 				if err != nil {
 					return err
 				}
 				if len(added) == 0 {
 					continue
 				}
-				slog.Info("backfilled the operation an existing grant implies",
-					"resource_type", rt.ID, "holder", holder, "implied", implied, "rows", len(added))
-				recordBackfillAudit(trail, roleNames, rt.ID, holder, implied, added)
+				slog.Info("backfilled a direct operation requirement",
+					"resource_type", rt.ID, "operation", op.ID, "required", required, "rows", len(added))
+				recordBackfillAudit(trail, roleNames, rt.ID, op.ID, required, added)
 			}
 		}
 	}
@@ -557,14 +588,14 @@ func backfillImpliedOperations(db *gorm.DB, enforcer *authz.Enforcer) error {
 // Failures are logged and swallowed: auditing must never be the reason a
 // deployment fails to start.
 func recordBackfillAudit(trail *audit.Store, roleNames map[string]string,
-	resourceType, holder, implied string, grants []authz.BackfilledGrant) {
+	resourceType, operation, required string, grants []authz.BackfilledGrant) {
 
 	for _, g := range grants {
 		detail, err := json.Marshal(map[string]any{
 			"accessor_id": g.AccessorID,
 			"resource":    map[string]string{"type": resourceType, "id": g.ResourceID},
-			"operations":  []string{implied},
-			"_reason":     "implied by " + holder,
+			"operations":  []string{required},
+			"_reason":     "required by " + operation,
 		})
 		if err != nil {
 			slog.Error("seed: could not encode backfill audit detail", "err", err)
@@ -632,22 +663,23 @@ func seedGrants(enforcer *authz.Enforcer) error {
 	if err := json.Unmarshal(grantsJSON, &g); err != nil {
 		return err
 	}
-	for _, gr := range g.Grants {
-		// Build the object pattern. Empty resource_type => a pure wildcard
-		// object (e.g. "*"), used for the super-admin "do everything" grant;
-		// otherwise "type:idPattern".
-		obj := gr.ResourceType + ":" + gr.IDPattern
-		if gr.ResourceType == "" {
-			obj = gr.IDPattern
-		}
-		for _, op := range gr.Operations {
-			// AddPolicy is idempotent (no-op if the rule already exists).
-			if err := enforcer.Grant(gr.RoleID, obj, op); err != nil {
-				return err
+	return enforcer.Transaction(context.Background(), func(tx *authz.PolicyTransaction) error {
+		for _, gr := range g.Grants {
+			// Build the object pattern. Empty resource_type => a pure wildcard
+			// object (e.g. "*"), used for the super-admin "do everything" grant;
+			// otherwise "type:idPattern".
+			object := gr.ResourceType + ":" + gr.IDPattern
+			if gr.ResourceType == "" {
+				object = gr.IDPattern
+			}
+			for _, operation := range gr.Operations {
+				if err := tx.GrantSeedPolicy(gr.RoleID, object, operation); err != nil {
+					return err
+				}
 			}
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 // seedRoleBindings binds accessors (users/apps) to roles via Casbin's grouping
@@ -677,10 +709,9 @@ var legacyOperationRenames = []struct {
 	resourceType string
 	from, to     string
 }{
-	// Data query was spelled data_query on these two types and query_data on
+	// Data query was spelled data_query on knowledge networks and query_data on
 	// catalog/resource. One vocabulary, one spelling.
 	{"knowledge_network", "data_query", "query_data"},
-	{"stream_data_pipeline", "data_query", "query_data"},
 }
 
 // renameLegacyOperations migrates object grants onto the corrected spellings.

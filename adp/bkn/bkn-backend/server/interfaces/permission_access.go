@@ -32,14 +32,14 @@ const (
 	RESOURCE_TYPE_RISK_TYPE     = "risk_type"
 
 	// Resource operation types.
-	OPERATION_TYPE_VIEW_DETAIL = "view_detail"
-	OPERATION_TYPE_CREATE      = "create"
-	OPERATION_TYPE_MODIFY      = "modify"
-	OPERATION_TYPE_DELETE      = "delete"
-	OPERATION_TYPE_QUERY_DATA  = "query_data"
-	OPERATION_TYPE_AUTHORIZE   = "authorize"
-	OPERATION_TYPE_TASK_MANAGE = "task_manage"
-	OPERATION_TYPE_EXECUTE     = "execute"
+	OPERATION_TYPE_VIEW_DETAIL          = "view_detail"
+	OPERATION_TYPE_CREATE               = "create"
+	OPERATION_TYPE_MODIFY               = "modify"
+	OPERATION_TYPE_DELETE               = "delete"
+	OPERATION_TYPE_QUERY_DATA           = "query_data"
+	OPERATION_TYPE_AUTHORIZE            = "authorize"
+	OPERATION_TYPE_EXECUTE              = "execute"
+	OPERATION_TYPE_FULL_BUSINESS_ACCESS = "full_business_access"
 
 	// Topic used to update a resource name.
 	AUTHORIZATION_RESOURCE_NAME_MODIFY = "authorization.resource.name.modify"
@@ -53,17 +53,14 @@ var (
 		OPERATION_TYPE_DELETE,
 		OPERATION_TYPE_QUERY_DATA,
 		OPERATION_TYPE_AUTHORIZE,
-		OPERATION_TYPE_TASK_MANAGE,
+		OPERATION_TYPE_EXECUTE,
 	}
-	// KN_CREATOR_OPERATIONS is the fixed instance-level grant installed for a
-	// newly created knowledge network. Create remains a type-level capability.
+	// KN_CREATOR_OPERATIONS asks bkn-safe to atomically install the Community
+	// business bundle and the system-derived authorize permission. Create remains
+	// a type-level capability.
 	KN_CREATOR_OPERATIONS = []string{
-		OPERATION_TYPE_VIEW_DETAIL,
-		OPERATION_TYPE_MODIFY,
-		OPERATION_TYPE_DELETE,
-		OPERATION_TYPE_QUERY_DATA,
+		OPERATION_TYPE_FULL_BUSINESS_ACCESS,
 		OPERATION_TYPE_AUTHORIZE,
-		OPERATION_TYPE_TASK_MANAGE,
 	}
 )
 
@@ -179,10 +176,36 @@ type PermissionResourceOps struct {
 	Operations []string `json:"operation,omitempty"`
 }
 
+type PropertyLevelsRequest struct {
+	AccessorID string                      `json:"accessor_id"`
+	Items      []PropertyLevelsRequestItem `json:"items"`
+}
+
+type PropertyLevelsRequestItem struct {
+	ObjectTypeRef string   `json:"object_type_ref"`
+	Properties    []string `json:"properties"`
+}
+
+type PropertyLevelsResponse struct {
+	Entries []PropertyLevelsDecisionEntry `json:"entries"`
+}
+
+type PropertyLevelsDecisionEntry struct {
+	ObjectTypeRef string                   `json:"object_type_ref"`
+	Properties    []PropertyAccessDecision `json:"properties"`
+}
+
+type PropertyAccessDecision struct {
+	Name   string `json:"name"`
+	Level  string `json:"level"`
+	Source string `json:"source"`
+}
+
 //go:generate mockgen -source ../interfaces/permission_access.go -destination ../interfaces/mock/mock_permission_access.go
 type PermissionAccess interface {
 	CheckPermission(ctx context.Context, check PermissionCheck) (bool, error)
 	FilterResources(ctx context.Context, filter PermissionResourcesFilter) (map[string]PermissionResourceOps, error)
+	ResolvePropertyLevels(ctx context.Context, request PropertyLevelsRequest) (PropertyLevelsResponse, error)
 
 	CreateResources(ctx context.Context, policies []PermissionPolicy) error
 	DeleteResources(ctx context.Context, resources []PermissionResource) error

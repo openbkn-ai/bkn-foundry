@@ -1,5 +1,4 @@
-# golangci-lint configuration.
-# Documentation: https://golangci-lint.run/usage/configuration/
+version: "2"
 
 run:
   timeout: 5m
@@ -7,40 +6,38 @@ run:
   go: "1.24"
 
 linters:
+  default: none
   enable:
     - errcheck
-    - gosimple
     - govet
     - ineffassign
     - staticcheck
     - unused
 
-linters-settings:
-  errcheck:
-    # Ignore error return values from fmt.Print* and fmt.Fprint* functions.
-    exclude-functions:
-      - fmt.Fprintf
-      - fmt.Fprintln
-      - fmt.Fprint
-      - fmt.Printf
-      - fmt.Println
-      - fmt.Print
-  staticcheck:
-    checks:
-      - all
+  settings:
+    errcheck:
+      exclude-functions:
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Fprint
+        - fmt.Printf
+        - fmt.Println
+        - fmt.Print
+    staticcheck:
+      checks:
+        - all
+  exclusions:
+    paths:
+      - vendor
+      - mock
+      - mocks
+      - server/tests
+      - server/mocks
+      - ".*_mock\\.go$"
+      - ".*_gen\\.go$"
 
 issues:
   # Do not limit the maximum number of reports per linter (default is 50).
   max-issues-per-linter: 0
   # Do not limit the maximum number of reports per code section (default is 3).
   max-same-issues: 0
-  # Exclude generated and test-helper directories.
-  exclude-dirs:
-    - vendor
-    - mock
-    - mocks
-    - server/tests
-    - server/mocks
-  exclude-files:
-    - ".*_mock\\.go$"
-    - ".*_gen\\.go$"

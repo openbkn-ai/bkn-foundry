@@ -9,6 +9,7 @@ package concept_group
 import (
 	"context"
 	"database/sql"
+	"net/http"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -21,6 +22,8 @@ import (
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 	bmock "bkn-backend/interfaces/mock"
+	rootlogics "bkn-backend/logics"
+	"bkn-backend/logics/permission"
 )
 
 func Test_conceptGroupService_CheckConceptGroupExistByID(t *testing.T) {
@@ -303,7 +306,7 @@ func Test_conceptGroupService_ListConceptGroups(t *testing.T) {
 			DoAndReturn(func(_ context.Context, _ string, ids, _ []string, _ bool, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
 				matched := make(map[string]interfaces.PermissionResourceOps, len(ids))
 				for _, id := range ids {
-					matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE, interfaces.OPERATION_TYPE_AUTHORIZE}}
+					matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE}}
 				}
 				return matched, nil
 			}).AnyTimes()
@@ -522,7 +525,7 @@ func Test_conceptGroupService_GetConceptGroupByID(t *testing.T) {
 			DoAndReturn(func(_ context.Context, _ string, ids, _ []string, _ bool, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
 				matched := make(map[string]interfaces.PermissionResourceOps, len(ids))
 				for _, id := range ids {
-					matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE, interfaces.OPERATION_TYPE_AUTHORIZE}}
+					matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE}}
 				}
 				return matched, nil
 			}).AnyTimes()
@@ -1035,6 +1038,32 @@ func Test_conceptGroupService_UpdateConceptGroup(t *testing.T) {
 			smock.ExpectCommit()
 
 			err := service.UpdateConceptGroup(ctx, nil, conceptGroup, false)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Success in default strict mode with only canonical child permission\n", func() {
+			conceptGroup := &interfaces.ConceptGroup{
+				CGID:   "cg1",
+				CGName: "cg1",
+				KNID:   "kn1",
+				Branch: interfaces.MAIN_BRANCH,
+			}
+
+			smock.ExpectBegin()
+			ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+				Type: interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
+				ID:   "kn1/cg1",
+			}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+			cga.EXPECT().CheckConceptGroupExistByName(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "cg1").
+				Return("cg1", true, nil)
+			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
+				[]string{"cg1"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return([]string{}, nil)
+			cga.EXPECT().UpdateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID,
+				gomock.Any(), gomock.Any()).Return(nil)
+			smock.ExpectCommit()
+
+			err := service.UpdateConceptGroup(ctx, nil, conceptGroup, true)
 			So(err, ShouldBeNil)
 		})
 
@@ -1635,12 +1664,21 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 			cga.EXPECT().CheckConceptGroupExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			cga.EXPECT().CheckConceptGroupExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			cga.EXPECT().CreateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ots.EXPECT().CreateObjectTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			childErr := rootlogics.MapDependencyError(ctx,
+				interfaces.NewDependencyError("vega", "get_resource_schema", interfaces.DependencyTimeout, 0),
+				false,
+				rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter),
+				berrors.BknBackend_ObjectType_InternalError)
+			ots.EXPECT().CreateObjectTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, childErr)
 			smock.ExpectRollback()
 
 			cgID, err := service.CreateConceptGroup(ctx, nil, conceptGroup, mode, true)
 			So(err, ShouldNotBeNil)
 			So(cgID, ShouldEqual, "")
+			So(err, ShouldEqual, childErr)
+			httpErr := err.(*rest.HTTPError)
+			details := httpErr.BaseError.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
+			So(details.Kind, ShouldEqual, interfaces.DependencyTimeout)
 		})
 
 		Convey("Failed when AddObjectTypesToConceptGroup returns error\n", func() {
@@ -1857,12 +1895,18 @@ func Test_conceptGroupService_AddObjectTypesToConceptGroup(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
+		ps := bmock.NewMockPermissionService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
+			ID:   "kn1/cg1",
+		}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil).AnyTimes()
 
 		service := &conceptGroupService{
 			appSetting: appSetting,
 			cga:        cga,
 			ots:        ots,
+			ps:         ps,
 			db:         db,
 		}
 
@@ -2207,10 +2251,14 @@ func Test_conceptGroupService_ValidateConceptGroups(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
-		Convey("strictMode true delegates to nested ValidateObjectTypes\n", func() {
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		Convey("strictMode true propagates the authorized parent context to nested validators\n", func() {
+			ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+				Type: interfaces.RESOURCE_TYPE_KN,
+				ID:   "kn1",
+			}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
 			cga.EXPECT().CheckConceptGroupExistByID(gomock.Any(), gomock.Any(), gomock.Any(), "cg1").Return("", false, nil)
 			cga.EXPECT().CheckConceptGroupExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
+			batch := &interfaces.BatchIDIndex{}
 			conceptGroups := []*interfaces.ConceptGroup{
 				{
 					CGID: "cg1",
@@ -2219,10 +2267,45 @@ func Test_conceptGroupService_ValidateConceptGroups(t *testing.T) {
 							ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTName: "ot1"},
 						},
 					},
+					RelationTypes: []*interfaces.RelationType{
+						{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTName: "rt1"}},
+					},
+					ActionTypes: []*interfaces.ActionType{
+						{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATName: "at1"}},
+					},
 				},
 			}
-			ots.EXPECT().ValidateObjectTypes(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, conceptGroups[0].ObjectTypes, true, gomock.Any(), gomock.Any()).Return(nil)
-			err := service.ValidateConceptGroups(ctx, "kn1", interfaces.MAIN_BRANCH, conceptGroups, true, nil, interfaces.ImportMode_Normal)
+			ots.EXPECT().ValidateObjectTypes(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
+				conceptGroups[0].ObjectTypes, true, batch, interfaces.ImportMode_Normal).
+				DoAndReturn(func(nestedCtx context.Context, _ string, _ string, _ []*interfaces.ObjectType,
+					_ bool, _ *interfaces.BatchIDIndex, _ string) error {
+					So(permission.DependencyValidationPermissionPrechecked(nestedCtx), ShouldBeTrue)
+					return nil
+				})
+			rts.EXPECT().ValidateRelationTypes(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
+				conceptGroups[0].RelationTypes, true, batch, interfaces.ImportMode_Normal).
+				DoAndReturn(func(nestedCtx context.Context, _ string, _ string, _ []*interfaces.RelationType,
+					_ bool, _ *interfaces.BatchIDIndex, _ string) error {
+					So(permission.DependencyValidationPermissionPrechecked(nestedCtx), ShouldBeTrue)
+					return nil
+				})
+			ats.EXPECT().ValidateActionTypes(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
+				conceptGroups[0].ActionTypes, true, batch, interfaces.ImportMode_Normal).
+				DoAndReturn(func(nestedCtx context.Context, _ string, _ string, _ []*interfaces.ActionType,
+					_ bool, _ *interfaces.BatchIDIndex, _ string) error {
+					So(permission.DependencyValidationPermissionPrechecked(nestedCtx), ShouldBeTrue)
+					return nil
+				})
+			err := service.ValidateConceptGroups(ctx, "kn1", interfaces.MAIN_BRANCH, conceptGroups, true, batch, interfaces.ImportMode_Normal)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("write dependency validation does not perform another PEP check\n", func() {
+			cga.EXPECT().CheckConceptGroupExistByID(gomock.Any(), gomock.Any(), gomock.Any(), "cg1").Return("cg1", true, nil)
+			cga.EXPECT().CheckConceptGroupExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("cg1", true, nil)
+			conceptGroups := []*interfaces.ConceptGroup{{CGID: "cg1", CGName: "cg1"}}
+			err := service.validateConceptGroupDependencies(ctx, "kn1", interfaces.MAIN_BRANCH,
+				conceptGroups, true, nil, interfaces.ImportMode_Overwrite)
 			So(err, ShouldBeNil)
 		})
 	})

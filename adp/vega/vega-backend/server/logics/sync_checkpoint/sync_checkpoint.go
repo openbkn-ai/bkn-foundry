@@ -65,7 +65,7 @@ func EncodeBatch(cursor []interfaces.KeyValue) (string, error) {
 // invalid rather than being guessed or silently upgraded.
 func DecodeBatch(mark string) (*SyncCheckpoint, error) {
 	if mark == "" {
-		return nil, nil
+		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 
 	var checkpoint SyncCheckpoint

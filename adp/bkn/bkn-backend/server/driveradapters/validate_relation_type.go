@@ -83,10 +83,12 @@ func ValidateRelationType(ctx context.Context, relationType *interfaces.Relation
 	// Validate the type field.
 	if relationType.Type != "" {
 		if relationType.Type != interfaces.RELATION_TYPE_DIRECT &&
+			relationType.Type != interfaces.RELATION_TYPE_INDIRECT &&
 			relationType.Type != interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 				WithErrorDetails(relationTypeInvalidDetail(ctx, "TypeNotSupported", map[string]any{
 					"directType":    interfaces.RELATION_TYPE_DIRECT,
+					"indirectType":  interfaces.RELATION_TYPE_INDIRECT,
 					"crossJoinType": interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN,
 					"type":          relationType.Type,
 				}))
@@ -135,6 +137,8 @@ func validateMappingRules(ctx context.Context, relationType string, mappingRules
 	switch relationType {
 	case interfaces.RELATION_TYPE_DIRECT:
 		return validateDirectMappingRules(ctx, mappingRules, strictMode)
+	case interfaces.RELATION_TYPE_INDIRECT:
+		return validateInDirectMappingRules(ctx, mappingRules, strictMode)
 	case interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN:
 		return validateFilteredCrossJoinMappingRules(ctx, mappingRules, strictMode)
 	default:
@@ -188,6 +192,8 @@ func validateDirectMappingRules(ctx context.Context, mappingRules any, strictMod
 }
 
 // validateInDirectMappingRules validates indirect-relation mapping_rules.
+//
+//nolint:unused // Retained for RELATION_TYPE indirect mapping validation.
 func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictMode bool) (*interfaces.InDirectMapping, error) {
 	// Decode the input into an indirect mapping.
 	var mapping interfaces.InDirectMapping

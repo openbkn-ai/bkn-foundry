@@ -42,6 +42,11 @@ Description = "服务内部错误。"
 Solution = "请稍后重试；如问题持续，请联系管理员。"
 ErrorLink = ""
 
+[unsupported_grant_shape]
+Description = "不支持该对象授权请求形状。"
+Solution = "请使用顶层完整业务包授权。"
+ErrorLink = ""
+
 [BknSafe.Auth]
 AccountPlaceholder = "账号"
 PasswordPlaceholder = "密码"

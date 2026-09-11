@@ -9,11 +9,14 @@ package object_type
 import (
 	"context"
 	"database/sql"
+	"net/http"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"bkn-backend/common"
@@ -34,7 +37,6 @@ func allowAllPermissionResources(_ context.Context, _ string, ids, _ []string, _
 				interfaces.OPERATION_TYPE_QUERY_DATA,
 				interfaces.OPERATION_TYPE_MODIFY,
 				interfaces.OPERATION_TYPE_DELETE,
-				interfaces.OPERATION_TYPE_AUTHORIZE,
 			},
 		}
 	}
@@ -909,7 +911,7 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
-		Convey("Strict mode validates resource data source via GetResourceByID not data view\n", func() {
+		Convey("Strict mode validates resource data source via operation-scoped schema lookup\n", func() {
 			objectTypes := []*interfaces.ObjectType{
 				{
 					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
@@ -924,7 +926,8 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 			}
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			expectImportModeOK()
-			vbs.EXPECT().GetResourceByID(gomock.Any(), "res1").Return(&interfaces.VegaResource{Name: "r1"}, nil)
+			vbs.EXPECT().GetResourceSchema(gomock.Any(), "res1", interfaces.OPERATION_TYPE_VIEW_DETAIL).
+				Return(&interfaces.VegaResource{Name: "r1"}, nil)
 			err := service.ValidateObjectTypes(ctx, "kn1", interfaces.MAIN_BRANCH, objectTypes, true, nil, interfaces.ImportMode_Normal)
 			So(err, ShouldBeNil)
 		})
@@ -944,7 +947,7 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 			}
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			expectImportModeOK()
-			vbs.EXPECT().GetResourceByID(gomock.Any(), "res_missing").Return(nil, nil)
+			vbs.EXPECT().GetResourceSchema(gomock.Any(), "res_missing", interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(nil, nil)
 			err := service.ValidateObjectTypes(ctx, "kn1", interfaces.MAIN_BRANCH, objectTypes, true, nil, interfaces.ImportMode_Normal)
 			So(err, ShouldNotBeNil)
 		})
@@ -994,7 +997,8 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 			}
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			expectImportModeOK()
-			vbs.EXPECT().GetResourceByID(gomock.Any(), "res1").Return(&interfaces.VegaResource{Name: "r1"}, nil)
+			vbs.EXPECT().GetResourceSchema(gomock.Any(), "res1", interfaces.OPERATION_TYPE_VIEW_DETAIL).
+				Return(&interfaces.VegaResource{Name: "r1"}, nil)
 			ma.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "mid1").Return(nil, nil)
 			err := service.ValidateObjectTypes(ctx, "kn1", interfaces.MAIN_BRANCH, objectTypes, true, nil, interfaces.ImportMode_Normal)
 			So(err, ShouldNotBeNil)
@@ -1027,7 +1031,8 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 			}
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			expectImportModeOK()
-			vbs.EXPECT().GetResourceByID(gomock.Any(), "res1").Return(&interfaces.VegaResource{Name: "r1"}, nil)
+			vbs.EXPECT().GetResourceSchema(gomock.Any(), "res1", interfaces.OPERATION_TYPE_VIEW_DETAIL).
+				Return(&interfaces.VegaResource{Name: "r1"}, nil)
 			ma.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "mid1").Return(&interfaces.MetricDefinition{
 				ID:       "mid1",
 				ScopeRef: "ot1",
@@ -1169,6 +1174,134 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 	})
+}
+
+func TestObjectTypeStrictResourceDependencyErrorMapping(t *testing.T) {
+	tests := []struct {
+		name       string
+		kind       interfaces.DependencyErrorKind
+		controlled bool
+		status     int
+		code       string
+	}{
+		{name: "missing binding", kind: interfaces.DependencyNotFound, status: http.StatusBadRequest, code: berrors.BknBackend_ObjectType_InvalidParameter},
+		{name: "invalid binding", kind: interfaces.DependencyInvalidBinding, status: http.StatusBadRequest, code: berrors.BknBackend_ObjectType_InvalidParameter},
+		{name: "current editor forbidden", kind: interfaces.DependencyForbidden, status: http.StatusForbidden, code: rest.PublicError_Forbidden},
+		{name: "resolved delegator forbidden", kind: interfaces.DependencyForbidden, controlled: true, status: http.StatusBadGateway, code: berrors.BknBackend_ObjectType_InternalError},
+		{name: "timeout", kind: interfaces.DependencyTimeout, status: http.StatusServiceUnavailable, code: berrors.BknBackend_ObjectType_InternalError},
+		{name: "unavailable", kind: interfaces.DependencyUnavailable, status: http.StatusServiceUnavailable, code: berrors.BknBackend_ObjectType_InternalError},
+		{name: "downstream failure", kind: interfaces.DependencyDownstreamError, status: http.StatusBadGateway, code: berrors.BknBackend_ObjectType_InternalError},
+		{name: "invalid response", kind: interfaces.DependencyInvalidResponse, status: http.StatusBadGateway, code: berrors.BknBackend_ObjectType_InternalError},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			vbs := bmock.NewMockVegaBackendService(ctrl)
+			vbs.EXPECT().GetResourceSchema(gomock.Any(), "resource-1", interfaces.OPERATION_TYPE_VIEW_DETAIL).
+				Return(nil, interfaces.NewDependencyError("vega", "get_resource_schema", tc.kind, 0))
+			service := &objectTypeService{vbs: vbs}
+			ctx := context.Background()
+			if tc.controlled {
+				ctx = interfaces.WithVerifiedDependencySources(ctx, []interfaces.ProxyGrantResolvedSource{{
+					ProxyGrantSourceSpec: interfaces.ProxyGrantSourceSpec{
+						ResourceType: "resource", ResourceID: "resource-1", Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+						KNID: "kn-1", BindingType: interfaces.MODULE_TYPE_OBJECT_TYPE, BindingID: "ot-1",
+					},
+					GrantedBy: "historical-grantor",
+				}})
+			}
+
+			err := service.validateObjectTypeStrictExternalDeps(ctx, &interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID: "ot-1", OTName: "orders", DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"},
+				},
+				KNID: "kn-1",
+			})
+
+			var httpErr *rest.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, tc.status, httpErr.HTTPCode)
+			assert.Equal(t, tc.code, httpErr.BaseError.ErrorCode)
+		})
+	}
+}
+
+func TestObjectTypeStrictLookupUsesBindingScopedDelegator(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	vbs := bmock.NewMockVegaBackendService(ctrl)
+	vbs.EXPECT().GetResourceSchema(gomock.Any(), "resource-1", interfaces.OPERATION_TYPE_VIEW_DETAIL).
+		DoAndReturn(func(ctx context.Context, _, _ string) (*interfaces.VegaResource, error) {
+			account, ok := interfaces.VerifiedDependencyAccount(ctx, "resource", "resource-1",
+				interfaces.OPERATION_TYPE_VIEW_DETAIL)
+			require.True(t, ok)
+			assert.Equal(t, "object-grantor", account.ID)
+			return &interfaces.VegaResource{ID: "resource-1", Name: "orders"}, nil
+		})
+	service := &objectTypeService{vbs: vbs}
+	ctx := interfaces.WithVerifiedDependencySources(context.Background(), []interfaces.ProxyGrantResolvedSource{
+		{ProxyGrantSourceSpec: interfaces.ProxyGrantSourceSpec{
+			ResourceType: "resource", ResourceID: "resource-1", Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+			KNID: "kn-1", BindingType: interfaces.MODULE_TYPE_RELATION_TYPE, BindingID: "rt-1",
+		}, GrantedBy: "relation-grantor"},
+		{ProxyGrantSourceSpec: interfaces.ProxyGrantSourceSpec{
+			ResourceType: "resource", ResourceID: "resource-1", Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+			KNID: "kn-1", BindingType: interfaces.MODULE_TYPE_OBJECT_TYPE, BindingID: "ot-1",
+		}, GrantedBy: "object-grantor"},
+	})
+
+	err := service.validateObjectTypeStrictExternalDeps(ctx, &interfaces.ObjectType{
+		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+			OTID: "ot-1", OTName: "orders",
+			DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"},
+		},
+		KNID: "kn-1",
+	})
+
+	require.NoError(t, err)
+}
+
+func TestObjectTypeStrictToolDependencyErrorMapping(t *testing.T) {
+	tests := []struct {
+		kind   interfaces.DependencyErrorKind
+		status int
+		code   string
+	}{
+		{kind: interfaces.DependencyInvalidBinding, status: http.StatusBadRequest, code: berrors.BknBackend_ObjectType_InvalidParameter},
+		{kind: interfaces.DependencyNotFound, status: http.StatusBadRequest, code: berrors.BknBackend_ObjectType_InvalidParameter},
+		{kind: interfaces.DependencyForbidden, status: http.StatusBadGateway, code: berrors.BknBackend_ObjectType_InternalError},
+		{kind: interfaces.DependencyTimeout, status: http.StatusServiceUnavailable, code: berrors.BknBackend_ObjectType_InternalError},
+		{kind: interfaces.DependencyUnavailable, status: http.StatusServiceUnavailable, code: berrors.BknBackend_ObjectType_InternalError},
+		{kind: interfaces.DependencyDownstreamError, status: http.StatusBadGateway, code: berrors.BknBackend_ObjectType_InternalError},
+		{kind: interfaces.DependencyInvalidResponse, status: http.StatusBadGateway, code: berrors.BknBackend_ObjectType_InternalError},
+	}
+
+	for _, tc := range tests {
+		t.Run(string(tc.kind), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			aoa := bmock.NewMockAgentOperatorAccess(ctrl)
+			aoa.EXPECT().GetToolByID(gomock.Any(), "box-1", "tool-1").Return(
+				interfaces.NewDependencyError("execution-factory", "get_tool", tc.kind, 0))
+			service := &objectTypeService{aoa: aoa}
+
+			err := service.validateObjectTypeStrictExternalDeps(context.Background(), &interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTName: "orders",
+					LogicProperties: []*interfaces.LogicProperty{{
+						Name: "calculate", Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+						DataSource: &interfaces.ResourceInfo{
+							Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL, BoxID: "box-1", ToolID: "tool-1",
+						},
+					}},
+				},
+			})
+
+			var httpErr *rest.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, tc.status, httpErr.HTTPCode)
+			assert.Equal(t, tc.code, httpErr.BaseError.ErrorCode)
+		})
+	}
 }
 
 func Test_objectTypeService_ListObjectTypes(t *testing.T) {
@@ -1392,7 +1525,10 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+				Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+				ID:   interfaces.KNChildResourceID("kn1", "ot1"),
+			}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
 			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -1532,7 +1668,7 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
-			err := service.UpdateDataProperties(ctx, objectType, dataProperties, true)
+			err := service.UpdateDataProperties(ctx, objectType, dataProperties)
 			So(err, ShouldBeNil)
 		})
 
@@ -1562,7 +1698,7 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
-			err := service.UpdateDataProperties(ctx, objectType, dataProperties, false)
+			err := service.UpdateDataProperties(ctx, objectType, dataProperties)
 			So(err, ShouldBeNil)
 		})
 
@@ -1579,7 +1715,7 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_InternalError_CheckPermissionFailed))
 
-			err := service.UpdateDataProperties(ctx, objectType, dataProperties, true)
+			err := service.UpdateDataProperties(ctx, objectType, dataProperties)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -1608,7 +1744,7 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 			ota.EXPECT().UpdateDataProperties(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectCommit()
 
-			err := service.UpdateDataProperties(ctx, objectType, dataProperties, true)
+			err := service.UpdateDataProperties(ctx, objectType, dataProperties)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -1638,7 +1774,7 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectCommit()
 
-			err := service.UpdateDataProperties(ctx, objectType, dataProperties, true)
+			err := service.UpdateDataProperties(ctx, objectType, dataProperties)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -1667,7 +1803,7 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 			ota.EXPECT().UpdateDataProperties(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
-			err := service.UpdateDataProperties(ctx, objectType, dataProperties, true)
+			err := service.UpdateDataProperties(ctx, objectType, dataProperties)
 			So(err, ShouldBeNil)
 			So(len(objectType.DataProperties), ShouldEqual, 2)
 		})

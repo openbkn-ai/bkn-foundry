@@ -114,5 +114,5 @@ func (rc *RemoteConnector) TestConnection(ctx context.Context) error {
 
 // GetMetadata returns the metadata for the catalog (stub).
 func (rc *RemoteConnector) GetMetadata(ctx context.Context) (map[string]any, error) {
-	return nil, nil
+	return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 }

@@ -5,12 +5,16 @@
 package httpapi
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/finegrained"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/managedproxy"
@@ -49,11 +53,9 @@ func isConcreteResourceID(id string) bool {
 
 // opAuthorize is the resource-level operation that lets someone who is NOT a
 // platform administrator hand out access to one concrete object. The domain
-// services write it to the creator at create time (bkn-backend and vega call
-// CreateResources with COMMON_OPERATIONS, which includes it), so "whoever made
-// this" is exactly who holds it. Until these handlers consulted it the operation
-// was inert: every write was gated on admin-authz alone, and the person who
-// built a knowledge network could not share it (bkn-studio#478).
+// lifecycle writes it as a separate system-derived owner grant on the resource
+// management root. BKN child resource types never expose it: their knowledge
+// network is the sole authorization root.
 const opAuthorize = "authorize"
 
 // grantableUserPageSize caps the owner-facing account picker. Deliberately not
@@ -94,13 +96,13 @@ const (
 //
 // Order matters: administrators are answered without reading any policy for the
 // object, so the admin path costs what it did before this existed.
-func resolveGrantAuthority(c *gin.Context, e *authz.Enforcer, adminOp string, ref resourceRef) (grantAuthority, bool) {
+func resolveGrantAuthority(c *gin.Context, e *authz.Enforcer, db *gorm.DB, adminOp string, ref resourceRef) (grantAuthority, bool) {
 	sub := c.GetString(ctxAccessorID)
 	if sub == "" {
 		replyPublicError(c, http.StatusUnauthorized)
 		return "", false
 	}
-	admin, err := e.Check(sub, "admin-authz", "*", adminOp)
+	admin, err := e.CheckContext(c.Request.Context(), sub, "admin-authz", "*", adminOp)
 	if err != nil {
 		serverError(c, err)
 		return "", false
@@ -116,10 +118,48 @@ func resolveGrantAuthority(c *gin.Context, e *authz.Enforcer, adminOp string, re
 		replyPublicError(c, http.StatusForbidden)
 		return "", false
 	}
-	// Ownership first, and read as a DIRECT grant rather than through Check:
-	// Check cannot tell "granted on this object" from "granted on the whole
-	// type", and the audit trail needs them apart.
-	direct, err := e.ListObjectGrants(sub, ref.Type, ref.ID)
+	root, ok, err := grantAuthorizationRoot(c.Request.Context(), db, ref)
+	if err != nil {
+		serverError(c, err)
+		return "", false
+	}
+	if !ok {
+		replyPublicError(c, http.StatusForbidden)
+		return "", false
+	}
+	authorized, err := e.CheckContext(c.Request.Context(), sub, root.Type, root.ID, opAuthorize)
+	if err != nil {
+		serverError(c, err)
+		return "", false
+	}
+	if !authorized {
+		replyPublicError(c, http.StatusForbidden)
+		return "", false
+	}
+
+	// Holding authorize on the knowledge-network root is necessary but does not
+	// reveal a child the caller cannot otherwise see. Reading or changing that
+	// child's grant configuration therefore also requires its catalog-declared
+	// view operation through the final operation decision (including requires).
+	viewOp, err := resourceViewOperation(c.Request.Context(), db, ref.Type)
+	if err != nil {
+		serverError(c, err)
+		return "", false
+	}
+	visible, err := e.CheckContext(c.Request.Context(), sub, ref.Type, ref.ID, viewOp)
+	if err != nil {
+		serverError(c, err)
+		return "", false
+	}
+	if !visible {
+		replyPublicError(c, http.StatusForbidden)
+		return "", false
+	}
+
+	// Preserve the audit distinction between an instance owner and a holder of
+	// broader delegated authority. The security decision above is always the
+	// final operation decision; this direct read is diagnostic only.
+	direct, err := e.ListObjectGrants(sub, root.Type, root.ID)
 	if err != nil {
 		serverError(c, err)
 		return "", false
@@ -131,20 +171,75 @@ func resolveGrantAuthority(c *gin.Context, e *authz.Enforcer, adminOp string, re
 			}
 		}
 	}
-	ok, err := e.Check(sub, ref.Type, ref.ID, opAuthorize)
+	return authorityTypeAuthorize, true
+}
+
+// grantAuthorizationRoot applies the BKN boundary: a knowledge-network is the
+// sole authorization-management root for its registered child resources.
+// Other resource families manage grants on the concrete resource itself.
+func grantAuthorizationRoot(ctx context.Context, db *gorm.DB, ref resourceRef) (resourceRef, bool, error) {
+	var resourceType model.ResourceType
+	if err := db.WithContext(ctx).First(&resourceType, "id = ?", ref.Type).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return resourceRef{}, false, nil
+		}
+		return resourceRef{}, false, err
+	}
+	if resourceType.ParentTypeID != "knowledge_network" {
+		return ref, true, nil
+	}
+	var parent model.ResourceParent
+	err := db.WithContext(ctx).First(&parent,
+		"resource_type_id = ? AND resource_id = ?", ref.Type, ref.ID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return resourceRef{}, false, nil
+	}
 	if err != nil {
-		serverError(c, err)
-		return "", false
+		return resourceRef{}, false, err
 	}
-	if ok {
-		return authorityTypeAuthorize, true
+	if parent.ParentTypeID != "knowledge_network" || !isConcreteResourceID(parent.ParentID) {
+		return resourceRef{}, false, nil
 	}
-	replyPublicError(c, http.StatusForbidden)
-	return "", false
+	return resourceRef{Type: parent.ParentTypeID, ID: parent.ParentID}, true, nil
+}
+
+// resourceViewOperation resolves the view vocabulary from the registered
+// operation catalog. The authorization engine does not normalize these names:
+// BKN/Vega use view_detail, execution-factory uses view, and models use display.
+func resourceViewOperation(ctx context.Context, db *gorm.DB, resourceType string) (string, error) {
+	var ids []string
+	if err := db.WithContext(ctx).Model(&model.Operation{}).
+		Where("resource_type_id = ? AND id IN ?", resourceType, []string{"view_detail", "view", "display"}).
+		Pluck("id", &ids).Error; err != nil {
+		return "", err
+	}
+	for _, preferred := range []string{"view_detail", "view", "display"} {
+		for _, id := range ids {
+			if id == preferred {
+				return id, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("resource type %q does not declare a view operation", resourceType)
+}
+
+func isBKNChildResourceType(ctx context.Context, db *gorm.DB, resourceType string) (bool, error) {
+	var parentTypeID string
+	result := db.WithContext(ctx).Model(&model.ResourceType{}).
+		Select("parent_type_id").Where("id = ?", resourceType).Scan(&parentTypeID)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return false, gorm.ErrRecordNotFound
+	}
+	return parentTypeID == "knowledge_network", nil
 }
 
 // restrictDelegatedOps enforces the two limits on a non-administrator writing a
-// grant. It replies and returns false when the request breaks either.
+// Professional rule. It replies and returns false when the request breaks
+// either. Community bundles are protected platform state and never reach this
+// helper.
 //
 //  1. The delegation chain is one deep: opAuthorize is administrator-conferred
 //     only. A delegate handing out opAuthorize would mint another delegate, and
@@ -156,48 +251,6 @@ func resolveGrantAuthority(c *gin.Context, e *authz.Enforcer, adminOp string, re
 //
 // Administrators skip both: admin-authz:grant is the platform-level authority
 // these two rules exist to protect.
-// protectAuthorizeHolder stops a delegate from touching the grant of another
-// `authorize` holder — the object's creator included — or the public-access row.
-//
-// It guards BOTH writes, because both erase. DELETE removes every p-line the
-// accessor holds on the object; POST is replace-semantics, so writing
-// operations:["view_detail"] onto a holder drops everything else in the same
-// motion. And restrictDelegatedOps forbids a delegate from putting `authorize`
-// back. Without this, anyone the platform trusts to share ONE object could
-// silently take that object away from the person who made it, and only a
-// platform administrator could undo it — a role carrying `authorize` type-wide
-// would be every member of that role against every object of the type.
-//
-// Same rule as the grant side, in the other direction: `authorize` is
-// administrator-conferred, so only an administrator takes it away. Grants
-// without `authorize` stay fully editable and revocable, which is what the owner
-// surface exists for.
-func protectAuthorizeHolder(c *gin.Context, e *authz.Enforcer, ref resourceRef, accessorID string) bool {
-	// The public accessor is not a person whose access a delegate may adjust: it
-	// is how the execution factory publishes a built-in toolbox to everyone. Its
-	// row carries no `authorize`, so the holder check below would wave it through,
-	// and removing it would un-publish the toolbox platform-wide — previously an
-	// admin-authz:revoke action.
-	if accessorID == authz.PublicAccessorID {
-		replyPublicError(c, http.StatusForbidden)
-		return false
-	}
-	held, err := e.ListObjectGrants(accessorID, ref.Type, ref.ID)
-	if err != nil {
-		serverError(c, err)
-		return false
-	}
-	for _, grant := range held {
-		for _, op := range grant.Operations {
-			if op == opAuthorize {
-				replyPublicError(c, http.StatusForbidden)
-				return false
-			}
-		}
-	}
-	return true
-}
-
 func restrictDelegatedOps(c *gin.Context, e *authz.Enforcer, ref resourceRef, ops []string) bool {
 	for _, op := range ops {
 		if op == opAuthorize {
@@ -205,7 +258,7 @@ func restrictDelegatedOps(c *gin.Context, e *authz.Enforcer, ref resourceRef, op
 			return false
 		}
 	}
-	held, err := e.AllowedOps(c.GetString(ctxAccessorID), ref.Type, ref.ID, ops)
+	held, err := e.AllowedOpsContext(c.Request.Context(), c.GetString(ctxAccessorID), ref.Type, ref.ID, ops)
 	if err != nil {
 		serverError(c, err)
 		return false
@@ -258,11 +311,25 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 		}
 		entries := make([]gin.H, 0, len(policies))
 		for _, p := range policies {
+			ref := resourceRef{Type: resourceType, ID: resourceID}
+			grants, err := objectGrantRecords(e, p.AccessorID, ref)
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+			decisions, err := effectiveObjectGrantDecisions(c.Request.Context(), e, db, p.AccessorID, ref,
+				append(append([]string{}, p.Operations...), p.DeniedOperations...))
+			if err != nil {
+				serverError(c, err)
+				return
+			}
 			entries = append(entries, gin.H{
-				"accessor_id":       p.AccessorID,
-				"resource":          gin.H{"type": resourceType, "id": resourceID},
-				"operations":        p.Operations,
-				"denied_operations": p.DeniedOperations,
+				"accessor_id":         p.AccessorID,
+				"resource":            gin.H{"type": resourceType, "id": resourceID},
+				"operations":          p.Operations,
+				"denied_operations":   p.DeniedOperations,
+				"grants":              grants,
+				"effective_decisions": decisions,
 			})
 		}
 		c.JSON(http.StatusOK, gin.H{"entries": entries})
@@ -404,11 +471,27 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			if row.Ops != "" {
 				ops = strings.Split(row.Ops, ",")
 			}
+			ref := resourceRef{Type: row.Rtype, ID: row.Rid}
+			ops = projectDirectGrantOps(ref.Type, ops)
+			grants, err := objectGrantRecords(e, row.Accessor, ref)
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+			deniedOps := splitGrantOps(row.DeniedOps)
+			decisions, err := effectiveObjectGrantDecisions(c.Request.Context(), e, db, row.Accessor, ref,
+				append(append([]string{}, ops...), deniedOps...))
+			if err != nil {
+				serverError(c, err)
+				return
+			}
 			entries = append(entries, gin.H{
-				"accessor_id":       row.Accessor,
-				"resource":          gin.H{"type": row.Rtype, "id": row.Rid},
-				"operations":        ops,
-				"denied_operations": splitGrantOps(row.DeniedOps),
+				"accessor_id":         row.Accessor,
+				"resource":            gin.H{"type": ref.Type, "id": ref.ID},
+				"operations":          ops,
+				"denied_operations":   deniedOps,
+				"grants":              grants,
+				"effective_decisions": decisions,
 			})
 		}
 		resp["entries"] = entries
@@ -416,29 +499,82 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 		c.JSON(http.StatusOK, resp)
 	})
 
-	// POST /object-grants — set (replace) a user's exact allow or deny op set on
-	// one concrete resource instance. { accessor_id, resource, operations,
-	// effect?:"allow"|"deny" }. Missing effect remains allow for compatibility.
-	// Upsert semantics: that effect's ops become exactly `operations`. An empty
-	// list is rejected (use DELETE to revoke) so an accidental empty body can't
-	// silently wipe a grant.
+	// POST /object-grants accepts one of two shapes. Community stores the reviewed
+	// top-level full_business_access bundle; Professional and above may replace a
+	// source-scoped allow/deny operation set. The handler derives both provenance
+	// fields, normalizes direct requirements, and applies the same checks on the
+	// administrator and /me delegation routes.
 	g.POST("/object-grants", setObjectGrantHandler(e, db))
+	g.POST("/object-grants/preview", RequirePermission(e, "admin-authz", "view"), previewObjectGrantHandler(e))
 
-	// DELETE /object-grants — revoke one user's grant on one concrete resource
-	// instance, leaving other grantees on the same resource untouched.
-	// { accessor_id, resource{type,id} } -> 204.
+	// DELETE /object-grants revokes exactly one stable grant_id. It never deletes
+	// by the Casbin tuple, so a sibling grant with identical runtime semantics but
+	// a different source or lifecycle owner remains intact.
 	//
-	// Idempotent BY DESIGN: a request naming a grant that does not exist (already
-	// revoked, wrong accessor, wrong instance) still answers 204, so a retry or a
-	// double-click is safe. The distinction the caller cannot see is recorded in
-	// the audit trail instead — Detail carries _outcome.removed, the number of
-	// p-lines actually dropped, so 0 is auditable as "matched nothing".
-	//
-	// The resource TYPE is validated against the catalog even though revoking an
-	// unregistered type would harmlessly match nothing: a typo'd type is a silent
-	// no-op the operator would read as a successful revoke, which is the worst
-	// possible outcome for a security operation.
+	// An administrator gets idempotent 204 for an already-absent id, with
+	// _outcome.removed=false in the audit record. A delegated caller cannot prove
+	// authority over an opaque missing id and therefore receives 403.
 	g.DELETE("/object-grants", revokeObjectGrantHandler(e, db))
+}
+
+func previewObjectGrantHandler(e *authz.Enforcer) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			AccessorID string      `json:"accessor_id" binding:"required"`
+			Resource   resourceRef `json:"resource" binding:"required"`
+			Bundle     string      `json:"bundle" binding:"required"`
+		}
+		if !bind(c, &req) {
+			return
+		}
+		bundleOps, supported := authz.CommunityBundleOperations(req.Resource.Type)
+		if req.Bundle != authz.ActFullBusinessAccess || !supported || !isConcreteResourceID(req.Resource.ID) {
+			replyPublicError(c, http.StatusBadRequest)
+			return
+		}
+		records, err := e.PolicyRecords(authz.PolicyFilter{
+			AccessorID: req.AccessorID,
+			Object:     req.Resource.Type + ":" + req.Resource.ID,
+		})
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		legacy := make([]gin.H, 0)
+		legacyAllows := map[string]bool{}
+		for _, record := range records {
+			if record.PolicySource != authz.PolicySourceLegacy {
+				continue
+			}
+			legacy = append(legacy, policyRecordJSON(record))
+			if record.Active && record.Effect == authz.EffectAllow {
+				legacyAllows[record.Operation] = true
+			}
+		}
+		added := make([]string, 0, len(bundleOps))
+		for _, operation := range bundleOps {
+			if !legacyAllows[operation] {
+				added = append(added, operation)
+			}
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"accessor_id":       req.AccessorID,
+			"resource":          gin.H{"type": req.Resource.Type, "id": req.Resource.ID},
+			"bundle":            req.Bundle,
+			"bundle_operations": bundleOps,
+			"added_operations":  added,
+			"legacy_grants":     legacy,
+		})
+	}
+}
+
+func policyRecordJSON(record authz.PolicyRecord) gin.H {
+	return gin.H{
+		"grant_id": record.GrantID, "accessor_id": record.AccessorID,
+		"operation": record.Operation, "effect": record.Effect,
+		"policy_source": record.PolicySource, "authority_source": record.AuthoritySource,
+		"active": record.Active, "inherited": false,
+	}
 }
 
 // listGroupedObjectGrants serves the grouped, paginated object-grant views the
@@ -594,7 +730,7 @@ func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, 
 		}
 		// Reading who has access is itself a privilege on the object: the same
 		// authority that lets a caller change the grants lets it see them.
-		if _, ok := resolveGrantAuthority(c, e, "view", ref); !ok {
+		if _, ok := resolveGrantAuthority(c, e, db, "view", ref); !ok {
 			return
 		}
 		policies, err := e.ResourcePolicies(ref.Type, ref.ID)
@@ -616,11 +752,24 @@ func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, 
 		}
 		entries := make([]gin.H, 0, len(policies))
 		for _, policy := range policies {
+			grants, err := objectGrantRecords(e, policy.AccessorID, ref)
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+			decisions, err := effectiveObjectGrantDecisions(c.Request.Context(), e, db, policy.AccessorID, ref,
+				append(append([]string{}, policy.Operations...), policy.DeniedOperations...))
+			if err != nil {
+				serverError(c, err)
+				return
+			}
 			entry := gin.H{
-				"accessor_id":       policy.AccessorID,
-				"resource":          gin.H{"type": ref.Type, "id": ref.ID},
-				"operations":        policy.Operations,
-				"denied_operations": policy.DeniedOperations,
+				"accessor_id":         policy.AccessorID,
+				"resource":            gin.H{"type": ref.Type, "id": ref.ID},
+				"operations":          policy.Operations,
+				"denied_operations":   policy.DeniedOperations,
+				"grants":              grants,
+				"effective_decisions": decisions,
 			}
 			// A row whose subject is a role, or a user since deleted, resolves to
 			// nothing. It is still shown — hiding a grant that exists would be
@@ -660,7 +809,7 @@ func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, 
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
-		if _, ok := resolveGrantAuthority(c, e, "view", ref); !ok {
+		if _, ok := resolveGrantAuthority(c, e, db, "view", ref); !ok {
 			return
 		}
 		enabled := true
@@ -710,34 +859,45 @@ func grantAccessorNames(c *gin.Context, db *gorm.DB, ids []string) (map[string]m
 
 func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req struct {
-			AccessorID string      `json:"accessor_id" binding:"required"`
-			Resource   resourceRef `json:"resource" binding:"required"`
-			Operations []string    `json:"operations" binding:"required"`
-			Effect     string      `json:"effect"`
-		}
+		var req objectGrantWriteRequest
 		if !bind(c, &req) {
 			return
 		}
-		if !isConcreteResourceID(req.Resource.ID) {
+
+		_, bundleTarget := authz.CommunityBundleOperations(req.Resource.Type)
+		communityShape := req.Bundle == authz.ActFullBusinessAccess && req.Operations == nil &&
+			(req.Effect == "" || req.Effect == authz.EffectAllow) && bundleTarget
+		fineShape := req.Bundle == "" && req.Operations != nil
+		if !finegrained.Available() && !communityShape {
+			// This response must remain independent of whether the paid code is
+			// absent, merely unlicensed, or currently downgraded.
+			replyUnsupportedGrantShape(c)
+			return
+		}
+		if !communityShape && !fineShape {
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
-		if len(req.Operations) == 0 {
+		if req.AccessorID == "" || req.Resource.Type == "" || !isConcreteResourceID(req.Resource.ID) {
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
-		if req.Effect == "" {
-			req.Effect = authz.EffectAllow
+
+		effect := req.Effect
+		if effect == "" {
+			effect = authz.EffectAllow
 		}
-		if req.Effect != authz.EffectAllow && req.Effect != authz.EffectDeny {
+		if effect != authz.EffectAllow && effect != authz.EffectDeny {
+			replyPublicError(c, http.StatusBadRequest)
+			return
+		}
+		if fineShape && len(*req.Operations) == 0 {
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		// safe_admin:console:manage is exactly what CanAdmin tests, so granting it
 		// here would promote any grantee to platform administrator through the
 		// object-grant route — bypassing role binding and its escalation guards.
-		// Administrative capability is role-conferred only.
 		if req.Resource.Type == adminConsoleResourceType {
 			replyPublicError(c, http.StatusForbidden)
 			return
@@ -751,25 +911,14 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 			replyPublicError(c, http.StatusForbidden)
 			return
 		}
-		// Administrator, or the object's own owner delegating it. Resolved here
-		// rather than in middleware because the owner branch is a question about
-		// the object named in the BODY, which middleware cannot see.
-		authority, ok := resolveGrantAuthority(c, e, "grant", req.Resource)
+		authority, ok := resolveGrantAuthority(c, e, db, "grant", req.Resource)
 		if !ok {
 			return
 		}
-		// Explicit exceptions are security administration, not delegation: an
-		// object owner may share what they hold but may not install deny rules on
-		// another account.
-		if req.Effect == authz.EffectDeny && authority != authorityAdminAuthz {
+		if effect == authz.EffectDeny && authority != authorityAdminAuthz {
 			replyPublicError(c, http.StatusForbidden)
 			return
 		}
-		if authority != authorityAdminAuthz && !protectAuthorizeHolder(c, e, req.Resource, req.AccessorID) {
-			return
-		}
-		// Grantee must be a user (apps are user rows too). Departments/groups are
-		// rejected: their grants never match at enforce time.
 		ok, err = isUserAccessor(c, db, req.AccessorID)
 		if err != nil {
 			serverError(c, err)
@@ -779,8 +928,31 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
-		// Ops must be registered for the resource type — blocks typos that would
-		// create policies no /check can ever satisfy.
+
+		authoritySource := authz.AuthoritySourceAdminAuthz
+		if authority != authorityAdminAuthz {
+			authoritySource = authz.AuthoritySourceOwnerDelegate
+		}
+		outcome := map[string]any{"via": string(authority), "effect": effect}
+		if communityShape {
+			// The Community compatibility bundle is a protected source. Unlike a
+			// Professional rule it cannot be created, replaced, or revoked by an
+			// object-level delegate, even when that delegate happens to hold every
+			// operation represented by the bundle.
+			if authority != authorityAdminAuthz {
+				replyPublicError(c, http.StatusForbidden)
+				return
+			}
+			if err := e.GrantCommunityBundle(req.AccessorID, req.Resource.Type, req.Resource.ID, authoritySource); err != nil {
+				serverError(c, err)
+				return
+			}
+			outcome["bundle"] = authz.ActFullBusinessAccess
+			setAuditOutcome(c, outcome)
+			c.Status(http.StatusNoContent)
+			return
+		}
+
 		valid, err := catalogOpSet(db, req.Resource.Type)
 		if err != nil {
 			serverError(c, err)
@@ -790,44 +962,45 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
-		for _, op := range req.Operations {
+		bknChild, err := isBKNChildResourceType(c.Request.Context(), db, req.Resource.Type)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			replyPublicError(c, http.StatusBadRequest)
+			return
+		}
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		for _, op := range *req.Operations {
 			if !valid[op] {
 				replyPublicError(c, http.StatusBadRequest)
 				return
 			}
+			// authorize is managed only through its dedicated platform/lifecycle
+			// contract; BKN child types must not expose it even if an old catalog
+			// row survives until #1432's directory migration.
+			if op == opAuthorize && (bknChild || authority != authorityAdminAuthz) {
+				replyPublicError(c, http.StatusForbidden)
+				return
+			}
 		}
-		// Add the operations the requested ones imply (#1121). Expanded after
-		// validation so a typo is still a 400 rather than something the expansion
-		// quietly absorbs. Upsert semantics make this self-healing: a console that
-		// clears view_detail while leaving resource_manage ticked sends a set this
-		// puts back, instead of storing a grant nothing can use.
-		ops := req.Operations
-		if req.Effect == authz.EffectAllow {
-			ops, err = impliedOps(db.WithContext(c.Request.Context()), req.Resource.Type, req.Operations)
+		ops := append([]string(nil), (*req.Operations)...)
+		if effect == authz.EffectAllow {
+			ops, err = e.NormalizeOperations(c.Request.Context(), req.Resource.Type, ops)
 			if err != nil {
 				serverError(c, err)
 				return
 			}
 		}
-		// Checked against the EXPANDED set, not what was asked for: the implication
-		// pass can add operations, and a delegate must not acquire one that way
-		// that it could not have named directly.
 		if authority != authorityAdminAuthz && !restrictDelegatedOps(c, e, req.Resource, ops) {
 			return
 		}
-		// The audit Detail snapshots the request body, so without this the trail
-		// would say only what was asked for and an implied operation would appear
-		// on the accessor with nothing recording where it came from — the one
-		// question ("why can this account see this catalog?") the trail exists to
-		// answer. The seed's back-fill records its own repairs for the same
-		// reason; this keeps the two paths saying the same thing.
-		outcome := map[string]any{"via": string(authority)}
-		if implied := addedOps(req.Operations, ops); len(implied) > 0 {
-			outcome["implied_operations"] = implied
+		if required := addedOps(*req.Operations, ops); len(required) > 0 {
+			outcome["required_operations"] = required
 		}
-		outcome["effect"] = req.Effect
 		setAuditOutcome(c, outcome)
-		if err := e.SetObjectPermissionsForEffect(req.AccessorID, req.Resource.Type, req.Resource.ID, ops, req.Effect); err != nil {
+		if err := e.SetProfessionalObjectPermissions(req.AccessorID, req.Resource.Type, req.Resource.ID,
+			ops, effect, authoritySource); err != nil {
 			serverError(c, err)
 			return
 		}
@@ -835,25 +1008,160 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+type objectGrantWriteRequest struct {
+	AccessorID string      `json:"accessor_id" binding:"required"`
+	Resource   resourceRef `json:"resource" binding:"required"`
+	// Operations is a pointer so an omitted field (Community shape) can be
+	// distinguished from an explicitly empty Professional set.
+	Operations *[]string `json:"operations"`
+	Bundle     string    `json:"bundle"`
+	Effect     string    `json:"effect"`
+}
+
+func objectGrantRecords(e *authz.Enforcer, accessorID string, ref resourceRef) ([]gin.H, error) {
+	records, err := e.PolicyRecords(authz.PolicyFilter{
+		AccessorID: accessorID,
+		Object:     ref.Type + ":" + ref.ID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]gin.H, 0, len(records))
+	for _, record := range records {
+		out = append(out, policyRecordJSON(record))
+	}
+	return out, nil
+}
+
+func projectDirectGrantOps(resourceType string, operations []string) []string {
+	out := make([]string, 0, len(operations))
+	seen := map[string]bool{}
+	for _, operation := range operations {
+		projected := []string{operation}
+		if operation == authz.ActFullBusinessAccess {
+		if operation == authz.ActFullBusinessAccess {
+			if bundleOps, supported := authz.CommunityBundleOperations(resourceType); supported {
+				projected = bundleOps
+			}
+		}
+		}
+		for _, item := range projected {
+			if !seen[item] {
+				seen[item] = true
+				out = append(out, item)
+			}
+		}
+	}
+	return out
+}
+
+func effectiveObjectGrantDecisions(ctx context.Context, e *authz.Enforcer, db *gorm.DB,
+	accessorID string, ref resourceRef, operations []string) ([]gin.H, error) {
+	operations = projectDirectGrantOps(ref.Type, operations)
+	out := make([]gin.H, 0, len(operations))
+	for _, operation := range operations {
+		decision, err := e.OperationDecision(ctx, accessorID, ref.Type, ref.ID, operation)
+		if err != nil {
+			return nil, err
+		}
+		item := gin.H{"operation": operation, "decision": decision.Decision, "basis": decision.Basis}
+		if len(decision.Requirements) > 0 {
+			item["requires"] = decision.Requirements
+		}
+		if decision.DeniedRequirement != "" {
+			item["denied_requirement"] = decision.DeniedRequirement
+			item["requirement_basis"] = decision.RequirementBasis
+		}
+		if decision.Basis == authz.BasisInherited {
+			var parent model.ResourceParent
+			if err := db.WithContext(ctx).First(&parent,
+				"resource_type_id = ? AND resource_id = ?", ref.Type, ref.ID).Error; err != nil &&
+				!errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, err
+			} else if err == nil {
+				var op model.Operation
+				if err := db.WithContext(ctx).First(&op,
+					"resource_type_id = ? AND id = ?", ref.Type, operation).Error; err != nil &&
+					!errors.Is(err, gorm.ErrRecordNotFound) {
+					return nil, err
+				} else if err == nil {
+					item["inherited_from"] = gin.H{
+						"resource":  gin.H{"type": parent.ParentTypeID, "id": parent.ParentID},
+						"operation": op.ParentOperationID,
+					}
+				}
+			}
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}
+
+// addedOps returns the members of normalized that were not in requested, in
+// normalized order — the direct requirements added on top of the requested set.
+func addedOps(requested, normalized []string) []string {
+	asked := make(map[string]bool, len(requested))
+	for _, op := range requested {
+		asked[op] = true
+	}
+	var out []string
+	for _, op := range normalized {
+		if !asked[op] {
+			out = append(out, op)
+		}
+	}
+	return out
+}
+
 func revokeObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			AccessorID string      `json:"accessor_id" binding:"required"`
-			Resource   resourceRef `json:"resource" binding:"required"`
-			Effect     string      `json:"effect"`
+			GrantID string `json:"grant_id" binding:"required"`
 		}
 		if !bind(c, &req) {
 			return
 		}
-		if !isConcreteResourceID(req.Resource.ID) {
+		req.GrantID = strings.TrimSpace(req.GrantID)
+		if req.GrantID == "" || len(req.GrantID) > 64 {
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
-		if req.Effect != "" && req.Effect != authz.EffectAllow && req.Effect != authz.EffectDeny {
+		records, err := e.PolicyRecords(authz.PolicyFilter{GrantID: req.GrantID})
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		if len(records) == 0 {
+			allowed, err := e.CheckContext(c.Request.Context(), c.GetString(ctxAccessorID),
+				"admin-authz", "*", "revoke")
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+			if !allowed {
+				replyPublicError(c, http.StatusForbidden)
+				return
+			}
+			setAuditOutcome(c, map[string]any{"grant_id": req.GrantID, "removed": false})
+			c.Status(http.StatusNoContent)
+			return
+		}
+		record := records[0]
+		// Role grants have their own rbac_basic route, capability gate and
+		// admin-role:permissions check. Letting a stable ID through this
+		// user-object route would bypass all three, particularly after a downgrade
+		// where role configuration must remain active but its writer is closed.
+		if record.PolicySource == authz.PolicySourceRolePermission {
+			replyPublicError(c, http.StatusForbidden)
+			return
+		}
+		resourceType, resourceID, ok := strings.Cut(record.Object, ":")
+		if !ok || resourceType == "" || !isConcreteResourceID(resourceID) {
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
-		managed, err := managedproxy.IsManaged(c.Request.Context(), db, req.AccessorID)
+		ref := resourceRef{Type: resourceType, ID: resourceID}
+		managed, err := managedproxy.IsManaged(c.Request.Context(), db, record.AccessorID)
 		if err != nil {
 			serverError(c, err)
 			return
@@ -865,46 +1173,32 @@ func revokeObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 		// Revoking on an object is the mirror of granting on it: whoever can open
 		// their own object up can close it again. No op restriction applies —
 		// taking access away can only narrow, never widen.
-		authority, ok := resolveGrantAuthority(c, e, "revoke", req.Resource)
+		authority, ok := resolveGrantAuthority(c, e, db, "revoke", ref)
 		if !ok {
 			return
 		}
-		// Deny exceptions are security-administration state. A delegated owner
-		// may revoke ordinary allows, but must not remove an administrator's deny
-		// rule. For a legacy request without effect, keep the owner-facing revoke
-		// behavior by limiting it to allow rows; administrators retain the old
-		// "remove every row" behavior.
-		if req.Effect == authz.EffectDeny && authority != authorityAdminAuthz {
-			replyPublicError(c, http.StatusForbidden)
-			return
-		}
-		if authority != authorityAdminAuthz && !protectAuthorizeHolder(c, e, req.Resource, req.AccessorID) {
-			return
-		}
-		valid, err := catalogOpSet(db, req.Resource.Type)
-		if err != nil {
-			serverError(c, err)
-			return
-		}
-		if len(valid) == 0 {
-			replyPublicError(c, http.StatusBadRequest)
-			return
-		}
-		var removed int
-		if req.Effect == "" && authority == authorityAdminAuthz {
-			removed, err = e.RemoveAccessorResourcePolicies(req.AccessorID, req.Resource.Type, req.Resource.ID)
-		} else {
-			effect := req.Effect
-			if effect == "" {
-				effect = authz.EffectAllow
+		// A delegated owner may revoke only an ordinary allow produced by the
+		// delegated Professional writer. Stable source identity makes this check
+		// sufficient: selecting that row cannot remove an administrator deny,
+		// authorize, bundle, legacy, system or role sibling.
+		if authority != authorityAdminAuthz {
+			ordinaryOwnerGrant := record.PolicySource == authz.PolicySourceProfessionalRule &&
+				record.AuthoritySource == authz.AuthoritySourceOwnerDelegate &&
+				record.Effect == authz.EffectAllow && record.Operation != opAuthorize
+			if !ordinaryOwnerGrant {
+				replyPublicError(c, http.StatusForbidden)
+				return
 			}
-			removed, err = e.RemoveAccessorResourcePoliciesForEffect(req.AccessorID, req.Resource.Type, req.Resource.ID, effect)
 		}
+		removed, err := e.RevokePolicy(req.GrantID)
 		if err != nil {
 			serverError(c, err)
 			return
 		}
-		setAuditOutcome(c, map[string]any{"removed": removed, "via": string(authority)})
+		setAuditOutcome(c, map[string]any{
+			"grant_id": req.GrantID, "policy_source": record.PolicySource,
+			"authority_source": record.AuthoritySource, "removed": removed, "via": string(authority),
+		})
 		c.Status(http.StatusNoContent)
 	}
 }

@@ -22,6 +22,7 @@ import (
 
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
+	vegalocale "vega-backend/locale"
 )
 
 type accountIDContextMatcher struct {
@@ -1046,4 +1047,312 @@ func TestAssessResourceSemanticResultQuality(t *testing.T) {
             "quality": {"resource_effective": true, "field_total": 1, "field_effective": 0}
         }`, detail)
 	})
+}
+
+func TestReconcileResourceSemanticSampleWarnings(t *testing.T) {
+	vegalocale.Register()
+
+	t.Run("replaces policy-omission free text with a structured warning", func(t *testing.T) {
+		input := `{
+			"resource": {"schema_definition": []},
+			"sample_rows": [{"order_id": "o-1"}],
+			"sample_context": {
+				"status": "available",
+				"omitted_fields": [{
+					"name": "attachmentBlob",
+					"original_name": "attachment_blob",
+					"type": "binary",
+					"reason": "omitted_by_policy"
+				}]
+			},
+			"options": {"include_sample_rows": true}
+		}`
+		result := `{
+			"confidence": 0.8,
+			"resource": {"display_name": "订单", "description": "订单"},
+			"fields": [],
+			"warnings": [
+				"字段attachment_blob缺少样本数据，基于名称和类型推断",
+				"字段 note 确实没有可用样本"
+			]
+		}`
+		detail := `{
+			"resource": {"display_name": "订单", "description": "订单"},
+			"fields": [],
+			"warnings": [
+				"字段attachment_blob缺少样本数据，基于名称和类型推断",
+				"字段 note 确实没有可用样本"
+			]
+		}`
+
+		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(context.Background(), result, detail, input)
+
+		require.NoError(t, err)
+		for _, payload := range []string{gotResult, gotDetail} {
+			assert.NotContains(t, payload, "字段attachment_blob缺少样本数据")
+			assert.Contains(t, payload, "字段 note 确实没有可用样本")
+			assert.JSONEq(t, `[{"code":"sample_omitted_by_policy","params":{"field_name":"attachment_blob","field_type":"binary"}}]`, extractWarningDetailsForTest(t, payload))
+		}
+	})
+
+	t.Run("preserves legacy payloads without explicit omission evidence", func(t *testing.T) {
+		input := `{"resource":{"schema_definition":[]},"sample_rows":[],"options":{"include_sample_rows":true}}`
+		result := `{"confidence":0.8,"resource":{},"fields":[],"warnings":["字段 note 缺少样本数据"]}`
+		detail := `{"warnings":["字段 note 缺少样本数据"]}`
+
+		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(context.Background(), result, detail, input)
+
+		require.NoError(t, err)
+		assert.JSONEq(t, result, gotResult)
+		assert.JSONEq(t, detail, gotDetail)
+	})
+
+	t.Run("preserves empty-table warnings because no values existed to omit", func(t *testing.T) {
+		input := `{
+			"resource": {"schema_definition": []},
+			"sample_rows": [],
+			"sample_context": {
+				"status": "no_rows",
+				"omitted_fields": [{
+					"name": "attachmentBlob",
+					"original_name": "attachment_blob",
+					"type": "binary",
+					"reason": "omitted_by_policy"
+				}]
+			},
+			"options": {"include_sample_rows": true}
+		}`
+		result := `{"confidence":0.8,"resource":{},"fields":[],"warnings":["字段 attachment_blob 缺少样本数据"]}`
+		detail := `{"warnings":["字段 attachment_blob 缺少样本数据"]}`
+
+		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(context.Background(), result, detail, input)
+
+		require.NoError(t, err)
+		assert.JSONEq(t, result, gotResult)
+		assert.JSONEq(t, detail, gotDetail)
+	})
+
+	t.Run("reconciles policy omissions when other field samples are unavailable", func(t *testing.T) {
+		input := `{
+			"resource": {"schema_definition": [
+				{"name":"attachmentBlob","original_name":"attachment_blob","type":"binary"},
+				{"name":"note","original_name":"note","type":"string"}
+			]},
+			"sample_rows": [],
+			"sample_context": {
+				"status": "unavailable",
+				"omitted_fields": [{
+					"name": "attachmentBlob",
+					"original_name": "attachment_blob",
+					"type": "binary",
+					"reason": "omitted_by_policy"
+				}]
+			},
+			"options": {"language":"zh-CN","include_sample_rows": true}
+		}`
+		warning := "字段 attachment_blob 和 note 缺少样本数据"
+		result := `{"confidence":0.8,"resource":{},"fields":[],"warnings":["` + warning + `"]}`
+		detail := `{"warnings":["` + warning + `"]}`
+
+		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(context.Background(), result, detail, input)
+
+		require.NoError(t, err)
+		for _, payload := range []string{gotResult, gotDetail} {
+			assert.NotContains(t, payload, warning)
+			assert.Contains(t, payload, "字段 note 的样本数据不足。")
+			assert.JSONEq(t, `[{"code":"sample_omitted_by_policy","params":{"field_name":"attachment_blob","field_type":"binary"}}]`, extractWarningDetailsForTest(t, payload))
+		}
+	})
+
+	t.Run("reconciles policy omissions when every field was excluded before querying", func(t *testing.T) {
+		input := `{
+			"resource": {"schema_definition": []},
+			"sample_rows": [],
+			"sample_context": {
+				"status": "all_fields_omitted_by_policy",
+				"omitted_fields": [{
+					"name": "attachmentBlob",
+					"original_name": "attachment_blob",
+					"type": "binary",
+					"reason": "omitted_by_policy"
+				}]
+			},
+			"options": {"include_sample_rows": true}
+		}`
+		result := `{"confidence":0.8,"resource":{},"fields":[],"warnings":["字段 attachment_blob 缺少样本数据"]}`
+		detail := `{"warnings":["字段 attachment_blob 缺少样本数据"]}`
+
+		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(context.Background(), result, detail, input)
+
+		require.NoError(t, err)
+		for _, payload := range []string{gotResult, gotDetail} {
+			assert.NotContains(t, payload, "attachment_blob 缺少样本数据")
+			assert.JSONEq(t, `[{"code":"sample_omitted_by_policy","params":{"field_name":"attachment_blob","field_type":"binary"}}]`, extractWarningDetailsForTest(t, payload))
+		}
+	})
+
+	t.Run("removes unnamed missing-sample warnings when every field was omitted by policy", func(t *testing.T) {
+		input := `{
+			"resource": {"schema_definition": []},
+			"sample_rows": [],
+			"sample_context": {
+				"status": "all_fields_omitted_by_policy",
+				"omitted_fields": [{"name":"attachmentBlob","original_name":"attachment_blob","type":"binary","reason":"omitted_by_policy"}]
+			},
+			"options": {"include_sample_rows": true}
+		}`
+		warning := "没有可用样本数据，无法推断字段语义"
+		result := `{"confidence":0.8,"resource":{},"fields":[],"warnings":["` + warning + `"]}`
+		detail := `{"warnings":["` + warning + `"]}`
+
+		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(context.Background(), result, detail, input)
+
+		require.NoError(t, err)
+		for _, payload := range []string{gotResult, gotDetail} {
+			assert.NotContains(t, payload, warning)
+			assert.JSONEq(t, `[{"code":"sample_omitted_by_policy","params":{"field_name":"attachment_blob","field_type":"binary"}}]`, extractWarningDetailsForTest(t, payload))
+		}
+	})
+
+	t.Run("does not confuse a short field name with part of another word", func(t *testing.T) {
+		input := `{
+			"resource": {"schema_definition": []},
+			"sample_rows": [{"name": "A"}],
+			"sample_context": {
+				"status": "available",
+				"omitted_fields": [{"name":"id","type":"binary","reason":"omitted_by_policy"}]
+			},
+			"options": {"language":"en-US","include_sample_rows": true}
+		}`
+		result := `{"confidence":0.8,"resource":{},"fields":[],"warnings":["validation sample unavailable"]}`
+		detail := `{"warnings":["validation sample unavailable"]}`
+
+		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(context.Background(), result, detail, input)
+
+		require.NoError(t, err)
+		assert.Contains(t, gotResult, "validation sample unavailable")
+		assert.Contains(t, gotDetail, "validation sample unavailable")
+	})
+
+	t.Run("preserves warnings that only contain a generic omitted field name", func(t *testing.T) {
+		input := `{
+			"resource": {"schema_definition": []},
+			"sample_rows": [{"id": "1"}],
+			"sample_context": {
+				"status": "available",
+				"omitted_fields": [{"name":"data","original_name":"data","type":"binary","reason":"omitted_by_policy"}]
+			},
+			"options": {"language":"en-US","include_sample_rows": true}
+		}`
+		warning := "No sample data is available for the source."
+		result := `{"confidence":0.8,"resource":{},"fields":[],"warnings":["` + warning + `"]}`
+		detail := `{"warnings":["` + warning + `"]}`
+
+		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(context.Background(), result, detail, input)
+
+		require.NoError(t, err)
+		assert.Contains(t, gotResult, warning)
+		assert.Contains(t, gotDetail, warning)
+	})
+
+	t.Run("preserves metadata evidence warnings for policy-omitted fields", func(t *testing.T) {
+		input := `{
+			"resource": {"schema_definition": []},
+			"sample_rows": [{"order_id": "o-1"}],
+			"sample_context": {
+				"status": "available",
+				"omitted_fields": [{
+					"name": "attachmentBlob",
+					"original_name": "attachment_blob",
+					"type": "binary",
+					"reason": "omitted_by_policy"
+				}]
+			},
+			"options": {"include_sample_rows": true}
+		}`
+		warning := "字段 attachment_blob 的样本已按策略省略，但现有元数据证据不足，未生成语义建议"
+		result := `{"confidence":0.4,"resource":{},"fields":[],"warnings":["` + warning + `"]}`
+		detail := `{"warnings":["` + warning + `"]}`
+
+		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(context.Background(), result, detail, input)
+
+		require.NoError(t, err)
+		assert.Contains(t, gotResult, warning)
+		assert.Contains(t, gotDetail, warning)
+	})
+
+	t.Run("rewrites a mixed missing-sample warning to name only non-omitted fields", func(t *testing.T) {
+		input := `{
+			"resource": {"schema_definition": [
+				{"name":"attachmentBlob","original_name":"attachment_blob","type":"binary"},
+				{"name":"note","original_name":"note","type":"string"}
+			]},
+			"sample_rows": [],
+			"sample_context": {
+				"status": "payload_limited",
+				"omitted_fields": [{
+					"name": "attachmentBlob",
+					"original_name": "attachment_blob",
+					"type": "binary",
+					"reason": "omitted_by_policy"
+				}]
+			},
+			"options": {"language":"zh-CN","include_sample_rows": true}
+		}`
+		warning := "字段 attachment_blob 和 note 缺少样本数据"
+		reconciledWarning := "字段 note 的样本数据不足。"
+		result := `{"confidence":0.4,"resource":{},"fields":[],"warnings":["` + warning + `"]}`
+		detail := `{"warnings":["` + warning + `"]}`
+
+		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(context.Background(), result, detail, input)
+
+		require.NoError(t, err)
+		assert.NotContains(t, gotResult, warning)
+		assert.NotContains(t, gotDetail, warning)
+		assert.Contains(t, gotResult, reconciledWarning)
+		assert.Contains(t, gotDetail, reconciledWarning)
+		for _, payload := range []string{gotResult, gotDetail} {
+			assert.JSONEq(t, `[{"code":"sample_omitted_by_policy","params":{"field_name":"attachment_blob","field_type":"binary"}}]`, extractWarningDetailsForTest(t, payload))
+		}
+	})
+
+	t.Run("rewrites a mixed English warning in the requested language", func(t *testing.T) {
+		input := `{
+			"resource": {"schema_definition": [
+				{"name":"attachmentBlob","original_name":"attachment_blob","type":"binary"},
+				{"name":"note","original_name":"note","type":"string"}
+			]},
+			"sample_rows": [{"note": "ready"}],
+			"sample_context": {
+				"status": "available",
+				"omitted_fields": [{
+					"name": "attachmentBlob",
+					"original_name": "attachment_blob",
+					"type": "binary",
+					"reason": "omitted_by_policy"
+				}]
+			},
+			"options": {"language":"en-US","include_sample_rows": true}
+		}`
+		warning := "The attachment_blob and note fields have missing sample data."
+		result := `{"confidence":0.4,"resource":{},"fields":[],"warnings":["` + warning + `"]}`
+		detail := `{"warnings":["` + warning + `"]}`
+
+		gotResult, gotDetail, err := reconcileResourceSemanticSampleWarnings(context.Background(), result, detail, input)
+
+		require.NoError(t, err)
+		assert.NotContains(t, gotResult, warning)
+		assert.NotContains(t, gotDetail, warning)
+		assert.Contains(t, gotResult, "The note field has insufficient sample data.")
+		assert.Contains(t, gotDetail, "The note field has insufficient sample data.")
+	})
+}
+
+func extractWarningDetailsForTest(t *testing.T, payload string) string {
+	t.Helper()
+	var object map[string]sonic.NoCopyRawMessage
+	require.NoError(t, sonic.Unmarshal([]byte(payload), &object))
+	raw, ok := object["warning_details"]
+	require.True(t, ok)
+	return string(raw)
 }
