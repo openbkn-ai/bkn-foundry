@@ -39,7 +39,7 @@ func TestEnqueueReplaysIdenticalEvidenceAndRejectsConflict(t *testing.T) {
 	}{{"replay", hash, false}, {"conflict", "different", true}} {
 		t.Run(tc.name, func(t *testing.T) {
 			db, mock, _ := sqlmock.New()
-			defer db.Close()
+			defer func() { _ = db.Close() }()
 			repository := &Repository{db: db, config: Config{ProducerID: "bkn-ontology", ProducerStreamID: "ontology-query"}, dialect: dialectMariaDB}
 			mock.ExpectQuery(regexp.QuoteMeta("SELECT payload_hash, envelope FROM " + tableOutbox + " WHERE event_id = ?")).WithArgs(event.EventID).WillReturnRows(sqlmock.NewRows([]string{"payload_hash", "envelope"}).AddRow(tc.storedHash, string(stored)))
 			got, err := repository.Enqueue(context.Background(), event, owner)
@@ -58,7 +58,7 @@ func TestEnqueueReplaysIdenticalEvidenceAndRejectsConflict(t *testing.T) {
 
 func TestEnqueueReReadsAfterDuplicateKeyRace(t *testing.T) {
 	db, mock, _ := sqlmock.New()
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repository := &Repository{db: db, config: Config{ProducerID: "bkn-ontology", ProducerStreamID: "ontology-query"}, dialect: dialectMariaDB}
 	owner := Owner{ApplicationPrincipalID: "ontology-query", EffectiveSubjectType: "service", EffectiveSubjectID: "svc-1"}
 	now := time.Now().UTC()
@@ -113,7 +113,7 @@ func TestEnqueueUsesCurrentEpochFromStreamState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new sql mock: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repository := &Repository{
 		db: db,
@@ -167,7 +167,7 @@ func TestEnqueueRejectsZeroEpoch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new sql mock: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repository := &Repository{
 		db:      db,
 		config:  Config{ProducerID: "bkn-ontology", ProducerStreamID: "ontology-query"},
@@ -217,7 +217,7 @@ func TestClaimHeadOfLineBlocksLaterSequenceDuringBackoff(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new sql mock: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repository := &Repository{db: db, config: Config{ProducerStreamID: "stream-0"}, dialect: dialectMariaDB}
 	now := time.Now().UTC()
 
@@ -248,7 +248,7 @@ func TestCompleteRejectsStaleLeaseToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new sql mock: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repository := &Repository{db: db}
 	record := &Record{OutboxID: 9, LeaseToken: "stale-lease"}
 	query := regexp.QuoteMeta("UPDATE " + tableOutbox + " SET status = ?, delivered_at = ?, lease_token = NULL, locked_until = NULL, updated_at = ?, state_version = state_version + 1 WHERE outbox_id = ? AND status = ? AND lease_token = ?")
@@ -273,7 +273,7 @@ func TestCleanupOnlyDeletesCompletedStates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new sql mock: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repository := &Repository{db: db, dialect: dialectMariaDB}
 	now := time.Now().UTC()
 
@@ -315,7 +315,7 @@ func TestCountUsesListFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new sql mock: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repository := &Repository{db: db}
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM " + tableOutbox + " WHERE 1=1 AND status IN (?)")).
 		WithArgs(StatusRetry).

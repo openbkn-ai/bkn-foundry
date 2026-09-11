@@ -370,7 +370,7 @@ func (ms *metricService) ListMetrics(ctx context.Context, query interfaces.Metri
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Metric_InternalError).WithErrorDetails(err.Error())
 	}
 	var operationMap map[string]interfaces.PermissionResourceOps
-	total := len(list)
+	var total int
 	list, total, operationMap, err = permission.FilterAndPaginateKNChildrenWithOperations(ctx, ms.ps,
 		interfaces.RESOURCE_TYPE_METRIC, query.KNID, list,
 		func(metric *interfaces.MetricDefinition) string { return metric.ID }, query.Offset, query.Limit)

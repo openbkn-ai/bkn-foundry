@@ -522,7 +522,7 @@ func (kns *knowledgeNetworkService) markProxyPendingInNewTransaction(ctx context
 	if err != nil {
 		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "begin proxy synchronization state update")
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	copy := *plan
 	copy.modelVersion = modelVersion
 	if err := kns.markProxyPending(ctx, tx, &copy); err != nil {

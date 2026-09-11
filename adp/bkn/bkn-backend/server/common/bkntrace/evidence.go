@@ -53,8 +53,6 @@ const (
 	envProducerStreamID        = "BKN_TRACE_PRODUCER_STREAM_ID"
 )
 
-const maxInFlightEvidenceBatches = 64
-
 const (
 	EntityKindObjectType   = "object_type"
 	EntityKindRelationType = "relation_type"
@@ -127,7 +125,6 @@ type eventContext struct {
 
 var (
 	evidenceHTTPClient = &http.Client{}
-	evidenceInFlight   = make(chan struct{}, maxInFlightEvidenceBatches)
 	safeErrorCodeRE    = regexp.MustCompile(`^[0-9A-Za-z_.-]{1,128}$`)
 	safeErrorPathRE    = regexp.MustCompile(`^\$(?:\.[0-9A-Za-z_.-]+|\[[0-9]+\])+$`)
 	producerOutboxMu   sync.RWMutex
@@ -589,7 +586,7 @@ func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= http.StatusBadRequest {
 		return fmt.Errorf("%s", safeIngestFailureSummary(resp.StatusCode, resp.Body))
 	}

@@ -18,7 +18,7 @@ func TestSetSyncResultRejectsStaleModelVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	access := &access{db: db}
 	mock.ExpectExec("UPDATE t_kn_proxy_account SET").WillReturnResult(sqlmock.NewResult(0, 0))
 
@@ -40,7 +40,7 @@ func TestEnsureResolvesConcurrentIdenticalInsert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	access := &access{db: db}
 	columns := proxyColumns()
 	mock.ExpectQuery("SELECT .+ FROM t_kn_proxy_account WHERE").WithArgs("kn-1").

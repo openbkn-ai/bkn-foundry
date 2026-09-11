@@ -47,12 +47,12 @@ func SerializeMetric(m *BknMetric) string {
 	var sb strings.Builder
 	sb.WriteString("---\n")
 	sb.WriteString("type: metric\n")
-	sb.WriteString(fmt.Sprintf("id: %s\n", m.ID))
-	sb.WriteString(fmt.Sprintf("name: %s\n", m.Name))
-	sb.WriteString(fmt.Sprintf("tags: [%s]\n", strings.Join(m.Tags, ", ")))
+	fmt.Fprintf(&sb, "id: %s\n", m.ID)
+	fmt.Fprintf(&sb, "name: %s\n", m.Name)
+	fmt.Fprintf(&sb, "tags: [%s]\n", strings.Join(m.Tags, ", "))
 	sb.WriteString("---\n\n")
 
-	sb.WriteString(fmt.Sprintf("## Metric: %s\n\n", m.Name))
+	fmt.Fprintf(&sb, "## Metric: %s\n\n", m.Name)
 	if m.Description != "" {
 		sb.WriteString(m.Description + "\n\n")
 	}
@@ -67,13 +67,13 @@ func SerializeMetric(m *BknMetric) string {
 		sb.WriteString("### Metric attributes\n\n")
 		sb.WriteString("| Metric Type | Unit Type | Unit |\n")
 		sb.WriteString("|-------------|-----------|------|\n")
-		sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n\n", mtOut, utOut, uOut))
+		fmt.Fprintf(&sb, "| %s | %s | %s |\n\n", mtOut, utOut, uOut)
 	}
 
 	sb.WriteString("### Scope\n\n")
 	sb.WriteString("| Scope Type | Scope Ref |\n")
 	sb.WriteString("|------------|-----------|\n")
-	sb.WriteString(fmt.Sprintf("| %s | %s |\n\n", m.ScopeType, m.ScopeRef))
+	fmt.Fprintf(&sb, "| %s | %s |\n\n", m.ScopeType, m.ScopeRef)
 
 	sb.WriteString("### Calculation Formula\n\n")
 	if m.Formula != nil {
@@ -85,7 +85,7 @@ func SerializeMetric(m *BknMetric) string {
 	sb.WriteString("| Property | Default Range Policy |\n")
 	sb.WriteString("|----------|----------------------|\n")
 	for _, row := range m.TimeDimensions {
-		sb.WriteString(fmt.Sprintf("| %s | %s |\n", row.Property, row.Policy))
+		fmt.Fprintf(&sb, "| %s | %s |\n", row.Property, row.Policy)
 	}
 	sb.WriteString("\n")
 
@@ -93,7 +93,7 @@ func SerializeMetric(m *BknMetric) string {
 	sb.WriteString("| Name | Display Name |\n")
 	sb.WriteString("|------|--------------|\n")
 	for _, row := range m.AnalysisDimensions {
-		sb.WriteString(fmt.Sprintf("| %s | %s |\n", row.Name, row.DisplayName))
+		fmt.Fprintf(&sb, "| %s | %s |\n", row.Name, row.DisplayName)
 	}
 	sb.WriteString("\n")
 

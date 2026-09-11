@@ -47,7 +47,7 @@ func TestRiskTypeServiceCreateRiskTypesResourceParentLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatalf("sqlmock.New() error = %v", err)
 		}
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 
 		rta := bmock.NewMockRiskTypeAccess(ctrl)
 		ps := bmock.NewMockPermissionService(ctrl)
@@ -84,7 +84,7 @@ func TestRiskTypeServiceCreateRiskTypesResourceParentLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatalf("sqlmock.New() error = %v", err)
 		}
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 
 		rta := bmock.NewMockRiskTypeAccess(ctrl)
 		ps := bmock.NewMockPermissionService(ctrl)

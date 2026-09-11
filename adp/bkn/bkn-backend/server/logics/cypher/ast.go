@@ -203,16 +203,6 @@ type ParameterRef struct {
 	Pos  Position
 }
 
-func (o Operand) describe() string {
-	if o.Parameter != nil {
-		return "parameter $" + o.Parameter.Name
-	}
-	if o.Literal != nil {
-		return o.Literal.describe()
-	}
-	return "an empty operand"
-}
-
 // Projection is one RETURN item: a property, or an aggregate over one. Alias
 // is what the column is called in the result; it defaults to the source text
 // of what was projected.

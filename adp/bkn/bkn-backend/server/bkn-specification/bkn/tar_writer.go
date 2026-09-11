@@ -200,7 +200,7 @@ func generateSkillMd(doc *BknNetwork) string {
 		sort.Slice(mts, func(i, j int) bool { return mts[i].ID < mts[j].ID })
 		for _, met := range mts {
 			path := "metrics/" + met.ID + ".bkn"
-			sb.WriteString(fmt.Sprintf("| %s | `%s` | %s |\n", met.Name, path, met.Description))
+			fmt.Fprintf(&sb, "| %s | `%s` | %s |\n", met.Name, path, met.Description)
 		}
 		sb.WriteString("\n")
 	}

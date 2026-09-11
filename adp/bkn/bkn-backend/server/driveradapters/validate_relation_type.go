@@ -188,6 +188,8 @@ func validateDirectMappingRules(ctx context.Context, mappingRules any, strictMod
 }
 
 // validateInDirectMappingRules validates indirect-relation mapping_rules.
+//
+//nolint:unused // Retained for RELATION_TYPE indirect mapping validation.
 func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictMode bool) (*interfaces.InDirectMapping, error) {
 	// Decode the input into an indirect mapping.
 	var mapping interfaces.InDirectMapping

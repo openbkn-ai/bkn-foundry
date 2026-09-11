@@ -135,13 +135,3 @@ func assertPayloadKeys(t *testing.T, event Event, allowed ...string) {
 		}
 	}
 }
-
-func assertRefKeys(t *testing.T, ref map[string]any) {
-	t.Helper()
-	allowed := map[string]bool{"ref_id": true, "ref_type": true, "source_system": true, "validity": true, "version_status": true, "visibility": true, "summary_hash": true}
-	for key := range ref {
-		if !allowed[key] {
-			t.Fatalf("unregistered ref key %q in %#v", key, ref)
-		}
-	}
-}

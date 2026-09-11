@@ -29,7 +29,7 @@ func grammarCorpus(t *testing.T) []string {
 	if err != nil {
 		t.Fatalf("open corpus: %v", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var queries []string
 	scanner := bufio.NewScanner(file)

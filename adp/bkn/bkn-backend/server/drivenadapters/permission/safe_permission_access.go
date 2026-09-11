@@ -134,7 +134,7 @@ func (c *safeClient) do(ctx context.Context, method, path string, body, out any)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("bkn-safe %s %s returned status %d", method, path, resp.StatusCode)
