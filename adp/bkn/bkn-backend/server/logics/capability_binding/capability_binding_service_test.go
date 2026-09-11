@@ -240,6 +240,40 @@ func TestListCapabilities(t *testing.T) {
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
+
+		Convey("仅导航可见返回规范空结果且不读取能力数据", func() {
+			service := &capabilityBindingService{
+				cba: bmock.NewMockCapabilityBindingAccess(ctrl),
+				aoa: bmock.NewMockAgentOperatorAccess(ctrl),
+				ps:  bmock.NewMockPermissionService(ctrl),
+			}
+
+			list, err := service.ListCapabilities(context.Background(), interfaces.CapabilityBindingsQueryParams{
+				KNID: "kn1", Branch: "main", ReadAccessMode: interfaces.KN_READ_ACCESS_NAVIGATION_ONLY,
+			})
+
+			So(err, ShouldBeNil)
+			So(list.Entries, ShouldNotBeNil)
+			So(list.Entries, ShouldBeEmpty)
+			So(list.TotalCount, ShouldEqual, 0)
+			So(list.Boxes, ShouldNotBeNil)
+			So(list.Boxes, ShouldBeEmpty)
+			So(list.MetadataAvailable, ShouldBeTrue)
+			So(list.SourcesAvailable, ShouldBeTrue)
+		})
+
+		Convey("仅导航可见仍校验查询条件", func() {
+			service, _ := newTestService(t, ctrl)
+
+			_, err := service.ListCapabilities(context.Background(), interfaces.CapabilityBindingsQueryParams{
+				KNID: "kn1", Branch: "main", CapabilityType: "operator",
+				ReadAccessMode: interfaces.KN_READ_ACCESS_NAVIGATION_ONLY,
+			})
+
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+		})
 	})
 }
 

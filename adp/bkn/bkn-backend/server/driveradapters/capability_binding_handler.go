@@ -190,6 +190,14 @@ func (r *restHandler) ListCapabilities(c *gin.Context, vis hydra.Visitor) {
 		return
 	}
 
+	readAccessMode, err := r.kns.ResolveKNReadAccess(ctx, knID, branch)
+	if err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
 	list, err := r.cbs.ListCapabilities(ctx, interfaces.CapabilityBindingsQueryParams{
 		PaginationQueryParameters: interfaces.PaginationQueryParameters{
 			Offset:    pageParam.Offset,
@@ -200,6 +208,7 @@ func (r *restHandler) ListCapabilities(c *gin.Context, vis hydra.Visitor) {
 		KNID:           knID,
 		Branch:         branch,
 		CapabilityType: c.Query("type"),
+		ReadAccessMode: readAccessMode,
 		// Either spelling narrows by tool box; box_id is what every other surface calls it.
 		OwnerID:      firstNonEmpty(c.Query("owner_id"), c.Query("box_id")),
 		WithDetail:   strings.EqualFold(strings.TrimSpace(c.Query("with_detail")), "true"),
