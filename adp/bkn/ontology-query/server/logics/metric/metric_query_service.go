@@ -738,7 +738,8 @@ func vegaEntriesToMetricData(ctx context.Context, def interfaces.MetricDefinitio
 
 // metricQuery.FillNull is parsed from the fill_null URL query by the handler and written here (json:"-").
 func (s *metricQueryService) executeMetric(ctx context.Context, knID string, branch string,
-	def *interfaces.MetricDefinition, metricQuery *interfaces.MetricQueryRequest) (interfaces.MetricData, error) {
+	def *interfaces.MetricDefinition, metricQuery *interfaces.MetricQueryRequest,
+	trustedPublishedDefinition bool) (interfaces.MetricData, error) {
 
 	// Get metric subject object type information.
 	ot, ok, err := s.oma.GetObjectType(ctx, knID, branch, def.ScopeRef)
@@ -755,8 +756,14 @@ func (s *metricQueryService) executeMetric(ctx context.Context, knID string, bra
 	if ot.DataSource == nil || ot.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE || ot.DataSource.ID == "" {
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidDataSource)
 	}
-	if err := s.requireFullMetricInputs(ctx, ot, def, metricQuery); err != nil {
-		return interfaces.MetricData{}, err
+	if trustedPublishedDefinition {
+		if err := validatePublishedMetricInputs(ctx, ot, def, metricQuery); err != nil {
+			return interfaces.MetricData{}, err
+		}
+	} else {
+		if err := s.requireFullMetricInputs(ctx, ot, def, metricQuery); err != nil {
+			return interfaces.MetricData{}, err
+		}
 	}
 	if s.proxy == nil {
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
@@ -909,7 +916,7 @@ func (s *metricQueryService) QueryMetricData(ctx context.Context, knID string, b
 	if def.ScopeType != interfaces.ScopeTypeObjectType {
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_UnsupportedScope)
 	}
-	return s.executeMetric(ctx, knID, branch, def, metricQuery)
+	return s.executeMetric(ctx, knID, branch, def, metricQuery, true)
 }
 
 func (s *metricQueryService) DryRunMetricData(ctx context.Context, knID, branch string,
@@ -930,7 +937,7 @@ func (s *metricQueryService) DryRunMetricData(ctx context.Context, knID, branch 
 			WithErrorDetails("metric_config.kn_id must match path kn_id")
 	}
 
-	return s.executeMetric(ctx, knID, branch, def, &metricDryRun.MetricQueryRequest)
+	return s.executeMetric(ctx, knID, branch, def, &metricDryRun.MetricQueryRequest, false)
 }
 
 func calcComparisonTime(t time.Time, granlarCfg interfaces.SameperiodConfig) time.Time {

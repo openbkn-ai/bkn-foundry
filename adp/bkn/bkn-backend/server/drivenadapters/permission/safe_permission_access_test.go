@@ -95,6 +95,50 @@ func TestSafeCheckUsesDefaultEffectiveDecision(t *testing.T) {
 	}
 }
 
+func TestSafeResolvePropertyLevels(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/safe/v1/authz/property-levels" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		var request interfaces.PropertyLevelsRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if request.AccessorID != "u-1" || len(request.Items) != 1 ||
+			request.Items[0].ObjectTypeRef != "kn-1/orders" {
+			t.Fatalf("unexpected request: %#v", request)
+		}
+		_, _ = w.Write([]byte(`{"entries":[{"object_type_ref":"kn-1/orders","properties":[{"name":"amount","level":"full","source":"base"}]}]}`))
+	}))
+	defer srv.Close()
+
+	response, err := NewPermissionAccess(srv.URL).ResolvePropertyLevels(context.Background(), interfaces.PropertyLevelsRequest{
+		AccessorID: "u-1",
+		Items: []interfaces.PropertyLevelsRequestItem{{
+			ObjectTypeRef: "kn-1/orders",
+			Properties:    []string{"amount"},
+		}},
+	})
+	if err != nil || len(response.Entries) != 1 || response.Entries[0].Properties[0].Level != "full" {
+		t.Fatalf("ResolvePropertyLevels() = %#v, %v", response, err)
+	}
+}
+
+func TestSafeResolvePropertyLevelsRejectsMissingEntries(t *testing.T) {
+	for _, body := range []string{"", `{}`, `null`, `{"entries":null}`} {
+		t.Run(body, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(body))
+			}))
+			defer srv.Close()
+			_, err := NewPermissionAccess(srv.URL).ResolvePropertyLevels(context.Background(), interfaces.PropertyLevelsRequest{})
+			if err == nil {
+				t.Fatal("ResolvePropertyLevels() error = nil")
+			}
+		})
+	}
+}
+
 func knFilter(ids []string, ops, candidates []string) interfaces.PermissionResourcesFilter {
 	resources := make([]interfaces.PermissionResource, 0, len(ids))
 	for _, id := range ids {

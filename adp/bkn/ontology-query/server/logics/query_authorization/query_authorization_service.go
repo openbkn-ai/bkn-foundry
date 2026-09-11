@@ -183,18 +183,10 @@ func (s *queryAuthorizationService) AuthorizeMetricQuery(ctx context.Context,
 	if err := validateMetricScope(ctx, knID, definition); err != nil {
 		return err
 	}
-	objectType, err := s.loadObjectType(ctx, knID, definition.ScopeRef)
-	if err != nil {
-		return err
-	}
 	resources := []interfaces.PermissionResource{
 		interfaces.KNChildPermissionResource(interfaces.PermissionResourceTypeMetric, knID, metricID),
 	}
-	dependencies, err := objectTypeResources(ctx, knID, objectType)
-	if err != nil {
-		return err
-	}
-	return s.require(ctx, append(resources, dependencies...))
+	return s.require(ctx, resources)
 }
 
 func (s *queryAuthorizationService) AuthorizeMetricDryRun(ctx context.Context,

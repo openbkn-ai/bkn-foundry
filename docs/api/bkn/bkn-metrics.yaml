@@ -246,6 +246,49 @@ paths:
                     description: Explanation when valid is false
         "400":
           description: Invalid request parameters and similar errors. A business validation failure is represented by 200 with valid=false and detail.
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/metrics/dependency-properties/{ot_id}:
+    get:
+      summary: List object-type properties usable by metric authoring
+      description: |
+        Returns minimal metadata only for properties whose effective access level is `full`.
+        The caller must also hold `view_detail` and `query_data` on the object type.
+        This endpoint supports authoring UX; create and dependency-changing update APIs repeat
+        the same checks and remain the final authorization boundary.
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: ot_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: branch
+          in: query
+          schema:
+            type: string
+            default: main
+      responses:
+        "200":
+          description: Metric-authoring property candidates
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries]
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MetricDependencyProperty"
+        "403":
+          description: Caller cannot use the object type or any requested property at the required level
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/metrics/{metric_ids}:
     get:
       summary: Batch get metric details
@@ -608,6 +651,25 @@ components:
         display_name:
           type: string
       additionalProperties: false
+    MetricDependencyProperty:
+      description: Minimal metadata for a property captured by a persisted metric definition.
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        display_name:
+          type: string
+        type:
+          type: string
+        comment:
+          type: string
+        condition_operations:
+          type: array
+          items:
+            type: string
+      additionalProperties: false
     MetricDefinition:
       type: object
       required:
@@ -665,6 +727,9 @@ components:
         scope_ref:
           type: string
           description: Aggregation subject reference. It is an object type ID when scope_type is object_type.
+        scope_name:
+          type: string
+          description: Display name of the bound scope, exposed as metric metadata without granting direct scope access.
         time_dimension:
           $ref: "#/components/schemas/MetricTimeDimension"
         calculation_formula:
@@ -673,6 +738,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MetricAnalysisDimension"
+        dependency_properties:
+          type: array
+          description: Minimal metadata for properties captured by the metric definition. This does not grant object type access.
+          items:
+            $ref: "#/components/schemas/MetricDependencyProperty"
         operations:
           description: Operations allowed for the current accessor on this metric.
           type: array

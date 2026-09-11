@@ -234,6 +234,11 @@ func (ms *metricService) CreateMetrics(ctx context.Context, tx *sql.Tx, entries 
 			}, []string{interfaces.OPERATION_TYPE_MODIFY}); err != nil {
 				return nil, err
 			}
+			for _, metric := range creates {
+				if err = ms.authorizeMetricDependencies(ctx, tx, metric); err != nil {
+					return nil, err
+				}
+			}
 		}
 		updateIDs := make([]string, 0, len(updates))
 		for _, metric := range updates {
@@ -414,6 +419,11 @@ func (ms *metricService) GetMetricByID(ctx context.Context, knID, branch, metric
 		return nil, err
 	}
 	def.Operations = operations
+	if ms.ots != nil {
+		if err := ms.hydrateMetricDependencyProperties(ctx, def); err != nil {
+			return nil, err
+		}
+	}
 	span.SetStatus(codes.Ok, "")
 	return def, nil
 }
@@ -435,6 +445,11 @@ func (ms *metricService) GetMetricsByIDs(ctx context.Context, knID, branch strin
 			return nil, err
 		}
 		list[0].Operations = operations
+		if ms.ots != nil {
+			if err := ms.hydrateMetricDependencyProperties(ctx, list[0]); err != nil {
+				return nil, err
+			}
+		}
 	}
 	span.SetStatus(codes.Ok, "")
 	return list, nil
@@ -519,6 +534,18 @@ func (ms *metricService) UpdateMetric(ctx context.Context, tx *sql.Tx, req *inte
 	err = ms.ps.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_MODIFY})
 	if err != nil {
 		return err
+	}
+	if !permission.KNImportPermissionPrechecked(ctx) {
+		previous, getErr := ms.ma.GetMetricByID(ctx, knID, branch, metricID)
+		if getErr != nil {
+			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_Metric_InternalError).WithErrorDetails(getErr.Error())
+		}
+		if metricDependenciesChanged(previous, req) {
+			if err = ms.authorizeMetricDependencies(ctx, tx, req); err != nil {
+				return err
+			}
+		}
 	}
 
 	if tx == nil {
@@ -997,21 +1024,10 @@ func (ms *metricService) getTotalWithLargeScopeRefs(ctx context.Context, filterC
 }
 
 func (ms *metricService) validateMetricStrictExternalDeps(ctx context.Context, tx *sql.Tx, metric *interfaces.MetricDefinition) error {
-	scopeRef := strings.TrimSpace(metric.ScopeRef)
-	if scopeRef == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails(metricInvalidParameterDetail(ctx, "ScopeRefRequired", nil))
-	}
-
-	ot, err := ms.ots.GetObjectTypeByID(ctx, tx, metric.KnID, metric.Branch, scopeRef)
+	ot, scopeRef, err := ms.resolveMetricObjectType(ctx, tx, metric)
 	if err != nil {
 		return err
 	}
-	if ot == nil {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails(metricInvalidParameterDetail(ctx, "ScopeObjectTypeNotFound", map[string]any{"metricID": metric.ID, "scopeRef": scopeRef}))
-	}
-	batchindex.EnsureObjectTypePropertyMap(ot)
 	return ms.validateMetricAgainstResolvedOT(ctx, metric, ot, scopeRef)
 }
 
@@ -1109,6 +1125,9 @@ func (ms *metricService) validateMetricAgainstResolvedOT(ctx context.Context, me
 	// 6. Each order-by property must exist on the object type.
 	if metric.CalculationFormula.OrderBy != nil {
 		for i, o := range metric.CalculationFormula.OrderBy {
+			if strings.TrimSpace(o.Property) == interfaces.MetricHavingFieldValue {
+				continue
+			}
 			if _, ok := propertyMap[o.Property]; !ok {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
 					WithErrorDetails(metricInvalidParameterDetail(ctx, "OrderByPropertyNotFound", map[string]any{"metricID": metric.ID, "index": i, "property": o.Property, "scopeRef": scopeRef}))
@@ -1130,26 +1149,38 @@ func validateConditionFieldsReferenceObjectType(ctx context.Context, cfg *cond.C
 	if cfg == nil {
 		return nil
 	}
-
-	switch cfg.Operation {
-	case cond.OperationAnd, cond.OperationOr:
-		for _, s := range cfg.SubConds {
-			if err := validateConditionFieldsReferenceObjectType(ctx, s, propertyMap, metricID); err != nil {
+	if cfg.Operation == cond.OperationAnd || cfg.Operation == cond.OperationOr {
+		for _, child := range cfg.SubConds {
+			if err := validateConditionFieldsReferenceObjectType(ctx, child, propertyMap, metricID); err != nil {
 				return err
 			}
 		}
 		return nil
-	default:
-		n := strings.TrimSpace(cfg.Field)
-		if n == "" {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-				WithErrorDetails(metricInvalidParameterDetail(ctx, "ConditionPropertyRequired", map[string]any{"metricID": metricID}))
+	}
+	if cfg.Operation == cond.OperationMultiMatch {
+		propertyNames := make([]string, 0, len(propertyMap))
+		for name := range propertyMap {
+			propertyNames = append(propertyNames, name)
 		}
-
-		if _, ok := propertyMap[n]; !ok {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-				WithErrorDetails(metricInvalidParameterDetail(ctx, "ConditionPropertyNotFound", map[string]any{"metricID": metricID, "property": n}))
+		for _, field := range collectMetricConditionFields(cfg, propertyNames) {
+			if _, ok := propertyMap[field]; !ok {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
+					WithErrorDetails(metricInvalidParameterDetail(ctx, "ConditionPropertyNotFound", map[string]any{"metricID": metricID, "property": field}))
+			}
 		}
 		return nil
 	}
+	field := strings.TrimSpace(cfg.Field)
+	if field == "" {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
+			WithErrorDetails(metricInvalidParameterDetail(ctx, "ConditionPropertyRequired", map[string]any{"metricID": metricID}))
+	}
+	if field == "*" {
+		return nil
+	}
+	if _, ok := propertyMap[field]; !ok {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
+			WithErrorDetails(metricInvalidParameterDetail(ctx, "ConditionPropertyNotFound", map[string]any{"metricID": metricID, "property": field}))
+	}
+	return nil
 }

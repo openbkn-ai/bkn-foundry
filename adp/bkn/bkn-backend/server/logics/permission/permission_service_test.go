@@ -154,6 +154,72 @@ func Test_PermissionServiceImpl_CheckPermission(t *testing.T) {
 	})
 }
 
+func Test_PermissionServiceImpl_RequireFullPropertyAccess(t *testing.T) {
+	ctx := withAccountInfo(context.Background(), "u1", "user")
+	tests := []struct {
+		name       string
+		level      string
+		responseID string
+		wantStatus int
+	}{
+		{name: "full access", level: "full", responseID: "kn1/orders"},
+		{name: "masked access is denied", level: "masked", responseID: "kn1/orders", wantStatus: 403},
+		{name: "unknown level fails closed", level: "unknown", responseID: "kn1/orders", wantStatus: 500},
+		{name: "mismatched object fails closed", level: "full", responseID: "kn1/other", wantStatus: 500},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			svc, _, pa, _ := newTestPermissionImpl(t)
+			pa.EXPECT().ResolvePropertyLevels(gomock.Any(), interfaces.PropertyLevelsRequest{
+				AccessorID: "u1",
+				Items: []interfaces.PropertyLevelsRequestItem{{
+					ObjectTypeRef: "kn1/orders",
+					Properties:    []string{"amount", "region"},
+				}},
+			}).Return(interfaces.PropertyLevelsResponse{Entries: []interfaces.PropertyLevelsDecisionEntry{{
+				ObjectTypeRef: test.responseID,
+				Properties: []interfaces.PropertyAccessDecision{
+					{Name: "amount", Level: test.level},
+					{Name: "region", Level: "full"},
+				},
+			}}}, nil)
+
+			err := svc.RequireFullPropertyAccess(ctx, "kn1/orders", []string{"region", "amount", "amount"})
+			if test.wantStatus == 0 {
+				if err != nil {
+					t.Fatalf("RequireFullPropertyAccess() error = %v", err)
+				}
+				return
+			}
+			httpErr, ok := err.(*rest.HTTPError)
+			if !ok || httpErr.HTTPCode != test.wantStatus {
+				t.Fatalf("RequireFullPropertyAccess() error = %#v, want HTTP %d", err, test.wantStatus)
+			}
+		})
+	}
+}
+
+func Test_PermissionServiceImpl_FilterFullPropertyAccess(t *testing.T) {
+	svc, _, pa, _ := newTestPermissionImpl(t)
+	ctx := withAccountInfo(context.Background(), "u1", "user")
+	pa.EXPECT().ResolvePropertyLevels(gomock.Any(), gomock.Any()).Return(
+		interfaces.PropertyLevelsResponse{Entries: []interfaces.PropertyLevelsDecisionEntry{{
+			ObjectTypeRef: "kn1/orders",
+			Properties: []interfaces.PropertyAccessDecision{
+				{Name: "amount", Level: "masked"},
+				{Name: "region", Level: "full"},
+			},
+		}}}, nil)
+
+	full, err := svc.FilterFullPropertyAccess(ctx, "kn1/orders", []string{"region", "amount"})
+	if err != nil {
+		t.Fatalf("FilterFullPropertyAccess() error = %v", err)
+	}
+	if len(full) != 1 || full[0] != "region" {
+		t.Fatalf("FilterFullPropertyAccess() = %v", full)
+	}
+}
+
 func Test_PermissionServiceImpl_CreateResources(t *testing.T) {
 	Convey("Test PermissionServiceImpl CreateResources\n", t, func() {
 		svc, mockCtrl, pa, _ := newTestPermissionImpl(t)

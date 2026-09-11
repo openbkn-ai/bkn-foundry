@@ -14,9 +14,206 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.uber.org/mock/gomock"
 
+	"bkn-backend/common"
 	"bkn-backend/interfaces"
 	bmock "bkn-backend/interfaces/mock"
 )
+
+func metricAuthorizationDefinition(scopeRef string) *interfaces.MetricDefinition {
+	return &interfaces.MetricDefinition{
+		ID: "metric-1", Name: "Metric 1", KnID: "kn-1", Branch: interfaces.MAIN_BRANCH,
+		ScopeType: interfaces.ScopeTypeObjectType, ScopeRef: scopeRef,
+		TimeDimension:      &interfaces.MetricTimeDimension{Property: "event_time"},
+		AnalysisDimensions: []interfaces.MetricAnalysisDimension{{Name: "region"}},
+		CalculationFormula: &interfaces.MetricCalculationFormula{
+			Aggregation: interfaces.MetricAggregation{Property: "amount", Aggr: interfaces.MetricAggrSum},
+		},
+	}
+}
+
+func metricAuthorizationObjectType(id string) *interfaces.ObjectType {
+	return &interfaces.ObjectType{
+		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+			OTID:       id,
+			DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"},
+			DataProperties: []*interfaces.DataProperty{
+				{Name: "amount"}, {Name: "event_time"}, {Name: "region"},
+			},
+		},
+		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
+	}
+}
+
+func TestMetricCreateRequiresObjectTypeAndPropertyAccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	db, dbMock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	dbMock.ExpectBegin()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ma := bmock.NewMockMetricAccess(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	ots := bmock.NewMockObjectTypeService(ctrl)
+	vbs := bmock.NewMockVegaBackendService(ctrl)
+	definition := metricAuthorizationDefinition("orders")
+	ma.EXPECT().CheckMetricExistByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "metric-1").Return("", false, nil)
+	ma.EXPECT().CheckMetricExistByName(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "Metric 1").Return("", false, nil)
+	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_KN, ID: "kn-1",
+	}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+	ots.EXPECT().GetObjectTypeByID(gomock.Any(), tx, "kn-1", interfaces.MAIN_BRANCH, "orders").
+		Return(metricAuthorizationObjectType("orders"), nil)
+	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE, ID: "kn-1/orders",
+	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA}).Return(nil)
+	ps.EXPECT().RequireFullPropertyAccess(gomock.Any(), "kn-1/orders", gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, properties []string) error {
+			seen := map[string]bool{}
+			for _, property := range properties {
+				seen[property] = true
+			}
+			for _, want := range []string{"amount", "event_time", "region"} {
+				if !seen[want] {
+					t.Fatalf("property authorization omitted %q from %v", want, properties)
+				}
+			}
+			return nil
+		})
+	ma.EXPECT().CreateMetric(gomock.Any(), tx, definition).Return(nil)
+	ps.EXPECT().UpsertResourceParents(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
+		interfaces.RESOURCE_TYPE_KN, gomock.Any()).Return(nil)
+	vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
+
+	service := &metricService{appSetting: &common.AppSetting{}, ma: ma, ps: ps, ots: ots, vbs: vbs}
+	if _, err := service.CreateMetrics(context.Background(), tx, []*interfaces.MetricDefinition{definition}, false,
+		interfaces.ImportMode_Normal); err != nil {
+		t.Fatalf("CreateMetrics() error = %v", err)
+	}
+}
+
+func TestMetricMetadataUpdateDoesNotReauthorizeObjectType(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	db, dbMock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	dbMock.ExpectBegin()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ma := bmock.NewMockMetricAccess(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	vbs := bmock.NewMockVegaBackendService(ctrl)
+	previous := metricAuthorizationDefinition("orders")
+	updated := metricAuthorizationDefinition("orders")
+	updated.Name = "Renamed Metric"
+	ma.EXPECT().CheckMetricExistByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "metric-1").Return("Metric 1", true, nil)
+	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_METRIC, ID: "kn-1/metric-1",
+	}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+	ma.EXPECT().GetMetricByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "metric-1").Return(previous, nil)
+	ma.EXPECT().UpdateMetric(gomock.Any(), tx, updated).Return(nil)
+	vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
+
+	service := &metricService{appSetting: &common.AppSetting{}, ma: ma, ps: ps, vbs: vbs}
+	if err := service.UpdateMetric(context.Background(), tx, updated, false); err != nil {
+		t.Fatalf("UpdateMetric() error = %v", err)
+	}
+}
+
+func TestMetricDependencyUpdateReauthorizesNewObjectTypeBeforeWrite(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ma := bmock.NewMockMetricAccess(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	ots := bmock.NewMockObjectTypeService(ctrl)
+	previous := metricAuthorizationDefinition("orders")
+	updated := metricAuthorizationDefinition("customers")
+	denied := errors.New("denied")
+	ma.EXPECT().CheckMetricExistByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "metric-1").Return("Metric 1", true, nil)
+	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_METRIC, ID: "kn-1/metric-1",
+	}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+	ma.EXPECT().GetMetricByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "metric-1").Return(previous, nil)
+	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE, ID: "kn-1/customers",
+	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA}).Return(denied)
+
+	service := &metricService{ma: ma, ps: ps, ots: ots}
+	if err := service.UpdateMetric(context.Background(), nil, updated, false); !errors.Is(err, denied) {
+		t.Fatalf("UpdateMetric() error = %v, want %v", err, denied)
+	}
+}
+
+func TestMetricDetailExposesOnlyReferencedPropertyMetadata(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ma := bmock.NewMockMetricAccess(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	ots := bmock.NewMockObjectTypeService(ctrl)
+	definition := metricAuthorizationDefinition("orders")
+	objectType := metricAuthorizationObjectType("orders")
+	objectType.OTName = "Orders"
+	objectType.DataProperties = append(objectType.DataProperties, &interfaces.DataProperty{
+		Name: "secret", DisplayName: "Secret", Type: "string",
+	})
+	ots.EXPECT().GetObjectTypeByID(gomock.Any(), nil, "kn-1", interfaces.MAIN_BRANCH, "orders").
+		Return(objectType, nil)
+	ma.EXPECT().GetMetricsByIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, []string{"metric-1"}).
+		Return([]*interfaces.MetricDefinition{definition}, nil)
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
+		[]string{"kn-1/metric-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true,
+		gomock.Any()).Return(map[string]interfaces.PermissionResourceOps{
+		"kn-1/metric-1": {ResourceID: "kn-1/metric-1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+	}, nil)
+
+	service := &metricService{ma: ma, ps: ps, ots: ots}
+	metrics, err := service.GetMetricsByIDs(context.Background(), "kn-1", interfaces.MAIN_BRANCH, []string{"metric-1"})
+	if err != nil {
+		t.Fatalf("GetMetricsByIDs() error = %v", err)
+	}
+	definition = metrics[0]
+	if definition.ScopeName != "Orders" {
+		t.Fatalf("ScopeName = %q", definition.ScopeName)
+	}
+	seen := map[string]bool{}
+	for _, property := range definition.DependencyProperties {
+		seen[property.Name] = true
+	}
+	if seen["secret"] || !seen["amount"] || !seen["event_time"] || !seen["region"] {
+		t.Fatalf("DependencyProperties = %#v", definition.DependencyProperties)
+	}
+}
+
+func TestMetricDependencyPropertyCandidatesIncludeOnlyFullAccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ps := bmock.NewMockPermissionService(ctrl)
+	ots := bmock.NewMockObjectTypeService(ctrl)
+	objectType := metricAuthorizationObjectType("orders")
+	objectType.DataProperties = append(objectType.DataProperties, &interfaces.DataProperty{Name: "secret"})
+	ots.EXPECT().GetObjectTypeByID(gomock.Any(), nil, "kn-1", interfaces.MAIN_BRANCH, "orders").
+		Return(objectType, nil)
+	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE, ID: "kn-1/orders",
+	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA}).Return(nil)
+	ps.EXPECT().FilterFullPropertyAccess(gomock.Any(), "kn-1/orders",
+		[]string{"amount", "event_time", "region", "secret"}).Return([]string{"amount", "region"}, nil)
+
+	service := &metricService{ps: ps, ots: ots}
+	properties, err := service.GetMetricDependencyProperties(context.Background(), "kn-1",
+		interfaces.MAIN_BRANCH, "orders")
+	if err != nil {
+		t.Fatalf("GetMetricDependencyProperties() error = %v", err)
+	}
+	if len(properties) != 2 || properties[0].Name != "amount" || properties[1].Name != "region" {
+		t.Fatalf("GetMetricDependencyProperties() = %#v", properties)
+	}
+}
 
 func TestMetricSingleResourceAuthorization(t *testing.T) {
 	tests := []struct {

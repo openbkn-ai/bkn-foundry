@@ -69,6 +69,76 @@ func (s *metricQueryService) requireFullMetricInputs(ctx context.Context, object
 	return nil
 }
 
+// validatePublishedMetricInputs keeps caller-supplied query options within the
+// fields captured by the trusted, persisted metric definition. Dependency
+// access itself is performed through the metric's server-side proxy binding.
+func validatePublishedMetricInputs(ctx context.Context, objectType interfaces.ObjectType,
+	definition *interfaces.MetricDefinition, query *interfaces.MetricQueryRequest) error {
+	if definition == nil || definition.CalculationFormula == nil {
+		return metricPropertyAccessError(ctx, "metric calculation_formula is required")
+	}
+	propertyNames := make([]string, 0, len(objectType.DataProperties))
+	for _, property := range objectType.DataProperties {
+		propertyNames = append(propertyNames, property.Name)
+	}
+	allowed := metricDefinitionDependencies(definition, propertyNames)
+	if query == nil {
+		return nil
+	}
+	for _, field := range propertyaccess.CollectConditionFields(query.Condition, propertyNames) {
+		if _, ok := allowed[strings.TrimSpace(field)]; !ok {
+			return metricPropertyAccessError(ctx, "query condition exceeds the published metric definition")
+		}
+	}
+	definedDimensions := metricDefinedDimensions(definition)
+	for _, dimension := range query.AnalysisDimensions {
+		if _, ok := definedDimensions[strings.TrimSpace(dimension)]; !ok {
+			return metricPropertyAccessError(ctx, "analysis dimension exceeds the published metric definition")
+		}
+	}
+	for _, order := range query.OrderBy {
+		field := strings.TrimSpace(order.Property)
+		if field == "__value" {
+			continue
+		}
+		if _, ok := allowed[field]; !ok {
+			return metricPropertyAccessError(ctx, "order_by exceeds the published metric definition")
+		}
+	}
+	return nil
+}
+
+func metricDefinitionDependencies(definition *interfaces.MetricDefinition, propertyNames []string) map[string]struct{} {
+	dependencies := map[string]struct{}{}
+	add := func(value string) {
+		if value = strings.TrimSpace(value); value != "" && value != "__value" {
+			dependencies[value] = struct{}{}
+		}
+	}
+	if definition == nil {
+		return dependencies
+	}
+	if definition.TimeDimension != nil {
+		add(definition.TimeDimension.Property)
+	}
+	for _, dimension := range definition.AnalysisDimensions {
+		add(dimension.Name)
+	}
+	if formula := definition.CalculationFormula; formula != nil {
+		for _, field := range propertyaccess.CollectConditionFields(formula.Condition, propertyNames) {
+			add(field)
+		}
+		add(formula.Aggregation.Property)
+		for _, group := range formula.GroupBy {
+			add(group.Property)
+		}
+		for _, order := range formula.OrderBy {
+			add(order.Property)
+		}
+	}
+	return dependencies
+}
+
 func metricDefinedDimensions(definition *interfaces.MetricDefinition) map[string]struct{} {
 	defined := map[string]struct{}{}
 	if definition == nil {

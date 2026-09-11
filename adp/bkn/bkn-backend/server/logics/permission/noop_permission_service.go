@@ -26,6 +26,14 @@ func (n *NoopPermissionService) CheckPermission(ctx context.Context, resource in
 	return nil // Always allow; do not inspect accountInfo.
 }
 
+func (n *NoopPermissionService) RequireFullPropertyAccess(context.Context, string, []string) error {
+	return nil
+}
+
+func (n *NoopPermissionService) FilterFullPropertyAccess(_ context.Context, _ string, properties []string) ([]string, error) {
+	return properties, nil
+}
+
 func (n *NoopPermissionService) CreateResources(ctx context.Context, resources []interfaces.PermissionResource, ops []string) error {
 	return nil // Silently skip.
 }

@@ -17,7 +17,7 @@ import (
 	omock "ontology-query/interfaces/mock"
 )
 
-func TestAuthorizeMetricQueryUsesPublishedDependencies(t *testing.T) {
+func TestAuthorizeMetricQueryUsesOnlyPublishedMetricPermission(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	models := omock.NewMockOntologyManagerAccess(ctrl)
 	permissions := omock.NewMockPermissionService(ctrl)
@@ -28,11 +28,8 @@ func TestAuthorizeMetricQueryUsesPublishedDependencies(t *testing.T) {
 			ID: "metric-1", KnID: "kn-a", Branch: "main",
 			ScopeType: interfaces.ScopeTypeObjectType, ScopeRef: "orders",
 		}, true, nil)
-	models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "orders").Return(
-		publishedObjectType("kn-a", "orders", "orders-resource"), true, nil)
 	permissions.EXPECT().RequireQueryData(gomock.Any(), []interfaces.PermissionResource{
 		{Type: "metric", ID: "kn-a/metric-1"},
-		{Type: "object_type", ID: "kn-a/orders"},
 	}).Return(nil)
 
 	if err := service.AuthorizeMetricQuery(context.Background(), "kn-a", "main", "metric-1"); err != nil {

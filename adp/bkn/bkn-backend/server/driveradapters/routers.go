@@ -192,6 +192,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiV1.DELETE("/knowledge-networks/:kn_id/metrics/:metric_ids", r.DeleteMetricsByIDsByEx)
 		apiV1.PUT("/knowledge-networks/:kn_id/metrics/:metric_ids", r.verifyJsonContentType(), r.UpdateMetricByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/metrics", r.ListMetricsByEx)
+		apiV1.GET("/knowledge-networks/:kn_id/metrics/dependency-properties/:ot_id", r.GetMetricDependencyPropertiesByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/metrics/:metric_ids", r.GetMetricsByIDsByEx)
 
 		// Capability bindings: which Skills and ToolBox tools belong to this knowledge network.
@@ -287,6 +288,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiInV1.DELETE("/knowledge-networks/:kn_id/metrics/:metric_ids", r.DeleteMetricsByIDsByIn)
 		apiInV1.PUT("/knowledge-networks/:kn_id/metrics/:metric_ids", r.verifyJsonContentType(), r.UpdateMetricByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/metrics", r.ListMetricsByIn)
+		apiInV1.GET("/knowledge-networks/:kn_id/metrics/dependency-properties/:ot_id", r.GetMetricDependencyPropertiesByIn)
 
 		// Capability bindings: Context Loader resolves the references of one branch here.
 		apiInV1.POST("/knowledge-networks/:kn_id/capabilities", r.verifyJsonContentType(), r.AttachCapabilitiesByIn)

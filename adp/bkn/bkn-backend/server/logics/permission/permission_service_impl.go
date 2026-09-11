@@ -8,7 +8,10 @@ package permission
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"sort"
+	"strings"
 
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
@@ -24,6 +27,8 @@ import (
 	"bkn-backend/interfaces"
 	"bkn-backend/logics"
 )
+
+const maxPropertyLevelsPerRequest = 200
 
 func localizedPermissionDetail(ctx context.Context, key string) string {
 	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail."+key, nil)
@@ -90,6 +95,120 @@ func (ps *PermissionServiceImpl) CheckPermission(ctx context.Context, resource i
 	}
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+// RequireFullPropertyAccess verifies author-time access to every field captured
+// by a metric definition. Runtime metric consumers use the persisted metric's
+// trusted proxy binding instead of inheriting the author's object-type access.
+func (ps *PermissionServiceImpl) RequireFullPropertyAccess(ctx context.Context,
+	objectTypeRef string, properties []string) error {
+	properties = uniqueSortedProperties(properties)
+	if len(properties) == 0 {
+		return nil
+	}
+	full, err := ps.FilterFullPropertyAccess(ctx, objectTypeRef, properties)
+	if err != nil {
+		return err
+	}
+	if len(full) != len(properties) {
+		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails(localizedPermissionDetail(ctx, "PermissionDenied"))
+	}
+	return nil
+}
+
+// FilterFullPropertyAccess returns only properties whose effective decision is
+// full. It is used by authoring UIs as a convenience; mutation services must
+// still call RequireFullPropertyAccess as their final security boundary.
+func (ps *PermissionServiceImpl) FilterFullPropertyAccess(ctx context.Context,
+	objectTypeRef string, properties []string) ([]string, error) {
+	properties = uniqueSortedProperties(properties)
+	if len(properties) == 0 {
+		return []string{}, nil
+	}
+	accountInfo, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	if !ok || accountInfo.ID == "" || accountInfo.Type == "" {
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails(localizedPermissionDetail(ctx, "AccountInfoMissing"))
+	}
+	full := make([]string, 0, len(properties))
+	for start := 0; start < len(properties); start += maxPropertyLevelsPerRequest {
+		end := min(start+maxPropertyLevelsPerRequest, len(properties))
+		requested := properties[start:end]
+		response, err := ps.pa.ResolvePropertyLevels(ctx, interfaces.PropertyLevelsRequest{
+			AccessorID: accountInfo.ID,
+			Items: []interfaces.PropertyLevelsRequestItem{{
+				ObjectTypeRef: objectTypeRef,
+				Properties:    requested,
+			}},
+		})
+		if err != nil {
+			return nil, ps.propertyAccessInternalError(ctx, err)
+		}
+		batch, err := filterFullPropertyLevelResponse(objectTypeRef, requested, response.Entries)
+		if err != nil {
+			return nil, ps.propertyAccessInternalError(ctx, err)
+		}
+		full = append(full, batch...)
+	}
+	return full, nil
+}
+
+func (ps *PermissionServiceImpl) propertyAccessInternalError(ctx context.Context, err error) error {
+	httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		berrors.BknBackend_InternalError_CheckPermissionFailed).WithErrorDetails(err)
+	otellog.LogError(ctx, "RequireFullPropertyAccess failed", httpErr)
+	return httpErr
+}
+
+func filterFullPropertyLevelResponse(objectTypeRef string, requested []string,
+	entries []interfaces.PropertyLevelsDecisionEntry) ([]string, error) {
+	if len(entries) != 1 || entries[0].ObjectTypeRef != objectTypeRef {
+		return nil, fmt.Errorf("invalid property-levels object response")
+	}
+	decisions := make(map[string]string, len(entries[0].Properties))
+	for _, decision := range entries[0].Properties {
+		if _, duplicate := decisions[decision.Name]; duplicate || strings.TrimSpace(decision.Name) == "" {
+			return nil, fmt.Errorf("invalid property-levels property response")
+		}
+		decisions[decision.Name] = decision.Level
+	}
+	if len(decisions) != len(requested) {
+		return nil, fmt.Errorf("incomplete property-levels response")
+	}
+	full := make([]string, 0, len(requested))
+	for _, property := range requested {
+		level, exists := decisions[property]
+		if !exists {
+			return nil, fmt.Errorf("incomplete property-levels response")
+		}
+		switch level {
+		case "full":
+			full = append(full, property)
+		case "none", "schema", "masked":
+		default:
+			return nil, fmt.Errorf("invalid property access level")
+		}
+	}
+	return full, nil
+}
+
+func uniqueSortedProperties(properties []string) []string {
+	seen := make(map[string]struct{}, len(properties))
+	result := make([]string, 0, len(properties))
+	for _, property := range properties {
+		property = strings.TrimSpace(property)
+		if property == "" {
+			continue
+		}
+		if _, exists := seen[property]; exists {
+			continue
+		}
+		seen[property] = struct{}{}
+		result = append(result, property)
+	}
+	sort.Strings(result)
+	return result
 }
 
 // CreateResources creates permission policies for newly created resources.
