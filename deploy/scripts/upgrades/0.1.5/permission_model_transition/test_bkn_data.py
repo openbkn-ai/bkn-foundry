@@ -16,26 +16,23 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
-import script as migration
+import bkn_data as migration
 
-from script import (
+from bkn_data import (
     BackupResult,
     DBConfig,
     GrantIndex,
-    KN_CREATOR_OPERATIONS,
-    NETWORK_BUILDER_ROLE_ID,
     MigrationPlan,
-    Policy,
     ProxyMigrationPlan,
     ProxyNetworkPlan,
     ProxySource,
     ResourceRow,
     ResourceParent,
-    SafeAccount,
-    apply_safe_plan,
+    apply_parent_plan,
     build_plan,
     derive_proxy_sources,
     load_proxy_plan,
+    stable_proxy_account_id,
     sync_proxy_sources,
 )
 
@@ -45,8 +42,6 @@ def resource(
     resource_id,
     kn_id="kn-1",
     branch="main",
-    creator_id="",
-    creator_type="",
 ):
     table_by_type = {
         "knowledge_network": "t_knowledge_network",
@@ -63,85 +58,32 @@ def resource(
         resource_id=resource_id,
         kn_id="" if resource_type == "knowledge_network" else kn_id,
         branch=branch,
-        creator_id=creator_id,
-        creator_type=creator_type,
     )
 
 
 class BuildPlanTest(unittest.TestCase):
-    def test_builds_creator_policies_and_six_parent_rows(self):
+    def test_builds_six_parent_rows_without_rewriting_caller_policies(self):
         rows = [
-            resource(
-                "knowledge_network",
-                "kn-1",
-                creator_id="owner-1",
-                creator_type="user",
-            ),
+            resource("knowledge_network", "kn-1"),
             resource("concept_group", "group-1"),
             resource("object_type", "object-1"),
             resource("relation_type", "relation-1"),
-            resource(
-                "action_type",
-                "action-1",
-                creator_id="app-1",
-                creator_type="app",
-            ),
+            resource("action_type", "action-1"),
             resource("metric", "metric-1"),
             resource("risk_type", "risk-1"),
         ]
-        accounts = {
-            "owner-1": SafeAccount("owner-1", True, "other"),
-            "app-1": SafeAccount("app-1", True, "app"),
-        }
-
-        plan = build_plan(rows, accounts, branch_updates=0)
+        plan = build_plan(rows, branch_updates=0)
 
         self.assertEqual([], plan.failures)
         self.assertEqual(6, len(plan.parents))
-        self.assertEqual(len(KN_CREATOR_OPERATIONS) + 2, len(plan.policies))
-        self.assertIn(
-            ("action_type", "kn-1/action-1", "execute"),
-            {
-                (policy.resource_type, policy.resource_id, policy.operation)
-                for policy in plan.policies
-            },
-        )
-        self.assertIn(
-            (NETWORK_BUILDER_ROLE_ID, "knowledge_network", "*", "create"),
-            {
-                (
-                    policy.accessor_id,
-                    policy.resource_type,
-                    policy.resource_id,
-                    policy.operation,
-                )
-                for policy in plan.policies
-            },
-        )
 
     def test_reports_branch_collision_after_blank_normalization(self):
         rows = [
-            resource(
-                "knowledge_network",
-                "kn-1",
-                branch="",
-                creator_id="owner-1",
-                creator_type="user",
-            ),
-            resource(
-                "knowledge_network",
-                "kn-1",
-                branch="main",
-                creator_id="owner-1",
-                creator_type="user",
-            ),
+            resource("knowledge_network", "kn-1", branch=""),
+            resource("knowledge_network", "kn-1", branch="main"),
         ]
 
-        plan = build_plan(
-            rows,
-            {"owner-1": SafeAccount("owner-1", True, "other")},
-            branch_updates=1,
-        )
+        plan = build_plan(rows, branch_updates=1)
 
         self.assertEqual(["branch_conflict"], [item.code for item in plan.failures])
 
@@ -151,76 +93,22 @@ class BuildPlanTest(unittest.TestCase):
             resource("metric", "metric-1", kn_id="missing-kn"),
         ]
 
-        plan = build_plan(rows, {}, branch_updates=0)
+        plan = build_plan(rows, branch_updates=0)
 
         self.assertEqual(
             ["invalid_resource_id", "missing_parent"],
             [item.code for item in plan.failures],
         )
 
-    def test_reports_creator_account_failures(self):
-        rows = [
-            resource(
-                "knowledge_network",
-                "kn-disabled",
-                creator_id="disabled",
-                creator_type="user",
-            ),
-            resource(
-                "knowledge_network",
-                "kn-missing",
-                creator_id="missing",
-                creator_type="user",
-            ),
-            resource(
-                "knowledge_network",
-                "kn-mismatch",
-                creator_id="app-1",
-                creator_type="user",
-            ),
-            resource(
-                "knowledge_network",
-                "kn-invalid",
-                creator_id="owner-1",
-                creator_type="realname",
-            ),
-            resource(
-                "knowledge_network",
-                "kn-spaced",
-                creator_id=" owner-1",
-                creator_type="user",
-            ),
-        ]
-        accounts = {
-            "disabled": SafeAccount("disabled", False, "other"),
-            "app-1": SafeAccount("app-1", True, "app"),
-            "owner-1": SafeAccount("owner-1", True, "other"),
-        }
-
-        plan = build_plan(rows, accounts, branch_updates=0)
-
-        self.assertEqual(
-            [
-                "creator_disabled",
-                "creator_not_found",
-                "creator_type_mismatch",
-                "invalid_creator",
-                "invalid_creator",
-            ],
-            [item.code for item in plan.failures],
-        )
-
-
-class ApplySafePlanTest(unittest.TestCase):
-    def test_rolls_back_when_rebuild_fails_after_cleanup(self):
+class ApplyParentPlanTest(unittest.TestCase):
+    def test_rolls_back_when_parent_rebuild_fails_after_cleanup(self):
         connection = MagicMock()
         cursor = connection.cursor.return_value.__enter__.return_value
-        cursor.execute.side_effect = [7, 6]
+        cursor.execute.return_value = 6
         cursor.executemany.side_effect = RuntimeError("write failed")
         plan = MigrationPlan(
             resources={},
             branch_updates=0,
-            policies=[Policy("owner-1", "knowledge_network", "kn-1", "modify")],
             parents=[
                 ResourceParent(
                     "object_type",
@@ -232,13 +120,23 @@ class ApplySafePlanTest(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(RuntimeError, "write failed"):
-            apply_safe_plan(connection, plan)
+            apply_parent_plan(connection, plan)
 
         connection.rollback.assert_called_once_with()
         connection.commit.assert_not_called()
 
 
 class ProxyPlanTest(unittest.TestCase):
+    def test_new_proxy_identity_is_stable_between_dry_run_and_apply(self):
+        self.assertEqual(
+            stable_proxy_account_id("kn-1"),
+            stable_proxy_account_id("kn-1"),
+        )
+        self.assertNotEqual(
+            stable_proxy_account_id("kn-1"),
+            stable_proxy_account_id("kn-2"),
+        )
+
     @patch.object(migration, "table_exists", return_value=False)
     @patch.object(migration, "require_safe_proxy_schema")
     def test_proxy_plan_requires_the_installed_0_1_5_schema(
@@ -346,7 +244,7 @@ class ProxyPlanTest(unittest.TestCase):
     def test_sync_materializes_a_new_source_and_owned_policy(self):
         cursor = MagicMock()
         cursor.fetchall.return_value = []
-        cursor.fetchone.side_effect = [{"count": 1}, None, {"count": 0}]
+        cursor.fetchone.side_effect = [{"count": 1}, None, {"count": 0}, None]
         source = ProxySource(
             resource_type="resource",
             resource_id="resource-1",
@@ -383,6 +281,138 @@ class ProxyPlanTest(unittest.TestCase):
         )
         self.assertTrue(
             any("INSERT INTO casbin_rule" in statement for statement in statements)
+        )
+        self.assertTrue(
+            any("INSERT INTO authorization_grant" in statement for statement in statements)
+        )
+        casbin_insert = next(
+            call
+            for call in cursor.execute.call_args_list
+            if "INSERT INTO casbin_rule" in call.args[0]
+        )
+        self.assertEqual(
+            ("allow", "system_derived", "system"),
+            casbin_insert.args[1][-3:],
+        )
+
+    def test_sync_upgrades_a_pre_provenance_policy_owned_by_the_proxy_marker(self):
+        cursor = MagicMock()
+        cursor.fetchall.return_value = [
+            {
+                "id": "source-row-1",
+                "resource_type": "resource",
+                "resource_id": "resource-1",
+                "operation": "query_data",
+                "source_id": "source-1",
+                "kn_id": "kn-1",
+                "binding_type": "object_type",
+                "binding_id": "object-1",
+                "lifecycle_status": "active",
+            }
+        ]
+        cursor.fetchone.side_effect = [
+            {"count": 1},
+            {"policy_owned": 1},
+            {"count": 0},
+            None,
+        ]
+
+        def execute(statement, parameters=()):
+            del parameters
+            if statement.startswith("UPDATE casbin_rule"):
+                return 1
+            return 0
+
+        cursor.execute.side_effect = execute
+        source = ProxySource(
+            resource_type="resource",
+            resource_id="resource-1",
+            operation="query_data",
+            source_id="source-1",
+            kn_id="kn-1",
+            binding_type="object_type",
+            binding_id="object-1",
+        )
+        network = ProxyNetworkPlan(
+            kn_id="kn-1",
+            kn_name="Network 1",
+            proxy_account_id="proxy-1",
+            model_version="sha256:model",
+            sources=[source],
+            create_account=False,
+        )
+
+        result = sync_proxy_sources(
+            cursor,
+            network,
+            "grantor-1",
+            datetime(2026, 9, 7, 0, 0, 0),
+        )
+
+        self.assertEqual(1, result["policies_upgraded"])
+        self.assertEqual(0, result["policies_created"])
+        statements = [call.args[0] for call in cursor.execute.call_args_list]
+        self.assertTrue(any(statement.startswith("UPDATE casbin_rule") for statement in statements))
+        self.assertFalse(any("INSERT INTO casbin_rule" in statement for statement in statements))
+        self.assertTrue(
+            any("INSERT INTO authorization_grant" in statement for statement in statements)
+        )
+
+    def test_sync_revokes_only_the_owned_system_derived_projection(self):
+        cursor = MagicMock()
+        cursor.fetchall.return_value = [
+            {
+                "id": "source-row-1",
+                "resource_type": "resource",
+                "resource_id": "resource-1",
+                "operation": "query_data",
+                "source_id": "source-1",
+                "kn_id": "kn-1",
+                "binding_type": "object_type",
+                "binding_id": "object-1",
+                "lifecycle_status": "active",
+            }
+        ]
+        cursor.fetchone.side_effect = [
+            {"count": 0},
+            {"policy_owned": 1},
+            {"count": 1},
+        ]
+
+        def execute(statement, parameters=()):
+            del parameters
+            if statement.startswith("DELETE FROM casbin_rule"):
+                return 1
+            return 0
+
+        cursor.execute.side_effect = execute
+        network = ProxyNetworkPlan(
+            kn_id="kn-1",
+            kn_name="Network 1",
+            proxy_account_id="proxy-1",
+            model_version="sha256:model",
+            sources=[],
+            create_account=False,
+        )
+
+        result = sync_proxy_sources(
+            cursor,
+            network,
+            "grantor-1",
+            datetime(2026, 9, 7, 0, 0, 0),
+        )
+
+        self.assertEqual(1, result["sources_revoked"])
+        self.assertEqual(1, result["policies_removed"])
+        deletion = next(
+            call
+            for call in cursor.execute.call_args_list
+            if call.args[0].startswith("DELETE FROM casbin_rule")
+        )
+        self.assertIn("v3 = %s AND v4 = %s AND v5 = %s", deletion.args[0])
+        self.assertEqual(
+            ("allow", "system_derived", "system"),
+            deletion.args[1][-3:],
         )
 
 
@@ -601,29 +631,76 @@ class PreMigrationBackupTest(unittest.TestCase):
 
 
 class OneShotMigrationTest(unittest.TestCase):
+    def test_dry_run_validates_and_reports_without_backup_or_writes(self):
+        bkn_connection = MagicMock()
+        safe_connection = MagicMock()
+        plan = MigrationPlan({}, 2, existing_parents=3)
+        proxy_plan = ProxyMigrationPlan()
+        with ExitStack() as stack, tempfile.TemporaryDirectory() as directory:
+            stack.enter_context(
+                patch.object(
+                    migration,
+                    "database_configs",
+                    return_value=(MagicMock(), MagicMock()),
+                )
+            )
+            stack.enter_context(
+                patch.object(
+                    migration,
+                    "connect_database",
+                    side_effect=[bkn_connection, safe_connection],
+                )
+            )
+            stack.enter_context(patch.object(migration, "load_resources", return_value=[]))
+            stack.enter_context(patch.object(migration, "count_branch_updates", return_value=2))
+            stack.enter_context(
+                patch.object(migration, "load_existing_parent_count", return_value=3)
+            )
+            stack.enter_context(patch.object(migration, "build_plan", return_value=plan))
+            stack.enter_context(
+                patch.object(migration, "load_proxy_plan", return_value=proxy_plan)
+            )
+            backup = stack.enter_context(
+                patch.object(migration, "create_pre_migration_backup")
+            )
+            normalize = stack.enter_context(patch.object(migration, "normalize_branches"))
+            apply_parents = stack.enter_context(
+                patch.object(migration, "apply_parent_plan")
+            )
+            apply_proxies = stack.enter_context(
+                patch.object(migration, "apply_proxy_plan")
+            )
+            report = Path(directory) / "bkn.json"
+
+            self.assertEqual(0, migration.run("dry-run", str(report)))
+            self.assertEqual("dry-run", json.loads(report.read_text())["mode"])
+
+        backup.assert_not_called()
+        normalize.assert_not_called()
+        apply_parents.assert_not_called()
+        apply_proxies.assert_not_called()
+
     @patch.object(migration, "create_pre_migration_backup")
     @patch.object(migration, "verify_proxy_plan")
     @patch.object(migration, "apply_proxy_plan", return_value={"mappings_ready": 0})
-    @patch.object(migration, "apply_safe_plan", return_value=(0, 0))
+    @patch.object(migration, "apply_parent_plan", return_value=0)
     @patch.object(migration, "normalize_branches", return_value=0)
     @patch.object(migration, "load_proxy_plan", return_value=ProxyMigrationPlan())
     @patch.object(migration, "build_plan", return_value=MigrationPlan({}, 0))
-    @patch.object(migration, "load_existing_safe_counts", return_value=(0, 0))
+    @patch.object(migration, "load_existing_parent_count", return_value=0)
     @patch.object(migration, "count_branch_updates", return_value=0)
-    @patch.object(migration, "load_accounts", return_value={})
     @patch.object(migration, "load_resources", return_value=[])
     @patch.object(migration, "connect_database")
     def test_apply_runs_complete_offline_flow_once(
         self,
         connect_database,
         load_resources,
-        load_accounts,
         count_branch_updates,
-        load_existing_safe_counts,
+        load_existing_parent_count,
         build_plan,
         load_proxy_plan,
         normalize_branches,
-        apply_safe_plan_mock,
+        apply_parent_plan_mock,
         apply_proxy_plan_mock,
         verify_proxy_plan,
         create_pre_migration_backup,
@@ -640,11 +717,11 @@ class OneShotMigrationTest(unittest.TestCase):
             events.append("first-write") or 0
         )
 
-        self.assertEqual(0, migration.run())
+        self.assertEqual(0, migration.run("apply"))
 
         self.assertEqual(["backup", "first-write"], events)
         create_pre_migration_backup.assert_called_once()
-        apply_safe_plan_mock.assert_called_once()
+        apply_parent_plan_mock.assert_called_once()
         apply_proxy_plan_mock.assert_called_once()
         self.assertEqual(
             migration.MIGRATION_GRANTOR_ID,
@@ -676,14 +753,11 @@ class OneShotMigrationTest(unittest.TestCase):
                 patch.object(migration, "load_resources", return_value=[])
             )
             stack.enter_context(
-                patch.object(migration, "load_accounts", return_value={})
-            )
-            stack.enter_context(
                 patch.object(migration, "count_branch_updates", return_value=0)
             )
             stack.enter_context(
                 patch.object(
-                    migration, "load_existing_safe_counts", return_value=(0, 0)
+                    migration, "load_existing_parent_count", return_value=0
                 )
             )
             stack.enter_context(
@@ -708,17 +782,17 @@ class OneShotMigrationTest(unittest.TestCase):
             normalize_branches = stack.enter_context(
                 patch.object(migration, "normalize_branches")
             )
-            apply_safe_plan_mock = stack.enter_context(
-                patch.object(migration, "apply_safe_plan")
+            apply_parent_plan_mock = stack.enter_context(
+                patch.object(migration, "apply_parent_plan")
             )
             apply_proxy_plan_mock = stack.enter_context(
                 patch.object(migration, "apply_proxy_plan")
             )
             with self.assertRaisesRegex(migration.MigrationError, "backup failed"):
-                migration.run()
+                migration.run("apply")
 
         normalize_branches.assert_not_called()
-        apply_safe_plan_mock.assert_not_called()
+        apply_parent_plan_mock.assert_not_called()
         apply_proxy_plan_mock.assert_not_called()
         bkn_connection.close.assert_called_once_with()
         safe_connection.close.assert_called_once_with()
@@ -728,7 +802,7 @@ class OneShotMigrationTest(unittest.TestCase):
         error_output = io.StringIO()
 
         with redirect_stderr(error_output):
-            self.assertEqual(1, migration.main())
+            self.assertEqual(1, migration.main(["--mode", "apply"]))
 
         self.assertIn("Traceback (most recent call last):", error_output.getvalue())
         self.assertIn("RuntimeError: database write failed", error_output.getvalue())

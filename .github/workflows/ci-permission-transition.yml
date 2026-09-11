@@ -1,0 +1,32 @@
+name: ci-permission-transition
+
+on:
+  pull_request:
+    paths:
+      - 'deploy/scripts/upgrades/0.1.5/permission_model_transition/**'
+      - 'bkn-safe/server/migrationcontract/**'
+      - '.github/workflows/ci-permission-transition.yml'
+
+concurrency:
+  group: ci-permission-transition-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: deploy/scripts/upgrades/0.1.5/permission_model_transition
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: deploy/scripts/upgrades/0.1.5/permission_model_transition/authz_migrate/go.mod
+      - run: python -m pip install pymysql==1.1.0
+      - run: python -m unittest -v test_bkn_data.py test_migrate.py
+      - run: ./test_service_control.sh
+      - run: go test -p=1 ./...
+        working-directory: deploy/scripts/upgrades/0.1.5/permission_model_transition/authz_migrate

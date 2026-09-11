@@ -17,25 +17,38 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
 
+// SubjectType is the shared Core/EE vocabulary produced by authoritative
+// directory classification. It deliberately remains a string alias so an EE
+// provider can adopt the exported constants without a cross-repository source
+// compatibility break.
+type SubjectType = string
+
+const (
+	SubjectTypeUnknown    = "unknown"
+	SubjectTypeUser       = "user"
+	SubjectTypeRole       = "role"
+	SubjectTypeDepartment = "department"
+)
+
 // InventoryEntry is the non-sensitive management projection of one historical
 // Enterprise object rule. The private implementation keeps the rule payload;
 // Core receives only fields required to classify, audit and revoke it.
 // RuntimeEligible is the final management result after authoritative subject
 // classification, not merely the intrinsic validity of the persisted row.
 type InventoryEntry struct {
-	GrantID         string     `json:"grant_id"`
-	RuleID          string     `json:"rule_id"`
-	AccessorID      string     `json:"accessor_id"`
-	SubjectType     string     `json:"subject_type"`
-	ResourceType    string     `json:"resource_type"`
-	ResourceID      string     `json:"resource_id"`
-	Operation       string     `json:"operation"`
-	Effect          string     `json:"effect"`
-	ExpiresAt       *time.Time `json:"expires_at,omitempty"`
-	Classification  string     `json:"classification"`
-	ActivationState string     `json:"activation_state"`
-	RuntimeEligible bool       `json:"runtime_eligible"`
-	InactiveReason  string     `json:"inactive_reason,omitempty"`
+	GrantID         string      `json:"grant_id"`
+	RuleID          string      `json:"rule_id"`
+	AccessorID      string      `json:"accessor_id"`
+	SubjectType     SubjectType `json:"subject_type"`
+	ResourceType    string      `json:"resource_type"`
+	ResourceID      string      `json:"resource_id"`
+	Operation       string      `json:"operation"`
+	Effect          string      `json:"effect"`
+	ExpiresAt       *time.Time  `json:"expires_at,omitempty"`
+	Classification  string      `json:"classification"`
+	ActivationState string      `json:"activation_state"`
+	RuntimeEligible bool        `json:"runtime_eligible"`
+	InactiveReason  string      `json:"inactive_reason,omitempty"`
 }
 
 // Manager is implemented by openbkn-ee. No create or update operation is

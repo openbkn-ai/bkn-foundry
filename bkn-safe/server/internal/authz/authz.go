@@ -30,6 +30,7 @@ import (
 	gormadapter "github.com/casbin/gorm-adapter/v3"
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permobject"
 	safemodel "github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
@@ -65,7 +66,7 @@ m = (g(r.sub, p.sub) || p.sub == "` + PublicAccessorID + `") && keyMatch(r.obj, 
 // subject applies to every requester (see modelConf). The UUID is the ISF root
 // department id, written by e.g. execution-factory's CreateIntCompPolicyForAllUsers
 // (interfaces.AccessorRootDepartmentID) for built-in toolbox public access.
-const PublicAccessorID = "00000000-0000-0000-0000-000000000000"
+const PublicAccessorID = permobject.PublicAccessorID
 
 // SuperAdminRoleID is the immutable seeded recovery role. Explicit deny rules
 // never constrain its members, so an administrator can always repair a broken

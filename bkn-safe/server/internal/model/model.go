@@ -9,7 +9,11 @@
 // identity and provenance of each independently managed grant.
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/migrationcontract"
+)
 
 // Source distinguishes locally-managed identities from federated (LDAP) ones.
 type Source string
@@ -173,6 +177,11 @@ type AuthorizationGrant struct {
 }
 
 func (AuthorizationGrant) TableName() string { return "authorization_grant" }
+
+// AuthorizationMigrationMarker aliases the public runtime receipt contract.
+// The offline writer lives under deploy; bkn-safe owns only storage and startup
+// validation of that receipt.
+type AuthorizationMigrationMarker = migrationcontract.Marker
 
 // Role source values. system|business roles are SEEDED built-ins (their UUIDs
 // are hardcoded in DA/flow-automation, such as application, data, and AI administrators) and are

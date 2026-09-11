@@ -115,13 +115,13 @@ that failure using its own OpenAPI error contract.
 ## Upgrade prerequisites
 
 Before upgrading an existing environment that runs with authentication enabled, follow the
-[migration guide](../../adp/bkn/bkn-backend/script/migrate_kn_data/README.md)
+[version-specific migration guide](../../deploy/scripts/upgrades/0.1.5/permission_model_transition/README.md)
 and validate the result.
-The fixed migration command performs validation, caller-authorization migration,
-managed-proxy migration, and result verification in one execution. It does not
-accept a dry-run mode, require a backup marker, or generate a report file. Any
-failure returns a non-zero status and prints the complete error traceback. The
-script is idempotent and can be rerun after the cause of a failure is fixed.
+The deploy entry coordinates a read-only plan, BKN managed-proxy and parent-data
+migration, Core/Enterprise authorization migration, backups, reports, and
+result verification. It preserves historical caller policies instead of
+rebuilding them. Any failure returns a non-zero status, stops later steps, and
+requires the application workloads to remain stopped until recovery completes.
 When authentication is enabled, every participating service must have a valid
 bkn-safe connection before it receives traffic. Exact configuration keys and
 startup validation are documented by the owning service.

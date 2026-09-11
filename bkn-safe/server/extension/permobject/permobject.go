@@ -31,6 +31,11 @@ import (
 // tier is what decides (ee-design.md §3.1), and this is a display name.
 const Capability = "perm_object_level"
 
+// PublicAccessorID is Core's root-department/everyone subject. It is exported
+// at the EE socket boundary so providers can exclude it from user/role
+// classification without copying an internal UUID literal.
+const PublicAccessorID = "00000000-0000-0000-0000-000000000000"
+
 // Decision is the ee layer's opinion for one local specificity.
 type Decision uint8
 

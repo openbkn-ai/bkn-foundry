@@ -100,6 +100,7 @@ export FAKE_KUBE_CLUSTER="$fake_cluster_directory"
 reset_cluster() {
   : > "$calls_file"
   printf '1' > "$fake_cluster_directory/ontology-query"
+  printf '1' > "$fake_cluster_directory/vega-backend"
   printf '1' > "$fake_cluster_directory/agent-operator-integration"
   printf '2' > "$fake_cluster_directory/bkn-backend"
   printf '1' > "$fake_cluster_directory/bkn-safe"
@@ -118,11 +119,13 @@ reset_cluster
 state_file="$temporary_directory/success-state.tsv"
 run_control stop --state-file "$state_file" >/dev/null
 [[ -f $state_file ]] || fail "stop did not persist the replica snapshot"
+run_control verify-stopped --state-file "$state_file" >/dev/null ||
+  fail "verify-stopped rejected stopped workloads"
 grep -q $'deployment\tbkn-backend\t2' "$state_file" ||
   fail "replica snapshot did not preserve bkn-backend=2"
 stop_order=$(grep ' --replicas=0$' "$calls_file" |
   sed -E 's#.*deployment/([^ ]+) --replicas=0#\1#')
-expected_stop_order=$'ontology-query\nagent-operator-integration\nbkn-backend\nbkn-safe'
+expected_stop_order=$'vega-backend\nontology-query\nagent-operator-integration\nbkn-backend\nbkn-safe'
 [[ $stop_order == "$expected_stop_order" ]] ||
   fail "unexpected stop order: $stop_order"
 
@@ -131,11 +134,21 @@ run_control start --state-file "$state_file" >/dev/null
 [[ ! -e $state_file ]] || fail "successful start did not remove the consumed state"
 start_order=$(grep ' scale deployment/' "$calls_file" |
   sed -E 's#.*deployment/([^ ]+) --replicas=[0-9]+#\1#')
-expected_start_order=$'bkn-safe\nbkn-backend\nontology-query\nagent-operator-integration'
+expected_start_order=$'bkn-safe\nbkn-backend\nvega-backend\nontology-query\nagent-operator-integration'
 [[ $start_order == "$expected_start_order" ]] ||
   fail "unexpected start order: $start_order"
 [[ $(<"$fake_cluster_directory/bkn-backend") == 2 ]] ||
   fail "start did not restore the original bkn-backend replicas"
+
+reset_cluster
+not_stopped_state_file="$temporary_directory/not-stopped-state.tsv"
+run_control stop --state-file "$not_stopped_state_file" >/dev/null
+printf '1' > "$fake_cluster_directory/vega-backend"
+set +e
+run_control verify-stopped --state-file "$not_stopped_state_file" >/dev/null 2>&1
+not_stopped_status=$?
+set -e
+[[ $not_stopped_status -ne 0 ]] || fail "verify-stopped accepted a running workload"
 
 reset_cluster
 failed_state_file="$temporary_directory/failed-state.tsv"

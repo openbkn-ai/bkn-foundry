@@ -15,6 +15,21 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
 
+func TestPublicSubjectVocabularyIsStable(t *testing.T) {
+	if PublicAccessorID != "00000000-0000-0000-0000-000000000000" {
+		t.Fatalf("public accessor id = %q", PublicAccessorID)
+	}
+	want := map[SubjectType]string{
+		SubjectTypeUnknown: "unknown", SubjectTypeUser: "user",
+		SubjectTypeRole: "role", SubjectTypeDepartment: "department",
+	}
+	for subjectType, value := range want {
+		if string(subjectType) != value {
+			t.Fatalf("subject type %q = %q", value, subjectType)
+		}
+	}
+}
+
 // fake stands in for the ee implementation. Core must be testable with a fake
 // in the socket — that is the point of depending on the interface, not on ee.
 type fake struct {
