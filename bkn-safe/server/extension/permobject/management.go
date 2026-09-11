@@ -18,15 +18,16 @@ import (
 )
 
 // SubjectType is the shared Core/EE vocabulary produced by authoritative
-// directory classification. Keeping it at the socket boundary prevents an EE
-// provider from maintaining private string mirrors of Core subject semantics.
-type SubjectType string
+// directory classification. It deliberately remains a string alias so an EE
+// provider can adopt the exported constants without a cross-repository source
+// compatibility break.
+type SubjectType = string
 
 const (
-	SubjectTypeUnknown    SubjectType = "unknown"
-	SubjectTypeUser       SubjectType = "user"
-	SubjectTypeRole       SubjectType = "role"
-	SubjectTypeDepartment SubjectType = "department"
+	SubjectTypeUnknown    = "unknown"
+	SubjectTypeUser       = "user"
+	SubjectTypeRole       = "role"
+	SubjectTypeDepartment = "department"
 )
 
 // InventoryEntry is the non-sensitive management projection of one historical

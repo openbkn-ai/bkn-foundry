@@ -33,7 +33,8 @@ const (
 )
 
 // eeRuleRow mirrors the published EE compatibility table only inside this
-// one-time migration package. Core runtime never reads or writes the table.
+// one-time migration package. It was frozen against openbkn-ee commit
+// 3d2c106 (included in main 6332d14b); Core runtime never reads or writes it.
 type eeRuleRow struct {
 	ID                     string `gorm:"primaryKey;size:64"`
 	AccessorID             string `gorm:"size:128;not null"`
@@ -192,7 +193,7 @@ func ApplyEnterprise(ctx context.Context, db *gorm.DB, opts EEOptions) (EEReport
 	if plan.TableState == EETableAbsent {
 		return plan, nil
 	}
-	if err := db.WithContext(ctx).AutoMigrate(&eeRuleRow{}, &eeLifecycleAuditRow{}); err != nil {
+	if err := prepareEnterpriseMigrationSchema(db.WithContext(ctx)); err != nil {
 		return plan, fmt.Errorf("prepare Enterprise authorization migration schema: %w", err)
 	}
 	byID := make(map[string]EERulePlan, len(plan.Rules))
@@ -248,6 +249,37 @@ func ApplyEnterprise(ctx context.Context, db *gorm.DB, opts EEOptions) (EEReport
 		return verified, fmt.Errorf("verify Enterprise authorization migration: %w: plan is not idempotent", ErrPlanBlocked)
 	}
 	return verified, nil
+}
+
+// prepareEnterpriseMigrationSchema is deliberately narrower than
+// AutoMigrate. The EE table already has an authoritative private model, so the
+// one-time Core tool may add missing migration columns but must never rewrite
+// the type, length, index, or nullability of an existing private column.
+func prepareEnterpriseMigrationSchema(db *gorm.DB) error {
+	for _, field := range []string{
+		"SubjectType", "Classification", "ClassificationEvidence", "ActivationState",
+		"ActivatedAt", "ActivatedBy", "ActivationRef", "RevokedAt", "RevokedBy", "RevokeReason",
+	} {
+		if !db.Migrator().HasColumn(&eeRuleRow{}, field) {
+			if err := db.Migrator().AddColumn(&eeRuleRow{}, field); err != nil {
+				return fmt.Errorf("add ee_permobject_rules.%s: %w", field, err)
+			}
+		}
+	}
+	if !db.Migrator().HasTable(&eeLifecycleAuditRow{}) {
+		if err := db.Migrator().CreateTable(&eeLifecycleAuditRow{}); err != nil {
+			return fmt.Errorf("create EE lifecycle audit table: %w", err)
+		}
+		return nil
+	}
+	for _, field := range []string{
+		"ID", "RuleID", "Operation", "BeforeState", "AfterState", "OperatorID", "EvidenceRef", "Reason", "CreatedAt",
+	} {
+		if !db.Migrator().HasColumn(&eeLifecycleAuditRow{}, field) {
+			return fmt.Errorf("%w: existing EE lifecycle audit table is missing column %s", ErrPlanBlocked, field)
+		}
+	}
+	return nil
 }
 
 func loadEERows(ctx context.Context, db *gorm.DB) ([]eeRuleRow, error) {

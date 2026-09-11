@@ -20,14 +20,7 @@
       "was_assembled": false,
       "evidence_ref": "release-ledger-reference"
     },
-    "rule_evidence": [
-      {
-        "grant_id": "historical-ee-grant-id",
-        "expected_subject_type": "user",
-        "published_writer_evidence": "published-writer-audit-reference",
-        "runtime_usage_evidence": "historical-runtime-decision-reference"
-      }
-    ],
+    "rule_evidence": [],
     "activation": null
   }
 }

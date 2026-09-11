@@ -36,6 +36,19 @@
 - `ee.assembly.evidence_ref` 在 apply 时必填。纯 Community 也必须引用发行清单、装配台账或等价审核记录，明确证明“未装配”，不能以字段缺省代替结论。
 - `ee.rule_evidence` 必须同时给出正式发布写入证据和升级前实际参与判权的证据。表存在、许可证档位或字段合法本身都不是激活证据。
 
+示例文件默认表示纯 Community，`rule_evidence` 为空。只有 dry-run 确认 EE 表为 `present_with_rows` 时，才按实际规则填写，例如：
+
+```json
+{
+  "grant_id": "historical-ee-grant-id",
+  "expected_subject_type": "user",
+  "published_writer_evidence": "published-writer-audit-reference",
+  "runtime_usage_evidence": "historical-runtime-decision-reference"
+}
+```
+
+该对象加入 `ee.rule_evidence` 数组；不得把占位 ID 直接用于维护窗口。
+
 EE 主体类型由 `safe.users`、`safe.roles` 和可信 Casbin 角色成员关系重新确认。部门、主体缺失、类型冲突、禁用用户或无真实成员的角色不能激活。
 
 ## 4. dry-run

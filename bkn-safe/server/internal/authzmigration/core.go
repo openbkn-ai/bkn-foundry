@@ -292,8 +292,9 @@ func planPolicy(row casbinPolicyRow, roles map[string]safemodel.Role, evidence m
 		Reason: "trusted provenance is already present",
 	}
 	_, resourceID, hasObjectType := strings.Cut(row.V1, ":")
+	validObject := row.V1 == "*" || hasObjectType && objectType(row.V1) != "" && strings.TrimSpace(resourceID) != ""
 	if strings.TrimSpace(row.V0) == "" || strings.TrimSpace(row.V2) == "" ||
-		!hasObjectType || objectType(row.V1) == "" || strings.TrimSpace(resourceID) == "" {
+		!validObject {
 		plan.Anomalies = append(plan.Anomalies, "policy has an incomplete accessor, object, or operation identity")
 	}
 	if effect != authz.EffectAllow && effect != authz.EffectDeny {

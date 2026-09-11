@@ -127,6 +127,42 @@ func TestEnterpriseActivationRequiresReviewedDigestAndIsIdempotent(t *testing.T)
 	}
 }
 
+func TestApplyEnterpriseAddsMissingMigrationColumnsWithoutRewritingBaseTable(t *testing.T) {
+	db := enterpriseTestDB(t, false)
+	seedEnterpriseSubjects(t, db)
+	if err := db.Exec(`CREATE TABLE ee_permobject_rules (
+		id TEXT PRIMARY KEY, accessor_id TEXT NOT NULL, resource_type TEXT NOT NULL,
+		resource_id TEXT NOT NULL, op TEXT NOT NULL, effect TEXT NOT NULL,
+		expires_at DATETIME, granted_by TEXT, reason TEXT, created_at DATETIME, updated_at DATETIME
+	)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO ee_permobject_rules
+		(id, accessor_id, resource_type, resource_id, op, effect)
+		VALUES ('legacy-ee', 'user-1', 'object_type', 'ot-1', 'query_data', 'allow')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	evidence := []EERuleEvidence{{GrantID: "legacy-ee", ExpectedSubjectType: eeSubjectUser,
+		PublishedWriterEvidence: "writer", RuntimeUsageEvidence: "runtime"}}
+	dryRun, err := PlanEnterprise(context.Background(), db, EEOptions{RuleEvidence: evidence})
+	if err != nil {
+		t.Fatal(err)
+	}
+	confirmation := &EEActivationConfirmation{ConfirmedGrantIDs: []string{"legacy-ee"}, InventoryDigest: dryRun.InventoryDigest,
+		OperatorID: "admin", EvidenceRef: "change", ConfirmedAt: time.Now().UTC()}
+	if _, err := ApplyEnterprise(context.Background(), db, EEOptions{RuleEvidence: evidence, Activation: confirmation}); err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"SubjectType", "Classification", "ActivationState", "ActivationRef"} {
+		if !db.Migrator().HasColumn(&eeRuleRow{}, field) {
+			t.Fatalf("missing additive migration column %s", field)
+		}
+	}
+	if !db.Migrator().HasTable(&eeLifecycleAuditRow{}) {
+		t.Fatal("missing EE lifecycle audit table")
+	}
+}
+
 func TestEnterpriseRoleWithoutRealMemberCannotActivate(t *testing.T) {
 	db := enterpriseTestDB(t, true)
 	seedEnterpriseSubjects(t, db)
