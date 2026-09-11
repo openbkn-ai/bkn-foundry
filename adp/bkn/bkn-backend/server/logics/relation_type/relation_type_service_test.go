@@ -329,18 +329,40 @@ func Test_relationTypeService_GetRelationTypesByIDs(t *testing.T) {
 					TargetObjectTypeID: "ot2",
 					MappingRules: &interfaces.InDirectMapping{
 						BackingDataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource1"},
+						SourceMappingRules: []interfaces.Mapping{{
+							SourceProp: interfaces.SimpleProperty{Name: "source_prop"},
+							TargetProp: interfaces.SimpleProperty{Name: "resource_source_prop"},
+						}},
+						TargetMappingRules: []interfaces.Mapping{{
+							SourceProp: interfaces.SimpleProperty{Name: "resource_target_prop"},
+							TargetProp: interfaces.SimpleProperty{Name: "target_prop"},
+						}},
 					},
 				},
 			}}
 
 			rta.EXPECT().GetRelationTypesByIDs(gomock.Any(), knID, branch, rtIDs).Return(rtArr, nil)
-			ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), knID, branch, []string{"ot1", "ot2"}, true).Return(map[string]*interfaces.ObjectType{}, nil)
+			ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), knID, branch, []string{"ot1", "ot2"}, true).Return(map[string]*interfaces.ObjectType{
+				"ot1": {
+					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1", OTName: "Source"},
+					PropertyMap:            map[string]string{"source_prop": "Source Property"},
+				},
+				"ot2": {
+					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot2", OTName: "Target"},
+					PropertyMap:            map[string]string{"target_prop": "Target Property"},
+				},
+			}, nil)
 			vbs.EXPECT().GetResourceByID(gomock.Any(), "resource1").Return(nil, errors.New("vega unavailable"))
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 
 			result, err := service.GetRelationTypesByIDs(ctx, knID, branch, rtIDs)
 			So(err, ShouldBeNil)
 			So(result, ShouldHaveLength, 1)
+			So(result[0].SourceObjectType.OTName, ShouldEqual, "Source")
+			So(result[0].TargetObjectType.OTName, ShouldEqual, "Target")
+			mappingRules := result[0].MappingRules.(*interfaces.InDirectMapping)
+			So(mappingRules.SourceMappingRules[0].SourceProp.DisplayName, ShouldEqual, "Source Property")
+			So(mappingRules.TargetMappingRules[0].TargetProp.DisplayName, ShouldEqual, "Target Property")
 		})
 	})
 }
