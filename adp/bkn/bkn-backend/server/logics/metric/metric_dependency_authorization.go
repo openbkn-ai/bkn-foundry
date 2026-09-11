@@ -54,11 +54,8 @@ func (ms *metricService) authorizeMetricDependencies(ctx context.Context, tx *sq
 	}); err != nil {
 		return err
 	}
-	ot, scopeRef, err := ms.resolveMetricObjectType(ctx, tx, metric)
+	ot, _, err := ms.resolveMetricObjectType(ctx, tx, metric)
 	if err != nil {
-		return err
-	}
-	if err := ms.validateMetricAgainstResolvedOT(ctx, metric, ot, scopeRef); err != nil {
 		return err
 	}
 	return ms.ps.RequireFullPropertyAccess(ctx, resource.ID, metricReferencedProperties(metric, ot))

@@ -98,6 +98,26 @@ func TestMetricCreateRequiresObjectTypeAndPropertyAccess(t *testing.T) {
 	}
 }
 
+func TestMetricDependencyAuthorizationDoesNotEnableStrictValidation(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ps := bmock.NewMockPermissionService(ctrl)
+	ots := bmock.NewMockObjectTypeService(ctrl)
+	definition := metricAuthorizationDefinition("orders")
+	objectType := metricAuthorizationObjectType("orders")
+	objectType.DataSource = nil
+	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE, ID: "kn-1/orders",
+	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA}).Return(nil)
+	ots.EXPECT().GetObjectTypeByID(gomock.Any(), nil, "kn-1", interfaces.MAIN_BRANCH, "orders").
+		Return(objectType, nil)
+	ps.EXPECT().RequireFullPropertyAccess(gomock.Any(), "kn-1/orders", gomock.Any()).Return(nil)
+
+	service := &metricService{ps: ps, ots: ots}
+	if err := service.authorizeMetricDependencies(context.Background(), nil, definition); err != nil {
+		t.Fatalf("authorizeMetricDependencies() error = %v", err)
+	}
+}
+
 func TestMetricMetadataUpdateDoesNotReauthorizeObjectType(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	db, dbMock, err := sqlmock.New()
