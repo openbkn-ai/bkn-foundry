@@ -121,7 +121,15 @@ type ProxyGrantCheckResult struct {
 }
 
 type ProxyGrantBatchCheckResult struct {
-	DeniedSources []ProxyGrantSourceSpec `json:"denied_sources"`
+	DeniedSources   []ProxyGrantSourceSpec     `json:"denied_sources"`
+	ResolvedSources []ProxyGrantResolvedSource `json:"resolved_sources"`
+}
+
+// ProxyGrantResolvedSource identifies the effective delegator retained or
+// selected by bkn-safe for an allowed source.
+type ProxyGrantResolvedSource struct {
+	ProxyGrantSourceSpec
+	GrantedBy string `json:"granted_by"`
 }
 
 type ProxyGrantSyncResult struct {

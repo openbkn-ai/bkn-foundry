@@ -84,11 +84,23 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 	if objectType.DataSource != nil && objectType.DataSource.ID != "" {
 		switch objectType.DataSource.Type {
 		case interfaces.DATA_SOURCE_TYPE_RESOURCE:
-			res, err := ots.vbs.GetResourceByID(ctx, objectType.DataSource.ID)
+			lookupCtx := interfaces.WithDependencyBindingScope(ctx, objectType.KNID,
+				interfaces.MODULE_TYPE_OBJECT_TYPE, objectType.OTID)
+			_, controlledLookup := interfaces.VerifiedDependencyAccount(lookupCtx, "resource", objectType.DataSource.ID,
+				interfaces.OPERATION_TYPE_VIEW_DETAIL)
+			res, err := ots.vbs.GetResourceSchema(lookupCtx, objectType.DataSource.ID, interfaces.OPERATION_TYPE_VIEW_DETAIL)
 			if err != nil {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest,
+				detailKey := "ResourceLookupFailed"
+				if kind, ok := logics.DependencyErrorKind(err); ok && kind == interfaces.DependencyNotFound {
+					detailKey = "ResourceNotFound"
+				}
+				invalidErr := rest.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(invalidParameterDetail(ctx, "ResourceLookupFailed", map[string]any{"objectType": objectType.OTName, "resource": objectType.DataSource.ID}))
+					WithErrorDetails(invalidParameterDetail(ctx, detailKey, map[string]any{
+						"objectType": objectType.OTName, "resource": objectType.DataSource.ID,
+					}))
+				return logics.MapDependencyError(ctx, err, !controlledLookup, invalidErr,
+					berrors.BknBackend_ObjectType_InternalError)
 			}
 			if res == nil {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest,
@@ -112,8 +124,13 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 					WithErrorDetails(invalidParameterDetail(ctx, "LogicPropertyDataSourceRequired", map[string]any{"objectType": objectType.OTName, "property": lp.Name}))
 			}
 			if err := ots.aoa.GetToolByID(ctx, lp.DataSource.BoxID, lp.DataSource.ToolID); err != nil {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+				invalidErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 					WithErrorDetails(invalidParameterDetail(ctx, "ToolLookupFailed", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "box": lp.DataSource.BoxID, "tool": lp.DataSource.ToolID}))
+				// The execution-factory internal metadata endpoint does not perform
+				// caller resource authorization. A 403 therefore indicates an
+				// internal identity/configuration failure, not a user-scoped denial.
+				return logics.MapDependencyError(ctx, err, false, invalidErr,
+					berrors.BknBackend_ObjectType_InternalError)
 			}
 		}
 	}

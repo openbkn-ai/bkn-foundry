@@ -9,6 +9,7 @@ package concept_group
 import (
 	"context"
 	"database/sql"
+	"net/http"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -21,6 +22,7 @@ import (
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 	bmock "bkn-backend/interfaces/mock"
+	rootlogics "bkn-backend/logics"
 	"bkn-backend/logics/permission"
 )
 
@@ -1662,12 +1664,21 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 			cga.EXPECT().CheckConceptGroupExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			cga.EXPECT().CheckConceptGroupExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			cga.EXPECT().CreateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ots.EXPECT().CreateObjectTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			childErr := rootlogics.MapDependencyError(ctx,
+				interfaces.NewDependencyError("vega", "get_resource_schema", interfaces.DependencyTimeout, 0),
+				false,
+				rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter),
+				berrors.BknBackend_ObjectType_InternalError)
+			ots.EXPECT().CreateObjectTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, childErr)
 			smock.ExpectRollback()
 
 			cgID, err := service.CreateConceptGroup(ctx, nil, conceptGroup, mode, true)
 			So(err, ShouldNotBeNil)
 			So(cgID, ShouldEqual, "")
+			So(err, ShouldEqual, childErr)
+			httpErr := err.(*rest.HTTPError)
+			details := httpErr.BaseError.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
+			So(details.Kind, ShouldEqual, interfaces.DependencyTimeout)
 		})
 
 		Convey("Failed when AddObjectTypesToConceptGroup returns error\n", func() {

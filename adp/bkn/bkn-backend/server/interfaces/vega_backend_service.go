@@ -15,6 +15,7 @@ type VegaBackendService interface {
 	GetCatalogByID(ctx context.Context, id string) (*Catalog, error)
 	CreateCatalog(ctx context.Context, req *CatalogRequest) (*Catalog, error)
 	GetResourceByID(ctx context.Context, id string) (*VegaResource, error)
+	GetResourceSchema(ctx context.Context, id, operation string) (*VegaResource, error)
 	CreateResource(ctx context.Context, req *VegaResource) error
 	DeleteResource(ctx context.Context, id string) error
 	QueryResourceData(ctx context.Context, resourceID string, params *ResourceDataQueryParams) (*DatasetQueryResponse, error)

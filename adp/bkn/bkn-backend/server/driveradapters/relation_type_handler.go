@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -302,6 +303,9 @@ func (r *restHandler) ValidateRelationTypesForKN(c *gin.Context, visitor hydra.V
 		return
 	}
 	if err = r.rts.ValidateRelationTypes(ctx, knID, branch, relationTypes, strictMode, nil, mode); err != nil {
+		if replyDependencyValidationError(c, span, err) {
+			return
+		}
 		oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 		rest.ReplyOK(c, http.StatusOK, map[string]any{"valid": false, "detail": err.Error()})
 		return
@@ -449,7 +453,11 @@ func (r *restHandler) UpdateRelationType(c *gin.Context, visitor hydra.Visitor) 
 	// Update the resource by ID.
 	err = r.updateRelationType(ctx, &relationType, strictMode)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		var httpErr *rest.HTTPError
+		if !errors.As(err, &httpErr) {
+			httpErr = rest.NewHTTPError(ctx, http.StatusBadGateway,
+				berrors.BknBackend_RelationType_InternalError)
+		}
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)

@@ -303,6 +303,9 @@ func (r *restHandler) ValidateObjectTypesForKN(c *gin.Context, visitor hydra.Vis
 		return
 	}
 	if err = r.ots.ValidateObjectTypes(ctx, knID, branch, objectTypes, strictMode, nil, mode); err != nil {
+		if replyDependencyValidationError(c, span, err) {
+			return
+		}
 		oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 		rest.ReplyOK(c, http.StatusOK, map[string]any{"valid": false, "detail": err.Error()})
 		return

@@ -18,6 +18,31 @@
 # Note: mf-model uses FastAPI and a different code/detail/link envelope. It must
 # use a separate errors-fastapi.yaml rather than being forced into this schema.
 components:
+  responses:
+    StrictDependencyBadRequest:
+      description: The submitted strict dependency binding is invalid, missing, or unpublished.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    StrictDependencyForbidden:
+      description: The current user is not allowed to perform the dependency operation required by validation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    StrictDependencyBadGateway:
+      description: A controlled dependency lookup was denied, returned a downstream error, or returned an invalid response.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    StrictDependencyUnavailable:
+      description: A strict dependency lookup timed out or its service is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
   schemas:
     Error:
       description: |
@@ -43,7 +68,10 @@ components:
           type: string
           description: Link to detailed error documentation.
         error_details:
-          description: Error details with a service-defined type.
+          description: |
+            Error details with a service-defined type. Strict dependency failures use an object
+            containing `dependency_kind` and may include a safe nested `detail`; raw downstream
+            response bodies and network errors are never included.
 
     ErrorCompact:
       description: |

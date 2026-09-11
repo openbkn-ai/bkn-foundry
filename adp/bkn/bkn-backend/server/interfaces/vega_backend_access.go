@@ -69,6 +69,9 @@ type VegaBackendAccess interface {
 	// GetResourceByID gets resource by ID
 	GetResourceByID(ctx context.Context, id string) (*VegaResource, error)
 
+	// GetResourceSchema gets the minimal schema view after checking the exact operation.
+	GetResourceSchema(ctx context.Context, id, operation string) (*VegaResource, error)
+
 	// CreateResource creates a new resource
 	CreateResource(ctx context.Context, req *VegaResource) error
 

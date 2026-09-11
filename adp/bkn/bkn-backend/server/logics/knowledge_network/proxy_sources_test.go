@@ -5,6 +5,7 @@
 package knowledge_network
 
 import (
+	"strings"
 	"testing"
 
 	"bkn-backend/interfaces"
@@ -202,5 +203,89 @@ func TestBuildProxyGrantSourcesIncludesBoundLogicPropertyTool(t *testing.T) {
 	if len(sources) != 1 || sources[0].ResourceType != "tool_box" ||
 		sources[0].ResourceID != "box-1" || sources[0].Operation != interfaces.OPERATION_TYPE_EXECUTE {
 		t.Fatalf("logic property sources = %#v", sources)
+	}
+}
+
+func TestBuildProxyGrantSourcesIncludesNestedConceptGroupBindings(t *testing.T) {
+	kn := &interfaces.KN{
+		KNID: "kn-1",
+		ConceptGroups: []*interfaces.ConceptGroup{{
+			CGID: "cg-1",
+			ObjectTypes: []*interfaces.ObjectType{{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID: "nested-ot", DataSource: &interfaces.ResourceInfo{
+						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "nested-resource",
+					},
+				},
+			}},
+			RelationTypes: []*interfaces.RelationType{{
+				RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
+					RTID: "nested-rt", SourceObjectTypeID: "nested-ot", TargetObjectTypeID: "nested-ot",
+				},
+			}},
+			ActionTypes: []*interfaces.ActionType{{
+				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+					ATID: "nested-at", ActionSource: interfaces.ActionSource{
+						Type: interfaces.ACTION_SOURCE_TYPE_TOOL, BoxID: "nested-box", ToolID: "nested-tool",
+					},
+				},
+			}},
+		}},
+	}
+
+	sources, _, err := buildProxyGrantSources(kn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{
+		interfaces.MODULE_TYPE_OBJECT_TYPE + "\x00nested-ot\x00resource\x00nested-resource\x00" + interfaces.OPERATION_TYPE_VIEW_DETAIL:  false,
+		interfaces.MODULE_TYPE_OBJECT_TYPE + "\x00nested-ot\x00resource\x00nested-resource\x00" + interfaces.OPERATION_TYPE_QUERY_DATA:   false,
+		interfaces.MODULE_TYPE_RELATION_TYPE + "\x00nested-rt\x00resource\x00nested-resource\x00" + interfaces.OPERATION_TYPE_QUERY_DATA: false,
+		interfaces.MODULE_TYPE_ACTION_TYPE + "\x00nested-at\x00tool_box\x00nested-box\x00" + interfaces.OPERATION_TYPE_EXECUTE:           false,
+	}
+	for _, source := range sources {
+		key := strings.Join([]string{source.BindingType, source.BindingID, source.ResourceType,
+			source.ResourceID, source.Operation}, "\x00")
+		if _, exists := want[key]; exists {
+			want[key] = true
+		}
+	}
+	for key, found := range want {
+		if !found {
+			t.Fatalf("nested concept-group source %q missing from %#v", key, sources)
+		}
+	}
+}
+
+func TestBuildProxyGrantSourcesDeduplicatesTopLevelAndNestedCopies(t *testing.T) {
+	objectType := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+		OTID: "ot-1", DataSource: &interfaces.ResourceInfo{
+			Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1",
+		},
+	}}
+	topLevel := &interfaces.KN{KNID: "kn-1", ObjectTypes: []*interfaces.ObjectType{objectType}}
+	withGroupCopy := &interfaces.KN{
+		KNID:        "kn-1",
+		ObjectTypes: []*interfaces.ObjectType{objectType},
+		ConceptGroups: []*interfaces.ConceptGroup{{
+			CGID: "cg-1", ObjectTypes: []*interfaces.ObjectType{objectType},
+		}},
+	}
+
+	topLevelSources, topLevelVersion, err := buildProxyGrantSources(topLevel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withGroupSources, withGroupVersion, err := buildProxyGrantSources(withGroupCopy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(withGroupSources) != len(topLevelSources) {
+		t.Fatalf("duplicate concept-group copy changed source count: got %d, want %d",
+			len(withGroupSources), len(topLevelSources))
+	}
+	if withGroupVersion != topLevelVersion {
+		t.Fatalf("duplicate concept-group copy changed proxy version: got %q, want %q",
+			withGroupVersion, topLevelVersion)
 	}
 }
