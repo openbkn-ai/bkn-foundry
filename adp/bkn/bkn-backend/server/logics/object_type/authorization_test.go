@@ -32,7 +32,7 @@ func TestObjectTypeSingleResourceAuthorization(t *testing.T) {
 			return service.UpdateObjectType(ctx, nil, &interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot-1"},
 				KNID:                   "kn-1", Branch: interfaces.MAIN_BRANCH,
-			}, true)
+			}, false)
 		}},
 		{"delete", interfaces.OPERATION_TYPE_DELETE, func(service *objectTypeService, ctx context.Context) error {
 			return service.DeleteObjectTypesByIDs(ctx, nil, "kn-1", interfaces.MAIN_BRANCH, []string{"ot-1"})
@@ -89,7 +89,7 @@ func TestUpdateDataPropertiesRequiresCanonicalObjectTypeModify(t *testing.T) {
 		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot-1"},
 		KNID:                   "kn-1",
 		Branch:                 interfaces.MAIN_BRANCH,
-	}, nil, false)
+	}, nil)
 	if !errors.Is(err, denied) {
 		t.Fatalf("UpdateDataProperties() error = %v, want %v", err, denied)
 	}

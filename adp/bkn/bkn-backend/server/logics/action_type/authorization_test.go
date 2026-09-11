@@ -31,7 +31,7 @@ func TestActionTypeSingleResourceAuthorization(t *testing.T) {
 			return service.UpdateActionType(ctx, nil, &interfaces.ActionType{
 				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at-1"},
 				KNID:                   "kn-1", Branch: interfaces.MAIN_BRANCH,
-			}, true)
+			}, false)
 		}},
 		{"delete", interfaces.OPERATION_TYPE_DELETE, func(service *actionTypeService, ctx context.Context) error {
 			return service.DeleteActionTypesByIDs(ctx, nil, "kn-1", interfaces.MAIN_BRANCH, []string{"at-1"})

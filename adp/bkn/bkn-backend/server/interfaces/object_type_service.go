@@ -19,8 +19,8 @@ type ObjectTypeService interface {
 	ListObjectTypes(ctx context.Context, tx *sql.Tx, query ObjectTypesQueryParams) ([]*ObjectType, int, error)
 	GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx, knID string, branch string, otIDs []string) ([]*ObjectType, error)
 	UpdateObjectType(ctx context.Context, tx *sql.Tx, objectType *ObjectType, strictMode bool) error
-	// UpdateDataProperties updates object type data properties. When strictMode is true, vector index config (if enabled) is validated against the embedding small model service.
-	UpdateDataProperties(ctx context.Context, objectType *ObjectType, dataProperties []*DataProperty, strictMode bool) error
+	// UpdateDataProperties persists data properties after request validation.
+	UpdateDataProperties(ctx context.Context, objectType *ObjectType, dataProperties []*DataProperty) error
 	DeleteObjectTypesByIDs(ctx context.Context, tx *sql.Tx, knID string, branch string, otIDs []string) error
 
 	GetObjectTypeByID(ctx context.Context, tx *sql.Tx, knID string, branch string, otID string) (*ObjectType, error)

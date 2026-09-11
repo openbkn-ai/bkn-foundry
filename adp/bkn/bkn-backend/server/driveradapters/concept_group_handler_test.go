@@ -8,6 +8,8 @@ package driveradapters
 
 import (
 	"bytes"
+	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -179,6 +181,34 @@ func Test_ConceptGroupRestHandler_UpdateConceptGroup(t *testing.T) {
 			cgs.EXPECT().UpdateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 			reqParamByte, _ := sonic.Marshal(conceptGroup)
+			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
+			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusNoContent)
+		})
+
+		Convey("Ignores membership fields outside the update schema\n", func() {
+			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
+			cgs.EXPECT().CheckConceptGroupExistByID(gomock.Any(), knID, gomock.Any(), cgID).Return(conceptGroup.CGName, true, nil)
+			cgs.EXPECT().UpdateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, _ *sql.Tx, actual *interfaces.ConceptGroup, _ bool) error {
+					So(actual.ObjectTypes, ShouldBeEmpty)
+					So(actual.RelationTypes, ShouldBeEmpty)
+					So(actual.ActionTypes, ShouldBeEmpty)
+					So(actual.ObjectTypeIDs, ShouldBeEmpty)
+					return nil
+				})
+
+			request := map[string]any{
+				"name":            conceptGroup.CGName,
+				"object_type_ids": []string{"ot1"},
+				"object_types":    []map[string]any{{"id": "ot1"}},
+				"relation_types":  []map[string]any{{"id": "rt1"}},
+				"action_types":    []map[string]any{{"id": "at1"}},
+			}
+			reqParamByte, _ := sonic.Marshal(request)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()

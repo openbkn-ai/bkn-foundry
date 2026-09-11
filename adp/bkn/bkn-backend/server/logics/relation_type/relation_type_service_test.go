@@ -980,14 +980,17 @@ func Test_relationTypeService_UpdateRelationType(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+				Type: interfaces.RESOURCE_TYPE_RELATION_TYPE,
+				ID:   interfaces.KNChildResourceID("kn1", "rt1"),
+			}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.ObjectType{}, nil).AnyTimes()
 			ots.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", true, nil).AnyTimes()
 			rta.EXPECT().UpdateRelationType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
-			err := service.UpdateRelationType(ctx, nil, relationType, false)
+			err := service.UpdateRelationType(ctx, nil, relationType, true)
 			So(err, ShouldBeNil)
 		})
 

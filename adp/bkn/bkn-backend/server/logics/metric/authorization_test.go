@@ -31,7 +31,7 @@ func TestMetricSingleResourceAuthorization(t *testing.T) {
 		{"update", interfaces.OPERATION_TYPE_MODIFY, func(service *metricService, ctx context.Context) error {
 			return service.UpdateMetric(ctx, nil, &interfaces.MetricDefinition{
 				ID: "metric-1", KnID: "kn-1", Branch: interfaces.MAIN_BRANCH,
-			}, true)
+			}, false)
 		}},
 		{"delete", interfaces.OPERATION_TYPE_DELETE, func(service *metricService, ctx context.Context) error {
 			return service.DeleteMetricsByIDs(ctx, nil, "kn-1", interfaces.MAIN_BRANCH, []string{"metric-1"})

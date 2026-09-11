@@ -33,7 +33,7 @@ func TestConceptGroupSingleResourceAuthorization(t *testing.T) {
 			invoke: func(service *conceptGroupService, ctx context.Context) error {
 				return service.UpdateConceptGroup(ctx, nil, &interfaces.ConceptGroup{
 					CGID: "cg-1", KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
-				}, true)
+				}, false)
 			},
 		},
 		{

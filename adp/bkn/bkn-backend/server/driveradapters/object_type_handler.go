@@ -602,7 +602,7 @@ func (r *restHandler) UpdateDataProperties(c *gin.Context) {
 	}
 
 	// Update the resource by ID.
-	err = r.ots.UpdateDataProperties(ctx, objectType, requestData.Entries, strictMode)
+	err = r.ots.UpdateDataProperties(ctx, objectType, requestData.Entries)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 

@@ -1093,11 +1093,14 @@ func Test_actionTypeService_UpdateActionType(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+				Type: interfaces.RESOURCE_TYPE_ACTION_TYPE,
+				ID:   interfaces.KNChildResourceID("kn1", "at1"),
+			}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
 			ata.EXPECT().UpdateActionType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
-			err := service.UpdateActionType(ctx, nil, actionType, false)
+			err := service.UpdateActionType(ctx, nil, actionType, true)
 			So(err, ShouldBeNil)
 		})
 

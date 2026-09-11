@@ -852,7 +852,7 @@ func (ots *objectTypeService) UpdateObjectType(ctx context.Context, tx *sql.Tx, 
 
 // Update object type data properties.
 func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
-	objectType *interfaces.ObjectType, dataProperties []*interfaces.DataProperty, strictMode bool) error {
+	objectType *interfaces.ObjectType, dataProperties []*interfaces.DataProperty) error {
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update object type")
 	defer span.End()

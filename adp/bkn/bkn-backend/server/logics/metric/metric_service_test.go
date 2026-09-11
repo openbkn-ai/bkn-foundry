@@ -288,6 +288,7 @@ func Test_metricService_UpdateMetric(t *testing.T) {
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllMetricPermissionResources).AnyTimes()
+		ots := bmock.NewMockObjectTypeService(mockCtrl)
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
@@ -296,6 +297,7 @@ func Test_metricService_UpdateMetric(t *testing.T) {
 			db:         db,
 			ma:         ma,
 			ps:         ps,
+			ots:        ots,
 			vbs:        vbs,
 		}
 
@@ -313,10 +315,11 @@ func Test_metricService_UpdateMetric(t *testing.T) {
 			So(errBegin, ShouldBeNil)
 
 			req := &interfaces.MetricDefinition{
-				ID:     "mid1",
-				KnID:   "kn1",
-				Branch: interfaces.MAIN_BRANCH,
-				Name:   "n1",
+				ID:       "mid1",
+				KnID:     "kn1",
+				Branch:   interfaces.MAIN_BRANCH,
+				Name:     "n1",
+				ScopeRef: "ot1",
 				CommonInfo: interfaces.CommonInfo{
 					Comment: "c",
 				},
@@ -324,11 +327,20 @@ func Test_metricService_UpdateMetric(t *testing.T) {
 					Aggregation: interfaces.MetricAggregation{Property: "p", Aggr: interfaces.MetricAggrSum},
 				},
 			}
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+				Type: interfaces.RESOURCE_TYPE_METRIC,
+				ID:   interfaces.KNChildResourceID("kn1", "mid1"),
+			}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+			ots.EXPECT().GetObjectTypeByID(gomock.Any(), tx, "kn1", interfaces.MAIN_BRANCH, "ot1").Return(&interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					DataSource:     &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "ds1"},
+					DataProperties: []*interfaces.DataProperty{{Name: "p"}},
+				},
+			}, nil)
 			ma.EXPECT().UpdateMetric(gomock.Any(), tx, gomock.Any()).Return(nil)
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
 
-			err := service.UpdateMetric(ctx, tx, req, false)
+			err := service.UpdateMetric(ctx, tx, req, true)
 			So(err, ShouldBeNil)
 		})
 	})
