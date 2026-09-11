@@ -339,6 +339,28 @@ func TestSafeClientLocalDecision(t *testing.T) {
 	})
 
 	for name, response := range map[string]string{
+		"empty object":  `{}`,
+		"null document": `null`,
+		"null allowed":  `{"allowed":null}`,
+	} {
+		t.Run("rejects "+name+" as a protocol error", func(t *testing.T) {
+			client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(response))
+			})
+
+			_, err := client.localDecision(context.Background(), interfaces.LocalPermissionCheck{
+				Accessor:  interfaces.PermissionAccessor{ID: "u1"},
+				Resource:  interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"},
+				Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+			})
+
+			require.Error(t, err)
+			assert.NotErrorIs(t, err, interfaces.ErrPermissionAccountNotActive)
+			assert.Contains(t, err.Error(), "required allowed field")
+		})
+	}
+
+	for name, response := range map[string]string{
 		"wrong evaluation scope":    `{"allowed":false,"evaluation_scope":"effective","decision":"deny","basis":"direct"}`,
 		"inconsistent allowed flag": `{"allowed":true,"evaluation_scope":"local","decision":"deny","basis":"direct"}`,
 		"locally enforced requires": `{"allowed":false,"evaluation_scope":"local","decision":"deny","basis":"direct","denied_requirement":"view_detail"}`,
@@ -434,6 +456,29 @@ func TestSafeClientLocalResourceDecisions(t *testing.T) {
 		assert.NotErrorIs(t, err, interfaces.ErrPermissionAccountNotActive)
 		assert.ErrorIs(t, err, io.ErrUnexpectedEOF)
 	})
+
+	for name, response := range map[string]string{
+		"empty object":   `{}`,
+		"null document":  `null`,
+		"null resources": `{"resources":null}`,
+	} {
+		t.Run("rejects "+name+" as a protocol error", func(t *testing.T) {
+			client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(response))
+			})
+
+			_, err := client.localResourceDecisions(context.Background(), interfaces.LocalPermissionFilter{
+				Accessor:     interfaces.PermissionAccessor{ID: "u1"},
+				ResourceType: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+				ResourceIDs:  []string{"resource-1"},
+				Operations:   []string{interfaces.OPERATION_TYPE_VIEW_DETAIL},
+			})
+
+			require.Error(t, err)
+			assert.NotErrorIs(t, err, interfaces.ErrPermissionAccountNotActive)
+			assert.Contains(t, err.Error(), "required resources field")
+		})
+	}
 
 	t.Run("rejects a partially omitted resource instead of treating it as none", func(t *testing.T) {
 		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {

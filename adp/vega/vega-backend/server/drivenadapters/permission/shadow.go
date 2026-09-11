@@ -49,7 +49,7 @@ type localCheckRequest struct {
 }
 
 type localCheckResponse struct {
-	Allowed           bool                               `json:"allowed"`
+	Allowed           *bool                              `json:"allowed"`
 	EvaluationScope   string                             `json:"evaluation_scope"`
 	Decision          interfaces.PermissionDecision      `json:"decision"`
 	Basis             interfaces.PermissionDecisionBasis `json:"basis"`
@@ -68,11 +68,13 @@ type localFilterRequest struct {
 }
 
 type localFilterResponse struct {
-	Resources []struct {
-		ResourceType string                                   `json:"resource_type"`
-		ResourceID   string                                   `json:"resource_id"`
-		Decisions    []interfaces.PermissionOperationDecision `json:"decisions"`
-	} `json:"resources"`
+	Resources *[]localFilterResource `json:"resources"`
+}
+
+type localFilterResource struct {
+	ResourceType string                                   `json:"resource_type"`
+	ResourceID   string                                   `json:"resource_id"`
+	Decisions    []interfaces.PermissionOperationDecision `json:"decisions"`
 }
 
 func (c *safeClient) localDecision(ctx context.Context, check interfaces.LocalPermissionCheck) (interfaces.PermissionOperationDecision, error) {
@@ -84,6 +86,10 @@ func (c *safeClient) localDecision(ctx context.Context, check interfaces.LocalPe
 	if err != nil {
 		return interfaces.PermissionOperationDecision{}, err
 	}
+	if out.Allowed == nil {
+		return interfaces.PermissionOperationDecision{}, fmt.Errorf("bkn-safe local check omitted the required allowed field")
+	}
+	allowed := *out.Allowed
 	decision := interfaces.PermissionOperationDecision{
 		Operation: check.Operation, Decision: out.Decision, Basis: out.Basis,
 		Requires: out.Requires, DeniedRequirement: out.DeniedRequirement,
@@ -92,7 +98,7 @@ func (c *safeClient) localDecision(ctx context.Context, check interfaces.LocalPe
 	// bkn-safe keeps its effective compatibility response for an unknown or
 	// disabled account: {"allowed":false}. Preserve that as an account-level
 	// refusal rather than fabricating a local none decision or reporting 500.
-	if !out.Allowed && out.EvaluationScope == "" && out.Decision == "" && out.Basis == "" {
+	if !allowed && out.EvaluationScope == "" && out.Decision == "" && out.Basis == "" {
 		return interfaces.PermissionOperationDecision{}, interfaces.ErrPermissionAccountNotActive
 	}
 	if out.EvaluationScope != "local" {
@@ -101,7 +107,7 @@ func (c *safeClient) localDecision(ctx context.Context, check interfaces.LocalPe
 	if err := validateLocalDecision(decision); err != nil {
 		return interfaces.PermissionOperationDecision{}, err
 	}
-	if out.Allowed != decision.Allowed() {
+	if allowed != decision.Allowed() {
 		return interfaces.PermissionOperationDecision{}, fmt.Errorf("bkn-safe local check returned inconsistent allowed and decision values")
 	}
 	return decision, nil
@@ -123,10 +129,14 @@ func (c *safeClient) localResourceDecisions(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+	if out.Resources == nil {
+		return nil, fmt.Errorf("bkn-safe local filter omitted the required resources field")
+	}
+	resources := *out.Resources
 	// With non-empty input, an empty result is bkn-safe's compatibility response
 	// for an unknown or disabled account. A partial result remains a protocol
 	// error below so omitted resources cannot be confused with deny or none.
-	if len(out.Resources) == 0 {
+	if len(resources) == 0 {
 		return nil, interfaces.ErrPermissionAccountNotActive
 	}
 	expectedIDs := make(map[string]bool, len(ids))
@@ -134,7 +144,7 @@ func (c *safeClient) localResourceDecisions(ctx context.Context,
 		expectedIDs[id] = true
 	}
 	result := make(map[string]map[string]interfaces.PermissionOperationDecision, len(ids))
-	for _, resource := range out.Resources {
+	for _, resource := range resources {
 		if resource.ResourceType != filter.ResourceType || !expectedIDs[resource.ResourceID] {
 			return nil, fmt.Errorf("bkn-safe local filter returned unexpected resource %s:%s", resource.ResourceType, resource.ResourceID)
 		}
