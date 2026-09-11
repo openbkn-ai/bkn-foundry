@@ -74,6 +74,38 @@ func (r *restHandler) ListCatalogsByIn(c *gin.Context) {
 	r.listCatalogs(c, visitor)
 }
 
+// ListCatalogConnectorTypeStatsByEx handles GET /api/vega-backend/v1/catalogs/stats/by-connector-type.
+func (r *restHandler) ListCatalogConnectorTypeStatsByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.listCatalogConnectorTypeStats(c, visitor)
+}
+
+// ListCatalogConnectorTypeStatsByIn handles GET /api/vega-backend/in/v1/catalogs/stats/by-connector-type.
+func (r *restHandler) ListCatalogConnectorTypeStatsByIn(c *gin.Context) {
+	r.listCatalogConnectorTypeStats(c, visitor.GenerateVisitor(c))
+}
+
+func (r *restHandler) listCatalogConnectorTypeStats(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)})
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	params := interfaces.CatalogsQueryParams{Name: strings.TrimSpace(c.Query("name"))}
+	entries, err := r.cs.ListConnectorTypeStats(ctx, params)
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, map[string]any{"entries": entries})
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+}
+
 // listCatalogs is the shared implementation
 func (r *restHandler) listCatalogs(c *gin.Context, visitor hydra.Visitor) {
 	ctx, span := oteltrace.StartServerSpan(c)

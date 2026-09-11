@@ -144,6 +144,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			catalogs.POST("/:id/test-connection", r.TestConnectionByEx)
 			catalogs.POST("/:id/discover", r.DiscoverCatalogResourcesByEx)
 
+			catalogs.GET("/stats/by-connector-type", r.ListCatalogConnectorTypeStatsByEx)
 			catalogs.POST("/test-connection", r.verifyJsonContentType(), r.TestConnectionConfigByEx)
 		}
 
@@ -251,6 +252,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			catalogs.POST("/:id/test-connection", r.TestConnectionByIn)
 			catalogs.POST("/:id/discover", r.DiscoverCatalogResourcesByIn)
 
+			catalogs.GET("/stats/by-connector-type", r.ListCatalogConnectorTypeStatsByIn)
 			catalogs.POST("/test-connection", r.verifyJsonContentType(), r.TestConnectionConfigByIn)
 		}
 

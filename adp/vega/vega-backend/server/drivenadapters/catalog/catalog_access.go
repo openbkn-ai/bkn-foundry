@@ -465,6 +465,43 @@ func (ca *catalogAccess) ListPermissionRefs(ctx context.Context, params interfac
 	return refs, nil
 }
 
+func (ca *catalogAccess) ListConnectorTypePermissionRefs(ctx context.Context, params interfaces.CatalogsQueryParams) ([]interfaces.CatalogConnectorTypePermissionRef, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List catalog connector type permission refs")
+	defer span.End()
+
+	builder := sq.Select("f_id", "f_type", "f_connector_type").
+		From(CATALOG_TABLE_NAME)
+	builder = applyCatalogFilters(builder, params)
+
+	sqlStr, vals, err := builder.ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return nil, err
+	}
+	rows, err := ca.db.QueryContext(ctx, sqlStr, vals...)
+	if err != nil {
+		span.SetStatus(codes.Error, "Query failed")
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	refs := make([]interfaces.CatalogConnectorTypePermissionRef, 0)
+	for rows.Next() {
+		var ref interfaces.CatalogConnectorTypePermissionRef
+		if err := rows.Scan(&ref.CatalogID, &ref.CatalogType, &ref.ConnectorType); err != nil {
+			span.SetStatus(codes.Error, "Scan row failed")
+			return nil, err
+		}
+		refs = append(refs, ref)
+	}
+	if err := rows.Err(); err != nil {
+		span.SetStatus(codes.Error, "Rows iteration failed")
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return refs, nil
+}
+
 // ListInternalIDs lists the ids of all internal system directories (grouped by internal_catalog type when used for permission verification).
 func (ca *catalogAccess) ListInternalIDs(ctx context.Context) ([]string, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List internal catalog IDs")

@@ -1319,6 +1319,78 @@ func TestCatalogServiceList(t *testing.T) {
 	})
 }
 
+func TestCatalogServiceListConnectorTypeStats(t *testing.T) {
+	t.Run("aggregates authorized refs", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		refs := []interfaces.CatalogConnectorTypePermissionRef{
+			{CatalogID: "logical-1", CatalogType: interfaces.CatalogTypeLogical, ConnectorType: ""},
+			{CatalogID: "mysql-1", CatalogType: interfaces.CatalogTypePhysical, ConnectorType: "mysql"},
+			{CatalogID: "mysql-2", CatalogType: interfaces.CatalogTypePhysical, ConnectorType: "mysql"},
+			{CatalogID: "hidden-1", CatalogType: interfaces.CatalogTypePhysical, ConnectorType: "mariadb"},
+		}
+		mockCA.EXPECT().ListConnectorTypePermissionRefs(gomock.Any(), interfaces.CatalogsQueryParams{}).Return(refs, nil)
+		mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
+		mockPS.EXPECT().FilterResources(
+			gomock.Any(),
+			interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			[]string{"logical-1", "mysql-1", "mysql-2", "hidden-1"},
+			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL},
+			true,
+			interfaces.COMMON_OPERATIONS,
+		).Return(map[string]interfaces.PermissionResourceOps{
+			"logical-1": {ResourceID: "logical-1"},
+			"mysql-1":   {ResourceID: "mysql-1"},
+			"mysql-2":   {ResourceID: "mysql-2"},
+		}, nil)
+
+		cs := &catalogService{ca: mockCA, ps: mockPS}
+		stats, err := cs.ListConnectorTypeStats(context.Background(), interfaces.CatalogsQueryParams{})
+
+		require.NoError(t, err)
+		assert.Equal(t, []*interfaces.CatalogConnectorTypeStat{
+			{CatalogType: interfaces.CatalogTypeLogical, ConnectorType: "", CatalogCount: 1},
+			{CatalogType: interfaces.CatalogTypePhysical, ConnectorType: "mysql", CatalogCount: 2},
+		}, stats)
+	})
+
+	t.Run("filters permissions in batches", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		refs := make([]interfaces.CatalogConnectorTypePermissionRef, catalogAuthResourcePermissionBatchSize+1)
+		for index := range refs {
+			refs[index] = interfaces.CatalogConnectorTypePermissionRef{
+				CatalogID:     fmt.Sprintf("mysql-%d", index),
+				CatalogType:   interfaces.CatalogTypePhysical,
+				ConnectorType: "mysql",
+			}
+		}
+		mockCA.EXPECT().ListConnectorTypePermissionRefs(gomock.Any(), interfaces.CatalogsQueryParams{}).Return(refs, nil)
+		mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
+		mockPS.EXPECT().FilterResources(
+			gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG, gomock.Any(),
+			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS,
+		).DoAndReturn(func(_ context.Context, _ string, ids []string, _ []string, _ bool, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
+			require.LessOrEqual(t, len(ids), catalogAuthResourcePermissionBatchSize)
+			allowed := make(map[string]interfaces.PermissionResourceOps, len(ids))
+			for _, id := range ids {
+				allowed[id] = interfaces.PermissionResourceOps{ResourceID: id}
+			}
+			return allowed, nil
+		}).Times(2)
+
+		cs := &catalogService{ca: mockCA, ps: mockPS}
+		stats, err := cs.ListConnectorTypeStats(context.Background(), interfaces.CatalogsQueryParams{})
+
+		require.NoError(t, err)
+		assert.Equal(t, []*interfaces.CatalogConnectorTypeStat{{
+			CatalogType: interfaces.CatalogTypePhysical, ConnectorType: "mysql", CatalogCount: catalogAuthResourcePermissionBatchSize + 1,
+		}}, stats)
+	})
+}
+
 func TestCatalogServiceGetDeletionImpact(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
