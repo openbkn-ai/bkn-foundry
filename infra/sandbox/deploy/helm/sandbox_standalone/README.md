@@ -82,26 +82,36 @@ The deprecated `image.defaultTemplate` value is still accepted as a compatibilit
 | `web.enabled` | Deploy Sandbox Web Console | `true` |
 | `minio.enabled` | Deploy internal MinIO | `true` |
 | `networkPolicy.enabled` | Apply a default-deny egress policy to dynamic executor pods | `true` |
+| `networkPolicy.publicHttps.enabled` | Allow public HTTPS while excluding cluster, private, link-local, and reserved address space; required by runtime dependency installation | `true` |
 | `networkPolicy.bkn.enabled` | Allow an optional BKN deployment through agent-retrieval port 30780 | `false` |
+| `networkPolicy.bkn.namespace` | Agent-retrieval namespace override; empty derives it from an in-cluster BKN FQDN or uses the Sandbox namespace for a short service name | `""` |
 | `networkPolicy.additionalEgress` | Extra Kubernetes egress rules for explicitly approved dependencies | `[]` |
 
 ## Executor Egress Isolation
 
 The policy selects only dynamic executor pods. It allows DNS, the Sandbox
-Control Plane, and MinIO, and denies every other egress destination. MariaDB is
-used by the Control Plane, not executors, so it is intentionally not allowed.
-Standalone installs do not include BKN, so BKN access is disabled by default.
-When connecting one, set both BKN URL values to agent-retrieval's
-authenticated-only port 30780 and enable/configure `networkPolicy.bkn`. Never
-allow its main port 30779 because that port also serves trusted `/in` routes.
+Control Plane, MinIO, and public HTTPS. The public HTTPS rule excludes private,
+cluster, link-local, metadata, multicast, and reserved address ranges, which
+keeps runtime dependency installation working without reopening platform
+services. Standard Kubernetes NetworkPolicy cannot allow the package index by
+DNS name, so this is the portable L3/L4 boundary. Disable
+`networkPolicy.publicHttps.enabled` when dependencies are prebuilt.
+
+MariaDB is used by the Control Plane, not executors, so it is intentionally not
+allowed. Standalone installs do not include BKN, so BKN access is disabled by
+default. When connecting one, set both BKN URL values to agent-retrieval's
+authenticated-only port 30780 and enable `networkPolicy.bkn`. An empty
+`networkPolicy.bkn.namespace` derives the namespace from an in-cluster service
+FQDN; set it explicitly for any other addressing convention. Never allow the
+main port 30779 because that port also serves trusted `/in` routes.
 
 Before enabling the policy on an existing installation, run an observation
 period with `networkPolicy.enabled=false`, collect executor traffic with the
 CNI's flow tooling, and add only verified dependencies to
-`networkPolicy.additionalEgress`. Runtime package downloads and arbitrary
-Internet/private-network calls are denied unless explicitly allowed. Applying
-the policy affects already running executor pods. NodeLocal DNSCache users must
-also allow its listener address explicitly.
+`networkPolicy.additionalEgress`. Public HTTPS is allowed by default for runtime
+package installation; private-network and non-HTTPS public calls remain denied.
+Applying the policy affects already running executor pods. NodeLocal DNSCache
+users must also allow its listener address explicitly.
 
 ## Access
 

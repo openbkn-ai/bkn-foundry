@@ -51,13 +51,23 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: {{ default .Values.namespace .Values.networkPolicy.bkn.namespace | quote }}
+              kubernetes.io/metadata.name: {{ include "sandbox.bknNamespace" . | quote }}
           podSelector:
             matchLabels:
               {{- toYaml .Values.networkPolicy.bkn.podSelector | nindent 14 }}
       ports:
         - protocol: TCP
           port: {{ .Values.networkPolicy.bkn.port }}
+    {{- end }}
+    {{- if and .Values.networkPolicy.publicHttps.enabled .Values.networkPolicy.publicHttps.ipBlocks }}
+    - to:
+        {{- range .Values.networkPolicy.publicHttps.ipBlocks }}
+        - ipBlock:
+            {{- toYaml . | nindent 12 }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 443
     {{- end }}
     {{- with .Values.networkPolicy.additionalEgress }}
     {{- toYaml . | nindent 4 }}

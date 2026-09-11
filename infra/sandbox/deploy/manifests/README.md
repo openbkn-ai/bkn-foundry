@@ -148,10 +148,16 @@ kubectl apply -f deploy/manifests/
 `09-networkpolicy.yaml` 只选择带有 `app=sandbox-executor`、
 `managed_by=sandbox-control-plane` 和 `sandbox-type=execution` 三个标签的动态
 执行 Pod。它默认拒绝其余出站，只放行 DNS、Control Plane 和 MinIO；MariaDB
-只由 Control Plane 使用，因此不会向 executor 放行。
-运行时下载依赖、访问公网 API 或私网服务会被阻断；如确有需要，应在观察 CNI
-流量后增加精确规则，不得放行平台内部端口。若接入 BKN，必须只放行
-agent-retrieval 的鉴权专用端口 `30780`，不能放行同时承载 `/in` 的 `30779`。
+只由 Control Plane 使用，因此不会向 executor 放行。策略还允许访问公网地址的
+HTTPS 端口，供现有的运行时 Python 依赖安装使用；该规则排除了集群、私网、链路
+本地、云元数据和保留地址段，不会因此重新开放平台内部服务。标准 Kubernetes
+`NetworkPolicy` 不能按域名放行，因此这里使用可移植的三、四层边界。
+
+私网服务和非 HTTPS 公网服务仍会被阻断；如确有需要，应在观察 CNI 流量后增加
+精确规则，不得放行平台内部端口。若接入 BKN，默认规则只放行 `openbkn` 命名空间
+中 agent-retrieval 的鉴权专用端口 `30780`，不能放行同时承载 `/in` 的 `30779`。
+若 BKN 使用其他命名空间，修改 `01-configmap.yaml` 中两个 BKN URL 的同时，也必须
+修改 `09-networkpolicy.yaml` 中对应的 namespaceSelector。
 
 存量环境应先在不应用该文件的情况下观察真实出站，再应用策略。策略一旦应用，
 也会立即作用于已经运行的 executor Pod。使用 NodeLocal DNSCache 时还需按集群配置

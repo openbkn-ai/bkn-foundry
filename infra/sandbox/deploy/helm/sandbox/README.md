@@ -82,6 +82,8 @@ The deprecated `image.defaultTemplate` value is still accepted as a compatibilit
 | `controlPlane.env.BKN_SANDBOX_MCP_URL` | In-cluster Context Loader MCP endpoint for the built-in `sandbox_sdk.bkn` face. It must use the authenticated-only sandbox listener on port 30780; port 30779 also carries trusted `/in` routes and must not be reachable from executors. | `http://agent-retrieval:30780/api/agent-retrieval/v1/mcp/` |
 | `depServices.rds` | Core-provided database service configuration | enabled by values |
 | `networkPolicy.enabled` | Apply a default-deny egress policy to dynamic executor pods | `true` |
+| `networkPolicy.publicHttps.enabled` | Allow public HTTPS while excluding cluster, private, link-local, and reserved address space; required by runtime dependency installation | `true` |
+| `networkPolicy.bkn.namespace` | Agent-retrieval namespace override; empty derives it from an in-cluster BKN FQDN or uses the Sandbox namespace for a short service name | `""` |
 | `networkPolicy.bkn.port` | Authenticated-only agent-retrieval listener allowed from executors | `30780` |
 | `networkPolicy.additionalEgress` | Extra Kubernetes egress rules for explicitly approved dependencies | `[]` |
 
@@ -93,12 +95,23 @@ The chart selects only dynamic execution pods carrying all three labels:
 isolated by this policy.
 
 By default, executors can reach DNS, the Sandbox Control Plane, Sandbox MinIO,
-and agent-retrieval's authenticated-only port 30780. All other destinations,
-including platform `/in` and `internal-v1` ports, are denied. Runtime package
-downloads, arbitrary Internet APIs, and private-network services therefore need
-an explicit `networkPolicy.additionalEgress` rule or a prebuilt executor image.
-Never add agent-retrieval port 30779 or platform internal service ports to that
-list.
+agent-retrieval's authenticated-only port 30780, and public HTTPS destinations.
+The HTTPS rule excludes private, cluster, link-local, metadata, multicast, and
+reserved address ranges, so the existing runtime package installation path can
+reach its HTTPS package index without reopening platform services. Standard
+Kubernetes NetworkPolicy cannot allow a DNS name directly, so this is the
+portable L3/L4 boundary. Disable `networkPolicy.publicHttps.enabled` when all
+dependencies are prebuilt and public HTTPS is not required.
+
+All other destinations, including platform `/in` and `internal-v1` ports,
+private-network services, and non-HTTPS public endpoints, are denied. Add an
+explicit `networkPolicy.additionalEgress` rule only for a verified dependency.
+Never add agent-retrieval port 30779 or platform internal service ports.
+
+When `networkPolicy.bkn.namespace` is empty, the chart derives a namespace from
+an in-cluster FQDN such as `agent-retrieval.openbkn.svc.cluster.local`; a short
+service name uses the Sandbox namespace. Set the value explicitly for any other
+addressing convention.
 
 For an existing installation, first render or upgrade with
 `networkPolicy.enabled=false` while collecting executor egress with the CNI's
