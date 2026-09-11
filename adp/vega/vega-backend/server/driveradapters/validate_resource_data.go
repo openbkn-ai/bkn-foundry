@@ -399,9 +399,6 @@ func validateResourceDataQueryGroupByFields(ctx context.Context, params *interfa
 		validOutputFields["__value"] = struct{}{}
 	}
 	for _, outputField := range params.OutputFields {
-		if _, valid := validOutputFields[outputField]; valid {
-			continue
-		}
 		fieldType := fields[outputField]
 		if fieldType == interfaces.DataType_Binary {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
@@ -410,6 +407,9 @@ func validateResourceDataQueryGroupByFields(ctx context.Context, params *interfa
 		if fieldType == interfaces.DataType_Other {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 				WithErrorDetails(fmt.Sprintf("Other field %q cannot be requested by an aggregation query", outputField))
+		}
+		if _, valid := validOutputFields[outputField]; valid {
+			continue
 		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("Output field %q must be a group_by field or aggregate alias for an aggregation query", outputField))

@@ -318,6 +318,44 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 	})
 
+	for _, tt := range []struct {
+		name      string
+		fieldType string
+		wantError string
+	}{
+		{
+			name:      "binary",
+			fieldType: interfaces.DataType_Binary,
+			wantError: "Binary field \\\"result\\\" cannot be requested by an aggregation query",
+		},
+		{
+			name:      "other",
+			fieldType: interfaces.DataType_Other,
+			wantError: "Other field \\\"result\\\" cannot be requested by an aggregation query",
+		},
+	} {
+		t.Run("rejects aggregate aliases shadowing "+tt.name+" fields", func(t *testing.T) {
+			engine, rs, _, _ := setupResourceDataHandlerTest(t)
+			resource := sampleDatasetResource()
+			resource.SchemaDefinition = []*interfaces.Property{
+				{Name: "score", Type: interfaces.DataType_Integer},
+				{Name: "result", Type: tt.fieldType},
+			}
+			rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+
+			req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data",
+				strings.NewReader(`{"aggregation":{"property":"score","aggr":"count","alias":"result"},"output_fields":["result"]}`))
+			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			engine.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+			assert.Contains(t, w.Body.String(), tt.wantError)
+		})
+	}
+
 	t.Run("rejects non-grouped plain output fields in aggregation queries", func(t *testing.T) {
 		engine, rs, _, _ := setupResourceDataHandlerTest(t)
 		resource := sampleDatasetResource()
