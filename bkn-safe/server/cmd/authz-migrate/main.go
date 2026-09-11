@@ -2,9 +2,9 @@
 //
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-// Command authz-migrate performs the versioned, one-time authorization
-// migration while all product traffic is stopped. It always preflights Core
-// and EE before the first write and emits a machine-readable JSON report.
+// Command authz-migrate is the bkn-safe domain step invoked by the target
+// release's deploy migration entry. It always preflights Core and EE before the
+// first write and emits a machine-readable JSON report.
 package main
 
 import (
