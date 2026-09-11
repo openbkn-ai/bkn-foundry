@@ -503,7 +503,7 @@ func TestConnectorTypeServiceDeleteByType(t *testing.T) {
 }
 
 func TestConnectorTypeServiceSetEnabled(t *testing.T) {
-	t.Run("set enabled checks task management permission and updates access", func(t *testing.T) {
+	t.Run("set enabled checks modify permission and updates access", func(t *testing.T) {
 		service, cta, ps := newTestConnectorTypeService(t)
 		connectorFactory := vmock.NewMockConnectorFactory(gomock.NewController(t))
 		service.cf = connectorFactory
@@ -511,7 +511,7 @@ func TestConnectorTypeServiceSetEnabled(t *testing.T) {
 			CheckPermission(gomock.Any(), interfaces.PermissionResource{
 				Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
 				ID:   "remote-api",
-			}, []string{interfaces.OPERATION_TYPE_TASK_MANAGE}).
+			}, []string{interfaces.OPERATION_TYPE_MODIFY}).
 			Return(nil)
 		cta.EXPECT().SetEnabled(gomock.Any(), "remote-api", true).Return(nil)
 		connectorFactory.EXPECT().SetConnectorEnabled("remote-api", true)
@@ -521,11 +521,11 @@ func TestConnectorTypeServiceSetEnabled(t *testing.T) {
 
 	t.Run("permission denial prevents enabled-state changes", func(t *testing.T) {
 		service, _, ps := newTestConnectorTypeService(t)
-		denied := errors.New("task management denied")
+		denied := errors.New("modify denied")
 		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 			Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
 			ID:   "remote-api",
-		}, []string{interfaces.OPERATION_TYPE_TASK_MANAGE}).Return(denied)
+		}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(denied)
 
 		err := service.SetEnabled(context.Background(), "remote-api", true)
 

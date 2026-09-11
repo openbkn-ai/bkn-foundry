@@ -60,6 +60,13 @@ var withdrawnResourceTypes = []string{
 	"stream_data_pipeline",
 }
 
+var withdrawnOperations = []struct {
+	resourceType string
+	operation    string
+}{
+	{"connector_type", "task_manage"},
+}
+
 const normalUserRoleID = "b5f9ac3e-992c-4bbd-8126-95e87e51c46e"
 
 // AdminUserID is the built-in admin user's id, exported so callers can protect
@@ -136,6 +143,9 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 	if err := reconcileWithdrawnResourceTypes(enforcer); err != nil {
 		return fmt.Errorf("reconcile withdrawn resource types: %w", err)
 	}
+	if err := reconcileWithdrawnOperations(enforcer); err != nil {
+		return fmt.Errorf("reconcile withdrawn operations: %w", err)
+	}
 	if err := seedCatalog(db); err != nil {
 		return fmt.Errorf("seed catalog: %w", err)
 	}
@@ -167,6 +177,28 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 		return fmt.Errorf("seed business provenance owner: %w", err)
 	}
 	return nil
+}
+
+// reconcileWithdrawnOperations removes stale grants before pruning their
+// catalog rows. Leaving those grants behind would keep an invisible permission
+// active in the policy engine on upgraded deployments.
+func reconcileWithdrawnOperations(enforcer *authz.Enforcer) error {
+	return enforcer.Transaction(context.Background(), func(tx *authz.PolicyTransaction) error {
+		for _, withdrawn := range withdrawnOperations {
+			removed, err := tx.RemovePoliciesForOperation(withdrawn.resourceType, withdrawn.operation)
+			if err != nil {
+				return err
+			}
+			if removed > 0 {
+				slog.Info("removed policies for withdrawn operation",
+					"resource_type", withdrawn.resourceType,
+					"operation", withdrawn.operation,
+					"projections", removed,
+				)
+			}
+		}
+		return nil
+	})
 }
 
 // reconcileWithdrawnResourceTypes removes resource types that are no longer

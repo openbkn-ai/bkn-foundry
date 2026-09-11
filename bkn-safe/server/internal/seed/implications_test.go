@@ -128,7 +128,7 @@ func TestShippedConnectorTypeDeclaresViewRequirements(t *testing.T) {
 			operations[operation.ID] = operation.Requires
 		}
 	}
-	for _, operation := range []string{"modify", "delete", "authorize", "task_manage"} {
+	for _, operation := range []string{"modify", "delete", "authorize"} {
 		if got := operations[operation]; len(got) != 1 || got[0] != "view_detail" {
 			t.Errorf("connector_type/%s requires %v, want [view_detail]", operation, got)
 		}
@@ -137,6 +137,9 @@ func TestShippedConnectorTypeDeclaresViewRequirements(t *testing.T) {
 		if got := operations[operation]; len(got) != 0 {
 			t.Errorf("connector_type/%s unexpectedly requires %v", operation, got)
 		}
+	}
+	if _, ok := operations["task_manage"]; ok {
+		t.Error("connector_type unexpectedly declares task_manage without a task lifecycle entry")
 	}
 }
 
@@ -174,7 +177,7 @@ func TestConnectorTypeRequirementsApplyToChecksAndLists(t *testing.T) {
 
 	const user = "connector-operator"
 	if err := e.GrantProfessionalObjectPermission(
-		user, "connector_type", "remote-api", "task_manage", authz.EffectAllow, authz.AuthoritySourceAdminAuthz,
+		user, "connector_type", "remote-api", "modify", authz.EffectAllow, authz.AuthoritySourceAdminAuthz,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -189,23 +192,78 @@ func TestConnectorTypeRequirementsApplyToChecksAndLists(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	decision, err := e.OperationDecision(t.Context(), user, "connector_type", "remote-api", "task_manage")
+	decision, err := e.OperationDecision(t.Context(), user, "connector_type", "remote-api", "modify")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if decision.Decision != authz.DecisionDeny || decision.Basis != authz.BasisRequires ||
 		decision.DeniedRequirement != "view_detail" {
-		t.Fatalf("task_manage decision = %+v; want requires deny on view_detail", decision)
+		t.Fatalf("modify decision = %+v; want requires deny on view_detail", decision)
 	}
-	ids, err := e.AccessibleResources(user, "connector_type", "task_manage")
+	ids, err := e.AccessibleResources(user, "connector_type", "modify")
 	if err != nil || len(ids) != 0 {
-		t.Fatalf("AccessibleResources(task_manage) = %v, %v; want none", ids, err)
+		t.Fatalf("AccessibleResources(modify) = %v, %v; want none", ids, err)
 	}
 	filtered, err := e.FilterResourceOps(user,
-		[]authz.ResourceRef{{Type: "connector_type", ID: "remote-api"}}, nil, []string{"task_manage"})
+		[]authz.ResourceRef{{Type: "connector_type", ID: "remote-api"}}, nil, []string{"modify"})
 	if err != nil || len(filtered) != 1 || len(filtered[0].Operations) != 0 ||
 		len(filtered[0].Decisions) != 1 || filtered[0].Decisions[0].Basis != authz.BasisRequires {
-		t.Fatalf("FilterResourceOps(task_manage) = %+v, %v", filtered, err)
+		t.Fatalf("FilterResourceOps(modify) = %+v, %v", filtered, err)
+	}
+}
+
+func TestSeedPrunesWithdrawnConnectorTaskManageGrants(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.Create(&model.Operation{
+		ResourceTypeID: "connector_type", ID: "task_manage", Name: "任务管理",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantObjectPermission("legacy-connector-operator", "connector_type", "remote-api", "task_manage"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantObjectPermission("decoy-operator", "connectorXtype", "remote-api", "task_manage"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	var operationCount int64
+	if err := db.Model(&model.Operation{}).
+		Where("resource_type_id = ? AND id = ?", "connector_type", "task_manage").
+		Count(&operationCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if operationCount != 0 {
+		t.Fatalf("connector_type/task_manage operation count = %d; want 0", operationCount)
+	}
+	records, err := e.PolicyRecords(authz.PolicyFilter{
+		AccessorID: "legacy-connector-operator",
+		Operation:  "task_manage",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("withdrawn connector task_manage grants survived: %+v", records)
+	}
+	allowed, err := e.Check("legacy-connector-operator", "connector_type", "remote-api", "task_manage")
+	if err != nil || allowed {
+		t.Fatalf("withdrawn connector task_manage check = %v, %v; want false", allowed, err)
+	}
+	allowed, err = e.Check("decoy-operator", "connectorXtype", "remote-api", "task_manage")
+	if err != nil || !allowed {
+		t.Fatalf("neighbor resource type grant was removed: allowed=%v err=%v", allowed, err)
 	}
 }
 

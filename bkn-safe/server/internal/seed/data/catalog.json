@@ -37,8 +37,7 @@
         {"id": "create", "name": "创建"},
         {"id": "modify", "name": "修改", "requires": ["view_detail"]},
         {"id": "delete", "name": "删除", "requires": ["view_detail"]},
-        {"id": "authorize", "name": "授权", "requires": ["view_detail"]},
-        {"id": "task_manage", "name": "任务管理", "requires": ["view_detail"]}
+        {"id": "authorize", "name": "授权", "requires": ["view_detail"]}
       ]
     },
     {

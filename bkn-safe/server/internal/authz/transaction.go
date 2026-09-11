@@ -82,6 +82,13 @@ func (tx *PolicyTransaction) RemovePoliciesForResourceTypes(resourceTypes ...str
 	return removed, nil
 }
 
+// RemovePoliciesForOperation removes every durable grant and Casbin projection
+// for one withdrawn operation while preserving the resource type's other
+// grants. It is reserved for startup vocabulary migrations.
+func (tx *PolicyTransaction) RemovePoliciesForOperation(resourceType, operation string) (int, error) {
+	return tx.enforcer.removePolicyGrantsByObjectPrefixAndOperation(resourceType+":", operation)
+}
+
 func (tx *PolicyTransaction) GrantObjectPermission(accessorID, resourceType, resourceID, operation string) error {
 	return tx.enforcer.addPolicy(accessorID, obj(resourceType, resourceID), operation, EffectAllow,
 		PolicySourceSystemDerived, AuthoritySourceSystem)

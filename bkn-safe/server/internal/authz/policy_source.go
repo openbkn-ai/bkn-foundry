@@ -398,10 +398,17 @@ func (en *Enforcer) removePolicyGrants(filter PolicyFilter) (int, error) {
 }
 
 func (en *Enforcer) removePolicyGrantsByObjectPrefix(prefix string) (int, error) {
+	return en.removePolicyGrantsByObjectPrefixAndOperation(prefix, "")
+}
+
+func (en *Enforcer) removePolicyGrantsByObjectPrefixAndOperation(prefix, operation string) (int, error) {
 	var rows []safemodel.AuthorizationGrant
-	if err := en.db.Model(&safemodel.AuthorizationGrant{}).
-		Where("object LIKE ?", prefix+"%").
-		Order("grant_id").Find(&rows).Error; err != nil {
+	q := en.db.Model(&safemodel.AuthorizationGrant{}).
+		Where("substr(object, 1, ?) = ?", len(prefix), prefix)
+	if operation != "" {
+		q = q.Where("operation = ?", operation)
+	}
+	if err := q.Order("grant_id").Find(&rows).Error; err != nil {
 		return 0, err
 	}
 	removedProjections := 0
