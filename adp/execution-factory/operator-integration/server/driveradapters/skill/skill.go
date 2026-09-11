@@ -255,6 +255,17 @@ func (h *skillHandler) QuerySkillNamesByIDs(c *gin.Context) {
 }
 
 func (h *skillHandler) QuerySkillMarketList(c *gin.Context) {
+	h.querySkillReleaseList(c, interfaces.AuthOperationTypePublicAccess)
+}
+
+// QueryAvailableSkillList returns published releases filtered by caller view
+// permission. It deliberately does not use the mutable repository status: a
+// published skill remains discoverable while its next revision is editing.
+func (h *skillHandler) QueryAvailableSkillList(c *gin.Context) {
+	h.querySkillReleaseList(c, interfaces.AuthOperationTypeView)
+}
+
+func (h *skillHandler) querySkillReleaseList(c *gin.Context, visibilityOperation interfaces.AuthOperationType) {
 	req := &interfaces.QuerySkillMarketListReq{}
 	if err := c.ShouldBindHeader(req); err != nil {
 		rest.ReplyError(c, errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error()))
@@ -272,6 +283,7 @@ func (h *skillHandler) QuerySkillMarketList(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
+	req.VisibilityOperation = visibilityOperation
 	resp, err := h.Market.QuerySkillMarketList(c.Request.Context(), req)
 	if err != nil {
 		rest.ReplyError(c, err)

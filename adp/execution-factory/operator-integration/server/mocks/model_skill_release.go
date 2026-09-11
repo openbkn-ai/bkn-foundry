@@ -101,6 +101,21 @@ func (mr *MockISkillReleaseDBMockRecorder) SelectBySkillID(ctx, tx, skillID any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SelectBySkillID", reflect.TypeOf((*MockISkillReleaseDB)(nil).SelectBySkillID), ctx, tx, skillID)
 }
 
+// SelectIDsByWhereClause mocks base method.
+func (m *MockISkillReleaseDB) SelectIDsByWhereClause(ctx context.Context, tx *sql.Tx, filter map[string]any) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SelectIDsByWhereClause", ctx, tx, filter)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SelectIDsByWhereClause indicates an expected call of SelectIDsByWhereClause.
+func (mr *MockISkillReleaseDBMockRecorder) SelectIDsByWhereClause(ctx, tx, filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SelectIDsByWhereClause", reflect.TypeOf((*MockISkillReleaseDB)(nil).SelectIDsByWhereClause), ctx, tx, filter)
+}
+
 // SelectListPage mocks base method.
 func (m *MockISkillReleaseDB) SelectListPage(ctx context.Context, tx *sql.Tx, filter map[string]any, sort *ormhelper.SortParams, cursor *ormhelper.CursorParams) ([]*model.SkillReleaseDB, error) {
 	m.ctrl.T.Helper()

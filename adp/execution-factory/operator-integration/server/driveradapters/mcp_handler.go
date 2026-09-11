@@ -36,6 +36,11 @@ func NewMCPRestHandler() MCPRestHandler {
 }
 
 func (r *mcpRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
+	callerScoped := engine.Group("/caller/mcp/proxy")
+	callerScoped.Use(middlewareCallerScopedAuthorization())
+	callerScoped.GET("/:mcp_id/tools", r.MCPPrivateHandler.GetMCPTools)
+	callerScoped.POST("/:mcp_id/tool/call", r.MCPPrivateHandler.CallMCPTool)
+
 	mcpGroup := engine.Group("/mcp")
 
 	// MCP proxy related interfaces.

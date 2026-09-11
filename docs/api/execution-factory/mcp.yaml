@@ -543,7 +543,9 @@ paths:
       operationId: listMCPProxyTools
       description: |
         由平台代为连接目标 MCP Server 并取回工具列表。调用方不必自己实现 MCP
-        握手，也不需要能直连目标服务。
+        握手，也不需要能直连目标服务。工具 schema 是执行时构造参数所需的元数据，因此对
+        已知 MCP Server 拥有 `view`、`public_access` 或 `execute` 任一权限即可读取；
+        execute-only 的 MCP Server 仍不会出现在顶层目录中。
       parameters:
         - $ref: '#/components/parameters/MCPID'
       responses:
@@ -560,6 +562,8 @@ paths:
                       $ref: '#/components/schemas/MCPTool'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -785,6 +789,12 @@ components:
             $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
     Unauthorized:
       description: 凭据缺失或无效
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+    Forbidden:
+      description: 当前主体缺少所需资源权限
       content:
         application/json:
           schema:

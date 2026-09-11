@@ -41,6 +41,13 @@ func NewToolBoxRestHandler() ToolBoxRestHandler {
 
 // RegisterPrivate register internal API.
 func (r *toolboxRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
+	callerScoped := engine.Group("/caller")
+	callerScoped.Use(middlewareCallerScopedAuthorization())
+	callerScoped.GET("/tool-box/list", r.ToolBoxHandler.QueryToolBoxPage)
+	callerScoped.GET("/tool-box/:box_id/tool/:tool_id", r.ToolBoxHandler.QueryTool)
+	callerScoped.GET("/tool-box/:box_id/tools/list", r.ToolBoxHandler.QueryBoxToolPage)
+	callerScoped.POST("/tool-box/:box_id/proxy/:tool_id", middlewareProxyRequest(), r.ToolBoxHandler.ExecuteTool)
+
 	// Toolbox related interfaces.
 	// Query toolbox information.
 	engine.GET("/tool-box/list", r.ToolBoxHandler.QueryToolBoxPage)

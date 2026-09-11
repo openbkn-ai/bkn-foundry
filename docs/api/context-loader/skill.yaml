@@ -16,12 +16,17 @@ info:
     不构成管控——`skill_id` 会活过产生它的那次调用，也能从 `list_skills` 拿到，所以范围
     在读取与执行处各核一次。未挂载返回 400。
 
-    `list_skills` 是例外：它翻的是平台已发布技能目录，**不受挂载约束**，用于挂载之前先看
-    见平台上有什么。它的结果是目录，不是权限——列出的 Skill 不一定能在某个知识网络里读取
-    或执行。
+    `list_skills` 是例外：它翻的是当前调用者拥有 `view` 权限的平台已发布技能目录，**不受
+    挂载约束**，用于挂载之前先看见自己可以配置什么。目录可见不等于能在任意知识网络里使用，
+    读取与执行仍会分别校验知识网络挂载关系以及对应操作权限。只有 `public_access`、没有
+    `view` 的市场技能不会出现在这里。
+
+    公开调用透传原始 bearer token；内部调用使用可信的 `X-Account-ID` / `X-Account-Type`
+    进入 execution-factory 的 caller-scoped 内部路由。两种入口都按真实调用者授权，不回退为
+    服务身份。两类身份都缺失时返回 401。
 
     **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` AppKey）。
-  version: 0.1.5
+  version: 0.1.6
 servers:
   - url: /api/agent-retrieval/v1
 security:
@@ -43,7 +48,8 @@ paths:
         翻已发布 Skill 列表，不需要知识网络上下文。与 `search_capabilities` 互补：那条在
         某个网络已挂载的能力里按相关度召回，这条按名称或分类分页浏览整个平台目录。
 
-        只返回**已发布**状态的 Skill；草稿态不出现在这里。
+        只返回调用者拥有 `view` 权限且存在**已发布版本**的 Skill；纯草稿态不出现在这里。
+        已发布技能正在编辑下一版本时，仍返回当前已发布快照。
 
         **空结果是 200 不是错误**：无匹配时 `entries: []` 并带 `message` 说明。
       parameters:
@@ -262,8 +268,8 @@ paths:
         **`entry_shell` 必须取自 SKILL.md 声明的入口**，先用 `get_skill_content`
         读清楚再调；这条接口不校验命令与 Skill 的对应关系。
 
-        授权由 execution-factory 按账户强制：需要该 Skill 的 `execute` 或
-        `public_access` 权限，无权限返回 403。
+        授权由 execution-factory 按账户强制：必须拥有该 Skill 的 `execute` 权限；
+        `public_access` 只代表公开读取，不能替代执行权限。无权限返回 403。
 
         `stdout` / `stderr` 各自超过 8000 字符会截断（`truncated=true`）。
 

@@ -35,12 +35,16 @@ var (
 )
 
 const (
-	// https://{host}:{port}/api/agent-operator-integration/internal-v1/tool-box/:box_id/tool/:tool_id
-	getToolDetailURI = "/internal-v1/tool-box/%s/tool/%s"
-	// https://{host}:{port}/api/agent-operator-integration/internal-v1/mcp/proxy/:mcp_id/tools
-	getMCPToolListURI = "/internal-v1/mcp/proxy/%s/tools"
-	// https://{host}:{port}/api/agent-operator-integration/internal-v1/mcp/proxy/:mcp_id/tool/call
-	callMCPToolURI = "/internal-v1/mcp/proxy/%s/tool/call"
+	// Caller-facing resource reads and calls use Execution Factory's public
+	// authorization face when an original bearer token is available. Internal
+	// callers use the caller-scoped private face, where trusted account headers
+	// drive the same authorization checks.
+	getToolDetailURI          = "/v1/tool-box/%s/tool/%s"
+	getToolDetailInternalURI  = "/internal-v1/caller/tool-box/%s/tool/%s"
+	getMCPToolListURI         = "/v1/mcp/proxy/%s/tools"
+	getMCPToolListInternalURI = "/internal-v1/caller/mcp/proxy/%s/tools"
+	callMCPToolURI            = "/v1/mcp/proxy/%s/tool/call"
+	callMCPToolInternalURI    = "/internal-v1/caller/mcp/proxy/%s/tool/call"
 )
 
 // NewOperatorIntegrationClient creates an OperatorIntegration client.
@@ -58,13 +62,16 @@ func NewOperatorIntegrationClient() interfaces.DrivenOperatorIntegration {
 
 // GetToolDetail retrieves tool details.
 func (o *operatorIntegrationClient) GetToolDetail(ctx context.Context, req *interfaces.GetToolDetailRequest) (resp *interfaces.GetToolDetailResponse, err error) {
-	uri := fmt.Sprintf(getToolDetailURI, req.BoxID, req.ToolID)
+	uri := fmt.Sprintf(capabilityURI(ctx, getToolDetailURI, getToolDetailInternalURI), req.BoxID, req.ToolID)
 	url := fmt.Sprintf("%s%s", o.baseURL, uri)
 
 	// Request logging is intentionally performed before the downstream call.
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#GetToolDetail] URL: %s", url)
 
-	header := common.GetHeaderForChildOperation(ctx, "operator.tool.get", 1)
+	header, err := o.capabilityAuthorizationHeader(ctx, "operator.tool.get")
+	if err != nil {
+		return nil, err
+	}
 
 	_, respBody, err := o.httpClient.Get(ctx, url, nil, header)
 	if err != nil {
@@ -91,13 +98,16 @@ func (o *operatorIntegrationClient) GetToolDetail(ctx context.Context, req *inte
 
 // GetMCPToolDetail retrieves MCP tool details.
 func (o *operatorIntegrationClient) GetMCPToolDetail(ctx context.Context, req *interfaces.GetMCPToolDetailRequest) (*interfaces.GetMCPToolDetailResponse, error) {
-	uri := fmt.Sprintf(getMCPToolListURI, req.McpID)
+	uri := fmt.Sprintf(capabilityURI(ctx, getMCPToolListURI, getMCPToolListInternalURI), req.McpID)
 	url := fmt.Sprintf("%s%s", o.baseURL, uri)
 
 	// Request logging is intentionally performed before the downstream call.
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#GetMCPToolDetail] URL: %s", url)
 
-	header := common.GetHeaderForChildOperation(ctx, "operator.mcp_tool.get", 1)
+	header, err := o.capabilityAuthorizationHeader(ctx, "operator.mcp_tool.get")
+	if err != nil {
+		return nil, err
+	}
 	_, respBody, err := o.httpClient.Get(ctx, url, nil, header)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetMCPToolDetail] Request failed, err: %v", err)
@@ -131,13 +141,16 @@ func (o *operatorIntegrationClient) GetMCPToolDetail(ctx context.Context, req *i
 
 // CallMCPTool calls an MCP tool.
 func (o *operatorIntegrationClient) CallMCPTool(ctx context.Context, req *interfaces.CallMCPToolRequest) (map[string]interface{}, error) {
-	uri := fmt.Sprintf(callMCPToolURI, req.McpID)
+	uri := fmt.Sprintf(capabilityURI(ctx, callMCPToolURI, callMCPToolInternalURI), req.McpID)
 	url := fmt.Sprintf("%s%s", o.baseURL, uri)
 
 	// Request logging is intentionally performed before the downstream call.
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#CallMCPTool] URL: %s, Tool: %s", url, req.ToolName)
 
-	header := common.GetHeaderForChildOperation(ctx, "operator.mcp_tool.call", 1)
+	header, err := o.capabilityAuthorizationHeader(ctx, "operator.mcp_tool.call")
+	if err != nil {
+		return nil, err
+	}
 
 	// Build the request body.
 	reqBody := map[string]interface{}{

@@ -119,7 +119,6 @@ func TestShippedConnectorTypeDeclaresViewRequirements(t *testing.T) {
 	if err := validateRequirements(c); err != nil {
 		t.Fatalf("shipped catalog.json declares an invalid requirement: %v", err)
 	}
-
 	operations := map[string][]string{}
 	for _, resourceType := range c.ResourceTypes {
 		if resourceType.ID != "connector_type" {
@@ -141,6 +140,50 @@ func TestShippedConnectorTypeDeclaresViewRequirements(t *testing.T) {
 	}
 	if _, ok := operations["task_manage"]; ok {
 		t.Error("connector_type unexpectedly declares task_manage without a task lifecycle entry")
+	}
+}
+
+func TestShippedIndependentResourceFamiliesDeclareViewRequirements(t *testing.T) {
+	var c catalog
+	if err := json.Unmarshal(catalogJSON, &c); err != nil {
+		t.Fatalf("parse catalog.json: %v", err)
+	}
+	if err := validateRequirements(c); err != nil {
+		t.Fatalf("shipped catalog.json declares an invalid requirement: %v", err)
+	}
+
+	types := map[string]map[string][]string{}
+	for _, resourceType := range c.ResourceTypes {
+		operations := map[string][]string{}
+		for _, operation := range resourceType.Operations {
+			operations[operation.ID] = operation.Requires
+		}
+		types[resourceType.ID] = operations
+	}
+
+	for _, resourceType := range []string{"tool_box", "mcp", "operator", "skill"} {
+		for _, operation := range []string{"modify", "delete", "publish", "unpublish", "authorize"} {
+			if got := types[resourceType][operation]; len(got) != 1 || got[0] != "view" {
+				t.Errorf("%s/%s requires %v, want [view]", resourceType, operation, got)
+			}
+		}
+		for _, operation := range []string{"create", "view", "public_access", "execute"} {
+			if got := types[resourceType][operation]; len(got) != 0 {
+				t.Errorf("%s/%s unexpectedly requires %v", resourceType, operation, got)
+			}
+		}
+	}
+	for _, resourceType := range []string{"small_model", "large_model"} {
+		for _, operation := range []string{"modify", "delete"} {
+			if got := types[resourceType][operation]; len(got) != 1 || got[0] != "display" {
+				t.Errorf("%s/%s requires %v, want [display]", resourceType, operation, got)
+			}
+		}
+		for _, operation := range []string{"create", "display", "execute"} {
+			if got := types[resourceType][operation]; len(got) != 0 {
+				t.Errorf("%s/%s unexpectedly requires %v", resourceType, operation, got)
+			}
+		}
 	}
 }
 
@@ -175,7 +218,6 @@ func TestConnectorTypeRequirementsApplyToChecksAndLists(t *testing.T) {
 	if err := Apply(db, e); err != nil {
 		t.Fatalf("apply: %v", err)
 	}
-
 	const user = "connector-operator"
 	if err := e.GrantProfessionalObjectPermission(
 		user, "connector_type", "remote-api", "modify", authz.EffectAllow, authz.AuthoritySourceAdminAuthz,
@@ -286,6 +328,64 @@ func TestSeedPrunesWithdrawnConnectorTaskManageGrants(t *testing.T) {
 	allowed, err = e.Check("decoy-operator", "connectorXtype", "remote-api", "task_manage")
 	if err != nil || !allowed {
 		t.Fatalf("neighbor resource type grant was removed: allowed=%v err=%v", allowed, err)
+	}
+}
+
+func TestIndependentResourceRequirementsApplyToChecksAndLists(t *testing.T) {
+	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionProfessional))
+	t.Cleanup(entitlement.ResetForTest)
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+
+	viewByType := map[string]string{
+		"tool_box": "view", "mcp": "view", "operator": "view", "skill": "view",
+		"small_model": "display", "large_model": "display",
+	}
+	for resourceType, viewOperation := range viewByType {
+		t.Run(resourceType, func(t *testing.T) {
+			user := "requires-" + resourceType
+			resourceID := resourceType + "-1"
+			if err := e.GrantProfessionalObjectPermission(
+				user, resourceType, resourceID, "modify", authz.EffectAllow, authz.AuthoritySourceAdminAuthz,
+			); err != nil {
+				t.Fatal(err)
+			}
+			if err := e.GrantProfessionalObjectPermission(
+				user, resourceType, resourceID, viewOperation, authz.EffectAllow, authz.AuthoritySourceAdminAuthz,
+			); err != nil {
+				t.Fatal(err)
+			}
+			if err := e.GrantProfessionalObjectPermission(
+				user, resourceType, resourceID, viewOperation, authz.EffectDeny, authz.AuthoritySourceAdminAuthz,
+			); err != nil {
+				t.Fatal(err)
+			}
+
+			decision, err := e.OperationDecision(t.Context(), user, resourceType, resourceID, "modify")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if decision.Decision != authz.DecisionDeny || decision.Basis != authz.BasisRequires ||
+				decision.DeniedRequirement != viewOperation {
+				t.Fatalf("modify decision = %+v; want requires deny on %s", decision, viewOperation)
+			}
+			ids, err := e.AccessibleResources(user, resourceType, "modify")
+			if err != nil || len(ids) != 0 {
+				t.Fatalf("AccessibleResources(modify) = %v, %v; want none", ids, err)
+			}
+			filtered, err := e.FilterResourceOps(user,
+				[]authz.ResourceRef{{Type: resourceType, ID: resourceID}}, nil, []string{"modify"})
+			if err != nil || len(filtered) != 1 || len(filtered[0].Operations) != 0 ||
+				len(filtered[0].Decisions) != 1 || filtered[0].Decisions[0].Basis != authz.BasisRequires {
+				t.Fatalf("FilterResourceOps(modify) = %+v, %v", filtered, err)
+			}
+		})
 	}
 }
 

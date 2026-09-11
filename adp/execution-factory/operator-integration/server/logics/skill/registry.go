@@ -784,13 +784,8 @@ func (r *skillRegistry) ExecuteSkill(ctx context.Context, req *interfaces.Execut
 	if err != nil {
 		return nil, err
 	}
-	authorized, err := r.AuthService.OperationCheckAny(ctx, accessor, req.SkillID, interfaces.AuthResourceTypeSkill,
-		interfaces.AuthOperationTypeExecute, interfaces.AuthOperationTypePublicAccess)
-	if err != nil {
+	if err = r.AuthService.CheckExecutePermission(ctx, accessor, req.SkillID, interfaces.AuthResourceTypeSkill); err != nil {
 		return nil, err
-	}
-	if !authorized {
-		return nil, errors.NewHTTPError(ctx, http.StatusForbidden, errors.ErrExtCommonOperationForbidden, nil)
 	}
 
 	skill, fileName, archive, err := r.buildSkillArchive(ctx, req.SkillID)
@@ -1009,7 +1004,10 @@ func (r *skillRegistry) queryReleaseListPage(ctx context.Context, filter map[str
 	if pageParamsReq.SortOrder == "asc" {
 		sortOrder = ormhelper.SortOrderAsc
 	}
-	sort := &ormhelper.SortParams{Fields: []ormhelper.SortField{{Field: sortField, Order: sortOrder}}}
+	sort := &ormhelper.SortParams{Fields: []ormhelper.SortField{
+		{Field: sortField, Order: sortOrder},
+		{Field: "f_skill_id", Order: sortOrder},
+	}}
 	// Total number of statistics.
 	queryTotal := func(newCtx context.Context) (int64, error) {
 		var count int64
@@ -1027,8 +1025,10 @@ func (r *skillRegistry) queryReleaseListPage(ctx context.Context, filter map[str
 		var cursor *ormhelper.CursorParams
 		if cursorValue != nil {
 			cursor = &ormhelper.CursorParams{
-				Field:     sortField,
-				Direction: ormhelper.SortOrder(pageParamsReq.SortOrder),
+				Field:           sortField,
+				TieBreakerField: "f_skill_id",
+				TieBreakerValue: cursorValue.SkillID,
+				Direction:       sortOrder,
 			}
 			switch sortField {
 			case "f_update_time":
@@ -1073,11 +1073,51 @@ func (r *skillRegistry) queryReleaseListPage(ctx context.Context, filter map[str
 			if err != nil {
 				return nil, err
 			}
-			return r.AuthService.ResourceListIDs(newCtx, accessor, interfaces.AuthResourceTypeSkill, operations...)
+			resourceIDs, listErr := r.AuthService.ResourceListIDs(
+				newCtx, accessor, interfaces.AuthResourceTypeSkill, operations...)
+			if listErr != nil || !containsResourceIDAll(resourceIDs) {
+				return resourceIDs, listErr
+			}
+
+			candidateIDs, listErr := r.releaseRepo.SelectIDsByWhereClause(newCtx, nil, filter)
+			if listErr != nil {
+				r.Logger.WithContext(newCtx).Errorf("select candidate skill IDs failed, err: %v", listErr)
+				return nil, errors.DefaultHTTPError(newCtx, http.StatusInternalServerError,
+					"select candidate skill IDs failed")
+			}
+			return r.filterEffectiveSkillIDs(newCtx, accessor, candidateIDs, operations...)
 		})
 	}
 	authResp, err = queryBuilder.Execute(ctx)
 	return
+}
+
+func containsResourceIDAll(resourceIDs []string) bool {
+	for _, resourceID := range resourceIDs {
+		if resourceID == interfaces.ResourceIDAll {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *skillRegistry) filterEffectiveSkillIDs(
+	ctx context.Context,
+	accessor *interfaces.AuthAccessor,
+	candidateIDs []string,
+	operations ...interfaces.AuthOperationType,
+) ([]string, error) {
+	filteredIDs := make([]string, 0, len(candidateIDs))
+	for start := 0; start < len(candidateIDs); start += interfaces.DefaultBatchSize {
+		end := min(start+interfaces.DefaultBatchSize, len(candidateIDs))
+		batch, err := r.AuthService.ResourceFilterIDs(ctx, accessor, candidateIDs[start:end],
+			interfaces.AuthResourceTypeSkill, operations...)
+		if err != nil {
+			return nil, err
+		}
+		filteredIDs = append(filteredIDs, batch...)
+	}
+	return filteredIDs, nil
 }
 
 func (r *skillRegistry) querySkillListPage(ctx context.Context, filter map[string]interface{}, pageParamsReq interfaces.CommonPageParams, userID string, operations ...interfaces.AuthOperationType) (
@@ -1197,8 +1237,15 @@ func (r *skillRegistry) QuerySkillMarketList(ctx context.Context, req *interface
 		filter["category"] = req.Category.String()
 	}
 
-	authResp, err := r.queryReleaseListPage(ctx, filter, req.CommonPageParams, req.UserID,
-		interfaces.AuthOperationTypePublicAccess)
+	visibilityOperation := req.VisibilityOperation
+	if visibilityOperation == "" {
+		visibilityOperation = interfaces.AuthOperationTypePublicAccess
+	}
+	if visibilityOperation != interfaces.AuthOperationTypePublicAccess && visibilityOperation != interfaces.AuthOperationTypeView {
+		return nil, errors.DefaultHTTPError(ctx, http.StatusBadRequest,
+			fmt.Sprintf("unsupported skill list visibility operation: %s", visibilityOperation))
+	}
+	authResp, err := r.queryReleaseListPage(ctx, filter, req.CommonPageParams, req.UserID, visibilityOperation)
 	if err != nil {
 		return nil, err
 	}

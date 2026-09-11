@@ -6,11 +6,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 )
 
 type skillReleaseDB struct {
@@ -147,6 +147,26 @@ func (s *skillReleaseDB) SelectListPage(ctx context.Context, tx *sql.Tx, filter 
 	releases = []*model.SkillReleaseDB{}
 	err = query.Get(ctx, &releases)
 	return releases, err
+}
+
+// SelectIDsByWhereClause returns only the IDs matching business list filters.
+func (s *skillReleaseDB) SelectIDsByWhereClause(
+	ctx context.Context, tx *sql.Tx, filter map[string]interface{},
+) ([]string, error) {
+	orm := s.orm
+	if tx != nil {
+		orm = s.orm.WithTx(tx)
+	}
+	releases := []*model.SkillReleaseDB{}
+	query := orm.Select("f_skill_id").From(tbSkillRelease)
+	if err := s.applyFilterConditions(query, filter).Get(ctx, &releases); err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(releases))
+	for _, release := range releases {
+		ids = append(ids, release.SkillID)
+	}
+	return ids, nil
 }
 
 func (s *skillReleaseDB) CountByWhereClause(ctx context.Context, tx *sql.Tx, filter map[string]interface{}) (count int64, err error) {

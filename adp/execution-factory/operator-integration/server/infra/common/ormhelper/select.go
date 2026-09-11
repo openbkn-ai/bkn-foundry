@@ -270,10 +270,20 @@ func (s *SelectBuilder) Sort(sort *SortParams) *SelectBuilder {
 // Cursor Apply Cursor Parameters.
 func (s *SelectBuilder) Cursor(cursor *CursorParams) *SelectBuilder {
 	if cursor != nil && cursor.Field != "" && cursor.Value != nil {
+		operator := ">"
 		if cursor.Direction.ToUpper() == SortOrderDesc {
-			s.WhereLt(cursor.Field, cursor.Value)
+			operator = "<"
+		}
+		if cursor.TieBreakerField != "" && cursor.TieBreakerValue != nil {
+			s.Or(func(where *WhereBuilder) {
+				where.Condition(cursor.Field, operator, cursor.Value)
+				where.And(func(tie *WhereBuilder) {
+					tie.Eq(cursor.Field, cursor.Value)
+					tie.Condition(cursor.TieBreakerField, operator, cursor.TieBreakerValue)
+				})
+			})
 		} else {
-			s.WhereGt(cursor.Field, cursor.Value)
+			s.Where(cursor.Field, operator, cursor.Value)
 		}
 	}
 	return s

@@ -309,6 +309,7 @@ func TestSkillHandler(t *testing.T) {
 				func(_ any, req *interfaces.QuerySkillMarketListReq) (*interfaces.QuerySkillMarketListResp, error) {
 					So(req.Page, ShouldEqual, 2)
 					So(req.PageSize, ShouldEqual, 5)
+					So(req.VisibilityOperation, ShouldEqual, interfaces.AuthOperationTypePublicAccess)
 					return &interfaces.QuerySkillMarketListResp{
 						CommonPageResult: interfaces.CommonPageResult{
 							Page:       2,
@@ -335,6 +336,33 @@ func TestSkillHandler(t *testing.T) {
 			So(recorder.Code, ShouldEqual, http.StatusOK)
 			So(recorder.Body.String(), ShouldContainSubstring, `"skill_id":"skill-market-1"`)
 			So(recorder.Body.String(), ShouldContainSubstring, `"page":2`)
+		})
+
+		Convey("QueryAvailableSkillList pins view visibility", func() {
+			mockRegistry := mocks.NewMockSkillRegistry(ctrl)
+			mockMarket := mocks.NewMockSkillMarket(ctrl)
+			handler := &skillHandler{
+				Registry: &skillRegistryAdapter{MockSkillRegistry: mockRegistry},
+				Market:   mockMarket,
+			}
+			mockMarket.EXPECT().QuerySkillMarketList(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ any, req *interfaces.QuerySkillMarketListReq) (*interfaces.QuerySkillMarketListResp, error) {
+					So(req.VisibilityOperation, ShouldEqual, interfaces.AuthOperationTypeView)
+					return &interfaces.QuerySkillMarketListResp{Data: []*interfaces.SkillInfo{
+						{SkillID: "skill-available-1", Name: "available-demo"},
+					}}, nil
+				},
+			)
+
+			gin.SetMode(gin.TestMode)
+			router := gin.New()
+			router.Handle(http.MethodGet, "/skills/available", handler.QueryAvailableSkillList)
+			req := httptest.NewRequest(http.MethodGet, "/skills/available", nil)
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, req)
+
+			So(recorder.Code, ShouldEqual, http.StatusOK)
+			So(recorder.Body.String(), ShouldContainSubstring, `"skill_id":"skill-available-1"`)
 		})
 
 		Convey("GetSkillMarketDetail binds uri and calls market", func() {

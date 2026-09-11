@@ -220,6 +220,66 @@ func TestAgentFamilyBundlesKeepPrivilegedOperationsExplicit(t *testing.T) {
 	}
 }
 
+func TestIndependentResourceFamilyBundlesUseTheUnifiedRuntimeDecision(t *testing.T) {
+	families := map[string]struct {
+		view string
+		ops  []string
+	}{
+		"tool_box":    {view: "view", ops: []string{"view", "modify", "delete", "publish", "unpublish", "execute"}},
+		"mcp":         {view: "view", ops: []string{"view", "modify", "delete", "publish", "unpublish", "execute"}},
+		"operator":    {view: "view", ops: []string{"view", "modify", "delete", "publish", "unpublish", "execute"}},
+		"skill":       {view: "view", ops: []string{"view", "modify", "delete", "publish", "unpublish", "execute"}},
+		"small_model": {view: "display", ops: []string{"display", "modify", "delete", "execute"}},
+		"large_model": {view: "display", ops: []string{"display", "modify", "delete", "execute"}},
+	}
+	for resourceType, family := range families {
+		t.Run(resourceType, func(t *testing.T) {
+			edition := useEdition(t, licverify.EditionCommunity)
+			e := newTestEnforcer(t)
+			const holder, wildcardHolder, role = "bundle-holder", "wildcard-holder", "family-role"
+			resourceID := resourceType + "-1"
+
+			mustNoErr(t, e.GrantCommunityBundle(holder, resourceType, resourceID, AuthoritySourceAdminAuthz))
+			for _, operation := range family.ops {
+				allowed, err := e.Check(holder, resourceType, resourceID, operation)
+				if err != nil || !allowed {
+					t.Errorf("bundle Check(%s) = %v, %v; want true", operation, allowed, err)
+				}
+			}
+			for _, operation := range []string{"create", "authorize", "public_access", ActFullBusinessAccess} {
+				allowed, err := e.Check(holder, resourceType, resourceID, operation)
+				if err != nil || allowed {
+					t.Errorf("bundle Check(excluded %s) = %v, %v; want false", operation, allowed, err)
+				}
+			}
+			ids, err := e.AccessibleResources(holder, resourceType, family.view)
+			if err != nil || !reflect.DeepEqual(ids, []string{resourceID}) {
+				t.Fatalf("AccessibleResources = %v, %v; want [%s]", ids, err, resourceID)
+			}
+			filtered, err := e.FilterResourceOps(holder,
+				[]ResourceRef{{Type: resourceType, ID: resourceID}, {Type: resourceType, ID: resourceType + "-2"}},
+				[]string{family.view}, family.ops)
+			if err != nil || len(filtered) != 1 || filtered[0].ID != resourceID ||
+				!reflect.DeepEqual(filtered[0].Operations, family.ops) {
+				t.Fatalf("FilterResourceOps = %+v, %v; want only complete bundle resource", filtered, err)
+			}
+
+			*edition = licverify.EditionProfessional
+			mustNoErr(t, e.GrantProfessionalObjectPermission(
+				holder, resourceType, resourceID, "execute", EffectDeny, AuthoritySourceAdminAuthz,
+			))
+			if allowed, err := e.Check(holder, resourceType, resourceID, "execute"); err != nil || allowed {
+				t.Fatalf("same-resource Professional deny did not override bundle: %v, %v", allowed, err)
+			}
+			mustNoErr(t, e.GrantRolePermission(role, resourceType, "*", "execute"))
+			mustNoErr(t, e.AssignRole(wildcardHolder, role))
+			if allowed, err := e.Check(wildcardHolder, resourceType, resourceType+"-2", "execute"); err != nil || !allowed {
+				t.Fatalf("wildcard execute = %v, %v; want true", allowed, err)
+			}
+		})
+	}
+}
+
 func TestCommunityBundlePersistsOneLogicalPolicyAndExpandsOnlyApprovedOps(t *testing.T) {
 	edition := useEdition(t, licverify.EditionCommunity)
 	e := newTestEnforcer(t)

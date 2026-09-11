@@ -340,7 +340,9 @@ func (s *ToolServiceImpl) GetBoxTool(ctx context.Context, req *interfaces.GetToo
 		"box_id":  req.BoxID,
 		"tool_id": req.ToolID,
 	})
-	// If it is an external interface, verify whether it has the viewing and public access rights of the tool it belongs to.
+	// Tool metadata is also runtime input: an execute-only caller must be able to
+	// obtain the schema needed to invoke the tool without gaining toolbox-list
+	// visibility. Top-level discovery remains filtered by view.
 	if infracommon.IsPublicAPIFromCtx(ctx) {
 		var accessor *interfaces.AuthAccessor
 		accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)
@@ -348,7 +350,8 @@ func (s *ToolServiceImpl) GetBoxTool(ctx context.Context, req *interfaces.GetToo
 			return
 		}
 		var authorized bool
-		authorized, err = s.AuthService.OperationCheckAny(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox, interfaces.AuthOperationTypeView, interfaces.AuthOperationTypePublicAccess)
+		authorized, err = s.AuthService.OperationCheckAny(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox,
+			interfaces.AuthOperationTypeView, interfaces.AuthOperationTypePublicAccess, interfaces.AuthOperationTypeExecute)
 		if err != nil {
 			return
 		}
@@ -492,7 +495,8 @@ func (s *ToolServiceImpl) QueryToolList(ctx context.Context, req *interfaces.Que
 	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// If it is an external interface, verify whether it has the viewing and public access rights to the toolbox it belongs to.
+	// The tools of a known box are executable metadata, so execute is sufficient
+	// even when the caller cannot discover the box in the top-level view list.
 	if infracommon.IsPublicAPIFromCtx(ctx) {
 		var accessor *interfaces.AuthAccessor
 		accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)
@@ -500,7 +504,8 @@ func (s *ToolServiceImpl) QueryToolList(ctx context.Context, req *interfaces.Que
 			return
 		}
 		var authorized bool
-		authorized, err = s.AuthService.OperationCheckAny(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox, interfaces.AuthOperationTypeView, interfaces.AuthOperationTypePublicAccess)
+		authorized, err = s.AuthService.OperationCheckAny(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox,
+			interfaces.AuthOperationTypeView, interfaces.AuthOperationTypePublicAccess, interfaces.AuthOperationTypeExecute)
 		if err != nil {
 			return
 		}

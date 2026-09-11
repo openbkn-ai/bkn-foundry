@@ -13,6 +13,35 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+func TestMCPRuntimeMetadataAllowsExecuteOnlyAuthorization(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	authService := mocks.NewMockIAuthorizationService(ctrl)
+	configs := mocks.NewMockDBMCPServerConfig(ctrl)
+	svc := &mcpServiceImpl{
+		logger:            logger.DefaultLogger(),
+		AuthService:       authService,
+		DBMCPServerConfig: configs,
+	}
+	ctx := common.SetPublicAPIToCtx(context.Background(), true)
+	accessor := &interfaces.AuthAccessor{ID: "user-1"}
+
+	authService.EXPECT().GetAccessor(gomock.Any(), "").Return(accessor, nil)
+	authService.EXPECT().OperationCheckAny(
+		gomock.Any(), accessor, "mcp-1", interfaces.AuthResourceTypeMCP,
+		interfaces.AuthOperationTypeView,
+		interfaces.AuthOperationTypePublicAccess,
+		interfaces.AuthOperationTypeExecute,
+	).Return(true, nil)
+	dbErr := errors.New("stop after authorization")
+	configs.EXPECT().SelectByID(gomock.Any(), gomock.Nil(), "mcp-1").Return(nil, dbErr)
+
+	if _, err := svc.GetMCPTools(ctx, &interfaces.MCPProxyToolListRequest{
+		UserID: "user-1", MCPID: "mcp-1",
+	}); err == nil {
+		t.Fatal("database error should be returned after execute authorization succeeds")
+	}
+}
+
 // TestParseSSEAuthz covers #345: The parsing interface will drive the server to initiate an outbound request to the URL given by the caller.
 // The public face must first have MCP type-level new permissions.
 func TestParseSSEAuthz(t *testing.T) {

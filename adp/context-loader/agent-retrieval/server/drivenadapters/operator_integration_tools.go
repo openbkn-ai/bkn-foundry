@@ -20,16 +20,17 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/utils"
 )
 
-// The catalogue and the execution both go through Execution Factory's public
-// API rather than internal-v1. The public routes authenticate by introspecting
-// the bearer token, so the caller's own visibility and execute permission
-// decide the answer. Calling internal-v1 with this service's identity would
-// disclose another caller's unpublished inventory and skip the permission check
-// on the way in.
+// The catalogue and execution always run as the caller. A bearer token selects
+// Execution Factory's public authorization face; trusted account headers select
+// its caller-scoped internal face. Both paths apply the caller's own visibility
+// and execute permissions, without substituting this service's identity.
 const (
-	listPublishedToolboxesURI = "/v1/tool-box/list"
-	listPublishedToolsURI     = "/v1/tool-box/%s/tools/list"
-	executePublishedToolURI   = "/v1/tool-box/%s/proxy/%s"
+	listPublishedToolboxesURI         = "/v1/tool-box/list"
+	listPublishedToolboxesInternalURI = "/internal-v1/caller/tool-box/list"
+	listPublishedToolsURI             = "/v1/tool-box/%s/tools/list"
+	listPublishedToolsInternalURI     = "/internal-v1/caller/tool-box/%s/tools/list"
+	executePublishedToolURI           = "/v1/tool-box/%s/proxy/%s"
+	executePublishedToolInternalURI   = "/internal-v1/caller/tool-box/%s/proxy/%s"
 
 	// The search layer caps what a model is shown, but the walk underneath has
 	// to be complete: execute_tool checks its tool against this catalogue, so a
@@ -44,13 +45,11 @@ const (
 func (o *operatorIntegrationClient) ListPublishedToolboxes(
 	ctx context.Context, req *interfaces.ListPublishedToolboxesRequest,
 ) (*interfaces.ListPublishedToolboxesResponse, error) {
-	token, ok := common.GetRawTokenFromCtx(ctx)
-	if !ok {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusUnauthorized, ErrCallerTokenMissing.Error())
+	header, err := o.capabilityAuthorizationHeader(ctx, "operator.published_toolbox.list")
+	if err != nil {
+		return nil, err
 	}
-	fullURL := o.baseURL + listPublishedToolboxesURI
-	header := o.skillHeader(ctx, "operator.published_toolbox.list")
-	header["Authorization"] = "Bearer " + token
+	fullURL := o.baseURL + capabilityURI(ctx, listPublishedToolboxesURI, listPublishedToolboxesInternalURI)
 
 	resp := &interfaces.ListPublishedToolboxesResponse{Toolboxes: []interfaces.PublishedToolboxSummary{}}
 	for page := 1; page <= publishedCatalogueMaxPages; page++ {
@@ -112,13 +111,13 @@ func (o *operatorIntegrationClient) ListPublishedTools(
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
 			infraErr.LocalizedDetail(ctx, "ToolboxIDRequired"))
 	}
-	token, ok := common.GetRawTokenFromCtx(ctx)
-	if !ok {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusUnauthorized, ErrCallerTokenMissing.Error())
+	header, err := o.capabilityAuthorizationHeader(ctx, "operator.published_tool.list")
+	if err != nil {
+		return nil, err
 	}
-	fullURL := o.baseURL + fmt.Sprintf(listPublishedToolsURI, url.PathEscape(strings.TrimSpace(req.ToolboxID)))
-	header := o.skillHeader(ctx, "operator.published_tool.list")
-	header["Authorization"] = "Bearer " + token
+	fullURL := o.baseURL + fmt.Sprintf(
+		capabilityURI(ctx, listPublishedToolsURI, listPublishedToolsInternalURI),
+		url.PathEscape(strings.TrimSpace(req.ToolboxID)))
 
 	resp := &interfaces.ListPublishedToolsResponse{
 		ToolboxID: req.ToolboxID,
@@ -200,9 +199,9 @@ func businessInputSchema(apiSpec map[string]any) map[string]any {
 	return input
 }
 
-// ExecutePublishedTool invokes one enabled Function tool through the public
-// Toolbox proxy, carrying the caller's own bearer token: the tool runs as the
-// principal that owns the Interaction, not as this service.
+// ExecutePublishedTool invokes one enabled Function tool through the caller-
+// scoped Toolbox proxy: the tool runs as the principal that owns the
+// Interaction, not as this service.
 func (o *operatorIntegrationClient) ExecutePublishedTool(
 	ctx context.Context, req *interfaces.ExecutePublishedToolRequest,
 ) (map[string]any, error) {
@@ -210,26 +209,23 @@ func (o *operatorIntegrationClient) ExecutePublishedTool(
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
 			infraErr.LocalizedDetail(ctx, "ToolboxIDAndToolIDRequired"))
 	}
-	token, ok := common.GetRawTokenFromCtx(ctx)
-	if !ok {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusUnauthorized, ErrCallerTokenMissing.Error())
+	header, err := o.capabilityAuthorizationHeader(ctx, "operator.published_tool.execute")
+	if err != nil {
+		return nil, err
 	}
 
-	fullURL := o.baseURL + fmt.Sprintf(executePublishedToolURI,
+	fullURL := o.baseURL + fmt.Sprintf(capabilityURI(ctx, executePublishedToolURI, executePublishedToolInternalURI),
 		url.PathEscape(strings.TrimSpace(req.ToolboxID)), url.PathEscape(strings.TrimSpace(req.ToolID)))
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#ExecutePublishedTool] URL: %s", fullURL)
 
 	// skillHeader carries the managed Interaction (bkn-conversation-id /
 	// bkn-interaction-id) that the lifecycle guard put on the context, which is
 	// what lets the Function read BKN inside the same Interaction.
-	header := o.skillHeader(ctx, "operator.published_tool.execute")
 	// The transport operation is derived, but Function reads need the Guard's
 	// persisted operation as their parent. Keep those identities separate.
 	if traceContext, ok := common.GetTraceContextFromCtx(ctx); ok && traceContext.OperationID != "" {
 		header[common.HeaderBKNParentOperationID] = traceContext.OperationID
 	}
-	header["Authorization"] = "Bearer " + token
-
 	parameters := req.Parameters
 	if parameters == nil {
 		parameters = map[string]any{}

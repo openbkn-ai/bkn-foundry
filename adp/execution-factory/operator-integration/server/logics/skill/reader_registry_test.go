@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"path/filepath"
 	"testing"
@@ -31,8 +32,12 @@ type fakeSessionPool struct {
 
 type stubSkillReleaseRepo struct {
 	selectBySkillID func(ctx context.Context, tx *sql.Tx, skillID string) (*model.SkillReleaseDB, error)
-	insert          func(ctx context.Context, tx *sql.Tx, release *model.SkillReleaseDB) error
-	updateBySkillID func(ctx context.Context, tx *sql.Tx, release *model.SkillReleaseDB) error
+	selectListPage  func(ctx context.Context, tx *sql.Tx, filter map[string]interface{}, sort *ormhelper.SortParams,
+		cursor *ormhelper.CursorParams) ([]*model.SkillReleaseDB, error)
+	selectIDsByWhereClause func(ctx context.Context, tx *sql.Tx, filter map[string]interface{}) ([]string, error)
+	countByWhereClause     func(ctx context.Context, tx *sql.Tx, filter map[string]interface{}) (int64, error)
+	insert                 func(ctx context.Context, tx *sql.Tx, release *model.SkillReleaseDB) error
+	updateBySkillID        func(ctx context.Context, tx *sql.Tx, release *model.SkillReleaseDB) error
 }
 
 func (s *stubSkillReleaseRepo) Insert(ctx context.Context, tx *sql.Tx, release *model.SkillReleaseDB) error {
@@ -58,10 +63,25 @@ func (s *stubSkillReleaseRepo) SelectBySkillID(ctx context.Context, tx *sql.Tx, 
 
 func (s *stubSkillReleaseRepo) SelectListPage(ctx context.Context, tx *sql.Tx, filter map[string]interface{},
 	sort *ormhelper.SortParams, cursor *ormhelper.CursorParams) ([]*model.SkillReleaseDB, error) {
+	if s.selectListPage != nil {
+		return s.selectListPage(ctx, tx, filter, sort, cursor)
+	}
+	return nil, nil
+}
+
+func (s *stubSkillReleaseRepo) SelectIDsByWhereClause(
+	ctx context.Context, tx *sql.Tx, filter map[string]interface{},
+) ([]string, error) {
+	if s.selectIDsByWhereClause != nil {
+		return s.selectIDsByWhereClause(ctx, tx, filter)
+	}
 	return nil, nil
 }
 
 func (s *stubSkillReleaseRepo) CountByWhereClause(ctx context.Context, tx *sql.Tx, filter map[string]interface{}) (int64, error) {
+	if s.countByWhereClause != nil {
+		return s.countByWhereClause(ctx, tx, filter)
+	}
 	return 0, nil
 }
 
@@ -1137,6 +1157,110 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 			So(resp.Data[0].SkillID, ShouldEqual, "skill-m1")
 		})
 
+		Convey("QuerySkillMarketList can discover published releases by view", func() {
+			mockReleaseRepo := mocks.NewMockISkillReleaseDB(ctrl)
+			mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
+			mockUserMgnt := mocks.NewMockUserManagement(ctrl)
+			mockCategoryManager := mocks.NewMockCategoryManager(ctrl)
+			registry := &skillRegistry{
+				releaseRepo:     mockReleaseRepo,
+				AuthService:     mockAuthService,
+				UserMgnt:        mockUserMgnt,
+				CategoryManager: mockCategoryManager,
+				Logger:          logger.DefaultLogger(),
+			}
+			mockAuthService.EXPECT().GetAccessor(gomock.Any(), "").Return(&interfaces.AuthAccessor{ID: "viewer"}, nil)
+			mockAuthService.EXPECT().ResourceListIDs(gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeSkill,
+				interfaces.AuthOperationTypeView).Return([]string{"skill-editing"}, nil)
+			mockReleaseRepo.EXPECT().CountByWhereClause(gomock.Any(), gomock.Nil(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ interface{}, filter map[string]interface{}) (int64, error) {
+					So(filter["status"], ShouldEqual, interfaces.BizStatusPublished.String())
+					return int64(1), nil
+				},
+			)
+			mockReleaseRepo.EXPECT().SelectListPage(gomock.Any(), gomock.Nil(), gomock.Any(), gomock.Any(), gomock.Nil()).DoAndReturn(
+				func(_ context.Context, _ interface{}, filter map[string]interface{}, _ interface{}, _ interface{}) ([]*model.SkillReleaseDB, error) {
+					So(filter["status"], ShouldEqual, interfaces.BizStatusPublished.String())
+					return []*model.SkillReleaseDB{{
+						SkillID: "skill-editing", Name: "published snapshot", Status: interfaces.BizStatusPublished.String(),
+					}}, nil
+				},
+			)
+			mockUserMgnt.EXPECT().GetUsersName(gomock.Any(), gomock.Any()).Return(map[string]string{}, nil)
+			mockCategoryManager.EXPECT().GetCategoryName(gomock.Any(), gomock.Any()).Return("").AnyTimes()
+
+			ctx := common.SetPublicAPIToCtx(context.Background(), true)
+			resp, err := registry.QuerySkillMarketList(ctx, &interfaces.QuerySkillMarketListReq{
+				VisibilityOperation: interfaces.AuthOperationTypeView,
+				CommonPageParams:    interfaces.CommonPageParams{Page: 1, PageSize: 10},
+			})
+
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(len(resp.Data), ShouldEqual, 1)
+			So(resp.Data[0].SkillID, ShouldEqual, "skill-editing")
+		})
+
+		Convey("QuerySkillMarketList applies concrete denies after wildcard view access", func() {
+			mockReleaseRepo := mocks.NewMockISkillReleaseDB(ctrl)
+			mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
+			mockUserMgnt := mocks.NewMockUserManagement(ctrl)
+			mockCategoryManager := mocks.NewMockCategoryManager(ctrl)
+			registry := &skillRegistry{
+				releaseRepo:     mockReleaseRepo,
+				AuthService:     mockAuthService,
+				UserMgnt:        mockUserMgnt,
+				CategoryManager: mockCategoryManager,
+				Logger:          logger.DefaultLogger(),
+			}
+			accessor := &interfaces.AuthAccessor{ID: "viewer"}
+			mockAuthService.EXPECT().GetAccessor(gomock.Any(), "").Return(accessor, nil)
+			mockAuthService.EXPECT().ResourceListIDs(gomock.Any(), accessor, interfaces.AuthResourceTypeSkill,
+				interfaces.AuthOperationTypeView).Return([]string{interfaces.ResourceIDAll}, nil)
+			mockReleaseRepo.EXPECT().SelectIDsByWhereClause(gomock.Any(), gomock.Nil(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ *sql.Tx, filter map[string]interface{}) ([]string, error) {
+					So(filter["status"], ShouldEqual, interfaces.BizStatusPublished.String())
+					return []string{"skill-allowed-1", "skill-denied", "skill-allowed-2"}, nil
+				},
+			)
+			mockAuthService.EXPECT().ResourceFilterIDs(gomock.Any(), accessor,
+				[]string{"skill-allowed-1", "skill-denied", "skill-allowed-2"},
+				interfaces.AuthResourceTypeSkill, interfaces.AuthOperationTypeView).
+				Return([]string{"skill-allowed-1", "skill-allowed-2"}, nil)
+			mockReleaseRepo.EXPECT().CountByWhereClause(gomock.Any(), gomock.Nil(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ *sql.Tx, filter map[string]interface{}) (int64, error) {
+					So(filter["in"], ShouldResemble, []string{"skill-allowed-1", "skill-allowed-2"})
+					return int64(2), nil
+				},
+			)
+			mockReleaseRepo.EXPECT().SelectListPage(gomock.Any(), gomock.Nil(), gomock.Any(), gomock.Any(), gomock.Nil()).DoAndReturn(
+				func(_ context.Context, _ *sql.Tx, filter map[string]interface{}, _ *ormhelper.SortParams,
+					_ *ormhelper.CursorParams) ([]*model.SkillReleaseDB, error) {
+					So(filter["in"], ShouldResemble, []string{"skill-allowed-1", "skill-allowed-2"})
+					So(filter["limit"], ShouldEqual, 1)
+					So(filter["offset"], ShouldEqual, 1)
+					return []*model.SkillReleaseDB{{SkillID: "skill-allowed-2", Name: "allowed"}}, nil
+				},
+			)
+			mockUserMgnt.EXPECT().GetUsersName(gomock.Any(), gomock.Any()).Return(map[string]string{}, nil)
+			mockCategoryManager.EXPECT().GetCategoryName(gomock.Any(), gomock.Any()).Return("").AnyTimes()
+
+			ctx := common.SetPublicAPIToCtx(context.Background(), true)
+			resp, err := registry.QuerySkillMarketList(ctx, &interfaces.QuerySkillMarketListReq{
+				VisibilityOperation: interfaces.AuthOperationTypeView,
+				CommonPageParams:    interfaces.CommonPageParams{Page: 2, PageSize: 1},
+			})
+
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.TotalCount, ShouldEqual, 2)
+			So(resp.TotalPage, ShouldEqual, 2)
+			So(resp.HasPrev, ShouldBeTrue)
+			So(resp.HasNext, ShouldBeFalse)
+			So(len(resp.Data), ShouldEqual, 1)
+			So(resp.Data[0].SkillID, ShouldEqual, "skill-allowed-2")
+		})
+
 		Convey("GetSkillMarketDetail checks public access", func() {
 			mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
 			mockUserMgnt := mocks.NewMockUserManagement(ctrl)
@@ -1711,6 +1835,118 @@ func patchTxMethods() func() {
 	}
 }
 
+func TestFilterEffectiveSkillIDsBatchesCandidates(t *testing.T) {
+	Convey("effective Skill filtering respects the authorization batch size", t, func() {
+		ctrl := gomock.NewController(t)
+		authService := mocks.NewMockIAuthorizationService(ctrl)
+		registry := &skillRegistry{AuthService: authService}
+		accessor := &interfaces.AuthAccessor{ID: "viewer"}
+		candidateIDs := make([]string, interfaces.DefaultBatchSize+1)
+		for i := range candidateIDs {
+			candidateIDs[i] = fmt.Sprintf("skill-%d", i)
+		}
+
+		authService.EXPECT().ResourceFilterIDs(gomock.Any(), accessor,
+			candidateIDs[:interfaces.DefaultBatchSize], interfaces.AuthResourceTypeSkill,
+			interfaces.AuthOperationTypeView).Return(candidateIDs[:interfaces.DefaultBatchSize-1], nil)
+		authService.EXPECT().ResourceFilterIDs(gomock.Any(), accessor,
+			candidateIDs[interfaces.DefaultBatchSize:], interfaces.AuthResourceTypeSkill,
+			interfaces.AuthOperationTypeView).Return(candidateIDs[interfaces.DefaultBatchSize:], nil)
+
+		filteredIDs, err := registry.filterEffectiveSkillIDs(context.Background(), accessor, candidateIDs,
+			interfaces.AuthOperationTypeView)
+
+		So(err, ShouldBeNil)
+		So(filteredIDs, ShouldResemble, append(candidateIDs[:interfaces.DefaultBatchSize-1],
+			candidateIDs[interfaces.DefaultBatchSize:]...))
+	})
+}
+
+func TestQueryReleaseListPageUsesStableCursorForEqualSortValues(t *testing.T) {
+	Convey("large authorized Skill pages retain records with equal update times", t, func() {
+		ctrl := gomock.NewController(t)
+		authService := mocks.NewMockIAuthorizationService(ctrl)
+		accessor := &interfaces.AuthAccessor{ID: "viewer"}
+		releases := make([]*model.SkillReleaseDB, interfaces.MaxQuerySize+1)
+		candidateIDs := make([]string, len(releases))
+		for i := range releases {
+			number := len(releases) - i
+			updateTime := int64(number)
+			if i == len(releases)-1 {
+				updateTime++
+			}
+			skillID := fmt.Sprintf("skill-%04d", number)
+			releases[i] = &model.SkillReleaseDB{SkillID: skillID, UpdateTime: updateTime}
+			candidateIDs[i] = skillID
+		}
+		expectedLastRelease := releases[len(releases)-1]
+
+		queryCount := 0
+		releaseRepo := &stubSkillReleaseRepo{
+			selectIDsByWhereClause: func(_ context.Context, _ *sql.Tx, _ map[string]interface{}) ([]string, error) {
+				return candidateIDs, nil
+			},
+			countByWhereClause: func(_ context.Context, _ *sql.Tx, _ map[string]interface{}) (int64, error) {
+				return int64(len(releases)), nil
+			},
+			selectListPage: func(_ context.Context, _ *sql.Tx, filter map[string]interface{}, sort *ormhelper.SortParams,
+				cursor *ormhelper.CursorParams) ([]*model.SkillReleaseDB, error) {
+				So(filter["limit"], ShouldEqual, interfaces.MaxQuerySize)
+				So(filter["offset"], ShouldEqual, 0)
+				So(sort, ShouldResemble, &ormhelper.SortParams{Fields: []ormhelper.SortField{
+					{Field: "f_update_time", Order: ormhelper.SortOrderDesc},
+					{Field: "f_skill_id", Order: ormhelper.SortOrderDesc},
+				}})
+
+				queryCount++
+				switch queryCount {
+				case 1:
+					So(cursor, ShouldBeNil)
+					return releases[:interfaces.MaxQuerySize], nil
+				case 2:
+					So(cursor, ShouldResemble, &ormhelper.CursorParams{
+						Field:           "f_update_time",
+						Value:           int64(2),
+						TieBreakerField: "f_skill_id",
+						TieBreakerValue: "skill-0002",
+						Direction:       ormhelper.SortOrderDesc,
+					})
+					return releases[interfaces.MaxQuerySize:], nil
+				default:
+					So(cursor.TieBreakerValue, ShouldEqual, "skill-0001")
+					return nil, nil
+				}
+			},
+		}
+		registry := &skillRegistry{
+			releaseRepo: releaseRepo,
+			AuthService: authService,
+			Logger:      logger.DefaultLogger(),
+		}
+		authService.EXPECT().GetAccessor(gomock.Any(), "viewer").Return(accessor, nil)
+		authService.EXPECT().ResourceListIDs(gomock.Any(), accessor, interfaces.AuthResourceTypeSkill,
+			interfaces.AuthOperationTypeView).Return([]string{interfaces.ResourceIDAll}, nil)
+		for start := 0; start < len(candidateIDs); start += interfaces.DefaultBatchSize {
+			end := min(start+interfaces.DefaultBatchSize, len(candidateIDs))
+			authService.EXPECT().ResourceFilterIDs(gomock.Any(), accessor, candidateIDs[start:end],
+				interfaces.AuthResourceTypeSkill, interfaces.AuthOperationTypeView).Return(candidateIDs[start:end], nil)
+		}
+
+		ctx := common.SetPublicAPIToCtx(context.Background(), true)
+		resp, err := registry.queryReleaseListPage(ctx, map[string]interface{}{}, interfaces.CommonPageParams{
+			Page: 501, PageSize: 10,
+		}, "viewer", interfaces.AuthOperationTypeView)
+
+		So(err, ShouldBeNil)
+		So(queryCount, ShouldEqual, 3)
+		So(resp.TotalCount, ShouldEqual, len(releases))
+		So(resp.TotalPage, ShouldEqual, 501)
+		So(resp.HasNext, ShouldBeFalse)
+		So(resp.HasPrev, ShouldBeTrue)
+		So(resp.Data, ShouldResemble, []*model.SkillReleaseDB{expectedLastRelease})
+	})
+}
+
 func TestPublishSkillSnapshotKeepsNewest10HistoryVersions(t *testing.T) {
 	Convey("publishSkillSnapshot replaces the same skill version with the latest snapshot", t, func() {
 		histories := []*model.SkillReleaseHistoryDB{
@@ -2018,8 +2254,7 @@ func TestExecuteSkillUploadsBeforeShellExecution(t *testing.T) {
 		}
 
 		mockAuthService.EXPECT().GetAccessor(gomock.Any(), "user-1").Return(&interfaces.AuthAccessor{ID: "user-1"}, nil)
-		mockAuthService.EXPECT().OperationCheckAny(gomock.Any(), gomock.Any(), "skill-exec-1", interfaces.AuthResourceTypeSkill,
-			interfaces.AuthOperationTypeExecute, interfaces.AuthOperationTypePublicAccess).Return(true, nil)
+		mockAuthService.EXPECT().CheckExecutePermission(gomock.Any(), gomock.Any(), "skill-exec-1", interfaces.AuthResourceTypeSkill).Return(nil)
 		mockSkillRepo.EXPECT().SelectSkillByID(gomock.Any(), gomock.Nil(), "skill-exec-1").Return(&model.SkillRepositoryDB{
 			SkillID:      "skill-exec-1",
 			Name:         "demo-skill",
@@ -2106,5 +2341,32 @@ func TestExecuteSkillUploadsBeforeShellExecution(t *testing.T) {
 		So(resp.Command, ShouldEqual, "bash run.sh")
 		So(resp.Stdout, ShouldEqual, "ok")
 		So(callOrder, ShouldResemble, []string{"acquire", "upload", "exec", "release"})
+	})
+}
+
+func TestExecuteSkillRequiresExecutePermission(t *testing.T) {
+	Convey("execute permission denial stops before loading or running the skill", t, func() {
+		ctrl := gomock.NewController(t)
+		mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
+		permissionErr := errors.New("execute permission denied")
+		registry := &skillRegistry{
+			AuthService: mockAuthService,
+			Logger:      logger.DefaultLogger(),
+		}
+
+		accessor := &interfaces.AuthAccessor{ID: "user-1"}
+		mockAuthService.EXPECT().GetAccessor(gomock.Any(), "user-1").Return(accessor, nil)
+		mockAuthService.EXPECT().CheckExecutePermission(
+			gomock.Any(), accessor, "skill-exec-1", interfaces.AuthResourceTypeSkill,
+		).Return(permissionErr)
+
+		resp, err := registry.ExecuteSkill(context.Background(), &interfaces.ExecuteSkillReq{
+			UserID:     "user-1",
+			SkillID:    "skill-exec-1",
+			EntryShell: "bash run.sh",
+		})
+
+		So(resp, ShouldBeNil)
+		So(err, ShouldEqual, permissionErr)
 	})
 }
