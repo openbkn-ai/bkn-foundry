@@ -597,6 +597,7 @@ paths:
                             name: comment_replyof_comment
                             source_object_type_id: comment
                             target_object_type_id: comment
+                            type: indirect
                             mapping_rules:
                               backing_data_source:
                                 type: resource
@@ -793,6 +794,7 @@ paths:
                             name: person_likes_comment
                             source_object_type_id: person
                             target_object_type_id: comment
+                            type: indirect
                             mapping_rules:
                               source_mapping_rules:
                                 - target_property:
@@ -979,6 +981,24 @@ components:
         name:
           description: Data view name. Returned when retrieving details.
           type: string
+    IndirectMappingRule:
+      description: Mapping rules for an indirect relation type backed by a Vega resource.
+      required:
+        - backing_data_source
+        - source_mapping_rules
+        - target_mapping_rules
+      type: object
+      properties:
+        backing_data_source:
+          $ref: "#/components/schemas/DataSource"
+        source_mapping_rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/Mapping"
+        target_mapping_rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/Mapping"
     FilteredCrossJoinMappingRule:
       description: |
         Matching rules for the filtered_cross_join relation type (FCJ).
@@ -1404,11 +1424,13 @@ components:
           description: Relation type
           enum:
             - direct
+            - indirect
             - filtered_cross_join
           type: string
         mapping_rules:
           oneOf:
             - $ref: "#/components/schemas/DirectMappingRules"
+            - $ref: "#/components/schemas/IndirectMappingRule"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
           description: Mapping rule. For direct, this is a Mapping array; for filtered_cross_join (FCJ), this is a FilteredCrossJoinMappingRule with per-side conditions and no key mapping.
     UpdateRelationType:
@@ -1451,11 +1473,13 @@ components:
           description: Relation type
           enum:
             - direct
+            - indirect
             - filtered_cross_join
           type: string
         mapping_rules:
           oneOf:
             - $ref: "#/components/schemas/DirectMappingRules"
+            - $ref: "#/components/schemas/IndirectMappingRule"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
           description: Associated matching rule. For direct, this is a Mapping array; for filtered_cross_join, this is a FilteredCrossJoinMappingRule.
     RelationTypeDetail:
@@ -1521,11 +1545,13 @@ components:
           description: Relation type
           enum:
             - direct
+            - indirect
             - filtered_cross_join
           type: string
         mapping_rules:
           oneOf:
             - $ref: "#/components/schemas/DirectMappingRules"
+            - $ref: "#/components/schemas/IndirectMappingRule"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
           description: Associated matching rule. For direct, this is a Mapping array; for filtered_cross_join, this is a FilteredCrossJoinMappingRule.
         creator:
@@ -1605,11 +1631,13 @@ components:
           description: Relation type
           enum:
             - direct
+            - indirect
             - filtered_cross_join
           type: string
         mapping_rules:
           oneOf:
             - $ref: "#/components/schemas/DirectMappingRules"
+            - $ref: "#/components/schemas/IndirectMappingRule"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
           description: Associated matching rule. For direct, this is a Mapping array; for filtered_cross_join, this is a FilteredCrossJoinMappingRule.
         creator:
@@ -1760,14 +1788,16 @@ components:
           description: Target object type ID
           type: string
         type:
-          description: Relation type. direct uses direct key mapping; filtered_cross_join uses per-side filtered cross join (FCJ) without array-form key mapping.
+          description: Relation type. direct uses direct key mapping; indirect uses a Vega resource backing source; filtered_cross_join uses per-side filtered cross join (FCJ) without array-form key mapping.
           enum:
             - direct
+            - indirect
             - filtered_cross_join
           type: string
         mapping_rules:
           oneOf:
             - $ref: "#/components/schemas/DirectMappingRules"
+            - $ref: "#/components/schemas/IndirectMappingRule"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
     TypeEdge:
       description: Path edge

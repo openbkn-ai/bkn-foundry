@@ -70,7 +70,7 @@ Solution = "请重试该操作，若再次出现该错误请提交工单或联�
 ErrorLink = ""
 
 [BknBackend.RelationType.InvalidParameter.Detail]
-TypeNotSupported = "关系类型仅支持 {{.directType}} 和 {{.crossJoinType}}，当前为 {{.type}}。"
+TypeNotSupported = "关系类型仅支持 {{.directType}}、{{.indirectType}} 和 {{.crossJoinType}}，当前为 {{.type}}。"
 SourceObjectTypeIDRequired = "关系类的 source_object_type_id 不能为空。"
 TargetObjectTypeIDRequired = "关系类的 target_object_type_id 不能为空。"
 MappingRulesRequired = "关系类的 mapping_rules 不能为空。"
@@ -86,6 +86,8 @@ BackingDataSourceRequired = "间接关联的 backing_data_source 不能为空。
 BackingDataSourceTypeRequired = "backing_data_source.type 不能为空。"
 BackingDataSourceTypeInvalid = "backing_data_source.type 必须为 {{.expected}}，当前为 {{.actual}}。"
 BackingDataSourceIDRequired = "backing_data_source.id 不能为空。"
+BackingDataSourceNotFound = "backing 资源 {{.resource}} 不存在。"
+BackingPropertyNotFound = "backing 资源 {{.resource}} 中不存在字段 {{.property}}。"
 SourceMappingRulesRequired = "间接关联的 source_mapping_rules 不能为空。"
 SourceMappingSourcePropertyRequired = "source_mapping_rules[{{.index}}].source_property.name 不能为空。"
 SourceMappingBridgePropertyRequired = "source_mapping_rules[{{.index}}].target_property.name 不能为空。"

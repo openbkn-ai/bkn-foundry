@@ -11,6 +11,7 @@ import "bkn-backend/common/maskrule"
 // RelationType mapping types.
 const (
 	RELATION_MAPPING_TYPE_DIRECT              = "direct"
+	RELATION_MAPPING_TYPE_INDIRECT            = "indirect"
 	RELATION_MAPPING_TYPE_FILTERED_CROSS_JOIN = "filtered_cross_join"
 )
 
@@ -297,7 +298,7 @@ type BknRelationType struct {
 type Endpoint struct {
 	Source string
 	Target string
-	Type   string // direct | filtered_cross_join
+	Type   string // direct | indirect | filtered_cross_join
 }
 
 // MappingRule represents a property mapping between source and target.

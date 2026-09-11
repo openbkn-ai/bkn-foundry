@@ -94,19 +94,14 @@ func VegaResourceIndexCaps(res *interfaces.VegaResource) map[string]PropertyInde
 	return caps
 }
 
-// VegaResourceSchemaToFieldsMap maps vega Resource schema to view-like fields for display and validation.
-func VegaResourceSchemaToFieldsMap(res *interfaces.VegaResource) map[string]*interfaces.ViewField {
-	fields := make(map[string]*interfaces.ViewField)
+// VegaResourceSchemaToPropertiesMap maps a Vega Resource schema by property name.
+func VegaResourceSchemaToPropertiesMap(res *interfaces.VegaResource) map[string]*interfaces.Property {
+	properties := make(map[string]*interfaces.Property)
 	for _, p := range res.SchemaDefinition {
 		if p == nil {
 			continue
 		}
-		fields[p.Name] = &interfaces.ViewField{
-			Name:         p.Name,
-			Type:         p.Type,
-			DisplayName:  p.DisplayName,
-			OriginalName: p.OriginalName,
-		}
+		properties[p.Name] = p
 	}
-	return fields
+	return properties
 }

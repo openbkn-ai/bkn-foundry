@@ -64,7 +64,7 @@ Display Key: pod_name
 
 | Type | ID | Name |
 |------|-----|------|
-| data_view | pod_info_view | pod_info_view |
+| resource | pod_info_resource | pod_info_resource |
 ```
 
 标题层级固定：`#` 网络标题、`##` 类型定义（`ObjectType:` / `RelationType:` / `ActionType:`）、`###` 类型内 section（Data Properties、Keys、Endpoint 等）。

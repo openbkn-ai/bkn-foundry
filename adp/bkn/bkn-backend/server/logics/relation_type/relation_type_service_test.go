@@ -9,6 +9,7 @@ package relation_type
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -161,6 +162,7 @@ func Test_relationTypeService_GetRelationTypesByIDs(t *testing.T) {
 			DoAndReturn(allowAllRelationPermissionResources).AnyTimes()
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
 		ums := bmock.NewMockUserMgmtService(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		service := &relationTypeService{
 			appSetting: appSetting,
@@ -168,6 +170,7 @@ func Test_relationTypeService_GetRelationTypesByIDs(t *testing.T) {
 			ps:         ps,
 			ots:        ots,
 			ums:        ums,
+			vbs:        vbs,
 		}
 
 		Convey("Success getting relation types by IDs\n", func() {
@@ -310,6 +313,55 @@ func Test_relationTypeService_GetRelationTypesByIDs(t *testing.T) {
 			So(len(result), ShouldEqual, 1)
 			So(result[0].SourceObjectType.OTID, ShouldEqual, "ot1")
 			So(result[0].TargetObjectType.OTID, ShouldEqual, "ot2")
+		})
+
+		Convey("Degrades when backing resource lookup fails for INDIRECT type\n", func() {
+			knID := "kn1"
+			branch := interfaces.MAIN_BRANCH
+			rtIDs := []string{"rt1"}
+			rtArr := []*interfaces.RelationType{{
+				RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
+					RTID:               "rt1",
+					RTName:             "rt1",
+					Type:               interfaces.RELATION_TYPE_INDIRECT,
+					SourceObjectTypeID: "ot1",
+					TargetObjectTypeID: "ot2",
+					MappingRules: &interfaces.InDirectMapping{
+						BackingDataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource1"},
+						SourceMappingRules: []interfaces.Mapping{{
+							SourceProp: interfaces.SimpleProperty{Name: "source_prop"},
+							TargetProp: interfaces.SimpleProperty{Name: "resource_source_prop"},
+						}},
+						TargetMappingRules: []interfaces.Mapping{{
+							SourceProp: interfaces.SimpleProperty{Name: "resource_target_prop"},
+							TargetProp: interfaces.SimpleProperty{Name: "target_prop"},
+						}},
+					},
+				},
+			}}
+
+			rta.EXPECT().GetRelationTypesByIDs(gomock.Any(), knID, branch, rtIDs).Return(rtArr, nil)
+			ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), knID, branch, []string{"ot1", "ot2"}, true).Return(map[string]*interfaces.ObjectType{
+				"ot1": {
+					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1", OTName: "Source"},
+					PropertyMap:            map[string]string{"source_prop": "Source Property"},
+				},
+				"ot2": {
+					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot2", OTName: "Target"},
+					PropertyMap:            map[string]string{"target_prop": "Target Property"},
+				},
+			}, nil)
+			vbs.EXPECT().GetResourceByID(gomock.Any(), "resource1").Return(nil, errors.New("vega unavailable"))
+			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+			result, err := service.GetRelationTypesByIDs(ctx, knID, branch, rtIDs)
+			So(err, ShouldBeNil)
+			So(result, ShouldHaveLength, 1)
+			So(result[0].SourceObjectType.OTName, ShouldEqual, "Source")
+			So(result[0].TargetObjectType.OTName, ShouldEqual, "Target")
+			mappingRules := result[0].MappingRules.(*interfaces.InDirectMapping)
+			So(mappingRules.SourceMappingRules[0].SourceProp.DisplayName, ShouldEqual, "Source Property")
+			So(mappingRules.TargetMappingRules[0].TargetProp.DisplayName, ShouldEqual, "Target Property")
 		})
 	})
 }

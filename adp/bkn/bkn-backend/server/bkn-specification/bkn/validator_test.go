@@ -141,6 +141,27 @@ func TestValidateNetwork_InvalidEndpointRef(t *testing.T) {
 	assert.True(t, found, "expected invalid_endpoint_ref, got %+v", res.Errors)
 }
 
+func TestValidateRelationTypeDeep_DataViewRequiresResourceBacking(t *testing.T) {
+	valid := &BknRelationType{
+		Endpoint: Endpoint{Source: "source", Target: "target", Type: RELATION_MAPPING_TYPE_INDIRECT},
+		MappingRules: &InDirectMappingRule{
+			BackingDataSource:  &ResourceInfo{Type: DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"},
+			SourceMappingRules: []MappingRule{{SourceProperty: "source_id", TargetProperty: "resource_source_id"}},
+			TargetMappingRules: []MappingRule{{SourceProperty: "resource_target_id", TargetProperty: "target_id"}},
+		},
+	}
+	result := &ValidationResult{}
+	validateRelationTypeDeep(result, "relations/indirect.bkn", valid)
+	assert.Empty(t, result.Errors)
+
+	valid.MappingRules.(*InDirectMappingRule).BackingDataSource.Type = "data_view"
+	result = &ValidationResult{}
+	validateRelationTypeDeep(result, "relations/indirect.bkn", valid)
+	assert.NotEmpty(t, result.Errors)
+	assert.Equal(t, "backing_data_source", result.Errors[0].Column)
+	assert.Contains(t, result.Errors[0].Message, `must be "resource"`)
+}
+
 func TestValidateNetwork_InvalidBoundObjectRef(t *testing.T) {
 	net := &BknNetwork{
 		BknNetworkFrontmatter: BknNetworkFrontmatter{

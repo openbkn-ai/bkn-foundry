@@ -1035,6 +1035,25 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Mapping"
+    IndirectMappingRule:
+      description: 关系类型为 indirect 时的匹配规则
+      required:
+        - backing_data_source
+        - source_mapping_rules
+        - target_mapping_rules
+      type: object
+      properties:
+        backing_data_source:
+          $ref: "#/components/schemas/DataSource"
+          description: 数据来源资源
+        source_mapping_rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/Mapping"
+        target_mapping_rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/Mapping"
     ReqObjectType:
       description: Object type creation information
       required:
@@ -1256,14 +1275,16 @@ components:
           description: Relation type
           enum:
             - direct
+            - indirect
             - filtered_cross_join
           type: string
         mapping_rules:
           oneOf:
             - $ref: "#/components/schemas/m"
               type: array
+            - $ref: "#/components/schemas/IndirectMappingRule"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
-          description: "Matching rules for the relation. direct uses key mapping; filtered_cross_join (FCJ) uses FilteredCrossJoinMappingRule with side-specific conditions. A direct mapping maps source object property 1 to target object property 1."
+          description: "Matching rules for the relation. direct uses key mapping; indirect uses IndirectMappingRule backed by a resource; filtered_cross_join (FCJ) uses FilteredCrossJoinMappingRule with side-specific conditions."
     UpdateRelationType:
       description: Relation type update information
       required:
@@ -1309,13 +1330,15 @@ components:
           description: Relation type
           enum:
             - direct
+            - indirect
             - filtered_cross_join
           type: string
         mapping_rules:
           oneOf:
             - $ref: "#/components/schemas/Object"
+            - $ref: "#/components/schemas/IndirectMappingRule"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
-          description: "Matching rules for the relation. direct uses key mapping; filtered_cross_join (FCJ) uses FilteredCrossJoinMappingRule. A direct mapping maps source object property 1 to target object property 1."
+          description: "Matching rules for the relation. direct uses key mapping; indirect uses IndirectMappingRule backed by a resource; filtered_cross_join (FCJ) uses FilteredCrossJoinMappingRule."
     ReqActionType:
       description: Action type creation information
       required:
@@ -1737,13 +1760,15 @@ components:
           description: Relation type
           enum:
             - direct
+            - indirect
             - filtered_cross_join
           type: string
         mapping_rules:
           oneOf:
             - $ref: "#/components/schemas/Object"
+            - $ref: "#/components/schemas/IndirectMappingRule"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
-          description: "Matching rules for the relation. direct uses key mapping; filtered_cross_join (FCJ) uses FilteredCrossJoinMappingRule. A direct mapping maps source object property 1 to target object property 1."
+          description: "Matching rules for the relation. direct uses key mapping; indirect uses IndirectMappingRule backed by a resource; filtered_cross_join (FCJ) uses FilteredCrossJoinMappingRule."
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:

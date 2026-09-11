@@ -52,6 +52,59 @@ Content`
 	assert.Empty(t, fm)
 }
 
+func TestParseAndSerializeRelationType_DataView(t *testing.T) {
+	text := `---
+type: relation_type
+id: pod_node
+name: Pod Node
+---
+
+## RelationType: Pod Node
+
+### Endpoint
+
+| Source | Target | Type |
+|--------|--------|------|
+| pod | node | indirect |
+
+### Backing Resource
+
+| Type | ID |
+|------|-----|
+| resource | res_pod_node |
+
+### Source Mapping
+
+| Source Property | Resource Property |
+|-----------------|-------------------|
+| node_name | view_node_name |
+
+### Target Mapping
+
+| Resource Property | Target Property |
+|-------------------|-----------------|
+| view_node_name | name |
+`
+
+	rt, err := ParseRelationTypeFile(text, "/test/pod_node.bkn")
+	require.NoError(t, err)
+	assert.Equal(t, RELATION_MAPPING_TYPE_INDIRECT, rt.Endpoint.Type)
+	rules, ok := rt.MappingRules.(*InDirectMappingRule)
+	require.True(t, ok)
+	require.NotNil(t, rules.BackingDataSource)
+	assert.Equal(t, DATA_SOURCE_TYPE_RESOURCE, rules.BackingDataSource.Type)
+	assert.Equal(t, "res_pod_node", rules.BackingDataSource.ID)
+	assert.Len(t, rules.SourceMappingRules, 1)
+	assert.Len(t, rules.TargetMappingRules, 1)
+
+	serialized := SerializeRelationType(rt)
+	assert.Contains(t, serialized, "| pod | node | indirect |")
+	assert.Contains(t, serialized, "### Backing Resource")
+	assert.Contains(t, serialized, "| Source Property | Resource Property |")
+	assert.Contains(t, serialized, "| Resource Property | Target Property |")
+	assert.Contains(t, serialized, "| resource | res_pod_node |")
+}
+
 // === Parse Network File Tests ===
 
 func TestParseNetworkFile_Success(t *testing.T) {

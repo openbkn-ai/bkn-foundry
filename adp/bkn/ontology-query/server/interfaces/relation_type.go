@@ -10,6 +10,7 @@ import cond "ontology-query/common/condition"
 
 const (
 	RELATION_TYPE_DIRECT              = "direct"
+	RELATION_TYPE_INDIRECT            = "indirect"
 	RELATION_TYPE_FILTERED_CROSS_JOIN = "filtered_cross_join"
 )
 
