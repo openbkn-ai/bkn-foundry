@@ -124,6 +124,7 @@ func (r *restHandler) AttachCapabilities(c *gin.Context, vis hydra.Visitor) {
 	rest.ReplyOK(c, http.StatusOK, &interfaces.CapabilityBindingsList{
 		Entries:    bindings,
 		TotalCount: len(bindings),
+		Boxes:      make([]*interfaces.CapabilityBoxSummary, 0),
 	})
 }
 

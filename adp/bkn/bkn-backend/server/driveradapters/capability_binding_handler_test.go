@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -149,5 +150,42 @@ func Test_ListCapabilities_KNReadAccess(t *testing.T) {
 
 			So(w.Code, ShouldEqual, http.StatusServiceUnavailable)
 		})
+	})
+}
+
+func Test_AttachCapabilities_ResponseArrayContract(t *testing.T) {
+	Convey("The attach response serializes boxes as an empty array", t, func() {
+		restore := setGinMode()
+		defer restore()
+
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		kns := bmock.NewMockKNService(ctrl)
+		cbs := bmock.NewMockCapabilityBindingService(ctrl)
+		handler := &restHandler{kns: kns, cbs: cbs}
+		engine := gin.New()
+		engine.POST("/knowledge-networks/:kn_id/capabilities", func(c *gin.Context) {
+			handler.AttachCapabilities(c, hydra.Visitor{ID: "user-1", Type: hydra.VisitorType_User})
+		})
+
+		kns.EXPECT().CheckKNExistByID(gomock.Any(), "kn1", "main").Return("Network 1", true, nil)
+		cbs.EXPECT().AttachCapabilities(gomock.Any(), nil, "kn1", "main", gomock.Any()).
+			Return([]*interfaces.CapabilityBinding{{
+				ID: "bind-1", CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "skill-1",
+			}}, nil)
+
+		request := httptest.NewRequest(http.MethodPost, "/knowledge-networks/kn1/capabilities?branch=main",
+			strings.NewReader(`{"capabilities":[{"capability_type":"skill","capability_id":"skill-1"}]}`))
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		engine.ServeHTTP(response, request)
+
+		So(response.Code, ShouldEqual, http.StatusOK)
+		So(response.Body.String(), ShouldContainSubstring, `"boxes":[]`)
+		So(response.Body.String(), ShouldNotContainSubstring, `"boxes":null`)
+		var body interfaces.CapabilityBindingsList
+		So(json.Unmarshal(response.Body.Bytes(), &body), ShouldBeNil)
+		So(body.Boxes, ShouldNotBeNil)
+		So(body.Boxes, ShouldBeEmpty)
 	})
 }
