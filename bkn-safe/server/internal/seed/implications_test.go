@@ -6,6 +6,7 @@ package seed
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -209,6 +210,27 @@ func TestConnectorTypeRequirementsApplyToChecksAndLists(t *testing.T) {
 	if err != nil || len(filtered) != 1 || len(filtered[0].Operations) != 0 ||
 		len(filtered[0].Decisions) != 1 || filtered[0].Decisions[0].Basis != authz.BasisRequires {
 		t.Fatalf("FilterResourceOps(modify) = %+v, %v", filtered, err)
+	}
+
+	// Legacy grants are immutable snapshots, so startup deliberately does not
+	// add view_detail beside a type-wide modify grant. Effective evaluation must
+	// still combine that grant with view_detail held on a concrete connector.
+	const legacyUser = "legacy-connector-operator"
+	if err := e.GrantObjectPermission(legacyUser, "connector_type", "*", "modify"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantObjectPermission(legacyUser, "connector_type", "remote-api", "view_detail"); err != nil {
+		t.Fatal(err)
+	}
+	if allowed, err := e.Check(legacyUser, "connector_type", "remote-api", "modify"); err != nil || !allowed {
+		t.Fatalf("legacy Check(remote-api, modify) = %v, %v; want true", allowed, err)
+	}
+	filtered, err = e.FilterResourceOps(legacyUser,
+		[]authz.ResourceRef{{Type: "connector_type", ID: "remote-api"}},
+		[]string{"view_detail"}, []string{"view_detail", "modify"})
+	if err != nil || len(filtered) != 1 ||
+		!reflect.DeepEqual(filtered[0].Operations, []string{"view_detail", "modify"}) {
+		t.Fatalf("legacy FilterResourceOps(remote-api) = %+v, %v; want view_detail and modify", filtered, err)
 	}
 }
 

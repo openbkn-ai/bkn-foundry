@@ -11,7 +11,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -252,21 +251,27 @@ func (c *safeClient) allowedOps(ctx context.Context, accessorID, rtype, rid stri
 	return out, nil
 }
 
-// accessibleIDs returns the concrete resource ids of rtype the accessor may
-// perform op on (type-wide "*" grants are excluded by bkn-safe; the caller
-// detects those via a separate obj="*" check). One bulk round-trip.
-func (c *safeClient) accessibleIDs(ctx context.Context, accessorID, rtype, op string) ([]string, error) {
-	q := url.Values{}
-	q.Set("accessor_id", accessorID)
-	q.Set("resource_type", rtype)
-	q.Set("operation", op)
+type safeFilteredResource struct {
+	ResourceID string   `json:"resource_id"`
+	Operations []string `json:"operations"`
+}
+
+// filterResources delegates the complete effective decision to bkn-safe. A
+// result cannot be reconstructed from an independent wildcard probe and a list
+// of concrete grants when an operation has same-resource prerequisites: the
+// operation may be type-wide while its prerequisite is instance-specific.
+func (c *safeClient) filterResources(ctx context.Context, accessorID string,
+	resources []interfaces.PermissionResource, visibility, candidates []string) ([]safeFilteredResource, error) {
 	var out struct {
-		IDs []string `json:"ids"`
+		Resources []safeFilteredResource `json:"resources"`
 	}
-	if err := c.do(ctx, http.MethodGet, "/api/safe/v1/authz/resources?"+q.Encode(), nil, &out); err != nil {
-		return nil, err
-	}
-	return out.IDs, nil
+	err := c.do(ctx, http.MethodPost, "/api/safe/v1/authz/resource-filter", map[string]any{
+		"accessor_id":           accessorID,
+		"resources":             resources,
+		"visibility_operations": visibility,
+		"candidate_operations":  candidates,
+	}, &out)
+	return out.Resources, err
 }
 
 func (c *safeClient) allowedAll(ctx context.Context, accessorID, rtype, rid string, ops []string) (bool, error) {
@@ -363,82 +368,6 @@ func (s *safePermissionAccess) LocalResourceDecisions(ctx context.Context,
 	return s.safe.localResourceDecisions(ctx, filter)
 }
 
-// opAccess is the authorization resolution result of a single operation under a certain resource type: either it holds type-level wildcard authorization
-// (Covering all instances of this type), or a specific collection of accessible ids.
-type opAccess struct {
-	all bool
-	ids map[string]bool
-}
-
-// resolveOps batch resolves the authorization of each candidate operation under a certain resource type: first, use a check with obj="*"
-// Determine type-level/over-pipe matching (if hit, this op covers all instances and no further collection is required); otherwise, proceed to bkn-safe
-// Take the set of accessible ids of this (accessor, type, operation).
-//
-// The number of round trips is only related to the "operand" and has nothing to do with the number of resources to be filtered - this is precisely why large directories no longer time out
-// (#357: In the original implementation of resource-by-resource authentication, accounts with full authorization had approximately 5.6k resources, which led to a timeout of over 40 seconds.)
-func (s *safePermissionAccess) resolveOps(ctx context.Context, accessorID, rtype string, ops []string) (map[string]opAccess, error) {
-	out := make(map[string]opAccess, len(ops))
-	for _, op := range ops {
-		wild, err := s.safe.checkOne(ctx, accessorID, rtype, "*", op)
-		if err != nil {
-			return nil, err
-		}
-		if wild {
-			out[op] = opAccess{all: true}
-			continue
-		}
-		ids, err := s.safe.accessibleIDs(ctx, accessorID, rtype, op)
-		if err != nil {
-			return nil, err
-		}
-		set := make(map[string]bool, len(ids))
-		for _, id := range ids {
-			set[id] = true
-		}
-		out[op] = opAccess{ids: set}
-	}
-	return out, nil
-}
-
-// resolveFilter parses each op authorization of each resource type that appears in the filter for the caller to store in memory
-// Determine each resource one by one to avoid initiating authentication requests resource by resource.
-func (s *safePermissionAccess) resolveFilter(ctx context.Context,
-	filter interfaces.PermissionResourcesFilter) (map[string]map[string]opAccess, error) {
-
-	byType := make(map[string]map[string]opAccess)
-	for _, r := range filter.Resources {
-		if _, done := byType[r.Type]; done {
-			continue
-		}
-		access, err := s.resolveOps(ctx, filter.Accessor.ID, r.Type, filterOps(filter))
-		if err != nil {
-			return nil, err
-		}
-		byType[r.Type] = access
-	}
-	return byType, nil
-}
-
-// filterOps is every operation the answer has to know about: the ones that
-// decide visibility, plus the ones the answer reports on. They are separate
-// axes — a resource is listed because the caller may view it, while the
-// operations travelling back with it are what the caller may then do — so
-// resolving only the first leaves the second empty and every button dark.
-func filterOps(filter interfaces.PermissionResourcesFilter) []string {
-	out := make([]string, 0, len(filter.Operations)+len(filter.CandidateOperations))
-	seen := make(map[string]bool, cap(out))
-	for _, group := range [][]string{filter.Operations, filter.CandidateOperations} {
-		for _, op := range group {
-			if seen[op] {
-				continue
-			}
-			seen[op] = true
-			out = append(out, op)
-		}
-	}
-	return out
-}
-
 // reportOps is the set the answer names back. Callers that state no candidates
 // get the visibility operations, which is what they asked about.
 func reportOps(filter interfaces.PermissionResourcesFilter) []string {
@@ -448,47 +377,39 @@ func reportOps(filter interfaces.PermissionResourcesFilter) []string {
 	return filter.Operations
 }
 
-// allowedFrom selects the actual operations held on the resource from each op authorization that has been parsed.
-func allowedFrom(access map[string]opAccess, ops []string, id string) []string {
-	out := make([]string, 0, len(ops))
-	for _, op := range ops {
-		if a := access[op]; a.all || a.ids[id] {
-			out = append(out, op)
-		}
-	}
-	return out
-}
-
 func (s *safePermissionAccess) FilterResources(ctx context.Context, filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
-	byType, err := s.resolveFilter(ctx, filter)
+	resources, err := s.safe.filterResources(ctx, filter.Accessor.ID, filter.Resources,
+		filter.Operations, reportOps(filter))
 	if err != nil {
 		return nil, err
 	}
 	out := map[string]interfaces.PermissionResourceOps{}
-	for _, r := range filter.Resources {
-		// Visibility and reporting are decided separately: the first says whether
-		// the resource belongs in the answer at all, the second says what comes
-		// back with it.
-		if visible := allowedFrom(byType[r.Type], filter.Operations, r.ID); len(visible) > 0 {
-			out[r.ID] = interfaces.PermissionResourceOps{
-				ResourceID: r.ID,
-				Operations: allowedFrom(byType[r.Type], reportOps(filter), r.ID),
-			}
+	for _, r := range resources {
+		out[r.ResourceID] = interfaces.PermissionResourceOps{
+			ResourceID: r.ResourceID,
+			Operations: r.Operations,
 		}
 	}
 	return out, nil
 }
 
 func (s *safePermissionAccess) GetResourcesOperations(ctx context.Context, filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
-	byType, err := s.resolveFilter(ctx, filter)
+	resources, err := s.safe.filterResources(ctx, filter.Accessor.ID, filter.Resources,
+		nil, reportOps(filter))
 	if err != nil {
 		return nil, err
 	}
-	out := map[string]interfaces.PermissionResourceOps{}
+	out := make(map[string]interfaces.PermissionResourceOps, len(filter.Resources))
 	for _, r := range filter.Resources {
 		out[r.ID] = interfaces.PermissionResourceOps{
 			ResourceID: r.ID,
-			Operations: allowedFrom(byType[r.Type], reportOps(filter), r.ID),
+			Operations: []string{},
+		}
+	}
+	for _, r := range resources {
+		out[r.ResourceID] = interfaces.PermissionResourceOps{
+			ResourceID: r.ResourceID,
+			Operations: r.Operations,
 		}
 	}
 	return out, nil
