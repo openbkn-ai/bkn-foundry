@@ -605,6 +605,30 @@ func (kns *knowledgeNetworkService) resolveKNNavigationVisibility(ctx context.Co
 	return visibility, nil
 }
 
+func (kns *knowledgeNetworkService) ResolveKNReadAccess(ctx context.Context,
+	knID string, branch string) (interfaces.KNReadAccessMode, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Resolve knowledge network read access")
+	defer span.End()
+
+	visibility, err := kns.resolveKNNavigationVisibility(ctx, []string{knID}, branch)
+	if err != nil {
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
+		return "", err
+	}
+	if _, ok := visibility.operations[knID]; ok {
+		span.SetStatus(codes.Ok, "")
+		return interfaces.KN_READ_ACCESS_FULL, nil
+	}
+	if _, ok := visibility.childVisibleKNs[knID]; ok {
+		span.SetStatus(codes.Ok, "")
+		return interfaces.KN_READ_ACCESS_NAVIGATION_ONLY, nil
+	}
+
+	err = rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+	span.SetStatus(codes.Error, common.SafeErrorSummary(err))
+	return "", err
+}
+
 func restrictKNToNavigation(kn *interfaces.KN) {
 	kn.SkillContent = ""
 	kn.ConceptGroups = nil

@@ -19,7 +19,16 @@ const (
 	DIRECTION_FORWARD       = "forward"
 	DIRECTION_BACKWARD      = "backward"
 	DIRECTION_BIDIRECTIONAL = "bidirectional"
+
+	// KN read access modes distinguish a complete network detail from the
+	// navigation shell exposed through a visible child resource.
+	KN_READ_ACCESS_FULL            KNReadAccessMode = "full"
+	KN_READ_ACCESS_NAVIGATION_ONLY KNReadAccessMode = "navigation_only"
 )
+
+// KNReadAccessMode is the read visibility of one knowledge network for the
+// current caller. It is internal authorization state and is never serialized.
+type KNReadAccessMode string
 
 var (
 	KN_SORT = map[string]string{

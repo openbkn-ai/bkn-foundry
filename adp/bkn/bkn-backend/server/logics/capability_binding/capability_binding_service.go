@@ -256,13 +256,6 @@ func (cbs *capabilityBindingService) ListCapabilities(ctx context.Context,
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List capabilities")
 	defer span.End()
 
-	if err := cbs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   query.KNID,
-	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
-		return nil, err
-	}
-
 	if query.CapabilityType != "" && !interfaces.IsValidCapabilityType(query.CapabilityType) {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_InvalidCapabilityType).
@@ -274,6 +267,29 @@ func (cbs *capabilityBindingService) ListCapabilities(ctx context.Context,
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("unsupported metadata_type: %s", metadataType))
+	}
+
+	// A child resource may expose the knowledge network as a navigation shell. Capability
+	// bindings are network-detail data and have no child authorization resource, so return a
+	// canonical empty section without consulting storage, provenance, or external metadata.
+	if query.ReadAccessMode == interfaces.KN_READ_ACCESS_NAVIGATION_ONLY {
+		span.SetStatus(codes.Ok, "")
+		return &interfaces.CapabilityBindingsList{
+			Entries:           make([]*interfaces.CapabilityBinding, 0),
+			Boxes:             make([]*interfaces.CapabilityBoxSummary, 0),
+			MetadataAvailable: true,
+			SourcesAvailable:  true,
+		}, nil
+	}
+
+	// Keep the service fail-closed for internal callers and for callers that do not use
+	// the public handler's access-mode resolution. A resolved full mode is deliberately
+	// rechecked here because it permits disclosure rather than merely narrowing a result.
+	if err := cbs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_KN,
+		ID:   query.KNID,
+	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
+		return nil, err
 	}
 
 	// metadata_type reaches SQL as a set of tool boxes. Resolving it here rather than filtering

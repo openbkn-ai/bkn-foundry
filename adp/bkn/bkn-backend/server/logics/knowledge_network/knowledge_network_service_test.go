@@ -986,6 +986,88 @@ func Test_knowledgeNetworkService_ChildPermissionNavigation(t *testing.T) {
 	})
 }
 
+func Test_knowledgeNetworkService_ResolveKNReadAccess(t *testing.T) {
+	Convey("Resolve knowledge network read access", t, func() {
+		ctx := context.Background()
+		mockCtrl := gomock.NewController(t)
+		defer mockCtrl.Finish()
+
+		kna := bmock.NewMockKNAccess(mockCtrl)
+		ps := bmock.NewMockPermissionService(mockCtrl)
+		service := &knowledgeNetworkService{kna: kna, ps: ps}
+		knID := "kn1"
+		branch := interfaces.MAIN_BRANCH
+
+		Convey("A network detail reader receives full access", func() {
+			ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_KN, []string{knID},
+				[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS).
+				Return(map[string]interfaces.PermissionResourceOps{
+					knID: {ResourceID: knID, Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+				}, nil)
+
+			mode, err := service.ResolveKNReadAccess(ctx, knID, branch)
+
+			So(err, ShouldBeNil)
+			So(mode, ShouldEqual, interfaces.KN_READ_ACCESS_FULL)
+		})
+
+		Convey("A visible child receives navigation-only access", func() {
+			canonicalID := interfaces.KNChildResourceID(knID, "ot1")
+			ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_KN, []string{knID},
+				[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS).
+				Return(map[string]interfaces.PermissionResourceOps{}, nil)
+			kna.EXPECT().ListKNChildResourceCandidates(gomock.Any(), []string{knID}, branch).
+				Return([]interfaces.KNChildResourceCandidate{{
+					KNID: knID, ResourceID: "ot1", Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+				}}, nil)
+			ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE, []string{canonicalID},
+				[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true,
+				permission.KNChildOperationCandidates(interfaces.RESOURCE_TYPE_OBJECT_TYPE)).
+				Return(map[string]interfaces.PermissionResourceOps{
+					canonicalID: {ResourceID: canonicalID, Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+				}, nil)
+
+			mode, err := service.ResolveKNReadAccess(ctx, knID, branch)
+
+			So(err, ShouldBeNil)
+			So(mode, ShouldEqual, interfaces.KN_READ_ACCESS_NAVIGATION_ONLY)
+		})
+
+		Convey("A caller with neither network nor child visibility is forbidden", func() {
+			canonicalID := interfaces.KNChildResourceID(knID, "ot1")
+			ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_KN, []string{knID},
+				[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS).
+				Return(map[string]interfaces.PermissionResourceOps{}, nil)
+			kna.EXPECT().ListKNChildResourceCandidates(gomock.Any(), []string{knID}, branch).
+				Return([]interfaces.KNChildResourceCandidate{{
+					KNID: knID, ResourceID: "ot1", Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+				}}, nil)
+			ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE, []string{canonicalID},
+				[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true,
+				permission.KNChildOperationCandidates(interfaces.RESOURCE_TYPE_OBJECT_TYPE)).
+				Return(map[string]interfaces.PermissionResourceOps{}, nil)
+
+			mode, err := service.ResolveKNReadAccess(ctx, knID, branch)
+
+			So(mode, ShouldBeEmpty)
+			So(err, ShouldNotBeNil)
+			So(err.(*rest.HTTPError).HTTPCode, ShouldEqual, http.StatusForbidden)
+		})
+
+		Convey("A permission dependency failure is not downgraded", func() {
+			dependencyErr := rest.NewHTTPError(ctx, http.StatusServiceUnavailable, rest.PublicError_ServiceUnavailable)
+			ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_KN, []string{knID},
+				[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS).
+				Return(nil, dependencyErr)
+
+			mode, err := service.ResolveKNReadAccess(ctx, knID, branch)
+
+			So(mode, ShouldBeEmpty)
+			So(err, ShouldEqual, dependencyErr)
+		})
+	})
+}
+
 func Test_knowledgeNetworkService_ExportKNForProjectionDoesNotUseUserServices(t *testing.T) {
 	Convey("Test projection export bypasses user authorization and enrichment\n", t, func() {
 		ctx := context.Background()

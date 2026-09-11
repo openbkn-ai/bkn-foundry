@@ -36,7 +36,13 @@ type backfillResult struct {
 func (cbs *capabilityBindingService) backfillMetadata(ctx context.Context,
 	query interfaces.CapabilityBindingsQueryParams, bindings []*interfaces.CapabilityBinding,
 	withDetail bool) backfillResult {
-	result := backfillResult{available: true}
+	// The public response contract requires boxes to be an array. Initialise it here so every
+	// caller gets [] rather than null, including empty, skill-only and MCP-only pages that never
+	// enter the function backfill path.
+	result := backfillResult{
+		boxes:     make([]*interfaces.CapabilityBoxSummary, 0),
+		available: true,
+	}
 	if len(bindings) == 0 {
 		return result
 	}
