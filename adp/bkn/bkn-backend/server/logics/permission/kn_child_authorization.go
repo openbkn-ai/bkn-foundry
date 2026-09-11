@@ -36,6 +36,7 @@ var actionTypeOperations = append(append([]string{}, structuralChildOperations..
 )
 
 type knImportPermissionPrecheckedKey struct{}
+type dependencyValidationPermissionPrecheckedKey struct{}
 
 // WithKNImportPermissionPrechecked marks child creates invoked by an already
 // authorized whole-KN create or overwrite operation.
@@ -47,6 +48,20 @@ func WithKNImportPermissionPrechecked(ctx context.Context) context.Context {
 // authorized the complete import transaction.
 func KNImportPermissionPrechecked(ctx context.Context) bool {
 	prechecked, _ := ctx.Value(knImportPermissionPrecheckedKey{}).(bool)
+	return prechecked
+}
+
+// WithDependencyValidationPermissionPrechecked marks dependency validation
+// invoked from a write path that has already authorized its canonical target.
+// Public validation endpoints must not set this marker.
+func WithDependencyValidationPermissionPrechecked(ctx context.Context) context.Context {
+	return context.WithValue(ctx, dependencyValidationPermissionPrecheckedKey{}, true)
+}
+
+// DependencyValidationPermissionPrechecked reports whether the enclosing write
+// operation already performed its policy-enforcement-point check.
+func DependencyValidationPermissionPrechecked(ctx context.Context) bool {
+	prechecked, _ := ctx.Value(dependencyValidationPermissionPrecheckedKey{}).(bool)
 	return prechecked
 }
 

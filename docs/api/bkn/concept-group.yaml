@@ -217,6 +217,7 @@ paths:
         required: true
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/concept-groups/{group_id}/object-types:
     post:
+      description: Requires effective `modify` on `concept_group:{kn_id}/{group_id}`. `strict_mode` controls dependency validation only and never bypasses authorization.
       requestBody:
         content:
           application/json:
@@ -254,6 +255,7 @@ paths:
         required: true
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/concept-groups/{group_id}/object-types/{ot_ids}:
     delete:
+      description: Requires effective `modify` on `concept_group:{kn_id}/{group_id}`. The object types are relationship members, not independent authorization targets for this operation.
       parameters:
         - name: kn_id
           in: path

@@ -31,7 +31,7 @@ func TestRelationTypeSingleResourceAuthorization(t *testing.T) {
 			return service.UpdateRelationType(ctx, nil, &interfaces.RelationType{
 				RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "rt-1"},
 				KNID:                     "kn-1", Branch: interfaces.MAIN_BRANCH,
-			}, false)
+			}, true)
 		}},
 		{"delete", interfaces.OPERATION_TYPE_DELETE, func(service *relationTypeService, ctx context.Context) error {
 			return service.DeleteRelationTypesByIDs(ctx, nil, "kn-1", interfaces.MAIN_BRANCH, []string{"rt-1"})

@@ -349,7 +349,8 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 	return atIDs, nil
 }
 
-// ValidateActionTypes checks dependency existence only; does not write to the database.
+// ValidateActionTypes authorizes the validation request and checks dependency
+// existence without writing to the database.
 func (ats *actionTypeService) ValidateActionTypes(ctx context.Context, knID string, branch string,
 	actionTypes []*interfaces.ActionType, strictMode bool, batch *interfaces.BatchIDIndex, mode string) error {
 
@@ -361,13 +362,17 @@ func (ats *actionTypeService) ValidateActionTypes(ctx context.Context, knID stri
 		return nil
 	}
 
-	err := ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   knID,
-	}, []string{interfaces.OPERATION_TYPE_MODIFY})
-	if err != nil {
-		return err
+	var err error
+	if !permission.DependencyValidationPermissionPrechecked(ctx) {
+		err = ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: interfaces.RESOURCE_TYPE_KN,
+			ID:   knID,
+		}, []string{interfaces.OPERATION_TYPE_MODIFY})
+		if err != nil {
+			return err
+		}
 	}
+	ctx = permission.WithDependencyValidationPermissionPrechecked(ctx)
 	_, _, err = ats.handleActionTypeImportMode(ctx, mode, actionTypes)
 	if err != nil {
 		return err

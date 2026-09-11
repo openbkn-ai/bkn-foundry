@@ -1521,6 +1521,7 @@ paths:
           description: Unauthorized
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/object-types/{ob_id}/data_properties/{property_names}:
     put:
+      description: Requires effective `modify` on `object_type:{kn_id}/{ob_id}`. `strict_mode` controls dependency validation only and never bypasses authorization.
       parameters:
         - name: branch
           description: Branch. Uses main when omitted.
