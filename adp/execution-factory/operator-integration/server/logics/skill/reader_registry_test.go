@@ -32,8 +32,12 @@ type fakeSessionPool struct {
 
 type stubSkillReleaseRepo struct {
 	selectBySkillID func(ctx context.Context, tx *sql.Tx, skillID string) (*model.SkillReleaseDB, error)
-	insert          func(ctx context.Context, tx *sql.Tx, release *model.SkillReleaseDB) error
-	updateBySkillID func(ctx context.Context, tx *sql.Tx, release *model.SkillReleaseDB) error
+	selectListPage  func(ctx context.Context, tx *sql.Tx, filter map[string]interface{}, sort *ormhelper.SortParams,
+		cursor *ormhelper.CursorParams) ([]*model.SkillReleaseDB, error)
+	selectIDsByWhereClause func(ctx context.Context, tx *sql.Tx, filter map[string]interface{}) ([]string, error)
+	countByWhereClause     func(ctx context.Context, tx *sql.Tx, filter map[string]interface{}) (int64, error)
+	insert                 func(ctx context.Context, tx *sql.Tx, release *model.SkillReleaseDB) error
+	updateBySkillID        func(ctx context.Context, tx *sql.Tx, release *model.SkillReleaseDB) error
 }
 
 func (s *stubSkillReleaseRepo) Insert(ctx context.Context, tx *sql.Tx, release *model.SkillReleaseDB) error {
@@ -59,16 +63,25 @@ func (s *stubSkillReleaseRepo) SelectBySkillID(ctx context.Context, tx *sql.Tx, 
 
 func (s *stubSkillReleaseRepo) SelectListPage(ctx context.Context, tx *sql.Tx, filter map[string]interface{},
 	sort *ormhelper.SortParams, cursor *ormhelper.CursorParams) ([]*model.SkillReleaseDB, error) {
+	if s.selectListPage != nil {
+		return s.selectListPage(ctx, tx, filter, sort, cursor)
+	}
 	return nil, nil
 }
 
 func (s *stubSkillReleaseRepo) SelectIDsByWhereClause(
 	ctx context.Context, tx *sql.Tx, filter map[string]interface{},
 ) ([]string, error) {
+	if s.selectIDsByWhereClause != nil {
+		return s.selectIDsByWhereClause(ctx, tx, filter)
+	}
 	return nil, nil
 }
 
 func (s *stubSkillReleaseRepo) CountByWhereClause(ctx context.Context, tx *sql.Tx, filter map[string]interface{}) (int64, error) {
+	if s.countByWhereClause != nil {
+		return s.countByWhereClause(ctx, tx, filter)
+	}
 	return 0, nil
 }
 
@@ -1846,6 +1859,91 @@ func TestFilterEffectiveSkillIDsBatchesCandidates(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(filteredIDs, ShouldResemble, append(candidateIDs[:interfaces.DefaultBatchSize-1],
 			candidateIDs[interfaces.DefaultBatchSize:]...))
+	})
+}
+
+func TestQueryReleaseListPageUsesStableCursorForEqualSortValues(t *testing.T) {
+	Convey("large authorized Skill pages retain records with equal update times", t, func() {
+		ctrl := gomock.NewController(t)
+		authService := mocks.NewMockIAuthorizationService(ctrl)
+		accessor := &interfaces.AuthAccessor{ID: "viewer"}
+		releases := make([]*model.SkillReleaseDB, interfaces.MaxQuerySize+1)
+		candidateIDs := make([]string, len(releases))
+		for i := range releases {
+			number := len(releases) - i
+			updateTime := int64(number)
+			if i == len(releases)-1 {
+				updateTime++
+			}
+			skillID := fmt.Sprintf("skill-%04d", number)
+			releases[i] = &model.SkillReleaseDB{SkillID: skillID, UpdateTime: updateTime}
+			candidateIDs[i] = skillID
+		}
+		expectedLastRelease := releases[len(releases)-1]
+
+		queryCount := 0
+		releaseRepo := &stubSkillReleaseRepo{
+			selectIDsByWhereClause: func(_ context.Context, _ *sql.Tx, _ map[string]interface{}) ([]string, error) {
+				return candidateIDs, nil
+			},
+			countByWhereClause: func(_ context.Context, _ *sql.Tx, _ map[string]interface{}) (int64, error) {
+				return int64(len(releases)), nil
+			},
+			selectListPage: func(_ context.Context, _ *sql.Tx, filter map[string]interface{}, sort *ormhelper.SortParams,
+				cursor *ormhelper.CursorParams) ([]*model.SkillReleaseDB, error) {
+				So(filter["limit"], ShouldEqual, interfaces.MaxQuerySize)
+				So(filter["offset"], ShouldEqual, 0)
+				So(sort, ShouldResemble, &ormhelper.SortParams{Fields: []ormhelper.SortField{
+					{Field: "f_update_time", Order: ormhelper.SortOrderDesc},
+					{Field: "f_skill_id", Order: ormhelper.SortOrderDesc},
+				}})
+
+				queryCount++
+				switch queryCount {
+				case 1:
+					So(cursor, ShouldBeNil)
+					return releases[:interfaces.MaxQuerySize], nil
+				case 2:
+					So(cursor, ShouldResemble, &ormhelper.CursorParams{
+						Field:           "f_update_time",
+						Value:           int64(2),
+						TieBreakerField: "f_skill_id",
+						TieBreakerValue: "skill-0002",
+						Direction:       ormhelper.SortOrderDesc,
+					})
+					return releases[interfaces.MaxQuerySize:], nil
+				default:
+					So(cursor.TieBreakerValue, ShouldEqual, "skill-0001")
+					return nil, nil
+				}
+			},
+		}
+		registry := &skillRegistry{
+			releaseRepo: releaseRepo,
+			AuthService: authService,
+			Logger:      logger.DefaultLogger(),
+		}
+		authService.EXPECT().GetAccessor(gomock.Any(), "viewer").Return(accessor, nil)
+		authService.EXPECT().ResourceListIDs(gomock.Any(), accessor, interfaces.AuthResourceTypeSkill,
+			interfaces.AuthOperationTypeView).Return([]string{interfaces.ResourceIDAll}, nil)
+		for start := 0; start < len(candidateIDs); start += interfaces.DefaultBatchSize {
+			end := min(start+interfaces.DefaultBatchSize, len(candidateIDs))
+			authService.EXPECT().ResourceFilterIDs(gomock.Any(), accessor, candidateIDs[start:end],
+				interfaces.AuthResourceTypeSkill, interfaces.AuthOperationTypeView).Return(candidateIDs[start:end], nil)
+		}
+
+		ctx := common.SetPublicAPIToCtx(context.Background(), true)
+		resp, err := registry.queryReleaseListPage(ctx, map[string]interface{}{}, interfaces.CommonPageParams{
+			Page: 501, PageSize: 10,
+		}, "viewer", interfaces.AuthOperationTypeView)
+
+		So(err, ShouldBeNil)
+		So(queryCount, ShouldEqual, 3)
+		So(resp.TotalCount, ShouldEqual, len(releases))
+		So(resp.TotalPage, ShouldEqual, 501)
+		So(resp.HasNext, ShouldBeFalse)
+		So(resp.HasPrev, ShouldBeTrue)
+		So(resp.Data, ShouldResemble, []*model.SkillReleaseDB{expectedLastRelease})
 	})
 }
 

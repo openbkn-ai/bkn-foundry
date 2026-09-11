@@ -1004,7 +1004,10 @@ func (r *skillRegistry) queryReleaseListPage(ctx context.Context, filter map[str
 	if pageParamsReq.SortOrder == "asc" {
 		sortOrder = ormhelper.SortOrderAsc
 	}
-	sort := &ormhelper.SortParams{Fields: []ormhelper.SortField{{Field: sortField, Order: sortOrder}}}
+	sort := &ormhelper.SortParams{Fields: []ormhelper.SortField{
+		{Field: sortField, Order: sortOrder},
+		{Field: "f_skill_id", Order: sortOrder},
+	}}
 	// Total number of statistics.
 	queryTotal := func(newCtx context.Context) (int64, error) {
 		var count int64
@@ -1022,8 +1025,10 @@ func (r *skillRegistry) queryReleaseListPage(ctx context.Context, filter map[str
 		var cursor *ormhelper.CursorParams
 		if cursorValue != nil {
 			cursor = &ormhelper.CursorParams{
-				Field:     sortField,
-				Direction: ormhelper.SortOrder(pageParamsReq.SortOrder),
+				Field:           sortField,
+				TieBreakerField: "f_skill_id",
+				TieBreakerValue: cursorValue.SkillID,
+				Direction:       sortOrder,
 			}
 			switch sortField {
 			case "f_update_time":
