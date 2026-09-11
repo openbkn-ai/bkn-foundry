@@ -137,6 +137,10 @@ info:
     provenance, or execution-factory metadata in this mode. This avoids both a misleading
     permission error in the shell and disclosure of capabilities the caller cannot view.
 
+    Both `metadata_available` and `sources_available` are true in this canonical empty result:
+    there are no returned rows or sources left unresolved, so the result is complete. These flags
+    do not imply that the execution-factory or model-provenance dependencies were called.
+
     A caller with neither knowledge-network detail access nor any visible child still receives
     403. Authentication and permission-service failures also remain errors; they are never
     converted to an empty list.

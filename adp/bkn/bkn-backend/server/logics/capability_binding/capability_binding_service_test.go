@@ -8,6 +8,7 @@ package capability_binding
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -227,6 +228,26 @@ func TestListCapabilities(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(list.TotalCount, ShouldEqual, 1)
 			So(len(list.Entries), ShouldEqual, 1)
+		})
+
+		Convey("完整读取没有函数箱摘要时 boxes 仍序列化为空数组", func() {
+			service, cba, aoa := newTestServiceWithFactory(t, ctrl)
+			cba.EXPECT().ListBindings(gomock.Any(), gomock.Any()).Return([]*interfaces.CapabilityBinding{
+				{ID: "bind-1", CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "skill-1"},
+			}, nil)
+			aoa.EXPECT().GetSkillNamesByIDs(gomock.Any(), []string{"skill-1"}).
+				Return(map[string]string{"skill-1": "Skill 1"}, nil)
+
+			list, err := service.ListCapabilities(context.Background(), interfaces.CapabilityBindingsQueryParams{
+				KNID: "kn1", Branch: "main", CapabilityType: interfaces.CAPABILITY_TYPE_SKILL,
+			})
+
+			So(err, ShouldBeNil)
+			So(list.Boxes, ShouldNotBeNil)
+			So(list.Boxes, ShouldBeEmpty)
+			body, marshalErr := json.Marshal(list)
+			So(marshalErr, ShouldBeNil)
+			So(string(body), ShouldContainSubstring, `"boxes":[]`)
 		})
 
 		Convey("未知 type 过滤值报 400，不查库", func() {
