@@ -784,13 +784,8 @@ func (r *skillRegistry) ExecuteSkill(ctx context.Context, req *interfaces.Execut
 	if err != nil {
 		return nil, err
 	}
-	authorized, err := r.AuthService.OperationCheckAny(ctx, accessor, req.SkillID, interfaces.AuthResourceTypeSkill,
-		interfaces.AuthOperationTypeExecute, interfaces.AuthOperationTypePublicAccess)
-	if err != nil {
+	if err = r.AuthService.CheckExecutePermission(ctx, accessor, req.SkillID, interfaces.AuthResourceTypeSkill); err != nil {
 		return nil, err
-	}
-	if !authorized {
-		return nil, errors.NewHTTPError(ctx, http.StatusForbidden, errors.ErrExtCommonOperationForbidden, nil)
 	}
 
 	skill, fileName, archive, err := r.buildSkillArchive(ctx, req.SkillID)

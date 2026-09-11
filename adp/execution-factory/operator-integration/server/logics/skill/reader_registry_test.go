@@ -2062,8 +2062,7 @@ func TestExecuteSkillUploadsBeforeShellExecution(t *testing.T) {
 		}
 
 		mockAuthService.EXPECT().GetAccessor(gomock.Any(), "user-1").Return(&interfaces.AuthAccessor{ID: "user-1"}, nil)
-		mockAuthService.EXPECT().OperationCheckAny(gomock.Any(), gomock.Any(), "skill-exec-1", interfaces.AuthResourceTypeSkill,
-			interfaces.AuthOperationTypeExecute, interfaces.AuthOperationTypePublicAccess).Return(true, nil)
+		mockAuthService.EXPECT().CheckExecutePermission(gomock.Any(), gomock.Any(), "skill-exec-1", interfaces.AuthResourceTypeSkill).Return(nil)
 		mockSkillRepo.EXPECT().SelectSkillByID(gomock.Any(), gomock.Nil(), "skill-exec-1").Return(&model.SkillRepositoryDB{
 			SkillID:      "skill-exec-1",
 			Name:         "demo-skill",
@@ -2150,5 +2149,32 @@ func TestExecuteSkillUploadsBeforeShellExecution(t *testing.T) {
 		So(resp.Command, ShouldEqual, "bash run.sh")
 		So(resp.Stdout, ShouldEqual, "ok")
 		So(callOrder, ShouldResemble, []string{"acquire", "upload", "exec", "release"})
+	})
+}
+
+func TestExecuteSkillRequiresExecutePermission(t *testing.T) {
+	Convey("execute permission denial stops before loading or running the skill", t, func() {
+		ctrl := gomock.NewController(t)
+		mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
+		permissionErr := errors.New("execute permission denied")
+		registry := &skillRegistry{
+			AuthService: mockAuthService,
+			Logger:      logger.DefaultLogger(),
+		}
+
+		accessor := &interfaces.AuthAccessor{ID: "user-1"}
+		mockAuthService.EXPECT().GetAccessor(gomock.Any(), "user-1").Return(accessor, nil)
+		mockAuthService.EXPECT().CheckExecutePermission(
+			gomock.Any(), accessor, "skill-exec-1", interfaces.AuthResourceTypeSkill,
+		).Return(permissionErr)
+
+		resp, err := registry.ExecuteSkill(context.Background(), &interfaces.ExecuteSkillReq{
+			UserID:     "user-1",
+			SkillID:    "skill-exec-1",
+			EntryShell: "bash run.sh",
+		})
+
+		So(resp, ShouldBeNil)
+		So(err, ShouldEqual, permissionErr)
 	})
 }

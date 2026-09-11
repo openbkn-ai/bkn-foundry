@@ -21,8 +21,9 @@ info:
     读取与执行仍会分别校验知识网络挂载关系以及对应操作权限。只有 `public_access`、没有
     `view` 的市场技能不会出现在这里。
 
-    这些能力必须保留原始 bearer token 才能按调用者授权。遗留 `internal-v1` 路由只有
-    `X-Account-ID` / `X-Account-Type`、没有原始 token，因此明确返回 403，不回退为服务身份。
+    公开调用透传原始 bearer token；内部调用使用可信的 `X-Account-ID` / `X-Account-Type`
+    进入 execution-factory 的 caller-scoped 内部路由。两种入口都按真实调用者授权，不回退为
+    服务身份。两类身份都缺失时返回 401。
 
     **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` AppKey）。
   version: 0.1.6
@@ -267,8 +268,8 @@ paths:
         **`entry_shell` 必须取自 SKILL.md 声明的入口**，先用 `get_skill_content`
         读清楚再调；这条接口不校验命令与 Skill 的对应关系。
 
-        授权由 execution-factory 按账户强制：需要该 Skill 的 `execute` 或
-        `public_access` 权限，无权限返回 403。
+        授权由 execution-factory 按账户强制：必须拥有该 Skill 的 `execute` 权限；
+        `public_access` 只代表公开读取，不能替代执行权限。无权限返回 403。
 
         `stdout` / `stderr` 各自超过 8000 字符会截断（`truncated=true`）。
 

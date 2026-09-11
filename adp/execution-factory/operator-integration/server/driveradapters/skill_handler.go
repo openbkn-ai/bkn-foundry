@@ -32,6 +32,17 @@ func NewSkillRestHandler() SkillRestHandler {
 	return sHandler
 }
 func (r *skillRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
+	// Caller-scoped internal routes use the trusted account headers resolved by
+	// the private middleware, while reusing the same authorization semantics as
+	// the public API. Context Loader uses these routes when its own caller used
+	// the internal-v1 face and therefore has no bearer token to forward.
+	callerScoped := engine.Group("/caller")
+	callerScoped.Use(middlewareCallerScopedAuthorization())
+	callerScoped.GET("/skills/available", r.SkillHandler.QueryAvailableSkillList)
+	callerScoped.GET("/skills/:skill_id/content", r.SkillHandler.GetSkillContent)
+	callerScoped.POST("/skills/:skill_id/files/read", r.SkillHandler.ReadSkillFile)
+	callerScoped.POST("/skills/:skill_id/execute", r.SkillHandler.ExecuteSkill)
+
 	// Market interface.
 	// Query skill market list.
 	engine.GET("/skills/market", r.SkillHandler.QuerySkillMarketList)
