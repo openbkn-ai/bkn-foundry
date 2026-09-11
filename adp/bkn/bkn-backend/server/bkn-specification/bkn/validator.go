@@ -36,6 +36,7 @@ var validDataSourceTypes = map[string]bool{
 
 var validRelationMappingTypes = map[string]bool{
 	RELATION_MAPPING_TYPE_DIRECT:              true,
+	RELATION_MAPPING_TYPE_INDIRECT:            true,
 	RELATION_MAPPING_TYPE_FILTERED_CROSS_JOIN: true,
 }
 
@@ -728,7 +729,7 @@ func validateRelationTypeDeep(result *ValidationResult, table string, rt *BknRel
 	epType := strings.TrimSpace(rt.Endpoint.Type)
 	if epType != "" && !validRelationMappingTypes[epType] {
 		appendError(result, table, "endpoint.type", "invalid_relation_type",
-			fmt.Sprintf("relation type must be %q or %q, got %q", RELATION_MAPPING_TYPE_DIRECT, RELATION_MAPPING_TYPE_FILTERED_CROSS_JOIN, epType))
+			fmt.Sprintf("relation type must be %q, %q, or %q, got %q", RELATION_MAPPING_TYPE_DIRECT, RELATION_MAPPING_TYPE_INDIRECT, RELATION_MAPPING_TYPE_FILTERED_CROSS_JOIN, epType))
 	}
 	if strings.TrimSpace(rt.Endpoint.Source) == "" {
 		appendError(result, table, "Source", "invalid_relation_type", "endpoint source_object_type_id must not be empty")
@@ -768,6 +769,52 @@ func validateRelationTypeDeep(result *ValidationResult, table string, rt *BknRel
 				appendError(result, table, "mapping_rules", "invalid_relation_type", fmt.Sprintf("duplicate mapping rule %q", key))
 			}
 			seen[key] = true
+		}
+	case RELATION_MAPPING_TYPE_INDIRECT:
+		ind, ok := rt.MappingRules.(*InDirectMappingRule)
+		if !ok {
+			appendError(result, table, "mapping_rules", "invalid_relation_type", "indirect relation requires InDirectMappingRule")
+			return
+		}
+		if ind.BackingDataSource == nil {
+			appendError(result, table, "mapping_rules", "invalid_relation_type", "backing_data_source must not be empty")
+			return
+		}
+		if strings.TrimSpace(ind.BackingDataSource.Type) == "" {
+			appendError(result, table, "backing_data_source", "invalid_relation_type", "backing_data_source.type must not be empty")
+		} else if normType(ind.BackingDataSource.Type) != DATA_SOURCE_TYPE_RESOURCE {
+			appendError(result, table, "backing_data_source", "invalid_relation_type", fmt.Sprintf("backing_data_source.type must be %q", DATA_SOURCE_TYPE_RESOURCE))
+		}
+		if strings.TrimSpace(ind.BackingDataSource.ID) == "" {
+			appendError(result, table, "backing_data_source", "invalid_relation_type", "backing_data_source.id must not be empty")
+		}
+		if len(ind.SourceMappingRules) == 0 {
+			appendError(result, table, "source_mapping_rules", "invalid_relation_type", "source_mapping_rules must not be empty")
+		}
+		seenS := make(map[string]bool)
+		for i, r := range ind.SourceMappingRules {
+			if strings.TrimSpace(r.SourceProperty) == "" || strings.TrimSpace(r.TargetProperty) == "" {
+				appendError(result, table, "source_mapping_rules", "invalid_relation_type", fmt.Sprintf("source_mapping_rules[%d] properties must not be empty", i))
+			}
+			key := r.SourceProperty + ":" + r.TargetProperty
+			if seenS[key] {
+				appendError(result, table, "source_mapping_rules", "invalid_relation_type", fmt.Sprintf("duplicate mapping %q", key))
+			}
+			seenS[key] = true
+		}
+		if len(ind.TargetMappingRules) == 0 {
+			appendError(result, table, "target_mapping_rules", "invalid_relation_type", "target_mapping_rules must not be empty")
+		}
+		seenT := make(map[string]bool)
+		for i, r := range ind.TargetMappingRules {
+			if strings.TrimSpace(r.SourceProperty) == "" || strings.TrimSpace(r.TargetProperty) == "" {
+				appendError(result, table, "target_mapping_rules", "invalid_relation_type", fmt.Sprintf("target_mapping_rules[%d] properties must not be empty", i))
+			}
+			key := r.SourceProperty + ":" + r.TargetProperty
+			if seenT[key] {
+				appendError(result, table, "target_mapping_rules", "invalid_relation_type", fmt.Sprintf("duplicate mapping %q", key))
+			}
+			seenT[key] = true
 		}
 	case RELATION_MAPPING_TYPE_FILTERED_CROSS_JOIN:
 		fcj, ok := rt.MappingRules.(*FilteredCrossJoinMapping)

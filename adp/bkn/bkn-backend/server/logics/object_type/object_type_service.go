@@ -1643,14 +1643,14 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 					objectType.OTID, objectType.DataSource.ID, err))
 			} else {
 				objectType.DataSource.Name = res.Name
-				fieldsMap := logics.VegaResourceSchemaToFieldsMap(res)
+				propertiesMap := logics.VegaResourceSchemaToPropertiesMap(res)
 				indexCaps := logics.VegaResourceIndexCaps(res)
 				dslView := &interfaces.DataView{QueryType: interfaces.VIEW_QueryType_DSL}
 				for j, prop := range objectType.DataProperties {
 					if prop.MappedField != nil {
-						if field, exists := fieldsMap[prop.MappedField.Name]; exists {
-							objectType.DataProperties[j].MappedField.DisplayName = field.DisplayName
-							objectType.DataProperties[j].MappedField.Type = field.Type
+						if property, exists := propertiesMap[prop.MappedField.Name]; exists {
+							objectType.DataProperties[j].MappedField.DisplayName = property.DisplayName
+							objectType.DataProperties[j].MappedField.Type = property.Type
 						}
 					}
 					ops := ots.processConditionOperations(objectType, prop, dslView)

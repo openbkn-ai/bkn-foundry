@@ -137,6 +137,53 @@ func Test_ValidateRelationType(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
+		Convey("Success with indirect relation backed by a resource\n", func() {
+			rt := &interfaces.RelationType{
+				RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
+					RTID:               "rt-data-view",
+					RTName:             "data view relation",
+					SourceObjectTypeID: "ot1",
+					TargetObjectTypeID: "ot2",
+					Type:               interfaces.RELATION_TYPE_INDIRECT,
+					MappingRules: map[string]any{
+						"backing_data_source":  map[string]any{"id": "resource-1", "type": "resource"},
+						"source_mapping_rules": []map[string]any{{"source_property": map[string]any{"name": "source_id"}, "target_property": map[string]any{"name": "resource_source_id"}}},
+						"target_mapping_rules": []map[string]any{{"source_property": map[string]any{"name": "resource_target_id"}, "target_property": map[string]any{"name": "target_id"}}},
+					},
+				},
+			}
+			err := ValidateRelationType(ctx, rt, true)
+			So(err, ShouldBeNil)
+			_, ok := rt.MappingRules.(*interfaces.InDirectMapping)
+			So(ok, ShouldBeTrue)
+		})
+
+		Convey("Rejects legacy data_view relation type\n", func() {
+			rt := &interfaces.RelationType{
+				RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
+					RTID: "rt-legacy-type", RTName: "legacy type", Type: "data_view",
+					MappingRules: map[string]any{
+						"backing_data_source":  map[string]any{"id": "resource-1", "type": "resource"},
+						"source_mapping_rules": []map[string]any{},
+						"target_mapping_rules": []map[string]any{},
+					},
+				},
+			}
+			err := ValidateRelationType(ctx, rt, false)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Rejects legacy data_view backing data source\n", func() {
+			rt := &interfaces.RelationType{
+				RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
+					RTID: "rt-legacy-backing", RTName: "legacy backing", Type: interfaces.RELATION_TYPE_INDIRECT,
+					MappingRules: map[string]any{"backing_data_source": map[string]any{"id": "view-1", "type": "data_view"}},
+				},
+			}
+			err := ValidateRelationType(ctx, rt, false)
+			So(err, ShouldNotBeNil)
+		})
+
 		Convey("Failed with direct mapping rules empty source prop\n", func() {
 			rt := &interfaces.RelationType{
 				RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
@@ -267,12 +314,12 @@ func TestValidateRelationTypeLocalizesInvalidParameterDetails(t *testing.T) {
 		{
 			name:     "English",
 			language: rest.AmericanEnglish,
-			want:     "Relation type must be direct or filtered_cross_join; received unsupported.",
+			want:     "Relation type must be direct, indirect, or filtered_cross_join; received unsupported.",
 		},
 		{
 			name:     "SimplifiedChinese",
 			language: rest.SimplifiedChinese,
-			want:     "关系类型仅支持 direct 和 filtered_cross_join，当前为 unsupported。",
+			want:     "关系类型仅支持 direct、indirect 和 filtered_cross_join，当前为 unsupported。",
 		},
 	}
 

@@ -448,6 +448,53 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 				}
 			}
 
+		case interfaces.RELATION_TYPE_INDIRECT:
+			mappingRules := relationType.MappingRules.(*interfaces.InDirectMapping)
+			var propertiesMap map[string]*interfaces.Property
+			if mappingRules.BackingDataSource != nil && mappingRules.BackingDataSource.ID != "" {
+				if mappingRules.BackingDataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
+					return []*interfaces.RelationType{}, logics.UnsupportedRelationBackingDataSourceError(ctx, relationType.RTID, mappingRules.BackingDataSource.Type)
+				}
+				res, err := rts.vbs.GetResourceByID(ctx, mappingRules.BackingDataSource.ID)
+				if err != nil {
+					return []*interfaces.RelationType{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+						berrors.BknBackend_RelationType_InternalError_GetDataViewByIDFailed).
+						WithErrorDetails(err.Error())
+				}
+				if res == nil {
+					otellog.LogWarn(ctx, fmt.Sprintf("Relation type [%s]'s backing vega Resource %s not found", relationType.RTID, mappingRules.BackingDataSource.ID))
+					if sourceObj == nil && targetObj == nil {
+						continue
+					}
+				} else {
+					mappingRules.BackingDataSource.Name = res.Name
+					propertiesMap = logics.VegaResourceSchemaToPropertiesMap(res)
+				}
+			}
+
+			for k, m := range mappingRules.SourceMappingRules {
+				if sourceObj != nil {
+					relationType.SourceObjectType = interfaces.SimpleObjectType{OTID: relationType.SourceObjectTypeID, OTName: sourceObj.OTName, Icon: sourceObj.Icon, Color: sourceObj.Color}
+					mappingRules.SourceMappingRules[k].SourceProp.DisplayName = sourceObj.PropertyMap[m.SourceProp.Name]
+				}
+				if propertiesMap != nil {
+					if property, ok := propertiesMap[m.TargetProp.Name]; ok && property != nil {
+						mappingRules.SourceMappingRules[k].TargetProp.DisplayName = property.DisplayName
+					}
+				}
+			}
+			for k, m := range mappingRules.TargetMappingRules {
+				if propertiesMap != nil {
+					if property, ok := propertiesMap[m.SourceProp.Name]; ok && property != nil {
+						mappingRules.TargetMappingRules[k].SourceProp.DisplayName = property.DisplayName
+					}
+				}
+				if targetObj != nil {
+					relationType.TargetObjectType = interfaces.SimpleObjectType{OTID: relationType.TargetObjectTypeID, OTName: targetObj.OTName, Icon: targetObj.Icon, Color: targetObj.Color}
+					mappingRules.TargetMappingRules[k].TargetProp.DisplayName = targetObj.PropertyMap[m.TargetProp.Name]
+				}
+			}
+
 		case interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN:
 			if sourceObj != nil {
 				relationType.SourceObjectType = interfaces.SimpleObjectType{
@@ -1256,6 +1303,48 @@ func (rts *relationTypeService) validateDependency(ctx context.Context, tx *sql.
 				if targetObjectType != nil {
 					// Check that target properties exist in target object type data properties.
 					if _, exist := targetObjectType.PropertyMap[mapping.TargetProp.Name]; !exist {
+						return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+							WithErrorDetails(invalidParameterDetail(ctx, "TargetPropertyNotFound", map[string]any{"property": mapping.TargetProp.Name, "objectType": targetObjectType.OTName}))
+					}
+				}
+			}
+		case interfaces.RELATION_TYPE_INDIRECT:
+			mappingRules := relationType.MappingRules.(*interfaces.InDirectMapping)
+			if mappingRules.BackingDataSource == nil {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+					WithErrorDetails(invalidParameterDetail(ctx, "BackingDataSourceRequired", nil))
+			}
+			if mappingRules.BackingDataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
+				return logics.UnsupportedRelationBackingDataSourceError(ctx, relationType.RTID, mappingRules.BackingDataSource.Type)
+			}
+			res, err := rts.vbs.GetResourceByID(ctx, mappingRules.BackingDataSource.ID)
+			if err != nil {
+				return err
+			}
+			if res == nil {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+					WithErrorDetails(invalidParameterDetail(ctx, "BackingDataSourceNotFound", map[string]any{"resource": mappingRules.BackingDataSource.ID}))
+			}
+			propertiesMap := logics.VegaResourceSchemaToPropertiesMap(res)
+			for _, mapping := range mappingRules.SourceMappingRules {
+				if sourceObjectType != nil {
+					if _, exists := sourceObjectType.PropertyMap[mapping.SourceProp.Name]; !exists {
+						return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+							WithErrorDetails(invalidParameterDetail(ctx, "SourcePropertyNotFound", map[string]any{"property": mapping.SourceProp.Name, "objectType": sourceObjectType.OTName}))
+					}
+				}
+				if _, exists := propertiesMap[mapping.TargetProp.Name]; !exists {
+					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+						WithErrorDetails(invalidParameterDetail(ctx, "BackingPropertyNotFound", map[string]any{"property": mapping.TargetProp.Name, "resource": res.Name}))
+				}
+			}
+			for _, mapping := range mappingRules.TargetMappingRules {
+				if _, exists := propertiesMap[mapping.SourceProp.Name]; !exists {
+					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+						WithErrorDetails(invalidParameterDetail(ctx, "BackingPropertyNotFound", map[string]any{"property": mapping.SourceProp.Name, "resource": res.Name}))
+				}
+				if targetObjectType != nil {
+					if _, exists := targetObjectType.PropertyMap[mapping.TargetProp.Name]; !exists {
 						return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 							WithErrorDetails(invalidParameterDetail(ctx, "TargetPropertyNotFound", map[string]any{"property": mapping.TargetProp.Name, "objectType": targetObjectType.OTName}))
 					}
