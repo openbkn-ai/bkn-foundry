@@ -256,7 +256,7 @@ func TestOpenSearchFlattenNestedGroupByRows(t *testing.T) {
 
 	t.Run("uses key_as_string and truncates by limit", func(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{
-			Limit: 1,
+			Paging: interfaces.PagingRequest{Limit: 1},
 			Aggregation: &interfaces.Aggregation{
 				Alias: "__value",
 			},
@@ -300,7 +300,7 @@ func TestOpenSearchFlattenNestedGroupByRows(t *testing.T) {
 	t.Run("flatten nested group by rows two dimensions", func(t *testing.T) {
 		conn := &OpenSearchConnector{}
 		params := &interfaces.ResourceDataQueryParams{
-			Limit: 10,
+			Paging: interfaces.PagingRequest{Limit: 10},
 			Aggregation: &interfaces.Aggregation{
 				Property: "id",
 				Aggr:     "count",

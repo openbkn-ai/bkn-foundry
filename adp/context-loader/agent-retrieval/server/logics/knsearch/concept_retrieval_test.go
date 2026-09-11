@@ -778,7 +778,9 @@ func TestFetchSampleData(t *testing.T) {
 		{ConceptID: "obj1"},
 	}
 
-	svc.fetchSampleData(context.Background(), "kn1", objects, true)
+	if err := svc.fetchSampleData(context.Background(), "kn1", objects, true); err != nil {
+		t.Fatal(err)
+	}
 
 	if objects[0].SampleData == nil {
 		t.Error("Sample data not populated")

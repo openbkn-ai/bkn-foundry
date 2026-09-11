@@ -180,7 +180,7 @@ func TestValidateIndexConfigKeyFields(t *testing.T) {
 		err := validateIndexConfigKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
 			PrimaryKeyFields: []string{"id", "id"},
 		})
-		requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter_PrimaryKeyFields)
+		_ = requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter_PrimaryKeyFields)
 
 		err = validateIndexConfigKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
 			IncrementalFields: []string{"body"},
@@ -608,7 +608,8 @@ func TestValidateIndexConfigAnalyzers(t *testing.T) {
 func requireResourceHTTPError(t *testing.T, err error, wantCode string) *rest.HTTPError {
 	t.Helper()
 	require.Error(t, err)
-	httpErr, ok := err.(*rest.HTTPError)
+	var httpErr *rest.HTTPError
+	ok := errors.As(err, &httpErr)
 	require.Truef(t, ok, "expected HTTPError, got %T", err)
 	assert.Equal(t, wantCode, httpErr.BaseError.ErrorCode)
 	return httpErr
@@ -739,7 +740,8 @@ func TestResourceServiceCreate(t *testing.T) {
 			},
 		})
 
-		httpErr, ok := err.(*rest.HTTPError)
+		var httpErr *rest.HTTPError
+		ok := errors.As(err, &httpErr)
 		if !ok {
 			t.Fatalf("expected HTTPError, got %T", err)
 		}
@@ -769,7 +771,8 @@ func TestResourceServiceCreate(t *testing.T) {
 			}},
 		})
 
-		httpErr, ok := err.(*rest.HTTPError)
+		var httpErr *rest.HTTPError
+		ok := errors.As(err, &httpErr)
 		if !ok {
 			t.Fatalf("expected HTTPError, got %T", err)
 		}
@@ -1073,7 +1076,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		}
 		mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
-				assert.Equal(t, 1, params.Limit)
+				assert.Equal(t, 1, params.Paging.Limit)
 				return nil, 0, nil
 			})
 		mockDS.EXPECT().Update(gomock.Any(), resource).Return(nil)
@@ -1266,7 +1269,8 @@ func TestResourceServiceUpdate(t *testing.T) {
 			}},
 		})
 
-		httpErr, ok := err.(*rest.HTTPError)
+		var httpErr *rest.HTTPError
+		ok := errors.As(err, &httpErr)
 		if !ok {
 			t.Fatalf("expected HTTPError, got %T", err)
 		}
@@ -1403,7 +1407,8 @@ func TestResourceServiceUpdate(t *testing.T) {
 			},
 		})
 
-		httpErr, ok := err.(*rest.HTTPError)
+		var httpErr *rest.HTTPError
+		ok := errors.As(err, &httpErr)
 		if !ok {
 			t.Fatalf("expected HTTPError, got %T", err)
 		}
@@ -1535,7 +1540,8 @@ func TestResourceServiceUpdate(t *testing.T) {
 			},
 		})
 
-		httpErr, ok := err.(*rest.HTTPError)
+		var httpErr *rest.HTTPError
+		ok := errors.As(err, &httpErr)
 		if !ok {
 			t.Fatalf("expected HTTPError, got %T", err)
 		}
@@ -1671,7 +1677,9 @@ func TestResourceServiceUpdate(t *testing.T) {
 			Category:  interfaces.ResourceCategoryTable,
 		})
 
-		httpErr, ok := err.(*rest.HTTPError)
+		var httpErr *rest.HTTPError
+
+		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 	})
@@ -1685,7 +1693,8 @@ func TestResourceServiceUpdate(t *testing.T) {
 			Category:  interfaces.ResourceCategoryDataset,
 		}, &interfaces.ResourceRequest{})
 
-		httpErr, ok := err.(*rest.HTTPError)
+		var httpErr *rest.HTTPError
+		ok := errors.As(err, &httpErr)
 		if !ok {
 			t.Fatalf("expected HTTPError, got %T", err)
 		}
@@ -1705,7 +1714,8 @@ func TestResourceServiceUpdate(t *testing.T) {
 			Category: interfaces.ResourceCategoryTable,
 		})
 
-		httpErr, ok := err.(*rest.HTTPError)
+		var httpErr *rest.HTTPError
+		ok := errors.As(err, &httpErr)
 		if !ok {
 			t.Fatalf("expected HTTPError, got %T", err)
 		}
@@ -1735,7 +1745,8 @@ func TestResourceServiceUpdate(t *testing.T) {
 			},
 		})
 
-		httpErr, ok := err.(*rest.HTTPError)
+		var httpErr *rest.HTTPError
+		ok := errors.As(err, &httpErr)
 		if !ok {
 			t.Fatalf("expected HTTPError, got %T", err)
 		}

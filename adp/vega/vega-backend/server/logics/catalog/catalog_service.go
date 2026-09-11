@@ -300,7 +300,8 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	}
 	if err != nil {
 		otellog.LogError(ctx, "Create catalog transaction failed", err)
-		if httpErr, ok := err.(*rest.HTTPError); ok {
+		var httpErr *rest.HTTPError
+		if errors.As(err, &httpErr) {
 			return "", httpErr
 		}
 		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,

@@ -31,7 +31,7 @@ func TestScanRows(t *testing.T) {
 
 		rows, err := db.Query("SELECT id, name FROM users")
 		require.NoError(t, err)
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		got, err := ScanRows(rows)
 
@@ -59,7 +59,7 @@ func TestScanRows(t *testing.T) {
 
 		rows, err := db.Query("SELECT id FROM users")
 		require.NoError(t, err)
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		got, err := ScanRows(rows)
 

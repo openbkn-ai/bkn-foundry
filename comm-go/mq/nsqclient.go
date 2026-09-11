@@ -10,7 +10,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -58,7 +57,7 @@ func (this *messageHandler) HandleMessage(m *nsq.Message) error {
 */
 // endregion
 
-func (this *OpenBKNNSQClient) Close() {}
+func (client *OpenBKNNSQClient) Close() {}
 
 // NewNSQClient create a nsq client
 //
@@ -82,18 +81,18 @@ func NewNSQClient(pubServer string, pubPort int, subServer string, subPort int) 
 	}
 }
 
-func (this *OpenBKNNSQClient) createTopic(topic string) {
+func (client *OpenBKNNSQClient) createTopic(topic string) {
 	log.Println("Try to create new topic", topic)
 	for {
-		body := bytes.NewBuffer([]byte(""))
-		req, err := http.NewRequest("POST", fmt.Sprintf("%s/topic/create?topic=%s", this.pubHTTPServer, topic), body)
+		body := bytes.NewBufferString("")
+		req, err := http.NewRequest("POST", fmt.Sprintf("%s/topic/create?topic=%s", client.pubHTTPServer, topic), body)
 		if err == nil {
 			req.Header.Set("User-Agent", "openbknmsq.nsqwrapper")
 			req.Header.Set("Content-Type", "application/octet-stream")
-			resp, err := this.httpclient.Do(req)
+			resp, err := client.httpclient.Do(req)
 			if err == nil {
-				_, _ = io.Copy(ioutil.Discard, resp.Body)
-				resp.Body.Close()
+				_, _ = io.Copy(io.Discard, resp.Body)
+				_ = resp.Body.Close()
 				if resp.StatusCode == 200 {
 					return
 				}
@@ -109,18 +108,18 @@ func (this *OpenBKNNSQClient) createTopic(topic string) {
 	}
 }
 
-func (this *OpenBKNNSQClient) createTopicChannel(topic string, channel string) {
+func (client *OpenBKNNSQClient) createTopicChannel(topic string, channel string) {
 	log.Println("Try to create new channel", channel, topic)
 	for {
-		body := bytes.NewBuffer([]byte(""))
-		req, err := http.NewRequest("POST", fmt.Sprintf("http://%s/channel/create?topic=%s&channel=%s", this.subLookupDHTTPServer, topic, channel), body)
+		body := bytes.NewBufferString("")
+		req, err := http.NewRequest("POST", fmt.Sprintf("http://%s/channel/create?topic=%s&channel=%s", client.subLookupDHTTPServer, topic, channel), body)
 		if err == nil {
 			req.Header.Set("User-Agent", "openbknmsq.nsqwrapper")
 			req.Header.Set("Content-Type", "application/octet-stream")
-			resp, err := this.httpclient.Do(req)
+			resp, err := client.httpclient.Do(req)
 			if err == nil {
-				_, _ = io.Copy(ioutil.Discard, resp.Body)
-				resp.Body.Close()
+				_, _ = io.Copy(io.Discard, resp.Body)
+				_ = resp.Body.Close()
 				if resp.StatusCode == 200 {
 					return
 				}
@@ -141,22 +140,22 @@ func (this *OpenBKNNSQClient) createTopicChannel(topic string, channel string) {
 // OpenBKNNSQClient.Pub send message to the specified topic on nsq server.
 //
 // Using nsq http api
-func (this *OpenBKNNSQClient) Pub(topic string, msg []byte) error {
+func (client *OpenBKNNSQClient) Pub(topic string, msg []byte) error {
 	body := bytes.NewBuffer(msg)
-	req, err := http.NewRequest("POST", fmt.Sprintf("%s/pub?topic=%s", this.pubHTTPServer, topic), body)
+	req, err := http.NewRequest("POST", fmt.Sprintf("%s/pub?topic=%s", client.pubHTTPServer, topic), body)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("User-Agent", "openbknmsq.nsqwrapper")
 	req.Header.Set("Content-Type", "application/octet-stream")
-	resp, err := this.httpclient.Do(req)
+	resp, err := client.httpclient.Do(req)
 	if err != nil {
 		return err
 	}
-	_, _ = io.Copy(ioutil.Discard, resp.Body)
-	resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("Receive unexpected http status code %d", resp.StatusCode)
+		return fmt.Errorf("receive unexpected http status code %d", resp.StatusCode)
 	}
 	return nil
 }
@@ -165,10 +164,10 @@ func (this *OpenBKNNSQClient) Pub(topic string, msg []byte) error {
 //
 // pollIntervalMilliseconds in ms, control the interval of polling process, should be in range [1, 1000]
 // maxInFlight control the concurrency the message handler, should be in range [1 256]
-func (this *OpenBKNNSQClient) Sub(topic string, channel string, handler MessageHandler, pollIntervalMilliseconds int64, maxInFlight int, opts ...SubOpt) error {
+func (client *OpenBKNNSQClient) Sub(topic string, channel string, handler MessageHandler, pollIntervalMilliseconds int64, maxInFlight int, opts ...SubOpt) error {
 	// create topic/channel first
-	this.createTopic(topic)
-	this.createTopicChannel(topic, channel)
+	client.createTopic(topic)
+	client.createTopicChannel(topic, channel)
 	log.Println("start new consumer", topic, channel)
 	cfg := nsq.NewConfig()
 	cfg.MaxAttempts = 65535
@@ -198,7 +197,7 @@ func (this *OpenBKNNSQClient) Sub(topic string, channel string, handler MessageH
 		concurrency = 1
 	}
 	consumer.AddConcurrentHandlers(nsqMsgHandler(handler), concurrency)
-	err = consumer.ConnectToNSQLookupds([]string{this.subLookupDHTTPServer})
+	err = consumer.ConnectToNSQLookupds([]string{client.subLookupDHTTPServer})
 	if err != nil {
 		return err
 	}

@@ -99,11 +99,12 @@ func customDMSVCConf(host string, port string) error {
 	}
 
 	dmsvc := fmt.Sprintf("DM=(%s)", strings.Join(result, ","))
+	//nolint:gosec // The DM driver requires this fixed configuration path.
 	file, err := os.Create("/tmp/dm_svc.conf")
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	_, err = file.WriteString(dmsvc)
 	if err != nil {
 		return err

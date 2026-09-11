@@ -78,11 +78,9 @@ func (h *CapabilitiesHandler) RegisterRoutes(group *gin.RouterGroup) {
 }
 
 func (h *CapabilitiesHandler) Health(c *gin.Context) {
-	upstream := "unknown"
+	upstream := "ok"
 	if err := h.Service.Client.Ping(c.Request.Context()); err != nil {
 		upstream = "down"
-	} else {
-		upstream = "ok"
 	}
 
 	status := "ok"
@@ -362,7 +360,7 @@ func (h *CapabilitiesHandler) RegisterSkillCapability(c *gin.Context) {
 		writeBadRequest(c, err.Error())
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	content, err := io.ReadAll(file)
 	if err != nil {
@@ -446,7 +444,7 @@ func (h *CapabilitiesHandler) ImportCapabilityPackage(c *gin.Context) {
 		writeBadRequest(c, err.Error())
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	content, err := io.ReadAll(file)
 	if err != nil {

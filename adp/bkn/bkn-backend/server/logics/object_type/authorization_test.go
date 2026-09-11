@@ -50,7 +50,7 @@ func TestObjectTypeSingleResourceAuthorization(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer db.Close()
+				defer func() { _ = db.Close() }()
 				service.db = db
 				sqlMock.ExpectBegin()
 				ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, []string{"ot-1"}).
@@ -83,7 +83,7 @@ func TestObjectTypeMultiResourceDetailRequiresEveryChildPermission(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ids := []string{"ot-1", "ot-2"}
 	sqlMock.ExpectBegin()

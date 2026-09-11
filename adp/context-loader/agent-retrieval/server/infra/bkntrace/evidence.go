@@ -254,7 +254,7 @@ func postArtifactWithRetry(
 		resp, requestErr := evidenceHTTPClient.Do(req)
 		if requestErr == nil {
 			if resp.StatusCode < http.StatusBadRequest {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 				cancel()
 				return nil
 			}
@@ -776,14 +776,14 @@ func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
 			cancel()
 			return err
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		cancel()
 	}
 	return nil
 }
 
 func coreHTTPError(resp *http.Response) error {
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxCoreErrorBodyBytes+1))
 	var payload struct {
 		Code    string `json:"code"`
@@ -1339,6 +1339,7 @@ func controlledRef(refID, refType string) map[string]any {
 	}
 }
 
+//nolint:unused // Retained for evidence identity extraction.
 func objectInstanceIdentity(item any) (map[string]any, bool) {
 	itemMap, ok := asMap(item)
 	if !ok {
@@ -1466,6 +1467,7 @@ func walkSubgraphValue(value any, visit func(map[string]any) bool) bool {
 	return true
 }
 
+//nolint:unused // Retained for relation evidence traversal.
 func walkRelationContainers(value any, visit func(map[string]any) bool) bool {
 	return walkSubgraphValue(value, func(item map[string]any) bool {
 		for key, nested := range item {
@@ -1480,6 +1482,7 @@ func walkRelationContainers(value any, visit func(map[string]any) bool) bool {
 	})
 }
 
+//nolint:unused // Retained for relation evidence traversal.
 func isRelationContainerKey(key string) bool {
 	switch key {
 	case "relation", "relations", "relation_path", "relation_paths", "relation_type", "relation_types":
@@ -1559,6 +1562,7 @@ func querySubgraphPathHash(req *interfaces.QueryInstanceSubgraphReq) string {
 	return HashValue(req.RelationTypePaths)
 }
 
+//nolint:unused // Retained for evidence identity hashing.
 func hashSuffix(value any) string {
 	hash := strings.TrimPrefix(HashValue(value), "sha256:")
 	if len(hash) > 24 {

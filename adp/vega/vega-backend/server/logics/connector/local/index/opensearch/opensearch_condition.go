@@ -995,7 +995,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionBefore(condition interfaces.
 	// Parse the datetime string
 	datetime, err := time.Parse(time.RFC3339, datetimeStr)
 	if err != nil {
-		return nil, fmt.Errorf("condition [before] failed to parse datetime: %v", err)
+		return nil, fmt.Errorf("condition [before] failed to parse datetime: %w", err)
 	}
 
 	// Subtract the interval hours from the datetime

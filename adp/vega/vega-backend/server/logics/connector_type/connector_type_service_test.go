@@ -208,7 +208,8 @@ func TestConnectorTypeServiceGetByType(t *testing.T) {
 
 		require.Nil(t, got)
 		require.Error(t, err)
-		httpErr, ok := err.(*rest.HTTPError)
+		var httpErr *rest.HTTPError
+		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
 		assert.Equal(t, http.StatusServiceUnavailable, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_ConnectorType_FieldConfigUnavailable, httpErr.BaseError.ErrorCode)

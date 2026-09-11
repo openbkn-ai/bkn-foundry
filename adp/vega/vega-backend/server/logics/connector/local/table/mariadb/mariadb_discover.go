@@ -571,7 +571,7 @@ func (c *MariaDBConnector) GetMetadata(ctx context.Context) (map[string]any, err
 		args[i] = v
 	}
 
-	query := fmt.Sprintf("SHOW GLOBAL VARIABLES WHERE Variable_name IN (%s)", strings.Join(placeholders, ","))
+	query := fmt.Sprintf("SHOW GLOBAL VARIABLES WHERE Variable_name IN (%s)", strings.Join(placeholders, ",")) //nolint:gosec // Placeholders are generated locally; values are driver-bound.
 	rows, err := c.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		// Just log error and return partial metadata if SHOW VARIABLES fails (unlikely)

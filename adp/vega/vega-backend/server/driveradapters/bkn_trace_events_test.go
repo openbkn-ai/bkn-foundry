@@ -20,7 +20,7 @@ func TestResourceDataArtifactContentPreservesActualQueryAndBusinessResult(t *tes
 		ID: "res_purchase_order", CatalogID: "cat_supplychain",
 	}
 	params := &interfaces.ResourceDataQueryParams{
-		Limit: 20,
+		Paging: interfaces.PagingRequest{Limit: 20},
 		FilterCondition: map[string]any{
 			"field": "supplier_id", "operation": "eq", "value": "SUP-001",
 		},
@@ -37,6 +37,12 @@ func TestResourceDataArtifactContentPreservesActualQueryAndBusinessResult(t *tes
 	}
 
 	queryBody, resultBody := resourceDataArtifactContent(resource, params, result)
+	if _, exists := queryBody["offset"]; exists {
+		t.Fatal("resource data query artifact must not duplicate paging.offset at the top level")
+	}
+	if _, exists := queryBody["limit"]; exists {
+		t.Fatal("resource data query artifact must not duplicate paging.limit at the top level")
+	}
 	raw, err := json.Marshal(map[string]any{"query": queryBody, "result": resultBody})
 	if err != nil {
 		t.Fatal(err)

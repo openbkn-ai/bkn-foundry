@@ -65,7 +65,7 @@ func (h *HydraAdmin) AcceptUserCode(ctx context.Context, deviceChallenge, userCo
 	if err != nil {
 		return "", fmt.Errorf("accept user code: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", fmt.Errorf("accept user code: hydra %d: %s", resp.StatusCode, body)

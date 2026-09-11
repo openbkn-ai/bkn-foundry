@@ -44,7 +44,7 @@ func (a *access) List(ctx context.Context) ([]*interfaces.KNProxyAccount, error)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result := make([]*interfaces.KNProxyAccount, 0)
 	for rows.Next() {

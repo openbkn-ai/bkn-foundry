@@ -10,7 +10,7 @@ import (
 
 func SafeQuerySummary(query any) string {
 	var queryBytes []byte
-	queryType := "unknown"
+	var queryType string
 	switch value := query.(type) {
 	case string:
 		queryType = "sql"

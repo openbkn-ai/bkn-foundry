@@ -73,6 +73,7 @@ func NewRawHTTPClientWithOptions(opts HttpClientOptions) *http.Client {
 			return http.ErrUseLastResponse
 		},
 		Transport: &http.Transport{
+			//nolint:gosec // Existing deployments may use self-signed certificates.
 			TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
 			MaxIdleConnsPerHost:   100,
 			MaxIdleConns:          100,

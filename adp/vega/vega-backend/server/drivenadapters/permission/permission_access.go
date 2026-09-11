@@ -87,7 +87,7 @@ func (pa *permissionAccess) CheckPermission(ctx context.Context, check interface
 		// Log the error.
 		otellog.LogError(ctx, "Post operation-check request failed", err)
 
-		return false, fmt.Errorf("post operation-check request failed: %v", err)
+		return false, fmt.Errorf("post operation-check request failed: %w", err)
 	}
 	if respCode != http.StatusOK {
 		// Convert to baseerror
@@ -180,7 +180,7 @@ func (pa *permissionAccess) CreateResources(ctx context.Context, policies []inte
 		// Log the error.
 		otellog.LogError(ctx, "Post create policy request failed", err)
 
-		return fmt.Errorf("post create policy request failed: %v", err)
+		return fmt.Errorf("post create policy request failed: %w", err)
 	}
 	if respCode != http.StatusNoContent {
 		// Convert to baseerror
@@ -250,7 +250,7 @@ func (pa *permissionAccess) DeleteResources(ctx context.Context, res []interface
 		// Log the error.
 		otellog.LogError(ctx, "Post delete policy request failed", err)
 
-		return fmt.Errorf("post delete policy request failed: %v", err)
+		return fmt.Errorf("post delete policy request failed: %w", err)
 	}
 	if respCode != http.StatusNoContent {
 		// Convert to baseerror
@@ -323,7 +323,7 @@ func (pa *permissionAccess) FilterResources(ctx context.Context,
 		// Log the error.
 		otellog.LogError(ctx, "Post resource-filter request failed", err)
 
-		return map[string]interfaces.PermissionResourceOps{}, fmt.Errorf("post resource-filter request failed: %v", err)
+		return map[string]interfaces.PermissionResourceOps{}, fmt.Errorf("post resource-filter request failed: %w", err)
 	}
 	if respCode != http.StatusOK {
 		// Convert to baseerror

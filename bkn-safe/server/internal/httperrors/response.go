@@ -39,7 +39,7 @@ func Write(c *gin.Context, status int, details any) {
 func WriteCode(c *gin.Context, status int, code string, details any) {
 	err := NewCode(c.Request.Context(), status, code)
 	if details != nil {
-		err.WithErrorDetails(details)
+		err = err.WithErrorDetails(details)
 	}
 	sharedrest.MarkLocalizedResponse(c)
 	c.JSON(status, localizedErrorResponse{

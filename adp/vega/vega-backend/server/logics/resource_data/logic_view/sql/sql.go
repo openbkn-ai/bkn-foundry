@@ -798,8 +798,8 @@ func (b *SQLBuilder) ApplyParams(ctx context.Context, params *interfaces.Resourc
 	}
 
 	// 3. Handle pagination/restrictions
-	if (params.QueryType == "" || params.QueryType == interfaces.QueryType_Standard) && params.Limit > 0 {
-		b.Limit(params.Limit)
+	if (params.QueryType == "" || params.QueryType == interfaces.QueryType_Standard) && params.Paging.Limit > 0 {
+		b.Limit(params.Paging.Limit)
 	}
 
 	return nil

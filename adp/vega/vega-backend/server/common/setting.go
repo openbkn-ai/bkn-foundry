@@ -29,11 +29,11 @@ import (
 
 // ServerSetting server configuration item
 type ServerSetting struct {
-	RunMode      string        `mapstructure:"runMode"`
-	HttpPort     int           `mapstructure:"httpPort"`
-	Language     string        `mapstructure:"language"`
-	ReadTimeOut  time.Duration `mapstructure:"readTimeOut"`
-	WriteTimeout time.Duration `mapstructure:"writeTimeOut"`
+	RunMode      string `mapstructure:"runMode"`
+	HttpPort     int    `mapstructure:"httpPort"`
+	Language     string `mapstructure:"language"`
+	ReadTimeOut  int    `mapstructure:"readTimeOut"`
+	WriteTimeout int    `mapstructure:"writeTimeOut"`
 }
 
 // CryptoSetting RSA key configuration item

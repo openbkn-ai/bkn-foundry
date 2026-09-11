@@ -234,7 +234,8 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 		got, err := service.GetByID(context.Background(), "schedule-1")
 
 		require.Nil(t, got)
-		httpErr, ok := err.(*rest.HTTPError)
+		var httpErr *rest.HTTPError
+		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
 		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
 	})
@@ -265,7 +266,8 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 
 		require.Nil(t, got)
 		assert.Zero(t, total)
-		httpErr, ok := err.(*rest.HTTPError)
+		var httpErr *rest.HTTPError
+		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
 		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
 	})
@@ -297,7 +299,9 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 
 		err := service.UpdateEnabled(context.Background(), schedule, false)
 
-		httpErr, ok := err.(*rest.HTTPError)
+		var httpErr *rest.HTTPError
+
+		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_UpdateConflict, httpErr.BaseError.ErrorCode)

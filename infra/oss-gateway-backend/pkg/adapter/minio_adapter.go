@@ -184,8 +184,8 @@ func (a *MinIOAdapter) GetCompleteMultipartUpload(ctx context.Context, objectKey
 		if !strings.HasPrefix(etag, "\"") {
 			etag = fmt.Sprintf("\"%s\"", etag)
 		}
-		xmlParts.WriteString(fmt.Sprintf("<Part><PartNumber>%d</PartNumber><ETag>%s</ETag></Part>",
-			p.PartNumber, etag))
+		_, _ = fmt.Fprintf(&xmlParts, "<Part><PartNumber>%d</PartNumber><ETag>%s</ETag></Part>",
+			p.PartNumber, etag)
 	}
 	xmlParts.WriteString("</CompleteMultipartUpload>")
 

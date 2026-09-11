@@ -630,7 +630,7 @@ func (c *OpenSearchConnector) GetDocument(ctx context.Context, indexName string,
 
 	if resp.IsError() {
 		if resp.StatusCode == http.StatusNotFound {
-			return nil, nil
+			return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 		}
 		return nil, fmt.Errorf("failed to get document: %s", resp.String())
 	}

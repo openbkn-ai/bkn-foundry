@@ -9,6 +9,7 @@ package semantic_understanding_task
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -217,9 +218,9 @@ func (suta *semanticUnderstandingTaskAccess) GetByID(ctx context.Context, id str
 	}
 
 	task, err := scanSemanticUnderstandingTask(suta.db.QueryRowContext(ctx, sqlStr, vals...))
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "Semantic understanding task not found")
-		return nil, nil
+		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 	if err != nil {
 		otellog.LogError(ctx, "Get semantic understanding task failed", err)
@@ -290,9 +291,9 @@ func (suta *semanticUnderstandingTaskAccess) FindActiveByInputHash(ctx context.C
 	}
 
 	task, err := scanSemanticUnderstandingTask(suta.db.QueryRowContext(ctx, sqlStr, vals...))
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "Active semantic understanding task not found")
-		return nil, nil
+		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 	if err != nil {
 		otellog.LogError(ctx, "Find active semantic understanding task failed", err)
@@ -338,6 +339,10 @@ func (suta *semanticUnderstandingTaskAccess) InternalList(ctx context.Context,
 		From(SEMANTIC_UNDERSTANDING_TASK_TABLE_NAME)
 	builder = applySemanticUnderstandingTaskFilters(builder, params).
 		OrderBy(buildOrderByClause(params.Sort, params.Direction))
+
+	if params.Offset < 0 {
+		return nil, fmt.Errorf("semantic understanding task offset must not be negative")
+	}
 	if params.Limit > 0 {
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}
@@ -578,8 +583,6 @@ func buildOrderByClause(sort, direction string) string {
 	case interfaces.SemanticUnderstandingTaskSortFinishTime:
 		column = "f_finish_time"
 	case interfaces.SemanticUnderstandingTaskSortCreateTime:
-		column = "f_create_time"
-	default:
 		column = "f_create_time"
 	}
 

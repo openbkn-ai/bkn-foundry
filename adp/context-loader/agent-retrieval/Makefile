@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help generate-mock wsl fmt lint ciLint ciLintFix vet test test-cover ci dev
+.PHONY: help generate-mock wsl fmt lint vet test test-cover ci dev
 
 PKG_LIST_CMD = go list ./server/... | grep -v '/server/tests/' | grep -v '/server/mocks'
 SHELL_STRICT = set -eu; set -o pipefail 2>/dev/null || true;
@@ -11,9 +11,7 @@ help:
 	@echo "  generate-mock\t生成mock代码"
 	@echo "  wsl\t\t运行 wsl 空白格式修复"
 	@echo "  fmt\t\t运行 gofumpt + goimports 格式化"
-	@echo "  lint\t\t运行 wsl + fmt + golangci-lint（含自动修复）"
-	@echo "  ciLint\t运行 golangci-lint 检查（不修复）"
-	@echo "  ciLintFix\t运行 golangci-lint 检查并自动修复"
+	@echo "  lint\t\t运行 golangci-lint 检查"
 	@echo "  vet\t\t运行 go vet 快速检查"
 	@echo "  test\t\t执行单元测试"
 	@echo "  test-cover\t执行单元测试并生成覆盖率报告"
@@ -33,18 +31,8 @@ fmt:
 	@goimports -w ./**/*.go
 	@echo "fmt done"
 
-ciLint:
-	golangci-lint run --out-format=colored-line-number ./... --exclude-dirs=server/tests --exclude-dirs=server/mocks
-	@echo "ciLint done"
-
-ciLintFix:
-	@golangci-lint run --out-format=colored-line-number ./... --exclude-dirs=server/tests --exclude-dirs=server/mocks --fix
-	@echo "ciLintFix done"
-
 lint:
-	$(MAKE) wsl
-	$(MAKE) fmt
-	$(MAKE) ciLintFix
+	golangci-lint run ./...
 
 vet:
 	@echo "==== go vet ===="

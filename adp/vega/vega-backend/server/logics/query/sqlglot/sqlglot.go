@@ -44,6 +44,7 @@ type SQLParseResult struct {
 
 // ExtractTables extracts all table names from SQL
 func ExtractTables(sql string, dialect string) (*ExtractTablesResult, error) {
+	//nolint:gosec // Static script; untrusted values are argv, not shell input.
 	cmd := exec.Command("python3", "-c", `
 import sys
 import json
@@ -122,6 +123,7 @@ func TranspileSQL(ctx context.Context, sql string, fromDialect string, dataSourc
 		return nil, err
 	}
 
+	//nolint:gosec // Static script; untrusted values are argv, not shell input.
 	cmd := exec.CommandContext(ctx, "python3", "-c", `
 import sys
 import json

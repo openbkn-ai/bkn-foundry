@@ -311,7 +311,7 @@ func (rts *riskTypeService) ListRiskTypes(ctx context.Context, query interfaces.
 	}
 
 	var operationMap map[string]interfaces.PermissionResourceOps
-	total := len(list)
+	var total int
 	list, total, operationMap, err = permission.FilterAndPaginateKNChildrenWithOperations(ctx, rts.ps,
 		interfaces.RESOURCE_TYPE_RISK_TYPE, query.KNID, list,
 		func(riskType *interfaces.RiskType) string { return riskType.RTID }, query.Offset, query.Limit)

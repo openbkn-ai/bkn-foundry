@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -41,6 +42,9 @@ func normalizeTimestampValue(value any) any {
 	case int32:
 		return int64(v)
 	case uint:
+		if uint64(v) > math.MaxInt64 {
+			return v
+		}
 		return int64(v)
 	case uint32:
 		return int64(v)

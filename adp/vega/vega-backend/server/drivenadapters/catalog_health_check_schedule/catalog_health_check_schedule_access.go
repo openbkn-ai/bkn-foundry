@@ -197,7 +197,7 @@ func (chcsa *catalogHealthCheckScheduleAccess) ListDue(ctx context.Context, now 
 		otellog.LogError(ctx, "Query due catalog health check schedules failed", err)
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	schedules := make([]*interfaces.CatalogHealthCheckSchedule, 0)
 	for rows.Next() {

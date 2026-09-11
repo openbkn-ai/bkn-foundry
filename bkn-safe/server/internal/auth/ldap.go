@@ -61,7 +61,7 @@ func (a *LDAPAuthenticator) Verify(ctx context.Context, account, password string
 	if err != nil {
 		return nil, fmt.Errorf("ldap dial: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// 1. service-account bind to search.
 	if a.cfg.BindDN != "" {
@@ -133,7 +133,7 @@ func NewChain(auths ...Authenticator) *Chain { return &Chain{auths: auths} }
 
 // Verify tries each authenticator; credential failures fall through to the next.
 func (c *Chain) Verify(ctx context.Context, account, password string) (*model.User, error) {
-	var lastErr error = ErrInvalidCredentials
+	lastErr := ErrInvalidCredentials
 	for _, a := range c.auths {
 		u, err := a.Verify(ctx, account, password)
 		if err == nil {

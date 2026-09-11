@@ -756,6 +756,7 @@ func isSuperAdminRoleID(c *gin.Context, db *gorm.DB, roleID string) (bool, error
 // may remove one, because after a removal nothing could put it back and the
 // platform would be left with no wildcard authority until a restart re-seeded
 // it. Changing the holder is a deliberate, out-of-band operation.
+//nolint:unused // Retained as the stable seed-only membership message.
 const superAdminSeedOnlyMsg = "super_admin membership is fixed by the seed and cannot be changed through the API"
 
 // registerRoles mounts the role catalog endpoints (admin-only, under /admin).

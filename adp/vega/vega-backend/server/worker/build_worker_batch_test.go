@@ -23,10 +23,11 @@ import (
 )
 
 func TestBuildBatchCursorFilter(t *testing.T) {
-	filter := buildBatchCursorFilter(
+	filter, err := buildBatchCursorFilter(
 		[]string{"customer_id", "id"},
 		[]interfaces.KeyValue{{Key: "customer_id", Value: "customer-1"}, {Key: "id", Value: 100}},
 	)
+	require.NoError(t, err)
 
 	require.Equal(t, "or", filter.Operation)
 	require.Len(t, filter.SubConds, 2)
@@ -45,9 +46,19 @@ func TestBuildBatchCursorFilter(t *testing.T) {
 	}, filter.SubConds[1])
 }
 
+func TestBuildBatchCursorFilterRejectsMismatchedCursor(t *testing.T) {
+	filter, err := buildBatchCursorFilter(
+		[]string{"customer_id", "id"},
+		[]interfaces.KeyValue{{Key: "customer_id", Value: "customer-1"}},
+	)
+	require.Error(t, err)
+	assert.Nil(t, filter)
+}
+
 func TestBuildBatchCursorFilterAppendsPrimaryKeyForSameIncrementalValue(t *testing.T) {
 	keys := sync_checkpoint.EffectiveCursorFields([]string{"ingested_at"}, []string{"id"})
-	filter := buildBatchCursorFilter(keys, []interfaces.KeyValue{{Key: "ingested_at", Value: "T1"}, {Key: "id", Value: int64(1000)}})
+	filter, err := buildBatchCursorFilter(keys, []interfaces.KeyValue{{Key: "ingested_at", Value: "T1"}, {Key: "id", Value: int64(1000)}})
+	require.NoError(t, err)
 
 	require.Equal(t, []string{"ingested_at", "id"}, keys)
 	require.Len(t, filter.SubConds, 2)
@@ -55,7 +66,7 @@ func TestBuildBatchCursorFilterAppendsPrimaryKeyForSameIncrementalValue(t *testi
 	assert.Equal(t, "==", filter.SubConds[1].SubConds[0].Operation)
 	assert.Equal(t, "id", filter.SubConds[1].SubConds[1].Name)
 	assert.Equal(t, "gt", filter.SubConds[1].SubConds[1].Operation)
-	assert.Equal(t, int64(1000), filter.SubConds[1].SubConds[1].ValueOptCfg.Value)
+	assert.Equal(t, int64(1000), filter.SubConds[1].SubConds[1].Value)
 }
 
 func TestBatchCursorReadsAllSameIncrementalValueAcrossPages(t *testing.T) {
@@ -63,7 +74,8 @@ func TestBatchCursorReadsAllSameIncrementalValueAcrossPages(t *testing.T) {
 		t.Run(fmt.Sprintf("%d same values", count), func(t *testing.T) {
 			first := min(count, 1000)
 			cursor := []interfaces.KeyValue{{Key: "ingested_at", Value: "T1"}, {Key: "id", Value: int64(first)}}
-			filter := buildBatchCursorFilter(sync_checkpoint.EffectiveCursorFields([]string{"ingested_at"}, []string{"id"}), cursor)
+			filter, err := buildBatchCursorFilter(sync_checkpoint.EffectiveCursorFields([]string{"ingested_at"}, []string{"id"}), cursor)
+			require.NoError(t, err)
 			second := make([]int64, 0, count-first)
 			for id := int64(1); id <= int64(count); id++ {
 				if matchesStringInt64CursorFilter(t, filter, map[string]any{"ingested_at": "T1", "id": id}) {
@@ -83,10 +95,11 @@ func TestBatchCursorReadsAllSameIncrementalValueAcrossPages(t *testing.T) {
 		rows = append(rows,
 			map[string]any{"ingested_at": "T1", "id": int64(1000)},
 			map[string]any{"ingested_at": "T1", "id": int64(1001)})
-		filter := buildBatchCursorFilter(
+		filter, err := buildBatchCursorFilter(
 			[]string{"ingested_at", "id"},
 			[]interfaces.KeyValue{{Key: "ingested_at", Value: "T1"}, {Key: "id", Value: int64(1000)}},
 		)
+		require.NoError(t, err)
 		remaining := make([]map[string]any, 0, 1)
 		for _, row := range rows {
 			if matchesStringInt64CursorFilter(t, filter, row) {
@@ -108,9 +121,9 @@ func matchesStringInt64CursorFilter(t *testing.T, filter *interfaces.FilterCondC
 			require.True(t, exists, "row is missing cursor field %q", condition.Name)
 			switch condition.Operation {
 			case "==":
-				matches = matches && actual == condition.ValueOptCfg.Value
+				matches = matches && actual == condition.Value
 			case "gt":
-				switch expected := condition.ValueOptCfg.Value.(type) {
+				switch expected := condition.Value.(type) {
 				case string:
 					matches = matches && actual.(string) > expected
 				case int64:
@@ -134,13 +147,14 @@ func TestBatchCursorKeepsCompositePrimaryFieldsForResume(t *testing.T) {
 		[]string{"updated_at", "tenant_id"}, []string{"tenant_id", "id"},
 	)
 	cursor := []interfaces.KeyValue{{Key: "updated_at", Value: "T1"}, {Key: "tenant_id", Value: "tenant-a"}, {Key: "id", Value: int64(1000)}}
-	filter := buildBatchCursorFilter(keys, cursor)
+	filter, err := buildBatchCursorFilter(keys, cursor)
+	require.NoError(t, err)
 
 	require.Equal(t, []string{"updated_at", "tenant_id", "id"}, keys)
 	require.Len(t, filter.SubConds, 3)
 	assert.Equal(t, "id", filter.SubConds[2].SubConds[2].Name)
 	assert.Equal(t, "gt", filter.SubConds[2].SubConds[2].Operation)
-	assert.Equal(t, int64(1000), filter.SubConds[2].SubConds[2].ValueOptCfg.Value)
+	assert.Equal(t, int64(1000), filter.SubConds[2].SubConds[2].Value)
 }
 
 func TestBatchBuildWorkerHandleTask(t *testing.T) {
@@ -300,7 +314,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 					return &interfaces.QueryResult{}, nil
 				}
 				require.NotNil(t, params.FilterCondCfg)
-				assert.Equal(t, 1000, params.Limit)
+				assert.Equal(t, 1000, params.Paging.Limit)
 				assert.Equal(t, queryCount == 1, params.NeedTotal)
 				entries := make([]map[string]any, 1000)
 				firstID := int64(8001 + (queryCount-1)*1000)
@@ -605,17 +619,17 @@ func TestBatchBuildWorkerReadsSameIncrementalValueAcrossPages(t *testing.T) {
 				idCondition := params.FilterCondCfg.SubConds[1].SubConds[1]
 				assert.Equal(t, "id", idCondition.Name)
 				assert.Equal(t, "gt", idCondition.Operation)
-				assert.Equal(t, int64(1020), idCondition.ValueOptCfg.Value)
+				assert.Equal(t, int64(1020), idCondition.Value)
 			}
-			cursorTime := params.FilterCondCfg.SubConds[0].SubConds[0].ValueOptCfg.Value.(string)
-			cursorID := params.FilterCondCfg.SubConds[1].SubConds[1].ValueOptCfg.Value.(int64)
-			entries := make([]map[string]any, 0, params.Limit)
+			cursorTime := params.FilterCondCfg.SubConds[0].SubConds[0].Value.(string)
+			cursorID := params.FilterCondCfg.SubConds[1].SubConds[1].Value.(int64)
+			entries := make([]map[string]any, 0, params.Paging.Limit)
 			for _, row := range sourceRows {
 				rowTime := row["ingested_at"].(string)
 				rowID := row["id"].(int64)
 				if rowTime > cursorTime || rowTime == cursorTime && rowID > cursorID {
 					entries = append(entries, row)
-					if len(entries) == params.Limit {
+					if len(entries) == params.Paging.Limit {
 						break
 					}
 				}

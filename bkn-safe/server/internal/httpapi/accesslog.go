@@ -79,7 +79,7 @@ func registerLogout(group *gin.RouterGroup, store *accesslog.Store, directory *d
 			RequestID: requestIDFromHeader(c), ClientIP: c.ClientIP(),
 		}); err != nil {
 			// Access recording must not strand a user in a session.
-			c.Error(err)
+			_ = c.Error(err)
 		}
 		c.Status(http.StatusNoContent)
 	})

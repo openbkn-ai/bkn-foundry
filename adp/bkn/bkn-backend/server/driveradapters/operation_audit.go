@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -236,7 +235,7 @@ func (w *boundedResponseWriter) WriteString(value string) (int, error) {
 }
 
 func (w *boundedResponseWriter) FlushResponse() {
-	if w.wroteHeader && w.ResponseWriter.Written() {
+	if w.wroteHeader && w.Written() {
 		return
 	}
 	status := w.status
@@ -481,10 +480,6 @@ func operationAuditPrintableASCII(value string) bool {
 		}
 	}
 	return true
-}
-
-func operationAuditScopeValue(headerValue, environmentName string) string {
-	return firstNonEmpty(strings.TrimSpace(headerValue), strings.TrimSpace(os.Getenv(environmentName)))
 }
 
 func operationAuditSourceChannel(fullPath string) string {

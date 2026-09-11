@@ -64,13 +64,13 @@ func (m *Metrics) RenderPrometheus() string {
 	builder.WriteString("# HELP capabilities_lab_http_requests_total Total HTTP requests handled by capabilities-lab.\n")
 	builder.WriteString("# TYPE capabilities_lab_http_requests_total counter\n")
 	for _, row := range rows {
-		builder.WriteString(fmt.Sprintf(
+		_, _ = fmt.Fprintf(&builder,
 			"capabilities_lab_http_requests_total{method=%q,route=%q,status=%q} %d\n",
 			row.method,
 			row.route,
 			row.status,
 			row.value,
-		))
+		)
 	}
 
 	return builder.String()

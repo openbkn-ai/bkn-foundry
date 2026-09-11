@@ -7,6 +7,7 @@
 package rest
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -54,14 +55,14 @@ func ReplyOkWithHeaders(c *gin.Context, statusCode int, body interface{}, header
 func ReplyError(c *gin.Context, err error) {
 	var statusCode int
 	var body string
-	switch e := err.(type) {
-	case *HTTPError:
-		statusCode = e.HTTPCode
-		body = e.Error()
-	default:
+	var httpErr *HTTPError
+	if errors.As(err, &httpErr) {
+		statusCode = httpErr.HTTPCode
+		body = httpErr.Error()
+	} else {
 		statusCode = http.StatusInternalServerError
 		ctx := GetLanguageCtx(c)
-		body = NewHTTPError(ctx, statusCode, PublicError_InternalServerError).WithErrorDetails(e.Error()).Error()
+		body = NewHTTPError(ctx, statusCode, PublicError_InternalServerError).WithErrorDetails(err.Error()).Error()
 	}
 
 	MarkLocalizedResponse(c)

@@ -73,7 +73,7 @@ func (c *OperatorIntegrationClient) DownloadSkillPackage(
 	if err != nil {
 		return nil, "", err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	payload, err := io.ReadAll(res.Body)
 	if err != nil {
@@ -134,6 +134,7 @@ func (c *OperatorIntegrationClient) UpdateSkillPackage(
 	}
 	mimeType := payload.MimeType
 	if mimeType == "" {
+		//nolint:ineffassign // Retained for multipart MIME-type support.
 		mimeType = "application/octet-stream"
 	}
 
@@ -161,7 +162,7 @@ func (c *OperatorIntegrationClient) UpdateSkillPackage(
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	responseBody, err := io.ReadAll(res.Body)
 	if err != nil {

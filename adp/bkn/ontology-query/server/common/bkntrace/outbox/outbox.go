@@ -233,7 +233,7 @@ func (r *Repository) Enqueue(ctx context.Context, event Event, owner Owner) (Eve
 	if err != nil {
 		return Event{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var epoch, next uint64
 	if err := tx.QueryRowContext(ctx, fmt.Sprintf("SELECT current_epoch, next_sequence FROM %s WHERE producer_id = ? AND producer_stream_id = ? FOR UPDATE", tableStream), r.config.ProducerID, r.config.ProducerStreamID).Scan(&epoch, &next); err != nil {
 		return Event{}, err
@@ -320,7 +320,7 @@ func (r *Repository) ClaimHeadOfLine(ctx context.Context, now time.Time) (*Recor
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	row := tx.QueryRowContext(ctx, r.claimHeadOfLineSQL(), r.config.ProducerStreamID, StatusDelivered, StatusAbandoned)
 	var record Record
 	var raw string
@@ -407,7 +407,7 @@ func (r *Repository) loadCurrentEpoch(ctx context.Context, now time.Time) (uint6
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	ensureArgs := []any{r.config.ProducerID, r.config.ProducerStreamID, now, now}
 	if r.dialect != dialectDM8 {
 		ensureArgs = append(ensureArgs, r.config.ProducerID, r.config.ProducerStreamID)
@@ -436,7 +436,7 @@ func (r *Repository) acquireEpoch(ctx context.Context, now time.Time) (uint64, e
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	ensureArgs := []any{r.config.ProducerID, r.config.ProducerStreamID, now, now}
 	if r.dialect != dialectDM8 {
 		ensureArgs = append(ensureArgs, r.config.ProducerID, r.config.ProducerStreamID)
@@ -606,7 +606,7 @@ func (w *Worker) deliver(record *Record) {
 		_, _ = w.repository.Complete(context.Background(), record, StatusRetry, "core_timeout", retryAt(record.Attempts))
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	status, errorCode, shouldRetry := coreDeliveryOutcome(resp.StatusCode)
 	if status == StatusDelivered {
 		var ack struct {
@@ -715,7 +715,7 @@ func (r *Repository) List(ctx context.Context, options ListOptions) ([]Summary, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]Summary, 0)
 	for rows.Next() {
 		var item Summary
@@ -805,7 +805,7 @@ func (r *Repository) act(ctx context.Context, outboxID int64, action string, req
 	if err != nil {
 		return ActionResult{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var previousHash, previousStatus string
 	var previousVersion uint64
 	var previousAt time.Time

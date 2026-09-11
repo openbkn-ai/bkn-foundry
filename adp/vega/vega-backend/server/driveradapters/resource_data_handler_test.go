@@ -103,8 +103,8 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 		rds.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 				assert.True(t, params.NeedTotal)
-				assert.Equal(t, 0, params.Offset)
-				assert.Equal(t, 2, params.Limit)
+				assert.Equal(t, 0, params.Paging.Offset)
+				assert.Equal(t, 2, params.Paging.Limit)
 				return &interfaces.ResourceDataQueryResult{
 					Entries:     []map[string]any{{"id": "doc-1"}},
 					TotalCount:  1,

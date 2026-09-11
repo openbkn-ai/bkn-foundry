@@ -153,7 +153,7 @@ func (s *ToolServiceImpl) CreateToolBox(ctx context.Context, req *interfaces.Cre
 func (s *ToolServiceImpl) parseAndInitDefaultValues(ctx context.Context, req *interfaces.CreateToolBoxReq) (metadatas []interfaces.IMetadataDB, err error) {
 	switch req.MetadataType {
 	case interfaces.MetadataTypeAPI:
-		if req.OpenAPIInput != nil && req.OpenAPIInput.Data != nil {
+		if req.OpenAPIInput != nil && req.Data != nil {
 			// Parse API data.
 			var rawContent any
 			rawContent, err = s.MetadataService.ParseRawContent(ctx, req.MetadataType, req.OpenAPIInput)

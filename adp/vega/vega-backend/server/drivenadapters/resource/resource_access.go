@@ -10,6 +10,7 @@ package resource
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -375,9 +376,9 @@ func (ra *resourceAccess) GetByID(ctx context.Context, tx *sql.Tx, id string) (*
 		row = ra.db.QueryRowContext(ctx, sqlStr, vals...)
 	}
 	resource, err := scanResource(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "")
-		return nil, nil
+		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 	if err != nil {
 		logger.Errorf("Scan resource failed: %v", err)
@@ -548,9 +549,9 @@ func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name 
 
 	row := ra.db.QueryRowContext(ctx, sqlStr, vals...)
 	resource, err := scanResource(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "")
-		return nil, nil
+		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 	if err != nil {
 		logger.Errorf("Scan resource failed: %v", err)
@@ -1178,6 +1179,10 @@ func (ra *resourceAccess) DeleteByCatalogID(ctx context.Context, tx *sql.Tx, cat
 	sqlStr, vals, err := sq.Delete(RESOURCE_TABLE_NAME).
 		Where(sq.Eq{"f_catalog_id": catalogID}).
 		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return err
+	}
 
 	if tx != nil {
 		_, err = tx.ExecContext(ctx, sqlStr, vals...)

@@ -120,6 +120,8 @@ func (s *knToolsService) warnf(ctx context.Context, format string, args ...any) 
 // A failure to read them fails the search. Continuing with an empty whitelist would look like a
 // network that mounted nothing, and continuing without one would return the whole catalogue —
 // both answer a question the service cannot currently answer.
+//
+//nolint:unused // Retained for toolbox binding extensions.
 func (s *knToolsService) boundToolRefs(ctx context.Context, knID, toolboxID string) ([]string, error) {
 	refs, _, err := s.boundRefs(ctx, knID, toolboxID)
 	return refs, err

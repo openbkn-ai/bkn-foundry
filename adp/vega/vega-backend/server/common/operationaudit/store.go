@@ -120,7 +120,7 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 		{"actor_id", filter.ActorID}, {"action", filter.Action}, {"target_type", filter.TargetType}, {"target_id", filter.TargetID}, {"outcome", filter.Outcome},
 	} {
 		if strings.TrimSpace(condition.value) != "" {
-			query += " AND " + condition.column + "=?"
+			query += " AND " + condition.column + "=?" //nolint:gosec // column is selected from the static list above; value is bound.
 			args = append(args, strings.TrimSpace(condition.value))
 		}
 	}
@@ -137,7 +137,7 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 	if err != nil {
 		return Page{}, fmt.Errorf("list operation audit: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	entries := make([]Entry, 0, limit+1)
 	for rows.Next() {
 		var entry Entry

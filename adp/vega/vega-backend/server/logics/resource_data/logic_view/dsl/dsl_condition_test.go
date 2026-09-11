@@ -51,5 +51,5 @@ func (unsupportedDSLCondition) IsSingleValue() bool        { return false }
 func (unsupportedDSLCondition) IsFixedLenArrayValue() bool { return false }
 func (unsupportedDSLCondition) RequiredValueLen() int      { return -1 }
 func (unsupportedDSLCondition) New(context.Context, *interfaces.FilterCondCfg, map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
-	return nil, nil
+	return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 }

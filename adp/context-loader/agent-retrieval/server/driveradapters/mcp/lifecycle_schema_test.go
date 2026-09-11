@@ -500,6 +500,7 @@ func TestHelmEnforcesInstalledLifecycleCoreByDefault(t *testing.T) {
 	}
 }
 
+//nolint:unused // Retained for schema snapshot extensions.
 type frozenSchema struct {
 	Type       string
 	Required   []string
@@ -508,6 +509,7 @@ type frozenSchema struct {
 	Items      *frozenSchema
 }
 
+//nolint:unused // Retained for schema snapshot extensions.
 func freezeSchema(
 	value map[string]any,
 	definitions map[string]map[string]any,

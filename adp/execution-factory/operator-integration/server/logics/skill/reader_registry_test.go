@@ -1915,7 +1915,7 @@ func TestRegisterSkillPersistsSkillVersionForZipAssets(t *testing.T) {
 
 		db, sqlMock, err := sqlmock.New()
 		So(err, ShouldBeNil)
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 
 		sqlMock.ExpectBegin()
 		tx, err := db.Begin()

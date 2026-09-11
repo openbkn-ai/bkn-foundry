@@ -140,7 +140,7 @@ func TestMetricBatchOverwriteAuthorizationRejectsAndRollsBackBeforeBusinessWrite
 	if err != nil {
 		t.Fatalf("sqlmock.New() error = %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	ma := bmock.NewMockMetricAccess(ctrl)
 	ps := bmock.NewMockPermissionService(ctrl)
 	entries := []*interfaces.MetricDefinition{

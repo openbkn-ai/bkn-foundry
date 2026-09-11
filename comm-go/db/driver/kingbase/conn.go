@@ -46,6 +46,7 @@ func (kbConn KBConn) Prepare(query string) (driver.Stmt, error) {
 }
 
 func (kbConn KBConn) Begin() (driver.Tx, error) {
+	//nolint:staticcheck // driver.Conn requires the legacy Begin method.
 	return kbConn.Conn.Begin()
 }
 

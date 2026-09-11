@@ -82,7 +82,7 @@ func TestValidateAndDecryptSensitiveFields(t *testing.T) {
 				},
 			},
 		}
-		config := map[string]any{"password": "rsa_ciphertext", "host": "localhost"}
+		config := map[string]any{"password": "rsa_ciphertext", "host": "localhost"} //nolint:gosec // Test-only placeholder ciphertext.
 
 		decrypted, err := cs.validateAndDecryptSensitiveFields([]string{"password"}, config)
 		if err != nil {
@@ -153,7 +153,7 @@ func TestValidateAndDecryptSensitiveFields(t *testing.T) {
 func TestDecryptSensitiveFields(t *testing.T) {
 	t.Run("decrypt no cipher", func(t *testing.T) {
 		cs := &catalogService{cipher: nil}
-		config := map[string]any{"password": "ENC:ciphertext"}
+		config := map[string]any{"password": "ENC:ciphertext"} //nolint:gosec // Test-only placeholder ciphertext.
 
 		decrypted, err := cs.decryptSensitiveFields([]string{"password"}, config)
 		if err != nil {
@@ -171,7 +171,7 @@ func TestDecryptSensitiveFields(t *testing.T) {
 				},
 			},
 		}
-		config := map[string]any{"password": "ENC:rsa_data"}
+		config := map[string]any{"password": "ENC:rsa_data"} //nolint:gosec // Test-only placeholder ciphertext.
 
 		decrypted, err := cs.decryptSensitiveFields([]string{"password"}, config)
 		if err != nil {
@@ -207,7 +207,7 @@ func TestDecryptSensitiveFields(t *testing.T) {
 				},
 			},
 		}
-		config := map[string]any{"password": "ENC:bad_data"}
+		config := map[string]any{"password": "ENC:bad_data"} //nolint:gosec // Test-only malformed ciphertext.
 
 		_, err := cs.decryptSensitiveFields([]string{"password"}, config)
 		if err == nil {
@@ -688,7 +688,8 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		cs := &catalogService{ca: ca, ps: ps}
 		result, err := cs.TestConnection(context.Background(), "missing")
 
-		httpErr, ok := err.(*rest.HTTPError)
+		var httpErr *rest.HTTPError
+		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
 		assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
 		assert.Nil(t, result)

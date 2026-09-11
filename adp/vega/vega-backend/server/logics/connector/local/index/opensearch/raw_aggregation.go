@@ -54,7 +54,7 @@ func compileRawAggregationPlan(query map[string]any) (*rawAggregationPlan, error
 		return nil, err
 	}
 	if !present {
-		return nil, nil
+		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 	root, err := compileRawAggregationNode(aggregations, key, make(map[string]struct{}))
 	if err != nil {

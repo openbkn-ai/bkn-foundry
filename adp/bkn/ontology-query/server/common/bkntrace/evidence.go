@@ -48,8 +48,6 @@ const (
 	envProducerStreamID        = "BKN_TRACE_PRODUCER_STREAM_ID"
 )
 
-const maxInFlightEvidenceBatches = 64
-
 const (
 	EntityKindObjectInstance = "object_instance"
 	EntityKindRelationPath   = "relation_path"
@@ -124,7 +122,6 @@ type eventContext struct {
 
 var (
 	evidenceHTTPClient = &http.Client{}
-	evidenceInFlight   = make(chan struct{}, maxInFlightEvidenceBatches)
 	producerOutboxMu   sync.RWMutex
 	producerOutbox     *outbox.Repository
 )
@@ -463,7 +460,7 @@ func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= http.StatusBadRequest {
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
@@ -559,12 +556,4 @@ func normalizedAttempt(attempt int) int {
 		return attempt
 	}
 	return 1
-}
-
-func shortHash(hash string) string {
-	hash = strings.TrimPrefix(strings.TrimSpace(hash), "sha256:")
-	if len(hash) < 16 {
-		return hash
-	}
-	return hash[:16]
 }

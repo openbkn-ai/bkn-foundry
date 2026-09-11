@@ -190,6 +190,7 @@ func lifecycleOutputSchema(toolKey string) map[string]any {
 	}
 }
 
+//nolint:unused // Retained for MCP schema extensions.
 func conversationOutputSchema() map[string]any {
 	properties := map[string]any{
 		"conversation_id":           stringSchema(),
@@ -209,6 +210,7 @@ func conversationOutputSchema() map[string]any {
 	})
 }
 
+//nolint:unused // Retained for MCP schema extensions.
 func interactionOutputSchema() map[string]any {
 	properties := map[string]any{
 		"interaction_id":   stringSchema(),
@@ -306,6 +308,7 @@ func ownerOutputSchema() map[string]any {
 	})
 }
 
+//nolint:unused // Retained for MCP schema extensions.
 func closureManifestOutputSchema() map[string]any {
 	return closedSchema(map[string]any{
 		"completion_manifest_version": stringSchema(),
@@ -364,6 +367,7 @@ func describedEnumSchema(description string, values ...string) map[string]any {
 	return map[string]any{"type": "string", "enum": values, "description": description}
 }
 
+//nolint:unused // Retained for MCP schema extensions.
 func expectedResourceSchema(idField string) map[string]any {
 	return map[string]any{
 		"type": "array",

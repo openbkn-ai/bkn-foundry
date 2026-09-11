@@ -32,14 +32,14 @@ import (
 // getServerID generates a unique server ID based on the connector name
 func getServerID(connectorName string) uint32 {
 	h := fnv.New32a()
-	h.Write([]byte(connectorName))
+	_, _ = h.Write([]byte(connectorName))
 	return h.Sum32()
 }
 
 // getServerName generates a server name based on the hostname hash
 func getServerName(hostname string) string {
 	h := fnv.New32a()
-	h.Write([]byte(hostname))
+	_, _ = h.Write([]byte(hostname))
 	return fmt.Sprintf("vega-%d", h.Sum32())
 }
 

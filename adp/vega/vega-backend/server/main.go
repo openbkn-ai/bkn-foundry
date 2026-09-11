@@ -67,8 +67,8 @@ func (server *mgrService) start() {
 	s := &http.Server{
 		Addr:           ":" + strconv.Itoa(server.appSetting.ServerSetting.HttpPort),
 		Handler:        engine,
-		ReadTimeout:    server.appSetting.ServerSetting.ReadTimeOut * time.Second,
-		WriteTimeout:   server.appSetting.ServerSetting.WriteTimeout * time.Second,
+		ReadTimeout:    time.Duration(server.appSetting.ServerSetting.ReadTimeOut) * time.Second,
+		WriteTimeout:   time.Duration(server.appSetting.ServerSetting.WriteTimeout) * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
 

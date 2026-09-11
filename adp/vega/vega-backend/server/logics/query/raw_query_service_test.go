@@ -524,7 +524,7 @@ func TestRawQueryServiceExecuteSQLCursorPage(t *testing.T) {
 		session, err := rawQueryCursorSessions.create("account-1", catalog.ID, []string{"resource-1"},
 			"SELECT id FROM dbo.orders", 2, 60, 0)
 		require.NoError(t, err)
-		session.Offset = 4
+		session.PageOffset = 4
 
 		ctrl := gomock.NewController(t)
 		connector := mock_interfaces.NewMockTableConnector(ctrl)
@@ -544,7 +544,7 @@ func TestRawQueryServiceExecuteSQLCursorPage(t *testing.T) {
 		assert.Equal(t, []map[string]any{{"id": 5}, {"id": 6}}, result.Entries)
 		require.NotNil(t, result.Paging)
 		assert.NotNil(t, result.Paging.NextCursor)
-		assert.Equal(t, 6, session.Offset)
+		assert.Equal(t, 6, session.PageOffset)
 	})
 }
 
@@ -622,11 +622,12 @@ func TestRawQueryServiceExecuteInitialDSLQuery(t *testing.T) {
 				callCount++
 				_, ok := ctx.Deadline()
 				assert.True(t, ok)
-				if callCount == 1 {
+				switch callCount {
+				case 1:
 					assert.NotContains(t, query, "track_total_hits")
-				} else if callCount == 2 {
+				case 2:
 					assert.Equal(t, true, query["track_total_hits"])
-				} else {
+				default:
 					assert.Equal(t, 0, query["size"])
 					assert.NotContains(t, query, "from")
 				}

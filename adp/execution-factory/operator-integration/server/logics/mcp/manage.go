@@ -10,9 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	icommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
-	infracommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/telemetry"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
@@ -685,7 +683,7 @@ func (s *mcpServiceImpl) UpdateMCPServer(ctx context.Context, req *interfaces.MC
 
 	// Record audit log.
 	go func() {
-		accountAuthContext, ok := infracommon.GetAccountAuthContextFromCtx(ctx)
+		accountAuthContext, ok := icommon.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
 			s.logger.WithContext(ctx).Errorf("get account auth context from ctx failed")
 			return
@@ -818,10 +816,11 @@ func (s *mcpServiceImpl) UpdateMCPStatus(ctx context.Context, req *interfaces.Up
 		return
 	}
 	var operation metric.AuditLogOperationType
-	if req.Status == interfaces.BizStatusPublished {
+	switch req.Status {
+	case interfaces.BizStatusPublished:
 		operation = metric.AuditLogOperationPublish
 		err = s.AuthService.CheckPublishPermission(ctx, accessor, req.MCPID, interfaces.AuthResourceTypeMCP)
-	} else if req.Status == interfaces.BizStatusOffline {
+	case interfaces.BizStatusOffline:
 		operation = metric.AuditLogOperationUnpublish
 		err = s.AuthService.CheckUnpublishPermission(ctx, accessor, req.MCPID, interfaces.AuthResourceTypeMCP)
 	}
@@ -860,7 +859,7 @@ func (s *mcpServiceImpl) UpdateMCPStatus(ctx context.Context, req *interfaces.Up
 	}
 	// Record audit log.
 	go func() {
-		accountAuthContext, ok := infracommon.GetAccountAuthContextFromCtx(ctx)
+		accountAuthContext, ok := icommon.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
 			s.logger.WithContext(ctx).Errorf("get account auth context from ctx error")
 			return
@@ -1007,7 +1006,7 @@ func (s *mcpServiceImpl) DebugTool(ctx context.Context, req *interfaces.MCPToolD
 
 	// Record audit log.
 	go func() {
-		accountAuthContext, ok := infracommon.GetAccountAuthContextFromCtx(ctx)
+		accountAuthContext, ok := icommon.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
 			s.logger.WithContext(ctx).Errorf("get account auth context from ctx error")
 			return
@@ -1283,7 +1282,7 @@ func (s *mcpServiceImpl) generateMCPToolConfig(ctx context.Context, tool *model.
 func (s *mcpServiceImpl) convertInputSchema(ctx context.Context, toolInfo *interfaces.ToolInfo) (json.RawMessage, error) {
 	if toolInfo.MetadataType != interfaces.MetadataTypeAPI && toolInfo.MetadataType != interfaces.MetadataTypeFunc {
 		s.logger.WithContext(ctx).Warnf("unsupported metadata type: %s", toolInfo.MetadataType)
-		err := errors.DefaultHTTPError(ctx, http.StatusBadRequest, fmt.Sprintf("unsupported metadata type: %s", toolInfo.MetadataType))
+		err := oerrors.DefaultHTTPError(ctx, http.StatusBadRequest, fmt.Sprintf("unsupported metadata type: %s", toolInfo.MetadataType))
 		return nil, err
 	}
 	if toolInfo.Metadata == nil {

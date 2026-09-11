@@ -14,7 +14,7 @@ generate-mock:
 	cd server && go generate ./...
 
 lint:
-	cd server && golangci-lint run ./... --exclude-dirs=interfaces/mock,tests
+	cd server && golangci-lint run ./...
 
 UT_PACKAGES = $(shell cd server && go list ./... | grep -v /tests/ | grep -v /mock)
 

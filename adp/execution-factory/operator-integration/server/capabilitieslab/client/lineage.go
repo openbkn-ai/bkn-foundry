@@ -54,7 +54,7 @@ func (c *OperatorIntegrationClient) GetToolSourceLineage(
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return nil, fmt.Errorf("impex export failed (%d)", res.StatusCode)

@@ -10,6 +10,7 @@ package build_task
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -235,9 +236,9 @@ func (bta *buildTaskAccess) GetByID(ctx context.Context, id string) (*interfaces
 
 	row := bta.db.QueryRowContext(ctx, sqlStr, vals...)
 	buildTask, err := scanBuildTask(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "Build task not found")
-		return nil, nil
+		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 
 	if err != nil {
@@ -474,7 +475,7 @@ func (bta *buildTaskAccess) GetStatusByID(ctx context.Context, id string) (strin
 	}
 
 	err = bta.db.QueryRowContext(ctx, sqlStr, vals...).Scan(&status)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "Build task not found")
 		return "", fmt.Errorf("build task not found")
 	}
@@ -497,6 +498,10 @@ func (bta *buildTaskAccess) InternalList(ctx context.Context,
 	builder := sq.Select(buildTaskSummaryColumns()...).From(BUILD_TASK_TABLE_NAME)
 	builder = applyBuildTaskFilters(builder, params).
 		OrderBy(buildOrderByClause(params.Sort, params.Direction))
+
+	if params.Offset < 0 {
+		return nil, fmt.Errorf("build task offset must not be negative")
+	}
 	if params.Limit > 0 {
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}

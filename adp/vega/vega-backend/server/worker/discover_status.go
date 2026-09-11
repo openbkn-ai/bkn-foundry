@@ -7,7 +7,7 @@ package worker
 
 import (
 	"context"
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 
@@ -61,7 +61,7 @@ func sourceSnapshotHash(resource *interfaces.Resource) string {
 	if err != nil {
 		return ""
 	}
-	sum := sha1.Sum(bytes)
+	sum := sha256.Sum256(bytes)
 	hashStr := hex.EncodeToString(sum[:])
 	//logger.Infof("SourceMetadata hash: %s, orig: %s", hashStr, bytes)
 

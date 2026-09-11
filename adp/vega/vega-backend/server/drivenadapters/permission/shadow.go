@@ -112,7 +112,7 @@ func (c *safeClient) do(ctx context.Context, method, path string, body, out any)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("bkn-safe %s %s: %d: %s", method, path, resp.StatusCode, data)
@@ -347,9 +347,9 @@ func MaybeShadow(inner interfaces.PermissionAccess) (interfaces.PermissionAccess
 	}
 	sc := newSafeClient(safeURL)
 	if provider == "shadow" {
-		log.Printf("[authz] provider=shadow; ISF authoritative, comparing bkn-safe at %s", safeURL)
+		log.Printf("[authz] provider=shadow; ISF authoritative, comparing bkn-safe at %s", safeURL) //nolint:gosec // URL is deployment configuration, not request input.
 		return &shadowPermissionAccess{PermissionAccess: inner, safe: sc}, nil
 	}
-	log.Printf("[authz] provider=bkn-safe (authoritative) at %s", safeURL)
+	log.Printf("[authz] provider=bkn-safe (authoritative) at %s", safeURL) //nolint:gosec // URL is deployment configuration, not request input.
 	return &safePermissionAccess{safe: sc}, nil
 }

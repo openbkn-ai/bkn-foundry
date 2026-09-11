@@ -114,7 +114,7 @@ func normalizeJSONObject(value any) (map[string]any, error) {
 		return nil, fmt.Errorf("expected object, JSON text, or null; got %T", value)
 	}
 	if strings.TrimSpace(text) == "" {
-		return nil, nil
+		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 
 	var parsed any
@@ -122,7 +122,7 @@ func normalizeJSONObject(value any) (map[string]any, error) {
 		return nil, fmt.Errorf("invalid JSON: %w", err)
 	}
 	if parsed == nil {
-		return nil, nil
+		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 	object, ok := parsed.(map[string]any)
 	if !ok {
@@ -310,16 +310,6 @@ func buildTaskIndexFeatures(buildTask *interfaces.BuildTask) map[string]interfac
 func buildTaskHasEmbedding(buildTask *interfaces.BuildTask) bool {
 	for _, feature := range buildTaskIndexFeatures(buildTask) {
 		if feature.Vector != nil {
-			return true
-		}
-	}
-	return false
-}
-
-// The hasFulltextFeature determines whether a field already has the fulltext feature.
-func hasFulltextFeature(prop *interfaces.Property) bool {
-	for _, f := range prop.Features {
-		if f.FeatureType == interfaces.PropertyFeatureType_Fulltext {
 			return true
 		}
 	}

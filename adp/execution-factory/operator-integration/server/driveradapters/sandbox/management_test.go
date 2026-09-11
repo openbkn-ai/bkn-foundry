@@ -141,7 +141,7 @@ func TestManagementHandlerPublicRoutesRequireAdmin(t *testing.T) {
 // This method does not exist on the interface, and any reintroduction will be blocked by this assertion at compile time.
 func TestInternalFaceNoLongerRegistersSandbox(t *testing.T) {
 	Convey("沙箱处理器不再暴露内部面注册入口", t, func() {
-		var handler ManagementHandler = NewManagementHandlerWithService(&fakeManagementService{})
+		handler := NewManagementHandlerWithService(&fakeManagementService{})
 
 		_, hasPrivateRegistration := any(handler).(interface {
 			RegisterPrivate(engine *gin.RouterGroup)

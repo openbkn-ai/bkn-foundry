@@ -64,7 +64,7 @@ func (h *CapabilitiesHandler) UpdateSkillPackage(c *gin.Context) {
 		writeFileRequired(c)
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	content, err := io.ReadAll(file)
 	if err != nil {

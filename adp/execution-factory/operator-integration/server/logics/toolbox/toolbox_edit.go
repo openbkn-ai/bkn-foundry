@@ -99,8 +99,8 @@ func (s *ToolServiceImpl) UpdateToolBox(ctx context.Context, req *interfaces.Upd
 	switch req.MetadataType {
 	case interfaces.MetadataTypeAPI:
 		var metadatas []interfaces.IMetadataDB
-		if req.OpenAPIInput != nil && req.OpenAPIInput.Data != nil {
-			metadatas, err = s.MetadataService.ParseMetadata(ctx, req.MetadataType, req.OpenAPIInput.Data)
+		if req.OpenAPIInput != nil && req.Data != nil {
+			metadatas, err = s.MetadataService.ParseMetadata(ctx, req.MetadataType, req.Data)
 		}
 		if len(metadatas) > 0 {
 			resp.EditTools, err = s.batchUpdateOpenAPIToolMetadata(ctx, tx, toolBox.BoxID, req.UserID, metadatas)

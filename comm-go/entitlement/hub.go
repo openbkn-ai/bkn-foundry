@@ -242,7 +242,7 @@ func (g *HubGate) fetch() (fetchResult, error) {
 	if err != nil {
 		return fetchResult{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	switch resp.StatusCode {
 	case http.StatusNotModified:

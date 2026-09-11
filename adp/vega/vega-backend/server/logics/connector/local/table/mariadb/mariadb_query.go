@@ -113,6 +113,9 @@ func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sql string) (*inte
 func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams, fieldMap map[string]*interfaces.Property,
 	condition sq.Sqlizer) (sq.SelectBuilder, error) {
+	if params.Paging.Offset < 0 || params.Paging.Limit < 0 {
+		return sq.SelectBuilder{}, fmt.Errorf("paging offset and limit must not be negative")
+	}
 
 	// Source column name. Fall back to the property name when the schema has no mapping,
 	// and also when the property carries no original_name: build tasks add vector fields
@@ -283,9 +286,9 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 
 	// Add LIMIT and OFFSET
 	if params.CursorEncoded == "" {
-		builder = builder.Offset(uint64(params.Offset))
+		builder = builder.Offset(uint64(params.Paging.Offset))
 	}
-	return builder.Limit(uint64(params.Limit)), nil
+	return builder.Limit(uint64(params.Paging.Limit)), nil
 }
 
 func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource,

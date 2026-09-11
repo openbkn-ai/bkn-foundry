@@ -761,7 +761,7 @@ func (c *OracleConnector) fetchForeignKeys(ctx context.Context, table *interface
 
 func (c *OracleConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
-	return nil, nil
+	return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 }
 
 // GetMetadata returns the metadata for the catalog.

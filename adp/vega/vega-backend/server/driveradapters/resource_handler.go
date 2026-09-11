@@ -73,7 +73,7 @@ func (r *restHandler) listResources(c *gin.Context, visitor hydra.Visitor) {
 	pageParam, err := validatePaginationQueryParams(ctx,
 		offset, limit, sort, direction, interfaces.RESOURCE_SORT)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), nil)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -90,7 +90,7 @@ func (r *restHandler) listResources(c *gin.Context, visitor hydra.Visitor) {
 	}
 
 	if err := ValidateResourceListQueryParams(ctx, params); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), nil)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -100,7 +100,7 @@ func (r *restHandler) listResources(c *gin.Context, visitor hydra.Visitor) {
 
 	entries, total, err := r.rs.List(ctx, params)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -159,14 +159,14 @@ func (r *restHandler) createResource(c *gin.Context, visitor hydra.Visitor) {
 	}
 
 	if err := ValidateResourceRequest(ctx, &req); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
 	if err := validateCreateResourceCategory(ctx, req.Category); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -208,7 +208,7 @@ func (r *restHandler) createResource(c *gin.Context, visitor hydra.Visitor) {
 
 	resource, err := r.rs.Create(ctx, &req)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -276,7 +276,7 @@ func (r *restHandler) getResources(c *gin.Context, visitor hydra.Visitor) {
 
 	resources, err := r.rs.GetByIDs(ctx, ids)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -355,7 +355,7 @@ func (r *restHandler) updateResource(c *gin.Context, visitor hydra.Visitor) {
 	// Check if id exists and use the persisted category as the update authority.
 	resource, err := r.rs.GetByID(ctx, id)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -382,20 +382,20 @@ func (r *restHandler) updateResource(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 	if err := ValidateResourceRequest(ctx, &req); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if err := validateExpectedUpdateTime(ctx, req.ExpectedUpdateTime); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
 	if err := r.rs.Update(ctx, resource, &req); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -449,7 +449,7 @@ func (r *restHandler) setResourceEnabled(c *gin.Context, visitor hydra.Visitor, 
 	id := c.Param("id")
 	resource, err := r.rs.GetByID(ctx, id)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -460,7 +460,7 @@ func (r *restHandler) setResourceEnabled(c *gin.Context, visitor hydra.Visitor, 
 		return
 	}
 	if err = r.rs.SetEnabled(ctx, resource, enabled); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -520,7 +520,7 @@ func (r *restHandler) deleteResources(c *gin.Context, visitor hydra.Visitor) {
 	for _, id := range rawIDs {
 		exists, err := r.rs.CheckExistByID(ctx, id)
 		if err != nil {
-			httpErr := err.(*rest.HTTPError)
+			httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return
@@ -540,7 +540,7 @@ func (r *restHandler) deleteResources(c *gin.Context, visitor hydra.Visitor) {
 
 	if len(idsToDelete) > 0 {
 		if err := r.rs.DeleteByIDs(ctx, idsToDelete); err != nil {
-			httpErr := err.(*rest.HTTPError)
+			httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return

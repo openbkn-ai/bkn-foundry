@@ -115,21 +115,15 @@ func TestVegaBackendAccessQueryResourceDataUsesLocalClientSpan(t *testing.T) {
 }
 
 func TestNormalizeResourceDataQueryParams(t *testing.T) {
-	convey.Convey("normalizeResourceDataQueryParams maps Limit into paging", t, func() {
-		got := normalizeResourceDataQueryParams(&interfaces.ResourceDataQueryParams{
-			Limit:  10000,
-			Offset: 5,
-		})
+	convey.Convey("normalizeResourceDataQueryParams defaults to single paging", t, func() {
+		input := &interfaces.ResourceDataQueryParams{}
+		got := normalizeResourceDataQueryParams(input)
 		convey.So(got.Paging.Mode, convey.ShouldEqual, "single")
-		convey.So(got.Paging.Limit, convey.ShouldEqual, 10000)
-		convey.So(got.Paging.Offset, convey.ShouldEqual, 5)
-		convey.So(got.Limit, convey.ShouldEqual, 0)
-		convey.So(got.Offset, convey.ShouldEqual, 0)
+		convey.So(input.Paging.Mode, convey.ShouldBeEmpty)
 	})
 
 	convey.Convey("normalizeResourceDataQueryParams keeps explicit paging", t, func() {
 		got := normalizeResourceDataQueryParams(&interfaces.ResourceDataQueryParams{
-			Limit: 1,
 			Paging: interfaces.ResourceDataPagingRequest{
 				Mode:  "single",
 				Limit: 50,

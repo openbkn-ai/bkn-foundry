@@ -11,7 +11,6 @@ SWAG_OUT := docs/swagger
 PUBLISHED_SWAG := ../../docs/api/agent-observability/agent-observability.yaml
 IMAGE ?= swr.cn-east-3.myhuaweicloud.com/openbkn-ai/agent-observability:local
 CHART_PATH := charts/agent-observability
-GOCACHE ?= /tmp/go-build
 TEST_RESULT := test-result
 UNIT_PACKAGES := ./...
 RACE_PACKAGES := ./src/domain/service/... ./src/drivenadapter/memoryaccess/...
@@ -23,17 +22,17 @@ OPENSEARCH_INTEGRATION_PACKAGE := ./src/drivenadapter/httpaccess/opensearchproje
 	docker-build helm-lint helm-package check-swag-version gen-swag check-swag view-swag clean-swag
 
 lint:
-	GOCACHE=$(GOCACHE) go vet ./...
+	golangci-lint run ./...
 
 license-check:
 	python3 scripts/check_license_headers.py
 
 test:
-	GOCACHE=$(GOCACHE) go test $(UNIT_PACKAGES) -count=1
+	go test $(UNIT_PACKAGES) -count=1
 
 test-cover:
 	@mkdir -p $(TEST_RESULT)
-	GOCACHE=$(GOCACHE) go test $(UNIT_PACKAGES) -count=1 -covermode=atomic \
+	go test $(UNIT_PACKAGES) -count=1 -covermode=atomic \
 		-coverprofile=$(TEST_RESULT)/coverage.out
 	go tool cover -func=$(TEST_RESULT)/coverage.out
 	go tool cover -html=$(TEST_RESULT)/coverage.out -o $(TEST_RESULT)/coverage.html
@@ -42,22 +41,22 @@ test-cover:
 		echo "WARN: gocover-cobertura not found; coverage.xml was not generated"
 
 test-race:
-	GOCACHE=$(GOCACHE) go test -race $(RACE_PACKAGES) -count=1
+	go test -race $(RACE_PACKAGES) -count=1
 
 test-integration:
-	GOCACHE=$(GOCACHE) go test -tags=integration $(INTEGRATION_PACKAGE) -count=1 -v
+	go test -tags=integration $(INTEGRATION_PACKAGE) -count=1 -v
 
 test-opensearch-integration:
-	GOCACHE=$(GOCACHE) go test -tags=integration $(OPENSEARCH_INTEGRATION_PACKAGE) -count=1 -v
+	go test -tags=integration $(OPENSEARCH_INTEGRATION_PACKAGE) -count=1 -v
 
 test-performance:
-	GOCACHE=$(GOCACHE) go test -tags=integration $(INTEGRATION_PACKAGE) -run '^$$' \
+	go test -tags=integration $(INTEGRATION_PACKAGE) -run '^$$' \
 		-bench 'BenchmarkMariaDB(EnsureCurrent|EvidenceIngest)' -benchtime=200x -count=1
 
 ci: lint license-check test-cover
 
 build:
-	GOCACHE=$(GOCACHE) go build ./...
+	go build ./...
 
 docker-build:
 	docker build -t $(IMAGE) .

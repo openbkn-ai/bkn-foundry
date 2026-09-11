@@ -620,7 +620,9 @@ func (suts *semanticUnderstandingTaskService) attachUnmaskedSampleRows(ctx conte
 	} else if len(fields) > 0 {
 		result, err := suts.rds.QueryWithPaging(ctx, resource,
 			&interfaces.ResourceDataQueryParams{
-				Limit:        input.Options.SamplePolicy.MaxRows,
+				Paging: interfaces.PagingRequest{
+					Limit: input.Options.SamplePolicy.MaxRows,
+				},
 				OutputFields: fields,
 			})
 		if err != nil {

@@ -29,8 +29,8 @@ type CursorSession struct {
 	ResourceDataParams     *ResourceDataQueryParams
 	ResourceDataCategory   string
 
-	Offset int
-	Limit  int
+	PageOffset int
+	PageLimit  int
 
 	TotalCount    int64
 	HasTotalCount bool

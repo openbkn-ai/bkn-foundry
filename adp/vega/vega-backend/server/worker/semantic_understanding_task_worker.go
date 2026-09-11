@@ -366,7 +366,7 @@ func (sutw *SemanticUnderstandingTaskWorker) Run(ctx context.Context, taskID str
 	taskInfo.Confidence = confidence
 	if err := sutw.applyAndMark(ctx, taskInfo, confidenceDetailJSON); err != nil {
 		if _, updateErr := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
-			return fmt.Errorf("apply semantic understanding result: %w; mark task failed: %v", err, updateErr)
+			return fmt.Errorf("apply semantic understanding result: %w; mark task failed: %w", err, updateErr)
 		}
 		return err
 	}

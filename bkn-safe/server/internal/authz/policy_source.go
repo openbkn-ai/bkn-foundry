@@ -173,6 +173,7 @@ func policySourceOf(row []string) PolicySource {
 	return PolicySource(row[4])
 }
 
+//nolint:unused // Retained for row-to-authority-source parsing extensions.
 func authoritySourceOf(row []string) AuthoritySource {
 	if len(row) <= 5 {
 		return ""

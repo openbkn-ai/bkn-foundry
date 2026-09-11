@@ -188,7 +188,8 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 			Mode: interfaces.CatalogHealthCheckScheduleModeInherit,
 		})
 
-		httpErr, ok := err.(*rest.HTTPError)
+		var httpErr *rest.HTTPError
+		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
 		assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_CatalogHealthCheckSchedule_NotFound, httpErr.BaseError.ErrorCode)

@@ -146,7 +146,7 @@ func TestRestHandlerPostResourceDataByProxy(t *testing.T) {
 				account := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 				assert.Equal(t, "proxy-1", account.ID)
 				assert.True(t, interfaces.IsTrustedProxyRead(ctx))
-				assert.Equal(t, 2, params.Limit)
+				assert.Equal(t, 2, params.Paging.Limit)
 				return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"id": "row-1"}}, TotalCount: 1}, nil
 			})
 

@@ -771,7 +771,9 @@ func TestSubmitEventsNoopsWhenAccountContextMissing(t *testing.T) {
 		SpanID:  trace.SpanID{0x71, 0x21, 0, 0, 0, 0, 0, 2},
 	})), common.TraceContext{RequestID: "req_context_loader_phase2_no_account"})
 
-	SubmitEvents(ctx, nil, nil, []Event{{"event_type": "claim.created"}})
+	if err := SubmitEvents(ctx, nil, nil, []Event{{"event_type": "claim.created"}}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestSubmitEventsPreservesCallerOwnedConversationID(t *testing.T) {
@@ -808,7 +810,9 @@ func TestSubmitEventsPreservesCallerOwnedConversationID(t *testing.T) {
 		AccountID: "acct_demo", AccountType: interfaces.AccessorType("user"),
 	})
 
-	SubmitEvents(ctx, nil, nil, []Event{{"event_type": "retrieval.completed"}})
+	if err := SubmitEvents(ctx, nil, nil, []Event{{"event_type": "retrieval.completed"}}); err != nil {
+		t.Fatal(err)
+	}
 	select {
 	case payload := <-payloads:
 		if got := payload["conversation_id"]; got != "agent:thread_supply_chain" {
@@ -955,7 +959,9 @@ func TestSubmitEventsRecordsDurableOutcomeForOperationFinish(t *testing.T) {
 	})}
 	ctx := withEvidenceOutcome(testTraceContext())
 	events := BuildRunSQLEvents(ctx, "SELECT 1", []string{"forecast_resource"}, &interfaces.VegaRawQueryResp{})
-	SubmitEvents(ctx, nil, nil, events)
+	if err := SubmitEvents(ctx, nil, nil, events); err != nil {
+		t.Fatal(err)
+	}
 
 	outcome := evidenceOutcomeFromContext(ctx)
 	if outcome == nil || !outcome.durable {
@@ -1000,7 +1006,9 @@ func captureIngestedTrace(t *testing.T, ctx context.Context) map[string]any {
 	t.Setenv(envEvidenceIngestURL, server.URL)
 	t.Setenv(envEvidenceIngestTimeoutMS, "500")
 
-	SubmitEvents(ctx, nil, nil, []Event{{"event_type": "claim.created"}})
+	if err := SubmitEvents(ctx, nil, nil, []Event{{"event_type": "claim.created"}}); err != nil {
+		t.Fatal(err)
+	}
 
 	select {
 	case body := <-bodies:
