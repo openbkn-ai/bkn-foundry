@@ -262,8 +262,10 @@ paths:
         system-derived `authorize` grant. A newly created Action Type sends
         `[execute]`, stored as system-derived direct execution authority.
         Policy and authority sources are selected by bkn-safe and are never
-        accepted from the request body. Other shapes retain the compatibility
-        policy writer.
+        accepted from the request body. Other requests that pass the wildcard
+        guards retain the compatibility policy writer, except that a knowledge
+        network request containing `full_business_access` must match the exact
+        lifecycle shape above or it is rejected with `400`.
       requestBody:
         required: true
         content:
