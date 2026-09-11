@@ -15,6 +15,8 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"bkn-backend/common"
+	cond "bkn-backend/common/condition"
+	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 	bmock "bkn-backend/interfaces/mock"
 )
@@ -187,6 +189,59 @@ func TestMetricDetailExposesOnlyReferencedPropertyMetadata(t *testing.T) {
 	}
 	if seen["secret"] || !seen["amount"] || !seen["event_time"] || !seen["region"] {
 		t.Fatalf("DependencyProperties = %#v", definition.DependencyProperties)
+	}
+}
+
+func TestMetricDetailRemainsReadableWhenScopeObjectTypeIsMissing(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ma := bmock.NewMockMetricAccess(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	ots := bmock.NewMockObjectTypeService(ctrl)
+	definition := metricAuthorizationDefinition("deleted-orders")
+	ots.EXPECT().GetObjectTypeByID(gomock.Any(), nil, "kn-1", interfaces.MAIN_BRANCH, "deleted-orders").
+		Return(nil, rest.NewHTTPError(context.Background(), http.StatusNotFound,
+			berrors.BknBackend_ObjectType_ObjectTypeNotFound))
+	ma.EXPECT().GetMetricsByIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, []string{"metric-1"}).
+		Return([]*interfaces.MetricDefinition{definition}, nil)
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
+		[]string{"kn-1/metric-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true,
+		gomock.Any()).Return(map[string]interfaces.PermissionResourceOps{
+		"kn-1/metric-1": {ResourceID: "kn-1/metric-1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+	}, nil)
+
+	service := &metricService{ma: ma, ps: ps, ots: ots}
+	metrics, err := service.GetMetricsByIDs(context.Background(), "kn-1", interfaces.MAIN_BRANCH, []string{"metric-1"})
+	if err != nil {
+		t.Fatalf("GetMetricsByIDs() error = %v", err)
+	}
+	if len(metrics) != 1 || metrics[0] != definition {
+		t.Fatalf("GetMetricsByIDs() = %#v", metrics)
+	}
+	if definition.ScopeName != "" || len(definition.DependencyProperties) != 0 {
+		t.Fatalf("unexpected dependency metadata: %#v", definition)
+	}
+}
+
+func TestCollectMetricConditionFieldsFallsBackToAllForInvalidMultiMatchFields(t *testing.T) {
+	propertyNames := []string{"amount", "region"}
+	for _, fields := range []any{
+		map[string]any{"unexpected": true},
+		[]any{"amount", 1},
+		[]string{},
+		[]string{" "},
+	} {
+		condition := &cond.CondCfg{
+			Operation: cond.OperationMultiMatch,
+			RemainCfg: map[string]any{"fields": fields},
+		}
+		actual := collectMetricConditionFields(condition, propertyNames)
+		seen := make(map[string]bool, len(actual))
+		for _, property := range actual {
+			seen[property] = true
+		}
+		if len(seen) != len(propertyNames) || !seen["amount"] || !seen["region"] {
+			t.Fatalf("collectMetricConditionFields(%#v) = %v, want all properties", fields, actual)
+		}
 	}
 }
 

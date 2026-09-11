@@ -7,6 +7,7 @@ package metric
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"reflect"
 	"strings"
@@ -65,9 +66,23 @@ func (ms *metricService) authorizeMetricDependencies(ctx context.Context, tx *sq
 
 func (ms *metricService) hydrateMetricDependencyProperties(ctx context.Context,
 	metric *interfaces.MetricDefinition) error {
-	ot, _, err := ms.resolveMetricObjectType(ctx, nil, metric)
+	if metric == nil || ms.ots == nil {
+		return nil
+	}
+	scopeRef := strings.TrimSpace(metric.ScopeRef)
+	if scopeRef == "" {
+		return nil
+	}
+	ot, err := ms.ots.GetObjectTypeByID(ctx, nil, metric.KnID, metric.Branch, scopeRef)
 	if err != nil {
+		var httpErr *rest.HTTPError
+		if errors.As(err, &httpErr) && httpErr.HTTPCode == http.StatusNotFound {
+			return nil
+		}
 		return err
+	}
+	if ot == nil {
+		return nil
 	}
 	metric.ScopeName = ot.OTName
 	referenced := make(map[string]struct{})
@@ -203,13 +218,14 @@ func collectMetricConditionFields(condition *cond.CondCfg, propertyNames []strin
 		}
 		if current.Operation == cond.OperationMultiMatch {
 			fields, exists := current.RemainCfg["fields"]
-			if !exists {
+			values, valid := metricConditionStringValues(fields)
+			if !exists || !valid {
 				addAll()
 			} else {
-				for _, field := range metricConditionStringValues(fields) {
+				for _, field := range values {
 					if field == "*" {
 						addAll()
-					} else if field = strings.TrimSpace(field); field != "" {
+					} else {
 						result[field] = struct{}{}
 					}
 				}
@@ -231,21 +247,30 @@ func collectMetricConditionFields(condition *cond.CondCfg, propertyNames []strin
 	return fields
 }
 
-func metricConditionStringValues(value any) []string {
+func metricConditionStringValues(value any) ([]string, bool) {
+	var raw []string
 	switch values := value.(type) {
 	case []string:
-		return values
+		raw = values
 	case []any:
-		result := make([]string, 0, len(values))
+		raw = make([]string, 0, len(values))
 		for _, value := range values {
-			if text, ok := value.(string); ok {
-				result = append(result, text)
+			text, ok := value.(string)
+			if !ok {
+				return nil, false
 			}
+			raw = append(raw, text)
 		}
-		return result
 	case string:
-		return []string{values}
+		raw = []string{values}
 	default:
-		return nil
+		return nil, false
 	}
+	result := make([]string, 0, len(raw))
+	for _, field := range raw {
+		if field = strings.TrimSpace(field); field != "" {
+			result = append(result, field)
+		}
+	}
+	return result, len(result) > 0
 }
