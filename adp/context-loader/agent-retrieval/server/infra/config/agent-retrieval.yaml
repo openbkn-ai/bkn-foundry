@@ -2,6 +2,9 @@ project:
   language: zh-CN
   host: "0.0.0.0"
   port: 30779
+  # Public, authenticated routes only. Sandbox NetworkPolicy allows this port
+  # while denying the main port that also serves the trusted /in API surface.
+  sandbox_port: 30780
   logger_level: 1
   name:
   pod_id: "POD_ID"

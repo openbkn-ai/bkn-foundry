@@ -1,0 +1,65 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "sandbox.fullname" . }}-executor-egress
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "sandbox.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: sandbox-executor
+      managed_by: sandbox-control-plane
+      sandbox-type: execution
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.dns.namespace | quote }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.dns.podSelector | nindent 14 }}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- if .Values.controlPlane.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app: {{ include "sandbox.fullname" . }}
+              component: control-plane
+      ports:
+        - protocol: TCP
+          port: {{ .Values.controlPlane.service.port }}
+    {{- end }}
+    {{- if .Values.minio.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app: {{ include "sandbox.fullname" . }}
+              component: minio
+      ports:
+        - protocol: TCP
+          port: {{ .Values.minio.service.apiPort }}
+    {{- end }}
+    {{- if .Values.networkPolicy.bkn.enabled }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ default .Values.namespace .Values.networkPolicy.bkn.namespace | quote }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.bkn.podSelector | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.networkPolicy.bkn.port }}
+    {{- end }}
+    {{- with .Values.networkPolicy.additionalEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

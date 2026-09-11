@@ -1,3 +1,9 @@
+{{- if or (lt (int .Values.service.sandboxPort) 1) (gt (int .Values.service.sandboxPort) 65535) }}
+{{- fail "service.sandboxPort must be between 1 and 65535" }}
+{{- end }}
+{{- if eq (int .Values.service.port) (int .Values.service.sandboxPort) }}
+{{- fail "service.sandboxPort must differ from service.port so sandbox traffic cannot reach /in routes" }}
+{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -10,6 +16,7 @@ data:
       language: {{ .Values.service.language }}
       host: "0.0.0.0"
       port: {{ .Values.service.port }}
+      sandbox_port: {{ .Values.service.sandboxPort }}
       logger_level: {{ .Values.service.loggerLevel }}
       name: {{ .Values.service.name | quote }}
       pod_id : {{ .Values.service.podID | quote }}

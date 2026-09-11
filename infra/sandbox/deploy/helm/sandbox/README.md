@@ -18,6 +18,7 @@ This chart does not deploy `sandbox_web` or MariaDB.
 
 - Kubernetes 1.24+
 - Helm 3.0+
+- A CNI plugin that enforces Kubernetes `NetworkPolicy`
 - BKN Foundry deployment environment
 - Core-provided database service through `depServices.rds`
 
@@ -78,8 +79,34 @@ The deprecated `image.defaultTemplate` value is still accepted as a compatibilit
 | `image.defaultTemplates.multiLanguage.tag` | Multi-language template image tag; empty uses `/app/VERSION` | `""` |
 | `controlPlane.env.ENVIRONMENT` | Control Plane environment | `staging` |
 | `controlPlane.env.BKN_BASE_URL` | In-cluster platform address written into every sandbox pod, so `bkn-osdk` reaches BKN with no `configure()` call in user code. Host and port only — the SDK appends its own paths (`/api/agent-retrieval/v1/kn/` for REST, `/api/agent-retrieval/v1/mcp` for the MCP face), so no trailing slash and no path. **Defaults to empty on purpose**: the control plane prefers this key, so a shipped default would override the address an existing deployment already set in `BKN_SANDBOX_MCP_URL` — including the FQDN a cross-namespace install needs. Empty lets that derivation run, which is what makes an upgrade need no values change. Set it explicitly on a new install. Both keys empty means functions that call BKN fail with the SDK's "No base URL" error. | `""` |
-| `controlPlane.env.BKN_SANDBOX_MCP_URL` | In-cluster Context Loader MCP endpoint for the built-in `sandbox_sdk.bkn` face. That face is no longer recommended for new functions but is still supported, so this stays live. Value carries the full MCP path; trailing slash required, or the gateway answers 307 and that face's `urllib` does not follow redirects on POST. Setting only this key still works — the control plane derives `BKN_BASE_URL` from it. | `http://agent-retrieval:30779/api/agent-retrieval/v1/mcp/` |
+| `controlPlane.env.BKN_SANDBOX_MCP_URL` | In-cluster Context Loader MCP endpoint for the built-in `sandbox_sdk.bkn` face. It must use the authenticated-only sandbox listener on port 30780; port 30779 also carries trusted `/in` routes and must not be reachable from executors. | `http://agent-retrieval:30780/api/agent-retrieval/v1/mcp/` |
 | `depServices.rds` | Core-provided database service configuration | enabled by values |
+| `networkPolicy.enabled` | Apply a default-deny egress policy to dynamic executor pods | `true` |
+| `networkPolicy.bkn.port` | Authenticated-only agent-retrieval listener allowed from executors | `30780` |
+| `networkPolicy.additionalEgress` | Extra Kubernetes egress rules for explicitly approved dependencies | `[]` |
+
+## Executor Egress Isolation
+
+The chart selects only dynamic execution pods carrying all three labels:
+`app=sandbox-executor`, `managed_by=sandbox-control-plane`, and
+`sandbox-type=execution`. Platform services and the Control Plane are not
+isolated by this policy.
+
+By default, executors can reach DNS, the Sandbox Control Plane, Sandbox MinIO,
+and agent-retrieval's authenticated-only port 30780. All other destinations,
+including platform `/in` and `internal-v1` ports, are denied. Runtime package
+downloads, arbitrary Internet APIs, and private-network services therefore need
+an explicit `networkPolicy.additionalEgress` rule or a prebuilt executor image.
+Never add agent-retrieval port 30779 or platform internal service ports to that
+list.
+
+For an existing installation, first render or upgrade with
+`networkPolicy.enabled=false` while collecting executor egress with the CNI's
+flow-observation facility. Add only verified legitimate destinations, then
+enable the policy. Applying an enabled policy immediately affects already
+running executor pods. If NodeLocal DNSCache is used, also allow its documented
+listener address through `networkPolicy.additionalEgress`; the default DNS rule
+selects CoreDNS pods in `kube-system`.
 
 ## Rendering
 

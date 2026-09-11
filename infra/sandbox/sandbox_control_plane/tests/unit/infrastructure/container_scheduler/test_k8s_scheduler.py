@@ -124,6 +124,38 @@ class TestK8sScheduler:
         # Verify expected behavior.
         call_args = mock_core_v1.create_namespaced_pod.call_args
         assert call_args[1]["namespace"] == "test-namespace"
+        labels = call_args[1]["body"].metadata.labels
+        assert labels["app"] == "sandbox-executor"
+        assert labels["managed_by"] == "sandbox-control-plane"
+        assert labels["sandbox-type"] == "execution"
+        assert labels["test"] == "label"
+
+    @pytest.mark.asyncio
+    async def test_create_pod_does_not_allow_security_label_overrides(
+        self,
+        scheduler,
+        mock_core_v1,
+        basic_config,
+    ):
+        """Reserved labels always keep executor pods inside the egress policy."""
+        basic_config.labels.update(
+            {
+                "app": "trusted-service",
+                "managed_by": "someone-else",
+                "sandbox-type": "trusted",
+            }
+        )
+        mock_pod = Mock()
+        mock_pod.metadata = Mock()
+        mock_pod.metadata.name = "sandbox-test-session-abc123"
+        mock_core_v1.create_namespaced_pod.return_value = mock_pod
+
+        await scheduler.create_container(basic_config)
+
+        labels = mock_core_v1.create_namespaced_pod.call_args.kwargs["body"].metadata.labels
+        assert labels["app"] == "sandbox-executor"
+        assert labels["managed_by"] == "sandbox-control-plane"
+        assert labels["sandbox-type"] == "execution"
 
     @pytest.mark.asyncio
     async def test_create_pod_uses_configured_image_pull_settings(

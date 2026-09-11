@@ -125,6 +125,7 @@ deploy_resources() {
     kubectl apply -f 02-secret.yaml
     kubectl apply -f 03-serviceaccount.yaml
     kubectl apply -f 04-role.yaml
+    kubectl apply -f 09-networkpolicy.yaml
     info "基础资源部署完成"
 
     info ""
@@ -227,6 +228,9 @@ show_resource_info() {
   05-control-plane-deployment.yaml - Control Plane 服务
                                    • REST API（会话管理、执行调度）
                                    • 使用 s3fs 挂载 S3 workspace
+
+🔒 网络隔离 (09)
+  09-networkpolicy.yaml       - Executor 出站默认拒绝，仅放行 DNS、Control Plane 和 MinIO
 
 === 架构说明 ===
 

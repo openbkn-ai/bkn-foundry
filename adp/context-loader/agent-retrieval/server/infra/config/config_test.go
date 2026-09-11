@@ -52,6 +52,9 @@ func TestAuthorizationChunkSizeDefaultsAndEnvironment(t *testing.T) {
 	if conf.Auth.ResourceFilterChunkSize != 200 {
 		t.Fatalf("default chunk size = %d, want 200", conf.Auth.ResourceFilterChunkSize)
 	}
+	if conf.Project.SandboxPort != 30780 {
+		t.Fatalf("default sandbox port = %d, want 30780", conf.Project.SandboxPort)
+	}
 
 	t.Setenv("CONTEXT_LOADER_RESOURCE_FILTER_CHUNK_SIZE", "73")
 	overrideWithEnv(conf)

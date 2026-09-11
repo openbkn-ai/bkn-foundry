@@ -20,6 +20,10 @@ spec:
       {{- if eq .Values.service.type "NodePort" }}
       nodePort: {{ .Values.service.port }}
       {{- end}}
+    - name: sandbox-port
+      port: {{ .Values.service.sandboxPort }}
+      protocol: TCP
+      targetPort: {{ .Values.service.sandboxPort }}
   selector:
     app: {{ .Release.Name }}
   type: {{ .Values.service.type }}

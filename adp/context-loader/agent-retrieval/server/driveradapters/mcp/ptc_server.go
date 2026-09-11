@@ -41,7 +41,7 @@ const (
 	ptcDefaultTimeout = 60
 	// defaultPTCServicePort is the in-cluster port used when the sandbox calls
 	// back. PTC_SANDBOX_MCP_URL and PTC_SANDBOX_MCP_HOST override it.
-	defaultPTCServicePort = 30779
+	defaultPTCServicePort = 30780
 	// ptcMaxTimeout aligns with the execution-factory sandbox timeout.
 	ptcMaxTimeout = 600
 )

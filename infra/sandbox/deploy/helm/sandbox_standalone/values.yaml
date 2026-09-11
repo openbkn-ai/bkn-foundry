@@ -263,6 +263,26 @@ secret:
     secretAccessKey: "minioadmin"
     region: "us-east-1"
 
+# Executor pods run untrusted user/model code. This policy denies every egress
+# destination not listed below. It requires a CNI that enforces NetworkPolicy.
+# Existing installations should observe actual executor egress before upgrade
+# and add only legitimate destinations through additionalEgress.
+networkPolicy:
+  enabled: true
+  dns:
+    namespace: kube-system
+    podSelector:
+      k8s-app: kube-dns
+  # Standalone does not install BKN. Enable this only when BKN_BASE_URL and
+  # BKN_SANDBOX_MCP_URL point to agent-retrieval's sandbox-only port (30780).
+  bkn:
+    enabled: false
+    namespace: openbkn
+    podSelector:
+      app.kubernetes.io/name: agent-retrieval
+    port: 30780
+  additionalEgress: []
+
 # Pod security context
 podSecurityContext:
   runAsNonRoot: true

@@ -23,6 +23,7 @@ Sandbox Platform 提供三种部署方式：
 - Kubernetes 1.24+ (或 Minikube / K3s / Kind 等本地 K8s 环境)
 - Helm 3.0+
 - kubectl CLI
+- 支持并实际执行 Kubernetes `NetworkPolicy` 的 CNI 插件
 - Docker 镜像已构建并推送到镜像仓库
 
 ### 快速开始
@@ -98,6 +99,7 @@ helm rollback sandbox <revision> --namespace sandbox-system
 
 - Kubernetes 1.24+ (或 Minikube / K3s / Kind 等本地 K8s 环境)
 - kubectl CLI
+- 支持并实际执行 Kubernetes `NetworkPolicy` 的 CNI 插件
 - Docker 镜像已构建并推送到镜像仓库
 
 ## 快速开始
@@ -131,6 +133,7 @@ kubectl apply -f deploy/manifests/01-configmap.yaml
 kubectl apply -f deploy/manifests/02-secret.yaml
 kubectl apply -f deploy/manifests/03-serviceaccount.yaml
 kubectl apply -f deploy/manifests/04-role.yaml
+kubectl apply -f deploy/manifests/09-networkpolicy.yaml
 kubectl apply -f deploy/manifests/09-runtime-namespace.yaml
 kubectl apply -f deploy/manifests/08-mariadb-deployment.yaml
 kubectl apply -f deploy/manifests/07-minio-deployment.yaml
@@ -141,6 +144,18 @@ kubectl apply -f deploy/manifests/06-hpa.yaml
 # 或一次性部署所有
 kubectl apply -f deploy/manifests/
 ```
+
+`09-networkpolicy.yaml` 只选择带有 `app=sandbox-executor`、
+`managed_by=sandbox-control-plane` 和 `sandbox-type=execution` 三个标签的动态
+执行 Pod。它默认拒绝其余出站，只放行 DNS、Control Plane 和 MinIO；MariaDB
+只由 Control Plane 使用，因此不会向 executor 放行。
+运行时下载依赖、访问公网 API 或私网服务会被阻断；如确有需要，应在观察 CNI
+流量后增加精确规则，不得放行平台内部端口。若接入 BKN，必须只放行
+agent-retrieval 的鉴权专用端口 `30780`，不能放行同时承载 `/in` 的 `30779`。
+
+存量环境应先在不应用该文件的情况下观察真实出站，再应用策略。策略一旦应用，
+也会立即作用于已经运行的 executor Pod。使用 NodeLocal DNSCache 时还需按集群配置
+放行其监听地址。
 
 ### 4. 验证部署
 

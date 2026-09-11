@@ -18,6 +18,7 @@ For BKN Foundry component packaging, use `deploy/helm/sandbox`.
 
 - Kubernetes 1.24+
 - Helm 3.0+
+- A CNI plugin that enforces Kubernetes `NetworkPolicy`
 - PV provisioner support for MariaDB and MinIO persistence
 
 ## Installing
@@ -80,6 +81,27 @@ The deprecated `image.defaultTemplate` value is still accepted as a compatibilit
 | `mariadb.enabled` | Deploy internal MariaDB | `true` |
 | `web.enabled` | Deploy Sandbox Web Console | `true` |
 | `minio.enabled` | Deploy internal MinIO | `true` |
+| `networkPolicy.enabled` | Apply a default-deny egress policy to dynamic executor pods | `true` |
+| `networkPolicy.bkn.enabled` | Allow an optional BKN deployment through agent-retrieval port 30780 | `false` |
+| `networkPolicy.additionalEgress` | Extra Kubernetes egress rules for explicitly approved dependencies | `[]` |
+
+## Executor Egress Isolation
+
+The policy selects only dynamic executor pods. It allows DNS, the Sandbox
+Control Plane, and MinIO, and denies every other egress destination. MariaDB is
+used by the Control Plane, not executors, so it is intentionally not allowed.
+Standalone installs do not include BKN, so BKN access is disabled by default.
+When connecting one, set both BKN URL values to agent-retrieval's
+authenticated-only port 30780 and enable/configure `networkPolicy.bkn`. Never
+allow its main port 30779 because that port also serves trusted `/in` routes.
+
+Before enabling the policy on an existing installation, run an observation
+period with `networkPolicy.enabled=false`, collect executor traffic with the
+CNI's flow tooling, and add only verified dependencies to
+`networkPolicy.additionalEgress`. Runtime package downloads and arbitrary
+Internet/private-network calls are denied unless explicitly allowed. Applying
+the policy affects already running executor pods. NodeLocal DNSCache users must
+also allow its listener address explicitly.
 
 ## Access
 

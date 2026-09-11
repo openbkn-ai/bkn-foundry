@@ -524,14 +524,20 @@ exec gosu sandbox python -m executor.interfaces.http.rest
         # Build the labels, excluding dependencies, because K8s labels have a strict format
         # and dependencies contains brackets, quotes, and other illegal characters.
         dependencies_value = config.labels.pop("dependencies", None)
-        labels = {
-            "app": "sandbox-executor",  # matches the sandbox-executor service selector
-            "sandbox-session": config.name,
-            "sandbox-type": "execution",
-        }
+        labels = dict(config.labels)
+        # These labels are a security boundary: deployment NetworkPolicies use
+        # all three to select untrusted execution workloads. Keep them on every
+        # creation path and do not let caller-supplied metadata override them.
+        labels.update(
+            {
+                "app": "sandbox-executor",  # matches the sandbox-executor service selector
+                "managed_by": "sandbox-control-plane",
+                "sandbox-session": config.name,
+                "sandbox-type": "execution",
+            }
+        )
         if use_s3_mount:
             labels["mount-method"] = "s3fs"
-        labels.update(config.labels)
 
         # Build the annotations; dependencies goes here, where the format is unconstrained
         annotations = {

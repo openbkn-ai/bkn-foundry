@@ -94,7 +94,9 @@ server/
    # Option B: run from server dir (config from default paths)
    cd server && go run main.go
    ```
-   Service listens on `http://0.0.0.0:30779` by default.
+   The service listens on `http://0.0.0.0:30779` by default. A second listener
+   on port `30780` exposes only authenticated public routes for sandbox
+   workloads; trusted `/in` routes remain exclusive to port `30779`.
 
 ### Make Targets
 - `make help` – List targets
@@ -135,7 +137,7 @@ helm template agent-retrieval ./helm/agent-retrieval -n <namespace> -f ./helm/ag
 Main config file: `server/infra/config/agent-retrieval.yaml`.
 
 Key sections:
-- **project**: `host`, `port` (default 30779), `language`, `logger_level`, `debug`
+- **project**: `host`, `port` (default 30779), `sandbox_port` (default 30780), `language`, `logger_level`, `debug`
 - **ontology_query**, **ontology_manager**, **data_retrieval**, **operator_integration**: backend service URLs/ports
 - **oauth**: Hydra OAuth (for public API)
 - **redis**: optional Redis (e.g. sentinel) for cache

@@ -94,7 +94,8 @@ server/
    # 方式二：仅启动进程（使用默认配置路径）
    cd server && go run main.go
    ```
-   默认监听 `http://0.0.0.0:30779`。
+   默认监听 `http://0.0.0.0:30779`。另在 `30780` 端口仅暴露经过鉴权的
+   公共接口，供沙箱负载访问；可信 `/in` 接口仍只在 `30779` 端口提供。
 
 ### Make 目标
 - `make help`：查看目标说明
@@ -135,7 +136,7 @@ helm template agent-retrieval ./helm/agent-retrieval -n <命名空间> -f ./helm
 主配置文件：`server/infra/config/agent-retrieval.yaml`。
 
 主要配置项：
-- **project**：`host`、`port`（默认 30779）、`language`、`logger_level`、`debug`
+- **project**：`host`、`port`（默认 30779）、`sandbox_port`（默认 30780）、`language`、`logger_level`、`debug`
 - **ontology_query**、**ontology_manager**、**data_retrieval**、**operator_integration**：各后端服务地址与端口
 - **oauth**：Hydra OAuth（对外 API）
 - **redis**：可选 Redis（如哨兵模式）缓存
