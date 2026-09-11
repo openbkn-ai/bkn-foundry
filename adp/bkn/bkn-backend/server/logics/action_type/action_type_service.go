@@ -148,6 +148,9 @@ func (ats *actionTypeService) validateActionSourceStrict(ctx context.Context, at
 					"boxID":      src.BoxID,
 					"toolID":     src.ToolID,
 				}))
+			// The execution-factory internal metadata endpoint does not perform
+			// caller resource authorization. A 403 therefore indicates an
+			// internal identity/configuration failure, not a user-scoped denial.
 			return logics.MapDependencyError(ctx, err, false, invalidErr,
 				berrors.BknBackend_ActionType_InternalError)
 		}
@@ -164,6 +167,9 @@ func (ats *actionTypeService) validateActionSourceStrict(ctx context.Context, at
 					"mcpID":      src.McpID,
 					"toolName":   src.ToolName,
 				}))
+			// The execution-factory internal metadata endpoint does not perform
+			// caller resource authorization. A 403 therefore indicates an
+			// internal identity/configuration failure, not a user-scoped denial.
 			return logics.MapDependencyError(ctx, err, false, invalidErr,
 				berrors.BknBackend_ActionType_InternalError)
 		}

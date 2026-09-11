@@ -269,6 +269,20 @@ func TestMergeProxyMutationChangesAppliesModeForEveryChildResource(t *testing.T)
 		target  func(*interfaces.KN) string
 	}{
 		{
+			name: "concept group",
+			current: &interfaces.KN{ConceptGroups: []*interfaces.ConceptGroup{{
+				CGID: "cg-1", ObjectTypes: []*interfaces.ObjectType{{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID: "ot-1", DataSource: &interfaces.ResourceInfo{ID: "old"},
+				}}},
+			}}},
+			changes: &interfaces.KN{ConceptGroups: []*interfaces.ConceptGroup{{
+				CGID: "cg-1", ObjectTypes: []*interfaces.ObjectType{{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID: "ot-1", DataSource: &interfaces.ResourceInfo{ID: "new"},
+				}}},
+			}}},
+			target: func(kn *interfaces.KN) string { return kn.ConceptGroups[0].ObjectTypes[0].DataSource.ID },
+		},
+		{
 			name: "object type",
 			current: &interfaces.KN{ObjectTypes: []*interfaces.ObjectType{{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 				OTID: "ot-1", DataSource: &interfaces.ResourceInfo{ID: "old"},
@@ -378,6 +392,54 @@ func TestPrepareProxyImportPreflightsRelationAgainstExistingBoundObject(t *testi
 	}
 	if relationChecks != 1 {
 		t.Fatalf("import preflight sources = %#v, want relation grant plus retained object grants", mpa.checked)
+	}
+}
+
+func TestPrepareProxyImportPreflightsNestedConceptGroupBinding(t *testing.T) {
+	kpa := &proxyAccessStub{}
+	nestedObjectSourceID := stableProxySourceID("kn-1", interfaces.MODULE_TYPE_OBJECT_TYPE, "nested-ot")
+	mpa := &managedProxyAccessStub{
+		allowed: true,
+		resolvedGrantors: map[string]string{
+			nestedObjectSourceID: "historical-grantor",
+		},
+	}
+	service := &knowledgeNetworkService{kpa: kpa, mpa: mpa}
+	ctx := context.WithValue(t.Context(), interfaces.ACCOUNT_INFO_KEY,
+		interfaces.AccountInfo{ID: "current-editor", Type: interfaces.ACCESSOR_TYPE_USER})
+	kn := &interfaces.KN{
+		KNID: "kn-1", KNName: "network", Branch: interfaces.MAIN_BRANCH,
+		ConceptGroups: []*interfaces.ConceptGroup{{
+			CGID: "cg-1",
+			ObjectTypes: []*interfaces.ObjectType{{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+				OTID: "nested-ot", DataSource: &interfaces.ResourceInfo{
+					Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "nested-resource",
+				},
+			}}},
+		}},
+		ActionTypes: []*interfaces.ActionType{{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+			ATID: "top-level-action", ActionSource: interfaces.ActionSource{
+				Type: interfaces.ACTION_SOURCE_TYPE_TOOL, BoxID: "box-1", ToolID: "tool-1",
+			},
+		}}},
+	}
+
+	plan, err := service.prepareProxyImport(ctx, kn, false, interfaces.ImportMode_Normal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.releaseProxyLock(t.Context(), plan)
+	if len(mpa.checked) != 3 {
+		t.Fatalf("nested import preflight sources = %#v, want two resource operations and one action source", mpa.checked)
+	}
+
+	lookupCtx := interfaces.WithVerifiedDependencySources(ctx, plan.resolvedSources)
+	lookupCtx = interfaces.WithDependencyBindingScope(lookupCtx, "kn-1",
+		interfaces.MODULE_TYPE_OBJECT_TYPE, "nested-ot")
+	account, ok := interfaces.VerifiedDependencyAccount(lookupCtx, "resource", "nested-resource",
+		interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	if !ok || account.ID != "historical-grantor" {
+		t.Fatalf("nested strict lookup account = %#v, %t; want historical-grantor", account, ok)
 	}
 }
 

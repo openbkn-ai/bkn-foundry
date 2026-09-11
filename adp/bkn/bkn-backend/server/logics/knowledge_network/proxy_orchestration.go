@@ -438,6 +438,13 @@ func prepareProxyMutationIDs(ctx context.Context, changes *interfaces.KN) error 
 func mergeProxyMutationChanges(current, changes *interfaces.KN, mergeMode string) *interfaces.KN {
 	candidate := *current
 	keepExisting := mergeMode != interfaces.ImportMode_Overwrite
+	candidate.ConceptGroups = mergeProxyItems(current.ConceptGroups, changes.ConceptGroups, keepExisting,
+		func(item *interfaces.ConceptGroup) (string, bool) {
+			if item == nil {
+				return "", false
+			}
+			return item.CGID, true
+		})
 	candidate.ObjectTypes = mergeProxyItems(current.ObjectTypes, changes.ObjectTypes, keepExisting,
 		func(item *interfaces.ObjectType) (string, bool) {
 			if item == nil {

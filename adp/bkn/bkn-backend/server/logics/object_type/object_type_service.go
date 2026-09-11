@@ -126,6 +126,9 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 			if err := ots.aoa.GetToolByID(ctx, lp.DataSource.BoxID, lp.DataSource.ToolID); err != nil {
 				invalidErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 					WithErrorDetails(invalidParameterDetail(ctx, "ToolLookupFailed", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "box": lp.DataSource.BoxID, "tool": lp.DataSource.ToolID}))
+				// The execution-factory internal metadata endpoint does not perform
+				// caller resource authorization. A 403 therefore indicates an
+				// internal identity/configuration failure, not a user-scoped denial.
 				return logics.MapDependencyError(ctx, err, false, invalidErr,
 					berrors.BknBackend_ObjectType_InternalError)
 			}
