@@ -239,7 +239,7 @@ func callBusinessTool(
 	ctx context.Context,
 	req mcpsdk.CallToolRequest,
 	next func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error),
-) (result *mcpsdk.CallToolResult, err error, failure *operationFailure) {
+) (result *mcpsdk.CallToolResult, err error, failure *operationFailure) { //nolint:staticcheck // Internal callers rely on the established return order.
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			logger.DefaultLogger().WithContext(ctx).Errorf(

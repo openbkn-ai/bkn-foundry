@@ -252,6 +252,8 @@ func (s *localSearchImpl) completeReferencedObjectTypes(
 // The correlation never has a signal source and can only be passively brought out by the relationship endpoint (issue #778).
 //
 // Failure in scoring does not affect the main process: when the score is not obtained, the original relationship endpoint selection is returned, and the behavior is the same as before repair.
+//
+//nolint:unused // Retained for retrieval scoring extensions.
 func (s *localSearchImpl) scoreObjectTypes(
 	ctx context.Context,
 	knID string,
@@ -429,6 +431,8 @@ func maxInt(a, b int) int {
 
 // coarseRecall coarse recall: first prune the candidate set in large-scale knowledge networks.
 // Business logic: construct knn+match query conditions and call the basic search interface.
+//
+//nolint:unused // Retained for retrieval recall extensions.
 func (s *localSearchImpl) coarseRecall(
 	ctx context.Context,
 	knID string,

@@ -83,7 +83,7 @@ func marshalTOON(body interface{}) ([]byte, error) {
 		return toon.Marshal(provider.TOONValue(), toon.WithLengthMarkers(true))
 	}
 	v := reflect.ValueOf(body)
-	for v.Kind() == reflect.Ptr {
+	for v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 	if v.Kind() != reflect.Struct {

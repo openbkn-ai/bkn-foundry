@@ -94,6 +94,7 @@ func TestMCPProtocolLifecycleThreeRoundsAcrossConversationsAndReconnect(t *testi
 				len(body.TraceID) != 32 || body.Retryable {
 				t.Errorf("invalid business IsError finish body: %#v", body)
 			}
+			//nolint:ineffassign,staticcheck // Retained to document the initial path-tail normalization.
 			operationID := strings.TrimSuffix(pathTail(r.URL.Path), ":fail")
 			operationID = strings.TrimSuffix(strings.TrimSuffix(r.URL.Path, "/attempts/1:fail"), "/")
 			operationID = pathTail(operationID)

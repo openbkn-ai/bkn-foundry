@@ -68,7 +68,7 @@ func TestAttachRelatedMetrics(t *testing.T) {
 		svc := NewKnMetricsServiceWith(nil, bkn, nil)
 		ots := []*interfaces.ObjectType{{ID: "ot1"}, {ID: "ot2"}, {ID: "ot3"}, nil}
 
-		svc.AttachRelatedMetrics(context.Background(), "kn1", ots)
+		convey.So(svc.AttachRelatedMetrics(context.Background(), "kn1", ots), convey.ShouldBeNil)
 
 		convey.So(bkn.calls, convey.ShouldEqual, 1)
 		convey.So(bkn.gotKnID, convey.ShouldEqual, "kn1")
@@ -85,7 +85,7 @@ func TestAttachRelatedMetrics(t *testing.T) {
 		svc := NewKnMetricsServiceWith(nil, bkn, nil)
 		ots := []*interfaces.ObjectType{{ID: "ot1"}}
 
-		svc.AttachRelatedMetrics(context.Background(), "kn1", ots)
+		convey.So(svc.AttachRelatedMetrics(context.Background(), "kn1", ots), convey.ShouldNotBeNil)
 
 		convey.So(ots[0].RelatedMetrics, convey.ShouldBeNil)
 		convey.So(ots[0].RelatedMetricCount, convey.ShouldEqual, 0)
@@ -95,7 +95,7 @@ func TestAttachRelatedMetrics(t *testing.T) {
 		bkn := &stubBknBackend{}
 		svc := NewKnMetricsServiceWith(nil, bkn, nil)
 
-		svc.AttachRelatedMetrics(context.Background(), "kn1", nil)
+		convey.So(svc.AttachRelatedMetrics(context.Background(), "kn1", nil), convey.ShouldBeNil)
 
 		convey.So(bkn.calls, convey.ShouldEqual, 0)
 	})
@@ -110,7 +110,7 @@ func TestAttachRelatedMetricCounts(t *testing.T) {
 		svc := NewKnMetricsServiceWith(nil, bkn, nil)
 		ots := []*interfaces.ObjectType{{ID: "ot1"}, {ID: "ot2"}}
 
-		svc.AttachRelatedMetricCounts(context.Background(), "kn1", ots)
+		convey.So(svc.AttachRelatedMetricCounts(context.Background(), "kn1", ots), convey.ShouldBeNil)
 
 		convey.So(ots[0].RelatedMetricCount, convey.ShouldEqual, 2)
 		convey.So(ots[0].RelatedMetrics, convey.ShouldBeNil)

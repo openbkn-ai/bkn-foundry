@@ -94,7 +94,7 @@ func defaultDeny() Evaluation {
 // helper lets dry-run hierarchy previews evaluate a proposed parent with the
 // same semantics as the persisted hierarchy path.
 func resolveEffective(local Evaluation, inherited Evaluation, hasInherited bool) Evaluation {
-	if local.Decision != "" && local.Decision != DecisionNone && !(local.Decision == DecisionAllow && local.Basis == BasisWildcard) {
+	if local.Decision != "" && local.Decision != DecisionNone && (local.Decision != DecisionAllow || local.Basis != BasisWildcard) {
 		local.Scope = ScopeEffective
 		return local
 	}

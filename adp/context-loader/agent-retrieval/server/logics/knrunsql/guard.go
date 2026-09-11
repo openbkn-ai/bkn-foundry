@@ -70,7 +70,7 @@ func stripSQLNoise(sql string) string {
 			b.WriteByte(' ')
 		case c == '/' && i+1 < n && runes[i+1] == '*': // Block comments /* */.
 			i += 2
-			for i+1 < n && !(runes[i] == '*' && runes[i+1] == '/') {
+			for i+1 < n && (runes[i] != '*' || runes[i+1] != '/') {
 				i++
 			}
 			i++ // Skip the trailing '/'.

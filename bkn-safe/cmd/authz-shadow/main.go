@@ -147,7 +147,7 @@ func postJSON(c *http.Client, url string, body any, hdr map[string]string, out a
 	if err != nil {
 		return false
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return false
@@ -162,7 +162,7 @@ func loadCorpus(path string) ([]request, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		r = f
 	}
 	data, err := io.ReadAll(r)

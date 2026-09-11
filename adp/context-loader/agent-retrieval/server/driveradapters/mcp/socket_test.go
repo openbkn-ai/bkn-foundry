@@ -205,6 +205,7 @@ func TestEnterpriseToolCallIsRefusedAsUnknown(t *testing.T) {
 	// the tool, and a client that calls it anyway is answered the way an
 	// unknown tool is answered — a community binary genuinely does not have it.
 	gate.ed = licverify.EditionCommunity
+	//nolint:ineffassign,staticcheck // Retained to preserve the response assignment in this lapse scenario.
 	res, err = h(context.Background(), mcp.CallToolRequest{})
 	if err == nil {
 		t.Fatal("an unlicensed enterprise tool call must fail")

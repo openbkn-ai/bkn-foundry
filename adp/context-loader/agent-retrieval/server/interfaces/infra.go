@@ -63,8 +63,8 @@ const (
 
 // System built-in import context.
 const (
-	ADMIN_ACCOUNT_ID   = "266c6a42-6131-4d62-8f39-853e7093701c"
-	ADMIN_ACCOUNT_TYPE = "user"
+	ADMIN_ACCOUNT_ID   = "266c6a42-6131-4d62-8f39-853e7093701c" //nolint:staticcheck // Existing public constant name.
+	ADMIN_ACCOUNT_TYPE = "user"                                 //nolint:staticcheck // Existing public constant name.
 )
 
 const (

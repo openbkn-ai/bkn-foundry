@@ -176,6 +176,8 @@ func mcpEndpointURL(req *http.Request) string {
 // publicEndpointURL builds another public endpoint of this service from the
 // route-group prefix. It is used where removing a suffix from the current URL
 // is insufficient, such as /ptc/toolkit describing /mcp.
+//
+//nolint:unused // Retained for public endpoint URL construction.
 func publicEndpointURL(req *http.Request, suffix string) string {
 	base := req.URL.Path
 	if i := strings.Index(base, "/v1/"); i >= 0 {

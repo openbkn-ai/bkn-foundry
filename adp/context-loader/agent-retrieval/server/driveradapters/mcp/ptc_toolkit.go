@@ -19,7 +19,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 )
 
-// PTC (Coded Tool Call) toolkit: renders the tool surface of this service into "a description + a stub".
+// PTCToolkit renders the tool surface of this service into "a description + a stub".
 //
 // The client only gives the model a run_code tool. The model writes Python code that is executed in the sandbox
 // and calls the functions generated here directly. Intermediate results stay in the sandbox; only stdout returns to the context.

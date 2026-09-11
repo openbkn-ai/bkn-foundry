@@ -481,7 +481,7 @@ func (c *LifecycleClient) do(
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		var envelope errorEnvelope
 		if err := sonic.ConfigDefault.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&envelope); err != nil {

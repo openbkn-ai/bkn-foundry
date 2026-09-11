@@ -131,7 +131,7 @@ func (en *Enforcer) explainBaseWalk(ctx context.Context, idx *grantIndex, access
 			Decision: decision.Decision, Basis: decision.Basis, MatchedGrants: grants,
 		}
 		steps = append(steps, step)
-		if decision.Decision != DecisionNone && !(decision.Decision == DecisionAllow && decision.Basis == BasisWildcard) {
+		if decision.Decision != DecisionNone && (decision.Decision != DecisionAllow || decision.Basis != BasisWildcard) {
 			break
 		}
 		mapping, err := en.parentOpMap(current.Type)

@@ -347,10 +347,10 @@ func fingerprintPTCTools(t *testing.T, tools []PTCTool) string {
 // Version is the content hash, which is cached by the client; rendering must be repeatable, otherwise it will look like the tool surface has changed each time.
 func TestPTCRenderIsDeterministic(t *testing.T) {
 	tools := ptcUsableTools(&MCPInfo{Tools: ptcTestTools()})
-	if renderPTCDigest(tools) != renderPTCDigest(tools) {
+	if first, second := renderPTCDigest(tools), renderPTCDigest(tools); first != second {
 		t.Fatal("digest 渲染不稳定")
 	}
-	if renderPTCStub(tools) != renderPTCStub(tools) {
+	if first, second := renderPTCStub(tools), renderPTCStub(tools); first != second {
 		t.Fatal("stub 渲染不稳定")
 	}
 }
@@ -481,7 +481,7 @@ func TestInlineDigestListsNamesOnly(t *testing.T) {
 func TestInlineDigestNameOrderIsStable(t *testing.T) {
 	locale := loadMCPLocaleBundle(defaultMCPLocale)
 	tools := ptcUsableTools(&MCPInfo{Tools: ptcTestTools()})
-	if renderPTCDigestForLocale(locale, tools, false) != renderPTCDigestForLocale(locale, tools, false) {
+	if first, second := renderPTCDigestForLocale(locale, tools, false), renderPTCDigestForLocale(locale, tools, false); first != second {
 		t.Fatal("并入版渲染不稳定")
 	}
 	if !strings.Contains(renderPTCDigestForLocale(locale, tools, false),

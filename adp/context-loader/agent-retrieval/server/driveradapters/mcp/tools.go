@@ -792,6 +792,8 @@ func handleQueryMetric(service knmetrics.KnMetricsService) func(ctx context.Cont
 }
 
 // missingObjectTypeIDs returns the object type IDs that were requested but not obtained, maintaining the same semantics as when filtering exported views.
+//
+//nolint:unused // Retained for object-type validation extensions.
 func missingObjectTypeIDs(requested []string, matched []*interfaces.ObjectType) []string {
 	found := make(map[string]struct{}, len(matched))
 	for _, ot := range matched {

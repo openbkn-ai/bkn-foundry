@@ -23,7 +23,9 @@ import (
 // paths it expects inside a container.
 func TestMain(m *testing.M) {
 	if os.Getenv("CONFIG_PROFILE") == "" {
-		os.Setenv("CONFIG_PROFILE", "../../infra/config")
+		if err := os.Setenv("CONFIG_PROFILE", "../../infra/config"); err != nil {
+			panic(err)
+		}
 	}
 	os.Exit(m.Run())
 }
