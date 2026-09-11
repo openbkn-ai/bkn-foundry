@@ -7,6 +7,4 @@ set -euo pipefail
 
 script_directory=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "$script_directory"
-GOTOOLCHAIN=go1.25.0 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-  go build -buildvcs=false -trimpath -ldflags="-s -w" -o authz-migrate .
-sha256sum authz-migrate > authz-migrate.sha256
+CGO_ENABLED=0 go build -trimpath -o authz-migrate .

@@ -30,7 +30,3 @@ jobs:
       - run: ./test_service_control.sh
       - run: go test -p=1 ./...
         working-directory: deploy/scripts/upgrades/0.1.5/permission_model_transition/authz_migrate
-      - run: |
-          ./build.sh
-          git diff --exit-code -- authz-migrate authz-migrate.sha256
-        working-directory: deploy/scripts/upgrades/0.1.5/permission_model_transition/authz_migrate
