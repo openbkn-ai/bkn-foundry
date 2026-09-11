@@ -29,13 +29,24 @@ const executeFunctionURI = "/v1/function/execute"
 //
 // Do not silently fall back to a service identity because that would bypass
 // Execution Factory's resource permission checks.
-var ErrCallerTokenMissing = fmt.Errorf("caller token is required for execution-factory authorization")
+var (
+	ErrCallerTokenMissing = fmt.Errorf("caller token is required for execution-factory authorization")
+	// ErrInternalCapabilityAuthorizationUnsupported makes the retired private
+	// capability face explicit: it has no original caller token and therefore
+	// cannot perform caller-scoped authorization safely.
+	ErrInternalCapabilityAuthorizationUnsupported = fmt.Errorf(
+		"caller-scoped capability operations are not supported on the internal API")
+)
 
 func (o *operatorIntegrationClient) callerAuthorizationHeader(
 	ctx context.Context, operationName string,
 ) (map[string]string, error) {
 	token, ok := common.GetRawTokenFromCtx(ctx)
 	if !ok {
+		if !common.IsPublicAPIFromCtx(ctx) {
+			return nil, infraErr.DefaultHTTPError(ctx, http.StatusForbidden,
+				ErrInternalCapabilityAuthorizationUnsupported.Error())
+		}
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusUnauthorized, ErrCallerTokenMissing.Error())
 	}
 	header := o.skillHeader(ctx, operationName)

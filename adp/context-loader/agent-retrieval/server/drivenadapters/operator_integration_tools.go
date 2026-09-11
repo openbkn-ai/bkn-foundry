@@ -44,13 +44,11 @@ const (
 func (o *operatorIntegrationClient) ListPublishedToolboxes(
 	ctx context.Context, req *interfaces.ListPublishedToolboxesRequest,
 ) (*interfaces.ListPublishedToolboxesResponse, error) {
-	token, ok := common.GetRawTokenFromCtx(ctx)
-	if !ok {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusUnauthorized, ErrCallerTokenMissing.Error())
+	header, err := o.callerAuthorizationHeader(ctx, "operator.published_toolbox.list")
+	if err != nil {
+		return nil, err
 	}
 	fullURL := o.baseURL + listPublishedToolboxesURI
-	header := o.skillHeader(ctx, "operator.published_toolbox.list")
-	header["Authorization"] = "Bearer " + token
 
 	resp := &interfaces.ListPublishedToolboxesResponse{Toolboxes: []interfaces.PublishedToolboxSummary{}}
 	for page := 1; page <= publishedCatalogueMaxPages; page++ {
@@ -112,13 +110,11 @@ func (o *operatorIntegrationClient) ListPublishedTools(
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
 			infraErr.LocalizedDetail(ctx, "ToolboxIDRequired"))
 	}
-	token, ok := common.GetRawTokenFromCtx(ctx)
-	if !ok {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusUnauthorized, ErrCallerTokenMissing.Error())
+	header, err := o.callerAuthorizationHeader(ctx, "operator.published_tool.list")
+	if err != nil {
+		return nil, err
 	}
 	fullURL := o.baseURL + fmt.Sprintf(listPublishedToolsURI, url.PathEscape(strings.TrimSpace(req.ToolboxID)))
-	header := o.skillHeader(ctx, "operator.published_tool.list")
-	header["Authorization"] = "Bearer " + token
 
 	resp := &interfaces.ListPublishedToolsResponse{
 		ToolboxID: req.ToolboxID,
@@ -210,9 +206,9 @@ func (o *operatorIntegrationClient) ExecutePublishedTool(
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
 			infraErr.LocalizedDetail(ctx, "ToolboxIDAndToolIDRequired"))
 	}
-	token, ok := common.GetRawTokenFromCtx(ctx)
-	if !ok {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusUnauthorized, ErrCallerTokenMissing.Error())
+	header, err := o.callerAuthorizationHeader(ctx, "operator.published_tool.execute")
+	if err != nil {
+		return nil, err
 	}
 
 	fullURL := o.baseURL + fmt.Sprintf(executePublishedToolURI,
@@ -222,14 +218,11 @@ func (o *operatorIntegrationClient) ExecutePublishedTool(
 	// skillHeader carries the managed Interaction (bkn-conversation-id /
 	// bkn-interaction-id) that the lifecycle guard put on the context, which is
 	// what lets the Function read BKN inside the same Interaction.
-	header := o.skillHeader(ctx, "operator.published_tool.execute")
 	// The transport operation is derived, but Function reads need the Guard's
 	// persisted operation as their parent. Keep those identities separate.
 	if traceContext, ok := common.GetTraceContextFromCtx(ctx); ok && traceContext.OperationID != "" {
 		header[common.HeaderBKNParentOperationID] = traceContext.OperationID
 	}
-	header["Authorization"] = "Bearer " + token
-
 	parameters := req.Parameters
 	if parameters == nil {
 		parameters = map[string]any{}

@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	listSkillsURI      = "/v1/skills"
+	listSkillsURI      = "/v1/skills/available"
 	getSkillContentURI = "/v1/skills/%s/content"
 	readSkillFileURI   = "/v1/skills/%s/files/read"
 	executeSkillURI    = "/v1/skills/%s/execute"
@@ -54,8 +54,6 @@ func (o *operatorIntegrationClient) ListSkills(ctx context.Context, req *interfa
 	if req.Category != "" {
 		query.Set("category", req.Category)
 	}
-	query.Set("status", "published")
-
 	fullURL := o.baseURL + listSkillsURI
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#ListSkills] URL: %s?%s", fullURL, query.Encode())
 

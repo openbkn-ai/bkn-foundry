@@ -18,7 +18,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
 
-func TestExecutionFactoryResourceCallsRequireOriginalCallerToken(t *testing.T) {
+func TestInternalCapabilityCallsFailWithExplicitForbidden(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	logger := mocks.NewMockLogger(ctrl)
 	httpClient := mocks.NewMockHTTPClient(ctrl)
@@ -34,6 +34,20 @@ func TestExecutionFactoryResourceCallsRequireOriginalCallerToken(t *testing.T) {
 	}{
 		{"tool detail", func() error {
 			_, err := client.GetToolDetail(context.Background(), &interfaces.GetToolDetailRequest{BoxID: "box-1", ToolID: "tool-1"})
+			return err
+		}},
+		{"toolbox catalogue", func() error {
+			_, err := client.ListPublishedToolboxes(context.Background(), &interfaces.ListPublishedToolboxesRequest{})
+			return err
+		}},
+		{"tool catalogue", func() error {
+			_, err := client.ListPublishedTools(context.Background(), &interfaces.ListPublishedToolsRequest{ToolboxID: "box-1"})
+			return err
+		}},
+		{"tool execute", func() error {
+			_, err := client.ExecutePublishedTool(context.Background(), &interfaces.ExecutePublishedToolRequest{
+				ToolboxID: "box-1", ToolID: "tool-1",
+			})
 			return err
 		}},
 		{"mcp tools", func() error {
@@ -64,10 +78,20 @@ func TestExecutionFactoryResourceCallsRequireOriginalCallerToken(t *testing.T) {
 	for _, tc := range calls {
 		t.Run(tc.name, func(t *testing.T) {
 			status, ok := infraErr.HTTPStatus(tc.call())
-			if !ok || status != http.StatusUnauthorized {
-				t.Fatalf("status = %d, %v; want 401", status, ok)
+			if !ok || status != http.StatusForbidden {
+				t.Fatalf("status = %d, %v; want 403", status, ok)
 			}
 		})
+	}
+}
+
+func TestPublicCapabilityCallWithoutCallerTokenIsUnauthorized(t *testing.T) {
+	client := &operatorIntegrationClient{}
+	ctx := common.SetPublicAPIToCtx(context.Background(), true)
+	_, err := client.callerAuthorizationHeader(ctx, "operator.skill.list")
+	status, ok := infraErr.HTTPStatus(err)
+	if !ok || status != http.StatusUnauthorized {
+		t.Fatalf("status = %d, %v; want 401", status, ok)
 	}
 }
 
@@ -138,9 +162,9 @@ func TestSkillCallsUsePublicAuthorizationFace(t *testing.T) {
 
 	httpClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, target string, query url.Values, headers map[string]string) (int, interface{}, error) {
-			assertAuth(target, headers, "/v1/skills")
-			if query["status"][0] != "published" {
-				t.Fatalf("status query = %v", query["status"])
+			assertAuth(target, headers, "/v1/skills/available")
+			if query.Has("status") {
+				t.Fatalf("available release list must not filter mutable repository status: %v", query)
 			}
 			return http.StatusOK, map[string]any{"data": []any{map[string]any{"skill_id": "skill-1", "name": "skill"}}}, nil
 		})

@@ -1197,8 +1197,15 @@ func (r *skillRegistry) QuerySkillMarketList(ctx context.Context, req *interface
 		filter["category"] = req.Category.String()
 	}
 
-	authResp, err := r.queryReleaseListPage(ctx, filter, req.CommonPageParams, req.UserID,
-		interfaces.AuthOperationTypePublicAccess)
+	visibilityOperation := req.VisibilityOperation
+	if visibilityOperation == "" {
+		visibilityOperation = interfaces.AuthOperationTypePublicAccess
+	}
+	if visibilityOperation != interfaces.AuthOperationTypePublicAccess && visibilityOperation != interfaces.AuthOperationTypeView {
+		return nil, errors.DefaultHTTPError(ctx, http.StatusBadRequest,
+			fmt.Sprintf("unsupported skill list visibility operation: %s", visibilityOperation))
+	}
+	authResp, err := r.queryReleaseListPage(ctx, filter, req.CommonPageParams, req.UserID, visibilityOperation)
 	if err != nil {
 		return nil, err
 	}

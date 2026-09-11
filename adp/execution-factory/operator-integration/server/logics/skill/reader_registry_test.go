@@ -1137,6 +1137,50 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 			So(resp.Data[0].SkillID, ShouldEqual, "skill-m1")
 		})
 
+		Convey("QuerySkillMarketList can discover published releases by view", func() {
+			mockReleaseRepo := mocks.NewMockISkillReleaseDB(ctrl)
+			mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
+			mockUserMgnt := mocks.NewMockUserManagement(ctrl)
+			mockCategoryManager := mocks.NewMockCategoryManager(ctrl)
+			registry := &skillRegistry{
+				releaseRepo:     mockReleaseRepo,
+				AuthService:     mockAuthService,
+				UserMgnt:        mockUserMgnt,
+				CategoryManager: mockCategoryManager,
+				Logger:          logger.DefaultLogger(),
+			}
+			mockAuthService.EXPECT().GetAccessor(gomock.Any(), "").Return(&interfaces.AuthAccessor{ID: "viewer"}, nil)
+			mockAuthService.EXPECT().ResourceListIDs(gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeSkill,
+				interfaces.AuthOperationTypeView).Return([]string{"skill-editing"}, nil)
+			mockReleaseRepo.EXPECT().CountByWhereClause(gomock.Any(), gomock.Nil(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ interface{}, filter map[string]interface{}) (int64, error) {
+					So(filter["status"], ShouldEqual, interfaces.BizStatusPublished.String())
+					return int64(1), nil
+				},
+			)
+			mockReleaseRepo.EXPECT().SelectListPage(gomock.Any(), gomock.Nil(), gomock.Any(), gomock.Any(), gomock.Nil()).DoAndReturn(
+				func(_ context.Context, _ interface{}, filter map[string]interface{}, _ interface{}, _ interface{}) ([]*model.SkillReleaseDB, error) {
+					So(filter["status"], ShouldEqual, interfaces.BizStatusPublished.String())
+					return []*model.SkillReleaseDB{{
+						SkillID: "skill-editing", Name: "published snapshot", Status: interfaces.BizStatusPublished.String(),
+					}}, nil
+				},
+			)
+			mockUserMgnt.EXPECT().GetUsersName(gomock.Any(), gomock.Any()).Return(map[string]string{}, nil)
+			mockCategoryManager.EXPECT().GetCategoryName(gomock.Any(), gomock.Any()).Return("").AnyTimes()
+
+			ctx := common.SetPublicAPIToCtx(context.Background(), true)
+			resp, err := registry.QuerySkillMarketList(ctx, &interfaces.QuerySkillMarketListReq{
+				VisibilityOperation: interfaces.AuthOperationTypeView,
+				CommonPageParams:    interfaces.CommonPageParams{Page: 1, PageSize: 10},
+			})
+
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(len(resp.Data), ShouldEqual, 1)
+			So(resp.Data[0].SkillID, ShouldEqual, "skill-editing")
+		})
+
 		Convey("GetSkillMarketDetail checks public access", func() {
 			mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
 			mockUserMgnt := mocks.NewMockUserManagement(ctrl)

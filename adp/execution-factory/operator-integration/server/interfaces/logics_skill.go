@@ -95,11 +95,15 @@ type QuerySkillListResp struct {
 
 // QuerySkillMarketListReq Skill market list query.
 type QuerySkillMarketListReq struct {
-	UserID           string      `header:"user_id"`
-	Name             string      `form:"name"`
-	Category         BizCategory `form:"category"`
-	CreateUser       string      `form:"create_user"`
-	CommonPageParams `json:",inline"`
+	UserID     string      `header:"user_id"`
+	Name       string      `form:"name"`
+	Category   BizCategory `form:"category"`
+	CreateUser string      `form:"create_user"`
+	// VisibilityOperation is set by the registered server route, never by the
+	// caller. The market route uses public_access; the agent discovery route
+	// uses view while reading the same published-release table.
+	VisibilityOperation AuthOperationType `form:"-" json:"-"`
+	CommonPageParams    `json:",inline"`
 }
 
 // QuerySkillMarketListResp Skill market list response.

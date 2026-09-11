@@ -26,6 +26,7 @@ type SkillHandler interface {
 	QuerySkillList(c *gin.Context)
 	QuerySkillNamesByIDs(c *gin.Context)
 	QuerySkillMarketList(c *gin.Context)
+	QueryAvailableSkillList(c *gin.Context)
 	GetSkillMarketDetail(c *gin.Context)
 	GetSkillDetail(c *gin.Context)
 	GetSkillContent(c *gin.Context)

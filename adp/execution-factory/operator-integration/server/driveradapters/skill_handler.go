@@ -70,6 +70,9 @@ func (r *skillRestHandler) RegisterPublic(engine *gin.RouterGroup) {
 	engine.POST("/skills", r.SkillHandler.RegisterSkill)
 	// Query skill list.
 	engine.GET("/skills", r.SkillHandler.QuerySkillList)
+	// Query published releases visible to the caller. Unlike the market list,
+	// this endpoint is filtered by view instead of public_access.
+	engine.GET("/skills/available", r.SkillHandler.QueryAvailableSkillList)
 	// POST /api/agent-operator-integration/v1/skills/names Batch names based on skill ID (front-end object-level authorization page echo)
 	engine.POST("/skills/names", r.SkillHandler.QuerySkillNamesByIDs)
 	// Query skill details.
