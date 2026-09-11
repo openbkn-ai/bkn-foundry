@@ -34,7 +34,7 @@ func ReadVerifiedBundle(ctx context.Context, store ReadStore, job Job, maxBytes 
 		if err != nil {
 			return nil, err
 		}
-		defer stream.Close()
+		defer func() { _ = stream.Close() }()
 		raw, err := io.ReadAll(io.LimitReader(stream, int64(limit)+1))
 		if err != nil {
 			return nil, err
