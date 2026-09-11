@@ -26,6 +26,7 @@ branch: main
 
 | ID | Name | File Path | Description |
 |----|------|-----------|-------------|
+| emp_dept_indirect | 员工-部门（间接关联） | `relation_types/emp_dept_indirect.bkn` | 员工通过中间 Resource 的员工和部门字段关联部门。 |
 | emp_dept_resource | 员工-部门（Resource版） | `relation_types/emp_dept_resource.bkn` |  |
 | emp_skill | 员工-skill | `relation_types/emp_skill.bkn` |  |
 | source_object_type_id | 员工-部门 | `relation_types/source_object_type_id.bkn` |  |
@@ -75,6 +76,7 @@ branch: main
 │   ├── relation.bkn
 │   └── skill.bkn
 ├── relation_types/
+│   ├── emp_dept_indirect.bkn
 │   ├── emp_dept_resource.bkn
 │   ├── emp_skill.bkn
 │   └── source_object_type_id.bkn

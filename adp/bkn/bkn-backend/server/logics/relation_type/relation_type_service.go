@@ -456,13 +456,8 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 					return []*interfaces.RelationType{}, logics.UnsupportedRelationBackingDataSourceError(ctx, relationType.RTID, mappingRules.BackingDataSource.Type)
 				}
 				res, err := rts.vbs.GetResourceByID(ctx, mappingRules.BackingDataSource.ID)
-				if err != nil {
-					return []*interfaces.RelationType{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-						berrors.BknBackend_RelationType_InternalError_GetDataViewByIDFailed).
-						WithErrorDetails(err.Error())
-				}
-				if res == nil {
-					otellog.LogWarn(ctx, fmt.Sprintf("Relation type [%s]'s backing vega Resource %s not found", relationType.RTID, mappingRules.BackingDataSource.ID))
+				if err != nil || res == nil {
+					otellog.LogWarn(ctx, fmt.Sprintf("Relation type [%s]'s backing vega Resource %s not found, error: %v", relationType.RTID, mappingRules.BackingDataSource.ID, err))
 					if sourceObj == nil && targetObj == nil {
 						continue
 					}

@@ -158,7 +158,8 @@ func TestValidateRelationTypeDeep_DataViewRequiresResourceBacking(t *testing.T) 
 	result = &ValidationResult{}
 	validateRelationTypeDeep(result, "relations/indirect.bkn", valid)
 	assert.NotEmpty(t, result.Errors)
-	assert.Equal(t, "invalid_relation_type", result.Errors[0].Code)
+	assert.Equal(t, "backing_data_source", result.Errors[0].Column)
+	assert.Contains(t, result.Errors[0].Message, `must be "resource"`)
 }
 
 func TestValidateNetwork_InvalidBoundObjectRef(t *testing.T) {
