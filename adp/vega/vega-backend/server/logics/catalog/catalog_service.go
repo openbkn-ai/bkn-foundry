@@ -175,6 +175,27 @@ func (cs *catalogService) filterCatalogResources(ctx context.Context, ids []stri
 	return result, nil
 }
 
+// filterCatalogResourcesInBatches filters catalog permissions without exceeding the permission-service request size.
+func (cs *catalogService) filterCatalogResourcesInBatches(ctx context.Context, ids []string,
+	internalSet map[string]struct{}, ops []string, allowOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
+
+	result := make(map[string]interfaces.PermissionResourceOps, len(ids))
+	for start := 0; start < len(ids); start += catalogAuthResourcePermissionBatchSize {
+		end := start + catalogAuthResourcePermissionBatchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		matched, err := cs.filterCatalogResources(ctx, ids[start:end], internalSet, ops, allowOperation)
+		if err != nil {
+			return nil, err
+		}
+		for id, resourceOps := range matched {
+			result[id] = resourceOps
+		}
+	}
+	return result, nil
+}
+
 // Create creates a new Catalog.
 func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogRequest, allowUnhealthy bool) (string, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create catalog")
@@ -778,31 +799,11 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 		return []*interfaces.CatalogSummary{}, 0, err
 	}
 
-	// Filter permissions using batch processing, with 10,000 ids processed in each batch
-	batchSize := 10000
-	// All authorized catalogs and their operation permissions
-	matchResourceOpsMap := make(map[string]interfaces.PermissionResourceOps)
-
-	for i := 0; i < len(ids); i += batchSize {
-		end := i + batchSize
-		if end > len(ids) {
-			end = len(ids)
-		}
-		batchIDs := ids[i:end]
-
-		var batchMatchResources map[string]interfaces.PermissionResourceOps
-		// Verify the operation permissions of the permission management
-		batchMatchResources, err = cs.filterCatalogResources(ctx, batchIDs, internalSet,
-			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
-		if err != nil {
-			span.SetStatus(codes.Error, "Filter resources error")
-			return []*interfaces.CatalogSummary{}, 0, err
-		}
-
-		// Merge results
-		for _, resourceOps := range batchMatchResources {
-			matchResourceOpsMap[resourceOps.ResourceID] = resourceOps
-		}
+	matchResourceOpsMap, err := cs.filterCatalogResourcesInBatches(ctx, ids, internalSet,
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
+	if err != nil {
+		span.SetStatus(codes.Error, "Filter resources error")
+		return []*interfaces.CatalogSummary{}, 0, err
 	}
 
 	// Extract the catalog ID with permission and keep it in the same order as the ids
@@ -897,7 +898,7 @@ func (cs *catalogService) ListConnectorTypeStats(ctx context.Context, params int
 	if err != nil {
 		return nil, err
 	}
-	allowed, err := cs.filterCatalogResources(ctx, ids, internalSet,
+	allowed, err := cs.filterCatalogResourcesInBatches(ctx, ids, internalSet,
 		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
 	if err != nil {
 		return nil, err
