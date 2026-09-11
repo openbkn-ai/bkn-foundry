@@ -233,8 +233,9 @@ func (c *AnyShareConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Conn
 
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{
-			MinVersion:         tls.VersionTLS12,
-			InsecureSkipVerify: true, //nolint:gosec // AnyShare deployments may use certificates that cannot be verified by this service.
+			MinVersion: tls.VersionTLS12,
+			//nolint:gosec // AnyShare deployments may use certificates that cannot be verified by this service.
+			InsecureSkipVerify: true,
 		},
 	}
 	nc := &AnyShareConnector{
