@@ -331,6 +331,7 @@ func Test_metricService_UpdateMetric(t *testing.T) {
 				Type: interfaces.RESOURCE_TYPE_METRIC,
 				ID:   interfaces.KNChildResourceID("kn1", "mid1"),
 			}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+			ma.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "mid1").Return(req, nil)
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), tx, "kn1", interfaces.MAIN_BRANCH, "ot1").Return(&interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 					DataSource:     &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "ds1"},

@@ -392,6 +392,43 @@ func (r *restHandler) GetMetricsByIDsByEx(c *gin.Context) {
 	r.GetMetricsByIDs(c, vis)
 }
 
+func (r *restHandler) GetMetricDependencyPropertiesByIn(c *gin.Context) {
+	r.GetMetricDependencyProperties(c, visitor.GenerateVisitor(c))
+}
+
+func (r *restHandler) GetMetricDependencyPropertiesByEx(c *gin.Context) {
+	vis, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.GetMetricDependencyProperties(c, vis)
+}
+
+func (r *restHandler) GetMetricDependencyProperties(c *gin.Context, vis hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{
+		ID: vis.ID, Type: string(vis.Type),
+	})
+	knID := c.Param("kn_id")
+	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	objectTypeID := c.Param("ot_id")
+	properties, err := r.ms.GetMetricDependencyProperties(ctx, knID, branch, objectTypeID)
+	if err != nil {
+		httpErr, ok := err.(*rest.HTTPError)
+		if !ok {
+			httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_Metric_InternalError).WithErrorDetails(err.Error())
+		}
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, map[string]any{"entries": properties})
+}
+
 func (r *restHandler) GetMetricsByIDsByIn(c *gin.Context) {
 	r.GetMetricsByIDs(c, visitor.GenerateVisitor(c))
 }

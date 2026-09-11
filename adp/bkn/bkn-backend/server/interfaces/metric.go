@@ -250,6 +250,16 @@ type MetricAnalysisDimension struct {
 	DisplayName string `json:"display_name,omitempty" mapstructure:"display_name"`
 }
 
+// MetricDependencyProperty is the minimal property metadata exposed with a
+// metric. It contains only fields captured by the trusted metric definition.
+type MetricDependencyProperty struct {
+	Name                string   `json:"name"`
+	DisplayName         string   `json:"display_name,omitempty"`
+	Type                string   `json:"type,omitempty"`
+	Comment             string   `json:"comment,omitempty"`
+	ConditionOperations []string `json:"condition_operations,omitempty"`
+}
+
 // MetricDefinition is the persisted metric entity (DESIGN §3.2.1, bkn-metrics.yaml MetricDefinition).
 type MetricDefinition struct {
 	ID     string `json:"id" mapstructure:"id"`
@@ -259,14 +269,16 @@ type MetricDefinition struct {
 
 	CommonInfo `mapstructure:",squash"`
 
-	UnitType           string                    `json:"unit_type,omitempty" mapstructure:"unit_type"`
-	Unit               string                    `json:"unit,omitempty" mapstructure:"unit"`
-	MetricType         string                    `json:"metric_type" mapstructure:"metric_type"`
-	ScopeType          string                    `json:"scope_type" mapstructure:"scope_type"`
-	ScopeRef           string                    `json:"scope_ref" mapstructure:"scope_ref"`
-	TimeDimension      *MetricTimeDimension      `json:"time_dimension,omitempty" mapstructure:"time_dimension"`
-	CalculationFormula *MetricCalculationFormula `json:"calculation_formula" mapstructure:"calculation_formula"`
-	AnalysisDimensions []MetricAnalysisDimension `json:"analysis_dimensions,omitempty" mapstructure:"analysis_dimensions"`
+	UnitType             string                     `json:"unit_type,omitempty" mapstructure:"unit_type"`
+	Unit                 string                     `json:"unit,omitempty" mapstructure:"unit"`
+	MetricType           string                     `json:"metric_type" mapstructure:"metric_type"`
+	ScopeType            string                     `json:"scope_type" mapstructure:"scope_type"`
+	ScopeRef             string                     `json:"scope_ref" mapstructure:"scope_ref"`
+	ScopeName            string                     `json:"scope_name,omitempty" mapstructure:"-"`
+	TimeDimension        *MetricTimeDimension       `json:"time_dimension,omitempty" mapstructure:"time_dimension"`
+	CalculationFormula   *MetricCalculationFormula  `json:"calculation_formula" mapstructure:"calculation_formula"`
+	AnalysisDimensions   []MetricAnalysisDimension  `json:"analysis_dimensions,omitempty" mapstructure:"analysis_dimensions"`
+	DependencyProperties []MetricDependencyProperty `json:"dependency_properties,omitempty" mapstructure:"-"`
 
 	Creator    AccountInfo `json:"creator,omitempty" mapstructure:"creator"`
 	CreateTime int64       `json:"create_time,omitempty" mapstructure:"create_time"`

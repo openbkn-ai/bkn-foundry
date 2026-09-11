@@ -135,7 +135,10 @@ func (c *safeClient) do(ctx context.Context, method, path string, body, out any)
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	data, _ := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read bkn-safe response: %w", err)
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("bkn-safe %s %s returned status %d", method, path, resp.StatusCode)
 	}
@@ -156,6 +159,18 @@ func NewPermissionAccess(baseURL string) interfaces.PermissionAccess {
 
 func (s *safePermissionAccess) CheckPermission(ctx context.Context, check interfaces.PermissionCheck) (bool, error) {
 	return s.safe.allowedAll(ctx, check.Accessor.ID, check.Resource.Type, check.Resource.ID, check.Operations)
+}
+
+func (s *safePermissionAccess) ResolvePropertyLevels(ctx context.Context,
+	request interfaces.PropertyLevelsRequest) (interfaces.PropertyLevelsResponse, error) {
+	var response interfaces.PropertyLevelsResponse
+	if err := s.safe.do(ctx, http.MethodPost, "/api/safe/v1/authz/property-levels", request, &response); err != nil {
+		return response, err
+	}
+	if response.Entries == nil {
+		return response, fmt.Errorf("invalid bkn-safe property-levels response")
+	}
+	return response, nil
 }
 
 // filterBatch is the shared body of FilterResources and GetResourcesOperations:

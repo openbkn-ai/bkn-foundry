@@ -75,6 +75,61 @@ func TestMetricRequiresFullFilterGroupSortAndTimeInputs(t *testing.T) {
 	}
 }
 
+func TestPublishedMetricInputsStayWithinTrustedDefinition(t *testing.T) {
+	objectType := metricAccessObjectType("amount", "region", "status", "secret")
+	definition := &interfaces.MetricDefinition{
+		AnalysisDimensions: []interfaces.MetricAnalysisDimension{{Name: "region"}},
+		CalculationFormula: &interfaces.MetricCalculationFormula{
+			Condition:   &cond.CondCfg{Name: "status", Operation: cond.OperationEq},
+			Aggregation: interfaces.MetricAggregation{Property: "amount", Aggr: "sum"},
+		},
+	}
+	tests := []struct {
+		name  string
+		query *interfaces.MetricQueryRequest
+		want  int
+	}{
+		{
+			name: "declared fields are accepted",
+			query: &interfaces.MetricQueryRequest{
+				Condition:          &cond.CondCfg{Name: "status", Operation: cond.OperationEq},
+				AnalysisDimensions: []string{"region"},
+				OrderBy:            []interfaces.MetricOrderBy{{Property: "__value"}},
+			},
+		},
+		{
+			name:  "condition cannot introduce another object property",
+			query: &interfaces.MetricQueryRequest{Condition: &cond.CondCfg{Name: "secret", Operation: cond.OperationEq}},
+			want:  http.StatusBadRequest,
+		},
+		{
+			name:  "analysis dimension must be explicitly published",
+			query: &interfaces.MetricQueryRequest{AnalysisDimensions: []string{"status"}},
+			want:  http.StatusBadRequest,
+		},
+		{
+			name:  "sort cannot introduce another object property",
+			query: &interfaces.MetricQueryRequest{OrderBy: []interfaces.MetricOrderBy{{Property: "secret"}}},
+			want:  http.StatusBadRequest,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validatePublishedMetricInputs(context.Background(), objectType, definition, test.query)
+			if test.want == 0 {
+				if err != nil {
+					t.Fatalf("validatePublishedMetricInputs() error = %v", err)
+				}
+				return
+			}
+			httpError, ok := err.(*rest.HTTPError)
+			if !ok || httpError.HTTPCode != test.want {
+				t.Fatalf("validatePublishedMetricInputs() error = %#v, want HTTP %d", err, test.want)
+			}
+		})
+	}
+}
+
 func TestMetricConversionErrorsDoNotExposeRawValues(t *testing.T) {
 	const watermark = "raw-property-watermark-1342"
 	var values []any

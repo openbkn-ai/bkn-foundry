@@ -41,6 +41,13 @@ func (fullMetricPropertyAccessStub) ResolvePropertyLevels(_ context.Context,
 	return entries, nil
 }
 
+type unexpectedMetricPropertyAccessStub struct{}
+
+func (unexpectedMetricPropertyAccessStub) ResolvePropertyLevels(context.Context,
+	[]interfaces.PropertyLevelsRequestItem) ([]interfaces.PropertyLevelsDecisionEntry, error) {
+	panic("published metric queries must not use the caller's object-type property access")
+}
+
 type metricProxyResolverStub struct {
 	bindings []interfaces.TrustedProxyBinding
 	err      error
@@ -457,7 +464,7 @@ func Test_metricQueryService_QueryMetricData(t *testing.T) {
 			oma:            oma,
 			vba:            vba,
 			proxy:          &metricProxyResolverStub{},
-			propertyAccess: fullMetricPropertyAccessStub{},
+			propertyAccess: unexpectedMetricPropertyAccessStub{},
 		}
 
 		def := &interfaces.MetricDefinition{

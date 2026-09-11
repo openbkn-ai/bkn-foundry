@@ -176,10 +176,36 @@ type PermissionResourceOps struct {
 	Operations []string `json:"operation,omitempty"`
 }
 
+type PropertyLevelsRequest struct {
+	AccessorID string                      `json:"accessor_id"`
+	Items      []PropertyLevelsRequestItem `json:"items"`
+}
+
+type PropertyLevelsRequestItem struct {
+	ObjectTypeRef string   `json:"object_type_ref"`
+	Properties    []string `json:"properties"`
+}
+
+type PropertyLevelsResponse struct {
+	Entries []PropertyLevelsDecisionEntry `json:"entries"`
+}
+
+type PropertyLevelsDecisionEntry struct {
+	ObjectTypeRef string                   `json:"object_type_ref"`
+	Properties    []PropertyAccessDecision `json:"properties"`
+}
+
+type PropertyAccessDecision struct {
+	Name   string `json:"name"`
+	Level  string `json:"level"`
+	Source string `json:"source"`
+}
+
 //go:generate mockgen -source ../interfaces/permission_access.go -destination ../interfaces/mock/mock_permission_access.go
 type PermissionAccess interface {
 	CheckPermission(ctx context.Context, check PermissionCheck) (bool, error)
 	FilterResources(ctx context.Context, filter PermissionResourcesFilter) (map[string]PermissionResourceOps, error)
+	ResolvePropertyLevels(ctx context.Context, request PropertyLevelsRequest) (PropertyLevelsResponse, error)
 
 	CreateResources(ctx context.Context, policies []PermissionPolicy) error
 	DeleteResources(ctx context.Context, resources []PermissionResource) error
