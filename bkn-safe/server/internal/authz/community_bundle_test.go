@@ -18,7 +18,7 @@ func TestCommunityBundleWhitelistIsExplicitAndDefensive(t *testing.T) {
 	want := map[string][]string{
 		"catalog":           {"view_detail", "modify", "delete", "query_data", "resource_manage", "task_manage"},
 		"knowledge_network": {"view_detail", "modify", "delete", "query_data", "execute"},
-		"connector_type":    {"view_detail", "modify", "delete", "task_manage"},
+		"connector_type":    {"view_detail", "modify", "delete"},
 		"tool_box":          {"view", "modify", "delete", "publish", "unpublish", "execute"},
 		"mcp":               {"view", "modify", "delete", "publish", "unpublish", "execute"},
 		"operator":          {"view", "modify", "delete", "publish", "unpublish", "execute"},
@@ -43,6 +43,82 @@ func TestCommunityBundleWhitelistIsExplicitAndDefensive(t *testing.T) {
 		if got, ok := CommunityBundleOperations(unsupported); ok || got != nil {
 			t.Errorf("unsupported type %q returned %v, %v", unsupported, got, ok)
 		}
+	}
+}
+
+func TestConnectorTypeBundleAndProfessionalDecisions(t *testing.T) {
+	edition := useEdition(t, licverify.EditionCommunity)
+	e, db := newTestEnforcerDB(t)
+	if err := db.Create(&model.ResourceType{ID: "connector_type"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, operation := range []string{"view_detail", "create", "modify", "delete", "authorize"} {
+		requires := ""
+		if operation != "view_detail" && operation != "create" {
+			requires = "view_detail"
+		}
+		if err := db.Create(&model.Operation{
+			ResourceTypeID: "connector_type", ID: operation, RequiredOperationIDs: requires,
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	const (
+		bundleHolder = "connector-bundle-holder"
+		directHolder = "connector-direct-holder"
+		resourceID   = "remote-api"
+	)
+	bundleOperations := []string{"view_detail", "modify", "delete"}
+
+	mustNoErr(t, e.GrantCommunityBundle(
+		bundleHolder, "connector_type", resourceID, AuthoritySourceAdminAuthz,
+	))
+	for _, operation := range bundleOperations {
+		allowed, err := e.Check(bundleHolder, "connector_type", resourceID, operation)
+		if err != nil || !allowed {
+			t.Errorf("bundle Check(%s) = %v, %v; want true", operation, allowed, err)
+		}
+	}
+	for _, operation := range []string{"create", "authorize", "task_manage", "public_access", ActFullBusinessAccess} {
+		allowed, err := e.Check(bundleHolder, "connector_type", resourceID, operation)
+		if err != nil || allowed {
+			t.Errorf("bundle Check(excluded %s) = %v, %v; want false", operation, allowed, err)
+		}
+	}
+	filtered, err := e.FilterResourceOps(bundleHolder,
+		[]ResourceRef{{Type: "connector_type", ID: resourceID}, {Type: "connector_type", ID: "local-db"}},
+		[]string{"view_detail"}, bundleOperations)
+	if err != nil || len(filtered) != 1 || filtered[0].ID != resourceID ||
+		!reflect.DeepEqual(filtered[0].Operations, bundleOperations) {
+		t.Fatalf("FilterResourceOps = %+v, %v; want only complete bundle resource", filtered, err)
+	}
+
+	*edition = licverify.EditionProfessional
+	mustNoErr(t, e.GrantProfessionalObjectPermission(
+		bundleHolder, "connector_type", resourceID, "modify", EffectDeny, AuthoritySourceAdminAuthz,
+	))
+	if allowed, err := e.Check(bundleHolder, "connector_type", resourceID, "modify"); err != nil || allowed {
+		t.Fatalf("Professional deny did not override bundle: allowed=%v err=%v", allowed, err)
+	}
+	mustNoErr(t, e.GrantProfessionalObjectPermission(
+		directHolder, "connector_type", resourceID, "modify", EffectAllow, AuthoritySourceAdminAuthz,
+	))
+	decision, err := e.OperationDecision(t.Context(), directHolder, "connector_type", resourceID, "modify")
+	if err != nil || decision.Decision != DecisionDeny || decision.Basis != BasisRequires ||
+		decision.DeniedRequirement != "view_detail" {
+		t.Fatalf("modify without view_detail = %+v, %v; want requires deny", decision, err)
+	}
+	mustNoErr(t, e.GrantProfessionalObjectPermission(
+		directHolder, "connector_type", resourceID, "view_detail", EffectAllow, AuthoritySourceAdminAuthz,
+	))
+	if allowed, err := e.Check(directHolder, "connector_type", resourceID, "modify"); err != nil || !allowed {
+		t.Fatalf("direct allow with view_detail = %v, %v; want true", allowed, err)
+	}
+	mustNoErr(t, e.GrantProfessionalObjectPermission(
+		directHolder, "connector_type", resourceID, "modify", EffectDeny, AuthoritySourceAdminAuthz,
+	))
+	if allowed, err := e.Check(directHolder, "connector_type", resourceID, "modify"); err != nil || allowed {
+		t.Fatalf("same-resource direct deny did not override allow: allowed=%v err=%v", allowed, err)
 	}
 }
 

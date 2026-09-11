@@ -668,20 +668,10 @@ func TestSafePermissionAccessCheckPermission(t *testing.T) {
 
 func TestSafePermissionAccessFilterResources(t *testing.T) {
 	t.Run("returns resources with allowed operations", func(t *testing.T) {
-		// 鉴权按 op 批量解析：先探类型级通配（此处无），再取该 op 的可访问 id 集
 		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-			switch r.URL.Path {
-			case "/api/safe/v1/authz/check":
-				_, _ = w.Write([]byte(`{"allowed":false}`)) // 无类型级通配授权
-			case "/api/safe/v1/authz/resources":
-				if r.URL.Query().Get("operation") == interfaces.OPERATION_TYPE_VIEW_DETAIL {
-					_, _ = w.Write([]byte(`{"ids":["resource-1"]}`))
-					return
-				}
-				_, _ = w.Write([]byte(`{"ids":[]}`))
-			default:
-				w.WriteHeader(http.StatusNotFound)
-			}
+			assert.Equal(t, http.MethodPost, r.Method)
+			assert.Equal(t, "/api/safe/v1/authz/resource-filter", r.URL.Path)
+			_, _ = w.Write([]byte(`{"resources":[{"resource_type":"resource","resource_id":"resource-1","operations":["view_detail"]}]}`))
 		})
 		access := &safePermissionAccess{safe: client}
 
@@ -704,12 +694,32 @@ func TestSafePermissionAccessFilterResources(t *testing.T) {
 			},
 		}, got)
 	})
+
+	t.Run("accepts an explicit empty resource list", func(t *testing.T) {
+		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"resources":[]}`))
+		})
+		access := &safePermissionAccess{safe: client}
+
+		got, err := access.FilterResources(context.Background(), samplePermissionResourcesFilter())
+
+		require.NoError(t, err)
+		assert.Empty(t, got)
+	})
+
+	t.Run("rejects invalid resource filter responses", func(t *testing.T) {
+		assertRejectsInvalidResourceFilterResponses(t, func(access *safePermissionAccess) (map[string]interfaces.PermissionResourceOps, error) {
+			return access.FilterResources(context.Background(), samplePermissionResourcesFilter())
+		})
+	})
 }
 
 func TestSafePermissionAccessGetResourcesOperations(t *testing.T) {
 	t.Run("returns all resources with operation slices", func(t *testing.T) {
 		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-			_, _ = w.Write([]byte(`{"allowed":false}`))
+			assert.Equal(t, http.MethodPost, r.Method)
+			assert.Equal(t, "/api/safe/v1/authz/resource-filter", r.URL.Path)
+			_, _ = w.Write([]byte(`{"resources":[{"resource_type":"resource","resource_id":"resource-1","operations":[]}]}`))
 		})
 		access := &safePermissionAccess{safe: client}
 
@@ -723,6 +733,26 @@ func TestSafePermissionAccessGetResourcesOperations(t *testing.T) {
 		assert.Equal(t, map[string]interfaces.PermissionResourceOps{
 			"resource-1": {ResourceID: "resource-1", Operations: []string{}},
 		}, got)
+	})
+
+	t.Run("accepts an explicit empty resource list", func(t *testing.T) {
+		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"resources":[]}`))
+		})
+		access := &safePermissionAccess{safe: client}
+
+		got, err := access.GetResourcesOperations(context.Background(), samplePermissionResourcesFilter())
+
+		require.NoError(t, err)
+		assert.Equal(t, map[string]interfaces.PermissionResourceOps{
+			"resource-1": {ResourceID: "resource-1", Operations: []string{}},
+		}, got)
+	})
+
+	t.Run("rejects invalid resource filter responses", func(t *testing.T) {
+		assertRejectsInvalidResourceFilterResponses(t, func(access *safePermissionAccess) (map[string]interfaces.PermissionResourceOps, error) {
+			return access.GetResourcesOperations(context.Background(), samplePermissionResourcesFilter())
+		})
 	})
 }
 
@@ -949,6 +979,42 @@ func newSafeReadErrorClient() *safeClient {
 			}),
 		},
 	}
+}
+
+func assertRejectsInvalidResourceFilterResponses(t *testing.T,
+	call func(*safePermissionAccess) (map[string]interfaces.PermissionResourceOps, error)) {
+	t.Helper()
+
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{name: "empty body", body: ""},
+		{name: "missing resources field", body: `{}`},
+		{name: "null response", body: `null`},
+		{name: "null resources field", body: `{"resources":null}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(tc.body))
+			})
+
+			got, err := call(&safePermissionAccess{safe: client})
+
+			require.Error(t, err)
+			assert.Nil(t, got)
+		})
+	}
+
+	t.Run("response body read failure", func(t *testing.T) {
+		client := newSafeReadErrorClient()
+
+		got, err := call(&safePermissionAccess{safe: client})
+
+		require.Error(t, err)
+		assert.ErrorIs(t, err, io.ErrUnexpectedEOF)
+		assert.Nil(t, got)
+	})
 }
 
 func boolJSON(value bool) string {

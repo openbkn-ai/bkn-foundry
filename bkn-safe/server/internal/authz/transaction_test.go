@@ -100,6 +100,47 @@ func TestPolicyTransactionRollsBackGrantIdentityAndProjectionTogether(t *testing
 	}
 }
 
+func TestRemovePoliciesForOperationRejectsEmptyTargetsWithoutDeleting(t *testing.T) {
+	e := newTestEnforcer(t)
+	const (
+		accessorID   = "connector-operator"
+		resourceID   = "remote-api"
+		resourceType = "connector_type"
+	)
+	for _, operation := range []string{"modify", "task_manage"} {
+		if err := e.GrantObjectPermission(accessorID, resourceType, resourceID, operation); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, tc := range []struct {
+		name         string
+		resourceType string
+		operation    string
+	}{
+		{name: "empty resource type", operation: "task_manage"},
+		{name: "blank resource type", resourceType: " \t", operation: "task_manage"},
+		{name: "empty operation", resourceType: resourceType},
+		{name: "blank operation", resourceType: resourceType, operation: " \t"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := e.Transaction(t.Context(), func(tx *PolicyTransaction) error {
+				_, err := tx.RemovePoliciesForOperation(tc.resourceType, tc.operation)
+				return err
+			})
+			if err == nil {
+				t.Fatal("RemovePoliciesForOperation() error = nil; want validation error")
+			}
+			for _, operation := range []string{"modify", "task_manage"} {
+				allowed, checkErr := e.Check(accessorID, resourceType, resourceID, operation)
+				if checkErr != nil || !allowed {
+					t.Fatalf("grant %s was removed after rejected migration: allowed=%v err=%v", operation, allowed, checkErr)
+				}
+			}
+		})
+	}
+}
+
 func waitForTestResult(t *testing.T, result <-chan error) error {
 	t.Helper()
 	select {

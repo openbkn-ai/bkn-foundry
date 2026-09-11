@@ -35,10 +35,9 @@
       "operations": [
         {"id": "view_detail", "name": "查看详情"},
         {"id": "create", "name": "创建"},
-        {"id": "modify", "name": "修改"},
-        {"id": "delete", "name": "删除"},
-        {"id": "authorize", "name": "授权"},
-        {"id": "task_manage", "name": "任务管理"}
+        {"id": "modify", "name": "修改", "requires": ["view_detail"]},
+        {"id": "delete", "name": "删除", "requires": ["view_detail"]},
+        {"id": "authorize", "name": "授权", "requires": ["view_detail"]}
       ]
     },
     {

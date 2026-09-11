@@ -6,6 +6,7 @@ package seed
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -110,6 +111,39 @@ func TestShippedCatalogBindsResourceManageToViewDetail(t *testing.T) {
 	t.Fatal("catalog type missing from catalog.json")
 }
 
+func TestShippedConnectorTypeDeclaresViewRequirements(t *testing.T) {
+	var c catalog
+	if err := json.Unmarshal(catalogJSON, &c); err != nil {
+		t.Fatalf("parse catalog.json: %v", err)
+	}
+	if err := validateRequirements(c); err != nil {
+		t.Fatalf("shipped catalog.json declares an invalid requirement: %v", err)
+	}
+
+	operations := map[string][]string{}
+	for _, resourceType := range c.ResourceTypes {
+		if resourceType.ID != "connector_type" {
+			continue
+		}
+		for _, operation := range resourceType.Operations {
+			operations[operation.ID] = operation.Requires
+		}
+	}
+	for _, operation := range []string{"modify", "delete", "authorize"} {
+		if got := operations[operation]; len(got) != 1 || got[0] != "view_detail" {
+			t.Errorf("connector_type/%s requires %v, want [view_detail]", operation, got)
+		}
+	}
+	for _, operation := range []string{"create", "view_detail"} {
+		if got := operations[operation]; len(got) != 0 {
+			t.Errorf("connector_type/%s unexpectedly requires %v", operation, got)
+		}
+	}
+	if _, ok := operations["task_manage"]; ok {
+		t.Error("connector_type unexpectedly declares task_manage without a task lifecycle entry")
+	}
+}
+
 // TestSeedPersistsImplications proves the declaration survives the seed, since
 // the grant paths read it from the operations table rather than from the file.
 func TestSeedPersistsImplications(t *testing.T) {
@@ -127,6 +161,131 @@ func TestSeedPersistsImplications(t *testing.T) {
 	}
 	if row.RequiredOperationIDs != "view_detail" {
 		t.Fatalf("required operation ids = %q, want %q", row.RequiredOperationIDs, "view_detail")
+	}
+}
+
+func TestConnectorTypeRequirementsApplyToChecksAndLists(t *testing.T) {
+	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionProfessional))
+	t.Cleanup(entitlement.ResetForTest)
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+
+	const user = "connector-operator"
+	if err := e.GrantProfessionalObjectPermission(
+		user, "connector_type", "remote-api", "modify", authz.EffectAllow, authz.AuthoritySourceAdminAuthz,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantProfessionalObjectPermission(
+		user, "connector_type", "remote-api", "view_detail", authz.EffectAllow, authz.AuthoritySourceAdminAuthz,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantProfessionalObjectPermission(
+		user, "connector_type", "remote-api", "view_detail", authz.EffectDeny, authz.AuthoritySourceAdminAuthz,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	decision, err := e.OperationDecision(t.Context(), user, "connector_type", "remote-api", "modify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Decision != authz.DecisionDeny || decision.Basis != authz.BasisRequires ||
+		decision.DeniedRequirement != "view_detail" {
+		t.Fatalf("modify decision = %+v; want requires deny on view_detail", decision)
+	}
+	ids, err := e.AccessibleResources(user, "connector_type", "modify")
+	if err != nil || len(ids) != 0 {
+		t.Fatalf("AccessibleResources(modify) = %v, %v; want none", ids, err)
+	}
+	filtered, err := e.FilterResourceOps(user,
+		[]authz.ResourceRef{{Type: "connector_type", ID: "remote-api"}}, nil, []string{"modify"})
+	if err != nil || len(filtered) != 1 || len(filtered[0].Operations) != 0 ||
+		len(filtered[0].Decisions) != 1 || filtered[0].Decisions[0].Basis != authz.BasisRequires {
+		t.Fatalf("FilterResourceOps(modify) = %+v, %v", filtered, err)
+	}
+
+	// Legacy grants are immutable snapshots, so startup deliberately does not
+	// add view_detail beside a type-wide modify grant. Effective evaluation must
+	// still combine that grant with view_detail held on a concrete connector.
+	const legacyUser = "legacy-connector-operator"
+	if err := e.GrantObjectPermission(legacyUser, "connector_type", "*", "modify"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantObjectPermission(legacyUser, "connector_type", "remote-api", "view_detail"); err != nil {
+		t.Fatal(err)
+	}
+	if allowed, err := e.Check(legacyUser, "connector_type", "remote-api", "modify"); err != nil || !allowed {
+		t.Fatalf("legacy Check(remote-api, modify) = %v, %v; want true", allowed, err)
+	}
+	filtered, err = e.FilterResourceOps(legacyUser,
+		[]authz.ResourceRef{{Type: "connector_type", ID: "remote-api"}},
+		[]string{"view_detail"}, []string{"view_detail", "modify"})
+	if err != nil || len(filtered) != 1 ||
+		!reflect.DeepEqual(filtered[0].Operations, []string{"view_detail", "modify"}) {
+		t.Fatalf("legacy FilterResourceOps(remote-api) = %+v, %v; want view_detail and modify", filtered, err)
+	}
+}
+
+func TestSeedPrunesWithdrawnConnectorTaskManageGrants(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.Create(&model.Operation{
+		ResourceTypeID: "connector_type", ID: "task_manage", Name: "任务管理",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantObjectPermission("legacy-connector-operator", "connector_type", "remote-api", "task_manage"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantObjectPermission("decoy-operator", "connectorXtype", "remote-api", "task_manage"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	var operationCount int64
+	if err := db.Model(&model.Operation{}).
+		Where("resource_type_id = ? AND id = ?", "connector_type", "task_manage").
+		Count(&operationCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if operationCount != 0 {
+		t.Fatalf("connector_type/task_manage operation count = %d; want 0", operationCount)
+	}
+	records, err := e.PolicyRecords(authz.PolicyFilter{
+		AccessorID: "legacy-connector-operator",
+		Operation:  "task_manage",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("withdrawn connector task_manage grants survived: %+v", records)
+	}
+	allowed, err := e.Check("legacy-connector-operator", "connector_type", "remote-api", "task_manage")
+	if err != nil || allowed {
+		t.Fatalf("withdrawn connector task_manage check = %v, %v; want false", allowed, err)
+	}
+	allowed, err = e.Check("decoy-operator", "connectorXtype", "remote-api", "task_manage")
+	if err != nil || !allowed {
+		t.Fatalf("neighbor resource type grant was removed: allowed=%v err=%v", allowed, err)
 	}
 }
 
