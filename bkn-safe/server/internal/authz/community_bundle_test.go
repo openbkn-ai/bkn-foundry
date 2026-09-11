@@ -25,6 +25,12 @@ func TestCommunityBundleWhitelistIsExplicitAndDefensive(t *testing.T) {
 		"skill":             {"view", "modify", "delete", "publish", "unpublish", "execute"},
 		"small_model":       {"display", "modify", "delete", "execute"},
 		"large_model":       {"display", "modify", "delete", "execute"},
+		"agent": {
+			"use", "publish", "unpublish", "publish_to_be_skill_agent",
+			"publish_to_be_web_sdk_agent", "publish_to_be_api_agent",
+			"publish_to_be_data_flow_agent", "see_trajectory_analysis",
+		},
+		"agent_tpl": {"publish", "unpublish"},
 	}
 	for resourceType, expected := range want {
 		got, ok := CommunityBundleOperations(resourceType)
@@ -119,6 +125,98 @@ func TestConnectorTypeBundleAndProfessionalDecisions(t *testing.T) {
 	))
 	if allowed, err := e.Check(directHolder, "connector_type", resourceID, "modify"); err != nil || allowed {
 		t.Fatalf("same-resource direct deny did not override allow: allowed=%v err=%v", allowed, err)
+	}
+}
+
+func TestAgentFamilyBundlesKeepPrivilegedOperationsExplicit(t *testing.T) {
+	edition := useEdition(t, licverify.EditionProfessional)
+	e := newTestEnforcer(t)
+
+	approved := map[string][]string{
+		"agent": {
+			"use", "publish", "unpublish", "publish_to_be_skill_agent",
+			"publish_to_be_web_sdk_agent", "publish_to_be_api_agent",
+			"publish_to_be_data_flow_agent", "see_trajectory_analysis",
+		},
+		"agent_tpl": {"publish", "unpublish"},
+	}
+	excluded := map[string][]string{
+		"agent": {
+			"create", "authorize", "public_access", "create_system_agent",
+			"mgnt_built_in_agent", "unpublish_other_user_agent", ActFullBusinessAccess,
+		},
+		"agent_tpl": {"create", "authorize", "public_access", "unpublish_other_user_agent_tpl", ActFullBusinessAccess},
+	}
+	for resourceType, operations := range approved {
+		resourceID := resourceType + "-1"
+		mustNoErr(t, e.GrantCommunityBundle("ordinary-user", resourceType, resourceID, AuthoritySourceAdminAuthz))
+		for _, operation := range operations {
+			if ok, err := e.Check("ordinary-user", resourceType, resourceID, operation); err != nil || !ok {
+				t.Errorf("%s bundle operation %q: allowed=%v err=%v; want true", resourceType, operation, ok, err)
+			}
+		}
+		for _, operation := range excluded[resourceType] {
+			if ok, err := e.Check("ordinary-user", resourceType, resourceID, operation); err != nil || ok {
+				t.Errorf("%s privileged operation %q leaked from bundle: allowed=%v err=%v", resourceType, operation, ok, err)
+			}
+		}
+	}
+
+	// Owner authorization is a separate lifecycle-derived rule. It neither
+	// comes from nor broadens the ordinary business bundle.
+	mustNoErr(t, e.GrantCommunityBundle("agent-owner", "agent", "owned-1", AuthoritySourceSystem))
+	mustNoErr(t, e.GrantSystemObjectPermission("agent-owner", "agent", "owned-1", "authorize"))
+	if ok, err := e.Check("agent-owner", "agent", "owned-1", "authorize"); err != nil || !ok {
+		t.Fatalf("owner authorize = %v, %v; want explicit system-derived allow", ok, err)
+	}
+	if ok, err := e.Check("ordinary-user", "agent", "agent-1", "authorize"); err != nil || ok {
+		t.Fatalf("ordinary bundle acquired owner authority: allowed=%v err=%v", ok, err)
+	}
+
+	// System/built-in and cross-owner operations only become effective through
+	// an explicit trusted rule or role; naming them in the directory is not a
+	// grant. A same-object Professional deny still overrides a role wildcard.
+	mustNoErr(t, e.GrantSystemObjectPermission("system-agent-manager", "agent", "built-in-1", "mgnt_built_in_agent"))
+	if ok, err := e.Check("system-agent-manager", "agent", "built-in-1", "mgnt_built_in_agent"); err != nil || !ok {
+		t.Fatalf("explicit built-in management = %v, %v; want true", ok, err)
+	}
+	const adminRole = "agent-admin-role"
+	mustNoErr(t, e.GrantRolePermission(adminRole, "agent", "*", "unpublish_other_user_agent"))
+	mustNoErr(t, e.AssignRole("agent-admin", adminRole))
+	if ok, err := e.Check("agent-admin", "agent", "other-1", "unpublish_other_user_agent"); err != nil || !ok {
+		t.Fatalf("explicit cross-owner role = %v, %v; want true", ok, err)
+	}
+	mustNoErr(t, e.GrantProfessionalObjectPermission(
+		"agent-admin", "agent", "other-1", "unpublish_other_user_agent", EffectDeny, AuthoritySourceAdminAuthz,
+	))
+	if ok, err := e.Check("agent-admin", "agent", "other-1", "unpublish_other_user_agent"); err != nil || ok {
+		t.Fatalf("direct deny did not override cross-owner wildcard: allowed=%v err=%v", ok, err)
+	}
+
+	// A Professional rule can grant and deny one real Agent operation without
+	// affecting its siblings. On downgrade it is retained but inactive, while
+	// the Community bundle remains effective and recovers from its deny.
+	mustNoErr(t, e.GrantProfessionalObjectPermission(
+		"professional-user", "agent", "agent-2", "use", EffectAllow, AuthoritySourceAdminAuthz,
+	))
+	if ok, err := e.Check("professional-user", "agent", "agent-2", "use"); err != nil || !ok {
+		t.Fatalf("Professional use allow = %v, %v; want true", ok, err)
+	}
+	if ok, err := e.Check("professional-user", "agent", "agent-2", "publish"); err != nil || ok {
+		t.Fatalf("Professional use leaked to publish: allowed=%v err=%v", ok, err)
+	}
+	mustNoErr(t, e.GrantProfessionalObjectPermission(
+		"ordinary-user", "agent", "agent-1", "publish", EffectDeny, AuthoritySourceAdminAuthz,
+	))
+	if ok, err := e.Check("ordinary-user", "agent", "agent-1", "publish"); err != nil || ok {
+		t.Fatalf("Professional deny did not override Agent bundle: allowed=%v err=%v", ok, err)
+	}
+	*edition = licverify.EditionCommunity
+	if ok, err := e.Check("professional-user", "agent", "agent-2", "use"); err != nil || ok {
+		t.Fatalf("Professional rule remained active after downgrade: allowed=%v err=%v", ok, err)
+	}
+	if ok, err := e.Check("ordinary-user", "agent", "agent-1", "publish"); err != nil || !ok {
+		t.Fatalf("Community bundle did not recover after Professional deny became inactive: allowed=%v err=%v", ok, err)
 	}
 }
 

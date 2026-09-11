@@ -55,8 +55,6 @@ var deprecatedSeedRoleIDs = []string{
 }
 
 var withdrawnResourceTypes = []string{
-	"agent",
-	"agent_tpl",
 	"stream_data_pipeline",
 }
 
