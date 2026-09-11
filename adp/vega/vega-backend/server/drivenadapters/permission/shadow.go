@@ -89,6 +89,12 @@ func (c *safeClient) localDecision(ctx context.Context, check interfaces.LocalPe
 		Requires: out.Requires, DeniedRequirement: out.DeniedRequirement,
 		RequirementBasis: out.RequirementBasis,
 	}
+	// bkn-safe keeps its effective compatibility response for an unknown or
+	// disabled account: {"allowed":false}. Preserve that as an account-level
+	// refusal rather than fabricating a local none decision or reporting 500.
+	if !out.Allowed && out.EvaluationScope == "" && out.Decision == "" && out.Basis == "" {
+		return interfaces.PermissionOperationDecision{}, interfaces.ErrPermissionAccountNotActive
+	}
 	if out.EvaluationScope != "local" {
 		return interfaces.PermissionOperationDecision{}, fmt.Errorf("bkn-safe local check returned evaluation_scope %q", out.EvaluationScope)
 	}
@@ -116,6 +122,12 @@ func (c *safeClient) localResourceDecisions(ctx context.Context,
 	}, &out)
 	if err != nil {
 		return nil, err
+	}
+	// With non-empty input, an empty result is bkn-safe's compatibility response
+	// for an unknown or disabled account. A partial result remains a protocol
+	// error below so omitted resources cannot be confused with deny or none.
+	if len(out.Resources) == 0 {
+		return nil, interfaces.ErrPermissionAccountNotActive
 	}
 	expectedIDs := make(map[string]bool, len(ids))
 	for _, id := range ids {

@@ -136,6 +136,9 @@ func (rs *resourceService) checkResourceOrCatalog(ctx context.Context,
 		case errors.Is(err, interfaces.ErrLocalPermissionUnsupported):
 			// The retired ISF provider has no structured local decision. Preserve
 			// its compatibility behavior until that escape hatch is removed.
+		case errors.Is(err, interfaces.ErrPermissionAccountNotActive):
+			return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+				WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", op))
 		case err != nil:
 			return err
 		case decision.Allowed():
@@ -365,6 +368,9 @@ func (rs *resourceService) filterResourcePermissions(ctx context.Context, ids []
 				}
 			}
 			return result, nil
+		}
+		if errors.Is(err, interfaces.ErrPermissionAccountNotActive) {
+			return map[string]interfaces.PermissionResourceOps{}, nil
 		}
 		if !errors.Is(err, interfaces.ErrLocalPermissionUnsupported) {
 			return nil, err

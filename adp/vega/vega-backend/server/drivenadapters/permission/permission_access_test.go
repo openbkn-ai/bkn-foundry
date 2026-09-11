@@ -294,11 +294,24 @@ func TestSafeClientLocalDecision(t *testing.T) {
 		}, got)
 	})
 
+	t.Run("maps the inactive account compatibility response to a refusal", func(t *testing.T) {
+		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"allowed":false}`))
+		})
+
+		_, err := client.localDecision(context.Background(), interfaces.LocalPermissionCheck{
+			Accessor:  interfaces.PermissionAccessor{ID: "disabled-user"},
+			Resource:  interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"},
+			Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+		})
+
+		require.ErrorIs(t, err, interfaces.ErrPermissionAccountNotActive)
+	})
+
 	for name, response := range map[string]string{
-		"missing structured decision": `{"allowed":false}`,
-		"wrong evaluation scope":      `{"allowed":false,"evaluation_scope":"effective","decision":"deny","basis":"direct"}`,
-		"inconsistent allowed flag":   `{"allowed":true,"evaluation_scope":"local","decision":"deny","basis":"direct"}`,
-		"locally enforced requires":   `{"allowed":false,"evaluation_scope":"local","decision":"deny","basis":"direct","denied_requirement":"view_detail"}`,
+		"wrong evaluation scope":    `{"allowed":false,"evaluation_scope":"effective","decision":"deny","basis":"direct"}`,
+		"inconsistent allowed flag": `{"allowed":true,"evaluation_scope":"local","decision":"deny","basis":"direct"}`,
+		"locally enforced requires": `{"allowed":false,"evaluation_scope":"local","decision":"deny","basis":"direct","denied_requirement":"view_detail"}`,
 	} {
 		t.Run(name+" is an infrastructure error", func(t *testing.T) {
 			client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
@@ -345,7 +358,7 @@ func TestSafeClientLocalResourceDecisions(t *testing.T) {
 		assert.Equal(t, interfaces.PermissionDecisionNone, got["resource-2"][interfaces.OPERATION_TYPE_VIEW_DETAIL].Decision)
 	})
 
-	t.Run("rejects an omitted resource instead of treating it as none", func(t *testing.T) {
+	t.Run("maps an empty inactive account response to a refusal", func(t *testing.T) {
 		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte(`{"resources":[]}`))
 		})
@@ -357,8 +370,24 @@ func TestSafeClientLocalResourceDecisions(t *testing.T) {
 			Operations:   []string{interfaces.OPERATION_TYPE_VIEW_DETAIL},
 		})
 
+		require.ErrorIs(t, err, interfaces.ErrPermissionAccountNotActive)
+	})
+
+	t.Run("rejects a partially omitted resource instead of treating it as none", func(t *testing.T) {
+		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"resources":[{"resource_type":"resource","resource_id":"resource-1",` +
+				`"decisions":[{"operation":"view_detail","decision":"none","basis":"none"}]}]}`))
+		})
+
+		_, err := client.localResourceDecisions(context.Background(), interfaces.LocalPermissionFilter{
+			Accessor:     interfaces.PermissionAccessor{ID: "u1"},
+			ResourceType: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			ResourceIDs:  []string{"resource-1", "resource-2"},
+			Operations:   []string{interfaces.OPERATION_TYPE_VIEW_DETAIL},
+		})
+
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "omitted requested resource")
+		assert.Contains(t, err.Error(), "omitted requested resource resource:resource-2")
 	})
 
 	t.Run("rejects an omitted operation instead of treating it as none", func(t *testing.T) {

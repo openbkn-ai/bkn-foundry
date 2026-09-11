@@ -2,6 +2,7 @@ package permission
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -88,6 +89,9 @@ func (ps *PermissionServiceImpl) LocalDecision(ctx context.Context, resource int
 		Resource: resource, Operation: op,
 	})
 	if err != nil {
+		if errors.Is(err, interfaces.ErrPermissionAccountNotActive) {
+			return interfaces.PermissionOperationDecision{}, err
+		}
 		return interfaces.PermissionOperationDecision{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_InternalError_CheckPermissionFailed).WithErrorDetails(err)
 	}
@@ -117,6 +121,9 @@ func (ps *PermissionServiceImpl) LocalResourceDecisions(ctx context.Context, res
 		ResourceType: resourceType, ResourceIDs: ids, Operations: ops,
 	})
 	if err != nil {
+		if errors.Is(err, interfaces.ErrPermissionAccountNotActive) {
+			return nil, err
+		}
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_InternalError_FilterResourcesFailed).WithErrorDetails(err)
 	}

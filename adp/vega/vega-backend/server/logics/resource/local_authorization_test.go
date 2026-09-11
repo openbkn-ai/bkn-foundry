@@ -191,6 +191,25 @@ func TestLocalOperationDecisionRequiresUsesTheSameComposition(t *testing.T) {
 	}, httpErr.BaseError.ErrorDetails)
 }
 
+func TestLocalOperationDecisionCatalogRequiresStillUsesResourceComposition(t *testing.T) {
+	stub := &localPermissionServiceStub{decisions: map[localDecisionKey]interfaces.PermissionOperationDecision{
+		{interfaces.AUTH_RESOURCE_TYPE_CATALOG, "catalog-1", interfaces.OPERATION_TYPE_RESOURCE_MANAGE}: localDecision(interfaces.PermissionDecisionAllow, interfaces.PermissionBasisDirect,
+			interfaces.OPERATION_TYPE_AUTHORIZE),
+		{interfaces.AUTH_RESOURCE_TYPE_CATALOG, "catalog-1", interfaces.OPERATION_TYPE_AUTHORIZE}: localDecision(interfaces.PermissionDecisionAllow, interfaces.PermissionBasisDirect),
+	}}
+	rs := &resourceService{ps: stub}
+
+	got, err := rs.localOperationDecision(context.Background(), "resource-1", "catalog-1",
+		interfaces.OPERATION_TYPE_MODIFY)
+
+	require.NoError(t, err)
+	assert.Equal(t, interfaces.PermissionDecisionDeny, got.Decision)
+	assert.Equal(t, interfaces.PermissionBasisRequires, got.Basis)
+	assert.Equal(t, interfaces.OPERATION_TYPE_AUTHORIZE, got.DeniedRequirement)
+	assert.Equal(t, interfaces.PermissionBasisDefault, got.RequirementBasis)
+	assert.Len(t, stub.calls, 1, "an intentionally unmapped Resource operation must not become a Catalog grant")
+}
+
 func TestLocalOperationDecisionDoesNotTreatFailuresAsNone(t *testing.T) {
 	want := errors.New("bkn-safe unavailable")
 	key := localDecisionKey{interfaces.AUTH_RESOURCE_TYPE_RESOURCE, "resource-1", interfaces.OPERATION_TYPE_VIEW_DETAIL}
@@ -202,6 +221,41 @@ func TestLocalOperationDecisionDoesNotTreatFailuresAsNone(t *testing.T) {
 
 	require.ErrorIs(t, err, want)
 	assert.Len(t, stub.calls, 1)
+}
+
+func TestCheckResourceOrCatalogMapsInactiveAccountToForbidden(t *testing.T) {
+	key := localDecisionKey{interfaces.AUTH_RESOURCE_TYPE_RESOURCE, "resource-1", interfaces.OPERATION_TYPE_VIEW_DETAIL}
+	stub := &localPermissionServiceStub{errors: map[localDecisionKey]error{
+		key: interfaces.ErrPermissionAccountNotActive,
+	}}
+	rs := &resourceService{ps: stub}
+
+	err := rs.checkResourceOrCatalog(context.Background(), "resource-1", "catalog-1", false,
+		interfaces.OPERATION_TYPE_VIEW_DETAIL)
+
+	var httpErr *rest.HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
+	assert.Len(t, stub.calls, 1)
+}
+
+func TestFilterResourcePermissionsMapsInactiveAccountToEmpty(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	access := vmock.NewMockResourceAccess(ctrl)
+	access.EXPECT().GetPermissionRefsByIDs(gomock.Any(), []string{"resource-1"}).Return([]interfaces.ResourcePermissionRef{
+		{ResourceID: "resource-1", CatalogID: "catalog-1"},
+	}, nil)
+	key := localDecisionKey{interfaces.AUTH_RESOURCE_TYPE_RESOURCE, "resource-1", interfaces.OPERATION_TYPE_VIEW_DETAIL}
+	stub := &localPermissionServiceStub{errors: map[localDecisionKey]error{
+		key: interfaces.ErrPermissionAccountNotActive,
+	}}
+	rs := &resourceService{ps: stub, ra: access}
+
+	got, err := rs.filterResourcePermissions(context.Background(), []string{"resource-1"}, nil,
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
+
+	require.NoError(t, err)
+	assert.Empty(t, got)
 }
 
 func TestLocalFilterResourcePermissionsUsesFinalDecisions(t *testing.T) {

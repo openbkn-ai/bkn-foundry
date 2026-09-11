@@ -52,6 +52,7 @@ const (
 
 var (
 	ErrLocalPermissionUnsupported = errors.New("local permission decisions are unavailable for the configured authorization provider")
+	ErrPermissionAccountNotActive = errors.New("permission account is missing or disabled")
 
 	// COMMON_OPERATIONS is the set every authorization answer is asked to report
 	// on. It grants nothing by itself — a verb missing here is simply never

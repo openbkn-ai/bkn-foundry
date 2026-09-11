@@ -167,6 +167,20 @@ func TestPermissionServiceImplLocalDecision(t *testing.T) {
 		assertHTTPStatus(t, err, http.StatusInternalServerError)
 	})
 
+	t.Run("preserves the inactive account refusal", func(t *testing.T) {
+		access := &fakeLocalPermissionAccess{checkFn: func(context.Context,
+			interfaces.LocalPermissionCheck) (interfaces.PermissionOperationDecision, error) {
+			return interfaces.PermissionOperationDecision{}, interfaces.ErrPermissionAccountNotActive
+		}}
+		svc := &PermissionServiceImpl{pa: access}
+
+		_, err := svc.LocalDecision(contextWithAccount("disabled-user", interfaces.ACCESSOR_TYPE_USER),
+			interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"},
+			interfaces.OPERATION_TYPE_VIEW_DETAIL)
+
+		require.ErrorIs(t, err, interfaces.ErrPermissionAccountNotActive)
+	})
+
 	t.Run("rejects a missing account before local evaluation", func(t *testing.T) {
 		access := &fakeLocalPermissionAccess{checkFn: func(context.Context,
 			interfaces.LocalPermissionCheck) (interfaces.PermissionOperationDecision, error) {
@@ -184,32 +198,49 @@ func TestPermissionServiceImplLocalDecision(t *testing.T) {
 }
 
 func TestPermissionServiceImplLocalResourceDecisions(t *testing.T) {
-	var got interfaces.LocalPermissionFilter
-	access := &fakeLocalPermissionAccess{filterFn: func(_ context.Context,
-		filter interfaces.LocalPermissionFilter) (map[string]map[string]interfaces.PermissionOperationDecision, error) {
-		got = filter
-		return map[string]map[string]interfaces.PermissionOperationDecision{
-			"resource-1": {
-				interfaces.OPERATION_TYPE_VIEW_DETAIL: {
-					Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
-					Decision:  interfaces.PermissionDecisionDeny,
-					Basis:     interfaces.PermissionBasisDirect,
+	t.Run("delegates the typed batch request", func(t *testing.T) {
+		var got interfaces.LocalPermissionFilter
+		access := &fakeLocalPermissionAccess{filterFn: func(_ context.Context,
+			filter interfaces.LocalPermissionFilter) (map[string]map[string]interfaces.PermissionOperationDecision, error) {
+			got = filter
+			return map[string]map[string]interfaces.PermissionOperationDecision{
+				"resource-1": {
+					interfaces.OPERATION_TYPE_VIEW_DETAIL: {
+						Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+						Decision:  interfaces.PermissionDecisionDeny,
+						Basis:     interfaces.PermissionBasisDirect,
+					},
 				},
-			},
-		}, nil
-	}}
-	svc := &PermissionServiceImpl{pa: access}
+			}, nil
+		}}
+		svc := &PermissionServiceImpl{pa: access}
 
-	decisions, err := svc.LocalResourceDecisions(
-		contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER),
-		interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"resource-1"},
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
+		decisions, err := svc.LocalResourceDecisions(
+			contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER),
+			interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"resource-1"},
+			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
 
-	require.NoError(t, err)
-	assert.Equal(t, interfaces.PermissionDecisionDeny,
-		decisions["resource-1"][interfaces.OPERATION_TYPE_VIEW_DETAIL].Decision)
-	assert.Equal(t, interfaces.PermissionAccessor{ID: "user-1", Type: interfaces.ACCESSOR_TYPE_USER}, got.Accessor)
-	assert.Equal(t, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, got.ResourceType)
+		require.NoError(t, err)
+		assert.Equal(t, interfaces.PermissionDecisionDeny,
+			decisions["resource-1"][interfaces.OPERATION_TYPE_VIEW_DETAIL].Decision)
+		assert.Equal(t, interfaces.PermissionAccessor{ID: "user-1", Type: interfaces.ACCESSOR_TYPE_USER}, got.Accessor)
+		assert.Equal(t, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, got.ResourceType)
+	})
+
+	t.Run("preserves the inactive account refusal", func(t *testing.T) {
+		access := &fakeLocalPermissionAccess{filterFn: func(context.Context,
+			interfaces.LocalPermissionFilter) (map[string]map[string]interfaces.PermissionOperationDecision, error) {
+			return nil, interfaces.ErrPermissionAccountNotActive
+		}}
+		svc := &PermissionServiceImpl{pa: access}
+
+		_, err := svc.LocalResourceDecisions(
+			contextWithAccount("disabled-user", interfaces.ACCESSOR_TYPE_USER),
+			interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"resource-1"},
+			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
+
+		require.ErrorIs(t, err, interfaces.ErrPermissionAccountNotActive)
+	})
 }
 
 func TestPermissionServiceImplCreateResources(t *testing.T) {
