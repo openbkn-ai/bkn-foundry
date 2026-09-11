@@ -123,15 +123,34 @@ func catalogAuthResourceType(internal bool) string {
 	return interfaces.AUTH_RESOURCE_TYPE_CATALOG
 }
 
-// checkResourceOrCatalog determines an operation on a resource: First, ask the resource itself; if rejected, then ask the directory to which it belongs
-// (The operation should be translated according to the above table.)
-//
-// This is pure relaxation: the first question that can be asked today will pass, and under normal circumstances, only one authentication request will still be sent. Only the first question was rejected
-// Only then will there be a second question. When both questions are rejected, the error of the first question is returned, and the error code and prompt seen by the caller remain unchanged.
-//
-// The attribution relationship does not require any synchronization :catalog_id is in the row of resource records that vega is judging.
+// checkResourceOrCatalog applies Vega's Resource -> Catalog authorization
+// composition. Structured local decisions preserve explicit deny, distinguish
+// none from deny, and keep wildcard allow behind the Catalog decision. The
+// attribution relationship does not require synchronization: catalog_id is in
+// the Resource row that Vega is already judging.
 func (rs *resourceService) checkResourceOrCatalog(ctx context.Context,
 	resourceID, catalogID string, parentInternal bool, op string) error {
+	if !parentInternal {
+		decision, err := rs.localOperationDecision(ctx, resourceID, catalogID, op)
+		switch {
+		case errors.Is(err, interfaces.ErrLocalPermissionUnsupported):
+			// The retired ISF provider has no structured local decision. Preserve
+			// its compatibility behavior until that escape hatch is removed.
+		case err != nil:
+			return err
+		case decision.Allowed():
+			return nil
+		default:
+			return permissionDeniedForDecision(ctx, op, decision)
+		}
+	}
+	return rs.checkResourceOrCatalogLegacy(ctx, resourceID, catalogID, parentInternal, op)
+}
+
+func (rs *resourceService) checkResourceOrCatalogLegacy(ctx context.Context,
+	resourceID, catalogID string, parentInternal bool, op string) error {
+	// The retired provider exposes only effective allow/error results. Preserve
+	// its historical relaxation behavior while that compatibility path exists.
 
 	// err stays nil when the resource is never asked, which is how the code below
 	// tells "the resource refused" from "the resource was not entitled to answer".
@@ -329,6 +348,32 @@ func partitionResourceIDs(ids []string, internalSet map[string]struct{}) (normal
 // Permissions filterResourcePermissions grouped by internal/common resources do filtering: according to the internal directory of resources
 // The internal_resource type is verified, and the rest are verified by the resource type. The results are merged and returned
 func (rs *resourceService) filterResourcePermissions(ctx context.Context, ids []string,
+	internalSet map[string]struct{}, ops []string, allowOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
+
+	normalIDs, internalIDs := partitionResourceIDs(ids, internalSet)
+	if len(normalIDs) > 0 {
+		result, err := rs.localFilterResourcePermissions(ctx, normalIDs, ops, allowOperation)
+		if err == nil {
+			if len(internalIDs) > 0 {
+				internalResult, internalErr := rs.filterResourcePermissionsLegacy(ctx, internalIDs,
+					internalSet, ops, allowOperation)
+				if internalErr != nil {
+					return nil, internalErr
+				}
+				for id, entry := range internalResult {
+					result[id] = entry
+				}
+			}
+			return result, nil
+		}
+		if !errors.Is(err, interfaces.ErrLocalPermissionUnsupported) {
+			return nil, err
+		}
+	}
+	return rs.filterResourcePermissionsLegacy(ctx, ids, internalSet, ops, allowOperation)
+}
+
+func (rs *resourceService) filterResourcePermissionsLegacy(ctx context.Context, ids []string,
 	internalSet map[string]struct{}, ops []string, allowOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
 
 	normalIDs, internalIDs := partitionResourceIDs(ids, internalSet)
@@ -579,16 +624,14 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 		// When internal services access on behalf of users, checking per account will only result in false rejection. The external network endpoint will not carry this tag.
 		resource.Operations = interfaces.COMMON_OPERATIONS
 	} else {
-		matchResoucesMap, err := rs.ps.FilterResources(ctx, resourceAuthResourceType(parentInternal), []string{resource.ID},
-			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
+		internalResources := map[string]struct{}{}
+		if parentInternal {
+			internalResources[resource.ID] = struct{}{}
+		}
+		matchResoucesMap, err := rs.filterResourcePermissions(ctx, []string{resource.ID}, internalResources,
+			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
 		if err != nil {
 			span.SetStatus(codes.Error, "Filter resources error")
-			return nil, err
-		}
-		// The resource side has not approved it. Check the affiliated directory (#817) again.
-		if err := rs.mergeCatalogPermissions(ctx, []string{resource.ID},
-			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, matchResoucesMap); err != nil {
-			span.SetStatus(codes.Error, "Merge catalog permissions error")
 			return nil, err
 		}
 
@@ -1997,8 +2040,8 @@ func (rs *resourceService) filterAuthorizedResourceAuthResources(ctx context.Con
 			end = len(ids)
 		}
 
-		batchMatchResources, err := rs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ids[i:end],
-			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, false, interfaces.COMMON_OPERATIONS)
+		batchMatchResources, err := rs.filterResourcePermissions(ctx, ids[i:end], internalResources,
+			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, false)
 		if err != nil {
 			return nil, err
 		}

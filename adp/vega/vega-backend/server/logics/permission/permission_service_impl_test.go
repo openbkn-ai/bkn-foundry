@@ -35,6 +35,22 @@ func (f *fakeMQClient) Sub(topic string, channel string, handler mqclient.Messag
 
 func (f *fakeMQClient) Close() {}
 
+type fakeLocalPermissionAccess struct {
+	interfaces.PermissionAccess
+	checkFn  func(context.Context, interfaces.LocalPermissionCheck) (interfaces.PermissionOperationDecision, error)
+	filterFn func(context.Context, interfaces.LocalPermissionFilter) (map[string]map[string]interfaces.PermissionOperationDecision, error)
+}
+
+func (f *fakeLocalPermissionAccess) LocalDecision(ctx context.Context,
+	check interfaces.LocalPermissionCheck) (interfaces.PermissionOperationDecision, error) {
+	return f.checkFn(ctx, check)
+}
+
+func (f *fakeLocalPermissionAccess) LocalResourceDecisions(ctx context.Context,
+	filter interfaces.LocalPermissionFilter) (map[string]map[string]interfaces.PermissionOperationDecision, error) {
+	return f.filterFn(ctx, filter)
+}
+
 func TestPermissionServiceImplCheckPermission(t *testing.T) {
 	t.Run("rejects missing account", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -100,6 +116,100 @@ func TestPermissionServiceImplCheckPermission(t *testing.T) {
 		assertHTTPStatus(t, err, http.StatusForbidden)
 		assert.ErrorContains(t, err, "insufficient permissions")
 	})
+}
+
+func TestPermissionServiceImplLocalDecision(t *testing.T) {
+	t.Run("delegates account through the local access contract", func(t *testing.T) {
+		var got interfaces.LocalPermissionCheck
+		access := &fakeLocalPermissionAccess{checkFn: func(_ context.Context,
+			check interfaces.LocalPermissionCheck) (interfaces.PermissionOperationDecision, error) {
+			got = check
+			return interfaces.PermissionOperationDecision{
+				Operation: check.Operation, Decision: interfaces.PermissionDecisionNone,
+				Basis: interfaces.PermissionBasisNone,
+			}, nil
+		}}
+		svc := &PermissionServiceImpl{pa: access}
+		resource := interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"}
+
+		decision, err := svc.LocalDecision(contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER),
+			resource, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+
+		require.NoError(t, err)
+		assert.Equal(t, interfaces.PermissionDecisionNone, decision.Decision)
+		assert.Equal(t, interfaces.PermissionAccessor{ID: "user-1", Type: interfaces.ACCESSOR_TYPE_USER}, got.Accessor)
+		assert.Equal(t, resource, got.Resource)
+	})
+
+	t.Run("reports unsupported for the retired access provider", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		svc := &PermissionServiceImpl{pa: vmock.NewMockPermissionAccess(ctrl)}
+
+		_, err := svc.LocalDecision(contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER),
+			interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"},
+			interfaces.OPERATION_TYPE_VIEW_DETAIL)
+
+		require.ErrorIs(t, err, interfaces.ErrLocalPermissionUnsupported)
+	})
+
+	t.Run("does not turn a safe failure into none", func(t *testing.T) {
+		access := &fakeLocalPermissionAccess{checkFn: func(context.Context,
+			interfaces.LocalPermissionCheck) (interfaces.PermissionOperationDecision, error) {
+			return interfaces.PermissionOperationDecision{}, errors.New("safe unavailable")
+		}}
+		svc := &PermissionServiceImpl{pa: access}
+
+		_, err := svc.LocalDecision(contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER),
+			interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"},
+			interfaces.OPERATION_TYPE_VIEW_DETAIL)
+
+		assertHTTPStatus(t, err, http.StatusInternalServerError)
+	})
+
+	t.Run("rejects a missing account before local evaluation", func(t *testing.T) {
+		access := &fakeLocalPermissionAccess{checkFn: func(context.Context,
+			interfaces.LocalPermissionCheck) (interfaces.PermissionOperationDecision, error) {
+			t.Fatal("local access must not be called")
+			return interfaces.PermissionOperationDecision{}, nil
+		}}
+		svc := &PermissionServiceImpl{pa: access}
+
+		_, err := svc.LocalDecision(context.Background(),
+			interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"},
+			interfaces.OPERATION_TYPE_VIEW_DETAIL)
+
+		assertHTTPStatus(t, err, http.StatusForbidden)
+	})
+}
+
+func TestPermissionServiceImplLocalResourceDecisions(t *testing.T) {
+	var got interfaces.LocalPermissionFilter
+	access := &fakeLocalPermissionAccess{filterFn: func(_ context.Context,
+		filter interfaces.LocalPermissionFilter) (map[string]map[string]interfaces.PermissionOperationDecision, error) {
+		got = filter
+		return map[string]map[string]interfaces.PermissionOperationDecision{
+			"resource-1": {
+				interfaces.OPERATION_TYPE_VIEW_DETAIL: {
+					Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+					Decision:  interfaces.PermissionDecisionDeny,
+					Basis:     interfaces.PermissionBasisDirect,
+				},
+			},
+		}, nil
+	}}
+	svc := &PermissionServiceImpl{pa: access}
+
+	decisions, err := svc.LocalResourceDecisions(
+		contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER),
+		interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"resource-1"},
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
+
+	require.NoError(t, err)
+	assert.Equal(t, interfaces.PermissionDecisionDeny,
+		decisions["resource-1"][interfaces.OPERATION_TYPE_VIEW_DETAIL].Decision)
+	assert.Equal(t, interfaces.PermissionAccessor{ID: "user-1", Type: interfaces.ACCESSOR_TYPE_USER}, got.Accessor)
+	assert.Equal(t, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, got.ResourceType)
 }
 
 func TestPermissionServiceImplCreateResources(t *testing.T) {

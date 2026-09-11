@@ -68,6 +68,61 @@ func (ps *PermissionServiceImpl) CheckPermission(ctx context.Context, resource i
 	return nil
 }
 
+func (ps *PermissionServiceImpl) LocalDecision(ctx context.Context, resource interfaces.PermissionResource,
+	op string) (interfaces.PermissionOperationDecision, error) {
+
+	accountInfo := interfaces.AccountInfo{}
+	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
+		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	}
+	if accountInfo.ID == "" || accountInfo.Type == "" {
+		return interfaces.PermissionOperationDecision{}, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails("Access denied: missing account ID or type")
+	}
+	local, ok := ps.pa.(interfaces.LocalPermissionAccess)
+	if !ok {
+		return interfaces.PermissionOperationDecision{}, interfaces.ErrLocalPermissionUnsupported
+	}
+	decision, err := local.LocalDecision(ctx, interfaces.LocalPermissionCheck{
+		Accessor: interfaces.PermissionAccessor{ID: accountInfo.ID, Type: accountInfo.Type},
+		Resource: resource, Operation: op,
+	})
+	if err != nil {
+		return interfaces.PermissionOperationDecision{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_InternalError_CheckPermissionFailed).WithErrorDetails(err)
+	}
+	return decision, nil
+}
+
+func (ps *PermissionServiceImpl) LocalResourceDecisions(ctx context.Context, resourceType string,
+	ids, ops []string) (map[string]map[string]interfaces.PermissionOperationDecision, error) {
+
+	accountInfo := interfaces.AccountInfo{}
+	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
+		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	}
+	if accountInfo.ID == "" || accountInfo.Type == "" {
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails("Access denied: missing account ID or type")
+	}
+	if len(ids) == 0 || len(ops) == 0 {
+		return map[string]map[string]interfaces.PermissionOperationDecision{}, nil
+	}
+	local, ok := ps.pa.(interfaces.LocalPermissionAccess)
+	if !ok {
+		return nil, interfaces.ErrLocalPermissionUnsupported
+	}
+	decisions, err := local.LocalResourceDecisions(ctx, interfaces.LocalPermissionFilter{
+		Accessor:     interfaces.PermissionAccessor{ID: accountInfo.ID, Type: accountInfo.Type},
+		ResourceType: resourceType, ResourceIDs: ids, Operations: ops,
+	})
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_InternalError_FilterResourcesFailed).WithErrorDetails(err)
+	}
+	return decisions, nil
+}
+
 func (ps *PermissionServiceImpl) CreateResources(ctx context.Context, resources []interfaces.PermissionResource, ops []string) error {
 	accountInfo := interfaces.AccountInfo{}
 	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {

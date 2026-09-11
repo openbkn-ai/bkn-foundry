@@ -18,3 +18,11 @@ type PermissionService interface {
 	DeleteResources(ctx context.Context, resourceType string, ids []string) error
 	UpdateResource(ctx context.Context, resource PermissionResource) error
 }
+
+// LocalPermissionService exposes bkn-safe's non-final local decision only to
+// the Resource service, which owns the trusted Resource-to-Catalog relation.
+// Other business services continue to use PermissionService's effective APIs.
+type LocalPermissionService interface {
+	LocalDecision(ctx context.Context, resource PermissionResource, op string) (PermissionOperationDecision, error)
+	LocalResourceDecisions(ctx context.Context, resourceType string, ids, ops []string) (map[string]map[string]PermissionOperationDecision, error)
+}
