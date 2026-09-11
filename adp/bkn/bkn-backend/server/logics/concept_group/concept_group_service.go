@@ -243,9 +243,8 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 			if err != nil {
 				logger.Errorf("CreateObjectTypes error: %s", err.Error())
 				span.SetStatus(codes.Error, "创建对象类失败")
-				return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_ConceptGroup_InternalError_CreateObjectTypesFailed).
-					WithErrorDetails(err.Error())
+				return "", logics.PreserveHTTPError(ctx, err,
+					berrors.BknBackend_ConceptGroup_InternalError_CreateObjectTypesFailed)
 			}
 
 			// Import path: process group-to-concept relationships.
@@ -264,9 +263,8 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 			if err != nil {
 				logger.Errorf("CreateRelationTypes error: %s", err.Error())
 				span.SetStatus(codes.Error, "创建关系类失败")
-				return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_ConceptGroup_InternalError_CreateRelationTypesFailed).
-					WithErrorDetails(err.Error())
+				return "", logics.PreserveHTTPError(ctx, err,
+					berrors.BknBackend_ConceptGroup_InternalError_CreateRelationTypesFailed)
 			}
 		}
 
@@ -275,9 +273,8 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 			if err != nil {
 				logger.Errorf("CreateActionTypes error: %s", err.Error())
 				span.SetStatus(codes.Error, "创建概念分组动作类失败")
-				return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_ConceptGroup_InternalError_CreateActionTypesFailed).
-					WithErrorDetails(err.Error())
+				return "", logics.PreserveHTTPError(ctx, err,
+					berrors.BknBackend_ConceptGroup_InternalError_CreateActionTypesFailed)
 			}
 		}
 	}
@@ -299,9 +296,8 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 			if err != nil {
 				logger.Errorf("CreateObjectTypes error: %s", err.Error())
 				span.SetStatus(codes.Error, "创建对象类失败")
-				return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_ConceptGroup_InternalError_CreateObjectTypesFailed).
-					WithErrorDetails(err.Error())
+				return "", logics.PreserveHTTPError(ctx, err,
+					berrors.BknBackend_ConceptGroup_InternalError_CreateObjectTypesFailed)
 			}
 			// Import path: create only relationships between this group and current object types.
 			// Updating groups requires full synchronization.
@@ -320,9 +316,8 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 			if err != nil {
 				logger.Errorf("CreateRelationTypes error: %s", err.Error())
 				span.SetStatus(codes.Error, "创建关系类失败")
-				return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_ConceptGroup_InternalError_CreateRelationTypesFailed).
-					WithErrorDetails(err.Error())
+				return "", logics.PreserveHTTPError(ctx, err,
+					berrors.BknBackend_ConceptGroup_InternalError_CreateRelationTypesFailed)
 			}
 		}
 
@@ -331,9 +326,8 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 			if err != nil {
 				logger.Errorf("CreateActionTypes error: %s", err.Error())
 				span.SetStatus(codes.Error, "创建动作类失败")
-				return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_ConceptGroup_InternalError_CreateActionTypesFailed).
-					WithErrorDetails(err.Error())
+				return "", logics.PreserveHTTPError(ctx, err,
+					berrors.BknBackend_ConceptGroup_InternalError_CreateActionTypesFailed)
 			}
 		}
 	}

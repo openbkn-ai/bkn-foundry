@@ -86,7 +86,17 @@ type CheckResult struct {
 }
 
 type BatchCheckResult struct {
-	DeniedSources []SourceSpec `json:"denied_sources"`
+	DeniedSources   []SourceSpec     `json:"denied_sources"`
+	ResolvedSources []ResolvedSource `json:"resolved_sources"`
+}
+
+// ResolvedSource records the effective delegator that made a preflight source
+// valid. Callers use it only for a subsequent least-privilege dependency read;
+// the downstream service still rechecks the exact operation before returning
+// data.
+type ResolvedSource struct {
+	SourceSpec
+	GrantedBy string `json:"granted_by"`
 }
 
 type SyncResult struct {
@@ -338,7 +348,7 @@ func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCh
 		return BatchCheckResult{}, err
 	}
 
-	result := BatchCheckResult{DeniedSources: []SourceSpec{}}
+	result := BatchCheckResult{DeniedSources: []SourceSpec{}, ResolvedSources: []ResolvedSource{}}
 	err = s.enforcer.Transaction(ctx, func(tx *authz.PolicyTransaction) error {
 		mapping, mappingErr := loadProxy(tx.DB(), req.ProxyAccountID)
 		if mappingErr != nil && !errors.Is(mappingErr, ErrProxyInactive) &&
@@ -370,7 +380,7 @@ func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCh
 		}
 
 		needsActor := make([]SourceSpec, 0, len(sources))
-		allowed := make(map[sourceKey]bool, len(sources))
+		allowedBy := make(map[sourceKey]string, len(sources))
 		for _, spec := range sources {
 			key := keyForSpec(spec)
 			if mappingErr != nil || spec.KNID != mapping.ManagedResourceID {
@@ -381,7 +391,7 @@ func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCh
 					return ErrInvalidRequest
 				}
 				if row.LifecycleStatus == StatusActive && validCurrent[row.ID] {
-					allowed[key] = true
+					allowedBy[key] = row.GrantedBy
 					continue
 				}
 			}
@@ -435,7 +445,7 @@ func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCh
 					ResourceID:   spec.ResourceID,
 					Operation:    spec.Operation,
 				}] {
-					allowed[keyForSpec(spec)] = true
+					allowedBy[keyForSpec(spec)] = req.GrantorID
 				}
 			}
 		}
@@ -445,9 +455,10 @@ func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCh
 			decision := "allow"
 			reason := "actor or retained delegator holds the required operation"
 			key := keyForSpec(spec)
-			isAllowed := allowed[key]
+			_, isAllowed := allowedBy[key]
 			for _, required := range requiredBySource[key] {
-				isAllowed = isAllowed && allowed[required]
+				_, requirementAllowed := allowedBy[required]
+				isAllowed = isAllowed && requirementAllowed
 			}
 			if !isAllowed {
 				decision = "deny"
@@ -459,6 +470,14 @@ func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCh
 				return err
 			}
 			audits = append(audits, audit)
+		}
+		for _, source := range sources {
+			if grantorID, ok := allowedBy[keyForSpec(source)]; ok {
+				result.ResolvedSources = append(result.ResolvedSources, ResolvedSource{
+					SourceSpec: source,
+					GrantedBy:  grantorID,
+				})
+			}
 		}
 		if len(audits) > 0 {
 			return tx.DB().Create(&audits).Error

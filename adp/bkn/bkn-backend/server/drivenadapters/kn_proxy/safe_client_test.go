@@ -59,6 +59,9 @@ func TestSafeClientUsesManagedInternalContracts(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(interfaces.ProxyGrantBatchCheckResult{
 			DeniedSources: body.Sources,
+			ResolvedSources: []interfaces.ProxyGrantResolvedSource{{
+				ProxyGrantSourceSpec: body.Sources[0], GrantedBy: "historical-grantor",
+			}},
 		})
 	})
 	mux.HandleFunc("/api/safe/in/v1/proxy-grant-sources/sync", func(w http.ResponseWriter, r *http.Request) {
@@ -117,7 +120,8 @@ func TestSafeClientUsesManagedInternalContracts(t *testing.T) {
 		SourceType: interfaces.ProxyGrantSourceTypeKNBinding, SourceID: "source-1", KNID: "kn-1",
 		BindingType: interfaces.MODULE_TYPE_OBJECT_TYPE, BindingID: "ot-1",
 	}})
-	if err != nil || len(batchResult.DeniedSources) != 1 || batchResult.DeniedSources[0].BindingID != "ot-1" {
+	if err != nil || len(batchResult.DeniedSources) != 1 || batchResult.DeniedSources[0].BindingID != "ot-1" ||
+		len(batchResult.ResolvedSources) != 1 || batchResult.ResolvedSources[0].GrantedBy != "historical-grantor" {
 		t.Fatalf("CheckGrants() = %#v, %v", batchResult, err)
 	}
 	syncResult, err := client.SyncGrants(t.Context(), "proxy-1", "grantor-1", nil)

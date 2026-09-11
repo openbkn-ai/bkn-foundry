@@ -311,6 +311,9 @@ func (r *restHandler) ValidateConceptGroups(c *gin.Context, visitor hydra.Visito
 		}
 	}
 	if err = r.cgs.ValidateConceptGroups(ctx, knID, branch, conceptGroups, strictMode, nil, mode); err != nil {
+		if replyDependencyValidationError(c, span, err) {
+			return
+		}
 		oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 		rest.ReplyOK(c, http.StatusOK, map[string]any{"valid": false, "detail": err.Error()})
 		return

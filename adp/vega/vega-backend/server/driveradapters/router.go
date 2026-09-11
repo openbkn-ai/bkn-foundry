@@ -261,6 +261,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		{
 			resources.GET("", r.ListResourcesByIn)
 			resources.POST("", r.verifyJsonContentType(), r.CreateResourceByIn)
+			resources.GET("/:id/schema", r.GetResourceSchemaForDependency)
 			resources.GET("/:id", r.GetResourcesByIn) // The ID is the resource ID, and multiple resource ids are separated by commas
 			resources.PUT("/:id", r.verifyJsonContentType(), r.UpdateResourceByIn)
 			resources.DELETE("/:id", r.DeleteResourcesByIn) // The ID is the resource ID, and multiple resource ids are separated by commas

@@ -39,14 +39,6 @@ type agentOperatorAccess struct {
 	httpClient       rest.HTTPClient
 }
 
-type OperatorError struct {
-	Code        string      `json:"code"`        // Error code
-	Description string      `json:"description"` // Error description
-	Detail      interface{} `json:"detail"`      // Error details
-	Solution    interface{} `json:"solution"`    // Suggested resolution
-	Link        interface{} `json:"link"`        // Error link
-}
-
 // NewAgentOperatorAccess returns a singleton ToolBox and MCP access client.
 func NewAgentOperatorAccess(appSetting *common.AppSetting) interfaces.AgentOperatorAccess {
 	aoAccessOnce.Do(func() {
@@ -65,7 +57,8 @@ func (aoa *agentOperatorAccess) GetToolByID(ctx context.Context, boxID, toolID s
 	defer span.End()
 
 	if boxID == "" || toolID == "" {
-		err := fmt.Errorf("box_id and tool_id are required for tool binding check")
+		err := interfaces.NewDependencyError("execution-factory", "get_tool",
+			interfaces.DependencyInvalidBinding, 0)
 		common.LogSafeError(ctx, "Invalid tool binding parameter", err)
 		return err
 	}
@@ -95,43 +88,36 @@ func (aoa *agentOperatorAccess) GetToolByID(ctx context.Context, boxID, toolID s
 	if err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get tool failed")
 		common.LogSafeError(ctx, "Tool binding check request failed", err)
-		return fmt.Errorf("tool binding check failed: %w", err)
+		return executionDependencyTransportError("get_tool", respCode, err)
 	}
 	if respCode == http.StatusOK {
+		var payload struct {
+			ToolID string `json:"tool_id"`
+		}
+		if err := json.Unmarshal(result, &payload); err != nil || strings.TrimSpace(payload.ToolID) != toolID {
+			invalidErr := interfaces.NewDependencyError("execution-factory", "get_tool",
+				interfaces.DependencyInvalidResponse, respCode)
+			if err != nil {
+				common.LogSafeError(ctx, "Tool binding response was invalid", err)
+			} else {
+				common.LogSafeError(ctx, "Tool binding response was invalid", invalidErr)
+			}
+			return invalidErr
+		}
 		oteltrace.AddHttpAttrs4Ok(span, respCode)
 		return nil
 	}
-	if respCode == http.StatusNotFound {
-		err := fmt.Errorf("tool not found: box_id=%s tool_id=%s", boxID, toolID)
-		oteltrace.AddHttpAttrs4Error(span, respCode, "NotFound", "Tool not found")
-		common.LogSafeError(ctx, "Tool not found", err)
-		return err
-	}
-	if respCode != http.StatusOK {
-		var opError OperatorError
-		if err = json.Unmarshal(result, &opError); err != nil {
-			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal OperatorError failed")
-			common.LogSafeError(ctx, "Unmarshal OperatorError failed", err)
-			return fmt.Errorf("tool binding check failed: %w", err)
-		}
-		httpErr := &rest.HTTPError{HTTPCode: respCode,
-			BaseError: rest.BaseError{
-				ErrorCode:    opError.Code,
-				Description:  opError.Description,
-				ErrorDetails: opError.Detail,
-			}}
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		common.LogSafeError(ctx, "Tool binding check failed", httpErr)
-		return fmt.Errorf("tool binding check returned HTTP %d", respCode)
-	}
-	oteltrace.AddHttpAttrs4Ok(span, respCode)
-	return nil
+	kind := executionDependencyKindForStatus(respCode)
+	oteltrace.AddHttpAttrs4Error(span, respCode, "DependencyError", "Tool binding check failed")
+	logger.Debugf("Tool binding check response: %s", common.SafeTextSummary("response", string(result)))
+	return interfaces.NewDependencyError("execution-factory", "get_tool", kind, respCode)
 }
 
 // CheckMCPToolBinding verifies MCP exposes a tool with toolName (GET .../mcp/proxy/{mcp_id}/tools).
 func (aoa *agentOperatorAccess) GetMcpToolByName(ctx context.Context, mcpID, toolName string) error {
 	if mcpID == "" || toolName == "" {
-		err := fmt.Errorf("mcp_id and tool_name are required for MCP tool binding check")
+		err := interfaces.NewDependencyError("execution-factory", "get_mcp_tool",
+			interfaces.DependencyInvalidBinding, 0)
 		common.LogSafeError(ctx, "Invalid MCP tool binding parameter", err)
 		return err
 	}
@@ -144,7 +130,8 @@ func (aoa *agentOperatorAccess) GetMcpToolByName(ctx context.Context, mcpID, too
 		return err
 	}
 	if tools == nil {
-		return fmt.Errorf("MCP server not found: mcp_id=%s", mcpID)
+		return interfaces.NewDependencyError("execution-factory", "get_mcp_tool",
+			interfaces.DependencyNotFound, http.StatusNotFound)
 	}
 	want := strings.TrimSpace(toolName)
 	for _, tool := range tools {
@@ -152,7 +139,8 @@ func (aoa *agentOperatorAccess) GetMcpToolByName(ctx context.Context, mcpID, too
 			return nil
 		}
 	}
-	return fmt.Errorf("MCP tool not found: mcp_id=%s tool_name=%s", mcpID, want)
+	return interfaces.NewDependencyError("execution-factory", "get_mcp_tool",
+		interfaces.DependencyNotFound, http.StatusNotFound)
 }
 
 // execFactoryHeaders carries the caller's account to the execution factory. The internal face
@@ -448,7 +436,8 @@ func (aoa *agentOperatorAccess) ListMCPTools(ctx context.Context, mcpID string) 
 	defer span.End()
 
 	if mcpID == "" {
-		return nil, fmt.Errorf("mcp_id is required for MCP server lookup")
+		return nil, interfaces.NewDependencyError("execution-factory", "list_mcp_tools",
+			interfaces.DependencyInvalidBinding, 0)
 	}
 
 	detailURL := fmt.Sprintf("%s/mcp/%s", aoa.agentOperatorURL, mcpID)
@@ -462,7 +451,7 @@ func (aoa *agentOperatorAccess) ListMCPTools(ctx context.Context, mcpID string) 
 	if err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get MCP server failed")
 		common.LogSafeError(ctx, "MCP server lookup request failed", err)
-		return nil, fmt.Errorf("MCP server lookup failed: %w", err)
+		return nil, executionDependencyTransportError("list_mcp_tools", respCode, err)
 	}
 	if respCode == http.StatusNotFound {
 		oteltrace.AddHttpAttrs4Ok(span, respCode)
@@ -472,7 +461,8 @@ func (aoa *agentOperatorAccess) ListMCPTools(ctx context.Context, mcpID string) 
 		common.LogSafeError(ctx, "MCP server lookup failed",
 			fmt.Errorf("MCP server lookup returned HTTP %d", respCode))
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Get MCP server failed")
-		return nil, fmt.Errorf("MCP server lookup returned HTTP %d", respCode)
+		return nil, interfaces.NewDependencyError("execution-factory", "list_mcp_tools",
+			executionDependencyKindForStatus(respCode), respCode)
 	}
 
 	var detail struct {
@@ -484,14 +474,21 @@ func (aoa *agentOperatorAccess) ListMCPTools(ctx context.Context, mcpID string) 
 	}
 	if err = json.Unmarshal(result, &detail); err != nil {
 		common.LogSafeError(ctx, "Unmarshal MCP server detail failed", err)
-		return nil, fmt.Errorf("MCP server lookup failed: %w", err)
+		return nil, interfaces.NewDependencyError("execution-factory", "list_mcp_tools",
+			interfaces.DependencyInvalidResponse, respCode)
+	}
+	if strings.TrimSpace(detail.BaseInfo.MCPID) != mcpID || strings.TrimSpace(detail.BaseInfo.Status) == "" {
+		invalidErr := interfaces.NewDependencyError("execution-factory", "list_mcp_tools",
+			interfaces.DependencyInvalidResponse, respCode)
+		common.LogSafeError(ctx, "MCP server detail response was invalid", invalidErr)
+		return nil, invalidErr
 	}
 
 	toolsURL := fmt.Sprintf("%s/mcp/proxy/%s/tools", aoa.agentOperatorURL, mcpID)
 	respCode, result, err = aoa.httpClient.GetNoUnmarshal(ctx, toolsURL, nil, aoa.execFactoryHeaders(ctx))
 	if err != nil {
 		common.LogSafeError(ctx, "MCP tool listing request failed", err)
-		return nil, fmt.Errorf("MCP tool listing failed: %w", err)
+		return nil, executionDependencyTransportError("list_mcp_tools", respCode, err)
 	}
 	if respCode == http.StatusNotFound {
 		return nil, nil
@@ -499,22 +496,35 @@ func (aoa *agentOperatorAccess) ListMCPTools(ctx context.Context, mcpID string) 
 	if respCode != http.StatusOK {
 		common.LogSafeError(ctx, "MCP tool listing failed",
 			fmt.Errorf("MCP tool listing returned HTTP %d", respCode))
-		return nil, fmt.Errorf("MCP tool listing returned HTTP %d", respCode)
+		return nil, interfaces.NewDependencyError("execution-factory", "list_mcp_tools",
+			executionDependencyKindForStatus(respCode), respCode)
 	}
 
 	var payload struct {
-		Tools []struct {
+		Tools *[]struct {
 			Name        string `json:"name"`
 			Description string `json:"description"`
 		} `json:"tools"`
 	}
-	if err = json.Unmarshal(result, &payload); err != nil {
-		common.LogSafeError(ctx, "Unmarshal MCP tool listing failed", err)
-		return nil, fmt.Errorf("MCP tool listing failed: %w", err)
+	if err = json.Unmarshal(result, &payload); err != nil || payload.Tools == nil {
+		invalidErr := interfaces.NewDependencyError("execution-factory", "list_mcp_tools",
+			interfaces.DependencyInvalidResponse, respCode)
+		if err != nil {
+			common.LogSafeError(ctx, "Unmarshal MCP tool listing failed", err)
+		} else {
+			common.LogSafeError(ctx, "MCP tool listing response was invalid", invalidErr)
+		}
+		return nil, invalidErr
 	}
 
-	tools := make([]*interfaces.MCPToolBrief, 0, len(payload.Tools))
-	for _, tool := range payload.Tools {
+	tools := make([]*interfaces.MCPToolBrief, 0, len(*payload.Tools))
+	for _, tool := range *payload.Tools {
+		if strings.TrimSpace(tool.Name) == "" {
+			invalidErr := interfaces.NewDependencyError("execution-factory", "list_mcp_tools",
+				interfaces.DependencyInvalidResponse, respCode)
+			common.LogSafeError(ctx, "MCP tool listing entry was invalid", invalidErr)
+			return nil, invalidErr
+		}
 		tools = append(tools, &interfaces.MCPToolBrief{
 			MCPID:       mcpID,
 			MCPName:     detail.BaseInfo.Name,
@@ -524,6 +534,28 @@ func (aoa *agentOperatorAccess) ListMCPTools(ctx context.Context, mcpID string) 
 		})
 	}
 	return tools, nil
+}
+
+func executionDependencyTransportError(operation string, status int, err error) error {
+	kind := interfaces.DependencyTransportKind(err)
+	return interfaces.NewDependencyError("execution-factory", operation, kind, status)
+}
+
+func executionDependencyKindForStatus(status int) interfaces.DependencyErrorKind {
+	switch status {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return interfaces.DependencyForbidden
+	case http.StatusNotFound:
+		return interfaces.DependencyNotFound
+	case http.StatusBadRequest, http.StatusUnprocessableEntity:
+		return interfaces.DependencyInvalidBinding
+	case http.StatusRequestTimeout, http.StatusGatewayTimeout:
+		return interfaces.DependencyTimeout
+	case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable:
+		return interfaces.DependencyUnavailable
+	default:
+		return interfaces.DependencyDownstreamError
+	}
 }
 
 // FindMCPServersByName resolves an MCP Server name to the ids that carry it exactly.

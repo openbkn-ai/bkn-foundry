@@ -81,6 +81,8 @@ func (s *proxyAccessStub) ListProxyConflicts(context.Context) (map[string][]stri
 type managedProxyAccessStub struct {
 	allowed          bool
 	deniedResources  map[string]bool
+	resolvedGrantors map[string]string
+	omitResolved     bool
 	createCount      int
 	disabled         bool
 	disableLifecycle string
@@ -146,17 +148,57 @@ func (s *managedProxyAccessStub) CheckGrant(_ context.Context, _, _ string, sour
 	s.checked = append(s.checked, source)
 	return interfaces.ProxyGrantCheckResult{Allowed: s.allowed && !s.deniedResources[source.ResourceID]}, nil
 }
-func (s *managedProxyAccessStub) CheckGrants(_ context.Context, _, _ string,
+func (s *managedProxyAccessStub) CheckGrants(_ context.Context, _, grantorID string,
 	sources []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantBatchCheckResult, error) {
 	s.checked = append(s.checked, sources...)
 	result := interfaces.ProxyGrantBatchCheckResult{DeniedSources: []interfaces.ProxyGrantSourceSpec{}}
 	for _, source := range sources {
 		if !s.allowed || s.deniedResources[source.ResourceID] {
 			result.DeniedSources = append(result.DeniedSources, source)
+		} else if !s.omitResolved {
+			resolvedGrantor := grantorID
+			if historical := s.resolvedGrantors[source.SourceID]; historical != "" {
+				resolvedGrantor = historical
+			}
+			result.ResolvedSources = append(result.ResolvedSources, interfaces.ProxyGrantResolvedSource{
+				ProxyGrantSourceSpec: source, GrantedBy: resolvedGrantor,
+			})
 		}
 	}
 	return result, nil
 }
+
+func TestPreflightProxySourcesRejectsLegacySafeResponseWithoutDelegators(t *testing.T) {
+	service := &knowledgeNetworkService{mpa: &managedProxyAccessStub{allowed: true, omitResolved: true}}
+	_, err := service.preflightProxySources(t.Context(), "proxy-1", "editor-1", []interfaces.ProxyGrantSourceSpec{{
+		ResourceType: "resource", ResourceID: "resource-1", Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+		SourceType: interfaces.ProxyGrantSourceTypeKNBinding, SourceID: "source-1",
+		KNID: "kn-1", BindingType: interfaces.MODULE_TYPE_OBJECT_TYPE, BindingID: "ot-1",
+	}})
+	var httpErr *rest.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusServiceUnavailable {
+		t.Fatalf("preflight legacy response error = %#v, want HTTP 503", err)
+	}
+}
+
+func TestProxySourceResolutionKeyIncludesBindingIdentity(t *testing.T) {
+	base := interfaces.ProxyGrantSourceSpec{
+		ResourceType: "resource", ResourceID: "resource-1", Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+		SourceType: interfaces.ProxyGrantSourceTypeKNBinding, SourceID: "source-1",
+		KNID: "kn-1", BindingType: interfaces.MODULE_TYPE_OBJECT_TYPE, BindingID: "ot-1",
+	}
+	baseKey := proxySourceResolutionKey(base)
+	variants := []interfaces.ProxyGrantSourceSpec{base, base, base}
+	variants[0].KNID = "kn-2"
+	variants[1].BindingType = interfaces.MODULE_TYPE_RELATION_TYPE
+	variants[2].BindingID = "ot-2"
+	for _, variant := range variants {
+		if proxySourceResolutionKey(variant) == baseKey {
+			t.Fatalf("resolution key accepted mismatched binding identity: %#v", variant)
+		}
+	}
+}
+
 func (s *managedProxyAccessStub) SyncGrants(_ context.Context, _, _ string, sources []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantSyncResult, error) {
 	s.syncCalls++
 	s.synced = append([]interfaces.ProxyGrantSourceSpec(nil), sources...)
@@ -306,7 +348,11 @@ func TestPrepareProxyImportPreflightsRelationAgainstExistingBoundObject(t *testi
 	kpa := &proxyAccessStub{mapping: &interfaces.KNProxyAccount{
 		KNID: "kn-1", ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleActive,
 	}}
-	mpa := &managedProxyAccessStub{allowed: true}
+	sourceID := stableProxySourceID("kn-1", interfaces.MODULE_TYPE_OBJECT_TYPE, "ot-1")
+	mpa := &managedProxyAccessStub{
+		allowed:          true,
+		resolvedGrantors: map[string]string{sourceID: "historical-grantor"},
+	}
 	service := &knowledgeNetworkService{kna: kna, cga: cga, ota: ota, rta: rta, ata: ata, ma: ma, kpa: kpa, mpa: mpa}
 	ctx := context.WithValue(t.Context(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "grantor-1"})
 	changes := &interfaces.KN{
@@ -526,7 +572,11 @@ func TestPublishKNChildMutationAddsFirstBindingToEmptyNetwork(t *testing.T) {
 		KNID: "kn-1", ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleActive,
 		SyncStatus: interfaces.KNProxySyncReady,
 	}}
-	mpa := &managedProxyAccessStub{allowed: true}
+	sourceID := stableProxySourceID("kn-1", interfaces.MODULE_TYPE_OBJECT_TYPE, "ot-1")
+	mpa := &managedProxyAccessStub{
+		allowed:          true,
+		resolvedGrantors: map[string]string{sourceID: "historical-grantor"},
+	}
 	service := &knowledgeNetworkService{
 		db: db, kna: kna, cga: cga, ota: ota, rta: rta, ata: ata, ma: ma, kpa: kpa, mpa: mpa,
 	}
@@ -535,10 +585,17 @@ func TestPublishKNChildMutationAddsFirstBindingToEmptyNetwork(t *testing.T) {
 	err = service.PublishKNChildMutation(ctx,
 		&interfaces.KN{KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, ObjectTypes: []*interfaces.ObjectType{objectType}},
 		interfaces.ImportMode_Normal,
-		func(_ context.Context, tx *sql.Tx) error {
+		func(mutationCtx context.Context, tx *sql.Tx) error {
 			mutationCalled = true
 			if tx == nil {
 				t.Fatal("mutation transaction is nil")
+			}
+			lookupCtx := interfaces.WithDependencyBindingScope(mutationCtx, "kn-1",
+				interfaces.MODULE_TYPE_OBJECT_TYPE, "ot-1")
+			account, ok := interfaces.VerifiedDependencyAccount(lookupCtx, "resource", "resource-first",
+				interfaces.OPERATION_TYPE_VIEW_DETAIL)
+			if !ok || account.ID != "historical-grantor" || account.Type != interfaces.ACCESSOR_TYPE_USER {
+				t.Fatalf("verified dependency account = (%+v, %v), want historical delegator", account, ok)
 			}
 			return nil
 		})

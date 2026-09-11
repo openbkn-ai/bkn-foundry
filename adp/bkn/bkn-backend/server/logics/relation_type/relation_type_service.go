@@ -1317,9 +1317,17 @@ func (rts *relationTypeService) validateDependency(ctx context.Context, tx *sql.
 			if mappingRules.BackingDataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
 				return logics.UnsupportedRelationBackingDataSourceError(ctx, relationType.RTID, mappingRules.BackingDataSource.Type)
 			}
-			res, err := rts.vbs.GetResourceByID(ctx, mappingRules.BackingDataSource.ID)
+			lookupCtx := interfaces.WithDependencyBindingScope(ctx, relationType.KNID,
+				interfaces.MODULE_TYPE_RELATION_TYPE, relationType.RTID)
+			_, controlledLookup := interfaces.VerifiedDependencyAccount(lookupCtx, "resource", mappingRules.BackingDataSource.ID,
+				interfaces.OPERATION_TYPE_QUERY_DATA)
+			res, err := rts.vbs.GetResourceSchema(lookupCtx, mappingRules.BackingDataSource.ID,
+				interfaces.OPERATION_TYPE_QUERY_DATA)
 			if err != nil {
-				return err
+				invalidErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+					WithErrorDetails(invalidParameterDetail(ctx, "BackingDataSourceNotFound", map[string]any{"resource": mappingRules.BackingDataSource.ID}))
+				return logics.MapDependencyError(ctx, err, !controlledLookup, invalidErr,
+					berrors.BknBackend_RelationType_InternalError)
 			}
 			if res == nil {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).

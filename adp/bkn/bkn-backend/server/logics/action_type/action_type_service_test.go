@@ -16,6 +16,8 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"bkn-backend/common"
@@ -23,6 +25,7 @@ import (
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 	bmock "bkn-backend/interfaces/mock"
+	rootlogics "bkn-backend/logics"
 	"bkn-backend/logics/batchindex"
 )
 
@@ -1847,13 +1850,16 @@ func Test_actionTypeService_ValidateActionTypes(t *testing.T) {
 			}
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			expectATImportOK()
-			aoa.EXPECT().GetToolByID(gomock.Any(), "b1", "t1").Return(errors.New("tool not found"))
+			aoa.EXPECT().GetToolByID(gomock.Any(), "b1", "t1").Return(
+				interfaces.NewDependencyError("execution-factory", "get_tool", interfaces.DependencyNotFound, http.StatusNotFound))
 			err := svc.ValidateActionTypes(ctx, "kn1", interfaces.MAIN_BRANCH, actionTypes, true, nil, interfaces.ImportMode_Normal)
 			So(err, ShouldNotBeNil)
 			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
-			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "行动类 [at1] 的工具绑定缺失或无效（box_id=b1，tool_id=t1）。")
-			So(httpErr.BaseError.ErrorDetails, ShouldNotContainSubstring, "tool not found")
+			dependencyDetails, ok := httpErr.BaseError.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
+			So(ok, ShouldBeTrue)
+			So(dependencyDetails.Detail, ShouldEqual, "行动类 [at1] 的工具绑定缺失或无效（box_id=b1，tool_id=t1）。")
+			So(dependencyDetails.Detail, ShouldNotContainSubstring, "tool not found")
 		})
 
 		Convey("strictMode true succeeds when tool binding check passes\n", func() {
@@ -1907,7 +1913,8 @@ func Test_actionTypeService_ValidateActionTypes(t *testing.T) {
 			}
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			expectATImportOK()
-			aoa.EXPECT().GetMcpToolByName(gomock.Any(), "m1", "fn").Return(errors.New("mcp tool not found"))
+			aoa.EXPECT().GetMcpToolByName(gomock.Any(), "m1", "fn").Return(
+				interfaces.NewDependencyError("execution-factory", "get_mcp_tool", interfaces.DependencyNotFound, http.StatusNotFound))
 			err := svc.ValidateActionTypes(ctx, "kn1", interfaces.MAIN_BRANCH, actionTypes, true, nil, interfaces.ImportMode_Normal)
 			So(err, ShouldNotBeNil)
 		})
@@ -1922,7 +1929,8 @@ func Test_actionTypeService_validateActionSourceStrictLocalizesBindingErrors(t *
 			aoa := bmock.NewMockAgentOperatorAccess(mockCtrl)
 			svc := &actionTypeService{aoa: aoa}
 			ctx := rest.WithLanguage(context.Background(), rest.SimplifiedChinese)
-			aoa.EXPECT().GetToolByID(gomock.Any(), "box-1", "tool-1").Return(errors.New("downstream tool lookup failed"))
+			aoa.EXPECT().GetToolByID(gomock.Any(), "box-1", "tool-1").Return(
+				interfaces.NewDependencyError("execution-factory", "get_tool", interfaces.DependencyNotFound, http.StatusNotFound))
 
 			err := svc.validateActionSourceStrict(ctx, &interfaces.ActionType{
 				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
@@ -1937,8 +1945,10 @@ func Test_actionTypeService_validateActionSourceStrictLocalizesBindingErrors(t *
 
 			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
-			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "行动类 [create_order] 的工具绑定缺失或无效（box_id=box-1，tool_id=tool-1）。")
-			So(httpErr.BaseError.ErrorDetails, ShouldNotContainSubstring, "downstream")
+			dependencyDetails, ok := httpErr.BaseError.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
+			So(ok, ShouldBeTrue)
+			So(dependencyDetails.Detail, ShouldEqual, "行动类 [create_order] 的工具绑定缺失或无效（box_id=box-1，tool_id=tool-1）。")
+			So(dependencyDetails.Detail, ShouldNotContainSubstring, "downstream")
 		})
 
 		Convey("MCP binding error uses the English catalog and omits the downstream error\n", func() {
@@ -1947,7 +1957,8 @@ func Test_actionTypeService_validateActionSourceStrictLocalizesBindingErrors(t *
 			aoa := bmock.NewMockAgentOperatorAccess(mockCtrl)
 			svc := &actionTypeService{aoa: aoa}
 			ctx := rest.WithLanguage(context.Background(), rest.AmericanEnglish)
-			aoa.EXPECT().GetMcpToolByName(gomock.Any(), "mcp-1", "create_order").Return(errors.New("downstream MCP lookup failed"))
+			aoa.EXPECT().GetMcpToolByName(gomock.Any(), "mcp-1", "create_order").Return(
+				interfaces.NewDependencyError("execution-factory", "get_mcp_tool", interfaces.DependencyNotFound, http.StatusNotFound))
 
 			err := svc.validateActionSourceStrict(ctx, &interfaces.ActionType{
 				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
@@ -1962,8 +1973,64 @@ func Test_actionTypeService_validateActionSourceStrictLocalizesBindingErrors(t *
 
 			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
-			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "Action type [create_order] MCP tool binding is missing or invalid (mcp_id=mcp-1, tool_name=create_order).")
-			So(httpErr.BaseError.ErrorDetails, ShouldNotContainSubstring, "downstream")
+			dependencyDetails, ok := httpErr.BaseError.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
+			So(ok, ShouldBeTrue)
+			So(dependencyDetails.Detail, ShouldEqual, "Action type [create_order] MCP tool binding is missing or invalid (mcp_id=mcp-1, tool_name=create_order).")
+			So(dependencyDetails.Detail, ShouldNotContainSubstring, "downstream")
 		})
 	})
+}
+
+func TestActionTypeStrictDependencyErrorMapping(t *testing.T) {
+	tests := []struct {
+		name       string
+		sourceType string
+		kind       interfaces.DependencyErrorKind
+		status     int
+		code       string
+	}{
+		{name: "tool invalid binding", sourceType: interfaces.ACTION_SOURCE_TYPE_TOOL, kind: interfaces.DependencyInvalidBinding, status: http.StatusBadRequest, code: berrors.BknBackend_ActionType_InvalidParameter},
+		{name: "tool missing", sourceType: interfaces.ACTION_SOURCE_TYPE_TOOL, kind: interfaces.DependencyNotFound, status: http.StatusBadRequest, code: berrors.BknBackend_ActionType_InvalidParameter},
+		{name: "tool forbidden", sourceType: interfaces.ACTION_SOURCE_TYPE_TOOL, kind: interfaces.DependencyForbidden, status: http.StatusBadGateway, code: berrors.BknBackend_ActionType_InternalError},
+		{name: "tool timeout", sourceType: interfaces.ACTION_SOURCE_TYPE_TOOL, kind: interfaces.DependencyTimeout, status: http.StatusServiceUnavailable, code: berrors.BknBackend_ActionType_InternalError},
+		{name: "tool unavailable", sourceType: interfaces.ACTION_SOURCE_TYPE_TOOL, kind: interfaces.DependencyUnavailable, status: http.StatusServiceUnavailable, code: berrors.BknBackend_ActionType_InternalError},
+		{name: "tool downstream", sourceType: interfaces.ACTION_SOURCE_TYPE_TOOL, kind: interfaces.DependencyDownstreamError, status: http.StatusBadGateway, code: berrors.BknBackend_ActionType_InternalError},
+		{name: "tool invalid response", sourceType: interfaces.ACTION_SOURCE_TYPE_TOOL, kind: interfaces.DependencyInvalidResponse, status: http.StatusBadGateway, code: berrors.BknBackend_ActionType_InternalError},
+		{name: "mcp invalid binding", sourceType: interfaces.ACTION_SOURCE_TYPE_MCP, kind: interfaces.DependencyInvalidBinding, status: http.StatusBadRequest, code: berrors.BknBackend_ActionType_InvalidParameter},
+		{name: "mcp missing", sourceType: interfaces.ACTION_SOURCE_TYPE_MCP, kind: interfaces.DependencyNotFound, status: http.StatusBadRequest, code: berrors.BknBackend_ActionType_InvalidParameter},
+		{name: "mcp forbidden", sourceType: interfaces.ACTION_SOURCE_TYPE_MCP, kind: interfaces.DependencyForbidden, status: http.StatusBadGateway, code: berrors.BknBackend_ActionType_InternalError},
+		{name: "mcp timeout", sourceType: interfaces.ACTION_SOURCE_TYPE_MCP, kind: interfaces.DependencyTimeout, status: http.StatusServiceUnavailable, code: berrors.BknBackend_ActionType_InternalError},
+		{name: "mcp unavailable", sourceType: interfaces.ACTION_SOURCE_TYPE_MCP, kind: interfaces.DependencyUnavailable, status: http.StatusServiceUnavailable, code: berrors.BknBackend_ActionType_InternalError},
+		{name: "mcp downstream", sourceType: interfaces.ACTION_SOURCE_TYPE_MCP, kind: interfaces.DependencyDownstreamError, status: http.StatusBadGateway, code: berrors.BknBackend_ActionType_InternalError},
+		{name: "mcp invalid response", sourceType: interfaces.ACTION_SOURCE_TYPE_MCP, kind: interfaces.DependencyInvalidResponse, status: http.StatusBadGateway, code: berrors.BknBackend_ActionType_InternalError},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			aoa := bmock.NewMockAgentOperatorAccess(ctrl)
+			dependencyErr := interfaces.NewDependencyError("execution-factory", "lookup", tc.kind, 0)
+			if tc.sourceType == interfaces.ACTION_SOURCE_TYPE_TOOL {
+				aoa.EXPECT().GetToolByID(gomock.Any(), "box-1", "tool-1").Return(dependencyErr)
+			} else {
+				aoa.EXPECT().GetMcpToolByName(gomock.Any(), "mcp-1", "create_order").Return(dependencyErr)
+			}
+			service := &actionTypeService{aoa: aoa}
+
+			err := service.validateActionSourceStrict(context.Background(), &interfaces.ActionType{
+				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+					ATName: "create_order",
+					ActionSource: interfaces.ActionSource{
+						Type: tc.sourceType, BoxID: "box-1", ToolID: "tool-1",
+						McpID: "mcp-1", ToolName: "create_order",
+					},
+				},
+			})
+
+			var httpErr *rest.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, tc.status, httpErr.HTTPCode)
+			assert.Equal(t, tc.code, httpErr.BaseError.ErrorCode)
+		})
+	}
 }

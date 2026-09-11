@@ -24,6 +24,7 @@ import (
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 	bmock "bkn-backend/interfaces/mock"
+	rootlogics "bkn-backend/logics"
 	"bkn-backend/logics/permission"
 )
 
@@ -2256,12 +2257,21 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			kna.EXPECT().CheckKNExistByID(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ots.EXPECT().CreateObjectTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			childErr := rootlogics.MapDependencyError(ctx,
+				interfaces.NewDependencyError("vega", "get_resource_schema", interfaces.DependencyTimeout, 0),
+				false,
+				rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter),
+				berrors.BknBackend_ObjectType_InternalError)
+			ots.EXPECT().CreateObjectTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, childErr)
 			smock.ExpectRollback()
 
 			knID, err := service4.CreateKN(ctx, kn, mode, true)
 			So(err, ShouldNotBeNil)
 			So(knID, ShouldEqual, "")
+			So(err, ShouldEqual, childErr)
+			httpErr := err.(*rest.HTTPError)
+			details := httpErr.BaseError.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
+			So(details.Kind, ShouldEqual, interfaces.DependencyTimeout)
 		})
 
 		Convey("Failed when CreateRelationTypes fails\n", func() {

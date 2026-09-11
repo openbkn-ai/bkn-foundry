@@ -647,6 +647,18 @@ func TestCheckManyPreservesValidDelegatorAndReturnsAllDeniedSources(t *testing.T
 		result.DeniedSources[1].SourceID != deniedB.SourceID {
 		t.Fatalf("denied sources = %#v, want both unavailable sources", result.DeniedSources)
 	}
+	resolvedBySource := make(map[string]string, len(result.ResolvedSources))
+	for _, source := range result.ResolvedSources {
+		resolvedBySource[source.SourceID] = source.GrantedBy
+	}
+	if resolvedBySource[retained.Source.SourceID] != f.grantor {
+		t.Fatalf("retained source delegator = %q, want historical delegator %q",
+			resolvedBySource[retained.Source.SourceID], f.grantor)
+	}
+	if resolvedBySource[newSource.SourceID] != editor {
+		t.Fatalf("new source delegator = %q, want current editor %q",
+			resolvedBySource[newSource.SourceID], editor)
+	}
 }
 
 func TestManagedProxyFilterBatchesSourceValidityQueries(t *testing.T) {

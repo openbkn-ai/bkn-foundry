@@ -28,11 +28,12 @@ const (
 )
 
 type proxyPublishPlan struct {
-	mapping        *interfaces.KNProxyAccount
-	delegatorID    string
-	modelVersion   string
-	lockOwner      string
-	createdMapping bool
+	mapping         *interfaces.KNProxyAccount
+	delegatorID     string
+	modelVersion    string
+	resolvedSources []interfaces.ProxyGrantResolvedSource
+	lockOwner       string
+	createdMapping  bool
 }
 
 type publishedProxyBindingCacheEntry struct {
@@ -98,9 +99,11 @@ func (kns *knowledgeNetworkService) prepareProxyPublishWithBaseline(ctx context.
 	// historical delegator and asks the current editor to take over only when that
 	// delegator has lost the exact downstream operation. Doing this before the
 	// business write avoids discovering an invalid retained source after commit.
-	if err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources); err != nil {
+	resolvedSources, err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources)
+	if err != nil {
 		return nil, err
 	}
+	plan.resolvedSources = resolvedSources
 	plan.modelVersion = version
 	releaseOnError = false
 	return plan, nil
@@ -241,13 +244,13 @@ func (kns *knowledgeNetworkService) abortCreatedProxy(ctx context.Context, plan 
 }
 
 func (kns *knowledgeNetworkService) preflightProxySources(ctx context.Context, proxyID, delegatorID string,
-	sources []interfaces.ProxyGrantSourceSpec) error {
+	sources []interfaces.ProxyGrantSourceSpec) ([]interfaces.ProxyGrantResolvedSource, error) {
 	if len(sources) == 0 {
-		return nil
+		return nil, nil
 	}
 	result, err := kns.mpa.CheckGrants(ctx, proxyID, delegatorID, sources)
 	if err != nil {
-		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "proxy permission preflight failed")
+		return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "proxy permission preflight failed")
 	}
 	missing := make([]missingProxyPermission, 0, len(result.DeniedSources))
 	for _, source := range result.DeniedSources {
@@ -267,11 +270,29 @@ func (kns *knowledgeNetworkService) preflightProxySources(ctx context.Context, p
 				missing[j].ResourceID, missing[j].Operation, missing[j].BindingType, missing[j].BindingID)
 			return left < right
 		})
-		return rest.NewHTTPError(ctx, http.StatusForbidden,
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden,
 			berrors.BknBackend_KnowledgeNetwork_ProxyPermissionMissing).
 			WithErrorDetails(missingProxyPermissionDetails{MissingPermissions: missing})
 	}
-	return nil
+	resolved := make(map[string]bool, len(result.ResolvedSources))
+	for _, source := range result.ResolvedSources {
+		if source.GrantedBy == "" {
+			continue
+		}
+		resolved[proxySourceResolutionKey(source.ProxyGrantSourceSpec)] = true
+	}
+	for _, source := range sources {
+		if !resolved[proxySourceResolutionKey(source)] {
+			return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable,
+				"proxy preflight response omitted an effective delegator")
+		}
+	}
+	return result.ResolvedSources, nil
+}
+
+func proxySourceResolutionKey(source interfaces.ProxyGrantSourceSpec) string {
+	return strings.Join([]string{source.ResourceType, source.ResourceID, source.Operation,
+		source.SourceType, source.SourceID, source.KNID, source.BindingType, source.BindingID}, "\x00")
 }
 
 // PublishKNChildMutation applies one standalone child-resource write through
@@ -320,12 +341,15 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 	// historical delegator is still valid, and requires this editor's exact
 	// downstream operation only for additions or an explicit delegator transfer.
 	// Removed sources are absent from the candidate and therefore need no check.
-	if err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources); err != nil {
+	resolvedSources, err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources)
+	if err != nil {
 		return err
 	}
+	plan.resolvedSources = resolvedSources
 	plan.modelVersion = version
 
-	mutationCtx, parentTracker, parentTrackerOwner := permission.WithResourceParentTracker(ctx)
+	mutationCtx := interfaces.WithVerifiedDependencySources(ctx, plan.resolvedSources)
+	mutationCtx, parentTracker, parentTrackerOwner := permission.WithResourceParentTracker(mutationCtx)
 	mutationCtx, policyTracker, policyTrackerOwner := permission.WithCreatedPolicyTracker(mutationCtx)
 	mutationCtx, cleanupTracker, cleanupTrackerOwner := permission.WithAuthorizationCleanupTracker(mutationCtx)
 	tx, err := kns.db.BeginTx(mutationCtx, nil)

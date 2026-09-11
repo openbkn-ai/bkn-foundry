@@ -8,6 +8,13 @@ info:
     lists require `view_detail`; data reads require `query_data`; updates and
     deletes use `modify` and `delete`. Lists and searches are filtered before
     total and pagination. See `../knowledge-network-authorization.md`.
+
+    With `strict_mode=true`, indirect relation mappings read the backing Vega schema under the
+    source contract's `query_data` operation; they do not introduce an implicit `view_detail`
+    requirement. Main-branch publication reuses the effective delegator selected by Proxy
+    preflight. Missing bindings return 400; a current-user denial returns 403; controlled lookup
+    failures return 502, and timeout/unavailable dependencies return 503 without exposing the
+    downstream response body.
 security:
   - OAuth2: []
 paths:
@@ -211,6 +218,14 @@ paths:
             default: true
           in: query
       responses:
+        "400":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadRequest"
+        "403":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyForbidden"
+        "502":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadGateway"
+        "503":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyUnavailable"
         "200":
           content:
             application/json:
@@ -346,6 +361,14 @@ paths:
       responses:
         "204":
           description: ok
+        "400":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadRequest"
+        "403":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyForbidden"
+        "502":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadGateway"
+        "503":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyUnavailable"
       summary: Update a relation type
     parameters:
       - name: kn_id
@@ -826,7 +849,7 @@ paths:
       description: |
         Validates relation type dependency existence only and does not write data. It verifies dependencies such as source and target object types and indirect data views.
 
-        Response: HTTP 200 uses valid and detail in the same way as other validation APIs; parameter and authentication failures return non-2xx statuses.
+        Response: HTTP 200 uses valid and detail for ordinary model validation. Strict dependency failures return the documented 400/403/502/503 error envelope, whose error_details includes a safe dependency_kind.
 
         Internal API: POST /api/bkn-backend/in/v1/.../relation-types/validation. The caller is resolved from headers and OAuth is not required.
       parameters:
@@ -868,7 +891,7 @@ paths:
                     type: object
       responses:
         "200":
-          description: Validation result returned. Both pass and fail can return 200.
+          description: Ordinary model-validation result. Strict dependency failures use the non-2xx responses below.
           content:
             application/json:
               schema:
@@ -882,7 +905,13 @@ paths:
                     type: string
                     description: Explanation when valid is false (error.Error()).
         "400":
-          description: Invalid request parameters and similar errors. Business validation failures use 200 plus valid false.
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadRequest"
+        "403":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyForbidden"
+        "502":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadGateway"
+        "503":
+          $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyUnavailable"
 components:
   securitySchemes:
     OAuth2:

@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"bytes"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -317,6 +318,21 @@ func Test_RelationTypeRestHandler_UpdateRelationType(t *testing.T) {
 			engine.ServeHTTP(w, req)
 
 			So(w.Result().StatusCode, ShouldEqual, http.StatusInternalServerError)
+		})
+
+		Convey("Generic dependency failure is returned without panic\n", func() {
+			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
+			rts.EXPECT().CheckRelationTypeExistByID(gomock.Any(), knID, gomock.Any(), rtID).Return("relation2", true, nil)
+			rts.EXPECT().UpdateRelationType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(errors.New("untyped dependency failure"))
+
+			reqParamByte, _ := sonic.Marshal(relationType)
+			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
+			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusBadGateway)
 		})
 
 		Convey("UpdateRelationTypeByIn - Success\n", func() {

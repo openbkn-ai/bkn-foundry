@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -53,6 +54,125 @@ func TestResourceDataQueryRequestUsesPagingContract(t *testing.T) {
 		_, err := resourceDataQueryRequest(&interfaces.ResourceDataQueryParams{})
 		require.Error(t, err)
 	})
+}
+
+func TestGetResourceSchemaUsesResolvedDelegatorAndOperation(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
+	var gotHeaders map[string]string
+	mockHTTPClient.EXPECT().
+		GetNoUnmarshal(gomock.Any(), "http://vega/resources/resource-1/schema", gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, params url.Values, headers map[string]string) (int, []byte, error) {
+			gotHeaders = headers
+			assert.Equal(t, interfaces.OPERATION_TYPE_QUERY_DATA, params.Get("operation"))
+			return http.StatusOK, []byte(`{"id":"resource-1","name":"orders","schema_definition":[{"name":"order_id","type":"integer"}]}`), nil
+		})
+
+	access := &vegaBackendAccess{httpClient: mockHTTPClient, baseUrl: "http://vega"}
+	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+		interfaces.AccountInfo{ID: "current-editor", Type: interfaces.ACCESSOR_TYPE_USER})
+	ctx = interfaces.WithVerifiedDependencySources(ctx, []interfaces.ProxyGrantResolvedSource{{
+		ProxyGrantSourceSpec: interfaces.ProxyGrantSourceSpec{
+			ResourceType: "resource", ResourceID: "resource-1", Operation: interfaces.OPERATION_TYPE_QUERY_DATA,
+			KNID: "kn-1", BindingType: interfaces.MODULE_TYPE_RELATION_TYPE, BindingID: "rt-1",
+		},
+		GrantedBy: "historical-grantor",
+	}})
+	ctx = interfaces.WithDependencyBindingScope(ctx, "kn-1", interfaces.MODULE_TYPE_RELATION_TYPE, "rt-1")
+
+	resource, err := access.GetResourceSchema(ctx, "resource-1", interfaces.OPERATION_TYPE_QUERY_DATA)
+
+	require.NoError(t, err)
+	require.NotNil(t, resource)
+	assert.Equal(t, "orders", resource.Name)
+	assert.Equal(t, "historical-grantor", gotHeaders[interfaces.HTTP_HEADER_ACCOUNT_ID])
+	assert.Equal(t, interfaces.ACCESSOR_TYPE_USER, gotHeaders[interfaces.HTTP_HEADER_ACCOUNT_TYPE])
+}
+
+func TestGetResourceSchemaRefusesWithoutCallerIdentity(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
+	// No GetNoUnmarshal expectation: falling back to the platform administrator
+	// and reaching Vega would bypass the resource-scoped permission check.
+	access := &vegaBackendAccess{httpClient: mockHTTPClient, baseUrl: "http://vega"}
+
+	for _, tc := range []struct {
+		name string
+		ctx  context.Context
+	}{
+		{name: "missing identity", ctx: context.Background()},
+		{name: "empty identity", ctx: context.WithValue(context.Background(),
+			interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{})},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := access.GetResourceSchema(tc.ctx, "resource-1", interfaces.OPERATION_TYPE_VIEW_DETAIL)
+
+			var dependencyErr *interfaces.DependencyError
+			require.ErrorAs(t, err, &dependencyErr)
+			assert.Equal(t, interfaces.DependencyForbidden, dependencyErr.Kind)
+		})
+	}
+}
+
+func TestGetResourceSchemaClassifiesSafeDependencyErrors(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     int
+		body       []byte
+		requestErr error
+		kind       interfaces.DependencyErrorKind
+	}{
+		{name: "forbidden", status: http.StatusForbidden, body: []byte(`{"secret":"permission detail"}`), kind: interfaces.DependencyForbidden},
+		{name: "not found", status: http.StatusNotFound, kind: interfaces.DependencyNotFound},
+		{name: "timeout", requestErr: context.DeadlineExceeded, kind: interfaces.DependencyTimeout},
+		{name: "unavailable", requestErr: errors.New("dial tcp 10.0.0.1: refused"), kind: interfaces.DependencyUnavailable},
+		{name: "downstream 4xx", status: http.StatusBadRequest, body: []byte(`{"secret":"contract detail"}`), kind: interfaces.DependencyDownstreamError},
+		{name: "downstream 5xx", status: http.StatusInternalServerError, body: []byte(`{"secret":"sql text"}`), kind: interfaces.DependencyDownstreamError},
+		{name: "invalid response", status: http.StatusOK, body: []byte(`not-json-with-secret`), kind: interfaces.DependencyInvalidResponse},
+		{name: "missing schema", status: http.StatusOK, body: []byte(`{"id":"resource-1","name":"orders"}`), kind: interfaces.DependencyInvalidResponse},
+		{name: "null schema", status: http.StatusOK, body: []byte(`{"id":"resource-1","name":"orders","schema_definition":null}`), kind: interfaces.DependencyInvalidResponse},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockCtrl := gomock.NewController(t)
+			mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
+			mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(tc.status, tc.body, tc.requestErr)
+			access := &vegaBackendAccess{httpClient: mockHTTPClient, baseUrl: "http://vega"}
+			ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+				interfaces.AccountInfo{ID: "user-1", Type: interfaces.ACCESSOR_TYPE_USER})
+
+			_, err := access.GetResourceSchema(ctx, "resource-1", interfaces.OPERATION_TYPE_VIEW_DETAIL)
+
+			var dependencyErr *interfaces.DependencyError
+			require.ErrorAs(t, err, &dependencyErr)
+			assert.Equal(t, tc.kind, dependencyErr.Kind)
+			assert.NotContains(t, err.Error(), "secret")
+			assert.NotContains(t, err.Error(), "10.0.0.1")
+		})
+	}
+}
+
+func TestGetResourceSchemaRejectsVerifiedSourcesWithoutExactBindingScope(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
+	access := &vegaBackendAccess{httpClient: mockHTTPClient, baseUrl: "http://vega"}
+	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+		interfaces.AccountInfo{ID: "current-editor", Type: interfaces.ACCESSOR_TYPE_USER})
+	ctx = interfaces.WithVerifiedDependencySources(ctx, []interfaces.ProxyGrantResolvedSource{{
+		ProxyGrantSourceSpec: interfaces.ProxyGrantSourceSpec{
+			ResourceType: "resource", ResourceID: "resource-1", Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+			KNID: "kn-1", BindingType: interfaces.MODULE_TYPE_OBJECT_TYPE, BindingID: "ot-1",
+		},
+		GrantedBy: "historical-grantor",
+	}})
+
+	_, err := access.GetResourceSchema(ctx, "resource-1", interfaces.OPERATION_TYPE_VIEW_DETAIL)
+
+	var dependencyErr *interfaces.DependencyError
+	require.ErrorAs(t, err, &dependencyErr)
+	assert.Equal(t, interfaces.DependencyInvalidResponse, dependencyErr.Kind)
 }
 
 func TestQueryResourceDataPreservesLargeIntegers(t *testing.T) {
