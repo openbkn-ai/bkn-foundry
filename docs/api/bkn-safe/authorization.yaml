@@ -255,6 +255,17 @@ paths:
         Wildcard resource types and wildcard operations are rejected.
         `action_type:*:execute` is also rejected; Action Type execute grants
         must target a concrete `{kn_id}/{action_type_id}`.
+
+        BKN creation uses two server-recognized lifecycle shapes. A newly
+        created knowledge network sends `[full_business_access, authorize]`;
+        bkn-safe atomically stores the logical Community bundle and a
+        system-derived `authorize` grant. A newly created Action Type sends
+        `[execute]`, stored as system-derived direct execution authority.
+        Policy and authority sources are selected by bkn-safe and are never
+        accepted from the request body. Other requests that pass the wildcard
+        guards retain the compatibility policy writer, except that a knowledge
+        network request containing `full_business_access` must match the exact
+        lifecycle shape above or it is rejected with `400`.
       requestBody:
         required: true
         content:

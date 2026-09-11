@@ -32,14 +32,14 @@ const (
 	RESOURCE_TYPE_RISK_TYPE     = "risk_type"
 
 	// Resource operation types.
-	OPERATION_TYPE_VIEW_DETAIL = "view_detail"
-	OPERATION_TYPE_CREATE      = "create"
-	OPERATION_TYPE_MODIFY      = "modify"
-	OPERATION_TYPE_DELETE      = "delete"
-	OPERATION_TYPE_QUERY_DATA  = "query_data"
-	OPERATION_TYPE_AUTHORIZE   = "authorize"
-	OPERATION_TYPE_TASK_MANAGE = "task_manage"
-	OPERATION_TYPE_EXECUTE     = "execute"
+	OPERATION_TYPE_VIEW_DETAIL          = "view_detail"
+	OPERATION_TYPE_CREATE               = "create"
+	OPERATION_TYPE_MODIFY               = "modify"
+	OPERATION_TYPE_DELETE               = "delete"
+	OPERATION_TYPE_QUERY_DATA           = "query_data"
+	OPERATION_TYPE_AUTHORIZE            = "authorize"
+	OPERATION_TYPE_EXECUTE              = "execute"
+	OPERATION_TYPE_FULL_BUSINESS_ACCESS = "full_business_access"
 
 	// Topic used to update a resource name.
 	AUTHORIZATION_RESOURCE_NAME_MODIFY = "authorization.resource.name.modify"
@@ -53,17 +53,14 @@ var (
 		OPERATION_TYPE_DELETE,
 		OPERATION_TYPE_QUERY_DATA,
 		OPERATION_TYPE_AUTHORIZE,
-		OPERATION_TYPE_TASK_MANAGE,
+		OPERATION_TYPE_EXECUTE,
 	}
-	// KN_CREATOR_OPERATIONS is the fixed instance-level grant installed for a
-	// newly created knowledge network. Create remains a type-level capability.
+	// KN_CREATOR_OPERATIONS asks bkn-safe to atomically install the Community
+	// business bundle and the system-derived authorize permission. Create remains
+	// a type-level capability.
 	KN_CREATOR_OPERATIONS = []string{
-		OPERATION_TYPE_VIEW_DETAIL,
-		OPERATION_TYPE_MODIFY,
-		OPERATION_TYPE_DELETE,
-		OPERATION_TYPE_QUERY_DATA,
+		OPERATION_TYPE_FULL_BUSINESS_ACCESS,
 		OPERATION_TYPE_AUTHORIZE,
-		OPERATION_TYPE_TASK_MANAGE,
 	}
 )
 

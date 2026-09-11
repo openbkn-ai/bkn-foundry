@@ -96,7 +96,6 @@ func TestAuthorizeActionTypeResolvesTrustedRequirements(t *testing.T) {
 	}
 	want := []interfaces.PermissionRequirement{
 		{ResourceType: "action_type", ResourceID: "kn-1/at-1", Operation: "execute"},
-		{ResourceType: "knowledge_network", ResourceID: "kn-1", Operation: "execute"},
 		{ResourceType: "object_type", ResourceID: "kn-1/ot-input", Operation: "query_data"},
 		{ResourceType: "object_type", ResourceID: "kn-1/ot-output", Operation: "query_data"},
 	}
@@ -127,7 +126,6 @@ func TestExecuteActionChecksPermissionsBeforeInstanceData(t *testing.T) {
 	}
 	want := []interfaces.PermissionRequirement{
 		{ResourceType: "action_type", ResourceID: "kn-1/at-1", Operation: "execute"},
-		{ResourceType: "knowledge_network", ResourceID: "kn-1", Operation: "execute"},
 	}
 	if !reflect.DeepEqual(permissions.requirements, want) {
 		t.Fatalf("checked requirements = %#v, want %#v", permissions.requirements, want)

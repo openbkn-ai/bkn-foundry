@@ -347,3 +347,93 @@ func TestPolicyWriteWildcardGuard(t *testing.T) {
 		t.Error("public-accessor grant should reach every requester")
 	}
 }
+
+func TestBKNCreationPoliciesUseTrustedLifecycleSources(t *testing.T) {
+	r, e, _ := newTestServer(t)
+
+	knBody := map[string]any{
+		"accessor_id":      "creator-1",
+		"resource":         map[string]string{"type": "knowledge_network", "id": "kn-1"},
+		"operations":       []string{authz.ActFullBusinessAccess, "authorize"},
+		"policy_source":    authz.PolicySourceProfessionalRule,
+		"authority_source": authz.AuthoritySourceOwnerDelegate,
+	}
+	if w := do(t, r, http.MethodPost, "/api/safe/v1/authz/policies", knBody); w.Code != http.StatusNoContent {
+		t.Fatalf("create knowledge-network policies: want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	records, err := e.PolicyRecords(authz.PolicyFilter{AccessorID: "creator-1", Object: "knowledge_network:kn-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("knowledge-network records = %#v, want bundle and authorize", records)
+	}
+	byOperation := make(map[string]authz.PolicyRecord, len(records))
+	for _, record := range records {
+		byOperation[record.Operation] = record
+	}
+	bundle := byOperation[authz.ActFullBusinessAccess]
+	if bundle.PolicySource != authz.PolicySourceCommunityBundle || bundle.AuthoritySource != authz.AuthoritySourceSystem {
+		t.Fatalf("bundle provenance = (%q, %q)", bundle.PolicySource, bundle.AuthoritySource)
+	}
+	authorize := byOperation["authorize"]
+	if authorize.PolicySource != authz.PolicySourceSystemDerived || authorize.AuthoritySource != authz.AuthoritySourceSystem {
+		t.Fatalf("authorize provenance = (%q, %q)", authorize.PolicySource, authorize.AuthoritySource)
+	}
+	for _, operation := range []string{"view_detail", "modify", "delete", "query_data", "execute", "authorize"} {
+		if allowed, checkErr := e.Check("creator-1", "knowledge_network", "kn-1", operation); checkErr != nil || !allowed {
+			t.Fatalf("creator %s = %v, %v; want allowed", operation, allowed, checkErr)
+		}
+	}
+	if allowed, checkErr := e.Check("creator-1", "knowledge_network", "kn-1", "task_manage"); checkErr != nil || allowed {
+		t.Fatalf("creator task_manage = %v, %v; want denied", allowed, checkErr)
+	}
+
+	actionBody := map[string]any{
+		"accessor_id": "creator-1",
+		"resource":    map[string]string{"type": "action_type", "id": "kn-1/action-1"},
+		"operations":  []string{"execute"},
+	}
+	if w := do(t, r, http.MethodPost, "/api/safe/v1/authz/policies", actionBody); w.Code != http.StatusNoContent {
+		t.Fatalf("create action-type policy: want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	actionRecords, err := e.PolicyRecords(authz.PolicyFilter{
+		AccessorID: "creator-1", Object: "action_type:kn-1/action-1", Operation: "execute",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(actionRecords) != 1 || actionRecords[0].PolicySource != authz.PolicySourceSystemDerived ||
+		actionRecords[0].AuthoritySource != authz.AuthoritySourceSystem {
+		t.Fatalf("action execute records = %#v, want one system-derived grant", actionRecords)
+	}
+
+	// Existing callers may combine execute with other concrete action-type
+	// operations. Keep those requests on the legacy compatibility path rather
+	// than rejecting a shape accepted before lifecycle provenance was added.
+	legacyActionBody := map[string]any{
+		"accessor_id": "legacy-creator",
+		"resource":    map[string]string{"type": "action_type", "id": "kn-1/action-2"},
+		"operations":  []string{"view_detail", "execute"},
+	}
+	if w := do(t, r, http.MethodPost, "/api/safe/v1/authz/policies", legacyActionBody); w.Code != http.StatusNoContent {
+		t.Fatalf("create legacy mixed action-type policies: want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	for _, operation := range []string{"view_detail", "execute"} {
+		records, recordsErr := e.PolicyRecords(authz.PolicyFilter{
+			AccessorID: "legacy-creator", Object: "action_type:kn-1/action-2", Operation: operation,
+		})
+		if recordsErr != nil {
+			t.Fatal(recordsErr)
+		}
+		if len(records) != 1 || records[0].PolicySource != authz.PolicySourceLegacy ||
+			records[0].AuthoritySource != authz.AuthoritySourceMigration {
+			t.Fatalf("legacy action %s records = %#v, want one legacy/migration grant", operation, records)
+		}
+	}
+
+	knBody["operations"] = []string{authz.ActFullBusinessAccess}
+	if w := do(t, r, http.MethodPost, "/api/safe/v1/authz/policies", knBody); w.Code != http.StatusBadRequest {
+		t.Fatalf("partial lifecycle shape: want 400, got %d: %s", w.Code, w.Body.String())
+	}
+}

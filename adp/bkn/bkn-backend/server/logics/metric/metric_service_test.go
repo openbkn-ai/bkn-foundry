@@ -33,7 +33,6 @@ func allowAllMetricPermissionResources(_ context.Context, _ string, ids, _ []str
 			interfaces.OPERATION_TYPE_QUERY_DATA,
 			interfaces.OPERATION_TYPE_MODIFY,
 			interfaces.OPERATION_TYPE_DELETE,
-			interfaces.OPERATION_TYPE_AUTHORIZE,
 		}}
 	}
 	return matched, nil

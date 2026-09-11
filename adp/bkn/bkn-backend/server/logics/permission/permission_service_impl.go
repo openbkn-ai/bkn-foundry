@@ -108,7 +108,6 @@ func (ps *PermissionServiceImpl) CreateResources(ctx context.Context, resources 
 		return httpErr
 	}
 
-	// Permission resource creation is temporarily disabled.
 	allowOps := []interfaces.PermissionOperation{}
 	for _, op := range ops {
 		allowOps = append(allowOps, interfaces.PermissionOperation{

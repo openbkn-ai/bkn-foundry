@@ -31,10 +31,9 @@ func allowAllActionPermissionResources(_ context.Context, _ string, ids, _ []str
 	for _, id := range ids {
 		matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: []string{
 			interfaces.OPERATION_TYPE_VIEW_DETAIL,
-			interfaces.OPERATION_TYPE_QUERY_DATA,
 			interfaces.OPERATION_TYPE_MODIFY,
 			interfaces.OPERATION_TYPE_DELETE,
-			interfaces.OPERATION_TYPE_AUTHORIZE,
+			interfaces.OPERATION_TYPE_EXECUTE,
 		}}
 	}
 	return matched, nil

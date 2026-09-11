@@ -18,16 +18,20 @@ import (
 
 const knChildResourceFilterChunkSizeEnv = "KN_CHILD_RESOURCE_FILTER_CHUNK_SIZE"
 
-var knChildOperations = []string{
+var schemaChildOperations = []string{
 	interfaces.OPERATION_TYPE_VIEW_DETAIL,
 	interfaces.OPERATION_TYPE_QUERY_DATA,
 	interfaces.OPERATION_TYPE_MODIFY,
 	interfaces.OPERATION_TYPE_DELETE,
-	interfaces.OPERATION_TYPE_AUTHORIZE,
 }
 
-var actionTypeOperations = append(append([]string{}, knChildOperations...),
-	interfaces.OPERATION_TYPE_TASK_MANAGE,
+var structuralChildOperations = []string{
+	interfaces.OPERATION_TYPE_VIEW_DETAIL,
+	interfaces.OPERATION_TYPE_MODIFY,
+	interfaces.OPERATION_TYPE_DELETE,
+}
+
+var actionTypeOperations = append(append([]string{}, structuralChildOperations...),
 	interfaces.OPERATION_TYPE_EXECUTE,
 )
 
@@ -49,10 +53,17 @@ func KNImportPermissionPrechecked(ctx context.Context) bool {
 // KNChildOperationCandidates returns the instance-level operations exposed to
 // the current accessor for one knowledge-network child resource type.
 func KNChildOperationCandidates(resourceType string) []string {
-	if resourceType == interfaces.RESOURCE_TYPE_ACTION_TYPE {
+	switch resourceType {
+	case interfaces.RESOURCE_TYPE_ACTION_TYPE:
 		return append([]string{}, actionTypeOperations...)
+	case interfaces.RESOURCE_TYPE_OBJECT_TYPE, interfaces.RESOURCE_TYPE_RELATION_TYPE,
+		interfaces.RESOURCE_TYPE_METRIC:
+		return append([]string{}, schemaChildOperations...)
+	case interfaces.RESOURCE_TYPE_CONCEPT_GROUP, interfaces.RESOURCE_TYPE_RISK_TYPE:
+		return append([]string{}, structuralChildOperations...)
+	default:
+		return []string{}
 	}
-	return append([]string{}, knChildOperations...)
 }
 
 // CheckKNChildBatchPermission authorizes every requested child with

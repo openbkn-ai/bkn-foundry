@@ -6,6 +6,7 @@ package permission
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -20,6 +21,13 @@ func TestPermissionAccessFilterResources(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path != "/api/safe/v1/authz/resource-filter" {
 				t.Fatalf("path = %s", r.URL.Path)
+			}
+			var request map[string]json.RawMessage
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+			if _, exists := request["evaluation_scope"]; exists {
+				t.Fatalf("ontology-query selected a non-default evaluation scope: %#v", request)
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"resources":[{"resource_type":"metric","resource_id":"kn-a/m-1","operations":["query_data"]}]}`))

@@ -589,7 +589,7 @@ func TestNetworkBuilderManagesKnowledgeNetworksTypeWide(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, op := range []string{"view_detail", "create", "modify", "delete", "query_data", "authorize", "task_manage", "execute"} {
+	for _, op := range []string{"view_detail", "create", "modify", "delete", "query_data", "authorize", "execute"} {
 		ok, err := e.Check(builder, "knowledge_network", network, op)
 		if err != nil {
 			t.Fatal(err)
@@ -648,7 +648,7 @@ func TestNetworkBuilderPermissionMatrixMatchesBusinessBuilderRole(t *testing.T) 
 	}
 	want := map[string][]string{
 		"catalog:*":           {"view_detail", "create", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data"},
-		"knowledge_network:*": {"view_detail", "create", "modify", "delete", "query_data", "authorize", "task_manage", "execute"},
+		"knowledge_network:*": {"view_detail", "create", "modify", "delete", "query_data", "authorize", "execute"},
 		"operator:*":          {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},
 		"tool_box:*":          {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},
 		"skill:*":             {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},

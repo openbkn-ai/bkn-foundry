@@ -128,7 +128,7 @@ func ResolveOperationAuditProfile(ctx context.Context, authorization, expectedAc
 			continue
 		}
 		for _, operation := range grant.Operations {
-			if operation == "modify" || operation == "authorize" || operation == "task_manage" {
+			if operation == "modify" || operation == "authorize" {
 				networks[grant.KnowledgeNetworkID] = struct{}{}
 				break
 			}

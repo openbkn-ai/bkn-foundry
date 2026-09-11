@@ -96,7 +96,6 @@ func TestMetricListAuthorizationFiltersBeforeTotalAndPagination(t *testing.T) {
 			interfaces.OPERATION_TYPE_QUERY_DATA,
 			interfaces.OPERATION_TYPE_MODIFY,
 			interfaces.OPERATION_TYPE_DELETE,
-			interfaces.OPERATION_TYPE_AUTHORIZE,
 		}).Return(map[string]interfaces.PermissionResourceOps{
 		"kn-1/metric-1": {ResourceID: "kn-1/metric-1"},
 		"kn-1/metric-3": {ResourceID: "kn-1/metric-3"},

@@ -6,6 +6,7 @@ package seed
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -13,10 +14,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
-// TestSeedDeclaresKnowledgeNetworkHierarchy pins the KN authorization contract:
-// six domain resource types inherit selected operations from their owning KN,
-// while action_type/execute remains instance-only and Vega's resource type is
-// deliberately unaffected.
+// TestSeedDeclaresKnowledgeNetworkHierarchy pins the final BKN operation table
+// and the direct-first action execution fallback.
 func TestSeedDeclaresKnowledgeNetworkHierarchy(t *testing.T) {
 	db := newDB(t)
 	e, err := authz.New(db)
@@ -38,40 +37,71 @@ func TestSeedDeclaresKnowledgeNetworkHierarchy(t *testing.T) {
 		}
 	}
 
-	wantMappings := map[string]string{
-		"view_detail": "view_detail",
-		"modify":      "modify",
-		"delete":      "modify",
-		"authorize":   "authorize",
-		"task_manage": "task_manage",
+	type operationSpec struct {
+		parent   string
+		requires string
 	}
-	for _, child := range children {
-		for operation, parentOperation := range wantMappings {
-			var op model.Operation
-			if err := db.First(&op, "resource_type_id = ? AND id = ?", child, operation).Error; err != nil {
-				t.Fatalf("load operation %s/%s: %v", child, operation, err)
+	want := map[string]map[string]operationSpec{
+		"knowledge_network": {
+			"view_detail": {}, "create": {}, "modify": {requires: "view_detail"},
+			"delete": {requires: "view_detail"}, "query_data": {},
+			"authorize": {requires: "view_detail"}, "execute": {},
+		},
+		"concept_group": {
+			"view_detail": {parent: "view_detail"}, "modify": {parent: "modify", requires: "view_detail"},
+			"delete": {parent: "modify", requires: "view_detail"},
+		},
+		"object_type": {
+			"view_detail": {parent: "view_detail"}, "query_data": {parent: "query_data"},
+			"modify": {parent: "modify", requires: "view_detail"},
+			"delete": {parent: "modify", requires: "view_detail"},
+		},
+		"relation_type": {
+			"view_detail": {parent: "view_detail"}, "query_data": {parent: "query_data"},
+			"modify": {parent: "modify", requires: "view_detail"},
+			"delete": {parent: "modify", requires: "view_detail"},
+		},
+		"action_type": {
+			"view_detail": {parent: "view_detail"}, "modify": {parent: "modify", requires: "view_detail"},
+			"delete": {parent: "modify", requires: "view_detail"}, "execute": {parent: "execute"},
+		},
+		"metric": {
+			"view_detail": {parent: "view_detail"}, "query_data": {parent: "query_data"},
+			"modify": {parent: "modify", requires: "view_detail"},
+			"delete": {parent: "modify", requires: "view_detail"},
+		},
+		"risk_type": {
+			"view_detail": {parent: "view_detail"}, "modify": {parent: "modify", requires: "view_detail"},
+			"delete": {parent: "modify", requires: "view_detail"},
+		},
+	}
+	for resourceType, expected := range want {
+		var operations []model.Operation
+		if err := db.Where("resource_type_id = ?", resourceType).Find(&operations).Error; err != nil {
+			t.Fatalf("load operations for %s: %v", resourceType, err)
+		}
+		if len(operations) != len(expected) {
+			t.Errorf("%s operations = %+v, want exactly %d", resourceType, operations, len(expected))
+		}
+		for _, operation := range operations {
+			spec, ok := expected[operation.ID]
+			if !ok {
+				t.Errorf("%s unexpectedly declares %s", resourceType, operation.ID)
+				continue
 			}
-			if op.ParentOperationID != parentOperation {
-				t.Errorf("%s/%s parent operation = %q, want %q", child, operation, op.ParentOperationID, parentOperation)
+			if operation.ParentOperationID != spec.parent || operation.RequiredOperationIDs != spec.requires {
+				t.Errorf("%s/%s = parent %q requires %q, want parent %q requires %q",
+					resourceType, operation.ID, operation.ParentOperationID, operation.RequiredOperationIDs,
+					spec.parent, spec.requires)
 			}
 		}
 	}
-	for _, child := range []string{"object_type", "relation_type", "metric"} {
-		var op model.Operation
-		if err := db.First(&op, "resource_type_id = ? AND id = ?", child, "query_data").Error; err != nil {
-			t.Fatalf("load operation %s/query_data: %v", child, err)
-		}
-		if op.ParentOperationID != "query_data" {
-			t.Errorf("%s/query_data parent operation = %q, want query_data", child, op.ParentOperationID)
-		}
+	var executeActionCount int64
+	if err := db.Model(&model.Operation{}).Where("id = ?", "execute_action").Count(&executeActionCount).Error; err != nil {
+		t.Fatal(err)
 	}
-
-	var execute model.Operation
-	if err := db.First(&execute, "resource_type_id = ? AND id = ?", "action_type", "execute").Error; err != nil {
-		t.Fatalf("load action_type/execute: %v", err)
-	}
-	if execute.ParentOperationID != "" {
-		t.Errorf("action_type/execute must be instance-only, got parent operation %q", execute.ParentOperationID)
+	if executeActionCount != 0 {
+		t.Fatalf("catalog declares %d execute_action operations, want none", executeActionCount)
 	}
 
 	var vegaResource model.ResourceType
@@ -90,37 +120,70 @@ func TestSeedDeclaresKnowledgeNetworkHierarchy(t *testing.T) {
 	if err := db.Create(&parents).Error; err != nil {
 		t.Fatalf("create resource parents: %v", err)
 	}
-	const user = "u-1"
-	for _, op := range []string{"view_detail", "modify", "query_data", "authorize", "task_manage"} {
-		if err := e.GrantObjectPermission(user, "knowledge_network", "kn-1", op); err != nil {
-			t.Fatalf("grant KN operation %s: %v", op, err)
+	mustNoErrSeed(t, e.GrantCommunityBundle("bundle-parent", "knowledge_network", "kn-1", authz.AuthoritySourceSystem))
+	for _, operation := range []string{"view_detail", "query_data", "modify", "delete"} {
+		if allowed, checkErr := e.Check("bundle-parent", "object_type", "kn-1/shared", operation); checkErr != nil || !allowed {
+			t.Fatalf("Community KN bundle did not inherit object_type/%s: %v, %v", operation, allowed, checkErr)
 		}
 	}
-	for _, op := range []string{"view_detail", "modify", "delete", "query_data", "authorize", "task_manage"} {
-		if ok, err := e.Check(user, "object_type", "kn-1/shared", op); err != nil {
-			t.Fatal(err)
-		} else if !ok {
-			t.Errorf("KN grant did not inherit to object_type/%s", op)
+	for _, operation := range []string{"authorize", "task_manage"} {
+		if allowed, checkErr := e.Check("bundle-parent", "object_type", "kn-1/shared", operation); checkErr != nil || allowed {
+			t.Fatalf("removed child operation %s = %v, %v; want denied", operation, allowed, checkErr)
 		}
 	}
-	if ok, err := e.Check(user, "object_type", "kn-2/shared", "view_detail"); err != nil {
-		t.Fatal(err)
-	} else if ok {
-		t.Error("same child id in another KN inherited across the KN boundary")
+	if allowed, checkErr := e.Check("bundle-parent", "object_type", "kn-2/shared", "view_detail"); checkErr != nil || allowed {
+		t.Fatalf("parent inheritance crossed the KN boundary: %v, %v", allowed, checkErr)
 	}
-	if ok, err := e.Check(user, "action_type", "kn-1/run", "execute"); err != nil {
-		t.Fatal(err)
-	} else if ok {
-		t.Error("KN grants must not imply action_type/execute")
+	mustNoErrSeed(t, e.GrantObjectPermission("requires-view", "object_type", "kn-1/shared", "modify"))
+	if allowed, _ := e.Check("requires-view", "object_type", "kn-1/shared", "modify"); allowed {
+		t.Fatal("object_type/modify bypassed its view_detail requirement")
 	}
-	if err := e.GrantObjectPermission(user, "action_type", "kn-1/run", "execute"); err != nil {
-		t.Fatal(err)
+	mustNoErrSeed(t, e.GrantObjectPermission("requires-view", "object_type", "kn-1/shared", "view_detail"))
+	if allowed, _ := e.Check("requires-view", "object_type", "kn-1/shared", "modify"); !allowed {
+		t.Fatal("object_type/modify stayed denied after its view_detail requirement was granted")
 	}
-	if ok, err := e.Check(user, "action_type", "kn-1/run", "execute"); err != nil {
-		t.Fatal(err)
-	} else if !ok {
-		t.Error("concrete action_type/execute grant must be effective")
+
+	assertFinal := func(user string, allowed bool, basis authz.DecisionBasis) {
+		t.Helper()
+		decision, err := e.OperationDecision(t.Context(), user, "action_type", "kn-1/run", "execute")
+		if err != nil || decision.Allowed() != allowed || decision.Basis != basis {
+			t.Fatalf("OperationDecision(%s) = %+v, %v; want allowed=%v basis=%s", user, decision, err, allowed, basis)
+		}
+		checked, err := e.Check(user, "action_type", "kn-1/run", "execute")
+		if err != nil || checked != allowed {
+			t.Fatalf("Check(%s) = %v, %v; want %v", user, checked, err, allowed)
+		}
+		operations, err := e.AllowedOps(user, "action_type", "kn-1/run", []string{"execute"})
+		if err != nil || (len(operations) == 1) != allowed {
+			t.Fatalf("AllowedOps(%s) = %v, %v; want allowed=%v", user, operations, err, allowed)
+		}
+		filtered, err := e.FilterResourceOps(user,
+			[]authz.ResourceRef{{Type: "action_type", ID: "kn-1/run"}}, nil, []string{"execute"})
+		if err != nil || len(filtered) != 1 || (len(filtered[0].Operations) == 1) != allowed {
+			t.Fatalf("FilterResourceOps(%s) = %+v, %v; want allowed=%v", user, filtered, err, allowed)
+		}
+		accessible, err := e.AccessibleResources(user, "action_type", "execute")
+		if err != nil || slices.Contains(accessible, "kn-1/run") != allowed {
+			t.Fatalf("AccessibleResources(%s) = %v, %v; want allowed=%v", user, accessible, err, allowed)
+		}
 	}
+
+	mustNoErrSeed(t, e.GrantObjectPermission("parent-allow", "knowledge_network", "kn-1", "execute"))
+	assertFinal("parent-allow", true, authz.BasisInherited)
+	mustNoErrSeed(t, e.DenyObjectPermission("parent-deny", "knowledge_network", "kn-1", "execute"))
+	assertFinal("parent-deny", false, authz.BasisInherited)
+	mustNoErrSeed(t, e.DenyObjectPermission("child-allow", "knowledge_network", "kn-1", "execute"))
+	mustNoErrSeed(t, e.GrantObjectPermission("child-allow", "action_type", "kn-1/run", "execute"))
+	assertFinal("child-allow", true, authz.BasisDirect)
+	mustNoErrSeed(t, e.GrantObjectPermission("child-deny", "knowledge_network", "kn-1", "execute"))
+	mustNoErrSeed(t, e.DenyObjectPermission("child-deny", "action_type", "kn-1/run", "execute"))
+	assertFinal("child-deny", false, authz.BasisDirect)
+	mustNoErrSeed(t, e.GrantObjectPermission("same-deny", "action_type", "kn-1/run", "execute"))
+	mustNoErrSeed(t, e.DenyObjectPermission("same-deny", "action_type", "kn-1/run", "execute"))
+	assertFinal("same-deny", false, authz.BasisDirect)
+	mustNoErrSeed(t, e.GrantObjectPermission("historical-direct", "action_type", "kn-1/run", "execute"))
+	assertFinal("historical-direct", true, authz.BasisDirect)
+	assertFinal("default-deny", false, authz.BasisDefault)
 }
 
 // TestValidateHierarchyRejectsAuthoringMistakes: every case here would compile,
