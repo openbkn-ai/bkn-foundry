@@ -35,12 +35,11 @@ var (
 )
 
 const (
-	// https://{host}:{port}/api/agent-operator-integration/internal-v1/tool-box/:box_id/tool/:tool_id
-	getToolDetailURI = "/internal-v1/tool-box/%s/tool/%s"
-	// https://{host}:{port}/api/agent-operator-integration/internal-v1/mcp/proxy/:mcp_id/tools
-	getMCPToolListURI = "/internal-v1/mcp/proxy/%s/tools"
-	// https://{host}:{port}/api/agent-operator-integration/internal-v1/mcp/proxy/:mcp_id/tool/call
-	callMCPToolURI = "/internal-v1/mcp/proxy/%s/tool/call"
+	// Caller-facing resource reads and calls must use Execution Factory's public
+	// authorization face with the original bearer token.
+	getToolDetailURI  = "/v1/tool-box/%s/tool/%s"
+	getMCPToolListURI = "/v1/mcp/proxy/%s/tools"
+	callMCPToolURI    = "/v1/mcp/proxy/%s/tool/call"
 )
 
 // NewOperatorIntegrationClient creates an OperatorIntegration client.
@@ -64,7 +63,10 @@ func (o *operatorIntegrationClient) GetToolDetail(ctx context.Context, req *inte
 	// Request logging is intentionally performed before the downstream call.
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#GetToolDetail] URL: %s", url)
 
-	header := common.GetHeaderForChildOperation(ctx, "operator.tool.get", 1)
+	header, err := o.callerAuthorizationHeader(ctx, "operator.tool.get")
+	if err != nil {
+		return nil, err
+	}
 
 	_, respBody, err := o.httpClient.Get(ctx, url, nil, header)
 	if err != nil {
@@ -97,7 +99,10 @@ func (o *operatorIntegrationClient) GetMCPToolDetail(ctx context.Context, req *i
 	// Request logging is intentionally performed before the downstream call.
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#GetMCPToolDetail] URL: %s", url)
 
-	header := common.GetHeaderForChildOperation(ctx, "operator.mcp_tool.get", 1)
+	header, err := o.callerAuthorizationHeader(ctx, "operator.mcp_tool.get")
+	if err != nil {
+		return nil, err
+	}
 	_, respBody, err := o.httpClient.Get(ctx, url, nil, header)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetMCPToolDetail] Request failed, err: %v", err)
@@ -137,7 +142,10 @@ func (o *operatorIntegrationClient) CallMCPTool(ctx context.Context, req *interf
 	// Request logging is intentionally performed before the downstream call.
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#CallMCPTool] URL: %s, Tool: %s", url, req.ToolName)
 
-	header := common.GetHeaderForChildOperation(ctx, "operator.mcp_tool.call", 1)
+	header, err := o.callerAuthorizationHeader(ctx, "operator.mcp_tool.call")
+	if err != nil {
+		return nil, err
+	}
 
 	// Build the request body.
 	reqBody := map[string]interface{}{

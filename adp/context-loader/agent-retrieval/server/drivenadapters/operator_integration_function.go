@@ -28,8 +28,20 @@ const executeFunctionURI = "/v1/function/execute"
 // ErrCallerTokenMissing indicates that the caller token is absent from context.
 //
 // Do not silently fall back to a service identity because that would bypass
-// Execution Factory's execute permission check.
-var ErrCallerTokenMissing = fmt.Errorf("caller token is required for sandbox execution")
+// Execution Factory's resource permission checks.
+var ErrCallerTokenMissing = fmt.Errorf("caller token is required for execution-factory authorization")
+
+func (o *operatorIntegrationClient) callerAuthorizationHeader(
+	ctx context.Context, operationName string,
+) (map[string]string, error) {
+	token, ok := common.GetRawTokenFromCtx(ctx)
+	if !ok {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusUnauthorized, ErrCallerTokenMissing.Error())
+	}
+	header := o.skillHeader(ctx, operationName)
+	header["Authorization"] = "Bearer " + token
+	return header, nil
+}
 
 // ExecuteFunction executes code in the sandbox.
 func (o *operatorIntegrationClient) ExecuteFunction(
@@ -40,13 +52,10 @@ func (o *operatorIntegrationClient) ExecuteFunction(
 			infraErr.LocalizedDetail(ctx, "FunctionCodeRequired"))
 	}
 
-	token, ok := common.GetRawTokenFromCtx(ctx)
-	if !ok {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusUnauthorized, ErrCallerTokenMissing.Error())
+	header, err := o.callerAuthorizationHeader(ctx, "operator.function.execute")
+	if err != nil {
+		return nil, err
 	}
-
-	header := o.skillHeader(ctx, "operator.function.execute")
-	header["Authorization"] = "Bearer " + token
 
 	event := req.Event
 	if event == nil {

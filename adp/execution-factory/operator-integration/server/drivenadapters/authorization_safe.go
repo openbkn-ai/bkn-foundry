@@ -38,9 +38,10 @@ func (s *safeAuthorization) checkOne(ctx context.Context, accessorID, rtype, rid
 		Allowed *bool `json:"allowed"`
 	}
 	err := s.post(ctx, "/api/safe/v1/authz/check", map[string]any{
-		"accessor_id": accessorID,
-		"resource":    map[string]string{"type": rtype, "id": rid},
-		"operation":   op,
+		"accessor_id":      accessorID,
+		"resource":         map[string]string{"type": rtype, "id": rid},
+		"operation":        op,
+		"evaluation_scope": "effective",
 	}, &out)
 	if err != nil {
 		return false, err
@@ -109,6 +110,7 @@ func (s *safeAuthorization) ResourceFilter(ctx context.Context, req *interfaces.
 		"resources":             resources,
 		"visibility_operations": visibilityOperations,
 		"candidate_operations":  candidateOperations,
+		"evaluation_scope":      "effective",
 	}, &response); err != nil {
 		return nil, err
 	}

@@ -160,12 +160,12 @@
       "_source": "execution-factory",
       "operations": [
         {"id": "create", "name": "创建"},
-        {"id": "modify", "name": "修改"},
-        {"id": "delete", "name": "删除"},
+        {"id": "modify", "name": "修改", "requires": ["view"]},
+        {"id": "delete", "name": "删除", "requires": ["view"]},
         {"id": "view", "name": "查看"},
-        {"id": "publish", "name": "发布"},
-        {"id": "unpublish", "name": "取消发布"},
-        {"id": "authorize", "name": "授权"},
+        {"id": "publish", "name": "发布", "requires": ["view"]},
+        {"id": "unpublish", "name": "取消发布", "requires": ["view"]},
+        {"id": "authorize", "name": "授权", "requires": ["view"]},
         {"id": "public_access", "name": "公共访问"},
         {"id": "execute", "name": "执行"}
       ]
@@ -176,12 +176,12 @@
       "_source": "execution-factory",
       "operations": [
         {"id": "create", "name": "创建"},
-        {"id": "modify", "name": "修改"},
-        {"id": "delete", "name": "删除"},
+        {"id": "modify", "name": "修改", "requires": ["view"]},
+        {"id": "delete", "name": "删除", "requires": ["view"]},
         {"id": "view", "name": "查看"},
-        {"id": "publish", "name": "发布"},
-        {"id": "unpublish", "name": "取消发布"},
-        {"id": "authorize", "name": "授权"},
+        {"id": "publish", "name": "发布", "requires": ["view"]},
+        {"id": "unpublish", "name": "取消发布", "requires": ["view"]},
+        {"id": "authorize", "name": "授权", "requires": ["view"]},
         {"id": "public_access", "name": "公共访问"},
         {"id": "execute", "name": "执行"}
       ]
@@ -192,12 +192,12 @@
       "_source": "execution-factory + flow-automation (ops 取并集; flow-automation 仅用 execute)",
       "operations": [
         {"id": "create", "name": "创建"},
-        {"id": "modify", "name": "修改"},
-        {"id": "delete", "name": "删除"},
+        {"id": "modify", "name": "修改", "requires": ["view"]},
+        {"id": "delete", "name": "删除", "requires": ["view"]},
         {"id": "view", "name": "查看"},
-        {"id": "publish", "name": "发布"},
-        {"id": "unpublish", "name": "取消发布"},
-        {"id": "authorize", "name": "授权"},
+        {"id": "publish", "name": "发布", "requires": ["view"]},
+        {"id": "unpublish", "name": "取消发布", "requires": ["view"]},
+        {"id": "authorize", "name": "授权", "requires": ["view"]},
         {"id": "public_access", "name": "公共访问"},
         {"id": "execute", "name": "执行"}
       ]
@@ -208,12 +208,12 @@
       "_source": "execution-factory",
       "operations": [
         {"id": "create", "name": "创建"},
-        {"id": "modify", "name": "修改"},
-        {"id": "delete", "name": "删除"},
+        {"id": "modify", "name": "修改", "requires": ["view"]},
+        {"id": "delete", "name": "删除", "requires": ["view"]},
         {"id": "view", "name": "查看"},
-        {"id": "publish", "name": "发布"},
-        {"id": "unpublish", "name": "取消发布"},
-        {"id": "authorize", "name": "授权"},
+        {"id": "publish", "name": "发布", "requires": ["view"]},
+        {"id": "unpublish", "name": "取消发布", "requires": ["view"]},
+        {"id": "authorize", "name": "授权", "requires": ["view"]},
         {"id": "public_access", "name": "公共访问"},
         {"id": "execute", "name": "执行"}
       ]
@@ -221,24 +221,24 @@
     {
       "id": "small_model",
       "name": "小模型",
-      "_source": "mf-model-manager (app/utils/permission_manager.py)",
+      "_source": "mf-model-manager + mf-model-api",
       "operations": [
         {"id": "create", "name": "创建"},
         {"id": "display", "name": "查看"},
-        {"id": "modify", "name": "修改"},
-        {"id": "delete", "name": "删除"},
+        {"id": "modify", "name": "修改", "requires": ["display"]},
+        {"id": "delete", "name": "删除", "requires": ["display"]},
         {"id": "execute", "name": "调用/执行"}
       ]
     },
     {
       "id": "large_model",
       "name": "大模型",
-      "_source": "mf-model-manager (LLM); object-grant 词表项 — enforce 仍需 mf-model-manager 接 /authz/check 才生效",
+      "_source": "mf-model-manager + mf-model-api",
       "operations": [
         {"id": "create", "name": "创建"},
         {"id": "display", "name": "查看"},
-        {"id": "modify", "name": "修改"},
-        {"id": "delete", "name": "删除"},
+        {"id": "modify", "name": "修改", "requires": ["display"]},
+        {"id": "delete", "name": "删除", "requires": ["display"]},
         {"id": "execute", "name": "调用/执行"}
       ]
     },

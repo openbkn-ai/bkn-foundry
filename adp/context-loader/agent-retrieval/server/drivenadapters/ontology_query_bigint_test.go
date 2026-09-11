@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -164,7 +165,8 @@ func TestCallMCPToolPreservesBigIntegers(t *testing.T) {
 		},
 	}
 
-	result, err := client.CallMCPTool(context.Background(), &interfaces.CallMCPToolRequest{
+	ctx := common.SetRawTokenToCtx(context.Background(), "caller-token")
+	result, err := client.CallMCPTool(ctx, &interfaces.CallMCPToolRequest{
 		McpID: "mcp-1", ToolName: "run_sql",
 	})
 	if err != nil {

@@ -39,7 +39,8 @@ func TestGetToolDetail_Success(t *testing.T) {
 			httpClient: mockHTTPClient,
 		}
 
-		ctx := common.SetLanguageToCtx(context.Background(), sharedrest.AmericanEnglish)
+		ctx := common.SetLanguageToCtx(
+			common.SetRawTokenToCtx(context.Background(), "caller-token"), sharedrest.AmericanEnglish)
 		req := &interfaces.GetToolDetailRequest{
 			BoxID:  "box-001",
 			ToolID: "tool-001",
@@ -87,7 +88,8 @@ func TestGetToolDetail_HTTPError(t *testing.T) {
 			httpClient: mockHTTPClient,
 		}
 
-		ctx := common.SetLanguageToCtx(context.Background(), sharedrest.AmericanEnglish)
+		ctx := common.SetLanguageToCtx(
+			common.SetRawTokenToCtx(context.Background(), "caller-token"), sharedrest.AmericanEnglish)
 		req := &interfaces.GetToolDetailRequest{
 			BoxID:  "box-001",
 			ToolID: "tool-001",
@@ -123,7 +125,7 @@ func TestGetMCPToolDetail_Success(t *testing.T) {
 			httpClient: mockHTTPClient,
 		}
 
-		ctx := context.Background()
+		ctx := common.SetRawTokenToCtx(context.Background(), "caller-token")
 		req := &interfaces.GetMCPToolDetailRequest{
 			McpID:    "mcp-001",
 			ToolName: "test_tool",
@@ -175,7 +177,7 @@ func TestGetMCPToolDetail_NotFound(t *testing.T) {
 			httpClient: mockHTTPClient,
 		}
 
-		ctx := context.Background()
+		ctx := common.SetRawTokenToCtx(context.Background(), "caller-token")
 		req := &interfaces.GetMCPToolDetailRequest{
 			McpID:    "mcp-001",
 			ToolName: "nonexistent_tool",
@@ -216,7 +218,7 @@ func TestGetMCPToolDetail_HTTPError(t *testing.T) {
 			httpClient: mockHTTPClient,
 		}
 
-		ctx := context.Background()
+		ctx := common.SetRawTokenToCtx(context.Background(), "caller-token")
 		req := &interfaces.GetMCPToolDetailRequest{
 			McpID:    "mcp-001",
 			ToolName: "test_tool",
@@ -249,7 +251,7 @@ func TestCallMCPTool_Success(t *testing.T) {
 			httpClient: mockHTTPClient,
 		}
 
-		ctx := context.Background()
+		ctx := common.SetRawTokenToCtx(context.Background(), "caller-token")
 		req := &interfaces.CallMCPToolRequest{
 			McpID:    "mcp-001",
 			ToolName: "test_tool",
@@ -288,7 +290,7 @@ func TestCallMCPTool_HTTPError(t *testing.T) {
 			httpClient: mockHTTPClient,
 		}
 
-		ctx := context.Background()
+		ctx := common.SetRawTokenToCtx(context.Background(), "caller-token")
 		req := &interfaces.CallMCPToolRequest{
 			McpID:    "mcp-001",
 			ToolName: "test_tool",

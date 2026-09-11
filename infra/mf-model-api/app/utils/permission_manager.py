@@ -174,11 +174,16 @@ class PermissionManager:
         async with session.post(
                 f"{self.bkn_safe_url}/api/safe/v1/authz/check",
                 json={"accessor_id": user_id,
-                      "resource": {"type": resource_type, "id": resource_id},
-                      "operation": operation},
+                      "resource": {"type": resource_type, "id": str(resource_id)},
+                      "operation": operation,
+                      "evaluation_scope": "effective"},
                 headers=internal_request_headers({'Content-Type': 'application/json'})) as resp:
+            if resp.status < 200 or resp.status >= 300:
+                raise RuntimeError(f"bkn-safe check returned status {resp.status}")
             data = await resp.json()
-            return bool(data.get('allowed', False))
+            if not isinstance(data, dict) or not isinstance(data.get('allowed'), bool):
+                raise RuntimeError("bkn-safe check returned an invalid decision")
+            return data['allowed']
 
     async def _bkn_safe_add(self, user_id, resource_type, resource_id, operations) -> bool:
         try:
@@ -195,19 +200,34 @@ class PermissionManager:
             return False
 
     async def _bkn_safe_filter_ids(self, user_id, operation, resource_type) -> list:
-        # Match ISF: a "*" operation yields no ids (the ISF filter drops them).
+        """Filter model ids through bkn-safe's effective batch PEP."""
         if operation == "*":
             return []
-        model_ids = small_model_dao.get_all_ids()
-        allowed = []
-        for m in model_ids:
-            mid = m['f_model_id']
-            try:
-                if await self._bkn_safe_check(user_id, resource_type, mid, operation):
-                    allowed.append(mid)
-            except Exception as e:
-                StandLogger.error(e.args)
-        return allowed
+        candidate_ids = [model['f_model_id'] for model in small_model_dao.get_all_ids()]
+        if not candidate_ids:
+            return []
+        normalized_ids = [str(model_id) for model_id in candidate_ids]
+        session = await self.get_session()
+        payload = {
+            "accessor_id": user_id,
+            "resources": [{"type": resource_type, "id": model_id} for model_id in normalized_ids],
+            "visibility_operations": [operation],
+            "candidate_operations": [operation],
+            "evaluation_scope": "effective",
+        }
+        async with session.post(
+                f"{self.bkn_safe_url}/api/safe/v1/authz/resource-filter",
+                json=payload,
+                headers=internal_request_headers({'Content-Type': 'application/json'})) as resp:
+            if resp.status < 200 or resp.status >= 300:
+                raise RuntimeError(f"bkn-safe resource-filter returned status {resp.status}")
+            data = await resp.json()
+            if not isinstance(data, dict) or not isinstance(data.get('resources'), list):
+                raise RuntimeError("bkn-safe resource-filter returned an invalid result")
+            allowed = {item.get('resource_id') for item in data['resources']
+                       if isinstance(item, dict) and item.get('resource_type') == resource_type}
+            return [model_id for model_id, normalized_id in zip(candidate_ids, normalized_ids)
+                    if normalized_id in allowed]
 
     async def _bkn_safe_delete(self, resource_type, resource_ids) -> bool:
         session = await self.get_session()
@@ -230,7 +250,7 @@ class PermissionManager:
         if not base_config.AUTH_ENABLED:
             all_ids = small_model_dao.get_all_ids()
             return [m['f_model_id'] for m in all_ids]
-        # bkn-safe authoritative: filter the model set by per-resource checks.
+        # bkn-safe authoritative: filter the concrete model set in one batch.
         if self._bkn_safe_authoritative():
             return await self._bkn_safe_filter_ids(user_id, operation, resource_type)
         """Return the resources visible to the current identity."""
