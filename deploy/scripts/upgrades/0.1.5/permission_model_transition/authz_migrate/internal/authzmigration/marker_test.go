@@ -10,41 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glebarez/sqlite"
-	"gorm.io/gorm"
-
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
-	safemodel "github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/migrationcontract"
 )
-
-func TestFreshInstallSeedsAbsentMarkerWithoutCreatingEETable(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !IsFreshAuthorizationStore(db) {
-		t.Fatal("database without Casbin table must be fresh")
-	}
-	if err := db.AutoMigrate(&casbinPolicyRow{}, &safemodel.Role{}, &safemodel.AuthorizationGrant{}); err != nil {
-		t.Fatal(err)
-	}
-	if err := SeedFreshInstallMarker(context.Background(), db, true); err != nil {
-		t.Fatal(err)
-	}
-	if err := VerifyCurrentMarker(context.Background(), db); err != nil {
-		t.Fatal(err)
-	}
-	if db.Migrator().HasTable(&eeRuleRow{}) {
-		t.Fatal("Community fresh install created EE private table")
-	}
-	var marker safemodel.AuthorizationMigrationMarker
-	if err := db.First(&marker).Error; err != nil {
-		t.Fatal(err)
-	}
-	if marker.EETableState != EETableAbsent || marker.ActivatedGrantIDs != "[]" {
-		t.Fatalf("marker = %+v", marker)
-	}
-}
 
 func TestMarkerRecordsReconciledCoreAndEEAndIsIdempotent(t *testing.T) {
 	db := enterpriseTestDB(t, true)
@@ -81,13 +48,13 @@ func TestMarkerRecordsReconciledCoreAndEEAndIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	var count int64
-	if err := db.Model(&safemodel.AuthorizationMigrationMarker{}).Count(&count).Error; err != nil {
+	if err := db.Model(&migrationcontract.Marker{}).Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
 	if count != 1 {
 		t.Fatalf("marker count = %d", count)
 	}
-	var stored safemodel.AuthorizationMigrationMarker
+	var stored migrationcontract.Marker
 	if err := db.First(&stored).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -101,50 +68,18 @@ func TestMarkerRecordsReconciledCoreAndEEAndIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestMarkerGateRejectsMissingWrongAndCorruptedReceipts(t *testing.T) {
-	db := migrationTestDB(t)
-	if err := db.AutoMigrate(&safemodel.AuthorizationMigrationMarker{}); err != nil {
-		t.Fatal(err)
-	}
-	if err := VerifyCurrentMarker(context.Background(), db); !errors.Is(err, ErrMigrationMarkerRequired) {
-		t.Fatalf("missing marker error = %v", err)
-	}
-	wrong := safemodel.AuthorizationMigrationMarker{Version: "old", EETableState: EETableAbsent, ActivatedGrantIDs: "[]"}
-	wrong.Checksum = markerChecksum(wrong)
-	if err := db.Create(&wrong).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := VerifyCurrentMarker(context.Background(), db); !errors.Is(err, ErrMigrationMarkerRequired) {
-		t.Fatalf("wrong version marker error = %v", err)
-	}
-	valid := safemodel.AuthorizationMigrationMarker{
-		Version: CurrentVersion, EETableState: EETableAbsent, CoreSourceSummary: "{}", ActivatedGrantIDs: "[]",
-	}
-	valid.Checksum = markerChecksum(valid)
-	if err := db.Create(&valid).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Model(&safemodel.AuthorizationMigrationMarker{}).Where("version = ?", CurrentVersion).
-		Update("core_policy_count", 99).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := VerifyCurrentMarker(context.Background(), db); !errors.Is(err, ErrMigrationMarkerRequired) {
-		t.Fatalf("corrupted marker error = %v", err)
-	}
-}
-
 func TestPersistMarkerRejectsASecondDifferentMigrationReceipt(t *testing.T) {
 	db := migrationTestDB(t)
-	first := safemodel.AuthorizationMigrationMarker{
+	first := migrationcontract.Marker{
 		Version: CurrentVersion, EETableState: EETableAbsent, CoreSourceSummary: "{}", ActivatedGrantIDs: "[]",
 	}
-	first.Checksum = markerChecksum(first)
+	first = first.Seal()
 	if err := PersistMarker(context.Background(), db, first); err != nil {
 		t.Fatal(err)
 	}
 	second := first
 	second.CorePolicyCount = 1
-	second.Checksum = markerChecksum(second)
+	second = second.Seal()
 	if err := PersistMarker(context.Background(), db, second); !errors.Is(err, ErrMigrationMarkerRequired) {
 		t.Fatalf("different receipt error = %v", err)
 	}
@@ -163,7 +98,7 @@ func TestBuildMarkerRejectsPendingMigrationPlan(t *testing.T) {
 		t.Fatalf("BuildMarker error = %v", err)
 	}
 	for _, item := range core.Policies {
-		if item.PlannedPolicySource == string(authz.PolicySourceCommunityBundle) {
+		if item.PlannedPolicySource == policySourceCommunityBundle {
 			t.Fatal("pending Core plan unexpectedly inferred bundle")
 		}
 	}

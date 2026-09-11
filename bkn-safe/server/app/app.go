@@ -37,7 +37,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authzmigration"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authzgate"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/httpapi"
@@ -89,7 +89,7 @@ func Boot(opts Options) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
-	freshAuthorizationStore := authzmigration.IsFreshAuthorizationStore(db)
+	freshAuthorizationStore := authzgate.IsFreshAuthorizationStore(db)
 	if err := database.Migrate(db); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
@@ -199,8 +199,8 @@ func (a *App) Run() error {
 }
 
 func (a *App) ensureAuthorizationMigrationReady(ctx context.Context) error {
-	if err := authzmigration.SeedFreshInstallMarker(ctx, a.db, a.freshAuthorizationStore); err != nil {
+	if err := authzgate.SeedFreshInstallMarker(ctx, a.db, a.freshAuthorizationStore); err != nil {
 		return err
 	}
-	return authzmigration.VerifyCurrentMarker(ctx, a.db)
+	return authzgate.VerifyCurrentMarker(ctx, a.db)
 }

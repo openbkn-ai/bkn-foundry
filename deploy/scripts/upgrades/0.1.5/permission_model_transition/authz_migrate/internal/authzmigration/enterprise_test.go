@@ -12,8 +12,6 @@ import (
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
-
-	safemodel "github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 func TestEnterpriseAbsentStateDoesNotCreatePrivateTable(t *testing.T) {
@@ -252,10 +250,10 @@ func TestEnterpriseKeepsClassificationEvidenceAndAcceptsExpiredActiveRule(t *tes
 func TestEnterpriseRejectsDisabledAndAmbiguousSubjects(t *testing.T) {
 	db := enterpriseTestDB(t, true)
 	seedEnterpriseSubjects(t, db)
-	if err := db.Create(&safemodel.User{ID: "disabled", Account: "disabled", Enabled: false}).Error; err != nil {
+	if err := db.Create(&userRow{ID: "disabled", Account: "disabled", Enabled: false}).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Create(&safemodel.User{ID: "role-1", Account: "ambiguous", Enabled: true}).Error; err != nil {
+	if err := db.Create(&userRow{ID: "role-1", Account: "ambiguous", Enabled: true}).Error; err != nil {
 		t.Fatal(err)
 	}
 	seedEERules(t, db,
@@ -276,7 +274,7 @@ func enterpriseTestDB(t *testing.T, withEE bool) *gorm.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	models := []any{&safemodel.User{}, &safemodel.Role{}, &safemodel.Department{}, &casbinPolicyRow{}}
+	models := []any{&userRow{}, &roleRow{}, &departmentRow{}, &casbinPolicyRow{}}
 	if withEE {
 		models = append(models, &eeRuleRow{})
 	}
@@ -288,13 +286,13 @@ func enterpriseTestDB(t *testing.T, withEE bool) *gorm.DB {
 
 func seedEnterpriseSubjects(t *testing.T, db *gorm.DB) {
 	t.Helper()
-	if err := db.Create(&safemodel.User{ID: "user-1", Account: "user-1", Enabled: true}).Error; err != nil {
+	if err := db.Create(&userRow{ID: "user-1", Account: "user-1", Enabled: true}).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Create(&safemodel.Role{ID: "role-1", Name: "role-1", Source: safemodel.RoleSourceCustom}).Error; err != nil {
+	if err := db.Create(&roleRow{ID: "role-1", Name: "role-1", Source: roleSourceCustom}).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Create(&safemodel.Department{ID: "department-1", Name: "department-1"}).Error; err != nil {
+	if err := db.Create(&departmentRow{ID: "department-1", Name: "department-1"}).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Create(&casbinPolicyRow{Ptype: "g", V0: "user-1", V1: "role-1"}).Error; err != nil {

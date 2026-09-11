@@ -9,21 +9,23 @@ package authzmigration
 import (
 	"errors"
 	"time"
+
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/migrationcontract"
 )
 
 const (
 	// CurrentVersion is persisted only after every Core and Enterprise check has
 	// succeeded. Changing authorization storage semantics requires a new value.
-	CurrentVersion = "authz-edition-boundaries-v1"
+	CurrentVersion = migrationcontract.CurrentVersion
 
 	ActionKeep     = "keep"
 	ActionClassify = "classify"
 	ActionInsert   = "insert"
 	ActionRemove   = "remove"
 
-	EETableAbsent          = "absent"
-	EETablePresentEmpty    = "present_empty"
-	EETablePresentWithRows = "present_with_rows"
+	EETableAbsent          = migrationcontract.EETableAbsent
+	EETablePresentEmpty    = migrationcontract.EETablePresentEmpty
+	EETablePresentWithRows = migrationcontract.EETablePresentWithRows
 
 	EEClassificationPublished = "published_effective"
 	EEClassificationDormant   = "dormant_experimental"

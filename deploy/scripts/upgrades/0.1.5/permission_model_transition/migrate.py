@@ -19,7 +19,9 @@ from typing import Optional, Sequence
 
 
 SCRIPT_DIRECTORY = Path(__file__).resolve().parent
-DEFAULT_AUTHZ_MIGRATOR = "/opt/bkn-safe/authz-migrate"
+DEFAULT_AUTHZ_MIGRATOR = str(
+    SCRIPT_DIRECTORY / "authz_migrate" / "authz-migrate"
+)
 DEFAULT_STATE_FILE = "/tmp/openbkn-permission-model-transition-workloads.tsv"
 
 
@@ -115,9 +117,11 @@ def build_steps(args: argparse.Namespace, report_dir: Path) -> list[Step]:
     if not manifest.is_file():
         raise OrchestrationError(f"migration manifest does not exist: {manifest}")
     authz_migrator = Path(args.authz_migrator)
-    if not authz_migrator.is_file():
+    if not authz_migrator.is_file() or not os.access(authz_migrator, os.X_OK):
         raise OrchestrationError(
-            f"bkn-safe migration executable does not exist: {authz_migrator}"
+            f"authorization migration executable is missing or not executable: "
+            f"{authz_migrator}; "
+            "run authz_migrate/build.sh first"
         )
 
     bkn_report = report_dir / "01-bkn-data.json"

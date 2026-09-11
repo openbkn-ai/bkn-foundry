@@ -13,10 +13,11 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authzmigration"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authzgate"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
 	safemodel "github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/seed"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/migrationcontract"
 )
 
 func TestFreshAuthorizationStoreSeedsMarkerAfterExtensionAssembly(t *testing.T) {
@@ -24,7 +25,7 @@ func TestFreshAuthorizationStoreSeedsMarkerAfterExtensionAssembly(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	fresh := authzmigration.IsFreshAuthorizationStore(db)
+	fresh := authzgate.IsFreshAuthorizationStore(db)
 	if err := database.Migrate(db); err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +44,7 @@ func TestFreshAuthorizationStoreSeedsMarkerAfterExtensionAssembly(t *testing.T) 
 	if err := db.First(&marker).Error; err != nil {
 		t.Fatal(err)
 	}
-	if marker.EETableState != authzmigration.EETablePresentEmpty {
+	if marker.EETableState != migrationcontract.EETablePresentEmpty {
 		t.Fatalf("EE table state = %q", marker.EETableState)
 	}
 }
@@ -53,7 +54,7 @@ func TestFreshAuthorizationStoreWithDefaultSeedPassesMigrationGate(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fresh := authzmigration.IsFreshAuthorizationStore(db)
+	fresh := authzgate.IsFreshAuthorizationStore(db)
 	if err := database.Migrate(db); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +84,7 @@ func TestExistingAuthorizationStoreCannotStartWithoutCurrentMarker(t *testing.T)
 	if err := db.Exec("CREATE TABLE casbin_rule (id INTEGER PRIMARY KEY, ptype TEXT, v0 TEXT, v1 TEXT, v2 TEXT, v3 TEXT, v4 TEXT, v5 TEXT)").Error; err != nil {
 		t.Fatal(err)
 	}
-	fresh := authzmigration.IsFreshAuthorizationStore(db)
+	fresh := authzgate.IsFreshAuthorizationStore(db)
 	if fresh {
 		t.Fatal("existing Casbin store was inferred as fresh")
 	}
@@ -95,7 +96,7 @@ func TestExistingAuthorizationStoreCannotStartWithoutCurrentMarker(t *testing.T)
 	}
 	a := &App{db: db, freshAuthorizationStore: fresh}
 	err = a.ensureAuthorizationMigrationReady(context.Background())
-	if !errors.Is(err, authzmigration.ErrMigrationMarkerRequired) {
+	if !errors.Is(err, authzgate.ErrMigrationMarkerRequired) {
 		t.Fatalf("migration gate error = %v", err)
 	}
 }

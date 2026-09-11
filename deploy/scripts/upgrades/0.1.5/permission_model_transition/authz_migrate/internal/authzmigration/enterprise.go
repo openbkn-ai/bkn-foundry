@@ -16,16 +16,13 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
-
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permobject"
-	safemodel "github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 const (
-	eeSubjectUnknown    = string(permobject.SubjectTypeUnknown)
-	eeSubjectUser       = string(permobject.SubjectTypeUser)
-	eeSubjectRole       = string(permobject.SubjectTypeRole)
-	eeSubjectDepartment = string(permobject.SubjectTypeDepartment)
+	eeSubjectUnknown    = "unknown"
+	eeSubjectUser       = "user"
+	eeSubjectRole       = "role"
+	eeSubjectDepartment = "department"
 
 	eeActivationInactive = "inactive"
 	eeActivationActive   = "active"
@@ -76,8 +73,8 @@ type eeLifecycleAuditRow struct {
 func (eeLifecycleAuditRow) TableName() string { return "ee_permobject_rule_lifecycle_audits" }
 
 type subjectFacts struct {
-	users       map[string]safemodel.User
-	roles       map[string]safemodel.Role
+	users       map[string]userRow
+	roles       map[string]roleRow
 	departments map[string]struct{}
 	roleMembers map[string]int
 }
@@ -322,29 +319,29 @@ func loadEERows(ctx context.Context, db *gorm.DB) ([]eeRuleRow, error) {
 
 func loadSubjectFacts(ctx context.Context, db *gorm.DB) (subjectFacts, error) {
 	facts := subjectFacts{
-		users: make(map[string]safemodel.User), roles: make(map[string]safemodel.Role),
+		users: make(map[string]userRow), roles: make(map[string]roleRow),
 		departments: make(map[string]struct{}), roleMembers: make(map[string]int),
 	}
-	for _, table := range []any{&safemodel.User{}, &safemodel.Role{}, &safemodel.Department{}, &casbinPolicyRow{}} {
+	for _, table := range []any{&userRow{}, &roleRow{}, &departmentRow{}, &casbinPolicyRow{}} {
 		if !db.Migrator().HasTable(table) {
 			return facts, fmt.Errorf("%w: authoritative subject directory or role membership table is missing", ErrPlanBlocked)
 		}
 	}
-	var users []safemodel.User
+	var users []userRow
 	if err := db.WithContext(ctx).Find(&users).Error; err != nil {
 		return facts, err
 	}
 	for _, user := range users {
 		facts.users[user.ID] = user
 	}
-	var roles []safemodel.Role
+	var roles []roleRow
 	if err := db.WithContext(ctx).Find(&roles).Error; err != nil {
 		return facts, err
 	}
 	for _, role := range roles {
 		facts.roles[role.ID] = role
 	}
-	var departments []safemodel.Department
+	var departments []departmentRow
 	if err := db.WithContext(ctx).Find(&departments).Error; err != nil {
 		return facts, err
 	}

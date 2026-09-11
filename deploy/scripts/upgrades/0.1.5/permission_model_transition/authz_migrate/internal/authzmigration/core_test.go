@@ -11,9 +11,6 @@ import (
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
-
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
-	safemodel "github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 func TestPlanCoreIsReadOnlyAndClassifiesWithoutInferringBundle(t *testing.T) {
@@ -21,11 +18,11 @@ func TestPlanCoreIsReadOnlyAndClassifiesWithoutInferringBundle(t *testing.T) {
 	seedRoles(t, db)
 	seedPolicies(t, db,
 		casbinPolicyRow{Ptype: "p", V0: "user-1", V1: "resource:r-1", V2: "view_detail"},
-		casbinPolicyRow{Ptype: "p", V0: "custom-role", V1: "knowledge_network:kn-1", V2: "modify", V3: authz.EffectAllow},
-		casbinPolicyRow{Ptype: "p", V0: "built-in-role", V1: "knowledge_network:kn-1", V2: "query_data", V3: authz.EffectAllow},
-		casbinPolicyRow{Ptype: "p", V0: "user-1", V1: "object_type:ot-1", V2: "authorize", V3: authz.EffectAllow},
-		casbinPolicyRow{Ptype: "p", V0: "user-1", V1: "knowledge_network:kn-1", V2: "task_manage", V3: authz.EffectAllow},
-		casbinPolicyRow{Ptype: "p", V0: "creator-1", V1: "action_type:at-1", V2: "execute", V3: authz.EffectAllow},
+		casbinPolicyRow{Ptype: "p", V0: "custom-role", V1: "knowledge_network:kn-1", V2: "modify", V3: effectAllow},
+		casbinPolicyRow{Ptype: "p", V0: "built-in-role", V1: "knowledge_network:kn-1", V2: "query_data", V3: effectAllow},
+		casbinPolicyRow{Ptype: "p", V0: "user-1", V1: "object_type:ot-1", V2: "authorize", V3: effectAllow},
+		casbinPolicyRow{Ptype: "p", V0: "user-1", V1: "knowledge_network:kn-1", V2: "task_manage", V3: effectAllow},
+		casbinPolicyRow{Ptype: "p", V0: "creator-1", V1: "action_type:at-1", V2: "execute", V3: effectAllow},
 	)
 
 	report, err := PlanCore(context.Background(), db, nil)
@@ -35,12 +32,12 @@ func TestPlanCoreIsReadOnlyAndClassifiesWithoutInferringBundle(t *testing.T) {
 	if report.Summary.Classified != 4 || report.Summary.Removed != 2 || report.Summary.Inserted != 0 {
 		t.Fatalf("summary = %+v", report.Summary)
 	}
-	assertPlannedSource(t, report, "user-1", "resource:r-1", "view_detail", string(authz.PolicySourceLegacy), string(authz.AuthoritySourceMigration))
-	assertPlannedSource(t, report, "custom-role", "knowledge_network:kn-1", "modify", string(authz.PolicySourceRolePermission), string(authz.AuthoritySourceAdminAuthz))
-	assertPlannedSource(t, report, "built-in-role", "knowledge_network:kn-1", "query_data", string(authz.PolicySourceRolePermission), string(authz.AuthoritySourceSystem))
-	assertPlannedSource(t, report, "creator-1", "action_type:at-1", "execute", string(authz.PolicySourceLegacy), string(authz.AuthoritySourceMigration))
+	assertPlannedSource(t, report, "user-1", "resource:r-1", "view_detail", policySourceLegacy, authoritySourceMigration)
+	assertPlannedSource(t, report, "custom-role", "knowledge_network:kn-1", "modify", policySourceRolePermission, authoritySourceAdminAuthz)
+	assertPlannedSource(t, report, "built-in-role", "knowledge_network:kn-1", "query_data", policySourceRolePermission, authoritySourceSystem)
+	assertPlannedSource(t, report, "creator-1", "action_type:at-1", "execute", policySourceLegacy, authoritySourceMigration)
 	for _, item := range report.Policies {
-		if item.PlannedPolicySource == string(authz.PolicySourceCommunityBundle) || item.Operation == authz.ActFullBusinessAccess {
+		if item.PlannedPolicySource == policySourceCommunityBundle || item.Operation == actFullBusinessAccess {
 			t.Fatalf("migration inferred a Community bundle: %+v", item)
 		}
 	}
@@ -54,7 +51,7 @@ func TestPlanCoreIsReadOnlyAndClassifiesWithoutInferringBundle(t *testing.T) {
 	if classified != 5 {
 		t.Fatalf("dry-run mutated Casbin rows, classified count = %d", classified)
 	}
-	if db.Migrator().HasTable(&safemodel.AuthorizationGrant{}) {
+	if db.Migrator().HasTable(&authorizationGrantRow{}) {
 		t.Fatal("dry-run created authorization_grant")
 	}
 }
@@ -64,16 +61,16 @@ func TestApplyCoreIsIdempotentAndPreservesIndependentGrantSources(t *testing.T) 
 	seedRoles(t, db)
 	seedPolicies(t, db,
 		casbinPolicyRow{Ptype: "p", V0: "user-1", V1: "resource:r-1", V2: "view_detail"},
-		casbinPolicyRow{Ptype: "p", V0: "custom-role", V1: "knowledge_network:kn-1", V2: "modify", V3: authz.EffectAllow},
-		casbinPolicyRow{Ptype: "p", V0: "user-1", V1: "object_type:ot-1", V2: "authorize", V3: authz.EffectAllow},
-		casbinPolicyRow{Ptype: "p", V0: "user-2", V1: "resource:r-2", V2: "query_data", V3: authz.EffectAllow,
-			V4: string(authz.PolicySourceProfessionalRule), V5: string(authz.AuthoritySourceAdminAuthz)},
+		casbinPolicyRow{Ptype: "p", V0: "custom-role", V1: "knowledge_network:kn-1", V2: "modify", V3: effectAllow},
+		casbinPolicyRow{Ptype: "p", V0: "user-1", V1: "object_type:ot-1", V2: "authorize", V3: effectAllow},
+		casbinPolicyRow{Ptype: "p", V0: "user-2", V1: "resource:r-2", V2: "query_data", V3: effectAllow,
+			V4: policySourceProfessionalRule, V5: authoritySourceAdminAuthz},
 	)
-	if err := db.AutoMigrate(&safemodel.AuthorizationGrant{}); err != nil {
+	if err := db.AutoMigrate(&authorizationGrantRow{}); err != nil {
 		t.Fatal(err)
 	}
-	key := policyTuple{"user-2", "resource:r-2", "query_data", authz.EffectAllow,
-		string(authz.PolicySourceProfessionalRule), string(authz.AuthoritySourceAdminAuthz)}
+	key := policyTuple{"user-2", "resource:r-2", "query_data", effectAllow,
+		policySourceProfessionalRule, authoritySourceAdminAuthz}
 	for _, id := range []string{"grant-source-a", "grant-source-b"} {
 		if err := db.Create(grantModel(id, key)).Error; err != nil {
 			t.Fatal(err)
@@ -87,7 +84,7 @@ func TestApplyCoreIsIdempotentAndPreservesIndependentGrantSources(t *testing.T) 
 	if verified.HasChanges() {
 		t.Fatalf("post-apply plan still has changes: %+v", verified.Summary)
 	}
-	var grants []safemodel.AuthorizationGrant
+	var grants []authorizationGrantRow
 	if err := db.Order("grant_id").Find(&grants).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +119,7 @@ func TestApplyCoreIsIdempotentAndPreservesIndependentGrantSources(t *testing.T) 
 func TestPlanCoreBlocksExecuteActionWithoutWriting(t *testing.T) {
 	db := migrationTestDB(t)
 	seedRoles(t, db)
-	seedPolicies(t, db, casbinPolicyRow{Ptype: "p", V0: "user-1", V1: "action_type:at-1", V2: "execute_action", V3: authz.EffectAllow})
+	seedPolicies(t, db, casbinPolicyRow{Ptype: "p", V0: "user-1", V1: "action_type:at-1", V2: "execute_action", V3: effectAllow})
 
 	report, err := PlanCore(context.Background(), db, nil)
 	if !errors.Is(err, ErrPlanBlocked) || !report.Blocked() {
@@ -171,7 +168,7 @@ func TestLifecycleEvidenceIsTheOnlySystemDerivedInference(t *testing.T) {
 	db := migrationTestDB(t)
 	seedRoles(t, db)
 	seedPolicies(t, db,
-		casbinPolicyRow{Ptype: "p", V0: "owner-1", V1: "knowledge_network:kn-1", V2: "authorize", V3: authz.EffectAllow},
+		casbinPolicyRow{Ptype: "p", V0: "owner-1", V1: "knowledge_network:kn-1", V2: "authorize", V3: effectAllow},
 	)
 	evidence := []LifecycleEvidence{
 		{Kind: "knowledge_network_owner", AccessorID: "owner-1", Object: "knowledge_network:kn-1", Operation: "authorize", EvidenceRef: "bkn:t_knowledge_network:kn-1"},
@@ -185,14 +182,14 @@ func TestLifecycleEvidenceIsTheOnlySystemDerivedInference(t *testing.T) {
 	if report.Summary.Classified != 1 || report.Summary.Inserted != 1 {
 		t.Fatalf("summary = %+v", report.Summary)
 	}
-	assertPlannedSource(t, report, "owner-1", "knowledge_network:kn-1", "authorize", string(authz.PolicySourceSystemDerived), string(authz.AuthoritySourceSystem))
-	assertPlannedSource(t, report, "creator-1", "action_type:at-1", "execute", string(authz.PolicySourceSystemDerived), string(authz.AuthoritySourceSystem))
+	assertPlannedSource(t, report, "owner-1", "knowledge_network:kn-1", "authorize", policySourceSystemDerived, authoritySourceSystem)
+	assertPlannedSource(t, report, "creator-1", "action_type:at-1", "execute", policySourceSystemDerived, authoritySourceSystem)
 
 	if _, err := ApplyCore(context.Background(), db, evidence); err != nil {
 		t.Fatal(err)
 	}
 	var count int64
-	if err := db.Model(&casbinPolicyRow{}).Where("v4 = ?", authz.PolicySourceSystemDerived).Count(&count).Error; err != nil {
+	if err := db.Model(&casbinPolicyRow{}).Where("v4 = ?", policySourceSystemDerived).Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
 	if count != 2 {
@@ -206,7 +203,7 @@ func migrationTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&casbinPolicyRow{}, &safemodel.Role{}); err != nil {
+	if err := db.AutoMigrate(&casbinPolicyRow{}, &roleRow{}); err != nil {
 		t.Fatal(err)
 	}
 	return db
@@ -214,9 +211,9 @@ func migrationTestDB(t *testing.T) *gorm.DB {
 
 func seedRoles(t *testing.T, db *gorm.DB) {
 	t.Helper()
-	roles := []safemodel.Role{
-		{ID: "built-in-role", Name: "built in", Source: safemodel.RoleSourceSystem},
-		{ID: "custom-role", Name: "custom", Source: safemodel.RoleSourceCustom},
+	roles := []roleRow{
+		{ID: "built-in-role", Name: "built in", Source: roleSourceSystem},
+		{ID: "custom-role", Name: "custom", Source: roleSourceCustom},
 	}
 	if err := db.Create(&roles).Error; err != nil {
 		t.Fatal(err)
@@ -246,7 +243,7 @@ func assertPlannedSource(t *testing.T, report CoreReport, accessor, object, oper
 	t.Fatalf("missing plan for %s/%s/%s", accessor, object, operation)
 }
 
-func grantIDs(grants []safemodel.AuthorizationGrant) []string {
+func grantIDs(grants []authorizationGrantRow) []string {
 	ids := make([]string, 0, len(grants))
 	for _, grant := range grants {
 		ids = append(ids, grant.GrantID)

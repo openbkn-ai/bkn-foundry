@@ -19,7 +19,7 @@ The entry runs a fixed, fail-fast sequence:
 1. `bkn-data` validates or applies blank-branch normalization, authoritative
    BKN resource-parent rows, managed proxy accounts, Resource/Tool Box/MCP
    grant sources, materialized proxy policies, and BKN proxy mappings.
-2. `authorization` invokes bkn-safe's internal `authz-migrate` executable to
+2. `authorization` invokes this directory's `authz_migrate` executable to
    classify Core provenance and stable grants, reconcile Enterprise rules,
    apply explicitly confirmed activation, and persist the checksummed marker.
 
@@ -36,8 +36,8 @@ explicit step in `migrate.py`; it must not create a second operator command.
 - `mariadb-dump` or `mysqldump` and enough space for complete BKN and Safe
   logical backups;
 - `kubectl` access to the target cluster;
-- the matching bkn-safe `authz-migrate` executable (normally
-  `/opt/bkn-safe/authz-migrate`);
+- Go 1.25+ to build the release-owned authorization migration executable, or
+  the prebuilt executable supplied with the release artifact;
 - MariaDB/MySQL access to the BKN and Safe databases.
 
 The BKN step resolves `BKN_DB_*` and `SAFE_DB_*` variables first, then standard
@@ -51,6 +51,13 @@ directory beside this script is not an appropriate backup volume.
 Copy `manifest.example.json` to a protected working location and replace every
 placeholder with authoritative release, lifecycle, and Enterprise evidence.
 
+Build the release-owned authorization step when the release artifact does not
+already contain it:
+
+```bash
+./authz_migrate/build.sh
+```
+
 Run both read-only plans and preserve their reports:
 
 ```bash
@@ -58,7 +65,6 @@ Run both read-only plans and preserve their reports:
   --source-version 0.1.4 \
   --manifest /work/authz-migration.json \
   --authz-config /etc/bkn-safe/config.yaml \
-  --authz-migrator /opt/bkn-safe/authz-migrate \
   --report-dir /work/reports/dry-run
 ```
 
@@ -83,7 +89,6 @@ Apply with a new, empty report directory:
   --source-version 0.1.4 \
   --manifest /work/authz-migration.json \
   --authz-config /etc/bkn-safe/config.yaml \
-  --authz-migrator /opt/bkn-safe/authz-migrate \
   --state-file /work/workloads.tsv \
   --namespace openbkn \
   --report-dir /work/reports/apply
@@ -117,4 +122,5 @@ manually or continue on a partially migrated database.
 ```bash
 python3 -m unittest -v test_bkn_data.py test_migrate.py
 ./test_service_control.sh
+(cd authz_migrate && go test -p=1 ./...)
 ```

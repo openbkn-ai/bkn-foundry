@@ -13,9 +13,6 @@ import (
 	"strings"
 
 	"gorm.io/gorm"
-
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
-	safemodel "github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 type casbinPolicyRow struct {
@@ -89,7 +86,7 @@ func PlanCore(ctx context.Context, db *gorm.DB, evidence []LifecycleEvidence) (C
 		} else {
 			final := tupleFromPlan(plan, true)
 			finalTuples[final]++
-			if _, ok := evidenceByTuple[final]; ok && plan.Effect == authz.EffectAllow {
+			if _, ok := evidenceByTuple[final]; ok && plan.Effect == effectAllow {
 				usedEvidence[final] = struct{}{}
 			}
 		}
@@ -102,8 +99,8 @@ func PlanCore(ctx context.Context, db *gorm.DB, evidence []LifecycleEvidence) (C
 		}
 		plan := CorePolicyPlan{
 			AccessorID: fact.AccessorID, Object: fact.Object, Operation: fact.Operation,
-			Effect: authz.EffectAllow, PlannedPolicySource: string(authz.PolicySourceSystemDerived),
-			PlannedAuthoritySource: string(authz.AuthoritySourceSystem), Action: ActionInsert,
+			Effect: effectAllow, PlannedPolicySource: policySourceSystemDerived,
+			PlannedAuthoritySource: authoritySourceSystem, Action: ActionInsert,
 			Reason:      "authoritative lifecycle evidence requires a missing system-derived grant",
 			EvidenceRef: fact.EvidenceRef,
 		}
@@ -185,7 +182,7 @@ func ApplyCore(ctx context.Context, db *gorm.DB, evidence []LifecycleEvidence) (
 	if err != nil {
 		return plan, err
 	}
-	if err := db.WithContext(ctx).AutoMigrate(&casbinPolicyRow{}, &safemodel.AuthorizationGrant{}); err != nil {
+	if err := db.WithContext(ctx).AutoMigrate(&casbinPolicyRow{}, &authorizationGrantRow{}); err != nil {
 		return plan, fmt.Errorf("prepare authorization migration schema: %w", err)
 	}
 	if err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -251,15 +248,15 @@ func loadPolicyRows(ctx context.Context, db *gorm.DB) ([]casbinPolicyRow, error)
 	return rows, nil
 }
 
-func loadRoles(ctx context.Context, db *gorm.DB, required bool) (map[string]safemodel.Role, error) {
-	roles := make(map[string]safemodel.Role)
-	if !db.Migrator().HasTable(&safemodel.Role{}) {
+func loadRoles(ctx context.Context, db *gorm.DB, required bool) (map[string]roleRow, error) {
+	roles := make(map[string]roleRow)
+	if !db.Migrator().HasTable(&roleRow{}) {
 		if required {
 			return nil, fmt.Errorf("inventory roles: authoritative roles table is missing")
 		}
 		return roles, nil
 	}
-	var rows []safemodel.Role
+	var rows []roleRow
 	if err := db.WithContext(ctx).Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("inventory roles: %w", err)
 	}
@@ -269,21 +266,21 @@ func loadRoles(ctx context.Context, db *gorm.DB, required bool) (map[string]safe
 	return roles, nil
 }
 
-func loadGrantRows(ctx context.Context, db *gorm.DB) ([]safemodel.AuthorizationGrant, error) {
-	if !db.Migrator().HasTable(&safemodel.AuthorizationGrant{}) {
+func loadGrantRows(ctx context.Context, db *gorm.DB) ([]authorizationGrantRow, error) {
+	if !db.Migrator().HasTable(&authorizationGrantRow{}) {
 		return nil, nil
 	}
-	var rows []safemodel.AuthorizationGrant
+	var rows []authorizationGrantRow
 	if err := db.WithContext(ctx).Order("grant_id").Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("inventory authorization grants: %w", err)
 	}
 	return rows, nil
 }
 
-func planPolicy(row casbinPolicyRow, roles map[string]safemodel.Role, evidence map[policyTuple]LifecycleEvidence) CorePolicyPlan {
+func planPolicy(row casbinPolicyRow, roles map[string]roleRow, evidence map[policyTuple]LifecycleEvidence) CorePolicyPlan {
 	effect := row.V3
 	if effect == "" {
-		effect = authz.EffectAllow
+		effect = effectAllow
 	}
 	plan := CorePolicyPlan{
 		PolicyID: row.ID, AccessorID: row.V0, Object: row.V1, Operation: row.V2, Effect: effect,
@@ -297,7 +294,7 @@ func planPolicy(row casbinPolicyRow, roles map[string]safemodel.Role, evidence m
 		!validObject {
 		plan.Anomalies = append(plan.Anomalies, "policy has an incomplete accessor, object, or operation identity")
 	}
-	if effect != authz.EffectAllow && effect != authz.EffectDeny {
+	if effect != effectAllow && effect != effectDeny {
 		plan.Anomalies = append(plan.Anomalies, "policy has invalid effect "+effect)
 	}
 	resourceType := objectType(row.V1)
@@ -310,23 +307,23 @@ func planPolicy(row casbinPolicyRow, roles map[string]safemodel.Role, evidence m
 
 	if row.V4 == "" && row.V5 == "" {
 		key := policyTuple{row.V0, row.V1, row.V2, effect,
-			string(authz.PolicySourceSystemDerived), string(authz.AuthoritySourceSystem)}
-		if fact, ok := evidence[key]; ok && effect == authz.EffectAllow {
-			plan.PlannedPolicySource = string(authz.PolicySourceSystemDerived)
-			plan.PlannedAuthoritySource = string(authz.AuthoritySourceSystem)
+			policySourceSystemDerived, authoritySourceSystem}
+		if fact, ok := evidence[key]; ok && effect == effectAllow {
+			plan.PlannedPolicySource = policySourceSystemDerived
+			plan.PlannedAuthoritySource = authoritySourceSystem
 			plan.Reason = "matched authoritative resource-lifecycle evidence"
 			plan.EvidenceRef = fact.EvidenceRef
 		} else if role, ok := roles[row.V0]; ok {
-			plan.PlannedPolicySource = string(authz.PolicySourceRolePermission)
-			if role.BuiltIn() {
-				plan.PlannedAuthoritySource = string(authz.AuthoritySourceSystem)
+			plan.PlannedPolicySource = policySourceRolePermission
+			if role.builtIn() {
+				plan.PlannedAuthoritySource = authoritySourceSystem
 			} else {
-				plan.PlannedAuthoritySource = string(authz.AuthoritySourceAdminAuthz)
+				plan.PlannedAuthoritySource = authoritySourceAdminAuthz
 			}
 			plan.Reason = "subject is an authoritative built-in or custom role"
 		} else {
-			plan.PlannedPolicySource = string(authz.PolicySourceLegacy)
-			plan.PlannedAuthoritySource = string(authz.AuthoritySourceMigration)
+			plan.PlannedPolicySource = policySourceLegacy
+			plan.PlannedAuthoritySource = authoritySourceMigration
 			plan.Reason = "historical Core policy has no provable newer source"
 		}
 		plan.Action = ActionClassify
@@ -342,7 +339,7 @@ func planPolicy(row casbinPolicyRow, roles map[string]safemodel.Role, evidence m
 	if !validAuthoritySource(row.V5) {
 		plan.Anomalies = append(plan.Anomalies, "unknown authority_source "+row.V5)
 	}
-	if row.V4 == string(authz.PolicySourceRolePermission) {
+	if row.V4 == policySourceRolePermission {
 		if _, ok := roles[row.V0]; !ok {
 			plan.Anomalies = append(plan.Anomalies, "role_permission subject does not exist in the authoritative role directory")
 		}
@@ -361,8 +358,8 @@ func validateLifecycleEvidence(items []LifecycleEvidence) (map[policyTuple]Lifec
 			anomalies = append(anomalies, fmt.Sprintf("lifecycle evidence %d is incomplete or outside the approved owner/creator contracts", i))
 			continue
 		}
-		key := policyTuple{item.AccessorID, item.Object, item.Operation, authz.EffectAllow,
-			string(authz.PolicySourceSystemDerived), string(authz.AuthoritySourceSystem)}
+		key := policyTuple{item.AccessorID, item.Object, item.Operation, effectAllow,
+			policySourceSystemDerived, authoritySourceSystem}
 		if previous, found := result[key]; found && previous.EvidenceRef != item.EvidenceRef {
 			anomalies = append(anomalies, fmt.Sprintf("lifecycle evidence %d conflicts with another fact for %s", i, item.Object))
 			continue
@@ -400,12 +397,12 @@ func tupleFromPlan(plan CorePolicyPlan, planned bool) policyTuple {
 	return policyTuple{plan.AccessorID, plan.Object, plan.Operation, plan.Effect, source, authority}
 }
 
-func tupleFromGrant(grant safemodel.AuthorizationGrant) policyTuple {
+func tupleFromGrant(grant authorizationGrantRow) policyTuple {
 	return policyTuple{grant.AccessorID, grant.Object, grant.Operation, grant.Effect,
 		grant.PolicySource, grant.AuthoritySource}
 }
 
-func validateGrant(grant safemodel.AuthorizationGrant) []string {
+func validateGrant(grant authorizationGrantRow) []string {
 	var problems []string
 	if strings.TrimSpace(grant.GrantID) == "" || len(grant.GrantID) > 64 {
 		problems = append(problems, "invalid stable grant_id")
@@ -414,7 +411,7 @@ func validateGrant(grant safemodel.AuthorizationGrant) []string {
 		strings.TrimSpace(grant.Operation) == "" || strings.TrimSpace(grant.CreatedBy) == "" {
 		problems = append(problems, "incomplete grant identity or audit metadata")
 	}
-	if grant.Effect != authz.EffectAllow && grant.Effect != authz.EffectDeny {
+	if grant.Effect != effectAllow && grant.Effect != effectDeny {
 		problems = append(problems, "invalid effect")
 	}
 	if !validPolicySource(grant.PolicySource) || !validAuthoritySource(grant.AuthoritySource) {
@@ -427,9 +424,9 @@ func validateGrant(grant safemodel.AuthorizationGrant) []string {
 }
 
 func validPolicySource(value string) bool {
-	switch authz.PolicySource(value) {
-	case authz.PolicySourceCommunityBundle, authz.PolicySourceProfessionalRule,
-		authz.PolicySourceLegacy, authz.PolicySourceSystemDerived, authz.PolicySourceRolePermission:
+	switch value {
+	case policySourceCommunityBundle, policySourceProfessionalRule,
+		policySourceLegacy, policySourceSystemDerived, policySourceRolePermission:
 		return true
 	default:
 		return false
@@ -437,9 +434,9 @@ func validPolicySource(value string) bool {
 }
 
 func validAuthoritySource(value string) bool {
-	switch authz.AuthoritySource(value) {
-	case authz.AuthoritySourceAdminAuthz, authz.AuthoritySourceOwnerDelegate,
-		authz.AuthoritySourceSystem, authz.AuthoritySourceMigration:
+	switch value {
+	case authoritySourceAdminAuthz, authoritySourceOwnerDelegate,
+		authoritySourceSystem, authoritySourceMigration:
 		return true
 	default:
 		return false
@@ -454,8 +451,8 @@ func projectionKey(key policyTuple) string {
 
 func deterministicGrantID(key policyTuple) string { return projectionKey(key) }
 
-func grantModel(id string, key policyTuple) *safemodel.AuthorizationGrant {
-	return &safemodel.AuthorizationGrant{
+func grantModel(id string, key policyTuple) *authorizationGrantRow {
+	return &authorizationGrantRow{
 		GrantID: id, ProjectionKey: projectionKey(key), AccessorID: key.accessor,
 		Object: key.object, Operation: key.operation, Effect: key.effect,
 		PolicySource: key.policySource, AuthoritySource: key.authoritySource,
@@ -466,7 +463,7 @@ func grantModel(id string, key policyTuple) *safemodel.AuthorizationGrant {
 func deleteGrantTuple(db *gorm.DB, key policyTuple) error {
 	return db.Where("accessor_id = ? AND object = ? AND operation = ? AND effect = ? AND policy_source = ? AND authority_source = ?",
 		key.accessor, key.object, key.operation, key.effect, key.policySource, key.authoritySource).
-		Delete(&safemodel.AuthorizationGrant{}).Error
+		Delete(&authorizationGrantRow{}).Error
 }
 
 func sortedStrings(values []string) []string {

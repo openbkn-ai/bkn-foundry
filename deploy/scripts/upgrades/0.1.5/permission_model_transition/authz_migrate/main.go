@@ -2,9 +2,9 @@
 //
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-// Command authz-migrate is the bkn-safe domain step invoked by the target
-// release's deploy migration entry. It always preflights Core and EE before the
-// first write and emits a machine-readable JSON report.
+// Command authz-migrate is the release-owned authorization step invoked by the
+// target release's deploy migration entry. It always preflights Core and EE
+// before the first write and emits a machine-readable JSON report.
 package main
 
 import (
@@ -18,10 +18,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/config"
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authzmigration"
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
-	safemodel "github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/migrationcontract"
+	"github.com/openbkn-ai/bkn-foundry/deploy/permission-transition-0.1.5/authz-migrate/internal/authzmigration"
 )
 
 const (
@@ -46,12 +44,12 @@ func (m manifest) eeOptions(now time.Time) authzmigration.EEOptions {
 }
 
 type commandReport struct {
-	Mode        string                                  `json:"mode"`
-	GeneratedAt time.Time                               `json:"generated_at"`
-	Core        authzmigration.CoreReport               `json:"core"`
-	Enterprise  authzmigration.EEReport                 `json:"enterprise"`
-	Marker      *safemodel.AuthorizationMigrationMarker `json:"marker,omitempty"`
-	Error       string                                  `json:"error,omitempty"`
+	Mode        string                    `json:"mode"`
+	GeneratedAt time.Time                 `json:"generated_at"`
+	Core        authzmigration.CoreReport `json:"core"`
+	Enterprise  authzmigration.EEReport   `json:"enterprise"`
+	Marker      *migrationcontract.Marker `json:"marker,omitempty"`
+	Error       string                    `json:"error,omitempty"`
 }
 
 func main() {
@@ -92,11 +90,11 @@ func execute(ctx context.Context, mode, configPath, manifestPath string, now tim
 			return report, errors.New("apply requires ee.assembly.evidence_ref for both Community and EE installations")
 		}
 	}
-	cfg, err := config.LoadWithOptions(config.LoadOptions{ConfigPath: configPath})
+	cfg, err := loadDatabaseConfig(configPath)
 	if err != nil {
 		return report, fmt.Errorf("load bkn-safe config: %w", err)
 	}
-	db, err := database.Open(cfg.DB)
+	db, err := openDatabase(cfg)
 	if err != nil {
 		return report, err
 	}
@@ -137,8 +135,16 @@ func execute(ctx context.Context, mode, configPath, manifestPath string, now tim
 	if err := authzmigration.PersistMarker(ctx, db, marker); err != nil {
 		return report, err
 	}
-	if err := authzmigration.VerifyCurrentMarker(ctx, db); err != nil {
-		return report, err
+	if !marker.Valid() {
+		return report, errors.New("persisted authorization migration marker is invalid")
+	}
+	var persisted migrationcontract.Marker
+	if err := db.WithContext(ctx).Where("version = ?", migrationcontract.CurrentVersion).
+		First(&persisted).Error; err != nil || !persisted.Valid() {
+		return report, errors.New("persisted authorization migration marker is invalid")
+	}
+	if persisted.Checksum != marker.Checksum {
+		return report, errors.New("persisted authorization migration marker does not match apply result")
 	}
 	report.Marker = &marker
 	return report, nil

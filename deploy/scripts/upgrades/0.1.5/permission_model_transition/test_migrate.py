@@ -20,6 +20,7 @@ class StepRegistryTest(unittest.TestCase):
             executable = root / "authz-migrate"
             manifest.write_text("{}", encoding="utf-8")
             executable.write_text("binary", encoding="utf-8")
+            executable.chmod(0o700)
             args = argparse.Namespace(
                 command="dry-run",
                 manifest=str(manifest),

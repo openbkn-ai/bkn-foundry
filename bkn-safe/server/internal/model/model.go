@@ -9,7 +9,11 @@
 // identity and provenance of each independently managed grant.
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/migrationcontract"
+)
 
 // Source distinguishes locally-managed identities from federated (LDAP) ones.
 type Source string
@@ -174,34 +178,10 @@ type AuthorizationGrant struct {
 
 func (AuthorizationGrant) TableName() string { return "authorization_grant" }
 
-// AuthorizationMigrationMarker is the durable receipt for the one-time
-// four-edition authorization migration. The checksum covers the semantic
-// fields so startup cannot mistake a partial or manually edited row for a
-// successful Core + EE reconciliation.
-type AuthorizationMigrationMarker struct {
-	Version               string `gorm:"primaryKey;size:64"`
-	EETableState          string `gorm:"size:32;not null"`
-	CorePolicyCount       int64
-	CoreGrantCount        int64
-	CoreSourceSummary     string `gorm:"type:text;not null"`
-	EERowCount            int64
-	EEPublishedCount      int64
-	EEDormantCount        int64
-	EEInvalidCount        int64
-	EEActiveCount         int64
-	EEDenyCount           int64
-	EEInventoryDigest     string `gorm:"size:64"`
-	EEAssemblyEvidenceRef string `gorm:"size:512"`
-	ActivatedGrantIDs     string `gorm:"type:text;not null"`
-	ActivationConfirmedBy string `gorm:"size:128"`
-	ActivationEvidenceRef string `gorm:"size:512"`
-	Checksum              string `gorm:"size:64;not null"`
-	AppliedAt             time.Time
-}
-
-func (AuthorizationMigrationMarker) TableName() string {
-	return "authorization_migration_marker"
-}
+// AuthorizationMigrationMarker aliases the public runtime receipt contract.
+// The offline writer lives under deploy; bkn-safe owns only storage and startup
+// validation of that receipt.
+type AuthorizationMigrationMarker = migrationcontract.Marker
 
 // Role source values. system|business roles are SEEDED built-ins (their UUIDs
 // are hardcoded in DA/flow-automation, such as application, data, and AI administrators) and are
