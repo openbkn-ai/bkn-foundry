@@ -408,6 +408,30 @@ func TestBKNCreationPoliciesUseTrustedLifecycleSources(t *testing.T) {
 		t.Fatalf("action execute records = %#v, want one system-derived grant", actionRecords)
 	}
 
+	// Existing callers may combine execute with other concrete action-type
+	// operations. Keep those requests on the legacy compatibility path rather
+	// than rejecting a shape accepted before lifecycle provenance was added.
+	legacyActionBody := map[string]any{
+		"accessor_id": "legacy-creator",
+		"resource":    map[string]string{"type": "action_type", "id": "kn-1/action-2"},
+		"operations":  []string{"view_detail", "execute"},
+	}
+	if w := do(t, r, http.MethodPost, "/api/safe/v1/authz/policies", legacyActionBody); w.Code != http.StatusNoContent {
+		t.Fatalf("create legacy mixed action-type policies: want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	for _, operation := range []string{"view_detail", "execute"} {
+		records, recordsErr := e.PolicyRecords(authz.PolicyFilter{
+			AccessorID: "legacy-creator", Object: "action_type:kn-1/action-2", Operation: operation,
+		})
+		if recordsErr != nil {
+			t.Fatal(recordsErr)
+		}
+		if len(records) != 1 || records[0].PolicySource != authz.PolicySourceLegacy ||
+			records[0].AuthoritySource != authz.AuthoritySourceMigration {
+			t.Fatalf("legacy action %s records = %#v, want one legacy/migration grant", operation, records)
+		}
+	}
+
 	knBody["operations"] = []string{authz.ActFullBusinessAccess}
 	if w := do(t, r, http.MethodPost, "/api/safe/v1/authz/policies", knBody); w.Code != http.StatusBadRequest {
 		t.Fatalf("partial lifecycle shape: want 400, got %d: %s", w.Code, w.Body.String())

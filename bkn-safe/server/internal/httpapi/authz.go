@@ -331,11 +331,8 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			c.Status(http.StatusNoContent)
 			return
 		}
-		if req.Resource.Type == "action_type" && slices.Contains(req.Operations, "execute") {
-			if !isConcreteResourceID(req.Resource.ID) || !sameOperationSet(req.Operations, []string{"execute"}) {
-				replyPublicError(c, http.StatusBadRequest)
-				return
-			}
+		if req.Resource.Type == "action_type" && isConcreteResourceID(req.Resource.ID) &&
+			sameOperationSet(req.Operations, []string{"execute"}) {
 			if err := e.GrantActionTypeCreatorPermission(c.Request.Context(), req.AccessorID, req.Resource.ID); err != nil {
 				serverError(c, err)
 				return
