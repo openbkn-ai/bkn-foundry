@@ -1068,11 +1068,51 @@ func (r *skillRegistry) queryReleaseListPage(ctx context.Context, filter map[str
 			if err != nil {
 				return nil, err
 			}
-			return r.AuthService.ResourceListIDs(newCtx, accessor, interfaces.AuthResourceTypeSkill, operations...)
+			resourceIDs, listErr := r.AuthService.ResourceListIDs(
+				newCtx, accessor, interfaces.AuthResourceTypeSkill, operations...)
+			if listErr != nil || !containsResourceIDAll(resourceIDs) {
+				return resourceIDs, listErr
+			}
+
+			candidateIDs, listErr := r.releaseRepo.SelectIDsByWhereClause(newCtx, nil, filter)
+			if listErr != nil {
+				r.Logger.WithContext(newCtx).Errorf("select candidate skill IDs failed, err: %v", listErr)
+				return nil, errors.DefaultHTTPError(newCtx, http.StatusInternalServerError,
+					"select candidate skill IDs failed")
+			}
+			return r.filterEffectiveSkillIDs(newCtx, accessor, candidateIDs, operations...)
 		})
 	}
 	authResp, err = queryBuilder.Execute(ctx)
 	return
+}
+
+func containsResourceIDAll(resourceIDs []string) bool {
+	for _, resourceID := range resourceIDs {
+		if resourceID == interfaces.ResourceIDAll {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *skillRegistry) filterEffectiveSkillIDs(
+	ctx context.Context,
+	accessor *interfaces.AuthAccessor,
+	candidateIDs []string,
+	operations ...interfaces.AuthOperationType,
+) ([]string, error) {
+	filteredIDs := make([]string, 0, len(candidateIDs))
+	for start := 0; start < len(candidateIDs); start += interfaces.DefaultBatchSize {
+		end := min(start+interfaces.DefaultBatchSize, len(candidateIDs))
+		batch, err := r.AuthService.ResourceFilterIDs(ctx, accessor, candidateIDs[start:end],
+			interfaces.AuthResourceTypeSkill, operations...)
+		if err != nil {
+			return nil, err
+		}
+		filteredIDs = append(filteredIDs, batch...)
+	}
+	return filteredIDs, nil
 }
 
 func (r *skillRegistry) querySkillListPage(ctx context.Context, filter map[string]interface{}, pageParamsReq interfaces.CommonPageParams, userID string, operations ...interfaces.AuthOperationType) (

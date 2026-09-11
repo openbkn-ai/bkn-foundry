@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/utils"
@@ -55,8 +56,20 @@ func (o *operatorIntegrationClient) callerAuthorizationHeader(
 func (o *operatorIntegrationClient) capabilityAuthorizationHeader(
 	ctx context.Context, operationName string,
 ) (map[string]string, error) {
-	if _, ok := common.GetRawTokenFromCtx(ctx); ok || common.IsPublicAPIFromCtx(ctx) {
+	return o.capabilityAuthorizationHeaderForAuthMode(ctx, operationName, config.GetAuthEnabled())
+}
+
+func (o *operatorIntegrationClient) capabilityAuthorizationHeaderForAuthMode(
+	ctx context.Context, operationName string, authEnabled bool,
+) (map[string]string, error) {
+	if _, ok := common.GetRawTokenFromCtx(ctx); ok {
 		return o.callerAuthorizationHeader(ctx, operationName)
+	}
+	if common.IsPublicAPIFromCtx(ctx) {
+		if authEnabled {
+			return o.callerAuthorizationHeader(ctx, operationName)
+		}
+		return o.skillHeader(ctx, operationName), nil
 	}
 	authContext, ok := common.GetAccountAuthContextFromCtx(ctx)
 	if !ok || strings.TrimSpace(authContext.AccountID) == "" || strings.TrimSpace(string(authContext.AccountType)) == "" {

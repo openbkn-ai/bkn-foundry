@@ -145,7 +145,29 @@ func TestInternalCapabilityCallsUseCallerScopedAuthorizationFace(t *testing.T) {
 func TestPublicCapabilityCallWithoutCallerTokenIsUnauthorized(t *testing.T) {
 	client := &operatorIntegrationClient{}
 	ctx := common.SetPublicAPIToCtx(context.Background(), true)
-	_, err := client.callerAuthorizationHeader(ctx, "operator.skill.list")
+	_, err := client.capabilityAuthorizationHeaderForAuthMode(ctx, "operator.skill.list", true)
+	status, ok := infraErr.HTTPStatus(err)
+	if !ok || status != http.StatusUnauthorized {
+		t.Fatalf("status = %d, %v; want 401", status, ok)
+	}
+}
+
+func TestPublicCapabilityCallWithoutCallerTokenAllowsDisabledAuth(t *testing.T) {
+	client := &operatorIntegrationClient{}
+	ctx := common.SetPublicAPIToCtx(context.Background(), true)
+	header, err := client.capabilityAuthorizationHeaderForAuthMode(ctx, "operator.skill.list", false)
+	if err != nil {
+		t.Fatalf("capabilityAuthorizationHeaderForAuthMode: %v", err)
+	}
+	if authorization := header["Authorization"]; authorization != "" {
+		t.Fatalf("Authorization = %q; want empty", authorization)
+	}
+}
+
+func TestPublicArbitraryFunctionExecutionStillRequiresCallerToken(t *testing.T) {
+	client := &operatorIntegrationClient{}
+	ctx := common.SetPublicAPIToCtx(context.Background(), true)
+	_, err := client.ExecuteFunction(ctx, &interfaces.ExecuteFunctionRequest{Code: "print('ok')"})
 	status, ok := infraErr.HTTPStatus(err)
 	if !ok || status != http.StatusUnauthorized {
 		t.Fatalf("status = %d, %v; want 401", status, ok)
