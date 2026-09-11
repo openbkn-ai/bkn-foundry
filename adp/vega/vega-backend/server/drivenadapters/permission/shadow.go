@@ -263,15 +263,20 @@ type safeFilteredResource struct {
 func (c *safeClient) filterResources(ctx context.Context, accessorID string,
 	resources []interfaces.PermissionResource, visibility, candidates []string) ([]safeFilteredResource, error) {
 	var out struct {
-		Resources []safeFilteredResource `json:"resources"`
+		Resources *[]safeFilteredResource `json:"resources"`
 	}
-	err := c.do(ctx, http.MethodPost, "/api/safe/v1/authz/resource-filter", map[string]any{
+	if err := c.do(ctx, http.MethodPost, "/api/safe/v1/authz/resource-filter", map[string]any{
 		"accessor_id":           accessorID,
 		"resources":             resources,
 		"visibility_operations": visibility,
 		"candidate_operations":  candidates,
-	}, &out)
-	return out.Resources, err
+	}, &out); err != nil {
+		return nil, err
+	}
+	if out.Resources == nil {
+		return nil, fmt.Errorf("bkn-safe resource-filter response is missing a non-null resources field")
+	}
+	return *out.Resources, nil
 }
 
 func (c *safeClient) allowedAll(ctx context.Context, accessorID, rtype, rid string, ops []string) (bool, error) {
