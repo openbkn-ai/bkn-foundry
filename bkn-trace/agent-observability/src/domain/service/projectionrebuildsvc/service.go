@@ -95,7 +95,7 @@ func (s *Service) Rebuild(ctx context.Context, projectorID, alias, indexVersion 
 			projectable := make([]iprojectionoutbox.Item, 0, len(items))
 			for _, item := range items {
 				checkpoint = item.ID
-				if item.EventType == historicalProvenanceBuildRequested {
+				if item.EventType == historicalProvenanceBuildRequested || item.EventType == "revision.input.sealed" {
 					continue
 				}
 				if err := s.target.ProjectVersion(ctx, indexVersion, item); err != nil {

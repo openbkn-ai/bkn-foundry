@@ -478,10 +478,11 @@ func retryableTransactionError(err error) bool {
 }
 
 type transaction struct {
-	ctx context.Context
-	tx  *sql.Tx
-	now time.Time
-	err error
+	strictEvidenceJSON bool
+	ctx                context.Context
+	tx                 *sql.Tx
+	now                time.Time
+	err                error
 }
 
 func (t *transaction) loadServerTime() error {
@@ -1003,7 +1004,7 @@ func (t *transaction) ListOperations(interactionID string) []sessionvo.Operation
 	defer func() { _ = rows.Close() }()
 	var result []sessionvo.Operation
 	for rows.Next() {
-		value, scanErr := scanOperationRows(rows)
+		value, scanErr := scanOperationRowsWithDecoder(rows, t.decodeEvidenceJSON)
 		if scanErr != nil {
 			t.err = scanErr
 			return nil
@@ -1236,7 +1237,7 @@ func (t *transaction) ListReceipts(interactionID string) []sessionvo.Receipt {
 	defer func() { _ = rows.Close() }()
 	var result []sessionvo.Receipt
 	for rows.Next() {
-		value, scanErr := scanReceiptRows(rows)
+		value, scanErr := scanReceiptRowsWithDecoder(rows, t.decodeEvidenceJSON)
 		if scanErr != nil {
 			t.err = scanErr
 			return nil
@@ -1543,9 +1544,18 @@ func (t *transaction) ListAssemblyRevisions(interactionID string) []sessionvo.As
 			t.err = err
 			return nil
 		}
-		unmarshalJSON(receipts, &value.IncludedReceiptIDs)
-		unmarshalJSON(events, &value.IncludedEventIDs)
-		unmarshalJSON(reasons, &value.PartialReasons)
+		if err := t.decodeEvidenceJSON("revision.included_receipt_ids", receipts, &value.IncludedReceiptIDs); err != nil {
+			t.err = err
+			return nil
+		}
+		if err := t.decodeEvidenceJSON("revision.included_event_ids", events, &value.IncludedEventIDs); err != nil {
+			t.err = err
+			return nil
+		}
+		if err := t.decodeEvidenceJSON("revision.partial_reasons", reasons, &value.PartialReasons); err != nil {
+			t.err = err
+			return nil
+		}
 		result = append(result, value)
 	}
 	t.err = rows.Err()
@@ -1738,6 +1748,10 @@ func (t *transaction) scanOperation(row rowScanner) (sessionvo.Operation, bool) 
 }
 
 func scanOperationRows(row rowScanner) (sessionvo.Operation, error) {
+	return scanOperationRowsWithDecoder(row, decodeLegacyEvidenceJSON)
+}
+
+func scanOperationRowsWithDecoder(row rowScanner, decode evidenceJSONDecoder) (sessionvo.Operation, error) {
 	var value sessionvo.Operation
 	var causation string
 	err := row.Scan(
@@ -1749,7 +1763,9 @@ func scanOperationRows(row rowScanner) (sessionvo.Operation, error) {
 	if err != nil {
 		return sessionvo.Operation{}, err
 	}
-	unmarshalJSON(causation, &value.CausationEventIDs)
+	if err := decode("operation.causation_event_ids", causation, &value.CausationEventIDs); err != nil {
+		return sessionvo.Operation{}, err
+	}
 	return value, nil
 }
 
@@ -1831,6 +1847,10 @@ func (t *transaction) scanReceipt(row rowScanner) (sessionvo.Receipt, bool) {
 }
 
 func scanReceiptRows(row rowScanner) (sessionvo.Receipt, error) {
+	return scanReceiptRowsWithDecoder(row, decodeLegacyEvidenceJSON)
+}
+
+func scanReceiptRowsWithDecoder(row rowScanner, decode evidenceJSONDecoder) (sessionvo.Receipt, error) {
 	var value sessionvo.Receipt
 	var causation, evidence, business, artifacts, reasons string
 	var terminalAt sql.NullTime
@@ -1846,11 +1866,21 @@ func scanReceiptRows(row rowScanner) (sessionvo.Receipt, error) {
 	if err != nil {
 		return sessionvo.Receipt{}, err
 	}
-	unmarshalJSON(causation, &value.CausationEventIDs)
-	unmarshalJSON(evidence, &value.ObservedEvidenceRefs)
-	unmarshalJSON(business, &value.BusinessRefs)
-	unmarshalJSON(artifacts, &value.ArtifactRefs)
-	unmarshalJSON(reasons, &value.PartialReasons)
+	if err := decode("receipt.causation_event_ids", causation, &value.CausationEventIDs); err != nil {
+		return sessionvo.Receipt{}, err
+	}
+	if err := decode("receipt.observed_evidence_refs", evidence, &value.ObservedEvidenceRefs); err != nil {
+		return sessionvo.Receipt{}, err
+	}
+	if err := decode("receipt.business_refs", business, &value.BusinessRefs); err != nil {
+		return sessionvo.Receipt{}, err
+	}
+	if err := decode("receipt.artifact_refs", artifacts, &value.ArtifactRefs); err != nil {
+		return sessionvo.Receipt{}, err
+	}
+	if err := decode("receipt.partial_reasons", reasons, &value.PartialReasons); err != nil {
+		return sessionvo.Receipt{}, err
+	}
 	if terminalAt.Valid {
 		value.TerminalAt = &terminalAt.Time
 	}

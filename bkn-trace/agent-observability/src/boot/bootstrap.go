@@ -8,8 +8,11 @@ package boot
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iartifactstore"
 	"log"
 	"net/http"
 	"strings"
@@ -250,7 +253,21 @@ func NewApp() (*App, error) {
 	)
 	ledgerHandler := httphandler.NewConfiguredLedgerHandler(ledgersvc.NewWithMetrics(ledgerStore, metrics))
 
-	enterpriseReader := httphandler.NewEnterpriseInteractionFactsReader(evidenceService, sessionService)
+	var captureInput func(context.Context, string, evidencevo.QueryScope) (json.RawMessage, string, bool, error)
+	if snapshots, ok := sessionStore.(isessionstore.EvidenceSnapshotReader); ok {
+		if artifacts, ok := evidenceStore.(iartifactstore.CaptureReader); ok {
+			captureService := evidencesvc.NewCaptureService(snapshots, artifacts)
+			captureInput = func(ctx context.Context, id string, scope evidencevo.QueryScope) (json.RawMessage, string, bool, error) {
+				capture, found, err := captureService.Capture(ctx, id, scope, evidencesvc.CaptureLimits{MaxReads: 1000, MaxResponseBytes: 8 << 20, MaxReadBytes: 64 << 20, MaxContentBytes: 8 << 20, MaxCapturedBytes: 64 << 20})
+				if err != nil || !found {
+					return nil, "", found, err
+				}
+				raw, hash, err := evidencesvc.EncodeCapture(capture, 64<<20)
+				return raw, hash, true, err
+			}
+		}
+	}
+	enterpriseReader := httphandler.NewEnterpriseInteractionFactsReader(evidenceService, sessionService, captureInput)
 	app := newAppWithArchive(
 		httpServerConfig, traceHandler, evidenceHandler, logHandler, archiveHandler,
 		sessionHandler, ledgerHandler, metrics, enterpriseReader,

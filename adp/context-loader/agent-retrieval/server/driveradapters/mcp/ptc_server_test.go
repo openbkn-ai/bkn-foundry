@@ -8,6 +8,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -165,6 +166,49 @@ func TestPTCRunCodeWrapsIntoHandler(t *testing.T) {
 	}
 	if !strings.Contains(toolkit.Stub, `"Accept-Language": _CFG.get("locale", "zh-CN")`) {
 		t.Fatal("PTC sandbox stub does not forward the effective locale to MCP")
+	}
+}
+
+func TestPTCRunCodeChildrenUseExecutingOperationAsParent(t *testing.T) {
+	for _, originalParent := range []string{"", "op_grandparent"} {
+		for _, attempt := range []int{1, 2} {
+			executor := &fakeExecutor{}
+			businessContext := map[string]any{
+				"conversation_id": "conv_a", "interaction_id": "int_b",
+				"causation_event_ids": []any{"evt_recorded"},
+				"business_refs":       []any{map[string]any{"kind": "recorded"}},
+			}
+			if originalParent != "" {
+				businessContext["parent_operation_id"] = originalParent
+			}
+			before, _ := json.Marshal(businessContext)
+			ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
+				ConversationID: "conv_a", InteractionID: "int_b", OperationID: "op_run_code", Attempt: attempt,
+			})
+			handler := handlePTCExecute(executor, ptcTestToolkit(t), ptcToolByName(t, "run_code"))
+			result, err := handler(ctx, ptcCallRequest("run_code", map[string]any{
+				"code": "query_object_instance(kn_id='n', ot_id='m')", "bkn_context": businessContext,
+			}))
+			if err != nil || result == nil || result.IsError || executor.last == nil {
+				t.Fatalf("run_code did not execute: %v", err)
+			}
+			childContext := executor.last.Event["bkn"].(map[string]any)
+			if childContext["parent_operation_id"] != "op_run_code" {
+				t.Fatalf("parent=%q attempt=%d: child parent=%v, want executing operation", originalParent, attempt, childContext["parent_operation_id"])
+			}
+			for key, value := range businessContext {
+				if key != "parent_operation_id" && !reflect.DeepEqual(value, childContext[key]) {
+					t.Fatalf("changed business context %s", key)
+				}
+			}
+			after, _ := json.Marshal(businessContext)
+			if string(before) != string(after) {
+				t.Fatal("mutated outer run_code request context")
+			}
+			if _, exists := childContext["attempt"]; exists {
+				t.Fatal("invented parent attempt field")
+			}
+		}
 	}
 }
 

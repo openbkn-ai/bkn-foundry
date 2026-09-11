@@ -22,10 +22,19 @@ import (
 // TraceArchiveSource packages terminal Interaction facts from the Trace Core
 // authority. It intentionally keeps a Conversation row as a light index after
 // its completed Interaction package is removed from hot storage.
-type TraceArchiveSource struct{ store *Store }
+type TraceArchiveSource struct {
+	store          *Store
+	revisionInputs bool
+}
 
 func NewTraceArchiveSource(store *Store) *TraceArchiveSource {
 	return &TraceArchiveSource{store: store}
+}
+
+// NewTraceArchiveSourceWithRevisionInputs requires the revision-input schema.
+// It is opt-in until migration and producer/consumer boot assembly are approved.
+func NewTraceArchiveSourceWithRevisionInputs(store *Store) *TraceArchiveSource {
+	return &TraceArchiveSource{store: store, revisionInputs: true}
 }
 
 func (source *TraceArchiveSource) Freeze(ctx context.Context, kind observabilityvo.ArchiveKind, archiveRange observabilityvo.ArchiveRange) ([]archivesvc.Candidate, error) {
@@ -58,9 +67,14 @@ func (source *TraceArchiveSource) packageInteraction(ctx context.Context, intera
 	var operations []sessionvo.Operation
 	var receipts []sessionvo.Receipt
 	var facts []sessionvo.OperationCallFact
+	var sealed revisionArchiveContents
 	err := source.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		var ok bool
-		interaction, ok = tx.PeekInteraction(interactionID)
+		if source.revisionInputs {
+			interaction, ok = tx.FindInteraction(interactionID)
+		} else {
+			interaction, ok = tx.PeekInteraction(interactionID)
+		}
 		if !ok {
 			return fmt.Errorf("interaction %s not found", interactionID)
 		}
@@ -69,12 +83,23 @@ func (source *TraceArchiveSource) packageInteraction(ctx context.Context, intera
 			return fmt.Errorf("conversation %s not found", interaction.ConversationID)
 		}
 		operations, receipts, facts = tx.ListOperations(interactionID), tx.ListReceipts(interactionID), tx.ListOperationCallFacts(interactionID)
+		if source.revisionInputs {
+			var err error
+			sealed, err = readRevisionArchive(ctx, tx.(*transaction).tx, interactionID)
+			if err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 	if err != nil {
 		return nil, time.Time{}, err
 	}
-	payload, err := json.Marshal(map[string]any{"conversation": conversation, "interaction": interaction, "operations": operations, "receipts": receipts, "call_facts": facts})
+	value := map[string]any{"conversation": conversation, "interaction": interaction, "operations": operations, "receipts": receipts, "call_facts": facts}
+	if source.revisionInputs {
+		value["revision_evidence"] = sealed
+	}
+	payload, err := json.Marshal(value)
 	if err != nil {
 		return nil, time.Time{}, err
 	}
@@ -88,7 +113,11 @@ func (source *TraceArchiveSource) Purge(ctx context.Context, kind observabilityv
 	if kind != observabilityvo.ArchiveKindTrace {
 		return nil
 	}
-	tx, err := source.store.db.BeginTx(ctx, nil)
+	var options *sql.TxOptions
+	if source.revisionInputs {
+		options = &sql.TxOptions{Isolation: sql.LevelReadCommitted}
+	}
+	tx, err := source.store.db.BeginTx(ctx, options)
 	if err != nil {
 		return err
 	}
@@ -101,6 +130,14 @@ func (source *TraceArchiveSource) Purge(ctx context.Context, kind observabilityv
 		}
 		if err != nil {
 			return err
+		}
+		if source.revisionInputs {
+			if err := verifyRevisionArchiveForPurge(ctx, tx, id, candidate.Payload); err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `DELETE FROM bkn_trace_revision_inputs WHERE interaction_id=?`, id); err != nil {
+				return err
+			}
 		}
 		for _, statement := range []string{
 			`DELETE FROM bkn_trace_operation_call_facts WHERE interaction_id=?`,

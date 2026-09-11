@@ -49,6 +49,8 @@ var defaultCapacityLimits = CapacityLimits{
 }
 
 type Options struct {
+	// RevisionSealer is an internal, opt-in transaction hook. Nil preserves existing behavior.
+	RevisionSealer             func(isessionstore.Transaction, sessionvo.Interaction, sessionvo.AssemblyRevision) error
 	Now                        func() time.Time
 	NewID                      func(prefix string) string
 	EvidenceCollectionState    func() string
@@ -64,6 +66,7 @@ type Options struct {
 }
 
 type Service struct {
+	revisionSealer             func(isessionstore.Transaction, sessionvo.Interaction, sessionvo.AssemblyRevision) error
 	store                      isessionstore.Store
 	now                        func() time.Time
 	newID                      func(string) string
@@ -115,7 +118,7 @@ func New(store isessionstore.Store, options Options) *Service {
 		capacity.MaxEvidenceRefsPerInteraction = defaultCapacityLimits.MaxEvidenceRefsPerInteraction
 	}
 	return &Service{
-		store: store, now: now, newID: newID,
+		store: store, now: now, newID: newID, revisionSealer: options.RevisionSealer,
 		evidenceCollectionState:    evidenceCollectionState,
 		enableHistoricalProvenance: options.EnableHistoricalProvenance,
 		projectionGrantIssuer:      strings.TrimSpace(options.ProjectionGrantIssuer),
@@ -1743,6 +1746,11 @@ func (s *Service) freezeAssemblyRevision(tx isessionstore.Transaction, interacti
 		Trigger: trigger, CreatedAt: tx.Now(),
 	}
 	tx.SaveAssemblyRevision(revision)
+	if s.revisionSealer != nil {
+		if err := s.revisionSealer(tx, interaction, revision); err != nil {
+			return err
+		}
+	}
 	return s.appendProjection(tx, "assembly_revision", revision.ID, "assembly.revision.created", revision)
 }
 
