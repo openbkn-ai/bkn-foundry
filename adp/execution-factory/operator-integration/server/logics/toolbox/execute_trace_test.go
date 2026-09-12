@@ -123,7 +123,7 @@ func TestExecuteToolRecordsApprovedFailureAsHashOnlyTerminalLifecycle(t *testing
 	accessor := &interfaces.AuthAccessor{ID: "user-secret"}
 	auth.EXPECT().GetAccessor(gomock.Any(), "user-secret").Return(accessor, nil)
 	auth.EXPECT().CheckExecutePermission(gomock.Any(), accessor, "box-secret", interfaces.AuthResourceTypeToolBox).Return(nil)
-	toolboxDB.EXPECT().SelectToolBox(gomock.Any(), "box-secret").Return(true, &model.ToolboxDB{BoxID: "box-secret"}, nil)
+	toolboxDB.EXPECT().SelectToolBox(gomock.Any(), "box-secret").Return(true, &model.ToolboxDB{BoxID: "box-secret", Status: string(interfaces.BizStatusPublished)}, nil)
 	tool := &model.ToolDB{ToolID: "tool-secret", SourceID: "source-secret", SourceType: model.SourceTypeOpenAPI, Status: string(interfaces.ToolStatusTypeEnabled)}
 	toolDB.EXPECT().SelectTool(gomock.Any(), "tool-secret").Return(true, tool, nil)
 	metadata.EXPECT().GetMetadataBySource(gomock.Any(), "source-secret", model.SourceTypeOpenAPI).

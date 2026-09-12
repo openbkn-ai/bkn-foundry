@@ -168,6 +168,22 @@ func (m *componentImpexManager) importConfigWithTx(ctx context.Context, compType
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, "get tx failed")
 		return
 	}
+	// Registered before the commit defer below so it runs after it — defers are LIFO. Imported
+	// boxes, tools and MCP Servers are written straight to the tables and never pass through the
+	// per-write index syncs; the capability index is brought in line once the rows are actually
+	// committed. An MCP import can carry tool boxes too, so both are asked (#1483).
+	defer func() {
+		if err != nil {
+			return
+		}
+		switch compType {
+		case interfaces.ComponentTypeToolBox:
+			m.ToolboxMgr.ReconcileCapabilityIndexAsync(ctx)
+		case interfaces.ComponentTypeMCP:
+			m.MCPMgr.ReconcileCapabilityIndexAsync(ctx)
+			m.ToolboxMgr.ReconcileCapabilityIndexAsync(ctx)
+		}
+	}()
 	defer func() {
 		if err != nil {
 			_ = tx.Rollback()

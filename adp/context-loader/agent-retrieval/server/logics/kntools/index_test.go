@@ -959,3 +959,36 @@ func TestTruncationIsDetectable(t *testing.T) {
 		}
 	})
 }
+
+// The execution gate mirrors the retrieval gate (#1483): a tool the search no longer offers —
+// its box withdrawn, or the tool itself disabled — must not run either, whatever the caller-visible
+// listing says. The proxy must never be reached.
+func TestExecuteRefusesAWithdrawnBoxAndADisabledTool(t *testing.T) {
+	cases := map[string]*fakeOperator{
+		"box offline": {
+			toolsByBox:     map[string]*interfaces.ListPublishedToolsResponse{"box-1": tools("box-1", "t1")},
+			boxUnpublished: map[string]bool{"box-1": true},
+		},
+		"tool disabled": {
+			toolsByBox:       map[string]*interfaces.ListPublishedToolsResponse{"box-1": tools("box-1", "t1")},
+			boxDisabledTools: map[string]map[string]bool{"box-1": {"t1": true}},
+		},
+		"state unreadable": {
+			toolsByBox:   map[string]*interfaces.ListPublishedToolsResponse{"box-1": tools("box-1", "t1")},
+			boxStatusErr: map[string]error{"box-1": errors.New("execution factory unreachable")},
+		},
+	}
+	for name, op := range cases {
+		op.execResp = map[string]any{"ran": true}
+		bkn := &fakeBkn{refs: functionRefs("box-1/t1")}
+		_, err := newService(bkn, op).ExecuteTool(context.Background(), &ExecuteToolReq{
+			KnID: "kn1", ToolboxID: "box-1", ToolID: "t1", Arguments: map[string]any{},
+		})
+		if err == nil {
+			t.Fatalf("%s: 该被拒", name)
+		}
+		if op.executionCount != 0 {
+			t.Fatalf("%s: 被拒的调用不该到达代理, executions=%d", name, op.executionCount)
+		}
+	}
+}

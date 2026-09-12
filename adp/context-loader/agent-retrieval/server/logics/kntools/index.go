@@ -511,6 +511,24 @@ func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (
 			infraErr.LocalizedDetail(ctx, "ToolNotMountedOnNetwork"))
 	}
 
+	// Lifecycle before visibility, and with the same reader search_capabilities uses (#1483).
+	// The mount says the network may use this tool; the box's publication and the tool's own
+	// enabled flag say whether anyone may call it now. Without this the two faces disagreed —
+	// search would no longer offer a withdrawn box's tool while execute still ran it — and the
+	// caller-visible listing below cannot fill the gap: it never looks at the box, and on the
+	// internal face it cannot be read at all. A state that cannot be confirmed refuses.
+	state, err := s.operator.ToolBoxLifecycle(ctx, toolboxID)
+	if err != nil || state == nil || !state.Published {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
+			infraErr.LocalizedDetail(ctx, "ToolNotExecutable"))
+	}
+	if state.EnabledKnown {
+		if _, on := state.EnabledTools[toolID]; !on {
+			return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
+				infraErr.LocalizedDetail(ctx, "ToolNotExecutable"))
+		}
+	}
+
 	listed, err := s.operator.ListPublishedTools(ctx, &interfaces.ListPublishedToolsRequest{ToolboxID: toolboxID})
 	if err != nil {
 		return nil, err

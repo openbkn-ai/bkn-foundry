@@ -685,6 +685,11 @@ paths:
         **返回的是被调服务的原始响应**（`status_code` / `headers` / `body`），
         不是平台自己的信封——上游返 500 时本接口仍是 200，`status_code` 里才是 500。
 
+        **只有已发布工具箱里已启用的工具能被调用**：工具箱 `unpublish` / `offline`，
+        或工具 `disabled`，都返回 400 `ToolNotAvailable`（`details` 说明是箱还是工具）。
+        这与调试接口不同——调试允许作者跑未发布的东西；生产调用不允许。下架一个
+        工具箱即刻让其全部工具停止响应本接口，不等下一次索引对账。
+
         **函数工具（`metadata_type=function`）的受管上下文**：请求同时带
         `Authorization`、`bkn-conversation-id`、`bkn-interaction-id` 三者时，平台把
         已认证的调用者与其托管 Interaction 透传进本次沙箱执行，函数可用

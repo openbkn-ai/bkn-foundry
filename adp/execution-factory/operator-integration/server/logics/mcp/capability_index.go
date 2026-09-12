@@ -122,6 +122,17 @@ func (s *mcpServiceImpl) syncMCPCapabilitiesAsync(ctx context.Context, mcpID str
 	}()
 }
 
+// ReconcileCapabilityIndexAsync is the importer's hook: an imported (and possibly published)
+// server never passes through the register/update syncs, so every server is re-listed once the
+// import has committed (#1483).
+func (s *mcpServiceImpl) ReconcileCapabilityIndexAsync(ctx context.Context) {
+	if s.CapabilityIndex == nil {
+		return
+	}
+	detached := context.WithoutCancel(ctx)
+	go s.reconcileCapabilities(detached)
+}
+
 // forgetMCPCapabilitiesAsync removes a deleted server's tools from the index.
 func (s *mcpServiceImpl) forgetMCPCapabilitiesAsync(ctx context.Context, mcpID string) {
 	if s.CapabilityIndex == nil || strings.TrimSpace(mcpID) == "" {

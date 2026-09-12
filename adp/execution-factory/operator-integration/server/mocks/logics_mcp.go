@@ -531,6 +531,18 @@ func (mr *MockIMCPServiceMockRecorder) QueryReleaseBatch(ctx, req any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryReleaseBatch", reflect.TypeOf((*MockIMCPService)(nil).QueryReleaseBatch), ctx, req)
 }
 
+// ReconcileCapabilityIndexAsync mocks base method.
+func (m *MockIMCPService) ReconcileCapabilityIndexAsync(ctx context.Context) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "ReconcileCapabilityIndexAsync", ctx)
+}
+
+// ReconcileCapabilityIndexAsync indicates an expected call of ReconcileCapabilityIndexAsync.
+func (mr *MockIMCPServiceMockRecorder) ReconcileCapabilityIndexAsync(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileCapabilityIndexAsync", reflect.TypeOf((*MockIMCPService)(nil).ReconcileCapabilityIndexAsync), ctx)
+}
+
 // UpdateMCPServer mocks base method.
 func (m *MockIMCPService) UpdateMCPServer(ctx context.Context, req *interfaces.MCPServerUpdateRequest) (*interfaces.MCPServerUpdateResponse, error) {
 	m.ctrl.T.Helper()
@@ -626,6 +638,18 @@ func (m *MockIMCPImpexService) Import(ctx context.Context, tx *sql.Tx, mode inte
 func (mr *MockIMCPImpexServiceMockRecorder) Import(ctx, tx, mode, data, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Import", reflect.TypeOf((*MockIMCPImpexService)(nil).Import), ctx, tx, mode, data, userID)
+}
+
+// ReconcileCapabilityIndexAsync mocks base method.
+func (m *MockIMCPImpexService) ReconcileCapabilityIndexAsync(ctx context.Context) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "ReconcileCapabilityIndexAsync", ctx)
+}
+
+// ReconcileCapabilityIndexAsync indicates an expected call of ReconcileCapabilityIndexAsync.
+func (mr *MockIMCPImpexServiceMockRecorder) ReconcileCapabilityIndexAsync(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileCapabilityIndexAsync", reflect.TypeOf((*MockIMCPImpexService)(nil).ReconcileCapabilityIndexAsync), ctx)
 }
 
 // MockIMCPToolExecutor is a mock of IMCPToolExecutor interface.
