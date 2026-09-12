@@ -7,6 +7,8 @@ package httphandler
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
@@ -62,6 +64,7 @@ type enterpriseInteractionOperationSource interface {
 type enterpriseInteractionFactsReader struct {
 	summaries  enterpriseInteractionSummarySource
 	operations enterpriseInteractionOperationSource
+	capture    func(context.Context, string, evidencevo.QueryScope) (json.RawMessage, string, bool, error)
 }
 
 // NewEnterpriseInteractionFactsReader exposes only the current caller's
@@ -70,8 +73,13 @@ type enterpriseInteractionFactsReader struct {
 func NewEnterpriseInteractionFactsReader(
 	summaries enterpriseInteractionSummarySource,
 	operations enterpriseInteractionOperationSource,
+	capture ...func(context.Context, string, evidencevo.QueryScope) (json.RawMessage, string, bool, error),
 ) enterpriseroute.Reader {
-	return enterpriseInteractionFactsReader{summaries: summaries, operations: operations}
+	r := enterpriseInteractionFactsReader{summaries: summaries, operations: operations}
+	if len(capture) > 0 {
+		r.capture = capture[0]
+	}
+	return r
 }
 
 func (r enterpriseInteractionFactsReader) ReadInteraction(
@@ -112,4 +120,45 @@ func trustedSubjectType(accountType string) string {
 		return "service"
 	}
 	return "user"
+}
+
+// ReadExplanationCapture is an optional in-process EE capability. It reuses the
+// provenance entry's authorization and never exposes stores or caller secrets.
+func (r enterpriseInteractionFactsReader) ReadExplanationCapture(ctx context.Context, id string) (json.RawMessage, string, bool, error) {
+	scope, ok := trustedQueryScopeFromContext(ctx)
+	if !ok {
+		return nil, "", false, nil
+	}
+	scope.View = evidencevo.AccessViewTechnical
+	_, found, err := r.summaries.GetInteractionSummary(ctx, id, scope)
+	if err != nil || !found {
+		return nil, "", found, err
+	}
+	if r.capture == nil {
+		return nil, "", false, errors.New("explanation capture unavailable")
+	}
+	return r.capture(ctx, id, scope)
+}
+
+// AuthorizeExplanationInteraction checks the existing entry scope without
+// loading every operation payload for an already generated result.
+func (r enterpriseInteractionFactsReader) AuthorizeExplanationInteraction(ctx context.Context, id string) (bool, error) {
+	scope, ok := trustedQueryScopeFromContext(ctx)
+	if !ok {
+		return false, nil
+	}
+	scope.View = evidencevo.AccessViewTechnical
+	_, found, err := r.summaries.GetInteractionSummary(ctx, id, scope)
+	return found, err
+}
+
+// ExplanationScopeFingerprint returns Core's trusted access-profile identity
+// for the optional EE explanation cache. It deliberately exposes no grants,
+// account data, or authorization headers.
+func (r enterpriseInteractionFactsReader) ExplanationScopeFingerprint(ctx context.Context) (string, bool) {
+	scope, ok := trustedQueryScopeFromContext(ctx)
+	if !ok || scope.AccessProfile == nil || scope.AccessProfile.Fingerprint == "" {
+		return "", false
+	}
+	return scope.AccessProfile.Fingerprint, true
 }

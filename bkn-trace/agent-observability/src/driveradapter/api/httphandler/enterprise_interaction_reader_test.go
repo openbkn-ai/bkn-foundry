@@ -7,6 +7,7 @@ package httphandler
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
@@ -112,4 +113,25 @@ func (s fakeInteractionOperationSource) ListOperationExecutionsByInteractionIDSc
 		return nil, context.Canceled
 	}
 	return s.entries, s.err
+}
+
+func TestEnterpriseCaptureRequiresAuthorizedInteraction(t *testing.T) {
+	for _, found := range []bool{false, true} {
+		calls := 0
+		reader := NewEnterpriseInteractionFactsReader(fakeInteractionSummarySource{found: found}, fakeInteractionOperationSource{}, func(context.Context, string, evidencevo.QueryScope) (json.RawMessage, string, bool, error) {
+			calls++
+			return json.RawMessage(`{}`), "hash", true, nil
+		})
+		capture := reader.(interface {
+			ReadExplanationCapture(context.Context, string) (json.RawMessage, string, bool, error)
+		})
+		if _, _, ok, err := capture.ReadExplanationCapture(context.Background(), "i"); err != nil || ok || calls != 0 {
+			t.Fatal("untrusted read reached capture")
+		}
+		ctx := context.WithValue(context.Background(), trustedQueryScopeContextKey{}, evidencevo.QueryScope{AccountID: "u", AccountType: "user"})
+		_, _, ok, err := capture.ReadExplanationCapture(ctx, "i")
+		if err != nil || ok != found || (calls == 1) != found {
+			t.Fatal("scope bypass")
+		}
+	}
 }

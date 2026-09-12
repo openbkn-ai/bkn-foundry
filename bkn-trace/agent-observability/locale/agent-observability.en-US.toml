@@ -71,6 +71,7 @@
 "evidence artifact body is required" = "evidence artifact body is required"
 "evidence artifact not found" = "evidence artifact not found"
 "evidence chain not found" = "evidence chain not found"
+"explanation capture unavailable" = "explanation capture unavailable"
 "evidence event body is required" = "evidence event body is required"
 "evidence event was not durably committed" = "evidence event was not durably committed"
 "evidence ingest authentication is not configured" = "evidence ingest authentication is not configured"

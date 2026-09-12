@@ -277,3 +277,44 @@ func (*projectionTestMetrics) Add(string, uint64) {}
 func (m *projectionTestMetrics) Set(name string, value float64) {
 	m.gauges[name] = value
 }
+
+func TestRevisionNoticeNeverFallsThroughToSearchProjection(t *testing.T) {
+	for _, mode := range []string{"missing", "success", "failure"} {
+		t.Run(mode, func(t *testing.T) {
+			store := &fakeOutboxStore{items: []iprojectionoutbox.Item{{ID: 1, EventType: "revision.input.sealed", EventID: "seal-r"}}}
+			sink := &fakeProjectionSink{}
+			options := projectorsvc.WorkerOptions{}
+			h := &fakeRevisionInputHandler{}
+			if mode != "missing" {
+				options.RevisionInputHandler = h
+			}
+			if mode == "failure" {
+				h.err = errors.New("retry")
+			}
+			result, err := projectorsvc.NewWorker(store, sink, options).RunOnce(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if sink.calls != 0 {
+				t.Fatal("seal notice sent to search projection")
+			}
+			if mode == "success" {
+				if result.Delivered != 1 || h.calls != 1 {
+					t.Fatal(result)
+				}
+			} else if result.Retried != 1 || result.Delivered != 0 {
+				t.Fatal(result)
+			}
+		})
+	}
+}
+
+type fakeRevisionInputHandler struct {
+	calls int
+	err   error
+}
+
+func (h *fakeRevisionInputHandler) HandleRevisionInput(context.Context, iprojectionoutbox.Item) error {
+	h.calls++
+	return h.err
+}

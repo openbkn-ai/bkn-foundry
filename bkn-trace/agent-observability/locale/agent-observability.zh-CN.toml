@@ -71,6 +71,7 @@
 "evidence artifact body is required" = "缺少证据制品请求体"
 "evidence artifact not found" = "证据制品不存在"
 "evidence chain not found" = "证据链不存在"
+"explanation capture unavailable" = "解释采集不可用"
 "evidence event body is required" = "缺少证据事件请求体"
 "evidence event was not durably committed" = "证据事件未持久提交"
 "evidence ingest authentication is not configured" = "未配置证据写入认证"

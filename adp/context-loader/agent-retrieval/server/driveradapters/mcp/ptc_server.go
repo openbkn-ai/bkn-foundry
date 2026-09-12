@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/bytedance/sonic"
@@ -102,6 +103,14 @@ func handlePTCExecuteForLocale(
 			timeout = ptcMaxTimeout
 		}
 		businessContext := ptcBusinessContextArg(req)
+		if tool.Wrap == ptcWrapHandler {
+			if traceContext, ok := common.GetTraceContextFromCtx(ctx); ok && traceContext.OperationID != "" {
+				// The guard persisted this run_code operation. Its child MCP calls
+				// reference it, while the outer request retains its own parent.
+				businessContext = maps.Clone(businessContext)
+				businessContext["parent_operation_id"] = traceContext.OperationID
+			}
+		}
 
 		code, apiErr := buildPTCCode(locale, toolkit, tool, req, businessContext)
 		if apiErr != "" {

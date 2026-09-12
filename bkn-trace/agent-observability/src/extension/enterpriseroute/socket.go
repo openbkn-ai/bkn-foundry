@@ -67,6 +67,15 @@ type Reader interface {
 	ListInteractions(context.Context, ListQuery) (evidencevo.InteractionSummaryPage, error)
 }
 
+// ExplanationScopeReader is an optional in-process capability for an EE
+// explanation cache. The fingerprint is derived by Core from the already
+// authorized access profile; it is never an HTTP input or response field.
+// Keeping cached explanations partitioned by this value prevents a scoped
+// capture from being reused for a different authorized view of an interaction.
+type ExplanationScopeReader interface {
+	ExplanationScopeFingerprint(context.Context) (string, bool)
+}
+
 // Registrar is the only way an EE mounter may add a route. It fixes the
 // security order: EE availability gate first, then Core record-scope
 // authorization, then the EE handler.

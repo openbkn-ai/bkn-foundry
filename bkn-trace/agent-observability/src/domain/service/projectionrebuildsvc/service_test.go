@@ -256,3 +256,15 @@ func (t *fakeTarget) SwitchAlias(_ context.Context, alias, version string) error
 	t.alias, t.version = alias, version
 	return nil
 }
+
+func TestRebuildSkipsRevisionNoticesButAdvancesCheckpoint(t *testing.T) {
+	source := &fakeSource{authoritative: []iprojectionoutbox.Item{projectionItem("interaction", "i", `{}`)}, authoritativeCount: 1, highWatermarks: []uint64{0, 1, 1}, outbox: []iprojectionoutbox.Item{{ID: 1, AggregateType: "revision_input", AggregateID: "r", EventType: "revision.input.sealed", Payload: []byte(`{}`)}}}
+	target := newFakeTarget()
+	result, err := projectionrebuildsvc.New(source, target, projectionrebuildsvc.Options{BatchSize: 1}).Rebuild(context.Background(), "core", "alias", "version")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.LastOutboxID != 1 || result.ProjectedCount != 1 || len(target.documents) != 1 {
+		t.Fatal("notice polluted search rebuild", result)
+	}
+}

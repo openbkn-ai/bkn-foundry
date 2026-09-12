@@ -17,6 +17,7 @@ import (
 )
 
 type WorkerOptions struct {
+	RevisionInputHandler        RevisionInputHandler
 	Now                         func() time.Time
 	BatchSize                   int
 	LockDuration                time.Duration
@@ -35,6 +36,10 @@ const historicalProvenanceBuildRequested = "historical_provenance.build_requeste
 // both destinations.
 type HistoricalProvenanceHandler interface {
 	HandleHistoricalProvenance(context.Context, iprojectionoutbox.Item) error
+}
+
+type RevisionInputHandler interface {
+	HandleRevisionInput(context.Context, iprojectionoutbox.Item) error
 }
 
 type Worker struct {
@@ -140,6 +145,12 @@ func (w *Worker) RunOnce(ctx context.Context) (RunResult, error) {
 }
 
 func (w *Worker) project(ctx context.Context, item iprojectionoutbox.Item) error {
+	if item.EventType == "revision.input.sealed" {
+		if w.options.RevisionInputHandler == nil {
+			return errors.New("revision input handler is not assembled")
+		}
+		return w.options.RevisionInputHandler.HandleRevisionInput(ctx, item)
+	}
 	if item.EventType == historicalProvenanceBuildRequested {
 		if w.provenance == nil {
 			return errors.New("historical provenance handler is not assembled")
