@@ -23,6 +23,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/decisionlog"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/license"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/managedproxy"
@@ -42,6 +43,9 @@ type Deps struct {
 	Audit *audit.Store
 	// AccessLog records login/logout outcomes separately from management audit.
 	AccessLog *accesslog.Store
+	// Decisions records authorization decisions (#334). When nil, nothing is
+	// recorded and the decision read endpoint is not mounted.
+	Decisions *decisionlog.Store
 	// TokenVerifier validates admin-API bearer tokens. Defaults to Hydra when
 	// nil (production); tests inject a stub.
 	TokenVerifier TokenVerifier
@@ -66,6 +70,16 @@ func New(deps Deps) *gin.Engine {
 		abortInternalError(c)
 	}))
 	r.Use(sharedrest.LanguageMiddleware())
+	if deps.Decisions != nil {
+		r.Use(withDecisionLog(deps.Decisions))
+	}
+	// Authentication and authorization refusals (401/403) at the token gates
+	// are audited too; the recorder runs in front of each gate. Without an
+	// audit store it is a pass-through.
+	gateAudit := func(c *gin.Context) { c.Next() }
+	if deps.Audit != nil {
+		gateAudit = auditAuthFailures(deps.Audit, deps.Directory, newFailureLimiter(failureLimiterWindow))
+	}
 
 	r.GET("/health/ready", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 	r.GET("/health/alive", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
@@ -74,7 +88,7 @@ func New(deps Deps) *gin.Engine {
 	// local intermediate mode relies on the platform network boundary (#333),
 	// never on a caller-supplied service-name header. Callers resolve the end-user
 	// identity at their own boundary and pass accessor_id.
-	registerAuthz(r, deps.Enforcer, deps.DB)
+	registerAuthz(r, deps.Enforcer, deps.DB, deps.Audit, deps.Directory)
 
 	// AppKey (user-issued API key) store. Verification is internal, tokenless and
 	// ClusterIP-only (same trust face as /authz) — the Context Loader MCP/REST
@@ -125,14 +139,14 @@ func New(deps Deps) *gin.Engine {
 		meVerifier = newCachingVerifier(meVerifier, verifierCacheTTL)
 	}
 	if deps.Enforcer != nil && verifier != nil && deps.Users != nil && deps.Directory != nil {
-		authzExplain := r.Group("/api/safe/v1/authz", sharedrest.PrivateNoCacheMiddleware(),
+		authzExplain := r.Group("/api/safe/v1/authz", sharedrest.PrivateNoCacheMiddleware(), gateAudit,
 			RequireUser(verifier), RequireActiveAccount(deps.DB))
 		if deps.Audit != nil {
 			authzExplain.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
 		}
 		registerAuthzExplain(authzExplain, deps.Enforcer, deps.DB)
 
-		admin := r.Group("/api/safe/v1/admin", sharedrest.PrivateNoCacheMiddleware(), RequireAdmin(verifier, deps.Enforcer), RequireActiveAccount(deps.DB))
+		admin := r.Group("/api/safe/v1/admin", sharedrest.PrivateNoCacheMiddleware(), gateAudit, RequireAdmin(verifier, deps.Enforcer), RequireActiveAccount(deps.DB))
 		// Audit every mutating admin request. Use() must precede the route
 		// registrations below: gin snapshots the group's handler chain at
 		// register time. The middleware sits after RequireAdmin, so it only runs
@@ -140,9 +154,13 @@ func New(deps Deps) *gin.Engine {
 		if deps.Audit != nil {
 			admin.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
 			registerAuditReads(admin, deps.Audit, deps.Enforcer)
+			registerAuditChainReads(admin, deps.Audit, deps.Enforcer)
 		}
 		if deps.AccessLog != nil {
 			registerAccessLogReads(admin, deps.AccessLog, deps.Enforcer)
+		}
+		if deps.Decisions != nil {
+			registerDecisionReads(admin, deps.Decisions, deps.Enforcer)
 		}
 		registerUserAdmin(admin, deps.Users, deps.Enforcer, deps.Directory)
 		registerAdminReads(admin, deps.Directory, deps.Enforcer)
@@ -151,7 +169,7 @@ func New(deps Deps) *gin.Engine {
 		// off the `admin` group because gin fixes a group's handler chain at
 		// register time — the relaxation has to be its own group or it would be
 		// no relaxation at all.
-		ownerDirectory := r.Group("/api/safe/v1/admin", sharedrest.PrivateNoCacheMiddleware(),
+		ownerDirectory := r.Group("/api/safe/v1/admin", sharedrest.PrivateNoCacheMiddleware(), gateAudit,
 			RequireAdminOrResourceOwner(verifier, deps.Enforcer), RequireActiveAccount(deps.DB))
 		if deps.Audit != nil {
 			ownerDirectory.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
@@ -163,7 +181,7 @@ func New(deps Deps) *gin.Engine {
 		registerObjectGrants(admin, deps.Enforcer, deps.DB)
 		if permobject.ManagementRegistered() {
 			enterpriseObjectGrants := r.Group("/api/safe/v1/admin", permobject.ManagementGate(),
-				sharedrest.PrivateNoCacheMiddleware(), RequireUser(verifier), RequireActiveAccount(deps.DB))
+				sharedrest.PrivateNoCacheMiddleware(), gateAudit, RequireUser(verifier), RequireActiveAccount(deps.DB))
 			if deps.Audit != nil {
 				enterpriseObjectGrants.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
 			}
@@ -181,7 +199,7 @@ func New(deps Deps) *gin.Engine {
 		// identifiable without any credential at all. Audit sits after the gate
 		// for the same reason: a hidden route must not produce a record shaped
 		// differently from a route that does not exist.
-		gatedAdmin := r.Group("/api/safe/v1/admin", sharedrest.PrivateNoCacheMiddleware(), adminwrite.Gate(), RequireAdmin(verifier, deps.Enforcer), RequireActiveAccount(deps.DB))
+		gatedAdmin := r.Group("/api/safe/v1/admin", sharedrest.PrivateNoCacheMiddleware(), adminwrite.Gate(), gateAudit, RequireAdmin(verifier, deps.Enforcer), RequireActiveAccount(deps.DB))
 		if deps.Audit != nil {
 			gatedAdmin.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
 		}
@@ -194,7 +212,7 @@ func New(deps Deps) *gin.Engine {
 		// gate still runs first, before authentication, so an unavailable paid
 		// surface is indistinguishable from Community's unmounted route.
 		propertyGrantAdmin := r.Group("/api/safe/v1/admin", permdata.ManagementGate(),
-			sharedrest.PrivateNoCacheMiddleware(), RequireUser(verifier), RequireActiveAccount(deps.DB))
+			sharedrest.PrivateNoCacheMiddleware(), gateAudit, RequireUser(verifier), RequireActiveAccount(deps.DB))
 		if deps.Audit != nil {
 			propertyGrantAdmin.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
 		}
@@ -247,13 +265,13 @@ func New(deps Deps) *gin.Engine {
 		// Read-only /me (GET "" + GET /permissions): the login burst fires these
 		// two in parallel, so they get the cached, singleflight-deduplicated
 		// verifier.
-		meReads := r.Group("/api/safe/v1/me", sharedrest.PrivateNoCacheMiddleware(), RequireUser(meVerifier))
+		meReads := r.Group("/api/safe/v1/me", sharedrest.PrivateNoCacheMiddleware(), gateAudit, RequireUser(meVerifier))
 		registerMeReads(meReads, deps.Enforcer, deps.DB, deps.Directory)
 
 		// What this deployment can do, for the frontend's menu. Authn only:
 		// it describes the cluster, not the caller. Enforcement stays at each
 		// gated call site (open-core-gating §2.5).
-		caps := r.Group("/api/safe/v1", sharedrest.PrivateNoCacheMiddleware(), RequireUser(meVerifier))
+		caps := r.Group("/api/safe/v1", sharedrest.PrivateNoCacheMiddleware(), gateAudit, RequireUser(meVerifier))
 		registerCapabilities(caps, deps.License)
 
 		// Voluntary logout only records an access fact before the browser clears
@@ -261,7 +279,7 @@ func New(deps Deps) *gin.Engine {
 		// can still record that explicit action; it does not mutate authorization
 		// state and must not be blocked by the active-account write gate below.
 		if deps.AccessLog != nil {
-			meLogout := r.Group("/api/safe/v1/me", sharedrest.PrivateNoCacheMiddleware(), RequireUser(verifier))
+			meLogout := r.Group("/api/safe/v1/me", sharedrest.PrivateNoCacheMiddleware(), gateAudit, RequireUser(verifier))
 			registerLogout(meLogout, deps.AccessLog, deps.Directory)
 		}
 
@@ -270,7 +288,7 @@ func New(deps Deps) *gin.Engine {
 		// the read cache's TTL window. The local account check separately makes an
 		// administrator disable effective immediately even while Hydra still
 		// considers an already-issued token active.
-		meWrites := r.Group("/api/safe/v1/me", sharedrest.PrivateNoCacheMiddleware(),
+		meWrites := r.Group("/api/safe/v1/me", sharedrest.PrivateNoCacheMiddleware(), gateAudit,
 			RequireUser(verifier), RequireActiveAccount(deps.DB))
 		if deps.Audit != nil {
 			meWrites.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))

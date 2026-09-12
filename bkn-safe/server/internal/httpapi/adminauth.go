@@ -35,21 +35,23 @@ func RequireAdmin(v TokenVerifier, e *authz.Enforcer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tok := bearerToken(c)
 		if tok == "" {
-			abortPublicError(c, http.StatusUnauthorized)
+			abortGate(c, http.StatusUnauthorized, gateAuthn)
 			return
 		}
 		sub, err := v.VerifyToken(c.Request.Context(), tok)
 		if err != nil {
-			abortPublicError(c, http.StatusUnauthorized)
+			abortGate(c, http.StatusUnauthorized, gateAuthn)
 			return
 		}
-		ok, err := e.CanAdmin(sub)
+		c.Set(ctxAuthnSubject, sub)
+		decision, err := e.AdminDecision(c.Request.Context(), sub)
 		if err != nil {
 			abortInternalError(c)
 			return
 		}
-		if !ok {
-			abortPublicError(c, http.StatusForbidden)
+		recordEvaluation(c, decisionSourceAdmin, sub, authz.AdminResourceType, authz.AdminResourceID, authz.AdminOperation, decision, "")
+		if !decision.Allowed() {
+			abortGate(c, http.StatusForbidden, gateAuthz)
 			return
 		}
 		c.Set(ctxAccessorID, sub)
@@ -65,7 +67,7 @@ func RequireActiveAccount(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sub := c.GetString(ctxAccessorID)
 		if sub == "" {
-			abortPublicError(c, http.StatusUnauthorized)
+			abortGate(c, http.StatusUnauthorized, gateAuthn)
 			return
 		}
 		active, err := activeAccount(c, db, sub)
@@ -74,7 +76,7 @@ func RequireActiveAccount(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		if !active {
-			abortPublicError(c, http.StatusForbidden)
+			abortGate(c, http.StatusForbidden, gateInactive)
 			return
 		}
 		c.Next()
@@ -97,16 +99,17 @@ func RequirePermission(e *authz.Enforcer, resourceType, op string) gin.HandlerFu
 func authorizePermission(c *gin.Context, e *authz.Enforcer, resourceType, op string) bool {
 	sub := c.GetString(ctxAccessorID)
 	if sub == "" {
-		abortPublicError(c, http.StatusUnauthorized)
+		abortGate(c, http.StatusUnauthorized, gateAuthn)
 		return false
 	}
-	ok, err := e.CheckContext(c.Request.Context(), sub, resourceType, "*", op)
+	decision, err := e.OperationDecision(c.Request.Context(), sub, resourceType, "*", op)
 	if err != nil {
 		abortInternalError(c)
 		return false
 	}
-	if !ok {
-		abortPublicError(c, http.StatusForbidden)
+	recordEvaluation(c, decisionSourceAdmin, sub, resourceType, "*", op, decision, "")
+	if !decision.Allowed() {
+		abortGate(c, http.StatusForbidden, gatePermission)
 		return false
 	}
 	return true
@@ -137,16 +140,17 @@ func RequireAnyPermission(e *authz.Enforcer, points ...PermissionPoint) gin.Hand
 	return func(c *gin.Context) {
 		sub := c.GetString(ctxAccessorID)
 		if sub == "" {
-			abortPublicError(c, http.StatusUnauthorized)
+			abortGate(c, http.StatusUnauthorized, gateAuthn)
 			return
 		}
 		for i, p := range points {
-			ok, err := e.CheckContext(c.Request.Context(), sub, p.ResourceType, "*", p.Op)
+			decision, err := e.OperationDecision(c.Request.Context(), sub, p.ResourceType, "*", p.Op)
 			if err != nil {
 				abortInternalError(c)
 				return
 			}
-			if !ok {
+			recordEvaluation(c, decisionSourceAdmin, sub, p.ResourceType, "*", p.Op, decision, "")
+			if !decision.Allowed() {
 				continue
 			}
 			if i > 0 {
@@ -157,7 +161,7 @@ func RequireAnyPermission(e *authz.Enforcer, points ...PermissionPoint) gin.Hand
 			c.Next()
 			return
 		}
-		abortPublicError(c, http.StatusForbidden)
+		abortGate(c, http.StatusForbidden, gatePermission)
 	}
 }
 
@@ -168,14 +172,15 @@ func RequireUser(v TokenVerifier) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tok := bearerToken(c)
 		if tok == "" {
-			abortPublicError(c, http.StatusUnauthorized)
+			abortGate(c, http.StatusUnauthorized, gateAuthn)
 			return
 		}
 		sub, err := v.VerifyToken(c.Request.Context(), tok)
 		if err != nil {
-			abortPublicError(c, http.StatusUnauthorized)
+			abortGate(c, http.StatusUnauthorized, gateAuthn)
 			return
 		}
+		c.Set(ctxAuthnSubject, sub)
 		c.Set(ctxAccessorID, sub)
 		c.Next()
 	}
@@ -225,20 +230,22 @@ func RequireAdminOrResourceOwner(v TokenVerifier, e *authz.Enforcer) gin.Handler
 	return func(c *gin.Context) {
 		tok := bearerToken(c)
 		if tok == "" {
-			abortPublicError(c, http.StatusUnauthorized)
+			abortGate(c, http.StatusUnauthorized, gateAuthn)
 			return
 		}
 		sub, err := v.VerifyToken(c.Request.Context(), tok)
 		if err != nil {
-			abortPublicError(c, http.StatusUnauthorized)
+			abortGate(c, http.StatusUnauthorized, gateAuthn)
 			return
 		}
-		admin, err := e.CanAdmin(sub)
+		c.Set(ctxAuthnSubject, sub)
+		decision, err := e.AdminDecision(c.Request.Context(), sub)
 		if err != nil {
 			abortInternalError(c)
 			return
 		}
-		if admin {
+		if decision.Allowed() {
+			recordEvaluation(c, decisionSourceAdmin, sub, authz.AdminResourceType, authz.AdminResourceID, authz.AdminOperation, decision, "")
 			c.Set(ctxAccessorID, sub)
 			c.Set(ctxDirectoryReadAuthority, directoryReadAdmin)
 			c.Next()
@@ -249,17 +256,25 @@ func RequireAdminOrResourceOwner(v TokenVerifier, e *authz.Enforcer) gin.Handler
 			abortInternalError(c)
 			return
 		}
+		owner := false
 		for _, grant := range grants {
 			for _, op := range grant.Operations {
 				if op == opAuthorize {
-					c.Set(ctxAccessorID, sub)
-					c.Set(ctxDirectoryReadAuthority, directoryReadOwner)
-					c.Next()
-					return
+					owner = true
 				}
 			}
 		}
-		abortPublicError(c, http.StatusForbidden)
+		// The admin decision was a deny; the row says whether the owner
+		// fallback let the request through instead.
+		recordEvaluation(c, decisionSourceAdmin, sub, authz.AdminResourceType, authz.AdminResourceID, authz.AdminOperation, decision,
+			decisionDetail(map[string]any{"fallback": "resource_owner", "fallback_allowed": owner}))
+		if owner {
+			c.Set(ctxAccessorID, sub)
+			c.Set(ctxDirectoryReadAuthority, directoryReadOwner)
+			c.Next()
+			return
+		}
+		abortGate(c, http.StatusForbidden, gateAuthz)
 	}
 }
 

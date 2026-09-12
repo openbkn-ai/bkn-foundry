@@ -6,7 +6,10 @@
 // file (SAFE_CONFIG or -config), and environment variable overrides.
 package config
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // Config is the full bkn-safe configuration.
 type Config struct {
@@ -18,6 +21,31 @@ type Config struct {
 	// SeedOnStart controls whether roles/resource-types/operations/grants are
 	// seeded into the DB at startup (idempotent). Default true.
 	SeedOnStart bool `yaml:"seed_on_start"`
+	// Audit tunes the audit chain anchor export and the authorization
+	// decision log (#334).
+	Audit AuditConfig `yaml:"audit"`
+}
+
+// AuditConfig tunes what the audit subsystem does beyond recording rows.
+type AuditConfig struct {
+	// ChainHeadLogInterval is how often the audit chain head (seq + hash) is
+	// written to the service log, so an external append-only log store holds
+	// anchors a verifier can compare the database against. 0 disables.
+	ChainHeadLogInterval time.Duration `yaml:"chain_head_log_interval"`
+	// DecisionLog configures the authorization decision log.
+	DecisionLog DecisionLogConfig `yaml:"decision_log"`
+}
+
+// DecisionLogConfig tunes the authorization decision log. Denies are always
+// recorded; only the allow side is sampled.
+type DecisionLogConfig struct {
+	Enabled bool `yaml:"enabled"`
+	// AllowSampleRate in [0,1] is the fraction of allow decisions kept.
+	AllowSampleRate float64 `yaml:"allow_sample_rate"`
+	// QueueSize bounds the rows waiting to be written; beyond it rows drop.
+	QueueSize int `yaml:"queue_size"`
+	// RetentionDays purges older rows daily. 0 keeps everything.
+	RetentionDays int `yaml:"retention_days"`
 }
 
 // LicenseConfig points bkn-safe at the license-server (activation + renewal).

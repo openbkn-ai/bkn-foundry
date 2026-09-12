@@ -91,14 +91,24 @@ func auditMiddleware(store *audit.Store, dir *directory.Service, db *gorm.DB) gi
 			}
 		}
 		detail = withAuditOutcome(detail, c)
+		detail = withAuditGate(detail, c)
 		actorID := c.GetString(ctxAccessorID)
+		actorType, authMethod, sourceChannel := "user", "oauth", "api"
+		if actorID == "" {
+			// Tokenless service face (/authz policy and hierarchy writes): the
+			// platform network boundary is the credential, so there is no
+			// subject to name — only the peer address, plus the caller's
+			// self-declared service name in Detail when it sends one.
+			actorType, authMethod, sourceChannel = "service", "network", "internal"
+			detail = withAuditCallerService(detail, c)
+		}
 		if err := store.Record(c.Request.Context(), audit.Entry{
 			ActorID:           actorID,
 			ActorNameSnapshot: auditActorName(c.Request.Context(), dir, actorID),
-			ActorType:         "user",
-			AuthMethod:        "oauth",
+			ActorType:         actorType,
+			AuthMethod:        authMethod,
 			RequestID:         requestID,
-			SourceChannel:     "api",
+			SourceChannel:     sourceChannel,
 			Method:            c.Request.Method,
 			Resource:          resource,
 			Action:            action,
@@ -116,6 +126,7 @@ func auditMiddleware(store *audit.Store, dir *directory.Service, db *gorm.DB) gi
 			)
 			_ = c.Error(err)
 		}
+		c.Set(ctxAuditRecorded, true)
 	}
 }
 
@@ -197,6 +208,50 @@ func setAuditOperation(c *gin.Context, action, targetID, targetName string) {
 // read): the value is then simply never consumed.
 func setAuditOutcome(c *gin.Context, outcome map[string]any) {
 	c.Set(ctxAuditOutcome, outcome)
+}
+
+// withAuditGate notes in Detail which gate refused a mutating request that a
+// permission point turned away, so a reader can tell a refused attempt from a
+// failed one without decoding the status code.
+func withAuditGate(detail string, c *gin.Context) string {
+	gate := c.GetString(ctxGateFailure)
+	if gate == "" {
+		return detail
+	}
+	return withAuditFact(detail, "_gate", gate)
+}
+
+// maxCallerServiceLen bounds the self-declared x-caller-service header value.
+const maxCallerServiceLen = 64
+
+// withAuditCallerService records the caller's self-declared service name for
+// a tokenless write. It is metadata for correlation only — nothing trusts it —
+// which is why it lives in Detail and never in the actor columns.
+func withAuditCallerService(detail string, c *gin.Context) string {
+	name := strings.TrimSpace(c.GetHeader("x-caller-service"))
+	if name == "" || len(name) > maxCallerServiceLen || strings.ContainsFunc(name, func(r rune) bool {
+		return r < 0x21 || r > 0x7e
+	}) {
+		return detail
+	}
+	return withAuditFact(detail, "_caller_service", name)
+}
+
+// withAuditFact merges one key into the Detail JSON object, keeping the
+// original snapshot when the merged form would not fit the column.
+func withAuditFact(detail, key string, value any) string {
+	m := map[string]any{}
+	if detail != "" {
+		if err := json.Unmarshal([]byte(detail), &m); err != nil {
+			m = map[string]any{}
+		}
+	}
+	m[key] = value
+	b, err := json.Marshal(m)
+	if err != nil || len(b) > maxAuditDetail {
+		return detail
+	}
+	return string(b)
 }
 
 // withAuditOutcome folds any handler-supplied outcome facts into the Detail
@@ -334,6 +389,13 @@ func auditDetailTargetID(resource, detail string) string {
 	case "role-bindings":
 		id, _ := body["accessor_id"].(string)
 		return id
+	case "policies":
+		ref, _ := body["resource"].(map[string]any)
+		id, _ := ref["id"].(string)
+		return id
+	case "resource-parents":
+		rt, _ := body["resource_type"].(string)
+		return rt
 	default:
 		return ""
 	}
@@ -424,6 +486,16 @@ func auditAction(method, fullPath string) string {
 		return "revoke"
 	case "/api/safe/v1/authz/explain":
 		return "explain"
+	case "/api/safe/v1/authz/policies":
+		if method == http.MethodDelete {
+			return "revoke"
+		}
+		return "grant"
+	case "/api/safe/v1/authz/resource-parents":
+		if method == http.MethodDelete {
+			return "drop_parent"
+		}
+		return "set_parent"
 	case "/api/safe/v1/admin/roles/:id/permissions":
 		if method == http.MethodDelete {
 			return "revoke_permission"

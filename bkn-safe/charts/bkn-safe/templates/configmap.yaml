@@ -36,6 +36,16 @@ data:
   SAFE_LICENSE_SERVER_URL: {{ .Values.config.license.serverURL | quote }}
   SAFE_LICENSE_CA_FILE: {{ .Values.config.license.caFile | quote }}
   SAFE_LICENSE_INSECURE_SKIP_VERIFY: {{ .Values.config.license.insecureSkipVerify | quote }}
+  {{- with .Values.config.audit }}
+  SAFE_AUDIT_CHAIN_HEAD_LOG_INTERVAL: {{ .chainHeadLogInterval | default "15m" | quote }}
+  {{- with .decisionLog }}
+  {{- /* `default` would turn an explicit false back into true; test the kind. */}}
+  SAFE_AUTHZ_DECISION_LOG_ENABLED: {{ if kindIs "bool" .enabled }}{{ .enabled | toString | quote }}{{ else }}"true"{{ end }}
+  SAFE_AUTHZ_DECISION_LOG_ALLOW_SAMPLE_RATE: {{ .allowSampleRate | default "1" | quote }}
+  SAFE_AUTHZ_DECISION_LOG_QUEUE_SIZE: {{ .queueSize | default "4096" | quote }}
+  SAFE_AUTHZ_DECISION_LOG_RETENTION_DAYS: {{ .retentionDays | default "90" | quote }}
+  {{- end }}
+  {{- end }}
   {{- /* OPENBKN_INSTANCE_ID is NOT here — the instance identity lives in its
          own ConfigMap (templates/instance-id.yaml) so that it survives
          `helm uninstall`. Both are pulled in via envFrom. */}}

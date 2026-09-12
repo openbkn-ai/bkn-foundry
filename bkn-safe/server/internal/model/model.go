@@ -326,7 +326,50 @@ type AuditLog struct {
 	Status    int       `json:"status"` // HTTP status code of the response
 	ClientIP  string    `json:"client_ip" gorm:"size:64"`
 	CreatedAt time.Time `json:"created_at" gorm:"index"`
+	// Tamper-evidence chain (#334). Seq is the row's append position, PrevHash
+	// the RowHash of the row at Seq-1, and RowHash SHA-256 over this row's
+	// canonical form plus PrevHash — so editing, deleting or reordering any
+	// chained row breaks verification from that point on. Rows written before
+	// the chain existed keep a NULL Seq and empty hashes: they are counted but
+	// never verified, and the chain starts at the first row written after the
+	// upgrade. Seq is nullable precisely so that AutoMigrate can add the unique
+	// index on a table that already holds rows.
+	Seq      *uint64 `json:"seq,omitempty" gorm:"uniqueIndex"`
+	PrevHash string  `json:"prev_hash,omitempty" gorm:"size:64"`
+	RowHash  string  `json:"row_hash,omitempty" gorm:"size:64"`
 }
+
+// AuthzDecision is one recorded authorization decision (#334): which accessor
+// asked for which operation on which resource, what the engine answered and on
+// what basis. It is a query log, not the chained audit trail: rows are written
+// asynchronously, allow decisions may be sampled, and the table is purged by
+// retention. Deny decisions are always recorded.
+type AuthzDecision struct {
+	ID           string `json:"id" gorm:"primaryKey;size:64"`
+	AccessorID   string `json:"accessor_id" gorm:"size:64;index:idx_authz_decision_accessor_time,priority:1"`
+	ResourceType string `json:"resource_type" gorm:"size:64;index"`
+	ResourceID   string `json:"resource_id" gorm:"size:128"`
+	Operation    string `json:"operation" gorm:"size:128"`
+	// Scope is the evaluation scope the caller asked for (effective | local).
+	Scope string `json:"scope" gorm:"size:16"`
+	// Decision is allow | deny | none; Basis is the authz.DecisionBasis that
+	// produced it, or "inactive_account" when the accessor was disabled.
+	Decision          string `json:"decision" gorm:"size:16;index"`
+	Basis             string `json:"basis" gorm:"size:32"`
+	DeniedRequirement string `json:"denied_requirement" gorm:"size:64"`
+	// Source names the entry point: check | operations | resource-filter |
+	// admin (management gates and permission points).
+	Source    string `json:"source" gorm:"size:32;index"`
+	RequestID string `json:"request_id" gorm:"size:128"`
+	TraceID   string `json:"trace_id" gorm:"size:64"`
+	ClientIP  string `json:"client_ip" gorm:"size:64"`
+	// Detail is a small JSON object with source-specific facts (batch sizes,
+	// projected operations, gate name). "" when there is nothing to add.
+	Detail    string    `json:"detail" gorm:"size:1024"`
+	CreatedAt time.Time `json:"created_at" gorm:"index:idx_authz_decision_accessor_time,priority:2;index"`
+}
+
+func (AuthzDecision) TableName() string { return "authz_decision_log" }
 
 // AccessLog records an authentication fact. It is deliberately separate from
 // AuditLog: login and logout explain who entered or left the platform, while
@@ -394,7 +437,7 @@ func AllModels() []any {
 	return []any{
 		&User{}, &Role{}, &Department{}, &UserDepartment{},
 		&Group{}, &GroupMember{}, &ResourceType{}, &Operation{},
-		&AuditLog{}, &AccessLog{}, &APIKey{}, &License{}, &ResourceParent{},
+		&AuditLog{}, &AccessLog{}, &AuthzDecision{}, &APIKey{}, &License{}, &ResourceParent{},
 		&ManagedProxyAccount{}, &ProxyGrantSource{}, &ProxyGrantPolicy{},
 		&ProxyGrantAuditLog{}, &AuthorizationGrant{},
 	}

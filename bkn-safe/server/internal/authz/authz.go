@@ -347,6 +347,20 @@ func (en *Enforcer) CanAdmin(accessorID string) (bool, error) {
 	return en.Check(accessorID, "safe_admin", "console", "manage")
 }
 
+// AdminResource is the (type, id, op) triple CanAdmin evaluates, exported so
+// the decision log can name it.
+const (
+	AdminResourceType = "safe_admin"
+	AdminResourceID   = "console"
+	AdminOperation    = "manage"
+)
+
+// AdminDecision is CanAdmin with the full evaluation (decision + basis), for
+// call sites that record the decision.
+func (en *Enforcer) AdminDecision(ctx context.Context, accessorID string) (Evaluation, error) {
+	return en.OperationDecision(ctx, accessorID, AdminResourceType, AdminResourceID, AdminOperation)
+}
+
 // AssignRole binds an accessor (user/app) to a role. Idempotent.
 func (en *Enforcer) AssignRole(accessorID, roleID string) error {
 	en.transactionMu.Lock()

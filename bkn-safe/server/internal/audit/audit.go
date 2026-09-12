@@ -12,6 +12,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -48,8 +49,9 @@ type Entry struct {
 	ClientIP          string
 }
 
-// Record persists one audit entry. The returned error is for logging only —
-// auditing must never break the request it is recording, so callers swallow it.
+// Record persists one audit entry as the next link of the tamper-evidence
+// chain (see chain.go). The returned error is for logging only — auditing must
+// never break the request it is recording, so callers swallow it.
 func (s *Store) Record(ctx context.Context, e Entry) error {
 	row := model.AuditLog{
 		ID:                NewID(),
@@ -68,8 +70,20 @@ func (s *Store) Record(ctx context.Context, e Entry) error {
 		Detail:            e.Detail,
 		Status:            e.Status,
 		ClientIP:          e.ClientIP,
+		CreatedAt:         chainTimestamp(),
 	}
-	return s.db.WithContext(ctx).Create(&row).Error
+	chainMu.Lock()
+	defer chainMu.Unlock()
+	var err error
+	for attempt := 0; attempt < chainAppendAttempts; attempt++ {
+		err = s.append(ctx, &row)
+		if err == nil || !isDuplicateKey(err) {
+			return err
+		}
+		// Another replica took this seq between our head read and insert:
+		// re-read the head and link behind it instead.
+	}
+	return fmt.Errorf("audit chain append lost the sequence race %d times: %w", chainAppendAttempts, err)
 }
 
 // Filter narrows a List query. Zero-value fields are not applied. From/To bound

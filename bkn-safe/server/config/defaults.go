@@ -4,6 +4,8 @@
 
 package config
 
+import "time"
+
 // defaultConfig returns dev-friendly defaults (same as historical env-only Load).
 func defaultConfig() *Config {
 	return &Config{
@@ -26,6 +28,15 @@ func defaultConfig() *Config {
 		},
 		License: LicenseConfig{
 			ServerURL: "https://license.openbkn.ai",
+		},
+		Audit: AuditConfig{
+			ChainHeadLogInterval: 15 * time.Minute,
+			DecisionLog: DecisionLogConfig{
+				Enabled:         true,
+				AllowSampleRate: 1,
+				QueueSize:       4096,
+				RetentionDays:   90,
+			},
 		},
 	}
 }
