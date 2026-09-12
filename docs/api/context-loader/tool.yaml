@@ -204,6 +204,7 @@ paths:
             examples:
               调用:
                 value:
+                  kn_id: kn_finance
                   toolbox_id: box_finance
                   tool_id: tool_fx_convert
                   arguments:
@@ -215,6 +216,7 @@ paths:
                   bkn_context:
                     conversation_id: conv_01J8Z
                     interaction_id: int_01J8Z
+                  kn_id: kn_finance
                   toolbox_id: box_finance
                   tool_id: tool_fx_convert
                   arguments:
