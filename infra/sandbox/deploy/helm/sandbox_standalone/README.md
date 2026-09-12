@@ -18,6 +18,7 @@ For BKN Foundry component packaging, use `deploy/helm/sandbox`.
 
 - Kubernetes 1.24+
 - Helm 3.0+
+- A CNI plugin that enforces Kubernetes `NetworkPolicy`
 - PV provisioner support for MariaDB and MinIO persistence
 
 ## Installing
@@ -80,6 +81,43 @@ The deprecated `image.defaultTemplate` value is still accepted as a compatibilit
 | `mariadb.enabled` | Deploy internal MariaDB | `true` |
 | `web.enabled` | Deploy Sandbox Web Console | `true` |
 | `minio.enabled` | Deploy internal MinIO | `true` |
+| `networkPolicy.enabled` | Apply a default-deny egress policy to dynamic executor pods | `true` |
+| `networkPolicy.publicHttps.enabled` | Allow public HTTPS while excluding cluster, private, link-local, and reserved address space; required by runtime dependency installation | `true` |
+| `networkPolicy.bkn.enabled` | Allow an optional BKN deployment through agent-retrieval port 30780 | `false` |
+| `networkPolicy.bkn.namespace` | Agent-retrieval namespace override; empty derives it from an in-cluster BKN FQDN or uses the Sandbox namespace for a short service name | `""` |
+| `networkPolicy.additionalEgress` | Extra Kubernetes egress rules for explicitly approved dependencies | `[]` |
+
+## Executor Egress Isolation
+
+The policy selects only dynamic executor pods. It allows DNS, the Sandbox
+Control Plane, MinIO, and public HTTPS. The public HTTPS rule excludes private,
+cluster, link-local, metadata, multicast, and reserved address ranges, which
+keeps runtime dependency installation working without reopening platform
+services. Standard Kubernetes NetworkPolicy cannot allow the package index by
+DNS name, so this is the portable L3/L4 boundary. Disable
+`networkPolicy.publicHttps.enabled` when dependencies are prebuilt.
+
+MariaDB is used by the Control Plane, not executors, so it is intentionally not
+allowed. Standalone installs do not include BKN, so BKN access is disabled by
+default. When connecting one, set both BKN URL values to agent-retrieval's
+authenticated-only port 30780 and enable `networkPolicy.bkn`. An empty
+`networkPolicy.bkn.namespace` derives the namespace from an in-cluster service
+FQDN; set it explicitly for any other addressing convention. Never allow the
+main port 30779 because that port also serves trusted `/in` routes.
+
+The policy is enabled by default so fresh installations do not start with an
+open executor network boundary. Existing installations must use a staged
+upgrade: keep `networkPolicy.enabled=false` during the observation period,
+collect executor traffic with the CNI's flow tooling, add only verified
+dependencies to `networkPolicy.additionalEgress`, and enable the policy only
+after validation. Public HTTPS is allowed by default for runtime package
+installation; private-network and non-HTTPS public calls remain denied.
+
+If this standalone installation connects to BKN, upgrade agent-retrieval and
+verify port 30780 before changing both BKN URLs from 30779 to 30780. When the
+policy and BKN rule are enabled, Helm fails rendering if either non-empty BKN
+URL uses a different port. Applying the policy affects already running executor
+pods. NodeLocal DNSCache users must also allow its listener address explicitly.
 
 ## Access
 

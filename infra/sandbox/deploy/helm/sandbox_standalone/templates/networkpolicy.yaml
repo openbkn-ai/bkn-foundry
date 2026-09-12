@@ -1,0 +1,90 @@
+{{- if and .Values.networkPolicy.enabled .Values.networkPolicy.bkn.enabled }}
+{{- $expectedPort := int .Values.networkPolicy.bkn.port }}
+{{- range $name, $bknURL := dict "controlPlane.env.BKN_BASE_URL" .Values.controlPlane.env.BKN_BASE_URL "controlPlane.env.BKN_SANDBOX_MCP_URL" .Values.controlPlane.env.BKN_SANDBOX_MCP_URL }}
+{{- if $bknURL }}
+{{- $parsedURL := urlParse $bknURL }}
+{{- $urlPort := regexFind ":[0-9]+$" (get $parsedURL "host") }}
+{{- if not $urlPort }}
+{{- fail (printf "%s must include port %d when the executor NetworkPolicy BKN rule is enabled" $name $expectedPort) }}
+{{- end }}
+{{- if ne (int (trimPrefix ":" $urlPort)) $expectedPort }}
+{{- fail (printf "%s must use port %d when the executor NetworkPolicy BKN rule is enabled" $name $expectedPort) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "sandbox.fullname" . }}-executor-egress
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "sandbox.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: sandbox-executor
+      managed_by: sandbox-control-plane
+      sandbox-type: execution
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.dns.namespace | quote }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.dns.podSelector | nindent 14 }}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- if .Values.controlPlane.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app: {{ include "sandbox.fullname" . }}
+              component: control-plane
+      ports:
+        - protocol: TCP
+          port: {{ .Values.controlPlane.service.port }}
+    {{- end }}
+    {{- if .Values.minio.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app: {{ include "sandbox.fullname" . }}
+              component: minio
+      ports:
+        - protocol: TCP
+          port: {{ .Values.minio.service.apiPort }}
+    {{- end }}
+    {{- if .Values.networkPolicy.bkn.enabled }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ include "sandbox.bknNamespace" . | quote }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.bkn.podSelector | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.networkPolicy.bkn.port }}
+    {{- end }}
+    {{- if and .Values.networkPolicy.publicHttps.enabled .Values.networkPolicy.publicHttps.ipBlocks }}
+    - to:
+        {{- range .Values.networkPolicy.publicHttps.ipBlocks }}
+        - ipBlock:
+            {{- toYaml . | nindent 12 }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 443
+    {{- end }}
+    {{- with .Values.networkPolicy.additionalEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

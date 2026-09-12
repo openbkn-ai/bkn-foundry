@@ -98,6 +98,9 @@ func Boot(opts Options) (*App, error) {
 // every call, so a certificate installed after startup takes effect without a
 // restart.
 func (a *App) Run() error {
+	if err := validatePorts(a.config.Project); err != nil {
+		return err
+	}
 	entitlement.Freeze()
 	if caps := entitlement.Assembled(); len(caps) > 0 {
 		a.config.Logger.Infof("extensions assembled: %+v", caps)
@@ -109,7 +112,7 @@ func (a *App) Run() error {
 	s := &Server{
 		config:             a.config,
 		httpHealthHandler:  driveradapters.NewHTTPHealthHandler(),
-		restPublicHandler:  driveradapters.NewRestPublicHandler(a.config.Logger, a.config.Project.Port),
+		restPublicHandler:  driveradapters.NewRestPublicHandler(a.config.Logger, a.config.Project.SandboxPort),
 		restPrivateHandler: driveradapters.NewRestPrivateHandler(a.config.Logger),
 	}
 	s.config.Logger.Info("start agent-retrieval server")
@@ -121,32 +124,64 @@ func (a *App) Run() error {
 	select {}
 }
 
+func validatePorts(project config.Project) error {
+	if project.SandboxPort < 1 || project.SandboxPort > 65535 {
+		return fmt.Errorf("project.sandbox_port must be between 1 and 65535")
+	}
+	if project.SandboxPort == project.Port {
+		return fmt.Errorf("project.sandbox_port must differ from project.port")
+	}
+	return nil
+}
+
 // Start starts the server
 func (s *Server) Start() {
 	gin.SetMode(gin.ReleaseMode)
 
-	go func() {
-		// Register router - health check
-		engine := gin.New()
-		engine.Use(gin.Recovery())
-		engine.UseRawPath = true
-		routerHealth := engine.Group("/health")
-		s.httpHealthHandler.RegisterRouter(routerHealth)
+	go s.serve(s.platformEngine(), s.config.Project.Port, "platform")
+	go s.serve(s.sandboxEngine(), s.config.Project.SandboxPort, "sandbox")
+}
 
-		// Register internal interface router - operator related interfaces
-		routerInternalGroup := engine.Group("/api/agent-retrieval/in/v1")
-		routerInternalGroup.Use(gin.Recovery())
-		s.restPrivateHandler.RegisterRouter(routerInternalGroup)
+// platformEngine serves both the public authenticated API and the trusted
+// in-cluster API. Sandbox workloads must never be allowed to reach its port.
+func (s *Server) platformEngine() *gin.Engine {
+	engine := s.baseEngine()
 
-		// Register external router
-		routerGroup := engine.Group("/api/agent-retrieval/v1")
-		routerGroup.Use(gin.Recovery())
-		s.restPublicHandler.RegisterRouter(routerGroup)
+	routerInternalGroup := engine.Group("/api/agent-retrieval/in/v1")
+	routerInternalGroup.Use(gin.Recovery())
+	s.restPrivateHandler.RegisterRouter(routerInternalGroup)
 
-		url := fmt.Sprintf("%s:%d", s.config.Project.Host, s.config.Project.Port)
-		err := engine.Run(url)
-		if err != nil {
-			s.config.Logger.Errorf("start server failed, error: %v", err)
-		}
-	}()
+	s.registerPublicRoutes(engine)
+	return engine
+}
+
+// sandboxEngine is a separate L4 boundary for untrusted sandbox workloads.
+// It deliberately omits the /in router so a NetworkPolicy can allow public
+// BKN/MCP calls without also exposing trusted internal APIs on the same port.
+func (s *Server) sandboxEngine() *gin.Engine {
+	engine := s.baseEngine()
+	s.registerPublicRoutes(engine)
+	return engine
+}
+
+func (s *Server) baseEngine() *gin.Engine {
+	engine := gin.New()
+	engine.Use(gin.Recovery())
+	engine.UseRawPath = true
+	routerHealth := engine.Group("/health")
+	s.httpHealthHandler.RegisterRouter(routerHealth)
+	return engine
+}
+
+func (s *Server) registerPublicRoutes(engine *gin.Engine) {
+	routerGroup := engine.Group("/api/agent-retrieval/v1")
+	routerGroup.Use(gin.Recovery())
+	s.restPublicHandler.RegisterRouter(routerGroup)
+}
+
+func (s *Server) serve(engine *gin.Engine, port int, surface string) {
+	url := fmt.Sprintf("%s:%d", s.config.Project.Host, port)
+	if err := engine.Run(url); err != nil {
+		s.config.Logger.Errorf("start %s server failed, error: %v", surface, err)
+	}
 }

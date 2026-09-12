@@ -35,6 +35,9 @@ service:
   type: ClusterIP
   enableDualStack: false
   port: 30779
+  # Public authenticated API only. Sandbox execution pods use this port so an
+  # egress NetworkPolicy can deny the main port that also carries /in routes.
+  sandboxPort: 30780
   language: zh-CN
   loggerOutput: stdout
   loggerLevel: 1

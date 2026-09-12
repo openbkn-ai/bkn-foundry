@@ -82,6 +82,8 @@ spec:
               - name: CONTEXT_LOADER_RESOURCE_FILTER_CHUNK_SIZE
                 value: {{ .Values.auth.resourceFilterChunkSize | default 200 | quote }}
             {{- end}}
+              - name: PTC_SANDBOX_MCP_URL
+                value: {{ printf "http://%s.%s.svc.cluster.local:%v/api/agent-retrieval/v1/mcp/" .Release.Name .Values.namespace .Values.service.sandboxPort | quote }}
               - name: BKN_TRACE_CORE_URL
                 value: {{ required "observability.lifecycle.core_url is required" .Values.observability.lifecycle.core_url | quote }}
             {{- if .Values.observability.evidence.ingest_url }}
@@ -104,6 +106,8 @@ spec:
           ports:
             - name: public-port
               containerPort: {{ .Values.service.port }}
+            - name: sandbox-port
+              containerPort: {{ .Values.service.sandboxPort }}
           {{- if ne .Values.runMode "dev"}}
           readinessProbe:
             httpGet:

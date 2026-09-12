@@ -73,6 +73,7 @@ type ObservabilityConfig struct {
 type Project struct {
 	Host        string              `yaml:"host"`
 	Port        int                 `yaml:"port"`
+	SandboxPort int                 `yaml:"sandbox_port" default:"30780"`
 	Language    string              `yaml:"language"`
 	LoggerLevel int                 `yaml:"logger_level"`
 	Name        string              `yaml:"name" default:"agent-retrieval"`

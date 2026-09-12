@@ -524,14 +524,20 @@ exec gosu sandbox python -m executor.interfaces.http.rest
         # Build the labels, excluding dependencies, because K8s labels have a strict format
         # and dependencies contains brackets, quotes, and other illegal characters.
         dependencies_value = config.labels.pop("dependencies", None)
-        labels = {
-            "app": "sandbox-executor",  # matches the sandbox-executor service selector
-            "sandbox-session": config.name,
-            "sandbox-type": "execution",
-        }
+        labels = dict(config.labels)
+        # These labels are a security boundary: deployment NetworkPolicies use
+        # all three to select untrusted execution workloads. Keep them on every
+        # creation path and do not let caller-supplied metadata override them.
+        labels.update(
+            {
+                "app": "sandbox-executor",  # matches the sandbox-executor service selector
+                "managed_by": "sandbox-control-plane",
+                "sandbox-session": config.name,
+                "sandbox-type": "execution",
+            }
+        )
         if use_s3_mount:
             labels["mount-method"] = "s3fs"
-        labels.update(config.labels)
 
         # Build the annotations; dependencies goes here, where the format is unconstrained
         annotations = {
@@ -561,6 +567,10 @@ exec gosu sandbox python -m executor.interfaces.http.rest
                 host_network=False,
                 termination_grace_period_seconds=30,
                 service_account_name=self._executor_service_account,
+                # Executor Pods run untrusted code and never call the Kubernetes API.
+                # Do not expose the ServiceAccount token, including through a public
+                # API-server endpoint permitted by the public HTTPS egress rule.
+                automount_service_account_token=False,
                 image_pull_secrets=self._build_image_pull_secrets(),
                 # Keep the default DNS policy (ClusterFirst) so the Pod uses cluster DNS,
                 # which matters for executor-to-control-plane communication.

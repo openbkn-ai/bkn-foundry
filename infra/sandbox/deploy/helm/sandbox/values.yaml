@@ -108,9 +108,9 @@ controlPlane:
     # means the derive-from-legacy path actually runs, which is what makes an
     # upgrade require no values change.
     # Set it explicitly on a new install, host and port only:
-    #   BKN_BASE_URL: "http://agent-retrieval:30779"
+    #   BKN_BASE_URL: "http://agent-retrieval:30780"
     # or cross-namespace:
-    #   BKN_BASE_URL: "http://agent-retrieval.<bkn-namespace>.svc.cluster.local:30779"
+    #   BKN_BASE_URL: "http://agent-retrieval.<bkn-namespace>.svc.cluster.local:30780"
     # Both empty means no BKN access; functions that call it fail with the SDK's
     # "No base URL" error.
     # Helm cannot read another release's values, so the address is written out here
@@ -126,7 +126,7 @@ controlPlane:
     # gateway answers 307 and that face's urllib does not follow redirects on POST.
     # Setting only this one still works: the control plane derives BKN_BASE_URL from it by
     # stripping the MCP path.
-    BKN_SANDBOX_MCP_URL: "http://agent-retrieval:30779/api/agent-retrieval/v1/mcp/"
+    BKN_SANDBOX_MCP_URL: "http://agent-retrieval:30780/api/agent-retrieval/v1/mcp/"
 
   s3:
     # Note: endpointUrl is dynamically set in secret.yaml using .Values.namespace
@@ -200,6 +200,60 @@ secret:
     accessKeyId: "minioadmin"
     secretAccessKey: "minioadmin"
     region: "us-east-1"
+
+# Executor pods run untrusted user/model code. This policy denies every egress
+# destination not listed below. It requires a CNI that enforces NetworkPolicy.
+# Existing installations should observe actual executor egress before upgrade
+# and add only legitimate destinations through additionalEgress.
+networkPolicy:
+  enabled: true
+  dns:
+    namespace: kube-system
+    podSelector:
+      k8s-app: kube-dns
+  bkn:
+    enabled: true
+    # Empty derives the namespace from an in-cluster BKN URL, falling back to
+    # the Sandbox namespace for a short service name. Set it to override.
+    namespace: ""
+    podSelector:
+      app.kubernetes.io/name: agent-retrieval
+    # Dedicated authenticated-only listener; port 30779 also exposes /in and
+    # must never be added to the executor allowlist.
+    port: 30780
+  # Session dependencies are installed from an HTTPS package index when an
+  # executor starts. Preserve that path without reopening cluster/private
+  # destinations. Disable this when all dependencies are prebuilt into images.
+  publicHttps:
+    enabled: true
+    ipBlocks:
+      - cidr: 0.0.0.0/0
+        except:
+          - 0.0.0.0/8
+          - 10.0.0.0/8
+          - 100.64.0.0/10
+          - 127.0.0.0/8
+          - 169.254.0.0/16
+          - 172.16.0.0/12
+          - 192.0.0.0/24
+          - 192.0.2.0/24
+          - 192.88.99.0/24
+          - 192.168.0.0/16
+          - 198.18.0.0/15
+          - 198.51.100.0/24
+          - 203.0.113.0/24
+          - 224.0.0.0/4
+          - 240.0.0.0/4
+      - cidr: ::/0
+        except:
+          - ::/128
+          - ::1/128
+          - 100::/64
+          - 2001:db8::/32
+          - fc00::/7
+          - fe80::/10
+          - ff00::/8
+  additionalEgress: []
 
 
 # Pod security context

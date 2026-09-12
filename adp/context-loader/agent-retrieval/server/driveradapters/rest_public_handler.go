@@ -45,19 +45,17 @@ type restPublicHandler struct {
 	KnToolsHandler                 kntools.KnToolsHandler
 	Logger                         interfaces.Logger
 	LifecycleClient                *bkntrace.LifecycleClient
-	// ServicePort is used to deduce the address for the sandbox to return to this service (see PTC toolkit endpoint).
-	ServicePort int
 }
 
 var buildMCPInfo = mcp.BuildMCPInfoForLocale
 
 // NewRestPublicHandler createrestHandlerinstance.
-// servicePort is used to derive the sandbox return address; the sandbox is within the cluster and cannot reach the gateway address on the browser side.
-func NewRestPublicHandler(logger interfaces.Logger, servicePort int) interfaces.HTTPRouterInterface {
+// sandboxPort is used to derive the sandbox return address; the sandbox is within the cluster and cannot reach the gateway address on the browser side.
+func NewRestPublicHandler(logger interfaces.Logger, sandboxPort int) interfaces.HTTPRouterInterface {
 	return &restPublicHandler{
 		Hydra:                          drivenadapters.NewHydra(),
 		AppKeys:                        drivenadapters.NewAppKeyVerifier(),
-		MCPHandler:                     mcp.NewMCPHandler(),
+		MCPHandler:                     mcp.NewMCPHandlerForSandboxPort(sandboxPort),
 		KnLogicPropertyResolverHandler: knlogicpropertyresolver.NewKnLogicPropertyResolverHandler(),
 		KnActionRecallHandler:          knactionrecall.NewKnActionRecallHandler(),
 		KnQueryObjectInstanceHandler:   knqueryobjectinstance.NewKnQueryObjectInstanceHandler(),
@@ -68,7 +66,6 @@ func NewRestPublicHandler(logger interfaces.Logger, servicePort int) interfaces.
 		KnToolsHandler:                 kntools.NewKnToolsHandler(),
 		Logger:                         logger,
 		LifecycleClient:                bkntrace.NewLifecycleClientFromEnv(),
-		ServicePort:                    servicePort,
 	}
 }
 

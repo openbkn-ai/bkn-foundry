@@ -71,28 +71,36 @@ const (
 
 // NewMCPHandler creates an http.Handler for the MCP Streamable HTTP Server.
 // Tool metadata comes from schemas/tools_meta.json; schemas from schemas/*.json.
-// NewMCPHandler creates an http.Handler for the MCP Streamable HTTP Server.
-// Tool metadata comes from schemas/tools_meta.json; schemas from schemas/*.json.
 //
 // The tool set is fixed here, so this runs after the assembly registry is
 // frozen — app.Run freezes first, then builds handlers. What each caller is
 // shown is decided per request against the licence, not here.
 func NewMCPHandler() http.Handler {
-	return NewMCPHandlerWithLifecycle(bkntrace.NewLifecycleClientFromEnv())
+	return NewMCPHandlerForSandboxPort(defaultPTCServicePort)
+}
+
+// NewMCPHandlerForSandboxPort creates an MCP handler whose inline PTC tools
+// call back through the configured sandbox listener.
+func NewMCPHandlerForSandboxPort(sandboxPort int) http.Handler {
+	return newMCPHandlerWithLifecycle(bkntrace.NewLifecycleClientFromEnv(), sandboxPort)
 }
 
 func NewMCPHandlerWithLifecycle(lifecycleClient *bkntrace.LifecycleClient) http.Handler {
-	return newLocalizedMCPHandler(lifecycleClient)
+	return newMCPHandlerWithLifecycle(lifecycleClient, defaultPTCServicePort)
+}
+
+func newMCPHandlerWithLifecycle(lifecycleClient *bkntrace.LifecycleClient, sandboxPort int) http.Handler {
+	return newLocalizedMCPHandler(lifecycleClient, sandboxPort)
 }
 
 type localizedMCPHandler struct {
 	handlers map[string]http.Handler
 }
 
-func newLocalizedMCPHandler(lifecycleClient *bkntrace.LifecycleClient) http.Handler {
+func newLocalizedMCPHandler(lifecycleClient *bkntrace.LifecycleClient, sandboxPort int) http.Handler {
 	handlers := make(map[string]http.Handler, 2)
 	for _, locale := range []sharedrest.Language{sharedrest.SimplifiedChinese, sharedrest.AmericanEnglish} {
-		srv, _ := newMCPServerForLocale(lifecycleClient, string(locale))
+		srv, _ := newMCPServerForLocaleAtSandboxPort(lifecycleClient, string(locale), sandboxPort)
 		handlers[normalizeMCPLocale(string(locale))] = newMCPStreamableHTTPHandler(srv, endpointPath)
 	}
 	return &localizedMCPHandler{handlers: handlers}
@@ -143,6 +151,12 @@ func newMCPServer(lifecycleClient *bkntrace.LifecycleClient) (*server.MCPServer,
 }
 
 func newMCPServerForLocale(lifecycleClient *bkntrace.LifecycleClient, locale string) (*server.MCPServer, *toolBuilder) {
+	return newMCPServerForLocaleAtSandboxPort(lifecycleClient, locale, defaultPTCServicePort)
+}
+
+func newMCPServerForLocaleAtSandboxPort(
+	lifecycleClient *bkntrace.LifecycleClient, locale string, sandboxPort int,
+) (*server.MCPServer, *toolBuilder) {
 	localeBundle := loadMCPLocaleBundle(locale)
 	b := newToolBuilder(localeBundle)
 
@@ -239,7 +253,7 @@ func newMCPServerForLocale(lifecycleClient *bkntrace.LifecycleClient, locale str
 	)
 	registerLifecycleTools(mcpServer, lifecycleClient, localeBundle)
 	b.attach(mcpServer)
-	registerInlinePTCTools(mcpServer, localeBundle, locale)
+	registerInlinePTCTools(mcpServer, localeBundle, locale, sandboxPort)
 	return mcpServer, b
 }
 
@@ -258,8 +272,10 @@ func newMCPServerForLocale(lifecycleClient *bkntrace.LifecycleClient, locale str
 // Instructions at rest_public_handler.go.
 //
 // Only log when installation fails: When the embedded tool metadata cannot be read, the other twenty or so business tools should not be affected.
-func registerInlinePTCTools(mcpServer *server.MCPServer, localeBundle *mcpLocaleBundle, locale string) {
-	toolkit, err := InlinePTCToolkit(defaultPTCServicePort, locale)
+func registerInlinePTCTools(
+	mcpServer *server.MCPServer, localeBundle *mcpLocaleBundle, locale string, sandboxPort int,
+) {
+	toolkit, err := buildInlinePTCToolkit(sandboxPort, locale)
 	if err != nil {
 		log.Printf("WARN: inline PTC tools unavailable: %v; /mcp exposes business tools only", err)
 		return
@@ -279,6 +295,8 @@ func registerInlinePTCTools(mcpServer *server.MCPServer, localeBundle *mcpLocale
 		)
 	}
 }
+
+var buildInlinePTCToolkit = InlinePTCToolkit
 
 // Prefix for this service's own `_meta` keys on a tool.
 //

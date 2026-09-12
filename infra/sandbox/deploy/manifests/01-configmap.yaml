@@ -35,7 +35,7 @@ data:
   # BKN，因此留空。
   # 与 BKN 同集群时填 agent-retrieval 的地址；BKN 通常在另一个命名空间，因此要写 FQDN
   # （与本文件 DATABASE_URL 的写法一致），短名解析不到：
-  #   http://agent-retrieval.<bkn-namespace>.svc.cluster.local:30779
+  #   http://agent-retrieval.<bkn-namespace>.svc.cluster.local:30780
   # 只填到主机与端口，路径由 bkn-osdk 自己拼——REST 走 /api/agent-retrieval/v1/kn/，
   # MCP 面走 /api/agent-retrieval/v1/mcp。因此这里不要带尾斜杠，也不要带路径。
   BKN_BASE_URL: ""
@@ -44,7 +44,7 @@ data:
   # 新函数（改用 bkn-osdk），但**仍受支持**，存量函数不用改写，所以这仍是活的配置项。
   # 值要带完整 MCP 路径，尾斜杠必须有：缺了网关回 307，而那个面用的 urllib 对 POST 不
   # 跟随重定向。
-  #   http://agent-retrieval.<bkn-namespace>.svc.cluster.local:30779/api/agent-retrieval/v1/mcp/
+  #   http://agent-retrieval.<bkn-namespace>.svc.cluster.local:30780/api/agent-retrieval/v1/mcp/
   # 若只填了这一个、没填 BKN_BASE_URL，控制面会剥掉 MCP 路径推导出后者，bkn-osdk 照样
   # 可用——存量部署不改 values 也能继续工作。
   BKN_SANDBOX_MCP_URL: ""

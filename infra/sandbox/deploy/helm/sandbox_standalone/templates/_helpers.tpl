@@ -94,3 +94,29 @@ Get the ingress class name from depServices
 {{- "nginx" -}}
 {{- end -}}
 {{- end }}
+
+{{/*
+Resolve the namespace that hosts agent-retrieval. An explicit NetworkPolicy
+value wins. Otherwise preserve upgrades that already use a cross-namespace
+service FQDN in either BKN URL; short service names remain in this chart's
+namespace.
+*/}}
+{{- define "sandbox.bknNamespace" -}}
+{{- if .Values.networkPolicy.bkn.namespace -}}
+{{- .Values.networkPolicy.bkn.namespace -}}
+{{- else -}}
+{{- $bknURL := coalesce .Values.controlPlane.env.BKN_BASE_URL .Values.controlPlane.env.BKN_SANDBOX_MCP_URL -}}
+{{- if $bknURL -}}
+{{- $parsedURL := urlParse $bknURL -}}
+{{- $host := regexReplaceAll ":[0-9]+$" (get $parsedURL "host") "" -}}
+{{- $hostParts := splitList "." $host -}}
+{{- if and (ge (len $hostParts) 3) (eq (index $hostParts 2) "svc") -}}
+{{- index $hostParts 1 -}}
+{{- else -}}
+{{- .Values.namespace -}}
+{{- end -}}
+{{- else -}}
+{{- .Values.namespace -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
