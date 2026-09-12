@@ -158,7 +158,8 @@ func splitRow(row string) []string {
 	}
 	parts = append(parts, cell.String())
 	for i := range parts {
-		parts[i] = strings.TrimSpace(strings.ReplaceAll(parts[i], "<br>", "\n"))
+		cell := strings.ReplaceAll(parts[i], "<br>", "\n")
+		parts[i] = strings.TrimSpace(strings.ReplaceAll(cell, "&lt;br&gt;", "<br>"))
 	}
 	return parts
 }
@@ -418,9 +419,11 @@ func parseLogicPropertySubSection(name, content string) *LogicProperty {
 			currentLabel = m[1]
 			continue
 		}
-		if strings.HasPrefix(trimmed, "|") {
-			tableLines = append(tableLines, trimmed)
-		}
+		// Every line between two labels goes to the table reader as-is. Filtering to lines that
+		// start with a pipe here would drop the tail of a row an old exporter split at a line
+		// break, and parseTable would then join the *next* row onto the open one — losing a
+		// parameter instead of restoring one. parseTable already skips what is not a table.
+		tableLines = append(tableLines, trimmed)
 	}
 	flush()
 	return prop

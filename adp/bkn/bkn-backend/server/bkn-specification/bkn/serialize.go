@@ -39,6 +39,9 @@ func tableCell(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.ReplaceAll(s, "\r", "\n")
 	s = strings.ReplaceAll(s, "|", `\|`)
+	// A literal <br> in the value must not read back as a line break, so it is entity-encoded
+	// before the real line breaks take the <br> spelling.
+	s = strings.ReplaceAll(s, "<br>", "&lt;br&gt;")
 	return strings.ReplaceAll(s, "\n", "<br>")
 }
 

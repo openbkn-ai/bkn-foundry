@@ -114,3 +114,52 @@ func TestSplitRow_EscapesAndBreaks(t *testing.T) {
 	assert.Equal(t, []string{"a|b", "x\ny", "z"}, splitRow(`| a\|b | x<br>y | z |`))
 	assert.Equal(t, []string{"plain", "cells"}, splitRow("| plain | cells |"))
 }
+
+// TestTableCell_LiteralBrSurvives: a value that itself contains the text <br> must come back as
+// that text, not as a line break — otherwise the round trip is only exact for values without it.
+func TestTableCell_LiteralBrSurvives(t *testing.T) {
+	value := "第一段<br>第二段\n第三段"
+	assert.Equal(t, []string{value}, splitRow("| "+tableCell(value)+" |"))
+}
+
+// TestParseObjectType_LogicPropertyParameterRowSplit is the case the first review round found:
+// a parameter table under #### keeps its rows only because parseLogicPropertySubSection hands the
+// table reader every line. Filtering to pipe-prefixed lines there made the continuation logic
+// join the *next* parameter onto the split one and lose it.
+func TestParseObjectType_LogicPropertyParameterRowSplit(t *testing.T) {
+	text := `---
+type: object_type
+id: order
+name: Order
+---
+
+## ObjectType: Order
+
+### Logic Properties
+
+#### gmv
+
+**Meta**
+
+| Display Name | Type | Description |
+|--------------|------|-------------|
+| GMV | metric | 成交额 |
+
+**Parameters**
+
+| Name | Type | Source | Operation | ValueFrom | Value | Description |
+|------|------|--------|-----------|-----------|-------|-------------|
+| p1 | string | body |  | input |  | 第一行
+第二行 |
+| p2 | string | body |  | input |  | 第二个参数 |
+`
+	parsed, err := ParseObjectTypeFile(text, "/test/order.bkn")
+	require.NoError(t, err)
+	require.Len(t, parsed.LogicProperties, 1)
+	params := parsed.LogicProperties[0].Parameters
+	require.Len(t, params, 2, "both parameters must survive a split row")
+	assert.Equal(t, "p1", params[0].Name)
+	assert.Equal(t, "第一行\n第二行", params[0].Description)
+	assert.Equal(t, "p2", params[1].Name)
+	assert.Equal(t, "第二个参数", params[1].Description)
+}
