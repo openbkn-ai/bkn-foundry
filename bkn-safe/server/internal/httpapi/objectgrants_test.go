@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/managedproxy"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 	"github.com/openbkn-ai/licverify"
@@ -182,6 +183,86 @@ func TestObjectGrantsSetListRevoke(t *testing.T) {
 	}
 	if got := listObjectGrants(t, r, ""); len(got) != 0 {
 		t.Fatalf("list after revoke: %+v", got)
+	}
+}
+
+func TestObjectGrantsListHidesManagedProxyAccounts(t *testing.T) {
+	r, e, db, users := newAdminServer(t)
+	ctx := t.Context()
+	if err := users.CreateLocalUser(ctx, &model.User{ID: "u-visible", Account: "visible", Enabled: true}, "pw-init0"); err != nil {
+		t.Fatal(err)
+	}
+	seedCatalogOps(t, db, "resource", "query_data")
+	if err := e.GrantObjectPermission("u-visible", "resource", "r-1", "query_data"); err != nil {
+		t.Fatal(err)
+	}
+
+	proxy, _, err := managedproxy.New(db).Create(ctx, managedproxy.CreateRequest{
+		ManagedResourceType: managedproxy.ResourceKnowledgeNetwork,
+		ManagedResourceID:   "kn-hidden-proxy-grant",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantObjectPermission(proxy.ProxyAccountID, "resource", "r-1", "query_data"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.ProxyGrantSource{
+		ID: "source-hidden-proxy-grant", ProxyAccountID: proxy.ProxyAccountID,
+		ResourceType: "resource", ResourceID: "r-1", Operation: "query_data",
+		SourceType: model.ProxyGrantSourceTypeManual, SourceID: "hidden-proxy-grant",
+		LifecycleStatus: model.ProxyGrantSourceStatusActive,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	body := listObjectGrantsBody(t, r, "?include_summary=true")
+	if body.Total != 1 || len(body.Entries) != 1 || body.Entries[0].AccessorID != "u-visible" {
+		t.Fatalf("flat object grants = total %d entries %+v, want only the visible user", body.Total, body.Entries)
+	}
+	if body.Summary == nil || body.Summary.Grants != 1 || body.Summary.Objects != 1 || body.Summary.Grantees != 1 {
+		t.Fatalf("summary = %+v, want one visible user grant", body.Summary)
+	}
+
+	w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/object-grants?group_by=grantee", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("grouped grants = %d body=%s", w.Code, w.Body.String())
+	}
+	var grouped struct {
+		Groups []struct {
+			AccessorID  string `json:"accessor_id"`
+			ObjectCount int64  `json:"object_count"`
+		} `json:"groups"`
+		Total int64 `json:"total"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &grouped); err != nil {
+		t.Fatal(err)
+	}
+	if grouped.Total != 1 || len(grouped.Groups) != 1 || grouped.Groups[0].AccessorID != "u-visible" || grouped.Groups[0].ObjectCount != 1 {
+		t.Fatalf("grouped grants = %+v, want only the visible user", grouped)
+	}
+
+	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/object-grants?group_by=object", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("grouped objects = %d body=%s", w.Code, w.Body.String())
+	}
+	var groupedObjects struct {
+		Groups []struct {
+			Object struct {
+				Type string `json:"type"`
+				ID   string `json:"id"`
+			} `json:"object"`
+			GranteeCount int64 `json:"grantee_count"`
+		} `json:"groups"`
+		Total int64 `json:"total"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &groupedObjects); err != nil {
+		t.Fatal(err)
+	}
+	if groupedObjects.Total != 1 || len(groupedObjects.Groups) != 1 ||
+		groupedObjects.Groups[0].Object.Type != "resource" || groupedObjects.Groups[0].Object.ID != "r-1" ||
+		groupedObjects.Groups[0].GranteeCount != 1 {
+		t.Fatalf("grouped objects = %+v, want one visible user on resource/r-1", groupedObjects)
 	}
 }
 
