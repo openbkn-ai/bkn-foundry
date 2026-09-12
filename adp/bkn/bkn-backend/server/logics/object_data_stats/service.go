@@ -102,12 +102,14 @@ func (s *objectDataStatsService) sideStats(ctx context.Context,
 	}
 
 	// Reading how much data sits behind an object type is reading the data, not the model. It is
-	// gated on query_data for that reason; vega then authorizes the resource itself against the
-	// same caller, so an object type bound to a resource this caller may not read is stopped there.
-	if err := s.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   ref.KNID,
-	}, []string{interfaces.OPERATION_TYPE_QUERY_DATA}); err != nil {
+	// gated on query_data for that reason, on the object type itself: a grant on the network
+	// reaches it through the parent it inherits from, and a grant on this one object type alone
+	// is enough, as it is for querying its instances. vega then authorizes the resource against
+	// the same caller, so an object type bound to a resource this caller may not read is stopped
+	// there.
+	if err := s.ps.CheckPermission(ctx,
+		interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_OBJECT_TYPE, ref.KNID, ref.OTID),
+		[]string{interfaces.OPERATION_TYPE_QUERY_DATA}); err != nil {
 		return nil, err
 	}
 

@@ -153,8 +153,12 @@ func Test_objectDataStatsService_ObjectDataStats(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("A caller without query_data on the network is refused before any query runs\n", func() {
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(errors.New("denied"))
+		Convey("A caller without query_data on the object type is refused before any query runs\n", func() {
+			// The check names the object type, not the network: a grant on the network reaches it
+			// through inheritance, and a grant on this object type alone must be enough.
+			ps.EXPECT().CheckPermission(gomock.Any(),
+				interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_OBJECT_TYPE, "kn1", "bom"),
+				[]string{interfaces.OPERATION_TYPE_QUERY_DATA}).Return(errors.New("denied"))
 
 			_, err := svc.ObjectDataStats(context.Background(), req)
 			So(err, ShouldNotBeNil)
