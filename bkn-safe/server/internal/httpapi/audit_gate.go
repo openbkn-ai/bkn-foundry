@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -45,12 +46,15 @@ func abortGate(c *gin.Context, status int, gate string) {
 	abortPublicError(c, status)
 }
 
-// failureLimiter throttles authentication-failure rows per (client, route).
-// One expired token polled by a frontend would otherwise write a row per poll;
-// one row per window per source is enough to show the pattern, and it keeps a
-// credential-stuffing burst from filling the audit table faster than it can
-// be read. Authorization failures (403) are never throttled: they carry a
-// verified subject and are rare.
+// failureLimiter throttles refusal rows per source and route. One expired
+// token polled by a frontend, or one non-administrator account looping over an
+// admin route, would otherwise write a chained row per request — and every
+// chained append holds the chain lock, so the looping caller's request rate
+// would become the ceiling for every other audit write. One row per window is
+// enough to show the pattern. 401s are keyed by client address (there is no
+// subject to key on); 403s are keyed by the verified subject, so the first
+// refusal of every account on every route is always recorded and only its
+// repeats within the window are folded.
 type failureLimiter struct {
 	mu     sync.Mutex
 	window time.Duration
@@ -103,6 +107,18 @@ func (l *failureLimiter) allow(key string) bool {
 // it either.
 func auditAuthFailures(store *audit.Store, dir *directory.Service, limiter *failureLimiter) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Settle the request id before the gates run: a refused request has
+		// its response written by the gate, so a header set afterwards would
+		// never reach the client. Putting it on the request as well makes the
+		// mutation audit and the decision log reuse the same id, so one
+		// x-request-id ties the client's view, the audit row and the decision
+		// rows together.
+		requestID := requestIDFromHeader(c)
+		if requestID == "" {
+			requestID = audit.NewID()
+			c.Request.Header.Set("x-request-id", requestID)
+		}
+		c.Header("x-request-id", requestID)
 		c.Next()
 		status := c.Writer.Status()
 		if status != http.StatusUnauthorized && status != http.StatusForbidden {
@@ -118,17 +134,18 @@ func auditAuthFailures(store *audit.Store, dir *directory.Service, limiter *fail
 				gate = gateAuthn
 			}
 		}
-		if status == http.StatusUnauthorized && limiter != nil && !limiter.allow(c.ClientIP()+"|"+c.Request.Method+"|"+c.FullPath()) {
-			return
+		actorID := c.GetString(ctxAuthnSubject)
+		if limiter != nil {
+			source := "ip:" + c.ClientIP()
+			if status == http.StatusForbidden && actorID != "" {
+				source = "sub:" + actorID
+			}
+			if !limiter.allow(strconv.Itoa(status) + "|" + source + "|" + c.Request.Method + "|" + c.FullPath()) {
+				return
+			}
 		}
-		requestID := requestIDFromHeader(c)
-		if requestID == "" {
-			requestID = audit.NewID()
-		}
-		c.Header("x-request-id", requestID)
 		resource, _ := auditTarget(c.FullPath())
 		action := auditAction(c.Request.Method, c.FullPath())
-		actorID := c.GetString(ctxAuthnSubject)
 		actorType := "user"
 		if actorID == "" {
 			actorType = "anonymous"

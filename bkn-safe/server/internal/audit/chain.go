@@ -143,18 +143,29 @@ func (s *Store) Head(ctx context.Context) (Head, bool, error) {
 }
 
 // append links row to the current head and inserts it. The caller holds
-// chainMu. A duplicate-key error means another replica appended first; the
-// caller re-reads the head and tries again.
+// chainMu. The head is cached after the first append so the steady state is
+// one INSERT per row, not SELECT + INSERT; any failure drops the cache, and a
+// duplicate-key error in particular means another replica appended first —
+// the caller retries, and the retry re-reads the head from the database.
 func (s *Store) append(ctx context.Context, row *model.AuditLog) error {
-	head, _, err := s.Head(ctx)
-	if err != nil {
-		return err
+	head := s.cachedHead
+	if head == nil {
+		h, _, err := s.Head(ctx)
+		if err != nil {
+			return err
+		}
+		head = &h
 	}
 	seq := head.Seq + 1
 	row.Seq = &seq
 	row.PrevHash = head.RowHash
 	row.RowHash = rowHash(*row, seq, head.RowHash)
-	return s.db.WithContext(ctx).Create(row).Error
+	if err := s.db.WithContext(ctx).Create(row).Error; err != nil {
+		s.cachedHead = nil
+		return err
+	}
+	s.cachedHead = &Head{Seq: seq, RowHash: row.RowHash, CreatedAt: row.CreatedAt}
+	return nil
 }
 
 // isDuplicateKey recognises the unique-index violation of every backend this

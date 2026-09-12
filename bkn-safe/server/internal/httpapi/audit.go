@@ -54,9 +54,13 @@ func auditMiddleware(store *audit.Store, dir *directory.Service, db *gorm.DB) gi
 		c.Header("x-request-id", requestID)
 		var raw []byte
 		if isMutating(c.Request.Method) && c.Request.Body != nil {
-			// Buffer (bounded) then restore the body so the handler still reads it.
+			// Buffer a bounded prefix for the Detail snapshot, then hand the
+			// handler that prefix followed by whatever is still unread. The
+			// snapshot is capped; the request is not — a resource-parents batch
+			// at the documented 1000-item limit runs past 64KB and must still
+			// parse whole.
 			raw, _ = io.ReadAll(io.LimitReader(c.Request.Body, maxAuditBody))
-			c.Request.Body = io.NopCloser(bytes.NewReader(raw))
+			c.Request.Body = io.NopCloser(io.MultiReader(bytes.NewReader(raw), c.Request.Body))
 		}
 		resource, _ := auditTarget(c.FullPath())
 		action := auditAction(c.Request.Method, c.FullPath())

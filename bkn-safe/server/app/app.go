@@ -219,7 +219,10 @@ func (a *App) Run() error {
 
 	r := httpapi.New(a.deps)
 	slog.Info("bkn-safe listening", "addr", a.cfg.HTTPAddr)
-	return r.Run(a.cfg.HTTPAddr)
+	err := r.Run(a.cfg.HTTPAddr)
+	// The listener is gone; drain the queued decisions before reporting why.
+	a.decisions.Close()
+	return err
 }
 
 func (a *App) ensureAuthorizationMigrationReady(ctx context.Context) error {

@@ -15,7 +15,10 @@ info:
     - **Audit log** (`/admin/audit-logs`): one row per management mutation —
       admin API writes, self-service writes (profile, AppKey issue/revoke,
       object-grant delegation), tokenless `/authz` policy and hierarchy
-      writes, and every 401/403 refused at a token gate. Rows form a
+      writes, and 401/403 refusals at the token gates (throttled to one row
+      per minute per client and route for 401, per subject and route for
+      403, so a looping caller shows as a pattern rather than a flood). Rows
+      form a
       tamper-evidence hash chain: each carries `seq`, `prev_hash` and
       `row_hash`; editing, deleting or reordering a chained row is detected by
       `/admin/audit-chain/verify`. Rows written before the chain existed have

@@ -6,8 +6,10 @@ package decisionlog
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -121,6 +123,23 @@ func TestSamplingKeepsEveryDenyAndDropsSampledAllows(t *testing.T) {
 		if row.Decision == DecisionAllow {
 			t.Fatalf("allow row recorded despite sample rate 0: %+v", row)
 		}
+	}
+}
+
+func TestRecordClipsValuesToColumnWidths(t *testing.T) {
+	db := testDB(t)
+	s := New(db, Options{Enabled: true, AllowSampleRate: 1, Synchronous: true})
+	long := strings.Repeat("操作", 200) // 200 runes, 600 bytes: clipped by rune count
+	s.Record(Entry{AccessorID: "u1", ResourceType: strings.Repeat("t", 100), Operation: long, Decision: DecisionDeny, Source: "check"})
+	rows, total, err := s.List(context.Background(), Filter{AccessorID: "u1"})
+	if err != nil || total != 1 {
+		t.Fatalf("over-long values must still insert: total=%d err=%v", total, err)
+	}
+	if got := []rune(rows[0].Operation); len(got) != 128 || !utf8.ValidString(rows[0].Operation) {
+		t.Fatalf("operation clipped to %d runes (valid=%v), want 128", len(got), utf8.ValidString(rows[0].Operation))
+	}
+	if len(rows[0].ResourceType) != 64 {
+		t.Fatalf("resource_type clipped to %d, want 64", len(rows[0].ResourceType))
 	}
 }
 

@@ -115,6 +115,15 @@ func TestAuthenticationFailuresAreAuditedAndThrottled(t *testing.T) {
 	if row.ActorID != "" || row.ActorType != "anonymous" || row.AuthMethod != "none" || row.Resource != "roles" || row.Method != http.MethodGet {
 		t.Fatalf("401 row facts: %+v", row)
 	}
+	if row.RequestID == "" {
+		t.Fatalf("401 row has no request id: %+v", row)
+	}
+	// The client received the same id, so the refusal can be matched to its
+	// row from either side. The header must be set before the gate writes
+	// the response, or it never leaves the server.
+	if w := tokReq(t, r, http.MethodGet, "/api/safe/v1/me", nil, ""); w.Header().Get("x-request-id") == "" {
+		t.Fatal("refused request carries no x-request-id header")
+	}
 	if !strings.Contains(row.Detail, `"_gate":"authn"`) {
 		t.Fatalf("401 row must name the gate: %s", row.Detail)
 	}
@@ -144,12 +153,20 @@ func TestAuthorizationRefusalsAreAuditedWithSubjectAndDecision(t *testing.T) {
 	if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/admin/departments", map[string]any{"id": "d-x", "name": "X"}, outsider); w.Code != http.StatusForbidden {
 		t.Fatalf("outsider write: want 403, got %d", w.Code)
 	}
+	// The same account looping over the same route is one row per window,
+	// not one per request: the chain must not become a write amplifier for
+	// whoever holds a valid but unprivileged token.
+	for i := 0; i < 5; i++ {
+		if w := tokReq(t, r, http.MethodGet, "/api/safe/v1/admin/roles", nil, outsider); w.Code != http.StatusForbidden {
+			t.Fatalf("outsider repeat read: want 403, got %d", w.Code)
+		}
+	}
 	var rows []model.AuditLog
 	if err := db.Where("actor_id = ?", outsider).Order("seq ASC").Find(&rows).Error; err != nil {
 		t.Fatal(err)
 	}
 	if len(rows) != 2 {
-		t.Fatalf("403 rows for outsider = %d, want 2: %+v", len(rows), rows)
+		t.Fatalf("403 rows for outsider = %d, want 2 (repeats within the window folded): %+v", len(rows), rows)
 	}
 	for _, row := range rows {
 		if row.Status != http.StatusForbidden || row.ActorType != "user" || row.AuthMethod != "oauth" || row.ActorNameSnapshot != "Out Sider" {
@@ -162,13 +179,14 @@ func TestAuthorizationRefusalsAreAuditedWithSubjectAndDecision(t *testing.T) {
 	if rows[0].Resource != "roles" || rows[0].Method != http.MethodGet || rows[1].Resource != "departments" || rows[1].Method != http.MethodPost || rows[1].Action != "create" {
 		t.Fatalf("403 rows must keep what was attempted: %+v", rows)
 	}
-	// Both refusals are also decisions: safe_admin console manage, denied.
+	// Every refusal is also a decision (decisions are not throttled): safe_admin
+	// console manage, denied — 2 distinct requests + 5 repeats.
 	var decisions []model.AuthzDecision
 	if err := db.Where("accessor_id = ?", outsider).Find(&decisions).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(decisions) != 2 {
-		t.Fatalf("outsider decisions = %d, want 2: %+v", len(decisions), decisions)
+	if len(decisions) != 7 {
+		t.Fatalf("outsider decisions = %d, want 7: %+v", len(decisions), decisions)
 	}
 	for _, d := range decisions {
 		if d.Source != decisionSourceAdmin || d.ResourceType != "safe_admin" || d.ResourceID != "console" || d.Operation != "manage" || d.Decision != "deny" || d.Basis == "" {
@@ -378,6 +396,54 @@ func TestAuditChainEndpointsReportHeadAndDetectTampering(t *testing.T) {
 	db.Model(&model.AuditLog{}).Where("resource = ?", "audit-chain").Count(&n)
 	if n != 0 {
 		t.Fatalf("chain reads produced %d audit rows", n)
+	}
+}
+
+func TestAuditedMutationKeepsBodiesLargerThanTheSnapshotCap(t *testing.T) {
+	r, _, db, _ := newAdminServer(t)
+	// A body past maxAuditBody: the snapshot is capped, the handler must still
+	// see the whole JSON (a resource-parents batch at its documented 1000-item
+	// limit is well past 64KB).
+	body := map[string]any{"id": "d-big", "name": "Big", "padding": strings.Repeat("x", 70<<10)}
+	w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/departments", body)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("oversized body: want 201, got %d (%s)", w.Code, w.Body.String())
+	}
+	if w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/departments/d-big", nil); w.Code != http.StatusOK {
+		t.Fatalf("department from the oversized body was not created: %d", w.Code)
+	}
+	var row model.AuditLog
+	if err := db.Where("request_id = ?", w.Header().Get("x-request-id")).First(&row).Error; err != nil {
+		t.Fatalf("oversized mutation not audited: %v", err)
+	}
+	if row.Status != http.StatusCreated || row.Resource != "departments" || len(row.Detail) > maxAuditDetail {
+		t.Fatalf("oversized mutation row: %+v", row)
+	}
+}
+
+func TestOneRequestIDTiesResponseAuditAndDecisions(t *testing.T) {
+	r, _, db, _ := newAdminServer(t)
+	w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/departments", map[string]any{"id": "d-rid", "name": "RID"})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create: want 201, got %d (%s)", w.Code, w.Body.String())
+	}
+	rid := w.Header().Get("x-request-id")
+	if rid == "" {
+		t.Fatal("no x-request-id on the response")
+	}
+	var row model.AuditLog
+	if err := db.Where("request_id = ?", rid).First(&row).Error; err != nil {
+		t.Fatalf("no audit row carries the response's request id %q: %v", rid, err)
+	}
+	if row.Resource != "departments" || row.Method != http.MethodPost || row.Status != http.StatusCreated {
+		t.Fatalf("audit row for the request id: %+v", row)
+	}
+	var decisions []model.AuthzDecision
+	if err := db.Where("request_id = ?", rid).Find(&decisions).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(decisions) < 2 {
+		t.Fatalf("decisions sharing the request id = %d, want the console gate and the permission point: %+v", len(decisions), decisions)
 	}
 }
 

@@ -145,12 +145,26 @@ func (s *Store) Record(e Entry) {
 	if e.Decision == DecisionAllow && !s.sampled() {
 		return
 	}
+	// Clip every string to its column width. The resource and operation
+	// names come straight from unvalidated /authz request bodies; one
+	// over-long value would fail the whole insert batch under strict mode
+	// and take up to BatchSize unrelated decisions with it.
 	row := model.AuthzDecision{
-		ID: newID(), AccessorID: e.AccessorID, ResourceType: e.ResourceType, ResourceID: e.ResourceID,
-		Operation: e.Operation, Scope: e.Scope, Decision: e.Decision, Basis: e.Basis,
-		DeniedRequirement: e.DeniedRequirement, Source: e.Source, RequestID: e.RequestID,
-		TraceID: e.TraceID, ClientIP: e.ClientIP, Detail: e.Detail,
-		CreatedAt: time.Now().UTC().Truncate(time.Millisecond),
+		ID:                newID(),
+		AccessorID:        clip(e.AccessorID, 64),
+		ResourceType:      clip(e.ResourceType, 64),
+		ResourceID:        clip(e.ResourceID, 128),
+		Operation:         clip(e.Operation, 128),
+		Scope:             clip(e.Scope, 16),
+		Decision:          clip(e.Decision, 16),
+		Basis:             clip(e.Basis, 32),
+		DeniedRequirement: clip(e.DeniedRequirement, 64),
+		Source:            clip(e.Source, 32),
+		RequestID:         clip(e.RequestID, 128),
+		TraceID:           clip(e.TraceID, 64),
+		ClientIP:          clip(e.ClientIP, 64),
+		Detail:            clip(e.Detail, 1024),
+		CreatedAt:         time.Now().UTC().Truncate(time.Millisecond),
 	}
 	if s.opts.Synchronous {
 		s.write([]model.AuthzDecision{row})
@@ -371,6 +385,19 @@ func (s *Store) RunRetention(ctx context.Context, days int, interval time.Durati
 			purge()
 		}
 	}
+}
+
+// clip truncates s to at most n characters (runes, matching how varchar(n)
+// counts), never splitting a multi-byte character.
+func clip(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n])
 }
 
 func newID() string {

@@ -24,6 +24,9 @@ import (
 // Store reads and writes the audit trail over GORM.
 type Store struct {
 	db *gorm.DB
+	// cachedHead is the last row this process appended, guarded by chainMu.
+	// nil means "read it from the database before the next append".
+	cachedHead *Head
 }
 
 // New builds an audit store.

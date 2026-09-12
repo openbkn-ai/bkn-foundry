@@ -154,8 +154,8 @@ config:
   # the chain-anchor export and the authorization decision log.
   audit:
     # How often the audit chain head (seq + hash) is written to the service
-    # log so the log pipeline holds anchors outside the database. Go duration;
-    # "0" disables.
+    # log so the log pipeline holds anchors outside the database. Go duration
+    # string; "0s" disables.
     chainHeadLogInterval: "15m"
     decisionLog:
       # Record every authorization decision (/authz/check, batch summaries for

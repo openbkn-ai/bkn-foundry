@@ -30,7 +30,9 @@ type Config struct {
 type AuditConfig struct {
 	// ChainHeadLogInterval is how often the audit chain head (seq + hash) is
 	// written to the service log, so an external append-only log store holds
-	// anchors a verifier can compare the database against. 0 disables.
+	// anchors a verifier can compare the database against. 0 disables. In a
+	// YAML file write it as a duration string ("15m", "0s"): yaml.v3 decodes
+	// those into time.Duration but rejects a bare number.
 	ChainHeadLogInterval time.Duration `yaml:"chain_head_log_interval"`
 	// DecisionLog configures the authorization decision log.
 	DecisionLog DecisionLogConfig `yaml:"decision_log"`
