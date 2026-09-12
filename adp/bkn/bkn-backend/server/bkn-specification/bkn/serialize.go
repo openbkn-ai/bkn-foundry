@@ -32,6 +32,19 @@ func serializeMaskRule(rule *maskrule.Rule) string {
 }
 
 // encodeMetricFormulaYAML encodes a metric formula fenced with Markdown ```yaml code blocks, matching on-disk examples.
+// tableCell makes a value safe inside a Markdown table row. A line break would end the row and
+// a bare pipe would open a new cell; the importer's table reader can recover neither, so the
+// break is written as <br> and the pipe as \|, and splitRow turns them back.
+func tableCell(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	s = strings.ReplaceAll(s, "|", `\|`)
+	// A literal <br> in the value must not read back as a line break, so it is entity-encoded
+	// before the real line breaks take the <br> spelling.
+	s = strings.ReplaceAll(s, "<br>", "&lt;br&gt;")
+	return strings.ReplaceAll(s, "\n", "<br>")
+}
+
 func encodeMetricFormulaYAML(m *MetricFormula) string {
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
@@ -67,13 +80,13 @@ func SerializeMetric(m *BknMetric) string {
 		sb.WriteString("### Metric attributes\n\n")
 		sb.WriteString("| Metric Type | Unit Type | Unit |\n")
 		sb.WriteString("|-------------|-----------|------|\n")
-		fmt.Fprintf(&sb, "| %s | %s | %s |\n\n", mtOut, utOut, uOut)
+		fmt.Fprintf(&sb, "| %s | %s | %s |\n\n", tableCell(mtOut), tableCell(utOut), tableCell(uOut))
 	}
 
 	sb.WriteString("### Scope\n\n")
 	sb.WriteString("| Scope Type | Scope Ref |\n")
 	sb.WriteString("|------------|-----------|\n")
-	fmt.Fprintf(&sb, "| %s | %s |\n\n", m.ScopeType, m.ScopeRef)
+	fmt.Fprintf(&sb, "| %s | %s |\n\n", tableCell(m.ScopeType), tableCell(m.ScopeRef))
 
 	sb.WriteString("### Calculation Formula\n\n")
 	if m.Formula != nil {
@@ -85,7 +98,7 @@ func SerializeMetric(m *BknMetric) string {
 	sb.WriteString("| Property | Default Range Policy |\n")
 	sb.WriteString("|----------|----------------------|\n")
 	for _, row := range m.TimeDimensions {
-		fmt.Fprintf(&sb, "| %s | %s |\n", row.Property, row.Policy)
+		fmt.Fprintf(&sb, "| %s | %s |\n", tableCell(row.Property), tableCell(row.Policy))
 	}
 	sb.WriteString("\n")
 
@@ -93,7 +106,7 @@ func SerializeMetric(m *BknMetric) string {
 	sb.WriteString("| Name | Display Name |\n")
 	sb.WriteString("|------|--------------|\n")
 	for _, row := range m.AnalysisDimensions {
-		fmt.Fprintf(&sb, "| %s | %s |\n", row.Name, row.DisplayName)
+		fmt.Fprintf(&sb, "| %s | %s |\n", tableCell(row.Name), tableCell(row.DisplayName))
 	}
 	sb.WriteString("\n")
 
@@ -144,7 +157,7 @@ func SerializeBknNetwork(doc *BknNetwork) string {
 	if len(doc.ObjectTypes) > 0 {
 		sort.Slice(doc.ObjectTypes, func(i, j int) bool { return doc.ObjectTypes[i].ID < doc.ObjectTypes[j].ID })
 		for _, ot := range doc.ObjectTypes {
-			_, _ = fmt.Fprintf(&sb, "| %s | %s | `object_types/%s.bkn` | %s |\n", ot.ID, ot.Name, ot.ID, ot.Summary)
+			_, _ = fmt.Fprintf(&sb, "| %s | %s | `object_types/%s.bkn` | %s |\n", tableCell(ot.ID), tableCell(ot.Name), tableCell(ot.ID), tableCell(ot.Summary))
 		}
 	}
 
@@ -154,7 +167,7 @@ func SerializeBknNetwork(doc *BknNetwork) string {
 	if len(doc.RelationTypes) > 0 {
 		sort.Slice(doc.RelationTypes, func(i, j int) bool { return doc.RelationTypes[i].ID < doc.RelationTypes[j].ID })
 		for _, rt := range doc.RelationTypes {
-			fmt.Fprintf(&sb, "| %s | %s | `relation_types/%s.bkn` | %s |\n", rt.ID, rt.Name, rt.ID, rt.Summary)
+			fmt.Fprintf(&sb, "| %s | %s | `relation_types/%s.bkn` | %s |\n", tableCell(rt.ID), tableCell(rt.Name), tableCell(rt.ID), tableCell(rt.Summary))
 		}
 	}
 
@@ -164,7 +177,7 @@ func SerializeBknNetwork(doc *BknNetwork) string {
 	if len(doc.ActionTypes) > 0 {
 		sort.Slice(doc.ActionTypes, func(i, j int) bool { return doc.ActionTypes[i].ID < doc.ActionTypes[j].ID })
 		for _, at := range doc.ActionTypes {
-			fmt.Fprintf(&sb, "| %s | %s | `action_types/%s.bkn` | %s |\n", at.ID, at.Name, at.ID, at.Summary)
+			fmt.Fprintf(&sb, "| %s | %s | `action_types/%s.bkn` | %s |\n", tableCell(at.ID), tableCell(at.Name), tableCell(at.ID), tableCell(at.Summary))
 		}
 	}
 
@@ -174,7 +187,7 @@ func SerializeBknNetwork(doc *BknNetwork) string {
 	if len(doc.RiskTypes) > 0 {
 		sort.Slice(doc.RiskTypes, func(i, j int) bool { return doc.RiskTypes[i].ID < doc.RiskTypes[j].ID })
 		for _, rt := range doc.RiskTypes {
-			fmt.Fprintf(&sb, "| %s | %s | `risk_types/%s.bkn` | %s |\n", rt.ID, rt.Name, rt.ID, rt.Summary)
+			fmt.Fprintf(&sb, "| %s | %s | `risk_types/%s.bkn` | %s |\n", tableCell(rt.ID), tableCell(rt.Name), tableCell(rt.ID), tableCell(rt.Summary))
 		}
 	}
 
@@ -184,7 +197,7 @@ func SerializeBknNetwork(doc *BknNetwork) string {
 	if len(doc.ConceptGroups) > 0 {
 		sort.Slice(doc.ConceptGroups, func(i, j int) bool { return doc.ConceptGroups[i].ID < doc.ConceptGroups[j].ID })
 		for _, cg := range doc.ConceptGroups {
-			fmt.Fprintf(&sb, "| %s | %s | `concept_groups/%s.bkn` | %s |\n", cg.ID, cg.Name, cg.ID, cg.Summary)
+			fmt.Fprintf(&sb, "| %s | %s | `concept_groups/%s.bkn` | %s |\n", tableCell(cg.ID), tableCell(cg.Name), tableCell(cg.ID), tableCell(cg.Summary))
 		}
 	}
 
@@ -194,7 +207,7 @@ func SerializeBknNetwork(doc *BknNetwork) string {
 	if len(doc.Metrics) > 0 {
 		sort.Slice(doc.Metrics, func(i, j int) bool { return doc.Metrics[i].ID < doc.Metrics[j].ID })
 		for _, met := range doc.Metrics {
-			fmt.Fprintf(&sb, "| %s | %s | `metrics/%s.bkn` | %s |\n", met.ID, met.Name, met.ID, met.Summary)
+			fmt.Fprintf(&sb, "| %s | %s | `metrics/%s.bkn` | %s |\n", tableCell(met.ID), tableCell(met.Name), tableCell(met.ID), tableCell(met.Summary))
 		}
 	}
 
@@ -289,7 +302,7 @@ func SerializeObjectType(ot *BknObjectType) string {
 	_, _ = fmt.Fprintf(&sb, "|------|----|------|\n")
 	if ot.DataSource != nil {
 		_, _ = fmt.Fprintf(&sb, "| %s | %s | %s |\n",
-			ot.DataSource.Type, ot.DataSource.ID, ot.DataSource.Name)
+			tableCell(ot.DataSource.Type), tableCell(ot.DataSource.ID), tableCell(ot.DataSource.Name))
 	}
 	_, _ = fmt.Fprintf(&sb, "\n")
 
@@ -313,10 +326,10 @@ func SerializeObjectType(ot *BknObjectType) string {
 		for _, dp := range ot.DataProperties {
 			if hasMaskRule {
 				_, _ = fmt.Fprintf(&sb, "| %s | %s | %s | %s | %s | %s |\n",
-					dp.Name, dp.DisplayName, dp.Type, dp.Description, dp.MappedField, serializeMaskRule(dp.MaskRule))
+					tableCell(dp.Name), tableCell(dp.DisplayName), tableCell(dp.Type), tableCell(dp.Description), tableCell(dp.MappedField), tableCell(serializeMaskRule(dp.MaskRule)))
 			} else {
 				_, _ = fmt.Fprintf(&sb, "| %s | %s | %s | %s | %s |\n",
-					dp.Name, dp.DisplayName, dp.Type, dp.Description, dp.MappedField)
+					tableCell(dp.Name), tableCell(dp.DisplayName), tableCell(dp.Type), tableCell(dp.Description), tableCell(dp.MappedField))
 			}
 		}
 	}
@@ -331,14 +344,14 @@ func SerializeObjectType(ot *BknObjectType) string {
 		_, _ = fmt.Fprintf(&sb, "**Meta**\n\n")
 		_, _ = fmt.Fprintf(&sb, "| Display Name | Type | Description |\n")
 		_, _ = fmt.Fprintf(&sb, "|--------------|------|-------------|\n")
-		_, _ = fmt.Fprintf(&sb, "| %s | %s | %s |\n\n", lp.DisplayName, lp.Type, lp.Description)
+		_, _ = fmt.Fprintf(&sb, "| %s | %s | %s |\n\n", tableCell(lp.DisplayName), tableCell(lp.Type), tableCell(lp.Description))
 
 		// Source table
 		_, _ = fmt.Fprintf(&sb, "**Source**\n\n")
 		_, _ = fmt.Fprintf(&sb, "| Source Type | Source ID | Source Name |\n")
 		_, _ = fmt.Fprintf(&sb, "|-------------|-----------|-------------|\n")
 		if lp.DataSource != nil {
-			_, _ = fmt.Fprintf(&sb, "| %s | %s | %s |\n", lp.DataSource.Type, lp.DataSource.ID, lp.DataSource.Name)
+			_, _ = fmt.Fprintf(&sb, "| %s | %s | %s |\n", tableCell(lp.DataSource.Type), tableCell(lp.DataSource.ID), tableCell(lp.DataSource.Name))
 		}
 		_, _ = fmt.Fprintf(&sb, "\n")
 
@@ -352,7 +365,7 @@ func SerializeObjectType(ot *BknObjectType) string {
 				v = fmt.Sprintf("%v", p.Value)
 			}
 			_, _ = fmt.Fprintf(&sb, "| %s | %s | %s | %s | %s | %s | %s |\n",
-				p.Name, p.Type, p.Source, p.Operation, p.ValueFrom, v, p.Description)
+				tableCell(p.Name), tableCell(p.Type), tableCell(p.Source), tableCell(p.Operation), tableCell(p.ValueFrom), tableCell(v), tableCell(p.Description))
 		}
 		_, _ = fmt.Fprintf(&sb, "\n")
 
@@ -361,7 +374,7 @@ func SerializeObjectType(ot *BknObjectType) string {
 		_, _ = fmt.Fprintf(&sb, "| Name | Display Name | Type | Description |\n")
 		_, _ = fmt.Fprintf(&sb, "|------|--------------|------|-------------|\n")
 		for _, d := range lp.AnalysisDims {
-			_, _ = fmt.Fprintf(&sb, "| %s | %s | %s | %s |\n", d.Name, d.DisplayName, d.Type, d.Description)
+			_, _ = fmt.Fprintf(&sb, "| %s | %s | %s | %s |\n", tableCell(d.Name), tableCell(d.DisplayName), tableCell(d.Type), tableCell(d.Description))
 		}
 		_, _ = fmt.Fprintf(&sb, "\n")
 	}
@@ -396,7 +409,7 @@ func SerializeRelationType(rt *BknRelationType) string {
 	_, _ = fmt.Fprintf(&sb, "### Endpoint\n\n")
 	_, _ = fmt.Fprintf(&sb, "| Source | Target | Type |\n")
 	_, _ = fmt.Fprintf(&sb, "|--------|--------|------|\n")
-	_, _ = fmt.Fprintf(&sb, "| %s | %s | %s |\n\n", rt.Endpoint.Source, rt.Endpoint.Target, rt.Endpoint.Type)
+	_, _ = fmt.Fprintf(&sb, "| %s | %s | %s |\n\n", tableCell(rt.Endpoint.Source), tableCell(rt.Endpoint.Target), tableCell(rt.Endpoint.Type))
 
 	switch rt.Endpoint.Type {
 	case RELATION_MAPPING_TYPE_DIRECT:
@@ -406,7 +419,7 @@ func SerializeRelationType(rt *BknRelationType) string {
 		_, _ = fmt.Fprintf(&sb, "|-----------------|-----------------|\n")
 		if rules, ok := rt.MappingRules.(DirectMappingRule); ok {
 			for _, r := range rules {
-				_, _ = fmt.Fprintf(&sb, "| %s | %s |\n", r.SourceProperty, r.TargetProperty)
+				_, _ = fmt.Fprintf(&sb, "| %s | %s |\n", tableCell(r.SourceProperty), tableCell(r.TargetProperty))
 			}
 		}
 		_, _ = fmt.Fprintf(&sb, "\n")
@@ -417,21 +430,21 @@ func SerializeRelationType(rt *BknRelationType) string {
 		_, _ = fmt.Fprintf(&sb, "|------|----|\n")
 		if rules, ok := rt.MappingRules.(*InDirectMappingRule); ok {
 			if rules.BackingDataSource != nil {
-				_, _ = fmt.Fprintf(&sb, "| %s | %s |\n", rules.BackingDataSource.Type, rules.BackingDataSource.ID)
+				_, _ = fmt.Fprintf(&sb, "| %s | %s |\n", tableCell(rules.BackingDataSource.Type), tableCell(rules.BackingDataSource.ID))
 			}
 			_, _ = fmt.Fprintf(&sb, "\n")
 			_, _ = fmt.Fprintf(&sb, "### Source Mapping\n\n")
 			_, _ = fmt.Fprintf(&sb, "| Source Property | Resource Property |\n")
 			_, _ = fmt.Fprintf(&sb, "|-----------------|-------------------|\n")
 			for _, r := range rules.SourceMappingRules {
-				_, _ = fmt.Fprintf(&sb, "| %s | %s |\n", r.SourceProperty, r.TargetProperty)
+				_, _ = fmt.Fprintf(&sb, "| %s | %s |\n", tableCell(r.SourceProperty), tableCell(r.TargetProperty))
 			}
 			_, _ = fmt.Fprintf(&sb, "\n")
 			_, _ = fmt.Fprintf(&sb, "### Target Mapping\n\n")
 			_, _ = fmt.Fprintf(&sb, "| Resource Property | Target Property |\n")
 			_, _ = fmt.Fprintf(&sb, "|-------------------|-----------------|\n")
 			for _, r := range rules.TargetMappingRules {
-				_, _ = fmt.Fprintf(&sb, "| %s | %s |\n", r.SourceProperty, r.TargetProperty)
+				_, _ = fmt.Fprintf(&sb, "| %s | %s |\n", tableCell(r.SourceProperty), tableCell(r.TargetProperty))
 			}
 			_, _ = fmt.Fprintf(&sb, "\n")
 		}
@@ -487,7 +500,7 @@ func SerializeActionType(at *BknActionType) string {
 	_, _ = fmt.Fprintf(&sb, "| Bound Object |\n")
 	_, _ = fmt.Fprintf(&sb, "|--------------|\n")
 	if at.BoundObject != "" {
-		_, _ = fmt.Fprintf(&sb, "| %s |\n", at.BoundObject)
+		_, _ = fmt.Fprintf(&sb, "| %s |\n", tableCell(at.BoundObject))
 	}
 	_, _ = fmt.Fprintf(&sb, "\n")
 
@@ -496,7 +509,7 @@ func SerializeActionType(at *BknActionType) string {
 	_, _ = fmt.Fprintf(&sb, "| Affect Object | Affect Description |\n")
 	_, _ = fmt.Fprintf(&sb, "|---------------|--------------------|\n")
 	if at.AffectObject != nil {
-		_, _ = fmt.Fprintf(&sb, "| %s | %s |\n", at.AffectObject.ObjectType, at.AffectObject.Description)
+		_, _ = fmt.Fprintf(&sb, "| %s | %s |\n", tableCell(at.AffectObject.ObjectType), tableCell(at.AffectObject.Description))
 	}
 	_, _ = fmt.Fprintf(&sb, "\n")
 
@@ -522,8 +535,7 @@ func SerializeActionType(at *BknActionType) string {
 	_, _ = fmt.Fprintf(&sb, "|------|-------|--------|-------|----------|\n")
 	if at.ActionSource != nil && at.ActionSource.Type != "" {
 		_, _ = fmt.Fprintf(&sb, "| %s | %s | %s | %s | %s |\n",
-			at.ActionSource.Type, at.ActionSource.BoxID, at.ActionSource.ToolID,
-			at.ActionSource.McpID, at.ActionSource.ToolName)
+			tableCell(at.ActionSource.Type), tableCell(at.ActionSource.BoxID), tableCell(at.ActionSource.ToolID), tableCell(at.ActionSource.McpID), tableCell(at.ActionSource.ToolName))
 	}
 	_, _ = fmt.Fprintf(&sb, "\n")
 
@@ -537,7 +549,7 @@ func SerializeActionType(at *BknActionType) string {
 			v = ""
 		}
 		_, _ = fmt.Fprintf(&sb, "| %s | %s | %s | %s | %s | %s | %s |\n",
-			p.Name, p.Type, p.Source, p.Operation, p.ValueFrom, v, p.Description)
+			tableCell(p.Name), tableCell(p.Type), tableCell(p.Source), tableCell(p.Operation), tableCell(p.ValueFrom), tableCell(fmt.Sprint(v)), tableCell(p.Description))
 	}
 	_, _ = fmt.Fprintf(&sb, "\n")
 
@@ -546,7 +558,7 @@ func SerializeActionType(at *BknActionType) string {
 	_, _ = fmt.Fprintf(&sb, "| Type | Expression |\n")
 	_, _ = fmt.Fprintf(&sb, "|------|------------|\n")
 	if at.Schedule != nil && at.Schedule.Type != "" {
-		_, _ = fmt.Fprintf(&sb, "| %s | %s |\n", at.Schedule.Type, at.Schedule.Expression)
+		_, _ = fmt.Fprintf(&sb, "| %s | %s |\n", tableCell(at.Schedule.Type), tableCell(at.Schedule.Expression))
 	}
 	_, _ = fmt.Fprintf(&sb, "\n")
 
@@ -598,7 +610,7 @@ func SerializeConceptGroup(cg *BknConceptGroup, otIndex map[string]*BknObjectTyp
 				name = ot.Name
 				desc = ot.Summary
 			}
-			_, _ = fmt.Fprintf(&sb, "| %s | %s | %s |\n", id, name, desc)
+			_, _ = fmt.Fprintf(&sb, "| %s | %s | %s |\n", tableCell(id), tableCell(name), tableCell(desc))
 		}
 	}
 	_, _ = fmt.Fprintf(&sb, "\n")
