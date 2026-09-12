@@ -9,6 +9,7 @@ package dataset
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -17,8 +18,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
+	"vega-backend/logics/filter_condition"
 )
 
 func TestDatasetServiceIndexLifecycle(t *testing.T) {
@@ -93,6 +96,23 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, docs, got)
 		assert.Equal(t, int64(1), total)
+	})
+
+	t.Run("list documents answers 400 for a condition the index cannot build", func(t *testing.T) {
+		ds, lim := newDatasetServiceMock(t)
+		// Wrapped the way the connector wraps it; this layer is the first to turn it into an
+		// HTTPError, which has no Unwrap, so the classification must happen right here.
+		cause := fmt.Errorf("failed to build filter query: %w",
+			filter_condition.NewConditionBuildError("text field body has no keyword feature, cannot be used for comparison"))
+		lim.EXPECT().ListDocuments(gomock.Any(), "dataset-1", resource, params).Return(nil, int64(0), cause)
+
+		_, _, err := ds.ListDocuments(ctx, resource, params)
+
+		var httpErr *rest.HTTPError
+		require.True(t, errors.As(err, &httpErr))
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "no keyword feature")
 	})
 
 	t.Run("get documents preserves positions for ignored missing documents", func(t *testing.T) {

@@ -63,6 +63,17 @@ func (e *VegaDownstreamError) Message() string {
 	return truncated + "...(truncated)"
 }
 
+// ClientMessage is the part of a downstream error safe to hand to the caller: the parsed
+// error_details, else the parsed description, else nothing. Unlike Message it never falls back to
+// the raw body, so an HTML error page from a gateway in front of vega does not end up in
+// error_details.
+func (e *VegaDownstreamError) ClientMessage() string {
+	if e.Details != "" {
+		return e.Details
+	}
+	return e.Description
+}
+
 // IsClientError reports whether the caller can fix the failure by changing the request.
 func (e *VegaDownstreamError) IsClientError() bool {
 	return e.StatusCode >= http.StatusBadRequest && e.StatusCode < http.StatusInternalServerError

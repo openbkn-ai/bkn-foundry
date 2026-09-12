@@ -802,7 +802,7 @@ func (s *metricQueryService) executeMetric(ctx context.Context, knID string, bra
 		if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
 			return interfaces.MetricData{}, rest.NewHTTPError(ctx, downstream.StatusCode,
 				metricDownstreamErrorCode(downstream.StatusCode)).
-				WithErrorDetails(downstream.Message())
+				WithErrorDetails(downstream.ClientMessage())
 		}
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
 			WithErrorDetails("metric resource query failed")

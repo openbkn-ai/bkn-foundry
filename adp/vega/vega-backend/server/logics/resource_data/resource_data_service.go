@@ -181,9 +181,12 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		documents, total, err := rds.ds.ListDocuments(ctx, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "List dataset documents failed", err)
-			if reason, ok := filter_condition.RequestSideQueryError(err); ok {
-				return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
-					WithErrorDetails(reason)
+			// The dataset service already answers with an HTTPError — a 400 for a condition the
+			// index cannot build, a 500 otherwise. Re-wrapping it here would turn that 400 back
+			// into a 500 with the JSON body as its details.
+			var httpErr *rest.HTTPError
+			if errors.As(err, &httpErr) {
+				return nil, 0, httpErr
 			}
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 				WithErrorDetails(err.Error())

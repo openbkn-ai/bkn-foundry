@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"vega-backend/logics/filter_condition"
 
 	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -125,6 +126,12 @@ func (ds *datasetService) ListDocuments(ctx context.Context, res *interfaces.Res
 	documents, total, err := ds.lim.ListDocuments(ctx, res.LocalIndexName, res, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List dataset documents failed")
+		// This is the first layer that turns the connector's error into an HTTPError, which has
+		// no Unwrap — so the request-side classification has to happen here, not above.
+		if reason, ok := filter_condition.RequestSideQueryError(err); ok {
+			return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+				WithErrorDetails(reason)
+		}
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 			WithErrorDetails(err.Error())
 	}

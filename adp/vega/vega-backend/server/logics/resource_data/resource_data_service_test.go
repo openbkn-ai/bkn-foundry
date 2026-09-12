@@ -318,6 +318,34 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		assert.Equal(t, interfaces.ResourceValue{Mode: interfaces.ResourceValueModeMetadata, ByteLength: &length}, rows[0]["blob"])
 	})
 
+	t.Run("query dataset passes the dataset service's own HTTPError through", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockDS := mock_interfaces.NewMockDatasetService(ctrl)
+		rds := &resourceDataService{cs: mockCS, ds: mockDS}
+		resource := &interfaces.Resource{
+			ID: "dataset-1", Enabled: true, CatalogID: "catalog-1",
+			Category: interfaces.ResourceCategoryDataset, LocalIndexName: "vega-dataset-index-1",
+			SchemaDefinition: []*interfaces.Property{{Name: "body", Type: interfaces.DataType_Text}},
+		}
+		params := &interfaces.ResourceDataQueryParams{}
+		// The dataset service already decided this is the caller's error; re-wrapping it here
+		// used to turn the 400 into a 500 whose details were the serialized inner error.
+		downstream := rest.NewHTTPError(context.Background(), http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			WithErrorDetails("text field body has no keyword feature, cannot be used for comparison")
+
+		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+		mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).Return(nil, int64(0), downstream)
+
+		_, _, err := rds.query(context.Background(), resource, params)
+		var httpErr *rest.HTTPError
+		require.True(t, errors.As(err, &httpErr))
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "no keyword feature")
+	})
+
 	t.Run("query dataset builds actual filter condition and delegates", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)

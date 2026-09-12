@@ -526,7 +526,7 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 			// which operator — so it travels with the status code instead of stopping in the log.
 			return rest.NewHTTPError(ctx, downstream.StatusCode,
 				proxyDownstreamErrorCode(downstream.StatusCode)).
-				WithErrorDetails(downstream.Message())
+				WithErrorDetails(downstream.ClientMessage())
 		}
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).
