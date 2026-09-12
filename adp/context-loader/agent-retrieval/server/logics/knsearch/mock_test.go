@@ -94,6 +94,10 @@ func (m *mockBknBackend) ListKnowledgeNetworks(ctx context.Context, req *interfa
 	return &interfaces.ListKnResp{}, nil
 }
 
+func (m *mockBknBackend) RunCypherQuery(context.Context, *interfaces.CypherQueryReq) (*interfaces.CypherQueryResp, error) {
+	return &interfaces.CypherQueryResp{}, nil
+}
+
 func (m *mockBknBackend) SearchObjectTypes(ctx context.Context, req *interfaces.QueryConceptsReq) (*interfaces.ObjectTypeConcepts, error) {
 	m.objectTypesReq = req
 	if m.objectTypesResp == nil && m.objectTypesError == nil && m.networkDetail != nil {

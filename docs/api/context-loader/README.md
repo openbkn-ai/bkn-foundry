@@ -14,6 +14,7 @@
 | [kn-explore.yaml](kn-explore.yaml) | Knowledge-network exploration | `POST /kn/list_knowledge_networks`, `POST /kn/get_kn_detail`, `POST /kn/get_object_types`, `POST /kn/get_relation_types` |
 | [object-instance.yaml](object-instance.yaml) | Object-instance queries | `POST /kn/query_object_instance` |
 | [instance-subgraph.yaml](instance-subgraph.yaml) | Instance-subgraph queries | `POST /kn/query_instance_subgraph` |
+| [cypher.yaml](cypher.yaml) | Cypher queries | `POST /kn/run_cypher` |
 | [logic-property.yaml](logic-property.yaml) | Logical-property evaluation and metric queries | `POST /kn/logic-property-resolver`, `POST /kn/query_metric` |
 | [action.yaml](action.yaml) | Action retrieval and execution | `POST /kn/get_action_info`, `POST /kn/execute_action`, `POST /kn/get_action_execution`, `POST /kn/list_action_executions` |
 | [skill.yaml](skill.yaml) | Skill reading and execution | `POST /kn/list_skills`, `POST /kn/get_skill_content`, `POST /kn/read_skill_file`, `POST /kn/execute_skill` |
@@ -52,6 +53,8 @@ The Skill surface also has a knowledge-network-independent entry point:
 To bypass the ontology and access data directly, use
 `list_resources` → `describe_resource` → `run_sql`.
 
+Multi-hop retrieval across object types: `search_schema` → `run_cypher`. Labels are object types, relationship types are relation types, and properties are logical property names, so neither `resource_id` nor physical column names are needed. Fall back to `run_sql` only for what the Cypher subset cannot express.
+
 ## Conventions
 
 - **OpenAPI version:** 3.0.3.
@@ -74,7 +77,7 @@ make api-contract-diff CONTRACT_FACE=ex CONTRACT_SSH=root@<host> \
      CONTRACT_ARGS="--include-probe-post --token $TOKEN"
 ```
 
-Sixteen of the 25 operations are probed. The remaining operations require
+Sixteen of the 26 operations are probed. The remaining operations require
 manual review because their response structures have not been verified against
 a running environment:
 
@@ -84,6 +87,7 @@ a running environment:
 | `logic-property-resolver` | Has side effects and requires a real instance identity |
 | `query_metric` | Requires a modeled metric whose `metric_id` cannot be synthesized |
 | `run_sql` | Requires meaningful SQL for a concrete resource |
+| `run_cypher` | Requires a meaningful statement over concrete object and relation types |
 | `POST /mcp` | Uses JSON-RPC session semantics rather than an ordinary request/response contract |
 | `execute_skill` | Has side effects and executes a command in the sandbox |
 | `get_skill_content` | Requires the `skill_id` of a published Skill |

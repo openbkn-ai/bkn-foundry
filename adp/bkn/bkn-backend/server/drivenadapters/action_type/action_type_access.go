@@ -375,31 +375,31 @@ func (ata *actionTypeAccess) ListActionTypes(ctx context.Context, query interfac
 		actionType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 		// 2.0 Deserialize condition.
-		err = sonic.Unmarshal(conditionBytes, &actionType.Condition)
+		err = common.UnmarshalStoredJSON(conditionBytes, &actionType.Condition)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Condition after getting action type, err", err)
 			return []*interfaces.ActionType{}, err
 		}
 		// 2.1 Deserialize affect.
-		err = sonic.Unmarshal(affectBytes, &actionType.Affect)
+		err = common.UnmarshalStoredJSON(affectBytes, &actionType.Affect)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Affect after getting action type, err", err)
 			return []*interfaces.ActionType{}, err
 		}
 		// 2.2 Deserialize action_source.
-		err = sonic.Unmarshal(actionSourceBytes, &actionType.ActionSource)
+		err = common.UnmarshalStoredJSON(actionSourceBytes, &actionType.ActionSource)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal ActionSource after getting action type, err", err)
 			return []*interfaces.ActionType{}, err
 		}
 		// 2.3 Deserialize parameters.
-		err = sonic.Unmarshal(parametersBytes, &actionType.Parameters)
+		err = common.UnmarshalStoredJSON(parametersBytes, &actionType.Parameters)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Parameters after getting action type, err", err)
 			return []*interfaces.ActionType{}, err
 		}
 		// 2.4 Deserialize schedule.
-		err = sonic.Unmarshal(scheduleBytes, &actionType.Schedule)
+		err = common.UnmarshalStoredJSON(scheduleBytes, &actionType.Schedule)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Schedule after getting action type, err", err)
 			return []*interfaces.ActionType{}, err
@@ -553,31 +553,31 @@ func (ata *actionTypeAccess) GetActionTypesByIDs(ctx context.Context, knID strin
 		actionType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 		// 2.0 Deserialize condition.
-		err = sonic.Unmarshal(conditionBytes, &actionType.Condition)
+		err = common.UnmarshalStoredJSON(conditionBytes, &actionType.Condition)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Condition after getting action type, err", err)
 			return []*interfaces.ActionType{}, err
 		}
 		// 2.1 Deserialize affect.
-		err = sonic.Unmarshal(affectBytes, &actionType.Affect)
+		err = common.UnmarshalStoredJSON(affectBytes, &actionType.Affect)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Affect after getting action type, err", err)
 			return []*interfaces.ActionType{}, err
 		}
 		// 2.2 Deserialize action_source.
-		err = sonic.Unmarshal(actionSourceBytes, &actionType.ActionSource)
+		err = common.UnmarshalStoredJSON(actionSourceBytes, &actionType.ActionSource)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal ActionSource after getting action type, err", err)
 			return []*interfaces.ActionType{}, err
 		}
 		// 2.3 Deserialize parameters.
-		err = sonic.Unmarshal(parametersBytes, &actionType.Parameters)
+		err = common.UnmarshalStoredJSON(parametersBytes, &actionType.Parameters)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Parameters after getting action type, err", err)
 			return []*interfaces.ActionType{}, err
 		}
 		// 2.4 Deserialize schedule.
-		err = sonic.Unmarshal(scheduleBytes, &actionType.Schedule)
+		err = common.UnmarshalStoredJSON(scheduleBytes, &actionType.Schedule)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Schedule after getting action type, err", err)
 			return []*interfaces.ActionType{}, err
@@ -974,31 +974,31 @@ func (ata *actionTypeAccess) GetAllActionTypesByKnID(ctx context.Context, knID s
 		actionType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 		// 2.0 Deserialize condition.
-		err = sonic.Unmarshal(conditionBytes, &actionType.Condition)
+		err = common.UnmarshalStoredJSON(conditionBytes, &actionType.Condition)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Condition after getting action type, err", err)
 			return map[string]*interfaces.ActionType{}, err
 		}
 		// 2.1 Deserialize affect.
-		err = sonic.Unmarshal(affectBytes, &actionType.Affect)
+		err = common.UnmarshalStoredJSON(affectBytes, &actionType.Affect)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Affect after getting action type, err", err)
 			return map[string]*interfaces.ActionType{}, err
 		}
 		// 2.2 Deserialize action_source.
-		err = sonic.Unmarshal(actionSourceBytes, &actionType.ActionSource)
+		err = common.UnmarshalStoredJSON(actionSourceBytes, &actionType.ActionSource)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal ActionSource after getting action type, err", err)
 			return map[string]*interfaces.ActionType{}, err
 		}
 		// 2.3 Deserialize parameters.
-		err = sonic.Unmarshal(parametersBytes, &actionType.Parameters)
+		err = common.UnmarshalStoredJSON(parametersBytes, &actionType.Parameters)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Parameters after getting action type, err", err)
 			return map[string]*interfaces.ActionType{}, err
 		}
 		// 2.4 Deserialize schedule.
-		err = sonic.Unmarshal(scheduleBytes, &actionType.Schedule)
+		err = common.UnmarshalStoredJSON(scheduleBytes, &actionType.Schedule)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Schedule after getting action type, err", err)
 			return map[string]*interfaces.ActionType{}, err

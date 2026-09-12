@@ -1,23 +1,25 @@
 # BKN Directory Checksum
-# generated: 2026-09-11T14:08:37+08:00
+# format: 2
+# generated: 2026-09-12T09:28:13+08:00
 SKILL.md  sha256:08301dfb5f554f2a
-action_type:assess_department  sha256:ddcfd628ac7fb792
-action_type:delete_department  sha256:e96c729c1b099924
-action_type:new_employee_resource  sha256:ed3ab8fbd33d240b
-action_type:new_job  sha256:1c8eb7514a6aa1ae
-concept_group:employee_onboarding  sha256:a162a37192cb0198
-metric:mock_department_count  sha256:eaafde287d10b47d
-metric:mock_employee_avg_salary_onboarded  sha256:6fede488fee16a53
-metric:mock_employee_onboarded_count  sha256:ffe0ba45497f6e7f
-metric:mock_skill_catalog_total_count  sha256:777b6fa360825be2
-metric:mock_skill_count_by_category  sha256:f5c5e2abbce27714
-object_type:department  sha256:0b1e2860fcc17d76
-object_type:department_resource  sha256:913933ca03351f87
-object_type:employee  sha256:0bf1f14b0274b8ea
-object_type:employee_resource  sha256:7084404af040425e
-object_type:relation  sha256:b87a52fad3d3bbf9
-object_type:skill  sha256:ae627aad3deb6b8c
-relation_type:emp_dept_indirect  sha256:a65451bb38f768ef
-relation_type:emp_dept_resource  sha256:1c9a2007e3f32d8b
-relation_type:emp_skill  sha256:41187a1389b20af5
-relation_type:source_object_type_id  sha256:3517043fa1a34614
+action_type:assess_department  sha256:a33efa9cb9dd30e2
+action_type:delete_department  sha256:b6608b670c99f09b
+action_type:new_employee_resource  sha256:ff2a52388a438811
+action_type:new_job  sha256:738b27baee59ec68
+concept_group:employee_onboarding  sha256:26c095bc7f2ec043
+metric:mock_department_count  sha256:2dc184c13ec8aa50
+metric:mock_employee_avg_salary_onboarded  sha256:a8f9e34406863700
+metric:mock_employee_onboarded_count  sha256:e5306efaac331a03
+metric:mock_skill_catalog_total_count  sha256:db7ad7d6349d59e5
+metric:mock_skill_count_by_category  sha256:54700ea47c28635f
+network  sha256:2709e20f3fdae40e
+object_type:department  sha256:2d34b07f1fd8ab06
+object_type:department_resource  sha256:1cbb8276cabbc66c
+object_type:employee  sha256:95e6ffa3b7736c68
+object_type:employee_resource  sha256:4a185c83b7e97718
+object_type:relation  sha256:1c7add1867aa509e
+object_type:skill  sha256:68f2096d58f6a664
+relation_type:emp_dept_indirect  sha256:53524b959f912621
+relation_type:emp_dept_resource  sha256:39b8b16999f96816
+relation_type:emp_skill  sha256:42da207fc4b7f9c6
+relation_type:source_object_type_id  sha256:9518a8b82e06270f

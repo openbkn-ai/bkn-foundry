@@ -3,12 +3,13 @@
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
 // Package knquerytools provides HTTP handlers for the query tools that are also
-// exposed as MCP tools: run_sql, list_knowledge_networks, get_kn_detail,
+// exposed as MCP tools: run_sql, run_cypher, list_knowledge_networks, get_kn_detail,
 // list_resources, describe_resource.
 // These internal REST endpoints back the operator-integration toolbox entries.
 package knquerytools
 
 import (
+	stderrors "errors"
 	"net/http"
 	"sync"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/kncypher"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knmetrics"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knresources"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knrunsql"
@@ -32,6 +34,7 @@ import (
 // Internal REST entry for get_object_types / get_relation_types / list_resources / describe_resource.
 type KnQueryToolsHandler interface {
 	RunSQL(c *gin.Context)
+	RunCypher(c *gin.Context)
 	ListKnowledgeNetworks(c *gin.Context)
 	GetKnDetail(c *gin.Context)
 	GetObjectTypes(c *gin.Context)
@@ -44,6 +47,7 @@ type KnQueryToolsHandler interface {
 type knQueryToolsHandler struct {
 	logger       interfaces.Logger
 	runSQL       knrunsql.KnRunSQLService
+	cypher       kncypher.KnCypherService
 	resources    knresources.KnResourcesService
 	bknBackend   interfaces.BknBackendAccess
 	metrics      knmetrics.KnMetricsService
@@ -63,6 +67,7 @@ func NewKnQueryToolsHandler() KnQueryToolsHandler {
 		handler = &knQueryToolsHandler{
 			logger:       conf.GetLogger(),
 			runSQL:       knrunsql.NewKnRunSQLService(),
+			cypher:       kncypher.NewKnCypherService(),
 			resources:    knresources.NewKnResourcesService(),
 			bknBackend:   drivenadapters.NewBknBackendAccess(),
 			metrics:      knmetrics.NewKnMetricsService(),
@@ -90,6 +95,33 @@ func (h *knQueryToolsHandler) RunSQL(c *gin.Context) {
 			return
 		}
 		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error()))
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, resp)
+}
+
+// RunCypher compiles one read-only Cypher query against the knowledge network's
+// model in bkn-backend and returns the rows it produced.
+func (h *knQueryToolsHandler) RunCypher(c *gin.Context) {
+	ctx := c.Request.Context()
+	req := &kncypher.RunCypherReq{}
+	if err := c.ShouldBindJSON(req); err != nil {
+		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error()))
+		return
+	}
+
+	resp, err := h.cypher.RunCypher(ctx, req)
+	if err != nil {
+		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#RunCypher] run cypher failed: %v", err)
+		// A refusal from the compiler already carries its own status and names
+		// the construct it refused; that message is what tells the caller how
+		// to rewrite the query, so it is passed through untouched. Only the
+		// errors raised in this service need a status of their own.
+		httpErr := &errors.HTTPError{}
+		if !stderrors.As(err, &httpErr) {
+			err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error())
+		}
+		rest.ReplyError(c, err)
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, resp)

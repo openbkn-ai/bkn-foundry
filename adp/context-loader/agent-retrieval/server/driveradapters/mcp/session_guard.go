@@ -187,10 +187,42 @@ func guardBusinessToolCallWithCompletion(
 			return result, nil
 		}
 		if completed != nil {
-			attachReceipt(result, completed.Receipt)
+			attachReceipt(result, agentReceiptView(completed.Receipt))
 		}
 		return result, nil
 	}
+}
+
+// agentReceiptFields are the receipt fields a caller reads off a managed tool result.
+//
+// The registered lifecycle tools take no receipt or operation id, so the only consumer is the
+// agent-side evidence recorder, which keys on status, durability and the evidence references.
+var agentReceiptFields = []string{
+	"receipt_status", "evidence_durability", "observed_evidence_refs", "business_refs",
+}
+
+// agentReceiptView trims the durable receipt to what a caller reads off a tool result.
+//
+// Core's receipt carries the whole lifecycle record -- owner, request and trace ids, row version,
+// timestamps -- and every managed call echoed all of it into the agent's context, several hundred
+// bytes per call that nothing read. partial_reasons is the one field the agent itself must see, so
+// it survives whenever Core set it. A receipt that cannot be read as a JSON object is passed
+// through untouched rather than lost.
+func agentReceiptView(receipt any) any {
+	payload, ok := structuredContentAsMap(receipt)
+	if !ok {
+		return receipt
+	}
+	view := make(map[string]any, len(agentReceiptFields)+1)
+	for _, field := range agentReceiptFields {
+		if value, present := payload[field]; present {
+			view[field] = value
+		}
+	}
+	if reasons, ok := payload["partial_reasons"].([]any); ok && len(reasons) > 0 {
+		view["partial_reasons"] = reasons
+	}
+	return view
 }
 
 func managedOperationKey(

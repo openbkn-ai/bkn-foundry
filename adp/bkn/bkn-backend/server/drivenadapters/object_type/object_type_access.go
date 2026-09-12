@@ -422,28 +422,28 @@ func (ota *objectTypeAccess) ListObjectTypes(ctx context.Context, tx *sql.Tx, qu
 		objectType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 		// 2.0 Deserialize the data source.
-		err = sonic.Unmarshal(dataSourceBytes, &objectType.DataSource)
+		err = common.UnmarshalStoredJSON(dataSourceBytes, &objectType.DataSource)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataSource after getting object type, err", err)
 			return []*interfaces.ObjectType{}, err
 		}
 
 		// 2.1 Deserialize data properties.
-		err = sonic.Unmarshal(dataPropertiesBytes, &objectType.DataProperties)
+		err = common.UnmarshalStoredJSON(dataPropertiesBytes, &objectType.DataProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)
 			return []*interfaces.ObjectType{}, err
 		}
 
 		// 2.2 Deserialize logical properties.
-		err = sonic.Unmarshal(logicPropertiesBytes, &objectType.LogicProperties)
+		err = common.UnmarshalStoredJSON(logicPropertiesBytes, &objectType.LogicProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal logicProperties after getting object type, err", err)
 			return []*interfaces.ObjectType{}, err
 		}
 
 		// 2.3 Deserialize primary keys.
-		err = sonic.Unmarshal(primaryKeysBytes, &objectType.PrimaryKeys)
+		err = common.UnmarshalStoredJSON(primaryKeysBytes, &objectType.PrimaryKeys)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal primaryKeys after getting object type, err", err)
 			return []*interfaces.ObjectType{}, err
@@ -607,28 +607,28 @@ func (ota *objectTypeAccess) GetObjectTypeByID(ctx context.Context, tx *sql.Tx, 
 	objectType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 	// 2.0 Deserialize the data source.
-	err = sonic.Unmarshal(dataSourceBytes, &objectType.DataSource)
+	err = common.UnmarshalStoredJSON(dataSourceBytes, &objectType.DataSource)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to unmarshal dataSource after getting object type, err", err)
 		return nil, err
 	}
 
 	// 2.1 Deserialize data properties.
-	err = sonic.Unmarshal(dataPropertiesBytes, &objectType.DataProperties)
+	err = common.UnmarshalStoredJSON(dataPropertiesBytes, &objectType.DataProperties)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)
 		return nil, err
 	}
 
 	// 2.2 Deserialize logical properties.
-	err = sonic.Unmarshal(logicPropertiesBytes, &objectType.LogicProperties)
+	err = common.UnmarshalStoredJSON(logicPropertiesBytes, &objectType.LogicProperties)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to unmarshal logicProperties after getting object type, err", err)
 		return nil, err
 	}
 
 	// 2.3 Deserialize primary keys.
-	err = sonic.Unmarshal(primaryKeysBytes, &objectType.PrimaryKeys)
+	err = common.UnmarshalStoredJSON(primaryKeysBytes, &objectType.PrimaryKeys)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to unmarshal primaryKeys after getting object type, err", err)
 		return nil, err
@@ -779,28 +779,28 @@ func (ota *objectTypeAccess) GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx
 		objectType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 		// 2.0 Deserialize the data source.
-		err = sonic.Unmarshal(dataSourceBytes, &objectType.DataSource)
+		err = common.UnmarshalStoredJSON(dataSourceBytes, &objectType.DataSource)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataSource after getting object type, err", err)
 			return []*interfaces.ObjectType{}, err
 		}
 
 		// 2.1 Deserialize data properties.
-		err = sonic.Unmarshal(dataPropertiesBytes, &objectType.DataProperties)
+		err = common.UnmarshalStoredJSON(dataPropertiesBytes, &objectType.DataProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)
 			return []*interfaces.ObjectType{}, err
 		}
 
 		// 2.2 Deserialize logical properties.
-		err = sonic.Unmarshal(logicPropertiesBytes, &objectType.LogicProperties)
+		err = common.UnmarshalStoredJSON(logicPropertiesBytes, &objectType.LogicProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal logicProperties after getting object type, err", err)
 			return []*interfaces.ObjectType{}, err
 		}
 
 		// 2.3 Deserialize primary keys.
-		err = sonic.Unmarshal(primaryKeysBytes, &objectType.PrimaryKeys)
+		err = common.UnmarshalStoredJSON(primaryKeysBytes, &objectType.PrimaryKeys)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal primaryKeys after getting object type, err", err)
 			return []*interfaces.ObjectType{}, err
@@ -1381,28 +1381,28 @@ func (ota *objectTypeAccess) GetAllObjectTypesByKnID(ctx context.Context, knID s
 		objectType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 		// 2.0 Deserialize the data source.
-		err = sonic.Unmarshal(dataSourceBytes, &objectType.DataSource)
+		err = common.UnmarshalStoredJSON(dataSourceBytes, &objectType.DataSource)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataSource after getting object type, err", err)
 			return map[string]*interfaces.ObjectType{}, err
 		}
 
 		// 2.1 Deserialize data properties.
-		err = sonic.Unmarshal(dataPropertiesBytes, &objectType.DataProperties)
+		err = common.UnmarshalStoredJSON(dataPropertiesBytes, &objectType.DataProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)
 			return map[string]*interfaces.ObjectType{}, err
 		}
 
 		// 2.2 Deserialize logical properties.
-		err = sonic.Unmarshal(logicPropertiesBytes, &objectType.LogicProperties)
+		err = common.UnmarshalStoredJSON(logicPropertiesBytes, &objectType.LogicProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal logicProperties after getting object type, err", err)
 			return map[string]*interfaces.ObjectType{}, err
 		}
 
 		// 2.3 Deserialize primary keys.
-		err = sonic.Unmarshal(primaryKeysBytes, &objectType.PrimaryKeys)
+		err = common.UnmarshalStoredJSON(primaryKeysBytes, &objectType.PrimaryKeys)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal primaryKeys after getting object type, err", err)
 			return map[string]*interfaces.ObjectType{}, err
