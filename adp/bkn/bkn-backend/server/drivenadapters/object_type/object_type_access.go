@@ -7,7 +7,6 @@
 package object_type
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
@@ -423,28 +422,28 @@ func (ota *objectTypeAccess) ListObjectTypes(ctx context.Context, tx *sql.Tx, qu
 		objectType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 		// 2.0 Deserialize the data source.
-		err = unmarshalStoredJSON(dataSourceBytes, &objectType.DataSource)
+		err = common.UnmarshalStoredJSON(dataSourceBytes, &objectType.DataSource)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataSource after getting object type, err", err)
 			return []*interfaces.ObjectType{}, err
 		}
 
 		// 2.1 Deserialize data properties.
-		err = unmarshalStoredJSON(dataPropertiesBytes, &objectType.DataProperties)
+		err = common.UnmarshalStoredJSON(dataPropertiesBytes, &objectType.DataProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)
 			return []*interfaces.ObjectType{}, err
 		}
 
 		// 2.2 Deserialize logical properties.
-		err = unmarshalStoredJSON(logicPropertiesBytes, &objectType.LogicProperties)
+		err = common.UnmarshalStoredJSON(logicPropertiesBytes, &objectType.LogicProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal logicProperties after getting object type, err", err)
 			return []*interfaces.ObjectType{}, err
 		}
 
 		// 2.3 Deserialize primary keys.
-		err = unmarshalStoredJSON(primaryKeysBytes, &objectType.PrimaryKeys)
+		err = common.UnmarshalStoredJSON(primaryKeysBytes, &objectType.PrimaryKeys)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal primaryKeys after getting object type, err", err)
 			return []*interfaces.ObjectType{}, err
@@ -608,28 +607,28 @@ func (ota *objectTypeAccess) GetObjectTypeByID(ctx context.Context, tx *sql.Tx, 
 	objectType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 	// 2.0 Deserialize the data source.
-	err = unmarshalStoredJSON(dataSourceBytes, &objectType.DataSource)
+	err = common.UnmarshalStoredJSON(dataSourceBytes, &objectType.DataSource)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to unmarshal dataSource after getting object type, err", err)
 		return nil, err
 	}
 
 	// 2.1 Deserialize data properties.
-	err = unmarshalStoredJSON(dataPropertiesBytes, &objectType.DataProperties)
+	err = common.UnmarshalStoredJSON(dataPropertiesBytes, &objectType.DataProperties)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)
 		return nil, err
 	}
 
 	// 2.2 Deserialize logical properties.
-	err = unmarshalStoredJSON(logicPropertiesBytes, &objectType.LogicProperties)
+	err = common.UnmarshalStoredJSON(logicPropertiesBytes, &objectType.LogicProperties)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to unmarshal logicProperties after getting object type, err", err)
 		return nil, err
 	}
 
 	// 2.3 Deserialize primary keys.
-	err = unmarshalStoredJSON(primaryKeysBytes, &objectType.PrimaryKeys)
+	err = common.UnmarshalStoredJSON(primaryKeysBytes, &objectType.PrimaryKeys)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to unmarshal primaryKeys after getting object type, err", err)
 		return nil, err
@@ -780,28 +779,28 @@ func (ota *objectTypeAccess) GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx
 		objectType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 		// 2.0 Deserialize the data source.
-		err = unmarshalStoredJSON(dataSourceBytes, &objectType.DataSource)
+		err = common.UnmarshalStoredJSON(dataSourceBytes, &objectType.DataSource)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataSource after getting object type, err", err)
 			return []*interfaces.ObjectType{}, err
 		}
 
 		// 2.1 Deserialize data properties.
-		err = unmarshalStoredJSON(dataPropertiesBytes, &objectType.DataProperties)
+		err = common.UnmarshalStoredJSON(dataPropertiesBytes, &objectType.DataProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)
 			return []*interfaces.ObjectType{}, err
 		}
 
 		// 2.2 Deserialize logical properties.
-		err = unmarshalStoredJSON(logicPropertiesBytes, &objectType.LogicProperties)
+		err = common.UnmarshalStoredJSON(logicPropertiesBytes, &objectType.LogicProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal logicProperties after getting object type, err", err)
 			return []*interfaces.ObjectType{}, err
 		}
 
 		// 2.3 Deserialize primary keys.
-		err = unmarshalStoredJSON(primaryKeysBytes, &objectType.PrimaryKeys)
+		err = common.UnmarshalStoredJSON(primaryKeysBytes, &objectType.PrimaryKeys)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal primaryKeys after getting object type, err", err)
 			return []*interfaces.ObjectType{}, err
@@ -1382,28 +1381,28 @@ func (ota *objectTypeAccess) GetAllObjectTypesByKnID(ctx context.Context, knID s
 		objectType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 		// 2.0 Deserialize the data source.
-		err = unmarshalStoredJSON(dataSourceBytes, &objectType.DataSource)
+		err = common.UnmarshalStoredJSON(dataSourceBytes, &objectType.DataSource)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataSource after getting object type, err", err)
 			return map[string]*interfaces.ObjectType{}, err
 		}
 
 		// 2.1 Deserialize data properties.
-		err = unmarshalStoredJSON(dataPropertiesBytes, &objectType.DataProperties)
+		err = common.UnmarshalStoredJSON(dataPropertiesBytes, &objectType.DataProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)
 			return map[string]*interfaces.ObjectType{}, err
 		}
 
 		// 2.2 Deserialize logical properties.
-		err = unmarshalStoredJSON(logicPropertiesBytes, &objectType.LogicProperties)
+		err = common.UnmarshalStoredJSON(logicPropertiesBytes, &objectType.LogicProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal logicProperties after getting object type, err", err)
 			return map[string]*interfaces.ObjectType{}, err
 		}
 
 		// 2.3 Deserialize primary keys.
-		err = unmarshalStoredJSON(primaryKeysBytes, &objectType.PrimaryKeys)
+		err = common.UnmarshalStoredJSON(primaryKeysBytes, &objectType.PrimaryKeys)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal primaryKeys after getting object type, err", err)
 			return map[string]*interfaces.ObjectType{}, err
@@ -1414,18 +1413,4 @@ func (ota *objectTypeAccess) GetAllObjectTypesByKnID(ctx context.Context, knID s
 
 	span.SetStatus(codes.Ok, "")
 	return objectTypes, nil
-}
-
-// unmarshalStoredJSON decodes a JSON column that is allowed to be empty.
-//
-// These columns are nullable in practice: rows written before a field existed, or by a path that
-// left it blank, hold "" rather than "null" or "[]". Handing "" to the decoder fails with
-// "the input json is empty", and the failure surfaces as an internal error on every read of that
-// object type — the whole knowledge network becomes unopenable because one column is blank.
-// An empty column means the value was never set, which is what a nil target already says.
-func unmarshalStoredJSON(raw []byte, target any) error {
-	if len(bytes.TrimSpace(raw)) == 0 {
-		return nil
-	}
-	return sonic.Unmarshal(raw, target)
 }
