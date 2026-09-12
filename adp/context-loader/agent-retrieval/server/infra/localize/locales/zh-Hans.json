@@ -134,6 +134,7 @@
     "ToolboxIDRequired": "缺少 toolbox_id 参数。",
     "ToolboxIDAndToolIDRequired": "缺少 toolbox_id 或 tool_id 参数，二者都取自 search_capabilities 的返回（owner_id / capability_id）。",
     "ToolNotExecutable": "该工具不在当前可调用的已启用工具列表中：工具可能已停用、所属工具箱未发布，或当前账户无权访问。请先用 search_capabilities 确认可用的 owner_id 与 capability_id。",
+    "CapabilityStateUnavailable": "暂时无法确认该能力所属工具箱 / MCP Server 的状态（执行工厂不可达），本次未执行。这不是权限或发布问题，请稍后重试。",
     "NoPublishedToolsMatched": "没有匹配的已发布工具。请先在执行工厂注册工具、发布所属工具箱并启用工具，或放宽 query、去掉 toolbox_id 后重试。",
     "NoBoundCapabilitiesInNetwork": "该知识网络未挂载任何能力。请先在知识网络中挂载 Skill、函数工具或 MCP 工具后重试。",
     "NoCapabilitiesOfRequestedKind": "该知识网络挂载了能力，但没有 types / metadata_types 指定类型的。去掉这两个参数可看到全部已挂载能力。",

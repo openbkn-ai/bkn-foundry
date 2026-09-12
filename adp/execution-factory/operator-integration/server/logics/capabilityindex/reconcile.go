@@ -301,10 +301,14 @@ func (r *reconciler) ForgetBox(ctx context.Context, boxID string) error {
 func (r *reconciler) RequestReconcile(ctx context.Context) {
 	detached := context.WithoutCancel(ctx)
 	go func() {
-		ctx, cancel := context.WithTimeout(detached, reconcileRequestTimeout)
-		defer cancel()
+		// Take the lock first, then start the clock. The periodic pass has no bound of its own,
+		// and a timeout that started while queued behind it could be spent before this pass
+		// ever ran — the import's reconcile would then fail on an expired context and the rows
+		// would wait for the next tick after all.
 		r.running.Lock()
 		defer r.running.Unlock()
+		ctx, cancel := context.WithTimeout(detached, reconcileRequestTimeout)
+		defer cancel()
 		if err := r.indexSync.EnsureInitialized(ctx); err != nil {
 			r.logger.WithContext(ctx).Warnf("requested capability reconcile skipped, index not ready: %v", err)
 			return

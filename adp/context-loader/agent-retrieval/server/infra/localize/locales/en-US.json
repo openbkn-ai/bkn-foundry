@@ -134,6 +134,7 @@
     "ToolboxIDRequired": "toolbox_id is required.",
     "ToolboxIDAndToolIDRequired": "toolbox_id and tool_id are required. Both come from a search_capabilities result (owner_id / capability_id).",
     "ToolNotExecutable": "This tool is not in the enabled catalogue you can call: it may be disabled, its toolbox may be unpublished, or this account may not have access. Confirm a callable owner_id and capability_id with search_capabilities first.",
+    "CapabilityStateUnavailable": "The state of this capability's tool box / MCP Server could not be confirmed (the execution factory did not answer), so nothing ran. This is neither a permission nor a publication problem; retry shortly.",
     "NoPublishedToolsMatched": "No published tools matched. Register a tool in Execution Factory, publish its toolbox and enable the tool, or broaden query and drop toolbox_id, then retry.",
     "NoBoundCapabilitiesInNetwork": "This knowledge network has no capability mounted. Mount a Skill, a Function tool or an MCP tool first, then retry.",
     "NoCapabilitiesOfRequestedKind": "The knowledge network has capabilities mounted, but none of the kinds named in types / metadata_types. Drop both to see everything it mounted.",

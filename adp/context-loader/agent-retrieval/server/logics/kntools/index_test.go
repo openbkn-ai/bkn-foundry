@@ -990,5 +990,32 @@ func TestExecuteRefusesAWithdrawnBoxAndADisabledTool(t *testing.T) {
 		if op.executionCount != 0 {
 			t.Fatalf("%s: 被拒的调用不该到达代理, executions=%d", name, op.executionCount)
 		}
+		// "Could not ask" and "asked, and the answer is no" are different refusals: the first is
+		// transient and says retry, the second is final and names the tool. Neither may borrow
+		// the other's words.
+		unreadable := name == "state unreadable"
+		if got := strings.Contains(err.Error(), "重试") || strings.Contains(err.Error(), "retry"); got != unreadable {
+			t.Fatalf("%s: 状态核不到才该提示重试, got %q", name, err.Error())
+		}
+	}
+}
+
+// The same split on the MCP side of execute_tool.
+func TestExecuteTellsAnUnreadableMCPStateFromAWithdrawnOne(t *testing.T) {
+	for name, op := range map[string]*fakeOperator{
+		"server withdrawn": {mcpUnusable: map[string]bool{"mcp-1": true}},
+		"state unreadable": {mcpStatusErr: map[string]error{"mcp-1": errors.New("execution factory unreachable")}},
+	} {
+		bkn := &fakeBkn{refs: mcpRefs("mcp-1", "t")}
+		_, err := newService(bkn, op).ExecuteTool(context.Background(), &ExecuteToolReq{
+			KnID: "kn1", ToolboxID: "mcp-1", ToolID: "t", Arguments: map[string]any{},
+		})
+		if err == nil || op.gotMCPCall != nil {
+			t.Fatalf("%s: 该被拒且不到达代理, err=%v", name, err)
+		}
+		unreadable := name == "state unreadable"
+		if got := strings.Contains(err.Error(), "重试") || strings.Contains(err.Error(), "retry"); got != unreadable {
+			t.Fatalf("%s: 状态核不到才该提示重试, got %q", name, err.Error())
+		}
 	}
 }

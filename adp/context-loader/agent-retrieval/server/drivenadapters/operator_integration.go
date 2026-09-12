@@ -183,6 +183,15 @@ func (o *operatorIntegrationClient) CallMCPTool(ctx context.Context, req *interf
 // mcpServerDetailURI reads one MCP Server, including its publication state.
 const mcpServerDetailURI = "/internal-v1/mcp/%s"
 
+// errOrStatus is the error to wrap when a read failed: the transport error when there was one,
+// otherwise a sentinel carrying the unexpected status code.
+func errOrStatus(err error, code int) error {
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("unexpected status %d", code)
+}
+
 // toolBoxDetailURI reads one tool box, including its publication state.
 const toolBoxDetailURI = "/internal-v1/tool-box/%s"
 
@@ -209,9 +218,15 @@ func (o *operatorIntegrationClient) ToolBoxLifecycle(ctx context.Context, boxID 
 
 	code, body, err := o.httpClient.Get(ctx, o.baseURL+fmt.Sprintf(toolBoxDetailURI, boxID), nil, header)
 	if err != nil || code != http.StatusOK {
+		// A box that is not there is not published; a box that could not be read is unknown.
+		// The two must not look alike to the caller: retrieval withholds either, but execution
+		// answers "not callable" for the first and "try again" for the second.
+		if err == nil && code == http.StatusNotFound {
+			return out, nil
+		}
 		o.logger.WithContext(ctx).Warnf("[OperatorIntegration#ToolBoxLifecycle] box_id=%s unreadable: code=%d err=%v",
 			boxID, code, err)
-		return out, nil
+		return nil, fmt.Errorf("tool box %s state unavailable: code=%d err=%w", boxID, code, errOrStatus(err, code))
 	}
 	var box struct {
 		Status string `json:"status"`
@@ -230,7 +245,7 @@ func (o *operatorIntegrationClient) ToolBoxLifecycle(ctx context.Context, boxID 
 	if err != nil || code != http.StatusOK {
 		o.logger.WithContext(ctx).Warnf("[OperatorIntegration#ToolBoxLifecycle] box_id=%s tools unreadable: code=%d err=%v",
 			boxID, code, err)
-		return &interfaces.ToolBoxLifecycle{EnabledTools: map[string]struct{}{}}, nil
+		return nil, fmt.Errorf("tool box %s tools unavailable: code=%d err=%w", boxID, code, errOrStatus(err, code))
 	}
 	var listed struct {
 		Tools []struct {
@@ -262,9 +277,13 @@ func (o *operatorIntegrationClient) MCPServerIsUsable(ctx context.Context, mcpID
 
 	code, body, err := o.httpClient.Get(ctx, fullURL, nil, header)
 	if err != nil || code != http.StatusOK {
+		// Same split as ToolBoxLifecycle: gone is unusable, unreadable is an error.
+		if err == nil && code == http.StatusNotFound {
+			return false, nil
+		}
 		o.logger.WithContext(ctx).Warnf("[OperatorIntegration#MCPServerIsUsable] mcp_id=%s unreadable: code=%d err=%v",
 			mcpID, code, err)
-		return false, nil
+		return false, fmt.Errorf("mcp server %s state unavailable: code=%d err=%w", mcpID, code, errOrStatus(err, code))
 	}
 
 	var payload struct {

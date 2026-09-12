@@ -495,7 +495,12 @@ func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (
 		// endpoint answers whatever the server's state, so an offline server still lists every
 		// tool it had.
 		usable, err := s.operator.MCPServerIsUsable(ctx, ref.MCPID)
-		if err != nil || !usable {
+		if err != nil {
+			s.warnf(ctx, "[ExecuteTool] mcp server %s state unavailable: %v", ref.MCPID, err)
+			return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+				infraErr.LocalizedDetail(ctx, "CapabilityStateUnavailable"))
+		}
+		if !usable {
 			return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
 				infraErr.LocalizedDetail(ctx, "ToolNotExecutable"))
 		}
@@ -518,7 +523,14 @@ func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (
 	// caller-visible listing below cannot fill the gap: it never looks at the box, and on the
 	// internal face it cannot be read at all. A state that cannot be confirmed refuses.
 	state, err := s.operator.ToolBoxLifecycle(ctx, toolboxID)
-	if err != nil || state == nil || !state.Published {
+	if err != nil {
+		// Unknown is not "not callable". The execution factory could not be asked, so the
+		// answer is retry, not the 400 that tells an agent to go look for a different tool.
+		s.warnf(ctx, "[ExecuteTool] tool box %s state unavailable: %v", toolboxID, err)
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+			infraErr.LocalizedDetail(ctx, "CapabilityStateUnavailable"))
+	}
+	if state == nil || !state.Published {
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
 			infraErr.LocalizedDetail(ctx, "ToolNotExecutable"))
 	}
