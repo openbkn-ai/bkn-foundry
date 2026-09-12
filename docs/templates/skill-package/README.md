@@ -16,6 +16,7 @@
 | [`functions/function.py.template`](functions/function.py.template) | 沙箱函数骨架：`handler(event)` + bkn-osdk 读数 |
 | [`examples/demand-deliverability-assessment/`](examples/demand-deliverability-assessment/) | 完整样例：需求可交付性评估 Skill，在测试环境实跑通过 |
 | [`examples/functions/l1_kitting_check.py`](examples/functions/l1_kitting_check.py) | 完整样例：一级 BOM 齐套检查函数，通过 bkn-osdk 读 BOM 与库存 |
+| [`examples/functions/call_l1_check.py`](examples/functions/call_l1_check.py) | 完整样例：函数调函数，通过 `kn.execute_tool` 以同一身份、同一受管会话调用上一个函数 |
 
 ## 一、Skill 包结构
 
@@ -88,6 +89,28 @@ metadata:
 ### 骨架
 
 见 [`functions/function.py.template`](functions/function.py.template)。分页读取、按属性过滤、返回结构化结果三段都在里面；完整可跑的版本见 [`examples/functions/l1_kitting_check.py`](examples/functions/l1_kitting_check.py)。
+
+### 函数调函数
+
+一个函数可以通过平台调用另一个已挂载到同一知识网络的函数：
+
+```python
+from bkn_osdk import kn
+
+def handler(event):
+    answer = kn.execute_tool(event["kn_id"], event["box_id"], event["tool_id"],
+                             {"kn_id": event["kn_id"], "product": event["product"], "qty": 50})
+    body = answer.get("body", answer)          # 被调函数的原始响应
+    if body.get("exit_code") not in (0, None): # HTTP 200 不等于被调函数成功
+        return {"ok": False, "reason": body.get("stderr", "")[-300:]}
+    return {"ok": True, **(body.get("result") or {})}
+```
+
+- `kn.execute_tool` 自动带上当前沙箱的受管会话，被调函数的沙箱因此拿到同一份调用者凭据；trace 里被调函数挂在本函数 `execute_tool` 操作之下，再往下是它自己的读数。
+- 前提：沙箱预装的 bkn-osdk 含 `kn.execute_tool`（bkn-sdk #100 起）。更早的版本只能 `bkn_osdk.call("/api/agent-retrieval/v1/kn/execute_tool", ...)` 裸打，并且**必须**把 `BKN_CONVERSATION_ID` / `BKN_INTERACTION_ID` / `BKN_PARENT_OPERATION_ID` 拼成 `bkn_context` 放进请求体；漏掉的话被调函数的沙箱不会注入任何凭据。
+- 被调函数按自己的挂载与权限独立生效；平台不做调用深度与循环检测，别写互相调用的函数。
+
+完整样例见 [`examples/functions/call_l1_check.py`](examples/functions/call_l1_check.py)。
 
 ### 从代码到工具（openbkn CLI 0.1.5+）
 
