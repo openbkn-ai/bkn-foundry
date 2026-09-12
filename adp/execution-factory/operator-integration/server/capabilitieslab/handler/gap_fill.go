@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab/model"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 )
 
 func (h *CapabilitiesHandler) ListCategories(c *gin.Context) {
@@ -54,7 +55,7 @@ func (h *CapabilitiesHandler) DownloadSkillPackage(c *gin.Context) {
 		return
 	}
 
-	c.Header("Content-Disposition", "attachment; filename=\""+filename+"\"")
+	c.Header("Content-Disposition", utils.AttachmentContentDisposition(filename, "skill.zip"))
 	c.Data(http.StatusOK, "application/octet-stream", payload)
 }
 

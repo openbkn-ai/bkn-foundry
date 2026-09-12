@@ -93,3 +93,52 @@ func assertPayloadString(t *testing.T, payload map[string]interface{}, key, want
 		t.Fatalf("payload[%q] = %q, want %q; full payload: %+v", key, got, want, payload)
 	}
 }
+
+func TestDownloadSkillPackagePrefersRFC5987Filename(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/agent-operator-integration/v1/skills/skill-1/management/download" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Disposition", `attachment; filename="skill.zip"; filename*=UTF-8''%E9%87%91%E9%A2%9D%E6%A0%B8%E5%AF%B9%E5%87%BD%E6%95%B0.zip`)
+		w.Header().Set("Content-Type", "application/zip")
+		_, _ = w.Write([]byte("zip-bytes"))
+	}))
+	defer server.Close()
+
+	client := &OperatorIntegrationClient{
+		BaseURL: server.URL,
+		HTTP:    server.Client(),
+	}
+
+	payload, filename, err := client.DownloadSkillPackage(context.Background(), "skill-1")
+	if err != nil {
+		t.Fatalf("DownloadSkillPackage: %v", err)
+	}
+	if string(payload) != "zip-bytes" {
+		t.Fatalf("payload = %q", payload)
+	}
+	if filename != "金额核对函数.zip" {
+		t.Fatalf("filename = %q, want unicode name from filename*", filename)
+	}
+}
+
+func TestDownloadSkillPackageFallsBackToPlainFilename(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Disposition", `attachment; filename="demo-skill.zip"`)
+		_, _ = w.Write([]byte("zip-bytes"))
+	}))
+	defer server.Close()
+
+	client := &OperatorIntegrationClient{
+		BaseURL: server.URL,
+		HTTP:    server.Client(),
+	}
+
+	_, filename, err := client.DownloadSkillPackage(context.Background(), "skill-1")
+	if err != nil {
+		t.Fatalf("DownloadSkillPackage: %v", err)
+	}
+	if filename != "demo-skill.zip" {
+		t.Fatalf("filename = %q", filename)
+	}
+}

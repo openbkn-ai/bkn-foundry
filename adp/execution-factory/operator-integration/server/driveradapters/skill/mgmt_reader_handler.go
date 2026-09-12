@@ -1,7 +1,6 @@
 package skill
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -87,6 +86,6 @@ func (h *skillHandler) DownloadManagementSkill(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", resp.FileName))
+	c.Header("Content-Disposition", utils.AttachmentContentDisposition(resp.FileName, skillDownloadASCIIFallback))
 	c.Data(http.StatusOK, "application/zip", resp.Content)
 }

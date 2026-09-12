@@ -1,7 +1,6 @@
 package skill
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/creasty/defaults"
@@ -209,7 +208,7 @@ func (h *skillHandler) DownloadSkill(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", resp.FileName))
+	c.Header("Content-Disposition", utils.AttachmentContentDisposition(resp.FileName, skillDownloadASCIIFallback))
 	c.Data(http.StatusOK, "application/zip", resp.Content)
 }
 

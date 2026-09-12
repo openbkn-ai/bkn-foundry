@@ -292,7 +292,61 @@ func TestSkillHandler(t *testing.T) {
 
 			So(recorder.Code, ShouldEqual, http.StatusOK)
 			So(recorder.Header().Get("Content-Type"), ShouldEqual, "application/zip")
-			So(recorder.Header().Get("Content-Disposition"), ShouldContainSubstring, `filename="demo-skill.zip"`)
+			So(recorder.Header().Get("Content-Disposition"), ShouldEqual, `attachment; filename="demo-skill.zip"`)
+			So(recorder.Body.String(), ShouldEqual, "zip-bytes")
+		})
+
+		Convey("DownloadSkill encodes unicode filenames per RFC 5987", func() {
+			mockRegistry := mocks.NewMockSkillRegistry(ctrl)
+			mockMarket := mocks.NewMockSkillMarket(ctrl)
+			mockReader := mocks.NewMockSkillReader(ctrl)
+			handler := &skillHandler{
+				Registry: &skillRegistryAdapter{MockSkillRegistry: mockRegistry},
+				Market:   mockMarket,
+				Reader:   mockReader,
+			}
+			mockRegistry.EXPECT().DownloadSkill(gomock.Any(), gomock.Any()).Return(&interfaces.DownloadSkillResp{
+				SkillID:  "skill-5",
+				FileName: "金额核对函数.zip",
+				Content:  []byte("zip-bytes"),
+			}, nil)
+
+			recorder := performSkillRequest(http.MethodGet, "/skills/:skill_id/download", "", "", map[string]string{}, handler.DownloadSkill, "skill-5")
+
+			So(recorder.Code, ShouldEqual, http.StatusOK)
+			So(recorder.Header().Get("Content-Disposition"), ShouldEqual,
+				`attachment; filename="skill.zip"; filename*=UTF-8''%E9%87%91%E9%A2%9D%E6%A0%B8%E5%AF%B9%E5%87%BD%E6%95%B0.zip`)
+		})
+
+		Convey("DownloadManagementSkill uses the same Content-Disposition encoding", func() {
+			mockRegistry := mocks.NewMockSkillRegistry(ctrl)
+			mockMarket := mocks.NewMockSkillMarket(ctrl)
+			mockReader := mocks.NewMockSkillReader(ctrl)
+			mockMgmtReader := mocks.NewMockSkillManagementReader(ctrl)
+			handler := &skillHandler{
+				Registry:   &skillRegistryAdapter{MockSkillRegistry: mockRegistry},
+				Market:     mockMarket,
+				Reader:     mockReader,
+				MgmtReader: mockMgmtReader,
+			}
+			mockMgmtReader.EXPECT().DownloadManagementSkill(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ any, req *interfaces.DownloadManagementSkillReq) (*interfaces.DownloadSkillResp, error) {
+					So(req.SkillID, ShouldEqual, "skill-6")
+					return &interfaces.DownloadSkillResp{
+						SkillID:  "skill-6",
+						FileName: "金额核对 check.zip\r\nX-Injected: 1",
+						Content:  []byte("zip-bytes"),
+					}, nil
+				},
+			)
+
+			recorder := performSkillRequest(http.MethodGet, "/skills/:skill_id/management/download", "", "", map[string]string{}, handler.DownloadManagementSkill, "skill-6")
+
+			So(recorder.Code, ShouldEqual, http.StatusOK)
+			So(recorder.Header().Get("Content-Type"), ShouldEqual, "application/zip")
+			So(recorder.Header().Get("Content-Disposition"), ShouldEqual,
+				`attachment; filename="check.zipX-Injected_ 1"; filename*=UTF-8''%E9%87%91%E9%A2%9D%E6%A0%B8%E5%AF%B9%20check.zipX-Injected_%201`)
+			So(recorder.Header().Get("X-Injected"), ShouldBeEmpty)
 			So(recorder.Body.String(), ShouldEqual, "zip-bytes")
 		})
 
