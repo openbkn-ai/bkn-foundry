@@ -134,7 +134,7 @@ run_control start --state-file "$state_file" >/dev/null
 [[ ! -e $state_file ]] || fail "successful start did not remove the consumed state"
 start_order=$(grep ' scale deployment/' "$calls_file" |
   sed -E 's#.*deployment/([^ ]+) --replicas=[0-9]+#\1#')
-expected_start_order=$'bkn-safe\nbkn-backend\nvega-backend\nontology-query\nagent-operator-integration'
+expected_start_order=$'bkn-safe\nvega-backend\nbkn-backend\nontology-query\nagent-operator-integration'
 [[ $start_order == "$expected_start_order" ]] ||
   fail "unexpected start order: $start_order"
 [[ $(<"$fake_cluster_directory/bkn-backend") == 2 ]] ||

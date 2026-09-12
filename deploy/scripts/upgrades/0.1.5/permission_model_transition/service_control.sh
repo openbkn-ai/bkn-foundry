@@ -22,8 +22,8 @@ readonly -a STOP_ORDER=(
 )
 readonly -a START_ORDER=(
   bkn-safe
-  bkn-backend
   vega-backend
+  bkn-backend
   ontology-query
   agent-operator-integration
 )

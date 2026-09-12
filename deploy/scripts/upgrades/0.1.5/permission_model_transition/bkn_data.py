@@ -170,6 +170,23 @@ def normalize_text(value: Any) -> str:
     return str(value)
 
 
+def is_inert_archived_proxy(
+    mapping: Mapping[str, Any],
+    user: Optional[Mapping[str, Any]],
+    authorization_references: set[str],
+) -> bool:
+    """Recognize the durable tombstone left by normal network deletion."""
+    proxy_id = normalize_text(mapping.get("proxy_account_id"))
+    return (
+        normalize_text(mapping.get("lifecycle_status")) == "archived"
+        and user is not None
+        and normalize_text(user.get("account_type")) == "app"
+        and normalize_text(user.get("password_hash")) == ""
+        and not bool(user.get("enabled"))
+        and proxy_id not in authorization_references
+    )
+
+
 def utc_now() -> datetime:
     """Return a timezone-naive UTC timestamp accepted by MySQL DATETIME."""
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -794,6 +811,7 @@ def load_proxy_plan(
         }
         proxy_ids = [normalize_text(row["proxy_account_id"]) for row in managed_by_kn.values()]
         safe_users: dict[str, Mapping[str, Any]] = {}
+        authorization_references: set[str] = set()
         if proxy_ids:
             placeholders = ",".join(["%s"] * len(proxy_ids))
             cursor.execute(
@@ -802,10 +820,31 @@ def load_proxy_plan(
                 tuple(proxy_ids),
             )
             safe_users = {normalize_text(row["id"]): row for row in cursor.fetchall()}
+            for table, column in (
+                ("casbin_rule", "v0"),
+                ("proxy_grant_source", "proxy_account_id"),
+                ("proxy_grant_policy", "proxy_account_id"),
+                ("authorization_grant", "accessor_id"),
+            ):
+                cursor.execute(
+                    f"SELECT DISTINCT {column} AS proxy_account_id FROM {table} "
+                    f"WHERE {column} IN ({placeholders})",
+                    tuple(proxy_ids),
+                )
+                authorization_references.update(
+                    normalize_text(row["proxy_account_id"])
+                    for row in cursor.fetchall()
+                )
 
     plan = ProxyMigrationPlan()
     known_networks = {normalize_text(row["f_id"]) for row in networks}
     for orphan_kn in sorted(set(managed_by_kn) - known_networks):
+        managed = managed_by_kn[orphan_kn]
+        proxy_id = normalize_text(managed["proxy_account_id"])
+        if is_inert_archived_proxy(
+            managed, safe_users.get(proxy_id), authorization_references
+        ):
+            continue
         plan.failures.append(
             Failure(
                 "orphan_managed_proxy",

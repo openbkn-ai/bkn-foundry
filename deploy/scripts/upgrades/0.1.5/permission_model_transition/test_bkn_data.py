@@ -31,6 +31,7 @@ from bkn_data import (
     apply_parent_plan,
     build_plan,
     derive_proxy_sources,
+    is_inert_archived_proxy,
     load_proxy_plan,
     stable_proxy_account_id,
     sync_proxy_sources,
@@ -127,6 +128,29 @@ class ApplyParentPlanTest(unittest.TestCase):
 
 
 class ProxyPlanTest(unittest.TestCase):
+    def test_only_inert_archived_proxy_is_a_valid_deleted_network_tombstone(self):
+        mapping = {
+            "proxy_account_id": "proxy-1",
+            "lifecycle_status": "archived",
+        }
+        user = {
+            "id": "proxy-1",
+            "enabled": 0,
+            "account_type": "app",
+            "password_hash": "",
+        }
+
+        self.assertTrue(is_inert_archived_proxy(mapping, user, set()))
+        self.assertFalse(is_inert_archived_proxy(mapping, user, {"proxy-1"}))
+        self.assertFalse(
+            is_inert_archived_proxy(mapping, {**user, "enabled": 1}, set())
+        )
+        self.assertFalse(
+            is_inert_archived_proxy(
+                {**mapping, "lifecycle_status": "active"}, user, set()
+            )
+        )
+
     def test_new_proxy_identity_is_stable_between_dry_run_and_apply(self):
         self.assertEqual(
             stable_proxy_account_id("kn-1"),
