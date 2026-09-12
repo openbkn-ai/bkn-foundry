@@ -361,7 +361,13 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			"INSTR(v1, ':') > 0",               // has the type:id shape
 			ridExpr + " NOT IN ('', '*')",      // concrete instance only (skip type-wide / bare "*")
 			"v0 NOT IN (SELECT id FROM roles)", // role subjects are not user object grants
-			"v0 <> ?",                          // exclude the public accessor
+			// Managed proxies are system-owned runtime identities. Their policies
+			// are maintained through the proxy lifecycle API, not by people in the
+			// authorization-management UI. Keeping them out here also prevents a
+			// client from resolving a proxy accessor through the user directory,
+			// where proxies are intentionally invisible.
+			"v0 NOT IN (SELECT proxy_account_id FROM managed_proxy_accounts)",
+			"v0 <> ?", // exclude the public accessor
 		}
 		args := []any{authz.PublicAccessorID}
 		if accessorID != "" {
