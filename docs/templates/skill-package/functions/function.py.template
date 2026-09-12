@@ -1,0 +1,51 @@
+"""{{一句话说明这个函数算什么}}.
+
+在平台沙箱里作为函数工具运行。沙箱预装 bkn-osdk，并注入 BKN_BASE_URL、BKN_TOKEN
+与当前受管交互（BKN_CONVERSATION_ID / BKN_INTERACTION_ID），所以这里不配置地址、
+不传凭据、不传 bkn_context。
+
+约束：入口必须叫 handler(event)；不要写 `from __future__ import ...`（沙箱会在代码
+前拼接包装，该语句会报 SyntaxError）。
+"""
+
+from bkn_osdk import kn
+
+OBJECT_TYPE = "{{object_type_id}}"
+
+
+def _rows(kn_id: str, ot_id: str, **query) -> list:
+    """按 500 一页翻完 query_object_instance 的全部结果."""
+    out, offset, page = [], 0, 500
+    while True:
+        answer = kn.query_object_instance(kn_id, ot_id, limit=page, offset=offset,
+                                          response_format="json", **query)
+        datas = (answer or {}).get("datas") or []
+        out.extend(datas)
+        if len(datas) < page:
+            return out
+        offset += page
+
+
+def handler(event: dict) -> dict:
+    """event 就是工具入参；在 tool create 的 inputs 里逐个声明."""
+    kn_id = event["kn_id"]
+    key = str(event["{{param}}"]).strip()
+
+    # 1. 取数：filters 是扁平的 and 条件；文本索引字段用 match，其余按类型用 == / in / > 等。
+    rows = _rows(kn_id, OBJECT_TYPE,
+                 filters=[{"field": "{{field}}", "op": "==", "value": key}],
+                 properties=["{{field_a}}", "{{field_b}}"])
+
+    # 2. 计算：只做确定性的业务计算，不调模型、不猜数据。
+    total = sum(float(r.get("{{field_b}}") or 0) for r in rows)
+
+    # 3. 返回结构化结果；在 tool create 的 outputs 里声明关键字段，Agent 据此复述。
+    return {"{{param}}": key, "row_count": len(rows), "total": total}
+
+
+# 也可以用指标口径取数，而不是自己聚合：
+#   kn.query_metric(kn_id, "{{metric_id}}", time={"instant": True},
+#                   condition={"field": "{{field}}", "operation": "==",
+#                              "value": key, "value_from": "const"})
+# 或对数据资源执行只读 SQL（表名写 {{.resource_id}} 占位符）：
+#   kn.run_sql(kn_id, "SELECT COUNT(*) AS n FROM {{.resource_id}}")
