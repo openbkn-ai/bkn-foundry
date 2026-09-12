@@ -66,6 +66,13 @@ func auditMiddleware(store *audit.Store, dir *directory.Service, db *gorm.DB) gi
 		action := auditAction(c.Request.Method, c.FullPath())
 		targetID := c.Param("id")
 		detail := auditDetail(raw)
+		if detail == "" && len(raw) >= maxAuditBody {
+			// The snapshot hit the cap, so the JSON is cut mid-way. Salvage the
+			// top-level fields that precede the oversized part — for a
+			// resource-parents batch that is resource_type and parent_type,
+			// for a policy grant the resource — and say the snapshot is partial.
+			detail = auditDetailFromPrefix(raw)
+		}
 		if targetID == "" {
 			targetID = auditDetailTargetID(resource, detail)
 		}
@@ -186,6 +193,50 @@ func auditDetail(raw []byte) string {
 	}
 	if len(b) > maxAuditDetail {
 		return string(b[:maxAuditDetail])
+	}
+	return string(b)
+}
+
+// auditDetailFromPrefix builds the Detail snapshot of a body that was cut at
+// maxAuditBody. It walks the top-level object in order and keeps every member
+// that still decodes whole — scalars and small objects — and stops at the
+// first value the cut runs through (in practice the large array). Arrays are
+// never kept: a complete one would only bloat the row, and the cut one does
+// not decode. The result always carries "_body_truncated": true so a reader
+// knows the row describes a prefix, not the request.
+func auditDetailFromPrefix(raw []byte) string {
+	const marker = `{"_body_truncated":true}`
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		return marker
+	}
+	m := map[string]any{"_body_truncated": true}
+	for dec.More() {
+		keyTok, err := dec.Token()
+		if err != nil {
+			break
+		}
+		key, ok := keyTok.(string)
+		if !ok {
+			break
+		}
+		var value any
+		if err := dec.Decode(&value); err != nil {
+			break
+		}
+		if _, isArray := value.([]any); isArray {
+			continue
+		}
+		m[key] = value
+	}
+	for _, k := range sensitiveBodyKeys {
+		if _, ok := m[k]; ok {
+			m[k] = "***"
+		}
+	}
+	b, err := json.Marshal(m)
+	if err != nil || len(b) > maxAuditDetail {
+		return marker
 	}
 	return string(b)
 }

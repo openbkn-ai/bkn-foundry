@@ -419,6 +419,46 @@ func TestAuditedMutationKeepsBodiesLargerThanTheSnapshotCap(t *testing.T) {
 	if row.Status != http.StatusCreated || row.Resource != "departments" || len(row.Detail) > maxAuditDetail {
 		t.Fatalf("oversized mutation row: %+v", row)
 	}
+	// The snapshot is partial, says so, and still carries the top-level
+	// fields that came before the oversized one.
+	if !strings.Contains(row.Detail, `"_body_truncated":true`) || !strings.Contains(row.Detail, `"name":"Big"`) || strings.Contains(row.Detail, "padding") {
+		t.Fatalf("truncated snapshot detail: %.200s", row.Detail)
+	}
+}
+
+func TestAuditDetailFromPrefixKeepsLeadingFieldsAndSkipsArrays(t *testing.T) {
+	// A resource-parents batch shape: two scalars, one nested object, then an
+	// array the cut runs through.
+	head := `{"resource_type":"resource","parent_type":"catalog","resource":{"type":"knowledge_network","id":"kn-1"},"password":"x","tags":["a","b"],"items":[`
+	body := head + strings.Repeat(`{"resource_id":"r","parent_id":"p"},`, 4000)
+	cut := body[:maxAuditBody]
+	got := auditDetailFromPrefix([]byte(cut))
+	var m map[string]any
+	if err := json.Unmarshal([]byte(got), &m); err != nil {
+		t.Fatalf("prefix detail is not JSON: %s", got)
+	}
+	if m["_body_truncated"] != true || m["resource_type"] != "resource" || m["parent_type"] != "catalog" || m["password"] != "***" {
+		t.Fatalf("prefix detail = %s", got)
+	}
+	if ref, _ := m["resource"].(map[string]any); ref["id"] != "kn-1" {
+		t.Fatalf("small nested object dropped: %s", got)
+	}
+	if _, kept := m["tags"]; kept {
+		t.Fatalf("array kept in prefix detail: %s", got)
+	}
+	if _, kept := m["items"]; kept {
+		t.Fatalf("cut array kept in prefix detail: %s", got)
+	}
+	// And the target id derivation works off the salvaged snapshot.
+	if id := auditDetailTargetID("resource-parents", got); id != "resource" {
+		t.Fatalf("resource-parents target from prefix = %q", id)
+	}
+	if id := auditDetailTargetID("policies", got); id != "kn-1" {
+		t.Fatalf("policies target from prefix = %q", id)
+	}
+	if got := auditDetailFromPrefix([]byte("[1,2")); got != `{"_body_truncated":true}` {
+		t.Fatalf("non-object prefix = %s", got)
+	}
 }
 
 func TestOneRequestIDTiesResponseAuditAndDecisions(t *testing.T) {
