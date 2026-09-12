@@ -11,16 +11,14 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
-	"regexp"
-	"strings"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 )
 
 type CategoryEntry struct {
 	CategoryType string `json:"category_type"`
 	Name         string `json:"name"`
 }
-
-var filenamePattern = regexp.MustCompile(`filename="?([^";]+)"?`)
 
 func (c *OperatorIntegrationClient) ListCategories(ctx context.Context) ([]CategoryEntry, error) {
 	var resp []CategoryEntry
@@ -84,8 +82,8 @@ func (c *OperatorIntegrationClient) DownloadSkillPackage(
 	}
 
 	filename := "skill.zip"
-	if match := filenamePattern.FindStringSubmatch(res.Header.Get("Content-Disposition")); len(match) > 1 {
-		filename = strings.TrimSpace(match[1])
+	if parsed := utils.ParseContentDispositionFilename(res.Header.Get("Content-Disposition")); parsed != "" {
+		filename = parsed
 	}
 
 	return payload, filename, nil

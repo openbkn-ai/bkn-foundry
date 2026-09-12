@@ -10,7 +10,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 )
 
 type MarketToolbox struct {
@@ -151,13 +152,8 @@ func (c *OperatorIntegrationClient) DownloadSkillMarketPackage(
 	}
 
 	filename := skillID + ".zip"
-	if cd := res.Header.Get("Content-Disposition"); cd != "" {
-		if idx := strings.Index(cd, "filename="); idx >= 0 {
-			raw := strings.TrimSpace(strings.Trim(cd[idx+len("filename="):], `";`))
-			if raw != "" {
-				filename = raw
-			}
-		}
+	if parsed := utils.ParseContentDispositionFilename(res.Header.Get("Content-Disposition")); parsed != "" {
+		filename = parsed
 	}
 
 	return payload, filename, nil

@@ -39,6 +39,11 @@ type SkillHandler interface {
 	DownloadManagementSkill(c *gin.Context)
 }
 
+// skillDownloadASCIIFallback is the plain Content-Disposition filename used
+// when a skill name has no ASCII characters to fall back on; RFC 5987
+// filename* still carries the real (unicode) name.
+const skillDownloadASCIIFallback = "skill.zip"
+
 type skillHandler struct {
 	Logger            interfaces.Logger
 	Registry          interfaces.SkillRegistry
