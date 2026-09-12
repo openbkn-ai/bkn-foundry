@@ -181,6 +181,10 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		documents, total, err := rds.ds.ListDocuments(ctx, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "List dataset documents failed", err)
+			if reason, ok := filter_condition.RequestSideQueryError(err); ok {
+				return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+					WithErrorDetails(reason)
+			}
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 				WithErrorDetails(err.Error())
 		}
@@ -194,6 +198,13 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 			documents, total, err := rds.lim.ListDocuments(ctx, resource.LocalIndexName, resource, params)
 			if err != nil {
 				otellog.LogError(ctx, "Query table data from local index failed", err)
+				// A condition the index cannot express — a text field compared without a keyword
+				// feature, a malformed range — is the caller's to fix. Answering 500 sends them
+				// to the service logs for a message that belongs in the response.
+				if reason, ok := filter_condition.RequestSideQueryError(err); ok {
+					return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+						WithErrorDetails(reason)
+				}
 				return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 					WithErrorDetails(err.Error())
 			}

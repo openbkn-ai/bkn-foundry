@@ -570,9 +570,9 @@ func (lvs *logicViewService) executeIndexQuery(ctx context.Context, catalog *int
 	result, err := indexConnector.ExecuteQuery(ctx, resource.Name, resource, params)
 	if err != nil {
 		otellog.LogError(ctx, "Execute query failed", err)
-		if unsupported, ok := filter_condition.AsUnsupportedOperationError(err); ok {
+		if reason, ok := filter_condition.RequestSideQueryError(err); ok {
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-				WithErrorDetails(unsupported.Error())
+				WithErrorDetails(reason)
 		}
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 			WithErrorDetails(fmt.Sprintf("failed to execute query: %v", err))
@@ -612,9 +612,9 @@ func (lvs *logicViewService) executeTableQuery(ctx context.Context, catalog *int
 	result, err := tableConnector.ExecuteQuery(ctx, resource, params)
 	if err != nil {
 		otellog.LogError(ctx, "Execute query failed", err)
-		if unsupported, ok := filter_condition.AsUnsupportedOperationError(err); ok {
+		if reason, ok := filter_condition.RequestSideQueryError(err); ok {
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-				WithErrorDetails(unsupported.Error())
+				WithErrorDetails(reason)
 		}
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 			WithErrorDetails(fmt.Sprintf("failed to execute query: %v", err))

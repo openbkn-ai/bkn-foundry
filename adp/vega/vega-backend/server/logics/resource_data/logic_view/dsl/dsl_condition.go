@@ -215,7 +215,7 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionEqual(ctx context.Context,
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -253,7 +253,7 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionNotEqual(ctx context.Conte
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -281,7 +281,7 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionGt(ctx context.Context, co
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -309,7 +309,7 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionGte(ctx context.Context, c
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -337,7 +337,7 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionLt(ctx context.Context, co
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -365,7 +365,7 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionLte(ctx context.Context, c
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -573,7 +573,7 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionRange(ctx context.Context,
 
 	values := cond.Value
 	if len(values) != 2 {
-		return nil, fmt.Errorf("range condition requires exactly 2 values")
+		return nil, filter_condition.NewConditionBuildError("range condition requires exactly 2 values")
 	}
 
 	return map[string]any{
@@ -600,7 +600,7 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionOutRange(ctx context.Conte
 
 	values := cond.Value
 	if len(values) != 2 {
-		return nil, fmt.Errorf("out_range condition requires exactly 2 values")
+		return nil, filter_condition.NewConditionBuildError("out_range condition requires exactly 2 values")
 	}
 
 	return map[string]any{
@@ -853,7 +853,7 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionBetween(ctx context.Contex
 
 	values := cond.Value
 	if len(values) != 2 {
-		return nil, fmt.Errorf("between condition requires exactly 2 values")
+		return nil, filter_condition.NewConditionBuildError("between condition requires exactly 2 values")
 	}
 
 	return map[string]any{
@@ -963,7 +963,7 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionBefore(ctx context.Context
 
 	values := cond.Value
 	if len(values) != 2 {
-		return nil, fmt.Errorf("before condition requires exactly 2 values")
+		return nil, filter_condition.NewConditionBuildError("before condition requires exactly 2 values")
 	}
 
 	interval, ok := values[0].(float64)
@@ -1168,7 +1168,7 @@ func (c *logicViewDSLGenerator) getKeywordSuffix(fieldName string, fieldsMap map
 					return "." + feature.FeatureName, nil
 				}
 			}
-			return "", fmt.Errorf("text field %s has no keyword feature, cannot be used for comparison", fieldName)
+			return "", filter_condition.NewConditionBuildError("text field %s has no keyword feature, cannot be used for comparison (==, !=, in, not_in); use match, or add a keyword feature to the field and rebuild the index", fieldName)
 		}
 	}
 	return "", nil

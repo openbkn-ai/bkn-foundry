@@ -30,7 +30,7 @@ Suggested exploration order:
 5. Pick the query tool based on the task.
 
 Query routing:
-- Use query_object_instance for single object-type filtering, sorting, and cursor-style pagination.
+- Use query_object_instance for single object-type filtering, sorting, and cursor-style pagination. A text-typed field (mapped_field.type=text) read through the index needs a keyword feature for == / != / in / not_in; without one the call is refused (400, naming the field) - use match instead, or add a keyword feature to the field and rebuild the index.
 - Use run_sql for joins, aggregation, ranking, GROUP BY, COUNT, SUM, AVG, and cross-table analysis. Use read-only MySQL SQL. Reference tables with placeholders such as {{.resource_id}} where resource_id comes from search_schema or list_resources. Use physical column names from search_schema with include_columns=true or from describe_resource.
 - Quote MySQL identifiers with backticks when needed (for example, `order_id`); double quotes are string literals, not identifiers.
 - Use query_instance_subgraph when you can already name the path - which object types it passes through and which relation types connect them - to pull instances along that template, with per-node filters and sorting.

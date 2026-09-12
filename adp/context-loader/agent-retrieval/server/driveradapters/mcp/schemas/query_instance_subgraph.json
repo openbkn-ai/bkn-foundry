@@ -59,7 +59,7 @@
                       },
                       "operation": {
                         "type": "string",
-                        "description": "条件操作符。比较算子按属性 type 判断，不会出现在 condition_operations 里：字符串类（string/keyword/text）可用 == != in not_in > >= < <= like not_like regex，数值/日期时间类可用 == != in not_in > >= < <= range out_range 但不支持 like/regex，exist/not_exist 任意类型可用且不带 value；索引算子 match 以属性的 condition_operations 为准（含 match 才建了全文索引）。属性上没有 condition_operations 这个键只说明没建索引，不代表不能过滤。like/not_like 的值是字面子串（不是 SQL LIKE 模式，不要自己拼 %，未转义的 % 会被拒），regex 的锚定与大小写敏感性随资源存储而变（「包含」写 .*词.*）",
+                        "description": "条件操作符。比较算子按属性 type 判断，不会出现在 condition_operations 里：字符串类（string/keyword/text）可用 == != in not_in > >= < <= like not_like regex，数值/日期时间类可用 == != in not_in > >= < <= range out_range 但不支持 like/regex，exist/not_exist 任意类型可用且不带 value；索引算子 match 以属性的 condition_operations 为准（含 match 才建了全文索引）。text 类型字段（mapped_field.type=text）走索引时，== / != / in / not_in 需要该字段建有 keyword 特征；没有则会被拒（400，错误里会写明字段名），改用 match，或给字段加 keyword 特征后重建索引。属性上没有 condition_operations 这个键只说明没建索引，不代表不能过滤。like/not_like 的值是字面子串（不是 SQL LIKE 模式，不要自己拼 %，未转义的 % 会被拒），regex 的锚定与大小写敏感性随资源存储而变（「包含」写 .*词.*）",
                         "enum": [
                           "and",
                           "or",

@@ -522,8 +522,11 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		// Upgrading everything to 500 makes self-correctable problems such as unsupported operators or resources without built indexes look
 		// like service failures, preventing callers from self-correcting and sending manual investigation in the wrong direction.
 		if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
+			// The reason is the only thing that lets the caller fix the request — which field,
+			// which operator — so it travels with the status code instead of stopping in the log.
 			return rest.NewHTTPError(ctx, downstream.StatusCode,
-				proxyDownstreamErrorCode(downstream.StatusCode))
+				proxyDownstreamErrorCode(downstream.StatusCode)).
+				WithErrorDetails(downstream.Message())
 		}
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).

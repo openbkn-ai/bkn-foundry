@@ -9,6 +9,7 @@ package resource_data
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -247,6 +248,40 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		assert.Equal(t, "openbkn", rows[0]["name"])
 		assert.Equal(t, interfaces.ResourceValue{Mode: interfaces.ResourceValueModeUnavailable}, rows[0]["blob"])
 		assert.Equal(t, interfaces.ResourceValue{Mode: interfaces.ResourceValueModeUnavailable}, rows[0]["native_value"])
+	})
+
+	t.Run("query table with local index answers 400 for a condition the index cannot build", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
+		rds := &resourceDataService{cs: mockCS, lim: mockLIM}
+		resource := &interfaces.Resource{
+			ID:               "resource-1",
+			Enabled:          true,
+			CatalogID:        "catalog-1",
+			Category:         interfaces.ResourceCategoryTable,
+			LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+			LocalIndexName:   "vega-build-resource-1-task-1",
+			SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_Text}},
+		}
+		params := &interfaces.ResourceDataQueryParams{}
+		// The connector wraps the typed error the way opensearch_query.go does; the type must
+		// survive that wrapping for the service to answer 400 rather than 500.
+		cause := fmt.Errorf("failed to build filter query: %w",
+			filter_condition.NewConditionBuildError("text field title has no keyword feature, cannot be used for comparison"))
+
+		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+		mockLIM.EXPECT().ListDocuments(gomock.Any(), resource.LocalIndexName, resource, params).
+			Return(nil, int64(0), cause)
+
+		_, _, err := rds.query(context.Background(), resource, params)
+		require.Error(t, err)
+		var httpErr *rest.HTTPError
+		require.True(t, errors.As(err, &httpErr))
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "no keyword feature")
 	})
 
 	t.Run("force source bypasses local index and returns binary metadata", func(t *testing.T) {

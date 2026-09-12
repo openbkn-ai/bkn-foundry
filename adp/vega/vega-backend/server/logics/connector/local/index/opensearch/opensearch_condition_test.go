@@ -283,6 +283,10 @@ func TestOpenSearchConnectorConvertFilterConditionEqual(t *testing.T) {
 		require.Error(t, err)
 		assert.Nil(t, got)
 		assert.ErrorContains(t, err, "no keyword feature")
+		// The caller can fix this by switching to match or adding a keyword feature, so the
+		// error must stay recognisable as request-side all the way up to the HTTP layer.
+		_, ok := filter_condition.AsConditionBuildError(err)
+		assert.True(t, ok, "expected a ConditionBuildError, got %T", err)
 	})
 }
 

@@ -1159,7 +1159,8 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 			So(ok, ShouldBeTrue)
 			// Reporting parameter issues as 500 makes callers check service health, while the real fix is changing the query or building the index.
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorDetails, ShouldBeEmpty)
+			// The downstream reason is what tells the caller which field or operator to change.
+			So(httpErr.BaseError.ErrorDetails, ShouldEqual, details)
 		})
 
 		Convey("vega 返回 5xx 时仍认定为依赖故障", func() {

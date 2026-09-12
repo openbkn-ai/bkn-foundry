@@ -1137,7 +1137,8 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 			if err != nil {
 				if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
 					return nil, rest.NewHTTPError(ctx, downstream.StatusCode,
-						relationDownstreamErrorCode(downstream.StatusCode))
+						relationDownstreamErrorCode(downstream.StatusCode)).
+						WithErrorDetails(downstream.Message())
 				}
 				return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 					oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).

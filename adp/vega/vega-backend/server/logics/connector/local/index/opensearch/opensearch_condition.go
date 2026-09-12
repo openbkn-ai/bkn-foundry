@@ -232,7 +232,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionEqual(condition interfaces.F
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -270,7 +270,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotEqual(condition interface
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -298,7 +298,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionGt(condition interfaces.Filt
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -326,7 +326,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionGte(condition interfaces.Fil
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -354,7 +354,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionLt(condition interfaces.Filt
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -382,7 +382,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionLte(condition interfaces.Fil
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -590,7 +590,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionRange(condition interfaces.F
 
 	values := cond.Value
 	if len(values) != 2 {
-		return nil, fmt.Errorf("range condition requires exactly 2 values")
+		return nil, filter_condition.NewConditionBuildError("range condition requires exactly 2 values")
 	}
 
 	return map[string]any{
@@ -617,7 +617,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionOutRange(condition interface
 
 	values := cond.Value
 	if len(values) != 2 {
-		return nil, fmt.Errorf("out_range condition requires exactly 2 values")
+		return nil, filter_condition.NewConditionBuildError("out_range condition requires exactly 2 values")
 	}
 
 	return map[string]any{
@@ -870,7 +870,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionBetween(condition interfaces
 
 	values := cond.Value
 	if len(values) != 2 {
-		return nil, fmt.Errorf("between condition requires exactly 2 values")
+		return nil, filter_condition.NewConditionBuildError("between condition requires exactly 2 values")
 	}
 
 	return map[string]any{
@@ -980,7 +980,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionBefore(condition interfaces.
 
 	values := cond.Value
 	if len(values) != 2 {
-		return nil, fmt.Errorf("before condition requires exactly 2 values")
+		return nil, filter_condition.NewConditionBuildError("before condition requires exactly 2 values")
 	}
 
 	interval, ok := values[0].(float64)
@@ -1185,7 +1185,7 @@ func (c *OpenSearchConnector) getKeywordSuffix(fieldName string, schemaDefinitio
 					return "." + feature.FeatureName, nil
 				}
 			}
-			return "", fmt.Errorf("text field %s has no keyword feature, cannot be used for comparison", fieldName)
+			return "", filter_condition.NewConditionBuildError("text field %s has no keyword feature, cannot be used for comparison (==, !=, in, not_in); use match, or add a keyword feature to the field and rebuild the index", fieldName)
 		}
 	}
 	return "", nil

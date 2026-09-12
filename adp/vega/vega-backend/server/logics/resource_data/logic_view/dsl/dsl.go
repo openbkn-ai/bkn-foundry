@@ -123,6 +123,10 @@ func (g *logicViewDSLGenerator) BuildDSL(ctx context.Context, query interfaces.R
 	// Construct query conditions
 	queryDSL, err := g.buildDSLQuery(ctx, view, viewIndicesMap)
 	if err != nil {
+		if reason, ok := filter_condition.RequestSideQueryError(err); ok {
+			return dsl, rest.NewHTTPError(ctx, http.StatusBadRequest, rest.PublicError_BadRequest).
+				WithErrorDetails(fmt.Sprintf("failed to build query dsl, %s", reason))
+		}
 		return dsl, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			rest.PublicError_InternalServerError).
 			WithErrorDetails(fmt.Sprintf("failed to build query dsl, %s", err.Error()))
