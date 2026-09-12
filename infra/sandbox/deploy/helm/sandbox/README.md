@@ -83,6 +83,7 @@ The deprecated `image.defaultTemplate` value is still accepted as a compatibilit
 | `depServices.rds` | Core-provided database service configuration | enabled by values |
 | `networkPolicy.enabled` | Apply a default-deny egress policy to dynamic executor pods | `true` |
 | `networkPolicy.publicHttps.enabled` | Allow public HTTPS while excluding cluster, private, link-local, and reserved address space; required by runtime dependency installation | `true` |
+| `networkPolicy.bkn.enabled` | Allow executor access to agent-retrieval's authenticated-only listener | `true` |
 | `networkPolicy.bkn.namespace` | Agent-retrieval namespace override; empty derives it from an in-cluster BKN FQDN or uses the Sandbox namespace for a short service name | `""` |
 | `networkPolicy.bkn.port` | Authenticated-only agent-retrieval listener allowed from executors | `30780` |
 | `networkPolicy.additionalEgress` | Extra Kubernetes egress rules for explicitly approved dependencies | `[]` |
@@ -113,13 +114,25 @@ an in-cluster FQDN such as `agent-retrieval.openbkn.svc.cluster.local`; a short
 service name uses the Sandbox namespace. Set the value explicitly for any other
 addressing convention.
 
-For an existing installation, first render or upgrade with
-`networkPolicy.enabled=false` while collecting executor egress with the CNI's
-flow-observation facility. Add only verified legitimate destinations, then
-enable the policy. Applying an enabled policy immediately affects already
-running executor pods. If NodeLocal DNSCache is used, also allow its documented
-listener address through `networkPolicy.additionalEgress`; the default DNS rule
-selects CoreDNS pods in `kube-system`.
+The policy is enabled by default so fresh installations do not start with an
+open executor network boundary. Existing installations must use this staged
+upgrade instead of applying the new default in one step:
+
+1. Upgrade agent-retrieval first and verify that its Service and Pod answer
+   `/health/ready` on port 30780.
+2. Change both configured BKN URLs from port 30779 to 30780, then render or
+   upgrade Sandbox with `networkPolicy.enabled=false`. When the policy and BKN
+   rule are enabled, Helm fails rendering if either non-empty BKN URL uses a
+   different port.
+3. Collect executor traffic with the CNI's flow-observation facility and add
+   only verified deployment-specific destinations.
+4. Enable the policy and verify that executor calls to 30779/internal services
+   are blocked while BKN on 30780 and runtime dependency installation work.
+
+Applying an enabled policy immediately affects already running executor pods.
+If NodeLocal DNSCache is used, also allow its documented listener address
+through `networkPolicy.additionalEgress`; the default DNS rule selects CoreDNS
+pods in `kube-system`.
 
 ## Rendering
 

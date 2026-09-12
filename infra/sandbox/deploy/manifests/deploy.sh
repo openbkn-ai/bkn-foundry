@@ -230,7 +230,7 @@ show_resource_info() {
                                    • 使用 s3fs 挂载 S3 workspace
 
 🔒 网络隔离 (09)
-  09-networkpolicy.yaml       - Executor 出站默认拒绝，仅放行 DNS、Control Plane 和 MinIO
+  09-networkpolicy.yaml       - Executor 出站默认拒绝，放行 DNS、Control Plane、MinIO、agent-retrieval 30780 和公网 HTTPS
 
 === 架构说明 ===
 

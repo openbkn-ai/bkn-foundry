@@ -567,6 +567,10 @@ exec gosu sandbox python -m executor.interfaces.http.rest
                 host_network=False,
                 termination_grace_period_seconds=30,
                 service_account_name=self._executor_service_account,
+                # Executor Pods run untrusted code and never call the Kubernetes API.
+                # Do not expose the ServiceAccount token, including through a public
+                # API-server endpoint permitted by the public HTTPS egress rule.
+                automount_service_account_token=False,
                 image_pull_secrets=self._build_image_pull_secrets(),
                 # Keep the default DNS policy (ClusterFirst) so the Pod uses cluster DNS,
                 # which matters for executor-to-control-plane communication.

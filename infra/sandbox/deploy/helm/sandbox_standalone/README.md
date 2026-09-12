@@ -105,13 +105,19 @@ authenticated-only port 30780 and enable `networkPolicy.bkn`. An empty
 FQDN; set it explicitly for any other addressing convention. Never allow the
 main port 30779 because that port also serves trusted `/in` routes.
 
-Before enabling the policy on an existing installation, run an observation
-period with `networkPolicy.enabled=false`, collect executor traffic with the
-CNI's flow tooling, and add only verified dependencies to
-`networkPolicy.additionalEgress`. Public HTTPS is allowed by default for runtime
-package installation; private-network and non-HTTPS public calls remain denied.
-Applying the policy affects already running executor pods. NodeLocal DNSCache
-users must also allow its listener address explicitly.
+The policy is enabled by default so fresh installations do not start with an
+open executor network boundary. Existing installations must use a staged
+upgrade: keep `networkPolicy.enabled=false` during the observation period,
+collect executor traffic with the CNI's flow tooling, add only verified
+dependencies to `networkPolicy.additionalEgress`, and enable the policy only
+after validation. Public HTTPS is allowed by default for runtime package
+installation; private-network and non-HTTPS public calls remain denied.
+
+If this standalone installation connects to BKN, upgrade agent-retrieval and
+verify port 30780 before changing both BKN URLs from 30779 to 30780. When the
+policy and BKN rule are enabled, Helm fails rendering if either non-empty BKN
+URL uses a different port. Applying the policy affects already running executor
+pods. NodeLocal DNSCache users must also allow its listener address explicitly.
 
 ## Access
 

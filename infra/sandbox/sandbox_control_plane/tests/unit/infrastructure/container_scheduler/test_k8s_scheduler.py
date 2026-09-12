@@ -129,6 +129,7 @@ class TestK8sScheduler:
         assert labels["managed_by"] == "sandbox-control-plane"
         assert labels["sandbox-type"] == "execution"
         assert labels["test"] == "label"
+        assert call_args[1]["body"].spec.automount_service_account_token is False
 
     @pytest.mark.asyncio
     async def test_create_pod_does_not_allow_security_label_overrides(
