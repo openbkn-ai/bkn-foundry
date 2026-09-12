@@ -149,6 +149,36 @@ func TestGetKNChildOperationsUsesCanonicalDetailResource(t *testing.T) {
 	}
 }
 
+func TestFilterKNChildResourceIDsWithAnyOperationKeepsQueryOnlyChildren(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ps := interfacemock.NewMockPermissionService(ctrl)
+	candidates := KNChildOperationCandidates(interfaces.RESOURCE_TYPE_OBJECT_TYPE)
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		[]string{"kn-1/query-only", "kn-1/none"}, []string(nil), true, candidates).
+		Return(map[string]interfaces.PermissionResourceOps{
+			"kn-1/query-only": {
+				ResourceID: "kn-1/query-only",
+				Operations: []string{interfaces.OPERATION_TYPE_QUERY_DATA},
+			},
+			"kn-1/none": {ResourceID: "kn-1/none", Operations: []string{}},
+		}, nil)
+
+	got, err := FilterKNChildResourceIDsWithAnyOperation(context.Background(), ps,
+		interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		[]string{"kn-1/query-only", "kn-1/none"}, candidates)
+	if err != nil {
+		t.Fatalf("FilterKNChildResourceIDsWithAnyOperation() error = %v", err)
+	}
+	if !reflect.DeepEqual(got, map[string]interfaces.PermissionResourceOps{
+		"kn-1/query-only": {
+			ResourceID: "kn-1/query-only",
+			Operations: []string{interfaces.OPERATION_TYPE_QUERY_DATA},
+		},
+	}) {
+		t.Fatalf("result = %#v", got)
+	}
+}
+
 func TestFilterAndPaginateKNChildrenFiltersCanonicalIDsBeforePaging(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ps := interfacemock.NewMockPermissionService(ctrl)

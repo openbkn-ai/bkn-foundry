@@ -396,6 +396,30 @@ func (r *restHandler) GetMetricDependencyPropertiesByIn(c *gin.Context) {
 	r.GetMetricDependencyProperties(c, visitor.GenerateVisitor(c))
 }
 
+func (r *restHandler) GetMetricExecutionContextByIn(c *gin.Context) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	vis := visitor.GenerateVisitor(c)
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{
+		ID: vis.ID, Type: string(vis.Type),
+	})
+	executionContext, err := r.ms.GetMetricExecutionContext(ctx, c.Param("kn_id"),
+		c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_ids"))
+	if err != nil {
+		httpErr, ok := err.(*rest.HTTPError)
+		if !ok {
+			httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_Metric_InternalError).WithErrorDetails(err.Error())
+		}
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, executionContext)
+}
+
 func (r *restHandler) GetMetricDependencyPropertiesByEx(c *gin.Context) {
 	vis, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {

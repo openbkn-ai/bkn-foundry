@@ -745,12 +745,22 @@ func (s *metricQueryService) executeMetric(ctx context.Context, knID string, bra
 	ot, ok, err := s.oma.GetObjectType(ctx, knID, branch, def.ScopeRef)
 	if err != nil {
 		logger.Errorf("GetObjectType for metric scope: %v", err)
+		if httpErr, ok := err.(*rest.HTTPError); ok {
+			return interfaces.MetricData{}, httpErr
+		}
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
 			WithErrorDetails(err.Error())
 	}
 	if !ok {
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_Metric_ObjectTypeNotFound)
 	}
+	return s.executeMetricWithObjectType(ctx, knID, branch, def, metricQuery, ot, trustedPublishedDefinition)
+}
+
+func (s *metricQueryService) executeMetricWithObjectType(ctx context.Context, knID string, branch string,
+	def *interfaces.MetricDefinition, metricQuery *interfaces.MetricQueryRequest, ot interfaces.ObjectType,
+	trustedPublishedDefinition bool) (interfaces.MetricData, error) {
+
 	ot.KNID = knID
 	ot.Branch = branch
 	if ot.DataSource == nil || ot.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE || ot.DataSource.ID == "" {
@@ -901,7 +911,7 @@ func (s *metricQueryService) QueryMetricData(ctx context.Context, knID string, b
 	if metricQuery == nil {
 		metricQuery = &interfaces.MetricQueryRequest{}
 	}
-	def, exist, err := s.oma.GetMetricDefinition(ctx, knID, branch, metricID)
+	executionContext, err := s.oma.GetMetricExecutionContext(ctx, knID, branch, metricID)
 	if err != nil {
 		if httpErr, ok := err.(*rest.HTTPError); ok {
 			return interfaces.MetricData{}, httpErr
@@ -909,14 +919,20 @@ func (s *metricQueryService) QueryMetricData(ctx context.Context, knID string, b
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
 			WithErrorDetails(err.Error())
 	}
-	if !exist || def == nil {
+	if executionContext == nil || executionContext.Definition == nil || executionContext.ObjectType == nil {
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_Metric_NotFound)
+	}
+	def := executionContext.Definition
+	if def.ID != metricID || def.KnID != knID || def.ScopeRef != executionContext.ObjectType.OTID {
+		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
+			WithErrorDetails("metric execution context does not match the requested metric")
 	}
 	// The metric subject is an object type.
 	if def.ScopeType != interfaces.ScopeTypeObjectType {
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_UnsupportedScope)
 	}
-	return s.executeMetric(ctx, knID, branch, def, metricQuery, true)
+	return s.executeMetricWithObjectType(ctx, knID, branch, def, metricQuery, *executionContext.ObjectType, true)
 }
 
 func (s *metricQueryService) DryRunMetricData(ctx context.Context, knID, branch string,

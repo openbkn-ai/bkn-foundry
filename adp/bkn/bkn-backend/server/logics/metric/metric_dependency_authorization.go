@@ -18,6 +18,7 @@ import (
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 	"bkn-backend/logics/batchindex"
+	"bkn-backend/logics/permission"
 )
 
 type metricDataDependencies struct {
@@ -122,6 +123,69 @@ func (ms *metricService) GetMetricDependencyProperties(ctx context.Context, knID
 		allowed[property] = struct{}{}
 	}
 	return metricDependencyPropertyMetadata(ot, allowed), nil
+}
+
+// GetMetricExecutionContext returns only the persisted definition and the
+// backing object fields it captured. It intentionally authorizes the metric,
+// not a second object-type read, so published metrics remain independently
+// queryable without exposing unrelated object-type schema.
+func (ms *metricService) GetMetricExecutionContext(ctx context.Context, knID, branch,
+	metricID string) (*interfaces.MetricExecutionContext, error) {
+
+	if err := permission.ValidateKNChildAuthorizationIDs(ctx, knID, []string{metricID}); err != nil {
+		return nil, err
+	}
+	metricResource := interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_METRIC, knID, metricID)
+	if err := ms.ps.CheckPermission(ctx, metricResource, []string{interfaces.OPERATION_TYPE_QUERY_DATA}); err != nil {
+		return nil, err
+	}
+	definition, err := ms.ma.GetMetricByID(ctx, knID, branch, metricID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_Metric_NotFound)
+		}
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_Metric_InternalError).WithErrorDetails(err.Error())
+	}
+	if definition == nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_Metric_NotFound)
+	}
+	objectType, _, err := ms.resolveMetricObjectType(ctx, nil, definition)
+	if err != nil {
+		return nil, err
+	}
+
+	referenced := make(map[string]struct{})
+	for _, property := range metricReferencedProperties(definition, objectType) {
+		if property = strings.TrimSpace(property); property != "" {
+			referenced[property] = struct{}{}
+		}
+	}
+	properties := make([]*interfaces.DataProperty, 0, len(referenced))
+	for _, property := range objectType.DataProperties {
+		if property == nil {
+			continue
+		}
+		if _, ok := referenced[strings.TrimSpace(property.Name)]; ok {
+			properties = append(properties, &interfaces.DataProperty{
+				Name: property.Name, Type: property.Type, MappedField: property.MappedField,
+				ConditionOperations: append([]string(nil), property.ConditionOperations...),
+			})
+		}
+	}
+	executionObjectType := &interfaces.ObjectType{
+		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+			OTID:           objectType.OTID,
+			DataSource:     objectType.DataSource,
+			DataProperties: properties,
+		},
+		KNID:   knID,
+		Branch: branch,
+	}
+	return &interfaces.MetricExecutionContext{
+		Definition: definition,
+		ObjectType: executionObjectType,
+	}, nil
 }
 
 func metricDependencyPropertyMetadata(ot *interfaces.ObjectType,

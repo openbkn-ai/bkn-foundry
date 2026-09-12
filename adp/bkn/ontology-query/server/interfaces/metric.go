@@ -268,6 +268,13 @@ type MetricDefinition struct {
 	ModuleType string      `json:"module_type,omitempty" mapstructure:"module_type"`
 }
 
+// MetricExecutionContext is the trusted published-model projection returned by
+// bkn-backend for one authorized metric execution.
+type MetricExecutionContext struct {
+	Definition *MetricDefinition `json:"definition"`
+	ObjectType *ObjectType       `json:"object_type"`
+}
+
 type MetricResponse struct {
 	Model          interface{}     `json:"model,omitempty"`
 	Datas          []BknMetricData `json:"datas"`

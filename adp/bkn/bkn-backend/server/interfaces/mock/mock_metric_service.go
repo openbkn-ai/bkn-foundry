@@ -147,6 +147,21 @@ func (mr *MockMetricServiceMockRecorder) GetMetricDependencyProperties(ctx, knID
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMetricDependencyProperties", reflect.TypeOf((*MockMetricService)(nil).GetMetricDependencyProperties), ctx, knID, branch, objectTypeID)
 }
 
+// GetMetricExecutionContext mocks base method.
+func (m *MockMetricService) GetMetricExecutionContext(ctx context.Context, knID, branch, metricID string) (*interfaces.MetricExecutionContext, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetMetricExecutionContext", ctx, knID, branch, metricID)
+	ret0, _ := ret[0].(*interfaces.MetricExecutionContext)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetMetricExecutionContext indicates an expected call of GetMetricExecutionContext.
+func (mr *MockMetricServiceMockRecorder) GetMetricExecutionContext(ctx, knID, branch, metricID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMetricExecutionContext", reflect.TypeOf((*MockMetricService)(nil).GetMetricExecutionContext), ctx, knID, branch, metricID)
+}
+
 // GetMetricsByIDs mocks base method.
 func (m *MockMetricService) GetMetricsByIDs(ctx context.Context, knID, branch string, metricIDs []string) ([]*interfaces.MetricDefinition, error) {
 	m.ctrl.T.Helper()

@@ -479,10 +479,13 @@ func Test_metricQueryService_QueryMetricData(t *testing.T) {
 				Aggregation: interfaces.MetricAggregation{Property: "amount", Aggr: "sum"},
 			},
 		}
+		executionContext := func(definition *interfaces.MetricDefinition,
+			objectType interfaces.ObjectType) *interfaces.MetricExecutionContext {
+			return &interfaces.MetricExecutionContext{Definition: definition, ObjectType: &objectType}
+		}
 
 		Convey("Success\n", func() {
-			oma.EXPECT().GetMetricDefinition(gomock.Any(), "kn1", "main", "m1").Return(def, true, nil)
-			oma.EXPECT().GetObjectType(gomock.Any(), "kn1", "main", "ot1").Return(interfaces.ObjectType{
+			oma.EXPECT().GetMetricExecutionContext(gomock.Any(), "kn1", "main", "m1").Return(executionContext(def, interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 					OTID: "ot1",
 					DataSource: &interfaces.ResourceInfo{
@@ -494,7 +497,7 @@ func Test_metricQueryService_QueryMetricData(t *testing.T) {
 						{Name: "amount", Type: dtype.DATATYPE_DOUBLE, MappedField: cond.Field{Name: "amount_res"}},
 					},
 				},
-			}, true, nil)
+			}), nil)
 			vba.EXPECT().QueryResourceData(gomock.Any(), "res1", gomock.Any()).Return(&interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{{"__value": 42.0}},
 			}, nil)
@@ -527,8 +530,7 @@ func Test_metricQueryService_QueryMetricData(t *testing.T) {
 			start := int64(1_000)
 			end := int64(2_000)
 			var captured *interfaces.ResourceDataQueryParams
-			oma.EXPECT().GetMetricDefinition(gomock.Any(), "kn1", "main", "m1").Return(defTrend, true, nil)
-			oma.EXPECT().GetObjectType(gomock.Any(), "kn1", "main", "ot1").Return(interfaces.ObjectType{
+			oma.EXPECT().GetMetricExecutionContext(gomock.Any(), "kn1", "main", "m1").Return(executionContext(defTrend, interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 					OTID: "ot1",
 					DataSource: &interfaces.ResourceInfo{
@@ -541,7 +543,7 @@ func Test_metricQueryService_QueryMetricData(t *testing.T) {
 						{Name: "evt_time", Type: dtype.DATATYPE_DATETIME, MappedField: cond.Field{Name: "evt_time_res"}},
 					},
 				},
-			}, true, nil)
+			}), nil)
 			vba.EXPECT().QueryResourceData(gomock.Any(), "res1", gomock.Any()).DoAndReturn(
 				func(_ context.Context, _ string, p *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
 					captured = p
@@ -584,8 +586,7 @@ func Test_metricQueryService_QueryMetricData(t *testing.T) {
 			instant := false
 			step := "day"
 			var captured *interfaces.ResourceDataQueryParams
-			oma.EXPECT().GetMetricDefinition(gomock.Any(), "kn1", "main", "m1").Return(defTrend, true, nil)
-			oma.EXPECT().GetObjectType(gomock.Any(), "kn1", "main", "ot1").Return(interfaces.ObjectType{
+			oma.EXPECT().GetMetricExecutionContext(gomock.Any(), "kn1", "main", "m1").Return(executionContext(defTrend, interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 					OTID: "ot1",
 					DataSource: &interfaces.ResourceInfo{
@@ -597,7 +598,7 @@ func Test_metricQueryService_QueryMetricData(t *testing.T) {
 						{Name: "evt_time", Type: dtype.DATATYPE_DATETIME, MappedField: cond.Field{Name: "evt_time_res"}},
 					},
 				},
-			}, true, nil)
+			}), nil)
 			vba.EXPECT().QueryResourceData(gomock.Any(), "res1", gomock.Any()).DoAndReturn(
 				func(_ context.Context, _ string, p *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
 					captured = p
@@ -638,8 +639,7 @@ func Test_metricQueryService_QueryMetricData(t *testing.T) {
 			start := int64(1_000)
 			end := int64(2_000)
 			var captured *interfaces.ResourceDataQueryParams
-			oma.EXPECT().GetMetricDefinition(gomock.Any(), "kn1", "main", "m1").Return(defInstant, true, nil)
-			oma.EXPECT().GetObjectType(gomock.Any(), "kn1", "main", "ot1").Return(interfaces.ObjectType{
+			oma.EXPECT().GetMetricExecutionContext(gomock.Any(), "kn1", "main", "m1").Return(executionContext(defInstant, interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 					OTID: "ot1",
 					DataSource: &interfaces.ResourceInfo{
@@ -651,7 +651,7 @@ func Test_metricQueryService_QueryMetricData(t *testing.T) {
 						{Name: "evt_time", Type: dtype.DATATYPE_DATETIME, MappedField: cond.Field{Name: "evt_time_res"}},
 					},
 				},
-			}, true, nil)
+			}), nil)
 			vba.EXPECT().QueryResourceData(gomock.Any(), "res1", gomock.Any()).DoAndReturn(
 				func(_ context.Context, _ string, p *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
 					captured = p
@@ -674,11 +674,18 @@ func Test_metricQueryService_QueryMetricData(t *testing.T) {
 		})
 
 		Convey("Not found when bkn returns nil definition\n", func() {
-			oma.EXPECT().GetMetricDefinition(gomock.Any(), "kn1", "main", "m1").Return(nil, false, nil)
+			oma.EXPECT().GetMetricExecutionContext(gomock.Any(), "kn1", "main", "m1").Return(nil, nil)
 			_, err := svc.QueryMetricData(ctx, "kn1", "main", "m1", &interfaces.MetricQueryRequest{})
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*rest.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_Metric_NotFound)
+		})
+
+		Convey("Preserves execution-context authorization failures\n", func() {
+			forbidden := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+			oma.EXPECT().GetMetricExecutionContext(gomock.Any(), "kn1", "main", "m1").Return(nil, forbidden)
+			_, err := svc.QueryMetricData(ctx, "kn1", "main", "m1", &interfaces.MetricQueryRequest{})
+			So(err, ShouldEqual, forbidden)
 		})
 	})
 }
@@ -750,6 +757,23 @@ func Test_metricQueryService_DryRunMetricData(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*rest.HTTPError)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("Preserves an object-type authorization denial\n", func() {
+			body := &interfaces.MetricDryRunRequest{
+				MetricConfig: &interfaces.MetricDefinition{
+					ID: "tmp", KnID: "kn1", ScopeType: interfaces.ScopeTypeObjectType, ScopeRef: "ot1",
+					CalculationFormula: &interfaces.MetricCalculationFormula{
+						Aggregation: interfaces.MetricAggregation{Property: "amount", Aggr: "sum"},
+					},
+				},
+			}
+			forbidden := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+			oma.EXPECT().GetObjectType(gomock.Any(), "kn1", "main", "ot1").
+				Return(interfaces.ObjectType{}, false, forbidden)
+
+			_, err := svc.DryRunMetricData(ctx, "kn1", "main", body)
+			So(err, ShouldEqual, forbidden)
 		})
 
 		Convey("Success without persisting metric_id\n", func() {

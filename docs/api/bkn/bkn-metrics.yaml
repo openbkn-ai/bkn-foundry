@@ -289,6 +289,50 @@ paths:
             application/json:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
+  /api/bkn-backend/in/v1/knowledge-networks/{kn_id}/metrics/{metric_id}/execution-context:
+    get:
+      summary: Resolve the trusted published execution model for one metric
+      description: |
+        Cluster-internal endpoint for ontology-query. The original caller must hold
+        `query_data` on the metric. The response intentionally does not require or
+        grant direct object-type access: it contains only the persisted metric and
+        the backing data properties captured by that definition.
+      security: []
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: metric_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: branch
+          in: query
+          schema:
+            type: string
+            default: main
+      responses:
+        "200":
+          description: Trusted metric execution context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetricExecutionContext"
+        "403":
+          description: The original caller cannot query this metric
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "404":
+          description: The metric or its captured object type no longer exists
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/metrics/{metric_ids}:
     get:
       summary: Batch get metric details
@@ -670,6 +714,38 @@ components:
           items:
             type: string
       additionalProperties: false
+    MetricExecutionContext:
+      description: Minimal persisted model required to execute an authorized published metric.
+      type: object
+      required:
+        - definition
+        - object_type
+      properties:
+        definition:
+          $ref: "#/components/schemas/MetricDefinition"
+        object_type:
+          $ref: "#/components/schemas/MetricExecutionObjectType"
+    MetricExecutionObjectType:
+      description: Backing object projection containing only properties captured by the metric definition.
+      type: object
+      required:
+        - id
+        - kn_id
+        - branch
+        - data_source
+      properties:
+        id:
+          type: string
+        kn_id:
+          type: string
+        branch:
+          type: string
+        data_source:
+          $ref: "./object-type.yaml#/components/schemas/DataSource"
+        data_properties:
+          type: array
+          items:
+            $ref: "./object-type.yaml#/components/schemas/DataProperty"
     MetricDefinition:
       type: object
       required:

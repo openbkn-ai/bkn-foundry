@@ -588,9 +588,8 @@ func (kns *knowledgeNetworkService) resolveKNNavigationVisibility(ctx context.Co
 	}
 
 	for resourceType, resourceIDs := range resourceIDsByType {
-		matched, err := permission.FilterKNChildResourceIDs(ctx, kns.ps, resourceType,
-			common.DuplicateSlice(resourceIDs), interfaces.OPERATION_TYPE_VIEW_DETAIL,
-			permission.KNChildOperationCandidates(resourceType))
+		matched, err := permission.FilterKNChildResourceIDsWithAnyOperation(ctx, kns.ps, resourceType,
+			common.DuplicateSlice(resourceIDs), permission.KNChildOperationCandidates(resourceType))
 		if err != nil {
 			return nil, err
 		}

@@ -37,6 +37,7 @@ type OntologyManagerAccess interface {
 	GetObjectType(ctx context.Context, knID string, branch string, otId string) (ObjectType, bool, error)
 	// GetMetricDefinition loads metric definition from bkn-backend GET .../metrics/{metric_id} (same base URL as GetObjectType).
 	GetMetricDefinition(ctx context.Context, knID string, branch string, metricID string) (*MetricDefinition, bool, error)
+	GetMetricExecutionContext(ctx context.Context, knID string, branch string, metricID string) (*MetricExecutionContext, error)
 	GetRelationType(ctx context.Context, knID string, branch string, rtId string) (RelationType, bool, error)
 	GetActionType(ctx context.Context, knID string, branch string, atId string) (ActionType, map[string]any, bool, error)
 	GetRelationTypePathsBaseOnSource(ctx context.Context, knID string, branch string, query PathsQueryBaseOnSource) ([]RelationTypePath, error)

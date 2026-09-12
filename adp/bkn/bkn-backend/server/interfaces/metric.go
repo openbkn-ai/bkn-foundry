@@ -260,6 +260,14 @@ type MetricDependencyProperty struct {
 	ConditionOperations []string `json:"condition_operations,omitempty"`
 }
 
+// MetricExecutionContext is the trusted, minimal model projection consumed by
+// ontology-query after the caller has been authorized to query the metric.
+// ObjectType contains only data properties captured by the persisted metric.
+type MetricExecutionContext struct {
+	Definition *MetricDefinition `json:"definition"`
+	ObjectType *ObjectType       `json:"object_type"`
+}
+
 // MetricDefinition is the persisted metric entity (DESIGN §3.2.1, bkn-metrics.yaml MetricDefinition).
 type MetricDefinition struct {
 	ID     string `json:"id" mapstructure:"id"`

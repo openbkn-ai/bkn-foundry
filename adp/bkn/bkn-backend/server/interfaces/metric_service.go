@@ -27,6 +27,7 @@ type MetricService interface {
 	GetMetricByID(ctx context.Context, knID string, branch string, metricID string) (*MetricDefinition, error)
 	GetMetricsByIDs(ctx context.Context, knID string, branch string, metricIDs []string) ([]*MetricDefinition, error)
 	GetMetricDependencyProperties(ctx context.Context, knID, branch, objectTypeID string) ([]MetricDependencyProperty, error)
+	GetMetricExecutionContext(ctx context.Context, knID, branch, metricID string) (*MetricExecutionContext, error)
 	UpdateMetric(ctx context.Context, tx *sql.Tx, req *MetricDefinition, strictMode bool) error
 	DeleteMetricsByIDs(ctx context.Context, tx *sql.Tx, knID string, branch string, metricIDs []string) error
 	// DeleteMetricsByKnID is an internal API that deletes all metrics by knowledge network without checking
