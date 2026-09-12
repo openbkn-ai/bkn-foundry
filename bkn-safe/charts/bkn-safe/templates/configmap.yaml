@@ -36,6 +36,18 @@ data:
   SAFE_LICENSE_SERVER_URL: {{ .Values.config.license.serverURL | quote }}
   SAFE_LICENSE_CA_FILE: {{ .Values.config.license.caFile | quote }}
   SAFE_LICENSE_INSECURE_SKIP_VERIFY: {{ .Values.config.license.insecureSkipVerify | quote }}
+  {{- with .Values.config.audit }}
+  {{- /* No `default` here: it treats false and 0 as unset, and 0 is a documented
+         value for every one of these knobs (disable / keep all / record no
+         allows). Only a missing key falls back. */}}
+  SAFE_AUDIT_CHAIN_HEAD_LOG_INTERVAL: {{ if kindIs "invalid" .chainHeadLogInterval }}"15m"{{ else }}{{ .chainHeadLogInterval | toString | quote }}{{ end }}
+  {{- with .decisionLog }}
+  SAFE_AUTHZ_DECISION_LOG_ENABLED: {{ if kindIs "bool" .enabled }}{{ .enabled | toString | quote }}{{ else }}"true"{{ end }}
+  SAFE_AUTHZ_DECISION_LOG_ALLOW_SAMPLE_RATE: {{ if kindIs "invalid" .allowSampleRate }}"1"{{ else }}{{ .allowSampleRate | toString | quote }}{{ end }}
+  SAFE_AUTHZ_DECISION_LOG_QUEUE_SIZE: {{ if kindIs "invalid" .queueSize }}"4096"{{ else }}{{ .queueSize | toString | quote }}{{ end }}
+  SAFE_AUTHZ_DECISION_LOG_RETENTION_DAYS: {{ if kindIs "invalid" .retentionDays }}"90"{{ else }}{{ .retentionDays | toString | quote }}{{ end }}
+  {{- end }}
+  {{- end }}
   {{- /* OPENBKN_INSTANCE_ID is NOT here — the instance identity lives in its
          own ConfigMap (templates/instance-id.yaml) so that it survives
          `helm uninstall`. Both are pulled in via envFrom. */}}

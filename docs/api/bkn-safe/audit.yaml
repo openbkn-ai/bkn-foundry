@@ -1,0 +1,438 @@
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+openapi: 3.0.3
+info:
+  title: bkn-safe audit and authorization-decision API
+  version: 0.1.0
+  description: |
+    Administrator read surface over the bkn-safe audit trail (#334).
+
+    Three records are kept, in three tables, and they answer different
+    questions:
+
+    - **Audit log** (`/admin/audit-logs`): one row per management mutation —
+      admin API writes, self-service writes (profile, AppKey issue/revoke,
+      object-grant delegation), tokenless `/authz` policy and hierarchy
+      writes, and 401/403 refusals at the token gates (throttled to one row
+      per minute per client and route for 401, per subject and route for
+      403, so a looping caller shows as a pattern rather than a flood). Rows
+      form a
+      tamper-evidence hash chain: each carries `seq`, `prev_hash` and
+      `row_hash`; editing, deleting or reordering a chained row is detected by
+      `/admin/audit-chain/verify`. Rows written before the chain existed have
+      no `seq` and are reported as `unchained_rows`, never verified.
+    - **Access log** (`/admin/access-logs`): login and logout facts.
+    - **Authorization decision log** (`/admin/authz-decisions`): one row per
+      authorization evaluation — `/authz/check`, one summary row per
+      `/authz/operations` and `/authz/resource-filter` call, the admin console
+      gate and every admin permission point — with the decision and the basis
+      that produced it. Rows are written asynchronously off the request path
+      and may be dropped under pressure (`dropped` in the list response);
+      allow decisions may be sampled (`audit.decision_log.allow_sample_rate`),
+      deny decisions never are; rows are purged after
+      `audit.decision_log.retention_days`.
+
+    Every endpoint here requires the `admin-audit:view` permission point and
+    is a read: none of them produces an audit row of its own.
+servers:
+  - url: /api/safe/v1
+security:
+  - BearerAuth: []
+tags:
+  - name: Audit
+    description: Management audit trail and its hash chain.
+  - name: Authorization decisions
+    description: Recorded authorization evaluations.
+paths:
+  /admin/audit-logs:
+    get:
+      tags: [Audit]
+      operationId: listAuditLogs
+      summary: List audit entries, newest first
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - name: actor_id
+          in: query
+          schema: { type: string }
+        - name: resource
+          in: query
+          description: Top-level noun of the route, e.g. `users`, `role-bindings`, `policies`.
+          schema: { type: string }
+        - name: action
+          in: query
+          description: Business verb, e.g. `create`, `grant`, `revoke`, `reset_password`.
+          schema: { type: string }
+        - name: target_id
+          in: query
+          schema: { type: string }
+        - name: failed_only
+          in: query
+          description: Only rows whose status is 4xx/5xx — refused and failed attempts.
+          schema: { type: boolean }
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - name: before_id
+          in: query
+          description: Keyset tiebreaker for rows sharing the `to` timestamp.
+          schema: { type: string }
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: A page of audit entries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [logs, total]
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditLog'
+                  total:
+                    type: integer
+                    format: int64
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /admin/audit-logs/{id}:
+    get:
+      tags: [Audit]
+      operationId: getAuditLog
+      summary: Get one audit entry
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The audit entry
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLog'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: No entry with this id
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
+  /admin/audit-chain:
+    get:
+      tags: [Audit]
+      operationId: getAuditChainHead
+      summary: Get the audit chain head
+      description: |
+        The position and hash of the last chained row. Export it to a store
+        outside this database (the service also logs it every
+        `audit.chain_head_log_interval`, 15 minutes by default) so that a
+        later verification can be compared against an anchor the database
+        cannot rewrite.
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Chain head
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [head, unchained_rows]
+                properties:
+                  head:
+                    type: object
+                    nullable: true
+                    description: '`null` when no row has been chained yet.'
+                    allOf:
+                      - $ref: '#/components/schemas/ChainHead'
+                  unchained_rows:
+                    type: integer
+                    format: int64
+                    description: Rows written before the chain existed (no `seq`).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /admin/audit-chain/verify:
+    get:
+      tags: [Audit]
+      operationId: verifyAuditChain
+      summary: Re-hash the chain and report the first break
+      description: |
+        Walks rows in `seq` order recomputing every hash and link. Stops at the
+        first break. `limit` bounds the work of one call (default 10000, max
+        100000); when `truncated` is true, continue from `to_seq + 1`.
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - name: from_seq
+          in: query
+          description: First position to check (0 or omitted = the beginning).
+          schema: { type: integer, format: int64, minimum: 0 }
+        - name: to_seq
+          in: query
+          description: Last position to check (0 or omitted = the head).
+          schema: { type: integer, format: int64, minimum: 0 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 0 }
+      responses:
+        '200':
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChainVerifyResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /admin/authz-decisions:
+    get:
+      tags: [Authorization decisions]
+      operationId: listAuthzDecisions
+      summary: List authorization decisions, newest first
+      description: |
+        Given an account and a period, the full list of what it asked for and
+        what it was answered. Filters combine with AND.
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - name: accessor_id
+          in: query
+          schema: { type: string }
+        - name: resource_type
+          in: query
+          schema: { type: string }
+        - name: resource_id
+          in: query
+          schema: { type: string }
+        - name: operation
+          in: query
+          schema: { type: string }
+        - name: decision
+          in: query
+          schema:
+            type: string
+            enum: [allow, deny, none]
+        - name: source
+          in: query
+          schema:
+            $ref: '#/components/schemas/DecisionSource'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: A page of decisions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [decisions, total, dropped]
+                properties:
+                  decisions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuthzDecision'
+                  total:
+                    type: integer
+                    format: int64
+                  dropped:
+                    type: integer
+                    format: int64
+                    description: Decisions discarded since start because the write queue was full. Non-zero means the log has gaps.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    AcceptLanguage:
+      name: Accept-Language
+      in: header
+      required: false
+      description: Requested language for human-readable errors. Supports `zh-CN` and `en-US`.
+      schema:
+        type: string
+        example: en-US
+    From:
+      name: from
+      in: query
+      description: Inclusive lower bound on `created_at`, RFC 3339.
+      schema: { type: string, format: date-time }
+    To:
+      name: to
+      in: query
+      description: Exclusive upper bound on `created_at`, RFC 3339.
+      schema: { type: string, format: date-time }
+    Offset:
+      name: offset
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+    Limit:
+      name: limit
+      in: query
+      description: Page size; default 50, capped at 500.
+      schema: { type: integer, minimum: 0 }
+  responses:
+    BadRequest:
+      description: Malformed query (unparseable timestamp or sequence number)
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    Unauthorized:
+      description: Missing or invalid bearer token
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    Forbidden:
+      description: Caller lacks `admin-audit:view`
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+  schemas:
+    AuditLog:
+      type: object
+      properties:
+        id: { type: string }
+        actor_id:
+          type: string
+          description: Token subject. Empty for a tokenless service write or an unauthenticated refusal.
+        actor_name_snapshot: { type: string }
+        actor_type:
+          type: string
+          enum: [user, service, anonymous]
+          description: '`service` for tokenless `/authz` writes (the peer address is the only attribution); `anonymous` for a 401 with no verified subject.'
+        auth_method:
+          type: string
+          enum: [oauth, network, none]
+        credential_id: { type: string }
+        request_id: { type: string }
+        source_channel:
+          type: string
+          enum: [api, internal]
+        method: { type: string }
+        resource: { type: string }
+        action: { type: string }
+        target_id: { type: string }
+        target_name: { type: string }
+        detail:
+          type: string
+          description: |
+            Redacted JSON snapshot of the request body. Underscore keys are
+            added by the server: `_outcome` (handler facts), `_gate` (which
+            gate refused a 401/403: `authn`, `inactive`, `authz`,
+            `permission`), `_caller_service` (self-declared `x-caller-service`
+            of a tokenless write — correlation metadata, never trusted).
+        status: { type: integer }
+        client_ip: { type: string }
+        created_at: { type: string, format: date-time }
+        seq:
+          type: integer
+          format: int64
+          description: Chain position. Absent on rows written before the chain existed.
+        prev_hash:
+          type: string
+          description: '`row_hash` of the row at `seq - 1`; empty for the first chained row.'
+        row_hash:
+          type: string
+          description: SHA-256 (hex) over the row's canonical form and `prev_hash`.
+    ChainHead:
+      type: object
+      required: [seq, row_hash, created_at]
+      properties:
+        seq: { type: integer, format: int64 }
+        row_hash: { type: string }
+        created_at: { type: string, format: date-time }
+    ChainVerifyResult:
+      type: object
+      required: [ok, from_seq, to_seq, checked, unchained_rows, truncated]
+      properties:
+        ok: { type: boolean }
+        from_seq: { type: integer, format: int64 }
+        to_seq:
+          type: integer
+          format: int64
+          description: Last position actually checked.
+        checked: { type: integer, format: int64 }
+        broken_seq:
+          type: integer
+          format: int64
+          description: First bad position; present only when `ok` is false.
+        reason:
+          type: string
+          enum: [hash_mismatch, prev_hash_mismatch, gap]
+          description: '`hash_mismatch`: row content or hash edited. `prev_hash_mismatch`: predecessor edited or replaced. `gap`: a position is missing (row deleted).'
+        head:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/ChainHead'
+        unchained_rows: { type: integer, format: int64 }
+        truncated:
+          type: boolean
+          description: '`limit` stopped the walk before `to_seq`; resume from `to_seq + 1`.'
+    DecisionSource:
+      type: string
+      enum: [check, operations, resource-filter, admin]
+      description: '`check`: `POST /authz/check`. `operations`: one row per `POST /authz/operations` call. `resource-filter`: one summary row per `POST /authz/resource-filter` call. `admin`: the admin console gate (`safe_admin` / `console` / `manage`) and admin permission points.'
+    AuthzDecision:
+      type: object
+      properties:
+        id: { type: string }
+        accessor_id: { type: string }
+        resource_type:
+          type: string
+          description: '`mixed` for a resource-filter batch spanning several types.'
+        resource_id:
+          type: string
+          description: '`*` for a permission point; empty for a resource-filter batch.'
+        operation:
+          type: string
+          description: '`*` for an operations projection; the comma-joined visibility operations for a resource-filter batch.'
+        scope:
+          type: string
+          enum: [effective, local]
+        decision:
+          type: string
+          enum: [allow, deny, none]
+        basis:
+          type: string
+          description: The `authz` decision basis (`direct`, `inherited`, `bundle`, `wildcard`, `default`, `requires`, `none`), or `inactive_account` when the accessor is disabled.
+        denied_requirement: { type: string }
+        source:
+          $ref: '#/components/schemas/DecisionSource'
+        request_id:
+          type: string
+          description: '`x-request-id` of the request, when the caller sent one.'
+        trace_id:
+          type: string
+          description: Trace id of the `traceparent` header, when the caller sent one.
+        client_ip: { type: string }
+        detail:
+          type: string
+          description: 'Small JSON object with source-specific facts: `operations` (projected set), `requested` / `visible` / `candidate_operations` (batch sizes), `fallback` / `fallback_allowed` (owner fallback at the directory gate).'
+        created_at: { type: string, format: date-time }

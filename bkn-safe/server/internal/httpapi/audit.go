@@ -54,14 +54,25 @@ func auditMiddleware(store *audit.Store, dir *directory.Service, db *gorm.DB) gi
 		c.Header("x-request-id", requestID)
 		var raw []byte
 		if isMutating(c.Request.Method) && c.Request.Body != nil {
-			// Buffer (bounded) then restore the body so the handler still reads it.
+			// Buffer a bounded prefix for the Detail snapshot, then hand the
+			// handler that prefix followed by whatever is still unread. The
+			// snapshot is capped; the request is not — a resource-parents batch
+			// at the documented 1000-item limit runs past 64KB and must still
+			// parse whole.
 			raw, _ = io.ReadAll(io.LimitReader(c.Request.Body, maxAuditBody))
-			c.Request.Body = io.NopCloser(bytes.NewReader(raw))
+			c.Request.Body = io.NopCloser(io.MultiReader(bytes.NewReader(raw), c.Request.Body))
 		}
 		resource, _ := auditTarget(c.FullPath())
 		action := auditAction(c.Request.Method, c.FullPath())
 		targetID := c.Param("id")
 		detail := auditDetail(raw)
+		if detail == "" && len(raw) >= maxAuditBody {
+			// The snapshot hit the cap, so the JSON is cut mid-way. Salvage the
+			// top-level fields that precede the oversized part — for a
+			// resource-parents batch that is resource_type and parent_type,
+			// for a policy grant the resource — and say the snapshot is partial.
+			detail = auditDetailFromPrefix(raw)
+		}
 		if targetID == "" {
 			targetID = auditDetailTargetID(resource, detail)
 		}
@@ -91,14 +102,24 @@ func auditMiddleware(store *audit.Store, dir *directory.Service, db *gorm.DB) gi
 			}
 		}
 		detail = withAuditOutcome(detail, c)
+		detail = withAuditGate(detail, c)
 		actorID := c.GetString(ctxAccessorID)
+		actorType, authMethod, sourceChannel := "user", "oauth", "api"
+		if actorID == "" {
+			// Tokenless service face (/authz policy and hierarchy writes): the
+			// platform network boundary is the credential, so there is no
+			// subject to name — only the peer address, plus the caller's
+			// self-declared service name in Detail when it sends one.
+			actorType, authMethod, sourceChannel = "service", "network", "internal"
+			detail = withAuditCallerService(detail, c)
+		}
 		if err := store.Record(c.Request.Context(), audit.Entry{
 			ActorID:           actorID,
 			ActorNameSnapshot: auditActorName(c.Request.Context(), dir, actorID),
-			ActorType:         "user",
-			AuthMethod:        "oauth",
+			ActorType:         actorType,
+			AuthMethod:        authMethod,
 			RequestID:         requestID,
-			SourceChannel:     "api",
+			SourceChannel:     sourceChannel,
 			Method:            c.Request.Method,
 			Resource:          resource,
 			Action:            action,
@@ -116,6 +137,7 @@ func auditMiddleware(store *audit.Store, dir *directory.Service, db *gorm.DB) gi
 			)
 			_ = c.Error(err)
 		}
+		c.Set(ctxAuditRecorded, true)
 	}
 }
 
@@ -175,6 +197,50 @@ func auditDetail(raw []byte) string {
 	return string(b)
 }
 
+// auditDetailFromPrefix builds the Detail snapshot of a body that was cut at
+// maxAuditBody. It walks the top-level object in order and keeps every member
+// that still decodes whole — scalars and small objects — and stops at the
+// first value the cut runs through (in practice the large array). Arrays are
+// never kept: a complete one would only bloat the row, and the cut one does
+// not decode. The result always carries "_body_truncated": true so a reader
+// knows the row describes a prefix, not the request.
+func auditDetailFromPrefix(raw []byte) string {
+	const marker = `{"_body_truncated":true}`
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		return marker
+	}
+	m := map[string]any{"_body_truncated": true}
+	for dec.More() {
+		keyTok, err := dec.Token()
+		if err != nil {
+			break
+		}
+		key, ok := keyTok.(string)
+		if !ok {
+			break
+		}
+		var value any
+		if err := dec.Decode(&value); err != nil {
+			break
+		}
+		if _, isArray := value.([]any); isArray {
+			continue
+		}
+		m[key] = value
+	}
+	for _, k := range sensitiveBodyKeys {
+		if _, ok := m[k]; ok {
+			m[k] = "***"
+		}
+	}
+	b, err := json.Marshal(m)
+	if err != nil || len(b) > maxAuditDetail {
+		return marker
+	}
+	return string(b)
+}
+
 // ctxAuditOutcome is the gin context key under which a handler stashes outcome
 // facts for the audit trail — things only the handler knows and the request body
 // does not say, e.g. how many grants a revoke actually removed.
@@ -197,6 +263,50 @@ func setAuditOperation(c *gin.Context, action, targetID, targetName string) {
 // read): the value is then simply never consumed.
 func setAuditOutcome(c *gin.Context, outcome map[string]any) {
 	c.Set(ctxAuditOutcome, outcome)
+}
+
+// withAuditGate notes in Detail which gate refused a mutating request that a
+// permission point turned away, so a reader can tell a refused attempt from a
+// failed one without decoding the status code.
+func withAuditGate(detail string, c *gin.Context) string {
+	gate := c.GetString(ctxGateFailure)
+	if gate == "" {
+		return detail
+	}
+	return withAuditFact(detail, "_gate", gate)
+}
+
+// maxCallerServiceLen bounds the self-declared x-caller-service header value.
+const maxCallerServiceLen = 64
+
+// withAuditCallerService records the caller's self-declared service name for
+// a tokenless write. It is metadata for correlation only — nothing trusts it —
+// which is why it lives in Detail and never in the actor columns.
+func withAuditCallerService(detail string, c *gin.Context) string {
+	name := strings.TrimSpace(c.GetHeader("x-caller-service"))
+	if name == "" || len(name) > maxCallerServiceLen || strings.ContainsFunc(name, func(r rune) bool {
+		return r < 0x21 || r > 0x7e
+	}) {
+		return detail
+	}
+	return withAuditFact(detail, "_caller_service", name)
+}
+
+// withAuditFact merges one key into the Detail JSON object, keeping the
+// original snapshot when the merged form would not fit the column.
+func withAuditFact(detail, key string, value any) string {
+	m := map[string]any{}
+	if detail != "" {
+		if err := json.Unmarshal([]byte(detail), &m); err != nil {
+			m = map[string]any{}
+		}
+	}
+	m[key] = value
+	b, err := json.Marshal(m)
+	if err != nil || len(b) > maxAuditDetail {
+		return detail
+	}
+	return string(b)
 }
 
 // withAuditOutcome folds any handler-supplied outcome facts into the Detail
@@ -334,6 +444,13 @@ func auditDetailTargetID(resource, detail string) string {
 	case "role-bindings":
 		id, _ := body["accessor_id"].(string)
 		return id
+	case "policies":
+		ref, _ := body["resource"].(map[string]any)
+		id, _ := ref["id"].(string)
+		return id
+	case "resource-parents":
+		rt, _ := body["resource_type"].(string)
+		return rt
 	default:
 		return ""
 	}
@@ -424,6 +541,16 @@ func auditAction(method, fullPath string) string {
 		return "revoke"
 	case "/api/safe/v1/authz/explain":
 		return "explain"
+	case "/api/safe/v1/authz/policies":
+		if method == http.MethodDelete {
+			return "revoke"
+		}
+		return "grant"
+	case "/api/safe/v1/authz/resource-parents":
+		if method == http.MethodDelete {
+			return "drop_parent"
+		}
+		return "set_parent"
 	case "/api/safe/v1/admin/roles/:id/permissions":
 		if method == http.MethodDelete {
 			return "revoke_permission"

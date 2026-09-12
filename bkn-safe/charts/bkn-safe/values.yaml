@@ -150,6 +150,25 @@ config:
     # is what made every Helm upgrade invalidate an activated license
     # (openbkn-ai/bkn-foundry#508).
     instanceId: ""
+  # Audit subsystem (#334). The audit trail itself is always on; these tune
+  # the chain-anchor export and the authorization decision log.
+  audit:
+    # How often the audit chain head (seq + hash) is written to the service
+    # log so the log pipeline holds anchors outside the database. Go duration
+    # string; "0s" disables.
+    chainHeadLogInterval: "15m"
+    decisionLog:
+      # Record every authorization decision (/authz/check, batch summaries for
+      # /operations and /resource-filter, admin gate and permission points).
+      # Written off the request path; a full queue drops rows, never blocks.
+      enabled: true
+      # Fraction [0,1] of ALLOW decisions kept. Denies are always kept. Lower
+      # it on a busy cluster; 1 keeps everything.
+      allowSampleRate: "1"
+      # Rows waiting to be written before Record starts dropping.
+      queueSize: "4096"
+      # Purge decision rows older than this many days (daily). 0 = keep all.
+      retentionDays: "90"
 
 resources:
   requests:

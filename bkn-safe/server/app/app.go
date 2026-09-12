@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -39,6 +40,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authzgate"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/decisionlog"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/httpapi"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/license"
@@ -61,6 +63,9 @@ type App struct {
 	enforcer *authz.Enforcer
 	deps     httpapi.Deps
 	licSvc   *license.Service
+	// decisions is the authorization decision log; its retention purge runs
+	// alongside the listener.
+	decisions *decisionlog.Store
 	// freshAuthorizationStore is captured before AutoMigrate creates the
 	// Casbin/marker schema. An old but empty store must still run the explicit
 	// offline migration and therefore is never inferred as fresh later.
@@ -126,6 +131,16 @@ func Boot(opts Options) (*App, error) {
 	dir := directory.New(db)
 	auditStore := audit.New(db)
 	accessLogStore := accesslog.New(db)
+	decisionStore := decisionlog.New(db, decisionlog.Options{
+		Enabled:         cfg.Audit.DecisionLog.Enabled,
+		AllowSampleRate: cfg.Audit.DecisionLog.AllowSampleRate,
+		QueueSize:       cfg.Audit.DecisionLog.QueueSize,
+	})
+	if decisionStore.Enabled() {
+		slog.Info("authz decision log enabled",
+			"allow_sample_rate", cfg.Audit.DecisionLog.AllowSampleRate,
+			"retention_days", cfg.Audit.DecisionLog.RetentionDays)
+	}
 
 	// Cluster license hub: hold the one .lic, be the only egress to the
 	// license-server, distribute to modules.
@@ -157,6 +172,7 @@ func Boot(opts Options) (*App, error) {
 		enforcer:                enforcer,
 		licSvc:                  licSvc,
 		freshAuthorizationStore: freshAuthorizationStore,
+		decisions:               decisionStore,
 		deps: httpapi.Deps{
 			Enforcer:  enforcer,
 			DB:        db,
@@ -166,6 +182,7 @@ func Boot(opts Options) (*App, error) {
 			Users:     userStore,
 			Audit:     auditStore,
 			AccessLog: accessLogStore,
+			Decisions: decisionStore,
 			License:   licSvc,
 		},
 	}, nil
@@ -193,9 +210,19 @@ func (a *App) Run() error {
 	entitlement.Freeze()
 	slog.Info("extensions assembled", "assembled", entitlement.Assembled())
 
+	// Background audit work lives for as long as the listener: the chain head
+	// anchor export and the decision-log retention purge.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go a.deps.Audit.LogHead(ctx, a.cfg.Audit.ChainHeadLogInterval)
+	go a.decisions.RunRetention(ctx, a.cfg.Audit.DecisionLog.RetentionDays, 24*time.Hour)
+
 	r := httpapi.New(a.deps)
 	slog.Info("bkn-safe listening", "addr", a.cfg.HTTPAddr)
-	return r.Run(a.cfg.HTTPAddr)
+	err := r.Run(a.cfg.HTTPAddr)
+	// The listener is gone; drain the queued decisions before reporting why.
+	a.decisions.Close()
+	return err
 }
 
 func (a *App) ensureAuthorizationMigrationReady(ctx context.Context) error {

@@ -14,7 +14,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/decisionlog"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/managedproxy"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
@@ -34,9 +37,16 @@ type resourceRef struct {
 // registerAuthz mounts bkn-safe's clean authorization API under /api/safe/v1/authz.
 // This is a redesign — it deliberately drops ISF's quirks (GET-in-body,
 // array-vs-map responses, policy-delete double form, public/private split).
-func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
+func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *audit.Store, dir *directory.Service) {
 	g := r.Group("/api/safe/v1/authz")
 	registerPropertyLevels(g, e, db)
+	// Policy and hierarchy writes are the authorization changes this tokenless
+	// face accepts. They are audited like the token-gated ones (#334); the
+	// actor is the service peer, see auditMiddleware.
+	writes := g.Group("")
+	if auditStore != nil {
+		writes.Use(auditMiddleware(auditStore, dir, db))
+	}
 
 	// POST /check — single decision. { accessor_id, resource{type,id}, operation } -> { allowed }
 	g.POST("/check", func(c *gin.Context) {
@@ -64,6 +74,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			return
 		}
 		if !active {
+			recordInactiveDeny(c, decisionSourceCheck, req.AccessorID, req.Resource.Type, req.Resource.ID, req.Operation)
 			c.JSON(http.StatusOK, gin.H{"allowed": false})
 			return
 		}
@@ -79,6 +90,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			serverError(c, err)
 			return
 		}
+		recordEvaluation(c, decisionSourceCheck, req.AccessorID, req.Resource.Type, req.Resource.ID, req.Operation, decision, "")
 		response := gin.H{
 			"allowed":          decision.Allowed(),
 			"evaluation_scope": decision.Scope,
@@ -111,6 +123,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			return
 		}
 		if !active {
+			recordInactiveDeny(c, decisionSourceOperations, req.AccessorID, req.Resource.Type, req.Resource.ID, "*")
 			c.JSON(http.StatusOK, gin.H{"operations": []string{}})
 			return
 		}
@@ -124,6 +137,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			serverError(c, err)
 			return
 		}
+		recordOperationsDecision(c, req.AccessorID, req.Resource.Type, req.Resource.ID, allowed)
 		c.JSON(http.StatusOK, gin.H{"operations": allowed})
 	})
 
@@ -193,6 +207,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			return
 		}
 		if !active {
+			recordInactiveDeny(c, decisionSourceFilter, req.AccessorID, filterResourceType(refs), "", strings.Join(req.VisibilityOperations, ","))
 			c.JSON(http.StatusOK, gin.H{"resources": []gin.H{}})
 			return
 		}
@@ -239,6 +254,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 				return
 			}
 			appendResults(results)
+			recordFilterDecision(c, req.AccessorID, refs, req.VisibilityOperations, req.CandidateOperations, scope, len(out))
 			c.JSON(http.StatusOK, gin.H{"resources": out})
 			return
 		}
@@ -281,12 +297,13 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 				appendResults([]authz.FilteredResource{result})
 			}
 		}
+		recordFilterDecision(c, req.AccessorID, refs, req.VisibilityOperations, nil, scope, len(out))
 		c.JSON(http.StatusOK, gin.H{"resources": out})
 	})
 
 	// POST /policies — grant an accessor concrete ops on one resource instance
 	// (the create-resource pattern). { accessor_id, resource, operations:[...] }
-	g.POST("/policies", func(c *gin.Context) {
+	writes.POST("/policies", func(c *gin.Context) {
 		var req struct {
 			AccessorID string      `json:"accessor_id" binding:"required"`
 			Resource   resourceRef `json:"resource" binding:"required"`
@@ -364,7 +381,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 
 	// DELETE /policies — drop all policies targeting a resource instance
 	// (used when the resource is deleted). { resource{type,id} }
-	g.DELETE("/policies", func(c *gin.Context) {
+	writes.DELETE("/policies", func(c *gin.Context) {
 		var req struct {
 			Resource resourceRef `json:"resource" binding:"required"`
 		}
@@ -458,8 +475,65 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 	// Instance-level hierarchy (which catalog a table belongs to). Same tokenless
 	// service face; see resourceparents.go for why the shape check is the guard.
 	if db != nil {
-		registerResourceParents(g, e, db)
+		registerResourceParents(writes, e, db)
 	}
+}
+
+// recordOperationsDecision records one row for a POST /operations call: the
+// projected operation set as a whole, not one row per candidate.
+func recordOperationsDecision(c *gin.Context, accessorID, resourceType, resourceID string, allowed []string) {
+	decision := decisionlog.DecisionDeny
+	if len(allowed) > 0 {
+		decision = decisionlog.DecisionAllow
+	}
+	recordDecision(c, decisionlog.Entry{
+		AccessorID: accessorID, ResourceType: resourceType, ResourceID: resourceID, Operation: "*",
+		Scope: string(authz.ScopeEffective), Decision: decision, Source: decisionSourceOperations,
+		Detail: decisionDetail(map[string]any{"operations": capStrings(allowed, 32)}),
+	})
+}
+
+// recordFilterDecision records one row for a POST /resource-filter call. A
+// list page asks about tens or hundreds of resources at once; one row per
+// resource would make the decision log larger than the data it describes, so
+// the batch is summarised: how many were asked about, how many came back.
+func recordFilterDecision(c *gin.Context, accessorID string, refs []authz.ResourceRef, visibility, candidates []string, scope authz.EvaluationScope, visible int) {
+	decision := decisionlog.DecisionDeny
+	switch {
+	case len(refs) == 0:
+		decision = decisionlog.DecisionNone
+	case visible > 0:
+		decision = decisionlog.DecisionAllow
+	}
+	recordDecision(c, decisionlog.Entry{
+		AccessorID: accessorID, ResourceType: filterResourceType(refs), Operation: strings.Join(visibility, ","),
+		Scope: string(scope), Decision: decision, Source: decisionSourceFilter,
+		Detail: decisionDetail(map[string]any{
+			"requested": len(refs), "visible": visible, "candidate_operations": capStrings(candidates, 32),
+		}),
+	})
+}
+
+// filterResourceType names a batch's resource type, or "mixed" when the
+// request spans more than one.
+func filterResourceType(refs []authz.ResourceRef) string {
+	if len(refs) == 0 {
+		return ""
+	}
+	first := refs[0].Type
+	for _, r := range refs[1:] {
+		if r.Type != first {
+			return "mixed"
+		}
+	}
+	return first
+}
+
+func capStrings(values []string, n int) []string {
+	if len(values) <= n {
+		return values
+	}
+	return values[:n]
 }
 
 // registerAuthzExplain mounts the authenticated administrator-only diagnostic
@@ -792,6 +866,7 @@ func isSuperAdminRoleID(c *gin.Context, db *gorm.DB, roleID string) (bool, error
 // may remove one, because after a removal nothing could put it back and the
 // platform would be left with no wildcard authority until a restart re-seeded
 // it. Changing the holder is a deliberate, out-of-band operation.
+//
 //nolint:unused // Retained as the stable seed-only membership message.
 const superAdminSeedOnlyMsg = "super_admin membership is fixed by the seed and cannot be changed through the API"
 

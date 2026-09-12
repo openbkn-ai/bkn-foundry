@@ -26,6 +26,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/decisionlog"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
@@ -82,8 +83,11 @@ func newAdminServer(t *testing.T) (*gin.Engine, *authz.Enforcer, *gorm.DB, *auth
 	finegrained.Register(licverify.EditionProfessional)
 	r := New(Deps{
 		Enforcer: e, DB: db, Directory: directory.New(db), Users: users,
-		Audit:         audit.New(db),
-		AccessLog:     accesslog.New(db),
+		Audit:     audit.New(db),
+		AccessLog: accesslog.New(db),
+		// Synchronous so a test can read a decision right after the request
+		// that produced it; production writes through the queue.
+		Decisions:     decisionlog.New(db, decisionlog.Options{Enabled: true, AllowSampleRate: 1, Synchronous: true}),
 		TokenVerifier: stubVerifier{},
 	})
 	return r, e, db, users

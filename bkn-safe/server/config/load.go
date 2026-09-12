@@ -7,6 +7,8 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
+	"time"
 )
 
 // LoadOptions controls config resolution order: defaults → file → env overrides.
@@ -107,6 +109,25 @@ func applyEnv(cfg *Config) {
 	}
 	if v, ok := envBool("SAFE_LICENSE_INSECURE_SKIP_VERIFY"); ok {
 		cfg.License.InsecureSkipVerify = v
+	}
+	if v := os.Getenv("SAFE_AUDIT_CHAIN_HEAD_LOG_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.Audit.ChainHeadLogInterval = d
+		}
+	}
+	if v, ok := envBool("SAFE_AUTHZ_DECISION_LOG_ENABLED"); ok {
+		cfg.Audit.DecisionLog.Enabled = v
+	}
+	if v := os.Getenv("SAFE_AUTHZ_DECISION_LOG_ALLOW_SAMPLE_RATE"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			cfg.Audit.DecisionLog.AllowSampleRate = f
+		}
+	}
+	if v, ok := envInt("SAFE_AUTHZ_DECISION_LOG_QUEUE_SIZE"); ok {
+		cfg.Audit.DecisionLog.QueueSize = v
+	}
+	if v, ok := envInt("SAFE_AUTHZ_DECISION_LOG_RETENTION_DAYS"); ok {
+		cfg.Audit.DecisionLog.RetentionDays = v
 	}
 }
 
