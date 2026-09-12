@@ -47,8 +47,13 @@ type ObjectDataStats struct {
 	// to count distinct values of, and reporting zero would read as "every row is a duplicate".
 	PrimaryKeyDistinct *int64 `json:"primary_key_distinct,omitempty"`
 
-	// DuplicateKeys is RowCount minus PrimaryKeyDistinct. A non-zero value means the bound
-	// resource holds rows the model believes are the same object.
+	// MissingKeys counts rows with a NULL in any primary key column. Such a row identifies no
+	// object at all, which is a different fault from two rows identifying the same one, so it is
+	// reported apart from DuplicateKeys rather than inflating it.
+	MissingKeys *int64 `json:"missing_keys,omitempty"`
+
+	// DuplicateKeys counts rows with a complete key beyond the first for each distinct key. A
+	// non-zero value means the bound resource holds rows the model believes are the same object.
 	DuplicateKeys *int64 `json:"duplicate_keys,omitempty"`
 }
 

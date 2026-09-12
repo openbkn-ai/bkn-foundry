@@ -33,9 +33,11 @@ func objectTypeFixture(otID string, resourceID string, primaryKeys []string) *in
 	}
 }
 
+// countRow answers the aggregate for a table in which every row has a complete key.
 func countRow(rowCount, distinct int64, withDistinct bool) *interfaces.RawQueryResponse {
 	entry := map[string]any{"row_count": rowCount}
 	if withDistinct {
+		entry["keyed_rows"] = rowCount
 		entry["primary_key_distinct"] = distinct
 	}
 	return &interfaces.RawQueryResponse{Entries: []map[string]any{entry}}
@@ -66,7 +68,8 @@ func Test_objectDataStatsService_ObjectDataStats(t *testing.T) {
 			vba.EXPECT().RawQuery(gomock.Any(), gomock.Any()).DoAndReturn(
 				func(_ any, q *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
 					So(q.Query, ShouldContainSubstring, "{{.res-1}}")
-					So(q.Query, ShouldContainSubstring, "COUNT(DISTINCT `bom_material_code`)")
+					So(q.Query, ShouldContainSubstring,
+						"COUNT(DISTINCT CASE WHEN `bom_material_code` IS NOT NULL THEN `bom_material_code` END)")
 					return countRow(1000, 1000, true), nil
 				})
 			vba.EXPECT().RawQuery(gomock.Any(), gomock.Any()).Return(countRow(1200, 1150, true), nil)
@@ -104,13 +107,34 @@ func Test_objectDataStatsService_ObjectDataStats(t *testing.T) {
 				Return(objectTypeFixture("bom", "res-1", []string{"bom_material_code", "bom_version"}), nil)
 			vba.EXPECT().RawQuery(gomock.Any(), gomock.Any()).Times(2).DoAndReturn(
 				func(_ any, q *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+					// Every component has to be present: CONCAT_WS would otherwise drop a NULL
+					// component and fold (a, NULL) and (NULL, a) into one key.
 					So(q.Query, ShouldContainSubstring,
-						"COUNT(DISTINCT CONCAT_WS(CHAR(31), `bom_material_code`, `bom_version`))")
+						"COUNT(DISTINCT CASE WHEN `bom_material_code` IS NOT NULL AND `bom_version` IS NOT NULL "+
+							"THEN CONCAT_WS(CHAR(31), `bom_material_code`, `bom_version`) END)")
+					So(q.Query, ShouldContainSubstring,
+						"COUNT(CASE WHEN `bom_material_code` IS NOT NULL AND `bom_version` IS NOT NULL THEN 1 END)")
 					return countRow(10, 10, true), nil
 				})
 
 			_, err := svc.ObjectDataStats(context.Background(), req)
 			So(err, ShouldBeNil)
+		})
+
+		// A row without a key identifies no object; two rows with one key identify the same object.
+		// Both are faults in the data, but different ones, and the second must not absorb the first.
+		Convey("Rows missing a key are reported apart from rows repeating one\n", func() {
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Times(2).Return(nil)
+			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Nil(), gomock.Any(), gomock.Any(), gomock.Any()).Times(2).
+				Return(objectTypeFixture("bom", "res-1", []string{"bom_material_code", "bom_version"}), nil)
+			vba.EXPECT().RawQuery(gomock.Any(), gomock.Any()).Times(2).Return(&interfaces.RawQueryResponse{
+				Entries: []map[string]any{{"row_count": 10, "keyed_rows": 8, "primary_key_distinct": 7}},
+			}, nil)
+
+			result, err := svc.ObjectDataStats(context.Background(), req)
+			So(err, ShouldBeNil)
+			So(*result.Target.MissingKeys, ShouldEqual, 2)
+			So(*result.Target.DuplicateKeys, ShouldEqual, 1)
 		})
 
 		// Without a primary key there is nothing to count distinct values of, and reporting zero

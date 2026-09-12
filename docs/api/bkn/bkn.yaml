@@ -250,8 +250,11 @@ paths:
 
         `same_resource` is true when both object types are bound to the same resource. The two
         sides are then reading one table and every number matches by construction, which is not a
-        finding about the data. `duplicate_keys` is rows minus distinct keys: a non-zero value
-        means the resource holds rows the model believes are the same object.
+        finding about the data. `missing_keys` counts rows with a NULL in any primary key column:
+        they identify no object at all. `duplicate_keys` counts the rows with a complete key beyond
+        the first for each key: a non-zero value means the resource holds rows the model believes
+        are the same object. The two are kept apart because they are different faults, and a row
+        without a key must not read as a duplicate.
       operationId: objectDataStats
       security:
         - OAuth2: []
@@ -470,10 +473,17 @@ components:
           description: |
             Absent when the object type declares no primary key: there is nothing to count
             distinct values of, and zero would read as "every row is a duplicate".
+        missing_keys:
+          type: integer
+          format: int64
+          description: Rows with a NULL in any primary key column. Absent when the object type declares no primary key.
         duplicate_keys:
           type: integer
           format: int64
-          description: Rows minus distinct keys. Non-zero means the resource holds rows the model believes are the same object.
+          description: |
+            Rows with a complete key, minus distinct complete keys. Non-zero means the resource holds
+            rows the model believes are the same object. Rows counted in missing_keys are not
+            counted here.
 
     ObjectDataStatsResult:
       type: object

@@ -170,9 +170,12 @@ func (s *objectDataStatsService) sideStats(ctx context.Context,
 	row := response.Entries[0]
 	stats.RowCount = asInt64(row[statsColumnRowCount])
 	if len(keyColumns) > 0 {
+		keyed := asInt64(row[statsColumnKeyedRows])
 		distinct := asInt64(row[statsColumnKeyDistinct])
+		missing := stats.RowCount - keyed
+		duplicates := keyed - distinct
 		stats.PrimaryKeyDistinct = &distinct
-		duplicates := stats.RowCount - distinct
+		stats.MissingKeys = &missing
 		stats.DuplicateKeys = &duplicates
 	}
 	return stats, nil
@@ -211,6 +214,7 @@ func primaryKeyColumns(ctx context.Context, objectType *interfaces.ObjectType) (
 
 const (
 	statsColumnRowCount    = "row_count"
+	statsColumnKeyedRows   = "keyed_rows"
 	statsColumnKeyDistinct = "primary_key_distinct"
 )
 
@@ -220,6 +224,12 @@ const (
 // COUNT(DISTINCT ...): the multi-argument form is MySQL's own, and this statement is transpiled to
 // whatever dialect the resource's connector speaks. Unit separator is the separator because it
 // cannot appear in a key value that came out of a table column.
+//
+// Only rows whose key is complete take part in the distinct count. COUNT(DISTINCT col) skips a
+// NULL on its own, but CONCAT_WS skips a NULL component and keeps the rest, so (a, NULL) and
+// (NULL, a) would fold into one key; and either way a row without a key was left in the row count,
+// where it read as a duplicate. The rows with a complete key are counted separately so a missing
+// key and a repeated key come back as the two different faults they are.
 func buildStatsSQL(ctx context.Context, resourceID string, keyColumns []string) (string, error) {
 	table := "{{." + resourceID + "}}"
 	if len(keyColumns) == 0 {
@@ -239,8 +249,15 @@ func buildStatsSQL(ctx context.Context, resourceID string, keyColumns []string) 
 	if len(quoted) > 1 {
 		keyExpression = fmt.Sprintf("CONCAT_WS(CHAR(31), %s)", strings.Join(quoted, ", "))
 	}
-	return fmt.Sprintf("SELECT COUNT(*) AS %s, COUNT(DISTINCT %s) AS %s FROM %s",
-		statsColumnRowCount, keyExpression, statsColumnKeyDistinct, table), nil
+	present := make([]string, 0, len(quoted))
+	for _, column := range quoted {
+		present = append(present, column+" IS NOT NULL")
+	}
+	complete := strings.Join(present, " AND ")
+	return fmt.Sprintf("SELECT COUNT(*) AS %s, COUNT(CASE WHEN %s THEN 1 END) AS %s, "+
+		"COUNT(DISTINCT CASE WHEN %s THEN %s END) AS %s FROM %s",
+		statsColumnRowCount, complete, statsColumnKeyedRows,
+		complete, keyExpression, statsColumnKeyDistinct, table), nil
 }
 
 // quoteIdentifier writes a column name into the statement.
