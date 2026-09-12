@@ -156,6 +156,7 @@ class ProxyNetworkPlan:
 @dataclass
 class ProxyMigrationPlan:
     networks: list[ProxyNetworkPlan] = field(default_factory=list)
+    archived_tombstones: list[tuple[str, str]] = field(default_factory=list)
     failures: list[Failure] = field(default_factory=list)
 
 
@@ -735,6 +736,37 @@ def load_grant_index(connection, grantor_id: str) -> GrantIndex:
     )
 
 
+def load_proxy_authorization_references(
+    cursor, proxy_ids: Sequence[str]
+) -> set[str]:
+    """Return proxies that still have an effective or materialized grant."""
+    if not proxy_ids:
+        return set()
+    placeholders = ",".join(["%s"] * len(proxy_ids))
+    references: set[str] = set()
+    queries = (
+        ("casbin_rule", "v0", "", ()),
+        (
+            "proxy_grant_source",
+            "proxy_account_id",
+            " AND lifecycle_status = %s",
+            ("active",),
+        ),
+        ("proxy_grant_policy", "proxy_account_id", "", ()),
+        ("authorization_grant", "accessor_id", "", ()),
+    )
+    for table, column, predicate, extra_parameters in queries:
+        cursor.execute(
+            f"SELECT DISTINCT {column} AS proxy_account_id FROM {table} "
+            f"WHERE {column} IN ({placeholders}){predicate}",
+            (*proxy_ids, *extra_parameters),
+        )
+        references.update(
+            normalize_text(row["proxy_account_id"]) for row in cursor.fetchall()
+        )
+    return references
+
+
 def load_proxy_plan(
     bkn_connection, safe_connection, grantor_id: str
 ) -> ProxyMigrationPlan:
@@ -820,21 +852,9 @@ def load_proxy_plan(
                 tuple(proxy_ids),
             )
             safe_users = {normalize_text(row["id"]): row for row in cursor.fetchall()}
-            for table, column in (
-                ("casbin_rule", "v0"),
-                ("proxy_grant_source", "proxy_account_id"),
-                ("proxy_grant_policy", "proxy_account_id"),
-                ("authorization_grant", "accessor_id"),
-            ):
-                cursor.execute(
-                    f"SELECT DISTINCT {column} AS proxy_account_id FROM {table} "
-                    f"WHERE {column} IN ({placeholders})",
-                    tuple(proxy_ids),
-                )
-                authorization_references.update(
-                    normalize_text(row["proxy_account_id"])
-                    for row in cursor.fetchall()
-                )
+            authorization_references = load_proxy_authorization_references(
+                cursor, proxy_ids
+            )
 
     plan = ProxyMigrationPlan()
     known_networks = {normalize_text(row["f_id"]) for row in networks}
@@ -844,6 +864,7 @@ def load_proxy_plan(
         if is_inert_archived_proxy(
             managed, safe_users.get(proxy_id), authorization_references
         ):
+            plan.archived_tombstones.append((orphan_kn, proxy_id))
             continue
         plan.failures.append(
             Failure(
@@ -1921,6 +1942,13 @@ def migration_report(
         "managed_proxies": {
             "networks": len(proxy_plan.networks),
             "sources": sum(len(network.sources) for network in proxy_plan.networks),
+            "archived_tombstones": [
+                {
+                    "knowledge_network_id": kn_id,
+                    "proxy_account_id": proxy_id,
+                }
+                for kn_id, proxy_id in proxy_plan.archived_tombstones
+            ],
             "planned": [
                 {
                     "knowledge_network_id": network.kn_id,
