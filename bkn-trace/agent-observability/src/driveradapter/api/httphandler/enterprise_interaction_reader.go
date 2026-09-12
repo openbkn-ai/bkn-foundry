@@ -151,3 +151,14 @@ func (r enterpriseInteractionFactsReader) AuthorizeExplanationInteraction(ctx co
 	_, found, err := r.summaries.GetInteractionSummary(ctx, id, scope)
 	return found, err
 }
+
+// ExplanationScopeFingerprint returns Core's trusted access-profile identity
+// for the optional EE explanation cache. It deliberately exposes no grants,
+// account data, or authorization headers.
+func (r enterpriseInteractionFactsReader) ExplanationScopeFingerprint(ctx context.Context) (string, bool) {
+	scope, ok := trustedQueryScopeFromContext(ctx)
+	if !ok || scope.AccessProfile == nil || scope.AccessProfile.Fingerprint == "" {
+		return "", false
+	}
+	return scope.AccessProfile.Fingerprint, true
+}
