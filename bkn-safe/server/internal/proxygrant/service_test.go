@@ -709,6 +709,60 @@ func TestCheckManyAndSyncReuseDelegatorForSameConcretePermission(t *testing.T) {
 	}
 }
 
+func TestCheckManyAndSyncDoNotReuseDelegatorFromRemovedSource(t *testing.T) {
+	f := newFixture(t)
+	f.grantOperations(t, f.grantor, "r-shared", "query_data")
+	objectSource := f.request("source-object", "ot-shared", "r-shared")
+	if _, _, err := f.service.Grant(t.Context(), objectSource); err != nil {
+		t.Fatal(err)
+	}
+
+	const editor = "metric-builder-without-resource-access"
+	if err := f.db.Create(&model.User{ID: editor, Account: editor, Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	metricSource := f.request("source-metric", "metric-shared", "r-shared").Source
+	metricSource.BindingType = "metric"
+
+	preflight, err := f.service.CheckMany(t.Context(), proxygrant.BatchCheckRequest{
+		ProxyAccountID: f.proxyID,
+		GrantorID:      editor,
+		Sources:        []proxygrant.SourceSpec{metricSource},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(preflight.DeniedSources) != 1 || preflight.DeniedSources[0].SourceID != metricSource.SourceID ||
+		len(preflight.ResolvedSources) != 0 {
+		t.Fatalf("CheckMany() = %+v, want the replacement source denied", preflight)
+	}
+
+	_, err = f.service.Sync(t.Context(), proxygrant.SyncRequest{
+		ProxyAccountID: f.proxyID,
+		GrantorID:      editor,
+		Sources:        []proxygrant.SourceSpec{metricSource},
+	})
+	if !errors.Is(err, proxygrant.ErrForbidden) {
+		t.Fatalf("Sync() error = %v, want ErrForbidden", err)
+	}
+
+	var retained model.ProxyGrantSource
+	if err := f.db.First(&retained, "source_id = ?", objectSource.Source.SourceID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if retained.LifecycleStatus != proxygrant.StatusActive {
+		t.Fatalf("original source status = %q, want active after rejected sync", retained.LifecycleStatus)
+	}
+	var replacementCount int64
+	if err := f.db.Model(&model.ProxyGrantSource{}).
+		Where("source_id = ?", metricSource.SourceID).Count(&replacementCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if replacementCount != 0 {
+		t.Fatalf("replacement source rows = %d, want 0 after rejected sync", replacementCount)
+	}
+}
+
 func TestManagedProxyFilterBatchesSourceValidityQueries(t *testing.T) {
 	f := newFixture(t)
 	const sourceCount = 20

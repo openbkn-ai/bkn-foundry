@@ -347,6 +347,10 @@ func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCh
 	if err != nil {
 		return BatchCheckResult{}, err
 	}
+	desired = make(map[sourceKey]SourceSpec, len(sources))
+	for _, spec := range sources {
+		desired[keyForSpec(spec)] = spec
+	}
 
 	result := BatchCheckResult{DeniedSources: []SourceSpec{}, ResolvedSources: []ResolvedSource{}}
 	err = s.enforcer.Transaction(ctx, func(tx *authz.PolicyTransaction) error {
@@ -379,17 +383,8 @@ func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCh
 				return err
 			}
 		}
-		reusableDelegators := make(map[permissionKey]string)
-		for _, row := range rows {
-			if row.KNID != mapping.ManagedResourceID || row.LifecycleStatus != StatusActive ||
-				!validCurrent[row.ID] || strings.TrimSpace(row.GrantedBy) == "" {
-				continue
-			}
-			permission := permissionForModel(row)
-			if _, exists := reusableDelegators[permission]; !exists {
-				reusableDelegators[permission] = row.GrantedBy
-			}
-		}
+		reusableDelegators := reusableDelegatorsForRetainedSources(
+			rows, mapping.ManagedResourceID, validCurrent, desired)
 
 		needsActor := make([]SourceSpec, 0, len(sources))
 		allowedBy := make(map[sourceKey]string, len(sources))
@@ -581,21 +576,12 @@ func (s *Service) Sync(ctx context.Context, req SyncRequest) (SyncResult, error)
 		if err != nil {
 			return err
 		}
-		reusableDelegators := make(map[permissionKey]string)
-		for _, row := range rows {
-			if row.KNID != mapping.ManagedResourceID || row.LifecycleStatus != StatusActive ||
-				!validCurrent[row.ID] || strings.TrimSpace(row.GrantedBy) == "" {
-				continue
-			}
-			permission := permissionForModel(row)
-			if _, exists := reusableDelegators[permission]; !exists {
-				reusableDelegators[permission] = row.GrantedBy
-			}
-		}
+		reusableDelegators := reusableDelegatorsForRetainedSources(
+			rows, mapping.ManagedResourceID, validCurrent, desired)
 
 		// Preflight every addition and every invalid historical delegator before
 		// applying any mutation. An exact retained source wins, followed by an
-		// active source for the same concrete permission in this managed network;
+		// retained active source for the same concrete permission in this managed network;
 		// only a genuinely new permission requires authority from the sync actor.
 		resolvedDelegators := make(map[sourceKey]string, len(desired))
 		for key, spec := range desired {
@@ -1443,6 +1429,25 @@ func permissionForModel(row model.ProxyGrantSource) permissionKey {
 
 func permissionForSpec(proxyAccountID string, spec SourceSpec) permissionKey {
 	return permissionKey{proxyAccountID, spec.ResourceType, spec.ResourceID, spec.Operation}
+}
+
+func reusableDelegatorsForRetainedSources(rows []model.ProxyGrantSource, knID string,
+	validCurrent map[string]bool, desired map[sourceKey]SourceSpec) map[permissionKey]string {
+
+	reusable := make(map[permissionKey]string)
+	for _, row := range rows {
+		desiredSpec, retained := desired[keyForModel(row)]
+		if !retained || !sameBinding(specFromModel(row), desiredSpec) || row.KNID != knID ||
+			row.LifecycleStatus != StatusActive || !validCurrent[row.ID] ||
+			strings.TrimSpace(row.GrantedBy) == "" {
+			continue
+		}
+		permission := permissionForModel(row)
+		if _, exists := reusable[permission]; !exists {
+			reusable[permission] = row.GrantedBy
+		}
+	}
+	return reusable
 }
 
 func specFromModel(row model.ProxyGrantSource) SourceSpec {
