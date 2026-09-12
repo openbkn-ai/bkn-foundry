@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"gorm.io/gorm/logger"
 )
 
 func TestLoadDatabaseConfigUsesFileThenEnvironment(t *testing.T) {
@@ -26,5 +28,12 @@ func TestLoadDatabaseConfigUsesFileThenEnvironment(t *testing.T) {
 	if cfg.Host != "environment-host" || cfg.Port != 4406 ||
 		cfg.User != "file-user" || cfg.Name != "file-safe" {
 		t.Fatalf("config = %+v", cfg)
+	}
+}
+
+func TestMigrationGORMConfigKeepsStandardOutputMachineReadable(t *testing.T) {
+	cfg := migrationGORMConfig()
+	if cfg.Logger != logger.Discard {
+		t.Fatalf("migration logger = %T, want logger.Discard", cfg.Logger)
 	}
 }

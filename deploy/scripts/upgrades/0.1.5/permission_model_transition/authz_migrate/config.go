@@ -14,6 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type databaseConfig struct {
@@ -92,10 +93,20 @@ func openDatabase(cfg databaseConfig) (*gorm.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open openbkn-rds: %w", err)
 	}
-	db, err := gorm.Open(mysql.New(mysql.Config{Conn: connection}), &gorm.Config{})
+	db, err := gorm.Open(
+		mysql.New(mysql.Config{Conn: connection}),
+		migrationGORMConfig(),
+	)
 	if err != nil {
 		_ = connection.Close()
 		return nil, fmt.Errorf("gorm open: %w", err)
 	}
 	return db, nil
+}
+
+func migrationGORMConfig() *gorm.Config {
+	// Standard output is reserved for the machine-readable migration report.
+	// The command wraps database failures with actionable errors, so suppress
+	// GORM's independent SQL logger rather than allowing it to corrupt JSON.
+	return &gorm.Config{Logger: logger.Discard}
 }

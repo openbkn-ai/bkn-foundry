@@ -31,7 +31,10 @@ from bkn_data import (
     apply_parent_plan,
     build_plan,
     derive_proxy_sources,
+    is_inert_archived_proxy,
+    load_proxy_authorization_references,
     load_proxy_plan,
+    migration_report,
     stable_proxy_account_id,
     sync_proxy_sources,
 )
@@ -127,6 +130,59 @@ class ApplyParentPlanTest(unittest.TestCase):
 
 
 class ProxyPlanTest(unittest.TestCase):
+    def test_revoked_proxy_sources_do_not_keep_an_archived_proxy_active(self):
+        cursor = MagicMock()
+        cursor.fetchall.side_effect = [[], [], [], []]
+
+        references = load_proxy_authorization_references(cursor, ["proxy-1"])
+
+        self.assertEqual(set(), references)
+        source_query = cursor.execute.call_args_list[1]
+        self.assertIn("lifecycle_status = %s", source_query.args[0])
+        self.assertEqual(("proxy-1", "active"), source_query.args[1])
+
+    def test_only_inert_archived_proxy_is_a_valid_deleted_network_tombstone(self):
+        mapping = {
+            "proxy_account_id": "proxy-1",
+            "lifecycle_status": "archived",
+        }
+        user = {
+            "id": "proxy-1",
+            "enabled": 0,
+            "account_type": "app",
+            "password_hash": "",
+        }
+
+        self.assertTrue(is_inert_archived_proxy(mapping, user, set()))
+        self.assertFalse(is_inert_archived_proxy(mapping, user, {"proxy-1"}))
+        self.assertFalse(
+            is_inert_archived_proxy(mapping, {**user, "enabled": 1}, set())
+        )
+        self.assertFalse(
+            is_inert_archived_proxy(
+                {**mapping, "lifecycle_status": "active"}, user, set()
+            )
+        )
+
+    def test_migration_report_lists_ignored_archived_tombstones(self):
+        proxy_plan = ProxyMigrationPlan(
+            archived_tombstones=[("kn-deleted", "proxy-archived")]
+        )
+
+        report = migration_report(
+            "dry-run", MigrationPlan({}, 0), proxy_plan
+        )
+
+        self.assertEqual(
+            [
+                {
+                    "knowledge_network_id": "kn-deleted",
+                    "proxy_account_id": "proxy-archived",
+                }
+            ],
+            report["managed_proxies"]["archived_tombstones"],
+        )
+
     def test_new_proxy_identity_is_stable_between_dry_run_and_apply(self):
         self.assertEqual(
             stable_proxy_account_id("kn-1"),
