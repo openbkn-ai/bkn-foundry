@@ -135,6 +135,13 @@ func (s *mcpServiceImpl) CallMCPTool(ctx context.Context, req *interfaces.MCPPro
 		err = oerrors.DefaultHTTPError(ctx, http.StatusNotFound, "mcp server config not found")
 		return
 	}
+	// Only a published server's tools may be called. The debug path (DebugTool) deliberately
+	// does not come through here, so a draft server can still be exercised by its author; this
+	// is the execution path, and a server taken offline must stop answering it (#1483).
+	if serverConfig.Status != string(interfaces.BizStatusPublished) {
+		err = oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtMCPServerNotPublished, nil)
+		return
+	}
 
 	callToolReq := &CallToolRequest{
 		ListToolsRequest: &ListToolsRequest{

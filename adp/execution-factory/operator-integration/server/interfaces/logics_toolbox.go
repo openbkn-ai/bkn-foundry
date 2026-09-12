@@ -463,6 +463,11 @@ type IToolService interface {
 	// Impex[*ToolBoxImpexData]
 	Import(ctx context.Context, tx *sql.Tx, mode ImportType, data *ComponentImpexConfigModel, userID string) (err error)
 	Export(ctx context.Context, req *ExportReq) (data *ComponentImpexConfigModel, err error)
+	// ReconcileCapabilityIndexAsync brings the capability index in line with the tool tables off
+	// the request path. Imports write boxes and tools straight to the tables inside the caller's
+	// transaction, so the per-write index hooks never fire for them; the importer calls this once
+	// the transaction has committed (#1483).
+	ReconcileCapabilityIndexAsync(ctx context.Context)
 	// event handling.
 	ToolBoxEventHandler
 }
@@ -490,11 +495,11 @@ type SearchToolsReq struct {
 
 // SearchToolHit is one retrieved tool.
 type SearchToolHit struct {
-	BoxID       string  `json:"box_id"`
-	ToolID      string  `json:"tool_id"`
-	Name        string  `json:"name"`
-	Description string  `json:"description"`
-	Status      string  `json:"status"`
+	BoxID       string `json:"box_id"`
+	ToolID      string `json:"tool_id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Status      string `json:"status"`
 	// Score is absent while retrieval is substring matching; it is part of the contract so the
 	// semantic implementation can fill it without changing the response shape.
 	Score     float64 `json:"score"`

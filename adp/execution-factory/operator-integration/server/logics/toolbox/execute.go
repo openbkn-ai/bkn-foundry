@@ -215,6 +215,14 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolBoxNotFound, "toolbox not found")
 		return
 	}
+	// A tool is callable only inside a published box. The tool's own enabled flag is checked
+	// below; without this check a box taken offline kept every enabled tool runnable for anyone
+	// who still held its ids — a mount made while it was published, for instance (#1483).
+	if toolBox.Status != string(interfaces.BizStatusPublished) {
+		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolNotAvailable,
+			"toolbox not published", toolBox.Name)
+		return
+	}
 	// Check if the tool exists.
 	exist, tool, err := s.ToolDB.SelectTool(ctx, req.ToolID)
 	if err != nil {
@@ -299,6 +307,14 @@ func (s *ToolServiceImpl) ExecuteToolCore(ctx context.Context, req *interfaces.E
 	}
 	if !exist {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolBoxNotFound, "toolbox not found")
+		return
+	}
+	// A tool is callable only inside a published box. The tool's own enabled flag is checked
+	// below; without this check a box taken offline kept every enabled tool runnable for anyone
+	// who still held its ids — a mount made while it was published, for instance (#1483).
+	if toolBox.Status != string(interfaces.BizStatusPublished) {
+		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolNotAvailable,
+			"toolbox not published", toolBox.Name)
 		return
 	}
 	// Check if the tool exists.

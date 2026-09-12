@@ -79,6 +79,7 @@ const (
 	ErrExtMCPUnSupportDelete       ErrorCode = "MCPUnSupportDelete"       // The current MCP does not allow deletion.
 	ErrExtMCPParseFailed           ErrorCode = "MCPParseFailed"           // MCP parsing failed.
 	ErrExtMCPServerNotAccessible   ErrorCode = "MCPServerNotAccessible"   // MCP Server cannot be accessed.
+	ErrExtMCPServerNotPublished    ErrorCode = "MCPServerNotPublished"    // MCP Server is not published, so its tools may not be called.
 	ErrExtMCPServerAuthFailed      ErrorCode = "MCPServerAuthFailed"      // MCP Server authentication failed, the upstream returned %d.
 	ErrExtMCPListToolsFailed       ErrorCode = "MCPListToolsFailed"       // Unable to obtain the tool list under the current MCP service.
 	ErrExtMCPCallToolFailed        ErrorCode = "MCPCallToolFailed"        // Failed to call MCP tool.

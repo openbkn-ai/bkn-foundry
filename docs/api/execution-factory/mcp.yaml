@@ -588,6 +588,10 @@ paths:
         当前主体必须对具体 `mcp:{mcp_id}` 持有 `execute`。用于知识网络 Action
         时，ontology-query 还会在此前校验具体 Action Type 和数据依赖。请求体
         不能覆盖执行主体，平台身份头和 trace 控制头不会转发给第三方 MCP。
+
+        **只有 `published` 的 MCP Server 能被调用**：`unpublish` / `editing` /
+        `offline` 一律返回 400 `MCPServerNotPublished`，在建连之前拒绝。调试接口
+        不受此限。
       parameters:
         - $ref: '#/components/parameters/MCPID'
       requestBody:

@@ -325,6 +325,18 @@ func (mr *MockIToolServiceMockRecorder) QueryToolList(ctx, req any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryToolList", reflect.TypeOf((*MockIToolService)(nil).QueryToolList), ctx, req)
 }
 
+// ReconcileCapabilityIndexAsync mocks base method.
+func (m *MockIToolService) ReconcileCapabilityIndexAsync(ctx context.Context) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "ReconcileCapabilityIndexAsync", ctx)
+}
+
+// ReconcileCapabilityIndexAsync indicates an expected call of ReconcileCapabilityIndexAsync.
+func (mr *MockIToolServiceMockRecorder) ReconcileCapabilityIndexAsync(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileCapabilityIndexAsync", reflect.TypeOf((*MockIToolService)(nil).ReconcileCapabilityIndexAsync), ctx)
+}
+
 // RegisterOpenApiBundle mocks base method.
 func (m *MockIToolService) RegisterOpenApiBundle(ctx context.Context, req *interfaces.RegisterOpenApiBundleReq) (*interfaces.RegisterOpenApiBundleResp, error) {
 	m.ctrl.T.Helper()

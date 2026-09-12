@@ -39,7 +39,7 @@ func newDebugToolFixture(t *testing.T, toolStatus string) *debugToolFixture {
 		CheckExecutePermission(gomock.Any(), gomock.Any(), "b1", interfaces.AuthResourceTypeToolBox).
 		Return(nil).AnyTimes()
 	mockToolBoxDB.EXPECT().SelectToolBox(gomock.Any(), "b1").
-		Return(true, &model.ToolboxDB{BoxID: "b1", Name: "box", ServerURL: "http://tool-box-svc"}, nil).AnyTimes()
+		Return(true, &model.ToolboxDB{BoxID: "b1", Name: "box", ServerURL: "http://tool-box-svc", Status: string(interfaces.BizStatusPublished)}, nil).AnyTimes()
 	mockToolDB.EXPECT().SelectTool(gomock.Any(), "t1").
 		Return(true, &model.ToolDB{
 			ToolID:     "t1",

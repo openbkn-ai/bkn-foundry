@@ -367,6 +367,9 @@ type IMCPImpexService interface {
 	Import(ctx context.Context, tx *sql.Tx, mode ImportType, data *ComponentImpexConfigModel, userID string) (err error)
 	// Export export configuration.
 	Export(ctx context.Context, req *ExportReq) (data *ComponentImpexConfigModel, err error)
+	// ReconcileCapabilityIndexAsync re-lists every MCP Server into the capability index off the
+	// request path; the importer calls it once its transaction has committed (#1483).
+	ReconcileCapabilityIndexAsync(ctx context.Context)
 }
 
 // IMCPToolExecutor MCP Tool Executor.

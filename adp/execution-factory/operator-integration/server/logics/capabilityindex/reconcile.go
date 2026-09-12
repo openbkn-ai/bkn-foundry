@@ -32,6 +32,9 @@ import (
 )
 
 // Reconciler keeps the Function capabilities in the index matching the tool table.
+// reconcileRequestTimeout bounds one requested full pass; the periodic tick is not bounded here.
+const reconcileRequestTimeout = 10 * time.Minute
+
 type Reconciler interface {
 	// Reconcile runs one full pass over every tool box.
 	Reconcile(ctx context.Context) error
@@ -49,6 +52,10 @@ type Reconciler interface {
 	SyncBoxAsync(ctx context.Context, boxID string)
 	// ForgetBoxAsync runs ForgetBox off the request path.
 	ForgetBoxAsync(ctx context.Context, boxID string)
+	// RequestReconcile runs a full pass off the request path, waiting for a pass already in
+	// progress instead of skipping: a caller asks for this after a bulk write, and a pass that
+	// started before the write cannot have seen it.
+	RequestReconcile(ctx context.Context)
 }
 
 type reconciler struct {
@@ -283,6 +290,29 @@ func (r *reconciler) ForgetBox(ctx context.Context, boxID string) error {
 		return nil
 	}
 	return r.indexSync.DeleteOwner(ctx, interfaces.CapabilityTypeFunction, boxID)
+}
+
+// RequestReconcile runs a full pass in the background, queued behind any pass in progress.
+//
+// Reconcile skips when a pass is running, which is right for the periodic tick — the next tick
+// comes anyway — and wrong for a caller that just committed a bulk write: the running pass read
+// the tables before that commit. Taking the lock rather than trying it makes this pass start
+// after the current one ends, and so after the commit.
+func (r *reconciler) RequestReconcile(ctx context.Context) {
+	detached := context.WithoutCancel(ctx)
+	go func() {
+		ctx, cancel := context.WithTimeout(detached, reconcileRequestTimeout)
+		defer cancel()
+		r.running.Lock()
+		defer r.running.Unlock()
+		if err := r.indexSync.EnsureInitialized(ctx); err != nil {
+			r.logger.WithContext(ctx).Warnf("requested capability reconcile skipped, index not ready: %v", err)
+			return
+		}
+		if err := r.reconcileTools(ctx); err != nil {
+			r.logger.WithContext(ctx).Errorf("requested capability reconcile failed: %v", err)
+		}
+	}()
 }
 
 // SyncToolsAsync runs SyncTools off the request path.
