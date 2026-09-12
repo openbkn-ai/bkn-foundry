@@ -135,13 +135,30 @@ func splitFrontmatter(text string) (fm string, body string) {
 	return fm, body
 }
 
+// splitRow splits one table row into cells. A pipe escaped as \| stays inside its cell, and the
+// <br> the serializer writes for a line break becomes a line break again, so a value survives
+// the round trip through the file unchanged.
 func splitRow(row string) []string {
 	row = strings.TrimSpace(row)
 	row = strings.TrimPrefix(row, "|")
 	row = strings.TrimSuffix(row, "|")
-	parts := strings.Split(row, "|")
+	var parts []string
+	var cell strings.Builder
+	for i := 0; i < len(row); i++ {
+		switch {
+		case row[i] == '\\' && i+1 < len(row) && row[i+1] == '|':
+			cell.WriteByte('|')
+			i++
+		case row[i] == '|':
+			parts = append(parts, cell.String())
+			cell.Reset()
+		default:
+			cell.WriteByte(row[i])
+		}
+	}
+	parts = append(parts, cell.String())
 	for i := range parts {
-		parts[i] = strings.TrimSpace(parts[i])
+		parts[i] = strings.TrimSpace(strings.ReplaceAll(parts[i], "<br>", "\n"))
 	}
 	return parts
 }
@@ -150,12 +167,23 @@ func parseTable(lines []string) []map[string]string {
 	var tableLines []string
 	for _, line := range lines {
 		s := strings.TrimSpace(line)
-		if strings.HasPrefix(s, "|") {
+		switch {
+		case len(tableLines) > 0 && !strings.HasSuffix(tableLines[len(tableLines)-1], "|") && !strings.HasPrefix(s, "#"):
+			// The previous row is still open: an exporter that did not escape a line break inside
+			// a cell wrote the rest of the row on this line. Joining it back is what keeps files
+			// exported before the escape existed importable in full instead of silently losing
+			// every row after the break.
+			tableLines[len(tableLines)-1] += "\n" + s
+		case strings.HasPrefix(s, "|"):
 			tableLines = append(tableLines, s)
-		} else if len(tableLines) > 0 {
-			break
+		case len(tableLines) > 0:
+			return finishTable(tableLines)
 		}
 	}
+	return finishTable(tableLines)
+}
+
+func finishTable(tableLines []string) []map[string]string {
 	if len(tableLines) < 2 {
 		return nil
 	}
@@ -272,6 +300,12 @@ func parseDataProperties(sectionText string) ([]*DataProperty, error) {
 			Type:        row["Type"],
 			Description: row["Description"],
 			MappedField: row["Mapped Field"],
+		}
+		if strings.TrimSpace(property.Name) == "" {
+			// A row without a name is a row the table reader could not rebuild. Refusing it
+			// here is what makes a broken file visible; dropping the row would import an
+			// object type that is quietly missing a property.
+			return nil, fmt.Errorf("data property row %d is malformed: empty Name", len(props)+1)
 		}
 		if rawRule := strings.TrimSpace(row["Mask Rule"]); rawRule != "" {
 			var rule maskrule.Rule
