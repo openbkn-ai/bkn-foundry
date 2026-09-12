@@ -39,10 +39,53 @@ func metricAuthorizationObjectType(id string) *interfaces.ObjectType {
 			OTID:       id,
 			DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"},
 			DataProperties: []*interfaces.DataProperty{
-				{Name: "amount"}, {Name: "event_time"}, {Name: "region"},
+				{Name: "amount", MappedField: &interfaces.Field{Name: "amount_col"}},
+				{Name: "event_time", MappedField: &interfaces.Field{Name: "event_time_col"}},
+				{Name: "region", MappedField: &interfaces.Field{Name: "region_col"}},
 			},
 		},
 		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
+	}
+}
+
+func TestMetricExecutionContextUsesMetricPermissionAndOnlyReferencedObjectFields(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ma := bmock.NewMockMetricAccess(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	ots := bmock.NewMockObjectTypeService(ctrl)
+	definition := metricAuthorizationDefinition("orders")
+	objectType := metricAuthorizationObjectType("orders")
+	objectType.DataProperties = append(objectType.DataProperties, &interfaces.DataProperty{
+		Name: "unrelated_secret", MappedField: &interfaces.Field{Name: "secret_col"},
+	})
+
+	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_METRIC, ID: "kn-1/metric-1",
+	}, []string{interfaces.OPERATION_TYPE_QUERY_DATA}).Return(nil)
+	ma.EXPECT().GetMetricByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "metric-1").
+		Return(definition, nil)
+	ots.EXPECT().GetObjectTypeByID(gomock.Any(), nil, "kn-1", interfaces.MAIN_BRANCH, "orders").
+		Return(objectType, nil)
+
+	service := &metricService{ma: ma, ps: ps, ots: ots}
+	executionContext, err := service.GetMetricExecutionContext(context.Background(), "kn-1",
+		interfaces.MAIN_BRANCH, "metric-1")
+	if err != nil {
+		t.Fatalf("GetMetricExecutionContext() error = %v", err)
+	}
+	if executionContext.Definition != definition || executionContext.ObjectType == nil ||
+		executionContext.ObjectType.DataSource.ID != "resource-1" {
+		t.Fatalf("execution context = %#v", executionContext)
+	}
+	seen := make(map[string]bool)
+	for _, property := range executionContext.ObjectType.DataProperties {
+		seen[property.Name] = true
+		if property.MappedField == nil || property.MappedField.Name == "" {
+			t.Fatalf("execution property %q lost its mapped field", property.Name)
+		}
+	}
+	if seen["unrelated_secret"] || !seen["amount"] || !seen["event_time"] || !seen["region"] {
+		t.Fatalf("execution properties = %#v", executionContext.ObjectType.DataProperties)
 	}
 }
 

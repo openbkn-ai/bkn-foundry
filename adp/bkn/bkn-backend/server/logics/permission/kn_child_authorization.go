@@ -284,6 +284,23 @@ func FilterKNChildResourceIDs(ctx context.Context, ps interfaces.PermissionServi
 		fullOperations = candidateOperations[0]
 	}
 
+	return filterKNChildResourceIDs(ctx, ps, resourceType, resourceIDs, []string{operation}, fullOperations, false)
+}
+
+// FilterKNChildResourceIDsWithAnyOperation returns children on which the
+// caller has at least one effective candidate operation. Parent navigation
+// uses this projection because query_data and execute are valid independent
+// entry points even when the child detail itself is not readable.
+func FilterKNChildResourceIDsWithAnyOperation(ctx context.Context, ps interfaces.PermissionService,
+	resourceType string, resourceIDs []string, candidateOperations []string) (map[string]interfaces.PermissionResourceOps, error) {
+
+	return filterKNChildResourceIDs(ctx, ps, resourceType, resourceIDs, nil, candidateOperations, true)
+}
+
+func filterKNChildResourceIDs(ctx context.Context, ps interfaces.PermissionService,
+	resourceType string, resourceIDs, visibilityOperations, candidateOperations []string,
+	requireAnyOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
+
 	chunkSize := len(resourceIDs)
 	if configured, err := strconv.Atoi(strings.TrimSpace(os.Getenv(knChildResourceFilterChunkSizeEnv))); err == nil && configured > 0 && configured < chunkSize {
 		chunkSize = configured
@@ -296,7 +313,7 @@ func FilterKNChildResourceIDs(ctx context.Context, ps interfaces.PermissionServi
 		}
 		blockIDs := resourceIDs[start:end]
 		block, err := ps.FilterResources(ctx, resourceType, blockIDs,
-			[]string{operation}, true, fullOperations)
+			visibilityOperations, true, candidateOperations)
 		if err != nil {
 			return nil, err
 		}
@@ -304,6 +321,9 @@ func FilterKNChildResourceIDs(ctx context.Context, ps interfaces.PermissionServi
 			return nil, err
 		}
 		for resourceID, resourceOps := range block {
+			if requireAnyOperation && len(resourceOps.Operations) == 0 {
+				continue
+			}
 			matched[resourceID] = resourceOps
 		}
 	}

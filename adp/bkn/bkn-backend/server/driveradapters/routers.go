@@ -302,6 +302,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiInV1.PUT("/knowledge-networks/:kn_id/metrics/:metric_ids", r.verifyJsonContentType(), r.UpdateMetricByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/metrics", r.ListMetricsByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/metrics/dependency-properties/:ot_id", r.GetMetricDependencyPropertiesByIn)
+		apiInV1.GET("/knowledge-networks/:kn_id/metrics/:metric_ids/execution-context", r.GetMetricExecutionContextByIn)
 
 		// Capability bindings: Context Loader resolves the references of one branch here.
 		apiInV1.POST("/knowledge-networks/:kn_id/capabilities", r.verifyJsonContentType(), r.AttachCapabilitiesByIn)

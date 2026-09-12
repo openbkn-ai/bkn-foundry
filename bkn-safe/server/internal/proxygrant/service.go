@@ -362,7 +362,8 @@ func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCh
 		var rows []model.ProxyGrantSource
 		if mappingErr == nil {
 			if err := tx.DB().Where("proxy_account_id = ? AND source_type = ?",
-				req.ProxyAccountID, SourceTypeKNProxyBinding).Find(&rows).Error; err != nil {
+				req.ProxyAccountID, SourceTypeKNProxyBinding).
+				Order("source_id, resource_type, resource_id, operation").Find(&rows).Error; err != nil {
 				return err
 			}
 		}
@@ -376,6 +377,17 @@ func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCh
 			validCurrent, err = tx.CurrentProxySourceIDs(req.ProxyAccountID)
 			if err != nil {
 				return err
+			}
+		}
+		reusableDelegators := make(map[permissionKey]string)
+		for _, row := range rows {
+			if row.KNID != mapping.ManagedResourceID || row.LifecycleStatus != StatusActive ||
+				!validCurrent[row.ID] || strings.TrimSpace(row.GrantedBy) == "" {
+				continue
+			}
+			permission := permissionForModel(row)
+			if _, exists := reusableDelegators[permission]; !exists {
+				reusableDelegators[permission] = row.GrantedBy
 			}
 		}
 
@@ -394,6 +406,10 @@ func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCh
 					allowedBy[key] = row.GrantedBy
 					continue
 				}
+			}
+			if grantorID, exists := reusableDelegators[permissionForSpec(req.ProxyAccountID, spec)]; exists {
+				allowedBy[key] = grantorID
+				continue
 			}
 			needsActor = append(needsActor, spec)
 		}
@@ -553,7 +569,7 @@ func (s *Service) Sync(ctx context.Context, req SyncRequest) (SyncResult, error)
 
 		var rows []model.ProxyGrantSource
 		if err := tx.DB().Where("proxy_account_id = ? AND source_type = ?", req.ProxyAccountID, SourceTypeKNProxyBinding).
-			Find(&rows).Error; err != nil {
+			Order("source_id, resource_type, resource_id, operation").Find(&rows).Error; err != nil {
 			return err
 		}
 		current := make(map[sourceKey]model.ProxyGrantSource, len(rows))
@@ -561,46 +577,61 @@ func (s *Service) Sync(ctx context.Context, req SyncRequest) (SyncResult, error)
 			current[keyForModel(row)] = row
 		}
 
+		validCurrent, err := tx.CurrentProxySourceIDs(req.ProxyAccountID)
+		if err != nil {
+			return err
+		}
+		reusableDelegators := make(map[permissionKey]string)
+		for _, row := range rows {
+			if row.KNID != mapping.ManagedResourceID || row.LifecycleStatus != StatusActive ||
+				!validCurrent[row.ID] || strings.TrimSpace(row.GrantedBy) == "" {
+				continue
+			}
+			permission := permissionForModel(row)
+			if _, exists := reusableDelegators[permission]; !exists {
+				reusableDelegators[permission] = row.GrantedBy
+			}
+		}
+
 		// Preflight every addition and every invalid historical delegator before
-		// applying any mutation. A still-valid historical source keeps its original
-		// delegator; an invalid one may be explicitly taken over by this sync actor.
-		transfers := make(map[sourceKey]bool)
+		// applying any mutation. An exact retained source wins, followed by an
+		// active source for the same concrete permission in this managed network;
+		// only a genuinely new permission requires authority from the sync actor.
+		resolvedDelegators := make(map[sourceKey]string, len(desired))
 		for key, spec := range desired {
 			if row, ok := current[key]; ok && row.LifecycleStatus == StatusActive {
 				if !sameBinding(specFromModel(row), spec) {
 					return ErrInvalidRequest
 				}
-				valid, err := sourceCurrentlyValid(tx, row)
-				if err != nil {
-					return err
-				}
-				if valid {
+				if validCurrent[row.ID] {
+					resolvedDelegators[key] = row.GrantedBy
 					continue
 				}
-				if err := validateDelegatorOperation(tx, req.GrantorID, spec); err != nil {
-					return err
-				}
-				transfers[key] = true
+			}
+			if grantorID, exists := reusableDelegators[permissionForSpec(req.ProxyAccountID, spec)]; exists {
+				resolvedDelegators[key] = grantorID
 				continue
 			}
 			if err := validateDelegatorOperation(tx, req.GrantorID, spec); err != nil {
 				return err
 			}
+			resolvedDelegators[key] = req.GrantorID
 		}
 
 		for key, spec := range desired {
 			if row, ok := current[key]; ok && row.LifecycleStatus == StatusActive {
 				requirementDerived := !explicitKeys[key]
-				if transfers[key] {
+				if !validCurrent[row.ID] {
+					grantorID := resolvedDelegators[key]
 					if err := tx.DB().Model(&row).Updates(map[string]any{
-						"granted_by": req.GrantorID, "requirement_derived": requirementDerived,
+						"granted_by": grantorID, "requirement_derived": requirementDerived,
 					}).Error; err != nil {
 						return err
 					}
-					row.GrantedBy = req.GrantorID
+					row.GrantedBy = grantorID
 					row.RequirementDerived = requirementDerived
 					result.Transferred++
-					if err := recordAudit(tx.DB(), "sync_transfer", "allow", "invalid delegator replaced by sync actor",
+					if err := recordAudit(tx.DB(), "sync_transfer", "allow", "invalid delegator replaced by an effective delegator",
 						req.GrantorID, req.ProxyAccountID, spec); err != nil {
 						return err
 					}
@@ -618,7 +649,7 @@ func (s *Service) Sync(ctx context.Context, req SyncRequest) (SyncResult, error)
 				}
 				continue
 			}
-			row, changed, err := grantInTransaction(tx, req.ProxyAccountID, req.GrantorID,
+			row, changed, err := grantInTransaction(tx, req.ProxyAccountID, resolvedDelegators[key],
 				spec, !explicitKeys[key])
 			if err != nil {
 				return err
@@ -1408,6 +1439,10 @@ func sameBinding(left, right SourceSpec) bool {
 
 func permissionForModel(row model.ProxyGrantSource) permissionKey {
 	return permissionKey{row.ProxyAccountID, row.ResourceType, row.ResourceID, row.Operation}
+}
+
+func permissionForSpec(proxyAccountID string, spec SourceSpec) permissionKey {
+	return permissionKey{proxyAccountID, spec.ResourceType, spec.ResourceID, spec.Operation}
 }
 
 func specFromModel(row model.ProxyGrantSource) SourceSpec {

@@ -299,6 +299,53 @@ func Test_ontologyManagerAccess_GetObjectType(t *testing.T) {
 	})
 }
 
+func TestOntologyManagerAccessGetMetricExecutionContext(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	httpClient := rmock.NewMockHTTPClient(ctrl)
+	access := newTestOntologyManagerAccess(&common.AppSetting{BKNBackendUrl: "http://test-om"}, httpClient)
+	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+		interfaces.AccountInfo{ID: "metric-reader", Type: "user"})
+
+	t.Run("decodes trusted execution context", func(t *testing.T) {
+		body, err := sonic.Marshal(interfaces.MetricExecutionContext{
+			Definition: &interfaces.MetricDefinition{ID: "metric-1", KnID: "kn-1", ScopeRef: "orders"},
+			ObjectType: &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+				OTID: "orders", DataSource: &interfaces.ResourceInfo{Type: "resource", ID: "resource-1"},
+			}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		httpClient.EXPECT().GetNoUnmarshal(gomock.Any(),
+			"http://test-om/kn-1/metrics/metric-1/execution-context?branch=main", nil,
+			map[string]string{
+				interfaces.CONTENT_TYPE_NAME:        interfaces.CONTENT_TYPE_JSON,
+				interfaces.HTTP_HEADER_ACCOUNT_ID:   "metric-reader",
+				interfaces.HTTP_HEADER_ACCOUNT_TYPE: "user",
+			}).Return(http.StatusOK, body, nil)
+
+		result, err := access.GetMetricExecutionContext(ctx, "kn-1", "main", "metric-1")
+		if err != nil || result.Definition.ID != "metric-1" || result.ObjectType.DataSource.ID != "resource-1" {
+			t.Fatalf("GetMetricExecutionContext() = (%#v, %v)", result, err)
+		}
+	})
+
+	t.Run("preserves authorization status", func(t *testing.T) {
+		body, err := sonic.Marshal(rest.BaseError{ErrorCode: rest.PublicError_Forbidden})
+		if err != nil {
+			t.Fatal(err)
+		}
+		httpClient.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), nil, gomock.Any()).
+			Return(http.StatusForbidden, body, nil)
+
+		_, err = access.GetMetricExecutionContext(ctx, "kn-1", "main", "metric-1")
+		httpErr, ok := err.(*rest.HTTPError)
+		if !ok || httpErr.HTTPCode != http.StatusForbidden {
+			t.Fatalf("GetMetricExecutionContext() error = %#v, want HTTP 403", err)
+		}
+	})
+}
+
 func Test_ontologyManagerAccess_GetRelationType(t *testing.T) {
 	Convey("Test ontologyManagerAccess GetRelationType", t, func() {
 		mockCtrl := gomock.NewController(t)
