@@ -1,0 +1,12 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BKN Foundry API 文档中心</title>
+<link rel="icon" type="image/png" href="versions/main/favicon.png">
+<style>body{margin:0;font:16px system-ui,sans-serif;color:#12212b}.bar{display:flex;gap:12px;align-items:center;padding:12px 20px;border-bottom:1px solid #e4eaf0;background:#fff}.bar b{font-size:15px}select{padding:6px 10px;font-size:14px;border:1px solid #e4eaf0;border-radius:8px}iframe{border:0;width:100%;height:calc(100vh - 50px);display:block}</style>
+</head><body>
+<div class="bar"><label>版本 <select id="v" onchange="document.getElementById(&quot;f&quot;).src=&quot;versions/&quot;+this.value+&quot;/index.html&quot;"></select></label></div>
+<iframe id="f" src="versions/v0.1.4/index.html"></iframe>
+<script>var vs=[
+"main","v0.1.4","v0.1.3","v0.1.2","v0.1.1",];var s=document.getElementById("v");vs.forEach(function(v){var o=document.createElement("option");o.value=v;o.textContent=(v==="main"?"main（开发中）":v);s.appendChild(o)});
+s.value="v0.1.4";</script>
+</body></html>
