@@ -128,7 +128,7 @@ func (bs *bknService) buildNetwork(ctx context.Context, knID string, branch stri
 // one network and not the other is refused exactly as they would be asking for that network
 // directly, and a comparison cannot be used to read a network sideways.
 func (bs *bknService) DiffNetworks(ctx context.Context, req interfaces.KNDiffRequest) (*interfaces.KNDiffResult, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BKN网络对比")
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Compare knowledge networks")
 	defer span.End()
 
 	base, err := bs.buildNetwork(ctx, req.Base.KNID, req.Base.Branch)

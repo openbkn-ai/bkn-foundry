@@ -64,7 +64,7 @@ func NewObjectDataStatsServiceWith(ps interfaces.PermissionService, ots interfac
 // over the table for every column, and this runs while someone waits.
 func (s *objectDataStatsService) ObjectDataStats(ctx context.Context,
 	req interfaces.ObjectDataStatsRequest) (*interfaces.ObjectDataStatsResult, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "对象类数据统计")
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Compare object type data stats")
 	defer span.End()
 
 	base, err := s.sideStats(ctx, req.Base)
