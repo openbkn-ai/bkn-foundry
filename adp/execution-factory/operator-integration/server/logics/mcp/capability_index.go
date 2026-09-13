@@ -38,12 +38,15 @@ func (s *mcpServiceImpl) syncMCPCapabilities(ctx context.Context, mcpID string) 
 		// The server is gone: nothing to describe the tools with, and nothing should remain.
 		return s.CapabilityIndex.DeleteOwner(ctx, interfaces.CapabilityTypeMCPTool, mcpID)
 	}
-	// Only a published server's tools are callable, so only a published server is indexed
-	// (#1443). Anything else — a draft, an offline server — is purged rather than skipped:
-	// skipping would leave the documents written while it was published, and the next full
-	// pass would keep them alive for as long as the server existed. The remote listing is not
-	// attempted for such a server; there is nothing to write.
-	if config.Status != string(interfaces.BizStatusPublished) {
+	// Only a server being served has callable tools, so only such a server is indexed (#1443):
+	// a published one, or an editing one, which is served from its release (#1478). Its listing
+	// below resolves to the release too, so the index holds what callers run and a draft's tools
+	// join it only when the draft is published (#1524). Anything else — a draft never published,
+	// an offline server — is purged rather than skipped: skipping would leave the documents written
+	// while it was published, and the next full pass would keep them alive for as long as the
+	// server existed. The remote listing is not attempted for such a server; there is nothing to
+	// write.
+	if config.Status != string(interfaces.BizStatusPublished) && config.Status != string(interfaces.BizStatusEditing) {
 		return s.CapabilityIndex.DeleteOwner(ctx, interfaces.CapabilityTypeMCPTool, mcpID)
 	}
 
