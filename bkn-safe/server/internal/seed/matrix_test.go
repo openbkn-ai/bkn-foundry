@@ -32,11 +32,11 @@ func TestRoleResourceMatrix(t *testing.T) {
 
 	// a representative, granted op per resource type (positive case uses these).
 	repOp := map[string]string{
-		"catalog": "authorize",
+		"catalog": "create",
 		// 数据表上不再有 create/modify/delete：建表判目录的 resource_manage，
 		// 改删判这张表再回落到目录（#801）。
 		"resource":       "view_detail",
-		"connector_type": "create", "data_flow": "view", "knowledge_network": "execute",
+		"connector_type": "create", "data_flow": "view", "knowledge_network": "create",
 		"concept_group": "view_detail", "object_type": "query_data", "relation_type": "query_data",
 		"action_type": "execute", "metric": "query_data", "risk_type": "view_detail",
 		"tool_box": "execute", "mcp": "execute", "operator": "execute", "skill": "execute",
@@ -44,8 +44,8 @@ func TestRoleResourceMatrix(t *testing.T) {
 	}
 	roleAllowed := map[string]map[string]string{
 		networkBuilder: {
-			"catalog":           "authorize",
-			"knowledge_network": "execute",
+			"catalog":           "create",
+			"knowledge_network": "create",
 			"operator":          "execute",
 			"tool_box":          "execute",
 			"skill":             "execute",

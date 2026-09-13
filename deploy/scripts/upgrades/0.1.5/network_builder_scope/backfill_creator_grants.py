@@ -29,6 +29,7 @@ BUNDLE = "full_business_access"
 COMMUNITY_BUNDLE = "community_bundle"
 SYSTEM_DERIVED = "system_derived"
 SYSTEM = "system"
+MAIN_BRANCH = "main"
 
 RESOURCE_OPERATIONS = {
     "catalog": {
@@ -126,7 +127,11 @@ def connect(dsn: str):
 def fetch_resources(cursor) -> list[Resource]:
     cursor.execute("SELECT f_id, f_creator, f_creator_type, f_internal FROM t_catalog")
     catalogs = [Resource("catalog", row[0], row[1] or "", row[2] or "", bool(row[3])) for row in cursor.fetchall()]
-    cursor.execute("SELECT f_id, f_creator, f_creator_type FROM t_knowledge_network")
+    cursor.execute(
+        "SELECT f_id, f_creator, f_creator_type FROM t_knowledge_network "
+        "WHERE COALESCE(NULLIF(f_branch, ''), %s) = %s ORDER BY f_id",
+        (MAIN_BRANCH, MAIN_BRANCH),
+    )
     networks = [Resource("knowledge_network", row[0], row[1] or "", row[2] or "") for row in cursor.fetchall()]
     return catalogs + networks
 

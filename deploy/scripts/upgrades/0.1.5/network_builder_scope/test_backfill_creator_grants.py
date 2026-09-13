@@ -53,11 +53,25 @@ class CreatorGrantPlanTest(unittest.TestCase):
         self.assertEqual(2, len(rows))
         self.assertEqual(
             rows[0][0],
-            migration.projection_key(
-                "creator-1", "catalog:catalog-1", migration.BUNDLE,
-                migration.ALLOW, migration.COMMUNITY_BUNDLE, migration.SYSTEM,
-            ),
+            "779fc40d0307dddf5348ee957e53d73b815ab739d646f9a92c8e48dbf779f47f",
         )
+
+    def test_knowledge_network_backfill_reads_only_the_main_branch(self):
+        class Cursor:
+            def __init__(self):
+                self.calls = []
+
+            def execute(self, statement, parameters=None):
+                self.calls.append((statement, parameters))
+
+            def fetchall(self):
+                return []
+
+        cursor = Cursor()
+        self.assertEqual([], migration.fetch_resources(cursor))
+        statement, parameters = cursor.calls[-1]
+        self.assertIn("COALESCE(NULLIF(f_branch, ''), %s) = %s", statement)
+        self.assertEqual((migration.MAIN_BRANCH, migration.MAIN_BRANCH), parameters)
 
 
 if __name__ == "__main__":
