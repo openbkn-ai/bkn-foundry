@@ -6,6 +6,8 @@
 
 package interfaces
 
+import "fmt"
+
 // Action execution status constants
 const (
 	ExecutionStatusPending   = "pending"
@@ -163,6 +165,28 @@ type ActionLogDetailQuery struct {
 	ResultsLimit  int    `form:"results_limit"`  // pagination limit for results, default 100, max 1000
 	ResultsOffset int    `form:"results_offset"` // pagination offset for results, default 0
 	ResultsStatus string `form:"results_status"` // filter results by status: "success" | "failed"
+}
+
+// MaxActionResultsWindow bounds offset+limit when paging an execution's results; it matches
+// OpenSearch's default index.max_result_window.
+const MaxActionResultsWindow = 10000
+
+// ErrActionResultsWindowExceeded rejects a results page that ends beyond MaxActionResultsWindow.
+var ErrActionResultsWindowExceeded = fmt.Errorf("results offset + limit must not exceed %d", MaxActionResultsWindow)
+
+// ActionResultsQuery selects one page of an execution's results.
+type ActionResultsQuery struct {
+	KNID   string `form:"-"`
+	LogID  string `form:"-"`
+	Offset int    `form:"offset"`
+	Limit  int    `form:"limit"`
+	Status string `form:"status"` // "success" | "failed" | "cancelled"; empty means all
+}
+
+// ActionExecutionResultList is one page of an execution's results.
+type ActionExecutionResultList struct {
+	Entries    []ObjectExecutionResult `json:"entries"`
+	TotalCount int                     `json:"total_count"`
 }
 
 // ActionExecutionList represents a list of action executions with pagination

@@ -30,6 +30,16 @@ type ActionLogsService interface {
 	// GetExecutionStatus returns only the current status of an execution.
 	GetExecutionStatus(ctx context.Context, knID, execID string) (string, error)
 
+	// AppendResults stores results of an execution in the results index, one document per
+	// result. firstSeq is the position of results[0] within the execution; a retried batch
+	// overwrites the same documents instead of duplicating them.
+	AppendResults(ctx context.Context, knID, execID string, firstSeq int, results []ObjectExecutionResult) error
+
+	// QueryResults returns one page of an execution's results, filtered and paginated by
+	// OpenSearch. Executions recorded before results moved to their own index are paged
+	// from the results embedded in the execution document.
+	QueryResults(ctx context.Context, query *ActionResultsQuery) (*ActionExecutionResultList, error)
+
 	// GetExecution retrieves a single execution by ID with optional results pagination
 	GetExecution(ctx context.Context, query *ActionLogDetailQuery) (*ActionExecution, error)
 
@@ -42,6 +52,10 @@ type ActionLogsService interface {
 
 // OpenSearch index name pattern for action executions
 const ActionExecutionIndexPrefix = "ontology_action_executions_"
+
+// ActionExecutionResultsIndex holds one document per instance result, for every knowledge
+// network. A single index keeps the shard count flat as knowledge networks are added.
+const ActionExecutionResultsIndex = "ontology_action_execution_results"
 
 // GetActionExecutionIndex returns the OpenSearch index name for a knowledge network
 func GetActionExecutionIndex(knID string) string {
