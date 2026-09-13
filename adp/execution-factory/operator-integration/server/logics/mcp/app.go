@@ -46,6 +46,9 @@ func (s *mcpServiceImpl) GetMCPInstanceConfig(ctx context.Context, mcpID string,
 			Mode:    mode,
 			URL:     "",
 			Headers: utils.JSONToObject[map[string]string](release.Headers),
+			// Serve the released version, as the proxy does. Version 0 matches any deployment,
+			// the draft's included, and its cached instance is never replaced on publish.
+			Version: release.Version,
 		}
 	default:
 		return nil, oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtMCPNotFound, "mcp server not support this mode")
