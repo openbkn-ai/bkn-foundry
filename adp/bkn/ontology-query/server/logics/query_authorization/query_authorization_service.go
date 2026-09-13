@@ -317,14 +317,15 @@ func (s *queryAuthorizationService) AuthorizeSubgraphByTypePath(ctx context.Cont
 			}
 			pathResources[i] = append(pathResources[i], dependencies...)
 		}
-		for _, edge := range path.Edges {
+		for j, edge := range path.Edges {
 			relationType, err := s.loadRelationType(ctx, query.KNID, edge.RelationTypeId)
 			if err != nil {
 				return err
 			}
-			if relationType.SourceObjectTypeID != edge.SourceObjectTypeId ||
-				relationType.TargetObjectTypeID != edge.TargetObjectTypeId {
-				return invalidQuery(ctx, "relation path does not match the published model")
+			// A path may walk a relation against its definition; only an edge whose
+			// endpoints are not the relation's two ends is outside the published model.
+			if _, err := logics.ResolveTypeEdgeDirection(ctx, j, edge, relationType); err != nil {
+				return err
 			}
 			dependencies, err := relationTypeResources(ctx, query.KNID, edge.RelationTypeId, relationType)
 			if err != nil {
