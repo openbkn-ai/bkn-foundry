@@ -284,8 +284,9 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 		span.SetStatus(codes.Error, "Permission denied")
 		return err
 	}
-	fieldMap := make(map[string]*interfaces.Property, len(res.SchemaDefinition))
-	for _, prop := range res.SchemaDefinition {
+	querySchema := local_index.SchemaForQuery(res.SchemaDefinition)
+	fieldMap := make(map[string]*interfaces.Property, len(querySchema))
+	for _, prop := range querySchema {
 		if prop != nil {
 			fieldMap[prop.Name] = prop
 		}

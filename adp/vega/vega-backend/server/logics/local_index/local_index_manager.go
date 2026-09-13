@@ -195,7 +195,7 @@ func cloneIndexCapabilities(capabilities interfaces.IndexCapabilities) *interfac
 }
 
 func (lim *localIndexManager) ListDocuments(ctx context.Context, indexName string, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
-	queryResult, err := lim.lic.ExecuteQuery(ctx, indexName, res, params)
+	queryResult, err := lim.lic.ExecuteQuery(ctx, indexName, resourceForQuery(res), params)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -235,5 +235,31 @@ func (lim *localIndexManager) DeleteDocuments(ctx context.Context, indexName str
 }
 
 func (lim *localIndexManager) DeleteDocumentsByQuery(ctx context.Context, indexName string, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) error {
-	return lim.lic.DeleteDocumentsByQuery(ctx, indexName, params, res.SchemaDefinition)
+	return lim.lic.DeleteDocumentsByQuery(ctx, indexName, params, SchemaForQuery(res.SchemaDefinition))
+}
+
+// SchemaForQuery returns the physical schema exposed by a managed local index.
+// Managed documents and mappings are keyed by Property.Name; OriginalName only
+// belongs to source connectors and must not leak into local-index DSL.
+func SchemaForQuery(schema []*interfaces.Property) []*interfaces.Property {
+	result := make([]*interfaces.Property, 0, len(schema))
+	for _, property := range schema {
+		if property == nil {
+			result = append(result, nil)
+			continue
+		}
+		cloned := *property
+		cloned.OriginalName = property.Name
+		result = append(result, &cloned)
+	}
+	return result
+}
+
+func resourceForQuery(resource *interfaces.Resource) *interfaces.Resource {
+	if resource == nil {
+		return nil
+	}
+	cloned := *resource
+	cloned.SchemaDefinition = SchemaForQuery(resource.SchemaDefinition)
+	return &cloned
 }

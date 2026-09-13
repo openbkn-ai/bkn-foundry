@@ -350,7 +350,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 			Category:       interfaces.ResourceCategoryDataset,
 			LocalIndexName: "vega-dataset-index-1",
 			SchemaDefinition: []*interfaces.Property{
-				{Name: "name", Type: interfaces.DataType_String},
+				{Name: "name", OriginalName: "source_name", Type: interfaces.DataType_String},
 			},
 		}
 		params := &interfaces.ResourceDataQueryParams{
@@ -372,6 +372,9 @@ func TestResourceDataServiceQuery(t *testing.T) {
 				gotParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 				require.NotNil(t, gotParams.ActualFilterCond)
 				assert.Equal(t, "==", gotParams.ActualFilterCond.GetOperation())
+				equal, ok := gotParams.ActualFilterCond.(*filter_condition.EqualCond)
+				require.True(t, ok)
+				assert.Equal(t, "name", equal.Lfield.OriginalName)
 				return wantRows, int64(1), nil
 			})
 

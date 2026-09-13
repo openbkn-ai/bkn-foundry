@@ -121,6 +121,33 @@ func TestBuildFieldMappings(t *testing.T) {
 		assert.NotContains(t, bodyFields, "body.raw")
 	})
 
+	t.Run("uses property name when original name differs", func(t *testing.T) {
+		properties, _, err := buildFieldMappings([]*interfaces.Property{
+			{
+				Name:         "title",
+				OriginalName: "source_title",
+				Type:         interfaces.DataType_String,
+				Features: []interfaces.PropertyFeature{{
+					FeatureName: "title.analyzed",
+					FeatureType: interfaces.PropertyFeatureType_Fulltext,
+				}},
+			},
+			{
+				Name:         "body",
+				OriginalName: "source_body",
+				Type:         interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{
+					FeatureName: "body.raw",
+					FeatureType: interfaces.PropertyFeatureType_Keyword,
+				}},
+			},
+		})
+
+		require.NoError(t, err)
+		assert.Contains(t, properties["title"].(map[string]any)["fields"].(map[string]any), "analyzed")
+		assert.Contains(t, properties["body"].(map[string]any)["fields"].(map[string]any), "raw")
+	})
+
 	t.Run("rejects unsupported resource type", func(t *testing.T) {
 		properties, _, err := buildFieldMappings([]*interfaces.Property{{Name: "raw", Type: interfaces.DataType_Other, OriginalType: "_text"}})
 

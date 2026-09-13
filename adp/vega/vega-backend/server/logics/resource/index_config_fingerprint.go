@@ -74,9 +74,13 @@ func BuildIndexConfigContract(resource *interfaces.Resource) (interfaces.IndexCo
 			if refProperty == property.Name {
 				refProperty = ""
 			}
-			config, err := effectiveFeatureConfig(feature, defaultEmbeddingModel, defaultFulltextAnalyzer)
-			if err != nil {
-				return interfaces.IndexConfigContract{}, fmt.Errorf("build index config contract for property %q feature %q: %w", property.Name, feature.FeatureType, err)
+			var config json.RawMessage
+			if feature.FeatureType != interfaces.PropertyFeatureType_Vector || refProperty == "" {
+				var err error
+				config, err = effectiveFeatureConfig(feature, defaultEmbeddingModel, defaultFulltextAnalyzer)
+				if err != nil {
+					return interfaces.IndexConfigContract{}, fmt.Errorf("build index config contract for property %q feature %q: %w", property.Name, feature.FeatureType, err)
+				}
 			}
 			field.Features = append(field.Features, interfaces.IndexConfigFeatureContract{
 				Name:        feature.FeatureName,
@@ -128,6 +132,10 @@ func BuildTaskIndexConfigContract(config *interfaces.BuildTaskIndexConfig) (inte
 		field := &contract.Fields[fieldIndex]
 		for featureIndex := range field.Features {
 			feature := &field.Features[featureIndex]
+			if feature.Type == interfaces.PropertyFeatureType_Vector && feature.RefProperty != "" {
+				feature.Config = nil
+				continue
+			}
 			fieldName := field.Name
 			if feature.RefProperty != "" {
 				fieldName = feature.RefProperty
@@ -216,6 +224,12 @@ func cloneIndexConfigContract(contract interfaces.IndexConfigContract) interface
 }
 
 func normalizeIndexConfigContract(contract interfaces.IndexConfigContract) (interfaces.IndexConfigContract, error) {
+	if len(contract.PrimaryKeyFields) == 0 {
+		contract.PrimaryKeyFields = nil
+	}
+	if len(contract.IncrementalFields) == 0 {
+		contract.IncrementalFields = nil
+	}
 	seenFields := make(map[string]struct{}, len(contract.Fields))
 	for fieldIndex := range contract.Fields {
 		field := &contract.Fields[fieldIndex]

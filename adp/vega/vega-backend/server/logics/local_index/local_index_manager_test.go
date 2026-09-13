@@ -165,7 +165,7 @@ func TestLocalIndexManagerDelegatesToIndexConnector(t *testing.T) {
 		connector.EXPECT().UpdateIndex(ctx, "idx", properties, false).Return(nil)
 		connector.EXPECT().DeleteIndex(ctx, "idx").Return(nil)
 		connector.EXPECT().CheckIndexExist(ctx, "idx").Return(true, nil)
-		connector.EXPECT().ExecuteQuery(ctx, "idx", resource, params).Return(queryResult, nil)
+		connector.EXPECT().ExecuteQuery(ctx, "idx", resourceForQuery(resource), params).Return(queryResult, nil)
 		connector.EXPECT().GetDocument(ctx, "idx", "doc-1").Return(document, nil)
 		connector.EXPECT().GetDocuments(ctx, "idx", []string{"doc-1", "missing"}).Return([]map[string]any{document, nil}, nil)
 		connector.EXPECT().CreateDocuments(ctx, "idx", docs).Return(docIDs, nil)
@@ -231,7 +231,7 @@ func TestLocalIndexManagerDeleteDocumentsByQueryDelegatesToConnector(t *testing.
 		var gotParams *interfaces.ResourceDataQueryParams
 		var gotSchema []*interfaces.Property
 		connector.EXPECT().
-			DeleteDocumentsByQuery(ctx, "idx", params, resource.SchemaDefinition).
+			DeleteDocumentsByQuery(ctx, "idx", params, SchemaForQuery(resource.SchemaDefinition)).
 			DoAndReturn(func(_ context.Context, _ string, p *interfaces.ResourceDataQueryParams, schema []*interfaces.Property) error {
 				gotParams = p
 				gotSchema = schema
@@ -241,6 +241,20 @@ func TestLocalIndexManagerDeleteDocumentsByQueryDelegatesToConnector(t *testing.
 		require.NoError(t, manager.DeleteDocumentsByQuery(ctx, "idx", resource, params))
 		assert.Nil(t, params.ActualFilterCond)
 		assert.Same(t, params, gotParams)
-		assert.Equal(t, resource.SchemaDefinition, gotSchema)
+		assert.Equal(t, SchemaForQuery(resource.SchemaDefinition), gotSchema)
 	})
+}
+
+func TestSchemaForQueryUsesManagedFieldNames(t *testing.T) {
+	schema := []*interfaces.Property{{
+		Name:         "body",
+		OriginalName: "source_body",
+		Type:         interfaces.DataType_Text,
+	}}
+
+	got := SchemaForQuery(schema)
+
+	require.Len(t, got, 1)
+	assert.Equal(t, "body", got[0].OriginalName)
+	assert.Equal(t, "source_body", schema[0].OriginalName)
 }

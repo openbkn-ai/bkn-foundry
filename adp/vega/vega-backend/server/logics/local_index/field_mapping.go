@@ -133,8 +133,6 @@ func applyFulltextFeature(fieldProps map[string]any, property *interfaces.Proper
 		fieldName := strings.TrimSpace(feature.FeatureName)
 		if fieldName == "" {
 			fieldName = interfaces.LocalIndexFulltextSubfieldName
-		} else if property.OriginalName != "" {
-			fieldName = strings.TrimPrefix(fieldName, property.OriginalName+".")
 		} else {
 			fieldName = strings.TrimPrefix(fieldName, property.Name+".")
 		}
@@ -165,8 +163,6 @@ func applyKeywordFeature(fieldProps map[string]any, property *interfaces.Propert
 	fieldName := strings.TrimSpace(feature.FeatureName)
 	if fieldName == "" {
 		fieldName = interfaces.LocalIndexKeywordSubfieldName
-	} else if property.OriginalName != "" {
-		fieldName = strings.TrimPrefix(fieldName, property.OriginalName+".")
 	} else {
 		fieldName = strings.TrimPrefix(fieldName, property.Name+".")
 	}

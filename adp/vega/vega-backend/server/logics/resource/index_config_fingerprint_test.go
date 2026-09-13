@@ -158,6 +158,60 @@ func TestBuildTaskIndexConfigFingerprintSupportsUpgradedSnapshot(t *testing.T) {
 	assert.Equal(t, resourceFingerprint, taskFingerprint)
 }
 
+func TestReferencedVectorFeatureDoesNotOwnEffectiveConfig(t *testing.T) {
+	resource := &interfaces.Resource{
+		SchemaDefinition: []*interfaces.Property{
+			{
+				Name: "content",
+				Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{
+					FeatureType: interfaces.PropertyFeatureType_Vector,
+					RefProperty: "embedding",
+				}},
+			},
+			{
+				Name: "embedding",
+				Type: interfaces.DataType_Vector,
+				Features: []interfaces.PropertyFeature{{
+					FeatureType: interfaces.PropertyFeatureType_Vector,
+					Config: map[string]any{
+						"embedding_model": "target-model",
+						"dimension":       3,
+					},
+				}},
+			},
+		},
+		IndexConfig: &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "default-model"},
+	}
+
+	fields, err := SnapshotBuildTaskIndexConfigFields(resource)
+	require.NoError(t, err)
+	require.Len(t, fields[0].Features, 1)
+	assert.Empty(t, fields[0].Features[0].Config)
+
+	resourceContract, err := BuildIndexConfigContract(resource)
+	require.NoError(t, err)
+	resourceFingerprint, err := ResourceIndexConfigFingerprint(resource)
+	require.NoError(t, err)
+	taskConfig := &interfaces.BuildTaskIndexConfig{
+		IndexConfigContract: interfaces.IndexConfigContract{
+			PrimaryKeyFields:  append([]string{}, resourceContract.PrimaryKeyFields...),
+			IncrementalFields: append([]string{}, resourceContract.IncrementalFields...),
+			Fields:            fields,
+		},
+		Features: map[string]interfaces.BuildTaskFieldIndexFeature{
+			"embedding": {Vector: &interfaces.SmallModel{ModelID: "target-model", EmbeddingDim: 3}},
+		},
+	}
+	taskContract, err := BuildTaskIndexConfigContract(taskConfig)
+	require.NoError(t, err)
+	assert.Equal(t, resourceContract, taskContract)
+
+	taskFingerprint, err := BuildTaskIndexConfigFingerprint(taskConfig)
+	require.NoError(t, err)
+	assert.Equal(t, resourceFingerprint, taskFingerprint)
+}
+
 func fingerprintTestResource(reordered bool) *interfaces.Resource {
 	id := &interfaces.Property{
 		Name:         "id",
