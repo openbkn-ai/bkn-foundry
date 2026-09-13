@@ -402,6 +402,9 @@ func (bts *buildTaskService) fillBuildTaskIndexSnapshot(ctx context.Context, res
 			}
 			switch feature.FeatureType {
 			case interfaces.PropertyFeatureType_Vector:
+				if feature.RefProperty != "" && feature.RefProperty != prop.Name {
+					continue
+				}
 				modelID := stringConfigValue(feature.Config, "embedding_model")
 				if modelID == "" {
 					modelID = defaultEmbeddingModel

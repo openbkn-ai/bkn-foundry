@@ -196,7 +196,7 @@ func TestBuildLocalIndexSchemaBackfillsLegacyVectorDimensionFromTaskSnapshot(t *
 	assert.Nil(t, resource.SchemaDefinition[0].Features[0].Config)
 }
 
-func TestBuildLocalIndexSchemaRejectsReferencedVectorDimensionMismatch(t *testing.T) {
+func TestBuildLocalIndexSchemaKeepsReferencingVectorFeatureConfigEmpty(t *testing.T) {
 	resource := &interfaces.Resource{
 		Category: interfaces.ResourceCategoryTable,
 		SchemaDefinition: []*interfaces.Property{
@@ -206,7 +206,6 @@ func TestBuildLocalIndexSchemaRejectsReferencedVectorDimensionMismatch(t *testin
 				Features: []interfaces.PropertyFeature{{
 					FeatureType: interfaces.PropertyFeatureType_Vector,
 					RefProperty: "embedding",
-					Config:      map[string]any{"dimension": 3},
 				}},
 			},
 			{
@@ -214,20 +213,20 @@ func TestBuildLocalIndexSchemaRejectsReferencedVectorDimensionMismatch(t *testin
 				Type: interfaces.DataType_Vector,
 				Features: []interfaces.PropertyFeature{{
 					FeatureType: interfaces.PropertyFeatureType_Vector,
-					Config:      map[string]any{"dimension": 4},
+					Config:      map[string]any{"dimension": 3},
 				}},
 			},
 		},
 	}
 	task := &interfaces.BuildTask{IndexConfig: &interfaces.BuildTaskIndexConfig{Features: map[string]interfaces.BuildTaskFieldIndexFeature{
-		"embedding": {Vector: &interfaces.SmallModel{ModelID: "embedding-1", EmbeddingDim: 4}},
+		"embedding": {Vector: &interfaces.SmallModel{ModelID: "embedding-1", EmbeddingDim: 3}},
 	}}}
 
-	_, err := buildLocalIndexSchema(task, resource)
+	schema, err := buildLocalIndexSchema(task, resource)
 
-	require.Error(t, err)
-	assert.ErrorContains(t, err, `vector feature on field "content" has dimension 3`)
-	assert.ErrorContains(t, err, `referenced vector field "embedding" has dimension 4`)
+	require.NoError(t, err)
+	assert.Nil(t, schema[0].Features[0].Config)
+	assert.Equal(t, 3, schema[1].Features[0].Config["dimension"])
 }
 
 func TestBuildLocalIndexSchemaRejectsReferencedVectorWithoutPersistedDimension(t *testing.T) {
@@ -240,7 +239,6 @@ func TestBuildLocalIndexSchemaRejectsReferencedVectorWithoutPersistedDimension(t
 				Features: []interfaces.PropertyFeature{{
 					FeatureType: interfaces.PropertyFeatureType_Vector,
 					RefProperty: "embedding",
-					Config:      map[string]any{"dimension": 3},
 				}},
 			},
 			{

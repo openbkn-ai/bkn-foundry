@@ -298,6 +298,18 @@ func TestOpenSearchConnectorConvertFilterConditionEqual(t *testing.T) {
 		assert.Equal(t, map[string]any{"term": map[string]any{"body.raw": "hello"}}, got)
 	})
 
+	t.Run("treats keyword feature matching property name as a subfield", func(t *testing.T) {
+		conn := &OpenSearchConnector{}
+		cond := mustOSCondition(t, osConstCfg("body", filter_condition.OperationEqual, "hello"))
+		schema := opensearchConditionSchema()
+		schema[1].Features[0].FeatureName = "body"
+
+		got, err := conn.ConvertFilterConditionEqual(cond, schema)
+
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{"term": map[string]any{"body.body": "hello"}}, got)
+	})
+
 	t.Run("rejects text field without keyword feature", func(t *testing.T) {
 		conn := &OpenSearchConnector{}
 
@@ -438,6 +450,18 @@ func TestFulltextFieldName(t *testing.T) {
 		}
 
 		assert.Equal(t, "team_name.analyzed", fulltextFieldName(prop))
+	})
+
+	t.Run("fulltext feature matching property name remains a subfield", func(t *testing.T) {
+		prop := &interfaces.Property{
+			Name: "team_name",
+			Type: interfaces.DataType_String,
+			Features: []interfaces.PropertyFeature{
+				{FeatureName: "team_name", FeatureType: interfaces.PropertyFeatureType_Fulltext},
+			},
+		}
+
+		assert.Equal(t, "team_name.team_name", fulltextFieldName(prop))
 	})
 
 	t.Run("fulltext field name text uses bare name", func(t *testing.T) {

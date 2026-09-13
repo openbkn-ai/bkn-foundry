@@ -186,7 +186,7 @@ func featurePhysicalFieldName(fieldName string, configuredName string, defaultNa
 	if featureName == "" {
 		featureName = defaultName
 	}
-	if featureName == fieldName || strings.HasPrefix(featureName, fieldName+".") {
+	if strings.HasPrefix(featureName, fieldName+".") {
 		return featureName
 	}
 	return fieldName + "." + featureName

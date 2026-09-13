@@ -380,6 +380,11 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 			}
 
 			aggField := params.Aggregation.Property
+			keyword, err := c.getKeywordSuffix(aggField, resource.SchemaDefinition)
+			if err != nil {
+				return nil, fmt.Errorf("resolve aggregation field %q: %w", aggField, err)
+			}
+			aggField += keyword
 			aggFunc := params.Aggregation.Aggr
 
 			switch aggFunc {
@@ -446,9 +451,15 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 						},
 					}
 				} else {
+					groupField := gb.Property
+					keyword, err := c.getKeywordSuffix(groupField, resource.SchemaDefinition)
+					if err != nil {
+						return nil, fmt.Errorf("resolve group_by field %q: %w", groupField, err)
+					}
+					groupField += keyword
 					bucket = map[string]any{
 						"terms": map[string]any{
-							"field": gb.Property,
+							"field": groupField,
 							"size":  nestedTermsSize(i, n, params.Paging.Limit),
 						},
 					}
@@ -591,7 +602,10 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 	if params != nil && len(params.Sort) > 0 {
 		sort := make([]map[string]any, 0, len(params.Sort))
 		for _, s := range params.Sort {
-			keyword, _ := c.getKeywordSuffix(s.Field, resource.SchemaDefinition)
+			keyword, err := c.getKeywordSuffix(s.Field, resource.SchemaDefinition)
+			if err != nil {
+				return nil, fmt.Errorf("resolve sort field %q: %w", s.Field, err)
+			}
 			sort = append(sort, map[string]any{
 				s.Field + keyword: map[string]any{
 					"order": s.Direction,

@@ -136,7 +136,7 @@ func TestBuildTaskServiceFillBuildTaskIndexSnapshot(t *testing.T) {
 		service := &buildTaskService{}
 		buildTask := &interfaces.BuildTask{}
 		err := service.fillBuildTaskIndexSnapshot(context.Background(), &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{
-			Name: "title", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, RefProperty: "title"}},
+			Name: "title", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector}},
 		}}}, buildTask)
 		_ = requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_EmbeddingModel)
 	})
@@ -156,6 +156,36 @@ func TestBuildTaskServiceFillBuildTaskIndexSnapshot(t *testing.T) {
 
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
 		assert.Contains(t, httpErr.BaseError.ErrorDetails, `property "title" has more than one "fulltext" feature`)
+	})
+	t.Run("uses only referenced vector field owner model", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mfs := mock_interfaces.NewMockModelFactoryService(ctrl)
+		service := &buildTaskService{mfs: mfs}
+		buildTask := &interfaces.BuildTask{}
+		resource := &interfaces.Resource{
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "content", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{
+					FeatureType: interfaces.PropertyFeatureType_Vector,
+					RefProperty: "embedding",
+				}}},
+				{Name: "embedding", Type: interfaces.DataType_Vector, Features: []interfaces.PropertyFeature{{
+					FeatureType: interfaces.PropertyFeatureType_Vector,
+					Config: map[string]any{
+						"embedding_model": "target-model",
+						"dimension":       3,
+					},
+				}}},
+			},
+		}
+		mfs.EXPECT().GetModelByID(gomock.Any(), "target-model").Return(&interfaces.SmallModel{
+			ModelID: "target-model", EmbeddingDim: 3,
+		}, nil)
+
+		err := service.fillBuildTaskIndexSnapshot(context.Background(), resource, buildTask)
+
+		require.NoError(t, err)
+		require.NotNil(t, buildTask.IndexConfig.Features["embedding"].Vector)
+		assert.Equal(t, "target-model", buildTask.IndexConfig.Features["embedding"].Vector.ModelID)
 	})
 }
 

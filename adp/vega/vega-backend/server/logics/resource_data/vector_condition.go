@@ -124,18 +124,12 @@ func (rds *resourceDataService) embeddingModelForIndex(ctx context.Context,
 		return "", fmt.Errorf("condition [knn_vector] resource has no index configuration")
 	}
 	for _, prop := range resource.SchemaDefinition {
-		if prop == nil {
+		if prop == nil || prop.Name != field {
 			continue
 		}
 		for _, feature := range prop.Features {
-			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
-				continue
-			}
-			source := prop.Name
-			if feature.RefProperty != "" {
-				source = feature.RefProperty
-			}
-			if source != field {
+			if feature.FeatureType != interfaces.PropertyFeatureType_Vector ||
+				(feature.RefProperty != "" && feature.RefProperty != prop.Name) {
 				continue
 			}
 			if modelID, ok := feature.Config["embedding_model"].(string); ok && strings.TrimSpace(modelID) != "" {

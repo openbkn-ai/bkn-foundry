@@ -519,11 +519,11 @@ func TestValidateResourceRequestDatasetSchema(t *testing.T) {
 				},
 			},
 			{
-				name: "vector feature reuses vector property",
+				name: "unnamed vector feature reuses vector property without config",
 				fields: []*interfaces.Property{
 					{Name: "embedding", Type: interfaces.DataType_Vector},
 					{Name: "content", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
-						{FeatureName: "content.vector", FeatureType: interfaces.PropertyFeatureType_Vector, RefProperty: "embedding"},
+						{FeatureType: interfaces.PropertyFeatureType_Vector, RefProperty: "embedding"},
 					}},
 				},
 			},

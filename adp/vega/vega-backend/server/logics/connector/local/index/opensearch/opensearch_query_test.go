@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"vega-backend/interfaces"
+	"vega-backend/logics/filter_condition"
 )
 
 func TestOpenSearchQueryTracksTotalOnlyWhenRequested(t *testing.T) {
@@ -68,6 +69,85 @@ func TestOpenSearchQueryTracksTotalOnlyWhenRequested(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, true, (<-queries)["track_total_hits"])
 	assert.Equal(t, int64(4), result.Total)
+}
+
+func TestOpenSearchQueryUsesTextKeywordField(t *testing.T) {
+	queries := make(chan map[string]any, 3)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		var query map[string]any
+		require.NoError(t, sonic.Unmarshal(body, &query))
+		queries <- query
+		w.Header().Set("Content-Type", "application/json")
+		_, err = w.Write([]byte(`{"hits":{"total":{"value":0},"hits":[]},"aggregations":{"__value":{"value":0},"group_by_body":{"buckets":[]}}}`))
+		require.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+
+	serverURL, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	host, portText, err := net.SplitHostPort(serverURL.Host)
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+	connector := &OpenSearchConnector{Config: &opensearchConfig{Host: host, Port: port}}
+	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{
+		Name: "body",
+		Type: interfaces.DataType_Text,
+		Features: []interfaces.PropertyFeature{{
+			FeatureName: "raw",
+			FeatureType: interfaces.PropertyFeatureType_Keyword,
+		}},
+	}}}
+
+	_, err = connector.ExecuteQuery(context.Background(), "events", resource, &interfaces.ResourceDataQueryParams{
+		Sort: []*interfaces.SortField{{Field: "body", Direction: "asc"}},
+	})
+	require.NoError(t, err)
+	sortQuery := <-queries
+	sortFields := sortQuery["sort"].([]any)
+	assert.Contains(t, sortFields[0].(map[string]any), "body.raw")
+
+	_, err = connector.ExecuteQuery(context.Background(), "events", resource, &interfaces.ResourceDataQueryParams{
+		Aggregation: &interfaces.Aggregation{Property: "body", Aggr: "count_distinct"},
+	})
+	require.NoError(t, err)
+	aggregationQuery := <-queries
+	aggregation := aggregationQuery["aggs"].(map[string]any)["__value"].(map[string]any)
+	assert.Equal(t, "body.raw", aggregation["cardinality"].(map[string]any)["field"])
+
+	_, err = connector.ExecuteQuery(context.Background(), "events", resource, &interfaces.ResourceDataQueryParams{
+		GroupBy: []*interfaces.GroupByItem{{Property: "body"}},
+	})
+	require.NoError(t, err)
+	groupQuery := <-queries
+	group := groupQuery["aggs"].(map[string]any)["group_by_body"].(map[string]any)
+	assert.Equal(t, "body.raw", group["terms"].(map[string]any)["field"])
+}
+
+func TestOpenSearchQueryRejectsTextSortWithoutKeyword(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("query must be rejected before sending an OpenSearch request")
+	}))
+	t.Cleanup(server.Close)
+	serverURL, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	host, portText, err := net.SplitHostPort(serverURL.Host)
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+	connector := &OpenSearchConnector{Config: &opensearchConfig{Host: host, Port: port}}
+	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "body", Type: interfaces.DataType_Text}}}
+
+	result, err := connector.ExecuteQuery(context.Background(), "events", resource, &interfaces.ResourceDataQueryParams{
+		Sort: []*interfaces.SortField{{Field: "body", Direction: "asc"}},
+	})
+
+	require.Error(t, err)
+	assert.Nil(t, result)
+	_, ok := filter_condition.AsConditionBuildError(err)
+	assert.True(t, ok)
 }
 
 func TestExecuteQueryWithDslPreservesLargeIntegerSourceField(t *testing.T) {

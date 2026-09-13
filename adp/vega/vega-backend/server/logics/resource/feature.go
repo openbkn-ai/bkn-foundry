@@ -110,8 +110,8 @@ func IsFeatureRefPropertyTypeSupported(propertyType string, featureType string) 
 	}
 }
 
-// ValidateVectorFeatureReferenceDimensions 校验复用已有向量字段的特征与目标字段自身配置的维度一致。
-func ValidateVectorFeatureReferenceDimensions(props []*interfaces.Property) error {
+// ValidateVectorFeatureReferences 校验向量引用只声明目标字段，模型和维度由目标字段自身配置拥有。
+func ValidateVectorFeatureReferences(props []*interfaces.Property) error {
 	propsByName := make(map[string]*interfaces.Property, len(props))
 	for _, prop := range props {
 		if prop != nil {
@@ -127,23 +127,21 @@ func ValidateVectorFeatureReferenceDimensions(props []*interfaces.Property) erro
 			if feature.FeatureType != interfaces.PropertyFeatureType_Vector || feature.RefProperty == "" {
 				continue
 			}
+			if feature.RefProperty == prop.Name {
+				continue
+			}
 
-			dimension, ok := positiveVectorDimension(feature.Config["dimension"])
-			if !ok {
-				return fmt.Errorf("vector feature on field %q must define a positive integer dimension", prop.Name)
+			if len(feature.Config) > 0 {
+				return fmt.Errorf("vector feature on field %q that references %q must not define config", prop.Name, feature.RefProperty)
 			}
 
 			refProp, exists := propsByName[feature.RefProperty]
 			if !exists || refProp.Type != interfaces.DataType_Vector {
 				return fmt.Errorf("vector feature on field %q references invalid vector field %q", prop.Name, feature.RefProperty)
 			}
-			refDimension, ok := ownVectorDimension(refProp)
+			_, ok := ownVectorDimension(refProp)
 			if !ok {
 				return fmt.Errorf("referenced vector field %q must define its own positive integer dimension", refProp.Name)
-			}
-			if dimension != refDimension {
-				return fmt.Errorf("vector feature on field %q has dimension %d, but referenced vector field %q has dimension %d",
-					prop.Name, dimension, refProp.Name, refDimension)
 			}
 		}
 	}

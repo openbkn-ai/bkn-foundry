@@ -78,3 +78,33 @@ func TestVectorFieldForReusesReferencedVectorField(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "embedding", field)
 }
+
+func TestEmbeddingModelForIndexUsesReferencedVectorFieldOwner(t *testing.T) {
+	resource := &interfaces.Resource{
+		Name:        "articles",
+		IndexConfig: &interfaces.ResourceIndexConfig{},
+		SchemaDefinition: []*interfaces.Property{
+			{
+				Name: "content",
+				Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{
+					FeatureType: interfaces.PropertyFeatureType_Vector,
+					RefProperty: "embedding",
+				}},
+			},
+			{
+				Name: "embedding",
+				Type: interfaces.DataType_Vector,
+				Features: []interfaces.PropertyFeature{{
+					FeatureType: interfaces.PropertyFeatureType_Vector,
+					Config:      map[string]any{"embedding_model": "target-model"},
+				}},
+			},
+		},
+	}
+
+	modelID, err := (&resourceDataService{}).embeddingModelForIndex(context.Background(), resource, "embedding")
+
+	require.NoError(t, err)
+	assert.Equal(t, "target-model", modelID)
+}

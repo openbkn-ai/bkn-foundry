@@ -147,6 +147,11 @@ func validatePropertyFeatures(ctx context.Context, prop *interfaces.Property, pr
 				f.FeatureName = interfaces.LocalIndexKeywordSubfieldName
 			case interfaces.PropertyFeatureType_Fulltext:
 				f.FeatureName = interfaces.LocalIndexFulltextSubfieldName
+			case interfaces.PropertyFeatureType_Vector:
+				if f.RefProperty != "" {
+					break
+				}
+				fallthrough
 			default:
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldFeatureName).
 					WithErrorDetails("The field feature name is null")

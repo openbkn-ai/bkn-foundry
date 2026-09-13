@@ -240,9 +240,9 @@ func buildLocalIndexSchema(buildTask *interfaces.BuildTask, resource *interfaces
 	if err := validateTaskFulltextFeatures(schema, buildTask); err != nil {
 		return nil, err
 	}
-	// 被引用向量字段拥有自己的维度。先校验持久化 schema，再做历史配置回填，
-	// 避免旧的歧义引用从构建任务中继承维度，要求用户重新保存配置。
-	if err := resourcelogic.ValidateVectorFeatureReferenceDimensions(schema); err != nil {
+	// 被引用向量字段拥有模型和维度，引用方只声明 ref_property。
+	// 先校验持久化 schema，再做历史配置回填，避免重新引入双重配置来源。
+	if err := resourcelogic.ValidateVectorFeatureReferences(schema); err != nil {
 		return nil, err
 	}
 	if err := validateTaskEmbeddingFeatures(schema, buildTask); err != nil {
@@ -397,6 +397,9 @@ func validateTaskEmbeddingFeatures(schema []*interfaces.Property, buildTask *int
 			taskModel, ok := embeddingFields[fieldName]
 			if !ok {
 				return fmt.Errorf("resource schema embedding field %q is not in build task index config", fieldName)
+			}
+			if feature.RefProperty != "" && feature.RefProperty != prop.Name {
+				continue
 			}
 			// Resource schemas created before vector dimensions became persistent do
 			// not have this value. A build task owns an immutable model snapshot, so

@@ -1692,11 +1692,15 @@ func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema
 			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
 				continue
 			}
+			if feature.RefProperty != "" && feature.RefProperty != prop.Name {
+				if len(feature.Config) > 0 {
+					return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+						WithErrorDetails(fmt.Sprintf("vector feature on field %q that references %q must not define config", prop.Name, feature.RefProperty))
+				}
+				continue
+			}
 
 			fieldName := prop.Name
-			if feature.RefProperty != "" {
-				fieldName = feature.RefProperty
-			}
 
 			modelID := ""
 			if feature.Config != nil {
@@ -1729,7 +1733,7 @@ func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema
 			feature.Config["dimension"] = model.EmbeddingDim
 		}
 	}
-	if err := ValidateVectorFeatureReferenceDimensions(schema); err != nil {
+	if err := ValidateVectorFeatureReferences(schema); err != nil {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(err.Error())
 	}
