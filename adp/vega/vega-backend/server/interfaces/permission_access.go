@@ -43,8 +43,9 @@ const (
 	// OPERATION_TYPE_QUERY_DATA is "the data that can be retrieved from this table", and view_detail (only looking at the structure)
 	// Separate. OPERATION_TYPE_RESOURCE_MANAGE is the "data Table under the Management Directory" on the data directory.
 	// Both are in the permission vocabulary (#801), and a constant is added here for determination.
-	OPERATION_TYPE_QUERY_DATA      = "query_data"
-	OPERATION_TYPE_RESOURCE_MANAGE = "resource_manage"
+	OPERATION_TYPE_QUERY_DATA           = "query_data"
+	OPERATION_TYPE_RESOURCE_MANAGE      = "resource_manage"
+	OPERATION_TYPE_FULL_BUSINESS_ACCESS = "full_business_access"
 
 	// Update the topic of the resource name
 	AUTHORIZATION_RESOURCE_NAME_MODIFY = "authorization.resource.name.modify"
@@ -68,6 +69,14 @@ var (
 		OPERATION_TYPE_TASK_MANAGE,
 		OPERATION_TYPE_QUERY_DATA,
 		OPERATION_TYPE_RESOURCE_MANAGE,
+	}
+
+	// CATALOG_CREATOR_OPERATIONS asks bkn-safe to create the canonical
+	// instance-scoped creator bundle. Create remains the role's type-level
+	// capability; all existing-catalog operations are object grants.
+	CATALOG_CREATOR_OPERATIONS = []string{
+		OPERATION_TYPE_FULL_BUSINESS_ACCESS,
+		OPERATION_TYPE_AUTHORIZE,
 	}
 )
 

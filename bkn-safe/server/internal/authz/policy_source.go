@@ -556,22 +556,40 @@ func (en *Enforcer) GrantCommunityBundle(accessorID, resourceType, resourceID st
 		EffectAllow, PolicySourceCommunityBundle, authority)
 }
 
-// GrantKnowledgeNetworkCreatorPermissions atomically installs the two grants
-// owned by the knowledge-network creation lifecycle. The business permissions
-// remain one logical Community bundle, while authorize is system-derived and
-// therefore cannot be revoked through ordinary owner delegation.
-func (en *Enforcer) GrantKnowledgeNetworkCreatorPermissions(ctx context.Context, accessorID, resourceID string) error {
-	if err := validateCommunityBundleTarget("knowledge_network", resourceID); err != nil {
+// GrantRootCreatorPermissions atomically installs the two grants owned by the
+// lifecycle of a Community authorization root. The business permissions remain
+// one logical Community bundle, while authorize is system-derived and therefore
+// cannot be revoked through ordinary owner delegation.
+//
+// A root creator grant is deliberately instance-scoped. A business role may
+// carry a type-wide create capability, but it must never be the source of the
+// creator's rights over every existing resource of that type.
+func (en *Enforcer) GrantRootCreatorPermissions(ctx context.Context, accessorID, resourceType, resourceID string) error {
+	if resourceType != "knowledge_network" && resourceType != "catalog" {
+		return fmt.Errorf("resource type %q has no root creator permission contract", resourceType)
+	}
+	if err := validateCommunityBundleTarget(resourceType, resourceID); err != nil {
 		return err
 	}
 	return en.Transaction(ctx, func(tx *PolicyTransaction) error {
-		if err := tx.enforcer.addPolicy(accessorID, obj("knowledge_network", resourceID), ActFullBusinessAccess,
+		if err := tx.enforcer.addPolicy(accessorID, obj(resourceType, resourceID), ActFullBusinessAccess,
 			EffectAllow, PolicySourceCommunityBundle, AuthoritySourceSystem); err != nil {
 			return err
 		}
-		return tx.enforcer.addPolicy(accessorID, obj("knowledge_network", resourceID), "authorize",
+		return tx.enforcer.addPolicy(accessorID, obj(resourceType, resourceID), "authorize",
 			EffectAllow, PolicySourceSystemDerived, AuthoritySourceSystem)
 	})
+}
+
+// GrantKnowledgeNetworkCreatorPermissions is the knowledge-network lifecycle
+// compatibility entry point.
+func (en *Enforcer) GrantKnowledgeNetworkCreatorPermissions(ctx context.Context, accessorID, resourceID string) error {
+	return en.GrantRootCreatorPermissions(ctx, accessorID, "knowledge_network", resourceID)
+}
+
+// GrantCatalogCreatorPermissions is the catalog lifecycle entry point.
+func (en *Enforcer) GrantCatalogCreatorPermissions(ctx context.Context, accessorID, resourceID string) error {
+	return en.GrantRootCreatorPermissions(ctx, accessorID, "catalog", resourceID)
 }
 
 // GrantActionTypeCreatorPermission records the creator's historical direct

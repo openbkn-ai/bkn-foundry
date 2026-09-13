@@ -375,7 +375,14 @@ func TestCatalogServiceCreate(t *testing.T) {
 				return nil
 			},
 		)
-		mockPS.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockPS.EXPECT().CreateResources(gomock.Any(), gomock.Any(), interfaces.CATALOG_CREATOR_OPERATIONS).DoAndReturn(
+			func(_ context.Context, resources []interfaces.PermissionResource, _ []string) error {
+				if resources[0].Type != interfaces.AUTH_RESOURCE_TYPE_CATALOG {
+					t.Fatalf("expected catalog auth type, got %s", resources[0].Type)
+				}
+				return nil
+			},
+		)
 
 		cs := &catalogService{db: db, ca: mockCA, ps: mockPS}
 		_, err = cs.Create(context.Background(), &interfaces.CatalogRequest{

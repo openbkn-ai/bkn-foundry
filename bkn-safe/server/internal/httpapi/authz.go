@@ -335,13 +335,14 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 		// BKN creation requests use server-owned provenance. The caller selects
 		// only the lifecycle shape; policy_source and authority_source never come
 		// from the request body.
-		if req.Resource.Type == "knowledge_network" && slices.Contains(req.Operations, authz.ActFullBusinessAccess) {
+		if (req.Resource.Type == "knowledge_network" || req.Resource.Type == "catalog") &&
+			slices.Contains(req.Operations, authz.ActFullBusinessAccess) {
 			if !isConcreteResourceID(req.Resource.ID) ||
 				!sameOperationSet(req.Operations, []string{authz.ActFullBusinessAccess, "authorize"}) {
 				replyPublicError(c, http.StatusBadRequest)
 				return
 			}
-			if err := e.GrantKnowledgeNetworkCreatorPermissions(c.Request.Context(), req.AccessorID, req.Resource.ID); err != nil {
+			if err := e.GrantRootCreatorPermissions(c.Request.Context(), req.AccessorID, req.Resource.Type, req.Resource.ID); err != nil {
 				serverError(c, err)
 				return
 			}

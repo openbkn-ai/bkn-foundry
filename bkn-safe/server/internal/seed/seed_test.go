@@ -677,7 +677,7 @@ func TestKnowledgeNetworkDeclaresExecuteOperation(t *testing.T) {
 	}
 }
 
-func TestNetworkBuilderManagesKnowledgeNetworksTypeWide(t *testing.T) {
+func TestNetworkBuilderCanCreateButCannotManageOtherKnowledgeNetworks(t *testing.T) {
 	db := newDB(t)
 	e, err := authz.New(db)
 	if err != nil {
@@ -694,7 +694,7 @@ func TestNetworkBuilderManagesKnowledgeNetworksTypeWide(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, op := range []string{"view_detail", "create", "modify", "delete", "query_data", "authorize", "execute"} {
+	for _, op := range []string{"create"} {
 		ok, err := e.Check(builder, "knowledge_network", network, op)
 		if err != nil {
 			t.Fatal(err)
@@ -703,9 +703,18 @@ func TestNetworkBuilderManagesKnowledgeNetworksTypeWide(t *testing.T) {
 			t.Errorf("network_builder lost type-wide knowledge_network/%s", op)
 		}
 	}
+	for _, op := range []string{"view_detail", "modify", "delete", "query_data", "authorize", "execute"} {
+		ok, err := e.Check(builder, "knowledge_network", network, op)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ok {
+			t.Errorf("network_builder unexpectedly manages another knowledge_network/%s", op)
+		}
+	}
 }
 
-func TestNetworkBuilderManagesCatalogsTypeWide(t *testing.T) {
+func TestNetworkBuilderCanCreateButCannotManageOtherCatalogs(t *testing.T) {
 	db := newDB(t)
 	e, err := authz.New(db)
 	if err != nil {
@@ -722,13 +731,22 @@ func TestNetworkBuilderManagesCatalogsTypeWide(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, op := range []string{"view_detail", "create", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data"} {
+	for _, op := range []string{"create"} {
 		ok, err := e.Check(builder, "catalog", catalog, op)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !ok {
 			t.Errorf("network_builder lost type-wide catalog/%s", op)
+		}
+	}
+	for _, op := range []string{"view_detail", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data"} {
+		ok, err := e.Check(builder, "catalog", catalog, op)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ok {
+			t.Errorf("network_builder unexpectedly manages another catalog/%s", op)
 		}
 	}
 }
@@ -752,8 +770,8 @@ func TestNetworkBuilderPermissionMatrixMatchesBusinessBuilderRole(t *testing.T) 
 		got[grant.Object] = grant.Operations
 	}
 	want := map[string][]string{
-		"catalog:*":           {"view_detail", "create", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data"},
-		"knowledge_network:*": {"view_detail", "create", "modify", "delete", "query_data", "authorize", "execute"},
+		"catalog:*":           {"create"},
+		"knowledge_network:*": {"create"},
 		"large_model:*":       {"create", "display", "modify", "delete", "execute"},
 		"operator:*":          {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},
 		"small_model:*":       {"create", "display", "modify", "delete", "execute"},
