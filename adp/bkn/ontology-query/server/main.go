@@ -36,6 +36,7 @@ import (
 	"ontology-query/drivenadapters/vega_backend"
 	"ontology-query/driveradapters"
 	"ontology-query/logics"
+	"ontology-query/logics/action_logs"
 	proxycontext "ontology-query/logics/proxy_context"
 )
 
@@ -161,6 +162,11 @@ func main() {
 		otelProviders.Shutdown(ctx)
 		return
 	}
+	if action_logs.RetentionCleanupOnly() {
+		runActionLogRetention(appSetting)
+		otelProviders.Shutdown(context.Background())
+		return
+	}
 
 	logics.SetAuthAccess(auth.NewHydraAuthAccess(appSetting))
 	logics.SetAgentOperatorAccess(agent_operator.NewAgentOperatorAccess(appSetting))
@@ -178,4 +184,35 @@ func main() {
 		outboxDB:      outboxDB,
 	}
 	server.start()
+}
+
+// runActionLogRetention runs one retention cleanup of action execution logs, as the retention
+// CronJob does, and exits the process on failure so the Job is retried.
+func runActionLogRetention(appSetting *common.AppSetting) {
+	cfg, err := action_logs.LoadRetentionConfig()
+	if err != nil {
+		logger.Fatalf("Invalid action execution log retention configuration: %v", err)
+	}
+	if cfg.RetentionDays == 0 {
+		logger.Info("Action execution log retention is disabled: ACTION_EXECUTION_LOG_RETENTION_DAYS is 0")
+		return
+	}
+
+	logics.SetOpenSearchAccess(opensearch.NewOpenSearchAccess(appSetting))
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+
+	started := time.Now()
+	result, err := action_logs.CleanupExpiredExecutions(ctx, appSetting, cfg)
+	if err != nil {
+		deletedExecutions, deletedResults := int64(0), int64(0)
+		if result != nil {
+			deletedExecutions, deletedResults = result.Executions, result.Results
+		}
+		logger.Fatalf("Action execution log retention failed after executions=%d results=%d: %v",
+			deletedExecutions, deletedResults, err)
+	}
+	logger.Infof("Action execution log retention complete: dry_run=%t retention_days=%d cutoff=%s executions=%d results=%d batches=%d more_remaining=%t took=%s",
+		cfg.DryRun, cfg.RetentionDays, time.UnixMilli(result.Cutoff).UTC().Format(time.RFC3339),
+		result.Executions, result.Results, result.Batches, result.Truncated, time.Since(started).Round(time.Millisecond))
 }

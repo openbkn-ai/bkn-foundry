@@ -1,0 +1,52 @@
+{{- if .Values.actionLogRetention.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Values.moduleName }}-action-log-retention
+  namespace: {{ .Values.namespace }}
+  labels:
+    module: {{ .Values.moduleName }}
+spec:
+  schedule: {{ .Values.actionLogRetention.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            module: {{ .Values.moduleName }}
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+          containers:
+            - name: action-log-retention
+              image: {{ template "ontology-query.image" . }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              env:
+                - name: TZ
+                  value: {{ .Values.env.timezone }}
+                - name: LANG
+                  value: {{ .Values.env.language }}
+                - name: ACTION_EXECUTION_LOG_CLEANUP_ONLY
+                  value: "true"
+                - name: ACTION_EXECUTION_LOG_RETENTION_DAYS
+                  value: {{ .Values.actionLogRetention.retentionDays | quote }}
+                - name: ACTION_EXECUTION_LOG_CLEANUP_BATCH_SIZE
+                  value: {{ .Values.actionLogRetention.batchSize | quote }}
+                - name: ACTION_EXECUTION_LOG_CLEANUP_MAX_BATCHES
+                  value: {{ .Values.actionLogRetention.maxBatches | quote }}
+                - name: ACTION_EXECUTION_LOG_CLEANUP_DRY_RUN
+                  value: {{ .Values.actionLogRetention.dryRun | quote }}
+              resources: {{- toYaml .Values.resources | nindent 16 }}
+              volumeMounts:
+                - name: {{ .Values.moduleName }}-cm
+                  mountPath: /opt/ontology-query/config
+          volumes:
+            - name: {{ .Values.moduleName }}-cm
+              configMap:
+                name: {{ .Values.moduleName }}-cm
+{{- end }}

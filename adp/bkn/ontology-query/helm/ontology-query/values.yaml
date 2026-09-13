@@ -156,3 +156,15 @@ bknTrace:
       batchSize: 1000
       deliveredRetentionDays: 30
       abandonedRetentionDays: 180
+
+# Retention of action execution logs (#790). When enabled, a CronJob deletes finished
+# executions (completed, failed, cancelled) that ended more than retentionDays ago, together
+# with their per-instance results. Pending and running executions are never deleted.
+# Disabled by default: nothing is removed until this is turned on explicitly.
+actionLogRetention:
+  enabled: false
+  schedule: "30 3 * * *"
+  retentionDays: 90
+  batchSize: 500    # executions deleted per batch (max 1000)
+  maxBatches: 20    # batches per run; the next run continues where this one stopped
+  dryRun: false     # true: only log how many executions and results would be deleted
