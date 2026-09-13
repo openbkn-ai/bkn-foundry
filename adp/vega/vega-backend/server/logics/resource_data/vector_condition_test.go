@@ -16,6 +16,7 @@ import (
 	"vega-backend/interfaces"
 	mock_interfaces "vega-backend/interfaces/mock"
 	"vega-backend/logics/filter_condition"
+	"vega-backend/logics/local_index"
 )
 
 func TestResolveVectorConditionsResolvesModelIDBeforeVectorizing(t *testing.T) {
@@ -50,6 +51,6 @@ func TestResolveVectorConditionsResolvesModelIDBeforeVectorizing(t *testing.T) {
 	err := rds.resolveVectorConditions(context.Background(), resource, cfg)
 
 	require.NoError(t, err)
-	assert.Equal(t, interfaces.LocalIndexVectorFieldName("content"), cfg.Name)
+	assert.Equal(t, local_index.VectorFieldName("content"), cfg.Name)
 	assert.Equal(t, []float32{0.1, 0.2}, cfg.Value)
 }

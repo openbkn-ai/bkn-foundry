@@ -17,6 +17,7 @@ import (
 	"vega-backend/common"
 	"vega-backend/interfaces"
 	"vega-backend/logics/build_task"
+	"vega-backend/logics/dataset"
 	"vega-backend/logics/local_index"
 	"vega-backend/logics/resource"
 )
@@ -62,10 +63,11 @@ type resourceIndexSnapshot struct {
 }
 
 func NewIndexCleanupWorker(appSetting *common.AppSetting) *IndexCleanupWorker {
-	rs := resource.NewResourceService(appSetting)
+	lim := local_index.NewLocalIndexManager(appSetting)
+	rs := resource.NewResourceService(appSetting, dataset.NewDatasetService(appSetting))
 	worker := &IndexCleanupWorker{
 		appSetting: appSetting,
-		lim:        local_index.NewLocalIndexManager(appSetting),
+		lim:        lim,
 		rs:         rs,
 		bts:        build_task.NewBuildTaskService(appSetting, rs),
 		stopCh:     make(chan struct{}),

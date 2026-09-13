@@ -44,6 +44,20 @@ func Test_VegaDownstreamError(t *testing.T) {
 		if got := err.Message(); got != "boom" {
 			t.Fatalf("unparsable payload must survive, got %q", got)
 		}
+		if got := err.ClientMessage(); got != "" {
+			t.Fatalf("raw payload must not be exposed to clients, got %q", got)
+		}
+	})
+
+	t.Run("只允许已知查询参数错误向调用方透传结构化详情", func(t *testing.T) {
+		if !NewVegaDownstreamError(http.StatusBadRequest, body).CanExposeQueryClientMessage() {
+			t.Fatal("known query validation details should be available to the caller")
+		}
+		forbidden := NewVegaDownstreamError(http.StatusForbidden,
+			`{"error_code":"VegaBackend.Resource.Forbidden","error_details":"catalog catalog-secret"}`)
+		if forbidden.CanExposeQueryClientMessage() {
+			t.Fatal("authorization response details must stay redacted")
+		}
 	})
 
 	t.Run("解析不出结构的长报文被截断", func(t *testing.T) {

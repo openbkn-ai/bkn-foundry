@@ -11,6 +11,7 @@ import (
 
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
+	"vega-backend/logics/local_index"
 )
 
 type pendingEmbedding struct {
@@ -59,7 +60,7 @@ func (ds *datasetService) materializeDocument(ctx context.Context, res *interfac
 				}
 				continue
 			}
-			outputField := interfaces.LocalIndexVectorFieldName(prop.Name)
+			outputField := local_index.VectorFieldName(prop.Name)
 			if value, exists := result[outputField]; exists {
 				// An explicit vector wins over inference, but validate it before it
 				// reaches OpenSearch.

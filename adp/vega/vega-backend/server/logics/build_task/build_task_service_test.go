@@ -394,6 +394,43 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 	})
+	t.Run("rejects legacy text fields until the resource configuration is re-saved", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		service := &buildTaskService{rs: mockRS, cs: mockCS}
+
+		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
+			ID:        "resource-1",
+			CatalogID: "catalog-1",
+			Category:  interfaces.ResourceCategoryTable,
+			IndexConfig: &interfaces.ResourceIndexConfig{
+				PrimaryKeyFields:  []string{"id"},
+				IncrementalFields: []string{"id"},
+			},
+			SchemaDefinition: []*interfaces.Property{{
+				Name: "id",
+				Type: interfaces.DataType_String,
+			}, {
+				Name: "material_number",
+				Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{
+					FeatureName: "fulltext",
+					FeatureType: interfaces.PropertyFeatureType_Fulltext,
+				}},
+			}},
+		}, nil)
+
+		_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{
+			ResourceID: "resource-1",
+			Mode:       interfaces.BuildTaskModeBatch,
+		})
+		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_UnsupportedSchemaFields)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "material_number")
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "re-save the resource configuration")
+	})
 	t.Run("rejects streaming task", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
@@ -1005,6 +1042,36 @@ func TestBuildTaskServiceStart(t *testing.T) {
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_IndexConfigChanged)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 		assert.Contains(t, httpErr.BaseError.ErrorDetails, "create a new build task")
+	})
+
+	t.Run("rejects a legacy text schema until the resource is re-saved", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
+		resource := buildTaskTestResource()
+		resource.SchemaDefinition = append(resource.SchemaDefinition, &interfaces.Property{
+			Name: "description", Type: interfaces.DataType_Text,
+		})
+		task := &interfaces.BuildTask{
+			ID: "task-1", ResourceID: resource.ID, CatalogID: resource.CatalogID,
+			Status: interfaces.BuildTaskStatusStopped, ExecuteType: interfaces.BuildTaskExecuteTypeFull,
+			IndexName: "vega-build-test-index", IndexConfig: mustBuildTaskIndexConfig(t, resource),
+		}
+
+		mockBTA.EXPECT().GetByID(gomock.Any(), task.ID).Return(task, nil)
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), task.CatalogID, interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().GetByID(gomock.Any(), task.CatalogID, false).
+			Return(&interfaces.Catalog{ID: task.CatalogID, Enabled: true}, nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
+		mockRS.EXPECT().GetByID(gomock.Any(), resource.ID).Return(resource, nil)
+
+		err := service.Start(context.Background(), task.ID, false)
+
+		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_UnsupportedSchemaFields)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "re-save the resource configuration")
 	})
 
 	t.Run("persists full reset before requesting dispatch", func(t *testing.T) {

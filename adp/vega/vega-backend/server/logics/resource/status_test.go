@@ -13,10 +13,26 @@ import (
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/stretchr/testify/assert"
 
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 )
+
+func TestHasAvailableLocalIndex(t *testing.T) {
+	assert.False(t, HasAvailableLocalIndex(nil))
+	assert.False(t, HasAvailableLocalIndex(&interfaces.Resource{
+		LocalIndexName:   "vega-build-abc",
+		LocalIndexStatus: interfaces.ResourceLocalIndexStatusStale,
+	}))
+	assert.False(t, HasAvailableLocalIndex(&interfaces.Resource{
+		LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+	}))
+	assert.True(t, HasAvailableLocalIndex(&interfaces.Resource{
+		LocalIndexName:   "vega-build-abc",
+		LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+	}))
+}
 
 func TestEnsureResourceQueryable(t *testing.T) {
 	ctx := context.Background()

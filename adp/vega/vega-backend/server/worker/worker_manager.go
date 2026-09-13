@@ -14,6 +14,7 @@ import (
 
 	"vega-backend/common"
 	"vega-backend/logics/build_task"
+	"vega-backend/logics/dataset"
 	logicsDiscoverSchedule "vega-backend/logics/discover_schedule"
 	logicsDiscoverTask "vega-backend/logics/discover_task"
 	"vega-backend/logics/resource"
@@ -41,7 +42,7 @@ type WorkerManager struct {
 // NewWorkerManager creates or returns the singleton WorkerManager.
 func NewWorkerManager(appSetting *common.AppSetting) *WorkerManager {
 	workerManagerOnce.Do(func() {
-		rs := resource.NewResourceService(appSetting)
+		rs := resource.NewResourceService(appSetting, dataset.NewDatasetService(appSetting))
 		bts := build_task.NewBuildTaskService(appSetting, rs)
 		btw := NewBuildTaskWorker(appSetting, bts)
 		dtw := NewDiscoverTaskWorker(appSetting)

@@ -212,7 +212,7 @@ func (c *OpenSearchConnector) TestConnection(ctx context.Context) error {
 }
 
 // Create index
-func (c *OpenSearchConnector) CreateIndex(ctx context.Context, indexName string, schemaDefinition []*interfaces.Property, mappingMeta map[string]string) error {
+func (c *OpenSearchConnector) CreateIndex(ctx context.Context, indexName string, properties map[string]any, hasVectorField bool, mappingMeta map[string]string) error {
 	if err := c.Connect(ctx); err != nil {
 		return err
 	}
@@ -226,12 +226,6 @@ func (c *OpenSearchConnector) CreateIndex(ctx context.Context, indexName string,
 		return fmt.Errorf("index %s already exist", indexName)
 	}
 
-	// Construct field mapping
-	properties, hasVectorField, err := c.buildFieldMappings(schemaDefinition)
-	if err != nil {
-		return err
-	}
-
 	mappings := map[string]any{
 		"properties": properties,
 	}
@@ -239,24 +233,26 @@ func (c *OpenSearchConnector) CreateIndex(ctx context.Context, indexName string,
 		mappings["_meta"] = mappingMeta
 	}
 
-	mapping := map[string]any{
-		"mappings": mappings,
-	}
-
-	mapping["settings"] = map[string]any{
-		"index": map[string]any{
-			"number_of_shards":   1,
-			"number_of_replicas": 0,
-		},
+	indexSettings := map[string]any{
+		"number_of_shards":   1,
+		"number_of_replicas": 0,
 	}
 
 	// If there is a vector field, enable knn
 	if hasVectorField {
-		indexSettings := mapping["settings"].(map[string]any)["index"].(map[string]any)
 		indexSettings["knn"] = true
 	}
 
-	data, err := sonic.Marshal(mapping)
+	settings := map[string]any{
+		"index": indexSettings,
+	}
+
+	config := map[string]any{
+		"settings": settings,
+		"mappings": mappings,
+	}
+
+	data, err := sonic.Marshal(config)
 	if err != nil {
 		return err
 	}
@@ -279,7 +275,7 @@ func (c *OpenSearchConnector) CreateIndex(ctx context.Context, indexName string,
 }
 
 // Update index.
-func (c *OpenSearchConnector) UpdateIndex(ctx context.Context, indexName string, schemaDefinition []*interfaces.Property) error {
+func (c *OpenSearchConnector) UpdateIndex(ctx context.Context, indexName string, properties map[string]any, _ bool) error {
 	if err := c.Connect(ctx); err != nil {
 		return err
 	}
@@ -291,12 +287,6 @@ func (c *OpenSearchConnector) UpdateIndex(ctx context.Context, indexName string,
 	// index not exist
 	if !exist {
 		return fmt.Errorf("index %s not exist", indexName)
-	}
-
-	// Construct field mapping
-	properties, _, err := c.buildFieldMappings(schemaDefinition)
-	if err != nil {
-		return err
 	}
 
 	// Build the properties mapping

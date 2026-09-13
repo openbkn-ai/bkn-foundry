@@ -85,7 +85,7 @@
           },
           "additionalProperties": true
         },
-        "description": "对象类完整定义（含 data_properties 的 mapped_field / condition_operations、logic_properties 的 data_source / parameters）。其中 condition_operations 只列索引带来的算子（match / multi_match / knn），比较算子按属性 type 自行判断，详见 query_object_instance 的 condition 说明。related_metrics 为该对象类 scope 下的全部指标（id/name/comment/unit/metric_type/analysis_dimensions/time_dimension），含未绑逻辑属性的：实例级且已绑逻辑属性用 get_logic_properties_values 算，其余把 id 传给 query_metric 算。"
+        "description": "对象类完整定义（含 data_properties 的 mapped_field / condition_operations、logic_properties 的 data_source / parameters）。其中 condition_operations 只列索引带来的算子（match / multi_match / knn），比较算子按属性 type 自行判断；text 字段的精确比较依赖资源保存时自动补齐的 keyword，旧配置若报缺失需重新保存并新建构建任务，详见 query_object_instance 的 condition 说明。related_metrics 为该对象类 scope 下的全部指标（id/name/comment/unit/metric_type/analysis_dimensions/time_dimension），含未绑逻辑属性的：实例级且已绑逻辑属性用 get_logic_properties_values 算，其余把 id 传给 query_metric 算。"
       },
       "missing": {
         "type": "array",

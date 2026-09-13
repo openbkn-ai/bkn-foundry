@@ -63,6 +63,25 @@ func (e *VegaDownstreamError) Message() string {
 	return truncated + "...(truncated)"
 }
 
+// ClientMessage returns only structured fields that are safe to pass to the caller. It never
+// falls back to the raw response body, which may be an infrastructure error page.
+func (e *VegaDownstreamError) ClientMessage() string {
+	if e.Details != "" {
+		return e.Details
+	}
+	return e.Description
+}
+
+// CanExposeQueryClientMessage reports whether this is a known Vega query validation response.
+// Other proxy response bodies may contain resource or catalog identifiers and stay redacted.
+func (e *VegaDownstreamError) CanExposeQueryClientMessage() bool {
+	if e.StatusCode != http.StatusBadRequest {
+		return false
+	}
+	return e.ErrorCode == "VegaBackend.Resource.InvalidParameter" ||
+		e.ErrorCode == "VegaBackend.Query.InvalidParameter"
+}
+
 // IsClientError reports whether the caller can fix the failure by changing the request.
 func (e *VegaDownstreamError) IsClientError() bool {
 	return e.StatusCode >= http.StatusBadRequest && e.StatusCode < http.StatusInternalServerError

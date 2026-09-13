@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"vega-backend/interfaces"
+	"vega-backend/logics/local_index"
 )
 
 const (
@@ -52,7 +53,7 @@ func (p *embeddingPipeline) enrich(ctx context.Context, documents map[string]map
 		}
 		for i, vector := range vectors {
 			if vector != nil && vector.Vector != nil {
-				targets[i][field+"_vector"] = vector.Vector
+				targets[i][local_index.VectorFieldName(field)] = vector.Vector
 			}
 		}
 	}

@@ -811,7 +811,8 @@ func (s *metricQueryService) executeMetricWithObjectType(ctx context.Context, kn
 		logger.Errorf("Metric resource query failed for resource [%s]", ot.DataSource.ID)
 		if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
 			return interfaces.MetricData{}, rest.NewHTTPError(ctx, downstream.StatusCode,
-				metricDownstreamErrorCode(downstream.StatusCode))
+				metricDownstreamErrorCode(downstream.StatusCode)).
+				WithErrorDetails(downstream.ClientMessage())
 		}
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
 			WithErrorDetails("metric resource query failed")
@@ -851,7 +852,8 @@ func (s *metricQueryService) executeMetricWithObjectType(ctx context.Context, kn
 			logger.Errorf("Metric comparison resource query failed for resource [%s]", ot.DataSource.ID)
 			if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
 				return interfaces.MetricData{}, rest.NewHTTPError(ctx, downstream.StatusCode,
-					metricDownstreamErrorCode(downstream.StatusCode))
+					metricDownstreamErrorCode(downstream.StatusCode)).
+					WithErrorDetails(downstream.ClientMessage())
 			}
 			return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
 				WithErrorDetails("metric comparison resource query failed")

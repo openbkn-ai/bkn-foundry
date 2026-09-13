@@ -9,6 +9,7 @@ package dataset
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -17,8 +18,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
+	"vega-backend/logics/filter_condition"
 )
 
 func TestDatasetServiceIndexLifecycle(t *testing.T) {
@@ -93,6 +96,21 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, docs, got)
 		assert.Equal(t, int64(1), total)
+	})
+
+	t.Run("list documents answers 400 for a condition the index cannot build", func(t *testing.T) {
+		ds, lim := newDatasetServiceMock(t)
+		cause := fmt.Errorf("failed to build filter query: %w",
+			filter_condition.NewConditionBuildError("text field body has no keyword feature; re-save the resource configuration and rebuild the local index, or use match"))
+		lim.EXPECT().ListDocuments(gomock.Any(), "dataset-1", resource, params).Return(nil, int64(0), cause)
+
+		_, _, err := ds.ListDocuments(ctx, resource, params)
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "re-save the resource configuration")
 	})
 
 	t.Run("get documents preserves positions for ignored missing documents", func(t *testing.T) {
@@ -234,6 +252,37 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 
 		assertHTTPError(t, err)
 		assert.Contains(t, err.Error(), "delete failed")
+	})
+
+	t.Run("delete by query resolves resource generated fields before local index access", func(t *testing.T) {
+		ds, lim := newDatasetServiceMock(t)
+		resource := &interfaces.Resource{
+			ID:             "dataset-1",
+			LocalIndexName: "dataset-1",
+			SchemaDefinition: []*interfaces.Property{{
+				Name: "content",
+				Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{
+					FeatureType: interfaces.PropertyFeatureType_Vector,
+				}},
+			}},
+		}
+		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{
+			Name:      "content_vector",
+			Operation: filter_condition.OperationKnnVector,
+			ValueOptCfg: interfaces.ValueOptCfg{
+				ValueFrom: interfaces.ValueFrom_Const,
+				Value:     []float32{0.1, 0.2},
+			},
+		}}
+		lim.EXPECT().DeleteDocumentsByQuery(gomock.Any(), "dataset-1", resource, params).
+			DoAndReturn(func(_ context.Context, _ string, _ *interfaces.Resource, got *interfaces.ResourceDataQueryParams) error {
+				require.NotNil(t, got.ActualFilterCond)
+				assert.Equal(t, filter_condition.OperationKnnVector, got.ActualFilterCond.GetOperation())
+				return nil
+			})
+
+		require.NoError(t, ds.DeleteDocumentsByQuery(ctx, resource, params))
 	})
 }
 

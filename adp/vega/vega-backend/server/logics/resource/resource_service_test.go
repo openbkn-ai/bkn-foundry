@@ -1060,6 +1060,55 @@ func TestResourceServiceUpdate(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
+	t.Run("re-saving a table persists the default keyword feature for text fields", func(t *testing.T) {
+		rs, mockRA, mockPS, _, _, mockCS, mockBTA := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
+		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) (int64, error) {
+				require.Len(t, got.SchemaDefinition, 1)
+				require.Len(t, got.SchemaDefinition[0].Features, 2)
+				keyword := got.SchemaDefinition[0].Features[1]
+				assert.Equal(t, interfaces.PropertyFeatureType_Keyword, keyword.FeatureType)
+				assert.Equal(t, interfaces.LocalIndexKeywordSubfieldName, keyword.FeatureName)
+				assert.Equal(t, interfaces.DefaultTextKeywordIgnoreAbove, keyword.Config["ignore_above"])
+				return 1, nil
+			})
+
+		resource := &interfaces.Resource{
+			ID:               "r1",
+			CatalogID:        "cat1",
+			Category:         interfaces.ResourceCategoryTable,
+			Name:             "table",
+			SourceIdentifier: "public.materials",
+			SchemaDefinition: []*interfaces.Property{{
+				Name: "material_number",
+				Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{
+					FeatureName: "fulltext",
+					FeatureType: interfaces.PropertyFeatureType_Fulltext,
+				}},
+			}},
+		}
+		err := rs.Update(context.Background(), resource, &interfaces.ResourceRequest{
+			CatalogID:        "cat1",
+			Category:         interfaces.ResourceCategoryTable,
+			Name:             "table",
+			SourceIdentifier: "public.materials",
+			SchemaDefinition: []*interfaces.Property{{
+				Name: "material_number",
+				Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{
+					FeatureName: "fulltext",
+					FeatureType: interfaces.PropertyFeatureType_Fulltext,
+				}},
+			}},
+		})
+
+		require.NoError(t, err)
+	})
 	t.Run("updates dataset index mapping before persisting a schema change", func(t *testing.T) {
 		rs, mockRA, mockPS, mockDS, _, mockCS, mockBTA := newTestService(t)
 		expectResourceServiceTransaction(t, rs, true)

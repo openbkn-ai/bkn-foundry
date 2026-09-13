@@ -29,6 +29,7 @@ import (
 	"vega-backend/logics/catalog"
 	"vega-backend/logics/connector/factory"
 	opensearchconnector "vega-backend/logics/connector/local/index/opensearch"
+	"vega-backend/logics/dataset"
 	"vega-backend/logics/query/querypolicy"
 	"vega-backend/logics/query/sqlglot"
 	resourcelogic "vega-backend/logics/resource"
@@ -54,7 +55,7 @@ func NewRawQueryService(appSetting *common.AppSetting) interfaces.RawQueryServic
 		rqService = &rawQueryService{
 			cf: factory.GetFactory(appSetting),
 			cs: catalog.NewCatalogService(appSetting),
-			rs: resourcelogic.NewResourceService(appSetting),
+			rs: resourcelogic.NewResourceService(appSetting, dataset.NewDatasetService(appSetting)),
 		}
 	})
 	return rqService

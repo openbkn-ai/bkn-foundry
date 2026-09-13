@@ -24,6 +24,7 @@ import (
 	"vega-backend/logics"
 	"vega-backend/logics/build_task"
 	"vega-backend/logics/catalog"
+	"vega-backend/logics/dataset"
 	"vega-backend/logics/local_index"
 	model_factory "vega-backend/logics/model_factory"
 	"vega-backend/logics/resource"
@@ -64,14 +65,15 @@ func (sbw *streamingBuildWorker) isStopping() bool {
 
 // NewStreamingBuildWorker creates a new build worker.
 func NewStreamingBuildWorker(appSetting *common.AppSetting) *streamingBuildWorker {
-	rs := resource.NewResourceService(appSetting)
+	lim := local_index.NewLocalIndexManager(appSetting)
+	rs := resource.NewResourceService(appSetting, dataset.NewDatasetService(appSetting))
 	return &streamingBuildWorker{
 		appSetting:  appSetting,
 		bts:         build_task.NewBuildTaskService(appSetting, rs),
 		cs:          catalog.NewCatalogService(appSetting),
 		httpClient:  common.NewHTTPClient(),
 		kafkaAccess: logics.KA,
-		lim:         local_index.NewLocalIndexManager(appSetting),
+		lim:         lim,
 		mfs:         model_factory.NewModelFactoryService(appSetting),
 		rs:          rs,
 	}

@@ -19,6 +19,7 @@ import (
 	"vega-backend/interfaces"
 	"vega-backend/logics/catalog"
 	"vega-backend/logics/connector/factory"
+	"vega-backend/logics/dataset"
 	"vega-backend/logics/discover_task"
 	"vega-backend/logics/resource"
 )
@@ -65,7 +66,7 @@ func NewDiscoverTaskWorker(appSetting *common.AppSetting) *DiscoverTaskWorker {
 		cf:         factory.GetFactory(appSetting),
 		cs:         catalog.NewCatalogService(appSetting),
 		dts:        discover_task.NewDiscoverTaskService(appSetting),
-		rs:         resource.NewResourceService(appSetting),
+		rs:         resource.NewResourceService(appSetting, dataset.NewDatasetService(appSetting)),
 
 		workerCount:      workerCount,
 		queueSize:        queueSize,

@@ -2,6 +2,7 @@ package opensearch
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -27,7 +28,7 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 		{
 			name: "equal text uses keyword subfield",
 			cfg:  osConstCfg("body", filter_condition.OperationEqual, "hello"),
-			want: map[string]any{"term": map[string]any{"body.raw": "hello"}},
+			want: map[string]any{"term": map[string]any{"body.keyword": "hello"}},
 		},
 		{
 			name: "not equal wraps must_not",
@@ -283,6 +284,23 @@ func TestOpenSearchConnectorConvertFilterConditionEqual(t *testing.T) {
 		require.Error(t, err)
 		assert.Nil(t, got)
 		assert.ErrorContains(t, err, "no keyword feature")
+		_, ok := filter_condition.AsConditionBuildError(err)
+		assert.True(t, ok)
+	})
+
+	t.Run("rejects exact text values above keyword ignore_above", func(t *testing.T) {
+		conn := &OpenSearchConnector{}
+		cond := mustOSCondition(t, osConstCfg("body", filter_condition.OperationEqual, strings.Repeat("字", 257)))
+		schema := opensearchConditionSchema()
+		schema[1].Features[0].Config = map[string]any{"ignore_above": 256}
+
+		got, err := conn.ConvertFilterConditionEqual(cond, schema)
+
+		require.Error(t, err)
+		assert.Nil(t, got)
+		assert.ErrorContains(t, err, "exceeds keyword ignore_above 256")
+		_, ok := filter_condition.AsConditionBuildError(err)
+		assert.True(t, ok)
 	})
 }
 
@@ -334,7 +352,7 @@ func opensearchConditionSchema() []*interfaces.Property {
 			OriginalName: "name",
 			Type:         interfaces.DataType_String,
 			Features: []interfaces.PropertyFeature{
-				{FeatureName: "fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext},
+				{FeatureName: "user-defined-fulltext-name", FeatureType: interfaces.PropertyFeatureType_Fulltext},
 			},
 		},
 		{
@@ -342,7 +360,7 @@ func opensearchConditionSchema() []*interfaces.Property {
 			OriginalName: "body",
 			Type:         interfaces.DataType_Text,
 			Features: []interfaces.PropertyFeature{
-				{FeatureName: "raw", FeatureType: interfaces.PropertyFeatureType_Keyword},
+				{FeatureName: "user-defined-keyword-name", FeatureType: interfaces.PropertyFeatureType_Keyword},
 			},
 		},
 		{Name: "age", OriginalName: "age", Type: interfaces.DataType_Integer},
@@ -358,7 +376,7 @@ func TestFulltextFieldName(t *testing.T) {
 			Name: "team_name",
 			Type: interfaces.DataType_String,
 			Features: []interfaces.PropertyFeature{
-				{FeatureName: "fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext},
+				{FeatureName: "user-defined-name", FeatureType: interfaces.PropertyFeatureType_Fulltext},
 			},
 		}
 

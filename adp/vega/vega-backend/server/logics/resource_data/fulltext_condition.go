@@ -11,6 +11,7 @@ import (
 
 	"vega-backend/interfaces"
 	"vega-backend/logics/filter_condition"
+	resourcelogic "vega-backend/logics/resource"
 )
 
 // ValidateFulltextConditions resources in the table there is no local index declined to full-text search conditions.
@@ -28,7 +29,7 @@ func validateFulltextConditions(resource *interfaces.Resource, cfg *interfaces.F
 		return nil
 	}
 	// The index category and the dataset themselves are stored by OpenSearch and do not rely on the local index produced by the build task.
-	if resource.Category != interfaces.ResourceCategoryTable || interfaces.HasAvailableLocalIndex(resource) {
+	if resource.Category != interfaces.ResourceCategoryTable || resourcelogic.HasAvailableLocalIndex(resource) {
 		return nil
 	}
 	return rejectFulltext(resource, cfg)

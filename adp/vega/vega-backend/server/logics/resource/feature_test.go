@@ -78,6 +78,58 @@ func TestNormalizeSelfReferencingFeatures(t *testing.T) {
 	})
 }
 
+func TestAddDefaultTextKeywordFeatures(t *testing.T) {
+	t.Run("adds and persists a default keyword feature for text", func(t *testing.T) {
+		props := []*interfaces.Property{{
+			Name: "body",
+			Type: interfaces.DataType_Text,
+			Features: []interfaces.PropertyFeature{{
+				FeatureName: "fulltext",
+				FeatureType: interfaces.PropertyFeatureType_Fulltext,
+			}},
+		}}
+
+		AddDefaultTextKeywordFeatures(props)
+
+		require.Len(t, props[0].Features, 2)
+		keyword := props[0].Features[1]
+		assert.Equal(t, interfaces.LocalIndexKeywordSubfieldName, keyword.FeatureName)
+		assert.Equal(t, interfaces.PropertyFeatureType_Keyword, keyword.FeatureType)
+		assert.True(t, keyword.IsDefault)
+		assert.Equal(t, interfaces.DefaultTextKeywordIgnoreAbove, keyword.Config["ignore_above"])
+		assert.Empty(t, TextFieldsWithoutKeyword(props))
+	})
+
+	t.Run("preserves an explicitly configured keyword feature", func(t *testing.T) {
+		props := []*interfaces.Property{{
+			Name: "body",
+			Type: interfaces.DataType_Text,
+			Features: []interfaces.PropertyFeature{{
+				FeatureName: "raw",
+				FeatureType: interfaces.PropertyFeatureType_Keyword,
+				Config:      map[string]any{"ignore_above": 128},
+			}},
+		}}
+
+		AddDefaultTextKeywordFeatures(props)
+
+		require.Len(t, props[0].Features, 1)
+		assert.Equal(t, "raw", props[0].Features[0].FeatureName)
+		assert.Equal(t, 128, props[0].Features[0].Config["ignore_above"])
+	})
+
+	t.Run("reports only legacy text fields", func(t *testing.T) {
+		fields := TextFieldsWithoutKeyword([]*interfaces.Property{
+			nil,
+			{Name: "code", Type: interfaces.DataType_String},
+			{Name: "body", Type: interfaces.DataType_Text},
+			{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword}}},
+		})
+
+		assert.Equal(t, []string{"body"}, fields)
+	})
+}
+
 // 存量资源带自引用特征、请求侧已在入口抹平：两边都归一化之后，一次没动 schema 的编辑
 // 必须判定为「无 build 相关变更」，否则 resource_service 会清空 LocalIndexName，
 // 让这次普通编辑把已建好的索引废掉。

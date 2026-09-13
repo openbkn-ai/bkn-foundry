@@ -231,6 +231,46 @@ func TestVegaBackendAccessQueryResourceDataPreservesLargeIntegers(t *testing.T) 
 	})
 }
 
+func TestVegaBackendAccessQueryResourceDataErrorDetails(t *testing.T) {
+	t.Run("preserves known query validation guidance", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		httpClient := rmock.NewMockHTTPClient(ctrl)
+		httpClient.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(http.StatusBadRequest, []byte(`{"error_code":"VegaBackend.Resource.InvalidParameter","description":"invalid parameter","error_details":"re-save the resource configuration and rebuild the local index"}`), nil)
+		access := &vegaBackendAccess{baseURL: "http://vega", httpClient: httpClient}
+
+		_, err := access.QueryResourceData(trustedResourceProxyContext(context.Background(), "resource-1"),
+			"resource-1", &interfaces.ResourceDataQueryParams{})
+
+		downstream, ok := interfaces.AsVegaDownstreamError(err)
+		if !ok {
+			t.Fatalf("expected VegaDownstreamError, got %T", err)
+		}
+		if got := downstream.ClientMessage(); !strings.Contains(got, "re-save the resource configuration") {
+			t.Fatalf("actionable query guidance was lost: %q", got)
+		}
+	})
+
+	t.Run("redacts other proxy response bodies", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		httpClient := rmock.NewMockHTTPClient(ctrl)
+		httpClient.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(http.StatusForbidden, []byte(`{"error_code":"VegaBackend.Resource.Forbidden","error_details":"catalog catalog-secret"}`), nil)
+		access := &vegaBackendAccess{baseURL: "http://vega", httpClient: httpClient}
+
+		_, err := access.QueryResourceData(trustedResourceProxyContext(context.Background(), "resource-1"),
+			"resource-1", &interfaces.ResourceDataQueryParams{})
+
+		downstream, ok := interfaces.AsVegaDownstreamError(err)
+		if !ok {
+			t.Fatalf("expected VegaDownstreamError, got %T", err)
+		}
+		if downstream.ClientMessage() != "" || strings.Contains(downstream.Error(), "catalog-secret") {
+			t.Fatalf("restricted response body was exposed: %v", downstream)
+		}
+	})
+}
+
 func trustedResourceProxyContext(ctx context.Context, resourceID string) context.Context {
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "user-1", Type: "user"})
 	return interfaces.WithTrustedProxyContext(ctx, &interfaces.TrustedProxyContext{

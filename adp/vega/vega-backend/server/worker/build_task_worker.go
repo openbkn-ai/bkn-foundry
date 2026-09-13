@@ -19,6 +19,7 @@ import (
 	"vega-backend/common"
 	"vega-backend/interfaces"
 	"vega-backend/logics"
+	resourcelogic "vega-backend/logics/resource"
 	"vega-backend/logics/sync_checkpoint"
 )
 
@@ -442,7 +443,7 @@ func validateIncrementalBatchResource(resource *interfaces.Resource, task *inter
 	if err := validateBuildTaskResourceFingerprint(resource, task); err != nil {
 		return err
 	}
-	if !interfaces.HasAvailableLocalIndex(resource) || resource.SyncMark == "" {
+	if !resourcelogic.HasAvailableLocalIndex(resource) || resource.SyncMark == "" {
 		return fmt.Errorf("incremental build requires an available local index and committed checkpoint")
 	}
 	checkpoint, err := sync_checkpoint.DecodeBatch(resource.SyncMark)

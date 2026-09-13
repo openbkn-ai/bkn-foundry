@@ -27,6 +27,7 @@ import (
 	"vega-backend/interfaces"
 	"vega-backend/logics"
 	"vega-backend/logics/catalog"
+	"vega-backend/logics/dataset"
 	"vega-backend/logics/resource"
 	"vega-backend/logics/user_mgmt"
 )
@@ -55,7 +56,7 @@ func NewDiscoverTaskService(appSetting *common.AppSetting) interfaces.DiscoverTa
 			appSetting: appSetting,
 			cs:         catalog.NewCatalogService(appSetting),
 			dta:        logics.DTA,
-			rs:         resource.NewResourceService(appSetting),
+			rs:         resource.NewResourceService(appSetting, dataset.NewDatasetService(appSetting)),
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 
 			dispatchCh: make(chan struct{}, discoverTaskDispatchBuffer),

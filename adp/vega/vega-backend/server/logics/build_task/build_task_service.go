@@ -135,6 +135,10 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 		span.SetStatus(codes.Error, "Invalid primary or incremental key fields")
 		return "", err
 	}
+	if err := validateBuildTaskTextKeywordFeatures(ctx, resource); err != nil {
+		span.SetStatus(codes.Error, "Legacy text field configuration")
+		return "", err
+	}
 	if executeType == interfaces.BuildTaskExecuteTypeIncremental {
 		if err := validateIncrementalBaseline(ctx, resource); err != nil {
 			span.SetStatus(codes.Error, "Incremental baseline unavailable")
@@ -260,6 +264,19 @@ func validateBuildTaskKeyFields(ctx context.Context, resource *interfaces.Resour
 		incrementalKeys[fieldName] = struct{}{}
 	}
 	return nil
+}
+
+func validateBuildTaskTextKeywordFeatures(ctx context.Context, resource *interfaces.Resource) error {
+	fields := resourcelogic.TextFieldsWithoutKeyword(resource.SchemaDefinition)
+	if len(fields) == 0 {
+		return nil
+	}
+	return rest.NewHTTPError(ctx, http.StatusBadRequest,
+		verrors.VegaBackend_BuildTask_InvalidParameter_UnsupportedSchemaFields).
+		WithErrorDetails(fmt.Sprintf(
+			"text fields %q use a legacy configuration without a keyword feature; re-save the resource configuration, then create a new build task",
+			fields,
+		))
 }
 
 func normalizeCreateBuildTaskExecuteType(ctx context.Context, req *interfaces.CreateBuildTaskRequest) (string, error) {
@@ -440,7 +457,7 @@ func (bts *buildTaskService) fillBuildTaskIndexSnapshot(ctx context.Context, res
 }
 
 func validateIncrementalBaseline(ctx context.Context, resource *interfaces.Resource) error {
-	if !interfaces.HasAvailableLocalIndex(resource) || resource.SyncMark == "" {
+	if !resourcelogic.HasAvailableLocalIndex(resource) || resource.SyncMark == "" {
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IncrementalBaselineUnavailable).
 			WithErrorDetails("incremental build requires an available local index and committed checkpoint")
 	}
@@ -849,6 +866,9 @@ func (bts *buildTaskService) validateStartBuildTaskStillCurrent(ctx context.Cont
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
 	if err := validateBuildTaskKeyFields(ctx, resource); err != nil {
+		return err
+	}
+	if err := validateBuildTaskTextKeywordFeatures(ctx, resource); err != nil {
 		return err
 	}
 

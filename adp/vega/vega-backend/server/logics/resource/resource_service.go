@@ -31,7 +31,6 @@ import (
 	"vega-backend/interfaces"
 	"vega-backend/logics"
 	"vega-backend/logics/catalog"
-	dataset "vega-backend/logics/dataset"
 	"vega-backend/logics/local_index"
 	model_factory "vega-backend/logics/model_factory"
 	"vega-backend/logics/permission"
@@ -60,13 +59,13 @@ type resourceService struct {
 }
 
 // NewResourceService creates a new ResourceService.
-func NewResourceService(appSetting *common.AppSetting) interfaces.ResourceService {
+func NewResourceService(appSetting *common.AppSetting, datasetService interfaces.DatasetService) interfaces.ResourceService {
 	rServiceOnce.Do(func() {
 		rService = &resourceService{
 			appSetting: appSetting,
 			db:         logics.DB,
 			cs:         catalog.NewCatalogService(appSetting),
-			ds:         dataset.NewDatasetService(appSetting),
+			ds:         datasetService,
 			ps:         permission.NewPermissionService(appSetting),
 			ra:         logics.RA,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
@@ -1005,6 +1004,13 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		return err
 	}
 
+	// Re-saving a table resource is the explicit upgrade boundary for the text/keyword contract.
+	// Do not normalize stored schemas while reading or building: legacy resources must remain
+	// distinguishable and their build request must tell the owner to re-save the configuration.
+	if resource.Category == interfaces.ResourceCategoryTable && req.SchemaDefinition != nil {
+		AddDefaultTextKeywordFeatures(req.SchemaDefinition)
+	}
+
 	buildRelevantChanged, err := rs.validateResourceUpdateScope(ctx, resource, req)
 	if err != nil {
 		span.SetStatus(codes.Error, "Invalid resource update scope")
@@ -1859,7 +1865,7 @@ func validateDatasetVectorOutputs(ctx context.Context, schema []*interfaces.Prop
 			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
 				continue
 			}
-			outputField := interfaces.LocalIndexVectorFieldName(property.Name)
+			outputField := local_index.VectorFieldName(property.Name)
 			if _, exists := logicalFields[outputField]; exists {
 				return unsupportedResourceUpdateError(ctx, fmt.Sprintf("dataset vector output field %q conflicts with a logical property", outputField))
 			}

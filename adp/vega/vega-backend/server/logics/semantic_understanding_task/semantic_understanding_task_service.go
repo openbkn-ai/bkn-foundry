@@ -31,6 +31,7 @@ import (
 	"vega-backend/interfaces"
 	"vega-backend/logics"
 	"vega-backend/logics/catalog"
+	"vega-backend/logics/dataset"
 	resourcelogic "vega-backend/logics/resource"
 	"vega-backend/logics/resource_data"
 	"vega-backend/logics/user_mgmt"
@@ -59,7 +60,7 @@ func NewSemanticUnderstandingTaskService(appSetting *common.AppSetting) interfac
 		sutService = &semanticUnderstandingTaskService{
 			appSetting: appSetting,
 			cs:         catalog.NewCatalogService(appSetting),
-			rs:         resourcelogic.NewResourceService(appSetting),
+			rs:         resourcelogic.NewResourceService(appSetting, dataset.NewDatasetService(appSetting)),
 			rds:        resource_data.NewResourceDataService(appSetting),
 			suta:       logics.SUTA,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),

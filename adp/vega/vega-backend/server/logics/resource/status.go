@@ -17,6 +17,13 @@ import (
 	"vega-backend/interfaces"
 )
 
+// HasAvailableLocalIndex reports whether a resource may use its managed local index for queries.
+func HasAvailableLocalIndex(resource *interfaces.Resource) bool {
+	return resource != nil &&
+		resource.LocalIndexStatus == interfaces.ResourceLocalIndexStatusAvailable &&
+		resource.LocalIndexName != ""
+}
+
 // EnsureResourceQueryable validates that a resource is in a queryable state and has usable metadata.
 //
 //	enabled=false        → return 409 HTTPError (VegaBackend.Resource.NotQueryable)

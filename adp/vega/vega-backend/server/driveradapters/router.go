@@ -82,7 +82,7 @@ func NewRestHandler(appSetting *common.AppSetting) RestHandler {
 	hcss := catalog_health_check_schedule.NewCatalogHealthCheckScheduleService(appSetting)
 	lim := local_index.NewLocalIndexManager(appSetting)
 	rds := resource_data.NewResourceDataService(appSetting)
-	rs := resource.NewResourceService(appSetting)
+	rs := resource.NewResourceService(appSetting, ds)
 	pas := proxy_authorization.NewProxyAuthorizationService(logics.PAA)
 	bts := build_task.NewBuildTaskService(appSetting, rs)
 	suts := semantic_understanding_task.NewSemanticUnderstandingTaskService(appSetting)

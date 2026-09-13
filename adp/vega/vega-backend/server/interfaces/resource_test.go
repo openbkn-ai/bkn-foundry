@@ -38,34 +38,11 @@ func TestResourceLocalStateJSON(t *testing.T) {
 	}
 }
 
-func TestLocalIndexGeneratedFields(t *testing.T) {
-	res := &Resource{
-		LocalIndexStatus: ResourceLocalIndexStatusAvailable,
-		LocalIndexName:   "vega-build-abc",
-		SchemaDefinition: []*Property{
-			{Name: "stadium_name", Features: []PropertyFeature{{FeatureType: PropertyFeatureType_Vector}}},
-			{Name: "city_name", Features: []PropertyFeature{{FeatureType: PropertyFeatureType_Fulltext}}},
-		},
+func TestLocalIndexFieldContract(t *testing.T) {
+	if LocalIndexKeywordSubfieldName != "keyword" {
+		t.Fatalf("LocalIndexKeywordSubfieldName = %q, want %q", LocalIndexKeywordSubfieldName, "keyword")
 	}
-
-	generated := LocalIndexGeneratedFields(res)
-
-	if len(generated) != 1 {
-		t.Fatalf("only vector features generate index-only fields, got %+v", generated)
-	}
-	field, ok := generated["stadium_name_vector"]
-	if !ok || field.Type != DataType_Vector {
-		t.Fatalf("generated vector field missing or mistyped: %+v", generated)
-	}
-
-	res.LocalIndexName = ""
-	if got := LocalIndexGeneratedFields(res); got != nil {
-		t.Fatalf("without a built index nothing is generated yet, got %+v", got)
-	}
-
-	res.LocalIndexName = "vega-build-abc"
-	res.LocalIndexStatus = ResourceLocalIndexStatusStale
-	if got := LocalIndexGeneratedFields(res); got != nil {
-		t.Fatalf("a stale index must not expose generated fields, got %+v", got)
+	if DefaultTextKeywordIgnoreAbove != 256 {
+		t.Fatalf("DefaultTextKeywordIgnoreAbove = %d, want %d", DefaultTextKeywordIgnoreAbove, 256)
 	}
 }

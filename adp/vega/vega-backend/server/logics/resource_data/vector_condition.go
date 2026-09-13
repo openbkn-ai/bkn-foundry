@@ -13,6 +13,8 @@ import (
 
 	"vega-backend/interfaces"
 	"vega-backend/logics/filter_condition"
+	"vega-backend/logics/local_index"
+	resourcelogic "vega-backend/logics/resource"
 )
 
 // resolveVectorConditions converts the query text in the vector retrieval conditions into vectors in place and replaces the fields with
@@ -83,7 +85,7 @@ func vectorFieldFor(resource *interfaces.Resource, name string) (string, error) 
 	if resource == nil {
 		return "", fmt.Errorf("condition [knn_vector] left field '%s' has no resource context", name)
 	}
-	if !interfaces.HasAvailableLocalIndex(resource) {
+	if !resourcelogic.HasAvailableLocalIndex(resource) {
 		return "", fmt.Errorf("condition [knn_vector] resource '%s' has no local index; build one before vector search", resource.Name)
 	}
 
@@ -103,7 +105,7 @@ func vectorFieldFor(resource *interfaces.Resource, name string) (string, error) 
 				source = feature.RefProperty
 			}
 			if source == name {
-				return interfaces.LocalIndexVectorFieldName(source), nil
+				return local_index.VectorFieldName(source), nil
 			}
 		}
 	}

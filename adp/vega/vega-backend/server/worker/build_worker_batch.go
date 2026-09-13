@@ -23,6 +23,7 @@ import (
 	"vega-backend/logics/build_task"
 	"vega-backend/logics/catalog"
 	"vega-backend/logics/connector/factory"
+	"vega-backend/logics/dataset"
 	"vega-backend/logics/filter_condition"
 	"vega-backend/logics/local_index"
 	model_factory "vega-backend/logics/model_factory"
@@ -46,14 +47,15 @@ type batchBuildWorker struct {
 
 // NewBatchBuildWorker creates a new build worker.
 func NewBatchBuildWorker(appSetting *common.AppSetting) *batchBuildWorker {
-	rs := resource.NewResourceService(appSetting)
+	lim := local_index.NewLocalIndexManager(appSetting)
+	rs := resource.NewResourceService(appSetting, dataset.NewDatasetService(appSetting))
 	return &batchBuildWorker{
 		appSetting: appSetting,
 		bts:        build_task.NewBuildTaskService(appSetting, rs),
 		cf:         factory.GetFactory(appSetting),
 		rs:         rs,
 		cs:         catalog.NewCatalogService(appSetting),
-		lim:        local_index.NewLocalIndexManager(appSetting),
+		lim:        lim,
 		mfs:        model_factory.NewModelFactoryService(appSetting),
 	}
 }

@@ -29,6 +29,7 @@ import (
 	"vega-backend/logics"
 	"vega-backend/logics/bkn_agent"
 	"vega-backend/logics/catalog"
+	"vega-backend/logics/dataset"
 	"vega-backend/logics/resource"
 	"vega-backend/logics/semantic_understanding_task"
 )
@@ -76,7 +77,7 @@ func NewSemanticUnderstandingTaskWorker(appSetting *common.AppSetting) *Semantic
 		suts:       semantic_understanding_task.NewSemanticUnderstandingTaskService(appSetting),
 		bas:        bkn_agent.NewBknAgentService(appSetting),
 		cs:         catalog.NewCatalogService(appSetting),
-		rs:         resource.NewResourceService(appSetting),
+		rs:         resource.NewResourceService(appSetting, dataset.NewDatasetService(appSetting)),
 		db:         logics.DB,
 
 		workerCount: workerCount,

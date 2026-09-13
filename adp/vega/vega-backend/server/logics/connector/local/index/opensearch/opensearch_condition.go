@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"vega-backend/interfaces"
 	"vega-backend/logics/filter_condition"
@@ -153,7 +154,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionWithOpr(condition interfaces
 }
 
 // fulltextFieldName returns the field name that should be hit in the full-text search (match/match_phrase/multi_match).
-// The full-text capability of the string field is attached to the text subfield (see applyFulltextFeature) and must be used
+// The full-text capability of the string field is attached to the fixed fulltext subfield by LocalIndexManager and must be used
 // 'Field name.< Subfield name >' hits the word segmentation subfield; otherwise, it will fall to the keyword main field for exact matching.
 // The main field of the text field itself is the full text, so use a bare field name.
 func fulltextFieldName(prop *interfaces.Property) string {
@@ -163,11 +164,7 @@ func fulltextFieldName(prop *interfaces.Property) string {
 	if prop.Type == interfaces.DataType_String {
 		for _, f := range prop.Features {
 			if f.FeatureType == interfaces.PropertyFeatureType_Fulltext {
-				sub := f.FeatureName
-				if sub == "" {
-					sub = "fulltext"
-				}
-				return prop.Name + "." + sub
+				return prop.Name + "." + interfaces.LocalIndexFulltextSubfieldName
 			}
 		}
 	}
@@ -220,6 +217,9 @@ func (c *OpenSearchConnector) ConvertFilterConditionEqual(condition interfaces.F
 	}
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
+		if err := validateTextKeywordValues(fieldName, cond.Value, schemaDefinition); err != nil {
+			return nil, err
+		}
 		return map[string]any{
 			"term": map[string]any{
 				fieldName + keyword: cond.Value,
@@ -232,7 +232,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionEqual(condition interfaces.F
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -254,6 +254,9 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotEqual(condition interface
 	}
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
+		if err := validateTextKeywordValues(fieldName, cond.Value, schemaDefinition); err != nil {
+			return nil, err
+		}
 		return map[string]any{
 			"bool": map[string]any{
 				"must_not": map[string]any{
@@ -270,7 +273,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotEqual(condition interface
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -298,7 +301,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionGt(condition interfaces.Filt
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -326,7 +329,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionGte(condition interfaces.Fil
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -354,7 +357,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionLt(condition interfaces.Filt
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -382,7 +385,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionLte(condition interfaces.Fil
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -404,6 +407,9 @@ func (c *OpenSearchConnector) ConvertFilterConditionIn(condition interfaces.Filt
 	}
 	keyword, err := c.getKeywordSuffix(fieldName, schemaDefinition)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateTextKeywordValues(fieldName, cond.Value, schemaDefinition); err != nil {
 		return nil, err
 	}
 
@@ -432,6 +438,9 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotIn(condition interfaces.F
 	}
 	keyword, err := c.getKeywordSuffix(fieldName, schemaDefinition)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateTextKeywordValues(fieldName, cond.Value, schemaDefinition); err != nil {
 		return nil, err
 	}
 
@@ -590,7 +599,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionRange(condition interfaces.F
 
 	values := cond.Value
 	if len(values) != 2 {
-		return nil, fmt.Errorf("range condition requires exactly 2 values")
+		return nil, filter_condition.NewConditionBuildError("range condition requires exactly 2 values")
 	}
 
 	return map[string]any{
@@ -617,7 +626,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionOutRange(condition interface
 
 	values := cond.Value
 	if len(values) != 2 {
-		return nil, fmt.Errorf("out_range condition requires exactly 2 values")
+		return nil, filter_condition.NewConditionBuildError("out_range condition requires exactly 2 values")
 	}
 
 	return map[string]any{
@@ -870,7 +879,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionBetween(condition interfaces
 
 	values := cond.Value
 	if len(values) != 2 {
-		return nil, fmt.Errorf("between condition requires exactly 2 values")
+		return nil, filter_condition.NewConditionBuildError("between condition requires exactly 2 values")
 	}
 
 	return map[string]any{
@@ -980,7 +989,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionBefore(condition interfaces.
 
 	values := cond.Value
 	if len(values) != 2 {
-		return nil, fmt.Errorf("before condition requires exactly 2 values")
+		return nil, filter_condition.NewConditionBuildError("before condition requires exactly 2 values")
 	}
 
 	interval, ok := values[0].(float64)
@@ -1182,11 +1191,55 @@ func (c *OpenSearchConnector) getKeywordSuffix(fieldName string, schemaDefinitio
 		if prop.OriginalName == fieldName && prop.Type == interfaces.DataType_Text {
 			for _, feature := range prop.Features {
 				if feature.FeatureType == interfaces.PropertyFeatureType_Keyword {
-					return "." + feature.FeatureName, nil
+					return "." + interfaces.LocalIndexKeywordSubfieldName, nil
 				}
 			}
-			return "", fmt.Errorf("text field %s has no keyword feature, cannot be used for comparison", fieldName)
+			return "", filter_condition.NewConditionBuildError("text field %s has no keyword feature; re-save the resource configuration and rebuild the local index, or use match", fieldName)
 		}
 	}
 	return "", nil
+}
+
+func validateTextKeywordValues(fieldName string, value any, schemaDefinition []*interfaces.Property) error {
+	for _, prop := range schemaDefinition {
+		if prop == nil || prop.OriginalName != fieldName || prop.Type != interfaces.DataType_Text {
+			continue
+		}
+		for _, feature := range prop.Features {
+			if feature.FeatureType != interfaces.PropertyFeatureType_Keyword {
+				continue
+			}
+			limit, ok := positiveInt(feature.Config["ignore_above"])
+			if !ok {
+				return nil
+			}
+			values, ok := value.([]any)
+			if !ok {
+				values = []any{value}
+			}
+			for _, candidate := range values {
+				text, ok := candidate.(string)
+				if ok && utf8.RuneCountInString(text) > limit {
+					return filter_condition.NewConditionBuildError(
+						"value for text field %s exceeds keyword ignore_above %d and cannot be compared exactly", fieldName, limit)
+				}
+			}
+			return nil
+		}
+	}
+	return nil
+}
+
+func positiveInt(value any) (int, bool) {
+	switch typed := value.(type) {
+	case int:
+		return typed, typed > 0
+	case int64:
+		return int(typed), typed > 0
+	case float64:
+		converted := int(typed)
+		return converted, typed == float64(converted) && converted > 0
+	default:
+		return 0, false
+	}
 }

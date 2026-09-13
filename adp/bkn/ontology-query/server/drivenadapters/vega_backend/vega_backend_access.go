@@ -129,7 +129,11 @@ func (v *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID st
 	}
 	if respCode != http.StatusOK {
 		// Restricted proxy responses may contain resource or catalog identifiers.
-		// Preserve only the status classification for the business caller.
+		// Only known query-validation envelopes may carry their structured guidance upward.
+		downstream := interfaces.NewVegaDownstreamError(respCode, string(respData))
+		if downstream.CanExposeQueryClientMessage() {
+			return nil, downstream
+		}
 		return nil, interfaces.NewVegaDownstreamError(respCode, "")
 	}
 	var response interfaces.DatasetQueryResponse

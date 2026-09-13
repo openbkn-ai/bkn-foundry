@@ -157,9 +157,12 @@ func TestLocalIndexManagerDelegatesToIndexConnector(t *testing.T) {
 		}
 		document := map[string]any{"id": 1}
 		docIDs := []string{"doc-1"}
+		properties := map[string]any{
+			"id": map[string]any{"type": "long"},
+		}
 
-		connector.EXPECT().CreateIndex(ctx, "idx", schema, nil).Return(nil)
-		connector.EXPECT().UpdateIndex(ctx, "idx", schema).Return(nil)
+		connector.EXPECT().CreateIndex(ctx, "idx", properties, false, nil).Return(nil)
+		connector.EXPECT().UpdateIndex(ctx, "idx", properties, false).Return(nil)
 		connector.EXPECT().DeleteIndex(ctx, "idx").Return(nil)
 		connector.EXPECT().CheckIndexExist(ctx, "idx").Return(true, nil)
 		connector.EXPECT().ExecuteQuery(ctx, "idx", resource, params).Return(queryResult, nil)
@@ -205,8 +208,8 @@ func TestLocalIndexManagerDelegatesToIndexConnector(t *testing.T) {
 	})
 }
 
-func TestLocalIndexManagerDeleteDocumentsByQueryBuildsActualFilter(t *testing.T) {
-	t.Run("local index manager delete documents by query builds actual filter", func(t *testing.T) {
+func TestLocalIndexManagerDeleteDocumentsByQueryDelegatesToConnector(t *testing.T) {
+	t.Run("local index manager delegates a prepared delete query", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		ctx := context.Background()
@@ -236,8 +239,7 @@ func TestLocalIndexManagerDeleteDocumentsByQueryBuildsActualFilter(t *testing.T)
 			})
 
 		require.NoError(t, manager.DeleteDocumentsByQuery(ctx, "idx", resource, params))
-		require.NotNil(t, params.ActualFilterCond)
-		assert.Equal(t, "==", params.ActualFilterCond.GetOperation())
+		assert.Nil(t, params.ActualFilterCond)
 		assert.Same(t, params, gotParams)
 		assert.Equal(t, resource.SchemaDefinition, gotSchema)
 	})
