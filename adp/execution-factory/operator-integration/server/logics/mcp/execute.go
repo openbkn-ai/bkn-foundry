@@ -51,15 +51,22 @@ func (s *mcpServiceImpl) GetMCPTools(ctx context.Context, req *interfaces.MCPPro
 	})
 	// The tool schema is required to invoke a known MCP server, so execute-only
 	// callers may read it without gaining top-level MCP discovery visibility.
+	// The draft is authoring content rather than what a caller runs: listing it
+	// takes view permission (#1523).
 	if common.IsPublicAPIFromCtx(ctx) {
 		var accessor *interfaces.AuthAccessor
 		accessor, err = s.AuthService.GetAccessor(ctx, "")
 		if err != nil {
 			return
 		}
+		operations := []interfaces.AuthOperationType{
+			interfaces.AuthOperationTypeView, interfaces.AuthOperationTypePublicAccess, interfaces.AuthOperationTypeExecute,
+		}
+		if req.Draft {
+			operations = []interfaces.AuthOperationType{interfaces.AuthOperationTypeView}
+		}
 		var authorized bool
-		authorized, err = s.AuthService.OperationCheckAny(ctx, accessor, req.MCPID, interfaces.AuthResourceTypeMCP,
-			interfaces.AuthOperationTypeView, interfaces.AuthOperationTypePublicAccess, interfaces.AuthOperationTypeExecute)
+		authorized, err = s.AuthService.OperationCheckAny(ctx, accessor, req.MCPID, interfaces.AuthResourceTypeMCP, operations...)
 		if err != nil {
 			return
 		}
@@ -82,12 +89,15 @@ func (s *mcpServiceImpl) GetMCPTools(ctx context.Context, req *interfaces.MCPPro
 		return
 	}
 
-	listToolsReq, err := s.servingListToolsRequest(ctx, serverConfig)
-	if err != nil {
-		s.logger.WithContext(ctx).Errorf("select mcp server release by id error: %v", err)
-		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError,
-			fmt.Sprintf("select mcp server release by id error: %v", err))
-		return
+	listToolsReq := configListToolsRequest(serverConfig)
+	if !req.Draft {
+		listToolsReq, err = s.servingListToolsRequest(ctx, serverConfig)
+		if err != nil {
+			s.logger.WithContext(ctx).Errorf("select mcp server release by id error: %v", err)
+			err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError,
+				fmt.Sprintf("select mcp server release by id error: %v", err))
+			return
+		}
 	}
 
 	listToolsResp, err := s.listTools(ctx, listToolsReq)
@@ -186,16 +196,10 @@ func (s *mcpServiceImpl) CallMCPTool(ctx context.Context, req *interfaces.MCPPro
 	return resp, nil
 }
 
-// servingListToolsRequest describes the version of an MCP Server that its callers are served.
-//
-// An editing server is a published server with a draft beside it, the rule Operators and Skills
-// follow too: its release keeps serving until the draft is published, and the draft reaches only
-// the debug path. The config cannot stand in for the release here — entering editing moves it to a
-// version that may have no instance at all (#1478). In any other status the config is what gets
-// served; for a published server it is exactly what was released. The creation type is taken from
-// the config either way: it never changes between versions.
-func (s *mcpServiceImpl) servingListToolsRequest(ctx context.Context, config *model.MCPServerConfigDB) (*ListToolsRequest, error) {
-	req := &ListToolsRequest{
+// configListToolsRequest describes the config's own version: the draft while the server is editing,
+// and otherwise the same thing its callers are served.
+func configListToolsRequest(config *model.MCPServerConfigDB) *ListToolsRequest {
+	return &ListToolsRequest{
 		CreationType: interfaces.MCPCreationType(config.CreationType),
 		MCPID:        config.MCPID,
 		Version:      config.Version,
@@ -205,6 +209,18 @@ func (s *mcpServiceImpl) servingListToolsRequest(ctx context.Context, config *mo
 			Headers: utils.JSONToObject[map[string]string](config.Headers),
 		},
 	}
+}
+
+// servingListToolsRequest describes the version of an MCP Server that its callers are served.
+//
+// An editing server is a published server with a draft beside it, the rule Operators and Skills
+// follow too: its release keeps serving until the draft is published, and the draft reaches only
+// the debug path. The config cannot stand in for the release here — entering editing moves it to a
+// version that may have no instance at all (#1478). In any other status the config is what gets
+// served; for a published server it is exactly what was released. The creation type is taken from
+// the config either way: it never changes between versions.
+func (s *mcpServiceImpl) servingListToolsRequest(ctx context.Context, config *model.MCPServerConfigDB) (*ListToolsRequest, error) {
+	req := configListToolsRequest(config)
 	if config.Status != string(interfaces.BizStatusEditing) {
 		return req, nil
 	}

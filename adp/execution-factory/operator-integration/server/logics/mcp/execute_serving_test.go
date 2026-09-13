@@ -7,11 +7,13 @@ package mcp
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
@@ -140,5 +142,95 @@ func TestServingListToolsRequestUsesTheReleasedEndpointWhileEditing(t *testing.T
 		So(err, ShouldBeNil)
 		So(req.Version, ShouldEqual, 3)
 		So(req.MCPCoreInfo.URL, ShouldEqual, "http://draft.example/mcp")
+	})
+}
+
+// operationsExactly matches the whole variadic operation list. A bare value in the variadic position
+// would only be compared with the first operation: gomock does not check the remaining ones when
+// the matcher count equals the method's parameter count.
+func operationsExactly(ops ...interfaces.AuthOperationType) gomock.Matcher {
+	return gomock.Eq(ops)
+}
+
+// The authoring page lists the draft it debugs (#1523). Listing the draft is reading authoring
+// content, so on the public face it takes view permission; the right to execute, or public access,
+// is enough only for the served listing.
+func TestGetMCPToolsListsTheDraftOnRequest(t *testing.T) {
+	editingConfig := func() *model.MCPServerConfigDB {
+		return &model.MCPServerConfigDB{
+			MCPID:        "mcp-1",
+			Status:       string(interfaces.BizStatusEditing),
+			Version:      3,
+			CreationType: interfaces.MCPCreationTypeToolImported.String(),
+		}
+	}
+	publicCtx := common.SetPublicAPIToCtx(context.Background(), true)
+
+	Convey("editing,draft=true 且有 view 权限:按草稿版本取实例", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		configs := mocks.NewMockDBMCPServerConfig(ctrl)
+		configs.EXPECT().SelectByID(gomock.Any(), gomock.Nil(), "mcp-1").Return(editingConfig(), nil)
+		auth := mocks.NewMockIAuthorizationService(ctrl)
+		auth.EXPECT().GetAccessor(gomock.Any(), "").Return(&interfaces.AuthAccessor{ID: "u-1"}, nil)
+		auth.EXPECT().OperationCheckAny(gomock.Any(), gomock.Any(), "mcp-1", interfaces.AuthResourceTypeMCP,
+			operationsExactly(interfaces.AuthOperationTypeView)).Return(true, nil)
+		instances := &versionRecordingInstances{}
+		svc := &mcpServiceImpl{
+			logger:             logger.DefaultLogger(),
+			AuthService:        auth,
+			DBMCPServerConfig:  configs,
+			DBMCPServerRelease: mocks.NewMockDBMCPServerRelease(ctrl),
+			MCPInstanceService: instances,
+		}
+
+		_, err := svc.GetMCPTools(publicCtx, &interfaces.MCPProxyToolListRequest{MCPID: "mcp-1", Draft: true})
+		So(errors.Is(err, errInstanceReached), ShouldBeTrue)
+		So(instances.versions, ShouldResemble, []int{3})
+	})
+
+	Convey("draft=true 只有 execute 或公开访问权限:403,不查配置", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		auth := mocks.NewMockIAuthorizationService(ctrl)
+		auth.EXPECT().GetAccessor(gomock.Any(), "").Return(&interfaces.AuthAccessor{ID: "u-1"}, nil)
+		auth.EXPECT().OperationCheckAny(gomock.Any(), gomock.Any(), "mcp-1", interfaces.AuthResourceTypeMCP,
+			operationsExactly(interfaces.AuthOperationTypeView)).Return(false, nil)
+		svc := &mcpServiceImpl{
+			logger:            logger.DefaultLogger(),
+			AuthService:       auth,
+			DBMCPServerConfig: mocks.NewMockDBMCPServerConfig(ctrl),
+		}
+
+		_, err := svc.GetMCPTools(publicCtx, &interfaces.MCPProxyToolListRequest{MCPID: "mcp-1", Draft: true})
+		So(err, ShouldNotBeNil)
+		So(strings.Contains(err.Error(), "OperationForbidden"), ShouldBeTrue)
+	})
+
+	Convey("不带 draft:权限集合与服务版本都不变", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		configs := mocks.NewMockDBMCPServerConfig(ctrl)
+		configs.EXPECT().SelectByID(gomock.Any(), gomock.Nil(), "mcp-1").Return(editingConfig(), nil)
+		releases := mocks.NewMockDBMCPServerRelease(ctrl)
+		releases.EXPECT().SelectByMCPID(gomock.Any(), gomock.Nil(), "mcp-1").
+			Return(&model.MCPServerReleaseDB{MCPID: "mcp-1", Version: 2}, nil)
+		auth := mocks.NewMockIAuthorizationService(ctrl)
+		auth.EXPECT().GetAccessor(gomock.Any(), "").Return(&interfaces.AuthAccessor{ID: "u-1"}, nil)
+		auth.EXPECT().OperationCheckAny(gomock.Any(), gomock.Any(), "mcp-1", interfaces.AuthResourceTypeMCP,
+			operationsExactly(interfaces.AuthOperationTypeView, interfaces.AuthOperationTypePublicAccess,
+				interfaces.AuthOperationTypeExecute)).Return(true, nil)
+		instances := &versionRecordingInstances{}
+		svc := &mcpServiceImpl{
+			logger:             logger.DefaultLogger(),
+			AuthService:        auth,
+			DBMCPServerConfig:  configs,
+			DBMCPServerRelease: releases,
+			MCPInstanceService: instances,
+		}
+
+		_, err := svc.GetMCPTools(publicCtx, &interfaces.MCPProxyToolListRequest{MCPID: "mcp-1"})
+		So(errors.Is(err, errInstanceReached), ShouldBeTrue)
+		So(instances.versions, ShouldResemble, []int{2})
 	})
 }
