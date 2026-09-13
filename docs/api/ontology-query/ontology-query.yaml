@@ -3868,28 +3868,32 @@ components:
           description: 上次查询返回的不透明且经过认证的对象分页游标；第一次查询不传此字段
           type: string
     TypeEdge:
-      description: 路径中的边信息。通过关系类id确定边，通过路径的起点和终点来确定当前路径的方向为正向还是反向，与关系类的起终点一致为正向，相反则为反向。
+      description: |
+        路径中的一条边，第 i 条边连接 object_types 的第 i 个和第 i+1 个节点。通过关系类 id 确定边；
+        正向还是反向由服务端对照关系类定义判断：相邻节点依次为关系类的起点、终点即正向，依次为终点、起点即反向，
+        两者都不是则返回 400（OntologyQuery.KnowledgeNetwork.InvalidParameter.TypePath）。
       required:
       - relation_type_id
-      - source_object_type_id
-      - target_object_type_id
       type: object
       properties:
         relation_type_id:
           description: 关系类id
           type: string
         source_object_type_id:
-          description: 路径的起点对象类
+          description: 可省略。本次遍历从哪个节点出发，即 object_types[i].id；不是关系类定义的起点，反向遍历时与关系类定义相反。填写时必须等于 object_types[i].id。
           type: string
         target_object_type_id:
-          description: 路径的终点对象类id
+          description: 可省略。本次遍历到达哪个节点，即 object_types[i+1].id；不是关系类定义的终点，反向遍历时与关系类定义相反。填写时必须等于 object_types[i+1].id。
           type: string
+        direction:
+          description: 可省略。forward 沿关系类定义从起点走向终点，backward 逆着走；缺省时按相邻节点判断。只有自引用关系类（起点和终点是同一个对象类）需要写 backward 才能反向走。与相邻节点矛盾时返回 400。
+          type: string
+          enum:
+          - forward
+          - backward
     RelationTypePath:
       description: 基于路径获取对象子图
       required:
-      - source_object_type_id
-      - direction
-      - path_length
       - relation_types
       - object_types
       type: object
@@ -4065,10 +4069,7 @@ components:
     SubGraphQueryBaseOnTypePath:
       description: 基于路径获取对象子图
       required:
-      - source_object_type_id
-      - direction
-      - path_length
-      - relation_paths
+      - relation_type_paths
       type: object
       properties:
         relation_type_paths:

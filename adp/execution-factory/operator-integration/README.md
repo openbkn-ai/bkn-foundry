@@ -116,7 +116,7 @@ req.Header.Set("x-account-type", "user")
 
 ## Authorization
 
-When `AUTH_ENABLED=true`, `BKN_SAFE_URL` is required. It must be an absolute
+`BKN_SAFE_URL` is required. It must be an absolute
 HTTP(S) service URL without credentials, query, fragment, or a non-root path;
 invalid configuration stops the service at startup.
 

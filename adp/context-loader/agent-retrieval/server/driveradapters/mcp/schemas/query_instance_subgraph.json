@@ -21,7 +21,7 @@
       },
       "relation_type_paths": {
         "type": "array",
-        "description": "关系路径模板。object_types 与 relation_types 的顺序必须严格对应：n 跳路径 => object_types 长度为 n+1，relation_types 长度为 n；relation_types 不可为空。节点上的过滤条件取值规则：like/not_like 是字面子串（不要自己拼 %，未转义的 % 会被拒），regex 的锚定与大小写敏感性随资源存储而变（「包含」写 .*词.*）",
+        "description": "关系路径模板。object_types 与 relation_types 的顺序必须严格对应：n 跳路径 => object_types 长度为 n+1，relation_types 长度为 n；relation_types 不可为空。路径可以逆着关系类定义走（反向遍历），节点按实际走过的顺序排列即可。节点上的过滤条件取值规则：like/not_like 是字面子串（不要自己拼 %，未转义的 % 会被拒），regex 的锚定与大小写敏感性随资源存储而变（「包含」写 .*词.*）",
         "minItems": 1,
         "items": {
           "type": "object",
@@ -164,14 +164,12 @@
             },
             "relation_types": {
               "type": "array",
-              "description": "路径中的边集合，顺序必须与 object_types 对齐。第 i 条边的 source/target 必须等于 object_types 的第 i / i+1 个对象类 id；方向由 source/target 与关系类定义一致性决定",
+              "description": "路径中的边集合，第 i 条边连接 object_types 的第 i 个和第 i+1 个节点。每条边只需给 relation_type_id：从哪个节点走到哪个节点由相邻节点决定，正向还是反向由服务端对照关系类定义判断。例：关系类 rel_order_user 定义为 order → user，要走 user_address → user → order 时，第 2 条边写 {\"relation_type_id\": \"rel_order_user\"} 即可，等价于 source_object_type_id=user、target_object_type_id=order，与关系类定义相反",
               "minItems": 1,
               "items": {
                 "type": "object",
                 "required": [
-                  "relation_type_id",
-                  "source_object_type_id",
-                  "target_object_type_id"
+                  "relation_type_id"
                 ],
                 "properties": {
                   "relation_type_id": {
@@ -180,11 +178,19 @@
                   },
                   "source_object_type_id": {
                     "type": "string",
-                    "description": "起点对象类 id"
+                    "description": "可省略。本条边在路径中出发的节点，即 object_types[i].id，不是关系类定义的起点：反向遍历时与关系类定义相反。填写时必须等于 object_types[i].id"
                   },
                   "target_object_type_id": {
                     "type": "string",
-                    "description": "终点对象类 id"
+                    "description": "可省略。本条边在路径中到达的节点，即 object_types[i+1].id，不是关系类定义的终点：反向遍历时与关系类定义相反。填写时必须等于 object_types[i+1].id"
+                  },
+                  "direction": {
+                    "type": "string",
+                    "enum": [
+                      "forward",
+                      "backward"
+                    ],
+                    "description": "可省略。forward 沿关系类定义从起点走向终点，backward 逆着走。服务端会按相邻节点自动判断；只有关系类的起点和终点是同一个对象类（自引用，如上级部门）时才需要写 backward 来反向走。与相邻节点矛盾会报错"
                   }
                 },
                 "additionalProperties": false

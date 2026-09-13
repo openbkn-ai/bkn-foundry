@@ -22,10 +22,10 @@ onboard_print_completion_report() {
     _tpw="${ONBOARD_TEST_USER_PASSWORD:-${ONBOARD_DEFAULT_TEST_USER_PASSWORD:-111111}}"
 
     if type onboard_bkn_safe_detected &>/dev/null && onboard_bkn_safe_detected 2>/dev/null; then
-        _isf="bkn-safe (full install)"
+        _isf="bkn-safe"
         _isf_styled="${GREEN}${_isf}${NC}"
     else
-        _isf="Minimum install (no bkn-safe detected)"
+        _isf="bkn-safe missing"
         _isf_styled="${YELLOW}${_isf}${NC}"
     fi
 

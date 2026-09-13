@@ -137,8 +137,6 @@ func Test_defaultDuplicateCheck(t *testing.T) {
 }
 
 func Test_ExecuteAction_DuplicateCheck(t *testing.T) {
-	t.Setenv("AUTH_ENABLED", "false")
-
 	Convey("ExecuteAction returns 409 when defaultDuplicateCheck finds in-flight duplicate", t, func() {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
@@ -162,6 +160,8 @@ func Test_ExecuteAction_DuplicateCheck(t *testing.T) {
 		}
 		omAccess.EXPECT().GetActionType(gomock.Any(), "kn_001", interfaces.MAIN_BRANCH, "at_001").
 			Return(actionType, map[string]any{}, true, nil)
+		omAccess.EXPECT().GetObjectType(gomock.Any(), "kn_001", interfaces.MAIN_BRANCH, "ot_001").
+			Return(interfaces.ObjectType{KNID: "kn_001"}, true, nil)
 
 		ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).Return(interfaces.Objects{
 			Datas: []map[string]any{
@@ -185,6 +185,7 @@ func Test_ExecuteAction_DuplicateCheck(t *testing.T) {
 			logsService: logsService,
 			ots:         ots,
 			proxy:       &actionProxyResolverStub{},
+			permissions: &actionPermissionStub{},
 		}
 		service.duplicateCheckHook = service.defaultDuplicateCheck
 

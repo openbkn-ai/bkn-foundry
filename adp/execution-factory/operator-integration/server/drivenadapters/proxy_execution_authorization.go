@@ -26,7 +26,7 @@ type proxyExecutionAuthorizationAccess struct {
 }
 
 // NewProxyExecutionAuthorizationAccess creates the bkn-safe access used by the
-// mandatory managed-proxy PEP. It intentionally does not depend on AUTH_ENABLED.
+// mandatory managed-proxy PEP.
 func NewProxyExecutionAuthorizationAccess() interfaces.ProxyExecutionAuthorizationAccess {
 	baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("BKN_SAFE_URL")), "/")
 	return &proxyExecutionAuthorizationAccess{

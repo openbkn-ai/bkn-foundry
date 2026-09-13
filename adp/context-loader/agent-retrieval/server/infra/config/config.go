@@ -17,7 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	"github.com/creasty/defaults"
 	bknotel "github.com/openbkn-ai/bkn-foundry/comm-go/otel"
@@ -215,27 +214,7 @@ func (conf *Project) GetMachineID() string {
 var (
 	once         sync.Once
 	configLoader *Config
-
-	authEnabledOnce sync.Once
-	authEnabled     atomic.Bool
 )
-
-// parseAuthEnabled parses an AUTH_ENABLED env value into a boolean.
-// Returns true unless the value is exactly "false" or "0" (case-insensitive, trimmed).
-func parseAuthEnabled(envVal string) bool {
-	v := strings.TrimSpace(strings.ToLower(envVal))
-	return v != "false" && v != "0"
-}
-
-// GetAuthEnabled returns whether authentication is enabled.
-// Defaults to true (secure by default). Only returns false when
-// AUTH_ENABLED is explicitly set to "false" or "0" (case-insensitive).
-func GetAuthEnabled() bool {
-	authEnabledOnce.Do(func() {
-		authEnabled.Store(parseAuthEnabled(os.Getenv("AUTH_ENABLED")))
-	})
-	return authEnabled.Load()
-}
 
 // NewConfigLoader gets configuration
 func NewConfigLoader() *Config {

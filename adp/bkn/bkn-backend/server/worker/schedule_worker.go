@@ -191,12 +191,9 @@ func (w *ScheduleWorker) tryExecuteSchedule(ctx context.Context, schedule *inter
 
 // executeSchedule calls ontology-query to execute the action
 func (w *ScheduleWorker) executeSchedule(ctx context.Context, schedule *interfaces.ActionSchedule) (string, error) {
-	executionSubject := schedule.Creator
-	if common.GetAuthEnabled() {
-		executionSubject = schedule.ExecutionSubject
-		if executionSubject.ID == "" || executionSubject.Type == "" {
-			return "", fmt.Errorf("schedule execution subject is missing")
-		}
+	executionSubject := schedule.ExecutionSubject
+	if executionSubject.ID == "" || executionSubject.Type == "" {
+		return "", fmt.Errorf("schedule execution subject is missing")
 	}
 
 	// Build the request to ontology-query

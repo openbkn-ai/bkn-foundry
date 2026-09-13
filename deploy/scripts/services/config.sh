@@ -471,9 +471,6 @@ DEP_EOF
 )
     fi
 
-    # Auth is always on: bkn-safe is a mandatory module (the no-auth
-    # auth.enabled=false install mode has been removed).
-    local auth_enabled="true"
     # Platform initial password for bkn-safe (seeded admin + users created
     # without an explicit password). Chosen once per install and preserved
     # across config regenerations; the core installer passes it to the bkn-safe
@@ -516,8 +513,6 @@ BKNSAFE_ON
 
     cat > "${out}" <<EOF
 namespace: ${cfg_namespace}
-auth:
-  enabled: ${auth_enabled}
 env:
   language: ${cfg_lang}
   timezone: ${cfg_tz}

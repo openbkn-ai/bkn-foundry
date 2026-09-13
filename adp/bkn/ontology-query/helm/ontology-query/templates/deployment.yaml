@@ -140,8 +140,6 @@ spec:
             value: "{{ .Values.env.actionExecutionMaxObjects }}"
           - name: ACTION_EXECUTION_DUPLICATE_WINDOW_SECONDS
             value: "{{ .Values.env.actionExecutionDuplicateWindowSeconds }}"
-          - name: AUTH_ENABLED
-            value: {{ .Values.auth.enabled | quote }}
           - name: BKN_SAFE_BASE_URL
             value: {{ .Values.bknSafe.url | quote }}
         resources: {{- toYaml .Values.resources | nindent 10 }}

@@ -233,6 +233,8 @@ func GenerateCapabilityBindingAuditObject(id string, name string) audit.AuditObj
 // execution factory for names and statuses anyway: backfilling them here would add a service hop
 // to every recall to produce data the caller is about to fetch itself.
 type CapabilityReference struct {
+	// ID is the exact binding row used as the managed-proxy grant source.
+	ID             string `json:"id"`
 	CapabilityType string `json:"capability_type"`
 	// BoxID is the owning tool box of a function reference; absent for a skill.
 	BoxID        string `json:"box_id,omitempty"`

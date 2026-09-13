@@ -162,7 +162,8 @@ func Test_AttachCapabilities_ResponseArrayContract(t *testing.T) {
 		defer ctrl.Finish()
 		kns := bmock.NewMockKNService(ctrl)
 		cbs := bmock.NewMockCapabilityBindingService(ctrl)
-		handler := &restHandler{kns: kns, cbs: cbs}
+		publisher := &knProxyMutationPublisherStub{}
+		handler := &restHandler{kns: kns, cbs: cbs, knProxyPublisher: publisher}
 		engine := gin.New()
 		engine.POST("/knowledge-networks/:kn_id/capabilities", func(c *gin.Context) {
 			handler.AttachCapabilities(c, hydra.Visitor{ID: "user-1", Type: hydra.VisitorType_User})
@@ -183,6 +184,7 @@ func Test_AttachCapabilities_ResponseArrayContract(t *testing.T) {
 		So(response.Code, ShouldEqual, http.StatusOK)
 		So(response.Body.String(), ShouldContainSubstring, `"boxes":[]`)
 		So(response.Body.String(), ShouldNotContainSubstring, `"boxes":null`)
+		So(publisher.calls, ShouldEqual, 1)
 		var body interfaces.CapabilityBindingsList
 		So(json.Unmarshal(response.Body.Bytes(), &body), ShouldBeNil)
 		So(body.Boxes, ShouldNotBeNil)

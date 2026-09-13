@@ -29,6 +29,7 @@ const (
 	ProxyTargetTypeMCP         = "mcp"
 	ProxyChildTypeAction       = "action_type"
 	ProxyChildTypeLogic        = "logic_property"
+	ProxyChildTypeCapability   = "capability_binding"
 	ProxyOperationExecute      = "execute"
 )
 

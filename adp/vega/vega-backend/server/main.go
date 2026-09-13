@@ -130,15 +130,13 @@ func main() {
 	logics.SetDB(db)
 
 	// The Set order is sorted in ascending alphabetical order
-	if common.GetAuthEnabled() {
-		logics.SetAuthAccess(auth.NewHydraAuthAccess(appSetting))
-		permissionAccess, err := permission.MaybeShadow(permission.NewPermissionAccess(appSetting))
-		if err != nil {
-			logger.Fatalf("authorization provider is misconfigured: %v", err)
-		}
-		logics.SetPermissionAccess(permissionAccess)
-		logics.SetUserMgmtAccess(user_mgmt.NewUserMgmtAccess(appSetting))
+	logics.SetAuthAccess(auth.NewHydraAuthAccess(appSetting))
+	permissionAccess, err := permission.MaybeShadow(permission.NewPermissionAccess(appSetting))
+	if err != nil {
+		logger.Fatalf("authorization provider is misconfigured: %v", err)
 	}
+	logics.SetPermissionAccess(permissionAccess)
+	logics.SetUserMgmtAccess(user_mgmt.NewUserMgmtAccess(appSetting))
 	logics.SetProxyAuthorizationAccess(permission.NewProxyAuthorizationAccess())
 
 	logics.SetBuildTaskAccess(build_task.NewBuildTaskAccess(appSetting))

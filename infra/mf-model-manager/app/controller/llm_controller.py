@@ -10,7 +10,6 @@ from app.commons.i18n import get_error_message
 from app.commons.locale import error_with_message
 from app.commons.snow_id import worker
 from app.controller import model_quota_controller
-from app.core.config import base_config
 from app.dao.model_quota_dao import model_quota_dao
 from app.logs.stand_log import StandLogger
 from app.mydb.ConnectUtil import redis_util, get_redis_util
@@ -118,11 +117,8 @@ async def add_model(schema_para, userId, language, role=""):
                 config["OperationCode"] = model_configs.get("OperationCode", "")
             model_id = worker.get_id()
             # Grant the new model instance to its creator; add_permission bypasses administrators.
-            if base_config.AUTH_ENABLED:
-                user_infos = await get_username_by_ids([userId])
-                user_name = user_infos.get(userId, "")
-            else:
-                user_name = ""
+            user_infos = await get_username_by_ids([userId])
+            user_name = user_infos.get(userId, "")
             grant_ok = await permission_manager.add_permission(
                 user_id=userId, resource_id=str(model_id), resource_name="大模型",
                 resource_type="large_model", user_name=user_name, role=role)
@@ -364,8 +360,8 @@ async def source_model(userId, language, page, size, name, order, series, rule, 
         return JSONResponse(status_code=400, content=error)
     else:
         try:
-            # Return all models when authorization is disabled or the caller is an administrator.
-            if not base_config.AUTH_ENABLED or userId == "266c6a42-6131-4d62-8f39-853e7093701c":
+            # Administrators can list all models without object-level filtering.
+            if userId == "266c6a42-6131-4d62-8f39-853e7093701c":
                 # DAO access is synchronous. Keep connection acquisition and SQL work
                 # off the FastAPI event-loop worker while preserving query semantics.
                 request_started_at = time.perf_counter()
@@ -1018,7 +1014,7 @@ async def get_monitor_data(userId, language, model_id, role=""):
                 parameters="model_id")
             return JSONResponse(status_code=400, content=error_dict)
         # Authorization (#213): callers without display permission cannot view model statistics.
-        # check_display bypasses administrators and disabled authorization.
+        # Administrators bypass check_display at this call site.
         if userId != "266c6a42-6131-4d62-8f39-853e7093701c" and \
                 not await permission_manager.check_display(userId, role, "large_model", model_id):
             return JSONResponse(status_code=403, content=NotPermissionError)
@@ -1108,8 +1104,8 @@ async def get_overview_data(userId, language, model_id, start_time, end_time, ro
     try:
         # Authorization (#213): check display permission for a selected model.
         # Aggregate views require permission for at least one large model.
-        # Administrators and disabled authorization bypass this check.
-        if base_config.AUTH_ENABLED and userId != "266c6a42-6131-4d62-8f39-853e7093701c":
+        # Administrators bypass this object-level check.
+        if userId != "266c6a42-6131-4d62-8f39-853e7093701c":
             if model_id:
                 if not await permission_manager.check_display(userId, role, "large_model", model_id):
                     return JSONResponse(status_code=403, content=NotPermissionError)

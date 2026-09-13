@@ -147,8 +147,6 @@ spec:
           {{- end }}
           - name: DM_SVC_PATH
             value: /opt/bkn-backend/config
-          - name: AUTH_ENABLED
-            value: {{ .Values.auth.enabled | quote }}
           - name: KN_CHILD_RESOURCE_FILTER_CHUNK_SIZE
             value: {{ .Values.auth.knChildResourceFilterChunkSize | quote }}
         resources: {{- toYaml .Values.resources | nindent 10 }}

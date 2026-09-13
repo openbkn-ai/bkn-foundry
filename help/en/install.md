@@ -6,7 +6,7 @@ This page covers **prerequisites**, **install steps**, and **post-install checks
 
 > Use the `deploy.sh` script under the `deploy/` directory from your product bundle or build tree.
 
-> **`deploy.sh` global flags** (`--distro=k3s|k8s`, `-y`, `--force-upgrade`, `--config=…`, …) are parsed only when they appear **before** the module, e.g. `bash ./deploy.sh --distro=k8s openbkn install --minimum`. A trailing `... install --minimum --distro=k8s` is **not** applied as distro. Use `export KUBE_DISTRO=k8s` for the same effect, or move `--distro` forward (same rule as `-y` / `--force-upgrade`).
+> **`deploy.sh` global flags** (`--distro=k3s|k8s`, `-y`, `--force-upgrade`, `--config=…`, …) are parsed only when they appear **before** the module, e.g. `bash ./deploy.sh --distro=k8s openbkn install`. A trailing `... install --distro=k8s` is **not** applied as distro. Use `export KUBE_DISTRO=k8s` for the same effect, or move `--distro` forward (same rule as `-y` / `--force-upgrade`).
 
 ---
 
@@ -170,7 +170,7 @@ After `--check-only` or `--fix`, preflight prints a **Summary** (counts per stat
     sudo bash ./preflight.sh --fix          # … (per-item y/N unless -y)
     sudo bash ./preflight.sh --check-only   # re-check until blocking [FAIL] are gone (or use --lenient)
   Only then install:
-    sudo bash ./deploy.sh openbkn install --minimum
+    sudo bash ./deploy.sh openbkn install
     sudo bash ./deploy.sh openbkn install
   Finally: sudo bash ./onboard.sh from deploy/ (Linux; macOS dev uses plain bash. Node 22+ + openbkn on PATH; sudo bash ./preflight.sh --fix helps …)
 ```
@@ -187,23 +187,8 @@ For more troubleshooting and manual fallbacks, see **`deploy/README.md` → Trou
 
 ## 🚀 Install BKN Foundry
 
-### Minimum install (recommended for first try)
-
-Skips optional authentication modules for a lighter footprint:
-
-```bash
-./deploy.sh openbkn install --minimum
-```
-
-Equivalent flags:
-
-```bash
-./deploy.sh openbkn install --set auth.enabled=false
-```
-
-### Full install
-
-Includes authentication components:
+Authentication and authorization are mandatory; the installation includes
+BKN Safe and its bundled Hydra components:
 
 ```bash
 ./deploy.sh openbkn install
@@ -264,11 +249,11 @@ Typical flags:
 | Flag | Meaning |
 | --- | --- |
 | *(none)* | Interactive: walks through Node / `openbkn` install (if missing), auth (single CLI — admin is built in via `openbkn admin`), then model / BKN prompts |
-| `-y` / `--yes` | Auto-accept all prompts: bootstrap, full-auth HTTP defaults (`admin` + the per-install initial password from `bknSafe.initialPassword` in config.yaml), `test` user creation + role sync, `openbkn` relogin as `test`. Skips interactive **model registration**; use `--config=models.yaml` for non-interactive model registration. |
+| `-y` / `--yes` | Auto-accept all prompts: bootstrap, HTTP defaults (`admin` + the per-install initial password from `bknSafe.initialPassword` in config.yaml), `test` user creation + role sync, `openbkn` relogin as `test`. Skips interactive **model registration**; use `--config=models.yaml` for non-interactive model registration. |
 | `--config=models.yaml` | Non-interactive: register models (and optional BKN) via YAML; see `deploy/conf/models.yaml.example` |
 | `--enable-bkn-search` | BKN ConfigMap patch only (after probe) |
 
-**Full install (auth enabled):** onboarding treats the cluster as a full-auth install when related Helm releases or namespaces exist. **`onboard.sh` then performs the following 5 steps automatically** (you do **not** need to run them by hand — they are listed here so you know what is happening, and what to fall back to if a step fails):
+**`onboard.sh` performs the following 5 steps automatically** (you do **not** need to run them by hand — they are listed here so you know what is happening, and what to fall back to if a step fails):
 
 1. **`openbkn auth login`** (`onboard_ensure_bkn_auth`) — session saved under `~/.bkn`. HTTP defaults to `admin` + the per-install initial password (`bknSafe.initialPassword` in config.yaml) (or browser OAuth on a TTY); under `-y` HTTP defaults are used automatically.
 2. **`openbkn` on `PATH`** (`onboard_ensure_bkn_cli`) — runs `npm i -g @openbkn/bkn-sdk` if missing (interactive prompt, or auto under `-y`). Admin is built in via the `openbkn admin` subcommand — no separate package.
@@ -277,8 +262,6 @@ Typical flags:
 5. **Model registration** (interactive or YAML) — uses **`~/.bkn` as `test`**. Context Loader's built-in tools are served over MCP only and are no longer registered into the execution factory's toolboxes; see [Quick Start](quick-start.md) for how to list them.
 
 If any step fails, the script exits non-zero with a clear message; re-run `sudo bash deploy/onboard.sh` (Linux) / `bash deploy/onboard.sh` (macOS dev) after fixing the cause — earlier successful steps are detected and skipped (idempotent re-runs).
-
-**Minimum install** (`--minimum`): only `openbkn auth` (often `--no-auth`); the full-auth-only steps 2–4 above are no-ops (admin tasks need the auth-enabled backend).
 
 At the end, an **English completion report** is printed unless `ONBOARD_NO_COMPLETION_REPORT=1`.
 
@@ -295,8 +278,8 @@ flowchart TB
   mode -->|default: interactive; optional -y| p3[onboard_probe] --> ui["Namespace + LLM/embedding (skip-if-already-exists) + BKN patch (only when default actually changes)"] --> r2[Completion report] --> e3([exit 0])
 ```
 
-- **`onboard_probe` runs in all three modes** before BKN-only, YAML, or interactive model registration. On a **full-auth install**, it includes **admin HTTP auth (same `openbkn` defaults)**, **user `test`**, **`openbkn` relogin as `test`**, then model registration.
-- **`-y`** does not set `--config`; it mainly auto-accepts **Node / npm -g** bootstrap and **full-auth** `openbkn` **HTTP** auth defaults where applicable. Under `-y` the interactive model section is skipped (use `--config=models.yaml` to register non-interactively); the completion report still shows what is already on the platform.
+- **`onboard_probe` runs in all three modes** before BKN-only, YAML, or interactive model registration. It includes **admin HTTP auth (same `openbkn` defaults)**, **user `test`**, **`openbkn` relogin as `test`**, then model registration.
+- **`-y`** does not set `--config`; it mainly auto-accepts **Node / npm -g** bootstrap and `openbkn` **HTTP** auth defaults. Under `-y` the interactive model section is skipped (use `--config=models.yaml` to register non-interactively); the completion report still shows what is already on the platform.
 - **Re-runs are safe.** Interactive model registration **detects what is already there** and only asks to add more:
   - **LLM** — if any LLM is already registered, the script asks `Register another LLM now? [y/N]` (default **No**).
   - **Embedding / small model** — same pattern. If you do register a new embedding, the script then asks whether to make it the **BKN default**:
@@ -305,15 +288,15 @@ flowchart TB
   - The **BKN ConfigMap patch + `bkn-backend` / `ontology-query` rollout restart** runs **only when you actually change the default**. If you keep the existing default, the ConfigMap is left alone and nothing is restarted.
   - YAML mode (`--config=models.yaml`) follows the same idea: per-model registration is skipped when the model already exists, and the BKN patch+restart is skipped when both ConfigMaps already declare the same `defaultSmallModelEnabled=true` / `defaultSmallModelName`.
 
-**2) What `onboard_probe` does (linear order; no-auth steps are no-ops or skip quickly)**
+**2) What `onboard_probe` does (linear order)**
 
 ```mermaid
 flowchart TB
   subgraph probe["onboard_probe"]
     A["onboard_ensure_bkn_auth\n(openbkn: HTTP default admin + recorded initial password, or browser)"] --> B["kubectl: ns or target namespace"]
     B --> C["onboard_prepend_npm_global_bin_to_path"]
-    C --> D["onboard_recommend_admin_cli (Helm / ns → full-auth?)"]
-    D --> E["ensure admin CLI\n(npm -g openbkn on full-auth installs if needed)"]
+    C --> D["onboard_recommend_admin_cli (detect bkn-safe)"]
+    D --> E["ensure admin CLI\n(npm -g openbkn if needed)"]
     E --> F["admin auth (same openbkn defaults)\n(admin auth: same openbkn defaults, or -k browser; -y: auto HTTP)"]
     F --> G1["onboard_provision_bkn_safe_test_user\ncreate or sync test + roles"]
     G1 --> G2["onboard re-login…\nopenbkn auth login … -u test (HTTP)"]
@@ -321,9 +304,7 @@ flowchart TB
   end
 ```
 
-On **minimum (no-auth)** installs, the full-auth-only steps do not require the admin backend and typically skip the **test** / **relogin** gating.
-
-**3) Full-auth install: who talks to whom (user `test`)**
+**3) Authenticated install: who talks to whom (user `test`)**
 
 ```mermaid
 sequenceDiagram
@@ -341,24 +322,22 @@ sequenceDiagram
   O->>K: model registration / later openbkn steps
 ```
 
-After **probe**, the default path continues with **Namespace + models + BKN** in this shell: **~/.bkn** should already be **test** on a full-auth install so those calls use the business user.
+After **probe**, the default path continues with **Namespace + models + BKN** in this shell: **~/.bkn** should already be **test** so those calls use the business user.
 
 The `openbkn` CLI and its `admin` subcommand share **one** login and token store. Business-plane work such as model registration uses the `test` session; the initial console `admin` session often gets 403 there.
 
 ---
 
-## 🛡️ Administrator commands after a full install (`openbkn admin`)
+## 🛡️ Administrator commands after installation (`openbkn admin`)
 
-After a full install (with `auth.enabled=true`), platform-level operations — **users, organizations, roles, models, audit** — are managed through the **`openbkn admin`** subcommand of the same `openbkn` CLI. There is **no separate admin package** — admin ships with [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk) and is reached via `openbkn admin ...`:
+After installation, platform-level operations — **users, organizations, roles, models, audit** — are managed through the **`openbkn admin`** subcommand of the same `openbkn` CLI. There is **no separate admin package** — admin ships with [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk) and is reached via `openbkn admin ...`:
 
 | Command surface | Audience | Scope |
 | --- | --- | --- |
 | `openbkn` (`@openbkn/bkn-sdk`) | End users / Agents | BKN, Action, Skill, query, agent chat |
 | `openbkn admin` (same package) | Platform administrators | Users, organizations, roles, models, audit, raw HTTP |
 
-**When usable:** after a full install (`./deploy.sh openbkn install` without `--minimum`). **On a `--minimum` install most `openbkn admin` commands return 401 / 404 — that is expected, the relevant services are not deployed.**
-
-**Backend services it talks to:** `user-management` / `deploy-manager` / `deploy-auth` / `eacp` / `mf-model-manager` / OAuth2 (Hydra) — exactly the set enabled by a full install.
+**Backend services it talks to:** `user-management` / `deploy-manager` / `deploy-auth` / `eacp` / `mf-model-manager` / OAuth2 (Hydra).
 
 ### 📥 Install
 

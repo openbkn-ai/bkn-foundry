@@ -97,9 +97,9 @@ limit. It must not be used to reject an otherwise valid business request.
 
 ## Subjects and failure behavior
 
-`AUTH_ENABLED` controls authorization globally. When it is `true`, all checks
-in this contract are enforced. An environment running with authentication
-disabled does not provide these fine-grained authorization guarantees.
+Authentication and authorization are always enabled. All checks in this
+contract are enforced, and the platform fails closed when an identity or
+authorization dependency is unavailable.
 
 Public services derive the subject from their authenticated request. Trusted
 internal calls propagate that subject through their service-to-service identity
@@ -114,7 +114,7 @@ that failure using its own OpenAPI error contract.
 
 ## Upgrade prerequisites
 
-Before upgrading an existing environment that runs with authentication enabled, follow the
+Before upgrading an existing environment, follow the
 [version-specific migration guide](../../deploy/scripts/upgrades/0.1.5/permission_model_transition/README.md)
 and validate the result.
 The deploy entry coordinates a read-only plan, BKN managed-proxy and parent-data
@@ -122,6 +122,6 @@ migration, Core/Enterprise authorization migration, backups, reports, and
 result verification. It preserves historical caller policies instead of
 rebuilding them. Any failure returns a non-zero status, stops later steps, and
 requires the application workloads to remain stopped until recovery completes.
-When authentication is enabled, every participating service must have a valid
+Every participating service must have a valid
 bkn-safe connection before it receives traffic. Exact configuration keys and
 startup validation are documented by the owning service.

@@ -492,11 +492,17 @@ func (cbs *capabilityBindingService) ResolveCapabilities(ctx context.Context, kn
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Resolve capabilities")
 	defer span.End()
 
-	if err := cbs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+	resource := interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   knID,
-	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
-		return nil, err
+	}
+	if err := cbs.ps.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
+		// This is an internal scope-resolution endpoint. Execution callers may
+		// resolve bindings with network execute even when they cannot browse the
+		// network detail; public discovery performs its own view check first.
+		if executeErr := cbs.ps.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_EXECUTE}); executeErr != nil {
+			return nil, executeErr
+		}
 	}
 
 	capabilityType = strings.TrimSpace(capabilityType)
@@ -523,6 +529,7 @@ func (cbs *capabilityBindingService) ResolveCapabilities(ctx context.Context, kn
 	entries := make([]*interfaces.CapabilityReference, 0, len(bindings))
 	for _, binding := range bindings {
 		entries = append(entries, &interfaces.CapabilityReference{
+			ID:             binding.ID,
 			CapabilityType: binding.CapabilityType,
 			BoxID:          binding.OwnerID,
 			CapabilityID:   binding.CapabilityID,

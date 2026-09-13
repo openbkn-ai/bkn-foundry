@@ -459,10 +459,3 @@ func (conf ObservabilityConfig) otelEndpoint() string {
 	}
 	return ""
 }
-
-// GetAuthEnabled returns whether authentication and authorization are enabled.
-// Only explicit false/0 disables the feature; default is enabled.
-func GetAuthEnabled() bool {
-	envVal := os.Getenv("AUTH_ENABLED")
-	return envVal != "false" && envVal != "0"
-}

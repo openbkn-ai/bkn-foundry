@@ -12,7 +12,8 @@ import (
 
 // TestRoleResourceMatrix is the authz equivalence / no-leak proof: default
 // business roles only get their intended resource/action domain. Super-admin
-// allows everything; an unroled user allows nothing. This pins the full seeded
+// allows everything; every subject receives only the model display/execute
+// baseline, while an unroled user gets nothing else. This pins the full seeded
 // authorization model.
 func TestRoleResourceMatrix(t *testing.T) {
 	db := newDB(t)
@@ -49,6 +50,8 @@ func TestRoleResourceMatrix(t *testing.T) {
 			"tool_box":          "execute",
 			"skill":             "execute",
 			"mcp":               "execute",
+			"small_model":       "execute",
+			"large_model":       "execute",
 		},
 	}
 	allTypes := make([]string, 0, len(repOp))
@@ -92,10 +95,13 @@ func TestRoleResourceMatrix(t *testing.T) {
 		t.Error("super-admin should allow any type/op")
 	}
 
-	// unroled user: allowed nothing.
+	// An unroled subject only gets the model use baseline. HTTP decision
+	// endpoints additionally require it to be an enabled account.
 	for _, tpe := range allTypes {
-		if ok, _ := e.Check("u-nobody", tpe, "inst-1", repOp[tpe]); ok {
-			t.Errorf("unroled user must be denied %s:%s", tpe, repOp[tpe])
+		ok, _ := e.Check("u-nobody", tpe, "inst-1", repOp[tpe])
+		want := tpe == "small_model" || tpe == "large_model"
+		if ok != want {
+			t.Errorf("unroled user %s:%s = %v, want %v", tpe, repOp[tpe], ok, want)
 		}
 	}
 }

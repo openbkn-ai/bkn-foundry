@@ -37,10 +37,6 @@ antiAffinity:
   enabled: true
   rule: "soft" # Optional values: hard, soft
 
-# Authentication switch
-auth:
-  enabled: true
-
 bknSafe:
   url: "http://bkn-safe:3000"
 

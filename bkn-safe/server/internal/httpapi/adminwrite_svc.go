@@ -30,6 +30,8 @@ type adminWriteServices struct {
 	db *gorm.DB
 }
 
+var errModelAuthorizationManagedBySystem = fmt.Errorf("%w: model authorization is managed by the platform", adminwrite.ErrForbidden)
+
 // newAdminWriteServices builds the core service surface passed to the ee
 // write-route mounter.
 func newAdminWriteServices(e *authz.Enforcer, db *gorm.DB) adminwrite.Services {
@@ -124,6 +126,9 @@ func (s *adminWriteServices) GrantRolePermission(ctx context.Context, roleID, re
 	}
 	if resourceType == adminConsoleResourceType {
 		return adminwrite.ErrAdminConsolePermission
+	}
+	if isModelAuthorizationResourceType(resourceType) {
+		return errModelAuthorizationManagedBySystem
 	}
 	// A role granted resource_manage gets its required view_detail (#1121): the
 	// management routes load their target first, so without it the role holds a

@@ -70,8 +70,7 @@ func (proxyReadAuditLogger) RecordProxyRead(_ context.Context, event proxyReadAu
 	logger.Infof("proxy read authorization audit: %s", encoded)
 }
 
-// stripProxyInternalHeaders removes trusted BKN context from public routes while
-// preserving X-Account-ID/Type for the existing AUTH_ENABLED=false caller flow.
+// stripProxyInternalHeaders removes trusted BKN context from public routes.
 func (r *restHandler) stripProxyInternalHeaders() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		for _, header := range trustedProxyContextHeaders {

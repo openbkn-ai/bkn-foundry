@@ -2,7 +2,7 @@
 
 以下步骤假设 BKN Foundry 已按 [安装与部署](install.md) 文档完成安装及文中的安装后检查。**完整安装以 Linux 为主**；可选 **macOS** + kind 流程见 [`deploy/dev/README.zh.md`](../../deploy/dev/README.zh.md)（[English](../../deploy/dev/README.md)）。
 
-> 新主机安装前，先在目标机上跑 **`sudo bash deploy/preflight.sh`**（仅检查 / 加 `--fix`）确认内核、sysctl、containerd、kubectl、helm、Node 与 `openbkn` CLI 都齐了；`deploy.sh openbkn install` 之后，再跑 **`sudo bash deploy/onboard.sh`**（Linux，与 `sudo deploy.sh` 对齐；macOS 开发路径用普通 `bash`）完成 LLM + embedding 注册、按需 patch BKN ConfigMap（仅在默认变化时执行），完整安装下还会建好业务用户 **`test`**（Context Loader 的工具只走 MCP 面，不注册工具箱，onboard 与安装都无相关步骤）。两者详见 [安装与部署 — 装机前体检：`preflight.sh`](install.md#-装机前体检--修复preflightsh) 与 [安装与部署 — Post-install：`onboard.sh`](install.md#post-installonboardsh安装后引导)。
+> 新主机安装前，先在目标机上跑 **`sudo bash deploy/preflight.sh`**（仅检查 / 加 `--fix`）确认内核、sysctl、containerd、kubectl、helm、Node 与 `openbkn` CLI 都齐了；`deploy.sh openbkn install` 之后，再跑 **`sudo bash deploy/onboard.sh`**（Linux，与 `sudo deploy.sh` 对齐；macOS 开发路径用普通 `bash`）完成 LLM + embedding 注册、按需 patch BKN ConfigMap（仅在默认变化时执行），并在未显式跳过时建好业务用户 **`test`**（Context Loader 的工具只走 MCP 面，不注册工具箱，onboard 与安装都无相关步骤）。两者详见 [安装与部署 — 装机前体检：`preflight.sh`](install.md#-装机前体检--修复preflightsh) 与 [安装与部署 — Post-install：`onboard.sh`](install.md#post-installonboardsh安装后引导)。
 
 ---
 
@@ -18,9 +18,9 @@ npm install -g @openbkn/bkn-sdk
 
 需要 Node.js 22+（与 [npm 上 OpenBKN SDK](https://www.npmjs.com/package/@openbkn/bkn-sdk) 的 `engines` 一致）。也可用 `npx openbkn --help` 免安装试用。
 
-### 🛡️ 完整安装：准备一个可登录的业务用户
+### 🛡️ 准备一个可登录的业务用户
 
-完整安装（`./deploy.sh openbkn install`，未加 `--minimum`，已启用 `auth`）下平台**必须鉴权**才能使用业务能力。下面有**两条路径**得到一个可登录账号，按你的喜好二选一即可：
+平台**必须鉴权**才能使用业务能力。下面有**两条路径**得到一个可登录账号，按你的喜好二选一即可：
 
 #### 路径 A（推荐）：让 `bash deploy/onboard.sh` 自动准备
 
@@ -54,8 +54,7 @@ openbkn admin user roles <userId>                             # 确认已挂角�
 ```
 
 - **路径 A 默认密码 `111111`**（onboard 给 `test` 设置的）；**路径 B 没有固定默认密码** —— `user create` 为每个用户随机生成初始密码，仅在创建响应中返回一次。请按实际路径取。
-- 角色与权限说明见 [安装与部署 — 完整安装后的管理员命令（`openbkn admin`）](install.md#-完整安装后的管理员命令openbkn-admin) 与 [BKN Safe](manual/bkn-safe.md#-管理员工具openbkn-admin)。生产环境请只赋必要角色；上面「挂齐所有角色」适合本地 / POC / 快速开始。
-- **最小化安装**（`--minimum`）下鉴权服务被裁剪，**两条路径都不需要**：直接用 `openbkn auth login <平台地址> --no-auth` 即可。
+- 角色与权限说明见 [安装与部署 — 安装后的管理员命令（`openbkn admin`）](install.md#-安装后的管理员命令openbkn-admin) 与 [BKN Safe](manual/bkn-safe.md#-管理员工具openbkn-admin)。生产环境请只赋必要角色；上面「挂齐所有角色」适合本地 / POC / 快速开始。
 
 若你已从运维处拿到**可登录的现有账号**（或安装文档给出的初始用户），两条路径都可以跳过，直接进入下节「登录平台」。
 
@@ -67,7 +66,6 @@ openbkn admin user roles <userId>                             # 确认已挂角�
 |---|---|
 | 跑过 `onboard.sh`（路径 A） | `openbkn auth status` 看一下，若已是 `test` 即可直接用；新机器上则：`openbkn auth login <平台地址> -u test -p '<密码>' -k` |
 | 手工建了用户（路径 B） | `openbkn auth login <平台地址> -u <你建的用户名> -p '<密码>' -k`（首次会被要求改密） |
-| 最小化安装（`--minimum`） | `openbkn auth login <平台地址> --no-auth` |
 | 想走浏览器 OAuth | `openbkn auth login <平台地址> -k`（默认行为；TTY 下打开本机浏览器） |
 
 - `<平台地址>` 是部署完成后 `deploy.sh` 输出的访问地址。
@@ -241,7 +239,7 @@ openbkn bkn search <kn_id> "超期订单"
 # 查看已注册的 LLM（获取 llm_id）
 openbkn call '/api/mf-model-manager/v1/llm/list?page=1&size=50'
 
-# 查看可用模板（--minimum 安装可能为空）
+# 查看可用模板
 openbkn agent template-list
 
 # 直接创建 Agent（指定 --llm-id）

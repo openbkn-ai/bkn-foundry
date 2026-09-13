@@ -23,8 +23,6 @@ type permissionService struct {
 	access interfaces.PermissionAccess
 }
 
-type unrestrictedPropertyAccessService struct{}
-
 const (
 	maxPropertyLevelObjectsPerCall    = 100
 	maxPropertyLevelPropertiesPerItem = 200
@@ -36,25 +34,7 @@ func NewPermissionService(appSetting *common.AppSetting) interfaces.PermissionSe
 }
 
 func NewPropertyAccessService(appSetting *common.AppSetting) interfaces.PropertyAccessService {
-	if !common.GetAuthEnabled() {
-		return unrestrictedPropertyAccessService{}
-	}
 	return &permissionService{access: permissionaccess.NewPermissionAccess(appSetting)}
-}
-
-func (unrestrictedPropertyAccessService) ResolvePropertyLevels(_ context.Context,
-	items []interfaces.PropertyLevelsRequestItem) ([]interfaces.PropertyLevelsDecisionEntry, error) {
-	entries := make([]interfaces.PropertyLevelsDecisionEntry, 0, len(items))
-	for _, item := range items {
-		entry := interfaces.PropertyLevelsDecisionEntry{ObjectTypeRef: item.ObjectTypeRef}
-		for _, name := range item.Properties {
-			entry.Properties = append(entry.Properties, interfaces.PropertyAccessDecision{
-				Name: name, Level: interfaces.PropertyAccessFull, Source: "authentication_disabled",
-			})
-		}
-		entries = append(entries, entry)
-	}
-	return entries, nil
 }
 
 // ResolvePropertyLevels splits oversized caller plans without weakening the

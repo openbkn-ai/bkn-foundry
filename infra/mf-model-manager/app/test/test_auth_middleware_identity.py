@@ -17,7 +17,6 @@ from unittest import mock
 
 from starlette.datastructures import Headers
 
-from app.core.config import base_config
 from app.utils.app_utils import _set_trusted_identity, auth_middleware
 
 
@@ -95,8 +94,7 @@ class TestAuthMiddlewareIdentity(unittest.IsolatedAsyncioTestCase):
             return "ok"
 
         session_cm = self._hydra_session('{"active": true, "sub": "real-sub-123", "client_id": "cli"}')
-        with mock.patch.object(base_config, "AUTH_ENABLED", True), \
-                mock.patch("app.utils.app_utils.aiohttp.ClientSession", return_value=session_cm):
+        with mock.patch("app.utils.app_utils.aiohttp.ClientSession", return_value=session_cm):
             result = await auth_middleware(request, call_next)
 
         self.assertEqual(result, "ok")

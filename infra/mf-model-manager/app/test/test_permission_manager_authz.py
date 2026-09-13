@@ -5,7 +5,6 @@
 import unittest
 from unittest import mock
 
-from app.core.config import base_config
 from app.utils.permission_manager import PermissionManager
 
 
@@ -47,9 +46,8 @@ class TestPermissionManagerAuthz(unittest.IsolatedAsyncioTestCase):
     async def test_runtime_check_uses_real_resource_operation_and_effective_scope(self):
         session = _Session([_Response({"allowed": True})])
         manager = self.manager(session)
-        with mock.patch.object(base_config, "AUTH_ENABLED", True):
-            allowed = await manager.check_single_permission(
-                "user-1", 1234567890123456789, "execute", "large_model", "user")
+        allowed = await manager.check_single_permission(
+            "user-1", 1234567890123456789, "execute", "large_model", "user")
 
         self.assertTrue(allowed)
         self.assertEqual(session.calls[0]["url"], "http://bkn-safe/api/safe/v1/authz/check")
@@ -66,9 +64,8 @@ class TestPermissionManagerAuthz(unittest.IsolatedAsyncioTestCase):
         }]})])
         manager = self.manager(session)
 
-        with mock.patch.object(base_config, "AUTH_ENABLED", True):
-            result = await manager.filter_authorized_ids(
-                "user-1", "user", [42, "84"], "large_model", "大模型", "display")
+        result = await manager.filter_authorized_ids(
+            "user-1", "user", [42, "84"], "large_model", "大模型", "display")
 
         self.assertEqual(result, [42])
         self.assertEqual(len(session.calls), 1)
@@ -84,17 +81,26 @@ class TestPermissionManagerAuthz(unittest.IsolatedAsyncioTestCase):
         for response in [_Response({}, status=503), _Response({"decision": "allow"})]:
             with self.subTest(response=response.payload):
                 manager = self.manager(_Session([response]))
-                with mock.patch.object(base_config, "AUTH_ENABLED", True):
-                    allowed = await manager.check_single_permission(
-                        "user-1", "model-1", "execute", "small_model", "user")
+                allowed = await manager.check_single_permission(
+                    "user-1", "model-1", "execute", "small_model", "user")
                 self.assertFalse(allowed)
 
     async def test_invalid_batch_filter_response_fails_closed(self):
         manager = self.manager(_Session([_Response({"result": []})]))
-        with mock.patch.object(base_config, "AUTH_ENABLED", True), \
-                self.assertRaises(RuntimeError):
+        with self.assertRaises(RuntimeError):
             await manager.filter_authorized_ids(
                 "user-1", "user", ["model-1"], "large_model", "大模型", "display")
+
+    async def test_model_create_does_not_recreate_a_per_creator_acl(self):
+        session = _Session([])
+        manager = self.manager(session)
+
+        with mock.patch.object(base_config, "AUTH_ENABLED", True):
+            granted = await manager.add_permission(
+                "builder-1", "model-1", "Model", "large_model", "Builder", "user")
+
+        self.assertTrue(granted)
+        self.assertEqual(session.calls, [])
 
 
 if __name__ == "__main__":

@@ -858,3 +858,40 @@ func (b *bknBackendAccess) ListKNCapabilities(ctx context.Context, knID, branch,
 	}
 	return response.Entries, nil
 }
+
+// ResolveKNProxyBinding asks BKN to validate the exact mounted capability and
+// return its current managed proxy mapping. No proxy identity is accepted from
+// the public request.
+func (b *bknBackendAccess) ResolveKNProxyBinding(ctx context.Context,
+	binding interfaces.KNProxyBinding) (*interfaces.KNProxyAccount, error) {
+	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/proxy-account/resolve",
+		b.baseURL, url.PathEscape(binding.KNID))
+	header := common.GetHeaderForChildOperation(ctx, "bkn.proxy.resolve", 1)
+	header[rest.ContentTypeKey] = rest.ContentTypeJSON
+
+	status, body, err := b.httpClient.PostNoUnmarshal(ctx, src, header, binding)
+	if err != nil {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
+			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+	}
+	if status < http.StatusOK || status >= http.StatusMultipleChoices {
+		var baseError interfaces.KnBaseError
+		if decodeErr := sonic.Unmarshal(body, &baseError); decodeErr != nil {
+			return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
+				infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		}
+		return nil, &infraErr.HTTPError{
+			HTTPCode: status, Code: baseError.ErrorCode, Description: baseError.Description,
+			Solution: baseError.Solution, ErrorLink: baseError.ErrorLink, ErrorDetails: baseError.ErrorDetails,
+		}
+	}
+	var mapping interfaces.KNProxyAccount
+	if len(body) == 0 || sonic.Unmarshal(body, &mapping) != nil ||
+		mapping.KNID != binding.KNID || strings.TrimSpace(mapping.ProxyAccountID) == "" ||
+		mapping.ProxyAccountType != string(interfaces.AccessorTypeApp) || mapping.Version <= 0 ||
+		mapping.LifecycleStatus != "active" || mapping.SyncStatus != "ready" {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+	}
+	return &mapping, nil
+}

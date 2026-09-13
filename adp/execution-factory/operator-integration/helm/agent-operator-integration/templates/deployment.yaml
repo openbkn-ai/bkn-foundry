@@ -77,8 +77,6 @@ spec:
               - name: DB_TYPE
                 value: {{ .Values.depServices.rds.type | quote }}
             {{- end}}
-              - name: AUTH_ENABLED
-                value: {{ .Values.auth.enabled | quote }}
             {{- if .Values.observability.evidence.ingest_url }}
               - name: BKN_TRACE_EVIDENCE_INGEST_URL
                 value: {{ .Values.observability.evidence.ingest_url | quote }}

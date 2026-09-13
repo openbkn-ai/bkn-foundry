@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
@@ -110,23 +109,4 @@ func TestSafeUserManagement(t *testing.T) {
 			t.Fatalf("fallback app = %+v err = %v", a, err)
 		}
 	})
-}
-
-func TestNewUserManagementClientAuthDisabled(t *testing.T) {
-	t.Setenv("AUTH_ENABLED", "false")
-	syncOnce = sync.Once{}
-	um = nil
-	t.Cleanup(func() {
-		syncOnce = sync.Once{}
-		um = nil
-	})
-
-	client := NewUserManagementClient()
-	userMap, err := client.GetUsersName(context.Background(), []string{interfaces.SystemUser, "user1", ""})
-	if err != nil {
-		t.Fatalf("GetUsersName: %v", err)
-	}
-	if userMap[interfaces.SystemUser] != interfaces.SystemUser || userMap["user1"] != "user1" {
-		t.Fatalf("user map = %v", userMap)
-	}
 }

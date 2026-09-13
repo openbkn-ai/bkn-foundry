@@ -37,63 +37,6 @@ func withAccountInfo(ctx context.Context, id, typ string) context.Context {
 	return context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: id, Type: typ})
 }
 
-// ── NoopPermissionService ────────────────────────────────────────────────────
-
-func Test_NoopPermissionService_CheckPermission(t *testing.T) {
-	Convey("Test NoopPermissionService CheckPermission always returns nil\n", t, func() {
-		svc := NewNoopPermissionService(&common.AppSetting{})
-		err := svc.CheckPermission(context.Background(), interfaces.PermissionResource{Type: "kn", ID: "kn1"}, []string{"read"})
-		So(err, ShouldBeNil)
-	})
-}
-
-func Test_NoopPermissionService_CreateResources(t *testing.T) {
-	Convey("Test NoopPermissionService CreateResources always returns nil\n", t, func() {
-		svc := NewNoopPermissionService(&common.AppSetting{})
-		err := svc.CreateResources(context.Background(), []interfaces.PermissionResource{{Type: "kn", ID: "kn1"}}, []string{"read"})
-		So(err, ShouldBeNil)
-	})
-}
-
-func Test_NoopPermissionService_DeleteResources(t *testing.T) {
-	Convey("Test NoopPermissionService DeleteResources always returns nil\n", t, func() {
-		svc := NewNoopPermissionService(&common.AppSetting{})
-		err := svc.DeleteResources(context.Background(), "kn", []string{"kn1", "kn2"})
-		So(err, ShouldBeNil)
-	})
-}
-
-func Test_NoopPermissionService_FilterResources(t *testing.T) {
-	Convey("Test NoopPermissionService FilterResources\n", t, func() {
-		svc := NewNoopPermissionService(&common.AppSetting{})
-
-		Convey("Returns all IDs with fullOps\n", func() {
-			ids := []string{"kn1", "kn2"}
-			fullOps := []string{"read", "write"}
-			result, err := svc.FilterResources(context.Background(), "kn", ids, []string{"read"}, true, fullOps)
-
-			So(err, ShouldBeNil)
-			So(len(result), ShouldEqual, 2)
-			So(result["kn1"].Operations, ShouldResemble, fullOps)
-			So(result["kn2"].Operations, ShouldResemble, fullOps)
-		})
-
-		Convey("Returns empty map for empty input\n", func() {
-			result, err := svc.FilterResources(context.Background(), "kn", []string{}, []string{"read"}, true, []string{"read"})
-			So(err, ShouldBeNil)
-			So(len(result), ShouldEqual, 0)
-		})
-	})
-}
-
-func Test_NoopPermissionService_UpdateResource(t *testing.T) {
-	Convey("Test NoopPermissionService UpdateResource always returns nil\n", t, func() {
-		svc := NewNoopPermissionService(&common.AppSetting{})
-		err := svc.UpdateResource(context.Background(), interfaces.PermissionResource{Type: "kn", ID: "kn1"})
-		So(err, ShouldBeNil)
-	})
-}
-
 // ── PermissionServiceImpl ────────────────────────────────────────────────────
 
 func newTestPermissionImpl(t *testing.T) (*PermissionServiceImpl, *gomock.Controller, *bmock.MockPermissionAccess, *mockMQClient) {

@@ -82,6 +82,10 @@ func TestPostBytesKeepsHTTPErrorSemantics(t *testing.T) {
 		if string(body) == "" {
 			t.Errorf("status %d: body was dropped, callers log it", status)
 		}
+		// classifyQueryError reads the dependency's own error code from it.
+		if string(he.DownstreamBody) != `{"detail":"downstream said no"}` {
+			t.Errorf("status %d: DownstreamBody = %q", status, he.DownstreamBody)
+		}
 	}
 }
 

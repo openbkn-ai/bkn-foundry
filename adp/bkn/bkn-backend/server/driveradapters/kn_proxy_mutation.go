@@ -19,6 +19,16 @@ func (r *restHandler) publishKNChildMutation(ctx context.Context, changes *inter
 	return r.knProxyPublisher.PublishKNChildMutation(ctx, changes, mergeMode, mutate)
 }
 
+func (r *restHandler) publishKNCapabilityMutation(ctx context.Context, knID, branch string,
+	removedBindingIDs []string,
+	mutate func(context.Context, *sql.Tx) (*interfaces.KNCapabilityMutationResult, error),
+) (*interfaces.KNCapabilityMutationResult, error) {
+	if r.knProxyPublisher == nil {
+		return mutate(ctx, nil)
+	}
+	return r.knProxyPublisher.PublishKNCapabilityMutation(ctx, knID, branch, removedBindingIDs, mutate)
+}
+
 func (r *restHandler) createConceptGroup(ctx context.Context, conceptGroup *interfaces.ConceptGroup,
 	mode string, strictMode bool) (id string, err error) {
 	if len(conceptGroup.ObjectTypes) == 0 && len(conceptGroup.RelationTypes) == 0 && len(conceptGroup.ActionTypes) == 0 {

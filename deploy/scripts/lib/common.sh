@@ -696,7 +696,7 @@ _manifest_read_dependency_field() {
 # Get the value of a key from an array of key=value strings.
 # Args: <key> <array_of_set_values...>
 # Returns: value if found, empty string otherwise
-# Example: get_set_value "auth.enabled" "${CORE_SET_VALUES[@]}"
+# Example: get_set_value "image.tag" "${CORE_SET_VALUES[@]}"
 get_set_value() {
     local key="$1"
     shift

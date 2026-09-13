@@ -267,13 +267,45 @@ func resolveAbsentTotal(hasCursor bool, total *int64) *int64 {
 func classifyQueryError(ctx context.Context, err error) error {
 	var he *infraErr.HTTPError
 	if errors.As(err, &he) && he.HTTPCode >= http.StatusBadRequest && he.HTTPCode < http.StatusInternalServerError {
-		details := he.ErrorDetails
-		if details == nil {
-			details = he.Error()
-		}
-		return infraErr.DefaultHTTPError(ctx, he.HTTPCode, details)
+		return infraErr.DefaultHTTPError(ctx, he.HTTPCode, downstreamErrorDetails(he))
 	}
 	return err
+}
+
+// downstreamErrorDetails is what a caller needs from a downstream 4xx, as
+// "<error_code>: <error_details>": ontology-query's code says which rule the
+// request broke and its details say how (for a path query: which edge, and which
+// endpoints were expected). The shared HTTP client's own detail wraps both in a
+// transport string that also carries the internal service URL; it is kept only
+// when the body is not an ontology-query error envelope.
+func downstreamErrorDetails(he *infraErr.HTTPError) any {
+	var envelope struct {
+		ErrorCode    string `json:"error_code"`
+		Description  string `json:"description"`
+		ErrorDetails any    `json:"error_details"`
+	}
+	if len(he.DownstreamBody) > 0 && sonic.Unmarshal(he.DownstreamBody, &envelope) == nil && envelope.ErrorCode != "" {
+		details := envelope.Description
+		switch d := envelope.ErrorDetails.(type) {
+		case nil:
+		case string:
+			if d != "" {
+				details = d
+			}
+		default:
+			if encoded, err := sonic.ConfigStd.Marshal(d); err == nil {
+				details = string(encoded)
+			}
+		}
+		if details == "" {
+			return envelope.ErrorCode
+		}
+		return envelope.ErrorCode + ": " + details
+	}
+	if he.ErrorDetails != nil {
+		return he.ErrorDetails
+	}
+	return he.Error()
 }
 
 // classifyActionError maps a downstream ontology-query failure on the action

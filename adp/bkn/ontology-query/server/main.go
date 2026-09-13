@@ -162,10 +162,7 @@ func main() {
 		return
 	}
 
-	// Sort Set entries in ascending alphabetical order.
-	if common.GetAuthEnabled() {
-		logics.SetAuthAccess(auth.NewHydraAuthAccess(appSetting))
-	}
+	logics.SetAuthAccess(auth.NewHydraAuthAccess(appSetting))
 	logics.SetAgentOperatorAccess(agent_operator.NewAgentOperatorAccess(appSetting))
 	logics.SetModelFactoryAccess(model_factory.NewModelFactoryAccess(appSetting))
 	logics.SetOntologyManagerAccess(ontology_manager.NewOntologyManagerAccess(appSetting))

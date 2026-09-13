@@ -193,8 +193,10 @@ func (c *httpClient) httpDo(ctx context.Context, mtehod, url string, headers map
 		c.logger.Errorf("Exception(http do error, method: %s, url: %s, headers: %v, reqParam: %v, respCode: %d, error: %s)",
 			mtehod, url, utils.ObjectToJSON(headers), utils.ObjectToJSON(reqParam), respCode, respStr)
 		// Exception when calling external service.
-		err = infraErr.NewHTTPError(ctx, respCode, infraErr.ErrExtCommonExternalServerError,
+		httpErr := infraErr.NewHTTPError(ctx, respCode, infraErr.ErrExtCommonExternalServerError,
 			fmt.Sprintf("Exception(http do error, method: %s, url: %s,  http status: %d, error: %s)", mtehod, url, respCode, respStr))
+		httpErr.DownstreamBody = respBody
+		err = httpErr
 		return
 	}
 	return
@@ -229,8 +231,10 @@ func (c *httpClient) httpDoBytes(ctx context.Context, method, url string, header
 		c.logger.Errorf("Exception(http do error, method: %s, url: %s, headers: %v, reqParam: %v, respCode: %d, error: %s)",
 			method, url, utils.ObjectToJSON(headers), utils.ObjectToJSON(reqParam), respCode, respStr)
 		// Exception when calling external service.
-		err = infraErr.NewHTTPError(ctx, respCode, infraErr.ErrExtCommonExternalServerError,
+		httpErr := infraErr.NewHTTPError(ctx, respCode, infraErr.ErrExtCommonExternalServerError,
 			fmt.Sprintf("Exception(http do error, method: %s, url: %s,  http status: %d, error: %s)", method, url, respCode, respStr))
+		httpErr.DownstreamBody = respBody
+		err = httpErr
 		return
 	}
 	return

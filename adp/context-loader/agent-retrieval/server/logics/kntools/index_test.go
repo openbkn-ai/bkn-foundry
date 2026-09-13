@@ -36,6 +36,7 @@ type fakeOperator struct {
 	mcpTools       map[string]*interfaces.GetMCPToolDetailResponse
 	mcpDetailCalls []string
 	gotMCPCall     *interfaces.CallMCPToolRequest
+	gotProxy       *interfaces.KNProxyExecution
 	mcpUnusable    map[string]bool
 	mcpStatusErr   map[string]error
 	skillNames     map[string]string
@@ -176,6 +177,12 @@ func (f *fakeOperator) CallMCPTool(
 	return f.execResp, f.execErr
 }
 
+func (f *fakeOperator) CallMCPToolAsProxy(ctx context.Context, req *interfaces.CallMCPToolRequest,
+	proxy *interfaces.KNProxyExecution) (map[string]any, error) {
+	f.gotProxy = proxy
+	return f.CallMCPTool(ctx, req)
+}
+
 func (f *fakeOperator) ExecutePublishedTool(
 	_ context.Context, req *interfaces.ExecutePublishedToolRequest,
 ) (map[string]any, error) {
@@ -186,6 +193,12 @@ func (f *fakeOperator) ExecutePublishedTool(
 	return f.execResp, f.execErr
 }
 
+func (f *fakeOperator) ExecutePublishedToolAsProxy(ctx context.Context,
+	req *interfaces.ExecutePublishedToolRequest, proxy *interfaces.KNProxyExecution) (map[string]any, error) {
+	f.gotProxy = proxy
+	return f.ExecutePublishedTool(ctx, req)
+}
+
 // fakeBkn answers the capability listing.
 type fakeBkn struct {
 	interfaces.BknBackendAccess
@@ -193,8 +206,9 @@ type fakeBkn struct {
 	refs []*interfaces.CapabilityRef
 	err  error
 
-	gotKN   string
-	gotType string
+	gotKN           string
+	gotType         string
+	gotProxyBinding interfaces.KNProxyBinding
 }
 
 func (f *fakeBkn) ListKNCapabilities(_ context.Context, knID, _, capabilityType string,
@@ -203,11 +217,21 @@ func (f *fakeBkn) ListKNCapabilities(_ context.Context, knID, _, capabilityType 
 	return f.refs, f.err
 }
 
+func (f *fakeBkn) ResolveKNProxyBinding(_ context.Context,
+	binding interfaces.KNProxyBinding) (*interfaces.KNProxyAccount, error) {
+	f.gotProxyBinding = binding
+	return &interfaces.KNProxyAccount{
+		KNID: binding.KNID, ProxyAccountID: "proxy-1", ProxyAccountType: "app",
+		LifecycleStatus: "active", SyncStatus: "ready", Version: 1,
+	}, nil
+}
+
 func mcpToolRefs(pairs ...string) []*interfaces.CapabilityRef {
 	refs := make([]*interfaces.CapabilityRef, 0, len(pairs))
 	for _, pair := range pairs {
 		mcpID, toolName := splitPair(pair)
 		refs = append(refs, &interfaces.CapabilityRef{
+			ID:             "binding-" + toolName,
 			CapabilityType: interfaces.CapabilityTypeMCPTool,
 			BoxID:          mcpID,
 			CapabilityID:   toolName,
@@ -233,6 +257,7 @@ func functionRefs(pairs ...string) []*interfaces.CapabilityRef {
 	for _, pair := range pairs {
 		box, tool := splitPair(pair)
 		refs = append(refs, &interfaces.CapabilityRef{
+			ID:             "binding-" + tool,
 			CapabilityType: interfaces.CapabilityTypeFunction,
 			BoxID:          box,
 			CapabilityID:   tool,
@@ -293,12 +318,21 @@ func newService(bkn *fakeBkn, op *fakeOperator) KnToolsService {
 
 // fakeKnAuthz stands in for the per-caller knowledge-network check.
 type fakeKnAuthz struct {
-	err     error
-	gotKNID string
+	err        error
+	executeErr error
+	gotKNID    string
 }
 
 func (f *fakeKnAuthz) AuthorizeRead(_ context.Context, knID string) error {
 	f.gotKNID = knID
+	return f.err
+}
+
+func (f *fakeKnAuthz) AuthorizeExecute(_ context.Context, knID string) error {
+	f.gotKNID = knID
+	if f.executeErr != nil {
+		return f.executeErr
+	}
 	return f.err
 }
 
@@ -417,8 +451,8 @@ func TestToolboxIDNarrowsWithinTheMountedSet(t *testing.T) {
 // Denial is still honoured where it can be observed: a box that answers, without this tool in it,
 // still drops it (see TestVisibleCatalogueStillFilters). What changes is the case where nothing can
 // be observed at all: the hit survives with the name and description the index holds, and without
-// an input schema, because none was read. execute_tool re-checks the caller-visible catalogue
-// before anything runs, so this discloses a name, not an ability.
+// an input schema, because none was read. execute_tool separately requires network execute,
+// an exact current binding, and a callable owner lifecycle.
 func TestUnreadableToolboxKeepsItsHitsWithoutSchema(t *testing.T) {
 	bkn := &fakeBkn{refs: functionRefs("box-1/t1", "box-2/t2")}
 	op := &fakeOperator{
@@ -537,7 +571,10 @@ func TestExecutePassesOnlyBusinessArguments(t *testing.T) {
 	bkn := &fakeBkn{refs: functionRefs("box-1/t1")}
 	op := &fakeOperator{
 		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{"box-1": tools("box-1", "t1")},
-		execResp:   map[string]any{"ok": true},
+		// The caller has no direct toolbox catalogue permission. Managed execution
+		// must rely on the internal lifecycle check and the exact KN binding instead.
+		toolsErr: map[string]error{"box-1": errors.New("direct target denied")},
+		execResp: map[string]any{"ok": true},
 	}
 
 	resp, err := newService(bkn, op).ExecuteTool(context.Background(), &ExecuteToolReq{
@@ -553,6 +590,35 @@ func TestExecutePassesOnlyBusinessArguments(t *testing.T) {
 	}
 	if op.gotExecuteReq == nil || op.gotExecuteReq.Parameters["city"] != "上海" {
 		t.Fatalf("expected the business arguments to travel, got %+v", op.gotExecuteReq)
+	}
+	if op.gotProxy == nil || op.gotProxy.Mapping.ProxyAccountID != "proxy-1" ||
+		op.gotProxy.Binding.ChildID != "binding-t1" || op.gotProxy.Binding.TargetID != "box-1" {
+		t.Fatalf("expected an exact server-derived capability proxy, got %+v", op.gotProxy)
+	}
+	if bkn.gotProxyBinding.ChildType != "capability_binding" || bkn.gotProxyBinding.Operation != "execute" {
+		t.Fatalf("unexpected proxy resolution binding: %+v", bkn.gotProxyBinding)
+	}
+	if len(op.listedToolbox) != 0 {
+		t.Fatalf("managed execution consulted caller-scoped catalogue: %v", op.listedToolbox)
+	}
+}
+
+func TestExecuteRequiresKnowledgeNetworkExecutePermission(t *testing.T) {
+	bkn := &fakeBkn{refs: functionRefs("box-1/t1")}
+	op := &fakeOperator{toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{
+		"box-1": tools("box-1", "t1"),
+	}}
+	svc := NewKnToolsServiceWith(op, bkn, &fakeKnAuthz{executeErr: errors.New("execute forbidden")})
+
+	_, err := svc.ExecuteTool(context.Background(), &ExecuteToolReq{
+		KnID: "kn1", ToolboxID: "box-1", ToolID: "t1",
+	})
+
+	if err == nil {
+		t.Fatal("expected network execute denial")
+	}
+	if bkn.gotKN != "" || op.executionCount != 0 {
+		t.Fatal("execution denial must happen before binding reads or downstream calls")
 	}
 }
 
@@ -666,6 +732,10 @@ func TestMCPToolsAreSearchableAndCallable(t *testing.T) {
 		}
 		if op.gotExecuteReq != nil {
 			t.Fatal("an MCP tool must not go through the toolbox proxy")
+		}
+		if op.gotProxy == nil || op.gotProxy.Binding.ChildID != "binding-expedite" ||
+			op.gotProxy.Binding.TargetType != "mcp" {
+			t.Fatalf("expected an exact mounted MCP proxy binding, got %+v", op.gotProxy)
 		}
 	})
 

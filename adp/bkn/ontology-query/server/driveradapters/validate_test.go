@@ -9,6 +9,7 @@ package driveradapters
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -559,7 +560,7 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter)
 		})
 
-		Convey("失败 - 起点对象类ID为空", func() {
+		Convey("成功 - 起点对象类ID为空时按相邻节点推导", func() {
 			query := &interfaces.SubGraphQueryBaseOnTypePath{
 				Paths: interfaces.QueryRelationTypePaths{
 					TypePaths: []interfaces.QueryRelationTypePath{
@@ -580,12 +581,11 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 				},
 			}
 			err := validateSubgraphQueryByPathRequest(ctx, query)
-			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter)
+			So(err, ShouldBeNil)
+			So(query.Paths.TypePaths[0].Edges[0].SourceObjectTypeId, ShouldEqual, "ot1")
 		})
 
-		Convey("失败 - 终点对象类ID为空", func() {
+		Convey("成功 - 终点对象类ID为空时按相邻节点推导", func() {
 			query := &interfaces.SubGraphQueryBaseOnTypePath{
 				Paths: interfaces.QueryRelationTypePaths{
 					TypePaths: []interfaces.QueryRelationTypePath{
@@ -606,9 +606,8 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 				},
 			}
 			err := validateSubgraphQueryByPathRequest(ctx, query)
-			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter)
+			So(err, ShouldBeNil)
+			So(query.Paths.TypePaths[0].Edges[0].TargetObjectTypeId, ShouldEqual, "ot2")
 		})
 
 		Convey("失败 - 边的起点与对象类型数组不匹配", func() {
@@ -783,6 +782,151 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 	})
+}
+
+// typePathQuery builds a single-path query over nodes.
+func typePathQuery(nodes []string, edges ...interfaces.TypeEdge) *interfaces.SubGraphQueryBaseOnTypePath {
+	objectTypes := make([]interfaces.ObjectTypeWithKeyField, len(nodes))
+	for i, id := range nodes {
+		objectTypes[i] = interfaces.ObjectTypeWithKeyField{OTID: id}
+	}
+	return &interfaces.SubGraphQueryBaseOnTypePath{
+		Paths: interfaces.QueryRelationTypePaths{
+			TypePaths: []interfaces.QueryRelationTypePath{{ObjectTypes: objectTypes, Edges: edges}},
+		},
+	}
+}
+
+// The edge endpoints are where each hop walks from and to, so they follow from
+// object_types. The path below is the one from #1062: rel_address_user is defined
+// user_address -> user and rel_order_user order -> user, so the second hop walks
+// rel_order_user backward.
+func Test_validateSubgraphQueryByPathRequestEdgeEndpoints(t *testing.T) {
+	issuePath := []string{"user_address", "user", "order"}
+	type endpoints struct{ from, to string }
+	tests := []struct {
+		name      string
+		query     *interfaces.SubGraphQueryBaseOnTypePath
+		language  rest.Language
+		wantEdges []endpoints
+		wantCode  string
+		wantParts []string
+	}{
+		{
+			name: "omitted endpoints are derived from the adjacent nodes",
+			query: typePathQuery(issuePath,
+				interfaces.TypeEdge{RelationTypeId: "rel_address_user"},
+				interfaces.TypeEdge{RelationTypeId: "rel_order_user"}),
+			wantEdges: []endpoints{{"user_address", "user"}, {"user", "order"}},
+		},
+		{
+			name: "legacy request with traversal endpoints is accepted unchanged",
+			query: typePathQuery(issuePath,
+				interfaces.TypeEdge{RelationTypeId: "rel_address_user", SourceObjectTypeId: "user_address", TargetObjectTypeId: "user"},
+				interfaces.TypeEdge{RelationTypeId: "rel_order_user", SourceObjectTypeId: "user", TargetObjectTypeId: "order"}),
+			wantEdges: []endpoints{{"user_address", "user"}, {"user", "order"}},
+		},
+		{
+			name: "explicit direction is accepted",
+			query: typePathQuery(issuePath,
+				interfaces.TypeEdge{RelationTypeId: "rel_address_user", Direction: interfaces.DIRECTION_FORWARD},
+				interfaces.TypeEdge{RelationTypeId: "rel_order_user", Direction: interfaces.DIRECTION_BACKWARD}),
+			wantEdges: []endpoints{{"user_address", "user"}, {"user", "order"}},
+		},
+		{
+			name:      "extra trailing nodes stay accepted",
+			query:     typePathQuery([]string{"order", "user", "user_address"}, interfaces.TypeEdge{RelationTypeId: "rel_order_user"}),
+			wantEdges: []endpoints{{"order", "user"}},
+		},
+		{
+			name: "schema-order endpoints on a reverse hop name both orders",
+			query: typePathQuery(issuePath,
+				interfaces.TypeEdge{RelationTypeId: "rel_address_user"},
+				interfaces.TypeEdge{RelationTypeId: "rel_order_user", SourceObjectTypeId: "order", TargetObjectTypeId: "user"}),
+			language: rest.SimplifiedChinese,
+			wantCode: oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath,
+			wantParts: []string{"第 2 条边 rel_order_user 与路径节点不一致",
+				"路径要求 user → order，当前填写 order → user", "两者都可以省略"},
+		},
+		{
+			name: "schema-order endpoints on a reverse hop in English",
+			query: typePathQuery(issuePath,
+				interfaces.TypeEdge{RelationTypeId: "rel_address_user"},
+				interfaces.TypeEdge{RelationTypeId: "rel_order_user", SourceObjectTypeId: "order", TargetObjectTypeId: "user"}),
+			language:  rest.AmericanEnglish,
+			wantCode:  oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath,
+			wantParts: []string{"Edge 2 (rel_order_user)", "the path requires user → order, but the edge gives order → user"},
+		},
+		{
+			name: "a single supplied endpoint must agree with its node",
+			query: typePathQuery(issuePath,
+				interfaces.TypeEdge{RelationTypeId: "rel_address_user", TargetObjectTypeId: "order"},
+				interfaces.TypeEdge{RelationTypeId: "rel_order_user"}),
+			language:  rest.SimplifiedChinese,
+			wantCode:  oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath,
+			wantParts: []string{"第 1 条边 rel_address_user", "路径要求 user_address → user，当前填写 user_address → order"},
+		},
+		{
+			name: "too few nodes is reported instead of indexing past object_types",
+			query: typePathQuery([]string{"user_address", "user"},
+				interfaces.TypeEdge{RelationTypeId: "rel_address_user", SourceObjectTypeId: "user_address", TargetObjectTypeId: "user"},
+				interfaces.TypeEdge{RelationTypeId: "rel_order_user", SourceObjectTypeId: "user", TargetObjectTypeId: "order"}),
+			language:  rest.SimplifiedChinese,
+			wantCode:  oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath,
+			wantParts: []string{"路径有 2 条边，object_types 需要 3 个节点，当前只有 2 个。"},
+		},
+		{
+			name:      "a node on the path needs an id",
+			query:     typePathQuery([]string{"order", ""}, interfaces.TypeEdge{RelationTypeId: "rel_order_user"}),
+			language:  rest.SimplifiedChinese,
+			wantCode:  oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath,
+			wantParts: []string{"object_types 第 2 个节点必须提供 id。"},
+		},
+		{
+			name: "direction must be forward or backward",
+			query: typePathQuery([]string{"order", "user"},
+				interfaces.TypeEdge{RelationTypeId: "rel_order_user", Direction: interfaces.DIRECTION_BIDIRECTIONAL}),
+			language:  rest.SimplifiedChinese,
+			wantCode:  oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath,
+			wantParts: []string{"第 1 条边的 direction 必须为 forward 或 backward，当前为 bidirectional"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			if tt.language != "" {
+				ctx = rest.WithLanguage(ctx, tt.language)
+			}
+			err := validateSubgraphQueryByPathRequest(ctx, tt.query)
+			if tt.wantCode == "" {
+				if err != nil {
+					t.Fatalf("validateSubgraphQueryByPathRequest() error = %v", err)
+				}
+				edges := tt.query.Paths.TypePaths[0].Edges
+				for i, want := range tt.wantEdges {
+					if edges[i].SourceObjectTypeId != want.from || edges[i].TargetObjectTypeId != want.to {
+						t.Errorf("edge %d = %s -> %s, want %s -> %s", i+1,
+							edges[i].SourceObjectTypeId, edges[i].TargetObjectTypeId, want.from, want.to)
+					}
+				}
+				return
+			}
+			httpErr, ok := err.(*rest.HTTPError)
+			if !ok {
+				t.Fatalf("error = %T %v, want *rest.HTTPError", err, err)
+			}
+			if httpErr.BaseError.ErrorCode != tt.wantCode {
+				t.Fatalf("error code = %q, want %q", httpErr.BaseError.ErrorCode, tt.wantCode)
+			}
+			details, _ := httpErr.BaseError.ErrorDetails.(string)
+			for _, part := range tt.wantParts {
+				if !strings.Contains(details, part) {
+					t.Errorf("error details = %q, want it to contain %q", details, part)
+				}
+			}
+		})
+	}
 }
 
 func Test_validateObjectSearchRequest(t *testing.T) {

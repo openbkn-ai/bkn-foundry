@@ -66,9 +66,8 @@ service:
     min_reranker_score: 0
     # 0 keeps the object type pre-filter off. Same file for how to calibrate it.
     min_object_type_score_ratio: 0
-# Authentication settings.
+# Authorization settings.
 auth:
-  enabled: true
   # Per-request batch size; this is not a cap on total retrieval candidates.
   resourceFilterChunkSize: 200
 
