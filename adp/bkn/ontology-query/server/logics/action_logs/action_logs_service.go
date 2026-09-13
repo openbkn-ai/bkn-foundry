@@ -8,6 +8,7 @@ package action_logs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -72,9 +73,40 @@ func (s *actionLogsService) CreateExecution(ctx context.Context, exec *interface
 	return nil
 }
 
-// UpdateExecution updates an existing execution record
-func (s *actionLogsService) UpdateExecution(ctx context.Context, knID, execID string, updates map[string]any) error {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "UpdateExecution")
+// Painless sources for the conditional writes. Each one decides on the latest version of
+// the document inside OpenSearch, so no writer acts on a status it read earlier.
+const (
+	// Only a pending execution may start running.
+	markRunningScript = "if (ctx._source.status == params.from) { ctx._source.status = params.to } else { ctx.op = 'noop' }"
+
+	// Only a pending or running execution may be cancelled. The results are left alone:
+	// the executor keeps recording what it already ran.
+	cancelScript = "if (params.cancellable.contains(ctx._source.status)) { " +
+		"ctx._source.status = params.cancelled; ctx._source.end_time = params.end_time; " +
+		"if (ctx._source.start_time != null && ctx._source.start_time > 0) { ctx._source.duration_ms = params.end_time - ctx._source.start_time } " +
+		"} else { ctx.op = 'noop' }"
+
+	// The terminal write. A cancel that landed while the execution was still running wins
+	// over the status the executor computed; counters, results and timing still record
+	// what actually ran.
+	finishScript = "if (ctx._source.status != params.cancelled) { ctx._source.status = params.status } " +
+		"ctx._source.success_count = params.success_count; ctx._source.failed_count = params.failed_count; " +
+		"ctx._source.results = params.results; ctx._source.end_time = params.end_time; ctx._source.duration_ms = params.duration_ms;"
+)
+
+func painlessUpdate(source string, params map[string]any) map[string]any {
+	return map[string]any{
+		"script": map[string]any{
+			"lang":   "painless",
+			"source": source,
+			"params": params,
+		},
+	}
+}
+
+// MarkExecutionRunning moves a pending execution to running and leaves any other status alone.
+func (s *actionLogsService) MarkExecutionRunning(ctx context.Context, knID, execID string) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "MarkExecutionRunning")
 	defer span.End()
 
 	span.SetAttributes(
@@ -82,33 +114,135 @@ func (s *actionLogsService) UpdateExecution(ctx context.Context, knID, execID st
 		attr.Key("kn_id").String(knID),
 	)
 
-	// Get the current execution (without pagination for full data)
-	query := &interfaces.ActionLogDetailQuery{
-		KNID:         knID,
-		LogID:        execID,
-		ResultsLimit: 10000, // Get all results for update
-	}
-	exec, err := s.GetExecution(ctx, query)
+	result, err := s.osAccess.UpdateData(ctx, interfaces.GetActionExecutionIndex(knID), execID, painlessUpdate(markRunningScript, map[string]any{
+		"from": interfaces.ExecutionStatusPending,
+		"to":   interfaces.ExecutionStatusRunning,
+	}))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to mark execution %s running: %w", execID, err)
 	}
-
-	// Apply updates
-	execMap := structToMap(exec)
-	for k, v := range updates {
-		execMap[k] = v
+	if result == interfaces.UpdateResultNoop {
+		logger.Infof("Execution %s is no longer pending, status left unchanged", execID)
 	}
+	return nil
+}
 
+// UpdateExecutionProgress merges the counters and results into the execution without
+// reading it first and without touching its status.
+func (s *actionLogsService) UpdateExecutionProgress(ctx context.Context, knID, execID string, progress *interfaces.ExecutionProgress) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "UpdateExecutionProgress")
+	defer span.End()
+
+	span.SetAttributes(
+		attr.Key("execution_id").String(execID),
+		attr.Key("kn_id").String(knID),
+	)
+
+	_, err := s.osAccess.UpdateData(ctx, interfaces.GetActionExecutionIndex(knID), execID, map[string]any{
+		"doc": map[string]any{
+			"success_count": progress.SuccessCount,
+			"failed_count":  progress.FailedCount,
+			"results":       nonNilResults(progress.Results),
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update execution %s progress: %w", execID, err)
+	}
+	return nil
+}
+
+// FinishExecution writes the terminal record; a cancelled execution stays cancelled.
+func (s *actionLogsService) FinishExecution(ctx context.Context, knID, execID string, outcome *interfaces.ExecutionOutcome) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "FinishExecution")
+	defer span.End()
+
+	span.SetAttributes(
+		attr.Key("execution_id").String(execID),
+		attr.Key("kn_id").String(knID),
+		attr.Key("status").String(outcome.Status),
+	)
+
+	_, err := s.osAccess.UpdateData(ctx, interfaces.GetActionExecutionIndex(knID), execID, painlessUpdate(finishScript, map[string]any{
+		"cancelled":     interfaces.ExecutionStatusCancelled,
+		"status":        outcome.Status,
+		"success_count": outcome.SuccessCount,
+		"failed_count":  outcome.FailedCount,
+		"results":       nonNilResults(outcome.Results),
+		"end_time":      outcome.EndTime,
+		"duration_ms":   outcome.DurationMs,
+	}))
+	if err != nil {
+		return fmt.Errorf("failed to finish execution %s: %w", execID, err)
+	}
+	return nil
+}
+
+// GetExecutionStatus reads only the status field of an execution.
+func (s *actionLogsService) GetExecutionStatus(ctx context.Context, knID, execID string) (string, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "GetExecutionStatus")
+	defer span.End()
+
+	span.SetAttributes(
+		attr.Key("execution_id").String(execID),
+		attr.Key("kn_id").String(knID),
+	)
+
+	exec, err := s.searchExecution(ctx, knID, execID, map[string]any{"includes": []string{"status"}})
+	if err != nil {
+		return "", err
+	}
+	return exec.Status, nil
+}
+
+// searchExecution fetches one execution document. source, when non-nil, is the _source
+// filter, so callers that need no per-instance results never read them.
+func (s *actionLogsService) searchExecution(ctx context.Context, knID, execID string, source map[string]any) (*interfaces.ActionExecution, error) {
 	indexName := interfaces.GetActionExecutionIndex(knID)
 
-	// Re-insert with updated values (OpenSearch index API is upsert)
-	if err := s.osAccess.InsertData(ctx, indexName, execID, execMap); err != nil {
-		logger.Errorf("Failed to update execution record: %v", err)
-		return fmt.Errorf("failed to update execution record: %w", err)
+	// A missing index must not hit SearchData (index_not_found_exception).
+	exists, err := s.osAccess.IndexExists(ctx, indexName)
+	if err != nil {
+		logger.Errorf("Failed to check action execution index: %v", err)
+		return nil, fmt.Errorf("failed to search execution: %w", err)
+	}
+	if !exists {
+		return nil, fmt.Errorf("execution not found: %s，because the index[%s] does not exist", execID, indexName)
 	}
 
-	logger.Debugf("Updated execution record: %s", execID)
-	return nil
+	osQuery := map[string]any{
+		"query": map[string]any{
+			"term": map[string]any{
+				"id": execID,
+			},
+		},
+		"size": 1,
+	}
+	if source != nil {
+		osQuery["_source"] = source
+	}
+
+	hits, err := s.osAccess.SearchData(ctx, indexName, osQuery)
+	if err != nil {
+		logger.Errorf("Failed to search execution: %v", err)
+		return nil, fmt.Errorf("failed to search execution: %w", err)
+	}
+	if len(hits) == 0 {
+		return nil, fmt.Errorf("execution not found: %s", execID)
+	}
+
+	exec, err := mapToActionExecution(hits[0].Source)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse execution: %w", err)
+	}
+	return exec, nil
+}
+
+// nonNilResults keeps an empty result list an empty array in the stored document.
+func nonNilResults(results []interfaces.ObjectExecutionResult) []interfaces.ObjectExecutionResult {
+	if results == nil {
+		return []interfaces.ObjectExecutionResult{}
+	}
+	return results
 }
 
 // GetExecution retrieves a single execution by ID with optional results pagination
@@ -121,41 +255,9 @@ func (s *actionLogsService) GetExecution(ctx context.Context, query *interfaces.
 		attr.Key("kn_id").String(query.KNID),
 	)
 
-	indexName := interfaces.GetActionExecutionIndex(query.KNID)
-
-	// Same as QueryExecutions: missing index must not hit SearchData (index_not_found_exception).
-	exists, err := s.osAccess.IndexExists(ctx, indexName)
+	exec, err := s.searchExecution(ctx, query.KNID, query.LogID, nil)
 	if err != nil {
-		logger.Errorf("Failed to check action execution index: %v", err)
-		return nil, fmt.Errorf("failed to search execution: %w", err)
-	}
-	if !exists {
-		return nil, fmt.Errorf("execution not found: %s，because the index[%s] does not exist", query.LogID, indexName)
-	}
-
-	// Build query to get by ID
-	osQuery := map[string]any{
-		"query": map[string]any{
-			"term": map[string]any{
-				"id": query.LogID,
-			},
-		},
-		"size": 1,
-	}
-
-	hits, err := s.osAccess.SearchData(ctx, indexName, osQuery)
-	if err != nil {
-		logger.Errorf("Failed to search execution: %v", err)
-		return nil, fmt.Errorf("failed to search execution: %w", err)
-	}
-
-	if len(hits) == 0 {
-		return nil, fmt.Errorf("execution not found: %s", query.LogID)
-	}
-
-	exec, err := mapToActionExecution(hits[0].Source)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse execution: %w", err)
+		return nil, err
 	}
 
 	// Apply results pagination and filtering
@@ -458,73 +560,57 @@ func (s *actionLogsService) CancelExecution(ctx context.Context, knID, execID, r
 		attr.Key("reason").String(reason),
 	)
 
-	// Get the current execution (without pagination for full data)
-	query := &interfaces.ActionLogDetailQuery{
-		KNID:         knID,
-		LogID:        execID,
-		ResultsLimit: 10000, // Get all results
-	}
-	exec, err := s.GetExecution(ctx, query)
+	// Read the summary only: the cancel never rewrites per-instance results.
+	exec, err := s.searchExecution(ctx, knID, execID, map[string]any{"excludes": []string{"results"}})
 	if err != nil {
 		return nil, err
 	}
-
-	// Check if execution can be cancelled
-	if exec.Status == interfaces.ExecutionStatusCompleted ||
-		exec.Status == interfaces.ExecutionStatusFailed ||
-		exec.Status == interfaces.ExecutionStatusCancelled {
+	if !isCancellable(exec.Status) {
 		return nil, fmt.Errorf("execution %s cannot be cancelled, current status: %s", execID, exec.Status)
 	}
 
-	// Count and update pending objects
-	cancelledCount := 0
-	completedCount := 0
-	for i := range exec.Results {
-		switch exec.Results[i].Status {
-		case interfaces.ObjectStatusPending:
-			exec.Results[i].Status = interfaces.ObjectStatusCancelled
-			exec.Results[i].ErrorMessage = "cancelled by user"
-			if reason != "" {
-				exec.Results[i].ErrorMessage = fmt.Sprintf("cancelled: %s", reason)
-			}
-			cancelledCount++
-		case interfaces.ObjectStatusSuccess:
-			completedCount++
+	endTime := time.Now().UnixMilli()
+	result, err := s.osAccess.UpdateData(ctx, interfaces.GetActionExecutionIndex(knID), execID, painlessUpdate(cancelScript, map[string]any{
+		"cancellable": []string{interfaces.ExecutionStatusPending, interfaces.ExecutionStatusRunning},
+		"cancelled":   interfaces.ExecutionStatusCancelled,
+		"end_time":    endTime,
+	}))
+	if err != nil {
+		if errors.Is(err, interfaces.ErrDocumentNotFound) {
+			return nil, fmt.Errorf("execution not found: %s", execID)
 		}
-	}
-
-	// Update execution status
-	exec.Status = interfaces.ExecutionStatusCancelled
-	exec.EndTime = time.Now().UnixMilli()
-	if exec.StartTime > 0 {
-		exec.DurationMs = exec.EndTime - exec.StartTime
-	}
-
-	// Save the updated execution
-	indexName := interfaces.GetActionExecutionIndex(knID)
-	execMap := structToMap(exec)
-	if err := s.osAccess.InsertData(ctx, indexName, execID, execMap); err != nil {
 		logger.Errorf("Failed to update cancelled execution: %v", err)
 		return nil, fmt.Errorf("failed to update cancelled execution: %w", err)
 	}
+	if result == interfaces.UpdateResultNoop {
+		// The execution reached a terminal status between the read above and this write.
+		status := exec.Status
+		if current, statusErr := s.GetExecutionStatus(ctx, knID, execID); statusErr == nil {
+			status = current
+		}
+		return nil, fmt.Errorf("execution %s cannot be cancelled, current status: %s", execID, status)
+	}
 
-	logger.Infof("Cancelled execution %s, cancelled_count=%d, completed_count=%d", execID, cancelledCount, completedCount)
+	// Instances that had not run yet as of the last progress update; the executor records
+	// them as cancelled when it notices the cancel.
+	notRun := exec.TotalCount - exec.SuccessCount - exec.FailedCount
+	if notRun < 0 {
+		notRun = 0
+	}
+
+	logger.Infof("Cancelled execution %s, reason=%q, not_run=%d, succeeded=%d", execID, reason, notRun, exec.SuccessCount)
 
 	return &interfaces.CancelExecutionResponse{
 		ExecutionID:    execID,
 		Status:         interfaces.ExecutionStatusCancelled,
 		Message:        "任务已取消",
-		CancelledCount: cancelledCount,
-		CompletedCount: completedCount,
+		CancelledCount: notRun,
+		CompletedCount: exec.SuccessCount,
 	}, nil
 }
 
-// structToMap converts a struct to a map
-func structToMap(v any) map[string]any {
-	data, _ := sonic.Marshal(v)
-	var result map[string]any
-	_ = sonic.Unmarshal(data, &result)
-	return result
+func isCancellable(status string) bool {
+	return status == interfaces.ExecutionStatusPending || status == interfaces.ExecutionStatusRunning
 }
 
 // mapToActionExecution converts a map to ActionExecution

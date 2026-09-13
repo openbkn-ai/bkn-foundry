@@ -120,6 +120,23 @@ type ObjectExecutionResult struct {
 	DurationMs   int64              `json:"duration_ms,omitempty"`
 }
 
+// ExecutionProgress is the progress an execution has made so far.
+type ExecutionProgress struct {
+	SuccessCount int
+	FailedCount  int
+	Results      []ObjectExecutionResult // every result produced so far
+}
+
+// ExecutionOutcome is the terminal record of an execution.
+type ExecutionOutcome struct {
+	Status       string // completed | failed | cancelled; a cancelled execution stays cancelled
+	SuccessCount int
+	FailedCount  int
+	Results      []ObjectExecutionResult
+	EndTime      int64
+	DurationMs   int64
+}
+
 // ActionLogQuery represents query parameters for execution logs (supports both GET query params and JSON body)
 type ActionLogQuery struct {
 	KNID                 string   `json:"-" form:"-"`

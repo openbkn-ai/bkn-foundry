@@ -17,38 +17,6 @@ import (
 	omock "ontology-query/interfaces/mock"
 )
 
-func Test_structToMap(t *testing.T) {
-	Convey("Test structToMap", t, func() {
-		Convey("should convert struct to map", func() {
-			exec := &interfaces.ActionExecution{
-				ID:             "exec_123",
-				KNID:           "kn_001",
-				ActionTypeID:   "at_001",
-				ActionTypeName: "restart_pod",
-				Status:         interfaces.ExecutionStatusPending,
-				TotalCount:     2,
-			}
-
-			result := structToMap(exec)
-
-			So(result["id"], ShouldEqual, "exec_123")
-			So(result["kn_id"], ShouldEqual, "kn_001")
-			So(result["action_type_id"], ShouldEqual, "at_001")
-			So(result["action_type_name"], ShouldEqual, "restart_pod")
-			So(result["status"], ShouldEqual, "pending")
-			So(result["total_count"], ShouldEqual, float64(2)) // JSON numbers are float64
-		})
-
-		Convey("should handle empty struct", func() {
-			exec := &interfaces.ActionExecution{}
-			result := structToMap(exec)
-
-			So(result, ShouldNotBeNil)
-			So(result["id"], ShouldEqual, "")
-		})
-	})
-}
-
 func Test_mapToActionExecution(t *testing.T) {
 	Convey("Test mapToActionExecution", t, func() {
 		Convey("should convert map to ActionExecution", func() {

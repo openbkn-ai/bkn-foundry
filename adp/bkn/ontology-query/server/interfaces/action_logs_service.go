@@ -15,9 +15,20 @@ type ActionLogsService interface {
 	// CreateExecution creates a new execution record
 	CreateExecution(ctx context.Context, exec *ActionExecution) error
 
-	// UpdateExecution updates an existing execution record
-	// The updates map should contain field names as keys and new values as values
-	UpdateExecution(ctx context.Context, knID, execID string, updates map[string]any) error
+	// MarkExecutionRunning moves a pending execution to running. An execution that is no
+	// longer pending (cancelled before it started, in particular) is left untouched.
+	MarkExecutionRunning(ctx context.Context, knID, execID string) error
+
+	// UpdateExecutionProgress records the counters and results produced so far. It never
+	// touches the execution status, so it cannot undo a concurrent cancel.
+	UpdateExecutionProgress(ctx context.Context, knID, execID string, progress *ExecutionProgress) error
+
+	// FinishExecution writes the terminal record of an execution. An execution that was
+	// cancelled meanwhile stays cancelled; the counters and results still record what ran.
+	FinishExecution(ctx context.Context, knID, execID string, outcome *ExecutionOutcome) error
+
+	// GetExecutionStatus returns only the current status of an execution.
+	GetExecutionStatus(ctx context.Context, knID, execID string) (string, error)
 
 	// GetExecution retrieves a single execution by ID with optional results pagination
 	GetExecution(ctx context.Context, query *ActionLogDetailQuery) (*ActionExecution, error)
