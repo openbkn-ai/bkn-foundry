@@ -5740,7 +5740,8 @@ components:
         cancelled_count:
           description: |
             取消时尚未执行的调用数，即 total_count − success_count − failed_count（按最近一次进度更新计算，
-            进度每 100 次调用刷新一次）。执行器察觉取消后停止调用，并把这些实例记为 cancelled。
+            进度每 100 次调用刷新一次）。执行器在下一个批次边界或约 1 秒内察觉取消，随后停止发出新的调用，
+            并把剩余实例记为 cancelled；察觉之前已发出的调用照常记录其结果。
           type: integer
         completed_count:
           description: 取消时已成功的调用数（按最近一次进度更新计算）

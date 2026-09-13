@@ -367,9 +367,11 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 	cancelledCount := 0
 	allResults := []interfaces.ObjectExecutionResult{}
 	cancelled := false
+	var lastCancellationCheck time.Time
 
 	for i, objData := range req.ObjDatas {
-		if shouldCheckExecutionCancellation(i, len(req.ObjDatas)) {
+		if shouldCheckExecutionCancellation(i, len(req.ObjDatas), time.Since(lastCancellationCheck)) {
+			lastCancellationCheck = time.Now()
 			if s.isExecutionCancelled(ctx, execution.KNID, execution.ID) {
 				logger.Infof("Execution %s cancelled, stopping at object %d/%d", execution.ID, i, len(req.ObjDatas))
 				cancelled = true
@@ -604,8 +606,12 @@ func (s *actionSchedulerService) finishOnce(ctx context.Context, execution *inte
 	}
 }
 
-func shouldCheckExecutionCancellation(index, total int) bool {
-	return index == 0 || total <= batchSize || index%batchSize == 0
+// cancellationCheckInterval bounds how long a cancel can go unnoticed while a large
+// execution keeps invoking; the check reads the status field only, so it stays cheap.
+const cancellationCheckInterval = time.Second
+
+func shouldCheckExecutionCancellation(index, total int, sinceLastCheck time.Duration) bool {
+	return index == 0 || total <= batchSize || index%batchSize == 0 || sinceLastCheck >= cancellationCheckInterval
 }
 
 func shouldUpdateExecutionProgress(completed, total int) bool {

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -1539,5 +1540,19 @@ func Test_ExecuteAction_AddActionType(t *testing.T) {
 			So(len(req.Instances), ShouldEqual, 1)
 			So(req.Instances[0].InstanceID, ShouldEqual, "123")
 		})
+	})
+}
+
+func Test_shouldCheckExecutionCancellation(t *testing.T) {
+	Convey("large executions check for a cancel at batch boundaries and at least once a second (#790)", t, func() {
+		// Small runs check before every instance.
+		So(shouldCheckExecutionCancellation(7, 50, 0), ShouldBeTrue)
+		// Large runs: the first instance and every batch boundary.
+		So(shouldCheckExecutionCancellation(0, 1000, 0), ShouldBeTrue)
+		So(shouldCheckExecutionCancellation(200, 1000, 0), ShouldBeTrue)
+		// Between boundaries only once the interval has passed, so a cancel landing in
+		// the tail of a run is noticed within about a second instead of never.
+		So(shouldCheckExecutionCancellation(950, 1000, 200*time.Millisecond), ShouldBeFalse)
+		So(shouldCheckExecutionCancellation(950, 1000, cancellationCheckInterval), ShouldBeTrue)
 	})
 }
