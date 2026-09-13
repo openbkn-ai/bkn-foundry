@@ -20,6 +20,12 @@ const (
 	UpdateResultNoop    = "noop"
 )
 
+// BulkDocument is one document written by BulkIndexDocuments under an explicit ID.
+type BulkDocument struct {
+	ID   string
+	Body any
+}
+
 type Hit struct {
 	Source map[string]interface{} `json:"_source"`
 	Sort   []any                  `json:"sort"`
@@ -50,6 +56,10 @@ type OpenSearchAccess interface {
 
 	// BulkInsertData writes data to an index in batches.
 	BulkInsertData(ctx context.Context, indexName string, dataList []any) error
+
+	// BulkIndexDocuments indexes documents under their explicit IDs in one bulk request,
+	// replacing any document already stored under the same ID. It fails when any item fails.
+	BulkIndexDocuments(ctx context.Context, indexName string, docs []BulkDocument) error
 
 	// SearchData searches data in the specified index.
 	SearchData(ctx context.Context, indexName string, query any) ([]Hit, error)

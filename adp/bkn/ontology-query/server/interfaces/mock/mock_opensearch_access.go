@@ -55,6 +55,20 @@ func (mr *MockOpenSearchAccessMockRecorder) BulkDeleteData(ctx, indexName, docID
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BulkDeleteData", reflect.TypeOf((*MockOpenSearchAccess)(nil).BulkDeleteData), ctx, indexName, docIDs)
 }
 
+// BulkIndexDocuments mocks base method.
+func (m *MockOpenSearchAccess) BulkIndexDocuments(ctx context.Context, indexName string, docs []interfaces.BulkDocument) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BulkIndexDocuments", ctx, indexName, docs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// BulkIndexDocuments indicates an expected call of BulkIndexDocuments.
+func (mr *MockOpenSearchAccessMockRecorder) BulkIndexDocuments(ctx, indexName, docs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BulkIndexDocuments", reflect.TypeOf((*MockOpenSearchAccess)(nil).BulkIndexDocuments), ctx, indexName, docs)
+}
+
 // BulkInsertData mocks base method.
 func (m *MockOpenSearchAccess) BulkInsertData(ctx context.Context, indexName string, dataList []any) error {
 	m.ctrl.T.Helper()

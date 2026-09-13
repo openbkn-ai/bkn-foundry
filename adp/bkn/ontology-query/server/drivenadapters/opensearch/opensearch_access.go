@@ -362,6 +362,71 @@ func (o *openSearchAccess) BulkInsertData(ctx context.Context, indexName string,
 	return nil
 }
 
+// BulkIndexDocuments indexes documents under their explicit IDs in one bulk request.
+// Writing the same ID again replaces the document, so a retried batch is idempotent. Unlike
+// BulkInsertData the ID is not copied into the stored source. The index is refreshed so the
+// documents are immediately searchable.
+func (o *openSearchAccess) BulkIndexDocuments(ctx context.Context, indexName string, docs []interfaces.BulkDocument) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "BulkIndexDocuments")
+	defer span.End()
+
+	span.SetAttributes(
+		attr.Key("index_name").String(indexName),
+		attr.Key("doc_count").Int(len(docs)))
+
+	if len(docs) == 0 {
+		return nil
+	}
+
+	var buf bytes.Buffer
+	for _, doc := range docs {
+		meta, err := sonic.Marshal(map[string]any{
+			"index": map[string]any{"_index": indexName, "_id": doc.ID},
+		})
+		if err != nil {
+			return fmt.Errorf("failed to marshal bulk metadata: %w", err)
+		}
+		body, err := sonic.Marshal(doc.Body)
+		if err != nil {
+			return fmt.Errorf("failed to marshal bulk document %s: %w", doc.ID, err)
+		}
+		buf.Write(meta)
+		buf.WriteByte('\n')
+		buf.Write(body)
+		buf.WriteByte('\n')
+	}
+
+	req := opensearchapi.BulkRequest{
+		Body:    &buf,
+		Refresh: "true",
+	}
+	res, err := req.Do(ctx, o.client)
+	if err != nil {
+		return fmt.Errorf("failed to bulk index documents: %w", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.IsError() {
+		return fmt.Errorf("bulk index documents failed: %s, %s", res.Status(), res.String())
+	}
+
+	resBody, err := io.ReadAll(res.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read bulk response: %w", err)
+	}
+	var resp struct {
+		Errors bool            `json:"errors"`
+		Items  json.RawMessage `json:"items"`
+	}
+	if err := sonic.Unmarshal(resBody, &resp); err != nil {
+		return fmt.Errorf("failed to decode bulk response: %w", err)
+	}
+	if resp.Errors {
+		return fmt.Errorf("bulk index documents failed: %s", resp.Items)
+	}
+	return nil
+}
+
 // SearchData searches data in the specified index.
 // It searches the specified index using the provided query.
 // It supports complex query DSL, including full-text search, filters, and aggregations.

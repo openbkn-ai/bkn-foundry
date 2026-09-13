@@ -380,6 +380,81 @@ func Test_openSearchAccess_UpdateData(t *testing.T) {
 	})
 }
 
+func Test_openSearchAccess_BulkIndexDocuments(t *testing.T) {
+	Convey("test BulkIndexDocuments\n", t, func() {
+		appSetting := &common.AppSetting{}
+		docs := []interfaces.BulkDocument{
+			{ID: "exec_1_0", Body: map[string]any{"execution_id": "exec_1", "seq": 0}},
+			{ID: "exec_1_1", Body: map[string]any{"execution_id": "exec_1", "seq": 1}},
+		}
+
+		Convey("BulkIndexDocuments writes index actions under the explicit IDs\n", func() {
+			var lines []string
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					So(req.Method, ShouldEqual, "POST")
+					So(req.URL.Path, ShouldEqual, "/_bulk")
+					So(req.URL.Query().Get("refresh"), ShouldEqual, "true")
+					raw, _ := io.ReadAll(req.Body)
+					lines = strings.Split(strings.TrimSpace(string(raw)), "\n")
+					return &http.Response{
+						StatusCode: 200,
+						Body:       io.NopCloser(strings.NewReader(`{"errors": false, "items": []}`)),
+					}, nil
+				},
+			})
+
+			err := osa.BulkIndexDocuments(testCtx, "results-index", docs)
+			So(err, ShouldBeNil)
+			So(lines, ShouldHaveLength, 4)
+
+			var meta map[string]map[string]any
+			So(json.Unmarshal([]byte(lines[0]), &meta), ShouldBeNil)
+			So(meta["index"]["_index"], ShouldEqual, "results-index")
+			So(meta["index"]["_id"], ShouldEqual, "exec_1_0")
+
+			var body map[string]any
+			So(json.Unmarshal([]byte(lines[1]), &body), ShouldBeNil)
+			So(body, ShouldResemble, map[string]any{"execution_id": "exec_1", "seq": float64(0)})
+			So(body, ShouldNotContainKey, "__id")
+		})
+
+		Convey("BulkIndexDocuments skips an empty batch\n", func() {
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					t.Fatal("no request expected for an empty batch")
+					return nil, nil
+				},
+			})
+			So(osa.BulkIndexDocuments(testCtx, "results-index", nil), ShouldBeNil)
+		})
+
+		Convey("BulkIndexDocuments fails when an item fails\n", func() {
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: 200,
+						Body:       io.NopCloser(strings.NewReader(`{"errors": true, "items": [{"index": {"status": 400}}]}`)),
+					}, nil
+				},
+			})
+			So(osa.BulkIndexDocuments(testCtx, "results-index", docs), ShouldNotBeNil)
+		})
+
+		Convey("BulkIndexDocuments Failed - response error\n", func() {
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: 500,
+						Body:       io.NopCloser(strings.NewReader(`{"error": "boom"}`)),
+					}, nil
+				},
+			})
+			So(osa.BulkIndexDocuments(testCtx, "results-index", docs), ShouldNotBeNil)
+		})
+	})
+}
+
 func Test_openSearchAccess_BulkInsertData(t *testing.T) {
 	Convey("test BulkInsertData\n", t, func() {
 		appSetting := &common.AppSetting{}
