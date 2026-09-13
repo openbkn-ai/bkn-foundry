@@ -330,6 +330,22 @@ func TestOpenSearchConnectorConvertFilterConditionEqual(t *testing.T) {
 		_, ok := filter_condition.AsConditionBuildError(err)
 		assert.True(t, ok)
 	})
+
+	t.Run("rejects oversized exact text value when original name is empty", func(t *testing.T) {
+		conn := &OpenSearchConnector{}
+		cond := mustOSCondition(t, osConstCfg("body", filter_condition.OperationEqual, strings.Repeat("字", 257)))
+		schema := opensearchConditionSchema()
+		schema[1].OriginalName = ""
+		schema[1].Features[0].Config = map[string]any{"ignore_above": 256}
+
+		got, err := conn.ConvertFilterConditionEqual(cond, schema)
+
+		require.Error(t, err)
+		assert.Nil(t, got)
+		assert.ErrorContains(t, err, "exceeds keyword ignore_above 256")
+		_, ok := filter_condition.AsConditionBuildError(err)
+		assert.True(t, ok)
+	})
 }
 
 func TestOpenSearchConnectorConvertFilterConditionAnd(t *testing.T) {

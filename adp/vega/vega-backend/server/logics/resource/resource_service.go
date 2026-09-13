@@ -497,9 +497,17 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 			req.SourceIdentifier = fmt.Sprintf("%s.%s", req.CatalogID, id)
 		}
 	}
+	if req.Category == interfaces.ResourceCategoryTable && req.SchemaDefinition != nil {
+		AddDefaultTextKeywordFeatures(req.SchemaDefinition)
+	}
 
 	if err := validateSchemaDefinition(ctx, req.SchemaDefinition); err != nil {
 		return nil, err
+	}
+	if req.Category == interfaces.ResourceCategoryTable {
+		if err := validateLocalIndexVectorOutputs(ctx, req.SchemaDefinition); err != nil {
+			return nil, err
+		}
 	}
 	if req.Category == interfaces.ResourceCategoryDataset {
 		if err := validateDatasetVectorOutputs(ctx, req.SchemaDefinition); err != nil {
@@ -1081,6 +1089,11 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 
 	if err := validateSchemaDefinition(ctx, resource.SchemaDefinition); err != nil {
 		return err
+	}
+	if resource.Category == interfaces.ResourceCategoryTable {
+		if err := validateLocalIndexVectorOutputs(ctx, resource.SchemaDefinition); err != nil {
+			return err
+		}
 	}
 	if resource.Category == interfaces.ResourceCategoryDataset {
 		if err := validateDatasetVectorOutputs(ctx, resource.SchemaDefinition); err != nil {
@@ -1841,17 +1854,41 @@ func validateSchemaDefinition(ctx context.Context, schema []*interfaces.Property
 	return nil
 }
 
-// validateDatasetVectorOutputs reserves generated *_vector field names for
-// string/text vector features. Dataset does not support ref_property, so a
-// feature always derives from the property it belongs to.
-func validateDatasetVectorOutputs(ctx context.Context, schema []*interfaces.Property) error {
+// validateLocalIndexVectorOutputs reserves generated *_vector field names for
+// string/text vector features that do not reuse an existing vector field.
+func validateLocalIndexVectorOutputs(ctx context.Context, schema []*interfaces.Property) error {
 	logicalFields := make(map[string]struct{}, len(schema))
 	for _, property := range schema {
 		if property != nil {
 			logicalFields[property.Name] = struct{}{}
 		}
 	}
-	generatedFields := make(map[string]string)
+	for _, property := range schema {
+		if property == nil || (property.Type != interfaces.DataType_String && property.Type != interfaces.DataType_Text) {
+			continue
+		}
+		for _, feature := range property.Features {
+			if feature.FeatureType != interfaces.PropertyFeatureType_Vector || feature.RefProperty != "" {
+				continue
+			}
+			generatedField := local_index.VectorFieldName(property.Name)
+			if _, exists := logicalFields[generatedField]; exists {
+				return unsupportedResourceUpdateError(ctx, fmt.Sprintf(
+					"generated vector field %q conflicts with a logical property %q; set ref_property to reuse an existing vector field",
+					generatedField, generatedField))
+			}
+		}
+	}
+	return nil
+}
+
+// validateDatasetVectorOutputs reserves generated *_vector field names for
+// string/text vector features. Dataset does not support ref_property, so a
+// feature always derives from the property it belongs to.
+func validateDatasetVectorOutputs(ctx context.Context, schema []*interfaces.Property) error {
+	if err := validateLocalIndexVectorOutputs(ctx, schema); err != nil {
+		return err
+	}
 	for _, property := range schema {
 		if property == nil {
 			continue
@@ -1863,20 +1900,6 @@ func validateDatasetVectorOutputs(ctx context.Context, schema []*interfaces.Prop
 			if feature.RefProperty != "" {
 				return unsupportedResourceUpdateError(ctx, "dataset does not support ref_property")
 			}
-			if property.Type != interfaces.DataType_String && property.Type != interfaces.DataType_Text {
-				continue
-			}
-			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
-				continue
-			}
-			outputField := local_index.VectorFieldName(property.Name)
-			if _, exists := logicalFields[outputField]; exists {
-				return unsupportedResourceUpdateError(ctx, fmt.Sprintf("dataset vector output field %q conflicts with a logical property", outputField))
-			}
-			if source, exists := generatedFields[outputField]; exists && source != property.Name {
-				return unsupportedResourceUpdateError(ctx, fmt.Sprintf("dataset vector output field %q is generated more than once", outputField))
-			}
-			generatedFields[outputField] = property.Name
 		}
 	}
 	return nil

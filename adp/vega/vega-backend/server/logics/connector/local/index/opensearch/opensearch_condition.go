@@ -1224,7 +1224,7 @@ func (c *OpenSearchConnector) getKeywordSuffix(fieldName string, schemaDefinitio
 
 func validateTextKeywordValues(fieldName string, value any, schemaDefinition []*interfaces.Property) error {
 	for _, prop := range schemaDefinition {
-		if prop == nil || prop.OriginalName != fieldName || prop.Type != interfaces.DataType_Text {
+		if prop == nil || propertyPhysicalFieldName(prop) != fieldName || prop.Type != interfaces.DataType_Text {
 			continue
 		}
 		for _, feature := range prop.Features {

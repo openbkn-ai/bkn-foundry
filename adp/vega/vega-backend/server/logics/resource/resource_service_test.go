@@ -119,6 +119,22 @@ func TestValidateSchemaDefinitionRejectsDuplicateFeatureTypes(t *testing.T) {
 	assert.Contains(t, httpErr.BaseError.ErrorDetails, `property "code" has more than one "keyword" feature`)
 }
 
+func TestValidateLocalIndexVectorOutputs(t *testing.T) {
+	err := validateLocalIndexVectorOutputs(context.Background(), []*interfaces.Property{
+		{
+			Name: "content",
+			Type: interfaces.DataType_Text,
+			Features: []interfaces.PropertyFeature{{
+				FeatureType: interfaces.PropertyFeatureType_Vector,
+			}},
+		},
+		{Name: "content_vector", Type: interfaces.DataType_String},
+	})
+
+	httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
+	assert.Contains(t, httpErr.BaseError.ErrorDetails, `generated vector field "content_vector" conflicts with a logical property "content_vector"`)
+}
+
 func TestResourceServiceInternalMetadataUpdateConflict(t *testing.T) {
 	t.Run("semantic metadata", func(t *testing.T) {
 		rs, mockRA, _, _, _, _, _ := newTestService(t)
@@ -697,6 +713,30 @@ func TestResourceServiceCreate(t *testing.T) {
 		if resource == nil {
 			t.Error("expected non-empty ID")
 		}
+	})
+	t.Run("create table adds default keyword feature to text fields", func(t *testing.T) {
+		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCS.EXPECT().CheckExistByID(gomock.Any(), gomock.Any()).Return(true, nil)
+		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
+		mockPS.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+
+		resource, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
+			Name:     "test-resource",
+			Category: interfaces.ResourceCategoryTable,
+			SchemaDefinition: []*interfaces.Property{{
+				Name: "body",
+				Type: interfaces.DataType_Text,
+			}},
+		})
+
+		require.NoError(t, err)
+		require.Len(t, resource.SchemaDefinition[0].Features, 1)
+		keyword := resource.SchemaDefinition[0].Features[0]
+		assert.Equal(t, interfaces.PropertyFeatureType_Keyword, keyword.FeatureType)
+		assert.Equal(t, interfaces.LocalIndexKeywordSubfieldName, keyword.FeatureName)
+		assert.Equal(t, interfaces.DefaultTextKeywordIgnoreAbove, keyword.Config["ignore_above"])
 	})
 	t.Run("create with explicit id", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)

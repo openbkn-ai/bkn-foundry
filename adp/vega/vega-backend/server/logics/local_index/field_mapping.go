@@ -63,12 +63,12 @@ func buildFieldMappings(schemaDefinition []*interfaces.Property) (map[string]any
 
 		for _, feature := range prop.Features {
 			if feature.FeatureType == interfaces.PropertyFeatureType_Fulltext {
-				applyFulltextFeature(fieldProps, prop.Type, feature)
+				applyFulltextFeature(fieldProps, prop, feature)
 				continue
 			}
 			switch feature.FeatureType {
 			case interfaces.PropertyFeatureType_Keyword:
-				applyKeywordFeature(fieldProps, prop.Type, feature)
+				applyKeywordFeature(fieldProps, prop, feature)
 			case interfaces.PropertyFeatureType_Vector:
 				if feature.Config != nil && prop.Type == interfaces.DataType_Vector {
 					if dimension, exists := feature.Config["dimension"]; exists {
@@ -98,7 +98,7 @@ func buildFieldMappings(schemaDefinition []*interfaces.Property) (map[string]any
 			}
 			generatedName := VectorFieldName(prop.Name)
 			if _, exists := declaredFields[generatedName]; exists {
-				continue
+				return nil, false, fmt.Errorf("generated vector field %q conflicts with declared field", generatedName)
 			}
 			dimension, ok := feature.Config["dimension"]
 			if !ok {
@@ -127,12 +127,16 @@ func VectorFieldName(field string) string {
 	return field + interfaces.LocalIndexVectorFieldSuffix
 }
 
-func applyFulltextFeature(fieldProps map[string]any, propertyType string, feature interfaces.PropertyFeature) {
-	switch propertyType {
+func applyFulltextFeature(fieldProps map[string]any, property *interfaces.Property, feature interfaces.PropertyFeature) {
+	switch property.Type {
 	case interfaces.DataType_String:
 		fieldName := strings.TrimSpace(feature.FeatureName)
 		if fieldName == "" {
 			fieldName = interfaces.LocalIndexFulltextSubfieldName
+		} else if property.OriginalName != "" {
+			fieldName = strings.TrimPrefix(fieldName, property.OriginalName+".")
+		} else {
+			fieldName = strings.TrimPrefix(fieldName, property.Name+".")
 		}
 		subfield := map[string]any{"type": "text"}
 		for key, value := range feature.Config {
@@ -151,8 +155,8 @@ func applyFulltextFeature(fieldProps map[string]any, propertyType string, featur
 	}
 }
 
-func applyKeywordFeature(fieldProps map[string]any, propertyType string, feature interfaces.PropertyFeature) {
-	if propertyType != interfaces.DataType_Text {
+func applyKeywordFeature(fieldProps map[string]any, property *interfaces.Property, feature interfaces.PropertyFeature) {
+	if property.Type != interfaces.DataType_Text {
 		for key, value := range feature.Config {
 			fieldProps[key] = value
 		}
@@ -161,6 +165,10 @@ func applyKeywordFeature(fieldProps map[string]any, propertyType string, feature
 	fieldName := strings.TrimSpace(feature.FeatureName)
 	if fieldName == "" {
 		fieldName = interfaces.LocalIndexKeywordSubfieldName
+	} else if property.OriginalName != "" {
+		fieldName = strings.TrimPrefix(fieldName, property.OriginalName+".")
+	} else {
+		fieldName = strings.TrimPrefix(fieldName, property.Name+".")
 	}
 	fields, ok := fieldProps["fields"].(map[string]any)
 	if !ok {

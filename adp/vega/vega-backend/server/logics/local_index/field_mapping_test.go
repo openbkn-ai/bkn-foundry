@@ -92,6 +92,35 @@ func TestBuildFieldMappings(t *testing.T) {
 		assert.Equal(t, map[string]any{"type": "keyword"}, body["fields"].(map[string]any)["keyword"])
 	})
 
+	t.Run("normalizes qualified feature names to subfield names", func(t *testing.T) {
+		properties, _, err := buildFieldMappings([]*interfaces.Property{
+			{
+				Name: "title",
+				Type: interfaces.DataType_String,
+				Features: []interfaces.PropertyFeature{{
+					FeatureName: "title.analyzed",
+					FeatureType: interfaces.PropertyFeatureType_Fulltext,
+				}},
+			},
+			{
+				Name: "body",
+				Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{
+					FeatureName: "body.raw",
+					FeatureType: interfaces.PropertyFeatureType_Keyword,
+				}},
+			},
+		})
+
+		require.NoError(t, err)
+		titleFields := properties["title"].(map[string]any)["fields"].(map[string]any)
+		assert.Contains(t, titleFields, "analyzed")
+		assert.NotContains(t, titleFields, "title.analyzed")
+		bodyFields := properties["body"].(map[string]any)["fields"].(map[string]any)
+		assert.Contains(t, bodyFields, "raw")
+		assert.NotContains(t, bodyFields, "body.raw")
+	})
+
 	t.Run("rejects unsupported resource type", func(t *testing.T) {
 		properties, _, err := buildFieldMappings([]*interfaces.Property{{Name: "raw", Type: interfaces.DataType_Other, OriginalType: "_text"}})
 
@@ -127,5 +156,23 @@ func TestBuildFieldMappings(t *testing.T) {
 		require.Error(t, err)
 		assert.Nil(t, properties)
 		assert.ErrorContains(t, err, "has no resolved dimension")
+	})
+
+	t.Run("rejects generated vector field collision", func(t *testing.T) {
+		properties, _, err := buildFieldMappings([]*interfaces.Property{
+			{
+				Name: "content",
+				Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{
+					FeatureType: interfaces.PropertyFeatureType_Vector,
+					Config:      map[string]any{"dimension": 768},
+				}},
+			},
+			{Name: "content_vector", Type: interfaces.DataType_String},
+		})
+
+		require.Error(t, err)
+		assert.Nil(t, properties)
+		assert.ErrorContains(t, err, `generated vector field "content_vector" conflicts with declared field`)
 	})
 }
