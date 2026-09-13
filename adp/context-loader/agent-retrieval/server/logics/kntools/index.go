@@ -520,8 +520,11 @@ func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (
 		}
 		// The mount says this network may use the tool; it does not say the tool still works.
 		// A server published at mount time can be taken offline afterwards — bkn-backend then
-		// refuses new bindings, but the existing one survives, and the MCP proxy performs no
-		// status check of its own, so without this the call would still run.
+		// refuses new bindings, but the existing one survives. The MCP proxy refuses such a server
+		// too (bkn-foundry#1491), but only after this service has resolved a proxy account for the
+		// call; asking first keeps a withdrawn server from getting that far and answers with the
+		// tool-level refusal the caller expects. An editing server is usable:
+		// it is served from its release (bkn-foundry#1478).
 		//
 		// The server is asked directly. Its tool listing is not a proxy for this question: that
 		// endpoint answers whatever the server's state, so an offline server still lists every
