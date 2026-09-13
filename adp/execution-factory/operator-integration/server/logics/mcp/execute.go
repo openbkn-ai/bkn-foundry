@@ -11,6 +11,7 @@ import (
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/telemetry"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	proxyexecution "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/proxy_execution"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
@@ -81,15 +82,12 @@ func (s *mcpServiceImpl) GetMCPTools(ctx context.Context, req *interfaces.MCPPro
 		return
 	}
 
-	listToolsReq := &ListToolsRequest{
-		CreationType: interfaces.MCPCreationType(serverConfig.CreationType),
-		MCPID:        req.MCPID,
-		Version:      serverConfig.Version,
-		MCPCoreInfo: &interfaces.MCPCoreConfigInfo{
-			Mode:    interfaces.MCPMode(serverConfig.Mode),
-			URL:     serverConfig.URL,
-			Headers: utils.JSONToObject[map[string]string](serverConfig.Headers),
-		},
+	listToolsReq, err := s.servingListToolsRequest(ctx, serverConfig)
+	if err != nil {
+		s.logger.WithContext(ctx).Errorf("select mcp server release by id error: %v", err)
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError,
+			fmt.Sprintf("select mcp server release by id error: %v", err))
+		return
 	}
 
 	listToolsResp, err := s.listTools(ctx, listToolsReq)
@@ -135,27 +133,27 @@ func (s *mcpServiceImpl) CallMCPTool(ctx context.Context, req *interfaces.MCPPro
 		err = oerrors.DefaultHTTPError(ctx, http.StatusNotFound, "mcp server config not found")
 		return
 	}
-	// Only a published server's tools may be called. The debug path (DebugTool) deliberately
-	// does not come through here, so a draft server can still be exercised by its author; this
-	// is the execution path, and a server taken offline must stop answering it (#1483).
-	if serverConfig.Status != string(interfaces.BizStatusPublished) {
+	// Only a server that is being served may be called: a published one, or an editing one, which
+	// is served from its release (#1478). The debug path (DebugTool) deliberately does not come
+	// through here, so a draft server can still be exercised by its author; this is the execution
+	// path, and a server taken offline must stop answering it (#1483).
+	if serverConfig.Status != string(interfaces.BizStatusPublished) &&
+		serverConfig.Status != string(interfaces.BizStatusEditing) {
 		err = oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtMCPServerNotPublished, nil)
 		return
 	}
 
+	listToolsReq, err := s.servingListToolsRequest(ctx, serverConfig)
+	if err != nil {
+		s.logger.WithContext(ctx).Errorf("select mcp server release by id error: %v", err)
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError,
+			fmt.Sprintf("select mcp server release by id error: %v", err))
+		return
+	}
 	callToolReq := &CallToolRequest{
-		ListToolsRequest: &ListToolsRequest{
-			CreationType: interfaces.MCPCreationType(serverConfig.CreationType),
-			MCPID:        req.MCPID,
-			Version:      serverConfig.Version,
-			MCPCoreInfo: &interfaces.MCPCoreConfigInfo{
-				Mode:    interfaces.MCPMode(serverConfig.Mode),
-				URL:     serverConfig.URL,
-				Headers: utils.JSONToObject[map[string]string](serverConfig.Headers),
-			},
-		},
-		ToolName: req.ToolName,
-		Params:   req.Parameters,
+		ListToolsRequest: listToolsReq,
+		ToolName:         req.ToolName,
+		Params:           req.Parameters,
 	}
 
 	callToolResult, err := s.callTool(ctx, callToolReq)
@@ -186,6 +184,46 @@ func (s *mcpServiceImpl) CallMCPTool(ctx context.Context, req *interfaces.MCPPro
 		IsError: callToolResult.IsError,
 	}
 	return resp, nil
+}
+
+// servingListToolsRequest describes the version of an MCP Server that its callers are served.
+//
+// An editing server is a published server with a draft beside it, the rule Operators and Skills
+// follow too: its release keeps serving until the draft is published, and the draft reaches only
+// the debug path. The config cannot stand in for the release here — entering editing moves it to a
+// version that may have no instance at all (#1478). In any other status the config is what gets
+// served; for a published server it is exactly what was released. The creation type is taken from
+// the config either way: it never changes between versions.
+func (s *mcpServiceImpl) servingListToolsRequest(ctx context.Context, config *model.MCPServerConfigDB) (*ListToolsRequest, error) {
+	req := &ListToolsRequest{
+		CreationType: interfaces.MCPCreationType(config.CreationType),
+		MCPID:        config.MCPID,
+		Version:      config.Version,
+		MCPCoreInfo: &interfaces.MCPCoreConfigInfo{
+			Mode:    interfaces.MCPMode(config.Mode),
+			URL:     config.URL,
+			Headers: utils.JSONToObject[map[string]string](config.Headers),
+		},
+	}
+	if config.Status != string(interfaces.BizStatusEditing) {
+		return req, nil
+	}
+	release, err := s.DBMCPServerRelease.SelectByMCPID(ctx, nil, config.MCPID)
+	if err != nil {
+		return nil, err
+	}
+	if release == nil {
+		// Editing always follows a publication, so this is inconsistent data: serve the config,
+		// as before, rather than refuse.
+		return req, nil
+	}
+	req.Version = release.Version
+	req.MCPCoreInfo = &interfaces.MCPCoreConfigInfo{
+		Mode:    interfaces.MCPMode(release.Mode),
+		URL:     release.URL,
+		Headers: utils.JSONToObject[map[string]string](release.Headers),
+	}
+	return req, nil
 }
 
 func (s *mcpServiceImpl) callTool(ctx context.Context, req *CallToolRequest) (*CallToolResponse, error) {

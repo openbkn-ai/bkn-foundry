@@ -20,8 +20,9 @@ import (
 
 // The execution gate for an MCP Server's publication (#1483). Nothing beyond the config table is
 // wired into this service, so reaching the proxy would fail loudly: the refusal has to come first.
+// An editing server is not refused: it is served from its release (#1478, see execute_serving_test.go).
 func TestCallMCPToolRefusesAnUnpublishedServer(t *testing.T) {
-	for _, status := range []interfaces.BizStatus{interfaces.BizStatusOffline, interfaces.BizStatusUnpublish, interfaces.BizStatusEditing} {
+	for _, status := range []interfaces.BizStatus{interfaces.BizStatusOffline, interfaces.BizStatusUnpublish} {
 		Convey("MCP Server 状态为 "+string(status)+":调用被拒,不建连", t, func() {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
