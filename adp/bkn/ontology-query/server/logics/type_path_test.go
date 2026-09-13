@@ -48,6 +48,12 @@ func TestResolveTypeEdgeDirection(t *testing.T) {
 				"要求路径为 user → order，当前为 order → user", "关系类定义为 order → user"},
 		},
 		{
+			// Request validation rejects it first; the resolver must not read it as unset either.
+			name: "an unknown direction is not treated as unset", edge: edge(orderUser, "order", "user", interfaces.DIRECTION_BIDIRECTIONAL),
+			relationType: orderUser,
+			wantParts:    []string{"第 1 条边的 direction 必须为 forward 或 backward，当前为 bidirectional"},
+		},
+		{
 			name: "endpoints that are not the relation's ends", edge: edge(orderUser, "user_address", "user", ""),
 			relationType: orderUser,
 			wantParts: []string{"第 1 条边 rel_order_user 连不上路径节点",

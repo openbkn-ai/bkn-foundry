@@ -27,6 +27,14 @@ func ResolveTypeEdgeDirection(ctx context.Context, index int, edge interfaces.Ty
 	if direction, ok := edge.TraversalDirection(relationType); ok {
 		return direction, nil
 	}
+	if edge.Direction != "" && edge.Direction != interfaces.DIRECTION_FORWARD &&
+		edge.Direction != interfaces.DIRECTION_BACKWARD {
+		return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+			oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).
+			WithErrorDetails(locale.ValidationDetail(ctx, "EdgeDirectionInvalid", map[string]any{
+				"index": index + 1, "value": edge.Direction,
+			}))
+	}
 
 	params := map[string]any{
 		"index":    index + 1,

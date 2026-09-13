@@ -167,8 +167,8 @@ type TypeEdge struct {
 
 // TraversalDirection reports how the edge walks relationType: forward from the
 // relation's source to its target, backward the other way. ok is false when the
-// edge's endpoints are not the two ends of relationType, or contradict an explicit
-// Direction.
+// edge's endpoints are not the two ends of relationType, when they contradict an
+// explicit Direction, or when Direction is neither empty, forward nor backward.
 //
 // Endpoints alone cannot tell the two apart on a relation whose source and target
 // are the same object type, so an unset Direction resolves to forward there, which
@@ -180,10 +180,13 @@ func (e TypeEdge) TraversalDirection(relationType RelationType) (direction strin
 	backward := e.SourceObjectTypeId == relationType.TargetObjectTypeID &&
 		e.TargetObjectTypeId == relationType.SourceObjectTypeID
 	switch e.Direction {
+	case "":
 	case DIRECTION_FORWARD:
 		return DIRECTION_FORWARD, forward
 	case DIRECTION_BACKWARD:
 		return DIRECTION_BACKWARD, backward
+	default:
+		return "", false
 	}
 	if forward {
 		return DIRECTION_FORWARD, true
