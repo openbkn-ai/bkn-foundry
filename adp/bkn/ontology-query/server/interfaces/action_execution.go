@@ -145,6 +145,7 @@ type ActionLogQuery struct {
 	Statuses             []string `json:"statuses,omitempty"` // when set, OR-match any status (takes precedence over Status)
 	TriggerType          string   `json:"trigger_type,omitempty" form:"trigger_type"`
 	InstanceIdentityHash string   `json:"instance_identity_hash,omitempty"` // exact match on duplicate fingerprint
+	Keyword              string   `json:"keyword,omitempty" form:"keyword"` // case-insensitive literal substring of the execution id
 	StartTimeRange       []int64  `json:"start_time_range,omitempty"`       // [start, end] for JSON body
 	StartTimeFrom        int64    `json:"-" form:"start_time_from"`         // for GET query params
 	StartTimeTo          int64    `json:"-" form:"start_time_to"`           // for GET query params

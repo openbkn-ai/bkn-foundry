@@ -2783,6 +2783,14 @@ paths:
               - scheduled
             type: string
           in: query
+        - name: keyword
+          description: |
+            按执行 ID 过滤（可选）：不区分大小写的字面子串匹配，`*`、`?`、`\` 按普通字符处理。
+            首尾空白会被去掉；最长 128 个字符，超长返回 400。同时作用于 total_count。
+          schema:
+            type: string
+            maxLength: 128
+          in: query
         - name: start_time_from
           description: 开始时间范围-起始（毫秒时间戳，可选）
           schema:
@@ -2843,6 +2851,12 @@ paths:
                       - 1704067200000
                       - "cqq2g8h4d2fg00fvm8dg"
           description: ok
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+          description: 参数非法（如 keyword 超长、search_after 游标无法解析）
       summary: 查询行动执行日志
 
   /api/ontology-query/v1/knowledge-networks/{kn_id}/action-logs/{log_id}:
@@ -5404,7 +5418,7 @@ components:
             - scheduled
           type: string
         status:
-          description: 执行状态
+          description: 执行状态。取消被接受后保持 cancelled，执行器随后写入的终态不会覆盖它。
           enum:
             - pending
             - running
@@ -5438,13 +5452,13 @@ components:
           items:
             $ref: "#/components/schemas/ObjectExecutionResult"
         results_total:
-          description: results 总数（用于分页）
+          description: results 总数（用于分页）。仅出现在详情响应中，不写入存储。
           type: integer
         results_offset:
-          description: 当前 results 偏移量
+          description: 当前 results 偏移量。仅出现在详情响应中，不写入存储。
           type: integer
         results_limit:
-          description: 当前 results 分页大小
+          description: 当前 results 分页大小。仅出现在详情响应中，不写入存储。
           type: integer
         dynamic_params:
           description: 动态参数
@@ -5655,6 +5669,10 @@ components:
             - manual
             - scheduled
           type: string
+        keyword:
+          description: 按执行 ID 过滤（可选），不区分大小写的字面子串匹配，最长 128 个字符
+          type: string
+          maxLength: 128
         start_time_range:
           description: 开始时间范围 [起始, 结束]（毫秒时间戳）
           type: array
@@ -5684,6 +5702,7 @@ components:
           description: |
             执行记录列表。每条只是任务摘要：results、action_type_snapshot、action_source
             三项在 OpenSearch 查询层就被排除，不随列表返回——逐实例明细请按 log_id 查详情。
+            早期写入的记录里残留的 results_total、results_offset、results_limit 也一并排除。
           type: array
           items:
             $ref: "#/components/schemas/ActionExecutionSummary"
@@ -5719,10 +5738,12 @@ components:
           description: 提示消息
           type: string
         cancelled_count:
-          description: 被取消的对象数量（原本 pending 状态的对象）
+          description: |
+            取消时尚未执行的调用数，即 total_count − success_count − failed_count（按最近一次进度更新计算，
+            进度每 100 次调用刷新一次）。执行器察觉取消后停止调用，并把这些实例记为 cancelled。
           type: integer
         completed_count:
-          description: 已完成的对象数量（取消前已执行完成的对象）
+          description: 取消时已成功的调用数（按最近一次进度更新计算）
           type: integer
 
     MetricQueryOrderBy:

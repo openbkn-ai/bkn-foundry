@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -374,6 +375,19 @@ func (s *actionLogsService) QueryExecutions(ctx context.Context, query *interfac
 		})
 	}
 
+	if keyword := strings.TrimSpace(query.Keyword); keyword != "" {
+		// The Studio search box searches the execution id: a case-insensitive literal
+		// substring, so wildcard metacharacters typed by the user are escaped.
+		mustConditions = append(mustConditions, map[string]any{
+			"wildcard": map[string]any{
+				"id": map[string]any{
+					"value":            "*" + escapeWildcard(keyword) + "*",
+					"case_insensitive": true,
+				},
+			},
+		})
+	}
+
 	if len(query.StartTimeRange) == 2 {
 		mustConditions = append(mustConditions, map[string]any{
 			"range": map[string]any{
@@ -610,6 +624,13 @@ func (s *actionLogsService) CancelExecution(ctx context.Context, knID, execID, r
 		CancelledCount: notRun,
 		CompletedCount: exec.SuccessCount,
 	}, nil
+}
+
+// wildcardEscaper makes a user-supplied term match literally inside a wildcard query.
+var wildcardEscaper = strings.NewReplacer(`\`, `\\`, `*`, `\*`, `?`, `\?`)
+
+func escapeWildcard(term string) string {
+	return wildcardEscaper.Replace(term)
 }
 
 func isCancellable(status string) bool {

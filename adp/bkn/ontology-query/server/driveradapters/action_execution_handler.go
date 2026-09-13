@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
@@ -271,6 +272,16 @@ func (r *restHandler) QueryActionLogs(c *gin.Context, visitor hydra.Visitor, inc
 
 	query.KNID = knID
 
+	keyword, err := normalizeActionLogKeyword(query.Keyword)
+	if err != nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+			WithErrorDetails(err.Error())
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	query.Keyword = keyword
+
 	// Convert GET query params to internal format
 	if query.StartTimeFrom > 0 || query.StartTimeTo > 0 {
 		query.StartTimeRange = []int64{query.StartTimeFrom, query.StartTimeTo}
@@ -408,6 +419,18 @@ func (r *restHandler) GetActionLog(c *gin.Context, visitor hydra.Visitor, includ
 		result = redactActionExecutionProxyContext(result)
 	}
 	rest.ReplyOK(c, http.StatusOK, result)
+}
+
+// maxActionLogKeywordLength bounds the execution-id search term; ids are at most 36 characters.
+const maxActionLogKeywordLength = 128
+
+// normalizeActionLogKeyword trims the execution-id search term and rejects oversized input.
+func normalizeActionLogKeyword(keyword string) (string, error) {
+	keyword = strings.TrimSpace(keyword)
+	if utf8.RuneCountInString(keyword) > maxActionLogKeywordLength {
+		return "", fmt.Errorf("keyword must not exceed %d characters", maxActionLogKeywordLength)
+	}
+	return keyword, nil
 }
 
 func redactActionExecutionProxyContext(execution *interfaces.ActionExecution) *interfaces.ActionExecution {

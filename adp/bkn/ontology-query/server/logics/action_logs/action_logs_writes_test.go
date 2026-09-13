@@ -238,3 +238,61 @@ func Test_GetExecutionStatus_ReadsStatusOnly(t *testing.T) {
 		So(searched["_source"], ShouldResemble, map[string]any{"includes": []string{"status"}})
 	})
 }
+
+func Test_QueryExecutions_KeywordMatchesExecutionIDSubstring(t *testing.T) {
+	Convey("keyword filters the list and the total by a literal, case-insensitive execution id substring", t, func() {
+		svc, osa := newWriteTestService(t)
+		osa.EXPECT().IndexExists(gomock.Any(), gomock.Any()).Return(true, nil)
+
+		var searched, counted map[string]any
+		osa.EXPECT().SearchData(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, q any) ([]interfaces.Hit, error) {
+				searched = q.(map[string]any)
+				return nil, nil
+			})
+		osa.EXPECT().Count(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, q any) ([]byte, error) {
+				counted = q.(map[string]any)
+				return []byte(`{"count": 0}`), nil
+			})
+
+		_, err := svc.QueryExecutions(context.Background(), &interfaces.ActionLogQuery{
+			KNID:      "kn_1",
+			Keyword:   ` 01A0*b?c\ `,
+			NeedTotal: true,
+		})
+		So(err, ShouldBeNil)
+
+		wantCondition := map[string]any{
+			"wildcard": map[string]any{
+				"id": map[string]any{
+					// Trimmed, and * ? \ escaped so the user's input matches literally.
+					"value":            `*01A0\*b\?c\\*`,
+					"case_insensitive": true,
+				},
+			},
+		}
+		mustOf := func(q map[string]any) []map[string]any {
+			return q["query"].(map[string]any)["bool"].(map[string]any)["must"].([]map[string]any)
+		}
+		So(mustOf(searched), ShouldContain, wantCondition)
+		So(mustOf(counted), ShouldContain, wantCondition)
+	})
+
+	Convey("a blank keyword adds no condition", t, func() {
+		svc, osa := newWriteTestService(t)
+		osa.EXPECT().IndexExists(gomock.Any(), gomock.Any()).Return(true, nil)
+
+		var searched map[string]any
+		osa.EXPECT().SearchData(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, q any) ([]interfaces.Hit, error) {
+				searched = q.(map[string]any)
+				return nil, nil
+			})
+
+		_, err := svc.QueryExecutions(context.Background(), &interfaces.ActionLogQuery{KNID: "kn_1", Keyword: "   "})
+		So(err, ShouldBeNil)
+		must := searched["query"].(map[string]any)["bool"].(map[string]any)["must"].([]map[string]any)
+		So(must, ShouldBeEmpty)
+	})
+}
