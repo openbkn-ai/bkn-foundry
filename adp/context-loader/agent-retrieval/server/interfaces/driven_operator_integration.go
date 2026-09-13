@@ -129,8 +129,8 @@ type DrivenOperatorIntegration interface {
 	// stand in for it — it needs a caller token the internal face never carries.
 	ToolBoxLifecycle(ctx context.Context, boxID string) (*ToolBoxLifecycle, error)
 
-	// MCPServerIsUsable reports whether the MCP Server is published, and so whether the tools it
-	// exposes may be called.
+	// MCPServerIsUsable reports whether the MCP Server is published or editing, and so whether the
+	// tools it exposes may be called. An editing server is served from its release.
 	//
 	// The proxy's tool listing answers regardless of the server's state, so it cannot stand in
 	// for this: a server taken offline after a tool was mounted still lists that tool. The

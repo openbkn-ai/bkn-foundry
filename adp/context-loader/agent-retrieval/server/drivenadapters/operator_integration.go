@@ -317,7 +317,8 @@ func (o *operatorIntegrationClient) ToolBoxLifecycle(ctx context.Context, boxID 
 	return out, nil
 }
 
-// MCPServerIsUsable reports whether the MCP Server is published.
+// MCPServerIsUsable reports whether the MCP Server's tools are callable: it is published, or it is
+// editing, which the execution factory serves from its release (bkn-foundry#1478).
 //
 // A server that cannot be read is reported as unusable rather than assumed fine: this gates a
 // call that runs, and the safe direction when the answer is unknown is to refuse.
@@ -344,8 +345,12 @@ func (o *operatorIntegrationClient) MCPServerIsUsable(ctx context.Context, mcpID
 		o.logger.WithContext(ctx).Warnf("[OperatorIntegration#MCPServerIsUsable] unmarshal failed: %v", err)
 		return false, nil
 	}
-	return payload.BaseInfo.Status == mcpServerStatusPublished, nil
+	return payload.BaseInfo.Status == mcpServerStatusPublished || payload.BaseInfo.Status == mcpServerStatusEditing, nil
 }
 
-// mcpServerStatusPublished is the one state in which an MCP Server's tools are callable.
-const mcpServerStatusPublished = "published"
+// An MCP Server's tools are callable in two states: published, and editing — a published server
+// with a draft beside it, still served from its release. The tool box's lifecycle reuses the first.
+const (
+	mcpServerStatusPublished = "published"
+	mcpServerStatusEditing   = "editing"
+)
