@@ -48,7 +48,7 @@ jobs:
         working-directory: infra/mf-model-api
         run: |
           python -m pip install --disable-pip-version-check -r requirements-test.txt
-          python -m unittest -v app.test.test_permission_manager_authz
+          python -m unittest -v app.test.test_permission_manager_authz app.test.test_auth_middleware_identity
 
   build:
     needs: [test, authz-unit]

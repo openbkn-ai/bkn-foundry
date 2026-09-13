@@ -103,6 +103,26 @@ async def _verify_app_key(token):
     return user_id, role
 
 
+_IDENTITY_HEADERS = (b"x-account-id", b"x-account-type")
+
+
+def _set_trusted_identity(request: Request, user_id: str, role: str) -> None:
+    # Drop any client-supplied identity headers before injecting the verified
+    # identity. ``headers.get`` returns the first match, so a spoofed header
+    # placed ahead of the appended one would otherwise win and let any
+    # authenticated caller (including a bak_ AppKey) impersonate an arbitrary
+    # account. Public surface only; the private surface (/api/private) passes
+    # through untouched and keeps its S2S "header is identity" contract.
+    headers = [
+        (name, value)
+        for name, value in request.scope["headers"]
+        if name.lower() not in _IDENTITY_HEADERS
+    ]
+    headers.append((b"x-account-id", user_id.encode()))
+    headers.append((b"x-account-type", role.encode()))
+    request.scope["headers"] = headers
+
+
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
     if path.startswith("/api/v1/health"):
@@ -112,8 +132,7 @@ async def auth_middleware(request: Request, call_next):
     elif not base_config.AUTH_ENABLED:
         # With authorization disabled, inject an anonymous identity for audit correlation.
         user_id = request.headers.get("x-account-id", base_config.ANONYMOUS_USER_ID)
-        request.scope['headers'].append((b"x-account-id", user_id.encode()))
-        request.scope['headers'].append((b"x-account-type", b"user"))
+        _set_trusted_identity(request, user_id, "user")
     else:
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
@@ -128,8 +147,7 @@ async def auth_middleware(request: Request, call_next):
             if isinstance(verified, JSONResponse):
                 return verified
             user_id, role = verified
-            request.scope['headers'].append((b"x-account-id", user_id.encode()))
-            request.scope['headers'].append((b"x-account-type", role.encode()))
+            _set_trusted_identity(request, user_id, role)
             response = await call_next(request)
             return response
         hydra_url = f"http://{base_config.OAUTHADMINHOST}:{base_config.OAUTHADMINPORT}/admin/oauth2/introspect"
@@ -155,8 +173,7 @@ async def auth_middleware(request: Request, call_next):
                         client_id = result.get("client_id", "")
                         role = "user" if client_id != user_id else "app"
                     if activate:
-                        request.scope['headers'].append((b"x-account-id", user_id.encode()))
-                        request.scope['headers'].append((b"x-account-type", role.encode()))
+                        _set_trusted_identity(request, user_id, role)
                     else:
                         return JSONResponse(
                             status_code=401,
