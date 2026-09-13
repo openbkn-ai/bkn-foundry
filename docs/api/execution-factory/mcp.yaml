@@ -605,8 +605,9 @@ paths:
 
         **只有已发布的 MCP Server 能被调用**：`published` 按当前配置调用；`editing`
         按已发布版本调用，草稿中的改动在重新发布前不生效；`unpublish` / `offline`
-        一律返回 400 `MCPServerNotPublished`，在建连之前拒绝。调试接口不受此限，
-        按草稿调用。
+        一律返回 400 `MCPServerNotPublished`，在建连之前拒绝。没有发布记录的 `editing`
+        （例如从别的环境导入的编辑中 MCP Server）没有可服务的版本，同样返回 400。
+        调试接口不受此限，按草稿调用。
       parameters:
         - $ref: '#/components/parameters/MCPID'
       requestBody:

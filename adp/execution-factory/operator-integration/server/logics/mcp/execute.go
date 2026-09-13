@@ -91,7 +91,8 @@ func (s *mcpServiceImpl) GetMCPTools(ctx context.Context, req *interfaces.MCPPro
 
 	listToolsReq := configListToolsRequest(serverConfig)
 	if !req.Draft {
-		listToolsReq, err = s.servingListToolsRequest(ctx, serverConfig)
+		// A server that is not served lists its config, as it always has: its author's view.
+		listToolsReq, _, err = s.servingListToolsRequest(ctx, serverConfig)
 		if err != nil {
 			s.logger.WithContext(ctx).Errorf("select mcp server release by id error: %v", err)
 			err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError,
@@ -143,21 +144,20 @@ func (s *mcpServiceImpl) CallMCPTool(ctx context.Context, req *interfaces.MCPPro
 		err = oerrors.DefaultHTTPError(ctx, http.StatusNotFound, "mcp server config not found")
 		return
 	}
-	// Only a server that is being served may be called: a published one, or an editing one, which
-	// is served from its release (#1478). The debug path (DebugTool) deliberately does not come
-	// through here, so a draft server can still be exercised by its author; this is the execution
-	// path, and a server taken offline must stop answering it (#1483).
-	if serverConfig.Status != string(interfaces.BizStatusPublished) &&
-		serverConfig.Status != string(interfaces.BizStatusEditing) {
-		err = oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtMCPServerNotPublished, nil)
-		return
-	}
-
-	listToolsReq, err := s.servingListToolsRequest(ctx, serverConfig)
+	listToolsReq, served, err := s.servingListToolsRequest(ctx, serverConfig)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("select mcp server release by id error: %v", err)
 		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			fmt.Sprintf("select mcp server release by id error: %v", err))
+		return
+	}
+	// Only a server that is being served may be called: a published one, or an editing one, which
+	// is served from its release (#1478). The debug path (DebugTool) deliberately does not come
+	// through here, so a draft server can still be exercised by its author; this is the execution
+	// path, and a server taken offline must stop answering it (#1483). The refusal comes before any
+	// connection is made.
+	if !served {
+		err = oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtMCPServerNotPublished, nil)
 		return
 	}
 	callToolReq := &CallToolRequest{
@@ -211,27 +211,35 @@ func configListToolsRequest(config *model.MCPServerConfigDB) *ListToolsRequest {
 	}
 }
 
-// servingListToolsRequest describes the version of an MCP Server that its callers are served.
+// servingListToolsRequest describes the version of an MCP Server that its callers are served, and
+// reports whether they are served at all.
 //
 // An editing server is a published server with a draft beside it, the rule Operators and Skills
 // follow too: its release keeps serving until the draft is published, and the draft reaches only
 // the debug path. The config cannot stand in for the release here — entering editing moves it to a
-// version that may have no instance at all (#1478). In any other status the config is what gets
-// served; for a published server it is exactly what was released. The creation type is taken from
-// the config either way: it never changes between versions.
-func (s *mcpServiceImpl) servingListToolsRequest(ctx context.Context, config *model.MCPServerConfigDB) (*ListToolsRequest, error) {
-	req := configListToolsRequest(config)
-	if config.Status != string(interfaces.BizStatusEditing) {
-		return req, nil
+// version that may have no instance at all (#1478). A published server is served from its config,
+// which is exactly what was released. The creation type is taken from the config either way: it
+// never changes between versions.
+//
+// served is false for every other server: a draft, an offline one, and an editing one with no
+// release — which the status machine never produces, but an import of an editing server does, and
+// serving its draft would run tools nobody released (#1524). The request then describes the config,
+// which is what a listing shows for such a server.
+func (s *mcpServiceImpl) servingListToolsRequest(ctx context.Context, config *model.MCPServerConfigDB) (req *ListToolsRequest, served bool, err error) {
+	req = configListToolsRequest(config)
+	switch config.Status {
+	case string(interfaces.BizStatusPublished):
+		return req, true, nil
+	case string(interfaces.BizStatusEditing):
+	default:
+		return req, false, nil
 	}
 	release, err := s.DBMCPServerRelease.SelectByMCPID(ctx, nil, config.MCPID)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if release == nil {
-		// Editing always follows a publication, so this is inconsistent data: serve the config,
-		// as before, rather than refuse.
-		return req, nil
+		return req, false, nil
 	}
 	req.Version = release.Version
 	req.MCPCoreInfo = &interfaces.MCPCoreConfigInfo{
@@ -239,7 +247,7 @@ func (s *mcpServiceImpl) servingListToolsRequest(ctx context.Context, config *mo
 		URL:     release.URL,
 		Headers: utils.JSONToObject[map[string]string](release.Headers),
 	}
-	return req, nil
+	return req, true, nil
 }
 
 func (s *mcpServiceImpl) callTool(ctx context.Context, req *CallToolRequest) (*CallToolResponse, error) {

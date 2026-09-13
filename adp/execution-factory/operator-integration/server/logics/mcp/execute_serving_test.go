@@ -109,7 +109,7 @@ func TestServingListToolsRequestUsesTheReleasedEndpointWhileEditing(t *testing.T
 		}, nil)
 		svc := &mcpServiceImpl{logger: logger.DefaultLogger(), DBMCPServerRelease: releases}
 
-		req, err := svc.servingListToolsRequest(context.Background(), &model.MCPServerConfigDB{
+		req, served, err := svc.servingListToolsRequest(context.Background(), &model.MCPServerConfigDB{
 			MCPID:        "mcp-1",
 			Status:       string(interfaces.BizStatusEditing),
 			Version:      3,
@@ -119,6 +119,7 @@ func TestServingListToolsRequestUsesTheReleasedEndpointWhileEditing(t *testing.T
 			Headers:      `{"X-Env":"draft"}`,
 		})
 		So(err, ShouldBeNil)
+		So(served, ShouldBeTrue)
 		So(req.CreationType, ShouldEqual, interfaces.MCPCreationTypeCustom)
 		So(req.Version, ShouldEqual, 2)
 		So(req.MCPCoreInfo.Mode, ShouldEqual, interfaces.MCPModeSSE)
@@ -126,20 +127,21 @@ func TestServingListToolsRequestUsesTheReleasedEndpointWhileEditing(t *testing.T
 		So(req.MCPCoreInfo.Headers, ShouldResemble, map[string]string{"X-Env": "released"})
 	})
 
-	Convey("editing 却没有发布记录:退回配置本身,不比修复前更差", t, func() {
+	Convey("editing 却没有发布记录:不算在服务,请求描述配置本身(列表照旧展示配置)", t, func() {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		releases := mocks.NewMockDBMCPServerRelease(ctrl)
 		releases.EXPECT().SelectByMCPID(gomock.Any(), gomock.Nil(), "mcp-1").Return(nil, nil)
 		svc := &mcpServiceImpl{logger: logger.DefaultLogger(), DBMCPServerRelease: releases}
 
-		req, err := svc.servingListToolsRequest(context.Background(), &model.MCPServerConfigDB{
+		req, served, err := svc.servingListToolsRequest(context.Background(), &model.MCPServerConfigDB{
 			MCPID:   "mcp-1",
 			Status:  string(interfaces.BizStatusEditing),
 			Version: 3,
 			URL:     "http://draft.example/mcp",
 		})
 		So(err, ShouldBeNil)
+		So(served, ShouldBeFalse)
 		So(req.Version, ShouldEqual, 3)
 		So(req.MCPCoreInfo.URL, ShouldEqual, "http://draft.example/mcp")
 	})
@@ -232,5 +234,40 @@ func TestGetMCPToolsListsTheDraftOnRequest(t *testing.T) {
 		_, err := svc.GetMCPTools(publicCtx, &interfaces.MCPProxyToolListRequest{MCPID: "mcp-1"})
 		So(errors.Is(err, errInstanceReached), ShouldBeTrue)
 		So(instances.versions, ShouldResemble, []int{2})
+	})
+}
+
+// An editing server without a release — an editing server imported into an environment where it was
+// never published — has nothing released to serve. Serving its draft would run unreleased tools, so it
+// is refused like a draft, before any connection is made (#1524).
+func TestCallMCPToolRefusesAnEditingServerWithoutARelease(t *testing.T) {
+	Convey("editing 却没有发布记录:按未发布拒绝,不建连", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		configs := mocks.NewMockDBMCPServerConfig(ctrl)
+		configs.EXPECT().SelectByID(gomock.Any(), gomock.Nil(), "mcp-1").Return(&model.MCPServerConfigDB{
+			MCPID:        "mcp-1",
+			Status:       string(interfaces.BizStatusEditing),
+			Version:      3,
+			CreationType: interfaces.MCPCreationTypeToolImported.String(),
+		}, nil)
+		releases := mocks.NewMockDBMCPServerRelease(ctrl)
+		releases.EXPECT().SelectByMCPID(gomock.Any(), gomock.Nil(), "mcp-1").Return(nil, nil)
+		auth := mocks.NewMockIAuthorizationService(ctrl)
+		auth.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(&interfaces.AuthAccessor{ID: "u-1"}, nil)
+		auth.EXPECT().CheckExecutePermission(gomock.Any(), gomock.Any(), "mcp-1", interfaces.AuthResourceTypeMCP).Return(nil)
+		instances := &versionRecordingInstances{}
+		svc := &mcpServiceImpl{
+			logger:             logger.DefaultLogger(),
+			AuthService:        auth,
+			DBMCPServerConfig:  configs,
+			DBMCPServerRelease: releases,
+			MCPInstanceService: instances,
+		}
+
+		_, err := svc.CallMCPTool(context.Background(), &interfaces.MCPProxyCallToolRequest{MCPID: "mcp-1", ToolName: "t"})
+		So(err, ShouldNotBeNil)
+		So(strings.Contains(err.Error(), "MCPServerNotPublished"), ShouldBeTrue)
+		So(instances.versions, ShouldBeEmpty)
 	})
 }
