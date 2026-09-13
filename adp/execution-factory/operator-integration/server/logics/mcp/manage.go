@@ -928,11 +928,9 @@ func (s *mcpServiceImpl) modifyMCPStatus(ctx context.Context, tx *sql.Tx, req *i
 			return
 		}
 	case interfaces.BizStatusUnpublish, interfaces.BizStatusEditing:
-		// In editing or unpublished status, update version number.
-		_, err = s.updateMCPConfigVersion(ctx, tx, mcpConfigDB)
-		if err != nil {
-			return
-		}
+		// A status change alone edits nothing, so the version stays; the first edit moves off a
+		// released version (updateMCPConfigVersion). Moving here left a version with no tools and
+		// no instance, which the proxy looked up and a republish released (#1478).
 	}
 
 	// Update MCP configuration table status.
@@ -1129,17 +1127,20 @@ func (s *mcpServiceImpl) checkDuplicateName(ctx context.Context, name, mcpID str
 	return
 }
 
-// updateMCPConfigVersion updates the MCP configuration table version number.
+// updateMCPConfigVersion moves an edit off a released version. A released version is immutable:
+// the release history keeps its tools and the instance pool may be serving it. An edit made while
+// the config still sits on the latest released version therefore moves to the next one, and a draft
+// already past it is edited in place. The history decides, not the status: an editing or unpublished
+// server may or may not have moved its draft yet (#1478).
 func (s *mcpServiceImpl) updateMCPConfigVersion(ctx context.Context, tx *sql.Tx, mcpConfigDB *model.MCPServerConfigDB) (version int, err error) {
-	if mcpConfigDB.Status == string(interfaces.BizStatusPublished) || mcpConfigDB.Status == string(interfaces.BizStatusOffline) {
-		// For backward compatibility, the version number is taken +1 from the release history.
-		releaseHistorys, err := s.DBMCPServerReleaseHistory.SelectByMCPID(ctx, tx, mcpConfigDB.MCPID)
-		if err != nil {
-			return 0, err
-		}
-		if len(releaseHistorys) > 0 {
-			mcpConfigDB.Version = releaseHistorys[0].Version + 1
-		}
+	// For backward compatibility, the version number is taken +1 from the release history.
+	releaseHistorys, err := s.DBMCPServerReleaseHistory.SelectByMCPID(ctx, tx, mcpConfigDB.MCPID)
+	if err != nil {
+		return 0, err
+	}
+	// SelectByMCPID returns the latest release first.
+	if len(releaseHistorys) > 0 && mcpConfigDB.Version <= releaseHistorys[0].Version {
+		mcpConfigDB.Version = releaseHistorys[0].Version + 1
 	}
 	version = mcpConfigDB.Version
 	return version, nil
@@ -1211,22 +1212,22 @@ func (s *mcpServiceImpl) refreshMCPServerInstance(ctx context.Context, oldVersio
 	return s.updateMCPServerInstance(ctx, mcpConfigDB, tools)
 }
 
+// updateMCPServerInstance redeploys the instance of the config's version, creating the deployment
+// when there is none. Drafts moved to a new version by status-only editing before #1478 have no
+// deployment; updating one only rebuilt it in memory, lost on the next restart.
 func (s *mcpServiceImpl) updateMCPServerInstance(ctx context.Context, mcpConfigDB *model.MCPServerConfigDB, tools []*model.MCPToolDB) (err error) {
-	// Update mcp Server instance.
-	req := &interfaces.MCPInstanceUpdateRequest{
-		MCPServerName: mcpConfigDB.Name,
-		Instructions:  mcpConfigDB.Description,
-	}
 	toolConfigs, err := s.getMCPToolDeployConfigs(ctx, tools)
 	if err != nil {
 		return err
 	}
-	req.ToolConfigs = toolConfigs
-	_, err = s.MCPInstanceService.UpdateMCPInstance(ctx, mcpConfigDB.MCPID, mcpConfigDB.Version, req)
-	if err != nil {
-		return err
-	}
-	return nil
+	_, err = s.MCPInstanceService.UpgradeMCPInstance(ctx, &interfaces.MCPInstanceCreateRequest{
+		MCPID:        mcpConfigDB.MCPID,
+		Version:      mcpConfigDB.Version,
+		Name:         mcpConfigDB.Name,
+		Instructions: mcpConfigDB.Description,
+		ToolConfigs:  toolConfigs,
+	})
+	return err
 }
 
 // getMCPToolDeployConfigs Gets MCP tool deployment configuration.
