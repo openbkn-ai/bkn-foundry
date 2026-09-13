@@ -851,15 +851,13 @@ func Test_executeAsync_PerInstanceStillFansOut(t *testing.T) {
 }
 
 func Test_executeAsync_PerInstanceCancelledMidway(t *testing.T) {
-	t.Setenv("AUTH_ENABLED", "false")
-
 	Convey("per_instance execution cancelled midway stops invoking and records the rest as cancelled (#790)", t, func() {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
 
 		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
 		logsService := omock.NewMockActionLogsService(mockCtrl)
-		service := &actionSchedulerService{aoAccess: aoAccess, logsService: logsService}
+		service := &actionSchedulerService{aoAccess: aoAccess, logsService: logsService, permissions: &actionPermissionStub{}}
 
 		execution := &interfaces.ActionExecution{
 			ID:            "exec_cancel_mid",

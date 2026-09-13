@@ -207,7 +207,7 @@ func (s *actionLogsService) searchExecution(ctx context.Context, knID, execID st
 		return nil, fmt.Errorf("failed to search execution: %w", err)
 	}
 	if !exists {
-		return nil, fmt.Errorf("execution not found: %s，because the index[%s] does not exist", execID, indexName)
+		return nil, fmt.Errorf("execution not found: %s, because the index[%s] does not exist", execID, indexName)
 	}
 
 	osQuery := map[string]any{
