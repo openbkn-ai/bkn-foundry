@@ -363,7 +363,13 @@ func (en *Enforcer) AdminDecision(ctx context.Context, accessorID string) (Evalu
 
 // AssignRole binds an accessor (user/app) to a role. Idempotent.
 func (en *Enforcer) AssignRole(accessorID, roleID string) error {
-	release, err := en.acquireWrite(context.Background())
+	return en.AssignRoleContext(context.Background(), accessorID, roleID)
+}
+
+// AssignRoleContext is AssignRole for request paths: a caller whose context
+// ends while queued for the write slot leaves without writing (#1511).
+func (en *Enforcer) AssignRoleContext(ctx context.Context, accessorID, roleID string) error {
+	release, err := en.acquireWrite(ctx)
 	if err != nil {
 		return err
 	}
@@ -375,7 +381,13 @@ func (en *Enforcer) AssignRole(accessorID, roleID string) error {
 // RemoveRole unbinds an accessor from a role (the inverse of AssignRole).
 // Idempotent: removing a binding that isn't there is a no-op.
 func (en *Enforcer) RemoveRole(accessorID, roleID string) error {
-	release, err := en.acquireWrite(context.Background())
+	return en.RemoveRoleContext(context.Background(), accessorID, roleID)
+}
+
+// RemoveRoleContext is RemoveRole for request paths, with the same queueing
+// contract as AssignRoleContext.
+func (en *Enforcer) RemoveRoleContext(ctx context.Context, accessorID, roleID string) error {
+	release, err := en.acquireWrite(ctx)
 	if err != nil {
 		return err
 	}

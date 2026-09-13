@@ -657,7 +657,7 @@ func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 				}
 			}
 		}
-		if err := e.AssignRole(req.AccessorID, req.RoleID); err != nil {
+		if err := e.AssignRoleContext(c.Request.Context(), req.AccessorID, req.RoleID); err != nil {
 			serverError(c, err)
 			return
 		}
@@ -711,7 +711,7 @@ func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			replyPublicError(c, http.StatusForbidden)
 			return
 		}
-		if err := e.RemoveRole(req.AccessorID, req.RoleID); err != nil {
+		if err := e.RemoveRoleContext(c.Request.Context(), req.AccessorID, req.RoleID); err != nil {
 			serverError(c, err)
 			return
 		}

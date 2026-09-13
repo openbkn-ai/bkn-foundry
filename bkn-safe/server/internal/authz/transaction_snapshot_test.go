@@ -224,9 +224,25 @@ func TestQueuedWriterWithEndedContextDoesNoWork(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Error("queued writer did not leave the queue when its context ended")
 	}
+	// Role bindings written from request handlers follow the same contract.
+	bindCtx, cancelBind := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancelBind()
+	bindDone := make(chan error, 1)
+	go func() { bindDone <- en.AssignRoleContext(bindCtx, "u-late", "r-late") }()
+	select {
+	case err := <-bindDone:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("queued role binding: err=%v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Error("queued role binding did not leave the queue when its context ended")
+	}
 	close(releaseHolder)
 	if err := <-holderDone; err != nil {
 		t.Fatal(err)
+	}
+	if roles, _ := en.RolesForAccessor("u-late"); len(roles) != 0 {
+		t.Fatalf("abandoned role binding was written: %v", roles)
 	}
 }
 

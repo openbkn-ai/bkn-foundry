@@ -34,6 +34,11 @@ var ErrPolicyReloadAfterCommit = errors.New("reload committed casbin policy")
 // transaction. Domain services can persist provenance rows through DB while
 // changing the matching policy through the methods below; both commit or roll
 // back together, and a commit publishes the new policy to the live model.
+//
+// Inside a transaction, use only these methods. The Enforcer's own write entry
+// points (Transaction, AssignRole, RemoveRole, ReloadPolicy) take the write
+// slot the transaction already holds: they are not re-entrant, and the
+// transactional enforcer has no slot, so they fail there with an error.
 type PolicyTransaction struct {
 	db       *gorm.DB
 	enforcer *Enforcer
