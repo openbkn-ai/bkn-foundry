@@ -90,10 +90,6 @@ service:
     enableTaskCleanup: false
     taskRetention: 720h # 30 days.
 
-# Authentication switch.
-auth:
-  enabled: true
-
 depServices:
   class-443:
     ingressClass: class-443

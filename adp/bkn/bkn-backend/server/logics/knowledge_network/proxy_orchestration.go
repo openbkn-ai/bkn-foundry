@@ -91,7 +91,7 @@ func (kns *knowledgeNetworkService) prepareProxyPublishWithBaseline(ctx context.
 		}
 		candidate = mergeProxyMutationChanges(current, kn, mergeMode)
 	}
-	sources, version, err := buildProxyGrantSources(candidate)
+	sources, version, err := kns.buildProxyGrantSources(ctx, candidate, nil)
 	if err != nil {
 		return nil, invalidProxyTargetError(ctx, err)
 	}
@@ -333,7 +333,7 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 		return err
 	}
 	candidate := mergeProxyMutationChanges(current, changes, mergeMode)
-	sources, version, err := buildProxyGrantSources(candidate)
+	sources, version, err := kns.buildProxyGrantSources(ctx, candidate, nil)
 	if err != nil {
 		return invalidProxyTargetError(ctx, err)
 	}
@@ -389,6 +389,148 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 		_ = cleanupTracker.Cleanup(mutationCtx, kns.ps)
 	}
 	return kns.finishProxyPublish(ctx, plan)
+}
+
+// PublishKNCapabilityMutation serializes capability rows with proxy grant
+// publication. Capability validation and persistence run inside the transaction;
+// the complete desired grant set is preflighted before that transaction commits.
+func (kns *knowledgeNetworkService) PublishKNCapabilityMutation(ctx context.Context, knID, branch string,
+	removedBindingIDs []string,
+	mutate func(context.Context, *sql.Tx) (*interfaces.KNCapabilityMutationResult, error),
+) (*interfaces.KNCapabilityMutationResult, error) {
+	if mutate == nil {
+		return nil, proxyHTTPError(ctx, http.StatusInternalServerError, "capability mutation callback is unavailable")
+	}
+	if strings.TrimSpace(knID) == "" || strings.TrimSpace(branch) == "" {
+		return nil, proxyHTTPError(ctx, http.StatusBadRequest, "capability mutation identity is invalid")
+	}
+	if !kns.proxyOrchestrationEnabled(branch) {
+		return mutate(ctx, nil)
+	}
+
+	plan, err := kns.beginProxyPublish(ctx, &interfaces.KN{KNID: knID, Branch: branch}, true, true)
+	if err != nil {
+		return nil, err
+	}
+	committed := false
+	defer func() {
+		if plan.createdMapping && !committed {
+			kns.abortCreatedProxy(context.WithoutCancel(ctx), plan)
+		}
+		kns.releaseProxyLock(context.WithoutCancel(ctx), plan)
+	}()
+
+	latest, err := kns.ExportKNForProjection(ctx, knID)
+	if err != nil {
+		return nil, err
+	}
+	currentBindings, err := kns.loadProxyCapabilityBindings(ctx, knID)
+	if err != nil {
+		return nil, err
+	}
+
+	tx, err := kns.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, proxyHTTPError(ctx, http.StatusInternalServerError, "begin capability publication")
+	}
+	rollback := func() {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil && rollbackErr != sql.ErrTxDone {
+			otellog.LogError(ctx, "Rollback capability publication failed", rollbackErr)
+		}
+	}
+
+	result, err := mutate(ctx, tx)
+	if err != nil {
+		rollback()
+		return nil, err
+	}
+	if result == nil {
+		result = &interfaces.KNCapabilityMutationResult{}
+	}
+	desiredBindings := mergeProxyCapabilityBindings(currentBindings, result.Bindings, removedBindingIDs)
+	sources, version, err := buildProxyGrantSourcesWithCapabilities(latest, desiredBindings)
+	if err != nil {
+		rollback()
+		return nil, invalidProxyTargetError(ctx, err)
+	}
+	resolvedSources, err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources)
+	if err != nil {
+		rollback()
+		return nil, err
+	}
+	plan.resolvedSources = resolvedSources
+	plan.modelVersion = version
+	if err := kns.markProxyPending(ctx, tx, plan); err != nil {
+		rollback()
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		rollback()
+		return nil, proxyHTTPError(ctx, http.StatusInternalServerError, "commit capability publication")
+	}
+	committed = true
+	if err := kns.finishProxyPublish(ctx, plan); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func mergeProxyCapabilityBindings(current, added []*interfaces.CapabilityBinding,
+	removedBindingIDs []string) []*interfaces.CapabilityBinding {
+	removed := make(map[string]struct{}, len(removedBindingIDs))
+	for _, id := range removedBindingIDs {
+		removed[strings.TrimSpace(id)] = struct{}{}
+	}
+	byID := make(map[string]*interfaces.CapabilityBinding, len(current)+len(added))
+	for _, binding := range current {
+		if binding == nil {
+			continue
+		}
+		if _, drop := removed[binding.ID]; !drop {
+			byID[binding.ID] = binding
+		}
+	}
+	for _, binding := range added {
+		if binding != nil {
+			byID[binding.ID] = binding
+		}
+	}
+	ids := make([]string, 0, len(byID))
+	for id := range byID {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	merged := make([]*interfaces.CapabilityBinding, 0, len(ids))
+	for _, id := range ids {
+		merged = append(merged, byID[id])
+	}
+	return merged
+}
+
+func (kns *knowledgeNetworkService) loadProxyCapabilityBindings(ctx context.Context,
+	knID string) ([]*interfaces.CapabilityBinding, error) {
+	if kns.cba == nil {
+		return nil, nil
+	}
+	bindings, err := kns.cba.ListBindings(ctx, interfaces.CapabilityBindingsQueryParams{
+		KNID: knID, Branch: interfaces.MAIN_BRANCH,
+	})
+	if err != nil {
+		return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "load capability proxy bindings")
+	}
+	return bindings, nil
+}
+
+func (kns *knowledgeNetworkService) buildProxyGrantSources(ctx context.Context, kn *interfaces.KN,
+	bindings []*interfaces.CapabilityBinding) ([]interfaces.ProxyGrantSourceSpec, string, error) {
+	if bindings == nil {
+		var err error
+		bindings, err = kns.loadProxyCapabilityBindings(ctx, kn.KNID)
+		if err != nil {
+			return nil, "", err
+		}
+	}
+	return buildProxyGrantSourcesWithCapabilities(kn, bindings)
 }
 
 func prepareProxyMutationIDs(ctx context.Context, changes *interfaces.KN) error {
@@ -525,7 +667,7 @@ func (kns *knowledgeNetworkService) finishProxyPublish(ctx context.Context, plan
 		kns.recordProxySyncFailure(ctx, plan, plan.modelVersion, err)
 		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "reload latest published main model")
 	}
-	sources, latestVersion, err := buildProxyGrantSources(latest)
+	sources, latestVersion, err := kns.buildProxyGrantSources(ctx, latest, nil)
 	if err != nil {
 		kns.recordProxySyncFailure(ctx, plan, plan.modelVersion, err)
 		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "derive latest proxy permissions")
@@ -866,7 +1008,7 @@ func (kns *knowledgeNetworkService) loadPublishedProxyBindings(ctx context.Conte
 	if err != nil {
 		return nil, "", proxyHTTPError(ctx, http.StatusServiceUnavailable, "load current published proxy bindings")
 	}
-	sources, modelVersion, err := buildProxyGrantSources(latest)
+	sources, modelVersion, err := kns.buildProxyGrantSources(ctx, latest, nil)
 	if err != nil {
 		return nil, "", invalidProxyTargetError(ctx, err)
 	}
@@ -912,7 +1054,7 @@ func (kns *knowledgeNetworkService) PlanKNProxySync(ctx context.Context, knID st
 	if err != nil {
 		return nil, err
 	}
-	sources, version, err := buildProxyGrantSources(latest)
+	sources, version, err := kns.buildProxyGrantSources(ctx, latest, nil)
 	if err != nil {
 		return nil, invalidProxyTargetError(ctx, err)
 	}

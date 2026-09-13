@@ -24,8 +24,6 @@ type hydraService struct {
 	httpClient   interfaces.HTTPClient
 }
 
-type noopHydra struct{}
-
 var (
 	once sync.Once
 	h    interfaces.Hydra
@@ -56,9 +54,6 @@ const introspectURI = "/oauth2/introspect"
 
 // NewHydra creates an authorization service object.
 func NewHydra() interfaces.Hydra {
-	if !config.GetAuthEnabled() {
-		return &noopHydra{}
-	}
 	once.Do(func() {
 		config := config.NewConfigLoader()
 		h = &hydraService{
@@ -68,36 +63,6 @@ func NewHydra() interfaces.Hydra {
 		}
 	})
 	return h
-}
-
-// Get common authentication information.
-// Get X-Account-Type and X-Account-ID from Header and build TokenInfo object.
-// If X-Account-Type is empty, the default setting is AccessorTypeAnonymous.
-// If X-Account-ID is empty, the default setting is the empty string.
-
-func (n *noopHydra) GenerateVisitor(c *gin.Context) (info *interfaces.TokenInfo, err error) {
-	xAccountType := c.GetHeader(string(interfaces.HeaderXAccountType))
-	xAccountID := c.GetHeader(string(interfaces.HeaderXAccountID))
-	if xAccountID == "" {
-		// If the user is not logged in, the default is set to Administrator.
-		xAccountID = interfaces.ADMIN_ACCOUNT_ID
-		xAccountType = interfaces.ADMIN_ACCOUNT_TYPE
-	}
-	info = &interfaces.TokenInfo{
-		Active:     true,
-		VisitorID:  xAccountID,
-		VisitorTyp: interfaces.AccessorType(xAccountType).ToVisitorType(),
-		LoginIP:    c.ClientIP(),
-		MAC:        c.GetHeader("X-Request-MAC"),
-		UserAgent:  c.GetHeader("User-Agent"),
-	}
-
-	return info, nil
-}
-
-func (n *noopHydra) Introspect(c *gin.Context) (info *interfaces.TokenInfo, err error) {
-	info, err = n.GenerateVisitor(c)
-	return
 }
 
 func (h *hydraService) GenerateVisitor(c *gin.Context) (info *interfaces.TokenInfo, err error) {

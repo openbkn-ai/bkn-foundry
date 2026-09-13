@@ -469,9 +469,8 @@ class TestInternalLocalePropagation(unittest.IsolatedAsyncioTestCase):
         manager.get_session = mock.AsyncMock(return_value=session)
         token = set_effective_locale("en-US")
         try:
-            with mock.patch("app.utils.permission_manager.base_config.AUTH_ENABLED", True):
-                allowed = await manager.check_single_permission(
-                    "user-1", "model-1", "display", "large_model", "user")
+            allowed = await manager.check_single_permission(
+                "user-1", "model-1", "display", "large_model", "user")
         finally:
             reset_effective_locale(token)
         self.assertTrue(allowed)

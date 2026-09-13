@@ -44,15 +44,16 @@ Source: `<legacy platform clone>/adp/execution-factory/tests` (or `$LEGACY_PLATF
 
 1. Start `agent-operator-integration` (default `http://127.0.0.1:9000`)
 2. Python 3.10+ with `pytest`, `requests`, `pyyaml`
-3. For token mode: a valid Bearer token
+3. A valid Bearer token
 
-### Start backend locally (AUTH_ENABLED=false)
+### Start backend locally
 
-Requires local MySQL (`dip_data_operator_hub` schema) and Redis on `127.0.0.1:6379`.
+Requires local MySQL (`dip_data_operator_hub` schema), Redis on `127.0.0.1:6379`, and reachable Hydra/BKN Safe dependencies configured for the service.
 
 ```powershell
 cd bkn-foundry/bkn-foundry/adp/execution-factory/operator-integration
 $env:OPENBKN_DB_PASSWORD = "<mysql-password>"
+$env:BKN_SAFE_URL = "http://<bkn-safe-host>:3000"
 .\scripts\run-local-dev.ps1
 ```
 
@@ -68,12 +69,6 @@ copy config\env.openbkn.example.ini config\env.ini
 
 $env:OPENBKN_TOKEN = "<your-bearer-token>"
 .\scripts\run-openbkn-smoke.ps1
-```
-
-Local dev without token (`AUTH_ENABLED=false` on backend):
-
-```powershell
-.\scripts\run-openbkn-smoke.ps1 -AuthDisabled
 ```
 
 Or manually:
@@ -112,8 +107,7 @@ Repository secrets for `workflow_dispatch` with `run_live_smoke=true`:
 
 | Secret | Purpose |
 |--------|---------|
-| `OPENBKN_TOKEN` | Bearer token when auth enabled |
-| `OPENBKN_AUTH_ENABLED` | Set to `false` for AUTH_ENABLED=false backends |
+| `OPENBKN_TOKEN` | Bearer token for the authenticated backend |
 
 ## bkn-studio mirror
 

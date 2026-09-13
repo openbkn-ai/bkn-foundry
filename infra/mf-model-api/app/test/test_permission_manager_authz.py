@@ -5,7 +5,6 @@
 import unittest
 from unittest import mock
 
-from app.core.config import base_config
 from app.utils.permission_manager import PermissionManager
 
 
@@ -47,9 +46,8 @@ class TestPermissionManagerAuthz(unittest.IsolatedAsyncioTestCase):
     async def test_runtime_check_uses_effective_scope_and_string_resource_id(self):
         session = _Session([_Response({"allowed": False})])
         manager = self.manager(session)
-        with mock.patch.object(base_config, "AUTH_ENABLED", True):
-            allowed = await manager.check_single_permission(
-                "user-1", 42, "execute", "small_model", "user")
+        allowed = await manager.check_single_permission(
+            "user-1", 42, "execute", "small_model", "user")
 
         self.assertFalse(allowed)
         self.assertEqual(session.calls[0]["json"], {
@@ -64,9 +62,8 @@ class TestPermissionManagerAuthz(unittest.IsolatedAsyncioTestCase):
             "resource_type": "small_model", "resource_id": "42", "operations": ["display"],
         }]})])
         manager = self.manager(session)
-        with mock.patch.object(base_config, "AUTH_ENABLED", True), \
-                mock.patch("app.utils.permission_manager.small_model_dao.get_all_ids",
-                           return_value=[{"f_model_id": 42}, {"f_model_id": 84}]):
+        with mock.patch("app.utils.permission_manager.small_model_dao.get_all_ids",
+                        return_value=[{"f_model_id": 42}, {"f_model_id": 84}]):
             result = await manager.get_permission_ids(
                 "user-1", "display", "small_model", "小模型", "user")
 
@@ -81,16 +78,14 @@ class TestPermissionManagerAuthz(unittest.IsolatedAsyncioTestCase):
 
     async def test_invalid_safe_check_response_fails_closed(self):
         manager = self.manager(_Session([_Response({"decision": "allow"})]))
-        with mock.patch.object(base_config, "AUTH_ENABLED", True):
-            allowed = await manager.check_single_permission(
-                "user-1", "model-1", "execute", "small_model", "user")
+        allowed = await manager.check_single_permission(
+            "user-1", "model-1", "execute", "small_model", "user")
         self.assertFalse(allowed)
 
     async def test_invalid_batch_filter_response_fails_closed(self):
         manager = self.manager(_Session([_Response({"result": []})]))
-        with mock.patch.object(base_config, "AUTH_ENABLED", True), \
-                mock.patch("app.utils.permission_manager.small_model_dao.get_all_ids",
-                           return_value=[{"f_model_id": 42}]), \
+        with mock.patch("app.utils.permission_manager.small_model_dao.get_all_ids",
+                        return_value=[{"f_model_id": 42}]), \
                 self.assertRaises(RuntimeError):
             await manager.get_permission_ids(
                 "user-1", "display", "small_model", "小模型", "user")

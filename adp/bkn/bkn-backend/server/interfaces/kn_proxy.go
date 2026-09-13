@@ -22,6 +22,7 @@ const (
 	KNProxySyncFailed  = "failed"
 
 	ProxyGrantSourceTypeKNBinding = "kn_proxy_binding"
+	KNProxyBindingTypeCapability  = "capability_binding"
 )
 
 // KNProxyAccount is BKN's authoritative, environment-local mapping between one

@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"strings"
 
@@ -109,13 +110,18 @@ func (r *restHandler) AttachCapabilities(c *gin.Context, vis hydra.Visitor) {
 		return
 	}
 
-	bindings, err := r.cbs.AttachCapabilities(ctx, nil, knID, branch, req.Capabilities)
+	result, err := r.publishKNCapabilityMutation(ctx, knID, branch, nil,
+		func(mutationCtx context.Context, tx *sql.Tx) (*interfaces.KNCapabilityMutationResult, error) {
+			bindings, mutationErr := r.cbs.AttachCapabilities(mutationCtx, tx, knID, branch, req.Capabilities)
+			return &interfaces.KNCapabilityMutationResult{Bindings: bindings}, mutationErr
+		})
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	bindings := result.Bindings
 	for _, binding := range bindings {
 		audit.NewInfoLog(audit.OPERATION, audit.CREATE, audit.TransforOperator(vis),
 			interfaces.GenerateCapabilityBindingAuditObject(binding.ID, binding.CapabilityID), "")
@@ -150,7 +156,12 @@ func (r *restHandler) DetachCapabilities(c *gin.Context, vis hydra.Visitor) {
 		return
 	}
 
-	if _, err := r.cbs.DetachCapabilities(ctx, nil, knID, branch, bindingIDs); err != nil {
+	_, err := r.publishKNCapabilityMutation(ctx, knID, branch, bindingIDs,
+		func(mutationCtx context.Context, tx *sql.Tx) (*interfaces.KNCapabilityMutationResult, error) {
+			rows, mutationErr := r.cbs.DetachCapabilities(mutationCtx, tx, knID, branch, bindingIDs)
+			return &interfaces.KNCapabilityMutationResult{RowsAffected: rows}, mutationErr
+		})
+	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

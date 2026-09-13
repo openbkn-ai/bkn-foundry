@@ -3,16 +3,15 @@ import os
 import unittest
 from unittest import mock
 
-from app.core.config import authz_settings, base_config, validate_authz_config
+from app.core.config import authz_settings, validate_authz_config
 
 
 class ValidateAuthzConfigTest(unittest.TestCase):
     """The retired ISF fallback has to surface as a startup failure."""
 
-    def _run(self, provider, safe_url, auth_enabled=True):
+    def _run(self, provider, safe_url):
         env = {"AUTHZ_PROVIDER": provider, "BKN_SAFE_URL": safe_url}
-        with mock.patch.dict(os.environ, env, clear=False), \
-                mock.patch.object(base_config, "AUTH_ENABLED", auth_enabled):
+        with mock.patch.dict(os.environ, env, clear=False):
             validate_authz_config()
 
     def test_bkn_safe_with_url_is_accepted(self):
@@ -46,15 +45,9 @@ class ValidateAuthzConfigTest(unittest.TestCase):
         # the same normalised value the startup check accepted, or the service
         # boots and then falls back to ISF on every decision.
         env = {"AUTHZ_PROVIDER": " bkn-safe ", "BKN_SAFE_URL": " http://bkn-safe:3000 "}
-        with mock.patch.dict(os.environ, env, clear=False), \
-                mock.patch.object(base_config, "AUTH_ENABLED", True):
+        with mock.patch.dict(os.environ, env, clear=False):
             validate_authz_config()
             self.assertEqual(authz_settings(), ("bkn-safe", "http://bkn-safe:3000"))
-
-    def test_disabled_auth_skips_validation(self):
-        # No authorization backend is consulted at all, so a missing provider
-        # is not a misconfiguration.
-        self._run("", "", auth_enabled=False)
 
 
 if __name__ == "__main__":

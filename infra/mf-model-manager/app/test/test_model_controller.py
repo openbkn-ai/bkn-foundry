@@ -692,19 +692,15 @@ class TestModelOverviewData(TestCase):
         self.get_overview_data = llm_model_dao.get_overview_data
         self.get_all_model_list = llm_model_dao.get_all_model_list
         self.filter_authorized_ids = llm_controller.permission_manager.filter_authorized_ids
-        self.auth_enabled = llm_controller.base_config.AUTH_ENABLED
-
     def tearDown(self) -> None:
         llm_model_dao.get_overview_data = self.get_overview_data
         llm_model_dao.get_all_model_list = self.get_all_model_list
         llm_controller.permission_manager.filter_authorized_ids = self.filter_authorized_ids
-        llm_controller.base_config.AUTH_ENABLED = self.auth_enabled
         StandLogger.stand_log_shutdown()
 
     def test_get_overview_data_allows_empty_model_inventory(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        llm_controller.base_config.AUTH_ENABLED = True
         llm_model_dao.get_all_model_list = mock.Mock(return_value=[])
         llm_model_dao.get_overview_data = mock.Mock(return_value=([], [], []))
         llm_controller.permission_manager.filter_authorized_ids = mock.AsyncMock()

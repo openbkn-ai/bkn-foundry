@@ -145,22 +145,67 @@ func TestInternalCapabilityCallsUseCallerScopedAuthorizationFace(t *testing.T) {
 func TestPublicCapabilityCallWithoutCallerTokenIsUnauthorized(t *testing.T) {
 	client := &operatorIntegrationClient{}
 	ctx := common.SetPublicAPIToCtx(context.Background(), true)
-	_, err := client.capabilityAuthorizationHeaderForAuthMode(ctx, "operator.skill.list", true)
+	_, err := client.capabilityAuthorizationHeader(ctx, "operator.skill.list")
 	status, ok := infraErr.HTTPStatus(err)
 	if !ok || status != http.StatusUnauthorized {
 		t.Fatalf("status = %d, %v; want 401", status, ok)
 	}
 }
 
-func TestPublicCapabilityCallWithoutCallerTokenAllowsDisabledAuth(t *testing.T) {
-	client := &operatorIntegrationClient{}
-	ctx := common.SetPublicAPIToCtx(context.Background(), true)
-	header, err := client.capabilityAuthorizationHeaderForAuthMode(ctx, "operator.skill.list", false)
-	if err != nil {
-		t.Fatalf("capabilityAuthorizationHeaderForAuthMode: %v", err)
+func TestManagedCapabilityExecutionCarriesDualPrincipalContext(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	logger := mocks.NewMockLogger(ctrl)
+	httpClient := mocks.NewMockHTTPClient(ctrl)
+	logger.EXPECT().WithContext(gomock.Any()).Return(logger).AnyTimes()
+	client := &operatorIntegrationClient{
+		logger: logger, baseURL: "http://operator/api/agent-operator-integration", httpClient: httpClient,
 	}
-	if authorization := header["Authorization"]; authorization != "" {
-		t.Fatalf("Authorization = %q; want empty", authorization)
+	ctx := common.SetAccountAuthContextToCtx(context.Background(), &interfaces.AccountAuthContext{
+		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
+	})
+	proxy := &interfaces.KNProxyExecution{
+		Mapping: &interfaces.KNProxyAccount{
+			KNID: "kn-1", ProxyAccountID: "proxy-1", ProxyAccountType: "app", Version: 7,
+		},
+		Binding: interfaces.KNProxyBinding{
+			KNID: "kn-1", ChildType: "capability_binding", ChildID: "binding-1",
+			TargetType: "tool_box", TargetID: "box-1", Operation: "execute",
+		},
+	}
+	assertHeaders := func(headers map[string]string) {
+		t.Helper()
+		if headers[string(interfaces.HeaderXAccountID)] != "proxy-1" ||
+			headers[string(interfaces.HeaderXAccountType)] != "app" ||
+			headers[headerBKNCallerID] != "user-1" || headers[headerBKNCallerType] != "user" ||
+			headers[headerBKNKnowledgeID] != "kn-1" || headers[headerBKNChildID] != "binding-1" ||
+			headers[headerBKNProxyVersion] != "7" || headers["Authorization"] != "" {
+			t.Fatalf("managed proxy headers = %#v", headers)
+		}
+	}
+
+	httpClient.EXPECT().Post(gomock.Any(), client.baseURL+"/internal-v1/tool-box/box-1/proxy/tool-1",
+		gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, headers map[string]string, _ interface{}) (int, interface{}, error) {
+			assertHeaders(headers)
+			return http.StatusOK, map[string]any{"ok": true}, nil
+		})
+	if _, err := client.ExecutePublishedToolAsProxy(ctx, &interfaces.ExecutePublishedToolRequest{
+		ToolboxID: "box-1", ToolID: "tool-1",
+	}, proxy); err != nil {
+		t.Fatal(err)
+	}
+
+	proxy.Binding.TargetType, proxy.Binding.TargetID = "mcp", "mcp-1"
+	httpClient.EXPECT().PostBytes(gomock.Any(), client.baseURL+"/internal-v1/mcp/proxy/mcp-1/tool/call",
+		gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, headers map[string]string, _ interface{}) (int, []byte, error) {
+			assertHeaders(headers)
+			return http.StatusOK, []byte(`{"ok":true}`), nil
+		})
+	if _, err := client.CallMCPToolAsProxy(ctx, &interfaces.CallMCPToolRequest{
+		McpID: "mcp-1", ToolName: "lookup",
+	}, proxy); err != nil {
+		t.Fatal(err)
 	}
 }
 

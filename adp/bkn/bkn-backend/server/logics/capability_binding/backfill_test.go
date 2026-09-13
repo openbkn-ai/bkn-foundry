@@ -15,6 +15,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"bkn-backend/interfaces"
+	bmock "bkn-backend/interfaces/mock"
 )
 
 func listQuery() interfaces.CapabilityBindingsQueryParams {
@@ -303,6 +304,29 @@ func TestResolveCapabilities(t *testing.T) {
 			So(len(list.Entries), ShouldEqual, 2)
 			So(list.Entries[0].BoxID, ShouldBeEmpty)
 			So(list.Entries[1].BoxID, ShouldEqual, "box-1")
+		})
+
+		Convey("只有网络执行权限时仍可解析执行绑定", func() {
+			cba := bmock.NewMockCapabilityBindingAccess(ctrl)
+			ps := bmock.NewMockPermissionService(ctrl)
+			service := &capabilityBindingService{cba: cba, ps: ps}
+			resource := interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: "kn1"}
+			gomock.InOrder(
+				ps.EXPECT().CheckPermission(gomock.Any(), resource,
+					[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(errors.New("view denied")),
+				ps.EXPECT().CheckPermission(gomock.Any(), resource,
+					[]string{interfaces.OPERATION_TYPE_EXECUTE}).Return(nil),
+			)
+			cba.EXPECT().ListBindings(gomock.Any(), gomock.Any()).Return([]*interfaces.CapabilityBinding{{
+				ID: "binding-1", CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION,
+				OwnerID: "box-1", CapabilityID: "tool-1",
+			}}, nil)
+
+			list, err := service.ResolveCapabilities(context.Background(), "kn1", "main", "function")
+
+			So(err, ShouldBeNil)
+			So(list.Entries, ShouldHaveLength, 1)
+			So(list.Entries[0].ID, ShouldEqual, "binding-1")
 		})
 
 		Convey("未绑定任何能力时返回空数组而不是错误", func() {

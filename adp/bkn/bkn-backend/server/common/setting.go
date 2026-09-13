@@ -8,7 +8,6 @@ package common
 
 import (
 	"fmt"
-	"os"
 	"sync"
 	"time"
 
@@ -212,19 +211,7 @@ func SetOpenSearchSetting() {
 	}
 }
 
-// GetAuthEnabled returns whether authentication is enabled.
-// It is controlled by AUTH_ENABLED and defaults to true for security.
-func GetAuthEnabled() bool {
-	envVal := os.Getenv("AUTH_ENABLED")
-	// Disable authentication only when explicitly set to false or 0.
-	return envVal != "false" && envVal != "0"
-}
-
 func SetHydraAdminSetting() {
-	if !GetAuthEnabled() {
-		logger.Info("Authentication disabled via AUTH_ENABLED env, skipping hydra-admin configuration")
-		return
-	}
 	setting, ok := appSetting.DepServices[hydraAdminServiceName]
 	if !ok {
 		logger.Fatalf("service %s not found in depServices", hydraAdminServiceName)

@@ -27,6 +27,13 @@ type proxyModelBinding struct {
 // one candidate or freshly reloaded main model. It does not accept targets from
 // request-specific proxy fields; every target comes from persisted BKN bindings.
 func buildProxyGrantSources(kn *interfaces.KN) ([]interfaces.ProxyGrantSourceSpec, string, error) {
+	return buildProxyGrantSourcesWithCapabilities(kn, nil)
+}
+
+// buildProxyGrantSourcesWithCapabilities includes explicit capability mounts
+// in the same canonical projection as model-derived dependencies.
+func buildProxyGrantSourcesWithCapabilities(kn *interfaces.KN,
+	capabilities []*interfaces.CapabilityBinding) ([]interfaces.ProxyGrantSourceSpec, string, error) {
 	if kn == nil || strings.TrimSpace(kn.KNID) == "" {
 		return nil, "", fmt.Errorf("knowledge network is required")
 	}
@@ -226,6 +233,37 @@ func buildProxyGrantSources(kn *interfaces.KN) ([]interfaces.ProxyGrantSourceSpe
 			}
 		default:
 			return nil, "", fmt.Errorf("action type %s has unsupported action source type", actionType.ATID)
+		}
+	}
+
+	for _, capability := range capabilities {
+		if capability == nil || capability.Branch != interfaces.MAIN_BRANCH || capability.KNID != kn.KNID {
+			continue
+		}
+		detail := capability.CapabilityType + ":" + strings.TrimSpace(capability.CapabilityID)
+		switch capability.CapabilityType {
+		case interfaces.CAPABILITY_TYPE_SKILL:
+			// Skill execution remains caller-scoped and does not use a managed proxy.
+			continue
+		case interfaces.CAPABILITY_TYPE_FUNCTION:
+			if strings.TrimSpace(capability.CapabilityID) == "" {
+				return nil, "", fmt.Errorf("capability binding %s has no tool id", capability.ID)
+			}
+			if err := add(interfaces.KNProxyBindingTypeCapability, capability.ID, "tool_box", capability.OwnerID,
+				interfaces.OPERATION_TYPE_EXECUTE, detail); err != nil {
+				return nil, "", err
+			}
+		case interfaces.CAPABILITY_TYPE_MCP_TOOL:
+			if strings.TrimSpace(capability.CapabilityID) == "" {
+				return nil, "", fmt.Errorf("capability binding %s has no MCP tool name", capability.ID)
+			}
+			if err := add(interfaces.KNProxyBindingTypeCapability, capability.ID, "mcp", capability.OwnerID,
+				interfaces.OPERATION_TYPE_EXECUTE, detail); err != nil {
+				return nil, "", err
+			}
+		default:
+			return nil, "", fmt.Errorf("capability binding %s has unsupported type %s",
+				capability.ID, capability.CapabilityType)
 		}
 	}
 

@@ -2,15 +2,13 @@
 
 ## 📖 Overview
 
-**BKN Safe** is the **cross-cutting security layer**: unified **identity**, **permissions**, **policies**, and **audit** across data access, model output, and tool invocation. In full installs it may integrate with OAuth2/OIDC stacks such as Hydra.
-
-With **`--minimum` install**, many auth components are disabled for a simpler lab setup — APIs may not require tokens. For production, enable the full auth profile per the deployment and security guide bundled with your release.
+**BKN Safe** is the mandatory **cross-cutting security layer**: unified **identity**, **permissions**, **policies**, and **audit** across data access, model output, and tool invocation. It may integrate with OAuth2/OIDC stacks such as Hydra.
 
 **Related modules:** All subsystems that accept `Authorization` headers; [VEGA Engine](vega.md) is a primary consumer.
 
 ## 🛡️ Administrator commands: `openbkn admin`
 
-In a **full install** (with `auth.enabled=true`), BKN Safe's day-to-day **management surface** — users, organizations, roles, models (`llm` / `small-model`), audit — is handled through the **`openbkn admin`** subcommand of the same `openbkn` CLI. There is **no separate admin package** — admin ships with `@openbkn/bkn-sdk` and is reached via `openbkn admin ...`, sharing the same login/session as the end-user `openbkn` CLI shown below on this page.
+BKN Safe's day-to-day **management surface** — users, organizations, roles, models (`llm` / `small-model`), audit — is handled through the **`openbkn admin`** subcommand of the same `openbkn` CLI. There is **no separate admin package** — admin ships with `@openbkn/bkn-sdk` and is reached via `openbkn admin ...`, sharing the same login/session as the end-user `openbkn` CLI shown below on this page.
 
 ```bash
 openbkn admin org tree                              # list departments
@@ -21,7 +19,7 @@ openbkn admin role list
 openbkn admin audit list --user alice --start 2026-04-01 --end 2026-04-30
 ```
 
-> Full command list and `--minimum` install caveats: see [Install — Administrator commands after a full install (`openbkn admin`)](../install.md#-administrator-commands-after-a-full-install-openbkn-admin).
+> Full command list: see [Install — Administrator commands after installation (`openbkn admin`)](../install.md#-administrator-commands-after-installation-openbkn-admin).
 >
 > Respect the **separation-of-duties** built-in accounts (`system`, `admin`, `security`, `audit`) — operators should use individual accounts, not the shared `admin`, for traceable audit logs.
 
@@ -38,9 +36,6 @@ openbkn auth login https://<access-address> -k
 
 # Save the connection with an alias for easy switching
 openbkn auth login https://<access-address> --alias prod -k
-
-# Login with no auth (for --minimum installs where auth is disabled)
-openbkn auth login https://<access-address> --no-auth
 
 # Login with username/password directly (non-interactive)
 openbkn auth login https://<access-address> -u <username> -p <password> -k
@@ -74,8 +69,6 @@ openbkn auth whoami
 # Show connection status and token expiry
 openbkn auth status
 ```
-
-**`auth whoami` and no-auth**: `whoami` requires an `id_token` from OAuth login. If you used **`auth login … --no-auth`** or the platform has authentication disabled, the CLI is in **no-auth** mode and `whoami` will error with no `id_token` — **expected**. Use `auth status` to confirm; do not treat it as a failed login.
 
 ```bash
 # Export the current token (for use in scripts or curl)

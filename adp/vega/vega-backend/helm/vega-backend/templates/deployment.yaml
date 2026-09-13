@@ -124,8 +124,6 @@ spec:
           {{- end }}
           - name: DM_SVC_PATH
             value: /opt/vega-backend/config
-          - name: AUTH_ENABLED
-            value: {{ .Values.auth.enabled | quote }}
         resources: {{- toYaml .Values.resources | nindent 10 }}
         volumeMounts:
           - name: {{ .Values.moduleName }}-cm

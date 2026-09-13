@@ -36,8 +36,6 @@ class PermissionManager:
 
     async def add_permission(self, user_id: str, resource_id: str, resource_name: str, resource_type: str,
                              user_name: str, role: str) -> bool:
-        if not base_config.AUTH_ENABLED:
-            return True
         # Administrators do not require object-level authorization.
         if user_id == "266c6a42-6131-4d62-8f39-853e7093701c":
             return True
@@ -115,8 +113,6 @@ class PermissionManager:
 
     async def check_single_permission(self, user_id: str, resource_id: str, operations: str,
                                       resource_type: str, role: str) -> bool:
-        if not base_config.AUTH_ENABLED:
-            return True
         # bkn-safe authoritative: return its decision directly.
         if self._bkn_safe_authoritative():
             try:
@@ -250,9 +246,6 @@ class PermissionManager:
 
     async def get_permission_ids(self, user_id: str, operation: str,
                                  resource_type: str, resource_name: str, role: str) -> list:
-        if not base_config.AUTH_ENABLED:
-            all_ids = small_model_dao.get_all_ids()
-            return [m['f_model_id'] for m in all_ids]
         # bkn-safe authoritative: filter the concrete model set in one batch.
         if self._bkn_safe_authoritative():
             return await self._bkn_safe_filter_ids(user_id, operation, resource_type)
@@ -317,8 +310,8 @@ class PermissionManager:
         resource type — large_model list uses it, and it does not disturb the
         existing small_model path.
 
-        AUTH disabled -> everything passes. A "*" operation yields none (matches
-        the ISF filter dropping them). Both authoritative bkn-safe and legacy ISF
+        A "*" operation yields none (matches the ISF filter dropping it). Both
+        authoritative bkn-safe and legacy ISF
         decide the concrete candidate set with one batch resource-filter request.
 
         Fail-closed on error: an authorization request failure is NOT swallowed into
@@ -327,8 +320,6 @@ class PermissionManager:
         exception propagates so the caller returns 500 instead of a plausible
         short list.
         """
-        if not base_config.AUTH_ENABLED:
-            return list(candidate_ids)
         if operation == "*":
             return []
         if self._bkn_safe_authoritative():
@@ -358,14 +349,12 @@ class PermissionManager:
 
     async def check_display(self, user_id: str, role: str, resource_type: str, resource_id: str) -> bool:
         """Single-resource display check, for endpoints keyed by one model id
-        (e.g. model statistics). AUTH disabled -> allowed."""
+        (e.g. model statistics)."""
         return await self.check_single_permission(
             user_id=user_id, resource_id=resource_id, operations="display",
             resource_type=resource_type, role=role)
 
     async def delete_permission(self, resource_type: str, resource_ids: list) -> bool:
-        if not base_config.AUTH_ENABLED:
-            return True
         # bkn-safe authoritative: drop each resource's policies directly.
         if self._bkn_safe_authoritative():
             return await self._bkn_safe_delete(resource_type, resource_ids)

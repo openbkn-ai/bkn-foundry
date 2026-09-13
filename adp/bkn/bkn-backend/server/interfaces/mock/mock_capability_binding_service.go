@@ -117,6 +117,22 @@ func (mr *MockCapabilityBindingServiceMockRecorder) ImportCapabilities(ctx, knID
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ImportCapabilities", reflect.TypeOf((*MockCapabilityBindingService)(nil).ImportCapabilities), ctx, knID, branch, declared)
 }
 
+// ImportCapabilitiesTx mocks base method.
+func (m *MockCapabilityBindingService) ImportCapabilitiesTx(ctx context.Context, tx *sql.Tx, knID, branch string, declared *bkn.BknCapabilities) (*interfaces.CapabilityImportReport, []*interfaces.CapabilityBinding, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ImportCapabilitiesTx", ctx, tx, knID, branch, declared)
+	ret0, _ := ret[0].(*interfaces.CapabilityImportReport)
+	ret1, _ := ret[1].([]*interfaces.CapabilityBinding)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ImportCapabilitiesTx indicates an expected call of ImportCapabilitiesTx.
+func (mr *MockCapabilityBindingServiceMockRecorder) ImportCapabilitiesTx(ctx, tx, knID, branch, declared any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ImportCapabilitiesTx", reflect.TypeOf((*MockCapabilityBindingService)(nil).ImportCapabilitiesTx), ctx, tx, knID, branch, declared)
+}
+
 // ListCapabilities mocks base method.
 func (m *MockCapabilityBindingService) ListCapabilities(ctx context.Context, query interfaces.CapabilityBindingsQueryParams) (*interfaces.CapabilityBindingsList, error) {
 	m.ctrl.T.Helper()

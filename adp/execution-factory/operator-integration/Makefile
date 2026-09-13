@@ -10,7 +10,6 @@ DEV_CONFIG_PROFILE ?= $(shell d="$(CURDIR)"; \
 		d=$$(dirname "$$d"); \
 	done; \
 	printf "%s/.env/execution-factory" "$(CURDIR)")
-AUTH_ENABLED ?= true
 
 help:
 	@echo "operator-integration - available commands:"
@@ -35,7 +34,6 @@ dev:
 	@test -f "$(DEV_CONFIG_PROFILE)/mq_config.yaml"
 	@test -f "$(DEV_CONFIG_PROFILE)/observability.yaml"
 	CONFIG_PROFILE="$(DEV_CONFIG_PROFILE)" \
-	AUTH_ENABLED="$(AUTH_ENABLED)" \
 	go run ./server/main.go
 
 generate-mock:

@@ -120,11 +120,6 @@ resources:
   limits:
     cpu: 4
     memory: 8Gi
-auth:
-  # Whether to enable permission control. false=disabled (all APIs are allowed and data is not filtered);
-  # true=enabled (full authentication and resource-permission logic is used).
-  enabled: "true"
-
 observability:
     logEnabled: "false"
     traceEnabled: "false"

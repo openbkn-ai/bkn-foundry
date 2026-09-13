@@ -78,9 +78,7 @@ func NewActionSchedulerService(appSetting *common.AppSetting) interfaces.ActionS
 			ots:         object_type.NewObjectTypeService(appSetting),
 			proxy:       logics.PCR,
 		}
-		if common.GetAuthEnabled() {
-			svc.permissions = permission.NewPermissionService(appSetting)
-		}
+		svc.permissions = permission.NewPermissionService(appSetting)
 		// Default duplicate strategy: reject same kn + action type + instance set + dynamic_params while in-flight within the window.
 		svc.duplicateCheckHook = svc.defaultDuplicateCheck
 		assService = svc

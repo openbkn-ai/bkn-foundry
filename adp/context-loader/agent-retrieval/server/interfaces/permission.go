@@ -11,6 +11,7 @@ const (
 	PermissionResourceTypeKnowledgeNetwork = "knowledge_network"
 	PermissionOperationQueryData           = "query_data"
 	PermissionOperationViewDetail          = "view_detail"
+	PermissionOperationExecute             = "execute"
 )
 
 // PermissionResource is one concrete bkn-safe authorization resource.
@@ -65,4 +66,10 @@ type KnowledgeNetworkAuthorizer interface {
 	// caller cannot see is refused rather than answered empty: "you have no Skills mounted" and
 	// "this is not your network" are different facts and must not look alike.
 	AuthorizeRead(ctx context.Context, knID string) error
+}
+
+// KnowledgeNetworkExecuteAuthorizer is the additional capability required by
+// execution paths; read-only consumers do not need to implement it.
+type KnowledgeNetworkExecuteAuthorizer interface {
+	AuthorizeExecute(ctx context.Context, knID string) error
 }

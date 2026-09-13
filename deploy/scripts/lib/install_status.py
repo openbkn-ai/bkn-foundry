@@ -366,8 +366,7 @@ def probe_service_health(namespace):
 
 
 def collect_releases(namespace, manifest_path, optional_releases=None):
-    """optional_releases: names that are EXPECTED to be absent in this install
-    (e.g. bkn-safe when auth.enabled=false). Absent => 'skipped', not 'missing'."""
+    """Mark explicitly optional absent releases as skipped instead of missing."""
     optional = set(optional_releases or ())
     product, product_version, manifest_rel = load_manifest_releases(manifest_path)
     deployed = helm_deployed(namespace)
@@ -464,7 +463,6 @@ def emit_json(namespace, product, product_version, rows, meta, deps, health, gen
         "accessAddress": meta.get("accessAddress", {}),
         "image": meta.get("image", {}),
         "ingressClass": meta.get("ingressClass", ""),
-        # Auth posture: enabled=false is a supported no-auth install (no bkn-safe).
         "auth": meta.get("auth", {"enabled": True, "stack": "bkn-safe"}),
         "releases": [
             {
@@ -537,8 +535,7 @@ def emit_table(namespace, product, product_version, rows, meta, deps, health):
         print("ingressClass: " + meta["ingressClass"])
     a = meta.get("auth") or {}
     if a:
-        print("auth: " + ("enabled (bkn-safe)" if a.get("enabled")
-                          else "disabled — no-auth install (bkn-safe not installed)"))
+        print("auth: enabled (bkn-safe)")
 
     if health:
         print("")
@@ -566,28 +563,6 @@ def emit_table(namespace, product, product_version, rows, meta, deps, health):
         print("  {} up, {} degraded, {} no-workload".format(n_up, n_deg, n_none))
 
 
-def read_auth(config_path):
-    """Auth state from config.yaml's auth.enabled (+ bknSafe). Defaults to
-    enabled when unset (legacy config). Returns {enabled, stack, provider}."""
-    enabled = True
-    provider = ""
-    if config_path:
-        try:
-            with open(config_path) as f:
-                cfg = _yaml_load(f.read()) or {}
-            a = cfg.get("auth")
-            if isinstance(a, dict) and "enabled" in a:
-                enabled = bool(a.get("enabled"))
-            provider = ((cfg.get("bknSafe") or {}).get("authzProvider")) or ""
-        except (IOError, OSError):
-            pass
-    return {
-        "enabled": enabled,
-        "stack": "bkn-safe" if enabled else "none",
-        "provider": provider,
-    }
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--namespace", required=True)
@@ -599,17 +574,12 @@ def main():
                     help="skip per-service health probing (faster)")
     ap.add_argument("--generated-at", default="")
     ap.add_argument("--optional-releases", default="",
-                    help="comma-separated releases expected to be absent "
-                         "(e.g. bkn-safe when auth.enabled=false); reported "
-                         "'skipped' instead of 'missing'.")
+                    help="comma-separated releases expected to be absent; "
+                         "reported 'skipped' instead of 'missing'.")
     args = ap.parse_args()
 
-    auth = read_auth(args.config)
+    auth = {"enabled": True, "stack": "bkn-safe", "provider": "bkn-safe"}
     optional = [s.strip() for s in args.optional_releases.split(",") if s.strip()]
-    # No-auth install ⇒ bkn-safe is expected absent; mark it optional even if the
-    # caller didn't pass --optional-releases (config.yaml is the source of truth).
-    if not auth["enabled"] and "bkn-safe" not in optional:
-        optional.append("bkn-safe")
     manifest_product, product_version, rows = collect_releases(
         args.namespace, args.manifest, optional)
     # The manifest identifies the release bundle, while --product controls the

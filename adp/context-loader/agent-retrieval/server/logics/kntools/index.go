@@ -6,8 +6,9 @@
 // search_capabilities finds them, execute_tool runs a Function or MCP tool.
 //
 // Scope is the knowledge network's Function bindings, not the caller's whole visible catalogue.
-// Both are needed and they are intersected: the bindings say which tools this network works with,
-// and the caller's own permissions still decide whether a bound tool can be listed or run. Before
+// Discovery intersects bindings with caller-visible metadata. Execution instead requires the
+// network's execute operation and uses its least-privilege managed proxy, so direct target
+// permission is not required. Before
 // this, the two halves of the same MCP session disagreed — Skills narrowed to what the network
 // had mounted while tools stayed at everything the account could see.
 package kntools
@@ -124,7 +125,11 @@ func (s *knToolsService) warnf(ctx context.Context, format string, args ...any) 
 //nolint:unused // Retained for toolbox binding extensions.
 func (s *knToolsService) boundToolRefs(ctx context.Context, knID, toolboxID string) ([]string, error) {
 	refs, _, err := s.boundRefs(ctx, knID, toolboxID)
-	return refs, err
+	result := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		result = append(result, ref.BoxID+"/"+ref.ToolID)
+	}
+	return result, err
 }
 
 // boundRefs returns the network's mounted tools split by transport: toolbox references as
@@ -133,7 +138,7 @@ func (s *knToolsService) boundToolRefs(ctx context.Context, knID, toolboxID stri
 // They are read in one call and kept apart because they are called differently — a toolbox tool
 // goes through the toolbox proxy, an MCP tool through the MCP proxy — and the ranking endpoint
 // only understands the first kind.
-func (s *knToolsService) boundRefs(ctx context.Context, knID, toolboxID string) ([]string, []mcpRef, error) {
+func (s *knToolsService) boundRefs(ctx context.Context, knID, toolboxID string) ([]functionRef, []mcpRef, error) {
 	// Both entry points come through here, so the per-caller check lives here rather than in each
 	// of them: the network's bindings and the execution factory's ranking are both read with this
 	// service's identity, and without this the scope would be the kn_id the caller typed.
@@ -144,14 +149,20 @@ func (s *knToolsService) boundRefs(ctx context.Context, knID, toolboxID string) 
 	if err := s.knAuthz.AuthorizeRead(ctx, knID); err != nil {
 		return nil, nil, err
 	}
+	return s.boundRefsAuthorized(ctx, knID, toolboxID)
+}
 
+// boundRefsAuthorized reads the mounted scope after the entry point has
+// already selected and checked its network operation (view for discovery,
+// execute for execution).
+func (s *knToolsService) boundRefsAuthorized(ctx context.Context, knID, toolboxID string) ([]functionRef, []mcpRef, error) {
 	// Empty type: both kinds in one read, rather than one call per capability type.
 	bindings, err := s.bknBackend.ListKNCapabilities(ctx, knID, "", "")
 	if err != nil {
 		return nil, nil, err
 	}
 
-	refs := make([]string, 0, len(bindings))
+	refs := make([]functionRef, 0, len(bindings))
 	mcpRefs := make([]mcpRef, 0)
 	seen := make(map[string]struct{}, len(bindings))
 	for _, binding := range bindings {
@@ -174,7 +185,7 @@ func (s *knToolsService) boundRefs(ctx context.Context, knID, toolboxID string) 
 				continue
 			}
 			seen[ref] = struct{}{}
-			mcpRefs = append(mcpRefs, mcpRef{MCPID: mcpID, ToolName: toolName})
+			mcpRefs = append(mcpRefs, mcpRef{BindingID: binding.ID, MCPID: mcpID, ToolName: toolName})
 			continue
 		}
 		if binding.CapabilityType != interfaces.CapabilityTypeFunction {
@@ -194,15 +205,22 @@ func (s *knToolsService) boundRefs(ctx context.Context, knID, toolboxID string) 
 			continue
 		}
 		seen[ref] = struct{}{}
-		refs = append(refs, ref)
+		refs = append(refs, functionRef{BindingID: binding.ID, BoxID: boxID, ToolID: toolID})
 	}
 	return refs, mcpRefs, nil
 }
 
 // mcpRef is one mounted MCP tool: the server that exposes it and its name.
 type mcpRef struct {
-	MCPID    string
-	ToolName string
+	BindingID string
+	MCPID     string
+	ToolName  string
+}
+
+type functionRef struct {
+	BindingID string
+	BoxID     string
+	ToolID    string
 }
 
 // describeCapabilityHits fills in the input schema and use rule the ranking does not carry, and
@@ -222,7 +240,7 @@ type mcpRef struct {
 // answered a working query with "no tools matched; publish your tool box first" while the tool box
 // was published and the ranking had found five of its tools. The name of a mounted capability is
 // not the secret here: the caller is already authorized on the network, the whitelist already
-// narrowed to what the network mounted, and execute_tool re-checks the caller-visible catalogue
+// narrowed to what the network mounted, and execute_tool re-checks the exact binding and lifecycle
 // before anything runs.
 //
 // Lifecycle comes first and is a different question from visibility (#1443). Whether a box or an
@@ -460,9 +478,10 @@ func (s *knToolsService) dropWithdrawnOwners(ctx context.Context,
 
 // ExecuteTool invokes one Function tool the knowledge network has mounted.
 //
-// Two checks, in order: the tool must be mounted on this network, and it must be in the
-// caller-visible enabled catalogue. Narrowing discovery is not a control by itself — an id
-// outlives the search that produced it — and this is the call that writes.
+// The caller needs network execute, the tool must be mounted on this network,
+// and the execution-factory lifecycle must still report it callable. Direct
+// target permission is deliberately not required: the managed network proxy is
+// the least-privilege execution principal for this path.
 func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (map[string]any, error) {
 	if req == nil || strings.TrimSpace(req.ToolboxID) == "" || strings.TrimSpace(req.ToolID) == "" {
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
@@ -473,8 +492,21 @@ func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (
 			infraErr.LocalizedDetail(ctx, "ToolScopeKnIDRequired"))
 	}
 	toolboxID, toolID := strings.TrimSpace(req.ToolboxID), strings.TrimSpace(req.ToolID)
+	knID := strings.TrimSpace(req.KnID)
+	if s.knAuthz == nil {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+	}
+	executeAuthz, ok := s.knAuthz.(interfaces.KnowledgeNetworkExecuteAuthorizer)
+	if !ok {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+	}
+	if err := executeAuthz.AuthorizeExecute(ctx, knID); err != nil {
+		return nil, err
+	}
 
-	refs, mcpRefs, err := s.boundRefs(ctx, strings.TrimSpace(req.KnID), toolboxID)
+	refs, mcpRefs, err := s.boundRefsAuthorized(ctx, knID, toolboxID)
 	if err != nil {
 		return nil, err
 	}
@@ -499,14 +531,30 @@ func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (
 			return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
 				infraErr.LocalizedDetail(ctx, "ToolNotExecutable"))
 		}
-		return s.operator.CallMCPTool(ctx, &interfaces.CallMCPToolRequest{
+		proxy, err := s.resolveCapabilityProxy(ctx, knID, ref.BindingID, interfaces.KNProxyTargetTypeMCP, ref.MCPID)
+		if err != nil {
+			return nil, err
+		}
+		proxyOperator, ok := s.operator.(interfaces.KNProxyOperator)
+		if !ok {
+			return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+				infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		}
+		return proxyOperator.CallMCPToolAsProxy(ctx, &interfaces.CallMCPToolRequest{
 			McpID:      ref.MCPID,
 			ToolName:   ref.ToolName,
 			Parameters: req.Arguments,
-		})
+		}, proxy)
 	}
 
-	if !containsRef(refs, toolboxID+"/"+toolID) {
+	functionBindingID := ""
+	for _, ref := range refs {
+		if ref.BoxID == toolboxID && ref.ToolID == toolID {
+			functionBindingID = ref.BindingID
+			break
+		}
+	}
+	if functionBindingID == "" {
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
 			infraErr.LocalizedDetail(ctx, "ToolNotMountedOnNetwork"))
 	}
@@ -515,8 +563,8 @@ func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (
 	// The mount says the network may use this tool; the box's publication and the tool's own
 	// enabled flag say whether anyone may call it now. Without this the two faces disagreed —
 	// search would no longer offer a withdrawn box's tool while execute still ran it — and the
-	// caller-visible listing below cannot fill the gap: it never looks at the box, and on the
-	// internal face it cannot be read at all. A state that cannot be confirmed refuses.
+	// a caller-visible listing cannot fill the gap: it may be unavailable precisely because the
+	// caller relies on the network proxy. A state that cannot be confirmed refuses.
 	state, err := s.operator.ToolBoxLifecycle(ctx, toolboxID)
 	if err != nil || state == nil || !state.Published {
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
@@ -529,30 +577,42 @@ func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (
 		}
 	}
 
-	listed, err := s.operator.ListPublishedTools(ctx, &interfaces.ListPublishedToolsRequest{ToolboxID: toolboxID})
+	proxy, err := s.resolveCapabilityProxy(ctx, knID, functionBindingID, interfaces.KNProxyTargetTypeToolBox, toolboxID)
 	if err != nil {
 		return nil, err
 	}
-	if !containsTool(listed, toolID) {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
-			infraErr.LocalizedDetail(ctx, "ToolNotExecutable"))
+	proxyOperator, ok := s.operator.(interfaces.KNProxyOperator)
+	if !ok {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
 	}
-
-	return s.operator.ExecutePublishedTool(ctx, &interfaces.ExecutePublishedToolRequest{
+	return proxyOperator.ExecutePublishedToolAsProxy(ctx, &interfaces.ExecutePublishedToolRequest{
 		ToolboxID:  toolboxID,
 		ToolID:     toolID,
 		Parameters: req.Arguments,
-	})
+	}, proxy)
 }
 
-// containsRef reports whether the mounted set holds this exact box/tool pair.
-func containsRef(refs []string, ref string) bool {
-	for _, candidate := range refs {
-		if candidate == ref {
-			return true
-		}
+func (s *knToolsService) resolveCapabilityProxy(ctx context.Context, knID, bindingID,
+	targetType, targetID string) (*interfaces.KNProxyExecution, error) {
+	if strings.TrimSpace(bindingID) == "" {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
 	}
-	return false
+	binding := interfaces.KNProxyBinding{
+		KNID: knID, ChildType: interfaces.KNProxyChildTypeCapability, ChildID: bindingID,
+		TargetType: targetType, TargetID: targetID, Operation: interfaces.KNProxyOperationExecute,
+	}
+	resolver, ok := s.bknBackend.(interfaces.KNProxyResolver)
+	if !ok {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+	}
+	mapping, err := resolver.ResolveKNProxyBinding(ctx, binding)
+	if err != nil {
+		return nil, err
+	}
+	return &interfaces.KNProxyExecution{Mapping: mapping, Binding: binding}, nil
 }
 
 func containsTool(listed *interfaces.ListPublishedToolsResponse, toolID string) bool {

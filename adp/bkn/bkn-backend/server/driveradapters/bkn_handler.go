@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -247,7 +248,15 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	if bindingPolicy == bknBindingPolicyDetach {
 		declaredCapabilities = nil
 	}
-	capabilityReport, capErr := r.cbs.ImportCapabilities(ctx, knID, branch, declaredCapabilities)
+	var capabilityReport *interfaces.CapabilityImportReport
+	_, capErr := r.publishKNCapabilityMutation(ctx, knID, branch, nil,
+		func(mutationCtx context.Context, tx *sql.Tx) (*interfaces.KNCapabilityMutationResult, error) {
+			var bindings []*interfaces.CapabilityBinding
+			var importErr error
+			capabilityReport, bindings, importErr = r.cbs.ImportCapabilitiesTx(
+				mutationCtx, tx, knID, branch, declaredCapabilities)
+			return &interfaces.KNCapabilityMutationResult{Bindings: bindings}, importErr
+		})
 	if capErr != nil {
 		logger.Errorf("Upload BKN: capability import failed: kn_id=%s, err=%v", knID, capErr)
 		capabilityReport = &interfaces.CapabilityImportReport{

@@ -19,13 +19,8 @@ var (
 )
 
 func NewAuthService(appSetting *common.AppSetting) interfaces.AuthService {
-	// Return a no-op implementation when authentication is disabled.
 	authServiceOnce.Do(func() {
-		if !common.GetAuthEnabled() {
-			authService = NewNoopAuthService(appSetting)
-		} else {
-			authService = NewHydraAuthService(appSetting)
-		}
+		authService = NewHydraAuthService(appSetting)
 	})
 	return authService
 }

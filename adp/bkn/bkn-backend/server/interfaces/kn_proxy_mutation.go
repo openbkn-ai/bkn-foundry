@@ -15,6 +15,15 @@ import (
 type KNProxyMutationPublisher interface {
 	PublishKNChildMutation(ctx context.Context, changes *KN, mergeMode string,
 		mutate func(context.Context, *sql.Tx) error) error
+	PublishKNCapabilityMutation(ctx context.Context, knID, branch string, removedBindingIDs []string,
+		mutate func(context.Context, *sql.Tx) (*KNCapabilityMutationResult, error)) (*KNCapabilityMutationResult, error)
+}
+
+// KNCapabilityMutationResult carries the binding rows returned by an attach
+// and the affected-row count returned by a detach through one transaction.
+type KNCapabilityMutationResult struct {
+	Bindings     []*CapabilityBinding
+	RowsAffected int64
 }
 
 type KNServiceWithProxyMutation interface {

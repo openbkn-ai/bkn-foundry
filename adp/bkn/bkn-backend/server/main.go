@@ -188,17 +188,15 @@ func main() {
 
 	audit.Init(&appSetting.MQSetting)
 
-	// Sort Set entries in ascending alphabetical order.
-	if common.GetAuthEnabled() {
-		bknSafeURL, err := common.NormalizeBknSafeURL(os.Getenv("BKN_SAFE_URL"))
-		if err != nil {
-			logger.Fatalf("Invalid bkn-safe configuration: %v", err)
-		}
-		logics.SetAuthAccess(auth.NewHydraAuthAccess(appSetting))
-		logics.SetPermissionAccess(permission.NewPermissionAccess(bknSafeURL))
-		logics.SetManagedProxyAccess(kn_proxy.NewManagedProxyAccess(bknSafeURL))
-		logics.SetUserMgmtAccess(user_mgmt.NewUserMgmtAccess(bknSafeURL))
+	// Authentication, authorization, and managed-proxy enforcement are mandatory.
+	bknSafeURL, err := common.NormalizeBknSafeURL(os.Getenv("BKN_SAFE_URL"))
+	if err != nil {
+		logger.Fatalf("Invalid bkn-safe configuration: %v", err)
 	}
+	logics.SetAuthAccess(auth.NewHydraAuthAccess(appSetting))
+	logics.SetPermissionAccess(permission.NewPermissionAccess(bknSafeURL))
+	logics.SetManagedProxyAccess(kn_proxy.NewManagedProxyAccess(bknSafeURL))
+	logics.SetUserMgmtAccess(user_mgmt.NewUserMgmtAccess(bknSafeURL))
 	logics.SetActionScheduleAccess(action_schedule.NewActionScheduleAccess(appSetting))
 	logics.SetActionExecutionAccess(action_execution.NewActionExecutionAccess(appSetting))
 	logics.SetAgentOperatorAccess(agent_operator.NewAgentOperatorAccess(appSetting))

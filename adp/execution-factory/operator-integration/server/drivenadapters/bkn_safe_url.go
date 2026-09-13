@@ -22,7 +22,7 @@ func mustBknSafeURL() string {
 func normalizeBknSafeURL(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return "", fmt.Errorf("BKN_SAFE_URL is required when AUTH_ENABLED=true")
+		return "", fmt.Errorf("BKN_SAFE_URL is required")
 	}
 
 	parsed, err := url.Parse(raw)

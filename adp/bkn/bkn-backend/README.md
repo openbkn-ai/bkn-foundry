@@ -134,7 +134,7 @@ server/config/bkn-backend-config.yaml
 
 ### Authorization configuration
 
-When `AUTH_ENABLED=true`, `BKN_SAFE_URL` is mandatory and must be an absolute
+`BKN_SAFE_URL` is mandatory and must be an absolute
 HTTP(S) URL with a host. Credentials, query strings, and fragments are rejected.
 The process exits during startup when this contract is not satisfied; there is
 no legacy provider or unauthenticated fallback. Child-resource and action-

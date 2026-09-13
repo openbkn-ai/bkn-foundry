@@ -52,12 +52,8 @@ type appKeyIntrospectResp struct {
 }
 
 // NewAppKeyVerifier constructs an AppKey verifier supported by bkn-safe.
-// It returns nil only when authentication is explicitly disabled.
 func NewAppKeyVerifier() interfaces.AppKeyVerifier {
 	appKeyOnce.Do(func() {
-		if !config.GetAuthEnabled() {
-			return // appKeyInst remains nil.
-		}
 		baseURL := mustBknSafeURL()
 		appKeyInst = &appKeyVerifier{
 			introspectURL: baseURL + appKeyIntrospectURI,

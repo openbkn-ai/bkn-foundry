@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http/httptest"
-	"sync"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -117,27 +116,5 @@ func TestIntrospect(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(info.VisitorTyp, ShouldEqual, interfaces.RealName)
 		})
-	})
-}
-
-func TestNewHydra_WhenAuthDisabled_ReturnsNoop(t *testing.T) {
-	Convey("NewHydra auth disabled returns noop implementation", t, func() {
-		t.Setenv("AUTH_ENABLED", "false")
-		once = sync.Once{}
-		h = nil
-		defer func() {
-			once = sync.Once{}
-			h = nil
-		}()
-		c := newHydraTestContext()
-
-		client := NewHydra()
-		tokenInfo, err := client.Introspect(c)
-
-		So(err, ShouldBeNil)
-		So(tokenInfo, ShouldNotBeNil)
-		So(tokenInfo.Active, ShouldBeTrue)
-		So(tokenInfo.VisitorID, ShouldEqual, "user-1")
-		So(tokenInfo.VisitorTyp, ShouldEqual, interfaces.RealName)
 	})
 }

@@ -89,10 +89,8 @@ func (s *actionScheduleService) CreateSchedule(ctx context.Context, schedule *in
 		otellog.LogError(ctx, "Action type not found", httpErr)
 		return "", httpErr
 	}
-	if common.GetAuthEnabled() {
-		if err := s.checkActionExecution(ctx, "schedule_create", schedule.KNID, schedule.ActionTypeID, schedule.DynamicParams); err != nil {
-			return "", err
-		}
+	if err := s.checkActionExecution(ctx, "schedule_create", schedule.KNID, schedule.ActionTypeID, schedule.DynamicParams); err != nil {
+		return "", err
 	}
 	// Persist the current subject for future scheduled executions.
 	schedule.ExecutionSubject = accountFromContext(ctx)
@@ -190,7 +188,7 @@ func (s *actionScheduleService) UpdateSchedule(ctx context.Context, scheduleID s
 	}
 
 	executableConfigChanged := req.CronExpression != "" || req.InstanceIdentities != nil || req.DynamicParams != nil
-	if common.GetAuthEnabled() && executableConfigChanged {
+	if executableConfigChanged {
 		dynamicParams := existing.DynamicParams
 		if req.DynamicParams != nil {
 			dynamicParams = req.DynamicParams
@@ -265,7 +263,7 @@ func (s *actionScheduleService) UpdateScheduleStatus(ctx context.Context, schedu
 		}
 	}
 
-	if common.GetAuthEnabled() && status == interfaces.ScheduleStatusActive &&
+	if status == interfaces.ScheduleStatusActive &&
 		existing.Status != interfaces.ScheduleStatusActive {
 		if err := s.checkActionExecution(ctx, "schedule_activate", existing.KNID, existing.ActionTypeID, existing.DynamicParams); err != nil {
 			return err

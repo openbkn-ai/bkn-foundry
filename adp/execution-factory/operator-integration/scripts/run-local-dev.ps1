@@ -3,7 +3,8 @@ param(
   [int]$DbPort = 3306,
   [string]$DbUser = "root",
   [string]$DbPassword = $env:OPENBKN_DB_PASSWORD,
-  [string]$DbName = "dip_data_operator_hub"
+  [string]$DbName = "dip_data_operator_hub",
+  [string]$BknSafeUrl = $env:BKN_SAFE_URL
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,6 +15,9 @@ $secretExample = Join-Path $configDir "agent-operator-integration-secret.local.e
 
 if (-not $DbPassword) {
   Write-Error "Set OPENBKN_DB_PASSWORD or pass -DbPassword."
+}
+if (-not $BknSafeUrl) {
+  Write-Error "Set BKN_SAFE_URL or pass -BknSafeUrl. Authentication and authorization are mandatory."
 }
 
 if (-not (Test-Path $secretLocal)) {
@@ -32,11 +36,11 @@ if (-not (Test-Path $secretLocal)) {
 }
 
 $env:CONFIG_PROFILE = $configDir
-$env:AUTH_ENABLED = "false"
+$env:BKN_SAFE_URL = $BknSafeUrl
 
 # Use local secret override (copy real values into secret.local.yaml)
 Copy-Item $secretLocal (Join-Path $configDir "agent-operator-integration-secret.yaml") -Force
 
-Write-Host "Starting agent-operator-integration on :9000 (AUTH_ENABLED=false) ..."
+Write-Host "Starting agent-operator-integration on :9000 with mandatory authentication ..."
 Set-Location $root
 go run ./server/main.go

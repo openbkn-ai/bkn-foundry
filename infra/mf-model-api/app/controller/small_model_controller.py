@@ -3,7 +3,6 @@ from fastapi.responses import JSONResponse
 from app.commons.errors.codes import ParamValidationErrors
 from app.commons.i18n import get_error_message
 from app.commons.snow_id import worker
-from app.core.config import base_config
 from app.dao.small_model_dao import small_model_dao
 from app.interfaces import dbaccess, logics
 from app.logs.stand_log import StandLogger
@@ -95,11 +94,8 @@ async def add_model(request: logics.AddExternalSmallModel, userId, language, rol
                                                                       role=role)
         if not permission:
             return JSONResponse(status_code=403, content=NotPermissionError)
-        if base_config.AUTH_ENABLED:
-            user_infos = await get_username_by_ids([userId])
-            user_name = user_infos.get(userId, "")
-        else:
-            user_name = ""
+        user_infos = await get_username_by_ids([userId])
+        user_name = user_infos.get(userId, "")
         status = await permission_manager.add_permission(
             user_id=userId,
             resource_id=model_id,
@@ -225,7 +221,7 @@ async def get_info_list(order, rule, page, size, model_name, model_type, model_s
                                                                      role=role)
         total = 0
         res_list = []
-        if base_config.AUTH_ENABLED and not permission_ids:
+        if not permission_ids:
             content = {"count": total, "data": res_list}
             return JSONResponse(status_code=200, content=content)
         if permission_ids:
@@ -236,11 +232,8 @@ async def get_info_list(order, rule, page, size, model_name, model_type, model_s
             except Exception as e:
                 StandLogger.error(e.args)
                 return JSONResponse(status_code=500, content=ModelFactory_MyPymysqlPool_Connection_ConnectError_Error)
-            if base_config.AUTH_ENABLED:
-                user_ids = await get_userid_by_search(original_res)
-                user_infos = await get_username_by_ids(user_ids)
-            else:
-                user_infos = {}
+            user_ids = await get_userid_by_search(original_res)
+            user_infos = await get_username_by_ids(user_ids)
             res_list = []
             for item in original_res:
                 res_list.append({

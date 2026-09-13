@@ -31,6 +31,7 @@ const (
 	listPublishedToolsInternalURI     = "/internal-v1/caller/tool-box/%s/tools/list"
 	executePublishedToolURI           = "/v1/tool-box/%s/proxy/%s"
 	executePublishedToolInternalURI   = "/internal-v1/caller/tool-box/%s/proxy/%s"
+	executePublishedToolManagedURI    = "/internal-v1/tool-box/%s/proxy/%s"
 
 	// The search layer caps what a model is shown, but the walk underneath has
 	// to be complete: execute_tool checks its tool against this catalogue, so a
@@ -236,6 +237,38 @@ func (o *operatorIntegrationClient) ExecutePublishedTool(
 	code, response, err := o.httpClient.Post(ctx, fullURL, header, map[string]any{"body": parameters})
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ExecutePublishedTool] Request failed, err: %v", err)
+		return nil, skillUpstreamError(ctx, code, "ToolExecutionRequestFailed", err)
+	}
+	result, ok := response.(map[string]any)
+	if !ok {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
+			infraErr.LocalizedDetail(ctx, "ToolExecutionResponseInvalid"))
+	}
+	return result, nil
+}
+
+func (o *operatorIntegrationClient) ExecutePublishedToolAsProxy(ctx context.Context,
+	req *interfaces.ExecutePublishedToolRequest, proxy *interfaces.KNProxyExecution) (map[string]any, error) {
+	if req == nil || proxy == nil || proxy.Binding.TargetType != interfaces.KNProxyTargetTypeToolBox ||
+		proxy.Binding.TargetID != req.ToolboxID {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusForbidden,
+			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+	}
+	header, err := managedProxyHeaders(ctx, proxy)
+	if err != nil {
+		return nil, err
+	}
+	if traceContext, ok := common.GetTraceContextFromCtx(ctx); ok && traceContext.OperationID != "" {
+		header[common.HeaderBKNParentOperationID] = traceContext.OperationID
+	}
+	parameters := req.Parameters
+	if parameters == nil {
+		parameters = map[string]any{}
+	}
+	fullURL := o.baseURL + fmt.Sprintf(executePublishedToolManagedURI,
+		url.PathEscape(strings.TrimSpace(req.ToolboxID)), url.PathEscape(strings.TrimSpace(req.ToolID)))
+	code, response, err := o.httpClient.Post(ctx, fullURL, header, map[string]any{"body": parameters})
+	if err != nil {
 		return nil, skillUpstreamError(ctx, code, "ToolExecutionRequestFailed", err)
 	}
 	result, ok := response.(map[string]any)

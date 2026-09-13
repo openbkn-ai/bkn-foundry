@@ -125,6 +125,37 @@ func TestManagedProxyExecutionAllowsOnlyExactExecutionRoutes(t *testing.T) {
 			t.Fatalf("status=%d handler=%d", response.Code, handlerCalls)
 		}
 	})
+
+	for _, test := range []struct {
+		name       string
+		path       string
+		targetType string
+		targetID   string
+	}{
+		{name: "mounted Function execution", path: "/api/agent-operator-integration/internal-v1/tool-box/box-1/proxy/tool-1",
+			targetType: interfaces.ProxyTargetTypeToolBox, targetID: "box-1"},
+		{name: "mounted MCP execution", path: "/api/agent-operator-integration/internal-v1/mcp/proxy/mcp-1/tool/call",
+			targetType: interfaces.ProxyTargetTypeMCP, targetID: "mcp-1"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			handlerCalls := 0
+			engine := proxyExecutionTestEngine(nil, func(c *gin.Context) {
+				handlerCalls++
+				c.Status(http.StatusOK)
+			})
+			request := httptest.NewRequest(http.MethodPost, test.path, nil)
+			addValidProxyExecutionHeaders(request, test.targetType, test.targetID, interfaces.ProxyChildTypeCapability)
+			request.Header.Set(interfaces.HTTPHeaderBKNChildID, "binding-1")
+			request.Header.Del(interfaces.HTTPHeaderBKNExecutionID)
+			response := httptest.NewRecorder()
+
+			engine.ServeHTTP(response, request)
+
+			if response.Code != http.StatusOK || handlerCalls != 1 {
+				t.Fatalf("status=%d handler=%d", response.Code, handlerCalls)
+			}
+		})
+	}
 }
 
 func TestManagedProxyExecutionRejectsInvalidContextBeforeHandler(t *testing.T) {

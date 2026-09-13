@@ -18,27 +18,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
 
-func TestNoopHydraIntrospect(t *testing.T) {
-	convey.Convey("noopHydra.Introspect", t, func() {
-		noop := &noopHydra{}
-
-		convey.Convey("returns Active=true with Anonymous visitor type", func() {
-			info, err := noop.Introspect(context.Background(), "any-token")
-			convey.So(err, convey.ShouldBeNil)
-			convey.So(info, convey.ShouldNotBeNil)
-			convey.So(info.Active, convey.ShouldBeTrue)
-			convey.So(info.VisitorTyp, convey.ShouldEqual, interfaces.Anonymous)
-			convey.So(info.VisitorID, convey.ShouldBeEmpty)
-		})
-
-		convey.Convey("works with empty token", func() {
-			info, err := noop.Introspect(context.Background(), "")
-			convey.So(err, convey.ShouldBeNil)
-			convey.So(info.Active, convey.ShouldBeTrue)
-		})
-	})
-}
-
 func TestIntrospect(t *testing.T) {
 	convey.Convey("TestIntrospect", t, func() {
 		ctrl := gomock.NewController(t)

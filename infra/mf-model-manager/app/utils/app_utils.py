@@ -75,11 +75,6 @@ async def auth_middleware(request: Request, call_next):
         pass
     elif path.startswith("/api/private"):
         pass
-    elif not base_config.AUTH_ENABLED:
-        # With authorization disabled, inject an anonymous identity for audit correlation.
-        user_id = request.headers.get("x-account-id", base_config.ANONYMOUS_USER_ID)
-        request.scope['headers'].append((b"x-account-id", user_id.encode()))
-        request.scope['headers'].append((b"x-account-type", b"user"))
     else:
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):

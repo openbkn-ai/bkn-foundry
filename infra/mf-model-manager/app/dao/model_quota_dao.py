@@ -270,7 +270,7 @@ class ModelQuotaDao():
         # Authorization filter (#213): when permission_ids is passed, restrict
         # every query to those model ids so an unauthorized model never appears —
         # applied at the query level so pagination/count stay correct. None means
-        # no filtering (auth disabled / admin); an empty list means "authorized
+        # no filtering (admin); an empty list means "authorized
         # for nothing" and short-circuits to an empty result.
         id_filter = ""
         if permission_ids is not None:

@@ -14,16 +14,12 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	"ontology-query/common"
 	oerrors "ontology-query/errors"
 	"ontology-query/interfaces"
 )
 
 func (s *actionSchedulerService) authorizeActionType(ctx context.Context, knID string,
 	actionType *interfaces.ActionType) ([]interfaces.PermissionRequirement, error) {
-	if !common.GetAuthEnabled() {
-		return nil, nil
-	}
 	if s == nil || s.permissions == nil {
 		return nil, actionPermissionUnavailable(ctx, fmt.Errorf("action permission service is not configured"))
 	}
@@ -41,9 +37,6 @@ func (s *actionSchedulerService) authorizeActionType(ctx context.Context, knID s
 
 func (s *actionSchedulerService) authorizeExecution(ctx context.Context,
 	requirements []interfaces.PermissionRequirement) error {
-	if !common.GetAuthEnabled() {
-		return nil
-	}
 	if s == nil || s.permissions == nil {
 		return actionPermissionUnavailable(ctx, fmt.Errorf("action permission service is not configured"))
 	}
