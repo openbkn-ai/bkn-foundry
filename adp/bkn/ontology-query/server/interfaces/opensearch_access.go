@@ -70,5 +70,9 @@ type OpenSearchAccess interface {
 	// BulkDeleteData deletes data in batches using document IDs.
 	BulkDeleteData(ctx context.Context, indexName string, docIDs []string) error
 
+	// DeleteByQuery deletes every document matching query in indexName, which may be a
+	// wildcard pattern. A missing index deletes nothing. It returns the number deleted.
+	DeleteByQuery(ctx context.Context, indexName string, query any) (int64, error)
+
 	Count(ctx context.Context, indexName string, query any) ([]byte, error)
 }

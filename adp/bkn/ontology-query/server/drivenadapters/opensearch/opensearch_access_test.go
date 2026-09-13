@@ -456,6 +456,79 @@ func Test_openSearchAccess_BulkIndexDocuments(t *testing.T) {
 	})
 }
 
+func Test_openSearchAccess_DeleteByQuery(t *testing.T) {
+	Convey("test DeleteByQuery\n", t, func() {
+		appSetting := &common.AppSetting{}
+		query := map[string]any{"query": map[string]any{"terms": map[string]any{"execution_id": []string{"e1"}}}}
+
+		Convey("DeleteByQuery skips conflicts, tolerates missing indices and reports the count\n", func() {
+			var sent map[string]any
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					So(req.Method, ShouldEqual, "POST")
+					So(req.URL.Path, ShouldEqual, "/ontology_action_executions_*/_delete_by_query")
+					So(req.URL.Query().Get("conflicts"), ShouldEqual, "proceed")
+					So(req.URL.Query().Get("allow_no_indices"), ShouldEqual, "true")
+					So(req.URL.Query().Get("ignore_unavailable"), ShouldEqual, "true")
+					So(req.URL.Query().Get("refresh"), ShouldEqual, "true")
+					raw, _ := io.ReadAll(req.Body)
+					_ = json.Unmarshal(raw, &sent)
+					return &http.Response{
+						StatusCode: 200,
+						Body:       io.NopCloser(strings.NewReader(`{"deleted": 42, "failures": []}`)),
+					}, nil
+				},
+			})
+
+			deleted, err := osa.DeleteByQuery(testCtx, "ontology_action_executions_*", query)
+			So(err, ShouldBeNil)
+			So(deleted, ShouldEqual, 42)
+			So(sent, ShouldContainKey, "query")
+		})
+
+		Convey("DeleteByQuery on a missing index deletes nothing\n", func() {
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: 404,
+						Body:       io.NopCloser(strings.NewReader(`{"error": {"type": "index_not_found_exception"}}`)),
+					}, nil
+				},
+			})
+			deleted, err := osa.DeleteByQuery(testCtx, "ontology_action_execution_results", query)
+			So(err, ShouldBeNil)
+			So(deleted, ShouldEqual, 0)
+		})
+
+		Convey("DeleteByQuery reports item failures\n", func() {
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: 200,
+						Body:       io.NopCloser(strings.NewReader(`{"deleted": 3, "failures": [{"cause": "boom"}]}`)),
+					}, nil
+				},
+			})
+			deleted, err := osa.DeleteByQuery(testCtx, "idx", query)
+			So(err, ShouldNotBeNil)
+			So(deleted, ShouldEqual, 3)
+		})
+
+		Convey("DeleteByQuery Failed - response error\n", func() {
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: 500,
+						Body:       io.NopCloser(strings.NewReader(`{"error": "boom"}`)),
+					}, nil
+				},
+			})
+			_, err := osa.DeleteByQuery(testCtx, "idx", query)
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
 func Test_openSearchAccess_BulkInsertData(t *testing.T) {
 	Convey("test BulkInsertData\n", t, func() {
 		appSetting := &common.AppSetting{}

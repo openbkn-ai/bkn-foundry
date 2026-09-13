@@ -603,6 +603,60 @@ func (o *openSearchAccess) BulkDeleteData(ctx context.Context, indexName string,
 	return nil
 }
 
+// DeleteByQuery deletes every document matching query in indexName (a name or a wildcard
+// pattern). Version conflicts with concurrent writers are skipped rather than failing the
+// request, a missing index deletes nothing, and the index is refreshed afterwards.
+func (o *openSearchAccess) DeleteByQuery(ctx context.Context, indexName string, query any) (int64, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "DeleteByQuery")
+	defer span.End()
+
+	span.SetAttributes(attr.Key("index_name").String(indexName))
+
+	queryJSON, err := sonic.Marshal(query)
+	if err != nil {
+		return 0, fmt.Errorf("failed to marshal delete query: %w", err)
+	}
+
+	allowNoIndices, ignoreUnavailable, refresh := true, true, true
+	req := opensearchapi.DeleteByQueryRequest{
+		Index:             []string{indexName},
+		Body:              bytes.NewReader(queryJSON),
+		AllowNoIndices:    &allowNoIndices,
+		IgnoreUnavailable: &ignoreUnavailable,
+		Conflicts:         "proceed",
+		Refresh:           &refresh,
+	}
+	res, err := req.Do(ctx, o.client)
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete by query in %s: %w", indexName, err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode == http.StatusNotFound {
+		return 0, nil
+	}
+	if res.IsError() {
+		return 0, fmt.Errorf("delete by query in %s failed: %s, %s", indexName, res.Status(), res.String())
+	}
+
+	resBody, err := io.ReadAll(res.Body)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read delete by query response: %w", err)
+	}
+	var result struct {
+		Deleted  int64             `json:"deleted"`
+		Failures []json.RawMessage `json:"failures"`
+	}
+	if err := sonic.Unmarshal(resBody, &result); err != nil {
+		return 0, fmt.Errorf("failed to decode delete by query response: %w", err)
+	}
+	if len(result.Failures) > 0 {
+		return result.Deleted, fmt.Errorf("delete by query in %s reported %d failures: %s", indexName, len(result.Failures), result.Failures[0])
+	}
+	span.SetAttributes(attr.Key("deleted").Int64(result.Deleted))
+	return result.Deleted, nil
+}
+
 func (o *openSearchAccess) Count(ctx context.Context, indexName string, query any) ([]byte, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Count")
 	defer span.End()
