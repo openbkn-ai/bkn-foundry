@@ -414,8 +414,11 @@ func (s *actionLogsService) QueryExecutions(ctx context.Context, query *interfac
 		// consumer reads (the studio list mapper ignores them, context-loader strips them).
 		// Excluded at the OpenSearch level so old documents carrying these fields are covered too.
 		// dynamic_params stays: context-loader keeps it in the slimmed list for the agent.
+		// results_total/offset/limit are response-only pagination fields of the detail API
+		// that documents written before #790 persisted with stale values.
 		"_source": map[string]any{
-			"excludes": []string{"results", "action_type_snapshot", "action_source"},
+			"excludes": []string{"results", "action_type_snapshot", "action_source",
+				"results_total", "results_offset", "results_limit"},
 		},
 		"sort": []map[string]any{
 			{"start_time": map[string]any{"order": "desc"}},

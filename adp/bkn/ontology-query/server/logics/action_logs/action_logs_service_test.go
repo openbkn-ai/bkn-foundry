@@ -168,6 +168,10 @@ func Test_QueryExecutions_ExcludesResultsFromSource(t *testing.T) {
 		So(excludes, ShouldContain, "results")
 		So(excludes, ShouldContain, "action_type_snapshot")
 		So(excludes, ShouldContain, "action_source")
+		// Pre-#790 documents persisted these response-only fields with stale values.
+		So(excludes, ShouldContain, "results_total")
+		So(excludes, ShouldContain, "results_offset")
+		So(excludes, ShouldContain, "results_limit")
 		// context-loader keeps dynamic_params in the slimmed list for the agent.
 		So(excludes, ShouldNotContain, "dynamic_params")
 	})
