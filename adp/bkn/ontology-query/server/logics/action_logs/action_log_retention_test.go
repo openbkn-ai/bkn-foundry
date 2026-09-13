@@ -6,9 +6,11 @@ package action_logs
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -146,5 +148,31 @@ func Test_LoadRetentionConfig(t *testing.T) {
 			t.Setenv(envRetentionCleanupOnly, "true")
 			So(RetentionCleanupOnly(), ShouldBeTrue)
 		})
+	})
+}
+
+func Test_cleanupExpired_SearchAfterKeepsDecodedSortValues(t *testing.T) {
+	Convey("sort values decoded as json.Number are sent back as JSON numbers in search_after", t, func() {
+		svc, osa := newWriteTestService(t)
+		// SearchData decodes with UseNumber, so real sort values arrive as json.Number.
+		first := interfaces.Hit{Source: map[string]any{"id": "e2"}, Sort: []any{json.Number("1789000000000"), "e2"}}
+
+		var second map[string]any
+		gomock.InOrder(
+			osa.EXPECT().SearchData(gomock.Any(), gomock.Any(), gomock.Any()).Return([]interfaces.Hit{first}, nil),
+			osa.EXPECT().DeleteByQuery(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), nil).Times(2),
+			osa.EXPECT().SearchData(gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, _ string, q any) ([]interfaces.Hit, error) {
+					second = q.(map[string]any)
+					return nil, nil
+				}),
+		)
+
+		_, err := svc.cleanupExpired(context.Background(), RetentionConfig{RetentionDays: 30, BatchSize: 1, MaxBatches: 5}, retentionNow)
+		So(err, ShouldBeNil)
+
+		wire, err := sonic.Marshal(second["search_after"])
+		So(err, ShouldBeNil)
+		So(string(wire), ShouldEqual, `[1789000000000,"e2"]`)
 	})
 }

@@ -215,4 +215,9 @@ func runActionLogRetention(appSetting *common.AppSetting) {
 	logger.Infof("Action execution log retention complete: dry_run=%t retention_days=%d cutoff=%s executions=%d results=%d batches=%d more_remaining=%t took=%s",
 		cfg.DryRun, cfg.RetentionDays, time.UnixMilli(result.Cutoff).UTC().Format(time.RFC3339),
 		result.Executions, result.Results, result.Batches, result.Truncated, time.Since(started).Round(time.Millisecond))
+	if result.Truncated {
+		logger.Warnf("Action execution log retention stopped at its per-run limit of %d executions (batch size %d x %d batches) "+
+			"with more expired executions left; if this repeats, raise the batch count or run the CronJob more often",
+			cfg.BatchSize*cfg.MaxBatches, cfg.BatchSize, cfg.MaxBatches)
+	}
 }

@@ -167,4 +167,7 @@ actionLogRetention:
   retentionDays: 90
   batchSize: 500    # executions deleted per batch (max 1000)
   maxBatches: 20    # batches per run; the next run continues where this one stopped
+  # One run deletes at most batchSize x maxBatches executions (10000 with the defaults, i.e.
+  # 10000 a day on the default daily schedule). A run that stops at this limit logs
+  # more_remaining=true and a warning; raise maxBatches or schedule runs more often if it repeats.
   dryRun: false     # true: only log how many executions and results would be deleted
