@@ -325,14 +325,16 @@ func TestGetActionTypeDetail_Success(t *testing.T) {
 
 		ctx := context.Background()
 
-		// Mock a successful HTTP response.
+		// bkn-backend wraps action types in {"entries": [...]}; this test used to mock a
+		// bare array, which is what the decoder expected and the endpoint never sent.
 		mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(200, []byte(`[{"id": "at-001", "name": "测试行动类"}]`), nil)
+			Return(200, []byte(`{"entries": [{"id": "at-001", "name": "测试行动类"}]}`), nil)
 
 		resp, err := client.GetActionTypeDetail(ctx, "kn-001", []string{"at-001"}, true)
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(resp, convey.ShouldNotBeNil)
 		convey.So(len(resp), convey.ShouldEqual, 1)
+		convey.So(resp[0].ID, convey.ShouldEqual, "at-001")
 	})
 }
 
