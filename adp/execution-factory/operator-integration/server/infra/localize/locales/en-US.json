@@ -149,6 +149,7 @@
         "CommonInternalComponentNotAllowed": "Internal component \"%s\" is not allowed to be imported or exported",
         "CommonDepartmentOrGroupOrRoleNotAllowed": "Department, user group, or role account is not allowed",
         "CommonInvalidAccessorType": "Invalid accessor type",
+        "CommonAuthorizationUnavailable": "The authorization service is temporarily unavailable. No authorization decision was made and the request was not executed",
         "CommonNoMatchedMethodPath": "No matched method path found",
         "CommonNameExists": "The name already exists, please choose another name",
         "CommonOperationForbidden": "Permission denied: You do not have permission to perform current operation, please contact the administrator to open relevant permissions",
@@ -237,7 +238,8 @@
         "ProxyPathParamMissing": "Please fill in the missing path parameters and try again",
         "CommonImportDataEmpty": "Please check if the import data is correct",
         "SandboxRuntimeExecuteCodeFailed": "Sandbox runtime execute code failed, please check if the code is correct",
-        "PypiParserFailed": "Example: Official PyPI source: https://pypi.org/simple/, Tsinghua source: https://pypi.tuna.tsinghua.edu.cn/simple/"
+        "PypiParserFailed": "Example: Official PyPI source: https://pypi.org/simple/, Tsinghua source: https://pypi.tuna.tsinghua.edu.cn/simple/",
+        "CommonAuthorizationUnavailable": "Retry later. If it keeps failing, ask an administrator to check the bkn-safe service"
     },
     "link": {
         "None": "None"

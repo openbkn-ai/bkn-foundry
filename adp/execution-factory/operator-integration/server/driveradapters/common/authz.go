@@ -39,7 +39,13 @@ func requireOperatorTypePermission(
 		return err
 	}
 	if !authorized {
-		return errors.NewHTTPError(ctx, http.StatusForbidden, forbiddenCodeFor(operation), nil)
+		// Name the missing grant so an administrator knows what to assign. It is the
+		// same for every caller, so it reveals nothing about the account.
+		return errors.NewHTTPError(ctx, http.StatusForbidden, forbiddenCodeFor(operation), map[string]any{
+			"resource_type": string(interfaces.AuthResourceTypeOperator),
+			"resource_id":   interfaces.ResourceIDAll,
+			"operation":     string(operation),
+		})
 	}
 	return nil
 }

@@ -57,8 +57,9 @@ paths:
         镜像里的库不用声明——用 `GET /function/dependencies` 看有哪些。
 
         **响应永远是 200**：代码自身抛异常不算接口失败，异常栈在 `stderr` 里，
-        `exit_code` 非 0，`result` 为 `null`。只有参数不合法、无权限、沙箱不可用
-        才返回 4xx/5xx——**判断执行成败看 `exit_code`，不要看 HTTP 状态码**。
+        `exit_code` 非 0，`result` 为 `null`。只有参数不合法、无权限（403）、
+        权限校验服务不可用（503）、沙箱不可用才返回 4xx/5xx——**判断执行成败看
+        `exit_code`，不要看 HTTP 状态码**。
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
       requestBody:
@@ -147,16 +148,11 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          description: 当前账户没有算子的 execute 权限
-          headers:
-            Content-Language:
-              $ref: '#/components/headers/ContentLanguage'
-          content:
-            application/json:
-              schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+          $ref: '#/components/responses/ExecuteForbidden'
         '500':
           $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/AuthorizationUnavailable'
 
   /function/infer-schema:
     post:
@@ -171,7 +167,8 @@ paths:
 
         **推导不出来不是错误**：代码没用 `@tool`、有语法错误、import 失败，都返回
         200 且 `supported: false`，其余字段为空，调用方据此回退到手工填写。
-        真正的 4xx/5xx 只在参数不合法、无权限、沙箱不可用时出现。
+        真正的 4xx/5xx 只在参数不合法、无权限（403）、权限校验服务不可用（503）、
+        沙箱不可用时出现。
 
         **这会真的执行你的代码**，因此与 `/function/execute` 用同一套 execute 授权。
       parameters:
@@ -224,16 +221,11 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          description: 当前账户没有算子的 execute 权限
-          headers:
-            Content-Language:
-              $ref: '#/components/headers/ContentLanguage'
-          content:
-            application/json:
-              schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+          $ref: '#/components/responses/ExecuteForbidden'
         '500':
           $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/AuthorizationUnavailable'
 
   /function/dependencies:
     get:
@@ -634,6 +626,44 @@ components:
         application/json:
           schema:
             $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+    ExecuteForbidden:
+      description: |
+        当前账户没有算子类型的 execute 权限（`operator:*`）。授权服务已给出拒绝判定，
+        代码未执行。`details` 给出缺少的权限，可直接交给管理员授权；单个算子、
+        知识网络等资源上的授权不能代替这一类型级权限。
+      headers:
+        Content-Language:
+          $ref: '#/components/headers/ContentLanguage'
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+          example:
+            code: AgentOperatorIntegration.Forbidden.CommonUseForbidden
+            description: 权限不足，您暂无使用该资源的权限，请联系管理员申请授权
+            solution: 请联系管理员
+            link: 无
+            details:
+              resource_type: operator
+              resource_id: '*'
+              operation: execute
+    AuthorizationUnavailable:
+      description: |
+        权限校验服务（bkn-safe）超时、不可达或返回异常，未能给出授权判定。
+        请求按失败关闭处理，代码未执行。这不代表账户缺少权限，稍后重试即可；
+        持续出现需检查 bkn-safe。
+      headers:
+        Content-Language:
+          $ref: '#/components/headers/ContentLanguage'
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+          example:
+            code: AgentOperatorIntegration.ServiceUnavailable.CommonAuthorizationUnavailable
+            description: 权限校验服务暂时不可用，未能完成授权判定，请求未执行
+            solution: 请稍后重试；持续失败请联系管理员检查 bkn-safe 服务状态
+            link: 无
 
   parameters:
     AcceptLanguage:

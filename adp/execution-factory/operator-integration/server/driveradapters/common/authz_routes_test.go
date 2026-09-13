@@ -1,6 +1,8 @@
 package common
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -8,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
 	. "github.com/smartystreets/goconvey/convey"
@@ -99,5 +102,65 @@ func TestGatedPublicRoutesRejectUnauthorized(t *testing.T) {
 
 		// If the access control comes after ShouldBindJSON, this will be 400 instead of 403.
 		So(recorder.Code, ShouldEqual, http.StatusForbidden)
+	})
+}
+
+// TestFunctionExecuteAuthorizationOutcomes guards #1533: the caller must be able
+// to tell a missing execute grant from an authorization outage, and neither may
+// reach the sandbox. The engine leaves SessionPool nil, so a request that slips
+// past the gate panics instead of passing.
+func TestFunctionExecuteAuthorizationOutcomes(t *testing.T) {
+	const path = "/api/agent-operator-integration/v1/function/execute"
+	const body = `{"code":"import datetime\nprint(datetime.datetime.now().year)","language":"python"}`
+
+	serve := func(authService interfaces.IAuthorizationService) *httptest.ResponseRecorder {
+		engine := newGatedPublicEngine(authService)
+		recorder := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		engine.ServeHTTP(recorder, req)
+		return recorder
+	}
+
+	Convey("a denial is a 403 that names the missing type-level permission", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		authService := mocks.NewMockIAuthorizationService(ctrl)
+		authService.EXPECT().
+			OperationCheckAll(gomock.Any(), gomock.Any(), interfaces.ResourceIDAll,
+				interfaces.AuthResourceTypeOperator, interfaces.AuthOperationTypeExecute).
+			Return(false, nil)
+
+		recorder := serve(authService)
+
+		So(recorder.Code, ShouldEqual, http.StatusForbidden)
+		var reply struct {
+			Code    string         `json:"code"`
+			Details map[string]any `json:"details"`
+		}
+		So(json.Unmarshal(recorder.Body.Bytes(), &reply), ShouldBeNil)
+		So(reply.Code, ShouldEndWith, "."+errors.ErrExtCommonUseForbidden.String())
+		So(reply.Details, ShouldResemble, map[string]any{
+			"resource_type": string(interfaces.AuthResourceTypeOperator),
+			"resource_id":   interfaces.ResourceIDAll,
+			"operation":     string(interfaces.AuthOperationTypeExecute),
+		})
+	})
+
+	Convey("an authorization outage stays a 503 and never becomes a 403", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		authService := mocks.NewMockIAuthorizationService(ctrl)
+		outage := errors.NewHTTPError(context.Background(), http.StatusServiceUnavailable,
+			errors.ErrExtCommonAuthorizationUnavailable, nil)
+		authService.EXPECT().
+			OperationCheckAll(gomock.Any(), gomock.Any(), interfaces.ResourceIDAll,
+				interfaces.AuthResourceTypeOperator, interfaces.AuthOperationTypeExecute).
+			Return(false, outage)
+
+		recorder := serve(authService)
+
+		So(recorder.Code, ShouldEqual, http.StatusServiceUnavailable)
+		So(recorder.Body.String(), ShouldContainSubstring, errors.ErrExtCommonAuthorizationUnavailable.String())
 	})
 }
