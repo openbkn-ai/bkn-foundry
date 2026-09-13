@@ -137,14 +137,14 @@ def fetch_resources(cursor) -> list[Resource]:
 
 
 def creator_exists(cursor, creator_id: str) -> bool:
-    cursor.execute("SELECT 1 FROM users WHERE id = ? LIMIT 1", (creator_id,))
+    cursor.execute("SELECT 1 FROM users WHERE id = %s LIMIT 1", (creator_id,))
     return cursor.fetchone() is not None
 
 
 def creator_grants(cursor, resource: Resource) -> list[tuple[str, str]]:
     cursor.execute(
         "SELECT operation, policy_source FROM authorization_grant "
-        "WHERE accessor_id = ? AND object = ? AND effect = ?",
+        "WHERE accessor_id = %s AND object = %s AND effect = %s",
         (resource.creator_id, object_key(resource), ALLOW),
     )
     return [(row[0], row[1]) for row in cursor.fetchall()]
@@ -170,17 +170,17 @@ def insert_resource_grants(cursor, resource: Resource) -> None:
         cursor.execute(
             "INSERT INTO authorization_grant "
             "(grant_id, projection_key, accessor_id, object, operation, effect, policy_source, authority_source, created_by, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP()) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, UTC_TIMESTAMP(), UTC_TIMESTAMP()) "
             "ON DUPLICATE KEY UPDATE grant_id = grant_id",
             (grant_id, projection, accessor, object_name, operation, effect, source, authority, created_by),
         )
         cursor.execute(
-            "SELECT 1 FROM casbin_rule WHERE ptype = 'p' AND v0 = ? AND v1 = ? AND v2 = ? AND v3 = ? AND v4 = ? AND v5 = ? LIMIT 1",
+            "SELECT 1 FROM casbin_rule WHERE ptype = 'p' AND v0 = %s AND v1 = %s AND v2 = %s AND v3 = %s AND v4 = %s AND v5 = %s LIMIT 1",
             (accessor, object_name, operation, effect, source, authority),
         )
         if cursor.fetchone() is None:
             cursor.execute(
-                "INSERT INTO casbin_rule (ptype, v0, v1, v2, v3, v4, v5) VALUES ('p', ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO casbin_rule (ptype, v0, v1, v2, v3, v4, v5) VALUES ('p', %s, %s, %s, %s, %s, %s)",
                 (accessor, object_name, operation, effect, source, authority),
             )
 
