@@ -456,10 +456,7 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 
 	// Store what is still pending (the last partial batch, or every instance the cancel
 	// skipped) before the terminal write, so a finished execution has all its results.
-	s.flushResults(ctx, execution, &results)
-	if len(results.pending) > 0 {
-		s.flushResults(ctx, execution, &results)
-	}
+	s.flushFinalResults(ctx, execution, &results)
 
 	// Write the final execution record. A cancel that lands after the last cancellation
 	// check still wins: the log keeps the cancelled status the user was told about.
@@ -602,7 +599,7 @@ func (s *actionSchedulerService) finishOnce(ctx context.Context, execution *inte
 	result interfaces.ObjectExecutionResult, finalStatus string, successCount, failedCount int, endTime int64) {
 
 	results := resultBuffer{pending: []interfaces.ObjectExecutionResult{result}}
-	s.flushResults(ctx, execution, &results)
+	s.flushFinalResults(ctx, execution, &results)
 
 	if err := s.logsService.FinishExecution(ctx, execution.KNID, execution.ID, &interfaces.ExecutionOutcome{
 		Status:       finalStatus,
@@ -672,6 +669,28 @@ func (s *actionSchedulerService) flushResults(ctx context.Context, execution *in
 	}
 	results.stored += len(results.pending)
 	results.pending = nil
+}
+
+// finalFlushBackoff is the wait before each retry of the last flush of an execution. Earlier
+// flushes are retried by the next one; the last flush has no next one.
+var finalFlushBackoff = []time.Duration{500 * time.Millisecond, time.Second, 2 * time.Second}
+
+// flushFinalResults stores the results still pending when an execution stops, retrying with
+// backoff. Results that still cannot be stored are reported: the terminal write that follows
+// records the counters of what ran, and the results page would otherwise silently miss them.
+func (s *actionSchedulerService) flushFinalResults(ctx context.Context, execution *interfaces.ActionExecution, results *resultBuffer) {
+	s.flushResults(ctx, execution, results)
+	for _, wait := range finalFlushBackoff {
+		if len(results.pending) == 0 {
+			return
+		}
+		time.Sleep(wait)
+		s.flushResults(ctx, execution, results)
+	}
+	if len(results.pending) > 0 {
+		logger.Errorf("Execution %s finished with %d results that could not be stored (positions %d-%d)",
+			execution.ID, len(results.pending), results.stored, results.stored+len(results.pending)-1)
+	}
 }
 
 // getInstancesForAction gets instances based on action type configuration and request parameters.

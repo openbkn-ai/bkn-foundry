@@ -394,7 +394,8 @@ func Test_openSearchAccess_BulkIndexDocuments(t *testing.T) {
 				roundTripFunc: func(req *http.Request) (*http.Response, error) {
 					So(req.Method, ShouldEqual, "POST")
 					So(req.URL.Path, ShouldEqual, "/_bulk")
-					So(req.URL.Query().Get("refresh"), ShouldEqual, "true")
+					// Visible on return without forcing a refresh of the shared index.
+					So(req.URL.Query().Get("refresh"), ShouldEqual, "wait_for")
 					raw, _ := io.ReadAll(req.Body)
 					lines = strings.Split(strings.TrimSpace(string(raw)), "\n")
 					return &http.Response{

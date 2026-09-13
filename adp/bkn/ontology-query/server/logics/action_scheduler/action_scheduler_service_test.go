@@ -1631,6 +1631,54 @@ func Test_executeAsync_AppendsOnlyNewResults(t *testing.T) {
 	})
 }
 
+func Test_executeAsync_RetriesFinalResultsFlush(t *testing.T) {
+	Convey("the last results flush of an execution is retried with backoff before the terminal write (#790)", t, func() {
+		saved := finalFlushBackoff
+		finalFlushBackoff = []time.Duration{0, 0, 0}
+		defer func() { finalFlushBackoff = saved }()
+
+		run := func(failures int) (appendCalls int, finished *interfaces.ExecutionOutcome) {
+			mockCtrl := gomock.NewController(t)
+			defer mockCtrl.Finish()
+
+			aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
+			logsService := omock.NewMockActionLogsService(mockCtrl)
+			service := &actionSchedulerService{aoAccess: aoAccess, logsService: logsService, permissions: &actionPermissionStub{}}
+			execution, actionType, req := aggregatedOnceFixture(t, "exec_final_flush")
+
+			logsService.EXPECT().MarkExecutionRunning(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			logsService.EXPECT().GetExecutionStatus(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ExecutionStatusRunning, nil).AnyTimes()
+			logsService.EXPECT().AppendResults(gomock.Any(), "kn_001", "exec_final_flush", 0, gomock.Any()).DoAndReturn(
+				func(_ context.Context, _, _ string, _ int, _ []interfaces.ObjectExecutionResult) error {
+					appendCalls++
+					if appendCalls <= failures {
+						return fmt.Errorf("opensearch unavailable")
+					}
+					return nil
+				}).AnyTimes()
+			logsService.EXPECT().FinishExecution(gomock.Any(), "kn_001", "exec_final_flush", gomock.Any()).DoAndReturn(
+				func(_ context.Context, _, _ string, outcome *interfaces.ExecutionOutcome) error {
+					finished = outcome
+					return nil
+				})
+			aoAccess.EXPECT().ExecuteToolAsProxy(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(map[string]any{"ok": true}, nil)
+
+			service.executeAsync(execution, actionType, req)
+			return appendCalls, finished
+		}
+
+		calls, outcome := run(2)
+		So(calls, ShouldEqual, 3) // two failures, stored on the third attempt
+		So(outcome.Status, ShouldEqual, interfaces.ExecutionStatusCompleted)
+
+		calls, outcome = run(10)
+		So(calls, ShouldEqual, 1+len(finalFlushBackoff)) // gives up after the backoff schedule
+		So(outcome, ShouldNotBeNil)                      // the terminal write still records what ran
+		So(outcome.SuccessCount, ShouldEqual, 1)
+	})
+}
+
 func Test_shouldCheckExecutionCancellation(t *testing.T) {
 	Convey("large executions check for a cancel at batch boundaries and at least once a second (#790)", t, func() {
 		// Small runs check before every instance.

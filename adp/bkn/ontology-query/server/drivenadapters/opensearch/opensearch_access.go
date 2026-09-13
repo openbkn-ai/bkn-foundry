@@ -364,8 +364,9 @@ func (o *openSearchAccess) BulkInsertData(ctx context.Context, indexName string,
 
 // BulkIndexDocuments indexes documents under their explicit IDs in one bulk request.
 // Writing the same ID again replaces the document, so a retried batch is idempotent. Unlike
-// BulkInsertData the ID is not copied into the stored source. The index is refreshed so the
-// documents are immediately searchable.
+// BulkInsertData the ID is not copied into the stored source. The call returns once the
+// documents are searchable (refresh=wait_for) without forcing a refresh of its own, so many
+// writers sharing one index do not each trigger a refresh.
 func (o *openSearchAccess) BulkIndexDocuments(ctx context.Context, indexName string, docs []interfaces.BulkDocument) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "BulkIndexDocuments")
 	defer span.End()
@@ -398,7 +399,7 @@ func (o *openSearchAccess) BulkIndexDocuments(ctx context.Context, indexName str
 
 	req := opensearchapi.BulkRequest{
 		Body:    &buf,
-		Refresh: "true",
+		Refresh: "wait_for",
 	}
 	res, err := req.Do(ctx, o.client)
 	if err != nil {
