@@ -95,6 +95,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiV1.GET("/knowledge-networks/:kn_id/action-executions/:execution_id", r.GetActionExecutionByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/action-logs", r.QueryActionLogsByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/action-logs/:log_id", r.GetActionLogByEx)
+		apiV1.GET("/knowledge-networks/:kn_id/action-logs/:log_id/results", r.QueryActionLogResultsByEx)
 		apiV1.POST("/knowledge-networks/:kn_id/action-logs/:log_id/cancel", r.CancelActionLogByEx)
 
 		apiV1.POST("/knowledge-networks/:kn_id/metrics/dry-run", r.verifyJsonContentType(), r.PostMetricDryRunByEx)
@@ -120,6 +121,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiInV1.GET("/knowledge-networks/:kn_id/action-executions/:execution_id", r.GetActionExecutionByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/action-logs", r.QueryActionLogsByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/action-logs/:log_id", r.GetActionLogByIn)
+		apiInV1.GET("/knowledge-networks/:kn_id/action-logs/:log_id/results", r.QueryActionLogResultsByIn)
 		apiInV1.POST("/knowledge-networks/:kn_id/action-logs/:log_id/cancel", r.CancelActionLogByIn)
 
 		apiInV1.POST("/knowledge-networks/:kn_id/metrics/dry-run", r.verifyJsonContentType(), r.PostMetricDryRunByIn)

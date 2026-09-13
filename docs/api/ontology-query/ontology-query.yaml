@@ -2882,7 +2882,7 @@ paths:
             default: 100
           in: query
         - name: results_offset
-          description: results 偏移量，默认0
+          description: results 偏移量，默认0；results_offset + results_limit 不得超过 10000
           schema:
             type: integer
             default: 0
@@ -2908,7 +2908,84 @@ paths:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
           description: 日志不存在
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+          description: 分页参数非法（results_offset + results_limit 超过 10000）
       summary: 获取单条行动执行日志
+
+  /api/ontology-query/v1/knowledge-networks/{kn_id}/action-logs/{log_id}/results:
+    summary: 分页查询单次执行的逐实例结果
+    get:
+      description: |
+        返回单次执行的逐实例结果，分页与状态过滤在存储层完成，按实例在本次执行中的顺序排列。
+        执行摘要请用详情接口；本接口适合翻阅超过一页的结果。早期写入、结果内嵌在执行记录中的执行同样可查。
+      parameters:
+        - name: kn_id
+          description: 业务知识网络ID
+          schema:
+            type: string
+          in: path
+          required: true
+        - name: log_id
+          description: 日志ID (即执行ID)
+          schema:
+            type: string
+          in: path
+          required: true
+        - name: offset
+          description: 偏移量，默认 0；offset + limit 不得超过 10000
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+          in: query
+        - name: limit
+          description: 分页大小，默认 100，最大 1000（超出按 1000 处理）
+          schema:
+            type: integer
+            default: 100
+          in: query
+        - name: status
+          description: 按结果状态过滤（可选）
+          schema:
+            enum:
+              - success
+              - failed
+              - cancelled
+            type: string
+          in: query
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionExecutionResultList"
+              examples:
+                查询失败结果:
+                  value:
+                    entries:
+                      - _instance_id: "order_17"
+                        status: "failed"
+                        error_message: "tool execution failed: timeout"
+                        duration_ms: 30000
+                    total_count: 3
+          description: ok
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+          description: 参数非法（offset 为负、offset + limit 超过 10000、status 不在取值范围内）
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+          description: 该知识网络下不存在此执行
+      summary: 分页查询单次执行的逐实例结果
 
   /api/ontology-query/v1/knowledge-networks/{kn_id}/action-logs/{log_id}/cancel:
     summary: 取消正在执行的任务
@@ -5713,6 +5790,19 @@ components:
           description: 下一页游标
           type: array
           items: {}
+
+    ActionExecutionResultList:
+      description: 单次执行的一页逐实例结果
+      type: object
+      properties:
+        entries:
+          description: 本页结果，按实例在本次执行中的顺序排列
+          type: array
+          items:
+            $ref: "#/components/schemas/ObjectExecutionResult"
+        total_count:
+          description: 满足过滤条件的结果总数
+          type: integer
 
     CancelExecutionRequest:
       description: 取消执行请求
