@@ -23,7 +23,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"sync"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
@@ -94,11 +93,12 @@ type Enforcer struct {
 	// inheritance is resolved around the matcher, not inside it. Nil disables
 	// inheritance entirely, which is the pre-#800 behaviour.
 	db *gorm.DB
-	// transactionMu serializes every policy write and must be acquired before
-	// reading the adapter pointer. The gorm adapter temporarily replaces that
-	// pointer while a transaction is in flight, so adapter-local locking alone
-	// is too late for concurrent callers.
-	transactionMu sync.Mutex
+	// writeSlot (capacity 1) serializes every policy write, including role
+	// bindings. While it is held the live model equals the committed store,
+	// which is what lets a transaction start from an in-memory snapshot instead
+	// of a reload. It is a channel rather than a mutex so a caller whose context
+	// ends while queued leaves without doing any work (#1511).
+	writeSlot chan struct{}
 }
 
 // New builds an Enforcer using a GORM-backed policy store on the given db.
@@ -134,7 +134,7 @@ func New(db *gorm.DB) (*Enforcer, error) {
 	if err := e.LoadPolicy(); err != nil {
 		return nil, fmt.Errorf("load policy: %w", err)
 	}
-	return &Enforcer{e: e, db: db}, nil
+	return &Enforcer{e: e, db: db, writeSlot: make(chan struct{}, 1)}, nil
 }
 
 // obj builds the "type:id" object key.
@@ -363,18 +363,24 @@ func (en *Enforcer) AdminDecision(ctx context.Context, accessorID string) (Evalu
 
 // AssignRole binds an accessor (user/app) to a role. Idempotent.
 func (en *Enforcer) AssignRole(accessorID, roleID string) error {
-	en.transactionMu.Lock()
-	defer en.transactionMu.Unlock()
-	_, err := en.e.AddGroupingPolicy(accessorID, roleID)
+	release, err := en.acquireWrite(context.Background())
+	if err != nil {
+		return err
+	}
+	defer release()
+	_, err = en.e.AddGroupingPolicy(accessorID, roleID)
 	return err
 }
 
 // RemoveRole unbinds an accessor from a role (the inverse of AssignRole).
 // Idempotent: removing a binding that isn't there is a no-op.
 func (en *Enforcer) RemoveRole(accessorID, roleID string) error {
-	en.transactionMu.Lock()
-	defer en.transactionMu.Unlock()
-	_, err := en.e.RemoveGroupingPolicy(accessorID, roleID)
+	release, err := en.acquireWrite(context.Background())
+	if err != nil {
+		return err
+	}
+	defer release()
+	_, err = en.e.RemoveGroupingPolicy(accessorID, roleID)
 	return err
 }
 

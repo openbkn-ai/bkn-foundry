@@ -18,6 +18,10 @@ func defaultConfig() *Config {
 			User:     "safe",
 			Password: "secret",
 			Name:     "safe",
+
+			MaxOpenConns:    50,
+			ConnMaxIdleTime: 2 * time.Minute,
+			ConnMaxLifetime: 30 * time.Minute,
 		},
 		Hydra: HydraConfig{
 			AdminURL:  "http://127.0.0.1:4445",
@@ -37,6 +41,9 @@ func defaultConfig() *Config {
 				QueueSize:       4096,
 				RetentionDays:   90,
 			},
+		},
+		Authz: AuthzConfig{
+			PolicyRefreshInterval: 10 * time.Minute,
 		},
 	}
 }

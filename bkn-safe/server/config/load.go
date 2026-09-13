@@ -80,6 +80,19 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("SAFE_DB_PARAMS"); v != "" {
 		cfg.DB.Params = v
 	}
+	if v, ok := envInt("SAFE_DB_MAX_OPEN_CONNS"); ok {
+		cfg.DB.MaxOpenConns = v
+	}
+	if v := os.Getenv("SAFE_DB_CONN_MAX_IDLE_TIME"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.DB.ConnMaxIdleTime = d
+		}
+	}
+	if v := os.Getenv("SAFE_DB_CONN_MAX_LIFETIME"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.DB.ConnMaxLifetime = d
+		}
+	}
 	if v := os.Getenv("SAFE_HYDRA_ADMIN_URL"); v != "" {
 		cfg.Hydra.AdminURL = v
 	}
@@ -128,6 +141,11 @@ func applyEnv(cfg *Config) {
 	}
 	if v, ok := envInt("SAFE_AUTHZ_DECISION_LOG_RETENTION_DAYS"); ok {
 		cfg.Audit.DecisionLog.RetentionDays = v
+	}
+	if v := os.Getenv("SAFE_AUTHZ_POLICY_REFRESH_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.Authz.PolicyRefreshInterval = d
+		}
 	}
 }
 

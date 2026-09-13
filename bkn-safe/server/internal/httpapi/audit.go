@@ -113,9 +113,13 @@ func auditMiddleware(store *audit.Store, dir *directory.Service, db *gorm.DB) gi
 			actorType, authMethod, sourceChannel = "service", "network", "internal"
 			detail = withAuditCallerService(detail, c)
 		}
-		if err := store.Record(c.Request.Context(), audit.Entry{
+		// The write may have committed after the caller hung up (its deadline
+		// passed mid-commit); its audit row must not be dropped with the
+		// cancelled request context (#1511).
+		recordCtx := context.WithoutCancel(c.Request.Context())
+		if err := store.Record(recordCtx, audit.Entry{
 			ActorID:           actorID,
-			ActorNameSnapshot: auditActorName(c.Request.Context(), dir, actorID),
+			ActorNameSnapshot: auditActorName(recordCtx, dir, actorID),
 			ActorType:         actorType,
 			AuthMethod:        authMethod,
 			RequestID:         requestID,

@@ -216,6 +216,7 @@ func (a *App) Run() error {
 	defer cancel()
 	go a.deps.Audit.LogHead(ctx, a.cfg.Audit.ChainHeadLogInterval)
 	go a.decisions.RunRetention(ctx, a.cfg.Audit.DecisionLog.RetentionDays, 24*time.Hour)
+	go a.enforcer.RunPolicyRefresh(ctx, a.cfg.Authz.PolicyRefreshInterval)
 
 	r := httpapi.New(a.deps)
 	slog.Info("bkn-safe listening", "addr", a.cfg.HTTPAddr)
