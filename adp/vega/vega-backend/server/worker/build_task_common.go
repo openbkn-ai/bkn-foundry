@@ -240,6 +240,11 @@ func buildLocalIndexSchema(buildTask *interfaces.BuildTask, resource *interfaces
 	if err := validateTaskFulltextFeatures(schema, buildTask); err != nil {
 		return nil, err
 	}
+	// 被引用向量字段拥有自己的维度。先校验持久化 schema，再做历史配置回填，
+	// 避免旧的歧义引用从构建任务中继承维度，要求用户重新保存配置。
+	if err := resourcelogic.ValidateVectorFeatureReferenceDimensions(schema); err != nil {
+		return nil, err
+	}
 	if err := validateTaskEmbeddingFeatures(schema, buildTask); err != nil {
 		return nil, err
 	}

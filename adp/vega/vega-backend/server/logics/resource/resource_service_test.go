@@ -615,6 +615,42 @@ func requireResourceHTTPError(t *testing.T, err error, wantCode string) *rest.HT
 	return httpErr
 }
 
+func TestResourceServiceValidateIndexConfigModelsRejectsReferencedVectorDimensionMismatch(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mfs := vmock.NewMockModelFactoryService(ctrl)
+	mfs.EXPECT().GetModelByID(gomock.Any(), "content-model").
+		Return(&interfaces.SmallModel{ModelID: "content-model", EmbeddingDim: 768}, nil)
+	mfs.EXPECT().GetModelByID(gomock.Any(), "embedding-model").
+		Return(&interfaces.SmallModel{ModelID: "embedding-model", EmbeddingDim: 1024}, nil)
+	rs := &resourceService{mfs: mfs}
+	schema := []*interfaces.Property{
+		{
+			Name: "content",
+			Type: interfaces.DataType_Text,
+			Features: []interfaces.PropertyFeature{{
+				FeatureType: interfaces.PropertyFeatureType_Vector,
+				RefProperty: "embedding",
+				Config:      map[string]any{"embedding_model": "content-model"},
+			}},
+		},
+		{
+			Name: "embedding",
+			Type: interfaces.DataType_Vector,
+			Features: []interfaces.PropertyFeature{{
+				FeatureType: interfaces.PropertyFeatureType_Vector,
+				Config:      map[string]any{"embedding_model": "embedding-model"},
+			}},
+		},
+	}
+
+	err := rs.validateIndexConfigModels(context.Background(), schema, nil)
+
+	httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
+	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+	assert.Contains(t, httpErr.BaseError.ErrorDetails, `field "content" has dimension 768`)
+	assert.Contains(t, httpErr.BaseError.ErrorDetails, `field "embedding" has dimension 1024`)
+}
+
 func TestValidateSchemaDefinitionRejectsNullField(t *testing.T) {
 	err := validateSchemaDefinition(context.Background(), []*interfaces.Property{{Name: "id"}, nil})
 

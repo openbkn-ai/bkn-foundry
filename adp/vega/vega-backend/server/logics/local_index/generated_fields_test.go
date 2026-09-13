@@ -16,15 +16,17 @@ import (
 
 func TestGeneratedFields(t *testing.T) {
 	generated := GeneratedFields([]*interfaces.Property{
-		{Name: "stadium_name", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector}}},
-		{Name: "description", Features: []interfaces.PropertyFeature{{
+		{Name: "stadium_name", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector}}},
+		{Name: "description", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{
 			FeatureType: interfaces.PropertyFeatureType_Vector,
 			RefProperty: "summary",
 		}}},
+		{Name: "embedding", Type: interfaces.DataType_Vector, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector}}},
 		{Name: "city_name", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext}}},
 	})
 
-	require.Len(t, generated, 2)
+	require.Len(t, generated, 1)
 	assert.Equal(t, interfaces.DataType_Vector, generated["stadium_name_vector"].Type)
-	assert.Equal(t, interfaces.DataType_Vector, generated["summary_vector"].Type)
+	assert.NotContains(t, generated, "summary_vector")
+	assert.NotContains(t, generated, "embedding_vector")
 }

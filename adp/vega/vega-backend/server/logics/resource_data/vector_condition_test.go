@@ -54,3 +54,27 @@ func TestResolveVectorConditionsResolvesModelIDBeforeVectorizing(t *testing.T) {
 	assert.Equal(t, local_index.VectorFieldName("content"), cfg.Name)
 	assert.Equal(t, []float32{0.1, 0.2}, cfg.Value)
 }
+
+func TestVectorFieldForReusesReferencedVectorField(t *testing.T) {
+	resource := &interfaces.Resource{
+		Name:             "articles",
+		LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+		LocalIndexName:   "managed-index",
+		SchemaDefinition: []*interfaces.Property{
+			{
+				Name: "content",
+				Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{
+					FeatureType: interfaces.PropertyFeatureType_Vector,
+					RefProperty: "embedding",
+				}},
+			},
+			{Name: "embedding", Type: interfaces.DataType_Vector},
+		},
+	}
+
+	field, err := vectorFieldFor(resource, "embedding")
+
+	require.NoError(t, err)
+	assert.Equal(t, "embedding", field)
+}

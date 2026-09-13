@@ -8,6 +8,7 @@ package resource
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,6 +16,80 @@ import (
 
 	"vega-backend/interfaces"
 )
+
+func TestValidateVectorFeatureReferenceDimensions(t *testing.T) {
+	t.Run("accepts equal positive integer dimensions across numeric representations", func(t *testing.T) {
+		schema := []*interfaces.Property{
+			{
+				Name: "content",
+				Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{
+					FeatureType: interfaces.PropertyFeatureType_Vector,
+					RefProperty: "embedding",
+					Config:      map[string]any{"dimension": json.Number("768")},
+				}},
+			},
+			{
+				Name: "embedding",
+				Type: interfaces.DataType_Vector,
+				Features: []interfaces.PropertyFeature{{
+					FeatureType: interfaces.PropertyFeatureType_Vector,
+					Config:      map[string]any{"dimension": float64(768)},
+				}},
+			},
+		}
+
+		require.NoError(t, ValidateVectorFeatureReferenceDimensions(schema))
+	})
+
+	t.Run("rejects a referenced vector with a different own dimension", func(t *testing.T) {
+		schema := []*interfaces.Property{
+			{
+				Name: "content",
+				Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{
+					FeatureType: interfaces.PropertyFeatureType_Vector,
+					RefProperty: "embedding",
+					Config:      map[string]any{"dimension": 768},
+				}},
+			},
+			{
+				Name: "embedding",
+				Type: interfaces.DataType_Vector,
+				Features: []interfaces.PropertyFeature{{
+					FeatureType: interfaces.PropertyFeatureType_Vector,
+					Config:      map[string]any{"dimension": uint16(1024)},
+				}},
+			},
+		}
+
+		err := ValidateVectorFeatureReferenceDimensions(schema)
+
+		require.Error(t, err)
+		assert.ErrorContains(t, err, `vector feature on field "content" has dimension 768`)
+		assert.ErrorContains(t, err, `referenced vector field "embedding" has dimension 1024`)
+	})
+
+	t.Run("requires the referenced field own vector dimension", func(t *testing.T) {
+		schema := []*interfaces.Property{
+			{
+				Name: "content",
+				Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{
+					FeatureType: interfaces.PropertyFeatureType_Vector,
+					RefProperty: "embedding",
+					Config:      map[string]any{"dimension": 768},
+				}},
+			},
+			{Name: "embedding", Type: interfaces.DataType_Vector},
+		}
+
+		err := ValidateVectorFeatureReferenceDimensions(schema)
+
+		require.Error(t, err)
+		assert.ErrorContains(t, err, `referenced vector field "embedding" must define its own positive integer dimension`)
+	})
+}
 
 func TestIsFeatureSupported(t *testing.T) {
 	tests := []struct {

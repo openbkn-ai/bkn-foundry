@@ -35,6 +35,11 @@ func TestBuildFieldMappings(t *testing.T) {
 				{FeatureName: "user-defined-fulltext-name", FeatureType: interfaces.PropertyFeatureType_Fulltext, Config: map[string]any{"analyzer": "hanlp_index"}},
 				{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 768, "embedding_model": "model-2"}},
 			}},
+			{Name: "summary", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{
+				FeatureType: interfaces.PropertyFeatureType_Vector,
+				RefProperty: "embedding",
+				Config:      map[string]any{"dimension": 3, "embedding_model": "model-1"},
+			}}},
 		})
 
 		require.NoError(t, err)
@@ -55,6 +60,8 @@ func TestBuildFieldMappings(t *testing.T) {
 		assert.Equal(t, "hanlp_index", body["analyzer"])
 		assert.Equal(t, map[string]any{"type": "keyword", "ignore_above": 256}, body["fields"].(map[string]any)["user-defined-keyword-name"])
 		assert.Equal(t, map[string]any{"type": "knn_vector", "dimension": 768, "method": defaultVectorMethod()}, properties["body_vector"])
+		assert.NotContains(t, properties, "summary_vector")
+		assert.NotContains(t, properties, "embedding_vector")
 	})
 
 	t.Run("creates fulltext subfield without feature config", func(t *testing.T) {

@@ -11,18 +11,14 @@ import "vega-backend/interfaces"
 func GeneratedFields(schemaDefinition []*interfaces.Property) map[string]*interfaces.Property {
 	generated := map[string]*interfaces.Property{}
 	for _, property := range schemaDefinition {
-		if property == nil {
+		if property == nil || (property.Type != interfaces.DataType_String && property.Type != interfaces.DataType_Text) {
 			continue
 		}
 		for _, feature := range property.Features {
-			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
+			if feature.FeatureType != interfaces.PropertyFeatureType_Vector || feature.RefProperty != "" {
 				continue
 			}
-			fieldName := property.Name
-			if feature.RefProperty != "" {
-				fieldName = feature.RefProperty
-			}
-			generatedName := VectorFieldName(fieldName)
+			generatedName := VectorFieldName(property.Name)
 			generated[generatedName] = &interfaces.Property{
 				Name: generatedName,
 				Type: interfaces.DataType_Vector,

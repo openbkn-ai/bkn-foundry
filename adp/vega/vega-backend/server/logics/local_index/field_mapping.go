@@ -93,7 +93,7 @@ func buildFieldMappings(schemaDefinition []*interfaces.Property) (map[string]any
 			continue
 		}
 		for _, feature := range prop.Features {
-			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
+			if feature.FeatureType != interfaces.PropertyFeatureType_Vector || feature.RefProperty != "" {
 				continue
 			}
 			generatedName := VectorFieldName(prop.Name)

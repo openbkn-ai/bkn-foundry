@@ -100,12 +100,14 @@ func vectorFieldFor(resource *interfaces.Resource, name string) (string, error) 
 			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
 				continue
 			}
-			source := prop.Name
 			if feature.RefProperty != "" {
-				source = feature.RefProperty
+				if feature.RefProperty == name {
+					return feature.RefProperty, nil
+				}
+				continue
 			}
-			if source == name {
-				return local_index.VectorFieldName(source), nil
+			if prop.Name == name {
+				return local_index.VectorFieldName(prop.Name), nil
 			}
 		}
 	}

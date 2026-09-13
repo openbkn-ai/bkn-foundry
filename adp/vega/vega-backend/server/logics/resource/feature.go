@@ -6,7 +6,13 @@
 
 package resource
 
-import "vega-backend/interfaces"
+import (
+	"encoding/json"
+	"fmt"
+	"math"
+
+	"vega-backend/interfaces"
+)
 
 // IsFeatureSupported reports whether a Property type can generate a Feature type.
 func IsFeatureSupported(propertyType string, featureType string) bool {
@@ -102,4 +108,110 @@ func IsFeatureRefPropertyTypeSupported(propertyType string, featureType string) 
 	default:
 		return false
 	}
+}
+
+// ValidateVectorFeatureReferenceDimensions 校验复用已有向量字段的特征与目标字段自身配置的维度一致。
+func ValidateVectorFeatureReferenceDimensions(props []*interfaces.Property) error {
+	propsByName := make(map[string]*interfaces.Property, len(props))
+	for _, prop := range props {
+		if prop != nil {
+			propsByName[prop.Name] = prop
+		}
+	}
+
+	for _, prop := range props {
+		if prop == nil {
+			continue
+		}
+		for _, feature := range prop.Features {
+			if feature.FeatureType != interfaces.PropertyFeatureType_Vector || feature.RefProperty == "" {
+				continue
+			}
+
+			dimension, ok := positiveVectorDimension(feature.Config["dimension"])
+			if !ok {
+				return fmt.Errorf("vector feature on field %q must define a positive integer dimension", prop.Name)
+			}
+
+			refProp, exists := propsByName[feature.RefProperty]
+			if !exists || refProp.Type != interfaces.DataType_Vector {
+				return fmt.Errorf("vector feature on field %q references invalid vector field %q", prop.Name, feature.RefProperty)
+			}
+			refDimension, ok := ownVectorDimension(refProp)
+			if !ok {
+				return fmt.Errorf("referenced vector field %q must define its own positive integer dimension", refProp.Name)
+			}
+			if dimension != refDimension {
+				return fmt.Errorf("vector feature on field %q has dimension %d, but referenced vector field %q has dimension %d",
+					prop.Name, dimension, refProp.Name, refDimension)
+			}
+		}
+	}
+	return nil
+}
+
+func ownVectorDimension(prop *interfaces.Property) (int64, bool) {
+	for _, feature := range prop.Features {
+		if feature.FeatureType == interfaces.PropertyFeatureType_Vector {
+			return positiveVectorDimension(feature.Config["dimension"])
+		}
+	}
+	return 0, false
+}
+
+func positiveVectorDimension(value any) (int64, bool) {
+	var dimension int64
+	switch value := value.(type) {
+	case int:
+		dimension = int64(value)
+	case int8:
+		dimension = int64(value)
+	case int16:
+		dimension = int64(value)
+	case int32:
+		dimension = int64(value)
+	case int64:
+		dimension = value
+	case uint:
+		if uint64(value) > math.MaxInt64 {
+			return 0, false
+		}
+		dimension = int64(value)
+	case uint8:
+		dimension = int64(value)
+	case uint16:
+		dimension = int64(value)
+	case uint32:
+		dimension = int64(value)
+	case uint64:
+		if value > math.MaxInt64 {
+			return 0, false
+		}
+		dimension = int64(value)
+	case float32:
+		floatValue := float64(value)
+		if math.IsNaN(floatValue) || math.IsInf(floatValue, 0) || math.Trunc(floatValue) != floatValue || floatValue > math.MaxInt64 {
+			return 0, false
+		}
+		dimension = int64(floatValue)
+	case float64:
+		if math.IsNaN(value) || math.IsInf(value, 0) || math.Trunc(value) != value || value > math.MaxInt64 {
+			return 0, false
+		}
+		dimension = int64(value)
+	case json.Number:
+		integer, err := value.Int64()
+		if err == nil {
+			dimension = integer
+			break
+		}
+		floatValue, err := value.Float64()
+		if err != nil || math.IsNaN(floatValue) || math.IsInf(floatValue, 0) || math.Trunc(floatValue) != floatValue || floatValue > math.MaxInt64 {
+			return 0, false
+		}
+		dimension = int64(floatValue)
+	default:
+		return 0, false
+	}
+	return dimension, dimension > 0
 }

@@ -80,10 +80,21 @@ func (p *embeddingPipeline) getVectorsWithRetry(ctx context.Context, model *inte
 }
 
 func buildTaskEmbeddingConfig(buildTask *interfaces.BuildTask) map[string]*interfaces.SmallModel {
+	if buildTask == nil || buildTask.IndexConfig == nil {
+		return nil
+	}
 	config := map[string]*interfaces.SmallModel{}
-	for field, feature := range buildTaskIndexFeatures(buildTask) {
-		if feature.Vector != nil {
-			config[field] = feature.Vector
+	for _, field := range buildTask.IndexConfig.Fields {
+		if field.Type != interfaces.DataType_String && field.Type != interfaces.DataType_Text {
+			continue
+		}
+		for _, feature := range field.Features {
+			if feature.Type != interfaces.PropertyFeatureType_Vector || feature.RefProperty != "" {
+				continue
+			}
+			if snapshot := buildTask.IndexConfig.Features[field.Name]; snapshot.Vector != nil {
+				config[field.Name] = snapshot.Vector
+			}
 		}
 	}
 	return config

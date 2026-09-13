@@ -1716,6 +1716,10 @@ func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema
 			feature.Config["dimension"] = model.EmbeddingDim
 		}
 	}
+	if err := ValidateVectorFeatureReferenceDimensions(schema); err != nil {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+			WithErrorDetails(err.Error())
+	}
 	return nil
 }
 

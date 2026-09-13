@@ -63,3 +63,44 @@ func TestEmbeddingPipelineEnrich(t *testing.T) {
 		assert.NotContains(t, documents["doc-1"], "content_vector")
 	})
 }
+
+func TestBuildTaskEmbeddingConfigOnlyIncludesGeneratedVectors(t *testing.T) {
+	generatedModel := &interfaces.SmallModel{ModelID: "generated-model"}
+	referencedModel := &interfaces.SmallModel{ModelID: "referenced-model"}
+	nativeModel := &interfaces.SmallModel{ModelID: "native-model"}
+	task := &interfaces.BuildTask{IndexConfig: &interfaces.BuildTaskIndexConfig{
+		IndexConfigContract: interfaces.IndexConfigContract{Fields: []interfaces.IndexConfigFieldContract{
+			{
+				Name: "content",
+				Type: interfaces.DataType_Text,
+				Features: []interfaces.IndexConfigFeatureContract{{
+					Type: interfaces.PropertyFeatureType_Vector,
+				}},
+			},
+			{
+				Name: "summary",
+				Type: interfaces.DataType_Text,
+				Features: []interfaces.IndexConfigFeatureContract{{
+					Type:        interfaces.PropertyFeatureType_Vector,
+					RefProperty: "summary_embedding",
+				}},
+			},
+			{
+				Name: "embedding",
+				Type: interfaces.DataType_Vector,
+				Features: []interfaces.IndexConfigFeatureContract{{
+					Type: interfaces.PropertyFeatureType_Vector,
+				}},
+			},
+		}},
+		Features: map[string]interfaces.BuildTaskFieldIndexFeature{
+			"content":           {Vector: generatedModel},
+			"summary_embedding": {Vector: referencedModel},
+			"embedding":         {Vector: nativeModel},
+		},
+	}}
+
+	config := buildTaskEmbeddingConfig(task)
+
+	assert.Equal(t, map[string]*interfaces.SmallModel{"content": generatedModel}, config)
+}
