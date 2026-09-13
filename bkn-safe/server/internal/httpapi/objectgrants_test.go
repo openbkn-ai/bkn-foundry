@@ -186,6 +186,34 @@ func TestObjectGrantsSetListRevoke(t *testing.T) {
 	}
 }
 
+func TestObjectGrantsHideAndRejectModelPermissions(t *testing.T) {
+	r, e, db, users := newAdminServer(t)
+	if err := users.CreateLocalUser(t.Context(), &model.User{ID: "model-user", Account: "model-user", Enabled: true}, "pw-init0"); err != nil {
+		t.Fatal(err)
+	}
+	seedCatalogOps(t, db, "large_model", "display", "modify", "execute")
+	if err := e.GrantObjectPermission("model-user", "large_model", "model-1", "modify"); err != nil {
+		t.Fatal(err)
+	}
+
+	if entries := listObjectGrants(t, r, ""); len(entries) != 0 {
+		t.Fatalf("model grants leaked into object grant inventory: %+v", entries)
+	}
+	write := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants", map[string]any{
+		"accessor_id": "model-user",
+		"resource":    map[string]any{"type": "large_model", "id": "model-1"},
+		"operations":  []string{"modify"},
+	})
+	if write.Code != http.StatusNotFound {
+		t.Fatalf("model object-grant write = %d %s, want 404", write.Code, write.Body.String())
+	}
+	policies := adminReq(t, r, http.MethodGet,
+		"/api/safe/v1/admin/policies?resource_type=large_model&resource_id=model-1", nil)
+	if policies.Code != http.StatusNotFound {
+		t.Fatalf("model policy review = %d %s, want 404", policies.Code, policies.Body.String())
+	}
+}
+
 func TestObjectGrantsListHidesManagedProxyAccounts(t *testing.T) {
 	r, e, db, users := newAdminServer(t)
 	ctx := t.Context()

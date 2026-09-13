@@ -41,10 +41,11 @@ class PermissionManager:
         # Administrators do not require object-level authorization.
         if user_id == "266c6a42-6131-4d62-8f39-853e7093701c":
             return True
-        # bkn-safe authoritative: grant the four instance ops directly.
+        # bkn-safe authoritative: model use is a platform baseline and model
+        # lifecycle comes from the network_builder role. Do not recreate the
+        # retired per-creator, per-model ACL when a model is added.
         if self._bkn_safe_authoritative():
-            return await self._bkn_safe_add(user_id, resource_type, resource_id,
-                                            ["display", "modify", "delete", "execute"])
+            return True
         """Add a resource permission."""
         payload = [{
             "accessor": {

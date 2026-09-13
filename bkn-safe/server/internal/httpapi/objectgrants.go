@@ -25,7 +25,7 @@ import (
 // under /admin (admin-only). It manages the "grant a specific object to a
 // specific user" matrix that sits ON TOP of role-based RBAC: each grant binds
 // one user accessor to concrete ops on one concrete resource instance
-// (catalog/operator/model/knowledge_network/…).
+// (catalog/operator/knowledge_network/…).
 //
 // This is the gateway-exposed, audited management surface for object grants.
 // The internal /api/safe/v1/authz/policies endpoints stay for service-to-service
@@ -49,6 +49,14 @@ import (
 // the character outright costs nothing and closes the shape entirely.
 func isConcreteResourceID(id string) bool {
 	return id != "" && !strings.Contains(id, "*")
+}
+
+// Model access is intentionally not object-configurable. Enabled accounts get
+// the platform-wide display/execute baseline and network_builder gets lifecycle
+// operations through its seeded role, so accepting a user-level model grant
+// here would reintroduce an unsupported exception to that contract.
+func isModelAuthorizationResourceType(resourceType string) bool {
+	return resourceType == "small_model" || resourceType == "large_model"
 }
 
 // opAuthorize is the resource-level operation that lets someone who is NOT a
@@ -304,6 +312,10 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
+		if isModelAuthorizationResourceType(resourceType) {
+			replyPublicError(c, http.StatusNotFound)
+			return
+		}
 		policies, err := e.ResourcePolicies(resourceType, resourceID)
 		if err != nil {
 			serverError(c, err)
@@ -367,9 +379,10 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			// client from resolving a proxy accessor through the user directory,
 			// where proxies are intentionally invisible.
 			"v0 NOT IN (SELECT proxy_account_id FROM managed_proxy_accounts)",
-			"v0 <> ?", // exclude the public accessor
+			"v0 <> ?",                    // exclude the public accessor
+			rtypeExpr + " NOT IN (?, ?)", // model policies are platform defaults, never object grants
 		}
-		args := []any{authz.PublicAccessorID}
+		args := []any{authz.PublicAccessorID, "small_model", "large_model"}
 		if accessorID != "" {
 			where = append(where, "v0 = ?")
 			args = append(args, accessorID)
@@ -531,6 +544,10 @@ func previewObjectGrantHandler(e *authz.Enforcer) gin.HandlerFunc {
 			Bundle     string      `json:"bundle" binding:"required"`
 		}
 		if !bind(c, &req) {
+			return
+		}
+		if isModelAuthorizationResourceType(req.Resource.Type) {
+			replyPublicError(c, http.StatusNotFound)
 			return
 		}
 		bundleOps, supported := authz.CommunityBundleOperations(req.Resource.Type)
@@ -869,6 +886,10 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 		if !bind(c, &req) {
 			return
 		}
+		if isModelAuthorizationResourceType(req.Resource.Type) {
+			replyPublicError(c, http.StatusNotFound)
+			return
+		}
 
 		_, bundleTarget := authz.CommunityBundleOperations(req.Resource.Type)
 		communityShape := req.Bundle == authz.ActFullBusinessAccess && req.Operations == nil &&
@@ -1045,11 +1066,9 @@ func projectDirectGrantOps(resourceType string, operations []string) []string {
 	for _, operation := range operations {
 		projected := []string{operation}
 		if operation == authz.ActFullBusinessAccess {
-		if operation == authz.ActFullBusinessAccess {
 			if bundleOps, supported := authz.CommunityBundleOperations(resourceType); supported {
 				projected = bundleOps
 			}
-		}
 		}
 		for _, item := range projected {
 			if !seen[item] {

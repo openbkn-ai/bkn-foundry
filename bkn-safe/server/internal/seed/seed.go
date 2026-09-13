@@ -58,6 +58,16 @@ var withdrawnResourceTypes = []string{
 	"stream_data_pipeline",
 }
 
+// modelResourceTypes are platform foundations rather than objects whose
+// visibility is configured per user, department, or custom role. Startup
+// removes historic per-model rules before rebuilding the two deliberate
+// policies below: every enabled account may display/execute every model, and
+// network_builder may manage model configuration through its seeded role.
+var modelResourceTypes = []string{
+	"small_model",
+	"large_model",
+}
+
 var withdrawnOperations = []struct {
 	resourceType string
 	operation    string
@@ -159,8 +169,14 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 	if err := renameLegacyOperations(enforcer); err != nil {
 		return fmt.Errorf("rename legacy operations: %w", err)
 	}
+	if err := reconcileModelAuthorizationPolicies(enforcer); err != nil {
+		return fmt.Errorf("reconcile model authorization policies: %w", err)
+	}
 	if err := seedGrants(enforcer); err != nil {
 		return fmt.Errorf("seed grants: %w", err)
+	}
+	if err := seedDefaultModelAccess(enforcer); err != nil {
+		return fmt.Errorf("seed default model access: %w", err)
 	}
 	if err := backfillRequiredOperations(db, enforcer); err != nil {
 		return fmt.Errorf("backfill required operations: %w", err)
@@ -175,6 +191,42 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 		return fmt.Errorf("seed business provenance owner: %w", err)
 	}
 	return nil
+}
+
+// reconcileModelAuthorizationPolicies removes the old per-model ACL model.
+// Model use is now an enabled-account baseline, while lifecycle management is
+// granted only by the built-in network_builder role (and super-admin's global
+// wildcard). Keeping a legacy allow or deny would make one account an
+// undocumented exception to that product rule, so all model-targeted policies
+// are rebuilt deterministically on every startup.
+func reconcileModelAuthorizationPolicies(enforcer *authz.Enforcer) error {
+	return enforcer.Transaction(context.Background(), func(tx *authz.PolicyTransaction) error {
+		removed, err := tx.RemovePoliciesForResourceTypes(modelResourceTypes...)
+		if err != nil {
+			return err
+		}
+		if removed > 0 {
+			slog.Info("removed retired per-model authorization policies", "projections", removed)
+		}
+		return nil
+	})
+}
+
+// seedDefaultModelAccess grants the root-department public subject the two
+// non-administrative model operations. bkn-safe's decision endpoints first
+// verify the requester is an enabled local account, so this reaches every
+// enabled user but never a disabled, deleted, or anonymous subject.
+func seedDefaultModelAccess(enforcer *authz.Enforcer) error {
+	return enforcer.Transaction(context.Background(), func(tx *authz.PolicyTransaction) error {
+		for _, resourceType := range modelResourceTypes {
+			for _, operation := range []string{"display", "execute"} {
+				if err := tx.GrantObjectPermission(authz.PublicAccessorID, resourceType, "*", operation); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
 }
 
 // reconcileWithdrawnOperations removes stale grants before pruning their
