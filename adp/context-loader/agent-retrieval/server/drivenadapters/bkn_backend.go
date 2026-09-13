@@ -433,14 +433,16 @@ func (b *bknBackendAccess) GetRelationTypeDetail(ctx context.Context, knID strin
 		return emptyRelationTypes, nil
 	}
 
-	// Handle the returned result.
-	var releationTypes []*interfaces.RelationType
-	if err := sonic.Unmarshal(respBody, &releationTypes); err != nil {
+	// bkn-backend wraps the list as {"entries": []}, as it does for object types.
+	var response struct {
+		Entries []*interfaces.RelationType `json:"entries"`
+	}
+	if err := sonic.Unmarshal(respBody, &response); err != nil {
 		b.logger.Errorf("[BknBackendAccess]GetRelationTypeDetail unmalshal releationTypes failed: %v\n", err)
 		return emptyRelationTypes, err
 	}
 
-	return releationTypes, nil
+	return response.Entries, nil
 }
 
 // SearchActionTypes searches action types.
