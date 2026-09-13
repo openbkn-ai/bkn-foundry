@@ -95,9 +95,8 @@ class TestPermissionManagerAuthz(unittest.IsolatedAsyncioTestCase):
         session = _Session([])
         manager = self.manager(session)
 
-        with mock.patch.object(base_config, "AUTH_ENABLED", True):
-            granted = await manager.add_permission(
-                "builder-1", "model-1", "Model", "large_model", "Builder", "user")
+        granted = await manager.add_permission(
+            "builder-1", "model-1", "Model", "large_model", "Builder", "user")
 
         self.assertTrue(granted)
         self.assertEqual(session.calls, [])

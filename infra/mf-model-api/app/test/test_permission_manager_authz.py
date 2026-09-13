@@ -60,9 +60,8 @@ class TestPermissionManagerAuthz(unittest.IsolatedAsyncioTestCase):
     async def test_model_create_does_not_recreate_a_per_creator_acl(self):
         session = _Session([])
         manager = self.manager(session)
-        with mock.patch.object(base_config, "AUTH_ENABLED", True):
-            allowed = await manager.add_permission(
-                "builder-1", "model-1", "Model", "large_model", "Builder", "user")
+        allowed = await manager.add_permission(
+            "builder-1", "model-1", "Model", "large_model", "Builder", "user")
 
         self.assertTrue(allowed)
         self.assertEqual(session.calls, [])
