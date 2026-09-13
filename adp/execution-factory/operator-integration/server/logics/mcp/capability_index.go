@@ -39,18 +39,22 @@ func (s *mcpServiceImpl) syncMCPCapabilities(ctx context.Context, mcpID string) 
 		return s.CapabilityIndex.DeleteOwner(ctx, interfaces.CapabilityTypeMCPTool, mcpID)
 	}
 	// Only a server being served has callable tools, so only such a server is indexed (#1443):
-	// a published one, or an editing one, which is served from its release (#1478). Its listing
-	// below resolves to the release too, so the index holds what callers run and a draft's tools
-	// join it only when the draft is published (#1524). Anything else — a draft never published,
-	// an offline server — is purged rather than skipped: skipping would leave the documents written
-	// while it was published, and the next full pass would keep them alive for as long as the
-	// server existed. The remote listing is not attempted for such a server; there is nothing to
-	// write.
-	if config.Status != string(interfaces.BizStatusPublished) && config.Status != string(interfaces.BizStatusEditing) {
+	// a published one, or an editing one, which is served from its release (#1478). The question is
+	// answered by the same call the proxy's call path asks, and its listing is the release for an
+	// editing server, so the index holds what callers run and a draft's tools join it only when the
+	// draft is published (#1524). Anything else — a draft, an offline server, an editing one with no
+	// release — is purged rather than skipped: skipping would leave the documents written while it
+	// was published, and the next full pass would keep them alive for as long as the server existed.
+	// The remote listing is not attempted for such a server; there is nothing to write.
+	listReq, served, err := s.servingListToolsRequest(ctx, config)
+	if err != nil {
+		return err
+	}
+	if !served {
 		return s.CapabilityIndex.DeleteOwner(ctx, interfaces.CapabilityTypeMCPTool, mcpID)
 	}
 
-	resp, err := s.GetMCPTools(ctx, &interfaces.MCPProxyToolListRequest{MCPID: mcpID})
+	resp, err := s.listTools(ctx, listReq)
 	if err != nil {
 		return err
 	}

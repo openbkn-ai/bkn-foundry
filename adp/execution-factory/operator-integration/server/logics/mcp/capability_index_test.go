@@ -74,7 +74,7 @@ func TestSyncMCPCapabilitiesIndexesAnEditingServerFromItsRelease(t *testing.T) {
 			CreationType: interfaces.MCPCreationTypeToolImported.String(),
 		}
 		configs := mocks.NewMockDBMCPServerConfig(ctrl)
-		configs.EXPECT().SelectByID(gomock.Any(), gomock.Any(), "mcp-1").Return(config, nil).Times(2)
+		configs.EXPECT().SelectByID(gomock.Any(), gomock.Any(), "mcp-1").Return(config, nil)
 		releases := mocks.NewMockDBMCPServerRelease(ctrl)
 		releases.EXPECT().SelectByMCPID(gomock.Any(), gomock.Nil(), "mcp-1").
 			Return(&model.MCPServerReleaseDB{MCPID: "mcp-1", Version: 2}, nil)
@@ -100,5 +100,35 @@ func TestSyncMCPCapabilitiesIndexesAnEditingServerFromItsRelease(t *testing.T) {
 		}
 		So(svc.syncMCPCapabilities(context.Background(), "mcp-1"), ShouldBeNil)
 		So(upserted, ShouldResemble, []string{"released_tool"})
+	})
+}
+
+// An editing server with no release — imported that way — is not served, so its draft's tools must
+// not reach the index either: it is purged like a draft, without listing anything (#1524).
+func TestSyncMCPCapabilitiesPurgesAnEditingServerWithoutARelease(t *testing.T) {
+	Convey("editing 却没有发布记录:删除其索引文档,不拉草稿的工具列表", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		configs := mocks.NewMockDBMCPServerConfig(ctrl)
+		configs.EXPECT().SelectByID(gomock.Any(), gomock.Any(), "mcp-1").Return(&model.MCPServerConfigDB{
+			MCPID:        "mcp-1",
+			Status:       string(interfaces.BizStatusEditing),
+			Version:      3,
+			CreationType: interfaces.MCPCreationTypeToolImported.String(),
+		}, nil)
+		releases := mocks.NewMockDBMCPServerRelease(ctrl)
+		releases.EXPECT().SelectByMCPID(gomock.Any(), gomock.Nil(), "mcp-1").Return(nil, nil)
+		index := mocks.NewMockCapabilityIndexSyncService(ctrl)
+		index.EXPECT().DeleteOwner(gomock.Any(), interfaces.CapabilityTypeMCPTool, "mcp-1").Return(nil)
+		instances := &releasedInstances{servers: map[int]*server.MCPServer{3: mcpServerWithTools("draft_tool")}}
+
+		svc := &mcpServiceImpl{
+			logger:             logger.DefaultLogger(),
+			DBMCPServerConfig:  configs,
+			DBMCPServerRelease: releases,
+			MCPInstanceService: instances,
+			CapabilityIndex:    index,
+		}
+		So(svc.syncMCPCapabilities(context.Background(), "mcp-1"), ShouldBeNil)
 	})
 }
