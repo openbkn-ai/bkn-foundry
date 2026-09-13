@@ -15,7 +15,7 @@ import (
 )
 
 func TestBuildFieldMappings(t *testing.T) {
-	t.Run("maps resource types and fixed feature fields", func(t *testing.T) {
+	t.Run("maps resource types and user-defined feature fields", func(t *testing.T) {
 		properties, hasVectorField, err := buildFieldMappings([]*interfaces.Property{
 			{Name: "id", Type: interfaces.DataType_Integer},
 			{Name: "unsigned_id", Type: interfaces.DataType_UnsignedInteger},
@@ -49,11 +49,11 @@ func TestBuildFieldMappings(t *testing.T) {
 		title := properties["title"].(map[string]any)
 		assert.Equal(t, "keyword", title["type"])
 		assert.Equal(t, 128, title["ignore_above"])
-		assert.Equal(t, map[string]any{"type": "text", "analyzer": "standard"}, title["fields"].(map[string]any)["fulltext"])
+		assert.Equal(t, map[string]any{"type": "text", "analyzer": "standard"}, title["fields"].(map[string]any)["user-defined-fulltext-name"])
 		body := properties["body"].(map[string]any)
 		assert.Equal(t, "text", body["type"])
 		assert.Equal(t, "hanlp_index", body["analyzer"])
-		assert.Equal(t, map[string]any{"type": "keyword", "ignore_above": 256}, body["fields"].(map[string]any)["keyword"])
+		assert.Equal(t, map[string]any{"type": "keyword", "ignore_above": 256}, body["fields"].(map[string]any)["user-defined-keyword-name"])
 		assert.Equal(t, map[string]any{"type": "knn_vector", "dimension": 768, "method": defaultVectorMethod()}, properties["body_vector"])
 	})
 

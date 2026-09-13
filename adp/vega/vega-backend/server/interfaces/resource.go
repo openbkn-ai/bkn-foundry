@@ -43,9 +43,9 @@ const (
 	MaxLength_PropertyDescription        = 1000
 	MaxLength_PropertyFeatureDescription = 1000
 
-	// LocalIndexKeywordSubfieldName is the fixed keyword multi-field name in managed indexes.
+	// LocalIndexKeywordSubfieldName is the default keyword multi-field name in managed indexes.
 	LocalIndexKeywordSubfieldName = "keyword"
-	// LocalIndexFulltextSubfieldName is the fixed full-text multi-field name in managed indexes.
+	// LocalIndexFulltextSubfieldName is the default full-text multi-field name in managed indexes.
 	LocalIndexFulltextSubfieldName = "fulltext"
 	// LocalIndexVectorFieldSuffix is the fixed suffix for generated vector fields in managed indexes.
 	LocalIndexVectorFieldSuffix = "_vector"

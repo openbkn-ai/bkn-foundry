@@ -7,6 +7,7 @@ package local_index
 
 import (
 	"fmt"
+	"strings"
 
 	"vega-backend/interfaces"
 )
@@ -129,6 +130,10 @@ func VectorFieldName(field string) string {
 func applyFulltextFeature(fieldProps map[string]any, propertyType string, feature interfaces.PropertyFeature) {
 	switch propertyType {
 	case interfaces.DataType_String:
+		fieldName := strings.TrimSpace(feature.FeatureName)
+		if fieldName == "" {
+			fieldName = interfaces.LocalIndexFulltextSubfieldName
+		}
 		subfield := map[string]any{"type": "text"}
 		for key, value := range feature.Config {
 			subfield[key] = value
@@ -138,7 +143,7 @@ func applyFulltextFeature(fieldProps map[string]any, propertyType string, featur
 			fields = map[string]any{}
 			fieldProps["fields"] = fields
 		}
-		fields[interfaces.LocalIndexFulltextSubfieldName] = subfield
+		fields[fieldName] = subfield
 	case interfaces.DataType_Text:
 		for key, value := range feature.Config {
 			fieldProps[key] = value
@@ -153,6 +158,10 @@ func applyKeywordFeature(fieldProps map[string]any, propertyType string, feature
 		}
 		return
 	}
+	fieldName := strings.TrimSpace(feature.FeatureName)
+	if fieldName == "" {
+		fieldName = interfaces.LocalIndexKeywordSubfieldName
+	}
 	fields, ok := fieldProps["fields"].(map[string]any)
 	if !ok {
 		fields = map[string]any{}
@@ -162,7 +171,7 @@ func applyKeywordFeature(fieldProps map[string]any, propertyType string, feature
 	for key, value := range feature.Config {
 		subfield[key] = value
 	}
-	fields[interfaces.LocalIndexKeywordSubfieldName] = subfield
+	fields[fieldName] = subfield
 }
 
 func defaultVectorMethod() map[string]any {

@@ -92,6 +92,140 @@ func TestGetDocumentsUsesMgetAndPreservesMissingPositions(t *testing.T) {
 	}, documents)
 }
 
+func TestUpdateIndexEnablesKNNBeforeAddingVectorMapping(t *testing.T) {
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodHead && r.URL.Path == "/dataset-1":
+			w.WriteHeader(http.StatusOK)
+		case r.Method == http.MethodGet && r.URL.Path == "/dataset-1/_settings":
+			assert.Equal(t, "true", r.URL.Query().Get("flat_settings"))
+			_, err := w.Write([]byte(`{"dataset-1":{"settings":{"index.knn":"false"}}}`))
+			require.NoError(t, err)
+		case r.Method == http.MethodPost && r.URL.Path == "/dataset-1/_close":
+			_, err := w.Write([]byte(`{"acknowledged":true}`))
+			require.NoError(t, err)
+		case r.Method == http.MethodPut && r.URL.Path == "/dataset-1/_settings":
+			var settings map[string]any
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&settings))
+			assert.Equal(t, true, settings["index"].(map[string]any)["knn"])
+			_, err := w.Write([]byte(`{"acknowledged":true}`))
+			require.NoError(t, err)
+		case r.Method == http.MethodPost && r.URL.Path == "/dataset-1/_open":
+			_, err := w.Write([]byte(`{"acknowledged":true}`))
+			require.NoError(t, err)
+		case r.Method == http.MethodPut && r.URL.Path == "/dataset-1/_mapping":
+			var mapping map[string]any
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&mapping))
+			assert.Contains(t, mapping["properties"].(map[string]any), "content_vector")
+			_, err := w.Write([]byte(`{"acknowledged":true}`))
+			require.NoError(t, err)
+		default:
+			http.Error(w, "unexpected request", http.StatusBadRequest)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := opensearch.NewClient(opensearch.Config{Addresses: []string{server.URL}})
+	require.NoError(t, err)
+	connector := &OpenSearchConnector{client: client}
+
+	err = connector.UpdateIndex(context.Background(), "dataset-1", map[string]any{
+		"content_vector": map[string]any{"type": "knn_vector", "dimension": 3},
+	}, true)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"HEAD /dataset-1",
+		"GET /dataset-1/_settings",
+		"POST /dataset-1/_close",
+		"PUT /dataset-1/_settings",
+		"POST /dataset-1/_open",
+		"PUT /dataset-1/_mapping",
+	}, requests)
+}
+
+func TestUpdateIndexKeepsKNNEnabledIndexOpen(t *testing.T) {
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodHead && r.URL.Path == "/dataset-1":
+			w.WriteHeader(http.StatusOK)
+		case r.Method == http.MethodGet && r.URL.Path == "/dataset-1/_settings":
+			_, err := w.Write([]byte(`{"dataset-1":{"settings":{"index.knn":"true"}}}`))
+			require.NoError(t, err)
+		case r.Method == http.MethodPut && r.URL.Path == "/dataset-1/_mapping":
+			_, err := w.Write([]byte(`{"acknowledged":true}`))
+			require.NoError(t, err)
+		default:
+			http.Error(w, "unexpected request", http.StatusBadRequest)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := opensearch.NewClient(opensearch.Config{Addresses: []string{server.URL}})
+	require.NoError(t, err)
+	connector := &OpenSearchConnector{client: client}
+
+	err = connector.UpdateIndex(context.Background(), "dataset-1", map[string]any{
+		"content_vector": map[string]any{"type": "knn_vector", "dimension": 3},
+	}, true)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"HEAD /dataset-1",
+		"GET /dataset-1/_settings",
+		"PUT /dataset-1/_mapping",
+	}, requests)
+}
+
+func TestUpdateIndexReopensIndexWhenEnablingKNNFails(t *testing.T) {
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodHead && r.URL.Path == "/dataset-1":
+			w.WriteHeader(http.StatusOK)
+		case r.Method == http.MethodGet && r.URL.Path == "/dataset-1/_settings":
+			_, err := w.Write([]byte(`{"dataset-1":{"settings":{"index.knn":"false"}}}`))
+			require.NoError(t, err)
+		case r.Method == http.MethodPost && r.URL.Path == "/dataset-1/_close":
+			_, err := w.Write([]byte(`{"acknowledged":true}`))
+			require.NoError(t, err)
+		case r.Method == http.MethodPut && r.URL.Path == "/dataset-1/_settings":
+			http.Error(w, `{"error":"settings rejected"}`, http.StatusBadRequest)
+		case r.Method == http.MethodPost && r.URL.Path == "/dataset-1/_open":
+			_, err := w.Write([]byte(`{"acknowledged":true}`))
+			require.NoError(t, err)
+		default:
+			http.Error(w, "unexpected request", http.StatusBadRequest)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := opensearch.NewClient(opensearch.Config{Addresses: []string{server.URL}})
+	require.NoError(t, err)
+	connector := &OpenSearchConnector{client: client}
+
+	err = connector.UpdateIndex(context.Background(), "dataset-1", map[string]any{
+		"content_vector": map[string]any{"type": "knn_vector", "dimension": 3},
+	}, true)
+
+	require.ErrorContains(t, err, "failed to enable knn index setting")
+	assert.Equal(t, []string{
+		"HEAD /dataset-1",
+		"GET /dataset-1/_settings",
+		"POST /dataset-1/_close",
+		"PUT /dataset-1/_settings",
+		"POST /dataset-1/_open",
+	}, requests)
+}
+
 func TestEncodeBulkDocumentRejectsSingleDocumentOverByteLimit(t *testing.T) {
 	document := map[string]any{"_id": "doc-1", "content": string(make([]byte, 128))}
 

@@ -139,10 +139,18 @@ func validateSchemaProperties(ctx context.Context, props []*interfaces.Property,
 func validatePropertyFeatures(ctx context.Context, prop *interfaces.Property, propsMap map[string]*interfaces.Property, allowRefProperty bool) error {
 	enabledMap := make(map[string]bool)
 	featureNameMap := make(map[string]struct{})
-	for _, f := range prop.Features {
+	for i := range prop.Features {
+		f := &prop.Features[i]
 		if f.FeatureName == "" {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldFeatureName).
-				WithErrorDetails("The field feature name is null")
+			switch f.FeatureType {
+			case interfaces.PropertyFeatureType_Keyword:
+				f.FeatureName = interfaces.LocalIndexKeywordSubfieldName
+			case interfaces.PropertyFeatureType_Fulltext:
+				f.FeatureName = interfaces.LocalIndexFulltextSubfieldName
+			default:
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldFeatureName).
+					WithErrorDetails("The field feature name is null")
+			}
 		}
 		if utf8.RuneCountInString(f.FeatureName) > interfaces.MaxLength_PropertyFeatureName {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_LengthExceeded_FieldFeatureName).

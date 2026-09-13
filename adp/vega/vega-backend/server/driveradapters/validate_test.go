@@ -248,6 +248,38 @@ func TestValidateResourceRequestDatasetSchema(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("ValidateResourceRequest supplies default keyword and fulltext feature names", func(t *testing.T) {
+		req := baseReq([]*interfaces.Property{
+			{
+				Name: "content",
+				Type: interfaces.DataType_String,
+				Features: []interfaces.PropertyFeature{
+					{FeatureType: interfaces.PropertyFeatureType_Keyword},
+					{FeatureType: interfaces.PropertyFeatureType_Fulltext},
+				},
+			},
+		})
+
+		require.NoError(t, ValidateResourceRequest(ctx, req))
+		assert.Equal(t, interfaces.LocalIndexKeywordSubfieldName, req.SchemaDefinition[0].Features[0].FeatureName)
+		assert.Equal(t, interfaces.LocalIndexFulltextSubfieldName, req.SchemaDefinition[0].Features[1].FeatureName)
+	})
+
+	t.Run("ValidateResourceRequest still rejects an unnamed vector feature", func(t *testing.T) {
+		err := ValidateResourceRequest(ctx, baseReq([]*interfaces.Property{
+			{
+				Name: "embedding",
+				Type: interfaces.DataType_Vector,
+				Features: []interfaces.PropertyFeature{
+					{FeatureType: interfaces.PropertyFeatureType_Vector},
+				},
+			},
+		}))
+
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "feature name is null")
+	})
+
 	for _, dataType := range []string{interfaces.DataType_Binary, interfaces.DataType_Other} {
 		t.Run("ValidateResourceRequest rejects unsupported dataset type "+dataType, func(t *testing.T) {
 			err := ValidateResourceRequest(ctx, baseReq([]*interfaces.Property{

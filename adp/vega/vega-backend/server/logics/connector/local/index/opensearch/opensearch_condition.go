@@ -153,22 +153,43 @@ func (c *OpenSearchConnector) ConvertFilterConditionWithOpr(condition interfaces
 	}
 }
 
-// fulltextFieldName returns the field name that should be hit in the full-text search (match/match_phrase/multi_match).
-// The full-text capability of the string field is attached to the fixed fulltext subfield by LocalIndexManager and must be used
-// 'Field name.< Subfield name >' hits the word segmentation subfield; otherwise, it will fall to the keyword main field for exact matching.
-// The main field of the text field itself is the full text, so use a bare field name.
+// fulltextFieldName returns the physical field name used by match/match_phrase/multi_match.
+// A string field uses its configured full-text multi-field, falling back to the default name.
+// A text field is already a full-text field and therefore uses its main physical name.
 func fulltextFieldName(prop *interfaces.Property) string {
 	if prop == nil {
 		return ""
 	}
+	fieldName := propertyPhysicalFieldName(prop)
 	if prop.Type == interfaces.DataType_String {
 		for _, f := range prop.Features {
 			if f.FeatureType == interfaces.PropertyFeatureType_Fulltext {
-				return prop.Name + "." + interfaces.LocalIndexFulltextSubfieldName
+				return featurePhysicalFieldName(fieldName, f.FeatureName, interfaces.LocalIndexFulltextSubfieldName)
 			}
 		}
 	}
+	return fieldName
+}
+
+func propertyPhysicalFieldName(prop *interfaces.Property) string {
+	if prop == nil {
+		return ""
+	}
+	if prop.OriginalName != "" {
+		return prop.OriginalName
+	}
 	return prop.Name
+}
+
+func featurePhysicalFieldName(fieldName string, configuredName string, defaultName string) string {
+	featureName := strings.TrimSpace(configuredName)
+	if featureName == "" {
+		featureName = defaultName
+	}
+	if featureName == fieldName || strings.HasPrefix(featureName, fieldName+".") {
+		return featureName
+	}
+	return fieldName + "." + featureName
 }
 
 // ConvertFilterConditionMultiMatch converts a MultiMatchCond to OpenSearch DSL.
@@ -1185,13 +1206,14 @@ func (c *OpenSearchConnector) legacyLikeWildcardRegexp(input string) string {
 	return result.String()
 }
 
-// in some query scenarios (such as eq/in), the getKeywordSuffix text type needs to use a subfield of the keyword type to return the keyword suffix; otherwise, it returns an empty string
+// In exact-match query scenarios, text fields use their configured keyword multi-field.
 func (c *OpenSearchConnector) getKeywordSuffix(fieldName string, schemaDefinition []*interfaces.Property) (string, error) {
 	for _, prop := range schemaDefinition {
-		if prop.OriginalName == fieldName && prop.Type == interfaces.DataType_Text {
+		if propertyPhysicalFieldName(prop) == fieldName && prop.Type == interfaces.DataType_Text {
 			for _, feature := range prop.Features {
 				if feature.FeatureType == interfaces.PropertyFeatureType_Keyword {
-					return "." + interfaces.LocalIndexKeywordSubfieldName, nil
+					physicalName := featurePhysicalFieldName(fieldName, feature.FeatureName, interfaces.LocalIndexKeywordSubfieldName)
+					return strings.TrimPrefix(physicalName, fieldName), nil
 				}
 			}
 			return "", filter_condition.NewConditionBuildError("text field %s has no keyword feature; re-save the resource configuration and rebuild the local index, or use match", fieldName)

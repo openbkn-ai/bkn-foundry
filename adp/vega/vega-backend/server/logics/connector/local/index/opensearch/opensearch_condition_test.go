@@ -28,7 +28,7 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 		{
 			name: "equal text uses keyword subfield",
 			cfg:  osConstCfg("body", filter_condition.OperationEqual, "hello"),
-			want: map[string]any{"term": map[string]any{"body.keyword": "hello"}},
+			want: map[string]any{"term": map[string]any{"body.user-defined-keyword-name": "hello"}},
 		},
 		{
 			name: "not equal wraps must_not",
@@ -176,7 +176,7 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 		assert.Equal(t, map[string]any{
 			"bool": map[string]any{
 				"should": []map[string]any{
-					{"match": map[string]any{"name.fulltext": "hello"}},
+					{"match": map[string]any{"name.user-defined-fulltext-name": "hello"}},
 					{"match": map[string]any{"body": "hello"}},
 				},
 				"minimum_should_match": 1,
@@ -201,7 +201,7 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 		assert.Equal(t, map[string]any{
 			"multi_match": map[string]any{
 				"query":  "hello",
-				"fields": []string{"name.fulltext", "body"},
+				"fields": []string{"name.user-defined-fulltext-name", "body"},
 				"type":   "best_fields",
 			},
 		}, got)
@@ -270,6 +270,34 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 }
 
 func TestOpenSearchConnectorConvertFilterConditionEqual(t *testing.T) {
+	t.Run("uses default keyword name when feature name is empty", func(t *testing.T) {
+		conn := &OpenSearchConnector{}
+		cond := mustOSCondition(t, osConstCfg("body", filter_condition.OperationEqual, "hello"))
+		schema := opensearchConditionSchema()
+		schema[1].Features[0].FeatureName = ""
+
+		got, err := conn.ConvertFilterConditionEqual(cond, schema)
+
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{"term": map[string]any{"body.keyword": "hello"}}, got)
+	})
+
+	t.Run("uses discovered keyword physical name", func(t *testing.T) {
+		conn := &OpenSearchConnector{}
+		cond := mustOSCondition(t, osConstCfg("body", filter_condition.OperationEqual, "hello"))
+		schema := opensearchConditionSchema()
+		schema[1].Features[0] = interfaces.PropertyFeature{
+			FeatureName: "body.raw",
+			FeatureType: interfaces.PropertyFeatureType_Keyword,
+			IsNative:    true,
+		}
+
+		got, err := conn.ConvertFilterConditionEqual(cond, schema)
+
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{"term": map[string]any{"body.raw": "hello"}}, got)
+	})
+
 	t.Run("rejects text field without keyword feature", func(t *testing.T) {
 		conn := &OpenSearchConnector{}
 
@@ -380,13 +408,38 @@ func TestFulltextFieldName(t *testing.T) {
 			},
 		}
 
-		assert.Equal(t, "team_name.fulltext", fulltextFieldName(prop))
+		assert.Equal(t, "team_name.user-defined-name", fulltextFieldName(prop))
+	})
+
+	t.Run("fulltext field name accepts discovered physical name", func(t *testing.T) {
+		prop := &interfaces.Property{
+			Name:         "teamName",
+			OriginalName: "team_name",
+			Type:         interfaces.DataType_String,
+			Features: []interfaces.PropertyFeature{
+				{FeatureName: "team_name.analyzed", FeatureType: interfaces.PropertyFeatureType_Fulltext, IsNative: true},
+			},
+		}
+
+		assert.Equal(t, "team_name.analyzed", fulltextFieldName(prop))
 	})
 
 	t.Run("fulltext field name text uses bare name", func(t *testing.T) {
 		prop := &interfaces.Property{Name: "body", Type: interfaces.DataType_Text}
 
 		assert.Equal(t, "body", fulltextFieldName(prop))
+	})
+
+	t.Run("fulltext field name uses default when feature name is empty", func(t *testing.T) {
+		prop := &interfaces.Property{
+			Name: "team_name",
+			Type: interfaces.DataType_String,
+			Features: []interfaces.PropertyFeature{
+				{FeatureType: interfaces.PropertyFeatureType_Fulltext},
+			},
+		}
+
+		assert.Equal(t, "team_name.fulltext", fulltextFieldName(prop))
 	})
 
 	t.Run("fulltext field name string no fulltext bare name", func(t *testing.T) {
