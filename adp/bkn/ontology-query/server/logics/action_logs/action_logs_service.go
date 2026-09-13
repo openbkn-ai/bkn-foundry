@@ -92,11 +92,11 @@ const (
 		"} else { ctx.op = 'noop' }"
 
 	// The terminal write. A cancel that landed while the execution was still running wins
-	// over the status the executor computed; counters, results and timing still record
-	// what actually ran.
+	// over the status the executor computed; counters and timing still record what
+	// actually ran. Results live in the results index and are not touched here.
 	finishScript = "if (ctx._source.status != params.cancelled) { ctx._source.status = params.status } " +
 		"ctx._source.success_count = params.success_count; ctx._source.failed_count = params.failed_count; " +
-		"ctx._source.results = params.results; ctx._source.end_time = params.end_time; ctx._source.duration_ms = params.duration_ms;"
+		"ctx._source.end_time = params.end_time; ctx._source.duration_ms = params.duration_ms;"
 )
 
 func painlessUpdate(source string, params map[string]any) map[string]any {
@@ -132,8 +132,8 @@ func (s *actionLogsService) MarkExecutionRunning(ctx context.Context, knID, exec
 	return nil
 }
 
-// UpdateExecutionProgress merges the counters and results into the execution without
-// reading it first and without touching its status.
+// UpdateExecutionProgress merges the counters into the execution without reading it first
+// and without touching its status.
 func (s *actionLogsService) UpdateExecutionProgress(ctx context.Context, knID, execID string, progress *interfaces.ExecutionProgress) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "UpdateExecutionProgress")
 	defer span.End()
@@ -147,7 +147,6 @@ func (s *actionLogsService) UpdateExecutionProgress(ctx context.Context, knID, e
 		"doc": map[string]any{
 			"success_count": progress.SuccessCount,
 			"failed_count":  progress.FailedCount,
-			"results":       nonNilResults(progress.Results),
 		},
 	})
 	if err != nil {
@@ -172,7 +171,6 @@ func (s *actionLogsService) FinishExecution(ctx context.Context, knID, execID st
 		"status":        outcome.Status,
 		"success_count": outcome.SuccessCount,
 		"failed_count":  outcome.FailedCount,
-		"results":       nonNilResults(outcome.Results),
 		"end_time":      outcome.EndTime,
 		"duration_ms":   outcome.DurationMs,
 	}))
@@ -240,14 +238,6 @@ func (s *actionLogsService) searchExecution(ctx context.Context, knID, execID st
 		return nil, fmt.Errorf("failed to parse execution: %w", err)
 	}
 	return exec, nil
-}
-
-// nonNilResults keeps an empty result list an empty array in the stored document.
-func nonNilResults(results []interfaces.ObjectExecutionResult) []interfaces.ObjectExecutionResult {
-	if results == nil {
-		return []interfaces.ObjectExecutionResult{}
-	}
-	return results
 }
 
 // GetExecution retrieves a single execution by ID with optional results pagination

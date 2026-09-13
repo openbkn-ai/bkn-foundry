@@ -137,7 +137,7 @@ func Test_CancelExecution_DocumentVanished(t *testing.T) {
 }
 
 func Test_UpdateExecutionProgress_NeverCarriesStatus(t *testing.T) {
-	Convey("a progress write merges counters and results only, without reading first", t, func() {
+	Convey("a progress write merges the counters only, without reading first", t, func() {
 		svc, osa := newWriteTestService(t)
 
 		var updateBody map[string]any
@@ -150,7 +150,6 @@ func Test_UpdateExecutionProgress_NeverCarriesStatus(t *testing.T) {
 		err := svc.UpdateExecutionProgress(context.Background(), "kn_1", "exec_1", &interfaces.ExecutionProgress{
 			SuccessCount: 4,
 			FailedCount:  1,
-			Results:      []interfaces.ObjectExecutionResult{{Status: interfaces.ObjectStatusSuccess}},
 		})
 		So(err, ShouldBeNil)
 
@@ -158,7 +157,8 @@ func Test_UpdateExecutionProgress_NeverCarriesStatus(t *testing.T) {
 		So(ok, ShouldBeTrue)
 		So(doc["success_count"], ShouldEqual, 4)
 		So(doc["failed_count"], ShouldEqual, 1)
-		So(doc["results"], ShouldHaveLength, 1)
+		// Results go to the results index, never into the execution document.
+		So(doc, ShouldNotContainKey, "results")
 		So(doc, ShouldNotContainKey, "status")
 		for _, key := range paginationMetadataKeys {
 			So(doc, ShouldNotContainKey, key)
@@ -212,8 +212,9 @@ func Test_FinishExecution_KeepsCancelled(t *testing.T) {
 		So(params["cancelled"], ShouldEqual, "cancelled")
 		So(params["status"], ShouldEqual, "completed")
 		So(params["success_count"], ShouldEqual, 3)
-		// A nil result list is stored as an empty array, not null.
-		So(params["results"], ShouldResemble, []interfaces.ObjectExecutionResult{})
+		// Results go to the results index, never into the execution document.
+		So(params, ShouldNotContainKey, "results")
+		So(strings.Contains(source, "results"), ShouldBeFalse)
 		for _, key := range paginationMetadataKeys {
 			So(params, ShouldNotContainKey, key)
 		}

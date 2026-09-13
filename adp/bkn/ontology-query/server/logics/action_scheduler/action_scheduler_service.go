@@ -365,7 +365,7 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 	successCount := 0
 	failedCount := 0
 	cancelledCount := 0
-	allResults := []interfaces.ObjectExecutionResult{}
+	results := resultBuffer{}
 	cancelled := false
 	var lastCancellationCheck time.Time
 
@@ -377,7 +377,7 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 				cancelled = true
 				// Mark remaining objects as cancelled
 				for j := i; j < len(req.Instances); j++ {
-					allResults = append(allResults, interfaces.ObjectExecutionResult{
+					results.add(interfaces.ObjectExecutionResult{
 						ObjectSystemInfo: req.Instances[j],
 						Status:           interfaces.ObjectStatusCancelled,
 						ErrorMessage:     "execution cancelled",
@@ -394,7 +394,7 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 		params, err := s.buildExecutionParams(actionType, objData, req.DynamicParams)
 		if err != nil {
 			endTime := time.Now().UnixMilli()
-			allResults = append(allResults, interfaces.ObjectExecutionResult{
+			results.add(interfaces.ObjectExecutionResult{
 				ObjectSystemInfo: req.Instances[i],
 				Status:           interfaces.ObjectStatusFailed,
 				ErrorMessage:     fmt.Sprintf("Failed to build parameters: %v", err),
@@ -411,7 +411,7 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 
 		endTime := time.Now().UnixMilli()
 		if execErr != nil {
-			allResults = append(allResults, interfaces.ObjectExecutionResult{
+			results.add(interfaces.ObjectExecutionResult{
 				ObjectSystemInfo: req.Instances[i],
 				Status:           interfaces.ObjectStatusFailed,
 				Parameters:       params,
@@ -422,7 +422,7 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 			})
 			failedCount++
 		} else {
-			allResults = append(allResults, interfaces.ObjectExecutionResult{
+			results.add(interfaces.ObjectExecutionResult{
 				ObjectSystemInfo: req.Instances[i],
 				Status:           interfaces.ObjectStatusSuccess,
 				Parameters:       params,
@@ -436,7 +436,8 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 
 		completedCount := i + 1
 		if shouldUpdateExecutionProgress(completedCount, len(req.ObjDatas)) {
-			s.updateExecutionProgress(ctx, execution, successCount, failedCount, allResults)
+			s.flushResults(ctx, execution, &results)
+			s.updateExecutionProgress(ctx, execution, successCount, failedCount)
 			logger.Debugf("Execution %s progress: %d/%d completed", execution.ID, completedCount, len(req.ObjDatas))
 		}
 	}
@@ -453,13 +454,19 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 
 	endTime := time.Now().UnixMilli()
 
+	// Store what is still pending (the last partial batch, or every instance the cancel
+	// skipped) before the terminal write, so a finished execution has all its results.
+	s.flushResults(ctx, execution, &results)
+	if len(results.pending) > 0 {
+		s.flushResults(ctx, execution, &results)
+	}
+
 	// Write the final execution record. A cancel that lands after the last cancellation
 	// check still wins: the log keeps the cancelled status the user was told about.
 	if err := s.logsService.FinishExecution(ctx, execution.KNID, execution.ID, &interfaces.ExecutionOutcome{
 		Status:       finalStatus,
 		SuccessCount: successCount,
 		FailedCount:  failedCount,
-		Results:      allResults,
 		EndTime:      endTime,
 		DurationMs:   endTime - execution.StartTime,
 	}); err != nil {
@@ -594,11 +601,13 @@ func (s *actionSchedulerService) executeOnce(ctx context.Context, execution *int
 func (s *actionSchedulerService) finishOnce(ctx context.Context, execution *interfaces.ActionExecution,
 	result interfaces.ObjectExecutionResult, finalStatus string, successCount, failedCount int, endTime int64) {
 
+	results := resultBuffer{pending: []interfaces.ObjectExecutionResult{result}}
+	s.flushResults(ctx, execution, &results)
+
 	if err := s.logsService.FinishExecution(ctx, execution.KNID, execution.ID, &interfaces.ExecutionOutcome{
 		Status:       finalStatus,
 		SuccessCount: successCount,
 		FailedCount:  failedCount,
-		Results:      []interfaces.ObjectExecutionResult{result},
 		EndTime:      endTime,
 		DurationMs:   endTime - execution.StartTime,
 	}); err != nil {
@@ -629,15 +638,40 @@ func (s *actionSchedulerService) isExecutionCancelled(ctx context.Context, knID,
 	return status == interfaces.ExecutionStatusCancelled
 }
 
-// updateExecutionProgress updates the execution progress (batch update)
-func (s *actionSchedulerService) updateExecutionProgress(ctx context.Context, execution *interfaces.ActionExecution, successCount, failedCount int, results []interfaces.ObjectExecutionResult) {
+// updateExecutionProgress updates the execution progress counters (batch update)
+func (s *actionSchedulerService) updateExecutionProgress(ctx context.Context, execution *interfaces.ActionExecution, successCount, failedCount int) {
 	if err := s.logsService.UpdateExecutionProgress(ctx, execution.KNID, execution.ID, &interfaces.ExecutionProgress{
 		SuccessCount: successCount,
 		FailedCount:  failedCount,
-		Results:      results,
 	}); err != nil {
 		logger.Warnf("Failed to update execution progress: %v", err)
 	}
+}
+
+// resultBuffer holds the results produced since the last flush. stored counts the results
+// already written, which is also the position of pending[0] within the execution.
+type resultBuffer struct {
+	pending []interfaces.ObjectExecutionResult
+	stored  int
+}
+
+func (b *resultBuffer) add(result interfaces.ObjectExecutionResult) {
+	b.pending = append(b.pending, result)
+}
+
+// flushResults appends the pending results to the results index. Results that fail to store
+// stay pending and are retried at the same positions on the next flush, which overwrites
+// rather than duplicates them.
+func (s *actionSchedulerService) flushResults(ctx context.Context, execution *interfaces.ActionExecution, results *resultBuffer) {
+	if len(results.pending) == 0 {
+		return
+	}
+	if err := s.logsService.AppendResults(ctx, execution.KNID, execution.ID, results.stored, results.pending); err != nil {
+		logger.Warnf("Failed to store %d results of execution %s: %v", len(results.pending), execution.ID, err)
+		return
+	}
+	results.stored += len(results.pending)
+	results.pending = nil
 }
 
 // getInstancesForAction gets instances based on action type configuration and request parameters.

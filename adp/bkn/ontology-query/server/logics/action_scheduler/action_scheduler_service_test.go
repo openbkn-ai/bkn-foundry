@@ -546,6 +546,8 @@ func Test_executeAsync_ContextAndProgress(t *testing.T) {
 		}
 
 		var progressUpdates []*interfaces.ExecutionProgress
+		var stored []interfaces.ObjectExecutionResult
+		captureAppendedResults(logsService, "exec_001", &stored)
 		logsService.EXPECT().MarkExecutionRunning(gomock.Any(), "kn_001", "exec_001").Return(nil)
 		logsService.EXPECT().UpdateExecutionProgress(gomock.Any(), "kn_001", "exec_001", gomock.Any()).DoAndReturn(
 			func(ctx context.Context, knID, execID string, progress *interfaces.ExecutionProgress) error {
@@ -567,7 +569,7 @@ func Test_executeAsync_ContextAndProgress(t *testing.T) {
 		So(len(progressUpdates), ShouldBeGreaterThanOrEqualTo, 1)
 		So(progressUpdates[0].SuccessCount, ShouldEqual, 1)
 		So(progressUpdates[0].FailedCount, ShouldEqual, 0)
-		results := progressUpdates[0].Results
+		results := stored
 		So(len(results), ShouldEqual, 1)
 		So(results[0].Status, ShouldEqual, interfaces.ObjectStatusSuccess)
 	})
@@ -643,6 +645,8 @@ func Test_executeAsync_AggregatedInvokesToolOnce(t *testing.T) {
 		}
 
 		var finalOutcome *interfaces.ExecutionOutcome
+		var stored []interfaces.ObjectExecutionResult
+		captureAppendedResults(logsService, "exec_agg", &stored)
 		logsService.EXPECT().MarkExecutionRunning(gomock.Any(), "kn_001", "exec_agg").Return(nil).AnyTimes()
 		logsService.EXPECT().UpdateExecutionProgress(gomock.Any(), "kn_001", "exec_agg", gomock.Any()).Return(nil).AnyTimes()
 		logsService.EXPECT().FinishExecution(gomock.Any(), "kn_001", "exec_agg", gomock.Any()).DoAndReturn(
@@ -665,7 +669,7 @@ func Test_executeAsync_AggregatedInvokesToolOnce(t *testing.T) {
 		So(finalOutcome.SuccessCount, ShouldEqual, 1)
 		So(finalOutcome.FailedCount, ShouldEqual, 0)
 
-		results := finalOutcome.Results
+		results := stored
 		So(len(results), ShouldEqual, 1)
 		So(results[0].Status, ShouldEqual, interfaces.ObjectStatusSuccess)
 		// Target instances are not lost.
@@ -721,6 +725,8 @@ func Test_executeAsync_AggregatedCancelledBeforeInvocation(t *testing.T) {
 		execution, actionType, req := aggregatedOnceFixture(t, "exec_cancel_before")
 
 		var finalOutcome *interfaces.ExecutionOutcome
+		var stored []interfaces.ObjectExecutionResult
+		captureAppendedResults(logsService, "exec_cancel_before", &stored)
 		logsService.EXPECT().MarkExecutionRunning(gomock.Any(), "kn_001", "exec_cancel_before").Return(nil).AnyTimes()
 		logsService.EXPECT().UpdateExecutionProgress(gomock.Any(), "kn_001", "exec_cancel_before", gomock.Any()).Return(nil).AnyTimes()
 		logsService.EXPECT().FinishExecution(gomock.Any(), "kn_001", "exec_cancel_before", gomock.Any()).DoAndReturn(
@@ -739,7 +745,7 @@ func Test_executeAsync_AggregatedCancelledBeforeInvocation(t *testing.T) {
 		So(finalOutcome.Status, ShouldEqual, interfaces.ExecutionStatusCancelled)
 		So(finalOutcome.SuccessCount, ShouldEqual, 0)
 		So(finalOutcome.FailedCount, ShouldEqual, 0)
-		results := finalOutcome.Results
+		results := stored
 		So(results[0].Status, ShouldEqual, interfaces.ObjectStatusCancelled)
 	})
 }
@@ -756,6 +762,8 @@ func Test_executeAsync_AggregatedCancelledDuringInvocation(t *testing.T) {
 		execution, actionType, req := aggregatedOnceFixture(t, "exec_cancel_during")
 
 		var finalOutcome *interfaces.ExecutionOutcome
+		var stored []interfaces.ObjectExecutionResult
+		captureAppendedResults(logsService, "exec_cancel_during", &stored)
 		logsService.EXPECT().MarkExecutionRunning(gomock.Any(), "kn_001", "exec_cancel_during").Return(nil).AnyTimes()
 		logsService.EXPECT().UpdateExecutionProgress(gomock.Any(), "kn_001", "exec_cancel_during", gomock.Any()).Return(nil).AnyTimes()
 		logsService.EXPECT().FinishExecution(gomock.Any(), "kn_001", "exec_cancel_during", gomock.Any()).DoAndReturn(
@@ -778,7 +786,7 @@ func Test_executeAsync_AggregatedCancelledDuringInvocation(t *testing.T) {
 		So(finalOutcome, ShouldNotBeNil)
 		So(finalOutcome.Status, ShouldEqual, interfaces.ExecutionStatusCancelled)
 		// The side effect has already occurred, so the result must be recorded.
-		results := finalOutcome.Results
+		results := stored
 		So(results[0].Status, ShouldEqual, interfaces.ObjectStatusSuccess)
 		So(finalOutcome.SuccessCount, ShouldEqual, 1)
 	})
@@ -825,6 +833,8 @@ func Test_executeAsync_PerInstanceStillFansOut(t *testing.T) {
 		}
 
 		var finalOutcome *interfaces.ExecutionOutcome
+		var stored []interfaces.ObjectExecutionResult
+		captureAppendedResults(logsService, "exec_fan", &stored)
 		logsService.EXPECT().MarkExecutionRunning(gomock.Any(), "kn_001", "exec_fan").Return(nil).AnyTimes()
 		logsService.EXPECT().UpdateExecutionProgress(gomock.Any(), "kn_001", "exec_fan", gomock.Any()).Return(nil).AnyTimes()
 		logsService.EXPECT().FinishExecution(gomock.Any(), "kn_001", "exec_fan", gomock.Any()).DoAndReturn(
@@ -845,7 +855,7 @@ func Test_executeAsync_PerInstanceStillFansOut(t *testing.T) {
 
 		So(sentOrderNos, ShouldResemble, []any{"A", "B", "C"})
 		So(finalOutcome.SuccessCount, ShouldEqual, 3)
-		results := finalOutcome.Results
+		results := stored
 		So(len(results), ShouldEqual, 3)
 		So(results[0].Targets, ShouldBeNil)
 	})
@@ -892,6 +902,8 @@ func Test_executeAsync_PerInstanceCancelledMidway(t *testing.T) {
 		}
 
 		var finalOutcome *interfaces.ExecutionOutcome
+		var stored []interfaces.ObjectExecutionResult
+		captureAppendedResults(logsService, "exec_cancel_mid", &stored)
 		logsService.EXPECT().MarkExecutionRunning(gomock.Any(), "kn_001", "exec_cancel_mid").Return(nil)
 		// Progress writes only ever carry counters and results; the type has no status field.
 		logsService.EXPECT().UpdateExecutionProgress(gomock.Any(), "kn_001", "exec_cancel_mid", gomock.Any()).Return(nil).AnyTimes()
@@ -914,10 +926,10 @@ func Test_executeAsync_PerInstanceCancelledMidway(t *testing.T) {
 		So(finalOutcome, ShouldNotBeNil)
 		So(finalOutcome.Status, ShouldEqual, interfaces.ExecutionStatusCancelled)
 		So(finalOutcome.SuccessCount, ShouldEqual, 1)
-		So(len(finalOutcome.Results), ShouldEqual, 3)
-		So(finalOutcome.Results[0].Status, ShouldEqual, interfaces.ObjectStatusSuccess)
-		So(finalOutcome.Results[1].Status, ShouldEqual, interfaces.ObjectStatusCancelled)
-		So(finalOutcome.Results[2].Status, ShouldEqual, interfaces.ObjectStatusCancelled)
+		So(len(stored), ShouldEqual, 3)
+		So(stored[0].Status, ShouldEqual, interfaces.ObjectStatusSuccess)
+		So(stored[1].Status, ShouldEqual, interfaces.ObjectStatusCancelled)
+		So(stored[2].Status, ShouldEqual, interfaces.ObjectStatusCancelled)
 	})
 }
 
@@ -1543,6 +1555,82 @@ func Test_ExecuteAction_AddActionType(t *testing.T) {
 	})
 }
 
+func Test_executeAsync_AppendsOnlyNewResults(t *testing.T) {
+	Convey("each progress batch appends only its new results; a failed batch is retried at the same positions (#790)", t, func() {
+		mockCtrl := gomock.NewController(t)
+		defer mockCtrl.Finish()
+
+		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
+		logsService := omock.NewMockActionLogsService(mockCtrl)
+		service := &actionSchedulerService{aoAccess: aoAccess, logsService: logsService, permissions: &actionPermissionStub{}}
+
+		const total = 250
+		execution := &interfaces.ActionExecution{
+			ID:            "exec_append",
+			KNID:          "kn_001",
+			Status:        interfaces.ExecutionStatusPending,
+			ExecutionMode: interfaces.ExecutionModePerInstance,
+			TargetCount:   total,
+			TotalCount:    total,
+			StartTime:     1700000000000,
+		}
+		actionType := &interfaces.ActionType{
+			ActionSource: interfaces.ActionSource{
+				Type:   interfaces.ActionSourceTypeTool,
+				BoxID:  "box_001",
+				ToolID: "tool_001",
+			},
+			Parameters: []interfaces.Parameter{
+				{Name: "order_no", ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_PROP, Value: "order_no"},
+			},
+		}
+		attachTestActionProxySnapshot(t, execution, actionType)
+		req := &interfaces.ActionExecutionRequest{}
+		for i := 0; i < total; i++ {
+			req.Instances = append(req.Instances, interfaces.ObjectSystemInfo{InstanceIdentity: map[string]any{"id": i}})
+			req.ObjDatas = append(req.ObjDatas, map[string]any{"order_no": i})
+		}
+
+		type appendCall struct{ firstSeq, count int }
+		var calls []appendCall
+		var progress []*interfaces.ExecutionProgress
+		var finalOutcome *interfaces.ExecutionOutcome
+		logsService.EXPECT().MarkExecutionRunning(gomock.Any(), "kn_001", "exec_append").Return(nil)
+		logsService.EXPECT().GetExecutionStatus(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ExecutionStatusRunning, nil).AnyTimes()
+		logsService.EXPECT().AppendResults(gomock.Any(), "kn_001", "exec_append", gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, _, _ string, firstSeq int, results []interfaces.ObjectExecutionResult) error {
+				calls = append(calls, appendCall{firstSeq, len(results)})
+				if len(calls) == 1 {
+					return fmt.Errorf("opensearch unavailable")
+				}
+				return nil
+			}).Times(3)
+		logsService.EXPECT().UpdateExecutionProgress(gomock.Any(), "kn_001", "exec_append", gomock.Any()).DoAndReturn(
+			func(_ context.Context, _, _ string, p *interfaces.ExecutionProgress) error {
+				progress = append(progress, p)
+				return nil
+			}).Times(2)
+		logsService.EXPECT().FinishExecution(gomock.Any(), "kn_001", "exec_append", gomock.Any()).DoAndReturn(
+			func(_ context.Context, _, _ string, outcome *interfaces.ExecutionOutcome) error {
+				finalOutcome = outcome
+				return nil
+			})
+		aoAccess.EXPECT().ExecuteToolAsProxy(gomock.Any(), "box_001", "tool_001", gomock.Any()).
+			Return(map[string]any{"ok": true}, nil).Times(total)
+
+		service.executeAsync(execution, actionType, req)
+
+		// Batch 1 (positions 0-99) fails and stays pending, so batch 2 rewrites it together
+		// with positions 100-199; the last partial batch (200-249) is stored before finishing.
+		So(calls, ShouldResemble, []appendCall{{0, 100}, {0, 200}, {200, 50}})
+		So(len(progress), ShouldEqual, 2)
+		So(progress[0].SuccessCount, ShouldEqual, 100)
+		So(progress[1].SuccessCount, ShouldEqual, 200)
+		So(finalOutcome.Status, ShouldEqual, interfaces.ExecutionStatusCompleted)
+		So(finalOutcome.SuccessCount, ShouldEqual, total)
+	})
+}
+
 func Test_shouldCheckExecutionCancellation(t *testing.T) {
 	Convey("large executions check for a cancel at batch boundaries and at least once a second (#790)", t, func() {
 		// Small runs check before every instance.
@@ -1555,4 +1643,15 @@ func Test_shouldCheckExecutionCancellation(t *testing.T) {
 		So(shouldCheckExecutionCancellation(950, 1000, 200*time.Millisecond), ShouldBeFalse)
 		So(shouldCheckExecutionCancellation(950, 1000, cancellationCheckInterval), ShouldBeTrue)
 	})
+}
+
+// captureAppendedResults records every AppendResults call of an execution and checks that
+// the batches arrive at consecutive positions within the execution.
+func captureAppendedResults(logsService *omock.MockActionLogsService, execID string, stored *[]interfaces.ObjectExecutionResult) {
+	logsService.EXPECT().AppendResults(gomock.Any(), "kn_001", execID, gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _, _ string, firstSeq int, results []interfaces.ObjectExecutionResult) error {
+			So(firstSeq, ShouldEqual, len(*stored))
+			*stored = append(*stored, results...)
+			return nil
+		}).AnyTimes()
 }

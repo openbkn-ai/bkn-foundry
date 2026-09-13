@@ -19,12 +19,12 @@ type ActionLogsService interface {
 	// longer pending (cancelled before it started, in particular) is left untouched.
 	MarkExecutionRunning(ctx context.Context, knID, execID string) error
 
-	// UpdateExecutionProgress records the counters and results produced so far. It never
-	// touches the execution status, so it cannot undo a concurrent cancel.
+	// UpdateExecutionProgress records the counters so far. It never touches the execution
+	// status, so it cannot undo a concurrent cancel.
 	UpdateExecutionProgress(ctx context.Context, knID, execID string, progress *ExecutionProgress) error
 
 	// FinishExecution writes the terminal record of an execution. An execution that was
-	// cancelled meanwhile stays cancelled; the counters and results still record what ran.
+	// cancelled meanwhile stays cancelled; the counters still record what ran.
 	FinishExecution(ctx context.Context, knID, execID string, outcome *ExecutionOutcome) error
 
 	// GetExecutionStatus returns only the current status of an execution.
