@@ -52,6 +52,10 @@ type HTTPError struct {
 	Solution     string      `json:"solution,omitempty"`    // Localized remediation guidance.
 	ErrorLink    string      `json:"link,omitempty"`        // Error reference link.
 	ErrorDetails interface{} `json:"details,omitempty"`     // Additional public detail.
+	// DownstreamBody is the raw body of the non-2xx dependency response this error
+	// was raised for, so an adapter that knows the dependency's error format can read
+	// its code and details. Never serialized.
+	DownstreamBody []byte `json:"-"`
 }
 
 func (e *HTTPError) WithDescription(extCode string, params ...interface{}) *HTTPError {
