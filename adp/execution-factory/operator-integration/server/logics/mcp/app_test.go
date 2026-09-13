@@ -18,8 +18,8 @@ import (
 )
 
 // The app endpoint's URL names only the server, so it serves what is released, like the proxy.
-// The version picks the released deployment and the instance that publishing replaces; without it
-// the endpoint looked up version 0, which matches any deployment and is never evicted (#1525).
+// The version picks the released deployment by key; without it the endpoint looked up version 0,
+// which matches any deployment, the draft's included, and queries them all on every request (#1525).
 func TestGetMCPInstanceConfigResolvesTheReleasedVersion(t *testing.T) {
 	Convey("tool_imported 的 MCP Server:app 端点按发布版本取实例", t, func() {
 		ctrl := gomock.NewController(t)

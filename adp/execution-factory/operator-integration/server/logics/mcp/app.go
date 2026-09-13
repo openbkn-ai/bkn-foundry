@@ -46,8 +46,8 @@ func (s *mcpServiceImpl) GetMCPInstanceConfig(ctx context.Context, mcpID string,
 			Mode:    mode,
 			URL:     "",
 			Headers: utils.JSONToObject[map[string]string](release.Headers),
-			// Serve the released version, as the proxy does. Version 0 matches any deployment,
-			// the draft's included, and its cached instance is never replaced on publish.
+			// Serve the released version, as the proxy does. Version 0 matches any deployment, the
+			// draft's included, and reads every deployment's config on every request.
 			Version: release.Version,
 		}
 	default:
