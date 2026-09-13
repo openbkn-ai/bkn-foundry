@@ -162,6 +162,93 @@ func TestAuthorizeSubgraphBySourceFiltersDeniedCandidatePath(t *testing.T) {
 	}
 }
 
+// A path may walk a relation against its definition. Authorization used to demand
+// that every edge run from the relation's source to its target, so with query
+// authorization on, every backward hop was refused as outside the published model.
+func TestAuthorizeSubgraphByTypePathAcceptsBackwardEdge(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	permissions := omock.NewMockPermissionService(ctrl)
+	service := &queryAuthorizationService{models: models, permissions: permissions}
+
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "user").Return(
+		publishedObjectType("kn-a", "user", "user-resource"), true, nil)
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "order").Return(
+		publishedObjectType("kn-a", "order", "order-resource"), true, nil)
+	models.EXPECT().GetRelationType(gomock.Any(), "kn-a", "main", "rel_order_user").Return(
+		orderUserRelation(), true, nil)
+	permissions.EXPECT().FilterQueryData(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, requested []interfaces.PermissionResource) ([]interfaces.PermissionResource, error) {
+			return requested, nil
+		})
+
+	query := userOrderPathQuery(interfaces.TypeEdge{
+		RelationTypeId: "rel_order_user", SourceObjectTypeId: "user", TargetObjectTypeId: "order",
+	})
+	if err := service.AuthorizeSubgraphByTypePath(context.Background(), query); err != nil {
+		t.Fatalf("AuthorizeSubgraphByTypePath() error = %v", err)
+	}
+	if len(query.Paths.TypePaths) != 1 {
+		t.Fatalf("retained paths = %d, want 1", len(query.Paths.TypePaths))
+	}
+}
+
+func TestAuthorizeSubgraphByTypePathRejectsEdgeThatCannotWalkRelation(t *testing.T) {
+	tests := []struct {
+		name     string
+		relation interfaces.RelationType
+		edge     interfaces.TypeEdge
+	}{
+		{
+			name: "endpoints are not the relation's ends",
+			relation: interfaces.RelationType{RTID: "rel_address_user", Type: interfaces.RELATION_TYPE_DIRECT,
+				SourceObjectTypeID: "user_address", TargetObjectTypeID: "user"},
+			edge: interfaces.TypeEdge{RelationTypeId: "rel_address_user", SourceObjectTypeId: "user", TargetObjectTypeId: "order"},
+		},
+		{
+			name:     "declared direction contradicts the endpoints",
+			relation: orderUserRelation(),
+			edge: interfaces.TypeEdge{RelationTypeId: "rel_order_user", SourceObjectTypeId: "user", TargetObjectTypeId: "order",
+				Direction: interfaces.DIRECTION_FORWARD},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			models := omock.NewMockOntologyManagerAccess(ctrl)
+			permissions := omock.NewMockPermissionService(ctrl)
+			service := &queryAuthorizationService{models: models, permissions: permissions}
+
+			models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", gomock.Any()).DoAndReturn(
+				func(_ context.Context, knID, _ string, objectTypeID string) (interfaces.ObjectType, bool, error) {
+					return publishedObjectType(knID, objectTypeID, objectTypeID+"-resource"), true, nil
+				}).Times(2)
+			models.EXPECT().GetRelationType(gomock.Any(), "kn-a", "main", tt.relation.RTID).Return(tt.relation, true, nil)
+
+			err := service.AuthorizeSubgraphByTypePath(context.Background(), userOrderPathQuery(tt.edge))
+			var httpErr *rest.HTTPError
+			if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusBadRequest {
+				t.Fatalf("AuthorizeSubgraphByTypePath() error = %v, want 400", err)
+			}
+		})
+	}
+}
+
+func orderUserRelation() interfaces.RelationType {
+	return interfaces.RelationType{RTID: "rel_order_user", Type: interfaces.RELATION_TYPE_DIRECT,
+		SourceObjectTypeID: "order", TargetObjectTypeID: "user"}
+}
+
+func userOrderPathQuery(edge interfaces.TypeEdge) *interfaces.SubGraphQueryBaseOnTypePath {
+	return &interfaces.SubGraphQueryBaseOnTypePath{
+		KNID: "kn-a", Branch: "main",
+		Paths: interfaces.QueryRelationTypePaths{TypePaths: []interfaces.QueryRelationTypePath{{
+			ObjectTypes: []interfaces.ObjectTypeWithKeyField{{OTID: "user"}, {OTID: "order"}},
+			Edges:       []interfaces.TypeEdge{edge},
+		}}},
+	}
+}
+
 func publishedObjectType(knID, objectTypeID, resourceID string) interfaces.ObjectType {
 	return interfaces.ObjectType{
 		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{

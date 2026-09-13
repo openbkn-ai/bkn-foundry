@@ -154,12 +154,44 @@ type RelationTypePath struct {
 	ID int `json:"-"` // Conceptual-path ID used by subsequent object-path quota enforcement.
 }
 
+// TypeEdge is one hop of a path. SourceObjectTypeId and TargetObjectTypeId are the
+// object types the hop walks from and to, not the relation type's own source and
+// target: walking a relation against its definition swaps them.
 type TypeEdge struct {
 	RelationTypeId     string       `json:"relation_type_id"`
 	RelationType       RelationType `json:"relation_type"`
 	SourceObjectTypeId string       `json:"source_object_type_id"`
 	TargetObjectTypeId string       `json:"target_object_type_id"`
 	Direction          string       `json:"direction"`
+}
+
+// TraversalDirection reports how the edge walks relationType: forward from the
+// relation's source to its target, backward the other way. ok is false when the
+// edge's endpoints are not the two ends of relationType, or contradict an explicit
+// Direction.
+//
+// Endpoints alone cannot tell the two apart on a relation whose source and target
+// are the same object type, so an unset Direction resolves to forward there, which
+// is what path queries have always done; Direction backward is the only way to walk
+// such a relation in reverse.
+func (e TypeEdge) TraversalDirection(relationType RelationType) (direction string, ok bool) {
+	forward := e.SourceObjectTypeId == relationType.SourceObjectTypeID &&
+		e.TargetObjectTypeId == relationType.TargetObjectTypeID
+	backward := e.SourceObjectTypeId == relationType.TargetObjectTypeID &&
+		e.TargetObjectTypeId == relationType.SourceObjectTypeID
+	switch e.Direction {
+	case DIRECTION_FORWARD:
+		return DIRECTION_FORWARD, forward
+	case DIRECTION_BACKWARD:
+		return DIRECTION_BACKWARD, backward
+	}
+	if forward {
+		return DIRECTION_FORWARD, true
+	}
+	if backward {
+		return DIRECTION_BACKWARD, true
+	}
+	return "", false
 }
 
 type LevelObject struct {

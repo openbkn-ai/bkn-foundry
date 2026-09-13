@@ -236,53 +236,63 @@ func validateSubgraphQueryByPathRequest(ctx context.Context, query *interfaces.S
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_TypePathRelationTypes)
 		}
 
-		// 3. Validate edge identifiers and their positions in the path.
-		for i, edge := range path.Edges {
-			// Relation-type existence is validated by the service.
+		// 3. A path of n edges walks n+1 nodes. Nodes past that have always been ignored
+		// and stay accepted; too few used to index past the end of object_types.
+		if len(path.ObjectTypes) < len(path.Edges)+1 {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest,
+				oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).
+				WithErrorDetails(locale.ValidationDetail(ctx, "PathNodeCountMismatch", map[string]any{
+					"edges": len(path.Edges), "expected": len(path.Edges) + 1, "actual": len(path.ObjectTypes),
+				}))
+		}
+		for i := 0; i <= len(path.Edges); i++ {
+			// Object-type existence is validated by the service.
+			if path.ObjectTypes[i].OTID == "" {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest,
+					oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).
+					WithErrorDetails(locale.ValidationDetail(ctx, "PathNodeIDRequired", map[string]any{"index": i + 1}))
+			}
+		}
+
+		// 4. Validate each edge against the nodes it sits between.
+		for i := range path.Edges {
+			edge := &query.Paths.TypePaths[pathIndex].Edges[i]
+			// Relation-type existence, and whether the edge can walk it, are validated by the service.
 			if edge.RelationTypeId == "" {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
 					WithErrorDetails(locale.ValidationDetail(ctx, "RelationTypeIDRequired", map[string]any{"index": i + 1}))
 			}
-			// Object-type existence is validated by the service.
-			if edge.SourceObjectTypeId == "" {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
-					WithErrorDetails(locale.ValidationDetail(ctx, "SourceObjectTypeIDRequired", map[string]any{"index": i + 1}))
-			}
-			// Require the target object-type ID.
-			if edge.TargetObjectTypeId == "" {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
-					WithErrorDetails(locale.ValidationDetail(ctx, "TargetObjectTypeIDRequired", map[string]any{"index": i + 1}))
+			if edge.Direction != "" && edge.Direction != interfaces.DIRECTION_FORWARD &&
+				edge.Direction != interfaces.DIRECTION_BACKWARD {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest,
+					oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).
+					WithErrorDetails(locale.ValidationDetail(ctx, "EdgeDirectionInvalid", map[string]any{
+						"index": i + 1, "value": edge.Direction,
+					}))
 			}
 
-			// The source of edge i must equal object type i.
-			if edge.SourceObjectTypeId != path.ObjectTypes[i].OTID {
+			// The endpoints are the nodes this hop walks from and to, so both follow from
+			// the path: an omitted one is filled in, a supplied one must agree.
+			from, to := path.ObjectTypes[i].OTID, path.ObjectTypes[i+1].OTID
+			givenFrom, givenTo := edge.SourceObjectTypeId, edge.TargetObjectTypeId
+			if givenFrom == "" {
+				givenFrom = from
+			}
+			if givenTo == "" {
+				givenTo = to
+			}
+			if givenFrom != from || givenTo != to {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest,
 					oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).
-					WithErrorDetails(locale.ValidationDetail(ctx, "EdgeSourceMismatch", map[string]any{
-						"index": i, "actual": edge.SourceObjectTypeId, "position": i, "expected": path.ObjectTypes[i].OTID,
+					WithErrorDetails(locale.ValidationDetail(ctx, "EdgeEndpointsMismatch", map[string]any{
+						"index": i + 1, "relation": edge.RelationTypeId,
+						"expectedFrom": from, "expectedTo": to, "from": givenFrom, "to": givenTo,
 					}))
 			}
-			// The target of edge i must equal object type i+1.
-			if edge.TargetObjectTypeId != path.ObjectTypes[i+1].OTID {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest,
-					oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).
-					WithErrorDetails(locale.ValidationDetail(ctx, "EdgeTargetMismatch", map[string]any{
-						"index": i, "actual": edge.TargetObjectTypeId, "position": i + 1, "expected": path.ObjectTypes[i+1].OTID,
-					}))
-			}
-			// Consecutive edges must connect.
-			if i > 0 {
-				if edge.SourceObjectTypeId != path.Edges[i-1].TargetObjectTypeId {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest,
-						oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).
-						WithErrorDetails(locale.ValidationDetail(ctx, "DisconnectedPath", map[string]any{
-							"index": i, "actual": edge.SourceObjectTypeId, "expected": path.Edges[i-1].TargetObjectTypeId,
-						}))
-				}
-			}
+			edge.SourceObjectTypeId, edge.TargetObjectTypeId = from, to
 		}
 
-		// 4. Decode and validate each node's filter and pagination configuration.
+		// 5. Decode and validate each node's filter and pagination configuration.
 		for i := range path.ObjectTypes {
 			var actualCond *cond.CondCfg
 			err := mapstructure.Decode(path.ObjectTypes[i].Condition, &actualCond)
