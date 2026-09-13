@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"sync"
 
 	"github.com/bytedance/sonic"
@@ -209,6 +210,62 @@ func (o *openSearchAccess) InsertData(ctx context.Context, indexName string, doc
 	}
 
 	return nil
+}
+
+// updateRetryOnConflict bounds how often OpenSearch re-applies an update that raced with
+// another write to the same document.
+const updateRetryOnConflict = 3
+
+// UpdateData applies a partial update ({"doc": ...} or {"script": ...}) to one document.
+// OpenSearch applies it to the latest version of the document and retries on version
+// conflicts, so concurrent writers never overwrite each other's fields. The index is
+// refreshed so the change is immediately searchable, matching InsertData.
+func (o *openSearchAccess) UpdateData(ctx context.Context, indexName string, docID string, body any) (string, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "UpdateData")
+	defer span.End()
+
+	span.SetAttributes(
+		attr.Key("index_name").String(indexName),
+		attr.Key("doc_id").String(docID))
+
+	bodyBytes, err := sonic.Marshal(body)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal update body: %w", err)
+	}
+
+	retryOnConflict := updateRetryOnConflict
+	req := opensearchapi.UpdateRequest{
+		Index:           indexName,
+		DocumentID:      docID,
+		Body:            bytes.NewReader(bodyBytes),
+		Refresh:         "true",
+		RetryOnConflict: &retryOnConflict,
+	}
+
+	res, err := req.Do(ctx, o.client)
+	if err != nil {
+		return "", fmt.Errorf("failed to update data %s in index %s: %w", docID, indexName, err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode == http.StatusNotFound {
+		return "", fmt.Errorf("update data %s in index %s: %w", docID, indexName, interfaces.ErrDocumentNotFound)
+	}
+	if res.IsError() {
+		return "", fmt.Errorf("update data %s in index %s failed: %s, %s", docID, indexName, res.Status(), res.String())
+	}
+
+	resBody, err := io.ReadAll(res.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read update response: %w", err)
+	}
+	var updateResult struct {
+		Result string `json:"result"`
+	}
+	if err := sonic.Unmarshal(resBody, &updateResult); err != nil {
+		return "", fmt.Errorf("failed to decode update response: %w", err)
+	}
+	return updateResult.Result, nil
 }
 
 // BulkInsertData writes data to an index in batches.

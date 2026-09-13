@@ -169,3 +169,18 @@ func (mr *MockOpenSearchAccessMockRecorder) SearchData(ctx, indexName, query any
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchData", reflect.TypeOf((*MockOpenSearchAccess)(nil).SearchData), ctx, indexName, query)
 }
+
+// UpdateData mocks base method.
+func (m *MockOpenSearchAccess) UpdateData(ctx context.Context, indexName, docID string, body any) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateData", ctx, indexName, docID, body)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateData indicates an expected call of UpdateData.
+func (mr *MockOpenSearchAccessMockRecorder) UpdateData(ctx, indexName, docID, body any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateData", reflect.TypeOf((*MockOpenSearchAccess)(nil).UpdateData), ctx, indexName, docID, body)
+}

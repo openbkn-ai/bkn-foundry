@@ -8,6 +8,16 @@ package interfaces
 
 import (
 	"context"
+	"errors"
+)
+
+// ErrDocumentNotFound is returned by UpdateData when the target document does not exist.
+var ErrDocumentNotFound = errors.New("document not found")
+
+// Update results reported by OpenSearch for a single-document update.
+const (
+	UpdateResultUpdated = "updated"
+	UpdateResultNoop    = "noop"
 )
 
 type Hit struct {
@@ -30,6 +40,13 @@ type OpenSearchAccess interface {
 
 	// InsertData writes data to an index with the specified document ID.
 	InsertData(ctx context.Context, indexName string, docID string, data any) error
+
+	// UpdateData applies a partial update to one existing document. body is an OpenSearch
+	// _update body, either {"doc": {...}} or {"script": {...}}; the update is applied to
+	// the latest version of the document without the caller reading it first. It returns
+	// the result OpenSearch reports (UpdateResultUpdated, UpdateResultNoop, ...) and
+	// ErrDocumentNotFound when the document does not exist.
+	UpdateData(ctx context.Context, indexName string, docID string, body any) (string, error)
 
 	// BulkInsertData writes data to an index in batches.
 	BulkInsertData(ctx context.Context, indexName string, dataList []any) error

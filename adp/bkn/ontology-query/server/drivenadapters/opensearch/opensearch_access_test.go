@@ -21,6 +21,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	"ontology-query/common"
+	"ontology-query/interfaces"
 )
 
 var (
@@ -289,6 +290,91 @@ func Test_openSearchAccess_InsertData(t *testing.T) {
 			})
 
 			err := osa3.InsertData(testCtx, "test-index", "doc1", data)
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
+func Test_openSearchAccess_UpdateData(t *testing.T) {
+	Convey("test UpdateData\n", t, func() {
+		appSetting := &common.AppSetting{}
+		body := map[string]any{"doc": map[string]any{"success_count": 5}}
+
+		Convey("UpdateData sends a partial update and reports the result\n", func() {
+			var sent map[string]any
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					So(req.Method, ShouldEqual, "POST")
+					So(req.URL.Path, ShouldEqual, "/test-index/_update/doc1")
+					So(req.URL.Query().Get("refresh"), ShouldEqual, "true")
+					So(req.URL.Query().Get("retry_on_conflict"), ShouldEqual, "3")
+					raw, _ := io.ReadAll(req.Body)
+					_ = json.Unmarshal(raw, &sent)
+					return &http.Response{
+						StatusCode: 200,
+						Body:       io.NopCloser(strings.NewReader(`{"_id": "doc1", "result": "updated"}`)),
+					}, nil
+				},
+			})
+
+			result, err := osa.UpdateData(testCtx, "test-index", "doc1", body)
+			So(err, ShouldBeNil)
+			So(result, ShouldEqual, interfaces.UpdateResultUpdated)
+			So(sent, ShouldResemble, map[string]any{"doc": map[string]any{"success_count": float64(5)}})
+		})
+
+		Convey("UpdateData reports noop when a script leaves the document untouched\n", func() {
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: 200,
+						Body:       io.NopCloser(strings.NewReader(`{"_id": "doc1", "result": "noop"}`)),
+					}, nil
+				},
+			})
+
+			result, err := osa.UpdateData(testCtx, "test-index", "doc1", body)
+			So(err, ShouldBeNil)
+			So(result, ShouldEqual, interfaces.UpdateResultNoop)
+		})
+
+		Convey("UpdateData maps a missing document to ErrDocumentNotFound\n", func() {
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: 404,
+						Body:       io.NopCloser(strings.NewReader(`{"error": {"type": "document_missing_exception"}}`)),
+					}, nil
+				},
+			})
+
+			_, err := osa.UpdateData(testCtx, "test-index", "doc1", body)
+			So(errors.Is(err, interfaces.ErrDocumentNotFound), ShouldBeTrue)
+		})
+
+		Convey("UpdateData Failed - response error\n", func() {
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: 400,
+						Body:       io.NopCloser(strings.NewReader(`{"error": "bad request"}`)),
+					}, nil
+				},
+			})
+
+			_, err := osa.UpdateData(testCtx, "test-index", "doc1", body)
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, interfaces.ErrDocumentNotFound), ShouldBeFalse)
+		})
+
+		Convey("UpdateData Failed - HTTP error\n", func() {
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					return nil, errors.New("network error")
+				},
+			})
+
+			_, err := osa.UpdateData(testCtx, "test-index", "doc1", body)
 			So(err, ShouldNotBeNil)
 		})
 	})
