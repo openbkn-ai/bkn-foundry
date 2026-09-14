@@ -810,10 +810,15 @@ func normalizeSpec(spec SourceSpec) (SourceSpec, error) {
 		len(spec.SourceID) > 128 || len(spec.KNID) > 128 || len(spec.BindingType) > 64 || len(spec.BindingID) > 128 {
 		return SourceSpec{}, ErrInvalidRequest
 	}
+	// A Skill mounted on a network is read as the network's proxy. The
+	// execution factory accepts execute as a read grant on a Skill, and Context
+	// Loader only reads as the proxy; view is not accepted because a delegator
+	// allowed to run a built-in Skill often lacks it.
 	allowed := map[string]map[string]bool{
 		"resource": {"view_detail": true, "query_data": true},
 		"tool_box": {"execute": true},
 		"mcp":      {"execute": true},
+		"skill":    {"execute": true},
 	}
 	if !allowed[spec.ResourceType][spec.Operation] {
 		return SourceSpec{}, ErrInvalidRequest

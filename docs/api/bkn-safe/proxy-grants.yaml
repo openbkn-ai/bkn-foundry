@@ -20,6 +20,11 @@ info:
     Manual or legacy Allow policies that predate the source are preserved and reported as
     untracked during reconciliation, but an untracked policy alone does not authorize a managed
     proxy.
+
+    Accepted resource type and operation pairs: `resource` with `view_detail` or `query_data`;
+    `tool_box`, `mcp` and `skill` with `execute`. Any other pair is rejected with 400. A `skill`
+    source lets Context Loader read a Skill mounted on the network as the network's proxy; the
+    execution factory's Skill read accepts `execute`. Context Loader never runs a Skill as the proxy.
 servers:
   - url: /api/safe/in/v1
 security: []
@@ -351,7 +356,7 @@ components:
       properties:
         resource_type:
           type: string
-          enum: [resource, tool_box, mcp]
+          enum: [resource, tool_box, mcp, skill]
         resource_id:
           type: string
           minLength: 1
@@ -406,7 +411,7 @@ components:
           type: string
         resource_type:
           type: string
-          enum: [resource, tool_box, mcp]
+          enum: [resource, tool_box, mcp, skill]
         resource_id:
           type: string
         operation:
@@ -481,7 +486,7 @@ components:
       properties:
         resource_type:
           type: string
-          enum: [resource, tool_box, mcp]
+          enum: [resource, tool_box, mcp, skill]
         resource_id:
           type: string
           minLength: 1

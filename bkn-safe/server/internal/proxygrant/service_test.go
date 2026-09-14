@@ -434,6 +434,57 @@ func TestKNBindingDerivesExecuteOperationsWithoutAuthorize(t *testing.T) {
 	}
 }
 
+func TestSkillCapabilityBindingAcceptsOnlyExecute(t *testing.T) {
+	f := newFixture(t)
+	if err := f.db.Create(&model.ResourceType{ID: "skill", Name: "skill"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, operation := range []string{"view", "execute"} {
+		if err := f.db.Create(&model.Operation{ResourceTypeID: "skill", ID: operation, Name: operation}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.grantTypedOperations(t, f.grantor, "skill", "skill-1", "view", "execute")
+	source := func(operation string) proxygrant.SourceSpec {
+		return proxygrant.SourceSpec{
+			ResourceType: "skill", ResourceID: "skill-1", Operation: operation,
+			SourceType: proxygrant.SourceTypeKNProxyBinding, SourceID: "source-skill",
+			KNID: "kn-1", BindingType: "capability_binding", BindingID: "binding-skill",
+		}
+	}
+
+	// view is refused even though the delegator holds it: the proxy reads a
+	// mounted Skill with execute, the grant a built-in Skill's user holds.
+	if _, err := f.service.Sync(t.Context(), proxygrant.SyncRequest{
+		ProxyAccountID: f.proxyID, GrantorID: f.grantor, Sources: []proxygrant.SourceSpec{source("view")},
+	}); !errors.Is(err, proxygrant.ErrInvalidRequest) {
+		t.Fatalf("skill view Sync() error = %v, want invalid request", err)
+	}
+
+	const editor = "editor-without-skill"
+	if err := f.db.Create(&model.User{ID: editor, Account: editor, Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	checked, err := f.service.CheckMany(t.Context(), proxygrant.BatchCheckRequest{
+		ProxyAccountID: f.proxyID, GrantorID: editor, Sources: []proxygrant.SourceSpec{source("execute")},
+	})
+	if err != nil || len(checked.DeniedSources) != 1 || checked.DeniedSources[0].ResourceType != "skill" {
+		t.Fatalf("CheckMany() by an editor without the skill = (%+v, %v), want the skill source denied", checked, err)
+	}
+
+	if _, err := f.service.Sync(t.Context(), proxygrant.SyncRequest{
+		ProxyAccountID: f.proxyID, GrantorID: f.grantor, Sources: []proxygrant.SourceSpec{source("execute")},
+	}); err != nil {
+		t.Fatalf("skill execute Sync() error = %v", err)
+	}
+	if allowed, err := f.enforcer.Check(f.proxyID, "skill", "skill-1", "execute"); err != nil || !allowed {
+		t.Fatalf("proxy skill execute = %v, err %v", allowed, err)
+	}
+	if allowed, err := f.enforcer.Check(f.proxyID, "skill", "skill-1", "view"); err != nil || allowed {
+		t.Fatalf("proxy skill view = %v, err %v; want only the synchronized operation", allowed, err)
+	}
+}
+
 func TestKNBindingRejectsAuthorizeWithoutOperation(t *testing.T) {
 	f := newFixture(t)
 	f.authorize(t, "r-1")
