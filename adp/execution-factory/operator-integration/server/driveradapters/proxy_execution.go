@@ -91,6 +91,11 @@ func proxyExecutionContextFromHeaders(c *gin.Context) (interfaces.ProxyExecution
 		Operation:   strings.TrimSpace(c.GetHeader(interfaces.HTTPHeaderBKNOperation)),
 		ExecutionID: strings.TrimSpace(c.GetHeader(interfaces.HTTPHeaderBKNExecutionID)),
 	}
+	// Marked before any check, so a refusal on a definition route is audited as
+	// a definition read too and the audit filtered by access shows both outcomes.
+	if isProxyDefinitionRoute(c) {
+		request.Access = interfaces.ProxyAccessDefinitionRead
+	}
 	version, err := strconv.ParseUint(strings.TrimSpace(c.GetHeader(interfaces.HTTPHeaderBKNProxyVersion)), 10, 64)
 	request.ProxyVersion = version
 	if err != nil || version == 0 {
@@ -137,7 +142,6 @@ func proxyExecutionContextFromHeaders(c *gin.Context) (interfaces.ProxyExecution
 			request.ChildType != interfaces.ProxyChildTypeAction || request.ExecutionID != "" {
 			return request, stderrors.New("proxy target does not match the Tool definition route")
 		}
-		request.Access = interfaces.ProxyAccessDefinitionRead
 	case c.Request.Method == http.MethodGet &&
 		strings.HasSuffix(c.FullPath(), "/mcp/proxy/:mcp_id/tool/definition"):
 		if request.TargetType != interfaces.ProxyTargetTypeMCP ||
@@ -145,11 +149,18 @@ func proxyExecutionContextFromHeaders(c *gin.Context) (interfaces.ProxyExecution
 			request.ChildType != interfaces.ProxyChildTypeAction || request.ExecutionID != "" {
 			return request, stderrors.New("proxy target does not match the MCP definition route")
 		}
-		request.Access = interfaces.ProxyAccessDefinitionRead
 	default:
 		return request, stderrors.New("managed proxies may use only Tool or MCP execution and definition routes")
 	}
 	return request, nil
+}
+
+// isProxyDefinitionRoute reports whether the request addresses one of the two
+// action-type definition read routes.
+func isProxyDefinitionRoute(c *gin.Context) bool {
+	return c.Request.Method == http.MethodGet &&
+		(strings.HasSuffix(c.FullPath(), "/tool-box/:box_id/tool/:tool_id/definition") ||
+			strings.HasSuffix(c.FullPath(), "/mcp/proxy/:mcp_id/tool/definition"))
 }
 
 func rejectProxyExecution(

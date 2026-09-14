@@ -8,6 +8,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -221,6 +222,15 @@ func TestManagedProxyDefinitionReadRejectsContextsOutsideTheActionBinding(t *tes
 			if len(recorder.events) != 1 || recorder.events[0].Decision != "deny" ||
 				recorder.events[0].Reason != "invalid_trusted_context" {
 				t.Fatalf("audit events = %+v", recorder.events)
+			}
+			// A refusal on a definition route carries the definition-read mark,
+			// so the audit filtered by access shows denials as well as allows.
+			wantAccess := ""
+			if strings.Contains(test.path, "/definition") {
+				wantAccess = interfaces.ProxyAccessDefinitionRead
+			}
+			if recorder.events[0].Access != wantAccess {
+				t.Fatalf("audit access = %q, want %q", recorder.events[0].Access, wantAccess)
 			}
 		})
 	}
