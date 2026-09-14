@@ -299,6 +299,33 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 
 		require.NoError(t, ds.DeleteDocumentsByQuery(ctx, resource, params))
 	})
+
+	t.Run("delete by query returns bad request for an invalid condition", func(t *testing.T) {
+		ds, _ := newDatasetServiceMock(t)
+		resource := &interfaces.Resource{
+			ID:             "dataset-1",
+			LocalIndexName: "dataset-1",
+			SchemaDefinition: []*interfaces.Property{{
+				Name: "content",
+				Type: interfaces.DataType_Text,
+			}},
+		}
+		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{
+			Name:      "missing",
+			Operation: filter_condition.OperationEqual,
+			ValueOptCfg: interfaces.ValueOptCfg{
+				ValueFrom: interfaces.ValueFrom_Const,
+				Value:     "value",
+			},
+		}}
+
+		err := ds.DeleteDocumentsByQuery(ctx, resource, params)
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.BaseError.ErrorCode)
+	})
 }
 
 func newDatasetServiceMock(t *testing.T) (*datasetService, *vmock.MockLocalIndexManager) {

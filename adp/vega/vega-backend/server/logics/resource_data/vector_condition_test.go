@@ -48,11 +48,34 @@ func TestResolveVectorConditionsResolvesModelIDBeforeVectorizing(t *testing.T) {
 		Return([]*interfaces.VectorResp{{Vector: []float32{0.1, 0.2}}}, nil)
 
 	rds := &resourceDataService{mfs: mfs}
-	err := rds.resolveVectorConditions(context.Background(), resource, cfg)
+	err := rds.resolveVectorConditions(context.Background(), resource, cfg, false)
 
 	require.NoError(t, err)
 	assert.Equal(t, local_index.VectorFieldName("content"), cfg.Name)
 	assert.Equal(t, []float32{0.1, 0.2}, cfg.Value)
+}
+
+func TestResolveVectorConditionsRejectsForcedSourceQueries(t *testing.T) {
+	resource := &interfaces.Resource{
+		Name:             "orders",
+		Category:         interfaces.ResourceCategoryTable,
+		LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+		LocalIndexName:   "managed-index",
+	}
+	for _, value := range []any{"search text", []float32{0.1, 0.2}} {
+		cfg := &interfaces.FilterCondCfg{
+			Name:      "content",
+			Operation: filter_condition.OperationKnnVector,
+			ValueOptCfg: interfaces.ValueOptCfg{
+				Value: value,
+			},
+		}
+
+		err := (&resourceDataService{}).resolveVectorConditions(
+			context.Background(), resource, cfg, true)
+
+		require.ErrorContains(t, err, "ignore_local_index is true")
+	}
 }
 
 func TestVectorFieldForReusesReferencedVectorField(t *testing.T) {

@@ -306,13 +306,17 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 	actualFilterCond, err := filter_condition.NewFilterCondition(ctx, params.FilterCondCfg, fieldMap)
 	if err != nil {
 		span.SetStatus(codes.Error, "Build dataset delete condition failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails(err.Error())
 	}
 	params.ActualFilterCond = actualFilterCond
 	// Call the local index store to batch delete documents
 	if err := ds.lim.DeleteDocumentsByQuery(ctx, res.LocalIndexName, res, params); err != nil {
 		span.SetStatus(codes.Error, "Delete dataset documents failed")
+		if reason, ok := filter_condition.RequestSideQueryError(err); ok {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+				WithErrorDetails(reason)
+		}
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
 			WithErrorDetails(err.Error())
 	}

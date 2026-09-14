@@ -27,20 +27,27 @@ import (
 //
 // When the condition is already a vector (the value is not a string), it is released as is: the old path of the data view has calculated the vector by itself.
 func (rds *resourceDataService) resolveVectorConditions(ctx context.Context,
-	resource *interfaces.Resource, cfg *interfaces.FilterCondCfg) error {
+	resource *interfaces.Resource, cfg *interfaces.FilterCondCfg, ignoreLocalIndex bool) error {
 
 	if cfg == nil {
 		return nil
 	}
 
 	for _, sub := range cfg.SubConds {
-		if err := rds.resolveVectorConditions(ctx, resource, sub); err != nil {
+		if err := rds.resolveVectorConditions(ctx, resource, sub, ignoreLocalIndex); err != nil {
 			return err
 		}
 	}
 
 	if cfg.Operation != filter_condition.OperationKnnVector {
 		return nil
+	}
+	if resource != nil && resource.Category == interfaces.ResourceCategoryTable &&
+		(ignoreLocalIndex || !resourcelogic.HasAvailableLocalIndex(resource)) {
+		if ignoreLocalIndex {
+			return fmt.Errorf("condition [knn_vector] cannot use the local index while ignore_local_index is true")
+		}
+		return fmt.Errorf("condition [knn_vector] resource '%s' has no local index; build one before vector search", resource.Name)
 	}
 	text, ok := cfg.Value.(string)
 	if !ok {

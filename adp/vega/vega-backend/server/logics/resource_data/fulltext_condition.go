@@ -24,28 +24,33 @@ import (
 //
 // Vector retrieval does not go here: resolveVectorConditions has already provided more precise judgments in the field parsing stage
 // (Whether a certain field has vector characteristics or not), this function only fills in half of the full text.
-func validateFulltextConditions(resource *interfaces.Resource, cfg *interfaces.FilterCondCfg) error {
+func validateFulltextConditions(resource *interfaces.Resource, cfg *interfaces.FilterCondCfg, ignoreLocalIndex bool) error {
 	if resource == nil || cfg == nil {
 		return nil
 	}
 	// The index category and the dataset themselves are stored by OpenSearch and do not rely on the local index produced by the build task.
-	if resource.Category != interfaces.ResourceCategoryTable || resourcelogic.HasAvailableLocalIndex(resource) {
+	if resource.Category != interfaces.ResourceCategoryTable ||
+		(resourcelogic.HasAvailableLocalIndex(resource) && !ignoreLocalIndex) {
 		return nil
 	}
-	return rejectFulltext(resource, cfg)
+	return rejectFulltext(resource, cfg, ignoreLocalIndex)
 }
 
-func rejectFulltext(resource *interfaces.Resource, cfg *interfaces.FilterCondCfg) error {
+func rejectFulltext(resource *interfaces.Resource, cfg *interfaces.FilterCondCfg, ignoreLocalIndex bool) error {
 	if cfg == nil {
 		return nil
 	}
 	for _, sub := range cfg.SubConds {
-		if err := rejectFulltext(resource, sub); err != nil {
+		if err := rejectFulltext(resource, sub, ignoreLocalIndex); err != nil {
 			return err
 		}
 	}
 	if !filter_condition.IsFulltextOperation(cfg.Operation) {
 		return nil
+	}
+	if ignoreLocalIndex {
+		return fmt.Errorf("condition [%s] on field %q cannot use the local index while ignore_local_index is true",
+			cfg.Operation, cfg.Name)
 	}
 	return fmt.Errorf("condition [%s] on field %q: resource %q has no local index; build one before full-text search",
 		cfg.Operation, cfg.Name, resource.Name)
