@@ -227,7 +227,6 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
                 system=request.get("system", []),
                 tools=request.get("tools", None),
                 tool_choice=request.get("tool_choice", None),
-                thinking_mode=thinking_mode,
             )
             claude_client.trace_context = trace_context
             if stream:

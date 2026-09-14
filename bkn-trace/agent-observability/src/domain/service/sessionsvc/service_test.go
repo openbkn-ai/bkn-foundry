@@ -1028,6 +1028,45 @@ func TestEnsureOperationUsesStableLogicalKeyAndCanonicalInput(t *testing.T) {
 	}
 }
 
+func TestEnsureOperationReplaysLegacyFactWithoutCapabilityProfile(t *testing.T) {
+	t.Parallel()
+
+	service := newTestService()
+	owner := testOwner()
+	conversation := mustEnsureConversation(t, service, owner, "legacy-capability-profile")
+	interaction, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
+		Owner: owner, ConversationID: conversation.ID, IdempotencyKey: "start-legacy-capability-profile",
+	})
+	if err != nil {
+		t.Fatalf("start interaction: %v", err)
+	}
+	command := sessionsvc.EnsureOperationCommand{
+		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
+		OperationKey: "legacy-query", ToolName: "ontology-query", Input: operationInput("input"),
+		Required: true, LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+	}
+	legacy, _, err := service.EnsureOperation(context.Background(), command)
+	if err != nil {
+		t.Fatalf("create legacy operation: %v", err)
+	}
+	command.CapabilityProfile = &sessionvo.CapabilityProfile{
+		ManifestID: "openbkn.context-loader.mcp", ManifestVersion: "0.1.5",
+		CanonicalToolName: "ontology-query", ToolVersion: "1.0.0",
+		InputSchemaDigest: "sha256:input", OutputSchemaDigest: "sha256:output",
+		ExecutionRole: "semantic_query", EvidenceContract: "ontology_result/v1",
+		ChildEvidencePolicy: "cover_physical_descendants", MapperID: "ontology_result/v1",
+		MapperVersion: "1.0.0", MinimumTraceSchema: "3.0.0",
+		FailurePolicy: "preserve_execution_and_downgrade", Resolution: "matched",
+	}
+	replayed, _, err := service.EnsureOperation(context.Background(), command)
+	if err != nil {
+		t.Fatalf("replay legacy operation with current profile: %v", err)
+	}
+	if replayed.ID != legacy.ID {
+		t.Fatalf("legacy replay created another operation: %#v", replayed)
+	}
+}
+
 func TestEnsureOperationReportsCreatedDisposition(t *testing.T) {
 	t.Parallel()
 

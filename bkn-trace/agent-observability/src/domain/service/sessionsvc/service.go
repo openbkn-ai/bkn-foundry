@@ -1067,7 +1067,8 @@ func (s *Service) EnsureOperationWithDisposition(
 			existingFact, found := tx.FindOperationCallFact(existing.ID, factAttempt)
 			if !found || existingFact.Protocol != command.Protocol ||
 				existingFact.SourceModule != command.SourceModule ||
-				!sessionvo.CapabilityProfilesEqual(existingFact.CapabilityProfile, capabilityProfile) ||
+				(existingFact.CapabilityProfile != nil &&
+					!sessionvo.CapabilityProfilesEqual(existingFact.CapabilityProfile, capabilityProfile)) ||
 				!payloadEnvelopeEqual(existingFact.Input, input) {
 				return domainError(CodeIdempotencyConflict, "operation key was already used with different input")
 			}

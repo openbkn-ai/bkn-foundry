@@ -7,11 +7,14 @@
 package mcp
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
 	msdk "github.com/mark3labs/mcp-go/mcp"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/extension/mcptool"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
+	"github.com/openbkn-ai/licverify"
 )
 
 func TestCapabilityManifestCoversTheAssembledRuntimeCatalog(t *testing.T) {
@@ -114,5 +117,18 @@ func TestCapabilityManifestIncludesRegisteredExtensionsAsExecutionOnly(t *testin
 	if profile.Resolution != capabilityResolutionMatched || profile.ExecutionRole != "extension" ||
 		profile.EvidenceContract != "execution_only" || profile.ChildEvidencePolicy != "managed_children_only" {
 		t.Fatalf("registered extension did not receive a safe contract: %#v", profile)
+	}
+}
+
+func TestCapabilityProfileMatchesLicensedDecoratedToolSchema(t *testing.T) {
+	withSocket(t, entitlement.FixedGate(licverify.EditionEnterprise))
+	mcptool.Decorate(toolKeySearchSchema, searchSchemaDecorator())
+
+	var profile CapabilityProfile
+	if err := json.Unmarshal(capabilityProfileJSON(toolKeySearchSchema), &profile); err != nil {
+		t.Fatalf("decode capability profile: %v", err)
+	}
+	if profile.Resolution != capabilityResolutionMatched {
+		t.Fatalf("licensed decorated tool profile = %#v", profile)
 	}
 }

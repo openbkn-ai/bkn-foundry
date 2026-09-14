@@ -37,18 +37,7 @@ type CapabilityManifest struct {
 }
 
 func capabilityProfileJSON(toolName string) json.RawMessage {
-	input, output := tryLoadToolSchemas(loadMCPLocaleBundle(defaultMCPLocale), toolName)
-	if decorator, ok := mcptool.DecoratorFor(toolName); ok && decorator.Allowed() {
-		input = decorator.Patch(input)
-	}
-	if len(input) == 0 {
-		for _, extra := range mcptool.Extras() {
-			if extra.Name == toolName {
-				input, output = offerBKNContext(extra.Input), extra.Output
-				break
-			}
-		}
-	}
+	input, output := capabilityToolSchemas(loadMCPLocaleBundle(defaultMCPLocale), toolName)
 	profile := resolveCapabilityProfile(mustLoadCapabilityManifest(), msdk.Tool{
 		Name: toolName, RawInputSchema: input, RawOutputSchema: output,
 	})
@@ -57,6 +46,24 @@ func capabilityProfileJSON(toolName string) json.RawMessage {
 		panic("marshal capability profile: " + err.Error())
 	}
 	return raw
+}
+
+// capabilityToolSchemas is the exact schema surface advertised to a licensed
+// caller. The manifest must digest this same surface, otherwise an allowed
+// decorator appears as an unrecognised capability.
+func capabilityToolSchemas(locale *mcpLocaleBundle, toolName string) (json.RawMessage, json.RawMessage) {
+	input, output := tryLoadToolSchemas(locale, toolName)
+	if decorator, ok := mcptool.DecoratorFor(toolName); ok && decorator.Allowed() {
+		input = decorator.Patch(input)
+	}
+	if len(input) == 0 {
+		for _, extra := range mcptool.Extras() {
+			if extra.Name == toolName {
+				return offerBKNContext(extra.Input), extra.Output
+			}
+		}
+	}
+	return input, output
 }
 
 // CapabilityContract describes when one exact tool schema may produce
@@ -106,7 +113,7 @@ func mustLoadCapabilityManifest() CapabilityManifest {
 	tools := make([]CapabilityContract, 0, len(specs))
 	locale := loadMCPLocaleBundle(defaultMCPLocale)
 	for _, spec := range specs {
-		input, output := tryLoadToolSchemas(locale, spec.name)
+		input, output := capabilityToolSchemas(locale, spec.name)
 		tools = append(tools, CapabilityContract{
 			CanonicalToolName:   spec.name,
 			ToolVersion:         serverVersion,
