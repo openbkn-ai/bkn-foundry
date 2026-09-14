@@ -189,6 +189,40 @@ func TestGetRelationTypesByIDs_RefusesARelationTypeWithAHiddenEndpoint(t *testin
 	}
 }
 
+// TestReadableRelationTypes_AppliesTheReadRule pins the rule relation type paths reuse (#1553):
+// view_detail on the relation type itself, and at least one operation on both of its endpoints.
+func TestReadableRelationTypes_AppliesTheReadRule(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ps := bmock.NewMockPermissionService(ctrl)
+	objectTypes := endpointPermissions(nil)
+	ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, resourceType string, ids, visibility []string, allow bool,
+			candidates []string) (map[string]interfaces.PermissionResourceOps, error) {
+			if resourceType == interfaces.RESOURCE_TYPE_OBJECT_TYPE {
+				return objectTypes(ctx, resourceType, ids, visibility, allow, candidates)
+			}
+			matched := map[string]interfaces.PermissionResourceOps{}
+			for _, id := range ids {
+				// rt-query is granted query_data alone, which does not make it readable.
+				if id != "kn-1/rt-query" {
+					matched[id] = interfaces.PermissionResourceOps{ResourceID: id,
+						Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}}
+				}
+			}
+			return matched, nil
+		}).AnyTimes()
+
+	readable, err := ReadableRelationTypes(context.Background(), ps, "kn-1", endpointFixture())
+
+	if err != nil {
+		t.Fatalf("ReadableRelationTypes() error = %v", err)
+	}
+	// rt-out points at an object type the caller holds nothing on.
+	if got, want := relationIDs(readable), []string{"rt-in"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("ReadableRelationTypes() = %v, want %v", got, want)
+	}
+}
+
 // TestWithVisibleEndpointIDs_NarrowsSearchCandidatesInOrder covers the ids search restricts its
 // dataset query to, so a hidden relation type is neither returned nor counted.
 func TestWithVisibleEndpointIDs_NarrowsSearchCandidatesInOrder(t *testing.T) {

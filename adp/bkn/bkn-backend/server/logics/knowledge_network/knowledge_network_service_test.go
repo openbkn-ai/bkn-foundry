@@ -2033,7 +2033,7 @@ func Test_knowledgeNetworkService_GetRelationTypePaths(t *testing.T) {
 			So(len(paths), ShouldEqual, 1)
 		})
 
-		Convey("Child-only visibility cannot read the complete relation graph\n", func() {
+		Convey("Child-only visibility without the source object type cannot read the relation graph\n", func() {
 			query := interfaces.RelationTypePathsBaseOnSource{
 				KNID:              "kn1",
 				Branch:            interfaces.MAIN_BRANCH,
@@ -2046,6 +2046,10 @@ func Test_knowledgeNetworkService_GetRelationTypePaths(t *testing.T) {
 				ID:   "kn1",
 			}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).
 				Return(rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden))
+			// The caller holds nothing on the source object type (#1553).
+			ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+				[]string{"kn1/ot1"}, gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(map[string]interfaces.PermissionResourceOps{}, nil)
 
 			paths, err := service.GetRelationTypePaths(ctx, query)
 			So(err, ShouldNotBeNil)

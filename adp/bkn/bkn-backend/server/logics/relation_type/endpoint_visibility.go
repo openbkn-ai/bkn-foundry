@@ -24,6 +24,27 @@ import (
 func (rts *relationTypeService) withVisibleEndpoints(ctx context.Context, knID string,
 	relationTypes []*interfaces.RelationType) ([]*interfaces.RelationType, error) {
 
+	return keepVisibleEndpoints(ctx, rts.ps, knID, relationTypes)
+}
+
+// ReadableRelationTypes keeps, in order, the relation types the caller may read, by the rule every
+// relation type read applies: view_detail on the relation type itself, and at least one effective
+// operation on both of its endpoints. It serves callers outside this package that read relation
+// type definitions straight from storage, such as relation type paths (#1553).
+func ReadableRelationTypes(ctx context.Context, ps interfaces.PermissionService, knID string,
+	relationTypes []*interfaces.RelationType) ([]*interfaces.RelationType, error) {
+
+	readable, _, err := permission.FilterAndPaginateKNChildren(ctx, ps, interfaces.RESOURCE_TYPE_RELATION_TYPE,
+		knID, relationTypes, func(relationType *interfaces.RelationType) string { return relationType.RTID }, 0, -1)
+	if err != nil {
+		return nil, err
+	}
+	return keepVisibleEndpoints(ctx, ps, knID, readable)
+}
+
+func keepVisibleEndpoints(ctx context.Context, ps interfaces.PermissionService, knID string,
+	relationTypes []*interfaces.RelationType) ([]*interfaces.RelationType, error) {
+
 	if len(relationTypes) == 0 {
 		return relationTypes, nil
 	}
@@ -31,7 +52,7 @@ func (rts *relationTypeService) withVisibleEndpoints(ctx context.Context, knID s
 	for _, relationType := range relationTypes {
 		endpointIDs = append(endpointIDs, relationType.SourceObjectTypeID, relationType.TargetObjectTypeID)
 	}
-	visible, err := permission.VisibleReferencedObjectTypes(ctx, rts.ps, knID, endpointIDs)
+	visible, err := permission.VisibleReferencedObjectTypes(ctx, ps, knID, endpointIDs)
 	if err != nil {
 		return nil, err
 	}
