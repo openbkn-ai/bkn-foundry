@@ -648,8 +648,10 @@ func Test_ObjectTypeRestHandler_GetObjectTypes(t *testing.T) {
 		url := "/api/bkn-backend/v1/knowledge-networks/" + knID + "/object-types/" + otIDs
 
 		Convey("Success GetObjectTypes\n", func() {
+			objectTypes := []*interfaces.ObjectType{}
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
-			ots.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), knID, gomock.Any(), gomock.Any()).Return([]*interfaces.ObjectType{}, nil)
+			ots.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), knID, gomock.Any(), gomock.Any()).Return(objectTypes, nil)
+			ots.EXPECT().FilterObjectTypesForRead(gomock.Any(), knID, objectTypes).Return(objectTypes, nil)
 
 			req := httptest.NewRequest(http.MethodGet, url, nil)
 			w := httptest.NewRecorder()
