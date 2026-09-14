@@ -269,21 +269,6 @@ func (mr *MockIMCPExecuteServiceMockRecorder) CallMCPTool(ctx, req any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CallMCPTool", reflect.TypeOf((*MockIMCPExecuteService)(nil).CallMCPTool), ctx, req)
 }
 
-// GetMCPToolDefinitionAsProxy mocks base method.
-func (m *MockIMCPExecuteService) GetMCPToolDefinitionAsProxy(ctx context.Context, req *interfaces.MCPToolDefinitionRequest) (*interfaces.MCPToolDefinition, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetMCPToolDefinitionAsProxy", ctx, req)
-	ret0, _ := ret[0].(*interfaces.MCPToolDefinition)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetMCPToolDefinitionAsProxy indicates an expected call of GetMCPToolDefinitionAsProxy.
-func (mr *MockIMCPExecuteServiceMockRecorder) GetMCPToolDefinitionAsProxy(ctx, req any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMCPToolDefinitionAsProxy", reflect.TypeOf((*MockIMCPExecuteService)(nil).GetMCPToolDefinitionAsProxy), ctx, req)
-}
-
 // GetMCPTools mocks base method.
 func (m *MockIMCPExecuteService) GetMCPTools(ctx context.Context, req *interfaces.MCPProxyToolListRequest) (*interfaces.MCPProxyToolListResponse, error) {
 	m.ctrl.T.Helper()
@@ -440,21 +425,6 @@ func (m *MockIMCPService) GetMCPInstanceConfig(ctx context.Context, mcpID string
 func (mr *MockIMCPServiceMockRecorder) GetMCPInstanceConfig(ctx, mcpID, mode any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMCPInstanceConfig", reflect.TypeOf((*MockIMCPService)(nil).GetMCPInstanceConfig), ctx, mcpID, mode)
-}
-
-// GetMCPToolDefinitionAsProxy mocks base method.
-func (m *MockIMCPService) GetMCPToolDefinitionAsProxy(ctx context.Context, req *interfaces.MCPToolDefinitionRequest) (*interfaces.MCPToolDefinition, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetMCPToolDefinitionAsProxy", ctx, req)
-	ret0, _ := ret[0].(*interfaces.MCPToolDefinition)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetMCPToolDefinitionAsProxy indicates an expected call of GetMCPToolDefinitionAsProxy.
-func (mr *MockIMCPServiceMockRecorder) GetMCPToolDefinitionAsProxy(ctx, req any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMCPToolDefinitionAsProxy", reflect.TypeOf((*MockIMCPService)(nil).GetMCPToolDefinitionAsProxy), ctx, req)
 }
 
 // GetMCPTools mocks base method.

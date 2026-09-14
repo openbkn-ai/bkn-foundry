@@ -293,23 +293,6 @@ type MCPProxyToolListResponse struct {
 	Tools []mcp.Tool `json:"tools"` // Tools.
 }
 
-// MCPToolDefinitionRequest reads the invocation contract of one MCP tool as a
-// managed knowledge-network proxy. The tool name travels as a query parameter:
-// MCP names are free text, and a path segment would not carry every one of them.
-type MCPToolDefinitionRequest struct {
-	MCPID    string `uri:"mcp_id" validate:"required"`
-	ToolName string `form:"tool_name" validate:"required"`
-}
-
-// MCPToolDefinition is what a caller needs to build an MCP tool's arguments.
-// InputSchema is kept verbatim, exactly as the tool listing serializes it.
-type MCPToolDefinition struct {
-	MCPID       string          `json:"mcp_id"`
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	InputSchema json.RawMessage `json:"input_schema"`
-}
-
 // MCPProxyCallToolRequest MCP tool call request.
 type MCPProxyCallToolRequest struct {
 	UserID     string         `header:"user_id" validate:"required"`  // User ID, internal use.
@@ -360,9 +343,6 @@ type IMCPExecuteService interface {
 	GetMCPTools(ctx context.Context, req *MCPProxyToolListRequest) (*MCPProxyToolListResponse, error)
 	// CallMCPTool calls MCP tool.
 	CallMCPTool(ctx context.Context, req *MCPProxyCallToolRequest) (*MCPProxyCallToolResponse, error)
-	// GetMCPToolDefinitionAsProxy reads one MCP tool's invocation contract for the
-	// managed proxy of the knowledge network whose action type is bound to it.
-	GetMCPToolDefinitionAsProxy(ctx context.Context, req *MCPToolDefinitionRequest) (*MCPToolDefinition, error)
 }
 
 // IMCPService MCP service interface.

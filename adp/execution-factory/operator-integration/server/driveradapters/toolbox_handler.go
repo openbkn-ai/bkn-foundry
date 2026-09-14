@@ -53,10 +53,6 @@ func (r *toolboxRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
 	engine.GET("/tool-box/list", r.ToolBoxHandler.QueryToolBoxPage)
 	engine.GET("/tool-box/:box_id", r.ToolBoxHandler.QueryToolBox)
 	engine.GET("/tool-box/:box_id/tool/:tool_id", r.ToolBoxHandler.QueryTool)
-	// The invocation contract of the tool an action type is bound to, read by that
-	// knowledge network's managed proxy. Nothing but a trusted proxy context validated
-	// for this route is served.
-	engine.GET("/tool-box/:box_id/tool/:tool_id/definition", r.ToolBoxHandler.QueryToolDefinitionAsProxy)
 	engine.GET("/tool-box/:box_id/tools/list", r.ToolBoxHandler.QueryBoxToolPage)
 	// Retrieval interface. Internal face only: the whitelist carries the caller's authorization
 	// decision, and a public caller supplying its own whitelist would be deciding its own scope.

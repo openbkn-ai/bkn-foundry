@@ -252,21 +252,6 @@ func (mr *MockIToolServiceMockRecorder) GetToolBoxNamesByIDs(ctx, ids any) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetToolBoxNamesByIDs", reflect.TypeOf((*MockIToolService)(nil).GetToolBoxNamesByIDs), ctx, ids)
 }
 
-// GetToolDefinitionAsProxy mocks base method.
-func (m *MockIToolService) GetToolDefinitionAsProxy(ctx context.Context, req *interfaces.GetToolDefinitionReq) (*interfaces.ToolDefinition, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetToolDefinitionAsProxy", ctx, req)
-	ret0, _ := ret[0].(*interfaces.ToolDefinition)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetToolDefinitionAsProxy indicates an expected call of GetToolDefinitionAsProxy.
-func (mr *MockIToolServiceMockRecorder) GetToolDefinitionAsProxy(ctx, req any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetToolDefinitionAsProxy", reflect.TypeOf((*MockIToolService)(nil).GetToolDefinitionAsProxy), ctx, req)
-}
-
 // HandleOperatorDeleteEvent mocks base method.
 func (m *MockIToolService) HandleOperatorDeleteEvent(ctx context.Context, message []byte) error {
 	m.ctrl.T.Helper()
