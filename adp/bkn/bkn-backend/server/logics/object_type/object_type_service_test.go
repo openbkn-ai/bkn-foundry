@@ -821,14 +821,14 @@ func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 			smock.ExpectBegin()
 			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"ot1"}).Return([]*interfaces.ObjectType{objectType}, nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
-			vbs.EXPECT().GetResourceByID(gomock.Any(), "resource1").Return(&interfaces.VegaResource{
+			vbs.EXPECT().GetResourcesByIDs(gomock.Any(), []string{"resource1"}).Return([]*interfaces.VegaResource{{
 				ID:   "resource1",
 				Name: "resource1",
 				SchemaDefinition: []*interfaces.Property{
 					{Name: "code", DisplayName: "物料编码", Type: "string"},
 					{Name: "material_name", DisplayName: "物料名称", Type: "string"},
 				},
-			}, nil)
+			}}, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 			vbs.EXPECT().QueryResourceData(gomock.Any(), "resource1", gomock.Any()).DoAndReturn(

@@ -631,14 +631,12 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
 
-	// Resolve a non-empty data view ID to its name.
-	// Request the view.
+	// Process the data source and operators.
+	err = ots.enrichObjectTypes(ctx, objectTypes)
+	if err != nil {
+		return []*interfaces.ObjectType{}, err
+	}
 	for _, objectType := range objectTypes {
-		// Process the data source and operators.
-		err = ots.processObjectTypeDetails(ctx, objectType)
-		if err != nil {
-			return []*interfaces.ObjectType{}, err
-		}
 		// Add group information to object types.
 		objectType.ConceptGroups = otGroups[objectType.OTID]
 	}
@@ -1610,11 +1608,8 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 
 			// Add the object type when no group is specified or it belongs to the group.
 			if len(otIDMap) == 0 || otIDMap[objectType.OTID] {
-				// Process the data source and operators.
-				err = ots.processObjectTypeDetails(ctx, &objectType)
-				if err != nil {
-					return response, err
-				}
+				// Data source and operators are processed once the page loop is done, so that
+				// resources are read once per search rather than once per hit.
 				// Extract _score when present.
 				if scoreVal, ok := entry["_score"]; ok {
 					if score, err := common.AnyToFloat64(scoreVal); err == nil {
@@ -1647,20 +1642,100 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 		cursor = *nextCursor
 	}
 
+	// Process the data source and operators.
+	if err := ots.enrichObjectTypes(ctx, objectTypes); err != nil {
+		return response, err
+	}
+
 	response.Entries = objectTypes
 	response.NextCursor = nextCursor
 	span.SetStatus(codes.Ok, "")
 	return response, nil
 }
 
-// Extracted helper for processing object type details.
-func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, objectType *interfaces.ObjectType) error {
+// vegaResourceBatchSize caps how many resource ids go into one batch read, keeping the request path short.
+const vegaResourceBatchSize = 100
+
+type vegaResourceLookup struct {
+	resource *interfaces.VegaResource
+	err      error
+}
+
+// fetchObjectTypeResources reads the Vega resource behind each resource-bound object type, once per
+// resource and in batches.
+//
+// Reading them one object type at a time was most of the latency of object type search and batch
+// detail. Each read costs Vega an authorization decision, and bkn-safe answers those one at a time
+// (~90ms each on a real deployment, no faster when issued concurrently), while a batch read is
+// authorized in a single decision: 14 resources took 1.3s one by one and 0.1s as one batch.
+//
+// Vega refuses a whole batch when the caller may not view any one resource in it. The batch then
+// falls back to reading its resources one by one, which is exactly the previous behaviour: the
+// forbidden resource fails alone and the rest still enrich. A resource the batch leaves out does not
+// exist, the same answer a single read gives. A failed read is recorded, not returned: enrichment has
+// always been best effort per object type.
+func (ots *objectTypeService) fetchObjectTypeResources(ctx context.Context,
+	objectTypes []*interfaces.ObjectType) map[string]vegaResourceLookup {
+
+	var ids []string
+	seen := map[string]struct{}{}
+	for _, objectType := range objectTypes {
+		if objectType == nil || objectType.DataSource == nil || objectType.DataSource.ID == "" ||
+			objectType.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
+			continue
+		}
+		if _, ok := seen[objectType.DataSource.ID]; ok {
+			continue
+		}
+		seen[objectType.DataSource.ID] = struct{}{}
+		ids = append(ids, objectType.DataSource.ID)
+	}
+
+	resources := make(map[string]vegaResourceLookup, len(ids))
+	for start := 0; start < len(ids); start += vegaResourceBatchSize {
+		batch := ids[start:min(start+vegaResourceBatchSize, len(ids))]
+		found, err := ots.vbs.GetResourcesByIDs(ctx, batch)
+		if err != nil {
+			otellog.LogWarn(ctx, fmt.Sprintf("Batch read of %d vega resources failed, reading them one by one, error: %v",
+				len(batch), err))
+			for _, id := range batch {
+				res, err := ots.vbs.GetResourceByID(ctx, id)
+				resources[id] = vegaResourceLookup{resource: res, err: err}
+			}
+			continue
+		}
+		for _, res := range found {
+			if res != nil {
+				resources[res.ID] = vegaResourceLookup{resource: res}
+			}
+		}
+	}
+	return resources
+}
+
+// enrichObjectTypes fills in the resource-derived details of every object type, reading each bound
+// resource once.
+func (ots *objectTypeService) enrichObjectTypes(ctx context.Context, objectTypes []*interfaces.ObjectType) error {
+	resources := ots.fetchObjectTypeResources(ctx, objectTypes)
+	for _, objectType := range objectTypes {
+		if err := ots.processObjectTypeDetails(ctx, objectType, resources); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Extracted helper for processing object type details. resources holds the Vega resources read by
+// fetchObjectTypeResources for this batch of object types.
+func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, objectType *interfaces.ObjectType,
+	resources map[string]vegaResourceLookup) error {
 
 	// Retrieve views or Vega resources to assemble operations. Assembly is unnecessary because they are persisted on save.
 	if objectType.DataSource != nil && objectType.DataSource.ID != "" {
 		switch objectType.DataSource.Type {
 		case interfaces.DATA_SOURCE_TYPE_RESOURCE:
-			res, err := ots.vbs.GetResourceByID(ctx, objectType.DataSource.ID)
+			lookup := resources[objectType.DataSource.ID]
+			res, err := lookup.resource, lookup.err
 			if err != nil || res == nil {
 				otellog.LogWarn(ctx, fmt.Sprintf("Object type [%s]'s vega Resource %s not found, error: %v",
 					objectType.OTID, objectType.DataSource.ID, err))
