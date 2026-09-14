@@ -140,6 +140,10 @@ paths:
         以 MySQL 方言执行**只读** SQL。表名不写物理表名，写占位符
         `{{.<resource_id>}}`，由服务端解析到真实数据源。
 
+        **权限**：调用者必须对 SQL 引用的每个数据资源都持有 Vega 资源的 `view_detail`
+        权限——与其他遵循知识网络授权的查询接口不同，通过对象类获得的授权不覆盖本接口，
+        仅通过对象类获得授权的调用方应改用 `/kn/query_object_instance` 或 `/kn/run_cypher`。
+
         标识符需要引用时使用反引号（如 `` `order_id` ``）；双引号在 MySQL 方言下是
         字符串字面量，不能用于标识符。
 
@@ -204,7 +208,7 @@ paths:
         '400':
           description: |
             SQL 为空、未引用资源占位符、使用 `WITH` / CTE 或集合运算、含多语句或写 / DDL
-            关键字，以及下游返回的 SQL 语法 / 权限错误。本接口的 `code` 统一为
+            关键字，以及下游返回的 SQL 语法错误。本接口的 `code` 统一为
             `Public.BadRequest`；CTE 场景下 vega 的原始错误体（含
             `VegaBackend.Query.InvalidParameter` 与 `raw query rejected by read-only policy`）以
             字符串形式透传在 `details` 中。调用方应将 CTE 改写为单条 `SELECT`，或拆分为多次查询。
@@ -214,6 +218,16 @@ paths:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            调用者对 SQL 引用的至少一个数据资源没有 Vega 资源的 `view_detail` 权限，查询未执行。
+            `code` 为 `Public.Forbidden`；`details` 为按请求语言本地化的说明：本接口按调用者
+            自身身份访问资源、不遵循知识网络授权，并建议仅通过对象类获得授权的调用方改用
+            `query_object_instance` 或 `run_cypher`。响应不透传 vega 的原始错误体。
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
         '500':
           $ref: '#/components/responses/InternalError'
 

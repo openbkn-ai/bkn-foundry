@@ -77,3 +77,36 @@ func TestPhysicalResourceToolsDocumentIndependentAuthorizationBoundary(t *testin
 		})
 	}
 }
+
+// run_sql is the one query tool that does not follow knowledge-network
+// authorization. Its description must say which grant it needs and where a caller
+// authorized only through object types should go instead, so an agent does not
+// learn it from a 403. See #1543.
+func TestRunSQLToolMetaStatesDirectResourcePermission(t *testing.T) {
+	for _, tc := range []struct {
+		path string
+		want []string
+	}{
+		{"schemas/tools_meta.json",
+			[]string{"view_detail", "知识网络授权", "对象类", "query_object_instance", "run_cypher"}},
+		{"schemas/locales/en-US/tools_meta.json",
+			[]string{"view_detail", "knowledge-network authorization", "object types", "query_object_instance", "run_cypher"}},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			raw, err := schemasFS.ReadFile(tc.path)
+			if err != nil {
+				t.Fatalf("read tool metadata: %v", err)
+			}
+			var meta map[string]ToolMeta
+			if err := json.Unmarshal(raw, &meta); err != nil {
+				t.Fatalf("decode tool metadata: %v", err)
+			}
+			desc := meta["run_sql"].Description
+			for _, want := range tc.want {
+				if !strings.Contains(desc, want) {
+					t.Errorf("run_sql description must mention %q: %q", want, desc)
+				}
+			}
+		})
+	}
+}

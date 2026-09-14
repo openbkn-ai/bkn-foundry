@@ -141,7 +141,7 @@
     "group": "query",
     "group_title": "实例查询",
     "order": 240,
-    "description": "物理资源查询面：按调用者自己的 Vega 数据资源权限，对知识网络挂载的数据资源执行只读 SQL（MySQL 方言），可能返回未经对象属性规则掩码的原始物理列；它不受对象属性 none/schema/masked/full 权限约束，也不得被对象查询工具内部调用。标识符需要引用时用反引号；双引号是字符串字面量，不是标识符。注意：对象实例、子图、逻辑属性和已建模指标必须走对应对象查询工具，不要用 SQL 绕过其语义与属性保护；run_sql 仅用于明确授权的物理资源即席分析。表名用占位符 {{.resource_id}} 引用；Vega 会解析成真实表并限量。仅允许单条 SELECT：支持同一 catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合函数；不支持 WITH/CTE、UNION/INTERSECT/EXCEPT、多语句、写入/DDL 和跨目录 join，子查询与窗口函数不在兼容性承诺内。resource_id 与物理列来自 list_resources → describe_resource。"
+    "description": "物理资源查询面：按调用者自己的 Vega 数据资源权限，对知识网络挂载的数据资源执行只读 SQL（MySQL 方言），可能返回未经对象属性规则掩码的原始物理列；它不受对象属性 none/schema/masked/full 权限约束，也不得被对象查询工具内部调用。调用者须对语句引用的每个 Vega 数据资源都持有 view_detail 权限：与其他遵循知识网络授权的查询工具不同，通过对象类获得的授权不覆盖 run_sql，仅通过对象类获得授权时请改用 query_object_instance 或 run_cypher。标识符需要引用时用反引号；双引号是字符串字面量，不是标识符。注意：对象实例、子图、逻辑属性和已建模指标必须走对应对象查询工具，不要用 SQL 绕过其语义与属性保护；run_sql 仅用于明确授权的物理资源即席分析。表名用占位符 {{.resource_id}} 引用；Vega 会解析成真实表并限量。仅允许单条 SELECT：支持同一 catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合函数；不支持 WITH/CTE、UNION/INTERSECT/EXCEPT、多语句、写入/DDL 和跨目录 join，子查询与窗口函数不在兼容性承诺内。resource_id 与物理列来自 list_resources → describe_resource。"
   },
   "run_cypher": {
     "name": "run_cypher",

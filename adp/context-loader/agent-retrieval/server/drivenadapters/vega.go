@@ -59,8 +59,7 @@ func (v *vegaAccess) RawQuery(ctx context.Context, req *interfaces.VegaRawQueryR
 	}
 	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
 		v.logger.WithContext(ctx).Errorf("[VegaAccess] RawQuery resp failed, code=%d, body=%s", respCode, string(respBody))
-		return nil, infraErr.DefaultHTTPError(ctx, respCode,
-			fmt.Sprintf("vega raw query failed: %s", string(respBody)))
+		return nil, classifyRawQueryError(ctx, respCode, respBody)
 	}
 
 	resp := &interfaces.VegaRawQueryResp{}
@@ -73,6 +72,43 @@ func (v *vegaAccess) RawQuery(ctx context.Context, req *interfaces.VegaRawQueryR
 			fmt.Sprintf("parse vega raw query response failed: %v", err))
 	}
 	return resp, nil
+}
+
+// vegaPublicForbidden is the code Vega answers with when the caller's own
+// permissions do not cover a resource the statement references.
+const vegaPublicForbidden = "Public.Forbidden"
+
+// classifyRawQueryError maps a non-2xx Vega raw query response.
+//
+// run_sql reads resources under the caller's own identity: unlike the other
+// query tools it does not follow knowledge-network authorization, so a caller
+// authorized only through object types is refused by Vega's view_detail check on
+// the resource. That refusal used to reach the caller as the raw Vega body
+// ("vega raw query failed: {...insufficient permissions for[view_detail]}"), which
+// said neither why the knowledge-network grant did not apply nor what to use
+// instead. It now carries a localized detail naming the missing grant and the
+// object-query alternatives. See #1543.
+//
+// The denial does not forward Vega's body. Every other failure keeps its status
+// and its previous detail.
+func classifyRawQueryError(ctx context.Context, code int, body []byte) error {
+	if code == http.StatusForbidden && vegaErrorCode(body) == vegaPublicForbidden {
+		return infraErr.DefaultHTTPError(ctx, http.StatusForbidden,
+			infraErr.LocalizedDetail(ctx, "RunSQLResourceForbidden"))
+	}
+	return infraErr.DefaultHTTPError(ctx, code, fmt.Sprintf("vega raw query failed: %s", string(body)))
+}
+
+// vegaErrorCode reads error_code from a Vega error body. It is empty when the
+// body is not Vega's envelope, for example a gateway page.
+func vegaErrorCode(body []byte) string {
+	var envelope struct {
+		ErrorCode string `json:"error_code"`
+	}
+	if len(body) == 0 || sonic.Unmarshal(body, &envelope) != nil {
+		return ""
+	}
+	return envelope.ErrorCode
 }
 
 // vegaEntriesWrapper is the unified {"entries":[...]} envelope for Vega get-by-ids APIs.
