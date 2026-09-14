@@ -46,6 +46,30 @@ func TestValidateLogicViewRequest(t *testing.T) {
 		require.NoError(t, ValidateResourceRequest(ctx, req))
 	})
 
+	t.Run("accepts a ref-only vector feature", func(t *testing.T) {
+		req := &interfaces.ResourceRequest{
+			Name:     "view",
+			Category: interfaces.ResourceCategoryLogicView,
+			LogicDefinition: []*interfaces.LogicDefinitionNode{{
+				ID:   "out",
+				Type: interfaces.LogicDefinitionNodeType_Output,
+				OutputFields: []*interfaces.ViewProperty{
+					{Property: interfaces.Property{
+						Name: "content",
+						Type: interfaces.DataType_Text,
+						Features: []interfaces.PropertyFeature{{
+							FeatureType: interfaces.PropertyFeatureType_Vector,
+							RefProperty: "embedding",
+						}},
+					}},
+					{Property: interfaces.Property{Name: "embedding", Type: interfaces.DataType_Vector}},
+				},
+			}},
+		}
+
+		require.NoError(t, ValidateResourceRequest(ctx, req))
+	})
+
 	t.Run("returns logic definition error", func(t *testing.T) {
 		req := &interfaces.ResourceRequest{
 			Name:     "view",

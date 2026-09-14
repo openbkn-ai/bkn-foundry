@@ -427,7 +427,8 @@ func validateFeatures(ctx context.Context, fieldsMap map[string]*interfaces.View
 	enabledMap := make(map[string]bool)
 	featureNameMap := make(map[string]struct{})
 	for _, f := range features {
-		if f.FeatureName == "" {
+		if f.FeatureName == "" &&
+			(f.FeatureType != interfaces.PropertyFeatureType_Vector || f.RefProperty == "") {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_LogicView_InvalidParameter_FieldFeatureName).
 				WithErrorDetails("The field feature name is null")
 		}
