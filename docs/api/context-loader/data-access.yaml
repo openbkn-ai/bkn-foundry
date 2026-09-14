@@ -228,6 +228,14 @@ paths:
             application/json:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '404':
+          description: |
+            SQL 占位符引用的资源不存在。`code` 为 `Public.NotFound`；vega 的原始错误体（含
+            `VegaBackend.Query.ResourceNotFound`）以字符串形式透传在 `details` 中。
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
         '500':
           $ref: '#/components/responses/InternalError'
 

@@ -91,6 +91,8 @@ func TestVegaRawQuery_OtherFailuresKeepDownstreamDetail(t *testing.T) {
 			`{"error_code":"VegaBackend.Query.ResourceNotFound","error_details":"resource res_orders not found"}`},
 		{"403 without the permission code", http.StatusForbidden,
 			`{"error_code":"VegaBackend.Query.InvalidParameter","error_details":"cursor does not belong to the current account"}`},
+		{"403 permission code not about view_detail", http.StatusForbidden,
+			`{"error_code":"Public.Forbidden","error_details":"missing account ID or type"}`},
 		{"403 non-envelope body", http.StatusForbidden, `<html>403 Forbidden</html>`},
 		{"server error", http.StatusInternalServerError,
 			`{"error_code":"VegaBackend.Query.ExecuteFailed","error_details":"connection reset"}`},
