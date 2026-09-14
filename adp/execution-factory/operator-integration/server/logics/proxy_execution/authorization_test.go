@@ -132,6 +132,103 @@ func TestAuthorizerFailsClosedWhenStateOrPolicyIsUnavailable(t *testing.T) {
 	})
 }
 
+func definitionReadRequest() interfaces.ProxyExecutionContext {
+	request := validRequest()
+	request.ExecutionID = ""
+	request.Access = interfaces.ProxyAccessDefinitionRead
+	return request
+}
+
+func TestAuthorizeDefinitionReadServesOnlyARouteValidatedProxy(t *testing.T) {
+	t.Run("no proxy context", func(t *testing.T) {
+		access := &fakeAuthorizationAccess{account: validManagedProxy(), permission: true}
+		recorder := &recordingAudit{}
+		err := AuthorizeDefinitionRead(context.Background(), NewAuthorizer(access), recorder)
+		var httpErr *oerrors.HTTPError
+		if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden {
+			t.Fatalf("AuthorizeDefinitionRead() error = %v, want HTTP 403", err)
+		}
+		if access.permissionCalls != 0 || len(recorder.events) != 0 {
+			t.Fatalf("permission calls = %d, audit = %+v", access.permissionCalls, recorder.events)
+		}
+	})
+
+	t.Run("execution context", func(t *testing.T) {
+		access := &fakeAuthorizationAccess{account: validManagedProxy(), permission: true}
+		recorder := &recordingAudit{}
+		ctx := interfaces.WithProxyExecutionContext(context.Background(), validRequest())
+		err := AuthorizeDefinitionRead(ctx, NewAuthorizer(access), recorder)
+		var httpErr *oerrors.HTTPError
+		if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden {
+			t.Fatalf("AuthorizeDefinitionRead() error = %v, want HTTP 403", err)
+		}
+		if access.permissionCalls != 0 || len(recorder.events) != 1 ||
+			recorder.events[0].Reason != "invalid_trusted_context" {
+			t.Fatalf("permission calls = %d, audit = %+v", access.permissionCalls, recorder.events)
+		}
+	})
+
+	t.Run("allowed", func(t *testing.T) {
+		access := &fakeAuthorizationAccess{account: validManagedProxy(), permission: true}
+		recorder := &recordingAudit{}
+		ctx := interfaces.WithProxyExecutionContext(context.Background(), definitionReadRequest())
+		if err := AuthorizeDefinitionRead(ctx, NewAuthorizer(access), recorder); err != nil {
+			t.Fatalf("AuthorizeDefinitionRead() error = %v", err)
+		}
+		if access.permissionCalls != 1 || len(recorder.events) != 1 ||
+			recorder.events[0].Decision != "allow" ||
+			recorder.events[0].Access != interfaces.ProxyAccessDefinitionRead ||
+			recorder.events[0].Operation != interfaces.ProxyOperationExecute {
+			t.Fatalf("permission calls = %d, audit = %+v", access.permissionCalls, recorder.events)
+		}
+	})
+
+	for _, test := range []struct {
+		name       string
+		access     *fakeAuthorizationAccess
+		wantStatus int
+		wantReason string
+	}{
+		{name: "grant revoked", access: &fakeAuthorizationAccess{account: validManagedProxy(), permission: false},
+			wantStatus: http.StatusForbidden, wantReason: "proxy_or_policy_denied"},
+		{name: "bkn-safe unavailable", access: &fakeAuthorizationAccess{accountErr: errors.New("connection refused")},
+			wantStatus: http.StatusServiceUnavailable, wantReason: "authorization_unavailable"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := &recordingAudit{}
+			ctx := interfaces.WithProxyExecutionContext(context.Background(), definitionReadRequest())
+			err := AuthorizeDefinitionRead(ctx, NewAuthorizer(test.access), recorder)
+			var httpErr *oerrors.HTTPError
+			if !errors.As(err, &httpErr) || httpErr.HTTPCode != test.wantStatus {
+				t.Fatalf("AuthorizeDefinitionRead() error = %v, want HTTP %d", err, test.wantStatus)
+			}
+			if len(recorder.events) != 1 || recorder.events[0].Decision != "deny" ||
+				recorder.events[0].Reason != test.wantReason {
+				t.Fatalf("audit events = %+v", recorder.events)
+			}
+		})
+	}
+}
+
+// A definition read context must never authorize a run, even though the proxy
+// holds the execute grant the read relies on.
+func TestAuthorizeOutboundRefusesADefinitionReadContext(t *testing.T) {
+	access := &fakeAuthorizationAccess{account: validManagedProxy(), permission: true}
+	recorder := &recordingAudit{}
+	ctx := interfaces.WithProxyExecutionContext(context.Background(), definitionReadRequest())
+
+	err := AuthorizeOutbound(ctx, NewAuthorizer(access), recorder)
+
+	var httpErr *oerrors.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden {
+		t.Fatalf("AuthorizeOutbound() error = %v, want HTTP 403", err)
+	}
+	if access.permissionCalls != 0 || len(recorder.events) != 1 ||
+		recorder.events[0].Reason != "invalid_trusted_context" {
+		t.Fatalf("permission calls = %d, audit = %+v", access.permissionCalls, recorder.events)
+	}
+}
+
 type recordingAudit struct {
 	events []interfaces.ProxyExecutionAuditEvent
 }

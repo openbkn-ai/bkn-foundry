@@ -49,6 +49,10 @@ func (r *mcpRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
 	mcpProxyGroup.GET("/:mcp_id/tools", r.MCPPrivateHandler.GetMCPTools)
 	// Call the tool of the specified MCP Server POST /api/agent-operator-integration/internal-v1/mcp/proxy/{mcp_id}/tool/call.
 	mcpProxyGroup.POST("/:mcp_id/tool/call", r.MCPPrivateHandler.CallMCPTool)
+	// Read the contract of the MCP tool an action type is bound to, as that knowledge network's
+	// managed proxy: GET /api/agent-operator-integration/internal-v1/mcp/proxy/{mcp_id}/tool/definition?tool_name=.
+	// Nothing but a trusted proxy context validated for this route is served.
+	mcpProxyGroup.GET("/:mcp_id/tool/definition", r.MCPPrivateHandler.GetMCPToolDefinitionAsProxy)
 
 	// MCP Server listing GET /api/agent-operator-integration/internal-v1/mcp/list, mirroring
 	// /tool-box/list. A cross-environment import resolves a server by name when the id it was

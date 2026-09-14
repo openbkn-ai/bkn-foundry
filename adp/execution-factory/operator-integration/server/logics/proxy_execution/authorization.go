@@ -104,9 +104,50 @@ func AuthorizeOutbound(
 	if !ok {
 		return nil
 	}
+	// A context validated on a definition read route may read a contract, never
+	// run it. Execution routes never produce one, so this only closes a misuse.
+	if request.Access != "" {
+		RecordDecision(ctx, recorder, request, "deny", "invalid_trusted_context")
+		return oerrors.DefaultHTTPError(ctx, http.StatusForbidden, "proxy execution is forbidden")
+	}
+	return authorize(ctx, authorizer, recorder, request,
+		"proxy execution is forbidden", "proxy execution authorization is unavailable")
+}
+
+// AuthorizeDefinitionRead is the final PEP of the definition read routes.
+//
+// Unlike AuthorizeOutbound it has no direct-caller branch: those routes exist
+// only for a managed proxy reading the contract of the target its action type
+// is bound to, so a request without that route-validated context is refused.
+// The proxy's execute grant on the target is what the read relies on, the same
+// grant that already lets an execute-only caller read a tool's schema.
+func AuthorizeDefinitionRead(
+	ctx context.Context,
+	authorizer interfaces.ProxyExecutionAuthorizer,
+	recorder interfaces.ProxyExecutionAuditRecorder,
+) error {
+	request, ok := interfaces.ProxyExecutionContextFromContext(ctx)
+	if !ok || request.Access != interfaces.ProxyAccessDefinitionRead {
+		if ok {
+			RecordDecision(ctx, recorder, request, "deny", "invalid_trusted_context")
+		}
+		return oerrors.DefaultHTTPError(ctx, http.StatusForbidden,
+			"a managed proxy definition read requires a trusted proxy context")
+	}
+	return authorize(ctx, authorizer, recorder, request,
+		"proxy definition read is forbidden", "proxy definition read authorization is unavailable")
+}
+
+func authorize(
+	ctx context.Context,
+	authorizer interfaces.ProxyExecutionAuthorizer,
+	recorder interfaces.ProxyExecutionAuditRecorder,
+	request interfaces.ProxyExecutionContext,
+	forbidden, unavailable string,
+) error {
 	if authorizer == nil {
 		RecordDecision(ctx, recorder, request, "deny", "authorization_unavailable")
-		return oerrors.DefaultHTTPError(ctx, http.StatusServiceUnavailable, "proxy execution authorization is unavailable")
+		return oerrors.DefaultHTTPError(ctx, http.StatusServiceUnavailable, unavailable)
 	}
 	err := authorizer.Authorize(ctx, request)
 	if err == nil {
@@ -115,10 +156,10 @@ func AuthorizeOutbound(
 	}
 	if errors.Is(err, interfaces.ErrProxyExecutionDenied) {
 		RecordDecision(ctx, recorder, request, "deny", "proxy_or_policy_denied")
-		return oerrors.DefaultHTTPError(ctx, http.StatusForbidden, "proxy execution is forbidden")
+		return oerrors.DefaultHTTPError(ctx, http.StatusForbidden, forbidden)
 	}
 	RecordDecision(ctx, recorder, request, "deny", "authorization_unavailable")
-	return oerrors.DefaultHTTPError(ctx, http.StatusServiceUnavailable, "proxy execution authorization is unavailable")
+	return oerrors.DefaultHTTPError(ctx, http.StatusServiceUnavailable, unavailable)
 }
 
 // RecordDecision emits a correlated dual-principal authorization decision.
@@ -149,6 +190,7 @@ func RecordDecision(
 		TargetType:     request.TargetType,
 		TargetID:       request.TargetID,
 		Operation:      request.Operation,
+		Access:         request.Access,
 		ExecutionID:    request.ExecutionID,
 		RequestID:      traceContext.RequestID,
 		TraceID:        traceID,

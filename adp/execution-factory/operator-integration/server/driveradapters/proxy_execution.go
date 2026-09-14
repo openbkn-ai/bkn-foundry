@@ -42,9 +42,9 @@ func stripProxyExecutionHeaders() gin.HandlerFunc {
 	}
 }
 
-// managedProxyExecutionBoundary recognizes only ontology-query's trusted
-// dual-principal context, rejects every non-execution internal route, and
-// passes validated context to the final PEP at the physical outbound boundary.
+// managedProxyExecutionBoundary recognizes only the trusted dual-principal
+// context, rejects every internal route other than Tool/MCP execution and the
+// action-type definition reads, and passes validated context to the final PEP.
 func managedProxyExecutionBoundary(recorder interfaces.ProxyExecutionAuditRecorder) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !hasProxyExecutionContext(c) {
@@ -102,9 +102,6 @@ func proxyExecutionContextFromHeaders(c *gin.Context) (interfaces.ProxyExecution
 		request.Operation != interfaces.ProxyOperationExecute {
 		return request, stderrors.New("trusted proxy context is incomplete")
 	}
-	if request.ChildType == interfaces.ProxyChildTypeAction && request.ExecutionID == "" {
-		return request, stderrors.New("action proxy context requires an execution id")
-	}
 
 	switch {
 	case c.Request.Method == http.MethodPost &&
@@ -116,6 +113,9 @@ func proxyExecutionContextFromHeaders(c *gin.Context) (interfaces.ProxyExecution
 				request.ChildType != interfaces.ProxyChildTypeCapability) {
 			return request, stderrors.New("proxy target does not match the Tool execution route")
 		}
+		if request.ChildType == interfaces.ProxyChildTypeAction && request.ExecutionID == "" {
+			return request, stderrors.New("action proxy context requires an execution id")
+		}
 	case c.Request.Method == http.MethodPost &&
 		strings.HasSuffix(c.FullPath(), "/mcp/proxy/:mcp_id/tool/call"):
 		if request.TargetType != interfaces.ProxyTargetTypeMCP ||
@@ -124,8 +124,30 @@ func proxyExecutionContextFromHeaders(c *gin.Context) (interfaces.ProxyExecution
 				request.ChildType != interfaces.ProxyChildTypeCapability) {
 			return request, stderrors.New("proxy target does not match the MCP execution route")
 		}
+		if request.ChildType == interfaces.ProxyChildTypeAction && request.ExecutionID == "" {
+			return request, stderrors.New("action proxy context requires an execution id")
+		}
+	// The definition reads serve only an action type's bound target: a caller
+	// allowed to view the action type may learn the parameters it would pass,
+	// without a grant on the tool itself (#1548). There is no execution to name.
+	case c.Request.Method == http.MethodGet &&
+		strings.HasSuffix(c.FullPath(), "/tool-box/:box_id/tool/:tool_id/definition"):
+		if request.TargetType != interfaces.ProxyTargetTypeToolBox ||
+			request.TargetID == "" || request.TargetID != strings.TrimSpace(c.Param("box_id")) ||
+			request.ChildType != interfaces.ProxyChildTypeAction || request.ExecutionID != "" {
+			return request, stderrors.New("proxy target does not match the Tool definition route")
+		}
+		request.Access = interfaces.ProxyAccessDefinitionRead
+	case c.Request.Method == http.MethodGet &&
+		strings.HasSuffix(c.FullPath(), "/mcp/proxy/:mcp_id/tool/definition"):
+		if request.TargetType != interfaces.ProxyTargetTypeMCP ||
+			request.TargetID == "" || request.TargetID != strings.TrimSpace(c.Param("mcp_id")) ||
+			request.ChildType != interfaces.ProxyChildTypeAction || request.ExecutionID != "" {
+			return request, stderrors.New("proxy target does not match the MCP definition route")
+		}
+		request.Access = interfaces.ProxyAccessDefinitionRead
 	default:
-		return request, stderrors.New("managed proxies may use only Tool or MCP execution routes")
+		return request, stderrors.New("managed proxies may use only Tool or MCP execution and definition routes")
 	}
 	return request, nil
 }

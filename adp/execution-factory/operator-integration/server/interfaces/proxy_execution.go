@@ -31,6 +31,11 @@ const (
 	ProxyChildTypeLogic        = "logic_property"
 	ProxyChildTypeCapability   = "capability_binding"
 	ProxyOperationExecute      = "execute"
+
+	// ProxyAccessDefinitionRead marks a context validated on a definition read
+	// route. It lets the proxy read the invocation contract of the target its
+	// action type is bound to, and never authorizes an outbound execution.
+	ProxyAccessDefinitionRead = "definition_read"
 )
 
 var (
@@ -53,6 +58,9 @@ type ProxyExecutionContext struct {
 	TargetID     string
 	Operation    string
 	ExecutionID  string
+	// Access is empty on the execution routes and ProxyAccessDefinitionRead on
+	// the definition read routes. It is set by route validation, never by a header.
+	Access string
 }
 
 type proxyExecutionContextKey struct{}
@@ -107,6 +115,7 @@ type ProxyExecutionAuditEvent struct {
 	TargetType     string `json:"target_resource_type"`
 	TargetID       string `json:"target_resource_id"`
 	Operation      string `json:"operation"`
+	Access         string `json:"access,omitempty"`
 	ExecutionID    string `json:"execution_id,omitempty"`
 	RequestID      string `json:"request_id,omitempty"`
 	TraceID        string `json:"trace_id,omitempty"`

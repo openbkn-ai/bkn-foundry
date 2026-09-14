@@ -52,7 +52,178 @@ func proxyExecutionTestEngine(
 	engine.POST("/api/agent-operator-integration/internal-v1/tool-box/:box_id/proxy/:tool_id", handler)
 	engine.POST("/api/agent-operator-integration/internal-v1/mcp/proxy/:mcp_id/tool/call", handler)
 	engine.POST("/api/agent-operator-integration/internal-v1/tool-box/:box_id/tool/:tool_id/debug", handler)
+	engine.GET("/api/agent-operator-integration/internal-v1/tool-box/:box_id/tool/:tool_id", handler)
+	engine.GET("/api/agent-operator-integration/internal-v1/tool-box/:box_id/tool/:tool_id/definition", handler)
+	engine.GET("/api/agent-operator-integration/internal-v1/mcp/proxy/:mcp_id/tools", handler)
+	engine.GET("/api/agent-operator-integration/internal-v1/mcp/proxy/:mcp_id/tool/definition", handler)
 	return engine
+}
+
+// addValidDefinitionReadHeaders is the context Context Loader sends to read the
+// contract of the target an action type is bound to: no execution is named.
+func addValidDefinitionReadHeaders(request *http.Request, targetType, targetID string) {
+	addValidProxyExecutionHeaders(request, targetType, targetID, interfaces.ProxyChildTypeAction)
+	request.Header.Del(interfaces.HTTPHeaderBKNExecutionID)
+}
+
+func TestManagedProxyDefinitionReadAcceptsOnlyActionTypeContexts(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		path       string
+		targetType string
+		targetID   string
+	}{
+		{name: "Tool definition", path: "/api/agent-operator-integration/internal-v1/tool-box/box-1/tool/tool-1/definition",
+			targetType: interfaces.ProxyTargetTypeToolBox, targetID: "box-1"},
+		{name: "MCP tool definition", path: "/api/agent-operator-integration/internal-v1/mcp/proxy/mcp-1/tool/definition?tool_name=lookup",
+			targetType: interfaces.ProxyTargetTypeMCP, targetID: "mcp-1"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			handlerCalls := 0
+			engine := proxyExecutionTestEngine(nil, func(c *gin.Context) {
+				handlerCalls++
+				proxy, ok := interfaces.ProxyExecutionContextFromContext(c.Request.Context())
+				if !ok || proxy.Access != interfaces.ProxyAccessDefinitionRead || proxy.TargetID != test.targetID ||
+					proxy.ChildType != interfaces.ProxyChildTypeAction || proxy.ExecutionID != "" {
+					t.Errorf("proxy context = %+v, %v", proxy, ok)
+				}
+				if c.GetHeader("Authorization") != "" {
+					t.Error("platform credentials reached the definition handler")
+				}
+				c.Status(http.StatusOK)
+			})
+			request := httptest.NewRequest(http.MethodGet, test.path, nil)
+			addValidDefinitionReadHeaders(request, test.targetType, test.targetID)
+			request.Header.Set("Authorization", "Bearer caller-oauth")
+			response := httptest.NewRecorder()
+
+			engine.ServeHTTP(response, request)
+
+			if response.Code != http.StatusOK || handlerCalls != 1 {
+				t.Fatalf("status=%d handler=%d", response.Code, handlerCalls)
+			}
+		})
+	}
+
+	t.Run("execution routes keep an empty access", func(t *testing.T) {
+		engine := proxyExecutionTestEngine(nil, func(c *gin.Context) {
+			proxy, ok := interfaces.ProxyExecutionContextFromContext(c.Request.Context())
+			if !ok || proxy.Access != "" {
+				t.Errorf("proxy context = %+v, %v", proxy, ok)
+			}
+			c.Status(http.StatusOK)
+		})
+		request := httptest.NewRequest(http.MethodPost,
+			"/api/agent-operator-integration/internal-v1/tool-box/box-1/proxy/tool-1", nil)
+		addValidProxyExecutionHeaders(request, interfaces.ProxyTargetTypeToolBox, "box-1", interfaces.ProxyChildTypeAction)
+		response := httptest.NewRecorder()
+
+		engine.ServeHTTP(response, request)
+
+		if response.Code != http.StatusOK {
+			t.Fatalf("status=%d", response.Code)
+		}
+	})
+}
+
+func TestManagedProxyDefinitionReadRejectsContextsOutsideTheActionBinding(t *testing.T) {
+	const toolDefinition = "/api/agent-operator-integration/internal-v1/tool-box/box-1/tool/tool-1/definition"
+	const mcpDefinition = "/api/agent-operator-integration/internal-v1/mcp/proxy/mcp-1/tool/definition?tool_name=lookup"
+	tests := []struct {
+		name      string
+		path      string
+		configure func(*http.Request)
+	}{
+		{
+			name: "mounted capability binding",
+			path: toolDefinition,
+			configure: func(request *http.Request) {
+				addValidDefinitionReadHeaders(request, interfaces.ProxyTargetTypeToolBox, "box-1")
+				request.Header.Set(interfaces.HTTPHeaderBKNChildType, interfaces.ProxyChildTypeCapability)
+			},
+		},
+		{
+			name: "logical property binding",
+			path: toolDefinition,
+			configure: func(request *http.Request) {
+				addValidDefinitionReadHeaders(request, interfaces.ProxyTargetTypeToolBox, "box-1")
+				request.Header.Set(interfaces.HTTPHeaderBKNChildType, interfaces.ProxyChildTypeLogic)
+			},
+		},
+		{
+			name: "box tamper",
+			path: "/api/agent-operator-integration/internal-v1/tool-box/box-2/tool/tool-1/definition",
+			configure: func(request *http.Request) {
+				addValidDefinitionReadHeaders(request, interfaces.ProxyTargetTypeToolBox, "box-1")
+			},
+		},
+		{
+			name: "MCP target on the Tool route",
+			path: toolDefinition,
+			configure: func(request *http.Request) {
+				addValidDefinitionReadHeaders(request, interfaces.ProxyTargetTypeMCP, "box-1")
+			},
+		},
+		{
+			name: "MCP server tamper",
+			path: "/api/agent-operator-integration/internal-v1/mcp/proxy/mcp-2/tool/definition?tool_name=lookup",
+			configure: func(request *http.Request) {
+				addValidDefinitionReadHeaders(request, interfaces.ProxyTargetTypeMCP, "mcp-1")
+			},
+		},
+		{
+			name: "execution named on a read",
+			path: mcpDefinition,
+			configure: func(request *http.Request) {
+				addValidProxyExecutionHeaders(request, interfaces.ProxyTargetTypeMCP, "mcp-1", interfaces.ProxyChildTypeAction)
+			},
+		},
+		{
+			name: "operation other than execute",
+			path: mcpDefinition,
+			configure: func(request *http.Request) {
+				addValidDefinitionReadHeaders(request, interfaces.ProxyTargetTypeMCP, "mcp-1")
+				request.Header.Set(interfaces.HTTPHeaderBKNOperation, "view_detail")
+			},
+		},
+		{
+			name: "full tool detail route",
+			path: "/api/agent-operator-integration/internal-v1/tool-box/box-1/tool/tool-1",
+			configure: func(request *http.Request) {
+				addValidDefinitionReadHeaders(request, interfaces.ProxyTargetTypeToolBox, "box-1")
+			},
+		},
+		{
+			name: "full MCP tool listing",
+			path: "/api/agent-operator-integration/internal-v1/mcp/proxy/mcp-1/tools",
+			configure: func(request *http.Request) {
+				addValidDefinitionReadHeaders(request, interfaces.ProxyTargetTypeMCP, "mcp-1")
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := &recordingProxyExecutionAudit{}
+			handlerCalls := 0
+			engine := proxyExecutionTestEngine(recorder, func(c *gin.Context) {
+				handlerCalls++
+				c.Status(http.StatusOK)
+			})
+			request := httptest.NewRequest(http.MethodGet, test.path, nil)
+			test.configure(request)
+			response := httptest.NewRecorder()
+
+			engine.ServeHTTP(response, request)
+
+			if response.Code != http.StatusForbidden || handlerCalls != 0 {
+				t.Fatalf("status=%d handler=%d", response.Code, handlerCalls)
+			}
+			if len(recorder.events) != 1 || recorder.events[0].Decision != "deny" ||
+				recorder.events[0].Reason != "invalid_trusted_context" {
+				t.Fatalf("audit events = %+v", recorder.events)
+			}
+		})
+	}
 }
 
 func TestManagedProxyExecutionAllowsOnlyExactExecutionRoutes(t *testing.T) {

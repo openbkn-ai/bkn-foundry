@@ -11,6 +11,12 @@ info:
     Cluster-internal Tool and MCP execution contract used by ontology-query
     after it resolves a current published ActionSource.
 
+    The two definition routes serve Context Loader's get_action_info: a caller
+    that may view an action type but holds no grant on its bound Tool or MCP
+    tool gets the parameters it would pass, read as the managed proxy. They
+    return only the tool's name, description and schemas, and a context
+    validated on them never authorizes an execution.
+
     The caller remains the business principal that submitted an Action or
     Schedule. X-Account-ID is the knowledge network's managed proxy account
     and is used only as the effective principal for the bound target.
@@ -99,6 +105,82 @@ paths:
           description: The trusted context is invalid, the proxy is inactive, or the exact grant is denied.
         '503':
           description: The final authorization check is unavailable.
+  /tool-box/{box_id}/tool/{tool_id}/definition:
+    get:
+      operationId: getToolDefinitionAsKnowledgeNetworkProxy
+      summary: Read the invocation contract of an action type's bound Tool
+      description: |
+        Only an action_type binding, without an execution ID, may use this
+        route. The proxy's execute grant on the box is rechecked first. The Tool
+        must belong to the box, the box must be published and the Tool enabled:
+        the proxy reads only what it could run.
+      parameters:
+        - $ref: '#/components/parameters/BoxID'
+        - $ref: '#/components/parameters/ToolID'
+        - $ref: '#/components/parameters/ProxyAccountID'
+        - $ref: '#/components/parameters/ProxyAccountType'
+        - $ref: '#/components/parameters/CallerID'
+        - $ref: '#/components/parameters/CallerType'
+        - $ref: '#/components/parameters/KnowledgeNetworkID'
+        - $ref: '#/components/parameters/ActionChildType'
+        - $ref: '#/components/parameters/ChildID'
+        - $ref: '#/components/parameters/ProxyVersion'
+        - $ref: '#/components/parameters/ToolBoxTargetType'
+        - $ref: '#/components/parameters/TargetID'
+        - $ref: '#/components/parameters/ExecuteOperation'
+      responses:
+        '200':
+          description: The Tool's name, description and schemas.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolDefinition'
+        '400':
+          description: The box is not published or the Tool is disabled.
+        '403':
+          description: The trusted context is invalid, the proxy is inactive, or the exact grant is denied.
+        '404':
+          description: The box does not exist, or the Tool is not in it.
+        '503':
+          description: The final authorization check is unavailable.
+  /mcp/proxy/{mcp_id}/tool/definition:
+    get:
+      operationId: getMCPToolDefinitionAsKnowledgeNetworkProxy
+      summary: Read the input contract of an action type's bound MCP tool
+      description: |
+        Only an action_type binding, without an execution ID, may use this
+        route. The proxy's execute grant on the MCP server is rechecked before
+        the config is read or a connection is made. The tool is looked up in
+        the version callers are served; a server that is not served answers 400.
+      parameters:
+        - $ref: '#/components/parameters/MCPID'
+        - $ref: '#/components/parameters/ToolName'
+        - $ref: '#/components/parameters/ProxyAccountID'
+        - $ref: '#/components/parameters/ProxyAccountType'
+        - $ref: '#/components/parameters/CallerID'
+        - $ref: '#/components/parameters/CallerType'
+        - $ref: '#/components/parameters/KnowledgeNetworkID'
+        - $ref: '#/components/parameters/ActionChildType'
+        - $ref: '#/components/parameters/ChildID'
+        - $ref: '#/components/parameters/ProxyVersion'
+        - $ref: '#/components/parameters/MCPTargetType'
+        - $ref: '#/components/parameters/TargetID'
+        - $ref: '#/components/parameters/ExecuteOperation'
+      responses:
+        '200':
+          description: The MCP tool's name, description and input schema.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPToolDefinition'
+        '400':
+          description: The MCP server is not served.
+        '403':
+          description: The trusted context is invalid, the proxy is inactive, or the exact grant is denied.
+        '404':
+          description: The MCP server or the named tool does not exist.
+        '503':
+          description: The final authorization check is unavailable.
 components:
   parameters:
     BoxID:
@@ -115,6 +197,12 @@ components:
       name: mcp_id
       in: path
       required: true
+      schema: { type: string }
+    ToolName:
+      name: tool_name
+      in: query
+      required: true
+      description: Name of the MCP tool the action type is bound to.
       schema: { type: string }
     ProxyAccountID:
       name: X-Account-ID
@@ -215,3 +303,34 @@ components:
         parameters:
           type: object
           additionalProperties: true
+    ToolDefinition:
+      type: object
+      description: |
+        Name, description and schemas of one Tool. Source code, service
+        addresses and authoring metadata are never included.
+      properties:
+        box_id: { type: string }
+        tool_id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        api_spec:
+          type: object
+          properties:
+            parameters:
+              type: array
+              items: { type: object, additionalProperties: true }
+            request_body: { type: object, additionalProperties: true }
+            responses:
+              type: array
+              items: { type: object, additionalProperties: true }
+            components: { type: object, additionalProperties: true }
+    MCPToolDefinition:
+      type: object
+      properties:
+        mcp_id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        input_schema:
+          type: object
+          additionalProperties: true
+          description: The tool's input schema, exactly as the tool listing serves it.

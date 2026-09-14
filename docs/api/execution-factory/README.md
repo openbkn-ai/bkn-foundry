@@ -22,8 +22,9 @@
 The separate
 [managed-proxy contract](../bkn-safe/proxy-execution-pep.yaml)
 documents the cluster-internal, fail-closed Action and Schedule Tool/MCP
-execution boundary. It is linted but unpublished and is not part of the
-89-operation public API count.
+execution boundary, and the definition reads that let a caller who may view
+an action type see its bound tool's parameters. It is linted but unpublished
+and is not part of the 89-operation public API count.
 
 ## Run a function end to end
 
