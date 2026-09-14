@@ -3202,6 +3202,9 @@ const docTemplate = `{
                 "tool_name"
             ],
             "properties": {
+                "capability_profile": {
+                    "$ref": "#/definitions/sessionvo.CapabilityProfile"
+                },
                 "causation_event_ids": {
                     "type": "array",
                     "items": {
@@ -4022,6 +4025,62 @@ const docTemplate = `{
                 "BusinessRefActionInstance"
             ]
         },
+        "sessionvo.CapabilityProfile": {
+            "type": "object",
+            "properties": {
+                "canonical_tool_name": {
+                    "type": "string"
+                },
+                "child_evidence_policy": {
+                    "type": "string"
+                },
+                "evidence_contract": {
+                    "type": "string"
+                },
+                "execution_role": {
+                    "type": "string"
+                },
+                "failure_policy": {
+                    "type": "string"
+                },
+                "input_schema_digest": {
+                    "type": "string"
+                },
+                "manifest_id": {
+                    "type": "string"
+                },
+                "manifest_version": {
+                    "type": "string"
+                },
+                "mapper_id": {
+                    "type": "string"
+                },
+                "mapper_version": {
+                    "type": "string"
+                },
+                "minimum_trace_schema": {
+                    "type": "string"
+                },
+                "output_schema_digest": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "required_trace_fields": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "resolution": {
+                    "type": "string"
+                },
+                "tool_version": {
+                    "type": "string"
+                }
+            }
+        },
         "sessionvo.Claim": {
             "type": "object",
             "required": [
@@ -4570,6 +4629,9 @@ const docTemplate = `{
             "properties": {
                 "attempt": {
                     "type": "integer"
+                },
+                "capability_profile": {
+                    "$ref": "#/definitions/sessionvo.CapabilityProfile"
                 },
                 "conversation_id": {
                     "type": "string"

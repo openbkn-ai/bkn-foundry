@@ -583,6 +583,8 @@ definitions:
     type: object
   httphandler.ensureOperationRequest:
     properties:
+      capability_profile:
+        $ref: '#/definitions/sessionvo.CapabilityProfile'
       causation_event_ids:
         items:
           type: string
@@ -1158,6 +1160,43 @@ definitions:
     - BusinessRefFunction
     - BusinessRefActionType
     - BusinessRefActionInstance
+  sessionvo.CapabilityProfile:
+    properties:
+      canonical_tool_name:
+        type: string
+      child_evidence_policy:
+        type: string
+      evidence_contract:
+        type: string
+      execution_role:
+        type: string
+      failure_policy:
+        type: string
+      input_schema_digest:
+        type: string
+      manifest_id:
+        type: string
+      manifest_version:
+        type: string
+      mapper_id:
+        type: string
+      mapper_version:
+        type: string
+      minimum_trace_schema:
+        type: string
+      output_schema_digest:
+        type: string
+      reason:
+        type: string
+      required_trace_fields:
+        items:
+          type: string
+        type: array
+      resolution:
+        type: string
+      tool_version:
+        type: string
+    type: object
   sessionvo.Claim:
     properties:
       claim_id:
@@ -1556,6 +1595,8 @@ definitions:
     properties:
       attempt:
         type: integer
+      capability_profile:
+        $ref: '#/definitions/sessionvo.CapabilityProfile'
       conversation_id:
         type: string
       error:
