@@ -134,6 +134,22 @@ func (s *ToolServiceImpl) CreateTool(ctx context.Context, req *interfaces.Create
 	return resp, nil
 }
 
+// selectBoxTool loads a tool through the toolbox that addresses it. Every route
+// that names a tool also names its toolbox, and permissions are held on the
+// toolbox, so the tool must be one of that toolbox's own. A tool stored under a
+// different toolbox is reported exactly as a missing one is: exist is false and
+// nothing about the other toolbox is returned.
+func (s *ToolServiceImpl) selectBoxTool(ctx context.Context, boxID, toolID string) (exist bool, tool *model.ToolDB, err error) {
+	exist, tool, err = s.ToolDB.SelectTool(ctx, toolID)
+	if err != nil || !exist {
+		return exist, nil, err
+	}
+	if tool == nil || tool.BoxID != boxID {
+		return false, nil, nil
+	}
+	return true, tool, nil
+}
+
 // Check whether the new tool conflicts with existing tools.
 func (s *ToolServiceImpl) checkToolConflict(ctx context.Context, boxID string, validatorNameMap, validatorMethodPathMap map[string]bool) (
 	failuresVailMap map[string]error, err error) {

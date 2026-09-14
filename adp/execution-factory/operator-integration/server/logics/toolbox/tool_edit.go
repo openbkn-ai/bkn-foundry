@@ -53,8 +53,8 @@ func (s *ToolServiceImpl) UpdateTool(ctx context.Context, req *interfaces.Update
 		err = oerrors.DefaultHTTPError(ctx, http.StatusBadRequest, fmt.Sprintf("metadata type %s not match", toolBox.MetadataType))
 		return
 	}
-	// Check if the tool exists.
-	exist, tool, err := s.ToolDB.SelectTool(ctx, req.ToolID)
+	// Check if the tool exists in this toolbox.
+	exist, tool, err := s.selectBoxTool(ctx, req.BoxID, req.ToolID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select tool failed, err: %v", err)
 		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())

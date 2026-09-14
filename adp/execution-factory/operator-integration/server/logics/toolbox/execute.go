@@ -53,8 +53,8 @@ func (s *ToolServiceImpl) DebugTool(ctx context.Context, req *interfaces.Execute
 		err = errors.NewHTTPError(ctx, http.StatusNotFound, errors.ErrExtToolBoxNotFound, "toolbox not found")
 		return
 	}
-	// Check if the tool exists.
-	exist, tool, err := s.ToolDB.SelectTool(ctx, req.ToolID)
+	// Check if the tool exists in this toolbox.
+	exist, tool, err := s.selectBoxTool(ctx, req.BoxID, req.ToolID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select tool failed, err: %v", err)
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
@@ -223,8 +223,8 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 			"toolbox not published", toolBox.Name)
 		return
 	}
-	// Check if the tool exists.
-	exist, tool, err := s.ToolDB.SelectTool(ctx, req.ToolID)
+	// Check if the tool exists in this toolbox.
+	exist, tool, err := s.selectBoxTool(ctx, req.BoxID, req.ToolID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select tool failed, err: %v", err)
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
@@ -317,8 +317,8 @@ func (s *ToolServiceImpl) ExecuteToolCore(ctx context.Context, req *interfaces.E
 			"toolbox not published", toolBox.Name)
 		return
 	}
-	// Check if the tool exists.
-	exist, tool, err := s.ToolDB.SelectTool(ctx, req.ToolID)
+	// Check if the tool exists in this toolbox.
+	exist, tool, err := s.selectBoxTool(ctx, req.BoxID, req.ToolID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select tool failed, err: %v", err)
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())

@@ -371,7 +371,7 @@ func (s *ToolServiceImpl) GetBoxTool(ctx context.Context, req *interfaces.GetToo
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolBoxNotFound, fmt.Sprintf("toolbox %s not found", req.BoxID))
 		return
 	}
-	exist, tool, err := s.ToolDB.SelectTool(ctx, req.ToolID)
+	exist, tool, err := s.selectBoxTool(ctx, req.BoxID, req.ToolID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select tool failed, err: %v", err)
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
