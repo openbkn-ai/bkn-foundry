@@ -28,8 +28,10 @@ class UpstreamModelError(Exception):
 
 _MAX_PROVIDER_ERROR_SUMMARY_LENGTH = 512
 _SENSITIVE_PROVIDER_VALUE = re.compile(
-    r"(?i)\b(authorization|api[_-]?key|access[_-]?token|token|secret|password|input|request[_ ]body|messages)"
+    r"(?i)\b(authorization|api[_-]?key|access[_-]?token|token|secret|password|request[_ ]body)"
     r"[\"']?\s*[:=]\s*(?:Bearer\s+)?(?:\"[^\"]*\"|'[^']*'|\[[^\]]*\]|\{[^}]*\}|[^,;}]+)")
+_SENSITIVE_REQUEST_CONTENT = re.compile(
+    r"(?i)\b(input|messages)[\"']?\s*(?:=\s*[^,;}]+|:\s*(?:\[[^\]]*\]|\{[^}]*\}|\"[^\"]*\"|'[^']*'))")
 _BEARER_TOKEN = re.compile(r"(?i)\bBearer\s+[^\s,}]+")
 
 
@@ -59,6 +61,7 @@ def _safe_provider_error_summary(detail):
 
     summary = _BEARER_TOKEN.sub("Bearer ***", message)
     summary = _SENSITIVE_PROVIDER_VALUE.sub(r"\1=***", summary)
+    summary = _SENSITIVE_REQUEST_CONTENT.sub(r"\1=***", summary)
     return summary.strip()[:_MAX_PROVIDER_ERROR_SUMMARY_LENGTH]
 
 

@@ -195,7 +195,7 @@ def _parameter_name_from_detail(detail: str) -> str:
 def _batch_size_limit(solution: Any) -> Optional[str]:
     if not isinstance(solution, str):
         return None
-    match = re.search(r"(?:不大于|no more than)\s*(\d+)", solution, re.IGNORECASE)
+    match = re.search(r"batch_size_limit:\s*(\d+)", solution, re.IGNORECASE)
     return match.group(1) if match else None
 
 

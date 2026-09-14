@@ -164,7 +164,7 @@ class TestAcceptLanguageResolver(unittest.TestCase):
             "code": "ModelFactory.ExternalSmallModel.Used.InvalidParameter",
             "description": "Small model request parameters are invalid.",
             "detail": "batch size is invalid, it should not be larger than 10",
-            "solution": "请将批次大小调整为不大于 10 后重新构建。",
+            "solution": "batch_size_limit: 10",
         }
 
         english, _ = localized_error_content(source, "en-US")
