@@ -459,7 +459,10 @@ func TestResourceServiceList(t *testing.T) {
 	t.Run("list return all", func(t *testing.T) {
 		rs, mockRA, mockPS, _, mockUMS, _, _ := newTestService(t)
 		refs := []interfaces.ResourcePermissionRef{{ResourceID: "c1"}, {ResourceID: "c2"}}
-		summaries := []*interfaces.ResourceSummary{{ID: "r1"}, {ID: "r2"}}
+		summaries := []*interfaces.ResourceSummary{
+			{ID: "r1", Category: interfaces.ResourceCategoryDataset, LocalIndexName: "index-1"},
+			{ID: "r2"},
+		}
 		mockRA.EXPECT().ListPermissionRefs(gomock.Any(), gomock.Any()).Return(refs, nil)
 		mockPS.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), true, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{
@@ -709,23 +712,6 @@ func TestResourceServicePopulateDatasetRowCount(t *testing.T) {
 	ds.EXPECT().CountDocuments(gomock.Any(), failed).Return(int64(0), errors.New("count failed"))
 	rs.populateDatasetRowCount(context.Background(), failed)
 	assert.Nil(t, failed.RowCount)
-}
-
-func TestResourceServicePopulateDatasetSummaryRowCount(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	ds := vmock.NewMockDatasetService(ctrl)
-	rs := &resourceService{ds: ds}
-	summary := &interfaces.ResourceSummary{
-		ID: "dataset-1", Category: interfaces.ResourceCategoryDataset, LocalIndexName: "index-1",
-	}
-	ds.EXPECT().CountDocuments(gomock.Any(), &interfaces.Resource{
-		ID: "dataset-1", Category: interfaces.ResourceCategoryDataset, LocalIndexName: "index-1",
-	}).Return(int64(12), nil)
-
-	rs.populateDatasetSummaryRowCount(context.Background(), summary)
-
-	require.NotNil(t, summary.RowCount)
-	assert.Equal(t, int64(12), *summary.RowCount)
 }
 
 func TestValidateSchemaDefinitionRejectsNullField(t *testing.T) {

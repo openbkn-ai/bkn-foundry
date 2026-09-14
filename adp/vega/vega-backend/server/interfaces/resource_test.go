@@ -8,6 +8,7 @@ package interfaces
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 )
 
@@ -40,6 +41,16 @@ func TestResourceLocalStateJSON(t *testing.T) {
 	}
 	if got, exists := payload["row_count"]; !exists || got != float64(0) {
 		t.Fatalf("row_count = %v, exists = %v, want an explicit zero", got, exists)
+	}
+}
+
+func TestResourceSummaryJSONOmitsScale(t *testing.T) {
+	typ := reflect.TypeOf(ResourceSummary{})
+	for i := 0; i < typ.NumField(); i++ {
+		jsonName := typ.Field(i).Tag.Get("json")
+		if jsonName == "column_count,omitempty" || jsonName == "row_count,omitempty" {
+			t.Fatalf("ResourceSummary must not define scale field %q", jsonName)
+		}
 	}
 }
 

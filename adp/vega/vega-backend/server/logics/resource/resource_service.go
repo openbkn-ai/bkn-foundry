@@ -974,7 +974,6 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 	accountInfos := make([]*interfaces.AccountInfo, 0, len(summaries)*2)
 	for _, c := range summaries {
 		accountInfos = append(accountInfos, &c.Creator, &c.Updater)
-		rs.populateDatasetSummaryRowCount(ctx, c)
 	}
 
 	err = rs.ums.GetAccountNames(ctx, accountInfos)
@@ -998,24 +997,6 @@ func (rs *resourceService) populateDatasetRowCount(ctx context.Context, resource
 		return
 	}
 	resource.RowCount = &count
-}
-
-func (rs *resourceService) populateDatasetSummaryRowCount(ctx context.Context, summary *interfaces.ResourceSummary) {
-	if summary == nil || summary.Category != interfaces.ResourceCategoryDataset {
-		return
-	}
-	resource := &interfaces.Resource{
-		ID:             summary.ID,
-		Category:       summary.Category,
-		LocalIndexName: summary.LocalIndexName,
-	}
-	count, err := rs.ds.CountDocuments(ctx, resource)
-	if err != nil {
-		logger.Warnf("Failed to populate dataset row count for resource %s: %v", summary.ID, err)
-		summary.RowCount = nil
-		return
-	}
-	summary.RowCount = &count
 }
 
 func (rs *resourceService) InternalList(ctx context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.ResourceSummary, error) {

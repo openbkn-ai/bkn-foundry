@@ -85,8 +85,6 @@ var resourceSummaryColumns = []string{
 	"f_last_discover_status",
 	"f_schema",
 	"f_source_identifier",
-	"f_source_metadata",
-	"f_schema_definition",
 	"f_local_status",
 	"f_local_index_name",
 	"f_sync_mark",
@@ -159,7 +157,6 @@ func scanResource(scanner resourceRowScanner) (*interfaces.Resource, error) {
 func scanResourceSummary(scanner resourceRowScanner) (*interfaces.ResourceSummary, error) {
 	summary := &interfaces.ResourceSummary{}
 	var tagsStr string
-	var sourceMetadata, schemaDefinition sql.NullString
 	if err := scanner.Scan(
 		&summary.ID,
 		&summary.CatalogID,
@@ -173,8 +170,6 @@ func scanResourceSummary(scanner resourceRowScanner) (*interfaces.ResourceSummar
 		&summary.LastDiscoverStatus,
 		&summary.Schema,
 		&summary.SourceIdentifier,
-		&sourceMetadata,
-		&schemaDefinition,
 		&summary.LocalIndexStatus,
 		&summary.LocalIndexName,
 		&summary.SyncMark,
@@ -189,7 +184,6 @@ func scanResourceSummary(scanner resourceRowScanner) (*interfaces.ResourceSummar
 		return nil, err
 	}
 	summary.Tags = libCommon.TagString2TagSlice(tagsStr)
-	summary.ColumnCount, summary.RowCount = extractResourceScale(schemaDefinition, sourceMetadata)
 	return summary, nil
 }
 

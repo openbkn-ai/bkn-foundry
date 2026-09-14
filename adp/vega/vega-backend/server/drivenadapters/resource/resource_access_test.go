@@ -239,7 +239,7 @@ func TestResourceAccessGetSummariesByIDs(t *testing.T) {
 			WithArgs("resource-1", "resource-2").
 			WillReturnRows(resourceSummaryRows().AddRow(
 				"resource-1", "catalog-1", "orders", "pii,core", "desc", interfaces.ResourceCategoryTable, true, interfaces.ResourceStatusActive, "ready", interfaces.DiscoverStatusNew,
-				"db1", "public.orders", `{"properties":{"row_count":42}}`, `[{"name":"id"},{"name":"name"}]`,
+				"db1", "public.orders",
 				interfaces.ResourceLocalIndexStatusAvailable, "vega-build-resource-1-task-1", `{"mode":"batch","cursor":[10,"a"]}`, "",
 				"u1", interfaces.ACCESSOR_TYPE_USER, int64(1), "u2", interfaces.ACCESSOR_TYPE_USER, int64(2),
 			))
@@ -249,10 +249,6 @@ func TestResourceAccessGetSummariesByIDs(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, got, 1)
 		assert.Equal(t, []string{"pii", "core"}, got[0].Tags)
-		require.NotNil(t, got[0].ColumnCount)
-		assert.Equal(t, 2, *got[0].ColumnCount)
-		require.NotNil(t, got[0].RowCount)
-		assert.Equal(t, int64(42), *got[0].RowCount)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -896,7 +892,7 @@ func resourceNameSelectSQL(where string) string {
 func resourceSummaryRows() *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
 		"f_id", "f_catalog_id", "f_name", "f_tags", "f_description", "f_category", "f_enabled", "f_status", "f_status_message", "f_last_discover_status",
-		"f_schema", "f_source_identifier", "f_source_metadata", "f_schema_definition", "f_local_status", "f_local_index_name", "f_sync_mark", "f_logic_type",
+		"f_schema", "f_source_identifier", "f_local_status", "f_local_index_name", "f_sync_mark", "f_logic_type",
 		"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
 	})
 }
@@ -905,7 +901,7 @@ func resourceSummaryRowValues(resource *interfaces.Resource) []driver.Value {
 	return []driver.Value{
 		resource.ID, resource.CatalogID, resource.Name, "", resource.Description,
 		resource.Category, resource.Enabled, resource.Status, resource.StatusMessage, resource.LastDiscoverStatus, resource.Schema, resource.SourceIdentifier,
-		`{"properties":{"row_count":42}}`, `[{"name":"id"}]`, resource.LocalIndexStatus, resource.LocalIndexName, resource.SyncMark, resource.LogicType,
+		resource.LocalIndexStatus, resource.LocalIndexName, resource.SyncMark, resource.LogicType,
 		resource.Creator.ID, resource.Creator.Type, resource.CreateTime, resource.Updater.ID, resource.Updater.Type, resource.UpdateTime,
 	}
 }

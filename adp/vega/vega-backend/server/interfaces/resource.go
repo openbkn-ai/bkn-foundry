@@ -129,9 +129,6 @@ type ResourceSummary struct {
 	LocalIndexName   string `json:"index_name,omitempty"`
 	SyncMark         string `json:"-"`
 
-	ColumnCount *int   `json:"column_count,omitempty"`
-	RowCount    *int64 `json:"row_count,omitempty"`
-
 	LogicType string `json:"logic_type,omitempty"`
 
 	Creator    AccountInfo `json:"creator"`
