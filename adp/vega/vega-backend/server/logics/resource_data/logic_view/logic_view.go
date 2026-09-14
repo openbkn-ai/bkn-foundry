@@ -231,7 +231,10 @@ func (lvs *logicViewService) queryDerivedLogicView(ctx context.Context, view *in
 		}
 	}
 
-	catalog, err := lvs.cs.GetByID(ctx, fromResource.CatalogID, true)
+	// The outer logic-view query has already passed its Resource PEP and the
+	// source Resource has been resolved above. This is an execution-only read;
+	// do not turn it into a second public Catalog visibility check.
+	catalog, err := lvs.cs.InternalGetByID(ctx, fromResource.CatalogID, true)
 	if err != nil {
 		otellog.LogError(ctx, "Get catalog failed", err)
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).

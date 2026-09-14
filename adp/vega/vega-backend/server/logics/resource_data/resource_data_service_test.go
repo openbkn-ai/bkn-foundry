@@ -208,7 +208,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 			CatalogID: "catalog-1",
 			Category:  interfaces.ResourceCategoryTable,
 		}
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
 
 		_, _, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
@@ -236,7 +236,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{}
 		wantRows := []map[string]any{{"name": "openbkn"}}
 
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockLIM.EXPECT().ListDocuments(gomock.Any(), resource.LocalIndexName, resource, params).
 			Return(wantRows, int64(1), nil)
@@ -268,7 +268,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		binaryMode := interfaces.BinaryModeMetadata
 		params := &interfaces.ResourceDataQueryParams{IgnoreLocalIndex: &ignoreLocalIndex, BinaryMode: &binaryMode}
 
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockCF.EXPECT().CreateConnectorInstance(gomock.Any(), gomock.Any(), gomock.Any()).Return(mockConn, nil)
 		mockConn.EXPECT().Connect(gomock.Any()).Return(nil)
@@ -310,7 +310,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		}
 		wantRows := []map[string]any{{"name": "alice"}}
 
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockDS.EXPECT().ListDocuments(gomock.Any(), resource, params).
 			DoAndReturn(func(ctx context.Context, gotResource *interfaces.Resource,
@@ -350,7 +350,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		}
 		wantRows := []map[string]any{{"name": "alice"}}
 
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockLVS.EXPECT().QueryWithPaging(gomock.Any(), resource, params).
 			DoAndReturn(func(ctx context.Context, gotResource *interfaces.Resource,
@@ -455,7 +455,7 @@ func TestResourceDataServiceRejectsOpenSearchCursorWithoutSort(t *testing.T) {
 		LocalIndexName:   "vega-dataset-index-1",
 		SchemaDefinition: []*interfaces.Property{{Name: "id"}},
 	}
-	mockCS.EXPECT().GetByID(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
+	mockCS.EXPECT().InternalGetByID(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 	mockDS.EXPECT().ListDocuments(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
 		Return(nil, int64(0), nil)
@@ -481,7 +481,7 @@ func TestResourceDataServiceRejectsOpenSearchFirstPageWindowOverflow(t *testing.
 		Category:         interfaces.ResourceCategoryDataset,
 		SchemaDefinition: []*interfaces.Property{{Name: "id"}},
 	}
-	mockCS.EXPECT().GetByID(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
+	mockCS.EXPECT().InternalGetByID(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 	mockDS.EXPECT().ListDocuments(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
 		Return(nil, int64(0), nil)
@@ -513,7 +513,7 @@ func TestDatasetCursorUsesSearchAfterPagination(t *testing.T) {
 		Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1},
 		Sort:   []*interfaces.SortField{{Field: "id", Direction: "asc"}},
 	}
-	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Times(2).
+	mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Times(2).
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 	firstPage := true
 	mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).Times(2).
@@ -618,7 +618,7 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 		rds := &resourceDataService{cs: mockCS, cf: mockCF}
 		resource := newResource(interfaces.ResourceCategoryTable)
 
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockCF.EXPECT().CreateConnectorInstance(gomock.Any(), gomock.Any(), gomock.Any()).Return(mockConn, nil)
 		mockConn.EXPECT().Connect(gomock.Any()).Return(nil)
@@ -637,7 +637,7 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 		rds := &resourceDataService{cs: mockCS, cf: mockCF}
 		resource := newResource(interfaces.ResourceCategoryFileset)
 
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockCF.EXPECT().CreateConnectorInstance(gomock.Any(), gomock.Any(), gomock.Any()).Return(mockConn, nil)
 		mockConn.EXPECT().Connect(gomock.Any()).Return(nil)
@@ -657,7 +657,7 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 		rds := &resourceDataService{cs: mockCS, cf: mockCF}
 		resource := newResource(interfaces.ResourceCategoryTable)
 
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockCF.EXPECT().CreateConnectorInstance(gomock.Any(), gomock.Any(), gomock.Any()).Return(mockConn, nil)
 		mockConn.EXPECT().Connect(gomock.Any()).Return(nil)
