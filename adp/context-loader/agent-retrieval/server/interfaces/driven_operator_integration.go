@@ -147,6 +147,18 @@ type KNProxyOperator interface {
 		proxy *KNProxyExecution) (map[string]any, error)
 }
 
+// KNProxyDefinitionReader reads the invocation contract of the target an action
+// type is bound to, as that knowledge network's managed proxy. It is a read, not
+// a run: Execution Factory serves it only for an action-type binding, and only
+// the name, description and schemas come back. The responses reuse the direct
+// read types so get_action_info builds the same tool either way.
+type KNProxyDefinitionReader interface {
+	GetToolDefinitionAsProxy(ctx context.Context, req *GetToolDetailRequest,
+		proxy *KNProxyExecution) (*GetToolDetailResponse, error)
+	GetMCPToolDefinitionAsProxy(ctx context.Context, req *GetMCPToolDetailRequest,
+		proxy *KNProxyExecution) (*GetMCPToolDetailResponse, error)
+}
+
 // SearchBoundToolsRequest asks Execution Factory to rank a bounded set of Function tools.
 type SearchBoundToolsRequest struct {
 	Query string

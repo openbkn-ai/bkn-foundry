@@ -160,6 +160,7 @@
     "SkillScopeKnIDRequired": "kn_id is required: a Skill can only be read or run through a knowledge network that mounted it.",
     "SkillNotMountedOnNetwork": "This Skill is not mounted on the knowledge network, so it cannot be read or run here. Mount it under SKILLs in the knowledge network first.",
     "SkillAuthorizationUnavailable": "Knowledge network authorization is not configured.",
-    "RunSQLResourceForbidden": "This account lacks view permission on at least one data resource the SQL references (view_detail on the Vega resource), so the query was not run. run_sql reads the underlying resources under the caller's own identity; unlike the other query tools, it does not follow knowledge-network authorization, so grants received through object types do not cover it. If you are authorized through object types, use query_object_instance or run_cypher instead; to use run_sql, ask an administrator to grant view_detail on the referenced resources."
+    "RunSQLResourceForbidden": "This account lacks view permission on at least one data resource the SQL references (view_detail on the Vega resource), so the query was not run. run_sql reads the underlying resources under the caller's own identity; unlike the other query tools, it does not follow knowledge-network authorization, so grants received through object types do not cover it. If you are authorized through object types, use query_object_instance or run_cypher instead; to use run_sql, ask an administrator to grant view_detail on the referenced resources.",
+    "ActionTypeNotAuthorized": "You are not authorized to view this action type."
   }
 }

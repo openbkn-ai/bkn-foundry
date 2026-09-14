@@ -47,6 +47,11 @@ const (
 	callMCPToolURI            = "/v1/mcp/proxy/%s/tool/call"
 	callMCPToolInternalURI    = "/internal-v1/caller/mcp/proxy/%s/tool/call"
 	callMCPToolManagedURI     = "/internal-v1/mcp/proxy/%s/tool/call"
+
+	// The invocation contract of an action type's bound target, read as the network's managed
+	// proxy. These routes serve nothing but an action-type proxy context (#1548).
+	getToolDefinitionManagedURI    = "/internal-v1/tool-box/%s/tool/%s/definition"
+	getMCPToolDefinitionManagedURI = "/internal-v1/mcp/proxy/%s/tool/definition"
 )
 
 const (
@@ -62,6 +67,13 @@ const (
 )
 
 func managedProxyHeaders(ctx context.Context, proxy *interfaces.KNProxyExecution) (map[string]string, error) {
+	return managedProxyHeadersFor(ctx, proxy, interfaces.KNProxyChildTypeCapability, "operator.capability.proxy.execute")
+}
+
+// managedProxyHeadersFor builds the dual-principal context for one binding kind. Each proxy route
+// accepts exactly one child type, so a binding of any other kind is refused here, before the call.
+func managedProxyHeadersFor(ctx context.Context, proxy *interfaces.KNProxyExecution,
+	childType, operationName string) (map[string]string, error) {
 	caller, ok := common.GetAccountAuthContextFromCtx(ctx)
 	if !ok || caller == nil || proxy == nil || proxy.Mapping == nil {
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
@@ -69,12 +81,12 @@ func managedProxyHeaders(ctx context.Context, proxy *interfaces.KNProxyExecution
 	}
 	mapping, binding := proxy.Mapping, proxy.Binding
 	if caller.AccountID == "" || mapping.ProxyAccountID == "" || mapping.ProxyAccountType != "app" ||
-		mapping.Version <= 0 || mapping.KNID != binding.KNID || binding.ChildType != interfaces.KNProxyChildTypeCapability ||
+		mapping.Version <= 0 || mapping.KNID != binding.KNID || binding.ChildType != childType ||
 		binding.ChildID == "" || binding.TargetID == "" || binding.Operation != interfaces.KNProxyOperationExecute {
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
 			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
 	}
-	header := common.GetHeaderForChildOperation(ctx, "operator.capability.proxy.execute", 1)
+	header := common.GetHeaderForChildOperation(ctx, operationName, 1)
 	header[string(interfaces.HeaderXAccountID)] = mapping.ProxyAccountID
 	header[string(interfaces.HeaderXAccountType)] = mapping.ProxyAccountType
 	header[headerBKNCallerID] = caller.AccountID
@@ -116,11 +128,10 @@ func (o *operatorIntegrationClient) GetToolDetail(ctx context.Context, req *inte
 		return nil, err
 	}
 
-	_, respBody, err := o.httpClient.Get(ctx, url, nil, header)
+	code, respBody, err := o.httpClient.Get(ctx, url, nil, header)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetToolDetail] Request failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-			infraErr.LocalizedDetail(ctx, "ToolDetailRequestFailed"))
+		return nil, classifyToolReadError(ctx, code, err, "ToolDetailRequestFailed")
 	}
 
 	resp = &interfaces.GetToolDetailResponse{}
@@ -151,11 +162,10 @@ func (o *operatorIntegrationClient) GetMCPToolDetail(ctx context.Context, req *i
 	if err != nil {
 		return nil, err
 	}
-	_, respBody, err := o.httpClient.Get(ctx, url, nil, header)
+	code, respBody, err := o.httpClient.Get(ctx, url, nil, header)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetMCPToolDetail] Request failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-			infraErr.LocalizedDetail(ctx, "MCPToolListRequestFailed"))
+		return nil, classifyToolReadError(ctx, code, err, "MCPToolListRequestFailed")
 	}
 
 	var listResp struct {

@@ -8,6 +8,7 @@ import "context"
 
 const (
 	PermissionResourceTypeObjectType       = "object_type"
+	PermissionResourceTypeActionType       = "action_type"
 	PermissionResourceTypeKnowledgeNetwork = "knowledge_network"
 	PermissionOperationQueryData           = "query_data"
 	PermissionOperationViewDetail          = "view_detail"
@@ -72,4 +73,13 @@ type KnowledgeNetworkAuthorizer interface {
 // execution paths; read-only consumers do not need to implement it.
 type KnowledgeNetworkExecuteAuthorizer interface {
 	AuthorizeExecute(ctx context.Context, knID string) error
+}
+
+// ActionTypeViewAuthorizer answers "may this caller view this action type's details".
+//
+// It gates a read made on the caller's behalf rather than as the caller: the bound tool's
+// definition read through the knowledge network's proxy. That read must rest on the caller's own
+// grant, checked here, not on the proxy's.
+type ActionTypeViewAuthorizer interface {
+	AuthorizeActionTypeView(ctx context.Context, knID, atID string) error
 }

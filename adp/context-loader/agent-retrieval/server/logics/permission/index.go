@@ -189,6 +189,34 @@ func (a *knowledgeNetworkAuthorizer) AuthorizeExecute(ctx context.Context, knID 
 	return a.authorize(ctx, knID, interfaces.PermissionOperationExecute)
 }
 
+// NewActionTypeViewAuthorizer wires the production Safe adapter.
+func NewActionTypeViewAuthorizer(conf *config.Config) interfaces.ActionTypeViewAuthorizer {
+	return NewActionTypeViewAuthorizerWith(drivenadapters.NewPermissionAccess(conf))
+}
+
+// NewActionTypeViewAuthorizerWith allows focused tests to inject the outbound boundary.
+func NewActionTypeViewAuthorizerWith(access interfaces.PermissionAccess) interfaces.ActionTypeViewAuthorizer {
+	return &knowledgeNetworkAuthorizer{access: access}
+}
+
+// AuthorizeActionTypeView checks view_detail on one action type, the same canonical child
+// resource bkn-backend checks before it returns the action type's detail. A grant on the whole
+// network reaches it through Safe's resource hierarchy.
+func (a *knowledgeNetworkAuthorizer) AuthorizeActionTypeView(ctx context.Context, knID, atID string) error {
+	account, ok := trustedAccount(ctx)
+	if !ok {
+		return infraerrors.DefaultHTTPError(ctx, http.StatusUnauthorized, "request subject is missing or invalid")
+	}
+	knID, atID = strings.TrimSpace(knID), strings.TrimSpace(atID)
+	if !validAuthorizationID(knID) || !validAuthorizationID(atID) {
+		return infraerrors.DefaultHTTPError(ctx, http.StatusBadRequest, "invalid knowledge network or action type id")
+	}
+	return a.authorizeResource(ctx, account, interfaces.PermissionResource{
+		Type: interfaces.PermissionResourceTypeActionType,
+		ID:   knID + "/" + atID,
+	}, interfaces.PermissionOperationViewDetail, "ActionTypeNotAuthorized")
+}
+
 func (a *knowledgeNetworkAuthorizer) authorize(ctx context.Context, knID, operation string) error {
 	account, ok := trustedAccount(ctx)
 	if !ok {
@@ -198,16 +226,21 @@ func (a *knowledgeNetworkAuthorizer) authorize(ctx context.Context, knID, operat
 	if !validAuthorizationID(knID) {
 		return infraerrors.DefaultHTTPError(ctx, http.StatusBadRequest, "invalid knowledge network id")
 	}
+	return a.authorizeResource(ctx, account, interfaces.PermissionResource{
+		Type: interfaces.PermissionResourceTypeKnowledgeNetwork,
+		ID:   knID,
+	}, operation, "KnowledgeNetworkNotAuthorized")
+}
+
+func (a *knowledgeNetworkAuthorizer) authorizeResource(ctx context.Context, account *interfaces.AccountAuthContext,
+	resource interfaces.PermissionResource, operation, deniedDetailKey string) error {
 	if a == nil || a.access == nil {
 		return permissionUnavailable(ctx)
 	}
 
 	response, err := a.access.FilterResources(ctx, interfaces.PermissionFilterRequest{
-		AccessorID: account.AccountID,
-		Resources: []interfaces.PermissionResource{{
-			Type: interfaces.PermissionResourceTypeKnowledgeNetwork,
-			ID:   knID,
-		}},
+		AccessorID:           account.AccountID,
+		Resources:            []interfaces.PermissionResource{resource},
 		VisibilityOperations: []string{operation},
 		CandidateOperations:  []string{operation},
 	})
@@ -215,8 +248,7 @@ func (a *knowledgeNetworkAuthorizer) authorize(ctx context.Context, knID, operat
 		return permissionUnavailable(ctx)
 	}
 	for _, result := range *response.Resources {
-		if result.ResourceType != interfaces.PermissionResourceTypeKnowledgeNetwork ||
-			result.ResourceID != knID {
+		if result.ResourceType != resource.Type || result.ResourceID != resource.ID {
 			return permissionUnavailable(ctx)
 		}
 		if contains(result.Operations, operation) {
@@ -224,5 +256,5 @@ func (a *knowledgeNetworkAuthorizer) authorize(ctx context.Context, knID, operat
 		}
 	}
 	return infraerrors.DefaultHTTPError(ctx, http.StatusForbidden,
-		infraerrors.LocalizedDetail(ctx, "KnowledgeNetworkNotAuthorized"))
+		infraerrors.LocalizedDetail(ctx, deniedDetailKey))
 }

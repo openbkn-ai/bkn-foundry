@@ -280,3 +280,111 @@ func (mr *MockDrivenOperatorIntegrationMockRecorder) ToolBoxLifecycle(ctx, boxID
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ToolBoxLifecycle", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).ToolBoxLifecycle), ctx, boxID)
 }
+
+// MockKNProxyOperator is a mock of KNProxyOperator interface.
+type MockKNProxyOperator struct {
+	ctrl     *gomock.Controller
+	recorder *MockKNProxyOperatorMockRecorder
+	isgomock struct{}
+}
+
+// MockKNProxyOperatorMockRecorder is the mock recorder for MockKNProxyOperator.
+type MockKNProxyOperatorMockRecorder struct {
+	mock *MockKNProxyOperator
+}
+
+// NewMockKNProxyOperator creates a new mock instance.
+func NewMockKNProxyOperator(ctrl *gomock.Controller) *MockKNProxyOperator {
+	mock := &MockKNProxyOperator{ctrl: ctrl}
+	mock.recorder = &MockKNProxyOperatorMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockKNProxyOperator) EXPECT() *MockKNProxyOperatorMockRecorder {
+	return m.recorder
+}
+
+// CallMCPToolAsProxy mocks base method.
+func (m *MockKNProxyOperator) CallMCPToolAsProxy(ctx context.Context, req *interfaces.CallMCPToolRequest, proxy *interfaces.KNProxyExecution) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CallMCPToolAsProxy", ctx, req, proxy)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CallMCPToolAsProxy indicates an expected call of CallMCPToolAsProxy.
+func (mr *MockKNProxyOperatorMockRecorder) CallMCPToolAsProxy(ctx, req, proxy any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CallMCPToolAsProxy", reflect.TypeOf((*MockKNProxyOperator)(nil).CallMCPToolAsProxy), ctx, req, proxy)
+}
+
+// ExecutePublishedToolAsProxy mocks base method.
+func (m *MockKNProxyOperator) ExecutePublishedToolAsProxy(ctx context.Context, req *interfaces.ExecutePublishedToolRequest, proxy *interfaces.KNProxyExecution) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExecutePublishedToolAsProxy", ctx, req, proxy)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ExecutePublishedToolAsProxy indicates an expected call of ExecutePublishedToolAsProxy.
+func (mr *MockKNProxyOperatorMockRecorder) ExecutePublishedToolAsProxy(ctx, req, proxy any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecutePublishedToolAsProxy", reflect.TypeOf((*MockKNProxyOperator)(nil).ExecutePublishedToolAsProxy), ctx, req, proxy)
+}
+
+// MockKNProxyDefinitionReader is a mock of KNProxyDefinitionReader interface.
+type MockKNProxyDefinitionReader struct {
+	ctrl     *gomock.Controller
+	recorder *MockKNProxyDefinitionReaderMockRecorder
+	isgomock struct{}
+}
+
+// MockKNProxyDefinitionReaderMockRecorder is the mock recorder for MockKNProxyDefinitionReader.
+type MockKNProxyDefinitionReaderMockRecorder struct {
+	mock *MockKNProxyDefinitionReader
+}
+
+// NewMockKNProxyDefinitionReader creates a new mock instance.
+func NewMockKNProxyDefinitionReader(ctrl *gomock.Controller) *MockKNProxyDefinitionReader {
+	mock := &MockKNProxyDefinitionReader{ctrl: ctrl}
+	mock.recorder = &MockKNProxyDefinitionReaderMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockKNProxyDefinitionReader) EXPECT() *MockKNProxyDefinitionReaderMockRecorder {
+	return m.recorder
+}
+
+// GetMCPToolDefinitionAsProxy mocks base method.
+func (m *MockKNProxyDefinitionReader) GetMCPToolDefinitionAsProxy(ctx context.Context, req *interfaces.GetMCPToolDetailRequest, proxy *interfaces.KNProxyExecution) (*interfaces.GetMCPToolDetailResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetMCPToolDefinitionAsProxy", ctx, req, proxy)
+	ret0, _ := ret[0].(*interfaces.GetMCPToolDetailResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetMCPToolDefinitionAsProxy indicates an expected call of GetMCPToolDefinitionAsProxy.
+func (mr *MockKNProxyDefinitionReaderMockRecorder) GetMCPToolDefinitionAsProxy(ctx, req, proxy any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMCPToolDefinitionAsProxy", reflect.TypeOf((*MockKNProxyDefinitionReader)(nil).GetMCPToolDefinitionAsProxy), ctx, req, proxy)
+}
+
+// GetToolDefinitionAsProxy mocks base method.
+func (m *MockKNProxyDefinitionReader) GetToolDefinitionAsProxy(ctx context.Context, req *interfaces.GetToolDetailRequest, proxy *interfaces.KNProxyExecution) (*interfaces.GetToolDetailResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetToolDefinitionAsProxy", ctx, req, proxy)
+	ret0, _ := ret[0].(*interfaces.GetToolDetailResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetToolDefinitionAsProxy indicates an expected call of GetToolDefinitionAsProxy.
+func (mr *MockKNProxyDefinitionReaderMockRecorder) GetToolDefinitionAsProxy(ctx, req, proxy any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetToolDefinitionAsProxy", reflect.TypeOf((*MockKNProxyDefinitionReader)(nil).GetToolDefinitionAsProxy), ctx, req, proxy)
+}

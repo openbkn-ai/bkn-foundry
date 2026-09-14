@@ -188,3 +188,72 @@ func TestKnowledgeNetworkAuthorizerChecksReadAndExecuteSeparately(t *testing.T) 
 		t.Fatalf("knowledge-network permission requests = %#v", access.requests)
 	}
 }
+
+// The action-type check asks Safe about the canonical child resource bkn-backend guards the
+// action type's detail with, for view_detail and nothing broader.
+func TestActionTypeViewAuthorizerChecksTheCanonicalChild(t *testing.T) {
+	access := &fakePermissionAccess{
+		allowed:                 map[string]bool{"kn-a/at-1": true},
+		echoRequestedOperations: true,
+	}
+	authorizer := NewActionTypeViewAuthorizerWith(access)
+
+	if err := authorizer.AuthorizeActionTypeView(authorizedContext(), "kn-a", "at-1"); err != nil {
+		t.Fatal(err)
+	}
+	want := interfaces.PermissionFilterRequest{
+		AccessorID:           "user-1",
+		Resources:            []interfaces.PermissionResource{{Type: "action_type", ID: "kn-a/at-1"}},
+		VisibilityOperations: []string{"view_detail"},
+		CandidateOperations:  []string{"view_detail"},
+	}
+	if len(access.requests) != 1 || !reflect.DeepEqual(access.requests[0], want) {
+		t.Fatalf("action-type permission request = %#v", access.requests)
+	}
+
+	// The same action type id in another network is a different resource.
+	err := authorizer.AuthorizeActionTypeView(authorizedContext(), "kn-b", "at-1")
+	status, ok := infraerrors.HTTPStatus(err)
+	if !ok || status != http.StatusForbidden {
+		t.Fatalf("other network error = %v, want 403", err)
+	}
+}
+
+func TestActionTypeViewAuthorizerFailsClosed(t *testing.T) {
+	tests := []struct {
+		name       string
+		ctx        context.Context
+		knID, atID string
+		access     *fakePermissionAccess
+		wantStatus int
+		wantCalls  int
+	}{
+		{name: "no subject", ctx: context.Background(), knID: "kn-a", atID: "at-1",
+			access: &fakePermissionAccess{}, wantStatus: http.StatusUnauthorized},
+		{name: "path in action type id", ctx: authorizedContext(), knID: "kn-a", atID: "at-1/../at-2",
+			access: &fakePermissionAccess{}, wantStatus: http.StatusBadRequest},
+		{name: "wildcard action type id", ctx: authorizedContext(), knID: "kn-a", atID: "*",
+			access: &fakePermissionAccess{}, wantStatus: http.StatusBadRequest},
+		{name: "no grant", ctx: authorizedContext(), knID: "kn-a", atID: "at-1",
+			access: &fakePermissionAccess{allowed: map[string]bool{}}, wantStatus: http.StatusForbidden, wantCalls: 1},
+		{name: "query_data only", ctx: authorizedContext(), knID: "kn-a", atID: "at-1",
+			access:     &fakePermissionAccess{allowed: map[string]bool{"kn-a/at-1": true}},
+			wantStatus: http.StatusForbidden, wantCalls: 1},
+		{name: "Safe unavailable", ctx: authorizedContext(), knID: "kn-a", atID: "at-1",
+			access: &fakePermissionAccess{err: errors.New("timeout")}, wantStatus: http.StatusServiceUnavailable, wantCalls: 1},
+		{name: "unexpected resource", ctx: authorizedContext(), knID: "kn-a", atID: "at-1",
+			access: &fakePermissionAccess{allowed: map[string]bool{"kn-a/at-1": true}, echoRequestedOperations: true,
+				mutate: func(rows *[]interfaces.PermissionFilterResult) { (*rows)[0].ResourceType = "object_type" }},
+			wantStatus: http.StatusServiceUnavailable, wantCalls: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := NewActionTypeViewAuthorizerWith(tt.access).AuthorizeActionTypeView(tt.ctx, tt.knID, tt.atID)
+			status, ok := infraerrors.HTTPStatus(err)
+			if !ok || status != tt.wantStatus || len(tt.access.requests) != tt.wantCalls {
+				t.Fatalf("error = %v calls = %d, want %d after %d calls", err, len(tt.access.requests),
+					tt.wantStatus, tt.wantCalls)
+			}
+		})
+	}
+}

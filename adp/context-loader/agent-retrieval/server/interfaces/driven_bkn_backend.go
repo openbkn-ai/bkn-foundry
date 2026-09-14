@@ -656,6 +656,10 @@ type KNProxyBinding struct {
 
 const (
 	KNProxyChildTypeCapability = "capability_binding"
+	// KNProxyChildTypeActionType binds an action type to the Tool box or MCP
+	// server its action source names. Context Loader uses it only to read that
+	// target's invocation contract; running the action stays with ontology-query.
+	KNProxyChildTypeActionType = "action_type"
 	KNProxyTargetTypeToolBox   = "tool_box"
 	KNProxyTargetTypeMCP       = "mcp"
 	KNProxyOperationExecute    = "execute"

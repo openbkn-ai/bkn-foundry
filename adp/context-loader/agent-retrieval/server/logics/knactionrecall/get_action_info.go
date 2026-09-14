@@ -88,6 +88,12 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 		}
 
 		toolDetail, err := s.operatorIntegration.GetToolDetail(ctx, toolDetailReq)
+		if callerLacksToolGrant(err) {
+			// View on the action type covers its parameters; the tool grant is not needed (#1548).
+			s.logger.WithContext(ctx).Infof("[KnActionRecall#GetActionInfo] no direct grant on tool %s/%s, "+
+				"reading its definition through the knowledge network proxy", toolDetailReq.BoxID, toolDetailReq.ToolID)
+			toolDetail, err = s.getBoundToolDefinitionAsProxy(ctx, req.KnID, req.AtID, actionsResp.ActionSource)
+		}
 		if err != nil {
 			s.logger.WithContext(ctx).Errorf("[KnActionRecall#GetActionInfo] GetToolDetail failed, err: %v", err)
 			return nil, err
@@ -120,6 +126,12 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 		}
 
 		toolDetail, err := s.operatorIntegration.GetMCPToolDetail(ctx, mcpReq)
+		if callerLacksToolGrant(err) {
+			// View on the action type covers its parameters; the MCP grant is not needed (#1548).
+			s.logger.WithContext(ctx).Infof("[KnActionRecall#GetActionInfo] no direct grant on MCP tool %s/%s, "+
+				"reading its definition through the knowledge network proxy", mcpReq.McpID, mcpReq.ToolName)
+			toolDetail, err = s.getBoundMCPToolDefinitionAsProxy(ctx, req.KnID, req.AtID, actionsResp.ActionSource)
+		}
 		if err != nil {
 			s.logger.WithContext(ctx).Errorf("[KnActionRecall#GetActionInfo] GetMCPToolDetail failed, err: %v", err)
 			return nil, err

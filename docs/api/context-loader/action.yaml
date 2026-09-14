@@ -54,6 +54,13 @@ paths:
 
         工具声明了输出契约时，还会带上 `output_schema`——执行结果的形状，供 Agent 把
         `get_action_execution` 拿到的 `result` 复述成自然语言。
+
+        **权限**：调用方需具备该行动类的 `view_detail` 权限，以及绑定对象类的
+        `query_data` 权限；无需另行授予底层工具或 MCP 的权限。调用方无权直接读取绑定
+        工具时，服务先核验其行动类 `view_detail` 权限，再以知识网络托管代理账号读取该
+        行动当前发布绑定的工具定义，仅取名称、描述与参数和输出 schema，不包含源码与
+        服务地址，也不授予执行权限。读取绑定工具定义被拒绝时返回 403，而非依赖服务
+        不可用。
       requestBody:
         required: true
         content:
@@ -88,6 +95,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -275,6 +284,12 @@ components:
             $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
     Unauthorized:
       description: 凭据缺失或无效
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+    Forbidden:
+      description: 调用方缺少所需权限，例如行动类 `view_detail` 或绑定对象类 `query_data`
       content:
         application/json:
           schema:
