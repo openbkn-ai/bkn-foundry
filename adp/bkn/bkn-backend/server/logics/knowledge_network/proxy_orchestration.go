@@ -953,34 +953,7 @@ func (kns *knowledgeNetworkService) ListGovernedKNProxies(ctx context.Context) (
 // exact model version has finished permission synchronization.
 func (kns *knowledgeNetworkService) ResolveKNProxyBinding(ctx context.Context, knID string,
 	binding interfaces.KNProxyBinding) (*interfaces.KNProxyAccount, error) {
-	if kns.kpa == nil {
-		return nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
-			berrors.BknBackend_KnowledgeNetwork_ProxyUnavailable, "proxy orchestration is disabled")
-	}
-	mapping, err := kns.kpa.Get(ctx, knID)
-	if err != nil {
-		return nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
-			berrors.BknBackend_KnowledgeNetwork_ProxyUnavailable, "load knowledge network proxy mapping")
-	}
-	if mapping == nil {
-		return nil, proxyStateHTTPError(ctx, http.StatusNotFound,
-			berrors.BknBackend_KnowledgeNetwork_ProxyMappingNotFound, "knowledge network proxy mapping not found")
-	}
-	if mapping.LifecycleStatus != interfaces.KNProxyLifecycleActive {
-		return nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
-			berrors.BknBackend_KnowledgeNetwork_ProxyDisabled, "knowledge network proxy is not active")
-	}
-	if mapping.SyncStatus == interfaces.KNProxySyncFailed {
-		return nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
-			berrors.BknBackend_KnowledgeNetwork_ProxySyncFailed, "knowledge network proxy synchronization failed")
-	}
-	if mapping.SyncStatus != interfaces.KNProxySyncReady ||
-		mapping.PublishedModelVersion == "" || mapping.SyncedModelVersion != mapping.PublishedModelVersion {
-		return nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
-			berrors.BknBackend_KnowledgeNetwork_ProxySyncPending,
-			"knowledge network proxy is not synchronized with the current published model")
-	}
-	sources, modelVersion, err := kns.loadPublishedProxyBindings(ctx, knID, mapping.PublishedModelVersion)
+	mapping, sources, err := kns.readyPublishedProxyBindings(ctx, knID)
 	if err != nil {
 		return nil, err
 	}
@@ -988,12 +961,74 @@ func (kns *knowledgeNetworkService) ResolveKNProxyBinding(ctx context.Context, k
 		return nil, proxyStateHTTPError(ctx, http.StatusForbidden,
 			berrors.BknBackend_KnowledgeNetwork_ProxyBindingInvalid, "target is not a current published binding")
 	}
-	if mapping.PublishedModelVersion != modelVersion || mapping.SyncedModelVersion != modelVersion {
-		return nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
+	return mapping, nil
+}
+
+// ResolveKNProxyBindings is the batch form of ResolveKNProxyBinding for BKN's
+// own reads: the mapping state and the published projection are checked once,
+// with the same errors, and every binding is then matched against that
+// projection. It returns only the bindings that are current published
+// bindings; a binding that is not one is left out rather than failing the
+// others, because each belongs to a different child.
+func (kns *knowledgeNetworkService) ResolveKNProxyBindings(ctx context.Context, knID string,
+	bindings []interfaces.KNProxyBinding) (*interfaces.KNProxyAccount, []interfaces.KNProxyBinding, error) {
+	mapping, sources, err := kns.readyPublishedProxyBindings(ctx, knID)
+	if err != nil {
+		return nil, nil, err
+	}
+	resolved := make([]interfaces.KNProxyBinding, 0, len(bindings))
+	for _, binding := range bindings {
+		if containsProxyBinding(sources, knID, binding) {
+			resolved = append(resolved, binding)
+		}
+	}
+	return mapping, resolved, nil
+}
+
+// readyPublishedProxyBindings returns the proxy mapping of a knowledge network
+// together with the bindings of its latest published main model, only when that
+// exact model version has finished permission synchronization.
+func (kns *knowledgeNetworkService) readyPublishedProxyBindings(ctx context.Context,
+	knID string) (*interfaces.KNProxyAccount, []interfaces.ProxyGrantSourceSpec, error) {
+	if kns.kpa == nil {
+		return nil, nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
+			berrors.BknBackend_KnowledgeNetwork_ProxyUnavailable, "proxy orchestration is disabled")
+	}
+	mapping, err := kns.kpa.Get(ctx, knID)
+	if err != nil {
+		return nil, nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
+			berrors.BknBackend_KnowledgeNetwork_ProxyUnavailable, "load knowledge network proxy mapping")
+	}
+	if mapping == nil {
+		return nil, nil, proxyStateHTTPError(ctx, http.StatusNotFound,
+			berrors.BknBackend_KnowledgeNetwork_ProxyMappingNotFound, "knowledge network proxy mapping not found")
+	}
+	if mapping.LifecycleStatus != interfaces.KNProxyLifecycleActive {
+		return nil, nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
+			berrors.BknBackend_KnowledgeNetwork_ProxyDisabled, "knowledge network proxy is not active")
+	}
+	if mapping.SyncStatus == interfaces.KNProxySyncFailed {
+		return nil, nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
+			berrors.BknBackend_KnowledgeNetwork_ProxySyncFailed, "knowledge network proxy synchronization failed")
+	}
+	if mapping.SyncStatus != interfaces.KNProxySyncReady ||
+		mapping.PublishedModelVersion == "" || mapping.SyncedModelVersion != mapping.PublishedModelVersion {
+		return nil, nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
 			berrors.BknBackend_KnowledgeNetwork_ProxySyncPending,
 			"knowledge network proxy is not synchronized with the current published model")
 	}
-	return mapping, nil
+	sources, modelVersion, err := kns.loadPublishedProxyBindings(ctx, knID, mapping.PublishedModelVersion)
+	if err != nil {
+		return nil, nil, err
+	}
+	// loadPublishedProxyBindings already refuses any other version; this keeps
+	// the guarantee local to the function that hands out the mapping.
+	if mapping.PublishedModelVersion != modelVersion || mapping.SyncedModelVersion != modelVersion {
+		return nil, nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
+			berrors.BknBackend_KnowledgeNetwork_ProxySyncPending,
+			"knowledge network proxy is not synchronized with the current published model")
+	}
+	return mapping, sources, nil
 }
 
 func (kns *knowledgeNetworkService) loadPublishedProxyBindings(ctx context.Context, knID,

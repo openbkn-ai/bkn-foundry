@@ -127,6 +127,66 @@ func TestGetResourcesByIDsReportsNonOKStatus(t *testing.T) {
 	assert.Nil(t, resources)
 }
 
+func TestResourceReadsReportForbiddenAsTypedStatus(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
+	mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), "http://vega/resources/r1", gomock.Any(), gomock.Any()).
+		Return(http.StatusForbidden, []byte(`{"error_code":"Public.Forbidden"}`), nil)
+	mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), "http://vega/resources/r1,r2", gomock.Any(), gomock.Any()).
+		Return(http.StatusForbidden, []byte(`{"error_code":"Public.Forbidden"}`), nil)
+	mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), "http://vega/resources/r3", gomock.Any(), gomock.Any()).
+		Return(http.StatusInternalServerError, []byte(`{}`), nil)
+	access := &vegaBackendAccess{httpClient: mockHTTPClient, baseUrl: "http://vega"}
+
+	_, singleErr := access.GetResourceByID(context.Background(), "r1")
+	_, batchErr := access.GetResourcesByIDs(context.Background(), []string{"r1", "r2"})
+	_, failedErr := access.GetResourceByID(context.Background(), "r3")
+
+	assert.True(t, interfaces.IsVegaForbidden(singleErr))
+	assert.True(t, interfaces.IsVegaForbidden(batchErr))
+	assert.False(t, interfaces.IsVegaForbidden(failedErr), "only a refusal may switch to the proxy")
+	// The text callers log and wrap is unchanged.
+	assert.EqualError(t, singleErr, "GetResourceByID returned HTTP 403")
+	assert.EqualError(t, batchErr, "GetResourcesByIDs returned HTTP 403")
+}
+
+func TestGetResourcesByIDsAsReadsAsTheGivenAccount(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
+	mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), "http://vega/resources/r1,r2", gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, params url.Values, headers map[string]string) (int, []byte, error) {
+			assert.Equal(t, "true", params.Get("ignore_missing"))
+			// The account named by the call, not the caller in the context.
+			assert.Equal(t, "proxy-1", headers[interfaces.HTTP_HEADER_ACCOUNT_ID])
+			assert.Equal(t, interfaces.KNProxyAccountTypeApp, headers[interfaces.HTTP_HEADER_ACCOUNT_TYPE])
+			return http.StatusOK, []byte(`{"entries":[{"id":"r1","name":"brand","local_status":"available",
+				"schema_definition":[{"name":"brand_name","type":"string","features":[{"feature_type":"fulltext"}]}]}]}`), nil
+		})
+	access := &vegaBackendAccess{httpClient: mockHTTPClient, baseUrl: "http://vega"}
+	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+		interfaces.AccountInfo{ID: "reader-1", Type: interfaces.ACCESSOR_TYPE_USER})
+
+	resources, err := access.GetResourcesByIDsAs(ctx,
+		interfaces.AccountInfo{ID: "proxy-1", Type: interfaces.KNProxyAccountTypeApp}, []string{"r1", "r2"})
+
+	require.NoError(t, err)
+	require.Len(t, resources, 1)
+	assert.Equal(t, interfaces.ResourceLocalIndexStatusAvailable, resources[0].LocalIndexStatus)
+	assert.Equal(t, interfaces.FieldFeatureType_Fulltext, resources[0].SchemaDefinition[0].Features[0].FeatureType)
+}
+
+func TestGetResourcesByIDsAsNeverFallsBackToAnotherAccount(t *testing.T) {
+	// No expectation on the client: an incomplete account must not reach Vega as anyone.
+	access := &vegaBackendAccess{httpClient: rmock.NewMockHTTPClient(gomock.NewController(t)), baseUrl: "http://vega"}
+	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+		interfaces.AccountInfo{ID: "reader-1", Type: interfaces.ACCESSOR_TYPE_USER})
+
+	for _, account := range []interfaces.AccountInfo{{}, {ID: "proxy-1"}, {Type: interfaces.KNProxyAccountTypeApp}} {
+		_, err := access.GetResourcesByIDsAs(ctx, account, []string{"r1"})
+		require.Error(t, err)
+	}
+}
+
 func TestGetResourcesByIDsSkipsRequestForNoIDs(t *testing.T) {
 	access := &vegaBackendAccess{httpClient: rmock.NewMockHTTPClient(gomock.NewController(t)), baseUrl: "http://vega"}
 	resources, err := access.GetResourcesByIDs(context.Background(), nil)

@@ -186,7 +186,7 @@ func (vba *vegaBackendAccess) GetResourceByID(ctx context.Context, id string) (*
 	}
 
 	if respCode != http.StatusOK {
-		err := fmt.Errorf("GetResourceByID returned HTTP %d", respCode)
+		err := &interfaces.VegaStatusError{Operation: "GetResourceByID", HTTPStatus: respCode}
 		common.LogSafeError(ctx, "GetResourceByID failed", err)
 		logger.Debugf("GetResourceByID response: %s", common.SafeTextSummary("response", string(respData)))
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
@@ -215,6 +215,24 @@ func (vba *vegaBackendAccess) GetResourceByID(ctx context.Context, id string) (*
 // result rather than failing the request (ignore_missing), so callers detect them by absence. Vega
 // still refuses the whole batch when the caller may not view any one of them.
 func (vba *vegaBackendAccess) GetResourcesByIDs(ctx context.Context, ids []string) ([]*interfaces.VegaResource, error) {
+	return vba.getResourcesByIDs(ctx, "GetResourcesByIDs", nil, ids)
+}
+
+// GetResourcesByIDsAs is GetResourcesByIDs made as an explicit account, such as a knowledge network's
+// managed proxy, rather than the account in the context. Vega authorizes the whole batch against that
+// account. There is no fallback: an incomplete account fails before any request is made.
+func (vba *vegaBackendAccess) GetResourcesByIDsAs(ctx context.Context, account interfaces.AccountInfo,
+	ids []string) ([]*interfaces.VegaResource, error) {
+	if strings.TrimSpace(account.ID) == "" || strings.TrimSpace(account.Type) == "" {
+		return nil, fmt.Errorf("GetResourcesByIDsAs requires an explicit account")
+	}
+	return vba.getResourcesByIDs(ctx, "GetResourcesByIDsAs", &account, ids)
+}
+
+// getResourcesByIDs reads ids with ignore_missing, as the given account or, when it is nil, as the
+// account in the context.
+func (vba *vegaBackendAccess) getResourcesByIDs(ctx context.Context, operation string,
+	account *interfaces.AccountInfo, ids []string) ([]*interfaces.VegaResource, error) {
 	if len(ids) == 0 {
 		return []*interfaces.VegaResource{}, nil
 	}
@@ -235,20 +253,24 @@ func (vba *vegaBackendAccess) GetResourcesByIDs(ctx context.Context, ids []strin
 	})
 
 	headers := vba.buildHeaders(ctx)
+	if account != nil {
+		headers[interfaces.HTTP_HEADER_ACCOUNT_ID] = account.ID
+		headers[interfaces.HTTP_HEADER_ACCOUNT_TYPE] = account.Type
+	}
 	respCode, respData, err := vba.httpClient.GetNoUnmarshal(ctx, httpUrl,
 		url.Values{"ignore_missing": []string{"true"}}, headers)
-	logger.Debugf("GetResourcesByIDs finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
+	logger.Debugf("%s finished, response code is [%d], %s", operation, respCode, common.SafeErrorSummary(err))
 
 	if err != nil {
-		common.LogSafeError(ctx, "GetResourcesByIDs http request failed", err)
+		common.LogSafeError(ctx, operation+" http request failed", err)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get resources by IDs failed")
 		return nil, fmt.Errorf("vega dependency request failed")
 	}
 
 	if respCode != http.StatusOK {
-		err := fmt.Errorf("GetResourcesByIDs returned HTTP %d", respCode)
-		common.LogSafeError(ctx, "GetResourcesByIDs failed", err)
-		logger.Debugf("GetResourcesByIDs response: %s", common.SafeTextSummary("response", string(respData)))
+		err := &interfaces.VegaStatusError{Operation: operation, HTTPStatus: respCode}
+		common.LogSafeError(ctx, operation+" failed", err)
+		logger.Debugf("%s response: %s", operation, common.SafeTextSummary("response", string(respData)))
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
 		return nil, err
 	}
@@ -257,9 +279,9 @@ func (vba *vegaBackendAccess) GetResourcesByIDs(ctx context.Context, ids []strin
 		Entries []*interfaces.VegaResource `json:"entries"`
 	}
 	if err := json.Unmarshal([]byte(respData), &resourceData); err != nil {
-		common.LogSafeError(ctx, "Failed to unmarshal GetResourcesByIDs response", err)
+		common.LogSafeError(ctx, "Failed to unmarshal "+operation+" response", err)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal GetResourcesByIDs response failed")
-		return nil, fmt.Errorf("failed to unmarshal GetResourcesByIDs response: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal %s response: %v", operation, err)
 	}
 
 	oteltrace.AddHttpAttrs4Ok(span, respCode)

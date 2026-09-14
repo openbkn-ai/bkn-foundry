@@ -175,6 +175,46 @@ func (mr *MockKNProxyAccessMockRecorder) TryAcquireLock(ctx, knID, owner, now, l
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TryAcquireLock", reflect.TypeOf((*MockKNProxyAccess)(nil).TryAcquireLock), ctx, knID, owner, now, lockUntil)
 }
 
+// MockKNProxyBindingResolver is a mock of KNProxyBindingResolver interface.
+type MockKNProxyBindingResolver struct {
+	ctrl     *gomock.Controller
+	recorder *MockKNProxyBindingResolverMockRecorder
+	isgomock struct{}
+}
+
+// MockKNProxyBindingResolverMockRecorder is the mock recorder for MockKNProxyBindingResolver.
+type MockKNProxyBindingResolverMockRecorder struct {
+	mock *MockKNProxyBindingResolver
+}
+
+// NewMockKNProxyBindingResolver creates a new mock instance.
+func NewMockKNProxyBindingResolver(ctrl *gomock.Controller) *MockKNProxyBindingResolver {
+	mock := &MockKNProxyBindingResolver{ctrl: ctrl}
+	mock.recorder = &MockKNProxyBindingResolverMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockKNProxyBindingResolver) EXPECT() *MockKNProxyBindingResolverMockRecorder {
+	return m.recorder
+}
+
+// ResolveKNProxyBindings mocks base method.
+func (m *MockKNProxyBindingResolver) ResolveKNProxyBindings(ctx context.Context, knID string, bindings []interfaces.KNProxyBinding) (*interfaces.KNProxyAccount, []interfaces.KNProxyBinding, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveKNProxyBindings", ctx, knID, bindings)
+	ret0, _ := ret[0].(*interfaces.KNProxyAccount)
+	ret1, _ := ret[1].([]interfaces.KNProxyBinding)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ResolveKNProxyBindings indicates an expected call of ResolveKNProxyBindings.
+func (mr *MockKNProxyBindingResolverMockRecorder) ResolveKNProxyBindings(ctx, knID, bindings any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveKNProxyBindings", reflect.TypeOf((*MockKNProxyBindingResolver)(nil).ResolveKNProxyBindings), ctx, knID, bindings)
+}
+
 // MockManagedProxyAccess is a mock of ManagedProxyAccess interface.
 type MockManagedProxyAccess struct {
 	ctrl     *gomock.Controller

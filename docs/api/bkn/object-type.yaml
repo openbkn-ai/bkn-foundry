@@ -2272,6 +2272,18 @@ components:
           type: array
           items:
             type: string
+        data_source_metadata_unavailable:
+          description: |
+            Present and true only when the bound resource could not be read while this response
+            was assembled, so the fields derived from it (`data_source.name`, the display name and
+            type of mapped fields, and `condition_operations`) are missing rather than empty.
+            Omitted whenever the resource was read, and when it no longer exists: a deleted
+            resource leaves nothing to search, which is a known answer rather than an unknown one.
+            When the caller may view the object type but not the resource, the resource is read as
+            the knowledge network's managed proxy account for the published main model; the field
+            then remains only when that is not possible (an editing branch, a proxy that is missing
+            or not synchronized, or a failed read).
+          type: boolean
         incremental_key:
           description: Property name used for incremental synchronization
           type: string

@@ -72,6 +72,11 @@ type VegaBackendAccess interface {
 	// GetResourcesByIDs gets several resources in one request; missing ids are left out of the result.
 	GetResourcesByIDs(ctx context.Context, ids []string) ([]*VegaResource, error)
 
+	// GetResourcesByIDsAs is GetResourcesByIDs made as the given account instead of the one in
+	// the context. Vega authorizes the read against that account. It never falls back to another
+	// identity: without a complete account it fails before any request.
+	GetResourcesByIDsAs(ctx context.Context, account AccountInfo, ids []string) ([]*VegaResource, error)
+
 	// GetResourceSchema gets the minimal schema view after checking the exact operation.
 	GetResourceSchema(ctx context.Context, id, operation string) (*VegaResource, error)
 

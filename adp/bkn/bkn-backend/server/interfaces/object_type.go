@@ -109,6 +109,13 @@ type ObjectType struct {
 	ModuleType string   `json:"module_type" mapstructure:"module_type"`
 	Operations []string `json:"operations,omitempty"`
 
+	// DataSourceMetadataUnavailable reports that the bound resource could not be read while this
+	// response was assembled, so the fields derived from it (data_source.name, mapped field display
+	// names and types, condition_operations) are missing rather than empty. It is set only by the
+	// detail and search responses, never persisted, and omitted whenever the resource was read or
+	// no longer exists: a deleted resource is a known answer, not an unknown one.
+	DataSourceMetadataUnavailable bool `json:"data_source_metadata_unavailable,omitempty" mapstructure:"-"`
+
 	PropertyMap  map[string]string `json:"-"` // Map from property name to display name
 	IfNameModify bool              `json:"-"`
 

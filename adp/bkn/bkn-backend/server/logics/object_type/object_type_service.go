@@ -55,6 +55,33 @@ type objectTypeService struct {
 	ps         interfaces.PermissionService
 	ums        interfaces.UserMgmtService
 	vbs        interfaces.VegaBackendService
+	// kpr overrides the registered knowledge-network proxy resolver; tests set it directly.
+	kpr interfaces.KNProxyBindingResolver
+}
+
+// registeredKNProxyResolver holds the knowledge-network service, which owns the proxy mapping.
+// That service depends on this package, so it registers itself once it is built rather than
+// being passed to NewObjectTypeService.
+var registeredKNProxyResolver struct {
+	sync.RWMutex
+	resolver interfaces.KNProxyBindingResolver
+}
+
+// RegisterKNProxyBindingResolver makes the knowledge-network proxy available to object type
+// enrichment. Without it, a resource the caller may not read directly is left unread, as before.
+func RegisterKNProxyBindingResolver(resolver interfaces.KNProxyBindingResolver) {
+	registeredKNProxyResolver.Lock()
+	defer registeredKNProxyResolver.Unlock()
+	registeredKNProxyResolver.resolver = resolver
+}
+
+func (ots *objectTypeService) knProxyResolver() interfaces.KNProxyBindingResolver {
+	if ots.kpr != nil {
+		return ots.kpr
+	}
+	registeredKNProxyResolver.RLock()
+	defer registeredKNProxyResolver.RUnlock()
+	return registeredKNProxyResolver.resolver
 }
 
 func invalidParameterDetail(ctx context.Context, name string, templateData map[string]any) string {
@@ -1449,6 +1476,8 @@ func (ots *objectTypeService) InsertDatasetData(ctx context.Context, objectTypes
 			span.SetStatus(codes.Error, "反序列化对象类失败")
 			return err
 		}
+		// A per-response marker, never part of the indexed definition.
+		delete(doc, "data_source_metadata_unavailable")
 
 		// Serialize logic_properties[].parameters to JSON string
 		if logicProps, ok := doc["logic_properties"].([]any); ok {
@@ -1759,9 +1788,31 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 // vegaResourceBatchSize caps how many resource ids go into one batch read, keeping the request path short.
 const vegaResourceBatchSize = 100
 
+// proxyTargetTypeResource is the target type of a resource binding in the proxy projection.
+const proxyTargetTypeResource = "resource"
+
 type vegaResourceLookup struct {
 	resource *interfaces.VegaResource
 	err      error
+	// proxyChildren is set when the resource was read as a knowledge network's managed proxy account
+	// after Vega refused it to the caller. Only the object types listed here, whose binding BKN
+	// resolved against the published model, may use it; any other keeps err.
+	proxyChildren map[string]struct{}
+}
+
+// resourceFor returns the resource read for the given object type, or why there is none.
+func (lookup vegaResourceLookup) resourceFor(objectType *interfaces.ObjectType) (*interfaces.VegaResource, error) {
+	if lookup.proxyChildren == nil {
+		return lookup.resource, lookup.err
+	}
+	if _, ok := lookup.proxyChildren[proxyChildKey(objectType.KNID, objectType.Branch, objectType.OTID)]; ok {
+		return lookup.resource, nil
+	}
+	return nil, lookup.err
+}
+
+func proxyChildKey(knID, branch, objectTypeID string) string {
+	return strings.Join([]string{knID, branch, objectTypeID}, "\x00")
 }
 
 // fetchObjectTypeResources reads the Vega resource behind each resource-bound object type, once per
@@ -1777,6 +1828,9 @@ type vegaResourceLookup struct {
 // forbidden resource fails alone and the rest still enrich. A resource the batch leaves out does not
 // exist, the same answer a single read gives. A failed read is recorded, not returned: enrichment has
 // always been best effort per object type.
+//
+// A resource Vega refuses to the caller (403) is then read as the knowledge network's managed proxy
+// account, see readRefusedResourcesByProxy.
 func (ots *objectTypeService) fetchObjectTypeResources(ctx context.Context,
 	objectTypes []*interfaces.ObjectType) map[string]vegaResourceLookup {
 
@@ -1795,6 +1849,7 @@ func (ots *objectTypeService) fetchObjectTypeResources(ctx context.Context,
 	}
 
 	resources := make(map[string]vegaResourceLookup, len(ids))
+	refused := map[string]struct{}{}
 	for start := 0; start < len(ids); start += vegaResourceBatchSize {
 		batch := ids[start:min(start+vegaResourceBatchSize, len(ids))]
 		found, err := ots.vbs.GetResourcesByIDs(ctx, batch)
@@ -1804,6 +1859,9 @@ func (ots *objectTypeService) fetchObjectTypeResources(ctx context.Context,
 			for _, id := range batch {
 				res, err := ots.vbs.GetResourceByID(ctx, id)
 				resources[id] = vegaResourceLookup{resource: res, err: err}
+				if interfaces.IsVegaForbidden(err) {
+					refused[id] = struct{}{}
+				}
 			}
 			continue
 		}
@@ -1813,11 +1871,147 @@ func (ots *objectTypeService) fetchObjectTypeResources(ctx context.Context,
 			}
 		}
 	}
+	if len(refused) > 0 {
+		ots.readRefusedResourcesByProxy(ctx, objectTypes, refused, resources)
+	}
 	return resources
+}
+
+// readRefusedResourcesByProxy reads, as the knowledge network's managed proxy account, the resources
+// Vega refused to the caller, and records them for the object types allowed to use them.
+//
+// Knowledge-network authorization decides what a caller may see of a model: a caller who may view
+// an object type must not also need a grant on the resource bound to it. Every object type reaching
+// enrichment has passed the caller's view_detail check on the object type, so its bound resource
+// is read with the knowledge network's proxy account instead of the caller's, through the same
+// resource read, and Vega authorizes it against that account. Only bindings of the current
+// published main model qualify, since those are the only grants the proxy holds. Whatever cannot be
+// read this way (an editing branch, a proxy that is not synchronized, disabled or missing, a refused
+// or failed read) keeps the caller's refusal, so the object type is returned without
+// resource-derived details as before; the request itself never fails because of it.
+func (ots *objectTypeService) readRefusedResourcesByProxy(ctx context.Context, objectTypes []*interfaces.ObjectType,
+	refused map[string]struct{}, resources map[string]vegaResourceLookup) {
+	resolver := ots.knProxyResolver()
+	caller, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	if resolver == nil || caller.ID == "" || caller.Type == "" {
+		return
+	}
+
+	var knIDs []string
+	bindingsByKN := map[string][]interfaces.KNProxyBinding{}
+	seen := map[string]struct{}{}
+	for _, objectType := range objectTypes {
+		if objectType == nil || objectType.DataSource == nil ||
+			objectType.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
+			continue
+		}
+		resourceID := objectType.DataSource.ID
+		if _, ok := refused[resourceID]; !ok {
+			continue
+		}
+		// The proxy holds grants only for the published main model; an editing branch keeps the refusal.
+		if objectType.Branch != interfaces.MAIN_BRANCH || objectType.KNID == "" || objectType.OTID == "" {
+			continue
+		}
+		binding := interfaces.KNProxyBinding{
+			ChildType:  interfaces.MODULE_TYPE_OBJECT_TYPE,
+			ChildID:    objectType.OTID,
+			TargetType: proxyTargetTypeResource,
+			TargetID:   resourceID,
+			Operation:  interfaces.OPERATION_TYPE_VIEW_DETAIL,
+		}
+		key := objectType.KNID + "\x00" + proxyBindingKey(binding)
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		if _, ok := bindingsByKN[objectType.KNID]; !ok {
+			knIDs = append(knIDs, objectType.KNID)
+		}
+		bindingsByKN[objectType.KNID] = append(bindingsByKN[objectType.KNID], binding)
+	}
+
+	for _, knID := range knIDs {
+		requested := bindingsByKN[knID]
+		mapping, answered, err := resolver.ResolveKNProxyBindings(ctx, knID, requested)
+		if err != nil {
+			otellog.LogWarn(ctx, fmt.Sprintf("Knowledge network [%s] proxy cannot read %d vega resources refused to the caller, error: %v",
+				knID, len(requested), err))
+			continue
+		}
+		if mapping == nil || mapping.KNID != knID || strings.TrimSpace(mapping.ProxyAccountID) == "" ||
+			mapping.ProxyAccountType != interfaces.KNProxyAccountTypeApp {
+			otellog.LogWarn(ctx, fmt.Sprintf("Knowledge network [%s] proxy resolution returned no usable proxy account", knID))
+			continue
+		}
+		proxy := interfaces.AccountInfo{ID: mapping.ProxyAccountID, Type: mapping.ProxyAccountType}
+
+		// Only a binding this request asked about may be read, whatever the resolver answered.
+		var resourceIDs []string
+		childrenByResource := map[string][]string{}
+		resolved := 0
+		for _, binding := range answered {
+			if _, ok := seen[knID+"\x00"+proxyBindingKey(binding)]; !ok {
+				continue
+			}
+			resolved++
+			if _, ok := childrenByResource[binding.TargetID]; !ok {
+				resourceIDs = append(resourceIDs, binding.TargetID)
+			}
+			childrenByResource[binding.TargetID] = append(childrenByResource[binding.TargetID], binding.ChildID)
+		}
+		if resolved < len(requested) {
+			otellog.LogWarn(ctx, fmt.Sprintf("Knowledge network [%s]: %d of %d refused object type bindings are not current published bindings",
+				knID, len(requested)-resolved, len(requested)))
+		}
+
+		for start := 0; start < len(resourceIDs); start += vegaResourceBatchSize {
+			batch := resourceIDs[start:min(start+vegaResourceBatchSize, len(resourceIDs))]
+			found, err := ots.vbs.GetResourcesByIDsAs(ctx, proxy, batch)
+			// Vega's own audit names only the proxy account; this line keeps who the read was for.
+			if err != nil {
+				logger.Infof("KN proxy resource read: caller_id=%s kn_id=%s proxy_account_id=%s resource_ids=%v result=failed error=%s",
+					caller.ID, knID, proxy.ID, batch, common.SafeErrorSummary(err))
+				continue
+			}
+			logger.Infof("KN proxy resource read: caller_id=%s kn_id=%s proxy_account_id=%s resource_ids=%v result=ok returned=%d",
+				caller.ID, knID, proxy.ID, batch, len(found))
+
+			byID := make(map[string]*interfaces.VegaResource, len(found))
+			for _, res := range found {
+				if res != nil {
+					byID[res.ID] = res
+				}
+			}
+			for _, resourceID := range batch {
+				res, ok := byID[resourceID]
+				if !ok {
+					// Gone since the caller's read: the caller's refusal stands.
+					continue
+				}
+				lookup := resources[resourceID]
+				if lookup.proxyChildren == nil {
+					lookup = vegaResourceLookup{resource: res, err: lookup.err, proxyChildren: map[string]struct{}{}}
+				}
+				for _, childID := range childrenByResource[resourceID] {
+					// Proxy bindings are main-branch bindings by construction.
+					lookup.proxyChildren[proxyChildKey(knID, interfaces.MAIN_BRANCH, childID)] = struct{}{}
+				}
+				resources[resourceID] = lookup
+			}
+		}
+	}
+}
+
+func proxyBindingKey(binding interfaces.KNProxyBinding) string {
+	return strings.Join([]string{binding.ChildType, binding.ChildID, binding.TargetType, binding.TargetID, binding.Operation}, "\x00")
 }
 
 // enrichObjectTypes fills in the resource-derived details of every object type, reading each bound
 // resource once.
+//
+// Callers must pass only object types on which the caller holds view_detail: a resource the caller
+// may not read directly is read as the knowledge network's proxy account on that basis.
 func (ots *objectTypeService) enrichObjectTypes(ctx context.Context, objectTypes []*interfaces.ObjectType) error {
 	resources := ots.fetchObjectTypeResources(ctx, objectTypes)
 	for _, objectType := range objectTypes {
@@ -1833,15 +2027,22 @@ func (ots *objectTypeService) enrichObjectTypes(ctx context.Context, objectTypes
 func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, objectType *interfaces.ObjectType,
 	resources map[string]vegaResourceLookup) error {
 
+	// The marker describes this response only; a value decoded from a stored document means nothing.
+	objectType.DataSourceMetadataUnavailable = false
+
 	// Retrieve views or Vega resources to assemble operations. Assembly is unnecessary because they are persisted on save.
 	if objectType.DataSource != nil && objectType.DataSource.ID != "" {
 		switch objectType.DataSource.Type {
 		case interfaces.DATA_SOURCE_TYPE_RESOURCE:
-			lookup := resources[objectType.DataSource.ID]
-			res, err := lookup.resource, lookup.err
+			res, err := resources[objectType.DataSource.ID].resourceFor(objectType)
 			if err != nil || res == nil {
 				otellog.LogWarn(ctx, fmt.Sprintf("Object type [%s]'s vega Resource %s not found, error: %v",
 					objectType.OTID, objectType.DataSource.ID, err))
+				// A read that failed leaves the capabilities unknown: say so, so that a consumer
+				// deciding what to search does not read the missing condition_operations as
+				// "nothing here can be searched". A resource that no longer exists is a known
+				// answer, not an unknown one -- there is nothing to search -- so it is not marked.
+				objectType.DataSourceMetadataUnavailable = err != nil
 			} else {
 				objectType.DataSource.Name = res.Name
 				propertiesMap := logics.VegaResourceSchemaToPropertiesMap(res)

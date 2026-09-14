@@ -230,6 +230,16 @@ type KNProxyAccess interface {
 	ListProxyConflicts(ctx context.Context) (map[string][]string, error)
 }
 
+// KNProxyBindingResolver resolves a knowledge network's managed proxy for
+// several runtime targets at once. Callers derive the bindings from their own
+// persisted model and must already have authorized the business caller on each
+// bound child. The resolver returns the ready mapping and the subset of
+// bindings that are current published bindings; no other target may be read
+// through the proxy.
+type KNProxyBindingResolver interface {
+	ResolveKNProxyBindings(ctx context.Context, knID string, bindings []KNProxyBinding) (*KNProxyAccount, []KNProxyBinding, error)
+}
+
 type ManagedProxyAccess interface {
 	Create(ctx context.Context, knID, name string) (*ManagedProxyAccount, bool, error)
 	Restore(ctx context.Context, proxyAccountID string) (*ManagedProxyAccount, error)

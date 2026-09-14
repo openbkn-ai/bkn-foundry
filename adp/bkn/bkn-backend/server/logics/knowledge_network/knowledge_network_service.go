@@ -102,6 +102,11 @@ func NewKNService(appSetting *common.AppSetting) interfaces.KNServiceWithProxyMu
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 			vbs:        vega_backend.NewVegaBackendService(appSetting, logics.VBA),
 		}
+		// Object type enrichment reads resources through the managed proxy when
+		// the caller may not read them directly. This service owns the proxy
+		// mapping and depends on the object type package, so it registers itself
+		// instead of being passed to that constructor.
+		object_type.RegisterKNProxyBindingResolver(knService.(*knowledgeNetworkService))
 	})
 	return knService
 }
