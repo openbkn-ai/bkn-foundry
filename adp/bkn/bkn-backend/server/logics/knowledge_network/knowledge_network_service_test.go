@@ -1889,12 +1889,14 @@ func Test_knowledgeNetworkService_GetRelationTypePaths(t *testing.T) {
 		kna := bmock.NewMockKNAccess(mockCtrl)
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
 			kna:        kna,
 			ots:        ots,
 			ps:         ps,
+			rta:        rta,
 		}
 		allowKNView := func() {
 			ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
@@ -2046,9 +2048,11 @@ func Test_knowledgeNetworkService_GetRelationTypePaths(t *testing.T) {
 				ID:   "kn1",
 			}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).
 				Return(rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden))
-			// The caller holds nothing on the source object type (#1553).
+			// The network has no relation type, and the caller holds no view_detail on the source
+			// object type (#1553).
+			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{}, nil)
 			ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
-				[]string{"kn1/ot1"}, gomock.Any(), gomock.Any(), gomock.Any()).
+				[]string{"kn1/ot1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, gomock.Any(), gomock.Any()).
 				Return(map[string]interfaces.PermissionResourceOps{}, nil)
 
 			paths, err := service.GetRelationTypePaths(ctx, query)

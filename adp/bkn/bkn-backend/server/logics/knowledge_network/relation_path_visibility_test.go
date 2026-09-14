@@ -39,12 +39,14 @@ func pathRelation(id, source, target string) *interfaces.RelationType {
 // fullPathModel is the network the tests search. With partialGrants the caller sees:
 //
 //	order   --rel_order_user-->     user      visible
-//	user    --rel_user_address-->   address   visible; address is granted query_data alone
+//	user    --rel_user_address-->   address   visible
 //	address --rel_address_region--> region    hidden: nothing on region
 //	order   --rel_order_item-->     item      hidden: nothing on item
 //	item    --rel_item_supplier-->  supplier  hidden: nothing on item, though supplier is visible
 //	order   --rel_order_payment-->  payment   hidden: nothing on the relation type
 //	order   --rel_order_supplier--> supplier  hidden: query_data alone on the relation type
+//	user    --rel_user_invoice-->   invoice   hidden: the relation type is readable, but invoice is
+//	                                          granted query_data alone and a node carries its definition
 func fullPathModel() pathModel {
 	return pathModel{
 		relationTypes: []*interfaces.RelationType{
@@ -55,6 +57,7 @@ func fullPathModel() pathModel {
 			pathRelation("rel_item_supplier", "item", "supplier"),
 			pathRelation("rel_order_payment", "order", "payment"),
 			pathRelation("rel_order_supplier", "order", "supplier"),
+			pathRelation("rel_user_invoice", "user", "invoice"),
 		},
 		groups: map[string][]string{
 			"cg_sales":  {"order", "user"},
@@ -74,9 +77,10 @@ var partialGrants = map[string]map[string][]string{
 	interfaces.RESOURCE_TYPE_OBJECT_TYPE: {
 		"order":    {interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA},
 		"user":     {interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA},
-		"address":  {interfaces.OPERATION_TYPE_QUERY_DATA},
+		"address":  {interfaces.OPERATION_TYPE_VIEW_DETAIL},
 		"payment":  {interfaces.OPERATION_TYPE_VIEW_DETAIL},
 		"supplier": {interfaces.OPERATION_TYPE_VIEW_DETAIL},
+		"invoice":  {interfaces.OPERATION_TYPE_QUERY_DATA},
 	},
 	interfaces.RESOURCE_TYPE_RELATION_TYPE: {
 		"rel_order_user":     {interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA},
@@ -85,6 +89,7 @@ var partialGrants = map[string]map[string][]string{
 		"rel_order_item":     {interfaces.OPERATION_TYPE_VIEW_DETAIL},
 		"rel_item_supplier":  {interfaces.OPERATION_TYPE_VIEW_DETAIL},
 		"rel_order_supplier": {interfaces.OPERATION_TYPE_QUERY_DATA},
+		"rel_user_invoice":   {interfaces.OPERATION_TYPE_VIEW_DETAIL},
 	},
 	interfaces.RESOURCE_TYPE_CONCEPT_GROUP: {
 		"cg_sales": {interfaces.OPERATION_TYPE_VIEW_DETAIL},
@@ -300,8 +305,8 @@ func assertForbidden(t *testing.T, paths []interfaces.RelationTypePath, err erro
 }
 
 // TestRelationTypePaths_PartialCallerGetsOnlyFullyVisiblePaths is #1553: a caller granted object
-// and relation types but not the network explores from a source it can see instead of being
-// refused, and nothing it cannot see leaves the service.
+// and relation types but not the network explores from a source it holds view_detail on instead of
+// being refused, and nothing outside its scope leaves the service.
 func TestRelationTypePaths_PartialCallerGetsOnlyFullyVisiblePaths(t *testing.T) {
 	f := newPathFixture(t, fullPathModel())
 	f.asPartialCaller(partialGrants, authzFailure{})
@@ -316,8 +321,8 @@ func TestRelationTypePaths_PartialCallerGetsOnlyFullyVisiblePaths(t *testing.T) 
 	if got, want := signatures(paths), []string{"order -rel_order_user-> user -rel_user_address-> address"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("GetRelationTypePaths() = %v, want %v", got, want)
 	}
-	for _, hidden := range []string{"region", "item", "rel_address_region", "rel_order_item", "rel_item_supplier",
-		"rel_order_payment", "rel_order_supplier"} {
+	for _, hidden := range []string{"region", "item", "invoice", "rel_address_region", "rel_order_item",
+		"rel_item_supplier", "rel_order_payment", "rel_order_supplier", "rel_user_invoice"} {
 		if _, ok := namedIDs(paths)[hidden]; ok {
 			t.Fatalf("GetRelationTypePaths() names hidden %s", hidden)
 		}
@@ -396,8 +401,9 @@ func TestRelationTypePaths_HiddenObjectTypeDropsThePath(t *testing.T) {
 
 // TestRelationTypePaths_PartialCallerSearchesOnlyTheVisibleModel pins the rule as a whole: for
 // every source, direction, length and concept group limit, a caller without view_detail on the
-// network gets exactly what a caller with it gets from a network holding only what the first can
-// see. Nothing hidden shows through, not even as a path cut short or missing.
+// network gets exactly what a caller with it gets from a network holding only the first's scope --
+// relation types it may read between object types it holds view_detail on. Nothing outside shows
+// through, not even as a path cut short or missing.
 func TestRelationTypePaths_PartialCallerSearchesOnlyTheVisibleModel(t *testing.T) {
 	for _, source := range []string{"order", "user", "address", "payment", "supplier"} {
 		for _, direction := range []string{interfaces.DIRECTION_FORWARD, interfaces.DIRECTION_BACKWARD,
@@ -464,10 +470,35 @@ func TestRelationTypePaths_PartialCallerKeepsDirection(t *testing.T) {
 	}
 }
 
-// TestRelationTypePaths_SourceMustBeVisible: any effective operation on the source is enough, as
-// for every reference; holding nothing on it keeps the old refusal and reads no topology.
-func TestRelationTypePaths_SourceMustBeVisible(t *testing.T) {
-	t.Run("query_data alone on the source", func(t *testing.T) {
+// TestRelationTypePaths_EndpointWithoutViewDetailDropsItsRelationType: a relation type the caller
+// may read -- invoice passes the reference rule on query_data alone -- still leads nowhere, since
+// a path node carries invoice's definition and that needs view_detail.
+func TestRelationTypePaths_EndpointWithoutViewDetailDropsItsRelationType(t *testing.T) {
+	f := newPathFixture(t, fullPathModel())
+	f.asPartialCaller(partialGrants, authzFailure{})
+	f.expectTopologyReads()
+	f.expectRelationTypeList()
+
+	paths, err := f.service.GetRelationTypePaths(context.Background(), pathQuery("user", interfaces.DIRECTION_FORWARD, 1))
+
+	if err != nil {
+		t.Fatalf("GetRelationTypePaths() error = %v", err)
+	}
+	if got, want := signatures(paths), []string{"user -rel_user_address-> address"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("GetRelationTypePaths() = %v, want %v", got, want)
+	}
+	for _, hidden := range []string{"invoice", "rel_user_invoice"} {
+		if _, ok := namedIDs(paths)[hidden]; ok {
+			t.Fatalf("GetRelationTypePaths() names %s", hidden)
+		}
+	}
+}
+
+// TestRelationTypePaths_SourceNeedsViewDetail: the source is a path node like any other. Without
+// view_detail on it -- query_data alone or nothing -- the caller keeps the old refusal and no path
+// is searched.
+func TestRelationTypePaths_SourceNeedsViewDetail(t *testing.T) {
+	t.Run("view_detail on the source", func(t *testing.T) {
 		f := newPathFixture(t, fullPathModel())
 		f.asPartialCaller(partialGrants, authzFailure{})
 		f.expectTopologyReads()
@@ -478,28 +509,40 @@ func TestRelationTypePaths_SourceMustBeVisible(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetRelationTypePaths() error = %v", err)
 		}
+		// region, address's only neighbor, is hidden.
 		if got, want := signatures(paths), []string{"address"}; !reflect.DeepEqual(got, want) {
 			t.Fatalf("GetRelationTypePaths() = %v, want %v", got, want)
 		}
 	})
-	t.Run("nothing on the source", func(t *testing.T) {
-		f := newPathFixture(t, fullPathModel())
-		f.asPartialCaller(partialGrants, authzFailure{})
+	for _, tc := range []struct{ name, source string }{
+		{"query_data alone on the source", "invoice"},
+		{"nothing on the source", "item"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newPathFixture(t, fullPathModel())
+			f.asPartialCaller(partialGrants, authzFailure{})
+			f.expectRelationTypeList()
 
-		paths, err := f.service.GetRelationTypePaths(context.Background(), pathQuery("item", interfaces.DIRECTION_FORWARD, 1))
+			paths, err := f.service.GetRelationTypePaths(context.Background(), pathQuery(tc.source, interfaces.DIRECTION_FORWARD, 1))
 
-		assertForbidden(t, paths, err)
-	})
+			assertForbidden(t, paths, err)
+		})
+	}
 }
 
 // TestRelationTypePaths_NoVisibleChildIsRefused keeps the refusal for a caller who holds nothing
-// in the network: the source check is the only one made, and no topology is read.
+// in the network: no relation type is readable, the source lacks view_detail, and no path is
+// searched.
 func TestRelationTypePaths_NoVisibleChildIsRefused(t *testing.T) {
 	f := newPathFixture(t, fullPathModel())
 	f.ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
-	f.ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE, []string{"kn1/order"},
+	f.expectRelationTypeList()
+	f.ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_RELATION_TYPE, gomock.Any(),
 		gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]interfaces.PermissionResourceOps{}, nil).Times(1)
+	f.ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE, []string{"kn1/order"},
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, gomock.Any(), gomock.Any()).
+		Return(map[string]interfaces.PermissionResourceOps{}, nil).Times(1)
 
 	paths, err := f.service.GetRelationTypePaths(context.Background(), pathQuery("order", interfaces.DIRECTION_FORWARD, 1))
 
@@ -555,6 +598,7 @@ func TestRelationTypePaths_FullCallerIsUnchanged(t *testing.T) {
 		"order -rel_order_payment-> payment",
 		"order -rel_order_supplier-> supplier",
 		"order -rel_order_user-> user -rel_user_address-> address",
+		"order -rel_order_user-> user -rel_user_invoice-> invoice",
 		"order -rel_order_item-> item -rel_item_supplier-> supplier",
 	}
 	if got := signatures(paths); !reflect.DeepEqual(got, want) {
@@ -581,10 +625,10 @@ func TestRelationTypePaths_AuthorizationFailureIsAnError(t *testing.T) {
 		failure authzFailure
 		groups  []string
 	}{
-		{"source check", authzFailure{interfaces.RESOURCE_TYPE_OBJECT_TYPE, 1, unavailable}, nil},
 		{"concept group check", authzFailure{interfaces.RESOURCE_TYPE_CONCEPT_GROUP, 1, unavailable}, []string{"cg_sales"}},
 		{"relation type check", authzFailure{interfaces.RESOURCE_TYPE_RELATION_TYPE, 1, unavailable}, nil},
-		{"endpoint check", authzFailure{interfaces.RESOURCE_TYPE_OBJECT_TYPE, 2, unavailable}, nil},
+		{"endpoint reference check", authzFailure{interfaces.RESOURCE_TYPE_OBJECT_TYPE, 1, unavailable}, nil},
+		{"path node check", authzFailure{interfaces.RESOURCE_TYPE_OBJECT_TYPE, 2, unavailable}, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newPathFixture(t, fullPathModel())

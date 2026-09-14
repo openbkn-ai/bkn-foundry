@@ -1578,10 +1578,11 @@ func (kns *knowledgeNetworkService) GetRelationTypePaths(ctx context.Context,
 	// This endpoint returns the object/relation topology reachable from the
 	// source object type. A caller with view_detail on the network searches the
 	// whole model. A visible child must not open the full graph, so any other
-	// caller searches only the part its child grants cover -- relation types it
-	// may read and object types it holds an operation on -- as if nothing else
-	// were in the network (#1553). A caller who cannot see the source object type
-	// is refused as before.
+	// caller searches only the part its child grants cover, as if nothing else
+	// were in the network (#1553): path nodes carry object type definitions, so
+	// each needs view_detail on its object type, and relation types follow the
+	// relation type read rule (#1562). A caller without view_detail on the
+	// source object type is refused as before.
 	var scope *relationPathScope
 	if err := kns.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,

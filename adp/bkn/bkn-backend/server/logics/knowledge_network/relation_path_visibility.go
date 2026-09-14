@@ -19,9 +19,13 @@ import (
 )
 
 // relationPathScope is the part of a network's model that relation type paths may go through for
-// a caller without view_detail on the network (#1553): the relation types the caller may read,
-// and the source object type together with their endpoints -- all of which the caller holds at
-// least one effective operation on.
+// a caller without view_detail on the network (#1553).
+//
+// A path node carries its object type's definition -- data source, properties, keys -- which a
+// read of the object type gates on view_detail, and ontology-query loads every node of a path by
+// that read. So every object type in the scope, the source included, is one the caller holds
+// view_detail on. A relation type is in the scope if the caller may read it, by the rule relation
+// type reads apply (#1562), and both of its endpoints are in the scope.
 //
 // Paths are searched over this part alone, as if nothing else were in the network. A path is
 // neither cut short at nor dropped because of a type the caller cannot see, so no id, name, count
@@ -32,20 +36,11 @@ type relationPathScope struct {
 }
 
 // resolveRelationPathScope returns the scope of a caller whose network check was refused with
-// denied. The caller stays refused with denied unless it can see the source object type and, when
-// the query is limited to concept groups, read every one of them. An authorization failure is
-// returned rather than read as "nothing is visible".
+// denied. The caller stays refused with denied unless it holds view_detail on the source object
+// type and, when the query is limited to concept groups, may read every one of them. An
+// authorization failure is returned rather than read as "nothing is visible".
 func (kns *knowledgeNetworkService) resolveRelationPathScope(ctx context.Context,
 	query interfaces.RelationTypePathsBaseOnSource, denied error) (*relationPathScope, error) {
-
-	visible, err := permission.VisibleReferencedObjectTypes(ctx, kns.ps, query.KNID,
-		[]string{query.SourceObjecTypeId})
-	if err != nil {
-		return nil, err
-	}
-	if _, ok := visible[query.SourceObjecTypeId]; !ok {
-		return nil, denied
-	}
 
 	// A concept group limits which relation types a path may use. Limiting by a group the caller
 	// cannot read would tell which visible object types are its members, so, as when listing a
@@ -80,18 +75,31 @@ func (kns *knowledgeNetworkService) resolveRelationPathScope(ctx context.Context
 		return nil, err
 	}
 
+	// The source and every endpoint of a readable relation type are the only object types a path
+	// can reach; one check decides which of them the caller holds view_detail on.
+	candidateNodes := []string{query.SourceObjecTypeId}
+	for _, relationType := range readable {
+		candidateNodes = append(candidateNodes, relationType.SourceObjectTypeID, relationType.TargetObjectTypeID)
+	}
+	nodes, err := permission.FilterKNChildIDs(ctx, kns.ps, interfaces.RESOURCE_TYPE_OBJECT_TYPE, query.KNID,
+		common.DuplicateSlice(candidateNodes), interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	if err != nil {
+		return nil, err
+	}
+
 	scope := &relationPathScope{
 		relationTypes: make(map[string]struct{}, len(readable)),
-		objectTypes:   map[string]struct{}{query.SourceObjecTypeId: {}},
+		objectTypes:   make(map[string]struct{}, len(nodes)),
+	}
+	for _, objectTypeID := range nodes {
+		scope.objectTypes[objectTypeID] = struct{}{}
+	}
+	if !inScope(scope.objectTypes, query.SourceObjecTypeId) {
+		return nil, denied
 	}
 	for _, relationType := range readable {
-		scope.relationTypes[relationType.RTID] = struct{}{}
-		// A readable relation type's endpoints passed the reference rule on the way. An empty one
-		// is no reference and names nothing.
-		for _, endpointID := range []string{relationType.SourceObjectTypeID, relationType.TargetObjectTypeID} {
-			if endpointID != "" {
-				scope.objectTypes[endpointID] = struct{}{}
-			}
+		if inScope(scope.objectTypes, relationType.SourceObjectTypeID, relationType.TargetObjectTypeID) {
+			scope.relationTypes[relationType.RTID] = struct{}{}
 		}
 	}
 	return scope, nil
