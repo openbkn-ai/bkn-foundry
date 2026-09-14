@@ -17,8 +17,9 @@
 ```python
 detail = get_kn_detail(kn_id=kn)                       # 结构直接喂给下一步
 ot = next(o for o in detail["object_types"] if "进球" in o.get("name", ""))
-print("口径:", run_sql(sql="SELECT DISTINCT tournament_name FROM {{.<resource_id>}}")["entries"][:20])
-print("答案:", run_sql(sql="SELECT team_name, COUNT(*) c FROM {{.<resource_id>}} GROUP BY team_name ORDER BY c DESC LIMIT 5")["entries"])
+goal = ot["id"]                                        # 标签写对象类 id，属性写逻辑属性名
+print("口径:", run_cypher(kn_id=kn, query=f"MATCH (g:{goal}) RETURN DISTINCT g.tournament_name AS t LIMIT 20")["entries"])
+print("答案:", run_cypher(kn_id=kn, query=f"MATCH (g:{goal}) RETURN g.team_name AS team, count(*) AS c ORDER BY c DESC LIMIT 5")["entries"])
 ```
 
 不确定的地方用代码兜住而不是回到对话：取值一律 `.get()`，可能失败的分支用
@@ -26,7 +27,10 @@ try/except 包住并 print 出关键中间信息。
 
 ## 能下推的聚合一律下推
 
-计数、求和、分组、排序、Top-N 这类，**优先写一条 `run_sql`**，让数据库算完只回结果。
+计数、求和、分组、排序、Top-N 这类，能用对象类、关系类和逻辑属性说清楚的，
+**优先写一条 `run_cypher`**，让数据库算完只回结果；它只需要知识网络授权。Cypher
+子集表达不了的口径、或资源没建成对象类时，才写 `run_sql`，它按调用者自己对底层资源
+的授权执行，只有知识网络授权会被拒。
 不要用 `query_object_instance` 拉 5000 行回来自己数——那既慢又受 `limit` 截断，
 统计口径会悄悄错。
 

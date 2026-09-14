@@ -174,6 +174,76 @@ func TestServerInstructionsLeadWithManagedInteractionLifecycle(t *testing.T) {
 	}
 }
 
+// #1545: run_cypher needs only the knowledge-network grant while run_sql needs
+// the caller's own grant on the resource, so aggregation that can be written
+// on the model is routed to run_cypher first, in both locales and in both the
+// server instructions and the PTC digest, and run_sql is described as the
+// fallback that needs a resource grant.
+func TestServerInstructionsRouteModelAggregationToCypherFirst(t *testing.T) {
+	tests := []struct {
+		locale       string
+		expected     []string
+		forbidden    []string
+		ptcExpected  []string
+		ptcForbidden []string
+	}{
+		{
+			locale: "zh-CN",
+			expected: []string{
+				"能用对象类、关系类和逻辑属性说清楚的，先用 run_cypher",
+				"run_sql 按调用者自己对底层资源的授权（view_detail）执行",
+				"聚合类问题（如「每个 X 的 Y 总数/排名」）先用 run_cypher",
+			},
+			forbidden: []string{"直接走 run_sql"},
+			ptcExpected: []string{
+				"**优先写一条 `run_cypher`**",
+				"才写 `run_sql`，它按调用者自己对底层资源",
+				`print("答案:", run_cypher(`,
+			},
+			ptcForbidden: []string{"**优先写一条 `run_sql`**", `print("答案:", run_sql(`},
+		},
+		{
+			locale: "en-US",
+			expected: []string{
+				"use run_cypher first whenever the question can be stated in object types, relation types and logical properties",
+				"run_sql runs under the caller's own grant on the underlying resource (view_detail)",
+				"write them on the model with run_cypher first",
+			},
+			forbidden: []string{"go directly to run_sql", "Use run_sql for joins, aggregation"},
+			ptcExpected: []string{
+				"prefer run_cypher whenever the question can be stated in object types, relation types and logical properties",
+				"Use run_sql only for what the Cypher subset cannot express",
+				"it runs under the caller's own grant on the underlying resource",
+			},
+			ptcForbidden: []string{"Prefer run_sql for database-side aggregation"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.locale, func(t *testing.T) {
+			bundle := loadMCPLocaleBundle(test.locale)
+			for resource, text := range map[string]string{
+				"instructions.txt":      bundle.ServerInstructions(),
+				"ptc_digest_suffix.txt": bundle.PTCResource("ptc_digest_suffix.txt"),
+			} {
+				expected, forbidden := test.expected, test.forbidden
+				if resource == "ptc_digest_suffix.txt" {
+					expected, forbidden = test.ptcExpected, test.ptcForbidden
+				}
+				for _, want := range expected {
+					if !strings.Contains(text, want) {
+						t.Fatalf("%s for %s omits %q", resource, test.locale, want)
+					}
+				}
+				for _, stale := range forbidden {
+					if strings.Contains(text, stale) {
+						t.Fatalf("%s for %s still says %q", resource, test.locale, stale)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestStartInteractionDescriptionGuidesStableAgentIdentity(t *testing.T) {
 	tests := []struct {
 		locale string
