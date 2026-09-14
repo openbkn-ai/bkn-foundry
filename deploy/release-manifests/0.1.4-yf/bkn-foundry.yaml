@@ -2,9 +2,10 @@
 # query subset. Pins the chart version of every component that makes up the
 # product. Consumed by:
 #     deploy.sh openbkn install --version=0.1.4-yf
-# Charts are published at 0.1.4-yf-release by pushes to release/0.1.4-yf.
-# bkn-studio is built outside this repo and has no 0.1.4-yf line, so it stays
-# pinned to the 0.1.4 chart.
+# All charts are published at 0.1.4-yf by the v0.1.4-yf tag build, not at the
+# 0.1.4-yf-release tag that every push to release/0.1.4-yf overwrites.
+# bkn-studio comes from the v0.1.4-yf tag of bkn-studio's own release/0.1.4-yf
+# line, which carries the instance graph explorer.
 apiVersion: deploy.openbkn.ai/v0.1.4
 kind: VersionSet
 product: bkn-foundry
@@ -15,47 +16,47 @@ source:
 releases:
   core-data-migrator:
     chart: core-data-migrator
-    version: 0.1.4-yf-release
+    version: 0.1.4-yf
     stage: pre
   bkn-safe:
     chart: bkn-safe
-    version: 0.1.4-yf-release
+    version: 0.1.4-yf
   mf-model-manager:
     chart: mf-model-manager
-    version: 0.1.4-yf-release
+    version: 0.1.4-yf
   mf-model-api:
     chart: mf-model-api
-    version: 0.1.4-yf-release
+    version: 0.1.4-yf
   vega-backend:
     chart: vega-backend
-    version: 0.1.4-yf-release
+    version: 0.1.4-yf
   bkn-backend:
     chart: bkn-backend
-    version: 0.1.4-yf-release
+    version: 0.1.4-yf
   ontology-query:
     chart: ontology-query
-    version: 0.1.4-yf-release
+    version: 0.1.4-yf
   agent-operator-integration:
     chart: agent-operator-integration
-    version: 0.1.4-yf-release
+    version: 0.1.4-yf
   oss-gateway-backend:
     chart: oss-gateway-backend
-    version: 0.1.4-yf-release
+    version: 0.1.4-yf
   sandbox:
     chart: sandbox
-    version: 0.1.4-yf-release
+    version: 0.1.4-yf
   agent-retrieval:
     chart: agent-retrieval
-    version: 0.1.4-yf-release
+    version: 0.1.4-yf
   bkn-agent:
     chart: bkn-agent
-    version: 0.1.4-yf-release
+    version: 0.1.4-yf
   agent-observability:
     chart: agent-observability
-    version: 0.1.4-yf-release
+    version: 0.1.4-yf
   otelcol-contrib:
     chart: otelcol-contrib
-    version: 0.1.4-yf-release
+    version: 0.1.4-yf
   bkn-studio:
     chart: bkn-studio
-    version: 0.1.4-release
+    version: 0.1.4-yf
