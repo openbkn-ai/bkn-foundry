@@ -252,11 +252,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionEqual(condition interfaces.F
 		if err != nil {
 			return nil, err
 		}
-		return map[string]any{
-			"script": map[string]any{
-				"source": fmt.Sprintf("doc['%s'].value == doc['%s'].value", fieldName+keyword, rightFieldName+rightKeyword),
-			},
-		}, nil
+		return fieldComparisonScript(fieldName+keyword, "==", rightFieldName+rightKeyword), nil
 	default:
 		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -298,11 +294,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotEqual(condition interface
 		if err != nil {
 			return nil, err
 		}
-		return map[string]any{
-			"script": map[string]any{
-				"source": fmt.Sprintf("doc['%s'].value != doc['%s'].value", fieldName+keyword, rightFieldName+rightKeyword),
-			},
-		}, nil
+		return fieldComparisonScript(fieldName+keyword, "!=", rightFieldName+rightKeyword), nil
 	default:
 		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -326,11 +318,8 @@ func (c *OpenSearchConnector) ConvertFilterConditionGt(condition interfaces.Filt
 			},
 		}, nil
 	case interfaces.ValueFrom_Field:
-		return map[string]any{
-			"script": map[string]any{
-				"source": fmt.Sprintf("doc['%s'].value > doc['%s'].value", cond.Lfield.OriginalName, cond.Rfield.OriginalName),
-			},
-		}, nil
+		return fieldComparisonScript(
+			propertyPhysicalFieldName(cond.Lfield), ">", propertyPhysicalFieldName(cond.Rfield)), nil
 	default:
 		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -354,11 +343,8 @@ func (c *OpenSearchConnector) ConvertFilterConditionGte(condition interfaces.Fil
 			},
 		}, nil
 	case interfaces.ValueFrom_Field:
-		return map[string]any{
-			"script": map[string]any{
-				"source": fmt.Sprintf("doc['%s'].value >= doc['%s'].value", cond.Lfield.OriginalName, cond.Rfield.OriginalName),
-			},
-		}, nil
+		return fieldComparisonScript(
+			propertyPhysicalFieldName(cond.Lfield), ">=", propertyPhysicalFieldName(cond.Rfield)), nil
 	default:
 		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -382,11 +368,8 @@ func (c *OpenSearchConnector) ConvertFilterConditionLt(condition interfaces.Filt
 			},
 		}, nil
 	case interfaces.ValueFrom_Field:
-		return map[string]any{
-			"script": map[string]any{
-				"source": fmt.Sprintf("doc['%s'].value < doc['%s'].value", cond.Lfield.OriginalName, cond.Rfield.OriginalName),
-			},
-		}, nil
+		return fieldComparisonScript(
+			propertyPhysicalFieldName(cond.Lfield), "<", propertyPhysicalFieldName(cond.Rfield)), nil
 	default:
 		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -410,13 +393,22 @@ func (c *OpenSearchConnector) ConvertFilterConditionLte(condition interfaces.Fil
 			},
 		}, nil
 	case interfaces.ValueFrom_Field:
-		return map[string]any{
-			"script": map[string]any{
-				"source": fmt.Sprintf("doc['%s'].value <= doc['%s'].value", cond.Lfield.OriginalName, cond.Rfield.OriginalName),
-			},
-		}, nil
+		return fieldComparisonScript(
+			propertyPhysicalFieldName(cond.Lfield), "<=", propertyPhysicalFieldName(cond.Rfield)), nil
 	default:
 		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
+	}
+}
+
+func fieldComparisonScript(leftField string, operator string, rightField string) map[string]any {
+	return map[string]any{
+		"script": map[string]any{
+			"source": fmt.Sprintf("doc[params.left].value %s doc[params.right].value", operator),
+			"params": map[string]any{
+				"left":  leftField,
+				"right": rightField,
+			},
+		},
 	}
 }
 

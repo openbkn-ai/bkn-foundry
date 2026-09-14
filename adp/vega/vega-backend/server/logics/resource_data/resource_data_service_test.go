@@ -265,7 +265,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		cause := fmt.Errorf("failed to build filter query: %w",
 			filter_condition.NewConditionBuildError("text field title has no keyword feature; re-save the resource configuration and rebuild the local index, or use match"))
 
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockLIM.EXPECT().ListDocuments(gomock.Any(), resource.LocalIndexName, resource, params).
 			Return(nil, int64(0), cause)
@@ -326,7 +326,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		downstream := rest.NewHTTPError(context.Background(), http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails("text field body has no keyword feature; re-save the resource configuration and rebuild the local index, or use match")
 
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).Return(nil, int64(0), downstream)
 
@@ -439,7 +439,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		downstream := rest.NewHTTPError(context.Background(), http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails("text field body has no keyword feature; re-save the resource configuration")
 
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockLVS.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).Return(nil, downstream)
 

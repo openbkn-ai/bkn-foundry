@@ -298,10 +298,46 @@ func TestOpenSearchConnectorConvertFilterConditionEqual(t *testing.T) {
 			}
 			assert.Equal(t, map[string]any{
 				"script": map[string]any{
-					"source": "doc['left.raw'].value " + operator + " doc['right.exact'].value",
+					"source": "doc[params.left].value " + operator + " doc[params.right].value",
+					"params": map[string]any{
+						"left":  "left.raw",
+						"right": "right.exact",
+					},
 				},
 			}, got)
 		}
+	})
+
+	t.Run("passes custom keyword names as script parameters", func(t *testing.T) {
+		conn := &OpenSearchConnector{}
+		schema := []*interfaces.Property{
+			{Name: "left", OriginalName: "left", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{
+				FeatureName: "ra'w", FeatureType: interfaces.PropertyFeatureType_Keyword,
+			}}},
+			{Name: "right", OriginalName: "right", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{
+				FeatureName: "ex'act", FeatureType: interfaces.PropertyFeatureType_Keyword,
+			}}},
+		}
+		fields := map[string]*interfaces.Property{"left": schema[0], "right": schema[1]}
+		cfg := &interfaces.FilterCondCfg{
+			Name: "left", Operation: filter_condition.OperationEqual,
+			ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Field, Value: "right"},
+		}
+		cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, fields)
+		require.NoError(t, err)
+
+		got, err := conn.ConvertFilterCondition(cond, schema)
+
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{
+			"script": map[string]any{
+				"source": "doc[params.left].value == doc[params.right].value",
+				"params": map[string]any{
+					"left":  "left.ra'w",
+					"right": "right.ex'act",
+				},
+			},
+		}, got)
 	})
 
 	t.Run("uses default keyword name when feature name is empty", func(t *testing.T) {
@@ -424,6 +460,52 @@ func TestOpenSearchConnectorConvertFilterConditionEqual(t *testing.T) {
 		assert.Nil(t, got)
 		assert.ErrorContains(t, err, "exceeds keyword ignore_above 1")
 	})
+}
+
+func TestOpenSearchConnectorConvertFilterConditionOrderedFieldComparison(t *testing.T) {
+	conn := &OpenSearchConnector{}
+	schema := []*interfaces.Property{
+		{Name: "left", OriginalName: "le'ft", Type: interfaces.DataType_Integer},
+		{Name: "right", OriginalName: "ri'ght", Type: interfaces.DataType_Integer},
+	}
+	fields := map[string]*interfaces.Property{"left": schema[0], "right": schema[1]}
+	tests := []struct {
+		operation string
+		operator  string
+	}{
+		{operation: filter_condition.OperationGt, operator: ">"},
+		{operation: filter_condition.OperationGte, operator: ">="},
+		{operation: filter_condition.OperationLt, operator: "<"},
+		{operation: filter_condition.OperationLte, operator: "<="},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.operation, func(t *testing.T) {
+			cfg := &interfaces.FilterCondCfg{
+				Name:      "left",
+				Operation: tt.operation,
+				ValueOptCfg: interfaces.ValueOptCfg{
+					ValueFrom: interfaces.ValueFrom_Field,
+					Value:     "right",
+				},
+			}
+			cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, fields)
+			require.NoError(t, err)
+
+			got, err := conn.ConvertFilterCondition(cond, schema)
+
+			require.NoError(t, err)
+			assert.Equal(t, map[string]any{
+				"script": map[string]any{
+					"source": "doc[params.left].value " + tt.operator + " doc[params.right].value",
+					"params": map[string]any{
+						"left":  "le'ft",
+						"right": "ri'ght",
+					},
+				},
+			}, got)
+		})
+	}
 }
 
 func TestOpenSearchConnectorConvertFilterConditionAnd(t *testing.T) {
