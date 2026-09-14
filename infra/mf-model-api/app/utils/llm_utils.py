@@ -1385,7 +1385,7 @@ class OtherClient(BKNTraceModelMixin):
     bkn_trace_provider = "other"
     def __init__(self, api_url, api_model, api_key, model_id,
                  temperature, top_p, frequency_penalty, presence_penalty, max_tokens, top_k=1, response_format={},
-                 stop=None, model_type="llm", tools=None, tool_choice=None):
+                 stop=None, model_type="llm", tools=None, tool_choice=None, thinking_mode=""):
         self.api_url = api_url
         self.api_model = api_model
         self.temperature = temperature
@@ -1401,6 +1401,7 @@ class OtherClient(BKNTraceModelMixin):
         self.model_type = model_type
         self.tools = tools
         self.tool_choice = tool_choice
+        self.thinking_mode = thinking_mode if thinking_mode in {"enabled", "disabled"} else ""
 
     async def chat_completion(self, messages, user_id, func_module):
         retry_time = 3
@@ -1432,6 +1433,8 @@ class OtherClient(BKNTraceModelMixin):
                     params["tools"] = self.tools
                 if self.tool_choice is not None:
                     params["tool_choice"] = self.tool_choice
+                if self.thinking_mode:
+                    params["thinking"] = {"type": self.thinking_mode}
 
                 headers = {
                     "Authorization": f"Bearer {self.api_key}"
@@ -1544,6 +1547,8 @@ class OtherClient(BKNTraceModelMixin):
                     params["tools"] = self.tools
                 if self.tool_choice is not None:
                     params["tool_choice"] = self.tool_choice
+                if self.thinking_mode:
+                    params["thinking"] = {"type": self.thinking_mode}
 
                 for i in range(0, len(messages)):
                     if messages[i]["content"] == "":

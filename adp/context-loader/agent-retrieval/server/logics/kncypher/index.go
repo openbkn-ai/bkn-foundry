@@ -20,6 +20,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
+	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -98,9 +99,7 @@ func (s *knCypherService) RunCypher(ctx context.Context, req *RunCypherReq) (*in
 		Parameters: req.Parameters,
 	})
 	if err != nil {
-		emitRunCypherFailure(ctx, nil, knID, query, bkntrace.RunCypherFailure{
-			Stage: "cypher_query", Code: "RUN_CYPHER_QUERY_FAILED", Summary: err.Error(),
-		})
+		emitRunCypherFailure(ctx, nil, knID, query, classifyRunCypherFailure(err))
 		return nil, err
 	}
 
@@ -108,6 +107,36 @@ func (s *knCypherService) RunCypher(ctx context.Context, req *RunCypherReq) (*in
 	if resp != nil {
 		rowCount = len(resp.Entries)
 	}
-	emitRunCypherEvents(ctx, nil, knID, query, rowCount)
+	emitRunCypherEvents(ctx, nil, knID, query, rowCount, resp.TraceDescriptor)
 	return resp, nil
+}
+
+func classifyRunCypherFailure(err error) bkntrace.RunCypherFailure {
+	failure := bkntrace.RunCypherFailure{
+		Stage: "cypher_query", Code: "RUN_CYPHER_QUERY_FAILED", Summary: err.Error(),
+	}
+	switch {
+	case errors.Is(err, context.Canceled):
+		failure.Stage, failure.Code = "interrupted", "RUN_CYPHER_INTERRUPTED"
+		return failure
+	case errors.Is(err, context.DeadlineExceeded):
+		failure.Stage, failure.Code = "interrupted", "RUN_CYPHER_TIMEOUT"
+		return failure
+	}
+	var httpErr *infraErr.HTTPError
+	if !errors.As(err, &httpErr) {
+		return failure
+	}
+	code := strings.ToLower(httpErr.Code)
+	switch {
+	case strings.Contains(code, "cypher.syntaxerror"):
+		failure.Stage, failure.Code = "parse", "RUN_CYPHER_PARSE_FAILED"
+	case strings.Contains(code, "cypher.unsupported"), strings.Contains(code, "cypher.internalerror"):
+		failure.Stage, failure.Code = "compile", "RUN_CYPHER_COMPILE_FAILED"
+	case strings.Contains(code, "cypher.invalidquery"):
+		failure.Stage, failure.Code = "bind", "RUN_CYPHER_BIND_FAILED"
+	case strings.Contains(code, "cypher.queryfailed"):
+		failure.Stage, failure.Code = "vega_execution", "RUN_CYPHER_VEGA_FAILED"
+	}
+	return failure
 }

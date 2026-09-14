@@ -79,16 +79,33 @@ def _rpc(method, params=None, notify=False):
         _CFG["mcp"], data=json.dumps(body).encode(),
         headers=headers, method="POST",
     )
-    response = _OPENER.open(request, timeout=_CFG.get("timeout", 120))
-    if not _SESSION.get("id"):
-        _SESSION["id"] = response.headers.get("Mcp-Session-Id")
-    raw = response.read().decode()
-    if not raw.strip():
-        return None
-    for line in raw.splitlines():
-        if line.startswith("data: "):
-            return json.loads(line[6:])
-    return json.loads(raw)
+    with _OPENER.open(request, timeout=_CFG.get("timeout", 120)) as response:
+        if not _SESSION.get("id"):
+            _SESSION["id"] = response.headers.get("Mcp-Session-Id")
+        # JSON-RPC notifications deliberately have no response payload. Some
+        # Streamable HTTP servers keep the accepted SSE channel open, so do not
+        # wait for a body that the protocol will never send.
+        if notify:
+            return None
+        if "text/event-stream" in response.headers.get("Content-Type", "").lower():
+            # Streamable HTTP is allowed to keep the SSE connection open after
+            # delivering the JSON-RPC response. Read one complete event instead
+            # of waiting for EOF and consuming the whole run_code timeout.
+            data = []
+            while True:
+                raw_line = response.readline()
+                if not raw_line:
+                    break
+                line = raw_line.decode().rstrip("\r\n")
+                if line == "":
+                    if data:
+                        return json.loads("\n".join(data))
+                    continue
+                if line.startswith("data:"):
+                    data.append(line[5:].lstrip())
+            return json.loads("\n".join(data)) if data else None
+        raw = response.read().decode()
+        return json.loads(raw) if raw.strip() else None
 
 
 def _ensure_session():

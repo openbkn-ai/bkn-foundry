@@ -176,6 +176,7 @@ func TestBusinessCausalityHeadersAreValidatedAndPropagated(t *testing.T) {
 		second := GetHeaderForChildOperation(ctx, "ontology.object.query", 1)
 		third := GetHeaderForChildOperation(ctx, "ontology.object.query", 2)
 		convey.So(first[HeaderBKNOperationID], convey.ShouldNotEqual, "parent-operation")
+		convey.So(first[HeaderBKNParentOperationID], convey.ShouldEqual, "parent-operation")
 		convey.So(first[HeaderBKNOperationID], convey.ShouldEqual, second[HeaderBKNOperationID])
 		convey.So(first[HeaderBKNOperationID], convey.ShouldNotEqual, third[HeaderBKNOperationID])
 		convey.So(first[HeaderBKNCausationEventID], convey.ShouldEqual, "parent-event")
@@ -188,6 +189,7 @@ func TestBusinessCausalityHeadersAreValidatedAndPropagated(t *testing.T) {
 		replay := GetHeaderForChildOperationIdentity(ctx, "ontology.object.query", "sha256:query-a")
 		second := GetHeaderForChildOperationIdentity(ctx, "ontology.object.query", "sha256:query-b")
 		convey.So(first[HeaderBKNOperationID], convey.ShouldEqual, replay[HeaderBKNOperationID])
+		convey.So(first[HeaderBKNParentOperationID], convey.ShouldEqual, "parent-operation")
 		convey.So(first[HeaderBKNOperationID], convey.ShouldNotEqual, second[HeaderBKNOperationID])
 	})
 

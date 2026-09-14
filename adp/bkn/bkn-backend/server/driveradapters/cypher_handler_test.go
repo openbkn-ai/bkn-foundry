@@ -9,6 +9,7 @@ package driveradapters
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -82,8 +83,9 @@ func TestRunCypherQueryOnBothFaces(t *testing.T) {
 					KNID: cypherKNID, Branch: interfaces.MAIN_BRANCH, Query: "MATCH (o:Order) RETURN o.id",
 				}).
 				Return(&interfaces.CypherQueryResult{
-					Columns: []interfaces.RawQueryColumn{{Name: "id", Type: "string"}},
-					Entries: []map[string]any{{"id": "1"}},
+					Columns:         []interfaces.RawQueryColumn{{Name: "id", Type: "string"}},
+					Entries:         []map[string]any{{"id": "1"}},
+					TraceDescriptor: json.RawMessage(`{"version":"semantic-query-descriptor/v1"}`),
 				}, nil)
 
 			recorder := postCypher(engine, cypherURL(face, cypherKNID),
@@ -100,6 +102,10 @@ func TestRunCypherQueryOnBothFaces(t *testing.T) {
 				if !bytes.Contains(recorder.Body.Bytes(), []byte(want)) {
 					t.Fatalf("body = %s, want it to contain %s", recorder.Body.String(), want)
 				}
+			}
+			hasTrace := bytes.Contains(recorder.Body.Bytes(), []byte(`"_trace"`))
+			if (face == "in/") != hasTrace {
+				t.Fatalf("body = %s, internal trace metadata presence = %v", recorder.Body.String(), hasTrace)
 			}
 		})
 	}

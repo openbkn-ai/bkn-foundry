@@ -274,3 +274,27 @@ def test_canonical_package_import_is_idempotent_with_real_database(tmp_path, mon
     finally:
         app.dependency_overrides.pop(get_session, None)
         asyncio.run(engine.dispose())
+
+
+def test_claim_attribution_package_is_published_without_tools():
+    service_root = Path(__file__).resolve().parents[2]
+    package = json.loads(
+        (
+            service_root
+            / "deploy"
+            / "agents"
+            / "business-provenance-claim-attribution.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert package["format"] == "bkn-agent/v1"
+    assert len(package["items"]) == 1
+    item = package["items"][0]
+    assert item["agent_id"] == "business_provenance_claim_attribution"
+    assert item["spec"]["status"] == "published"
+    assert item["spec"]["mode"] == "chat"
+    assert item["spec"]["tools"] == []
+    assert item["spec"]["limits"]["max_tool_calls"] == 0
+    assert "不得把孤立数字" in item["prompt"]["content"]
+    assert "display_text" in item["prompt"]["content"]
+    assert "无需查看表头或上下文也能理解" in item["prompt"]["content"]
+    assert "Mario Kempes" in item["prompt"]["content"]

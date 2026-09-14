@@ -80,7 +80,10 @@ def test_invoke_waits_for_terminal_state(monkeypatch):
         executed = {}
 
         async def execute(task_id, agent, req_input, account_id, account_type):
+            from app.core import llm
+
             executed["task_id"] = task_id
+            executed["thinking_mode"] = llm.current_thinking_mode()
 
         async def get_task(session, task_id):
             return TaskOut(task_id=task_id, agent_id="a-1", status="succeeded", output="done", create_time=1, update_time=2)
@@ -89,12 +92,17 @@ def test_invoke_waits_for_terminal_state(monkeypatch):
         monkeypatch.setattr(dao, "create_task", create_task)
         monkeypatch.setattr(runner, "execute_task", execute)
         monkeypatch.setattr(dao, "get_task", get_task)
-        r = client.post("/api/bkn-agent/v1/invoke/a-1", json={"message": "hi"}, headers=SVC)
+        r = client.post(
+            "/api/bkn-agent/v1/invoke/a-1",
+            json={"message": "hi"},
+            headers={**SVC, "x-bkn-agent-thinking-mode": "disabled"},
+        )
     finally:
         app.dependency_overrides.pop(key, None)
 
     assert r.status_code == 200
     assert executed["task_id"] == "t-1"
+    assert executed["thinking_mode"] == "disabled"
     body = r.json()
     assert body["status"] == "succeeded"
     assert body["output"] == "done"

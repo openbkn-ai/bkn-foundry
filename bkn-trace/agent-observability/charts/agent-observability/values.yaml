@@ -89,6 +89,14 @@ enterpriseBusinessProvenance:
   agentURL: ""
   agentID: ""
   agentName: ""
+  claimAttribution:
+    enabled: false
+    agentURL: ""
+    agentID: ""
+    agentName: ""
+    # Includes the Agent's normal turn and its schema-constrained extraction.
+    # Keep this above the Agent package's 60s execution budget.
+    timeout: 90s
   bootstrap:
     enabled: true
     ownerID: bdd59f76-19c3-58b0-bf5f-082c4c3cbddb

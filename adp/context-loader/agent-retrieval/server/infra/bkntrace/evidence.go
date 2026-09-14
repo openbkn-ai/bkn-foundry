@@ -100,22 +100,23 @@ type batch struct {
 }
 
 type eventContext struct {
-	traceID          string
-	spanID           string
-	traceparent      string
-	requestID        string
-	accountID        string
-	accountType      string
-	applicationID    string
-	applicationName  string
-	subjectType      string
-	conversationID   string
-	interactionID    string
-	operationID      string
-	causationEventID string
-	claimID          string
-	attempt          int
-	observedAt       string
+	traceID           string
+	spanID            string
+	traceparent       string
+	requestID         string
+	accountID         string
+	accountType       string
+	applicationID     string
+	applicationName   string
+	subjectType       string
+	conversationID    string
+	interactionID     string
+	operationID       string
+	parentOperationID string
+	causationEventID  string
+	claimID           string
+	attempt           int
+	observedAt        string
 }
 
 // HashValue is ConfigStd, not the default sonic config, and the difference is not cosmetic: the
@@ -320,11 +321,11 @@ func EmitRunSQLEvents(ctx context.Context, logger interfaces.Logger, sql string,
 // bkn-backend, so the evidence names the knowledge network the query ran
 // against and hashes the query text -- enough to tie an answer back to what
 // was asked, without re-exposing the physical model.
-func EmitRunCypherEvents(ctx context.Context, logger interfaces.Logger, knID, query string, rowCount int) string {
+func EmitRunCypherEvents(ctx context.Context, logger interfaces.Logger, knID, query string, rowCount int, descriptor json.RawMessage) string {
 	if !EvidenceEnabled() {
 		return ""
 	}
-	return submitAndReturnFirstEventID(ctx, logger, nil, BuildRunCypherEvents(ctx, knID, query, rowCount))
+	return submitAndReturnFirstEventID(ctx, logger, nil, BuildRunCypherEvents(ctx, knID, query, rowCount, descriptor))
 }
 
 // RunCypherFailure describes why one Cypher query produced no rows.
@@ -537,10 +538,23 @@ func BuildRunSQLFailureEvents(ctx context.Context, sql string, resourceIDs []str
 }
 
 // BuildRunCypherEvents builds the observed-data event for one Cypher query.
-func BuildRunCypherEvents(ctx context.Context, knID, query string, rowCount int) []Event {
+func BuildRunCypherEvents(ctx context.Context, knID, query string, rowCount int, descriptor json.RawMessage) []Event {
+	descriptorPayload := descriptorValue(descriptor)
+	truncated := false
+	truncationReason := ""
+	if descriptorMap, ok := descriptorPayload.(map[string]any); ok {
+		limitSource, _ := descriptorMap["limit_source"].(string)
+		effectiveLimit, hasLimit := descriptorMap["effective_limit"].(float64)
+		if limitSource == "default" && hasLimit && effectiveLimit > 0 && rowCount >= int(effectiveLimit) {
+			truncated = true
+			truncationReason = "default_limit_reached"
+		}
+	}
 	return buildRunCypherEvent(ctx, knID, query, map[string]any{
-		"row_count": rowCount,
-		"truncated": false,
+		"row_count": rowCount, "truncated": truncated,
+		"semantic_query_descriptor":  descriptorPayload,
+		"semantic_descriptor_status": descriptorStatus(descriptor),
+		"truncation_reason":          truncationReason,
 	})
 }
 
@@ -577,12 +591,85 @@ func buildRunCypherEvent(ctx context.Context, knID, query string, extra map[stri
 		"resource_refs":  refs,
 		"field_refs":     []map[string]any{},
 	}
+	if descriptor, ok := extra["semantic_query_descriptor"].(map[string]any); ok {
+		resources, fields := semanticDescriptorRefs(descriptor)
+		payload["resource_refs"] = append(refs, resources...)
+		payload["field_refs"] = fields
+	}
 	for key, value := range extra {
 		payload[key] = value
 	}
 	event := buildEvent(ec, "data.query.observed", "context.run_cypher", payload, "", ec.causationEventID)
 	event["bkn.trace.schema.version"] = "2.2.0"
 	return []Event{event}
+}
+
+func descriptorValue(raw json.RawMessage) any {
+	if len(raw) == 0 {
+		return nil
+	}
+	var value map[string]any
+	if sonic.ConfigStd.Unmarshal(raw, &value) != nil ||
+		stringValue(value["version"]) != "semantic-query-descriptor/v1" ||
+		stringValue(value["producer_profile"]) == "" {
+		return nil
+	}
+	return value
+}
+
+func descriptorStatus(raw json.RawMessage) string {
+	if descriptorValue(raw) == nil {
+		return "missing"
+	}
+	return "available"
+}
+
+func semanticDescriptorRefs(descriptor map[string]any) ([]map[string]any, []map[string]any) {
+	resources := []map[string]any{}
+	fields := []map[string]any{}
+	seen := map[string]struct{}{}
+	appendRef := func(target *[]map[string]any, refID, refType string) {
+		if refID == "" {
+			return
+		}
+		key := refType + "\x00" + refID
+		if _, found := seen[key]; found {
+			return
+		}
+		seen[key] = struct{}{}
+		*target = append(*target, map[string]any{
+			"ref_id": refID, "ref_type": refType, "source_system": "bkn",
+			"validity": "observed", "version_status": "0.1.5", "visibility": "visible",
+		})
+	}
+	for _, item := range objectArray(descriptor["objects"]) {
+		appendRef(&resources, stringValue(item["object_ref"]), "object")
+	}
+	for _, item := range objectArray(descriptor["relations"]) {
+		appendRef(&resources, stringValue(item["relation_ref"]), "relation")
+	}
+	for _, collection := range []string{"predicates", "projections", "grouping", "ordering"} {
+		for _, item := range objectArray(descriptor[collection]) {
+			appendRef(&fields, stringValue(item["property_ref"]), "property")
+		}
+	}
+	if values, ok := descriptor["grouping"].([]any); ok {
+		for _, value := range values {
+			appendRef(&fields, stringValue(value), "property")
+		}
+	}
+	return resources, fields
+}
+
+func objectArray(value any) []map[string]any {
+	values, _ := value.([]any)
+	result := make([]map[string]any, 0, len(values))
+	for _, value := range values {
+		if item, ok := value.(map[string]any); ok {
+			result = append(result, item)
+		}
+	}
+	return result
 }
 
 func runSQLResultSummary(resp *interfaces.VegaRawQueryResp) map[string]any {
@@ -1217,22 +1304,23 @@ func baseEventContext(ctx context.Context) (eventContext, bool) {
 		flags = "01"
 	}
 	return eventContext{
-		traceID:          spanContext.TraceID().String(),
-		spanID:           spanContext.SpanID().String(),
-		traceparent:      fmt.Sprintf("00-%s-%s-%s", spanContext.TraceID().String(), spanContext.SpanID().String(), flags),
-		requestID:        traceContext.RequestID,
-		accountID:        accountID,
-		accountType:      accountType,
-		applicationID:    applicationID,
-		applicationName:  applicationName,
-		subjectType:      subjectType,
-		conversationID:   strings.TrimSpace(traceContext.ConversationID),
-		interactionID:    strings.TrimSpace(traceContext.InteractionID),
-		operationID:      strings.TrimSpace(traceContext.OperationID),
-		causationEventID: strings.TrimSpace(traceContext.CausationEventID),
-		claimID:          strings.TrimSpace(traceContext.ClaimID),
-		attempt:          traceContext.Attempt,
-		observedAt:       observedAt,
+		traceID:           spanContext.TraceID().String(),
+		spanID:            spanContext.SpanID().String(),
+		traceparent:       fmt.Sprintf("00-%s-%s-%s", spanContext.TraceID().String(), spanContext.SpanID().String(), flags),
+		requestID:         traceContext.RequestID,
+		accountID:         accountID,
+		accountType:       accountType,
+		applicationID:     applicationID,
+		applicationName:   applicationName,
+		subjectType:       subjectType,
+		conversationID:    strings.TrimSpace(traceContext.ConversationID),
+		interactionID:     strings.TrimSpace(traceContext.InteractionID),
+		operationID:       strings.TrimSpace(traceContext.OperationID),
+		parentOperationID: strings.TrimSpace(traceContext.ParentOperationID),
+		causationEventID:  strings.TrimSpace(traceContext.CausationEventID),
+		claimID:           strings.TrimSpace(traceContext.ClaimID),
+		attempt:           traceContext.Attempt,
+		observedAt:        observedAt,
 	}, true
 }
 
@@ -1268,6 +1356,9 @@ func buildEvent(ec eventContext, eventType, operationName string, payload map[st
 	}
 	if causationEventID != "" {
 		event["causation_event_id"] = causationEventID
+	}
+	if ec.parentOperationID != "" {
+		event["parent_operation_id"] = ec.parentOperationID
 	}
 	if claimID != "" {
 		event["claim_id"] = claimID

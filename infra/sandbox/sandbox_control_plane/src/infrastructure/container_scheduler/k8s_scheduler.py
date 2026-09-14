@@ -363,6 +363,7 @@ mkdir -p /mnt/s3-init
 s3fs {bucket} /mnt/s3-init \\
     -o url={minio_url} \\
     -o use_path_request_style \\
+    -o ensure_diskfree=1024 \\
     -o passwd_file=/etc/s3fs-passwd/s3fs-passwd
 mkdir -p "/mnt/s3-init/{s3_prefix}"
 umount /mnt/s3-init || fusermount -u /mnt/s3-init
@@ -374,6 +375,7 @@ rmdir /mnt/s3-init
 s3fs {bucket}:/{s3_prefix} /workspace \\
     -o url={minio_url} \\
     -o use_path_request_style \\
+    -o ensure_diskfree=1024 \\
     -o allow_other \\
     -o uid=1000 \\
     -o gid=1000 \\

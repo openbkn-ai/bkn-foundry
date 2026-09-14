@@ -153,6 +153,29 @@ class TestUsedModelOpenai:
                     assert result.status_code == 200
 
     @pytest.mark.asyncio
+    async def test_private_gateway_forwards_valid_thinking_mode_to_generic_provider(self, valid_request, mock_model_data):
+        model_data = [dict(mock_model_data[0], f_model_series="deepseek")]
+        mock_redis = AsyncMock()
+        mock_redis.get_str = AsyncMock(return_value=json.dumps(model_data))
+        mock_redis.set_str = AsyncMock()
+        mock_response = {"choices": [{"message": {"content": "{}"}}], "usage": {"total_tokens": 10}}
+
+        with patch('app.controller.llm_controller.get_redis_util', return_value=mock_redis):
+            with patch('app.controller.llm_controller.llm_model_dao.get_data_from_model_list_by_name_id', return_value=model_data):
+                with patch('app.utils.llm_utils.OtherClient') as mock_client:
+                    mock_client.return_value.chat_completion = AsyncMock(return_value=mock_response)
+                    result = await used_model_openai(
+                        valid_request,
+                        "user1",
+                        "zh",
+                        "test",
+                        {"x-bkn-model-thinking-mode": "disabled"},
+                    )
+
+        assert result.status_code == 200
+        assert mock_client.call_args.kwargs["thinking_mode"] == "disabled"
+
+    @pytest.mark.asyncio
     @pytest.mark.skip(reason="Claude客户端在llm_utils模块中，需要更复杂的mock")
     async def test_claude_model(self, valid_request):
         """Test test claude model."""

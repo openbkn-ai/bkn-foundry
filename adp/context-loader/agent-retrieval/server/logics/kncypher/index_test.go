@@ -6,10 +6,12 @@ package kncypher
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
+	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -145,14 +147,17 @@ func TestRunCypherEmitsEvidenceAtEachBoundary(t *testing.T) {
 		t.Cleanup(func() { emitRunCypherEvents = previous })
 		var gotKnID string
 		var gotRows int
-		emitRunCypherEvents = func(_ context.Context, _ interfaces.Logger, knID, _ string, rowCount int) string {
+		var gotDescriptor string
+		emitRunCypherEvents = func(_ context.Context, _ interfaces.Logger, knID, _ string, rowCount int, descriptor json.RawMessage) string {
 			gotKnID, gotRows = knID, rowCount
+			gotDescriptor = string(descriptor)
 			return "event-success"
 		}
 
 		bkn := &recordingBkn{resp: &interfaces.CypherQueryResp{
-			Columns: []interfaces.CypherQueryColumn{{Name: "no", Type: "string"}},
-			Entries: []map[string]any{{"no": "A-1"}, {"no": "A-2"}},
+			Columns:         []interfaces.CypherQueryColumn{{Name: "no", Type: "string"}},
+			Entries:         []map[string]any{{"no": "A-1"}, {"no": "A-2"}},
+			TraceDescriptor: json.RawMessage(`{"version":"semantic-query-descriptor/v1"}`),
 		}}
 		if _, err := NewKnCypherServiceWith(bkn).RunCypher(context.Background(), &RunCypherReq{
 			KnID:  "kn_retail",
@@ -160,8 +165,32 @@ func TestRunCypherEmitsEvidenceAtEachBoundary(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("RunCypher() error = %v", err)
 		}
-		if gotKnID != "kn_retail" || gotRows != 2 {
+		if gotKnID != "kn_retail" || gotRows != 2 || gotDescriptor != `{"version":"semantic-query-descriptor/v1"}` {
 			t.Fatalf("evidence kn_id=%q rows=%d, want kn_retail and 2", gotKnID, gotRows)
 		}
 	})
+}
+
+func TestRunCypherClassifiesFailureBoundaries(t *testing.T) {
+	tests := []struct {
+		name      string
+		err       error
+		wantStage string
+		wantCode  string
+	}{
+		{name: "cancelled", err: context.Canceled, wantStage: "interrupted", wantCode: "RUN_CYPHER_INTERRUPTED"},
+		{name: "deadline", err: context.DeadlineExceeded, wantStage: "interrupted", wantCode: "RUN_CYPHER_TIMEOUT"},
+		{name: "parse", err: &infraErr.HTTPError{Code: "BknBackend.BadRequest.BknBackend.Cypher.SyntaxError"}, wantStage: "parse", wantCode: "RUN_CYPHER_PARSE_FAILED"},
+		{name: "bind", err: &infraErr.HTTPError{Code: "BknBackend.BadRequest.BknBackend.Cypher.InvalidQuery"}, wantStage: "bind", wantCode: "RUN_CYPHER_BIND_FAILED"},
+		{name: "compile", err: &infraErr.HTTPError{Code: "BknBackend.InternalServerError.BknBackend.Cypher.InternalError"}, wantStage: "compile", wantCode: "RUN_CYPHER_COMPILE_FAILED"},
+		{name: "vega", err: &infraErr.HTTPError{Code: "BknBackend.InternalServerError.BknBackend.Cypher.QueryFailed"}, wantStage: "vega_execution", wantCode: "RUN_CYPHER_VEGA_FAILED"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := classifyRunCypherFailure(test.err)
+			if got.Stage != test.wantStage || got.Code != test.wantCode {
+				t.Fatalf("failure = %+v, want stage=%q code=%q", got, test.wantStage, test.wantCode)
+			}
+		})
+	}
 }

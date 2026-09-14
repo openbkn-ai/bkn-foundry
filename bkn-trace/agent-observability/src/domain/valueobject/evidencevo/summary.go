@@ -92,6 +92,7 @@ type SummaryQueryOptions struct {
 	// query handlers never populate it; an assembled EE view may use it to
 	// keep its own analysis Agent conversations in technical Trace only.
 	ExcludeAgentOrApp    string
+	ExcludeAgentOrApps   []string
 	Service              string
 	Tool                 string
 	ErrorKeyword         string

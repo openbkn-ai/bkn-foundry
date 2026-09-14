@@ -111,13 +111,18 @@ func guardBusinessToolCallWithCompletion(
 		if ensure == nil {
 			return nil, fmt.Errorf("lifecycle operation client is not configured")
 		}
+		currentKnID := getStringArg(req, "kn_id", getKnIDFromHeader(req))
 		businessRefs, validationErr := parseBusinessRefs(
 			rawContext["business_refs"],
-			getStringArg(req, "kn_id", getKnIDFromHeader(req)),
+			currentKnID,
 		)
 		if validationErr != nil {
 			return lifecycleToolError(*validationErr), nil
 		}
+		businessRefs = mergeToolBusinessRefs(
+			businessRefs,
+			observedToolBusinessRefs(req.Params.Name, arguments, currentKnID),
+		)
 		intent := operationIntent{
 			Context: bknContext{
 				ConversationID:    conversationID,
@@ -265,6 +270,42 @@ func parseBusinessRefs(value any, currentKnID string) ([]bkntrace.BusinessRef, *
 	return nil, &lifecycleError{
 		Code: apiErr.Code, Message: apiErr.Message, RequiredAction: apiErr.RequiredAction,
 	}
+}
+
+// observedToolBusinessRefs derives references only from validated, structured
+// tool inputs. It is deliberately capability-specific: answer text, labels and
+// domain names never participate in evidence scope.
+func observedToolBusinessRefs(toolName string, arguments map[string]any, currentKnID string) []bkntrace.BusinessRef {
+	if toolName != toolKeyQueryMetric || currentKnID == "" {
+		return nil
+	}
+	if inputKnID := stringValue(arguments["kn_id"]); inputKnID != "" && inputKnID != currentKnID {
+		return nil
+	}
+	metricID := stringValue(arguments["metric_id"])
+	if metricID == "" {
+		return nil
+	}
+	return []bkntrace.BusinessRef{
+		{RefType: "knowledge_network", RefID: "kn:" + currentKnID, Version: "unversioned"},
+		{RefType: "metric", RefID: "metric:" + currentKnID + ":" + metricID, Version: "unversioned"},
+	}
+}
+
+func mergeToolBusinessRefs(declared, observed []bkntrace.BusinessRef) []bkntrace.BusinessRef {
+	merged := make([]bkntrace.BusinessRef, 0, len(declared)+len(observed))
+	seen := make(map[string]struct{}, len(declared)+len(observed))
+	for _, refs := range [][]bkntrace.BusinessRef{declared, observed} {
+		for _, ref := range refs {
+			key := ref.RefType + "\x00" + ref.RefID
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			merged = append(merged, ref)
+		}
+	}
+	return merged
 }
 
 func callBusinessTool(

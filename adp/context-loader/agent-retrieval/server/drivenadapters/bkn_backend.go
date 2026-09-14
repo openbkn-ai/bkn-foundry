@@ -8,6 +8,7 @@ package drivenadapters
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -215,10 +216,16 @@ func (b *bknBackendAccess) RunCypherQuery(ctx context.Context, req *interfaces.C
 	if len(respBody) == 0 {
 		return resp, nil
 	}
-	if err := sonic.Unmarshal(respBody, resp); err != nil {
+	var wire struct {
+		Columns []interfaces.CypherQueryColumn `json:"columns"`
+		Entries []map[string]any               `json:"entries"`
+		Trace   json.RawMessage                `json:"_trace"`
+	}
+	if err := sonic.Unmarshal(respBody, &wire); err != nil {
 		b.logger.Errorf("[BknBackendAccess] RunCypherQuery unmarshal response failed: %v\n", err)
 		return nil, err
 	}
+	resp.Columns, resp.Entries, resp.TraceDescriptor = wire.Columns, wire.Entries, wire.Trace
 	return resp, nil
 }
 

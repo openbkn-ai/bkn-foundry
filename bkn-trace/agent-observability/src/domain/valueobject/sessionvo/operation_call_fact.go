@@ -8,6 +8,9 @@ package sessionvo
 import (
 	"encoding/json"
 	"errors"
+	"reflect"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 )
@@ -114,25 +117,85 @@ func NormalizePayloadEnvelope(payload PayloadEnvelope) (PayloadEnvelope, error) 
 }
 
 type OperationCallFact struct {
-	OperationID       string            `json:"operation_id"`
-	Attempt           uint32            `json:"attempt"`
-	ConversationID    string            `json:"conversation_id"`
-	InteractionID     string            `json:"interaction_id"`
-	ReceiptID         string            `json:"receipt_id,omitempty"`
-	ToolName          string            `json:"tool_name"`
-	Protocol          OperationProtocol `json:"protocol"`
-	SourceModule      string            `json:"source_module"`
-	ParentOperationID string            `json:"parent_operation_id,omitempty"`
-	Input             PayloadEnvelope   `json:"input"`
-	Output            *PayloadEnvelope  `json:"output,omitempty"`
-	Error             *PayloadEnvelope  `json:"error,omitempty"`
-	RequestID         string            `json:"request_id,omitempty"`
-	TraceID           string            `json:"trace_id,omitempty"`
-	SpanID            string            `json:"span_id,omitempty"`
-	StartedAt         time.Time         `json:"started_at"`
-	FinishedAt        *time.Time        `json:"finished_at,omitempty"`
-	Status            AttemptStatus     `json:"status"`
-	Retryable         bool              `json:"retryable"`
+	OperationID       string             `json:"operation_id"`
+	Attempt           uint32             `json:"attempt"`
+	ConversationID    string             `json:"conversation_id"`
+	InteractionID     string             `json:"interaction_id"`
+	ReceiptID         string             `json:"receipt_id,omitempty"`
+	ToolName          string             `json:"tool_name"`
+	Protocol          OperationProtocol  `json:"protocol"`
+	SourceModule      string             `json:"source_module"`
+	ParentOperationID string             `json:"parent_operation_id,omitempty"`
+	CapabilityProfile *CapabilityProfile `json:"capability_profile,omitempty"`
+	Input             PayloadEnvelope    `json:"input"`
+	Output            *PayloadEnvelope   `json:"output,omitempty"`
+	Error             *PayloadEnvelope   `json:"error,omitempty"`
+	RequestID         string             `json:"request_id,omitempty"`
+	TraceID           string             `json:"trace_id,omitempty"`
+	SpanID            string             `json:"span_id,omitempty"`
+	StartedAt         time.Time          `json:"started_at"`
+	FinishedAt        *time.Time         `json:"finished_at,omitempty"`
+	Status            AttemptStatus      `json:"status"`
+	Retryable         bool               `json:"retryable"`
+}
+
+// CapabilityProfile freezes the internal producer contract selected for an
+// operation attempt. It is Trace metadata and is not part of public MCP or SDK
+// tool schemas.
+type CapabilityProfile struct {
+	ManifestID          string   `json:"manifest_id"`
+	ManifestVersion     string   `json:"manifest_version"`
+	CanonicalToolName   string   `json:"canonical_tool_name"`
+	ToolVersion         string   `json:"tool_version"`
+	InputSchemaDigest   string   `json:"input_schema_digest"`
+	OutputSchemaDigest  string   `json:"output_schema_digest"`
+	ExecutionRole       string   `json:"execution_role"`
+	EvidenceContract    string   `json:"evidence_contract"`
+	ChildEvidencePolicy string   `json:"child_evidence_policy"`
+	MapperID            string   `json:"mapper_id,omitempty"`
+	MapperVersion       string   `json:"mapper_version,omitempty"`
+	MinimumTraceSchema  string   `json:"minimum_trace_schema,omitempty"`
+	RequiredTraceFields []string `json:"required_trace_fields,omitempty"`
+	FailurePolicy       string   `json:"failure_policy"`
+	Resolution          string   `json:"resolution"`
+	Reason              string   `json:"reason,omitempty"`
+}
+
+func NormalizeCapabilityProfile(profile *CapabilityProfile, toolName string) (*CapabilityProfile, error) {
+	if profile == nil {
+		return nil, nil
+	}
+	value := *profile
+	value.RequiredTraceFields = append([]string(nil), profile.RequiredTraceFields...)
+	sort.Strings(value.RequiredTraceFields)
+	value.RequiredTraceFields = slices.Compact(value.RequiredTraceFields)
+	required := []string{
+		value.ManifestID, value.ManifestVersion, value.CanonicalToolName, value.ToolVersion,
+		value.InputSchemaDigest, value.OutputSchemaDigest, value.ExecutionRole,
+		value.EvidenceContract, value.ChildEvidencePolicy, value.FailurePolicy, value.Resolution,
+	}
+	for _, field := range required {
+		if strings.TrimSpace(field) == "" {
+			return nil, errors.New("capability profile has an empty required field")
+		}
+	}
+	if value.CanonicalToolName != toolName {
+		return nil, errors.New("capability profile tool identity does not match operation")
+	}
+	if value.Resolution != "matched" && value.Resolution != "execution_only" {
+		return nil, errors.New("capability profile resolution is invalid")
+	}
+	if value.Resolution == "execution_only" && value.EvidenceContract != "execution_only" {
+		return nil, errors.New("unmatched capability profile must be execution_only")
+	}
+	return &value, nil
+}
+
+func CapabilityProfilesEqual(left, right *CapabilityProfile) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return reflect.DeepEqual(left, right)
 }
 
 type OperationExecution struct {

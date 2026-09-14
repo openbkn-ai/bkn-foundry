@@ -127,6 +127,17 @@ def test_max_output_tokens_passes_to_model():
     assert build_chat_model("").max_tokens is None
 
 
+def test_internal_thinking_mode_adds_model_gateway_header():
+    from app.core.llm import build_chat_model, reset_thinking_mode, set_thinking_mode
+
+    token = set_thinking_mode("disabled")
+    try:
+        model = build_chat_model("")
+    finally:
+        reset_thinking_mode(token)
+    assert model.default_headers["x-bkn-model-thinking-mode"] == "disabled"
+
+
 def test_agent_limits_max_output_tokens_bounds():
     import pytest
     from pydantic import ValidationError

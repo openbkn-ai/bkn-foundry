@@ -444,6 +444,14 @@ func (c *Client) putDocument(ctx context.Context, requestURL string, body []byte
 }
 
 func (c *Client) EnsureIndex(ctx context.Context, index string, mapping []byte) error {
+	exists, err := c.IndexExists(ctx, index)
+	if err != nil {
+		return fmt.Errorf("check opensearch index: %w", err)
+	}
+	if exists {
+		return c.ensureMapping(ctx, index, mapping)
+	}
+
 	url := fmt.Sprintf("%s/%s", c.baseURL, strings.TrimLeft(index, "/"))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(mapping))

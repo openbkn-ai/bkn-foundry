@@ -43,6 +43,9 @@ func TestEnsureTraceTimestampPipelineRepairsOnlyZeroSpanTimestamps(t *testing.T)
 			}
 			w.WriteHeader(http.StatusOK)
 			return
+		case r.Method == http.MethodHead && r.URL.Path == "/ss4o_traces-default-namespace":
+			w.WriteHeader(http.StatusNotFound)
+			return
 		case r.Method == http.MethodPut && r.URL.Path == "/ss4o_traces-default-namespace":
 			body, err := io.ReadAll(r.Body)
 			if err != nil {
@@ -62,8 +65,8 @@ func TestEnsureTraceTimestampPipelineRepairsOnlyZeroSpanTimestamps(t *testing.T)
 	if err := client.EnsureTraceTimestampPipeline(t.Context(), "bkn-trace-span-timestamp-v1", "ss4o_traces-default-namespace"); err != nil {
 		t.Fatalf("ensure timestamp pipeline: %v", err)
 	}
-	if requests != 5 {
-		t.Fatalf("expected legacy cleanup, pipeline, two settings updates and index creation requests, got %d", requests)
+	if requests != 6 {
+		t.Fatalf("expected legacy cleanup, pipeline, two settings updates, existence check and index creation requests, got %d", requests)
 	}
 }
 
@@ -115,6 +118,10 @@ func TestEnsureTraceTimestampPipelineHandlesConcurrentIndexCreation(t *testing.T
 			}
 			w.WriteHeader(http.StatusOK)
 		case "/ss4o_traces-default-namespace":
+			if r.Method == http.MethodHead {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte(`{"error":{"type":"resource_already_exists_exception"}}`))

@@ -1166,6 +1166,7 @@ func (t *transaction) SaveOperationCallFact(fact sessionvo.OperationCallFact) {
 		fact.OperationID, fact.Attempt,
 	).Scan(&exists)
 	input := marshalJSON(fact.Input)
+	capabilityProfile := marshalOptionalCapabilityProfile(fact.CapabilityProfile)
 	output := marshalOptionalPayload(fact.Output)
 	errorPayload := marshalOptionalPayload(fact.Error)
 	switch {
@@ -1174,13 +1175,13 @@ func (t *transaction) SaveOperationCallFact(fact sessionvo.OperationCallFact) {
 			INSERT INTO bkn_trace_operation_call_facts (
 				operation_id, attempt_no, conversation_id, interaction_id, receipt_id,
 				tool_name, protocol, source_module, parent_operation_id,
-				input_payload, output_payload, error_payload,
+				capability_profile, input_payload, output_payload, error_payload,
 				request_id, trace_id, span_id, started_at, finished_at, status, retryable
-			) VALUES (?, ?, ?, ?, NULLIF(?, ''), ?, ?, ?, NULLIF(?, ''), ?, NULLIF(?, ''),
+			) VALUES (?, ?, ?, ?, NULLIF(?, ''), ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, NULLIF(?, ''),
 				NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?)`,
 			fact.OperationID, fact.Attempt, fact.ConversationID, fact.InteractionID,
 			fact.ReceiptID, fact.ToolName, fact.Protocol, fact.SourceModule,
-			fact.ParentOperationID, input, output, errorPayload,
+			fact.ParentOperationID, capabilityProfile, input, output, errorPayload,
 			fact.RequestID, fact.TraceID, fact.SpanID, fact.StartedAt,
 			nullableTime(fact.FinishedAt), fact.Status, fact.Retryable,
 		)
@@ -1771,19 +1772,19 @@ func scanOperationRowsWithDecoder(row rowScanner, decode evidenceJSONDecoder) (s
 
 const operationCallFactSelect = `SELECT operation_id, attempt_no, conversation_id,
 	interaction_id, COALESCE(receipt_id, ''), tool_name, protocol, source_module,
-	COALESCE(parent_operation_id, ''), input_payload,
+	COALESCE(parent_operation_id, ''), COALESCE(capability_profile, ''), input_payload,
 	COALESCE(output_payload, ''), COALESCE(error_payload, ''),
 	COALESCE(request_id, ''), COALESCE(trace_id, ''), COALESCE(span_id, ''), started_at, finished_at,
 	status, retryable FROM bkn_trace_operation_call_facts `
 
 func (t *transaction) scanOperationCallFact(row rowScanner) (sessionvo.OperationCallFact, bool) {
 	var value sessionvo.OperationCallFact
-	var input, output, errorPayload string
+	var capabilityProfile, input, output, errorPayload string
 	var finishedAt sql.NullTime
 	err := row.Scan(
 		&value.OperationID, &value.Attempt, &value.ConversationID, &value.InteractionID,
 		&value.ReceiptID, &value.ToolName, &value.Protocol, &value.SourceModule,
-		&value.ParentOperationID, &input, &output, &errorPayload,
+		&value.ParentOperationID, &capabilityProfile, &input, &output, &errorPayload,
 		&value.RequestID, &value.TraceID, &value.SpanID, &value.StartedAt, &finishedAt,
 		&value.Status, &value.Retryable,
 	)
@@ -1797,6 +1798,13 @@ func (t *transaction) scanOperationCallFact(row rowScanner) (sessionvo.Operation
 	if err := json.Unmarshal([]byte(input), &value.Input); err != nil {
 		t.err = err
 		return sessionvo.OperationCallFact{}, false
+	}
+	if capabilityProfile != "" {
+		value.CapabilityProfile = &sessionvo.CapabilityProfile{}
+		if err := json.Unmarshal([]byte(capabilityProfile), value.CapabilityProfile); err != nil {
+			t.err = err
+			return sessionvo.OperationCallFact{}, false
+		}
 	}
 	if output != "" {
 		value.Output = &sessionvo.PayloadEnvelope{}
@@ -1823,6 +1831,13 @@ func marshalOptionalPayload(payload *sessionvo.PayloadEnvelope) string {
 		return ""
 	}
 	return marshalJSON(*payload)
+}
+
+func marshalOptionalCapabilityProfile(profile *sessionvo.CapabilityProfile) string {
+	if profile == nil {
+		return ""
+	}
+	return marshalJSON(*profile)
 }
 
 const receiptSelect = `SELECT receipt_id, schema_version, application_principal_id,

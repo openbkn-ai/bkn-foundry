@@ -70,6 +70,7 @@ func TestMigrationsAreOrderedAndChecksumProtected(t *testing.T) {
 		"022": "5adcc651031c6fae874fd6f0b3f9b6a0c9fbe93df67091260dc75ebd5443b8f1",
 		"023": "88dea8a624e36e27e0f066132ea85e0b2123ae7b04a1e6cc324ed91857d34fc5",
 		"024": "b039105383abac38586dbff67c5d63a9c67a605c6c3c0493c00f4bad9057f1e6",
+		"025": "8016090e353f20486f13dc92888ed7ec9b300126dc526dfa5db159148521ccbf",
 	}
 	migrations := sessionstore.Migrations()
 	if len(migrations) != len(expectedChecksums) {
@@ -133,6 +134,9 @@ func TestOperationCallFactSchemaStoresInputAndTerminalPayload(t *testing.T) {
 		if !strings.Contains(tableDefinition, fragment) {
 			t.Errorf("operation call fact schema is missing %q", fragment)
 		}
+	}
+	if !strings.Contains(sessionstore.SchemaSQL(), "ADD COLUMN IF NOT EXISTS capability_profile LONGTEXT NULL") {
+		t.Error("operation call fact migrations do not add capability_profile")
 	}
 }
 

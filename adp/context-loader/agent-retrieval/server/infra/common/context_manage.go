@@ -71,6 +71,7 @@ type TraceContext struct {
 	ConversationID     string
 	InteractionID      string
 	OperationID        string
+	ParentOperationID  string
 	ToolName           string
 	CausationEventID   string
 	ClaimID            string
@@ -238,6 +239,7 @@ func TraceContextFromHeaders(getHeader func(string) string) TraceContext {
 		ConversationID:     sanitizeBusinessTraceID(getHeader(HeaderBKNConversationID)),
 		InteractionID:      sanitizeBusinessTraceID(getHeader(HeaderBKNInteractionID)),
 		OperationID:        sanitizeBusinessTraceID(getHeader(HeaderBKNOperationID)),
+		ParentOperationID:  sanitizeBusinessTraceID(getHeader(HeaderBKNParentOperationID)),
 		CausationEventID:   sanitizeBusinessTraceID(getHeader(HeaderBKNCausationEventID)),
 		ClaimID:            sanitizeBusinessTraceID(getHeader(HeaderBKNClaimID)),
 		Attempt:            attempt,
@@ -293,11 +295,12 @@ func GetHeaderFromCtx(ctx context.Context) (header map[string]string) {
 
 func setBusinessTraceHeaders(header map[string]string, traceContext TraceContext) {
 	for key, value := range map[string]string{
-		HeaderBKNConversationID:   traceContext.ConversationID,
-		HeaderBKNInteractionID:    traceContext.InteractionID,
-		HeaderBKNOperationID:      traceContext.OperationID,
-		HeaderBKNCausationEventID: traceContext.CausationEventID,
-		HeaderBKNClaimID:          traceContext.ClaimID,
+		HeaderBKNConversationID:    traceContext.ConversationID,
+		HeaderBKNInteractionID:     traceContext.InteractionID,
+		HeaderBKNOperationID:       traceContext.OperationID,
+		HeaderBKNParentOperationID: traceContext.ParentOperationID,
+		HeaderBKNCausationEventID:  traceContext.CausationEventID,
+		HeaderBKNClaimID:           traceContext.ClaimID,
 	} {
 		if value != "" {
 			header[key] = value
@@ -342,7 +345,9 @@ func GetHeaderForChildOperation(ctx context.Context, operationName string, callO
 	if !ok {
 		return GetHeaderFromCtx(ctx)
 	}
-	traceContext.OperationID = childOperationID(traceContext.OperationID, operationName, traceContext.Attempt, callOrdinal)
+	parentOperationID := traceContext.OperationID
+	traceContext.OperationID = childOperationID(parentOperationID, operationName, traceContext.Attempt, callOrdinal)
+	traceContext.ParentOperationID = parentOperationID
 	return GetHeaderFromCtx(SetTraceContextToCtx(ctx, traceContext))
 }
 
@@ -353,8 +358,10 @@ func GetHeaderForChildOperationIdentity(ctx context.Context, operationName, iden
 	if !ok {
 		return GetHeaderFromCtx(ctx)
 	}
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d|%s", traceContext.OperationID, strings.TrimSpace(operationName), traceContext.Attempt, strings.TrimSpace(identity))))
+	parentOperationID := traceContext.OperationID
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d|%s", parentOperationID, strings.TrimSpace(operationName), traceContext.Attempt, strings.TrimSpace(identity))))
 	traceContext.OperationID = "op_" + hex.EncodeToString(sum[:])
+	traceContext.ParentOperationID = parentOperationID
 	return GetHeaderFromCtx(SetTraceContextToCtx(ctx, traceContext))
 }
 

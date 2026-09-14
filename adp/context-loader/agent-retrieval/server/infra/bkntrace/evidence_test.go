@@ -295,6 +295,76 @@ func TestBuildRunSQLEventsUsesDataQueryFactWithoutLeakingSQLOrRows(t *testing.T)
 	}
 }
 
+func TestBuildRunCypherEventsCarriesCompiledDescriptorAndTypedRefs(t *testing.T) {
+	descriptor := json.RawMessage(`{
+		"version":"semantic-query-descriptor/v1",
+		"producer_profile":"openbkn.bkn-backend.run_cypher@0.1.5",
+		"network_id":"kn_demo",
+		"objects":[{"alias":"m","object_ref":"object:kn_demo:match"}],
+		"relations":[{"relation_ref":"relation:kn_demo:played_in"}],
+		"predicates":[{"property_ref":"property:kn_demo:match:year","operator":"=","input_pointer":"$.parameters.year"}],
+		"projections":[{"property_ref":"property:kn_demo:match:winner","output_pointer":"$.entries[*].winner"}]
+	}`)
+	ctx := testTraceContext()
+	traceContext, _ := common.GetTraceContextFromCtx(ctx)
+	traceContext.ParentOperationID = "op_orchestrator_0001"
+	ctx = common.SetTraceContextToCtx(ctx, traceContext)
+	events := BuildRunCypherEvents(ctx, "kn_demo", "MATCH ...", 18, descriptor)
+	if len(events) != 1 {
+		t.Fatalf("events = %#v", events)
+	}
+	payload, _ := events[0]["payload"].(map[string]any)
+	if payload["semantic_descriptor_status"] != "available" || payload["row_count"] != 18 {
+		t.Fatalf("run_cypher payload = %#v", payload)
+	}
+	if events[0]["parent_operation_id"] != "op_orchestrator_0001" {
+		t.Fatalf("run_cypher event lost its exact parent: %#v", events[0])
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	for _, ref := range []string{
+		`"ref_id":"object:kn_demo:match"`,
+		`"ref_id":"relation:kn_demo:played_in"`,
+		`"ref_id":"property:kn_demo:match:year"`,
+		`"ref_id":"property:kn_demo:match:winner"`,
+	} {
+		if !strings.Contains(text, ref) {
+			t.Fatalf("run_cypher descriptor refs missing %s: %s", ref, text)
+		}
+	}
+	if strings.Contains(text, "physical_table") || strings.Contains(text, "mapped_column") {
+		t.Fatalf("run_cypher descriptor leaked physical details: %s", text)
+	}
+}
+
+func TestBuildRunCypherEventsMarksMissingDescriptorForSafeDowngrade(t *testing.T) {
+	events := BuildRunCypherEvents(testTraceContext(), "kn_demo", "MATCH ...", 1, nil)
+	payload, _ := events[0]["payload"].(map[string]any)
+	if payload["semantic_descriptor_status"] != "missing" || payload["semantic_query_descriptor"] != nil {
+		t.Fatalf("missing descriptor was not explicit: %#v", payload)
+	}
+}
+
+func TestBuildRunCypherEventsMarksDefaultLimitBoundaryAsTruncated(t *testing.T) {
+	descriptor := json.RawMessage(`{
+		"version":"semantic-query-descriptor/v1",
+		"producer_profile":"openbkn.bkn-backend.run_cypher@0.1.5",
+		"network_id":"kn_demo",
+		"effective_limit":1000,
+		"limit_source":"default",
+		"objects":[{"alias":"m","object_ref":"object:kn_demo:match"}],
+		"projections":[{"property_ref":"property:kn_demo:match:id","output_pointer":"$.entries[*].id"}]
+	}`)
+	events := BuildRunCypherEvents(testTraceContext(), "kn_demo", "MATCH ...", 1000, descriptor)
+	payload := events[0]["payload"].(map[string]any)
+	if payload["truncated"] != true || payload["truncation_reason"] != "default_limit_reached" {
+		t.Fatalf("default limit boundary was not fail-closed: %#v", payload)
+	}
+}
+
 func TestBuildSearchSchemaEventsKeepsFactIndependentFromUpstreamClaim(t *testing.T) {
 	maxConcepts := 5
 	events := BuildSearchSchemaEvents(testTraceContextWithClaim(), &interfaces.SearchSchemaReq{

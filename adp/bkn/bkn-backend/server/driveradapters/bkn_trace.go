@@ -24,15 +24,16 @@ import (
 )
 
 const (
-	headerBKNRequestID        = "bkn-request-id"
-	headerLegacyRequestID     = "x-request-id"
-	headerBKNInteractionID    = "bkn-interaction-id"
-	headerBKNOperationID      = "bkn-operation-id"
-	headerBKNCausationEventID = "bkn-causation-event-id"
-	headerBKNClaimID          = "bkn-claim-id"
-	headerBKNAttempt          = "bkn-attempt"
-	headerBKNEventObservedAt  = "bkn-event-observed-at"
-	headerBKNEvidenceEventID  = "bkn-evidence-event-id"
+	headerBKNRequestID         = "bkn-request-id"
+	headerLegacyRequestID      = "x-request-id"
+	headerBKNInteractionID     = "bkn-interaction-id"
+	headerBKNOperationID       = "bkn-operation-id"
+	headerBKNParentOperationID = "bkn-parent-operation-id"
+	headerBKNCausationEventID  = "bkn-causation-event-id"
+	headerBKNClaimID           = "bkn-claim-id"
+	headerBKNAttempt           = "bkn-attempt"
+	headerBKNEventObservedAt   = "bkn-event-observed-at"
+	headerBKNEvidenceEventID   = "bkn-evidence-event-id"
 )
 
 func bknTraceRequestContext(c *gin.Context, vis hydra.Visitor) (bkntrace.RequestContext, error) {
@@ -90,6 +91,7 @@ func bknTraceRequestContext(c *gin.Context, vis hydra.Visitor) (bkntrace.Request
 		DelegationID:           strings.TrimSpace(c.GetHeader("x-bkn-delegation-id")),
 		InteractionID:          interactionID,
 		OperationID:            operationID,
+		ParentOperationID:      strings.TrimSpace(c.GetHeader(headerBKNParentOperationID)),
 		CausationEventID:       strings.TrimSpace(c.GetHeader(headerBKNCausationEventID)),
 		ClaimID:                strings.TrimSpace(c.GetHeader(headerBKNClaimID)),
 		Attempt:                attempt,

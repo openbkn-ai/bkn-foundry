@@ -34,6 +34,11 @@ def envelope_error_response(envelope, status, headers=None):
 
 
 async def used_model_openai(request, user_id, language, func_module, trace_headers=None, role=None, private=True):
+    thinking_mode = ""
+    if private and trace_headers:
+        candidate = str(trace_headers.get("x-bkn-model-thinking-mode", "")).strip().lower()
+        if candidate in {"enabled", "disabled"}:
+            thinking_mode = candidate
     if "stream" not in request.keys():
         stream = True
     else:
@@ -187,7 +192,7 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
                 response_format=request["response_format"],
                 stop=request["stop"],
                 tools=request.get("tools", None),
-                tool_choice=request.get("tool_choice", None)
+                tool_choice=request.get("tool_choice", None),
             )
             openai_client.trace_context = trace_context
             if stream:
@@ -221,7 +226,8 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
                 top_k=request["top_k"],
                 system=request.get("system", []),
                 tools=request.get("tools", None),
-                tool_choice=request.get("tool_choice", None)
+                tool_choice=request.get("tool_choice", None),
+                thinking_mode=thinking_mode,
             )
             claude_client.trace_context = trace_context
             if stream:
@@ -326,7 +332,8 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
                 stop=request["stop"],
                 model_type=model_data["f_model_type"],
                 tools=request.get("tools", None),
-                tool_choice=request.get("tool_choice", None)
+                tool_choice=request.get("tool_choice", None),
+                thinking_mode=thinking_mode,
             )
             other_client.trace_context = trace_context
             if stream:

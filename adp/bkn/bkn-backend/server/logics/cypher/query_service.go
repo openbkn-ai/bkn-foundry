@@ -8,6 +8,7 @@ package cypher
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"sync"
@@ -75,7 +76,7 @@ func (s *cypherQueryService) Query(ctx context.Context, query interfaces.CypherQ
 	if err := validateQueryText(ctx, query.Query); err != nil {
 		return nil, err
 	}
-	sql, rowLimit, err := s.compile(ctx, query)
+	sql, rowLimit, traceDescriptor, err := s.compile(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -101,8 +102,9 @@ func (s *cypherQueryService) Query(ctx context.Context, query interfaces.CypherQ
 	}
 
 	return &interfaces.CypherQueryResult{
-		Columns: response.Columns,
-		Entries: response.Entries,
+		Columns:         response.Columns,
+		Entries:         response.Entries,
+		TraceDescriptor: traceDescriptor,
 	}, nil
 }
 
@@ -110,45 +112,55 @@ func (s *cypherQueryService) Query(ctx context.Context, query interfaces.CypherQ
 // status the caller should see. A query that is malformed, outside the subset,
 // or does not fit the model is the caller's to fix, and says so with 400;
 // anything else is ours.
-func (s *cypherQueryService) compile(ctx context.Context, query interfaces.CypherQuery) (string, int, error) {
+func (s *cypherQueryService) compile(ctx context.Context, query interfaces.CypherQuery) (string, int, json.RawMessage, error) {
 	tree, err := Parse(query.Query)
 	if err != nil {
 		var syntaxErrors SyntaxErrors
 		if errors.As(err, &syntaxErrors) {
-			return "", 0, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_SyntaxError).
+			return "", 0, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_SyntaxError).
 				WithErrorDetails(syntaxErrors.Error())
 		}
-		return "", 0, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_SyntaxError).
+		return "", 0, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_SyntaxError).
 			WithErrorDetails(err.Error())
 	}
 
 	analyzed, err := Analyze(tree)
 	if err != nil {
-		return "", 0, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_Unsupported).
+		return "", 0, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_Unsupported).
 			WithErrorDetails(err.Error())
 	}
 	if analyzed.Limit != nil && *analyzed.Limit > interfaces.CYPHER_MAX_LIMIT {
 		// Refused rather than clamped: a caller who asked for more rows than
 		// they will get should be told, not handed a short answer.
-		return "", 0, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_LimitExceeded).
+		return "", 0, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_LimitExceeded).
 			WithErrorDetails(detail(ctx, "LimitExceeded", map[string]any{"max": interfaces.CYPHER_MAX_LIMIT}))
 	}
 
 	schema, err := LoadSchema(ctx, s.schema, &permissionVisibility{ps: s.ps}, query.KNID, query.Branch)
 	if err != nil {
-		return "", 0, err
+		return "", 0, nil, err
 	}
 	if schema.NothingReadable() {
 		// The network holds concepts and this caller may read none of them.
 		// Saying so is better than reporting every label as unknown, and
 		// reveals nothing: they already knew which network they asked about.
-		return "", 0, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+		return "", 0, nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
 	}
 
 	plan, err := Compile(analyzed, schema, CompileOptions{Parameters: query.Parameters})
 	if err != nil {
-		return "", 0, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_InvalidQuery).
+		return "", 0, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_InvalidQuery).
 			WithErrorDetails(err.Error())
+	}
+
+	descriptor, err := BuildSemanticQueryDescriptor(plan, query.Query)
+	if err != nil {
+		common.LogSafeError(ctx, "Cypher semantic descriptor generation failed", err)
+		return "", 0, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
+	}
+	descriptorJSON, err := json.Marshal(descriptor)
+	if err != nil {
+		return "", 0, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
 	}
 
 	sql, err := Generate(plan, GenerateOptions{
@@ -157,10 +169,10 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 	})
 	if err != nil {
 		common.LogSafeError(ctx, "Cypher SQL generation failed", err)
-		return "", 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
+		return "", 0, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
 	}
 
-	return sql, pageSize(plan.Limit), nil
+	return sql, pageSize(plan.Limit), descriptorJSON, nil
 }
 
 // pageSize is how many rows to ask vega-backend for. The statement's own LIMIT

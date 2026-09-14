@@ -6,7 +6,10 @@
 
 package interfaces
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+)
 
 const (
 	// CYPHER_DEFAULT_LIMIT caps a query that did not write its own LIMIT.
@@ -47,6 +50,9 @@ type CypherQuery struct {
 type CypherQueryResult struct {
 	Columns []RawQueryColumn `json:"columns"`
 	Entries []map[string]any `json:"entries"`
+	// TraceDescriptor is returned only on the internal HTTP face. The public
+	// REST response keeps its existing shape.
+	TraceDescriptor json.RawMessage `json:"-"`
 }
 
 //go:generate mockgen -source ../interfaces/cypher_query_service.go -destination ../interfaces/mock/mock_cypher_query_service.go

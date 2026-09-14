@@ -945,6 +945,46 @@ func TestParseBusinessRefsRejectsMalformedDeclarations(t *testing.T) {
 	}
 }
 
+func TestObservedToolBusinessRefsAddsMetricScopeWithoutDomainKnowledge(t *testing.T) {
+	refs := observedToolBusinessRefs(toolKeyQueryMetric, map[string]any{
+		"kn_id":     "network-any",
+		"metric_id": "metric-any",
+	}, "network-any")
+
+	want := map[string]bool{
+		"knowledge_network\x00kn:network-any":     true,
+		"metric\x00metric:network-any:metric-any": true,
+	}
+	for _, ref := range refs {
+		delete(want, ref.RefType+"\x00"+ref.RefID)
+		if ref.Version != "unversioned" {
+			t.Fatalf("derived ref version = %q", ref.Version)
+		}
+	}
+	if len(want) != 0 {
+		t.Fatalf("derived refs missing: %v", want)
+	}
+}
+
+func TestObservedToolBusinessRefsRejectsIncompleteOrMismatchedMetricScope(t *testing.T) {
+	cases := []struct {
+		name      string
+		arguments map[string]any
+		knID      string
+	}{
+		{name: "missing metric", arguments: map[string]any{"kn_id": "network-any"}, knID: "network-any"},
+		{name: "missing network", arguments: map[string]any{"metric_id": "metric-any"}},
+		{name: "mismatched network", arguments: map[string]any{"kn_id": "other", "metric_id": "metric-any"}, knID: "network-any"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if refs := observedToolBusinessRefs(toolKeyQueryMetric, tc.arguments, tc.knID); len(refs) != 0 {
+				t.Fatalf("refs = %#v, want none", refs)
+			}
+		})
+	}
+}
+
 func TestSessionGuardUsesOnlyExplicitContextAcrossTransportSessions(t *testing.T) {
 	var mu sync.Mutex
 	seen := []bknContext{}

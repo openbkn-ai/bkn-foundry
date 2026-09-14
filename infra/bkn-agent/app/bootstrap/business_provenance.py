@@ -153,21 +153,31 @@ def bootstrap(
 def main() -> int:
     service_root = Path(__file__).resolve().parents[2]
     try:
-        action = bootstrap(
-            JsonClient(),
+        package_paths = [
             os.getenv(
                 "BKN_PROVENANCE_PACKAGE",
                 str(service_root / "deploy" / "agents" / "business-provenance-optimizer.json"),
             ),
-            os.environ["BKN_SAFE_URL"],
-            os.environ["BKN_AGENT_URL"],
-            os.environ["BKN_PROVENANCE_OWNER_ID"],
-            os.environ["BKN_PROVENANCE_BOOTSTRAP_TOKEN"],
-        )
+            os.getenv(
+                "BKN_CLAIM_ATTRIBUTION_PACKAGE",
+                str(service_root / "deploy" / "agents" / "business-provenance-claim-attribution.json"),
+            ),
+        ]
+        actions = [
+            bootstrap(
+                JsonClient(),
+                package_path,
+                os.environ["BKN_SAFE_URL"],
+                os.environ["BKN_AGENT_URL"],
+                os.environ["BKN_PROVENANCE_OWNER_ID"],
+                os.environ["BKN_PROVENANCE_BOOTSTRAP_TOKEN"],
+            )
+            for package_path in package_paths
+        ]
     except (BootstrapError, KeyError, OSError, ValueError) as exc:
         print(f"business provenance bootstrap failed: {exc}", file=sys.stderr)
         return 1
-    print(f"business provenance bootstrap complete: {action}")
+    print(f"business provenance bootstrap complete: {','.join(actions)}")
     return 0
 
 

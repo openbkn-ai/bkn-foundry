@@ -76,16 +76,17 @@ type startInteractionRequest struct {
 }
 
 type ensureOperationRequest struct {
-	OperationKey      string                      `json:"operation_key" binding:"required"`
-	ToolName          string                      `json:"tool_name" binding:"required"`
-	Protocol          sessionvo.OperationProtocol `json:"protocol" binding:"required"`
-	SourceModule      string                      `json:"source_module" binding:"required"`
-	Input             sessionvo.PayloadEnvelope   `json:"input" binding:"required"`
-	ParentOperationID string                      `json:"parent_operation_id,omitempty"`
-	CausationEventIDs []string                    `json:"causation_event_ids,omitempty"`
-	Required          bool                        `json:"required"`
-	LeaseToken        string                      `json:"lease_token" binding:"required"`
-	LeaseEpoch        uint64                      `json:"lease_epoch" binding:"required"`
+	OperationKey      string                       `json:"operation_key" binding:"required"`
+	ToolName          string                       `json:"tool_name" binding:"required"`
+	Protocol          sessionvo.OperationProtocol  `json:"protocol" binding:"required"`
+	SourceModule      string                       `json:"source_module" binding:"required"`
+	CapabilityProfile *sessionvo.CapabilityProfile `json:"capability_profile,omitempty"`
+	Input             sessionvo.PayloadEnvelope    `json:"input" binding:"required"`
+	ParentOperationID string                       `json:"parent_operation_id,omitempty"`
+	CausationEventIDs []string                     `json:"causation_event_ids,omitempty"`
+	Required          bool                         `json:"required"`
+	LeaseToken        string                       `json:"lease_token" binding:"required"`
+	LeaseEpoch        uint64                       `json:"lease_epoch" binding:"required"`
 }
 
 type interactionLeaseRequest struct {
@@ -353,7 +354,7 @@ func (h *SessionHandler) handleConversationSubresource(w http.ResponseWriter, r 
 			Owner: owner, ConversationID: parts[0], InteractionID: parts[2],
 			OperationKey: request.OperationKey, ToolName: request.ToolName,
 			Protocol: request.Protocol, SourceModule: request.SourceModule,
-			Input:             request.Input,
+			Input: request.Input, CapabilityProfile: request.CapabilityProfile,
 			ParentOperationID: request.ParentOperationID,
 			CausationEventIDs: request.CausationEventIDs, Required: request.Required,
 			LeaseToken: request.LeaseToken, LeaseEpoch: request.LeaseEpoch,

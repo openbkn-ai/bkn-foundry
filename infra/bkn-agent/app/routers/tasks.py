@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import dao
 from app.auth import Account, get_account
-from app.core import runner
+from app.core import llm, runner
 from app.db import get_session
 from app.errors import bad_request, not_found
 from app.models import InvokeRequest, RunRequest, TaskOut
@@ -15,6 +15,7 @@ router = APIRouter()
 async def invoke(
     agent_id: str,
     req: InvokeRequest,
+    head_request: Request,
     account: Account = Depends(get_account),
     session: AsyncSession = Depends(get_session),
 ):
@@ -37,7 +38,11 @@ async def invoke(
         "response_format": req.response_format,
     }
     task = await dao.create_task(session, agent.agent_id, task_input, account.account_id)
-    await runner.execute_task(task.task_id, agent, task_input, account.account_id, account.account_type)
+    thinking_token = llm.set_thinking_mode(head_request.headers.get("x-bkn-agent-thinking-mode", ""))
+    try:
+        await runner.execute_task(task.task_id, agent, task_input, account.account_id, account.account_type)
+    finally:
+        llm.reset_thinking_mode(thinking_token)
     session.expire_all()  # The runner writes the terminal state in its own session, so bypass this cache.
     return await dao.get_task(session, task.task_id)
 

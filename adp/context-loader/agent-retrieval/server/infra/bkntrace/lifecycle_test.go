@@ -125,6 +125,13 @@ func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
 			if _, legacy := body["normalized_input_hash"]; legacy {
 				t.Errorf("ensure request still exposes normalized_input_hash: %#v", body)
 			}
+			profile, _ := body["capability_profile"].(map[string]any)
+			if profile["manifest_id"] != "openbkn.context-loader.mcp" ||
+				profile["manifest_version"] != "0.1.5" ||
+				profile["canonical_tool_name"] != "search_schema" ||
+				profile["resolution"] != "matched" {
+				t.Errorf("ensure request lost capability profile: %#v", body)
+			}
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(OperationResult{
 				Created:   true,
@@ -170,7 +177,8 @@ func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
 	result, apiErr, err := client.EnsureOperation(ctx, EnsureOperationInput{
 		ConversationID: "conv-1", InteractionID: "int-1", OperationKey: "logical-1",
 		ToolName: "search_schema", Protocol: "mcp", SourceModule: "context-loader",
-		Input: json.RawMessage(`{"query":"物料","knowledge_network_id":"supply-chain"}`),
+		Input:             json.RawMessage(`{"query":"物料","knowledge_network_id":"supply-chain"}`),
+		CapabilityProfile: json.RawMessage(`{"manifest_id":"openbkn.context-loader.mcp","manifest_version":"0.1.5","canonical_tool_name":"search_schema","resolution":"matched"}`),
 	})
 	if err != nil || apiErr != nil {
 		t.Fatalf("ensure operation failed: api=%#v err=%v", apiErr, err)

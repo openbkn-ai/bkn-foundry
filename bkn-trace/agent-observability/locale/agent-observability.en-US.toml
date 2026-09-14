@@ -139,6 +139,7 @@
 "operation attempt or receipt does not match" = "operation attempt or receipt does not match"
 "operation input envelope is invalid" = "operation input envelope is invalid"
 "operation key, tool name, protocol, source module and input are required" = "operation key, tool name, protocol, source module and input are required"
+"operation capability profile is invalid" = "operation capability profile is invalid"
 "operation key was already used with different input" = "operation key was already used with different input"
 "operation route was not found" = "operation route was not found"
 "operation terminal payload envelope is invalid" = "operation terminal payload envelope is invalid"

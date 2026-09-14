@@ -183,6 +183,7 @@ type EnsureOperationCommand struct {
 	Protocol          sessionvo.OperationProtocol
 	SourceModule      string
 	Input             sessionvo.PayloadEnvelope
+	CapabilityProfile *sessionvo.CapabilityProfile
 	ParentOperationID string
 	CausationEventIDs []string
 	Required          bool
@@ -986,6 +987,10 @@ func (s *Service) EnsureOperationWithDisposition(
 	if err != nil {
 		return EnsureOperationResult{}, domainError(CodeOperationRequired, "operation input envelope is invalid")
 	}
+	capabilityProfile, err := sessionvo.NormalizeCapabilityProfile(command.CapabilityProfile, command.ToolName)
+	if err != nil {
+		return EnsureOperationResult{}, domainError(CodeOperationRequired, "operation capability profile is invalid")
+	}
 	var operation sessionvo.Operation
 	var receipt sessionvo.Receipt
 	created := false
@@ -1062,6 +1067,7 @@ func (s *Service) EnsureOperationWithDisposition(
 			existingFact, found := tx.FindOperationCallFact(existing.ID, factAttempt)
 			if !found || existingFact.Protocol != command.Protocol ||
 				existingFact.SourceModule != command.SourceModule ||
+				!sessionvo.CapabilityProfilesEqual(existingFact.CapabilityProfile, capabilityProfile) ||
 				!payloadEnvelopeEqual(existingFact.Input, input) {
 				return domainError(CodeIdempotencyConflict, "operation key was already used with different input")
 			}
@@ -1080,6 +1086,7 @@ func (s *Service) EnsureOperationWithDisposition(
 					ConversationID: existing.ConversationID, InteractionID: existing.InteractionID,
 					ReceiptID: existingReceipt.ID, ToolName: existing.ToolName,
 					Protocol: command.Protocol, SourceModule: command.SourceModule, Input: input,
+					CapabilityProfile: capabilityProfile,
 					ParentOperationID: existing.ParentOperationID,
 					StartedAt:         now, Status: sessionvo.AttemptPending,
 				})
@@ -1126,6 +1133,7 @@ func (s *Service) EnsureOperationWithDisposition(
 			ConversationID: operation.ConversationID, InteractionID: operation.InteractionID,
 			ReceiptID: receipt.ID, ToolName: operation.ToolName,
 			Protocol: command.Protocol, SourceModule: command.SourceModule, Input: input,
+			CapabilityProfile: capabilityProfile,
 			ParentOperationID: operation.ParentOperationID,
 			StartedAt:         now, Status: sessionvo.AttemptPending,
 		})
@@ -1357,6 +1365,7 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 		currentReceipt.ArtifactRefs = effectiveArtifactRefs(command.ArtifactRefs, callFact.Input, terminalPayload)
 		currentReceipt.PartialReasons = effectivePartialReasons(
 			command.PartialReasons, callFact.Input, terminalPayload, command.EvidenceDurability,
+			callFact.CapabilityProfile, command.BusinessRefs,
 		)
 		currentReceipt.TerminalAt = &now
 		currentReceipt.RowVersion++
@@ -1457,6 +1466,7 @@ func receiptTerminalMatches(
 		slices.Equal(receipt.ArtifactRefs, effectiveArtifactRefs(command.ArtifactRefs, callFact.Input, terminalPayload)) &&
 		slices.Equal(receipt.PartialReasons, effectivePartialReasons(
 			command.PartialReasons, callFact.Input, terminalPayload, command.EvidenceDurability,
+			callFact.CapabilityProfile, command.BusinessRefs,
 		)) &&
 		(status != sessionvo.ReceiptFailed || operation.Retryable == retryable)
 }
@@ -1481,6 +1491,8 @@ func effectivePartialReasons(
 	input sessionvo.PayloadEnvelope,
 	terminal sessionvo.PayloadEnvelope,
 	durability sessionvo.EvidenceDurability,
+	profile *sessionvo.CapabilityProfile,
+	businessRefs []sessionvo.BusinessRef,
 ) []string {
 	result := cloneStrings(declared)
 	if input.Mode == sessionvo.PayloadOmitted {
@@ -1491,6 +1503,10 @@ func effectivePartialReasons(
 	}
 	if durability == sessionvo.DurabilityFailed {
 		result = appendUnique(result, "evidence_durability_failed")
+	}
+	if profile != nil && profile.Resolution == "matched" &&
+		slices.Contains(profile.RequiredTraceFields, "business_refs") && len(businessRefs) == 0 {
+		result = appendUnique(result, "business_refs_missing")
 	}
 	return result
 }

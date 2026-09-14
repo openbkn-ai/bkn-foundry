@@ -515,6 +515,7 @@ class TestK8sScheduler:
         assert "WORKSPACE_PATH" in env_names
         assert "S3_BUCKET" in env_names
         assert "S3_PREFIX" in env_names
+        assert "ensure_diskfree=1024" in container.command[2]
 
 
 class TestS3PrefixHelper:

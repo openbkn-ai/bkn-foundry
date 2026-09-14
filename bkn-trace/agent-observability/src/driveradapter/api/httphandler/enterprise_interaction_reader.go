@@ -51,7 +51,7 @@ func trustedListOptions(ctx context.Context, query enterpriseroute.ListQuery) (e
 	scope.View = evidencevo.AccessViewTechnical
 	return evidencevo.SummaryQueryOptions{
 		ConversationID: query.ConversationID, Page: query.Page, Limit: query.PageSize, Keyword: query.Keyword, Status: query.Status,
-		AgentOrApp: query.AgentOrApp, ExcludeAgentOrApp: query.ExcludeAgentOrApp,
+		AgentOrApp: query.AgentOrApp, ExcludeAgentOrApp: query.ExcludeAgentOrApp, ExcludeAgentOrApps: append([]string(nil), query.ExcludeAgentOrApps...),
 		KnowledgeNetwork: query.KnowledgeNetwork, EvidenceCompleteness: query.EvidenceCompleteness,
 		Scope: scope,
 	}, true

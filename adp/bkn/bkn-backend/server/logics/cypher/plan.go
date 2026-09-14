@@ -21,24 +21,28 @@ import (
 // Plan is one SELECT statement, still in terms the generator can format for
 // any dialect.
 type Plan struct {
-	Tables   []PlanTable
-	Joins    []PlanJoin
-	Where    PlanPredicate
-	GroupBy  []PlanColumn
-	Select   []PlanColumn
-	Distinct bool
-	OrderBy  []PlanOrder
-	Skip     *int64
-	Limit    *int64
+	NetworkID string
+	Branch    string
+	Tables    []PlanTable
+	Joins     []PlanJoin
+	Where     PlanPredicate
+	GroupBy   []PlanColumn
+	Select    []PlanColumn
+	Distinct  bool
+	OrderBy   []PlanOrder
+	Skip      *int64
+	Limit     *int64
 }
 
 // PlanTable is one node of the pattern, bound to the resource behind its
 // object type. ResourceID goes into the {{.resource_id}} placeholder that
 // vega-backend substitutes, so the physical table name never appears here.
 type PlanTable struct {
-	Alias      string
-	ResourceID string
-	Label      string
+	Alias        string
+	Variable     string
+	ObjectTypeID string
+	ResourceID   string
+	Label        string
 }
 
 // PlanJoin joins two tables on the key pairs of a direct relation type.
@@ -47,9 +51,11 @@ type PlanTable struct {
 // directed pattern has one; an undirected one between two nodes of the same
 // object type has two, and a row matches if either holds.
 type PlanJoin struct {
-	Left     int
-	Right    int
-	Readings [][]PlanJoinKey
+	Left           int
+	Right          int
+	RelationTypeID string
+	Direction      Direction
+	Readings       [][]PlanJoinKey
 }
 
 // PlanJoinKey is one equality between a column of the left table and a column
@@ -64,6 +70,7 @@ type PlanJoinKey struct {
 type PlanColumn struct {
 	Table     int
 	Column    string
+	Property  string
 	Alias     string
 	Aggregate *PlanAggregate
 }
@@ -76,6 +83,7 @@ type PlanAggregate struct {
 	Star     bool
 	Table    int
 	Column   string
+	Property string
 }
 
 // PlanPredicate is the WHERE tree with every name resolved and every parameter
@@ -86,10 +94,12 @@ type PlanPredicate interface {
 
 // PlanCondition is one comparison of a column against a value.
 type PlanCondition struct {
-	Table    int
-	Column   string
-	Operator string
-	Value    Literal
+	Table        int
+	Column       string
+	Property     string
+	Operator     string
+	Value        Literal
+	InputPointer string
 }
 
 func (PlanCondition) planPredicate() {}
@@ -111,19 +121,22 @@ func (PlanNegation) planPredicate() {}
 
 // PlanNullCheck is IS NULL, or IS NOT NULL when negated.
 type PlanNullCheck struct {
-	Table   int
-	Column  string
-	Negated bool
+	Table    int
+	Column   string
+	Property string
+	Negated  bool
 }
 
 func (PlanNullCheck) planPredicate() {}
 
 // PlanMembership is IN over values written in the query.
 type PlanMembership struct {
-	Table   int
-	Column  string
-	Values  []Literal
-	Negated bool
+	Table         int
+	Column        string
+	Property      string
+	Values        []Literal
+	InputPointers []string
+	Negated       bool
 }
 
 func (PlanMembership) planPredicate() {}
@@ -154,6 +167,7 @@ func (PlanNever) planPredicate() {}
 type PlanOrder struct {
 	Table      int
 	Column     string
+	Property   string
 	Aggregate  *PlanAggregate
 	Alias      string
 	Descending bool
@@ -205,8 +219,11 @@ func Compile(query *Query, schema *Schema, options CompileOptions) (*Plan, error
 	p := &planner{
 		schema:     schema,
 		parameters: options.Parameters,
-		plan:       &Plan{Distinct: query.Distinct, Skip: query.Skip, Limit: query.Limit},
-		tableOf:    map[string]int{},
+		plan: &Plan{
+			NetworkID: schema.KNID, Branch: schema.Branch,
+			Distinct: query.Distinct, Skip: query.Skip, Limit: query.Limit,
+		},
+		tableOf: map[string]int{},
 	}
 	if err := p.planPattern(query.Pattern); err != nil {
 		return nil, err
@@ -384,9 +401,11 @@ func (p *planner) addTable(node NodeRef) error {
 		p.tableOf[node.Variable] = index
 	}
 	p.plan.Tables = append(p.plan.Tables, PlanTable{
-		Alias:      fmt.Sprintf("t%d", index),
-		ResourceID: resourceID,
-		Label:      node.Label,
+		Alias:        fmt.Sprintf("t%d", index),
+		Variable:     node.Variable,
+		ObjectTypeID: objectType.OTID,
+		ResourceID:   resourceID,
+		Label:        node.Label,
 	})
 	p.objectType = append(p.objectType, objectType)
 	return nil
@@ -417,7 +436,7 @@ func (p *planner) addJoin(edge EdgeRef, left, right int) error {
 		return planErrorf(edge.Pos, "relation type %q has no key mapping to join on", relationType.RTName)
 	}
 
-	join := PlanJoin{Left: left, Right: right}
+	join := PlanJoin{Left: left, Right: right, RelationTypeID: relationType.RTID, Direction: edge.Direction}
 	for _, forwards := range p.readings(edge.Direction) {
 		source, target := left, right
 		if !forwards {
@@ -523,7 +542,10 @@ func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 		if err != nil {
 			return nil, err
 		}
-		return PlanCondition{Table: table, Column: column, Operator: node.Operator, Value: value}, nil
+		return PlanCondition{
+			Table: table, Column: column, Property: node.Left.Property,
+			Operator: node.Operator, Value: value, InputPointer: operandInputPointer(node.Right),
+		}, nil
 
 	case LogicalOperator:
 		operands := make([]PlanPredicate, 0, len(node.Operands))
@@ -548,7 +570,7 @@ func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 		if err != nil {
 			return nil, err
 		}
-		return PlanNullCheck{Table: table, Column: column, Negated: node.Negated}, nil
+		return PlanNullCheck{Table: table, Column: column, Property: node.Property.Property, Negated: node.Negated}, nil
 
 	case Membership:
 		table, column, err := p.resolveProperty(node.Property)
@@ -556,18 +578,30 @@ func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 			return nil, err
 		}
 		values := make([]Literal, 0, len(node.Values))
+		inputPointers := make([]string, 0, len(node.Values))
 		for _, value := range node.Values {
 			resolved, err := p.resolveValue(value, node.Pos)
 			if err != nil {
 				return nil, err
 			}
 			values = append(values, resolved)
+			inputPointers = append(inputPointers, operandInputPointer(value))
 		}
-		return PlanMembership{Table: table, Column: column, Values: values, Negated: node.Negated}, nil
+		return PlanMembership{
+			Table: table, Column: column, Property: node.Property.Property,
+			Values: values, InputPointers: inputPointers, Negated: node.Negated,
+		}, nil
 
 	default:
 		return nil, planErrorf(predicate.predicatePosition(), "unsupported predicate %T", predicate)
 	}
+}
+
+func operandInputPointer(value Operand) string {
+	if value.Parameter != nil {
+		return "$.parameters." + value.Parameter.Name
+	}
+	return "$.query"
 }
 
 // resolveValue turns what the query wrote into the value the statement will
@@ -627,7 +661,7 @@ func (p *planner) planProjection(projection Projection) (*PlanColumn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &PlanColumn{Table: table, Column: column, Alias: projection.Alias}, nil
+	return &PlanColumn{Table: table, Column: column, Property: projection.Property.Property, Alias: projection.Alias}, nil
 }
 
 func (p *planner) planAggregate(aggregate Aggregate) (*PlanAggregate, error) {
@@ -643,6 +677,7 @@ func (p *planner) planAggregate(aggregate Aggregate) (*PlanAggregate, error) {
 		Distinct: aggregate.Distinct,
 		Table:    table,
 		Column:   column,
+		Property: aggregate.Property.Property,
 	}, nil
 }
 
@@ -738,7 +773,7 @@ func (p *planner) planSortKey(key SortKey) (*PlanOrder, error) {
 				"%s is not returned, and a query with %s can only be sorted by a returned value; add it to RETURN",
 				key.Property, collapsed)
 		}
-		return &PlanOrder{Table: table, Column: column}, nil
+		return &PlanOrder{Table: table, Column: column, Property: key.Property.Property}, nil
 
 	default:
 		// The three forms above are the whole set the analyzer produces.

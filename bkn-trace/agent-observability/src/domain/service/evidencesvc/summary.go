@@ -113,8 +113,7 @@ func (s *Service) ListConversations(ctx context.Context, options evidencevo.Summ
 	childOptions.Status = ""
 	childOptions.EvidenceCompleteness = ""
 	for _, request := range requests {
-		if request.ConversationID != "" && options.ExcludeAgentOrApp != "" &&
-			matchesAgentIdentity(request, options.ExcludeAgentOrApp) {
+		if request.ConversationID != "" && matchesAnyExcludedAgent(request, options) {
 			excludedConversations[request.ConversationID] = struct{}{}
 		}
 		if request.ConversationID != "" && matchesRequestFilters(request, childOptions) {
@@ -317,7 +316,7 @@ func (s *Service) canPageCanonicalConversation(options evidencevo.SummaryQueryOp
 	// Filters resolved only from call facts stay on the existing projection
 	// path; this fast path is intentionally limited to the conversation view.
 	return options.InteractionID == "" && options.TraceID == "" && options.Status == "" &&
-		options.AgentOrApp == "" && options.ExcludeAgentOrApp == "" && options.Service == "" &&
+		options.AgentOrApp == "" && options.ExcludeAgentOrApp == "" && len(options.ExcludeAgentOrApps) == 0 && options.Service == "" &&
 		options.Tool == "" && options.ErrorKeyword == "" && options.KnowledgeNetwork == "" &&
 		options.EvidenceCompleteness == "" && options.Keyword == "" && options.From.IsZero() && options.To.IsZero()
 }
@@ -1722,9 +1721,22 @@ func summaryScopeMatchesProfile(scope evidencevo.QueryScope) bool {
 }
 
 func hasSummaryContentFilters(options evidencevo.SummaryQueryOptions) bool {
-	return options.Status != "" || options.AgentOrApp != "" || options.ExcludeAgentOrApp != "" ||
+	return options.Status != "" || options.AgentOrApp != "" || options.ExcludeAgentOrApp != "" || len(options.ExcludeAgentOrApps) > 0 ||
 		options.Service != "" || options.Tool != "" || options.ErrorKeyword != "" ||
 		options.KnowledgeNetwork != "" || options.EvidenceCompleteness != "" || options.Keyword != ""
+}
+
+func matchesAnyExcludedAgent(request evidencevo.RequestSummary, options evidencevo.SummaryQueryOptions) bool {
+	values := append([]string(nil), options.ExcludeAgentOrApps...)
+	if options.ExcludeAgentOrApp != "" {
+		values = append(values, options.ExcludeAgentOrApp)
+	}
+	for _, value := range values {
+		if value != "" && matchesAgentIdentity(request, value) {
+			return true
+		}
+	}
+	return false
 }
 
 func summaryIdentityQuery(options evidencevo.SummaryQueryOptions) isessionstore.SummaryPageQuery {

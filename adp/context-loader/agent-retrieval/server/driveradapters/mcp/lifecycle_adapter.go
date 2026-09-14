@@ -24,9 +24,14 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 )
 
+const (
+	toolKeyStartInteraction  = "bkn_start_interaction"
+	toolKeyFinishInteraction = "bkn_finish_interaction"
+)
+
 var lifecycleToolNames = map[string]struct{}{
-	"bkn_start_interaction":  {},
-	"bkn_finish_interaction": {},
+	toolKeyStartInteraction:  {},
+	toolKeyFinishInteraction: {},
 }
 
 func lifecycleToolMiddleware(client *bkntrace.LifecycleClient) server.ToolHandlerMiddleware {
@@ -54,10 +59,11 @@ func ensureOperationAdapter(client *bkntrace.LifecycleClient) ensureOperationFun
 				OperationKey: intent.Context.OperationKey, ParentOperationID: intent.Context.ParentOperationID,
 				CausationEventIDs: intent.Context.CausationEventIDs, BusinessRefs: intent.Context.BusinessRefs,
 			},
-			ToolName:     intent.ToolName,
-			Protocol:     "mcp",
-			SourceModule: "context-loader",
-			Input:        normalizedBusinessInput(intent.Input),
+			ToolName:          intent.ToolName,
+			Protocol:          "mcp",
+			SourceModule:      "context-loader",
+			Input:             normalizedBusinessInput(intent.Input),
+			CapabilityProfile: capabilityProfileJSON(intent.ToolName),
 		})
 		if apiErr != nil {
 			value := lifecycleError(*apiErr)

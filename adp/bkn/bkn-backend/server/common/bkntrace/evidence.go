@@ -80,6 +80,7 @@ type RequestContext struct {
 	DelegationID           string
 	InteractionID          string
 	OperationID            string
+	ParentOperationID      string
 	CausationEventID       string
 	ClaimID                string
 	Attempt                int
@@ -110,17 +111,18 @@ type batch struct {
 }
 
 type eventContext struct {
-	traceID          string
-	spanID           string
-	traceparent      string
-	requestID        string
-	accountID        string
-	accountType      string
-	interactionID    string
-	operationID      string
-	causationEventID string
-	attempt          int
-	observedAt       string
+	traceID           string
+	spanID            string
+	traceparent       string
+	requestID         string
+	accountID         string
+	accountType       string
+	interactionID     string
+	operationID       string
+	parentOperationID string
+	causationEventID  string
+	attempt           int
+	observedAt        string
 }
 
 var (
@@ -663,17 +665,18 @@ func contextFromRequest(ctx context.Context, reqCtx RequestContext) (eventContex
 		flags = "01"
 	}
 	return eventContext{
-		traceID:          spanContext.TraceID().String(),
-		spanID:           spanContext.SpanID().String(),
-		traceparent:      fmt.Sprintf("00-%s-%s-%s", spanContext.TraceID().String(), spanContext.SpanID().String(), flags),
-		requestID:        requestID,
-		accountID:        accountID,
-		accountType:      accountType,
-		interactionID:    interactionID,
-		operationID:      operationID,
-		causationEventID: strings.TrimSpace(reqCtx.CausationEventID),
-		attempt:          normalizedAttempt(reqCtx.Attempt),
-		observedAt:       observedAt,
+		traceID:           spanContext.TraceID().String(),
+		spanID:            spanContext.SpanID().String(),
+		traceparent:       fmt.Sprintf("00-%s-%s-%s", spanContext.TraceID().String(), spanContext.SpanID().String(), flags),
+		requestID:         requestID,
+		accountID:         accountID,
+		accountType:       accountType,
+		interactionID:     interactionID,
+		operationID:       operationID,
+		parentOperationID: strings.TrimSpace(reqCtx.ParentOperationID),
+		causationEventID:  strings.TrimSpace(reqCtx.CausationEventID),
+		attempt:           normalizedAttempt(reqCtx.Attempt),
+		observedAt:        observedAt,
 	}, true
 }
 
@@ -697,6 +700,9 @@ func buildEvent(ec eventContext, eventType, operationName string, payload map[st
 	}
 	if ec.causationEventID != "" {
 		event["causation_event_id"] = ec.causationEventID
+	}
+	if ec.parentOperationID != "" {
+		event["parent_operation_id"] = ec.parentOperationID
 	}
 	return event
 }

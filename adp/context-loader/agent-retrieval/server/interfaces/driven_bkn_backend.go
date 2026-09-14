@@ -8,6 +8,7 @@ package interfaces
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 )
 
@@ -568,8 +569,9 @@ type CypherQueryColumn struct {
 // is deliberately absent: it names physical tables and columns, which a caller
 // is not entitled to just because they may read the data.
 type CypherQueryResp struct {
-	Columns []CypherQueryColumn `json:"columns"`
-	Entries []map[string]any    `json:"entries"`
+	Columns         []CypherQueryColumn `json:"columns"`
+	Entries         []map[string]any    `json:"entries"`
+	TraceDescriptor json.RawMessage     `json:"-"`
 }
 
 type BknBackendAccess interface {

@@ -926,10 +926,21 @@ func TestEnsureOperationUsesStableLogicalKeyAndCanonicalInput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("start interaction: %v", err)
 	}
+	profile := &sessionvo.CapabilityProfile{
+		ManifestID: "openbkn.context-loader.mcp", ManifestVersion: "0.1.5",
+		CanonicalToolName: "ontology-query", ToolVersion: "1.0.0",
+		InputSchemaDigest: "sha256:input", OutputSchemaDigest: "sha256:output",
+		ExecutionRole: "semantic_query", EvidenceContract: "ontology_result/v1",
+		ChildEvidencePolicy: "cover_physical_descendants", MapperID: "ontology_result/v1",
+		MapperVersion: "1.0.0", MinimumTraceSchema: "3.0.0",
+		RequiredTraceFields: []string{"interaction_id", "operation_id", "receipt", "business_refs"},
+		FailurePolicy:       "preserve_execution_and_downgrade", Resolution: "matched",
+	}
 	first, receipt, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 		OperationKey: "query-sales-orders", ToolName: "ontology-query",
-		Input: operationInput("input-a"), CausationEventIDs: []string{"event-b", "event-a", "event-a"}, Required: true,
+		Input: operationInput("input-a"), CapabilityProfile: profile,
+		CausationEventIDs: []string{"event-b", "event-a", "event-a"}, Required: true,
 		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	})
 	if err != nil {
@@ -942,7 +953,8 @@ func TestEnsureOperationUsesStableLogicalKeyAndCanonicalInput(t *testing.T) {
 	replayed, replayedReceipt, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 		OperationKey: "query-sales-orders", ToolName: "ontology-query",
-		Input: operationInput("input-a"), CausationEventIDs: []string{"event-a", "event-b"}, Required: true,
+		Input: operationInput("input-a"), CapabilityProfile: profile,
+		CausationEventIDs: []string{"event-a", "event-b"}, Required: true,
 		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	})
 	if err != nil {
@@ -972,13 +984,19 @@ func TestEnsureOperationUsesStableLogicalKeyAndCanonicalInput(t *testing.T) {
 		"required flag": func(command *sessionsvc.EnsureOperationCommand) {
 			command.Required = false
 		},
+		"capability profile": func(command *sessionsvc.EnsureOperationCommand) {
+			changed := *profile
+			changed.ManifestVersion = "0.1.6"
+			command.CapabilityProfile = &changed
+		},
 	} {
 		name, mutate := name, mutate
 		t.Run(name, func(t *testing.T) {
 			command := sessionsvc.EnsureOperationCommand{
 				Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 				OperationKey: "query-sales-orders", ToolName: "ontology-query",
-				Input: operationInput("input-a"), CausationEventIDs: []string{"event-a", "event-b"}, Required: true,
+				Input: operationInput("input-a"), CapabilityProfile: profile,
+				CausationEventIDs: []string{"event-a", "event-b"}, Required: true,
 				LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 			}
 			mutate(&command)
@@ -995,6 +1013,18 @@ func TestEnsureOperationUsesStableLogicalKeyAndCanonicalInput(t *testing.T) {
 		LeaseToken:        interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	}); !sessionsvc.IsCode(err, sessionsvc.CodeResourceNotDisclosed) {
 		t.Fatalf("unknown parent operation was disclosed: %v", err)
+	}
+	_, completedReceipt, err := service.CompleteOperationAttempt(context.Background(), sessionsvc.FinishAttemptCommand{
+		Owner: owner, OperationID: first.ID, Attempt: first.Attempt, ReceiptID: receipt.ID,
+		Output:             operationOutput("result-without-required-business-refs"),
+		EvidenceDurability: sessionvo.DurabilityDurable,
+		RequestID:          "req-missing-business-refs", TraceID: validTraceIDOne,
+	})
+	if err != nil {
+		t.Fatalf("complete operation without required refs: %v", err)
+	}
+	if !slices.Contains(completedReceipt.PartialReasons, "business_refs_missing") {
+		t.Fatalf("receipt did not record the producer contract violation: %#v", completedReceipt.PartialReasons)
 	}
 }
 

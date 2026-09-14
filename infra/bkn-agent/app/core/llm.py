@@ -1,4 +1,5 @@
 import json
+from contextvars import ContextVar, Token
 from typing import Any, AsyncIterator, Optional
 
 from langchain_core.outputs import ChatGenerationChunk, ChatResult
@@ -6,6 +7,24 @@ from langchain_openai import ChatOpenAI
 
 from app import evidence, observability
 from app.config import config
+
+
+_thinking_mode: ContextVar[str] = ContextVar("bkn_agent_thinking_mode", default="")
+
+
+def set_thinking_mode(value: str) -> Token:
+    normalized = value.strip().lower() if value else ""
+    if normalized not in {"enabled", "disabled"}:
+        normalized = ""
+    return _thinking_mode.set(normalized)
+
+
+def reset_thinking_mode(token: Token) -> None:
+    _thinking_mode.reset(token)
+
+
+def current_thinking_mode() -> str:
+    return _thinking_mode.get()
 
 
 def _header_map(metadata: dict[str, Any] | None) -> dict[str, str]:
@@ -132,6 +151,9 @@ def build_chat_model(
     around 4096, which truncates long JSON such as catalog semantic
     understanding."""
     kwargs = {"max_tokens": max_output_tokens} if max_output_tokens else {}
+    thinking_mode = current_thinking_mode()
+    if thinking_mode:
+        kwargs["default_headers"] = {"x-bkn-model-thinking-mode": thinking_mode}
     return TraceChatOpenAI(
         base_url=config.MF_MODEL_API_PRIVATE_BASE,
         api_key="internal",

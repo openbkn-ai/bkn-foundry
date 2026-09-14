@@ -107,6 +107,10 @@ func TestQueryRunsCompiledStatement(t *testing.T) {
 	if len(result.Entries) != 1 || len(result.Columns) != 1 {
 		t.Fatalf("result = %+v", result)
 	}
+	if !strings.Contains(string(result.TraceDescriptor), `"producer_profile":"openbkn.bkn-backend.run_cypher@0.1.5"`) ||
+		!strings.Contains(string(result.TraceDescriptor), `"object_ref":"object:kn_1:ot_order"`) {
+		t.Fatalf("trace descriptor = %s", result.TraceDescriptor)
+	}
 
 	if want := "SELECT t0.`f_id` AS `id` FROM {{.res_order}} t0 LIMIT 5"; vega.request.Query != want {
 		t.Fatalf("statement = %s, want %s", vega.request.Query, want)

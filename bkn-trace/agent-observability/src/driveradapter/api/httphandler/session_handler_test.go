@@ -468,7 +468,7 @@ func TestEnsureOperationPersistsRealInputWithoutCallerHash(t *testing.T) {
 	response := performLifecycleRequest(t, mux, http.MethodPost,
 		"/api/agent-observability/v1/conversations/"+conversation.ID+
 			"/interactions/"+interaction.ID+"/operations:ensure",
-		`{"operation_key":"run-sql-real-input","tool_name":"run_sql","protocol":"mcp","source_module":"context-loader","input":{"mode":"inline","media_type":"application/json","byte_length":0,"inline":{"resource_id":"resource:orders","sql":"SELECT * FROM orders WHERE material_number = '101-000015'"}},"required":true,"lease_token":"`+
+		`{"operation_key":"run-sql-real-input","tool_name":"run_sql","protocol":"mcp","source_module":"context-loader","capability_profile":{"manifest_id":"openbkn.context-loader.mcp","manifest_version":"0.1.5","canonical_tool_name":"run_sql","tool_version":"1.0.0","input_schema_digest":"sha256:input","output_schema_digest":"sha256:output","execution_role":"semantic_query","evidence_contract":"mapped_sql_result/v1","child_evidence_policy":"cover_physical_descendants","mapper_id":"mapped_sql_result/v1","mapper_version":"1.0.0","minimum_trace_schema":"3.0.0","required_trace_fields":["receipt","business_refs"],"failure_policy":"preserve_execution_and_downgrade","resolution":"matched"},"input":{"mode":"inline","media_type":"application/json","byte_length":0,"inline":{"resource_id":"resource:orders","sql":"SELECT * FROM orders WHERE material_number = '101-000015'"}},"required":true,"lease_token":"`+
 			interaction.LeaseToken+`","lease_epoch":1}`)
 
 	if response.Code != http.StatusCreated {
@@ -496,6 +496,12 @@ func TestEnsureOperationPersistsRealInputWithoutCallerHash(t *testing.T) {
 	if facts.Entries[0].Protocol != sessionvo.ProtocolMCP ||
 		facts.Entries[0].SourceModule != "context-loader" {
 		t.Fatalf("operation producer identity was not preserved: %#v", facts.Entries[0])
+	}
+	profile := facts.Entries[0].CapabilityProfile
+	if profile == nil || profile.ManifestID != "openbkn.context-loader.mcp" ||
+		profile.ManifestVersion != "0.1.5" || profile.CanonicalToolName != "run_sql" ||
+		profile.Resolution != "matched" {
+		t.Fatalf("operation capability profile was not preserved: %#v", profile)
 	}
 }
 

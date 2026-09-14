@@ -35,11 +35,12 @@ type BusinessContext struct {
 }
 
 type GuardIntent struct {
-	Context      BusinessContext
-	ToolName     string
-	Protocol     string
-	SourceModule string
-	Input        json.RawMessage
+	Context           BusinessContext
+	ToolName          string
+	Protocol          string
+	SourceModule      string
+	Input             json.RawMessage
+	CapabilityProfile json.RawMessage
 }
 
 type GuardState struct {
@@ -81,6 +82,7 @@ func (g *Guard) Begin(
 		Input:             intent.Input,
 		ParentOperationID: intent.Context.ParentOperationID,
 		CausationEventIDs: intent.Context.CausationEventIDs,
+		CapabilityProfile: intent.CapabilityProfile,
 	})
 	if err != nil || apiErr != nil {
 		return ctx, GuardState{}, "", apiErr, err

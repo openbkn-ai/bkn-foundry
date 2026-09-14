@@ -139,6 +139,7 @@
 "operation attempt or receipt does not match" = "操作尝试或回执不匹配"
 "operation input envelope is invalid" = "操作输入信封无效"
 "operation key, tool name, protocol, source module and input are required" = "缺少操作键、工具名称、协议、来源模块或输入"
+"operation capability profile is invalid" = "操作能力描述无效"
 "operation key was already used with different input" = "操作键已用于不同输入"
 "operation route was not found" = "操作路由不存在"
 "operation terminal payload envelope is invalid" = "操作终态载荷信封无效"

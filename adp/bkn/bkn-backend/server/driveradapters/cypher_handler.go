@@ -40,14 +40,14 @@ func (r *restHandler) RunCypherQueryByEx(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	r.RunCypherQuery(c, vis)
+	r.RunCypherQuery(c, vis, false)
 }
 
 func (r *restHandler) RunCypherQueryByIn(c *gin.Context) {
-	r.RunCypherQuery(c, visitor.GenerateVisitor(c))
+	r.RunCypherQuery(c, visitor.GenerateVisitor(c), true)
 }
 
-func (r *restHandler) RunCypherQuery(c *gin.Context, vis hydra.Visitor) {
+func (r *restHandler) RunCypherQuery(c *gin.Context, vis hydra.Visitor, includeTraceDescriptor bool) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
 
@@ -96,6 +96,14 @@ func (r *restHandler) RunCypherQuery(c *gin.Context, vis hydra.Visitor) {
 	}
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	if includeTraceDescriptor && len(result.TraceDescriptor) > 0 {
+		rest.ReplyOK(c, http.StatusOK, struct {
+			Columns []interfaces.RawQueryColumn `json:"columns"`
+			Entries []map[string]any            `json:"entries"`
+			Trace   json.RawMessage             `json:"_trace"`
+		}{Columns: result.Columns, Entries: result.Entries, Trace: result.TraceDescriptor})
+		return
+	}
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 

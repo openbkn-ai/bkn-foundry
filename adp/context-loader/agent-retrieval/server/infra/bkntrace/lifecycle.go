@@ -190,6 +190,7 @@ type EnsureOperationInput struct {
 	Input             json.RawMessage
 	ParentOperationID string
 	CausationEventIDs []string
+	CapabilityProfile json.RawMessage
 }
 
 type FinishAttemptInput struct {
@@ -289,6 +290,9 @@ func (c *LifecycleClient) EnsureOperation(
 	}
 	if len(input.CausationEventIDs) > 0 {
 		body["causation_event_ids"] = input.CausationEventIDs
+	}
+	if len(input.CapabilityProfile) > 0 {
+		body["capability_profile"] = input.CapabilityProfile
 	}
 	var result OperationResult
 	path := "/conversations/" + url.PathEscape(input.ConversationID) +

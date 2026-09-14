@@ -144,6 +144,16 @@ spec:
               value: {{ required "enterpriseBusinessProvenance.agentID is required when enabled" .Values.enterpriseBusinessProvenance.agentID | quote }}
             - name: BKN_TRACE_PROVENANCE_AGENT_NAME
               value: {{ required "enterpriseBusinessProvenance.agentName is required when enabled" .Values.enterpriseBusinessProvenance.agentName | quote }}
+            {{- if .Values.enterpriseBusinessProvenance.claimAttribution.enabled }}
+            - name: BKN_TRACE_CLAIM_AGENT_URL
+              value: {{ required "enterpriseBusinessProvenance.claimAttribution.agentURL is required when enabled" .Values.enterpriseBusinessProvenance.claimAttribution.agentURL | quote }}
+            - name: BKN_TRACE_CLAIM_AGENT_ID
+              value: {{ required "enterpriseBusinessProvenance.claimAttribution.agentID is required when enabled" .Values.enterpriseBusinessProvenance.claimAttribution.agentID | quote }}
+            - name: BKN_TRACE_CLAIM_AGENT_NAME
+              value: {{ required "enterpriseBusinessProvenance.claimAttribution.agentName is required when enabled" .Values.enterpriseBusinessProvenance.claimAttribution.agentName | quote }}
+            - name: BKN_TRACE_CLAIM_AGENT_TIMEOUT
+              value: {{ .Values.enterpriseBusinessProvenance.claimAttribution.timeout | quote }}
+            {{- end }}
             {{- end }}
             - name: OPENSEARCH_AUTH_ENABLED
               value: {{ ternary "true" "false" .Values.opensearch.auth.enabled | quote }}

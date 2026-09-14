@@ -6,12 +6,16 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func ptcTestTools() []MCPToolInfo {
@@ -648,4 +652,99 @@ print(json.dumps(_calls[-1]["arguments"]["bkn_context"], sort_keys=True))
 	if got := strings.TrimSpace(string(out)); got != `{"conversation_id": "conv_runtime", "interaction_id": "int_runtime"}` {
 		t.Fatalf("运行时的 bkn_context 必须胜出，实际发出: %s", got)
 	}
+}
+
+// Streamable HTTP may keep an SSE response open after delivering one JSON-RPC
+// event. The sandbox client must return after that event instead of waiting for
+// the connection to close and consuming the whole run_code timeout.
+func TestPTCStubReturnsFromAnOpenSSEResponse(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 not available")
+	}
+
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Mcp-Session-Id", "session-1")
+		_, _ = w.Write([]byte("event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}\n\n"))
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		<-release
+	}))
+	defer func() {
+		close(release)
+		server.Close()
+	}()
+
+	stub := renderPTCStub(ptcUsableTools(&MCPInfo{Tools: ptcTestTools()}))
+	script := stub + "\n_CFG.update({\"mcp\": " + string(mustJSON(t, server.URL)) + ", \"token\": \"test\", \"locale\": \"en-US\"})\nprint(json.dumps(_rpc(\"initialize\", {}), sort_keys=True))\n"
+	path := filepath.Join(t.TempDir(), "sse_probe.py")
+	if err := os.WriteFile(path, []byte(script), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, python, path).CombinedOutput()
+	if ctx.Err() != nil {
+		t.Fatalf("stub waited for the SSE connection to close: %v", ctx.Err())
+	}
+	if err != nil {
+		t.Fatalf("stub SSE probe failed: %v\n%s", err, out)
+	}
+	if got := strings.TrimSpace(string(out)); got != `{"id": 1, "jsonrpc": "2.0", "result": {"ok": true}}` {
+		t.Fatalf("unexpected SSE result: %s", got)
+	}
+}
+
+func TestPTCStubReturnsFromAnOpenSSENotification(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 not available")
+	}
+
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusAccepted)
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		<-release
+	}))
+	defer func() {
+		close(release)
+		server.Close()
+	}()
+
+	stub := renderPTCStub(ptcUsableTools(&MCPInfo{Tools: ptcTestTools()}))
+	probe := stub + "\n_CFG.update({\"mcp\": " + string(mustJSON(t, server.URL)) + ", \"token\": \"test\", \"locale\": \"en-US\"})\n_rpc(\"notifications/initialized\", {}, notify=True)\nprint(\"ok\")\n"
+	path := filepath.Join(t.TempDir(), "notification_probe.py")
+	if err := os.WriteFile(path, []byte(probe), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, python, path).CombinedOutput()
+	if ctx.Err() != nil {
+		t.Fatalf("stub waited for an SSE notification body: %v", ctx.Err())
+	}
+	if err != nil {
+		t.Fatalf("stub SSE notification probe failed: %v\n%s", err, out)
+	}
+	if got := strings.TrimSpace(string(out)); got != "ok" {
+		t.Fatalf("unexpected notification result: %s", got)
+	}
+}
+
+func mustJSON(t *testing.T, value string) []byte {
+	t.Helper()
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }

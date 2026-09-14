@@ -43,6 +43,7 @@ type ListQuery struct {
 	// ExcludeAgentOrApp is supplied only by the assembled EE module. It is
 	// intentionally absent from the public HTTP query surface.
 	ExcludeAgentOrApp    string
+	ExcludeAgentOrApps   []string
 	KnowledgeNetwork     string
 	EvidenceCompleteness string
 }
