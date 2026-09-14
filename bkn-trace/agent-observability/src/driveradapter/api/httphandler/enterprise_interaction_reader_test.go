@@ -57,17 +57,18 @@ func TestEnterpriseInteractionReaderReturnsFullTextOnlyForReferencedAuthorizedAr
 	for i := 0; i < 40; i++ {
 		fullResult += "保真"
 	}
-	reader := NewEnterpriseInteractionFactsReader(
-		fakeInteractionSummarySource{
-			summary: evidencevo.InteractionSummary{
-				InteractionID: "int-1", QuestionArtifactRef: "artifact:question-1", ResultArtifactRef: "artifact:result-1",
-			},
-			found: true,
-			artifacts: map[string]evidencevo.EvidenceArtifact{
-				"result-1": {ArtifactID: "result-1", ArtifactType: evidencevo.ArtifactTypeResult, Content: map[string]any{"answer": fullResult}},
-				"other-1":  {ArtifactID: "other-1", ArtifactType: evidencevo.ArtifactTypeResult, Content: "unrelated"},
-			},
+	source := &fakeInteractionSummarySource{
+		summary: evidencevo.InteractionSummary{
+			InteractionID: "int-1", QuestionArtifactRef: "artifact:question-1", ResultArtifactRef: "artifact:result-1",
 		},
+		found: true,
+		artifacts: map[string]evidencevo.EvidenceArtifact{
+			"result-1": {ArtifactID: "result-1", ArtifactType: evidencevo.ArtifactTypeResult, Content: map[string]any{"answer": fullResult}},
+			"other-1":  {ArtifactID: "other-1", ArtifactType: evidencevo.ArtifactTypeResult, Content: "unrelated"},
+		},
+	}
+	reader := NewEnterpriseInteractionFactsReader(
+		source,
 		fakeInteractionOperationSource{},
 	)
 	artifactReader, ok := reader.(interface {
@@ -80,6 +81,9 @@ func TestEnterpriseInteractionReaderReturnsFullTextOnlyForReferencedAuthorizedAr
 	text, found, err := artifactReader.ReadInteractionArtifact(ctx, "int-1", "artifact:result-1")
 	if err != nil || !found || text != fullResult {
 		t.Fatalf("ReadInteractionArtifact() = (%q, %v, %v), want full authorized result", text, found, err)
+	}
+	if source.artifactForInteractionCalls != 1 || source.artifactCalls != 0 {
+		t.Fatalf("artifact must be resolved through the authorized interaction: interaction=%d direct=%d", source.artifactForInteractionCalls, source.artifactCalls)
 	}
 	if _, found, err := artifactReader.ReadInteractionArtifact(ctx, "int-1", "artifact:other-1"); err != nil || found {
 		t.Fatalf("unreferenced artifact must stay unavailable: found=%v err=%v", found, err)
@@ -111,13 +115,15 @@ func TestEnterpriseInteractionReaderListsOnlyTrustedTechnicalScope(t *testing.T)
 }
 
 type fakeInteractionSummarySource struct {
-	summary       evidencevo.InteractionSummary
-	found         bool
-	err           error
-	conversations evidencevo.ConversationSummaryPage
-	interactions  evidencevo.InteractionSummaryPage
-	expectedScope evidencevo.QueryScope
-	artifacts     map[string]evidencevo.EvidenceArtifact
+	summary                     evidencevo.InteractionSummary
+	found                       bool
+	err                         error
+	conversations               evidencevo.ConversationSummaryPage
+	interactions                evidencevo.InteractionSummaryPage
+	expectedScope               evidencevo.QueryScope
+	artifacts                   map[string]evidencevo.EvidenceArtifact
+	artifactCalls               int
+	artifactForInteractionCalls int
 }
 
 func (s fakeInteractionSummarySource) GetInteractionSummary(_ context.Context, _ string, _ evidencevo.QueryScope) (evidencevo.InteractionSummary, bool, error) {
@@ -138,7 +144,14 @@ func (s fakeInteractionSummarySource) ListInteractions(_ context.Context, scope 
 	return s.interactions, s.err
 }
 
-func (s fakeInteractionSummarySource) GetArtifact(_ context.Context, artifactID string, _ evidencevo.QueryScope) (evidencevo.EvidenceArtifact, bool, error) {
+func (s *fakeInteractionSummarySource) GetArtifact(_ context.Context, artifactID string, _ evidencevo.QueryScope) (evidencevo.EvidenceArtifact, bool, error) {
+	s.artifactCalls++
+	artifact, found := s.artifacts[artifactID]
+	return artifact, found, s.err
+}
+
+func (s *fakeInteractionSummarySource) GetArtifactForInteraction(_ context.Context, artifactID, _ string, _ evidencevo.QueryScope) (evidencevo.EvidenceArtifact, bool, error) {
+	s.artifactForInteractionCalls++
 	artifact, found := s.artifacts[artifactID]
 	return artifact, found, s.err
 }

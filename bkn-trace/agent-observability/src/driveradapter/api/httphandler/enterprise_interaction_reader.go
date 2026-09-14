@@ -63,7 +63,7 @@ type enterpriseInteractionOperationSource interface {
 }
 
 type enterpriseInteractionArtifactSource interface {
-	GetArtifact(context.Context, string, evidencevo.QueryScope) (evidencevo.EvidenceArtifact, bool, error)
+	GetArtifactForInteraction(context.Context, string, string, evidencevo.QueryScope) (evidencevo.EvidenceArtifact, bool, error)
 }
 
 type enterpriseInteractionFactsReader struct {
@@ -122,7 +122,7 @@ func (r enterpriseInteractionFactsReader) ReadInteractionArtifact(
 	if !ok || r.artifacts == nil {
 		return "", false, nil
 	}
-	artifact, found, err := r.artifacts.GetArtifact(ctx, artifactID, scope)
+	artifact, found, err := r.artifacts.GetArtifactForInteraction(ctx, artifactID, interactionID, scope)
 	if err != nil || !found || artifact.ArtifactType != expectedType || artifact.InteractionID != "" && artifact.InteractionID != interactionID {
 		return "", false, err
 	}
