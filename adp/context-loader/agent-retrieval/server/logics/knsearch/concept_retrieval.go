@@ -1144,6 +1144,8 @@ func (s *localSearchImpl) convertObjectTypesToLocal(objects []*interfaces.Object
 			PrimaryKeys:          primaryKeys,
 			Score:                obj.Score,
 			EffectivePermissions: obj.EffectivePermissions,
+
+			SearchCapabilitiesUnknown: obj.DataSourceMetadataUnavailable,
 		}
 
 		if len(obj.DataProperties) > 0 {

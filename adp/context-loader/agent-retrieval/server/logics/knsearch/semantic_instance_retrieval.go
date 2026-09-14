@@ -121,11 +121,22 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	// One lookup of what each object type indexed for semantic recall, reused by reranking so the
 	// document it sends the model leads with those fields.
 	searchableByType := make(map[string][]searchableField, len(objectTypes))
+	// Object types skipped only because what they can be searched by is unknown. An empty answer
+	// that silently left them out would read as "nothing matched" when nothing was searched.
+	var capabilitiesUnknown []string
 	for _, objType := range objectTypes {
 		if objType == nil {
 			continue
 		}
 		searchableByType[objType.ConceptID] = findSemanticSearchableFields(objType)
+		if len(searchableByType[objType.ConceptID]) == 0 && objType.SearchCapabilitiesUnknown {
+			capabilitiesUnknown = append(capabilitiesUnknown, objType.ConceptID)
+		}
+	}
+	if len(capabilitiesUnknown) > 0 {
+		s.logger.WithContext(ctx).Warnf(
+			"[SemanticInstanceRetrieval] Search capabilities of %d object types are unknown (data source metadata unavailable), not searched: %v",
+			len(capabilitiesUnknown), capabilitiesUnknown)
 	}
 
 	// Query the object types concurrently, bounded. Serially, latency was the sum of every object
@@ -235,16 +246,36 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 		Nodes: allNodes,
 	}
 
+	var capabilityMessage string
+	if len(capabilitiesUnknown) > 0 {
+		capabilityMessage = infraErr.LocalizedDetail(ctx, "InstanceSearchCapabilitiesUnknown",
+			strings.Join(capabilitiesUnknown, ", "))
+	}
 	switch {
 	case gateMessage != "":
 		// The gate has more to say than "nothing matched": it either rejected a batch it did judge, or
 		// could not judge at all. Both readings change what the caller should do next.
-		result.Message = gateMessage
+		result.Message = joinMessages(gateMessage, capabilityMessage)
+	case capabilityMessage != "":
+		// With or without rows, some object types were never searched: the answer is incomplete,
+		// and an empty one is not "no match".
+		result.Message = capabilityMessage
 	case len(allNodes) == 0:
 		result.Message = infraErr.LocalizedDetail(ctx, "NoMatchingInstances")
 	}
 
 	return result, nil
+}
+
+// joinMessages combines the explanations retrieval has for one answer, skipping empty ones.
+func joinMessages(messages ...string) string {
+	kept := make([]string, 0, len(messages))
+	for _, message := range messages {
+		if message = strings.TrimSpace(message); message != "" {
+			kept = append(kept, message)
+		}
+	}
+	return strings.Join(kept, " ")
 }
 
 // filterObjectTypesByScore drops object types concept recall scored far below its best one.
@@ -414,6 +445,11 @@ func (s *localSearchImpl) retrieveInstancesForObjectType(
 ) ([]*interfaces.KnSearchNode, error) {
 	searchable := findSemanticSearchableFields(objType)
 	if len(searchable) == 0 {
+		if objType.SearchCapabilitiesUnknown {
+			// Reported to the caller by semanticInstanceRetrieval; not a property of the object type.
+			s.logger.WithContext(ctx).Warnf("[SemanticInstanceRetrieval] Object type %s has unknown search capabilities (data source metadata unavailable), skip", objType.ConceptID)
+			return nil, nil
+		}
 		s.logger.WithContext(ctx).Infof("[SemanticInstanceRetrieval] Object type %s has no semantic-searchable properties, skip", objType.ConceptID)
 		return nil, nil
 	}

@@ -115,6 +115,10 @@ type ObjectType struct {
 	LogicProperties      []*LogicPropertyDef            `json:"logic_properties,omitempty"` // Logic properties
 	PrimaryKeys          []string                       `json:"primary_keys"`               // Primary key fields
 	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
+	// DataSourceMetadataUnavailable is bkn-backend reporting that it could not read the bound
+	// resource for this response, so condition_operations are missing rather than empty: what the
+	// object type can be searched by is unknown, not "nothing".
+	DataSourceMetadataUnavailable bool `json:"data_source_metadata_unavailable,omitempty"`
 
 	// RelatedMetrics are the metrics scoped to this object type (scope_type=object_type,
 	// scope_ref=<this id>). It is filled by get_object_types only: a metric that is not

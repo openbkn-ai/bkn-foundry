@@ -24,6 +24,11 @@ import (
 // is skipped, semantic instance recall always returns null.
 //
 // Only the object types with missing operators are supplemented and merged into one batch request.
+//
+// It also settles SearchCapabilitiesUnknown for every object type it looks up: set when the detail
+// request fails or bkn-backend reports the bound resource unreadable, cleared when the detail was
+// derived from the resource, so an object type still without operators afterwards genuinely has
+// nothing searchable.
 func (s *localSearchImpl) backfillConditionOperations(
 	ctx context.Context,
 	knID string,
@@ -57,11 +62,18 @@ func (s *localSearchImpl) backfillConditionOperations(
 	details, err := s.bknBackend.GetObjectTypeDetail(ctx, knID, ids, true)
 	if err != nil {
 		// If it cannot be filled, return to the original state: the recall may become empty, but the Schema result is still valid, and the entire schema should not fail.
+		// What these object types can be searched by is now unknown, which instance recall must report rather than read as "no match".
 		s.logger.WithContext(ctx).Warnf("[SemanticInstanceRetrieval] Backfill condition_operations failed for %d object types: %v", len(ids), err)
+		for _, targets := range pending {
+			for _, objType := range targets {
+				objType.SearchCapabilitiesUnknown = true
+			}
+		}
 		return
 	}
 
 	filled := 0
+	var unavailable []string
 	for _, detail := range details {
 		if detail == nil {
 			continue
@@ -69,6 +81,12 @@ func (s *localSearchImpl) backfillConditionOperations(
 		targets := pending[strings.TrimSpace(detail.ID)]
 		if len(targets) == 0 {
 			continue
+		}
+		for _, objType := range targets {
+			objType.SearchCapabilitiesUnknown = detail.DataSourceMetadataUnavailable
+		}
+		if detail.DataSourceMetadataUnavailable {
+			unavailable = append(unavailable, detail.ID)
 		}
 		ops := map[string][]interfaces.KnOperationType{}
 		for _, p := range detail.DataProperties {
@@ -104,6 +122,10 @@ func (s *localSearchImpl) backfillConditionOperations(
 		}
 	}
 
+	if len(unavailable) > 0 {
+		s.logger.WithContext(ctx).Warnf("[SemanticInstanceRetrieval] bkn-backend could not read the data source metadata of %d object types, their search capabilities are unknown: %v",
+			len(unavailable), unavailable)
+	}
 	s.logger.WithContext(ctx).Infof("[SemanticInstanceRetrieval] Backfilled condition_operations: object_types=%d properties=%d", len(ids), filled)
 }
 

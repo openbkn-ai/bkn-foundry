@@ -116,6 +116,7 @@
     "MCPSchemaConversionFailed": "MCP 工具 Schema 转换失败。",
     "NoSearchableObjectTypes": "没有可检索的对象类型。",
     "NoMatchingInstances": "未检索到符合条件的实例数据。",
+    "InstanceSearchCapabilitiesUnknown": "以下对象类未参与本次检索：其绑定数据资源的元数据读取失败，无法确定哪些属性支持检索：%s。检索结果不完整，结果为空并不代表没有匹配数据。仍可使用 query_object_instance 按明确条件查询这些对象类的实例。",
     "InstanceRelevanceGateRejected": "没有实例达到相关性阈值 min_reranker_score=%s，最高分为 %s。精排模型确实逐条判断过这批候选，结论是都答不上这个问题——这是「确实没有相关数据」，不是检索失败。可以换一种问法，或放宽 concept_groups / object_types 后重试。",
     "InstanceRelevanceGateSkipped": "相关性阈值 min_reranker_score=%s 未生效：精排模型不可用，或对所有候选给出了相同的分数，没有可据以过滤的判断。下面是未经过滤的召回结果，可能包含不相关的行。",
     "ScopeObjectTypesNotFound": "object_types 指定的对象类在该知识网络中都不存在：%s。该参数取对象类 id（例如 material），不是名称；id 来自 search_schema 响应的 concept_id 或 search_instance 响应的 object_type_id。",

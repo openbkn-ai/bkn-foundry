@@ -188,6 +188,10 @@ type KnSearchObjectType struct {
 	// one concept recall (BKN scores the whole candidate set in one pass), which is exactly the scope
 	// that uses it, and publishing it would invite comparisons across queries that do not hold.
 	Score float64 `json:"-"`
+	// SearchCapabilitiesUnknown records that bkn-backend could not determine which properties can
+	// be searched (the bound resource's metadata was unavailable), kept off the wire (json:"-").
+	// Instance recall uses it to tell "could not search this object type" apart from "no match".
+	SearchCapabilitiesUnknown bool `json:"-"`
 }
 
 // KnSearchDataProperty data property (local response shape)
