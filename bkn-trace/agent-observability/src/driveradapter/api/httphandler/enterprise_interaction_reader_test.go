@@ -90,6 +90,25 @@ func TestEnterpriseInteractionReaderReturnsFullTextOnlyForReferencedAuthorizedAr
 	}
 }
 
+func TestEnterpriseInteractionReaderDoesNotReturnNilArtifactContentAsText(t *testing.T) {
+	source := &fakeInteractionSummarySource{
+		summary: evidencevo.InteractionSummary{InteractionID: "int-1", ResultArtifactRef: "artifact:result-1"},
+		found:   true,
+		artifacts: map[string]evidencevo.EvidenceArtifact{
+			"result-1": {ArtifactID: "result-1", ArtifactType: evidencevo.ArtifactTypeResult},
+		},
+	}
+	reader := NewEnterpriseInteractionFactsReader(source, fakeInteractionOperationSource{})
+	artifactReader := reader.(interface {
+		ReadInteractionArtifact(context.Context, string, string) (string, bool, error)
+	})
+	ctx := context.WithValue(context.Background(), trustedQueryScopeContextKey{}, evidencevo.QueryScope{AccountID: "user-1", AccountType: "user"})
+	text, found, err := artifactReader.ReadInteractionArtifact(ctx, "int-1", "artifact:result-1")
+	if err != nil || found || text != "" {
+		t.Fatalf("nil artifact content must be unavailable, got text=%q found=%v err=%v", text, found, err)
+	}
+}
+
 func TestEnterpriseInteractionReaderListsOnlyTrustedTechnicalScope(t *testing.T) {
 	scope := evidencevo.QueryScope{
 		AccountID: "user-1", AccountType: "user", View: evidencevo.AccessViewTechnical,

@@ -134,6 +134,9 @@ func (r enterpriseInteractionFactsReader) ReadInteractionArtifact(
 }
 
 func fullArtifactText(artifact evidencevo.EvidenceArtifact) string {
+	if artifact.Content == nil {
+		return ""
+	}
 	if text, ok := artifact.Content.(string); ok {
 		return strings.TrimSpace(text)
 	}
