@@ -904,7 +904,8 @@ func Test_knowledgeNetworkService_ChildPermissionNavigation(t *testing.T) {
 
 		kna := bmock.NewMockKNAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		service := &knowledgeNetworkService{kna: kna, ps: ps}
+		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
+		service := &knowledgeNetworkService{kna: kna, ps: ps, rta: rta}
 		childCandidates := []interfaces.KNChildResourceCandidate{{
 			KNID: "kn1", ResourceID: "rt1", Type: interfaces.RESOURCE_TYPE_RELATION_TYPE,
 		}}
@@ -921,6 +922,20 @@ func Test_knowledgeNetworkService_ChildPermissionNavigation(t *testing.T) {
 				Return(map[string]interfaces.PermissionResourceOps{
 					canonicalRelationID: {ResourceID: canonicalRelationID, Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
 				}, nil)
+			// The relation type opens the shell only because both of its ends are visible too.
+			rta.EXPECT().GetRelationTypesByIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"rt1"}).
+				Return([]*interfaces.RelationType{{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
+					RTID: "rt1", SourceObjectTypeID: "ot1", TargetObjectTypeID: "ot2"}}}, nil)
+			ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+				[]string{interfaces.KNChildResourceID("kn1", "ot1"), interfaces.KNChildResourceID("kn1", "ot2")},
+				[]string(nil), true, permission.KNChildOperationCandidates(interfaces.RESOURCE_TYPE_OBJECT_TYPE)).
+				DoAndReturn(func(_ context.Context, _ string, ids, _ []string, _ bool, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
+					matched := map[string]interfaces.PermissionResourceOps{}
+					for _, id := range ids {
+						matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: []string{interfaces.OPERATION_TYPE_QUERY_DATA}}
+					}
+					return matched, nil
+				})
 		}
 
 		kn := &interfaces.KN{KNID: "kn1", KNName: "Network 1", Branch: interfaces.MAIN_BRANCH, SkillContent: "private"}
