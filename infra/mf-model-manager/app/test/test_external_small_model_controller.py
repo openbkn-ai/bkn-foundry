@@ -167,7 +167,7 @@ class TestVolcengineMultimodalEmbeddingRequest(TestCase):
                 "api_model": "doubao-embedding-vision-251215",
                 "api_key": "test-key",
             },
-            batch_size=10,
+            batch_size=128,
             max_tokens=4096,
             embedding_dim=1024,
             change=True,
@@ -177,7 +177,7 @@ class TestVolcengineMultimodalEmbeddingRequest(TestCase):
             small_model_controller.test_model(request, "1", "zh", "user"))
 
         self.assertEqual(json.loads(result.body)["status"], "ok")
-        self.assertEqual(len(session.post_calls), 10)
+        self.assertEqual(len(session.post_calls), 1)
         self.assertTrue(all(call[1]["json"] == {
             "model": "doubao-embedding-vision-251215",
             "input": [{"type": "text", "text": "bkn embedding configuration test"}],

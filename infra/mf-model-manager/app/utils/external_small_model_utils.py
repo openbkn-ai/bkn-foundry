@@ -288,6 +288,10 @@ class InnerClient:
         return (self.model_name.startswith("doubao-embedding-vision-") or
                 "/embeddings/multimodal" in self.url)
 
+    def uses_single_input_embedding_requests(self):
+        """Whether the provider accepts exactly one text input per request."""
+        return self._is_volcengine_embedding()
+
     def _normalize_volcengine_embedding_response(self, result):
         """Normalize Ark's single-object data field to the OpenAI-style list."""
         if not self._is_volcengine_embedding() or not isinstance(result, dict):

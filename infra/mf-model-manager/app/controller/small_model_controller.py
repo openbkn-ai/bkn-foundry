@@ -220,7 +220,13 @@ async def test_model(request, userId, language, role):
                                  adapter=adapter, adapter_code=adapter_code,
                                  embedding_dim=embedding_dim)
             if model_type == "embedding":
-                texts = _embedding_test_texts(batch_size)
+                # Ark multimodal embedding has a single-input wire protocol. Its
+                # batch size is handled locally in production, so one probe verifies
+                # the provider configuration without multiplying billable calls.
+                uses_single_input_requests = getattr(
+                    client, "uses_single_input_embedding_requests", lambda: False)
+                test_batch_size = 1 if uses_single_input_requests() else batch_size
+                texts = _embedding_test_texts(test_batch_size)
                 result = await client.test_embedding(texts=texts)
                 if len(result["data"]) != len(texts):
                     raise ValueError(
