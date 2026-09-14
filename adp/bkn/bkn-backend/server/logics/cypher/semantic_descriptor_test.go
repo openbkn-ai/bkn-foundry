@@ -8,6 +8,8 @@ package cypher
 import (
 	"strings"
 	"testing"
+
+	"bkn-backend/interfaces"
 )
 
 func TestSemanticQueryDescriptorPreservesBoundOntologyMeaning(t *testing.T) {
@@ -94,5 +96,14 @@ func TestSemanticQueryDescriptorIsBoundedAndRejectsIncompleteMeaning(t *testing.
 	}}}
 	if _, err := BuildSemanticQueryDescriptor(plan, "MATCH (n:X) RETURN n.id"); err == nil {
 		t.Fatal("oversized descriptor was accepted")
+	}
+	overLimit := int64(interfaces.CYPHER_MAX_LIMIT) + 1
+	plan = &Plan{
+		NetworkID: "kn", Branch: "main", Limit: &overLimit,
+		Tables: []PlanTable{{Variable: "n", ObjectTypeID: "ot_order"}},
+		Select: []PlanColumn{{Alias: "id", Table: 0, Property: "id"}},
+	}
+	if _, err := BuildSemanticQueryDescriptor(plan, "MATCH (n:Order) RETURN n.id LIMIT 999999"); err == nil {
+		t.Fatal("descriptor accepted a limit above the supported maximum")
 	}
 }

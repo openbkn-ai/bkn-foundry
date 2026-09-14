@@ -97,6 +97,9 @@ func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescr
 		descriptor.EffectiveLimit = interfaces.CYPHER_DEFAULT_LIMIT
 		descriptor.LimitSource = "default"
 	} else {
+		if *plan.Limit > interfaces.CYPHER_MAX_LIMIT {
+			return nil, fmt.Errorf("semantic query descriptor limit exceeds %d", interfaces.CYPHER_MAX_LIMIT)
+		}
 		descriptor.EffectiveLimit = int(*plan.Limit)
 		descriptor.LimitSource = "explicit"
 	}
