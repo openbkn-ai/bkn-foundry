@@ -1523,6 +1523,10 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		rta.EXPECT().GetRelationTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"rt1"}, nil).AnyTimes()
+		rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{{
+			RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "rt1",
+				SourceObjectTypeID: "ot1", TargetObjectTypeID: "ot2"},
+		}}, nil).AnyTimes()
 		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllRelationPermissionResources).AnyTimes()
 
@@ -2100,6 +2104,10 @@ func Test_relationTypeService_DeleteRelationTypesByKnID(t *testing.T) {
 
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		rta.EXPECT().GetRelationTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"rt1"}, nil).AnyTimes()
+		rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{{
+			RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "rt1",
+				SourceObjectTypeID: "ot1", TargetObjectTypeID: "ot2"},
+		}}, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		ps.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
@@ -2144,6 +2152,10 @@ func Test_relationTypeService_SearchRelationTypes_extraCases(t *testing.T) {
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		rta.EXPECT().GetRelationTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"rt1"}, nil).AnyTimes()
+		rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{{
+			RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "rt1",
+				SourceObjectTypeID: "ot1", TargetObjectTypeID: "ot2"},
+		}}, nil).AnyTimes()
 		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllRelationPermissionResources).AnyTimes()
 
