@@ -736,7 +736,16 @@ func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 
 func newFakeOpenSearchClient(fn roundTripFunc) *opensearch.Client {
 	return opensearch.NewWithHTTPClient("http://opensearch.test", opensearch.AuthConfig{}, &http.Client{
-		Transport: fn,
+		// Evidence-store tests model a fresh index unless a test supplies a
+		// concrete backend. EnsureIndex now checks that condition with HEAD
+		// before creating the index, so keep that protocol detail outside each
+		// individual document assertion.
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if r.Method == http.MethodHead {
+				return statusJSONResponse(http.StatusNotFound, ""), nil
+			}
+			return fn(r)
+		}),
 	})
 }
 

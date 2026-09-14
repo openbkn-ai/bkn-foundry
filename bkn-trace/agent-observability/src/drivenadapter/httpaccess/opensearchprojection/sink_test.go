@@ -78,7 +78,13 @@ func TestPrepareVersionDefinesMappingsRequiredByEmptyProjectionQueries(t *testin
 	t.Parallel()
 
 	var mapping map[string]any
+	indexChecked := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead && r.URL.Path == "/bkn-trace-core-v014" {
+			indexChecked = true
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		if r.Method != http.MethodPut || r.URL.Path != "/bkn-trace-core-v014" {
 			t.Fatalf("unexpected index preparation request: %s %s", r.Method, r.URL.Path)
 		}
@@ -95,6 +101,9 @@ func TestPrepareVersionDefinesMappingsRequiredByEmptyProjectionQueries(t *testin
 	)
 	if err := sink.PrepareVersion(context.Background(), "bkn-trace-core-v014"); err != nil {
 		t.Fatalf("prepare projection index: %v", err)
+	}
+	if !indexChecked {
+		t.Fatal("preparing a versioned projection index must check whether it already exists")
 	}
 
 	properties, ok := mapping["mappings"].(map[string]any)["properties"].(map[string]any)
@@ -146,6 +155,8 @@ func TestEnsureBootstrapCreatesVersionedIndexAndAliasWhenNeitherExists(t *testin
 			http.NotFound(w, r)
 		case http.MethodHead + " /bkn-trace-core":
 			w.WriteHeader(http.StatusNotFound)
+		case http.MethodHead + " /bkn-trace-core-v015-r1":
+			w.WriteHeader(http.StatusNotFound)
 		case http.MethodPut + " /bkn-trace-core-v015-r1":
 			w.WriteHeader(http.StatusCreated)
 		case http.MethodPost + " /_aliases":
@@ -163,6 +174,7 @@ func TestEnsureBootstrapCreatesVersionedIndexAndAliasWhenNeitherExists(t *testin
 	want := []string{
 		"GET /_alias/bkn-trace-core",
 		"HEAD /bkn-trace-core",
+		"HEAD /bkn-trace-core-v015-r1",
 		"PUT /bkn-trace-core-v015-r1",
 		"POST /_aliases",
 	}
