@@ -469,8 +469,11 @@ func (cgs *conceptGroupService) ListConceptGroups(ctx context.Context,
 			berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
 	}
 
-	// Generate concept statistics for every group in the list.
-	for _, conceptGroup := range conceptGroups {
+	// Members and statistics for every group on the page, resolved against one member scope so the
+	// authorization cost does not grow with the number of groups.
+	membersByGroup := make([][]string, len(conceptGroups))
+	allMembers := make([]string, 0)
+	for i, conceptGroup := range conceptGroups {
 		otIDs, err := cgs.cga.GetConceptIDsByConceptGroupIDs(ctx, conceptGroup.KNID,
 			conceptGroup.Branch, []string{conceptGroup.CGID}, interfaces.MODULE_TYPE_OBJECT_TYPE)
 		if err != nil {
@@ -482,13 +485,15 @@ func (cgs *conceptGroupService) ListConceptGroups(ctx context.Context,
 			return []*interfaces.ConceptGroup{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
 		}
-		conceptGroup.ObjectTypeIDs = otIDs
-
-		stats, err := cgs.getStatByObjectTypeIDs(ctx, conceptGroup, otIDs)
-		if err != nil {
-			return []*interfaces.ConceptGroup{}, 0, err
-		}
-		conceptGroup.Statistics = stats
+		membersByGroup[i] = otIDs
+		allMembers = append(allMembers, otIDs...)
+	}
+	scope, err := cgs.loadMemberScope(ctx, query.KNID, conceptGroups[0].Branch, allMembers)
+	if err != nil {
+		return []*interfaces.ConceptGroup{}, 0, err
+	}
+	for i, conceptGroup := range conceptGroups {
+		conceptGroup.ObjectTypeIDs, conceptGroup.Statistics = scope.apply(membersByGroup[i])
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -635,60 +640,11 @@ func (cgs *conceptGroupService) GetStatByConceptGroup(ctx context.Context, conce
 			berrors.BknBackend_ConceptGroup_InternalError_GetConceptIDsByConceptGroupIDsFailed).WithErrorDetails(err.Error())
 	}
 
-	return cgs.getStatByObjectTypeIDs(ctx, conceptGroup, otIDs)
-}
-
-func (cgs *conceptGroupService) getStatByObjectTypeIDs(ctx context.Context,
-	conceptGroup *interfaces.ConceptGroup, otIDs []string) (*interfaces.Statistics, error) {
-
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, fmt.Sprintf("查询概念分组[%s]统计信息", conceptGroup.KNID))
-	defer span.End()
-
-	if len(otIDs) == 0 {
-		return &interfaces.Statistics{
-			OtTotal: 0,
-			RtTotal: 0,
-			AtTotal: 0,
-		}, nil
-	}
-
-	// Relation type count.
-	rtCnt, err := cgs.rta.GetRelationTypesTotal(ctx, interfaces.RelationTypesQueryParams{
-		KNID:                conceptGroup.KNID,
-		Branch:              conceptGroup.Branch,
-		SourceObjectTypeIDs: otIDs,
-		TargetObjectTypeIDs: otIDs,
-	})
+	scope, err := cgs.loadMemberScope(ctx, conceptGroup.KNID, conceptGroup.Branch, otIDs)
 	if err != nil {
-		logger.Errorf("GetRelationTypesTotal in concept group[%s] error: %s", conceptGroup.KNID, err.Error())
-		span.SetStatus(codes.Error, fmt.Sprintf("GetRelationTypesTotal in concept group[%s], error: %v", conceptGroup.KNID, err))
-		span.End()
-
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_ConceptGroup_InternalError_GetRelationTypesTotalFailed).WithErrorDetails(err.Error())
+		return nil, err
 	}
-
-	// Action type count.
-	atCnt, err := cgs.ata.GetActionTypesTotal(ctx, interfaces.ActionTypesQueryParams{
-		KNID:          conceptGroup.KNID,
-		Branch:        conceptGroup.Branch,
-		ObjectTypeIDs: otIDs,
-	})
-	if err != nil {
-		logger.Errorf("GetActionTypesTotal in concept group[%s] error: %s", conceptGroup.KNID, err.Error())
-		span.SetStatus(codes.Error, fmt.Sprintf("GetActionTypesTotal in concept group[%s], error: %v", conceptGroup.KNID, err))
-		span.End()
-
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_ConceptGroup_InternalError_GetRelationTypesTotalFailed).WithErrorDetails(err.Error())
-	}
-
-	statistics := &interfaces.Statistics{
-		OtTotal: len(otIDs),
-		RtTotal: rtCnt,
-		AtTotal: atCnt,
-	}
-
+	_, statistics := scope.apply(otIDs)
 	span.SetStatus(codes.Ok, "")
 	return statistics, nil
 }
