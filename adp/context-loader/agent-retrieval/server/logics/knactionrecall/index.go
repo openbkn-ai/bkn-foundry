@@ -24,11 +24,11 @@ type knActionRecallServiceImpl struct {
 	operatorIntegration interfaces.DrivenOperatorIntegration
 
 	// The three below serve only the fallback for a caller with no grant on the bound tool: its
-	// definition is read through the knowledge network's proxy once the caller's own view on the
+	// definition is read as the knowledge network's proxy once the caller's own view on the
 	// action type is confirmed (#1548). Any of them missing refuses that read.
 	actionAuthz   interfaces.ActionTypeViewAuthorizer
 	proxyResolver interfaces.KNProxyResolver
-	proxyReader   interfaces.KNProxyDefinitionReader
+	toolReaderAs  interfaces.ToolDetailReaderAs
 }
 
 var (
@@ -41,7 +41,7 @@ func NewKnActionRecallService() interfaces.IKnActionRecallService {
 	karOnce.Do(func() {
 		configLoader := config.NewConfigLoader()
 		operatorIntegration := drivenadapters.NewOperatorIntegrationClient()
-		proxyReader, _ := operatorIntegration.(interfaces.KNProxyDefinitionReader)
+		toolReaderAs, _ := operatorIntegration.(interfaces.ToolDetailReaderAs)
 		proxyResolver, _ := drivenadapters.NewBknBackendAccess().(interfaces.KNProxyResolver)
 		knActionRecallService = &knActionRecallServiceImpl{
 			logger:              configLoader.GetLogger(),
@@ -50,7 +50,7 @@ func NewKnActionRecallService() interfaces.IKnActionRecallService {
 			operatorIntegration: operatorIntegration,
 			actionAuthz:         permission.NewActionTypeViewAuthorizer(configLoader),
 			proxyResolver:       proxyResolver,
-			proxyReader:         proxyReader,
+			toolReaderAs:        toolReaderAs,
 		}
 	})
 	return knActionRecallService

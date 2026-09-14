@@ -147,16 +147,26 @@ type KNProxyOperator interface {
 		proxy *KNProxyExecution) (map[string]any, error)
 }
 
-// KNProxyDefinitionReader reads the invocation contract of the target an action
-// type is bound to, as that knowledge network's managed proxy. It is a read, not
-// a run: Execution Factory serves it only for an action-type binding, and only
-// the name, description and schemas come back. The responses reuse the direct
-// read types so get_action_info builds the same tool either way.
-type KNProxyDefinitionReader interface {
-	GetToolDefinitionAsProxy(ctx context.Context, req *GetToolDetailRequest,
-		proxy *KNProxyExecution) (*GetToolDetailResponse, error)
-	GetMCPToolDefinitionAsProxy(ctx context.Context, req *GetMCPToolDetailRequest,
-		proxy *KNProxyExecution) (*GetMCPToolDetailResponse, error)
+// AccountIdentity names the principal a request is made as.
+type AccountIdentity struct {
+	ID   string
+	Type AccessorType
+}
+
+// ToolDetailReaderAs reads a tool's definition as an explicit account instead of the account in
+// the context. It uses the same caller-scoped Execution Factory route as the direct read, so that
+// account is authorized exactly as a caller would be: view, public access or execute on the tool box
+// or MCP Server. get_action_info uses it with a knowledge network's managed proxy, which holds
+// execute on every target a published action type is bound to.
+//
+// Only what get_action_info builds a tool from comes back — name, description and schemas — so a
+// read made as another principal cannot hand the caller anything else. The responses reuse the
+// direct read types, so the same tool is built either way.
+type ToolDetailReaderAs interface {
+	GetToolDetailAs(ctx context.Context, account AccountIdentity,
+		req *GetToolDetailRequest) (*GetToolDetailResponse, error)
+	GetMCPToolDetailAs(ctx context.Context, account AccountIdentity,
+		req *GetMCPToolDetailRequest) (*GetMCPToolDetailResponse, error)
 }
 
 // SearchBoundToolsRequest asks Execution Factory to rank a bounded set of Function tools.

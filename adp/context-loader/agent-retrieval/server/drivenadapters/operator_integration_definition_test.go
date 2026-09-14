@@ -6,6 +6,7 @@ package drivenadapters
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -21,16 +22,19 @@ import (
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
-// executionFactoryServer answers every request with status and body and records the last one.
+// executionFactoryServer answers every request with status and body and records the requests.
 type executionFactoryServer struct {
-	mu      sync.Mutex
-	request *http.Request
+	mu       sync.Mutex
+	requests []*http.Request
 }
 
 func (s *executionFactoryServer) last() *http.Request {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.request
+	if len(s.requests) == 0 {
+		return nil
+	}
+	return s.requests[len(s.requests)-1]
 }
 
 func newExecutionFactoryServer(t *testing.T, status int, body string) (*operatorIntegrationClient, *executionFactoryServer) {
@@ -38,7 +42,7 @@ func newExecutionFactoryServer(t *testing.T, status int, body string) (*operator
 	recorded := &executionFactoryServer{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		recorded.mu.Lock()
-		recorded.request = r.Clone(context.Background())
+		recorded.requests = append(recorded.requests, r.Clone(context.Background()))
 		recorded.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
@@ -51,6 +55,7 @@ func newExecutionFactoryServer(t *testing.T, status int, body string) (*operator
 	logger.EXPECT().WithContext(gomock.Any()).Return(logger).AnyTimes()
 	logger.EXPECT().Debugf(gomock.Any(), gomock.Any()).AnyTimes()
 	logger.EXPECT().Debugf(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	logger.EXPECT().Debugf(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	logger.EXPECT().Errorf(gomock.Any(), gomock.Any()).AnyTimes()
 	logger.EXPECT().Errorf(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	return &operatorIntegrationClient{
@@ -63,9 +68,11 @@ func newExecutionFactoryServer(t *testing.T, status int, body string) (*operator
 const executionFactoryForbidden = `{"code":"AgentOperatorIntegration.Forbidden.CommonOperationForbidden",` +
 	`"description":"You have no permission for this operation","solution":"Ask an administrator","link":"none"}`
 
-// The direct tool reads used to turn every Execution Factory refusal into 502 "dependency
-// unavailable". A refusal is the caller's answer and keeps its status and downstream code; only a
-// 5xx is a dependency failure (#1548).
+var proxyAccount = interfaces.AccountIdentity{ID: "proxy-1", Type: interfaces.AccessorTypeApp}
+
+// The tool reads used to turn every Execution Factory refusal into 502 "dependency unavailable". A
+// refusal is the caller's answer and keeps its status and downstream code, whoever the read was
+// made as; only a 5xx is a dependency failure (#1548).
 func TestToolDetailReadsKeepExecutionFactoryStatus(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -96,11 +103,17 @@ func TestToolDetailReadsKeepExecutionFactoryStatus(t *testing.T) {
 			client, _ := newExecutionFactoryServer(t, test.status, test.body)
 			ctx := common.SetLanguageToCtx(
 				common.SetRawTokenToCtx(context.Background(), "caller-token"), sharedrest.AmericanEnglish)
+			toolReq := &interfaces.GetToolDetailRequest{BoxID: "box-1", ToolID: "tool-1"}
+			mcpReq := &interfaces.GetMCPToolDetailRequest{McpID: "mcp-1", ToolName: "lookup"}
 
-			_, toolErr := client.GetToolDetail(ctx, &interfaces.GetToolDetailRequest{BoxID: "box-1", ToolID: "tool-1"})
-			_, mcpErr := client.GetMCPToolDetail(ctx, &interfaces.GetMCPToolDetailRequest{McpID: "mcp-1", ToolName: "lookup"})
+			_, toolErr := client.GetToolDetail(ctx, toolReq)
+			_, mcpErr := client.GetMCPToolDetail(ctx, mcpReq)
+			_, toolAsErr := client.GetToolDetailAs(ctx, proxyAccount, toolReq)
+			_, mcpAsErr := client.GetMCPToolDetailAs(ctx, proxyAccount, mcpReq)
 
-			for name, err := range map[string]error{"tool": toolErr, "mcp": mcpErr} {
+			for name, err := range map[string]error{
+				"tool": toolErr, "mcp": mcpErr, "tool as proxy": toolAsErr, "mcp as proxy": mcpAsErr,
+			} {
 				he := asHTTPError(t, err)
 				if he.HTTPCode != test.wantStatus {
 					t.Fatalf("%s: status = %d, want %d (%v)", name, he.HTTPCode, test.wantStatus, err)
@@ -109,7 +122,7 @@ func TestToolDetailReadsKeepExecutionFactoryStatus(t *testing.T) {
 				if test.wantDetails != "" && !strings.HasPrefix(details, test.wantDetails) {
 					t.Errorf("%s: details = %q, want the downstream code first", name, details)
 				}
-				if strings.Contains(he.Error(), "db down") || strings.Contains(he.Error(), "127.0.0.1") {
+				if strings.Contains(he.Error(), "db down") || strings.Contains(he.Error(), client.baseURL) {
 					t.Errorf("%s: error exposes downstream internals: %s", name, he.Error())
 				}
 			}
@@ -117,7 +130,124 @@ func TestToolDetailReadsKeepExecutionFactoryStatus(t *testing.T) {
 	}
 }
 
-func actionDefinitionProxy(targetType, targetID string) *interfaces.KNProxyExecution {
+// callerContext is a public request: the caller's bearer token and identity are both in the
+// context, which is exactly what a read made as the proxy must not carry.
+func callerContext() context.Context {
+	ctx := common.SetAccountAuthContextToCtx(context.Background(), &interfaces.AccountAuthContext{
+		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
+	})
+	return common.SetPublicAPIToCtx(common.SetRawTokenToCtx(ctx, "caller-token"), true)
+}
+
+func assertReadAsProxy(t *testing.T, request *http.Request, wantPath string) {
+	t.Helper()
+	if request == nil {
+		t.Fatal("no request reached Execution Factory")
+	}
+	if request.Method != http.MethodGet || request.URL.Path != wantPath {
+		t.Fatalf("request = %s %s, want GET %s", request.Method, request.URL.Path, wantPath)
+	}
+	if got := request.Header.Get(string(interfaces.HeaderXAccountID)); got != "proxy-1" {
+		t.Errorf("x-account-id = %q, want the proxy account", got)
+	}
+	if got := request.Header.Get(string(interfaces.HeaderXAccountType)); got != "app" {
+		t.Errorf("x-account-type = %q, want app", got)
+	}
+	// The caller's credential never rides along with the proxy, and the read is an ordinary
+	// caller-scoped read: no managed-execution context is claimed.
+	for _, header := range []string{"Authorization", headerBKNCallerID, headerBKNChildType, headerBKNTargetID,
+		headerBKNOperation, headerBKNProxyVersion} {
+		if got := request.Header.Get(header); got != "" {
+			t.Errorf("header %s = %q, want absent", header, got)
+		}
+	}
+}
+
+// Execution Factory answers the full tool record. Everything but the name, description and API
+// schemas is dropped before it leaves the adapter: source code, service address, path, global
+// parameters and the auth scheme of the spec.
+func TestToolDetailAsReadsAsTheAccountAndReturnsOnlyTheDefinition(t *testing.T) {
+	client, server := newExecutionFactoryServer(t, http.StatusOK, `{
+		"tool_id":"tool-1","name":"send_sms","description":"Send an SMS","status":"enabled",
+		"metadata_type":"function","use_rule":"internal rule","global_parameters":{"secret":"g"},
+		"create_user":"author-1","extend_info":{"k":"v"},
+		"metadata":{"server_url":"http://function-runtime.internal","path":"/run/src-1","method":"POST",
+			"function_content":{"code":"def handler(event): return TOP_SECRET_SOURCE"},
+			"api_spec":{"parameters":[{"name":"phone","in":"query","required":true}],
+				"request_body":{"content":{}},"responses":[{"status_code":"200"}],
+				"components":{"schemas":{"Order":{"type":"object"}}},
+				"security":[{"internal_key":[]}],"callbacks":{"cb":{}}}}}`)
+
+	resp, err := client.GetToolDetailAs(callerContext(), proxyAccount,
+		&interfaces.GetToolDetailRequest{BoxID: "box-1", ToolID: "tool-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertReadAsProxy(t, server.last(), "/api/agent-operator-integration/internal-v1/caller/tool-box/box-1/tool/tool-1")
+
+	if resp.ToolID != "tool-1" || resp.Name != "send_sms" || resp.Description != "Send an SMS" {
+		t.Fatalf("identity = %+v", resp)
+	}
+	params, _ := resp.Metadata.APISpec["parameters"].([]any)
+	if len(params) != 1 || resp.Metadata.APISpec["request_body"] == nil ||
+		resp.Metadata.APISpec["responses"] == nil || resp.Metadata.APISpec["components"] == nil {
+		t.Fatalf("api_spec = %v", resp.Metadata.APISpec)
+	}
+	encoded, _ := json.Marshal(resp)
+	for _, leaked := range []string{"TOP_SECRET_SOURCE", "function-runtime.internal", "/run/src-1", "internal_key",
+		"internal rule", "author-1", `"secret"`, `"cb"`, "enabled"} {
+		if strings.Contains(string(encoded), leaked) {
+			t.Errorf("definition carries %q: %s", leaked, encoded)
+		}
+	}
+}
+
+func TestMCPToolDetailAsReadsAsTheAccountAndReturnsOnlyTheNamedTool(t *testing.T) {
+	client, server := newExecutionFactoryServer(t, http.StatusOK, `{"tools":[
+		{"name":"delete_everything","description":"Unrelated","inputSchema":{"type":"object"}},
+		{"name":"send sms/v2","description":"Send an SMS","annotations":{"destructiveHint":true},
+			"inputSchema":{"type":"object","properties":{"phone":{"type":"string"}},"required":["phone"]}}]}`)
+
+	resp, err := client.GetMCPToolDetailAs(callerContext(), proxyAccount,
+		&interfaces.GetMCPToolDetailRequest{McpID: "mcp-1", ToolName: "send sms/v2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertReadAsProxy(t, server.last(), "/api/agent-operator-integration/internal-v1/caller/mcp/proxy/mcp-1/tools")
+	if resp.Name != "send sms/v2" || resp.Description != "Send an SMS" || resp.InputSchema["type"] != "object" {
+		t.Fatalf("response = %+v", resp)
+	}
+	encoded, _ := json.Marshal(resp)
+	if strings.Contains(string(encoded), "delete_everything") || strings.Contains(string(encoded), "destructiveHint") {
+		t.Fatalf("definition carries more than the named tool's contract: %s", encoded)
+	}
+}
+
+// An incomplete account is refused before any request: the read never falls back to the context's
+// account, which here is the caller the direct read just failed for.
+func TestToolDetailAsRefusesAnIncompleteAccount(t *testing.T) {
+	client, server := newExecutionFactoryServer(t, http.StatusOK, `{"tool_id":"tool-1"}`)
+	for name, account := range map[string]interfaces.AccountIdentity{
+		"no id":   {Type: interfaces.AccessorTypeApp},
+		"no type": {ID: "proxy-1"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := client.GetToolDetailAs(callerContext(), account,
+				&interfaces.GetToolDetailRequest{BoxID: "box-1", ToolID: "tool-1"}); err == nil {
+				t.Fatal("tool read without an explicit account succeeded")
+			}
+			if _, err := client.GetMCPToolDetailAs(callerContext(), account,
+				&interfaces.GetMCPToolDetailRequest{McpID: "mcp-1", ToolName: "lookup"}); err == nil {
+				t.Fatal("MCP read without an explicit account succeeded")
+			}
+		})
+	}
+	if server.last() != nil {
+		t.Fatalf("a refused read still reached Execution Factory: %s", server.last().URL)
+	}
+}
+
+func actionTypeProxyBinding(targetType, targetID string) *interfaces.KNProxyExecution {
 	return &interfaces.KNProxyExecution{
 		Mapping: &interfaces.KNProxyAccount{
 			KNID: "kn-1", ProxyAccountID: "proxy-1", ProxyAccountType: "app", Version: 7,
@@ -129,179 +259,23 @@ func actionDefinitionProxy(targetType, targetID string) *interfaces.KNProxyExecu
 	}
 }
 
-func callerContextWithToken() context.Context {
-	ctx := common.SetAccountAuthContextToCtx(context.Background(), &interfaces.AccountAuthContext{
-		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
-	})
-	return common.SetRawTokenToCtx(ctx, "caller-token")
-}
-
-func assertActionDefinitionHeaders(t *testing.T, request *http.Request, targetType, targetID string) {
-	t.Helper()
-	want := map[string]string{
-		string(interfaces.HeaderXAccountID):   "proxy-1",
-		string(interfaces.HeaderXAccountType): "app",
-		headerBKNCallerID:                     "user-1",
-		headerBKNCallerType:                   "user",
-		headerBKNKnowledgeID:                  "kn-1",
-		headerBKNChildType:                    "action_type",
-		headerBKNChildID:                      "at-1",
-		headerBKNProxyVersion:                 "7",
-		headerBKNTargetType:                   targetType,
-		headerBKNTargetID:                     targetID,
-		headerBKNOperation:                    "execute",
-	}
-	for header, value := range want {
-		if got := request.Header.Get(header); got != value {
-			t.Errorf("header %s = %q, want %q", header, got, value)
-		}
-	}
-	// A read names no execution, and the caller's own credential never rides along with the proxy.
-	for _, header := range []string{"Authorization", "X-Bkn-Execution-Id"} {
-		if got := request.Header.Get(header); got != "" {
-			t.Errorf("header %s = %q, want absent", header, got)
-		}
-	}
-}
-
-func TestToolDefinitionReadCarriesTheActionTypeProxyContext(t *testing.T) {
-	client, server := newExecutionFactoryServer(t, http.StatusOK,
-		`{"box_id":"box-1","tool_id":"tool-1","name":"send_sms","description":"Send an SMS",`+
-			`"api_spec":{"parameters":[{"name":"phone","in":"query","required":true}],"request_body":null}}`)
-
-	resp, err := client.GetToolDefinitionAsProxy(callerContextWithToken(),
-		&interfaces.GetToolDetailRequest{BoxID: "box-1", ToolID: "tool-1"},
-		actionDefinitionProxy(interfaces.KNProxyTargetTypeToolBox, "box-1"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	request := server.last()
-	if request.Method != http.MethodGet ||
-		request.URL.Path != "/api/agent-operator-integration/internal-v1/tool-box/box-1/tool/tool-1/definition" {
-		t.Fatalf("request = %s %s", request.Method, request.URL.Path)
-	}
-	assertActionDefinitionHeaders(t, request, "tool_box", "box-1")
-	params, _ := resp.Metadata.APISpec["parameters"].([]any)
-	if resp.ToolID != "tool-1" || resp.Name != "send_sms" || resp.Description != "Send an SMS" || len(params) != 1 {
-		t.Fatalf("response = %+v", resp)
-	}
-}
-
-func TestMCPToolDefinitionReadCarriesTheActionTypeProxyContext(t *testing.T) {
-	client, server := newExecutionFactoryServer(t, http.StatusOK,
-		`{"mcp_id":"mcp-1","name":"send sms/v2","description":"Send an SMS",`+
-			`"input_schema":{"type":"object","properties":{"phone":{"type":"string"}},"required":["phone"]}}`)
-
-	resp, err := client.GetMCPToolDefinitionAsProxy(callerContextWithToken(),
-		&interfaces.GetMCPToolDetailRequest{McpID: "mcp-1", ToolName: "send sms/v2"},
-		actionDefinitionProxy(interfaces.KNProxyTargetTypeMCP, "mcp-1"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	request := server.last()
-	if request.Method != http.MethodGet ||
-		request.URL.Path != "/api/agent-operator-integration/internal-v1/mcp/proxy/mcp-1/tool/definition" ||
-		request.URL.Query().Get("tool_name") != "send sms/v2" {
-		t.Fatalf("request = %s %s", request.Method, request.URL.String())
-	}
-	assertActionDefinitionHeaders(t, request, "mcp", "mcp-1")
-	if resp.Name != "send sms/v2" || resp.Description != "Send an SMS" || resp.InputSchema["type"] != "object" {
-		t.Fatalf("response = %+v", resp)
-	}
-}
-
-// The definition reads accept only an action-type binding for exactly the target they address;
-// anything else is refused before a request is made.
-func TestDefinitionReadsRefuseAProxyOutsideTheActionBinding(t *testing.T) {
-	client, server := newExecutionFactoryServer(t, http.StatusOK, `{}`)
-	ctx := callerContextWithToken()
-
-	capability := actionDefinitionProxy(interfaces.KNProxyTargetTypeToolBox, "box-1")
-	capability.Binding.ChildType = interfaces.KNProxyChildTypeCapability
-	tests := map[string]func() error{
-		"other box": func() error {
-			_, err := client.GetToolDefinitionAsProxy(ctx, &interfaces.GetToolDetailRequest{BoxID: "box-2", ToolID: "tool-1"},
-				actionDefinitionProxy(interfaces.KNProxyTargetTypeToolBox, "box-1"))
-			return err
-		},
-		"MCP binding on the Tool read": func() error {
-			_, err := client.GetToolDefinitionAsProxy(ctx, &interfaces.GetToolDetailRequest{BoxID: "box-1", ToolID: "tool-1"},
-				actionDefinitionProxy(interfaces.KNProxyTargetTypeMCP, "box-1"))
-			return err
-		},
-		"other MCP server": func() error {
-			_, err := client.GetMCPToolDefinitionAsProxy(ctx, &interfaces.GetMCPToolDetailRequest{McpID: "mcp-2", ToolName: "lookup"},
-				actionDefinitionProxy(interfaces.KNProxyTargetTypeMCP, "mcp-1"))
-			return err
-		},
-		"mounted capability binding": func() error {
-			_, err := client.GetToolDefinitionAsProxy(ctx, &interfaces.GetToolDetailRequest{BoxID: "box-1", ToolID: "tool-1"},
-				capability)
-			return err
-		},
-		"no tool": func() error {
-			_, err := client.GetToolDefinitionAsProxy(ctx, &interfaces.GetToolDetailRequest{BoxID: "box-1"},
-				actionDefinitionProxy(interfaces.KNProxyTargetTypeToolBox, "box-1"))
-			return err
-		},
-	}
-	for name, read := range tests {
-		t.Run(name, func(t *testing.T) {
-			if err := read(); err == nil {
-				t.Fatal("definition read outside the action binding succeeded")
-			}
-		})
-	}
-	if server.last() != nil {
-		t.Fatalf("a refused definition read still reached Execution Factory: %s", server.last().URL)
-	}
-}
-
-// The execute helpers stay capability-only: an action-type binding cannot run a tool through
-// Context Loader, even though the same proxy may read its definition.
+// The execute helpers stay capability-only: the action-type binding Context Loader resolves to read
+// a definition cannot run a tool through it.
 func TestActionTypeBindingCannotExecuteThroughContextLoader(t *testing.T) {
 	client, server := newExecutionFactoryServer(t, http.StatusOK, `{"ok":true}`)
-	ctx := callerContextWithToken()
+	ctx := callerContext()
 
 	if _, err := client.ExecutePublishedToolAsProxy(ctx, &interfaces.ExecutePublishedToolRequest{
 		ToolboxID: "box-1", ToolID: "tool-1",
-	}, actionDefinitionProxy(interfaces.KNProxyTargetTypeToolBox, "box-1")); err == nil {
+	}, actionTypeProxyBinding(interfaces.KNProxyTargetTypeToolBox, "box-1")); err == nil {
 		t.Fatal("action-type binding executed a tool")
 	}
 	if _, err := client.CallMCPToolAsProxy(ctx, &interfaces.CallMCPToolRequest{
 		McpID: "mcp-1", ToolName: "lookup",
-	}, actionDefinitionProxy(interfaces.KNProxyTargetTypeMCP, "mcp-1")); err == nil {
+	}, actionTypeProxyBinding(interfaces.KNProxyTargetTypeMCP, "mcp-1")); err == nil {
 		t.Fatal("action-type binding called an MCP tool")
 	}
 	if server.last() != nil {
 		t.Fatalf("a refused execution still reached Execution Factory: %s", server.last().URL)
-	}
-}
-
-// A response for another tool than the one asked for is not accepted as its definition.
-func TestToolDefinitionReadRejectsAnotherToolsAnswer(t *testing.T) {
-	client, _ := newExecutionFactoryServer(t, http.StatusOK,
-		`{"box_id":"box-1","tool_id":"tool-2","name":"other","api_spec":{}}`)
-
-	_, err := client.GetToolDefinitionAsProxy(callerContextWithToken(),
-		&interfaces.GetToolDetailRequest{BoxID: "box-1", ToolID: "tool-1"},
-		actionDefinitionProxy(interfaces.KNProxyTargetTypeToolBox, "box-1"))
-
-	if he := asHTTPError(t, err); he.HTTPCode != http.StatusBadGateway {
-		t.Fatalf("status = %d, want 502", he.HTTPCode)
-	}
-}
-
-// The proxy route's own refusal keeps its status too.
-func TestDefinitionReadKeepsTheProxyRefusal(t *testing.T) {
-	client, _ := newExecutionFactoryServer(t, http.StatusForbidden,
-		`{"code":"AgentOperatorIntegration.Forbidden","description":"proxy definition read is forbidden"}`)
-
-	_, err := client.GetMCPToolDefinitionAsProxy(callerContextWithToken(),
-		&interfaces.GetMCPToolDetailRequest{McpID: "mcp-1", ToolName: "lookup"},
-		actionDefinitionProxy(interfaces.KNProxyTargetTypeMCP, "mcp-1"))
-
-	if he := asHTTPError(t, err); he.HTTPCode != http.StatusForbidden {
-		t.Fatalf("status = %d, want 403", he.HTTPCode)
 	}
 }

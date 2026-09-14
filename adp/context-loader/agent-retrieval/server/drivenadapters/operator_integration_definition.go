@@ -11,8 +11,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/bytedance/sonic"
-
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -34,91 +32,84 @@ func classifyToolReadError(ctx context.Context, code int, err error, detailKey s
 	return infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, infraErr.LocalizedDetail(ctx, detailKey))
 }
 
-// GetToolDefinitionAsProxy reads the invocation contract of the tool an action type is bound to,
-// as the knowledge network's managed proxy.
+// The schema keys of a tool's API spec that get_action_info builds a tool from: its parameters
+// and request body, the response it reads the output schema from, and the components they refer to.
+var toolDefinitionSpecKeys = []string{"parameters", "request_body", "responses", "components"}
+
+// GetToolDetailAs reads one tool as account rather than as the account in the context.
 //
-// The caller has already been checked for view on the action type and BKN has confirmed the box is
-// that action type's current published target; Execution Factory rechecks the proxy's grant on the
-// box and that the tool lives in it. What comes back is the name, description and schemas only.
-func (o *operatorIntegrationClient) GetToolDefinitionAsProxy(ctx context.Context,
-	req *interfaces.GetToolDetailRequest, proxy *interfaces.KNProxyExecution) (*interfaces.GetToolDetailResponse, error) {
-	if req == nil || proxy == nil || proxy.Binding.TargetType != interfaces.KNProxyTargetTypeToolBox ||
-		proxy.Binding.TargetID != req.BoxID || strings.TrimSpace(req.ToolID) == "" {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusForbidden,
-			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
-	}
-	header, err := managedProxyHeadersFor(ctx, proxy, interfaces.KNProxyChildTypeActionType,
-		"operator.action.proxy.definition")
+// It uses the caller-scoped route the direct read uses on the internal face, so Execution Factory
+// authorizes account exactly as it would a caller — view, public access or execute on the tool
+// box — and no bearer token travels. The answer is trimmed to the tool's identity, prose and schemas:
+// source code, service address, path and authoring metadata never leave this adapter.
+func (o *operatorIntegrationClient) GetToolDetailAs(ctx context.Context, account interfaces.AccountIdentity,
+	req *interfaces.GetToolDetailRequest) (*interfaces.GetToolDetailResponse, error) {
+	header, err := o.accountHeader(ctx, account, "operator.tool.get")
 	if err != nil {
 		return nil, err
 	}
-	fullURL := o.baseURL + fmt.Sprintf(getToolDefinitionManagedURI,
+	if req == nil || strings.TrimSpace(req.BoxID) == "" || strings.TrimSpace(req.ToolID) == "" {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusForbidden,
+			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+	}
+	fullURL := o.baseURL + fmt.Sprintf(getToolDetailInternalURI,
 		url.PathEscape(strings.TrimSpace(req.BoxID)), url.PathEscape(strings.TrimSpace(req.ToolID)))
-	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#GetToolDefinitionAsProxy] URL: %s", fullURL)
-
-	code, body, err := o.httpClient.GetBytes(ctx, fullURL, nil, header)
+	detail, err := o.readToolDetail(ctx, "GetToolDetailAs", fullURL, header)
 	if err != nil {
-		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetToolDefinitionAsProxy] Request failed, err: %v", err)
-		return nil, classifyToolReadError(ctx, code, err, "ToolDetailRequestFailed")
+		return nil, err
 	}
-	var definition struct {
-		ToolID      string         `json:"tool_id"`
-		Name        string         `json:"name"`
-		Description string         `json:"description"`
-		APISpec     map[string]any `json:"api_spec"`
+	definition := &interfaces.GetToolDetailResponse{
+		ToolID:      detail.ToolID,
+		Name:        detail.Name,
+		Description: detail.Description,
 	}
-	if err = sonic.Unmarshal(body, &definition); err != nil || definition.ToolID != req.ToolID {
-		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetToolDefinitionAsProxy] Invalid response for tool %s, err: %v",
-			req.ToolID, err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-			infraErr.LocalizedDetail(ctx, "ToolDetailResponseInvalid"))
+	if spec := detail.Metadata.APISpec; spec != nil {
+		definition.Metadata.APISpec = make(map[string]any, len(toolDefinitionSpecKeys))
+		for _, key := range toolDefinitionSpecKeys {
+			if value, ok := spec[key]; ok {
+				definition.Metadata.APISpec[key] = value
+			}
+		}
 	}
-	return &interfaces.GetToolDetailResponse{
-		ToolID:      definition.ToolID,
-		Name:        definition.Name,
-		Description: definition.Description,
-		Metadata:    interfaces.ToolMetadata{APISpec: definition.APISpec},
+	return definition, nil
+}
+
+// GetMCPToolDetailAs reads one MCP tool as account rather than as the account in the context, over
+// the same caller-scoped route as the direct read. Only the named tool's name, description and
+// input schema come back; the rest of the server's listing never leaves this adapter.
+func (o *operatorIntegrationClient) GetMCPToolDetailAs(ctx context.Context, account interfaces.AccountIdentity,
+	req *interfaces.GetMCPToolDetailRequest) (*interfaces.GetMCPToolDetailResponse, error) {
+	header, err := o.accountHeader(ctx, account, "operator.mcp_tool.get")
+	if err != nil {
+		return nil, err
+	}
+	if req == nil || strings.TrimSpace(req.McpID) == "" || strings.TrimSpace(req.ToolName) == "" {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusForbidden,
+			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+	}
+	fullURL := o.baseURL + fmt.Sprintf(getMCPToolListInternalURI, url.PathEscape(strings.TrimSpace(req.McpID)))
+	tool, err := o.readMCPToolDetail(ctx, "GetMCPToolDetailAs", fullURL, header, req.ToolName)
+	if err != nil {
+		return nil, err
+	}
+	return &interfaces.GetMCPToolDetailResponse{
+		Name:        tool.Name,
+		Description: tool.Description,
+		InputSchema: tool.InputSchema,
 	}, nil
 }
 
-// GetMCPToolDefinitionAsProxy reads the input contract of the MCP tool an action type is bound to,
-// as the knowledge network's managed proxy. Only the named tool comes back, never the server's
-// whole listing.
-func (o *operatorIntegrationClient) GetMCPToolDefinitionAsProxy(ctx context.Context,
-	req *interfaces.GetMCPToolDetailRequest, proxy *interfaces.KNProxyExecution) (*interfaces.GetMCPToolDetailResponse, error) {
-	if req == nil || proxy == nil || proxy.Binding.TargetType != interfaces.KNProxyTargetTypeMCP ||
-		proxy.Binding.TargetID != req.McpID || strings.TrimSpace(req.ToolName) == "" {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusForbidden,
+// accountHeader carries account, and only account, as the principal of the request. An incomplete
+// account fails before any request is made: there is no falling back to the context's account.
+func (o *operatorIntegrationClient) accountHeader(ctx context.Context, account interfaces.AccountIdentity,
+	operationName string) (map[string]string, error) {
+	if strings.TrimSpace(account.ID) == "" || strings.TrimSpace(string(account.Type)) == "" {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
 			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
 	}
-	header, err := managedProxyHeadersFor(ctx, proxy, interfaces.KNProxyChildTypeActionType,
-		"operator.action.proxy.definition")
-	if err != nil {
-		return nil, err
-	}
-	fullURL := o.baseURL + fmt.Sprintf(getMCPToolDefinitionManagedURI, url.PathEscape(strings.TrimSpace(req.McpID)))
-	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#GetMCPToolDefinitionAsProxy] URL: %s, Tool: %s",
-		fullURL, req.ToolName)
-
-	code, body, err := o.httpClient.GetBytes(ctx, fullURL, url.Values{"tool_name": {req.ToolName}}, header)
-	if err != nil {
-		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetMCPToolDefinitionAsProxy] Request failed, err: %v", err)
-		return nil, classifyToolReadError(ctx, code, err, "MCPToolListRequestFailed")
-	}
-	var definition struct {
-		Name        string         `json:"name"`
-		Description string         `json:"description"`
-		InputSchema map[string]any `json:"input_schema"`
-	}
-	if err = sonic.Unmarshal(body, &definition); err != nil || definition.Name != req.ToolName {
-		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetMCPToolDefinitionAsProxy] Invalid response for tool %s, err: %v",
-			req.ToolName, err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-			infraErr.LocalizedDetail(ctx, "MCPToolListResponseInvalid"))
-	}
-	return &interfaces.GetMCPToolDetailResponse{
-		Name:        definition.Name,
-		Description: definition.Description,
-		InputSchema: definition.InputSchema,
-	}, nil
+	header := o.skillHeader(ctx, operationName)
+	header[string(interfaces.HeaderXAccountID)] = account.ID
+	header[string(interfaces.HeaderXAccountType)] = string(account.Type)
+	delete(header, "Authorization")
+	return header, nil
 }
