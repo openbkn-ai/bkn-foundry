@@ -66,6 +66,39 @@ func TestBuildExecutionSummariesJoinsMultipleTracesAndArtifactsByRequest(t *test
 	}
 }
 
+func TestBuildInteractionTerminalPreviewsKeepsFirstQuestionAndLatestResultPerInteraction(t *testing.T) {
+	questionFirst := summaryArtifact(t, "preview_question_first", ArtifactTypeQuestion, "", map[string]any{"text": "首个问题"})
+	questionFirst.InteractionID, questionFirst.ObservedAt = "interaction-preview", "2026-07-26T08:00:01Z"
+	questionLater := summaryArtifact(t, "preview_question_later", ArtifactTypeQuestion, "", map[string]any{"text": "不应替换问题"})
+	questionLater.InteractionID, questionLater.ObservedAt = "interaction-preview", "2026-07-26T08:00:02Z"
+	resultEarly := summaryArtifact(t, "preview_result_early", ArtifactTypeResult, "", map[string]any{"text": "旧结果"})
+	resultEarly.InteractionID, resultEarly.ObservedAt = "interaction-preview", "2026-07-26T08:00:03Z"
+	resultLatest := summaryArtifact(t, "preview_result_latest", ArtifactTypeResult, "", map[string]any{"text": "最终结果"})
+	resultLatest.InteractionID, resultLatest.ObservedAt = "interaction-preview", "2026-07-26T08:00:04Z"
+	laterTurn := summaryArtifact(t, "preview_later_turn", ArtifactTypeQuestion, "", map[string]any{"text": "后续轮次问题"})
+	laterTurn.InteractionID = "interaction-later"
+
+	previews := BuildInteractionTerminalPreviews([]EvidenceArtifact{resultLatest, laterTurn, questionLater, resultEarly, questionFirst})
+	if preview := previews["interaction-preview"]; preview.QuestionPreview != "首个问题" || preview.ResultPreview != "最终结果" {
+		t.Fatalf("terminal preview=%+v", preview)
+	}
+	if preview := previews["interaction-later"]; preview.QuestionPreview != "后续轮次问题" || preview.ResultPreview != "" {
+		t.Fatalf("later turn preview=%+v", preview)
+	}
+}
+
+func TestBuildInteractionTerminalPreviewsFallsBackToOperationScopedTerminalArtifacts(t *testing.T) {
+	question := summaryArtifact(t, "preview_operation_question", ArtifactTypeQuestion, "", map[string]any{"text": "历史首轮问题"})
+	question.InteractionID, question.OperationID, question.ObservedAt = "interaction-history", "operation-1", "2026-07-26T08:00:01Z"
+	result := summaryArtifact(t, "preview_operation_result", ArtifactTypeResult, "", map[string]any{"text": "历史首轮答案"})
+	result.InteractionID, result.OperationID, result.ObservedAt = "interaction-history", "operation-1", "2026-07-26T08:00:02Z"
+
+	previews := BuildInteractionTerminalPreviews([]EvidenceArtifact{question, result})
+	if preview := previews["interaction-history"]; preview.QuestionPreview != "历史首轮问题" || preview.ResultPreview != "历史首轮答案" {
+		t.Fatalf("operation-scoped terminal fallback=%+v", preview)
+	}
+}
+
 func TestBuildExecutionSummariesExposesConversationAndInteractionIdentity(t *testing.T) {
 	trace := summaryTrace("trace_identity", "req_identity", "2026-07-27T08:00:00Z", "")
 	trace.ConversationID = "conversation_supply_chain"

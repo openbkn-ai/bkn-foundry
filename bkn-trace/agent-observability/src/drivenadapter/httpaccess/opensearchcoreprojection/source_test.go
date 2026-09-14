@@ -613,12 +613,15 @@ func TestSourceAuthorizesSelectedFirstInteractionOutsideRecentReceiptCap(t *test
 }
 
 type artifactProjectionSource struct {
-	result iprojectionsource.Result
+	result         iprojectionsource.Result
+	artifactResult iprojectionsource.ArtifactResult
 }
 
 type recordingArtifactProjectionSource struct {
-	result  iprojectionsource.Result
-	queries []iprojectionsource.Query
+	result                    iprojectionsource.Result
+	artifactResult            iprojectionsource.ArtifactResult
+	queries                   []iprojectionsource.Query
+	artifactProjectionQueries []iprojectionsource.Query
 }
 
 func (s *recordingArtifactProjectionSource) LoadExecutionProjection(_ context.Context, query iprojectionsource.Query) (iprojectionsource.Result, error) {
@@ -626,6 +629,52 @@ func (s *recordingArtifactProjectionSource) LoadExecutionProjection(_ context.Co
 	return s.result, nil
 }
 
+func (s *recordingArtifactProjectionSource) LoadArtifactProjection(_ context.Context, query iprojectionsource.Query) (iprojectionsource.ArtifactResult, error) {
+	s.artifactProjectionQueries = append(s.artifactProjectionQueries, query)
+	return s.artifactResult, nil
+}
+
 func (s artifactProjectionSource) LoadExecutionProjection(context.Context, iprojectionsource.Query) (iprojectionsource.Result, error) {
 	return s.result, nil
+}
+
+func (s artifactProjectionSource) LoadArtifactProjection(context.Context, iprojectionsource.Query) (iprojectionsource.ArtifactResult, error) {
+	return s.artifactResult, nil
+}
+
+func TestSourceDelegatesArtifactOnlyProjectionWithCoreReceiptAuthorization(t *testing.T) {
+	searches := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		searches++
+		body, _ := io.ReadAll(r.Body)
+		if !strings.Contains(string(body), `"interaction_id.keyword":["interaction-first"]`) {
+			t.Fatalf("receipt authorization must select the requested interaction: %s", body)
+		}
+		_, _ = io.WriteString(w, `{"hits":{"hits":[{"_source":{
+			"receipt_id":"receipt-first","owner":{"effective_subject_type":"app","effective_subject_id":"acct-1"},
+			"conversation_id":"conversation-1","interaction_id":"interaction-first",
+			"request_id":"request-first","trace_id":"trace-first","issued_at":"2026-09-14T10:00:00Z"
+		}}]}}`)
+	}))
+	t.Cleanup(server.Close)
+	artifacts := &recordingArtifactProjectionSource{artifactResult: iprojectionsource.ArtifactResult{
+		Artifacts: []evidencevo.EvidenceArtifact{{ArtifactID: "artifact-terminal"}},
+	}}
+	source := opensearchcoreprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core", artifacts)
+	result, err := source.LoadArtifactProjection(context.Background(), iprojectionsource.Query{
+		Scope:          evidencevo.QueryScope{AccountID: "acct-1", AccountType: "app"},
+		InteractionIDs: []string{"interaction-first"},
+		ArtifactTypes:  []evidencevo.ArtifactType{evidencevo.ArtifactTypeQuestion, evidencevo.ArtifactTypeResult},
+		Limit:          20,
+	})
+	if err != nil || len(result.Artifacts) != 1 || result.Artifacts[0].ArtifactID != "artifact-terminal" {
+		t.Fatalf("artifact-only result=%+v err=%v", result, err)
+	}
+	if searches != 1 || len(artifacts.queries) != 0 || len(artifacts.artifactProjectionQueries) != 1 {
+		t.Fatalf("artifact-only projection must authorize through Core receipts without loading a full projection: searches=%d full=%+v artifacts=%+v", searches, artifacts.queries, artifacts.artifactProjectionQueries)
+	}
+	query := artifacts.artifactProjectionQueries[0]
+	if len(query.AuthorizedInteractionIDs) != 1 || query.AuthorizedInteractionIDs[0] != "interaction-first" {
+		t.Fatalf("artifact-only projection must retain the Core-authorized interaction: %+v", query)
+	}
 }

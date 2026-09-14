@@ -80,6 +80,51 @@ func (s *Source) LoadExecutionProjection(ctx context.Context, query iprojections
 	}, nil
 }
 
+// LoadArtifactProjection preserves the Core projection's authorization boundary
+// while avoiding its full Trace and Operation projection. It reads only the
+// selected interactions' receipts before issuing the artifact query.
+func (s *Source) LoadArtifactProjection(ctx context.Context, query iprojectionsource.Query) (iprojectionsource.ArtifactResult, error) {
+	artifactSource, ok := s.artifacts.(iprojectionsource.ArtifactProjectionSourcePort)
+	if !ok {
+		return iprojectionsource.ArtifactResult{}, fmt.Errorf("artifact projection source does not support artifact-only reads")
+	}
+	interactionIDs := append([]string(nil), query.InteractionIDs...)
+	if query.InteractionID != "" {
+		interactionIDs = append(interactionIDs, query.InteractionID)
+	}
+	receipts, truncated, err := s.loadInteractionReceipts(ctx, query, interactionIDs)
+	if err != nil {
+		return iprojectionsource.ArtifactResult{}, err
+	}
+	authorizedInteractions := make([]string, 0, len(interactionIDs))
+	for interactionID, interactionReceipts := range receiptsByInteraction(receipts) {
+		if !interactionMatchesScope(interactionReceipts, query.Scope) {
+			continue
+		}
+		for _, receipt := range interactionReceipts {
+			if matchesReceiptQuery(receipt, query) {
+				authorizedInteractions = append(authorizedInteractions, interactionID)
+				break
+			}
+		}
+	}
+	sort.Strings(authorizedInteractions)
+	if len(authorizedInteractions) == 0 {
+		return iprojectionsource.ArtifactResult{Truncated: truncated}, nil
+	}
+	artifactQuery := query
+	artifactQuery.RequestID = ""
+	artifactQuery.TraceID = ""
+	artifactQuery.InteractionID = ""
+	artifactQuery.AuthorizedInteractionIDs = authorizedInteractions
+	result, err := artifactSource.LoadArtifactProjection(ctx, artifactQuery)
+	if err != nil {
+		return iprojectionsource.ArtifactResult{}, err
+	}
+	result.Truncated = result.Truncated || truncated
+	return result, nil
+}
+
 func (s *Source) loadReceipts(ctx context.Context, query iprojectionsource.Query) ([]receiptDocument, []string, bool, error) {
 	candidates, truncated, err := s.searchReceipts(ctx, query, !hasExactReceiptSelector(query))
 	if err != nil {

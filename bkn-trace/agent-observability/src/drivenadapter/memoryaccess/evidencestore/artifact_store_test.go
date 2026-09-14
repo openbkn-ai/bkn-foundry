@@ -129,6 +129,42 @@ func TestMemoryProjectionPreservesLegacyArtifactsAlongsideTerminalInteractionPre
 	}
 }
 
+func TestMemoryArtifactProjectionSelectsOnlyRequestedTerminalArtifacts(t *testing.T) {
+	store := New()
+	question := normalizedStoreArtifact(t)
+	question.ArtifactID = "artifact_question_001"
+	question.ArtifactType = evidencevo.ArtifactTypeQuestion
+	question.OperationID = ""
+	question.ContentHash = ""
+	question, validationErrors := evidencevo.NormalizeArtifact(question)
+	if len(validationErrors) != 0 {
+		t.Fatalf("normalize question: %+v", validationErrors)
+	}
+	other := normalizedStoreArtifact(t)
+	other.ArtifactID = "artifact_other_001"
+	other.InteractionID = "interaction_other"
+	other.ContentHash = ""
+	other, validationErrors = evidencevo.NormalizeArtifact(other)
+	if len(validationErrors) != 0 {
+		t.Fatalf("normalize other artifact: %+v", validationErrors)
+	}
+	for _, artifact := range []evidencevo.EvidenceArtifact{question, other} {
+		if _, err := store.StoreArtifact(context.Background(), artifact); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	result, err := store.LoadArtifactProjection(context.Background(), iprojectionsource.Query{
+		Scope:          evidencevo.QueryScope{AccountID: question.AccountID, AccountType: question.AccountType},
+		InteractionIDs: []string{question.InteractionID},
+		ArtifactTypes:  []evidencevo.ArtifactType{evidencevo.ArtifactTypeQuestion, evidencevo.ArtifactTypeResult},
+		Limit:          2,
+	})
+	if err != nil || len(result.Artifacts) != 1 || result.Artifacts[0].ArtifactID != question.ArtifactID || result.Truncated {
+		t.Fatalf("artifact-only projection must not expand to unrelated artifacts: result=%+v err=%v", result, err)
+	}
+}
+
 func normalizedStoreArtifact(t *testing.T) evidencevo.EvidenceArtifact {
 	t.Helper()
 	artifact := evidencevo.EvidenceArtifact{

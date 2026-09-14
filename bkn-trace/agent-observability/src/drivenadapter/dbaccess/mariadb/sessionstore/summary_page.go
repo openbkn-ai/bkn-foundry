@@ -60,6 +60,10 @@ func (s *Store) ListTraceSummaryIdentities(ctx context.Context, query isessionst
 
 func (s *Store) ListConversationSummaryIdentities(ctx context.Context, query isessionstore.SummaryPageQuery) (isessionstore.SummaryIdentityPage, error) {
 	where, args := summaryOwnerWhere("c", query)
+	excludedAgentPredicate, excludedAgentArgs := conversationSummaryExcludedAgentPredicate("c", query.ExcludeAgentOrApps)
+	if excludedAgentPredicate != "" {
+		where, args = append(where, excludedAgentPredicate), append(args, excludedAgentArgs...)
+	}
 	receiptExists, receiptArgs := conversationSummaryReceiptExists(query)
 	where, args = append(where, receiptExists), append(args, receiptArgs...)
 	clause := strings.Join(where, " AND ")
@@ -91,6 +95,44 @@ func (s *Store) ListConversationSummaryIdentities(ctx context.Context, query ise
 		return isessionstore.SummaryIdentityPage{}, fmt.Errorf("scan conversation summary identities: %w", err)
 	}
 	return isessionstore.SummaryIdentityPage{Entries: entries.values, Total: total, HasMore: entries.hasMore}, nil
+}
+
+func conversationSummaryExcludedAgentPredicate(alias string, values []string) (string, []any) {
+	unique := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		unique = append(unique, value)
+	}
+	if len(unique) == 0 {
+		return "", nil
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(unique)), ",")
+	predicates := []string{
+		alias + ".agent_name IS NULL OR " + alias + ".agent_name NOT IN (" + placeholders + ")",
+		alias + ".application_principal_id IS NULL OR " + alias + ".application_principal_id NOT IN (" + placeholders + ")",
+		alias + ".effective_subject_id IS NULL OR " + alias + ".effective_subject_id NOT IN (" + placeholders + ")",
+	}
+	args := make([]any, 0, len(unique)*len(predicates))
+	for range predicates {
+		args = append(args, stringsToAny(unique)...)
+	}
+	return "(" + strings.Join(predicates, ") AND (") + ")", args
+}
+
+func stringsToAny(values []string) []any {
+	args := make([]any, len(values))
+	for index := range values {
+		args[index] = values[index]
+	}
+	return args
 }
 
 func conversationSummaryReceiptExists(query isessionstore.SummaryPageQuery) (string, []any) {

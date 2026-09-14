@@ -53,3 +53,26 @@ func TestUsableSummaryReceiptRequiresProjectedRequestAndTraceIdentity(t *testing
 		t.Fatalf("predicates=%v", got)
 	}
 }
+
+func TestConversationSummaryExcludedAgentPredicateMatchesAllCanonicalAgentIdentities(t *testing.T) {
+	clause, args := conversationSummaryExcludedAgentPredicate("c", []string{"analysis-agent", "", "analysis-agent", "claim-agent"})
+	for _, expected := range []string{
+		"c.agent_name IS NULL OR c.agent_name NOT IN (?,?)",
+		"c.application_principal_id IS NULL OR c.application_principal_id NOT IN (?,?)",
+		"c.effective_subject_id IS NULL OR c.effective_subject_id NOT IN (?,?)",
+	} {
+		if !strings.Contains(clause, expected) {
+			t.Fatalf("predicate is missing %q: %s", expected, clause)
+		}
+	}
+	if strings.Count(clause, "NOT IN (?,?)") != 3 {
+		t.Fatalf("clause=%s", clause)
+	}
+	if !reflect.DeepEqual(args, []any{
+		"analysis-agent", "claim-agent",
+		"analysis-agent", "claim-agent",
+		"analysis-agent", "claim-agent",
+	}) {
+		t.Fatalf("args=%v", args)
+	}
+}

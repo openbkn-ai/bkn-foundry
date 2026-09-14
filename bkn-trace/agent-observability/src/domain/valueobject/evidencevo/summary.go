@@ -139,8 +139,8 @@ type ConversationSummary struct {
 	EvidenceCompleteness   string   `json:"evidence_completeness"`
 	PartialReasons         []string `json:"partial_reasons,omitempty"`
 	InteractionCount       int      `json:"interaction_count"`
-	RequestCount           int      `json:"request_count"`
-	TraceCount             int      `json:"trace_count"`
+	RequestCount           int      `json:"request_count,omitempty"`
+	TraceCount             int      `json:"trace_count,omitempty"`
 	DurationMS             int64    `json:"duration_ms,omitempty"`
 	ErrorSummary           string   `json:"error_summary,omitempty"`
 }
@@ -213,6 +213,60 @@ type InteractionSummary struct {
 	// already-authorized in-process reader. Public summaries retain previews.
 	InteractionQuestion string `json:"-"`
 	InteractionResult   string `json:"-"`
+}
+
+// InteractionTerminalPreview contains only the two terminal content previews
+// needed by a conversation list row. It intentionally excludes trace and
+// operation facts, which belong to the on-demand detail projection.
+type InteractionTerminalPreview struct {
+	QuestionPreview string
+	ResultPreview   string
+}
+
+// BuildInteractionTerminalPreviews derives deterministic terminal previews.
+// Interaction-scoped artifacts are preferred. Older records can attach the
+// terminal Question or Result to an operation in the same Interaction, so that
+// shape remains a per-field fallback rather than leaving the list blank.
+func BuildInteractionTerminalPreviews(artifacts []EvidenceArtifact) map[string]InteractionTerminalPreview {
+	ordered := append([]EvidenceArtifact(nil), artifacts...)
+	sort.Slice(ordered, func(i, j int) bool {
+		if ordered[i].ObservedAt == ordered[j].ObservedAt {
+			return ordered[i].ArtifactID < ordered[j].ArtifactID
+		}
+		return ordered[i].ObservedAt < ordered[j].ObservedAt
+	})
+	previews := make(map[string]InteractionTerminalPreview)
+	fallbacks := make(map[string]InteractionTerminalPreview)
+	for _, artifact := range ordered {
+		if artifact.InteractionID == "" {
+			continue
+		}
+		preview := artifactPreview(artifact)
+		if preview == "" {
+			continue
+		}
+		target := previews
+		if !interactionScopedArtifact(artifact) {
+			target = fallbacks
+		}
+		current := target[artifact.InteractionID]
+		switch artifact.ArtifactType {
+		case ArtifactTypeQuestion:
+			firstNonEmpty(&current.QuestionPreview, preview)
+		case ArtifactTypeResult:
+			current.ResultPreview = preview
+		default:
+			continue
+		}
+		target[artifact.InteractionID] = current
+	}
+	for interactionID, fallback := range fallbacks {
+		current := previews[interactionID]
+		firstNonEmpty(&current.QuestionPreview, fallback.QuestionPreview)
+		firstNonEmpty(&current.ResultPreview, fallback.ResultPreview)
+		previews[interactionID] = current
+	}
+	return previews
 }
 
 func BuildExecutionSummaries(traces []NormalizedTrace, artifacts []EvidenceArtifact) ([]RequestSummary, []TraceSummary) {

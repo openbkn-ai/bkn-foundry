@@ -739,6 +739,8 @@ func (s *Service) applyCanonicalConversationState(
 				entries[index].StartedAt = conversation.CreatedAt.UTC().Format(time.RFC3339Nano)
 			}
 			entries[index].AgentName = conversation.AgentName
+			entries[index].AgentOrApp = conversation.AgentName
+			entries[index].Initiator = conversation.ActorNameSnapshot
 			entries[index].ApplicationPrincipalID = conversation.Owner.ApplicationPrincipalID
 			entries[index].EffectiveSubjectID = conversation.Owner.EffectiveSubjectID
 			if conversation.Status == sessionvo.ConversationActive {
@@ -1528,6 +1530,13 @@ func (s *Service) listConversationIdentityPage(ctx context.Context, options evid
 	if !ok || s.projectionSource == nil || !canUseSummaryIdentityPage(options) {
 		return evidencevo.ConversationSummaryPage{}, false, nil
 	}
+	artifactSource, supportsArtifactOnlyReads := s.projectionSource.(iprojectionsource.ArtifactProjectionSourcePort)
+	if !supportsArtifactOnlyReads {
+		// Keep compatibility with a third-party legacy projection source. Every
+		// built-in source implements the narrow capability, so normal production
+		// list reads never fall back to full Trace documents.
+		return evidencevo.ConversationSummaryPage{}, false, nil
+	}
 	cursor, hasCursor, err := decodeSummaryCursor(options.Cursor)
 	if err != nil {
 		return evidencevo.ConversationSummaryPage{}, true, err
@@ -1554,34 +1563,28 @@ func (s *Service) listConversationIdentityPage(ctx context.Context, options evid
 	if len(previewInteractionIDs) > 0 {
 		terminalArtifactTypes = []evidencevo.ArtifactType{evidencevo.ArtifactTypeQuestion, evidencevo.ArtifactTypeResult}
 	}
-	requests, _, metadata, err := s.loadProjectedExecutionSummaries(ctx, iprojectionsource.Query{
-		Scope:           options.Scope,
-		ConversationIDs: ids,
-		InteractionIDs:  previewInteractionIDs,
-		ArtifactTypes:   terminalArtifactTypes,
-		Limit:           selectedSummaryCandidateLimit(len(ids)),
-	}, summaryLoadMetadata{})
-	if err != nil {
-		return evidencevo.ConversationSummaryPage{}, true, err
-	}
-	selected := make(map[string]struct{}, len(ids))
-	for _, id := range ids {
-		selected[id] = struct{}{}
-	}
-	grouped := make(map[string][]evidencevo.RequestSummary, len(ids))
-	for _, request := range requests {
-		if _, found := selected[request.ConversationID]; found {
-			grouped[request.ConversationID] = append(grouped[request.ConversationID], request)
+	artifactResult := iprojectionsource.ArtifactResult{}
+	if len(previewInteractionIDs) > 0 {
+		artifactResult, err = artifactSource.LoadArtifactProjection(ctx, iprojectionsource.Query{
+			Scope:          options.Scope,
+			InteractionIDs: previewInteractionIDs,
+			ArtifactTypes:  terminalArtifactTypes,
+			Limit:          selectedSummaryCandidateLimit(len(previewInteractionIDs)),
+		})
+		if err != nil {
+			return evidencevo.ConversationSummaryPage{}, true, err
 		}
 	}
+	metadata := summaryLoadMetadata{Truncated: artifactResult.Truncated}
+	if artifactResult.Truncated {
+		metadata.addReason("artifact_projection_scan_cap_reached")
+	}
+	grouped := canonicalConversationRequestGroups(interactionsByConversation)
+	previews := evidencevo.BuildInteractionTerminalPreviews(artifactResult.Artifacts)
 	byID := make(map[string]evidencevo.ConversationSummary, len(ids))
 	entriesForCanonical := make([]evidencevo.ConversationSummary, 0, len(ids))
 	for _, identity := range identityPage.Entries {
-		group := grouped[identity.ID]
-		if len(group) == 0 {
-			return evidencevo.ConversationSummaryPage{}, true, ErrSummaryProjectionLag
-		}
-		entriesForCanonical = append(entriesForCanonical, buildConversationSummary(identity.ID, group))
+		entriesForCanonical = append(entriesForCanonical, evidencevo.ConversationSummary{ConversationID: identity.ID})
 	}
 	if err := s.applyCanonicalConversationState(ctx, entriesForCanonical, grouped); err != nil {
 		return evidencevo.ConversationSummaryPage{}, true, err
@@ -1589,9 +1592,11 @@ func (s *Service) listConversationIdentityPage(ctx context.Context, options evid
 	for index := range entriesForCanonical {
 		if interactions, found := interactionsByConversation[entriesForCanonical[index].ConversationID]; found {
 			entriesForCanonical[index].InteractionCount = len(interactions)
-			applyFirstCanonicalConversationPreview(
-				&entriesForCanonical[index], grouped[entriesForCanonical[index].ConversationID], interactions,
-			)
+			if first, found := firstCanonicalInteraction(interactions); found {
+				preview := previews[first.ID]
+				entriesForCanonical[index].QuestionPreview = preview.QuestionPreview
+				entriesForCanonical[index].ResultPreview = preview.ResultPreview
+			}
 		}
 	}
 	for _, entry := range entriesForCanonical {
@@ -1610,6 +1615,20 @@ func (s *Service) listConversationIdentityPage(ctx context.Context, options evid
 		page.NextCursor = &next
 	}
 	return page, true, nil
+}
+
+func canonicalConversationRequestGroups(byConversation map[string][]sessionvo.Interaction) map[string][]evidencevo.RequestSummary {
+	groups := make(map[string][]evidencevo.RequestSummary, len(byConversation))
+	for conversationID, interactions := range byConversation {
+		requests := make([]evidencevo.RequestSummary, 0, len(interactions))
+		for _, interaction := range interactions {
+			if interaction.ID != "" {
+				requests = append(requests, evidencevo.RequestSummary{InteractionID: interaction.ID})
+			}
+		}
+		groups[conversationID] = requests
+	}
+	return groups
 }
 
 func (s *Service) listCanonicalInteractionIDs(ctx context.Context, conversationIDs []string) ([]string, map[string][]sessionvo.Interaction, error) {
@@ -1721,7 +1740,7 @@ func summaryScopeMatchesProfile(scope evidencevo.QueryScope) bool {
 }
 
 func hasSummaryContentFilters(options evidencevo.SummaryQueryOptions) bool {
-	return options.Status != "" || options.AgentOrApp != "" || options.ExcludeAgentOrApp != "" || len(options.ExcludeAgentOrApps) > 0 ||
+	return options.Status != "" || options.AgentOrApp != "" ||
 		options.Service != "" || options.Tool != "" || options.ErrorKeyword != "" ||
 		options.KnowledgeNetwork != "" || options.EvidenceCompleteness != "" || options.Keyword != ""
 }
@@ -1740,7 +1759,11 @@ func matchesAnyExcludedAgent(request evidencevo.RequestSummary, options evidence
 }
 
 func summaryIdentityQuery(options evidencevo.SummaryQueryOptions) isessionstore.SummaryPageQuery {
-	return isessionstore.SummaryPageQuery{Scope: options.Scope, From: options.From, To: options.To, Limit: normalizeSummaryLimit(options.Limit), Offset: summaryQueryOffset(options)}
+	excluded := append([]string(nil), options.ExcludeAgentOrApps...)
+	if options.ExcludeAgentOrApp != "" {
+		excluded = append(excluded, options.ExcludeAgentOrApp)
+	}
+	return isessionstore.SummaryPageQuery{Scope: options.Scope, From: options.From, To: options.To, ExcludeAgentOrApps: excluded, Limit: normalizeSummaryLimit(options.Limit), Offset: summaryQueryOffset(options)}
 }
 
 func summaryIdentityIDs(entries []isessionstore.SummaryIdentity) []string {

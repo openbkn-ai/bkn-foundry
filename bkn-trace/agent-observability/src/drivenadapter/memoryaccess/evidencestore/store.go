@@ -176,6 +176,34 @@ func (s *Store) LoadExecutionProjection(ctx context.Context, query iprojectionso
 	return iprojectionsource.Result{Traces: filteredTraces, Artifacts: filteredArtifacts, Truncated: truncated}, nil
 }
 
+// LoadArtifactProjection mirrors the artifact filtering portion of the full
+// projection without first loading the in-memory evidence collection.
+func (s *Store) LoadArtifactProjection(ctx context.Context, query iprojectionsource.Query) (iprojectionsource.ArtifactResult, error) {
+	artifacts, err := s.ListArtifacts(ctx, query.Scope)
+	if err != nil {
+		return iprojectionsource.ArtifactResult{}, err
+	}
+	filtered := make([]evidencevo.EvidenceArtifact, 0, len(artifacts))
+	for _, artifact := range artifacts {
+		if query.RequestID != "" && artifact.RequestID != query.RequestID ||
+			query.TraceID != "" && artifact.TraceID != query.TraceID ||
+			len(query.InteractionIDs) > 0 && !memoryContainsProjectionID(query.InteractionIDs, artifact.InteractionID) ||
+			len(query.ArtifactTypes) > 0 && !memoryContainsArtifactType(query.ArtifactTypes, artifact.ArtifactType) ||
+			query.InteractionID != "" && artifact.InteractionID != query.InteractionID ||
+			!memoryTimeInRange(artifact.ObservedAt, query.From, query.To) {
+			continue
+		}
+		filtered = append(filtered, artifact)
+	}
+	sort.Slice(filtered, func(i, j int) bool { return filtered[i].ArtifactID < filtered[j].ArtifactID })
+	truncated := false
+	if query.Limit > 0 && len(filtered) > query.Limit {
+		filtered = filtered[:query.Limit]
+		truncated = true
+	}
+	return iprojectionsource.ArtifactResult{Artifacts: filtered, Truncated: truncated}, nil
+}
+
 func memoryContainsProjectionID(values []string, candidate string) bool {
 	for _, value := range values {
 		if value == candidate {

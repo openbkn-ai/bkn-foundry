@@ -76,6 +76,17 @@ func (s *Store) LoadExecutionProjection(ctx context.Context, query iprojectionso
 	}, nil
 }
 
+// LoadArtifactProjection reads only artifact documents. Callers use it after
+// resolving canonical lifecycle identities, so it must never expand to an
+// evidence/Trace projection.
+func (s *Store) LoadArtifactProjection(ctx context.Context, query iprojectionsource.Query) (iprojectionsource.ArtifactResult, error) {
+	artifacts, truncated, err := s.listArtifactProjection(ctx, query)
+	if err != nil {
+		return iprojectionsource.ArtifactResult{}, err
+	}
+	return iprojectionsource.ArtifactResult{Artifacts: artifacts, Truncated: truncated}, nil
+}
+
 func mergeProjectedArtifacts(groups ...[]evidencevo.EvidenceArtifact) []evidencevo.EvidenceArtifact {
 	byID := make(map[string]evidencevo.EvidenceArtifact)
 	for _, artifacts := range groups {

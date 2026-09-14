@@ -21,10 +21,14 @@ import (
 )
 
 type capturingProjectionSource struct {
-	result    iprojectionsource.Result
-	resultFor func(iprojectionsource.Query) iprojectionsource.Result
-	errFor    func(iprojectionsource.Query) error
-	queries   []iprojectionsource.Query
+	result                    iprojectionsource.Result
+	resultFor                 func(iprojectionsource.Query) iprojectionsource.Result
+	errFor                    func(iprojectionsource.Query) error
+	queries                   []iprojectionsource.Query
+	artifactResult            iprojectionsource.ArtifactResult
+	artifactResultFor         func(iprojectionsource.Query) iprojectionsource.ArtifactResult
+	artifactErrFor            func(iprojectionsource.Query) error
+	artifactProjectionQueries []iprojectionsource.Query
 }
 
 type fixedTraceStatsSource map[string]int
@@ -121,15 +125,10 @@ func TestListConversationsLoadsOnlySelectedPageIdentities(t *testing.T) {
 	if page.Total != 31 || len(page.Entries) != 1 || page.Entries[0].ConversationID != "conv-page" || page.NextCursor == nil {
 		t.Fatalf("page=%+v", page)
 	}
-	if len(projection.queries) != 1 || len(projection.queries[0].ConversationIDs) != 1 || projection.queries[0].ConversationIDs[0] != "conv-page" {
-		t.Fatalf("projection queries=%+v", projection.queries)
+	if len(projection.queries) != 0 || len(projection.artifactProjectionQueries) != 0 {
+		t.Fatalf("a conversation without canonical interactions must not expand a projection: full=%+v artifacts=%+v", projection.queries, projection.artifactProjectionQueries)
 	}
 	store.conversationPage = isessionstore.SummaryIdentityPage{Entries: []isessionstore.SummaryIdentity{{ID: "conv-next", StartedAt: "2026-08-19T08:59:00Z"}}, Total: 31}
-	projection.resultFor = func(query iprojectionsource.Query) iprojectionsource.Result {
-		value := pageSummaryTrace("trace-next", "req-next", "2026-08-19T08:59:00Z", "acct_demo", "bd_demo")
-		value.ConversationID = query.ConversationIDs[0]
-		return iprojectionsource.Result{Traces: []evidencevo.NormalizedTrace{value}}
-	}
 	nextPage, err := service.ListConversations(context.Background(), evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), Limit: 20, Cursor: *page.NextCursor})
 	if err != nil || len(nextPage.Entries) != 1 || nextPage.Entries[0].ConversationID != "conv-next" {
 		t.Fatalf("next page=%+v err=%v", nextPage, err)
@@ -147,7 +146,10 @@ func TestListConversationsLoadsInteractionScopedTerminalArtifactsForPage(t *test
 	}}
 	terminalAt := time.Date(2026, 8, 19, 9, 0, 2, 0, time.UTC)
 	if err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
-		tx.SaveConversation(sessionvo.Conversation{ID: "conv-page", CreatedAt: terminalAt, UpdatedAt: terminalAt})
+		tx.SaveConversation(sessionvo.Conversation{
+			ID: "conv-page", AgentName: "supply-agent", ActorNameSnapshot: "operator-a",
+			CreatedAt: terminalAt, UpdatedAt: terminalAt,
+		})
 		tx.SaveInteraction(sessionvo.Interaction{
 			ID: "interaction-page", ConversationID: "conv-page", Ordinal: 1,
 			ExecutionStatus: sessionvo.InteractionCompleted, EvidenceStatus: sessionvo.EvidenceComplete,
@@ -181,10 +183,21 @@ func TestListConversationsLoadsInteractionScopedTerminalArtifactsForPage(t *test
 			value.Artifacts = []evidencevo.EvidenceArtifact{question, result}
 		}
 		return value
+	}, artifactResultFor: func(query iprojectionsource.Query) iprojectionsource.ArtifactResult {
+		if containsSummaryID(query.InteractionIDs, "interaction-page") &&
+			containsArtifactType(query.ArtifactTypes, evidencevo.ArtifactTypeQuestion) &&
+			containsArtifactType(query.ArtifactTypes, evidencevo.ArtifactTypeResult) {
+			return iprojectionsource.ArtifactResult{Artifacts: []evidencevo.EvidenceArtifact{question, result}}
+		}
+		return iprojectionsource.ArtifactResult{}
 	}}
 	service := New(base, WithProjectionSource(projection), WithSessionStore(store))
 
-	page, err := service.ListConversations(context.Background(), evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), Limit: 20})
+	page, err := service.ListConversations(context.Background(), evidencevo.SummaryQueryOptions{
+		Scope:              summaryScope("acct_demo"),
+		Limit:              20,
+		ExcludeAgentOrApps: []string{"business-provenance-analysis"},
+	})
 
 	if err != nil || len(page.Entries) != 1 {
 		t.Fatalf("list conversation page: page=%+v err=%v", page, err)
@@ -195,13 +208,22 @@ func TestListConversationsLoadsInteractionScopedTerminalArtifactsForPage(t *test
 	if page.Entries[0].InteractionCount != 2 {
 		t.Fatalf("canonical interactions must determine the conversation turn count: %+v", page.Entries[0])
 	}
-	if len(projection.queries) != 1 || len(projection.queries[0].InteractionIDs) != 1 ||
-		!containsSummaryID(projection.queries[0].InteractionIDs, "interaction-page") {
-		t.Fatalf("conversation page must load terminal artifacts by canonical interaction id: %+v", projection.queries)
+	if page.Entries[0].AgentOrApp != "supply-agent" || page.Entries[0].Initiator != "operator-a" {
+		t.Fatalf("lifecycle-backed list identity must be retained: %+v", page.Entries[0])
 	}
-	if !containsArtifactType(projection.queries[0].ArtifactTypes, evidencevo.ArtifactTypeQuestion) ||
-		!containsArtifactType(projection.queries[0].ArtifactTypes, evidencevo.ArtifactTypeResult) {
-		t.Fatalf("conversation page must not spend its artifact budget on operation artifacts: %+v", projection.queries)
+	if len(projection.queries) != 0 {
+		t.Fatalf("conversation page must not load a full execution projection: %+v", projection.queries)
+	}
+	if query := store.conversationQueries[0]; len(query.ExcludeAgentOrApps) != 1 || query.ExcludeAgentOrApps[0] != "business-provenance-analysis" {
+		t.Fatalf("identity query must retain the enterprise internal-agent exclusion: %+v", query)
+	}
+	if len(projection.artifactProjectionQueries) != 1 || len(projection.artifactProjectionQueries[0].InteractionIDs) != 1 ||
+		!containsSummaryID(projection.artifactProjectionQueries[0].InteractionIDs, "interaction-page") {
+		t.Fatalf("conversation page must load terminal artifacts by canonical interaction id: %+v", projection.artifactProjectionQueries)
+	}
+	if !containsArtifactType(projection.artifactProjectionQueries[0].ArtifactTypes, evidencevo.ArtifactTypeQuestion) ||
+		!containsArtifactType(projection.artifactProjectionQueries[0].ArtifactTypes, evidencevo.ArtifactTypeResult) {
+		t.Fatalf("conversation page must not spend its artifact budget on operation artifacts: %+v", projection.artifactProjectionQueries)
 	}
 }
 
@@ -1061,6 +1083,19 @@ func (s *capturingProjectionSource) LoadExecutionProjection(_ context.Context, q
 		return s.resultFor(query), nil
 	}
 	return s.result, nil
+}
+
+func (s *capturingProjectionSource) LoadArtifactProjection(_ context.Context, query iprojectionsource.Query) (iprojectionsource.ArtifactResult, error) {
+	s.artifactProjectionQueries = append(s.artifactProjectionQueries, query)
+	if s.artifactErrFor != nil {
+		if err := s.artifactErrFor(query); err != nil {
+			return iprojectionsource.ArtifactResult{}, err
+		}
+	}
+	if s.artifactResultFor != nil {
+		return s.artifactResultFor(query), nil
+	}
+	return s.artifactResult, nil
 }
 
 func TestListRequestsUsesStableCursorPagination(t *testing.T) {

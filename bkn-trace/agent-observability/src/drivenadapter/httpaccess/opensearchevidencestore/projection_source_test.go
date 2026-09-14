@@ -80,6 +80,54 @@ func TestOpenSearchProjectionSourceUsesScopedAggregateEvidenceAndArtifacts(t *te
 	}
 }
 
+func TestOpenSearchArtifactProjectionDoesNotReadEvidenceDocuments(t *testing.T) {
+	artifact := normalizedOpenSearchArtifact(t)
+	artifact.InteractionID = "interaction-list-first"
+	artifact.ArtifactType = evidencevo.ArtifactTypeQuestion
+	artifact.OperationID = ""
+	artifact.ContentHash = ""
+	artifact, validationErrors := evidencevo.NormalizeArtifact(artifact)
+	if len(validationErrors) != 0 {
+		t.Fatalf("normalize artifact: %+v", validationErrors)
+	}
+	document, err := toArtifactDocument(artifact)
+	if err != nil {
+		t.Fatalf("encode artifact document: %v", err)
+	}
+	var artifactQuery string
+	client := newFakeOpenSearchClient(func(r *http.Request) (*http.Response, error) {
+		switch {
+		case r.Method == http.MethodPut && r.URL.Path == "/bkn-trace-evidence-test-artifacts":
+			return jsonResponse(`{"acknowledged":true}`), nil
+		case r.Method == http.MethodPost && r.URL.Path == "/bkn-trace-evidence-test-artifacts/_search":
+			body, _ := io.ReadAll(r.Body)
+			artifactQuery = string(body)
+			response, _ := json.Marshal(map[string]any{"hits": map[string]any{"hits": []any{
+				map[string]any{"_id": artifact.ArtifactID, "_source": document, "sort": []any{artifact.ObservedAt, artifact.ArtifactID}},
+			}}})
+			return jsonResponse(string(response)), nil
+		default:
+			t.Fatalf("artifact-only projection must not request %s %s", r.Method, r.URL.Path)
+			return nil, nil
+		}
+	})
+	store := New(client, "bkn-trace-evidence-test")
+	result, err := store.LoadArtifactProjection(context.Background(), iprojectionsource.Query{
+		Scope:          evidencevo.QueryScope{AccountID: artifact.AccountID, AccountType: artifact.AccountType},
+		InteractionIDs: []string{artifact.InteractionID},
+		ArtifactTypes:  []evidencevo.ArtifactType{evidencevo.ArtifactTypeQuestion, evidencevo.ArtifactTypeResult},
+		Limit:          2,
+	})
+	if err != nil || len(result.Artifacts) != 1 || result.Artifacts[0].ArtifactID != artifact.ArtifactID || result.Truncated {
+		t.Fatalf("artifact-only projection result=%+v err=%v", result, err)
+	}
+	for _, expected := range []string{`"interaction_id":["interaction-list-first"]`, `"artifact_type":["question","result"]`} {
+		if !strings.Contains(artifactQuery, expected) {
+			t.Fatalf("artifact query missing %s: %s", expected, artifactQuery)
+		}
+	}
+}
+
 func TestOpenSearchProjectionSourcePaginatesAllEvidence(t *testing.T) {
 	searchCalls := 0
 	client := newFakeOpenSearchClient(func(r *http.Request) (*http.Response, error) {
