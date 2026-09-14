@@ -270,6 +270,40 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 }
 
 func TestOpenSearchConnectorConvertFilterConditionEqual(t *testing.T) {
+	t.Run("uses each field's own keyword name for field comparison", func(t *testing.T) {
+		conn := &OpenSearchConnector{}
+		schema := []*interfaces.Property{
+			{Name: "left", OriginalName: "left", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{
+				FeatureName: "raw", FeatureType: interfaces.PropertyFeatureType_Keyword,
+			}}},
+			{Name: "right", OriginalName: "right", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{
+				FeatureName: "exact", FeatureType: interfaces.PropertyFeatureType_Keyword,
+			}}},
+		}
+		fields := map[string]*interfaces.Property{"left": schema[0], "right": schema[1]}
+		for _, operation := range []string{filter_condition.OperationEqual, filter_condition.OperationNotEqual} {
+			cfg := &interfaces.FilterCondCfg{
+				Name: "left", Operation: operation,
+				ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Field, Value: "right"},
+			}
+			cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, fields)
+			require.NoError(t, err)
+
+			got, err := conn.ConvertFilterCondition(cond, schema)
+
+			require.NoError(t, err)
+			operator := "=="
+			if operation == filter_condition.OperationNotEqual {
+				operator = "!="
+			}
+			assert.Equal(t, map[string]any{
+				"script": map[string]any{
+					"source": "doc['left.raw'].value " + operator + " doc['right.exact'].value",
+				},
+			}, got)
+		}
+	})
+
 	t.Run("uses default keyword name when feature name is empty", func(t *testing.T) {
 		conn := &OpenSearchConnector{}
 		cond := mustOSCondition(t, osConstCfg("body", filter_condition.OperationEqual, "hello"))

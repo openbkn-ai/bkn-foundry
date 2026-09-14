@@ -279,6 +279,10 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		result, err := rds.lvs.QueryWithPaging(ctx, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Query logic view data failed", err)
+			var httpErr *rest.HTTPError
+			if errors.As(err, &httpErr) {
+				return nil, 0, httpErr
+			}
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 				WithErrorDetails(err.Error())
 		}

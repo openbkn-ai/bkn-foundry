@@ -1587,6 +1587,49 @@ func TestResourceServiceUpdate(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
+	t.Run("update marks local index stale when key fields and schema features both change", func(t *testing.T) {
+		rs, mockRA, mockPS, _, _, mockCS, mockBTA := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
+		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).Return(int64(1), nil)
+		mockRA.EXPECT().UpdateLocalIndexState(
+			gomock.Any(), gomock.Not(nil), "r1",
+			interfaces.ResourceLocalIndexStatusStale,
+			"vega-build-r1-task-1", "",
+		).Return(true, nil)
+
+		err := rs.Update(context.Background(), &interfaces.Resource{
+			ID:               "r1",
+			CatalogID:        "cat1",
+			Category:         interfaces.ResourceCategoryTable,
+			Name:             "table",
+			LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+			LocalIndexName:   "vega-build-r1-task-1",
+			SyncMark:         `{"mode":"batch","cursor":[1]}`,
+			SourceIdentifier: "public.orders",
+			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{{
+				FeatureName: "keyword", FeatureType: interfaces.PropertyFeatureType_Keyword,
+				Config: map[string]any{"ignore_above": interfaces.DefaultTextKeywordIgnoreAbove},
+			}}}},
+			IndexConfig: &interfaces.ResourceIndexConfig{
+				PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"id"},
+			},
+		}, &interfaces.ResourceRequest{
+			CatalogID:        "cat1",
+			Category:         interfaces.ResourceCategoryTable,
+			Name:             "table",
+			SourceIdentifier: "public.orders",
+			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{{
+				FeatureName: "fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext,
+			}}}},
+			IndexConfig: &interfaces.ResourceIndexConfig{
+				PrimaryKeyFields: []string{"id"}, IncrementalFields: nil,
+			},
+		})
+		require.NoError(t, err)
+	})
 	t.Run("update rejects index config change when active build task exists", func(t *testing.T) {
 		rs, _, mockPS, _, _, _, mockBTA := newTestService(t)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)

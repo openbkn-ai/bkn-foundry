@@ -424,6 +424,32 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		assert.Equal(t, wantRows, rows)
 		assert.Equal(t, int64(1), total)
 	})
+
+	t.Run("query logic view passes the logic view service HTTP error through", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockLVS := mock_interfaces.NewMockLogicViewService(ctrl)
+		rds := &resourceDataService{cs: mockCS, lvs: mockLVS}
+		resource := &interfaces.Resource{
+			ID: "logic-view-1", Enabled: true, CatalogID: "catalog-1",
+			Category:         interfaces.ResourceCategoryLogicView,
+			SchemaDefinition: []*interfaces.Property{{Name: "body", Type: interfaces.DataType_Text}},
+		}
+		params := &interfaces.ResourceDataQueryParams{}
+		downstream := rest.NewHTTPError(context.Background(), http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			WithErrorDetails("text field body has no keyword feature; re-save the resource configuration")
+
+		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+		mockLVS.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).Return(nil, downstream)
+
+		_, _, err := rds.query(context.Background(), resource, params)
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "re-save the resource configuration")
+	})
 }
 
 func TestNormalizeResourceValuesRespectOutputFields(t *testing.T) {

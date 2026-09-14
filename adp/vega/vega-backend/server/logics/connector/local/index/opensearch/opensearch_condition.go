@@ -247,9 +247,14 @@ func (c *OpenSearchConnector) ConvertFilterConditionEqual(condition interfaces.F
 			},
 		}, nil
 	case interfaces.ValueFrom_Field:
+		rightFieldName := propertyPhysicalFieldName(cond.Rfield)
+		rightKeyword, err := c.getKeywordSuffix(rightFieldName, schemaDefinition)
+		if err != nil {
+			return nil, err
+		}
 		return map[string]any{
 			"script": map[string]any{
-				"source": fmt.Sprintf("doc['%s'].value == doc['%s'].value", fieldName+keyword, cond.Rfield.OriginalName+keyword),
+				"source": fmt.Sprintf("doc['%s'].value == doc['%s'].value", fieldName+keyword, rightFieldName+rightKeyword),
 			},
 		}, nil
 	default:
@@ -288,9 +293,14 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotEqual(condition interface
 			},
 		}, nil
 	case interfaces.ValueFrom_Field:
+		rightFieldName := propertyPhysicalFieldName(cond.Rfield)
+		rightKeyword, err := c.getKeywordSuffix(rightFieldName, schemaDefinition)
+		if err != nil {
+			return nil, err
+		}
 		return map[string]any{
 			"script": map[string]any{
-				"source": fmt.Sprintf("doc['%s'].value != doc['%s'].value", fieldName+keyword, cond.Rfield.OriginalName+keyword),
+				"source": fmt.Sprintf("doc['%s'].value != doc['%s'].value", fieldName+keyword, rightFieldName+rightKeyword),
 			},
 		}, nil
 	default:

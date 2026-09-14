@@ -1078,7 +1078,7 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 	previousFingerprint := ""
 	keyFieldsChanged := req.IndexConfig != nil && indexConfigKeyFieldsChanged(resource.IndexConfig, req.IndexConfig)
 	if buildRelevantChanged {
-		previousFingerprint, err = ResourceIndexConfigFingerprint(resource)
+		previousFingerprint, err = resourceLocalIndexMappingFingerprint(resource)
 		if err != nil {
 			span.SetStatus(codes.Error, "Fingerprint current resource index config failed")
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
@@ -1136,7 +1136,7 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 	}
 	currentFingerprint := ""
 	if buildRelevantChanged {
-		currentFingerprint, err = ResourceIndexConfigFingerprint(resource)
+		currentFingerprint, err = resourceLocalIndexMappingFingerprint(resource)
 		if err != nil {
 			span.SetStatus(codes.Error, "Fingerprint updated resource index config failed")
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
@@ -1198,18 +1198,9 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 			return err
 		}
 	}
-	if keyFieldsChanged {
-		if resource.SyncMark != "" {
-			updated, err := rs.ra.UpdateLocalIndexState(ctx, tx, resource.ID,
-				resource.LocalIndexStatus, resource.LocalIndexName, "")
-			if err != nil || !updated {
-				return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
-					WithErrorDetails("failed to clear resource incremental checkpoint")
-			}
-		}
-		resource.SyncMark = ""
-	} else if buildRelevantChanged && previousFingerprint != currentFingerprint &&
-		resource.LocalIndexStatus == interfaces.ResourceLocalIndexStatusAvailable {
+	indexContractChanged := buildRelevantChanged && previousFingerprint != currentFingerprint &&
+		resource.LocalIndexStatus == interfaces.ResourceLocalIndexStatusAvailable
+	if indexContractChanged {
 		updated, err := rs.ra.UpdateLocalIndexState(ctx, tx, resource.ID,
 			interfaces.ResourceLocalIndexStatusStale, resource.LocalIndexName, "")
 		if err != nil || !updated {
@@ -1221,6 +1212,16 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 				WithErrorDetails("failed to mark resource local index stale")
 		}
 		resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusStale
+		resource.SyncMark = ""
+	} else if keyFieldsChanged {
+		if resource.SyncMark != "" {
+			updated, err := rs.ra.UpdateLocalIndexState(ctx, tx, resource.ID,
+				resource.LocalIndexStatus, resource.LocalIndexName, "")
+			if err != nil || !updated {
+				return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
+					WithErrorDetails("failed to clear resource incremental checkpoint")
+			}
+		}
 		resource.SyncMark = ""
 	}
 	if err := tx.Commit(); err != nil {
@@ -1264,6 +1265,17 @@ func indexConfigKeyFieldsChanged(current, requested *interfaces.ResourceIndexCon
 	}
 	return !slices.Equal(current.PrimaryKeyFields, requested.PrimaryKeyFields) ||
 		!slices.Equal(current.IncrementalFields, requested.IncrementalFields)
+}
+
+func resourceLocalIndexMappingFingerprint(resource *interfaces.Resource) (string, error) {
+	resourceCopy := *resource
+	if resource.IndexConfig != nil {
+		indexConfigCopy := *resource.IndexConfig
+		indexConfigCopy.PrimaryKeyFields = nil
+		indexConfigCopy.IncrementalFields = nil
+		resourceCopy.IndexConfig = &indexConfigCopy
+	}
+	return ResourceIndexConfigFingerprint(&resourceCopy)
 }
 
 // SetEnabled changes only a Resource's enabled state.
