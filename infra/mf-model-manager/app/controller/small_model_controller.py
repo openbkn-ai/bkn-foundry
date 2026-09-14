@@ -23,6 +23,10 @@ MAX_EMBEDDING_TEST_BATCH_SIZE = 128
 EMBEDDING_TEST_TEXT = "bkn embedding configuration test"
 
 
+class EmbeddingTestBatchSizeLimitError(ValueError):
+    pass
+
+
 def _embedding_batch_test_error(batch_size, detail):
     error_dict = ModelFactory_SmallModelController_TestModel_EmbeddingBatchSizeUnsupported_Error.copy()
     error_dict["detail"] = (
@@ -35,11 +39,21 @@ def _embedding_batch_test_error(batch_size, detail):
     )
 
 
+def _embedding_batch_test_limit_error(batch_size, detail):
+    error_dict = ModelFactory_SmallModelController_TestModel_EmbeddingBatchSizeTestLimitExceeded_Error.copy()
+    error_dict["detail"] = f"batch_size={batch_size}; {detail}"
+    return error_with_message(
+        error_dict,
+        "ModelFactory.SmallModelController.TestModel.EmbeddingBatchSizeTestLimitExceeded",
+        parameters=error_dict["detail"],
+    )
+
+
 def _embedding_test_texts(batch_size):
     if batch_size is None or batch_size < 1:
         raise ValueError("Embedding batch_size must be a positive integer.")
     if batch_size > MAX_EMBEDDING_TEST_BATCH_SIZE:
-        raise ValueError(
+        raise EmbeddingTestBatchSizeLimitError(
             f"Embedding batch_size={batch_size} exceeds the test safety limit "
             f"of {MAX_EMBEDDING_TEST_BATCH_SIZE}.")
     return [EMBEDDING_TEST_TEXT] * batch_size
@@ -162,11 +176,15 @@ async def test_model(request, userId, language, role):
         model_config_new = request.model_config
         batch_size = request.batch_size
         model_type = request.model_type
-        if not change:
+        model_info = None
+        if model_id and (not change or batch_size is None):
             model_info = small_model_dao.get_model_info_by_id(model_id)
             if not model_info:
                 return JSONResponse(status_code=400,
                                     content=ModelFactory_SmallModelController_ModelApiDoc_ModelNotFoundError)
+            if batch_size is None:
+                batch_size = model_info[0]["f_batch_size"]
+        if not change:
             config_info_old = json.loads(model_info[0]["f_model_config"])
             if not model_config_new:
                 config_info = config_info_old
@@ -175,7 +193,6 @@ async def test_model(request, userId, language, role):
                 adapter_code = model_info[0]["f_adapter_code"]
                 embedding_dim = model_info[0]["f_embedding_dim"]
                 api_model = config_info.get("api_model", "")
-                batch_size = batch_size if batch_size is not None else model_info[0]["f_batch_size"]
             else:
                 config_info = request.model_config
                 if 'api_key' in config_info:
@@ -224,7 +241,9 @@ async def test_model(request, userId, language, role):
         except Exception as e:
             StandLogger.error(str(e))
             error_detail = str(e)
-            if model_type == "embedding" and (
+            if isinstance(e, EmbeddingTestBatchSizeLimitError):
+                error_dict = _embedding_batch_test_limit_error(batch_size, error_detail)
+            elif model_type == "embedding" and (
                     "batch" in error_detail.lower() or
                     "batch_size" in error_detail.lower()):
                 error_dict = _embedding_batch_test_error(batch_size, error_detail)

@@ -466,10 +466,16 @@ class InnerClient:
                 raise Exception(f"Adapter execution failed: {str(e)}")
 
         else:
-            async with aiohttp.ClientSession(timeout=base_config.aiohttp_timeout) as session:
-                result = await self._post_embedding(session, texts)
-            if self._is_volcengine_embedding():
-                result = self._validate_volcengine_embedding_response(result)
+            if self._is_volcengine_embedding() and all(isinstance(text, str) for text in texts):
+                # Ark multimodal embeddings accepts one input per provider request.
+                # Match the production embedding path so a valid configured batch is not
+                # rejected merely because the provider's wire format is single-input.
+                result = await self._volcengine_text_embeddings(texts)
+            else:
+                async with aiohttp.ClientSession(timeout=base_config.aiohttp_timeout) as session:
+                    result = await self._post_embedding(session, texts)
+                if self._is_volcengine_embedding():
+                    result = self._validate_volcengine_embedding_response(result)
         required_keys = ["object", "data", "model", "usage"]
         if not all(key in result for key in required_keys):
             raise ValueError(f"Invalid adapter response format, missing one of: {required_keys}")

@@ -85,6 +85,7 @@ error_messages = {
     "ModelFactory.ModelController.Model.Error": {"description": "模型调用失败。", "detail": "模型服务无法完成请求。", "solution": "请检查模型配置后重试。"},
     "ModelFactory.ModelController.TestModel.Error": {"description": "模型连接测试失败。", "detail": "当前配置无法连接模型服务。", "solution": "请检查模型配置和服务状态。"},
     "ModelFactory.SmallModelController.TestModel.EmbeddingBatchSizeUnsupported": {"description": "Embedding 批次大小配置不受支持。", "detail_template": "模型服务可用，但当前 embedding 批次大小配置不受支持：{parameters}", "solution": "请调小 embedding 批次大小后重新测试配置。"},
+    "ModelFactory.SmallModelController.TestModel.EmbeddingBatchSizeTestLimitExceeded": {"description": "Embedding 批次大小超过测试安全上限。", "detail_template": "当前 embedding 配置未发送至模型服务：{parameters}", "solution": "请将 embedding 批次大小调低至测试安全上限后重试。"},
     "ModelFactory.ExternalSmallModel.AddModel.RepeatedNames": {"description": "模型名称已存在。", "detail": "其他小模型已使用该名称。", "solution": "请选择其他模型名称。"},
     "ModelFactory.ExternalSmallModel.EditModel.IdNotExist": {"description": "模型配置不存在。", "detail": "指定的配置 ID 不存在。", "solution": "请检查配置 ID 后重试。"},
     "ModelFactory.ExternalSmallModel.EditModel.RepeatedNames": {"description": "模型名称已存在。", "detail": "其他小模型已使用该名称。", "solution": "请选择其他模型名称。"},

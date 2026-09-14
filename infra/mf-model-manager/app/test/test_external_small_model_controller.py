@@ -133,6 +133,7 @@ class TestVolcengineMultimodalEmbeddingRequest(TestCase):
         def __init__(self):
             self.post_args = None
             self.post_kwargs = None
+            self.post_calls = []
 
         async def __aenter__(self):
             return self
@@ -143,6 +144,7 @@ class TestVolcengineMultimodalEmbeddingRequest(TestCase):
         def post(self, *args, **kwargs):
             self.post_args = args
             self.post_kwargs = kwargs
+            self.post_calls.append((args, kwargs))
             return TestVolcengineMultimodalEmbeddingRequest._Response()
 
     def setUp(self) -> None:
@@ -175,11 +177,12 @@ class TestVolcengineMultimodalEmbeddingRequest(TestCase):
             small_model_controller.test_model(request, "1", "zh", "user"))
 
         self.assertEqual(json.loads(result.body)["status"], "ok")
-        self.assertEqual(session.post_kwargs["json"], {
+        self.assertEqual(len(session.post_calls), 10)
+        self.assertTrue(all(call[1]["json"] == {
             "model": "doubao-embedding-vision-251215",
-            "input": [{"type": "text", "text": "hello"}],
+            "input": [{"type": "text", "text": "bkn embedding configuration test"}],
             "dimensions": 1024,
-        })
+        } for call in session.post_calls))
 
     def test_non_vision_doubao_embedding_uses_text_request(self):
         loop = asyncio.new_event_loop()
@@ -209,7 +212,7 @@ class TestVolcengineMultimodalEmbeddingRequest(TestCase):
             async def test_embedding(self, texts):
                 return {
                     "object": "list",
-                    "data": [{"embedding": [0.1] * 1024}],
+                    "data": [{"embedding": [0.1] * 1024} for _ in texts],
                     "model": "doubao-embedding-vision-251215",
                     "usage": {"prompt_tokens": 1, "total_tokens": 1},
                 }
@@ -316,8 +319,43 @@ class TestEmbeddingBatchSizeConnectionTest(TestCase):
 
         body = json.loads(response.body)
         self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            body["code"],
+            "ModelFactory.SmallModelController.TestModel.EmbeddingBatchSizeTestLimitExceeded",
+        )
         self.assertIn("test safety limit", body["detail"])
         client.test_embedding.assert_not_called()
+
+    def test_uses_saved_batch_size_when_existing_model_test_omits_it(self):
+        captured = {}
+        model_info = [{
+            "f_batch_size": 10,
+        }]
+
+        class _Client:
+            def __init__(self, **kwargs):
+                pass
+
+            async def test_embedding(self, texts):
+                captured["texts"] = texts
+                return {
+                    "object": "list",
+                    "data": [{"embedding": [0.1] * 1024} for _ in texts],
+                    "model": "text-embedding-v4",
+                    "usage": {"prompt_tokens": len(texts), "total_tokens": len(texts)},
+                }
+
+        request = self._request(10)
+        request.model_id = "1234567890123456789"
+        request.batch_size = None
+        with mock.patch.object(small_model_controller.small_model_dao,
+                               "get_model_info_by_id", return_value=model_info), \
+                mock.patch.object(small_model_controller, "InnerClient", _Client):
+            response = asyncio.run(
+                small_model_controller.test_model(request, "1", "zh", "user"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(captured["texts"]), 10)
 
 
 class TestEditModel(TestCase):
