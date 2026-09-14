@@ -151,19 +151,20 @@ func (b *bknBackendAccess) GetKnowledgeNetworkDetail(ctx context.Context, knID s
 		{"action-types", "bkn.action_type.list", actionTypes},
 	}
 
-	// The whole list, not a page: a page of the object types is not the network's model. The
-	// export read had no order at all; name order keeps the answer stable between calls.
-	query := url.Values{}
-	query.Set("limit", "-1")
-	query.Set("sort", "name")
-	query.Set("direction", "asc")
-
 	errs := make([]error, len(lists))
 	var wg sync.WaitGroup
 	for i, list := range lists {
 		wg.Add(1)
 		go func(i int, path, operation string, out any) {
 			defer wg.Done()
+			// The whole list, not a page: a page of the object types is not the network's model.
+			// The export read had no order at all; name order keeps the answer stable between
+			// calls. One set of values per request, because the HTTP client merges into the one
+			// it is given.
+			query := url.Values{}
+			query.Set("limit", "-1")
+			query.Set("sort", "name")
+			query.Set("direction", "asc")
 			errs[i] = b.getKnowledgeNetworkJSON(ctx, src+"/"+path, operation, query, out)
 		}(i, list.path, list.operation, list.out)
 	}
