@@ -9,6 +9,7 @@ package resource
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -294,12 +295,18 @@ func TestResourceServiceCheckExistByName(t *testing.T) {
 func TestResourceServiceGetByID(t *testing.T) {
 	t.Run("trusted proxy read skips secondary metadata authorization", func(t *testing.T) {
 		rs, mockRA, _, _, _, _, _ := newTestService(t)
-		want := &interfaces.Resource{ID: "r1", CatalogID: "cat-user"}
+		want := &interfaces.Resource{
+			ID:               "r1",
+			CatalogID:        "cat-user",
+			SchemaDefinition: []*interfaces.Property{{Name: "id"}, {Name: "name"}},
+		}
 		mockRA.EXPECT().GetByID(gomock.Any(), nil, "r1").Return(want, nil)
 
 		got, err := rs.GetByID(interfaces.WithTrustedProxyRead(context.Background()), "r1")
 		require.NoError(t, err)
 		assert.Same(t, want, got)
+		require.NotNil(t, got.ColumnCount)
+		assert.Equal(t, 2, *got.ColumnCount)
 	})
 
 	t.Run("keeps resource when account name lookup fails", func(t *testing.T) {
@@ -320,6 +327,23 @@ func TestResourceServiceGetByID(t *testing.T) {
 		if resource.ID != "r1" {
 			t.Errorf("expected ID 'r1', got '%s'", resource.ID)
 		}
+	})
+	t.Run("does not query dataset row count for generic service reads", func(t *testing.T) {
+		rs, mockRA, mockPS, _, mockUMS, _, _ := newTestService(t)
+		mockRA.EXPECT().GetByID(gomock.Any(), nil, "dataset-1").
+			Return(&interfaces.Resource{ID: "dataset-1", Category: interfaces.ResourceCategoryDataset}, nil)
+		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			[]string{"dataset-1"}, gomock.Any(), true, gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{
+				"dataset-1": {ResourceID: "dataset-1", Operations: []string{"view_detail"}},
+			}, nil)
+		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+		resource, err := rs.GetByID(context.Background(), "dataset-1")
+
+		require.NoError(t, err)
+		assert.Nil(t, resource.ColumnCount)
+		assert.Nil(t, resource.RowCount)
 	})
 	t.Run("get by idnot found", func(t *testing.T) {
 		rs, mockRA, _, _, _, _, _ := newTestService(t)
@@ -398,12 +422,90 @@ func TestResourceServiceGetByID(t *testing.T) {
 func TestResourceServiceGetByIDs(t *testing.T) {
 	t.Run("trusted proxy read skips secondary metadata authorization", func(t *testing.T) {
 		rs, mockRA, _, _, _, _, _ := newTestService(t)
-		want := []*interfaces.Resource{{ID: "r1", CatalogID: "cat-user"}}
+		want := []*interfaces.Resource{{
+			ID:               "r1",
+			CatalogID:        "cat-user",
+			SchemaDefinition: []*interfaces.Property{{Name: "id"}},
+		}}
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).Return(want, nil)
 
-		got, err := rs.GetByIDs(interfaces.WithTrustedProxyRead(context.Background()), []string{"r1"})
+		got, err := rs.GetByIDs(interfaces.WithTrustedProxyRead(context.Background()), []string{"r1"}, false)
 		require.NoError(t, err)
 		assert.Equal(t, want, got)
+		require.NotNil(t, got[0].ColumnCount)
+		assert.Equal(t, 1, *got[0].ColumnCount)
+	})
+
+	t.Run("includes metadata and dataset row counts when requested", func(t *testing.T) {
+		rs, mockRA, _, mockDS, _, _, _ := newTestService(t)
+		table := &interfaces.Resource{
+			ID:             "table-1",
+			Category:       interfaces.ResourceCategoryTable,
+			SourceMetadata: map[string]any{"properties": map[string]any{"row_count": float64(42)}},
+		}
+		fileset := &interfaces.Resource{
+			ID:             "fileset-1",
+			Category:       interfaces.ResourceCategoryFileset,
+			SourceMetadata: map[string]any{"properties": map[string]any{"row_count": json.Number("9007199254740993")}},
+		}
+		withoutMetadata := &interfaces.Resource{ID: "api-1", Category: interfaces.ResourceCategoryAPI}
+		dataset := &interfaces.Resource{ID: "dataset-1", Category: interfaces.ResourceCategoryDataset}
+		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"table-1", "fileset-1", "api-1", "dataset-1"}).
+			Return([]*interfaces.Resource{table, fileset, withoutMetadata, dataset}, nil)
+		mockDS.EXPECT().CountDocuments(gomock.Any(), dataset).Return(int64(7), nil)
+
+		resources, err := rs.GetByIDs(
+			interfaces.WithTrustedProxyRead(context.Background()),
+			[]string{"table-1", "fileset-1", "api-1", "dataset-1"},
+			true,
+		)
+
+		require.NoError(t, err)
+		require.NotNil(t, resources[0].RowCount)
+		assert.Equal(t, int64(42), *resources[0].RowCount)
+		require.NotNil(t, resources[1].RowCount)
+		assert.Equal(t, int64(9007199254740993), *resources[1].RowCount)
+		assert.Nil(t, resources[2].RowCount)
+		require.NotNil(t, resources[3].RowCount)
+		assert.Equal(t, int64(7), *resources[3].RowCount)
+	})
+
+	t.Run("omits table and dataset row counts when not requested", func(t *testing.T) {
+		rs, mockRA, _, _, _, _, _ := newTestService(t)
+		tableRows := int64(42)
+		datasetRows := int64(7)
+		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"table-1", "dataset-1"}).
+			Return([]*interfaces.Resource{
+				{ID: "table-1", Category: interfaces.ResourceCategoryTable, RowCount: &tableRows},
+				{ID: "dataset-1", Category: interfaces.ResourceCategoryDataset, RowCount: &datasetRows},
+			}, nil)
+
+		resources, err := rs.GetByIDs(
+			interfaces.WithTrustedProxyRead(context.Background()),
+			[]string{"table-1", "dataset-1"},
+			false,
+		)
+
+		require.NoError(t, err)
+		assert.Nil(t, resources[0].RowCount)
+		assert.Nil(t, resources[1].RowCount)
+	})
+
+	t.Run("keeps dataset details available when counting rows fails", func(t *testing.T) {
+		rs, mockRA, _, mockDS, _, _, _ := newTestService(t)
+		dataset := &interfaces.Resource{ID: "dataset-1", Category: interfaces.ResourceCategoryDataset}
+		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"dataset-1"}).
+			Return([]*interfaces.Resource{dataset}, nil)
+		mockDS.EXPECT().CountDocuments(gomock.Any(), dataset).Return(int64(0), errors.New("count failed"))
+
+		resources, err := rs.GetByIDs(
+			interfaces.WithTrustedProxyRead(context.Background()),
+			[]string{"dataset-1"},
+			true,
+		)
+
+		require.NoError(t, err)
+		assert.Nil(t, resources[0].RowCount)
 	})
 
 	t.Run("get by ids success", func(t *testing.T) {
@@ -418,7 +520,7 @@ func TestResourceServiceGetByIDs(t *testing.T) {
 			}, nil)
 		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 
-		resources, err := rs.GetByIDs(context.Background(), []string{"r1", "r2"})
+		resources, err := rs.GetByIDs(context.Background(), []string{"r1", "r2"}, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -426,6 +528,73 @@ func TestResourceServiceGetByIDs(t *testing.T) {
 			t.Errorf("expected 2 resources, got %d", len(resources))
 		}
 	})
+}
+
+func TestResourceUpdateUsesFeatureSemanticsForEverySupportedCategory(t *testing.T) {
+	current := []interfaces.PropertyFeature{
+		{FeatureName: "fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext},
+		{
+			FeatureName: "keyword",
+			FeatureType: interfaces.PropertyFeatureType_Keyword,
+			Config:      map[string]any{"ignore_above": 256},
+		},
+	}
+	requested := []interfaces.PropertyFeature{
+		{
+			FeatureName: "keyword",
+			FeatureType: interfaces.PropertyFeatureType_Keyword,
+			Description: "Exact match",
+			IsDefault:   true,
+			Config:      map[string]any{"ignore_above": 256},
+		},
+		{
+			FeatureName: "fulltext",
+			FeatureType: interfaces.PropertyFeatureType_Fulltext,
+			Description: "Search",
+			IsDefault:   true,
+			IsNative:    true,
+		},
+	}
+
+	for _, category := range []string{
+		interfaces.ResourceCategoryTable,
+		interfaces.ResourceCategoryDataset,
+	} {
+		t.Run(category, func(t *testing.T) {
+			changed, err := (&resourceService{}).validateResourceUpdateScope(
+				context.Background(),
+				&interfaces.Resource{
+					CatalogID: "catalog-1",
+					Category:  category,
+					SchemaDefinition: []*interfaces.Property{{
+						Name: "content", Type: interfaces.DataType_Text, Features: current,
+					}},
+				},
+				&interfaces.ResourceRequest{
+					CatalogID: "catalog-1",
+					Category:  category,
+					SchemaDefinition: []*interfaces.Property{{
+						Name: "content", Type: interfaces.DataType_Text, Features: requested,
+					}},
+				},
+			)
+
+			require.NoError(t, err)
+			assert.False(t, changed)
+		})
+	}
+}
+
+func TestSourceMetadataRowCountHandlesMissingMetadata(t *testing.T) {
+	for _, metadata := range []map[string]any{
+		nil,
+		{},
+		{"properties": map[string]any{}},
+	} {
+		count, ok := sourceMetadataRowCount(metadata)
+		assert.False(t, ok)
+		assert.Zero(t, count)
+	}
 }
 
 func TestResourceServiceGetByCatalogID(t *testing.T) {
@@ -711,24 +880,6 @@ func TestValidateKeywordConfig(t *testing.T) {
 			assert.Error(t, err)
 		}
 	})
-}
-
-func TestResourceServicePopulateDatasetRowCount(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	ds := vmock.NewMockDatasetService(ctrl)
-	rs := &resourceService{ds: ds}
-	resource := &interfaces.Resource{ID: "dataset-1", Category: interfaces.ResourceCategoryDataset}
-	ds.EXPECT().CountDocuments(gomock.Any(), resource).Return(int64(0), nil)
-
-	rs.populateDatasetRowCount(context.Background(), resource)
-
-	require.NotNil(t, resource.RowCount)
-	assert.Zero(t, *resource.RowCount)
-
-	failed := &interfaces.Resource{ID: "dataset-2", Category: interfaces.ResourceCategoryDataset}
-	ds.EXPECT().CountDocuments(gomock.Any(), failed).Return(int64(0), errors.New("count failed"))
-	rs.populateDatasetRowCount(context.Background(), failed)
-	assert.Nil(t, failed.RowCount)
 }
 
 func TestValidateSchemaDefinitionRejectsNullField(t *testing.T) {
@@ -1189,6 +1340,48 @@ func TestResourceServiceUpdateDiscoverStatus(t *testing.T) {
 }
 
 func TestResourceServiceUpdate(t *testing.T) {
+	t.Run("allows dataset feature metadata and order changes without rebuilding the index", func(t *testing.T) {
+		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+		resource := &interfaces.Resource{
+			ID:             "r1",
+			CatalogID:      "cat1",
+			Category:       interfaces.ResourceCategoryDataset,
+			Name:           "dataset",
+			LocalIndexName: "vega-dataset-index-1",
+			SchemaDefinition: []*interfaces.Property{{
+				Name: "content",
+				Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{
+					{FeatureName: "fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext},
+					{FeatureName: "keyword", FeatureType: interfaces.PropertyFeatureType_Keyword, Config: map[string]any{"ignore_above": 256}},
+				},
+			}},
+		}
+		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), resource, int64(1)).Return(int64(1), nil)
+
+		err := rs.Update(context.Background(), resource, &interfaces.ResourceRequest{
+			CatalogID:          "cat1",
+			Category:           interfaces.ResourceCategoryDataset,
+			Name:               "dataset",
+			Enabled:            resource.Enabled,
+			ExpectedUpdateTime: 1,
+			SchemaDefinition: []*interfaces.Property{{
+				Name: "content",
+				Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{
+					{FeatureName: "keyword", FeatureType: interfaces.PropertyFeatureType_Keyword, Description: "Exact match", IsDefault: true, Config: map[string]any{"ignore_above": 256}},
+					{FeatureName: "fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext, Description: "Search", IsDefault: true, IsNative: true},
+				},
+			}},
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, "Exact match", resource.SchemaDefinition[0].Features[0].Description)
+	})
+
 	t.Run("update nil resource", func(t *testing.T) {
 		rs, _, _, _, _, _, _ := newTestService(t)
 		err := rs.Update(context.Background(), nil, &interfaces.ResourceRequest{})

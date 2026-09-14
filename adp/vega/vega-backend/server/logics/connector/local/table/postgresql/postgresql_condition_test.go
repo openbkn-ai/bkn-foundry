@@ -259,7 +259,13 @@ func TestConvertDateBetweenUsesToTimestamp(t *testing.T) {
 func TestPostgresqlConnectorConvertFilterConditionBefore(t *testing.T) {
 	t.Run("converts before condition to interval expression", func(t *testing.T) {
 		c := &PostgresqlConnector{}
-		cond := mustNewCond(t, "created_at", "before", []any{float64(2), "days"})
+		cond := &filter_condition.BeforeCond{
+			Cfg: &interfaces.FilterCondCfg{
+				ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const},
+			},
+			Lfield: testFieldsMap()["created_at"],
+			Value:  []any{json.Number("2"), "days"},
+		}
 		sql, args := toSQL(t, c, cond)
 
 		assert.Equal(t, `"created_at" < NOW() - (?::bigint * INTERVAL '1 day')`, sql)

@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf16"
 
+	"vega-backend/common"
 	"vega-backend/interfaces"
 	"vega-backend/logics/filter_condition"
 )
@@ -1015,7 +1016,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionBefore(condition interfaces.
 		return nil, filter_condition.NewConditionBuildError("before condition requires exactly 2 values")
 	}
 
-	interval, ok := values[0].(float64)
+	interval, ok := common.NumberAsFloat64(values[0])
 	if !ok {
 		return nil, fmt.Errorf("condition [before] interval value should be a number")
 	}
@@ -1258,19 +1259,10 @@ func validateKeywordValues(fieldName string, value any, schemaDefinition []*inte
 }
 
 func positiveInt(value any) (int, bool) {
-	switch typed := value.(type) {
-	case int:
-		return typed, typed > 0
-	case int32:
-		converted := int(typed)
-		return converted, converted > 0
-	case int64:
-		converted := int(typed)
-		return converted, typed == int64(converted) && converted > 0
-	case float64:
-		converted := int(typed)
-		return converted, typed == float64(converted) && converted > 0
-	default:
+	typed, ok := common.NumberAsInt64(value)
+	converted := int(typed)
+	if !ok || typed != int64(converted) || converted <= 0 {
 		return 0, false
 	}
+	return converted, true
 }

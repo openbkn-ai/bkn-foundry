@@ -10,6 +10,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"encoding/json"
 	"errors"
 	"regexp"
 	"strings"
@@ -115,10 +116,10 @@ func TestResourceAccessGetByID(t *testing.T) {
 		assert.Equal(t, interfaces.ResourceLocalIndexStatusAvailable, got.LocalIndexStatus)
 		assert.Equal(t, "vega-build-resource-1-task-1", got.LocalIndexName)
 		assert.Equal(t, `{"mode":"batch","cursor":[10,"a"]}`, got.SyncMark)
-		require.NotNil(t, got.ColumnCount)
-		assert.Equal(t, 1, *got.ColumnCount)
-		require.NotNil(t, got.RowCount)
-		assert.Equal(t, int64(42), *got.RowCount)
+		assert.Nil(t, got.ColumnCount)
+		assert.Nil(t, got.RowCount)
+		properties := got.SourceMetadata["properties"].(map[string]any)
+		assert.Equal(t, json.Number("42"), properties["row_count"])
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -194,6 +195,8 @@ func TestResourceAccessGetByIDs(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, got, 2)
 		assert.Equal(t, []string{"resource-1", "resource-2"}, []string{got[0].ID, got[1].ID})
+		assert.Nil(t, got[0].ColumnCount)
+		assert.Nil(t, got[1].ColumnCount)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 

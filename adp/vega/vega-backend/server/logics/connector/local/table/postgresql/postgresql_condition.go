@@ -16,6 +16,7 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 
+	"vega-backend/common"
 	"vega-backend/interfaces"
 	"vega-backend/logics/filter_condition"
 )
@@ -758,15 +759,8 @@ func (c *PostgresqlConnector) ConvertFilterConditionBefore(ctx context.Context, 
 		return nil, fmt.Errorf("before condition requires exactly 2 values")
 	}
 
-	var n int64
-	switch v := values[0].(type) {
-	case float64:
-		n = int64(v)
-	case int:
-		n = int64(v)
-	case int64:
-		n = v
-	default:
+	n, ok := common.NumberAsInt64(values[0])
+	if !ok {
 		return nil, fmt.Errorf("condition [before] interval value should be a number")
 	}
 	unit, ok := values[1].(string)

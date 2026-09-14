@@ -22,7 +22,7 @@ func TestMaterializeDocument(t *testing.T) {
 		IndexConfig:    &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "embedding-1"},
 		SchemaDefinition: []*interfaces.Property{{
 			Name: "content", Type: interfaces.DataType_Text,
-			Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": float64(2)}}},
+			Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": json.Number("2")}}},
 		}},
 	}
 

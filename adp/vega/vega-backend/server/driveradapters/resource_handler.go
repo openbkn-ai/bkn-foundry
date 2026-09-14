@@ -274,7 +274,7 @@ func (r *restHandler) getResources(c *gin.Context, visitor hydra.Visitor) {
 	// a stale object-grant pointing at a removed resource.
 	ignoreMissing := strings.EqualFold(strings.TrimSpace(c.Query("ignore_missing")), "true")
 
-	resources, err := r.rs.GetByIDs(ctx, ids)
+	resources, err := r.rs.GetByIDs(ctx, ids, true)
 	if err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -300,7 +300,6 @@ func (r *restHandler) getResources(c *gin.Context, visitor hydra.Visitor) {
 			}
 		}
 	}
-
 	result := map[string]any{"entries": resources}
 
 	logger.Debug("Handler GetResource Success")

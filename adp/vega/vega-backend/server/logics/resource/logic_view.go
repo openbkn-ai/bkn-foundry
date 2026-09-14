@@ -20,6 +20,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
+	"vega-backend/common"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	fcond "vega-backend/logics/filter_condition"
@@ -862,7 +863,7 @@ func validateCond(ctx context.Context, cfg *interfaces.FilterCondCfg, fieldsMap 
 		}
 	case fcond.OperationBefore:
 		// before, an array of length 2, with the first value being the time length, is of numeric type; The second value is a time unit, a string
-		_, ok := cfg.Value.(float64)
+		_, ok := common.NumberAsFloat64(cfg.Value)
 		if !ok {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterConditionValue).
 				WithErrorDetails("[before] operation's value must be an array")

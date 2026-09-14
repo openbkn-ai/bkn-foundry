@@ -92,7 +92,7 @@ type Resource struct {
 
 	// 规模信息：nil 表示当前资源无法提供该统计值，序列化时省略。
 	ColumnCount *int   `json:"column_count,omitempty"` // Number of schema_definition fields
-	RowCount    *int64 `json:"row_count,omitempty"`    // table 为源端估算行数，dataset 为当前本地索引文档数
+	RowCount    *int64 `json:"row_count,omitempty"`    // dataset 为当前本地索引文档数，其他类型来自源端元数据
 
 	// Fields specific to the logical view
 	LogicType       string                 `json:"logic_type,omitempty"`       // Logical types: derived(derived), composite(composite

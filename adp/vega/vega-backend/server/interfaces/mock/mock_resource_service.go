@@ -161,18 +161,18 @@ func (mr *MockResourceServiceMockRecorder) GetByID(ctx, id any) *gomock.Call {
 }
 
 // GetByIDs mocks base method.
-func (m *MockResourceService) GetByIDs(ctx context.Context, ids []string) ([]*interfaces.Resource, error) {
+func (m *MockResourceService) GetByIDs(ctx context.Context, ids []string, includeRowCount bool) ([]*interfaces.Resource, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetByIDs", ctx, ids)
+	ret := m.ctrl.Call(m, "GetByIDs", ctx, ids, includeRowCount)
 	ret0, _ := ret[0].([]*interfaces.Resource)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetByIDs indicates an expected call of GetByIDs.
-func (mr *MockResourceServiceMockRecorder) GetByIDs(ctx, ids any) *gomock.Call {
+func (mr *MockResourceServiceMockRecorder) GetByIDs(ctx, ids, includeRowCount any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByIDs", reflect.TypeOf((*MockResourceService)(nil).GetByIDs), ctx, ids)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByIDs", reflect.TypeOf((*MockResourceService)(nil).GetByIDs), ctx, ids, includeRowCount)
 }
 
 // GetByName mocks base method.

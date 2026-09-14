@@ -10,7 +10,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -738,18 +737,13 @@ func rawQueryTotalCount(result *interfaces.RawQueryResponse) (int64, error) {
 	if !ok {
 		return 0, fmt.Errorf("count query did not return %s", rawQueryTotalCountColumn)
 	}
-	switch v := value.(type) {
-	case int64:
-		return v, nil
-	case int:
-		return int64(v), nil
-	case int32:
-		return int64(v), nil
-	case float64:
-		if math.Trunc(v) != v || v < 0 || v > math.MaxInt64 {
+	if count, ok := common.NumberAsInt64(value); ok {
+		if count < 0 {
 			return 0, fmt.Errorf("count query returned an invalid number")
 		}
-		return int64(v), nil
+		return count, nil
+	}
+	switch v := value.(type) {
 	case string:
 		count, err := strconv.ParseInt(v, 10, 64)
 		if err != nil || count < 0 {
@@ -779,7 +773,7 @@ func (rqs *rawQueryService) checkSameDataSource(ctx context.Context, resourceIDs
 	}
 
 	// Get all resources
-	resources, err := rqs.rs.GetByIDs(ctx, resourceIDs)
+	resources, err := rqs.rs.GetByIDs(ctx, resourceIDs, false)
 	if err != nil {
 		return nil, nil, err
 	}

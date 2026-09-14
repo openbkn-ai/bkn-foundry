@@ -487,8 +487,11 @@ components:
       properties:
         name:
           description: |
-            本地索引中的物理特征字段名。keyword/fulltext 省略时分别使用 `keyword`/`fulltext`；
-            引用已有向量结果字段的 vector Feature 只需声明 `ref_property`，无需填写 name。
+            特征名称。仅派生的 multi-field 使用该名称作为物理子字段名：text 的 keyword 和
+            string 的 fulltext 省略时分别使用 `keyword`/`fulltext`。string 的 keyword、text 的
+            fulltext 使用属性主字段，string/text 的 vector 使用固定 `<field>_vector` 字段，这些
+            native/fixed 场景不会用 name 改写物理字段。引用已有向量结果字段的 vector Feature
+            只需声明 `ref_property`，无需填写 name。
           type: string
         display_name:
           type: string
@@ -673,7 +676,7 @@ components:
           description: "`schema_definition` 的字段数"
           type: integer
         row_count:
-          description: table 为最近一次发现记录的源端行数估算；dataset 为当前本地索引文档数；无法计算时省略
+          description: dataset 为当前本地索引文档数；其他资源类型来自最近一次发现记录的源端行数估算；无法计算时省略
           type: integer
           format: int64
         logic_type:

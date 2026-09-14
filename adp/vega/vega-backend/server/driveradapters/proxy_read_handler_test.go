@@ -251,8 +251,8 @@ func TestRestHandlerPublicAPIPreservesAuthenticatedCallerAndStripsProxyContext(t
 	as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).
 		Return(hydra.Visitor{ID: "caller-1", Type: "user"}, nil)
 
-	rs.EXPECT().GetByIDs(gomock.Any(), []string{"resource-1"}).
-		DoAndReturn(func(ctx context.Context, _ []string) ([]*interfaces.Resource, error) {
+	rs.EXPECT().GetByIDs(gomock.Any(), []string{"resource-1"}, true).
+		DoAndReturn(func(ctx context.Context, _ []string, _ bool) ([]*interfaces.Resource, error) {
 			account := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 			assert.Equal(t, interfaces.AccountInfo{ID: "caller-1", Type: "user"}, account)
 			return []*interfaces.Resource{{ID: "resource-1"}}, nil

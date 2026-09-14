@@ -139,7 +139,7 @@ func scanResource(scanner resourceRowScanner) (*interfaces.Resource, error) {
 
 	resource.Tags = libCommon.TagString2TagSlice(tagsStr)
 	if sourceMetadata.Valid && sourceMetadata.String != "" {
-		_ = sonic.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
+		_ = common.UnmarshalPreciseJSON([]byte(sourceMetadata.String), &resource.SourceMetadata)
 	}
 	if schemaDefinition.Valid && schemaDefinition.String != "" {
 		_ = sonic.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition)
@@ -150,7 +150,6 @@ func scanResource(scanner resourceRowScanner) (*interfaces.Resource, error) {
 	if logicDefinition.Valid && logicDefinition.String != "" {
 		_ = sonic.Unmarshal([]byte(logicDefinition.String), &resource.LogicDefinition)
 	}
-	resource.ColumnCount, resource.RowCount = extractResourceScale(schemaDefinition, sourceMetadata)
 	return resource, nil
 }
 
@@ -185,26 +184,6 @@ func scanResourceSummary(scanner resourceRowScanner) (*interfaces.ResourceSummar
 	}
 	summary.Tags = libCommon.TagString2TagSlice(tagsStr)
 	return summary, nil
-}
-
-func extractResourceScale(schemaDefinition, sourceMetadata sql.NullString) (*int, *int64) {
-	var columnCount *int
-	var rowCount *int64
-	if schemaDefinition.Valid && schemaDefinition.String != "" {
-		if node, err := sonic.GetFromString(schemaDefinition.String); err == nil && node.Load() == nil {
-			if n, err := node.Len(); err == nil {
-				columnCount = &n
-			}
-		}
-	}
-	if sourceMetadata.Valid && sourceMetadata.String != "" {
-		if node, err := sonic.GetFromString(sourceMetadata.String, "properties", "row_count"); err == nil {
-			if v, err := node.Int64(); err == nil {
-				rowCount = &v
-			}
-		}
-	}
-	return columnCount, rowCount
 }
 
 func applyResourceFilters(builder sq.SelectBuilder, params interfaces.ResourcesQueryParams) sq.SelectBuilder {

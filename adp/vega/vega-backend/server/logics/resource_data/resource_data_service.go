@@ -115,7 +115,9 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 	maxConcurrentQueries := int64(0)
 	if resource.Category != interfaces.ResourceCategoryLogicView {
 		if concurrent, existsInCatalog := catalog.ConnectorCfg["concurrent"]; existsInCatalog {
-			maxConcurrentQueries = int64(concurrent.(float64))
+			if value, ok := common.NumberAsInt64(concurrent); ok {
+				maxConcurrentQueries = value
+			}
 		}
 	}
 
@@ -334,7 +336,7 @@ func normalizeBinaryQueryValues(entries []map[string]any, resource *interfaces.R
 				continue
 			}
 			if binaryMode == interfaces.BinaryModeMetadata {
-				length, ok := value.(int64)
+				length, ok := common.NumberAsInt64(value)
 				if !ok {
 					return nil, fmt.Errorf("binary field %q returned %T byte length", prop.Name, value)
 				}

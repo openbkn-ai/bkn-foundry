@@ -21,6 +21,7 @@ import (
 	"github.com/opensearch-project/opensearch-go/v2"
 	"github.com/opensearch-project/opensearch-go/v2/opensearchapi"
 
+	"vega-backend/common"
 	"vega-backend/interfaces"
 )
 
@@ -769,7 +770,7 @@ func (c *OpenSearchConnector) UpsertDocuments(ctx context.Context, indexName str
 		for i, item := range items {
 			if itemMap, ok := item.(map[string]interface{}); ok {
 				if updateResult, ok := itemMap["update"].(map[string]interface{}); ok {
-					if status, ok := updateResult["status"].(float64); ok {
+					if status, ok := common.NumberAsInt64(updateResult["status"]); ok {
 						if status < 400 {
 							// The successfully extracted document ID
 							if docID, ok := updateRequests[i]["id"].(string); ok {

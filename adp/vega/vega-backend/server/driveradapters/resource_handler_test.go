@@ -250,7 +250,7 @@ func Test_ResourceRestHandler_GetResources(t *testing.T) {
 
 	t.Run("gets resources by ids", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
-		rs.EXPECT().GetByIDs(gomock.Any(), []string{"res-1", "res-2"}).
+		rs.EXPECT().GetByIDs(gomock.Any(), []string{"res-1", "res-2"}, true).
 			Return([]*interfaces.Resource{
 				{ID: "res-1", Name: "one"},
 				{ID: "res-2", Name: "two"},
@@ -266,9 +266,28 @@ func Test_ResourceRestHandler_GetResources(t *testing.T) {
 		assert.Contains(t, w.Body.String(), `"id":"res-2"`)
 	})
 
+	t.Run("adds dataset row count only to resource detail responses", func(t *testing.T) {
+		engine, _, rs := setupResourceHandlerTest(t)
+		rowCount := int64(7)
+		resource := &interfaces.Resource{
+			ID:             "dataset-1",
+			Name:           "dataset",
+			Category:       interfaces.ResourceCategoryDataset,
+			LocalIndexName: "dataset-index-1",
+			RowCount:       &rowCount,
+		}
+		rs.EXPECT().GetByIDs(gomock.Any(), []string{"dataset-1"}, true).Return([]*interfaces.Resource{resource}, nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/resources/dataset-1", nil)
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), `"row_count":7`)
+	})
 	t.Run("normalizes empty, whitespace, and duplicate ids", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
-		rs.EXPECT().GetByIDs(gomock.Any(), []string{"res-1", "res-2"}).
+		rs.EXPECT().GetByIDs(gomock.Any(), []string{"res-1", "res-2"}, true).
 			Return([]*interfaces.Resource{{ID: "res-1", Name: "one"}, {ID: "res-2", Name: "two"}}, nil)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/resources/%20res-1%20,,res-2,res-1", nil)
@@ -294,7 +313,7 @@ func Test_ResourceRestHandler_GetResources(t *testing.T) {
 
 	t.Run("multi-id with a missing id 404s by default", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
-		rs.EXPECT().GetByIDs(gomock.Any(), []string{"res-1", "res-2"}).
+		rs.EXPECT().GetByIDs(gomock.Any(), []string{"res-1", "res-2"}, true).
 			Return([]*interfaces.Resource{{ID: "res-1", Name: "one"}}, nil)
 
 		req := httptest.NewRequest(http.MethodGet, url, nil)
@@ -309,7 +328,7 @@ func Test_ResourceRestHandler_GetResources(t *testing.T) {
 
 	t.Run("ignore_missing skips missing ids in a multi-id batch", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
-		rs.EXPECT().GetByIDs(gomock.Any(), []string{"res-1", "res-2"}).
+		rs.EXPECT().GetByIDs(gomock.Any(), []string{"res-1", "res-2"}, true).
 			Return([]*interfaces.Resource{{ID: "res-1", Name: "one"}}, nil)
 
 		req := httptest.NewRequest(http.MethodGet, url+"?ignore_missing=true", nil)
@@ -325,7 +344,7 @@ func Test_ResourceRestHandler_GetResources(t *testing.T) {
 
 	t.Run("single missing id still returns 404", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
-		rs.EXPECT().GetByIDs(gomock.Any(), []string{"res-x"}).
+		rs.EXPECT().GetByIDs(gomock.Any(), []string{"res-x"}, true).
 			Return([]*interfaces.Resource{}, nil)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/resources/res-x", nil)
@@ -339,7 +358,7 @@ func Test_ResourceRestHandler_GetResources(t *testing.T) {
 
 	t.Run("ignore_missing tolerates a missing single id", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
-		rs.EXPECT().GetByIDs(gomock.Any(), []string{"res-x"}).
+		rs.EXPECT().GetByIDs(gomock.Any(), []string{"res-x"}, true).
 			Return([]*interfaces.Resource{}, nil)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/resources/res-x?ignore_missing=true", nil)

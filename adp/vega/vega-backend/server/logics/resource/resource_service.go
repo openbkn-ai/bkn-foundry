@@ -627,6 +627,7 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 		span.SetStatus(codes.Error, "Resource not found")
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
+	populateResourceColumnCount(resource)
 
 	// Filter objects with viewing permissions based on permissions. The total length of the filtered array is the total number, and there is no need to request the total number again.
 	// Resources in the internal directory are verified by the internal_resource type
@@ -667,8 +668,6 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 		span.RecordError(err)
 		logger.Warnf("Failed to populate resource account names: %v", err)
 	}
-	rs.populateDatasetRowCount(ctx, resource)
-
 	span.SetStatus(codes.Ok, "")
 	return resource, nil
 }
@@ -712,7 +711,12 @@ func (rs *resourceService) InternalGetByID(ctx context.Context, tx *sql.Tx, id s
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalGetByID")
 	defer span.End()
 
-	return rs.ra.GetByID(ctx, tx, id)
+	resource, err := rs.ra.GetByID(ctx, tx, id)
+	if err != nil {
+		return nil, err
+	}
+	populateResourceColumnCount(resource)
+	return resource, nil
 }
 
 // InternalGetByIDs is used by the server to batch read the basic information of resources internally without performing permission filtering or loading extended fields.
@@ -729,6 +733,7 @@ func (rs *resourceService) InternalGetByIDs(ctx context.Context, ids []string) (
 		span.SetStatus(codes.Error, "Get resources failed")
 		return nil, err
 	}
+	populateResourceColumnCounts(resources)
 	span.SetStatus(codes.Ok, "")
 	return resources, nil
 }
@@ -743,14 +748,20 @@ func (rs *resourceService) InternalGetByCatalogID(ctx context.Context, catalogID
 		span.SetStatus(codes.Error, "Get resources failed")
 		return nil, err
 	}
+	populateResourceColumnCounts(resources)
 	span.SetStatus(codes.Ok, "")
 	return resources, nil
 }
 
 // GetByIDs retrieves Resources by IDs.
-func (rs *resourceService) GetByIDs(ctx context.Context, ids []string) ([]*interfaces.Resource, error) {
+func (rs *resourceService) GetByIDs(ctx context.Context, ids []string, includeRowCount bool) ([]*interfaces.Resource, error) {
 	if interfaces.IsTrustedProxyRead(ctx) {
-		return rs.InternalGetByIDs(ctx, ids)
+		resources, err := rs.InternalGetByIDs(ctx, ids)
+		if err != nil {
+			return nil, err
+		}
+		rs.populateResourceRowCounts(ctx, resources, includeRowCount)
+		return resources, nil
 	}
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get resources by IDs")
@@ -767,6 +778,7 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string) ([]*inter
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
+	populateResourceColumnCounts(resources)
 
 	// Filter objects with viewing permissions based on permissions. The total length of the filtered array is the total number, and there is no need to request the total number again.
 	// Resources in the internal directory are verified by the internal_resource type
@@ -797,7 +809,6 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string) ([]*inter
 				WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", interfaces.OPERATION_TYPE_VIEW_DETAIL))
 		}
 		accountInfos = append(accountInfos, &resource.Creator, &resource.Updater)
-		rs.populateDatasetRowCount(ctx, resource)
 	}
 
 	err = rs.ums.GetAccountNames(ctx, accountInfos)
@@ -805,9 +816,74 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string) ([]*inter
 		span.RecordError(err)
 		logger.Warnf("Failed to populate resource account names: %v", err)
 	}
+	rs.populateResourceRowCounts(ctx, resources, includeRowCount)
 
 	span.SetStatus(codes.Ok, "")
 	return resources, nil
+}
+
+func (rs *resourceService) populateResourceRowCounts(ctx context.Context, resources []*interfaces.Resource, includeRowCount bool) {
+	if !includeRowCount {
+		for _, resource := range resources {
+			resource.RowCount = nil
+		}
+		return
+	}
+	for _, resource := range resources {
+		if resource.Category == interfaces.ResourceCategoryDataset {
+			count, err := rs.ds.CountDocuments(ctx, resource)
+			if err != nil {
+				logger.Warnf("Failed to populate dataset row count for resource %s: %v", resource.ID, err)
+				resource.RowCount = nil
+				continue
+			}
+			resource.RowCount = &count
+			continue
+		}
+		count, ok := sourceMetadataRowCount(resource.SourceMetadata)
+		if !ok {
+			resource.RowCount = nil
+			continue
+		}
+		resource.RowCount = &count
+	}
+}
+
+func populateResourceColumnCounts(resources []*interfaces.Resource) {
+	for _, resource := range resources {
+		populateResourceColumnCount(resource)
+	}
+}
+
+func populateResourceColumnCount(resource *interfaces.Resource) {
+	if resource == nil {
+		return
+	}
+	if resource.SchemaDefinition == nil {
+		resource.ColumnCount = nil
+		return
+	}
+	count := len(resource.SchemaDefinition)
+	resource.ColumnCount = &count
+}
+
+func sourceMetadataRowCount(sourceMetadata map[string]any) (int64, bool) {
+	if sourceMetadata == nil {
+		return 0, false
+	}
+	properties, ok := sourceMetadata["properties"].(map[string]any)
+	if !ok {
+		return 0, false
+	}
+	value, ok := properties["row_count"]
+	if !ok {
+		return 0, false
+	}
+	count, ok := common.NumberAsInt64(value)
+	if !ok || count < 0 {
+		return 0, false
+	}
+	return count, true
 }
 
 // GetByCatalogID retrieves all Resources under a Catalog.
@@ -821,6 +897,7 @@ func (rs *resourceService) GetByCatalogID(ctx context.Context, catalogID string)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
+	populateResourceColumnCounts(resources)
 
 	span.SetStatus(codes.Ok, "")
 	return resources, nil
@@ -841,6 +918,7 @@ func (rs *resourceService) GetByName(ctx context.Context, catalogID string, name
 		span.SetStatus(codes.Error, "Resource not found")
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
+	populateResourceColumnCount(resource)
 
 	span.SetStatus(codes.Ok, "")
 	return resource, nil
@@ -984,19 +1062,6 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 
 	span.SetStatus(codes.Ok, "")
 	return summaries, total, nil
-}
-
-func (rs *resourceService) populateDatasetRowCount(ctx context.Context, resource *interfaces.Resource) {
-	if resource == nil || resource.Category != interfaces.ResourceCategoryDataset {
-		return
-	}
-	count, err := rs.ds.CountDocuments(ctx, resource)
-	if err != nil {
-		logger.Warnf("Failed to populate dataset row count for resource %s: %v", resource.ID, err)
-		resource.RowCount = nil
-		return
-	}
-	resource.RowCount = &count
 }
 
 func (rs *resourceService) InternalList(ctx context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.ResourceSummary, error) {
@@ -2046,15 +2111,39 @@ func validateMutableSchemaUpdate(ctx context.Context, current []*interfaces.Prop
 	return schemaChanged, nil
 }
 
-// mutableFeaturesEqual treats a missing vector dimension in the request as an
-// omitted server-maintained value. A supplied dimension remains part of the
-// comparison, so an explicit mismatch is a schema change.
+// mutableFeaturesEqual compares the index-relevant semantics of features for
+// every Resource category that supports mutable feature configuration. Display
+// metadata, persisted service flags, and order do not change the index contract.
+// A missing vector dimension is treated as an omitted server-maintained value;
+// an explicitly supplied dimension remains part of the comparison.
 func mutableFeaturesEqual(current, requested []interfaces.PropertyFeature) bool {
 	if len(current) != len(requested) {
 		return false
 	}
 	currentCopy := append([]interfaces.PropertyFeature(nil), current...)
 	requestedCopy := append([]interfaces.PropertyFeature(nil), requested...)
+	normalize := func(features []interfaces.PropertyFeature) {
+		for i := range features {
+			features[i].DisplayName = ""
+			features[i].Description = ""
+			features[i].IsDefault = false
+			features[i].IsNative = false
+			if len(features[i].Config) == 0 {
+				features[i].Config = nil
+			}
+		}
+		slices.SortFunc(features, func(left, right interfaces.PropertyFeature) int {
+			if result := strings.Compare(left.FeatureType, right.FeatureType); result != 0 {
+				return result
+			}
+			if result := strings.Compare(left.FeatureName, right.FeatureName); result != 0 {
+				return result
+			}
+			return strings.Compare(left.RefProperty, right.RefProperty)
+		})
+	}
+	normalize(currentCopy)
+	normalize(requestedCopy)
 	for i := range currentCopy {
 		if currentCopy[i].FeatureType != interfaces.PropertyFeatureType_Vector ||
 			requestedCopy[i].FeatureType != interfaces.PropertyFeatureType_Vector {

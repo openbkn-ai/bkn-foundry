@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"vega-backend/common"
 	"vega-backend/interfaces"
 	"vega-backend/logics/filter_condition"
 )
@@ -966,7 +967,7 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionBefore(ctx context.Context
 		return nil, fmt.Errorf("before condition requires exactly 2 values")
 	}
 
-	interval, ok := values[0].(float64)
+	interval, ok := common.NumberAsFloat64(values[0])
 	if !ok {
 		return nil, fmt.Errorf("condition [before] interval value should be a number")
 	}

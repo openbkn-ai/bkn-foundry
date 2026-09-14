@@ -19,8 +19,9 @@ type ResourceService interface {
 	Create(ctx context.Context, req *ResourceRequest) (*Resource, error)
 	// Get retrieves a Resource by ID.
 	GetByID(ctx context.Context, id string) (*Resource, error)
-	// GetByIDs retrieves Resources by IDs.
-	GetByIDs(ctx context.Context, ids []string) ([]*Resource, error)
+	// GetByIDs retrieves Resources by IDs. includeRowCount controls whether source
+	// metadata estimates and dataset document counts are included.
+	GetByIDs(ctx context.Context, ids []string, includeRowCount bool) ([]*Resource, error)
 	// GetByCatalogID retrieves all Resources under a Catalog.
 	GetByCatalogID(ctx context.Context, catalogID string) ([]*Resource, error)
 	// GetByName retrieves a Resource by catalog and name.
