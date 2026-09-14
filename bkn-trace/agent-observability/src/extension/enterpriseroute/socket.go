@@ -68,6 +68,14 @@ type Reader interface {
 	ListInteractions(context.Context, ListQuery) (evidencevo.InteractionSummaryPage, error)
 }
 
+// InteractionArtifactReader is an optional in-process capability for an EE
+// route that needs the complete text of a selected interaction's recorded
+// question or result. Core verifies both the caller scope and that the
+// reference belongs to that interaction before returning any content.
+type InteractionArtifactReader interface {
+	ReadInteractionArtifact(context.Context, string, string) (string, bool, error)
+}
+
 // ExplanationScopeReader is an optional in-process capability for an EE
 // explanation cache. The fingerprint is derived by Core from the already
 // authorized access profile; it is never an HTTP input or response field.

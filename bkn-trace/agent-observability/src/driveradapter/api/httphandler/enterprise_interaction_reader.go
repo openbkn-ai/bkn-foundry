@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
@@ -61,9 +62,14 @@ type enterpriseInteractionOperationSource interface {
 	ListOperationExecutionsByInteractionIDScoped(context.Context, evidencevo.QueryScope, string) ([]sessionvo.OperationExecution, error)
 }
 
+type enterpriseInteractionArtifactSource interface {
+	GetArtifact(context.Context, string, evidencevo.QueryScope) (evidencevo.EvidenceArtifact, bool, error)
+}
+
 type enterpriseInteractionFactsReader struct {
 	summaries  enterpriseInteractionSummarySource
 	operations enterpriseInteractionOperationSource
+	artifacts  enterpriseInteractionArtifactSource
 	capture    func(context.Context, string, evidencevo.QueryScope) (json.RawMessage, string, bool, error)
 }
 
@@ -76,10 +82,73 @@ func NewEnterpriseInteractionFactsReader(
 	capture ...func(context.Context, string, evidencevo.QueryScope) (json.RawMessage, string, bool, error),
 ) enterpriseroute.Reader {
 	r := enterpriseInteractionFactsReader{summaries: summaries, operations: operations}
+	if artifacts, ok := summaries.(enterpriseInteractionArtifactSource); ok {
+		r.artifacts = artifacts
+	}
 	if len(capture) > 0 {
 		r.capture = capture[0]
 	}
 	return r
+}
+
+// ReadInteractionArtifact returns full text only when the caller can read the
+// selected interaction and the reference is that interaction's question or
+// final-result artifact. It never exposes an artifact store to the EE overlay.
+func (r enterpriseInteractionFactsReader) ReadInteractionArtifact(
+	ctx context.Context,
+	interactionID string,
+	reference string,
+) (string, bool, error) {
+	scope, ok := trustedQueryScopeFromContext(ctx)
+	if !ok {
+		return "", false, nil
+	}
+	scope.View = evidencevo.AccessViewTechnical
+	summary, found, err := r.summaries.GetInteractionSummary(ctx, interactionID, scope)
+	if err != nil || !found {
+		return "", found, err
+	}
+	reference = strings.TrimSpace(reference)
+	expectedType := evidencevo.ArtifactType("")
+	switch reference {
+	case summary.QuestionArtifactRef:
+		expectedType = evidencevo.ArtifactTypeQuestion
+	case summary.ResultArtifactRef:
+		expectedType = evidencevo.ArtifactTypeResult
+	default:
+		return "", false, nil
+	}
+	artifactID, ok := evidencevo.ArtifactIDFromReference(reference)
+	if !ok || r.artifacts == nil {
+		return "", false, nil
+	}
+	artifact, found, err := r.artifacts.GetArtifact(ctx, artifactID, scope)
+	if err != nil || !found || artifact.ArtifactType != expectedType || artifact.InteractionID != "" && artifact.InteractionID != interactionID {
+		return "", false, err
+	}
+	text := fullArtifactText(artifact)
+	if text == "" {
+		return "", false, nil
+	}
+	return text, true, nil
+}
+
+func fullArtifactText(artifact evidencevo.EvidenceArtifact) string {
+	if text, ok := artifact.Content.(string); ok {
+		return strings.TrimSpace(text)
+	}
+	if object, ok := artifact.Content.(map[string]any); ok {
+		for _, key := range []string{"text", "question", "result", "answer", "summary"} {
+			if text, ok := object[key].(string); ok && strings.TrimSpace(text) != "" {
+				return strings.TrimSpace(text)
+			}
+		}
+	}
+	encoded, err := json.Marshal(artifact.Content)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
 }
 
 func (r enterpriseInteractionFactsReader) ReadInteraction(

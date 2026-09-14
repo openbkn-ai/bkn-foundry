@@ -51,6 +51,41 @@ func TestEnterpriseInteractionReaderUsesTrustedTechnicalScope(t *testing.T) {
 	}
 }
 
+func TestEnterpriseInteractionReaderReturnsFullTextOnlyForReferencedAuthorizedArtifact(t *testing.T) {
+	scope := evidencevo.QueryScope{AccountID: "user-1", AccountType: "user"}
+	fullResult := "完整结果：这是一段超过摘要预览上限的原文。"
+	for i := 0; i < 40; i++ {
+		fullResult += "保真"
+	}
+	reader := NewEnterpriseInteractionFactsReader(
+		fakeInteractionSummarySource{
+			summary: evidencevo.InteractionSummary{
+				InteractionID: "int-1", QuestionArtifactRef: "artifact:question-1", ResultArtifactRef: "artifact:result-1",
+			},
+			found: true,
+			artifacts: map[string]evidencevo.EvidenceArtifact{
+				"result-1": {ArtifactID: "result-1", ArtifactType: evidencevo.ArtifactTypeResult, Content: map[string]any{"answer": fullResult}},
+				"other-1":  {ArtifactID: "other-1", ArtifactType: evidencevo.ArtifactTypeResult, Content: "unrelated"},
+			},
+		},
+		fakeInteractionOperationSource{},
+	)
+	artifactReader, ok := reader.(interface {
+		ReadInteractionArtifact(context.Context, string, string) (string, bool, error)
+	})
+	if !ok {
+		t.Fatal("enterprise reader must expose an authorized interaction artifact reader")
+	}
+	ctx := context.WithValue(context.Background(), trustedQueryScopeContextKey{}, scope)
+	text, found, err := artifactReader.ReadInteractionArtifact(ctx, "int-1", "artifact:result-1")
+	if err != nil || !found || text != fullResult {
+		t.Fatalf("ReadInteractionArtifact() = (%q, %v, %v), want full authorized result", text, found, err)
+	}
+	if _, found, err := artifactReader.ReadInteractionArtifact(ctx, "int-1", "artifact:other-1"); err != nil || found {
+		t.Fatalf("unreferenced artifact must stay unavailable: found=%v err=%v", found, err)
+	}
+}
+
 func TestEnterpriseInteractionReaderListsOnlyTrustedTechnicalScope(t *testing.T) {
 	scope := evidencevo.QueryScope{
 		AccountID: "user-1", AccountType: "user", View: evidencevo.AccessViewTechnical,
@@ -82,6 +117,7 @@ type fakeInteractionSummarySource struct {
 	conversations evidencevo.ConversationSummaryPage
 	interactions  evidencevo.InteractionSummaryPage
 	expectedScope evidencevo.QueryScope
+	artifacts     map[string]evidencevo.EvidenceArtifact
 }
 
 func (s fakeInteractionSummarySource) GetInteractionSummary(_ context.Context, _ string, _ evidencevo.QueryScope) (evidencevo.InteractionSummary, bool, error) {
@@ -100,6 +136,11 @@ func (s fakeInteractionSummarySource) ListInteractions(_ context.Context, scope 
 		return evidencevo.InteractionSummaryPage{}, context.Canceled
 	}
 	return s.interactions, s.err
+}
+
+func (s fakeInteractionSummarySource) GetArtifact(_ context.Context, artifactID string, _ evidencevo.QueryScope) (evidencevo.EvidenceArtifact, bool, error) {
+	artifact, found := s.artifacts[artifactID]
+	return artifact, found, s.err
 }
 
 type fakeInteractionOperationSource struct {
