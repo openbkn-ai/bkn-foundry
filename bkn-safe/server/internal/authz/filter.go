@@ -7,6 +7,7 @@ package authz
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/casbin/casbin/v2/util"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
@@ -231,28 +232,32 @@ type grantIndex struct {
 // grants are the other half and are NOT part of implicit permissions, so they
 // are read separately. Missing them here would silently deny access the
 // single-decision Check grants.
+//
+// A super-admin's index carries no rows. Its decisions never read them
+// (localParts allows every operation before looking), and copying them out was
+// the whole cost of its decisions: a deployment's super-admin held 130k
+// migrated per-resource grants, 25-70ms per decision against 3ms for an
+// ordinary user (#1554). Explain lists grants from the store, not from here.
 func (en *Enforcer) grantIndex(accessorID string) (*grantIndex, error) {
-	rows, err := en.e.GetImplicitPermissionsForUser(accessorID)
-	if err != nil {
-		return nil, err
-	}
-	public, err := en.e.GetFilteredPolicy(0, PublicAccessorID)
-	if err != nil {
-		return nil, err
-	}
-
-	superAdmin, err := en.hasSuperAdminRole(accessorID)
-	if err != nil {
-		return nil, err
-	}
 	roles, err := en.e.GetImplicitRolesForUser(accessorID)
 	if err != nil {
 		return nil, err
 	}
-	edition := entitlement.Current()
-	rows = activePolicyRowsForEdition(rows, edition)
-	public = activePolicyRowsForEdition(public, edition)
-	idx := newGrantIndex(append(rows, public...), superAdmin)
+	superAdmin := slices.Contains(roles, SuperAdminRoleID)
+	var rows [][]string
+	if !superAdmin {
+		rows, err = en.implicitPermissions(accessorID)
+		if err != nil {
+			return nil, err
+		}
+		public, err := en.e.GetFilteredPolicy(0, PublicAccessorID)
+		if err != nil {
+			return nil, err
+		}
+		edition := entitlement.Current()
+		rows = append(activePolicyRowsForEdition(rows, edition), activePolicyRowsForEdition(public, edition)...)
+	}
+	idx := newGrantIndex(rows, superAdmin)
 	seenSubject := map[string]bool{}
 	for _, subject := range append(append([]string{accessorID}, roles...), PublicAccessorID) {
 		if subject == "" || seenSubject[subject] {

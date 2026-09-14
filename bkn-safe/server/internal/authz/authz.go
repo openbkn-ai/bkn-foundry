@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"sync"
 
@@ -478,7 +479,7 @@ type PermQuery struct {
 // Object/op order follows GetImplicitPermissionsForUser; callers treat the
 // result as sets.
 func (en *Enforcer) EffectivePermissions(accessorID string, q PermQuery) (hasWildcard bool, grants []RoleGrant, err error) {
-	rows, err := en.e.GetImplicitPermissionsForUser(accessorID)
+	rows, err := en.implicitPermissions(accessorID)
 	if err != nil {
 		return false, nil, err
 	}
@@ -647,12 +648,26 @@ func (en *Enforcer) hasSuperAdminRole(accessorID string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	for _, role := range roles {
-		if role == SuperAdminRoleID {
-			return true, nil
-		}
+	return slices.Contains(roles, SuperAdminRoleID), nil
+}
+
+// implicitPermissions returns the accessor's direct and role-inherited policy rows.
+//
+// casbin's SyncedEnforcer.GetImplicitPermissionsForUser takes the enforcer's exclusive lock for
+// this read, so every decision queued behind every other one (#1554). The unsynchronized read is
+// safe under the shared lock: it only reads the model, and the one write on its path, the role
+// manager's temporary role for an accessor absent from the role graph, goes through sync.Maps; the
+// synced GetImplicitRolesForUser walks that same path under the shared lock. Writers still take
+// the exclusive lock (publish and casbin's synced mutators), so a read always sees a whole model.
+func (en *Enforcer) implicitPermissions(accessorID string) ([][]string, error) {
+	synced, ok := en.e.(*casbin.SyncedEnforcer)
+	if !ok {
+		return en.e.GetImplicitPermissionsForUser(accessorID)
 	}
-	return false, nil
+	lock := synced.GetLock()
+	lock.RLock()
+	defer lock.RUnlock()
+	return synced.Enforcer.GetImplicitPermissionsForUser(accessorID) //nolint:staticcheck // explicit unsynchronized call under the held lock
 }
 
 // hasOp reports whether ops contains want.
@@ -878,7 +893,7 @@ func (en *Enforcer) AccessibleResources(accessorID, resourceType, op string) ([]
 // accessibleResources is AccessibleResources plus the visited-type set that
 // keeps the ancestor recursion finite.
 func (en *Enforcer) accessibleResources(accessorID, resourceType, op string, visitedTypes map[string]bool) ([]string, error) {
-	perms, err := en.e.GetImplicitPermissionsForUser(accessorID)
+	perms, err := en.implicitPermissions(accessorID)
 	if err != nil {
 		return nil, err
 	}
