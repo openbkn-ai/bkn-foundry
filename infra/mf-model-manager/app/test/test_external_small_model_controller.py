@@ -238,6 +238,88 @@ class TestVolcengineMultimodalEmbeddingRequest(TestCase):
         self.assertEqual(captured["embedding_dim"], 1024)
 
 
+class TestEmbeddingBatchSizeConnectionTest(TestCase):
+    @staticmethod
+    def _request(batch_size):
+        return logics.TestSmallModel(
+            model_name="text-embedding-v4",
+            model_type="embedding",
+            model_config={
+                "api_url": "https://embedding.example.test/v1/embeddings",
+                "api_model": "text-embedding-v4",
+                "api_key": "test-key",
+            },
+            batch_size=batch_size,
+            max_tokens=4096,
+            embedding_dim=1024,
+            change=True,
+        )
+
+    def test_uses_configured_embedding_batch_size(self):
+        captured = {}
+
+        class _Client:
+            def __init__(self, **kwargs):
+                pass
+
+            async def test_embedding(self, texts):
+                captured["texts"] = texts
+                return {
+                    "object": "list",
+                    "data": [{"embedding": [0.1] * 1024} for _ in texts],
+                    "model": "text-embedding-v4",
+                    "usage": {"prompt_tokens": len(texts), "total_tokens": len(texts)},
+                }
+
+        with mock.patch.object(small_model_controller, "InnerClient", _Client):
+            response = asyncio.run(
+                small_model_controller.test_model(self._request(32), "1", "zh", "user"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(captured["texts"]), 32)
+
+    def test_rejects_provider_batch_size_limit_even_when_single_text_would_succeed(self):
+        class _Client:
+            def __init__(self, **kwargs):
+                pass
+
+            async def test_embedding(self, texts):
+                if len(texts) > 10:
+                    raise Exception("batch size is invalid, it should not be larger than 10")
+                return {
+                    "object": "list",
+                    "data": [{"embedding": [0.1] * 1024} for _ in texts],
+                    "model": "text-embedding-v4",
+                    "usage": {"prompt_tokens": len(texts), "total_tokens": len(texts)},
+                }
+
+        with mock.patch.object(small_model_controller, "InnerClient", _Client):
+            response = asyncio.run(
+                small_model_controller.test_model(self._request(32), "1", "zh", "user"))
+
+        body = json.loads(response.body)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            body["code"],
+            "ModelFactory.SmallModelController.TestModel.EmbeddingBatchSizeUnsupported",
+        )
+        self.assertEqual(body["description"], "Embedding batch-size configuration is not supported.")
+        self.assertIn("batch_size=32", body["detail"])
+        self.assertIn("larger than 10", body["detail"])
+
+    def test_rejects_batch_size_above_test_safety_limit_without_calling_provider(self):
+        client = mock.Mock()
+
+        with mock.patch.object(small_model_controller, "InnerClient", return_value=client):
+            response = asyncio.run(
+                small_model_controller.test_model(self._request(129), "1", "zh", "user"))
+
+        body = json.loads(response.body)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("test safety limit", body["detail"])
+        client.test_embedding.assert_not_called()
+
+
 class TestEditModel(TestCase):
     def setUp(self) -> None:
         self.name_check = small_model_dao.name_check

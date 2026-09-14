@@ -168,6 +168,7 @@ _ERROR_CODES = {
     "ModelFactory_SmallModelController_AddSmallModel_ModelNameDuplicateError": "ModelFactory.SmallModelController.AddSmallModel.ModelNameDuplicateError",
     "ModelFactory_SmallModelController_AddSmallModel_AudioNeedResultURLError": "ModelFactory.SmallModelController.AddSmallModel.AudioNeedResultURLError",
     "ModelFactory_SmallModelController_AddSmallModel_UnknownError": "ModelFactory.SmallModelController.AddSmallModel.UnknownError",
+    "ModelFactory_SmallModelController_TestModel_EmbeddingBatchSizeUnsupported_Error": "ModelFactory.SmallModelController.TestModel.EmbeddingBatchSizeUnsupported",
     "ModelFactory_SmallModelRouter_SmallModelList_ParamError": "ModelFactory.SmallModelRouter.SmallModelList.ParameterError",
     "ModelFactory_SmallModelController_SmallModelList_UnknownError": "ModelFactory.SmallModelController.SmallModelList.UnknownError",
     "ModelFactory_SmallModelRouter_SmallModelRun_ParamError": "ModelFactory.SmallModelRouter.SmallModelRun.ParameterError",
