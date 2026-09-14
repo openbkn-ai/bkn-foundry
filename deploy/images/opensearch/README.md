@@ -5,14 +5,17 @@ Stock OpenSearch plus the IK Chinese analyzer, installed by
 
 ## Why this exists
 
-vega-backend probes a fixed candidate list of full-text analyzers once at
-startup (`standard`, `english`, `ik_max_word`, `hanlp_index`) and caches
-whatever the cluster actually answers to; the result is served by
-`GET /api/vega-backend/v1/index-capabilities` and drives Studio's analyzer
-picker. The stock `opensearchproject/opensearch` image carries no Chinese
-analyzer, so only `standard` and `english` ever show up — Chinese text is
-tokenized per character, and picking `ik_max_word` fails validation with
-`analyzer "ik_max_word" ... is unavailable` (HTTP 400).
+vega-backend probes a fixed candidate list of full-text analyzers at startup
+(`standard`, `english`, `ik_max_word`, `hanlp_index`) and caches a successful
+snapshot. Startup performs one probe with a 10-second timeout. If OpenSearch is
+not ready in time, the failure is cached for 30 seconds; a later capability
+request probes once after that cache expires instead of retaining the startup
+failure for the process lifetime. The result is served by
+`GET /api/vega-backend/v1/index-capabilities` and drives
+Studio's analyzer picker. The stock `opensearchproject/opensearch` image carries
+no Chinese analyzer, so only `standard` and `english` ever show up — Chinese
+text is tokenized per character, and picking `ik_max_word` fails validation
+with `analyzer "ik_max_word" ... is unavailable` (HTTP 400).
 
 This image bakes `analysis-ik` in, so `ik_max_word` is available on a fresh
 install with no frontend change and no per-environment setup.
@@ -41,6 +44,21 @@ for 2.10.0 / 2.19.1 / 2.19.2 — none of which loads on a 2.19.4 node, since the
 descriptor version must match exactly. Shipping it would mean building from
 source against every OpenSearch bump plus distributing the HanLP dictionaries.
 The probe simply drops it, same as today.
+
+## Startup and readiness strategy
+
+The bundled installer waits for the OpenSearch Helm release before installing
+Foundry services. This ordering reduces startup races but is not a correctness
+guarantee: either workload can be restarted or upgraded independently, and an
+external OpenSearch cluster is outside the installer lifecycle.
+
+vega-backend readiness therefore remains scoped to the Vega process. Making it
+depend on OpenSearch would remove unrelated Vega APIs from service during a
+search outage. Analyzer capability probing instead uses a bounded timeout and a
+request-triggered recovery path. A failed snapshot returns unavailable until
+its cache expires; the next capability-dependent request then performs one
+refresh while concurrent requests wait for the same result. A successful
+snapshot remains stable until vega-backend is restarted.
 
 ## Build & publish
 
@@ -85,9 +103,10 @@ Word-level tokens (not single characters) means the plugin loaded.
 ## Upgrading an existing environment
 
 1. Point OpenSearch at this image and roll the StatefulSet.
-2. **Restart vega-backend.** The analyzer capability table is probed once per
-   process (`sync.Once`) and cached; without a restart the API keeps reporting
-   `ik_max_word` as unavailable and Studio keeps hiding it.
+2. **Restart vega-backend.** Successful analyzer capability snapshots remain
+   stable for the process lifetime, so installing a new plugin still requires a
+   restart. Automatic refresh is limited to recovering from a probe that has
+   never succeeded.
 3. Rebuild indexes that should use it. The analyzer is fixed at index creation
    time, so existing indexes keep their old tokenization until the object type
    is re-pushed and the build task re-run.
