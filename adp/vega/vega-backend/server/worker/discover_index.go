@@ -338,10 +338,9 @@ func buildSubFieldFeatures(parentName string, subFields []interfaces.IndexSubFie
 			logger.Warnf("Skip unsupported opensearch sub-field type: parent=%s sub=%s type=%s", parentName, sub.Name, sub.Type)
 			continue
 		}
-		fullName := parentName + "." + sub.Name
 		features = append(features, interfaces.PropertyFeature{
-			FeatureName: fullName,
-			DisplayName: fullName,
+			FeatureName: sub.Name,
+			DisplayName: sub.Name,
 			FeatureType: featureType,
 			IsNative:    true,
 			Config:      sub.Attributes,

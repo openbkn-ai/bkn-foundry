@@ -35,10 +35,10 @@ func TestOpenSearchSubFieldFeatures(t *testing.T) {
 		})
 
 		require.Len(t, features, 2)
-		assert.Equal(t, "title.keyword", features[0].FeatureName)
+		assert.Equal(t, "keyword", features[0].FeatureName)
 		assert.Equal(t, interfaces.PropertyFeatureType_Keyword, features[0].FeatureType)
 		assert.Equal(t, map[string]any{"ignore_above": 256}, features[0].Config)
-		assert.Equal(t, "title.text", features[1].FeatureName)
+		assert.Equal(t, "text", features[1].FeatureName)
 		assert.Equal(t, interfaces.PropertyFeatureType_Fulltext, features[1].FeatureType)
 	})
 }
@@ -226,8 +226,8 @@ func TestEnrichIndexMetadataPreservesBusinessMetadata(t *testing.T) {
 				FeatureName: "fulltext",
 				FeatureType: interfaces.PropertyFeatureType_Fulltext,
 			}, {
-				FeatureName: "title.keyword",
-				DisplayName: "title.keyword",
+				FeatureName: "keyword",
+				DisplayName: "keyword",
 				FeatureType: interfaces.PropertyFeatureType_Keyword,
 				IsNative:    true,
 				Config:      map[string]any{"ignore_above": 256},
