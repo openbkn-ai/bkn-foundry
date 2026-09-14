@@ -4,7 +4,6 @@ import json
 from datetime import datetime
 from unittest.mock import AsyncMock, Mock, patch
 from app.utils.reshape_utils import reshape_source, reshape_check, reshape_param
-from app.core.config import base_config
 
 
 class TestReshapeUtils:
@@ -35,10 +34,7 @@ class TestReshapeUtils:
     @pytest.mark.asyncio
     async def test_reshape_source(self, mock_model_data):
         """Test test reshape source."""
-        # reshape_source awaits get_username_by_ids only when AUTH_ENABLED=true.
-        # The default false value skips this branch and leaves create_by/update_by empty.
-        with patch.object(base_config, "AUTH_ENABLED", True), \
-             patch('app.utils.reshape_utils.get_userid_by_search', new_callable=AsyncMock) as mock_get_userid, \
+        with patch('app.utils.reshape_utils.get_userid_by_search', new_callable=AsyncMock) as mock_get_userid, \
              patch('app.utils.reshape_utils.get_username_by_ids', new_callable=AsyncMock) as mock_get_username:
 
             mock_get_userid.return_value = ["user123", "user456"]

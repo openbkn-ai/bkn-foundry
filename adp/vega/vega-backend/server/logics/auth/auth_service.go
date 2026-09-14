@@ -14,11 +14,7 @@ var (
 
 func NewAuthService(appSetting *common.AppSetting) interfaces.AuthService {
 	authServiceOnce.Do(func() {
-		if !common.GetAuthEnabled() {
-			authService = NewNoopAuthService(appSetting)
-		} else {
-			authService = NewHydraAuthService(appSetting)
-		}
+		authService = NewHydraAuthService(appSetting)
 	})
 	return authService
 }

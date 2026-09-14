@@ -112,14 +112,16 @@ func proxyExecutionContextFromHeaders(c *gin.Context) (interfaces.ProxyExecution
 		if request.TargetType != interfaces.ProxyTargetTypeToolBox ||
 			request.TargetID == "" || request.TargetID != strings.TrimSpace(c.Param("box_id")) ||
 			(request.ChildType != interfaces.ProxyChildTypeAction &&
-				request.ChildType != interfaces.ProxyChildTypeLogic) {
+				request.ChildType != interfaces.ProxyChildTypeLogic &&
+				request.ChildType != interfaces.ProxyChildTypeCapability) {
 			return request, stderrors.New("proxy target does not match the Tool execution route")
 		}
 	case c.Request.Method == http.MethodPost &&
 		strings.HasSuffix(c.FullPath(), "/mcp/proxy/:mcp_id/tool/call"):
 		if request.TargetType != interfaces.ProxyTargetTypeMCP ||
 			request.TargetID == "" || request.TargetID != strings.TrimSpace(c.Param("mcp_id")) ||
-			request.ChildType != interfaces.ProxyChildTypeAction {
+			(request.ChildType != interfaces.ProxyChildTypeAction &&
+				request.ChildType != interfaces.ProxyChildTypeCapability) {
 			return request, stderrors.New("proxy target does not match the MCP execution route")
 		}
 	default:

@@ -6,7 +6,6 @@ from app.commons.errors.codes import ParamValidationErrors
 from app.commons.i18n import get_error_message
 from app.commons.locale import error_with_message
 from app.commons.snow_id import worker
-from app.core.config import base_config
 from app.dao.small_model_dao import small_model_dao
 from app.interfaces import dbaccess, logics
 from app.logs.stand_log import StandLogger
@@ -17,6 +16,47 @@ from app.utils.reshape_utils import *
 from fastapi import Response, status
 from app.mydb.ConnectUtil import redis_util, get_redis_util
 from app.utils.permission_manager import PermissionManager, permission_manager
+
+
+# Keep configuration tests representative while bounding the cost of one request.
+MAX_EMBEDDING_TEST_BATCH_SIZE = 128
+EMBEDDING_TEST_TEXT = "bkn embedding configuration test"
+
+
+class EmbeddingTestBatchSizeLimitError(ValueError):
+    pass
+
+
+def _embedding_batch_test_error(batch_size, detail):
+    error_dict = ModelFactory_SmallModelController_TestModel_EmbeddingBatchSizeUnsupported_Error.copy()
+    error_dict["detail"] = (
+        f"batch_size={batch_size}; provider error: {detail}"
+    )
+    return error_with_message(
+        error_dict,
+        "ModelFactory.SmallModelController.TestModel.EmbeddingBatchSizeUnsupported",
+        parameters=error_dict["detail"],
+    )
+
+
+def _embedding_batch_test_limit_error(batch_size, detail):
+    error_dict = ModelFactory_SmallModelController_TestModel_EmbeddingBatchSizeTestLimitExceeded_Error.copy()
+    error_dict["detail"] = f"batch_size={batch_size}; {detail}"
+    return error_with_message(
+        error_dict,
+        "ModelFactory.SmallModelController.TestModel.EmbeddingBatchSizeTestLimitExceeded",
+        parameters=error_dict["detail"],
+    )
+
+
+def _embedding_test_texts(batch_size):
+    if batch_size is None or batch_size < 1:
+        raise ValueError("Embedding batch_size must be a positive integer.")
+    if batch_size > MAX_EMBEDDING_TEST_BATCH_SIZE:
+        raise EmbeddingTestBatchSizeLimitError(
+            f"Embedding batch_size={batch_size} exceeds the test safety limit "
+            f"of {MAX_EMBEDDING_TEST_BATCH_SIZE}.")
+    return [EMBEDDING_TEST_TEXT] * batch_size
 
 
 async def can_manage_default_small_model(user_id, role):
@@ -101,11 +141,8 @@ async def add_model(request: logics.AddExternalSmallModel, userId, language, rol
             return JSONResponse(status_code=409, content=conflict)
         if request.default and not await can_manage_default_small_model(userId, role):
             return JSONResponse(status_code=403, content=NotPermissionError)
-        if base_config.AUTH_ENABLED:
-            user_infos = await get_username_by_ids([userId])
-            user_name = user_infos.get(userId, "")
-        else:
-            user_name = ""
+        user_infos = await get_username_by_ids([userId])
+        user_name = user_infos.get(userId, "")
         status = await permission_manager.add_permission(
             user_id=userId,
             resource_id=model_id,
@@ -137,11 +174,17 @@ async def test_model(request, userId, language, role):
         model_id = request.model_id
         change = request.change
         model_config_new = request.model_config
-        if not change:
+        batch_size = request.batch_size
+        model_type = request.model_type
+        model_info = None
+        if model_id and (not change or batch_size is None):
             model_info = small_model_dao.get_model_info_by_id(model_id)
             if not model_info:
                 return JSONResponse(status_code=400,
                                     content=ModelFactory_SmallModelController_ModelApiDoc_ModelNotFoundError)
+            if batch_size is None:
+                batch_size = model_info[0]["f_batch_size"]
+        if not change:
             config_info_old = json.loads(model_info[0]["f_model_config"])
             if not model_config_new:
                 config_info = config_info_old
@@ -177,8 +220,18 @@ async def test_model(request, userId, language, role):
                                  adapter=adapter, adapter_code=adapter_code,
                                  embedding_dim=embedding_dim)
             if model_type == "embedding":
-                texts = ["hello"]
+                # Ark multimodal embedding has a single-input wire protocol. Its
+                # batch size is handled locally in production, so one probe verifies
+                # the provider configuration without multiplying billable calls.
+                uses_single_input_requests = getattr(
+                    client, "uses_single_input_embedding_requests", lambda: False)
+                test_batch_size = 1 if uses_single_input_requests() else batch_size
+                texts = _embedding_test_texts(test_batch_size)
                 result = await client.test_embedding(texts=texts)
+                if len(result["data"]) != len(texts):
+                    raise ValueError(
+                        f"Embedding response count mismatch: expected={len(texts)}, "
+                        f"actual={len(result['data'])}.")
                 embedding_dim_new = len(result["data"][0]["embedding"])
                 if int(embedding_dim) != embedding_dim_new:
                     StandLogger.warn(f"用户输入的向量维度与模型不一致，请修改后重试")
@@ -193,8 +246,16 @@ async def test_model(request, userId, language, role):
                 await client.test_reranker(query=query, documents=documents)
         except Exception as e:
             StandLogger.error(str(e))
-            error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
-            error_dict["detail"] = f"{e}"
+            error_detail = str(e)
+            if isinstance(e, EmbeddingTestBatchSizeLimitError):
+                error_dict = _embedding_batch_test_limit_error(batch_size, error_detail)
+            elif model_type == "embedding" and (
+                    "batch" in error_detail.lower() or
+                    "batch_size" in error_detail.lower()):
+                error_dict = _embedding_batch_test_error(batch_size, error_detail)
+            else:
+                error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
+                error_dict["detail"] = error_detail
             return JSONResponse(status_code=400, content=error_dict)
         content = {"status": "ok", "id": model_id}
         return JSONResponse(status_code=200, content=content)
@@ -253,18 +314,15 @@ async def edit_model(request: logics.EditExternalSmallModel, userId, language, r
 
 async def get_info_list(order, rule, page, size, model_name, model_type, model_series, user_id, role):
     try:
-        if base_config.AUTH_ENABLED:
-            permission_ids = await permission_manager.get_permission_ids(user_id=user_id,
-                                                                         operation="display",
-                                                                         resource_type="small_model",
-                                                                         resource_name="小模型",
-                                                                         role=role)
-        else:
-            permission_ids = None
+        permission_ids = await permission_manager.get_permission_ids(user_id=user_id,
+                                                                     operation="display",
+                                                                     resource_type="small_model",
+                                                                     resource_name="小模型",
+                                                                     role=role)
 
         total = 0
         res_list = []
-        if base_config.AUTH_ENABLED and not permission_ids:
+        if not permission_ids:
             content = {"count": total, "data": res_list}
             return JSONResponse(status_code=200, content=content)
         try:
@@ -274,11 +332,8 @@ async def get_info_list(order, rule, page, size, model_name, model_type, model_s
         except Exception as e:
             StandLogger.error(e.args)
             return JSONResponse(status_code=500, content=ModelFactory_MyPymysqlPool_Connection_ConnectError_Error)
-        if base_config.AUTH_ENABLED:
-            user_ids = await get_userid_by_search(original_res)
-            user_infos = await get_username_by_ids(user_ids)
-        else:
-            user_infos = {}
+        user_ids = await get_userid_by_search(original_res)
+        user_infos = await get_username_by_ids(user_ids)
         res_list = []
         for item in original_res:
             res_list.append({

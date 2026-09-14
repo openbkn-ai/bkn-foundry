@@ -156,6 +156,12 @@ func (s *authServiceImpl) MultiCheckOperationPermission(ctx context.Context, acc
 }
 
 // OperationCheckAll Check operation permissions.
+//
+// A denial is (false, nil). An error means bkn-safe returned no decision (a
+// transport failure, a timeout, a non-2xx status or a malformed body). It fails
+// closed as 503, not 403, so callers can tell an outage from a missing grant. The
+// cause may carry bkn-safe's address and response body, so it is logged here and
+// kept out of the response.
 func (s *authServiceImpl) OperationCheckAll(
 	ctx context.Context,
 	accessor *interfaces.AuthAccessor,
@@ -174,8 +180,10 @@ func (s *authServiceImpl) OperationCheckAll(
 	}
 	resp, err := s.authorization.OperationCheck(ctx, req)
 	if err != nil {
-		err := oerrors.NewHTTPError(ctx, http.StatusForbidden, oerrors.ErrExtCommonOperationForbidden, err.Error())
-		return false, err
+		s.logger.WithContext(ctx).Errorf("[OperationCheckAll] authorization check %s:%s %v failed: %v",
+			resourceType, resourceID, operations, err)
+		return false, oerrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
+			oerrors.ErrExtCommonAuthorizationUnavailable, nil)
 	}
 	return resp.Result, nil
 }

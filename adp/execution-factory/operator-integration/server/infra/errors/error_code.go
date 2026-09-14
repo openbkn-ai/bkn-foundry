@@ -136,6 +136,7 @@ const (
 	ErrExtCommonAnonymousUserNotAllowed           ErrorCode = "CommonAnonymousUserNotAllowed"           // Anonymous users are not allowed access.
 	ErrExtCommonDepartmentOrGroupOrRoleNotAllowed ErrorCode = "CommonDepartmentOrGroupOrRoleNotAllowed" // Department/user group/role account does not allow access.
 	ErrExtCommonInvalidAccessorType               ErrorCode = "CommonInvalidAccessorType"               // Invalid account type.
+	ErrExtCommonAuthorizationUnavailable          ErrorCode = "CommonAuthorizationUnavailable"          // The authorization service returned no decision.
 )
 
 // Common error code definitions.

@@ -8,10 +8,12 @@ package driveradapters
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
@@ -20,6 +22,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"ontology-query/common"
 	"ontology-query/common/visitor"
@@ -271,6 +274,16 @@ func (r *restHandler) QueryActionLogs(c *gin.Context, visitor hydra.Visitor, inc
 
 	query.KNID = knID
 
+	keyword, err := normalizeActionLogKeyword(query.Keyword)
+	if err != nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+			WithErrorDetails(err.Error())
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	query.Keyword = keyword
+
 	// Convert GET query params to internal format
 	if query.StartTimeFrom > 0 || query.StartTimeTo > 0 {
 		query.StartTimeRange = []int64{query.StartTimeFrom, query.StartTimeTo}
@@ -386,6 +399,13 @@ func (r *restHandler) GetActionLog(c *gin.Context, visitor hydra.Visitor, includ
 	if query.ResultsOffset < 0 {
 		query.ResultsOffset = 0
 	}
+	if query.ResultsOffset+query.ResultsLimit > interfaces.MaxActionResultsWindow {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+			WithErrorDetails(interfaces.ErrActionResultsWindowExceeded.Error())
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 
 	// Get execution log with pagination
 	result, err := r.als.GetExecution(ctx, &query)
@@ -394,6 +414,10 @@ func (r *restHandler) GetActionLog(c *gin.Context, visitor hydra.Visitor, includ
 		if !ok {
 			httpErr = rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ActionExecution_ExecutionNotFound).
 				WithErrorDetails(err.Error())
+			if errors.Is(err, interfaces.ErrActionResultsWindowExceeded) {
+				httpErr = rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+					WithErrorDetails(err.Error())
+			}
 		}
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -408,6 +432,121 @@ func (r *restHandler) GetActionLog(c *gin.Context, visitor hydra.Visitor, includ
 		result = redactActionExecutionProxyContext(result)
 	}
 	rest.ReplyOK(c, http.StatusOK, result)
+}
+
+// maxActionLogKeywordLength bounds the execution-id search term; ids are at most 36 characters.
+const maxActionLogKeywordLength = 128
+
+// normalizeActionLogKeyword trims the execution-id search term and rejects oversized input.
+func normalizeActionLogKeyword(keyword string) (string, error) {
+	keyword = strings.TrimSpace(keyword)
+	if utf8.RuneCountInString(keyword) > maxActionLogKeywordLength {
+		return "", fmt.Errorf("keyword must not exceed %d characters", maxActionLogKeywordLength)
+	}
+	return keyword, nil
+}
+
+// QueryActionLogResultsByIn handles the results page request of one execution (internal)
+func (r *restHandler) QueryActionLogResultsByIn(c *gin.Context) {
+	logger.Debug("Handler QueryActionLogResultsByIn Start")
+	visitor := visitor.GenerateVisitor(c)
+	r.QueryActionLogResults(c, visitor)
+}
+
+// QueryActionLogResultsByEx handles the results page request of one execution (external)
+func (r *restHandler) QueryActionLogResultsByEx(c *gin.Context) {
+	logger.Debug("Handler QueryActionLogResultsByEx Start")
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	visitor, err := r.verifyOAuth(ctx, c)
+	if err != nil {
+		return
+	}
+	r.QueryActionLogResults(c, visitor)
+}
+
+// QueryActionLogResults returns one page of an execution's per-instance results, filtered and
+// paginated by the storage layer rather than in memory.
+func (r *restHandler) QueryActionLogResults(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{
+		ID:   visitor.ID,
+		Type: string(visitor.Type),
+	})
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	query := interfaces.ActionResultsQuery{}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		replyActionResultsError(ctx, c, span, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter,
+			fmt.Sprintf("Binding Parameter Failed: %s", err.Error()))
+		return
+	}
+	query.KNID = c.Param("kn_id")
+	query.LogID = c.Param("log_id")
+	span.SetAttributes(
+		attr.Key("kn_id").String(query.KNID),
+		attr.Key("log_id").String(query.LogID),
+	)
+
+	if err := normalizeActionResultsQuery(&query); err != nil {
+		replyActionResultsError(ctx, c, span, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter, err.Error())
+		return
+	}
+
+	result, err := r.als.QueryResults(ctx, &query)
+	if err != nil {
+		switch {
+		case errors.Is(err, interfaces.ErrActionResultsWindowExceeded):
+			replyActionResultsError(ctx, c, span, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter, err.Error())
+		case strings.Contains(err.Error(), "not found"):
+			replyActionResultsError(ctx, c, span, http.StatusNotFound, oerrors.OntologyQuery_ActionExecution_ExecutionNotFound, err.Error())
+		default:
+			replyActionResultsError(ctx, c, span, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_QueryExecutionsFailed, err.Error())
+		}
+		return
+	}
+
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, result)
+}
+
+// actionResultStatuses are the per-instance result statuses a results page can filter by.
+var actionResultStatuses = map[string]bool{
+	interfaces.ObjectStatusSuccess:   true,
+	interfaces.ObjectStatusFailed:    true,
+	interfaces.ObjectStatusCancelled: true,
+}
+
+// normalizeActionResultsQuery applies the results page defaults and bounds: limit defaults to
+// 100 and is capped at 1000, and the page must end within MaxActionResultsWindow.
+func normalizeActionResultsQuery(query *interfaces.ActionResultsQuery) error {
+	if query.Limit <= 0 {
+		query.Limit = 100
+	}
+	if query.Limit > 1000 {
+		query.Limit = 1000
+	}
+	if query.Offset < 0 {
+		return fmt.Errorf("offset must not be negative")
+	}
+	if query.Offset+query.Limit > interfaces.MaxActionResultsWindow {
+		return interfaces.ErrActionResultsWindowExceeded
+	}
+	query.Status = strings.TrimSpace(query.Status)
+	if query.Status != "" && !actionResultStatuses[query.Status] {
+		return fmt.Errorf("status must be one of success, failed, cancelled")
+	}
+	return nil
+}
+
+func replyActionResultsError(ctx context.Context, c *gin.Context, span trace.Span, status int, code string, details string) {
+	httpErr := rest.NewHTTPError(ctx, status, code).WithErrorDetails(details)
+	oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+	otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), httpErr)
+	rest.ReplyError(c, httpErr)
 }
 
 func redactActionExecutionProxyContext(execution *interfaces.ActionExecution) *interfaces.ActionExecution {

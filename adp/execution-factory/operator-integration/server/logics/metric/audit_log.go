@@ -351,9 +351,6 @@ func (b *AuditLogBuilder) build(p *AuditLogBuilderParams) (interface{}, error) {
 
 // Logger records audit logs.
 func (b *AuditLogBuilder) Logger(ctx context.Context, p *AuditLogBuilderParams) {
-	if !config.GetAuthEnabled() {
-		return
-	}
 	if ctx == nil {
 		ctx = context.Background()
 	}

@@ -232,12 +232,15 @@ func (kns *knowledgeNetworkService) buildObjectSubgraphByTypePaths(
 			return
 		}
 		path.Edges[j].RelationType = relationType
-		// Record direction. If the path edge direction matches the corresponding relation type direction, treat it as forward; otherwise reverse.
-		if path.Edges[j].SourceObjectTypeId == path.Edges[j].RelationType.SourceObjectTypeID {
-			path.Edges[j].Direction = interfaces.DIRECTION_FORWARD
-		} else {
-			path.Edges[j].Direction = interfaces.DIRECTION_BACKWARD
+		// Forward when the edge walks the relation from its source to its target, backward
+		// the other way. Previously any mismatch fell through to backward, so an edge that
+		// was not the relation at all was walked from its target side.
+		direction, err := logics.ResolveTypeEdgeDirection(ctx, j, path.Edges[j], relationType)
+		if err != nil {
+			typePathsObjectCtx.errCh <- err
+			return
 		}
+		path.Edges[j].Direction = direction
 	}
 	typePath.TypeEdges = path.Edges
 	if err := kns.requireFullPathInputs(ctx, query.KNID, query.Branch, []interfaces.RelationTypePath{typePath}); err != nil {

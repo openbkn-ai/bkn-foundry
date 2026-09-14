@@ -66,10 +66,13 @@ func (s *mcpServiceImpl) addMCPHistory(ctx context.Context, tx *sql.Tx, mcpRelea
 		lastMCPReleaseHistory = histories[0]
 	}
 
-	// The most recent one deleted is a historical MCP Server instance.
+	// Publishing a new version retires the instance of the release it supersedes. Republishing the
+	// version already released — offline → published, or editing → published with nothing edited —
+	// keeps it: that instance is the one about to be served (#1478).
 	if lastMCPReleaseHistory != nil {
 		lastMCPRelease := utils.JSONToObject[model.MCPServerReleaseDB](lastMCPReleaseHistory.MCPRelease)
-		if lastMCPRelease.CreationType == interfaces.MCPCreationTypeToolImported.String() {
+		if lastMCPRelease.CreationType == interfaces.MCPCreationTypeToolImported.String() &&
+			lastMCPRelease.Version != mcpRelease.Version {
 			// Delete mcp Server instance.
 			err = s.MCPInstanceService.DeleteMCPInstance(ctx, lastMCPRelease.MCPID, lastMCPRelease.Version)
 			if err != nil {

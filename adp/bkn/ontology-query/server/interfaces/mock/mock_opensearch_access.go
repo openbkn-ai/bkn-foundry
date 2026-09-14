@@ -55,6 +55,20 @@ func (mr *MockOpenSearchAccessMockRecorder) BulkDeleteData(ctx, indexName, docID
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BulkDeleteData", reflect.TypeOf((*MockOpenSearchAccess)(nil).BulkDeleteData), ctx, indexName, docIDs)
 }
 
+// BulkIndexDocuments mocks base method.
+func (m *MockOpenSearchAccess) BulkIndexDocuments(ctx context.Context, indexName string, docs []interfaces.BulkDocument) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BulkIndexDocuments", ctx, indexName, docs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// BulkIndexDocuments indicates an expected call of BulkIndexDocuments.
+func (mr *MockOpenSearchAccessMockRecorder) BulkIndexDocuments(ctx, indexName, docs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BulkIndexDocuments", reflect.TypeOf((*MockOpenSearchAccess)(nil).BulkIndexDocuments), ctx, indexName, docs)
+}
+
 // BulkInsertData mocks base method.
 func (m *MockOpenSearchAccess) BulkInsertData(ctx context.Context, indexName string, dataList []any) error {
 	m.ctrl.T.Helper()
@@ -96,6 +110,21 @@ func (m *MockOpenSearchAccess) CreateIndex(ctx context.Context, indexName string
 func (mr *MockOpenSearchAccessMockRecorder) CreateIndex(ctx, indexName, body any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateIndex", reflect.TypeOf((*MockOpenSearchAccess)(nil).CreateIndex), ctx, indexName, body)
+}
+
+// DeleteByQuery mocks base method.
+func (m *MockOpenSearchAccess) DeleteByQuery(ctx context.Context, indexName string, query any) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteByQuery", ctx, indexName, query)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteByQuery indicates an expected call of DeleteByQuery.
+func (mr *MockOpenSearchAccessMockRecorder) DeleteByQuery(ctx, indexName, query any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByQuery", reflect.TypeOf((*MockOpenSearchAccess)(nil).DeleteByQuery), ctx, indexName, query)
 }
 
 // DeleteData mocks base method.
@@ -168,4 +197,19 @@ func (m *MockOpenSearchAccess) SearchData(ctx context.Context, indexName string,
 func (mr *MockOpenSearchAccessMockRecorder) SearchData(ctx, indexName, query any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchData", reflect.TypeOf((*MockOpenSearchAccess)(nil).SearchData), ctx, indexName, query)
+}
+
+// UpdateData mocks base method.
+func (m *MockOpenSearchAccess) UpdateData(ctx context.Context, indexName, docID string, body any) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateData", ctx, indexName, docID, body)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateData indicates an expected call of UpdateData.
+func (mr *MockOpenSearchAccessMockRecorder) UpdateData(ctx, indexName, docID, body any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateData", reflect.TypeOf((*MockOpenSearchAccess)(nil).UpdateData), ctx, indexName, docID, body)
 }

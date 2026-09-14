@@ -11,7 +11,6 @@ from app.utils.app_utils import (
     RequestSizeMiddleware,
     create_app
 )
-from app.core.config import base_config
 
 
 class TestConfInit:
@@ -85,12 +84,6 @@ class TestShutdownEvent:
 
 class TestAuthMiddleware:
     """Tests for test auth middleware."""
-
-    @pytest.fixture(autouse=True)
-    def enable_auth(self):
-        """Enable auth: the middleware token-validation branch only runs when AUTH_ENABLED=true. The default false value follows the anonymous allow branch and returns 200 directly, so 401 assertions cannot be hit. health/private endpoints bypass by path before auth and are unaffected."""
-        with patch.object(base_config, "AUTH_ENABLED", True):
-            yield
 
     @pytest.fixture
     def mock_request(self):

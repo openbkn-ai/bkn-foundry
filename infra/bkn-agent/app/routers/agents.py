@@ -18,7 +18,7 @@ async def _load_owned_agent(session: AsyncSession, agent_id: str, account: Accou
     be resolved and then ignored).
 
     A legacy row whose creator is unknown (empty f_create_user — agents created
-    before ownership was recorded, or while AUTH_ENABLED was off) is left
+    before ownership was recorded) is left
     editable rather than locked to nobody; tightening that is deferred to the
     ownership model (#332). Read paths (list/get) are intentionally NOT gated
     here so existing agents stay visible to their current users.

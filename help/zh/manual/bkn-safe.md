@@ -2,15 +2,13 @@
 
 ## 📖 概述
 
-**BKN Safe** 是**横切的安全层**：在数据访问、模型输出与工具调用上提供统一的**身份**、**权限**、**策略**与**审计**。完整安装可能对接 OAuth2/OIDC（如 Hydra）。
-
-使用 **`--minimum` 安装**时，多数认证组件关闭，便于实验环境快速上手，部分 API 可能无需 Token。生产环境请按随产品提供的部署与安全文档启用完整认证配置。
+**BKN Safe** 是平台强制使用的**横切安全层**：在数据访问、模型输出与工具调用上提供统一的**身份**、**权限**、**策略**与**审计**，并可对接 OAuth2/OIDC（如 Hydra）。
 
 **相关模块：** 所有接受 `Authorization` 的子系统；主要消费者包括 [VEGA 引擎](vega.md)。
 
 ### 🛡️ 管理员工具：openbkn admin
 
-BKN Safe 在**完整安装**下（启用 `auth.enabled=true`）的日常**管理面**（用户、组织、角色、模型、审计）通过 `openbkn admin` 子命令组操作 — 与本页下文面向终端用户的 `openbkn` 命令同属 [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk)，无需安装独立 CLI。
+BKN Safe 的日常**管理面**（用户、组织、角色、模型、审计）通过 `openbkn admin` 子命令组操作 — 与本页下文面向终端用户的 `openbkn` 命令同属 [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk)，无需安装独立 CLI。
 
 ```bash
 npm install -g @openbkn/bkn-sdk                     # Node.js 22+
@@ -24,7 +22,7 @@ openbkn admin role list
 openbkn admin audit list --user alice --start 2026-04-01 --end 2026-04-30
 ```
 
-> 完整子命令组（`org` / `user` / `role` / `llm` / `small-model` / `audit` / `call`）见 `openbkn admin --help`；管理员 token 与普通用户 token 一并保存在 `~/.bkn/`（保持隔离）。与最小化安装的兼容说明详见 [安装与部署 — 完整安装后的管理员工具](../install.md#-完整安装后的管理员命令openbkn-admin)。
+> 完整子命令组（`org` / `user` / `role` / `llm` / `small-model` / `audit` / `call`）见 `openbkn admin --help`；管理员 token 与普通用户 token 一并保存在 `~/.bkn/`（保持隔离）。
 >
 > 内置「三权分立」账号 `system / admin / security / audit` 不可随意删改；操作员请使用**个人账号**而非共享 `admin`，便于审计追溯。
 
@@ -42,9 +40,6 @@ openbkn auth login https://openbkn.example.com --alias prod -k
 # 使用用户名密码直接登录（非交互式）
 openbkn auth login https://openbkn.example.com \
   -u <用户名> -p '<密码>' -k
-
-# 最小化安装时跳过认证
-openbkn auth login https://localhost:30000 --no-auth -k
 
 # 显式使用 HTTP 用户名密码登录（无需浏览器与 Node/Chromium）
 openbkn auth login https://openbkn.example.com \
@@ -86,8 +81,6 @@ openbkn auth whoami
 # 查看当前会话的详细状态（Token 有效期、刷新状态等）
 openbkn auth status
 ```
-
-**`auth whoami` 与 no-auth**：`whoami` 需 OAuth 登录写入的 `id_token`。若会话为 **`auth login … --no-auth`** 或平台关闭鉴权，CLI 为 **no-auth**，`whoami` 会报错提示无 `id_token`，属正常；请用 `auth status` 确认模式，勿与登录失败混淆。
 
 ```bash
 # 导出当前会话的 Token（用于脚本或 CI/CD）
@@ -250,6 +243,4 @@ curl -sk -X POST "https://<访问地址>/oauth2/token" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=refresh_token&refresh_token=<refresh-token>&client_id=openbkn-sdk"
 
-# 最小化安装 — 无需 Token 直接访问
-curl -sk "https://localhost:30000/api/vega-backend/v1/catalogs"
 ```

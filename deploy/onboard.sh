@@ -89,7 +89,7 @@ ONBOARD_SKIP_TEST_USER="${ONBOARD_SKIP_TEST_USER:-${ONBOARD_SKIP_ISF_TEST_USER:-
 # Populated by onboard_bkn_tls_insecure_args_to_array (usually empty or -k).
 declare -a ONBOARD_TLS_INSECURE_ARGS=()
 
-# openbkn auth: HTTP sign-in defaults (full install). The admin initial password
+# openbkn auth: HTTP sign-in defaults. The admin initial password
 # is generated per install by deploy.sh and recorded as bknSafe.initialPassword
 # in config.yaml (there is no baked-in platform default) — read it from there.
 # After the operator changes it, set ONBOARD_DEFAULT_BKN_PASSWORD / answer the
@@ -206,7 +206,7 @@ onboard_default_access_base_url() {
 }
 
 # openbkn / openbkn admin: optional --insecure/-k only for HTTPS URLs (self-signed dev certs).
-# For plain http:// bases, unconditional -k has been observed to break some login flows (--no-auth)
+# For plain http:// bases, unconditional -k has been observed to break some login flows
 # against HTTP-only ingress backends (404 Not Found). Also: never emit trailing whitespace from
 # command substitution — Word-splitting turns it into an extra empty argv and confuses the CLI.
 # Override: ONBOARD_FORCE_INSECURE_LOGIN=true forces -k even for HTTP (rare; debugging only).
@@ -240,9 +240,8 @@ usage() {
     echo "  --skip-test-user         Do not offer: openbkn admin user test + all roles"
     echo ""
     echo "  ADP impex / auth:  openbkn call  uses ~/.bkn from  openbkn auth login ."
-    echo "    - Full install:  openbkn admin  / console  admin  for user ops. ADP impex uses user  test  with all  role list"
+    echo "    - openbkn admin / console admin handles user ops. ADP impex uses user test with all role list"
     echo "      roles (typically three business admins), then  openbkn auth  as  test .  -y  uses password  ${ONBOARD_DEFAULT_TEST_USER_PASSWORD:-111111}  (override: ONBOARD_TEST_USER_PASSWORD) ."
-    echo "    - Minimum install:  openbkn auth login  only; openbkn admin is not required."
     echo "  --namespace=NS           Override K8s namespace (default: NAMESPACE env, else namespace: in CONFIG_YAML_PATH, else openbkn)"
     echo "  --enable-bkn-search      Only patch bkn/ontology ConfigMaps and rollout"
     echo "  --bkn-embedding-name=X   Required with --enable-bkn-search (registered model_name)"
@@ -264,7 +263,7 @@ usage() {
     echo "                onboard uses deploy/dev/conf/mac-config.yaml when that file exists (same as mac.sh)."
     echo "                Else host primary IPv4 + ONBOARD_DEFAULT_ACCESS_SCHEME (https by default)."
     echo "                Set ONBOARD_DEFAULT_ACCESS_BASE to force a URL; ONBOARD_DEFAULT_ACCESS_PORT / SCHEME override fallback IP path."
-    echo "  openbkn auth: you confirm URL. Full install: HTTP defaults user=admin, password = the per-install initial password recorded in config.yaml (bknSafe.initialPassword); override with ONBOARD_DEFAULT_BKN_USER / _PASSWORD. Enter keeps defaults. Minimum: default --no-auth; Enter to accept."
+    echo "  openbkn auth: you confirm URL. Login defaults user=admin, password = the per-install initial password recorded in config.yaml (bknSafe.initialPassword); override with ONBOARD_DEFAULT_BKN_USER / _PASSWORD. Enter keeps defaults."
     echo "  openbkn admin shares the openbkn session (no separate login). First login forces a password change; onboard clears it via /api/safe/v1/auth/change-password (or do it once: openbkn auth change-password <url> -u admin). Then openbkn re-logs in as user test for impex and model steps."
     echo "  Node: onboard is not a login shell — it auto-loads nvm/fnm/asdf/Volta and Homebrew paths so an already-configured Node 22+ is found without re-asking. ONBOARD_SKIP_NVM_INIT=true skips that; ONBOARD_NVM_VERSION=22 (default) is used after  nvm.sh  load."
     echo "  (preflight on the server: sudo bash ./preflight.sh --fix still optional; this script can install Node in your *user* account via nvm.)"
@@ -612,13 +611,11 @@ onboard_bkn_auth_login_echo_cmd() {
     onboard_log_info "Running: $(onboard_argv_q openbkn auth login "${_url}" "$@")"
 }
 
-# After access URL is chosen: bkn-safe → credential login (defaults admin / openbkn if unchanged); else minimum → --no-auth (Enter) or HTTP.
-# Env: ONBOARD_DEFAULT_BKN_USER, ONBOARD_DEFAULT_BKN_PASSWORD, ONBOARD_ASSUME_YES (non-interactive: bkn-safe=credentials, min=--no-auth).
+# After the access URL is chosen, authenticate against the mandatory bkn-safe stack.
+# Env: ONBOARD_DEFAULT_BKN_USER, ONBOARD_DEFAULT_BKN_PASSWORD, ONBOARD_ASSUME_YES.
 onboard_bkn_auth_login_for_url() {
     local _kurl="$1"
-    local _u _p _duser _dpass
-    _duser="${ONBOARD_DEFAULT_BKN_USER:-admin}"
-    _dpass="${ONBOARD_DEFAULT_BKN_PASSWORD:-}"
+    local _u _p
     onboard_bkn_tls_insecure_args_to_array "${_kurl}"
     local _kv
     _kv="$(openbkn --version 2>/dev/null | grep -Eo '[vV]?[0-9]+\.[0-9]+\.[0-9]+' | tail -1 || true)"
@@ -664,33 +661,8 @@ onboard_bkn_auth_login_for_url() {
         return 0
     fi
 
-    if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
-        onboard_log_info "openbkn auth: minimum install — --no-auth (default, -y)"
-        onboard_bkn_auth_login_echo_cmd "${_kurl}" --no-auth "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
-        if ! openbkn auth login "${_kurl}" --no-auth "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
-            return 1
-        fi
-        return 0
-    fi
-    echo ""
-    read -r -p "Minimum install: use --no-auth (typical) [Y/n] (Enter = Y): " _mna
-    if [[ -z "${_mna}" || ! "${_mna}" =~ ^[Nn] ]]; then
-        onboard_bkn_auth_login_echo_cmd "${_kurl}" --no-auth "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
-        if ! openbkn auth login "${_kurl}" --no-auth "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
-            return 1
-        fi
-        return 0
-    fi
-    read -r -p "  Username [Enter = ${_duser}]: " _u
-    _u="${_u:-${_duser}}"
-    read -r -s -p "  Password [Enter = ${_dpass} if default unchanged on console] " _p
-    echo
-    _p="${_p:-${_dpass}}"
-    onboard_bkn_auth_login_echo_cmd "${_kurl}" -u "${_u}" -p "***" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
-    if ! openbkn auth login "${_kurl}" -u "${_u}" -p "${_p}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
-        return 1
-    fi
-    return 0
+    onboard_log_err "bkn-safe was not detected. Authentication is mandatory; install or repair the bkn-safe release before onboarding."
+    return 1
 }
 
 # When openbkn bkn list fails, interactively let the user log in or retry; non-interactive (or -y) exits.
@@ -723,7 +695,7 @@ onboard_ensure_bkn_auth() {
         onboard_log_warn "openbkn bkn list failed (not logged in or platform unreachable)."
         echo ""
         echo "Choose:"
-        echo "  1) Run login: URL (Enter = this host IP), then credential login or minimum (--no-auth) — see -h for defaults"
+        echo "  1) Run login: URL (Enter = this host IP), then credential login — see -h for defaults"
         echo "  2) Retry (after you ran login in another terminal)"
         echo "  3) Quit"
         read -r -p "Select [1-3] (default: 1): " _kwa

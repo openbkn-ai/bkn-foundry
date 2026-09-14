@@ -28,28 +28,6 @@ func TestCatalogHealthCheckConfig(t *testing.T) {
 	})
 }
 
-func TestGetAuthEnabled(t *testing.T) {
-	tests := []struct {
-		name string
-		env  string
-		want bool
-	}{
-		{name: "defaults enabled", want: true},
-		{name: "false disables", env: "false", want: false},
-		{name: "zero disables", env: "0", want: false},
-		{name: "true enables", env: "true", want: true},
-		{name: "other value enables", env: "off", want: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("AUTH_ENABLED", tt.env)
-
-			assert.Equal(t, tt.want, GetAuthEnabled())
-		})
-	}
-}
-
 func TestSetServiceSettings(t *testing.T) {
 	t.Run("sets service settings from dependency map", func(t *testing.T) {
 		resetAppSetting(t, map[string]map[string]any{
@@ -108,8 +86,6 @@ func TestSetServiceSettings(t *testing.T) {
 				"port":     8002,
 			},
 		})
-		t.Setenv("AUTH_ENABLED", "true")
-
 		SetDBSetting()
 		SetMQSetting()
 		SetOpenSearchSetting()
@@ -151,21 +127,6 @@ func TestSetServiceSettings(t *testing.T) {
 		assert.Equal(t, "http", appSetting.KafkaConnectSetting.Protocol)
 		assert.Equal(t, "http://model-manager:8001/api/private/mf-model-manager/v1", appSetting.ModelFactoryManagerUrl)
 		assert.Equal(t, "https://model-api:8002/api/private/mf-model-api/v1", appSetting.ModelFactoryAPIUrl)
-	})
-}
-
-func TestAuthDisabledSkipsAuthDependentSettings(t *testing.T) {
-	t.Run("skips auth dependent services", func(t *testing.T) {
-		resetAppSetting(t, map[string]map[string]any{})
-		t.Setenv("AUTH_ENABLED", "false")
-
-		require.NotPanics(t, SetHydraAdminSetting)
-		require.NotPanics(t, SetPermissionSetting)
-		require.NotPanics(t, SetUserMgmtSetting)
-
-		assert.Empty(t, appSetting.HydraAdminSetting)
-		assert.Empty(t, appSetting.PermissionUrl)
-		assert.Empty(t, appSetting.UserMgmtUrl)
 	})
 }
 

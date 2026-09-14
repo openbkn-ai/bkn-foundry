@@ -13,13 +13,13 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
-	"vega-backend/logics/auth"
 )
 
 type fakeProxyAuthorizationService struct {
@@ -237,16 +237,19 @@ func TestRestHandlerProxyRouteWhitelist(t *testing.T) {
 	}, routes)
 }
 
-func TestRestHandlerPublicAPIPreservesNoopCallerAndStripsProxyContext(t *testing.T) {
+func TestRestHandlerPublicAPIPreservesAuthenticatedCallerAndStripsProxyContext(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	rs := vmock.NewMockResourceService(ctrl)
-	handler := &restHandler{as: auth.NewNoopAuthService(nil), rs: rs}
+	as := vmock.NewMockAuthService(ctrl)
+	handler := &restHandler{as: as, rs: rs}
 	engine := gin.New()
 	public := engine.Group("/api/vega-backend/v1", handler.stripProxyInternalHeaders())
 	public.GET("/resources/:id", handler.GetResourcesByEx)
+	as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).
+		Return(hydra.Visitor{ID: "caller-1", Type: "user"}, nil)
 
 	rs.EXPECT().GetByIDs(gomock.Any(), []string{"resource-1"}).
 		DoAndReturn(func(ctx context.Context, _ []string) ([]*interfaces.Resource, error) {

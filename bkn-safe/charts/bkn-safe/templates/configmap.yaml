@@ -25,6 +25,13 @@ data:
   SAFE_DB_USER: {{ .Values.config.db.user | quote }}
   {{- end }}
   SAFE_DB_NAME: {{ .Values.config.db.name | quote }}
+  {{- /* Pool knobs apply to either database source. No `default`: 0 is a
+         valid value (no cap / keep forever); only a missing key falls back. */}}
+  SAFE_DB_MAX_OPEN_CONNS: {{ if kindIs "invalid" .Values.config.db.maxOpenConns }}"50"{{ else }}{{ .Values.config.db.maxOpenConns | toString | quote }}{{ end }}
+  SAFE_DB_CONN_MAX_IDLE_TIME: {{ if kindIs "invalid" .Values.config.db.connMaxIdleTime }}"2m"{{ else }}{{ .Values.config.db.connMaxIdleTime | toString | quote }}{{ end }}
+  SAFE_DB_CONN_MAX_LIFETIME: {{ if kindIs "invalid" .Values.config.db.connMaxLifetime }}"30m"{{ else }}{{ .Values.config.db.connMaxLifetime | toString | quote }}{{ end }}
+  {{- $authz := .Values.config.authz | default dict }}
+  SAFE_AUTHZ_POLICY_REFRESH_INTERVAL: {{ if kindIs "invalid" $authz.policyRefreshInterval }}"10m"{{ else }}{{ $authz.policyRefreshInterval | toString | quote }}{{ end }}
   SAFE_HYDRA_ADMIN_URL: {{ .Values.config.hydra.adminURL | quote }}
   SAFE_HYDRA_PUBLIC_URL: {{ .Values.config.hydra.publicURL | quote }}
   SAFE_LDAP_URL: {{ .Values.config.ldap.url | quote }}

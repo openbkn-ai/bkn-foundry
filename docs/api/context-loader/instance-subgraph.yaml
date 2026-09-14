@@ -54,15 +54,26 @@ paths:
         `relation_type_paths` 可以放多条路径，每条独立查询、独立返回一个子图，
         顺序与请求一致。
 
-        **路径的顺序和方向是硬约束，写错会静默查出错误结果**：
+        **路径按实际走过的顺序写**：
 
         - `object_types` 按节点出现顺序排列；n 跳路径长度为 n+1。即使某个节点没有
           过滤条件，也必须占位保留其 `id`，否则顺序错位。
-        - `relation_types` 按边出现顺序排列，长度为 n；第 i 条边的
-          `source_object_type_id` 必须等于 `object_types[i].id`，
-          `target_object_type_id` 必须等于 `object_types[i+1].id`。
-        - 边的方向由这组起终点与关系类自身定义的起终点是否一致决定：一致为正向，
-          相反为反向。
+        - `relation_types` 按边出现顺序排列，长度为 n；第 i 条边连接
+          `object_types[i]` 与 `object_types[i+1]`，每条边只需给 `relation_type_id`。
+        - 路径可以逆着关系类定义走。正向还是反向由服务端对照关系类定义判断：相邻
+          节点依次为关系类的起点、终点即正向，依次为终点、起点即反向；两者都不是则
+          返回 400。
+        - `source_object_type_id` / `target_object_type_id` 可省略，表示**本次遍历**
+          从哪个节点走到哪个节点（即 `object_types[i].id` / `object_types[i+1].id`），
+          不是关系类定义的起终点：反向遍历时两者与关系类定义相反。填写时必须与
+          相邻节点一致。
+        - `direction`（`forward` / `backward`）可省略。只有关系类的起点和终点是同一
+          个对象类（自引用）时，相邻节点区分不出方向，默认正向；要反向走须写
+          `backward`。
+
+        路径不合法时返回 400，`details` 为下游错误码加说明，指出第几条边（从 1
+        起）、哪个关系类、路径要求的起止节点与实际填写或关系类定义的起止节点，例如
+        `OntologyQuery.KnowledgeNetwork.InvalidParameter.TypePath: 第 2 条边 rel_order_user 与路径节点不一致：路径要求 user → order，当前填写 order → user。…`。
 
         **取主键**：子图对象的主键在 `_instance_identity` 里，与
         `query_object_instance` 同名同义。要把子图结果喂给
@@ -108,6 +119,26 @@ paths:
                         - relation_type_id: rt_produced_by
                           source_object_type_id: ot_drug
                           target_object_type_id: ot_manufacturer
+                      limit: 50
+              多跳含反向:
+                summary: 收货地址 → 用户 → 订单（第 2 跳逆着「订单属于用户」走）
+                description: |
+                  `rel_address_user` 定义为 user_address → user，`rel_order_user`
+                  定义为 order → user。第 2 跳从 user 走到 order，与关系类定义相反，
+                  只写 `relation_type_id` 即可；若要显式填写端点，写
+                  `source_object_type_id: user`、`target_object_type_id: order`。
+                value:
+                  relation_type_paths:
+                    - object_types:
+                        - id: user_address
+                          limit: 10
+                        - id: user
+                          limit: 10
+                        - id: order
+                          limit: 20
+                      relation_types:
+                        - relation_type_id: rel_address_user
+                        - relation_type_id: rel_order_user
                       limit: 50
       responses:
         '200':
@@ -349,22 +380,33 @@ components:
     TypeEdge:
       type: object
       description: |
-        路径上的一条边。方向由 `source_object_type_id` / `target_object_type_id`
-        与关系类自身定义的起终点是否一致决定。
+        路径上的一条边，连接相邻的两个节点。正向还是反向由服务端对照关系类定义
+        判断，详见端点说明。
       required:
         - relation_type_id
-        - source_object_type_id
-        - target_object_type_id
       properties:
         relation_type_id:
           type: string
           description: 关系类 ID。
         source_object_type_id:
           type: string
-          description: 该边在路径中的起点对象类 ID。
+          description: |
+            可省略。本条边在路径中出发的节点，即 `object_types[i].id`；不是关系类
+            定义的起点，反向遍历时与关系类定义相反。填写时必须等于
+            `object_types[i].id`。
         target_object_type_id:
           type: string
-          description: 该边在路径中的终点对象类 ID。
+          description: |
+            可省略。本条边在路径中到达的节点，即 `object_types[i+1].id`；不是关系
+            类定义的终点，反向遍历时与关系类定义相反。填写时必须等于
+            `object_types[i+1].id`。
+        direction:
+          type: string
+          enum: [forward, backward]
+          description: |
+            可省略。`forward` 沿关系类定义从起点走向终点，`backward` 逆着走。缺省
+            时按相邻节点判断；只有自引用关系类（起点和终点是同一个对象类）需要写
+            `backward` 才能反向走。与相邻节点矛盾时返回 400。
 
     ExploreSubgraphRequest:
       type: object

@@ -335,19 +335,7 @@ func SetOpenSearchSetting() {
 	}
 }
 
-// GetAuthEnabled returns whether authentication is enabled.
-// AUTH_ENABLED defaults to true and only explicit false values disable authentication.
-func GetAuthEnabled() bool {
-	envVal := os.Getenv("AUTH_ENABLED")
-	// Disable authentication only when it is explicitly set to false or 0
-	return envVal != "false" && envVal != "0"
-}
-
 func SetHydraAdminSetting() {
-	if !GetAuthEnabled() {
-		logger.Info("ISF authentication disabled via AUTH_ENABLED env, skipping hydra-admin configuration")
-		return
-	}
 	setting, ok := appSetting.DepServices[hydraAdminServiceName]
 	if !ok {
 		logger.Fatalf("service %s not found in depServices", hydraAdminServiceName)
@@ -360,10 +348,6 @@ func SetHydraAdminSetting() {
 }
 
 func SetPermissionSetting() {
-	if !GetAuthEnabled() {
-		logger.Info("ISF authentication disabled via AUTH_ENABLED env, skipping authorization configuration")
-		return
-	}
 	setting, ok := appSetting.DepServices[permissionServiceName]
 	if !ok {
 		logger.Fatalf("service %s not found in depServices", permissionServiceName)
@@ -377,10 +361,6 @@ func SetPermissionSetting() {
 }
 
 func SetUserMgmtSetting() {
-	if !GetAuthEnabled() {
-		logger.Info("ISF authentication disabled via AUTH_ENABLED env, skipping user-management configuration")
-		return
-	}
 	setting, ok := appSetting.DepServices[userMgmtServiceName]
 	if !ok {
 		logger.Fatalf("service %s not found in depServices", userMgmtServiceName)

@@ -79,10 +79,9 @@ jobs:
       - name: Run openbkn-smoke
         env:
           OPENBKN_TOKEN: ${{ secrets.OPENBKN_TOKEN }}
-          OPENBKN_AUTH_ENABLED: ${{ secrets.OPENBKN_AUTH_ENABLED }}
         run: |
-          if [ -z "$OPENBKN_TOKEN" ] && [ "$OPENBKN_AUTH_ENABLED" != "false" ]; then
-            echo "Set repository secrets OPENBKN_TOKEN or OPENBKN_AUTH_ENABLED=false"
+          if [ -z "$OPENBKN_TOKEN" ]; then
+            echo "Set repository secret OPENBKN_TOKEN"
             exit 1
           fi
           cp config/env.openbkn.example.ini config/env.ini

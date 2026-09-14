@@ -485,7 +485,9 @@ func (rqs *rawQueryService) prepareOpenSearchCursorQuery(ctx context.Context, re
 	if err != nil {
 		return nil, "", nil, "", err
 	}
-	catalog, err := rqs.cs.GetByID(ctx, resource.CatalogID, true)
+	// Resource visibility was checked by GetByID above. The Catalog is loaded
+	// solely for query execution, so it must not impose catalog:view_detail.
+	catalog, err := rqs.cs.InternalGetByID(ctx, resource.CatalogID, true)
 	if err != nil {
 		return nil, "", nil, "", err
 	}
@@ -633,7 +635,9 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 		return nil, err
 	}
 
-	catalog, err := rqs.cs.GetByID(queryCtx, resource.CatalogID, true)
+	// Resource visibility was checked by GetByID above. The Catalog is loaded
+	// solely for query execution, so it must not impose catalog:view_detail.
+	catalog, err := rqs.cs.InternalGetByID(queryCtx, resource.CatalogID, true)
 	if err != nil {
 		return nil, err
 	}
@@ -814,7 +818,10 @@ func (rqs *rawQueryService) checkSameDataSource(ctx context.Context, resourceIDs
 		break
 	}
 
-	catalog, err := rqs.cs.GetByID(ctx, catalogID, true)
+	// checkSameDataSource has already resolved every referenced Resource through
+	// its PEP. This internal load retains lifecycle checks below without turning
+	// a Resource query into a public Catalog detail request.
+	catalog, err := rqs.cs.InternalGetByID(ctx, catalogID, true)
 	if err != nil {
 		return nil, nil, err
 	}

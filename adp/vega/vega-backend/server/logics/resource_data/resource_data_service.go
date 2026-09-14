@@ -86,7 +86,12 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 
 	logger.Debugf("Query, resourceID: %s, params: %v", resource.ID, params)
 
-	catalog, err := rds.cs.GetByID(ctx, resource.CatalogID, true)
+	// The caller has already passed the Resource query PEP in QueryWithPaging.
+	// Loading the owning Catalog here is only needed to obtain execution
+	// configuration, not to expose the Catalog itself. A public Catalog read
+	// would incorrectly require catalog:view_detail and prevent a direct
+	// Resource grant from being usable.
+	catalog, err := rds.cs.InternalGetByID(ctx, resource.CatalogID, true)
 	if err != nil {
 		otellog.LogError(ctx, "Get catalog failed", err)
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).

@@ -58,7 +58,7 @@ paths:
     get:
       tags: [MCP Server Proxy]
       summary: 代理获取MCP工具列表
-      description: 通过代理的方式，获取指定MCP服务的工具列表，作为MCP Client的代理方，上游调用方不需要使用MCP Client，直接调用此接口获取工具列表
+      description: 通过代理的方式，获取指定MCP服务的工具列表，作为MCP Client的代理方，上游调用方不需要使用MCP Client，直接调用此接口获取工具列表。默认返回调用方实际会被服务的版本，editing 状态返回已发布版本的工具。
       parameters:
         - name: user_id
           in: header
@@ -72,6 +72,13 @@ paths:
           required: true
           schema:
             type: string
+        - name: draft
+          in: query
+          required: false
+          description: 为 true 时返回配置当前版本（草稿）的工具，只在 editing 状态下与默认结果不同
+          schema:
+            type: boolean
+            default: false
       responses:
         "200":
           description: 成功返回工具列表

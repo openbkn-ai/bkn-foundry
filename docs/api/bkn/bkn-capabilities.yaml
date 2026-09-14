@@ -62,8 +62,9 @@ info:
     Two things are deliberately *not* checked. `metadata_type` is ignored, so `openapi` and
     `function` tools are equally bindable — a binding names a tool, and the box is only the
     execution factory's container for it. And mounting does not require permission to *execute*
-    the target: binding is a modeling action by the network's owner, while whether a caller may
-    run the tool stays the execution factory's decision at call time.
+    the target: binding is a modeling action by the network's owner. At call time the caller needs
+    the network's `execute` permission; the managed proxy and execution factory then validate the
+    exact binding, target lifecycle and delegated grant without requiring direct target permission.
 
     ## Whole-box mounting
 
@@ -148,7 +149,7 @@ info:
     ## The internal face answers differently
 
     `GET /api/bkn-backend/in/v1/knowledge-networks/{kn_id}/capabilities` returns **bare
-    references** — `capability_type`, `box_id`, `capability_id` — with no metadata, no paging and
+    references** — binding `id`, `capability_type`, `box_id`, `capability_id` — with no metadata, no paging and
     no box summaries.
 
     Context Loader calls it on every recall to learn what is in scope before asking the execution
@@ -156,7 +157,9 @@ info:
     recall to produce exactly what the caller is about to fetch itself, and paging it would hand
     back a subset of the scope, which is a different scope. A network with no bindings resolves
     to an empty list rather than an error: "this network has no skills" is an answer, not a
-    broken dependency.
+    broken dependency. The internal endpoint accepts either network `view_detail` (discovery) or
+    network `execute` (execution scope resolution); public discovery and execution endpoints each
+    enforce their own operation before calling it.
 
     **Prefix aliases**: every path below is also served under `/api/ontology-manager/v1`, and
     the internal face under `/api/bkn-backend/in/v1` and `/api/ontology-manager/in/v1`.
@@ -182,6 +185,7 @@ paths:
             enum:
               - skill
               - function
+              - mcp_tool
             type: string
           in: query
         - name: box_id
@@ -528,13 +532,14 @@ components:
           enum:
             - skill
             - function
+            - mcp_tool
           type: string
         box_id:
-          description: Tool box ID. Required for a function, ignored for a skill.
+          description: Tool box ID for a function, or MCP Server ID for an mcp_tool. Ignored for a skill.
           type: string
         capability_id:
           description: >-
-            skill_id for a skill, tool_id for a function. Omitted when all_tools is set.
+            skill_id for a skill, tool_id for a function, or tool name for an mcp_tool. Omitted when all_tools is set.
           type: string
         all_tools:
           description: >-

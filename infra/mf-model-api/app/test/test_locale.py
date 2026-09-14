@@ -159,6 +159,22 @@ class TestAcceptLanguageResolver(unittest.TestCase):
         self.assertEqual(english["detail"], "max_tokens exceeds the maximum value of 4096k.")
         self.assertEqual(chinese["detail"], "max_tokens 超过最大值 4096k。")
 
+    def test_embedding_batch_limit_keeps_safe_provider_summary_and_solution(self):
+        source = {
+            "code": "ModelFactory.ExternalSmallModel.Used.InvalidParameter",
+            "description": "Small model request parameters are invalid.",
+            "detail": "batch size is invalid, it should not be larger than 10",
+            "solution": "batch_size_limit: 10",
+        }
+
+        english, _ = localized_error_content(source, "en-US")
+        chinese, _ = localized_error_content(source, "zh-CN")
+
+        self.assertIn("batch size is invalid", english["detail"])
+        self.assertEqual(english["solution"], "Adjust the batch size to no more than 10 and rebuild.")
+        self.assertIn("batch size is invalid", chinese["detail"])
+        self.assertEqual(chinese["solution"], "请将批次大小调整为不大于 10 后重新构建。")
+
     def test_catalog_hides_internal_database_detail_in_both_locales(self):
         source = {
             "code": "ModelFactory.Mydb.DataBase.ParameterError",
@@ -469,9 +485,8 @@ class TestInternalLocalePropagation(unittest.IsolatedAsyncioTestCase):
         manager.get_session = mock.AsyncMock(return_value=session)
         token = set_effective_locale("en-US")
         try:
-            with mock.patch("app.utils.permission_manager.base_config.AUTH_ENABLED", True):
-                allowed = await manager.check_single_permission(
-                    "user-1", "model-1", "display", "large_model", "user")
+            allowed = await manager.check_single_permission(
+                "user-1", "model-1", "display", "large_model", "user")
         finally:
             reset_effective_locale(token)
         self.assertTrue(allowed)

@@ -36,6 +36,10 @@ type CapabilityBindingService interface {
 	// and mounts what resolves. It never fails the import; the report says what was skipped.
 	ImportCapabilities(ctx context.Context, knID, branch string,
 		declared *bkn.BknCapabilities) (*CapabilityImportReport, error)
+	// ImportCapabilitiesTx is the transactional form used by managed-proxy
+	// publication and also returns the concrete rows included in that projection.
+	ImportCapabilitiesTx(ctx context.Context, tx *sql.Tx, knID, branch string,
+		declared *bkn.BknCapabilities) (*CapabilityImportReport, []*CapabilityBinding, error)
 	// DeleteCapabilitiesByKnID clears the bindings of a network without a permission check,
 	// for use by knowledge-network deletion. tx must be non-nil.
 	DeleteCapabilitiesByKnID(ctx context.Context, tx *sql.Tx, knID, branch string) error

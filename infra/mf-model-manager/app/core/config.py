@@ -110,15 +110,6 @@ class BaseConfig(object):
     METERINGREDISDB = int(os.getenv('METERING_REDIS_DB', '1'))
     METERINGSTREAMMAXLEN = int(os.getenv('METERING_STREAM_MAXLEN', '100000'))
 
-    # Authorization switch: true enables authentication and resource filtering.
-    # Defaults to true so a deployment that never sets the variable fails
-    # closed, matching every Go service. Local runs and tests that want an
-    # open surface have to say AUTH_ENABLED=false out loud.
-    AUTH_ENABLED = os.getenv('AUTH_ENABLED', 'true').lower() == 'true'
-    # Anonymous identity used for audit correlation when authorization is disabled.
-    ANONYMOUS_USER_ID = "anonymous-user"
-
-
 def resolve_metering_backend():
     """Resolve the metering transport: kafka or redis.
 
@@ -181,8 +172,6 @@ def validate_authz_config():
     turn an upgrade into a CrashLoopBackOff. It warns loudly instead, and the
     flip to a hard failure waits until those deployments are counted.
     """
-    if not base_config.AUTH_ENABLED:
-        return
     provider, safe_url = authz_settings()
     if provider in AUTHZ_PROVIDERS_REQUIRING_SAFE_URL:
         if not safe_url:

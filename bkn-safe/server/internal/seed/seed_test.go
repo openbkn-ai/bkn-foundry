@@ -240,7 +240,11 @@ func TestSeededRoleGrants(t *testing.T) {
 		{"audit not user edit", audit, "admin-user", "x", "edit", false},
 		{"network-builder manages catalog", networkBuilder, "catalog", "x", "create", true},
 		{"network-builder manages skill", networkBuilder, "skill", "s1", "publish", true},
+		{"network-builder manages large models", networkBuilder, "large_model", "m1", "modify", true},
+		{"network-builder manages small models", networkBuilder, "small_model", "m1", "delete", true},
 		{"network-builder not system users", networkBuilder, "admin-user", "x", "create", false},
+		{"system admin uses large models but cannot manage them", admin, "large_model", "m1", "execute", true},
+		{"system admin cannot modify large models", admin, "large_model", "m1", "modify", false},
 		{"super-admin manages agents", superAdmin, "agent", "x", "use", true},
 		{"super-admin does anything (any type/op)", superAdmin, "whatever", "z", "some_random_op", true},
 	}
@@ -255,6 +259,55 @@ func TestSeededRoleGrants(t *testing.T) {
 		}
 		if got != c.want {
 			t.Errorf("%s: Check(%s, %s:%s, %s) = %v, want %v", c.name, c.role, c.typ, c.id, c.op, got, c.want)
+		}
+	}
+}
+
+func TestApplyReconcilesRetiredPerModelPolicies(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	const user = "legacy-model-user"
+	if err := e.GrantObjectPermission(user, "large_model", "model-1", "modify"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.DenyObjectPermission(user, "large_model", "model-1", "execute"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantRolePermission("legacy-model-role", "small_model", "*", "delete"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		resourceType, operation string
+		want                    bool
+	}{
+		{"large_model", "display", true},
+		{"large_model", "execute", true},
+		{"large_model", "modify", false},
+		{"small_model", "delete", false},
+	} {
+		got, err := e.Check(user, tc.resourceType, "model-1", tc.operation)
+		if err != nil || got != tc.want {
+			t.Errorf("Check(%s:%s) = %v, %v; want %v", tc.resourceType, tc.operation, got, err, tc.want)
+		}
+	}
+	for _, subject := range []string{user, "legacy-model-role"} {
+		records, err := e.PolicyRecords(authz.PolicyFilter{AccessorID: subject})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(records) != 0 {
+			t.Errorf("%s retains retired model policies: %+v", subject, records)
 		}
 	}
 }
@@ -624,7 +677,7 @@ func TestKnowledgeNetworkDeclaresExecuteOperation(t *testing.T) {
 	}
 }
 
-func TestNetworkBuilderManagesKnowledgeNetworksTypeWide(t *testing.T) {
+func TestNetworkBuilderCanCreateButCannotManageOtherKnowledgeNetworks(t *testing.T) {
 	db := newDB(t)
 	e, err := authz.New(db)
 	if err != nil {
@@ -641,7 +694,7 @@ func TestNetworkBuilderManagesKnowledgeNetworksTypeWide(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, op := range []string{"view_detail", "create", "modify", "delete", "query_data", "authorize", "execute"} {
+	for _, op := range []string{"create"} {
 		ok, err := e.Check(builder, "knowledge_network", network, op)
 		if err != nil {
 			t.Fatal(err)
@@ -650,9 +703,18 @@ func TestNetworkBuilderManagesKnowledgeNetworksTypeWide(t *testing.T) {
 			t.Errorf("network_builder lost type-wide knowledge_network/%s", op)
 		}
 	}
+	for _, op := range []string{"view_detail", "modify", "delete", "query_data", "authorize", "execute"} {
+		ok, err := e.Check(builder, "knowledge_network", network, op)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ok {
+			t.Errorf("network_builder unexpectedly manages another knowledge_network/%s", op)
+		}
+	}
 }
 
-func TestNetworkBuilderManagesCatalogsTypeWide(t *testing.T) {
+func TestNetworkBuilderCanCreateButCannotManageOtherCatalogs(t *testing.T) {
 	db := newDB(t)
 	e, err := authz.New(db)
 	if err != nil {
@@ -669,13 +731,22 @@ func TestNetworkBuilderManagesCatalogsTypeWide(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, op := range []string{"view_detail", "create", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data"} {
+	for _, op := range []string{"create"} {
 		ok, err := e.Check(builder, "catalog", catalog, op)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !ok {
 			t.Errorf("network_builder lost type-wide catalog/%s", op)
+		}
+	}
+	for _, op := range []string{"view_detail", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data"} {
+		ok, err := e.Check(builder, "catalog", catalog, op)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ok {
+			t.Errorf("network_builder unexpectedly manages another catalog/%s", op)
 		}
 	}
 }
@@ -699,9 +770,11 @@ func TestNetworkBuilderPermissionMatrixMatchesBusinessBuilderRole(t *testing.T) 
 		got[grant.Object] = grant.Operations
 	}
 	want := map[string][]string{
-		"catalog:*":           {"view_detail", "create", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data"},
-		"knowledge_network:*": {"view_detail", "create", "modify", "delete", "query_data", "authorize", "execute"},
+		"catalog:*":           {"create"},
+		"knowledge_network:*": {"create"},
+		"large_model:*":       {"create", "display", "modify", "delete", "execute"},
 		"operator:*":          {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},
+		"small_model:*":       {"create", "display", "modify", "delete", "execute"},
 		"tool_box:*":          {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},
 		"skill:*":             {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},
 		"mcp:*":               {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},

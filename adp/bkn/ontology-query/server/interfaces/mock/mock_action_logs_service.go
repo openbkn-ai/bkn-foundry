@@ -41,6 +41,20 @@ func (m *MockActionLogsService) EXPECT() *MockActionLogsServiceMockRecorder {
 	return m.recorder
 }
 
+// AppendResults mocks base method.
+func (m *MockActionLogsService) AppendResults(ctx context.Context, knID, execID string, firstSeq int, results []interfaces.ObjectExecutionResult) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AppendResults", ctx, knID, execID, firstSeq, results)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AppendResults indicates an expected call of AppendResults.
+func (mr *MockActionLogsServiceMockRecorder) AppendResults(ctx, knID, execID, firstSeq, results any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendResults", reflect.TypeOf((*MockActionLogsService)(nil).AppendResults), ctx, knID, execID, firstSeq, results)
+}
+
 // CancelExecution mocks base method.
 func (m *MockActionLogsService) CancelExecution(ctx context.Context, knID, execID, reason string) (*interfaces.CancelExecutionResponse, error) {
 	m.ctrl.T.Helper()
@@ -70,6 +84,20 @@ func (mr *MockActionLogsServiceMockRecorder) CreateExecution(ctx, exec any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateExecution", reflect.TypeOf((*MockActionLogsService)(nil).CreateExecution), ctx, exec)
 }
 
+// FinishExecution mocks base method.
+func (m *MockActionLogsService) FinishExecution(ctx context.Context, knID, execID string, outcome *interfaces.ExecutionOutcome) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FinishExecution", ctx, knID, execID, outcome)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// FinishExecution indicates an expected call of FinishExecution.
+func (mr *MockActionLogsServiceMockRecorder) FinishExecution(ctx, knID, execID, outcome any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FinishExecution", reflect.TypeOf((*MockActionLogsService)(nil).FinishExecution), ctx, knID, execID, outcome)
+}
+
 // GetExecution mocks base method.
 func (m *MockActionLogsService) GetExecution(ctx context.Context, query *interfaces.ActionLogDetailQuery) (*interfaces.ActionExecution, error) {
 	m.ctrl.T.Helper()
@@ -83,6 +111,35 @@ func (m *MockActionLogsService) GetExecution(ctx context.Context, query *interfa
 func (mr *MockActionLogsServiceMockRecorder) GetExecution(ctx, query any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetExecution", reflect.TypeOf((*MockActionLogsService)(nil).GetExecution), ctx, query)
+}
+
+// GetExecutionStatus mocks base method.
+func (m *MockActionLogsService) GetExecutionStatus(ctx context.Context, knID, execID string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetExecutionStatus", ctx, knID, execID)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetExecutionStatus indicates an expected call of GetExecutionStatus.
+func (mr *MockActionLogsServiceMockRecorder) GetExecutionStatus(ctx, knID, execID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetExecutionStatus", reflect.TypeOf((*MockActionLogsService)(nil).GetExecutionStatus), ctx, knID, execID)
+}
+
+// MarkExecutionRunning mocks base method.
+func (m *MockActionLogsService) MarkExecutionRunning(ctx context.Context, knID, execID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MarkExecutionRunning", ctx, knID, execID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MarkExecutionRunning indicates an expected call of MarkExecutionRunning.
+func (mr *MockActionLogsServiceMockRecorder) MarkExecutionRunning(ctx, knID, execID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkExecutionRunning", reflect.TypeOf((*MockActionLogsService)(nil).MarkExecutionRunning), ctx, knID, execID)
 }
 
 // QueryExecutions mocks base method.
@@ -100,16 +157,31 @@ func (mr *MockActionLogsServiceMockRecorder) QueryExecutions(ctx, query any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryExecutions", reflect.TypeOf((*MockActionLogsService)(nil).QueryExecutions), ctx, query)
 }
 
-// UpdateExecution mocks base method.
-func (m *MockActionLogsService) UpdateExecution(ctx context.Context, knID, execID string, updates map[string]any) error {
+// QueryResults mocks base method.
+func (m *MockActionLogsService) QueryResults(ctx context.Context, query *interfaces.ActionResultsQuery) (*interfaces.ActionExecutionResultList, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateExecution", ctx, knID, execID, updates)
+	ret := m.ctrl.Call(m, "QueryResults", ctx, query)
+	ret0, _ := ret[0].(*interfaces.ActionExecutionResultList)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// QueryResults indicates an expected call of QueryResults.
+func (mr *MockActionLogsServiceMockRecorder) QueryResults(ctx, query any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryResults", reflect.TypeOf((*MockActionLogsService)(nil).QueryResults), ctx, query)
+}
+
+// UpdateExecutionProgress mocks base method.
+func (m *MockActionLogsService) UpdateExecutionProgress(ctx context.Context, knID, execID string, progress *interfaces.ExecutionProgress) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateExecutionProgress", ctx, knID, execID, progress)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// UpdateExecution indicates an expected call of UpdateExecution.
-func (mr *MockActionLogsServiceMockRecorder) UpdateExecution(ctx, knID, execID, updates any) *gomock.Call {
+// UpdateExecutionProgress indicates an expected call of UpdateExecutionProgress.
+func (mr *MockActionLogsServiceMockRecorder) UpdateExecutionProgress(ctx, knID, execID, progress any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateExecution", reflect.TypeOf((*MockActionLogsService)(nil).UpdateExecution), ctx, knID, execID, updates)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateExecutionProgress", reflect.TypeOf((*MockActionLogsService)(nil).UpdateExecutionProgress), ctx, knID, execID, progress)
 }

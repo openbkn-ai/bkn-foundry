@@ -98,7 +98,7 @@ func TestRawQueryServiceExecute(t *testing.T) {
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
 			Return(&interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1", Enabled: true, SchemaDefinition: []*interfaces.Property{{Name: "id"}}}, nil)
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false, ConnectorType: interfaces.ConnectorTypeOpenSearch}, nil)
 
 		_, err := service.Execute(context.Background(), &interfaces.RawQueryRequest{
@@ -160,7 +160,7 @@ func TestRawQueryServiceExecute(t *testing.T) {
 				}
 				resourceService.EXPECT().GetByIDs(gomock.Any(), []string{"resource-1"}).
 					Return([]*interfaces.Resource{resource}, nil)
-				catalogService.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
+				catalogService.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
 					ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeSQLServer,
 				}, nil)
 				resourceService.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil).Times(2)
@@ -355,7 +355,7 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		}
 		mockRS.EXPECT().GetByIDs(gomock.Any(), []string{"resource-1"}).Return([]*interfaces.Resource{resource}, nil)
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil).AnyTimes()
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
 			ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeMySQL,
 		}, nil)
 
@@ -429,7 +429,7 @@ func TestRawQueryServiceExecuteInitialSQLQuery(t *testing.T) {
 			SchemaDefinition: []*interfaces.Property{{Name: "id"}},
 		}
 		mockRS.EXPECT().GetByIDs(gomock.Any(), []string{"resource-1"}).Return([]*interfaces.Resource{resource}, nil)
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
 			ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypePostgreSQL,
 		}, nil)
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil).Times(2)
@@ -600,7 +600,7 @@ func TestRawQueryServiceExecuteInitialDSLQuery(t *testing.T) {
 					SchemaDefinition: []*interfaces.Property{{Name: "id"}},
 				}, nil
 			}).Times(4)
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).DoAndReturn(
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).DoAndReturn(
 			func(ctx context.Context, _ string, _ bool) (*interfaces.Catalog, error) {
 				_, hasDeadline := ctx.Deadline()
 				assert.True(t, hasDeadline)
@@ -713,7 +713,7 @@ func TestRawQueryServicePrepareOpenSearchCursorQuery(t *testing.T) {
 			SourceIdentifier: "events",
 			SchemaDefinition: []*interfaces.Property{{Name: "id"}},
 		}, nil)
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
 			ID:            "catalog-1",
 			Enabled:       true,
 			ConnectorType: interfaces.ConnectorTypeOpenSearch,
@@ -764,7 +764,7 @@ func TestRawQueryServiceExecuteInitialOpenSearchCursor(t *testing.T) {
 					SchemaDefinition: []*interfaces.Property{{Name: "id"}},
 				}, nil
 			})
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).DoAndReturn(
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).DoAndReturn(
 			func(ctx context.Context, _ string, _ bool) (*interfaces.Catalog, error) {
 				_, hasDeadline := ctx.Deadline()
 				assert.True(t, hasDeadline)
@@ -960,7 +960,7 @@ func TestRawQueryServiceExecuteSQLCursorContinuation(t *testing.T) {
 		}
 		catalog := &interfaces.Catalog{ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeOpenSearch}
 		mockRS.EXPECT().GetByIDs(gomock.Any(), []string{"resource-1"}).Return([]*interfaces.Resource{resource}, nil)
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Return(catalog, nil)
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(catalog, nil)
 
 		started := make(chan struct{})
 		finish := make(chan struct{})
@@ -1115,7 +1115,7 @@ func TestRawQueryServiceCheckSameDataSource(t *testing.T) {
 			{ID: "r2", CatalogID: "catalog-1", Enabled: true, Status: interfaces.ResourceStatusDeprecated, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
 		}
 		rs.EXPECT().GetByIDs(gomock.Any(), []string{"r1", "r2"}).Return(resources, nil)
-		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
+		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
 			ID:      "catalog-1",
 			Enabled: true,
 		}, nil)

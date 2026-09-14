@@ -6,7 +6,7 @@
 
 > 📌 安装通过产品包或源码中的 `deploy/` 目录下的 `deploy.sh` 脚本完成。
 
-> **`deploy.sh` 全局参数**（`--distro=k3s|k8s`、`-y`、`--force-upgrade`、`--config=…` 等）只有写在**模块名之前**才会生效，例如 `bash ./deploy.sh --distro=k8s openbkn install --minimum`。写成 `... install --minimum --distro=k8s` **不会**按全局参数解析。可改用 `export KUBE_DISTRO=k8s` 再执行安装命令，或把 `--distro` 挪到前面（与 `-y`、`--force-upgrade` 一致）。
+> **`deploy.sh` 全局参数**（`--distro=k3s|k8s`、`-y`、`--force-upgrade`、`--config=…` 等）只有写在**模块名之前**才会生效，例如 `bash ./deploy.sh --distro=k8s openbkn install`。写成 `... install --distro=k8s` **不会**按全局参数解析。可改用 `export KUBE_DISTRO=k8s` 再执行安装命令，或把 `--distro` 挪到前面（与 `-y`、`--force-upgrade` 一致）。
 
 ---
 
@@ -171,7 +171,6 @@ sudo bash deploy/preflight.sh --help         # 全部参数
     sudo bash ./preflight.sh --fix          # …（默认每项 y/N；加 -y 全自动）
     sudo bash ./preflight.sh --check-only   # 再检查直到关键 [FAIL] 消失（或配合 --lenient）
   Only then install:
-    sudo bash ./deploy.sh openbkn install --minimum    # 体验 / 最小化
     sudo bash ./deploy.sh openbkn install              # 完整安装
   Finally: sudo bash ./onboard.sh from deploy/ (Linux；macOS dev 用普通 bash。Node 22+ + openbkn on PATH；sudo bash ./preflight.sh --fix helps …)
 ```
@@ -188,24 +187,7 @@ sudo bash deploy/preflight.sh --help         # 全部参数
 
 ## 🚀 安装 BKN Foundry
 
-### ⚡ 最小化安装（首次体验推荐）
-
-跳过可选认证模块，资源占用更小：
-
-```bash
-./deploy.sh openbkn install --minimum
-```
-
-等价写法：
-
-```bash
-./deploy.sh openbkn install \
-  --set auth.enabled=false
-```
-
-### 📦 完整安装
-
-包含认证组件：
+认证和授权为必选能力，安装会包含 BKN Safe 及其内置 Hydra 组件：
 
 ```bash
 ./deploy.sh openbkn install
@@ -266,11 +248,11 @@ sudo bash ./onboard.sh --help
 | 参数 | 含义 |
 | --- | --- |
 | 无参数 | 交互模式：按需引导安装 Node / `openbkn`，完成认证（单一 CLI——管理能力内置于 `openbkn admin`），再依次走模型 / BKN 提示 |
-| `-y` / `--yes` | 全部自动：bootstrap、完整鉴权下 HTTP 默认登录（`admin` + 安装时生成、记录在 config.yaml `bknSafe.initialPassword` 的初始密码）、`test` 用户创建 + 角色同步、`openbkn` 以 `test` 重登。会**跳过交互式模型注册**；如需非交互注册模型，请用 `--config=models.yaml`。 |
+| `-y` / `--yes` | 全部自动：bootstrap、HTTP 默认登录（`admin` + 安装时生成、记录在 config.yaml `bknSafe.initialPassword` 的初始密码）、`test` 用户创建 + 角色同步、`openbkn` 以 `test` 重登。会**跳过交互式模型注册**；如需非交互注册模型，请用 `--config=models.yaml`。 |
 | `--config=xxx.yaml` | 非交互：按 YAML 注册模型与可选 BKN；参考 `deploy/conf/models.yaml.example` |
 | `--enable-bkn-search` | 仅做 BKN ConfigMap 类操作（仍先走 probe） |
 
-**完整鉴权安装（启用 auth）**：脚本根据 Helm/命名空间判断为完整鉴权安装 后，**会自动按以下 5 步执行**（你不需要手工逐条做——这里列出来只是让你知道脚本在干什么，以及某一步失败时该回到哪一步）：
+脚本**会自动按以下 5 步执行**（你不需要手工逐条做——这里列出来只是让你知道脚本在干什么，以及某一步失败时该回到哪一步）：
 
 1. **`openbkn auth login`**（`onboard_ensure_bkn_auth`）— 会话写入 `~/.bkn`。HTTP 默认 `admin` + 安装时生成的初始密码（config.yaml `bknSafe.initialPassword`）（TTY 下也可改走浏览器 OAuth）；`-y` 模式直接走 HTTP 默认。
 2. **`openbkn` 在 PATH**（`ensure admin CLI`）— 缺则自动 `npm i -g @openbkn/bkn-sdk`（交互提示，或 `-y` 时自动安装）。管理能力内置于 `openbkn admin` 子命令，无需单独的包。
@@ -279,8 +261,6 @@ sudo bash ./onboard.sh --help
 5. **模型注册**（交互式或 YAML）— 使用**以 `test` 登录的 `openbkn`（`~/.bkn`）**。Context Loader 的内置工具只通过 MCP 面提供，不再注册进执行工厂工具箱；查看方式见[快速开始](quick-start.md)。
 
 任何一步失败脚本都会非零退出并打印清楚原因；修好之后重跑 `sudo bash deploy/onboard.sh`（Linux）/ `bash deploy/onboard.sh`（macOS dev）即可——已成功的步骤会被检测并跳过（重复运行幂等）。
-
-**最小化安装**（`--minimum`）：通常只需 `openbkn`（常为 `--no-auth`）；上述 完整鉴权专属步骤 2–4 会被自动跳过（管理操作需启用鉴权的后端）。
 
 结束前会打印 **英文** 完成报告（可用 `ONBOARD_NO_COMPLETION_REPORT=1` 关闭）。
 
@@ -297,8 +277,8 @@ flowchart TB
   mode -->|默认交互；可选 -y| p3[onboard_probe] --> ui["命名空间 + LLM/向量（已存在则只问是否新增）+ BKN 补丁（仅在更换默认时执行）"] --> r2[完成报告] --> e3([exit 0])
 ```
 
-- **三种模式都会先跑 `onboard_probe`**，再进入「仅 BKN」、YAML 或交互式注册。**完整鉴权安装** 时 probe 内含：**与 openbkn 同默认的管理 HTTP 登录**、**用户 `test`**、**`openbkn` 以 `test` 重登**、再进入模型注册。
-- **`-y`** 不会自动等价于 `--config`；主要自动确认 **Node / npm -g**，以及在 **完整鉴权安装** 下 `openbkn` 的 **HTTP** 登录默认行为。`-y` 模式下不会跑交互式模型注册（如需非交互注册请使用 `--config=models.yaml`），完成报告里会列出平台上现有模型计数，方便确认。
+- **三种模式都会先跑 `onboard_probe`**，再进入「仅 BKN」、YAML 或交互式注册。probe 内含：**与 openbkn 同默认的管理 HTTP 登录**、**用户 `test`**、**`openbkn` 以 `test` 重登**、再进入模型注册。
+- **`-y`** 不会自动等价于 `--config`；主要自动确认 **Node / npm -g**，以及 `openbkn` 的 **HTTP** 登录默认行为。`-y` 模式下不会跑交互式模型注册（如需非交互注册请使用 `--config=models.yaml`），完成报告里会列出平台上现有模型计数，方便确认。
 - **可重复执行（已注册 / 已配置自动跳过）。** 交互式模型注册会先探测平台现状，再决定是否提问：
   - **大模型 LLM**：若平台已有任何 LLM，先问 `Register another LLM now? [y/N]`，默认 **否**；选否则跳过 LLM 提示。
   - **向量 / 小模型**：同样先问是否新增；如果你确实新增了 embedding，再追问是否设为 **BKN 默认**：
@@ -307,15 +287,15 @@ flowchart TB
   - **BKN ConfigMap 补丁 + `bkn-backend` / `ontology-query` 滚动重启** 仅在 **默认 embedding 真的发生变化** 时执行；保持原默认时 ConfigMap 完全不动，也不会重启任何 deployment。
   - YAML 模式（`--config=models.yaml`）遵循同样的思路：每个模型若已存在则按名称跳过；当两个 ConfigMap 已经声明了相同的 `defaultSmallModelEnabled=true` / `defaultSmallModelName` 时，BKN 补丁与重启也会一并跳过。
 
-**2）`onboard_probe` 执行顺序（非完整鉴权 时相关步骤会快速跳过或空操作）**
+**2）`onboard_probe` 执行顺序**
 
 ```mermaid
 flowchart TB
   subgraph probe["onboard_probe"]
     A["onboard_ensure_bkn_auth\n（openbkn：HTTP 默认 admin + 记录的初始密码，或浏览器）"] --> B["kubectl：命名空间或目标 namespace"]
     B --> C["onboard_prepend_npm_global_bin_to_path"]
-    C --> D["onboard_recommend_admin_cli（Helm/命名空间 → 是否完整鉴权）"]
-    D --> E["ensure admin CLI\n（完整鉴权时按需 npm -g 安装 openbkn）"]
+    C --> D["onboard_recommend_admin_cli（检测 bkn-safe）"]
+    D --> E["ensure admin CLI\n（按需 npm -g 安装 openbkn）"]
     E --> F["管理认证（与 openbkn 同默认）\n（管理认证 与 openbkn 同默认；或 -k 浏览器；-y 自动 HTTP）"]
     F --> G1["onboard_provision_bkn_safe_test_user\n创建或同步 test 与角色"]
     G1 --> G2["onboard re-login…\nopenbkn 以 test 登录（HTTP）"]
@@ -323,9 +303,7 @@ flowchart TB
   end
 ```
 
-**非全量 / 最小化**：通常不需要管理后端的建用户与 **test 重登** 门禁。
-
-**3）完整鉴权安装：CLI 会话（序列图）**
+**3）认证后的 CLI 会话（序列图）**
 
 ```mermaid
 sequenceDiagram
@@ -349,18 +327,16 @@ sequenceDiagram
 
 ---
 
-## 🛡️ 完整安装后的管理员命令（`openbkn admin`）
+## 🛡️ 安装后的管理员命令（`openbkn admin`）
 
-完整安装（启用 `auth.enabled=true`）后，平台的**用户、组织、角色、模型、审计**等管理操作通过同一个 `openbkn` CLI 的 **`openbkn admin`** 子命令完成。**没有单独的 admin 包**——管理能力随 [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk) 一起提供，通过 `openbkn admin ...` 调用：
+安装后，平台的**用户、组织、角色、模型、审计**等管理操作通过同一个 `openbkn` CLI 的 **`openbkn admin`** 子命令完成。**没有单独的 admin 包**——管理能力随 [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk) 一起提供，通过 `openbkn admin ...` 调用：
 
 | 命令面 | 受众 | 覆盖范围 |
 | --- | --- | --- |
 | `openbkn`（`@openbkn/bkn-sdk`） | 业务用户 / Agent | BKN、Action、Skill、查询、Agent 对话 |
 | `openbkn admin`（同一个包） | 平台管理员 | 用户、组织、角色、模型、审计、原始 HTTP |
 
-**何时可用：** 完整安装之后（`./deploy.sh openbkn install` 不带 `--minimum`）。**最小化安装下大多数 `openbkn admin` 命令会返回 401 / 404 — 属于部署裁剪，并非 CLI 故障。**
-
-**后端依赖：** `user-management` / `deploy-manager` / `deploy-auth` / `eacp` / `mf-model-manager` / OAuth2(Hydra) — 正好是完整安装才会启用的服务集合。
+**后端依赖：** `user-management` / `deploy-manager` / `deploy-auth` / `eacp` / `mf-model-manager` / OAuth2(Hydra)。
 
 ### 📥 安装
 

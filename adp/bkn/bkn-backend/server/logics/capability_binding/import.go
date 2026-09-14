@@ -8,6 +8,7 @@ package capability_binding
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 
@@ -37,9 +38,15 @@ const (
 // knowledge network; the caller gets the list of what was skipped and why.
 func (cbs *capabilityBindingService) ImportCapabilities(ctx context.Context, knID, branch string,
 	declared *bknsdk.BknCapabilities) (*interfaces.CapabilityImportReport, error) {
+	report, _, err := cbs.ImportCapabilitiesTx(ctx, nil, knID, branch, declared)
+	return report, err
+}
+
+func (cbs *capabilityBindingService) ImportCapabilitiesTx(ctx context.Context, tx *sql.Tx, knID, branch string,
+	declared *bknsdk.BknCapabilities) (*interfaces.CapabilityImportReport, []*interfaces.CapabilityBinding, error) {
 	report := &interfaces.CapabilityImportReport{Skipped: []*interfaces.CapabilitySkip{}}
 	if declared == nil {
-		return report, nil
+		return report, nil, nil
 	}
 
 	// No capacity hint: the two lengths come from an uploaded file, and summing them is a
@@ -94,14 +101,14 @@ func (cbs *capabilityBindingService) ImportCapabilities(ctx context.Context, knI
 	}
 
 	if len(entries) == 0 {
-		return report, nil
+		return report, nil, nil
 	}
-	bound, err := cbs.AttachCapabilities(ctx, nil, knID, branch, entries)
+	bound, err := cbs.AttachCapabilities(ctx, tx, knID, branch, entries)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	report.Bound = len(bound)
-	return report, nil
+	return report, bound, nil
 }
 
 func (cbs *capabilityBindingService) resolveSkill(ctx context.Context,

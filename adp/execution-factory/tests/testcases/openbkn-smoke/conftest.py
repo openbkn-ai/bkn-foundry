@@ -3,7 +3,7 @@
 #
 # Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-"""OpenBKN smoke fixtures — no legacy platform (eisoo/Hydra) required."""
+"""OpenBKN smoke fixtures."""
 
 import os
 
@@ -11,19 +11,9 @@ import pytest
 
 
 def _build_headers() -> dict[str, str]:
-    auth_disabled = os.environ.get("OPENBKN_AUTH_ENABLED", "").lower() == "false"
-
-    if auth_disabled:
-        return {
-            "x-account-id": os.environ.get("OPENBKN_ACCOUNT_ID", "openbkn-smoke"),
-            "x-account-type": "user",
-        }
-
     token = os.environ.get("OPENBKN_TOKEN", "").strip()
     if not token:
-        pytest.skip(
-            "Set OPENBKN_TOKEN, or OPENBKN_AUTH_ENABLED=false for local dev without Hydra."
-        )
+        pytest.skip("Set OPENBKN_TOKEN to run authenticated smoke tests.")
 
     if not token.lower().startswith("bearer "):
         token = f"Bearer {token}"

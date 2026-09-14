@@ -102,6 +102,12 @@ func (h *mcpHandle) GetMCPTools(c *gin.Context) {
 		return
 	}
 
+	if err = c.ShouldBindQuery(req); err != nil {
+		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
+		rest.ReplyError(c, err)
+		return
+	}
+
 	if err = c.ShouldBindHeader(req); err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)

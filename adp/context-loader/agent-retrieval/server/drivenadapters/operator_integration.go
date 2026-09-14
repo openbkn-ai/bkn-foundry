@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -45,7 +46,49 @@ const (
 	getMCPToolListInternalURI = "/internal-v1/caller/mcp/proxy/%s/tools"
 	callMCPToolURI            = "/v1/mcp/proxy/%s/tool/call"
 	callMCPToolInternalURI    = "/internal-v1/caller/mcp/proxy/%s/tool/call"
+	callMCPToolManagedURI     = "/internal-v1/mcp/proxy/%s/tool/call"
 )
+
+const (
+	headerBKNCallerID     = "x-bkn-caller-id"
+	headerBKNCallerType   = "x-bkn-caller-type"
+	headerBKNKnowledgeID  = "x-bkn-kn-id"
+	headerBKNChildType    = "x-bkn-child-type"
+	headerBKNChildID      = "x-bkn-child-id"
+	headerBKNProxyVersion = "x-bkn-proxy-version"
+	headerBKNTargetType   = "x-bkn-target-type"
+	headerBKNTargetID     = "x-bkn-target-id"
+	headerBKNOperation    = "x-bkn-operation"
+)
+
+func managedProxyHeaders(ctx context.Context, proxy *interfaces.KNProxyExecution) (map[string]string, error) {
+	caller, ok := common.GetAccountAuthContextFromCtx(ctx)
+	if !ok || caller == nil || proxy == nil || proxy.Mapping == nil {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+	}
+	mapping, binding := proxy.Mapping, proxy.Binding
+	if caller.AccountID == "" || mapping.ProxyAccountID == "" || mapping.ProxyAccountType != "app" ||
+		mapping.Version <= 0 || mapping.KNID != binding.KNID || binding.ChildType != interfaces.KNProxyChildTypeCapability ||
+		binding.ChildID == "" || binding.TargetID == "" || binding.Operation != interfaces.KNProxyOperationExecute {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+	}
+	header := common.GetHeaderForChildOperation(ctx, "operator.capability.proxy.execute", 1)
+	header[string(interfaces.HeaderXAccountID)] = mapping.ProxyAccountID
+	header[string(interfaces.HeaderXAccountType)] = mapping.ProxyAccountType
+	header[headerBKNCallerID] = caller.AccountID
+	header[headerBKNCallerType] = string(caller.AccountType)
+	header[headerBKNKnowledgeID] = binding.KNID
+	header[headerBKNChildType] = binding.ChildType
+	header[headerBKNChildID] = binding.ChildID
+	header[headerBKNProxyVersion] = strconv.FormatInt(mapping.Version, 10)
+	header[headerBKNTargetType] = binding.TargetType
+	header[headerBKNTargetID] = binding.TargetID
+	header[headerBKNOperation] = binding.Operation
+	header[rest.ContentTypeKey] = rest.ContentTypeJSON
+	return header, nil
+}
 
 // NewOperatorIntegrationClient creates an OperatorIntegration client.
 func NewOperatorIntegrationClient() interfaces.DrivenOperatorIntegration {
@@ -180,6 +223,31 @@ func (o *operatorIntegrationClient) CallMCPTool(ctx context.Context, req *interf
 	return result, nil
 }
 
+func (o *operatorIntegrationClient) CallMCPToolAsProxy(ctx context.Context,
+	req *interfaces.CallMCPToolRequest, proxy *interfaces.KNProxyExecution) (map[string]interface{}, error) {
+	if req == nil || proxy == nil || proxy.Binding.TargetType != interfaces.KNProxyTargetTypeMCP || proxy.Binding.TargetID != req.McpID {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusForbidden,
+			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+	}
+	header, err := managedProxyHeaders(ctx, proxy)
+	if err != nil {
+		return nil, err
+	}
+	url := fmt.Sprintf("%s%s", o.baseURL,
+		fmt.Sprintf(callMCPToolManagedURI, url.PathEscape(strings.TrimSpace(req.McpID))))
+	reqBody := map[string]interface{}{"tool_name": req.ToolName, "parameters": req.Parameters}
+	code, body, err := o.httpClient.PostBytes(ctx, url, header, reqBody)
+	if err != nil {
+		return nil, skillUpstreamError(ctx, code, "MCPToolCallRequestFailed", err)
+	}
+	var result map[string]interface{}
+	if err := unmarshalPrecise(body, &result); err != nil {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
+			infraErr.LocalizedDetail(ctx, "MCPToolCallResponseInvalid"))
+	}
+	return result, nil
+}
+
 // mcpServerDetailURI reads one MCP Server, including its publication state.
 const mcpServerDetailURI = "/internal-v1/mcp/%s"
 
@@ -249,7 +317,8 @@ func (o *operatorIntegrationClient) ToolBoxLifecycle(ctx context.Context, boxID 
 	return out, nil
 }
 
-// MCPServerIsUsable reports whether the MCP Server is published.
+// MCPServerIsUsable reports whether the MCP Server's tools are callable: it is published, or it is
+// editing, which the execution factory serves from its release (bkn-foundry#1478).
 //
 // A server that cannot be read is reported as unusable rather than assumed fine: this gates a
 // call that runs, and the safe direction when the answer is unknown is to refuse.
@@ -276,8 +345,12 @@ func (o *operatorIntegrationClient) MCPServerIsUsable(ctx context.Context, mcpID
 		o.logger.WithContext(ctx).Warnf("[OperatorIntegration#MCPServerIsUsable] unmarshal failed: %v", err)
 		return false, nil
 	}
-	return payload.BaseInfo.Status == mcpServerStatusPublished, nil
+	return payload.BaseInfo.Status == mcpServerStatusPublished || payload.BaseInfo.Status == mcpServerStatusEditing, nil
 }
 
-// mcpServerStatusPublished is the one state in which an MCP Server's tools are callable.
-const mcpServerStatusPublished = "published"
+// An MCP Server's tools are callable in two states: published, and editing — a published server
+// with a draft beside it, still served from its release. The tool box's lifecycle reuses the first.
+const (
+	mcpServerStatusPublished = "published"
+	mcpServerStatusEditing   = "editing"
+)

@@ -25,11 +25,19 @@ var (
 	managerInst interfaces.LocalIndexManager
 )
 
+const (
+	capabilityProbeTimeout = 10 * time.Second
+	capabilityErrorTTL     = 30 * time.Second
+)
+
 type localIndexManager struct {
 	lic interfaces.IndexConnector // Local Index Connector
 
-	capabilities  interfaces.IndexCapabilities
-	capabilityErr error
+	capabilityMu           sync.RWMutex
+	capabilities           interfaces.IndexCapabilities
+	capabilitiesReady      bool
+	capabilityErr          error
+	capabilityErrorExpires time.Time
 }
 
 var analyzerCandidates = []string{"standard", "english", "ik_max_word", "hanlp_index"}
@@ -56,20 +64,15 @@ func NewLocalIndexManager(appSetting *common.AppSetting) interfaces.LocalIndexMa
 		}
 
 		manager := &localIndexManager{
-			lic:          connector.(interfaces.IndexConnector),
-			capabilities: interfaces.IndexCapabilities{CheckedAt: time.Now().UnixMilli()},
+			lic: connector.(interfaces.IndexConnector),
 		}
-		for _, analyzer := range analyzerCandidates {
-			available, err := manager.lic.ValidateAnalyzer(context.Background(), analyzer)
-			if err != nil {
-				manager.capabilityErr = err
-				manager.capabilities.FulltextAnalyzers = nil
-				break
-			}
-			if available {
-				manager.capabilities.FulltextAnalyzers = append(manager.capabilities.FulltextAnalyzers, interfaces.AnalyzerCapability{ID: analyzer})
-			}
-		}
+
+		probeCtx, cancel := context.WithTimeout(context.Background(), capabilityProbeTimeout)
+		capabilities, probeErr := manager.probeIndexCapabilities(probeCtx)
+		cancel()
+		manager.capabilityMu.Lock()
+		manager.storeIndexCapabilitiesLocked(capabilities, probeErr)
+		manager.capabilityMu.Unlock()
 		managerInst = manager
 	})
 	return managerInst
@@ -100,7 +103,8 @@ func (lim *localIndexManager) CheckIndexExist(ctx context.Context, indexName str
 }
 
 func (lim *localIndexManager) ValidateAnalyzer(ctx context.Context, analyzer string) (bool, error) {
-	if _, err := lim.GetIndexCapabilities(ctx); err != nil {
+	capabilities, err := lim.GetIndexCapabilities(ctx)
+	if err != nil {
 		return false, err
 	}
 	analyzer = strings.TrimSpace(analyzer)
@@ -108,20 +112,79 @@ func (lim *localIndexManager) ValidateAnalyzer(ctx context.Context, analyzer str
 		return true, nil
 	}
 	available := map[string]struct{}{}
-	for _, item := range lim.capabilities.FulltextAnalyzers {
+	for _, item := range capabilities.FulltextAnalyzers {
 		available[item.ID] = struct{}{}
 	}
 	_, ok := available[analyzer]
 	return ok, nil
 }
 
-func (lim *localIndexManager) GetIndexCapabilities(_ context.Context) (*interfaces.IndexCapabilities, error) {
-	if lim.capabilityErr != nil {
+func (lim *localIndexManager) GetIndexCapabilities(ctx context.Context) (*interfaces.IndexCapabilities, error) {
+	lim.capabilityMu.RLock()
+	if lim.capabilitiesReady {
+		capabilities := cloneIndexCapabilities(lim.capabilities)
+		lim.capabilityMu.RUnlock()
+		return capabilities, nil
+	}
+	if lim.capabilityErr != nil && time.Now().Before(lim.capabilityErrorExpires) {
+		err := lim.capabilityErr
+		lim.capabilityMu.RUnlock()
+		return nil, &interfaces.IndexCapabilitiesUnavailableError{Cause: err}
+	}
+	lim.capabilityMu.RUnlock()
+
+	lim.capabilityMu.Lock()
+	defer lim.capabilityMu.Unlock()
+	if lim.capabilitiesReady {
+		return cloneIndexCapabilities(lim.capabilities), nil
+	}
+	if lim.capabilityErr != nil && time.Now().Before(lim.capabilityErrorExpires) {
 		return nil, &interfaces.IndexCapabilitiesUnavailableError{Cause: lim.capabilityErr}
 	}
-	result := lim.capabilities
-	result.FulltextAnalyzers = append([]interfaces.AnalyzerCapability(nil), lim.capabilities.FulltextAnalyzers...)
-	return &result, nil
+
+	probeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), capabilityProbeTimeout)
+	capabilities, err := lim.probeIndexCapabilities(probeCtx)
+	cancel()
+	lim.storeIndexCapabilitiesLocked(capabilities, err)
+	if err != nil {
+		return nil, &interfaces.IndexCapabilitiesUnavailableError{Cause: err}
+	}
+	return cloneIndexCapabilities(capabilities), nil
+}
+
+func (lim *localIndexManager) storeIndexCapabilitiesLocked(capabilities interfaces.IndexCapabilities, err error) {
+	if err != nil {
+		lim.capabilities = interfaces.IndexCapabilities{}
+		lim.capabilitiesReady = false
+		lim.capabilityErr = err
+		lim.capabilityErrorExpires = time.Now().Add(capabilityErrorTTL)
+		return
+	}
+	lim.capabilities = capabilities
+	lim.capabilitiesReady = true
+	lim.capabilityErr = nil
+	lim.capabilityErrorExpires = time.Time{}
+}
+
+func (lim *localIndexManager) probeIndexCapabilities(ctx context.Context) (interfaces.IndexCapabilities, error) {
+	capabilities := interfaces.IndexCapabilities{}
+	for _, analyzer := range analyzerCandidates {
+		available, err := lim.lic.ValidateAnalyzer(ctx, analyzer)
+		if err != nil {
+			return interfaces.IndexCapabilities{}, err
+		}
+		if available {
+			capabilities.FulltextAnalyzers = append(capabilities.FulltextAnalyzers, interfaces.AnalyzerCapability{ID: analyzer})
+		}
+	}
+	capabilities.CheckedAt = time.Now().UnixMilli()
+	return capabilities, nil
+}
+
+func cloneIndexCapabilities(capabilities interfaces.IndexCapabilities) *interfaces.IndexCapabilities {
+	result := capabilities
+	result.FulltextAnalyzers = append([]interfaces.AnalyzerCapability(nil), capabilities.FulltextAnalyzers...)
+	return &result
 }
 
 func (lim *localIndexManager) ListDocuments(ctx context.Context, indexName string, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {

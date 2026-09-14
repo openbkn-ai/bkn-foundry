@@ -77,8 +77,6 @@ spec:
                 value: {{ .Values.depServices.rds.type | quote }}
             {{- end}}
             {{- if hasKey .Values "auth" }}
-              - name: AUTH_ENABLED
-                value: {{ .Values.auth.enabled | quote }}
               - name: CONTEXT_LOADER_RESOURCE_FILTER_CHUNK_SIZE
                 value: {{ .Values.auth.resourceFilterChunkSize | default 200 | quote }}
             {{- end}}

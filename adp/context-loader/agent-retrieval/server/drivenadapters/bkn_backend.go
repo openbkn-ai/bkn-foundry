@@ -111,42 +111,117 @@ func (b *bknBackendAccess) ListKnowledgeNetworks(ctx context.Context, req *inter
 	return resp, nil
 }
 
-// GetKnowledgeNetworkDetail gets knowledge-network details (include_detail=true, mode=export)
-// Corresponds to Python _get_knowledge_network_detail.
+// GetKnowledgeNetworkDetail assembles the concept model of a knowledge network as the caller may
+// see it: the network record plus its concept groups, object types, relation types and action
+// types.
+//
+// It deliberately does not read mode=export. Export is the network's complete definition, the
+// one Studio downloads and BKN re-imports, so it requires view_detail on the network itself. A
+// caller authorized only on some child resources was therefore refused outright (#1532), even
+// though bkn-backend would have shown them those children. The default read returns the network
+// record -- a navigation shell for such a caller -- and every child list is filtered per caller
+// by bkn-backend. That is the same composition Studio uses for its network page, so both
+// surfaces answer one identity the same way.
+//
+// The network read comes first and alone. The child lists only check that the network exists,
+// so for a caller who can see nothing they answer with empty lists; reading them first would turn
+// a refusal into an empty network. The four lists are then read concurrently, and any failure
+// fails the whole answer: a model missing its relation types reads as one that has none.
+//
+// On error the returned detail carries only the id.
 func (b *bknBackendAccess) GetKnowledgeNetworkDetail(ctx context.Context, knID string) (*interfaces.KnowledgeNetworkDetail, error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s", b.baseURL, knID)
-	header := common.GetHeaderForChildOperation(ctx, "bkn.knowledge_network.get", 1)
+
+	network := &interfaces.KnowledgeNetworkDetail{ID: knID}
+	if err := b.getKnowledgeNetworkJSON(ctx, src, "bkn.knowledge_network.get", url.Values{}, network); err != nil {
+		return &interfaces.KnowledgeNetworkDetail{ID: knID}, err
+	}
+
+	conceptGroups := &knListEnvelope[*interfaces.ConceptGroup]{}
+	objectTypes := &knListEnvelope[*interfaces.ObjectType]{}
+	relationTypes := &knListEnvelope[*interfaces.RelationType]{}
+	actionTypes := &knListEnvelope[*interfaces.ActionType]{}
+	lists := []struct {
+		path      string
+		operation string
+		out       any
+	}{
+		{"concept-groups", "bkn.concept_group.list", conceptGroups},
+		{"object-types", "bkn.object_type.list", objectTypes},
+		{"relation-types", "bkn.relation_type.list", relationTypes},
+		{"action-types", "bkn.action_type.list", actionTypes},
+	}
+
+	errs := make([]error, len(lists))
+	var wg sync.WaitGroup
+	for i, list := range lists {
+		wg.Add(1)
+		go func(i int, path, operation string, out any) {
+			defer wg.Done()
+			// The whole list, not a page: a page of the object types is not the network's model.
+			// The export read had no order at all; name order keeps the answer stable between
+			// calls. One set of values per request, because the HTTP client merges into the one
+			// it is given.
+			query := url.Values{}
+			query.Set("limit", "-1")
+			query.Set("sort", "name")
+			query.Set("direction", "asc")
+			errs[i] = b.getKnowledgeNetworkJSON(ctx, src+"/"+path, operation, query, out)
+		}(i, list.path, list.operation, list.out)
+	}
+	wg.Wait()
+	for _, err := range errs {
+		if err != nil {
+			return &interfaces.KnowledgeNetworkDetail{ID: knID}, err
+		}
+	}
+
+	return &interfaces.KnowledgeNetworkDetail{
+		ID:            knID,
+		Name:          network.Name,
+		Comment:       network.Comment,
+		ConceptGroups: conceptGroups.Entries,
+		ObjectTypes:   objectTypes.Entries,
+		RelationTypes: relationTypes.Entries,
+		ActionTypes:   actionTypes.Entries,
+	}, nil
+}
+
+// knListEnvelope is the {"entries": [...]} wrapper bkn-backend puts around every list.
+type knListEnvelope[T any] struct {
+	Entries []T `json:"entries"`
+}
+
+// getKnowledgeNetworkJSON reads one bkn-backend knowledge-network endpoint into out, keeping
+// bkn-backend's own error code, description and details when the read is refused or fails.
+func (b *bknBackendAccess) getKnowledgeNetworkJSON(ctx context.Context, src, operation string,
+	query url.Values, out any) error {
+	header := common.GetHeaderForChildOperation(ctx, operation, 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 
-	queryValues := url.Values{}
-	queryValues.Set("include_detail", "true")
-	queryValues.Set("mode", "export")
-
-	respCode, respBody, err := b.httpClient.GetNoUnmarshal(ctx, src, queryValues, header)
-
-	result := &interfaces.KnowledgeNetworkDetail{ID: knID}
+	respCode, respBody, err := b.httpClient.GetNoUnmarshal(ctx, src, query, header)
 	if err != nil {
-		b.logger.WithContext(ctx).Errorf("[BknBackendAccess] GetKnowledgeNetworkDetail request failed, err: %v", err)
-		return result, infraErr.DefaultHTTPError(ctx, respCode,
-			fmt.Sprintf("[BknBackendAccess] GetKnowledgeNetworkDetail request failed, err: %v", err))
+		b.logger.WithContext(ctx).Errorf("[BknBackendAccess] %s request failed, err: %v", operation, err)
+		return infraErr.DefaultHTTPError(ctx, respCode,
+			fmt.Sprintf("[BknBackendAccess] %s request failed, err: %v", operation, err))
 	}
 
 	if respCode == http.StatusNotFound && len(respBody) == 0 {
 		b.logger.WithContext(ctx).Warnf("[BknBackendAccess] request not found, [%s]", src)
-		return result, infraErr.DefaultHTTPError(ctx, respCode,
+		return infraErr.DefaultHTTPError(ctx, respCode,
 			fmt.Sprintf("[BknBackendAccess] request not found, [%s]", src))
 	}
 
 	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
-		b.logger.Errorf("[BknBackendAccess] GetKnowledgeNetworkDetail get resp failed, [%s], %v\n", src, respBody)
+		b.logger.Errorf("[BknBackendAccess] get resp failed, [%s], %v\n", src, respBody)
 
 		var baseError interfaces.KnBaseError
 		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
 			b.logger.Errorf("unmarshal KnBaseError failed: %v\n", err)
-			return result, err
+			return err
 		}
 
-		return result, &infraErr.HTTPError{
+		return &infraErr.HTTPError{
 			HTTPCode:     respCode,
 			Code:         baseError.ErrorCode,
 			Description:  baseError.Description,
@@ -156,16 +231,18 @@ func (b *bknBackendAccess) GetKnowledgeNetworkDetail(ctx context.Context, knID s
 		}
 	}
 
+	// bkn-backend always answers these reads with a JSON object. An empty body would otherwise
+	// decode as a network with nothing in it, which is the one wrong answer that looks right.
 	if len(respBody) == 0 {
-		return result, nil
+		b.logger.WithContext(ctx).Warnf("[BknBackendAccess] empty response, [%s]", src)
+		return infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+			"BKN returned an incomplete protected response")
 	}
-
-	if err := sonic.Unmarshal(respBody, result); err != nil {
-		b.logger.Errorf("[BknBackendAccess] GetKnowledgeNetworkDetail unmarshal failed: %v\n", err)
-		return result, err
+	if err := sonic.Unmarshal(respBody, out); err != nil {
+		b.logger.Errorf("[BknBackendAccess] %s unmarshal failed: %v\n", operation, err)
+		return err
 	}
-
-	return result, nil
+	return nil
 }
 
 // RunCypherQuery compiles a read-only Cypher query against a knowledge network
@@ -440,14 +517,16 @@ func (b *bknBackendAccess) GetRelationTypeDetail(ctx context.Context, knID strin
 		return emptyRelationTypes, nil
 	}
 
-	// Handle the returned result.
-	var releationTypes []*interfaces.RelationType
-	if err := sonic.Unmarshal(respBody, &releationTypes); err != nil {
+	// bkn-backend wraps the list as {"entries": []}, as it does for object types.
+	var response struct {
+		Entries []*interfaces.RelationType `json:"entries"`
+	}
+	if err := sonic.Unmarshal(respBody, &response); err != nil {
 		b.logger.Errorf("[BknBackendAccess]GetRelationTypeDetail unmalshal releationTypes failed: %v\n", err)
 		return emptyRelationTypes, err
 	}
 
-	return releationTypes, nil
+	return response.Entries, nil
 }
 
 // SearchActionTypes searches action types.
@@ -601,14 +680,16 @@ func (b *bknBackendAccess) GetActionTypeDetail(ctx context.Context, knID string,
 		return emptyActionTypes, nil
 	}
 
-	// Handle the returned result.
-	var actionTypes []*interfaces.ActionType
-	if err := sonic.Unmarshal(respBody, &actionTypes); err != nil {
+	// bkn-backend wraps the list as {"entries": []}, as it does for object and relation types.
+	var response struct {
+		Entries []*interfaces.ActionType `json:"entries"`
+	}
+	if err := sonic.Unmarshal(respBody, &response); err != nil {
 		b.logger.Errorf("[BknBackendAccess]GetActionTypeDetail unmalshal actionTypes failed: %v\n", err)
 		return emptyActionTypes, err
 	}
 
-	return actionTypes, nil
+	return response.Entries, nil
 }
 
 // metricsListEntry is one entry of the bkn-backend GET .../metrics response.
@@ -864,4 +945,41 @@ func (b *bknBackendAccess) ListKNCapabilities(ctx context.Context, knID, branch,
 			len(response.Entries), response.TotalCount, knID)
 	}
 	return response.Entries, nil
+}
+
+// ResolveKNProxyBinding asks BKN to validate the exact mounted capability and
+// return its current managed proxy mapping. No proxy identity is accepted from
+// the public request.
+func (b *bknBackendAccess) ResolveKNProxyBinding(ctx context.Context,
+	binding interfaces.KNProxyBinding) (*interfaces.KNProxyAccount, error) {
+	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/proxy-account/resolve",
+		b.baseURL, url.PathEscape(binding.KNID))
+	header := common.GetHeaderForChildOperation(ctx, "bkn.proxy.resolve", 1)
+	header[rest.ContentTypeKey] = rest.ContentTypeJSON
+
+	status, body, err := b.httpClient.PostNoUnmarshal(ctx, src, header, binding)
+	if err != nil {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
+			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+	}
+	if status < http.StatusOK || status >= http.StatusMultipleChoices {
+		var baseError interfaces.KnBaseError
+		if decodeErr := sonic.Unmarshal(body, &baseError); decodeErr != nil {
+			return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
+				infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		}
+		return nil, &infraErr.HTTPError{
+			HTTPCode: status, Code: baseError.ErrorCode, Description: baseError.Description,
+			Solution: baseError.Solution, ErrorLink: baseError.ErrorLink, ErrorDetails: baseError.ErrorDetails,
+		}
+	}
+	var mapping interfaces.KNProxyAccount
+	if len(body) == 0 || sonic.Unmarshal(body, &mapping) != nil ||
+		mapping.KNID != binding.KNID || strings.TrimSpace(mapping.ProxyAccountID) == "" ||
+		mapping.ProxyAccountType != string(interfaces.AccessorTypeApp) || mapping.Version <= 0 ||
+		mapping.LifecycleStatus != "active" || mapping.SyncStatus != "ready" {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+	}
+	return &mapping, nil
 }

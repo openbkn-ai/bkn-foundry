@@ -223,6 +223,7 @@ def derive_proxy_sources(
     relation_rows: Sequence[Mapping[str, Any]],
     metric_rows: Sequence[Mapping[str, Any]],
     action_rows: Sequence[Mapping[str, Any]],
+    capability_rows: Sequence[Mapping[str, Any]] = (),
 ) -> tuple[list[ProxySource], str]:
     """Derive the same persisted-model proxy grants as BKN Backend."""
     object_resources: dict[str, str] = {}
@@ -230,6 +231,7 @@ def derive_proxy_sources(
     sources: list[ProxySource] = []
     bindings: list[dict[str, str]] = []
     seen: set[tuple[str, str, str, str]] = set()
+    seen_bindings: set[tuple[str, str, str, str, str]] = set()
 
     def add(
         binding_type: str,
@@ -267,7 +269,16 @@ def derive_proxy_sources(
         }
         if detail:
             binding["detail"] = detail
-        bindings.append(binding)
+        binding_key = (
+            binding["type"],
+            binding["id"],
+            binding["target_type"],
+            binding["target_id"],
+            binding.get("detail", ""),
+        )
+        if binding_key not in seen_bindings:
+            seen_bindings.add(binding_key)
+            bindings.append(binding)
 
     for row in object_rows:
         object_id = normalize_text(row["f_id"]).strip()
@@ -402,6 +413,50 @@ def derive_proxy_sources(
         else:
             raise MigrationError(
                 f"action type {action_id} has unsupported action source type"
+            )
+
+    # Keep the offline projection identical to BKN Backend's managed-proxy
+    # projection. Explicit capability mounts were added after the original
+    # migration script, so omitting them produces a stale model version and
+    # leaves a migrated proxy out of sync with the published network.
+    for row in capability_rows:
+        capability_id = normalize_text(row.get("f_id")).strip()
+        capability_type = normalize_text(row.get("f_capability_type")).strip()
+        owner_id = normalize_text(row.get("f_owner_id")).strip()
+        target_id = normalize_text(row.get("f_capability_id")).strip()
+        if capability_type == "skill":
+            # Skills execute in the caller context and do not need a managed
+            # knowledge-network proxy grant.
+            continue
+        if capability_type == "function":
+            if not target_id:
+                raise MigrationError(
+                    f"capability binding {capability_id} has no tool id"
+                )
+            add(
+                "capability_binding",
+                capability_id,
+                "tool_box",
+                owner_id,
+                "execute",
+                f"{capability_type}:{target_id}",
+            )
+        elif capability_type == "mcp_tool":
+            if not target_id:
+                raise MigrationError(
+                    f"capability binding {capability_id} has no MCP tool name"
+                )
+            add(
+                "capability_binding",
+                capability_id,
+                "mcp",
+                owner_id,
+                "execute",
+                f"{capability_type}:{target_id}",
+            )
+        else:
+            raise MigrationError(
+                f"capability binding {capability_id} has unsupported type {capability_type}"
             )
 
     sources.sort(
@@ -772,9 +827,14 @@ def load_proxy_plan(
 ) -> ProxyMigrationPlan:
     """Build a complete, side-effect-free managed-proxy backfill plan."""
     require_safe_proxy_schema(safe_connection)
-    if not table_exists(bkn_connection, "t_kn_proxy_account"):
+    required_bkn_tables = ("t_kn_proxy_account", "t_kn_capability_binding")
+    missing_bkn_tables = [
+        table for table in required_bkn_tables if not table_exists(bkn_connection, table)
+    ]
+    if missing_bkn_tables:
         raise MigrationError(
-            "BKN 0.1.5 schema is unavailable; missing table: t_kn_proxy_account"
+            "BKN 0.1.5 schema is unavailable; missing tables: "
+            + ", ".join(missing_bkn_tables)
         )
     authority = load_grant_index(safe_connection, grantor_id)
     with bkn_connection.cursor() as cursor:
@@ -812,6 +872,14 @@ def load_proxy_plan(
         )
         action_rows = list(cursor.fetchall())
         cursor.execute(
+            "SELECT f_kn_id, f_id, f_capability_type, f_owner_id, f_capability_id "
+            "FROM t_kn_capability_binding "
+            "WHERE COALESCE(NULLIF(f_branch, ''), %s) = %s "
+            "ORDER BY f_kn_id, f_id",
+            (MAIN_BRANCH, MAIN_BRANCH),
+        )
+        capability_rows = list(cursor.fetchall())
+        cursor.execute(
             "SELECT f_kn_id, f_proxy_account_id FROM t_kn_proxy_account"
         )
         bkn_mappings = {
@@ -822,11 +890,13 @@ def load_proxy_plan(
     by_kn_relations: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
     by_kn_metrics: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
     by_kn_actions: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    by_kn_capabilities: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
     for rows, destination in (
         (object_rows, by_kn_objects),
         (relation_rows, by_kn_relations),
         (metric_rows, by_kn_metrics),
         (action_rows, by_kn_actions),
+        (capability_rows, by_kn_capabilities),
     ):
         for row in rows:
             destination[normalize_text(row["f_kn_id"])].append(row)
@@ -900,6 +970,7 @@ def load_proxy_plan(
                 by_kn_relations[kn_id],
                 by_kn_metrics[kn_id],
                 by_kn_actions[kn_id],
+                by_kn_capabilities[kn_id],
             )
             for source in sources:
                 if not authority.allows(

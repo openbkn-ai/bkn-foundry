@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"sync"
 
 	"github.com/bytedance/sonic"
@@ -211,6 +212,62 @@ func (o *openSearchAccess) InsertData(ctx context.Context, indexName string, doc
 	return nil
 }
 
+// updateRetryOnConflict bounds how often OpenSearch re-applies an update that raced with
+// another write to the same document.
+const updateRetryOnConflict = 3
+
+// UpdateData applies a partial update ({"doc": ...} or {"script": ...}) to one document.
+// OpenSearch applies it to the latest version of the document and retries on version
+// conflicts, so concurrent writers never overwrite each other's fields. The index is
+// refreshed so the change is immediately searchable, matching InsertData.
+func (o *openSearchAccess) UpdateData(ctx context.Context, indexName string, docID string, body any) (string, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "UpdateData")
+	defer span.End()
+
+	span.SetAttributes(
+		attr.Key("index_name").String(indexName),
+		attr.Key("doc_id").String(docID))
+
+	bodyBytes, err := sonic.Marshal(body)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal update body: %w", err)
+	}
+
+	retryOnConflict := updateRetryOnConflict
+	req := opensearchapi.UpdateRequest{
+		Index:           indexName,
+		DocumentID:      docID,
+		Body:            bytes.NewReader(bodyBytes),
+		Refresh:         "true",
+		RetryOnConflict: &retryOnConflict,
+	}
+
+	res, err := req.Do(ctx, o.client)
+	if err != nil {
+		return "", fmt.Errorf("failed to update data %s in index %s: %w", docID, indexName, err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode == http.StatusNotFound {
+		return "", fmt.Errorf("update data %s in index %s: %w", docID, indexName, interfaces.ErrDocumentNotFound)
+	}
+	if res.IsError() {
+		return "", fmt.Errorf("update data %s in index %s failed: %s, %s", docID, indexName, res.Status(), res.String())
+	}
+
+	resBody, err := io.ReadAll(res.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read update response: %w", err)
+	}
+	var updateResult struct {
+		Result string `json:"result"`
+	}
+	if err := sonic.Unmarshal(resBody, &updateResult); err != nil {
+		return "", fmt.Errorf("failed to decode update response: %w", err)
+	}
+	return updateResult.Result, nil
+}
+
 // BulkInsertData writes data to an index in batches.
 // It efficiently inserts multiple documents into the specified OpenSearch index.
 // The bulk API significantly improves large-volume insertion throughput over individual inserts.
@@ -302,6 +359,72 @@ func (o *openSearchAccess) BulkInsertData(ctx context.Context, indexName string,
 		return fmt.Errorf("bulk insert data failed: %s", resp.Items)
 	}
 
+	return nil
+}
+
+// BulkIndexDocuments indexes documents under their explicit IDs in one bulk request.
+// Writing the same ID again replaces the document, so a retried batch is idempotent. Unlike
+// BulkInsertData the ID is not copied into the stored source. The call returns once the
+// documents are searchable (refresh=wait_for) without forcing a refresh of its own, so many
+// writers sharing one index do not each trigger a refresh.
+func (o *openSearchAccess) BulkIndexDocuments(ctx context.Context, indexName string, docs []interfaces.BulkDocument) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "BulkIndexDocuments")
+	defer span.End()
+
+	span.SetAttributes(
+		attr.Key("index_name").String(indexName),
+		attr.Key("doc_count").Int(len(docs)))
+
+	if len(docs) == 0 {
+		return nil
+	}
+
+	var buf bytes.Buffer
+	for _, doc := range docs {
+		meta, err := sonic.Marshal(map[string]any{
+			"index": map[string]any{"_index": indexName, "_id": doc.ID},
+		})
+		if err != nil {
+			return fmt.Errorf("failed to marshal bulk metadata: %w", err)
+		}
+		body, err := sonic.Marshal(doc.Body)
+		if err != nil {
+			return fmt.Errorf("failed to marshal bulk document %s: %w", doc.ID, err)
+		}
+		buf.Write(meta)
+		buf.WriteByte('\n')
+		buf.Write(body)
+		buf.WriteByte('\n')
+	}
+
+	req := opensearchapi.BulkRequest{
+		Body:    &buf,
+		Refresh: "wait_for",
+	}
+	res, err := req.Do(ctx, o.client)
+	if err != nil {
+		return fmt.Errorf("failed to bulk index documents: %w", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.IsError() {
+		return fmt.Errorf("bulk index documents failed: %s, %s", res.Status(), res.String())
+	}
+
+	resBody, err := io.ReadAll(res.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read bulk response: %w", err)
+	}
+	var resp struct {
+		Errors bool            `json:"errors"`
+		Items  json.RawMessage `json:"items"`
+	}
+	if err := sonic.Unmarshal(resBody, &resp); err != nil {
+		return fmt.Errorf("failed to decode bulk response: %w", err)
+	}
+	if resp.Errors {
+		return fmt.Errorf("bulk index documents failed: %s", resp.Items)
+	}
 	return nil
 }
 
@@ -478,6 +601,60 @@ func (o *openSearchAccess) BulkDeleteData(ctx context.Context, indexName string,
 	}
 
 	return nil
+}
+
+// DeleteByQuery deletes every document matching query in indexName (a name or a wildcard
+// pattern). Version conflicts with concurrent writers are skipped rather than failing the
+// request, a missing index deletes nothing, and the index is refreshed afterwards.
+func (o *openSearchAccess) DeleteByQuery(ctx context.Context, indexName string, query any) (int64, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "DeleteByQuery")
+	defer span.End()
+
+	span.SetAttributes(attr.Key("index_name").String(indexName))
+
+	queryJSON, err := sonic.Marshal(query)
+	if err != nil {
+		return 0, fmt.Errorf("failed to marshal delete query: %w", err)
+	}
+
+	allowNoIndices, ignoreUnavailable, refresh := true, true, true
+	req := opensearchapi.DeleteByQueryRequest{
+		Index:             []string{indexName},
+		Body:              bytes.NewReader(queryJSON),
+		AllowNoIndices:    &allowNoIndices,
+		IgnoreUnavailable: &ignoreUnavailable,
+		Conflicts:         "proceed",
+		Refresh:           &refresh,
+	}
+	res, err := req.Do(ctx, o.client)
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete by query in %s: %w", indexName, err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode == http.StatusNotFound {
+		return 0, nil
+	}
+	if res.IsError() {
+		return 0, fmt.Errorf("delete by query in %s failed: %s, %s", indexName, res.Status(), res.String())
+	}
+
+	resBody, err := io.ReadAll(res.Body)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read delete by query response: %w", err)
+	}
+	var result struct {
+		Deleted  int64             `json:"deleted"`
+		Failures []json.RawMessage `json:"failures"`
+	}
+	if err := sonic.Unmarshal(resBody, &result); err != nil {
+		return 0, fmt.Errorf("failed to decode delete by query response: %w", err)
+	}
+	if len(result.Failures) > 0 {
+		return result.Deleted, fmt.Errorf("delete by query in %s reported %d failures: %s", indexName, len(result.Failures), result.Failures[0])
+	}
+	span.SetAttributes(attr.Key("deleted").Int64(result.Deleted))
+	return result.Deleted, nil
 }
 
 func (o *openSearchAccess) Count(ctx context.Context, indexName string, query any) ([]byte, error) {

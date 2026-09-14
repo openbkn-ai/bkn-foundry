@@ -5,7 +5,6 @@
 import unittest
 from unittest import mock
 
-from app.core.config import base_config
 from app.commons.locale import reset_effective_locale, set_effective_locale
 from app.utils.permission_manager import PermissionManager
 
@@ -42,14 +41,13 @@ class TestPermissionManagerLocale(unittest.IsolatedAsyncioTestCase):
         manager.get_session = mock.AsyncMock(return_value=session)
         token = set_effective_locale("en-US")
         try:
-            with mock.patch.object(base_config, "AUTH_ENABLED", True):
-                allowed = await manager.check_single_permission(
-                    user_id="user-1",
-                    resource_id="model-1",
-                    operations="display",
-                    resource_type="large_model",
-                    role="user",
-                )
+            allowed = await manager.check_single_permission(
+                user_id="user-1",
+                resource_id="model-1",
+                operations="display",
+                resource_type="large_model",
+                role="user",
+            )
         finally:
             reset_effective_locale(token)
 
@@ -66,14 +64,13 @@ class TestPermissionManagerLocale(unittest.IsolatedAsyncioTestCase):
         manager.get_session = mock.AsyncMock(return_value=session)
         token = set_effective_locale("en-US")
         try:
-            with mock.patch.object(base_config, "AUTH_ENABLED", True):
-                allowed = await manager.check_single_permission(
-                    user_id="user-1",
-                    resource_id="model-1",
-                    operations="display",
-                    resource_type="large_model",
-                    role="user",
-                )
+            allowed = await manager.check_single_permission(
+                user_id="user-1",
+                resource_id="model-1",
+                operations="display",
+                resource_type="large_model",
+                role="user",
+            )
         finally:
             reset_effective_locale(token)
 

@@ -29,6 +29,13 @@ func (s *knProxyMutationPublisherStub) PublishKNChildMutation(ctx context.Contex
 	return mutate(ctx, nil)
 }
 
+func (s *knProxyMutationPublisherStub) PublishKNCapabilityMutation(ctx context.Context, _, _ string,
+	_ []string, mutate func(context.Context, *sql.Tx) (*interfaces.KNCapabilityMutationResult, error),
+) (*interfaces.KNCapabilityMutationResult, error) {
+	s.calls++
+	return mutate(ctx, nil)
+}
+
 func assertProxyMutation(t *testing.T, publisher *knProxyMutationPublisherStub, mergeMode string,
 	assertChanges func(*interfaces.KN)) {
 	t.Helper()

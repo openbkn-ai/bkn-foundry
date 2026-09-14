@@ -1412,6 +1412,9 @@ func Test_actionTypeService_SearchActionTypes(t *testing.T) {
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
 		ata.EXPECT().GetActionTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"at1"}, nil).AnyTimes()
+		ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{{
+			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ObjectTypeID: "ot1"},
+		}}, nil).AnyTimes()
 		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllActionPermissionResources).AnyTimes()
 
@@ -1574,6 +1577,9 @@ func Test_actionTypeService_DeleteActionTypesByKnID(t *testing.T) {
 
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
 		ata.EXPECT().GetActionTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"at1"}, nil).AnyTimes()
+		ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{{
+			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ObjectTypeID: "ot1"},
+		}}, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		ps.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
@@ -1618,6 +1624,9 @@ func Test_actionTypeService_SearchActionTypes_extraCases(t *testing.T) {
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
 		ata.EXPECT().GetActionTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"at1"}, nil).AnyTimes()
+		ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{{
+			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ObjectTypeID: "ot1"},
+		}}, nil).AnyTimes()
 		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllActionPermissionResources).AnyTimes()
 

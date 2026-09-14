@@ -198,14 +198,15 @@ class ProxyPlanTest(unittest.TestCase):
     def test_proxy_plan_requires_the_installed_0_1_5_schema(
         self, require_safe_proxy_schema, table_exists
     ):
+        table_exists.side_effect = [False, True]
         with self.assertRaisesRegex(
             migration.MigrationError,
-            "BKN 0.1.5 schema is unavailable",
+            "missing tables: t_kn_proxy_account",
         ):
             load_proxy_plan(MagicMock(), MagicMock(), "grantor-1")
 
         require_safe_proxy_schema.assert_called_once()
-        table_exists.assert_called_once()
+        self.assertEqual(2, table_exists.call_count)
 
     def test_derives_resource_toolbox_and_mcp_sources(self):
         sources, model_version = derive_proxy_sources(
@@ -240,6 +241,99 @@ class ProxyPlanTest(unittest.TestCase):
                 ("resource", "resource-1", "query_data"),
                 ("tool_box", "box-1", "execute"),
                 ("mcp", "mcp-1", "execute"),
+            },
+            {
+                (source.resource_type, source.resource_id, source.operation)
+                for source in sources
+            },
+        )
+
+    def test_derives_capability_mount_sources_and_version(self):
+        sources, model_version = derive_proxy_sources(
+            "kn-1",
+            [],
+            [],
+            [],
+            [],
+            [
+                {
+                    "f_id": "function-binding",
+                    "f_capability_type": "function",
+                    "f_owner_id": "box-1",
+                    "f_capability_id": "tool-1",
+                },
+                {
+                    "f_id": "mcp-binding",
+                    "f_capability_type": "mcp_tool",
+                    "f_owner_id": "mcp-1",
+                    "f_capability_id": "run",
+                },
+                {
+                    "f_id": "skill-binding",
+                    "f_capability_type": "skill",
+                    "f_owner_id": "",
+                    "f_capability_id": "skill-1",
+                },
+            ],
+        )
+
+        self.assertEqual(
+            {
+                ("tool_box", "box-1", "execute", "capability_binding", "function-binding"),
+                ("mcp", "mcp-1", "execute", "capability_binding", "mcp-binding"),
+            },
+            {
+                (
+                    source.resource_type,
+                    source.resource_id,
+                    source.operation,
+                    source.binding_type,
+                    source.binding_id,
+                )
+                for source in sources
+            },
+        )
+        self.assertTrue(model_version.startswith("sha256:"))
+
+    def test_rejects_unsupported_capability_mount_type(self):
+        with self.assertRaisesRegex(
+            migration.MigrationError, "unsupported type unknown"
+        ):
+            derive_proxy_sources(
+                "kn-1",
+                [],
+                [],
+                [],
+                [],
+                [
+                    {
+                        "f_id": "unsupported-binding",
+                        "f_capability_type": "unknown",
+                        "f_owner_id": "owner-1",
+                        "f_capability_id": "capability-1",
+                    }
+                ],
+            )
+
+    def test_deduplicates_nested_import_bindings_in_model_version(self):
+        object_type = {
+            "f_id": "object-1",
+            "f_data_source": '{"type":"resource","id":"resource-1"}',
+            "f_logic_properties": "[]",
+        }
+
+        _, expected_version = derive_proxy_sources(
+            "kn-1", [object_type], [], [], []
+        )
+        sources, duplicated_version = derive_proxy_sources(
+            "kn-1", [object_type, object_type], [], [], []
+        )
+
+        self.assertEqual(expected_version, duplicated_version)
+        self.assertEqual(
+            {
+                ("resource", "resource-1", "view_detail"),
+                ("resource", "resource-1", "query_data"),
             },
             {
                 (source.resource_type, source.resource_id, source.operation)

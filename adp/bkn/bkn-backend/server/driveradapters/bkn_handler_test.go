@@ -411,8 +411,8 @@ func Test_BKNRestHandler_UploadBKN_BindingPolicyCapabilities(t *testing.T) {
 		url := "/api/bkn-backend/v1/bkns"
 
 		Convey("preserve 时把声明交给解析", func() {
-			cbs.EXPECT().ImportCapabilities(gomock.Any(), "kn1", gomock.Any(), gomock.Not(gomock.Nil())).
-				Return(&interfaces.CapabilityImportReport{}, nil)
+			cbs.EXPECT().ImportCapabilitiesTx(gomock.Any(), nil, "kn1", gomock.Any(), gomock.Not(gomock.Nil())).
+				Return(&interfaces.CapabilityImportReport{}, nil, nil)
 
 			req := newMultipartRequest(t, url+"?binding_policy=preserve", "test.tar",
 				newBKNTarWithCapabilities(t))
@@ -423,8 +423,8 @@ func Test_BKNRestHandler_UploadBKN_BindingPolicyCapabilities(t *testing.T) {
 		})
 
 		Convey("detach 时不带任何声明", func() {
-			cbs.EXPECT().ImportCapabilities(gomock.Any(), "kn1", gomock.Any(), gomock.Nil()).
-				Return(&interfaces.CapabilityImportReport{}, nil)
+			cbs.EXPECT().ImportCapabilitiesTx(gomock.Any(), nil, "kn1", gomock.Any(), gomock.Nil()).
+				Return(&interfaces.CapabilityImportReport{}, nil, nil)
 
 			req := newMultipartRequest(t, url+"?binding_policy=detach", "test.tar",
 				newBKNTarWithCapabilities(t))

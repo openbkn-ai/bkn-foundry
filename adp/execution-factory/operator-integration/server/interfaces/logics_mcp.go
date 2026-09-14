@@ -284,6 +284,9 @@ type MCPToolDebugResponse struct {
 type MCPProxyToolListRequest struct {
 	UserID string `header:"user_id"`                 // User ID, internal use.
 	MCPID  string `uri:"mcp_id" validate:"required"` // MCP Server ID
+	// Draft lists the config's version instead of the served one. The two differ only while the
+	// server is editing; the authoring page needs the draft it debugs (#1523).
+	Draft bool `form:"draft"`
 }
 
 type MCPProxyToolListResponse struct {

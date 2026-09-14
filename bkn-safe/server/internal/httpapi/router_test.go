@@ -389,6 +389,34 @@ func TestBKNCreationPoliciesUseTrustedLifecycleSources(t *testing.T) {
 		t.Fatalf("creator task_manage = %v, %v; want denied", allowed, checkErr)
 	}
 
+	catalogBody := map[string]any{
+		"accessor_id":      "catalog-creator",
+		"resource":         map[string]string{"type": "catalog", "id": "catalog-1"},
+		"operations":       []string{authz.ActFullBusinessAccess, "authorize"},
+		"policy_source":    authz.PolicySourceProfessionalRule,
+		"authority_source": authz.AuthoritySourceOwnerDelegate,
+	}
+	if w := do(t, r, http.MethodPost, "/api/safe/v1/authz/policies", catalogBody); w.Code != http.StatusNoContent {
+		t.Fatalf("create catalog policies: want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	catalogRecords, err := e.PolicyRecords(authz.PolicyFilter{
+		AccessorID: "catalog-creator", Object: "catalog:catalog-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(catalogRecords) != 2 {
+		t.Fatalf("catalog records = %#v, want bundle and authorize", catalogRecords)
+	}
+	for _, operation := range []string{"view_detail", "modify", "delete", "query_data", "resource_manage", "task_manage", "authorize"} {
+		if allowed, checkErr := e.Check("catalog-creator", "catalog", "catalog-1", operation); checkErr != nil || !allowed {
+			t.Fatalf("catalog creator %s = %v, %v; want allowed", operation, allowed, checkErr)
+		}
+	}
+	if allowed, checkErr := e.Check("catalog-creator", "catalog", "catalog-1", "create"); checkErr != nil || allowed {
+		t.Fatalf("catalog creator create = %v, %v; want denied", allowed, checkErr)
+	}
+
 	actionBody := map[string]any{
 		"accessor_id": "creator-1",
 		"resource":    map[string]string{"type": "action_type", "id": "kn-1/action-1"},

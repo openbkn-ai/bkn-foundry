@@ -5,7 +5,8 @@ info:
   description: |
     把知识网络已挂载的能力交给调用方使用：`search_capabilities` 在一个排序空间里检索
     全部四类能力——Skill、函数工具、API 工具（`metadata_type=openapi`）与 MCP 工具——
-    `execute_tool` 以调用者自己的身份执行其中的工具类能力。Skill 的读取与执行在
+    `execute_tool` 通过知识网络的托管代理执行其中的工具类能力，同时保留真实调用者用于
+    网络级鉴权与审计。Skill 的读取与执行在
     [skill.yaml](skill.yaml)。
 
     检索面**只有这一条**。曾经的 `search_tools` 与 `find_skills` 是本接口按类型钉死的
@@ -15,21 +16,21 @@ info:
     **能力**而不是工具箱——同一个工具箱里可以只有部分工具挂到本网络，未挂载的那些既搜不到
     也调不了。网络未挂载任何能力时返回空列表并给出提示，不会退回「当前账户可见的全部工具」。
 
-    **可见性是两者的交集**：挂载决定这个网络用哪些工具，调用者自身权限决定他能否看到与
-    执行。回填入参 schema 时带调用者原始令牌打执行工厂公开 API，该账户看不到的工具箱里
-    的命中会被丢弃，不会列出一个 `execute_tool` 随后会拒绝的工具。
+    **检索与执行的权限不同**：检索回填 schema 时仍按调用者可见性读取执行工厂；执行时要求
+    调用者拥有知识网络 `execute`，并由服务端校验精确的能力绑定后解析托管代理。调用者无需
+    直接拥有工具箱或 MCP Server 的执行权限，也不能在请求中指定代理身份。
 
     **`execute_tool` 有不可回滚的副作用**：注册进来的函数可以对外部系统写入。调用前先读
-    `search_capabilities` 返回的 `description` 与 `use_rule`。服务端执行前先核两道：工具必须已挂载
-    到该知识网络，且在「当前账户可调用的已启用工具」列表里；任一不满足直接 400，不会打到
-    执行代理。收窄检索面本身不构成管控——工具 ID 会活过产生它的那次检索。
+    `search_capabilities` 返回的 `description` 与 `use_rule`。服务端执行前校验知识网络 `execute`、
+    精确能力绑定、代理同步状态以及工具箱/MCP Server 生命周期；任一不满足都不会执行。
+    收窄检索面本身不构成管控——工具 ID 会活过产生它的那次检索。
 
     **托管 Interaction**：请求体里的 `bkn_context` 可选。带上时，`conversation_id` 与
     `interaction_id` 会随调用透传到执行工厂，被调函数因而落在同一个 Interaction 下，
     证据链完整；不带则只执行、不归因。
 
     **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` AppKey）。
-  version: 0.1.5
+  version: 0.1.6
 servers:
   - url: /api/agent-retrieval/v1
 security:
@@ -183,7 +184,7 @@ paths:
       summary: 执行一个已发布函数工具
       operationId: executeTool
       description: |
-        以调用者身份执行工具，返回工具的原始响应。
+        以知识网络托管代理执行工具，返回工具的原始响应；真实调用者仍用于网络级鉴权和审计。
 
         `toolbox_id` 与 `tool_id` 必须取自 `search_capabilities`（`owner_id` / `capability_id`）；`arguments` 按其返回的
         `input_schema` 填，只放业务参数——令牌、会话 id 等传输信息由平台携带，写进
@@ -191,8 +192,8 @@ paths:
 
         **函数自身报错同样是 200**：调用成功不等于业务成功，需读响应体判断。
 
-        工具已停用、所属工具箱未发布，或当前账户无权访问时返回 400，`message` 说明原因，
-        请求不会打到执行代理。
+        工具未挂载、已停用、所属工具箱/MCP Server 未发布、代理未同步，或调用者没有知识网络
+        `execute` 权限时会拒绝，`message` 说明原因，请求不会执行目标工具。
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
       requestBody:

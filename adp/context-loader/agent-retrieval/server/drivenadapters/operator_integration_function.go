@@ -6,12 +6,13 @@ package drivenadapters
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/utils"
@@ -56,20 +57,11 @@ func (o *operatorIntegrationClient) callerAuthorizationHeader(
 func (o *operatorIntegrationClient) capabilityAuthorizationHeader(
 	ctx context.Context, operationName string,
 ) (map[string]string, error) {
-	return o.capabilityAuthorizationHeaderForAuthMode(ctx, operationName, config.GetAuthEnabled())
-}
-
-func (o *operatorIntegrationClient) capabilityAuthorizationHeaderForAuthMode(
-	ctx context.Context, operationName string, authEnabled bool,
-) (map[string]string, error) {
 	if _, ok := common.GetRawTokenFromCtx(ctx); ok {
 		return o.callerAuthorizationHeader(ctx, operationName)
 	}
 	if common.IsPublicAPIFromCtx(ctx) {
-		if authEnabled {
-			return o.callerAuthorizationHeader(ctx, operationName)
-		}
-		return o.skillHeader(ctx, operationName), nil
+		return o.callerAuthorizationHeader(ctx, operationName)
 	}
 	authContext, ok := common.GetAccountAuthContextFromCtx(ctx)
 	if !ok || strings.TrimSpace(authContext.AccountID) == "" || strings.TrimSpace(string(authContext.AccountType)) == "" {
@@ -122,7 +114,7 @@ func (o *operatorIntegrationClient) ExecuteFunction(
 	code, respBody, err := o.httpClient.Post(ctx, fullURL, header, body)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ExecuteFunction] Request failed, err: %v", err)
-		return nil, skillUpstreamError(ctx, code, "FunctionExecutionRequestFailed", err)
+		return nil, classifyFunctionExecuteError(ctx, code, err)
 	}
 
 	resp := &interfaces.ExecuteFunctionResponse{}
@@ -132,4 +124,64 @@ func (o *operatorIntegrationClient) ExecuteFunction(
 			infraErr.LocalizedDetail(ctx, "FunctionExecutionResponseInvalid"))
 	}
 	return resp, nil
+}
+
+// Execution Factory error codes returned by the /v1/function/execute gate.
+const (
+	executionFactoryUseForbidden             = "CommonUseForbidden"
+	executionFactoryAuthorizationUnavailable = "CommonAuthorizationUnavailable"
+)
+
+// classifyFunctionExecuteError maps an Execution Factory failure on
+// /v1/function/execute.
+//
+// The endpoint's gate separates a denial (403 CommonUseForbidden: the caller lacks
+// execute on the operator type) from an authorization outage (503
+// CommonAuthorizationUnavailable: bkn-safe gave no decision). The code runs in
+// neither case, but only a denial is fixed by requesting a grant, so each gets its
+// own reason. Both used to reach the caller as the same generic sandbox failure.
+// See #1533.
+//
+// Only the downstream code and localized description are carried through. The
+// downstream details and the shared client's transport string can hold internal
+// addresses, so they stay in the server log.
+func classifyFunctionExecuteError(ctx context.Context, code int, err error) error {
+	downstreamCode, description := executionFactoryError(err)
+	switch {
+	case code == http.StatusForbidden && isExecutionFactoryCode(downstreamCode, executionFactoryUseForbidden):
+		return infraErr.DefaultHTTPError(ctx, http.StatusForbidden,
+			downstreamCode+": "+infraErr.LocalizedDetail(ctx, "FunctionExecuteForbidden"))
+	case code == http.StatusServiceUnavailable &&
+		isExecutionFactoryCode(downstreamCode, executionFactoryAuthorizationUnavailable):
+		return infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+			downstreamCode+": "+infraErr.LocalizedDetail(ctx, "FunctionAuthorizationUnavailable"))
+	case code >= http.StatusBadRequest && code < http.StatusInternalServerError &&
+		downstreamCode != "" && description != "":
+		return infraErr.DefaultHTTPError(ctx, code, downstreamCode+": "+description)
+	}
+	return skillUpstreamError(ctx, code, "FunctionExecutionRequestFailed", err)
+}
+
+// executionFactoryError reads the code and localized description from an
+// Execution Factory error body. Both are empty when the body is not its envelope,
+// for example a gateway page.
+func executionFactoryError(err error) (code, description string) {
+	var he *infraErr.HTTPError
+	if !errors.As(err, &he) || len(he.DownstreamBody) == 0 {
+		return "", ""
+	}
+	var envelope struct {
+		Code        string `json:"code"`
+		Description string `json:"description"`
+	}
+	if json.Unmarshal(he.DownstreamBody, &envelope) != nil {
+		return "", ""
+	}
+	return envelope.Code, envelope.Description
+}
+
+// isExecutionFactoryCode matches the extension part of a code such as
+// "AgentOperatorIntegration.Forbidden.CommonUseForbidden".
+func isExecutionFactoryCode(code, extension string) bool {
+	return strings.HasSuffix(code, "."+extension)
 }

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/seed"
 )
 
 func TestAuthorizationDecisionsRequireActiveAccounts(t *testing.T) {
@@ -89,6 +90,44 @@ func TestAuthorizationDecisionsRequireActiveAccounts(t *testing.T) {
 				t.Errorf("resources = %v, want non-empty=%v", resourcesBody.IDs, tc.allowed)
 			}
 		})
+	}
+}
+
+func TestDefaultModelAccessRequiresAnEnabledAccount(t *testing.T) {
+	r, e, db := newTestServer(t)
+	if err := db.Create(&[]model.User{
+		{ID: "model-active", Account: "model-active", Enabled: true},
+		{ID: "model-disabled", Account: "model-disabled", Enabled: false},
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := seed.Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		accessor, resourceType, operation string
+		want                              bool
+	}{
+		{"model-active", "large_model", "display", true},
+		{"model-active", "large_model", "execute", true},
+		{"model-active", "small_model", "display", true},
+		{"model-active", "small_model", "execute", true},
+		{"model-active", "large_model", "modify", false},
+		{"model-disabled", "large_model", "display", false},
+		{"missing-model-user", "small_model", "execute", false},
+	} {
+		w := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", map[string]any{
+			"accessor_id": tc.accessor,
+			"resource":    map[string]string{"type": tc.resourceType, "id": "model-1"},
+			"operation":   tc.operation,
+		})
+		var body struct {
+			Allowed bool `json:"allowed"`
+		}
+		if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &body) != nil || body.Allowed != tc.want {
+			t.Errorf("%s %s:%s = %d %s, want allowed=%v", tc.accessor, tc.resourceType, tc.operation, w.Code, w.Body.String(), tc.want)
+		}
 	}
 }
 

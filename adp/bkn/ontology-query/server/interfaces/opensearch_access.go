@@ -8,7 +8,23 @@ package interfaces
 
 import (
 	"context"
+	"errors"
 )
+
+// ErrDocumentNotFound is returned by UpdateData when the target document does not exist.
+var ErrDocumentNotFound = errors.New("document not found")
+
+// Update results reported by OpenSearch for a single-document update.
+const (
+	UpdateResultUpdated = "updated"
+	UpdateResultNoop    = "noop"
+)
+
+// BulkDocument is one document written by BulkIndexDocuments under an explicit ID.
+type BulkDocument struct {
+	ID   string
+	Body any
+}
 
 type Hit struct {
 	Source map[string]interface{} `json:"_source"`
@@ -31,8 +47,19 @@ type OpenSearchAccess interface {
 	// InsertData writes data to an index with the specified document ID.
 	InsertData(ctx context.Context, indexName string, docID string, data any) error
 
+	// UpdateData applies a partial update to one existing document. body is an OpenSearch
+	// _update body, either {"doc": {...}} or {"script": {...}}; the update is applied to
+	// the latest version of the document without the caller reading it first. It returns
+	// the result OpenSearch reports (UpdateResultUpdated, UpdateResultNoop, ...) and
+	// ErrDocumentNotFound when the document does not exist.
+	UpdateData(ctx context.Context, indexName string, docID string, body any) (string, error)
+
 	// BulkInsertData writes data to an index in batches.
 	BulkInsertData(ctx context.Context, indexName string, dataList []any) error
+
+	// BulkIndexDocuments indexes documents under their explicit IDs in one bulk request,
+	// replacing any document already stored under the same ID. It fails when any item fails.
+	BulkIndexDocuments(ctx context.Context, indexName string, docs []BulkDocument) error
 
 	// SearchData searches data in the specified index.
 	SearchData(ctx context.Context, indexName string, query any) ([]Hit, error)
@@ -42,6 +69,10 @@ type OpenSearchAccess interface {
 
 	// BulkDeleteData deletes data in batches using document IDs.
 	BulkDeleteData(ctx context.Context, indexName string, docIDs []string) error
+
+	// DeleteByQuery deletes every document matching query in indexName, which may be a
+	// wildcard pattern. A missing index deletes nothing. It returns the number deleted.
+	DeleteByQuery(ctx context.Context, indexName string, query any) (int64, error)
 
 	Count(ctx context.Context, indexName string, query any) ([]byte, error)
 }

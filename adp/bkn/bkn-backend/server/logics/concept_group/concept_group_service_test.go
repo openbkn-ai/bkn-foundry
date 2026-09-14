@@ -194,41 +194,62 @@ func Test_conceptGroupService_GetStatByConceptGroup(t *testing.T) {
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
+		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, ids, _ []string, _ bool, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
+				matched := make(map[string]interfaces.PermissionResourceOps, len(ids))
+				for _, id := range ids {
+					matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}}
+				}
+				return matched, nil
+			}).AnyTimes()
 
 		service := &conceptGroupService{
 			appSetting: appSetting,
 			cga:        cga,
 			rta:        rta,
 			ata:        ata,
+			ps:         ps,
+		}
+		conceptGroup := &interfaces.ConceptGroup{
+			CGID:   "cg1",
+			KNID:   "kn1",
+			Branch: interfaces.MAIN_BRANCH,
+		}
+		relation := func(id, source, target string) *interfaces.RelationType {
+			return &interfaces.RelationType{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
+				RTID: id, SourceObjectTypeID: source, TargetObjectTypeID: target}}
+		}
+		action := func(id, bound string) *interfaces.ActionType {
+			return &interfaces.ActionType{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: id, ObjectTypeID: bound}}
 		}
 
 		Convey("Success getting statistics\n", func() {
-			conceptGroup := &interfaces.ConceptGroup{
-				CGID:   "cg1",
-				KNID:   "kn1",
-				Branch: interfaces.MAIN_BRANCH,
-			}
-			otIDs := []string{"ot1", "ot2"}
-
-			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(otIDs, nil)
-			rta.EXPECT().GetRelationTypesTotal(gomock.Any(), gomock.Any()).Return(5, nil)
-			ata.EXPECT().GetActionTypesTotal(gomock.Any(), gomock.Any()).Return(3, nil)
+			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return([]string{"ot1", "ot2"}, nil)
+			rta.EXPECT().ListRelationTypes(gomock.Any(), interfaces.RelationTypesQueryParams{
+				PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: -1},
+				KNID:                      "kn1",
+				Branch:                    interfaces.MAIN_BRANCH,
+				SourceObjectTypeIDs:       []string{"ot1", "ot2"},
+				TargetObjectTypeIDs:       []string{"ot1", "ot2"},
+			}).Return([]*interfaces.RelationType{relation("rt1", "ot1", "ot2"), relation("rt2", "ot2", "ot1")}, nil)
+			ata.EXPECT().ListActionTypes(gomock.Any(), interfaces.ActionTypesQueryParams{
+				PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: -1},
+				KNID:                      "kn1",
+				Branch:                    interfaces.MAIN_BRANCH,
+				ObjectTypeIDs:             []string{"ot1", "ot2"},
+			}).Return([]*interfaces.ActionType{action("at1", "ot1"), action("at2", "ot2"), action("at3", "ot1")}, nil)
 
 			stats, err := service.GetStatByConceptGroup(ctx, conceptGroup)
 			So(err, ShouldBeNil)
 			So(stats, ShouldNotBeNil)
 			So(stats.OtTotal, ShouldEqual, 2)
-			So(stats.RtTotal, ShouldEqual, 5)
+			So(stats.RtTotal, ShouldEqual, 2)
 			So(stats.AtTotal, ShouldEqual, 3)
 		})
 
 		Convey("Success with empty object types\n", func() {
-			conceptGroup := &interfaces.ConceptGroup{
-				CGID:   "cg1",
-				KNID:   "kn1",
-				Branch: interfaces.MAIN_BRANCH,
-			}
-
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{}, nil)
 
 			stats, err := service.GetStatByConceptGroup(ctx, conceptGroup)
@@ -240,12 +261,6 @@ func Test_conceptGroupService_GetStatByConceptGroup(t *testing.T) {
 		})
 
 		Convey("Failed when getting concept IDs returns error\n", func() {
-			conceptGroup := &interfaces.ConceptGroup{
-				CGID:   "cg1",
-				KNID:   "kn1",
-				Branch: interfaces.MAIN_BRANCH,
-			}
-
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			stats, err := service.GetStatByConceptGroup(ctx, conceptGroup)
@@ -253,16 +268,9 @@ func Test_conceptGroupService_GetStatByConceptGroup(t *testing.T) {
 			So(stats, ShouldBeNil)
 		})
 
-		Convey("Failed when GetRelationTypesTotal returns error\n", func() {
-			conceptGroup := &interfaces.ConceptGroup{
-				CGID:   "cg1",
-				KNID:   "kn1",
-				Branch: interfaces.MAIN_BRANCH,
-			}
-			otIDs := []string{"ot1"}
-
-			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(otIDs, nil)
-			rta.EXPECT().GetRelationTypesTotal(gomock.Any(), gomock.Any()).Return(0, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+		Convey("Failed when listing relation types returns error\n", func() {
+			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot1"}, nil)
+			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			stats, err := service.GetStatByConceptGroup(ctx, conceptGroup)
 			So(err, ShouldNotBeNil)
@@ -271,17 +279,10 @@ func Test_conceptGroupService_GetStatByConceptGroup(t *testing.T) {
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError_GetRelationTypesTotalFailed)
 		})
 
-		Convey("Failed when GetActionTypesTotal returns error\n", func() {
-			conceptGroup := &interfaces.ConceptGroup{
-				CGID:   "cg1",
-				KNID:   "kn1",
-				Branch: interfaces.MAIN_BRANCH,
-			}
-			otIDs := []string{"ot1"}
-
-			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(otIDs, nil)
-			rta.EXPECT().GetRelationTypesTotal(gomock.Any(), gomock.Any()).Return(5, nil)
-			ata.EXPECT().GetActionTypesTotal(gomock.Any(), gomock.Any()).Return(0, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+		Convey("Failed when listing action types returns error\n", func() {
+			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot1"}, nil)
+			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{}, nil)
+			ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			stats, err := service.GetStatByConceptGroup(ctx, conceptGroup)
 			So(err, ShouldNotBeNil)

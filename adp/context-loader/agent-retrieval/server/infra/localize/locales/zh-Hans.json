@@ -81,6 +81,8 @@
     "FunctionCodeRequired": "沙箱执行必须提供代码。",
     "FunctionExecutionRequestFailed": "调用沙箱执行失败。",
     "FunctionExecutionResponseInvalid": "沙箱执行响应无效。",
+    "FunctionExecuteForbidden": "当前账号缺少临时代码执行权限（算子类型 operator:* 的 execute 权限），代码未执行。请联系管理员授予该权限；知识网络或单个算子上的授权不能代替它。",
+    "FunctionAuthorizationUnavailable": "执行权限校验服务暂时不可用，未能完成授权判定，代码未执行。这不代表缺少权限，请稍后重试；持续失败请联系管理员检查 bkn-safe。",
     "SkillListRequestFailed": "获取技能列表失败。",
     "SkillListResponseInvalid": "技能列表响应无效。",
     "SkillContentRequestFailed": "获取技能内容失败。",

@@ -21,6 +21,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	"ontology-query/common"
+	"ontology-query/interfaces"
 )
 
 var (
@@ -289,6 +290,240 @@ func Test_openSearchAccess_InsertData(t *testing.T) {
 			})
 
 			err := osa3.InsertData(testCtx, "test-index", "doc1", data)
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
+func Test_openSearchAccess_UpdateData(t *testing.T) {
+	Convey("test UpdateData\n", t, func() {
+		appSetting := &common.AppSetting{}
+		body := map[string]any{"doc": map[string]any{"success_count": 5}}
+
+		Convey("UpdateData sends a partial update and reports the result\n", func() {
+			var sent map[string]any
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					So(req.Method, ShouldEqual, "POST")
+					So(req.URL.Path, ShouldEqual, "/test-index/_update/doc1")
+					So(req.URL.Query().Get("refresh"), ShouldEqual, "true")
+					So(req.URL.Query().Get("retry_on_conflict"), ShouldEqual, "3")
+					raw, _ := io.ReadAll(req.Body)
+					_ = json.Unmarshal(raw, &sent)
+					return &http.Response{
+						StatusCode: 200,
+						Body:       io.NopCloser(strings.NewReader(`{"_id": "doc1", "result": "updated"}`)),
+					}, nil
+				},
+			})
+
+			result, err := osa.UpdateData(testCtx, "test-index", "doc1", body)
+			So(err, ShouldBeNil)
+			So(result, ShouldEqual, interfaces.UpdateResultUpdated)
+			So(sent, ShouldResemble, map[string]any{"doc": map[string]any{"success_count": float64(5)}})
+		})
+
+		Convey("UpdateData reports noop when a script leaves the document untouched\n", func() {
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: 200,
+						Body:       io.NopCloser(strings.NewReader(`{"_id": "doc1", "result": "noop"}`)),
+					}, nil
+				},
+			})
+
+			result, err := osa.UpdateData(testCtx, "test-index", "doc1", body)
+			So(err, ShouldBeNil)
+			So(result, ShouldEqual, interfaces.UpdateResultNoop)
+		})
+
+		Convey("UpdateData maps a missing document to ErrDocumentNotFound\n", func() {
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: 404,
+						Body:       io.NopCloser(strings.NewReader(`{"error": {"type": "document_missing_exception"}}`)),
+					}, nil
+				},
+			})
+
+			_, err := osa.UpdateData(testCtx, "test-index", "doc1", body)
+			So(errors.Is(err, interfaces.ErrDocumentNotFound), ShouldBeTrue)
+		})
+
+		Convey("UpdateData Failed - response error\n", func() {
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: 400,
+						Body:       io.NopCloser(strings.NewReader(`{"error": "bad request"}`)),
+					}, nil
+				},
+			})
+
+			_, err := osa.UpdateData(testCtx, "test-index", "doc1", body)
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, interfaces.ErrDocumentNotFound), ShouldBeFalse)
+		})
+
+		Convey("UpdateData Failed - HTTP error\n", func() {
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					return nil, errors.New("network error")
+				},
+			})
+
+			_, err := osa.UpdateData(testCtx, "test-index", "doc1", body)
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
+func Test_openSearchAccess_BulkIndexDocuments(t *testing.T) {
+	Convey("test BulkIndexDocuments\n", t, func() {
+		appSetting := &common.AppSetting{}
+		docs := []interfaces.BulkDocument{
+			{ID: "exec_1_0", Body: map[string]any{"execution_id": "exec_1", "seq": 0}},
+			{ID: "exec_1_1", Body: map[string]any{"execution_id": "exec_1", "seq": 1}},
+		}
+
+		Convey("BulkIndexDocuments writes index actions under the explicit IDs\n", func() {
+			var lines []string
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					So(req.Method, ShouldEqual, "POST")
+					So(req.URL.Path, ShouldEqual, "/_bulk")
+					// Visible on return without forcing a refresh of the shared index.
+					So(req.URL.Query().Get("refresh"), ShouldEqual, "wait_for")
+					raw, _ := io.ReadAll(req.Body)
+					lines = strings.Split(strings.TrimSpace(string(raw)), "\n")
+					return &http.Response{
+						StatusCode: 200,
+						Body:       io.NopCloser(strings.NewReader(`{"errors": false, "items": []}`)),
+					}, nil
+				},
+			})
+
+			err := osa.BulkIndexDocuments(testCtx, "results-index", docs)
+			So(err, ShouldBeNil)
+			So(lines, ShouldHaveLength, 4)
+
+			var meta map[string]map[string]any
+			So(json.Unmarshal([]byte(lines[0]), &meta), ShouldBeNil)
+			So(meta["index"]["_index"], ShouldEqual, "results-index")
+			So(meta["index"]["_id"], ShouldEqual, "exec_1_0")
+
+			var body map[string]any
+			So(json.Unmarshal([]byte(lines[1]), &body), ShouldBeNil)
+			So(body, ShouldResemble, map[string]any{"execution_id": "exec_1", "seq": float64(0)})
+			So(body, ShouldNotContainKey, "__id")
+		})
+
+		Convey("BulkIndexDocuments skips an empty batch\n", func() {
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					t.Fatal("no request expected for an empty batch")
+					return nil, nil
+				},
+			})
+			So(osa.BulkIndexDocuments(testCtx, "results-index", nil), ShouldBeNil)
+		})
+
+		Convey("BulkIndexDocuments fails when an item fails\n", func() {
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: 200,
+						Body:       io.NopCloser(strings.NewReader(`{"errors": true, "items": [{"index": {"status": 400}}]}`)),
+					}, nil
+				},
+			})
+			So(osa.BulkIndexDocuments(testCtx, "results-index", docs), ShouldNotBeNil)
+		})
+
+		Convey("BulkIndexDocuments Failed - response error\n", func() {
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: 500,
+						Body:       io.NopCloser(strings.NewReader(`{"error": "boom"}`)),
+					}, nil
+				},
+			})
+			So(osa.BulkIndexDocuments(testCtx, "results-index", docs), ShouldNotBeNil)
+		})
+	})
+}
+
+func Test_openSearchAccess_DeleteByQuery(t *testing.T) {
+	Convey("test DeleteByQuery\n", t, func() {
+		appSetting := &common.AppSetting{}
+		query := map[string]any{"query": map[string]any{"terms": map[string]any{"execution_id": []string{"e1"}}}}
+
+		Convey("DeleteByQuery skips conflicts, tolerates missing indices and reports the count\n", func() {
+			var sent map[string]any
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					So(req.Method, ShouldEqual, "POST")
+					So(req.URL.Path, ShouldEqual, "/ontology_action_executions_*/_delete_by_query")
+					So(req.URL.Query().Get("conflicts"), ShouldEqual, "proceed")
+					So(req.URL.Query().Get("allow_no_indices"), ShouldEqual, "true")
+					So(req.URL.Query().Get("ignore_unavailable"), ShouldEqual, "true")
+					So(req.URL.Query().Get("refresh"), ShouldEqual, "true")
+					raw, _ := io.ReadAll(req.Body)
+					_ = json.Unmarshal(raw, &sent)
+					return &http.Response{
+						StatusCode: 200,
+						Body:       io.NopCloser(strings.NewReader(`{"deleted": 42, "failures": []}`)),
+					}, nil
+				},
+			})
+
+			deleted, err := osa.DeleteByQuery(testCtx, "ontology_action_executions_*", query)
+			So(err, ShouldBeNil)
+			So(deleted, ShouldEqual, 42)
+			So(sent, ShouldContainKey, "query")
+		})
+
+		Convey("DeleteByQuery on a missing index deletes nothing\n", func() {
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: 404,
+						Body:       io.NopCloser(strings.NewReader(`{"error": {"type": "index_not_found_exception"}}`)),
+					}, nil
+				},
+			})
+			deleted, err := osa.DeleteByQuery(testCtx, "ontology_action_execution_results", query)
+			So(err, ShouldBeNil)
+			So(deleted, ShouldEqual, 0)
+		})
+
+		Convey("DeleteByQuery reports item failures\n", func() {
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: 200,
+						Body:       io.NopCloser(strings.NewReader(`{"deleted": 3, "failures": [{"cause": "boom"}]}`)),
+					}, nil
+				},
+			})
+			deleted, err := osa.DeleteByQuery(testCtx, "idx", query)
+			So(err, ShouldNotBeNil)
+			So(deleted, ShouldEqual, 3)
+		})
+
+		Convey("DeleteByQuery Failed - response error\n", func() {
+			osa, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: 500,
+						Body:       io.NopCloser(strings.NewReader(`{"error": "boom"}`)),
+					}, nil
+				},
+			})
+			_, err := osa.DeleteByQuery(testCtx, "idx", query)
 			So(err, ShouldNotBeNil)
 		})
 	})

@@ -107,7 +107,7 @@ func TestQueryDerivedLogicViewRejectsUnavailableSource(t *testing.T) {
 			Status:           interfaces.ResourceStatusActive,
 			SchemaDefinition: []*interfaces.Property{{Name: "id"}},
 		}, nil)
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
 
 		_, _, err := svc.queryDerivedLogicView(context.Background(), view, &interfaces.ResourceDataQueryParams{})
 		var httpErr *rest.HTTPError
@@ -154,7 +154,7 @@ func TestDerivedIndexCursorRequiresSort(t *testing.T) {
 		SchemaDefinition: []*interfaces.Property{{Name: "timestamp"}},
 	}
 	mockRS.EXPECT().GetByID(gomock.Any(), "source-1").Return(source, nil).AnyTimes()
-	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+	mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil).AnyTimes()
 
 	result, err := svc.QueryWithPaging(context.Background(), &interfaces.Resource{
@@ -190,7 +190,7 @@ func TestDerivedIndexRejectsFirstPageWindowOverflow(t *testing.T) {
 		SchemaDefinition: []*interfaces.Property{{Name: "timestamp"}},
 	}
 	mockRS.EXPECT().GetByID(gomock.Any(), "source-1").Return(source, nil).AnyTimes()
-	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+	mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil).AnyTimes()
 
 	result, err := svc.QueryWithPaging(context.Background(), &interfaces.Resource{

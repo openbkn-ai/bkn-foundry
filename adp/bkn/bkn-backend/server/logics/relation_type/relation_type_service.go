@@ -297,13 +297,21 @@ func (rts *relationTypeService) ListRelationTypes(ctx context.Context,
 			berrors.BknBackend_RelationType_InternalError).WithErrorDetails(err.Error())
 	}
 
+	// Filter by the relation types themselves, then by their endpoints, and page only after both:
+	// total_count and every page have to count what the caller can actually see.
 	var operationMap map[string]interfaces.PermissionResourceOps
-	relationTypes, total, operationMap, err := permission.FilterAndPaginateKNChildrenWithOperations(ctx, rts.ps,
+	relationTypes, _, operationMap, err = permission.FilterAndPaginateKNChildrenWithOperations(ctx, rts.ps,
 		interfaces.RESOURCE_TYPE_RELATION_TYPE, query.KNID, relationTypes,
-		func(relationType *interfaces.RelationType) string { return relationType.RTID }, query.Offset, query.Limit)
+		func(relationType *interfaces.RelationType) string { return relationType.RTID }, 0, -1)
 	if err != nil {
 		return []*interfaces.RelationType{}, 0, err
 	}
+	relationTypes, err = rts.withVisibleEndpoints(ctx, query.KNID, relationTypes)
+	if err != nil {
+		return []*interfaces.RelationType{}, 0, err
+	}
+	total := len(relationTypes)
+	relationTypes = permission.PaginateKNChildCandidates(relationTypes, query.Offset, query.Limit)
 	for _, relationType := range relationTypes {
 		relationType.Operations = operationMap[interfaces.KNChildResourceID(query.KNID, relationType.RTID)].Operations
 	}
@@ -406,6 +414,15 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 	} else if err = permission.CheckKNChildBatchPermission(ctx, rts.ps,
 		interfaces.RESOURCE_TYPE_RELATION_TYPE, knID, rtIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
 		return nil, err
+	}
+	// All or nothing, like the permission check above: a relation type whose endpoint the caller
+	// holds nothing on is not readable, so asking for it by id is refused.
+	visibleRelationTypes, err := rts.withVisibleEndpoints(ctx, knID, relationTypes)
+	if err != nil {
+		return nil, err
+	}
+	if len(visibleRelationTypes) != len(relationTypes) {
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
 	}
 
 	// Retrieve source and target object type names.
@@ -900,6 +917,10 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 	visibleIDs, err := permission.FilterKNChildIDs(ctx, rts.ps,
 		interfaces.RESOURCE_TYPE_RELATION_TYPE, query.KNID, candidateIDs,
 		interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	if err != nil {
+		return response, err
+	}
+	visibleIDs, err = rts.withVisibleEndpointIDs(ctx, query.KNID, query.Branch, visibleIDs)
 	if err != nil {
 		return response, err
 	}

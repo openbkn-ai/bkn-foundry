@@ -44,14 +44,9 @@ type appKeyIntrospectResp struct {
 	KeyName     string `json:"key_name"`
 }
 
-// NewAppKeyVerifier builds the bkn-safe-backed AppKey verifier. Returns nil when
-// AUTH_ENABLED=false (AppKey verification is disabled together with auth); the
-// caller treats a nil verifier as "no AppKey support" and falls back to hydra.
+// NewAppKeyVerifier builds the bkn-safe-backed AppKey verifier.
 func NewAppKeyVerifier() interfaces.AppKeyVerifier {
 	appKeyOnce.Do(func() {
-		if !config.GetAuthEnabled() {
-			return // leave appKeyInst nil
-		}
 		conf := config.NewConfigLoader()
 		appKeyInst = &appKeyVerifier{
 			introspectURL: conf.BknSafe.BuildURL(appKeyIntrospectURI),

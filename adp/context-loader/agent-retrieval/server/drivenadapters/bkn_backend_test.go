@@ -175,6 +175,41 @@ func TestGetObjectTypeDetail_HTTPError(t *testing.T) {
 	})
 }
 
+// bkn-backend answers GET /in/v1/knowledge-networks/{kn_id}/relation-types/{rt_ids}
+// with {"entries": [...]}, like the object-type endpoint. Decoding it as a bare array
+// failed every get_relation_types call with "Mismatch type []*interfaces.RelationType
+// with value object" (#1516).
+func TestGetRelationTypeDetail_DecodesEntriesEnvelope(t *testing.T) {
+	convey.Convey("TestGetRelationTypeDetail_DecodesEntriesEnvelope", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockLogger := mocks.NewMockLogger(ctrl)
+		mockHTTPClient := mocks.NewMockHTTPClient(ctrl)
+		mockLogger.EXPECT().WithContext(gomock.Any()).Return(mockLogger).AnyTimes()
+		mockLogger.EXPECT().Errorf(gomock.Any(), gomock.Any()).AnyTimes()
+
+		client := &bknBackendAccess{
+			logger:     mockLogger,
+			baseURL:    "http://localhost:8080/api/bkn-backend",
+			httpClient: mockHTTPClient,
+		}
+
+		mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(http.StatusOK, []byte(`{"entries": [{"id": "rel_order_user", "name": "订单属于用户",
+				"source_object_type_id": "order", "target_object_type_id": "user", "type": "direct",
+				"mapping_rules": [{"source_property": {"name": "user_id"}, "target_property": {"name": "user_id"}}]}]}`), nil)
+
+		resp, err := client.GetRelationTypeDetail(context.Background(), "kn-001", []string{"rel_order_user"}, true)
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(len(resp), convey.ShouldEqual, 1)
+		convey.So(resp[0].ID, convey.ShouldEqual, "rel_order_user")
+		convey.So(resp[0].SourceObjectTypeID, convey.ShouldEqual, "order")
+		convey.So(resp[0].TargetObjectTypeID, convey.ShouldEqual, "user")
+		convey.So(resp[0].MappingRules, convey.ShouldNotBeNil)
+	})
+}
+
 // TestSearchRelationTypes_Success test SearchRelationTypes success scenario.
 func TestSearchRelationTypes_Success(t *testing.T) {
 	convey.Convey("TestSearchRelationTypes_Success", t, func() {
@@ -290,14 +325,16 @@ func TestGetActionTypeDetail_Success(t *testing.T) {
 
 		ctx := context.Background()
 
-		// Mock a successful HTTP response.
+		// bkn-backend wraps action types in {"entries": [...]}; this test used to mock a
+		// bare array, which is what the decoder expected and the endpoint never sent.
 		mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(200, []byte(`[{"id": "at-001", "name": "测试行动类"}]`), nil)
+			Return(200, []byte(`{"entries": [{"id": "at-001", "name": "测试行动类"}]}`), nil)
 
 		resp, err := client.GetActionTypeDetail(ctx, "kn-001", []string{"at-001"}, true)
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(resp, convey.ShouldNotBeNil)
 		convey.So(len(resp), convey.ShouldEqual, 1)
+		convey.So(resp[0].ID, convey.ShouldEqual, "at-001")
 	})
 }
 

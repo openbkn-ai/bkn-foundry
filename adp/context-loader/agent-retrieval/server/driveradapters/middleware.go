@@ -24,7 +24,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	aerrors "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -57,7 +56,6 @@ func getToken(c *gin.Context) (token string) {
 // Choose one of the two credentials: the one starting with the AppKey prefix (bak_) is submitted to bkn-safe for verification (API Key issued by the user),
 // The rest of the bearer token goes hydra introspection. The two paths produce the same TokenInfo, and the downstream authentication context is consistent.
 func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKeyVerifier) gin.HandlerFunc {
-	strict := config.GetAuthEnabled()
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		// Set language information to context.
@@ -85,7 +83,7 @@ func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKe
 			return
 		}
 		accountType := tokenInfo.VisitorTyp.ToAccessorType()
-		if strict && !validInternalExecutionSubject(tokenInfo.VisitorID, accountType) {
+		if !validInternalExecutionSubject(tokenInfo.VisitorID, accountType) {
 			rest.ReplyError(c, aerrors.DefaultHTTPError(ctx, http.StatusUnauthorized,
 				"authenticated execution subject is missing or invalid"))
 			c.Abort()
@@ -125,7 +123,6 @@ func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKe
 
 // Internal interface Header authentication account information processing middleware.
 func middlewareHeaderAuthContext() gin.HandlerFunc {
-	strict := config.GetAuthEnabled()
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		ctx = common.SetTraceContextToCtx(ctx, common.TraceContextFromHeaders(c.GetHeader))
@@ -133,21 +130,18 @@ func middlewareHeaderAuthContext() gin.HandlerFunc {
 		rawAccountType := c.GetHeader(string(interfaces.HeaderXAccountType))
 		rawUserID := c.GetHeader(string(interfaces.HeaderUserID))
 		rawAccountID := c.GetHeader(string(interfaces.HeaderXAccountID))
-		xAccountType, userID, xAccountID := rawAccountType, rawUserID, rawAccountID
-		if strict {
-			xAccountType = strings.TrimSpace(rawAccountType)
-			userID = strings.TrimSpace(rawUserID)
-			xAccountID = strings.TrimSpace(rawAccountID)
-			if rawUserID != userID || rawAccountID != xAccountID || rawAccountType != xAccountType {
-				rest.ReplyError(c, aerrors.DefaultHTTPError(ctx, http.StatusUnauthorized,
-					"internal execution subject contains invalid whitespace"))
-				c.Abort()
-				return
-			}
+		xAccountType := strings.TrimSpace(rawAccountType)
+		userID := strings.TrimSpace(rawUserID)
+		xAccountID := strings.TrimSpace(rawAccountID)
+		if rawUserID != userID || rawAccountID != xAccountID || rawAccountType != xAccountType {
+			rest.ReplyError(c, aerrors.DefaultHTTPError(ctx, http.StatusUnauthorized,
+				"internal execution subject contains invalid whitespace"))
+			c.Abort()
+			return
 		}
 
 		// Compatible with user_id parameter passing, when user_id is empty, xAccountID is used.
-		if strict && userID != "" && xAccountID != "" && userID != xAccountID {
+		if userID != "" && xAccountID != "" && userID != xAccountID {
 			rest.ReplyError(c, aerrors.DefaultHTTPError(ctx, http.StatusUnauthorized,
 				"conflicting internal execution subject headers"))
 			c.Abort()
@@ -156,10 +150,10 @@ func middlewareHeaderAuthContext() gin.HandlerFunc {
 		if userID != "" {
 			xAccountID = userID
 		}
-		if strict && xAccountType == "realname" {
+		if xAccountType == "realname" {
 			xAccountType = string(interfaces.AccessorTypeUser)
 		}
-		if strict && !validInternalExecutionSubject(xAccountID, interfaces.AccessorType(xAccountType)) {
+		if !validInternalExecutionSubject(xAccountID, interfaces.AccessorType(xAccountType)) {
 			rest.ReplyError(c, aerrors.DefaultHTTPError(ctx, http.StatusUnauthorized,
 				"internal execution subject is missing or invalid"))
 			c.Abort()

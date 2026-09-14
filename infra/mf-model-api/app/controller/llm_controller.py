@@ -117,7 +117,6 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
     # (small_model_controller.py). Only the public route enforces (private=False);
     # the S2S private route skips, by the same convention. resource_type is
     # large_model so a caller must hold large_model:execute on this model.
-    # AUTH_ENABLED=false short-circuits inside check_single_permission.
     if not private:
         permission = await permission_manager.check_single_permission(
             user_id=user_id, resource_id=model_id, operations="execute",

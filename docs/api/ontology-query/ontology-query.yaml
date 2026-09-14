@@ -2783,6 +2783,14 @@ paths:
               - scheduled
             type: string
           in: query
+        - name: keyword
+          description: |
+            按执行 ID 过滤（可选）：不区分大小写的字面子串匹配，`*`、`?`、`\` 按普通字符处理。
+            首尾空白会被去掉；最长 128 个字符，超长返回 400。同时作用于 total_count。
+          schema:
+            type: string
+            maxLength: 128
+          in: query
         - name: start_time_from
           description: 开始时间范围-起始（毫秒时间戳，可选）
           schema:
@@ -2843,6 +2851,12 @@ paths:
                       - 1704067200000
                       - "cqq2g8h4d2fg00fvm8dg"
           description: ok
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+          description: 参数非法（如 keyword 超长、search_after 游标无法解析）
       summary: 查询行动执行日志
 
   /api/ontology-query/v1/knowledge-networks/{kn_id}/action-logs/{log_id}:
@@ -2868,7 +2882,7 @@ paths:
             default: 100
           in: query
         - name: results_offset
-          description: results 偏移量，默认0
+          description: results 偏移量，默认0；results_offset + results_limit 不得超过 10000
           schema:
             type: integer
             default: 0
@@ -2894,7 +2908,84 @@ paths:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
           description: 日志不存在
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+          description: 分页参数非法（results_offset + results_limit 超过 10000）
       summary: 获取单条行动执行日志
+
+  /api/ontology-query/v1/knowledge-networks/{kn_id}/action-logs/{log_id}/results:
+    summary: 分页查询单次执行的逐实例结果
+    get:
+      description: |
+        返回单次执行的逐实例结果，分页与状态过滤在存储层完成，按实例在本次执行中的顺序排列。
+        执行摘要请用详情接口；本接口适合翻阅超过一页的结果。早期写入、结果内嵌在执行记录中的执行同样可查。
+      parameters:
+        - name: kn_id
+          description: 业务知识网络ID
+          schema:
+            type: string
+          in: path
+          required: true
+        - name: log_id
+          description: 日志ID (即执行ID)
+          schema:
+            type: string
+          in: path
+          required: true
+        - name: offset
+          description: 偏移量，默认 0；offset + limit 不得超过 10000
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+          in: query
+        - name: limit
+          description: 分页大小，默认 100，最大 1000（超出按 1000 处理）
+          schema:
+            type: integer
+            default: 100
+          in: query
+        - name: status
+          description: 按结果状态过滤（可选）
+          schema:
+            enum:
+              - success
+              - failed
+              - cancelled
+            type: string
+          in: query
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionExecutionResultList"
+              examples:
+                查询失败结果:
+                  value:
+                    entries:
+                      - _instance_id: "order_17"
+                        status: "failed"
+                        error_message: "tool execution failed: timeout"
+                        duration_ms: 30000
+                    total_count: 3
+          description: ok
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+          description: 参数非法（offset 为负、offset + limit 超过 10000、status 不在取值范围内）
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+          description: 该知识网络下不存在此执行
+      summary: 分页查询单次执行的逐实例结果
 
   /api/ontology-query/v1/knowledge-networks/{kn_id}/action-logs/{log_id}/cancel:
     summary: 取消正在执行的任务
@@ -3868,28 +3959,32 @@ components:
           description: 上次查询返回的不透明且经过认证的对象分页游标；第一次查询不传此字段
           type: string
     TypeEdge:
-      description: 路径中的边信息。通过关系类id确定边，通过路径的起点和终点来确定当前路径的方向为正向还是反向，与关系类的起终点一致为正向，相反则为反向。
+      description: |
+        路径中的一条边，第 i 条边连接 object_types 的第 i 个和第 i+1 个节点。通过关系类 id 确定边；
+        正向还是反向由服务端对照关系类定义判断：相邻节点依次为关系类的起点、终点即正向，依次为终点、起点即反向，
+        两者都不是则返回 400（OntologyQuery.KnowledgeNetwork.InvalidParameter.TypePath）。
       required:
       - relation_type_id
-      - source_object_type_id
-      - target_object_type_id
       type: object
       properties:
         relation_type_id:
           description: 关系类id
           type: string
         source_object_type_id:
-          description: 路径的起点对象类
+          description: 可省略。本次遍历从哪个节点出发，即 object_types[i].id；不是关系类定义的起点，反向遍历时与关系类定义相反。填写时必须等于 object_types[i].id。
           type: string
         target_object_type_id:
-          description: 路径的终点对象类id
+          description: 可省略。本次遍历到达哪个节点，即 object_types[i+1].id；不是关系类定义的终点，反向遍历时与关系类定义相反。填写时必须等于 object_types[i+1].id。
           type: string
+        direction:
+          description: 可省略。forward 沿关系类定义从起点走向终点，backward 逆着走；缺省时按相邻节点判断。只有自引用关系类（起点和终点是同一个对象类）需要写 backward 才能反向走。与相邻节点矛盾时返回 400。
+          type: string
+          enum:
+          - forward
+          - backward
     RelationTypePath:
       description: 基于路径获取对象子图
       required:
-      - source_object_type_id
-      - direction
-      - path_length
       - relation_types
       - object_types
       type: object
@@ -4065,10 +4160,7 @@ components:
     SubGraphQueryBaseOnTypePath:
       description: 基于路径获取对象子图
       required:
-      - source_object_type_id
-      - direction
-      - path_length
-      - relation_paths
+      - relation_type_paths
       type: object
       properties:
         relation_type_paths:
@@ -5403,7 +5495,7 @@ components:
             - scheduled
           type: string
         status:
-          description: 执行状态
+          description: 执行状态。取消被接受后保持 cancelled，执行器随后写入的终态不会覆盖它。
           enum:
             - pending
             - running
@@ -5437,13 +5529,13 @@ components:
           items:
             $ref: "#/components/schemas/ObjectExecutionResult"
         results_total:
-          description: results 总数（用于分页）
+          description: results 总数（用于分页）。仅出现在详情响应中，不写入存储。
           type: integer
         results_offset:
-          description: 当前 results 偏移量
+          description: 当前 results 偏移量。仅出现在详情响应中，不写入存储。
           type: integer
         results_limit:
-          description: 当前 results 分页大小
+          description: 当前 results 分页大小。仅出现在详情响应中，不写入存储。
           type: integer
         dynamic_params:
           description: 动态参数
@@ -5654,6 +5746,10 @@ components:
             - manual
             - scheduled
           type: string
+        keyword:
+          description: 按执行 ID 过滤（可选），不区分大小写的字面子串匹配，最长 128 个字符
+          type: string
+          maxLength: 128
         start_time_range:
           description: 开始时间范围 [起始, 结束]（毫秒时间戳）
           type: array
@@ -5683,6 +5779,7 @@ components:
           description: |
             执行记录列表。每条只是任务摘要：results、action_type_snapshot、action_source
             三项在 OpenSearch 查询层就被排除，不随列表返回——逐实例明细请按 log_id 查详情。
+            早期写入的记录里残留的 results_total、results_offset、results_limit 也一并排除。
           type: array
           items:
             $ref: "#/components/schemas/ActionExecutionSummary"
@@ -5693,6 +5790,19 @@ components:
           description: 下一页游标
           type: array
           items: {}
+
+    ActionExecutionResultList:
+      description: 单次执行的一页逐实例结果
+      type: object
+      properties:
+        entries:
+          description: 本页结果，按实例在本次执行中的顺序排列
+          type: array
+          items:
+            $ref: "#/components/schemas/ObjectExecutionResult"
+        total_count:
+          description: 满足过滤条件的结果总数
+          type: integer
 
     CancelExecutionRequest:
       description: 取消执行请求
@@ -5718,10 +5828,13 @@ components:
           description: 提示消息
           type: string
         cancelled_count:
-          description: 被取消的对象数量（原本 pending 状态的对象）
+          description: |
+            取消时尚未执行的调用数，即 total_count − success_count − failed_count（按最近一次进度更新计算，
+            进度每 100 次调用刷新一次）。执行器在下一个批次边界或约 1 秒内察觉取消，随后停止发出新的调用，
+            并把剩余实例记为 cancelled；察觉之前已发出的调用照常记录其结果。
           type: integer
         completed_count:
-          description: 已完成的对象数量（取消前已执行完成的对象）
+          description: 取消时已成功的调用数（按最近一次进度更新计算）
           type: integer
 
     MetricQueryOrderBy:

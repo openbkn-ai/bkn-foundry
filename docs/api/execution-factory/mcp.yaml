@@ -546,8 +546,22 @@ paths:
         握手，也不需要能直连目标服务。工具 schema 是执行时构造参数所需的元数据，因此对
         已知 MCP Server 拥有 `view`、`public_access` 或 `execute` 任一权限即可读取；
         execute-only 的 MCP Server 仍不会出现在顶层目录中。
+
+        默认返回调用方实际会被服务的版本：`editing` 的 MCP Server 返回已发布版本的
+        工具，草稿中的改动在重新发布前不可见，与 `/mcp/proxy/{mcp_id}/tool/call` 一致。
+        编辑页需要列出草稿时传 `draft=true`，见该参数说明。
       parameters:
         - $ref: '#/components/parameters/MCPID'
+        - name: draft
+          in: query
+          required: false
+          description: |
+            为 `true` 时返回配置当前版本（草稿）的工具，供编辑页调试使用；只在
+            `editing` 状态下与默认结果不同。草稿属于编辑内容，需要 `view` 权限，
+            仅持有 `execute` 或 `public_access` 时返回 403。
+          schema:
+            type: boolean
+            default: false
       responses:
         '200':
           description: 工具列表（MCP 协议的 Tool 结构）
@@ -589,9 +603,11 @@ paths:
         时，ontology-query 还会在此前校验具体 Action Type 和数据依赖。请求体
         不能覆盖执行主体，平台身份头和 trace 控制头不会转发给第三方 MCP。
 
-        **只有 `published` 的 MCP Server 能被调用**：`unpublish` / `editing` /
-        `offline` 一律返回 400 `MCPServerNotPublished`，在建连之前拒绝。调试接口
-        不受此限。
+        **只有已发布的 MCP Server 能被调用**：`published` 按当前配置调用；`editing`
+        按已发布版本调用，草稿中的改动在重新发布前不生效；`unpublish` / `offline`
+        一律返回 400 `MCPServerNotPublished`，在建连之前拒绝。没有发布记录的 `editing`
+        （例如从别的环境导入的编辑中 MCP Server）没有可服务的版本，同样返回 400。
+        调试接口不受此限，按草稿调用。
       parameters:
         - $ref: '#/components/parameters/MCPID'
       requestBody:

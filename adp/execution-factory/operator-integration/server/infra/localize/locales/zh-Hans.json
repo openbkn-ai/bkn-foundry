@@ -149,6 +149,7 @@
         "CommonInternalComponentNotAllowed": "内置组件“%s”不允许导入导出",
         "CommonDepartmentOrGroupOrRoleNotAllowed": "部门/用户组/角色账户不允许访问",
         "CommonInvalidAccessorType": "无效账户类型",
+        "CommonAuthorizationUnavailable": "权限校验服务暂时不可用，未能完成授权判定，请求未执行",
         "CommonNoMatchedMethodPath": "未匹配到对应的API方法路径",
         "CommonNameExists": "此名称已被占用，请重新命名。",
         "CommonOperationForbidden": "权限不足，您暂无当前操作权限，请联系管理员申请授权",
@@ -237,7 +238,8 @@
         "ProxyPathParamMissing": "请补齐路径参数后重试",
         "CommonImportDataEmpty": "请检查导入数据是否正确",
         "SandboxRuntimeExecuteCodeFailed": "沙箱函数运行报错，请检查代码是否正确",
-        "PypiParserFailed": "示例：官方Pypi源地址：https://pypi.org/simple/，清华源地址：https://pypi.tuna.tsinghua.edu.cn/simple/"
+        "PypiParserFailed": "示例：官方Pypi源地址：https://pypi.org/simple/，清华源地址：https://pypi.tuna.tsinghua.edu.cn/simple/",
+        "CommonAuthorizationUnavailable": "请稍后重试；持续失败请联系管理员检查 bkn-safe 服务状态"
     },
     "link": {
         "None": "无"

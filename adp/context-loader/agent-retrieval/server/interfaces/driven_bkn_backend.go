@@ -575,7 +575,10 @@ type CypherQueryResp struct {
 }
 
 type BknBackendAccess interface {
-	// GetKnowledgeNetworkDetail Get knowledge network detail with full schema (include_detail=true, mode=export)
+	// GetKnowledgeNetworkDetail returns the network record plus the concept groups, object types,
+	// relation types and action types the caller may see. It is assembled from the default
+	// network read and the child lists, never from mode=export, so a caller authorized only on
+	// some child resources gets those instead of a refusal.
 	GetKnowledgeNetworkDetail(ctx context.Context, knID string) (*KnowledgeNetworkDetail, error)
 
 	// ListKnowledgeNetworks lists knowledge networks (used to discover kn_id)
@@ -622,6 +625,12 @@ type BknBackendAccess interface {
 	ListKNCapabilities(ctx context.Context, knID, branch, capabilityType string) ([]*CapabilityRef, error)
 }
 
+// KNProxyResolver is implemented by BKN clients used on managed execution
+// paths without widening the read-only backend interface.
+type KNProxyResolver interface {
+	ResolveKNProxyBinding(ctx context.Context, binding KNProxyBinding) (*KNProxyAccount, error)
+}
+
 // CapabilityRef is one capability a knowledge network branch has bound. Only the reference
 // travels: the master data lives in the execution factory, and Context Loader reads it there
 // directly, so having bkn-backend fill in names would only add a hop.
@@ -629,9 +638,37 @@ type BknBackendAccess interface {
 // A skill is identified by CapabilityID alone; a function needs BoxID too, because a tool id is
 // scoped to its box.
 type CapabilityRef struct {
+	ID             string `json:"id"`
 	CapabilityType string `json:"capability_type"`
 	BoxID          string `json:"box_id"`
 	CapabilityID   string `json:"capability_id"`
+}
+
+// KNProxyBinding identifies one exact server-derived capability grant source.
+type KNProxyBinding struct {
+	KNID       string `json:"-"`
+	ChildType  string `json:"child_type"`
+	ChildID    string `json:"child_id"`
+	TargetType string `json:"target_type"`
+	TargetID   string `json:"target_id"`
+	Operation  string `json:"operation"`
+}
+
+const (
+	KNProxyChildTypeCapability = "capability_binding"
+	KNProxyTargetTypeToolBox   = "tool_box"
+	KNProxyTargetTypeMCP       = "mcp"
+	KNProxyOperationExecute    = "execute"
+)
+
+// KNProxyAccount is the runtime subset of BKN's managed proxy mapping.
+type KNProxyAccount struct {
+	KNID             string `json:"kn_id"`
+	ProxyAccountID   string `json:"proxy_account_id"`
+	ProxyAccountType string `json:"proxy_account_type"`
+	LifecycleStatus  string `json:"lifecycle_status"`
+	Version          int64  `json:"version"`
+	SyncStatus       string `json:"sync_status"`
 }
 
 // Capability types a knowledge network can bind.

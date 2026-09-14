@@ -24,6 +24,15 @@ type Config struct {
 	// Audit tunes the audit chain anchor export and the authorization
 	// decision log (#334).
 	Audit AuditConfig `yaml:"audit"`
+
+	Authz AuthzConfig `yaml:"authz"`
+}
+
+// AuthzConfig tunes the authorization engine.
+type AuthzConfig struct {
+	// PolicyRefreshInterval reloads the in-memory policy from the store on a
+	// timer, picking up rows changed outside bkn-safe. 0 disables it.
+	PolicyRefreshInterval time.Duration `yaml:"policy_refresh_interval"`
 }
 
 // AuditConfig tunes what the audit subsystem does beyond recording rows.
@@ -81,6 +90,16 @@ type DBConfig struct {
 	Password string `yaml:"password"`
 	Name     string `yaml:"name"`
 	Params   string `yaml:"params"` // extra DSN params
+	// MaxOpenConns caps bkn-safe's connections to the database, which the
+	// platform shares between services; idle connections are kept up to the
+	// same number so a burst does not reconnect per request. 0 means no cap
+	// (database/sql's default, and the pre-#1511 behaviour).
+	MaxOpenConns int `yaml:"max_open_conns"`
+	// ConnMaxIdleTime and ConnMaxLifetime recycle connections; 0 keeps a
+	// connection indefinitely. The lifetime should stay below the server's
+	// wait_timeout.
+	ConnMaxIdleTime time.Duration `yaml:"conn_max_idle_time"`
+	ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime"`
 }
 
 // DSN returns a go-sql-driver/mysql style DSN (openbkn-rds speaks MySQL wire).

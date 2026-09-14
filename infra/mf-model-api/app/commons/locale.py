@@ -3,6 +3,7 @@
 # Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
 import json
+import re
 from contextvars import ContextVar, Token
 from copy import deepcopy
 from typing import Any, Callable, Dict, Optional, Tuple
@@ -106,6 +107,11 @@ def localized_error_content(
         for field in ("description", "detail", "solution"):
             if field == "detail":
                 localized[field] = _localize_detail(code, message, content.get(field), locale)
+            elif (field == "solution"
+                  and code == "ModelFactory.ExternalSmallModel.Used.InvalidParameter"
+                  and _batch_size_limit(content.get(field)) is not None):
+                localized[field] = message.get("batch_size_solution_template", "").format(
+                    limit=_batch_size_limit(content.get(field)))
             elif field in message and message[field]:
                 localized[field] = message[field]
         return localized, True
@@ -154,6 +160,11 @@ def _contains_chinese(value: Any) -> bool:
 
 
 def _localize_detail(code: str, message: Dict[str, str], detail: Any, locale: str) -> Any:
+    if (code == "ModelFactory.ExternalSmallModel.Used.InvalidParameter"
+            and isinstance(detail, str) and detail):
+        template = message.get("detail_template")
+        if template:
+            return template.format(summary=detail)
     if code == "ModelFactory.Router.ParamError.FormatError" and isinstance(detail, str):
         detail_kind, separator, value = detail.partition(":")
         template = message.get("max_tokens_detail_template")
@@ -179,6 +190,13 @@ def _parameter_name_from_detail(detail: str) -> str:
     text = detail.strip()
     _, separator, value = text.partition(":")
     return value.strip() if separator else ""
+
+
+def _batch_size_limit(solution: Any) -> Optional[str]:
+    if not isinstance(solution, str):
+        return None
+    match = re.search(r"batch_size_limit:\s*(\d+)", solution, re.IGNORECASE)
+    return match.group(1) if match else None
 
 
 def _structured_openai_detail(error: Dict[str, Any]) -> Any:

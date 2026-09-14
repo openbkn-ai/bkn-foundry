@@ -129,13 +129,22 @@ type DrivenOperatorIntegration interface {
 	// stand in for it — it needs a caller token the internal face never carries.
 	ToolBoxLifecycle(ctx context.Context, boxID string) (*ToolBoxLifecycle, error)
 
-	// MCPServerIsUsable reports whether the MCP Server is published, and so whether the tools it
-	// exposes may be called.
+	// MCPServerIsUsable reports whether the MCP Server is published or editing, and so whether the
+	// tools it exposes may be called. An editing server is served from its release.
 	//
 	// The proxy's tool listing answers regardless of the server's state, so it cannot stand in
 	// for this: a server taken offline after a tool was mounted still lists that tool. The
 	// question has to be put to the server itself.
 	MCPServerIsUsable(ctx context.Context, mcpID string) (bool, error)
+}
+
+// KNProxyOperator contains only the managed execution operations. Other
+// operator consumers remain caller-scoped and do not need this contract.
+type KNProxyOperator interface {
+	CallMCPToolAsProxy(ctx context.Context, req *CallMCPToolRequest,
+		proxy *KNProxyExecution) (map[string]interface{}, error)
+	ExecutePublishedToolAsProxy(ctx context.Context, req *ExecutePublishedToolRequest,
+		proxy *KNProxyExecution) (map[string]any, error)
 }
 
 // SearchBoundToolsRequest asks Execution Factory to rank a bounded set of Function tools.
@@ -257,6 +266,13 @@ type ExecutePublishedToolRequest struct {
 	ToolboxID  string         `json:"toolbox_id"`
 	ToolID     string         `json:"tool_id"`
 	Parameters map[string]any `json:"parameters"`
+}
+
+// KNProxyExecution is derived from an exact BKN binding and mapping. The
+// public execute_tool payload never supplies any of these fields.
+type KNProxyExecution struct {
+	Mapping *KNProxyAccount
+	Binding KNProxyBinding
 }
 
 // ExecuteFunctionRequest sandbox code execution request.

@@ -71,6 +71,55 @@ func TestBuildProxyGrantSourcesVersionIncludesConcreteActionTool(t *testing.T) {
 	}
 }
 
+func TestBuildProxyGrantSourcesIncludesMountedExecutableCapabilities(t *testing.T) {
+	kn := &interfaces.KN{KNID: "kn-1"}
+	bindings := []*interfaces.CapabilityBinding{
+		{ID: "binding-function", KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
+			CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, OwnerID: "box-1", CapabilityID: "tool-1"},
+		{ID: "binding-mcp", KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
+			CapabilityType: interfaces.CAPABILITY_TYPE_MCP_TOOL, OwnerID: "mcp-1", CapabilityID: "lookup"},
+		{ID: "binding-skill", KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
+			CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "skill-1"},
+	}
+
+	sources, firstVersion, err := buildProxyGrantSourcesWithCapabilities(kn, bindings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sources) != 2 {
+		t.Fatalf("len(sources) = %d, want 2", len(sources))
+	}
+	want := map[string]string{"binding-function": "tool_box/box-1", "binding-mcp": "mcp/mcp-1"}
+	for _, source := range sources {
+		if source.BindingType != "capability_binding" || source.Operation != interfaces.OPERATION_TYPE_EXECUTE {
+			t.Fatalf("unexpected capability source: %#v", source)
+		}
+		if got := source.ResourceType + "/" + source.ResourceID; got != want[source.BindingID] {
+			t.Fatalf("source target = %q, want %q", got, want[source.BindingID])
+		}
+	}
+
+	bindings[1].CapabilityID = "lookup_v2"
+	_, secondVersion, err := buildProxyGrantSourcesWithCapabilities(kn, bindings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstVersion == secondVersion {
+		t.Fatal("model version did not change when a mounted MCP tool changed")
+	}
+}
+
+func TestMergeProxyCapabilityBindingsAppliesAttachAndDetach(t *testing.T) {
+	current := []*interfaces.CapabilityBinding{{ID: "keep"}, {ID: "remove"}}
+	added := []*interfaces.CapabilityBinding{{ID: "new"}, {ID: "keep", CapabilityID: "updated"}}
+
+	merged := mergeProxyCapabilityBindings(current, added, []string{"remove"})
+
+	if len(merged) != 2 || merged[0].ID != "keep" || merged[0].CapabilityID != "updated" || merged[1].ID != "new" {
+		t.Fatalf("merged bindings = %#v", merged)
+	}
+}
+
 func TestBuildProxyGrantSourcesSkipsUnboundRelationEndpoint(t *testing.T) {
 	kn := &interfaces.KN{
 		KNID: "kn-1",

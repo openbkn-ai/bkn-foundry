@@ -1181,6 +1181,13 @@ ModelFactory_ExternalSmallModel_Used_ConnectError = {
     "solution": "Check the model configuration and service availability.",
     "link": ""
 }
+ModelFactory_ExternalSmallModel_Used_InvalidParameter = {
+    "code": "ModelFactory.ExternalSmallModel.Used.InvalidParameter",
+    "description": "Small model request parameters are invalid.",
+    "detail": "The model provider rejected one or more request parameters.",
+    "solution": "Adjust the model batch size, token limit, or embedding dimension and retry.",
+    "link": ""
+}
 ModelFactory_ExternalSmallModel_Used_ModelError = {
     "code": "ModelFactory.ExternalSmallModel.Used.ModelError",
     "description": "模型调用过程中出错",

@@ -22,8 +22,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
-	"sync"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
@@ -94,11 +94,12 @@ type Enforcer struct {
 	// inheritance is resolved around the matcher, not inside it. Nil disables
 	// inheritance entirely, which is the pre-#800 behaviour.
 	db *gorm.DB
-	// transactionMu serializes every policy write and must be acquired before
-	// reading the adapter pointer. The gorm adapter temporarily replaces that
-	// pointer while a transaction is in flight, so adapter-local locking alone
-	// is too late for concurrent callers.
-	transactionMu sync.Mutex
+	// writeSlot (capacity 1) serializes every policy write, including role
+	// bindings. While it is held the live model equals the committed store,
+	// which is what lets a transaction start from an in-memory snapshot instead
+	// of a reload. It is a channel rather than a mutex so a caller whose context
+	// ends while queued leaves without doing any work (#1511).
+	writeSlot chan struct{}
 }
 
 // New builds an Enforcer using a GORM-backed policy store on the given db.
@@ -134,7 +135,7 @@ func New(db *gorm.DB) (*Enforcer, error) {
 	if err := e.LoadPolicy(); err != nil {
 		return nil, fmt.Errorf("load policy: %w", err)
 	}
-	return &Enforcer{e: e, db: db}, nil
+	return &Enforcer{e: e, db: db, writeSlot: make(chan struct{}, 1)}, nil
 }
 
 // obj builds the "type:id" object key.
@@ -363,18 +364,36 @@ func (en *Enforcer) AdminDecision(ctx context.Context, accessorID string) (Evalu
 
 // AssignRole binds an accessor (user/app) to a role. Idempotent.
 func (en *Enforcer) AssignRole(accessorID, roleID string) error {
-	en.transactionMu.Lock()
-	defer en.transactionMu.Unlock()
-	_, err := en.e.AddGroupingPolicy(accessorID, roleID)
+	return en.AssignRoleContext(context.Background(), accessorID, roleID)
+}
+
+// AssignRoleContext is AssignRole for request paths: a caller whose context
+// ends while queued for the write slot leaves without writing (#1511).
+func (en *Enforcer) AssignRoleContext(ctx context.Context, accessorID, roleID string) error {
+	release, err := en.acquireWrite(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	_, err = en.e.AddGroupingPolicy(accessorID, roleID)
 	return err
 }
 
 // RemoveRole unbinds an accessor from a role (the inverse of AssignRole).
 // Idempotent: removing a binding that isn't there is a no-op.
 func (en *Enforcer) RemoveRole(accessorID, roleID string) error {
-	en.transactionMu.Lock()
-	defer en.transactionMu.Unlock()
-	_, err := en.e.RemoveGroupingPolicy(accessorID, roleID)
+	return en.RemoveRoleContext(context.Background(), accessorID, roleID)
+}
+
+// RemoveRoleContext is RemoveRole for request paths, with the same queueing
+// contract as AssignRoleContext.
+func (en *Enforcer) RemoveRoleContext(ctx context.Context, accessorID, roleID string) error {
+	release, err := en.acquireWrite(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	_, err = en.e.RemoveGroupingPolicy(accessorID, roleID)
 	return err
 }
 
@@ -492,7 +511,7 @@ type PermQuery struct {
 // Object/op order follows GetImplicitPermissionsForUser; callers treat the
 // result as sets.
 func (en *Enforcer) EffectivePermissions(accessorID string, q PermQuery) (hasWildcard bool, grants []RoleGrant, err error) {
-	rows, err := en.e.GetImplicitPermissionsForUser(accessorID)
+	rows, err := en.implicitPermissions(accessorID)
 	if err != nil {
 		return false, nil, err
 	}
@@ -661,12 +680,26 @@ func (en *Enforcer) hasSuperAdminRole(accessorID string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	for _, role := range roles {
-		if role == SuperAdminRoleID {
-			return true, nil
-		}
+	return slices.Contains(roles, SuperAdminRoleID), nil
+}
+
+// implicitPermissions returns the accessor's direct and role-inherited policy rows.
+//
+// casbin's SyncedEnforcer.GetImplicitPermissionsForUser takes the enforcer's exclusive lock for
+// this read, so every decision queued behind every other one (#1554). The unsynchronized read is
+// safe under the shared lock: it only reads the model, and the one write on its path, the role
+// manager's temporary role for an accessor absent from the role graph, goes through sync.Maps; the
+// synced GetImplicitRolesForUser walks that same path under the shared lock. Writers still take
+// the exclusive lock (publish and casbin's synced mutators), so a read always sees a whole model.
+func (en *Enforcer) implicitPermissions(accessorID string) ([][]string, error) {
+	synced, ok := en.e.(*casbin.SyncedEnforcer)
+	if !ok {
+		return en.e.GetImplicitPermissionsForUser(accessorID)
 	}
-	return false, nil
+	lock := synced.GetLock()
+	lock.RLock()
+	defer lock.RUnlock()
+	return synced.Enforcer.GetImplicitPermissionsForUser(accessorID) //nolint:staticcheck // explicit unsynchronized call under the held lock
 }
 
 // hasOp reports whether ops contains want.
@@ -892,7 +925,7 @@ func (en *Enforcer) AccessibleResources(accessorID, resourceType, op string) ([]
 // accessibleResources is AccessibleResources plus the visited-type set that
 // keeps the ancestor recursion finite.
 func (en *Enforcer) accessibleResources(accessorID, resourceType, op string, visitedTypes map[string]bool) ([]string, error) {
-	perms, err := en.e.GetImplicitPermissionsForUser(accessorID)
+	perms, err := en.implicitPermissions(accessorID)
 	if err != nil {
 		return nil, err
 	}

@@ -36,6 +36,11 @@ func attachTestActionProxySnapshot(t *testing.T, execution *interfaces.ActionExe
 		actionType.ATID = "test-action"
 	}
 	execution.ActionTypeID = actionType.ATID
+	execution.PermissionSnapshot = []interfaces.PermissionRequirement{{
+		ResourceType: interfaces.PermissionResourceTypeActionType,
+		ResourceID:   execution.KNID + "/" + actionType.ATID,
+		Operation:    interfaces.PermissionOperationExecute,
+	}}
 	execution.Proxy = &interfaces.AccountInfo{ID: "test-proxy", Type: interfaces.ProxyAccountTypeApp}
 	execution.ProxyVersion = 2
 	execution.ProxyModelVersion = "model-v2"
@@ -72,7 +77,6 @@ func (s *actionPermissionStub) RequirePermissions(_ context.Context,
 }
 
 func TestAuthorizeActionTypeResolvesTrustedRequirements(t *testing.T) {
-	t.Setenv("AUTH_ENABLED", "true")
 	ctrl := gomock.NewController(t)
 	models := omock.NewMockOntologyManagerAccess(ctrl)
 	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "ot-input").
@@ -105,7 +109,6 @@ func TestAuthorizeActionTypeResolvesTrustedRequirements(t *testing.T) {
 }
 
 func TestExecuteActionChecksPermissionsBeforeInstanceData(t *testing.T) {
-	t.Setenv("AUTH_ENABLED", "true")
 	ctrl := gomock.NewController(t)
 	models := omock.NewMockOntologyManagerAccess(ctrl)
 	models.EXPECT().GetActionType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "at-1").Return(
@@ -133,7 +136,6 @@ func TestExecuteActionChecksPermissionsBeforeInstanceData(t *testing.T) {
 }
 
 func TestExecuteActionRejectsMissingDataDependencyBeforeProxyAndInstanceRead(t *testing.T) {
-	t.Setenv("AUTH_ENABLED", "true")
 	ctrl := gomock.NewController(t)
 	models := omock.NewMockOntologyManagerAccess(ctrl)
 	objects := omock.NewMockObjectTypeService(ctrl)
@@ -161,7 +163,6 @@ func TestExecuteActionRejectsMissingDataDependencyBeforeProxyAndInstanceRead(t *
 }
 
 func TestExecuteActionProxyFailureStopsInstanceRead(t *testing.T) {
-	t.Setenv("AUTH_ENABLED", "true")
 	ctrl := gomock.NewController(t)
 	models := omock.NewMockOntologyManagerAccess(ctrl)
 	objects := omock.NewMockObjectTypeService(ctrl)
@@ -228,7 +229,6 @@ func TestTrustedActionProxyContextRejectsMissingProxySnapshot(t *testing.T) {
 }
 
 func TestAuthorizeExecutionRequiresSnapshotWhenEnabled(t *testing.T) {
-	t.Setenv("AUTH_ENABLED", "true")
 	err := (&actionSchedulerService{permissions: &actionPermissionStub{}}).authorizeExecution(context.Background(), nil)
 	if err == nil {
 		t.Fatal("authorizeExecution() accepted a missing permission snapshot")
@@ -236,7 +236,6 @@ func TestAuthorizeExecutionRequiresSnapshotWhenEnabled(t *testing.T) {
 }
 
 func TestInvokeActionSourceDoesNotCallExternalServiceAfterRevocation(t *testing.T) {
-	t.Setenv("AUTH_ENABLED", "true")
 	revoked := errors.New("permission revoked")
 	service := &actionSchedulerService{permissions: &actionPermissionStub{err: revoked}}
 	params, result, err := service.invokeActionSource(context.Background(), []interfaces.PermissionRequirement{
@@ -246,16 +245,5 @@ func TestInvokeActionSourceDoesNotCallExternalServiceAfterRevocation(t *testing.
 	}, map[string]any{"value": 1}, nil)
 	if !errors.Is(err, revoked) || result != nil || params["value"] != 1 {
 		t.Fatalf("invokeActionSource() = %#v, %#v, %v", params, result, err)
-	}
-}
-
-func TestActionExecutionAuthorizationBypassesWhenAuthenticationIsDisabled(t *testing.T) {
-	t.Setenv("AUTH_ENABLED", "false")
-	service := &actionSchedulerService{}
-	if requirements, err := service.authorizeActionType(context.Background(), "", nil); err != nil || requirements != nil {
-		t.Fatalf("authorizeActionType() = %#v, %v", requirements, err)
-	}
-	if err := service.authorizeExecution(context.Background(), nil); err != nil {
-		t.Fatalf("authorizeExecution() error = %v", err)
 	}
 }

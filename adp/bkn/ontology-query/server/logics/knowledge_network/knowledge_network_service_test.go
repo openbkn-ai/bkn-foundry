@@ -546,6 +546,49 @@ func Test_knowledgeNetworkService_SearchSubgraphByTypePath(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(len(result.Entries), ShouldEqual, 1)
 		})
+
+		// Such an edge used to fall through to backward and be walked from the relation's
+		// target side; it is rejected before any object is read.
+		Convey("失败 - 边的端点不是关系类的两端", func() {
+			query := &interfaces.SubGraphQueryBaseOnTypePath{
+				KNID:   knID,
+				Branch: branch,
+				Paths: interfaces.QueryRelationTypePaths{
+					TypePaths: []interfaces.QueryRelationTypePath{
+						{
+							ObjectTypes: []interfaces.ObjectTypeWithKeyField{
+								{OTID: "ot3"},
+								{OTID: "ot2"},
+							},
+							Edges: []interfaces.TypeEdge{
+								{
+									RelationTypeId:     "rt1",
+									SourceObjectTypeId: "ot3",
+									TargetObjectTypeId: "ot2",
+								},
+							},
+						},
+					},
+				},
+			}
+
+			relationType := interfaces.RelationType{
+				RTID:               "rt1",
+				RTName:             "relation1",
+				SourceObjectTypeID: "ot1",
+				TargetObjectTypeID: "ot2",
+			}
+
+			omAccess.EXPECT().GetRelationType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(relationType, true, nil)
+
+			result, err := service.SearchSubgraphByTypePath(ctx, query)
+			So(err, ShouldNotBeNil)
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath)
+			So(result.Entries, ShouldBeNil)
+		})
 	})
 }
 

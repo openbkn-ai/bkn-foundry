@@ -36,15 +36,14 @@ class PermissionManager:
 
     async def add_permission(self, user_id: str, resource_id: str, resource_name: str, resource_type: str,
                              user_name: str, role: str) -> bool:
-        if not base_config.AUTH_ENABLED:
-            return True
         # Administrators do not require object-level authorization.
         if user_id == "266c6a42-6131-4d62-8f39-853e7093701c":
             return True
-        # bkn-safe authoritative: grant the four instance ops directly.
+        # bkn-safe authoritative: model use is a platform baseline and model
+        # lifecycle comes from the network_builder role. Do not recreate the
+        # retired per-creator, per-model ACL when a model is added.
         if self._bkn_safe_authoritative():
-            return await self._bkn_safe_add(user_id, resource_type, resource_id,
-                                            ["display", "modify", "delete", "execute"])
+            return True
         """Add a resource permission."""
         payload = [{
             "accessor": {
@@ -115,8 +114,6 @@ class PermissionManager:
 
     async def check_single_permission(self, user_id: str, resource_id: str, operations: str,
                                       resource_type: str, role: str) -> bool:
-        if not base_config.AUTH_ENABLED:
-            return True
         # bkn-safe authoritative: return its decision directly.
         if self._bkn_safe_authoritative():
             try:
@@ -247,9 +244,6 @@ class PermissionManager:
 
     async def get_permission_ids(self, user_id: str, operation: str,
                                  resource_type: str, resource_name: str, role: str) -> list:
-        if not base_config.AUTH_ENABLED:
-            all_ids = small_model_dao.get_all_ids()
-            return [m['f_model_id'] for m in all_ids]
         # bkn-safe authoritative: filter the concrete model set in one batch.
         if self._bkn_safe_authoritative():
             return await self._bkn_safe_filter_ids(user_id, operation, resource_type)
@@ -306,8 +300,6 @@ class PermissionManager:
         return operation_ids
 
     async def delete_permission(self, resource_type: str, resource_ids: list) -> bool:
-        if not base_config.AUTH_ENABLED:
-            return True
         # bkn-safe authoritative: drop each resource's policies directly.
         if self._bkn_safe_authoritative():
             return await self._bkn_safe_delete(resource_type, resource_ids)

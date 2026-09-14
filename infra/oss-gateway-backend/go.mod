@@ -7,7 +7,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/minio/minio-go/v7 v7.3.0
-	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.4
+	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.5
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/sirupsen/logrus v1.10.2
 	github.com/stretchr/testify v1.12.1
@@ -20,8 +20,8 @@ require (
 	gitee.com/chunanyong/dm v1.8.23 // indirect
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/bytedance/gopkg v0.1.4 // indirect
-	github.com/bytedance/sonic v1.15.2 // indirect
-	github.com/bytedance/sonic/loader v0.5.1 // indirect
+	github.com/bytedance/sonic v1.15.3 // indirect
+	github.com/bytedance/sonic/loader v0.5.2 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
@@ -34,7 +34,7 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.30.3 // indirect
-	github.com/go-sql-driver/mysql v1.10.0 // indirect
+	github.com/go-sql-driver/mysql v1.10.1 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect

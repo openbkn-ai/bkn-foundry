@@ -332,16 +332,21 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 
 	// Register resources.
 	//
-	// The creator also gets resource_manage and query_data (#801): both are now
-	// judged on the catalog, so without them they could not add a table to the
-	// catalog they just created — and the connection config and credentials are
-	// theirs to begin with. Both are in COMMON_OPERATIONS, so the whole set is
-	// what the creator receives.
+	// A business-catalog creator receives bkn-safe's canonical instance-scoped
+	// root bundle. resource_manage and query_data are judged on this catalog, so
+	// omitting them would prevent the creator from managing its own tables and
+	// data. Create itself stays a type-wide capability and is intentionally
+	// absent. Internal catalogs have a separate system-only resource type and
+	// retain their existing per-operation registration contract.
+	creatorOperations := interfaces.COMMON_OPERATIONS
+	if authType == interfaces.AUTH_RESOURCE_TYPE_CATALOG {
+		creatorOperations = interfaces.CATALOG_CREATOR_OPERATIONS
+	}
 	err = cs.ps.CreateResources(ctx, []interfaces.PermissionResource{{
 		ID:   catalog.ID,
 		Type: authType,
 		Name: catalog.Name,
-	}}, interfaces.COMMON_OPERATIONS)
+	}}, creatorOperations)
 	if err != nil {
 		logger.Errorf("CreateResources error: %s", err.Error())
 		span.SetStatus(codes.Error, "failed to create catalog resource")

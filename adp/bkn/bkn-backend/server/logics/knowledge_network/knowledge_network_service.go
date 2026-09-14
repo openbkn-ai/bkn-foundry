@@ -595,6 +595,9 @@ func (kns *knowledgeNetworkService) resolveKNNavigationVisibility(ctx context.Co
 		}
 		visibility.visibleChildRows[resourceType] = matched
 	}
+	if err := kns.dropUnreadableReferenceRows(ctx, branch, candidates, visibility.visibleChildRows); err != nil {
+		return nil, err
+	}
 	for _, candidate := range candidates {
 		canonicalID := interfaces.KNChildResourceID(candidate.KNID, candidate.ResourceID)
 		if _, ok := visibility.visibleChildRows[candidate.Type][canonicalID]; ok {

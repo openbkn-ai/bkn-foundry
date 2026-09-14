@@ -118,6 +118,18 @@ config:
     user: "root"
     password: "secret"
     name: "safe"
+    # Connection pool (#1511). The platform MariaDB is shared by every service
+    # (max_connections 5000 by default); without a cap a burst of authorization
+    # writes opened one connection per request. Callers beyond the cap wait for
+    # a free connection. 0 = no cap. Idle connections are kept up to the cap.
+    maxOpenConns: 50
+    connMaxIdleTime: "2m"
+    connMaxLifetime: "30m"   # keep below the server's wait_timeout
+  # Reload the in-memory authorization policy from the store on a timer, as a
+  # safety net for rows changed outside bkn-safe while it runs. Writes made
+  # through bkn-safe are live immediately regardless. "0" disables it.
+  authz:
+    policyRefreshInterval: "10m"
   hydra:
     adminURL: "http://bkn-safe-hydra-admin:4445"
     publicURL: "http://bkn-safe-hydra-public:4444"

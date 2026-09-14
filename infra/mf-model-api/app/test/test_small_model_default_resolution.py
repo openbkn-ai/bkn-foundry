@@ -17,6 +17,7 @@ from app.commons.errors import (
     ModelFactory_DefaultSmallModel_NotExist,
     ModelFactory_ExternalSmallModel_Used_NameNotExist,
 )
+from app.utils.external_small_model_utils import UpstreamModelError
 
 
 class TestDefaultSmallModelResolution:
@@ -107,6 +108,79 @@ class TestDefaultSmallModelResolution:
         assert _model_cache_ttl(True) == DEFAULT_MODEL_CACHE_TTL_SECONDS
         assert _model_cache_ttl(False) == MODEL_CACHE_TTL_SECONDS
         assert DEFAULT_MODEL_CACHE_TTL_SECONDS < MODEL_CACHE_TTL_SECONDS
+
+
+class TestEmbeddingProviderErrorMapping:
+    def test_provider_summary_redacts_embedded_request_body(self):
+        error = UpstreamModelError(400, json.dumps({"error": {"message": (
+            "batch size is invalid; request body: {\"input\": [\"customer business data\"]}")}}))
+
+        assert "batch size is invalid" in error.detail
+        assert "customer business data" not in error.detail
+
+    def test_provider_summary_keeps_input_parameter_limit(self):
+        error = UpstreamModelError(400, json.dumps({"error": {"message": (
+            "Invalid 'input': array too long. Expected an array with maximum length 2048.")}}))
+
+        assert "maximum length 2048" in error.detail
+
+    @pytest.mark.asyncio
+    async def test_batch_limit_is_a_safe_parameter_error(self):
+        request = Mock(model="embedding", model_id="", input=["customer business data"])
+        redis = AsyncMock()
+        redis.get_str.return_value = None
+        model_info = [{
+            "f_model_config": json.dumps({"api_url": "https://provider.example", "api_model": "embed"}),
+            "f_adapter": False,
+            "f_model_id": "embedding-id",
+            "f_adapter_code": None,
+            "f_embedding_dim": 1024,
+        }]
+        upstream = UpstreamModelError(400, json.dumps({"error": {"message": (
+            "batch size is invalid, it should not be larger than 10; "
+            "Authorization: Bearer sk-test-secret input=[customer business data]")}}))
+
+        with patch("app.controller.small_model_controller.redis_util", redis), \
+                patch("app.controller.small_model_controller.small_model_dao.get_model_info_by_name_id",
+                      return_value=model_info), \
+                patch("app.controller.small_model_controller.InnerClient") as client, \
+                patch("app.controller.small_model_controller.get_logger", return_value=None):
+            client.return_value.embedding = AsyncMock(side_effect=upstream)
+            response = await embedding_model_used(request, "user1", "zh", "test", "embedding")
+
+        body = json.loads(response.body)
+        assert response.status_code == 400
+        assert body["code"] == "ModelFactory.ExternalSmallModel.Used.InvalidParameter"
+        assert "batch size is invalid" in body["detail"]
+        assert "sk-test-secret" not in body["detail"]
+        assert "customer business data" not in body["detail"]
+        assert body["solution"] == "batch_size_limit: 10"
+
+    @pytest.mark.asyncio
+    async def test_input_array_limit_produces_batch_size_guidance(self):
+        request = Mock(model="embedding", model_id="", input=["text"])
+        redis = AsyncMock()
+        redis.get_str.return_value = None
+        model_info = [{
+            "f_model_config": json.dumps({"api_url": "https://provider.example", "api_model": "embed"}),
+            "f_adapter": False,
+            "f_model_id": "embedding-id",
+            "f_adapter_code": None,
+            "f_embedding_dim": 1024,
+        }]
+        upstream = UpstreamModelError(400, json.dumps({"error": {"message": (
+            "Invalid 'input': array too long. Expected an array with maximum length 2048.")}}))
+
+        with patch("app.controller.small_model_controller.redis_util", redis), \
+                patch("app.controller.small_model_controller.small_model_dao.get_model_info_by_name_id",
+                      return_value=model_info), \
+                patch("app.controller.small_model_controller.InnerClient") as client, \
+                patch("app.controller.small_model_controller.get_logger", return_value=None):
+            client.return_value.embedding = AsyncMock(side_effect=upstream)
+            response = await embedding_model_used(request, "user1", "zh", "test", "embedding")
+
+        body = json.loads(response.body)
+        assert body["solution"] == "batch_size_limit: 2048"
 
 
 class TestSmallModelDaoDefaultQuery:

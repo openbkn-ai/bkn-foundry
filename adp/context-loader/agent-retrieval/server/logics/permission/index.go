@@ -48,9 +48,6 @@ func (a *queryCandidateAuthorizer) FilterObjectTypeIDs(ctx context.Context,
 	if len(candidateIDs) == 0 {
 		return []string{}, nil
 	}
-	if !config.GetAuthEnabled() {
-		return append([]string(nil), candidateIDs...), nil
-	}
 	account, ok := trustedAccount(ctx)
 	if !ok {
 		return nil, infraerrors.DefaultHTTPError(ctx, http.StatusUnauthorized, "request subject is missing or invalid")
@@ -185,9 +182,14 @@ func NewKnowledgeNetworkAuthorizerWith(access interfaces.PermissionAccess) inter
 // Fail-closed throughout: no subject, an unusable id, or an unavailable authorization service all
 // refuse. An answer built without this check would be scoped only by the kn_id the caller typed.
 func (a *knowledgeNetworkAuthorizer) AuthorizeRead(ctx context.Context, knID string) error {
-	if !config.GetAuthEnabled() {
-		return nil
-	}
+	return a.authorize(ctx, knID, interfaces.PermissionOperationViewDetail)
+}
+
+func (a *knowledgeNetworkAuthorizer) AuthorizeExecute(ctx context.Context, knID string) error {
+	return a.authorize(ctx, knID, interfaces.PermissionOperationExecute)
+}
+
+func (a *knowledgeNetworkAuthorizer) authorize(ctx context.Context, knID, operation string) error {
 	account, ok := trustedAccount(ctx)
 	if !ok {
 		return infraerrors.DefaultHTTPError(ctx, http.StatusUnauthorized, "request subject is missing or invalid")
@@ -206,8 +208,8 @@ func (a *knowledgeNetworkAuthorizer) AuthorizeRead(ctx context.Context, knID str
 			Type: interfaces.PermissionResourceTypeKnowledgeNetwork,
 			ID:   knID,
 		}},
-		VisibilityOperations: []string{interfaces.PermissionOperationViewDetail},
-		CandidateOperations:  []string{interfaces.PermissionOperationViewDetail},
+		VisibilityOperations: []string{operation},
+		CandidateOperations:  []string{operation},
 	})
 	if err != nil || response.Resources == nil {
 		return permissionUnavailable(ctx)
@@ -217,7 +219,7 @@ func (a *knowledgeNetworkAuthorizer) AuthorizeRead(ctx context.Context, knID str
 			result.ResourceID != knID {
 			return permissionUnavailable(ctx)
 		}
-		if contains(result.Operations, interfaces.PermissionOperationViewDetail) {
+		if contains(result.Operations, operation) {
 			return nil
 		}
 	}

@@ -43,3 +43,18 @@ func TestAdminWriteRejectsTypeWideActionExecute(t *testing.T) {
 		t.Error("concrete action execution role grant must be effective")
 	}
 }
+
+func TestAdminWriteRejectsCustomModelRolePermissions(t *testing.T) {
+	_, e, db := newTestServer(t)
+	const roleID = "custom-model-role"
+	if err := db.Create(&model.Role{ID: roleID, Name: roleID, Source: model.RoleSourceCustom}).Error; err != nil {
+		t.Fatalf("create custom role: %v", err)
+	}
+	svc := newAdminWriteServices(e, db)
+	for _, resourceType := range []string{"small_model", "large_model"} {
+		err := svc.GrantRolePermission(t.Context(), roleID, resourceType, "*", "modify")
+		if !errors.Is(err, errModelAuthorizationManagedBySystem) {
+			t.Errorf("GrantRolePermission(%s) error = %v, want model authorization rejection", resourceType, err)
+		}
+	}
+}

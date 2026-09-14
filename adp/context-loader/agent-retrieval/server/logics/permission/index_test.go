@@ -17,11 +17,12 @@ import (
 )
 
 type fakePermissionAccess struct {
-	allowed  map[string]bool
-	requests []interfaces.PermissionFilterRequest
-	err      error
-	errAt    int
-	mutate   func(*[]interfaces.PermissionFilterResult)
+	allowed                 map[string]bool
+	requests                []interfaces.PermissionFilterRequest
+	err                     error
+	errAt                   int
+	mutate                  func(*[]interfaces.PermissionFilterResult)
+	echoRequestedOperations bool
 }
 
 func (f *fakePermissionAccess) FilterResources(_ context.Context,
@@ -34,10 +35,14 @@ func (f *fakePermissionAccess) FilterResources(_ context.Context,
 	results := make([]interfaces.PermissionFilterResult, 0)
 	for _, resource := range request.Resources {
 		if f.allowed[resource.ID] {
+			operations := []string{interfaces.PermissionOperationQueryData}
+			if f.echoRequestedOperations {
+				operations = append([]string(nil), request.CandidateOperations...)
+			}
 			results = append(results, interfaces.PermissionFilterResult{
 				ResourceType: resource.Type,
 				ResourceID:   resource.ID,
-				Operations:   []string{interfaces.PermissionOperationQueryData},
+				Operations:   operations,
 			})
 		}
 	}
@@ -160,5 +165,26 @@ func TestFilterObjectTypeIDsKeepsSameChildSeparateAcrossNetworks(t *testing.T) {
 	}
 	if len(got) != 0 || access.requests[0].Resources[0].ID != "kn-a/shared" {
 		t.Fatalf("cross-network candidate leaked: got=%v request=%#v", got, access.requests[0])
+	}
+}
+
+func TestKnowledgeNetworkAuthorizerChecksReadAndExecuteSeparately(t *testing.T) {
+	access := &fakePermissionAccess{
+		allowed:                 map[string]bool{"kn-a": true},
+		echoRequestedOperations: true,
+	}
+	authorizer := NewKnowledgeNetworkAuthorizerWith(access)
+
+	if err := authorizer.AuthorizeRead(authorizedContext(), "kn-a"); err != nil {
+		t.Fatal(err)
+	}
+	executeAuthorizer := authorizer.(interfaces.KnowledgeNetworkExecuteAuthorizer)
+	if err := executeAuthorizer.AuthorizeExecute(authorizedContext(), "kn-a"); err != nil {
+		t.Fatal(err)
+	}
+	if len(access.requests) != 2 ||
+		!reflect.DeepEqual(access.requests[0].CandidateOperations, []string{interfaces.PermissionOperationViewDetail}) ||
+		!reflect.DeepEqual(access.requests[1].CandidateOperations, []string{interfaces.PermissionOperationExecute}) {
+		t.Fatalf("knowledge-network permission requests = %#v", access.requests)
 	}
 }

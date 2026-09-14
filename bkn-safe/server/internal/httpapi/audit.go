@@ -33,6 +33,10 @@ const maxAuditBody = 64 << 10
 // maxAuditDetail caps the stored Detail string (the column is 2048).
 const maxAuditDetail = 2000
 
+// auditRecordTimeout bounds one audit write once it is detached from the
+// request's cancellation.
+const auditRecordTimeout = 10 * time.Second
+
 // sensitiveBodyKeys are masked in the audit Detail snapshot so credentials never
 // land in the trail.
 var sensitiveBodyKeys = []string{"password", "new_password", "old_password"}
@@ -113,9 +117,15 @@ func auditMiddleware(store *audit.Store, dir *directory.Service, db *gorm.DB) gi
 			actorType, authMethod, sourceChannel = "service", "network", "internal"
 			detail = withAuditCallerService(detail, c)
 		}
-		if err := store.Record(c.Request.Context(), audit.Entry{
+		// The write may have committed after the caller hung up (its deadline
+		// passed mid-commit); its audit row must not be dropped with the
+		// cancelled request context (#1511). It keeps a bound of its own, so a
+		// stalled database cannot hold the handler indefinitely.
+		recordCtx, cancelRecord := context.WithTimeout(context.WithoutCancel(c.Request.Context()), auditRecordTimeout)
+		defer cancelRecord()
+		if err := store.Record(recordCtx, audit.Entry{
 			ActorID:           actorID,
-			ActorNameSnapshot: auditActorName(c.Request.Context(), dir, actorID),
+			ActorNameSnapshot: auditActorName(recordCtx, dir, actorID),
 			ActorType:         actorType,
 			AuthMethod:        authMethod,
 			RequestID:         requestID,

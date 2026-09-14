@@ -8,7 +8,10 @@ package local_index
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,6 +20,124 @@ import (
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 )
+
+func TestLocalIndexManagerGetIndexCapabilities(t *testing.T) {
+	t.Run("refreshes an expired error after OpenSearch recovers", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		ctx := context.Background()
+		connector := vmock.NewMockIndexConnector(ctrl)
+		manager := &localIndexManager{lic: connector}
+
+		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(false, errors.New("connection refused"))
+		capabilities, err := manager.GetIndexCapabilities(ctx)
+		require.Error(t, err)
+		assert.Nil(t, capabilities)
+		var unavailableErr *interfaces.IndexCapabilitiesUnavailableError
+		assert.ErrorAs(t, err, &unavailableErr)
+
+		capabilities, err = manager.GetIndexCapabilities(ctx)
+		require.Error(t, err)
+		assert.Nil(t, capabilities)
+
+		manager.capabilityMu.Lock()
+		manager.capabilityErrorExpires = time.Now().Add(-time.Second)
+		manager.capabilityMu.Unlock()
+
+		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(true, nil)
+		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "english").Return(true, nil)
+		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "ik_max_word").Return(true, nil)
+		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_index").Return(false, nil)
+
+		capabilities, err = manager.GetIndexCapabilities(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, []interfaces.AnalyzerCapability{
+			{ID: "standard"},
+			{ID: "english"},
+			{ID: "ik_max_word"},
+		}, capabilities.FulltextAnalyzers)
+		assert.Positive(t, capabilities.CheckedAt)
+	})
+
+	t.Run("missing analyzer does not discard available analyzers", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		ctx := context.Background()
+		connector := vmock.NewMockIndexConnector(ctrl)
+		manager := &localIndexManager{lic: connector}
+
+		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(true, nil)
+		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "english").Return(true, nil)
+		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "ik_max_word").Return(true, nil)
+		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_index").Return(false, nil)
+
+		capabilities, err := manager.GetIndexCapabilities(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, []interfaces.AnalyzerCapability{
+			{ID: "standard"},
+			{ID: "english"},
+			{ID: "ik_max_word"},
+		}, capabilities.FulltextAnalyzers)
+	})
+
+	t.Run("coalesces concurrent refreshes", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		ctx := context.Background()
+		connector := vmock.NewMockIndexConnector(ctrl)
+		manager := &localIndexManager{lic: connector}
+
+		started := make(chan struct{})
+		release := make(chan struct{})
+		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").DoAndReturn(func(context.Context, string) (bool, error) {
+			close(started)
+			<-release
+			return true, nil
+		})
+		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "english").Return(true, nil)
+		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "ik_max_word").Return(true, nil)
+		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_index").Return(false, nil)
+
+		const callers = 8
+		results := make(chan error, callers)
+		var ready sync.WaitGroup
+		ready.Add(callers)
+		for range callers {
+			go func() {
+				ready.Done()
+				_, err := manager.GetIndexCapabilities(ctx)
+				results <- err
+			}()
+		}
+		ready.Wait()
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("capability refresh did not start")
+		}
+		close(release)
+		for range callers {
+			require.NoError(t, <-results)
+		}
+	})
+}
+
+func TestLocalIndexManagerValidateAnalyzerUsesRefreshedSnapshot(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	ctx := context.Background()
+	connector := vmock.NewMockIndexConnector(ctrl)
+	manager := &localIndexManager{lic: connector}
+
+	connector.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(true, nil)
+	connector.EXPECT().ValidateAnalyzer(gomock.Any(), "english").Return(true, nil)
+	connector.EXPECT().ValidateAnalyzer(gomock.Any(), "ik_max_word").Return(true, nil)
+	connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_index").Return(false, nil)
+
+	available, err := manager.ValidateAnalyzer(ctx, "ik_max_word")
+	require.NoError(t, err)
+	assert.True(t, available)
+}
 
 func TestLocalIndexManagerDelegatesToIndexConnector(t *testing.T) {
 	t.Run("local index manager delegates to index connector", func(t *testing.T) {

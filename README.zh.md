@@ -104,9 +104,7 @@ sudo bash ./onboard.sh --help # 所有参数（--config=models.yaml、--enable-b
    BKN Foundry 为纯后台，无 Web 控制台。在**访问端**（本机、跳板机等）通过 [**bkn-sdk**](https://github.com/openbkn-ai/bkn-sdk) 使用 BKN CLI：可全局安装 `npm install -g @openbkn/bkn-sdk`，或直接用 `npx openbkn`（无需全局安装；详见下文 [OpenBKN SDK](#toc-bkn-sdk)）。再执行：
 
 ```bash
-# 最小化安装（未启用鉴权）：
-openbkn auth login https://<节点IP> -k
-# 完整安装：以 onboard.sh 创建的业务用户登录（未自定义时默认密码 111111）：
+# 以 onboard.sh 创建的业务用户登录（未自定义时默认密码 111111）：
 openbkn auth login https://<节点IP> -u test -p '<密码>' -k
 
 openbkn bkn list
@@ -325,7 +323,7 @@ const results  = await bkn.kn.search("<kn-id>", "供应链有哪些风险？");
 
 ## 🛡️ 平台管理
 
-平台管理（用户、组织、角色、模型、审计）**已内置在同一个 `openbkn` CLI** 的 `openbkn admin` 子命令下——无需独立的管理工具。`admin` 命令操作**完整安装**（`auth.enabled=true`）提供的服务。
+平台管理（用户、组织、角色、模型、审计）**已内置在同一个 `openbkn` CLI** 的 `openbkn admin` 子命令下——无需独立的管理工具。平台始终启用认证和授权。
 
 ```bash
 openbkn admin org tree                          # 列出部门
