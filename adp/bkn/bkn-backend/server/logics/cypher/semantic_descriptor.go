@@ -39,7 +39,7 @@ type SemanticQueryDescriptor struct {
 	Ordering        []SemanticQueryOrdering   `json:"ordering,omitempty"`
 	Skip            *int64                    `json:"skip,omitempty"`
 	Limit           *int64                    `json:"limit,omitempty"`
-	EffectiveLimit  int                       `json:"effective_limit"`
+	EffectiveLimit  int64                     `json:"effective_limit"`
 	LimitSource     string                    `json:"limit_source"`
 	ResultPointer   string                    `json:"result_pointer"`
 }
@@ -94,13 +94,13 @@ func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescr
 		Skip:        cloneInt64(plan.Skip), Limit: cloneInt64(plan.Limit), ResultPointer: "$.entries",
 	}
 	if plan.Limit == nil {
-		descriptor.EffectiveLimit = interfaces.CYPHER_DEFAULT_LIMIT
+		descriptor.EffectiveLimit = int64(interfaces.CYPHER_DEFAULT_LIMIT)
 		descriptor.LimitSource = "default"
 	} else {
 		if *plan.Limit > interfaces.CYPHER_MAX_LIMIT {
 			return nil, fmt.Errorf("semantic query descriptor limit exceeds %d", interfaces.CYPHER_MAX_LIMIT)
 		}
-		descriptor.EffectiveLimit = int(*plan.Limit)
+		descriptor.EffectiveLimit = *plan.Limit
 		descriptor.LimitSource = "explicit"
 	}
 	for index, table := range plan.Tables {
