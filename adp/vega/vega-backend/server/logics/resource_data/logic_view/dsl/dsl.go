@@ -84,14 +84,22 @@ func (g *logicViewDSLGenerator) BuildDSL(ctx context.Context, query interfaces.R
 						WithErrorDetails(fmt.Sprintf("The sort field '%s' is binary type, do not support sorting", sp.Field))
 				}
 
-				// For fields of the text type, it is necessary to check whether a keyword index is configured under them. If it is configured, use xxx.keyword for sorting. Otherwise, it will not be included in the ranking
-				// string type fields directly support sorting. If they have a full-text index, there will be text under the keyword of the field
+				// text 字段通过已配置的 keyword 子字段排序；string 字段直接使用主 keyword 映射。
 				if IsTextType(sortField) {
-					if HasFeature(sortField, interfaces.PropertyFeatureType_Keyword) {
-						sortFieldName = sortFieldName + ".keyword"
-					} else {
+					keywordFeatureName := ""
+					for _, feature := range sortField.Features {
+						if feature.FeatureType == interfaces.PropertyFeatureType_Keyword {
+							keywordFeatureName = feature.FeatureName
+							if keywordFeatureName == "" {
+								keywordFeatureName = interfaces.LocalIndexKeywordSubfieldName
+							}
+							break
+						}
+					}
+					if keywordFeatureName == "" {
 						continue
 					}
+					sortFieldName += "." + keywordFeatureName
 				}
 			}
 

@@ -862,11 +862,11 @@ func validateCond(ctx context.Context, cfg *interfaces.FilterCondCfg, fieldsMap 
 				WithErrorDetails("[range, out_range, between] operation's value must contain 2 values")
 		}
 	case fcond.OperationBefore:
-		// before, an array of length 2, with the first value being the time length, is of numeric type; The second value is a time unit, a string
-		_, ok := common.NumberAsFloat64(cfg.Value)
+		// before uses an integer interval so validation matches the SQL connector execution contract.
+		_, ok := common.NumberAsInt64(cfg.Value)
 		if !ok {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterConditionValue).
-				WithErrorDetails("[before] operation's value must be an array")
+				WithErrorDetails("[before] operation's value must be an integer")
 		}
 
 		_, ok = cfg.RemainCfg["unit"]

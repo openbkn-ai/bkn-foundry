@@ -48,6 +48,20 @@ func TestLogicViewDSLBuildDSL(t *testing.T) {
 		}, got.Query.Bool.Filter[0])
 	})
 
+	t.Run("text sort uses the configured keyword feature name", func(t *testing.T) {
+		view := testDSLView()
+		view.SchemaDefinition[0].Features[0].FeatureName = "raw"
+		generator := NewlogicViewDSLGenerator(view)
+
+		got, err := generator.BuildDSL(context.Background(), interfaces.ResourceDataQueryParams{
+			Paging: interfaces.PagingRequest{Limit: 10},
+			Sort:   []*interfaces.SortField{{Field: "title", Direction: interfaces.ASC_DIRECTION}},
+		}, view, map[string][]string{"resource-1": {"idx"}})
+
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"title.raw": interfaces.ASC_DIRECTION}}, got.Sort)
+	})
+
 	t.Run("stream query adds _id default sort and de-duplicates", func(t *testing.T) {
 		view := testDSLView()
 		generator := NewlogicViewDSLGenerator(view)

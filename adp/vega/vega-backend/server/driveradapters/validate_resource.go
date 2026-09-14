@@ -47,6 +47,16 @@ func validateResourceRequestSchema(ctx context.Context, req *interfaces.Resource
 	case interfaces.ResourceCategoryLogicView:
 		return validateLogicViewRequest(ctx, req)
 	case interfaces.ResourceCategoryDataset:
+		if req.IndexConfig != nil {
+			if len(req.IndexConfig.PrimaryKeyFields) > 0 {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_PrimaryKeyFields).
+					WithErrorDetails("primary_key_fields is not supported for dataset resources")
+			}
+			if len(req.IndexConfig.IncrementalFields) > 0 {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_IncrementalFields).
+					WithErrorDetails("incremental_fields is not supported for dataset resources")
+			}
+		}
 		if len(req.SchemaDefinition) == 0 {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_SchemaDefinition).
 				WithErrorDetails("schema_definition is required and must contain at least one field")

@@ -10,9 +10,32 @@ import (
 	"context"
 	"testing"
 
+	"vega-backend/interfaces"
+	fcond "vega-backend/logics/filter_condition"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestValidateCondBeforeRequiresInteger(t *testing.T) {
+	fieldsMap := map[string]*interfaces.Property{
+		"created_at": {Name: "created_at", Type: interfaces.DataType_Datetime},
+	}
+	condition := &interfaces.FilterCondCfg{
+		Name:      "created_at",
+		Operation: fcond.OperationBefore,
+		ValueOptCfg: interfaces.ValueOptCfg{
+			ValueFrom: interfaces.ValueFrom_Const,
+			Value:     1.5,
+		},
+		RemainCfg: map[string]any{"unit": "day"},
+	}
+
+	err := validateCond(context.Background(), condition, fieldsMap)
+
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "integer")
+}
 
 func TestValidateSQLSyntax(t *testing.T) {
 	tests := []struct {

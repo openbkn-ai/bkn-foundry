@@ -248,6 +248,34 @@ func TestValidateResourceRequestDatasetSchema(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	for _, test := range []struct {
+		name        string
+		indexConfig *interfaces.ResourceIndexConfig
+		detail      string
+	}{
+		{
+			name:        "primary key fields",
+			indexConfig: &interfaces.ResourceIndexConfig{PrimaryKeyFields: []string{"id"}},
+			detail:      "primary_key_fields",
+		},
+		{
+			name:        "incremental fields",
+			indexConfig: &interfaces.ResourceIndexConfig{IncrementalFields: []string{"id"}},
+			detail:      "incremental_fields",
+		},
+	} {
+		t.Run("ValidateResourceRequest rejects dataset "+test.name, func(t *testing.T) {
+			req := baseReq([]*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}})
+			req.IndexConfig = test.indexConfig
+
+			err := ValidateResourceRequest(ctx, req)
+
+			require.Error(t, err)
+			assert.ErrorContains(t, err, test.detail)
+			assert.ErrorContains(t, err, "not supported for dataset resources")
+		})
+	}
+
 	t.Run("ValidateResourceRequest supplies default keyword and fulltext feature names", func(t *testing.T) {
 		req := baseReq([]*interfaces.Property{
 			{
