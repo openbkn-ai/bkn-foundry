@@ -100,6 +100,12 @@ error_messages = {
         "detail": "无法连接到指定的小模型服务。",
         "solution": "请检查模型配置和服务可用性。",
     },
+    "ModelFactory.ExternalSmallModel.Used.InvalidParameter": {
+        "description": "模型请求参数或配置错误",
+        "detail_template": "模型服务返回的参数错误：{summary}",
+        "solution": "请调整模型批次大小、Token 上限或向量维度后重新构建。",
+        "batch_size_solution_template": "请将批次大小调整为不大于 {limit} 后重新构建。",
+    },
     "ModelFactory.ModelController.Model.ConnectError": {
         "description": "模型服务连接失败",
         "detail": "无法连接到指定的大模型服务。",

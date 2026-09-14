@@ -100,6 +100,12 @@ error_messages = {
         "detail": "The specified small model service could not be reached.",
         "solution": "Check the model configuration and service availability.",
     },
+    "ModelFactory.ExternalSmallModel.Used.InvalidParameter": {
+        "description": "Model request parameter or configuration error.",
+        "detail_template": "The model provider rejected a request parameter: {summary}",
+        "solution": "Adjust the model batch size, token limit, or embedding dimension and rebuild.",
+        "batch_size_solution_template": "Adjust the batch size to no more than {limit} and rebuild.",
+    },
     "ModelFactory.ModelController.Model.ConnectError": {
         "description": "Model service connection failed.",
         "detail": "The specified large model service could not be reached.",

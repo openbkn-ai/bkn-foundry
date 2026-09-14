@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 
 import aiohttp
 
@@ -19,23 +20,46 @@ class UpstreamModelError(Exception):
     """Provider error with an HTTP status suitable for gateway mapping."""
 
     def __init__(self, status, detail):
-        raw_detail = str(detail)
-        message = raw_detail
-        try:
-            payload = json.loads(raw_detail)
-            error = payload.get("error") if isinstance(payload, dict) else None
-            if isinstance(error, dict):
-                message = error.get("message") or error.get("code") or raw_detail
-            elif isinstance(error, str):
-                message = error
-            elif isinstance(payload, dict):
-                message = payload.get("message") or payload.get("error_msg") or raw_detail
-        except (TypeError, ValueError):
-            pass
-        message = str(message)[:2000]
+        message = _safe_provider_error_summary(detail)
         super().__init__(message)
         self.status = status
         self.detail = message
+
+
+_MAX_PROVIDER_ERROR_SUMMARY_LENGTH = 512
+_SENSITIVE_PROVIDER_VALUE = re.compile(
+    r"(?i)\b(authorization|api[_-]?key|access[_-]?token|token|secret|password|input|request[_ ]body|messages)"
+    r"[\"']?\s*[:=]\s*(?:Bearer\s+)?(?:\"[^\"]*\"|'[^']*'|\[[^\]]*\]|\{[^}]*\}|[^,;}]+)")
+_BEARER_TOKEN = re.compile(r"(?i)\bBearer\s+[^\s,}]+")
+
+
+def _safe_provider_error_summary(detail):
+    """Return a bounded provider diagnostic without forwarding arbitrary response bodies.
+
+    Providers sometimes echo the request body or credentials in a generic error page.
+    Only their documented message-like JSON fields are eligible for client-facing
+    diagnostics; unknown/plain-text bodies deliberately become a fixed summary.
+    """
+    try:
+        payload = json.loads(str(detail))
+    except (TypeError, ValueError):
+        return "The model provider rejected the request."
+
+    message = None
+    if isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, dict):
+            message = error.get("message") or error.get("code")
+        elif isinstance(error, str):
+            message = error
+        if not message:
+            message = payload.get("message") or payload.get("error_msg") or payload.get("detail")
+    if not isinstance(message, str) or not message.strip():
+        return "The model provider rejected the request."
+
+    summary = _BEARER_TOKEN.sub("Bearer ***", message)
+    summary = _SENSITIVE_PROVIDER_VALUE.sub(r"\1=***", summary)
+    return summary.strip()[:_MAX_PROVIDER_ERROR_SUMMARY_LENGTH]
 
 
 class BaiduTianchenClient:
