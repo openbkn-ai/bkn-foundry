@@ -483,10 +483,12 @@ components:
         后者直接使用字段自身。Dataset 不支持 `ref_property`。
       type: object
       required:
-        - name
         - feature_type
       properties:
         name:
+          description: |
+            本地索引中的物理特征字段名。keyword/fulltext 省略时分别使用 `keyword`/`fulltext`；
+            引用已有向量结果字段的 vector Feature 只需声明 `ref_property`，无需填写 name。
           type: string
         display_name:
           type: string

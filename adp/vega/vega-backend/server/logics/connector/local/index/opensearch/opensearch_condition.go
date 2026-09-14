@@ -238,7 +238,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionEqual(condition interfaces.F
 	}
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
-		if err := validateTextKeywordValues(fieldName, cond.Value, schemaDefinition); err != nil {
+		if err := validateKeywordValues(fieldName, cond.Value, schemaDefinition); err != nil {
 			return nil, err
 		}
 		return map[string]any{
@@ -275,7 +275,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotEqual(condition interface
 	}
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
-		if err := validateTextKeywordValues(fieldName, cond.Value, schemaDefinition); err != nil {
+		if err := validateKeywordValues(fieldName, cond.Value, schemaDefinition); err != nil {
 			return nil, err
 		}
 		return map[string]any{
@@ -430,7 +430,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionIn(condition interfaces.Filt
 	if err != nil {
 		return nil, err
 	}
-	if err := validateTextKeywordValues(fieldName, cond.Value, schemaDefinition); err != nil {
+	if err := validateKeywordValues(fieldName, cond.Value, schemaDefinition); err != nil {
 		return nil, err
 	}
 
@@ -461,7 +461,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotIn(condition interfaces.F
 	if err != nil {
 		return nil, err
 	}
-	if err := validateTextKeywordValues(fieldName, cond.Value, schemaDefinition); err != nil {
+	if err := validateKeywordValues(fieldName, cond.Value, schemaDefinition); err != nil {
 		return nil, err
 	}
 
@@ -1222,9 +1222,10 @@ func (c *OpenSearchConnector) getKeywordSuffix(fieldName string, schemaDefinitio
 	return "", nil
 }
 
-func validateTextKeywordValues(fieldName string, value any, schemaDefinition []*interfaces.Property) error {
+func validateKeywordValues(fieldName string, value any, schemaDefinition []*interfaces.Property) error {
 	for _, prop := range schemaDefinition {
-		if prop == nil || propertyPhysicalFieldName(prop) != fieldName || prop.Type != interfaces.DataType_Text {
+		if prop == nil || propertyPhysicalFieldName(prop) != fieldName ||
+			(prop.Type != interfaces.DataType_String && prop.Type != interfaces.DataType_Text) {
 			continue
 		}
 		for _, feature := range prop.Features {
@@ -1245,7 +1246,7 @@ func validateTextKeywordValues(fieldName string, value any, schemaDefinition []*
 				// unit is UTF-16 code units rather than Unicode code points.
 				if ok && len(utf16.Encode([]rune(text))) > limit {
 					return filter_condition.NewConditionBuildError(
-						"value for text field %s exceeds keyword ignore_above %d and cannot be compared exactly", fieldName, limit)
+						"value for %s field %s exceeds keyword ignore_above %d and cannot be compared exactly", prop.Type, fieldName, limit)
 				}
 			}
 			return nil

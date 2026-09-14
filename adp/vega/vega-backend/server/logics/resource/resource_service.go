@@ -1878,15 +1878,22 @@ func validateSchemaDefinition(ctx context.Context, schema []*interfaces.Property
 		if property == nil {
 			return unsupportedResourceUpdateError(ctx, "schema_definition cannot contain null fields")
 		}
-		seen := make(map[string]struct{}, len(property.Features))
+		seenTypes := make(map[string]struct{}, len(property.Features))
+		seenNames := make(map[string]struct{}, len(property.Features))
 		for _, feature := range property.Features {
+			if feature.FeatureName != "" {
+				if _, exists := seenNames[feature.FeatureName]; exists {
+					return unsupportedResourceUpdateError(ctx, fmt.Sprintf("property %q has more than one feature named %q", property.Name, feature.FeatureName))
+				}
+				seenNames[feature.FeatureName] = struct{}{}
+			}
 			if feature.FeatureType == "" {
 				continue
 			}
-			if _, exists := seen[feature.FeatureType]; exists {
+			if _, exists := seenTypes[feature.FeatureType]; exists {
 				return unsupportedResourceUpdateError(ctx, fmt.Sprintf("property %q has more than one %q feature", property.Name, feature.FeatureType))
 			}
-			seen[feature.FeatureType] = struct{}{}
+			seenTypes[feature.FeatureType] = struct{}{}
 		}
 	}
 	return nil

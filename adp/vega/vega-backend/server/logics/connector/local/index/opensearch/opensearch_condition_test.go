@@ -343,6 +343,25 @@ func TestOpenSearchConnectorConvertFilterConditionEqual(t *testing.T) {
 		assert.True(t, ok)
 	})
 
+	t.Run("rejects exact string values above keyword ignore_above", func(t *testing.T) {
+		conn := &OpenSearchConnector{}
+		cond := mustOSCondition(t, osConstCfg("name", filter_condition.OperationEqual, "abcdef"))
+		schema := opensearchConditionSchema()
+		schema[0].Features = append(schema[0].Features, interfaces.PropertyFeature{
+			FeatureName: interfaces.LocalIndexKeywordSubfieldName,
+			FeatureType: interfaces.PropertyFeatureType_Keyword,
+			Config:      map[string]any{"ignore_above": 5},
+		})
+
+		got, err := conn.ConvertFilterConditionEqual(cond, schema)
+
+		require.Error(t, err)
+		assert.Nil(t, got)
+		assert.ErrorContains(t, err, "exceeds keyword ignore_above 5")
+		_, ok := filter_condition.AsConditionBuildError(err)
+		assert.True(t, ok)
+	})
+
 	t.Run("rejects oversized exact text value when original name is empty", func(t *testing.T) {
 		conn := &OpenSearchConnector{}
 		cond := mustOSCondition(t, osConstCfg("body", filter_condition.OperationEqual, strings.Repeat("字", 257)))

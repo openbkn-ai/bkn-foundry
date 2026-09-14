@@ -119,6 +119,23 @@ func TestValidateSchemaDefinitionRejectsDuplicateFeatureTypes(t *testing.T) {
 	assert.Contains(t, httpErr.BaseError.ErrorDetails, `property "code" has more than one "keyword" feature`)
 }
 
+func TestValidateSchemaDefinitionRejectsDefaultFeatureNameCollision(t *testing.T) {
+	schema := []*interfaces.Property{{
+		Name: "body",
+		Type: interfaces.DataType_Text,
+		Features: []interfaces.PropertyFeature{{
+			FeatureName: interfaces.LocalIndexKeywordSubfieldName,
+			FeatureType: interfaces.PropertyFeatureType_Fulltext,
+		}},
+	}}
+	AddDefaultStringAndTextFeatures(schema, nil)
+
+	err := validateSchemaDefinition(context.Background(), schema)
+
+	httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
+	assert.Contains(t, httpErr.BaseError.ErrorDetails, `property "body" has more than one feature named "keyword"`)
+}
+
 func TestValidateLocalIndexVectorOutputs(t *testing.T) {
 	err := validateLocalIndexVectorOutputs(context.Background(), []*interfaces.Property{
 		{
