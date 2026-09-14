@@ -20,6 +20,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"bkn-backend/common"
 	"bkn-backend/interfaces"
@@ -623,11 +624,57 @@ func (vba *vegaBackendAccess) buildUserHeaders(ctx context.Context) (map[string]
 	}, nil
 }
 
-// RawQuery runs a read-only SQL statement through vega-backend.
+// RawQuery runs a read-only SQL statement through vega-backend under the
+// caller's own identity.
 func (vba *vegaBackendAccess) RawQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "driven layer: Vega raw query")
 	defer span.End()
 
+	headers, err := vba.buildUserHeaders(ctx)
+	if err != nil {
+		// The message stays static: the adapter package must not put error text
+		// into a log line, and this one is already known to be about identity.
+		common.LogSafeError(ctx, "RawQuery refused: caller identity missing", err)
+		oteltrace.AddHttpAttrs4Error(span, 0, "InternalError", "Raw query without caller identity")
+		return nil, err
+	}
+	return vba.rawQuery(ctx, span, headers, req)
+}
+
+// RawQueryAs runs a read-only SQL statement through the same vega-backend
+// route as RawQuery, under an account the calling service names rather than
+// the one in the context.
+//
+// vega-backend authorizes whoever the x-account-* headers name, so the
+// account decides what the statement may read. An incomplete one is a bug in
+// the calling path, and it is refused here rather than falling back to the
+// context's identity or the admin account.
+func (vba *vegaBackendAccess) RawQueryAs(ctx context.Context, account interfaces.AccountInfo,
+	req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "driven layer: Vega raw query as account")
+	defer span.End()
+
+	if account.ID == "" || account.Type == "" {
+		err := fmt.Errorf("raw query requires an account to run under, none given")
+		common.LogSafeError(ctx, "RawQueryAs refused: account missing", err)
+		oteltrace.AddHttpAttrs4Error(span, 0, "InternalError", "Raw query without an account")
+		return nil, err
+	}
+	headers := map[string]string{
+		interfaces.CONTENT_TYPE_NAME:        interfaces.CONTENT_TYPE_JSON,
+		interfaces.HTTP_HEADER_ACCOUNT_ID:   account.ID,
+		interfaces.HTTP_HEADER_ACCOUNT_TYPE: account.Type,
+	}
+	return vba.rawQuery(ctx, span, headers, req)
+}
+
+// rawQuery sends one raw query under the given headers and reads its result.
+// A non-success answer comes back as a DependencyError carrying only the
+// status, so a caller can tell a forbidden read from a failed one without
+// anything from the response body -- which may quote the statement, and with
+// it physical table and column names -- leaving this adapter.
+func (vba *vegaBackendAccess) rawQuery(ctx context.Context, span trace.Span, headers map[string]string,
+	req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
 	if req == nil || req.Query == "" {
 		return nil, fmt.Errorf("raw query statement is required")
 	}
@@ -645,30 +692,21 @@ func (vba *vegaBackendAccess) RawQuery(ctx context.Context, req *interfaces.RawQ
 		HttpContentType: rest.ContentTypeJson,
 	})
 
-	headers, err := vba.buildUserHeaders(ctx)
-	if err != nil {
-		// The message stays static: the adapter package must not put error text
-		// into a log line, and this one is already known to be about identity.
-		common.LogSafeError(ctx, "RawQuery refused: caller identity missing", err)
-		oteltrace.AddHttpAttrs4Error(span, 0, "InternalError", "Raw query without caller identity")
-		return nil, err
-	}
-
 	respCode, respData, err := vba.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, req)
 	logger.Debugf("RawQuery finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
 
 	if err != nil {
 		// The statement carries physical table and column names, so it never
 		// reaches the caller; only the summary goes to the log.
-		safeErr := fmt.Errorf("vega dependency request failed")
+		safeErr := interfaces.NewDependencyError("vega", "raw_query", interfaces.DependencyTransportKind(err), respCode)
 		common.LogSafeError(ctx, "RawQuery failed: "+common.SafeErrorSummary(err), safeErr)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http raw query failed")
 		return nil, safeErr
 	}
 
 	if respCode != http.StatusOK {
-		err := fmt.Errorf("RawQuery returned HTTP %d", respCode)
-		common.LogSafeError(ctx, "RawQuery failed", err)
+		err := interfaces.NewDependencyError("vega", "raw_query", dependencyKindForStatus(respCode), respCode)
+		common.LogSafeError(ctx, fmt.Sprintf("RawQuery returned HTTP %d", respCode), err)
 		logger.Debugf("RawQuery response: %s", common.SafeTextSummary("response", string(respData)))
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
 		return nil, err
@@ -680,7 +718,7 @@ func (vba *vegaBackendAccess) RawQuery(ctx context.Context, req *interfaces.RawQ
 	if err := vegaResponseJSON.Unmarshal(respData, &response); err != nil {
 		common.LogSafeError(ctx, "Failed to unmarshal RawQuery response", err)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal RawQuery response failed")
-		return nil, fmt.Errorf("failed to unmarshal RawQuery response: %v", err)
+		return nil, interfaces.NewDependencyError("vega", "raw_query", interfaces.DependencyInvalidResponse, respCode)
 	}
 
 	oteltrace.AddHttpAttrs4Ok(span, respCode)

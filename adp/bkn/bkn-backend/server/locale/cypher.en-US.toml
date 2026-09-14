@@ -34,6 +34,19 @@ Description = "Failed to run the compiled query"
 Solution = "Please retry later or contact the administrator."
 ErrorLink = ""
 
+[BknBackend.Cypher.Forbidden]
+Description = "The data source refused a resource the query reads"
+Solution = "Please ask the administrator to publish the knowledge network and synchronize its proxy account, or to grant access to the resources behind these object types."
+ErrorLink = ""
+
+[BknBackend.Cypher.PropertyForbidden]
+Description = "The query reads a property you may not read in full"
+Solution = "Please remove the listed properties from the query or ask the administrator for full access to them."
+ErrorLink = ""
+
+[BknBackend.Cypher.PropertyForbidden.Detail]
+NotFull = "Full access is required to every property the query reads; it is not granted for: {{.properties}}."
+
 [BknBackend.Cypher.InvalidParameter.Detail]
 QueryRequired = "query is required."
 QueryTooLong = "query must not exceed {{.max}} characters."

@@ -1352,6 +1352,88 @@ func TestResolveKNProxyBindingRequiresCurrentPublishedSourceAndSyncedVersion(t *
 	}
 }
 
+func TestResolveKNProxyBindingsKeepsOnlyCurrentPublishedBindings(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	kna := bmock.NewMockKNAccess(ctrl)
+	cga := bmock.NewMockConceptGroupAccess(ctrl)
+	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	rta := bmock.NewMockRelationTypeAccess(ctrl)
+	ata := bmock.NewMockActionTypeAccess(ctrl)
+	ma := bmock.NewMockMetricAccess(ctrl)
+	objectTypes := []*interfaces.ObjectType{
+		{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+			OTID: "ot-1", DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"},
+		}},
+		{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+			OTID: "ot-2", DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-2"},
+		}},
+	}
+	_, modelVersion, err := buildProxyGrantSources(&interfaces.KN{KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, ObjectTypes: objectTypes})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The published model is loaded once for the whole batch.
+	kna.EXPECT().GetKNByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH).
+		Return(&interfaces.KN{KNID: "kn-1", Branch: interfaces.MAIN_BRANCH}, nil).Times(1)
+	cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
+	ota.EXPECT().ListObjectTypes(gomock.Any(), nil, gomock.Any()).Return(objectTypes, nil).Times(1)
+	rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
+	ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
+	ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
+	mapping := &interfaces.KNProxyAccount{
+		KNID: "kn-1", ProxyAccountID: "proxy-1", ProxyAccountType: interfaces.KNProxyAccountTypeApp, Version: 2,
+		LifecycleStatus: interfaces.KNProxyLifecycleActive, SyncStatus: interfaces.KNProxySyncReady,
+		PublishedModelVersion: modelVersion, SyncedModelVersion: modelVersion,
+	}
+	service := &knowledgeNetworkService{
+		kna: kna, cga: cga, ota: ota, rta: rta, ata: ata, ma: ma,
+		kpa: &proxyAccessStub{mapping: mapping},
+	}
+	schemaBinding := func(objectTypeID, resourceID string) interfaces.KNProxyBinding {
+		return interfaces.KNProxyBinding{
+			ChildType: interfaces.MODULE_TYPE_OBJECT_TYPE, ChildID: objectTypeID,
+			TargetType: "resource", TargetID: resourceID, Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+		}
+	}
+
+	got, resolved, err := service.ResolveKNProxyBindings(t.Context(), "kn-1", []interfaces.KNProxyBinding{
+		schemaBinding("ot-1", "resource-1"),
+		schemaBinding("ot-1", "resource-2"), // not what ot-1 is bound to
+		schemaBinding("ot-3", "resource-1"), // not in the published model
+		schemaBinding("ot-2", "resource-2"),
+	})
+	if err != nil || got != mapping {
+		t.Fatalf("ResolveKNProxyBindings() = %#v, %v", got, err)
+	}
+	want := []interfaces.KNProxyBinding{schemaBinding("ot-1", "resource-1"), schemaBinding("ot-2", "resource-2")}
+	if !reflect.DeepEqual(resolved, want) {
+		t.Fatalf("resolved = %v, want %v", resolved, want)
+	}
+
+	mapping.SyncedModelVersion = "stale-version"
+	_, resolved, err = service.ResolveKNProxyBindings(t.Context(), "kn-1", want)
+	httpErr, ok := err.(*rest.HTTPError)
+	if !ok || httpErr.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxySyncPending || resolved != nil {
+		t.Fatalf("stale synchronized model version: resolved = %v, error = %#v", resolved, err)
+	}
+}
+
+func TestResolveKNProxyBindingsReturnsStableStateErrors(t *testing.T) {
+	service := &knowledgeNetworkService{kpa: &proxyAccessStub{}}
+	_, resolved, err := service.ResolveKNProxyBindings(t.Context(), "kn-1", []interfaces.KNProxyBinding{{}})
+	httpErr, ok := err.(*rest.HTTPError)
+	if !ok || httpErr.HTTPCode != http.StatusNotFound ||
+		httpErr.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyMappingNotFound || resolved != nil {
+		t.Fatalf("ResolveKNProxyBindings() = %v, %#v", resolved, err)
+	}
+
+	_, _, err = (&knowledgeNetworkService{}).ResolveKNProxyBindings(t.Context(), "kn-1", nil)
+	httpErr, ok = err.(*rest.HTTPError)
+	if !ok || httpErr.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyUnavailable {
+		t.Fatalf("disabled orchestration: %#v", err)
+	}
+}
+
 func TestReconcileKNProxiesReportsMissingOrphanAndConflict(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	kna := bmock.NewMockKNAccess(ctrl)

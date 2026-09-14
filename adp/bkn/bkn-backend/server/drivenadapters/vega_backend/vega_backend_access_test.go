@@ -378,6 +378,101 @@ func TestRawQueryForwardsCallerIdentityAndDialect(t *testing.T) {
 	assert.Equal(t, "9223372036854775807", toJSONNumberString(t, resp.Entries[0]["order_id"]))
 }
 
+// #1545: a refusal has to stay distinguishable from a failure on its way out
+// of the adapter, or the caller can only report every refusal as a failed
+// query. Only the status travels; the body may quote the statement.
+func TestRawQueryClassifiesRefusalWithoutDetail(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		kind   interfaces.DependencyErrorKind
+	}{
+		{status: http.StatusForbidden, kind: interfaces.DependencyForbidden},
+		{status: http.StatusNotFound, kind: interfaces.DependencyNotFound},
+		{status: http.StatusInternalServerError, kind: interfaces.DependencyDownstreamError},
+	} {
+		t.Run(http.StatusText(tc.status), func(t *testing.T) {
+			mockCtrl := gomock.NewController(t)
+			mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
+			mockHTTPClient.EXPECT().
+				PostNoUnmarshal(gomock.Any(), "http://vega/resources/query", gomock.Any(), gomock.Any()).
+				Return(tc.status, []byte(`{"error_details":"Access denied for {{.r1}} orders.email"}`), nil)
+
+			access := &vegaBackendAccess{httpClient: mockHTTPClient, baseUrl: "http://vega"}
+			ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+				interfaces.AccountInfo{ID: "user-42", Type: "user"})
+
+			_, err := access.RawQuery(ctx, &interfaces.RawQueryRequest{
+				Query:        "SELECT o.email FROM {{.r1}} o",
+				InputDialect: interfaces.VEGA_DIALECT_MYSQL,
+			})
+			var dependencyErr *interfaces.DependencyError
+			require.ErrorAs(t, err, &dependencyErr)
+			assert.Equal(t, tc.status, dependencyErr.HTTPStatus)
+			assert.Equal(t, tc.kind, dependencyErr.Kind)
+			assert.NotContains(t, err.Error(), "email")
+			assert.NotContains(t, err.Error(), "r1")
+		})
+	}
+}
+
+// The account the calling service names is who vega-backend authorizes, so it
+// goes in the x-account-* headers, on the same route RawQuery uses, and the
+// identity in the context -- the business caller -- is not sent at all.
+func TestRawQueryAsRunsUnderTheNamedAccount(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
+
+	var gotHeaders map[string]string
+	var gotBody any
+	mockHTTPClient.EXPECT().
+		PostNoUnmarshal(gomock.Any(), "http://vega/resources/query", gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, headers map[string]string, body any) (int, []byte, error) {
+			gotHeaders, gotBody = headers, body
+			return http.StatusOK, []byte(`{"columns":[{"name":"id","type":"string"}],"entries":[{"id":"o-1"}]}`), nil
+		})
+
+	access := &vegaBackendAccess{httpClient: mockHTTPClient, baseUrl: "http://vega"}
+	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+		interfaces.AccountInfo{ID: "user-42", Type: "user"})
+	resp, err := access.RawQueryAs(ctx, interfaces.AccountInfo{ID: "proxy-7", Type: interfaces.KNProxyAccountTypeApp},
+		&interfaces.RawQueryRequest{Query: "SELECT t0.id FROM {{.r1}} t0", InputDialect: interfaces.VEGA_DIALECT_MYSQL})
+	require.NoError(t, err)
+	require.Len(t, resp.Entries, 1)
+
+	assert.Equal(t, map[string]string{
+		interfaces.CONTENT_TYPE_NAME:        interfaces.CONTENT_TYPE_JSON,
+		interfaces.HTTP_HEADER_ACCOUNT_ID:   "proxy-7",
+		interfaces.HTTP_HEADER_ACCOUNT_TYPE: "app",
+	}, gotHeaders)
+	sent, ok := gotBody.(*interfaces.RawQueryRequest)
+	require.True(t, ok)
+	assert.Equal(t, interfaces.VEGA_QUERY_FORMAT_SQL, sent.QueryFormat)
+}
+
+// Whose grants a statement reads with is decided by the account, so an
+// incomplete one is a bug in the calling path. It is refused before the
+// network is reached, never replaced by the context's identity or the admin.
+func TestRawQueryAsRefusesWithoutAnAccount(t *testing.T) {
+	for name, account := range map[string]interfaces.AccountInfo{
+		"no account":      {},
+		"no account id":   {Type: interfaces.KNProxyAccountTypeApp},
+		"no account type": {ID: "proxy-7"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			mockCtrl := gomock.NewController(t)
+			// No PostNoUnmarshal expectation: reaching the network is itself the bug.
+			access := &vegaBackendAccess{httpClient: rmock.NewMockHTTPClient(mockCtrl), baseUrl: "http://vega"}
+			ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+				interfaces.AccountInfo{ID: "user-42", Type: "user"})
+
+			_, err := access.RawQueryAs(ctx, account,
+				&interfaces.RawQueryRequest{Query: "SELECT 1 FROM {{.r1}}", InputDialect: interfaces.VEGA_DIALECT_MYSQL})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "account")
+		})
+	}
+}
+
 func toJSONNumberString(t *testing.T, v any) string {
 	t.Helper()
 	n, ok := v.(json.Number)

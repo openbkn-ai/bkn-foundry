@@ -202,6 +202,21 @@ func (mr *MockVegaBackendAccessMockRecorder) RawQuery(ctx, req any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RawQuery", reflect.TypeOf((*MockVegaBackendAccess)(nil).RawQuery), ctx, req)
 }
 
+// RawQueryAs mocks base method.
+func (m *MockVegaBackendAccess) RawQueryAs(ctx context.Context, account interfaces.AccountInfo, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RawQueryAs", ctx, account, req)
+	ret0, _ := ret[0].(*interfaces.RawQueryResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RawQueryAs indicates an expected call of RawQueryAs.
+func (mr *MockVegaBackendAccessMockRecorder) RawQueryAs(ctx, account, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RawQueryAs", reflect.TypeOf((*MockVegaBackendAccess)(nil).RawQueryAs), ctx, account, req)
+}
+
 // WriteDatasetDocument mocks base method.
 func (m *MockVegaBackendAccess) WriteDatasetDocument(ctx context.Context, datasetID, docID string, document map[string]any) error {
 	m.ctrl.T.Helper()

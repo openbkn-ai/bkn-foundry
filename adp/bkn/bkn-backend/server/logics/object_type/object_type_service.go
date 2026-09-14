@@ -737,6 +737,14 @@ func filterVisiblePropertyNames(properties []string, visible map[string]struct{}
 	return filtered
 }
 
+// LogicPropertyVisible is the rule public reads use to decide whether a logic
+// property may be shown, given the data properties the caller may see. Other
+// packages that answer about properties -- Cypher's schema -- use it too, so
+// what one hides the other does not reveal.
+func LogicPropertyVisible(property *interfaces.LogicProperty, visible map[string]struct{}) bool {
+	return logicPropertyVisible(property, visible)
+}
+
 func logicPropertyVisible(property *interfaces.LogicProperty, visible map[string]struct{}) bool {
 	if property == nil {
 		return false

@@ -14,6 +14,10 @@ type PermissionService interface {
 	FilterFullPropertyAccess(ctx context.Context, objectTypeRef string, properties []string) ([]string, error)
 	// FilterVisiblePropertyAccess returns properties whose effective access level is not none.
 	FilterVisiblePropertyAccess(ctx context.Context, objectTypeRef string, properties []string) ([]string, error)
+	// ResolvePropertyAccessLevels returns the caller's effective level for each
+	// named property of one object type: PROPERTY_ACCESS_FULL, _MASKED, _SCHEMA
+	// or _NONE.
+	ResolvePropertyAccessLevels(ctx context.Context, objectTypeRef string, properties []string) (map[string]string, error)
 	RequireFullPropertyAccess(ctx context.Context, objectTypeRef string, properties []string) error
 	FilterResources(ctx context.Context, resourceType string, ids []string,
 		ops []string, allowOperation bool, fullOps []string) (map[string]PermissionResourceOps, error)

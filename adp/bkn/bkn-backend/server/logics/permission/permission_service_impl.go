@@ -132,6 +132,33 @@ func (ps *PermissionServiceImpl) FilterVisiblePropertyAccess(ctx context.Context
 	return ps.filterPropertyAccess(ctx, objectTypeRef, properties, filterVisiblePropertyLevelResponse)
 }
 
+// ResolvePropertyAccessLevels returns the caller's effective level -- full,
+// masked, schema or none -- for each named property of one object type. It
+// shares the request loop of the filters above, so it is one bkn-safe decision
+// per object type, split only where bkn-safe caps one request, and each answer
+// is validated exactly as theirs is before any level is kept.
+func (ps *PermissionServiceImpl) ResolvePropertyAccessLevels(ctx context.Context,
+	objectTypeRef string, properties []string) (map[string]string, error) {
+	levels := make(map[string]string, len(properties))
+	keepLevels := func(objectTypeRef string, requested []string,
+		entries []interfaces.PropertyLevelsDecisionEntry) ([]string, error) {
+		batch, err := filterPropertyLevelResponse(objectTypeRef, requested, entries, func(string) bool { return true })
+		if err != nil {
+			return nil, err
+		}
+		// The response was just checked to hold exactly the requested
+		// properties, each once and at a known level.
+		for _, decision := range entries[0].Properties {
+			levels[decision.Name] = decision.Level
+		}
+		return batch, nil
+	}
+	if _, err := ps.filterPropertyAccess(ctx, objectTypeRef, properties, keepLevels); err != nil {
+		return nil, err
+	}
+	return levels, nil
+}
+
 func (ps *PermissionServiceImpl) filterPropertyAccess(ctx context.Context, objectTypeRef string,
 	properties []string, filter func(string, []string, []interfaces.PropertyLevelsDecisionEntry) ([]string, error)) ([]string, error) {
 	properties = uniqueSortedProperties(properties)

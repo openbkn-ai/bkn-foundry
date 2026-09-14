@@ -32,6 +32,20 @@ type Plan struct {
 	OrderBy   []PlanOrder
 	Skip      *int64
 	Limit     *int64
+
+	// Properties lists, in the model's own terms, every property the query
+	// names: what it returns, filters on, sorts by or aggregates over. Join
+	// keys and the primary keys that keep relationships distinct are not in
+	// it -- they come from the model, not from the query. Generation ignores
+	// it; it is what the caller must be allowed to read before the statement
+	// runs.
+	Properties []PlanProperty
+}
+
+// PlanProperty is one property the query names, on one object type.
+type PlanProperty struct {
+	ObjectTypeID string
+	Property     string
 }
 
 // PlanTable is one node of the pattern, bound to the resource behind its
@@ -809,9 +823,13 @@ func (p *planner) resolveProperty(ref PropertyRef) (int, string, error) {
 	if !bound {
 		return 0, "", planErrorf(ref.Pos, "variable %q is not defined in the MATCH pattern", ref.Variable)
 	}
-	column, err := p.schema.Column(p.objectType[table], ref.Property)
+	column, err := p.schema.PropertyColumn(p.objectType[table], ref.Property)
 	if err != nil {
 		return 0, "", &PlanError{Pos: ref.Pos, Err: err}
 	}
+	p.plan.Properties = append(p.plan.Properties, PlanProperty{
+		ObjectTypeID: p.objectType[table].OTID,
+		Property:     ref.Property,
+	})
 	return table, column, nil
 }

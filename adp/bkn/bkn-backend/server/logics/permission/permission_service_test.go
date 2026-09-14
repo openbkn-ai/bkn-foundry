@@ -186,6 +186,42 @@ func Test_PermissionServiceImpl_FilterVisiblePropertyAccess(t *testing.T) {
 	}
 }
 
+// Every level comes back as bkn-safe decided it, none included, from one
+// request for the object type.
+func Test_PermissionServiceImpl_ResolvePropertyAccessLevels(t *testing.T) {
+	svc, _, pa, _ := newTestPermissionImpl(t)
+	ctx := withAccountInfo(context.Background(), "u1", "user")
+	pa.EXPECT().ResolvePropertyLevels(gomock.Any(), interfaces.PropertyLevelsRequest{
+		AccessorID: "u1",
+		Items: []interfaces.PropertyLevelsRequestItem{{
+			ObjectTypeRef: "kn1/orders",
+			Properties:    []string{"amount", "email", "id", "region"},
+		}},
+	}).Times(1).Return(interfaces.PropertyLevelsResponse{Entries: []interfaces.PropertyLevelsDecisionEntry{{
+		ObjectTypeRef: "kn1/orders",
+		Properties: []interfaces.PropertyAccessDecision{
+			{Name: "amount", Level: "masked"},
+			{Name: "email", Level: "none"},
+			{Name: "id", Level: "full"},
+			{Name: "region", Level: "schema"},
+		},
+	}}}, nil)
+
+	levels, err := svc.ResolvePropertyAccessLevels(ctx, "kn1/orders", []string{"region", "id", "email", "amount", "id"})
+	if err != nil {
+		t.Fatalf("ResolvePropertyAccessLevels() error = %v", err)
+	}
+	want := map[string]string{"amount": "masked", "email": "none", "id": "full", "region": "schema"}
+	if len(levels) != len(want) {
+		t.Fatalf("ResolvePropertyAccessLevels() = %v, want %v", levels, want)
+	}
+	for property, level := range want {
+		if levels[property] != level {
+			t.Fatalf("ResolvePropertyAccessLevels() = %v, want %v", levels, want)
+		}
+	}
+}
+
 func Test_PermissionServiceImpl_CreateResources(t *testing.T) {
 	Convey("Test PermissionServiceImpl CreateResources\n", t, func() {
 		svc, mockCtrl, pa, _ := newTestPermissionImpl(t)

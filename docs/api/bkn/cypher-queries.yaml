@@ -24,9 +24,28 @@ paths:
         Compiles a Cypher query against the knowledge network's model and returns the rows it
         produces. Requires application/json content type and the query_data operation on each
         object type and relation type the query names; a network-wide query_data grant covers
-        them, since the child operation inherits from its parent network. Each resource the
-        statement reads is additionally checked for view_detail by vega-backend under the
-        caller's own identity.
+        them, since the child operation inherits from its parent network. Every property the
+        query names -- in RETURN, WHERE, ORDER BY, an aggregate or an inline property map --
+        must have the effective property access level full for the caller. A property at
+        level none does not exist for the caller: naming it is a 400
+        BknBackend.Cypher.InvalidQuery "unknown property", exactly as for a property outside
+        the model, and it is never offered as a suggestion. A masked or schema-only property is
+        refused with 403 BknBackend.Cypher.PropertyForbidden naming it as
+        object_type_id.property. Join keys that a relation type maps are not checked unless
+        the query names them. Masking is not applied to Cypher results.
+
+        The caller needs no grant on the vega resources behind those object types. The
+        compiled statement runs through vega-backend's raw query under the caller's own
+        identity first, and vega-backend checks view_detail on each resource, as before; a
+        caller holding those grants is answered that way. Only when vega-backend refuses that
+        run with 403, on the main branch and when every object type and relation type binding
+        the query reads through is a current published binding, is the same statement run
+        again under the knowledge network's managed proxy account, which vega-backend checks
+        for view_detail on each resource. The statement is generated from the model, so it
+        references only the resources of those bindings. When the network has no usable proxy
+        (no mapping, not active, not synchronized with the published model, or a binding not
+        published), on other branches, or when the proxy account is refused too, the refusal
+        is returned as 403 BknBackend.Cypher.Forbidden. Other failures are not retried.
 
         A concept the caller may not query is absent from the model the query is compiled
         against, so naming it reads as an unknown label rather than as a refusal: this
@@ -86,7 +105,15 @@ paths:
         "401":
           description: Unauthorized
         "403":
-          description: The caller may query nothing in this knowledge network, or carries no identity.
+          description: |-
+            error_code distinguishes the reason:
+            Public.Forbidden (the caller may query nothing in this knowledge network, or carries
+            no identity),
+            BknBackend.Cypher.PropertyForbidden (the query names a masked or schema-only
+            property; error_details lists them as object_type_id.property),
+            BknBackend.Cypher.Forbidden (vega-backend refused a resource the compiled statement
+            reads to the caller, and the knowledge network's proxy account could not be used or
+            was refused too). The statement is never included.
           content:
             application/json:
               schema:
@@ -100,7 +127,9 @@ paths:
         "406":
           description: Content-Type is not application/json
         "500":
-          description: The compiled statement failed to run. The dependency's message is not passed through.
+          description: |-
+            BknBackend.Cypher.QueryFailed: the compiled statement failed to run for a reason other
+            than a refused resource. The dependency's message is not passed through.
           content:
             application/json:
               schema:

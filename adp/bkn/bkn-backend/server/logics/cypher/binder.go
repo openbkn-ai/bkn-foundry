@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"bkn-backend/interfaces"
+	"bkn-backend/logics/object_type"
 )
 
 // Schema is one knowledge network's modelling metadata, indexed for name
@@ -33,6 +34,12 @@ type Schema struct {
 
 	relationTypesByID   map[string]*interfaces.RelationType
 	relationTypesByName map[string]*interfaces.RelationType
+
+	// propertyLevels holds, for each object type whose levels were loaded,
+	// the caller's effective access level for every data property (#1374).
+	// A property at none does not exist for the caller: naming it reads as an
+	// unknown property, and it is never offered as a suggestion.
+	propertyLevels map[string]map[string]string
 }
 
 // Visibility answers which of a knowledge network's object types and relation
@@ -73,6 +80,7 @@ func LoadSchema(ctx context.Context, kn KNSchemaSource, visibility Visibility, k
 		objectTypesByName:   make(map[string]*interfaces.ObjectType, len(objectTypes)),
 		relationTypesByID:   make(map[string]*interfaces.RelationType, len(relationTypes)),
 		relationTypesByName: make(map[string]*interfaces.RelationType, len(relationTypes)),
+		propertyLevels:      map[string]map[string]string{},
 	}
 	for _, ot := range objectTypes {
 		s.objectTypesByID[ot.OTID] = ot
@@ -194,8 +202,62 @@ func (s *Schema) ResolveRelationType(name string) (*interfaces.RelationType, err
 	}
 }
 
+// SetPropertyLevels records the caller's effective access level for each data
+// property of one object type.
+func (s *Schema) SetPropertyLevels(otID string, levels map[string]string) {
+	s.propertyLevels[otID] = levels
+}
+
+// PropertyLevels returns the levels recorded for one object type, and whether
+// any were.
+func (s *Schema) PropertyLevels(otID string) (map[string]string, bool) {
+	levels, ok := s.propertyLevels[otID]
+	return levels, ok
+}
+
+// hidden reports a property the caller may not know exists.
+func (s *Schema) hidden(ot *interfaces.ObjectType, property string) bool {
+	return s.propertyLevels[ot.OTID][property] == interfaces.PROPERTY_ACCESS_NONE
+}
+
+// PropertyColumn is Column for a property the query names.
+//
+// A property whose level for the caller is none does not exist for them, so
+// naming it gets exactly the answer a property that is not in the model gets,
+// with suggestions drawn from the same visible set. Anything that told the two
+// apart would tell the caller the property is there.
+//
+// A logic property that public reads hide, because it is computed from a
+// property at none, gets the same answer, so naming it here does not confirm
+// what the object type read would not show.
+func (s *Schema) PropertyColumn(ot *interfaces.ObjectType, property string) (string, error) {
+	if s.hidden(ot, property) || s.hiddenLogicProperty(ot, property) {
+		return "", s.unknownProperty(ot, property)
+	}
+	return s.Column(ot, property)
+}
+
+func (s *Schema) hiddenLogicProperty(ot *interfaces.ObjectType, property string) bool {
+	if _, loaded := s.propertyLevels[ot.OTID]; !loaded {
+		return false
+	}
+	visible := make(map[string]struct{}, len(ot.DataProperties))
+	for _, name := range s.visiblePropertyNames(ot) {
+		visible[name] = struct{}{}
+	}
+	for _, lp := range ot.LogicProperties {
+		if lp != nil && lp.Name == property {
+			return !object_type.LogicPropertyVisible(lp, visible)
+		}
+	}
+	return false
+}
+
 // Column maps a property name on an object type to the physical column the
-// generated SQL must use.
+// generated SQL must use. It is also how the planner resolves the keys a
+// relation type maps and the primary keys it compares, which come from the
+// model rather than from the query, so it resolves a property the caller may
+// not see; only its error text keeps to what they may see.
 //
 // Only the property name is accepted, never the display name: display names
 // carry no uniqueness guarantee, so accepting them would need a collision rule
@@ -207,6 +269,9 @@ func (s *Schema) Column(ot *interfaces.ObjectType, property string) (string, err
 			continue
 		}
 		if dp.MappedField == nil || dp.MappedField.Name == "" {
+			if s.hidden(ot, property) {
+				return "", fmt.Errorf("object type %q has a key property with no mapped column", ot.OTID)
+			}
 			return "", fmt.Errorf("property %q of object type %q has no mapped column", property, ot.OTID)
 		}
 		return dp.MappedField.Name, nil
@@ -218,8 +283,12 @@ func (s *Schema) Column(ot *interfaces.ObjectType, property string) (string, err
 				property, ot.OTID)
 		}
 	}
-	return "", fmt.Errorf("object type %q has no property %q%s",
-		ot.OTID, property, suggest(property, dataPropertyNames(ot)))
+	return "", s.unknownProperty(ot, property)
+}
+
+func (s *Schema) unknownProperty(ot *interfaces.ObjectType, property string) error {
+	return fmt.Errorf("object type %q has no property %q%s",
+		ot.OTID, property, suggest(property, s.visiblePropertyNames(ot)))
 }
 
 // ResourceID is the vega resource backing an object type, for the
@@ -241,10 +310,14 @@ func (s *Schema) ResourceID(ot *interfaces.ObjectType) (string, error) {
 	return ot.DataSource.ID, nil
 }
 
-func dataPropertyNames(ot *interfaces.ObjectType) []string {
+// visiblePropertyNames is what a suggestion may be drawn from: every data
+// property the caller may know exists.
+func (s *Schema) visiblePropertyNames(ot *interfaces.ObjectType) []string {
 	names := make([]string, 0, len(ot.DataProperties))
 	for _, dp := range ot.DataProperties {
-		names = append(names, dp.Name)
+		if !s.hidden(ot, dp.Name) {
+			names = append(names, dp.Name)
+		}
 	}
 	return names
 }

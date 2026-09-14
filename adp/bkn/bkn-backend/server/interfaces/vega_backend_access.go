@@ -92,6 +92,13 @@ type VegaBackendAccess interface {
 	// off. Without an identity in the context this fails instead.
 	RawQuery(ctx context.Context, req *RawQueryRequest) (*RawQueryResponse, error)
 
+	// RawQueryAs is RawQuery under an account the caller names instead of the
+	// one in the context. vega-backend authorizes each referenced resource
+	// against that account exactly as it would against the context's. It is
+	// for a service that has already authorized its own caller and reads on
+	// the caller's behalf through an account it manages.
+	RawQueryAs(ctx context.Context, account AccountInfo, req *RawQueryRequest) (*RawQueryResponse, error)
+
 	// WriteDatasetDocument writes one document to a dataset.
 	WriteDatasetDocument(ctx context.Context, datasetID, docID string, document map[string]any) error
 

@@ -195,6 +195,16 @@ type PropertyLevelsDecisionEntry struct {
 	Properties    []PropertyAccessDecision `json:"properties"`
 }
 
+// Effective property access levels returned by bkn-safe (#1374). none means
+// the property does not exist for the caller; schema and masked mean they may
+// know it exists but not read its values as stored.
+const (
+	PROPERTY_ACCESS_FULL   = "full"
+	PROPERTY_ACCESS_MASKED = "masked"
+	PROPERTY_ACCESS_SCHEMA = "schema"
+	PROPERTY_ACCESS_NONE   = "none"
+)
+
 type PropertyAccessDecision struct {
 	Name   string `json:"name"`
 	Level  string `json:"level"`

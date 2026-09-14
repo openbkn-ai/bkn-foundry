@@ -34,6 +34,19 @@ Description = "编译后的查询执行失败"
 Solution = "请稍后重试或联系管理员。"
 ErrorLink = ""
 
+[BknBackend.Cypher.Forbidden]
+Description = "数据源拒绝读取查询涉及的资源"
+Solution = "请联系管理员发布知识网络并完成代理账号同步，或授予这些对象类所绑定资源的访问权限。"
+ErrorLink = ""
+
+[BknBackend.Cypher.PropertyForbidden]
+Description = "查询读取了当前用户无完整访问权限的属性"
+Solution = "请从查询中移除所列属性，或联系管理员授予这些属性的完整访问权限。"
+ErrorLink = ""
+
+[BknBackend.Cypher.PropertyForbidden.Detail]
+NotFull = "查询读取的每个属性都需要完整访问权限，以下属性未获授权：{{.properties}}。"
+
 [BknBackend.Cypher.InvalidParameter.Detail]
 QueryRequired = "query 不能为空。"
 QueryTooLong = "query 长度不能超过 {{.max}} 个字符。"
