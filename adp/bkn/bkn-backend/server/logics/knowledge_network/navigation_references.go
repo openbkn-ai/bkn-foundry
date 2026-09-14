@@ -49,11 +49,27 @@ func (kns *knowledgeNetworkService) dropUnreadableReferenceRows(ctx context.Cont
 		knIDs = append(knIDs, knID)
 	}
 	sort.Strings(knIDs)
+
+	// Definitions are read per network, where they live; the object types they reference are
+	// then checked for every network in one authorization call, so the cost of listing networks
+	// does not grow with how many of them the caller reaches only through their children.
+	definitions := make(map[string]*referenceDefinitions, len(knIDs))
+	referencedByKN := make(map[string][]string, len(knIDs))
 	for _, knID := range knIDs {
-		readable, err := kns.readableReferenceRows(ctx, knID, branch, idsByKN[knID])
+		defs, err := kns.readReferenceDefinitions(ctx, knID, branch, idsByKN[knID])
 		if err != nil {
 			return err
 		}
+		definitions[knID] = defs
+		referencedByKN[knID] = defs.referencedObjectTypes()
+	}
+	visibleByKN, err := permission.VisibleReferencedObjectTypesByKN(ctx, kns.ps, referencedByKN)
+	if err != nil {
+		return err
+	}
+
+	for _, knID := range knIDs {
+		readable := definitions[knID].readable(visibleByKN[knID])
 		for resourceType, childIDs := range idsByKN[knID] {
 			for _, childID := range childIDs {
 				if _, ok := readable[resourceType][childID]; !ok {
@@ -65,53 +81,64 @@ func (kns *knowledgeNetworkService) dropUnreadableReferenceRows(ctx context.Cont
 	return nil
 }
 
-// readableReferenceRows returns, per resource type, the relation and action type ids of one
-// network whose referenced object types the caller holds at least one effective operation on.
-func (kns *knowledgeNetworkService) readableReferenceRows(ctx context.Context, knID, branch string,
-	idsByType map[string][]string) (map[string]map[string]struct{}, error) {
+// referenceDefinitions are the relation and action type rows of one network whose references a
+// navigation check has to resolve.
+type referenceDefinitions struct {
+	relationTypes []*interfaces.RelationType
+	actionTypes   []*interfaces.ActionType
+}
 
-	var relationTypes []*interfaces.RelationType
-	var actionTypes []*interfaces.ActionType
+// readReferenceDefinitions loads the given relation and action types of one network.
+func (kns *knowledgeNetworkService) readReferenceDefinitions(ctx context.Context, knID, branch string,
+	idsByType map[string][]string) (*referenceDefinitions, error) {
+
+	defs := &referenceDefinitions{}
 	var err error
-	referenced := make([]string, 0)
 	if ids := idsByType[interfaces.RESOURCE_TYPE_RELATION_TYPE]; len(ids) > 0 {
-		relationTypes, err = kns.rta.GetRelationTypesByIDs(ctx, knID, branch, ids)
+		defs.relationTypes, err = kns.rta.GetRelationTypesByIDs(ctx, knID, branch, ids)
 		if err != nil {
 			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
-		}
-		for _, relationType := range relationTypes {
-			referenced = append(referenced, relationType.SourceObjectTypeID, relationType.TargetObjectTypeID)
 		}
 	}
 	if ids := idsByType[interfaces.RESOURCE_TYPE_ACTION_TYPE]; len(ids) > 0 {
-		actionTypes, err = kns.ata.GetActionTypesByIDs(ctx, knID, branch, ids)
+		defs.actionTypes, err = kns.ata.GetActionTypesByIDs(ctx, knID, branch, ids)
 		if err != nil {
 			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
 		}
-		for _, actionType := range actionTypes {
-			referenced = append(referenced, actionType.ObjectTypeID)
-		}
 	}
+	return defs, nil
+}
 
-	visible, err := permission.VisibleReferencedObjectTypes(ctx, kns.ps, knID, referenced)
-	if err != nil {
-		return nil, err
+// referencedObjectTypes lists the object types the definitions point at.
+func (defs *referenceDefinitions) referencedObjectTypes() []string {
+	referenced := make([]string, 0, len(defs.relationTypes)*2+len(defs.actionTypes))
+	for _, relationType := range defs.relationTypes {
+		referenced = append(referenced, relationType.SourceObjectTypeID, relationType.TargetObjectTypeID)
 	}
+	for _, actionType := range defs.actionTypes {
+		referenced = append(referenced, actionType.ObjectTypeID)
+	}
+	return referenced
+}
+
+// readable returns, per resource type, the relation and action type ids whose referenced object
+// types are all in visible.
+func (defs *referenceDefinitions) readable(visible map[string]struct{}) map[string]map[string]struct{} {
 	readable := map[string]map[string]struct{}{
 		interfaces.RESOURCE_TYPE_RELATION_TYPE: {},
 		interfaces.RESOURCE_TYPE_ACTION_TYPE:   {},
 	}
-	for _, relationType := range relationTypes {
+	for _, relationType := range defs.relationTypes {
 		if permission.ReferencesVisible(visible, relationType.SourceObjectTypeID, relationType.TargetObjectTypeID) {
 			readable[interfaces.RESOURCE_TYPE_RELATION_TYPE][relationType.RTID] = struct{}{}
 		}
 	}
-	for _, actionType := range actionTypes {
+	for _, actionType := range defs.actionTypes {
 		if permission.ReferencesVisible(visible, actionType.ObjectTypeID) {
 			readable[interfaces.RESOURCE_TYPE_ACTION_TYPE][actionType.ATID] = struct{}{}
 		}
 	}
-	return readable, nil
+	return readable
 }

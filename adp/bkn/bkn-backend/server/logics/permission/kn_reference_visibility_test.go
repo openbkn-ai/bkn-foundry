@@ -66,3 +66,33 @@ func TestVisibleReferencedObjectTypes_AuthorizationFailureIsReturned(t *testing.
 		t.Fatalf("VisibleReferencedObjectTypes() error = %v, want %v", err, unavailable)
 	}
 }
+
+func TestVisibleReferencedObjectTypesByKN_OneCallForEveryNetwork(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ps := bmock.NewMockPermissionService(ctrl)
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		[]string{"kn-1/ot-a", "kn-1/ot-b", "kn-2/ot-a"}, []string(nil), true,
+		KNChildOperationCandidates(interfaces.RESOURCE_TYPE_OBJECT_TYPE)).
+		Return(map[string]interfaces.PermissionResourceOps{
+			"kn-1/ot-a": {ResourceID: "kn-1/ot-a", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+			"kn-2/ot-a": {ResourceID: "kn-2/ot-a", Operations: []string{interfaces.OPERATION_TYPE_QUERY_DATA}},
+		}, nil).Times(1)
+
+	visible, err := VisibleReferencedObjectTypesByKN(context.Background(), ps, map[string][]string{
+		"kn-2": {"ot-a", "ot-a"},
+		"kn-1": {"ot-a", "ot-b", ""},
+		"kn-3": {""},
+	})
+
+	if err != nil {
+		t.Fatalf("VisibleReferencedObjectTypesByKN() error = %v", err)
+	}
+	want := map[string]map[string]struct{}{
+		"kn-1": {"ot-a": {}},
+		"kn-2": {"ot-a": {}},
+		"kn-3": {},
+	}
+	if !reflect.DeepEqual(visible, want) {
+		t.Fatalf("VisibleReferencedObjectTypesByKN() = %v, want %v", visible, want)
+	}
+}

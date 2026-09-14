@@ -6,6 +6,7 @@ package permission
 
 import (
 	"context"
+	"sort"
 
 	"bkn-backend/interfaces"
 )
@@ -29,25 +30,52 @@ import (
 func VisibleReferencedObjectTypes(ctx context.Context, ps interfaces.PermissionService,
 	knID string, objectTypeIDs []string) (map[string]struct{}, error) {
 
-	visible := map[string]struct{}{}
-	idByResource := make(map[string]string, len(objectTypeIDs))
-	resourceIDs := make([]string, 0, len(objectTypeIDs))
-	for _, objectTypeID := range objectTypeIDs {
-		if objectTypeID == "" || !interfaces.IsValidAuthorizationID(objectTypeID) {
-			continue
+	visible, err := VisibleReferencedObjectTypesByKN(ctx, ps, map[string][]string{knID: objectTypeIDs})
+	if err != nil {
+		return nil, err
+	}
+	return visible[knID], nil
+}
+
+// VisibleReferencedObjectTypesByKN is VisibleReferencedObjectTypes for references spread over
+// several networks, resolved in one authorization call rather than one per network. The result
+// has an entry, possibly empty, for every network asked about.
+func VisibleReferencedObjectTypesByKN(ctx context.Context, ps interfaces.PermissionService,
+	objectTypeIDsByKN map[string][]string) (map[string]map[string]struct{}, error) {
+
+	knIDs := make([]string, 0, len(objectTypeIDsByKN))
+	for knID := range objectTypeIDsByKN {
+		knIDs = append(knIDs, knID)
+	}
+	sort.Strings(knIDs)
+
+	type reference struct{ knID, objectTypeID string }
+	visible := make(map[string]map[string]struct{}, len(knIDs))
+	referenceByResource := map[string]reference{}
+	resourceIDs := make([]string, 0)
+	for _, knID := range knIDs {
+		visible[knID] = map[string]struct{}{}
+		validated := false
+		for _, objectTypeID := range objectTypeIDsByKN[knID] {
+			if objectTypeID == "" || !interfaces.IsValidAuthorizationID(objectTypeID) {
+				continue
+			}
+			resourceID := interfaces.KNChildResourceID(knID, objectTypeID)
+			if _, seen := referenceByResource[resourceID]; seen {
+				continue
+			}
+			if !validated {
+				if err := ValidateKNChildAuthorizationIDs(ctx, knID, nil); err != nil {
+					return nil, err
+				}
+				validated = true
+			}
+			referenceByResource[resourceID] = reference{knID: knID, objectTypeID: objectTypeID}
+			resourceIDs = append(resourceIDs, resourceID)
 		}
-		resourceID := interfaces.KNChildResourceID(knID, objectTypeID)
-		if _, seen := idByResource[resourceID]; seen {
-			continue
-		}
-		idByResource[resourceID] = objectTypeID
-		resourceIDs = append(resourceIDs, resourceID)
 	}
 	if len(resourceIDs) == 0 {
 		return visible, nil
-	}
-	if err := ValidateKNChildAuthorizationIDs(ctx, knID, nil); err != nil {
-		return nil, err
 	}
 
 	matched, err := FilterKNChildResourceIDsWithAnyOperation(ctx, ps, interfaces.RESOURCE_TYPE_OBJECT_TYPE,
@@ -56,7 +84,8 @@ func VisibleReferencedObjectTypes(ctx context.Context, ps interfaces.PermissionS
 		return nil, err
 	}
 	for resourceID := range matched {
-		visible[idByResource[resourceID]] = struct{}{}
+		ref := referenceByResource[resourceID]
+		visible[ref.knID][ref.objectTypeID] = struct{}{}
 	}
 	return visible, nil
 }

@@ -156,3 +156,72 @@ func TestNavigation_ReferenceAuthorizationFailureIsAnError(t *testing.T) {
 		t.Fatalf("GetKNByID() error = %v, want %v", err, unavailable)
 	}
 }
+
+// TestNavigation_ReferencesAcrossNetworksCostOneAuthorizationCall keeps the network list's
+// authorization cost independent of how many restricted networks it covers: the object types
+// referenced by visible relation and action types are checked in one call for all of them.
+func TestNavigation_ReferencesAcrossNetworksCostOneAuthorizationCall(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	kna := bmock.NewMockKNAccess(ctrl)
+	rta := bmock.NewMockRelationTypeAccess(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	service := &knowledgeNetworkService{kna: kna, ps: ps, rta: rta}
+
+	parameter := interfaces.KNsQueryParams{
+		PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: -1},
+		Branch:                    interfaces.MAIN_BRANCH,
+	}
+	kna.EXPECT().ListKNs(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, query interfaces.KNsQueryParams) ([]*interfaces.KN, error) {
+			if query.OnlyIDs {
+				return []*interfaces.KN{{KNID: "kn1"}, {KNID: "kn2"}}, nil
+			}
+			kns := make([]*interfaces.KN, 0, len(query.CandidateIDs))
+			for _, id := range query.CandidateIDs {
+				kns = append(kns, &interfaces.KN{KNID: id, Branch: interfaces.MAIN_BRANCH})
+			}
+			return kns, nil
+		}).Times(2)
+	kna.EXPECT().ListKNChildResourceCandidates(gomock.Any(), []string{"kn1", "kn2"}, interfaces.MAIN_BRANCH).
+		Return([]interfaces.KNChildResourceCandidate{
+			{KNID: "kn1", ResourceID: "rt-1", Type: interfaces.RESOURCE_TYPE_RELATION_TYPE},
+			{KNID: "kn2", ResourceID: "rt-2", Type: interfaces.RESOURCE_TYPE_RELATION_TYPE},
+		}, nil)
+	rta.EXPECT().GetRelationTypesByIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"rt-1"}).
+		Return([]*interfaces.RelationType{navRelation("rt-1", "ot-a", "ot-b")}, nil)
+	rta.EXPECT().GetRelationTypesByIDs(gomock.Any(), "kn2", interfaces.MAIN_BRANCH, []string{"rt-2"}).
+		Return([]*interfaces.RelationType{navRelation("rt-2", "ot-c", "ot-hidden")}, nil)
+
+	objectTypeCalls := 0
+	ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, resourceType string, ids, _ []string, _ bool,
+			_ []string) (map[string]interfaces.PermissionResourceOps, error) {
+			matched := map[string]interfaces.PermissionResourceOps{}
+			switch resourceType {
+			case interfaces.RESOURCE_TYPE_KN:
+				return matched, nil
+			case interfaces.RESOURCE_TYPE_OBJECT_TYPE:
+				objectTypeCalls++
+			}
+			for _, id := range ids {
+				if id == interfaces.KNChildResourceID("kn2", "ot-hidden") {
+					continue
+				}
+				matched[id] = interfaces.PermissionResourceOps{ResourceID: id,
+					Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}}
+			}
+			return matched, nil
+		}).AnyTimes()
+
+	kns, total, err := service.ListKNs(context.Background(), parameter)
+
+	if err != nil {
+		t.Fatalf("ListKNs() error = %v", err)
+	}
+	if total != 1 || len(kns) != 1 || kns[0].KNID != "kn1" {
+		t.Fatalf("ListKNs() = %d networks (total %d), want only kn1: kn2's only child points at a hidden object type", len(kns), total)
+	}
+	if objectTypeCalls != 1 {
+		t.Fatalf("object type authorization calls = %d, want 1 for both networks", objectTypeCalls)
+	}
+}
