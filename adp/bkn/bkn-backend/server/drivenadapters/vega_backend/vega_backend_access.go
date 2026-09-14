@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 
 	"github.com/bytedance/sonic"
@@ -208,6 +209,61 @@ func (vba *vegaBackendAccess) GetResourceByID(ctx context.Context, id string) (*
 
 	oteltrace.AddHttpAttrs4Ok(span, respCode)
 	return resourceData.Entries[0], nil
+}
+
+// GetResourcesByIDs reads several resources in one request. Ids that do not exist are left out of the
+// result rather than failing the request (ignore_missing), so callers detect them by absence. Vega
+// still refuses the whole batch when the caller may not view any one of them.
+func (vba *vegaBackendAccess) GetResourcesByIDs(ctx context.Context, ids []string) ([]*interfaces.VegaResource, error) {
+	if len(ids) == 0 {
+		return []*interfaces.VegaResource{}, nil
+	}
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "driven layer: Get resources by IDs")
+	defer span.End()
+
+	span.SetAttributes(attr.Key("resource_count").Int(len(ids)))
+
+	escaped := make([]string, len(ids))
+	for i, id := range ids {
+		escaped[i] = url.PathEscape(id)
+	}
+	httpUrl := fmt.Sprintf("%s/resources/%s", vba.baseUrl, strings.Join(escaped, ","))
+	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{
+		HttpUrl:         httpUrl,
+		HttpMethod:      http.MethodGet,
+		HttpContentType: rest.ContentTypeJson,
+	})
+
+	headers := vba.buildHeaders(ctx)
+	respCode, respData, err := vba.httpClient.GetNoUnmarshal(ctx, httpUrl,
+		url.Values{"ignore_missing": []string{"true"}}, headers)
+	logger.Debugf("GetResourcesByIDs finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
+
+	if err != nil {
+		common.LogSafeError(ctx, "GetResourcesByIDs http request failed", err)
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get resources by IDs failed")
+		return nil, fmt.Errorf("vega dependency request failed")
+	}
+
+	if respCode != http.StatusOK {
+		err := fmt.Errorf("GetResourcesByIDs returned HTTP %d", respCode)
+		common.LogSafeError(ctx, "GetResourcesByIDs failed", err)
+		logger.Debugf("GetResourcesByIDs response: %s", common.SafeTextSummary("response", string(respData)))
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
+		return nil, err
+	}
+
+	var resourceData struct {
+		Entries []*interfaces.VegaResource `json:"entries"`
+	}
+	if err := json.Unmarshal([]byte(respData), &resourceData); err != nil {
+		common.LogSafeError(ctx, "Failed to unmarshal GetResourcesByIDs response", err)
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal GetResourcesByIDs response failed")
+		return nil, fmt.Errorf("failed to unmarshal GetResourcesByIDs response: %v", err)
+	}
+
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return resourceData.Entries, nil
 }
 
 // GetResourceSchema reads only the schema required by strict model validation.

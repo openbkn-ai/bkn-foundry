@@ -89,6 +89,51 @@ func TestGetResourceSchemaUsesResolvedDelegatorAndOperation(t *testing.T) {
 	assert.Equal(t, interfaces.ACCESSOR_TYPE_USER, gotHeaders[interfaces.HTTP_HEADER_ACCOUNT_TYPE])
 }
 
+func TestGetResourcesByIDsReadsBatchToleratingMissing(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
+	var gotHeaders map[string]string
+	mockHTTPClient.EXPECT().
+		GetNoUnmarshal(gomock.Any(), "http://vega/resources/r%2F1,r2,r3", gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, params url.Values, headers map[string]string) (int, []byte, error) {
+			gotHeaders = headers
+			assert.Equal(t, "true", params.Get("ignore_missing"))
+			return http.StatusOK, []byte(`{"entries":[{"id":"r/1","name":"orders"},{"id":"r3","name":"items"}]}`), nil
+		})
+
+	access := &vegaBackendAccess{httpClient: mockHTTPClient, baseUrl: "http://vega"}
+	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+		interfaces.AccountInfo{ID: "user-1", Type: interfaces.ACCESSOR_TYPE_USER})
+
+	resources, err := access.GetResourcesByIDs(ctx, []string{"r/1", "r2", "r3"})
+
+	require.NoError(t, err)
+	require.Len(t, resources, 2)
+	assert.Equal(t, "orders", resources[0].Name)
+	assert.Equal(t, "items", resources[1].Name)
+	assert.Equal(t, "user-1", gotHeaders[interfaces.HTTP_HEADER_ACCOUNT_ID])
+}
+
+func TestGetResourcesByIDsReportsNonOKStatus(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
+	mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(http.StatusForbidden, []byte(`{"error_code":"Public.Forbidden"}`), nil)
+
+	access := &vegaBackendAccess{httpClient: mockHTTPClient, baseUrl: "http://vega"}
+	resources, err := access.GetResourcesByIDs(context.Background(), []string{"r1", "r2"})
+
+	require.Error(t, err)
+	assert.Nil(t, resources)
+}
+
+func TestGetResourcesByIDsSkipsRequestForNoIDs(t *testing.T) {
+	access := &vegaBackendAccess{httpClient: rmock.NewMockHTTPClient(gomock.NewController(t)), baseUrl: "http://vega"}
+	resources, err := access.GetResourcesByIDs(context.Background(), nil)
+	require.NoError(t, err)
+	assert.Empty(t, resources)
+}
+
 func TestGetResourceSchemaRefusesWithoutCallerIdentity(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
