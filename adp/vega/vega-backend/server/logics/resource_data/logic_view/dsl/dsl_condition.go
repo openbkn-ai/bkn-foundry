@@ -1166,7 +1166,9 @@ func (c *logicViewDSLGenerator) getKeywordSuffix(fieldName string, fieldsMap map
 		if prop.OriginalName == fieldName && prop.Type == interfaces.DataType_Text {
 			for _, feature := range prop.Features {
 				if feature.FeatureType == interfaces.PropertyFeatureType_Keyword {
-					return "." + feature.FeatureName, nil
+					featureName := strings.TrimPrefix(feature.FeatureName, prop.Name+".")
+					featureName = strings.TrimPrefix(featureName, fieldName+".")
+					return "." + featureName, nil
 				}
 			}
 			return "", fmt.Errorf("text field %s has no keyword feature, cannot be used for comparison", fieldName)

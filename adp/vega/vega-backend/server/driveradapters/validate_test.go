@@ -235,7 +235,7 @@ func TestValidateResourceRequestDatasetSchema(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("ValidateResourceRequest accepts text keyword multi-field", func(t *testing.T) {
+	t.Run("ValidateResourceRequest rejects a qualified text keyword feature name", func(t *testing.T) {
 		err := ValidateResourceRequest(ctx, baseReq([]*interfaces.Property{
 			{
 				Name: "content",
@@ -245,6 +245,19 @@ func TestValidateResourceRequestDatasetSchema(t *testing.T) {
 				},
 			},
 		}))
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "must be relative to property")
+	})
+
+	t.Run("ValidateResourceRequest accepts a relative text keyword feature name", func(t *testing.T) {
+		err := ValidateResourceRequest(ctx, baseReq([]*interfaces.Property{{
+			Name: "content",
+			Type: interfaces.DataType_Text,
+			Features: []interfaces.PropertyFeature{{
+				FeatureName: "keyword",
+				FeatureType: interfaces.PropertyFeatureType_Keyword,
+			}},
+		}}))
 		require.NoError(t, err)
 	})
 
@@ -452,8 +465,8 @@ func TestValidateResourceRequestDatasetSchema(t *testing.T) {
 				name: "duplicate default features without ref_property",
 				fields: []*interfaces.Property{
 					{Name: "body", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
-						{FeatureName: "body.ft1", FeatureType: interfaces.PropertyFeatureType_Fulltext, IsDefault: true},
-						{FeatureName: "body.ft2", FeatureType: interfaces.PropertyFeatureType_Fulltext, IsDefault: true},
+						{FeatureName: "ft1", FeatureType: interfaces.PropertyFeatureType_Fulltext, IsDefault: true},
+						{FeatureName: "ft2", FeatureType: interfaces.PropertyFeatureType_Fulltext, IsDefault: true},
 					}},
 				},
 			},
@@ -469,7 +482,7 @@ func TestValidateResourceRequestDatasetSchema(t *testing.T) {
 	t.Run("NormalizeSelfReferencingFeatures drops self-referencing ref_property", func(t *testing.T) {
 		props := []*interfaces.Property{
 			{Name: "body", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
-				{FeatureName: "body.ft", FeatureType: interfaces.PropertyFeatureType_Fulltext, RefProperty: "body", IsNative: true},
+				{FeatureName: "ft", FeatureType: interfaces.PropertyFeatureType_Fulltext, RefProperty: "body", IsNative: true},
 			}},
 		}
 
@@ -483,7 +496,7 @@ func TestValidateResourceRequestDatasetSchema(t *testing.T) {
 		props := []*interfaces.Property{
 			{Name: "title_keyword", Type: interfaces.DataType_String},
 			{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
-				{FeatureName: "title.keyword", FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "title_keyword"},
+				{FeatureName: "keyword", FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "title_keyword"},
 			}},
 		}
 
@@ -525,7 +538,7 @@ func TestValidateResourceRequestDatasetSchema(t *testing.T) {
 				name: "dataset with native fulltext feature without ref_property",
 				fields: []*interfaces.Property{
 					{Name: "body", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
-						{FeatureName: "body.ft", FeatureType: interfaces.PropertyFeatureType_Fulltext, IsNative: true},
+						{FeatureName: "ft", FeatureType: interfaces.PropertyFeatureType_Fulltext, IsNative: true},
 					}},
 				},
 			},
@@ -533,7 +546,7 @@ func TestValidateResourceRequestDatasetSchema(t *testing.T) {
 				name: "original resource feature without ref_property",
 				fields: []*interfaces.Property{
 					{Name: "body", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
-						{FeatureName: "body.ft", FeatureType: interfaces.PropertyFeatureType_Fulltext},
+						{FeatureName: "ft", FeatureType: interfaces.PropertyFeatureType_Fulltext},
 					}},
 				},
 			},
@@ -542,7 +555,7 @@ func TestValidateResourceRequestDatasetSchema(t *testing.T) {
 				fields: []*interfaces.Property{
 					{Name: "title_keyword", Type: interfaces.DataType_String},
 					{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
-						{FeatureName: "title.keyword", FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "title_keyword"},
+						{FeatureName: "keyword", FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "title_keyword"},
 					}},
 				},
 			},

@@ -80,6 +80,30 @@ func TestLogicViewDSLBuildDSL(t *testing.T) {
 		assert.Equal(t, []map[string]any{{"title.keyword": interfaces.ASC_DIRECTION}}, got.Sort)
 	})
 
+	t.Run("legacy qualified keyword feature names are not prefixed twice", func(t *testing.T) {
+		view := testDSLView()
+		view.SchemaDefinition[0].Features[0].FeatureName = "title.keyword"
+		generator := NewlogicViewDSLGenerator(view)
+
+		got, err := generator.BuildDSL(context.Background(), interfaces.ResourceDataQueryParams{
+			Paging: interfaces.PagingRequest{Limit: 10},
+			Sort:   []*interfaces.SortField{{Field: "title", Direction: interfaces.ASC_DIRECTION}},
+		}, view, map[string][]string{"resource-1": {"idx"}})
+
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"title.keyword": interfaces.ASC_DIRECTION}}, got.Sort)
+	})
+
+	t.Run("legacy qualified keyword feature names build the canonical comparison suffix", func(t *testing.T) {
+		fields := testFieldMap()
+		fields["title"].Features[0].FeatureName = "title.keyword"
+
+		suffix, err := (&logicViewDSLGenerator{}).getKeywordSuffix("title", fields)
+
+		require.NoError(t, err)
+		assert.Equal(t, ".keyword", suffix)
+	})
+
 	t.Run("stream query adds _id default sort and de-duplicates", func(t *testing.T) {
 		view := testDSLView()
 		generator := NewlogicViewDSLGenerator(view)

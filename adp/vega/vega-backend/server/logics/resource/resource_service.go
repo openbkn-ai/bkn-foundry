@@ -1958,6 +1958,10 @@ func validateSchemaDefinition(ctx context.Context, schema []*interfaces.Property
 		seenTypes := make(map[string]struct{}, len(property.Features))
 		seenNames := make(map[string]struct{}, len(property.Features))
 		for _, feature := range property.Features {
+			if strings.HasPrefix(feature.FeatureName, property.Name+".") {
+				return unsupportedResourceUpdateError(ctx, fmt.Sprintf(
+					"feature name %q must be relative to property %q", feature.FeatureName, property.Name))
+			}
 			if feature.FeatureName != "" {
 				if _, exists := seenNames[feature.FeatureName]; exists {
 					return unsupportedResourceUpdateError(ctx, fmt.Sprintf("property %q has more than one feature named %q", property.Name, feature.FeatureName))

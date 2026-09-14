@@ -137,6 +137,20 @@ func TestValidateSchemaDefinitionRejectsDefaultFeatureNameCollision(t *testing.T
 	assert.Contains(t, httpErr.BaseError.ErrorDetails, `property "body" has more than one feature named "keyword"`)
 }
 
+func TestValidateSchemaDefinitionRejectsQualifiedFeatureName(t *testing.T) {
+	err := validateSchemaDefinition(context.Background(), []*interfaces.Property{{
+		Name: "title",
+		Type: interfaces.DataType_Text,
+		Features: []interfaces.PropertyFeature{{
+			FeatureName: "title.keyword",
+			FeatureType: interfaces.PropertyFeatureType_Keyword,
+		}},
+	}})
+
+	httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
+	assert.Contains(t, httpErr.BaseError.ErrorDetails, `feature name "title.keyword" must be relative to property "title"`)
+}
+
 func TestValidateLocalIndexVectorOutputs(t *testing.T) {
 	err := validateLocalIndexVectorOutputs(context.Background(), []*interfaces.Property{
 		{

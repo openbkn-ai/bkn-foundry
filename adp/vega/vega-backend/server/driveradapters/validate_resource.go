@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -166,6 +167,10 @@ func validatePropertyFeatures(ctx context.Context, prop *interfaces.Property, pr
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldFeatureName).
 					WithErrorDetails("The field feature name is null")
 			}
+		}
+		if strings.HasPrefix(f.FeatureName, prop.Name+".") {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldFeatureName).
+				WithErrorDetails(fmt.Sprintf("feature name %q must be relative to property %q", f.FeatureName, prop.Name))
 		}
 		if utf8.RuneCountInString(f.FeatureName) > interfaces.MaxLength_PropertyFeatureName {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_LengthExceeded_FieldFeatureName).
@@ -401,6 +406,12 @@ func validateViewFields(ctx context.Context, viewFields []*interfaces.ViewProper
 		}
 
 		// Verification feature
+		for _, feature := range field.Features {
+			if strings.HasPrefix(feature.FeatureName, field.Name+".") {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_LogicView_InvalidParameter_FieldFeatureName).
+					WithErrorDetails(fmt.Sprintf("feature name %q must be relative to property %q", feature.FeatureName, field.Name))
+			}
+		}
 		err := validateFeatures(ctx, fieldsMap, field.Features)
 		if err != nil {
 			return err

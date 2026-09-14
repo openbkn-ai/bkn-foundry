@@ -487,7 +487,8 @@ components:
       properties:
         name:
           description: |
-            特征名称。仅派生的 multi-field 使用该名称作为物理子字段名：text 的 keyword 和
+            特征名称必须是相对于所属字段的名称，不得重复包含 `<field>.` 前缀。仅派生的
+            multi-field 使用该名称作为物理子字段名：text 的 keyword 和
             string 的 fulltext 省略时分别使用 `keyword`/`fulltext`。string 的 keyword、text 的
             fulltext 使用属性主字段，string/text 的 vector 使用固定 `<field>_vector` 字段，这些
             native/fixed 场景不会用 name 改写物理字段。引用已有向量结果字段的 vector Feature

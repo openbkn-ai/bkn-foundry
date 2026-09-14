@@ -57,6 +57,31 @@ func TestValidateLogicViewRequest(t *testing.T) {
 
 		require.Error(t, validateLogicViewRequest(ctx, req))
 	})
+
+	t.Run("rejects a qualified feature name", func(t *testing.T) {
+		req := &interfaces.ResourceRequest{
+			Name:     "view",
+			Category: interfaces.ResourceCategoryLogicView,
+			LogicDefinition: []*interfaces.LogicDefinitionNode{{
+				ID:   "out",
+				Type: interfaces.LogicDefinitionNodeType_Output,
+				OutputFields: []*interfaces.ViewProperty{{Property: interfaces.Property{
+					Name: "title",
+					Type: interfaces.DataType_Text,
+					Features: []interfaces.PropertyFeature{{
+						FeatureName: "title.keyword",
+						FeatureType: interfaces.PropertyFeatureType_Keyword,
+						RefProperty: "title",
+					}},
+				}}},
+			}},
+		}
+
+		err := ValidateResourceRequest(ctx, req)
+
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "must be relative to property")
+	})
 }
 
 func TestValidateResourceRequestIgnoresExpectedUpdateTime(t *testing.T) {

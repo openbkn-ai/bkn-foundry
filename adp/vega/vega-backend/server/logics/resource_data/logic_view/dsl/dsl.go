@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/mitchellh/mapstructure"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -89,7 +90,7 @@ func (g *logicViewDSLGenerator) BuildDSL(ctx context.Context, query interfaces.R
 					keywordFeatureName := ""
 					for _, feature := range sortField.Features {
 						if feature.FeatureType == interfaces.PropertyFeatureType_Keyword {
-							keywordFeatureName = feature.FeatureName
+							keywordFeatureName = strings.TrimPrefix(feature.FeatureName, sortField.Name+".")
 							if keywordFeatureName == "" {
 								keywordFeatureName = interfaces.LocalIndexKeywordSubfieldName
 							}
