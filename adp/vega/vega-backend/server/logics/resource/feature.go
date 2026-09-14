@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 
 	"vega-backend/interfaces"
 )
@@ -55,40 +56,83 @@ func NormalizeSelfReferencingFeatures(props []*interfaces.Property) {
 	}
 }
 
-// AddDefaultTextKeywordFeatures upgrades a newly submitted resource schema so text fields retain
-// exact-comparison capability when a table is queried through its local index. Persisting the
-// feature is intentional: build and query code can then distinguish a re-saved resource from a
-// legacy resource whose existing index does not contain the keyword subfield.
-func AddDefaultTextKeywordFeatures(props []*interfaces.Property) {
+// AddDefaultStringAndTextFeatures 将新提交的本地索引 Schema 补齐为当前特征契约。
+// 历史 Schema 在读取和构建时不会通过该函数自动修复。
+func AddDefaultStringAndTextFeatures(props []*interfaces.Property, indexConfig *interfaces.ResourceIndexConfig) {
+	ignoreAbove := interfaces.DefaultTextKeywordIgnoreAbove
+	if indexConfig != nil && indexConfig.DefaultKeywordIgnoreAbove != nil {
+		ignoreAbove = *indexConfig.DefaultKeywordIgnoreAbove
+	}
 	for _, prop := range props {
-		if prop == nil || prop.Type != interfaces.DataType_Text || hasKeywordFeature(prop.Features) {
+		if prop.Type != interfaces.DataType_String && prop.Type != interfaces.DataType_Text {
 			continue
 		}
-		prop.Features = append(prop.Features, interfaces.PropertyFeature{
-			FeatureName: interfaces.LocalIndexKeywordSubfieldName,
-			FeatureType: interfaces.PropertyFeatureType_Keyword,
-			IsDefault:   true,
-			Config: map[string]any{
-				"ignore_above": interfaces.DefaultTextKeywordIgnoreAbove,
-			},
-		})
+		if !hasFeature(prop.Features, interfaces.PropertyFeatureType_Keyword) {
+			prop.Features = append(prop.Features, interfaces.PropertyFeature{
+				FeatureName: interfaces.LocalIndexKeywordSubfieldName,
+				FeatureType: interfaces.PropertyFeatureType_Keyword,
+				IsDefault:   true,
+				Config:      map[string]any{"ignore_above": ignoreAbove},
+			})
+		} else {
+			for i := range prop.Features {
+				feature := &prop.Features[i]
+				if feature.FeatureType != interfaces.PropertyFeatureType_Keyword {
+					continue
+				}
+				if feature.Config == nil {
+					feature.Config = map[string]any{}
+				}
+				if _, exists := feature.Config["ignore_above"]; !exists {
+					feature.Config["ignore_above"] = ignoreAbove
+				}
+			}
+		}
+		if prop.Type == interfaces.DataType_Text && !hasFeature(prop.Features, interfaces.PropertyFeatureType_Fulltext) {
+			prop.Features = append(prop.Features, interfaces.PropertyFeature{
+				FeatureName: interfaces.LocalIndexFulltextSubfieldName,
+				FeatureType: interfaces.PropertyFeatureType_Fulltext,
+				IsDefault:   true,
+			})
+		}
 	}
 }
 
-// TextFieldsWithoutKeyword returns text fields that still use the legacy schema contract.
-func TextFieldsWithoutKeyword(props []*interfaces.Property) []string {
+// FieldsWithoutRequiredDefaultFeatures 返回仍使用旧特征契约的本地索引字段。
+func FieldsWithoutRequiredDefaultFeatures(props []*interfaces.Property) []string {
 	var fields []string
 	for _, prop := range props {
-		if prop != nil && prop.Type == interfaces.DataType_Text && !hasKeywordFeature(prop.Features) {
-			fields = append(fields, prop.Name)
+		missing := make([]string, 0, 2)
+		if prop.Type == interfaces.DataType_String || prop.Type == interfaces.DataType_Text {
+			keywordIndex := -1
+			for i := range prop.Features {
+				if prop.Features[i].FeatureType == interfaces.PropertyFeatureType_Keyword {
+					keywordIndex = i
+					break
+				}
+			}
+			if keywordIndex < 0 {
+				missing = append(missing, interfaces.PropertyFeatureType_Keyword)
+			} else {
+				limit, valid := positiveIntegerConfigValue(prop.Features[keywordIndex].Config["ignore_above"])
+				if !valid || limit > interfaces.MaxKeywordIgnoreAbove {
+					missing = append(missing, "keyword config.ignore_above")
+				}
+			}
+		}
+		if prop.Type == interfaces.DataType_Text && !hasFeature(prop.Features, interfaces.PropertyFeatureType_Fulltext) {
+			missing = append(missing, interfaces.PropertyFeatureType_Fulltext)
+		}
+		if len(missing) > 0 {
+			fields = append(fields, fmt.Sprintf("%s (%s)", prop.Name, strings.Join(missing, ", ")))
 		}
 	}
 	return fields
 }
 
-func hasKeywordFeature(features []interfaces.PropertyFeature) bool {
+func hasFeature(features []interfaces.PropertyFeature, featureType string) bool {
 	for _, feature := range features {
-		if feature.FeatureType == interfaces.PropertyFeatureType_Keyword {
+		if feature.FeatureType == featureType {
 			return true
 		}
 	}
@@ -151,13 +195,13 @@ func ValidateVectorFeatureReferences(props []*interfaces.Property) error {
 func ownVectorDimension(prop *interfaces.Property) (int64, bool) {
 	for _, feature := range prop.Features {
 		if feature.FeatureType == interfaces.PropertyFeatureType_Vector {
-			return positiveVectorDimension(feature.Config["dimension"])
+			return positiveIntegerConfigValue(feature.Config["dimension"])
 		}
 	}
 	return 0, false
 }
 
-func positiveVectorDimension(value any) (int64, bool) {
+func positiveIntegerConfigValue(value any) (int64, bool) {
 	var dimension int64
 	switch value := value.(type) {
 	case int:

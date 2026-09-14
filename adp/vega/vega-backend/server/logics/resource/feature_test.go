@@ -149,26 +149,25 @@ func TestNormalizeSelfReferencingFeatures(t *testing.T) {
 	})
 }
 
-func TestAddDefaultTextKeywordFeatures(t *testing.T) {
-	t.Run("adds and persists a default keyword feature for text", func(t *testing.T) {
-		props := []*interfaces.Property{{
-			Name: "body",
-			Type: interfaces.DataType_Text,
-			Features: []interfaces.PropertyFeature{{
-				FeatureName: "fulltext",
-				FeatureType: interfaces.PropertyFeatureType_Fulltext,
-			}},
-		}}
+func TestAddDefaultStringAndTextFeatures(t *testing.T) {
+	t.Run("adds keyword to string and keyword plus fulltext to text", func(t *testing.T) {
+		limit := 512
+		props := []*interfaces.Property{
+			{Name: "code", Type: interfaces.DataType_String},
+			{Name: "body", Type: interfaces.DataType_Text},
+		}
 
-		AddDefaultTextKeywordFeatures(props)
+		AddDefaultStringAndTextFeatures(props, &interfaces.ResourceIndexConfig{DefaultKeywordIgnoreAbove: &limit})
 
-		require.Len(t, props[0].Features, 2)
-		keyword := props[0].Features[1]
-		assert.Equal(t, interfaces.LocalIndexKeywordSubfieldName, keyword.FeatureName)
-		assert.Equal(t, interfaces.PropertyFeatureType_Keyword, keyword.FeatureType)
-		assert.True(t, keyword.IsDefault)
-		assert.Equal(t, interfaces.DefaultTextKeywordIgnoreAbove, keyword.Config["ignore_above"])
-		assert.Empty(t, TextFieldsWithoutKeyword(props))
+		require.Len(t, props[0].Features, 1)
+		assert.Equal(t, interfaces.PropertyFeatureType_Keyword, props[0].Features[0].FeatureType)
+		assert.Equal(t, 512, props[0].Features[0].Config["ignore_above"])
+		require.Len(t, props[1].Features, 2)
+		assert.Equal(t, interfaces.PropertyFeatureType_Keyword, props[1].Features[0].FeatureType)
+		assert.Equal(t, interfaces.PropertyFeatureType_Fulltext, props[1].Features[1].FeatureType)
+		assert.True(t, props[1].Features[0].IsDefault)
+		assert.True(t, props[1].Features[1].IsDefault)
+		assert.Empty(t, FieldsWithoutRequiredDefaultFeatures(props))
 	})
 
 	t.Run("preserves an explicitly configured keyword feature", func(t *testing.T) {
@@ -182,22 +181,51 @@ func TestAddDefaultTextKeywordFeatures(t *testing.T) {
 			}},
 		}}
 
-		AddDefaultTextKeywordFeatures(props)
+		AddDefaultStringAndTextFeatures(props, nil)
 
-		require.Len(t, props[0].Features, 1)
+		require.Len(t, props[0].Features, 2)
 		assert.Equal(t, "raw", props[0].Features[0].FeatureName)
 		assert.Equal(t, 128, props[0].Features[0].Config["ignore_above"])
+		assert.Equal(t, interfaces.PropertyFeatureType_Fulltext, props[0].Features[1].FeatureType)
 	})
 
-	t.Run("reports only legacy text fields", func(t *testing.T) {
-		fields := TextFieldsWithoutKeyword([]*interfaces.Property{
-			nil,
+	t.Run("fills a missing keyword limit without replacing custom feature names", func(t *testing.T) {
+		limit := 512
+		props := []*interfaces.Property{{
+			Name: "body",
+			Type: interfaces.DataType_Text,
+			Features: []interfaces.PropertyFeature{
+				{FeatureName: "raw", FeatureType: interfaces.PropertyFeatureType_Keyword},
+				{FeatureName: "search", FeatureType: interfaces.PropertyFeatureType_Fulltext},
+			},
+		}}
+
+		AddDefaultStringAndTextFeatures(props, &interfaces.ResourceIndexConfig{DefaultKeywordIgnoreAbove: &limit})
+
+		require.Len(t, props[0].Features, 2)
+		assert.Equal(t, "raw", props[0].Features[0].FeatureName)
+		assert.Equal(t, 512, props[0].Features[0].Config["ignore_above"])
+		assert.Equal(t, "search", props[0].Features[1].FeatureName)
+	})
+
+	t.Run("reports all required features missing from legacy string and text fields", func(t *testing.T) {
+		fields := FieldsWithoutRequiredDefaultFeatures([]*interfaces.Property{
 			{Name: "code", Type: interfaces.DataType_String},
 			{Name: "body", Type: interfaces.DataType_Text},
-			{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword}}},
+			{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
+				{FeatureType: interfaces.PropertyFeatureType_Keyword, Config: map[string]any{"ignore_above": 256}},
+				{FeatureType: interfaces.PropertyFeatureType_Fulltext},
+			}},
+			{Name: "legacy", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{
+				{FeatureType: interfaces.PropertyFeatureType_Keyword},
+			}},
 		})
 
-		assert.Equal(t, []string{"body"}, fields)
+		assert.Equal(t, []string{
+			"code (keyword)",
+			"body (keyword, fulltext)",
+			"legacy (keyword config.ignore_above)",
+		}, fields)
 	})
 }
 

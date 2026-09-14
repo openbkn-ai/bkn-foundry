@@ -115,6 +115,10 @@ func TestResourceAccessGetByID(t *testing.T) {
 		assert.Equal(t, interfaces.ResourceLocalIndexStatusAvailable, got.LocalIndexStatus)
 		assert.Equal(t, "vega-build-resource-1-task-1", got.LocalIndexName)
 		assert.Equal(t, `{"mode":"batch","cursor":[10,"a"]}`, got.SyncMark)
+		require.NotNil(t, got.ColumnCount)
+		assert.Equal(t, 1, *got.ColumnCount)
+		require.NotNil(t, got.RowCount)
+		assert.Equal(t, int64(42), *got.RowCount)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 

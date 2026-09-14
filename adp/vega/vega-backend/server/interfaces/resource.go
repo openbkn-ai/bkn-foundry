@@ -49,8 +49,10 @@ const (
 	LocalIndexFulltextSubfieldName = "fulltext"
 	// LocalIndexVectorFieldSuffix is the fixed suffix for generated vector fields in managed indexes.
 	LocalIndexVectorFieldSuffix = "_vector"
-	// DefaultTextKeywordIgnoreAbove is the default exact-match length limit for text properties.
+	// DefaultTextKeywordIgnoreAbove 是 string/text 字段关键字精确匹配的默认最大长度。
 	DefaultTextKeywordIgnoreAbove = 256
+	// MaxKeywordIgnoreAbove 是本地索引接受的关键字精确匹配最大长度。
+	MaxKeywordIgnoreAbove = 8191
 )
 
 // RESOURCE_SORT is a whitelist of supported API sort fields. The data access
@@ -88,9 +90,9 @@ type Resource struct {
 	LocalIndexName   string               `json:"index_name,omitempty"`   // Index name, filled by the build task
 	SyncMark         string               `json:"-"`                      // Internal committed batch checkpoint
 
-	// Scale information: The list interface is obtained from the original JSON lightweight count without deserializing the complete structure. nil indicates that the source does not have this information (omitted during serialization)
+	// 规模信息：nil 表示当前资源无法提供该统计值，序列化时省略。
 	ColumnCount *int   `json:"column_count,omitempty"` // Number of schema_definition fields
-	RowCount    *int64 `json:"row_count,omitempty"`    // Source row count (the most recent estimated snapshot from discover, available only for some resource categories)
+	RowCount    *int64 `json:"row_count,omitempty"`    // table 为源端估算行数，dataset 为当前本地索引文档数
 
 	// Fields specific to the logical view
 	LogicType       string                 `json:"logic_type,omitempty"`       // Logical types: derived(derived), composite(composite
@@ -167,10 +169,12 @@ type PropertyFeature struct {
 
 // ResourceIndexConfig carries resource-level defaults and cross-field build policy.
 type ResourceIndexConfig struct {
-	PrimaryKeyFields        []string `json:"primary_key_fields,omitempty"`
-	IncrementalFields       []string `json:"incremental_fields,omitempty"`
-	DefaultFulltextAnalyzer string   `json:"default_fulltext_analyzer,omitempty"`
-	DefaultEmbeddingModel   string   `json:"default_embedding_model,omitempty"`
+	PrimaryKeyFields  []string `json:"primary_key_fields,omitempty"`
+	IncrementalFields []string `json:"incremental_fields,omitempty"`
+
+	DefaultKeywordIgnoreAbove *int   `json:"default_keyword_ignore_above,omitempty"`
+	DefaultFulltextAnalyzer   string `json:"default_fulltext_analyzer,omitempty"`
+	DefaultEmbeddingModel     string `json:"default_embedding_model,omitempty"`
 }
 
 // ResourcesQueryParams holds resource list query parameters.

@@ -12,10 +12,12 @@ import (
 )
 
 func TestResourceLocalStateJSON(t *testing.T) {
+	zero := int64(0)
 	resource := &Resource{
 		LocalIndexStatus: ResourceLocalIndexStatusAvailable,
 		LocalIndexName:   "vega-build-resource-task",
 		SyncMark:         `{"mode":"batch","cursor":[]}`,
+		RowCount:         &zero,
 	}
 
 	data, err := json.Marshal(resource)
@@ -36,6 +38,9 @@ func TestResourceLocalStateJSON(t *testing.T) {
 	if _, exists := payload["sync_mark"]; exists {
 		t.Fatalf("internal sync_mark must not be exposed: %s", data)
 	}
+	if got, exists := payload["row_count"]; !exists || got != float64(0) {
+		t.Fatalf("row_count = %v, exists = %v, want an explicit zero", got, exists)
+	}
 }
 
 func TestLocalIndexFieldContract(t *testing.T) {
@@ -44,5 +49,8 @@ func TestLocalIndexFieldContract(t *testing.T) {
 	}
 	if DefaultTextKeywordIgnoreAbove != 256 {
 		t.Fatalf("DefaultTextKeywordIgnoreAbove = %d, want %d", DefaultTextKeywordIgnoreAbove, 256)
+	}
+	if MaxKeywordIgnoreAbove != 8191 {
+		t.Fatalf("MaxKeywordIgnoreAbove = %d, want %d", MaxKeywordIgnoreAbove, 8191)
 	}
 }

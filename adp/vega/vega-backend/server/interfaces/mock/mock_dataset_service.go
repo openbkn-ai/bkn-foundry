@@ -41,6 +41,21 @@ func (m *MockDatasetService) EXPECT() *MockDatasetServiceMockRecorder {
 	return m.recorder
 }
 
+// CountDocuments mocks base method.
+func (m *MockDatasetService) CountDocuments(ctx context.Context, res *interfaces.Resource) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountDocuments", ctx, res)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountDocuments indicates an expected call of CountDocuments.
+func (mr *MockDatasetServiceMockRecorder) CountDocuments(ctx, res any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountDocuments", reflect.TypeOf((*MockDatasetService)(nil).CountDocuments), ctx, res)
+}
+
 // Create mocks base method.
 func (m *MockDatasetService) Create(ctx context.Context, res *interfaces.Resource) error {
 	m.ctrl.T.Helper()

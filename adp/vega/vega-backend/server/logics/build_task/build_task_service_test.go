@@ -424,7 +424,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 	})
-	t.Run("rejects legacy text fields until the resource configuration is re-saved", func(t *testing.T) {
+	t.Run("rejects legacy string and text fields until the resource configuration is re-saved", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
@@ -458,6 +458,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		})
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_UnsupportedSchemaFields)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "id")
 		assert.Contains(t, httpErr.BaseError.ErrorDetails, "material_number")
 		assert.Contains(t, httpErr.BaseError.ErrorDetails, "re-save the resource configuration")
 	})
@@ -1074,7 +1075,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 		assert.Contains(t, httpErr.BaseError.ErrorDetails, "create a new build task")
 	})
 
-	t.Run("rejects a legacy text schema until the resource is re-saved", func(t *testing.T) {
+	t.Run("rejects a legacy string or text schema until the resource is re-saved", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)

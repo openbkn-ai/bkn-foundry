@@ -660,6 +660,74 @@ func TestResourceServiceValidateIndexConfigModelsRejectsReferencedVectorConfig(t
 	assert.Contains(t, httpErr.BaseError.ErrorDetails, `vector feature on field "content" that references "embedding" must not define config`)
 }
 
+func TestValidateKeywordConfig(t *testing.T) {
+	t.Run("accepts boundary values", func(t *testing.T) {
+		minimum, maximum := 1, interfaces.MaxKeywordIgnoreAbove
+		for _, value := range []*int{&minimum, &maximum} {
+			err := validateKeywordConfig(context.Background(), []*interfaces.Property{{
+				Name: "title", Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{
+					FeatureType: interfaces.PropertyFeatureType_Keyword,
+					Config:      map[string]any{"ignore_above": *value},
+				}},
+			}}, &interfaces.ResourceIndexConfig{DefaultKeywordIgnoreAbove: value})
+			require.NoError(t, err)
+		}
+	})
+
+	t.Run("rejects invalid resource and field values", func(t *testing.T) {
+		zero := 0
+		err := validateKeywordConfig(context.Background(), nil,
+			&interfaces.ResourceIndexConfig{DefaultKeywordIgnoreAbove: &zero})
+		assert.Error(t, err)
+
+		for _, value := range []any{0, 1.5, 8192} {
+			err = validateKeywordConfig(context.Background(), []*interfaces.Property{{
+				Name: "title", Features: []interfaces.PropertyFeature{{
+					FeatureType: interfaces.PropertyFeatureType_Keyword,
+					Config:      map[string]any{"ignore_above": value},
+				}},
+			}}, nil)
+			assert.Error(t, err)
+		}
+	})
+}
+
+func TestResourceServicePopulateDatasetRowCount(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ds := vmock.NewMockDatasetService(ctrl)
+	rs := &resourceService{ds: ds}
+	resource := &interfaces.Resource{ID: "dataset-1", Category: interfaces.ResourceCategoryDataset}
+	ds.EXPECT().CountDocuments(gomock.Any(), resource).Return(int64(0), nil)
+
+	rs.populateDatasetRowCount(context.Background(), resource)
+
+	require.NotNil(t, resource.RowCount)
+	assert.Zero(t, *resource.RowCount)
+
+	failed := &interfaces.Resource{ID: "dataset-2", Category: interfaces.ResourceCategoryDataset}
+	ds.EXPECT().CountDocuments(gomock.Any(), failed).Return(int64(0), errors.New("count failed"))
+	rs.populateDatasetRowCount(context.Background(), failed)
+	assert.Nil(t, failed.RowCount)
+}
+
+func TestResourceServicePopulateDatasetSummaryRowCount(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ds := vmock.NewMockDatasetService(ctrl)
+	rs := &resourceService{ds: ds}
+	summary := &interfaces.ResourceSummary{
+		ID: "dataset-1", Category: interfaces.ResourceCategoryDataset, LocalIndexName: "index-1",
+	}
+	ds.EXPECT().CountDocuments(gomock.Any(), &interfaces.Resource{
+		ID: "dataset-1", Category: interfaces.ResourceCategoryDataset, LocalIndexName: "index-1",
+	}).Return(int64(12), nil)
+
+	rs.populateDatasetSummaryRowCount(context.Background(), summary)
+
+	require.NotNil(t, summary.RowCount)
+	assert.Equal(t, int64(12), *summary.RowCount)
+}
+
 func TestValidateSchemaDefinitionRejectsNullField(t *testing.T) {
 	err := validateSchemaDefinition(context.Background(), []*interfaces.Property{{Name: "id"}, nil})
 
@@ -674,12 +742,23 @@ func TestResourceServiceCreate(t *testing.T) {
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), gomock.Any()).Return(true, nil)
 		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
-		mockDS.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+		mockDS.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, got *interfaces.Resource) error {
+				require.Len(t, got.SchemaDefinition, 2)
+				require.Len(t, got.SchemaDefinition[0].Features, 1)
+				assert.Equal(t, interfaces.PropertyFeatureType_Keyword, got.SchemaDefinition[0].Features[0].FeatureType)
+				require.Len(t, got.SchemaDefinition[1].Features, 2)
+				return nil
+			})
 		mockPS.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 		resource, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
 			Name:     "test-dataset",
 			Category: interfaces.ResourceCategoryDataset,
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "code", Type: interfaces.DataType_String},
+				{Name: "body", Type: interfaces.DataType_Text},
+			},
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -707,7 +786,7 @@ func TestResourceServiceCreate(t *testing.T) {
 			t.Error("expected non-empty ID")
 		}
 	})
-	t.Run("create table adds default keyword feature to text fields", func(t *testing.T) {
+	t.Run("create table adds required default features to text fields", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
 		expectResourceServiceTransaction(t, rs, true)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -725,11 +804,12 @@ func TestResourceServiceCreate(t *testing.T) {
 		})
 
 		require.NoError(t, err)
-		require.Len(t, resource.SchemaDefinition[0].Features, 1)
+		require.Len(t, resource.SchemaDefinition[0].Features, 2)
 		keyword := resource.SchemaDefinition[0].Features[0]
 		assert.Equal(t, interfaces.PropertyFeatureType_Keyword, keyword.FeatureType)
 		assert.Equal(t, interfaces.LocalIndexKeywordSubfieldName, keyword.FeatureName)
 		assert.Equal(t, interfaces.DefaultTextKeywordIgnoreAbove, keyword.Config["ignore_above"])
+		assert.Equal(t, interfaces.PropertyFeatureType_Fulltext, resource.SchemaDefinition[0].Features[1].FeatureType)
 	})
 	t.Run("create with explicit id", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
@@ -1185,12 +1265,15 @@ func TestResourceServiceUpdate(t *testing.T) {
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
 		resource := &interfaces.Resource{
-			ID:               "r1",
-			CatalogID:        "cat1",
-			Category:         interfaces.ResourceCategoryDataset,
-			Name:             "dataset",
-			LocalIndexName:   "vega-dataset-index-1",
-			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
+			ID:             "r1",
+			CatalogID:      "cat1",
+			Category:       interfaces.ResourceCategoryDataset,
+			Name:           "dataset",
+			LocalIndexName: "vega-dataset-index-1",
+			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{{
+				FeatureName: "keyword", FeatureType: interfaces.PropertyFeatureType_Keyword,
+				Config: map[string]any{"ignore_above": interfaces.DefaultTextKeywordIgnoreAbove},
+			}}}},
 		}
 		mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
@@ -1255,12 +1338,15 @@ func TestResourceServiceUpdate(t *testing.T) {
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
 		resource := &interfaces.Resource{
-			ID:               "r1",
-			CatalogID:        "cat1",
-			Category:         interfaces.ResourceCategoryDataset,
-			Name:             "dataset",
-			LocalIndexName:   "vega-dataset-index-1",
-			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
+			ID:             "r1",
+			CatalogID:      "cat1",
+			Category:       interfaces.ResourceCategoryDataset,
+			Name:           "dataset",
+			LocalIndexName: "vega-dataset-index-1",
+			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{{
+				FeatureName: "keyword", FeatureType: interfaces.PropertyFeatureType_Keyword,
+				Config: map[string]any{"ignore_above": interfaces.DefaultTextKeywordIgnoreAbove},
+			}}}},
 		}
 		mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).Return(nil, int64(0), nil)
 		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), resource, int64(42)).Return(int64(0), nil)
@@ -1421,14 +1507,20 @@ func TestResourceServiceUpdate(t *testing.T) {
 			LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
 			SyncMark:         `{"mode":"batch","cursor":[]}`,
 			SourceIdentifier: "public.orders",
-			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
+			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{{
+				FeatureName: "keyword", FeatureType: interfaces.PropertyFeatureType_Keyword,
+				Config: map[string]any{"ignore_above": interfaces.DefaultTextKeywordIgnoreAbove},
+			}}}},
 		}, &interfaces.ResourceRequest{
 			CatalogID:        "cat1",
 			Category:         interfaces.ResourceCategoryTable,
 			Name:             "table",
 			Description:      "new",
 			SourceIdentifier: "public.orders",
-			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
+			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{{
+				FeatureName: "keyword", FeatureType: interfaces.PropertyFeatureType_Keyword,
+				Config: map[string]any{"ignore_above": interfaces.DefaultTextKeywordIgnoreAbove},
+			}}}},
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1451,7 +1543,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 				if got.LocalIndexName != "vega-build-r1-task-1" {
 					t.Fatalf("expected LocalIndexName to be preserved, got %q", got.LocalIndexName)
 				}
-				if len(got.SchemaDefinition) != 1 || len(got.SchemaDefinition[0].Features) != 1 {
+				if len(got.SchemaDefinition) != 1 || len(got.SchemaDefinition[0].Features) != 2 {
 					t.Fatalf("expected updated schema features, got %#v", got.SchemaDefinition)
 				}
 				return 1, nil
@@ -1470,7 +1562,10 @@ func TestResourceServiceUpdate(t *testing.T) {
 			LocalIndexName:   "vega-build-r1-task-1",
 			SyncMark:         `{"mode":"batch","cursor":[1]}`,
 			SourceIdentifier: "public.orders",
-			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
+			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{{
+				FeatureName: "keyword", FeatureType: interfaces.PropertyFeatureType_Keyword,
+				Config: map[string]any{"ignore_above": interfaces.DefaultTextKeywordIgnoreAbove},
+			}}}},
 		}, &interfaces.ResourceRequest{
 			CatalogID:        "cat1",
 			Category:         interfaces.ResourceCategoryTable,
@@ -1729,7 +1824,10 @@ func TestResourceServiceUpdate(t *testing.T) {
 			Name:             "table",
 			LocalIndexName:   "vega-build-r1-task-1",
 			SourceIdentifier: "public.orders",
-			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
+			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{{
+				FeatureName: "keyword", FeatureType: interfaces.PropertyFeatureType_Keyword,
+				Config: map[string]any{"ignore_above": interfaces.DefaultTextKeywordIgnoreAbove},
+			}}}},
 		}, &interfaces.ResourceRequest{
 			CatalogID:        "cat1",
 			Category:         interfaces.ResourceCategoryTable,
@@ -1740,6 +1838,10 @@ func TestResourceServiceUpdate(t *testing.T) {
 				DisplayName: "Order ID",
 				Type:        interfaces.DataType_String,
 				Description: "business id",
+				Features: []interfaces.PropertyFeature{{
+					FeatureName: "keyword", FeatureType: interfaces.PropertyFeatureType_Keyword,
+					Config: map[string]any{"ignore_above": interfaces.DefaultTextKeywordIgnoreAbove},
+				}},
 			}},
 		})
 		if err != nil {

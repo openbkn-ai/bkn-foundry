@@ -138,6 +138,15 @@ func (ds *datasetService) ListDocuments(ctx context.Context, res *interfaces.Res
 	return documents, total, nil
 }
 
+// CountDocuments 返回 Dataset 当前本地索引中的文档总数。
+func (ds *datasetService) CountDocuments(ctx context.Context, res *interfaces.Resource) (int64, error) {
+	_, total, err := ds.ListDocuments(ctx, res, &interfaces.ResourceDataQueryParams{
+		Paging:    interfaces.PagingRequest{Limit: 1},
+		NeedTotal: true,
+	})
+	return total, err
+}
+
 // GetDocuments retrieves documents in input order. With ignoreMissing enabled,
 // a missing document is represented by a nil entry at the same position.
 func (ds *datasetService) GetDocuments(ctx context.Context, res *interfaces.Resource, docIDs []string, ignoreMissing bool) ([]map[string]any, error) {

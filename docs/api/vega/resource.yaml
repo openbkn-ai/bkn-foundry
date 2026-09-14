@@ -465,7 +465,10 @@ components:
             discover 每次刷新，永远反映源端当前值。
           type: string
         features:
-          description: 字段特性集合；同一字段的同类 Feature 最多一个
+          description: |
+            字段特性集合；同一字段的同类 Feature 最多一个。新建或重新保存 table/dataset 时，
+            string 字段会自动补齐 keyword，text 字段会自动补齐 keyword 和 fulltext；已有同类
+            Feature（包括自定义 name）保持不变。历史配置不会在读取时自动迁移。
           type: array
           items:
             $ref: "#/components/schemas/PropertyFeature"
@@ -505,6 +508,8 @@ components:
           type: boolean
         config:
           description: |
+            `feature_type=keyword` 时，`ignore_above` 必须是 1–8191 的整数；省略时继承
+            `index_config.default_keyword_ignore_above`，资源默认值为 256。
             特性配置。`feature_type=vector` 时，`embedding_model` 为模型管理服务中的
             embedding `model_id`；省略时继承 `index_config.default_embedding_model`。服务端在
             创建/更新时查询模型登记信息并写入只读 `dimension`，调用方不应指定它。
@@ -666,7 +671,7 @@ components:
           description: "`schema_definition` 的字段数"
           type: integer
         row_count:
-          description: 最近一次发现记录的源端行数估算
+          description: table 为最近一次发现记录的源端行数估算；dataset 为当前本地索引文档数；无法计算时省略
           type: integer
           format: int64
         logic_type:
@@ -784,6 +789,12 @@ components:
       description: 本地索引构建配置
       type: object
       properties:
+        default_keyword_ignore_above:
+          description: keyword 特征默认最大索引长度；字段未覆盖时使用，取值范围 1–8191
+          type: integer
+          minimum: 1
+          maximum: 8191
+          default: 256
         primary_key_fields:
           description: Must identify a unique source row. Fields absent from incremental_fields are appended to the internal batch cursor.
           type: array
@@ -870,7 +881,7 @@ components:
           description: Schema 字段数
           type: integer
         row_count:
-          description: 最近一次发现记录的源端行数估算
+          description: table 为最近一次发现记录的源端行数估算；dataset 为当前本地索引文档数；无法计算时省略
           type: integer
           format: int64
         logic_type:

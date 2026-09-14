@@ -98,6 +98,21 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		assert.Equal(t, int64(1), total)
 	})
 
+	t.Run("count documents requests an exact total", func(t *testing.T) {
+		ds, lim := newDatasetServiceMock(t)
+		lim.EXPECT().ListDocuments(gomock.Any(), "dataset-1", resource, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, _ *interfaces.Resource, got *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+				assert.True(t, got.NeedTotal)
+				assert.Equal(t, 1, got.Paging.Limit)
+				return nil, 42, nil
+			})
+
+		total, err := ds.CountDocuments(ctx, resource)
+
+		require.NoError(t, err)
+		assert.Equal(t, int64(42), total)
+	})
+
 	t.Run("list documents answers 400 for a condition the index cannot build", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
 		cause := fmt.Errorf("failed to build filter query: %w",

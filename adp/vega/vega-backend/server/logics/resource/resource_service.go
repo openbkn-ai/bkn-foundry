@@ -497,12 +497,17 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 			req.SourceIdentifier = fmt.Sprintf("%s.%s", req.CatalogID, id)
 		}
 	}
-	if req.Category == interfaces.ResourceCategoryTable && req.SchemaDefinition != nil {
-		AddDefaultTextKeywordFeatures(req.SchemaDefinition)
+	if (req.Category == interfaces.ResourceCategoryTable || req.Category == interfaces.ResourceCategoryDataset) && req.SchemaDefinition != nil {
+		AddDefaultStringAndTextFeatures(req.SchemaDefinition, req.IndexConfig)
 	}
 
 	if err := validateSchemaDefinition(ctx, req.SchemaDefinition); err != nil {
 		return nil, err
+	}
+	if req.Category == interfaces.ResourceCategoryTable || req.Category == interfaces.ResourceCategoryDataset {
+		if err := validateKeywordConfig(ctx, req.SchemaDefinition, req.IndexConfig); err != nil {
+			return nil, err
+		}
 	}
 	if req.Category == interfaces.ResourceCategoryTable {
 		if err := validateLocalIndexVectorOutputs(ctx, req.SchemaDefinition); err != nil {
@@ -662,6 +667,7 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 		span.RecordError(err)
 		logger.Warnf("Failed to populate resource account names: %v", err)
 	}
+	rs.populateDatasetRowCount(ctx, resource)
 
 	span.SetStatus(codes.Ok, "")
 	return resource, nil
@@ -791,6 +797,7 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string) ([]*inter
 				WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", interfaces.OPERATION_TYPE_VIEW_DETAIL))
 		}
 		accountInfos = append(accountInfos, &resource.Creator, &resource.Updater)
+		rs.populateDatasetRowCount(ctx, resource)
 	}
 
 	err = rs.ums.GetAccountNames(ctx, accountInfos)
@@ -967,6 +974,7 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 	accountInfos := make([]*interfaces.AccountInfo, 0, len(summaries)*2)
 	for _, c := range summaries {
 		accountInfos = append(accountInfos, &c.Creator, &c.Updater)
+		rs.populateDatasetSummaryRowCount(ctx, c)
 	}
 
 	err = rs.ums.GetAccountNames(ctx, accountInfos)
@@ -977,6 +985,37 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 
 	span.SetStatus(codes.Ok, "")
 	return summaries, total, nil
+}
+
+func (rs *resourceService) populateDatasetRowCount(ctx context.Context, resource *interfaces.Resource) {
+	if resource == nil || resource.Category != interfaces.ResourceCategoryDataset {
+		return
+	}
+	count, err := rs.ds.CountDocuments(ctx, resource)
+	if err != nil {
+		logger.Warnf("Failed to populate dataset row count for resource %s: %v", resource.ID, err)
+		resource.RowCount = nil
+		return
+	}
+	resource.RowCount = &count
+}
+
+func (rs *resourceService) populateDatasetSummaryRowCount(ctx context.Context, summary *interfaces.ResourceSummary) {
+	if summary == nil || summary.Category != interfaces.ResourceCategoryDataset {
+		return
+	}
+	resource := &interfaces.Resource{
+		ID:             summary.ID,
+		Category:       summary.Category,
+		LocalIndexName: summary.LocalIndexName,
+	}
+	count, err := rs.ds.CountDocuments(ctx, resource)
+	if err != nil {
+		logger.Warnf("Failed to populate dataset row count for resource %s: %v", summary.ID, err)
+		summary.RowCount = nil
+		return
+	}
+	summary.RowCount = &count
 }
 
 func (rs *resourceService) InternalList(ctx context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.ResourceSummary, error) {
@@ -1012,11 +1051,14 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		return err
 	}
 
-	// Re-saving a table resource is the explicit upgrade boundary for the text/keyword contract.
-	// Do not normalize stored schemas while reading or building: legacy resources must remain
-	// distinguishable and their build request must tell the owner to re-save the configuration.
-	if resource.Category == interfaces.ResourceCategoryTable && req.SchemaDefinition != nil {
-		AddDefaultTextKeywordFeatures(req.SchemaDefinition)
+	// 重新保存 table/dataset 是升级 string/text 默认特征契约的边界。
+	// 读取和构建历史 Schema 时不补齐，以便构建请求明确提示用户重新保存配置。
+	if (resource.Category == interfaces.ResourceCategoryTable || resource.Category == interfaces.ResourceCategoryDataset) && req.SchemaDefinition != nil {
+		indexConfig := req.IndexConfig
+		if indexConfig == nil {
+			indexConfig = resource.IndexConfig
+		}
+		AddDefaultStringAndTextFeatures(req.SchemaDefinition, indexConfig)
 	}
 
 	buildRelevantChanged, err := rs.validateResourceUpdateScope(ctx, resource, req)
@@ -1089,6 +1131,11 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 
 	if err := validateSchemaDefinition(ctx, resource.SchemaDefinition); err != nil {
 		return err
+	}
+	if resource.Category == interfaces.ResourceCategoryTable || resource.Category == interfaces.ResourceCategoryDataset {
+		if err := validateKeywordConfig(ctx, resource.SchemaDefinition, resource.IndexConfig); err != nil {
+			return err
+		}
 	}
 	if resource.Category == interfaces.ResourceCategoryTable {
 		if err := validateLocalIndexVectorOutputs(ctx, resource.SchemaDefinition); err != nil {
@@ -1558,6 +1605,12 @@ func (rs *resourceService) InternalCreate(ctx context.Context, tx *sql.Tx, req *
 			return nil, err
 		}
 	}
+	if (req.Category == interfaces.ResourceCategoryTable || req.Category == interfaces.ResourceCategoryDataset) && req.SchemaDefinition != nil {
+		AddDefaultStringAndTextFeatures(req.SchemaDefinition, req.IndexConfig)
+		if err := validateKeywordConfig(ctx, req.SchemaDefinition, req.IndexConfig); err != nil {
+			return nil, err
+		}
+	}
 
 	accountInfo, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	resource := &interfaces.Resource{
@@ -1853,6 +1906,32 @@ func validateSchemaDefinition(ctx context.Context, schema []*interfaces.Property
 				return unsupportedResourceUpdateError(ctx, fmt.Sprintf("property %q has more than one %q feature", property.Name, feature.FeatureType))
 			}
 			seen[feature.FeatureType] = struct{}{}
+		}
+	}
+	return nil
+}
+
+func validateKeywordConfig(ctx context.Context, schema []*interfaces.Property, indexConfig *interfaces.ResourceIndexConfig) error {
+	if indexConfig != nil && indexConfig.DefaultKeywordIgnoreAbove != nil {
+		value := *indexConfig.DefaultKeywordIgnoreAbove
+		if value < 1 || value > interfaces.MaxKeywordIgnoreAbove {
+			return unsupportedResourceUpdateError(ctx, fmt.Sprintf(
+				"index_config.default_keyword_ignore_above must be an integer between 1 and %d",
+				interfaces.MaxKeywordIgnoreAbove))
+		}
+	}
+	for _, property := range schema {
+		for _, feature := range property.Features {
+			if feature.FeatureType != interfaces.PropertyFeatureType_Keyword {
+				continue
+			}
+			value, exists := feature.Config["ignore_above"]
+			limit, valid := positiveIntegerConfigValue(value)
+			if !exists || !valid || limit > interfaces.MaxKeywordIgnoreAbove {
+				return unsupportedResourceUpdateError(ctx, fmt.Sprintf(
+					"keyword feature on property %q must define config.ignore_above as an integer between 1 and %d",
+					property.Name, interfaces.MaxKeywordIgnoreAbove))
+			}
 		}
 	}
 	return nil
