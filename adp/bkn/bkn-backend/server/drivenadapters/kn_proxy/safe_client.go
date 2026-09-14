@@ -159,7 +159,7 @@ func (c *safeClient) do(ctx context.Context, method, path string, body, out any)
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseBytes))
-		return resp.StatusCode, fmt.Errorf("bkn-safe %s %s returned status %d", method, path, resp.StatusCode)
+		return resp.StatusCode, &interfaces.ManagedProxyStatusError{Method: method, Path: path, StatusCode: resp.StatusCode}
 	}
 	if out == nil {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseBytes))

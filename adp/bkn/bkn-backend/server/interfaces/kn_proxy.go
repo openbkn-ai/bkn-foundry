@@ -7,6 +7,7 @@ package interfaces
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"sort"
 )
 
@@ -23,7 +24,35 @@ const (
 
 	ProxyGrantSourceTypeKNBinding = "kn_proxy_binding"
 	KNProxyBindingTypeCapability  = "capability_binding"
+
+	// KNProxyTargetTypeSkill is the bkn-safe resource type of a mounted Skill.
+	// Its grant sources are best effort: see IsBestEffortProxyGrantSource.
+	KNProxyTargetTypeSkill = "skill"
 )
+
+// ManagedProxyStatusError is a non-success status answered by bkn-safe's
+// managed proxy API. Callers use the status to tell a request bkn-safe refuses
+// to understand (400) from an unavailable service.
+type ManagedProxyStatusError struct {
+	Method     string
+	Path       string
+	StatusCode int
+}
+
+func (e *ManagedProxyStatusError) Error() string {
+	return fmt.Sprintf("bkn-safe %s %s returned status %d", e.Method, e.Path, e.StatusCode)
+}
+
+// IsBestEffortProxyGrantSource reports whether a grant source may be left
+// unmaterialized without failing the network's proxy synchronization.
+//
+// Only a mounted Skill qualifies. It is excluded from the model version, and a
+// delegator who lacks execute on it, or an authorization service that predates
+// Skill sources, leaves that one Skill unreadable through the proxy instead of
+// blocking every proxied data read and execution of the network.
+func IsBestEffortProxyGrantSource(source ProxyGrantSourceSpec) bool {
+	return source.BindingType == KNProxyBindingTypeCapability && source.ResourceType == KNProxyTargetTypeSkill
+}
 
 // KNProxyAccount is BKN's authoritative, environment-local mapping between one
 // knowledge network and one bkn-safe managed application account.

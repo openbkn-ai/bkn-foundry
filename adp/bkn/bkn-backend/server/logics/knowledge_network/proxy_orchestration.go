@@ -32,13 +32,21 @@ type proxyPublishPlan struct {
 	delegatorID     string
 	modelVersion    string
 	resolvedSources []interfaces.ProxyGrantResolvedSource
-	lockOwner       string
-	createdMapping  bool
+	// grants is the preflight's decision on the desired source set: which
+	// sources it checked and which best-effort sources it left out.
+	grants         *proxyGrantSelection
+	lockOwner      string
+	createdMapping bool
 }
 
+// publishedProxyBindingCacheEntry caches one network's derived sources. Skill
+// sources are outside the model version, so the entry is also keyed by the
+// mapping's own version, which every synchronization advances: a Skill mounted
+// or released on another replica still invalidates this one's entry.
 type publishedProxyBindingCacheEntry struct {
-	modelVersion string
-	sources      []interfaces.ProxyGrantSourceSpec
+	modelVersion   string
+	mappingVersion int64
+	sources        []interfaces.ProxyGrantSourceSpec
 }
 
 type missingProxyPermission struct {
@@ -99,11 +107,12 @@ func (kns *knowledgeNetworkService) prepareProxyPublishWithBaseline(ctx context.
 	// historical delegator and asks the current editor to take over only when that
 	// delegator has lost the exact downstream operation. Doing this before the
 	// business write avoids discovering an invalid retained source after commit.
-	resolvedSources, err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources)
+	grants, err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources)
 	if err != nil {
 		return nil, err
 	}
-	plan.resolvedSources = resolvedSources
+	plan.grants = grants
+	plan.resolvedSources = grants.resolved
 	plan.modelVersion = version
 	releaseOnError = false
 	return plan, nil
@@ -243,17 +252,46 @@ func (kns *knowledgeNetworkService) abortCreatedProxy(ctx context.Context, plan 
 	}
 }
 
+// preflightProxySources checks the complete desired source set against the
+// delegator's current authority and decides what synchronization materializes.
+//
+// Data and execution sources keep their all-or-nothing contract: any one of them
+// denied refuses the publication with ProxyPermissionMissing. A best-effort
+// source (a mounted Skill) never does. When the delegator lacks it, or bkn-safe
+// predates Skill sources and rejects the batch outright, it is left out of the
+// selection, logged per network, and the rest of the network proceeds.
 func (kns *knowledgeNetworkService) preflightProxySources(ctx context.Context, proxyID, delegatorID string,
-	sources []interfaces.ProxyGrantSourceSpec) ([]interfaces.ProxyGrantResolvedSource, error) {
+	sources []interfaces.ProxyGrantSourceSpec) (*proxyGrantSelection, error) {
+	selection := newProxyGrantSelection(sources)
 	if len(sources) == 0 {
-		return nil, nil
+		return selection, nil
 	}
-	result, err := kns.mpa.CheckGrants(ctx, proxyID, delegatorID, sources)
+	checked := sources
+	result, err := kns.mpa.CheckGrants(ctx, proxyID, delegatorID, checked)
 	if err != nil {
-		return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "proxy permission preflight failed")
+		required, optional := splitBestEffortProxySources(sources)
+		if len(optional) == 0 || !isManagedProxyRequestRejected(err) {
+			return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "proxy permission preflight failed")
+		}
+		// An authorization service that does not know Skill sources refuses the
+		// whole batch as invalid. Ask again without them: the network's data and
+		// execution bindings must not wait for a Skill.
+		checked = required
+		if len(checked) == 0 {
+			result = interfaces.ProxyGrantBatchCheckResult{}
+		} else if result, err = kns.mpa.CheckGrants(ctx, proxyID, delegatorID, checked); err != nil {
+			return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "proxy permission preflight failed")
+		}
+		for _, source := range optional {
+			selection.skip(source, proxySkipReasonUnsupported)
+		}
 	}
 	missing := make([]missingProxyPermission, 0, len(result.DeniedSources))
 	for _, source := range result.DeniedSources {
+		if interfaces.IsBestEffortProxyGrantSource(source) {
+			selection.skip(source, proxySkipReasonDelegatorDenied)
+			continue
+		}
 		missing = append(missing, missingProxyPermission{
 			ResourceType: source.ResourceType,
 			ResourceID:   source.ResourceID,
@@ -281,13 +319,17 @@ func (kns *knowledgeNetworkService) preflightProxySources(ctx context.Context, p
 		}
 		resolved[proxySourceResolutionKey(source.ProxyGrantSourceSpec)] = true
 	}
-	for _, source := range sources {
+	for _, source := range checked {
+		if selection.skipped(source) {
+			continue
+		}
 		if !resolved[proxySourceResolutionKey(source)] {
 			return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable,
 				"proxy preflight response omitted an effective delegator")
 		}
 	}
-	return result.ResolvedSources, nil
+	selection.resolved = result.ResolvedSources
+	return selection, nil
 }
 
 func proxySourceResolutionKey(source interfaces.ProxyGrantSourceSpec) string {
@@ -341,11 +383,12 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 	// historical delegator is still valid, and requires this editor's exact
 	// downstream operation only for additions or an explicit delegator transfer.
 	// Removed sources are absent from the candidate and therefore need no check.
-	resolvedSources, err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources)
+	grants, err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources)
 	if err != nil {
 		return err
 	}
-	plan.resolvedSources = resolvedSources
+	plan.grants = grants
+	plan.resolvedSources = grants.resolved
 	plan.modelVersion = version
 
 	mutationCtx := interfaces.WithVerifiedDependencySources(ctx, plan.resolvedSources)
@@ -453,12 +496,20 @@ func (kns *knowledgeNetworkService) PublishKNCapabilityMutation(ctx context.Cont
 		rollback()
 		return nil, invalidProxyTargetError(ctx, err)
 	}
-	resolvedSources, err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources)
+	grants, err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources)
 	if err != nil {
 		rollback()
 		return nil, err
 	}
-	plan.resolvedSources = resolvedSources
+	// Mounting a Skill is where its grant is vouched for, so the mounter must
+	// hold execute on it, as for a tool. Everywhere else a Skill grant is best
+	// effort; this is the one write that asks for it by name.
+	if err := refuseNewlyMountedSkillsWithoutGrant(ctx, grants, currentBindings, result.Bindings); err != nil {
+		rollback()
+		return nil, err
+	}
+	plan.grants = grants
+	plan.resolvedSources = grants.resolved
 	plan.modelVersion = version
 	if err := kns.markProxyPending(ctx, tx, plan); err != nil {
 		rollback()
@@ -678,6 +729,19 @@ func (kns *knowledgeNetworkService) finishProxyPublish(ctx context.Context, plan
 		}
 		plan.modelVersion = latestVersion
 	}
+	// The latest model can carry a Skill the preflight never saw, such as one an
+	// import mounted inside its transaction. Sync is all-or-nothing, so decide
+	// that Skill's fate first rather than let it fail the whole network.
+	if plan.grants.needsRecheck(sources) {
+		grants, err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources)
+		if err != nil {
+			kns.recordProxySyncFailure(ctx, plan, latestVersion, err)
+			return err
+		}
+		plan.grants = grants
+	}
+	sources = plan.grants.materialized(sources)
+	plan.grants.logSkipped(ctx, plan.mapping.KNID)
 	if _, err := kns.mpa.SyncGrants(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources); err != nil {
 		kns.recordProxySyncFailure(ctx, plan, latestVersion, err)
 		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "synchronize latest proxy permissions")
@@ -1017,7 +1081,7 @@ func (kns *knowledgeNetworkService) readyPublishedProxyBindings(ctx context.Cont
 			berrors.BknBackend_KnowledgeNetwork_ProxySyncPending,
 			"knowledge network proxy is not synchronized with the current published model")
 	}
-	sources, modelVersion, err := kns.loadPublishedProxyBindings(ctx, knID, mapping.PublishedModelVersion)
+	sources, modelVersion, err := kns.loadPublishedProxyBindings(ctx, knID, mapping.PublishedModelVersion, mapping.Version)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1032,10 +1096,10 @@ func (kns *knowledgeNetworkService) readyPublishedProxyBindings(ctx context.Cont
 }
 
 func (kns *knowledgeNetworkService) loadPublishedProxyBindings(ctx context.Context, knID,
-	expectedVersion string) ([]interfaces.ProxyGrantSourceSpec, string, error) {
+	expectedVersion string, mappingVersion int64) ([]interfaces.ProxyGrantSourceSpec, string, error) {
 	if cached, ok := kns.proxyBindingCache.Load(knID); ok {
 		entry, valid := cached.(publishedProxyBindingCacheEntry)
-		if valid && entry.modelVersion == expectedVersion {
+		if valid && entry.modelVersion == expectedVersion && entry.mappingVersion == mappingVersion {
 			return entry.sources, entry.modelVersion, nil
 		}
 	}
@@ -1051,7 +1115,7 @@ func (kns *knowledgeNetworkService) loadPublishedProxyBindings(ctx context.Conte
 		return nil, "", proxyHTTPError(ctx, http.StatusServiceUnavailable,
 			"knowledge network proxy is not synchronized with the current published model")
 	}
-	entry := publishedProxyBindingCacheEntry{modelVersion: modelVersion, sources: sources}
+	entry := publishedProxyBindingCacheEntry{modelVersion: modelVersion, mappingVersion: mappingVersion, sources: sources}
 	kns.proxyBindingCache.Store(knID, entry)
 	return entry.sources, entry.modelVersion, nil
 }

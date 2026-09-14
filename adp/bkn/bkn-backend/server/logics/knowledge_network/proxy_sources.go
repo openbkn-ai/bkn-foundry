@@ -61,7 +61,10 @@ func buildProxyGrantSourcesWithCapabilities(kn *interfaces.KN,
 	seen := make(map[string]struct{})
 	seenBindings := make(map[string]struct{})
 
-	add := func(bindingType, bindingID, resourceType, resourceID, operation, detail string) error {
+	// addSource records one grant source. inVersion says whether the binding
+	// also enters the model version digest; see the Skill case below for the
+	// one kind that does not.
+	addSource := func(inVersion bool, bindingType, bindingID, resourceType, resourceID, operation, detail string) error {
 		bindingID = strings.TrimSpace(bindingID)
 		resourceID = strings.TrimSpace(resourceID)
 		if bindingID == "" || resourceID == "" {
@@ -83,6 +86,9 @@ func buildProxyGrantSourcesWithCapabilities(kn *interfaces.KN,
 			seen[key] = struct{}{}
 			sources = append(sources, spec)
 		}
+		if !inVersion {
+			return nil
+		}
 		binding := proxyModelBinding{
 			Type: bindingType, ID: bindingID, TargetType: resourceType, TargetID: resourceID, Detail: detail,
 		}
@@ -92,6 +98,9 @@ func buildProxyGrantSourcesWithCapabilities(kn *interfaces.KN,
 			bindings = append(bindings, binding)
 		}
 		return nil
+	}
+	add := func(bindingType, bindingID, resourceType, resourceID, operation, detail string) error {
+		return addSource(true, bindingType, bindingID, resourceType, resourceID, operation, detail)
 	}
 
 	for _, objectType := range projectedObjectTypes {
@@ -243,8 +252,22 @@ func buildProxyGrantSourcesWithCapabilities(kn *interfaces.KN,
 		detail := capability.CapabilityType + ":" + strings.TrimSpace(capability.CapabilityID)
 		switch capability.CapabilityType {
 		case interfaces.CAPABILITY_TYPE_SKILL:
-			// Skill execution remains caller-scoped and does not use a managed proxy.
-			continue
+			// The proxy reads a mounted Skill for callers who may view the network
+			// (#1550); running one stays caller-scoped. The source is resolvable and
+			// synchronized like any other, but it stays out of the model version:
+			// that version gates every proxied read of the network, and a Skill
+			// grant is best effort, so a Skill must never be what holds a network's
+			// data and execution bindings back.
+			// Unlike a tool, an incomplete Skill row is skipped rather than rejected:
+			// rejecting it would fail the whole projection, and with it the network.
+			if strings.TrimSpace(capability.CapabilityID) == "" || strings.TrimSpace(capability.ID) == "" {
+				continue
+			}
+			if err := addSource(false, interfaces.KNProxyBindingTypeCapability, capability.ID,
+				interfaces.KNProxyTargetTypeSkill, capability.CapabilityID,
+				interfaces.OPERATION_TYPE_EXECUTE, detail); err != nil {
+				return nil, "", err
+			}
 		case interfaces.CAPABILITY_TYPE_FUNCTION:
 			if strings.TrimSpace(capability.CapabilityID) == "" {
 				return nil, "", fmt.Errorf("capability binding %s has no tool id", capability.ID)

@@ -2,7 +2,14 @@ openapi: 3.0.3
 info:
   title: BKN Knowledge Network Managed Proxy API
   version: 0.2.0
-  description: OAuth-protected governance APIs and cluster-internal runtime APIs for environment-local knowledge-network proxy mappings.
+  description: |
+    OAuth-protected governance APIs and cluster-internal runtime APIs for environment-local knowledge-network proxy mappings.
+
+    The model version covers data and execution bindings only. A Skill mounted on the network contributes a
+    `skill`/`execute` grant source that resolve accepts and synchronization materializes, but it is excluded from
+    the version and is best effort: when the delegator lacks execute on the Skill, or bkn-safe rejects Skill
+    sources, synchronization leaves that grant out, logs it, and the mapping still becomes ready. Mounting a new
+    Skill still requires the mounter to hold execute on it, as for a tool.
 paths:
   /api/bkn-backend/v1/proxy-accounts:
     get:

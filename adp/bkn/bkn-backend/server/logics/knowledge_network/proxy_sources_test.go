@@ -86,10 +86,12 @@ func TestBuildProxyGrantSourcesIncludesMountedExecutableCapabilities(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sources) != 2 {
-		t.Fatalf("len(sources) = %d, want 2", len(sources))
+	if len(sources) != 3 {
+		t.Fatalf("len(sources) = %d, want 3", len(sources))
 	}
-	want := map[string]string{"binding-function": "tool_box/box-1", "binding-mcp": "mcp/mcp-1"}
+	want := map[string]string{
+		"binding-function": "tool_box/box-1", "binding-mcp": "mcp/mcp-1", "binding-skill": "skill/skill-1",
+	}
 	for _, source := range sources {
 		if source.BindingType != "capability_binding" || source.Operation != interfaces.OPERATION_TYPE_EXECUTE {
 			t.Fatalf("unexpected capability source: %#v", source)
@@ -336,5 +338,128 @@ func TestBuildProxyGrantSourcesDeduplicatesTopLevelAndNestedCopies(t *testing.T)
 	if withGroupVersion != topLevelVersion {
 		t.Fatalf("duplicate concept-group copy changed proxy version: got %q, want %q",
 			withGroupVersion, topLevelVersion)
+	}
+}
+
+// proxyVersionFixture is the model shared with the 0.1.5 migration script's
+// tests (deploy/scripts/upgrades/0.1.5/permission_model_transition). Both sides
+// pin the same digest, so neither can change the projection alone.
+func proxyVersionFixture() (*interfaces.KN, []*interfaces.CapabilityBinding) {
+	kn := &interfaces.KN{
+		KNID: "kn-golden",
+		ObjectTypes: []*interfaces.ObjectType{
+			{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+				OTID:       "ot-order",
+				DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "res-order"},
+				LogicProperties: []*interfaces.LogicProperty{{
+					Name: "risk", Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+					DataSource: &interfaces.ResourceInfo{Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL, BoxID: "box-1", ToolID: "tool-risk"},
+				}},
+			}},
+			{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+				OTID:       "ot-customer",
+				DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "res-customer"},
+			}},
+		},
+		RelationTypes: []*interfaces.RelationType{{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
+			RTID: "rt-placed-by", SourceObjectTypeID: "ot-order", TargetObjectTypeID: "ot-customer",
+		}}},
+		Metrics: []*interfaces.MetricDefinition{{ID: "metric-revenue", ScopeType: "object_type", ScopeRef: "ot-order"}},
+		ActionTypes: []*interfaces.ActionType{
+			{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+				ATID: "at-refund", ActionSource: interfaces.ActionSource{Type: interfaces.ACTION_SOURCE_TYPE_TOOL, BoxID: "box-2", ToolID: "tool-refund"},
+			}},
+			{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+				ATID: "at-notify", ActionSource: interfaces.ActionSource{Type: interfaces.ACTION_SOURCE_TYPE_MCP, McpID: "mcp-1", ToolName: "notify"},
+			}},
+		},
+	}
+	capabilities := []*interfaces.CapabilityBinding{
+		{ID: "cap-function", KNID: "kn-golden", Branch: interfaces.MAIN_BRANCH,
+			CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, OwnerID: "box-3", CapabilityID: "tool-3"},
+		{ID: "cap-mcp", KNID: "kn-golden", Branch: interfaces.MAIN_BRANCH,
+			CapabilityType: interfaces.CAPABILITY_TYPE_MCP_TOOL, OwnerID: "mcp-2", CapabilityID: "lookup"},
+		{ID: "cap-skill-a", KNID: "kn-golden", Branch: interfaces.MAIN_BRANCH,
+			CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "skill-a"},
+		{ID: "cap-skill-b", KNID: "kn-golden", Branch: interfaces.MAIN_BRANCH,
+			CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "skill-b"},
+	}
+	return kn, capabilities
+}
+
+// proxyVersionFixtureDigest is the fixture's model version. It is also what the
+// code before #1550 derived, when Skill mounts produced no source at all:
+// adding Skill sources must not move any network's version.
+const proxyVersionFixtureDigest = "sha256:e151ed59ea68aecf9ba7d0fc2cab3f24e1d0e814ac0eeeae9544d0766296ebbd"
+
+func TestProxyModelVersionMatchesSharedMigrationFixture(t *testing.T) {
+	kn, capabilities := proxyVersionFixture()
+	sources, version, err := buildProxyGrantSourcesWithCapabilities(kn, capabilities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version != proxyVersionFixtureDigest {
+		t.Fatalf("model version = %s, want the digest pinned with the migration script %s",
+			version, proxyVersionFixtureDigest)
+	}
+	skills := 0
+	for _, source := range sources {
+		if source.ResourceType == interfaces.KNProxyTargetTypeSkill {
+			skills++
+		}
+	}
+	if skills != 2 {
+		t.Fatalf("skill sources = %d, want both mounted skills to stay resolvable", skills)
+	}
+}
+
+func TestProxyModelVersionExcludesSkillMounts(t *testing.T) {
+	kn, capabilities := proxyVersionFixture()
+	_, withSkills, err := buildProxyGrantSourcesWithCapabilities(kn, capabilities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withoutSkills := make([]*interfaces.CapabilityBinding, 0, len(capabilities))
+	for _, capability := range capabilities {
+		if capability.CapabilityType != interfaces.CAPABILITY_TYPE_SKILL {
+			withoutSkills = append(withoutSkills, capability)
+		}
+	}
+	_, version, err := buildProxyGrantSourcesWithCapabilities(kn, withoutSkills)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version != withSkills {
+		t.Fatalf("mounting skills changed the model version: %s != %s", withSkills, version)
+	}
+
+	capabilities[2].CapabilityID = "skill-c"
+	sources, changed, err := buildProxyGrantSourcesWithCapabilities(kn, capabilities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed != withSkills {
+		t.Fatal("replacing a mounted skill changed the model version")
+	}
+	found := false
+	for _, source := range sources {
+		if source.BindingID == "cap-skill-a" {
+			found = source.ResourceType == interfaces.KNProxyTargetTypeSkill && source.ResourceID == "skill-c" &&
+				source.Operation == interfaces.OPERATION_TYPE_EXECUTE &&
+				source.BindingType == interfaces.KNProxyBindingTypeCapability
+		}
+	}
+	if !found {
+		t.Fatalf("replaced skill is not the resolvable source: %#v", sources)
+	}
+}
+
+func TestBuildProxyGrantSourcesSkipsIncompleteSkillMount(t *testing.T) {
+	kn := &interfaces.KN{KNID: "kn-1"}
+	sources, _, err := buildProxyGrantSourcesWithCapabilities(kn, []*interfaces.CapabilityBinding{{
+		ID: "binding-skill", KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, CapabilityType: interfaces.CAPABILITY_TYPE_SKILL,
+	}})
+	if err != nil || len(sources) != 0 {
+		t.Fatalf("incomplete skill mount = (%#v, %v), want skipped without failing the projection", sources, err)
 	}
 }
