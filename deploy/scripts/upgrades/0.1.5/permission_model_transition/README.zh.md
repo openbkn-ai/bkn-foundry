@@ -10,7 +10,7 @@
 
 统一入口按顺序执行并在首个失败处停止：
 
-1. `bkn-data`：校验或迁移空分支、权威资源父级关系、托管代理账号、Resource/Tool Box/MCP 授权来源、物化代理策略、BKN 代理映射与同步版本。
+1. `bkn-data`：校验或迁移空分支、权威资源父级关系、托管代理账号、Resource/Tool Box/MCP/Skill 授权来源、物化代理策略、BKN 代理映射与同步版本。Skill 授权按尽力而为处理：授权人无权执行的已挂载 Skill 列入报告的 `skipped_skill_grants`，不会导致该网络迁移失败；Skill 挂载也不改变网络的模型版本。
 2. `authorization`：调用本目录下的 `authz_migrate`，完成 Core 来源与稳定 grant 分类、Enterprise 规则对账和显式激活，并在全部成功后写入带校验和的迁移标记。
 
 BKN 步骤不再删除或重建 caller 权限，也不会写入 `task_manage`。历史 Core allow/deny 全部交给授权步骤分类和保留。

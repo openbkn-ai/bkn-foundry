@@ -17,8 +17,11 @@ not run this workflow again.
 The entry runs a fixed, fail-fast sequence:
 
 1. `bkn-data` validates or applies blank-branch normalization, authoritative
-   BKN resource-parent rows, managed proxy accounts, Resource/Tool Box/MCP
-   grant sources, materialized proxy policies, and BKN proxy mappings.
+   BKN resource-parent rows, managed proxy accounts, Resource/Tool Box/MCP/Skill
+   grant sources, materialized proxy policies, and BKN proxy mappings. Skill
+   grants are best effort: a mounted Skill the grantor cannot execute is listed
+   under `skipped_skill_grants` in the report instead of failing the network,
+   and Skill mounts never change a network's model version.
 2. `authorization` invokes this directory's `authz_migrate` executable to
    classify Core provenance and stable grants, reconcile Enterprise rules,
    apply explicitly confirmed activation, and persist the checksummed marker.

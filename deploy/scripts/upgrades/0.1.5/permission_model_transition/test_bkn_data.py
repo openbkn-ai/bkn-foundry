@@ -35,6 +35,7 @@ from bkn_data import (
     load_proxy_authorization_references,
     load_proxy_plan,
     migration_report,
+    partition_granted_sources,
     stable_proxy_account_id,
     sync_proxy_sources,
 )
@@ -281,6 +282,7 @@ class ProxyPlanTest(unittest.TestCase):
             {
                 ("tool_box", "box-1", "execute", "capability_binding", "function-binding"),
                 ("mcp", "mcp-1", "execute", "capability_binding", "mcp-binding"),
+                ("skill", "skill-1", "execute", "capability_binding", "skill-binding"),
             },
             {
                 (
@@ -294,6 +296,180 @@ class ProxyPlanTest(unittest.TestCase):
             },
         )
         self.assertTrue(model_version.startswith("sha256:"))
+
+    # The model shared with BKN Backend's proxy_sources_test.go
+    # (proxyVersionFixture). Both sides pin the same digest, which is also what
+    # the code before #1550 derived: Skill mounts must not move a version.
+    GOLDEN_DIGEST = (
+        "sha256:e151ed59ea68aecf9ba7d0fc2cab3f24e1d0e814ac0eeeae9544d0766296ebbd"
+    )
+
+    @staticmethod
+    def golden_rows(capabilities=True):
+        objects = [
+            {
+                "f_id": "ot-order",
+                "f_data_source": json.dumps({"type": "resource", "id": "res-order"}),
+                "f_logic_properties": json.dumps(
+                    [
+                        {
+                            "name": "risk",
+                            "type": "tool",
+                            "data_source": {
+                                "type": "tool",
+                                "box_id": "box-1",
+                                "tool_id": "tool-risk",
+                            },
+                        }
+                    ]
+                ),
+            },
+            {
+                "f_id": "ot-customer",
+                "f_data_source": json.dumps({"type": "resource", "id": "res-customer"}),
+                "f_logic_properties": "[]",
+            },
+        ]
+        relations = [
+            {
+                "f_id": "rt-placed-by",
+                "f_source_object_type_id": "ot-order",
+                "f_target_object_type_id": "ot-customer",
+                "f_mapping_rules": None,
+            }
+        ]
+        metrics = [
+            {"f_id": "metric-revenue", "f_scope_type": "object_type", "f_scope_ref": "ot-order"}
+        ]
+        actions = [
+            {
+                "f_id": "at-refund",
+                "f_action_source": json.dumps(
+                    {"type": "tool", "box_id": "box-2", "tool_id": "tool-refund"}
+                ),
+            },
+            {
+                "f_id": "at-notify",
+                "f_action_source": json.dumps(
+                    {"type": "mcp", "mcp_id": "mcp-1", "tool_name": "notify"}
+                ),
+            },
+        ]
+        mounts = [
+            {"f_id": "cap-function", "f_capability_type": "function",
+             "f_owner_id": "box-3", "f_capability_id": "tool-3"},
+            {"f_id": "cap-mcp", "f_capability_type": "mcp_tool",
+             "f_owner_id": "mcp-2", "f_capability_id": "lookup"},
+        ]
+        if capabilities:
+            mounts += [
+                {"f_id": "cap-skill-a", "f_capability_type": "skill",
+                 "f_owner_id": "", "f_capability_id": "skill-a"},
+                {"f_id": "cap-skill-b", "f_capability_type": "skill",
+                 "f_owner_id": "", "f_capability_id": "skill-b"},
+            ]
+        return objects, relations, metrics, actions, mounts
+
+    def test_model_version_matches_the_digest_shared_with_bkn_backend(self):
+        sources, model_version = derive_proxy_sources(
+            "kn-golden", *self.golden_rows()
+        )
+
+        self.assertEqual(self.GOLDEN_DIGEST, model_version)
+        self.assertEqual(
+            {"skill-a", "skill-b"},
+            {s.resource_id for s in sources if s.resource_type == "skill"},
+        )
+
+    def test_skill_mounts_stay_out_of_the_model_version(self):
+        _, with_skills = derive_proxy_sources("kn-golden", *self.golden_rows())
+        _, without_skills = derive_proxy_sources(
+            "kn-golden", *self.golden_rows(capabilities=False)
+        )
+
+        self.assertEqual(with_skills, without_skills)
+
+    def test_a_skill_the_grantor_cannot_back_is_skipped_not_fatal(self):
+        sources, _ = derive_proxy_sources("kn-golden", *self.golden_rows())
+        index = GrantIndex(
+            "grantor-1",
+            [
+                {"ptype": "p", "v0": "grantor-1", "v1": "resource:*", "v2": "*"},
+                {"ptype": "p", "v0": "grantor-1", "v1": "tool_box:*", "v2": "execute"},
+                {"ptype": "p", "v0": "grantor-1", "v1": "mcp:*", "v2": "execute"},
+                {"ptype": "p", "v0": "grantor-1", "v1": "skill:skill-a", "v2": "execute"},
+            ],
+            {},
+            {},
+            {
+                ("resource", "view_detail"),
+                ("resource", "query_data"),
+                ("tool_box", "execute"),
+                ("mcp", "execute"),
+                ("skill", "execute"),
+            },
+        )
+
+        granted, skipped = partition_granted_sources(index, "grantor-1", sources)
+
+        self.assertEqual(["skill-b"], [s.resource_id for s in skipped])
+        self.assertIn("skill-a", {s.resource_id for s in granted})
+        self.assertEqual(len(sources), len(granted) + len(skipped))
+
+    def test_a_data_source_the_grantor_cannot_back_still_fails(self):
+        sources, _ = derive_proxy_sources("kn-golden", *self.golden_rows())
+        index = GrantIndex(
+            "grantor-1",
+            [{"ptype": "p", "v0": "grantor-1", "v1": "skill:*", "v2": "execute"}],
+            {},
+            {},
+            {("resource", "query_data"), ("skill", "execute")},
+        )
+
+        with self.assertRaisesRegex(migration.MigrationError, "lacks"):
+            partition_granted_sources(index, "grantor-1", sources)
+
+    def test_migration_report_lists_skipped_skill_grants(self):
+        skipped = ProxySource(
+            resource_type="skill",
+            resource_id="skill-b",
+            operation="execute",
+            source_id="source-skill",
+            kn_id="kn-1",
+            binding_type="capability_binding",
+            binding_id="cap-skill-b",
+        )
+        proxy_plan = ProxyMigrationPlan(
+            networks=[
+                ProxyNetworkPlan(
+                    kn_id="kn-1",
+                    kn_name="network",
+                    proxy_account_id="proxy-1",
+                    model_version="sha256:v",
+                    sources=[],
+                    create_account=False,
+                    skipped_sources=[skipped],
+                )
+            ]
+        )
+
+        report = migration_report(
+            "dry-run", MigrationPlan(resources={}, branch_updates=0), proxy_plan
+        )
+
+        self.assertEqual(1, report["managed_proxies"]["skipped_skill_grants"])
+        self.assertEqual(
+            [
+                {
+                    "resource_type": "skill",
+                    "resource_id": "skill-b",
+                    "operation": "execute",
+                    "binding_id": "cap-skill-b",
+                    "reason": "grantor_lacks_permission",
+                }
+            ],
+            report["managed_proxies"]["planned"][0]["skipped_skill_grants"],
+        )
 
     def test_rejects_unsupported_capability_mount_type(self):
         with self.assertRaisesRegex(

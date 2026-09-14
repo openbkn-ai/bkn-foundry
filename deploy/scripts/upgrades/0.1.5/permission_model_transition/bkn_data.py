@@ -151,6 +151,9 @@ class ProxyNetworkPlan:
     model_version: str
     sources: list[ProxySource]
     create_account: bool
+    # Mounted-Skill sources the grantor cannot vouch for. Like BKN Backend, the
+    # migration leaves them out instead of failing the network.
+    skipped_sources: list[ProxySource] = field(default_factory=list)
 
 
 @dataclass
@@ -211,6 +214,11 @@ def stable_proxy_source_id(kn_id: str, binding_type: str, binding_id: str) -> st
     return hashlib.sha256(raw).hexdigest()
 
 
+def is_best_effort_proxy_source(source: ProxySource) -> bool:
+    """Match BKN Backend: only a mounted Skill may be left unmaterialized."""
+    return source.binding_type == "capability_binding" and source.resource_type == "skill"
+
+
 def stable_proxy_account_id(kn_id: str) -> str:
     """Derive the same new proxy identity in dry-run and apply."""
     raw = f"openbkn-0.1.5-bkn-proxy\x00{kn_id}".encode("utf-8")
@@ -240,6 +248,7 @@ def derive_proxy_sources(
         resource_id: str,
         operation: str,
         detail: str = "",
+        in_version: bool = True,
     ) -> None:
         binding_id = normalize_text(binding_id).strip()
         resource_id = normalize_text(resource_id).strip()
@@ -261,6 +270,8 @@ def derive_proxy_sources(
         if key not in seen:
             seen.add(key)
             sources.append(source)
+        if not in_version:
+            return
         binding = {
             "type": binding_type,
             "id": binding_id,
@@ -425,8 +436,21 @@ def derive_proxy_sources(
         owner_id = normalize_text(row.get("f_owner_id")).strip()
         target_id = normalize_text(row.get("f_capability_id")).strip()
         if capability_type == "skill":
-            # Skills execute in the caller context and do not need a managed
-            # knowledge-network proxy grant.
+            # The proxy reads a mounted Skill for callers who may view the
+            # network. The source is materialized but stays out of the model
+            # version, exactly as in BKN Backend: a Skill grant is best effort
+            # and must never be what holds a network's proxy back.
+            if not target_id or not capability_id:
+                continue
+            add(
+                "capability_binding",
+                capability_id,
+                "skill",
+                target_id,
+                "execute",
+                f"{capability_type}:{target_id}",
+                in_version=False,
+            )
             continue
         if capability_type == "function":
             if not target_id:
@@ -791,6 +815,31 @@ def load_grant_index(connection, grantor_id: str) -> GrantIndex:
     )
 
 
+def partition_granted_sources(
+    authority: "GrantIndex", grantor_id: str, sources: Sequence[ProxySource]
+) -> tuple[list[ProxySource], list[ProxySource]]:
+    """Split sources into those the grantor backs and the Skills it cannot.
+
+    A data or execution source the grantor cannot back fails the network, as
+    before. A mounted Skill is skipped instead, matching BKN Backend's
+    best-effort rule: the network migrates, and that one Skill is not readable
+    through the proxy until an editor who holds execute on it republishes.
+    """
+    granted: list[ProxySource] = []
+    skipped: list[ProxySource] = []
+    for source in sources:
+        if authority.allows(source.resource_type, source.resource_id, source.operation):
+            granted.append(source)
+        elif is_best_effort_proxy_source(source):
+            skipped.append(source)
+        else:
+            raise MigrationError(
+                f"grantor {grantor_id!r} lacks {source.operation} on "
+                f"{source.resource_type}:{source.resource_id}"
+            )
+    return granted, skipped
+
+
 def load_proxy_authorization_references(
     cursor, proxy_ids: Sequence[str]
 ) -> set[str]:
@@ -972,14 +1021,9 @@ def load_proxy_plan(
                 by_kn_actions[kn_id],
                 by_kn_capabilities[kn_id],
             )
-            for source in sources:
-                if not authority.allows(
-                    source.resource_type, source.resource_id, source.operation
-                ):
-                    raise MigrationError(
-                        f"grantor {grantor_id!r} lacks {source.operation} on "
-                        f"{source.resource_type}:{source.resource_id}"
-                    )
+            sources, skipped_sources = partition_granted_sources(
+                authority, grantor_id, sources
+            )
         except MigrationError as exc:
             plan.failures.append(
                 Failure("invalid_proxy_plan", KN_RESOURCE_TYPE, kn_id, str(exc))
@@ -1039,6 +1083,7 @@ def load_proxy_plan(
                 model_version=model_version,
                 sources=sources,
                 create_account=create_account,
+                skipped_sources=skipped_sources,
             )
         )
     return plan
@@ -2013,6 +2058,9 @@ def migration_report(
         "managed_proxies": {
             "networks": len(proxy_plan.networks),
             "sources": sum(len(network.sources) for network in proxy_plan.networks),
+            "skipped_skill_grants": sum(
+                len(network.skipped_sources) for network in proxy_plan.networks
+            ),
             "archived_tombstones": [
                 {
                     "knowledge_network_id": kn_id,
@@ -2036,6 +2084,16 @@ def migration_report(
                             "binding_id": source.binding_id,
                         }
                         for source in network.sources
+                    ],
+                    "skipped_skill_grants": [
+                        {
+                            "resource_type": source.resource_type,
+                            "resource_id": source.resource_id,
+                            "operation": source.operation,
+                            "binding_id": source.binding_id,
+                            "reason": "grantor_lacks_permission",
+                        }
+                        for source in network.skipped_sources
                     ],
                 }
                 for network in proxy_plan.networks
