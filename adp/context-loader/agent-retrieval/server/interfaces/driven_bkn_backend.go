@@ -573,7 +573,10 @@ type CypherQueryResp struct {
 }
 
 type BknBackendAccess interface {
-	// GetKnowledgeNetworkDetail Get knowledge network detail with full schema (include_detail=true, mode=export)
+	// GetKnowledgeNetworkDetail returns the network record plus the concept groups, object types,
+	// relation types and action types the caller may see. It is assembled from the default
+	// network read and the child lists, never from mode=export, so a caller authorized only on
+	// some child resources gets those instead of a refusal.
 	GetKnowledgeNetworkDetail(ctx context.Context, knID string) (*KnowledgeNetworkDetail, error)
 
 	// ListKnowledgeNetworks lists knowledge networks (used to discover kn_id)
