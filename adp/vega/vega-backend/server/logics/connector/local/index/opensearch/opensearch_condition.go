@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode/utf8"
+	"unicode/utf16"
 
 	"vega-backend/interfaces"
 	"vega-backend/logics/filter_condition"
@@ -1241,7 +1241,9 @@ func validateTextKeywordValues(fieldName string, value any, schemaDefinition []*
 			}
 			for _, candidate := range values {
 				text, ok := candidate.(string)
-				if ok && utf8.RuneCountInString(text) > limit {
+				// OpenSearch compares ignore_above with Java String.length(), whose
+				// unit is UTF-16 code units rather than Unicode code points.
+				if ok && len(utf16.Encode([]rune(text))) > limit {
 					return filter_condition.NewConditionBuildError(
 						"value for text field %s exceeds keyword ignore_above %d and cannot be compared exactly", fieldName, limit)
 				}
@@ -1256,8 +1258,12 @@ func positiveInt(value any) (int, bool) {
 	switch typed := value.(type) {
 	case int:
 		return typed, typed > 0
+	case int32:
+		converted := int(typed)
+		return converted, converted > 0
 	case int64:
-		return int(typed), typed > 0
+		converted := int(typed)
+		return converted, typed == int64(converted) && converted > 0
 	case float64:
 		converted := int(typed)
 		return converted, typed == float64(converted) && converted > 0

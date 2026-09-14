@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/mitchellh/mapstructure"
@@ -25,10 +24,7 @@ import (
 	"vega-backend/interfaces"
 )
 
-const (
-	defaultBulkRequestMaxBytes = 32 * 1024 * 1024
-	indexRecoveryTimeout       = 30 * time.Second
-)
+const defaultBulkRequestMaxBytes = 32 * 1024 * 1024
 
 type bulkRequestError struct {
 	statusCode int
@@ -214,7 +210,7 @@ func (c *OpenSearchConnector) TestConnection(ctx context.Context) error {
 }
 
 // Create index
-func (c *OpenSearchConnector) CreateIndex(ctx context.Context, indexName string, properties map[string]any, hasVectorField bool, mappingMeta map[string]string) error {
+func (c *OpenSearchConnector) CreateIndex(ctx context.Context, indexName string, properties map[string]any, mappingMeta map[string]string) error {
 	if err := c.Connect(ctx); err != nil {
 		return err
 	}
@@ -238,11 +234,7 @@ func (c *OpenSearchConnector) CreateIndex(ctx context.Context, indexName string,
 	indexSettings := map[string]any{
 		"number_of_shards":   1,
 		"number_of_replicas": 0,
-	}
-
-	// If there is a vector field, enable knn
-	if hasVectorField {
-		indexSettings["knn"] = true
+		"knn":                true,
 	}
 
 	settings := map[string]any{
@@ -277,7 +269,7 @@ func (c *OpenSearchConnector) CreateIndex(ctx context.Context, indexName string,
 }
 
 // Update index.
-func (c *OpenSearchConnector) UpdateIndex(ctx context.Context, indexName string, properties map[string]any, hasVectorField bool) error {
+func (c *OpenSearchConnector) UpdateIndex(ctx context.Context, indexName string, properties map[string]any) error {
 	if err := c.Connect(ctx); err != nil {
 		return err
 	}
@@ -290,18 +282,6 @@ func (c *OpenSearchConnector) UpdateIndex(ctx context.Context, indexName string,
 	if !exist {
 		return fmt.Errorf("index %s not exist", indexName)
 	}
-	if hasVectorField {
-		enabled, err := c.indexKNNEnabled(ctx, indexName)
-		if err != nil {
-			return err
-		}
-		if !enabled {
-			if err := c.enableIndexKNN(ctx, indexName); err != nil {
-				return err
-			}
-		}
-	}
-
 	// Build the properties mapping
 	mappings := map[string]any{
 		"properties": properties,
@@ -324,96 +304,6 @@ func (c *OpenSearchConnector) UpdateIndex(ctx context.Context, indexName string,
 
 	if updateResp.IsError() {
 		return fmt.Errorf("failed to update index mapping: %s", updateResp.String())
-	}
-
-	return nil
-}
-
-func (c *OpenSearchConnector) indexKNNEnabled(ctx context.Context, indexName string) (bool, error) {
-	flatSettings := true
-	req := opensearchapi.IndicesGetSettingsRequest{
-		Index:        []string{indexName},
-		FlatSettings: &flatSettings,
-	}
-	resp, err := req.Do(ctx, c.client)
-	if err != nil {
-		return false, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.IsError() {
-		return false, fmt.Errorf("failed to get index settings: %s", resp.String())
-	}
-
-	var settings map[string]struct {
-		Settings map[string]any `json:"settings"`
-	}
-	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&settings); err != nil {
-		return false, fmt.Errorf("decode index settings: %w", err)
-	}
-	value, exists := settings[indexName].Settings["index.knn"]
-	if !exists {
-		return false, nil
-	}
-	switch typed := value.(type) {
-	case bool:
-		return typed, nil
-	case string:
-		return typed == "true", nil
-	default:
-		return false, nil
-	}
-}
-
-func (c *OpenSearchConnector) enableIndexKNN(ctx context.Context, indexName string) (err error) {
-	closeReq := opensearchapi.IndicesCloseRequest{Index: []string{indexName}}
-	closeResp, err := closeReq.Do(ctx, c.client)
-	if err != nil {
-		return err
-	}
-	if closeResp.IsError() {
-		detail := closeResp.String()
-		_ = closeResp.Body.Close()
-		return fmt.Errorf("failed to close index before enabling knn: %s", detail)
-	}
-	_ = closeResp.Body.Close()
-
-	defer func() {
-		recoveryCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), indexRecoveryTimeout)
-		defer cancel()
-		openReq := opensearchapi.IndicesOpenRequest{Index: []string{indexName}}
-		openResp, openErr := openReq.Do(recoveryCtx, c.client)
-		if openErr == nil && openResp.IsError() {
-			openErr = fmt.Errorf("OpenSearch returned %s", openResp.String())
-		}
-		if openResp != nil {
-			_ = openResp.Body.Close()
-		}
-		if openErr != nil {
-			if err == nil {
-				err = fmt.Errorf("reopen index after enabling knn: %w", openErr)
-			} else {
-				err = errors.Join(err, fmt.Errorf("reopen index after enabling knn: %w", openErr))
-			}
-		}
-	}()
-
-	indexSettings := map[string]any{"knn": true}
-	settings := map[string]any{"index": indexSettings}
-	data, err := sonic.Marshal(settings)
-	if err != nil {
-		return err
-	}
-	settingsReq := opensearchapi.IndicesPutSettingsRequest{
-		Index: []string{indexName},
-		Body:  bytes.NewReader(data),
-	}
-	settingsResp, err := settingsReq.Do(ctx, c.client)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = settingsResp.Body.Close() }()
-	if settingsResp.IsError() {
-		return fmt.Errorf("failed to enable knn index setting: %s", settingsResp.String())
 	}
 
 	return nil

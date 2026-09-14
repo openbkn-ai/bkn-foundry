@@ -89,6 +89,9 @@ func buildTaskEmbeddingConfig(buildTask *interfaces.BuildTask) map[string]*inter
 			continue
 		}
 		for _, feature := range field.Features {
+			// ref_property points at a vector value already supplied by the source
+			// document. The reference is read-only: do not embed the source text or
+			// overwrite the referenced field during materialization.
 			if feature.Type != interfaces.PropertyFeatureType_Vector || feature.RefProperty != "" {
 				continue
 			}

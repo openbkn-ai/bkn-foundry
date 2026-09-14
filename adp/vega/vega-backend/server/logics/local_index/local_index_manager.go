@@ -86,19 +86,19 @@ func (lim *localIndexManager) GetIndexMeta(ctx context.Context, index *interface
 }
 
 func (lim *localIndexManager) CreateIndex(ctx context.Context, indexName string, schema []*interfaces.Property, mappingMeta map[string]string) error {
-	properties, hasVectorField, err := buildFieldMappings(schema)
+	properties, err := buildFieldMappings(schema)
 	if err != nil {
 		return err
 	}
-	return lim.lic.CreateIndex(ctx, indexName, properties, hasVectorField, mappingMeta)
+	return lim.lic.CreateIndex(ctx, indexName, properties, mappingMeta)
 }
 
 func (lim *localIndexManager) UpdateIndex(ctx context.Context, indexName string, schema []*interfaces.Property) error {
-	properties, hasVectorField, err := buildFieldMappings(schema)
+	properties, err := buildFieldMappings(schema)
 	if err != nil {
 		return err
 	}
-	return lim.lic.UpdateIndex(ctx, indexName, properties, hasVectorField)
+	return lim.lic.UpdateIndex(ctx, indexName, properties)
 }
 
 func (lim *localIndexManager) DeleteIndex(ctx context.Context, indexName string) error {
@@ -244,10 +244,6 @@ func (lim *localIndexManager) DeleteDocumentsByQuery(ctx context.Context, indexN
 func SchemaForQuery(schema []*interfaces.Property) []*interfaces.Property {
 	result := make([]*interfaces.Property, 0, len(schema))
 	for _, property := range schema {
-		if property == nil {
-			result = append(result, nil)
-			continue
-		}
 		cloned := *property
 		cloned.OriginalName = property.Name
 		result = append(result, &cloned)

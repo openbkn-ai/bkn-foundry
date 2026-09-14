@@ -1566,17 +1566,17 @@ func (mr *MockIndexConnectorMockRecorder) CreateDocuments(ctx, indexName, docume
 }
 
 // CreateIndex mocks base method.
-func (m *MockIndexConnector) CreateIndex(ctx context.Context, indexName string, properties map[string]any, hasVectorField bool, mappingMeta map[string]string) error {
+func (m *MockIndexConnector) CreateIndex(ctx context.Context, indexName string, properties map[string]any, mappingMeta map[string]string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateIndex", ctx, indexName, properties, hasVectorField, mappingMeta)
+	ret := m.ctrl.Call(m, "CreateIndex", ctx, indexName, properties, mappingMeta)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CreateIndex indicates an expected call of CreateIndex.
-func (mr *MockIndexConnectorMockRecorder) CreateIndex(ctx, indexName, properties, hasVectorField, mappingMeta any) *gomock.Call {
+func (mr *MockIndexConnectorMockRecorder) CreateIndex(ctx, indexName, properties, mappingMeta any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateIndex", reflect.TypeOf((*MockIndexConnector)(nil).CreateIndex), ctx, indexName, properties, hasVectorField, mappingMeta)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateIndex", reflect.TypeOf((*MockIndexConnector)(nil).CreateIndex), ctx, indexName, properties, mappingMeta)
 }
 
 // DeleteDocument mocks base method.
@@ -1952,17 +1952,17 @@ func (mr *MockIndexConnectorMockRecorder) TestConnection(ctx any) *gomock.Call {
 }
 
 // UpdateIndex mocks base method.
-func (m *MockIndexConnector) UpdateIndex(ctx context.Context, indexName string, properties map[string]any, hasVectorField bool) error {
+func (m *MockIndexConnector) UpdateIndex(ctx context.Context, indexName string, properties map[string]any) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateIndex", ctx, indexName, properties, hasVectorField)
+	ret := m.ctrl.Call(m, "UpdateIndex", ctx, indexName, properties)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateIndex indicates an expected call of UpdateIndex.
-func (mr *MockIndexConnectorMockRecorder) UpdateIndex(ctx, indexName, properties, hasVectorField any) *gomock.Call {
+func (mr *MockIndexConnectorMockRecorder) UpdateIndex(ctx, indexName, properties any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateIndex", reflect.TypeOf((*MockIndexConnector)(nil).UpdateIndex), ctx, indexName, properties, hasVectorField)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateIndex", reflect.TypeOf((*MockIndexConnector)(nil).UpdateIndex), ctx, indexName, properties)
 }
 
 // UpsertDocuments mocks base method.

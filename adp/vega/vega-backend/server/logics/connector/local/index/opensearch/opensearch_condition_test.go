@@ -358,6 +358,19 @@ func TestOpenSearchConnectorConvertFilterConditionEqual(t *testing.T) {
 		_, ok := filter_condition.AsConditionBuildError(err)
 		assert.True(t, ok)
 	})
+
+	t.Run("counts supplementary characters as UTF-16 code units", func(t *testing.T) {
+		conn := &OpenSearchConnector{}
+		cond := mustOSCondition(t, osConstCfg("body", filter_condition.OperationEqual, "😀"))
+		schema := opensearchConditionSchema()
+		schema[1].Features[0].Config = map[string]any{"ignore_above": int32(1)}
+
+		got, err := conn.ConvertFilterConditionEqual(cond, schema)
+
+		require.Error(t, err)
+		assert.Nil(t, got)
+		assert.ErrorContains(t, err, "exceeds keyword ignore_above 1")
+	})
 }
 
 func TestOpenSearchConnectorConvertFilterConditionAnd(t *testing.T) {

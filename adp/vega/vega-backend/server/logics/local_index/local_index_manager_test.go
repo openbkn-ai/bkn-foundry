@@ -161,8 +161,8 @@ func TestLocalIndexManagerDelegatesToIndexConnector(t *testing.T) {
 			"id": map[string]any{"type": "long"},
 		}
 
-		connector.EXPECT().CreateIndex(ctx, "idx", properties, false, nil).Return(nil)
-		connector.EXPECT().UpdateIndex(ctx, "idx", properties, false).Return(nil)
+		connector.EXPECT().CreateIndex(ctx, "idx", properties, nil).Return(nil)
+		connector.EXPECT().UpdateIndex(ctx, "idx", properties).Return(nil)
 		connector.EXPECT().DeleteIndex(ctx, "idx").Return(nil)
 		connector.EXPECT().CheckIndexExist(ctx, "idx").Return(true, nil)
 		connector.EXPECT().ExecuteQuery(ctx, "idx", resourceForQuery(resource), params).Return(queryResult, nil)

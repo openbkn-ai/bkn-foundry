@@ -16,7 +16,7 @@ import (
 
 func TestBuildFieldMappings(t *testing.T) {
 	t.Run("maps resource types and user-defined feature fields", func(t *testing.T) {
-		properties, hasVectorField, err := buildFieldMappings([]*interfaces.Property{
+		properties, err := buildFieldMappings([]*interfaces.Property{
 			{Name: "id", Type: interfaces.DataType_Integer},
 			{Name: "unsigned_id", Type: interfaces.DataType_UnsignedInteger},
 			{Name: "amount", Type: interfaces.DataType_Decimal},
@@ -43,7 +43,6 @@ func TestBuildFieldMappings(t *testing.T) {
 		})
 
 		require.NoError(t, err)
-		assert.True(t, hasVectorField)
 		assert.Equal(t, map[string]any{"type": "long"}, properties["id"])
 		assert.Equal(t, map[string]any{"type": "unsigned_long"}, properties["unsigned_id"])
 		assert.Equal(t, map[string]any{"type": "object"}, properties["payload"])
@@ -65,7 +64,7 @@ func TestBuildFieldMappings(t *testing.T) {
 	})
 
 	t.Run("creates fulltext subfield without feature config", func(t *testing.T) {
-		properties, _, err := buildFieldMappings([]*interfaces.Property{{
+		properties, err := buildFieldMappings([]*interfaces.Property{{
 			Name: "title",
 			Type: interfaces.DataType_String,
 			Features: []interfaces.PropertyFeature{{
@@ -79,7 +78,7 @@ func TestBuildFieldMappings(t *testing.T) {
 	})
 
 	t.Run("creates keyword subfield without feature config", func(t *testing.T) {
-		properties, _, err := buildFieldMappings([]*interfaces.Property{{
+		properties, err := buildFieldMappings([]*interfaces.Property{{
 			Name: "body",
 			Type: interfaces.DataType_Text,
 			Features: []interfaces.PropertyFeature{{
@@ -93,7 +92,7 @@ func TestBuildFieldMappings(t *testing.T) {
 	})
 
 	t.Run("normalizes qualified feature names to subfield names", func(t *testing.T) {
-		properties, _, err := buildFieldMappings([]*interfaces.Property{
+		properties, err := buildFieldMappings([]*interfaces.Property{
 			{
 				Name: "title",
 				Type: interfaces.DataType_String,
@@ -122,7 +121,7 @@ func TestBuildFieldMappings(t *testing.T) {
 	})
 
 	t.Run("uses property name when original name differs", func(t *testing.T) {
-		properties, _, err := buildFieldMappings([]*interfaces.Property{
+		properties, err := buildFieldMappings([]*interfaces.Property{
 			{
 				Name:         "title",
 				OriginalName: "source_title",
@@ -149,7 +148,7 @@ func TestBuildFieldMappings(t *testing.T) {
 	})
 
 	t.Run("rejects unsupported resource type", func(t *testing.T) {
-		properties, _, err := buildFieldMappings([]*interfaces.Property{{Name: "raw", Type: interfaces.DataType_Other, OriginalType: "_text"}})
+		properties, err := buildFieldMappings([]*interfaces.Property{{Name: "raw", Type: interfaces.DataType_Other, OriginalType: "_text"}})
 
 		require.Error(t, err)
 		assert.Nil(t, properties)
@@ -157,7 +156,7 @@ func TestBuildFieldMappings(t *testing.T) {
 	})
 
 	t.Run("rejects unsupported configured feature", func(t *testing.T) {
-		properties, _, err := buildFieldMappings([]*interfaces.Property{{
+		properties, err := buildFieldMappings([]*interfaces.Property{{
 			Name: "name",
 			Type: interfaces.DataType_String,
 			Features: []interfaces.PropertyFeature{{
@@ -172,7 +171,7 @@ func TestBuildFieldMappings(t *testing.T) {
 	})
 
 	t.Run("rejects unresolved generated vector dimension", func(t *testing.T) {
-		properties, _, err := buildFieldMappings([]*interfaces.Property{{
+		properties, err := buildFieldMappings([]*interfaces.Property{{
 			Name: "content",
 			Type: interfaces.DataType_Text,
 			Features: []interfaces.PropertyFeature{{
@@ -186,7 +185,7 @@ func TestBuildFieldMappings(t *testing.T) {
 	})
 
 	t.Run("rejects generated vector field collision", func(t *testing.T) {
-		properties, _, err := buildFieldMappings([]*interfaces.Property{
+		properties, err := buildFieldMappings([]*interfaces.Property{
 			{
 				Name: "content",
 				Type: interfaces.DataType_Text,
