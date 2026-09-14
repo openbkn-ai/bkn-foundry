@@ -159,6 +159,17 @@ type KNProxyDefinitionReader interface {
 		proxy *KNProxyExecution) (*GetMCPToolDetailResponse, error)
 }
 
+// SkillAccountReader reads a Skill's document and files as an explicit account
+// instead of the caller in the context, through the execution factory's
+// caller-scoped read, so that account's own grant on the Skill is what is
+// checked. Context Loader uses it only for a knowledge network's managed proxy,
+// and only to read: running a Skill stays with the caller.
+type SkillAccountReader interface {
+	GetSkillContentAs(ctx context.Context, account AccountAuthContext, skillID string) (*GetSkillContentResponse, error)
+	ReadSkillFileAs(ctx context.Context, account AccountAuthContext,
+		req *ReadSkillFileRequest) (*ReadSkillFileResponse, error)
+}
+
 // SearchBoundToolsRequest asks Execution Factory to rank a bounded set of Function tools.
 type SearchBoundToolsRequest struct {
 	Query string

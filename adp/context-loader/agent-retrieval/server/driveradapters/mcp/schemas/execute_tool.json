@@ -4,7 +4,7 @@
     "properties": {
       "kn_id": {
         "type": "string",
-        "description": "必填。知识网络 ID，须与 search_capabilities 所用一致。工具必须已挂载到该网络才可调用。"
+        "description": "必填。知识网络 ID，须与 search_capabilities 所用一致。调用者须有该网络本身的执行权限，工具必须已挂载到该网络才可调用。"
       },
       "toolbox_id": {
         "type": "string",

@@ -388,3 +388,57 @@ func (mr *MockKNProxyDefinitionReaderMockRecorder) GetToolDefinitionAsProxy(ctx,
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetToolDefinitionAsProxy", reflect.TypeOf((*MockKNProxyDefinitionReader)(nil).GetToolDefinitionAsProxy), ctx, req, proxy)
 }
+
+// MockSkillAccountReader is a mock of SkillAccountReader interface.
+type MockSkillAccountReader struct {
+	ctrl     *gomock.Controller
+	recorder *MockSkillAccountReaderMockRecorder
+	isgomock struct{}
+}
+
+// MockSkillAccountReaderMockRecorder is the mock recorder for MockSkillAccountReader.
+type MockSkillAccountReaderMockRecorder struct {
+	mock *MockSkillAccountReader
+}
+
+// NewMockSkillAccountReader creates a new mock instance.
+func NewMockSkillAccountReader(ctrl *gomock.Controller) *MockSkillAccountReader {
+	mock := &MockSkillAccountReader{ctrl: ctrl}
+	mock.recorder = &MockSkillAccountReaderMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockSkillAccountReader) EXPECT() *MockSkillAccountReaderMockRecorder {
+	return m.recorder
+}
+
+// GetSkillContentAs mocks base method.
+func (m *MockSkillAccountReader) GetSkillContentAs(ctx context.Context, account interfaces.AccountAuthContext, skillID string) (*interfaces.GetSkillContentResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSkillContentAs", ctx, account, skillID)
+	ret0, _ := ret[0].(*interfaces.GetSkillContentResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSkillContentAs indicates an expected call of GetSkillContentAs.
+func (mr *MockSkillAccountReaderMockRecorder) GetSkillContentAs(ctx, account, skillID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSkillContentAs", reflect.TypeOf((*MockSkillAccountReader)(nil).GetSkillContentAs), ctx, account, skillID)
+}
+
+// ReadSkillFileAs mocks base method.
+func (m *MockSkillAccountReader) ReadSkillFileAs(ctx context.Context, account interfaces.AccountAuthContext, req *interfaces.ReadSkillFileRequest) (*interfaces.ReadSkillFileResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadSkillFileAs", ctx, account, req)
+	ret0, _ := ret[0].(*interfaces.ReadSkillFileResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadSkillFileAs indicates an expected call of ReadSkillFileAs.
+func (mr *MockSkillAccountReaderMockRecorder) ReadSkillFileAs(ctx, account, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadSkillFileAs", reflect.TypeOf((*MockSkillAccountReader)(nil).ReadSkillFileAs), ctx, account, req)
+}

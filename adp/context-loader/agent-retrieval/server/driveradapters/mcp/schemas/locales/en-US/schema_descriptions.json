@@ -292,7 +292,7 @@
     "input_schema.properties.search_after.description": "Cursor paging, optional: pass the search_after value from the previous response verbatim to fetch the next page. It suits deep paging better than offset."
   },
   "execute_skill": {
-    "input_schema.properties.kn_id.description": "Required. Knowledge network id. The Skill must be mounted on this network to be read or run: a skill_id outlives the call that produced it and can be had from list_skills, so the scope is checked here.",
+    "input_schema.properties.kn_id.description": "Required. Knowledge network id. The caller needs view permission on the network itself, and the Skill must be mounted on this network to be read or run: a skill_id outlives the call that produced it and can be had from list_skills, so the scope is checked here.",
     "input_schema.properties.skill_id.description": "Skill id, taken from the skill_id of list_skills or search_capabilities.",
     "input_schema.properties.entry_shell.description": "The entry command to run inside the sandbox. It has to be one of the entries declared in SKILL.md; do not assemble an unrelated command. The skill package is already extracted into the working directory and the command runs relative to it.",
     "input_schema.properties.timeout.description": "Optional. Execution timeout in seconds.",
@@ -333,7 +333,7 @@
     "output_schema.properties.missing.description": "Ids that were requested but matched nothing"
   },
   "get_skill_content": {
-    "input_schema.properties.kn_id.description": "Required. Knowledge network id. The Skill must be mounted on this network to be read or run: a skill_id outlives the call that produced it and can be had from list_skills, so the scope is checked here.",
+    "input_schema.properties.kn_id.description": "Required. Knowledge network id. The caller needs view permission on the network itself, and the Skill must be mounted on this network to be read or run: a skill_id outlives the call that produced it and can be had from list_skills, so the scope is checked here.",
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
     "input_schema.properties.skill_id.description": "Skill id, taken from the skill_id of list_skills or search_capabilities.",
     "output_schema.properties.status.description": "Skill status, such as published",
@@ -384,7 +384,7 @@
     "output_schema.properties.overall_ms.description": "Duration in milliseconds"
   },
   "read_skill_file": {
-    "input_schema.properties.kn_id.description": "Required. Knowledge network id. The Skill must be mounted on this network to be read or run: a skill_id outlives the call that produced it and can be had from list_skills, so the scope is checked here.",
+    "input_schema.properties.kn_id.description": "Required. Knowledge network id. The caller needs view permission on the network itself, and the Skill must be mounted on this network to be read or run: a skill_id outlives the call that produced it and can be had from list_skills, so the scope is checked here.",
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
     "input_schema.properties.skill_id.description": "Skill id, taken from the skill_id of list_skills or search_capabilities.",
     "input_schema.properties.rel_path.description": "Path relative to the skill package root, taken from files[].rel_path of a get_skill_content response. A path outside the package is rejected, ../ included.",
@@ -421,14 +421,14 @@
     "output_schema.properties.message.description": "A note from retrieval, present in two cases: (1) there was no hit, and this says why it is empty; (2) **there are results but the results themselves need explaining** — for example the deployment configured a relevance threshold that could not run because the reranker was unavailable, so the instances below are unfiltered recall. **Read this field even when nodes is non-empty**: it is what separates a filtered result from one that could not be filtered."
   },
   "execute_tool": {
-    "input_schema.properties.kn_id.description": "Required. Knowledge network id, the same one search_capabilities was called with. The tool must be mounted on that network to be callable here.",
+    "input_schema.properties.kn_id.description": "Required. Knowledge network id, the same one search_capabilities was called with. The caller needs execute permission on the network itself, and the tool must be mounted on that network to be callable here.",
     "input_schema.properties.toolbox_id.description": "Toolbox id, taken from a search_capabilities result.",
     "input_schema.properties.tool_id.description": "Tool id, taken from a search_capabilities result.",
     "input_schema.properties.arguments.description": "The tool's business input, filled from the input_schema search_capabilities returned. Do not put credentials or session ids here; the platform carries those itself.",
     "output_schema.description": "The tool's raw response. A function that fails reports it in the body with HTTP 200, so read the body rather than trusting the call to have succeeded."
   },
   "search_capabilities": {
-    "input_schema.properties.kn_id.description": "Required. Knowledge network id. The scope is what that network has mounted; a network that mounted nothing returns nothing.",
+    "input_schema.properties.kn_id.description": "Required. Knowledge network id. The caller needs view permission on the network itself. The scope is what that network has mounted; a network that mounted nothing returns nothing.",
     "input_schema.properties.response_format.description": "Text format: json or toon, default toon",
     "input_schema.properties.query.description": "Optional. Ranks the mounted capabilities by name and description, all kinds competing in one space. Leave it out to list everything mounted.",
     "input_schema.properties.types.description": "Optional. Narrows to certain capability kinds. Empty means all three. It narrows within what the network mounted and can never reach outside it.",

@@ -4,7 +4,7 @@
     "properties": {
       "kn_id": {
         "type": "string",
-        "description": "必填。知识网络 ID。范围取自该网络已挂载的能力，未挂载则返回空。"
+        "description": "必填。知识网络 ID。调用者须有该网络本身的查看权限；范围取自该网络已挂载的能力，未挂载则返回空。"
       },
       "response_format": {
         "type": "string",

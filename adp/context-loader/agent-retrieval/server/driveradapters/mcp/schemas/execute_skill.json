@@ -4,7 +4,7 @@
     "properties": {
       "kn_id": {
         "type": "string",
-        "description": "必填。知识网络 ID。Skill 必须已挂载到该网络才能读取/执行——skill_id 会活过产生它的那次调用，也可以从 list_skills 拿到，所以范围要在这里核。"
+        "description": "必填。知识网络 ID。调用者须有该网络本身的查看权限，且 Skill 必须已挂载到该网络才能读取/执行——skill_id 会活过产生它的那次调用，也可以从 list_skills 拿到，所以范围要在这里核。"
       },
       "skill_id": {
         "type": "string",

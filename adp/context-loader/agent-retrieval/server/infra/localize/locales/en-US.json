@@ -162,6 +162,9 @@
     "SkillNotMountedOnNetwork": "This Skill is not mounted on the knowledge network, so it cannot be read or run here. Mount it under SKILLs in the knowledge network first.",
     "SkillAuthorizationUnavailable": "Knowledge network authorization is not configured.",
     "RunSQLResourceForbidden": "This account lacks view permission on at least one data resource the SQL references (view_detail on the Vega resource), so the query was not run. run_sql reads the underlying resources under the caller's own identity; unlike the other query tools, it does not follow knowledge-network authorization, so grants received through object types do not cover it. If you are authorized through object types, use query_object_instance or run_cypher instead; to use run_sql, ask an administrator to grant view_detail on the referenced resources.",
-    "ActionTypeNotAuthorized": "You are not authorized to view this action type."
+    "ActionTypeNotAuthorized": "You are not authorized to view this action type.",
+    "CapabilityNetworkViewRequired": "These network-scoped tools need view permission (view_detail) on the knowledge network itself. Permissions on its object types or other child resources, or a standalone grant on a Skill, are not enough to discover or read what the network has mounted. Ask an administrator to grant view on this knowledge network.",
+    "CapabilityNetworkExecuteRequired": "Running a tool mounted on a knowledge network needs execute permission on the knowledge network itself. Permissions on its object types or other child resources, or a standalone grant on the tool, are not enough to run it here. Ask an administrator to grant execute on this knowledge network.",
+    "SkillNotProvisionedForNetwork": "This Skill is mounted, but it has not been provisioned for knowledge network access: the network's proxy account holds no grant to read it. Ask a network editor who can execute the Skill to republish (or remount it on) the network, or ask for a direct view grant on the Skill."
   }
 }

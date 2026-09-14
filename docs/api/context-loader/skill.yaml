@@ -16,6 +16,14 @@ info:
     不构成管控——`skill_id` 会活过产生它的那次调用，也能从 `list_skills` 拿到，所以范围
     在读取与执行处各核一次。未挂载返回 400。
 
+    **权限跟知识网络走**（#1550）：这三条都要求调用者持有该知识网络本身的 `view_detail`；
+    只有对象类等子资源权限，或对 Skill 的单独授权，都会被拒绝（403）。读取（`get_skill_content`、
+    `read_skill_file`）先以调用者身份直读，已有 Skill 授权的调用者结果不变；执行工厂拒绝调用者时，
+    改由该知识网络的托管代理读取，调用者无需单独的 Skill 授权。代理对 Skill 的授权由挂载或最近
+    发布该网络、且对 Skill 有执行权限的编辑者提供；代理没有该授权时返回 403，`message` 提示请
+    编辑者重新发布网络，或为调用者单独授予 Skill 的查看权限。`execute_skill` 仍按调用者自己的
+    Skill 执行权限执行，不走代理。
+
     `list_skills` 是例外：它翻的是当前调用者拥有 `view` 权限的平台已发布技能目录，**不受
     挂载约束**，用于挂载之前先看见自己可以配置什么。目录可见不等于能在任意知识网络里使用，
     读取与执行仍会分别校验知识网络挂载关系以及对应操作权限。只有 `public_access`、没有
@@ -162,7 +170,7 @@ paths:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
         '403':
-          description: 当前账户对该 Skill 无执行 / 查看 / 公开访问权限
+          description: 调用者没有该知识网络本身的查看权限，或 Skill 尚未为知识网络访问完成授权（网络代理无该 Skill 的授权）
           headers:
             Content-Language:
               $ref: '#/components/headers/ContentLanguage'
@@ -228,7 +236,7 @@ paths:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
         '403':
-          description: 当前账户对该 Skill 无执行 / 查看 / 公开访问权限
+          description: 调用者没有该知识网络本身的查看权限，或 Skill 尚未为知识网络访问完成授权（网络代理无该 Skill 的授权）
           headers:
             Content-Language:
               $ref: '#/components/headers/ContentLanguage'

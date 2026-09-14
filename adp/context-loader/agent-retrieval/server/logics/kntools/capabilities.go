@@ -11,6 +11,7 @@ import (
 
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/permission"
 )
 
 // search_capabilities asks one question over everything a knowledge network mounted: what can do
@@ -257,7 +258,7 @@ func (s *knToolsService) allBoundRefs(ctx context.Context,
 			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
 	}
 	if err := s.knAuthz.AuthorizeRead(ctx, knID); err != nil {
-		return nil, 0, err
+		return nil, 0, permission.CapabilityScopeError(ctx, err, permission.CapabilityNetworkViewRequired)
 	}
 
 	// A failure to read the bindings fails the call. Continuing with an empty whitelist would look

@@ -258,3 +258,26 @@ func (a *knowledgeNetworkAuthorizer) authorizeResource(ctx context.Context, acco
 	return infraerrors.DefaultHTTPError(ctx, http.StatusForbidden,
 		infraerrors.LocalizedDetail(ctx, deniedDetailKey))
 }
+
+// Refusal details for the network-scoped capability tools.
+const (
+	// CapabilityNetworkViewRequired explains a refused discovery or Skill read.
+	CapabilityNetworkViewRequired = "CapabilityNetworkViewRequired"
+	// CapabilityNetworkExecuteRequired explains a refused tool execution.
+	CapabilityNetworkExecuteRequired = "CapabilityNetworkExecuteRequired"
+)
+
+// CapabilityScopeError restates a knowledge-network refusal for the tools that
+// work on what a network has mounted (#1550).
+//
+// Those tools need the operation on the network itself: a caller who holds
+// only child grants, or a standalone grant on one Skill, is refused, and the
+// generic "not authorized to read this network" leaves them guessing which
+// grant is missing. Only a 403 is restated; every other outcome, including an
+// unavailable authorization service, keeps its own status and detail.
+func CapabilityScopeError(ctx context.Context, err error, detailKey string) error {
+	if status, ok := infraerrors.HTTPStatus(err); ok && status == http.StatusForbidden {
+		return infraerrors.DefaultHTTPError(ctx, http.StatusForbidden, infraerrors.LocalizedDetail(ctx, detailKey))
+	}
+	return err
+}

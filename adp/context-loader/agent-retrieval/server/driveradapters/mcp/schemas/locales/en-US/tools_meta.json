@@ -112,12 +112,12 @@
   "get_skill_content": {
     "title": "Skill Content",
     "group_title": "Skills",
-    "description": "Read a skill's SKILL.md body and the file listing of its bundle (files[].rel_path). Usage and entry commands are documented there; fetch individual bundled files with read_skill_file instead of reading the whole package."
+    "description": "Read a skill's SKILL.md body and the file listing of its bundle (files[].rel_path). Usage and entry commands are documented there; fetch individual bundled files with read_skill_file instead of reading the whole package.\nNeeds view permission on the knowledge network itself: a mounted Skill is read through the network's managed proxy, so no separate grant on the Skill is needed. Permissions on object types or other child resources alone, or a standalone Skill grant, are refused."
   },
   "read_skill_file": {
     "title": "Read Skill File",
     "group_title": "Skills",
-    "description": "Read one file from a skill bundle; rel_path comes from the files listing returned by get_skill_content. For progressive loading — large files need not stay in context. Binary files return metadata only, no body."
+    "description": "Read one file from a skill bundle; rel_path comes from the files listing returned by get_skill_content. For progressive loading — large files need not stay in context. Binary files return metadata only, no body.\nSame permission as get_skill_content: view on the knowledge network itself, no separate Skill grant."
   },
   "execute_skill": {
     "title": "Execute Skill",
@@ -135,11 +135,11 @@
   "search_capabilities": {
     "title": "Capability Search",
     "group_title": "Tools",
-    "description": "Search everything one knowledge network has mounted -- Skills, Function tools (including API tools) and MCP tools -- ranked together in one space and returned interleaved by relevance. Use it when looking for something that can do a job, without first guessing whether it is a Skill or a tool.\nEvery hit carries capability_type, which decides what to do next: function / mcp_tool are called through execute_tool (their hits carry input_schema), a skill is read through get_skill_content and run through execute_skill.\nOptional types narrows to skill / function / mcp_tool; Function tools can be narrowed further with metadata_types into openapi (API tools) and function. The scope is the intersection of what the network mounted and what this account can see, so a network that mounted none returns nothing."
+    "description": "Search everything one knowledge network has mounted -- Skills, Function tools (including API tools) and MCP tools -- ranked together in one space and returned interleaved by relevance. Use it when looking for something that can do a job, without first guessing whether it is a Skill or a tool.\nEvery hit carries capability_type, which decides what to do next: function / mcp_tool are called through execute_tool (their hits carry input_schema), a skill is read through get_skill_content and run through execute_skill.\nOptional types narrows to skill / function / mcp_tool; Function tools can be narrowed further with metadata_types into openapi (API tools) and function. Needs view permission on the knowledge network itself; permissions on object types or other child resources alone, or a standalone Skill or tool grant, are refused. The scope is what the network mounted; Function tools this account cannot see are left out, and a network that mounted none returns nothing."
   },
   "execute_tool": {
     "title": "Execute Tool",
     "group_title": "Tools",
-    "description": "Invoke one Function tool mounted on the knowledge network, as the calling principal, and return its raw response. kn_id, toolbox_id and tool_id must come from search_capabilities, and arguments follows the input_schema it returned. A tool may write to external systems irreversibly, so read its description and use_rule before calling."
+    "description": "Invoke one Function or MCP tool mounted on the knowledge network and return its raw response. Needs execute permission on the knowledge network itself: the tool runs through the network's managed proxy, so no separate grant on the tool is needed. kn_id, toolbox_id and tool_id must come from search_capabilities, and arguments follows the input_schema it returned. A tool may write to external systems irreversibly, so read its description and use_rule before calling."
   }
 }

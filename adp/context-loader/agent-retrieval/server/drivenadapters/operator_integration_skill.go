@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
@@ -126,13 +127,64 @@ func (o *operatorIntegrationClient) GetSkillContent(ctx context.Context, skillID
 		return nil, skillUpstreamError(ctx, code, "SkillContentRequestFailed", err)
 	}
 
+	return o.skillContentFromResponse(ctx, skillID, respBody)
+}
+
+// knskills reaches the explicit-account reads through a type assertion; keep
+// the client on that interface at compile time rather than finding out at the
+// first request.
+var _ interfaces.SkillAccountReader = (*operatorIntegrationClient)(nil)
+
+// GetSkillContentAs reads a Skill's document as an explicit account, such as a
+// knowledge network's managed proxy, rather than the caller in the context.
+//
+// It uses the same caller-scoped route as the internal direct read, so the
+// execution factory applies its ordinary Skill read check (execute, public
+// access or view) to that account. No caller credential travels: the request
+// carries only the account's trusted identity headers.
+func (o *operatorIntegrationClient) GetSkillContentAs(ctx context.Context, account interfaces.AccountAuthContext,
+	skillID string) (*interfaces.GetSkillContentResponse, error) {
+	header, err := explicitAccountHeader(ctx, account, "operator.skill.content.as_account")
+	if err != nil {
+		return nil, err
+	}
+	fullURL := o.baseURL + fmt.Sprintf(getSkillContentInternalURI, url.PathEscape(skillID))
+	code, respBody, err := o.httpClient.Get(ctx, fullURL, nil, header)
+	if err != nil {
+		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetSkillContentAs] Request failed, err: %v", err)
+		return nil, skillUpstreamError(ctx, code, "SkillContentRequestFailed", err)
+	}
+	return o.skillContentFromResponse(ctx, skillID, respBody)
+}
+
+// explicitAccountHeader builds the outbound headers of a request made as the
+// given account. The trace headers are the caller's, so the read stays in the
+// caller's Interaction; the identity is replaced, and any caller credential is
+// dropped. An incomplete account fails before any request is made.
+func explicitAccountHeader(ctx context.Context, account interfaces.AccountAuthContext,
+	operationName string) (map[string]string, error) {
+	accountID := strings.TrimSpace(account.AccountID)
+	accountType := strings.TrimSpace(string(account.AccountType))
+	if accountID == "" || accountType == "" {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+			infraErr.LocalizedDetail(ctx, "SkillAuthorizationUnavailable"))
+	}
+	header := common.GetHeaderForChildOperation(ctx, operationName, 1)
+	delete(header, "Authorization")
+	header[string(interfaces.HeaderXAccountID)] = accountID
+	header[string(interfaces.HeaderXAccountType)] = accountType
+	return header, nil
+}
+
+func (o *operatorIntegrationClient) skillContentFromResponse(ctx context.Context, skillID string,
+	respBody any) (*interfaces.GetSkillContentResponse, error) {
 	var raw struct {
 		SkillID string                        `json:"skill_id"`
 		URL     string                        `json:"url"`
 		Status  string                        `json:"status"`
 		Files   []interfaces.SkillFileSummary `json:"files"`
 	}
-	if err = sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
+	if err := sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetSkillContent] Unmarshal failed, err: %v", err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			infraErr.LocalizedDetail(ctx, "SkillContentResponseInvalid"))
@@ -167,6 +219,33 @@ func (o *operatorIntegrationClient) ReadSkillFile(ctx context.Context, req *inte
 		return nil, skillUpstreamError(ctx, code, "SkillFileReadRequestFailed", err)
 	}
 
+	return o.skillFileFromResponse(ctx, req, respBody)
+}
+
+// ReadSkillFileAs reads one file of a Skill package as an explicit account,
+// under the same rule as GetSkillContentAs.
+func (o *operatorIntegrationClient) ReadSkillFileAs(ctx context.Context, account interfaces.AccountAuthContext,
+	req *interfaces.ReadSkillFileRequest) (*interfaces.ReadSkillFileResponse, error) {
+	if req == nil {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
+			infraErr.LocalizedDetail(ctx, "SkillIDRequired"))
+	}
+	header, err := explicitAccountHeader(ctx, account, "operator.skill.file_read.as_account")
+	if err != nil {
+		return nil, err
+	}
+	fullURL := o.baseURL + fmt.Sprintf(readSkillFileInternalURI, url.PathEscape(req.SkillID))
+	// Execution Factory requires the rel_path field; sending path returns 400.
+	code, respBody, err := o.httpClient.Post(ctx, fullURL, header, map[string]string{"rel_path": req.RelPath})
+	if err != nil {
+		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ReadSkillFileAs] Request failed, err: %v", err)
+		return nil, skillUpstreamError(ctx, code, "SkillFileReadRequestFailed", err)
+	}
+	return o.skillFileFromResponse(ctx, req, respBody)
+}
+
+func (o *operatorIntegrationClient) skillFileFromResponse(ctx context.Context, req *interfaces.ReadSkillFileRequest,
+	respBody any) (*interfaces.ReadSkillFileResponse, error) {
 	var raw struct {
 		SkillID  string `json:"skill_id"`
 		RelPath  string `json:"rel_path"`
@@ -174,7 +253,7 @@ func (o *operatorIntegrationClient) ReadSkillFile(ctx context.Context, req *inte
 		MimeType string `json:"mime_type"`
 		FileType string `json:"file_type"`
 	}
-	if err = sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
+	if err := sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ReadSkillFile] Unmarshal failed, err: %v", err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			infraErr.LocalizedDetail(ctx, "SkillFileReadResponseInvalid"))

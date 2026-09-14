@@ -10,6 +10,13 @@
 // can be had from list_skills, so the check has to sit where the document is read and where the
 // entry command runs.
 //
+// Reading follows the network's authorization (#1550): a caller who may view the network may read
+// what it mounted. The read is tried with the caller's own identity first, so a caller who also
+// holds a grant on the Skill sees exactly what they saw before; only when the execution factory
+// refuses that caller is the same read repeated as the network's managed proxy account, whose
+// grant on the Skill was vouched for by the editor who mounted or last published it. Running a
+// Skill stays caller-scoped.
+//
 // This layer formats results for models: text detection, size truncation, and
 // empty-result messages. Driven adapters perform the metadata and object-store calls.
 package knskills
@@ -25,6 +32,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -173,6 +181,9 @@ type knSkillsService struct {
 	operator   interfaces.DrivenOperatorIntegration
 	bknBackend interfaces.BknBackendAccess
 	knAuthz    interfaces.KnowledgeNetworkAuthorizer
+	// logger records every read made as a network's managed proxy. A service
+	// built without one (tests) still reads; it just does not log.
+	logger interfaces.Logger
 }
 
 var (
@@ -188,6 +199,7 @@ func NewKnSkillsService() KnSkillsService {
 			operator:   drivenadapters.NewOperatorIntegrationClient(),
 			bknBackend: drivenadapters.NewBknBackendAccess(),
 			knAuthz:    permission.NewKnowledgeNetworkAuthorizer(conf),
+			logger:     conf.GetLogger(),
 		}
 	})
 	return instance
@@ -247,36 +259,105 @@ func (s *knSkillsService) ListSkills(ctx context.Context, req *ListSkillsReq) (*
 // Fail-closed throughout: a service wired without the authorizer, an unreadable binding list, and
 // an unauthorized caller all refuse. Reading the bindings is the scope, so failing to read them
 // cannot degrade into "allow".
-func (s *knSkillsService) requireMounted(ctx context.Context, knID, skillID string) error {
+//
+// It returns the mount, whose id is what the network's proxy grant for this Skill is keyed by.
+func (s *knSkillsService) requireMounted(ctx context.Context, knID, skillID string) (*interfaces.CapabilityRef, error) {
 	knID = strings.TrimSpace(knID)
 	if knID == "" {
 		// A 400, not the bare sentinel: a missing argument is the caller's error, and the REST
 		// layer turns an unclassified error into a 500 that reads as a platform fault.
-		return infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
 			infraErr.LocalizedDetail(ctx, "SkillScopeKnIDRequired"))
 	}
 	if s.knAuthz == nil || s.bknBackend == nil {
-		return infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
 			infraErr.LocalizedDetail(ctx, "SkillAuthorizationUnavailable"))
 	}
 	if err := s.knAuthz.AuthorizeRead(ctx, knID); err != nil {
-		return err
+		return nil, permission.CapabilityScopeError(ctx, err, permission.CapabilityNetworkViewRequired)
 	}
 
 	refs, err := s.bknBackend.ListKNCapabilities(ctx, knID, "", interfaces.CapabilityTypeSkill)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for _, ref := range refs {
 		if ref == nil || ref.CapabilityType != interfaces.CapabilityTypeSkill {
 			continue
 		}
 		if strings.TrimSpace(ref.CapabilityID) == skillID {
-			return nil
+			return ref, nil
 		}
 	}
-	return infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
+	return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
 		infraErr.LocalizedDetail(ctx, "SkillNotMountedOnNetwork"))
+}
+
+// proxyReadAccount resolves the managed proxy account a mounted Skill is read as.
+//
+// The binding is built here from the mount the network reported, never from the request, and
+// bkn-backend confirms it is a current published grant source of a synchronized proxy before
+// naming the account. A source bkn-backend does not know, which is what a release that predates
+// Skill sources answers, means the Skill was never provisioned for network access and is said so.
+func (s *knSkillsService) proxyReadAccount(ctx context.Context, knID string, mount *interfaces.CapabilityRef,
+	skillID string) (interfaces.SkillAccountReader, interfaces.AccountAuthContext, error) {
+	reader, readerOK := s.operator.(interfaces.SkillAccountReader)
+	resolver, resolverOK := s.bknBackend.(interfaces.KNProxyResolver)
+	if !readerOK || !resolverOK || mount == nil || strings.TrimSpace(mount.ID) == "" {
+		return nil, interfaces.AccountAuthContext{}, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+			infraErr.LocalizedDetail(ctx, "SkillAuthorizationUnavailable"))
+	}
+	binding := interfaces.KNProxyBinding{
+		KNID: strings.TrimSpace(knID), ChildType: interfaces.KNProxyChildTypeCapability,
+		ChildID: strings.TrimSpace(mount.ID), TargetType: interfaces.KNProxyTargetTypeSkill,
+		TargetID: skillID, Operation: interfaces.KNProxyOperationExecute,
+	}
+	mapping, err := resolver.ResolveKNProxyBinding(ctx, binding)
+	if err != nil {
+		return nil, interfaces.AccountAuthContext{}, notProvisionedWhenForbidden(ctx, err)
+	}
+	if mapping == nil || strings.TrimSpace(mapping.ProxyAccountID) == "" ||
+		mapping.ProxyAccountType != string(interfaces.AccessorTypeApp) {
+		return nil, interfaces.AccountAuthContext{}, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
+			infraErr.LocalizedDetail(ctx, "SkillAuthorizationUnavailable"))
+	}
+	return reader, interfaces.AccountAuthContext{
+		AccountID: mapping.ProxyAccountID, AccountType: interfaces.AccessorTypeApp,
+	}, nil
+}
+
+// logProxyRead writes one line per read made as a network's proxy: the caller it was made for,
+// the network, the proxy account and the Skill. The execution factory sees only the proxy
+// account, so this is where the caller is tied to the read.
+func (s *knSkillsService) logProxyRead(ctx context.Context, operation, knID string,
+	account interfaces.AccountAuthContext, skillID string) {
+	if s.logger == nil {
+		return
+	}
+	callerID := ""
+	if caller, ok := common.GetAccountAuthContextFromCtx(ctx); ok && caller != nil {
+		callerID = caller.AccountID
+	}
+	s.logger.WithContext(ctx).Infof("[KnSkills] %s read through the knowledge network proxy: caller_id=%s kn_id=%s "+
+		"proxy_account_id=%s skill_id=%s", operation, callerID, strings.TrimSpace(knID), account.AccountID, skillID)
+}
+
+// notProvisionedWhenForbidden restates a refused proxy read. A 403 there means the network's proxy
+// holds no grant on this Skill — the editor who mounted or last published it could not vouch for
+// it — which the caller can act on only if told so. Other statuses keep their own meaning.
+func notProvisionedWhenForbidden(ctx context.Context, err error) error {
+	if status, ok := infraErr.HTTPStatus(err); ok && status == http.StatusForbidden {
+		return infraErr.DefaultHTTPError(ctx, http.StatusForbidden,
+			infraErr.LocalizedDetail(ctx, "SkillNotProvisionedForNetwork"))
+	}
+	return err
+}
+
+// callerRefused reports whether the execution factory refused the caller's own read, the one
+// outcome that sends the read through the network's proxy.
+func callerRefused(err error) bool {
+	status, ok := infraErr.HTTPStatus(err)
+	return ok && status == http.StatusForbidden
 }
 
 // GetSkillContent returns the skill document and its file list for progressive reading.
@@ -285,10 +366,20 @@ func (s *knSkillsService) GetSkillContent(ctx context.Context, knID, skillID str
 	if skillID == "" {
 		return nil, SkillIDRequiredError(ctx)
 	}
-	if err := s.requireMounted(ctx, knID, skillID); err != nil {
+	mount, err := s.requireMounted(ctx, knID, skillID)
+	if err != nil {
 		return nil, err
 	}
 	resp, err := s.operator.GetSkillContent(ctx, skillID)
+	if callerRefused(err) {
+		reader, account, proxyErr := s.proxyReadAccount(ctx, knID, mount, skillID)
+		if proxyErr != nil {
+			return nil, proxyErr
+		}
+		s.logProxyRead(ctx, "skill content", knID, account, skillID)
+		resp, err = reader.GetSkillContentAs(ctx, account, skillID)
+		err = notProvisionedWhenForbidden(ctx, err)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -328,11 +419,22 @@ func (s *knSkillsService) ReadSkillFile(ctx context.Context, req *ReadSkillFileR
 	if relPath == "" {
 		return nil, RelPathRequiredError(ctx)
 	}
-	if err := s.requireMounted(ctx, req.KnID, skillID); err != nil {
+	mount, err := s.requireMounted(ctx, req.KnID, skillID)
+	if err != nil {
 		return nil, err
 	}
 
-	resp, err := s.operator.ReadSkillFile(ctx, &interfaces.ReadSkillFileRequest{SkillID: skillID, RelPath: relPath})
+	fileReq := &interfaces.ReadSkillFileRequest{SkillID: skillID, RelPath: relPath}
+	resp, err := s.operator.ReadSkillFile(ctx, fileReq)
+	if callerRefused(err) {
+		reader, account, proxyErr := s.proxyReadAccount(ctx, req.KnID, mount, skillID)
+		if proxyErr != nil {
+			return nil, proxyErr
+		}
+		s.logProxyRead(ctx, "skill file", req.KnID, account, skillID)
+		resp, err = reader.ReadSkillFileAs(ctx, account, fileReq)
+		err = notProvisionedWhenForbidden(ctx, err)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +470,7 @@ func (s *knSkillsService) ExecuteSkill(ctx context.Context, req *ExecuteSkillReq
 	if entryShell == "" {
 		return nil, EntryShellRequiredError(ctx)
 	}
-	if err := s.requireMounted(ctx, req.KnID, skillID); err != nil {
+	if _, err := s.requireMounted(ctx, req.KnID, skillID); err != nil {
 		return nil, err
 	}
 

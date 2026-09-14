@@ -666,7 +666,10 @@ const (
 	KNProxyChildTypeActionType = "action_type"
 	KNProxyTargetTypeToolBox   = "tool_box"
 	KNProxyTargetTypeMCP       = "mcp"
-	KNProxyOperationExecute    = "execute"
+	// KNProxyTargetTypeSkill is a Skill mounted on the network. The proxy only
+	// reads it, relying on its execute grant; running a Skill stays caller-scoped.
+	KNProxyTargetTypeSkill  = "skill"
+	KNProxyOperationExecute = "execute"
 )
 
 // KNProxyAccount is the runtime subset of BKN's managed proxy mapping.

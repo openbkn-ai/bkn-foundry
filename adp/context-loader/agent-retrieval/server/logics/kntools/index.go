@@ -147,7 +147,7 @@ func (s *knToolsService) boundRefs(ctx context.Context, knID, toolboxID string) 
 			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
 	}
 	if err := s.knAuthz.AuthorizeRead(ctx, knID); err != nil {
-		return nil, nil, err
+		return nil, nil, permission.CapabilityScopeError(ctx, err, permission.CapabilityNetworkViewRequired)
 	}
 	return s.boundRefsAuthorized(ctx, knID, toolboxID)
 }
@@ -503,7 +503,7 @@ func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (
 			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
 	}
 	if err := executeAuthz.AuthorizeExecute(ctx, knID); err != nil {
-		return nil, err
+		return nil, permission.CapabilityScopeError(ctx, err, permission.CapabilityNetworkExecuteRequired)
 	}
 
 	refs, mcpRefs, err := s.boundRefsAuthorized(ctx, knID, toolboxID)
