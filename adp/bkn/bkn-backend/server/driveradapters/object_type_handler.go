@@ -946,7 +946,7 @@ func (r *restHandler) GetObjectTypesByIn(c *gin.Context) {
 	// Internal endpoints read user_id from the header and defer authorization to the permission check.
 	// Construct a visitor for the internal request.
 	visitor := visitor.GenerateVisitor(c)
-	r.GetObjectTypes(c, visitor)
+	r.GetObjectTypes(c, visitor, false)
 }
 
 // Get object type by ID (external).
@@ -957,11 +957,11 @@ func (r *restHandler) GetObjectTypesByEx(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	r.GetObjectTypes(c, visitor)
+	r.GetObjectTypes(c, visitor, true)
 }
 
 // Get object type by ID.
-func (r *restHandler) GetObjectTypes(c *gin.Context, visitor hydra.Visitor) {
+func (r *restHandler) GetObjectTypes(c *gin.Context, visitor hydra.Visitor, filterProperties bool) {
 	logger.Debug("Handler GetObjectTypes Start")
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
@@ -1017,6 +1017,15 @@ func (r *restHandler) GetObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
+	}
+	if filterProperties {
+		result, err = r.ots.FilterObjectTypesForRead(ctx, knID, result)
+		if err != nil {
+			httpErr := err.(*rest.HTTPError)
+			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+			rest.ReplyError(c, httpErr)
+			return
+		}
 	}
 
 	httpResult := map[string]any{"entries": result}

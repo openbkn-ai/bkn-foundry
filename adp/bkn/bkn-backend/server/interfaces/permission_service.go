@@ -12,6 +12,8 @@ import "context"
 type PermissionService interface {
 	CheckPermission(ctx context.Context, resource PermissionResource, ops []string) error
 	FilterFullPropertyAccess(ctx context.Context, objectTypeRef string, properties []string) ([]string, error)
+	// FilterVisiblePropertyAccess returns properties whose effective access level is not none.
+	FilterVisiblePropertyAccess(ctx context.Context, objectTypeRef string, properties []string) ([]string, error)
 	RequireFullPropertyAccess(ctx context.Context, objectTypeRef string, properties []string) error
 	FilterResources(ctx context.Context, resourceType string, ids []string,
 		ops []string, allowOperation bool, fullOps []string) (map[string]PermissionResourceOps, error)

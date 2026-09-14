@@ -211,6 +211,55 @@ func Test_objectTypeService_GetObjectTypeIDsByKnID(t *testing.T) {
 	})
 }
 
+func Test_objectTypeService_FilterObjectTypesForRead(t *testing.T) {
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	ps := bmock.NewMockPermissionService(mockCtrl)
+	service := &objectTypeService{ps: ps}
+	objectType := &interfaces.ObjectType{
+		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+			OTID: "orders",
+			DataProperties: []*interfaces.DataProperty{
+				{Name: "visible", DisplayName: "Visible"},
+				{Name: "secret", DisplayName: "Secret"},
+			},
+			PrimaryKeys:    []string{"secret"},
+			DisplayKey:     "secret",
+			IncrementalKey: "secret",
+			LogicProperties: []*interfaces.LogicProperty{
+				{Name: "safe_logic", Parameters: []interfaces.Parameter{{ValueFrom: interfaces.VALUE_FROM_CONST}}},
+				{Name: "secret_logic", Parameters: []interfaces.Parameter{{
+					ValueFrom: interfaces.VALUE_FROM_PROPERTY, Value: "secret",
+				}}},
+			},
+		},
+		Status: &interfaces.ObjectTypeStatus{IncrementalKey: "secret"},
+	}
+	ps.EXPECT().FilterVisiblePropertyAccess(gomock.Any(), "kn1/orders", gomock.Any()).Return([]string{"visible"}, nil)
+
+	filtered, err := service.FilterObjectTypesForRead(ctx, "kn1", []*interfaces.ObjectType{objectType})
+	if err != nil {
+		t.Fatalf("FilterObjectTypesForRead() error = %v", err)
+	}
+	if len(filtered) != 1 || len(filtered[0].DataProperties) != 1 || filtered[0].DataProperties[0].Name != "visible" {
+		t.Fatalf("FilterObjectTypesForRead() data properties = %#v", filtered)
+	}
+	if len(filtered[0].PrimaryKeys) != 0 || filtered[0].DisplayKey != "" || filtered[0].IncrementalKey != "" {
+		t.Fatalf("FilterObjectTypesForRead() leaked key metadata: %#v", filtered[0].ObjectTypeWithKeyField)
+	}
+	if filtered[0].Status == nil || filtered[0].Status.IncrementalKey != "" {
+		t.Fatalf("FilterObjectTypesForRead() leaked status incremental key: %#v", filtered[0].Status)
+	}
+	if len(filtered[0].LogicProperties) != 1 || filtered[0].LogicProperties[0].Name != "safe_logic" {
+		t.Fatalf("FilterObjectTypesForRead() logic properties = %#v", filtered[0].LogicProperties)
+	}
+	if len(objectType.DataProperties) != 2 || objectType.DisplayKey != "secret" {
+		t.Fatalf("FilterObjectTypesForRead() mutated the trusted source model: %#v", objectType)
+	}
+}
+
 func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 	Convey("Test GetObjectTypesByIDs\n", t, func() {
 		ctx := context.Background()

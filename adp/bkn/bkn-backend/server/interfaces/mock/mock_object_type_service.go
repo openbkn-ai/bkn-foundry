@@ -192,6 +192,21 @@ func (mr *MockObjectTypeServiceMockRecorder) GetObjectTypesByIDs(ctx, tx, knID, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetObjectTypesByIDs", reflect.TypeOf((*MockObjectTypeService)(nil).GetObjectTypesByIDs), ctx, tx, knID, branch, otIDs)
 }
 
+// FilterObjectTypesForRead mocks base method.
+func (m *MockObjectTypeService) FilterObjectTypesForRead(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType) ([]*interfaces.ObjectType, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FilterObjectTypesForRead", ctx, knID, objectTypes)
+	ret0, _ := ret[0].([]*interfaces.ObjectType)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FilterObjectTypesForRead indicates an expected call of FilterObjectTypesForRead.
+func (mr *MockObjectTypeServiceMockRecorder) FilterObjectTypesForRead(ctx, knID, objectTypes any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FilterObjectTypesForRead", reflect.TypeOf((*MockObjectTypeService)(nil).FilterObjectTypesForRead), ctx, knID, objectTypes)
+}
+
 // GetObjectTypesMapByIDs mocks base method.
 func (m *MockObjectTypeService) GetObjectTypesMapByIDs(ctx context.Context, knID, branch string, otIDs []string, needPropMap bool) (map[string]*interfaces.ObjectType, error) {
 	m.ctrl.T.Helper()

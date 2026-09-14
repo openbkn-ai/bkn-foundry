@@ -163,6 +163,29 @@ func Test_PermissionServiceImpl_FilterFullPropertyAccess(t *testing.T) {
 	}
 }
 
+func Test_PermissionServiceImpl_FilterVisiblePropertyAccess(t *testing.T) {
+	svc, _, pa, _ := newTestPermissionImpl(t)
+	ctx := withAccountInfo(context.Background(), "u1", "user")
+	pa.EXPECT().ResolvePropertyLevels(gomock.Any(), gomock.Any()).Return(
+		interfaces.PropertyLevelsResponse{Entries: []interfaces.PropertyLevelsDecisionEntry{{
+			ObjectTypeRef: "kn1/orders",
+			Properties: []interfaces.PropertyAccessDecision{
+				{Name: "amount", Level: "masked"},
+				{Name: "region", Level: "schema"},
+				{Name: "secret", Level: "none"},
+				{Name: "total", Level: "full"},
+			},
+		}}}, nil)
+
+	visible, err := svc.FilterVisiblePropertyAccess(ctx, "kn1/orders", []string{"region", "secret", "total", "amount"})
+	if err != nil {
+		t.Fatalf("FilterVisiblePropertyAccess() error = %v", err)
+	}
+	if len(visible) != 3 || visible[0] != "amount" || visible[1] != "region" || visible[2] != "total" {
+		t.Fatalf("FilterVisiblePropertyAccess() = %v", visible)
+	}
+}
+
 func Test_PermissionServiceImpl_CreateResources(t *testing.T) {
 	Convey("Test PermissionServiceImpl CreateResources\n", t, func() {
 		svc, mockCtrl, pa, _ := newTestPermissionImpl(t)

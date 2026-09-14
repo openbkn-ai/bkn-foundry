@@ -658,6 +658,109 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 	return objectTypes, nil
 }
 
+// FilterObjectTypesForRead projects object metadata through the caller's property-level
+// decisions. It intentionally runs only at public response boundaries so internal services
+// retain complete models for trusted dependency resolution.
+func (ots *objectTypeService) FilterObjectTypesForRead(ctx context.Context, knID string,
+	objectTypes []*interfaces.ObjectType) ([]*interfaces.ObjectType, error) {
+	filtered := make([]*interfaces.ObjectType, 0, len(objectTypes))
+	for _, objectType := range objectTypes {
+		if objectType == nil {
+			continue
+		}
+		properties := make([]string, 0, len(objectType.DataProperties))
+		for _, property := range objectType.DataProperties {
+			if property != nil {
+				properties = append(properties, property.Name)
+			}
+		}
+		visibleProperties, err := ots.ps.FilterVisiblePropertyAccess(ctx,
+			interfaces.KNChildResourceID(knID, objectType.OTID), properties)
+		if err != nil {
+			return nil, err
+		}
+		visible := make(map[string]struct{}, len(visibleProperties))
+		for _, property := range visibleProperties {
+			visible[property] = struct{}{}
+		}
+		filtered = append(filtered, filterObjectTypeForRead(objectType, visible))
+	}
+	return filtered, nil
+}
+
+func filterObjectTypeForRead(objectType *interfaces.ObjectType,
+	visible map[string]struct{}) *interfaces.ObjectType {
+	filtered := *objectType
+	filtered.DataProperties = make([]*interfaces.DataProperty, 0, len(objectType.DataProperties))
+	for _, property := range objectType.DataProperties {
+		if property == nil {
+			continue
+		}
+		if _, allowed := visible[property.Name]; allowed {
+			filtered.DataProperties = append(filtered.DataProperties, property)
+		}
+	}
+	filtered.PrimaryKeys = filterVisiblePropertyNames(objectType.PrimaryKeys, visible)
+	if _, allowed := visible[objectType.DisplayKey]; !allowed {
+		filtered.DisplayKey = ""
+	}
+	if _, allowed := visible[objectType.IncrementalKey]; !allowed {
+		filtered.IncrementalKey = ""
+	}
+	if objectType.Status != nil {
+		status := *objectType.Status
+		if _, allowed := visible[status.IncrementalKey]; !allowed {
+			status.IncrementalKey = ""
+		}
+		filtered.Status = &status
+	}
+	filtered.LogicProperties = make([]*interfaces.LogicProperty, 0, len(objectType.LogicProperties))
+	for _, property := range objectType.LogicProperties {
+		if logicPropertyVisible(property, visible) {
+			filtered.LogicProperties = append(filtered.LogicProperties, property)
+		}
+	}
+	filtered.PropertyMap = make(map[string]string, len(filtered.DataProperties))
+	for _, property := range filtered.DataProperties {
+		filtered.PropertyMap[property.Name] = property.DisplayName
+	}
+	return &filtered
+}
+
+func filterVisiblePropertyNames(properties []string, visible map[string]struct{}) []string {
+	filtered := make([]string, 0, len(properties))
+	for _, property := range properties {
+		if _, allowed := visible[property]; allowed {
+			filtered = append(filtered, property)
+		}
+	}
+	return filtered
+}
+
+func logicPropertyVisible(property *interfaces.LogicProperty, visible map[string]struct{}) bool {
+	if property == nil {
+		return false
+	}
+	for _, parameter := range property.Parameters {
+		if parameter.ValueFrom != interfaces.VALUE_FROM_PROPERTY {
+			continue
+		}
+		name, ok := parameter.Value.(string)
+		if !ok {
+			return false
+		}
+		if _, allowed := visible[name]; !allowed {
+			return false
+		}
+	}
+	for _, dimension := range property.AnalysisDims {
+		if _, allowed := visible[dimension.Name]; !allowed {
+			return false
+		}
+	}
+	return true
+}
+
 func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 	knID string, branch string, otID string, query interfaces.ObjectTypeSampleDataQueryParams) (*interfaces.ObjectTypeSampleData, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "query object type sample data")

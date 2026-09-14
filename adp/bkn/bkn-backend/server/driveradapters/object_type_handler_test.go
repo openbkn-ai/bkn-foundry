@@ -927,6 +927,36 @@ func Test_ObjectTypeRestHandler_GetObjectTypesByIn(t *testing.T) {
 	})
 }
 
+func Test_ObjectTypeRestHandler_GetObjectTypesFiltersExternalProperties(t *testing.T) {
+	Convey("Test ObjectTypeHandler GetObjectTypes filters external properties\n", t, func() {
+		test := setGinMode()
+		defer test()
+		handler, mockCtrl, _, ots, _, _, kns := newObjectTypeTestHandler(t)
+		defer mockCtrl.Finish()
+
+		knID := "kn1"
+		objectTypes := []*interfaces.ObjectType{{
+			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1"},
+		}}
+		filteredObjectTypes := []*interfaces.ObjectType{{
+			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1"},
+		}}
+
+		kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, interfaces.MAIN_BRANCH).Return(knID, true, nil)
+		ots.EXPECT().GetObjectTypesByIDs(gomock.Any(), nil, knID, interfaces.MAIN_BRANCH, []string{"ot1"}).Return(objectTypes, nil)
+		ots.EXPECT().FilterObjectTypesForRead(gomock.Any(), knID, objectTypes).Return(filteredObjectTypes, nil)
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/knowledge-networks/kn1/object-types/ot1", nil)
+		c.Params = gin.Params{{Key: "kn_id", Value: knID}, {Key: "ot_ids", Value: "ot1"}}
+
+		handler.GetObjectTypes(c, hydra.Visitor{ID: "user1", Type: hydra.VisitorType_User}, true)
+
+		So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+	})
+}
+
 func Test_ObjectTypeRestHandler_SearchObjectTypesByIn(t *testing.T) {
 	Convey("Test ObjectTypeHandler SearchObjectTypesByIn\n", t, func() {
 		test := setGinMode()

@@ -122,6 +122,18 @@ func (ps *PermissionServiceImpl) RequireFullPropertyAccess(ctx context.Context,
 // still call RequireFullPropertyAccess as their final security boundary.
 func (ps *PermissionServiceImpl) FilterFullPropertyAccess(ctx context.Context,
 	objectTypeRef string, properties []string) ([]string, error) {
+	return ps.filterPropertyAccess(ctx, objectTypeRef, properties, filterFullPropertyLevelResponse)
+}
+
+// FilterVisiblePropertyAccess returns properties that may be exposed in metadata.
+// schema, masked, and full properties remain visible; none properties are omitted.
+func (ps *PermissionServiceImpl) FilterVisiblePropertyAccess(ctx context.Context,
+	objectTypeRef string, properties []string) ([]string, error) {
+	return ps.filterPropertyAccess(ctx, objectTypeRef, properties, filterVisiblePropertyLevelResponse)
+}
+
+func (ps *PermissionServiceImpl) filterPropertyAccess(ctx context.Context, objectTypeRef string,
+	properties []string, filter func(string, []string, []interfaces.PropertyLevelsDecisionEntry) ([]string, error)) ([]string, error) {
 	properties = uniqueSortedProperties(properties)
 	if len(properties) == 0 {
 		return []string{}, nil
@@ -145,7 +157,7 @@ func (ps *PermissionServiceImpl) FilterFullPropertyAccess(ctx context.Context,
 		if err != nil {
 			return nil, ps.propertyAccessInternalError(ctx, err)
 		}
-		batch, err := filterFullPropertyLevelResponse(objectTypeRef, requested, response.Entries)
+		batch, err := filter(objectTypeRef, requested, response.Entries)
 		if err != nil {
 			return nil, ps.propertyAccessInternalError(ctx, err)
 		}
@@ -163,6 +175,20 @@ func (ps *PermissionServiceImpl) propertyAccessInternalError(ctx context.Context
 
 func filterFullPropertyLevelResponse(objectTypeRef string, requested []string,
 	entries []interfaces.PropertyLevelsDecisionEntry) ([]string, error) {
+	return filterPropertyLevelResponse(objectTypeRef, requested, entries, func(level string) bool {
+		return level == "full"
+	})
+}
+
+func filterVisiblePropertyLevelResponse(objectTypeRef string, requested []string,
+	entries []interfaces.PropertyLevelsDecisionEntry) ([]string, error) {
+	return filterPropertyLevelResponse(objectTypeRef, requested, entries, func(level string) bool {
+		return level != "none"
+	})
+}
+
+func filterPropertyLevelResponse(objectTypeRef string, requested []string,
+	entries []interfaces.PropertyLevelsDecisionEntry, include func(string) bool) ([]string, error) {
 	if len(entries) != 1 || entries[0].ObjectTypeRef != objectTypeRef {
 		return nil, fmt.Errorf("invalid property-levels object response")
 	}
@@ -176,21 +202,22 @@ func filterFullPropertyLevelResponse(objectTypeRef string, requested []string,
 	if len(decisions) != len(requested) {
 		return nil, fmt.Errorf("incomplete property-levels response")
 	}
-	full := make([]string, 0, len(requested))
+	result := make([]string, 0, len(requested))
 	for _, property := range requested {
 		level, exists := decisions[property]
 		if !exists {
 			return nil, fmt.Errorf("incomplete property-levels response")
 		}
 		switch level {
-		case "full":
-			full = append(full, property)
-		case "none", "schema", "masked":
+		case "none", "schema", "masked", "full":
 		default:
 			return nil, fmt.Errorf("invalid property access level")
 		}
+		if include(level) {
+			result = append(result, property)
+		}
 	}
-	return full, nil
+	return result, nil
 }
 
 func uniqueSortedProperties(properties []string) []string {
