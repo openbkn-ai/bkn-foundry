@@ -71,6 +71,6 @@ uses the same safe receipt boundary.
 Unit tests cover safe input, terminal success and failure summaries, and
 compact-reference selection. Lifecycle adapter tests capture the real Core
 begin/finish payloads for successful and failed `execute_tool` calls. Guard
-tests cover pending, successful replay and failed replay. SDK readback remains
-an existing success-path capability; typed error readback is intentionally not
-added here because it would change the public SDK error contract.
+tests cover pending, successful replay and failed replay. The paired SDK
+change preserves the compact receipt on an additive `ManagedToolError`; it
+continues to reject a replay rather than changing the success return contract.

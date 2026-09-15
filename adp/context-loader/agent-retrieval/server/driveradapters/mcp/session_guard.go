@@ -562,7 +562,13 @@ func lifecycleToolErrorWithManagedReceipt(toolName string, value lifecycleError,
 	result := lifecycleToolErrorWithDetails(value, details)
 	if toolName == toolKeyExecuteTool {
 		if receipt, ok := details["receipt"]; ok {
-			result.StructuredContent = map[string]any{"bkn_receipt": receipt}
+			// Error metadata is structured so an SDK can retain the receipt while
+			// still rejecting the replay as a tool error. Only the stable code is
+			// exposed; the text envelope remains the human fallback.
+			result.StructuredContent = map[string]any{
+				"bkn_receipt": receipt,
+				"error":       map[string]any{"code": value.Code},
+			}
 		}
 	}
 	return result

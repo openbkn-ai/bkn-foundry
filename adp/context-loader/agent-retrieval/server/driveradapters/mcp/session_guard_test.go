@@ -419,6 +419,10 @@ func TestManagedExecuteToolReplayProjectsOnlySafeReadbackReceipt(t *testing.T) {
 			if !ok || receipt["receipt_id"] != "receipt-1" || receipt["operation_id"] != "op-1" {
 				t.Fatalf("unexpected replay readback: %#v", structured)
 			}
+			errorValue, ok := structured["error"].(map[string]any)
+			if !ok || errorValue["code"] == nil {
+				t.Fatalf("replay omitted structured error code: %#v", structured)
+			}
 			for _, field := range []string{"owner", "request_id", "operation"} {
 				if _, found := receipt[field]; found {
 					t.Fatalf("replay receipt leaked %s: %#v", field, receipt)

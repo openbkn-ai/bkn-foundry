@@ -23,15 +23,15 @@
   enter the lifecycle payload.
 - [x] Apply the same compact receipt projection to pending, successful replay,
   and failed replay; omit the stored Operation for those execute-tool replies.
+- [x] Include a stable structured error code beside the bounded replay receipt.
+  The paired SDK change exposes it through an additive `ManagedToolError`, so
+  callers can read back terminal and pending receipts without treating replay
+  as success.
 - [x] Cover direct helper, lifecycle adapter success/failure, and guard replay
   states in the ContextLoader MCP package.
 
 ## Deliberately deferred
 
-- Typed receipt readback from an SDK-thrown MCP error. The current SDK throws
-  on an error result after parsing the response; changing that behaviour is a
-  public SDK error-contract decision and is not needed to secure or preserve
-  the MCP replay response.
 - Automatic Trace generation for direct generic Execution Factory Toolbox API
   calls. That is a separate cross-service contract.
 
