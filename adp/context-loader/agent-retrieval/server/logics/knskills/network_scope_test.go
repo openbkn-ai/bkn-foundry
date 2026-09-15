@@ -6,6 +6,7 @@ package knskills
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -27,10 +28,14 @@ type proxyOperator struct {
 	proxyCalls   int
 	gotAccount   interfaces.AccountAuthContext
 	gotProxyFile *interfaces.ReadSkillFileRequest
+	beforeRead   func()
 }
 
 func (p *proxyOperator) GetSkillContentAs(_ context.Context, account interfaces.AccountAuthContext,
 	_ string) (*interfaces.GetSkillContentResponse, error) {
+	if p.beforeRead != nil {
+		p.beforeRead()
+	}
 	p.proxyCalls++
 	p.gotAccount = account
 	return p.proxyContent, p.proxyErr
@@ -38,6 +43,9 @@ func (p *proxyOperator) GetSkillContentAs(_ context.Context, account interfaces.
 
 func (p *proxyOperator) ReadSkillFileAs(_ context.Context, account interfaces.AccountAuthContext,
 	req *interfaces.ReadSkillFileRequest) (*interfaces.ReadSkillFileResponse, error) {
+	if p.beforeRead != nil {
+		p.beforeRead()
+	}
 	p.proxyCalls++
 	p.gotAccount = account
 	p.gotProxyFile = req
@@ -159,6 +167,64 @@ func TestNetworkViewerReadsAMountedSkillAsTheProxyAccount(t *testing.T) {
 			if !strings.Contains(line, field) {
 				t.Fatalf("log line %q lacks %s", line, field)
 			}
+		}
+	}
+}
+
+func TestProxyReadLogsTheCompletedOutcome(t *testing.T) {
+	ctx := common.SetAccountAuthContextToCtx(context.Background(), &interfaces.AccountAuthContext{
+		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
+	})
+	for _, operation := range []string{"skill content", "skill file"} {
+		for _, test := range []struct {
+			name   string
+			err    error
+			result string
+			status int
+		}{
+			{name: "success", result: "success", status: http.StatusOK},
+			{name: "forbidden", err: forbidden(ctx), result: "failure", status: http.StatusForbidden},
+			{name: "download failure", err: infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, "download failed"), result: "failure", status: http.StatusBadGateway},
+			{name: "unclassified failure", err: errors.New("private upstream details"), result: "failure"},
+		} {
+			t.Run(operation+"/"+test.name, func(t *testing.T) {
+				logger := &lineLogger{}
+				op := &proxyOperator{
+					fakeOperator: &fakeOperator{err: forbidden(ctx)},
+					proxyContent: skillContent(),
+					proxyFile:    &interfaces.ReadSkillFileResponse{SkillID: "sk-1", RelPath: "SKILL.md", Content: []byte("body")},
+					proxyErr:     test.err,
+					beforeRead: func() {
+						if len(logger.lines) != 0 {
+							t.Fatalf("read logged before its outcome was known: %q", logger.lines)
+						}
+					},
+				}
+				bkn := &resolvingBkn{fakeBkn: &fakeBkn{refs: mountedWithID("binding-1", "sk-1")}}
+				svc := &knSkillsService{operator: op, bknBackend: bkn, knAuthz: &fakeKnAuthz{}, logger: logger}
+				var err error
+				if operation == "skill content" {
+					_, err = svc.GetSkillContent(ctx, "kn-1", "sk-1")
+				} else {
+					_, err = svc.ReadSkillFile(ctx, &ReadSkillFileReq{KnID: "kn-1", SkillID: "sk-1", RelPath: "SKILL.md"})
+				}
+				if (err != nil) != (test.err != nil) {
+					t.Fatalf("read error = %v, upstream error = %v", err, test.err)
+				}
+				if op.proxyCalls != 1 || len(logger.lines) != 1 {
+					t.Fatalf("proxy calls = %d, logs = %q; want one completed read", op.proxyCalls, logger.lines)
+				}
+				line := logger.lines[0]
+				for _, field := range []string{operation, "caller_id=user-1", "kn_id=kn-1", "proxy_account_id=proxy-1", "skill_id=sk-1",
+					"result=" + test.result, fmt.Sprintf("http_status=%d", test.status)} {
+					if !strings.Contains(line, field) {
+						t.Errorf("log %q lacks %q", line, field)
+					}
+				}
+				if strings.Contains(line, "private upstream details") {
+					t.Fatal("outcome log exposed upstream error details")
+				}
+			})
 		}
 	}
 }

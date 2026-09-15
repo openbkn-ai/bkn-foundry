@@ -326,11 +326,11 @@ func (s *knSkillsService) proxyReadAccount(ctx context.Context, knID string, mou
 	}, nil
 }
 
-// logProxyRead writes one line per read made as a network's proxy: the caller it was made for,
-// the network, the proxy account and the Skill. The execution factory sees only the proxy
-// account, so this is where the caller is tied to the read.
+// logProxyRead records the completed read's outcome and identity. The execution factory sees
+// only the proxy account, so this is where the caller is tied to the read. A zero HTTP status
+// means the failure has no classified status; upstream error details are not logged here.
 func (s *knSkillsService) logProxyRead(ctx context.Context, operation, knID string,
-	account interfaces.AccountAuthContext, skillID string) {
+	account interfaces.AccountAuthContext, skillID string, err error) {
 	if s.logger == nil {
 		return
 	}
@@ -338,8 +338,14 @@ func (s *knSkillsService) logProxyRead(ctx context.Context, operation, knID stri
 	if caller, ok := common.GetAccountAuthContextFromCtx(ctx); ok && caller != nil {
 		callerID = caller.AccountID
 	}
+	result, status := "success", http.StatusOK
+	if err != nil {
+		result = "failure"
+		status, _ = infraErr.HTTPStatus(err)
+	}
 	s.logger.WithContext(ctx).Infof("[KnSkills] %s read through the knowledge network proxy: caller_id=%s kn_id=%s "+
-		"proxy_account_id=%s skill_id=%s", operation, callerID, strings.TrimSpace(knID), account.AccountID, skillID)
+		"proxy_account_id=%s skill_id=%s result=%s http_status=%d", operation, callerID,
+		strings.TrimSpace(knID), account.AccountID, skillID, result, status)
 }
 
 // notProvisionedWhenForbidden restates a refused proxy read. A 403 there means the network's proxy
@@ -376,8 +382,8 @@ func (s *knSkillsService) GetSkillContent(ctx context.Context, knID, skillID str
 		if proxyErr != nil {
 			return nil, proxyErr
 		}
-		s.logProxyRead(ctx, "skill content", knID, account, skillID)
 		resp, err = reader.GetSkillContentAs(ctx, account, skillID)
+		s.logProxyRead(ctx, "skill content", knID, account, skillID, err)
 		err = notProvisionedWhenForbidden(ctx, err)
 	}
 	if err != nil {
@@ -431,8 +437,8 @@ func (s *knSkillsService) ReadSkillFile(ctx context.Context, req *ReadSkillFileR
 		if proxyErr != nil {
 			return nil, proxyErr
 		}
-		s.logProxyRead(ctx, "skill file", req.KnID, account, skillID)
 		resp, err = reader.ReadSkillFileAs(ctx, account, fileReq)
+		s.logProxyRead(ctx, "skill file", req.KnID, account, skillID, err)
 		err = notProvisionedWhenForbidden(ctx, err)
 	}
 	if err != nil {
