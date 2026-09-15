@@ -173,15 +173,25 @@ func normalizedBusinessInput(input map[string]any) json.RawMessage {
 }
 
 func normalizedBusinessInputForTool(toolName string, input map[string]any) json.RawMessage {
+	if toolName == toolKeyExecuteTool {
+		// execute_tool dispatches an arbitrary function. Its nested arguments and
+		// any unrecognized top-level extensions may contain business data or
+		// credentials, so Trace persists only the opaque function identity.
+		normalized := make(map[string]any, 3)
+		for _, key := range []string{"kn_id", "toolbox_id", "tool_id"} {
+			if value, ok := input[key]; ok {
+				normalized[key] = value
+			}
+		}
+		raw, _ := sonic.ConfigStd.Marshal(normalized)
+		return raw
+	}
+
 	normalized := make(map[string]any, len(input))
 	for key, value := range input {
-		if key == "bkn_context" {
-			continue
+		if key != "bkn_context" {
+			normalized[key] = value
 		}
-		if toolName == toolKeyExecuteTool && key == "arguments" {
-			continue
-		}
-		normalized[key] = value
 	}
 	raw, _ := sonic.ConfigStd.Marshal(normalized)
 	return raw

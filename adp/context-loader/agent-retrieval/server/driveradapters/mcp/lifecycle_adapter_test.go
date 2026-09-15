@@ -688,9 +688,11 @@ func TestNormalizedBusinessInputPreservesOnlyRealToolArguments(t *testing.T) {
 
 func TestNormalizedBusinessInputForManagedExecuteToolExcludesFunctionArguments(t *testing.T) {
 	input := map[string]any{
-		"kn_id":      "kn_supply_chain",
-		"toolbox_id": "box_warehouse",
-		"tool_id":    "tool_reconcile_inventory",
+		"kn_id":         "kn_supply_chain",
+		"toolbox_id":    "box_warehouse",
+		"tool_id":       "tool_reconcile_inventory",
+		"authorization": "Bearer top-level-secret",
+		"token":         "must-not-be-stored",
 		"arguments": map[string]any{
 			"material_code": "525-000016",
 			"authorization": "must-not-be-stored",
