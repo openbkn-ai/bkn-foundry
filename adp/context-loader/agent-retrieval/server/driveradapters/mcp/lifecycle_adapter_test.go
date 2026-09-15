@@ -784,7 +784,16 @@ func TestManagedCommunityToolsSubmitRealInputAndTerminalPayload(t *testing.T) {
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			inline, _ := body.Input["inline"].(map[string]any)
-			if body.Input["mode"] != "inline" || inline["probe"] != body.ToolName {
+			if body.ToolName == toolKeyExecuteTool {
+				for _, key := range []string{"kn_id", "toolbox_id", "tool_id"} {
+					if inline[key] == nil {
+						t.Errorf("execute_tool input=%#v, missing safe %s", body.Input, key)
+					}
+				}
+				if len(inline) != 3 {
+					t.Errorf("execute_tool input=%#v, want only safe identity", body.Input)
+				}
+			} else if body.Input["mode"] != "inline" || inline["probe"] != body.ToolName {
 				t.Errorf("%s input=%#v, want original tool arguments", body.ToolName, body.Input)
 			}
 			ensureCalls++
@@ -832,6 +841,11 @@ func TestManagedCommunityToolsSubmitRealInputAndTerminalPayload(t *testing.T) {
 		request := businessToolRequest("session-1", "conv-1", "int-1", "call-"+toolName)
 		request.Params.Name = toolName
 		request.Params.Arguments.(map[string]any)["probe"] = toolName
+		if toolName == toolKeyExecuteTool {
+			request.Params.Arguments.(map[string]any)["kn_id"] = "kn-demo"
+			request.Params.Arguments.(map[string]any)["toolbox_id"] = "box-demo"
+			request.Params.Arguments.(map[string]any)["tool_id"] = "tool-demo"
+		}
 		result, err := handler(ctx, request)
 		if err != nil || result == nil || result.IsError {
 			t.Fatalf("%s lifecycle failed: result=%#v err=%v", toolName, result, err)
