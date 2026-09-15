@@ -1,5 +1,5 @@
 {
-  "_comment": "Resource-type + operation catalog, extracted from each service's enums/consts (2026-06-03). Exact op id strings are the seed source of truth. NOTE: 'view' (exec-factory, flow-automation) and 'view_detail' (vega/bkn/pipeline) are DIFFERENT op strings and are not normalized. Role-to-permission grants are maintained in grants.json for the Studio 0.1.0 role model.",
+  "_comment": "Authorization resource-and-operation contract. Exact operation ids are the seed source of truth. parent_type + parent_operation are an explicit bkn-safe generic fallback mapping only: an empty parent_operation means no generic inheritance, never same-name inheritance by convention. requires contains same-resource prerequisites that bkn-safe normalizes into allow grants and enforces at runtime. Business services may retain separately documented checks on another resource; do not encode those as parent_operation unless bkn-safe owns the fallback. NOTE: view (execution factory / flow automation) and view_detail (Vega / BKN) are distinct operation ids. Role-to-permission grants are maintained in grants.json.",
   "resource_types": [
     {
       "id": "agent",
@@ -60,6 +60,7 @@
       "id": "connector_type",
       "name": "连接器类型",
       "_source": "vega",
+      "_authorization_note": "独立根资源，不做父级回退。modify/delete/authorize 都是在同一连接器类型上 requires view_detail；create 与 view_detail 独立。",
       "operations": [
         {"id": "view_detail", "name": "查看详情"},
         {"id": "create", "name": "创建"},
@@ -72,7 +73,7 @@
       "id": "knowledge_network",
       "name": "知识网络",
       "_source": "bkn",
-      "_note": "The knowledge network is the authorization root for its domain resources; child instances inherit through ResourceParent. authorize is only defined at this root.",
+      "_note": "知识网络是 BKN 域的授权根；子实例通过 ResourceParent 按各自 parent_operation 回退。authorize 仅定义在根上。modify/delete/authorize 是同资源上的管理操作，requires view_detail；query_data 与 execute 独立。",
       "operations": [
         {"id": "view_detail", "name": "查看详情"},
         {"id": "create", "name": "创建"},
@@ -88,6 +89,7 @@
       "name": "Concept Group",
       "_source": "bkn",
       "parent_type": "knowledge_network",
+      "_authorization_note": "通用回退：view_detail→父级 view_detail；modify/delete→父级 modify。modify/delete 在概念分组自身上 requires view_detail。",
       "operations": [
         {"id": "view_detail", "name": "View Details", "parent_operation": "view_detail"},
         {"id": "modify", "name": "Modify", "parent_operation": "modify", "requires": ["view_detail"]},
@@ -99,6 +101,7 @@
       "name": "Object Type",
       "_source": "bkn",
       "parent_type": "knowledge_network",
+      "_authorization_note": "通用回退：view_detail→父级 view_detail；query_data→父级 query_data；modify/delete→父级 modify。modify/delete 在对象类型自身上 requires view_detail；query_data 独立。",
       "operations": [
         {"id": "view_detail", "name": "View Details", "parent_operation": "view_detail"},
         {"id": "query_data", "name": "Query Data", "parent_operation": "query_data"},
@@ -111,6 +114,7 @@
       "name": "Relation Type",
       "_source": "bkn",
       "parent_type": "knowledge_network",
+      "_authorization_note": "通用回退：view_detail→父级 view_detail；query_data→父级 query_data；modify/delete→父级 modify。modify/delete 在关系类型自身上 requires view_detail；query_data 独立。",
       "operations": [
         {"id": "view_detail", "name": "View Details", "parent_operation": "view_detail"},
         {"id": "query_data", "name": "Query Data", "parent_operation": "query_data"},
@@ -122,7 +126,7 @@
       "id": "action_type",
       "name": "Action Type",
       "_source": "bkn",
-      "_note": "execute first evaluates the concrete Action Type and falls back to execute on its owning knowledge network when no direct rule exists",
+      "_note": "通用回退：view_detail→父级 view_detail；modify/delete→父级 modify；execute→父级 execute。modify/delete 在动作类型自身上 requires view_detail；execute 独立，先检查具体动作类型再回退。",
       "parent_type": "knowledge_network",
       "operations": [
         {"id": "view_detail", "name": "View Details", "parent_operation": "view_detail"},
@@ -136,6 +140,7 @@
       "name": "Metric",
       "_source": "bkn",
       "parent_type": "knowledge_network",
+      "_authorization_note": "通用回退：view_detail→父级 view_detail；query_data→父级 query_data；modify/delete→父级 modify。modify/delete 在指标自身上 requires view_detail；query_data 独立。",
       "operations": [
         {"id": "view_detail", "name": "View Details", "parent_operation": "view_detail"},
         {"id": "query_data", "name": "Query Data", "parent_operation": "query_data"},
@@ -148,6 +153,7 @@
       "name": "Risk Type",
       "_source": "bkn",
       "parent_type": "knowledge_network",
+      "_authorization_note": "通用回退：view_detail→父级 view_detail；modify/delete→父级 modify。modify/delete 在风险类型自身上 requires view_detail。",
       "operations": [
         {"id": "view_detail", "name": "View Details", "parent_operation": "view_detail"},
         {"id": "modify", "name": "Modify", "parent_operation": "modify", "requires": ["view_detail"]},
@@ -174,6 +180,7 @@
       "id": "tool_box",
       "name": "API 工具集",
       "_source": "execution-factory",
+      "_authorization_note": "独立根资源，不做父级回退。modify/delete/publish/unpublish/authorize requires 同资源的 view；create/view/public_access/execute 独立。",
       "operations": [
         {"id": "create", "name": "创建"},
         {"id": "modify", "name": "修改", "requires": ["view"]},
@@ -190,6 +197,7 @@
       "id": "mcp",
       "name": "MCP",
       "_source": "execution-factory",
+      "_authorization_note": "独立根资源，不做父级回退。modify/delete/publish/unpublish/authorize requires 同资源的 view；create/view/public_access/execute 独立。",
       "operations": [
         {"id": "create", "name": "创建"},
         {"id": "modify", "name": "修改", "requires": ["view"]},
@@ -206,6 +214,7 @@
       "id": "operator",
       "name": "算子",
       "_source": "execution-factory + flow-automation (ops 取并集; flow-automation 仅用 execute)",
+      "_authorization_note": "独立根资源，不做父级回退。modify/delete/publish/unpublish/authorize requires 同资源的 view；create/view/public_access/execute 独立。",
       "operations": [
         {"id": "create", "name": "创建"},
         {"id": "modify", "name": "修改", "requires": ["view"]},
@@ -222,6 +231,7 @@
       "id": "skill",
       "name": "Skill",
       "_source": "execution-factory",
+      "_authorization_note": "独立根资源，不做父级回退。modify/delete/publish/unpublish/authorize requires 同资源的 view；create/view/public_access/execute 独立。",
       "operations": [
         {"id": "create", "name": "创建"},
         {"id": "modify", "name": "修改", "requires": ["view"]},
@@ -238,6 +248,7 @@
       "id": "small_model",
       "name": "小模型",
       "_source": "mf-model-manager + mf-model-api",
+      "_authorization_note": "独立根资源，不做父级回退。modify/delete requires 同资源的 display；create/display/execute 独立。",
       "operations": [
         {"id": "create", "name": "创建"},
         {"id": "display", "name": "查看"},
@@ -250,6 +261,7 @@
       "id": "large_model",
       "name": "大模型",
       "_source": "mf-model-manager + mf-model-api",
+      "_authorization_note": "独立根资源，不做父级回退。modify/delete requires 同资源的 display；create/display/execute 独立。",
       "operations": [
         {"id": "create", "name": "创建"},
         {"id": "display", "name": "查看"},

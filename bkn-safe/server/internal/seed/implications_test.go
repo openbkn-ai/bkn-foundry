@@ -88,10 +88,10 @@ func TestValidateRequirementsAcceptsMultipleDirectPrerequisites(t *testing.T) {
 func TestShippedCatalogBindsResourceManageToViewDetail(t *testing.T) {
 	var c catalog
 	if err := json.Unmarshal(catalogJSON, &c); err != nil {
-		t.Fatalf("parse catalog.json: %v", err)
+		t.Fatalf("parse authorization-catalog.json: %v", err)
 	}
 	if err := validateRequirements(c); err != nil {
-		t.Fatalf("shipped catalog.json declares an invalid requirement: %v", err)
+		t.Fatalf("shipped authorization-catalog.json declares an invalid requirement: %v", err)
 	}
 	for _, rt := range c.ResourceTypes {
 		if rt.ID != "catalog" {
@@ -108,16 +108,16 @@ func TestShippedCatalogBindsResourceManageToViewDetail(t *testing.T) {
 		}
 		t.Fatal("catalog type no longer declares resource_manage")
 	}
-	t.Fatal("catalog type missing from catalog.json")
+	t.Fatal("catalog type missing from authorization-catalog.json")
 }
 
 func TestShippedConnectorTypeDeclaresViewRequirements(t *testing.T) {
 	var c catalog
 	if err := json.Unmarshal(catalogJSON, &c); err != nil {
-		t.Fatalf("parse catalog.json: %v", err)
+		t.Fatalf("parse authorization-catalog.json: %v", err)
 	}
 	if err := validateRequirements(c); err != nil {
-		t.Fatalf("shipped catalog.json declares an invalid requirement: %v", err)
+		t.Fatalf("shipped authorization-catalog.json declares an invalid requirement: %v", err)
 	}
 	operations := map[string][]string{}
 	for _, resourceType := range c.ResourceTypes {
@@ -146,10 +146,10 @@ func TestShippedConnectorTypeDeclaresViewRequirements(t *testing.T) {
 func TestShippedIndependentResourceFamiliesDeclareViewRequirements(t *testing.T) {
 	var c catalog
 	if err := json.Unmarshal(catalogJSON, &c); err != nil {
-		t.Fatalf("parse catalog.json: %v", err)
+		t.Fatalf("parse authorization-catalog.json: %v", err)
 	}
 	if err := validateRequirements(c); err != nil {
-		t.Fatalf("shipped catalog.json declares an invalid requirement: %v", err)
+		t.Fatalf("shipped authorization-catalog.json declares an invalid requirement: %v", err)
 	}
 
 	types := map[string]map[string][]string{}
