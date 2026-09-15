@@ -43,6 +43,29 @@ func TestSummaryOwnerWherePinsASCIIIdentityParametersToASCIIBinaryCollation(t *t
 	}
 }
 
+func TestSummaryOwnerWhereFailsClosedForNonASCIIAccountIdentity(t *testing.T) {
+	where, args := summaryOwnerWhere("c", isessionstore.SummaryPageQuery{Scope: evidencevo.QueryScope{
+		AccountID: "业务用户", AccountType: "service",
+	}})
+	if !reflect.DeepEqual(where, []string{"1=0"}) || len(args) != 0 {
+		t.Fatalf("non-ASCII account identity must not produce a lossy ASCII comparison: where=%v args=%v", where, args)
+	}
+}
+
+func TestSummaryOwnerWhereFailsClosedForNonASCIIProfileIdentity(t *testing.T) {
+	profile := evidencevo.AccessProfile{
+		AccountActive:          true,
+		EffectiveSubjectID:     "业务用户",
+		ApplicationPrincipalID: "application-1",
+	}
+	where, args := summaryOwnerWhere("c", isessionstore.SummaryPageQuery{Scope: evidencevo.QueryScope{
+		AccessProfile: &profile,
+	}})
+	if !reflect.DeepEqual(where, []string{"1=0"}) || len(args) != 0 {
+		t.Fatalf("non-ASCII profile identity must not widen the owner predicate: where=%v args=%v", where, args)
+	}
+}
+
 func contains(values []string, expected string) bool {
 	for _, value := range values {
 		if value == expected {

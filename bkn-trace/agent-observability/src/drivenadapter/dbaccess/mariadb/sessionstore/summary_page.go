@@ -185,6 +185,9 @@ func summaryOwnerWhere(alias string, query isessionstore.SummaryPageQuery) ([]st
 	where := make([]string, 0, 4)
 	args := make([]any, 0, 8)
 	if scope.AccessProfile == nil {
+		if !isASCII(scope.AccountType) || !isASCII(scope.AccountID) {
+			return []string{"1=0"}, nil
+		}
 		where = append(where,
 			alias+".effective_subject_type="+asciiBinaryParameter(),
 			alias+".effective_subject_id="+asciiBinaryParameter(),
@@ -195,6 +198,10 @@ func summaryOwnerWhere(alias string, query isessionstore.SummaryPageQuery) ([]st
 	profile := *scope.AccessProfile
 	if evidencevo.HasGlobalTraceAccess(profile) {
 		return where, args
+	}
+	if (profile.EffectiveSubjectID != "" && !isASCII(profile.EffectiveSubjectID)) ||
+		(profile.ApplicationPrincipalID != "" && !isASCII(profile.ApplicationPrincipalID)) {
+		return []string{"1=0"}, nil
 	}
 	owner := make([]string, 0, 2)
 	if profile.EffectiveSubjectID != "" {
