@@ -199,15 +199,11 @@ func summaryOwnerWhere(alias string, query isessionstore.SummaryPageQuery) ([]st
 	if evidencevo.HasGlobalTraceAccess(profile) {
 		return where, args
 	}
-	if (profile.EffectiveSubjectID != "" && !isASCII(profile.EffectiveSubjectID)) ||
-		(profile.ApplicationPrincipalID != "" && !isASCII(profile.ApplicationPrincipalID)) {
-		return []string{"1=0"}, nil
-	}
 	owner := make([]string, 0, 2)
-	if profile.EffectiveSubjectID != "" {
+	if profile.EffectiveSubjectID != "" && isASCII(profile.EffectiveSubjectID) {
 		owner, args = append(owner, alias+".effective_subject_id="+asciiBinaryParameter()), append(args, profile.EffectiveSubjectID)
 	}
-	if profile.ApplicationPrincipalID != "" {
+	if profile.ApplicationPrincipalID != "" && isASCII(profile.ApplicationPrincipalID) {
 		owner, args = append(owner, alias+".application_principal_id="+asciiBinaryParameter()), append(args, profile.ApplicationPrincipalID)
 	}
 	if len(owner) > 0 {

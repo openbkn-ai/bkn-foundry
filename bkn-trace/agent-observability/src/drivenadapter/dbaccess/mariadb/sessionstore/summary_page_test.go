@@ -52,7 +52,7 @@ func TestSummaryOwnerWhereFailsClosedForNonASCIIAccountIdentity(t *testing.T) {
 	}
 }
 
-func TestSummaryOwnerWhereFailsClosedForNonASCIIProfileIdentity(t *testing.T) {
+func TestSummaryOwnerWhereRetainsASCIIApplicationPrincipalWhenSubjectIsNonASCII(t *testing.T) {
 	profile := evidencevo.AccessProfile{
 		AccountActive:          true,
 		EffectiveSubjectID:     "业务用户",
@@ -61,8 +61,24 @@ func TestSummaryOwnerWhereFailsClosedForNonASCIIProfileIdentity(t *testing.T) {
 	where, args := summaryOwnerWhere("c", isessionstore.SummaryPageQuery{Scope: evidencevo.QueryScope{
 		AccessProfile: &profile,
 	}})
-	if !reflect.DeepEqual(where, []string{"1=0"}) || len(args) != 0 {
-		t.Fatalf("non-ASCII profile identity must not widen the owner predicate: where=%v args=%v", where, args)
+	wantWhere := []string{"(c.application_principal_id=CONVERT(? USING ascii) COLLATE ascii_bin)"}
+	if !reflect.DeepEqual(where, wantWhere) || !reflect.DeepEqual(args, []any{"application-1"}) {
+		t.Fatalf("non-ASCII subject must not disable an ASCII application owner branch: where=%v args=%v", where, args)
+	}
+}
+
+func TestSummaryOwnerWhereRetainsASCIISubjectWhenApplicationPrincipalIsNonASCII(t *testing.T) {
+	profile := evidencevo.AccessProfile{
+		AccountActive:          true,
+		EffectiveSubjectID:     "subject-1",
+		ApplicationPrincipalID: "业务应用",
+	}
+	where, args := summaryOwnerWhere("c", isessionstore.SummaryPageQuery{Scope: evidencevo.QueryScope{
+		AccessProfile: &profile,
+	}})
+	wantWhere := []string{"(c.effective_subject_id=CONVERT(? USING ascii) COLLATE ascii_bin)"}
+	if !reflect.DeepEqual(where, wantWhere) || !reflect.DeepEqual(args, []any{"subject-1"}) {
+		t.Fatalf("non-ASCII application principal must not disable an ASCII subject owner branch: where=%v args=%v", where, args)
 	}
 }
 
