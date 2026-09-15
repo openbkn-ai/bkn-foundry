@@ -108,8 +108,22 @@ func TestSeedDeclaresKnowledgeNetworkHierarchy(t *testing.T) {
 	if err := db.First(&vegaResource, "id = ?", "resource").Error; err != nil {
 		t.Fatalf("load Vega resource type: %v", err)
 	}
-	if vegaResource.ParentTypeID != "" {
-		t.Errorf("Vega resource parent = %q, want no hierarchy", vegaResource.ParentTypeID)
+	if vegaResource.ParentTypeID != "catalog" {
+		t.Errorf("Vega resource parent = %q, want catalog", vegaResource.ParentTypeID)
+	}
+	resourceOps := map[string]string{}
+	var operations []model.Operation
+	if err := db.Where("resource_type_id = ?", "resource").Find(&operations).Error; err != nil {
+		t.Fatalf("load Vega resource operations: %v", err)
+	}
+	for _, operation := range operations {
+		resourceOps[operation.ID] = operation.ParentOperationID
+	}
+	if got := resourceOps["view_detail"]; got != "view_detail" {
+		t.Errorf("resource/view_detail parent operation = %q, want view_detail", got)
+	}
+	if got := resourceOps["query_data"]; got != "query_data" {
+		t.Errorf("resource/query_data parent operation = %q, want query_data", got)
 	}
 
 	parents := []model.ResourceParent{

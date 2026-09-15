@@ -33,14 +33,14 @@
       "id": "catalog",
       "name": "数据目录",
       "_source": "vega",
-      "_note": "create/modify/delete 只针对目录本身;管理目录下的数据表用 resource_manage;query_data 是「目录下的表默认可取数」,它能一次性放开整个目录的数据,界面上不要与 view_detail 捆绑勾选(#800 / #801)。resource_manage 是例外:它 requires view_detail,写入时自动补齐且运行时强制检查,因为每条管理路由都先加载目标,而那一次加载判的就是 view_detail,只给 resource_manage 的授权谁也用不了(#1121)",
+      "_note": "create/modify/delete 只针对目录本身；modify/delete/authorize/task_manage/resource_manage 要求本目录 view_detail；query_data 与 view_detail 独立。管理目录下的数据表用 resource_manage。",
       "operations": [
         {"id": "view_detail", "name": "查看详情"},
         {"id": "create", "name": "创建目录"},
-        {"id": "modify", "name": "修改目录本身"},
-        {"id": "delete", "name": "删除目录"},
-        {"id": "authorize", "name": "授权"},
-        {"id": "task_manage", "name": "任务管理"},
+        {"id": "modify", "name": "修改目录本身", "requires": ["view_detail"]},
+        {"id": "delete", "name": "删除目录", "requires": ["view_detail"]},
+        {"id": "authorize", "name": "授权", "requires": ["view_detail"]},
+        {"id": "task_manage", "name": "任务管理", "requires": ["view_detail"]},
         {"id": "resource_manage", "name": "管理目录下的数据表", "requires": ["view_detail"]},
         {"id": "query_data", "name": "查询目录下的表数据"}
       ]
@@ -50,10 +50,11 @@
       "name": "数据资源",
       "_source": "vega",
       "_note": "数据表只保留读的两个动词(#801)。管理类(改/删/任务/授权)判在所属目录上:vega 先问这张表、拒了再问目录的 resource_manage / task_manage。注意由此产生的两条后果,不要误以为 per-table 例外还留着余地:(1) /object-grants 按本词表校验操作,撤销之后就再也发不出新的 per-table 管理授权,vega 那一问只可能命中升级前留下的旧策略行;(2) SetObjectPermissions 是整组替换,管理员打开某张表的授权页(现在只剩两个动词)一保存,旧的 modify/task_manage 授权就被静默抹掉。真要做「这张表比目录更严」,靠的是 #512 的显式禁止,不是把动词加回来",
-      "_parent_note": "不声明 parent_type/parent_operation:回落判定改由 vega 在自己的判定点做——它手上就有 catalog_id,不需要 bkn-safe 知道归属(#817)。bkn-safe 的层级机制(#827/#832/#839)保留但因此休眠:没有声明,那条代码路径一次都不会走。真出现需要服务端解析多级层级的场景,把这两个字段加回来即可",
+      "_parent_note": "声明两个读操作到 catalog 的映射；当前 Vega 仍使用已知 catalog_id 做回落判定。bkn-safe 只有在实例注册 ResourceParent 后才会按此映射继承父目录授权。",
+      "parent_type": "catalog",
       "operations": [
-        {"id": "view_detail", "name": "查看表结构"},
-        {"id": "query_data", "name": "查询表数据"}
+        {"id": "view_detail", "name": "查看表结构", "parent_operation": "view_detail"},
+        {"id": "query_data", "name": "查询表数据", "parent_operation": "query_data"}
       ]
     },
     {
