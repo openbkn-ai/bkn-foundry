@@ -245,14 +245,15 @@ func TestCatalogAccessGetByIDs(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta(catalogSelectSQL("f_id IN (?,?)"))).
 			WithArgs("catalog-1", "catalog-2").
 			WillReturnRows(catalogRows().
-				AddRow(catalogRowValues(sampleCatalog())...).
-				AddRow(catalogRowValues(second)...))
+				AddRow(catalogRowValues(second)...).
+				AddRow(catalogRowValues(sampleCatalog())...))
 
 		got, err := access.GetByIDs(context.Background(), []string{"catalog-1", "catalog-2"})
 
 		require.NoError(t, err)
 		require.Len(t, got, 2)
-		assert.Equal(t, []string{"catalog-1", "catalog-2"}, []string{got[0].ID, got[1].ID})
+		assert.Equal(t, "catalog-1", got["catalog-1"].ID)
+		assert.Equal(t, "catalog-2", got["catalog-2"].ID)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -295,14 +296,17 @@ func TestCatalogAccessGetSummariesByIDs(t *testing.T) {
 
 	mock.ExpectQuery(regexp.QuoteMeta(catalogSummarySelectSQL("f_id IN (?,?)"))).
 		WithArgs("catalog-1", "catalog-2").
-		WillReturnRows(catalogSummaryRows().AddRow(catalogSummaryRowValues(sampleCatalog())...))
+		WillReturnRows(catalogSummaryRows().
+			AddRow(catalogSummaryRowValues(sampleCatalogWithID("catalog-2"))...).
+			AddRow(catalogSummaryRowValues(sampleCatalog())...))
 
 	got, err := access.GetSummariesByIDs(context.Background(), []string{"catalog-1", "catalog-2"})
 
 	require.NoError(t, err)
-	require.Len(t, got, 1)
-	assert.Equal(t, "catalog-1", got[0].ID)
-	assert.Equal(t, []string{"tag-a", "tag-b"}, got[0].Tags)
+	require.Len(t, got, 2)
+	assert.Equal(t, "catalog-1", got["catalog-1"].ID)
+	assert.Equal(t, "catalog-2", got["catalog-2"].ID)
+	assert.Equal(t, []string{"tag-a", "tag-b"}, got["catalog-1"].Tags)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

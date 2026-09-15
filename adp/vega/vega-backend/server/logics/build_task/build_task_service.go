@@ -618,24 +618,14 @@ func (bts *buildTaskService) populateBuildTaskReferences(ctx context.Context, bu
 	}
 
 	var referenceErrors []error
-	resourcesByID := make(map[string]*interfaces.Resource, len(resourceIDs))
-	resources, err := bts.rs.InternalGetByIDs(ctx, resourceIDs)
+	resourcesByID, err := bts.rs.InternalGetByIDs(ctx, resourceIDs)
 	if err != nil {
 		referenceErrors = append(referenceErrors, err)
-	} else {
-		for _, resource := range resources {
-			resourcesByID[resource.ID] = resource
-		}
 	}
 
-	catalogsByID := make(map[string]*interfaces.Catalog, len(catalogIDs))
-	catalogs, err := bts.cs.InternalGetByIDs(ctx, catalogIDs)
+	catalogsByID, err := bts.cs.InternalGetByIDs(ctx, catalogIDs)
 	if err != nil {
 		referenceErrors = append(referenceErrors, err)
-	} else {
-		for _, catalog := range catalogs {
-			catalogsByID[catalog.ID] = catalog
-		}
 	}
 
 	for _, buildTask := range buildTasks {
@@ -668,21 +658,13 @@ func (bts *buildTaskService) populateBuildTaskSummaryReferences(ctx context.Cont
 		}
 	}
 	var referenceErrors []error
-	resources, err := bts.rs.InternalGetByIDs(ctx, resourceIDs)
+	resourceByID, err := bts.rs.InternalGetByIDs(ctx, resourceIDs)
 	if err != nil {
 		referenceErrors = append(referenceErrors, err)
 	}
-	resourceByID := make(map[string]*interfaces.Resource, len(resources))
-	for _, resource := range resources {
-		resourceByID[resource.ID] = resource
-	}
-	catalogs, err := bts.cs.InternalGetByIDs(ctx, catalogIDs)
+	catalogByID, err := bts.cs.InternalGetByIDs(ctx, catalogIDs)
 	if err != nil {
 		referenceErrors = append(referenceErrors, err)
-	}
-	catalogByID := make(map[string]*interfaces.Catalog, len(catalogs))
-	for _, catalog := range catalogs {
-		catalogByID[catalog.ID] = catalog
 	}
 	for _, task := range tasks {
 		if resource := resourceByID[task.ResourceID]; resource != nil {

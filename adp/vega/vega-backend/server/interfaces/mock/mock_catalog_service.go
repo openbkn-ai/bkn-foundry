@@ -207,10 +207,10 @@ func (mr *MockCatalogServiceMockRecorder) InternalGetByID(ctx, id, withSensitive
 }
 
 // InternalGetByIDs mocks base method.
-func (m *MockCatalogService) InternalGetByIDs(ctx context.Context, ids []string) ([]*interfaces.Catalog, error) {
+func (m *MockCatalogService) InternalGetByIDs(ctx context.Context, ids []string) (map[string]*interfaces.Catalog, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "InternalGetByIDs", ctx, ids)
-	ret0, _ := ret[0].([]*interfaces.Catalog)
+	ret0, _ := ret[0].(map[string]*interfaces.Catalog)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

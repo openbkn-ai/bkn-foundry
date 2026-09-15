@@ -20,9 +20,9 @@ type ResourceAccess interface {
 	// GetByID retrieves a Resource by ID, using tx when provided.
 	GetByID(ctx context.Context, tx *sql.Tx, id string) (*Resource, error)
 	// GetByIDs retrieves Resources by IDs.
-	GetByIDs(ctx context.Context, ids []string) ([]*Resource, error)
-	// GetSummariesByIDs retrieves resource list summaries by IDs.
-	GetSummariesByIDs(ctx context.Context, ids []string) ([]*ResourceSummary, error)
+	GetByIDs(ctx context.Context, ids []string) (map[string]*Resource, error)
+	// GetSummariesByIDs retrieves resource list summaries keyed by ID; no row order is guaranteed.
+	GetSummariesByIDs(ctx context.Context, ids []string) (map[string]*ResourceSummary, error)
 	// GetPermissionRefsByIDs retrieves the resource-to-catalog relations by IDs.
 	GetPermissionRefsByIDs(ctx context.Context, ids []string) ([]ResourcePermissionRef, error)
 	// GetByName retrieves a Resource by catalog and name.

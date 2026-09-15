@@ -86,10 +86,10 @@ func (mr *MockCatalogAccessMockRecorder) GetByID(ctx, id any) *gomock.Call {
 }
 
 // GetByIDs mocks base method.
-func (m *MockCatalogAccess) GetByIDs(ctx context.Context, ids []string) ([]*interfaces.Catalog, error) {
+func (m *MockCatalogAccess) GetByIDs(ctx context.Context, ids []string) (map[string]*interfaces.Catalog, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetByIDs", ctx, ids)
-	ret0, _ := ret[0].([]*interfaces.Catalog)
+	ret0, _ := ret[0].(map[string]*interfaces.Catalog)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -116,10 +116,10 @@ func (mr *MockCatalogAccessMockRecorder) GetByName(ctx, name any) *gomock.Call {
 }
 
 // GetSummariesByIDs mocks base method.
-func (m *MockCatalogAccess) GetSummariesByIDs(ctx context.Context, ids []string) ([]*interfaces.CatalogSummary, error) {
+func (m *MockCatalogAccess) GetSummariesByIDs(ctx context.Context, ids []string) (map[string]*interfaces.CatalogSummary, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetSummariesByIDs", ctx, ids)
-	ret0, _ := ret[0].([]*interfaces.CatalogSummary)
+	ret0, _ := ret[0].(map[string]*interfaces.CatalogSummary)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

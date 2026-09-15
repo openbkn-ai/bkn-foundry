@@ -300,26 +300,19 @@ func (dts *discoverTaskService) populateDiscoverTaskSummaryReferences(ctx contex
 	}
 
 	var referenceErrors []error
-	catalogsByID := make(map[string]*interfaces.Catalog, len(catalogIDs))
+	var catalogsByID map[string]*interfaces.Catalog
+	var err error
 	if len(catalogIDs) > 0 {
-		catalogs, err := dts.cs.InternalGetByIDs(ctx, catalogIDs)
+		catalogsByID, err = dts.cs.InternalGetByIDs(ctx, catalogIDs)
 		if err != nil {
 			referenceErrors = append(referenceErrors, err)
-		} else {
-			for _, catalog := range catalogs {
-				catalogsByID[catalog.ID] = catalog
-			}
 		}
 	}
-	resourcesByID := make(map[string]*interfaces.Resource, len(resourceIDs))
+	var resourcesByID map[string]*interfaces.Resource
 	if len(resourceIDs) > 0 {
-		resources, err := dts.rs.InternalGetByIDs(ctx, resourceIDs)
+		resourcesByID, err = dts.rs.InternalGetByIDs(ctx, resourceIDs)
 		if err != nil {
 			referenceErrors = append(referenceErrors, err)
-		} else {
-			for _, resource := range resources {
-				resourcesByID[resource.ID] = resource
-			}
 		}
 	}
 
@@ -356,27 +349,20 @@ func (dts *discoverTaskService) populateDiscoverTaskReferences(ctx context.Conte
 	}
 
 	var referenceErrors []error
-	resourcesByID := make(map[string]*interfaces.Resource, len(resourceIDs))
+	var resourcesByID map[string]*interfaces.Resource
+	var err error
 	if len(resourceIDs) > 0 {
-		resources, err := dts.rs.InternalGetByIDs(ctx, resourceIDs)
+		resourcesByID, err = dts.rs.InternalGetByIDs(ctx, resourceIDs)
 		if err != nil {
 			referenceErrors = append(referenceErrors, err)
-		} else {
-			for _, resource := range resources {
-				resourcesByID[resource.ID] = resource
-			}
 		}
 	}
 
-	catalogsByID := make(map[string]*interfaces.Catalog, len(catalogIDs))
+	var catalogsByID map[string]*interfaces.Catalog
 	if len(catalogIDs) > 0 {
-		catalogs, err := dts.cs.InternalGetByIDs(ctx, catalogIDs)
+		catalogsByID, err = dts.cs.InternalGetByIDs(ctx, catalogIDs)
 		if err != nil {
 			referenceErrors = append(referenceErrors, err)
-		} else {
-			for _, catalog := range catalogs {
-				catalogsByID[catalog.ID] = catalog
-			}
 		}
 	}
 	for _, task := range tasks {

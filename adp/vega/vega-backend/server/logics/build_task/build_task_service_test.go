@@ -231,11 +231,11 @@ func TestBuildTaskServiceList(t *testing.T) {
 		}
 
 		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(tasks, int64(2), nil)
-		mockRS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-1", "resource-2"}).Return([]*interfaces.Resource{
-			{ID: "resource-1", Name: "orders"},
-			{ID: "resource-2", Name: "customers"},
+		mockRS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-1", "resource-2"}).Return(map[string]*interfaces.Resource{
+			"resource-1": {ID: "resource-1", Name: "orders"},
+			"resource-2": {ID: "resource-2", Name: "customers"},
 		}, nil)
-		mockCS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-1"}).Return([]*interfaces.Catalog{{ID: "catalog-1", Name: "production"}}, nil)
+		mockCS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-1"}).Return(map[string]*interfaces.Catalog{"catalog-1": {ID: "catalog-1", Name: "production"}}, nil)
 		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 
 		got, total, err := service.List(context.Background(), interfaces.BuildTasksQueryParams{})
@@ -260,7 +260,7 @@ func TestBuildTaskServiceList(t *testing.T) {
 
 		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(tasks, int64(1), nil)
 		mockRS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-1"}).Return(nil, errors.New("resource service down"))
-		mockCS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-1"}).Return([]*interfaces.Catalog{{ID: "catalog-1", Name: "production"}}, nil)
+		mockCS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-1"}).Return(map[string]*interfaces.Catalog{"catalog-1": {ID: "catalog-1", Name: "production"}}, nil)
 		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 
 		got, total, err := service.List(context.Background(), interfaces.BuildTasksQueryParams{})
@@ -304,10 +304,8 @@ func TestBuildTaskServiceGetByID(t *testing.T) {
 		task := &interfaces.BuildTask{ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1"}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
-		mockRS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-1"}).Return([]*interfaces.Resource{
-			{ID: "resource-1", Name: "orders"},
-		}, nil)
-		mockCS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-1"}).Return([]*interfaces.Catalog{{ID: "catalog-1", Name: "production"}}, nil)
+		mockRS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-1"}).Return(map[string]*interfaces.Resource{"resource-1": {ID: "resource-1", Name: "orders"}}, nil)
+		mockCS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-1"}).Return(map[string]*interfaces.Catalog{"catalog-1": {ID: "catalog-1", Name: "production"}}, nil)
 		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 
 		got, err := service.GetByID(context.Background(), "task-1")
@@ -328,8 +326,8 @@ func TestBuildTaskServiceGetByID(t *testing.T) {
 		task := &interfaces.BuildTask{ID: "task-2"}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-2").Return(task, nil)
-		mockRS.EXPECT().InternalGetByIDs(gomock.Any(), []string{}).Return([]*interfaces.Resource{}, nil)
-		mockCS.EXPECT().InternalGetByIDs(gomock.Any(), []string{}).Return([]*interfaces.Catalog{}, nil)
+		mockRS.EXPECT().InternalGetByIDs(gomock.Any(), []string{}).Return(map[string]*interfaces.Resource{}, nil)
+		mockCS.EXPECT().InternalGetByIDs(gomock.Any(), []string{}).Return(map[string]*interfaces.Catalog{}, nil)
 		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(errors.New("user service down"))
 
 		got, err := service.GetByID(context.Background(), "task-2")

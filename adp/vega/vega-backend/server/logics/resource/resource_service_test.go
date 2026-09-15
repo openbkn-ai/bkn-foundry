@@ -433,7 +433,44 @@ func TestResourceServiceGetByID(t *testing.T) {
 	})
 }
 
+func TestResourceServiceInternalGetByIDs(t *testing.T) {
+	rs, mockRA, _, _, _, _, _ := newTestService(t)
+	empty, err := rs.InternalGetByIDs(context.Background(), nil)
+	require.NoError(t, err)
+	assert.Empty(t, empty)
+
+	ids := []string{"missing", "r2", "r1"}
+	rows := map[string]*interfaces.Resource{
+		"r1": {ID: "r1", SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
+		"r2": {ID: "r2"},
+	}
+	mockRA.EXPECT().GetByIDs(gomock.Any(), ids).Return(rows, nil)
+	got, err := rs.InternalGetByIDs(context.Background(), ids)
+	require.NoError(t, err)
+	assert.Equal(t, rows, got)
+	assert.NotContains(t, got, "missing")
+	require.NotNil(t, got["r1"].ColumnCount)
+	assert.Equal(t, 1, *got["r1"].ColumnCount)
+}
+
 func TestResourceServiceGetByIDs(t *testing.T) {
+	t.Run("public read preserves requested order from keyed access results", func(t *testing.T) {
+		rs, mockRA, mockPS, _, mockUMS, _, _ := newTestService(t)
+		ids := []string{"r1", "r2"}
+		mockRA.EXPECT().GetByIDs(gomock.Any(), ids).
+			Return(map[string]*interfaces.Resource{"r2": {ID: "r2"}, "r1": {ID: "r1"}}, nil)
+		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			ids, gomock.Any(), true, gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{
+				"r1": {ResourceID: "r1"}, "r2": {ResourceID: "r2"},
+			}, nil)
+		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+		resources, err := rs.GetByIDs(context.Background(), ids, false)
+		require.NoError(t, err)
+		require.Len(t, resources, 2)
+		assert.Equal(t, ids, []string{resources[0].ID, resources[1].ID})
+	})
 	t.Run("trusted proxy read skips secondary metadata authorization", func(t *testing.T) {
 		rs, mockRA, _, _, _, _, _ := newTestService(t)
 		want := []*interfaces.Resource{{
@@ -441,13 +478,26 @@ func TestResourceServiceGetByIDs(t *testing.T) {
 			CatalogID:        "cat-user",
 			SchemaDefinition: []*interfaces.Property{{Name: "id"}},
 		}}
-		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).Return(want, nil)
+		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).Return(map[string]*interfaces.Resource{"r1": want[0]}, nil)
 
 		got, err := rs.GetByIDs(interfaces.WithTrustedProxyRead(context.Background()), []string{"r1"}, false)
 		require.NoError(t, err)
 		assert.Equal(t, want, got)
 		require.NotNil(t, got[0].ColumnCount)
 		assert.Equal(t, 1, *got[0].ColumnCount)
+	})
+
+	t.Run("trusted proxy read preserves requested order from keyed lookup", func(t *testing.T) {
+		rs, mockRA, _, _, _, _, _ := newTestService(t)
+		ids := []string{"r2", "missing", "r1", "r2"}
+		mockRA.EXPECT().GetByIDs(gomock.Any(), ids).Return(map[string]*interfaces.Resource{
+			"r1": {ID: "r1"}, "r2": {ID: "r2"},
+		}, nil)
+
+		got, err := rs.GetByIDs(interfaces.WithTrustedProxyRead(context.Background()), ids, false)
+		require.NoError(t, err)
+		require.Len(t, got, 2)
+		assert.Equal(t, []string{"r2", "r1"}, []string{got[0].ID, got[1].ID})
 	})
 
 	t.Run("includes metadata and dataset row counts when requested", func(t *testing.T) {
@@ -465,7 +515,7 @@ func TestResourceServiceGetByIDs(t *testing.T) {
 		withoutMetadata := &interfaces.Resource{ID: "api-1", Category: interfaces.ResourceCategoryAPI}
 		dataset := &interfaces.Resource{ID: "dataset-1", Category: interfaces.ResourceCategoryDataset}
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"table-1", "fileset-1", "api-1", "dataset-1"}).
-			Return([]*interfaces.Resource{table, fileset, withoutMetadata, dataset}, nil)
+			Return(map[string]*interfaces.Resource{"table-1": table, "fileset-1": fileset, "api-1": withoutMetadata, "dataset-1": dataset}, nil)
 		mockDS.EXPECT().CountDocuments(gomock.Any(), dataset).Return(int64(7), nil)
 
 		resources, err := rs.GetByIDs(
@@ -489,9 +539,9 @@ func TestResourceServiceGetByIDs(t *testing.T) {
 		tableRows := int64(42)
 		datasetRows := int64(7)
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"table-1", "dataset-1"}).
-			Return([]*interfaces.Resource{
-				{ID: "table-1", Category: interfaces.ResourceCategoryTable, RowCount: &tableRows},
-				{ID: "dataset-1", Category: interfaces.ResourceCategoryDataset, RowCount: &datasetRows},
+			Return(map[string]*interfaces.Resource{
+				"table-1":   {ID: "table-1", Category: interfaces.ResourceCategoryTable, RowCount: &tableRows},
+				"dataset-1": {ID: "dataset-1", Category: interfaces.ResourceCategoryDataset, RowCount: &datasetRows},
 			}, nil)
 
 		resources, err := rs.GetByIDs(
@@ -509,7 +559,7 @@ func TestResourceServiceGetByIDs(t *testing.T) {
 		rs, mockRA, _, mockDS, _, _, _ := newTestService(t)
 		dataset := &interfaces.Resource{ID: "dataset-1", Category: interfaces.ResourceCategoryDataset}
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"dataset-1"}).
-			Return([]*interfaces.Resource{dataset}, nil)
+			Return(map[string]*interfaces.Resource{"dataset-1": dataset}, nil)
 		mockDS.EXPECT().CountDocuments(gomock.Any(), dataset).Return(int64(0), errors.New("count failed"))
 
 		resources, err := rs.GetByIDs(
@@ -525,7 +575,7 @@ func TestResourceServiceGetByIDs(t *testing.T) {
 	t.Run("get by ids success", func(t *testing.T) {
 		rs, mockRA, mockPS, _, mockUMS, _, _ := newTestService(t)
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1", "r2"}).
-			Return([]*interfaces.Resource{{ID: "r1"}, {ID: "r2"}}, nil)
+			Return(map[string]*interfaces.Resource{"r1": {ID: "r1"}, "r2": {ID: "r2"}}, nil)
 		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
 			[]string{"r1", "r2"}, gomock.Any(), true, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{
@@ -628,16 +678,64 @@ func TestResourceServiceGetByCatalogID(t *testing.T) {
 }
 
 func TestResourceServiceList(t *testing.T) {
+	t.Run("restores descending order from keyed summary lookup", func(t *testing.T) {
+		rs, mockRA, mockPS, _, mockUMS, _, _ := newTestService(t)
+		params := interfaces.ResourcesQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{Sort: interfaces.ResourceSortName, Direction: interfaces.DESC_DIRECTION, Limit: 2},
+		}
+		refs := []interfaces.ResourcePermissionRef{{ResourceID: "r3"}, {ResourceID: "r2"}, {ResourceID: "r1"}}
+		mockRA.EXPECT().ListPermissionRefs(gomock.Any(), params).Return(refs, nil)
+		mockPS.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), true, gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{
+				"r3": {ResourceID: "r3"}, "r2": {ResourceID: "r2"}, "r1": {ResourceID: "r1"},
+			}, nil)
+		mockRA.EXPECT().GetSummariesByIDs(gomock.Any(), []string{"r3", "r2"}).
+			Return(map[string]*interfaces.ResourceSummary{"r2": {ID: "r2"}, "r3": {ID: "r3"}}, nil)
+		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+		result, total, err := rs.List(context.Background(), params)
+		require.NoError(t, err)
+		assert.Equal(t, int64(3), total)
+		require.Len(t, result, 2)
+		assert.Equal(t, []string{"r3", "r2"}, []string{result[0].ID, result[1].ID})
+	})
+	t.Run("restores name order from keyed summary lookup", func(t *testing.T) {
+		rs, mockRA, mockPS, _, mockUMS, _, _ := newTestService(t)
+		params := interfaces.ResourcesQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{Sort: interfaces.ResourceSortName, Direction: interfaces.ASC_DIRECTION, Offset: 1, Limit: 2},
+			CatalogID:             "catalog-1",
+		}
+		refs := []interfaces.ResourcePermissionRef{
+			{ResourceID: "r1", CatalogID: "catalog-1"},
+			{ResourceID: "r2", CatalogID: "catalog-1"},
+			{ResourceID: "r3", CatalogID: "catalog-1"},
+			{ResourceID: "r4", CatalogID: "catalog-1"},
+		}
+		mockRA.EXPECT().ListPermissionRefs(gomock.Any(), params).Return(refs, nil)
+		mockPS.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), true, gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{
+				"r1": {ResourceID: "r1"}, "r2": {ResourceID: "r2"}, "r3": {ResourceID: "r3"}, "r4": {ResourceID: "r4"},
+			}, nil)
+		mockRA.EXPECT().GetSummariesByIDs(gomock.Any(), []string{"r2", "r3"}).
+			Return(map[string]*interfaces.ResourceSummary{"r3": {ID: "r3"}, "r2": {ID: "r2"}}, nil)
+		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+		result, total, err := rs.List(context.Background(), params)
+		require.NoError(t, err)
+		assert.Equal(t, int64(4), total)
+		require.Len(t, result, 2)
+		assert.Equal(t, []string{"r2", "r3"}, []string{result[0].ID, result[1].ID})
+	})
 	t.Run("list pagination", func(t *testing.T) {
 		rs, mockRA, mockPS, _, mockUMS, _, _ := newTestService(t)
-		refs := []interfaces.ResourcePermissionRef{{ResourceID: "c1"}, {ResourceID: "c2"}, {ResourceID: "c3"}, {ResourceID: "c4"}}
+		refs := []interfaces.ResourcePermissionRef{{ResourceID: "r1"}, {ResourceID: "r2"}, {ResourceID: "r3"}, {ResourceID: "r4"}}
 		mockRA.EXPECT().ListPermissionRefs(gomock.Any(), gomock.Any()).Return(refs, nil)
 		mockPS.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), true, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{
-				"c1": {ResourceID: "c1"}, "c2": {ResourceID: "c2"}, "c3": {ResourceID: "c3"}, "c4": {ResourceID: "c4"},
+				"r1": {ResourceID: "r1"}, "r2": {ResourceID: "r2"}, "r3": {ResourceID: "r3"}, "r4": {ResourceID: "r4"},
 			}, nil)
 		summaries := []*interfaces.ResourceSummary{{ID: "r2"}, {ID: "r3"}}
-		mockRA.EXPECT().GetSummariesByIDs(gomock.Any(), gomock.Any()).Return(summaries, nil)
+		mockRA.EXPECT().GetSummariesByIDs(gomock.Any(), gomock.Any()).Return(map[string]*interfaces.ResourceSummary{"r2": summaries[0], "r3": summaries[1]}, nil)
 		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 
 		result, total, err := rs.List(context.Background(), interfaces.ResourcesQueryParams{
@@ -658,7 +756,7 @@ func TestResourceServiceList(t *testing.T) {
 	})
 	t.Run("list return all", func(t *testing.T) {
 		rs, mockRA, mockPS, _, mockUMS, _, _ := newTestService(t)
-		refs := []interfaces.ResourcePermissionRef{{ResourceID: "c1"}, {ResourceID: "c2"}}
+		refs := []interfaces.ResourcePermissionRef{{ResourceID: "r1"}, {ResourceID: "r2"}}
 		summaries := []*interfaces.ResourceSummary{
 			{ID: "r1", Category: interfaces.ResourceCategoryDataset, LocalIndexName: "index-1"},
 			{ID: "r2"},
@@ -666,9 +764,9 @@ func TestResourceServiceList(t *testing.T) {
 		mockRA.EXPECT().ListPermissionRefs(gomock.Any(), gomock.Any()).Return(refs, nil)
 		mockPS.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), true, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{
-				"c1": {ResourceID: "c1"}, "c2": {ResourceID: "c2"},
+				"r1": {ResourceID: "r1"}, "r2": {ResourceID: "r2"},
 			}, nil)
-		mockRA.EXPECT().GetSummariesByIDs(gomock.Any(), gomock.Any()).Return(summaries, nil)
+		mockRA.EXPECT().GetSummariesByIDs(gomock.Any(), gomock.Any()).Return(map[string]*interfaces.ResourceSummary{"r1": summaries[0], "r2": summaries[1]}, nil)
 		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 
 		result, total, err := rs.List(context.Background(), interfaces.ResourcesQueryParams{
@@ -733,7 +831,7 @@ func TestResourceServiceList(t *testing.T) {
 			[]string{"cat-internal"}, gomock.Any(), true, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{}, nil)
 		mockRA.EXPECT().GetSummariesByIDs(gomock.Any(), []string{"r1"}).
-			Return([]*interfaces.ResourceSummary{{ID: "r1"}}, nil)
+			Return(map[string]*interfaces.ResourceSummary{"r1": {ID: "r1"}}, nil)
 		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 
 		result, total, err := rs.List(context.Background(), interfaces.ResourcesQueryParams{
@@ -1176,7 +1274,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 		rs.lim = mockLIM
 		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
-			Return([]*interfaces.Resource{{ID: "r1", Category: "table", LocalIndexName: "vega-build-r1-t1"}}, nil)
+			Return(map[string]*interfaces.Resource{"r1": {ID: "r1", Category: "table", LocalIndexName: "vega-build-r1-t1"}}, nil)
 		expectResourceBuildTasksForDelete(t, mockBTA, "r1", nil)
 		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}).Return(nil)
 		mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1"}).Return(nil)
@@ -1192,7 +1290,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 		rs.dta = mockDTA
 		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
-			Return([]*interfaces.Resource{{ID: "r1"}}, nil)
+			Return(map[string]*interfaces.Resource{"r1": {ID: "r1"}}, nil)
 		mockDTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, error) {
 				assert.Equal(t, "r1", params.ResourceID)
@@ -1210,7 +1308,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
 		gomock.InOrder(
 			mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
-				Return([]*interfaces.Resource{{ID: "r1", Category: interfaces.ResourceCategoryDataset, LocalIndexName: "vega-dataset-index-1"}}, nil),
+				Return(map[string]*interfaces.Resource{"r1": {ID: "r1", Category: interfaces.ResourceCategoryDataset, LocalIndexName: "vega-dataset-index-1"}}, nil),
 			mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 				DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, error) {
 					assert.Equal(t, "r1", params.ResourceID)
@@ -1229,7 +1327,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
 		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
-			Return([]*interfaces.Resource{{ID: "r1", Category: interfaces.ResourceCategoryDataset}}, nil)
+			Return(map[string]*interfaces.Resource{"r1": {ID: "r1", Category: interfaces.ResourceCategoryDataset}}, nil)
 		expectResourceBuildTasksForDelete(t, mockBTA, "r1", nil)
 		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}).Return(errors.New("delete resource failed"))
 
@@ -1240,7 +1338,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
 		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
-			Return([]*interfaces.Resource{{ID: "r1"}}, nil)
+			Return(map[string]*interfaces.Resource{"r1": {ID: "r1"}}, nil)
 		expectResourceBuildTasksForDelete(t, mockBTA, "r1", []*interfaces.BuildTaskSummary{{
 			ID: "task-1", ResourceID: "r1", Status: interfaces.BuildTaskStatusRunning,
 		}})
@@ -1252,7 +1350,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
 		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
-			Return([]*interfaces.Resource{{ID: "r1"}}, nil)
+			Return(map[string]*interfaces.Resource{"r1": {ID: "r1"}}, nil)
 		// The access query excludes pending tasks when deleting a resource.
 		expectResourceBuildTasksForDelete(t, mockBTA, "r1", nil)
 		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}).Return(nil)

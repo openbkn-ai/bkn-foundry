@@ -236,10 +236,10 @@ func (mr *MockResourceServiceMockRecorder) InternalGetByID(ctx, tx, id any) *gom
 }
 
 // InternalGetByIDs mocks base method.
-func (m *MockResourceService) InternalGetByIDs(ctx context.Context, ids []string) ([]*interfaces.Resource, error) {
+func (m *MockResourceService) InternalGetByIDs(ctx context.Context, ids []string) (map[string]*interfaces.Resource, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "InternalGetByIDs", ctx, ids)
-	ret0, _ := ret[0].([]*interfaces.Resource)
+	ret0, _ := ret[0].(map[string]*interfaces.Resource)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

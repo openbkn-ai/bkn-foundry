@@ -20,9 +20,9 @@ type CatalogAccess interface {
 	// GetByID retrieves a Catalog by ID.
 	GetByID(ctx context.Context, id string) (*Catalog, error)
 	// GetByIDs retrieves a Catalog by IDs.
-	GetByIDs(ctx context.Context, ids []string) ([]*Catalog, error)
-	// GetSummariesByIDs retrieves catalog list summaries by IDs.
-	GetSummariesByIDs(ctx context.Context, ids []string) ([]*CatalogSummary, error)
+	GetByIDs(ctx context.Context, ids []string) (map[string]*Catalog, error)
+	// GetSummariesByIDs retrieves catalog list summaries keyed by ID; no row order is guaranteed.
+	GetSummariesByIDs(ctx context.Context, ids []string) (map[string]*CatalogSummary, error)
 	// GetByName retrieves a Catalog by name.
 	GetByName(ctx context.Context, name string) (*Catalog, error)
 	// List lists Catalogs with filters.

@@ -250,7 +250,8 @@ paths:
     get:
       summary: 获取 catalog 详情
       description: |
-        路径参数支持单条或批量（逗号分隔）；批量时不存在的 ID 不会报错，结果中按存在的返回。
+        路径参数支持单条或批量（逗号分隔）。重复 ID 按首次出现的位置去重；
+        `entries` 按请求中的 ID 顺序返回。任一 ID 不存在时，整批返回 404。
       responses:
         "200":
           description: ok
@@ -265,6 +266,8 @@ paths:
                       $ref: "#/components/schemas/Catalog"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
     delete:

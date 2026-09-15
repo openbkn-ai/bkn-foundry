@@ -371,8 +371,8 @@ func (ra *resourceAccess) GetByID(ctx context.Context, tx *sql.Tx, id string) (*
 	return resource, nil
 }
 
-// GetByIDs retrieves ra Resource by IDs.
-func (ra *resourceAccess) GetByIDs(ctx context.Context, ids []string) ([]*interfaces.Resource, error) {
+// GetByIDs retrieves resources keyed by ID.
+func (ra *resourceAccess) GetByIDs(ctx context.Context, ids []string) (map[string]*interfaces.Resource, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query resources by IDs")
 	defer span.End()
 
@@ -385,42 +385,42 @@ func (ra *resourceAccess) GetByIDs(ctx context.Context, ids []string) ([]*interf
 	if err != nil {
 		logger.Errorf("Failed to build query resource sql: %v", err)
 		span.SetStatus(codes.Error, "Build sql failed")
-		return []*interfaces.Resource{}, err
+		return nil, err
 	}
 
 	rows, err := ra.db.QueryContext(ctx, sqlStr, vals...)
 	if err != nil {
 		logger.Errorf("Query resources failed: %v", err)
 		span.SetStatus(codes.Error, "Query failed")
-		return []*interfaces.Resource{}, err
+		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 
-	resources := make([]*interfaces.Resource, 0)
+	resources := make(map[string]*interfaces.Resource, len(ids))
 	for rows.Next() {
 		resource, err := scanResource(rows)
 		if err != nil {
 			logger.Errorf("Scan resource row failed: %v", err)
 			span.SetStatus(codes.Error, "Scan row failed")
-			return []*interfaces.Resource{}, err
+			return nil, err
 		}
 
-		resources = append(resources, resource)
+		resources[resource.ID] = resource
 	}
 	if err := rows.Err(); err != nil {
 		logger.Errorf("Iterate resource rows failed: %v", err)
 		span.SetStatus(codes.Error, "Rows iteration failed")
-		return []*interfaces.Resource{}, err
+		return nil, err
 	}
 
 	span.SetStatus(codes.Ok, "")
 	return resources, nil
 }
 
-// GetSummariesByIDs retrieves resource list summaries without loading extended JSON fields.
+// GetSummariesByIDs retrieves resource list summaries keyed by ID without loading extended JSON fields.
 // Only lazy extract the scale information (column_count/row_count) from the original JSON, without deserializing the complete structure;
 // Counting is completed on the Go side to be compatible with multi-dialect databases (such as MariaDB/DM8/KDB9, etc.) and does not rely on MySQL JSON functions.
-func (ra *resourceAccess) GetSummariesByIDs(ctx context.Context, ids []string) ([]*interfaces.ResourceSummary, error) {
+func (ra *resourceAccess) GetSummariesByIDs(ctx context.Context, ids []string) (map[string]*interfaces.ResourceSummary, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query resource summaries by IDs")
 	defer span.End()
 
@@ -433,32 +433,32 @@ func (ra *resourceAccess) GetSummariesByIDs(ctx context.Context, ids []string) (
 	if err != nil {
 		logger.Errorf("Failed to build query resource sql: %v", err)
 		span.SetStatus(codes.Error, "Build sql failed")
-		return []*interfaces.ResourceSummary{}, err
+		return nil, err
 	}
 
 	rows, err := ra.db.QueryContext(ctx, sqlStr, vals...)
 	if err != nil {
 		logger.Errorf("Query resources failed: %v", err)
 		span.SetStatus(codes.Error, "Query failed")
-		return []*interfaces.ResourceSummary{}, err
+		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 
-	summaries := make([]*interfaces.ResourceSummary, 0)
+	summaries := make(map[string]*interfaces.ResourceSummary, len(ids))
 	for rows.Next() {
 		summary, err := scanResourceSummary(rows)
 		if err != nil {
 			logger.Errorf("Scan resource row failed: %v", err)
 			span.SetStatus(codes.Error, "Scan row failed")
-			return []*interfaces.ResourceSummary{}, err
+			return nil, err
 		}
 
-		summaries = append(summaries, summary)
+		summaries[summary.ID] = summary
 	}
 	if err := rows.Err(); err != nil {
 		logger.Errorf("Iterate resource rows failed: %v", err)
 		span.SetStatus(codes.Error, "Rows iteration failed")
-		return []*interfaces.ResourceSummary{}, err
+		return nil, err
 	}
 
 	span.SetStatus(codes.Ok, "")

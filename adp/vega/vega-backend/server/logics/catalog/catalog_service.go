@@ -700,21 +700,21 @@ func (cs *catalogService) InternalGetByID(ctx context.Context, id string, withSe
 }
 
 // InternalGetByIDs is used for the server to batch read directory information internally without performing permission filtering or loading extended fields.
-func (cs *catalogService) InternalGetByIDs(ctx context.Context, ids []string) ([]*interfaces.Catalog, error) {
+func (cs *catalogService) InternalGetByIDs(ctx context.Context, ids []string) (map[string]*interfaces.Catalog, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CatalogService.InternalGetByIDs")
 	defer span.End()
 
 	if len(ids) == 0 {
 		span.SetStatus(codes.Ok, "")
-		return []*interfaces.Catalog{}, nil
+		return map[string]*interfaces.Catalog{}, nil
 	}
-	catalogs, err := cs.ca.GetByIDs(ctx, ids)
+	catalogsByID, err := cs.ca.GetByIDs(ctx, ids)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get catalogs failed")
 		return nil, err
 	}
 	span.SetStatus(codes.Ok, "")
-	return catalogs, nil
+	return catalogsByID, nil
 }
 
 // GetByIDs retrieves a Catalog by IDs.
@@ -727,11 +727,18 @@ func (cs *catalogService) GetByIDs(ctx context.Context, ids []string) ([]*interf
 		return []*interfaces.Catalog{}, nil
 	}
 
-	catalogs, err := cs.ca.GetByIDs(ctx, ids)
+	catalogsByID, err := cs.ca.GetByIDs(ctx, ids)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get catalog failed")
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
+	}
+	catalogs := make([]*interfaces.Catalog, 0, len(catalogsByID))
+	for _, id := range ids {
+		if catalog, exists := catalogsByID[id]; exists {
+			catalogs = append(catalogs, catalog)
+			delete(catalogsByID, id)
+		}
 	}
 
 	// Remove sensitive fields and do not return to the front end
@@ -854,14 +861,18 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 		}
 		batchIDs := authorizedIDs[i:end]
 
-		batchCatalogs, err := cs.ca.GetSummariesByIDs(ctx, batchIDs)
+		catalogsByID, err := cs.ca.GetSummariesByIDs(ctx, batchIDs)
 		if err != nil {
 			span.SetStatus(codes.Error, "Get catalogs by IDs failed")
 			return []*interfaces.CatalogSummary{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
 		}
 
-		catalogs = append(catalogs, batchCatalogs...)
+		for _, id := range batchIDs {
+			if catalog, exists := catalogsByID[id]; exists {
+				catalogs = append(catalogs, catalog)
+			}
+		}
 	}
 
 	// Set the operation permissions for the catalog

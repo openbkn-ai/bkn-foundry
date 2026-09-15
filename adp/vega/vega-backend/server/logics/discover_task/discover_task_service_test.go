@@ -201,7 +201,7 @@ func TestDiscoverTaskServicePopulatesCatalogName(t *testing.T) {
 			{ID: "task-2", CatalogID: "catalog-1"},
 		}
 		dta.EXPECT().List(gomock.Any(), gomock.Any()).Return(tasks, int64(2), nil)
-		cs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-1"}).Return([]*interfaces.Catalog{{ID: "catalog-1", Name: "目录一"}}, nil)
+		cs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-1"}).Return(map[string]*interfaces.Catalog{"catalog-1": {ID: "catalog-1", Name: "目录一"}}, nil)
 		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Len(2)).Return(nil)
 
 		got, _, err := service.List(context.Background(), interfaces.DiscoverTaskQueryParams{})
@@ -214,7 +214,7 @@ func TestDiscoverTaskServicePopulatesCatalogName(t *testing.T) {
 	t.Run("get populates catalog name", func(t *testing.T) {
 		task := &interfaces.DiscoverTask{ID: "task-3", CatalogID: "catalog-2"}
 		dta.EXPECT().GetByID(gomock.Any(), "task-3").Return(task, nil)
-		cs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-2"}).Return([]*interfaces.Catalog{{ID: "catalog-2", Name: "目录二"}}, nil)
+		cs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-2"}).Return(map[string]*interfaces.Catalog{"catalog-2": {ID: "catalog-2", Name: "目录二"}}, nil)
 		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 
 		got, err := service.GetByID(context.Background(), "task-3")
@@ -258,8 +258,8 @@ func TestDiscoverTaskServicePopulatesCatalogName(t *testing.T) {
 		}
 
 		dta.EXPECT().List(gomock.Any(), gomock.Any()).Return(tasks, int64(2), nil)
-		rs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-1"}).Return([]*interfaces.Resource{{ID: "resource-1", Name: "orders"}}, nil)
-		cs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-4"}).Return([]*interfaces.Catalog{{ID: "catalog-4", Name: "目录四"}}, nil)
+		rs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-1"}).Return(map[string]*interfaces.Resource{"resource-1": {ID: "resource-1", Name: "orders"}}, nil)
+		cs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-4"}).Return(map[string]*interfaces.Catalog{"catalog-4": {ID: "catalog-4", Name: "目录四"}}, nil)
 		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Len(2)).Return(nil)
 
 		got, _, err := service.List(context.Background(), interfaces.DiscoverTaskQueryParams{})
@@ -280,8 +280,8 @@ func TestDiscoverTaskServicePopulatesCatalogName(t *testing.T) {
 
 		dta.EXPECT().GetByID(gomock.Any(), "task-7").Return(task, nil)
 		cs.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-5", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
-		rs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-2"}).Return([]*interfaces.Resource{{ID: "resource-2", Name: "customers"}}, nil)
-		cs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-5"}).Return([]*interfaces.Catalog{{ID: "catalog-5", Name: "目录五"}}, nil)
+		rs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-2"}).Return(map[string]*interfaces.Resource{"resource-2": {ID: "resource-2", Name: "customers"}}, nil)
+		cs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-5"}).Return(map[string]*interfaces.Catalog{"catalog-5": {ID: "catalog-5", Name: "目录五"}}, nil)
 		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Len(1)).Return(nil)
 
 		got, err := service.GetByID(context.Background(), "task-7")

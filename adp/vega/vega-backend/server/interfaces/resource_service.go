@@ -59,8 +59,8 @@ type ResourceService interface {
 	InternalGetByID(ctx context.Context, tx *sql.Tx, id string) (*Resource, error)
 	// InternalList retrieves resource summaries for internal workers without permission filtering.
 	InternalList(ctx context.Context, params ResourcesQueryParams) ([]*ResourceSummary, error)
-	// InternalGetByIDs retrieves Resources for internal callers without permission filtering.
-	InternalGetByIDs(ctx context.Context, ids []string) ([]*Resource, error)
+	// InternalGetByIDs retrieves Resources keyed by ID for internal callers without permission filtering.
+	InternalGetByIDs(ctx context.Context, ids []string) (map[string]*Resource, error)
 	// InternalGetByCatalogID retrieves all Resources under a Catalog for internal callers.
 	InternalGetByCatalogID(ctx context.Context, catalogID string) ([]*Resource, error)
 	// InternalUpdateLocalIndexName updates only a Resource's local index name for internal workers.

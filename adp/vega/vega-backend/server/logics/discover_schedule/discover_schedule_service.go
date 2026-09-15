@@ -189,13 +189,9 @@ func (dss *discoverScheduleService) populateDiscoverScheduleReferences(ctx conte
 		return nil
 	}
 
-	catalogs, err := dss.cs.InternalGetByIDs(ctx, catalogIDs)
+	catalogsByID, err := dss.cs.InternalGetByIDs(ctx, catalogIDs)
 	if err != nil {
 		return err
-	}
-	catalogsByID := make(map[string]*interfaces.Catalog, len(catalogs))
-	for _, catalog := range catalogs {
-		catalogsByID[catalog.ID] = catalog
 	}
 	for _, schedule := range schedules {
 		if catalog := catalogsByID[schedule.CatalogID]; catalog != nil {

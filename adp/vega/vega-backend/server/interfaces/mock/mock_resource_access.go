@@ -130,10 +130,10 @@ func (mr *MockResourceAccessMockRecorder) GetByID(ctx, tx, id any) *gomock.Call 
 }
 
 // GetByIDs mocks base method.
-func (m *MockResourceAccess) GetByIDs(ctx context.Context, ids []string) ([]*interfaces.Resource, error) {
+func (m *MockResourceAccess) GetByIDs(ctx context.Context, ids []string) (map[string]*interfaces.Resource, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetByIDs", ctx, ids)
-	ret0, _ := ret[0].([]*interfaces.Resource)
+	ret0, _ := ret[0].(map[string]*interfaces.Resource)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -175,10 +175,10 @@ func (mr *MockResourceAccessMockRecorder) GetPermissionRefsByIDs(ctx, ids any) *
 }
 
 // GetSummariesByIDs mocks base method.
-func (m *MockResourceAccess) GetSummariesByIDs(ctx context.Context, ids []string) ([]*interfaces.ResourceSummary, error) {
+func (m *MockResourceAccess) GetSummariesByIDs(ctx context.Context, ids []string) (map[string]*interfaces.ResourceSummary, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetSummariesByIDs", ctx, ids)
-	ret0, _ := ret[0].([]*interfaces.ResourceSummary)
+	ret0, _ := ret[0].(map[string]*interfaces.ResourceSummary)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

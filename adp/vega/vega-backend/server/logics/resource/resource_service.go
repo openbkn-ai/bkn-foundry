@@ -720,22 +720,24 @@ func (rs *resourceService) InternalGetByID(ctx context.Context, tx *sql.Tx, id s
 }
 
 // InternalGetByIDs is used by the server to batch read the basic information of resources internally without performing permission filtering or loading extended fields.
-func (rs *resourceService) InternalGetByIDs(ctx context.Context, ids []string) ([]*interfaces.Resource, error) {
+func (rs *resourceService) InternalGetByIDs(ctx context.Context, ids []string) (map[string]*interfaces.Resource, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalGetByIDs")
 	defer span.End()
 
 	if len(ids) == 0 {
 		span.SetStatus(codes.Ok, "")
-		return []*interfaces.Resource{}, nil
+		return map[string]*interfaces.Resource{}, nil
 	}
-	resources, err := rs.ra.GetByIDs(ctx, ids)
+	resourcesByID, err := rs.ra.GetByIDs(ctx, ids)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get resources failed")
 		return nil, err
 	}
-	populateResourceColumnCounts(resources)
+	for _, resource := range resourcesByID {
+		populateResourceColumnCount(resource)
+	}
 	span.SetStatus(codes.Ok, "")
-	return resources, nil
+	return resourcesByID, nil
 }
 
 // InternalGetByCatalogID is used by the server to internally read the complete resource information under the directory without performing permission filtering.
@@ -748,7 +750,9 @@ func (rs *resourceService) InternalGetByCatalogID(ctx context.Context, catalogID
 		span.SetStatus(codes.Error, "Get resources failed")
 		return nil, err
 	}
-	populateResourceColumnCounts(resources)
+	for _, resource := range resources {
+		populateResourceColumnCount(resource)
+	}
 	span.SetStatus(codes.Ok, "")
 	return resources, nil
 }
@@ -756,9 +760,16 @@ func (rs *resourceService) InternalGetByCatalogID(ctx context.Context, catalogID
 // GetByIDs retrieves Resources by IDs.
 func (rs *resourceService) GetByIDs(ctx context.Context, ids []string, includeRowCount bool) ([]*interfaces.Resource, error) {
 	if interfaces.IsTrustedProxyRead(ctx) {
-		resources, err := rs.InternalGetByIDs(ctx, ids)
+		resourcesByID, err := rs.InternalGetByIDs(ctx, ids)
 		if err != nil {
 			return nil, err
+		}
+		resources := make([]*interfaces.Resource, 0, len(resourcesByID))
+		for _, id := range ids {
+			if resource, exists := resourcesByID[id]; exists {
+				resources = append(resources, resource)
+				delete(resourcesByID, id)
+			}
 		}
 		rs.populateResourceRowCounts(ctx, resources, includeRowCount)
 		return resources, nil
@@ -772,13 +783,22 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string, includeRo
 		return []*interfaces.Resource{}, nil
 	}
 
-	resources, err := rs.ra.GetByIDs(ctx, ids)
+	resourcesByID, err := rs.ra.GetByIDs(ctx, ids)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get resources failed")
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
-	populateResourceColumnCounts(resources)
+	resources := make([]*interfaces.Resource, 0, len(resourcesByID))
+	for _, id := range ids {
+		if resource, exists := resourcesByID[id]; exists {
+			resources = append(resources, resource)
+			delete(resourcesByID, id)
+		}
+	}
+	for _, resource := range resources {
+		populateResourceColumnCount(resource)
+	}
 
 	// Filter objects with viewing permissions based on permissions. The total length of the filtered array is the total number, and there is no need to request the total number again.
 	// Resources in the internal directory are verified by the internal_resource type
@@ -849,12 +869,6 @@ func (rs *resourceService) populateResourceRowCounts(ctx context.Context, resour
 	}
 }
 
-func populateResourceColumnCounts(resources []*interfaces.Resource) {
-	for _, resource := range resources {
-		populateResourceColumnCount(resource)
-	}
-}
-
 func populateResourceColumnCount(resource *interfaces.Resource) {
 	if resource == nil {
 		return
@@ -897,7 +911,9 @@ func (rs *resourceService) GetByCatalogID(ctx context.Context, catalogID string)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
-	populateResourceColumnCounts(resources)
+	for _, resource := range resources {
+		populateResourceColumnCount(resource)
+	}
 
 	span.SetStatus(codes.Ok, "")
 	return resources, nil
@@ -1032,14 +1048,18 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 		}
 		batchIDs := authorizedIDs[i:end]
 
-		batchSummaries, err := rs.ra.GetSummariesByIDs(ctx, batchIDs)
+		summariesByID, err := rs.ra.GetSummariesByIDs(ctx, batchIDs)
 		if err != nil {
 			span.SetStatus(codes.Error, "Get resources by IDs failed")
 			return []*interfaces.ResourceSummary{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
 				WithErrorDetails(err.Error())
 		}
 
-		summaries = append(summaries, batchSummaries...)
+		for _, id := range batchIDs {
+			if summary, exists := summariesByID[id]; exists {
+				summaries = append(summaries, summary)
+			}
+		}
 	}
 
 	// Set the operation permissions for resources
@@ -1442,13 +1462,13 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 	}
 
 	// First, obtain the information of the resource to be deleted so that different resources can be processed differently
-	resources, err := rs.ra.GetByIDs(ctx, ids)
+	resourcesByID, err := rs.ra.GetByIDs(ctx, ids)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get resources failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
-	for _, resource := range resources {
+	for _, resource := range resourcesByID {
 		if err := rs.rejectResourceOperationWhenActiveDiscoverTask(ctx, resource.ID); err != nil {
 			span.SetStatus(codes.Error, "Active resource refresh prevents resource deletion")
 			return err
@@ -1465,7 +1485,7 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 			WithErrorDetails(err.Error())
 	}
 
-	for _, resource := range resources {
+	for _, resource := range resourcesByID {
 		if resource.Category == interfaces.ResourceCategoryDataset {
 			if err := rs.ds.Delete(ctx, resource); err != nil {
 				logger.Errorf("Delete dataset failed after resource deletion: %v", err)

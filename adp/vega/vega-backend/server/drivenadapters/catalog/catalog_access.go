@@ -306,8 +306,8 @@ func (ca *catalogAccess) GetByID(ctx context.Context, id string) (*interfaces.Ca
 	return catalog, nil
 }
 
-// GetByIDs retrieves ca Catalog by IDs.
-func (ca *catalogAccess) GetByIDs(ctx context.Context, ids []string) ([]*interfaces.Catalog, error) {
+// GetByIDs retrieves catalogs keyed by ID.
+func (ca *catalogAccess) GetByIDs(ctx context.Context, ids []string) (map[string]*interfaces.Catalog, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query catalog by IDs")
 	defer span.End()
 
@@ -320,40 +320,40 @@ func (ca *catalogAccess) GetByIDs(ctx context.Context, ids []string) ([]*interfa
 	if err != nil {
 		logger.Errorf("Failed to build select catalog sql: %v", err)
 		span.SetStatus(codes.Error, "Build sql failed")
-		return []*interfaces.Catalog{}, err
+		return nil, err
 	}
 
 	rows, err := ca.db.QueryContext(ctx, sqlStr, vals...)
 	if err != nil {
 		logger.Errorf("Query catalog failed: %v", err)
 		span.SetStatus(codes.Error, "Query failed")
-		return []*interfaces.Catalog{}, err
+		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 
-	catalogs := make([]*interfaces.Catalog, 0)
+	catalogs := make(map[string]*interfaces.Catalog, len(ids))
 	for rows.Next() {
 		catalog, err := scanCatalog(rows)
 		if err != nil {
 			logger.Errorf("Scan catalog row failed: %v", err)
 			span.SetStatus(codes.Error, "Scan row failed")
-			return []*interfaces.Catalog{}, err
+			return nil, err
 		}
 
-		catalogs = append(catalogs, catalog)
+		catalogs[catalog.ID] = catalog
 	}
 	if err := rows.Err(); err != nil {
 		logger.Errorf("Iterate catalog rows failed: %v", err)
 		span.SetStatus(codes.Error, "Rows iteration failed")
-		return []*interfaces.Catalog{}, err
+		return nil, err
 	}
 
 	span.SetStatus(codes.Ok, "")
 	return catalogs, nil
 }
 
-// GetSummariesByIDs retrieves catalog list summaries by IDs.
-func (ca *catalogAccess) GetSummariesByIDs(ctx context.Context, ids []string) ([]*interfaces.CatalogSummary, error) {
+// GetSummariesByIDs retrieves catalog list summaries keyed by ID.
+func (ca *catalogAccess) GetSummariesByIDs(ctx context.Context, ids []string) (map[string]*interfaces.CatalogSummary, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query catalog summaries by IDs")
 	defer span.End()
 
@@ -373,14 +373,14 @@ func (ca *catalogAccess) GetSummariesByIDs(ctx context.Context, ids []string) ([
 	}
 	defer func() { _ = rows.Close() }()
 
-	summaries := make([]*interfaces.CatalogSummary, 0)
+	summaries := make(map[string]*interfaces.CatalogSummary, len(ids))
 	for rows.Next() {
 		summary, err := scanCatalogSummary(rows)
 		if err != nil {
 			span.SetStatus(codes.Error, "Scan row failed")
 			return nil, err
 		}
-		summaries = append(summaries, summary)
+		summaries[summary.ID] = summary
 	}
 	if err := rows.Err(); err != nil {
 		span.SetStatus(codes.Error, "Rows iteration failed")

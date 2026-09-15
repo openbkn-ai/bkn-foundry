@@ -347,26 +347,19 @@ func (suts *semanticUnderstandingTaskService) populateSemanticUnderstandingTaskS
 	}
 
 	var referenceErrors []error
-	resourcesByID := make(map[string]*interfaces.Resource, len(resourceIDs))
+	var resourcesByID map[string]*interfaces.Resource
+	var err error
 	if len(resourceIDs) > 0 {
-		resources, err := suts.rs.InternalGetByIDs(ctx, resourceIDs)
+		resourcesByID, err = suts.rs.InternalGetByIDs(ctx, resourceIDs)
 		if err != nil {
 			referenceErrors = append(referenceErrors, err)
-		} else {
-			for _, resource := range resources {
-				resourcesByID[resource.ID] = resource
-			}
 		}
 	}
-	catalogsByID := make(map[string]*interfaces.Catalog, len(catalogIDs))
+	var catalogsByID map[string]*interfaces.Catalog
 	if len(catalogIDs) > 0 {
-		catalogs, err := suts.cs.InternalGetByIDs(ctx, catalogIDs)
+		catalogsByID, err = suts.cs.InternalGetByIDs(ctx, catalogIDs)
 		if err != nil {
 			referenceErrors = append(referenceErrors, err)
-		} else {
-			for _, catalog := range catalogs {
-				catalogsByID[catalog.ID] = catalog
-			}
 		}
 	}
 	for _, task := range tasks {
@@ -402,26 +395,19 @@ func (suts *semanticUnderstandingTaskService) populateSemanticUnderstandingTaskR
 	}
 
 	var referenceErrors []error
-	resourcesByID := make(map[string]*interfaces.Resource, len(resourceIDs))
+	var resourcesByID map[string]*interfaces.Resource
+	var err error
 	if len(resourceIDs) > 0 {
-		resources, err := suts.rs.InternalGetByIDs(ctx, resourceIDs)
+		resourcesByID, err = suts.rs.InternalGetByIDs(ctx, resourceIDs)
 		if err != nil {
 			referenceErrors = append(referenceErrors, err)
-		} else {
-			for _, resource := range resources {
-				resourcesByID[resource.ID] = resource
-			}
 		}
 	}
-	catalogsByID := make(map[string]*interfaces.Catalog, len(catalogIDs))
+	var catalogsByID map[string]*interfaces.Catalog
 	if len(catalogIDs) > 0 {
-		catalogs, err := suts.cs.InternalGetByIDs(ctx, catalogIDs)
+		catalogsByID, err = suts.cs.InternalGetByIDs(ctx, catalogIDs)
 		if err != nil {
 			referenceErrors = append(referenceErrors, err)
-		} else {
-			for _, catalog := range catalogs {
-				catalogsByID[catalog.ID] = catalog
-			}
 		}
 	}
 	for _, task := range tasks {
