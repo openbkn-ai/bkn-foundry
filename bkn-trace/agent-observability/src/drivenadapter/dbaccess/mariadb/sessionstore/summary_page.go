@@ -114,17 +114,40 @@ func conversationSummaryExcludedAgentPredicate(alias string, values []string) (s
 	if len(unique) == 0 {
 		return "", nil
 	}
-	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(unique)), ",")
-	predicates := []string{
-		alias + ".agent_name IS NULL OR " + alias + ".agent_name NOT IN (" + placeholders + ")",
-		alias + ".application_principal_id IS NULL OR " + alias + ".application_principal_id NOT IN (" + placeholders + ")",
-		alias + ".effective_subject_id IS NULL OR " + alias + ".effective_subject_id NOT IN (" + placeholders + ")",
+
+	asciiValues := make([]string, 0, len(unique))
+	for _, value := range unique {
+		if isASCII(value) {
+			asciiValues = append(asciiValues, value)
+		}
 	}
-	args := make([]any, 0, len(unique)*len(predicates))
-	for range predicates {
-		args = append(args, stringsToAny(unique)...)
+
+	allPlaceholders := strings.TrimSuffix(strings.Repeat("?,", len(unique)), ",")
+	predicates := []string{
+		alias + ".agent_name IS NULL OR " + alias + ".agent_name NOT IN (" + allPlaceholders + ")",
+	}
+	args := stringsToAny(unique)
+	if len(asciiValues) > 0 {
+		asciiPlaceholders := strings.TrimSuffix(strings.Repeat("?,", len(asciiValues)), ",")
+		identityPredicates := []string{
+			alias + ".application_principal_id IS NULL OR " + alias + ".application_principal_id NOT IN (" + asciiPlaceholders + ")",
+			alias + ".effective_subject_id IS NULL OR " + alias + ".effective_subject_id NOT IN (" + asciiPlaceholders + ")",
+		}
+		predicates = append(predicates, identityPredicates...)
+		for range identityPredicates {
+			args = append(args, stringsToAny(asciiValues)...)
+		}
 	}
 	return "(" + strings.Join(predicates, ") AND (") + ")", args
+}
+
+func isASCII(value string) bool {
+	for index := 0; index < len(value); index++ {
+		if value[index] > 0x7f {
+			return false
+		}
+	}
+	return true
 }
 
 func stringsToAny(values []string) []any {

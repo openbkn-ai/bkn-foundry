@@ -76,3 +76,36 @@ func TestConversationSummaryExcludedAgentPredicateMatchesAllCanonicalAgentIdenti
 		t.Fatalf("args=%v", args)
 	}
 }
+
+func TestConversationSummaryExcludedAgentPredicateDoesNotCompareNonASCIIValuesToASCIIColumns(t *testing.T) {
+	clause, args := conversationSummaryExcludedAgentPredicate("c", []string{"业务溯源优化Agent", "business_provenance_optimizer"})
+	for _, expected := range []string{
+		"c.agent_name IS NULL OR c.agent_name NOT IN (?,?)",
+		"c.application_principal_id IS NULL OR c.application_principal_id NOT IN (?)",
+		"c.effective_subject_id IS NULL OR c.effective_subject_id NOT IN (?)",
+	} {
+		if !strings.Contains(clause, expected) {
+			t.Fatalf("predicate is missing %q: %s", expected, clause)
+		}
+	}
+	if !reflect.DeepEqual(args, []any{
+		"业务溯源优化Agent", "business_provenance_optimizer",
+		"business_provenance_optimizer",
+		"business_provenance_optimizer",
+	}) {
+		t.Fatalf("args=%v", args)
+	}
+}
+
+func TestConversationSummaryExcludedAgentPredicateOmitsASCIIColumnsForNonASCIIOnlyValues(t *testing.T) {
+	clause, args := conversationSummaryExcludedAgentPredicate("c", []string{"业务溯源优化Agent"})
+	if !strings.Contains(clause, "c.agent_name IS NULL OR c.agent_name NOT IN (?)") {
+		t.Fatalf("agent name predicate is missing: %s", clause)
+	}
+	if strings.Contains(clause, "application_principal_id") || strings.Contains(clause, "effective_subject_id") {
+		t.Fatalf("non-ASCII value must not be compared to ASCII columns: %s", clause)
+	}
+	if !reflect.DeepEqual(args, []any{"业务溯源优化Agent"}) {
+		t.Fatalf("args=%v", args)
+	}
+}
