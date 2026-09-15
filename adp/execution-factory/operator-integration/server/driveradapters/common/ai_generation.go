@@ -57,7 +57,7 @@ func NewAIGenerationHandler() AIGenerationHandler {
 // This interface calls a large model to generate function code and consume credits. In the public interface, the caller is required to hold create on the operator type.
 // Permissions - Keep the same semantics as "the generated function will eventually be implemented as an operator" (see #345).
 func (h *aiGenerationHandler) FunctionAIGeneration(c *gin.Context) {
-	if err := requireOperatorTypePermission(c.Request.Context(), h.AuthService,
+	if err := requireFunctionPermission(c.Request.Context(), h.AuthService,
 		interfaces.AuthOperationTypeCreate); err != nil {
 		rest.ReplyError(c, err)
 		return
@@ -204,7 +204,7 @@ func isEndMarker(line string) bool {
 
 // GetPromptTemplate Gets the prompt word template of the specified type.
 func (h *aiGenerationHandler) GetPromptTemplate(c *gin.Context) {
-	if err := requireOperatorTypePermission(c.Request.Context(), h.AuthService,
+	if err := requireFunctionPermission(c.Request.Context(), h.AuthService,
 		interfaces.AuthOperationTypeCreate); err != nil {
 		rest.ReplyError(c, err)
 		return

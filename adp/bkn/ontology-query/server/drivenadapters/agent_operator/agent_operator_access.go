@@ -107,6 +107,41 @@ func directCallerHeaders(ctx context.Context, operation string) map[string]strin
 	}, operation, 1)
 }
 
+func (aoa *agentOperatorAccess) GetBoxMetadataType(ctx context.Context, boxID, toolID string) (string, error) {
+	boxURL := fmt.Sprintf("%s/%s", aoa.appSetting.ToolBoxUrl, boxID)
+	status, data, err := aoa.httpClient.GetNoUnmarshal(ctx, boxURL, nil, nil)
+	if err != nil || status != http.StatusOK {
+		return "", fmt.Errorf("load toolbox kind failed: status %d: %w", status, err)
+	}
+	var box struct {
+		MetadataType string `json:"metadata_type"`
+		Tools        []struct {
+			ToolID string `json:"tool_id"`
+		} `json:"tools"`
+	}
+	if err := sonic.Unmarshal(data, &box); err != nil {
+		return "", err
+	}
+	found := false
+	for _, tool := range box.Tools {
+		if tool.ToolID == toolID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return "", fmt.Errorf("tool %s is not in toolbox %s", toolID, boxID)
+	}
+	switch box.MetadataType {
+	case "openapi":
+		return interfaces.ProxyTargetTypeToolBox, nil
+	case "function":
+		return interfaces.ProxyTargetTypeFunction, nil
+	default:
+		return "", fmt.Errorf("unsupported toolbox kind")
+	}
+}
+
 // ExecuteTool executes a tool via tool-box API
 // API: POST /tool-box/{box_id}/proxy/{tool_id}
 func (aoa *agentOperatorAccess) ExecuteTool(ctx context.Context, boxID string,
@@ -117,7 +152,11 @@ func (aoa *agentOperatorAccess) ExecuteTool(ctx context.Context, boxID string,
 
 func (aoa *agentOperatorAccess) ExecuteToolAsProxy(ctx context.Context, boxID string,
 	toolID string, execRequest interfaces.ToolExecutionRequest) (any, error) {
-	headers, err := aoa.proxyHeaders(ctx, interfaces.ProxyTargetTypeToolBox, boxID)
+	proxy, ok := interfaces.TrustedProxyContextFromContext(ctx)
+	if !ok || (proxy.Binding.TargetType != interfaces.ProxyTargetTypeToolBox && proxy.Binding.TargetType != interfaces.ProxyTargetTypeFunction) {
+		return nil, fmt.Errorf("trusted toolbox proxy target is invalid")
+	}
+	headers, err := aoa.proxyHeaders(ctx, proxy.Binding.TargetType, boxID)
 	if err != nil {
 		return nil, err
 	}

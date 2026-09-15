@@ -26,6 +26,7 @@ const (
 	ProxyManagedResourceTypeKN = "knowledge_network"
 	ProxyLifecycleActive       = "active"
 	ProxyTargetTypeToolBox     = "tool_box"
+	ProxyTargetTypeFunction    = "function"
 	ProxyTargetTypeMCP         = "mcp"
 	ProxyChildTypeAction       = "action_type"
 	ProxyChildTypeLogic        = "logic_property"

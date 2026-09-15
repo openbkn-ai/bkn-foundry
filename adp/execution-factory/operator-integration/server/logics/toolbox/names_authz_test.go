@@ -35,7 +35,7 @@ func TestToolRuntimeMetadataAllowsExecuteOnlyAuthorization(t *testing.T) {
 		interfaces.AuthOperationTypeExecute,
 	).Return(true, nil).Times(2)
 	toolBoxDB.EXPECT().SelectToolBox(gomock.Any(), "box-1").
-		Return(true, &model.ToolboxDB{BoxID: "box-1"}, nil).Times(2)
+		Return(true, &model.ToolboxDB{BoxID: "box-1", MetadataType: string(interfaces.MetadataTypeAPI)}, nil).AnyTimes()
 	toolDB.EXPECT().SelectTool(gomock.Any(), "missing-tool").Return(false, nil, nil)
 	toolDB.EXPECT().CountToolByBoxID(gomock.Any(), "box-1", gomock.Any()).Return(int64(0), nil)
 
@@ -67,10 +67,10 @@ func TestGetToolBoxNamesByIDsAuthz(t *testing.T) {
 				AuthService: authService,
 			}
 			authService.EXPECT().GetAccessor(gomock.Any(), "").Return(&interfaces.AuthAccessor{ID: "user-1"}, nil)
-			authService.EXPECT().ResourceListIDs(gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox,
+			toolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), []string{"box-1", "box-2"}).
+				Return([]*model.ToolboxDB{{BoxID: "box-1", Name: "工具箱一", MetadataType: string(interfaces.MetadataTypeAPI)}}, nil)
+			authService.EXPECT().ResourceFilterIDs(gomock.Any(), gomock.Any(), []string{"box-1"}, interfaces.AuthResourceTypeToolBox,
 				interfaces.AuthOperationTypeView).Return([]string{"box-1"}, nil)
-			toolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), []string{"box-1"}).
-				Return([]*model.ToolboxDB{{BoxID: "box-1", Name: "工具箱一"}}, nil)
 
 			resp, err := svc.GetToolBoxNamesByIDs(publicCtx, []string{"box-1", "box-2"})
 			So(err, ShouldBeNil)
@@ -78,15 +78,18 @@ func TestGetToolBoxNamesByIDsAuthz(t *testing.T) {
 			So(resp.Entries[0].ID, ShouldEqual, "box-1")
 		})
 
-		Convey("权限集为空时返回空列表且不查库", func() {
+		Convey("没有可见资源时返回空列表", func() {
 			authService := mocks.NewMockIAuthorizationService(ctrl)
+			toolBoxDB := mocks.NewMockIToolboxDB(ctrl)
 			svc := &ToolServiceImpl{
 				Logger:      logger.DefaultLogger(),
-				ToolBoxDB:   mocks.NewMockIToolboxDB(ctrl),
+				ToolBoxDB:   toolBoxDB,
 				AuthService: authService,
 			}
+			toolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), []string{"box-1"}).
+				Return([]*model.ToolboxDB{{BoxID: "box-1", MetadataType: string(interfaces.MetadataTypeAPI)}}, nil)
 			authService.EXPECT().GetAccessor(gomock.Any(), "").Return(&interfaces.AuthAccessor{ID: "user-1"}, nil)
-			authService.EXPECT().ResourceListIDs(gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox,
+			authService.EXPECT().ResourceFilterIDs(gomock.Any(), gomock.Any(), []string{"box-1"}, interfaces.AuthResourceTypeToolBox,
 				interfaces.AuthOperationTypeView).Return(nil, nil)
 
 			resp, err := svc.GetToolBoxNamesByIDs(publicCtx, []string{"box-1"})
@@ -118,7 +121,7 @@ func TestProjectToolBoxAuthorizeOperations(t *testing.T) {
 		defer ctrl.Finish()
 		authService := mocks.NewMockIAuthorizationService(ctrl)
 		accessor := &interfaces.AuthAccessor{ID: "user-1"}
-		toolBoxes := []*interfaces.ToolBoxInfo{{BoxID: "box-1"}, {BoxID: "box-2"}}
+		toolBoxes := []*interfaces.ToolBoxInfo{{BoxID: "box-1", MetadataType: interfaces.MetadataTypeAPI}, {BoxID: "box-2", MetadataType: interfaces.MetadataTypeAPI}}
 		authService.EXPECT().ResourceFilterOperations(
 			gomock.Any(), accessor, []string{"box-1", "box-2"}, interfaces.AuthResourceTypeToolBox,
 			[]interfaces.AuthOperationType{interfaces.AuthOperationTypeView},

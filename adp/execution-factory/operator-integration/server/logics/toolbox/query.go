@@ -4,10 +4,10 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
@@ -22,20 +22,40 @@ func (s *ToolServiceImpl) GetToolBoxNamesByIDs(ctx context.Context, ids []string
 	if len(ids) == 0 {
 		return
 	}
-	ids, err = auth.FilterViewableIDs(ctx, s.AuthService, "", ids, interfaces.AuthResourceTypeToolBox)
-	if err != nil {
-		return nil, err
-	}
-	if len(ids) == 0 {
-		return
-	}
 	boxList, err := s.ToolBoxDB.SelectListByBoxIDs(ctx, ids)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select toolboxes by ids failed, err: %v", err)
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
+	allowed := map[string]bool{}
+	if common.IsPublicAPIFromCtx(ctx) {
+		accessor, authErr := s.AuthService.GetAccessor(ctx, "")
+		if authErr != nil {
+			return nil, authErr
+		}
+		idsByType := map[interfaces.AuthResourceType][]string{}
+		for _, box := range boxList {
+			resourceType, typeErr := toolboxAuthorizationType(box.MetadataType)
+			if typeErr != nil {
+				return nil, typeErr
+			}
+			idsByType[resourceType] = append(idsByType[resourceType], box.BoxID)
+		}
+		for resourceType, candidateIDs := range idsByType {
+			filtered, filterErr := s.AuthService.ResourceFilterIDs(ctx, accessor, candidateIDs, resourceType, interfaces.AuthOperationTypeView)
+			if filterErr != nil {
+				return nil, filterErr
+			}
+			for _, id := range filtered {
+				allowed[id] = true
+			}
+		}
+	}
 	for _, box := range boxList {
+		if common.IsPublicAPIFromCtx(ctx) && !allowed[box.BoxID] {
+			continue
+		}
 		resp.Entries = append(resp.Entries, &interfaces.NameEntry{ID: box.BoxID, Name: box.Name})
 	}
 	return

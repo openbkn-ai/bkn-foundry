@@ -128,12 +128,13 @@ func validateBinding(binding interfaces.TrustedProxyBinding) error {
 		}
 	case interfaces.PermissionResourceTypeActionType:
 		if (binding.TargetType != interfaces.ProxyTargetTypeToolBox &&
+			binding.TargetType != interfaces.ProxyTargetTypeFunction &&
 			binding.TargetType != interfaces.ProxyTargetTypeMCP) ||
 			binding.Operation != interfaces.PermissionOperationExecute {
 			return fmt.Errorf("action binding target or operation is invalid")
 		}
 	case interfaces.PermissionResourceTypeLogicProperty:
-		if binding.TargetType != interfaces.ProxyTargetTypeToolBox ||
+		if (binding.TargetType != interfaces.ProxyTargetTypeToolBox && binding.TargetType != interfaces.ProxyTargetTypeFunction) ||
 			binding.Operation != interfaces.PermissionOperationExecute {
 			return fmt.Errorf("logic property binding target or operation is invalid")
 		}

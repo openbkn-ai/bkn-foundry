@@ -100,3 +100,18 @@ func (mr *MockAgentOperatorAccessMockRecorder) ExecuteToolAsProxy(ctx, boxID, to
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteToolAsProxy", reflect.TypeOf((*MockAgentOperatorAccess)(nil).ExecuteToolAsProxy), ctx, boxID, toolID, execRequest)
 }
+
+// GetBoxMetadataType mocks base method.
+func (m *MockAgentOperatorAccess) GetBoxMetadataType(ctx context.Context, boxID, toolID string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBoxMetadataType", ctx, boxID, toolID)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetBoxMetadataType indicates an expected call of GetBoxMetadataType.
+func (mr *MockAgentOperatorAccessMockRecorder) GetBoxMetadataType(ctx, boxID, toolID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBoxMetadataType", reflect.TypeOf((*MockAgentOperatorAccess)(nil).GetBoxMetadataType), ctx, boxID, toolID)
+}

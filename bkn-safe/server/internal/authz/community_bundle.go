@@ -18,6 +18,7 @@ var communityBundleOperations = map[string][]string{
 	"knowledge_network": {"view_detail", "modify", "delete", "query_data", "execute"},
 	"connector_type":    {"view_detail", "modify", "delete"},
 	"tool_box":          {"view", "modify", "delete", "publish", "unpublish", "execute"},
+	"function":          {"view", "modify", "delete", "publish", "unpublish", "execute"},
 	"mcp":               {"view", "modify", "delete", "publish", "unpublish", "execute"},
 	"operator":          {"view", "modify", "delete", "publish", "unpublish", "execute"},
 	"skill":             {"view", "modify", "delete", "publish", "unpublish", "execute"},

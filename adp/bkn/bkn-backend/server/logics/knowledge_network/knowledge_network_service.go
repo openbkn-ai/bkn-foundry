@@ -51,6 +51,7 @@ type knowledgeNetworkService struct {
 	appSetting *common.AppSetting
 	db         *sql.DB
 	ata        interfaces.ActionTypeAccess
+	aoa        interfaces.AgentOperatorAccess
 	cba        interfaces.CapabilityBindingAccess
 	cbs        interfaces.CapabilityBindingService
 	ats        interfaces.ActionTypeService
@@ -80,6 +81,7 @@ func NewKNService(appSetting *common.AppSetting) interfaces.KNServiceWithProxyMu
 		knService = &knowledgeNetworkService{
 			appSetting: appSetting,
 			ata:        logics.ATA,
+			aoa:        logics.AOA,
 			cba:        logics.CBA,
 			cbs:        capability_binding.NewCapabilityBindingService(appSetting),
 			ats:        action_type.NewActionTypeService(appSetting),

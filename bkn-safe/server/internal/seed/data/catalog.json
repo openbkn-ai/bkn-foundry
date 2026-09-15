@@ -155,8 +155,24 @@
       ]
     },
     {
+      "id": "function",
+      "name": "函数集",
+      "_source": "execution-factory",
+      "operations": [
+        {"id": "create", "name": "创建"},
+        {"id": "modify", "name": "修改", "requires": ["view"]},
+        {"id": "delete", "name": "删除", "requires": ["view"]},
+        {"id": "view", "name": "查看"},
+        {"id": "publish", "name": "发布", "requires": ["view"]},
+        {"id": "unpublish", "name": "取消发布", "requires": ["view"]},
+        {"id": "authorize", "name": "授权", "requires": ["view"]},
+        {"id": "public_access", "name": "公共访问"},
+        {"id": "execute", "name": "执行"}
+      ]
+    },
+    {
       "id": "tool_box",
-      "name": "工具箱",
+      "name": "API 工具集",
       "_source": "execution-factory",
       "operations": [
         {"id": "create", "name": "创建"},

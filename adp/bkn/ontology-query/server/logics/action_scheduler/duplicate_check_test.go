@@ -144,6 +144,8 @@ func Test_ExecuteAction_DuplicateCheck(t *testing.T) {
 		omAccess := omock.NewMockOntologyManagerAccess(mockCtrl)
 		ots := omock.NewMockObjectTypeService(mockCtrl)
 		logsService := omock.NewMockActionLogsService(mockCtrl)
+		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
+		aoAccess.EXPECT().GetBoxMetadataType(gomock.Any(), "box", "tool").Return(interfaces.ProxyTargetTypeToolBox, nil)
 		logics.OMA = omAccess
 
 		prevWindow := duplicateWindowSeconds
@@ -182,6 +184,7 @@ func Test_ExecuteAction_DuplicateCheck(t *testing.T) {
 
 		service := &actionSchedulerService{
 			omAccess:    omAccess,
+			aoAccess:    aoAccess,
 			logsService: logsService,
 			ots:         ots,
 			proxy:       &actionProxyResolverStub{},

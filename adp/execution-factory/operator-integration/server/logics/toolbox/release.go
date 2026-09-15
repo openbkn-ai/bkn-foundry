@@ -98,7 +98,7 @@ func (s *ToolServiceImpl) GetMarketToolList(ctx context.Context, req *interfaces
 		return boxList, nil
 	}, func() ([]string, error) {
 		var authResourceIds []string
-		authResourceIds, err = s.AuthService.ResourceListIDs(ctx, accessor, interfaces.AuthResourceTypeToolBox, interfaces.AuthOperationTypePublicAccess)
+		authResourceIds, err = s.authorizedBoxIDs(ctx, accessor, "", interfaces.AuthOperationTypePublicAccess)
 		if err != nil {
 			return nil, err
 		}
@@ -208,7 +208,7 @@ func (s *ToolServiceImpl) GetReleaseToolBoxInfo(ctx context.Context, req *interf
 			return boxList, nil
 		},
 		func() ([]string, error) {
-			return s.AuthService.ResourceListIDs(ctx, accessor, interfaces.AuthResourceTypeToolBox, interfaces.AuthOperationTypePublicAccess)
+			return s.authorizedBoxIDs(ctx, accessor, "", interfaces.AuthOperationTypePublicAccess)
 		},
 	)
 	if err != nil {
@@ -419,7 +419,14 @@ func (s *ToolServiceImpl) getToolBoxListPage(ctx context.Context, filter map[str
 			if err != nil {
 				return nil, err
 			}
-			return s.AuthService.ResourceListIDs(newCtx, accessor, interfaces.AuthResourceTypeToolBox, operations...)
+			metadataType := interfaces.MetadataType("")
+			switch value := filter["metadata_type"].(type) {
+			case interfaces.MetadataType:
+				metadataType = value
+			case string:
+				metadataType = interfaces.MetadataType(value)
+			}
+			return s.authorizedBoxIDs(newCtx, accessor, metadataType, operations...)
 		})
 	}
 	authResp, err = queryBuilder.Execute(ctx)

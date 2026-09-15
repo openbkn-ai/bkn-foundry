@@ -26,6 +26,8 @@ type ToolExecutionRequest struct {
 
 //go:generate mockgen -source ../interfaces/agent_operator_access.go -destination ../interfaces/mock/mock_agent_operator_access.go
 type AgentOperatorAccess interface {
+	// GetBoxMetadataType resolves a tool's owning box kind from execution factory data.
+	GetBoxMetadataType(ctx context.Context, boxID, toolID string) (string, error)
 	// ExecuteTool executes a non-Action tool call as the direct caller.
 	// API: POST /tool-box/{box_id}/proxy/{tool_id}
 	ExecuteTool(ctx context.Context, boxID string, toolID string, execRequest ToolExecutionRequest) (any, error)

@@ -2,6 +2,7 @@ package interfaces
 
 import (
 	"context"
+	"fmt"
 )
 
 // AccountAuthContext Account authentication context.
@@ -53,6 +54,7 @@ type AuthResourceType string
 // Supported resource types.
 const (
 	AuthResourceTypeToolBox  AuthResourceType = "tool_box" // toolbox.
+	AuthResourceTypeFunction AuthResourceType = "function" // function toolbox.
 	AuthResourceTypeMCP      AuthResourceType = "mcp"      // MCP
 	AuthResourceTypeOperator AuthResourceType = "operator" // operator.
 	AuthResourceTypeSkill    AuthResourceType = "skill"    // Skill
@@ -68,6 +70,18 @@ const SafeAdminConsoleResourceID = "console"
 
 func (a AuthResourceType) String() string {
 	return string(a)
+}
+
+// ToolboxAuthResourceType resolves the policy domain of a toolbox kind.
+func ToolboxAuthResourceType(kind MetadataType) (AuthResourceType, error) {
+	switch kind {
+	case MetadataTypeAPI:
+		return AuthResourceTypeToolBox, nil
+	case MetadataTypeFunc:
+		return AuthResourceTypeFunction, nil
+	default:
+		return "", fmt.Errorf("unsupported toolbox metadata type %q", kind)
+	}
 }
 
 // ResourceID resource ID type alias.

@@ -979,11 +979,15 @@ func (ots *objectTypeService) handleToolProperty(ctx context.Context,
 			oerrors.OntologyQuery_InternalError_CheckPermissionFailed).
 			WithErrorDetails("knowledge network proxy resolver is not configured")
 	}
+	targetType, err := ots.aoAccess.GetBoxMetadataType(ctx, logicProp.DataSource.BoxID, logicProp.DataSource.ToolID)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusServiceUnavailable, oerrors.OntologyQuery_InternalError_CheckPermissionFailed).WithErrorDetails("toolbox kind is unavailable")
+	}
 	proxyContext, err := ots.proxy.Resolve(ctx, interfaces.TrustedProxyBinding{
 		KNID:       knID,
 		ChildType:  interfaces.PermissionResourceTypeLogicProperty,
 		ChildID:    logicPropertyBindingID(knID, objectTypeID, propName),
-		TargetType: interfaces.ProxyTargetTypeToolBox,
+		TargetType: targetType,
 		TargetID:   logicProp.DataSource.BoxID,
 		Operation:  interfaces.PermissionOperationExecute,
 	})

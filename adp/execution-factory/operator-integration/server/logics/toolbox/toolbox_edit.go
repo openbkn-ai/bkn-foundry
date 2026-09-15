@@ -33,7 +33,7 @@ func (s *ToolServiceImpl) UpdateToolBox(ctx context.Context, req *interfaces.Upd
 	if err != nil {
 		return
 	}
-	err = s.AuthService.CheckModifyPermission(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox)
+	err = s.checkBoxModifyPermission(ctx, accessor, req.BoxID)
 	if err != nil {
 		return
 	}
@@ -52,6 +52,15 @@ func (s *ToolServiceImpl) UpdateToolBox(ctx context.Context, req *interfaces.Upd
 	}
 	if !exist {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolBoxNotFound, "toolbox not found")
+		return
+	}
+	resourceType, typeErr := toolboxAuthorizationType(toolBox.MetadataType)
+	if typeErr != nil {
+		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, typeErr.Error())
+		return
+	}
+	if req.MetadataType != "" && string(req.MetadataType) != toolBox.MetadataType {
+		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, "toolbox metadata type cannot change")
 		return
 	}
 	// The metadata type will not change after it is created, and the edit request does not need to be included. If not provided, the stored value will be used——.
@@ -127,7 +136,7 @@ func (s *ToolServiceImpl) UpdateToolBox(ctx context.Context, req *interfaces.Upd
 		authResource := &interfaces.AuthResource{
 			ID:   toolBox.BoxID,
 			Name: toolBox.Name,
-			Type: string(interfaces.AuthResourceTypeToolBox),
+			Type: string(resourceType),
 		}
 		err = s.AuthService.NotifyResourceChange(ctx, authResource)
 	}

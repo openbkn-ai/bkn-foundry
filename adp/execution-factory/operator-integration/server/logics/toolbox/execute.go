@@ -38,7 +38,7 @@ func (s *ToolServiceImpl) DebugTool(ctx context.Context, req *interfaces.Execute
 	if err != nil {
 		return
 	}
-	err = s.AuthService.CheckExecutePermission(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox)
+	err = s.checkBoxExecutePermission(ctx, accessor, req.BoxID)
 	if err != nil {
 		return
 	}
@@ -63,6 +63,9 @@ func (s *ToolServiceImpl) DebugTool(ctx context.Context, req *interfaces.Execute
 	if !exist {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolNotFound,
 			fmt.Sprintf("tool %s not found", req.ToolID))
+		return
+	}
+	if err = validateToolBoxMembership(ctx, tool, req.BoxID); err != nil {
 		return
 	}
 	resp, err = s.executeTool(ctx, req, tool, toolBox.ServerURL)
@@ -153,7 +156,7 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 		}
 		return
 	}
-	err = s.AuthService.CheckExecutePermission(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox)
+	err = s.checkBoxExecutePermission(ctx, accessor, req.BoxID)
 	if err != nil {
 		if actionEnabled {
 			decision, _ := action.AfterPermission(err)
@@ -162,6 +165,19 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 				s.Logger.WithContext(ctx).Errorf("bkn trace rejected evidence emit failed: %T", emitErr)
 			}
 		}
+		return
+	}
+	// Validate the concrete tool before returning an Action replay from another box.
+	exists, requestedTool, lookupErr := s.ToolDB.SelectTool(ctx, req.ToolID)
+	if lookupErr != nil {
+		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, "load tool for execution")
+		return
+	}
+	if !exists {
+		err = errors.NewHTTPError(ctx, http.StatusNotFound, errors.ErrExtToolNotFound, "tool not found")
+		return
+	}
+	if err = validateToolBoxMembership(ctx, requestedTool, req.BoxID); err != nil {
 		return
 	}
 	if actionEnabled {
@@ -233,6 +249,9 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 	if !exist {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolNotFound,
 			fmt.Sprintf("tool %s not found", req.ToolID))
+		return
+	}
+	if err = validateToolBoxMembership(ctx, tool, req.BoxID); err != nil {
 		return
 	}
 	// Check if the tool is available.
@@ -327,6 +346,9 @@ func (s *ToolServiceImpl) ExecuteToolCore(ctx context.Context, req *interfaces.E
 	if !exist {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolNotFound,
 			fmt.Sprintf("tool %s not found", req.ToolID))
+		return
+	}
+	if err = validateToolBoxMembership(ctx, tool, req.BoxID); err != nil {
 		return
 	}
 	// Check if the tool is available.
