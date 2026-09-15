@@ -136,7 +136,9 @@ func TestListConversationSummaryIdentitiesAvoidsMixedCollations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse MariaDB DSN: %v", err)
 	}
-	cfg.Collation = "utf8mb4_uca1400_ai_ci"
+	if err := cfg.Apply(mysql.Charset("utf8mb4", "")); err != nil {
+		t.Fatalf("configure MariaDB UTF-8 charset: %v", err)
+	}
 	db, err := sql.Open("mysql", cfg.FormatDSN())
 	if err != nil {
 		t.Fatalf("open MariaDB: %v", err)
@@ -145,6 +147,14 @@ func TestListConversationSummaryIdentitiesAvoidsMixedCollations(t *testing.T) {
 	db.SetMaxOpenConns(1)
 
 	ctx := context.Background()
+	var connectionCollation string
+	if err := db.QueryRowContext(ctx, "SELECT @@collation_connection").Scan(&connectionCollation); err != nil {
+		t.Fatalf("read MariaDB connection collation: %v", err)
+	}
+	if connectionCollation != "utf8mb4_uca1400_ai_ci" {
+		t.Fatalf("MariaDB connection collation=%q, want utf8mb4_uca1400_ai_ci", connectionCollation)
+	}
+
 	store := sessionstore.New(db)
 	if err := store.Migrate(ctx); err != nil {
 		t.Fatalf("migrate: %v", err)
