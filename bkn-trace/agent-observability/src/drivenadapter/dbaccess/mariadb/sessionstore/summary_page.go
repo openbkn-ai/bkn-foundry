@@ -128,7 +128,7 @@ func conversationSummaryExcludedAgentPredicate(alias string, values []string) (s
 	}
 	args := stringsToAny(unique)
 	if len(asciiValues) > 0 {
-		asciiPlaceholders := strings.TrimSuffix(strings.Repeat("?,", len(asciiValues)), ",")
+		asciiPlaceholders := strings.TrimSuffix(strings.Repeat(asciiBinaryParameter()+",", len(asciiValues)), ",")
 		identityPredicates := []string{
 			alias + ".application_principal_id IS NULL OR " + alias + ".application_principal_id NOT IN (" + asciiPlaceholders + ")",
 			alias + ".effective_subject_id IS NULL OR " + alias + ".effective_subject_id NOT IN (" + asciiPlaceholders + ")",
@@ -185,7 +185,10 @@ func summaryOwnerWhere(alias string, query isessionstore.SummaryPageQuery) ([]st
 	where := make([]string, 0, 4)
 	args := make([]any, 0, 8)
 	if scope.AccessProfile == nil {
-		where = append(where, alias+".effective_subject_type=?", alias+".effective_subject_id=?")
+		where = append(where,
+			alias+".effective_subject_type="+asciiBinaryParameter(),
+			alias+".effective_subject_id="+asciiBinaryParameter(),
+		)
 		args = append(args, scope.AccountType, scope.AccountID)
 		return where, args
 	}
@@ -195,10 +198,10 @@ func summaryOwnerWhere(alias string, query isessionstore.SummaryPageQuery) ([]st
 	}
 	owner := make([]string, 0, 2)
 	if profile.EffectiveSubjectID != "" {
-		owner, args = append(owner, alias+".effective_subject_id=?"), append(args, profile.EffectiveSubjectID)
+		owner, args = append(owner, alias+".effective_subject_id="+asciiBinaryParameter()), append(args, profile.EffectiveSubjectID)
 	}
 	if profile.ApplicationPrincipalID != "" {
-		owner, args = append(owner, alias+".application_principal_id=?"), append(args, profile.ApplicationPrincipalID)
+		owner, args = append(owner, alias+".application_principal_id="+asciiBinaryParameter()), append(args, profile.ApplicationPrincipalID)
 	}
 	if len(owner) > 0 {
 		where = append(where, "("+strings.Join(owner, " OR ")+")")
@@ -206,6 +209,10 @@ func summaryOwnerWhere(alias string, query isessionstore.SummaryPageQuery) ([]st
 		where = append(where, "1=0")
 	}
 	return where, args
+}
+
+func asciiBinaryParameter() string {
+	return "CONVERT(? USING ascii) COLLATE ascii_bin"
 }
 
 type scannedSummaryIdentities struct {
