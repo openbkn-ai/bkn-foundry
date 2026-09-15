@@ -62,7 +62,7 @@ func ensureOperationAdapter(client *bkntrace.LifecycleClient) ensureOperationFun
 			ToolName:          intent.ToolName,
 			Protocol:          "mcp",
 			SourceModule:      "context-loader",
-			Input:             normalizedBusinessInputForTool(intent.MCPToolName, intent.Input),
+			Input:             normalizedBusinessInputForTool(intent.MCPToolName, intent.KnowledgeNetworkID, intent.Input),
 			CapabilityProfile: capabilityProfileJSON(intent.ToolName),
 		})
 		if apiErr != nil {
@@ -169,16 +169,19 @@ func toolResultErrorMessage(result *mcpsdk.CallToolResult) string {
 }
 
 func normalizedBusinessInput(input map[string]any) json.RawMessage {
-	return normalizedBusinessInputForTool("", input)
+	return normalizedBusinessInputForTool("", "", input)
 }
 
-func normalizedBusinessInputForTool(toolName string, input map[string]any) json.RawMessage {
+func normalizedBusinessInputForTool(toolName, knowledgeNetworkID string, input map[string]any) json.RawMessage {
 	if toolName == toolKeyExecuteTool {
 		// execute_tool dispatches an arbitrary function. Its nested arguments and
 		// any unrecognized top-level extensions may contain business data or
 		// credentials, so Trace persists only the opaque function identity.
 		normalized := make(map[string]any, 3)
-		for _, key := range []string{"kn_id", "toolbox_id", "tool_id"} {
+		if knowledgeNetworkID != "" {
+			normalized["kn_id"] = knowledgeNetworkID
+		}
+		for _, key := range []string{"toolbox_id", "tool_id"} {
 			if value, ok := input[key]; ok {
 				normalized[key] = value
 			}

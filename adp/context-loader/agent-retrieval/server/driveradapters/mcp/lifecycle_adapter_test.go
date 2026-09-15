@@ -700,7 +700,7 @@ func TestNormalizedBusinessInputForManagedExecuteToolExcludesFunctionArguments(t
 		"bkn_context": map[string]any{"conversation_id": "conv-1", "interaction_id": "int-1"},
 	}
 	var got map[string]any
-	if err := json.Unmarshal(normalizedBusinessInputForTool(toolKeyExecuteTool, input), &got); err != nil {
+	if err := json.Unmarshal(normalizedBusinessInputForTool(toolKeyExecuteTool, "kn_supply_chain", input), &got); err != nil {
 		t.Fatal(err)
 	}
 	want := map[string]any{
@@ -842,7 +842,10 @@ func TestManagedCommunityToolsSubmitRealInputAndTerminalPayload(t *testing.T) {
 		request.Params.Name = toolName
 		request.Params.Arguments.(map[string]any)["probe"] = toolName
 		if toolName == toolKeyExecuteTool {
-			request.Params.Arguments.(map[string]any)["kn_id"] = "kn-demo"
+			// CLI and SDK commonly scope the request through X-Kn-ID instead of
+			// repeating kn_id in every execute_tool argument map. The persisted
+			// safe identity must retain that resolved network as well.
+			request.Header.Set("X-Kn-ID", "kn-demo")
 			request.Params.Arguments.(map[string]any)["toolbox_id"] = "box-demo"
 			request.Params.Arguments.(map[string]any)["tool_id"] = "tool-demo"
 		}

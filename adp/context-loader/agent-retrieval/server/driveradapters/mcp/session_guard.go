@@ -33,10 +33,11 @@ type bknContext struct {
 }
 
 type operationIntent struct {
-	Context     bknContext
-	ToolName    string
-	MCPToolName string
-	Input       map[string]any
+	Context            bknContext
+	ToolName           string
+	MCPToolName        string
+	KnowledgeNetworkID string
+	Input              map[string]any
 }
 
 type operationResult struct {
@@ -135,7 +136,11 @@ func guardBusinessToolCallWithCompletion(
 			},
 			ToolName:    req.Params.Name,
 			MCPToolName: req.Params.Name,
-			Input:       arguments,
+			// currentKnID has already applied the explicit argument over the
+			// X-Kn-ID fallback. Keep that resolved, trusted identity available to
+			// the persistence adapter without retaining the full request headers.
+			KnowledgeNetworkID: currentKnID,
+			Input:              arguments,
 		}
 		ensured, lifecycleErr, err := ensure(ctx, intent)
 		if err != nil {
