@@ -10,7 +10,7 @@ import (
 	"os"
 	"strconv"
 
-	_ "github.com/openbkn-ai/bkn-comm-go/db/driver"
+	_ "github.com/openbkn-ai/bkn-foundry/comm-go/db/driver"
 	"gopkg.in/yaml.v3"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
