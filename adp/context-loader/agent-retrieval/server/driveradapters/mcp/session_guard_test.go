@@ -377,6 +377,57 @@ func TestSessionGuardPendingReplayReturnsReceiptPendingWithoutDownstream(t *test
 	}
 }
 
+func TestManagedExecuteToolReplayProjectsOnlySafeReadbackReceipt(t *testing.T) {
+	for _, status := range []string{"pending", "completed", "failed"} {
+		t.Run(status, func(t *testing.T) {
+			downstreamCalls := 0
+			guarded := guardBusinessToolCall(
+				func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {
+					return &operationResult{
+						Created: false, Execute: false,
+						Operation: map[string]any{
+							"operation_id": "op-1", "attempt_status": status,
+							"input": map[string]any{"arguments": map[string]any{"secret": "must-not-leak"}},
+						},
+						Receipt: map[string]any{
+							"receipt_id": "receipt-1", "conversation_id": "conv-1", "interaction_id": "int-1",
+							"operation_id": "op-1", "tool_name": toolKeyExecuteTool, "receipt_status": status,
+							"owner": "owner-must-not-leak", "request_id": "request-must-not-leak",
+						},
+					}, nil, nil
+				},
+				func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+					downstreamCalls++
+					return mcpsdk.NewToolResultText("unexpected"), nil
+				},
+			)
+			request := validBusinessToolRequest()
+			request.Params.Name = toolKeyExecuteTool
+			result, err := guarded(trustedSessionGuardContext(), request)
+			if err != nil || !result.IsError || downstreamCalls != 0 {
+				t.Fatalf("replay=%#v err=%v downstream=%d", result, err, downstreamCalls)
+			}
+			text, ok := mcpsdk.AsTextContent(result.Content[0])
+			if !ok || strings.Contains(text.Text, "must-not-leak") {
+				t.Fatalf("replay error leaked durable payload: %#v", result.Content)
+			}
+			structured, ok := result.StructuredContent.(map[string]any)
+			if !ok {
+				t.Fatalf("execute_tool replay omitted structured readback: %#v", result.StructuredContent)
+			}
+			receipt, ok := structured["bkn_receipt"].(map[string]any)
+			if !ok || receipt["receipt_id"] != "receipt-1" || receipt["operation_id"] != "op-1" {
+				t.Fatalf("unexpected replay readback: %#v", structured)
+			}
+			for _, field := range []string{"owner", "request_id", "operation"} {
+				if _, found := receipt[field]; found {
+					t.Fatalf("replay receipt leaked %s: %#v", field, receipt)
+				}
+			}
+		})
+	}
+}
+
 func TestSessionGuardDoesNotInferExecutionFromCreated(t *testing.T) {
 	downstreamCalls := 0
 	guarded := guardBusinessToolCall(

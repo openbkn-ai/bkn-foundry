@@ -148,10 +148,10 @@ func guardBusinessToolCallWithCompletion(
 			status = receiptStatus(ensured.Receipt)
 		}
 		if status == "completed" || status == "failed" {
-			return receiptTerminalToolError(status, ensured.Operation, ensured.Receipt), nil
+			return receiptTerminalToolError(req.Params.Name, status, ensured.Operation, ensured.Receipt), nil
 		}
 		if ensured != nil && !ensured.Execute && status == "pending" {
-			return receiptPendingToolError(ensured.Receipt), nil
+			return receiptPendingToolError(req.Params.Name, ensured.Receipt), nil
 		}
 		if ensured != nil {
 			if ensured.LifecycleContext != nil {
@@ -428,12 +428,24 @@ func operationIdentity(operation any) (string, int) {
 	return value.OperationID, value.Attempt
 }
 
-func receiptPendingToolError(receipt any) *mcpsdk.CallToolResult {
+func receiptPendingToolError(toolName string, receipt any) *mcpsdk.CallToolResult {
 	errorValue := lifecycleError{
 		Code: "receipt_pending", Message: "operation receipt is still pending",
 		Retryable: true, RequiredAction: "poll_receipt",
 	}
-	return lifecycleToolErrorWithDetails(errorValue, map[string]any{"receipt": receipt})
+	return lifecycleToolErrorWithManagedReceipt(toolName, errorValue, map[string]any{
+		"receipt": replayReceiptView(toolName, receipt),
+	})
+}
+
+// replayReceiptView preserves the established generic replay response. execute_tool
+// is the only managed tool whose replay crosses the function-data boundary, so it
+// receives the compact caller view used by its normal completion response.
+func replayReceiptView(toolName string, receipt any) any {
+	if toolName == toolKeyExecuteTool {
+		return managedToolReceiptView(toolName, receipt)
+	}
+	return receipt
 }
 
 // receiptTerminalToolError replays a terminal operation without re-executing the tool.
@@ -443,16 +455,22 @@ func receiptPendingToolError(receipt any) *mcpsdk.CallToolResult {
 // result made every schema-validating host reject the call, and handed an agent a receipt where it
 // had asked for rows. It travels as a lifecycle error instead -- hosts skip output validation on
 // error results, and the caller is told plainly that this operation is already terminal.
-func receiptTerminalToolError(status string, operation any, receipt any) *mcpsdk.CallToolResult {
+func receiptTerminalToolError(toolName, status string, operation any, receipt any) *mcpsdk.CallToolResult {
 	errorValue := lifecycleError{
 		Code:           "receipt_terminal",
 		Message:        "operation is terminal; durable receipt reused, the tool was not re-executed",
 		CurrentStatus:  status,
 		RequiredAction: "read_receipt",
 	}
-	return lifecycleToolErrorWithDetails(errorValue, map[string]any{
-		"operation": operation, "receipt": receipt,
-	})
+	details := map[string]any{"receipt": replayReceiptView(toolName, receipt)}
+	// execute_tool represents an arbitrary managed function. Its operation may
+	// contain redacted identity plus historical terminal data, neither of which
+	// belongs in an MCP replay response. Other managed tool replays retain their
+	// existing response shape.
+	if toolName != toolKeyExecuteTool {
+		details["operation"] = operation
+	}
+	return lifecycleToolErrorWithManagedReceipt(toolName, errorValue, details)
 }
 
 // attachReceipt hangs the durable receipt on a tool result without reshaping the tool's own payload.
@@ -534,6 +552,20 @@ func stringSliceValue(value any) []string {
 
 func lifecycleToolError(value lifecycleError) *mcpsdk.CallToolResult {
 	return lifecycleToolErrorWithDetails(value, nil)
+}
+
+// lifecycleToolErrorWithManagedReceipt keeps the legacy text error envelope while
+// adding a schema-safe receipt channel for managed execute_tool replays. It is
+// deliberately limited to execute_tool: generic MCP tool errors have no
+// structured error contract today.
+func lifecycleToolErrorWithManagedReceipt(toolName string, value lifecycleError, details map[string]any) *mcpsdk.CallToolResult {
+	result := lifecycleToolErrorWithDetails(value, details)
+	if toolName == toolKeyExecuteTool {
+		if receipt, ok := details["receipt"]; ok {
+			result.StructuredContent = map[string]any{"bkn_receipt": receipt}
+		}
+	}
+	return result
 }
 
 func lifecycleToolErrorWithDetails(value lifecycleError, details map[string]any) *mcpsdk.CallToolResult {

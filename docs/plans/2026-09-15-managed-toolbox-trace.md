@@ -10,95 +10,30 @@
 
 ---
 
-### Task 1: Specify and test the managed capability identity
+## Implemented scope
 
-**Files:**
-- Modify: `adp/context-loader/agent-retrieval/server/driveradapters/mcp/session_guard.go`
-- Test: `adp/context-loader/agent-retrieval/server/driveradapters/mcp/session_guard_test.go`
+- [x] Keep the registered outer `execute_tool` capability profile, including
+  `managed_children_only`; record only `kn_id`, `toolbox_id`, and `tool_id` in
+  the redacted operation input.
+- [x] Return the minimum stable receipt identifiers for a completed managed
+  call without restoring Core ownership, request, trace, operation-key,
+  row-version, or timestamp fields.
+- [x] Store only a terminal status, SHA-256 hash, and safe error classification
+  for `execute_tool` output or failure. Function rows and error text do not
+  enter the lifecycle payload.
+- [x] Apply the same compact receipt projection to pending, successful replay,
+  and failed replay; omit the stored Operation for those execute-tool replies.
+- [x] Cover direct helper, lifecycle adapter success/failure, and guard replay
+  states in the ContextLoader MCP package.
 
-**Step 1: Write failing tests**
+## Deliberately deferred
 
-Cover `execute_tool` with opaque `toolbox_id` / `tool_id`, asserting that the operation intent receives the function-specific name and safe capability profile. Cover missing IDs, another MCP tool, and a request containing raw arguments; the profile must contain only the two IDs and capability kind.
-
-**Step 2: Run the focused test**
-
-Run: `go test ./adp/context-loader/agent-retrieval/server/driveradapters/mcp -run 'TestSessionGuard.*ExecuteTool' -count=1`
-
-Expected: FAIL because the current intent has `ToolName: execute_tool` only.
-
-**Step 3: Implement the minimal identity derivation**
-
-Add a private helper used only by the lifecycle guard. It recognizes the `execute_tool` input contract, validates the two identifier fields, derives a stable function display name, and provides a safe capability-profile override. Do not parse or store function arguments.
-
-**Step 4: Re-run the focused test**
-
-Expected: PASS.
-
-**Step 5: Commit**
-
-```bash
-git add adp/context-loader/agent-retrieval/server/driveradapters/mcp/session_guard.go adp/context-loader/agent-retrieval/server/driveradapters/mcp/session_guard_test.go
-git commit -m "feat(trace): identify managed toolbox functions"
-```
-
-### Task 2: Preserve the identity in Core lifecycle creation
-
-**Files:**
-- Modify: `adp/context-loader/agent-retrieval/server/driveradapters/mcp/lifecycle_adapter.go`
-- Test: `adp/context-loader/agent-retrieval/server/driveradapters/mcp/lifecycle_adapter_test.go`
-
-**Step 1: Write a failing adapter test**
-
-Capture the Core begin payload for an `execute_tool` call. Assert the function-specific `tool_name`, capability profile and normalized input exclude raw arguments while retaining existing idempotency and parent-operation rules.
-
-**Step 2: Run it and observe the failure**
-
-Run: `go test ./adp/context-loader/agent-retrieval/server/driveradapters/mcp -run Test.*ExecuteTool.*Lifecycle -count=1`
-
-**Step 3: Pass the derived identity through the existing guard intent**
-
-Extend the private `operationIntent` only as needed. Preserve the request's outer MCP command for dispatch; change only lifecycle metadata.
-
-**Step 4: Re-run focused tests**
-
-Expected: PASS.
-
-**Step 5: Commit**
-
-```bash
-git add adp/context-loader/agent-retrieval/server/driveradapters/mcp/lifecycle_adapter.go adp/context-loader/agent-retrieval/server/driveradapters/mcp/lifecycle_adapter_test.go
-git commit -m "feat(trace): persist managed toolbox identity"
-```
-
-### Task 3: Return a compact SDK-readable reference for execute_tool
-
-**Files:**
-- Modify: `adp/context-loader/agent-retrieval/server/driveradapters/mcp/session_guard.go`
-- Test: `adp/context-loader/agent-retrieval/server/driveradapters/mcp/session_guard_test.go`
-- Test: `bkn-sdk/test/unit/context-loader.test.ts`
-
-**Step 1: Write failing Go and SDK tests**
-
-For completed, failed, pending and terminal-replay `execute_tool` outcomes, assert `bkn_receipt` contains only stable readback identifiers, status and durability. Assert a normal business tool remains on the reduced #1417 view. In SDK, pass this compact reference to `callManagedTool` and assert it validates.
-
-**Step 2: Run focused tests**
-
-Run Go test above and `npm test -- --run test/unit/context-loader.test.ts` in `bkn-sdk`.
-
-**Step 3: Implement request-scoped receipt projection**
-
-Select the receipt projection using the outer tool name. Add only the identifiers required for execute-tool readback; do not restore the full receipt for any MCP response. Leave the public `OperationReceipt` API shape unchanged; the SDK uses the returned IDs with the existing read client.
-
-**Step 4: Re-run focused tests**
-
-Expected: PASS.
-
-**Step 5: Commit each repository independently**
-
-```bash
-git add adp/context-loader/agent-retrieval/server/driveradapters/mcp/session_guard.go adp/context-loader/agent-retrieval/server/driveradapters/mcp/session_guard_test.go
-git commit -m "fix(trace): return managed toolbox receipt references"
-```
+- Typed receipt readback from an SDK-thrown MCP error. The current SDK throws
+  on an error result after parsing the response; changing that behaviour is a
+  public SDK error-contract decision and is not needed to secure or preserve
+  the MCP replay response.
+- Automatic Trace generation for direct generic Execution Factory Toolbox API
+  calls. That is a separate cross-service contract.
 
 ### Task 4: Verify Execution Factory receives the trusted parent operation
 

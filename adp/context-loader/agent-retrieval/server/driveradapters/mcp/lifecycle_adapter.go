@@ -105,7 +105,7 @@ func completeOperationAdapter(client *bkntrace.LifecycleClient) completeOperatio
 			failure.Result = downstream
 			payload = failure
 		}
-		raw, err := sonic.Marshal(payload)
+		raw, err := terminalPayloadForTool(operation.ToolName, payload, downstream.IsError)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -129,6 +129,27 @@ func completeOperationAdapter(client *bkntrace.LifecycleClient) completeOperatio
 		}
 		return &operationResult{Operation: result.Operation, Receipt: result.Receipt}, nil, nil
 	}
+}
+
+// terminalPayloadForTool keeps function execution data out of the Trace
+// payload. The original terminal value is hashed for correlation, while the
+// stored value carries only status and a non-sensitive error classification.
+func terminalPayloadForTool(toolName string, payload any, failed bool) ([]byte, error) {
+	raw, err := sonic.Marshal(payload)
+	if err != nil || toolName != toolKeyExecuteTool {
+		return raw, err
+	}
+	status := "completed"
+	summary := map[string]any{"status": status, "result_hash": hashBytes(raw)}
+	if failed {
+		status = "failed"
+		summary["status"] = status
+		if failure, ok := payload.(operationFailure); ok {
+			summary["error_code"] = failure.Code
+			summary["stage"] = failure.Stage
+		}
+	}
+	return sonic.Marshal(summary)
 }
 
 func toolResultErrorMessage(result *mcpsdk.CallToolResult) string {
