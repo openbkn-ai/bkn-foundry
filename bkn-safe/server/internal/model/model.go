@@ -254,7 +254,7 @@ type ResourceType struct {
 	// ParentTypeID declares that instances of this type sit UNDER an instance of
 	// another type ("resource" under "catalog"). It is the type-level half of the
 	// hierarchy; the instance-level half is ResourceParent. Empty = no parent,
-	// which is every type except the explicit hierarchies seeded in catalog.json.
+	// which is every type except the explicit hierarchies seeded in authorization-catalog.json.
 	ParentTypeID string `gorm:"size:64;index"`
 }
 
