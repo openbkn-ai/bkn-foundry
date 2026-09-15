@@ -9,7 +9,6 @@ package connector_type
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"sync"
 
@@ -117,20 +116,7 @@ func (cts *connectorTypeService) GetByType(ctx context.Context, tp string) (*int
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_ConnectorType_NotFound)
 	}
 
-	// Filter objects with viewing permissions based on permissions. The total length of the filtered array is the total number, and there is no need to request the total number again
-	matchResoucesMap, err := cts.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE, []string{ct.Type},
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
-	if err != nil {
-		span.SetStatus(codes.Error, "Filter resources error")
-		return nil, err
-	}
-
-	if resrc, exist := matchResoucesMap[ct.Type]; exist {
-		ct.Operations = resrc.Operations // The operations that the user is currently permitted to perform
-	} else {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", interfaces.OPERATION_TYPE_VIEW_DETAIL))
-	}
+	ct.Operations = []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}
 	ct.Available = cts.cf.IsConnectorAvailable(ct.Type)
 	if !ct.Available {
 		span.SetStatus(codes.Ok, "")
@@ -159,32 +145,15 @@ func (cts *connectorTypeService) List(ctx context.Context, params interfaces.Con
 			WithErrorDetails(err.Error())
 	}
 
-	// Handle resource id
-	types := make([]string, 0)
-	for _, m := range connectorTypesArr {
-		types = append(types, m.Type)
-	}
-
-	// Filter objects with viewing permissions based on permissions. The total length of the filtered array is the total number, and there is no need to request the total number again
-	matchResoucesMap, err := cts.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE, types,
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
-	if err != nil {
-		span.SetStatus(codes.Error, "Filter resources error")
-		return []*interfaces.ConnectorType{}, 0, err
-	}
-
 	connectorTypes := make([]*interfaces.ConnectorType, 0)
 	for _, c := range connectorTypesArr {
-		// Only keep the models with permission
-		if resrc, exist := matchResoucesMap[c.Type]; exist {
-			c.Available = cts.cf.IsConnectorAvailable(c.Type)
-			c.FieldConfig = nil
-			if params.Available != nil && c.Available != *params.Available {
-				continue
-			}
-			c.Operations = resrc.Operations // The operations that the user is currently permitted to perform
-			connectorTypes = append(connectorTypes, c)
+		c.Available = cts.cf.IsConnectorAvailable(c.Type)
+		c.FieldConfig = nil
+		c.Operations = []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}
+		if params.Available != nil && c.Available != *params.Available {
+			continue
 		}
+		connectorTypes = append(connectorTypes, c)
 	}
 	total := int64(len(connectorTypes))
 

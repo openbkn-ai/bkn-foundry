@@ -22,7 +22,7 @@ paths:
   /connector-types:
     get:
       summary: List connector types
-      description: Returns paginated summaries of registered connector types without `field_config`. Supports filtering by `name`, `tag`, `mode`, `category`, `enabled`, and `available`.
+      description: Returns paginated summaries of registered connector types to any authenticated user without connector type permission filtering. Summaries omit `field_config` and report only `view_detail` in `operations`. Supports filtering by `name`, `tag`, `mode`, `category`, `enabled`, and `available`.
       parameters:
         - name: name
           description: Filters connector types whose name contains this value.
@@ -377,12 +377,13 @@ components:
           description: Whether the running binary includes this connector implementation
           type: boolean
         operations:
-          description: Operations the current user may perform on this connector type
+          description: Read-only operation reported by this endpoint; connector type management permissions are checked separately.
           type: array
           items:
             type: string
+            enum: [view_detail]
     ConnectorType:
-      description: Connector type details. `field_config` is read from the runtime; it is omitted when `available` is false.
+      description: Connector type details are available to any authenticated user without connector type permission filtering. `field_config` is read from the runtime; it is omitted when `available` is false.
       type: object
       required:
         - type
@@ -438,10 +439,11 @@ components:
           description: Whether the running binary includes this connector implementation
           type: boolean
         operations:
-          description: Operations supported by this connector type
+          description: Read-only operation reported by this endpoint; connector type management permissions are checked separately.
           type: array
           items:
             type: string
+            enum: [view_detail]
     ConnectorTypeReq:
       description: |
         Request body for creating or updating a connector type.
