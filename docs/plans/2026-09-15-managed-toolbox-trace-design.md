@@ -37,11 +37,11 @@ unreadable to that helper even though the Core record exists.
 3. Continue to create exactly one Operation, keyed by the existing managed
    idempotency key. ContextLoader passes that Operation ID through its existing
    trusted headers to Execution Factory.
-4. Return a compact lifecycle reference for `execute_tool`: receipt ID,
-   conversation ID, interaction ID, operation ID, status and durability. Other
-   MCP tools retain the #1417 compact evidence-only receipt view.
-5. SDK accepts that reference as a typed managed receipt and callers use the
-   existing owner-scoped receipt/operation read APIs for the full record.
+4. Return the existing complete `OperationReceipt` for `execute_tool`, so the
+   published SDK return type stays accurate and callers can read it back.
+   Other MCP tools retain the #1417 compact evidence-only receipt view.
+5. SDK uses that unchanged receipt contract with its existing owner-scoped
+   receipt/operation read APIs.
 
 ## Boundaries
 

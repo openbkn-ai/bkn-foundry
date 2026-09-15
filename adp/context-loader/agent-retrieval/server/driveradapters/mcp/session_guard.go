@@ -221,7 +221,7 @@ func guardBusinessToolCallWithCompletion(
 			return result, nil
 		}
 		if completed != nil {
-			attachReceipt(result, agentReceiptView(completed.Receipt))
+			attachReceipt(result, managedToolReceiptView(req.Params.Name, completed.Receipt))
 		}
 		return result, nil
 	}
@@ -257,6 +257,18 @@ func agentReceiptView(receipt any) any {
 		view["partial_reasons"] = reasons
 	}
 	return view
+}
+
+// managedToolReceiptView preserves the existing full OperationReceipt contract
+// for execute_tool. SDK callers use its stable identifiers to read the owned
+// Operation and Receipt back. Other MCP tools keep the bounded agent view.
+func managedToolReceiptView(toolName string, receipt any) any {
+	if toolName == toolKeyExecuteTool {
+		if payload, ok := structuredContentAsMap(receipt); ok {
+			return payload
+		}
+	}
+	return agentReceiptView(receipt)
 }
 
 func managedOperationKey(

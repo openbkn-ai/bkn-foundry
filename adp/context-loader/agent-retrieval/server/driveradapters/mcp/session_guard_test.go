@@ -697,6 +697,51 @@ func TestSessionGuardAttachesOnlyTheReceiptFieldsACallerReads(t *testing.T) {
 	}
 }
 
+func TestSessionGuardKeepsFullReceiptForManagedExecuteToolReadback(t *testing.T) {
+	durable := bkntrace.Receipt{
+		ReceiptID:          "rcpt_function_1",
+		ConversationID:     "conv-1",
+		InteractionID:      "int-1",
+		OperationID:        "op-function-1",
+		Attempt:            1,
+		OperationKey:       "mcp:function-1",
+		ToolName:           "toolbox_function:box_warehouse:tool_reconcile_inventory",
+		ReceiptStatus:      "completed",
+		EvidenceDurability: "durable",
+	}
+	guarded := guardBusinessToolCallWithCompletion(
+		func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {
+			return &operationResult{
+				Created: true, Execute: true,
+				Operation: map[string]any{"operation_id": "op-function-1", "attempt": float64(1)},
+				Receipt:   map[string]any{"receipt_id": "rcpt_function_1", "receipt_status": "pending"},
+			}, nil, nil
+		},
+		func(_ context.Context, ensured *operationResult, _ *mcpsdk.CallToolResult) (*operationResult, *lifecycleError, error) {
+			return &operationResult{Operation: ensured.Operation, Receipt: durable}, nil, nil
+		},
+		nil,
+		func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			return mcpsdk.NewToolResultStructured(map[string]any{"answer": "ok"}, `{"answer":"ok"}`), nil
+		},
+	)
+
+	request := validBusinessToolRequest()
+	request.Params.Name = toolKeyExecuteTool
+	request.Params.Arguments.(map[string]any)["toolbox_id"] = "box_warehouse"
+	request.Params.Arguments.(map[string]any)["tool_id"] = "tool_reconcile_inventory"
+	result, err := guarded(context.Background(), request)
+	if err != nil || result.IsError {
+		t.Fatalf("execute_tool failed: result=%#v err=%v", result, err)
+	}
+	receipt := result.StructuredContent.(map[string]any)["bkn_receipt"].(map[string]any)
+	for _, field := range []string{"receipt_id", "conversation_id", "interaction_id", "operation_id", "tool_name", "receipt_status", "evidence_durability"} {
+		if receipt[field] == nil || receipt[field] == "" {
+			t.Fatalf("readback receipt omitted %s: %#v", field, receipt)
+		}
+	}
+}
+
 // TestSessionGuardKeepsPartialReasonsOnTheReceipt: a partial result is the one piece of the
 // receipt the agent itself must read, so it survives the projection whenever Core sets it.
 func TestSessionGuardKeepsPartialReasonsOnTheReceipt(t *testing.T) {
