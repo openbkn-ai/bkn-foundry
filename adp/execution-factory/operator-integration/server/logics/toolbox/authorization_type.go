@@ -2,6 +2,7 @@ package toolbox
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
@@ -35,7 +36,11 @@ func (s *ToolServiceImpl) authorizationTypeForBox(ctx context.Context, boxID str
 
 func validateToolBoxMembership(ctx context.Context, tool *model.ToolDB, boxID string) error {
 	if tool == nil || tool.BoxID != boxID {
-		return errors.NewHTTPError(ctx, http.StatusNotFound, errors.ErrExtToolNotFound, "tool not found in toolbox")
+		detail := "tool not found"
+		if tool != nil {
+			detail = fmt.Sprintf("tool %s not found", tool.ToolID)
+		}
+		return errors.NewHTTPError(ctx, http.StatusNotFound, errors.ErrExtToolNotFound, detail)
 	}
 	return nil
 }
