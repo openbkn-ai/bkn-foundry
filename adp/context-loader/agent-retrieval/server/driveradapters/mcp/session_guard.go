@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"net/http"
 	"runtime/debug"
-	"strings"
 
 	"github.com/bytedance/sonic"
 	mcpsdk "github.com/mark3labs/mcp-go/mcp"
@@ -38,25 +37,6 @@ type operationIntent struct {
 	ToolName    string
 	MCPToolName string
 	Input       map[string]any
-}
-
-// toolboxIdentity is the safe, stable identity of one capability selected by
-// execute_tool. It deliberately excludes the function arguments: they are
-// execution data, not Trace metadata.
-type toolboxIdentity struct {
-	ToolName  string
-	ToolboxID string
-	ToolID    string
-}
-
-func managedToolboxIdentity(arguments map[string]any) toolboxIdentity {
-	toolboxID := strings.TrimSpace(stringValue(arguments["toolbox_id"]))
-	toolID := strings.TrimSpace(stringValue(arguments["tool_id"]))
-	return toolboxIdentity{
-		ToolName:  "toolbox_function:" + toolboxID + ":" + toolID,
-		ToolboxID: toolboxID,
-		ToolID:    toolID,
-	}
 }
 
 type operationResult struct {
@@ -144,13 +124,6 @@ func guardBusinessToolCallWithCompletion(
 			businessRefs,
 			observedToolBusinessRefs(req.Params.Name, arguments, currentKnID),
 		)
-		operationToolName := req.Params.Name
-		if req.Params.Name == toolKeyExecuteTool {
-			identity := managedToolboxIdentity(arguments)
-			if identity.ToolboxID != "" && identity.ToolID != "" {
-				operationToolName = identity.ToolName
-			}
-		}
 		intent := operationIntent{
 			Context: bknContext{
 				ConversationID:    conversationID,
@@ -160,7 +133,7 @@ func guardBusinessToolCallWithCompletion(
 				CausationEventIDs: stringSliceValue(rawContext["causation_event_ids"]),
 				BusinessRefs:      businessRefs,
 			},
-			ToolName:    operationToolName,
+			ToolName:    req.Params.Name,
 			MCPToolName: req.Params.Name,
 			Input:       arguments,
 		}
@@ -259,16 +232,27 @@ func agentReceiptView(receipt any) any {
 	return view
 }
 
-// managedToolReceiptView preserves the existing full OperationReceipt contract
-// for execute_tool. SDK callers use its stable identifiers to read the owned
-// Operation and Receipt back. Other MCP tools keep the bounded agent view.
+// managedToolReceiptView exposes only the stable identifiers that SDK callers
+// need to read an execute_tool receipt back. Other MCP tools keep the bounded
+// agent view introduced by #1417.
 func managedToolReceiptView(toolName string, receipt any) any {
+	view := agentReceiptView(receipt)
 	if toolName == toolKeyExecuteTool {
-		if payload, ok := structuredContentAsMap(receipt); ok {
-			return payload
+		payload, ok := structuredContentAsMap(receipt)
+		if !ok {
+			return view
+		}
+		projected, ok := view.(map[string]any)
+		if !ok {
+			return view
+		}
+		for _, field := range []string{"receipt_id", "conversation_id", "interaction_id", "operation_id", "tool_name"} {
+			if value, present := payload[field]; present {
+				projected[field] = value
+			}
 		}
 	}
-	return agentReceiptView(receipt)
+	return view
 }
 
 func managedOperationKey(

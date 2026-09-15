@@ -123,29 +123,7 @@ func TestManagedOperationKeyUsesStableHostInvocationAcrossRequests(t *testing.T)
 	}
 }
 
-func TestManagedToolboxIdentityUsesOnlyCapabilityIdentifiers(t *testing.T) {
-	identity := managedToolboxIdentity(map[string]any{
-		"toolbox_id": "box_warehouse",
-		"tool_id":    "tool_reconcile_inventory",
-		"arguments": map[string]any{
-			"material_code": "525-000016",
-			"authorization": "must-not-enter-trace-metadata",
-		},
-	})
-
-	if identity.ToolName != "toolbox_function:box_warehouse:tool_reconcile_inventory" {
-		t.Fatalf("tool name = %q", identity.ToolName)
-	}
-	if identity.ToolboxID != "box_warehouse" || identity.ToolID != "tool_reconcile_inventory" {
-		t.Fatalf("identity lost capability identifiers: %#v", identity)
-	}
-	if strings.Contains(identity.ToolName, "525-000016") ||
-		strings.Contains(identity.ToolName, "must-not-enter-trace-metadata") {
-		t.Fatalf("tool identity contains request content: %#v", identity)
-	}
-}
-
-func TestSessionGuardUsesFunctionIdentityForManagedExecuteTool(t *testing.T) {
+func TestSessionGuardKeepsOuterContractForManagedExecuteTool(t *testing.T) {
 	request := validBusinessToolRequest()
 	request.Params.Name = toolKeyExecuteTool
 	request.Params.Arguments.(map[string]any)["toolbox_id"] = "box_warehouse"
@@ -167,8 +145,11 @@ func TestSessionGuardUsesFunctionIdentityForManagedExecuteTool(t *testing.T) {
 	if err != nil || result.IsError {
 		t.Fatalf("execute_tool rejected: result=%#v err=%v", result, err)
 	}
-	if seen.ToolName != "toolbox_function:box_warehouse:tool_reconcile_inventory" {
+	if seen.ToolName != toolKeyExecuteTool {
 		t.Fatalf("operation tool name = %q", seen.ToolName)
+	}
+	if seen.Input["toolbox_id"] != "box_warehouse" || seen.Input["tool_id"] != "tool_reconcile_inventory" {
+		t.Fatalf("operation input lost safe capability identity: %#v", seen.Input)
 	}
 }
 
@@ -697,9 +678,11 @@ func TestSessionGuardAttachesOnlyTheReceiptFieldsACallerReads(t *testing.T) {
 	}
 }
 
-func TestSessionGuardKeepsFullReceiptForManagedExecuteToolReadback(t *testing.T) {
+func TestSessionGuardKeepsReadbackIdentifiersForManagedExecuteTool(t *testing.T) {
 	durable := bkntrace.Receipt{
 		ReceiptID:          "rcpt_function_1",
+		SchemaVersion:      "3.0.0",
+		Owner:              bkntrace.Owner{ApplicationPrincipalID: "app-1", EffectiveSubjectID: "user-1"},
 		ConversationID:     "conv-1",
 		InteractionID:      "int-1",
 		OperationID:        "op-function-1",
@@ -708,6 +691,9 @@ func TestSessionGuardKeepsFullReceiptForManagedExecuteToolReadback(t *testing.T)
 		ToolName:           "toolbox_function:box_warehouse:tool_reconcile_inventory",
 		ReceiptStatus:      "completed",
 		EvidenceDurability: "durable",
+		RequestID:          "req-1",
+		TraceID:            strings.Repeat("a", 32),
+		RowVersion:         3,
 	}
 	guarded := guardBusinessToolCallWithCompletion(
 		func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {
@@ -738,6 +724,11 @@ func TestSessionGuardKeepsFullReceiptForManagedExecuteToolReadback(t *testing.T)
 	for _, field := range []string{"receipt_id", "conversation_id", "interaction_id", "operation_id", "tool_name", "receipt_status", "evidence_durability"} {
 		if receipt[field] == nil || receipt[field] == "" {
 			t.Fatalf("readback receipt omitted %s: %#v", field, receipt)
+		}
+	}
+	for _, field := range []string{"owner", "request_id", "trace_id", "operation_key", "row_version", "issued_at"} {
+		if _, present := receipt[field]; present {
+			t.Fatalf("readback receipt leaked %s: %#v", field, receipt)
 		}
 	}
 }

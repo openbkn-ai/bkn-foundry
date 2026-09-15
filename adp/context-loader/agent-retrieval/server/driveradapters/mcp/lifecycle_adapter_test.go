@@ -708,6 +708,19 @@ func TestNormalizedBusinessInputForManagedExecuteToolExcludesFunctionArguments(t
 	}
 }
 
+func TestManagedExecuteToolRetainsRegisteredCapabilityProfile(t *testing.T) {
+	var profile CapabilityProfile
+	if err := json.Unmarshal(capabilityProfileJSON(toolKeyExecuteTool), &profile); err != nil {
+		t.Fatal(err)
+	}
+	if profile.CanonicalToolName != toolKeyExecuteTool || profile.Resolution != capabilityResolutionMatched {
+		t.Fatalf("execute_tool profile lost manifest registration: %#v", profile)
+	}
+	if profile.ChildEvidencePolicy != "managed_children_only" {
+		t.Fatalf("execute_tool child evidence policy = %q", profile.ChildEvidencePolicy)
+	}
+}
+
 func TestManagedCommunityToolsSubmitRealInputAndTerminalPayload(t *testing.T) {
 	ensureCalls := 0
 	finishCalls := 0

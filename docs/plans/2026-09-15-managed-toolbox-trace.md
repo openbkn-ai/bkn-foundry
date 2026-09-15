@@ -4,7 +4,7 @@
 
 **Goal:** Make a managed ContextLoader `execute_tool` call independently readable as the requested Toolbox Function while preserving one lifecycle operation and the existing generic Toolbox contract.
 
-**Architecture:** ContextLoader derives a safe capability identity from the validated `toolbox_id` and `tool_id` before creating its existing operation. It forwards that operation through the existing trusted Execution Factory headers. `execute_tool` retains the existing complete `OperationReceipt`, which satisfies the SDK's typed managed-call reader without changing its public contract; other MCP tools retain their evidence-only receipt view.
+**Architecture:** ContextLoader retains `execute_tool` as the registered capability contract and records its safe `toolbox_id` / `tool_id` in the redacted input snapshot. It forwards the existing Operation through trusted Execution Factory headers. The `execute_tool` receipt adds only stable readback identifiers to the evidence-only #1417 view.
 
 **Tech Stack:** Go, ContextLoader MCP adapter, Execution Factory Toolbox runtime, BKN Trace lifecycle API, TypeScript SDK, Go and Vitest tests.
 
@@ -70,7 +70,7 @@ git add adp/context-loader/agent-retrieval/server/driveradapters/mcp/lifecycle_a
 git commit -m "feat(trace): persist managed toolbox identity"
 ```
 
-### Task 3: Preserve SDK-readable Receipt for execute_tool
+### Task 3: Return a compact SDK-readable reference for execute_tool
 
 **Files:**
 - Modify: `adp/context-loader/agent-retrieval/server/driveradapters/mcp/session_guard.go`
@@ -79,7 +79,7 @@ git commit -m "feat(trace): persist managed toolbox identity"
 
 **Step 1: Write failing Go and SDK tests**
 
-For completed, failed, pending and terminal-replay `execute_tool` outcomes, assert `bkn_receipt` retains the complete existing `OperationReceipt`, including stable readback identifiers. Assert a normal business tool remains on the reduced #1417 view. In SDK, pass the unchanged receipt to `callManagedTool` and assert it validates.
+For completed, failed, pending and terminal-replay `execute_tool` outcomes, assert `bkn_receipt` contains only stable readback identifiers, status and durability. Assert a normal business tool remains on the reduced #1417 view. In SDK, pass this compact reference to `callManagedTool` and assert it validates.
 
 **Step 2: Run focused tests**
 
@@ -87,7 +87,7 @@ Run Go test above and `npm test -- --run test/unit/context-loader.test.ts` in `b
 
 **Step 3: Implement request-scoped receipt projection**
 
-Select the receipt projection using the outer tool name. Preserve the full existing receipt only for `execute_tool`; do not restore it for every MCP response. Leave the `OperationReceipt` API shape unchanged; the SDK uses its returned IDs with the existing read client.
+Select the receipt projection using the outer tool name. Add only the identifiers required for execute-tool readback; do not restore the full receipt for any MCP response. Leave the public `OperationReceipt` API shape unchanged; the SDK uses the returned IDs with the existing read client.
 
 **Step 4: Re-run focused tests**
 
