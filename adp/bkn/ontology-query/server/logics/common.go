@@ -282,6 +282,27 @@ func BuildDirectBatchConditions(currentLevelObjects []interfaces.LevelObject,
 	mappingRules := edge.RelationType.MappingRules.([]interfaces.Mapping)
 
 	for _, levelObj := range currentLevelObjects {
+		// A missing mapping value means this object has no edge in this relation.
+		// Do not send a nil or blank equality filter to the resource query.
+		missingMappingValue := false
+		for _, mapping := range mappingRules {
+			sourceName := mapping.SourceProp.Name
+			if !isForward {
+				sourceName = mapping.TargetProp.Name
+			}
+			value := levelObj.ObjectData[sourceName]
+			if value == nil {
+				missingMappingValue = true
+				break
+			}
+			if stringValue, ok := value.(string); ok && strings.TrimSpace(stringValue) == "" {
+				missingMappingValue = true
+				break
+			}
+		}
+		if missingMappingValue {
+			continue
+		}
 		// Build filter clauses by association relationship.
 		// For multi-field associations, join each object's filter conditions with AND, then join filters for different objects with OR.
 		// For one association field, use an IN operation for filters across multiple objects.

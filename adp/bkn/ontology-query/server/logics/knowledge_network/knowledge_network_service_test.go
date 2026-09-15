@@ -823,6 +823,7 @@ func Test_knowledgeNetworkService_buildObjectSubgraph(t *testing.T) {
 							RelationTypeId:     "rt1",
 							SourceObjectTypeId: sourceObjectTypeID,
 							TargetObjectTypeId: "ot2",
+							Direction:          interfaces.DIRECTION_FORWARD,
 							RelationType: interfaces.RelationType{
 								MappingRules: []interfaces.Mapping{
 									{
@@ -918,6 +919,7 @@ func Test_knowledgeNetworkService_buildObjectSubgraph(t *testing.T) {
 							RelationTypeId:     "rt1",
 							SourceObjectTypeId: sourceObjectTypeID,
 							TargetObjectTypeId: "ot2",
+							Direction:          interfaces.DIRECTION_FORWARD,
 							RelationType: interfaces.RelationType{
 								MappingRules: []interfaces.Mapping{
 									{
@@ -1232,7 +1234,7 @@ func Test_knowledgeNetworkService_getNextObjectsBatchByRelation(t *testing.T) {
 				{
 					ObjectID: "obj1",
 					ObjectData: map[string]any{
-						"id": "123",
+						"target_id": "123",
 					},
 				},
 			}
@@ -1309,6 +1311,26 @@ func Test_knowledgeNetworkService_getNextObjectsBatchByRelation(t *testing.T) {
 			So(result, ShouldBeNil)
 		})
 
+		Convey("案例条目的可选关联为空时不查询下一跳", func() {
+			query := &interfaces.SubGraphQueryBaseOnSource{KNID: knID, Branch: branch}
+			batch := []interfaces.LevelObject{{
+				ObjectID: "case_item-0075aae5685d9b5feb1874dead4e3a36",
+				ObjectData: map[string]any{
+					"component_id": nil,
+				},
+			}}
+			edge := &interfaces.TypeEdge{
+				Direction: interfaces.DIRECTION_FORWARD,
+				RelationType: interfaces.RelationType{MappingRules: []interfaces.Mapping{
+					{SourceProp: interfaces.SimpleProperty{Name: "component_id"}, TargetProp: interfaces.SimpleProperty{Name: "id"}},
+				}},
+			}
+
+			result, err := service.getNextObjectsBatchByRelation(ctx, query, batch, edge, interfaces.ObjectTypeWithKeyField{OTID: "component"})
+			So(err, ShouldBeNil)
+			So(result, ShouldBeNil)
+		})
+
 		Convey("失败 - 获取对象错误", func() {
 			query := &interfaces.SubGraphQueryBaseOnSource{
 				KNID:   knID,
@@ -1360,7 +1382,7 @@ func Test_knowledgeNetworkService_getNextObjectsBatchByRelation(t *testing.T) {
 				{
 					ObjectID: "obj1",
 					ObjectData: map[string]any{
-						"id": "123",
+						"target_id": "123",
 					},
 				},
 			}
@@ -1388,7 +1410,7 @@ func Test_knowledgeNetworkService_getNextObjectsBatchByRelation(t *testing.T) {
 
 			nextObjects := interfaces.Objects{
 				Datas: []map[string]any{
-					{"target_id": "123"},
+					{"id": "123"},
 				},
 				TotalCount: 1,
 				ObjectType: &interfaces.ObjectType{

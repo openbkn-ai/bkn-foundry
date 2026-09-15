@@ -817,7 +817,7 @@ func Test_BuildDirectBatchConditions(t *testing.T) {
 				{
 					ObjectID: "obj1",
 					ObjectData: map[string]any{
-						"id": "123",
+						"target_id": "123",
 					},
 				},
 			}
@@ -837,7 +837,7 @@ func Test_BuildDirectBatchConditions(t *testing.T) {
 			So(len(conditions), ShouldBeGreaterThan, 0)
 		})
 
-		Convey("成功 - 单字段映射但inValue为nil", func() {
+		Convey("跳过缺失关联字段的对象", func() {
 			currentLevelObjects := []interfaces.LevelObject{
 				{
 					ObjectID:   "obj1",
@@ -859,8 +859,64 @@ func Test_BuildDirectBatchConditions(t *testing.T) {
 
 			conditions, err := BuildDirectBatchConditions(currentLevelObjects, edge, true)
 			So(err, ShouldBeNil)
-			// When inValue is nil, return a normal condition instead of an in condition.
-			So(len(conditions), ShouldBeGreaterThanOrEqualTo, 0)
+			So(len(conditions), ShouldEqual, 0)
+		})
+
+		Convey("跳过空白关联字段，保留有效对象", func() {
+			currentLevelObjects := []interfaces.LevelObject{
+				{ObjectID: "missing", ObjectData: map[string]any{"id": "  "}},
+				{ObjectID: "valid", ObjectData: map[string]any{"id": "123"}},
+			}
+			edge := &interfaces.TypeEdge{RelationType: interfaces.RelationType{MappingRules: []interfaces.Mapping{
+				{SourceProp: interfaces.SimpleProperty{Name: "id"}, TargetProp: interfaces.SimpleProperty{Name: "target_id"}},
+			}}}
+
+			conditions, err := BuildDirectBatchConditions(currentLevelObjects, edge, true)
+			So(err, ShouldBeNil)
+			So(len(conditions), ShouldEqual, 1)
+			So(conditions[0].Operation, ShouldEqual, "in")
+			So(conditions[0].ValueOptCfg.Value, ShouldResemble, []any{"123"})
+		})
+
+		Convey("多字段映射有空值时不生成部分匹配条件", func() {
+			currentLevelObjects := []interfaces.LevelObject{
+				{ObjectID: "missing", ObjectData: map[string]any{"id": "123", "name": nil}},
+			}
+			edge := &interfaces.TypeEdge{RelationType: interfaces.RelationType{MappingRules: []interfaces.Mapping{
+				{SourceProp: interfaces.SimpleProperty{Name: "id"}, TargetProp: interfaces.SimpleProperty{Name: "target_id"}},
+				{SourceProp: interfaces.SimpleProperty{Name: "name"}, TargetProp: interfaces.SimpleProperty{Name: "target_name"}},
+			}}}
+
+			conditions, err := BuildDirectBatchConditions(currentLevelObjects, edge, true)
+			So(err, ShouldBeNil)
+			So(len(conditions), ShouldEqual, 0)
+		})
+
+		Convey("案例条目有原文块但其他可选关联为空时仍保留原文块条件", func() {
+			caseItem := []interfaces.LevelObject{{
+				ObjectID: "case_item-0075aae5685d9b5feb1874dead4e3a36",
+				ObjectData: map[string]any{
+					"source_chunk_id": "7818397abad944b12ec13425003e017f",
+					"component_id":    nil,
+					"parent_item_id":  nil,
+				},
+			}}
+			makeEdge := func(source, target string) *interfaces.TypeEdge {
+				return &interfaces.TypeEdge{RelationType: interfaces.RelationType{MappingRules: []interfaces.Mapping{
+					{SourceProp: interfaces.SimpleProperty{Name: source}, TargetProp: interfaces.SimpleProperty{Name: target}},
+				}}}
+			}
+
+			blockConditions, err := BuildDirectBatchConditions(caseItem, makeEdge("source_chunk_id", "id"), true)
+			So(err, ShouldBeNil)
+			So(len(blockConditions), ShouldEqual, 1)
+			So(blockConditions[0].ValueOptCfg.Value, ShouldResemble, []any{"7818397abad944b12ec13425003e017f"})
+
+			for _, source := range []string{"component_id", "parent_item_id"} {
+				conditions, err := BuildDirectBatchConditions(caseItem, makeEdge(source, "id"), true)
+				So(err, ShouldBeNil)
+				So(len(conditions), ShouldEqual, 0)
+			}
 		})
 
 		Convey("成功 - 空对象列表", func() {
