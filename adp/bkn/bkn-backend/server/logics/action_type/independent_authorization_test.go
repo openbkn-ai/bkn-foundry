@@ -44,8 +44,13 @@ func independentActionPermissions(objectTypeErr error) func(context.Context, str
 	[]string) (map[string]interfaces.PermissionResourceOps, error) {
 	return func(ctx context.Context, resourceType string, ids, visibility []string, _ bool,
 		candidates []string) (map[string]interfaces.PermissionResourceOps, error) {
-		if resourceType == interfaces.RESOURCE_TYPE_OBJECT_TYPE && objectTypeErr != nil {
-			return nil, objectTypeErr
+		if resourceType == interfaces.RESOURCE_TYPE_OBJECT_TYPE {
+			if objectTypeErr != nil {
+				return nil, objectTypeErr
+			}
+			// The caller has no permission on any bound object type. Keeping action
+			// types visible here proves list pagination is not coupled to this map.
+			return map[string]interfaces.PermissionResourceOps{}, nil
 		}
 		return allowAllActionPermissionResources(ctx, resourceType, ids, visibility, true, candidates)
 	}
