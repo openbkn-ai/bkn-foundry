@@ -185,6 +185,7 @@ func TestToolLogicPropertyUsesPublishedProxyBinding(t *testing.T) {
 	}
 	ctrl := gomock.NewController(t)
 	agentOperator := omock.NewMockAgentOperatorAccess(ctrl)
+	agentOperator.EXPECT().GetBoxMetadataType(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ProxyTargetTypeToolBox, nil).AnyTimes()
 	proxy := &objectTypeProxyResolverStub{}
 	service := &objectTypeService{aoAccess: agentOperator, proxy: proxy}
 	logicProperty := &interfaces.LogicProperty{
@@ -220,6 +221,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 		osa := omock.NewMockOpenSearchAccess(mockCtrl)
 		mfa := omock.NewMockModelFactoryAccess(mockCtrl)
 		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
+		aoAccess.EXPECT().GetBoxMetadataType(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ProxyTargetTypeToolBox, nil).AnyTimes()
 
 		logics.OMA = omAccess
 		logics.OSA = osa
@@ -1280,6 +1282,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 		mqs := omock.NewMockMetricQueryService(mockCtrl)
 		mfa := omock.NewMockModelFactoryAccess(mockCtrl)
 		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
+		aoAccess.EXPECT().GetBoxMetadataType(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ProxyTargetTypeToolBox, nil).AnyTimes()
 
 		logics.OMA = omAccess
 		logics.OSA = osa

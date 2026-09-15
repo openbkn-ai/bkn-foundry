@@ -20,6 +20,7 @@ func TestCommunityBundleWhitelistIsExplicitAndDefensive(t *testing.T) {
 		"knowledge_network": {"view_detail", "modify", "delete", "query_data", "execute"},
 		"connector_type":    {"view_detail", "modify", "delete"},
 		"tool_box":          {"view", "modify", "delete", "publish", "unpublish", "execute"},
+		"function":          {"view", "modify", "delete", "publish", "unpublish", "execute"},
 		"mcp":               {"view", "modify", "delete", "publish", "unpublish", "execute"},
 		"operator":          {"view", "modify", "delete", "publish", "unpublish", "execute"},
 		"skill":             {"view", "modify", "delete", "publish", "unpublish", "execute"},
@@ -226,6 +227,7 @@ func TestIndependentResourceFamilyBundlesUseTheUnifiedRuntimeDecision(t *testing
 		ops  []string
 	}{
 		"tool_box":    {view: "view", ops: []string{"view", "modify", "delete", "publish", "unpublish", "execute"}},
+		"function":    {view: "view", ops: []string{"view", "modify", "delete", "publish", "unpublish", "execute"}},
 		"mcp":         {view: "view", ops: []string{"view", "modify", "delete", "publish", "unpublish", "execute"}},
 		"operator":    {view: "view", ops: []string{"view", "modify", "delete", "publish", "unpublish", "execute"}},
 		"skill":       {view: "view", ops: []string{"view", "modify", "delete", "publish", "unpublish", "execute"}},

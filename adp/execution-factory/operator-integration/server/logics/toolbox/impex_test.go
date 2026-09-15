@@ -501,7 +501,7 @@ func TestExport(t *testing.T) {
 			IDs: ids,
 		}
 		toolBoxDB := &model.ToolboxDB{
-			BoxID: boxID,
+			BoxID: boxID, MetadataType: string(interfaces.MetadataTypeAPI),
 		}
 		metadataVersion := "metadata_version_1"
 		tools := []*model.ToolDB{
@@ -532,6 +532,7 @@ func TestExport(t *testing.T) {
 			})
 			Convey("检查权限失败", func() {
 				mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil)
+				mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return([]*model.ToolboxDB{toolBoxDB}, nil)
 				mockAuthService.EXPECT().ResourceFilterIDs(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox,
 					interfaces.AuthOperationTypeView).Return(nil, mocks.MockFuncErr("ResourceFilterIDs"))
 				_, err := toolbox.Export(publicCtx, exportReq)
@@ -539,6 +540,7 @@ func TestExport(t *testing.T) {
 			})
 			Convey("没有查看权限", func() {
 				mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil)
+				mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return([]*model.ToolboxDB{toolBoxDB}, nil)
 				mockAuthService.EXPECT().ResourceFilterIDs(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox,
 					interfaces.AuthOperationTypeView).Return([]string{}, nil)
 				_, err := toolbox.Export(publicCtx, exportReq)
@@ -549,8 +551,6 @@ func TestExport(t *testing.T) {
 			})
 			Convey("查询数据失败（db）", func() {
 				mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil)
-				mockAuthService.EXPECT().ResourceFilterIDs(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox,
-					interfaces.AuthOperationTypeView).Return(ids, nil)
 				mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return(nil, mocks.MockFuncErr("SelectListByBoxIDs"))
 				_, err := toolbox.Export(publicCtx, exportReq)
 				So(err, ShouldNotBeNil)
@@ -560,8 +560,6 @@ func TestExport(t *testing.T) {
 			})
 			Convey("请求工具箱不存在", func() {
 				mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil)
-				mockAuthService.EXPECT().ResourceFilterIDs(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox,
-					interfaces.AuthOperationTypeView).Return(ids, nil)
 				mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return([]*model.ToolboxDB{}, nil)
 				_, err := toolbox.Export(publicCtx, exportReq)
 				So(err, ShouldNotBeNil)

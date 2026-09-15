@@ -47,7 +47,7 @@ func newGatedPublicEngine(authService interfaces.IAuthorizationService) *gin.Eng
 
 // TestGatedPublicRoutesRejectUnauthorized Guards the gated wiring points.
 //
-// authz_test.go only covers the requireOperatorTypePermission auxiliary function itself; if someone refactors.
+// authz_test.go only covers the requireFunctionPermission auxiliary function itself; if someone refactors.
 // When proxy.go / ai_generation.go deletes the call line in handler, those use cases will still be all green. This use case.
 // Takes the full gin route, so it will fail immediately when the call point is removed.
 func TestGatedPublicRoutesRejectUnauthorized(t *testing.T) {
@@ -66,9 +66,13 @@ func TestGatedPublicRoutesRejectUnauthorized(t *testing.T) {
 		for _, r := range routes {
 			ctrl := gomock.NewController(t)
 			authService := mocks.NewMockIAuthorizationService(ctrl)
+			resourceID := interfaces.ResourceIDAll
+			if strings.HasSuffix(r.path, "/function/execute") {
+				resourceID = "adhoc"
+			}
 			authService.EXPECT().
-				OperationCheckAll(gomock.Any(), gomock.Any(), interfaces.ResourceIDAll,
-					interfaces.AuthResourceTypeOperator, gomock.Any()).
+				OperationCheckAll(gomock.Any(), gomock.Any(), resourceID,
+					interfaces.AuthResourceTypeFunction, gomock.Any()).
 				Return(false, nil).
 				Times(1)
 
@@ -88,8 +92,8 @@ func TestGatedPublicRoutesRejectUnauthorized(t *testing.T) {
 		defer ctrl.Finish()
 		authService := mocks.NewMockIAuthorizationService(ctrl)
 		authService.EXPECT().
-			OperationCheckAll(gomock.Any(), gomock.Any(), interfaces.ResourceIDAll,
-				interfaces.AuthResourceTypeOperator, interfaces.AuthOperationTypeExecute).
+			OperationCheckAll(gomock.Any(), gomock.Any(), "adhoc",
+				interfaces.AuthResourceTypeFunction, interfaces.AuthOperationTypeExecute).
 			Return(false, nil)
 
 		engine := newGatedPublicEngine(authService)
@@ -122,13 +126,13 @@ func TestFunctionExecuteAuthorizationOutcomes(t *testing.T) {
 		return recorder
 	}
 
-	Convey("a denial is a 403 that names the missing type-level permission", t, func() {
+	Convey("a denial is a 403 that names the missing function permission", t, func() {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		authService := mocks.NewMockIAuthorizationService(ctrl)
 		authService.EXPECT().
-			OperationCheckAll(gomock.Any(), gomock.Any(), interfaces.ResourceIDAll,
-				interfaces.AuthResourceTypeOperator, interfaces.AuthOperationTypeExecute).
+			OperationCheckAll(gomock.Any(), gomock.Any(), "adhoc",
+				interfaces.AuthResourceTypeFunction, interfaces.AuthOperationTypeExecute).
 			Return(false, nil)
 
 		recorder := serve(authService)
@@ -141,8 +145,8 @@ func TestFunctionExecuteAuthorizationOutcomes(t *testing.T) {
 		So(json.Unmarshal(recorder.Body.Bytes(), &reply), ShouldBeNil)
 		So(reply.Code, ShouldEndWith, "."+errors.ErrExtCommonUseForbidden.String())
 		So(reply.Details, ShouldResemble, map[string]any{
-			"resource_type": string(interfaces.AuthResourceTypeOperator),
-			"resource_id":   interfaces.ResourceIDAll,
+			"resource_type": string(interfaces.AuthResourceTypeFunction),
+			"resource_id":   "adhoc",
 			"operation":     string(interfaces.AuthOperationTypeExecute),
 		})
 	})
@@ -154,8 +158,8 @@ func TestFunctionExecuteAuthorizationOutcomes(t *testing.T) {
 		outage := errors.NewHTTPError(context.Background(), http.StatusServiceUnavailable,
 			errors.ErrExtCommonAuthorizationUnavailable, nil)
 		authService.EXPECT().
-			OperationCheckAll(gomock.Any(), gomock.Any(), interfaces.ResourceIDAll,
-				interfaces.AuthResourceTypeOperator, interfaces.AuthOperationTypeExecute).
+			OperationCheckAll(gomock.Any(), gomock.Any(), "adhoc",
+				interfaces.AuthResourceTypeFunction, interfaces.AuthOperationTypeExecute).
 			Return(false, outage)
 
 		recorder := serve(authService)

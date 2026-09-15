@@ -147,6 +147,8 @@ func (uh *upgradeHandler) MigrateHistoryData(c *gin.Context) {
 		resp, err = uh.migrateHistoryDataForForMcp(ctx, req)
 	case interfaces.AuthResourceTypeToolBox:
 		resp, err = uh.migrateHistoryDataForToolBox(ctx, req)
+	case interfaces.AuthResourceTypeFunction:
+		resp, err = uh.migrateHistoryDataForToolBox(ctx, req)
 	default:
 		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, "resource_type is invalid")
 		rest.ReplyError(c, err)
@@ -202,6 +204,11 @@ func (uh *upgradeHandler) migrateHistoryDataForToolBox(ctx context.Context, req 
 		Items: []*HistoryData{},
 	}
 	filter := make(map[string]interface{})
+	if req.ResourceType == interfaces.AuthResourceTypeFunction {
+		filter["metadata_type"] = string(interfaces.MetadataTypeFunc)
+	} else {
+		filter["metadata_type"] = string(interfaces.MetadataTypeAPI)
+	}
 
 	var total int64
 	total, err = uh.ToolBoxDB.CountToolBox(ctx, filter)

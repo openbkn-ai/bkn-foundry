@@ -581,7 +581,7 @@ func (kns *knowledgeNetworkService) buildProxyGrantSources(ctx context.Context, 
 			return nil, "", err
 		}
 	}
-	return buildProxyGrantSourcesWithCapabilities(kn, bindings)
+	return kns.buildTypedProxyGrantSourcesWithCapabilities(ctx, kn, bindings)
 }
 
 func prepareProxyMutationIDs(ctx context.Context, changes *interfaces.KN) error {

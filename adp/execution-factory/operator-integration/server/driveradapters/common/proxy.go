@@ -69,7 +69,7 @@ func NewUnifiedProxyHandler() UnifiedProxyHandler {
 // Account - you can use this to gain code execution capabilities in the sandbox.
 func (h *unifiedProxyHandler) FunctionExecute(c *gin.Context) {
 	var err error
-	if err = requireOperatorTypePermission(c.Request.Context(), h.AuthService,
+	if err = requireFunctionPermission(c.Request.Context(), h.AuthService,
 		interfaces.AuthOperationTypeExecute); err != nil {
 		rest.ReplyError(c, err)
 		return
@@ -529,7 +529,7 @@ _bkn_sys.exit(0)
 // Executing user code means the same capability as FunctionExecute, so the same set of execute authorizations is used.
 func (h *unifiedProxyHandler) FunctionInferSchema(c *gin.Context) {
 	ctx := c.Request.Context()
-	if err := requireOperatorTypePermission(ctx, h.AuthService,
+	if err := requireFunctionPermission(ctx, h.AuthService,
 		interfaces.AuthOperationTypeExecute); err != nil {
 		rest.ReplyError(c, err)
 		return

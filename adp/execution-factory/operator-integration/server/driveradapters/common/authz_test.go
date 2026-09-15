@@ -23,17 +23,17 @@ func publicCtx() context.Context {
 	})
 }
 
-func TestRequireOperatorTypePermission(t *testing.T) {
+func TestRequireFunctionPermission(t *testing.T) {
 	Convey("公开面持有权限时放行", t, func() {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		authService := mocks.NewMockIAuthorizationService(ctrl)
 		authService.EXPECT().
-			OperationCheckAll(gomock.Any(), gomock.Any(), interfaces.ResourceIDAll,
-				interfaces.AuthResourceTypeOperator, interfaces.AuthOperationTypeExecute).
+			OperationCheckAll(gomock.Any(), gomock.Any(), "adhoc",
+				interfaces.AuthResourceTypeFunction, interfaces.AuthOperationTypeExecute).
 			Return(true, nil)
 
-		err := requireOperatorTypePermission(publicCtx(), authService, interfaces.AuthOperationTypeExecute)
+		err := requireFunctionPermission(publicCtx(), authService, interfaces.AuthOperationTypeExecute)
 
 		So(err, ShouldBeNil)
 	})
@@ -43,11 +43,11 @@ func TestRequireOperatorTypePermission(t *testing.T) {
 		defer ctrl.Finish()
 		authService := mocks.NewMockIAuthorizationService(ctrl)
 		authService.EXPECT().
-			OperationCheckAll(gomock.Any(), gomock.Any(), interfaces.ResourceIDAll,
-				interfaces.AuthResourceTypeOperator, interfaces.AuthOperationTypeExecute).
+			OperationCheckAll(gomock.Any(), gomock.Any(), "adhoc",
+				interfaces.AuthResourceTypeFunction, interfaces.AuthOperationTypeExecute).
 			Return(false, nil)
 
-		err := requireOperatorTypePermission(publicCtx(), authService, interfaces.AuthOperationTypeExecute)
+		err := requireFunctionPermission(publicCtx(), authService, interfaces.AuthOperationTypeExecute)
 
 		So(err, ShouldNotBeNil)
 	})
@@ -58,7 +58,7 @@ func TestRequireOperatorTypePermission(t *testing.T) {
 		authService := mocks.NewMockIAuthorizationService(ctrl)
 
 		ctx := common.SetPublicAPIToCtx(context.Background(), true)
-		err := requireOperatorTypePermission(ctx, authService, interfaces.AuthOperationTypeExecute)
+		err := requireFunctionPermission(ctx, authService, interfaces.AuthOperationTypeExecute)
 
 		So(err, ShouldNotBeNil)
 	})
@@ -68,7 +68,7 @@ func TestRequireOperatorTypePermission(t *testing.T) {
 		defer ctrl.Finish()
 		authService := mocks.NewMockIAuthorizationService(ctrl)
 
-		err := requireOperatorTypePermission(context.Background(), authService, interfaces.AuthOperationTypeExecute)
+		err := requireFunctionPermission(context.Background(), authService, interfaces.AuthOperationTypeExecute)
 
 		So(err, ShouldBeNil)
 	})

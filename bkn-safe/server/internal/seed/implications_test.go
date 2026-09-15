@@ -161,7 +161,7 @@ func TestShippedIndependentResourceFamiliesDeclareViewRequirements(t *testing.T)
 		types[resourceType.ID] = operations
 	}
 
-	for _, resourceType := range []string{"tool_box", "mcp", "operator", "skill"} {
+	for _, resourceType := range []string{"tool_box", "function", "mcp", "operator", "skill"} {
 		for _, operation := range []string{"modify", "delete", "publish", "unpublish", "authorize"} {
 			if got := types[resourceType][operation]; len(got) != 1 || got[0] != "view" {
 				t.Errorf("%s/%s requires %v, want [view]", resourceType, operation, got)
@@ -344,7 +344,7 @@ func TestIndependentResourceRequirementsApplyToChecksAndLists(t *testing.T) {
 	}
 
 	viewByType := map[string]string{
-		"tool_box": "view", "mcp": "view", "operator": "view", "skill": "view",
+		"tool_box": "view", "function": "view", "mcp": "view", "operator": "view", "skill": "view",
 		"small_model": "display", "large_model": "display",
 	}
 	for resourceType, viewOperation := range viewByType {

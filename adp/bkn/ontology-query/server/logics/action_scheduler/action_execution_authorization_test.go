@@ -166,6 +166,8 @@ func TestExecuteActionProxyFailureStopsInstanceRead(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	models := omock.NewMockOntologyManagerAccess(ctrl)
 	objects := omock.NewMockObjectTypeService(ctrl)
+	aoAccess := omock.NewMockAgentOperatorAccess(ctrl)
+	aoAccess.EXPECT().GetBoxMetadataType(gomock.Any(), "box-1", "tool-1").Return(interfaces.ProxyTargetTypeToolBox, nil)
 	models.EXPECT().GetActionType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "at-1").Return(
 		interfaces.ActionType{
 			ATID:         "at-1",
@@ -174,6 +176,7 @@ func TestExecuteActionProxyFailureStopsInstanceRead(t *testing.T) {
 	proxyErr := errors.New("proxy unavailable")
 	service := &actionSchedulerService{
 		omAccess:    models,
+		aoAccess:    aoAccess,
 		ots:         objects,
 		permissions: &actionPermissionStub{},
 		proxy:       &actionProxyResolverStub{err: proxyErr},
@@ -191,7 +194,10 @@ func TestExecuteActionProxyFailureStopsInstanceRead(t *testing.T) {
 
 func TestResolveActionProxyContextKeepsDownstreamPermissionSeparate(t *testing.T) {
 	resolver := &actionProxyResolverStub{}
-	service := &actionSchedulerService{proxy: resolver}
+	ctrl := gomock.NewController(t)
+	aoAccess := omock.NewMockAgentOperatorAccess(ctrl)
+	aoAccess.EXPECT().GetBoxMetadataType(gomock.Any(), "box-1", "tool-1").Return(interfaces.ProxyTargetTypeToolBox, nil)
+	service := &actionSchedulerService{proxy: resolver, aoAccess: aoAccess}
 	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
 		interfaces.AccountInfo{ID: "caller-1", Type: "user"})
 	proxy, requirements, err := service.resolveActionProxyContext(ctx, "kn-1", &interfaces.ActionType{
@@ -209,6 +215,24 @@ func TestResolveActionProxyContextKeepsDownstreamPermissionSeparate(t *testing.T
 	if !reflect.DeepEqual(requirements, want) || proxy.Proxy.ID != "test-proxy" ||
 		len(resolver.bindings) != 1 || resolver.bindings[0].ChildID != "at-1" {
 		t.Fatalf("proxy = %#v, requirements = %#v, bindings = %#v", proxy, requirements, resolver.bindings)
+	}
+}
+
+func TestResolveFunctionActionProxyContextUsesFunctionGrant(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	aoAccess := omock.NewMockAgentOperatorAccess(ctrl)
+	aoAccess.EXPECT().GetBoxMetadataType(gomock.Any(), "box-fn", "fn-1").Return(interfaces.ProxyTargetTypeFunction, nil)
+	resolver := &actionProxyResolverStub{}
+	service := &actionSchedulerService{proxy: resolver, aoAccess: aoAccess}
+	_, requirements, err := service.resolveActionProxyContext(t.Context(), "kn-1", &interfaces.ActionType{
+		ATID: "at-fn", ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box-fn", ToolID: "fn-1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(requirements) != 1 || requirements[0].ResourceType != interfaces.PermissionResourceTypeFunction ||
+		len(resolver.bindings) != 1 || resolver.bindings[0].TargetType != interfaces.ProxyTargetTypeFunction {
+		t.Fatalf("function proxy requirements=%#v bindings=%#v", requirements, resolver.bindings)
 	}
 }
 

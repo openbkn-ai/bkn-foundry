@@ -507,6 +507,7 @@ func Test_executeAsync_ContextAndProgress(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
+		aoAccess.EXPECT().GetBoxMetadataType(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ProxyTargetTypeToolBox, nil).AnyTimes()
 		logsService := omock.NewMockActionLogsService(mockCtrl)
 		service := &actionSchedulerService{
 			aoAccess:    aoAccess,
@@ -606,6 +607,7 @@ func Test_executeAsync_AggregatedInvokesToolOnce(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
+		aoAccess.EXPECT().GetBoxMetadataType(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ProxyTargetTypeToolBox, nil).AnyTimes()
 		logsService := omock.NewMockActionLogsService(mockCtrl)
 		service := &actionSchedulerService{aoAccess: aoAccess, logsService: logsService, permissions: &actionPermissionStub{}}
 
@@ -719,6 +721,7 @@ func Test_executeAsync_AggregatedCancelledBeforeInvocation(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
+		aoAccess.EXPECT().GetBoxMetadataType(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ProxyTargetTypeToolBox, nil).AnyTimes()
 		logsService := omock.NewMockActionLogsService(mockCtrl)
 		service := &actionSchedulerService{aoAccess: aoAccess, logsService: logsService, permissions: &actionPermissionStub{}}
 
@@ -756,6 +759,7 @@ func Test_executeAsync_AggregatedCancelledDuringInvocation(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
+		aoAccess.EXPECT().GetBoxMetadataType(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ProxyTargetTypeToolBox, nil).AnyTimes()
 		logsService := omock.NewMockActionLogsService(mockCtrl)
 		service := &actionSchedulerService{aoAccess: aoAccess, logsService: logsService, permissions: &actionPermissionStub{}}
 
@@ -798,6 +802,7 @@ func Test_executeAsync_PerInstanceStillFansOut(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
+		aoAccess.EXPECT().GetBoxMetadataType(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ProxyTargetTypeToolBox, nil).AnyTimes()
 		logsService := omock.NewMockActionLogsService(mockCtrl)
 		service := &actionSchedulerService{aoAccess: aoAccess, logsService: logsService, permissions: &actionPermissionStub{}}
 
@@ -1034,6 +1039,7 @@ func Test_ExecuteAction_ScanMode(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		omAccess := omock.NewMockOntologyManagerAccess(mockCtrl)
 		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
+		aoAccess.EXPECT().GetBoxMetadataType(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ProxyTargetTypeToolBox, nil).AnyTimes()
 		ots := omock.NewMockObjectTypeService(mockCtrl)
 		logsService := action_logs.NewActionLogsService(appSetting)
 
@@ -1260,6 +1266,7 @@ func Test_ExecuteAction_UnboundObjectType(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		omAccess := omock.NewMockOntologyManagerAccess(mockCtrl)
 		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
+		aoAccess.EXPECT().GetBoxMetadataType(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ProxyTargetTypeToolBox, nil).AnyTimes()
 		ots := omock.NewMockObjectTypeService(mockCtrl)
 		logsService := action_logs.NewActionLogsService(appSetting)
 
@@ -1375,6 +1382,7 @@ func Test_ExecuteAction_AddActionType(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		omAccess := omock.NewMockOntologyManagerAccess(mockCtrl)
 		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
+		aoAccess.EXPECT().GetBoxMetadataType(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ProxyTargetTypeToolBox, nil).AnyTimes()
 		ots := omock.NewMockObjectTypeService(mockCtrl)
 		logsService := action_logs.NewActionLogsService(appSetting)
 

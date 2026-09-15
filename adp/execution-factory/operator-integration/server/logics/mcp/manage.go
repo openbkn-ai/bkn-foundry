@@ -217,6 +217,11 @@ func (s *mcpServiceImpl) syncMCPTools(ctx context.Context, tx *sql.Tx, userID, m
 	toolNames := make(map[string]bool)
 	mcpTools = make([]*model.MCPToolDB, len(toolConfigs))
 	for i, toolConfig := range toolConfigs {
+		if icommon.IsPublicAPIFromCtx(ctx) {
+			if err := s.validateImportedAPITool(ctx, userID, toolConfig.BoxID, toolConfig.ToolID); err != nil {
+				return nil, err
+			}
+		}
 		if toolConfig.ToolName != "" {
 			// Check whether the tool name is duplicated.
 			if toolNames[toolConfig.ToolName] {
@@ -268,6 +273,32 @@ func (s *mcpServiceImpl) syncMCPTools(ctx context.Context, tx *sql.Tx, userID, m
 		}
 	}
 	return mcpTools, nil
+}
+
+// validateImportedAPITool confines imported MCP tools to API toolboxes.
+func (s *mcpServiceImpl) validateImportedAPITool(ctx context.Context, userID, boxID, toolID string) error {
+	box, err := s.ToolService.GetToolBox(ctx, &interfaces.GetToolBoxReq{UserID: userID, BoxID: boxID}, false)
+	if err != nil {
+		return err
+	}
+	if box == nil || box.MetadataType != interfaces.MetadataTypeAPI {
+		return oerrors.DefaultHTTPError(ctx, http.StatusBadRequest, "MCP import requires an API toolbox")
+	}
+	tool, err := s.ToolService.GetBoxTool(ctx, &interfaces.GetToolReq{UserID: userID, BoxID: boxID, ToolID: toolID})
+	if err != nil {
+		return err
+	}
+	if tool == nil || tool.MetadataType != interfaces.MetadataTypeAPI {
+		return oerrors.DefaultHTTPError(ctx, http.StatusBadRequest, "MCP import requires an API tool")
+	}
+	if icommon.IsPublicAPIFromCtx(ctx) {
+		accessor, err := s.AuthService.GetAccessor(ctx, userID)
+		if err != nil {
+			return err
+		}
+		return s.AuthService.CheckAuthorizePermission(ctx, accessor, boxID, interfaces.AuthResourceTypeToolBox)
+	}
+	return nil
 }
 
 // DeleteMCPServer Delete MCP Server.
@@ -1256,6 +1287,9 @@ func (s *mcpServiceImpl) generateMCPToolConfig(ctx context.Context, tool *model.
 	if err != nil {
 		return nil, err
 	}
+	if err := s.validateImportedAPITool(ctx, "", tool.BoxID, tool.ToolID); err != nil {
+		return nil, err
+	}
 
 	if tool.Name != "" {
 		toolConfig.Name = tool.Name
@@ -1281,7 +1315,7 @@ func (s *mcpServiceImpl) generateMCPToolConfig(ctx context.Context, tool *model.
 }
 
 func (s *mcpServiceImpl) convertInputSchema(ctx context.Context, toolInfo *interfaces.ToolInfo) (json.RawMessage, error) {
-	if toolInfo.MetadataType != interfaces.MetadataTypeAPI && toolInfo.MetadataType != interfaces.MetadataTypeFunc {
+	if toolInfo.MetadataType != interfaces.MetadataTypeAPI {
 		s.logger.WithContext(ctx).Warnf("unsupported metadata type: %s", toolInfo.MetadataType)
 		err := oerrors.DefaultHTTPError(ctx, http.StatusBadRequest, fmt.Sprintf("unsupported metadata type: %s", toolInfo.MetadataType))
 		return nil, err

@@ -14,6 +14,7 @@ const (
 	PermissionResourceTypeMetric           = "metric"
 	PermissionResourceTypeLogicProperty    = "logic_property"
 	PermissionResourceTypeToolBox          = "tool_box"
+	PermissionResourceTypeFunction         = "function"
 	PermissionResourceTypeMCP              = "mcp"
 
 	PermissionOperationViewDetail = "view_detail"

@@ -9,15 +9,14 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
-// requireOperatorTypePermission verifies that the caller holds the specified operation permission on the operator type.
+// requireFunctionPermission verifies permissions for standalone Function endpoints.
 //
-// Used for /function/execute, /ai_generate/* endpoints that are not affiliated with any existing resources: they operate on.
-// Function codes that have not yet been released into the library do not have resource IDs to judge, so they are judged based on the type level (ResourceIDAll), and the semantics is the same as.
-// CheckCreatePermission is consistent in logics/auth/decision.go.
+// Code execution without a persisted function box uses a reserved adhoc resource.
+// Generation uses the type-level create operation, like creating a function box.
 //
 // Valid only on the public side. The internal side (internal-v1) is called between services, and the identity comes from the X-Account-ID header rather than the verified.
 // token, following the existing idiom within the service (see logics/operator/query.go:31) to skip the determination and avoid interrupting existing callers.
-func requireOperatorTypePermission(
+func requireFunctionPermission(
 	ctx context.Context,
 	authService interfaces.IAuthorizationService,
 	operation interfaces.AuthOperationType,
@@ -33,8 +32,12 @@ func requireOperatorTypePermission(
 		ID:   authContext.AccountID,
 		Type: authContext.AccountType,
 	}
+	resourceID := interfaces.ResourceIDAll
+	if operation == interfaces.AuthOperationTypeExecute {
+		resourceID = "adhoc"
+	}
 	authorized, err := authService.OperationCheckAll(ctx, accessor,
-		interfaces.ResourceIDAll, interfaces.AuthResourceTypeOperator, operation)
+		resourceID, interfaces.AuthResourceTypeFunction, operation)
 	if err != nil {
 		return err
 	}
@@ -42,8 +45,8 @@ func requireOperatorTypePermission(
 		// Name the missing grant so an administrator knows what to assign. It is the
 		// same for every caller, so it reveals nothing about the account.
 		return errors.NewHTTPError(ctx, http.StatusForbidden, forbiddenCodeFor(operation), map[string]any{
-			"resource_type": string(interfaces.AuthResourceTypeOperator),
-			"resource_id":   interfaces.ResourceIDAll,
+			"resource_type": string(interfaces.AuthResourceTypeFunction),
+			"resource_id":   resourceID,
 			"operation":     string(operation),
 		})
 	}
