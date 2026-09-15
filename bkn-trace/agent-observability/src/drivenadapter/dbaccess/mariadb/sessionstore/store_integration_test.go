@@ -26,6 +26,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/ledgersvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/projectionrebuildsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sessionsvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/ledgervo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
@@ -33,6 +34,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchprojection"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/opensearch"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionoutbox"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
 
 func TestEnsureSchemaRejectsLegacyDatabaseWithoutLedger(t *testing.T) {
@@ -121,6 +123,134 @@ func TestMigrateIsIdempotentAndRecordsVersionLedger(t *testing.T) {
 	}
 	if provenanceTableRows != 1 {
 		t.Fatalf("expected Core migration to create provenance analysis table, got %d", provenanceTableRows)
+	}
+}
+
+func TestListConversationSummaryIdentitiesAvoidsMixedCollations(t *testing.T) {
+	dsn := os.Getenv("BKN_TRACE_TEST_MARIADB_DSN")
+	if dsn == "" {
+		t.Skip("BKN_TRACE_TEST_MARIADB_DSN is not set")
+	}
+
+	cfg, err := mysql.ParseDSN(dsn)
+	if err != nil {
+		t.Fatalf("parse MariaDB DSN: %v", err)
+	}
+	cfg.Collation = "utf8mb4_uca1400_ai_ci"
+	db, err := sql.Open("mysql", cfg.FormatDSN())
+	if err != nil {
+		t.Fatalf("open MariaDB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	db.SetMaxOpenConns(1)
+
+	ctx := context.Background()
+	store := sessionstore.New(db)
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	subjectID := "summary-collation-subject-" + suffix
+	conversationIDs := []string{
+		"summary-collation-name-" + suffix,
+		"summary-collation-id-" + suffix,
+		"summary-collation-case-" + suffix,
+	}
+	interactionIDs := []string{
+		"summary-collation-name-i-" + suffix,
+		"summary-collation-id-i-" + suffix,
+		"summary-collation-case-i-" + suffix,
+	}
+	operationIDs := []string{
+		"summary-collation-name-o-" + suffix,
+		"summary-collation-id-o-" + suffix,
+		"summary-collation-case-o-" + suffix,
+	}
+	receiptIDs := []string{
+		"summary-collation-name-r-" + suffix,
+		"summary-collation-id-r-" + suffix,
+		"summary-collation-case-r-" + suffix,
+	}
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(ctx, "DELETE FROM bkn_trace_receipts WHERE receipt_id IN (?, ?, ?)", receiptIDs[0], receiptIDs[1], receiptIDs[2])
+		_, _ = db.ExecContext(ctx, "DELETE FROM bkn_trace_operations WHERE operation_id IN (?, ?, ?)", operationIDs[0], operationIDs[1], operationIDs[2])
+		_, _ = db.ExecContext(ctx, "DELETE FROM bkn_trace_interactions WHERE interaction_id IN (?, ?, ?)", interactionIDs[0], interactionIDs[1], interactionIDs[2])
+		_, _ = db.ExecContext(ctx, "DELETE FROM bkn_trace_conversations WHERE conversation_id IN (?, ?, ?)", conversationIDs[0], conversationIDs[1], conversationIDs[2])
+	})
+
+	owner := sessionvo.Owner{
+		EffectiveSubjectType: sessionvo.SubjectService,
+		EffectiveSubjectID:   subjectID,
+	}
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	rows := []struct {
+		conversationID string
+		interactionID  string
+		operationID    string
+		receiptID      string
+		applicationID  string
+		agentName      string
+	}{
+		{conversationIDs[0], interactionIDs[0], operationIDs[0], receiptIDs[0], "summary-name-app-" + suffix, "业务溯源优化Agent"},
+		{conversationIDs[1], interactionIDs[1], operationIDs[1], receiptIDs[1], "business_provenance_optimizer", "ASCII Agent"},
+		{conversationIDs[2], interactionIDs[2], operationIDs[2], receiptIDs[2], "Business_Provenance_Optimizer", "Other Agent"},
+	}
+	if err := store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+		for index, row := range rows {
+			rowOwner := owner
+			rowOwner.ApplicationPrincipalID = row.applicationID
+			tx.SaveConversation(sessionvo.Conversation{
+				ID: row.conversationID, AgentName: row.agentName, Owner: rowOwner,
+				ExternalConversationKey: row.conversationID, Generation: 1,
+				Status: sessionvo.ConversationClosed, RowVersion: 1,
+				CreatedAt: now.Add(time.Duration(index) * time.Second), UpdatedAt: now,
+			})
+			tx.SaveInteraction(sessionvo.Interaction{
+				ID: row.interactionID, ConversationID: row.conversationID, Ordinal: 1,
+				ExecutionStatus: sessionvo.InteractionCompleted, EvidenceStatus: sessionvo.EvidenceComplete,
+				StartIdempotencyKey: row.interactionID + "-start", LeaseToken: row.interactionID + "-lease",
+				LeaseExpiresAt: now.Add(time.Hour), RowVersion: 1, CreatedAt: now, UpdatedAt: now,
+			})
+			tx.SaveOperation(sessionvo.Operation{
+				ID: row.operationID, ConversationID: row.conversationID, InteractionID: row.interactionID,
+				OperationKey: "summary-collation-operation", ToolName: "summary-collation-tool",
+				AttemptStatus: sessionvo.AttemptCompleted, RowVersion: 1, CreatedAt: now, UpdatedAt: now,
+			})
+			tx.SaveReceipt(sessionvo.Receipt{
+				ID: row.receiptID, SchemaVersion: "1", Owner: rowOwner,
+				ConversationID: row.conversationID, InteractionID: row.interactionID, OperationID: row.operationID,
+				OperationKey: "summary-collation-operation", ToolName: "summary-collation-tool",
+				Status: sessionvo.ReceiptCompleted, EvidenceDurability: sessionvo.DurabilityDurable,
+				RequestID: "summary-request-" + row.conversationID, TraceID: "summary-trace-" + row.conversationID,
+				RowVersion: 1, IssuedAt: now,
+			})
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("seed summary rows: %v", err)
+	}
+
+	query := isessionstore.SummaryPageQuery{
+		Scope:              evidencevo.QueryScope{AccountID: subjectID, AccountType: string(sessionvo.SubjectService)},
+		ExcludeAgentOrApps: []string{"业务溯源优化Agent", "business_provenance_optimizer"},
+		Limit:              20,
+	}
+	page, err := store.ListConversationSummaryIdentities(ctx, query)
+	if err != nil {
+		t.Fatalf("list summary identities with mixed-collation exclusions: %v", err)
+	}
+	if page.Total != 1 || len(page.Entries) != 1 || page.Entries[0].ID != conversationIDs[2] {
+		t.Fatalf("summary page=%+v, want only case-sensitive identity conversation", page)
+	}
+
+	query.ExcludeAgentOrApps = []string{"business_provenance_optimizer"}
+	page, err = store.ListConversationSummaryIdentities(ctx, query)
+	if err != nil {
+		t.Fatalf("list summary identities with ASCII exclusion: %v", err)
+	}
+	if page.Total != 2 || len(page.Entries) != 2 {
+		t.Fatalf("summary page=%+v, want two case-sensitive/non-matching conversations", page)
 	}
 }
 
