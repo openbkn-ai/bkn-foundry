@@ -123,6 +123,55 @@ func TestManagedOperationKeyUsesStableHostInvocationAcrossRequests(t *testing.T)
 	}
 }
 
+func TestManagedToolboxIdentityUsesOnlyCapabilityIdentifiers(t *testing.T) {
+	identity := managedToolboxIdentity(map[string]any{
+		"toolbox_id": "box_warehouse",
+		"tool_id":    "tool_reconcile_inventory",
+		"arguments": map[string]any{
+			"material_code": "525-000016",
+			"authorization": "must-not-enter-trace-metadata",
+		},
+	})
+
+	if identity.ToolName != "toolbox_function:box_warehouse:tool_reconcile_inventory" {
+		t.Fatalf("tool name = %q", identity.ToolName)
+	}
+	if identity.ToolboxID != "box_warehouse" || identity.ToolID != "tool_reconcile_inventory" {
+		t.Fatalf("identity lost capability identifiers: %#v", identity)
+	}
+	if strings.Contains(identity.ToolName, "525-000016") ||
+		strings.Contains(identity.ToolName, "must-not-enter-trace-metadata") {
+		t.Fatalf("tool identity contains request content: %#v", identity)
+	}
+}
+
+func TestSessionGuardUsesFunctionIdentityForManagedExecuteTool(t *testing.T) {
+	request := validBusinessToolRequest()
+	request.Params.Name = toolKeyExecuteTool
+	request.Params.Arguments.(map[string]any)["toolbox_id"] = "box_warehouse"
+	request.Params.Arguments.(map[string]any)["tool_id"] = "tool_reconcile_inventory"
+	request.Params.Arguments.(map[string]any)["arguments"] = map[string]any{
+		"material_code": "525-000016",
+	}
+
+	var seen operationIntent
+	result, err := guardBusinessToolCall(
+		func(_ context.Context, intent operationIntent) (*operationResult, *lifecycleError, error) {
+			seen = intent
+			return &operationResult{}, nil, nil
+		},
+		func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			return mcpsdk.NewToolResultText("ok"), nil
+		},
+	)(trustedSessionGuardContext(), request)
+	if err != nil || result.IsError {
+		t.Fatalf("execute_tool rejected: result=%#v err=%v", result, err)
+	}
+	if seen.ToolName != "toolbox_function:box_warehouse:tool_reconcile_inventory" {
+		t.Fatalf("operation tool name = %q", seen.ToolName)
+	}
+}
+
 func TestSessionGuardCoreRejectionPreventsDownstreamCall(t *testing.T) {
 	downstreamCalls := 0
 	guarded := guardBusinessToolCall(

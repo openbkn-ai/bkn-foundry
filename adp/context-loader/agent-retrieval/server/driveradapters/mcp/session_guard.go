@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"runtime/debug"
+	"strings"
 
 	"github.com/bytedance/sonic"
 	mcpsdk "github.com/mark3labs/mcp-go/mcp"
@@ -36,6 +37,25 @@ type operationIntent struct {
 	Context  bknContext
 	ToolName string
 	Input    map[string]any
+}
+
+// toolboxIdentity is the safe, stable identity of one capability selected by
+// execute_tool. It deliberately excludes the function arguments: they are
+// execution data, not Trace metadata.
+type toolboxIdentity struct {
+	ToolName  string
+	ToolboxID string
+	ToolID    string
+}
+
+func managedToolboxIdentity(arguments map[string]any) toolboxIdentity {
+	toolboxID := strings.TrimSpace(stringValue(arguments["toolbox_id"]))
+	toolID := strings.TrimSpace(stringValue(arguments["tool_id"]))
+	return toolboxIdentity{
+		ToolName:  "toolbox_function:" + toolboxID + ":" + toolID,
+		ToolboxID: toolboxID,
+		ToolID:    toolID,
+	}
 }
 
 type operationResult struct {
@@ -123,6 +143,13 @@ func guardBusinessToolCallWithCompletion(
 			businessRefs,
 			observedToolBusinessRefs(req.Params.Name, arguments, currentKnID),
 		)
+		operationToolName := req.Params.Name
+		if req.Params.Name == toolKeyExecuteTool {
+			identity := managedToolboxIdentity(arguments)
+			if identity.ToolboxID != "" && identity.ToolID != "" {
+				operationToolName = identity.ToolName
+			}
+		}
 		intent := operationIntent{
 			Context: bknContext{
 				ConversationID:    conversationID,
@@ -132,7 +159,7 @@ func guardBusinessToolCallWithCompletion(
 				CausationEventIDs: stringSliceValue(rawContext["causation_event_ids"]),
 				BusinessRefs:      businessRefs,
 			},
-			ToolName: req.Params.Name,
+			ToolName: operationToolName,
 			Input:    arguments,
 		}
 		ensured, lifecycleErr, err := ensure(ctx, intent)
