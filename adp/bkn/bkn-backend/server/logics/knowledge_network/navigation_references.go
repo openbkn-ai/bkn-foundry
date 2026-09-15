@@ -16,10 +16,10 @@ import (
 	"bkn-backend/logics/permission"
 )
 
-// dropUnreadableReferenceRows removes, from the child rows that make a network navigable, the
-// relation types with an endpoint and the action types with a bound object type the caller holds
-// nothing on. Those types are not readable (#1532), so they must neither open a navigation shell
-// nor count in its statistics.
+// dropUnreadableReferenceRows removes, from the child rows that make a network navigable, relation
+// types with an endpoint the caller holds nothing on. Relation types name both endpoints and are
+// therefore unreadable in that case (#1532). Action types are independently authorized and remain
+// navigable when the caller can read the action itself.
 //
 // A row whose definition can no longer be found is dropped too: without it the references cannot
 // be checked.
@@ -32,7 +32,7 @@ func (kns *knowledgeNetworkService) dropUnreadableReferenceRows(ctx context.Cont
 	}
 	idsByKN := map[string]map[string][]string{}
 	for _, candidate := range candidates {
-		if candidate.Type != interfaces.RESOURCE_TYPE_RELATION_TYPE && candidate.Type != interfaces.RESOURCE_TYPE_ACTION_TYPE {
+		if candidate.Type != interfaces.RESOURCE_TYPE_RELATION_TYPE {
 			continue
 		}
 		if _, visible := visibleChildRows[candidate.Type][interfaces.KNChildResourceID(candidate.KNID, candidate.ResourceID)]; !visible {
@@ -81,14 +81,13 @@ func (kns *knowledgeNetworkService) dropUnreadableReferenceRows(ctx context.Cont
 	return nil
 }
 
-// referenceDefinitions are the relation and action type rows of one network whose references a
-// navigation check has to resolve.
+// referenceDefinitions are the relation type rows of one network whose endpoints a navigation
+// check has to resolve.
 type referenceDefinitions struct {
 	relationTypes []*interfaces.RelationType
-	actionTypes   []*interfaces.ActionType
 }
 
-// readReferenceDefinitions loads the given relation and action types of one network.
+// readReferenceDefinitions loads the given relation types of one network.
 func (kns *knowledgeNetworkService) readReferenceDefinitions(ctx context.Context, knID, branch string,
 	idsByType map[string][]string) (*referenceDefinitions, error) {
 
@@ -101,43 +100,26 @@ func (kns *knowledgeNetworkService) readReferenceDefinitions(ctx context.Context
 				berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
 		}
 	}
-	if ids := idsByType[interfaces.RESOURCE_TYPE_ACTION_TYPE]; len(ids) > 0 {
-		defs.actionTypes, err = kns.ata.GetActionTypesByIDs(ctx, knID, branch, ids)
-		if err != nil {
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
-		}
-	}
 	return defs, nil
 }
 
-// referencedObjectTypes lists the object types the definitions point at.
+// referencedObjectTypes lists the object types the relation definitions point at.
 func (defs *referenceDefinitions) referencedObjectTypes() []string {
-	referenced := make([]string, 0, len(defs.relationTypes)*2+len(defs.actionTypes))
+	referenced := make([]string, 0, len(defs.relationTypes)*2)
 	for _, relationType := range defs.relationTypes {
 		referenced = append(referenced, relationType.SourceObjectTypeID, relationType.TargetObjectTypeID)
-	}
-	for _, actionType := range defs.actionTypes {
-		referenced = append(referenced, actionType.ObjectTypeID)
 	}
 	return referenced
 }
 
-// readable returns, per resource type, the relation and action type ids whose referenced object
-// types are all in visible.
+// readable returns the relation type ids whose endpoint object types are all in visible.
 func (defs *referenceDefinitions) readable(visible map[string]struct{}) map[string]map[string]struct{} {
 	readable := map[string]map[string]struct{}{
 		interfaces.RESOURCE_TYPE_RELATION_TYPE: {},
-		interfaces.RESOURCE_TYPE_ACTION_TYPE:   {},
 	}
 	for _, relationType := range defs.relationTypes {
 		if permission.ReferencesVisible(visible, relationType.SourceObjectTypeID, relationType.TargetObjectTypeID) {
 			readable[interfaces.RESOURCE_TYPE_RELATION_TYPE][relationType.RTID] = struct{}{}
-		}
-	}
-	for _, actionType := range defs.actionTypes {
-		if permission.ReferencesVisible(visible, actionType.ObjectTypeID) {
-			readable[interfaces.RESOURCE_TYPE_ACTION_TYPE][actionType.ATID] = struct{}{}
 		}
 	}
 	return readable

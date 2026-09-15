@@ -437,21 +437,17 @@ func (ats *actionTypeService) ListActionTypes(ctx context.Context, query interfa
 			berrors.BknBackend_ActionType_InternalError).WithErrorDetails(err.Error())
 	}
 
-	// Filter by the action types themselves, then by their bound object types, and page only after
-	// both: total_count and every page have to count what the caller can actually see.
+	// Action types are independently authorized resources. Their visibility is determined by the
+	// action type permission itself; a bound object type controls access to that object type and
+	// its data, but does not hide an action delegated to the caller.
 	var operationMap map[string]interfaces.PermissionResourceOps
-	actionTypes, _, operationMap, err = permission.FilterAndPaginateKNChildrenWithOperations(ctx, ats.ps,
+	var total int
+	actionTypes, total, operationMap, err = permission.FilterAndPaginateKNChildrenWithOperations(ctx, ats.ps,
 		interfaces.RESOURCE_TYPE_ACTION_TYPE, query.KNID, actionTypes,
-		func(actionType *interfaces.ActionType) string { return actionType.ATID }, 0, -1)
+		func(actionType *interfaces.ActionType) string { return actionType.ATID }, query.Offset, query.Limit)
 	if err != nil {
 		return []*interfaces.ActionType{}, 0, err
 	}
-	actionTypes, err = ats.withVisibleBoundObjectTypes(ctx, query.KNID, actionTypes)
-	if err != nil {
-		return []*interfaces.ActionType{}, 0, err
-	}
-	total := len(actionTypes)
-	actionTypes = permission.PaginateKNChildCandidates(actionTypes, query.Offset, query.Limit)
 	for _, actionType := range actionTypes {
 		actionType.Operations = operationMap[interfaces.KNChildResourceID(query.KNID, actionType.ATID)].Operations
 	}
@@ -541,16 +537,6 @@ func (ats *actionTypeService) GetActionTypesByIDs(ctx context.Context, knID stri
 		interfaces.RESOURCE_TYPE_ACTION_TYPE, knID, atIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
 		return nil, err
 	}
-	// All or nothing, like the permission check above: an action type bound to an object type the
-	// caller holds nothing on is not readable, so asking for it by id is refused.
-	visibleActionTypes, err := ats.withVisibleBoundObjectTypes(ctx, knID, actionTypes)
-	if err != nil {
-		return nil, err
-	}
-	if len(visibleActionTypes) != len(actionTypes) {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
-	}
-
 	// TODO: localize bound and impacted object types and their API documents.
 	// Retrieve bound and impacted object type names.
 	for _, actionType := range actionTypes {
@@ -1042,10 +1028,6 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 	visibleIDs, err := permission.FilterKNChildIDs(ctx, ats.ps,
 		interfaces.RESOURCE_TYPE_ACTION_TYPE, query.KNID, candidateIDs,
 		interfaces.OPERATION_TYPE_VIEW_DETAIL)
-	if err != nil {
-		return response, err
-	}
-	visibleIDs, err = ats.withVisibleBoundObjectTypeIDs(ctx, query.KNID, query.Branch, visibleIDs)
 	if err != nil {
 		return response, err
 	}

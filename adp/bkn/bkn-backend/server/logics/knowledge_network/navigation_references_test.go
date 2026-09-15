@@ -85,10 +85,6 @@ func navRelation(id, source, target string) *interfaces.RelationType {
 		RTID: id, SourceObjectTypeID: source, TargetObjectTypeID: target}}
 }
 
-func navAction(id, bound string) *interfaces.ActionType {
-	return &interfaces.ActionType{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: id, ObjectTypeID: bound}}
-}
-
 // TestNavigation_ARelationTypeWithAHiddenEndpointDoesNotOpenTheNetwork pins #1532 at the network
 // level: a relation type the caller cannot read -- one end is an object type they hold nothing on
 // -- must not expose the network's shell either.
@@ -106,9 +102,10 @@ func TestNavigation_ARelationTypeWithAHiddenEndpointDoesNotOpenTheNetwork(t *tes
 	}
 }
 
-// TestNavigation_StatisticsCountOnlyReadableRelationAndActionTypes keeps the shell's counts equal
-// to what the relation and action type lists will show.
-func TestNavigation_StatisticsCountOnlyReadableRelationAndActionTypes(t *testing.T) {
+// TestNavigation_StatisticsKeepDirectlyReadableActions keeps action type navigation independent
+// from the permissions on the action's bound object type, while relation types still require both
+// endpoints to be visible.
+func TestNavigation_StatisticsKeepDirectlyReadableActions(t *testing.T) {
 	f := newNavigationFixture(t, []string{"ot-a", "ot-query"}, nil)
 	f.expectNetwork(
 		child(interfaces.RESOURCE_TYPE_OBJECT_TYPE, "ot-a"),
@@ -124,9 +121,6 @@ func TestNavigation_StatisticsCountOnlyReadableRelationAndActionTypes(t *testing
 			navRelation("rt-out", "ot-a", "ot-hidden"),
 			// rt-gone has no definition any more, so its references cannot be checked.
 		}, nil)
-	f.ata.EXPECT().GetActionTypesByIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, gomock.Any()).
-		Return([]*interfaces.ActionType{navAction("at-in", "ot-query"), navAction("at-hidden", "ot-hidden")}, nil)
-
 	kn, err := f.service.GetKNByID(context.Background(), "kn1", interfaces.MAIN_BRANCH, "")
 	if err != nil {
 		t.Fatalf("GetKNByID() error = %v", err)
@@ -138,8 +132,8 @@ func TestNavigation_StatisticsCountOnlyReadableRelationAndActionTypes(t *testing
 	if err != nil {
 		t.Fatalf("GetStatByKN() error = %v", err)
 	}
-	if stats.OtTotal != 1 || stats.RtTotal != 1 || stats.AtTotal != 1 {
-		t.Fatalf("navigation statistics = ot %d, rt %d, at %d; want 1, 1, 1", stats.OtTotal, stats.RtTotal, stats.AtTotal)
+	if stats.OtTotal != 1 || stats.RtTotal != 1 || stats.AtTotal != 2 {
+		t.Fatalf("navigation statistics = ot %d, rt %d, at %d; want 1, 1, 2", stats.OtTotal, stats.RtTotal, stats.AtTotal)
 	}
 }
 
