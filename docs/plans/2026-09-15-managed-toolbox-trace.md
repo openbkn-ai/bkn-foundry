@@ -35,40 +35,20 @@
 - Automatic Trace generation for direct generic Execution Factory Toolbox API
   calls. That is a separate cross-service contract.
 
-### Task 4: Verify Execution Factory receives the trusted parent operation
+## #1161 completion remains a separate cross-service plan
 
-**Files:**
-- Test: `adp/context-loader/agent-retrieval/server/drivenadapters/operator_integration_tools_test.go`
-- Test: `adp/execution-factory/operator-integration/server/logics/toolbox/function_runtime_headers_test.go`
+This PR deliberately stops at the managed ContextLoader boundary and does not
+claim to create an independently readable function Operation. Before #1161 can
+close, its dedicated design and execution plan must cover:
 
-**Step 1: Write a failing boundary test**
+- a distinct Execution Factory function Operation linked to the managed
+  ContextLoader Interaction and upstream source Receipt/Operation;
+- authoritative owner checks and explicit, versioned invocation context;
+- success, target failure, permission rejection, and idempotent replay;
+- an E2E scenario spanning two Interactions in one Conversation, function Trace
+  readback, and finalization.
 
-Execute through ContextLoader with a lifecycle context and assert only the server-captured conversation, interaction and parent operation headers reach the platform Function runtime. Assert body-supplied identifiers cannot replace them.
-
-**Step 2: Run focused tests**
-
-Run the respective Go package tests.
-
-**Step 3: Make only any wiring correction proved necessary**
-
-The current forwarding path may already satisfy the test. Do not edit Execution Factory unless the boundary test demonstrates a missing trusted value.
-
-**Step 4: Re-run focused tests and commit only changed files**
-
-### Task 5: Add an end-to-end readback scenario and documentation
-
-**Files:**
-- Modify: `bkn-sdk/test/e2e/bkn-trace-managed-business-interaction.mjs`
-- Modify: `docs/plans/2026-09-15-managed-toolbox-trace-design.md`
-
-**Step 1: Add E2E coverage**
-
-Start a conversation, run upstream managed queries, invoke a Toolbox Function, read its operation and receipt using returned IDs, then start a second interaction in the same conversation. Include success, rejection and replay; assert one terminal operation per idempotency key.
-
-**Step 2: Run relevant test suites**
-
-Run ContextLoader MCP package tests, Execution Factory Toolbox package tests, SDK unit tests, and the available managed-business E2E suite.
-
-**Step 3: Update design status and commit**
-
-Record actual verification and limitations. Keep direct generic Toolbox execution explicitly out of scope.
+The existing `bkn-trace-managed-business-interaction.mjs` validates managed
+ContextLoader queries and a rejected query, but does not execute a provisioned
+Toolbox function or read a distinct function Operation. It is therefore not
+presented as #1161 acceptance evidence.
