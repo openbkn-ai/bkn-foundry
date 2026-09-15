@@ -28,8 +28,6 @@ type ToolBoxHandler interface {
 	CreateTool(c *gin.Context)
 	UpdateTool(c *gin.Context)
 	QueryTool(c *gin.Context)
-	// QueryToolDefinitionAsProxy serves a managed knowledge-network proxy only.
-	QueryToolDefinitionAsProxy(c *gin.Context)
 	DeleteBoxTool(c *gin.Context)
 	QueryBoxToolPage(c *gin.Context)
 	UpdateToolStatus(c *gin.Context)

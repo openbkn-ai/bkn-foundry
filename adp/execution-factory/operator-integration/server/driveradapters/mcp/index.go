@@ -55,9 +55,6 @@ type MCPPrivateHandler interface {
 	GetMCPTools(c *gin.Context)
 	// CallMCPTool calls MCP service tool.
 	CallMCPTool(c *gin.Context)
-	// GetMCPToolDefinitionAsProxy reads one tool's contract for a managed
-	// knowledge-network proxy only.
-	GetMCPToolDefinitionAsProxy(c *gin.Context)
 	// QueryMCPServerDetail Query MCP service details. Shared with the public face; the per-caller
 	// permission check inside it applies on the public face only.
 	QueryMCPServerDetail(c *gin.Context)

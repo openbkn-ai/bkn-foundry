@@ -248,9 +248,9 @@ const (
 	BKN_DATASET_ID   = "adp_bkn_concept_dataset"
 	BKN_DATASET_NAME = "adp_bkn_concept_dataset"
 
-	FIELD_KEYWORD_PROPERTY_IGNORE_ABOVE            = "ignore_above"
-	FIELD_KEYWORD_PROPERTY_IGNORE_ABOVE_VALUE      = 1024
-	FIELD_KEYWORD_PROPERTY_IGNORE_ABOVE_VALUE_8192 = 8192
+	FIELD_KEYWORD_PROPERTY_IGNORE_ABOVE           = "ignore_above"
+	FIELD_KEYWORD_PROPERTY_IGNORE_ABOVE_VALUE     = 1024
+	FIELD_KEYWORD_PROPERTY_IGNORE_ABOVE_MAX_VALUE = 8191
 )
 
 var (
@@ -711,7 +711,7 @@ func GetBKNConceptSchemaDefinition(vectorDim int, defaultSmallModelEnabled bool)
 					Description: "BKN对象类概念的逻辑属性参数的关键词特征",
 					IsDefault:   true,
 					IsNative:    false,
-					Config:      map[string]any{FIELD_KEYWORD_PROPERTY_IGNORE_ABOVE: FIELD_KEYWORD_PROPERTY_IGNORE_ABOVE_VALUE_8192},
+					Config:      map[string]any{FIELD_KEYWORD_PROPERTY_IGNORE_ABOVE: FIELD_KEYWORD_PROPERTY_IGNORE_ABOVE_MAX_VALUE},
 				},
 			},
 		},
@@ -883,7 +883,7 @@ func GetBKNConceptSchemaDefinition(vectorDim int, defaultSmallModelEnabled bool)
 					Description: "BKN行动类概念触发条件配置的关键词特征",
 					IsDefault:   true,
 					IsNative:    false,
-					Config:      map[string]any{FIELD_KEYWORD_PROPERTY_IGNORE_ABOVE: FIELD_KEYWORD_PROPERTY_IGNORE_ABOVE_VALUE_8192},
+					Config:      map[string]any{FIELD_KEYWORD_PROPERTY_IGNORE_ABOVE: FIELD_KEYWORD_PROPERTY_IGNORE_ABOVE_MAX_VALUE},
 				},
 			},
 		},
@@ -925,7 +925,7 @@ func GetBKNConceptSchemaDefinition(vectorDim int, defaultSmallModelEnabled bool)
 					Description: "BKN行动类概念的参数的关键词特征",
 					IsDefault:   true,
 					IsNative:    false,
-					Config:      map[string]any{FIELD_KEYWORD_PROPERTY_IGNORE_ABOVE: FIELD_KEYWORD_PROPERTY_IGNORE_ABOVE_VALUE_8192},
+					Config:      map[string]any{FIELD_KEYWORD_PROPERTY_IGNORE_ABOVE: FIELD_KEYWORD_PROPERTY_IGNORE_ABOVE_MAX_VALUE},
 				},
 			},
 		},

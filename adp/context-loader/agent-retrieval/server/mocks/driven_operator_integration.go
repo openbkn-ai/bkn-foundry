@@ -335,58 +335,58 @@ func (mr *MockKNProxyOperatorMockRecorder) ExecutePublishedToolAsProxy(ctx, req,
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecutePublishedToolAsProxy", reflect.TypeOf((*MockKNProxyOperator)(nil).ExecutePublishedToolAsProxy), ctx, req, proxy)
 }
 
-// MockKNProxyDefinitionReader is a mock of KNProxyDefinitionReader interface.
-type MockKNProxyDefinitionReader struct {
+// MockToolDetailReaderAs is a mock of ToolDetailReaderAs interface.
+type MockToolDetailReaderAs struct {
 	ctrl     *gomock.Controller
-	recorder *MockKNProxyDefinitionReaderMockRecorder
+	recorder *MockToolDetailReaderAsMockRecorder
 	isgomock struct{}
 }
 
-// MockKNProxyDefinitionReaderMockRecorder is the mock recorder for MockKNProxyDefinitionReader.
-type MockKNProxyDefinitionReaderMockRecorder struct {
-	mock *MockKNProxyDefinitionReader
+// MockToolDetailReaderAsMockRecorder is the mock recorder for MockToolDetailReaderAs.
+type MockToolDetailReaderAsMockRecorder struct {
+	mock *MockToolDetailReaderAs
 }
 
-// NewMockKNProxyDefinitionReader creates a new mock instance.
-func NewMockKNProxyDefinitionReader(ctrl *gomock.Controller) *MockKNProxyDefinitionReader {
-	mock := &MockKNProxyDefinitionReader{ctrl: ctrl}
-	mock.recorder = &MockKNProxyDefinitionReaderMockRecorder{mock}
+// NewMockToolDetailReaderAs creates a new mock instance.
+func NewMockToolDetailReaderAs(ctrl *gomock.Controller) *MockToolDetailReaderAs {
+	mock := &MockToolDetailReaderAs{ctrl: ctrl}
+	mock.recorder = &MockToolDetailReaderAsMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockKNProxyDefinitionReader) EXPECT() *MockKNProxyDefinitionReaderMockRecorder {
+func (m *MockToolDetailReaderAs) EXPECT() *MockToolDetailReaderAsMockRecorder {
 	return m.recorder
 }
 
-// GetMCPToolDefinitionAsProxy mocks base method.
-func (m *MockKNProxyDefinitionReader) GetMCPToolDefinitionAsProxy(ctx context.Context, req *interfaces.GetMCPToolDetailRequest, proxy *interfaces.KNProxyExecution) (*interfaces.GetMCPToolDetailResponse, error) {
+// GetMCPToolDetailAs mocks base method.
+func (m *MockToolDetailReaderAs) GetMCPToolDetailAs(ctx context.Context, account interfaces.AccountIdentity, req *interfaces.GetMCPToolDetailRequest) (*interfaces.GetMCPToolDetailResponse, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetMCPToolDefinitionAsProxy", ctx, req, proxy)
+	ret := m.ctrl.Call(m, "GetMCPToolDetailAs", ctx, account, req)
 	ret0, _ := ret[0].(*interfaces.GetMCPToolDetailResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetMCPToolDefinitionAsProxy indicates an expected call of GetMCPToolDefinitionAsProxy.
-func (mr *MockKNProxyDefinitionReaderMockRecorder) GetMCPToolDefinitionAsProxy(ctx, req, proxy any) *gomock.Call {
+// GetMCPToolDetailAs indicates an expected call of GetMCPToolDetailAs.
+func (mr *MockToolDetailReaderAsMockRecorder) GetMCPToolDetailAs(ctx, account, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMCPToolDefinitionAsProxy", reflect.TypeOf((*MockKNProxyDefinitionReader)(nil).GetMCPToolDefinitionAsProxy), ctx, req, proxy)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMCPToolDetailAs", reflect.TypeOf((*MockToolDetailReaderAs)(nil).GetMCPToolDetailAs), ctx, account, req)
 }
 
-// GetToolDefinitionAsProxy mocks base method.
-func (m *MockKNProxyDefinitionReader) GetToolDefinitionAsProxy(ctx context.Context, req *interfaces.GetToolDetailRequest, proxy *interfaces.KNProxyExecution) (*interfaces.GetToolDetailResponse, error) {
+// GetToolDetailAs mocks base method.
+func (m *MockToolDetailReaderAs) GetToolDetailAs(ctx context.Context, account interfaces.AccountIdentity, req *interfaces.GetToolDetailRequest) (*interfaces.GetToolDetailResponse, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetToolDefinitionAsProxy", ctx, req, proxy)
+	ret := m.ctrl.Call(m, "GetToolDetailAs", ctx, account, req)
 	ret0, _ := ret[0].(*interfaces.GetToolDetailResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetToolDefinitionAsProxy indicates an expected call of GetToolDefinitionAsProxy.
-func (mr *MockKNProxyDefinitionReaderMockRecorder) GetToolDefinitionAsProxy(ctx, req, proxy any) *gomock.Call {
+// GetToolDetailAs indicates an expected call of GetToolDetailAs.
+func (mr *MockToolDetailReaderAsMockRecorder) GetToolDetailAs(ctx, account, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetToolDefinitionAsProxy", reflect.TypeOf((*MockKNProxyDefinitionReader)(nil).GetToolDefinitionAsProxy), ctx, req, proxy)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetToolDetailAs", reflect.TypeOf((*MockToolDetailReaderAs)(nil).GetToolDetailAs), ctx, account, req)
 }
 
 // MockSkillAccountReader is a mock of SkillAccountReader interface.

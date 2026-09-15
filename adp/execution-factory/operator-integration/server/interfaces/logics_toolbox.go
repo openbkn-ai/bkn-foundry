@@ -257,33 +257,6 @@ type GetToolReq struct {
 	ToolID string `uri:"tool_id" validate:"required"`
 }
 
-// GetToolDefinitionReq reads the invocation contract of one tool as a managed
-// knowledge-network proxy.
-type GetToolDefinitionReq struct {
-	BoxID  string `uri:"box_id" validate:"required"`
-	ToolID string `uri:"tool_id" validate:"required"`
-}
-
-// ToolDefinition is what a caller needs to build a tool's arguments and read
-// its result: identity, prose and the business input and output schemas.
-// Source code, service topology and authoring metadata are deliberately absent:
-// the proxy reads this on behalf of a caller that holds no grant on the tool.
-type ToolDefinition struct {
-	BoxID       string              `json:"box_id"`
-	ToolID      string              `json:"tool_id"`
-	Name        string              `json:"name"`
-	Description string              `json:"description"`
-	APISpec     *ToolDefinitionSpec `json:"api_spec"`
-}
-
-// ToolDefinitionSpec is the schema part of an APISpec.
-type ToolDefinitionSpec struct {
-	Parameters  []*Parameter `json:"parameters"`
-	RequestBody *RequestBody `json:"request_body"`
-	Responses   []*Response  `json:"responses"`
-	Components  *Components  `json:"components"`
-}
-
 // BatchDeleteToolReq Batch delete tool request.
 type BatchDeleteToolReq struct {
 	UserID  string   `header:"user_id" validate:"required"` // User ID, internal use.
@@ -469,9 +442,6 @@ type IToolService interface {
 	CreateTool(ctx context.Context, req *CreateToolReq) (resp *CreateToolResp, err error)
 	UpdateTool(ctx context.Context, req *UpdateToolReq) (resp *UpdateToolResp, err error)
 	GetBoxTool(ctx context.Context, req *GetToolReq) (resp *ToolInfo, err error)
-	// GetToolDefinitionAsProxy reads one tool's invocation contract for the managed
-	// proxy of the knowledge network whose action type is bound to it.
-	GetToolDefinitionAsProxy(ctx context.Context, req *GetToolDefinitionReq) (resp *ToolDefinition, err error)
 	DeleteBoxTool(ctx context.Context, req *BatchDeleteToolReq) (resp *BatchDeleteToolResp, err error)
 	QueryToolList(ctx context.Context, req *QueryToolListReq) (resp *QueryToolListResp, err error)
 	UpdateToolStatus(ctx context.Context, req *UpdateToolStatusReq) (resp []*ToolStatus, err error)
