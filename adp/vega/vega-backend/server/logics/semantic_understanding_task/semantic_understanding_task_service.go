@@ -435,7 +435,7 @@ func (suts *semanticUnderstandingTaskService) DeleteByIDs(ctx context.Context, i
 		uniqueIDs = append(uniqueIDs, id)
 	}
 
-	tasks, err := suts.suta.GetByIDs(ctx, uniqueIDs)
+	tasksByID, err := suts.suta.GetByIDs(ctx, uniqueIDs)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get semantic understanding tasks failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_FilterResourcesFailed).
@@ -444,16 +444,21 @@ func (suts *semanticUnderstandingTaskService) DeleteByIDs(ctx context.Context, i
 
 	// Checked before anything is deleted: a batch is one transaction, so one
 	// unauthorized id stops the whole request rather than deleting the rest.
-	for _, task := range tasks {
+	for _, id := range uniqueIDs {
+		task := tasksByID[id]
+		if task == nil {
+			continue
+		}
 		if err := suts.checkTaskPermission(ctx, task, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
 			span.SetStatus(codes.Error, "Permission denied")
 			return err
 		}
 	}
 
-	toDelete := make([]string, 0, len(tasks))
+	toDelete := make([]string, 0, len(tasksByID))
 	runningIDs := make([]string, 0)
-	for _, task := range tasks {
+	for _, id := range uniqueIDs {
+		task := tasksByID[id]
 		if task == nil {
 			continue
 		}
@@ -469,22 +474,18 @@ func (suts *semanticUnderstandingTaskService) DeleteByIDs(ctx context.Context, i
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_SemanticUnderstandingTask_HasRunningExecution).
 			WithErrorDetails(map[string]any{"running_ids": runningIDs})
 	}
-	if len(tasks) != len(uniqueIDs) && !ignoreMissing {
-		taskByID := make(map[string]struct{}, len(tasks))
-		for _, task := range tasks {
-			if task != nil {
-				taskByID[task.ID] = struct{}{}
-			}
-		}
-		missingIDs := make([]string, 0, len(uniqueIDs)-len(tasks))
+	if !ignoreMissing && len(tasksByID) != len(uniqueIDs) {
+		missingIDs := make([]string, 0, len(uniqueIDs))
 		for _, id := range uniqueIDs {
-			if _, ok := taskByID[id]; !ok {
+			if tasksByID[id] == nil {
 				missingIDs = append(missingIDs, id)
 			}
 		}
-		span.SetStatus(codes.Error, "Some semantic understanding tasks not found")
-		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_SemanticUnderstandingTask_NotFound).
-			WithErrorDetails(map[string]any{"missing_ids": missingIDs})
+		if len(missingIDs) > 0 {
+			span.SetStatus(codes.Error, "Some semantic understanding tasks not found")
+			return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_SemanticUnderstandingTask_NotFound).
+				WithErrorDetails(map[string]any{"missing_ids": missingIDs})
+		}
 	}
 
 	if _, err := suts.suta.DeleteByIDs(ctx, toDelete); err != nil {

@@ -266,15 +266,15 @@ func TestResourceAccessGetPermissionRefsByIDs(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_catalog_id FROM t_resource WHERE f_id IN (?,?)")).
 			WithArgs("resource-1", "resource-2").
 			WillReturnRows(sqlmock.NewRows([]string{"f_id", "f_catalog_id"}).
-				AddRow("resource-1", "catalog-1").
-				AddRow("resource-2", "catalog-2"))
+				AddRow("resource-2", "catalog-2").
+				AddRow("resource-1", "catalog-1"))
 
 		got, err := access.GetPermissionRefsByIDs(context.Background(), []string{"resource-1", "resource-2"})
 
 		require.NoError(t, err)
-		assert.Equal(t, []interfaces.ResourcePermissionRef{
-			{ResourceID: "resource-1", CatalogID: "catalog-1"},
-			{ResourceID: "resource-2", CatalogID: "catalog-2"},
+		assert.Equal(t, map[string]interfaces.ResourcePermissionRef{
+			"resource-1": {ResourceID: "resource-1", CatalogID: "catalog-1"},
+			"resource-2": {ResourceID: "resource-2", CatalogID: "catalog-2"},
 		}, got)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})

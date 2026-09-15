@@ -242,8 +242,8 @@ func TestCheckResourceOrCatalogMapsInactiveAccountToForbidden(t *testing.T) {
 func TestFilterResourcePermissionsMapsInactiveAccountToEmpty(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	access := vmock.NewMockResourceAccess(ctrl)
-	access.EXPECT().GetPermissionRefsByIDs(gomock.Any(), []string{"resource-1"}).Return([]interfaces.ResourcePermissionRef{
-		{ResourceID: "resource-1", CatalogID: "catalog-1"},
+	access.EXPECT().GetPermissionRefsByIDs(gomock.Any(), []string{"resource-1"}).Return(map[string]interfaces.ResourcePermissionRef{
+		"resource-1": {ResourceID: "resource-1", CatalogID: "catalog-1"},
 	}, nil)
 	key := localDecisionKey{interfaces.AUTH_RESOURCE_TYPE_RESOURCE, "resource-1", interfaces.OPERATION_TYPE_VIEW_DETAIL}
 	stub := &localPermissionServiceStub{errors: map[localDecisionKey]error{
@@ -262,11 +262,11 @@ func TestLocalFilterResourcePermissionsUsesFinalDecisions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	access := vmock.NewMockResourceAccess(ctrl)
 	ids := []string{"resource-deny", "resource-allow", "resource-wild-deny", "resource-wild-none"}
-	access.EXPECT().GetPermissionRefsByIDs(gomock.Any(), ids).Return([]interfaces.ResourcePermissionRef{
-		{ResourceID: "resource-deny", CatalogID: "catalog-allow"},
-		{ResourceID: "resource-allow", CatalogID: "catalog-deny"},
-		{ResourceID: "resource-wild-deny", CatalogID: "catalog-deny"},
-		{ResourceID: "resource-wild-none", CatalogID: "catalog-none"},
+	access.EXPECT().GetPermissionRefsByIDs(gomock.Any(), ids).Return(map[string]interfaces.ResourcePermissionRef{
+		"resource-deny":      {ResourceID: "resource-deny", CatalogID: "catalog-allow"},
+		"resource-allow":     {ResourceID: "resource-allow", CatalogID: "catalog-deny"},
+		"resource-wild-deny": {ResourceID: "resource-wild-deny", CatalogID: "catalog-deny"},
+		"resource-wild-none": {ResourceID: "resource-wild-none", CatalogID: "catalog-none"},
 	}, nil)
 	view := interfaces.OPERATION_TYPE_VIEW_DETAIL
 	stub := &localPermissionServiceStub{decisions: map[localDecisionKey]interfaces.PermissionOperationDecision{
@@ -286,13 +286,14 @@ func TestLocalFilterResourcePermissionsUsesFinalDecisions(t *testing.T) {
 	assert.Equal(t, []string{view}, got["resource-allow"].Operations)
 	assert.Equal(t, []string{view}, got["resource-wild-none"].Operations)
 	assert.Len(t, stub.batchCalls, 2, "batch calls must scale by resource type, not by resource count")
+	assert.Equal(t, []string{"catalog-allow", "catalog-deny", "catalog-none"}, stub.batchCalls[1].ResourceIDs)
 }
 
 func TestLocalFilterResourcePermissionsEnforcesRequirements(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	access := vmock.NewMockResourceAccess(ctrl)
-	access.EXPECT().GetPermissionRefsByIDs(gomock.Any(), []string{"resource-1"}).Return([]interfaces.ResourcePermissionRef{
-		{ResourceID: "resource-1", CatalogID: "catalog-1"},
+	access.EXPECT().GetPermissionRefsByIDs(gomock.Any(), []string{"resource-1"}).Return(map[string]interfaces.ResourcePermissionRef{
+		"resource-1": {ResourceID: "resource-1", CatalogID: "catalog-1"},
 	}, nil)
 	stub := &localPermissionServiceStub{decisions: map[localDecisionKey]interfaces.PermissionOperationDecision{
 		{interfaces.AUTH_RESOURCE_TYPE_CATALOG, "catalog-1", interfaces.OPERATION_TYPE_RESOURCE_MANAGE}: localDecision(interfaces.PermissionDecisionAllow, interfaces.PermissionBasisDirect,

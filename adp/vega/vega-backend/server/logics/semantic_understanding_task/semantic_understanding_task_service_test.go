@@ -893,9 +893,9 @@ func TestSemanticUnderstandingTaskServiceDeleteByIDs(t *testing.T) {
 
 		taskAccess.EXPECT().
 			GetByIDs(gomock.Any(), []string{"task-1", "missing", "task-2"}).
-			Return([]*interfaces.SemanticUnderstandingTask{
-				{ID: "task-1", Status: interfaces.SemanticUnderstandingTaskStatusCompleted},
-				{ID: "task-2", Status: interfaces.SemanticUnderstandingTaskStatusFailed},
+			Return(map[string]*interfaces.SemanticUnderstandingTask{
+				"task-1": {ID: "task-1", Status: interfaces.SemanticUnderstandingTaskStatusCompleted},
+				"task-2": {ID: "task-2", Status: interfaces.SemanticUnderstandingTaskStatusFailed},
 			}, nil)
 		taskAccess.EXPECT().
 			DeleteByIDs(gomock.Any(), []string{"task-1", "task-2"}).
@@ -921,9 +921,9 @@ func TestSemanticUnderstandingTaskServiceDeleteByIDs(t *testing.T) {
 
 		taskAccess.EXPECT().
 			GetByIDs(gomock.Any(), []string{"task-1", "task-2"}).
-			Return([]*interfaces.SemanticUnderstandingTask{
-				{ID: "task-1", Status: interfaces.SemanticUnderstandingTaskStatusPending},
-				{ID: "task-2", Status: interfaces.SemanticUnderstandingTaskStatusCompleted},
+			Return(map[string]*interfaces.SemanticUnderstandingTask{
+				"task-1": {ID: "task-1", Status: interfaces.SemanticUnderstandingTaskStatusPending},
+				"task-2": {ID: "task-2", Status: interfaces.SemanticUnderstandingTaskStatusCompleted},
 			}, nil)
 
 		err := service.DeleteByIDs(context.Background(), []string{"task-1", "task-2"}, false)
@@ -947,8 +947,8 @@ func TestSemanticUnderstandingTaskServiceDeleteByIDs(t *testing.T) {
 
 		taskAccess.EXPECT().
 			GetByIDs(gomock.Any(), []string{"task-1", "missing"}).
-			Return([]*interfaces.SemanticUnderstandingTask{
-				{ID: "task-1", Status: interfaces.SemanticUnderstandingTaskStatusCompleted},
+			Return(map[string]*interfaces.SemanticUnderstandingTask{
+				"task-1": {ID: "task-1", Status: interfaces.SemanticUnderstandingTaskStatusCompleted},
 			}, nil)
 
 		err := service.DeleteByIDs(context.Background(), []string{"task-1", "missing"}, false)

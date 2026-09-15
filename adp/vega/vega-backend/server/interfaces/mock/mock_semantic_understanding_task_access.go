@@ -102,10 +102,10 @@ func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) GetByID(ctx, id any) 
 }
 
 // GetByIDs mocks base method.
-func (m *MockSemanticUnderstandingTaskAccess) GetByIDs(ctx context.Context, ids []string) ([]*interfaces.SemanticUnderstandingTask, error) {
+func (m *MockSemanticUnderstandingTaskAccess) GetByIDs(ctx context.Context, ids []string) (map[string]*interfaces.SemanticUnderstandingTask, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetByIDs", ctx, ids)
-	ret0, _ := ret[0].([]*interfaces.SemanticUnderstandingTask)
+	ret0, _ := ret[0].(map[string]*interfaces.SemanticUnderstandingTask)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

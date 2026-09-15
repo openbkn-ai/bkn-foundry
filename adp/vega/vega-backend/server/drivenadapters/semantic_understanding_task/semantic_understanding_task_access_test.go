@@ -82,15 +82,15 @@ func TestSemanticUnderstandingTaskAccessGetByIDs(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT "+joinSemanticUnderstandingTaskColumns()+" FROM t_semantic_understanding_task WHERE f_id IN (?,?)")).
 			WithArgs(task1.ID, task2.ID).
 			WillReturnRows(sqlmock.NewRows(semanticUnderstandingTaskColumns()).
-				AddRow(semanticUnderstandingTaskRowValues(task1)...).
-				AddRow(semanticUnderstandingTaskRowValues(task2)...))
+				AddRow(semanticUnderstandingTaskRowValues(task2)...).
+				AddRow(semanticUnderstandingTaskRowValues(task1)...))
 
 		got, err := access.GetByIDs(context.Background(), []string{task1.ID, task2.ID})
 
 		require.NoError(t, err)
 		require.Len(t, got, 2)
-		assert.Equal(t, task1.ID, got[0].ID)
-		assert.Equal(t, task2.ID, got[1].ID)
+		assert.Equal(t, task1.ID, got[task1.ID].ID)
+		assert.Equal(t, task2.ID, got[task2.ID].ID)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 

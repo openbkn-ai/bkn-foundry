@@ -160,10 +160,10 @@ func (mr *MockResourceAccessMockRecorder) GetByName(ctx, catalogID, name any) *g
 }
 
 // GetPermissionRefsByIDs mocks base method.
-func (m *MockResourceAccess) GetPermissionRefsByIDs(ctx context.Context, ids []string) ([]interfaces.ResourcePermissionRef, error) {
+func (m *MockResourceAccess) GetPermissionRefsByIDs(ctx context.Context, ids []string) (map[string]interfaces.ResourcePermissionRef, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetPermissionRefsByIDs", ctx, ids)
-	ret0, _ := ret[0].([]interfaces.ResourcePermissionRef)
+	ret0, _ := ret[0].(map[string]interfaces.ResourcePermissionRef)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

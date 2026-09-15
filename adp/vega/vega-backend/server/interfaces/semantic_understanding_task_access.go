@@ -15,7 +15,8 @@ import (
 type SemanticUnderstandingTaskAccess interface {
 	Create(ctx context.Context, task *SemanticUnderstandingTask) error
 	GetByID(ctx context.Context, id string) (*SemanticUnderstandingTask, error)
-	GetByIDs(ctx context.Context, ids []string) ([]*SemanticUnderstandingTask, error)
+	// GetByIDs retrieves semantic understanding tasks keyed by ID; no row order is guaranteed.
+	GetByIDs(ctx context.Context, ids []string) (map[string]*SemanticUnderstandingTask, error)
 	FindActiveByInputHash(ctx context.Context, scope string, inputHash string) (*SemanticUnderstandingTask, error)
 	List(ctx context.Context, params SemanticUnderstandingTaskQueryParams) ([]*SemanticUnderstandingTaskSummary, int64, error)
 	DeleteByIDs(ctx context.Context, ids []string) (int64, error)

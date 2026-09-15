@@ -402,7 +402,7 @@ func TestResourceServiceGetByID(t *testing.T) {
 			Return(map[string]interfaces.PermissionResourceOps{}, nil)
 		// 资源侧拒了会再问所属目录（#817）；目录也没批，结论不变。
 		ra.EXPECT().GetPermissionRefsByIDs(gomock.Any(), []string{"r1"}).
-			Return([]interfaces.ResourcePermissionRef{{ResourceID: "r1", CatalogID: "cat-int"}}, nil)
+			Return(map[string]interfaces.ResourcePermissionRef{"r1": {ResourceID: "r1", CatalogID: "cat-int"}}, nil)
 		ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
 			[]string{"cat-int"}, gomock.Any(), true, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{}, nil)
@@ -421,7 +421,7 @@ func TestResourceServiceGetByID(t *testing.T) {
 			Return(map[string]interfaces.PermissionResourceOps{}, nil)
 		// 同上：回落到目录，目录也没批。
 		ra.EXPECT().GetPermissionRefsByIDs(gomock.Any(), []string{"r1"}).
-			Return([]interfaces.ResourcePermissionRef{{ResourceID: "r1", CatalogID: "cat-user"}}, nil)
+			Return(map[string]interfaces.ResourcePermissionRef{"r1": {ResourceID: "r1", CatalogID: "cat-user"}}, nil)
 		ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 			[]string{"cat-user"}, gomock.Any(), true, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{}, nil)
@@ -826,7 +826,7 @@ func TestResourceServiceList(t *testing.T) {
 		// r2 资源侧被拒，回落问它所属的内部目录（#817）；目录也没批，仍然被过滤掉。
 		mockCS.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{"cat-internal": {}}, nil)
 		mockRA.EXPECT().GetPermissionRefsByIDs(gomock.Any(), []string{"r2"}).
-			Return([]interfaces.ResourcePermissionRef{{ResourceID: "r2", CatalogID: "cat-internal"}}, nil)
+			Return(map[string]interfaces.ResourcePermissionRef{"r2": {ResourceID: "r2", CatalogID: "cat-internal"}}, nil)
 		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
 			[]string{"cat-internal"}, gomock.Any(), true, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{}, nil)
@@ -1244,10 +1244,10 @@ func TestResourceServiceCreate(t *testing.T) {
 func expectDeleteGrantedByCatalog(mockRA *vmock.MockResourceAccess,
 	mockPS *vmock.MockPermissionService, ids []string, catalogID string) {
 
-	refs := make([]interfaces.ResourcePermissionRef, 0, len(ids))
+	refs := make(map[string]interfaces.ResourcePermissionRef, len(ids))
 	granted := make(map[string]interfaces.PermissionResourceOps, 1)
 	for _, id := range ids {
-		refs = append(refs, interfaces.ResourcePermissionRef{ResourceID: id, CatalogID: catalogID})
+		refs[id] = interfaces.ResourcePermissionRef{ResourceID: id, CatalogID: catalogID}
 	}
 	granted[catalogID] = interfaces.PermissionResourceOps{
 		ResourceID: catalogID,

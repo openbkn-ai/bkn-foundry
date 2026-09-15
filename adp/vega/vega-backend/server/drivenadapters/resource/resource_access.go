@@ -465,14 +465,14 @@ func (ra *resourceAccess) GetSummariesByIDs(ctx context.Context, ids []string) (
 	return summaries, nil
 }
 
-// GetPermissionRefsByIDs retrieves the resource-to-catalog relations by IDs.
-func (ra *resourceAccess) GetPermissionRefsByIDs(ctx context.Context, ids []string) ([]interfaces.ResourcePermissionRef, error) {
+// GetPermissionRefsByIDs retrieves resource-to-catalog relations keyed by resource ID.
+func (ra *resourceAccess) GetPermissionRefsByIDs(ctx context.Context, ids []string) (map[string]interfaces.ResourcePermissionRef, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query resource catalog refs by IDs")
 	defer span.End()
 
 	if len(ids) == 0 {
 		span.SetStatus(codes.Ok, "")
-		return []interfaces.ResourcePermissionRef{}, nil
+		return map[string]interfaces.ResourcePermissionRef{}, nil
 	}
 
 	sqlStr, vals, err := sq.Select(
@@ -492,14 +492,14 @@ func (ra *resourceAccess) GetPermissionRefsByIDs(ctx context.Context, ids []stri
 	}
 	defer func() { _ = rows.Close() }()
 
-	refs := make([]interfaces.ResourcePermissionRef, 0)
+	refs := make(map[string]interfaces.ResourcePermissionRef, len(ids))
 	for rows.Next() {
 		var ref interfaces.ResourcePermissionRef
 		if err := rows.Scan(&ref.ResourceID, &ref.CatalogID); err != nil {
 			span.SetStatus(codes.Error, "Scan row failed")
 			return nil, err
 		}
-		refs = append(refs, ref)
+		refs[ref.ResourceID] = ref
 	}
 	if err := rows.Err(); err != nil {
 		span.SetStatus(codes.Error, "Rows iteration failed")

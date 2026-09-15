@@ -231,12 +231,15 @@ func (suta *semanticUnderstandingTaskAccess) GetByID(ctx context.Context, id str
 	return task, nil
 }
 
-func (suta *semanticUnderstandingTaskAccess) GetByIDs(ctx context.Context, ids []string) ([]*interfaces.SemanticUnderstandingTask, error) {
+// GetByIDs retrieves semantic understanding tasks keyed by ID.
+func (suta *semanticUnderstandingTaskAccess) GetByIDs(ctx context.Context, ids []string) (map[string]*interfaces.SemanticUnderstandingTask, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Get semantic understanding tasks by IDs")
 	defer span.End()
 
+	tasks := make(map[string]*interfaces.SemanticUnderstandingTask, len(ids))
 	if len(ids) == 0 {
-		return []*interfaces.SemanticUnderstandingTask{}, nil
+		span.SetStatus(codes.Ok, "")
+		return tasks, nil
 	}
 
 	sqlStr, vals, err := sq.Select(semanticUnderstandingTaskColumns()...).
@@ -255,14 +258,13 @@ func (suta *semanticUnderstandingTaskAccess) GetByIDs(ctx context.Context, ids [
 	}
 	defer func() { _ = rows.Close() }()
 
-	tasks := []*interfaces.SemanticUnderstandingTask{}
 	for rows.Next() {
 		task, err := scanSemanticUnderstandingTask(rows)
 		if err != nil {
 			otellog.LogError(ctx, "Scan semantic understanding task row failed", err)
 			return nil, err
 		}
-		tasks = append(tasks, task)
+		tasks[task.ID] = task
 	}
 	if err := rows.Err(); err != nil {
 		otellog.LogError(ctx, "Rows iteration failed", err)

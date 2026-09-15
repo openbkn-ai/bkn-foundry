@@ -201,8 +201,8 @@ func TestMergeCatalogPermissionsFillsFromCatalog(t *testing.T) {
 	cs := vmock.NewMockCatalogService(ctrl)
 	rs := &resourceService{ps: ps, ra: ra, cs: cs}
 
-	ra.EXPECT().GetPermissionRefsByIDs(gomock.Any(), []string{"r-1"}).Return([]interfaces.ResourcePermissionRef{
-		{ResourceID: "r-1", CatalogID: "c-1"},
+	ra.EXPECT().GetPermissionRefsByIDs(gomock.Any(), []string{"r-1"}).Return(map[string]interfaces.ResourcePermissionRef{
+		"r-1": {ResourceID: "r-1", CatalogID: "c-1"},
 	}, nil)
 	cs.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{}, nil)
 	ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{"c-1"},
@@ -220,6 +220,32 @@ func TestMergeCatalogPermissionsFillsFromCatalog(t *testing.T) {
 	assert.Equal(t, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, entry.Operations)
 }
 
+func TestMergeCatalogPermissionsUsesRequestedResourceOrder(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ps := vmock.NewMockPermissionService(ctrl)
+	ra := vmock.NewMockResourceAccess(ctrl)
+	cs := vmock.NewMockCatalogService(ctrl)
+	rs := &resourceService{ps: ps, ra: ra, cs: cs}
+
+	ra.EXPECT().GetPermissionRefsByIDs(gomock.Any(), []string{"r-2", "r-1", "r-3"}).Return(map[string]interfaces.ResourcePermissionRef{
+		"r-1": {ResourceID: "r-1", CatalogID: "c-1"},
+		"r-2": {ResourceID: "r-2", CatalogID: "c-2"},
+		"r-3": {ResourceID: "r-3", CatalogID: "c-2"},
+	}, nil)
+	cs.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{}, nil)
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{"c-2", "c-1"},
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, gomock.Any()).
+		Return(map[string]interfaces.PermissionResourceOps{
+			"c-1": {ResourceID: "c-1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+			"c-2": {ResourceID: "c-2", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+		}, nil)
+
+	result := map[string]interfaces.PermissionResourceOps{}
+	require.NoError(t, rs.mergeCatalogPermissions(context.Background(), []string{"r-2", "r-1", "r-3"},
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, result))
+	assert.Len(t, result, 3)
+}
+
 // TestMergeCatalogPermissionsLeavesUngrantedCatalogsAlone: 目录也没批的表不会
 // 凭空出现——回落只放宽到「目录给了什么」为止。
 func TestMergeCatalogPermissionsLeavesUngrantedCatalogsAlone(t *testing.T) {
@@ -229,8 +255,8 @@ func TestMergeCatalogPermissionsLeavesUngrantedCatalogsAlone(t *testing.T) {
 	cs := vmock.NewMockCatalogService(ctrl)
 	rs := &resourceService{ps: ps, ra: ra, cs: cs}
 
-	ra.EXPECT().GetPermissionRefsByIDs(gomock.Any(), gomock.Any()).Return([]interfaces.ResourcePermissionRef{
-		{ResourceID: "r-1", CatalogID: "c-1"},
+	ra.EXPECT().GetPermissionRefsByIDs(gomock.Any(), gomock.Any()).Return(map[string]interfaces.ResourcePermissionRef{
+		"r-1": {ResourceID: "r-1", CatalogID: "c-1"},
 	}, nil)
 	cs.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{}, nil)
 	ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -253,8 +279,8 @@ func TestMergeCatalogPermissionsCarriesEveryMappedOp(t *testing.T) {
 	cs := vmock.NewMockCatalogService(ctrl)
 	rs := &resourceService{ps: ps, ra: ra, cs: cs}
 
-	ra.EXPECT().GetPermissionRefsByIDs(gomock.Any(), []string{"r-1"}).Return([]interfaces.ResourcePermissionRef{
-		{ResourceID: "r-1", CatalogID: "c-1"},
+	ra.EXPECT().GetPermissionRefsByIDs(gomock.Any(), []string{"r-1"}).Return(map[string]interfaces.ResourcePermissionRef{
+		"r-1": {ResourceID: "r-1", CatalogID: "c-1"},
 	}, nil)
 	cs.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{}, nil)
 	ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{"c-1"},

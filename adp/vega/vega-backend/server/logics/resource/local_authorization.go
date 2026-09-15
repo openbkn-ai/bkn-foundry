@@ -141,19 +141,18 @@ func (rs *resourceService) localFilterResourcePermissions(ctx context.Context, i
 	if len(ids) == 0 {
 		return map[string]interfaces.PermissionResourceOps{}, nil
 	}
-	refs, err := rs.ra.GetPermissionRefsByIDs(ctx, ids)
+	refsByID, err := rs.ra.GetPermissionRefsByIDs(ctx, ids)
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Resource_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
-	catalogOf := make(map[string]string, len(refs))
-	catalogIDs := make([]string, 0, len(refs))
+	catalogIDs := make([]string, 0, len(refsByID))
 	seenCatalog := map[string]bool{}
-	for _, ref := range refs {
-		catalogOf[ref.ResourceID] = ref.CatalogID
-		if ref.CatalogID != "" && !seenCatalog[ref.CatalogID] {
-			seenCatalog[ref.CatalogID] = true
-			catalogIDs = append(catalogIDs, ref.CatalogID)
+	for _, id := range ids {
+		catalogID := refsByID[id].CatalogID
+		if catalogID != "" && !seenCatalog[catalogID] {
+			seenCatalog[catalogID] = true
+			catalogIDs = append(catalogIDs, catalogID)
 		}
 	}
 
@@ -170,7 +169,7 @@ func (rs *resourceService) localFilterResourcePermissions(ctx context.Context, i
 
 	result := make(map[string]interfaces.PermissionResourceOps, len(ids))
 	for _, id := range ids {
-		catalogID := catalogOf[id]
+		catalogID := refsByID[id].CatalogID
 		final := make(map[string]interfaces.PermissionOperationDecision, len(candidateOperations))
 		resolve := func(operation string) interfaces.PermissionOperationDecision {
 			resourceDecision := decisionPointer(resourceDecisions[id], operation, resourceOwnOperations[operation])

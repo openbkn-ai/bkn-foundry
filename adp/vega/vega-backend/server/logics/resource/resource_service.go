@@ -223,22 +223,21 @@ func (rs *resourceService) mergeCatalogPermissions(ctx context.Context, ids []st
 		return nil // The requested operations do not ask upward (such as authorize)
 	}
 
-	refs, err := rs.ra.GetPermissionRefsByIDs(ctx, pending)
+	refsByID, err := rs.ra.GetPermissionRefsByIDs(ctx, pending)
 	if err != nil {
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Resource_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
-	catalogOf := make(map[string]string, len(refs))
-	catalogIDs := make([]string, 0, len(refs))
+	catalogIDs := make([]string, 0, len(refsByID))
 	seenCatalog := map[string]bool{}
-	for _, ref := range refs {
-		if ref.CatalogID == "" {
+	for _, id := range pending {
+		catalogID := refsByID[id].CatalogID
+		if catalogID == "" {
 			continue
 		}
-		catalogOf[ref.ResourceID] = ref.CatalogID
-		if !seenCatalog[ref.CatalogID] {
-			seenCatalog[ref.CatalogID] = true
-			catalogIDs = append(catalogIDs, ref.CatalogID)
+		if !seenCatalog[catalogID] {
+			seenCatalog[catalogID] = true
+			catalogIDs = append(catalogIDs, catalogID)
 		}
 	}
 	if len(catalogIDs) == 0 {
@@ -286,8 +285,8 @@ func (rs *resourceService) mergeCatalogPermissions(ctx context.Context, ids []st
 	}
 
 	for _, id := range pending {
-		catalogID, ok := catalogOf[id]
-		if !ok || len(granted[catalogID]) == 0 {
+		catalogID := refsByID[id].CatalogID
+		if catalogID == "" || len(granted[catalogID]) == 0 {
 			continue
 		}
 		entry, exists := result[id]

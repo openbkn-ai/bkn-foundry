@@ -56,13 +56,16 @@ func TestSemanticTaskDeleteStopsTheWholeBatch(t *testing.T) {
 	svc := &semanticUnderstandingTaskService{suta: suta, rs: rs, cs: cs}
 
 	denied := errors.New("forbidden")
-	suta.EXPECT().GetByIDs(gomock.Any(), []string{"task-1"}).
-		Return([]*interfaces.SemanticUnderstandingTask{resourceScopedTask()}, nil)
-	cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
+	suta.EXPECT().GetByIDs(gomock.Any(), []string{"task-2", "task-1"}).
+		Return(map[string]*interfaces.SemanticUnderstandingTask{
+			"task-1": {ID: "task-1", CatalogID: "cat-1"},
+			"task-2": {ID: "task-2", CatalogID: "cat-2"},
+		}, nil)
+	cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-2",
 		interfaces.OPERATION_TYPE_TASK_MANAGE).Return(denied)
 	// suta.DeleteByIDs 未被期望。
 
-	assert.Same(t, denied, svc.DeleteByIDs(context.Background(), []string{"task-1"}, false))
+	assert.Same(t, denied, svc.DeleteByIDs(context.Background(), []string{"task-2", "task-1"}, false))
 }
 
 // TestSemanticTaskDelegatesToTheCatalogCheck: 判定统一交给 CatalogService，包括
@@ -76,7 +79,7 @@ func TestSemanticTaskDelegatesToTheCatalogCheck(t *testing.T) {
 	svc := &semanticUnderstandingTaskService{suta: suta, rs: rs, cs: cs}
 
 	suta.EXPECT().GetByIDs(gomock.Any(), gomock.Any()).
-		Return([]*interfaces.SemanticUnderstandingTask{resourceScopedTask()}, nil)
+		Return(map[string]*interfaces.SemanticUnderstandingTask{"task-1": resourceScopedTask()}, nil)
 	cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
 		interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 	suta.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any()).Return(int64(1), nil)
