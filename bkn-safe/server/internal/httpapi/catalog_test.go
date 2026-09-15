@@ -62,3 +62,18 @@ func TestAuthorizationCatalogReturnsPersistedContract(t *testing.T) {
 		t.Fatalf("modify = %#v", modify)
 	}
 }
+
+func TestMeAuthorizationCatalogRequiresToken(t *testing.T) {
+	r, _, db, _ := newAdminServer(t)
+	if err := db.Create(&model.ResourceType{ID: "catalog", Name: "Catalog"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	const path = "/api/safe/v1/me/authorization-catalog"
+	if w := tokReq(t, r, http.MethodGet, path, nil, ""); w.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated catalog = %d, want %d", w.Code, http.StatusUnauthorized)
+	}
+	if w := tokReq(t, r, http.MethodGet, path, nil, "catalog-reader"); w.Code != http.StatusOK {
+		t.Fatalf("authenticated catalog = %d body=%s", w.Code, w.Body.String())
+	}
+}

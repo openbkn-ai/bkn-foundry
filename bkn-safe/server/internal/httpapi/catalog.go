@@ -14,16 +14,26 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
-// registerAuthorizationCatalog exposes the catalog that is currently effective
-// in bkn-safe's database.  Consumers must use this endpoint rather than carry
-// a second, hand-maintained copy of authorization-catalog.json: seed may change the catalog
-// during an upgrade and the enforcer evaluates these persisted rows.
-//
-// The authz face is ClusterIP-internal.  The endpoint intentionally contains no
-// grants, principals, or concrete resource ids, so it is safe for a domain
-// service to proxy to its authorization UI.
+// registerAuthorizationCatalog exposes the catalog on the ClusterIP-only authz
+// surface for service-to-service callers. Browser callers must use
+// registerMeAuthorizationCatalog instead; it is protected by RequireUser.
 func registerAuthorizationCatalog(g *gin.RouterGroup, db *gorm.DB) {
-	g.GET("/catalog", func(c *gin.Context) {
+	g.GET("/catalog", authorizationCatalogHandler(db))
+}
+
+// registerMeAuthorizationCatalog exposes the same persisted contract to a
+// signed-in browser through the gateway-exposed /me surface. The catalog has no
+// grants, principals, or concrete resource ids, but it must not make the
+// tokenless /authz surface browser-reachable.
+func registerMeAuthorizationCatalog(g *gin.RouterGroup, db *gorm.DB) {
+	g.GET("/authorization-catalog", authorizationCatalogHandler(db))
+}
+
+// authorizationCatalogHandler reads the catalog currently effective in
+// bkn-safe's database. Consumers must not keep a second hand-maintained copy:
+// seed may change it during an upgrade and the enforcer evaluates these rows.
+func authorizationCatalogHandler(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		var resourceTypes []model.ResourceType
 		if err := db.WithContext(c.Request.Context()).
 			Order("id ASC").
@@ -64,7 +74,7 @@ func registerAuthorizationCatalog(g *gin.RouterGroup, db *gorm.DB) {
 			})
 		}
 		c.JSON(http.StatusOK, gin.H{"resource_types": items})
-	})
+	}
 }
 
 type authorizationCatalogResourceType struct {
