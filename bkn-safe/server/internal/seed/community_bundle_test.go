@@ -13,7 +13,7 @@ import (
 )
 
 // The Community whitelist is intentionally maintained in code rather than
-// derived from catalog.json. This cross-check only prevents an approved entry
+// derived from authorization-catalog.json. This cross-check only prevents an approved entry
 // from becoming a dead operation after a catalog edit; it never adds catalog
 // operations to the bundle.
 func TestCommunityBundleWhitelistOperationsExistInCatalog(t *testing.T) {
