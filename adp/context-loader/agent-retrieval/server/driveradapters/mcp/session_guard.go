@@ -34,9 +34,10 @@ type bknContext struct {
 }
 
 type operationIntent struct {
-	Context  bknContext
-	ToolName string
-	Input    map[string]any
+	Context     bknContext
+	ToolName    string
+	MCPToolName string
+	Input       map[string]any
 }
 
 // toolboxIdentity is the safe, stable identity of one capability selected by
@@ -159,8 +160,9 @@ func guardBusinessToolCallWithCompletion(
 				CausationEventIDs: stringSliceValue(rawContext["causation_event_ids"]),
 				BusinessRefs:      businessRefs,
 			},
-			ToolName: operationToolName,
-			Input:    arguments,
+			ToolName:    operationToolName,
+			MCPToolName: req.Params.Name,
+			Input:       arguments,
 		}
 		ensured, lifecycleErr, err := ensure(ctx, intent)
 		if err != nil {

@@ -62,7 +62,7 @@ func ensureOperationAdapter(client *bkntrace.LifecycleClient) ensureOperationFun
 			ToolName:          intent.ToolName,
 			Protocol:          "mcp",
 			SourceModule:      "context-loader",
-			Input:             normalizedBusinessInput(intent.Input),
+			Input:             normalizedBusinessInputForTool(intent.MCPToolName, intent.Input),
 			CapabilityProfile: capabilityProfileJSON(intent.ToolName),
 		})
 		if apiErr != nil {
@@ -148,11 +148,19 @@ func toolResultErrorMessage(result *mcpsdk.CallToolResult) string {
 }
 
 func normalizedBusinessInput(input map[string]any) json.RawMessage {
+	return normalizedBusinessInputForTool("", input)
+}
+
+func normalizedBusinessInputForTool(toolName string, input map[string]any) json.RawMessage {
 	normalized := make(map[string]any, len(input))
 	for key, value := range input {
-		if key != "bkn_context" {
-			normalized[key] = value
+		if key == "bkn_context" {
+			continue
 		}
+		if toolName == toolKeyExecuteTool && key == "arguments" {
+			continue
+		}
+		normalized[key] = value
 	}
 	raw, _ := sonic.ConfigStd.Marshal(normalized)
 	return raw

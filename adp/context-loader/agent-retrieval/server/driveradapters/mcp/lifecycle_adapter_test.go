@@ -685,6 +685,29 @@ func TestNormalizedBusinessInputPreservesOnlyRealToolArguments(t *testing.T) {
 	}
 }
 
+func TestNormalizedBusinessInputForManagedExecuteToolExcludesFunctionArguments(t *testing.T) {
+	input := map[string]any{
+		"kn_id":      "kn_supply_chain",
+		"toolbox_id": "box_warehouse",
+		"tool_id":    "tool_reconcile_inventory",
+		"arguments": map[string]any{
+			"material_code": "525-000016",
+			"authorization": "must-not-be-stored",
+		},
+		"bkn_context": map[string]any{"conversation_id": "conv-1", "interaction_id": "int-1"},
+	}
+	var got map[string]any
+	if err := json.Unmarshal(normalizedBusinessInputForTool(toolKeyExecuteTool, input), &got); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{
+		"kn_id": "kn_supply_chain", "toolbox_id": "box_warehouse", "tool_id": "tool_reconcile_inventory",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("stored execute_tool input=%#v, want %v", got, want)
+	}
+}
+
 func TestManagedCommunityToolsSubmitRealInputAndTerminalPayload(t *testing.T) {
 	ensureCalls := 0
 	finishCalls := 0
