@@ -249,7 +249,8 @@ func (o *operatorIntegrationClient) ExecutePublishedTool(
 
 func (o *operatorIntegrationClient) ExecutePublishedToolAsProxy(ctx context.Context,
 	req *interfaces.ExecutePublishedToolRequest, proxy *interfaces.KNProxyExecution) (map[string]any, error) {
-	if req == nil || proxy == nil || proxy.Binding.TargetType != interfaces.KNProxyTargetTypeToolBox ||
+	if req == nil || proxy == nil || (proxy.Binding.TargetType != interfaces.KNProxyTargetTypeToolBox &&
+		proxy.Binding.TargetType != interfaces.KNProxyTargetTypeFunction) ||
 		proxy.Binding.TargetID != req.ToolboxID {
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusForbidden,
 			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))

@@ -580,7 +580,11 @@ func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (
 		}
 	}
 
-	proxy, err := s.resolveCapabilityProxy(ctx, knID, functionBindingID, interfaces.KNProxyTargetTypeToolBox, toolboxID)
+	proxyTargetType := interfaces.KNProxyTargetTypeToolBox
+	if state.MetadataType == "function" {
+		proxyTargetType = interfaces.KNProxyTargetTypeFunction
+	}
+	proxy, err := s.resolveCapabilityProxy(ctx, knID, functionBindingID, proxyTargetType, toolboxID)
 	if err != nil {
 		return nil, err
 	}
