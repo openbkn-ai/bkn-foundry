@@ -59,18 +59,24 @@ func actionHeaders() map[string]any {
 	}
 }
 
-func TestExecuteToolReturnsCompletedActionWithoutTouchingExecutionDependencies(t *testing.T) {
+func TestExecuteToolReturnsCompletedActionAfterValidatingToolMembership(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	auth := mocks.NewMockIAuthorizationService(ctrl)
+	toolboxDB := mocks.NewMockIToolboxDB(ctrl)
+	toolDB := mocks.NewMockIToolDB(ctrl)
 	gate := &completedActionGate{}
 	emitter := &captureActionEmitter{}
 	service := &ToolServiceImpl{
-		AuthService: auth, Logger: logger.DefaultLogger(),
+		AuthService: auth, ToolBoxDB: toolboxDB, ToolDB: toolDB, Logger: logger.DefaultLogger(),
 		ActionEvidence: emitter, ActionExecutions: gate,
 	}
 	accessor := &interfaces.AuthAccessor{ID: "user-secret"}
 	auth.EXPECT().GetAccessor(gomock.Any(), "user-secret").Return(accessor, nil)
+	toolboxDB.EXPECT().SelectToolBox(gomock.Any(), "box-secret").
+		Return(true, &model.ToolboxDB{BoxID: "box-secret", MetadataType: "openapi"}, nil)
 	auth.EXPECT().CheckExecutePermission(gomock.Any(), accessor, "box-secret", interfaces.AuthResourceTypeToolBox).Return(nil)
+	toolDB.EXPECT().SelectTool(gomock.Any(), "tool-secret").
+		Return(true, &model.ToolDB{ToolID: "tool-secret", BoxID: "box-secret"}, nil)
 
 	resp, err := service.ExecuteTool(context.Background(), &interfaces.ExecuteToolReq{
 		UserID: "user-secret", BoxID: "box-secret", ToolID: "tool-secret",
@@ -90,10 +96,13 @@ func TestExecuteToolReturnsCompletedActionWithoutTouchingExecutionDependencies(t
 func TestExecuteToolRejectsActionAtRealPermissionBoundary(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	auth := mocks.NewMockIAuthorizationService(ctrl)
+	toolboxDB := mocks.NewMockIToolboxDB(ctrl)
 	emitter := &captureActionEmitter{}
-	service := &ToolServiceImpl{AuthService: auth, Logger: logger.DefaultLogger(), ActionEvidence: emitter}
+	service := &ToolServiceImpl{AuthService: auth, ToolBoxDB: toolboxDB, Logger: logger.DefaultLogger(), ActionEvidence: emitter}
 	accessor := &interfaces.AuthAccessor{ID: "user-secret"}
 	auth.EXPECT().GetAccessor(gomock.Any(), "user-secret").Return(accessor, nil)
+	toolboxDB.EXPECT().SelectToolBox(gomock.Any(), "box-secret").
+		Return(true, &model.ToolboxDB{BoxID: "box-secret", MetadataType: "openapi"}, nil)
 	auth.EXPECT().CheckExecutePermission(gomock.Any(), accessor, "box-secret", interfaces.AuthResourceTypeToolBox).
 		Return(errors.New("permission detail"))
 
@@ -123,9 +132,9 @@ func TestExecuteToolRecordsApprovedFailureAsHashOnlyTerminalLifecycle(t *testing
 	accessor := &interfaces.AuthAccessor{ID: "user-secret"}
 	auth.EXPECT().GetAccessor(gomock.Any(), "user-secret").Return(accessor, nil)
 	auth.EXPECT().CheckExecutePermission(gomock.Any(), accessor, "box-secret", interfaces.AuthResourceTypeToolBox).Return(nil)
-	toolboxDB.EXPECT().SelectToolBox(gomock.Any(), "box-secret").Return(true, &model.ToolboxDB{BoxID: "box-secret", Status: string(interfaces.BizStatusPublished)}, nil)
+	toolboxDB.EXPECT().SelectToolBox(gomock.Any(), "box-secret").Return(true, &model.ToolboxDB{BoxID: "box-secret", MetadataType: "openapi", Status: string(interfaces.BizStatusPublished)}, nil).AnyTimes()
 	tool := &model.ToolDB{ToolID: "tool-secret", BoxID: "box-secret", SourceID: "source-secret", SourceType: model.SourceTypeOpenAPI, Status: string(interfaces.ToolStatusTypeEnabled)}
-	toolDB.EXPECT().SelectTool(gomock.Any(), "tool-secret").Return(true, tool, nil)
+	toolDB.EXPECT().SelectTool(gomock.Any(), "tool-secret").Return(true, tool, nil).AnyTimes()
 	metadata.EXPECT().GetMetadataBySource(gomock.Any(), "source-secret", model.SourceTypeOpenAPI).
 		Return(false, nil, errors.New("metadata detail must not leak"))
 

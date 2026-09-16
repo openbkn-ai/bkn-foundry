@@ -109,7 +109,8 @@ func proxyExecutionContextFromHeaders(c *gin.Context) (interfaces.ProxyExecution
 	switch {
 	case c.Request.Method == http.MethodPost &&
 		strings.HasSuffix(c.FullPath(), "/tool-box/:box_id/proxy/:tool_id"):
-		if request.TargetType != interfaces.ProxyTargetTypeToolBox ||
+		if (request.TargetType != interfaces.ProxyTargetTypeToolBox &&
+			request.TargetType != interfaces.ProxyTargetTypeFunction) ||
 			request.TargetID == "" || request.TargetID != strings.TrimSpace(c.Param("box_id")) ||
 			(request.ChildType != interfaces.ProxyChildTypeAction &&
 				request.ChildType != interfaces.ProxyChildTypeLogic &&

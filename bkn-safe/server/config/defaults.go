@@ -45,5 +45,8 @@ func defaultConfig() *Config {
 		Authz: AuthzConfig{
 			PolicyRefreshInterval: 10 * time.Minute,
 		},
+		Upstreams: UpstreamsConfig{BKNBackend: UpstreamConfig{
+			BaseURL: "http://bkn-backend-svc:13014", Timeout: 3 * time.Second,
+		}},
 	}
 }

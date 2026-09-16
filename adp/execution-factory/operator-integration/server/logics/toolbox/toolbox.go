@@ -35,9 +35,9 @@ func (s *ToolServiceImpl) GetToolBox(ctx context.Context, req *interfaces.GetToo
 			return
 		}
 		if isMarket {
-			err = s.AuthService.CheckPublicAccessPermission(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox)
+			err = s.checkBoxPublicAccessPermission(ctx, accessor, req.BoxID)
 		} else {
-			err = s.AuthService.CheckViewPermission(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox)
+			err = s.checkBoxViewPermission(ctx, accessor, req.BoxID)
 		}
 		if err != nil {
 			return
@@ -100,7 +100,7 @@ func (s *ToolServiceImpl) DeleteBoxByID(ctx context.Context, req *interfaces.Del
 	if err != nil {
 		return
 	}
-	err = s.AuthService.CheckDeletePermission(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox)
+	err = s.checkBoxDeletePermission(ctx, accessor, req.BoxID)
 	if err != nil {
 		return
 	}
@@ -141,7 +141,12 @@ func (s *ToolServiceImpl) DeleteBoxByID(ctx context.Context, req *interfaces.Del
 	}
 
 	// Delete resource permissions policy.
-	err = s.AuthService.DeletePolicy(ctx, []string{req.BoxID}, interfaces.AuthResourceTypeToolBox)
+	resourceType, typeErr := toolboxAuthorizationType(toolBox.MetadataType)
+	if typeErr != nil {
+		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, typeErr.Error())
+		return
+	}
+	err = s.AuthService.DeletePolicy(ctx, []string{req.BoxID}, resourceType)
 	if err != nil {
 		return
 	}
@@ -225,13 +230,23 @@ func (s *ToolServiceImpl) QueryToolBoxList(ctx context.Context, req *interfaces.
 }
 
 func projectToolBoxAuthorizeOperations(ctx context.Context, authorization interfaces.IAuthorizationService, accessor *interfaces.AuthAccessor, toolBoxes []*interfaces.ToolBoxInfo) error {
-	toolBoxIDs := make([]string, 0, len(toolBoxes))
+	idsByType := map[interfaces.AuthResourceType][]string{}
 	for _, toolBox := range toolBoxes {
-		toolBoxIDs = append(toolBoxIDs, toolBox.BoxID)
+		resourceType, err := toolboxAuthorizationType(string(toolBox.MetadataType))
+		if err != nil {
+			return err
+		}
+		idsByType[resourceType] = append(idsByType[resourceType], toolBox.BoxID)
 	}
-	operationsByID, err := auth.ProjectAuthorizeOperations(ctx, authorization, accessor, toolBoxIDs, interfaces.AuthResourceTypeToolBox)
-	if err != nil {
-		return err
+	operationsByID := map[string][]interfaces.AuthOperationType{}
+	for resourceType, ids := range idsByType {
+		projected, err := auth.ProjectAuthorizeOperations(ctx, authorization, accessor, ids, resourceType)
+		if err != nil {
+			return err
+		}
+		for id, operations := range projected {
+			operationsByID[id] = operations
+		}
 	}
 	for _, toolBox := range toolBoxes {
 		toolBox.Operations = operationsByID[toolBox.BoxID]
@@ -276,7 +291,7 @@ func (s *ToolServiceImpl) UpdateToolBoxStatus(ctx context.Context, req *interfac
 	case interfaces.BizStatusPublished:
 		operation = metric.AuditLogOperationPublish
 		// Verify publishing permissions.
-		err = s.AuthService.CheckPublishPermission(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox)
+		err = s.checkBoxPublishPermission(ctx, accessor, req.BoxID)
 		if err != nil {
 			return
 		}
@@ -286,7 +301,7 @@ func (s *ToolServiceImpl) UpdateToolBoxStatus(ctx context.Context, req *interfac
 	case interfaces.BizStatusOffline:
 		operation = metric.AuditLogOperationUnpublish
 		// Verify delisting permissions, verify editing permissions.
-		err = s.AuthService.CheckUnpublishPermission(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox)
+		err = s.checkBoxUnpublishPermission(ctx, accessor, req.BoxID)
 	default:
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolBoxStatusInvalid,
 			fmt.Sprintf("invalid toolbox status: %s", req.Status))
@@ -350,7 +365,7 @@ func (s *ToolServiceImpl) GetBoxTool(ctx context.Context, req *interfaces.GetToo
 			return
 		}
 		var authorized bool
-		authorized, err = s.AuthService.OperationCheckAny(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox,
+		authorized, err = s.checkBoxOperationAny(ctx, accessor, req.BoxID,
 			interfaces.AuthOperationTypeView, interfaces.AuthOperationTypePublicAccess, interfaces.AuthOperationTypeExecute)
 		if err != nil {
 			return
@@ -382,6 +397,9 @@ func (s *ToolServiceImpl) GetBoxTool(ctx context.Context, req *interfaces.GetToo
 			fmt.Sprintf("tool %s not found", req.ToolID))
 		return
 	}
+	if err = validateToolBoxMembership(ctx, tool, req.BoxID); err != nil {
+		return
+	}
 	resp, err = s.getToolInfo(ctx, tool, boxDB.ServerURL, interfaces.MetadataType(boxDB.MetadataType))
 	return
 }
@@ -397,7 +415,7 @@ func (s *ToolServiceImpl) DeleteBoxTool(ctx context.Context, req *interfaces.Bat
 	if err != nil {
 		return
 	}
-	err = s.AuthService.CheckModifyPermission(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox)
+	err = s.checkBoxModifyPermission(ctx, accessor, req.BoxID)
 	if err != nil {
 		return
 	}
@@ -504,7 +522,7 @@ func (s *ToolServiceImpl) QueryToolList(ctx context.Context, req *interfaces.Que
 			return
 		}
 		var authorized bool
-		authorized, err = s.AuthService.OperationCheckAny(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox,
+		authorized, err = s.checkBoxOperationAny(ctx, accessor, req.BoxID,
 			interfaces.AuthOperationTypeView, interfaces.AuthOperationTypePublicAccess, interfaces.AuthOperationTypeExecute)
 		if err != nil {
 			return
@@ -607,7 +625,7 @@ func (s *ToolServiceImpl) UpdateToolStatus(ctx context.Context, req *interfaces.
 	if err != nil {
 		return
 	}
-	err = s.AuthService.CheckModifyPermission(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox)
+	err = s.checkBoxModifyPermission(ctx, accessor, req.BoxID)
 	if err != nil {
 		return
 	}

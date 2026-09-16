@@ -51,6 +51,7 @@ type knowledgeNetworkService struct {
 	appSetting *common.AppSetting
 	db         *sql.DB
 	ata        interfaces.ActionTypeAccess
+	aoa        interfaces.AgentOperatorAccess
 	cba        interfaces.CapabilityBindingAccess
 	cbs        interfaces.CapabilityBindingService
 	ats        interfaces.ActionTypeService
@@ -80,6 +81,7 @@ func NewKNService(appSetting *common.AppSetting) interfaces.KNServiceWithProxyMu
 		knService = &knowledgeNetworkService{
 			appSetting: appSetting,
 			ata:        logics.ATA,
+			aoa:        logics.AOA,
 			cba:        logics.CBA,
 			cbs:        capability_binding.NewCapabilityBindingService(appSetting),
 			ats:        action_type.NewActionTypeService(appSetting),
@@ -771,6 +773,16 @@ func (kns *knowledgeNetworkService) ListKNs(ctx context.Context, parameter inter
 
 	span.SetStatus(codes.Ok, "")
 	return KNs, total, nil
+}
+
+func (kns *knowledgeNetworkService) ListAuthorizationResources(ctx context.Context,
+	query interfaces.AuthorizationResourcesQuery) ([]*interfaces.AuthorizationResource, int, error) {
+	resources, total, err := kns.kna.ListAuthorizationResources(ctx, query)
+	if err != nil {
+		return []*interfaces.AuthorizationResource{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+	}
+	return resources, total, nil
 }
 
 // GetKNNamesByIDs resolves knowledge network names in bulk for object-level authorization display.

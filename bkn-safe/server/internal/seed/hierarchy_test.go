@@ -186,6 +186,56 @@ func TestSeedDeclaresKnowledgeNetworkHierarchy(t *testing.T) {
 	assertFinal("default-deny", false, authz.BasisDefault)
 }
 
+// TestSeedDeclaresVegaAuthorizationBoundary keeps the two authorization
+// mechanisms separate. Vega handles its catalog/resource fallback in its own
+// decision points; it must not accidentally become a bkn-safe generic
+// parent_operation hierarchy. The catalog still owns the explicit prerequisite
+// for table management.
+func TestSeedDeclaresVegaAuthorizationBoundary(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	var resource model.ResourceType
+	if err := db.First(&resource, "id = ?", "resource").Error; err != nil {
+		t.Fatal(err)
+	}
+	if resource.ParentTypeID != "" {
+		t.Fatalf("resource parent = %q; Vega fallback must not use bkn-safe hierarchy", resource.ParentTypeID)
+	}
+
+	var operations []model.Operation
+	if err := db.Where("resource_type_id = ?", "resource").Find(&operations).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(operations) != 2 {
+		t.Fatalf("resource operations = %+v, want exactly view_detail and query_data", operations)
+	}
+	for _, operation := range operations {
+		if operation.ID != "view_detail" && operation.ID != "query_data" {
+			t.Errorf("resource unexpectedly declares %q", operation.ID)
+		}
+		if operation.ParentOperationID != "" || operation.RequiredOperationIDs != "" {
+			t.Errorf("resource/%s parent=%q requires=%q, want no generic inheritance or prerequisite",
+				operation.ID, operation.ParentOperationID, operation.RequiredOperationIDs)
+		}
+	}
+
+	var manage model.Operation
+	if err := db.First(&manage, "resource_type_id = ? AND id = ?", "catalog", "resource_manage").Error; err != nil {
+		t.Fatal(err)
+	}
+	if manage.ParentOperationID != "" || manage.RequiredOperationIDs != "view_detail" {
+		t.Fatalf("catalog/resource_manage parent=%q requires=%q, want parent empty and requires view_detail",
+			manage.ParentOperationID, manage.RequiredOperationIDs)
+	}
+}
+
 // TestValidateHierarchyRejectsAuthoringMistakes: every case here would compile,
 // seed cleanly and then produce a grant that silently never applies, so the seed
 // fails instead.
@@ -257,10 +307,10 @@ func TestValidateHierarchyRejectsAuthoringMistakes(t *testing.T) {
 func TestValidateHierarchyAcceptsShippedCatalog(t *testing.T) {
 	var c catalog
 	if err := json.Unmarshal(catalogJSON, &c); err != nil {
-		t.Fatalf("parse catalog.json: %v", err)
+		t.Fatalf("parse authorization-registry.json: %v", err)
 	}
 	if err := validateHierarchy(c); err != nil {
-		t.Fatalf("shipped catalog.json declares an invalid hierarchy: %v", err)
+		t.Fatalf("shipped authorization-registry.json declares an invalid hierarchy: %v", err)
 	}
 }
 

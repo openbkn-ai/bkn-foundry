@@ -35,6 +35,9 @@ var (
 		"name":        "f_name",
 		"update_time": "f_update_time",
 	}
+	AUTHORIZATION_RESOURCE_SORT = map[string]string{
+		"name": "f_name",
+	}
 
 	// Fields are kn_id, module_type, id, name, property_name, property_display_name, and comment.
 	CONCPET_QUERY_FIELD_STR = []string{
@@ -261,6 +264,22 @@ type KNsQueryParams struct {
 	CandidateIDs []string `json:"-" form:"-"`
 	// OnlyIDs avoids loading list detail before permission filtering.
 	OnlyIDs bool `json:"-" form:"-"`
+}
+
+// AuthorizationResource is the minimal knowledge-network identity exposed to
+// internal authorization configuration callers.
+type AuthorizationResource struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// AuthorizationResourcesQuery is the query contract for the internal
+// authorization-resource catalog. It intentionally has no caller identity:
+// the endpoint is not a business-resource read API.
+type AuthorizationResourcesQuery struct {
+	PaginationQueryParameters
+	Name   string
+	Branch string
 }
 
 // Concept search.

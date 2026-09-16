@@ -1,0 +1,106 @@
+---
+openapi: 3.0.3
+info:
+  title: BKN Safe Authorization Resource Catalog API
+  version: 0.1.0
+  description: |
+    Token-gated administrative resource picker. bkn-safe validates the caller
+    before dispatching a fixed, code-registered provider. Clients cannot select
+    a downstream URL or path.
+security:
+  - OAuth2: []
+paths:
+  /api/safe/v1/admin/authorization-resources:
+    get:
+      summary: List resources available for authorization configuration
+      parameters:
+        - name: resource_type
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [knowledge_network]
+        - name: name
+          in: query
+          schema:
+            type: string
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [name]
+            default: name
+        - name: direction
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Resource identities.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizationResourceList'
+        '400':
+          description: Invalid query parameters or unsupported resource type.
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
+        '403':
+          description: The caller cannot use the administrative API.
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
+        '503':
+          description: The registered provider is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+  schemas:
+    AuthorizationResourceList:
+      type: object
+      required: [entries, total]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthorizationResource'
+        total:
+          type: integer
+          minimum: 0
+    AuthorizationResource:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string

@@ -88,10 +88,10 @@ func TestValidateRequirementsAcceptsMultipleDirectPrerequisites(t *testing.T) {
 func TestShippedCatalogBindsResourceManageToViewDetail(t *testing.T) {
 	var c catalog
 	if err := json.Unmarshal(catalogJSON, &c); err != nil {
-		t.Fatalf("parse catalog.json: %v", err)
+		t.Fatalf("parse authorization-registry.json: %v", err)
 	}
 	if err := validateRequirements(c); err != nil {
-		t.Fatalf("shipped catalog.json declares an invalid requirement: %v", err)
+		t.Fatalf("shipped authorization-registry.json declares an invalid requirement: %v", err)
 	}
 	for _, rt := range c.ResourceTypes {
 		if rt.ID != "catalog" {
@@ -108,16 +108,16 @@ func TestShippedCatalogBindsResourceManageToViewDetail(t *testing.T) {
 		}
 		t.Fatal("catalog type no longer declares resource_manage")
 	}
-	t.Fatal("catalog type missing from catalog.json")
+	t.Fatal("catalog type missing from authorization-registry.json")
 }
 
 func TestShippedConnectorTypeDeclaresViewRequirements(t *testing.T) {
 	var c catalog
 	if err := json.Unmarshal(catalogJSON, &c); err != nil {
-		t.Fatalf("parse catalog.json: %v", err)
+		t.Fatalf("parse authorization-registry.json: %v", err)
 	}
 	if err := validateRequirements(c); err != nil {
-		t.Fatalf("shipped catalog.json declares an invalid requirement: %v", err)
+		t.Fatalf("shipped authorization-registry.json declares an invalid requirement: %v", err)
 	}
 	operations := map[string][]string{}
 	for _, resourceType := range c.ResourceTypes {
@@ -146,10 +146,10 @@ func TestShippedConnectorTypeDeclaresViewRequirements(t *testing.T) {
 func TestShippedIndependentResourceFamiliesDeclareViewRequirements(t *testing.T) {
 	var c catalog
 	if err := json.Unmarshal(catalogJSON, &c); err != nil {
-		t.Fatalf("parse catalog.json: %v", err)
+		t.Fatalf("parse authorization-registry.json: %v", err)
 	}
 	if err := validateRequirements(c); err != nil {
-		t.Fatalf("shipped catalog.json declares an invalid requirement: %v", err)
+		t.Fatalf("shipped authorization-registry.json declares an invalid requirement: %v", err)
 	}
 
 	types := map[string]map[string][]string{}
@@ -161,7 +161,7 @@ func TestShippedIndependentResourceFamiliesDeclareViewRequirements(t *testing.T)
 		types[resourceType.ID] = operations
 	}
 
-	for _, resourceType := range []string{"tool_box", "mcp", "operator", "skill"} {
+	for _, resourceType := range []string{"tool_box", "function", "mcp", "operator", "skill"} {
 		for _, operation := range []string{"modify", "delete", "publish", "unpublish", "authorize"} {
 			if got := types[resourceType][operation]; len(got) != 1 || got[0] != "view" {
 				t.Errorf("%s/%s requires %v, want [view]", resourceType, operation, got)
@@ -344,7 +344,7 @@ func TestIndependentResourceRequirementsApplyToChecksAndLists(t *testing.T) {
 	}
 
 	viewByType := map[string]string{
-		"tool_box": "view", "mcp": "view", "operator": "view", "skill": "view",
+		"tool_box": "view", "function": "view", "mcp": "view", "operator": "view", "skill": "view",
 		"small_model": "display", "large_model": "display",
 	}
 	for resourceType, viewOperation := range viewByType {

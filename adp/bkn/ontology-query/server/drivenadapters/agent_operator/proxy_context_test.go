@@ -39,6 +39,31 @@ func TestExecuteToolUsesProxyAsEffectivePrincipal(t *testing.T) {
 	}
 }
 
+func TestFunctionToolUsesFunctionProxyTarget(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	httpClient := rmock.NewMockHTTPClient(ctrl)
+	access := &agentOperatorAccess{httpClient: httpClient, appSetting: &commonSettingForProxyTest}
+	ctx := actionProxyContext(interfaces.ProxyTargetTypeFunction, "box-fn")
+	httpClient.EXPECT().PostNoUnmarshal(gomock.Any(), "http://operator/tool-box/box-fn/proxy/fn-1", gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, headers map[string]string, _ any) (int, []byte, error) {
+			if headers[interfaces.HTTPHeaderBKNTargetType] != interfaces.ProxyTargetTypeFunction { t.Fatalf("proxy headers = %#v", headers) }
+			return http.StatusOK, []byte(`{"status_code":200,"body":{"ok":true}}`), nil
+		})
+	if _, err := access.ExecuteToolAsProxy(ctx, "box-fn", "fn-1", interfaces.ToolExecutionRequest{}); err != nil { t.Fatal(err) }
+}
+
+func TestBoxMetadataTypeRequiresToolMembership(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	httpClient := rmock.NewMockHTTPClient(ctrl)
+	access := &agentOperatorAccess{httpClient: httpClient, appSetting: &commonSettingForProxyTest}
+	httpClient.EXPECT().GetNoUnmarshal(gomock.Any(), "http://operator/tool-box/box-fn", nil, nil).
+		Return(http.StatusOK, []byte(`{"metadata_type":"function","tools":[{"tool_id":"fn-1"}]}`), nil).Times(2)
+	if kind, err := access.GetBoxMetadataType(t.Context(), "box-fn", "fn-1"); err != nil || kind != interfaces.ProxyTargetTypeFunction {
+		t.Fatalf("box kind = %q, %v", kind, err)
+	}
+	if _, err := access.GetBoxMetadataType(t.Context(), "box-fn", "other-tool"); err == nil { t.Fatal("tool outside box was accepted") }
+}
+
 func TestExecuteLogicPropertyToolUsesProxyAsEffectivePrincipal(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	httpClient := rmock.NewMockHTTPClient(ctrl)

@@ -66,11 +66,15 @@ func (s *ToolServiceImpl) Import(ctx context.Context, tx *sql.Tx, mode interface
 // Post-operation: Add permission configuration and audit logging.
 func (s *ToolServiceImpl) importPostProcess(ctx context.Context, createBoxMap, updateBoxMap map[string]*model.ToolboxDB, accessor *interfaces.AuthAccessor) (err error) {
 	for _, boxDB := range createBoxMap {
+		resourceType, typeErr := toolboxAuthorizationType(boxDB.MetadataType)
+		if typeErr != nil {
+			return typeErr
+		}
 		// Triggering a new policy, the creator has all operating permissions on the current resources by default (internal calls will not create)
 		if accessor != nil {
 			err := s.AuthService.CreateOwnerPolicy(ctx, accessor, &interfaces.AuthResource{
 				ID:   boxDB.BoxID,
-				Type: interfaces.AuthResourceTypeToolBox.String(),
+				Type: resourceType.String(),
 				Name: boxDB.Name,
 			})
 			if err != nil {
@@ -101,7 +105,7 @@ func (s *ToolServiceImpl) importPostProcess(ctx context.Context, createBoxMap, u
 		if boxDB.IsInternal {
 			err = s.AuthService.CreateIntCompPolicyForAllUsers(ctx, &interfaces.AuthResource{
 				ID:   boxDB.BoxID,
-				Type: interfaces.AuthResourceTypeToolBox.String(),
+				Type: resourceType.String(),
 				Name: boxDB.Name,
 			})
 			if err != nil {
@@ -112,11 +116,15 @@ func (s *ToolServiceImpl) importPostProcess(ctx context.Context, createBoxMap, u
 	}
 	// Update toolbox.
 	for _, boxDB := range updateBoxMap {
+		resourceType, typeErr := toolboxAuthorizationType(boxDB.MetadataType)
+		if typeErr != nil {
+			return typeErr
+		}
 		// Notify resource changes.
 		authResource := &interfaces.AuthResource{
 			ID:   boxDB.BoxID,
 			Name: boxDB.Name,
-			Type: interfaces.AuthResourceTypeToolBox.String(),
+			Type: resourceType.String(),
 		}
 		err := s.AuthService.NotifyResourceChange(ctx, authResource)
 		if err != nil {
@@ -126,7 +134,7 @@ func (s *ToolServiceImpl) importPostProcess(ctx context.Context, createBoxMap, u
 		if boxDB.IsInternal {
 			policyErr := s.AuthService.CreateIntCompPolicyForAllUsers(ctx, &interfaces.AuthResource{
 				ID:   boxDB.BoxID,
-				Type: interfaces.AuthResourceTypeToolBox.String(),
+				Type: resourceType.String(),
 				Name: boxDB.Name,
 			})
 			if policyErr != nil {
@@ -205,7 +213,11 @@ func (s *ToolServiceImpl) batchImportToolBoxMetadata(ctx context.Context, tx *sq
 	for _, boxDB := range waitUpdataBoxList {
 		// Check toolbox editing permissions (internal calls are not authenticated)
 		if icommon.IsPublicAPIFromCtx(ctx) {
-			err = s.AuthService.CheckModifyPermission(ctx, accessor, boxDB.BoxID, interfaces.AuthResourceTypeToolBox)
+			resourceType, typeErr := toolboxAuthorizationType(boxDB.MetadataType)
+			if typeErr != nil {
+				return nil, nil, typeErr
+			}
+			err = s.AuthService.CheckModifyPermission(ctx, accessor, boxDB.BoxID, resourceType)
 			if err != nil {
 				return
 			}
@@ -526,19 +538,7 @@ func (s *ToolServiceImpl) exportPreCheck(ctx context.Context, req *interfaces.Ex
 	if err != nil {
 		return
 	}
-	// Check view permissions permissions.
-	checkBoxIDs, err := s.AuthService.ResourceFilterIDs(ctx, accessor, req.IDs,
-		interfaces.AuthResourceTypeToolBox, interfaces.AuthOperationTypeView)
-	if err != nil {
-		return
-	}
-	if len(checkBoxIDs) != len(req.IDs) {
-		clist := utils.FindMissingElements(req.IDs, checkBoxIDs)
-		err = errors.NewHTTPError(ctx, http.StatusForbidden, errors.ErrExtCommonOperationForbidden,
-			fmt.Sprintf("toolbox %v not access", clist))
-		return
-	}
-	// Check if the data exists.
+	// Load stored kinds before evaluating object permissions.
 	boxDBs, err = s.ToolBoxDB.SelectListByBoxIDs(ctx, req.IDs)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select toolbox list err: %s", err.Error())
@@ -554,6 +554,25 @@ func (s *ToolServiceImpl) exportPreCheck(ctx context.Context, req *interfaces.Ex
 		err = errors.NewHTTPError(ctx, http.StatusNotFound, errors.ErrExtToolNotFound,
 			fmt.Sprintf("toolbox %v not found", clist))
 		return
+	}
+	idsByType := map[interfaces.AuthResourceType][]string{}
+	for _, box := range boxDBs {
+		resourceType, typeErr := toolboxAuthorizationType(box.MetadataType)
+		if typeErr != nil {
+			return nil, typeErr
+		}
+		idsByType[resourceType] = append(idsByType[resourceType], box.BoxID)
+	}
+	for resourceType, ids := range idsByType {
+		allowed, filterErr := s.AuthService.ResourceFilterIDs(ctx, accessor, ids, resourceType, interfaces.AuthOperationTypeView)
+		if filterErr != nil {
+			return nil, filterErr
+		}
+		clist := utils.FindMissingElements(ids, allowed)
+		if len(clist) > 0 {
+			return nil, errors.NewHTTPError(ctx, http.StatusForbidden, errors.ErrExtCommonOperationForbidden,
+				fmt.Sprintf("toolbox %v not access", clist))
+		}
 	}
 	return
 }

@@ -420,3 +420,72 @@ func TestPublishKNCapabilityMutationMountsASkillWhileSafePredatesSkillSources(t 
 		t.Fatalf("sync status = %q, want ready", kpa.syncStatus)
 	}
 }
+
+func TestPublishKNCapabilityMutationKeepsFunctionGrantType(t *testing.T) {
+	ctx := context.WithValue(t.Context(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "editor-1"})
+	fixture := newSkillProjectionFixture()
+	fixture.bindings = nil
+	function := &interfaces.CapabilityBinding{
+		ID: "binding-function-1", KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
+		CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, OwnerID: "box-function", CapabilityID: "tool-function",
+	}
+	kpa := &proxyAccessStub{mapping: &interfaces.KNProxyAccount{
+		KNID: "kn-1", ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleActive,
+	}}
+	safe := &skillAwareSafeStub{managedProxyAccessStub: &managedProxyAccessStub{allowed: true}}
+	service := newProjectionService(t, fixture, kpa, safe)
+	ctrl := gomock.NewController(t)
+	aoa := bmock.NewMockAgentOperatorAccess(ctrl)
+	aoa.EXPECT().ListBoxTools(gomock.Any(), "box-function").Return([]*interfaces.ToolBrief{{
+		ToolID: "tool-function", BoxMetadataType: interfaces.EXEC_BOX_METADATA_TYPE_FUNCTION,
+	}}, nil).AnyTimes()
+	service.aoa = aoa
+	db, sqlMock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	sqlMock.ExpectBegin()
+	sqlMock.ExpectCommit()
+	service.db = db
+	mutate := func(context.Context, *sql.Tx) (*interfaces.KNCapabilityMutationResult, error) {
+		fixture.bindings = []*interfaces.CapabilityBinding{function}
+		return &interfaces.KNCapabilityMutationResult{Bindings: fixture.bindings}, nil
+	}
+
+	_, publishErr := service.PublishKNCapabilityMutation(ctx, "kn-1", interfaces.MAIN_BRANCH, nil, mutate)
+	seenFunction := false
+	for _, source := range safe.checked {
+		if source.ResourceID != function.OwnerID {
+			continue
+		}
+		if source.ResourceType != "function" {
+			t.Fatalf("Function capability checked as %q, want function", source.ResourceType)
+		}
+		seenFunction = true
+	}
+	if !seenFunction {
+		t.Fatal("Function capability was not checked before synchronization")
+	}
+	if publishErr != nil {
+		t.Fatalf("publishing Function capability: %v", publishErr)
+	}
+	if err := sqlMock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+	if kpa.syncStatus != interfaces.KNProxySyncReady {
+		t.Fatalf("Function proxy sync status = %q, want ready", kpa.syncStatus)
+	}
+	seenSyncedFunction := false
+	for _, source := range safe.synced {
+		if source.ResourceID == function.OwnerID {
+			if source.ResourceType != "function" || source.Operation != interfaces.OPERATION_TYPE_EXECUTE {
+				t.Fatalf("synchronized Function grant = %#v", source)
+			}
+			seenSyncedFunction = true
+		}
+	}
+	if !seenSyncedFunction {
+		t.Fatal("Function grant was not synchronized")
+	}
+}

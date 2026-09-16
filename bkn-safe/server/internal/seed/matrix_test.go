@@ -39,7 +39,7 @@ func TestRoleResourceMatrix(t *testing.T) {
 		"connector_type": "create", "data_flow": "view", "knowledge_network": "create",
 		"concept_group": "view_detail", "object_type": "query_data", "relation_type": "query_data",
 		"action_type": "execute", "metric": "query_data", "risk_type": "view_detail",
-		"tool_box": "execute", "mcp": "execute", "operator": "execute", "skill": "execute",
+		"tool_box": "execute", "function": "execute", "mcp": "execute", "operator": "execute", "skill": "execute",
 		"small_model": "execute", "large_model": "execute", "agent": "use", "agent_tpl": "publish",
 	}
 	roleAllowed := map[string]map[string]string{
@@ -48,6 +48,7 @@ func TestRoleResourceMatrix(t *testing.T) {
 			"knowledge_network": "create",
 			"operator":          "execute",
 			"tool_box":          "execute",
+			"function":          "execute",
 			"skill":             "execute",
 			"mcp":               "execute",
 			"small_model":       "execute",

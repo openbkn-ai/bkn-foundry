@@ -81,6 +81,28 @@ func TestRoleGrantAndWildcard(t *testing.T) {
 	}
 }
 
+func TestFunctionGrantDoesNotCrossResourceTypes(t *testing.T) {
+	e := newTestEnforcer(t)
+	const user = "function-only"
+	mustNoErr(t, e.GrantObjectPermission(user, "function", "box-1", "execute"))
+	for _, tc := range []struct {
+		resourceType, resourceID string
+		want                     bool
+	}{
+		{"function", "box-1", true},
+		{"function", "box-2", false},
+		{"tool_box", "box-1", false},
+		{"mcp", "box-1", false},
+		{"operator", "box-1", false},
+		{"knowledge_network", "box-1", false},
+	} {
+		got, err := e.Check(user, tc.resourceType, tc.resourceID, "execute")
+		if err != nil || got != tc.want {
+			t.Errorf("Check(%s:%s) = %v, %v; want %v", tc.resourceType, tc.resourceID, got, err, tc.want)
+		}
+	}
+}
+
 func TestExplicitDenyOverridesOrdinaryAllows(t *testing.T) {
 	e := newTestEnforcer(t)
 	const user, role = "alice", "reader-role"

@@ -32,6 +32,7 @@ const (
 
 	ProxyTargetTypeResource = "resource"
 	ProxyTargetTypeToolBox  = "tool_box"
+	ProxyTargetTypeFunction = "function"
 	ProxyTargetTypeMCP      = "mcp"
 )
 

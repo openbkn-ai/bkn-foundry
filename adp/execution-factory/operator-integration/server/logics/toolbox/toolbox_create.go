@@ -26,7 +26,12 @@ func (s *ToolServiceImpl) CreateToolBox(ctx context.Context, req *interfaces.Cre
 	if err != nil {
 		return
 	}
-	err = s.AuthService.CheckCreatePermission(ctx, accessor, interfaces.AuthResourceTypeToolBox)
+	resourceType, typeErr := toolboxAuthorizationType(string(req.MetadataType))
+	if typeErr != nil {
+		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, typeErr.Error())
+		return
+	}
+	err = s.AuthService.CheckCreatePermission(ctx, accessor, resourceType)
 	if err != nil {
 		return
 	}
@@ -115,7 +120,7 @@ func (s *ToolServiceImpl) CreateToolBox(ctx context.Context, req *interfaces.Cre
 	// Triggering a new policy, the creator has all operating permissions on the current resources by default.
 	err = s.AuthService.CreateOwnerPolicy(ctx, accessor, &interfaces.AuthResource{
 		ID:   boxID,
-		Type: string(interfaces.AuthResourceTypeToolBox),
+		Type: string(resourceType),
 		Name: req.BoxName,
 	})
 	if err != nil {

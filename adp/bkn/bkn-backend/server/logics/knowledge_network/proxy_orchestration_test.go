@@ -396,6 +396,11 @@ func TestPrepareProxyImportPreflightsRelationAgainstExistingBoundObject(t *testi
 }
 
 func TestPrepareProxyImportPreflightsNestedConceptGroupBinding(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	aoa := bmock.NewMockAgentOperatorAccess(ctrl)
+	aoa.EXPECT().ListBoxTools(gomock.Any(), "box-1").Return([]*interfaces.ToolBrief{{
+		BoxID: "box-1", ToolID: "tool-1", BoxMetadataType: interfaces.EXEC_BOX_METADATA_TYPE_OPENAPI,
+	}}, nil)
 	kpa := &proxyAccessStub{}
 	nestedObjectSourceID := stableProxySourceID("kn-1", interfaces.MODULE_TYPE_OBJECT_TYPE, "nested-ot")
 	mpa := &managedProxyAccessStub{
@@ -404,7 +409,7 @@ func TestPrepareProxyImportPreflightsNestedConceptGroupBinding(t *testing.T) {
 			nestedObjectSourceID: "historical-grantor",
 		},
 	}
-	service := &knowledgeNetworkService{kpa: kpa, mpa: mpa}
+	service := &knowledgeNetworkService{kpa: kpa, mpa: mpa, aoa: aoa}
 	ctx := context.WithValue(t.Context(), interfaces.ACCOUNT_INFO_KEY,
 		interfaces.AccountInfo{ID: "current-editor", Type: interfaces.ACCESSOR_TYPE_USER})
 	kn := &interfaces.KN{
@@ -1290,6 +1295,10 @@ func TestResolveKNProxyBindingReturnsStableStateErrors(t *testing.T) {
 
 func TestResolveKNProxyBindingRequiresCurrentPublishedSourceAndSyncedVersion(t *testing.T) {
 	ctrl := gomock.NewController(t)
+	aoa := bmock.NewMockAgentOperatorAccess(ctrl)
+	aoa.EXPECT().ListBoxTools(gomock.Any(), "box-1").Return([]*interfaces.ToolBrief{{
+		BoxID: "box-1", ToolID: "tool-1", BoxMetadataType: interfaces.EXEC_BOX_METADATA_TYPE_OPENAPI,
+	}}, nil).AnyTimes()
 	kna := bmock.NewMockKNAccess(ctrl)
 	cga := bmock.NewMockConceptGroupAccess(ctrl)
 	ota := bmock.NewMockObjectTypeAccess(ctrl)
@@ -1322,6 +1331,7 @@ func TestResolveKNProxyBindingRequiresCurrentPublishedSourceAndSyncedVersion(t *
 	}
 	service := &knowledgeNetworkService{
 		kna: kna, cga: cga, ota: ota, rta: rta, ata: ata, ma: ma,
+		aoa: aoa,
 		kpa: &proxyAccessStub{mapping: mapping},
 	}
 	binding := interfaces.KNProxyBinding{

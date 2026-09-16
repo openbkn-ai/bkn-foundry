@@ -85,7 +85,7 @@ const AdminUserID = adminUserID
 //go:embed data/roles.json
 var rolesJSON []byte
 
-//go:embed data/catalog.json
+//go:embed data/authorization-registry.json
 var catalogJSON []byte
 
 //go:embed data/grants.json
@@ -491,7 +491,7 @@ func deleteUndeclaredOperations(db *gorm.DB, resourceTypeID string, declared []s
 	return q.Delete(&model.Operation{}).Error
 }
 
-// validateHierarchy checks the type-level hierarchy declared in catalog.json:
+// validateHierarchy checks the type-level hierarchy declared in authorization-registry.json:
 // every parent_type resolves to a declared type, every parent_operation resolves
 // to an operation the parent actually defines, an operation may not inherit from
 // a type with no parent, and the parent chain is acyclic. All four are authoring
@@ -546,7 +546,7 @@ func validateHierarchy(c catalog) error {
 }
 
 // validateRequirements checks the same-type prerequisites declared in
-// catalog.json: every requirement is declared on the same type, is not the
+// authorization-registry.json: every requirement is declared on the same type, is not the
 // target itself, and does not itself declare requirements. The last rule keeps
 // the first implementation strictly one layer instead of silently calculating
 // only part of a dependency graph.

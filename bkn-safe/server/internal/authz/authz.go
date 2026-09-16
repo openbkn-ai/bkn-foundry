@@ -697,12 +697,28 @@ func (en *Enforcer) hasSuperAdminRole(accessorID string) (bool, error) {
 func (en *Enforcer) implicitPermissions(accessorID string) ([][]string, error) {
 	synced, ok := en.e.(*casbin.SyncedEnforcer)
 	if !ok {
-		return en.e.GetImplicitPermissionsForUser(accessorID)
+		rows, err := en.e.GetImplicitPermissionsForUser(accessorID)
+		if err != nil || accessorID == PublicAccessorID {
+			return rows, err
+		}
+		publicRows, err := en.e.GetFilteredPolicy(0, PublicAccessorID)
+		if err != nil {
+			return nil, err
+		}
+		return append(rows, publicRows...), nil
 	}
 	lock := synced.GetLock()
 	lock.RLock()
 	defer lock.RUnlock()
-	return synced.Enforcer.GetImplicitPermissionsForUser(accessorID) //nolint:staticcheck // explicit unsynchronized call under the held lock
+	rows, err := synced.Enforcer.GetImplicitPermissionsForUser(accessorID) //nolint:staticcheck // explicit unsynchronized call under the held lock
+	if err != nil || accessorID == PublicAccessorID {
+		return rows, err
+	}
+	publicRows, err := synced.Enforcer.GetFilteredPolicy(0, PublicAccessorID)
+	if err != nil {
+		return nil, err
+	}
+	return append(rows, publicRows...), nil
 }
 
 // permissionsWithPublic returns the effective policy projection used by

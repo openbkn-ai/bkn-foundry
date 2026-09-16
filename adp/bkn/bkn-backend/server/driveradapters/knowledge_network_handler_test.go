@@ -15,6 +15,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -691,6 +692,50 @@ func Test_KnowledgeNetworkRestHandler_ListKNsByIn(t *testing.T) {
 			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
 		})
 	})
+}
+
+func Test_KnowledgeNetworkRestHandler_ListAuthorizationResources(t *testing.T) {
+	test := setGinMode()
+	defer test()
+	_, mockCtrl, engine, kns := newKNTestHandler(t)
+	defer mockCtrl.Finish()
+
+	kns.EXPECT().ListAuthorizationResources(gomock.Any(), interfaces.AuthorizationResourcesQuery{
+		PaginationQueryParameters: interfaces.PaginationQueryParameters{
+			Offset: 0, Limit: 10, Sort: "f_name", Direction: interfaces.ASC_DIRECTION,
+		},
+		Name:   "supply",
+		Branch: interfaces.MAIN_BRANCH,
+	}).Return([]*interfaces.AuthorizationResource{{ID: "kn-1", Name: "Supply"}}, 1, nil)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/api/bkn-backend/in/v1/authorization-resources?name=%20supply%20&sort=name&direction=asc", nil)
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if w.Body.String() == "" || !strings.Contains(w.Body.String(), `"id":"kn-1"`) ||
+		!strings.Contains(w.Body.String(), `"total":1`) {
+		t.Fatalf("unexpected response: %s", w.Body.String())
+	}
+}
+
+func Test_KnowledgeNetworkRestHandler_ListAuthorizationResourcesRejectsUnsupportedSort(t *testing.T) {
+	test := setGinMode()
+	defer test()
+	_, mockCtrl, engine, _ := newKNTestHandler(t)
+	defer mockCtrl.Finish()
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/api/bkn-backend/in/v1/authorization-resources?sort=update_time", nil)
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
 }
 
 func Test_KnowledgeNetworkRestHandler_GetKNByIn(t *testing.T) {

@@ -39,6 +39,26 @@ servers:
   - url: /api/safe/v1/authz
 security: []
 paths:
+  /registry:
+    get:
+      operationId: getAuthorizationRegistry
+      summary: Get the persisted authorization registry
+      description: |
+        Returns the resource types and operations currently registered in
+        bkn-safe. This is a tokenless service-to-service endpoint on the
+        platform-internal `/api/safe/v1/authz` network surface; it must not be
+        exposed through an Ingress or called directly by browsers. Browser
+        clients use the bearer-token-protected
+        `/api/safe/v1/me/authorization-registry` endpoint instead.
+      responses:
+        '200':
+          description: Authorization resource types and their operations.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizationRegistryResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /check:
     post:
       operationId: checkAuthorization
@@ -503,6 +523,49 @@ components:
       properties:
         type: {type: string}
         id: {type: string}
+    AuthorizationRegistryResponse:
+      type: object
+      required: [resource_types]
+      properties:
+        resource_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthorizationRegistryResourceType'
+    AuthorizationRegistryResourceType:
+      type: object
+      required: [id, name, operations]
+      properties:
+        id:
+          type: string
+          description: Stable authorization resource-type identifier.
+        name:
+          type: string
+          description: Display name registered for the resource type.
+        parent_type:
+          type: string
+          description: Parent resource type from which compatible operations may inherit; omitted when none is declared.
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthorizationRegistryOperation'
+    AuthorizationRegistryOperation:
+      type: object
+      required: [id, name, requires]
+      properties:
+        id:
+          type: string
+          description: Stable operation identifier.
+        name:
+          type: string
+          description: Display name registered for the operation.
+        parent_operation:
+          type: string
+          description: Compatible operation on `parent_type` used for parent-resource inheritance; omitted when none is declared.
+        requires:
+          type: array
+          description: Direct same-resource prerequisite operations. Empty when the operation has no prerequisites.
+          items:
+            type: string
     CheckRequest:
       type: object
       required: [accessor_id, resource, operation]

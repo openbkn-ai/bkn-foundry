@@ -817,6 +817,7 @@ func normalizeSpec(spec SourceSpec) (SourceSpec, error) {
 	allowed := map[string]map[string]bool{
 		"resource": {"view_detail": true, "query_data": true},
 		"tool_box": {"execute": true},
+		"function": {"execute": true},
 		"mcp":      {"execute": true},
 		"skill":    {"execute": true},
 	}
