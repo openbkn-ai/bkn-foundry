@@ -343,6 +343,7 @@ func (suta *semanticUnderstandingTaskAccess) InternalList(ctx context.Context,
 		OrderBy(buildOrderByClause(params.Sort, params.Direction))
 
 	if params.Limit > 0 {
+		// #nosec G115 -- handler validates non-negative offset and positive limit.
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}
 

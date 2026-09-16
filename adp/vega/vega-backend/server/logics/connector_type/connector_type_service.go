@@ -30,8 +30,6 @@ var (
 	ctService     interfaces.ConnectorTypeService
 )
 
-const connectorTypeAuthResourcePermissionBatchSize = 10000
-
 type connectorTypeService struct {
 	appSetting *common.AppSetting
 	cta        interfaces.ConnectorTypeAccess

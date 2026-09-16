@@ -309,6 +309,7 @@ func (dsa *discoverScheduleAccess) List(ctx context.Context, params interfaces.D
 	builder = builder.OrderBy(discoverScheduleOrderByClause(params.Sort, params.Direction))
 
 	if params.Limit > 0 {
+		// #nosec G115 -- handler validates non-negative offset and positive limit.
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}
 
@@ -564,5 +565,8 @@ func discoverScheduleOrderByClause(sort, direction string) string {
 	case interfaces.DiscoverScheduleSortNextRun:
 		column = "f_next_run"
 	}
-	return fmt.Sprintf("%s %s", column, direction)
+	if direction == interfaces.ASC_DIRECTION {
+		return fmt.Sprintf("%s ASC", column)
+	}
+	return fmt.Sprintf("%s DESC", column)
 }

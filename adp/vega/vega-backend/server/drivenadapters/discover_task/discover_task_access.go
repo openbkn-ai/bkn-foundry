@@ -333,6 +333,7 @@ func (dta *discoverTaskAccess) InternalList(ctx context.Context, params interfac
 		OrderBy(buildOrderByClause(params.Sort, params.Direction))
 
 	if params.Limit > 0 {
+		// #nosec G115 -- handler validates non-negative offset and positive limit.
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}
 

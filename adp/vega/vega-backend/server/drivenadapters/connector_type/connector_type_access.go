@@ -304,6 +304,7 @@ func (cta *connectorTypeAccess) ListAuthResourceEntries(ctx context.Context, par
 
 	builder = builder.OrderBy(connectorTypeOrderByClause(params.Sort, params.Direction))
 	if params.Limit > 0 {
+		// #nosec G115 -- handler validates non-negative offset and positive limit.
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}
 
@@ -418,5 +419,8 @@ func (cta *connectorTypeAccess) SetEnabled(ctx context.Context, tp string, enabl
 }
 
 func connectorTypeOrderByClause(_ string, direction string) string {
-	return fmt.Sprintf("f_name %s", direction)
+	if direction == interfaces.ASC_DIRECTION {
+		return "f_name ASC"
+	}
+	return "f_name DESC"
 }
