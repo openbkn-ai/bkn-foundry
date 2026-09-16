@@ -224,7 +224,7 @@ func (cts *connectorTypeService) filterAuthorizedConnectorTypeAuthResources(ctx 
 		}
 
 		batchMatchResources, err := cts.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE, ids[i:end],
-			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, false, interfaces.COMMON_OPERATIONS)
+			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, false)
 		if err != nil {
 			return nil, err
 		}

@@ -563,7 +563,7 @@ func (kns *knowledgeNetworkService) resolveKNNavigationVisibility(ctx context.Co
 	}
 
 	operations, err := kns.ps.FilterResources(ctx, interfaces.RESOURCE_TYPE_KN, knIDs,
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
 	if err != nil {
 		return nil, err
 	}
@@ -596,7 +596,7 @@ func (kns *knowledgeNetworkService) resolveKNNavigationVisibility(ctx context.Co
 
 	for resourceType, resourceIDs := range resourceIDsByType {
 		matched, err := permission.FilterKNChildResourceIDsWithAnyOperation(ctx, kns.ps, resourceType,
-			common.DuplicateSlice(resourceIDs), permission.KNChildOperationCandidates(resourceType))
+			common.DuplicateSlice(resourceIDs))
 		if err != nil {
 			return nil, err
 		}
@@ -1812,7 +1812,7 @@ func (kns *knowledgeNetworkService) ListKnSrcs(ctx context.Context,
 	}
 	// Validate permission-management operations.
 	matchResoucesMap, err := kns.ps.FilterResources(ctx, interfaces.RESOURCE_TYPE_KN, resMids,
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, false, interfaces.COMMON_OPERATIONS)
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, false)
 	if err != nil {
 		return emptyResources, 0, err
 	}

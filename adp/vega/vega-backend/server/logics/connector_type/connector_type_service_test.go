@@ -337,7 +337,6 @@ func TestConnectorTypeServiceListAuthResources(t *testing.T) {
 				[]string{"a", "b", "c"},
 				[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL},
 				false,
-				interfaces.COMMON_OPERATIONS,
 			).
 			Return(map[string]interfaces.PermissionResourceOps{
 				"a": {ResourceID: "a"},

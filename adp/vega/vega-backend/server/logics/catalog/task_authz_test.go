@@ -87,7 +87,7 @@ func TestListPermittedCatalogIDs(t *testing.T) {
 
 		ca.EXPECT().ListPermissionRefs(gomock.Any(), gomock.Any()).Return([]interfaces.CatalogPermissionRef{{CatalogID: "cat-1"}, {CatalogID: "cat-2"}}, nil)
 		ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
-			[]string{"cat-1", "cat-2"}, gomock.Any(), true, gomock.Any()).
+			[]string{"cat-1", "cat-2"}, gomock.Any(), true).
 			Return(map[string]interfaces.PermissionResourceOps{"cat-1": {ResourceID: "cat-1"}}, nil)
 
 		ids, _, err := cs.ListPermittedCatalogIDs(context.Background(),
@@ -103,7 +103,7 @@ func TestListPermittedCatalogIDs(t *testing.T) {
 		cs := &catalogService{ca: ca, ps: ps}
 
 		ca.EXPECT().ListPermissionRefs(gomock.Any(), gomock.Any()).Return([]interfaces.CatalogPermissionRef{{CatalogID: "cat-1"}}, nil)
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{}, nil)
 
 		ids, _, err := cs.ListPermittedCatalogIDs(context.Background(),
@@ -122,7 +122,7 @@ func TestListPermittedCatalogIDs(t *testing.T) {
 			Return([]interfaces.CatalogPermissionRef{{CatalogID: "cat-1"}}, nil)
 		ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 			[]string{"cat-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, false,
-			interfaces.COMMON_OPERATIONS).
+		).
 			Return(map[string]interfaces.PermissionResourceOps{"cat-1": {ResourceID: "cat-1"}}, nil)
 
 		ids, _, err := cs.ListPermittedCatalogIDs(context.Background(),

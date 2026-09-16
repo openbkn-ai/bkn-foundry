@@ -138,8 +138,12 @@ paths:
         `visibility_operations` and `candidate_operations` are independent.
         A resource is returned only when every visibility operation is allowed.
         Its `operations` value is the allowed subset of candidate operations.
-        An empty visibility list returns every requested resource. Omitting
-        candidate operations uses each resource type's operation catalog.
+        `include_operations=false` performs visibility filtering only and
+        returns every visible resource with an empty `operations` list.
+        Omitted `include_operations` defaults to `true` for compatibility.
+        An empty visibility list returns every requested resource. When
+        operations are included, omitting candidate operations uses each
+        resource type's operation catalog.
 
         `evaluation_scope=local` is available only on the platform-internal
         network face. It accepts only concrete Resource/Catalog references and
@@ -629,6 +633,10 @@ components:
         candidate_operations:
           type: array
           items: {type: string}
+        include_operations:
+          type: boolean
+          default: true
+          description: When false, return only resources that satisfy visibility_operations and do not project allowed operations.
         evaluation_scope:
           $ref: '#/components/schemas/EvaluationScope'
     FilteredResource:

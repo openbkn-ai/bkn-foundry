@@ -79,7 +79,7 @@ func VisibleReferencedObjectTypesByKN(ctx context.Context, ps interfaces.Permiss
 	}
 
 	matched, err := FilterKNChildResourceIDsWithAnyOperation(ctx, ps, interfaces.RESOURCE_TYPE_OBJECT_TYPE,
-		resourceIDs, KNChildOperationCandidates(interfaces.RESOURCE_TYPE_OBJECT_TYPE))
+		resourceIDs)
 	if err != nil {
 		return nil, err
 	}

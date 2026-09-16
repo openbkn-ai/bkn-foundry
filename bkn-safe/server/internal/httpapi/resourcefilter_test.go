@@ -216,6 +216,31 @@ func TestResourceFilterEndpointCatalogFallback(t *testing.T) {
 	}
 }
 
+func TestResourceFilterEndpointVisibilityOnlyDoesNotProjectOperations(t *testing.T) {
+	r, e, db := newTestServer(t)
+	const user = "u-visibility-only"
+	seedEnabledUser(t, db, user)
+	seedCatalogOps(t, db, "knowledge_network", "view_detail", "modify", "delete")
+	_ = e.GrantObjectPermission(user, "knowledge_network", "kn-1", "view_detail")
+	_ = e.GrantObjectPermission(user, "knowledge_network", "kn-1", "modify")
+	_ = e.GrantObjectPermission(user, "knowledge_network", "kn-1", "delete")
+
+	got := postFilter(t, r, map[string]any{
+		"accessor_id":           user,
+		"resource_type":         "knowledge_network",
+		"resource_ids":          []string{"kn-1"},
+		"visibility_operations": []string{"view_detail"},
+		"candidate_operations":  []string{"modify", "delete"},
+		"include_operations":    false,
+	})
+	if len(got) != 1 {
+		t.Fatalf("got %v, want one visible resource", got)
+	}
+	if len(got[0].Operations) != 0 {
+		t.Errorf("operations = %v, want no operation projection", got[0].Operations)
+	}
+}
+
 // TestResourceFilterEndpointCatalogFallbackMixedTypes covers the one case where
 // the batch has to be split: without candidate_operations each type projects its
 // own catalog, so the two types must not borrow each other's operations.

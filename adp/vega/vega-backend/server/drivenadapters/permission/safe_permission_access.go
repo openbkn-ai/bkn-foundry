@@ -66,7 +66,7 @@ type safeFilteredResource struct {
 // of concrete grants when an operation has same-resource prerequisites: the
 // operation may be type-wide while its prerequisite is instance-specific.
 func (c *safeClient) filterResources(ctx context.Context, accessorID string,
-	resources []interfaces.PermissionResource, visibility, candidates []string) ([]safeFilteredResource, error) {
+	resources []interfaces.PermissionResource, visibility, candidates []string, includeOperations bool) ([]safeFilteredResource, error) {
 	var out struct {
 		Resources *[]safeFilteredResource `json:"resources"`
 	}
@@ -75,6 +75,7 @@ func (c *safeClient) filterResources(ctx context.Context, accessorID string,
 		"resources":             resources,
 		"visibility_operations": visibility,
 		"candidate_operations":  candidates,
+		"include_operations":    includeOperations,
 	}, &out); err != nil {
 		return nil, err
 	}
@@ -142,18 +143,9 @@ func (s *safePermissionAccess) CheckPermission(ctx context.Context, check interf
 	return s.safe.allowedAll(ctx, check.Accessor.ID, check.Resource.Type, check.Resource.ID, check.Operations)
 }
 
-// reportOps is the set the answer names back. Callers that state no candidates
-// get the visibility operations, which is what they asked about.
-func reportOps(filter interfaces.PermissionResourcesFilter) []string {
-	if len(filter.CandidateOperations) > 0 {
-		return filter.CandidateOperations
-	}
-	return filter.Operations
-}
-
 func (s *safePermissionAccess) FilterResources(ctx context.Context, filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
 	resources, err := s.safe.filterResources(ctx, filter.Accessor.ID, filter.Resources,
-		filter.Operations, reportOps(filter))
+		filter.Operations, filter.CandidateOperations, filter.AllowOperation)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +161,7 @@ func (s *safePermissionAccess) FilterResources(ctx context.Context, filter inter
 
 func (s *safePermissionAccess) GetResourcesOperations(ctx context.Context, filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
 	resources, err := s.safe.filterResources(ctx, filter.Accessor.ID, filter.Resources,
-		nil, reportOps(filter))
+		nil, filter.CandidateOperations, true)
 	if err != nil {
 		return nil, err
 	}

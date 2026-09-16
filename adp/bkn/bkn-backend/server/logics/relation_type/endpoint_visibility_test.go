@@ -40,17 +40,15 @@ func endpointFixture() []*interfaces.RelationType {
 
 // endpointPermissions allows every relation type and answers object types the way the fixture
 // describes. objectTypeErr, when set, fails the object type check.
-func endpointPermissions(objectTypeErr error) func(context.Context, string, []string, []string, bool,
-	[]string) (map[string]interfaces.PermissionResourceOps, error) {
+func endpointPermissions(objectTypeErr error) func(context.Context, string, []string, []string, bool) (map[string]interfaces.PermissionResourceOps, error) {
 	objectTypeOps := map[string][]string{
 		"kn-1/ot-a":     {interfaces.OPERATION_TYPE_VIEW_DETAIL},
 		"kn-1/ot-b":     {interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA},
 		"kn-1/ot-query": {interfaces.OPERATION_TYPE_QUERY_DATA},
 	}
-	return func(ctx context.Context, resourceType string, ids, visibility []string, _ bool,
-		candidates []string) (map[string]interfaces.PermissionResourceOps, error) {
+	return func(ctx context.Context, resourceType string, ids, visibility []string, _ bool) (map[string]interfaces.PermissionResourceOps, error) {
 		if resourceType != interfaces.RESOURCE_TYPE_OBJECT_TYPE {
-			return allowAllRelationPermissionResources(ctx, resourceType, ids, visibility, true, candidates)
+			return allowAllRelationPermissionResources(ctx, resourceType, ids, visibility, true)
 		}
 		if objectTypeErr != nil {
 			return nil, objectTypeErr
@@ -72,7 +70,7 @@ func newEndpointTestService(t *testing.T, objectTypeErr error) (*relationTypeSer
 	ps := bmock.NewMockPermissionService(ctrl)
 	ots := bmock.NewMockObjectTypeService(ctrl)
 	ums := bmock.NewMockUserMgmtService(ctrl)
-	ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+	ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		DoAndReturn(endpointPermissions(objectTypeErr)).AnyTimes()
 	ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(map[string]*interfaces.ObjectType{}, nil).AnyTimes()
@@ -195,11 +193,10 @@ func TestReadableRelationTypes_AppliesTheReadRule(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ps := bmock.NewMockPermissionService(ctrl)
 	objectTypes := endpointPermissions(nil)
-	ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, resourceType string, ids, visibility []string, allow bool,
-			candidates []string) (map[string]interfaces.PermissionResourceOps, error) {
+	ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, resourceType string, ids, visibility []string, allow bool) (map[string]interfaces.PermissionResourceOps, error) {
 			if resourceType == interfaces.RESOURCE_TYPE_OBJECT_TYPE {
-				return objectTypes(ctx, resourceType, ids, visibility, allow, candidates)
+				return objectTypes(ctx, resourceType, ids, visibility, allow)
 			}
 			matched := map[string]interfaces.PermissionResourceOps{}
 			for _, id := range ids {

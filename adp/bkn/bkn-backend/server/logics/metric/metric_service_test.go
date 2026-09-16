@@ -25,7 +25,7 @@ import (
 	"bkn-backend/logics/batchindex"
 )
 
-func allowAllMetricPermissionResources(_ context.Context, _ string, ids, _ []string, _ bool, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
+func allowAllMetricPermissionResources(_ context.Context, _ string, ids, _ []string, _ bool) (map[string]interfaces.PermissionResourceOps, error) {
 	matched := make(map[string]interfaces.PermissionResourceOps, len(ids))
 	for _, id := range ids {
 		matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: []string{
@@ -134,7 +134,7 @@ func Test_metricService_GetMetricByID(t *testing.T) {
 
 		ma := bmock.NewMockMetricAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllMetricPermissionResources).AnyTimes()
 		service := &metricService{
 			appSetting: &common.AppSetting{},
@@ -181,7 +181,7 @@ func Test_metricService_GetMetricsByIDs(t *testing.T) {
 
 		ma := bmock.NewMockMetricAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllMetricPermissionResources).AnyTimes()
 		service := &metricService{
 			appSetting: &common.AppSetting{},
@@ -218,7 +218,7 @@ func Test_metricService_ListMetrics(t *testing.T) {
 
 		ma := bmock.NewMockMetricAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllMetricPermissionResources).AnyTimes()
 		service := &metricService{
 			appSetting: &common.AppSetting{},
@@ -286,7 +286,7 @@ func Test_metricService_UpdateMetric(t *testing.T) {
 		ma := bmock.NewMockMetricAccess(mockCtrl)
 		ma.EXPECT().CheckMetricExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("mid1", true, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllMetricPermissionResources).AnyTimes()
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
@@ -356,7 +356,7 @@ func Test_metricService_DeleteMetricsByIDs(t *testing.T) {
 		ma := bmock.NewMockMetricAccess(mockCtrl)
 		ma.EXPECT().CheckMetricExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("mid1", true, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllMetricPermissionResources).AnyTimes()
 		ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		ps.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
@@ -420,7 +420,7 @@ func Test_metricService_SearchMetrics(t *testing.T) {
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		ma := bmock.NewMockMetricAccess(mockCtrl)
 		ma.EXPECT().GetMetricIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"m1"}, nil).AnyTimes()
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllMetricPermissionResources).AnyTimes()
 
 		service := &metricService{

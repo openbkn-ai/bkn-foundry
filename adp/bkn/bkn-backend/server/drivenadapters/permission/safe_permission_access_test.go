@@ -27,6 +27,7 @@ type capturedFilter struct {
 	} `json:"resources"`
 	VisibilityOperations []string `json:"visibility_operations"`
 	CandidateOperations  []string `json:"candidate_operations"`
+	IncludeOperations    bool     `json:"include_operations"`
 }
 
 // newFilterStub stands in for bkn-safe: it records every request it receives and
@@ -286,6 +287,9 @@ func TestSafeFilterResourcesIsOneCall(t *testing.T) {
 	if !reflect.DeepEqual(call.CandidateOperations, candidates) {
 		t.Errorf("candidates = %v, want %v", call.CandidateOperations, candidates)
 	}
+	if !call.IncludeOperations {
+		t.Error("include_operations = false, want true")
+	}
 
 	// kn-3 is absent from the reply: not visible, so it must not appear.
 	if len(got) != 2 {
@@ -299,18 +303,39 @@ func TestSafeFilterResourcesIsOneCall(t *testing.T) {
 	}
 }
 
-// TestSafeFilterResourcesCandidateFallback covers callers that pass no candidate
-// set: the operations they filtered on stay the ones projected back, which is
-// the pre-existing behaviour.
-func TestSafeFilterResourcesCandidateFallback(t *testing.T) {
+// TestSafeFilterResourcesUsesCatalogFallback covers callers that pass no
+// candidate set: bkn-safe derives the complete projection from its catalog.
+func TestSafeFilterResourcesUsesCatalogFallback(t *testing.T) {
 	access, calls := newFilterStub(t, map[string][]string{"kn-1": {"view_detail"}})
 
 	if _, err := access.FilterResources(context.Background(),
 		knFilter([]string{"kn-1"}, []string{"view_detail"}, nil)); err != nil {
 		t.Fatalf("filter: %v", err)
 	}
-	if want := []string{"view_detail"}; !reflect.DeepEqual((*calls)[0].CandidateOperations, want) {
-		t.Errorf("candidates = %v, want %v", (*calls)[0].CandidateOperations, want)
+	if len((*calls)[0].CandidateOperations) != 0 {
+		t.Errorf("candidates = %v, want empty catalog fallback", (*calls)[0].CandidateOperations)
+	}
+	if !(*calls)[0].IncludeOperations {
+		t.Error("include_operations = false, want true")
+	}
+}
+
+// TestSafeFilterResourcesVisibilityOnly verifies that list filtering can skip
+// operation projection independently of the visibility predicate.
+func TestSafeFilterResourcesVisibilityOnly(t *testing.T) {
+	access, calls := newFilterStub(t, map[string][]string{"kn-1": {}})
+	filter := knFilter([]string{"kn-1"}, []string{"view_detail"}, nil)
+	filter.AllowOperation = false
+
+	got, err := access.FilterResources(context.Background(), filter)
+	if err != nil {
+		t.Fatalf("filter: %v", err)
+	}
+	if (*calls)[0].IncludeOperations {
+		t.Error("include_operations = true, want false")
+	}
+	if len(got) != 1 || len(got["kn-1"].Operations) != 0 {
+		t.Fatalf("got %v, want visible resource without projected operations", got)
 	}
 }
 
@@ -327,6 +352,9 @@ func TestSafeGetResourcesOperationsHasNoVisibilityFilter(t *testing.T) {
 	}
 	if len((*calls)[0].VisibilityOperations) != 0 {
 		t.Errorf("visibility = %v, want empty", (*calls)[0].VisibilityOperations)
+	}
+	if !(*calls)[0].IncludeOperations {
+		t.Error("include_operations = false, want true")
 	}
 	if len(got) != 2 {
 		t.Fatalf("got %v, want both resources", got)

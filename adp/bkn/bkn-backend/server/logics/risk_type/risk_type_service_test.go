@@ -213,10 +213,11 @@ func TestRiskTypeServiceSearchRiskTypesContinuesDefaultCursorPaging(t *testing.T
 			{RTID: "risk"}, {RTID: "risk-last"},
 		}, nil)
 		ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_RISK_TYPE,
-			[]string{"kn1/risk", "kn1/risk-last"}, gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]interfaces.PermissionResourceOps{
-			"kn1/risk":      {ResourceID: "kn1/risk"},
-			"kn1/risk-last": {ResourceID: "kn1/risk-last"},
-		}, nil)
+			[]string{"kn1/risk", "kn1/risk-last"}, gomock.Any(), gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{
+				"kn1/risk":      {ResourceID: "kn1/risk"},
+				"kn1/risk-last": {ResourceID: "kn1/risk-last"},
+			}, nil)
 		nextCursor := "cursor-1"
 		gomock.InOrder(
 			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
@@ -250,11 +251,11 @@ func TestRiskTypeServiceSearchRiskTypesFiltersTrustedCandidatesBeforeDatasetPagi
 		Return([]*interfaces.RiskType{{RTID: "risk-1"}, {RTID: "risk-2"}, {RTID: "risk-3"}}, nil)
 	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_RISK_TYPE,
 		[]string{"kn-1/risk-1", "kn-1/risk-2", "kn-1/risk-3"},
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true,
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(map[string]interfaces.PermissionResourceOps{
-		"kn-1/risk-1": {ResourceID: "kn-1/risk-1"},
-		"kn-1/risk-3": {ResourceID: "kn-1/risk-3"},
-	}, nil)
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, false).
+		Return(map[string]interfaces.PermissionResourceOps{
+			"kn-1/risk-1": {ResourceID: "kn-1/risk-1"},
+			"kn-1/risk-3": {ResourceID: "kn-1/risk-3"},
+		}, nil)
 
 	wantFilter := map[string]any{
 		"field": "id", "operation": "in", "value": []string{"risk-1", "risk-3"}, "value_from": "const",

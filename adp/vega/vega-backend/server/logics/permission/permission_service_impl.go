@@ -182,7 +182,7 @@ func (ps *PermissionServiceImpl) UpdateResource(ctx context.Context, resource in
 }
 
 func (ps *PermissionServiceImpl) FilterResources(ctx context.Context, resourceType string, ids []string,
-	ops []string, allowOperation bool, fullOps []string) (map[string]interfaces.PermissionResourceOps, error) {
+	ops []string, allowOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
 
 	accountInfo := interfaces.AccountInfo{}
 	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
@@ -210,10 +210,9 @@ func (ps *PermissionServiceImpl) FilterResources(ctx context.Context, resourceTy
 			ID:   accountInfo.ID,
 			Type: accountInfo.Type,
 		},
-		Resources:           resources,
-		Operations:          ops,
-		CandidateOperations: fullOps,
-		AllowOperation:      allowOperation,
+		Resources:      resources,
+		Operations:     ops,
+		AllowOperation: allowOperation,
 	})
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,

@@ -995,7 +995,7 @@ func (kns *knowledgeNetworkService) ListGovernedKNProxies(ctx context.Context) (
 		return &interfaces.KNProxyAccountList{Entries: []*interfaces.KNProxyGovernanceView{}}, nil
 	}
 	allowed, err := kns.ps.FilterResources(ctx, interfaces.RESOURCE_TYPE_KN, ids,
-		[]string{interfaces.OPERATION_TYPE_AUTHORIZE}, true, interfaces.COMMON_OPERATIONS)
+		[]string{interfaces.OPERATION_TYPE_AUTHORIZE}, false)
 	if err != nil {
 		return nil, err
 	}

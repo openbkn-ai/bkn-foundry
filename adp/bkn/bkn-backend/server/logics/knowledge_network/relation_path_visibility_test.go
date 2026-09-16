@@ -199,9 +199,8 @@ func (f pathFixture) asPartialCaller(grants map[string]map[string][]string, fail
 	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).
 		Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
 	calls := map[string]int{}
-	f.ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, resourceType string, ids, visibility []string, _ bool,
-			candidates []string) (map[string]interfaces.PermissionResourceOps, error) {
+	f.ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, resourceType string, ids, visibility []string, allowOperations bool) (map[string]interfaces.PermissionResourceOps, error) {
 			calls[resourceType]++
 			if resourceType == failure.resourceType && calls[resourceType] == failure.call {
 				return nil, failure.err
@@ -212,9 +211,11 @@ func (f pathFixture) asPartialCaller(grants map[string]map[string][]string, fail
 				if !holdsAll(granted, visibility) {
 					continue
 				}
-				if ops := intersect(granted, candidates); len(ops) > 0 {
-					matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: ops}
+				ops := []string(nil)
+				if allowOperations {
+					ops = granted
 				}
+				matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: ops}
 			}
 			return matched, nil
 		}).AnyTimes()
@@ -233,16 +234,6 @@ func holdsAll(granted, required []string) bool {
 		}
 	}
 	return true
-}
-
-func intersect(granted, candidates []string) []string {
-	ops := []string{}
-	for _, op := range candidates {
-		if slices.Contains(granted, op) {
-			ops = append(ops, op)
-		}
-	}
-	return ops
 }
 
 func pathQuery(source, direction string, length int, groups ...string) interfaces.RelationTypePathsBaseOnSource {
@@ -539,9 +530,10 @@ func TestRelationTypePaths_NoVisibleChildIsRefused(t *testing.T) {
 		Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
 	f.expectRelationTypeList()
 	f.ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_RELATION_TYPE, gomock.Any(),
-		gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]interfaces.PermissionResourceOps{}, nil).Times(1)
+		gomock.Any(), gomock.Any()).
+		Return(map[string]interfaces.PermissionResourceOps{}, nil).Times(1)
 	f.ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE, []string{"kn1/order"},
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, gomock.Any(), gomock.Any()).
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, gomock.Any()).
 		Return(map[string]interfaces.PermissionResourceOps{}, nil).Times(1)
 
 	paths, err := f.service.GetRelationTypePaths(context.Background(), pathQuery("order", interfaces.DIRECTION_FORWARD, 1))

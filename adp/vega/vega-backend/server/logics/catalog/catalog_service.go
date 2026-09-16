@@ -120,7 +120,7 @@ func (cs *catalogService) filterCatalogPermissionsInBatches(ctx context.Context,
 			end = len(ids)
 		}
 		matched, err := cs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, ids[start:end], ops,
-			allowOperation, interfaces.COMMON_OPERATIONS)
+			allowOperation)
 		if err != nil {
 			return nil, err
 		}
@@ -409,7 +409,7 @@ func (cs *catalogService) GetByID(ctx context.Context, id string, withSensitiveF
 	}
 
 	matchResoucesMap, err := cs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{catalog.ID},
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
 		return nil, err
@@ -538,7 +538,7 @@ func (cs *catalogService) GetByIDs(ctx context.Context, ids []string) ([]*interf
 		}
 	}
 	matchResoucesMap, err := cs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, ids,
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
 		return nil, err
@@ -671,7 +671,7 @@ func (cs *catalogService) ListConnectorTypeStats(ctx context.Context, params int
 		ids = append(ids, ref.CatalogID)
 	}
 	allowed, err := cs.filterCatalogPermissionsInBatches(ctx, ids,
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, false)
 	if err != nil {
 		return nil, err
 	}

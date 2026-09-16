@@ -232,10 +232,10 @@ func TestMetricDetailExposesOnlyReferencedPropertyMetadata(t *testing.T) {
 	ma.EXPECT().GetMetricsByIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, []string{"metric-1"}).
 		Return([]*interfaces.MetricDefinition{definition}, nil)
 	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
-		[]string{"kn-1/metric-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true,
-		gomock.Any()).Return(map[string]interfaces.PermissionResourceOps{
-		"kn-1/metric-1": {ResourceID: "kn-1/metric-1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
-	}, nil)
+		[]string{"kn-1/metric-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true).
+		Return(map[string]interfaces.PermissionResourceOps{
+			"kn-1/metric-1": {ResourceID: "kn-1/metric-1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+		}, nil)
 
 	service := &metricService{ma: ma, ps: ps, ots: ots}
 	metrics, err := service.GetMetricsByIDs(context.Background(), "kn-1", interfaces.MAIN_BRANCH, []string{"metric-1"})
@@ -267,10 +267,10 @@ func TestMetricDetailRemainsReadableWhenScopeObjectTypeIsMissing(t *testing.T) {
 	ma.EXPECT().GetMetricsByIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, []string{"metric-1"}).
 		Return([]*interfaces.MetricDefinition{definition}, nil)
 	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
-		[]string{"kn-1/metric-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true,
-		gomock.Any()).Return(map[string]interfaces.PermissionResourceOps{
-		"kn-1/metric-1": {ResourceID: "kn-1/metric-1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
-	}, nil)
+		[]string{"kn-1/metric-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true).
+		Return(map[string]interfaces.PermissionResourceOps{
+			"kn-1/metric-1": {ResourceID: "kn-1/metric-1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+		}, nil)
 
 	service := &metricService{ma: ma, ps: ps, ots: ots}
 	metrics, err := service.GetMetricsByIDs(context.Background(), "kn-1", interfaces.MAIN_BRANCH, []string{"metric-1"})
@@ -367,7 +367,8 @@ func TestMetricSingleResourceAuthorization(t *testing.T) {
 			}
 			if tt.name == "detail" {
 				ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
-					[]string{"kn-1/metric-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, gomock.Any()).Return(nil, denied)
+					[]string{"kn-1/metric-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true).
+					Return(nil, denied)
 			} else {
 				ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 					Type: interfaces.RESOURCE_TYPE_METRIC, ID: "kn-1/metric-1",
@@ -405,16 +406,11 @@ func TestMetricListAuthorizationFiltersBeforeTotalAndPagination(t *testing.T) {
 		})
 	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
 		[]string{"kn-1/metric-1", "kn-1/metric-2", "kn-1/metric-3"},
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true,
-		[]string{
-			interfaces.OPERATION_TYPE_VIEW_DETAIL,
-			interfaces.OPERATION_TYPE_QUERY_DATA,
-			interfaces.OPERATION_TYPE_MODIFY,
-			interfaces.OPERATION_TYPE_DELETE,
-		}).Return(map[string]interfaces.PermissionResourceOps{
-		"kn-1/metric-1": {ResourceID: "kn-1/metric-1"},
-		"kn-1/metric-3": {ResourceID: "kn-1/metric-3"},
-	}, nil)
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true).
+		Return(map[string]interfaces.PermissionResourceOps{
+			"kn-1/metric-1": {ResourceID: "kn-1/metric-1"},
+			"kn-1/metric-3": {ResourceID: "kn-1/metric-3"},
+		}, nil)
 
 	result, err := (&metricService{ma: ma, ps: ps}).ListMetrics(context.Background(), query)
 	if err != nil {
@@ -434,10 +430,10 @@ func TestMetricBatchDeleteAuthorizationRejectsBeforeBusinessWrites(t *testing.T)
 		{ID: "metric-1"}, {ID: "metric-2"},
 	}, nil)
 	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
-		[]string{"kn-1/metric-1", "kn-1/metric-2"}, []string{interfaces.OPERATION_TYPE_DELETE}, true,
-		[]string{interfaces.OPERATION_TYPE_DELETE}).Return(map[string]interfaces.PermissionResourceOps{
-		"kn-1/metric-1": {ResourceID: "kn-1/metric-1", Operations: []string{interfaces.OPERATION_TYPE_DELETE}},
-	}, nil)
+		[]string{"kn-1/metric-1", "kn-1/metric-2"}, []string{interfaces.OPERATION_TYPE_DELETE}, false).
+		Return(map[string]interfaces.PermissionResourceOps{
+			"kn-1/metric-1": {ResourceID: "kn-1/metric-1", Operations: []string{interfaces.OPERATION_TYPE_DELETE}},
+		}, nil)
 
 	service := &metricService{ma: ma, ps: ps}
 	err := service.DeleteMetricsByIDs(context.Background(), nil, "kn-1", interfaces.MAIN_BRANCH,
@@ -470,10 +466,10 @@ func TestMetricBatchOverwriteAuthorizationRejectsAndRollsBackBeforeBusinessWrite
 			Return(entry.ID, true, nil)
 	}
 	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
-		[]string{"kn-1/metric-1", "kn-1/metric-2"}, []string{interfaces.OPERATION_TYPE_MODIFY}, true,
-		[]string{interfaces.OPERATION_TYPE_MODIFY}).Return(map[string]interfaces.PermissionResourceOps{
-		"kn-1/metric-1": {ResourceID: "kn-1/metric-1", Operations: []string{interfaces.OPERATION_TYPE_MODIFY}},
-	}, nil)
+		[]string{"kn-1/metric-1", "kn-1/metric-2"}, []string{interfaces.OPERATION_TYPE_MODIFY}, false).
+		Return(map[string]interfaces.PermissionResourceOps{
+			"kn-1/metric-1": {ResourceID: "kn-1/metric-1", Operations: []string{interfaces.OPERATION_TYPE_MODIFY}},
+		}, nil)
 	dbMock.ExpectRollback()
 
 	service := &metricService{db: db, ma: ma, ps: ps}

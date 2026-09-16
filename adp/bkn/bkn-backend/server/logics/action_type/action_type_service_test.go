@@ -29,7 +29,7 @@ import (
 	"bkn-backend/logics/batchindex"
 )
 
-func allowAllActionPermissionResources(_ context.Context, _ string, ids, _ []string, _ bool, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
+func allowAllActionPermissionResources(_ context.Context, _ string, ids, _ []string, _ bool) (map[string]interfaces.PermissionResourceOps, error) {
 	matched := make(map[string]interfaces.PermissionResourceOps, len(ids))
 	for _, id := range ids {
 		matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: []string{
@@ -219,7 +219,7 @@ func Test_actionTypeService_GetActionTypesByIDs(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllActionPermissionResources).AnyTimes()
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
 
@@ -375,7 +375,7 @@ func Test_actionTypeService_ListActionTypes(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllActionPermissionResources).AnyTimes()
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
 		ums := bmock.NewMockUserMgmtService(mockCtrl)
@@ -974,7 +974,7 @@ func Test_actionTypeService_DeleteActionTypesByIDs(t *testing.T) {
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
 		ata.EXPECT().CheckActionTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("at1", true, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllActionPermissionResources).AnyTimes()
 		ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		ps.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
@@ -1176,7 +1176,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllActionPermissionResources).AnyTimes()
 		ps.EXPECT().UpsertResourceParents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		ps.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
@@ -1415,7 +1415,7 @@ func Test_actionTypeService_SearchActionTypes(t *testing.T) {
 		ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{{
 			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ObjectTypeID: "ot1"},
 		}}, nil).AnyTimes()
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllActionPermissionResources).AnyTimes()
 
 		service := &actionTypeService{
@@ -1627,7 +1627,7 @@ func Test_actionTypeService_SearchActionTypes_extraCases(t *testing.T) {
 		ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{{
 			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ObjectTypeID: "ot1"},
 		}}, nil).AnyTimes()
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllActionPermissionResources).AnyTimes()
 
 		service := &actionTypeService{

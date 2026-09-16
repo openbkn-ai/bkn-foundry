@@ -1208,11 +1208,11 @@ func TestListGovernedKNProxiesFiltersUnauthorizedMappings(t *testing.T) {
 		{KNID: "kn-a", ProxyAccountID: "proxy-a"},
 	}
 	permissionService.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_KN,
-		[]string{"kn-hidden", "kn-b", "kn-a"}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}, true,
-		interfaces.COMMON_OPERATIONS).Return(map[string]interfaces.PermissionResourceOps{
-		"kn-a": {},
-		"kn-b": {},
-	}, nil)
+		[]string{"kn-hidden", "kn-b", "kn-a"}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}, false).
+		Return(map[string]interfaces.PermissionResourceOps{
+			"kn-a": {},
+			"kn-b": {},
+		}, nil)
 	service := &knowledgeNetworkService{kpa: &proxyAccessStub{mappings: mappings}, ps: permissionService}
 
 	got, err := service.ListGovernedKNProxies(t.Context())

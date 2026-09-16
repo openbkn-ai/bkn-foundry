@@ -203,7 +203,7 @@ func (p *stubPermission) ResolvePropertyAccessLevels(_ context.Context, objectTy
 }
 
 func (p *stubPermission) FilterResources(_ context.Context, _ string, ids []string,
-	ops []string, _ bool, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
+	ops []string, _ bool) (map[string]interfaces.PermissionResourceOps, error) {
 
 	p.filtered = append(p.filtered, ids...)
 	p.operations = ops

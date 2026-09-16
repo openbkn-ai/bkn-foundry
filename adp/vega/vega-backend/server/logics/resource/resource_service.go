@@ -315,7 +315,7 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 	}
 
 	matchResoucesMap, err := rs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-		[]string{resource.ID}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
+		[]string{resource.ID}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
 		return nil, err
@@ -445,7 +445,7 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string, includeRo
 		}
 	}
 	matchResoucesMap, err := rs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-		ids, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
+		ids, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
 		return nil, err
@@ -570,7 +570,7 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 		var batchMatchResources map[string]interfaces.PermissionResourceOps
 		// Verify the operation permissions of the permission management
 		batchMatchResources, err = rs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-			batchIDs, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
+			batchIDs, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
 		if err != nil {
 			span.SetStatus(codes.Error, "Filter resources error")
 			return []*interfaces.ResourceSummary{}, 0, err
@@ -1057,7 +1057,7 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string, ignore
 	// existence before authorization. With ignoreMissing, unmatched IDs are
 	// resolved after loading and are accepted only when they are actually absent.
 	matchResourcesMap, err := rs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-		ids, []string{interfaces.OPERATION_TYPE_DELETE}, true, interfaces.COMMON_OPERATIONS)
+		ids, []string{interfaces.OPERATION_TYPE_DELETE}, false)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
 		return err
