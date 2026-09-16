@@ -50,6 +50,7 @@ var resourceColumns = []string{
 	"f_tags",
 	"f_description",
 	"f_category",
+	"f_internal",
 	"f_enabled",
 	"f_status",
 	"f_status_message",
@@ -79,6 +80,7 @@ var resourceSummaryColumns = []string{
 	"f_tags",
 	"f_description",
 	"f_category",
+	"f_internal",
 	"f_enabled",
 	"f_status",
 	"f_status_message",
@@ -113,6 +115,7 @@ func scanResource(scanner resourceRowScanner) (*interfaces.Resource, error) {
 		&tagsStr,
 		&resource.Description,
 		&resource.Category,
+		&resource.Internal,
 		&resource.Enabled,
 		&resource.Status,
 		&resource.StatusMessage,
@@ -163,6 +166,7 @@ func scanResourceSummary(scanner resourceRowScanner) (*interfaces.ResourceSummar
 		&tagsStr,
 		&summary.Description,
 		&summary.Category,
+		&summary.Internal,
 		&summary.Enabled,
 		&summary.Status,
 		&summary.StatusMessage,
@@ -187,6 +191,9 @@ func scanResourceSummary(scanner resourceRowScanner) (*interfaces.ResourceSummar
 }
 
 func applyResourceFilters(builder sq.SelectBuilder, params interfaces.ResourcesQueryParams) sq.SelectBuilder {
+	if !params.IncludeInternal {
+		builder = builder.Where(sq.Eq{"f_internal": false})
+	}
 	if params.Name != "" {
 		builder = builder.Where(sq.Like{"f_name": "%" + common.EscapeLikePattern(params.Name) + "%"})
 	}
@@ -257,6 +264,7 @@ func (ra *resourceAccess) Create(ctx context.Context, tx *sql.Tx, resource *inte
 			"f_tags",
 			"f_description",
 			"f_category",
+			"f_internal",
 			"f_enabled",
 			"f_status",
 			"f_status_message",
@@ -288,6 +296,7 @@ func (ra *resourceAccess) Create(ctx context.Context, tx *sql.Tx, resource *inte
 			tagsStr,
 			resource.Description,
 			resource.Category,
+			resource.Internal,
 			resource.Enabled,
 			resource.Status,
 			resource.StatusMessage,

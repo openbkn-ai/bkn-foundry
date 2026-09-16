@@ -894,7 +894,8 @@ func TestSemanticUnderstandingTaskWorkerApplyCatalogResult(t *testing.T) {
 	t.Cleanup(ctrl.Finish)
 
 	resourceService := vmock.NewMockResourceService(ctrl)
-	worker := &SemanticUnderstandingTaskWorker{rs: resourceService}
+	catalogService := vmock.NewMockCatalogService(ctrl)
+	worker := &SemanticUnderstandingTaskWorker{rs: resourceService, cs: catalogService}
 	task := &interfaces.SemanticUnderstandingTask{
 		Scope:               interfaces.SemanticUnderstandingTaskScopeCatalog,
 		CatalogID:           "catalog-1",
@@ -905,6 +906,8 @@ func TestSemanticUnderstandingTaskWorkerApplyCatalogResult(t *testing.T) {
 		{ID: "source", Type: interfaces.LogicDefinitionNodeType_Resource},
 		{ID: "output", Type: interfaces.LogicDefinitionNodeType_Output, Inputs: []string{"source"}},
 	}
+	catalogService.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", false).
+		Return(&interfaces.Catalog{ID: "catalog-1", Internal: true}, nil)
 
 	resourceService.EXPECT().
 		GetByCatalogID(gomock.Any(), "catalog-1").
@@ -921,6 +924,8 @@ func TestSemanticUnderstandingTaskWorkerApplyCatalogResult(t *testing.T) {
 			assert.Equal(t, "summary view", req.Description)
 			assert.Equal(t, interfaces.ResourceCategoryLogicView, req.Category)
 			assert.Equal(t, logicDefinition, req.LogicDefinition)
+			require.NotNil(t, req.Internal)
+			assert.True(t, *req.Internal)
 			return &interfaces.Resource{ID: "view-1"}, nil
 		})
 	resourceService.EXPECT().
@@ -941,12 +946,15 @@ func TestSemanticUnderstandingTaskWorkerApplyCatalogResultRejectsInvalidSourceId
 	t.Cleanup(ctrl.Finish)
 
 	resourceService := vmock.NewMockResourceService(ctrl)
-	worker := &SemanticUnderstandingTaskWorker{rs: resourceService}
+	catalogService := vmock.NewMockCatalogService(ctrl)
+	worker := &SemanticUnderstandingTaskWorker{rs: resourceService, cs: catalogService}
 	task := &interfaces.SemanticUnderstandingTask{
 		Scope:     interfaces.SemanticUnderstandingTaskScopeCatalog,
 		CatalogID: "catalog-1",
 		ApplyMode: interfaces.SemanticUnderstandingApplyModeForce,
 	}
+	catalogService.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", false).
+		Return(&interfaces.Catalog{ID: "catalog-1", Internal: false}, nil)
 	resourceService.EXPECT().
 		GetByCatalogID(gomock.Any(), "catalog-1").
 		Return([]*interfaces.Resource{{ID: "resource-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable}}, nil)

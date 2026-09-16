@@ -1198,6 +1198,13 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 	if err := sonic.Unmarshal([]byte(resultJSON), &result); err != nil {
 		return nil, fmt.Errorf("unmarshal catalog semantic understanding result failed: %w", err)
 	}
+	catalog, err := sutw.cs.InternalGetByID(ctx, task.CatalogID, false)
+	if err != nil {
+		return nil, err
+	}
+	if catalog == nil {
+		return nil, fmt.Errorf("catalog %s not found", task.CatalogID)
+	}
 
 	resources, err := sutw.rs.GetByCatalogID(ctx, task.CatalogID)
 	if err != nil {
@@ -1233,6 +1240,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 			sourceIdentifiers[view.SourceIdentifier] = struct{}{}
 			req := &interfaces.ResourceRequest{
 				CatalogID:        task.CatalogID,
+				Internal:         &catalog.Internal,
 				Name:             view.Name,
 				SourceIdentifier: view.SourceIdentifier,
 				Description:      view.Description,

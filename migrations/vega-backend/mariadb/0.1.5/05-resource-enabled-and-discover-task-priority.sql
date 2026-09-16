@@ -7,11 +7,11 @@
 USE openbkn;
 
 ALTER TABLE t_resource
-    ADD COLUMN IF NOT EXISTS f_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '资源是否启用' AFTER f_category,
+    ADD COLUMN IF NOT EXISTS f_enabled BOOLEAN NOT NULL DEFAULT TRUE COMMENT '资源是否启用' AFTER f_category,
     ADD INDEX IF NOT EXISTS idx_enabled (f_enabled);
 
 UPDATE t_resource
-SET f_enabled = 0,
+SET f_enabled = FALSE,
     f_status = 'active'
 WHERE f_status = 'disabled';
 

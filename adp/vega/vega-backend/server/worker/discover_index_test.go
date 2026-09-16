@@ -54,6 +54,8 @@ func TestReconcileIndexResources(t *testing.T) {
 		rs.EXPECT().Create(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.ResourceRequest{})).
 			DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
 				assert.Equal(t, "catalog-1", req.CatalogID)
+				require.NotNil(t, req.Internal)
+				assert.True(t, *req.Internal)
 				assert.Equal(t, "idx-a", req.Name)
 				assert.Equal(t, interfaces.ResourceCategoryIndex, req.Category)
 				assert.Equal(t, "idx-a", req.SourceIdentifier)
@@ -61,7 +63,7 @@ func TestReconcileIndexResources(t *testing.T) {
 			})
 		rs.EXPECT().UpdateDiscoverStatus(gomock.Any(), "r1", interfaces.DiscoverStatusNew).Return(nil)
 
-		result, items, err := dh.reconcileIndexResources(context.Background(), &interfaces.DiscoverTask{DiscoverActions: &actions}, &interfaces.Catalog{ID: "catalog-1"},
+		result, items, err := dh.reconcileIndexResources(context.Background(), &interfaces.DiscoverTask{DiscoverActions: &actions}, &interfaces.Catalog{ID: "catalog-1", Internal: true},
 			[]*interfaces.IndexMeta{{Name: "idx-a"}}, nil)
 
 		require.NoError(t, err)
