@@ -119,6 +119,24 @@ func TestGrantIndexDoesNotLoadRowsForSuperAdmin(t *testing.T) {
 	}
 }
 
+// Public policies are already included by implicitPermissions. grantIndex must
+// not append them again, or every list-page decision needlessly indexes each
+// public grant twice.
+func TestGrantIndexIncludesEachPublicPolicyOnce(t *testing.T) {
+	e := newTestEnforcer(t)
+	mustNoErr(t, e.GrantObjectPermission(PublicAccessorID, "resource", "public-1", "view_detail"))
+
+	idx, err := e.grantIndex("ordinary-user")
+	mustNoErr(t, err)
+	rows := idx.exact["resource:public-1"]
+	if len(rows) != 1 {
+		t.Fatalf("public policy rows = %d, want 1: %+v", len(rows), rows)
+	}
+	if rows[0].act != "view_detail" || rows[0].effect != EffectAllow {
+		t.Fatalf("public policy row = %+v, want view_detail allow", rows[0])
+	}
+}
+
 // Explain lists the concrete grants behind a decision; it reads them itself, so the super-admin
 // shortcut must leave it unchanged.
 func TestExplainStillListsSuperAdminGrants(t *testing.T) {

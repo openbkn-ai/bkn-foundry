@@ -227,11 +227,10 @@ type grantIndex struct {
 //
 //	(g(r.sub, p.sub) || p.sub == PublicAccessorID)
 //
-// GetImplicitPermissionsForUser covers the g() half (the accessor itself plus
-// every role reachable through g, transitively); the public/root-department
-// grants are the other half and are NOT part of implicit permissions, so they
-// are read separately. Missing them here would silently deny access the
-// single-decision Check grants.
+// implicitPermissions covers both halves: the accessor itself plus every role
+// reachable through g, transitively, and PublicAccessorID's root-department
+// grants. Keeping that projection centralized prevents public policy rows from
+// being indexed twice while preserving parity with single-decision Check.
 //
 // A super-admin's index carries no rows. Its decisions never read them
 // (localParts allows every operation before looking), and copying them out was
@@ -250,12 +249,8 @@ func (en *Enforcer) grantIndex(accessorID string) (*grantIndex, error) {
 		if err != nil {
 			return nil, err
 		}
-		public, err := en.e.GetFilteredPolicy(0, PublicAccessorID)
-		if err != nil {
-			return nil, err
-		}
 		edition := entitlement.Current()
-		rows = append(activePolicyRowsForEdition(rows, edition), activePolicyRowsForEdition(public, edition)...)
+		rows = activePolicyRowsForEdition(rows, edition)
 	}
 	idx := newGrantIndex(rows, superAdmin)
 	seenSubject := map[string]bool{}
