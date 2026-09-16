@@ -135,7 +135,7 @@ config:
       baseURL: "http://bkn-backend-svc:13014"
       timeout: "3s"
     executionFactory:
-      baseURL: "http://agent-operator-integration-svc:13014"
+      baseURL: "http://agent-operator-integration:9000"
       timeout: "3s"
   hydra:
     adminURL: "http://bkn-safe-hydra-admin:4445"

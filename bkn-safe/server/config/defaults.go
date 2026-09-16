@@ -47,6 +47,6 @@ func defaultConfig() *Config {
 		},
 		Upstreams: UpstreamsConfig{BKNBackend: UpstreamConfig{
 			BaseURL: "http://bkn-backend-svc:13014", Timeout: 3 * time.Second,
-		}, ExecutionFactory: UpstreamConfig{BaseURL: "http://agent-operator-integration-svc:13014", Timeout: 3 * time.Second}},
+		}, ExecutionFactory: UpstreamConfig{BaseURL: "http://agent-operator-integration:9000", Timeout: 3 * time.Second}},
 	}
 }

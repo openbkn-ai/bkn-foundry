@@ -37,7 +37,7 @@ data:
   SAFE_BKN_BACKEND_BASE_URL: {{ $bknBackend.baseURL | default "http://bkn-backend-svc:13014" | quote }}
   SAFE_BKN_BACKEND_TIMEOUT: {{ $bknBackend.timeout | default "3s" | quote }}
   {{- $executionFactory := $upstreams.executionFactory | default dict }}
-  SAFE_EXECUTION_FACTORY_BASE_URL: {{ $executionFactory.baseURL | default "http://agent-operator-integration-svc:13014" | quote }}
+  SAFE_EXECUTION_FACTORY_BASE_URL: {{ $executionFactory.baseURL | default "http://agent-operator-integration:9000" | quote }}
   SAFE_EXECUTION_FACTORY_TIMEOUT: {{ $executionFactory.timeout | default "3s" | quote }}
   SAFE_HYDRA_ADMIN_URL: {{ .Values.config.hydra.adminURL | quote }}
   SAFE_HYDRA_PUBLIC_URL: {{ .Values.config.hydra.publicURL | quote }}
