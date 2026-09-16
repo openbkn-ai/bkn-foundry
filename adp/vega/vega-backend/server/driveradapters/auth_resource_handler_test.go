@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -23,77 +22,11 @@ import (
 	vmock "vega-backend/interfaces/mock"
 )
 
-func Test_AuthResourceRestHandler_ListAuthResourcesRoute(t *testing.T) {
+func TestAuthResourceRestHandlerListAuthorizationResourcesByIn(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
 
-	t.Run("rejects missing resource type", func(t *testing.T) {
-		engine := gin.New()
-		engine.Use(gin.Recovery())
-
-		mockCtrl := gomock.NewController(t)
-		t.Cleanup(mockCtrl.Finish)
-
-		as := vmock.NewMockAuthService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, as, nil, nil, nil, nil, nil, nil, nil, nil)
-		handler.RegisterPublic(engine)
-
-		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().
-			Return(hydra.Visitor{ID: "u1", Type: hydra.VisitorType_User}, nil)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/v1/auth-resources", nil)
-		w := httptest.NewRecorder()
-
-		engine.ServeHTTP(w, req)
-
-		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
-		assert.Contains(t, w.Body.String(), "resource_type is invalid")
-	})
-}
-
-func Test_AuthResourceRestHandler_ListConnectorTypeResources(t *testing.T) {
-	restoreGinMode := setGinMode()
-	defer restoreGinMode()
-
-	t.Run("lists connector type resources", func(t *testing.T) {
-		engine := gin.New()
-		engine.Use(gin.Recovery())
-
-		mockCtrl := gomock.NewController(t)
-		t.Cleanup(mockCtrl.Finish)
-
-		as := vmock.NewMockAuthService(mockCtrl)
-		cts := vmock.NewMockConnectorTypeService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, as, nil, nil, nil, nil, cts, nil, nil, nil)
-		handler.RegisterPublic(engine)
-
-		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().
-			Return(hydra.Visitor{ID: "u1", Type: hydra.VisitorType_User}, nil)
-
-		cts.EXPECT().ListAuthResources(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, int64, error) {
-				assert.Equal(t, "mysql", params.Keyword)
-				return []*interfaces.AuthResourceEntry{
-					{ID: interfaces.ConnectorTypeMySQL, Type: interfaces.AuthResourceTypeConnectorType, Name: "MySQL"},
-				}, int64(1), nil
-			})
-
-		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/v1/auth-resources?resource_type=connector-type&keyword=mysql", nil)
-		w := httptest.NewRecorder()
-
-		engine.ServeHTTP(w, req)
-
-		require.Equal(t, http.StatusOK, w.Result().StatusCode)
-		assert.Contains(t, w.Body.String(), `"id":"mysql"`)
-		assert.Contains(t, w.Body.String(), `"type":"connector-type"`)
-	})
-}
-
-func Test_AuthResourceRestHandler_ListCatalogResources(t *testing.T) {
-	restoreGinMode := setGinMode()
-	defer restoreGinMode()
-
-	t.Run("lists catalog auth resources", func(t *testing.T) {
+	t.Run("lists catalog resources without OAuth or sensitive fields", func(t *testing.T) {
 		engine := gin.New()
 		engine.Use(gin.Recovery())
 
@@ -105,88 +38,82 @@ func Test_AuthResourceRestHandler_ListCatalogResources(t *testing.T) {
 		handler := MockNewRestHandler(&common.AppSetting{}, as, cs, nil, nil, nil, nil, nil, nil, nil)
 		handler.RegisterPublic(engine)
 
-		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().
-			Return(hydra.Visitor{ID: "u1", Type: hydra.VisitorType_User}, nil)
-		cs.EXPECT().ListAuthResources(gomock.Any(), gomock.Any()).
+		cs.EXPECT().ListAuthResourceEntries(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, int64, error) {
-				assert.Equal(t, "lake", params.Keyword)
-				return []*interfaces.AuthResourceEntry{
-					{ID: "catalog-1", Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG, Name: "Lake"},
-				}, int64(1), nil
+				assert.Equal(t, "supply", params.Name)
+				assert.Equal(t, 5, params.Offset)
+				assert.Equal(t, 10, params.Limit)
+				assert.Equal(t, "name", params.Sort)
+				assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
+				assert.False(t, params.IncludeInternal)
+				return []*interfaces.AuthResourceEntry{{ID: "catalog-1", Name: "Supply Chain"}}, 1, nil
 			})
 
-		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/v1/auth-resources?resource_type=catalog&keyword=lake", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/authorization-resources?resource_type=catalog&name=supply&offset=5&limit=10", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), `"id":"catalog-1"`)
-		assert.Contains(t, w.Body.String(), `"type":"catalog"`)
+		assert.Contains(t, w.Body.String(), `"name":"Supply Chain"`)
+		assert.Contains(t, w.Body.String(), `"total":1`)
+		assert.NotContains(t, w.Body.String(), `"type"`)
 	})
-}
 
-func Test_AuthResourceRestHandler_ListResourceResources(t *testing.T) {
-	restoreGinMode := setGinMode()
-	defer restoreGinMode()
-
-	t.Run("lists resource auth resources", func(t *testing.T) {
+	t.Run("rejects unsupported resource type", func(t *testing.T) {
 		engine := gin.New()
 		engine.Use(gin.Recovery())
 
 		mockCtrl := gomock.NewController(t)
 		t.Cleanup(mockCtrl.Finish)
 
-		as := vmock.NewMockAuthService(mockCtrl)
-		rs := vmock.NewMockResourceService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, as, nil, rs, nil, nil, nil, nil, nil, nil)
+		handler := MockNewRestHandler(&common.AppSetting{}, vmock.NewMockAuthService(mockCtrl), nil, nil, nil, nil, nil, nil, nil, nil)
 		handler.RegisterPublic(engine)
 
-		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().
-			Return(hydra.Visitor{ID: "u1", Type: hydra.VisitorType_User}, nil)
-		rs.EXPECT().ListAuthResources(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, int64, error) {
-				assert.Equal(t, "orders", params.Keyword)
-				return []*interfaces.AuthResourceEntry{
-					{ID: "resource-1", Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, Name: "Orders"},
-				}, int64(1), nil
-			})
-
-		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/v1/auth-resources?resource_type=resource&keyword=orders", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/authorization-resources?resource_type=connector-type", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)
 
-		require.Equal(t, http.StatusOK, w.Result().StatusCode)
-		assert.Contains(t, w.Body.String(), `"id":"resource-1"`)
-		assert.Contains(t, w.Body.String(), `"type":"resource"`)
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "valid values: catalog, resource")
 	})
-}
 
-func Test_AuthResourceRestHandler_RejectUnsupportedSort(t *testing.T) {
-	restoreGinMode := setGinMode()
-	defer restoreGinMode()
-
-	t.Run("rejects unsupported sort", func(t *testing.T) {
+	t.Run("rejects invalid pagination query", func(t *testing.T) {
 		engine := gin.New()
 		engine.Use(gin.Recovery())
 
 		mockCtrl := gomock.NewController(t)
 		t.Cleanup(mockCtrl.Finish)
 
-		as := vmock.NewMockAuthService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, as, nil, nil, nil, nil, nil, nil, nil, nil)
+		handler := MockNewRestHandler(&common.AppSetting{}, vmock.NewMockAuthService(mockCtrl), nil, nil, nil, nil, nil, nil, nil, nil)
 		handler.RegisterPublic(engine)
 
-		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().
-			Return(hydra.Visitor{ID: "u1", Type: hydra.VisitorType_User}, nil)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/v1/auth-resources?resource_type=resource&sort=update_time", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/authorization-resources?resource_type=resource&sort=update_time", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), "VegaBackend.InvalidParameter.Sort")
+	})
+
+	t.Run("does not register the replaced public endpoint", func(t *testing.T) {
+		engine := gin.New()
+		engine.Use(gin.Recovery())
+
+		mockCtrl := gomock.NewController(t)
+		t.Cleanup(mockCtrl.Finish)
+
+		handler := MockNewRestHandler(&common.AppSetting{}, vmock.NewMockAuthService(mockCtrl), nil, nil, nil, nil, nil, nil, nil, nil)
+		handler.RegisterPublic(engine)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/v1/auth-resources?resource_type=catalog", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNotFound, w.Result().StatusCode)
 	})
 }

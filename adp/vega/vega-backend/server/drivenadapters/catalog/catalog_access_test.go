@@ -312,24 +312,22 @@ func TestCatalogAccessListAuthResources(t *testing.T) {
 		access, mock, cleanup := newCatalogAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_catalog WHERE f_internal = ? AND f_id = ? AND f_name LIKE ?")).
-			WithArgs(false, "catalog-1", "%Catalog%").
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_catalog WHERE f_internal = ? AND f_name LIKE ?")).
+			WithArgs(false, "%Catalog%").
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(3))
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_name FROM t_catalog WHERE f_internal = ? AND f_id = ? AND f_name LIKE ? ORDER BY f_name ASC LIMIT 1 OFFSET 2")).
-			WithArgs(false, "catalog-1", "%Catalog%").
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_name FROM t_catalog WHERE f_internal = ? AND f_name LIKE ? ORDER BY f_name ASC, f_id ASC LIMIT 1 OFFSET 2")).
+			WithArgs(false, "%Catalog%").
 			WillReturnRows(sqlmock.NewRows([]string{"f_id", "f_name"}).AddRow("catalog-1", "Catalog One"))
 
-		got, total, err := access.ListAuthResources(context.Background(), interfaces.AuthResourceQueryParams{
+		got, total, err := access.ListAuthResourceEntries(context.Background(), interfaces.AuthResourceQueryParams{
 			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 2, Limit: 1, Sort: "f_name", Direction: "ASC"},
-			ID:                    "catalog-1",
-			Keyword:               "Catalog",
+			Name:                  "Catalog",
 		})
 
 		require.NoError(t, err)
 		assert.Equal(t, int64(3), total)
 		require.Len(t, got, 1)
 		assert.Equal(t, "catalog-1", got[0].ID)
-		assert.Equal(t, interfaces.AUTH_RESOURCE_TYPE_CATALOG, got[0].Type)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

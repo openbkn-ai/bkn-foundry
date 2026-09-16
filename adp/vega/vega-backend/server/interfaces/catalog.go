@@ -28,10 +28,10 @@ const (
 
 // CATALOG_SORT is a whitelist of supported API sort fields. The data access
 // layer maps these fields to database columns.
-var CATALOG_SORT = map[string]string{
-	CatalogSortName:       "",
-	CatalogSortCreateTime: "",
-	CatalogSortUpdateTime: "",
+var CATALOG_SORT = map[string]struct{}{
+	CatalogSortName:       {},
+	CatalogSortCreateTime: {},
+	CatalogSortUpdateTime: {},
 }
 
 type CatalogDeletionTaskImpact struct {

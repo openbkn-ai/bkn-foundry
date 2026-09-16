@@ -57,10 +57,10 @@ const (
 
 // RESOURCE_SORT is a whitelist of supported API sort fields. The data access
 // layer maps these fields to database columns.
-var RESOURCE_SORT = map[string]string{
-	ResourceSortName:       "",
-	ResourceSortCreateTime: "",
-	ResourceSortUpdateTime: "",
+var RESOURCE_SORT = map[string]struct{}{
+	ResourceSortName:       {},
+	ResourceSortCreateTime: {},
+	ResourceSortUpdateTime: {},
 }
 
 // Resource represents a Data Resource entity.

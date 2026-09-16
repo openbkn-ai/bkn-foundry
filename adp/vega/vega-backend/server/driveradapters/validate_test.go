@@ -19,9 +19,9 @@ import (
 	resourcelogic "vega-backend/logics/resource"
 )
 
-var testSortTypes = map[string]string{
-	"name":        "f_name",
-	"create_time": "f_create_time",
+var testSortTypes = map[string]struct{}{
+	"name":        {},
+	"create_time": {},
 }
 
 func TestParseTaskStatuses(t *testing.T) {

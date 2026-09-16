@@ -40,8 +40,8 @@ type CatalogService interface {
 	// UpdateMetadata updates a Catalog metadata.
 	UpdateMetadata(ctx context.Context, id string, metadata map[string]any) error
 
-	// ListAuthResources lists catalog auth resources with filters.
-	ListAuthResources(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, int64, error)
+	// ListAuthResourceEntries lists catalog authorization entries with filters.
+	ListAuthResourceEntries(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, int64, error)
 
 	// ListPermittedCatalogIDs returns the catalog IDs permitted for every
 	// requested operation, preserving the requested catalog sort order. The

@@ -132,7 +132,7 @@ func (r *restHandler) listDiscoverSchedules(c *gin.Context, visitor hydra.Visito
 
 	offset := common.GetQueryOrDefault(c, "offset", interfaces.DEFAULT_OFFSET)
 	limit := common.GetQueryOrDefault(c, "limit", interfaces.DEFAULT_LIMIT)
-	sort := common.GetQueryOrDefault(c, "sort", "update_time")
+	sort := common.GetQueryOrDefault(c, "sort", interfaces.DiscoverScheduleSortUpdateTime)
 	direction := common.GetQueryOrDefault(c, "direction", interfaces.DESC_DIRECTION)
 
 	pageParam, err := validatePaginationQueryParams(ctx,
@@ -145,8 +145,6 @@ func (r *restHandler) listDiscoverSchedules(c *gin.Context, visitor hydra.Visito
 		rest.ReplyError(c, httpErr)
 		return
 	}
-	pageParam.Sort = interfaces.DISCOVER_SCHEDULE_SORT[sort]
-
 	params := interfaces.DiscoverScheduleQueryParams{
 		PaginationQueryParams: pageParam,
 		Name:                  strings.TrimSpace(c.Query("name")),

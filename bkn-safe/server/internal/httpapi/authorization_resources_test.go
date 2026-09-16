@@ -30,7 +30,7 @@ func TestAuthorizationResourcesForwardsKnowledgeNetworkQuery(t *testing.T) {
 		_, _ = w.Write([]byte(`{"entries":[{"id":"kn-1","name":"Supply"}],"total":1}`))
 	}))
 	defer backend.Close()
-	catalog, err := NewAuthorizationResourceCatalog(config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second}, config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second})
+	catalog, err := NewAuthorizationResourceCatalog(config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second}, config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second}, config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,6 +75,7 @@ func TestAuthorizationResourcesForwardsExecutionFactoryQuery(t *testing.T) {
 	catalog, err := NewAuthorizationResourceCatalog(
 		config.UpstreamConfig{BaseURL: executionFactory.URL, Timeout: time.Second},
 		config.UpstreamConfig{BaseURL: executionFactory.URL, Timeout: time.Second},
+		config.UpstreamConfig{BaseURL: executionFactory.URL, Timeout: time.Second},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -83,6 +84,63 @@ func TestAuthorizationResourcesForwardsExecutionFactoryQuery(t *testing.T) {
 	registerAuthorizationResources(r.Group("/api/safe/v1/admin"), catalog)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/safe/v1/admin/authorization-resources?resource_type=skill&direction=desc", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAuthorizationResourcesForwardsVegaQuery(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	vega := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/vega-backend/in/v1/authorization-resources" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("resource_type"); got != "catalog" {
+			t.Fatalf("resource_type = %q", got)
+		}
+		if got := r.URL.Query().Get("name"); got != "supply" {
+			t.Fatalf("name = %q", got)
+		}
+		_, _ = w.Write([]byte(`{"entries":[{"id":"catalog-1","name":"Supply"}],"total":1}`))
+	}))
+	defer vega.Close()
+
+	upstream := config.UpstreamConfig{BaseURL: vega.URL, Timeout: time.Second}
+	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := gin.New()
+	registerAuthorizationResources(r.Group("/api/safe/v1/admin"), catalog)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/safe/v1/admin/authorization-resources?resource_type=catalog&name=supply", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAuthorizationResourcesForwardsVegaResourceQuery(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	vega := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/vega-backend/in/v1/authorization-resources" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("resource_type"); got != "resource" {
+			t.Fatalf("resource_type = %q", got)
+		}
+		_, _ = w.Write([]byte(`{"entries":[{"id":"resource-1","name":"Orders"}],"total":1}`))
+	}))
+	defer vega.Close()
+
+	upstream := config.UpstreamConfig{BaseURL: vega.URL, Timeout: time.Second}
+	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := gin.New()
+	registerAuthorizationResources(r.Group("/api/safe/v1/admin"), catalog)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/safe/v1/admin/authorization-resources?resource_type=resource", nil))
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", w.Code, w.Body.String())
 	}

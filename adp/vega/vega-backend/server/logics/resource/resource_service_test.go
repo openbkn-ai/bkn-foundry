@@ -2782,12 +2782,10 @@ func TestResourceServiceListAuthResourcesDoesNotFilterByPermission(t *testing.T)
 	params := interfaces.AuthResourceQueryParams{
 		PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 2, Limit: 1},
 	}
-	want := []*interfaces.AuthResourceEntry{{
-		ID: "resource-1", Name: "Resource One", Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-	}}
-	ra.EXPECT().ListAuthResources(gomock.Any(), params).Return(want, int64(3), nil)
+	want := []*interfaces.AuthResourceEntry{{ID: "resource-1", Name: "Resource One"}}
+	ra.EXPECT().ListAuthResourceEntries(gomock.Any(), params).Return(want, int64(3), nil)
 
-	got, total, err := rs.ListAuthResources(context.Background(), params)
+	got, total, err := rs.ListAuthResourceEntries(context.Background(), params)
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), total)
@@ -2798,14 +2796,16 @@ func TestResourceServiceListAuthResourcesIncludesInternalForBuiltinAdmin(t *test
 	ctrl := gomock.NewController(t)
 	ra := vmock.NewMockResourceAccess(ctrl)
 	rs := &resourceService{ra: ra}
-	ra.EXPECT().ListAuthResources(gomock.Any(), interfaces.AuthResourceQueryParams{IncludeInternal: true}).
-		Return([]*interfaces.AuthResourceEntry{}, int64(0), nil)
+	ra.EXPECT().ListAuthResourceEntries(gomock.Any(), interfaces.AuthResourceQueryParams{IncludeInternal: true}).
+		Return([]*interfaces.AuthResourceEntry{}, int64(3), nil)
 	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
 		interfaces.AccountInfo{ID: interfaces.BuiltinAdminID})
 
-	_, _, err := rs.ListAuthResources(ctx, interfaces.AuthResourceQueryParams{})
+	entries, total, err := rs.ListAuthResourceEntries(ctx, interfaces.AuthResourceQueryParams{})
 
 	require.NoError(t, err)
+	assert.Empty(t, entries)
+	assert.Equal(t, int64(3), total)
 }
 
 // 删资源时任务在运行中：级联拒绝，资源不删。

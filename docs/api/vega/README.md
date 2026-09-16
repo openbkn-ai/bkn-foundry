@@ -9,7 +9,6 @@
 
 | File | Resource | Endpoints |
 |---|---|---|
-| [auth-resource.yaml](auth-resource.yaml) | AuthResource | `GET /auth-resources` for resources available for authorization by `resource_type` |
 | [catalog.yaml](catalog.yaml) | Catalog | `GET/POST /catalogs`, `GET/PUT/DELETE /catalogs/{id(s)}`, `POST /catalogs/test-connection`, `POST .../enable`, `POST .../disable`, `GET /catalogs/{id}/health-status`, `POST /catalogs/{id}/test-connection` |
 | [catalog-health-check-schedule.yaml](catalog-health-check-schedule.yaml) | CatalogHealthCheckSchedule | `GET/PUT /catalogs/{id}/health-check-schedule` |
 | [connector-type.yaml](connector-type.yaml) | ConnectorType | `GET/POST /connector-types`, `GET/PUT/DELETE /connector-types/{type}`, `POST .../enable`, `POST .../disable` |

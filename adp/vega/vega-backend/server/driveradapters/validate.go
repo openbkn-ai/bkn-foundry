@@ -111,7 +111,7 @@ func validateDescription(ctx context.Context, description string) error {
 
 // Validity verification of pagination parameters
 func validatePaginationQueryParams(ctx context.Context, offset, limit, sort, direction string,
-	supportedSortTypes map[string]string) (interfaces.PaginationQueryParams, error) {
+	supportedSortTypes map[string]struct{}) (interfaces.PaginationQueryParams, error) {
 	pageParams := interfaces.PaginationQueryParams{}
 
 	off, err := strconv.Atoi(offset)

@@ -37,6 +37,10 @@ upstreams:
     # The authorization-resource path is intentionally fixed in bkn-safe code.
     base_url: http://127.0.0.1:13014
     timeout: 3s
+  vega_backend:
+    # Vega's authorization-resource path is intentionally fixed in bkn-safe code.
+    base_url: http://127.0.0.1:13014
+    timeout: 3s
 
 ldap:
   url: ""

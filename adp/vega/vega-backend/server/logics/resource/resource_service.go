@@ -1879,15 +1879,15 @@ func applyMutableSchemaFields(current []*interfaces.Property, requested []*inter
 	return current
 }
 
-// ListAuthResources lists resource auth resources with filters.
-func (rs *resourceService) ListAuthResources(ctx context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, int64, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ListAuthResources")
+// ListAuthResourceEntries lists resource authorization entries with filters.
+func (rs *resourceService) ListAuthResourceEntries(ctx context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, int64, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ListAuthResourceEntries")
 	defer span.End()
 
 	params.IncludeInternal = interfaces.IsBuiltinAdmin(ctx)
-	entries, total, err := rs.ra.ListAuthResources(ctx, params)
+	entries, total, err := rs.ra.ListAuthResourceEntries(ctx, params)
 	if err != nil {
-		span.SetStatus(codes.Error, "ListAuthResources failed")
+		span.SetStatus(codes.Error, "ListAuthResourceEntries failed")
 		return []*interfaces.AuthResourceEntry{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}

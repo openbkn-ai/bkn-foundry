@@ -6,6 +6,22 @@
 
 package interfaces
 
+const (
+	DiscoverScheduleSortName       = "name"
+	DiscoverScheduleSortCreateTime = "create_time"
+	DiscoverScheduleSortUpdateTime = "update_time"
+	DiscoverScheduleSortNextRun    = "next_run"
+)
+
+var (
+	DISCOVER_SCHEDULE_SORT = map[string]struct{}{
+		DiscoverScheduleSortName:       {},
+		DiscoverScheduleSortCreateTime: {},
+		DiscoverScheduleSortUpdateTime: {},
+		DiscoverScheduleSortNextRun:    {},
+	}
+)
+
 // DiscoverSchedule represents a scheduled discover task configuration.
 type DiscoverSchedule struct {
 	ID          string `json:"id"`
@@ -25,15 +41,6 @@ type DiscoverSchedule struct {
 	Updater    AccountInfo `json:"updater"`
 	UpdateTime int64       `json:"update_time"`
 }
-
-var (
-	DISCOVER_SCHEDULE_SORT = map[string]string{
-		"name":        "f_name",
-		"create_time": "f_create_time",
-		"update_time": "f_update_time",
-		"next_run":    "f_next_run",
-	}
-)
 
 // DiscoverScheduleQueryParams holds query parameters for scheduled discover tasks.
 type DiscoverScheduleQueryParams struct {

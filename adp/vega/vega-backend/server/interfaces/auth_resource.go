@@ -6,29 +6,19 @@
 
 package interfaces
 
-const AuthResourceTypeConnectorType = "connector-type"
+const AuthResourceSortName = "name"
 
-var AuthResourceSort = map[string]string{
-	"name": "f_name",
-}
-
-func AuthResourceTypes() []string {
-	return []string{
-		AUTH_RESOURCE_TYPE_CATALOG,
-		AUTH_RESOURCE_TYPE_RESOURCE,
-		AuthResourceTypeConnectorType,
-	}
+var AuthResourceSort = map[string]struct{}{
+	AuthResourceSortName: {},
 }
 
 type AuthResourceQueryParams struct {
 	PaginationQueryParams
-	ID              string
-	Keyword         string
+	Name            string
 	IncludeInternal bool
 }
 
 type AuthResourceEntry struct {
 	ID   string `json:"id"`
-	Type string `json:"type"`
 	Name string `json:"name"`
 }

@@ -317,36 +317,21 @@ func TestConnectorTypeServiceList(t *testing.T) {
 }
 
 func TestConnectorTypeServiceListAuthResources(t *testing.T) {
-	t.Run("filters authorized entries and paginates", func(t *testing.T) {
-		service, cta, ps := newTestConnectorTypeService(t)
+	t.Run("returns access entries and total", func(t *testing.T) {
+		service, cta, _ := newTestConnectorTypeService(t)
 		params := interfaces.AuthResourceQueryParams{
 			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 1, Limit: 1},
 		}
 		entries := []*interfaces.AuthResourceEntry{
-			{ID: "a", Name: "A"},
-			nil,
-			{ID: "b", Name: "B"},
 			{ID: "c", Name: "C"},
 		}
 
-		cta.EXPECT().ListAuthResources(gomock.Any(), params).Return(entries, nil)
-		ps.EXPECT().
-			FilterResources(
-				gomock.Any(),
-				interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
-				[]string{"a", "b", "c"},
-				[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL},
-				false,
-			).
-			Return(map[string]interfaces.PermissionResourceOps{
-				"a": {ResourceID: "a"},
-				"c": {ResourceID: "c"},
-			}, nil)
+		cta.EXPECT().ListAuthResourceEntries(gomock.Any(), params).Return(entries, int64(3), nil)
 
-		got, total, err := service.ListAuthResources(context.Background(), params)
+		got, total, err := service.ListAuthResourceEntries(context.Background(), params)
 
 		require.NoError(t, err)
-		assert.Equal(t, int64(2), total)
+		assert.Equal(t, int64(3), total)
 		require.Len(t, got, 1)
 		assert.Equal(t, "c", got[0].ID)
 	})
@@ -355,12 +340,12 @@ func TestConnectorTypeServiceListAuthResources(t *testing.T) {
 		service, cta, _ := newTestConnectorTypeService(t)
 		params := interfaces.AuthResourceQueryParams{}
 
-		cta.EXPECT().ListAuthResources(gomock.Any(), params).Return(nil, nil)
+		cta.EXPECT().ListAuthResourceEntries(gomock.Any(), params).Return(nil, int64(3), nil)
 
-		got, total, err := service.ListAuthResources(context.Background(), params)
+		got, total, err := service.ListAuthResourceEntries(context.Background(), params)
 
 		require.NoError(t, err)
-		assert.Zero(t, total)
+		assert.Equal(t, int64(3), total)
 		assert.Empty(t, got)
 	})
 }
@@ -496,20 +481,5 @@ func TestConnectorTypeServiceSetEnabled(t *testing.T) {
 		connectorFactory.EXPECT().SetConnectorEnabled("enterprise-local", false)
 
 		require.NoError(t, service.SetEnabled(context.Background(), "enterprise-local", false))
-	})
-}
-
-func TestPaginateConnectorTypeAuthResources(t *testing.T) {
-	t.Run("paginate connector type auth resources", func(t *testing.T) {
-		entries := []*interfaces.AuthResourceEntry{
-			{ID: "a"},
-			{ID: "b"},
-			{ID: "c"},
-		}
-
-		assert.Equal(t, entries, paginateConnectorTypeAuthResources(entries, 0, -1))
-		assert.Equal(t, []*interfaces.AuthResourceEntry{{ID: "b"}, {ID: "c"}}, paginateConnectorTypeAuthResources(entries, 1, 10))
-		assert.Empty(t, paginateConnectorTypeAuthResources(entries, -1, 10))
-		assert.Empty(t, paginateConnectorTypeAuthResources(entries, 3, 10))
 	})
 }

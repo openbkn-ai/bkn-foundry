@@ -39,6 +39,9 @@ data:
   {{- $executionFactory := $upstreams.executionFactory | default dict }}
   SAFE_EXECUTION_FACTORY_BASE_URL: {{ $executionFactory.baseURL | default "http://agent-operator-integration:9000" | quote }}
   SAFE_EXECUTION_FACTORY_TIMEOUT: {{ $executionFactory.timeout | default "3s" | quote }}
+  {{- $vegaBackend := $upstreams.vegaBackend | default dict }}
+  SAFE_VEGA_BACKEND_BASE_URL: {{ $vegaBackend.baseURL | default "http://vega-backend-svc:13014" | quote }}
+  SAFE_VEGA_BACKEND_TIMEOUT: {{ $vegaBackend.timeout | default "3s" | quote }}
   SAFE_HYDRA_ADMIN_URL: {{ .Values.config.hydra.adminURL | quote }}
   SAFE_HYDRA_PUBLIC_URL: {{ .Values.config.hydra.publicURL | quote }}
   SAFE_LDAP_URL: {{ .Values.config.ldap.url | quote }}

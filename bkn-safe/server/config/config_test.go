@@ -51,6 +51,9 @@ hydra:
 	if cfg.Upstreams.ExecutionFactory.BaseURL != "http://agent-operator-integration:9000" {
 		t.Fatalf("execution factory base_url = %q", cfg.Upstreams.ExecutionFactory.BaseURL)
 	}
+	if cfg.Upstreams.VegaBackend.BaseURL != "http://vega-backend-svc:13014" {
+		t.Fatalf("vega backend base_url = %q", cfg.Upstreams.VegaBackend.BaseURL)
+	}
 }
 
 func TestEnvOverridesFile(t *testing.T) {

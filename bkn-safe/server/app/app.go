@@ -136,7 +136,7 @@ func Boot(opts Options) (*App, error) {
 		AllowSampleRate: cfg.Audit.DecisionLog.AllowSampleRate,
 		QueueSize:       cfg.Audit.DecisionLog.QueueSize,
 	})
-	authorizationResources, err := httpapi.NewAuthorizationResourceCatalog(cfg.Upstreams.BKNBackend, cfg.Upstreams.ExecutionFactory)
+	authorizationResources, err := httpapi.NewAuthorizationResourceCatalog(cfg.Upstreams.BKNBackend, cfg.Upstreams.ExecutionFactory, cfg.Upstreams.VegaBackend)
 	if err != nil {
 		return nil, fmt.Errorf("authorization resource catalog: %w", err)
 	}

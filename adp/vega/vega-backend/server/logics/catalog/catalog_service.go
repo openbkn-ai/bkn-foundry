@@ -1495,16 +1495,16 @@ func (cs *catalogService) UpdateMetadata(ctx context.Context, id string, metadat
 	return nil
 }
 
-// ListAuthResources lists catalog auth resources with filters.
-func (cs *catalogService) ListAuthResources(ctx context.Context,
+// ListAuthResourceEntries lists catalog authorization entries with filters.
+func (cs *catalogService) ListAuthResourceEntries(ctx context.Context,
 	params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, int64, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ListAuthResources")
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ListAuthResourceEntries")
 	defer span.End()
 
 	params.IncludeInternal = interfaces.IsBuiltinAdmin(ctx)
-	entries, total, err := cs.ca.ListAuthResources(ctx, params)
+	entries, total, err := cs.ca.ListAuthResourceEntries(ctx, params)
 	if err != nil {
-		span.SetStatus(codes.Error, "ListAuthResources failed")
+		span.SetStatus(codes.Error, "ListAuthResourceEntries failed")
 		return []*interfaces.AuthResourceEntry{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}

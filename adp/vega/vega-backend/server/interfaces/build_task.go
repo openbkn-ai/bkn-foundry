@@ -37,11 +37,11 @@ const (
 
 // BUILD_TASK_SORT is a whitelist of supported sort values. Values are unused;
 // the data access layer owns the mapping from API fields to database columns.
-var BUILD_TASK_SORT = map[string]string{
-	BuildTaskSortCreateTime:       "",
-	BuildTaskSortStartTime:        "",
-	BuildTaskSortFinishTime:       "",
-	BuildTaskSortLastProgressTime: "",
+var BUILD_TASK_SORT = map[string]struct{}{
+	BuildTaskSortCreateTime:       {},
+	BuildTaskSortStartTime:        {},
+	BuildTaskSortFinishTime:       {},
+	BuildTaskSortLastProgressTime: {},
 }
 
 var ConnectorClassMapping = map[string]string{

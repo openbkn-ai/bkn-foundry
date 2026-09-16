@@ -1680,9 +1680,9 @@ func TestCatalogServiceListAuthResourcesDoesNotFilterByPermission(t *testing.T) 
 		PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 1, Limit: 1},
 	}
 	entries := []*interfaces.AuthResourceEntry{{ID: "catalog-2", Name: "Catalog 2"}}
-	ca.EXPECT().ListAuthResources(gomock.Any(), params).Return(entries, int64(3), nil)
+	ca.EXPECT().ListAuthResourceEntries(gomock.Any(), params).Return(entries, int64(3), nil)
 
-	got, total, err := cs.ListAuthResources(context.Background(), params)
+	got, total, err := cs.ListAuthResourceEntries(context.Background(), params)
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), total)
@@ -1695,14 +1695,16 @@ func TestCatalogServiceListAuthResourcesIncludesInternalForBuiltinAdmin(t *testi
 	ca := mock_interfaces.NewMockCatalogAccess(ctrl)
 	cs := &catalogService{ca: ca}
 	params := interfaces.AuthResourceQueryParams{}
-	ca.EXPECT().ListAuthResources(gomock.Any(), interfaces.AuthResourceQueryParams{IncludeInternal: true}).
-		Return([]*interfaces.AuthResourceEntry{}, int64(0), nil)
+	ca.EXPECT().ListAuthResourceEntries(gomock.Any(), interfaces.AuthResourceQueryParams{IncludeInternal: true}).
+		Return([]*interfaces.AuthResourceEntry{}, int64(3), nil)
 	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
 		interfaces.AccountInfo{ID: interfaces.BuiltinAdminID})
 
-	_, _, err := cs.ListAuthResources(ctx, params)
+	entries, total, err := cs.ListAuthResourceEntries(ctx, params)
 
 	require.NoError(t, err)
+	assert.Empty(t, entries)
+	assert.Equal(t, int64(3), total)
 }
 
 func TestCatalogServiceGetDeletionImpact(t *testing.T) {

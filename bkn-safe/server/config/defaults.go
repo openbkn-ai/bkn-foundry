@@ -45,8 +45,19 @@ func defaultConfig() *Config {
 		Authz: AuthzConfig{
 			PolicyRefreshInterval: 10 * time.Minute,
 		},
-		Upstreams: UpstreamsConfig{BKNBackend: UpstreamConfig{
-			BaseURL: "http://bkn-backend-svc:13014", Timeout: 3 * time.Second,
-		}, ExecutionFactory: UpstreamConfig{BaseURL: "http://agent-operator-integration:9000", Timeout: 3 * time.Second}},
+		Upstreams: UpstreamsConfig{
+			BKNBackend: UpstreamConfig{
+				BaseURL: "http://bkn-backend-svc:13014",
+				Timeout: 3 * time.Second,
+			},
+			ExecutionFactory: UpstreamConfig{
+				BaseURL: "http://agent-operator-integration:9000",
+				Timeout: 3 * time.Second,
+			},
+			VegaBackend: UpstreamConfig{
+				BaseURL: "http://vega-backend-svc:13014",
+				Timeout: 3 * time.Second,
+			},
+		},
 	}
 }

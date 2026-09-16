@@ -126,19 +126,22 @@ func TestConnectorTypeAccessListAuthResources(t *testing.T) {
 		access, mock, cleanup := newConnectorTypeAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectQuery("SELECT f_type, f_name FROM t_connector_type WHERE f_type = ? AND f_name LIKE ? ORDER BY f_name ASC").
-			WithArgs("remote-api", "%Remote%").
+		mock.ExpectQuery("SELECT COUNT(*) FROM t_connector_type WHERE f_name LIKE ?").
+			WithArgs("%Remote%").
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+		mock.ExpectQuery("SELECT f_type, f_name FROM t_connector_type WHERE f_name LIKE ? ORDER BY f_name ASC LIMIT 1 OFFSET 2").
+			WithArgs("%Remote%").
 			WillReturnRows(sqlmock.NewRows([]string{"f_type", "f_name"}).AddRow("remote-api", "Remote API"))
 
-		got, err := access.ListAuthResources(context.Background(), interfaces.AuthResourceQueryParams{
-			ID:      "remote-api",
-			Keyword: "Remote",
+		got, total, err := access.ListAuthResourceEntries(context.Background(), interfaces.AuthResourceQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 2, Limit: 1},
+			Name:                  "Remote",
 		})
 
 		require.NoError(t, err)
+		assert.Equal(t, int64(1), total)
 		require.Len(t, got, 1)
 		assert.Equal(t, "remote-api", got[0].ID)
-		assert.Equal(t, interfaces.AuthResourceTypeConnectorType, got[0].Type)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

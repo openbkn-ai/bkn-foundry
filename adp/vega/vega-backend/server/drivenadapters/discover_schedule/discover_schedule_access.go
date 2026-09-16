@@ -11,6 +11,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
@@ -306,16 +307,8 @@ func (dsa *discoverScheduleAccess) List(ctx context.Context, params interfaces.D
 	}
 
 	// Apply ordering and pagination
-	if params.Sort != "" {
-		builder = builder.OrderBy(fmt.Sprintf("%s %s", params.Sort, params.Direction))
-	} else {
-		builder = builder.OrderBy("f_update_time DESC")
-	}
+	builder = builder.OrderBy(discoverScheduleOrderByClause(params.Sort, params.Direction))
 
-	// Pagination
-	if params.Offset < 0 {
-		return nil, 0, fmt.Errorf("discover schedule offset must not be negative")
-	}
 	if params.Limit > 0 {
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}
@@ -558,4 +551,23 @@ func (dsa *discoverScheduleAccess) UpdateRunMetadata(ctx context.Context, id str
 
 	span.SetStatus(codes.Ok, "")
 	return rowsAffected, nil
+}
+
+func discoverScheduleOrderByClause(sort, direction string) string {
+	if direction != interfaces.ASC_DIRECTION && direction != interfaces.DESC_DIRECTION {
+		direction = interfaces.DESC_DIRECTION
+	}
+
+	column := "f_update_time"
+	switch sort {
+	case interfaces.DiscoverScheduleSortName:
+		column = "f_name"
+	case interfaces.DiscoverScheduleSortCreateTime:
+		column = "f_create_time"
+	case interfaces.DiscoverScheduleSortUpdateTime, "":
+		column = "f_update_time"
+	case interfaces.DiscoverScheduleSortNextRun:
+		column = "f_next_run"
+	}
+	return fmt.Sprintf("%s %s", column, strings.ToUpper(direction))
 }

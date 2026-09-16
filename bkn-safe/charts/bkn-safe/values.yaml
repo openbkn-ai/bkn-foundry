@@ -137,6 +137,9 @@ config:
     executionFactory:
       baseURL: "http://agent-operator-integration:9000"
       timeout: "3s"
+    vegaBackend:
+      baseURL: "http://vega-backend-svc:13014"
+      timeout: "3s"
   hydra:
     adminURL: "http://bkn-safe-hydra-admin:4445"
     publicURL: "http://bkn-safe-hydra-public:4444"

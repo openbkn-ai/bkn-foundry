@@ -198,7 +198,7 @@ func Test_DiscoverScheduleRestHandler_ListDiscoverSchedules(t *testing.T) {
 			DoAndReturn(func(_ context.Context, params interfaces.DiscoverScheduleQueryParams) ([]*interfaces.DiscoverSchedule, int64, error) {
 				assert.Equal(t, 0, params.Offset)
 				assert.Equal(t, 20, params.Limit)
-				assert.Equal(t, "f_update_time", params.Sort)
+				assert.Equal(t, "update_time", params.Sort)
 				assert.Equal(t, interfaces.DESC_DIRECTION, params.Direction)
 				return []*interfaces.DiscoverSchedule{}, int64(0), nil
 			})
@@ -215,7 +215,7 @@ func Test_DiscoverScheduleRestHandler_ListDiscoverSchedules(t *testing.T) {
 		engine, dss := setup(t)
 		dss.EXPECT().List(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.DiscoverScheduleQueryParams) ([]*interfaces.DiscoverSchedule, int64, error) {
-				assert.Equal(t, "f_next_run", params.Sort)
+				assert.Equal(t, "next_run", params.Sort)
 				assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
 				assert.Equal(t, 5, params.Offset)
 				assert.Equal(t, 10, params.Limit)

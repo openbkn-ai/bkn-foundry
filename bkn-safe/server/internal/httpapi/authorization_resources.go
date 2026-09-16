@@ -20,6 +20,8 @@ import (
 
 const (
 	knowledgeNetworkResourceType = "knowledge_network"
+	catalogResourceType          = "catalog"
+	resourceResourceType         = "resource"
 	toolBoxResourceType          = "tool_box"
 	functionResourceType         = "function"
 	mcpResourceType              = "mcp"
@@ -56,8 +58,16 @@ type authorizationResourceCatalog struct {
 	providers map[string]AuthorizationResourceProvider
 }
 
-func NewAuthorizationResourceCatalog(bknBackend, executionFactory config.UpstreamConfig) (AuthorizationResourceCatalog, error) {
+func NewAuthorizationResourceCatalog(bknBackend, executionFactory, vegaBackend config.UpstreamConfig) (AuthorizationResourceCatalog, error) {
 	knowledgeNetworks, err := newAuthorizationResourceProvider(bknBackend, "/api/bkn-backend/in/v1/authorization-resources", "bkn backend")
+	if err != nil {
+		return nil, err
+	}
+	catalogs, err := newAuthorizationResourceProvider(vegaBackend, "/api/vega-backend/in/v1/authorization-resources", "vega backend", catalogResourceType)
+	if err != nil {
+		return nil, err
+	}
+	resources, err := newAuthorizationResourceProvider(vegaBackend, "/api/vega-backend/in/v1/authorization-resources", "vega backend", resourceResourceType)
 	if err != nil {
 		return nil, err
 	}
@@ -79,6 +89,8 @@ func NewAuthorizationResourceCatalog(bknBackend, executionFactory config.Upstrea
 	}
 	return &authorizationResourceCatalog{providers: map[string]AuthorizationResourceProvider{
 		knowledgeNetworkResourceType: knowledgeNetworks,
+		catalogResourceType:          catalogs,
+		resourceResourceType:         resources,
 		toolBoxResourceType:          toolBoxes,
 		functionResourceType:         functions,
 		mcpResourceType:              mcp,
