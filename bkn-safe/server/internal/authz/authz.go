@@ -683,7 +683,12 @@ func (en *Enforcer) hasSuperAdminRole(accessorID string) (bool, error) {
 	return slices.Contains(roles, SuperAdminRoleID), nil
 }
 
-// implicitPermissions returns the accessor's direct and role-inherited policy rows.
+// implicitPermissions returns the accessor's direct, role-inherited, and public
+// policy rows. PublicAccessorID is evaluated directly by the Casbin matcher,
+// rather than through a role binding, so GetImplicitPermissionsForUser alone
+// would omit permissions that Check correctly allows. Keeping the two views in
+// sync is required by callers such as /me/permissions that render navigation
+// from effective grants.
 //
 // casbin's SyncedEnforcer.GetImplicitPermissionsForUser takes the enforcer's exclusive lock for
 // this read, so every decision queued behind every other one (#1554). The unsynchronized read is
@@ -694,12 +699,28 @@ func (en *Enforcer) hasSuperAdminRole(accessorID string) (bool, error) {
 func (en *Enforcer) implicitPermissions(accessorID string) ([][]string, error) {
 	synced, ok := en.e.(*casbin.SyncedEnforcer)
 	if !ok {
-		return en.e.GetImplicitPermissionsForUser(accessorID)
+		rows, err := en.e.GetImplicitPermissionsForUser(accessorID)
+		if err != nil || accessorID == PublicAccessorID {
+			return rows, err
+		}
+		publicRows, err := en.e.GetFilteredPolicy(0, PublicAccessorID)
+		if err != nil {
+			return nil, err
+		}
+		return append(rows, publicRows...), nil
 	}
 	lock := synced.GetLock()
 	lock.RLock()
 	defer lock.RUnlock()
-	return synced.Enforcer.GetImplicitPermissionsForUser(accessorID) //nolint:staticcheck // explicit unsynchronized call under the held lock
+	rows, err := synced.Enforcer.GetImplicitPermissionsForUser(accessorID) //nolint:staticcheck // explicit unsynchronized call under the held lock
+	if err != nil || accessorID == PublicAccessorID {
+		return rows, err
+	}
+	publicRows, err := synced.Enforcer.GetFilteredPolicy(0, PublicAccessorID)
+	if err != nil {
+		return nil, err
+	}
+	return append(rows, publicRows...), nil
 }
 
 // hasOp reports whether ops contains want.
