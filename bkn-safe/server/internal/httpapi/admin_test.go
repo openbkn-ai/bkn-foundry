@@ -928,6 +928,18 @@ func TestAuditTrail(t *testing.T) {
 		t.Errorf("ghost-delete identity/correlation facts = %+v", got)
 	}
 
+	// The list API exposes the same request correlation key, so an operator can
+	// recover every audit row from a batch mutation without relying on timing.
+	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-logs?request_id="+got.RequestID, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list audit by request id: %d (%s)", w.Code, w.Body.String())
+	}
+	var correlated listResp
+	_ = json.Unmarshal(w.Body.Bytes(), &correlated)
+	if correlated.Total != 1 || len(correlated.Logs) != 1 || correlated.Logs[0].ID != got.ID {
+		t.Fatalf("request_id=%q returned %+v, want only %+v", got.RequestID, correlated, got)
+	}
+
 	// Detail lookup uses the same audit permission and returns exactly one source row.
 	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-logs/"+got.ID, nil)
 	if w.Code != http.StatusOK {

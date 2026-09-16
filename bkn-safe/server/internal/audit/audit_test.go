@@ -36,6 +36,36 @@ func TestListUsesIDAsSameTimestampKeysetTiebreaker(t *testing.T) {
 	}
 }
 
+func TestListFiltersAllRowsFromOneRequest(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.AuditLog{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create([]model.AuditLog{
+		{ID: "audit-a", RequestID: "request-batch", TargetID: "grant-a"},
+		{ID: "audit-b", RequestID: "request-batch", TargetID: "grant-b"},
+		{ID: "audit-c", RequestID: "request-other", TargetID: "grant-c"},
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	logs, total, err := New(db).List(context.Background(), Filter{RequestID: "request-batch", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 || len(logs) != 2 {
+		t.Fatalf("request_id filter: total=%d logs=%+v, want the two batch target rows", total, logs)
+	}
+	for _, log := range logs {
+		if log.RequestID != "request-batch" {
+			t.Fatalf("request_id filter leaked a different request row: %+v", log)
+		}
+	}
+}
+
 func TestRecordPreservesOperationAuditIdentityAndCorrelationFacts(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {

@@ -106,7 +106,10 @@ func (s *Store) RecordBatch(ctx context.Context, entries []Entry) error {
 // Filter narrows a List query. Zero-value fields are not applied. From/To bound
 // CreatedAt (inclusive lower, exclusive upper).
 type Filter struct {
-	ActorID    string
+	ActorID string
+	// RequestID returns every target row emitted by one mutating HTTP request.
+	// A batch mutation can emit more than one row with this correlation value.
+	RequestID  string
 	Resource   string
 	Action     string
 	TargetID   string
@@ -135,6 +138,9 @@ func (s *Store) List(ctx context.Context, f Filter) ([]model.AuditLog, int64, er
 	q := s.db.WithContext(ctx).Model(&model.AuditLog{})
 	if f.ActorID != "" {
 		q = q.Where("actor_id = ?", f.ActorID)
+	}
+	if f.RequestID != "" {
+		q = q.Where("request_id = ?", f.RequestID)
 	}
 	if f.Resource != "" {
 		q = q.Where("resource = ?", f.Resource)
