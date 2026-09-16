@@ -24,7 +24,7 @@ import (
 // chainMu serialises chain appends within one process so two concurrent audit
 // writes cannot read the same head. Across replicas the unique index on seq is
 // the arbiter: a lost race surfaces as a duplicate-key error and the append is
-// retried on the new head (see Record).
+// retried on the new head (see Record and RecordBatch).
 var chainMu sync.Mutex
 
 // chainAppendAttempts bounds the duplicate-key retry loop. Audit writes are
@@ -142,29 +142,51 @@ func (s *Store) Head(ctx context.Context) (Head, bool, error) {
 	return Head{Seq: *row.Seq, RowHash: row.RowHash, CreatedAt: row.CreatedAt}, true, nil
 }
 
-// append links row to the current head and inserts it. The caller holds
-// chainMu. The head is cached after the first append so the steady state is
-// one INSERT per row, not SELECT + INSERT; any failure drops the cache, and a
-// duplicate-key error in particular means another replica appended first —
-// the caller retries, and the retry re-reads the head from the database.
-func (s *Store) append(ctx context.Context, row *model.AuditLog) error {
+// appendBatch links rows to the current head and inserts them in one transaction.
+// The caller holds chainMu. The head is cached after the first append so the
+// steady state avoids a SELECT; any failure drops the cache, and a duplicate-key
+// error in particular means another replica appended first — the caller retries,
+// and the retry re-reads the head from the database.
+func (s *Store) appendBatch(ctx context.Context, rows []model.AuditLog) error {
+	if len(rows) == 0 {
+		return nil
+	}
 	head := s.cachedHead
-	if head == nil {
-		h, _, err := s.Head(ctx)
-		if err != nil {
+	var nextHead Head
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if head == nil {
+			var current []model.AuditLog
+			if err := tx.Where("seq IS NOT NULL").Order("seq DESC").Limit(1).Find(&current).Error; err != nil {
+				return err
+			}
+			if len(current) == 0 || current[0].Seq == nil {
+				head = &Head{}
+			} else {
+				head = &Head{Seq: *current[0].Seq, RowHash: current[0].RowHash, CreatedAt: current[0].CreatedAt}
+			}
+		}
+		seq, prev := head.Seq, head.RowHash
+		for i := range rows {
+			seq++
+			rowSeq := seq
+			rows[i].Seq = &rowSeq
+			rows[i].PrevHash = prev
+			rows[i].RowHash = rowHash(rows[i], seq, prev)
+			prev = rows[i].RowHash
+		}
+		// Keep the statement safely below SQLite's parameter limit used in tests;
+		// production databases still receive one enclosing transaction.
+		if err := tx.CreateInBatches(&rows, 20).Error; err != nil {
 			return err
 		}
-		head = &h
-	}
-	seq := head.Seq + 1
-	row.Seq = &seq
-	row.PrevHash = head.RowHash
-	row.RowHash = rowHash(*row, seq, head.RowHash)
-	if err := s.db.WithContext(ctx).Create(row).Error; err != nil {
+		nextHead = Head{Seq: seq, RowHash: prev, CreatedAt: rows[len(rows)-1].CreatedAt}
+		return nil
+	})
+	if err != nil {
 		s.cachedHead = nil
 		return err
 	}
-	s.cachedHead = &Head{Seq: seq, RowHash: row.RowHash, CreatedAt: row.CreatedAt}
+	s.cachedHead = &nextHead
 	return nil
 }
 

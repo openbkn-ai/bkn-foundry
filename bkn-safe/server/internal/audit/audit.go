@@ -3,7 +3,8 @@
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
 // Package audit records and queries the bkn-safe admin audit trail: one row per
-// privileged mutation (who did what, to which target, with what outcome). It is
+// privileged mutation target (who did what, to which target, with what outcome).
+// A batch request may emit several rows correlated by RequestID. The package is
 // dependency-light on purpose (model + gorm only) so the HTTP layer can write to
 // it from middleware without coupling auditing to auth/directory.
 package audit
@@ -56,30 +57,43 @@ type Entry struct {
 // chain (see chain.go). The returned error is for logging only — auditing must
 // never break the request it is recording, so callers swallow it.
 func (s *Store) Record(ctx context.Context, e Entry) error {
-	row := model.AuditLog{
-		ID:                NewID(),
-		ActorID:           e.ActorID,
-		ActorNameSnapshot: e.ActorNameSnapshot,
-		ActorType:         e.ActorType,
-		AuthMethod:        e.AuthMethod,
-		CredentialID:      e.CredentialID,
-		RequestID:         e.RequestID,
-		SourceChannel:     e.SourceChannel,
-		Method:            e.Method,
-		Resource:          e.Resource,
-		Action:            e.Action,
-		TargetID:          e.TargetID,
-		TargetName:        e.TargetName,
-		Detail:            e.Detail,
-		Status:            e.Status,
-		ClientIP:          e.ClientIP,
-		CreatedAt:         chainTimestamp(),
+	return s.RecordBatch(ctx, []Entry{e})
+}
+
+// RecordBatch atomically appends several entries to the tamper-evidence chain.
+// It is used when one HTTP batch mutation has several independently auditable
+// targets. All entries remain correlated by the caller-supplied RequestID.
+func (s *Store) RecordBatch(ctx context.Context, entries []Entry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	rows := make([]model.AuditLog, 0, len(entries))
+	for _, e := range entries {
+		rows = append(rows, model.AuditLog{
+			ID:                NewID(),
+			ActorID:           e.ActorID,
+			ActorNameSnapshot: e.ActorNameSnapshot,
+			ActorType:         e.ActorType,
+			AuthMethod:        e.AuthMethod,
+			CredentialID:      e.CredentialID,
+			RequestID:         e.RequestID,
+			SourceChannel:     e.SourceChannel,
+			Method:            e.Method,
+			Resource:          e.Resource,
+			Action:            e.Action,
+			TargetID:          e.TargetID,
+			TargetName:        e.TargetName,
+			Detail:            e.Detail,
+			Status:            e.Status,
+			ClientIP:          e.ClientIP,
+			CreatedAt:         chainTimestamp(),
+		})
 	}
 	chainMu.Lock()
 	defer chainMu.Unlock()
 	var err error
 	for attempt := 0; attempt < chainAppendAttempts; attempt++ {
-		err = s.append(ctx, &row)
+		err = s.appendBatch(ctx, rows)
 		if err == nil || !isDuplicateKey(err) {
 			return err
 		}

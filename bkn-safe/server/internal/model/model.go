@@ -301,9 +301,10 @@ type ResourceParent struct {
 
 // AuditLog records a user or admin management mutation: who (ActorID, the verified
 // token subject), what (Method + Resource + Action + TargetID + Detail), and the
-// outcome (Status). One row is written for each mutating request on an audited
-// /admin or /me surface; ordinary reads are not audited. Action carries a stable
-// business verb while Method retains the transport fact.
+// outcome (Status). One row is normally written for each mutating request on an
+// audited /admin or /me surface; a batch mutation may write one row per target,
+// correlated by RequestID. Ordinary reads are not audited. Action carries a
+// stable business verb while Method retains the transport fact.
 type AuditLog struct {
 	ID                string `json:"id" gorm:"primaryKey;size:64"`
 	ActorID           string `json:"actor_id" gorm:"size:64;index"` // token subject that performed the action

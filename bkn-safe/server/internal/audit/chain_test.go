@@ -7,6 +7,7 @@ package audit
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -70,6 +71,43 @@ func TestRecordLinksRowsIntoChain(t *testing.T) {
 	head, found, err := s.Head(context.Background())
 	if err != nil || !found || head.Seq != 3 || head.RowHash != prev {
 		t.Fatalf("head = %+v found=%v err=%v, want seq 3 hash %s", head, found, err, prev)
+	}
+}
+
+func TestRecordBatchAtomicallyLinksRowsIntoChain(t *testing.T) {
+	s, db := chainTestStore(t)
+	entries := make([]Entry, 0, 500)
+	for i := 0; i < 500; i++ {
+		entries = append(entries, Entry{
+			ActorID: "admin-1", ActorType: "user", AuthMethod: "oauth", RequestID: "request-batch",
+			Method: "POST", Resource: "object-grants", Action: "revoke", TargetID: fmt.Sprintf("grant-%02d", i),
+			Detail: `{"_outcome":{"removed":true}}`, Status: 204,
+		})
+	}
+	if err := s.RecordBatch(context.Background(), entries); err != nil {
+		t.Fatal(err)
+	}
+
+	var rows []model.AuditLog
+	if err := db.Order("seq ASC").Find(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != len(entries) {
+		t.Fatalf("rows = %d, want %d", len(rows), len(entries))
+	}
+	prev := ""
+	for i, row := range rows {
+		if row.Seq == nil || *row.Seq != uint64(i+1) || row.PrevHash != prev || row.RequestID != "request-batch" {
+			t.Fatalf("row %d is not correctly linked/correlated: %+v", i, row)
+		}
+		if got := rowHash(row, *row.Seq, row.PrevHash); got != row.RowHash {
+			t.Fatalf("row %d hash = %q, want %q", i, row.RowHash, got)
+		}
+		prev = row.RowHash
+	}
+	res, err := s.Verify(context.Background(), 0, 0, 0)
+	if err != nil || !res.OK || res.Checked != int64(len(entries)) {
+		t.Fatalf("batch chain verify = %+v err=%v", res, err)
 	}
 }
 

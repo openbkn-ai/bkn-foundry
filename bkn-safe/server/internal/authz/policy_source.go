@@ -757,22 +757,21 @@ func (en *Enforcer) RevokePolicy(grantID string) (bool, error) {
 	return removed, err
 }
 
-// RevokePolicies atomically removes independently managed grant identities.
-// Callers are responsible for authorizing every ID before invoking it.
-func (en *Enforcer) RevokePolicies(grantIDs []string) (int, error) {
+// RevokePolicies atomically removes independently managed grant identities and
+// reports the result for each requested ID. Callers are responsible for
+// authorizing every ID before invoking it.
+func (en *Enforcer) RevokePolicies(grantIDs []string) (map[string]bool, error) {
 	if len(grantIDs) == 0 {
-		return 0, errors.New("at least one grant id is required")
+		return nil, errors.New("at least one grant id is required")
 	}
-	removed := 0
+	removed := make(map[string]bool, len(grantIDs))
 	err := en.Transaction(context.Background(), func(tx *PolicyTransaction) error {
 		for _, grantID := range grantIDs {
 			deleted, err := tx.RevokePolicy(grantID)
 			if err != nil {
 				return err
 			}
-			if deleted {
-				removed++
-			}
+			removed[grantID] = deleted
 		}
 		return nil
 	})

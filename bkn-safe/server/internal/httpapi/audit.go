@@ -105,8 +105,6 @@ func auditMiddleware(store *audit.Store, dir *directory.Service, db *gorm.DB) gi
 				targetName = name
 			}
 		}
-		detail = withAuditOutcome(detail, c)
-		detail = withAuditGate(detail, c)
 		actorID := c.GetString(ctxAccessorID)
 		actorType, authMethod, sourceChannel := "user", "oauth", "api"
 		if actorID == "" {
@@ -123,7 +121,7 @@ func auditMiddleware(store *audit.Store, dir *directory.Service, db *gorm.DB) gi
 		// stalled database cannot hold the handler indefinitely.
 		recordCtx, cancelRecord := context.WithTimeout(context.WithoutCancel(c.Request.Context()), auditRecordTimeout)
 		defer cancelRecord()
-		if err := store.Record(recordCtx, audit.Entry{
+		baseEntry := audit.Entry{
 			ActorID:           actorID,
 			ActorNameSnapshot: auditActorName(recordCtx, dir, actorID),
 			ActorType:         actorType,
@@ -135,14 +133,28 @@ func auditMiddleware(store *audit.Store, dir *directory.Service, db *gorm.DB) gi
 			Action:            action,
 			TargetID:          targetID,
 			TargetName:        targetName,
-			Detail:            detail,
 			Status:            c.Writer.Status(),
 			ClientIP:          c.ClientIP(),
-		}); err != nil {
+		}
+		entries := []audit.Entry{baseEntry}
+		if records := auditOutcomeRecords(c); len(records) > 0 {
+			entries = make([]audit.Entry, 0, len(records))
+			for _, record := range records {
+				entry := baseEntry
+				entry.TargetID = record.targetID
+				entry.TargetName = ""
+				entry.Detail = withAuditGate(record.detail, c)
+				entries = append(entries, entry)
+			}
+		} else {
+			entries[0].Detail = withAuditGate(withAuditOutcome(detail, c), c)
+		}
+		if err := store.RecordBatch(recordCtx, entries); err != nil {
 			slog.Error("failed to persist operation audit record",
 				"request_id", requestID,
 				"resource", resource,
 				"action", action,
+				"records", len(entries),
 				"error", err,
 			)
 			_ = c.Error(err)
@@ -202,7 +214,10 @@ func auditDetail(raw []byte) string {
 		return ""
 	}
 	if len(b) > maxAuditDetail {
-		return string(b[:maxAuditDetail])
+		// Never persist a byte prefix of JSON: callers cannot parse it and an
+		// outcome cannot be merged into it. Keep the complete small top-level
+		// facts and explicitly mark that arrays/oversized values were omitted.
+		return auditDetailFromPrefix(raw)
 	}
 	return string(b)
 }
@@ -256,12 +271,22 @@ func auditDetailFromPrefix(raw []byte) string {
 // does not say, e.g. how many grants a revoke actually removed.
 const ctxAuditOutcome = "audit_outcome"
 
+const ctxAuditOutcomeRecords = "audit_outcome_records"
+
 const ctxAuditOperation = "audit_operation"
 
 type auditOperation struct {
 	Action     string
 	TargetID   string
 	TargetName string
+}
+
+// auditOutcomeRecord is one independently queryable audit row produced by a
+// batch mutation. detail is pre-encoded and size-checked before the mutation is
+// committed, so the middleware cannot silently discard its provenance.
+type auditOutcomeRecord struct {
+	targetID string
+	detail   string
 }
 
 func setAuditOperation(c *gin.Context, action, targetID, targetName string) {
@@ -273,6 +298,36 @@ func setAuditOperation(c *gin.Context, action, targetID, targetName string) {
 // read): the value is then simply never consumed.
 func setAuditOutcome(c *gin.Context, outcome map[string]any) {
 	c.Set(ctxAuditOutcome, outcome)
+}
+
+func newAuditOutcomeRecord(targetID string, outcome map[string]any) (auditOutcomeRecord, bool) {
+	targetID = strings.TrimSpace(targetID)
+	if targetID == "" || len(outcome) == 0 {
+		return auditOutcomeRecord{}, false
+	}
+	detail, err := json.Marshal(map[string]any{
+		"grant_id": targetID,
+		"_outcome": outcome,
+	})
+	if err != nil || len(detail) > maxAuditDetail {
+		return auditOutcomeRecord{}, false
+	}
+	return auditOutcomeRecord{targetID: targetID, detail: string(detail)}, true
+}
+
+func setAuditOutcomeRecords(c *gin.Context, records []auditOutcomeRecord) {
+	if len(records) > 0 {
+		c.Set(ctxAuditOutcomeRecords, records)
+	}
+}
+
+func auditOutcomeRecords(c *gin.Context) []auditOutcomeRecord {
+	raw, ok := c.Get(ctxAuditOutcomeRecords)
+	if !ok {
+		return nil
+	}
+	records, _ := raw.([]auditOutcomeRecord)
+	return records
 }
 
 // withAuditGate notes in Detail which gate refused a mutating request that a

@@ -426,6 +426,31 @@ func TestAuditedMutationKeepsBodiesLargerThanTheSnapshotCap(t *testing.T) {
 	}
 }
 
+func TestAuditDetailSummarizesLargeValidJSONWithoutCuttingIt(t *testing.T) {
+	grantIDs := make([]string, 40)
+	for i := range grantIDs {
+		grantIDs[i] = strings.Repeat("g", 64)
+	}
+	raw, err := json.Marshal(map[string]any{
+		"grant_ids": grantIDs,
+		"reason":    "batch revoke",
+	})
+	if err != nil || len(raw) <= maxAuditDetail {
+		t.Fatalf("fixture size = %d err=%v, want over %d", len(raw), err, maxAuditDetail)
+	}
+	detail := auditDetail(raw)
+	var got map[string]any
+	if len(detail) > maxAuditDetail || json.Unmarshal([]byte(detail), &got) != nil {
+		t.Fatalf("large detail is not bounded valid JSON (%d bytes): %s", len(detail), detail)
+	}
+	if got["_body_truncated"] != true || got["reason"] != "batch revoke" {
+		t.Fatalf("large detail summary = %s", detail)
+	}
+	if _, kept := got["grant_ids"]; kept {
+		t.Fatalf("large array was kept in detail summary: %s", detail)
+	}
+}
+
 func TestAuditDetailFromPrefixKeepsLeadingFieldsAndSkipsArrays(t *testing.T) {
 	// A resource-parents batch shape: two scalars, one nested object, then an
 	// array the cut runs through.
