@@ -773,6 +773,16 @@ func (kns *knowledgeNetworkService) ListKNs(ctx context.Context, parameter inter
 	return KNs, total, nil
 }
 
+func (kns *knowledgeNetworkService) ListAuthorizationResources(ctx context.Context,
+	query interfaces.AuthorizationResourcesQuery) ([]*interfaces.AuthorizationResource, int, error) {
+	resources, total, err := kns.kna.ListAuthorizationResources(ctx, query)
+	if err != nil {
+		return []*interfaces.AuthorizationResource{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+	}
+	return resources, total, nil
+}
+
 // GetKNNamesByIDs resolves knowledge network names in bulk for object-level authorization display.
 // Do not use FilterResources here because authorization pages must display names referenced by objects even when users lack access.
 // Perform only a lightweight name query. Skip missing IDs, return empty entries for empty input, and de-duplicate IDs.

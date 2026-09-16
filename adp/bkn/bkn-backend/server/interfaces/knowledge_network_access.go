@@ -19,6 +19,7 @@ type KNAccess interface {
 	CreateKN(ctx context.Context, tx *sql.Tx, kn *KN) error
 	ListKNs(ctx context.Context, query KNsQueryParams) ([]*KN, error)
 	GetKNsTotal(ctx context.Context, query KNsQueryParams) (int, error)
+	ListAuthorizationResources(ctx context.Context, query AuthorizationResourcesQuery) ([]*AuthorizationResource, int, error)
 	GetKNByID(ctx context.Context, knID string, branch string) (*KN, error)
 	UpdateKN(ctx context.Context, tx *sql.Tx, kn *KN) error
 	UpdateKNDetail(ctx context.Context, knID string, branch string, detail string) error

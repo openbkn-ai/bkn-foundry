@@ -583,6 +583,42 @@ func (r *restHandler) ListKNsByIn(c *gin.Context) {
 	r.ListKNs(c, visitor)
 }
 
+// ListAuthorizationResources returns the main-branch knowledge-network catalog
+// for internal authorization configuration. It does not authenticate or apply
+// user-resource filtering; callers must be constrained by deployment topology.
+func (r *restHandler) ListAuthorizationResources(c *gin.Context) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	offset := c.DefaultQuery("offset", interfaces.DEFAULT_OFFEST)
+	limit := c.DefaultQuery("limit", interfaces.DEFAULT_LIMIT)
+	sort := c.DefaultQuery("sort", "name")
+	direction := c.DefaultQuery("direction", interfaces.ASC_DIRECTION)
+	page, err := validatePaginationQueryParameters(ctx, offset, limit, sort, direction, interfaces.AUTHORIZATION_RESOURCE_SORT)
+	if err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	resources, total, err := r.kns.ListAuthorizationResources(ctx, interfaces.AuthorizationResourcesQuery{
+		PaginationQueryParameters: page,
+		Name:                      strings.TrimSpace(c.Query("name")),
+		Branch:                    interfaces.MAIN_BRANCH,
+	})
+	if err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, map[string]any{"entries": resources, "total": total})
+}
+
 // List knowledge networks with pagination (external).
 func (r *restHandler) ListKNsByEx(c *gin.Context) {
 	logger.Debug("Handler ListKNsByEx Start")

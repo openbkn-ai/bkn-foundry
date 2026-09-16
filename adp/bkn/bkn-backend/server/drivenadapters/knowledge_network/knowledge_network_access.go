@@ -317,6 +317,72 @@ func (kna *knowledgeNetworkAccess) ListKNs(ctx context.Context, query interfaces
 	return KNs, nil
 }
 
+// ListAuthorizationResources returns the smallest possible knowledge-network
+// catalog for internal authorization configuration. It deliberately bypasses
+// user-resource filtering; network reachability is the boundary for this API.
+func (kna *knowledgeNetworkAccess) ListAuthorizationResources(ctx context.Context,
+	query interfaces.AuthorizationResourcesQuery) ([]*interfaces.AuthorizationResource, int, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Select authorization resources")
+	defer span.End()
+
+	span.SetAttributes(
+		attr.Key("db_url").String(libdb.GetDBUrl()),
+		attr.Key("db_type").String(libdb.GetDBType()))
+
+	where := sq.And{sq.Eq{"f_branch": query.Branch}}
+	if query.Name != "" {
+		where = append(where, sq.Expr("instr(f_name, ?) > 0", query.Name))
+	}
+
+	countSQL, countValues, err := sq.Select("COUNT(f_id)").From(KN_TABLE_NAME).Where(where).ToSql()
+	if err != nil {
+		common.LogSafeError(ctx, "Failed to build authorization resource count SQL", err)
+		return []*interfaces.AuthorizationResource{}, 0, err
+	}
+	otellog.LogInfo(ctx, common.SafeQuerySummary(countSQL, len(countValues)))
+
+	total := 0
+	if err := kna.db.QueryRow(countSQL, countValues...).Scan(&total); err != nil {
+		common.LogSafeError(ctx, "Count authorization resources failed", err)
+		return []*interfaces.AuthorizationResource{}, 0, err
+	}
+
+	builder := sq.Select("f_id", "f_name").From(KN_TABLE_NAME).Where(where).
+		OrderBy(fmt.Sprintf("%s %s", query.Sort, query.Direction)).
+		OrderBy(fmt.Sprintf("f_id %s", query.Direction)).
+		Limit(uint64(query.Limit)).Offset(uint64(query.Offset))
+	sqlStr, values, err := builder.ToSql()
+	if err != nil {
+		common.LogSafeError(ctx, "Failed to build authorization resource list SQL", err)
+		return []*interfaces.AuthorizationResource{}, 0, err
+	}
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(values)))
+
+	rows, err := kna.db.Query(sqlStr, values...)
+	if err != nil {
+		common.LogSafeError(ctx, "List authorization resources failed", err)
+		return []*interfaces.AuthorizationResource{}, 0, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	resources := make([]*interfaces.AuthorizationResource, 0)
+	for rows.Next() {
+		resource := &interfaces.AuthorizationResource{}
+		if err := rows.Scan(&resource.ID, &resource.Name); err != nil {
+			common.LogSafeError(ctx, "Scan authorization resource failed", err)
+			return []*interfaces.AuthorizationResource{}, 0, err
+		}
+		resources = append(resources, resource)
+	}
+	if err := rows.Err(); err != nil {
+		common.LogSafeError(ctx, "Iterate authorization resources failed", err)
+		return []*interfaces.AuthorizationResource{}, 0, err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return resources, total, nil
+}
+
 func (kna *knowledgeNetworkAccess) GetKNsTotal(ctx context.Context, query interfaces.KNsQueryParams) (int, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Select knowledge networks total number")
 	defer span.End()

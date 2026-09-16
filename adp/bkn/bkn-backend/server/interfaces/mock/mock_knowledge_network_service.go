@@ -253,6 +253,22 @@ func (mr *MockKNServiceMockRecorder) ListKNs(ctx, query any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListKNs", reflect.TypeOf((*MockKNService)(nil).ListKNs), ctx, query)
 }
 
+// ListAuthorizationResources mocks base method.
+func (m *MockKNService) ListAuthorizationResources(ctx context.Context, query interfaces.AuthorizationResourcesQuery) ([]*interfaces.AuthorizationResource, int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListAuthorizationResources", ctx, query)
+	ret0, _ := ret[0].([]*interfaces.AuthorizationResource)
+	ret1, _ := ret[1].(int)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ListAuthorizationResources indicates an expected call of ListAuthorizationResources.
+func (mr *MockKNServiceMockRecorder) ListAuthorizationResources(ctx, query any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAuthorizationResources", reflect.TypeOf((*MockKNService)(nil).ListAuthorizationResources), ctx, query)
+}
+
 // ListKnSrcs mocks base method.
 func (m *MockKNService) ListKnSrcs(ctx context.Context, query interfaces.KNsQueryParams) ([]interfaces.PermissionResource, int, error) {
 	m.ctrl.T.Helper()
