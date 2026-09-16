@@ -9,7 +9,6 @@ package knowledge_network
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"strings"
 	"sync"
 
@@ -347,14 +346,22 @@ func (kna *knowledgeNetworkAccess) ListAuthorizationResources(ctx context.Contex
 		return []*interfaces.AuthorizationResource{}, 0, err
 	}
 
-	orderDirection := strings.ToUpper(query.Direction)
-	if orderDirection != interfaces.ASC_DIRECTION && orderDirection != interfaces.DESC_DIRECTION {
-		orderDirection = interfaces.ASC_DIRECTION
+	orderDirection := interfaces.ASC_DIRECTION
+	if strings.ToUpper(query.Direction) == interfaces.DESC_DIRECTION {
+		orderDirection = interfaces.DESC_DIRECTION
+	}
+
+	orderColumn := "f_name"
+	switch query.Sort {
+	case "f_name":
+		orderColumn = "f_name"
+	case "f_id":
+		orderColumn = "f_id"
 	}
 
 	builder := sq.Select("f_id", "f_name").From(KN_TABLE_NAME).Where(where).
-		OrderBy(fmt.Sprintf("%s %s", query.Sort, orderDirection)).
-		OrderBy(fmt.Sprintf("f_id %s", orderDirection)).
+		OrderBy(orderColumn + " " + orderDirection).
+		OrderBy("f_id " + orderDirection).
 		Limit(uint64(query.Limit)).Offset(uint64(query.Offset))
 	sqlStr, values, err := builder.ToSql()
 	if err != nil {
