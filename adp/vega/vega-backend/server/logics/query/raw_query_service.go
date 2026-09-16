@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
+	"github.com/lib/pq"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -1000,12 +1002,30 @@ func (rqs *rawQueryService) executeSQL(ctx context.Context, catalog *interfaces.
 	result, err := tableConnector.ExecuteRawSQL(ctx, sql)
 	if err != nil {
 		otellog.LogError(ctx, "Execute SQL failed", err)
+		if detail := rawQueryInvalidColumnError(err); detail != "" {
+			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+				WithErrorDetails(detail)
+		}
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("query execution failed")
 	}
 
 	logger.Infof("SQL query executed successfully: paging_mode=%s, returned_rows=%d", pagingMode, len(result.Entries))
 	return result, nil
+}
+
+func rawQueryInvalidColumnError(err error) string {
+	var mysqlErr *mysql.MySQLError
+	if errors.As(err, &mysqlErr) && mysqlErr.Number == 1054 {
+		return mysqlErr.Message
+	}
+
+	var postgresErr *pq.Error
+	if errors.As(err, &postgresErr) && string(postgresErr.Code) == "42703" {
+		return postgresErr.Message
+	}
+
+	return ""
 }
 
 func rawQueryValidationError(ctx context.Context, err error) error {

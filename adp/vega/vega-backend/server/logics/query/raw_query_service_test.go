@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os/exec"
 	"sync/atomic"
@@ -16,6 +17,8 @@ import (
 	"time"
 
 	"github.com/agiledragon/gomonkey/v2"
+	"github.com/go-sql-driver/mysql"
+	"github.com/lib/pq"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -512,6 +515,68 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, []map[string]any{{"id": 1}}, result.Entries)
+	})
+
+	t.Run("returns invalid parameter for an unknown MySQL column", func(t *testing.T) {
+		catalog := &interfaces.Catalog{ID: "catalog-1", Name: "mariadb-catalog", ConnectorType: interfaces.ConnectorTypeMariaDB}
+		ctrl := gomock.NewController(t)
+		connector := mock_interfaces.NewMockTableConnector(ctrl)
+		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
+			Return(connector, nil)
+		svc := &rawQueryService{cf: connectorFactory}
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		connector.EXPECT().ExecuteRawSQL(gomock.Any(), "SELECT no_such_column FROM brands").
+			Return(nil, fmt.Errorf("execute query failed: %w", &mysql.MySQLError{Number: 1054, Message: "Unknown column 'no_such_column' in 'field list'"}))
+
+		_, err := svc.executeSQL(context.Background(), catalog,
+			"SELECT no_such_column FROM brands", interfaces.PagingModeSingle, nil)
+
+		assertHTTPError(t, err, http.StatusBadRequest)
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "no_such_column")
+	})
+
+	t.Run("returns invalid parameter for an unknown PostgreSQL column", func(t *testing.T) {
+		catalog := &interfaces.Catalog{ID: "catalog-1", Name: "postgresql-catalog", ConnectorType: interfaces.ConnectorTypePostgreSQL}
+		ctrl := gomock.NewController(t)
+		connector := mock_interfaces.NewMockTableConnector(ctrl)
+		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
+			Return(connector, nil)
+		svc := &rawQueryService{cf: connectorFactory}
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		connector.EXPECT().ExecuteRawSQL(gomock.Any(), "SELECT no_such_column FROM brands").
+			Return(nil, fmt.Errorf("execute query failed: %w", &pq.Error{Code: "42703", Message: "column \"no_such_column\" does not exist"}))
+
+		_, err := svc.executeSQL(context.Background(), catalog,
+			"SELECT no_such_column FROM brands", interfaces.PagingModeSingle, nil)
+
+		assertHTTPError(t, err, http.StatusBadRequest)
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "no_such_column")
+	})
+
+	t.Run("preserves internal errors for other database failures", func(t *testing.T) {
+		catalog := rawQuerySQLServerCatalog()
+		ctrl := gomock.NewController(t)
+		connector := mock_interfaces.NewMockTableConnector(ctrl)
+		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
+			Return(connector, nil)
+		svc := &rawQueryService{cf: connectorFactory}
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		connector.EXPECT().ExecuteRawSQL(gomock.Any(), "SELECT id FROM brands").
+			Return(nil, errors.New("database connection lost"))
+
+		_, err := svc.executeSQL(context.Background(), catalog,
+			"SELECT id FROM brands", interfaces.PagingModeSingle, nil)
+
+		assertHTTPError(t, err, http.StatusInternalServerError)
 	})
 }
 
