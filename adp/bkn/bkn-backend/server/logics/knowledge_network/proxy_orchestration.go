@@ -491,7 +491,7 @@ func (kns *knowledgeNetworkService) PublishKNCapabilityMutation(ctx context.Cont
 		result = &interfaces.KNCapabilityMutationResult{}
 	}
 	desiredBindings := mergeProxyCapabilityBindings(currentBindings, result.Bindings, removedBindingIDs)
-	sources, version, err := buildProxyGrantSourcesWithCapabilities(latest, desiredBindings)
+	sources, version, err := kns.buildTypedProxyGrantSourcesWithCapabilities(ctx, latest, desiredBindings)
 	if err != nil {
 		rollback()
 		return nil, invalidProxyTargetError(ctx, err)
