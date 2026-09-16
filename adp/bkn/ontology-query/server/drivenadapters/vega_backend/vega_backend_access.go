@@ -149,12 +149,12 @@ func (v *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID st
 func normalizeResourceDataQueryParams(params *interfaces.ResourceDataQueryParams) *interfaces.ResourceDataQueryParams {
 	if params == nil {
 		return &interfaces.ResourceDataQueryParams{
-			Paging: interfaces.ResourceDataPagingRequest{Mode: "single"},
+			Paging: interfaces.ResourceDataPagingRequest{Mode: interfaces.ResourceDataPagingModeSingle},
 		}
 	}
 	request := *params
 	if request.Paging.Cursor == "" && request.Paging.Mode == "" {
-		request.Paging.Mode = "single"
+		request.Paging.Mode = interfaces.ResourceDataPagingModeSingle
 	}
 	return &request
 }

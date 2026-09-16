@@ -59,10 +59,20 @@ type Objects struct {
 	Datas                []map[string]any               `json:"datas"`
 	TotalCount           int64                          `json:"total_count,omitempty"`
 	SearchAfter          []any                          `json:"-"`
+	ResourceCursor       string                         `json:"-"`
+	ResourceCursorExpiry *int64                         `json:"-"`
+	Paging               *ObjectPagingResponse          `json:"paging"`
 	Cursor               string                         `json:"cursor,omitempty"`
 	OverallMs            int64                          `json:"overall_ms"`
 	SearchFromIndex      bool                           `json:"search_from_index"` // Whether to query the index.
 	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
+}
+
+// ObjectPagingResponse is the public object-query pagination envelope.
+// NextCursor is an ontology-issued opaque token rather than a Vega cursor.
+type ObjectPagingResponse struct {
+	NextCursor   *string `json:"next_cursor"`
+	ExpiresAtSec *int64  `json:"expires_at_sec"`
 }
 
 type ObjectTypeSampleDataColumn struct {
@@ -76,6 +86,7 @@ type ObjectTypeSampleData struct {
 	Name                 string                         `json:"name"`
 	TotalCount           int64                          `json:"total_count,omitempty"`
 	SearchAfter          []any                          `json:"-"`
+	Paging               *ObjectPagingResponse          `json:"paging"`
 	Cursor               string                         `json:"cursor,omitempty"`
 	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
 }

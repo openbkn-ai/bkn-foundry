@@ -166,6 +166,7 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 		Name:                 objects.ObjectType.OTName,
 		TotalCount:           objects.TotalCount,
 		SearchAfter:          objects.SearchAfter,
+		Paging:               objects.Paging,
 		Cursor:               objects.Cursor,
 		EffectivePermissions: objects.EffectivePermissions,
 	}
@@ -285,11 +286,19 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 		if ots.cursor == nil {
 			return resps, invalidQueryCursorError(ctx)
 		}
-		searchAfter, err := ots.cursor.decode(ctx, query, proxyContext.PublishedModelVersion, query.Cursor)
-		if err != nil {
-			return resps, invalidQueryCursorError(ctx)
+		if dataSourceType == interfaces.DATA_SOURCE_TYPE_RESOURCE {
+			resourceCursor, err := ots.cursor.decodeResource(ctx, query, proxyContext.PublishedModelVersion, query.Cursor)
+			if err != nil {
+				return resps, invalidQueryCursorError(ctx)
+			}
+			query.ResourceCursor = resourceCursor
+		} else {
+			searchAfter, err := ots.cursor.decode(ctx, query, proxyContext.PublishedModelVersion, query.Cursor)
+			if err != nil {
+				return resps, invalidQueryCursorError(ctx)
+			}
+			query.SearchAfter = searchAfter
 		}
-		query.SearchAfter = searchAfter
 	}
 
 	// 3. Request Vega Resource to get data.
@@ -303,7 +312,16 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 		resps.ObjectType = &filteredObjectType
 	}
 	resps.EffectivePermissions = plan.effective
-	if len(resps.SearchAfter) > 0 {
+	if resps.ResourceCursor != "" {
+		if ots.cursor == nil {
+			return interfaces.Objects{}, propertyDecisionUnavailable(ctx, fmt.Errorf("query cursor codec is not configured"))
+		}
+		resps.Cursor, err = ots.cursor.encodeResource(ctx, query, proxyContext.PublishedModelVersion,
+			resps.ResourceCursor, resps.ResourceCursorExpiry)
+		if err != nil {
+			return interfaces.Objects{}, propertyDecisionUnavailable(ctx, err)
+		}
+	} else if len(resps.SearchAfter) > 0 {
 		if ots.cursor == nil {
 			return interfaces.Objects{}, propertyDecisionUnavailable(ctx, fmt.Errorf("query cursor codec is not configured"))
 		}
@@ -311,6 +329,17 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 		if err != nil {
 			return interfaces.Objects{}, propertyDecisionUnavailable(ctx, err)
 		}
+	}
+	resps.Paging = &interfaces.ObjectPagingResponse{}
+	if resps.Cursor != "" {
+		expiresAt, expiryErr := ots.cursor.cursorExpiresAt(resps.ResourceCursorExpiry)
+		if expiryErr != nil {
+			return interfaces.Objects{}, propertyDecisionUnavailable(ctx, expiryErr)
+		}
+		nextCursor := resps.Cursor
+		expiresAtSec := expiresAt.Unix()
+		resps.Paging.NextCursor = &nextCursor
+		resps.Paging.ExpiresAtSec = &expiresAtSec
 	}
 
 	logger.Debugf("从对象类[%s]中获取到的数据条数为[%d],耗时: %dms", objectType.OTID, len(resps.Datas), time.Now().UnixMilli()-start)
@@ -507,7 +536,7 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 	params := &interfaces.ResourceDataQueryParams{
 		NeedTotal: query.NeedTotal,
 		Paging: interfaces.ResourceDataPagingRequest{
-			Mode:   "single",
+			Mode:   interfaces.ResourceDataPagingModeCursor,
 			Limit:  query.Limit,
 			Offset: query.Offset,
 		},
@@ -515,6 +544,11 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		SearchAfter:     query.SearchAfter,
 		FilterCondition: logics.CondCfgToFilterMap(viewQuery.Filters),
 		OutputFields:    outputFields,
+	}
+	if query.ResourceCursor != "" {
+		params = &interfaces.ResourceDataQueryParams{
+			Paging: interfaces.ResourceDataPagingRequest{Cursor: query.ResourceCursor},
+		}
 	}
 	resp, err := ots.vba.QueryResourceData(ctx, objectType.DataSource.ID, params)
 	if err != nil {
@@ -554,7 +588,14 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		}
 	}
 	resps.TotalCount = resp.TotalCount
-	resps.SearchAfter = resp.SearchAfter
+	if resp.Paging != nil {
+		if resp.Paging.NextCursor != nil {
+			resps.ResourceCursor = *resp.Paging.NextCursor
+			resps.ResourceCursorExpiry = resp.Paging.ExpiresAtSec
+		}
+	} else {
+		resps.SearchAfter = resp.SearchAfter
+	}
 	resps.Datas = objects
 	return nil
 }
@@ -838,6 +879,7 @@ func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,
 	resps.ObjectType = objects.ObjectType
 	resps.TotalCount = objects.TotalCount
 	resps.SearchAfter = objects.SearchAfter
+	resps.Paging = objects.Paging
 	resps.Cursor = objects.Cursor
 	resps.EffectivePermissions = objects.EffectivePermissions
 	return resps, nil

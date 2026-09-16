@@ -306,7 +306,7 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 	params := &interfaces.ResourceDataQueryParams{
 		FilterCondition: fc,
 		Paging: interfaces.ResourceDataPagingRequest{
-			Mode: "single",
+			Mode: interfaces.ResourceDataPagingModeSingle,
 		},
 	}
 

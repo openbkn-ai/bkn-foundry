@@ -12,9 +12,16 @@ import (
 
 // DatasetQueryResponse matches bkn-backend / vega resource data response shape.
 type DatasetQueryResponse struct {
-	Entries     []map[string]any `json:"entries"`
-	TotalCount  int64            `json:"total_count"`
-	SearchAfter []any            `json:"search_after"`
+	Entries     []map[string]any            `json:"entries"`
+	TotalCount  int64                       `json:"total_count"`
+	SearchAfter []any                       `json:"search_after"`
+	Paging      *ResourceDataPagingResponse `json:"paging"`
+}
+
+// ResourceDataPagingResponse is the cursor envelope returned by Vega resource data queries.
+type ResourceDataPagingResponse struct {
+	NextCursor   *string `json:"next_cursor"`
+	ExpiresAtSec *int64  `json:"expires_at_sec"`
 }
 
 // ResourceSchemaResponse is the restricted subset of Vega resource detail
@@ -26,12 +33,20 @@ type ResourceSchemaResponse struct {
 
 // ResourceDataPagingRequest matches vega-backend paging contract for resource data.
 type ResourceDataPagingRequest struct {
-	Mode         string `json:"mode,omitempty"`
-	Offset       int    `json:"offset,omitempty"`
-	Limit        int    `json:"limit,omitempty"`
-	KeepAliveSec int    `json:"keep_alive_sec,omitempty"`
-	Cursor       string `json:"cursor,omitempty"`
+	Mode         ResourceDataPagingMode `json:"mode,omitempty"`
+	Offset       int                    `json:"offset,omitempty"`
+	Limit        int                    `json:"limit,omitempty"`
+	KeepAliveSec int                    `json:"keep_alive_sec,omitempty"`
+	Cursor       string                 `json:"cursor,omitempty"`
 }
+
+// ResourceDataPagingMode mirrors the Vega paging mode wire contract.
+type ResourceDataPagingMode string
+
+const (
+	ResourceDataPagingModeSingle ResourceDataPagingMode = "single"
+	ResourceDataPagingModeCursor ResourceDataPagingMode = "cursor"
+)
 
 // ResourceDataQueryParams is the JSON body for the restricted
 // POST /proxy/resources/:id/data endpoint.

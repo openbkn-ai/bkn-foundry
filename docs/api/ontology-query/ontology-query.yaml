@@ -4281,8 +4281,24 @@ components:
           description: 总条数
           type: integer
         cursor:
-          description: 下一页使用的不透明且经过认证的分页游标
+          description: 兼容字段；值等同于 paging.next_cursor。新调用方应使用 paging.next_cursor。
           type: string
+        paging:
+          $ref: '#/components/schemas/ObjectPagingResponse'
+    ObjectPagingResponse:
+      description: 对象查询分页状态。末页时两个字段均为 null。
+      type: object
+      required:
+      - next_cursor
+      - expires_at_sec
+      properties:
+        next_cursor:
+          type: [string, 'null']
+          description: 下一页使用的不透明且经过认证的对象查询游标；为空表示已到末页。
+        expires_at_sec:
+          type: [integer, 'null']
+          format: int64
+          description: cursor 的 Unix 到期时间戳（秒），取 ontology-query 与下游分页租约中较早者。
     ObjectPropertiesValuesResponse:
       description: 节点（对象类）信息
       required:

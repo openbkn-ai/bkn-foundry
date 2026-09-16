@@ -130,9 +130,18 @@ func TestObjectQueryCursorReauthorizesAndNeverExposesRawPosition(t *testing.T) {
 	models := omock.NewMockOntologyManagerAccess(ctrl)
 	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", "main", "customer").Times(2).
 		Return(objectType, true, nil)
-	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{
-		Entries:     []map[string]any{{"customer_id": "customer-1", "phone": "13812345678"}},
-		SearchAfter: []any{"raw-secret-position"},
+	nextCursor := "vega-secret-cursor"
+	vegaCursorExpiry := now.Add(5 * time.Minute).Unix()
+	vega := &vegaStubForOTQuery{responses: []*interfaces.DatasetQueryResponse{
+		{
+			Entries: []map[string]any{{"customer_id": "customer-1", "phone": "13812345678"}},
+			Paging:  &interfaces.ResourceDataPagingResponse{NextCursor: &nextCursor, ExpiresAtSec: &vegaCursorExpiry},
+		},
+		{
+			Entries:     []map[string]any{{"customer_id": "customer-2", "phone": "13812345679"}},
+			Paging:      &interfaces.ResourceDataPagingResponse{},
+			SearchAfter: []any{"must-not-be-used"},
+		},
 	}}
 	calls := 0
 	levels := map[string]interfaces.PropertyAccessLevel{
@@ -156,8 +165,17 @@ func TestObjectQueryCursorReauthorizesAndNeverExposesRawPosition(t *testing.T) {
 	if err != nil || first.Cursor == "" || calls != 1 {
 		t.Fatalf("first page = %#v, %v, auth calls = %d", first, err, calls)
 	}
+	if len(vega.paramsHistory) != 1 || vega.paramsHistory[0].Paging.Mode != "cursor" ||
+		vega.paramsHistory[0].Paging.Limit != 10 || vega.paramsHistory[0].Paging.Cursor != "" {
+		t.Fatalf("Vega initial request = %#v", vega.paramsHistory)
+	}
+	if first.Paging == nil || first.Paging.NextCursor == nil || *first.Paging.NextCursor != first.Cursor ||
+		first.Paging.ExpiresAtSec == nil || *first.Paging.ExpiresAtSec != vegaCursorExpiry {
+		t.Fatalf("object paging response = %#v", first.Paging)
+	}
 	body, err := json.Marshal(first)
-	if err != nil || strings.Contains(string(body), "raw-secret-position") || strings.Contains(string(body), "search_after") {
+	if err != nil || strings.Contains(string(body), "raw-secret-position") || strings.Contains(string(body), "vega-secret-cursor") ||
+		strings.Contains(string(body), "search_after") {
 		t.Fatalf("response leaked raw pagination position: %s, %v", body, err)
 	}
 
@@ -168,8 +186,12 @@ func TestObjectQueryCursorReauthorizesAndNeverExposesRawPosition(t *testing.T) {
 	if err != nil || calls != 2 {
 		t.Fatalf("second page = %#v, %v, auth calls = %d", second, err, calls)
 	}
-	if len(vega.lastParams.SearchAfter) != 1 || vega.lastParams.SearchAfter[0] != "raw-secret-position" {
-		t.Fatalf("restored downstream position = %#v", vega.lastParams.SearchAfter)
+	if second.Cursor != "" || second.Paging == nil || second.Paging.NextCursor != nil || second.Paging.ExpiresAtSec != nil {
+		t.Fatalf("terminal page must not return a cursor: %#v", second)
+	}
+	if vega.lastParams.Paging.Cursor != "vega-secret-cursor" || vega.lastParams.Paging.Mode != "" ||
+		len(vega.lastParams.SearchAfter) != 0 || vega.lastParams.FilterCondition != nil || len(vega.lastParams.Sort) != 0 {
+		t.Fatalf("Vega continuation request = %#v", vega.lastParams)
 	}
 	if _, exists := second.Datas[0]["mobile"]; exists {
 		t.Fatalf("permission downgrade was not applied: %#v", second.Datas[0])
