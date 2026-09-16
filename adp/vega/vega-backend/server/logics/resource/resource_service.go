@@ -225,19 +225,9 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		}
 	}
 	creationCompleted := false
-	parentRegistered := false
 	defer func() {
 		if creationCompleted {
 			return
-		}
-		if parentRegistered {
-			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), resourceParentCleanupTimeout)
-			defer cancel()
-			if cleanupErr := rs.ps.DeleteResourceParents(cleanupCtx,
-				interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{resource.ID}); cleanupErr != nil {
-				logger.Errorf("Delete resource parent after resource creation failure: resource %s: %v",
-					resource.ID, cleanupErr)
-			}
 		}
 		if resource.Category == interfaces.ResourceCategoryDataset {
 			if cleanupErr := rs.ds.Delete(context.WithoutCancel(ctx), resource); cleanupErr != nil {
@@ -263,26 +253,37 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 			WithErrorDetails("failed to create resource")
 	}
 
-	// Register the parent while the Resource row is still uncommitted. If the
-	// transaction cannot commit, the deferred compensation removes the edge.
-	if resource.CatalogID != "" {
-		err = rs.ps.UpsertResourceParents(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-			interfaces.AUTH_RESOURCE_TYPE_CATALOG, []interfaces.PermissionResourceParent{{
-				ResourceID: resource.ID, ParentID: resource.CatalogID,
-			}})
-		if err != nil {
-			logger.Errorf("UpsertResourceParents error: %s", err.Error())
-			span.SetStatus(codes.Error, "failed to register resource parent")
-			return nil, err
-		}
-		parentRegistered = true
-	}
-
 	if err := tx.Commit(); err != nil {
 		otellog.LogError(ctx, "Commit resource creation transaction failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Resource_InternalError_CreateFailed).
 			WithErrorDetails("failed to create resource")
+	}
+
+	if resource.CatalogID != "" {
+		parentCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), resourceParentCleanupTimeout)
+		err = rs.ps.UpsertResourceParents(parentCtx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			interfaces.AUTH_RESOURCE_TYPE_CATALOG, []interfaces.PermissionResourceParent{{
+				ResourceID: resource.ID, ParentID: resource.CatalogID,
+			}})
+		cancel()
+		if err != nil {
+			logger.Errorf("Upsert resource parent after resource creation: resource %s: %v", resource.ID, err)
+			span.SetStatus(codes.Error, "failed to register resource parent")
+
+			cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(ctx), resourceParentCleanupTimeout)
+			if cleanupErr := rs.ra.DeleteByIDs(cleanupCtx, []string{resource.ID}); cleanupErr != nil {
+				logger.Errorf("Delete resource after parent publication failure: resource %s: %v",
+					resource.ID, cleanupErr)
+			}
+			if cleanupErr := rs.ps.DeleteResourceParents(cleanupCtx,
+				interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{resource.ID}); cleanupErr != nil {
+				logger.Errorf("Delete resource parent after parent publication failure: resource %s: %v",
+					resource.ID, cleanupErr)
+			}
+			cleanupCancel()
+			return nil, err
+		}
 	}
 	creationCompleted = true
 
@@ -920,6 +921,19 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 			verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 			WithErrorDetails("failed to update resource")
 	}
+	if resource.CatalogID != "" {
+		parentCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), resourceParentCleanupTimeout)
+		err := rs.ps.UpsertResourceParents(parentCtx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			interfaces.AUTH_RESOURCE_TYPE_CATALOG, []interfaces.PermissionResourceParent{{
+				ResourceID: resource.ID, ParentID: resource.CatalogID,
+			}})
+		cancel()
+		if err != nil {
+			logger.Errorf("Upsert resource parent after resource update: resource %s: %v", resource.ID, err)
+			span.SetStatus(codes.Error, "failed to register resource parent")
+			return err
+		}
+	}
 	span.SetStatus(codes.Ok, "")
 	return nil
 }
@@ -1142,10 +1156,11 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string, ignore
 
 	permissionCleanupCtx, cancelPermissionCleanup := context.WithTimeout(
 		context.WithoutCancel(ctx), resourcePermissionCleanupTimeout)
-	err = rs.ps.DeleteResources(permissionCleanupCtx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, existingIDs)
+	permissionCleanupErr := rs.ps.DeleteResources(permissionCleanupCtx,
+		interfaces.AUTH_RESOURCE_TYPE_RESOURCE, existingIDs)
 	cancelPermissionCleanup()
-	if err != nil {
-		return err
+	if permissionCleanupErr != nil {
+		logger.Errorf("Delete resource permissions after resource deletion: %v", permissionCleanupErr)
 	}
 
 	span.SetStatus(codes.Ok, "")

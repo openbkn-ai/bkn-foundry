@@ -14,5 +14,5 @@ UPDATE t_resource
 SET f_internal = TRUE
 WHERE f_id IN (
     'adp_bkn_concept_dataset',
-    'bkn_execution_factory_skill_dataset'
+    'bkn_execution_factory_capability_dataset'
 );

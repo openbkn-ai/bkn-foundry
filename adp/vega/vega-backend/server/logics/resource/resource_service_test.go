@@ -74,13 +74,17 @@ type parentAwarePermissionService struct {
 	*vmock.MockPermissionService
 	upsertParentCalls int
 	deleteParentCalls int
+	onUpsertParents   func(resourceType, parentType string, items []interfaces.PermissionResourceParent) error
 	onDeleteParents   func(resourceType string, resourceIDs []string) error
 	onDeleteResources func(ctx context.Context, resourceType string, resourceIDs []string) error
 }
 
 func (ps *parentAwarePermissionService) UpsertResourceParents(_ context.Context,
-	_, _ string, _ []interfaces.PermissionResourceParent) error {
+	resourceType, parentType string, items []interfaces.PermissionResourceParent) error {
 	ps.upsertParentCalls++
+	if ps.onUpsertParents != nil {
+		return ps.onUpsertParents(resourceType, parentType, items)
+	}
 	return nil
 }
 
@@ -1057,7 +1061,7 @@ func TestResourceServiceCreate(t *testing.T) {
 		}
 		require.NotNil(t, resource)
 	})
-	t.Run("removes parent when the resource transaction cannot commit", func(t *testing.T) {
+	t.Run("does not publish parent when the resource transaction cannot commit", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRA := vmock.NewMockResourceAccess(ctrl)
 		mockPS := vmock.NewMockPermissionService(ctrl)
@@ -1077,15 +1081,6 @@ func TestResourceServiceCreate(t *testing.T) {
 			[]string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}, true).
 			Return(true, &interfaces.Catalog{ID: "cat1"}, nil)
 		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
-		mockPS.EXPECT().UpsertResourceParents(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-			interfaces.AUTH_RESOURCE_TYPE_CATALOG, gomock.Any()).Return(nil)
-		mockPS.EXPECT().DeleteResourceParents(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-			gomock.Any()).DoAndReturn(func(_ context.Context, _ string, ids []string) error {
-			require.Len(t, ids, 1)
-			require.NotEmpty(t, ids[0])
-			return nil
-		})
-
 		_, err = rs.Create(context.Background(), &interfaces.ResourceRequest{
 			CatalogID: "cat1",
 			Name:      "resource",
@@ -1093,6 +1088,36 @@ func TestResourceServiceCreate(t *testing.T) {
 		})
 
 		require.Error(t, err)
+	})
+	t.Run("deletes durable resource when parent publication fails", func(t *testing.T) {
+		rs, mockRA, mockPS, _, _, _, _ := newTestService(t)
+		parentPS := &parentAwarePermissionService{
+			MockPermissionService: mockPS,
+			onUpsertParents: func(resourceType, parentType string,
+				items []interfaces.PermissionResourceParent) error {
+				assert.Equal(t, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, resourceType)
+				assert.Equal(t, interfaces.AUTH_RESOURCE_TYPE_CATALOG, parentType)
+				require.Len(t, items, 1)
+				assert.NotEmpty(t, items[0].ResourceID)
+				assert.Equal(t, "cat1", items[0].ParentID)
+				return errors.New("parent unavailable")
+			},
+		}
+		rs.ps = parentPS
+		expectResourceServiceTransaction(t, rs, true)
+		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
+		mockRA.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, ids []string) error {
+				require.Len(t, ids, 1)
+				require.NotEmpty(t, ids[0])
+				return nil
+			})
+
+		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
+			CatalogID: "cat1", Name: "resource", Category: interfaces.ResourceCategoryTable,
+		})
+
+		require.ErrorContains(t, err, "parent unavailable")
 	})
 	t.Run("create success", func(t *testing.T) {
 		rs, mockRA, _, _, _, _, _ := newTestService(t)
@@ -1581,6 +1606,25 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 		cancel()
 		require.NoError(t, rs.DeleteByIDs(ctx, []string{"r1"}, false))
 	})
+	t.Run("does not fail after durable deletion when permission cleanup fails", func(t *testing.T) {
+		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
+		parentPS := &parentAwarePermissionService{
+			MockPermissionService: mockPS,
+			onDeleteResources: func(context.Context, string, []string) error {
+				return errors.New("permission cleanup failed")
+			},
+		}
+		rs.ps = parentPS
+
+		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
+		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).Return(map[string]*interfaces.Resource{
+			"r1": {ID: "r1", CatalogID: "cat1"},
+		}, nil)
+		expectResourceBuildTasksForDelete(t, mockBTA, "r1", nil)
+		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}).Return(nil)
+
+		require.NoError(t, rs.DeleteByIDs(context.Background(), []string{"r1"}, false))
+	})
 	t.Run("rejects deletion while resource refresh is pending or running", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, _, _ := newTestService(t)
 		ctrl := gomock.NewController(t)
@@ -1813,7 +1857,19 @@ func TestResourceServiceUpdate(t *testing.T) {
 	})
 	t.Run("update success", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
-		parentPS := &parentAwarePermissionService{MockPermissionService: mockPS}
+		parentPS := &parentAwarePermissionService{
+			MockPermissionService: mockPS,
+			onUpsertParents: func(resourceType, parentType string,
+				items []interfaces.PermissionResourceParent) error {
+				assert.Equal(t, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, resourceType)
+				assert.Equal(t, interfaces.AUTH_RESOURCE_TYPE_CATALOG, parentType)
+				assert.Equal(t, []interfaces.PermissionResourceParent{{
+					ResourceID: "r1",
+					ParentID:   "cat1",
+				}}, items)
+				return nil
+			},
+		}
 		rs.ps = parentPS
 		expectResourceServiceTransaction(t, rs, true)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -1828,7 +1884,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		assert.Zero(t, parentPS.upsertParentCalls)
+		assert.Equal(t, 1, parentPS.upsertParentCalls)
 	})
 	t.Run("re-saving a table persists the default keyword feature for text fields", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, mockBTA := newTestService(t)
