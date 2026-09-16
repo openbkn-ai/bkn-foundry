@@ -57,6 +57,11 @@ func newTestService(t *testing.T) (*resourceService,
 
 	// 默认无系统内部目录；覆盖 internal 行为的用例可叠加更具体的 EXPECT
 	mockCS.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{}, nil).AnyTimes()
+	mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(),
+		[]string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}, true).
+		DoAndReturn(func(_ context.Context, id string, _ []string, _ bool) (bool, *interfaces.Catalog, error) {
+			return true, &interfaces.Catalog{ID: id}, nil
+		}).AnyTimes()
 	mockDTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	mockPS.EXPECT().UpsertResourceParents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	mockPS.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
@@ -66,6 +71,24 @@ func newTestService(t *testing.T) (*resourceService,
 
 type parentAwarePermissionService struct {
 	*vmock.MockPermissionService
+	upsertParentCalls int
+	deleteParentCalls int
+	onDeleteParents   func(resourceType string, resourceIDs []string) error
+}
+
+func (ps *parentAwarePermissionService) UpsertResourceParents(_ context.Context,
+	_, _ string, _ []interfaces.PermissionResourceParent) error {
+	ps.upsertParentCalls++
+	return nil
+}
+
+func (ps *parentAwarePermissionService) DeleteResourceParents(_ context.Context,
+	resourceType string, resourceIDs []string) error {
+	ps.deleteParentCalls++
+	if ps.onDeleteParents != nil {
+		return ps.onDeleteParents(resourceType, resourceIDs)
+	}
+	return nil
 }
 
 func TestResourceServiceInternalLocalIndexTransaction(t *testing.T) {
@@ -660,20 +683,16 @@ func TestSourceMetadataRowCountHandlesMissingMetadata(t *testing.T) {
 	}
 }
 
-func TestResourceServiceGetByCatalogID(t *testing.T) {
-	t.Run("get by catalog idsuccess", func(t *testing.T) {
-		rs, mockRA, _, _, _, _, _ := newTestService(t)
-		mockRA.EXPECT().GetByCatalogID(gomock.Any(), "cat1").
-			Return([]*interfaces.Resource{{ID: "r1", CatalogID: "cat1"}}, nil)
+func TestResourceServiceInternalGetByCatalogID(t *testing.T) {
+	rs, mockRA, _, _, _, _, _ := newTestService(t)
+	mockRA.EXPECT().GetByCatalogID(gomock.Any(), "cat1").
+		Return([]*interfaces.Resource{{ID: "r1", CatalogID: "cat1"}}, nil)
 
-		resources, err := rs.GetByCatalogID(context.Background(), "cat1")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(resources) != 1 {
-			t.Errorf("expected 1 resource, got %d", len(resources))
-		}
-	})
+	resources, err := rs.InternalGetByCatalogID(context.Background(), "cat1")
+
+	require.NoError(t, err)
+	require.Len(t, resources, 1)
+	assert.Equal(t, "r1", resources[0].ID)
 }
 
 func TestResourceServiceList(t *testing.T) {
@@ -1003,10 +1022,8 @@ func TestValidateSchemaDefinitionRejectsNullField(t *testing.T) {
 
 func TestResourceServiceCreate(t *testing.T) {
 	t.Run("create dataset category", func(t *testing.T) {
-		rs, mockRA, mockPS, mockDS, _, mockCS, _ := newTestService(t)
+		rs, mockRA, _, mockDS, _, _, _ := newTestService(t)
 		expectResourceServiceTransaction(t, rs, true)
-		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCS.EXPECT().CheckExistByID(gomock.Any(), gomock.Any()).Return(true, nil)
 		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
 		mockDS.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, got *interfaces.Resource) error {
@@ -1028,15 +1045,48 @@ func TestResourceServiceCreate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if resource == nil {
-			t.Error("expected non-empty ID")
-		}
+		require.NotNil(t, resource)
+	})
+	t.Run("removes parent when the resource transaction cannot commit", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockRA := vmock.NewMockResourceAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
+		mockCS := vmock.NewMockCatalogService(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, db.Close())
+			require.NoError(t, sqlMock.ExpectationsWereMet())
+		})
+		rs := &resourceService{db: db, ra: mockRA, ps: mockPS, cs: mockCS}
+
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectCommit().WillReturnError(errors.New("commit failed"))
+		sqlMock.ExpectClose()
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "cat1",
+			[]string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}, true).
+			Return(true, &interfaces.Catalog{ID: "cat1"}, nil)
+		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
+		mockPS.EXPECT().UpsertResourceParents(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			interfaces.AUTH_RESOURCE_TYPE_CATALOG, gomock.Any()).Return(nil)
+		mockPS.EXPECT().DeleteResourceParents(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			gomock.Any()).DoAndReturn(func(_ context.Context, _ string, ids []string) error {
+			require.Len(t, ids, 1)
+			require.NotEmpty(t, ids[0])
+			return nil
+		})
+
+		_, err = rs.Create(context.Background(), &interfaces.ResourceRequest{
+			CatalogID: "cat1",
+			Name:      "resource",
+			Category:  interfaces.ResourceCategoryTable,
+		})
+
+		require.Error(t, err)
 	})
 	t.Run("create success", func(t *testing.T) {
-		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
+		rs, mockRA, _, _, _, _, _ := newTestService(t)
 		expectResourceServiceTransaction(t, rs, true)
-		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCS.EXPECT().CheckExistByID(gomock.Any(), gomock.Any()).Return(true, nil)
 		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, resource *interfaces.Resource) error {
 				assert.False(t, resource.Internal)
@@ -1050,15 +1100,11 @@ func TestResourceServiceCreate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if resource == nil {
-			t.Error("expected non-empty ID")
-		}
+		require.NotNil(t, resource)
 		assert.False(t, resource.Internal)
 	})
 	t.Run("rejects internal resource in a normal catalog", func(t *testing.T) {
-		rs, _, mockPS, _, _, mockCS, _ := newTestService(t)
-		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat-normal").Return(true, nil)
+		rs, _, _, _, _, _, _ := newTestService(t)
 		internal := true
 
 		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
@@ -1074,12 +1120,11 @@ func TestResourceServiceCreate(t *testing.T) {
 	})
 	t.Run("rejects normal resource in an internal catalog", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockPS := vmock.NewMockPermissionService(ctrl)
 		mockCS := vmock.NewMockCatalogService(ctrl)
-		rs := &resourceService{ps: mockPS, cs: mockCS}
-		mockCS.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{"cat-internal": {}}, nil)
-		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat-internal").Return(true, nil)
+		rs := &resourceService{cs: mockCS}
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-internal",
+			[]string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}, true).
+			Return(true, &interfaces.Catalog{ID: "cat-internal", Internal: true}, nil)
 		ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
 			interfaces.AccountInfo{ID: interfaces.BuiltinAdminID})
 
@@ -1093,11 +1138,47 @@ func TestResourceServiceCreate(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 		assert.Contains(t, httpErr.BaseError.ErrorDetails, "must match its catalog")
 	})
-	t.Run("registers parent after durable normal resource creation", func(t *testing.T) {
-		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
+	t.Run("returns internal catalog visibility error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := vmock.NewMockCatalogService(ctrl)
+		rs := &resourceService{cs: mockCS}
+		visibilityErr := rest.NewHTTPError(context.Background(), http.StatusForbidden,
+			rest.PublicError_Forbidden).WithErrorDetails("internal catalogs are restricted to the built-in administrator")
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-internal",
+			[]string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}, true).
+			Return(false, nil, visibilityErr)
+		internal := true
+
+		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
+			CatalogID: "cat-internal",
+			Name:      "internal-resource",
+			Category:  interfaces.ResourceCategoryTable,
+			Internal:  &internal,
+		})
+
+		httpErr := requireResourceHTTPError(t, err, rest.PublicError_Forbidden)
+		assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
+	})
+	t.Run("rejects missing catalog resource manage permission", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := vmock.NewMockCatalogService(ctrl)
+		rs := &resourceService{cs: mockCS}
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "cat1",
+			[]string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}, true).
+			Return(false, nil, nil)
+
+		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
+			CatalogID: "cat1",
+			Name:      "resource",
+			Category:  interfaces.ResourceCategoryTable,
+		})
+
+		httpErr := requireResourceHTTPError(t, err, rest.PublicError_Forbidden)
+		assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
+	})
+	t.Run("registers parent as part of normal resource creation", func(t *testing.T) {
+		rs, mockRA, _, _, _, _, _ := newTestService(t)
 		expectResourceServiceTransaction(t, rs, true)
-		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat-1").Return(true, nil)
 		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, resource *interfaces.Resource) error {
 				assert.False(t, resource.Internal)
@@ -1111,10 +1192,8 @@ func TestResourceServiceCreate(t *testing.T) {
 		assert.NotNil(t, resource)
 	})
 	t.Run("create table adds required default features to text fields", func(t *testing.T) {
-		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
+		rs, mockRA, _, _, _, _, _ := newTestService(t)
 		expectResourceServiceTransaction(t, rs, true)
-		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCS.EXPECT().CheckExistByID(gomock.Any(), gomock.Any()).Return(true, nil)
 		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
 
 		resource, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
@@ -1135,10 +1214,8 @@ func TestResourceServiceCreate(t *testing.T) {
 		assert.Equal(t, interfaces.PropertyFeatureType_Fulltext, resource.SchemaDefinition[0].Features[1].FeatureType)
 	})
 	t.Run("create with explicit id", func(t *testing.T) {
-		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
+		rs, mockRA, _, _, _, _, _ := newTestService(t)
 		expectResourceServiceTransaction(t, rs, true)
-		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCS.EXPECT().CheckExistByID(gomock.Any(), gomock.Any()).Return(true, nil)
 		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
 
 		resource, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
@@ -1154,10 +1231,8 @@ func TestResourceServiceCreate(t *testing.T) {
 		}
 	})
 	t.Run("create dberror", func(t *testing.T) {
-		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
+		rs, mockRA, _, _, _, _, _ := newTestService(t)
 		expectResourceServiceTransaction(t, rs, false)
-		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCS.EXPECT().CheckExistByID(gomock.Any(), gomock.Any()).Return(true, nil)
 		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(fmt.Errorf("db error"))
 
 		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
@@ -1168,10 +1243,8 @@ func TestResourceServiceCreate(t *testing.T) {
 		}
 	})
 	t.Run("deletes dataset index when resource persistence fails", func(t *testing.T) {
-		rs, mockRA, mockPS, mockDS, _, mockCS, _ := newTestService(t)
+		rs, mockRA, _, mockDS, _, _, _ := newTestService(t)
 		expectResourceServiceTransaction(t, rs, false)
-		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCS.EXPECT().CheckExistByID(gomock.Any(), gomock.Any()).Return(true, nil)
 		mockDS.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(errors.New("insert failed"))
 		mockDS.EXPECT().Delete(gomock.Any(), gomock.Any()).Return(nil)
@@ -1184,12 +1257,10 @@ func TestResourceServiceCreate(t *testing.T) {
 		require.Error(t, err)
 	})
 	t.Run("create rejects missing feature embedding model ID", func(t *testing.T) {
-		rs, _, mockPS, _, _, mockCS, _ := newTestService(t)
+		rs, _, _, _, _, _, _ := newTestService(t)
 		ctrl := gomock.NewController(t)
 		mockMFS := vmock.NewMockModelFactoryService(ctrl)
 		rs.mfs = mockMFS
-		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
 		mockMFS.EXPECT().GetModelByID(gomock.Any(), "missing-model-id").Return(nil, fmt.Errorf("model not found"))
 
 		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
@@ -1224,9 +1295,7 @@ func TestResourceServiceCreate(t *testing.T) {
 		}
 	})
 	t.Run("create rejects vector feature without an embedding model", func(t *testing.T) {
-		rs, _, mockPS, _, _, mockCS, _ := newTestService(t)
-		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+		rs, _, _, _, _, _, _ := newTestService(t)
 
 		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
 			CatalogID:        "cat1",
@@ -1265,13 +1334,9 @@ func TestResourceServiceCreate(t *testing.T) {
 		rs := &resourceService{ra: mockRA, ps: mockPS, cs: mockCS}
 		expectResourceServiceTransaction(t, rs, true)
 
-		mockCS.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{"cat-internal": {}}, nil)
-		// 内部目录也使用标准 catalog 权限层级。
-		mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
-			Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
-			ID:   "cat-internal",
-		}, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}).Return(nil)
-		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat-internal").Return(true, nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-internal",
+			[]string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}, true).
+			Return(true, &interfaces.Catalog{ID: "cat-internal", Internal: true}, nil)
 		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, resource *interfaces.Resource) error {
 				assert.True(t, resource.Internal)
@@ -1295,23 +1360,47 @@ func TestResourceServiceCreate(t *testing.T) {
 	})
 }
 
-func TestResourceServiceInternalCreateRejectsCatalogInternalMismatch(t *testing.T) {
+func TestResourceServiceInternalCreateTracksParentForTransactionCompensation(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRA := vmock.NewMockResourceAccess(ctrl)
-	mockCS := vmock.NewMockCatalogService(ctrl)
-	rs := &resourceService{ra: mockRA, cs: mockCS}
-	mockCS.EXPECT().InternalCatalogIDSet(gomock.Any()).
-		Return(map[string]struct{}{"cat-internal": {}}, nil)
+	mockPS := vmock.NewMockPermissionService(ctrl)
+	rs := &resourceService{ra: mockRA, ps: mockPS}
+	tx := &sql.Tx{}
+	ctx, tracker, owner := WithResourceParentTracker(context.Background())
+	require.True(t, owner)
+	internal := true
 
-	_, err := rs.InternalCreate(context.Background(), &sql.Tx{}, &interfaces.ResourceRequest{
+	mockRA.EXPECT().Create(gomock.Any(), tx, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ *sql.Tx, resource *interfaces.Resource) error {
+			assert.True(t, resource.Internal)
+			return nil
+		})
+	mockPS.EXPECT().UpsertResourceParents(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+		interfaces.AUTH_RESOURCE_TYPE_CATALOG, []interfaces.PermissionResourceParent{{
+			ResourceID: "resource-1", ParentID: "cat-internal",
+		}}).Return(nil)
+	mockPS.EXPECT().DeleteResourceParents(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+		[]string{"resource-1"}).Return(nil)
+
+	resource, err := rs.InternalCreate(ctx, tx, &interfaces.ResourceRequest{
+		ID:        "resource-1",
 		CatalogID: "cat-internal",
-		Name:      "invalid-normal-resource",
+		Name:      "internal-resource",
 		Category:  interfaces.ResourceCategoryTable,
+		Internal:  &internal,
 	})
 
-	httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
-	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-	assert.Contains(t, httpErr.BaseError.ErrorDetails, "must match its catalog")
+	require.NoError(t, err)
+	require.NotNil(t, resource)
+	require.NoError(t, tracker.Cleanup(ctx))
+}
+
+func TestResourceServiceInternalCreateRequiresParentTracker(t *testing.T) {
+	rs := &resourceService{}
+
+	_, err := rs.InternalCreate(context.Background(), &sql.Tx{}, &interfaces.ResourceRequest{})
+
+	require.EqualError(t, err, "resource parent tracker is required")
 }
 
 // expectDeleteGrantedByCatalog 通过 bkn-safe 的 resource 判定装配删除授权。
@@ -1354,11 +1443,12 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
-	t.Run("restores parent edge when local deletion fails", func(t *testing.T) {
+	t.Run("does not touch parent edge when local deletion fails", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
-		rs.ps = &parentAwarePermissionService{
+		parentPS := &parentAwarePermissionService{
 			MockPermissionService: mockPS,
 		}
+		rs.ps = parentPS
 
 		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).Return(map[string]*interfaces.Resource{
@@ -1369,6 +1459,38 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 
 		err := rs.DeleteByIDs(context.Background(), []string{"r1"})
 		require.Error(t, err)
+		assert.Zero(t, parentPS.deleteParentCalls)
+		assert.Zero(t, parentPS.upsertParentCalls)
+	})
+	t.Run("deletes parent edge after local resource deletion", func(t *testing.T) {
+		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
+		localDeleted := false
+		parentPS := &parentAwarePermissionService{
+			MockPermissionService: mockPS,
+			onDeleteParents: func(resourceType string, resourceIDs []string) error {
+				assert.True(t, localDeleted)
+				assert.Equal(t, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, resourceType)
+				assert.Equal(t, []string{"r1"}, resourceIDs)
+				return nil
+			},
+		}
+		rs.ps = parentPS
+
+		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
+		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).Return(map[string]*interfaces.Resource{
+			"r1": {ID: "r1", CatalogID: "cat1"},
+		}, nil)
+		expectResourceBuildTasksForDelete(t, mockBTA, "r1", nil)
+		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}).DoAndReturn(
+			func(_ context.Context, _ []string) error {
+				localDeleted = true
+				return nil
+			})
+		mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			[]string{"r1"}).Return(nil)
+
+		require.NoError(t, rs.DeleteByIDs(context.Background(), []string{"r1"}))
+		assert.Equal(t, 1, parentPS.deleteParentCalls)
 	})
 	t.Run("rejects deletion while resource refresh is pending or running", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, _, _ := newTestService(t)
@@ -1602,6 +1724,8 @@ func TestResourceServiceUpdate(t *testing.T) {
 	})
 	t.Run("update success", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
+		parentPS := &parentAwarePermissionService{MockPermissionService: mockPS}
+		rs.ps = parentPS
 		expectResourceServiceTransaction(t, rs, true)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), gomock.Any()).Return(true, nil)
@@ -1615,6 +1739,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
+		assert.Zero(t, parentPS.upsertParentCalls)
 	})
 	t.Run("re-saving a table persists the default keyword feature for text fields", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, mockBTA := newTestService(t)

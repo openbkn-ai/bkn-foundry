@@ -130,21 +130,6 @@ func (mr *MockResourceServiceMockRecorder) DeleteByIDs(ctx, ids any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByIDs", reflect.TypeOf((*MockResourceService)(nil).DeleteByIDs), ctx, ids)
 }
 
-// GetByCatalogID mocks base method.
-func (m *MockResourceService) GetByCatalogID(ctx context.Context, catalogID string) ([]*interfaces.Resource, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetByCatalogID", ctx, catalogID)
-	ret0, _ := ret[0].([]*interfaces.Resource)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetByCatalogID indicates an expected call of GetByCatalogID.
-func (mr *MockResourceServiceMockRecorder) GetByCatalogID(ctx, catalogID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByCatalogID", reflect.TypeOf((*MockResourceService)(nil).GetByCatalogID), ctx, catalogID)
-}
-
 // GetByID mocks base method.
 func (m *MockResourceService) GetByID(ctx context.Context, id string) (*interfaces.Resource, error) {
 	m.ctrl.T.Helper()

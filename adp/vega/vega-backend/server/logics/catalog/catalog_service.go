@@ -406,20 +406,19 @@ func (cs *catalogService) GetByID(ctx context.Context, id string, withSensitiveF
 		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
 			WithErrorDetails("internal catalogs are restricted to the built-in administrator")
 	}
-	{
-		matchResoucesMap, err := cs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{catalog.ID},
-			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
-		if err != nil {
-			span.SetStatus(codes.Error, "Filter resources error")
-			return nil, err
-		}
 
-		if resrc, exist := matchResoucesMap[catalog.ID]; exist {
-			catalog.Operations = resrc.Operations // The operations that the user is currently permitted to perform
-		} else {
-			return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-				WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", interfaces.OPERATION_TYPE_VIEW_DETAIL))
-		}
+	matchResoucesMap, err := cs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{catalog.ID},
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
+	if err != nil {
+		span.SetStatus(codes.Error, "Filter resources error")
+		return nil, err
+	}
+
+	if resrc, exist := matchResoucesMap[catalog.ID]; exist {
+		catalog.Operations = resrc.Operations // The operations that the user is currently permitted to perform
+	} else {
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", interfaces.OPERATION_TYPE_VIEW_DETAIL))
 	}
 
 	accountInfos := []*interfaces.AccountInfo{&catalog.Creator, &catalog.Updater}

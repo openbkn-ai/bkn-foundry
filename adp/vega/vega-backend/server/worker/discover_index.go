@@ -42,7 +42,7 @@ func (dtw *DiscoverTaskWorker) discoverIndexResources(ctx context.Context,
 	}
 	logger.Infof("Discovered %d indices from source", len(sourceIndices))
 
-	existingResources, err := dtw.rs.GetByCatalogID(ctx, catalog.ID)
+	existingResources, err := dtw.rs.InternalGetByCatalogID(ctx, catalog.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get existing resources: %w", err)
 	}

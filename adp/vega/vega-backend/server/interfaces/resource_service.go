@@ -22,8 +22,6 @@ type ResourceService interface {
 	// GetByIDs retrieves Resources by IDs. includeRowCount controls whether source
 	// metadata estimates and dataset document counts are included.
 	GetByIDs(ctx context.Context, ids []string, includeRowCount bool) ([]*Resource, error)
-	// GetByCatalogID retrieves all Resources under a Catalog.
-	GetByCatalogID(ctx context.Context, catalogID string) ([]*Resource, error)
 	// GetByName retrieves a Resource by catalog and name.
 	GetByName(ctx context.Context, catalogID string, name string) (*Resource, error)
 	// List lists resource summaries with filters.

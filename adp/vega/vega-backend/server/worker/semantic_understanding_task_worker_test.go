@@ -279,7 +279,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 			GetByID(gomock.Any(), "resource-1").
 			Return(resourceInfo, nil)
 		resourceService.EXPECT().
-			InternalUpdateSemanticMetadata(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			InternalUpdateSemanticMetadata(gomock.Any(), gomock.Not(gomock.Nil()), gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, expected int64) error {
 				assert.Equal(t, int64(0), expected)
 				assert.Equal(t, "Business Resource", got.Name)
@@ -645,7 +645,7 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 			ConfidenceThreshold: 0.9,
 		}
 
-		got, err := worker.applyResult(context.Background(), task, `{"confidence":0.8}`, 0.8, nil)
+		got, err := worker.applyResult(context.Background(), &sql.Tx{}, task, `{"confidence":0.8}`, 0.8)
 
 		require.NoError(t, err)
 		assert.False(t, got.Applied)
@@ -673,7 +673,7 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 				},
 			}, nil)
 
-		got, err := worker.applyResult(context.Background(), task, `{"confidence":0.8,"fields":[{"name":"missing","display_name":"Missing"}]}`, 0.8, nil)
+		got, err := worker.applyResult(context.Background(), &sql.Tx{}, task, `{"confidence":0.8,"fields":[{"name":"missing","display_name":"Missing"}]}`, 0.8)
 
 		require.NoError(t, err)
 		assert.False(t, got.Applied)
@@ -702,13 +702,13 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 			GetByID(gomock.Any(), "resource-1").
 			Return(resource, nil)
 		resourceService.EXPECT().
-			InternalUpdateSemanticMetadata(gomock.Any(), nil, resource, gomock.Any()).
+			InternalUpdateSemanticMetadata(gomock.Any(), gomock.Not(gomock.Nil()), resource, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) error {
 				assert.Equal(t, "商品ID", got.SchemaDefinition[0].DisplayName)
 				return nil
 			})
 
-		got, err := worker.applyResult(context.Background(), task, `{"confidence":0.9,"fields":[{"name":"product_id","display_name":"商品ID","confidence":0.9}]}`, 0.9, nil)
+		got, err := worker.applyResult(context.Background(), &sql.Tx{}, task, `{"confidence":0.9,"fields":[{"name":"product_id","display_name":"商品ID","confidence":0.9}]}`, 0.9)
 
 		require.NoError(t, err)
 		assert.True(t, got.Applied)
@@ -736,7 +736,7 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 				},
 			}, nil)
 
-		got, err := worker.applyResult(context.Background(), task, `{"confidence":0.9,"fields":[{"name":"supplier_id","display_name":"Supplier ID","confidence":0.9}]}`, 0.9, nil)
+		got, err := worker.applyResult(context.Background(), &sql.Tx{}, task, `{"confidence":0.9,"fields":[{"name":"supplier_id","display_name":"Supplier ID","confidence":0.9}]}`, 0.9)
 
 		require.NoError(t, err)
 		assert.False(t, got.Applied)
@@ -764,7 +764,7 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 				},
 			}, nil)
 
-		got, err := worker.applyResult(context.Background(), task, `{"confidence":0.9,"fields":[{"name":"supplier_id","display_name":"---","confidence":0.9}]}`, 0.9, nil)
+		got, err := worker.applyResult(context.Background(), &sql.Tx{}, task, `{"confidence":0.9,"fields":[{"name":"supplier_id","display_name":"---","confidence":0.9}]}`, 0.9)
 
 		require.NoError(t, err)
 		assert.False(t, got.Applied)
@@ -792,7 +792,7 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 				},
 			}, nil)
 
-		got, err := worker.applyResult(context.Background(), task, `{"confidence":0.9,"fields":[{"name":"supplier_id","display_name":"　","confidence":0.9}]}`, 0.9, nil)
+		got, err := worker.applyResult(context.Background(), &sql.Tx{}, task, `{"confidence":0.9,"fields":[{"name":"supplier_id","display_name":"　","confidence":0.9}]}`, 0.9)
 
 		require.NoError(t, err)
 		assert.False(t, got.Applied)
@@ -820,13 +820,13 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 			GetByID(gomock.Any(), "resource-1").
 			Return(resource, nil)
 		resourceService.EXPECT().
-			InternalUpdateSemanticMetadata(gomock.Any(), nil, resource, gomock.Any()).
+			InternalUpdateSemanticMetadata(gomock.Any(), gomock.Not(gomock.Nil()), resource, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) error {
 				assert.Equal(t, "商品评价汇总视图", got.Name)
 				return nil
 			})
 
-		got, err := worker.applyResult(context.Background(), task, `{"confidence":0.9,"resource":{"display_name":"商品评价汇总视图","confidence":0.9}}`, 0.9, nil)
+		got, err := worker.applyResult(context.Background(), &sql.Tx{}, task, `{"confidence":0.9,"resource":{"display_name":"商品评价汇总视图","confidence":0.9}}`, 0.9)
 
 		require.NoError(t, err)
 		assert.True(t, got.Applied)
@@ -859,14 +859,14 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 			GetByID(gomock.Any(), "resource-1").
 			Return(resource, nil)
 		resourceService.EXPECT().
-			InternalUpdateSemanticMetadata(gomock.Any(), nil, resource, gomock.Any()).
+			InternalUpdateSemanticMetadata(gomock.Any(), gomock.Not(gomock.Nil()), resource, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) error {
 				assert.Equal(t, "AI resource description", got.Description)
 				assert.Equal(t, "AI field description", got.SchemaDefinition[0].Description)
 				return nil
 			})
 
-		got, err := worker.applyResult(context.Background(), task, `{"confidence":0.9,"resource":{"description":"AI resource description","confidence":0.9},"fields":[{"name":"product_id","description":"AI field description","confidence":0.9}]}`, 0.9, nil)
+		got, err := worker.applyResult(context.Background(), &sql.Tx{}, task, `{"confidence":0.9,"resource":{"description":"AI resource description","confidence":0.9},"fields":[{"name":"product_id","description":"AI field description","confidence":0.9}]}`, 0.9)
 
 		require.NoError(t, err)
 		assert.True(t, got.Applied)
@@ -881,7 +881,7 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 			ConfidenceThreshold: 0.75,
 		}
 
-		got, err := worker.applyResult(context.Background(), task, `{"confidence":0.9}`, 0.9, nil)
+		got, err := worker.applyResult(context.Background(), &sql.Tx{}, task, `{"confidence":0.9}`, 0.9)
 
 		require.NoError(t, err)
 		assert.False(t, got.Applied)
@@ -910,14 +910,14 @@ func TestSemanticUnderstandingTaskWorkerApplyCatalogResult(t *testing.T) {
 		Return(&interfaces.Catalog{ID: "catalog-1", Internal: true}, nil)
 
 	resourceService.EXPECT().
-		GetByCatalogID(gomock.Any(), "catalog-1").
+		InternalGetByCatalogID(gomock.Any(), "catalog-1").
 		Return([]*interfaces.Resource{
 			{ID: "resource-1", CatalogID: "catalog-1", Name: "orders", Category: interfaces.ResourceCategoryTable},
 			{ID: "view-2", CatalogID: "catalog-1", Name: "old_view", Category: interfaces.ResourceCategoryLogicView},
 		}, nil)
 	resourceService.EXPECT().
-		Create(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.ResourceRequest{})).
-		DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
+		InternalCreate(gomock.Any(), gomock.Not(gomock.Nil()), gomock.AssignableToTypeOf(&interfaces.ResourceRequest{})).
+		DoAndReturn(func(_ context.Context, _ *sql.Tx, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
 			assert.Equal(t, "catalog-1", req.CatalogID)
 			assert.Equal(t, "customer_order_summary", req.Name)
 			assert.Equal(t, "customer_order_summary", req.SourceIdentifier)
@@ -929,11 +929,11 @@ func TestSemanticUnderstandingTaskWorkerApplyCatalogResult(t *testing.T) {
 			return &interfaces.Resource{ID: "view-1"}, nil
 		})
 	resourceService.EXPECT().
-		UpdateStatus(gomock.Any(), "view-2", interfaces.ResourceStatusStale, "obsolete").
+		InternalUpdateStatus(gomock.Any(), gomock.Not(gomock.Nil()), "view-2", interfaces.ResourceStatusStale, "obsolete").
 		Return(nil)
 
 	resultJSON := `{"confidence":0.84,"logic_views":[{"action":"create","name":"customer_order_summary","source_identifier":"customer_order_summary","description":"summary view","source_resources":["resource-1"],"logic_definition":[{"id":"source","type":"resource"},{"id":"output","type":"output","inputs":["source"]}],"confidence":0.82}],"obsolete_logic_views":[{"target_resource_id":"view-2","reason":"obsolete","confidence":0.91}]}`
-	got, err := worker.applyResult(context.Background(), task, resultJSON, 0.84, nil)
+	got, err := worker.applyResult(context.Background(), &sql.Tx{}, task, resultJSON, 0.84)
 
 	require.NoError(t, err)
 	require.NotNil(t, got)
@@ -956,11 +956,11 @@ func TestSemanticUnderstandingTaskWorkerApplyCatalogResultRejectsInvalidSourceId
 	catalogService.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", false).
 		Return(&interfaces.Catalog{ID: "catalog-1", Internal: false}, nil)
 	resourceService.EXPECT().
-		GetByCatalogID(gomock.Any(), "catalog-1").
+		InternalGetByCatalogID(gomock.Any(), "catalog-1").
 		Return([]*interfaces.Resource{{ID: "resource-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable}}, nil)
 
 	resultJSON := `{"logic_views":[{"action":"create","name":"订单汇总","source_identifier":"order-summary","source_resources":["resource-1"],"logic_definition":[{"id":"source","type":"resource"}]}]}`
-	_, err := worker.applyCatalogResult(context.Background(), task, resultJSON, nil)
+	_, err := worker.applyCatalogResult(context.Background(), &sql.Tx{}, task, resultJSON)
 
 	require.ErrorContains(t, err, "source_identifier must be lower snake_case")
 }
