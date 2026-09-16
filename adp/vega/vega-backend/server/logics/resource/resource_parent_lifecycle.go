@@ -77,11 +77,16 @@ func (tracker *ResourceParentTracker) Cleanup(ctx context.Context) error {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), resourceParentCleanupTimeout)
 	defer cancel()
 
-	var cleanupErrs []error
+	resourceIDsByType := make(map[string][]string)
 	for _, entry := range entries {
-		if err := ps.DeleteResourceParents(cleanupCtx, entry.resourceType, []string{entry.resourceID}); err != nil {
-			logger.Errorf("Delete tracked resource parent after transaction failure: resource %s: %v",
-				entry.resourceID, err)
+		resourceIDsByType[entry.resourceType] = append(resourceIDsByType[entry.resourceType], entry.resourceID)
+	}
+
+	var cleanupErrs []error
+	for resourceType, resourceIDs := range resourceIDsByType {
+		if err := ps.DeleteResourceParents(cleanupCtx, resourceType, resourceIDs); err != nil {
+			logger.Errorf("Delete tracked resource parents after transaction failure: resource type %s: %v",
+				resourceType, err)
 			cleanupErrs = append(cleanupErrs, err)
 		}
 	}

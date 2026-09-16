@@ -44,7 +44,8 @@ const (
 
 	catalogAuthResourcePermissionBatchSize = 10000
 	defaultConnectionTestTimeout           = 30 * time.Second
-	catalogPermissionCleanupTimeout        = 5 * time.Second
+	catalogPermissionCleanupTimeout        = 10 * time.Second
+	catalogResourceCleanupTimeout          = 30 * time.Second
 	connectorInitializationFailedResult    = "Connector initialization failed."
 	connectionTestFailedResult             = "Connection test failed."
 	maximumConnectionTestResultLength      = 2048
@@ -1125,7 +1126,7 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 	// after commit and must not turn a completed deletion into an API error.
 	if len(impact.ResourceIDs) > 0 {
 		parentCleanupCtx, cancelParentCleanup := context.WithTimeout(
-			context.WithoutCancel(ctx), catalogPermissionCleanupTimeout)
+			context.WithoutCancel(ctx), catalogResourceCleanupTimeout)
 		if cleanupErr := cs.ps.DeleteResourceParents(parentCleanupCtx,
 			interfaces.AUTH_RESOURCE_TYPE_RESOURCE, impact.ResourceIDs); cleanupErr != nil {
 			logger.Errorf("delete catalog %s: delete resource parent relations failed: %v", id, cleanupErr)
@@ -1133,7 +1134,7 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 		cancelParentCleanup()
 
 		resourceCleanupCtx, cancelResourceCleanup := context.WithTimeout(
-			context.WithoutCancel(ctx), catalogPermissionCleanupTimeout)
+			context.WithoutCancel(ctx), catalogResourceCleanupTimeout)
 		if cleanupErr := cs.ps.DeleteResources(resourceCleanupCtx,
 			interfaces.AUTH_RESOURCE_TYPE_RESOURCE, impact.ResourceIDs); cleanupErr != nil {
 			logger.Errorf("delete catalog %s: delete resource permissions failed: %v", id, cleanupErr)

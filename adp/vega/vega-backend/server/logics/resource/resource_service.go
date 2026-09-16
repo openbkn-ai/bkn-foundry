@@ -42,7 +42,10 @@ var (
 	rService     interfaces.ResourceService
 )
 
-const resourceParentCleanupTimeout = 5 * time.Second
+const (
+	resourceParentCleanupTimeout     = 30 * time.Second
+	resourcePermissionCleanupTimeout = 30 * time.Second
+)
 
 type resourceService struct {
 	appSetting *common.AppSetting
@@ -1089,7 +1092,11 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 		}
 	}
 
-	if err = rs.ps.DeleteResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ids); err != nil {
+	permissionCleanupCtx, cancelPermissionCleanup := context.WithTimeout(
+		context.WithoutCancel(ctx), resourcePermissionCleanupTimeout)
+	err = rs.ps.DeleteResources(permissionCleanupCtx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ids)
+	cancelPermissionCleanup()
+	if err != nil {
 		return err
 	}
 

@@ -47,7 +47,7 @@ type CatalogRequest struct {
 	Tags        []string `json:"tags"`
 	Description string   `json:"description"`
 	Enabled     bool     `json:"enabled"`
-	// Internal system catalog: registered as internal_catalog in the permission service and visible only to super administrators.
+	// Internal catalogs are visible and operable only by the built-in administrator.
 	Internal bool `json:"internal"`
 }
 
@@ -70,6 +70,7 @@ type VegaResource struct {
 	Tags             []string                 `json:"tags"`
 	Description      string                   `json:"description"`
 	Category         string                   `json:"category"`
+	Internal         bool                     `json:"internal"`
 	SchemaDefinition []*Property              `json:"schema_definition,omitempty"`
 	IndexConfig      *VegaResourceIndexConfig `json:"index_config,omitempty"`
 	// LocalIndexName names the managed index behind the resource. An empty value means there is

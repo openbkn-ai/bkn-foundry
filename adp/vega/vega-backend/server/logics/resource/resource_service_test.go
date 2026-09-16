@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -74,6 +75,7 @@ type parentAwarePermissionService struct {
 	upsertParentCalls int
 	deleteParentCalls int
 	onDeleteParents   func(resourceType string, resourceIDs []string) error
+	onDeleteResources func(ctx context.Context, resourceType string, resourceIDs []string) error
 }
 
 func (ps *parentAwarePermissionService) UpsertResourceParents(_ context.Context,
@@ -89,6 +91,14 @@ func (ps *parentAwarePermissionService) DeleteResourceParents(_ context.Context,
 		return ps.onDeleteParents(resourceType, resourceIDs)
 	}
 	return nil
+}
+
+func (ps *parentAwarePermissionService) DeleteResources(ctx context.Context,
+	resourceType string, resourceIDs []string) error {
+	if ps.onDeleteResources != nil {
+		return ps.onDeleteResources(ctx, resourceType, resourceIDs)
+	}
+	return ps.MockPermissionService.DeleteResources(ctx, resourceType, resourceIDs)
 }
 
 func TestResourceServiceInternalLocalIndexTransaction(t *testing.T) {
@@ -1491,6 +1501,33 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 
 		require.NoError(t, rs.DeleteByIDs(context.Background(), []string{"r1"}))
 		assert.Equal(t, 1, parentPS.deleteParentCalls)
+	})
+	t.Run("finishes external cleanup after request cancellation", func(t *testing.T) {
+		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
+		parentPS := &parentAwarePermissionService{
+			MockPermissionService: mockPS,
+			onDeleteResources: func(ctx context.Context, resourceType string, resourceIDs []string) error {
+				assert.NoError(t, ctx.Err())
+				deadline, ok := ctx.Deadline()
+				require.True(t, ok)
+				assert.Greater(t, time.Until(deadline), 25*time.Second)
+				assert.Equal(t, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, resourceType)
+				assert.Equal(t, []string{"r1"}, resourceIDs)
+				return nil
+			},
+		}
+		rs.ps = parentPS
+
+		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
+		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).Return(map[string]*interfaces.Resource{
+			"r1": {ID: "r1", CatalogID: "cat1"},
+		}, nil)
+		expectResourceBuildTasksForDelete(t, mockBTA, "r1", nil)
+		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}).Return(nil)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		require.NoError(t, rs.DeleteByIDs(ctx, []string{"r1"}))
 	})
 	t.Run("rejects deletion while resource refresh is pending or running", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, _, _ := newTestService(t)

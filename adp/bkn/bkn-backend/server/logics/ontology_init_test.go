@@ -199,6 +199,7 @@ func TestBKNConceptDatasetRequest(t *testing.T) {
 		request := bknConceptDatasetRequest(nil, "text-embedding-v4")
 
 		So(request, ShouldNotEqual, interfaces.BKN_CONCEPT_DATASET)
+		So(request.Internal, ShouldBeTrue)
 		So(request.IndexConfig.DefaultFulltextAnalyzer, ShouldEqual, "standard")
 		So(request.IndexConfig.DefaultEmbeddingModel, ShouldEqual, "text-embedding-v4")
 		So(interfaces.BKN_CONCEPT_DATASET.IndexConfig.DefaultEmbeddingModel, ShouldEqual, "")

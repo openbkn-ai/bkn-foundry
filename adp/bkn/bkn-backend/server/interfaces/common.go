@@ -259,6 +259,7 @@ var (
 		CatalogID:   BKN_CATALOG_ID,
 		Name:        BKN_DATASET_NAME,
 		Category:    "dataset",
+		Internal:    true,
 		Description: "BKN的概念存储数据集",
 		Tags:        []string{"BKN", "概念索引", "concept"},
 		// Vega requires this non-null resource-level configuration. Keep an
