@@ -55,6 +55,9 @@ type Deps struct {
 	// License is the cluster license hub. When nil, the license admin and
 	// internal distribution endpoints are not mounted.
 	License *license.Service
+	// AuthorizationResources is the provider registry for the admin resource
+	// picker. Its downstream paths are fixed in code; only base URLs are config.
+	AuthorizationResources AuthorizationResourceCatalog
 }
 
 // New builds the gin engine with all routes mounted.
@@ -179,6 +182,9 @@ func New(deps Deps) *gin.Engine {
 		registerRoleBindings(admin, deps.Enforcer, deps.DB)
 		registerRoles(admin, deps.Enforcer, deps.DB)
 		registerObjectGrants(admin, deps.Enforcer, deps.DB)
+		if deps.AuthorizationResources != nil {
+			registerAuthorizationResources(admin, deps.AuthorizationResources)
+		}
 		if permobject.ManagementRegistered() {
 			enterpriseObjectGrants := r.Group("/api/safe/v1/admin", permobject.ManagementGate(),
 				sharedrest.PrivateNoCacheMiddleware(), gateAudit, RequireUser(verifier), RequireActiveAccount(deps.DB))
