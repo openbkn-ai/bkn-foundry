@@ -427,7 +427,6 @@ func (dts *discoverTaskService) InternalMarkCompleted(ctx context.Context, id st
 // Delete atomically deletes discover tasks by IDs after pre-validating existence and status.
 //
 // Behavior:
-//   - Input ids are de-duplicated.
 //   - Loads each id; if any task is in pending/running, returns 409 HasRunningExecution
 //     with {running_ids: [...]}. This check cannot be bypassed.
 //   - If any id is missing, returns 404 NotFound with {missing_ids: [...]} unless
@@ -437,23 +436,12 @@ func (dts *discoverTaskService) DeleteByIDs(ctx context.Context, ids []string, i
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.DeleteByIDs")
 	defer span.End()
 
-	// Dedupe ids while preserving order.
-	seen := make(map[string]struct{}, len(ids))
-	uniqueIDs := make([]string, 0, len(ids))
-	for _, id := range ids {
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		uniqueIDs = append(uniqueIDs, id)
-	}
-
-	toDelete := make([]string, 0, len(uniqueIDs))
+	toDelete := make([]string, 0, len(ids))
 	missingIDs := make([]string, 0)
 	runningIDs := make([]string, 0)
 	checkedCatalogIDs := make(map[string]struct{})
 
-	for _, id := range uniqueIDs {
+	for _, id := range ids {
 		task, err := dts.dta.GetByID(ctx, id)
 		if err != nil {
 			otellog.LogError(ctx, fmt.Sprintf("Get discover_task %s failed", id), err)

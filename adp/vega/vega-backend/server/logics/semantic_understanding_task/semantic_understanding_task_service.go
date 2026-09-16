@@ -417,17 +417,7 @@ func (suts *semanticUnderstandingTaskService) DeleteByIDs(ctx context.Context, i
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.DeleteByIDs")
 	defer span.End()
 
-	seen := make(map[string]struct{}, len(ids))
-	uniqueIDs := make([]string, 0, len(ids))
-	for _, id := range ids {
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		uniqueIDs = append(uniqueIDs, id)
-	}
-
-	tasksByID, err := suts.suta.GetByIDs(ctx, uniqueIDs)
+	tasksByID, err := suts.suta.GetByIDs(ctx, ids)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get semantic understanding tasks failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_FilterResourcesFailed).
@@ -437,7 +427,7 @@ func (suts *semanticUnderstandingTaskService) DeleteByIDs(ctx context.Context, i
 	// Checked before anything is deleted: a batch is one transaction, so one
 	// unauthorized catalog stops the whole request rather than deleting the rest.
 	checkedCatalogIDs := make(map[string]struct{})
-	for _, id := range uniqueIDs {
+	for _, id := range ids {
 		task := tasksByID[id]
 		if task == nil {
 			continue
@@ -460,7 +450,7 @@ func (suts *semanticUnderstandingTaskService) DeleteByIDs(ctx context.Context, i
 
 	toDelete := make([]string, 0, len(tasksByID))
 	runningIDs := make([]string, 0)
-	for _, id := range uniqueIDs {
+	for _, id := range ids {
 		task := tasksByID[id]
 		if task == nil {
 			continue
@@ -477,9 +467,9 @@ func (suts *semanticUnderstandingTaskService) DeleteByIDs(ctx context.Context, i
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_SemanticUnderstandingTask_HasRunningExecution).
 			WithErrorDetails(map[string]any{"running_ids": runningIDs})
 	}
-	if !ignoreMissing && len(tasksByID) != len(uniqueIDs) {
-		missingIDs := make([]string, 0, len(uniqueIDs))
-		for _, id := range uniqueIDs {
+	if !ignoreMissing && len(tasksByID) != len(ids) {
+		missingIDs := make([]string, 0, len(ids))
+		for _, id := range ids {
 			if tasksByID[id] == nil {
 				missingIDs = append(missingIDs, id)
 			}

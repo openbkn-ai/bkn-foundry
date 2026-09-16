@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,6 +25,12 @@ func newSafeTestClient(t *testing.T, handler http.HandlerFunc) *safeClient {
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 	return newSafeClient(server.URL)
+}
+
+func TestNewSafeClientAllowsLongRunningCleanupRequests(t *testing.T) {
+	client := newSafeClient("http://bkn-safe")
+
+	assert.Equal(t, 30*time.Second, client.http.Timeout)
 }
 
 func TestSafePermissionAccessResourceParents(t *testing.T) {

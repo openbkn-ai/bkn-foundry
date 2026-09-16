@@ -16,7 +16,7 @@ type CatalogService interface {
 	Create(ctx context.Context, req *CatalogRequest, allowUnhealthy bool) (string, error)
 	// Get retrieves a Catalog by ID.
 	GetByID(ctx context.Context, id string, withSensitiveFields bool) (*Catalog, error)
-	// Get retrieves a Catalog by IDs.
+	// GetByIDs retrieves Catalogs by IDs. Callers must provide unique IDs.
 	GetByIDs(ctx context.Context, ids []string) ([]*Catalog, error)
 	// List lists Catalogs with filters.
 	List(ctx context.Context, params CatalogsQueryParams) ([]*CatalogSummary, int64, error)

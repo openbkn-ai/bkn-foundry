@@ -283,6 +283,36 @@ func TestCatalogServiceCheckExistByName(t *testing.T) {
 }
 
 func TestCatalogServiceCreate(t *testing.T) {
+	t.Run("checks permission before catalog uniqueness", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		permissionErr := rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(permissionErr)
+
+		cs := &catalogService{ps: mockPS}
+		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
+			ID: "probe-id", Name: "probe-name",
+		}, false)
+
+		require.ErrorIs(t, err, permissionErr)
+	})
+
+	t.Run("rejects duplicate name after permission check", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCA.EXPECT().GetByName(gomock.Any(), "duplicate").Return(&interfaces.Catalog{Name: "duplicate"}, nil)
+
+		cs := &catalogService{ps: mockPS, ca: mockCA}
+		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{Name: "duplicate"}, false)
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, verrors.VegaBackend_Catalog_NameExists, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+	})
+
 	t.Run("does not expose connector initialization error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
@@ -363,6 +393,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 		sqlMock.ExpectBegin()
 		sqlMock.ExpectCommit()
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCA.EXPECT().GetByName(gomock.Any(), "catalog").Return(nil, nil)
 		mockCA.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, tx *sql.Tx, catalog *interfaces.Catalog) error {
 				require.NotNil(t, tx)
@@ -405,6 +436,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 		sqlMock.ExpectBegin()
 		sqlMock.ExpectRollback()
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCA.EXPECT().GetByName(gomock.Any(), "catalog").Return(nil, nil)
 		mockCA.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).Return(createErr)
 
 		cs := &catalogService{db: db, ca: mockCA, ps: mockPS}
@@ -451,6 +483,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 		sqlMock.ExpectBegin()
 		sqlMock.ExpectCommit()
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCA.EXPECT().GetByName(gomock.Any(), "catalog").Return(nil, nil)
 		mockCA.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, _ *sql.Tx, catalog *interfaces.Catalog) error {
 				if !catalog.Enabled {
@@ -488,6 +521,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 			Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 			ID:   interfaces.RESOURCE_ID_ALL,
 		}, []string{interfaces.OPERATION_TYPE_CREATE}).Return(nil)
+		mockCA.EXPECT().GetByName(gomock.Any(), "internal-catalog").Return(nil, nil)
 		mockCA.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, _ *sql.Tx, catalog *interfaces.Catalog) error {
 				if !catalog.Internal {

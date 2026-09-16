@@ -20,8 +20,8 @@ type DiscoverTaskService interface {
 	// List lists DiscoverTask summaries for a catalog.
 	List(ctx context.Context, params DiscoverTaskQueryParams) ([]*DiscoverTaskSummary, int64, error)
 	// DeleteByIDs atomically deletes discover tasks by IDs.
-	// Pre-validates: any pending/running id returns 409 (cannot be skipped); any missing id returns 404
-	// unless ignoreMissing=true. Duplicate ids in the input are de-duplicated.
+	// Callers must provide unique IDs. Pre-validates: any pending/running id returns 409
+	// (cannot be skipped); any missing id returns 404 unless ignoreMissing=true.
 	DeleteByIDs(ctx context.Context, ids []string, ignoreMissing bool) error
 
 	// InternalGetByID retrieves a DiscoverTask by ID for internal workers.

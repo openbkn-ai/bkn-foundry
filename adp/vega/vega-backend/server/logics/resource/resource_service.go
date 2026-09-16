@@ -104,11 +104,29 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		[]string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}, true)
 	if err != nil {
 		span.SetStatus(codes.Error, "Check catalog permission failed")
+		var httpErr *rest.HTTPError
+		if errors.As(err, &httpErr) && httpErr.BaseError.ErrorCode == verrors.VegaBackend_Catalog_NotFound {
+			return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_CatalogNotFound).
+				WithErrorDetails(fmt.Sprintf("catalog %s not found", req.CatalogID))
+		}
 		return nil, err
 	}
 	if !allowed {
 		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
 			WithErrorDetails("Access denied: insufficient permissions for catalog's resource_manage operation.")
+	}
+
+	// Check a caller-supplied ID only after catalog authorization so create
+	// cannot be used to probe existing Resource IDs.
+	if req.ID != "" {
+		exists, err := rs.CheckExistByID(ctx, req.ID)
+		if err != nil {
+			return nil, err
+		}
+		if exists {
+			return nil, rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_IDExists).
+				WithErrorDetails(fmt.Sprintf("id %s already exists", req.ID))
+		}
 	}
 
 	// Get account info from context
@@ -411,7 +429,6 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string, includeRo
 	for _, id := range ids {
 		if resource, exists := resourcesByID[id]; exists {
 			resources = append(resources, resource)
-			delete(resourcesByID, id)
 		}
 	}
 	for _, resource := range resources {
@@ -1008,13 +1025,31 @@ func (rs *resourceService) UpdateDiscoverStatus(ctx context.Context, id string, 
 }
 
 // DeleteByIDs deletes Resources by IDs.
-func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error {
+func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string, ignoreMissing bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete resources")
 	defer span.End()
 
 	if len(ids) == 0 {
 		span.SetStatus(codes.Ok, "")
 		return nil
+	}
+
+	// Ask bkn-safe first so the normal delete path cannot probe Resource
+	// existence before authorization. With ignoreMissing, unmatched IDs are
+	// resolved after loading and are accepted only when they are actually absent.
+	matchResourcesMap, err := rs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+		ids, []string{interfaces.OPERATION_TYPE_DELETE}, true, interfaces.COMMON_OPERATIONS)
+	if err != nil {
+		span.SetStatus(codes.Error, "Filter resources error")
+		return err
+	}
+	if !ignoreMissing && len(ids) != len(matchResourcesMap) {
+		for _, id := range ids {
+			if _, exists := matchResourcesMap[id]; !exists {
+				return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+					WithErrorDetails("Access denied: insufficient permissions for resource's delete operation.")
+			}
+		}
 	}
 
 	// Load the requested Resources once so internal visibility and the deletion
@@ -1025,33 +1060,46 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
+	existingIDs := make([]string, 0, len(resourcesByID))
+	resources := make([]*interfaces.Resource, 0, len(resourcesByID))
+	for _, id := range ids {
+		if resource, exists := resourcesByID[id]; exists {
+			existingIDs = append(existingIDs, id)
+			resources = append(resources, resource)
+		}
+	}
+
+	if ignoreMissing {
+		for _, id := range existingIDs {
+			if _, exists := matchResourcesMap[id]; !exists {
+				return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+					WithErrorDetails("Access denied: insufficient permissions for resource's delete operation.")
+			}
+		}
+	}
 	if !interfaces.IsBuiltinAdmin(ctx) {
-		for _, resource := range resourcesByID {
+		for _, resource := range resources {
 			if resource.Internal {
 				return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
 					WithErrorDetails("internal resources are restricted to the built-in administrator")
 			}
 		}
 	}
-	matchResoucesMap, err := rs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-		ids, []string{interfaces.OPERATION_TYPE_DELETE}, true, interfaces.COMMON_OPERATIONS)
-	if err != nil {
-		span.SetStatus(codes.Error, "Filter resources error")
-		return err
-	}
 
-	// Check if there is permission to delete
-	if len(matchResoucesMap) != len(ids) {
-		// The requested resource id can be repeated without deduplication. However, the resource ids filtered out have been de-duplicated. Therefore, simply judging the quantity is inaccurate
+	if !ignoreMissing {
 		for _, id := range ids {
-			if _, exist := matchResoucesMap[id]; !exist {
-				return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-					WithErrorDetails("Access denied: insufficient permissions for resource's delete operation.")
+			if _, exists := resourcesByID[id]; !exists {
+				return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound).
+					WithErrorDetails(fmt.Sprintf("id %s not found", id))
 			}
 		}
 	}
+	if len(existingIDs) == 0 {
+		span.SetStatus(codes.Ok, "")
+		return nil
+	}
 
-	for _, resource := range resourcesByID {
+	for _, resource := range resources {
 		if err := rs.rejectResourceOperationWhenActiveDiscoverTask(ctx, resource.ID); err != nil {
 			span.SetStatus(codes.Error, "Active resource refresh prevents resource deletion")
 			return err
@@ -1062,14 +1110,14 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 		}
 	}
 
-	if err := rs.ra.DeleteByIDs(ctx, ids); err != nil {
+	if err := rs.ra.DeleteByIDs(ctx, existingIDs); err != nil {
 		span.SetStatus(codes.Error, "Delete resources failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
 			WithErrorDetails(err.Error())
 	}
 
-	parentIDs := make([]string, 0, len(resourcesByID))
-	for _, resource := range resourcesByID {
+	parentIDs := make([]string, 0, len(resources))
+	for _, resource := range resources {
 		parentIDs = append(parentIDs, resource.ID)
 	}
 	if len(parentIDs) > 0 {
@@ -1084,7 +1132,7 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 		cancel()
 	}
 
-	for _, resource := range resourcesByID {
+	for _, resource := range resources {
 		if resource.Category == interfaces.ResourceCategoryDataset {
 			if err := rs.ds.Delete(ctx, resource); err != nil {
 				logger.Errorf("Delete dataset failed after resource deletion: %v", err)
@@ -1094,7 +1142,7 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 
 	permissionCleanupCtx, cancelPermissionCleanup := context.WithTimeout(
 		context.WithoutCancel(ctx), resourcePermissionCleanupTimeout)
-	err = rs.ps.DeleteResources(permissionCleanupCtx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ids)
+	err = rs.ps.DeleteResources(permissionCleanupCtx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, existingIDs)
 	cancelPermissionCleanup()
 	if err != nil {
 		return err

@@ -17,6 +17,7 @@ type SemanticUnderstandingTaskService interface {
 	CreateCatalogTask(ctx context.Context, catalogID string, req *CreateSemanticUnderstandingTaskRequest) (*SemanticUnderstandingTask, error)
 	GetByID(ctx context.Context, id string) (*SemanticUnderstandingTask, error)
 	List(ctx context.Context, params SemanticUnderstandingTaskQueryParams) ([]*SemanticUnderstandingTaskSummary, int64, error)
+	// DeleteByIDs deletes semantic understanding tasks. Callers must provide unique IDs.
 	DeleteByIDs(ctx context.Context, ids []string, ignoreMissing bool) error
 
 	InternalGetByID(ctx context.Context, id string) (*SemanticUnderstandingTask, error)

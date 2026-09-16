@@ -172,40 +172,6 @@ func (r *restHandler) createResource(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	// Check catelog exists
-	csExists, csErr := r.cs.CheckExistByID(ctx, req.CatalogID)
-	if csErr != nil {
-		httpErr := httpErrorOrInternal(ctx, csErr, verrors.VegaBackend_Resource_InternalError)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-	if !csExists {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_CatalogNotFound).
-			WithErrorDetails(fmt.Sprintf("catalog %s not found", req.CatalogID))
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-
-	// Check if id exists if provided
-	if req.ID != "" {
-		exists, err := r.rs.CheckExistByID(ctx, req.ID)
-		if err != nil {
-			httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
-			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-			rest.ReplyError(c, httpErr)
-			return
-		}
-		if exists {
-			httpErr := rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_IDExists).
-				WithErrorDetails(fmt.Sprintf("id %s already exists", req.ID))
-			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-			rest.ReplyError(c, httpErr)
-			return
-		}
-	}
-
 	resource, err := r.rs.Create(ctx, &req)
 	if err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
@@ -503,8 +469,8 @@ func (r *restHandler) deleteResources(c *gin.Context, visitor hydra.Visitor) {
 
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	rawIDs := parseRawIDs(c.Param("id"))
-	if len(rawIDs) == 0 {
+	ids := parseRawIDs(c.Param("id"))
+	if len(ids) == 0 {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
 			WithErrorDetails("at least one resource id is required")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -514,39 +480,14 @@ func (r *restHandler) deleteResources(c *gin.Context, visitor hydra.Visitor) {
 
 	ignoreMissing := strings.EqualFold(c.Query("ignore_missing"), "true")
 
-	// Pre-validate existence; collect ids to delete based on ignore_missing.
-	idsToDelete := make([]string, 0, len(rawIDs))
-	for _, id := range rawIDs {
-		exists, err := r.rs.CheckExistByID(ctx, id)
-		if err != nil {
-			httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
-			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-			rest.ReplyError(c, httpErr)
-			return
-		}
-		if !exists {
-			if ignoreMissing {
-				continue
-			}
-			httpErr := rest.NewHTTPError(ctx, http.StatusNotFound,
-				verrors.VegaBackend_Resource_NotFound).WithErrorDetails(fmt.Sprintf("id %s not found", id))
-			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-			rest.ReplyError(c, httpErr)
-			return
-		}
-		idsToDelete = append(idsToDelete, id)
+	if err := r.rs.DeleteByIDs(ctx, ids, ignoreMissing); err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
 	}
 
-	if len(idsToDelete) > 0 {
-		if err := r.rs.DeleteByIDs(ctx, idsToDelete); err != nil {
-			httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
-			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-			rest.ReplyError(c, httpErr)
-			return
-		}
-	}
-
-	for _, id := range idsToDelete {
+	for _, id := range ids {
 		audit.NewWarnLog(audit.OPERATION, audit.DELETE, audit.TransforOperator(visitor),
 			interfaces.GenerateResourceAuditObject(id, ""), audit.SUCCESS, "")
 	}

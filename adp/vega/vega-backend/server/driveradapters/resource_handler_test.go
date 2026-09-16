@@ -14,11 +14,13 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"vega-backend/common"
+	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 )
@@ -191,9 +193,7 @@ func Test_ResourceRestHandler_CreateResource(t *testing.T) {
 	body := `{"id":"res-1","catalog_id":"catalog-1","name":"dataset","category":"dataset","schema_definition":[{"name":"title","type":"string"}]}`
 
 	t.Run("creates dataset resource", func(t *testing.T) {
-		engine, cs, rs := setupResourceHandlerTest(t)
-		cs.EXPECT().CheckExistByID(gomock.Any(), "catalog-1").Return(true, nil)
-		rs.EXPECT().CheckExistByID(gomock.Any(), "res-1").Return(false, nil)
+		engine, _, rs := setupResourceHandlerTest(t)
 		rs.EXPECT().Create(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
 				assert.Equal(t, "dataset", req.Name)
@@ -211,8 +211,9 @@ func Test_ResourceRestHandler_CreateResource(t *testing.T) {
 	})
 
 	t.Run("rejects missing catalog", func(t *testing.T) {
-		engine, cs, _ := setupResourceHandlerTest(t)
-		cs.EXPECT().CheckExistByID(gomock.Any(), "catalog-1").Return(false, nil)
+		engine, _, rs := setupResourceHandlerTest(t)
+		rs.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil,
+			rest.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Resource_CatalogNotFound))
 
 		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
@@ -225,9 +226,7 @@ func Test_ResourceRestHandler_CreateResource(t *testing.T) {
 	})
 
 	t.Run("allows duplicate name", func(t *testing.T) {
-		engine, cs, rs := setupResourceHandlerTest(t)
-		cs.EXPECT().CheckExistByID(gomock.Any(), "catalog-1").Return(true, nil)
-		rs.EXPECT().CheckExistByID(gomock.Any(), "res-1").Return(false, nil)
+		engine, _, rs := setupResourceHandlerTest(t)
 		rs.EXPECT().Create(gomock.Any(), gomock.Any()).
 			Return(&interfaces.Resource{ID: "res-1", Name: "dataset"}, nil)
 
@@ -493,13 +492,11 @@ func Test_ResourceRestHandler_DeleteResources(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
 
-	t.Run("deletes existing resources", func(t *testing.T) {
+	t.Run("normalizes duplicate ids before deleting resources", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
-		rs.EXPECT().CheckExistByID(gomock.Any(), "res-1").Return(true, nil)
-		rs.EXPECT().CheckExistByID(gomock.Any(), "res-2").Return(true, nil)
-		rs.EXPECT().DeleteByIDs(gomock.Any(), []string{"res-1", "res-2"}).Return(nil)
+		rs.EXPECT().DeleteByIDs(gomock.Any(), []string{"res-1", "res-2"}, false).Return(nil)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/resources/res-1,res-2", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/resources/res-1,res-2,res-1", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)
@@ -509,9 +506,7 @@ func Test_ResourceRestHandler_DeleteResources(t *testing.T) {
 
 	t.Run("ignores missing resources when requested", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
-		rs.EXPECT().CheckExistByID(gomock.Any(), "res-1").Return(true, nil)
-		rs.EXPECT().CheckExistByID(gomock.Any(), "missing").Return(false, nil)
-		rs.EXPECT().DeleteByIDs(gomock.Any(), []string{"res-1"}).Return(nil)
+		rs.EXPECT().DeleteByIDs(gomock.Any(), []string{"res-1", "missing"}, true).Return(nil)
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/resources/res-1,missing?ignore_missing=true", nil)
 		w := httptest.NewRecorder()

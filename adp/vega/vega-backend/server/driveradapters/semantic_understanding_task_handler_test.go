@@ -319,7 +319,7 @@ func Test_SemanticUnderstandingTaskRestHandler_DeleteTasks(t *testing.T) {
 		engine, suts := setupSemanticUnderstandingTaskHandlerTest(t)
 		suts.EXPECT().DeleteByIDs(gomock.Any(), []string{"task-1", "task-2"}, true).Return(nil)
 
-		req := httptest.NewRequest(http.MethodDelete, semanticUnderstandingTaskURL+"/task-1,task-2?ignore_missing=true", nil)
+		req := httptest.NewRequest(http.MethodDelete, semanticUnderstandingTaskURL+"/task-1,task-2,task-1?ignore_missing=true", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)

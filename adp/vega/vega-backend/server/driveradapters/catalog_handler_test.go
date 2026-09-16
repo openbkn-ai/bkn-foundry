@@ -253,8 +253,6 @@ func Test_CatalogRestHandler_CreateCatalog(t *testing.T) {
 
 	t.Run("creates catalog", func(t *testing.T) {
 		engine, cs, _ := setupCatalogHandlerTest(t)
-		cs.EXPECT().CheckExistByName(gomock.Any(), "catalog").Return(false, nil)
-		cs.EXPECT().CheckExistByID(gomock.Any(), "catalog-1").Return(false, nil)
 		cs.EXPECT().Create(gomock.Any(), gomock.Any(), false).
 			DoAndReturn(func(_ context.Context, req *interfaces.CatalogRequest, _ bool) (string, error) {
 				assert.Equal(t, "catalog", req.Name)
@@ -273,8 +271,6 @@ func Test_CatalogRestHandler_CreateCatalog(t *testing.T) {
 
 	t.Run("passes allow_unhealthy query parameter to service", func(t *testing.T) {
 		engine, cs, _ := setupCatalogHandlerTest(t)
-		cs.EXPECT().CheckExistByName(gomock.Any(), "catalog").Return(false, nil)
-		cs.EXPECT().CheckExistByID(gomock.Any(), "catalog-1").Return(false, nil)
 		cs.EXPECT().Create(gomock.Any(), gomock.Any(), true).Return("catalog-1", nil)
 
 		req := httptest.NewRequest(http.MethodPost, url+"?allow_unhealthy=true", strings.NewReader(body))
@@ -300,7 +296,8 @@ func Test_CatalogRestHandler_CreateCatalog(t *testing.T) {
 
 	t.Run("rejects duplicate name", func(t *testing.T) {
 		engine, cs, _ := setupCatalogHandlerTest(t)
-		cs.EXPECT().CheckExistByName(gomock.Any(), "catalog").Return(true, nil)
+		cs.EXPECT().Create(gomock.Any(), gomock.Any(), false).Return("",
+			rest.NewHTTPError(context.Background(), http.StatusConflict, verrors.VegaBackend_Catalog_NameExists))
 
 		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
@@ -314,8 +311,8 @@ func Test_CatalogRestHandler_CreateCatalog(t *testing.T) {
 
 	t.Run("rejects duplicate id", func(t *testing.T) {
 		engine, cs, _ := setupCatalogHandlerTest(t)
-		cs.EXPECT().CheckExistByName(gomock.Any(), "catalog").Return(false, nil)
-		cs.EXPECT().CheckExistByID(gomock.Any(), "catalog-1").Return(true, nil)
+		cs.EXPECT().Create(gomock.Any(), gomock.Any(), false).Return("",
+			rest.NewHTTPError(context.Background(), http.StatusConflict, verrors.VegaBackend_Catalog_IDExists))
 
 		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
@@ -350,6 +347,22 @@ func Test_CatalogRestHandler_GetCatalogs(t *testing.T) {
 		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), `"id":"catalog-1"`)
 		assert.Contains(t, w.Body.String(), `"id":"catalog-2"`)
+	})
+
+	t.Run("normalizes duplicate ids", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHandlerTest(t)
+		cs.EXPECT().GetByIDs(gomock.Any(), []string{"catalog-1", "catalog-2"}).
+			Return([]*interfaces.Catalog{
+				{ID: "catalog-1", Name: "one"},
+				{ID: "catalog-2", Name: "two"},
+			}, nil)
+
+		req := httptest.NewRequest(http.MethodGet,
+			"/api/vega-backend/in/v1/catalogs/%20catalog-1%20,,catalog-2,catalog-1", nil)
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 	})
 
 	t.Run("returns not found when any id is missing", func(t *testing.T) {
@@ -416,7 +429,6 @@ func Test_CatalogRestHandler_DeleteCatalog(t *testing.T) {
 
 	t.Run("deletes catalog through catalog service", func(t *testing.T) {
 		engine, cs, _, _ := setupCatalogHandlerWithResourceTest(t)
-		cs.EXPECT().CheckExistByID(gomock.Any(), "catalog-1").Return(true, nil)
 		cs.EXPECT().DeleteByID(gomock.Any(), "catalog-1").Return(nil)
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/catalogs/catalog-1", nil)
@@ -438,7 +450,6 @@ func Test_CatalogRestHandler_DeleteCatalog(t *testing.T) {
 		handler := MockNewRestHandler(&common.AppSetting{}, nil, cs, nil, nil, nil, nil, dts, nil, nil)
 		handler.RegisterPublic(engine)
 
-		cs.EXPECT().CheckExistByID(gomock.Any(), "catalog-1").Return(true, nil)
 		cs.EXPECT().GetDeletionImpact(gomock.Any(), "catalog-1").Return(&interfaces.CatalogDeletionImpact{
 			Blockers:                    []string{interfaces.CatalogDeletionBlockerProtectedResources},
 			CanDelete:                   false,
@@ -478,7 +489,8 @@ func Test_CatalogRestHandler_DeleteCatalog(t *testing.T) {
 
 	t.Run("rejects missing catalog", func(t *testing.T) {
 		engine, cs, _, _ := setupCatalogHandlerWithResourceTest(t)
-		cs.EXPECT().CheckExistByID(gomock.Any(), "missing").Return(false, nil)
+		cs.EXPECT().DeleteByID(gomock.Any(), "missing").Return(
+			rest.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound))
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/catalogs/missing", nil)
 		w := httptest.NewRecorder()
@@ -491,7 +503,6 @@ func Test_CatalogRestHandler_DeleteCatalog(t *testing.T) {
 
 	t.Run("returns catalog service deletion guard", func(t *testing.T) {
 		engine, cs, _, _ := setupCatalogHandlerWithResourceTest(t)
-		cs.EXPECT().CheckExistByID(gomock.Any(), "catalog-1").Return(true, nil)
 		cs.EXPECT().DeleteByID(gomock.Any(), "catalog-1").Return(
 			rest.NewHTTPError(context.Background(), http.StatusConflict, verrors.VegaBackend_Catalog_InvalidParameter).
 				WithErrorDetails("catalog has active dependencies"),

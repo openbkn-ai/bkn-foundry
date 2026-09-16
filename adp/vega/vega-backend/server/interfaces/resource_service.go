@@ -19,8 +19,8 @@ type ResourceService interface {
 	Create(ctx context.Context, req *ResourceRequest) (*Resource, error)
 	// Get retrieves a Resource by ID.
 	GetByID(ctx context.Context, id string) (*Resource, error)
-	// GetByIDs retrieves Resources by IDs. includeRowCount controls whether source
-	// metadata estimates and dataset document counts are included.
+	// GetByIDs retrieves Resources by IDs. Callers must provide unique IDs;
+	// includeRowCount controls whether source metadata estimates and dataset document counts are included.
 	GetByIDs(ctx context.Context, ids []string, includeRowCount bool) ([]*Resource, error)
 	// GetByName retrieves a Resource by catalog and name.
 	GetByName(ctx context.Context, catalogID string, name string) (*Resource, error)
@@ -34,8 +34,9 @@ type ResourceService interface {
 	UpdateStatus(ctx context.Context, id string, status string, statusMessage string) error
 	// UpdateDiscoverStatus updates a Resource's last discover status.
 	UpdateDiscoverStatus(ctx context.Context, id string, status string) error
-	// DeleteByIDs deletes Resources by IDs.
-	DeleteByIDs(ctx context.Context, ids []string) error
+	// DeleteByIDs deletes Resources by IDs. Callers must provide unique IDs;
+	// missing resources are skipped when ignoreMissing is true.
+	DeleteByIDs(ctx context.Context, ids []string, ignoreMissing bool) error
 	// CheckExistByID checks if a Resource exists by ID.
 	CheckExistByID(ctx context.Context, id string) (bool, error)
 	// CheckExistByName checks if a Resource exists by name.

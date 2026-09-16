@@ -247,39 +247,6 @@ func (r *restHandler) createCatalog(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	// Check if name exists
-	exists, err := r.cs.CheckExistByName(ctx, req.Name)
-	if err != nil {
-		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-	if exists {
-		httpErr := rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_NameExists)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-
-	// Check if id exists if provided
-	if req.ID != "" {
-		exists, err := r.cs.CheckExistByID(ctx, req.ID)
-		if err != nil {
-			httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
-			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-			rest.ReplyError(c, httpErr)
-			return
-		}
-		if exists {
-			httpErr := rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_IDExists).
-				WithErrorDetails(fmt.Sprintf("id %s already exists", req.ID))
-			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-			rest.ReplyError(c, httpErr)
-			return
-		}
-	}
-
 	id, err := r.cs.Create(ctx, &req, allowUnhealthy)
 	if err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
@@ -630,22 +597,6 @@ func (r *restHandler) deleteCatalog(c *gin.Context, visitor hydra.Visitor) {
 	dryRun, err := parseDryRun(ctx, c)
 	if err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-
-	// Check if catalog exists before choosing dry-run or deletion behavior.
-	exists, err := r.cs.CheckExistByID(ctx, id)
-	if err != nil {
-		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-	if !exists {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound).
-			WithErrorDetails(fmt.Sprintf("id %s not found", id))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

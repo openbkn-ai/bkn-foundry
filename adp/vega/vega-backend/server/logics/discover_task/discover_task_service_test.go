@@ -334,7 +334,7 @@ func TestDiscoverTaskServiceDeleteByIDs(t *testing.T) {
 		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"task-1", "task-2"}, false))
 	})
 
-	t.Run("deduplicates ids and deletes completed tasks", func(t *testing.T) {
+	t.Run("deletes completed tasks", func(t *testing.T) {
 		service, dta, _ := newTestDiscoverTaskService(t)
 		dta.EXPECT().GetByID(gomock.Any(), "task-1").
 			Return(&interfaces.DiscoverTask{ID: "task-1", Status: interfaces.DiscoverTaskStatusCompleted}, nil)
@@ -342,7 +342,7 @@ func TestDiscoverTaskServiceDeleteByIDs(t *testing.T) {
 			Return(&interfaces.DiscoverTask{ID: "task-2", Status: interfaces.DiscoverTaskStatusFailed}, nil)
 		dta.EXPECT().DeleteByIDs(gomock.Any(), []string{"task-1", "task-2"}).Return(int64(2), nil)
 
-		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"task-1", "task-1", "task-2"}, false))
+		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"task-1", "task-2"}, false))
 	})
 
 	t.Run("rejects pending or running tasks", func(t *testing.T) {

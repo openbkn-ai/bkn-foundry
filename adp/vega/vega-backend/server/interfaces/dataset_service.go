@@ -18,9 +18,11 @@ type DatasetService interface {
 
 	ListDocuments(ctx context.Context, res *Resource, params *ResourceDataQueryParams) ([]map[string]any, int64, error)
 	CountDocuments(ctx context.Context, res *Resource) (int64, error)
+	// GetDocuments retrieves documents by unique IDs supplied by the caller.
 	GetDocuments(ctx context.Context, res *Resource, docIDs []string, ignoreMissing bool) ([]map[string]any, error)
 	CreateDocument(ctx context.Context, res *Resource, document map[string]any) (string, error)
 	ReplaceDocument(ctx context.Context, res *Resource, docID string, document map[string]any) error
+	// DeleteDocuments deletes documents by unique IDs supplied by the caller.
 	DeleteDocuments(ctx context.Context, res *Resource, docIDs []string, ignoreMissing bool) error
 	DeleteDocumentsByQuery(ctx context.Context, res *Resource, params *ResourceDataQueryParams) error
 }

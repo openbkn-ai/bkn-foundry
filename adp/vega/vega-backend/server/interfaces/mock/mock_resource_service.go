@@ -117,17 +117,17 @@ func (mr *MockResourceServiceMockRecorder) Create(ctx, req any) *gomock.Call {
 }
 
 // DeleteByIDs mocks base method.
-func (m *MockResourceService) DeleteByIDs(ctx context.Context, ids []string) error {
+func (m *MockResourceService) DeleteByIDs(ctx context.Context, ids []string, ignoreMissing bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteByIDs", ctx, ids)
+	ret := m.ctrl.Call(m, "DeleteByIDs", ctx, ids, ignoreMissing)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteByIDs indicates an expected call of DeleteByIDs.
-func (mr *MockResourceServiceMockRecorder) DeleteByIDs(ctx, ids any) *gomock.Call {
+func (mr *MockResourceServiceMockRecorder) DeleteByIDs(ctx, ids, ignoreMissing any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByIDs", reflect.TypeOf((*MockResourceService)(nil).DeleteByIDs), ctx, ids)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByIDs", reflect.TypeOf((*MockResourceService)(nil).DeleteByIDs), ctx, ids, ignoreMissing)
 }
 
 // GetByID mocks base method.

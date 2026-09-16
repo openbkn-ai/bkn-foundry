@@ -773,7 +773,7 @@ func Test_ResourceDataRestHandler_DeleteResourceData(t *testing.T) {
 		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(sampleDatasetResource(), nil)
 		ds.EXPECT().DeleteDocuments(gomock.Any(), gomock.Any(), []string{"doc-1", "doc-2"}, false).Return(nil)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/resources/res-1/data/doc-1,doc-2", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/resources/res-1/data/doc-1,doc-2,doc-1", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)

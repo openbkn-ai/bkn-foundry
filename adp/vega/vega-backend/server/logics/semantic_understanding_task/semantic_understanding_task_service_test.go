@@ -916,7 +916,7 @@ func TestSemanticUnderstandingTaskServiceDeleteByIDs(t *testing.T) {
 			DeleteByIDs(gomock.Any(), []string{"task-1", "task-2"}).
 			Return(int64(2), nil)
 
-		err := service.DeleteByIDs(context.Background(), []string{"task-1", "task-1", "missing", "task-2"}, true)
+		err := service.DeleteByIDs(context.Background(), []string{"task-1", "missing", "task-2"}, true)
 
 		require.NoError(t, err)
 	})

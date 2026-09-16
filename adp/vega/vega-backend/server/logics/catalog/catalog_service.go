@@ -163,9 +163,8 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 
 	// bkn-safe decides the type-wide catalog create permission after the local
 	// internal-catalog guard above.
-	authType := interfaces.AUTH_RESOURCE_TYPE_CATALOG
 	err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: authType,
+		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 		ID:   interfaces.RESOURCE_ID_ALL,
 	}, []string{interfaces.OPERATION_TYPE_CREATE})
 	if err != nil {
@@ -223,6 +222,26 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 			defer func() { _ = connector.Close(ctx) }()
 			healthStatus = interfaces.CatalogHealthStatusHealthy
 			healthResult = "Connection test succeeded."
+		}
+	}
+
+	// Perform uniqueness checks only after authorization so unauthorised callers
+	// cannot probe catalog names or IDs through create conflicts.
+	exists, err := cs.CheckExistByName(ctx, req.Name)
+	if err != nil {
+		return "", err
+	}
+	if exists {
+		return "", rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_NameExists)
+	}
+	if req.ID != "" {
+		exists, err = cs.CheckExistByID(ctx, req.ID)
+		if err != nil {
+			return "", err
+		}
+		if exists {
+			return "", rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_IDExists).
+				WithErrorDetails(fmt.Sprintf("id %s already exists", req.ID))
 		}
 	}
 
@@ -285,21 +304,16 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 
 	// Register resources.
 	//
-	// A business-catalog creator receives bkn-safe's canonical instance-scoped
+	// A catalog creator receives bkn-safe's canonical instance-scoped
 	// root bundle. resource_manage and query_data are judged on this catalog, so
 	// omitting them would prevent the creator from managing its own tables and
 	// data. Create itself stays a type-wide capability and is intentionally
-	// absent. Internal catalogs have a separate system-only resource type and
-	// retain their existing per-operation registration contract.
-	creatorOperations := interfaces.COMMON_OPERATIONS
-	if authType == interfaces.AUTH_RESOURCE_TYPE_CATALOG {
-		creatorOperations = interfaces.CATALOG_CREATOR_OPERATIONS
-	}
+	// absent.
 	err = cs.ps.CreateResources(ctx, []interfaces.PermissionResource{{
 		ID:   catalog.ID,
-		Type: authType,
+		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 		Name: catalog.Name,
-	}}, creatorOperations)
+	}}, interfaces.CATALOG_CREATOR_OPERATIONS)
 	if err != nil {
 		logger.Errorf("CreateResources error: %s", err.Error())
 		span.SetStatus(codes.Error, "failed to create catalog resource")
@@ -520,7 +534,6 @@ func (cs *catalogService) GetByIDs(ctx context.Context, ids []string) ([]*interf
 	for _, id := range ids {
 		if catalog, exists := catalogsByID[id]; exists {
 			catalogs = append(catalogs, catalog)
-			delete(catalogsByID, id)
 		}
 	}
 

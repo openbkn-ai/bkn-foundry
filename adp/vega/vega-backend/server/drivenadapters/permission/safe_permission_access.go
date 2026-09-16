@@ -25,8 +25,10 @@ type safeClient struct {
 	http    *http.Client
 }
 
+const safeHTTPTimeout = 30 * time.Second
+
 func newSafeClient(baseURL string) *safeClient {
-	return &safeClient{baseURL: baseURL, http: &http.Client{Timeout: 5 * time.Second}}
+	return &safeClient{baseURL: baseURL, http: &http.Client{Timeout: safeHTTPTimeout}}
 }
 
 func uniqueStrings(values []string) []string {
