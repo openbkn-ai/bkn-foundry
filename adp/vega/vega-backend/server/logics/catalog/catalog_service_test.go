@@ -272,7 +272,7 @@ func TestCatalogServiceCheckExistByName(t *testing.T) {
 			Return(&interfaces.Catalog{Name: "test"}, nil)
 
 		cs := &catalogService{ca: mockCA}
-		exists, err := cs.CheckExistByName(context.Background(), "test")
+		exists, err := cs.checkExistByName(context.Background(), "test")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

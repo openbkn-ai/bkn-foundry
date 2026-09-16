@@ -317,9 +317,9 @@ paths:
       description: |
         全量更新指定 catalog。catalog 由路径参数 `id` 唯一确定（主键不可改）。
 
-        请求体的 `id` 字段**必填**，且必须与路径参数完全一致：
-        - 缺失 / 格式非法 → 400 `VegaBackend.InvalidParameter.ID`。
-        - 不一致 → 409 `VegaBackend.Catalog.IDMismatch`。
+        请求体的 `id` 字段可省略，省略时使用路径参数 `id`；显式提供时必须与路径参数完全一致：
+        - 格式非法 → 400 `VegaBackend.InvalidParameter.ID`。
+        - 与路径参数不一致 → 409 `VegaBackend.Catalog.IDMismatch`。
 
         `name` 改动后若新名称已被其它 catalog 占用，返回 409 `VegaBackend.Catalog.NameExists`。
 
@@ -352,7 +352,6 @@ paths:
                 - $ref: "#/components/schemas/CatalogRequest"
                 - type: object
                   required:
-                    - id
                     - expected_update_time
       responses:
         "204":
@@ -752,7 +751,7 @@ components:
         catalog 创建 / 更新请求体。
 
         - POST：`id` 可省略，由后端生成；若携带且已存在，返回 409 `VegaBackend.Catalog.IdExists`。
-        - PUT：`id` **必填**，且必须与路径参数 `id` 完全一致。缺失或格式非法返回 400 `VegaBackend.InvalidParameter.ID`，不一致返回 409 `VegaBackend.Catalog.IDMismatch`。
+        - PUT：`id` 可省略，省略时使用路径参数 `id`；显式提供时必须与路径参数完全一致。格式非法返回 400 `VegaBackend.InvalidParameter.ID`，不一致返回 409 `VegaBackend.Catalog.IDMismatch`。
         - `enabled` 使用 boolean 零值语义：未传按 `false` 处理。PUT 时该值必须与当前 catalog 状态一致；启停切换请使用专用 enable/disable 接口。
       type: object
       required:
@@ -761,7 +760,7 @@ components:
         - connector_type
       properties:
         id:
-          description: catalog ID；POST 时可省略由后端生成，PUT 时必填且必须与路径参数一致；小写字母、数字、下划线、连字符，不能以下划线开头，最大长度 40
+          description: catalog ID；POST 时可省略由后端生成，PUT 时可省略并使用路径参数，显式提供时必须与路径参数一致；小写字母、数字、下划线、连字符，不能以下划线开头，最大长度 40
           type: string
           pattern: "^[a-z0-9][a-z0-9\\-_]{0,39}$"
           maxLength: 40

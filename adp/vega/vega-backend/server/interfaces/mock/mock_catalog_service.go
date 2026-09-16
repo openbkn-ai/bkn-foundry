@@ -72,21 +72,6 @@ func (mr *MockCatalogServiceMockRecorder) CheckExistByID(ctx, id any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckExistByID", reflect.TypeOf((*MockCatalogService)(nil).CheckExistByID), ctx, id)
 }
 
-// CheckExistByName mocks base method.
-func (m *MockCatalogService) CheckExistByName(ctx context.Context, name string) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CheckExistByName", ctx, name)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CheckExistByName indicates an expected call of CheckExistByName.
-func (mr *MockCatalogServiceMockRecorder) CheckExistByName(ctx, name any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckExistByName", reflect.TypeOf((*MockCatalogService)(nil).CheckExistByName), ctx, name)
-}
-
 // Create mocks base method.
 func (m *MockCatalogService) Create(ctx context.Context, req *interfaces.CatalogRequest, allowUnhealthy bool) (string, error) {
 	m.ctrl.T.Helper()

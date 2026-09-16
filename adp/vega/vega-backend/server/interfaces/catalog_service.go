@@ -32,8 +32,6 @@ type CatalogService interface {
 	GetDeletionImpact(ctx context.Context, id string) (*CatalogDeletionImpact, error)
 	// CheckExistByID checks if a Catalog exists by ID.
 	CheckExistByID(ctx context.Context, id string) (bool, error)
-	// CheckExistByName checks if a Catalog exists by name.
-	CheckExistByName(ctx context.Context, name string) (bool, error)
 	// TestConnection tests catalog connection.
 	TestConnection(ctx context.Context, catalogID string) (*CatalogHealthCheckStatus, error)
 	// TestConnectionConfig tests an unpersisted physical catalog connection configuration.

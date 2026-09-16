@@ -401,6 +401,45 @@ func Test_CatalogRestHandler_UpdateRejectsEnabledChange(t *testing.T) {
 	})
 }
 
+func Test_CatalogRestHandler_UpdateCatalogID(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	const url = "/api/vega-backend/in/v1/catalogs/catalog-1"
+
+	t.Run("uses path id when body id is omitted", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHandlerTest(t)
+		cs.EXPECT().Update(gomock.Any(), gomock.Any(), false).
+			DoAndReturn(func(_ context.Context, req *interfaces.CatalogRequest, _ bool) error {
+				assert.Equal(t, "catalog-1", req.ID)
+				return nil
+			})
+
+		body := `{"name":"catalog","connector_type":"mariadb","connector_config":{},"expected_update_time":1}`
+		req := httptest.NewRequest(http.MethodPut, url, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+	})
+
+	t.Run("rejects body id different from path", func(t *testing.T) {
+		engine, _, _ := setupCatalogHandlerTest(t)
+
+		body := `{"id":"catalog-2","name":"catalog","connector_type":"mariadb","connector_config":{},"expected_update_time":1}`
+		req := httptest.NewRequest(http.MethodPut, url, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusConflict, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), `path id \"catalog-1\" != body id \"catalog-2\"`)
+	})
+}
+
 func Test_CatalogRestHandler_UpdateRequiresExpectedUpdateTime(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()

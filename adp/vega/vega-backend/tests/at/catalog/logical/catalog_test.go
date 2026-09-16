@@ -487,7 +487,8 @@ func TestLogicalCatalogUpdate(t *testing.T) {
 
 		Convey("LG303: 更新不存在的catalog", func() {
 			updatePayload := map[string]any{
-				"name": "new-name",
+				"name":                 "new-name",
+				"expected_update_time": int64(1),
 			}
 			resp := client.PUT("/api/vega-backend/v1/catalogs/non-existent-id-12345", updatePayload)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)

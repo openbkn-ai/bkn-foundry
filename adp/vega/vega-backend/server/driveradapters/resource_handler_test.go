@@ -376,8 +376,13 @@ func Test_ResourceRestHandler_UpdateResource(t *testing.T) {
 	const url = "/api/vega-backend/in/v1/resources/res-1"
 	body := `{"id":"res-1","catalog_id":"catalog-1","name":"dataset-new","category":"dataset","schema_definition":[{"name":"title","type":"string"}],"expected_update_time":1}`
 
-	t.Run("rejects missing body id", func(t *testing.T) {
-		engine, _, _ := setupResourceHandlerTest(t)
+	t.Run("uses path id when body id is omitted", func(t *testing.T) {
+		engine, _, rs := setupResourceHandlerTest(t)
+		rs.EXPECT().Update(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) error {
+				assert.Equal(t, "res-1", req.ID)
+				return nil
+			})
 		req := httptest.NewRequest(http.MethodPut, url,
 			strings.NewReader(`{"catalog_id":"catalog-1","name":"dataset-new","category":"dataset","schema_definition":[{"name":"title","type":"string"}],"expected_update_time":1}`))
 		req.Header.Set("Content-Type", "application/json")
@@ -385,8 +390,7 @@ func Test_ResourceRestHandler_UpdateResource(t *testing.T) {
 
 		engine.ServeHTTP(w, req)
 
-		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
-		assert.Contains(t, w.Body.String(), "body field 'id' is required")
+		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
 	})
 
 	t.Run("rejects body id different from path", func(t *testing.T) {

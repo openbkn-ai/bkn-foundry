@@ -213,7 +213,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 
 	// Perform uniqueness checks only after authorization so unauthorised callers
 	// cannot probe catalog names or IDs through create conflicts.
-	exists, err := cs.CheckExistByName(ctx, req.Name)
+	exists, err := cs.checkExistByName(ctx, req.Name)
 	if err != nil {
 		return "", err
 	}
@@ -741,7 +741,7 @@ func (cs *catalogService) Update(ctx context.Context, req *interfaces.CatalogReq
 
 	nameModified := req.Name != catalog.Name
 	if nameModified {
-		exists, err := cs.CheckExistByName(ctx, req.Name)
+		exists, err := cs.checkExistByName(ctx, req.Name)
 		if err != nil {
 			return err
 		}
@@ -1199,8 +1199,8 @@ func (cs *catalogService) CheckExistByID(ctx context.Context, id string) (bool, 
 	return catalog != nil, nil
 }
 
-// CheckExistByName checks if a Catalog exists by name.
-func (cs *catalogService) CheckExistByName(ctx context.Context, name string) (bool, error) {
+// checkExistByName checks if a Catalog exists by name.
+func (cs *catalogService) checkExistByName(ctx context.Context, name string) (bool, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Check catalog exist by name")
 	defer span.End()
 
