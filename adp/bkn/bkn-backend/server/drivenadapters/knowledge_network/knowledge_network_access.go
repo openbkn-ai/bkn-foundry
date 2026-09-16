@@ -347,9 +347,14 @@ func (kna *knowledgeNetworkAccess) ListAuthorizationResources(ctx context.Contex
 		return []*interfaces.AuthorizationResource{}, 0, err
 	}
 
+	orderDirection := strings.ToUpper(query.Direction)
+	if orderDirection != interfaces.ASC_DIRECTION && orderDirection != interfaces.DESC_DIRECTION {
+		orderDirection = interfaces.ASC_DIRECTION
+	}
+
 	builder := sq.Select("f_id", "f_name").From(KN_TABLE_NAME).Where(where).
-		OrderBy(fmt.Sprintf("%s %s", query.Sort, query.Direction)).
-		OrderBy(fmt.Sprintf("f_id %s", query.Direction)).
+		OrderBy(fmt.Sprintf("%s %s", query.Sort, orderDirection)).
+		OrderBy(fmt.Sprintf("f_id %s", orderDirection)).
 		Limit(uint64(query.Limit)).Offset(uint64(query.Offset))
 	sqlStr, values, err := builder.ToSql()
 	if err != nil {
