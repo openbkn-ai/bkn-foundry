@@ -337,3 +337,30 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 	span.SetStatus(codes.Ok, "")
 	return nil
 }
+
+func hasEffectiveDeleteFilter(condition interfaces.FilterCondition) bool {
+	if condition == nil {
+		return false
+	}
+	switch typed := condition.(type) {
+	case *filter_condition.AndCond:
+		if len(typed.SubConds) == 0 {
+			return false
+		}
+		for _, subCondition := range typed.SubConds {
+			if !hasEffectiveDeleteFilter(subCondition) {
+				return false
+			}
+		}
+	case *filter_condition.OrCond:
+		if len(typed.SubConds) == 0 {
+			return false
+		}
+		for _, subCondition := range typed.SubConds {
+			if !hasEffectiveDeleteFilter(subCondition) {
+				return false
+			}
+		}
+	}
+	return true
+}
