@@ -99,7 +99,7 @@ func Test_CatalogRestHandler_ListCatalogs(t *testing.T) {
 				assert.Equal(t, interfaces.CatalogTypePhysical, params.Type)
 				assert.Equal(t, interfaces.CatalogHealthStatusHealthy, params.HealthCheckStatus)
 				assert.Equal(t, "update_time", params.Sort)
-				assert.Equal(t, interfaces.DESC_DIRECTION, params.Direction)
+				assert.Equal(t, "DESC", params.Direction)
 				return []*interfaces.CatalogSummary{}, int64(0), nil
 			})
 
@@ -165,7 +165,7 @@ func Test_CatalogRestHandler_ListCatalogs(t *testing.T) {
 		cs.EXPECT().List(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.CatalogSummary, int64, error) {
 				assert.Equal(t, "name", params.Sort)
-				assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
+				assert.Equal(t, "ASC", params.Direction)
 				return []*interfaces.CatalogSummary{}, int64(0), nil
 			})
 

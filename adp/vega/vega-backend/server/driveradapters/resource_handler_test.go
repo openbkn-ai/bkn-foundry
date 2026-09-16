@@ -95,7 +95,7 @@ func Test_ResourceRestHandler_ListResources(t *testing.T) {
 				assert.Equal(t, interfaces.ResourceStatusActive, params.Status)
 				assert.Equal(t, "external_data", params.Schema)
 				assert.Equal(t, "update_time", params.Sort)
-				assert.Equal(t, interfaces.DESC_DIRECTION, params.Direction)
+				assert.Equal(t, "DESC", params.Direction)
 				return []*interfaces.Resource{}, int64(0), nil
 			})
 
@@ -112,7 +112,7 @@ func Test_ResourceRestHandler_ListResources(t *testing.T) {
 		rs.EXPECT().List(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.Resource, int64, error) {
 				assert.Equal(t, "name", params.Sort)
-				assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
+				assert.Equal(t, "ASC", params.Direction)
 				return []*interfaces.Resource{}, int64(0), nil
 			})
 

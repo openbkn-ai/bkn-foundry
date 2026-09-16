@@ -146,6 +146,7 @@ func validatePaginationQueryParams(ctx context.Context, offset, limit, sort, dir
 			WithErrorDetails(fmt.Sprintf("Wrong sort type, does not belong to any item in set %v ", types))
 	}
 
+	direction = strings.ToUpper(direction)
 	if direction != interfaces.DESC_DIRECTION && direction != interfaces.ASC_DIRECTION {
 		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Direction).
 			WithErrorDetails("The sort direction is not desc or asc")

@@ -11,7 +11,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
@@ -554,10 +553,6 @@ func (dsa *discoverScheduleAccess) UpdateRunMetadata(ctx context.Context, id str
 }
 
 func discoverScheduleOrderByClause(sort, direction string) string {
-	if direction != interfaces.ASC_DIRECTION && direction != interfaces.DESC_DIRECTION {
-		direction = interfaces.DESC_DIRECTION
-	}
-
 	column := "f_update_time"
 	switch sort {
 	case interfaces.DiscoverScheduleSortName:
@@ -569,5 +564,5 @@ func discoverScheduleOrderByClause(sort, direction string) string {
 	case interfaces.DiscoverScheduleSortNextRun:
 		column = "f_next_run"
 	}
-	return fmt.Sprintf("%s %s", column, strings.ToUpper(direction))
+	return fmt.Sprintf("%s %s", column, direction)
 }

@@ -12,7 +12,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
@@ -303,11 +302,7 @@ func (cta *connectorTypeAccess) ListAuthResourceEntries(ctx context.Context, par
 		return nil, 0, err
 	}
 
-	if params.Sort != "" {
-		builder = builder.OrderBy(fmt.Sprintf("%s %s", params.Sort, params.Direction))
-	} else {
-		builder = builder.OrderBy("f_name ASC")
-	}
+	builder = builder.OrderBy(connectorTypeOrderByClause(params.Sort, params.Direction))
 	if params.Limit > 0 {
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}
@@ -422,12 +417,6 @@ func (cta *connectorTypeAccess) SetEnabled(ctx context.Context, tp string, enabl
 	return nil
 }
 
-func connectorTypeOrderByClause(sort, direction string) string {
-	if direction != interfaces.ASC_DIRECTION && direction != interfaces.DESC_DIRECTION {
-		direction = interfaces.ASC_DIRECTION
-	}
-	if sort != interfaces.ConnectorTypeSortName {
-		direction = interfaces.ASC_DIRECTION
-	}
-	return fmt.Sprintf("f_name %s", strings.ToUpper(direction))
+func connectorTypeOrderByClause(_ string, direction string) string {
+	return fmt.Sprintf("f_name %s", direction)
 }

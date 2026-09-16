@@ -35,9 +35,9 @@ const (
 
 	DEFAULT_OFFSET    = "0"
 	DEFAULT_LIMIT     = "20"
-	DEFAULT_DIRECTION = "desc"
-	DESC_DIRECTION    = "desc"
-	ASC_DIRECTION     = "asc"
+	DEFAULT_DIRECTION = "DESC"
+	DESC_DIRECTION    = "DESC"
+	ASC_DIRECTION     = "ASC"
 	MIN_OFFSET        = 0
 	MIN_LIMIT         = 1
 	MAX_LIMIT         = 1000

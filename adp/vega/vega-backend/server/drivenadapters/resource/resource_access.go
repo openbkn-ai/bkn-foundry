@@ -1064,13 +1064,7 @@ func (ra *resourceAccess) ListAuthResourceEntries(ctx context.Context, params in
 		span.SetStatus(codes.Error, "Count failed")
 		return nil, 0, err
 	}
-	// Sorting
-	if params.Sort != "" {
-		builder = builder.OrderBy(fmt.Sprintf("%s %s", params.Sort, params.Direction)).
-			OrderBy(fmt.Sprintf("f_id %s", params.Direction))
-	} else {
-		builder = builder.OrderBy("f_update_time DESC")
-	}
+	builder = builder.OrderBy(authResourceOrderByClause(params.Sort, params.Direction))
 
 	if params.Limit > 0 {
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
@@ -1111,6 +1105,13 @@ func (ra *resourceAccess) ListAuthResourceEntries(ctx context.Context, params in
 
 	span.SetStatus(codes.Ok, "")
 	return entries, total, nil
+}
+
+func authResourceOrderByClause(sort, direction string) string {
+	if sort != interfaces.AuthResourceSortName {
+		return "f_update_time DESC"
+	}
+	return fmt.Sprintf("f_name %s, f_id %s", direction, direction)
 }
 
 func (ra *resourceAccess) CheckExistByCategories(ctx context.Context, catalogID string, categories []string) (bool, error) {

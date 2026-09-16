@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/mitchellh/mapstructure"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -157,6 +158,7 @@ func validatePaginationParams(ctx context.Context, offset, limit int) error {
 
 func validateSortFields(ctx context.Context, sortFields []*interfaces.SortField) error {
 	for _, sortField := range sortFields {
+		sortField.Direction = strings.ToUpper(sortField.Direction)
 		if sortField.Direction != interfaces.ASC_DIRECTION &&
 			sortField.Direction != interfaces.DESC_DIRECTION {
 

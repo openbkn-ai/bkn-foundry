@@ -320,7 +320,7 @@ func TestCatalogAccessListAuthResources(t *testing.T) {
 			WillReturnRows(sqlmock.NewRows([]string{"f_id", "f_name"}).AddRow("catalog-1", "Catalog One"))
 
 		got, total, err := access.ListAuthResourceEntries(context.Background(), interfaces.AuthResourceQueryParams{
-			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 2, Limit: 1, Sort: "f_name", Direction: "ASC"},
+			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 2, Limit: 1, Sort: interfaces.AuthResourceSortName, Direction: "ASC"},
 			Name:                  "Catalog",
 		})
 

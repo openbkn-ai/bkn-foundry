@@ -44,7 +44,7 @@ func TestAuthResourceRestHandlerListAuthorizationResourcesByIn(t *testing.T) {
 				assert.Equal(t, 5, params.Offset)
 				assert.Equal(t, 10, params.Limit)
 				assert.Equal(t, "name", params.Sort)
-				assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
+				assert.Equal(t, "ASC", params.Direction)
 				assert.False(t, params.IncludeInternal)
 				return []*interfaces.AuthResourceEntry{{ID: "catalog-1", Name: "Supply Chain"}}, 1, nil
 			})

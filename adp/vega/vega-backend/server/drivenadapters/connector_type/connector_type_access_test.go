@@ -98,10 +98,11 @@ func TestConnectorTypeAccessList(t *testing.T) {
 
 		enabled := true
 		params := interfaces.ConnectorTypesQueryParams{
-			Name:     "remote",
-			Mode:     interfaces.ConnectorModeRemote,
-			Category: interfaces.ConnectorCategoryAPI,
-			Enabled:  &enabled,
+			PaginationQueryParams: interfaces.PaginationQueryParams{Sort: interfaces.ConnectorTypeSortName, Direction: "ASC"},
+			Name:                  "remote",
+			Mode:                  interfaces.ConnectorModeRemote,
+			Category:              interfaces.ConnectorCategoryAPI,
+			Enabled:               &enabled,
 		}
 
 		mock.ExpectQuery("SELECT COUNT(*) FROM t_connector_type WHERE f_name LIKE ? AND f_mode = ? AND f_category = ? AND f_enabled = ?").
@@ -134,7 +135,7 @@ func TestConnectorTypeAccessListAuthResources(t *testing.T) {
 			WillReturnRows(sqlmock.NewRows([]string{"f_type", "f_name"}).AddRow("remote-api", "Remote API"))
 
 		got, total, err := access.ListAuthResourceEntries(context.Background(), interfaces.AuthResourceQueryParams{
-			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 2, Limit: 1},
+			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 2, Limit: 1, Sort: interfaces.AuthResourceSortName, Direction: "ASC"},
 			Name:                  "Remote",
 		})
 

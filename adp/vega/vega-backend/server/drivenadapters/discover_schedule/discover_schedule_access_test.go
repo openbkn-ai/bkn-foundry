@@ -59,7 +59,7 @@ func TestDiscoverScheduleAccessList(t *testing.T) {
 
 		enabled := true
 		params := interfaces.DiscoverScheduleQueryParams{
-			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 0, Limit: 10},
+			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 0, Limit: 10, Sort: interfaces.DiscoverScheduleSortUpdateTime, Direction: "DESC"},
 			Name:                  "Night",
 			CatalogID:             "catalog-1",
 			Enabled:               &enabled,
