@@ -85,14 +85,28 @@ func TestCatalogAccessListPermissionRefs(t *testing.T) {
 			Enabled:               &enabled,
 			HealthCheckStatus:     interfaces.CatalogHealthStatusHealthy,
 		}
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id FROM t_catalog WHERE f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_connector_type = ? AND f_enabled = ? AND f_health_check_status = ? ORDER BY f_name ASC")).
-			WithArgs("%cat%", "%tag%", interfaces.CatalogTypePhysical, "postgresql", true, interfaces.CatalogHealthStatusHealthy).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id FROM t_catalog WHERE f_internal = ? AND f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_connector_type = ? AND f_enabled = ? AND f_health_check_status = ? ORDER BY f_name ASC")).
+			WithArgs(false, "%cat%", "%tag%", interfaces.CatalogTypePhysical, "postgresql", true, interfaces.CatalogHealthStatusHealthy).
 			WillReturnRows(sqlmock.NewRows([]string{"f_id"}).AddRow("catalog-1").AddRow("catalog-2"))
 
 		got, err := access.ListPermissionRefs(context.Background(), params)
 
 		require.NoError(t, err)
 		assert.Equal(t, []interfaces.CatalogPermissionRef{{CatalogID: "catalog-1"}, {CatalogID: "catalog-2"}}, got)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("includes internal catalogs when requested by the service", func(t *testing.T) {
+		access, mock, cleanup := newCatalogAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id FROM t_catalog")).
+			WillReturnRows(sqlmock.NewRows([]string{"f_id"}).AddRow("internal-catalog"))
+
+		got, err := access.ListPermissionRefs(context.Background(), interfaces.CatalogsQueryParams{IncludeInternal: true})
+
+		require.NoError(t, err)
+		assert.Equal(t, []interfaces.CatalogPermissionRef{{CatalogID: "internal-catalog"}}, got)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -103,8 +117,8 @@ func TestCatalogAccessListConnectorTypePermissionRefs(t *testing.T) {
 		defer cleanup()
 
 		params := interfaces.CatalogsQueryParams{Name: "orders"}
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_type, f_connector_type FROM t_catalog WHERE f_name LIKE ?")).
-			WithArgs("%orders%").
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_type, f_connector_type FROM t_catalog WHERE f_internal = ? AND f_name LIKE ?")).
+			WithArgs(false, "%orders%").
 			WillReturnRows(sqlmock.NewRows([]string{"f_id", "f_type", "f_connector_type"}).
 				AddRow("logical-1", interfaces.CatalogTypeLogical, "").
 				AddRow("mysql-1", interfaces.CatalogTypePhysical, "mysql"))
@@ -169,11 +183,11 @@ func TestCatalogAccessList(t *testing.T) {
 			HealthCheckStatus:     interfaces.CatalogHealthStatusHealthy,
 		}
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_catalog WHERE f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_connector_type = ? AND f_enabled = ? AND f_health_check_status = ?")).
-			WithArgs("%Catalog%", "%tag-a%", interfaces.CatalogTypePhysical, "postgresql", true, interfaces.CatalogHealthStatusHealthy).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_catalog WHERE f_internal = ? AND f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_connector_type = ? AND f_enabled = ? AND f_health_check_status = ?")).
+			WithArgs(false, "%Catalog%", "%tag-a%", interfaces.CatalogTypePhysical, "postgresql", true, interfaces.CatalogHealthStatusHealthy).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
-		mock.ExpectQuery(regexp.QuoteMeta(catalogSummarySelectSQL("f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_connector_type = ? AND f_enabled = ? AND f_health_check_status = ? ORDER BY f_name ASC"))).
-			WithArgs("%Catalog%", "%tag-a%", interfaces.CatalogTypePhysical, "postgresql", true, interfaces.CatalogHealthStatusHealthy).
+		mock.ExpectQuery(regexp.QuoteMeta(catalogSummarySelectSQL("f_internal = ? AND f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_connector_type = ? AND f_enabled = ? AND f_health_check_status = ? ORDER BY f_name ASC"))).
+			WithArgs(false, "%Catalog%", "%tag-a%", interfaces.CatalogTypePhysical, "postgresql", true, interfaces.CatalogHealthStatusHealthy).
 			WillReturnRows(catalogSummaryRows().AddRow(catalogSummaryRowValues(sampleCatalog())...))
 
 		got, total, err := access.List(context.Background(), params)
@@ -315,8 +329,8 @@ func TestCatalogAccessListAuthResources(t *testing.T) {
 		access, mock, cleanup := newCatalogAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_name FROM t_catalog WHERE f_internal = ? AND f_id = ? AND f_name LIKE ? ORDER BY f_name ASC")).
-			WithArgs(false, "catalog-1", "%Catalog%").
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_name FROM t_catalog WHERE f_id = ? AND f_name LIKE ? ORDER BY f_name ASC")).
+			WithArgs("catalog-1", "%Catalog%").
 			WillReturnRows(sqlmock.NewRows([]string{"f_id", "f_name"}).AddRow("catalog-1", "Catalog One"))
 
 		got, err := access.ListAuthResources(context.Background(), interfaces.AuthResourceQueryParams{

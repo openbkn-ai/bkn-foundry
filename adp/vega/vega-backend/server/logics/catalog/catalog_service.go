@@ -108,15 +108,6 @@ func NewCatalogService(appSetting *common.AppSetting) interfaces.CatalogService 
 	return cService
 }
 
-// catalogAuthResourceType returns the resource type of catalog in the permission service:
-// The internal system directory is registered as internal_catalog. The catalog of the business role :* Generic authorization cannot match, only visible to the super administrator
-func catalogAuthResourceType(internal bool) string {
-	if internal {
-		return interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG
-	}
-	return interfaces.AUTH_RESOURCE_TYPE_CATALOG
-}
-
 // partitionCatalogIDs groups directory ids according to whether they are internal system directories
 func partitionCatalogIDs(ids []string, internalSet map[string]struct{}) (normalIDs, internalIDs []string) {
 	normalIDs = make([]string, 0, len(ids))
@@ -145,39 +136,9 @@ func (cs *catalogService) InternalCatalogIDSet(ctx context.Context) (map[string]
 	return set, nil
 }
 
-// filterCatalogResources performs permission filtering by internal/regular directory groups: internal directories are filtered by internal_catalog
-// Type verification: For regular directories, verify according to the catalog type. Merge the results and return them
-func (cs *catalogService) filterCatalogResources(ctx context.Context, ids []string,
-	internalSet map[string]struct{}, ops []string, allowOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
-
-	normalIDs, internalIDs := partitionCatalogIDs(ids, internalSet)
-
-	result := make(map[string]interfaces.PermissionResourceOps, len(ids))
-	for _, group := range []struct {
-		authType string
-		ids      []string
-	}{
-		{interfaces.AUTH_RESOURCE_TYPE_CATALOG, normalIDs},
-		{interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG, internalIDs},
-	} {
-		if len(group.ids) == 0 {
-			continue
-		}
-		matched, err := cs.ps.FilterResources(ctx, group.authType, group.ids, ops,
-			allowOperation, interfaces.COMMON_OPERATIONS)
-		if err != nil {
-			return nil, err
-		}
-		for _, resourceOps := range matched {
-			result[resourceOps.ResourceID] = resourceOps
-		}
-	}
-	return result, nil
-}
-
-// filterCatalogResourcesInBatches filters catalog permissions without exceeding the permission-service request size.
-func (cs *catalogService) filterCatalogResourcesInBatches(ctx context.Context, ids []string,
-	internalSet map[string]struct{}, ops []string, allowOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
+// filterCatalogPermissionsInBatches filters catalog permissions without exceeding the permission-service request size.
+func (cs *catalogService) filterCatalogPermissionsInBatches(ctx context.Context, ids []string,
+	ops []string, allowOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
 
 	result := make(map[string]interfaces.PermissionResourceOps, len(ids))
 	for start := 0; start < len(ids); start += catalogAuthResourcePermissionBatchSize {
@@ -185,7 +146,8 @@ func (cs *catalogService) filterCatalogResourcesInBatches(ctx context.Context, i
 		if end > len(ids) {
 			end = len(ids)
 		}
-		matched, err := cs.filterCatalogResources(ctx, ids[start:end], internalSet, ops, allowOperation)
+		matched, err := cs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, ids[start:end], ops,
+			allowOperation, interfaces.COMMON_OPERATIONS)
 		if err != nil {
 			return nil, err
 		}
@@ -207,10 +169,14 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 			verrors.VegaBackend_Catalog_InvalidParameter).
 			WithErrorDetails("internal catalogs must be logical")
 	}
+	if req.Internal && !interfaces.IsBuiltinAdmin(ctx) {
+		return "", rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails("internal catalogs are restricted to the built-in administrator")
+	}
 
-	// Determine whether the userid has the permission to create a business knowledge network (policy decision);
-	// The internal directory is verified by the internal_catalog type. By default, it can only be created by the super administrator/system S2S identity
-	authType := catalogAuthResourceType(req.Internal)
+	// bkn-safe decides the type-wide catalog create permission after the local
+	// internal-catalog guard above.
+	authType := interfaces.AUTH_RESOURCE_TYPE_CATALOG
 	err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: authType,
 		ID:   interfaces.RESOURCE_ID_ALL,
@@ -368,130 +334,35 @@ func (cs *catalogService) createHealthCheckSchedule(ctx context.Context, tx *sql
 	return err
 }
 
-// filterAuthorizedCatalogs keeps the ids the caller may perform op on. The ids
-// come from a page the caller already fetched, so the question stays bounded by
-// the page rather than by the size of the grant.
-func (cs *catalogService) filterAuthorizedCatalogs(ctx context.Context, ids []string,
-	op string) (map[string]bool, error) {
+// ListPermittedCatalogIDs returns the IDs permitted for every requested
+// operation, preserving the catalog query's order.
+func (cs *catalogService) ListPermittedCatalogIDs(ctx context.Context, ops []string, allowOperation bool,
+	params interfaces.CatalogsQueryParams) ([]string, map[string]interfaces.PermissionResourceOps, error) {
 
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CatalogService.filterAuthorizedCatalogs")
-	defer span.End()
-
-	unique := make([]string, 0, len(ids))
-	seen := make(map[string]bool, len(ids))
-	for _, id := range ids {
-		if id == "" || seen[id] {
-			continue
-		}
-		seen[id] = true
-		unique = append(unique, id)
-	}
-	if len(unique) == 0 {
-		return map[string]bool{}, nil
-	}
-
-	internalSet, err := cs.InternalCatalogIDSet(ctx)
+	params.IncludeInternal = interfaces.IsBuiltinAdmin(ctx)
+	refs, err := cs.ca.ListPermissionRefs(ctx, params)
 	if err != nil {
-		return nil, err
-	}
-	allowed, err := cs.filterCatalogResources(ctx, unique, internalSet, []string{op}, true)
-	if err != nil {
-		return nil, err
-	}
-	out := make(map[string]bool, len(allowed))
-	for id := range allowed {
-		out[id] = true
-	}
-	return out, nil
-}
-
-// AuthorizedCatalogsForTasks resolves the catalogs a listing may show.
-//
-// The set goes into the query rather than over the fetched page, because the
-// alternative gets pagination wrong in a way callers cannot work around: total
-// would count rows the caller may not see, and a page could come back empty
-// while later pages still hold visible ones. Stopping on an empty page then
-// loses data, and paging to total requests pages that are entirely filtered.
-//
-// It is affordable here precisely because the task surface judges catalogs. A
-// deployment has tens of catalogs, not thousands of tables — the largest set
-// observed on a live cluster is 12, against 731 for per-table grants.
-func (cs *catalogService) AuthorizedCatalogsForTasks(ctx context.Context,
-	op string) (ids []string, unrestricted bool, excluded []string, err error) {
-
-	typeWide, err := cs.hasTypeWideGrant(ctx, op)
-	if err != nil {
-		return nil, false, nil, err
-	}
-	if typeWide {
-		// catalog:* is a grant on the business type; the platform's own
-		// directories are a separate type, so they are excluded unless granted
-		// there too. Bounded by the number of internal catalogs, which is a
-		// handful.
-		excluded, err = cs.unreachableInternalCatalogs(ctx, op)
-		if err != nil {
-			return nil, false, nil, err
-		}
-		return nil, true, excluded, nil
-	}
-
-	refs, err := cs.ca.ListPermissionRefs(ctx, interfaces.CatalogsQueryParams{})
-	if err != nil {
-		return nil, false, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
 	if len(refs) == 0 {
-		return nil, false, nil, nil
+		return nil, map[string]interfaces.PermissionResourceOps{}, nil
 	}
 	all := make([]string, 0, len(refs))
 	for _, ref := range refs {
 		all = append(all, ref.CatalogID)
 	}
-	allowed, err := cs.filterAuthorizedCatalogs(ctx, all, op)
+	allowed, err := cs.filterCatalogPermissionsInBatches(ctx, all, ops, allowOperation)
 	if err != nil {
-		return nil, false, nil, err
+		return nil, nil, err
 	}
 	out := make([]string, 0, len(allowed))
 	for _, id := range all {
-		if allowed[id] {
+		if _, ok := allowed[id]; ok {
 			out = append(out, id)
 		}
 	}
-	return out, false, nil, nil
-}
-
-// unreachableInternalCatalogs lists the internal directories a holder of
-// catalog:* may not act on.
-func (cs *catalogService) unreachableInternalCatalogs(ctx context.Context, op string) ([]string, error) {
-	if err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
-		ID:   interfaces.RESOURCE_ID_ALL,
-	}, []string{op}); err == nil {
-		return nil, nil
-	}
-	internalSet, err := cs.InternalCatalogIDSet(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if len(internalSet) == 0 {
-		return nil, nil
-	}
-	internalIDs := make([]string, 0, len(internalSet))
-	for id := range internalSet {
-		internalIDs = append(internalIDs, id)
-	}
-	sort.Strings(internalIDs) // 集合无序,排一下让 SQL 与用例可比对
-	granted, err := cs.filterAuthorizedCatalogs(ctx, internalIDs, op)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]string, 0, len(internalIDs))
-	for _, id := range internalIDs {
-		if !granted[id] {
-			out = append(out, id)
-		}
-	}
-	return out, nil
+	return out, allowed, nil
 }
 
 // CheckTaskPermission authorizes an operation on something that hangs off a
@@ -507,31 +378,6 @@ func (cs *catalogService) unreachableInternalCatalogs(ctx context.Context, op st
 // So a missing catalog steps up to the type-wide grant instead. Holding
 // catalog:* already means seeing every catalog, and a task whose parent is gone
 // discloses nothing further; without this it is simply stranded.
-func (cs *catalogService) CheckTaskPermission(ctx context.Context, catalogID string, op string) error {
-	if catalogID != "" {
-		catalog, err := cs.InternalGetByID(ctx, catalogID, false)
-		switch {
-		case err == nil && catalog != nil:
-			return cs.checkCatalogPermission(ctx, catalogID, op)
-		case err != nil && !isCatalogNotFound(err):
-			// Only "the catalog is gone" opens the fallback below. A database or
-			// service failure must travel up instead: stepping up to the type-wide
-			// grant there would hide the fault behind a permission decision, and
-			// hand a catalog:* holder an answer the real state might contradict.
-			return err
-		}
-	}
-	typeWide, err := cs.hasTypeWideGrant(ctx, op)
-	if err != nil {
-		return err
-	}
-	if typeWide {
-		return nil
-	}
-	return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-		WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", op))
-}
-
 // hasTypeWideGrant reports a grant written against the catalog type itself.
 // Only one caller needs it: a task whose parent catalog has been deleted has no
 // object left to judge, and leaving those unreachable would strand them forever.
@@ -564,44 +410,56 @@ func isCatalogNotFound(err error) bool {
 		httpErr.BaseError.ErrorCode == verrors.VegaBackend_Catalog_NotFound
 }
 
-// checkCatalogPermission authorizes an operation on one catalog for callers that
-// hold only its id. A missing catalog is reported as forbidden rather than as
-// "not found": the caller has not proven it may see the catalog, and saying
-// which ids exist is itself a disclosure.
-func (cs *catalogService) checkCatalogPermission(ctx context.Context, catalogID string, op string) error {
+// checkCatalogPermission checks bkn-safe permission for one catalog ID without
+// reading the Catalog. Callers check existence and internal visibility after a
+// successful permission decision.
+func (cs *catalogService) CheckCatalogPermission(ctx context.Context, catalogID string,
+	ops []string, getCatalog bool) (bool, *interfaces.Catalog, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CatalogService.CheckCatalogPermission")
 	defer span.End()
 
 	if catalogID == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
+		return false, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
 			WithErrorDetails("catalog_id is required")
 	}
-	catalog, err := cs.ca.GetByID(ctx, catalogID)
-	if err != nil {
-		span.SetStatus(codes.Error, "Get catalog failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
+	err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+		ID:   catalogID,
+	}, ops)
+	if err == nil {
+		if !getCatalog {
+			return true, nil, nil
+		}
+		catalog, catalogErr := cs.InternalGetByID(ctx, catalogID, false)
+		if catalogErr != nil {
+			return false, nil, catalogErr
+		}
+		if catalog.Internal && !interfaces.IsBuiltinAdmin(ctx) {
+			return false, nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).WithErrorDetails("internal catalogs are restricted to the built-in administrator")
+		}
+		return true, catalog, nil
 	}
-	if catalog == nil {
+	if interfaces.IsPermissionRefusal(err) {
+		return false, nil, nil
+	}
+	return false, nil, err
+}
+
+// CheckTaskPermission is a compatibility adapter for task services not yet
+// migrated to CheckCatalogPermission.
+func (cs *catalogService) CheckTaskPermission(ctx context.Context, catalogID string, op string) error {
+	allowed, _, err := cs.CheckCatalogPermission(ctx, catalogID, []string{op}, true)
+	if err != nil {
+		return err
+	}
+	if !allowed {
 		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
 			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", op))
 	}
-	if catalog.Internal && interfaces.IsS2SInternalAccess(ctx) {
-		// Mirrors GetByID: internal catalogs reached over the S2S face belong to
-		// the platform, not to any account.
-		return nil
-	}
-	return cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: catalogAuthResourceType(catalog.Internal),
-		ID:   catalog.ID,
-	}, []string{op})
+	return nil
 }
 
 func (cs *catalogService) GetByID(ctx context.Context, id string, withSensitiveFields bool) (*interfaces.Catalog, error) {
-	if interfaces.IsTrustedProxyRead(ctx) {
-		return cs.InternalGetByID(ctx, id, withSensitiveFields)
-	}
-
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get catalog")
 	defer span.End()
 
@@ -616,15 +474,13 @@ func (cs *catalogService) GetByID(ctx context.Context, id string, withSensitiveF
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
 
-	// Filter objects with viewing permissions based on permissions. The total length of the filtered array is the total number, and there is no need to request the total number again.
-	// The internal directory is validated by the internal_catalog type
-	if catalog.Internal && interfaces.IsS2SInternalAccess(ctx) {
-		// Internal directories are accessed via S2S within the cluster (/in/ internal network endpoints) : The internal infrastructure of the system is allowed by default.
-		// Do not perform per-account view_detail verification. The same exemption package as the resource service
-		// Override the secondary authentication of the internal catalog to which the internal dataset belongs when querying data. The external network endpoint will not carry this tag.
-		catalog.Operations = interfaces.COMMON_OPERATIONS
-	} else {
-		matchResoucesMap, err := cs.ps.FilterResources(ctx, catalogAuthResourceType(catalog.Internal), []string{catalog.ID},
+	// Apply the fixed internal guard before bkn-safe's normal catalog check.
+	if catalog.Internal && !interfaces.IsBuiltinAdmin(ctx) {
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails("internal catalogs are restricted to the built-in administrator")
+	}
+	{
+		matchResoucesMap, err := cs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{catalog.ID},
 			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
 		if err != nil {
 			span.SetStatus(codes.Error, "Filter resources error")
@@ -746,16 +602,17 @@ func (cs *catalogService) GetByIDs(ctx context.Context, ids []string) ([]*interf
 		cs.removeSensitiveFields(c)
 	}
 
-	// Filter objects with viewing permissions based on permissions. The total length of the filtered array is the total number, and there is no need to request the total number again.
-	// The internal directory is validated by the internal_catalog type
-	internalSet := make(map[string]struct{})
-	for _, c := range catalogs {
-		if c.Internal {
-			internalSet[c.ID] = struct{}{}
+	// Internal catalog details are restricted before bkn-safe authorization.
+	if !interfaces.IsBuiltinAdmin(ctx) {
+		for _, catalog := range catalogs {
+			if catalog.Internal {
+				return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+					WithErrorDetails("internal catalogs are restricted to the built-in administrator")
+			}
 		}
 	}
-	matchResoucesMap, err := cs.filterCatalogResources(ctx, ids, internalSet,
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
+	matchResoucesMap, err := cs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, ids,
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
 		return nil, err
@@ -787,44 +644,20 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List catalogs")
 	defer span.End()
 
-	// Query the ids of all catalogs
-	refs, err := cs.ca.ListPermissionRefs(ctx, params)
-	if err != nil {
-		span.SetStatus(codes.Error, "List catalog IDs failed")
-		return []*interfaces.CatalogSummary{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
-	}
-
-	if len(refs) == 0 {
-		span.SetStatus(codes.Ok, "")
-		return []*interfaces.CatalogSummary{}, 0, nil
-	}
-	ids := make([]string, 0, len(refs))
-	for _, ref := range refs {
-		ids = append(ids, ref.CatalogID)
-	}
-
-	// Internal directory ID collection, grouped by internal_catalog type during permission verification
-	internalSet, err := cs.InternalCatalogIDSet(ctx)
-	if err != nil {
-		span.SetStatus(codes.Error, "List internal catalog IDs failed")
-		return []*interfaces.CatalogSummary{}, 0, err
-	}
-
-	matchResourceOpsMap, err := cs.filterCatalogResourcesInBatches(ctx, ids, internalSet,
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
+	ids, matchResourceOpsMap, err := cs.ListPermittedCatalogIDs(ctx,
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
 		return []*interfaces.CatalogSummary{}, 0, err
 	}
+	if len(ids) == 0 {
+		span.SetStatus(codes.Ok, "")
+		return []*interfaces.CatalogSummary{}, 0, nil
+	}
 
 	// Extract the catalog ID with permission and keep it in the same order as the ids
 	authorizedIDs := make([]string, 0, len(matchResourceOpsMap))
-	for _, id := range ids {
-		if _, exist := matchResourceOpsMap[id]; exist {
-			authorizedIDs = append(authorizedIDs, id)
-		}
-	}
+	authorizedIDs = append(authorizedIDs, ids...)
 	total := int64(len(authorizedIDs))
 
 	// If there is no authorized catalog, return an empty result directly
@@ -899,6 +732,7 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 
 // ListConnectorTypeStats returns one count per catalog and connector type after applying catalog view permissions.
 func (cs *catalogService) ListConnectorTypeStats(ctx context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.CatalogConnectorTypeStat, error) {
+	params.IncludeInternal = interfaces.IsBuiltinAdmin(ctx)
 	refs, err := cs.ca.ListConnectorTypePermissionRefs(ctx, params)
 	if err != nil {
 		return nil, err
@@ -910,11 +744,7 @@ func (cs *catalogService) ListConnectorTypeStats(ctx context.Context, params int
 	for _, ref := range refs {
 		ids = append(ids, ref.CatalogID)
 	}
-	internalSet, err := cs.InternalCatalogIDSet(ctx)
-	if err != nil {
-		return nil, err
-	}
-	allowed, err := cs.filterCatalogResourcesInBatches(ctx, ids, internalSet,
+	allowed, err := cs.filterCatalogPermissionsInBatches(ctx, ids,
 		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
 	if err != nil {
 		return nil, err
@@ -956,10 +786,14 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 		span.SetStatus(codes.Error, "Catalog not found")
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
+	if catalog.Internal && !interfaces.IsBuiltinAdmin(ctx) {
+		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails("internal catalogs are restricted to the built-in administrator")
+	}
 
-	// Determine whether the userid has the permission to be modified; The internal directory is validated by the internal_catalog type
+	// Internal catalogs have already been restricted to the built-in admin.
 	err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: catalogAuthResourceType(catalog.Internal),
+		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 		ID:   catalog.ID,
 	}, []string{interfaces.OPERATION_TYPE_MODIFY})
 	if err != nil {
@@ -1069,7 +903,7 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 	if nameModified {
 		err = cs.ps.UpdateResource(ctx, interfaces.PermissionResource{
 			ID:   catalog.ID,
-			Type: catalogAuthResourceType(catalog.Internal),
+			Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 			Name: catalog.Name,
 		})
 		if err != nil {
@@ -1089,9 +923,13 @@ func (cs *catalogService) SetEnabled(ctx context.Context, catalog *interfaces.Ca
 		span.SetStatus(codes.Error, "Catalog not found")
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
+	if catalog.Internal && !interfaces.IsBuiltinAdmin(ctx) {
+		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails("internal catalogs are restricted to the built-in administrator")
+	}
 
 	err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: catalogAuthResourceType(catalog.Internal),
+		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 		ID:   catalog.ID,
 	}, []string{interfaces.OPERATION_TYPE_MODIFY})
 	if err != nil {
@@ -1130,8 +968,8 @@ func (cs *catalogService) authorizeDelete(ctx context.Context, id string) (map[s
 	if err != nil {
 		return nil, err
 	}
-	matched, err := cs.filterCatalogResources(ctx, []string{id}, internalSet,
-		[]string{interfaces.OPERATION_TYPE_DELETE}, true)
+	matched, err := cs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{id},
+		[]string{interfaces.OPERATION_TYPE_DELETE}, true, interfaces.COMMON_OPERATIONS)
 	if err != nil {
 		return nil, err
 	}
@@ -1299,7 +1137,7 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete catalog")
 	defer span.End()
 
-	internalSet, err := cs.authorizeDelete(ctx, id)
+	_, err := cs.authorizeDelete(ctx, id)
 	if err != nil {
 		span.SetStatus(codes.Error, "Authorize catalog deletion failed")
 		return err
@@ -1364,18 +1202,12 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 
 	// The database is the source of truth. Permission cleanup is best-effort
 	// after commit and must not turn a completed deletion into an API error.
-	catalogPermissionType := interfaces.AUTH_RESOURCE_TYPE_CATALOG
-	resourcePermissionType := interfaces.AUTH_RESOURCE_TYPE_RESOURCE
-	if _, internal := internalSet[id]; internal {
-		catalogPermissionType = interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG
-		resourcePermissionType = interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE
-	}
 	if len(impact.ResourceIDs) > 0 {
-		if cleanupErr := cs.ps.DeleteResources(ctx, resourcePermissionType, impact.ResourceIDs); cleanupErr != nil {
+		if cleanupErr := cs.ps.DeleteResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, impact.ResourceIDs); cleanupErr != nil {
 			logger.Errorf("delete catalog %s: delete resource permissions failed: %v", id, cleanupErr)
 		}
 	}
-	if cleanupErr := cs.ps.DeleteResources(ctx, catalogPermissionType, []string{id}); cleanupErr != nil {
+	if cleanupErr := cs.ps.DeleteResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{id}); cleanupErr != nil {
 		logger.Errorf("delete catalog %s: delete catalog permission failed: %v", id, cleanupErr)
 	}
 
@@ -1740,6 +1572,14 @@ func (cs *catalogService) filterAuthorizedCatalogAuthResources(ctx context.Conte
 		ids = append(ids, entry.ID)
 	}
 
+	internalSet, err := cs.InternalCatalogIDSet(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !interfaces.IsBuiltinAdmin(ctx) {
+		visibleIDs, _ := partitionCatalogIDs(ids, internalSet)
+		ids = visibleIDs
+	}
 	authorizedIDs := make(map[string]struct{}, len(ids))
 	for i := 0; i < len(ids); i += catalogAuthResourcePermissionBatchSize {
 		end := i + catalogAuthResourcePermissionBatchSize

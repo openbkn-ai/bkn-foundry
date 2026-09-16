@@ -78,238 +78,18 @@ func NewResourceService(appSetting *common.AppSetting, datasetService interfaces
 	return rService
 }
 
-// resourceAuthResourceType returns the resource type of the data resource in the permission service:
-// Resources in the internal system directory are registered as internal_resource. The resource of the business role :* wildcard authorization cannot match, only visible to the super administrator
-func resourceAuthResourceType(internal bool) string {
-	if internal {
-		return interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE
-	}
-	return interfaces.AUTH_RESOURCE_TYPE_RESOURCE
-}
-
-// resourceOpOnCatalog is a translation table from "operations on resources" to "operations to be asked about on the corresponding directory".
-//
-// List by item without copying by the same name: The "modify" semantic on a directory is "modify the directory itself", and copying by the same name is equivalent to "modifying"
-// Those who "can rename directories" upgrade to "can modify every table under the directory", which is an overstepping of authority rather than convenience.
-//
-// Intentional absence of authorize: The person holding the authorization right of the directory should not be granted the right to delegate each table under the directory as a result
-// Ability. Operations without entries stop here and do not ask upwards.
-// resourceOwnOperations is what the permission service still declares on the
-// resource type. The management verbs were withdrawn when they converged onto
-// the catalog, so a p-line that still answers one can only be residue from
-// before the convergence: the grant console no longer offers those verbs, which
-// means it can neither hand them out nor take them back. Asking the resource
-// about a withdrawn verb would let that residue keep deciding, invisibly and
-// irrevocably — so those questions go straight to the catalog.
-var resourceOwnOperations = map[string]bool{
-	interfaces.OPERATION_TYPE_VIEW_DETAIL: true,
-	interfaces.OPERATION_TYPE_QUERY_DATA:  true,
-}
-
-var resourceOpOnCatalog = map[string]string{
-	interfaces.OPERATION_TYPE_VIEW_DETAIL: interfaces.OPERATION_TYPE_VIEW_DETAIL,
-	interfaces.OPERATION_TYPE_QUERY_DATA:  interfaces.OPERATION_TYPE_QUERY_DATA,
-	interfaces.OPERATION_TYPE_MODIFY:      interfaces.OPERATION_TYPE_RESOURCE_MANAGE,
-	interfaces.OPERATION_TYPE_DELETE:      interfaces.OPERATION_TYPE_RESOURCE_MANAGE,
-}
-
-// catalogAuthResourceType returns the resource type of the data directory in the permission service, and
-// resourceAuthResourceType is symmetrical.
-func catalogAuthResourceType(internal bool) string {
-	if internal {
-		return interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG
-	}
-	return interfaces.AUTH_RESOURCE_TYPE_CATALOG
-}
-
-// checkResourceOrCatalog applies Vega's Resource -> Catalog authorization
-// composition. Structured local decisions preserve explicit deny, distinguish
-// none from deny, and keep wildcard allow behind the Catalog decision. The
-// attribution relationship does not require synchronization: catalog_id is in
-// the Resource row that Vega is already judging.
-func (rs *resourceService) checkResourceOrCatalog(ctx context.Context,
+// checkResourcePermission asks bkn-safe for the effective decision on the
+// resource itself. Resource inheritance and operation requirements belong to
+// bkn-safe; Vega does not translate or supplement that decision.
+func (rs *resourceService) checkResourcePermission(ctx context.Context,
 	resourceID, catalogID string, parentInternal bool, op string) error {
-	if !parentInternal {
-		decision, err := rs.localOperationDecision(ctx, resourceID, catalogID, op)
-		switch {
-		case errors.Is(err, interfaces.ErrLocalPermissionUnsupported):
-			// The retired ISF provider has no structured local decision. Preserve
-			// its compatibility behavior until that escape hatch is removed.
-		case errors.Is(err, interfaces.ErrPermissionAccountNotActive):
-			return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-				WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", op))
-		case err != nil:
-			return err
-		case decision.Allowed():
-			return nil
-		default:
-			return permissionDeniedForDecision(ctx, op, decision)
-		}
-	}
-	return rs.checkResourceOrCatalogLegacy(ctx, resourceID, catalogID, parentInternal, op)
-}
-
-func (rs *resourceService) checkResourceOrCatalogLegacy(ctx context.Context,
-	resourceID, catalogID string, parentInternal bool, op string) error {
-	// The retired provider exposes only effective allow/error results. Preserve
-	// its historical relaxation behavior while that compatibility path exists.
-
-	// err stays nil when the resource is never asked, which is how the code below
-	// tells "the resource refused" from "the resource was not entitled to answer".
-	var err error
-	if resourceOwnOperations[op] {
-		err = rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-			Type: resourceAuthResourceType(parentInternal),
-			ID:   resourceID,
-		}, []string{op})
-		if err == nil {
-			return nil
-		}
-	}
-	catalogOp, ok := resourceOpOnCatalog[op]
-	if !ok || catalogID == "" {
-		if err != nil {
-			return err
-		}
+	if parentInternal && !interfaces.IsBuiltinAdmin(ctx) {
 		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", op))
+			WithErrorDetails("internal resources are restricted to the built-in administrator")
 	}
-	if err2 := rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: catalogAuthResourceType(parentInternal),
-		ID:   catalogID,
-	}, []string{catalogOp}); err2 != nil {
-		if err != nil {
-			return err // Return the error of the old caliber and keep the existing error message semantics unchanged
-		}
-		return err2
-	}
-	return nil
-}
-
-// mergeCatalogPermissions adds the part of "given by the affiliated directory" to the operations that were not approved on the resource side.
-//
-// Only send requests for the difference: In the normal situation where the resource side has been fully approved, no additional requests will be sent in the next time. This is also why it is supplemented
-// After filtering, not before.
-func (rs *resourceService) mergeCatalogPermissions(ctx context.Context, ids []string,
-	ops []string, result map[string]interfaces.PermissionResourceOps) error {
-
-	// Only those on the resource side that have not been approved at all. The criterion is "whether it is in the result" rather than "whether the operations are complete".
-	// Because the caller reads the former: once it appears in the map, it is regarded as visible, and Operations are only used to render buttons.
-	// Pressing the latter trigger will cause an additional round of requests when the resource side has already approved, which is a waste of money.
-	pending := make([]string, 0)
-	seenPending := map[string]bool{}
-	for _, id := range ids {
-		if _, allowed := result[id]; allowed || seenPending[id] {
-			continue
-		}
-		seenPending[id] = true
-		pending = append(pending, id)
-	}
-	if len(pending) == 0 {
-		return nil
-	}
-
-	catalogOps := make([]string, 0, len(ops))
-	seenOp := map[string]bool{}
-	for _, op := range ops {
-		catalogOp, ok := resourceOpOnCatalog[op]
-		if !ok || seenOp[catalogOp] {
-			continue
-		}
-		seenOp[catalogOp] = true
-		catalogOps = append(catalogOps, catalogOp)
-	}
-	if len(catalogOps) == 0 {
-		return nil // The requested operations do not ask upward (such as authorize)
-	}
-
-	refsByID, err := rs.ra.GetPermissionRefsByIDs(ctx, pending)
-	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Resource_InternalError_GetFailed).WithErrorDetails(err.Error())
-	}
-	catalogIDs := make([]string, 0, len(refsByID))
-	seenCatalog := map[string]bool{}
-	for _, id := range pending {
-		catalogID := refsByID[id].CatalogID
-		if catalogID == "" {
-			continue
-		}
-		if !seenCatalog[catalogID] {
-			seenCatalog[catalogID] = true
-			catalogIDs = append(catalogIDs, catalogID)
-		}
-	}
-	if len(catalogIDs) == 0 {
-		return nil
-	}
-
-	internalCatalogs, err := rs.cs.InternalCatalogIDSet(ctx)
-	if err != nil {
-		return err
-	}
-	normalCatalogs, internalIDs := make([]string, 0, len(catalogIDs)), make([]string, 0)
-	for _, id := range catalogIDs {
-		if _, ok := internalCatalogs[id]; ok {
-			internalIDs = append(internalIDs, id)
-		} else {
-			normalCatalogs = append(normalCatalogs, id)
-		}
-	}
-
-	// The collection of operations approved for each directory. Ask once according to the table of contents, and multiple tables in the same directory on the page share one answer.
-	granted := make(map[string]map[string]bool, len(catalogIDs))
-	for _, group := range []struct {
-		authType string
-		ids      []string
-	}{
-		{interfaces.AUTH_RESOURCE_TYPE_CATALOG, normalCatalogs},
-		{interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG, internalIDs},
-	} {
-		if len(group.ids) == 0 {
-			continue
-		}
-		for _, catalogOp := range catalogOps {
-			matched, err := rs.ps.FilterResources(ctx, group.authType, group.ids,
-				[]string{catalogOp}, true, interfaces.COMMON_OPERATIONS)
-			if err != nil {
-				return err
-			}
-			for catalogID := range matched {
-				if granted[catalogID] == nil {
-					granted[catalogID] = map[string]bool{}
-				}
-				granted[catalogID][catalogOp] = true
-			}
-		}
-	}
-
-	for _, id := range pending {
-		catalogID := refsByID[id].CatalogID
-		if catalogID == "" || len(granted[catalogID]) == 0 {
-			continue
-		}
-		entry, exists := result[id]
-		if !exists {
-			entry = interfaces.PermissionResourceOps{ResourceID: id}
-		}
-		held := map[string]bool{}
-		for _, op := range entry.Operations {
-			held[op] = true
-		}
-		for _, op := range ops {
-			catalogOp, mapped := resourceOpOnCatalog[op]
-			if !mapped || held[op] || !granted[catalogID][catalogOp] {
-				continue
-			}
-			held[op] = true
-			entry.Operations = append(entry.Operations, op)
-		}
-		if len(entry.Operations) > 0 {
-			result[id] = entry
-		}
-	}
-	return nil
+	return rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: resourceID,
+	}, []string{op})
 }
 
 // The internalResourceIDSet queries the collection of resource ids in all internal system directories
@@ -346,78 +126,20 @@ func partitionResourceIDs(ids []string, internalSet map[string]struct{}) (normal
 	return normalIDs, internalIDs
 }
 
-// Permissions filterResourcePermissions grouped by internal/common resources do filtering: according to the internal directory of resources
-// The internal_resource type is verified, and the rest are verified by the resource type. The results are merged and returned
+// filterResourcePermissions excludes internal resources for non-admin callers,
+// then evaluates the remaining resources in bkn-safe's resource hierarchy.
 func (rs *resourceService) filterResourcePermissions(ctx context.Context, ids []string,
 	internalSet map[string]struct{}, ops []string, allowOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
-
-	normalIDs, internalIDs := partitionResourceIDs(ids, internalSet)
-	if len(normalIDs) > 0 {
-		result, err := rs.localFilterResourcePermissions(ctx, normalIDs, ops, allowOperation)
-		if err == nil {
-			if len(internalIDs) > 0 {
-				internalResult, internalErr := rs.filterResourcePermissionsLegacy(ctx, internalIDs,
-					internalSet, ops, allowOperation)
-				if internalErr != nil {
-					return nil, internalErr
-				}
-				for id, entry := range internalResult {
-					result[id] = entry
-				}
-			}
-			return result, nil
-		}
-		if errors.Is(err, interfaces.ErrPermissionAccountNotActive) {
+	if !interfaces.IsBuiltinAdmin(ctx) {
+		visibleIDs, _ := partitionResourceIDs(ids, internalSet)
+		if len(visibleIDs) == 0 {
 			return map[string]interfaces.PermissionResourceOps{}, nil
 		}
-		if !errors.Is(err, interfaces.ErrLocalPermissionUnsupported) {
-			return nil, err
-		}
-	}
-	return rs.filterResourcePermissionsLegacy(ctx, ids, internalSet, ops, allowOperation)
-}
-
-func (rs *resourceService) filterResourcePermissionsLegacy(ctx context.Context, ids []string,
-	internalSet map[string]struct{}, ops []string, allowOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
-
-	normalIDs, internalIDs := partitionResourceIDs(ids, internalSet)
-
-	// Same rule the single check follows: only ask the resource about verbs it
-	// still declares. A batch asked about a withdrawn one would be answered by
-	// pre-convergence p-lines alone, which is how a legacy role kept deleting
-	// tables through this path while the single check already refused it.
-	askResource := make([]string, 0, len(ops))
-	for _, op := range ops {
-		if resourceOwnOperations[op] {
-			askResource = append(askResource, op)
-		}
+		ids = visibleIDs
 	}
 
-	result := make(map[string]interfaces.PermissionResourceOps, len(ids))
-	for _, group := range []struct {
-		authType string
-		ids      []string
-	}{
-		{interfaces.AUTH_RESOURCE_TYPE_RESOURCE, normalIDs},
-		{interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE, internalIDs},
-	} {
-		if len(group.ids) == 0 || len(askResource) == 0 {
-			continue
-		}
-		matched, err := rs.ps.FilterResources(ctx, group.authType, group.ids, askResource,
-			allowOperation, interfaces.COMMON_OPERATIONS)
-		if err != nil {
-			return nil, err
-		}
-		for _, resourceOps := range matched {
-			result[resourceOps.ResourceID] = resourceOps
-		}
-	}
-	// For those that haven't been approved on the resource side, check if they belong to the directory (#817). No request will be sent when the difference is empty.
-	if err := rs.mergeCatalogPermissions(ctx, ids, ops, result); err != nil {
-		return nil, err
-	}
-	return result, nil
+	return rs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ids,
+		ops, allowOperation, interfaces.COMMON_OPERATIONS)
 }
 
 // Create creates a new Resource.
@@ -425,14 +147,17 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create resource")
 	defer span.End()
 
-	// Resources in the internal directory are verified/registered according to the internal_resource type. By default, only the super administrator/system S2S identity can create them
+	// Only the built-in admin may create a resource under an internal catalog.
 	internalCatalogs, err := rs.cs.InternalCatalogIDSet(ctx)
 	if err != nil {
 		span.SetStatus(codes.Error, "List internal catalog IDs failed")
 		return nil, err
 	}
 	_, parentInternal := internalCatalogs[req.CatalogID]
-	authType := resourceAuthResourceType(parentInternal)
+	if parentInternal && !interfaces.IsBuiltinAdmin(ctx) {
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails("internal resources are restricted to the built-in administrator")
+	}
 
 	// Creating a table is authorised by the target catalog's resource_manage
 	// (#801). A table is always created INSIDE a catalog, so "may create a table"
@@ -446,7 +171,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	// is the intended outcome: it is the grant that could not name a catalog.
 	// Re-grant those roles resource_manage on the catalogs they should manage.
 	if err = rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: catalogAuthResourceType(parentInternal),
+		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 		ID:   req.CatalogID,
 	}, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}); err != nil {
 		return nil, err
@@ -582,25 +307,16 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	}
 
 	// Register resources.
-	//
-	// The creator gets view_detail alone (#801). Management — modify, delete,
-	// task_manage — is decided on the owning catalog, so a second object-level
-	// management grant would only give the two sides different answers.
-	// query_data is withheld for the same reason the split was made: handing it
-	// to the creator would erase the line between "may manage" and "may see the
-	// contents" exactly where it was drawn. Read access is granted explicitly,
-	// on the catalog or on this table.
-	err = rs.ps.CreateResources(ctx, []interfaces.PermissionResource{{
-		ID:   resource.ID,
-		Type: authType,
-		Name: resource.Name,
-	}}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
-	if err != nil {
-		logger.Errorf("CreateResources error: %s", err.Error())
-		span.SetStatus(codes.Error, "failed to create resource")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_CreateResourcesFailed).
-			WithErrorDetails(err.Error())
+	if resource.CatalogID != "" {
+		err = rs.ps.UpsertResourceParents(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			interfaces.AUTH_RESOURCE_TYPE_CATALOG, []interfaces.PermissionResourceParent{{
+				ResourceID: resource.ID, ParentID: resource.CatalogID,
+			}})
+		if err != nil {
+			logger.Errorf("UpsertResourceParents error: %s", err.Error())
+			span.SetStatus(codes.Error, "failed to register resource parent")
+			return nil, err
+		}
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -609,10 +325,6 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 
 // Get retrieves a Resource by ID.
 func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.Resource, error) {
-	if interfaces.IsTrustedProxyRead(ctx) {
-		return rs.InternalGetByID(ctx, nil, id)
-	}
-
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get resource")
 	defer span.End()
 
@@ -628,20 +340,18 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 	}
 	populateResourceColumnCount(resource)
 
-	// Filter objects with viewing permissions based on permissions. The total length of the filtered array is the total number, and there is no need to request the total number again.
-	// Resources in the internal directory are verified by the internal_resource type
+	// Apply the fixed internal guard before checking resource permissions.
 	internalCatalogs, err := rs.cs.InternalCatalogIDSet(ctx)
 	if err != nil {
 		span.SetStatus(codes.Error, "List internal catalog IDs failed")
 		return nil, err
 	}
 	_, parentInternal := internalCatalogs[resource.CatalogID]
-	if parentInternal && interfaces.IsS2SInternalAccess(ctx) {
-		// Internal directory resources are accessed via S2S within the cluster (/in/ internal network endpoints) : The internal infrastructure of the system is allowed by default.
-		// Do not perform per-account view_detail verification - such resources are never authorized to business users.
-		// When internal services access on behalf of users, checking per account will only result in false rejection. The external network endpoint will not carry this tag.
-		resource.Operations = interfaces.COMMON_OPERATIONS
-	} else {
+	if parentInternal && !interfaces.IsBuiltinAdmin(ctx) {
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails("internal resources are restricted to the built-in administrator")
+	}
+	{
 		internalResources := map[string]struct{}{}
 		if parentInternal {
 			internalResources[resource.ID] = struct{}{}
@@ -695,15 +405,7 @@ func (rs *resourceService) CheckResourcePermission(ctx context.Context, resource
 		return err
 	}
 	_, parentInternal := internalCatalogs[resource.CatalogID]
-	if parentInternal && interfaces.IsS2SInternalAccess(ctx) {
-		// Same exemption GetByID makes: an internal-catalog resource reached over
-		// the in-cluster S2S face is infrastructure, never granted to business
-		// roles, so a per-account check there can only refuse a caller that is
-		// acting for the platform itself. Without this the guard would break the
-		// Context Loader's reads of internal datasets.
-		return nil
-	}
-	return rs.checkResourceOrCatalog(ctx, resource.ID, resource.CatalogID, parentInternal, op)
+	return rs.checkResourcePermission(ctx, resource.ID, resource.CatalogID, parentInternal, op)
 }
 
 func (rs *resourceService) InternalGetByID(ctx context.Context, tx *sql.Tx, id string) (*interfaces.Resource, error) {
@@ -758,22 +460,6 @@ func (rs *resourceService) InternalGetByCatalogID(ctx context.Context, catalogID
 
 // GetByIDs retrieves Resources by IDs.
 func (rs *resourceService) GetByIDs(ctx context.Context, ids []string, includeRowCount bool) ([]*interfaces.Resource, error) {
-	if interfaces.IsTrustedProxyRead(ctx) {
-		resourcesByID, err := rs.InternalGetByIDs(ctx, ids)
-		if err != nil {
-			return nil, err
-		}
-		resources := make([]*interfaces.Resource, 0, len(resourcesByID))
-		for _, id := range ids {
-			if resource, exists := resourcesByID[id]; exists {
-				resources = append(resources, resource)
-				delete(resourcesByID, id)
-			}
-		}
-		rs.populateResourceRowCounts(ctx, resources, includeRowCount)
-		return resources, nil
-	}
-
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get resources by IDs")
 	defer span.End()
 
@@ -799,8 +485,7 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string, includeRo
 		populateResourceColumnCount(resource)
 	}
 
-	// Filter objects with viewing permissions based on permissions. The total length of the filtered array is the total number, and there is no need to request the total number again.
-	// Resources in the internal directory are verified by the internal_resource type
+	// The shared permission filter enforces the internal visibility boundary.
 	internalCatalogs, err := rs.cs.InternalCatalogIDSet(ctx)
 	if err != nil {
 		span.SetStatus(codes.Error, "List internal catalog IDs failed")
@@ -903,6 +588,14 @@ func sourceMetadataRowCount(sourceMetadata map[string]any) (int64, bool) {
 func (rs *resourceService) GetByCatalogID(ctx context.Context, catalogID string) ([]*interfaces.Resource, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get resources by catalog ID")
 	defer span.End()
+	internalCatalogs, err := rs.cs.InternalCatalogIDSet(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if _, internal := internalCatalogs[catalogID]; internal && !interfaces.IsBuiltinAdmin(ctx) {
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails("internal resources are restricted to the built-in administrator")
+	}
 
 	resources, err := rs.ra.GetByCatalogID(ctx, catalogID)
 	if err != nil {
@@ -922,6 +615,14 @@ func (rs *resourceService) GetByCatalogID(ctx context.Context, catalogID string)
 func (rs *resourceService) GetByName(ctx context.Context, catalogID string, name string) (*interfaces.Resource, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get resource by name")
 	defer span.End()
+	internalCatalogs, err := rs.cs.InternalCatalogIDSet(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if _, internal := internalCatalogs[catalogID]; internal && !interfaces.IsBuiltinAdmin(ctx) {
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails("internal resources are restricted to the built-in administrator")
+	}
 
 	resource, err := rs.ra.GetByName(ctx, catalogID, name)
 	if err != nil {
@@ -1104,14 +805,14 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		span.SetStatus(codes.Error, "Resource not found")
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
-	// Determine whether the userid has the permission to be modified; Resources in the internal directory are verified by the internal_resource type
+	// Internal parent catalogs are rejected for non-admin callers below.
 	internalCatalogs, err := rs.cs.InternalCatalogIDSet(ctx)
 	if err != nil {
 		span.SetStatus(codes.Error, "List internal catalog IDs failed")
 		return err
 	}
 	_, parentInternal := internalCatalogs[resource.CatalogID]
-	if err = rs.checkResourceOrCatalog(ctx, resource.ID, resource.CatalogID,
+	if err = rs.checkResourcePermission(ctx, resource.ID, resource.CatalogID,
 		parentInternal, interfaces.OPERATION_TYPE_MODIFY); err != nil {
 		return err
 	}
@@ -1315,6 +1016,13 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 			verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 			WithErrorDetails("failed to update resource")
 	}
+	if err := rs.ps.UpsertResourceParents(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+		interfaces.AUTH_RESOURCE_TYPE_CATALOG, []interfaces.PermissionResourceParent{{
+			ResourceID: resource.ID, ParentID: resource.CatalogID,
+		}}); err != nil {
+		span.SetStatus(codes.Error, "failed to register resource parent")
+		return err
+	}
 
 	span.SetStatus(codes.Ok, "")
 	return nil
@@ -1377,7 +1085,7 @@ func (rs *resourceService) SetEnabled(ctx context.Context, resource *interfaces.
 		return err
 	}
 	_, parentInternal := internalCatalogs[resource.CatalogID]
-	if err = rs.checkResourceOrCatalog(ctx, resource.ID, resource.CatalogID,
+	if err = rs.checkResourcePermission(ctx, resource.ID, resource.CatalogID,
 		parentInternal, interfaces.OPERATION_TYPE_MODIFY); err != nil {
 		return err
 	}
@@ -1436,7 +1144,7 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 		return nil
 	}
 
-	// Determine whether the userid has the deletion permission; Resources in the internal directory are verified by the internal_resource type
+	// The shared permission filter rejects internal resources for non-admin callers.
 	internalResources, err := rs.internalResourceIDSet(ctx)
 	if err != nil {
 		span.SetStatus(codes.Error, "List internal resource IDs failed")
@@ -1478,7 +1186,30 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 		}
 	}
 
+	parentItems := make([]interfaces.PermissionResourceParent, 0, len(resourcesByID))
+	for _, resource := range resourcesByID {
+		parentItems = append(parentItems, interfaces.PermissionResourceParent{
+			ResourceID: resource.ID, ParentID: resource.CatalogID,
+		})
+	}
+	if len(parentItems) > 0 {
+		parentIDs := make([]string, 0, len(parentItems))
+		for _, item := range parentItems {
+			parentIDs = append(parentIDs, item.ResourceID)
+		}
+		if err := rs.ps.DeleteResourceParents(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, parentIDs); err != nil {
+			span.SetStatus(codes.Error, "Delete resource parents failed")
+			return err
+		}
+	}
+
 	if err := rs.ra.DeleteByIDs(ctx, ids); err != nil {
+		if len(parentItems) > 0 {
+			if restoreErr := rs.ps.UpsertResourceParents(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+				interfaces.AUTH_RESOURCE_TYPE_CATALOG, parentItems); restoreErr != nil {
+				logger.Errorf("Restore resource parents after deletion failure: %v", restoreErr)
+			}
+		}
 		span.SetStatus(codes.Error, "Delete resources failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
 			WithErrorDetails(err.Error())
@@ -1492,17 +1223,8 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 		}
 	}
 
-	//  Clear resource policies and delete the corresponding type of policies by internal/ordinary resource groups
-	normalIDs, internalIDs := partitionResourceIDs(ids, internalResources)
-	if len(normalIDs) > 0 {
-		if err = rs.ps.DeleteResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, normalIDs); err != nil {
-			return err
-		}
-	}
-	if len(internalIDs) > 0 {
-		if err = rs.ps.DeleteResources(ctx, interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE, internalIDs); err != nil {
-			return err
-		}
+	if err = rs.ps.DeleteResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ids); err != nil {
+		return err
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -2250,7 +1972,6 @@ func (rs *resourceService) ListAuthResources(ctx context.Context, params interfa
 }
 
 func (rs *resourceService) filterAuthorizedResourceAuthResources(ctx context.Context, entries []*interfaces.AuthResourceEntry) ([]*interfaces.AuthResourceEntry, error) {
-	// Resources in the internal directory of the system are authorized by type internal_resource and do not enter the list of authorized resources of type resource
 	internalResources, err := rs.internalResourceIDSet(ctx)
 	if err != nil {
 		return nil, err
@@ -2261,7 +1982,7 @@ func (rs *resourceService) filterAuthorizedResourceAuthResources(ctx context.Con
 		if entry == nil {
 			continue
 		}
-		if _, ok := internalResources[entry.ID]; ok {
+		if _, ok := internalResources[entry.ID]; ok && !interfaces.IsBuiltinAdmin(ctx) {
 			continue
 		}
 		ids = append(ids, entry.ID)

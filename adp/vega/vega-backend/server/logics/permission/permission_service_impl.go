@@ -130,6 +130,42 @@ func (ps *PermissionServiceImpl) LocalResourceDecisions(ctx context.Context, res
 	return decisions, nil
 }
 
+func (ps *PermissionServiceImpl) UpsertResourceParents(ctx context.Context, resourceType, parentType string,
+	items []interfaces.PermissionResourceParent) error {
+	if len(items) == 0 {
+		return nil
+	}
+	if err := ps.pa.UpsertResourceParents(ctx, resourceType, parentType, items); err != nil {
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_InternalError_CreateResourcesFailed).WithErrorDetails(err)
+	}
+	return nil
+}
+
+func (ps *PermissionServiceImpl) DeleteResourceParents(ctx context.Context, resourceType string, resourceIDs []string) error {
+	if len(resourceIDs) == 0 {
+		return nil
+	}
+	if err := ps.pa.DeleteResourceParents(ctx, resourceType, resourceIDs); err != nil {
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_InternalError_DeleteResourcesFailed).WithErrorDetails(err)
+	}
+	return nil
+}
+
+func (ps *PermissionServiceImpl) GetResourceParents(ctx context.Context, resourceType string,
+	resourceIDs []string) (map[string]interfaces.PermissionResourceParent, error) {
+	if len(resourceIDs) == 0 {
+		return map[string]interfaces.PermissionResourceParent{}, nil
+	}
+	items, err := ps.pa.GetResourceParents(ctx, resourceType, resourceIDs)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_InternalError_FilterResourcesFailed).WithErrorDetails(err)
+	}
+	return items, nil
+}
+
 func (ps *PermissionServiceImpl) CreateResources(ctx context.Context, resources []interfaces.PermissionResource, ops []string) error {
 	accountInfo := interfaces.AccountInfo{}
 	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {

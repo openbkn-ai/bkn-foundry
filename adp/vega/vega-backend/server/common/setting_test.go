@@ -60,16 +60,6 @@ func TestSetServiceSettings(t *testing.T) {
 				"host":     "hydra",
 				"port":     4445,
 			},
-			permissionServiceName: {
-				"protocol": "http",
-				"host":     "permission",
-				"port":     8080,
-			},
-			userMgmtServiceName: {
-				"protocol": "https",
-				"host":     "users",
-				"port":     8443,
-			},
 			kafkaConnectServiceName: {
 				"protocol": "http",
 				"host":     "connect",
@@ -90,8 +80,6 @@ func TestSetServiceSettings(t *testing.T) {
 		SetMQSetting()
 		SetOpenSearchSetting()
 		SetHydraAdminSetting()
-		SetPermissionSetting()
-		SetUserMgmtSetting()
 		SetKafkaConnectSetting()
 		SetModelFactoryManagerSetting()
 		SetModelFactoryAPISetting()
@@ -119,8 +107,6 @@ func TestSetServiceSettings(t *testing.T) {
 		assert.Equal(t, "http", appSetting.HydraAdminSetting.HydraAdminProcotol)
 		assert.Equal(t, "hydra", appSetting.HydraAdminSetting.HydraAdminHost)
 		assert.Equal(t, 4445, appSetting.HydraAdminSetting.HydraAdminPort)
-		assert.Equal(t, "http://permission:8080/api/authorization/v1", appSetting.PermissionUrl)
-		assert.Equal(t, "https://users:8443", appSetting.UserMgmtUrl)
 
 		assert.Equal(t, "connect", appSetting.KafkaConnectSetting.Host)
 		assert.Equal(t, 8083, appSetting.KafkaConnectSetting.Port)
@@ -173,6 +159,17 @@ func TestOverrideDBSettingFromEnv(t *testing.T) {
 		assert.Equal(t, "secret", appSetting.DBSetting.Password)
 		assert.Equal(t, "openbkn", appSetting.DBSetting.DBName)
 	})
+}
+
+func TestNormalizeBknSafeURL(t *testing.T) {
+	url, err := NormalizeBknSafeURL(" HTTPS://bkn-safe:3000/ ")
+	require.NoError(t, err)
+	assert.Equal(t, "https://bkn-safe:3000", url)
+
+	for _, rawURL := range []string{"", "bkn-safe:3000", "ftp://bkn-safe", "http://bkn-safe?token=x"} {
+		_, err := NormalizeBknSafeURL(rawURL)
+		require.Error(t, err, rawURL)
+	}
 }
 
 func TestLoadCryptoKeys(t *testing.T) {

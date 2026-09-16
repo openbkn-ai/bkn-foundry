@@ -9,10 +9,8 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
-	"os"
-	"strings"
+	"net/url"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -20,15 +18,6 @@ import (
 	"vega-backend/common"
 	"vega-backend/interfaces"
 )
-
-// bkn-safe authz cutover (selected by AUTHZ_PROVIDER):
-//   - "bkn-safe" : bkn-safe authoritative (full adapter)
-//   - "shadow"   : ISF authoritative + bkn-safe queried in parallel, diffs logged
-//   - "isf"      : ISF PermissionAccess unchanged; retired, kept as an escape hatch
-// "bkn-safe" and "shadow" both need BKN_SAFE_URL. A misspelled value is a
-// misconfiguration and refuses to start; an unset value still falls back to ISF
-// but says so loudly, because existing deployments carry an explicit empty value
-// in their own values overrides and an upgrade must not CrashLoopBackOff.
 
 // safeClient talks to bkn-safe's clean authz API (/api/safe/v1/authz/*).
 type safeClient struct {
@@ -236,21 +225,6 @@ func (c *safeClient) checkOne(ctx context.Context, accessorID, rtype, rid, op st
 	return out.Allowed, err
 }
 
-// allowedOps returns the subset of candidate ops the accessor may perform.
-func (c *safeClient) allowedOps(ctx context.Context, accessorID, rtype, rid string, cands []string) ([]string, error) {
-	out := make([]string, 0, len(cands))
-	for _, op := range cands {
-		ok, err := c.checkOne(ctx, accessorID, rtype, rid, op)
-		if err != nil {
-			return nil, err
-		}
-		if ok {
-			out = append(out, op)
-		}
-	}
-	return out, nil
-}
-
 type safeFilteredResource struct {
 	ResourceID string   `json:"resource_id"`
 	Operations []string `json:"operations"`
@@ -335,29 +309,14 @@ func (c *safeClient) doWithHeaders(ctx context.Context, method, path string, bod
 	return nil
 }
 
-// ---- shadow wrapper: ISF authoritative, bkn-safe diff-logged ----
-
-type shadowPermissionAccess struct {
-	interfaces.PermissionAccess
-	safe *safeClient
-}
-
-func (s *shadowPermissionAccess) CheckPermission(ctx context.Context, check interfaces.PermissionCheck) (bool, error) {
-	isfOK, isfErr := s.PermissionAccess.CheckPermission(ctx, check)
-	safeOK, safeErr := s.safe.allowedAll(ctx, check.Accessor.ID, check.Resource.Type, check.Resource.ID, check.Operations)
-	switch {
-	case safeErr != nil:
-		log.Printf("[authz-shadow] bkn-safe error (ISF authoritative): %s:%s ops=%v err=%v", check.Resource.Type, check.Resource.ID, check.Operations, safeErr)
-	case isfErr == nil && isfOK != safeOK:
-		log.Printf("[authz-shadow] DIFF: accessor=%s %s:%s ops=%v isf=%v bkn-safe=%v", check.Accessor.ID, check.Resource.Type, check.Resource.ID, check.Operations, isfOK, safeOK)
-	}
-	return isfOK, isfErr
-}
-
-// ---- full bkn-safe adapter: bkn-safe authoritative ----
-
 type safePermissionAccess struct {
 	safe *safeClient
+}
+
+// NewPermissionAccess creates the bkn-safe authorization adapter from the
+// validated application setting.
+func NewPermissionAccess(appSetting *common.AppSetting) interfaces.PermissionAccess {
+	return &safePermissionAccess{safe: newSafeClient(appSetting.BknSafeURL)}
 }
 
 func (s *safePermissionAccess) CheckPermission(ctx context.Context, check interfaces.PermissionCheck) (bool, error) {
@@ -448,45 +407,59 @@ func (s *safePermissionAccess) DeleteResources(ctx context.Context, resources []
 	return nil
 }
 
-// supportedAuthzProviders lists every accepted AUTHZ_PROVIDER value, in the
-// order the error message should offer them.
-var supportedAuthzProviders = []string{"bkn-safe", "shadow", "isf"}
+func (s *safePermissionAccess) UpsertResourceParents(ctx context.Context, resourceType, parentType string,
+	items []interfaces.PermissionResourceParent) error {
+	if len(items) == 0 {
+		return nil
+	}
+	return s.safe.do(ctx, http.MethodPut, "/api/safe/v1/authz/resource-parents", map[string]any{
+		"resource_type": resourceType,
+		"parent_type":   parentType,
+		"items":         items,
+	}, nil)
+}
 
-// MaybeShadow applies the AUTHZ_PROVIDER switch.
-//
-// A misspelled provider, and "bkn-safe" without BKN_SAFE_URL, used to print one
-// line and fall back to ISF. ISF is retired, so that fallback turned a typo into
-// an authorization surface whose answers are unpredictable, and the single log
-// line made it invisible at runtime. Both now report the misconfiguration and
-// let the caller refuse to start.
-//
-// An unset provider keeps the old fallback, loudly: deployments upgraded with
-// their own values override still carry an explicit empty value, and refusing to
-// start would turn an upgrade into a CrashLoopBackOff. Flipping that to an error
-// waits until those deployments are counted.
-func MaybeShadow(inner interfaces.PermissionAccess) (interfaces.PermissionAccess, error) {
-	provider := strings.TrimSpace(os.Getenv("AUTHZ_PROVIDER"))
-	switch provider {
-	case "":
-		log.Printf("[authz] AUTHZ_PROVIDER is unset, so authorization falls back to the retired ISF; set it to bkn-safe")
-		return inner, nil
-	case "isf":
-		log.Printf("[authz] provider=isf selects the retired authorization service; migrate to bkn-safe")
-		return inner, nil
-	case "bkn-safe", "shadow":
-	default:
-		return nil, fmt.Errorf("AUTHZ_PROVIDER=%q is not a supported authorization backend; set it to one of %s",
-			provider, strings.Join(supportedAuthzProviders, ", "))
+func (s *safePermissionAccess) DeleteResourceParents(ctx context.Context, resourceType string, resourceIDs []string) error {
+	if len(resourceIDs) == 0 {
+		return nil
 	}
-	safeURL := strings.TrimSpace(os.Getenv("BKN_SAFE_URL"))
-	if safeURL == "" {
-		return nil, fmt.Errorf("AUTHZ_PROVIDER=%s requires BKN_SAFE_URL to be set", provider)
+	return s.safe.do(ctx, http.MethodDelete, "/api/safe/v1/authz/resource-parents", map[string]any{
+		"resource_type": resourceType,
+		"resource_ids":  uniqueStrings(resourceIDs),
+	}, nil)
+}
+
+// GetResourceParents reads only the supplied child IDs. The bkn-safe endpoint
+// exposes one resource_id filter per request; this is used solely for Resources
+// that the final filter did not return, so established parent edges never take
+// the legacy Catalog fallback by mistake.
+func (s *safePermissionAccess) GetResourceParents(ctx context.Context, resourceType string,
+	resourceIDs []string) (map[string]interfaces.PermissionResourceParent, error) {
+	result := make(map[string]interfaces.PermissionResourceParent, len(resourceIDs))
+	for _, resourceID := range uniqueStrings(resourceIDs) {
+		var response struct {
+			Items []struct {
+				ResourceID string `json:"resource_id"`
+				ParentID   string `json:"parent_id"`
+			} `json:"items"`
+			Total int `json:"total"`
+		}
+		path := "/api/safe/v1/authz/resource-parents?resource_type=" + url.QueryEscape(resourceType) +
+			"&resource_id=" + url.QueryEscape(resourceID)
+		if err := s.safe.do(ctx, http.MethodGet, path, nil, &response); err != nil {
+			return nil, err
+		}
+		if response.Total > 1 || len(response.Items) > 1 {
+			return nil, fmt.Errorf("bkn-safe returned multiple parent edges for %s:%s", resourceType, resourceID)
+		}
+		if len(response.Items) == 0 {
+			continue
+		}
+		item := response.Items[0]
+		if item.ResourceID != resourceID || item.ParentID == "" {
+			return nil, fmt.Errorf("bkn-safe returned invalid parent edge for %s:%s", resourceType, resourceID)
+		}
+		result[resourceID] = interfaces.PermissionResourceParent{ResourceID: resourceID, ParentID: item.ParentID}
 	}
-	sc := newSafeClient(safeURL)
-	if provider == "shadow" {
-		log.Printf("[authz] provider=shadow; ISF authoritative, comparing bkn-safe at %s", safeURL) //nolint:gosec // URL is deployment configuration, not request input.
-		return &shadowPermissionAccess{PermissionAccess: inner, safe: sc}, nil
-	}
-	log.Printf("[authz] provider=bkn-safe (authoritative) at %s", safeURL) //nolint:gosec // URL is deployment configuration, not request input.
-	return &safePermissionAccess{safe: sc}, nil
+	return result, nil
 }

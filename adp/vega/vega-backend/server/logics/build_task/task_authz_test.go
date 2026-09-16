@@ -145,8 +145,8 @@ func TestBuildTaskListPushesTheVisibleCatalogsIntoTheQuery(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, bta, cs := newSvc(ctrl)
 
-		cs.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), interfaces.OPERATION_TYPE_TASK_MANAGE).
-			Return([]string{"cat-1", "cat-2"}, false, nil, nil)
+		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, false, interfaces.CatalogsQueryParams{}).
+			Return([]string{"cat-1", "cat-2"}, nil, nil)
 		bta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
 				assert.Equal(t, []string{"cat-1", "cat-2"}, params.CatalogIDs,
@@ -160,16 +160,15 @@ func TestBuildTaskListPushesTheVisibleCatalogsIntoTheQuery(t *testing.T) {
 		assert.EqualValues(t, 1, total, "total 是过滤后的计数")
 	})
 
-	t.Run("类型级授权不加谓词,但排除够不到的内部目录", func(t *testing.T) {
+	t.Run("all visible catalogs are pushed into the query", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, bta, cs := newSvc(ctrl)
 
-		cs.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).
-			Return(nil, true, []string{"internal-cat"}, nil)
+		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return([]string{"cat-1", "cat-2"}, nil, nil)
 		bta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
-				assert.Empty(t, params.CatalogIDs, "通配放行不该被展开成 id 清单")
-				assert.Equal(t, []string{"internal-cat"}, params.ExcludeCatalogIDs)
+				assert.Equal(t, []string{"cat-1", "cat-2"}, params.CatalogIDs)
 				return nil, 0, nil
 			})
 
@@ -181,8 +180,8 @@ func TestBuildTaskListPushesTheVisibleCatalogsIntoTheQuery(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, bta, cs := newSvc(ctrl)
 
-		cs.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).
-			Return(nil, false, nil, nil)
+		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil, nil, nil)
 		_ = bta // bta.List 不该被调用
 
 		tasks, total, err := svc.List(context.Background(), interfaces.BuildTasksQueryParams{})
@@ -212,8 +211,8 @@ func TestBuildTaskListPushesTheVisibleCatalogsIntoTheQuery(t *testing.T) {
 
 		boom := rest.NewHTTPError(context.Background(), http.StatusInternalServerError,
 			verrors.VegaBackend_InternalError_FilterResourcesFailed)
-		cs.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).
-			Return(nil, false, nil, boom)
+		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil, nil, boom)
 		_ = bta
 
 		_, _, err := svc.List(context.Background(), interfaces.BuildTasksQueryParams{})

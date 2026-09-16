@@ -285,18 +285,17 @@ func (suts *semanticUnderstandingTaskService) List(ctx context.Context, params i
 	// that total counts what the caller can see and pages keep their size —
 	// filtering after LIMIT breaks both, and the set is small enough to push down
 	// because it is catalogs rather than tables.
-	visible, unrestricted, excluded, err := suts.cs.AuthorizedCatalogsForTasks(ctx,
-		interfaces.OPERATION_TYPE_TASK_MANAGE)
+	visible, _, err := suts.cs.ListPermittedCatalogIDs(ctx,
+		[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, false, interfaces.CatalogsQueryParams{})
 	if err != nil {
 		span.SetStatus(codes.Error, "Resolve authorized catalogs failed")
 		return nil, 0, err
 	}
-	if !unrestricted && len(visible) == 0 {
+	if len(visible) == 0 {
 		span.SetStatus(codes.Ok, "")
 		return []*interfaces.SemanticUnderstandingTaskSummary{}, 0, nil
 	}
 	params.CatalogIDs = visible
-	params.ExcludeCatalogIDs = excluded
 
 	tasks, total, err := suts.suta.List(ctx, params)
 	if err != nil {

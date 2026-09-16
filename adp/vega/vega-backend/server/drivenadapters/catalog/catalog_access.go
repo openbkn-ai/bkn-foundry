@@ -158,6 +158,9 @@ func scanCatalogSummary(scanner catalogRowScanner) (*interfaces.CatalogSummary, 
 }
 
 func applyCatalogFilters(builder sq.SelectBuilder, params interfaces.CatalogsQueryParams) sq.SelectBuilder {
+	if !params.IncludeInternal {
+		builder = builder.Where(sq.Eq{"f_internal": false})
+	}
 	if params.Name != "" {
 		builder = builder.Where(sq.Like{"f_name": "%" + common.EscapeLikePattern(params.Name) + "%"})
 	}
@@ -502,7 +505,7 @@ func (ca *catalogAccess) ListConnectorTypePermissionRefs(ctx context.Context, pa
 	return refs, nil
 }
 
-// ListInternalIDs lists the ids of all internal system directories (grouped by internal_catalog type when used for permission verification).
+// ListInternalIDs lists the ids of all internal system directories.
 func (ca *catalogAccess) ListInternalIDs(ctx context.Context) ([]string, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List internal catalog IDs")
 	defer span.End()
@@ -605,9 +608,7 @@ func (ca *catalogAccess) ListAuthResources(ctx context.Context, params interface
 	builder := sq.Select(
 		"f_id",
 		"f_name",
-	).From(CATALOG_TABLE_NAME).
-		// The internal system directory is authorized by the internal_catalog type and does not enter the list of authorized resources of the catalog type
-		Where(sq.Eq{"f_internal": false})
+	).From(CATALOG_TABLE_NAME)
 
 	if params.ID != "" {
 		builder = builder.Where(sq.Eq{"f_id": params.ID})

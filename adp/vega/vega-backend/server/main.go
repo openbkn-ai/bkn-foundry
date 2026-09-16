@@ -131,11 +131,7 @@ func main() {
 
 	// The Set order is sorted in ascending alphabetical order
 	logics.SetAuthAccess(auth.NewHydraAuthAccess(appSetting))
-	permissionAccess, err := permission.MaybeShadow(permission.NewPermissionAccess(appSetting))
-	if err != nil {
-		logger.Fatalf("authorization provider is misconfigured: %v", err)
-	}
-	logics.SetPermissionAccess(permissionAccess)
+	logics.SetPermissionAccess(permission.NewPermissionAccess(appSetting))
 	logics.SetUserMgmtAccess(user_mgmt.NewUserMgmtAccess(appSetting))
 	logics.SetProxyAuthorizationAccess(permission.NewProxyAuthorizationAccess())
 

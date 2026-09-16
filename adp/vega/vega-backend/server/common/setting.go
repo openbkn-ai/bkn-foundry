@@ -7,7 +7,9 @@
 package common
 
 import (
+	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -119,8 +121,7 @@ type AppSetting struct {
 	HydraAdminSetting   hydra.HydraAdminSetting
 	KafkaConnectSetting KafkaConnectSetting
 
-	PermissionUrl          string
-	UserMgmtUrl            string
+	BknSafeURL             string
 	ModelFactoryManagerUrl string
 	ModelFactoryAPIUrl     string
 	BknAgentUrl            string
@@ -135,8 +136,6 @@ const (
 	rdsServiceName                 string = "rds"
 	mqServiceName                  string = "mq"
 	opensearchServiceName          string = "opensearch"
-	permissionServiceName          string = "authorization-private"
-	userMgmtServiceName            string = "user-management"
 	hydraAdminServiceName          string = "hydra-admin"
 	kafkaConnectServiceName        string = "kafka-connect"
 	modelFactoryManagerServiceName string = "mf-model-manager"
@@ -154,6 +153,9 @@ var (
 
 	// Current system time zone
 	APP_LOCATION *time.Location
+
+	errBknSafeURLRequired = errors.New("BKN_SAFE_URL is required when authentication is enabled")
+	errBknSafeURLInvalid  = errors.New("BKN_SAFE_URL must be an absolute HTTP or HTTPS URL with a host and without credentials, query, or fragment")
 )
 
 // NewSetting reads the service configuration
@@ -235,9 +237,7 @@ func loadSetting(vp *viper.Viper) {
 
 	SetHydraAdminSetting()
 
-	SetPermissionSetting()
-
-	SetUserMgmtSetting()
+	SetBknSafeURL()
 
 	SetModelFactoryManagerSetting()
 
@@ -347,30 +347,34 @@ func SetHydraAdminSetting() {
 	}
 }
 
-func SetPermissionSetting() {
-	setting, ok := appSetting.DepServices[permissionServiceName]
-	if !ok {
-		logger.Fatalf("service %s not found in depServices", permissionServiceName)
+// SetBknSafeURL loads the mandatory bkn-safe authorization endpoint.
+func SetBknSafeURL() {
+	url, err := NormalizeBknSafeURL(os.Getenv("BKN_SAFE_URL"))
+	if err != nil {
+		logger.Fatalf("Invalid bkn-safe configuration: %v", err)
 	}
-
-	protocol := setting["protocol"].(string)
-	host := setting["host"].(string)
-	port := setting["port"].(int)
-
-	appSetting.PermissionUrl = fmt.Sprintf("%s://%s:%d/api/authorization/v1", protocol, host, port)
+	appSetting.BknSafeURL = url
 }
 
-func SetUserMgmtSetting() {
-	setting, ok := appSetting.DepServices[userMgmtServiceName]
-	if !ok {
-		logger.Fatalf("service %s not found in depServices", userMgmtServiceName)
+// NormalizeBknSafeURL validates and normalizes the bkn-safe service base URL.
+func NormalizeBknSafeURL(rawURL string) (string, error) {
+	normalized := strings.TrimRight(strings.TrimSpace(rawURL), "/")
+	if normalized == "" {
+		return "", errBknSafeURLRequired
 	}
-
-	protocol := setting["protocol"].(string)
-	host := setting["host"].(string)
-	port := setting["port"].(int)
-
-	appSetting.UserMgmtUrl = fmt.Sprintf("%s://%s:%d", protocol, host, port)
+	parsed, err := url.Parse(normalized)
+	if err != nil || !parsed.IsAbs() || parsed.Hostname() == "" {
+		return "", errBknSafeURLInvalid
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return "", errBknSafeURLInvalid
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return "", errBknSafeURLInvalid
+	}
+	parsed.Scheme = scheme
+	return strings.TrimRight(parsed.String(), "/"), nil
 }
 
 // loadCryptoKeys loads RSA keys from files

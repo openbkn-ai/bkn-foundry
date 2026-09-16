@@ -69,6 +69,20 @@ func (mr *MockPermissionServiceMockRecorder) CreateResources(ctx, resources, ops
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateResources", reflect.TypeOf((*MockPermissionService)(nil).CreateResources), ctx, resources, ops)
 }
 
+// DeleteResourceParents mocks base method.
+func (m *MockPermissionService) DeleteResourceParents(ctx context.Context, resourceType string, resourceIDs []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteResourceParents", ctx, resourceType, resourceIDs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteResourceParents indicates an expected call of DeleteResourceParents.
+func (mr *MockPermissionServiceMockRecorder) DeleteResourceParents(ctx, resourceType, resourceIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteResourceParents", reflect.TypeOf((*MockPermissionService)(nil).DeleteResourceParents), ctx, resourceType, resourceIDs)
+}
+
 // DeleteResources mocks base method.
 func (m *MockPermissionService) DeleteResources(ctx context.Context, resourceType string, ids []string) error {
 	m.ctrl.T.Helper()
@@ -98,6 +112,21 @@ func (mr *MockPermissionServiceMockRecorder) FilterResources(ctx, resourceType, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FilterResources", reflect.TypeOf((*MockPermissionService)(nil).FilterResources), ctx, resourceType, ids, ops, allowOperation, fullOps)
 }
 
+// GetResourceParents mocks base method.
+func (m *MockPermissionService) GetResourceParents(ctx context.Context, resourceType string, resourceIDs []string) (map[string]interfaces.PermissionResourceParent, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetResourceParents", ctx, resourceType, resourceIDs)
+	ret0, _ := ret[0].(map[string]interfaces.PermissionResourceParent)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetResourceParents indicates an expected call of GetResourceParents.
+func (mr *MockPermissionServiceMockRecorder) GetResourceParents(ctx, resourceType, resourceIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetResourceParents", reflect.TypeOf((*MockPermissionService)(nil).GetResourceParents), ctx, resourceType, resourceIDs)
+}
+
 // UpdateResource mocks base method.
 func (m *MockPermissionService) UpdateResource(ctx context.Context, resource interfaces.PermissionResource) error {
 	m.ctrl.T.Helper()
@@ -110,6 +139,20 @@ func (m *MockPermissionService) UpdateResource(ctx context.Context, resource int
 func (mr *MockPermissionServiceMockRecorder) UpdateResource(ctx, resource any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateResource", reflect.TypeOf((*MockPermissionService)(nil).UpdateResource), ctx, resource)
+}
+
+// UpsertResourceParents mocks base method.
+func (m *MockPermissionService) UpsertResourceParents(ctx context.Context, resourceType, parentType string, items []interfaces.PermissionResourceParent) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertResourceParents", ctx, resourceType, parentType, items)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpsertResourceParents indicates an expected call of UpsertResourceParents.
+func (mr *MockPermissionServiceMockRecorder) UpsertResourceParents(ctx, resourceType, parentType, items any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertResourceParents", reflect.TypeOf((*MockPermissionService)(nil).UpsertResourceParents), ctx, resourceType, parentType, items)
 }
 
 // MockLocalPermissionService is a mock of LocalPermissionService interface.

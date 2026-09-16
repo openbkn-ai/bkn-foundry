@@ -70,7 +70,7 @@ type Catalog struct {
 
 	Type    string `json:"type"`
 	Enabled bool   `json:"enabled"`
-	// Internal system internal directory: Register in the permission service as internal_catalog type, visible only to super administrators
+	// Internal catalogs and their resources are visible only to the built-in admin.
 	Internal bool `json:"internal"`
 
 	ConnectorType string          `json:"connector_type"`
@@ -127,6 +127,9 @@ type CatalogsQueryParams struct {
 	ConnectorType     string
 	Enabled           *bool
 	HealthCheckStatus string
+	// IncludeInternal is set only by the service after checking the caller's
+	// account. It is not populated from an external list request.
+	IncludeInternal bool
 }
 
 // CatalogCreateRequest represents create catalog request.
@@ -140,7 +143,7 @@ type CatalogRequest struct {
 	ConnectorCfg  ConnectorConfig `json:"connector_config"`
 
 	// Internal only takes effect during creation and cannot be changed by updates.
-	// The create permission of type internal_catalog is required (by default, only for the super administrator/system S2S identity).
+	// Only the built-in admin may create an internal catalog.
 	Internal bool `json:"internal,omitempty"`
 
 	// HealthCheckSchedule only takes effect when the physical directory is created; Create the default Schedule of the inherit mode when nil.

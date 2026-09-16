@@ -33,8 +33,8 @@ func TestRoleResourceMatrix(t *testing.T) {
 	// a representative, granted op per resource type (positive case uses these).
 	repOp := map[string]string{
 		"catalog": "create",
-		// 数据表上不再有 create/modify/delete：建表判目录的 resource_manage，
-		// 改删判这张表再回落到目录（#801）。
+		// Resource 的实例级操作由 bkn-safe 直接判定，并通过父子关系继承
+		// Catalog 的授权。
 		"resource":       "view_detail",
 		"connector_type": "create", "data_flow": "view", "knowledge_network": "create",
 		"concept_group": "view_detail", "object_type": "query_data", "relation_type": "query_data",

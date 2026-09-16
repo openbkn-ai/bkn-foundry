@@ -373,25 +373,22 @@ func (ds *datasetService) checkDocumentPermission(ctx context.Context, res *inte
 		return err
 	}
 	_, parentInternal := internalCatalogs[res.CatalogID]
-	if parentInternal && interfaces.IsS2SInternalAccess(ctx) {
-		return nil
+	if parentInternal && !interfaces.IsBuiltinAdmin(ctx) {
+		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails("internal resources are restricted to the built-in administrator")
 	}
 	var resourceErr error
 	if operation == interfaces.OPERATION_TYPE_QUERY_DATA {
 		resourceErr = ds.ps.CheckPermission(ctx, interfaces.PermissionResource{
-			Type: resourceAuthResourceType(parentInternal),
+			Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
 			ID:   res.ID,
 		}, []string{operation})
 		if resourceErr == nil {
 			return nil
 		}
 	}
-	catalogType := interfaces.AUTH_RESOURCE_TYPE_CATALOG
-	if parentInternal {
-		catalogType = interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG
-	}
 	if err := ds.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: catalogType,
+		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 		ID:   res.CatalogID,
 	}, []string{operation}); err != nil {
 		if resourceErr != nil {
@@ -400,11 +397,4 @@ func (ds *datasetService) checkDocumentPermission(ctx context.Context, res *inte
 		return err
 	}
 	return nil
-}
-
-func resourceAuthResourceType(internal bool) string {
-	if internal {
-		return interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE
-	}
-	return interfaces.AUTH_RESOURCE_TYPE_RESOURCE
 }

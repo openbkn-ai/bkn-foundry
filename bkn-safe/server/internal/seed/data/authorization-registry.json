@@ -33,7 +33,7 @@
       "id": "catalog",
       "name": "数据目录",
       "_source": "vega",
-      "_note": "create/modify/delete 只针对目录本身；modify/delete/authorize/task_manage/resource_manage 要求本目录 view_detail；query_data 与 view_detail 独立。管理目录下的数据表用 resource_manage。",
+      "_note": "create/modify/delete 只针对目录本身；modify/delete/authorize/task_manage/resource_manage 要求本目录 view_detail；query_data 与 view_detail 独立。管理目录下的资源用 resource_manage。",
       "operations": [
         {"id": "view_detail", "name": "查看详情"},
         {"id": "create", "name": "创建目录"},
@@ -41,20 +41,22 @@
         {"id": "delete", "name": "删除目录", "requires": ["view_detail"]},
         {"id": "authorize", "name": "授权", "requires": ["view_detail"]},
         {"id": "task_manage", "name": "任务管理", "requires": ["view_detail"]},
-        {"id": "resource_manage", "name": "管理目录下的数据表", "requires": ["view_detail"]},
-        {"id": "query_data", "name": "查询目录下的表数据"}
+        {"id": "resource_manage", "name": "管理目录下的资源", "requires": ["view_detail"]},
+        {"id": "query_data", "name": "查询目录下的资源数据"}
       ]
     },
     {
       "id": "resource",
       "name": "数据资源",
       "_source": "vega",
-      "_note": "数据表只保留读的两个动词(#801)。管理类(改/删/任务/授权)判在所属目录上:vega 先问这张表、拒了再问目录的 resource_manage / task_manage。注意由此产生的两条后果,不要误以为 per-table 例外还留着余地:(1) /object-grants 按本词表校验操作,撤销之后就再也发不出新的 per-table 管理授权,vega 那一问只可能命中升级前留下的旧策略行;(2) SetObjectPermissions 是整组替换,管理员打开某张表的授权页(现在只剩两个动词)一保存,旧的 modify/task_manage 授权就被静默抹掉。真要做「这张表比目录更严」,靠的是 #512 的显式禁止,不是把动词加回来",
-      "_parent_note": "声明两个读操作到 catalog 的映射；当前 Vega 仍使用已知 catalog_id 做回落判定。bkn-safe 只有在实例注册 ResourceParent 后才会按此映射继承父目录授权。",
+      "_note": "数据资源的所有实例级操作均由 bkn-safe 直接判定。modify/delete 通过父子关系继承 catalog 的 resource_manage；Vega 不再翻译或回退权限操作。",
+      "_parent_note": "声明 Resource 操作到 Catalog 操作的映射。实例注册 ResourceParent 后，bkn-safe 按此映射继承父目录授权。",
       "parent_type": "catalog",
       "operations": [
-        {"id": "view_detail", "name": "查看表结构", "parent_operation": "view_detail"},
-        {"id": "query_data", "name": "查询表数据", "parent_operation": "query_data"}
+        {"id": "view_detail", "name": "查看资源内容", "parent_operation": "view_detail"},
+        {"id": "query_data", "name": "查询资源数据", "parent_operation": "query_data"},
+        {"id": "modify", "name": "修改资源", "parent_operation": "resource_manage"},
+        {"id": "delete", "name": "删除资源", "parent_operation": "resource_manage"}
       ]
     },
     {

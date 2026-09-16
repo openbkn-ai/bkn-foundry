@@ -33,7 +33,7 @@ func newTestDiscoverTaskService(t *testing.T) (*discoverTaskService, *vmock.Mock
 		Return(nil).AnyTimes()
 	cs.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil).AnyTimes()
-	cs.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+	cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"catalog-1"}, nil, nil).AnyTimes()
 
 	return &discoverTaskService{
 		cs:  cs,
@@ -187,8 +187,8 @@ func TestDiscoverTaskServicePopulatesCatalogName(t *testing.T) {
 	dta := vmock.NewMockDiscoverTaskAccess(ctrl)
 	cs := vmock.NewMockCatalogService(ctrl)
 	ums := vmock.NewMockUserMgmtService(ctrl)
-	// 列表按可见目录过滤（#269）；这条用例验的是名称回填，当作持类型级授权。
-	cs.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+	// This case verifies name enrichment; list authorization returns its catalog.
+	cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"catalog-1"}, nil, nil).AnyTimes()
 	cs.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil).AnyTimes()
 	cs.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
@@ -228,7 +228,7 @@ func TestDiscoverTaskServicePopulatesCatalogName(t *testing.T) {
 		dta := vmock.NewMockDiscoverTaskAccess(ctrl)
 		cs := vmock.NewMockCatalogService(ctrl)
 		ums := vmock.NewMockUserMgmtService(ctrl)
-		cs.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"catalog-1"}, nil, nil).AnyTimes()
 		service := &discoverTaskService{dta: dta, cs: cs, ums: ums}
 		tasks := []*interfaces.DiscoverTaskSummary{{ID: "task-4", CatalogID: "catalog-3"}}
 
@@ -250,7 +250,7 @@ func TestDiscoverTaskServicePopulatesCatalogName(t *testing.T) {
 		cs := vmock.NewMockCatalogService(ctrl)
 		rs := vmock.NewMockResourceService(ctrl)
 		ums := vmock.NewMockUserMgmtService(ctrl)
-		cs.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil)
+		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"catalog-1"}, nil, nil)
 		service := &discoverTaskService{dta: dta, cs: cs, rs: rs, ums: ums}
 		tasks := []*interfaces.DiscoverTaskSummary{
 			{ID: "task-5", CatalogID: "catalog-4", ResourceID: "resource-1"},

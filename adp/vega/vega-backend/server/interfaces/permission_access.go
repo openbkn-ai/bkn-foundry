@@ -27,11 +27,6 @@ const (
 	AUTH_RESOURCE_TYPE_RESOURCE       = "resource"
 	AUTH_RESOURCE_TYPE_CONNECTOR_TYPE = "connector_type"
 
-	// Internal resource type: The system's internal catalog and its affiliated resources are registered as independent types.
-	// catalog of business roles :*/resource:* Wildcard authorization does not match, only visible to the super administrator (* wildcard)
-	AUTH_RESOURCE_TYPE_INTERNAL_CATALOG  = "internal_catalog"
-	AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE = "internal_resource"
-
 	// Resource operation type
 	OPERATION_TYPE_VIEW_DETAIL = "view_detail"
 	OPERATION_TYPE_CREATE      = "create"
@@ -204,6 +199,13 @@ type PermissionResourceOps struct {
 	Operations []string `json:"operation,omitempty"`
 }
 
+// PermissionResourceParent records one concrete Resource-to-Catalog ownership
+// edge used by bkn-safe's declared hierarchy.
+type PermissionResourceParent struct {
+	ResourceID string `json:"resource_id"`
+	ParentID   string `json:"parent_id"`
+}
+
 //go:generate mockgen -source ../interfaces/permission_access.go -destination ../interfaces/mock/mock_permission_access.go
 type PermissionAccess interface {
 	CheckPermission(ctx context.Context, check PermissionCheck) (bool, error)
@@ -211,6 +213,9 @@ type PermissionAccess interface {
 
 	CreateResources(ctx context.Context, policies []PermissionPolicy) error
 	DeleteResources(ctx context.Context, resources []PermissionResource) error
+	UpsertResourceParents(ctx context.Context, resourceType, parentType string, items []PermissionResourceParent) error
+	DeleteResourceParents(ctx context.Context, resourceType string, resourceIDs []string) error
+	GetResourceParents(ctx context.Context, resourceType string, resourceIDs []string) (map[string]PermissionResourceParent, error)
 }
 
 // LocalPermissionAccess is the narrow, typed port used only by Vega's trusted

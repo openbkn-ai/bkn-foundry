@@ -75,8 +75,8 @@ func TestDiscoverTaskListPushesTheVisibleCatalogsIntoTheQuery(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, dta, cs := newSvc(ctrl)
 
-		cs.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), interfaces.OPERATION_TYPE_TASK_MANAGE).
-			Return([]string{"cat-1"}, false, nil, nil)
+		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, false, interfaces.CatalogsQueryParams{}).
+			Return([]string{"cat-1"}, nil, nil)
 		dta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
 				assert.Equal(t, []string{"cat-1"}, params.CatalogIDs)
@@ -93,8 +93,8 @@ func TestDiscoverTaskListPushesTheVisibleCatalogsIntoTheQuery(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, dta, cs := newSvc(ctrl)
 
-		cs.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).
-			Return(nil, false, nil, nil)
+		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil, nil, nil)
 		_ = dta
 
 		tasks, total, err := svc.List(context.Background(), interfaces.DiscoverTaskQueryParams{})

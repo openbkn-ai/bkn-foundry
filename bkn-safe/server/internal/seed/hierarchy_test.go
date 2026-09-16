@@ -405,7 +405,6 @@ func TestSeedPrunesWithdrawnOperations(t *testing.T) {
 	// Simulate what an older seed left behind on an upgraded deployment.
 	stale := []model.Operation{
 		{ResourceTypeID: "knowledge_network", ID: "data_query", Name: "数据查询"},
-		{ResourceTypeID: "resource", ID: "modify", Name: "修改"},
 	}
 	if err := db.Create(&stale).Error; err != nil {
 		t.Fatal(err)
@@ -432,6 +431,8 @@ func TestSeedPrunesWithdrawnOperations(t *testing.T) {
 	for _, tc := range []struct{ rtype, op string }{
 		{"resource", "view_detail"},
 		{"resource", "query_data"},
+		{"resource", "modify"},
+		{"resource", "delete"},
 		{"catalog", "resource_manage"},
 		{"knowledge_network", "query_data"},
 	} {
