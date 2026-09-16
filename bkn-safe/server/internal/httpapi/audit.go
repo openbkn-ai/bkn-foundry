@@ -446,6 +446,12 @@ func auditDetailTargetID(resource, detail string) string {
 		if id == "" {
 			id, _ = body["grant_id"].(string)
 		}
+		if id == "" {
+			grantIDs, _ := body["grant_ids"].([]any)
+			if len(grantIDs) > 0 {
+				id, _ = grantIDs[0].(string)
+			}
+		}
 		return id
 	case "explain":
 		ref, _ := body["resource"].(map[string]any)
@@ -542,11 +548,15 @@ func auditAction(method, fullPath string) string {
 			return "revoke"
 		}
 		return "grant"
+	case "/api/safe/v1/admin/object-grants/revoke":
+		return "revoke"
 	case "/api/safe/v1/me/object-grants":
 		if method == http.MethodDelete {
 			return "revoke"
 		}
 		return "grant"
+	case "/api/safe/v1/me/object-grants/revoke":
+		return "revoke"
 	case "/api/safe/v1/admin/enterprise-object-grants":
 		return "revoke"
 	case "/api/safe/v1/authz/explain":

@@ -14,8 +14,15 @@ info:
     and BKN child resources.
 
     Callers cannot choose `policy_source` or `authority_source`. The service
-    derives both from the authenticated management path. Revocation targets one
-    stable `grant_id`; it never deletes a Casbin tuple or a sibling source.
+    derives both and records the authenticated actor as `created_by`. A grant
+    is durable once written: revoking the actor's later authority prevents new
+    delegation but does not revoke already-issued grants. Revocation targets
+    stable `grant_id` values; a batch is authorized first and then removes all
+    selected sources atomically, never a Casbin tuple or an unselected sibling.
+    Unattributable direct grants classified from the official 0.1.4 permission
+    model are preserved as `legacy` / `migration` rows with
+    `created_by: migration`; only a platform administrator may manage them
+    because the earlier model did not record the actual grantor.
 servers:
   - url: /api/safe/v1
 security:
@@ -109,6 +116,22 @@ paths:
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {description: Missing or invalid bearer token}
         '403': {description: Caller cannot manage the selected source}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /admin/object-grants/revoke:
+    post:
+      operationId: revokeObjectGrantBatch
+      summary: Atomically revoke several stable Core grants
+      description: Every selected source is authorized before one transaction removes them all.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GrantIDsRequest'}
+      responses:
+        '204': {description: All selected grants were removed atomically}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {description: Missing or invalid bearer token}
+        '403': {description: Caller cannot manage one or more selected sources}
         '500': {$ref: '#/components/responses/InternalError'}
   /admin/object-grants/preview:
     post:
@@ -212,20 +235,23 @@ paths:
         '500': {$ref: '#/components/responses/InternalError'}
     post:
       operationId: setDelegatedObjectGrant
-      summary: Replace one owner-delegated Professional allow set
+      summary: Replace the caller's owner-delegated Professional allow set
       description: |
         The caller must have a final `authorize` decision on the management
         root, a final view decision on the target resource, and every requested
         operation including its direct runtime requirements. The target must be
         an enabled user. Delegates cannot write deny or authorize, target a
-        role/public accessor, or change admin, system, legacy, or bundle sources.
+        role/public accessor, or change admin, system, legacy, bundle, or an
+        owner-delegated source created by a different user. Revoking the
+        caller's later authority prevents new writes but leaves previously
+        issued grants effective.
       requestBody:
         required: true
         content:
           application/json:
             schema: {$ref: '#/components/schemas/FineGrainedGrantRequest'}
       responses:
-        '204': {description: Owner-delegated Professional source slice stored atomically}
+        '204': {description: Caller-owned owner-delegated Professional source slice stored atomically}
         '400': {description: Invalid target or request, including an unavailable fine-grained shape}
         '401': {description: Missing or invalid bearer token}
         '403': {description: Caller lacks authority or attempts escalation}
@@ -235,18 +261,35 @@ paths:
       summary: Revoke one owner-delegated Professional grant
       description: |
         Only an existing `professional_rule` allow written through
-        `owner_delegate` can establish delegated revoke authority. A missing or
-        protected stable ID returns 403 rather than revealing its lifecycle.
+        `owner_delegate` by the caller can establish delegated revoke authority.
+        A missing or protected stable ID returns 403 rather than revealing its
+        lifecycle.
       requestBody:
         required: true
         content:
           application/json:
             schema: {$ref: '#/components/schemas/GrantIDRequest'}
       responses:
-        '204': {description: Selected owner-delegated grant removed}
+        '204': {description: Selected caller-owned owner-delegated grant removed}
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {description: Missing or invalid bearer token}
         '403': {description: Caller cannot manage the selected source}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /me/object-grants/revoke:
+    post:
+      operationId: revokeDelegatedObjectGrantBatch
+      summary: Atomically revoke caller-owned owner-delegated grants
+      description: All selected records must be ordinary Professional allows created by the caller.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GrantIDsRequest'}
+      responses:
+        '204': {description: All selected caller-owned grants were removed atomically}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {description: Missing or invalid bearer token}
+        '403': {description: Caller cannot manage one or more selected sources}
         '500': {$ref: '#/components/responses/InternalError'}
   /me/grantable-users:
     get:
@@ -334,9 +377,19 @@ components:
       required: [grant_id]
       properties:
         grant_id: {type: string, minLength: 1, maxLength: 64}
+    GrantIDsRequest:
+      type: object
+      required: [grant_ids]
+      properties:
+        grant_ids:
+          type: array
+          minItems: 1
+          maxItems: 500
+          uniqueItems: true
+          items: {type: string, minLength: 1, maxLength: 64}
     GrantRecord:
       type: object
-      required: [grant_id, accessor_id, operation, effect, policy_source, authority_source, active, inherited]
+      required: [grant_id, accessor_id, operation, effect, policy_source, authority_source, created_by, active, inherited]
       properties:
         grant_id: {type: string}
         accessor_id: {type: string}
@@ -348,6 +401,9 @@ components:
         authority_source:
           type: string
           enum: [admin_authz, owner_delegate, system, migration]
+        created_by:
+          type: string
+          description: Authenticated actor that wrote this independently managed source. Unattributable direct grants migrated from official 0.1.4 use `migration` and are administrator-managed only.
         active: {type: boolean}
         inherited: {type: boolean}
     ObjectGrantSet:

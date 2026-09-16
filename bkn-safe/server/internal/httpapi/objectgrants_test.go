@@ -48,6 +48,7 @@ type ogEntry struct {
 		Operation       string `json:"operation"`
 		PolicySource    string `json:"policy_source"`
 		AuthoritySource string `json:"authority_source"`
+		CreatedBy       string `json:"created_by"`
 		Active          bool   `json:"active"`
 		Inherited       bool   `json:"inherited"`
 	} `json:"grants"`
@@ -781,6 +782,63 @@ func TestObjectGrantsOwnerMayShareOwnObject(t *testing.T) {
 	}
 }
 
+func TestObjectGrantsOwnerBatchRevokeIsAllOrNothing(t *testing.T) {
+	r, e := ownerGrantFixture(t)
+	if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants", map[string]any{
+		"accessor_id": "u-mate",
+		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"operations":  []string{"view_detail", "modify"},
+	}, "u-owner"); w.Code != http.StatusNoContent {
+		t.Fatalf("owner share = %d %s; want 204", w.Code, w.Body.String())
+	}
+	ownerViewID := oneGrantID(t, e, authz.PolicyFilter{
+		AccessorID: "u-mate", Object: "knowledge_network:kn-mine", Operation: "view_detail",
+		PolicySource: authz.PolicySourceProfessionalRule, AuthoritySource: authz.AuthoritySourceOwnerDelegate,
+		CreatedBy: "u-owner",
+	})
+	ownerModifyID := oneGrantID(t, e, authz.PolicyFilter{
+		AccessorID: "u-mate", Object: "knowledge_network:kn-mine", Operation: "modify",
+		PolicySource: authz.PolicySourceProfessionalRule, AuthoritySource: authz.AuthoritySourceOwnerDelegate,
+		CreatedBy: "u-owner",
+	})
+	if err := e.GrantProfessionalObjectPermission("u-mate", "knowledge_network", "kn-mine",
+		"task_manage", authz.EffectAllow, authz.AuthoritySourceAdminAuthz); err != nil {
+		t.Fatal(err)
+	}
+	adminID := oneGrantID(t, e, authz.PolicyFilter{
+		AccessorID: "u-mate", Object: "knowledge_network:kn-mine", Operation: "task_manage",
+		PolicySource: authz.PolicySourceProfessionalRule, AuthoritySource: authz.AuthoritySourceAdminAuthz,
+	})
+
+	// A foreign source in the request rejects the entire operation. In
+	// particular, the owner-managed record preceding it must remain intact.
+	w := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants/revoke", map[string]any{
+		"grant_ids": []string{ownerViewID, adminID},
+	}, "u-owner")
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("mixed-owner batch revoke = %d %s; want 403", w.Code, w.Body.String())
+	}
+	if ok, _ := e.Check("u-mate", "knowledge_network", "kn-mine", "view_detail"); !ok {
+		t.Fatal("rejected batch partially removed the owner source")
+	}
+
+	w = tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants/revoke", map[string]any{
+		"grant_ids": []string{ownerViewID, ownerModifyID},
+	}, "u-owner")
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("owner batch revoke = %d %s; want 204", w.Code, w.Body.String())
+	}
+	if ok, _ := e.Check("u-mate", "knowledge_network", "kn-mine", "view_detail"); ok {
+		t.Fatal("successful batch retained view_detail")
+	}
+	if ok, _ := e.Check("u-mate", "knowledge_network", "kn-mine", "modify"); ok {
+		t.Fatal("successful batch retained modify")
+	}
+	if ok, _ := e.Check("u-mate", "knowledge_network", "kn-mine", "task_manage"); !ok {
+		t.Fatal("owner batch removed the administrator source")
+	}
+}
+
 func TestObjectGrantsUseKnowledgeNetworkAsChildAuthorizationRoot(t *testing.T) {
 	r, e, db := ownerGrantFixtureWithDB(t)
 	if err := db.Create(&model.ResourceType{
@@ -1042,6 +1100,99 @@ func TestObjectGrantsAuthorizeRevocationRemovesSharingAuthority(t *testing.T) {
 	}, "u-owner")
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("sharing after authorize revocation: want 403, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+func TestObjectGrantsDelegatedGrantSurvivesGrantorRevocation(t *testing.T) {
+	r, e, _ := ownerGrantFixtureWithDB(t)
+	if err := e.GrantProfessionalObjectPermission("u-stranger", "knowledge_network", "kn-mine",
+		"view_detail", authz.EffectAllow, authz.AuthoritySourceAdminAuthz); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantProfessionalObjectPermission("u-stranger", "knowledge_network", "kn-mine",
+		"authorize", authz.EffectAllow, authz.AuthoritySourceAdminAuthz); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantProfessionalObjectPermission("u-stranger", "knowledge_network", "kn-mine",
+		"modify", authz.EffectAllow, authz.AuthoritySourceAdminAuthz); err != nil {
+		t.Fatal(err)
+	}
+
+	// B (u-stranger) creates a durable object grant for C (u-mate).
+	w := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants", map[string]any{
+		"accessor_id": "u-mate",
+		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"operations":  []string{"view_detail", "modify"},
+	}, "u-stranger")
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("delegated grant: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
+	// A second delegate's same-operation source is independent. B cannot remove
+	// it merely because both sources grant C access to the same object.
+	w = tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants", map[string]any{
+		"accessor_id": "u-mate",
+		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"operations":  []string{"view_detail"},
+	}, "u-owner")
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("second delegated grant: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
+	ownerGrantID := oneGrantID(t, e, authz.PolicyFilter{
+		AccessorID: "u-mate", Object: "knowledge_network:kn-mine", Operation: "view_detail",
+		PolicySource: authz.PolicySourceProfessionalRule, AuthoritySource: authz.AuthoritySourceOwnerDelegate,
+		CreatedBy: "u-owner",
+	})
+	w = tokReq(t, r, http.MethodDelete, "/api/safe/v1/me/object-grants", map[string]any{
+		"grant_id": ownerGrantID,
+	}, "u-stranger")
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("B deleting another delegate source: want 403, got %d (%s)", w.Code, w.Body.String())
+	}
+
+	records, err := e.PolicyRecords(authz.PolicyFilter{
+		AccessorID: "u-mate", Object: "knowledge_network:kn-mine",
+		PolicySource: authz.PolicySourceProfessionalRule, AuthoritySource: authz.AuthoritySourceOwnerDelegate,
+		CreatedBy: "u-stranger",
+	})
+	if err != nil || len(records) != 2 {
+		t.Fatalf("delegated records = %+v, %v; want two records created by B", records, err)
+	}
+
+	// Revoking B's own object grants prevents future delegation only. C's
+	// previously issued, independently persisted grants stay effective.
+	grantorRecords, err := e.PolicyRecords(authz.PolicyFilter{
+		AccessorID: "u-stranger", Object: "knowledge_network:kn-mine",
+		PolicySource: authz.PolicySourceProfessionalRule, AuthoritySource: authz.AuthoritySourceAdminAuthz,
+	})
+	if err != nil || len(grantorRecords) != 3 {
+		t.Fatalf("B grant records = %+v, %v; want three records", grantorRecords, err)
+	}
+	for _, record := range grantorRecords {
+		if _, err := e.RevokePolicy(record.GrantID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if ok, _ := e.Check("u-stranger", "knowledge_network", "kn-mine", "authorize"); ok {
+		t.Fatal("B retained authorize after revocation")
+	}
+	if ok, _ := e.Check("u-mate", "knowledge_network", "kn-mine", "view_detail"); !ok {
+		t.Fatal("C lost its durable delegated view permission")
+	}
+	if ok, _ := e.Check("u-mate", "knowledge_network", "kn-mine", "modify"); !ok {
+		t.Fatal("C lost its durable delegated modify permission")
+	}
+
+	entries := listObjectGrants(t, r, "?accessor_id=u-mate")
+	grantorSourceCount := 0
+	if len(entries) == 1 {
+		for _, grant := range entries[0].Grants {
+			if grant.CreatedBy == "u-stranger" {
+				grantorSourceCount++
+			}
+		}
+	}
+	if len(entries) != 1 || len(entries[0].Grants) != 3 || grantorSourceCount != 2 {
+		t.Fatalf("grant listing lost B provenance: %+v", entries)
 	}
 }
 

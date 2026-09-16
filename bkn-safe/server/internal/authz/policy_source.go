@@ -92,8 +92,12 @@ type PolicyRecord struct {
 
 // PolicyFilter narrows a provenance listing. Zero fields match every grant.
 type PolicyFilter struct {
-	GrantID         string
-	AccessorID      string
+	GrantID    string
+	AccessorID string
+	// CreatedBy identifies the authenticated actor that authored a source.
+	// It deliberately does not participate in the Casbin projection: multiple
+	// actors may independently grant the same tuple to one subject.
+	CreatedBy       string
 	Object          string
 	Operation       string
 	Effect          string
@@ -236,6 +240,20 @@ func deterministicPolicyGrant(sub, object, operation, effect string, source Poli
 	}
 }
 
+// deterministicPolicyGrantBy creates an independently revocable source for
+// one concrete grantor. The projection key intentionally remains independent
+// of createdBy, so Casbin continues to carry one runtime policy for identical
+// grants from multiple actors.
+func deterministicPolicyGrantBy(sub, object, operation, effect string, source PolicySource, authority AuthoritySource, createdBy string) PolicyGrant {
+	grantIDSeed := deterministicGrantID(sub, object, operation, effect, source, authority) + "\x00" + createdBy
+	grantIDHash := sha256.Sum256([]byte(grantIDSeed))
+	return PolicyGrant{
+		GrantID:    hex.EncodeToString(grantIDHash[:]),
+		AccessorID: sub, Object: object, Operation: operation, Effect: effect,
+		PolicySource: source, AuthoritySource: authority, CreatedBy: createdBy,
+	}
+}
+
 func grantModel(grant PolicyGrant) safemodel.AuthorizationGrant {
 	return safemodel.AuthorizationGrant{
 		GrantID: grant.GrantID,
@@ -359,6 +377,9 @@ func applyPolicyFilter(q *gorm.DB, filter PolicyFilter) *gorm.DB {
 	}
 	if filter.AccessorID != "" {
 		q = q.Where("accessor_id = ?", filter.AccessorID)
+	}
+	if filter.CreatedBy != "" {
+		q = q.Where("created_by = ?", filter.CreatedBy)
 	}
 	if filter.Object != "" {
 		q = q.Where("object = ?", filter.Object)
@@ -627,9 +648,10 @@ func (en *Enforcer) RemoveCommunityBundle(accessorID, resourceType, resourceID s
 	return removed > 0, err
 }
 
-// SetProfessionalObjectPermissions replaces only one trusted source slice. An
-// owner save cannot delete an administrator rule, and neither can touch a
-// bundle, legacy, system-derived or role row.
+// SetProfessionalObjectPermissions replaces the authority-scoped slice managed
+// by the original internal writer. New request paths must use
+// SetProfessionalObjectPermissionsBy so independently authored grants do not
+// overwrite each other.
 func (en *Enforcer) SetProfessionalObjectPermissions(accessorID, resourceType, resourceID string, operations []string, effect string, authority AuthoritySource) error {
 	if authority != AuthoritySourceAdminAuthz && authority != AuthoritySourceOwnerDelegate {
 		return fmt.Errorf("professional rule authority %q is not permitted", authority)
@@ -640,7 +662,7 @@ func (en *Enforcer) SetProfessionalObjectPermissions(accessorID, resourceType, r
 	return en.Transaction(context.Background(), func(tx *PolicyTransaction) error {
 		filter := PolicyFilter{
 			AccessorID: accessorID, Object: obj(resourceType, resourceID), Effect: effect,
-			PolicySource: PolicySourceProfessionalRule, AuthoritySource: authority,
+			PolicySource: PolicySourceProfessionalRule, AuthoritySource: authority, CreatedBy: string(authority),
 		}
 		desired := make([]PolicyGrant, 0, len(operations))
 		for _, operation := range operations {
@@ -651,9 +673,36 @@ func (en *Enforcer) SetProfessionalObjectPermissions(accessorID, resourceType, r
 	})
 }
 
-// RemoveProfessionalObjectPermissions removes only the slice managed by one
-// trusted authority. In particular, an owner revoke cannot erase an
-// administrator's deny or allow for the same tuple.
+// SetProfessionalObjectPermissionsBy replaces only the source slice created
+// by one authenticated actor. Losing authorize later prevents that actor from
+// creating new grants, but does not alter grants already received by others.
+func (en *Enforcer) SetProfessionalObjectPermissionsBy(accessorID, resourceType, resourceID string, operations []string, effect string, authority AuthoritySource, createdBy string) error {
+	if authority != AuthoritySourceAdminAuthz && authority != AuthoritySourceOwnerDelegate {
+		return fmt.Errorf("professional rule authority %q is not permitted", authority)
+	}
+	if effect != EffectAllow && effect != EffectDeny {
+		return fmt.Errorf("invalid policy effect %q", effect)
+	}
+	if strings.TrimSpace(createdBy) == "" || len(createdBy) > 64 {
+		return fmt.Errorf("invalid grant creator")
+	}
+	return en.Transaction(context.Background(), func(tx *PolicyTransaction) error {
+		filter := PolicyFilter{
+			AccessorID: accessorID, Object: obj(resourceType, resourceID), Effect: effect,
+			PolicySource: PolicySourceProfessionalRule, AuthoritySource: authority, CreatedBy: createdBy,
+		}
+		desired := make([]PolicyGrant, 0, len(operations))
+		for _, operation := range operations {
+			desired = append(desired, deterministicPolicyGrantBy(accessorID, obj(resourceType, resourceID), operation,
+				effect, PolicySourceProfessionalRule, authority, createdBy))
+		}
+		return tx.enforcer.replacePolicyGrantSlice(filter, desired)
+	})
+}
+
+// RemoveProfessionalObjectPermissions removes only the source slice written by
+// the original authority-scoped internal writer. Actor-scoped request paths
+// revoke their stable grant IDs instead.
 func (en *Enforcer) RemoveProfessionalObjectPermissions(accessorID, resourceType, resourceID, effect string, authority AuthoritySource) (int, error) {
 	if authority != AuthoritySourceAdminAuthz && authority != AuthoritySourceOwnerDelegate {
 		return 0, fmt.Errorf("professional rule authority %q is not permitted", authority)
@@ -666,7 +715,7 @@ func (en *Enforcer) RemoveProfessionalObjectPermissions(accessorID, resourceType
 		var err error
 		removed, err = tx.enforcer.removePolicyGrants(PolicyFilter{
 			AccessorID: accessorID, Object: obj(resourceType, resourceID), Effect: effect,
-			PolicySource: PolicySourceProfessionalRule, AuthoritySource: authority,
+			PolicySource: PolicySourceProfessionalRule, AuthoritySource: authority, CreatedBy: string(authority),
 		})
 		return err
 	})
@@ -704,6 +753,28 @@ func (en *Enforcer) RevokePolicy(grantID string) (bool, error) {
 		var err error
 		removed, _, err = tx.enforcer.revokePolicyGrant(grantID)
 		return err
+	})
+	return removed, err
+}
+
+// RevokePolicies atomically removes independently managed grant identities.
+// Callers are responsible for authorizing every ID before invoking it.
+func (en *Enforcer) RevokePolicies(grantIDs []string) (int, error) {
+	if len(grantIDs) == 0 {
+		return 0, errors.New("at least one grant id is required")
+	}
+	removed := 0
+	err := en.Transaction(context.Background(), func(tx *PolicyTransaction) error {
+		for _, grantID := range grantIDs {
+			deleted, err := tx.RevokePolicy(grantID)
+			if err != nil {
+				return err
+			}
+			if deleted {
+				removed++
+			}
+		}
+		return nil
 	})
 	return removed, err
 }
