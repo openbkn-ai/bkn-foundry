@@ -52,8 +52,7 @@ func (h *authorizationResourceHandler) ListAuthorizationResources(c *gin.Context
 		return
 	}
 
-	order := ormhelper.SortOrder(direction)
-	sortParams := &ormhelper.SortParams{Fields: []ormhelper.SortField{{Field: "f_name", Order: order}}}
+	sortParams := authorizationResourceSort(resourceType, ormhelper.SortOrder(direction))
 	var result authorizationResourceList
 	switch resourceType {
 	case "tool_box", "function":
@@ -105,6 +104,22 @@ func (h *authorizationResourceHandler) ListAuthorizationResources(c *gin.Context
 		result.Entries = []AuthorizationResource{}
 	}
 	rest.ReplyOK(c, http.StatusOK, result)
+}
+
+// authorizationResourceSort makes offset pagination deterministic when several
+// resources share a name. The resource ID is unique within each resource type.
+func authorizationResourceSort(resourceType string, order ormhelper.SortOrder) *ormhelper.SortParams {
+	idField := "f_skill_id"
+	switch resourceType {
+	case "tool_box", "function":
+		idField = "f_box_id"
+	case "mcp":
+		idField = "f_mcp_id"
+	}
+	return &ormhelper.SortParams{Fields: []ormhelper.SortField{
+		{Field: "f_name", Order: order},
+		{Field: idField, Order: order},
+	}}
 }
 
 func authorizationResourcePage(c *gin.Context) (int, int, error) {

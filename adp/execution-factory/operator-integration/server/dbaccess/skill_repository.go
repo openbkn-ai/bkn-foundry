@@ -229,12 +229,7 @@ func (s *skillRepositoryDB) CountByWhereClause(ctx context.Context, tx *sql.Tx, 
 	}
 	query := orm.Select().From(tbSkillRepository)
 	query = s.applyFilterConditions(query, filter)
-	list := []*model.SkillRepositoryDB{}
-	err = query.Get(ctx, &list)
-	if err != nil {
-		return 0, err
-	}
-	return int64(len(list)), nil
+	return query.Count(ctx)
 }
 
 func (s *skillRepositoryDB) DeleteSkillByID(ctx context.Context, tx *sql.Tx, skillID string) error {
