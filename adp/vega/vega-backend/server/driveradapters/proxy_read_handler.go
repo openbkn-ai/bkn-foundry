@@ -92,19 +92,11 @@ func (r *restHandler) GetResourceSchemaByProxy(c *gin.Context) {
 	ctx = interfaces.WithTrustedProxyRead(ctx)
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: request.ProxyID, Type: request.ProxyType})
 
-	resource, err := r.rs.InternalGetByID(ctx, nil, request.TargetID)
-	if err != nil {
-		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError_GetFailed)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
+	resource, ok := r.loadProxyResource(c, ctx, span, request)
+	if !ok {
 		return
 	}
-	if resource == nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
+	r.recordProxyReadAudit(ctx, request, "allow", "")
 
 	schema := resource.SchemaDefinition
 	if schema == nil {
@@ -129,7 +121,37 @@ func (r *restHandler) PostResourceDataByProxy(c *gin.Context) {
 	}
 	ctx = interfaces.WithTrustedProxyRead(ctx)
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: request.ProxyID, Type: request.ProxyType})
-	r.queryProxyResourceData(c, ctx, span)
+	resource, ok := r.loadProxyResource(c, ctx, span, request)
+	if !ok {
+		return
+	}
+	r.recordProxyReadAudit(ctx, request, "allow", "")
+	r.queryProxyResourceData(c, ctx, span, resource)
+}
+
+func (r *restHandler) loadProxyResource(c *gin.Context, ctx context.Context, span trace.Span,
+	request interfaces.ProxyReadContext) (*interfaces.Resource, bool) {
+	resource, err := r.rs.InternalGetByID(ctx, nil, request.TargetID)
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError_GetFailed)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return nil, false
+	}
+	if resource == nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return nil, false
+	}
+	if resource.Internal && !interfaces.IsBuiltinAdmin(ctx) {
+		r.recordProxyReadAudit(ctx, request, "deny", "internal_resource")
+		httpErr := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return nil, false
+	}
+	return resource, true
 }
 
 func proxyReadContextFromHeaders(c *gin.Context, expectedOperation string) (interfaces.ProxyReadContext, error) {
@@ -193,7 +215,6 @@ func (r *restHandler) authorizeProxyRead(
 	}
 	err := r.pas.Authorize(ctx, request)
 	if err == nil {
-		r.recordProxyReadAudit(ctx, request, "allow", "")
 		return true
 	}
 	if errors.Is(err, interfaces.ErrProxyAuthorizationDenied) {

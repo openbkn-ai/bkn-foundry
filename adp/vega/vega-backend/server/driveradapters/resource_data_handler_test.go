@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -52,6 +53,14 @@ func setupResourceDataHandlerTestWithPermission(
 	rs := vmock.NewMockResourceService(mockCtrl)
 	rs.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), interfaces.OPERATION_TYPE_QUERY_DATA).
 		Return(permErr).AnyTimes()
+	rs.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), interfaces.OPERATION_TYPE_DATA_WRITE).
+		Return(nil).AnyTimes()
+	// Keep the existing endpoint fixtures focused on response behavior while
+	// the production path loads the already-authorized Resource internally.
+	rs.EXPECT().InternalGetByID(gomock.Any(), gomock.Nil(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, _ *sql.Tx, id string) (*interfaces.Resource, error) {
+			return rs.GetByID(ctx, id)
+		}).AnyTimes()
 	ds := vmock.NewMockDatasetService(mockCtrl)
 	rds := vmock.NewMockResourceDataService(mockCtrl)
 	handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, nil, ds, nil, nil, nil, rds)
@@ -417,6 +426,54 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 
 		require.Equal(t, http.StatusNotFound, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), "VegaBackend.Resource.NotFound")
+	})
+}
+
+func TestResourceDataOperationsDoNotRequireViewDetail(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	t.Run("query uses query_data", func(t *testing.T) {
+		engine := gin.New()
+		ctrl := gomock.NewController(t)
+		rs := vmock.NewMockResourceService(ctrl)
+		rds := vmock.NewMockResourceDataService(ctrl)
+		resource := sampleDatasetResource()
+		rs.EXPECT().CheckResourcePermission(gomock.Any(), "res-1", interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), gomock.Nil(), "res-1").Return(resource, nil)
+		rds.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).
+			Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{}}, nil)
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, nil, nil, nil, nil, nil, rds)
+		handler.RegisterPublic(engine)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(`{}`))
+		req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("document create uses data_write", func(t *testing.T) {
+		engine := gin.New()
+		ctrl := gomock.NewController(t)
+		rs := vmock.NewMockResourceService(ctrl)
+		ds := vmock.NewMockDatasetService(ctrl)
+		resource := sampleDatasetResource()
+		rs.EXPECT().CheckResourcePermission(gomock.Any(), "res-1", interfaces.OPERATION_TYPE_DATA_WRITE).Return(nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), gomock.Nil(), "res-1").Return(resource, nil)
+		ds.EXPECT().CreateDocument(gomock.Any(), resource, gomock.Any()).Return("doc-1", nil)
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, nil, ds, nil, nil, nil, nil)
+		handler.RegisterPublic(engine)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(`{"name":"row"}`))
+		req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodPost)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusCreated, w.Code)
 	})
 }
 

@@ -689,6 +689,28 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
 		assert.Nil(t, result)
 	})
+	t.Run("rejects internal catalog for non-admin", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ca := mock_interfaces.NewMockCatalogAccess(ctrl)
+		ps := mock_interfaces.NewMockPermissionService(ctrl)
+		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			ID:   "internal-catalog",
+		}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+		ca.EXPECT().GetByID(gomock.Any(), "internal-catalog").Return(&interfaces.Catalog{
+			ID:       "internal-catalog",
+			Internal: true,
+		}, nil)
+
+		cs := &catalogService{ca: ca, ps: ps}
+		result, err := cs.TestConnection(context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+			interfaces.AccountInfo{ID: "regular-user", Type: interfaces.ACCESSOR_TYPE_USER}), "internal-catalog")
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
+		assert.Nil(t, result)
+	})
 	t.Run("redacts catalog query error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		ca := mock_interfaces.NewMockCatalogAccess(ctrl)

@@ -6,6 +6,8 @@ package permission
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -49,4 +51,52 @@ func TestSafePermissionAccessResourceParents(t *testing.T) {
 		"DELETE /api/safe/v1/authz/resource-parents",
 		"GET /api/safe/v1/authz/resource-parents",
 	}, requests)
+}
+
+func TestSafePermissionAccessResourceParentsBatches(t *testing.T) {
+	putBatchSizes := make([]int, 0, 3)
+	deleteBatchSizes := make([]int, 0, 3)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPut:
+			var body struct {
+				Items []interfaces.PermissionResourceParent `json:"items"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			putBatchSizes = append(putBatchSizes, len(body.Items))
+		case http.MethodDelete:
+			var body struct {
+				ResourceIDs []string `json:"resource_ids"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			deleteBatchSizes = append(deleteBatchSizes, len(body.ResourceIDs))
+		default:
+			http.Error(w, "unexpected method", http.StatusMethodNotAllowed)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	items := make([]interfaces.PermissionResourceParent, resourceParentBatchSize*2+1)
+	ids := make([]string, len(items), len(items)+1)
+	for i := range items {
+		id := fmt.Sprintf("resource-%d", i)
+		items[i] = interfaces.PermissionResourceParent{ResourceID: id, ParentID: "catalog-1"}
+		ids[i] = id
+	}
+	ids = append(ids, ids[0]) // Duplicate IDs must not consume another batch slot.
+
+	access := NewPermissionAccess(&common.AppSetting{BknSafeURL: server.URL})
+	require.NoError(t, access.UpsertResourceParents(context.Background(), "resource", "catalog", items))
+	require.NoError(t, access.DeleteResourceParents(context.Background(), "resource", ids))
+
+	assert.Equal(t, []int{resourceParentBatchSize, resourceParentBatchSize, 1}, putBatchSizes)
+	assert.Equal(t, []int{resourceParentBatchSize, resourceParentBatchSize, 1}, deleteBatchSizes)
 }

@@ -127,6 +127,9 @@ type safePermissionAccess struct {
 	safe *safeClient
 }
 
+// bkn-safe caps ResourceParent mutations at 1,000 items per request.
+const resourceParentBatchSize = 1000
+
 // NewPermissionAccess creates the bkn-safe authorization adapter from the
 // validated application setting.
 func NewPermissionAccess(appSetting *common.AppSetting) interfaces.PermissionAccess {
@@ -214,24 +217,37 @@ func (s *safePermissionAccess) DeleteResources(ctx context.Context, resources []
 
 func (s *safePermissionAccess) UpsertResourceParents(ctx context.Context, resourceType, parentType string,
 	items []interfaces.PermissionResourceParent) error {
-	if len(items) == 0 {
-		return nil
+	for start := 0; start < len(items); start += resourceParentBatchSize {
+		end := start + resourceParentBatchSize
+		if end > len(items) {
+			end = len(items)
+		}
+		if err := s.safe.do(ctx, http.MethodPut, "/api/safe/v1/authz/resource-parents", map[string]any{
+			"resource_type": resourceType,
+			"parent_type":   parentType,
+			"items":         items[start:end],
+		}, nil); err != nil {
+			return err
+		}
 	}
-	return s.safe.do(ctx, http.MethodPut, "/api/safe/v1/authz/resource-parents", map[string]any{
-		"resource_type": resourceType,
-		"parent_type":   parentType,
-		"items":         items,
-	}, nil)
+	return nil
 }
 
 func (s *safePermissionAccess) DeleteResourceParents(ctx context.Context, resourceType string, resourceIDs []string) error {
-	if len(resourceIDs) == 0 {
-		return nil
+	resourceIDs = uniqueStrings(resourceIDs)
+	for start := 0; start < len(resourceIDs); start += resourceParentBatchSize {
+		end := start + resourceParentBatchSize
+		if end > len(resourceIDs) {
+			end = len(resourceIDs)
+		}
+		if err := s.safe.do(ctx, http.MethodDelete, "/api/safe/v1/authz/resource-parents", map[string]any{
+			"resource_type": resourceType,
+			"resource_ids":  resourceIDs[start:end],
+		}, nil); err != nil {
+			return err
+		}
 	}
-	return s.safe.do(ctx, http.MethodDelete, "/api/safe/v1/authz/resource-parents", map[string]any{
-		"resource_type": resourceType,
-		"resource_ids":  uniqueStrings(resourceIDs),
-	}, nil)
+	return nil
 }
 
 // GetResourceParents reads only the supplied child IDs. The bkn-safe endpoint

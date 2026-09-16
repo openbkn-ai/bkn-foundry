@@ -1123,19 +1123,30 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 
 	// The database is the source of truth. Permission cleanup is best-effort
 	// after commit and must not turn a completed deletion into an API error.
-	cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), catalogPermissionCleanupTimeout)
-	defer cancelCleanup()
 	if len(impact.ResourceIDs) > 0 {
-		if cleanupErr := cs.ps.DeleteResourceParents(cleanupCtx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, impact.ResourceIDs); cleanupErr != nil {
+		parentCleanupCtx, cancelParentCleanup := context.WithTimeout(
+			context.WithoutCancel(ctx), catalogPermissionCleanupTimeout)
+		if cleanupErr := cs.ps.DeleteResourceParents(parentCleanupCtx,
+			interfaces.AUTH_RESOURCE_TYPE_RESOURCE, impact.ResourceIDs); cleanupErr != nil {
 			logger.Errorf("delete catalog %s: delete resource parent relations failed: %v", id, cleanupErr)
 		}
-		if cleanupErr := cs.ps.DeleteResources(cleanupCtx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, impact.ResourceIDs); cleanupErr != nil {
+		cancelParentCleanup()
+
+		resourceCleanupCtx, cancelResourceCleanup := context.WithTimeout(
+			context.WithoutCancel(ctx), catalogPermissionCleanupTimeout)
+		if cleanupErr := cs.ps.DeleteResources(resourceCleanupCtx,
+			interfaces.AUTH_RESOURCE_TYPE_RESOURCE, impact.ResourceIDs); cleanupErr != nil {
 			logger.Errorf("delete catalog %s: delete resource permissions failed: %v", id, cleanupErr)
 		}
+		cancelResourceCleanup()
 	}
-	if cleanupErr := cs.ps.DeleteResources(cleanupCtx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{id}); cleanupErr != nil {
+	catalogCleanupCtx, cancelCatalogCleanup := context.WithTimeout(
+		context.WithoutCancel(ctx), catalogPermissionCleanupTimeout)
+	if cleanupErr := cs.ps.DeleteResources(catalogCleanupCtx,
+		interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{id}); cleanupErr != nil {
 		logger.Errorf("delete catalog %s: delete catalog permission failed: %v", id, cleanupErr)
 	}
+	cancelCatalogCleanup()
 
 	span.SetStatus(codes.Ok, "")
 	return nil
@@ -1205,6 +1216,10 @@ func (cs *catalogService) TestConnection(ctx context.Context, catalogID string) 
 	}
 	if catalog == nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+	}
+	if catalog.Internal && !interfaces.IsBuiltinAdmin(ctx) {
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails("internal catalogs are restricted to the built-in administrator")
 	}
 
 	result, err := cs.testCatalogConnection(ctx, catalog)

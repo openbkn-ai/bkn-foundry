@@ -219,6 +219,56 @@ func TestRestHandlerPostResourceDataByProxy(t *testing.T) {
 	}
 }
 
+func TestRestHandlerProxyReadRejectsInternalResource(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	for _, test := range []struct {
+		name      string
+		method    string
+		url       string
+		operation string
+		childType string
+		body      string
+	}{
+		{
+			name:      "schema",
+			method:    http.MethodGet,
+			url:       "/api/vega-backend/in/v1/proxy/resources/resource-1/schema",
+			operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+			childType: interfaces.ProxyChildTypeObjectType,
+		},
+		{
+			name:      "data",
+			method:    http.MethodPost,
+			url:       "/api/vega-backend/in/v1/proxy/resources/resource-1/data",
+			operation: interfaces.OPERATION_TYPE_QUERY_DATA,
+			childType: interfaces.ProxyChildTypeMetric,
+			body:      `{}`,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			engine, _, rs, _, pas, audit := setupProxyReadHandlerTest(t, nil)
+			rs.EXPECT().InternalGetByID(gomock.Any(), gomock.Nil(), "resource-1").
+				Return(&interfaces.Resource{ID: "resource-1", Internal: true}, nil)
+
+			req := httptest.NewRequest(test.method, test.url, strings.NewReader(test.body))
+			setProxyReadHeaders(req, test.operation, test.childType)
+			if test.operation == interfaces.OPERATION_TYPE_QUERY_DATA {
+				req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+			}
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusForbidden, w.Code)
+			require.Len(t, pas.requests, 1)
+			require.Len(t, audit.events, 1)
+			assert.Equal(t, "deny", audit.events[0].Decision)
+			assert.Equal(t, "internal_resource", audit.events[0].Reason)
+		})
+	}
+}
+
 func TestRestHandlerProxyRouteWhitelist(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
