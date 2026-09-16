@@ -57,11 +57,7 @@ type CatalogService interface {
 
 	// CheckCatalogPermission checks bkn-safe permission for a catalog ID. When
 	// getCatalog is true, it also returns the existing, non-sensitive catalog.
-	CheckCatalogPermission(ctx context.Context, catalogID string, ops []string,
-		getCatalog bool) (bool, *Catalog, error)
-	// CheckTaskPermission is retained temporarily while task services migrate to
-	// CheckCatalogPermission.
-	CheckTaskPermission(ctx context.Context, catalogID string, op string) error
+	CheckCatalogPermission(ctx context.Context, catalogID string, ops []string, getCatalog bool) (bool, *Catalog, error)
 
 	// InternalGetByID retrieves a Catalog by ID for internal workers.
 	InternalGetByID(ctx context.Context, id string, withSensitiveFields bool) (*Catalog, error)

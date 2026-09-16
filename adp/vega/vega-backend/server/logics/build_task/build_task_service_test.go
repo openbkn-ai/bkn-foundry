@@ -297,8 +297,8 @@ func TestBuildTaskServiceGetByID(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).
-			Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
+			Return(true, nil, nil)
 		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
 		service := &buildTaskService{bta: mockBTA, cs: mockCS, rs: mockRS, ums: mockUMS}
 		task := &interfaces.BuildTask{ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1"}
@@ -319,8 +319,8 @@ func TestBuildTaskServiceGetByID(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "", interfaces.OPERATION_TYPE_TASK_MANAGE).
-			Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
+			Return(true, nil, nil)
 		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
 		service := &buildTaskService{bta: mockBTA, cs: mockCS, rs: mockRS, ums: mockUMS}
 		task := &interfaces.BuildTask{ID: "task-2"}
@@ -368,8 +368,8 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).
-			Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
+			Return(true, nil, nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		validator := &analyzerValidatingIndexManager{}
 		service := &buildTaskService{
@@ -406,7 +406,8 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
+			Return(true, nil, nil)
 		service := &buildTaskService{rs: mockRS, cs: mockCS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
@@ -426,7 +427,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 		service := &buildTaskService{rs: mockRS, cs: mockCS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
@@ -464,7 +465,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 		service := &buildTaskService{rs: mockRS, cs: mockCS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
@@ -485,7 +486,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
 		resource := buildTaskTestResource()
 		resource.SchemaDefinition = append(resource.SchemaDefinition,
@@ -506,7 +507,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 		service := &buildTaskService{rs: mockRS, cs: mockCS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
@@ -527,7 +528,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 		service := &buildTaskService{cs: mockCS, rs: mockRS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
@@ -548,7 +549,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
 
@@ -577,7 +578,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
 		resource := buildTaskTestResource()
 		resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
@@ -610,7 +611,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		service := &buildTaskService{
 			cs:         mockCS,
@@ -640,7 +641,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 		service := &buildTaskService{rs: mockRS, cs: mockCS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
@@ -662,7 +663,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
@@ -732,7 +733,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
@@ -793,7 +794,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
@@ -854,7 +855,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
@@ -933,7 +934,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
@@ -1064,7 +1065,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 			ID: "task-1", CatalogID: "catalog-1", Status: interfaces.BuildTaskStatusFailed,
 			ExecuteType: interfaces.BuildTaskExecuteTypeFull,
 		}, nil)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 
 		err := service.Start(context.Background(), "task-1", false)
 
@@ -1090,9 +1091,8 @@ func TestBuildTaskServiceStart(t *testing.T) {
 		}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), task.ID).Return(task, nil)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), task.CatalogID, interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
-		mockCS.EXPECT().GetByID(gomock.Any(), task.CatalogID, false).
-			Return(&interfaces.Catalog{ID: task.CatalogID, Enabled: true}, nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), task.CatalogID, []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
+			Return(true, &interfaces.Catalog{ID: task.CatalogID, Enabled: true}, nil)
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
 		mockRS.EXPECT().GetByID(gomock.Any(), resource.ID).Return(resource, nil)
 
@@ -1107,7 +1107,8 @@ func TestBuildTaskServiceStart(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
+			Return(true, &interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		service := &buildTaskService{
 			cs:         mockCS,
@@ -1123,8 +1124,6 @@ func TestBuildTaskServiceStart(t *testing.T) {
 			IndexConfig: mustBuildTaskIndexConfig(t, resource),
 		}
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
-			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
 		mockBTA.EXPECT().MarkPending(gomock.Any(), nil, "task-1", true).Return(true, nil)
@@ -1140,7 +1139,8 @@ func TestBuildTaskServiceStart(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
+			Return(true, &interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		service := &buildTaskService{cs: mockCS, bta: mockBTA}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{
@@ -1160,7 +1160,8 @@ func TestBuildTaskServiceStart(t *testing.T) {
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
+			Return(true, &interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
 		resource := buildTaskTestResource()
 
@@ -1173,8 +1174,6 @@ func TestBuildTaskServiceStart(t *testing.T) {
 			IndexName:   "vega-build-test-index",
 			IndexConfig: mustBuildTaskIndexConfig(t, resource),
 		}, nil)
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
-			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
 
@@ -1186,7 +1185,8 @@ func TestBuildTaskServiceStart(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
+			Return(true, &interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
 
@@ -1198,8 +1198,6 @@ func TestBuildTaskServiceStart(t *testing.T) {
 			IndexConfig: mustBuildTaskIndexConfig(t, resource),
 		}
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
-			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
 		mockBTA.EXPECT().MarkPending(gomock.Any(), nil, "task-1", false).Return(false, nil)
@@ -1214,7 +1212,8 @@ func TestBuildTaskServiceStart(t *testing.T) {
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
+			Return(true, &interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
 		service := &buildTaskService{cs: mockCS, bta: mockBTA, rs: mockRS}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
@@ -1224,8 +1223,6 @@ func TestBuildTaskServiceStart(t *testing.T) {
 				Status:    interfaces.BuildTaskStatusStopped,
 				IndexName: "vega-build-test-index",
 			}, nil)
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
-			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
 
 		err := service.Start(context.Background(), "task-1", false)
 		assertCatalogDisabledError(t, err)
@@ -1235,7 +1232,8 @@ func TestBuildTaskServiceStart(t *testing.T) {
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
+			Return(true, &interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
 		service := &buildTaskService{cs: mockCS, bta: mockBTA, rs: mockRS}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
@@ -1245,8 +1243,6 @@ func TestBuildTaskServiceStart(t *testing.T) {
 				Status:    interfaces.BuildTaskStatusFailed,
 				IndexName: "vega-build-test-index",
 			}, nil)
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
-			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
 
 		err := service.Start(context.Background(), "task-1", false)
 		assertCatalogDisabledError(t, err)
@@ -1257,7 +1253,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 			mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 			mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
 			mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
-			mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+			mockCSAuth.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 			service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 
 			mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
@@ -1272,7 +1268,8 @@ func TestBuildTaskServiceStart(t *testing.T) {
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
+			Return(true, &interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		service := &buildTaskService{cs: mockCS, bta: mockBTA, rs: mockRS}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
@@ -1283,8 +1280,6 @@ func TestBuildTaskServiceStart(t *testing.T) {
 				Status:     interfaces.BuildTaskStatusStopped,
 				IndexName:  "vega-build-test-index",
 			}, nil)
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
-			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, error) {
 				if params.ResourceID != "resource-1" {
@@ -1304,7 +1299,8 @@ func TestBuildTaskServiceStart(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
+			Return(true, &interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
 		originalResource := buildTaskTestResource()
@@ -1326,8 +1322,6 @@ func TestBuildTaskServiceStart(t *testing.T) {
 			IndexName:   "vega-build-test-index",
 			IndexConfig: mustBuildTaskIndexConfig(t, originalResource),
 		}, nil)
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
-			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(currentResource, nil)
 
@@ -1338,7 +1332,8 @@ func TestBuildTaskServiceStart(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
+			Return(true, &interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
 		resource := buildTaskTestResource()
@@ -1353,8 +1348,6 @@ func TestBuildTaskServiceStart(t *testing.T) {
 			IndexConfig: mustBuildTaskIndexConfig(t, resource),
 		}
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
-			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
 		mockBTA.EXPECT().MarkPending(gomock.Any(), nil, "task-1", false).Return(true, nil)
@@ -1382,8 +1375,8 @@ func TestBuildTaskServiceStart(t *testing.T) {
 		}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
+			Return(true, &interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
 		mockBTA.EXPECT().MarkPending(gomock.Any(), nil, "task-1", false).Return(true, nil)
@@ -1394,7 +1387,8 @@ func TestBuildTaskServiceStart(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
+			Return(true, &interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		validator := &analyzerValidatingIndexManager{}
 		service := &buildTaskService{
@@ -1433,8 +1427,6 @@ func TestBuildTaskServiceStart(t *testing.T) {
 			}(),
 		}
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
-			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
 
@@ -1495,7 +1487,7 @@ func TestBuildTaskServiceStop(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
 		mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCSAuth.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
@@ -1509,7 +1501,7 @@ func TestBuildTaskServiceStop(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
 		mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCSAuth.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
@@ -1523,7 +1515,7 @@ func TestBuildTaskServiceStop(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
 		mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		mockCSAuth.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
@@ -1540,7 +1532,7 @@ func TestBuildTaskServiceStop(t *testing.T) {
 			mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 			mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
 			mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
-			mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+			mockCSAuth.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 			service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 
 			mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
@@ -1553,6 +1545,24 @@ func TestBuildTaskServiceStop(t *testing.T) {
 }
 
 func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
+	t.Run("checks a shared catalog only once", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		cs := mock_interfaces.NewMockCatalogService(ctrl)
+		service := &buildTaskService{bta: bta, cs: cs}
+
+		ids := []string{"t1", "t2"}
+		bta.EXPECT().GetByIDs(gomock.Any(), ids).Return(map[string]*interfaces.BuildTask{
+			"t1": {ID: "t1", CatalogID: "catalog-1", Status: interfaces.BuildTaskStatusCompleted},
+			"t2": {ID: "t2", CatalogID: "catalog-1", Status: interfaces.BuildTaskStatusStopped},
+		}, nil)
+		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1",
+			[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil).Times(1)
+		bta.EXPECT().DeleteByIDs(gomock.Any(), ids).Return(int64(2), nil)
+
+		require.NoError(t, service.DeleteByIDs(context.Background(), ids, false))
+	})
+
 	for _, status := range []string{
 		interfaces.BuildTaskStatusCompleted,
 		interfaces.BuildTaskStatusFailed,
@@ -1569,7 +1579,7 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 			bta.EXPECT().GetByIDs(gomock.Any(), []string{"t1"}).Return(map[string]*interfaces.BuildTask{
 				"t1": {ID: "t1", CatalogID: "catalog-1", ResourceID: "r1", Status: status},
 			}, nil)
-			cs.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+			cs.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 			bta.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
 
 			require.NoError(t, service.DeleteByIDs(context.Background(), []string{"t1"}, false))
@@ -1584,7 +1594,7 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 			mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-			mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+			mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 			service := &buildTaskService{bta: mockBTA, cs: mockCS}
 
 			mockBTA.EXPECT().GetByIDs(gomock.Any(), []string{"t1"}).Return(map[string]*interfaces.BuildTask{
@@ -1625,7 +1635,7 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 		bta.EXPECT().GetByIDs(gomock.Any(), []string{"t1", "missing"}).Return(map[string]*interfaces.BuildTask{
 			"t1": {ID: "t1", CatalogID: "c1", Status: interfaces.BuildTaskStatusCompleted},
 		}, nil)
-		cs.EXPECT().CheckTaskPermission(gomock.Any(), "c1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "c1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 		bta.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
 
 		require.NoError(t, svc.DeleteByIDs(context.Background(), []string{"t1", "missing"}, true))
@@ -1639,7 +1649,7 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 		bta.EXPECT().GetByIDs(gomock.Any(), []string{"active", "missing"}).Return(map[string]*interfaces.BuildTask{
 			"active": {ID: "active", CatalogID: "c1", Status: interfaces.BuildTaskStatusRunning},
 		}, nil)
-		cs.EXPECT().CheckTaskPermission(gomock.Any(), "c1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "c1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 
 		httpErr := requireHTTPError(t, svc.DeleteByIDs(context.Background(), []string{"active", "missing"}, false), verrors.VegaBackend_BuildTask_HasRunningExecution)
 		assert.Equal(t, map[string]any{"active_ids": []string{"active"}}, httpErr.BaseError.ErrorDetails)
@@ -1661,7 +1671,7 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 			bta.EXPECT().GetByIDs(gomock.Any(), []string{"t1"}).Return(map[string]*interfaces.BuildTask{
 				"t1": {ID: "t1", CatalogID: "c1", Status: interfaces.BuildTaskStatusCompleted},
 			}, nil)
-			cs.EXPECT().CheckTaskPermission(gomock.Any(), "c1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+			cs.EXPECT().CheckCatalogPermission(gomock.Any(), "c1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 			bta.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(tt.result, tt.err)
 
 			_ = requireHTTPError(t, svc.DeleteByIDs(context.Background(), []string{"t1"}, false), verrors.VegaBackend_BuildTask_InternalError_DeleteFailed)

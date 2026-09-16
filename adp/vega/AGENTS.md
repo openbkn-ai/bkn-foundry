@@ -59,10 +59,10 @@ tasks, total, err := xxa.List(ctx, params)
 
 ### 两条例外
 
-- **调用方显式传了 `catalog_id`**：在查库**之前**用 `CheckTaskPermission` 单独判这一个 id，不再解析整个可见集。
+- **调用方显式传了 `catalog_id`**：在查库**之前**用 `CheckCatalogPermission` 单独判这一个 id，不再解析整个可见集。任务路径传 `getCatalog=true`，在判权成功后同时校验目录存在性和 internal 可见性。
 - **判权返回错误**：只有 **403** 算「拒绝」（返回空列表），其余一律上抛。把鉴权服务不可达或数据库失败报成 200 空页，会让界面显示「这里没有数据」而监控看到一次成功请求。用 `interfaces.IsPermissionRefusal(err)` 区分。
 
-同一条原则也适用于**读目录本身**：`CheckTaskPermission` 只在目录确实**查不到**（404）时才退到类型级授权兜底，读取失败要原样上抛。把库故障当成「目录被删了」，等于用一次不可用换一个权限决定。
+权限判定先于存在性查询：拒绝时不查目录，放行后 `getCatalog=true` 才返回目录或 404。读取失败要原样上抛，不退到类型级授权。
 
 ## 测试要求
 

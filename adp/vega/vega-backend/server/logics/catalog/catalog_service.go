@@ -365,54 +365,9 @@ func (cs *catalogService) ListPermittedCatalogIDs(ctx context.Context, ops []str
 	return out, allowed, nil
 }
 
-// CheckTaskPermission authorizes an operation on something that hangs off a
-// catalog — a build, discover or semantic task — and is the only check those
-// three should use.
-//
-// Deleting a catalog does not delete its tasks; they are marked cancelled and
-// the rows stay. Judging those on a catalog that is no longer there answers 403
-// forever, including for a super administrator, because the lookup fails before
-// casbin is ever consulted. The tasks would then be invisible to every listing
-// and deletable by nobody — dead rows that still count towards total.
-//
-// So a missing catalog steps up to the type-wide grant instead. Holding
-// catalog:* already means seeing every catalog, and a task whose parent is gone
-// discloses nothing further; without this it is simply stranded.
-// hasTypeWideGrant reports a grant written against the catalog type itself.
-// Only one caller needs it: a task whose parent catalog has been deleted has no
-// object left to judge, and leaving those unreachable would strand them forever.
-func (cs *catalogService) hasTypeWideGrant(ctx context.Context, op string) (bool, error) {
-	err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
-		ID:   interfaces.RESOURCE_ID_ALL,
-	}, []string{op})
-	if err == nil {
-		return true, nil
-	}
-	// A refusal answers "no", but anything else is the authorization service
-	// failing to answer at all. Reading that as "no" would turn an outage into a
-	// silent permission decision, so it goes back up.
-	if interfaces.IsPermissionRefusal(err) {
-		return false, nil
-	}
-	return false, err
-}
-
-// isCatalogNotFound reports the one error that means the catalog is gone, as
-// opposed to the read having failed. InternalGetByID answers a 404 HTTPError
-// rather than (nil, nil) for a missing catalog.
-func isCatalogNotFound(err error) bool {
-	var httpErr *rest.HTTPError
-	if !errors.As(err, &httpErr) {
-		return false
-	}
-	return httpErr.HTTPCode == http.StatusNotFound ||
-		httpErr.BaseError.ErrorCode == verrors.VegaBackend_Catalog_NotFound
-}
-
-// checkCatalogPermission checks bkn-safe permission for one catalog ID without
-// reading the Catalog. Callers check existence and internal visibility after a
-// successful permission decision.
+// CheckCatalogPermission checks bkn-safe permission for one catalog ID. When
+// getCatalog is true, it also checks existence and internal visibility and
+// returns the non-sensitive catalog.
 func (cs *catalogService) CheckCatalogPermission(ctx context.Context, catalogID string,
 	ops []string, getCatalog bool) (bool, *interfaces.Catalog, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CatalogService.CheckCatalogPermission")
@@ -443,20 +398,6 @@ func (cs *catalogService) CheckCatalogPermission(ctx context.Context, catalogID 
 		return false, nil, nil
 	}
 	return false, nil, err
-}
-
-// CheckTaskPermission is a compatibility adapter for task services not yet
-// migrated to CheckCatalogPermission.
-func (cs *catalogService) CheckTaskPermission(ctx context.Context, catalogID string, op string) error {
-	allowed, _, err := cs.CheckCatalogPermission(ctx, catalogID, []string{op}, true)
-	if err != nil {
-		return err
-	}
-	if !allowed {
-		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", op))
-	}
-	return nil
 }
 
 func (cs *catalogService) GetByID(ctx context.Context, id string, withSensitiveFields bool) (*interfaces.Catalog, error) {

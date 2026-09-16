@@ -29,10 +29,10 @@ func newTestDiscoverTaskService(t *testing.T) (*discoverTaskService, *vmock.Mock
 	ums := vmock.NewMockUserMgmtService(ctrl)
 	cs := vmock.NewMockCatalogService(ctrl)
 	// 探查任务的授权判在它所属的目录上（#269）；这些用例验的是别的东西，统一放行。
-	cs.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil).AnyTimes()
-	cs.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil).AnyTimes()
+	cs.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any(), true).
+		Return(true, nil, nil).AnyTimes()
+	cs.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any(), true).
+		Return(true, nil, nil).AnyTimes()
 	cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"catalog-1"}, nil, nil).AnyTimes()
 
 	return &discoverTaskService{
@@ -189,10 +189,10 @@ func TestDiscoverTaskServicePopulatesCatalogName(t *testing.T) {
 	ums := vmock.NewMockUserMgmtService(ctrl)
 	// This case verifies name enrichment; list authorization returns its catalog.
 	cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"catalog-1"}, nil, nil).AnyTimes()
-	cs.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil).AnyTimes()
-	cs.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil).AnyTimes()
+	cs.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any(), true).
+		Return(true, nil, nil).AnyTimes()
+	cs.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any(), true).
+		Return(true, nil, nil).AnyTimes()
 	service := &discoverTaskService{dta: dta, cs: cs, ums: ums}
 
 	t.Run("list batches current page catalog ids", func(t *testing.T) {
@@ -279,7 +279,7 @@ func TestDiscoverTaskServicePopulatesCatalogName(t *testing.T) {
 		task := &interfaces.DiscoverTask{ID: "task-7", CatalogID: "catalog-5", ResourceID: "resource-2"}
 
 		dta.EXPECT().GetByID(gomock.Any(), "task-7").Return(task, nil)
-		cs.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-5", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-5", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 		rs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-2"}).Return(map[string]*interfaces.Resource{"resource-2": {ID: "resource-2", Name: "customers"}}, nil)
 		cs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-5"}).Return(map[string]*interfaces.Catalog{"catalog-5": {ID: "catalog-5", Name: "目录五"}}, nil)
 		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Len(1)).Return(nil)
@@ -315,6 +315,25 @@ func TestDiscoverTaskServiceInternalStatusUpdates(t *testing.T) {
 }
 
 func TestDiscoverTaskServiceDeleteByIDs(t *testing.T) {
+	t.Run("checks a shared catalog only once", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		dta := vmock.NewMockDiscoverTaskAccess(ctrl)
+		cs := vmock.NewMockCatalogService(ctrl)
+		service := &discoverTaskService{dta: dta, cs: cs}
+
+		dta.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
+			ID: "task-1", CatalogID: "catalog-1", Status: interfaces.DiscoverTaskStatusCompleted,
+		}, nil)
+		dta.EXPECT().GetByID(gomock.Any(), "task-2").Return(&interfaces.DiscoverTask{
+			ID: "task-2", CatalogID: "catalog-1", Status: interfaces.DiscoverTaskStatusFailed,
+		}, nil)
+		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1",
+			[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil).Times(1)
+		dta.EXPECT().DeleteByIDs(gomock.Any(), []string{"task-1", "task-2"}).Return(int64(2), nil)
+
+		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"task-1", "task-2"}, false))
+	})
+
 	t.Run("deduplicates ids and deletes completed tasks", func(t *testing.T) {
 		service, dta, _ := newTestDiscoverTaskService(t)
 		dta.EXPECT().GetByID(gomock.Any(), "task-1").

@@ -7,7 +7,6 @@ package semantic_understanding_task
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -36,15 +35,13 @@ func TestSemanticTaskReadRequiresPermission(t *testing.T) {
 	cs := mock_interfaces.NewMockCatalogService(ctrl)
 	svc := &semanticUnderstandingTaskService{suta: suta, rs: rs, cs: cs}
 
-	denied := errors.New("forbidden")
 	suta.EXPECT().GetByID(gomock.Any(), "task-1").Return(resourceScopedTask(), nil)
 	// 资源域的任务也判在它所属的目录上,与列表同一口径。
-	cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
-		interfaces.OPERATION_TYPE_TASK_MANAGE).Return(denied)
+	cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(false, nil, nil)
 
 	task, err := svc.GetByID(context.Background(), "task-1")
 	require.Nil(t, task)
-	assert.Same(t, denied, err)
+	assert.True(t, interfaces.IsPermissionRefusal(err))
 }
 
 // 批量删除是整体事务：一条没权限就整批停下，不能删掉其余的。
@@ -55,17 +52,15 @@ func TestSemanticTaskDeleteStopsTheWholeBatch(t *testing.T) {
 	cs := mock_interfaces.NewMockCatalogService(ctrl)
 	svc := &semanticUnderstandingTaskService{suta: suta, rs: rs, cs: cs}
 
-	denied := errors.New("forbidden")
 	suta.EXPECT().GetByIDs(gomock.Any(), []string{"task-2", "task-1"}).
 		Return(map[string]*interfaces.SemanticUnderstandingTask{
 			"task-1": {ID: "task-1", CatalogID: "cat-1"},
 			"task-2": {ID: "task-2", CatalogID: "cat-2"},
 		}, nil)
-	cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-2",
-		interfaces.OPERATION_TYPE_TASK_MANAGE).Return(denied)
+	cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-2", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(false, nil, nil)
 	// suta.DeleteByIDs 未被期望。
 
-	assert.Same(t, denied, svc.DeleteByIDs(context.Background(), []string{"task-2", "task-1"}, false))
+	assert.True(t, interfaces.IsPermissionRefusal(svc.DeleteByIDs(context.Background(), []string{"task-2", "task-1"}, false)))
 }
 
 // TestSemanticTaskDelegatesToTheCatalogCheck: 判定统一交给 CatalogService，包括
@@ -80,8 +75,7 @@ func TestSemanticTaskDelegatesToTheCatalogCheck(t *testing.T) {
 
 	suta.EXPECT().GetByIDs(gomock.Any(), gomock.Any()).
 		Return(map[string]*interfaces.SemanticUnderstandingTask{"task-1": resourceScopedTask()}, nil)
-	cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
-		interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+	cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 	suta.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any()).Return(int64(1), nil)
 
 	require.NoError(t, svc.DeleteByIDs(context.Background(), []string{"task-1"}, false))
