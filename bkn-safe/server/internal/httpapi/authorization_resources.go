@@ -110,7 +110,9 @@ func (p *knowledgeNetworkProvider) List(ctx context.Context, query Authorization
 	if err != nil {
 		return AuthorizationResourceList{}, err
 	}
-	defer response.Body.Close()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 	if response.StatusCode != http.StatusOK {
 		return AuthorizationResourceList{}, fmt.Errorf("bkn backend returned status %d", response.StatusCode)
 	}
