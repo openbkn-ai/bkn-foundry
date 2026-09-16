@@ -263,7 +263,11 @@ type ListPublishedToolboxesResponse struct {
 // ToolBoxLifecycle is what decides whether a box's tools may be offered: the box is published,
 // and the tool itself is enabled. Both are read from the execution factory's own records.
 type ToolBoxLifecycle struct {
-	Published    bool
+	Published bool
+	// MetadataType selects the authorization resource for this toolbox: a
+	// function toolbox is authorized as "function", while an OpenAPI toolbox
+	// remains a "tool_box" resource.
+	MetadataType string
 	EnabledTools map[string]struct{}
 	// EnabledKnown is false when the enabled-tools walk hit its page bound before the listing
 	// ended. The set is then a prefix, not the answer, and a tool missing from it is unknown

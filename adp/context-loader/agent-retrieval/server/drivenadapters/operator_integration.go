@@ -292,13 +292,15 @@ func (o *operatorIntegrationClient) ToolBoxLifecycle(ctx context.Context, boxID 
 		return out, nil
 	}
 	var box struct {
-		Status string `json:"status"`
+		Status       string `json:"status"`
+		MetadataType string `json:"metadata_type"`
 	}
 	if err = sonic.Unmarshal(utils.ObjectToByte(body), &box); err != nil {
 		o.logger.WithContext(ctx).Warnf("[OperatorIntegration#ToolBoxLifecycle] unmarshal box failed: %v", err)
 		return out, nil
 	}
 	out.Published = box.Status == mcpServerStatusPublished
+	out.MetadataType = strings.TrimSpace(box.MetadataType)
 	if !out.Published {
 		return out, nil
 	}

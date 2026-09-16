@@ -665,6 +665,7 @@ const (
 	// target's invocation contract; running the action stays with ontology-query.
 	KNProxyChildTypeActionType = "action_type"
 	KNProxyTargetTypeToolBox   = "tool_box"
+	KNProxyTargetTypeFunction  = "function"
 	KNProxyTargetTypeMCP       = "mcp"
 	// KNProxyTargetTypeSkill is a Skill mounted on the network. The proxy only
 	// reads it, relying on its execute grant; running a Skill stays caller-scoped.

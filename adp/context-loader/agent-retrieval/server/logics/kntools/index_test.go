@@ -68,7 +68,7 @@ func (f *fakeOperator) ToolBoxLifecycle(_ context.Context, boxID string) (*inter
 	// The execution factory's own records are independent of the caller-visible catalogue, so
 	// enablement is modelled from every tool the fake ranking knows about, minus the ones named
 	// disabled — not from toolsByBox, which stands for the token-gated listing.
-	out := &interfaces.ToolBoxLifecycle{Published: !f.boxUnpublished[boxID], EnabledTools: map[string]struct{}{}, EnabledKnown: !f.boxEnabledUnknown[boxID]}
+	out := &interfaces.ToolBoxLifecycle{Published: !f.boxUnpublished[boxID], MetadataType: "function", EnabledTools: map[string]struct{}{}, EnabledKnown: !f.boxEnabledUnknown[boxID]}
 	pages := append([][]interfaces.CapabilityHit{f.hits}, f.hitsByCall...)
 	for _, page := range pages {
 		for _, h := range page {
@@ -592,7 +592,8 @@ func TestExecutePassesOnlyBusinessArguments(t *testing.T) {
 		t.Fatalf("expected the business arguments to travel, got %+v", op.gotExecuteReq)
 	}
 	if op.gotProxy == nil || op.gotProxy.Mapping.ProxyAccountID != "proxy-1" ||
-		op.gotProxy.Binding.ChildID != "binding-t1" || op.gotProxy.Binding.TargetID != "box-1" {
+		op.gotProxy.Binding.ChildID != "binding-t1" || op.gotProxy.Binding.TargetID != "box-1" ||
+		op.gotProxy.Binding.TargetType != interfaces.KNProxyTargetTypeFunction {
 		t.Fatalf("expected an exact server-derived capability proxy, got %+v", op.gotProxy)
 	}
 	if bkn.gotProxyBinding.ChildType != "capability_binding" || bkn.gotProxyBinding.Operation != "execute" {
