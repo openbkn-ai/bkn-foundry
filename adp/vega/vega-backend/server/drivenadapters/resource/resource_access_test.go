@@ -675,11 +675,11 @@ func TestResourceAccessListAuthResources(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_resource WHERE f_id = ? AND f_name LIKE ?")).
-			WithArgs("resource-1", "%order\\%%").
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_resource WHERE f_internal = ? AND f_id = ? AND f_name LIKE ?")).
+			WithArgs(false, "resource-1", "%order\\%%").
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(3))
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_name FROM t_resource WHERE f_id = ? AND f_name LIKE ? ORDER BY f_name ASC LIMIT 1 OFFSET 2")).
-			WithArgs("resource-1", "%order\\%%").
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_name FROM t_resource WHERE f_internal = ? AND f_id = ? AND f_name LIKE ? ORDER BY f_name ASC LIMIT 1 OFFSET 2")).
+			WithArgs(false, "resource-1", "%order\\%%").
 			WillReturnRows(sqlmock.NewRows([]string{"f_id", "f_name"}).AddRow("resource-1", "order%"))
 
 		got, total, err := access.ListAuthResources(context.Background(), interfaces.AuthResourceQueryParams{

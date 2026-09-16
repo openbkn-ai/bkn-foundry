@@ -56,6 +56,20 @@ func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) Create(ctx, task any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).Create), ctx, task)
 }
 
+// DeleteByCatalogID mocks base method.
+func (m *MockSemanticUnderstandingTaskAccess) DeleteByCatalogID(ctx context.Context, tx *sql.Tx, catalogID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteByCatalogID", ctx, tx, catalogID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteByCatalogID indicates an expected call of DeleteByCatalogID.
+func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) DeleteByCatalogID(ctx, tx, catalogID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByCatalogID", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).DeleteByCatalogID), ctx, tx, catalogID)
+}
+
 // DeleteByIDs mocks base method.
 func (m *MockSemanticUnderstandingTaskAccess) DeleteByIDs(ctx context.Context, ids []string) (int64, error) {
 	m.ctrl.T.Helper()
@@ -160,20 +174,6 @@ func (m *MockSemanticUnderstandingTaskAccess) MarkCancelled(ctx context.Context,
 func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) MarkCancelled(ctx, id, failureDetail, finishTime any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkCancelled", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).MarkCancelled), ctx, id, failureDetail, finishTime)
-}
-
-// MarkCancelledByCatalogID mocks base method.
-func (m *MockSemanticUnderstandingTaskAccess) MarkCancelledByCatalogID(ctx context.Context, tx *sql.Tx, catalogID, failureDetail string, finishTime int64) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkCancelledByCatalogID", ctx, tx, catalogID, failureDetail, finishTime)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// MarkCancelledByCatalogID indicates an expected call of MarkCancelledByCatalogID.
-func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) MarkCancelledByCatalogID(ctx, tx, catalogID, failureDetail, finishTime any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkCancelledByCatalogID", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).MarkCancelledByCatalogID), ctx, tx, catalogID, failureDetail, finishTime)
 }
 
 // MarkCompleted mocks base method.

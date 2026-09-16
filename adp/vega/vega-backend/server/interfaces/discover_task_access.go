@@ -35,8 +35,8 @@ type DiscoverTaskAccess interface {
 	MarkFailed(ctx context.Context, id, message string, finishTime int64) (bool, error)
 	// MarkCancelled only cancels pending or running DiscoverTasks.
 	MarkCancelled(ctx context.Context, id, message string, finishTime int64) (bool, error)
-	// MarkCancelledByCatalogID marks pending tasks as cancelled when their Catalog is deleted.
-	MarkCancelledByCatalogID(ctx context.Context, tx *sql.Tx, catalogID, message string, finishTime int64) error
+	// DeleteByCatalogID deletes DiscoverTasks belonging to a Catalog.
+	DeleteByCatalogID(ctx context.Context, tx *sql.Tx, catalogID string) error
 
 	// InternalList lists DiscoverTask summaries without a count query.
 	InternalList(ctx context.Context, params DiscoverTaskQueryParams) ([]*DiscoverTaskSummary, error)

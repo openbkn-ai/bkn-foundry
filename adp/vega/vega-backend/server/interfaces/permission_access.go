@@ -48,9 +48,6 @@ const (
 )
 
 var (
-	ErrLocalPermissionUnsupported = errors.New("local permission decisions are unavailable for the configured authorization provider")
-	ErrPermissionAccountNotActive = errors.New("permission account is missing or disabled")
-
 	// COMMON_OPERATIONS is the set every authorization answer is asked to report
 	// on. It grants nothing by itself — a verb missing here is simply never
 	// mentioned back, which is how query_data, data_write, and resource_manage stayed
@@ -76,55 +73,6 @@ var (
 		OPERATION_TYPE_AUTHORIZE,
 	}
 )
-
-type PermissionDecision string
-
-const (
-	PermissionDecisionAllow PermissionDecision = "allow"
-	PermissionDecisionDeny  PermissionDecision = "deny"
-	PermissionDecisionNone  PermissionDecision = "none"
-)
-
-type PermissionDecisionBasis string
-
-const (
-	PermissionBasisDirect    PermissionDecisionBasis = "direct"
-	PermissionBasisInherited PermissionDecisionBasis = "inherited"
-	PermissionBasisBundle    PermissionDecisionBasis = "bundle"
-	PermissionBasisWildcard  PermissionDecisionBasis = "wildcard"
-	PermissionBasisDefault   PermissionDecisionBasis = "default"
-	PermissionBasisRequires  PermissionDecisionBasis = "requires"
-	PermissionBasisNone      PermissionDecisionBasis = "none"
-)
-
-// PermissionOperationDecision is one structured authorization result. Local
-// decisions may return none; decisions returned to a business operation must
-// first be composed into allow or deny.
-type PermissionOperationDecision struct {
-	Operation         string                  `json:"operation"`
-	Decision          PermissionDecision      `json:"decision"`
-	Basis             PermissionDecisionBasis `json:"basis"`
-	Requires          []string                `json:"requires,omitempty"`
-	DeniedRequirement string                  `json:"denied_requirement,omitempty"`
-	RequirementBasis  PermissionDecisionBasis `json:"requirement_basis,omitempty"`
-}
-
-func (d PermissionOperationDecision) Allowed() bool {
-	return d.Decision == PermissionDecisionAllow
-}
-
-type LocalPermissionCheck struct {
-	Accessor  PermissionAccessor
-	Resource  PermissionResource
-	Operation string
-}
-
-type LocalPermissionFilter struct {
-	Accessor     PermissionAccessor
-	ResourceType string
-	ResourceIDs  []string
-	Operations   []string
-}
 
 // IsPermissionRefusal reports whether an authorization error is the service
 // saying no, as opposed to the service failing to answer.
@@ -218,12 +166,4 @@ type PermissionAccess interface {
 	UpsertResourceParents(ctx context.Context, resourceType, parentType string, items []PermissionResourceParent) error
 	DeleteResourceParents(ctx context.Context, resourceType string, resourceIDs []string) error
 	GetResourceParents(ctx context.Context, resourceType string, resourceIDs []string) (map[string]PermissionResourceParent, error)
-}
-
-// LocalPermissionAccess is the narrow, typed port used only by Vega's trusted
-// Resource-to-Catalog composition. Implementations must not turn an unavailable
-// account or authorization backend into PermissionDecisionNone.
-type LocalPermissionAccess interface {
-	LocalDecision(ctx context.Context, check LocalPermissionCheck) (PermissionOperationDecision, error)
-	LocalResourceDecisions(ctx context.Context, filter LocalPermissionFilter) (map[string]map[string]PermissionOperationDecision, error)
 }

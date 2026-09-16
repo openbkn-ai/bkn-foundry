@@ -2610,6 +2610,20 @@ func TestResourceServiceListAuthResourcesDoesNotFilterByPermission(t *testing.T)
 	assert.Equal(t, want, got)
 }
 
+func TestResourceServiceListAuthResourcesIncludesInternalForBuiltinAdmin(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ra := vmock.NewMockResourceAccess(ctrl)
+	rs := &resourceService{ra: ra}
+	ra.EXPECT().ListAuthResources(gomock.Any(), interfaces.AuthResourceQueryParams{IncludeInternal: true}).
+		Return([]*interfaces.AuthResourceEntry{}, int64(0), nil)
+	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+		interfaces.AccountInfo{ID: interfaces.BuiltinAdminID})
+
+	_, _, err := rs.ListAuthResources(ctx, interfaces.AuthResourceQueryParams{})
+
+	require.NoError(t, err)
+}
+
 // 删资源时任务在运行中：级联拒绝，资源不删。
 func newS2STestService(t *testing.T, internalCatalogIDs []string) (
 	*resourceService, *vmock.MockResourceAccess, *vmock.MockPermissionService, *vmock.MockUserMgmtService) {

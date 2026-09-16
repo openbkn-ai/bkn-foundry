@@ -44,8 +44,8 @@ type BuildTaskAccess interface {
 	MarkFailed(ctx context.Context, tx *sql.Tx, id, detail string, finishTime int64) (bool, error)
 	// MarkCancelled cancels an active build task.
 	MarkCancelled(ctx context.Context, tx *sql.Tx, id, detail string, finishTime int64) (bool, error)
-	// MarkCancelledByCatalogID cancels pending build tasks for a deleted catalog.
-	MarkCancelledByCatalogID(ctx context.Context, tx *sql.Tx, catalogID, message string, finishTime int64) error
+	// DeleteByCatalogID deletes build tasks belonging to a Catalog.
+	DeleteByCatalogID(ctx context.Context, tx *sql.Tx, catalogID string) error
 	// GetStatusByID retrieves the status of a build task by ID.
 	GetStatusByID(ctx context.Context, id string) (string, error)
 

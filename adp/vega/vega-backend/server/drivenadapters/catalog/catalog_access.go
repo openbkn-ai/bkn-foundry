@@ -614,6 +614,10 @@ func (ca *catalogAccess) ListAuthResources(ctx context.Context, params interface
 		"f_name",
 	).From(CATALOG_TABLE_NAME)
 	countBuilder := sq.Select("COUNT(*)").From(CATALOG_TABLE_NAME)
+	if !params.IncludeInternal {
+		builder = builder.Where(sq.Eq{"f_internal": false})
+		countBuilder = countBuilder.Where(sq.Eq{"f_internal": false})
+	}
 
 	if params.ID != "" {
 		builder = builder.Where(sq.Eq{"f_id": params.ID})

@@ -440,18 +440,15 @@ func (suta *semanticUnderstandingTaskAccess) DeleteByIDs(ctx context.Context, id
 	return affected, nil
 }
 
-func (suta *semanticUnderstandingTaskAccess) MarkCancelledByCatalogID(
-	ctx context.Context, tx *sql.Tx, catalogID, failureDetail string, finishTime int64,
-) error {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Mark semantic understanding tasks cancelled by catalog ID")
+// DeleteByCatalogID deletes semantic understanding tasks belonging to a Catalog.
+func (suta *semanticUnderstandingTaskAccess) DeleteByCatalogID(
+	ctx context.Context, tx *sql.Tx, catalogID string) error {
+
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Delete semantic understanding tasks by catalog ID")
 	defer span.End()
 
-	sqlStr, vals, err := sq.Update(SEMANTIC_UNDERSTANDING_TASK_TABLE_NAME).
-		Set("f_status", interfaces.SemanticUnderstandingTaskStatusCancelled).
-		Set("f_failure_detail", failureDetail).
-		Set("f_finish_time", finishTime).
+	sqlStr, vals, err := sq.Delete(SEMANTIC_UNDERSTANDING_TASK_TABLE_NAME).
 		Where(sq.Eq{"f_catalog_id": catalogID}).
-		Where(sq.Eq{"f_status": interfaces.SemanticUnderstandingTaskStatusPending}).
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
@@ -463,7 +460,7 @@ func (suta *semanticUnderstandingTaskAccess) MarkCancelledByCatalogID(
 		_, err = suta.db.ExecContext(ctx, sqlStr, vals...)
 	}
 	if err != nil {
-		span.SetStatus(codes.Error, "Update failed")
+		span.SetStatus(codes.Error, "Delete failed")
 		return err
 	}
 	span.SetStatus(codes.Ok, "")

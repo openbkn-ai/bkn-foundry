@@ -1081,6 +1081,10 @@ func (ra *resourceAccess) ListAuthResources(ctx context.Context, params interfac
 		"f_name",
 	).From(RESOURCE_TABLE_NAME)
 	countBuilder := sq.Select("COUNT(*)").From(RESOURCE_TABLE_NAME)
+	if !params.IncludeInternal {
+		builder = builder.Where(sq.Eq{"f_internal": false})
+		countBuilder = countBuilder.Where(sq.Eq{"f_internal": false})
+	}
 
 	if params.ID != "" {
 		builder = builder.Where(sq.Eq{"f_id": params.ID})

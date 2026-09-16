@@ -56,6 +56,20 @@ func (mr *MockDiscoverTaskAccessMockRecorder) Create(ctx, task any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockDiscoverTaskAccess)(nil).Create), ctx, task)
 }
 
+// DeleteByCatalogID mocks base method.
+func (m *MockDiscoverTaskAccess) DeleteByCatalogID(ctx context.Context, tx *sql.Tx, catalogID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteByCatalogID", ctx, tx, catalogID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteByCatalogID indicates an expected call of DeleteByCatalogID.
+func (mr *MockDiscoverTaskAccessMockRecorder) DeleteByCatalogID(ctx, tx, catalogID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByCatalogID", reflect.TypeOf((*MockDiscoverTaskAccess)(nil).DeleteByCatalogID), ctx, tx, catalogID)
+}
+
 // DeleteByIDs mocks base method.
 func (m *MockDiscoverTaskAccess) DeleteByIDs(ctx context.Context, ids []string) (int64, error) {
 	m.ctrl.T.Helper()
@@ -130,20 +144,6 @@ func (m *MockDiscoverTaskAccess) MarkCancelled(ctx context.Context, id, message 
 func (mr *MockDiscoverTaskAccessMockRecorder) MarkCancelled(ctx, id, message, finishTime any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkCancelled", reflect.TypeOf((*MockDiscoverTaskAccess)(nil).MarkCancelled), ctx, id, message, finishTime)
-}
-
-// MarkCancelledByCatalogID mocks base method.
-func (m *MockDiscoverTaskAccess) MarkCancelledByCatalogID(ctx context.Context, tx *sql.Tx, catalogID, message string, finishTime int64) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkCancelledByCatalogID", ctx, tx, catalogID, message, finishTime)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// MarkCancelledByCatalogID indicates an expected call of MarkCancelledByCatalogID.
-func (mr *MockDiscoverTaskAccessMockRecorder) MarkCancelledByCatalogID(ctx, tx, catalogID, message, finishTime any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkCancelledByCatalogID", reflect.TypeOf((*MockDiscoverTaskAccess)(nil).MarkCancelledByCatalogID), ctx, tx, catalogID, message, finishTime)
 }
 
 // MarkCompleted mocks base method.

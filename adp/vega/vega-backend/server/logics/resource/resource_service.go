@@ -1825,6 +1825,7 @@ func (rs *resourceService) ListAuthResources(ctx context.Context, params interfa
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ListAuthResources")
 	defer span.End()
 
+	params.IncludeInternal = interfaces.IsBuiltinAdmin(ctx)
 	entries, total, err := rs.ra.ListAuthResources(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "ListAuthResources failed")

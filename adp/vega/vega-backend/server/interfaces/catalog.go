@@ -35,7 +35,7 @@ var CATALOG_SORT = map[string]string{
 }
 
 type CatalogDeletionTaskImpact struct {
-	WillCancel int64 `json:"will_cancel"`
+	WillDelete int64 `json:"will_delete"`
 	Blocking   int64 `json:"blocking"`
 }
 

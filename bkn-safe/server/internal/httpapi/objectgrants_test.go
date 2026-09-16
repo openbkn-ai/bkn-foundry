@@ -347,14 +347,14 @@ func TestCommunityObjectGrantCompatibilityWriteIsImmediatelyEffective(t *testing
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("Community grant = %d %s; want 204", w.Code, w.Body.String())
 	}
-	for _, operation := range []string{"view_detail", "modify", "query_data", "resource_manage"} {
+	for _, operation := range []string{"view_detail", "modify", "query_data", "data_write", "resource_manage"} {
 		allowed, err := e.Check("community-user", "catalog", "c-community", operation)
 		if err != nil || !allowed {
 			t.Fatalf("Community grant Check(%q) = %v, %v; want true", operation, allowed, err)
 		}
 	}
 	grants := listObjectGrants(t, r, "?accessor_id=community-user&resource_type=catalog&resource_id=c-community")
-	if len(grants) != 1 || len(grants[0].Operations) != 6 {
+	if len(grants) != 1 || len(grants[0].Operations) != 7 {
 		t.Fatalf("Community grant listing = %+v; want one projected bundle grant", grants)
 	}
 }

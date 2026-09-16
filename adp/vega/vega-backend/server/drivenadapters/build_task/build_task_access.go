@@ -446,17 +446,29 @@ func (bta *buildTaskAccess) MarkCancelled(ctx context.Context, tx *sql.Tx, id st
 	})
 }
 
-func (bta *buildTaskAccess) MarkCancelledByCatalogID(ctx context.Context,
-	tx *sql.Tx, catalogID string, message string, finishTime int64) error {
-	_, err := bta.update(ctx, tx, map[string]any{
-		"f_status":      interfaces.BuildTaskStatusCancelled,
-		"f_error_msg":   message,
-		"f_finish_time": finishTime,
-	}, map[string]any{
-		"f_catalog_id": catalogID,
-		"f_status":     interfaces.BuildTaskStatusPending,
-	})
-	return err
+// DeleteByCatalogID deletes build tasks belonging to a Catalog.
+func (bta *buildTaskAccess) DeleteByCatalogID(ctx context.Context, tx *sql.Tx, catalogID string) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Delete build tasks by catalog ID")
+	defer span.End()
+
+	sqlStr, vals, err := sq.Delete(BUILD_TASK_TABLE_NAME).
+		Where(sq.Eq{"f_catalog_id": catalogID}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return err
+	}
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, sqlStr, vals...)
+	} else {
+		_, err = bta.db.ExecContext(ctx, sqlStr, vals...)
+	}
+	if err != nil {
+		span.SetStatus(codes.Error, "Delete failed")
+		return err
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
 }
 
 // GetStatusByID retrieves the status of a build task by ID.

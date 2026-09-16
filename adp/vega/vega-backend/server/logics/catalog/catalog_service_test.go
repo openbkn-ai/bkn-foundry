@@ -1506,6 +1506,21 @@ func TestCatalogServiceListAuthResourcesDoesNotFilterByPermission(t *testing.T) 
 	assert.Equal(t, "catalog-2", got[0].ID)
 }
 
+func TestCatalogServiceListAuthResourcesIncludesInternalForBuiltinAdmin(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ca := mock_interfaces.NewMockCatalogAccess(ctrl)
+	cs := &catalogService{ca: ca}
+	params := interfaces.AuthResourceQueryParams{}
+	ca.EXPECT().ListAuthResources(gomock.Any(), interfaces.AuthResourceQueryParams{IncludeInternal: true}).
+		Return([]*interfaces.AuthResourceEntry{}, int64(0), nil)
+	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+		interfaces.AccountInfo{ID: interfaces.BuiltinAdminID})
+
+	_, _, err := cs.ListAuthResources(ctx, params)
+
+	require.NoError(t, err)
+}
+
 func TestCatalogServiceGetDeletionImpact(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
@@ -1537,15 +1552,15 @@ func TestCatalogServiceGetDeletionImpact(t *testing.T) {
 			}) {
 				return nil, 2, nil
 			}
-			assert.Equal(t, []string{interfaces.BuildTaskStatusPending}, params.Statuses)
-			return nil, 1, nil
+			assert.Empty(t, params.Statuses)
+			return nil, 4, nil
 		}).Times(2)
 	dsa.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(2), nil)
 	dta.EXPECT().List(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
 			switch {
-			case slices.Equal(params.Statuses, []string{interfaces.DiscoverTaskStatusPending}):
-				return nil, 1, nil
+			case len(params.Statuses) == 0:
+				return nil, 3, nil
 			case slices.Equal(params.Statuses, []string{interfaces.DiscoverTaskStatusRunning}):
 				return nil, 2, nil
 			default:
@@ -1558,8 +1573,8 @@ func TestCatalogServiceGetDeletionImpact(t *testing.T) {
 			if slices.Equal(params.Statuses, []string{interfaces.SemanticUnderstandingTaskStatusRunning}) {
 				return nil, 1, nil
 			}
-			assert.Equal(t, []string{interfaces.SemanticUnderstandingTaskStatusPending}, params.Statuses)
-			return nil, 1, nil
+			assert.Empty(t, params.Statuses)
+			return nil, 2, nil
 		}).Times(2)
 	hcss.EXPECT().GetByCatalogID(gomock.Any(), "catalog-1").Return(&interfaces.CatalogHealthCheckSchedule{
 		CatalogID: "catalog-1",
@@ -1576,11 +1591,11 @@ func TestCatalogServiceGetDeletionImpact(t *testing.T) {
 		interfaces.CatalogDeletionBlockerDiscoverTasksRunning,
 		interfaces.CatalogDeletionBlockerSemanticUnderstandingTasksRunning,
 	}, impact.Blockers)
-	assert.Equal(t, interfaces.CatalogDeletionTaskImpact{WillCancel: 1, Blocking: 2}, impact.BuildTasks)
+	assert.Equal(t, interfaces.CatalogDeletionTaskImpact{WillDelete: 4, Blocking: 2}, impact.BuildTasks)
 	assert.Equal(t, int64(1), impact.CatalogHealthCheckSchedules)
 	assert.Equal(t, int64(2), impact.DiscoverSchedules)
-	assert.Equal(t, interfaces.CatalogDeletionTaskImpact{WillCancel: 1, Blocking: 2}, impact.DiscoverTasks)
-	assert.Equal(t, interfaces.CatalogDeletionTaskImpact{WillCancel: 1, Blocking: 1}, impact.SemanticUnderstandingTasks)
+	assert.Equal(t, interfaces.CatalogDeletionTaskImpact{WillDelete: 3, Blocking: 2}, impact.DiscoverTasks)
+	assert.Equal(t, interfaces.CatalogDeletionTaskImpact{WillDelete: 2, Blocking: 1}, impact.SemanticUnderstandingTasks)
 }
 
 func TestCatalogServiceGetDeletionImpactDependencyFailure(t *testing.T) {
@@ -1716,14 +1731,15 @@ func TestCatalogServiceDeleteByID(t *testing.T) {
 		expectCatalogDeletionImpact(ctrl, ra, bta, dsa, dta, suta, hcss,
 			interfaces.CatalogTypePhysical, buildTasks, false, true)
 		sqlMock.ExpectBegin()
-		bta.EXPECT().MarkCancelledByCatalogID(gomock.Any(), gomock.Any(), "c1", catalogDeletedTaskMessage, gomock.Any()).Return(nil)
-		dta.EXPECT().MarkCancelledByCatalogID(gomock.Any(), gomock.Any(), "c1", catalogDeletedTaskMessage, gomock.Any()).Return(nil)
-		suta.EXPECT().MarkCancelledByCatalogID(gomock.Any(), gomock.Any(), "c1", catalogDeletedTaskMessage, gomock.Any()).Return(nil)
+		bta.EXPECT().DeleteByCatalogID(gomock.Any(), gomock.Any(), "c1").Return(nil)
+		dta.EXPECT().DeleteByCatalogID(gomock.Any(), gomock.Any(), "c1").Return(nil)
+		suta.EXPECT().DeleteByCatalogID(gomock.Any(), gomock.Any(), "c1").Return(nil)
 		dsa.EXPECT().DeleteByCatalogID(gomock.Any(), gomock.Any(), "c1").Return(nil)
 		hcss.EXPECT().DeleteByCatalogID(gomock.Any(), gomock.Any(), "c1").Return(nil)
 		ra.EXPECT().DeleteByCatalogID(gomock.Any(), gomock.Any(), "c1").Return(nil)
 		ca.EXPECT().DeleteByID(gomock.Any(), gomock.Any(), "c1").Return(nil)
 		sqlMock.ExpectCommit()
+		ps.EXPECT().DeleteResourceParents(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1", "r2"}).Return(errors.New("permission unavailable"))
 		ps.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1", "r2"}).Return(errors.New("permission unavailable"))
 		ps.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{"c1"}).Return(errors.New("permission unavailable"))
 
@@ -1756,8 +1772,8 @@ func TestCatalogServiceDeleteByID(t *testing.T) {
 		expectCatalogDeletionImpact(ctrl, ra, bta, dsa, dta, suta, hcss,
 			interfaces.CatalogTypePhysical, buildTasks, false, true)
 		sqlMock.ExpectBegin()
-		bta.EXPECT().MarkCancelledByCatalogID(gomock.Any(), gomock.Any(), "c1", catalogDeletedTaskMessage, gomock.Any()).Return(nil)
-		dta.EXPECT().MarkCancelledByCatalogID(gomock.Any(), gomock.Any(), "c1", catalogDeletedTaskMessage, gomock.Any()).
+		bta.EXPECT().DeleteByCatalogID(gomock.Any(), gomock.Any(), "c1").Return(nil)
+		dta.EXPECT().DeleteByCatalogID(gomock.Any(), gomock.Any(), "c1").
 			Return(errors.New("database unavailable"))
 		sqlMock.ExpectRollback()
 

@@ -44,10 +44,10 @@ const (
 
 	catalogAuthResourcePermissionBatchSize = 10000
 	defaultConnectionTestTimeout           = 30 * time.Second
+	catalogPermissionCleanupTimeout        = 5 * time.Second
 	connectorInitializationFailedResult    = "Connector initialization failed."
 	connectionTestFailedResult             = "Connection test failed."
 	maximumConnectionTestResultLength      = 2048
-	catalogDeletedTaskMessage              = "catalog deleted"
 )
 
 var (
@@ -928,13 +928,12 @@ func (cs *catalogService) getDeletionImpact(ctx context.Context, catalog *interf
 	if err != nil {
 		return nil, err
 	}
-	var pendingBuild, buildExecuting, scheduleTotal, pendingDiscover, runningDiscover int64
+	var buildTotal, buildExecuting, scheduleTotal, discoverTotal, runningDiscover int64
 	healthCheckScheduleTotal := int64(0)
 	if catalog.Type == interfaces.CatalogTypePhysical {
-		_, pendingBuild, err = cs.bta.List(ctx, interfaces.BuildTasksQueryParams{
+		_, buildTotal, err = cs.bta.List(ctx, interfaces.BuildTasksQueryParams{
 			PaginationQueryParams: page,
 			CatalogID:             id,
-			Statuses:              []string{interfaces.BuildTaskStatusPending},
 		})
 		if err != nil {
 			return nil, err
@@ -957,10 +956,9 @@ func (cs *catalogService) getDeletionImpact(ctx context.Context, catalog *interf
 		if err != nil {
 			return nil, err
 		}
-		_, pendingDiscover, err = cs.dta.List(ctx, interfaces.DiscoverTaskQueryParams{
+		_, discoverTotal, err = cs.dta.List(ctx, interfaces.DiscoverTaskQueryParams{
 			PaginationQueryParams: page,
 			CatalogID:             id,
-			Statuses:              []string{interfaces.DiscoverTaskStatusPending},
 		})
 		if err != nil {
 			return nil, err
@@ -982,10 +980,9 @@ func (cs *catalogService) getDeletionImpact(ctx context.Context, catalog *interf
 			healthCheckScheduleTotal = 1
 		}
 	}
-	_, pendingSemantic, err := cs.suta.List(ctx, interfaces.SemanticUnderstandingTaskQueryParams{
+	_, semanticTotal, err := cs.suta.List(ctx, interfaces.SemanticUnderstandingTaskQueryParams{
 		PaginationQueryParams: page,
 		CatalogID:             id,
-		Statuses:              []string{interfaces.SemanticUnderstandingTaskStatusPending},
 	})
 	if err != nil {
 		return nil, err
@@ -1027,15 +1024,15 @@ func (cs *catalogService) getDeletionImpact(ctx context.Context, catalog *interf
 		CanDelete: len(blockers) == 0,
 		Blockers:  blockers,
 		BuildTasks: interfaces.CatalogDeletionTaskImpact{
-			WillCancel: pendingBuild,
+			WillDelete: buildTotal,
 			Blocking:   buildExecuting,
 		},
 		DiscoverTasks: interfaces.CatalogDeletionTaskImpact{
-			WillCancel: pendingDiscover,
+			WillDelete: discoverTotal,
 			Blocking:   runningDiscover,
 		},
 		SemanticUnderstandingTasks: interfaces.CatalogDeletionTaskImpact{
-			WillCancel: pendingSemantic,
+			WillDelete: semanticTotal,
 			Blocking:   semanticRunning,
 		},
 		DiscoverSchedules:           scheduleTotal,
@@ -1094,13 +1091,12 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	now := time.Now().UnixMilli()
-	err = cs.bta.MarkCancelledByCatalogID(ctx, tx, id, catalogDeletedTaskMessage, now)
+	err = cs.bta.DeleteByCatalogID(ctx, tx, id)
 	if err == nil {
-		err = cs.dta.MarkCancelledByCatalogID(ctx, tx, id, catalogDeletedTaskMessage, now)
+		err = cs.dta.DeleteByCatalogID(ctx, tx, id)
 	}
 	if err == nil {
-		err = cs.suta.MarkCancelledByCatalogID(ctx, tx, id, catalogDeletedTaskMessage, now)
+		err = cs.suta.DeleteByCatalogID(ctx, tx, id)
 	}
 	if err == nil {
 		err = cs.dsa.DeleteByCatalogID(ctx, tx, id)
@@ -1127,12 +1123,17 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 
 	// The database is the source of truth. Permission cleanup is best-effort
 	// after commit and must not turn a completed deletion into an API error.
+	cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), catalogPermissionCleanupTimeout)
+	defer cancelCleanup()
 	if len(impact.ResourceIDs) > 0 {
-		if cleanupErr := cs.ps.DeleteResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, impact.ResourceIDs); cleanupErr != nil {
+		if cleanupErr := cs.ps.DeleteResourceParents(cleanupCtx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, impact.ResourceIDs); cleanupErr != nil {
+			logger.Errorf("delete catalog %s: delete resource parent relations failed: %v", id, cleanupErr)
+		}
+		if cleanupErr := cs.ps.DeleteResources(cleanupCtx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, impact.ResourceIDs); cleanupErr != nil {
 			logger.Errorf("delete catalog %s: delete resource permissions failed: %v", id, cleanupErr)
 		}
 	}
-	if cleanupErr := cs.ps.DeleteResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{id}); cleanupErr != nil {
+	if cleanupErr := cs.ps.DeleteResources(cleanupCtx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{id}); cleanupErr != nil {
 		logger.Errorf("delete catalog %s: delete catalog permission failed: %v", id, cleanupErr)
 	}
 
@@ -1464,6 +1465,7 @@ func (cs *catalogService) ListAuthResources(ctx context.Context,
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ListAuthResources")
 	defer span.End()
 
+	params.IncludeInternal = interfaces.IsBuiltinAdmin(ctx)
 	entries, total, err := cs.ca.ListAuthResources(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "ListAuthResources failed")

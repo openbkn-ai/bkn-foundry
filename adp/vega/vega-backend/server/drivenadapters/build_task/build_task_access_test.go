@@ -514,16 +514,16 @@ func TestBuildTaskAccessMarkCompleted(t *testing.T) {
 	})
 }
 
-func TestBuildTaskAccessMarkCancelledByCatalogID(t *testing.T) {
-	t.Run("cancels pending tasks", func(t *testing.T) {
+func TestBuildTaskAccessDeleteByCatalogID(t *testing.T) {
+	t.Run("deletes tasks", func(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_error_msg = ?, f_finish_time = ?, f_status = ? WHERE f_catalog_id = ? AND f_status = ?")).
-			WithArgs("catalog deleted", int64(123), interfaces.BuildTaskStatusCancelled, "catalog-1", interfaces.BuildTaskStatusPending).
+		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_build_task WHERE f_catalog_id = ?")).
+			WithArgs("catalog-1").
 			WillReturnResult(sqlmock.NewResult(0, 2))
 
-		err := access.MarkCancelledByCatalogID(context.Background(), nil, "catalog-1", "catalog deleted", 123)
+		err := access.DeleteByCatalogID(context.Background(), nil, "catalog-1")
 
 		require.NoError(t, err)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -535,11 +535,11 @@ func TestBuildTaskAccessMarkCancelledByCatalogID(t *testing.T) {
 		mock.ExpectBegin()
 		tx, err := db.BeginTx(context.Background(), nil)
 		require.NoError(t, err)
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_error_msg = ?, f_finish_time = ?, f_status = ? WHERE f_catalog_id = ? AND f_status = ?")).
-			WithArgs("catalog deleted", int64(123), interfaces.BuildTaskStatusCancelled, "catalog-1", interfaces.BuildTaskStatusPending).
+		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_build_task WHERE f_catalog_id = ?")).
+			WithArgs("catalog-1").
 			WillReturnResult(sqlmock.NewResult(0, 2))
 
-		err = access.MarkCancelledByCatalogID(context.Background(), tx, "catalog-1", "catalog deleted", 123)
+		err = access.DeleteByCatalogID(context.Background(), tx, "catalog-1")
 
 		require.NoError(t, err)
 		mock.ExpectCommit()

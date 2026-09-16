@@ -16,7 +16,7 @@ import (
 
 func TestCommunityBundleWhitelistIsExplicitAndDefensive(t *testing.T) {
 	want := map[string][]string{
-		"catalog":           {"view_detail", "modify", "delete", "query_data", "resource_manage", "task_manage"},
+		"catalog":           {"view_detail", "modify", "delete", "query_data", "data_write", "resource_manage", "task_manage"},
 		"knowledge_network": {"view_detail", "modify", "delete", "query_data", "execute"},
 		"connector_type":    {"view_detail", "modify", "delete"},
 		"tool_box":          {"view", "modify", "delete", "publish", "unpublish", "execute"},

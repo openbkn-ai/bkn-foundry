@@ -64,7 +64,7 @@ depServices:
     user: admin
     password: ""
   hydra-admin:
-    # ISF replacement: introspect against bkn-safe's paired hydra (cross-ns).
+    # Introspect against bkn-safe's paired Hydra service (cross-namespace).
     host: bkn-safe-hydra-admin
     port: 4445
     protocol: http

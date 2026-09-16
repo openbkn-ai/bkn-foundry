@@ -22,8 +22,9 @@ func AuthResourceTypes() []string {
 
 type AuthResourceQueryParams struct {
 	PaginationQueryParams
-	ID      string
-	Keyword string
+	ID              string
+	Keyword         string
+	IncludeInternal bool
 }
 
 type AuthResourceEntry struct {

@@ -329,11 +329,11 @@ func TestCatalogAccessListAuthResources(t *testing.T) {
 		access, mock, cleanup := newCatalogAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_catalog WHERE f_id = ? AND f_name LIKE ?")).
-			WithArgs("catalog-1", "%Catalog%").
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_catalog WHERE f_internal = ? AND f_id = ? AND f_name LIKE ?")).
+			WithArgs(false, "catalog-1", "%Catalog%").
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(3))
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_name FROM t_catalog WHERE f_id = ? AND f_name LIKE ? ORDER BY f_name ASC LIMIT 1 OFFSET 2")).
-			WithArgs("catalog-1", "%Catalog%").
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_name FROM t_catalog WHERE f_internal = ? AND f_id = ? AND f_name LIKE ? ORDER BY f_name ASC LIMIT 1 OFFSET 2")).
+			WithArgs(false, "catalog-1", "%Catalog%").
 			WillReturnRows(sqlmock.NewRows([]string{"f_id", "f_name"}).AddRow("catalog-1", "Catalog One"))
 
 		got, total, err := access.ListAuthResources(context.Background(), interfaces.AuthResourceQueryParams{
