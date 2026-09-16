@@ -142,16 +142,12 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 	t.Run("get documents allows resource-level query permission", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		lim := vmock.NewMockLocalIndexManager(ctrl)
-		cs := vmock.NewMockCatalogService(ctrl)
-		ps := vmock.NewMockPermissionService(ctrl)
-		ds := &datasetService{lim: lim, cs: cs, ps: ps}
+		rs := vmock.NewMockResourceService(ctrl)
+		ds := &datasetService{lim: lim, rs: rs}
 		resource := &interfaces.Resource{ID: "dataset-1", CatalogID: "catalog-1", LocalIndexName: "dataset-1"}
 
-		cs.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{}, nil)
-		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
-			Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-			ID:   resource.ID,
-		}, []string{interfaces.OPERATION_TYPE_QUERY_DATA}).Return(nil)
+		rs.EXPECT().CheckResourcePermission(gomock.Any(), resource.ID,
+			interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
 		lim.EXPECT().GetDocuments(gomock.Any(), resource.LocalIndexName, []string{"doc-1"}).
 			Return([]map[string]any{{"id": "doc-1"}}, nil)
 
@@ -173,21 +169,11 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 
 	t.Run("get documents requires query_data permission", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		cs := vmock.NewMockCatalogService(ctrl)
-		ps := vmock.NewMockPermissionService(ctrl)
-		ds := &datasetService{cs: cs, ps: ps}
+		rs := vmock.NewMockResourceService(ctrl)
+		ds := &datasetService{rs: rs}
 		denied := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
-		cs.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{}, nil)
-		gomock.InOrder(
-			ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
-				Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-				ID:   resource.ID,
-			}, []string{interfaces.OPERATION_TYPE_QUERY_DATA}).Return(denied),
-			ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
-				Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
-				ID:   resource.CatalogID,
-			}, []string{interfaces.OPERATION_TYPE_QUERY_DATA}).Return(denied),
-		)
+		rs.EXPECT().CheckResourcePermission(gomock.Any(), resource.ID,
+			interfaces.OPERATION_TYPE_QUERY_DATA).Return(denied)
 
 		_, err := ds.GetDocuments(ctx, resource, []string{"doc-1"}, false)
 
@@ -240,19 +226,15 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 	})
 
-	t.Run("requires catalog resource_manage permission for document mutations", func(t *testing.T) {
+	t.Run("requires data_write permission for document mutations", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		lim := vmock.NewMockLocalIndexManager(ctrl)
-		cs := vmock.NewMockCatalogService(ctrl)
-		ps := vmock.NewMockPermissionService(ctrl)
-		ds := &datasetService{lim: lim, cs: cs, ps: ps}
+		rs := vmock.NewMockResourceService(ctrl)
+		ds := &datasetService{lim: lim, rs: rs}
 		denied := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails("Access denied: insufficient permissions for[resource_manage]")
-		cs.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{}, nil)
-		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
-			Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
-			ID:   resource.CatalogID,
-		}, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}).Return(denied)
+			WithErrorDetails("Access denied: insufficient permissions for[data_write]")
+		rs.EXPECT().CheckResourcePermission(gomock.Any(), resource.ID,
+			interfaces.OPERATION_TYPE_DATA_WRITE).Return(denied)
 
 		err := ds.DeleteDocuments(ctx, resource, []string{"doc-1"}, false)
 
@@ -378,11 +360,9 @@ func newDatasetServiceMock(t *testing.T) (*datasetService, *vmock.MockLocalIndex
 
 	ctrl := gomock.NewController(t)
 	lim := vmock.NewMockLocalIndexManager(ctrl)
-	cs := vmock.NewMockCatalogService(ctrl)
-	ps := vmock.NewMockPermissionService(ctrl)
-	cs.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{}, nil).AnyTimes()
-	ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-	return &datasetService{lim: lim, cs: cs, ps: ps}, lim
+	rs := vmock.NewMockResourceService(ctrl)
+	rs.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	return &datasetService{lim: lim, rs: rs}, lim
 }
 
 func assertHTTPError(t *testing.T, err error) {

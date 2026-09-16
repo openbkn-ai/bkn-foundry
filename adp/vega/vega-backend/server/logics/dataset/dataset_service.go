@@ -17,11 +17,10 @@ import (
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	"vega-backend/logics"
-	"vega-backend/logics/catalog"
 	"vega-backend/logics/filter_condition"
 	"vega-backend/logics/local_index"
 	"vega-backend/logics/model_factory"
-	"vega-backend/logics/permission"
+	resourcelogic "vega-backend/logics/resource"
 )
 
 var (
@@ -34,21 +33,20 @@ type datasetService struct {
 	lim        interfaces.LocalIndexManager
 	mfs        interfaces.ModelFactoryService
 	ra         interfaces.ResourceAccess
-	cs         interfaces.CatalogService
-	ps         interfaces.PermissionService
+	rs         interfaces.ResourceService
 }
 
 // NewDatasetService creates a new DatasetService.
 func NewDatasetService(appSetting *common.AppSetting) interfaces.DatasetService {
 	dsServiceOnce.Do(func() {
-		dsService = &datasetService{
+		service := &datasetService{
 			appSetting: appSetting,
 			lim:        local_index.NewLocalIndexManager(appSetting),
 			mfs:        model_factory.NewModelFactoryService(appSetting),
 			ra:         logics.RA,
-			cs:         catalog.NewCatalogService(appSetting),
-			ps:         permission.NewPermissionService(appSetting),
 		}
+		service.rs = resourcelogic.NewResourceService(appSetting, service)
+		dsService = service
 	})
 	return dsService
 }
@@ -153,7 +151,7 @@ func (ds *datasetService) GetDocuments(ctx context.Context, res *interfaces.Reso
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get dataset documents")
 	defer span.End()
 
-	if err := ds.checkDocumentPermission(ctx, res, interfaces.OPERATION_TYPE_QUERY_DATA); err != nil {
+	if err := ds.rs.CheckResourcePermission(ctx, res.ID, interfaces.OPERATION_TYPE_QUERY_DATA); err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
 		return nil, err
 	}
@@ -194,7 +192,7 @@ func (ds *datasetService) CreateDocument(ctx context.Context, res *interfaces.Re
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create dataset document")
 	defer span.End()
 
-	if err := ds.checkDocumentPermission(ctx, res, interfaces.OPERATION_TYPE_RESOURCE_MANAGE); err != nil {
+	if err := ds.rs.CheckResourcePermission(ctx, res.ID, interfaces.OPERATION_TYPE_DATA_WRITE); err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
 		return "", err
 	}
@@ -226,7 +224,7 @@ func (ds *datasetService) ReplaceDocument(ctx context.Context, res *interfaces.R
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Replace dataset document")
 	defer span.End()
 
-	if err := ds.checkDocumentPermission(ctx, res, interfaces.OPERATION_TYPE_RESOURCE_MANAGE); err != nil {
+	if err := ds.rs.CheckResourcePermission(ctx, res.ID, interfaces.OPERATION_TYPE_DATA_WRITE); err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
 		return err
 	}
@@ -249,7 +247,7 @@ func (ds *datasetService) DeleteDocuments(ctx context.Context, res *interfaces.R
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete dataset documents")
 	defer span.End()
 
-	if err := ds.checkDocumentPermission(ctx, res, interfaces.OPERATION_TYPE_RESOURCE_MANAGE); err != nil {
+	if err := ds.rs.CheckResourcePermission(ctx, res.ID, interfaces.OPERATION_TYPE_DATA_WRITE); err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
 		return err
 	}
@@ -289,7 +287,7 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete dataset documents by query")
 	defer span.End()
 
-	if err := ds.checkDocumentPermission(ctx, res, interfaces.OPERATION_TYPE_RESOURCE_MANAGE); err != nil {
+	if err := ds.rs.CheckResourcePermission(ctx, res.ID, interfaces.OPERATION_TYPE_DATA_WRITE); err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
 		return err
 	}
@@ -337,64 +335,5 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return nil
-}
-
-func hasEffectiveDeleteFilter(condition interfaces.FilterCondition) bool {
-	if condition == nil {
-		return false
-	}
-	switch typed := condition.(type) {
-	case *filter_condition.AndCond:
-		if len(typed.SubConds) == 0 {
-			return false
-		}
-		for _, subCondition := range typed.SubConds {
-			if !hasEffectiveDeleteFilter(subCondition) {
-				return false
-			}
-		}
-	case *filter_condition.OrCond:
-		if len(typed.SubConds) == 0 {
-			return false
-		}
-		for _, subCondition := range typed.SubConds {
-			if !hasEffectiveDeleteFilter(subCondition) {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-func (ds *datasetService) checkDocumentPermission(ctx context.Context, res *interfaces.Resource, operation string) error {
-	internalCatalogs, err := ds.cs.InternalCatalogIDSet(ctx)
-	if err != nil {
-		return err
-	}
-	_, parentInternal := internalCatalogs[res.CatalogID]
-	if parentInternal && !interfaces.IsBuiltinAdmin(ctx) {
-		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails("internal resources are restricted to the built-in administrator")
-	}
-	var resourceErr error
-	if operation == interfaces.OPERATION_TYPE_QUERY_DATA {
-		resourceErr = ds.ps.CheckPermission(ctx, interfaces.PermissionResource{
-			Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-			ID:   res.ID,
-		}, []string{operation})
-		if resourceErr == nil {
-			return nil
-		}
-	}
-	if err := ds.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
-		ID:   res.CatalogID,
-	}, []string{operation}); err != nil {
-		if resourceErr != nil {
-			return resourceErr
-		}
-		return err
-	}
 	return nil
 }

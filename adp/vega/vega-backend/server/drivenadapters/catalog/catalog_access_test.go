@@ -329,17 +329,21 @@ func TestCatalogAccessListAuthResources(t *testing.T) {
 		access, mock, cleanup := newCatalogAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_name FROM t_catalog WHERE f_id = ? AND f_name LIKE ? ORDER BY f_name ASC")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_catalog WHERE f_id = ? AND f_name LIKE ?")).
+			WithArgs("catalog-1", "%Catalog%").
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(3))
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_name FROM t_catalog WHERE f_id = ? AND f_name LIKE ? ORDER BY f_name ASC LIMIT 1 OFFSET 2")).
 			WithArgs("catalog-1", "%Catalog%").
 			WillReturnRows(sqlmock.NewRows([]string{"f_id", "f_name"}).AddRow("catalog-1", "Catalog One"))
 
-		got, err := access.ListAuthResources(context.Background(), interfaces.AuthResourceQueryParams{
-			PaginationQueryParams: interfaces.PaginationQueryParams{Sort: "f_name", Direction: "ASC"},
+		got, total, err := access.ListAuthResources(context.Background(), interfaces.AuthResourceQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 2, Limit: 1, Sort: "f_name", Direction: "ASC"},
 			ID:                    "catalog-1",
 			Keyword:               "Catalog",
 		})
 
 		require.NoError(t, err)
+		assert.Equal(t, int64(3), total)
 		require.Len(t, got, 1)
 		assert.Equal(t, "catalog-1", got[0].ID)
 		assert.Equal(t, interfaces.AUTH_RESOURCE_TYPE_CATALOG, got[0].Type)

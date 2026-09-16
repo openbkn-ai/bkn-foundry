@@ -42,7 +42,7 @@ func TestSeededRolesGainNothingFromInheritance(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	candidates := []string{"view_detail", "query_data", "modify", "delete", "authorize", "task_manage"}
+	candidates := []string{"view_detail", "query_data", "data_write", "modify", "delete", "authorize", "task_manage"}
 	var roles []model.Role
 	if err := db.Find(&roles).Error; err != nil {
 		t.Fatal(err)

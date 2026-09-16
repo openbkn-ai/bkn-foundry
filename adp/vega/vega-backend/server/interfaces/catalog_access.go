@@ -46,5 +46,5 @@ type CatalogAccess interface {
 	UpdateMetadata(ctx context.Context, id string, metadata map[string]any) error
 
 	// ListAuthResources lists catalog auth resources with filters.
-	ListAuthResources(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, error)
+	ListAuthResources(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, int64, error)
 }

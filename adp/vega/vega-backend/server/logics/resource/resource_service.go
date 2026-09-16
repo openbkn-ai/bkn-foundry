@@ -42,8 +42,6 @@ var (
 	rService     interfaces.ResourceService
 )
 
-const resourceAuthResourcePermissionBatchSize = 10000
-
 type resourceService struct {
 	appSetting *common.AppSetting
 	db         *sql.DB
@@ -1947,90 +1945,18 @@ func (rs *resourceService) ListAuthResources(ctx context.Context, params interfa
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ListAuthResources")
 	defer span.End()
 
-	entries, err := rs.ra.ListAuthResources(ctx, params)
+	entries, total, err := rs.ra.ListAuthResources(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "ListAuthResources failed")
 		return []*interfaces.AuthResourceEntry{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
 	if len(entries) == 0 {
-		return []*interfaces.AuthResourceEntry{}, 0, nil
-	}
-
-	authorizedEntries, err := rs.filterAuthorizedResourceAuthResources(ctx, entries)
-	if err != nil {
-		return []*interfaces.AuthResourceEntry{}, 0, err
-	}
-	total := int64(len(authorizedEntries))
-	if total == 0 {
-		span.SetStatus(codes.Ok, "")
 		return []*interfaces.AuthResourceEntry{}, total, nil
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return paginateResourceAuthResources(authorizedEntries, params.Offset, params.Limit), total, nil
-}
-
-func (rs *resourceService) filterAuthorizedResourceAuthResources(ctx context.Context, entries []*interfaces.AuthResourceEntry) ([]*interfaces.AuthResourceEntry, error) {
-	internalResources, err := rs.internalResourceIDSet(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	ids := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if entry == nil {
-			continue
-		}
-		if _, ok := internalResources[entry.ID]; ok && !interfaces.IsBuiltinAdmin(ctx) {
-			continue
-		}
-		ids = append(ids, entry.ID)
-	}
-
-	authorizedIDs := make(map[string]struct{}, len(ids))
-	for i := 0; i < len(ids); i += resourceAuthResourcePermissionBatchSize {
-		end := i + resourceAuthResourcePermissionBatchSize
-		if end > len(ids) {
-			end = len(ids)
-		}
-
-		batchMatchResources, err := rs.filterResourcePermissions(ctx, ids[i:end], internalResources,
-			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, false)
-		if err != nil {
-			return nil, err
-		}
-		for _, resourceOps := range batchMatchResources {
-			authorizedIDs[resourceOps.ResourceID] = struct{}{}
-		}
-	}
-
-	results := make([]*interfaces.AuthResourceEntry, 0, len(authorizedIDs))
-	for _, entry := range entries {
-		if entry == nil {
-			continue
-		}
-		if _, exist := authorizedIDs[entry.ID]; exist {
-			results = append(results, entry)
-		}
-	}
-
-	return results, nil
-}
-
-func paginateResourceAuthResources(entries []*interfaces.AuthResourceEntry, offset, limit int) []*interfaces.AuthResourceEntry {
-	if limit == -1 {
-		return entries
-	}
-	if offset < 0 || offset >= len(entries) {
-		return []*interfaces.AuthResourceEntry{}
-	}
-
-	end := offset + limit
-	if end > len(entries) {
-		end = len(entries)
-	}
-	return entries[offset:end]
+	return entries, total, nil
 }
 
 // CheckExistByCategories checks if Resources exists by catalog ID and categories.

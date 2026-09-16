@@ -125,6 +125,9 @@ func TestSeedDeclaresKnowledgeNetworkHierarchy(t *testing.T) {
 	if got := resourceOps["query_data"]; got != "query_data" {
 		t.Errorf("resource/query_data parent operation = %q, want query_data", got)
 	}
+	if got := resourceOps["data_write"]; got != "data_write" {
+		t.Errorf("resource/data_write parent operation = %q, want data_write", got)
+	}
 
 	parents := []model.ResourceParent{
 		{ResourceTypeID: "object_type", ResourceID: "kn-1/shared", ParentTypeID: "knowledge_network", ParentID: "kn-1"},
@@ -431,6 +434,7 @@ func TestSeedPrunesWithdrawnOperations(t *testing.T) {
 	for _, tc := range []struct{ rtype, op string }{
 		{"resource", "view_detail"},
 		{"resource", "query_data"},
+		{"resource", "data_write"},
 		{"resource", "modify"},
 		{"resource", "delete"},
 		{"catalog", "resource_manage"},

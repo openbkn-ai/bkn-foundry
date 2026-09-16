@@ -656,17 +656,21 @@ func TestResourceAccessListAuthResources(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_name FROM t_resource WHERE f_id = ? AND f_name LIKE ? ORDER BY f_name ASC")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_resource WHERE f_id = ? AND f_name LIKE ?")).
+			WithArgs("resource-1", "%order\\%%").
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(3))
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_name FROM t_resource WHERE f_id = ? AND f_name LIKE ? ORDER BY f_name ASC LIMIT 1 OFFSET 2")).
 			WithArgs("resource-1", "%order\\%%").
 			WillReturnRows(sqlmock.NewRows([]string{"f_id", "f_name"}).AddRow("resource-1", "order%"))
 
-		got, err := access.ListAuthResources(context.Background(), interfaces.AuthResourceQueryParams{
-			PaginationQueryParams: interfaces.PaginationQueryParams{Sort: "f_name", Direction: "ASC"},
+		got, total, err := access.ListAuthResources(context.Background(), interfaces.AuthResourceQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 2, Limit: 1, Sort: "f_name", Direction: "ASC"},
 			ID:                    "resource-1",
 			Keyword:               "order%",
 		})
 
 		require.NoError(t, err)
+		assert.Equal(t, int64(3), total)
 		require.Len(t, got, 1)
 		assert.Equal(t, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, got[0].Type)
 		require.NoError(t, mock.ExpectationsWereMet())

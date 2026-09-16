@@ -35,10 +35,11 @@ const (
 	OPERATION_TYPE_AUTHORIZE   = "authorize"
 	OPERATION_TYPE_TASK_MANAGE = "task_manage"
 
-	// OPERATION_TYPE_QUERY_DATA is "the data that can be retrieved from this table", and view_detail (only looking at the structure)
-	// Separate. OPERATION_TYPE_RESOURCE_MANAGE is the "data Table under the Management Directory" on the data directory.
-	// Both are in the permission vocabulary (#801), and a constant is added here for determination.
+	// Data access is independent from view_detail: query_data reads resource data,
+	// while data_write creates, replaces, or deletes Dataset documents.
+	// resource_manage manages the resources contained by a Catalog.
 	OPERATION_TYPE_QUERY_DATA           = "query_data"
+	OPERATION_TYPE_DATA_WRITE           = "data_write"
 	OPERATION_TYPE_RESOURCE_MANAGE      = "resource_manage"
 	OPERATION_TYPE_FULL_BUSINESS_ACCESS = "full_business_access"
 
@@ -52,7 +53,7 @@ var (
 
 	// COMMON_OPERATIONS is the set every authorization answer is asked to report
 	// on. It grants nothing by itself — a verb missing here is simply never
-	// mentioned back, which is how query_data and resource_manage stayed
+	// mentioned back, which is how query_data, data_write, and resource_manage stayed
 	// invisible to the caller after #801 introduced them: the API kept answering
 	// that nobody held either, including the accounts that did.
 	COMMON_OPERATIONS = []string{
@@ -63,6 +64,7 @@ var (
 		OPERATION_TYPE_AUTHORIZE,
 		OPERATION_TYPE_TASK_MANAGE,
 		OPERATION_TYPE_QUERY_DATA,
+		OPERATION_TYPE_DATA_WRITE,
 		OPERATION_TYPE_RESOURCE_MANAGE,
 	}
 

@@ -103,7 +103,7 @@ func TestShippedCatalogBindsManagementToViewDetail(t *testing.T) {
 				t.Errorf("catalog/%s requires %v, want [view_detail]", operation, got)
 			}
 		}
-		for _, operation := range []string{"view_detail", "create", "query_data"} {
+		for _, operation := range []string{"view_detail", "create", "query_data", "data_write"} {
 			if got := operations[operation]; len(got) != 0 {
 				t.Errorf("catalog/%s unexpectedly requires %v", operation, got)
 			}

@@ -601,22 +601,44 @@ func (ca *catalogAccess) List(ctx context.Context, params interfaces.CatalogsQue
 }
 
 // ListAuthResources lists catalog auth resources with filters.
-func (ca *catalogAccess) ListAuthResources(ctx context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, error) {
+func (ca *catalogAccess) ListAuthResources(ctx context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, int64, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListAuthResources")
 	defer span.End()
+
+	if params.Offset < 0 || params.Limit < -1 {
+		return nil, 0, fmt.Errorf("invalid auth resource pagination: offset=%d, limit=%d", params.Offset, params.Limit)
+	}
 
 	builder := sq.Select(
 		"f_id",
 		"f_name",
 	).From(CATALOG_TABLE_NAME)
+	countBuilder := sq.Select("COUNT(*)").From(CATALOG_TABLE_NAME)
 
 	if params.ID != "" {
 		builder = builder.Where(sq.Eq{"f_id": params.ID})
+		countBuilder = countBuilder.Where(sq.Eq{"f_id": params.ID})
 	}
 
 	if params.Keyword != "" {
 		keyword := "%" + params.Keyword + "%"
 		builder = builder.Where(sq.Like{"f_name": keyword})
+		countBuilder = countBuilder.Where(sq.Like{"f_name": keyword})
+	}
+
+	countSQL, countVals, err := countBuilder.ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build count sql failed")
+		return nil, 0, err
+	}
+	var total int64
+	if err := ca.db.QueryRowContext(ctx, countSQL, countVals...).Scan(&total); err != nil {
+		span.SetStatus(codes.Error, "Count failed")
+		return nil, 0, err
+	}
+	if params.Limit == 0 {
+		span.SetStatus(codes.Ok, "")
+		return []*interfaces.AuthResourceEntry{}, total, nil
 	}
 
 	// Sorting
@@ -625,17 +647,20 @@ func (ca *catalogAccess) ListAuthResources(ctx context.Context, params interface
 	} else {
 		builder = builder.OrderBy("f_update_time DESC")
 	}
+	if params.Limit > 0 {
+		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
+	}
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
-		return nil, err
+		return nil, 0, err
 	}
 
 	rows, err := ca.db.QueryContext(ctx, sqlStr, vals...)
 	if err != nil {
 		span.SetStatus(codes.Error, "Query failed")
-		return nil, err
+		return nil, 0, err
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -649,7 +674,7 @@ func (ca *catalogAccess) ListAuthResources(ctx context.Context, params interface
 		)
 		if err != nil {
 			span.SetStatus(codes.Error, "Scan row failed")
-			return nil, err
+			return nil, 0, err
 		}
 
 		entry.Type = interfaces.AUTH_RESOURCE_TYPE_CATALOG
@@ -658,11 +683,11 @@ func (ca *catalogAccess) ListAuthResources(ctx context.Context, params interface
 	if err := rows.Err(); err != nil {
 		logger.Errorf("Iterate catalog authorization resource rows failed: %v", err)
 		span.SetStatus(codes.Error, "Rows iteration failed")
-		return nil, err
+		return nil, 0, err
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return entries, nil
+	return entries, total, nil
 }
 
 // Update updates ca Catalog.

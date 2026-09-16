@@ -147,12 +147,13 @@ func (mr *MockCatalogAccessMockRecorder) List(ctx, params any) *gomock.Call {
 }
 
 // ListAuthResources mocks base method.
-func (m *MockCatalogAccess) ListAuthResources(ctx context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, error) {
+func (m *MockCatalogAccess) ListAuthResources(ctx context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListAuthResources", ctx, params)
 	ret0, _ := ret[0].([]*interfaces.AuthResourceEntry)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].(int64)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // ListAuthResources indicates an expected call of ListAuthResources.

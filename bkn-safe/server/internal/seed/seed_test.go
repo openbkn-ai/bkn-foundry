@@ -629,14 +629,14 @@ func TestCatalogResourceOperationSplit(t *testing.T) {
 	}
 
 	catalogOps := ops("catalog")
-	for _, op := range []string{"view_detail", "create", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data"} {
+	for _, op := range []string{"view_detail", "create", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data", "data_write"} {
 		if !catalogOps[op] {
 			t.Errorf("catalog is missing operation %q", op)
 		}
 	}
 
 	resourceOps := ops("resource")
-	for _, op := range []string{"view_detail", "query_data", "modify", "delete"} {
+	for _, op := range []string{"view_detail", "query_data", "data_write", "modify", "delete"} {
 		if !resourceOps[op] {
 			t.Errorf("resource is missing operation %q", op)
 		}
@@ -648,8 +648,8 @@ func TestCatalogResourceOperationSplit(t *testing.T) {
 			t.Errorf("resource unexpectedly declares %q", op)
 		}
 	}
-	if len(resourceOps) != 4 {
-		t.Errorf("resource declares %d operations, want view_detail/query_data/modify/delete", len(resourceOps))
+	if len(resourceOps) != 5 {
+		t.Errorf("resource declares %d operations, want view_detail/query_data/data_write/modify/delete", len(resourceOps))
 	}
 }
 
@@ -737,7 +737,7 @@ func TestNetworkBuilderCanCreateButCannotManageOtherCatalogs(t *testing.T) {
 			t.Errorf("network_builder lost type-wide catalog/%s", op)
 		}
 	}
-	for _, op := range []string{"view_detail", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data"} {
+	for _, op := range []string{"view_detail", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data", "data_write"} {
 		ok, err := e.Check(builder, "catalog", catalog, op)
 		if err != nil {
 			t.Fatal(err)

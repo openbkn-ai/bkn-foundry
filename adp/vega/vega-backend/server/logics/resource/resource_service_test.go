@@ -2370,6 +2370,25 @@ func TestResourceServiceUpdate(t *testing.T) {
 	})
 }
 
+func TestResourceServiceListAuthResourcesDoesNotFilterByPermission(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ra := vmock.NewMockResourceAccess(ctrl)
+	rs := &resourceService{ra: ra}
+	params := interfaces.AuthResourceQueryParams{
+		PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 2, Limit: 1},
+	}
+	want := []*interfaces.AuthResourceEntry{{
+		ID: "resource-1", Name: "Resource One", Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+	}}
+	ra.EXPECT().ListAuthResources(gomock.Any(), params).Return(want, int64(3), nil)
+
+	got, total, err := rs.ListAuthResources(context.Background(), params)
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), total)
+	assert.Equal(t, want, got)
+}
+
 // 删资源时任务在运行中：级联拒绝，资源不删。
 func newS2STestService(t *testing.T, internalCatalogIDs []string) (
 	*resourceService, *vmock.MockResourceAccess, *vmock.MockPermissionService, *vmock.MockUserMgmtService) {
