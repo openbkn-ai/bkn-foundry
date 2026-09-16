@@ -227,10 +227,10 @@ type grantIndex struct {
 //
 //	(g(r.sub, p.sub) || p.sub == PublicAccessorID)
 //
-// implicitPermissions covers both halves: the accessor itself plus every role
+// permissionsWithPublic covers both halves: the accessor itself plus every role
 // reachable through g, transitively, and PublicAccessorID's root-department
-// grants. Keeping that projection centralized prevents public policy rows from
-// being indexed twice while preserving parity with single-decision Check.
+// grants. This keeps batch decisions aligned with single-decision Check without
+// changing direct resource enumeration.
 //
 // A super-admin's index carries no rows. Its decisions never read them
 // (localParts allows every operation before looking), and copying them out was
@@ -245,7 +245,7 @@ func (en *Enforcer) grantIndex(accessorID string) (*grantIndex, error) {
 	superAdmin := slices.Contains(roles, SuperAdminRoleID)
 	var rows [][]string
 	if !superAdmin {
-		rows, err = en.implicitPermissions(accessorID)
+		rows, err = en.permissionsWithPublic(accessorID)
 		if err != nil {
 			return nil, err
 		}

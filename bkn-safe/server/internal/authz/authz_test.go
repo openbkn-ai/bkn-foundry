@@ -208,6 +208,22 @@ func TestPublicAccessorGrant(t *testing.T) {
 	}
 }
 
+// Public object grants allow an operation but remain eligibility-only for
+// direct resource enumeration; otherwise every public object appears in every
+// ordinary user's resource list.
+func TestAccessibleResourcesExcludesPublicConcreteGrant(t *testing.T) {
+	e := newTestEnforcer(t)
+	mustNoErr(t, e.GrantObjectPermission(PublicAccessorID, "toolbox", "built-in", "use"))
+
+	ids, err := e.AccessibleResources("u-anyone", "toolbox", "use")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 0 {
+		t.Errorf("ids = %v, want no public resources", ids)
+	}
+}
+
 // TestAllowedOps mirrors ISF resource-operation: returns the allowed subset.
 func TestAllowedOps(t *testing.T) {
 	e := newTestEnforcer(t)

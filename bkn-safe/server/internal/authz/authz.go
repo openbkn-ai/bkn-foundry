@@ -511,7 +511,7 @@ type PermQuery struct {
 // Object/op order follows GetImplicitPermissionsForUser; callers treat the
 // result as sets.
 func (en *Enforcer) EffectivePermissions(accessorID string, q PermQuery) (hasWildcard bool, grants []RoleGrant, err error) {
-	rows, err := en.implicitPermissions(accessorID)
+	rows, err := en.permissionsWithPublic(accessorID)
 	if err != nil {
 		return false, nil, err
 	}
@@ -683,12 +683,10 @@ func (en *Enforcer) hasSuperAdminRole(accessorID string) (bool, error) {
 	return slices.Contains(roles, SuperAdminRoleID), nil
 }
 
-// implicitPermissions returns the accessor's direct, role-inherited, and public
-// policy rows. PublicAccessorID is evaluated directly by the Casbin matcher,
-// rather than through a role binding, so GetImplicitPermissionsForUser alone
-// would omit permissions that Check correctly allows. Keeping the two views in
-// sync is required by callers such as /me/permissions that render navigation
-// from effective grants.
+// implicitPermissions returns the accessor's direct and role-inherited policy
+// rows. It deliberately excludes PublicAccessorID: callers that enumerate the
+// resources directly available to a user must not turn public eligibility
+// grants into a concrete resource list.
 //
 // casbin's SyncedEnforcer.GetImplicitPermissionsForUser takes the enforcer's exclusive lock for
 // this read, so every decision queued behind every other one (#1554). The unsynchronized read is
@@ -699,24 +697,24 @@ func (en *Enforcer) hasSuperAdminRole(accessorID string) (bool, error) {
 func (en *Enforcer) implicitPermissions(accessorID string) ([][]string, error) {
 	synced, ok := en.e.(*casbin.SyncedEnforcer)
 	if !ok {
-		rows, err := en.e.GetImplicitPermissionsForUser(accessorID)
-		if err != nil || accessorID == PublicAccessorID {
-			return rows, err
-		}
-		publicRows, err := en.e.GetFilteredPolicy(0, PublicAccessorID)
-		if err != nil {
-			return nil, err
-		}
-		return append(rows, publicRows...), nil
+		return en.e.GetImplicitPermissionsForUser(accessorID)
 	}
 	lock := synced.GetLock()
 	lock.RLock()
 	defer lock.RUnlock()
-	rows, err := synced.Enforcer.GetImplicitPermissionsForUser(accessorID) //nolint:staticcheck // explicit unsynchronized call under the held lock
+	return synced.Enforcer.GetImplicitPermissionsForUser(accessorID) //nolint:staticcheck // explicit unsynchronized call under the held lock
+}
+
+// permissionsWithPublic returns the effective policy projection used by
+// authorization views and batch operation checks. PublicAccessorID is handled
+// by Casbin's matcher instead of role inheritance, so these callers merge its
+// rows explicitly without changing resource-enumeration semantics.
+func (en *Enforcer) permissionsWithPublic(accessorID string) ([][]string, error) {
+	rows, err := en.implicitPermissions(accessorID)
 	if err != nil || accessorID == PublicAccessorID {
 		return rows, err
 	}
-	publicRows, err := synced.Enforcer.GetFilteredPolicy(0, PublicAccessorID)
+	publicRows, err := en.e.GetFilteredPolicy(0, PublicAccessorID)
 	if err != nil {
 		return nil, err
 	}

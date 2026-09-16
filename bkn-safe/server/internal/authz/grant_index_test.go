@@ -119,7 +119,7 @@ func TestGrantIndexDoesNotLoadRowsForSuperAdmin(t *testing.T) {
 	}
 }
 
-// Public policies are already included by implicitPermissions. grantIndex must
+// Public policies are merged once by permissionsWithPublic. grantIndex must
 // not append them again, or every list-page decision needlessly indexes each
 // public grant twice.
 func TestGrantIndexIncludesEachPublicPolicyOnce(t *testing.T) {
