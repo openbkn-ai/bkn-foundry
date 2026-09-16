@@ -31,8 +31,6 @@ type CatalogAccess interface {
 	ListPermissionRefs(ctx context.Context, params CatalogsQueryParams) ([]CatalogPermissionRef, error)
 	// ListConnectorTypePermissionRefs lists the fields needed to aggregate connector types after authorization.
 	ListConnectorTypePermissionRefs(ctx context.Context, params CatalogsQueryParams) ([]CatalogConnectorTypePermissionRef, error)
-	// ListInternalIDs lists the ids of all internal system directories.
-	ListInternalIDs(ctx context.Context) ([]string, error)
 	// Update updates a Catalog.
 	Update(ctx context.Context, tx *sql.Tx, catalog *Catalog, expectedUpdateTime int64) (int64, error)
 	// DeleteByID deletes a Catalog by ID.

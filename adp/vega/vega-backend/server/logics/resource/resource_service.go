@@ -119,7 +119,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	// Check a caller-supplied ID only after catalog authorization so create
 	// cannot be used to probe existing Resource IDs.
 	if req.ID != "" {
-		exists, err := rs.CheckExistByID(ctx, req.ID)
+		exists, err := rs.checkExistByID(ctx, req.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -531,35 +531,6 @@ func sourceMetadataRowCount(sourceMetadata map[string]any) (int64, bool) {
 	return count, true
 }
 
-// GetByName retrieves a Resource by catalog and name.
-func (rs *resourceService) GetByName(ctx context.Context, catalogID string, name string) (*interfaces.Resource, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get resource by name")
-	defer span.End()
-	internalCatalogs, err := rs.cs.InternalCatalogIDSet(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if _, internal := internalCatalogs[catalogID]; internal && !interfaces.IsBuiltinAdmin(ctx) {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails("internal resources are restricted to the built-in administrator")
-	}
-
-	resource, err := rs.ra.GetByName(ctx, catalogID, name)
-	if err != nil {
-		span.SetStatus(codes.Error, "Get resource failed")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
-			WithErrorDetails(err.Error())
-	}
-	if resource == nil {
-		span.SetStatus(codes.Error, "Resource not found")
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
-	}
-	populateResourceColumnCount(resource)
-
-	span.SetStatus(codes.Ok, "")
-	return resource, nil
-}
-
 // List lists Resources with filters.
 func (rs *resourceService) List(ctx context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.ResourceSummary, int64, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List resources")
@@ -705,21 +676,38 @@ func (rs *resourceService) InternalList(ctx context.Context, params interfaces.R
 }
 
 // Update updates a Resource.
-func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Resource, req *interfaces.ResourceRequest) error {
+func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceRequest) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update resource")
 	defer span.End()
 
+	if err := rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+		ID:   req.ID,
+	}, []string{interfaces.OPERATION_TYPE_MODIFY}); err != nil {
+		return err
+	}
+
+	resource, err := rs.ra.GetByID(ctx, nil, req.ID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get resource failed")
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Resource_InternalError_GetFailed).WithErrorDetails(err.Error())
+	}
 	if resource == nil {
 		span.SetStatus(codes.Error, "Resource not found")
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
+	}
+	if resource.Internal && !interfaces.IsBuiltinAdmin(ctx) {
+		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails("internal resources are restricted to the built-in administrator")
 	}
 	if req.Internal != nil && *req.Internal != resource.Internal {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails("resource internal is immutable")
 	}
-	if err := rs.checkResourcePermission(ctx, resource.ID, resource.Internal,
-		interfaces.OPERATION_TYPE_MODIFY); err != nil {
-		return err
+	if req.Enabled != resource.Enabled {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_EnabledFieldNotAllowed).
+			WithErrorDetails("use POST /resources/{id}/enable or /disable to change enabled state")
 	}
 
 	// 重新保存 table/dataset 是升级 string/text 默认特征契约的边界。
@@ -981,17 +969,34 @@ func resourceLocalIndexMappingFingerprint(resource *interfaces.Resource) (string
 }
 
 // SetEnabled changes only a Resource's enabled state.
-func (rs *resourceService) SetEnabled(ctx context.Context, resource *interfaces.Resource, enabled bool) error {
+func (rs *resourceService) SetEnabled(ctx context.Context, id string, enabled bool) (*interfaces.Resource, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Set resource enabled")
 	defer span.End()
 
+	if err := rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+		ID:   id,
+	}, []string{interfaces.OPERATION_TYPE_MODIFY}); err != nil {
+		return nil, err
+	}
+
+	resource, err := rs.ra.GetByID(ctx, nil, id)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get resource failed")
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Resource_InternalError_GetFailed).WithErrorDetails(err.Error())
+	}
 	if resource == nil {
 		span.SetStatus(codes.Error, "Resource not found")
-		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
-	if err := rs.checkResourcePermission(ctx, resource.ID, resource.Internal,
-		interfaces.OPERATION_TYPE_MODIFY); err != nil {
-		return err
+	if resource.Internal && !interfaces.IsBuiltinAdmin(ctx) {
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails("internal resources are restricted to the built-in administrator")
+	}
+	if resource.Enabled == enabled {
+		span.SetStatus(codes.Ok, "")
+		return resource, nil
 	}
 
 	accountInfo := interfaces.AccountInfo{}
@@ -1000,12 +1005,12 @@ func (rs *resourceService) SetEnabled(ctx context.Context, resource *interfaces.
 	}
 	if err := rs.ra.UpdateEnabled(ctx, resource.ID, enabled, time.Now().UnixMilli(), accountInfo); err != nil {
 		span.SetStatus(codes.Error, "Set resource enabled failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Resource_InternalError_UpdateFailed).WithErrorDetails(err.Error())
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return nil
+	return resource, nil
 }
 
 // UpdateStatus updates a Resource's status.
@@ -1167,30 +1172,14 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string, ignore
 	return nil
 }
 
-// CheckExistByID checks if a resource exists by ID.
-func (rs *resourceService) CheckExistByID(ctx context.Context, id string) (bool, error) {
+// checkExistByID checks if a resource exists by ID.
+func (rs *resourceService) checkExistByID(ctx context.Context, id string) (bool, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Check resource exist by ID")
 	defer span.End()
 
 	resource, err := rs.ra.GetByID(ctx, nil, id)
 	if err != nil {
 		span.SetStatus(codes.Error, "GetByID failed")
-		return false, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
-			WithErrorDetails(err.Error())
-	}
-
-	span.SetStatus(codes.Ok, "")
-	return resource != nil, nil
-}
-
-// CheckExistByName checks if a Resource exists by name.
-func (rs *resourceService) CheckExistByName(ctx context.Context, catalogID string, name string) (bool, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Check resource exist by name")
-	defer span.End()
-
-	resource, err := rs.ra.GetByName(ctx, catalogID, name)
-	if err != nil {
-		span.SetStatus(codes.Error, "GetByName failed")
 		return false, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}

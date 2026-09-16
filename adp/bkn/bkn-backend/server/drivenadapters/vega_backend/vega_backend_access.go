@@ -69,6 +69,18 @@ func (vba *vegaBackendAccess) buildHeaders(ctx context.Context) map[string]strin
 	return headers
 }
 
+func (vba *vegaBackendAccess) buildDatasetDataHeaders(ctx context.Context, datasetID string) map[string]string {
+	headers := vba.buildHeaders(ctx)
+	if datasetID == interfaces.BKN_DATASET_ID {
+		// The concept dataset is an internal implementation resource. BKN accesses
+		// it as the built-in administrator while retaining the caller identity for
+		// every ordinary resource.
+		headers[interfaces.HTTP_HEADER_ACCOUNT_ID] = interfaces.ADMIN_ACCOUNT_ID
+		headers[interfaces.HTTP_HEADER_ACCOUNT_TYPE] = interfaces.ADMIN_ACCOUNT_TYPE
+	}
+	return headers
+}
+
 func (vba *vegaBackendAccess) GetCatalogByID(ctx context.Context, id string) (*interfaces.Catalog, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "driven layer: Get catalog by ID")
 	defer span.End()
@@ -465,7 +477,7 @@ func (vba *vegaBackendAccess) DeleteDatasetDocumentByID(ctx context.Context, dat
 		HttpMethod: http.MethodDelete,
 	})
 
-	headers := vba.buildHeaders(ctx)
+	headers := vba.buildDatasetDataHeaders(ctx, datasetID)
 	respCode, respData, err := vba.httpClient.DeleteNoUnmarshal(ctx, httpUrl, headers)
 	logger.Debugf("DeleteDatasetDocumentByID finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
 
@@ -504,7 +516,7 @@ func (vba *vegaBackendAccess) DeleteDatasetDocumentsByQuery(ctx context.Context,
 		"filter_condition": filterCondition,
 	}
 
-	headers := vba.buildHeaders(ctx)
+	headers := vba.buildDatasetDataHeaders(ctx, datasetID)
 	headers[oteltrace.HTTP_HEADER_METHOD_OVERRIDE] = http.MethodDelete
 	respCode, respData, err := vba.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, reqBody)
 	logger.Debugf("DeleteDatasetDocumentsByQuery finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
@@ -546,7 +558,7 @@ func (vba *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID 
 	if err != nil {
 		return nil, err
 	}
-	headers := vba.buildHeaders(ctx)
+	headers := vba.buildDatasetDataHeaders(ctx, resourceID)
 	headers[oteltrace.HTTP_HEADER_METHOD_OVERRIDE] = http.MethodGet
 	respCode, respData, err := vba.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, request)
 	logger.Debugf("QueryDatasetData finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
@@ -600,7 +612,8 @@ func (vba *vegaBackendAccess) WriteDatasetDocument(ctx context.Context, datasetI
 		HttpContentType: rest.ContentTypeJson,
 	})
 
-	respCode, respData, err := vba.httpClient.PutNoUnmarshal(ctx, httpURL, vba.buildHeaders(ctx), document)
+	respCode, respData, err := vba.httpClient.PutNoUnmarshal(ctx, httpURL,
+		vba.buildDatasetDataHeaders(ctx, datasetID), document)
 	logger.Debugf("WriteDatasetDocument finished, document_id is [%s], response code is [%d], %s",
 		docID, respCode, common.SafeErrorSummary(err))
 	if err != nil {

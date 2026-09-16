@@ -292,43 +292,6 @@ func TestResourceAccessGetPermissionRefsByIDs(t *testing.T) {
 	})
 }
 
-func TestResourceAccessGetByName(t *testing.T) {
-	t.Run("returns resource", func(t *testing.T) {
-		access, mock, cleanup := newResourceAccessMock(t)
-		defer cleanup()
-
-		mock.ExpectQuery(regexp.QuoteMeta(resourceNameSelectSQL("f_catalog_id = ? AND f_name = ?"))).
-			WithArgs("catalog-1", "orders").
-			WillReturnRows(resourceNameRows().AddRow(resourceNameRowValues(sampleResource())...))
-
-		got, err := access.GetByName(context.Background(), "catalog-1", "orders")
-
-		require.NoError(t, err)
-		require.NotNil(t, got)
-		assert.Equal(t, "resource-1", got.ID)
-		assert.Equal(t, []string{"pii", "core"}, got.Tags)
-		assert.Equal(t, "db1", got.Schema)
-		assert.Equal(t, "public.orders", got.SourceIdentifier)
-		require.Len(t, got.SchemaDefinition, 1)
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
-
-	t.Run("returns nil when not found", func(t *testing.T) {
-		access, mock, cleanup := newResourceAccessMock(t)
-		defer cleanup()
-
-		mock.ExpectQuery(regexp.QuoteMeta(resourceNameSelectSQL("f_catalog_id = ? AND f_name = ?"))).
-			WithArgs("catalog-1", "missing").
-			WillReturnError(sql.ErrNoRows)
-
-		got, err := access.GetByName(context.Background(), "catalog-1", "missing")
-
-		require.NoError(t, err)
-		assert.Nil(t, got)
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
-}
-
 func TestResourceAccessGetByCatalogID(t *testing.T) {
 	t.Run("returns resources", func(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)

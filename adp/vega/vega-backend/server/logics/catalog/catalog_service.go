@@ -109,20 +109,6 @@ func NewCatalogService(appSetting *common.AppSetting) interfaces.CatalogService 
 	return cService
 }
 
-// InternalCatalogIDSet queries the collection of all internal directory ids of the system.
-func (cs *catalogService) InternalCatalogIDSet(ctx context.Context) (map[string]struct{}, error) {
-	ids, err := cs.ca.ListInternalIDs(ctx)
-	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
-	}
-	set := make(map[string]struct{}, len(ids))
-	for _, id := range ids {
-		set[id] = struct{}{}
-	}
-	return set, nil
-}
-
 // filterCatalogPermissionsInBatches filters catalog permissions without exceeding the permission-service request size.
 func (cs *catalogService) filterCatalogPermissionsInBatches(ctx context.Context, ids []string,
 	ops []string, allowOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
@@ -718,10 +704,23 @@ func (cs *catalogService) ListConnectorTypeStats(ctx context.Context, params int
 }
 
 // Update updates a Catalog.
-func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalog, req *interfaces.CatalogRequest, allowUnhealthy bool) error {
+func (cs *catalogService) Update(ctx context.Context, req *interfaces.CatalogRequest, allowUnhealthy bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update catalog")
 	defer span.End()
 
+	if err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+		ID:   req.ID,
+	}, []string{interfaces.OPERATION_TYPE_MODIFY}); err != nil {
+		return err
+	}
+
+	catalog, err := cs.ca.GetByID(ctx, req.ID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get catalog failed")
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
+	}
 	if catalog == nil {
 		span.SetStatus(codes.Error, "Catalog not found")
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
@@ -731,16 +730,25 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 			WithErrorDetails("internal catalogs are restricted to the built-in administrator")
 	}
 
-	// Internal catalogs have already been restricted to the built-in admin.
-	err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
-		ID:   catalog.ID,
-	}, []string{interfaces.OPERATION_TYPE_MODIFY})
-	if err != nil {
-		return err
+	if req.ConnectorType != catalog.ConnectorType {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter_ConnectorType).
+			WithErrorDetails("connector_type cannot be modified")
+	}
+	if req.Enabled != catalog.Enabled {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_EnabledFieldNotAllowed).
+			WithErrorDetails("use POST /catalogs/{id}/enable or /disable to change enabled state")
 	}
 
 	nameModified := req.Name != catalog.Name
+	if nameModified {
+		exists, err := cs.CheckExistByName(ctx, req.Name)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_NameExists)
+		}
+	}
 
 	// Apply updates
 	catalog.Name = req.Name
@@ -855,25 +863,34 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 	return nil
 }
 
-func (cs *catalogService) SetEnabled(ctx context.Context, catalog *interfaces.Catalog, enabled bool) error {
+func (cs *catalogService) SetEnabled(ctx context.Context, id string, enabled bool) (*interfaces.Catalog, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Set catalog enabled")
 	defer span.End()
 
-	if catalog == nil {
-		span.SetStatus(codes.Error, "Catalog not found")
-		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
-	}
-	if catalog.Internal && !interfaces.IsBuiltinAdmin(ctx) {
-		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails("internal catalogs are restricted to the built-in administrator")
+	if err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+		ID:   id,
+	}, []string{interfaces.OPERATION_TYPE_MODIFY}); err != nil {
+		return nil, err
 	}
 
-	err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
-		ID:   catalog.ID,
-	}, []string{interfaces.OPERATION_TYPE_MODIFY})
+	catalog, err := cs.ca.GetByID(ctx, id)
 	if err != nil {
-		return err
+		span.SetStatus(codes.Error, "Get catalog failed")
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
+	}
+	if catalog == nil {
+		span.SetStatus(codes.Error, "Catalog not found")
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+	}
+	if catalog.Internal && !interfaces.IsBuiltinAdmin(ctx) {
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails("internal catalogs are restricted to the built-in administrator")
+	}
+	if catalog.Enabled == enabled {
+		span.SetStatus(codes.Ok, "")
+		return catalog, nil
 	}
 
 	status := catalog.CatalogHealthCheckStatus
@@ -895,12 +912,12 @@ func (cs *catalogService) SetEnabled(ctx context.Context, catalog *interfaces.Ca
 
 	if err := cs.ca.UpdateEnabled(ctx, catalog.ID, enabled, status, now, accountInfo); err != nil {
 		span.SetStatus(codes.Error, "Set catalog enabled failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).WithErrorDetails(err.Error())
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return nil
+	return catalog, nil
 }
 
 // GetDeletionImpact returns the dependency counts used by catalog deletion.
@@ -1164,16 +1181,6 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 
 	span.SetStatus(codes.Ok, "")
 	return nil
-}
-
-// ListInternalIDs lists the ids of all internal system directories.
-func (cs *catalogService) ListInternalIDs(ctx context.Context) ([]string, error) {
-	ids, err := cs.ca.ListInternalIDs(ctx)
-	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
-	}
-	return ids, nil
 }
 
 // CheckExistByID checks if a Catalog exists by ID.

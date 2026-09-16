@@ -152,13 +152,11 @@ func Test_ResourceRestHandler_SetResourceEnabled(t *testing.T) {
 			Status:             interfaces.ResourceStatusStale,
 			LastDiscoverStatus: interfaces.DiscoverStatusMissing,
 		}
-		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
-		rs.EXPECT().SetEnabled(gomock.Any(), resource, true).
-			DoAndReturn(func(_ context.Context, got *interfaces.Resource, enabled bool) error {
-				assert.Same(t, resource, got)
-				assert.Equal(t, "res-1", got.ID)
+		rs.EXPECT().SetEnabled(gomock.Any(), "res-1", true).
+			DoAndReturn(func(_ context.Context, id string, enabled bool) (*interfaces.Resource, error) {
+				assert.Equal(t, "res-1", id)
 				assert.True(t, enabled)
-				return nil
+				return resource, nil
 			})
 
 		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/enable", nil)
@@ -173,9 +171,10 @@ func Test_ResourceRestHandler_SetResourceEnabled(t *testing.T) {
 
 	t.Run("disable is idempotent", func(t *testing.T) {
 		engine, rs := setup(t)
-		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(&interfaces.Resource{
+		resource := &interfaces.Resource{
 			ID: "res-1", Name: "orders", Enabled: false,
-		}, nil)
+		}
+		rs.EXPECT().SetEnabled(gomock.Any(), "res-1", false).Return(resource, nil)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/disable", nil)
 		w := httptest.NewRecorder()
@@ -375,14 +374,39 @@ func Test_ResourceRestHandler_UpdateResource(t *testing.T) {
 	defer restoreGinMode()
 
 	const url = "/api/vega-backend/in/v1/resources/res-1"
-	body := `{"catalog_id":"catalog-1","name":"dataset-new","category":"dataset","schema_definition":[{"name":"title","type":"string"}],"expected_update_time":1}`
+	body := `{"id":"res-1","catalog_id":"catalog-1","name":"dataset-new","category":"dataset","schema_definition":[{"name":"title","type":"string"}],"expected_update_time":1}`
+
+	t.Run("rejects missing body id", func(t *testing.T) {
+		engine, _, _ := setupResourceHandlerTest(t)
+		req := httptest.NewRequest(http.MethodPut, url,
+			strings.NewReader(`{"catalog_id":"catalog-1","name":"dataset-new","category":"dataset","schema_definition":[{"name":"title","type":"string"}],"expected_update_time":1}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "body field 'id' is required")
+	})
+
+	t.Run("rejects body id different from path", func(t *testing.T) {
+		engine, _, _ := setupResourceHandlerTest(t)
+		req := httptest.NewRequest(http.MethodPut, url,
+			strings.NewReader(`{"id":"res-2","catalog_id":"catalog-1","name":"dataset-new","category":"dataset","schema_definition":[{"name":"title","type":"string"}],"expected_update_time":1}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusConflict, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), `path id \"res-1\" != body id \"res-2\"`)
+	})
 
 	t.Run("updates resource", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
-		current := &interfaces.Resource{ID: "res-1", CatalogID: "catalog-1", Name: "dataset", Category: interfaces.ResourceCategoryDataset}
-		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(current, nil)
-		rs.EXPECT().Update(gomock.Any(), current, gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ *interfaces.Resource, req *interfaces.ResourceRequest) error {
+		rs.EXPECT().Update(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) error {
+				assert.Equal(t, "res-1", req.ID)
 				assert.Equal(t, "dataset-new", req.Name)
 				return nil
 			})
@@ -398,12 +422,12 @@ func Test_ResourceRestHandler_UpdateResource(t *testing.T) {
 
 	t.Run("rejects enabled change through put", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
-		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(&interfaces.Resource{
-			ID: "res-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryDataset, Enabled: true,
-		}, nil)
+		rs.EXPECT().Update(gomock.Any(), gomock.Any()).Return(
+			rest.NewHTTPError(context.Background(), http.StatusConflict,
+				verrors.VegaBackend_Resource_EnabledFieldNotAllowed))
 
 		req := httptest.NewRequest(http.MethodPut, url,
-			strings.NewReader(`{"catalog_id":"catalog-1","name":"dataset","category":"dataset","enabled":false}`))
+			strings.NewReader(`{"id":"res-1","catalog_id":"catalog-1","name":"dataset","category":"dataset","enabled":false,"schema_definition":[{"name":"title","type":"string"}],"expected_update_time":1}`))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		engine.ServeHTTP(w, req)
@@ -413,11 +437,9 @@ func Test_ResourceRestHandler_UpdateResource(t *testing.T) {
 	})
 
 	t.Run("rejects missing expected update time", func(t *testing.T) {
-		engine, _, rs := setupResourceHandlerTest(t)
-		current := &interfaces.Resource{ID: "res-1", CatalogID: "catalog-1", Name: "dataset", Category: interfaces.ResourceCategoryDataset}
-		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(current, nil)
+		engine, _, _ := setupResourceHandlerTest(t)
 
-		req := httptest.NewRequest(http.MethodPut, url, strings.NewReader(`{"catalog_id":"catalog-1","name":"dataset-new","category":"dataset","schema_definition":[{"name":"title","type":"string"}]}`))
+		req := httptest.NewRequest(http.MethodPut, url, strings.NewReader(`{"id":"res-1","catalog_id":"catalog-1","name":"dataset-new","category":"dataset","schema_definition":[{"name":"title","type":"string"}]}`))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
@@ -428,11 +450,9 @@ func Test_ResourceRestHandler_UpdateResource(t *testing.T) {
 	})
 
 	t.Run("rejects dataset ref property", func(t *testing.T) {
-		engine, _, rs := setupResourceHandlerTest(t)
-		current := &interfaces.Resource{ID: "res-1", CatalogID: "catalog-1", Name: "dataset", Category: interfaces.ResourceCategoryDataset}
-		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(current, nil)
+		engine, _, _ := setupResourceHandlerTest(t)
 
-		body := `{"catalog_id":"catalog-1","name":"dataset-new","category":"dataset","schema_definition":[{"name":"title_keyword","type":"string"},{"name":"title","type":"text","features":[{"name":"title.keyword","feature_type":"keyword","ref_property":"title_keyword"}]}]}`
+		body := `{"id":"res-1","catalog_id":"catalog-1","name":"dataset-new","category":"dataset","schema_definition":[{"name":"title_keyword","type":"string"},{"name":"title","type":"text","features":[{"name":"title.keyword","feature_type":"keyword","ref_property":"title_keyword"}]}]}`
 		req := httptest.NewRequest(http.MethodPut, url, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
@@ -443,11 +463,9 @@ func Test_ResourceRestHandler_UpdateResource(t *testing.T) {
 	})
 
 	t.Run("rejects missing category", func(t *testing.T) {
-		engine, _, rs := setupResourceHandlerTest(t)
-		current := &interfaces.Resource{ID: "res-1", CatalogID: "catalog-1", Name: "dataset", Category: interfaces.ResourceCategoryDataset}
-		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(current, nil)
+		engine, _, _ := setupResourceHandlerTest(t)
 
-		body := `{"catalog_id":"catalog-1","name":"dataset-new","schema_definition":[{"name":"title","type":"string"}]}`
+		body := `{"id":"res-1","catalog_id":"catalog-1","name":"dataset-new","schema_definition":[{"name":"title","type":"string"}]}`
 		req := httptest.NewRequest(http.MethodPut, url, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
@@ -459,10 +477,11 @@ func Test_ResourceRestHandler_UpdateResource(t *testing.T) {
 
 	t.Run("rejects category change", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
-		current := &interfaces.Resource{ID: "res-1", CatalogID: "catalog-1", Name: "dataset", Category: interfaces.ResourceCategoryDataset}
-		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(current, nil)
+		rs.EXPECT().Update(gomock.Any(), gomock.Any()).Return(
+			rest.NewHTTPError(context.Background(), http.StatusBadRequest,
+				verrors.VegaBackend_InvalidParameter_RequestBody))
 
-		body := `{"catalog_id":"catalog-1","name":"dataset-new","category":"table","schema_definition":[{"name":"title","type":"string"}]}`
+		body := `{"id":"res-1","catalog_id":"catalog-1","name":"dataset-new","category":"table","schema_definition":[{"name":"title","type":"string"}],"expected_update_time":1}`
 		req := httptest.NewRequest(http.MethodPut, url, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
@@ -474,9 +493,7 @@ func Test_ResourceRestHandler_UpdateResource(t *testing.T) {
 
 	t.Run("allows duplicate renamed resource", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
-		current := &interfaces.Resource{ID: "res-1", CatalogID: "catalog-1", Name: "dataset", Category: interfaces.ResourceCategoryDataset}
-		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(current, nil)
-		rs.EXPECT().Update(gomock.Any(), current, gomock.Any()).Return(nil)
+		rs.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
 
 		req := httptest.NewRequest(http.MethodPut, url, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")

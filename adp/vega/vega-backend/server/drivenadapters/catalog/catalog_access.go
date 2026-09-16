@@ -505,45 +505,6 @@ func (ca *catalogAccess) ListConnectorTypePermissionRefs(ctx context.Context, pa
 	return refs, nil
 }
 
-// ListInternalIDs lists the ids of all internal system directories.
-func (ca *catalogAccess) ListInternalIDs(ctx context.Context) ([]string, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List internal catalog IDs")
-	defer span.End()
-
-	sqlStr, vals, err := sq.Select("f_id").From(CATALOG_TABLE_NAME).
-		Where(sq.Eq{"f_internal": true}).
-		ToSql()
-	if err != nil {
-		span.SetStatus(codes.Error, "Build sql failed")
-		return nil, err
-	}
-
-	rows, err := ca.db.QueryContext(ctx, sqlStr, vals...)
-	if err != nil {
-		span.SetStatus(codes.Error, "Query failed")
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-
-	ids := make([]string, 0)
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			span.SetStatus(codes.Error, "Scan row failed")
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	if err := rows.Err(); err != nil {
-		logger.Errorf("Iterate internal catalog rows failed: %v", err)
-		span.SetStatus(codes.Error, "Rows iteration failed")
-		return nil, err
-	}
-
-	span.SetStatus(codes.Ok, "")
-	return ids, nil
-}
-
 // List lists Catalog summaries with filters.
 func (ca *catalogAccess) List(ctx context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.CatalogSummary, int64, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List catalogs")

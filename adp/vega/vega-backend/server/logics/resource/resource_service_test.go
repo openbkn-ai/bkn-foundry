@@ -56,8 +56,6 @@ func newTestService(t *testing.T) (*resourceService,
 		dta: mockDTA,
 	}
 
-	// 默认无系统内部目录；覆盖 internal 行为的用例可叠加更具体的 EXPECT
-	mockCS.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{}, nil).AnyTimes()
 	mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(),
 		[]string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}, true).
 		DoAndReturn(func(_ context.Context, id string, _ []string, _ bool) (bool, *interfaces.Catalog, error) {
@@ -287,7 +285,7 @@ func TestResourceServiceCheckExistByID(t *testing.T) {
 		mockRA.EXPECT().GetByID(gomock.Any(), nil, "r1").
 			Return(&interfaces.Resource{ID: "r1"}, nil)
 
-		exists, err := rs.CheckExistByID(context.Background(), "r1")
+		exists, err := rs.checkExistByID(context.Background(), "r1")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -300,7 +298,7 @@ func TestResourceServiceCheckExistByID(t *testing.T) {
 		mockRA.EXPECT().GetByID(gomock.Any(), nil, "missing").
 			Return(nil, nil)
 
-		exists, err := rs.CheckExistByID(context.Background(), "missing")
+		exists, err := rs.checkExistByID(context.Background(), "missing")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -313,45 +311,16 @@ func TestResourceServiceCheckExistByID(t *testing.T) {
 		mockRA.EXPECT().GetByID(gomock.Any(), nil, "r1").
 			Return(nil, fmt.Errorf("db error"))
 
-		_, err := rs.CheckExistByID(context.Background(), "r1")
+		_, err := rs.checkExistByID(context.Background(), "r1")
 		if err == nil {
 			t.Fatal("expected error")
 		}
 	})
 }
 
-func TestResourceServiceCheckExistByName(t *testing.T) {
-	t.Run("check exist by name found", func(t *testing.T) {
-		rs, mockRA, _, _, _, _, _ := newTestService(t)
-		mockRA.EXPECT().GetByName(gomock.Any(), "cat1", "test").
-			Return(&interfaces.Resource{Name: "test"}, nil)
-
-		exists, err := rs.CheckExistByName(context.Background(), "cat1", "test")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !exists {
-			t.Error("expected resource to exist")
-		}
-	})
-	t.Run("check exist by name not found", func(t *testing.T) {
-		rs, mockRA, _, _, _, _, _ := newTestService(t)
-		mockRA.EXPECT().GetByName(gomock.Any(), "cat1", "missing").
-			Return(nil, nil)
-
-		exists, err := rs.CheckExistByName(context.Background(), "cat1", "missing")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if exists {
-			t.Error("expected resource to not exist")
-		}
-	})
-}
-
 func TestResourceServiceGetByID(t *testing.T) {
 	t.Run("trusted proxy cannot bypass internal resource guard", func(t *testing.T) {
-		rs, mockRA, _, _ := newS2STestService(t, []string{"cat-int"})
+		rs, mockRA, _, _ := newS2STestService(t)
 		mockRA.EXPECT().GetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "cat-int", Internal: true}, nil)
 
 		_, err := rs.GetByID(interfaces.WithTrustedProxyRead(context.Background()), "r1")
@@ -415,7 +384,7 @@ func TestResourceServiceGetByID(t *testing.T) {
 		}
 	})
 	t.Run("built-in admin reads internal resource through resource hierarchy", func(t *testing.T) {
-		rs, ra, ps, ums := newS2STestService(t, []string{"cat-int"})
+		rs, ra, ps, ums := newS2STestService(t)
 		ra.EXPECT().GetByID(gomock.Any(), nil, "r1").
 			Return(&interfaces.Resource{ID: "r1", CatalogID: "cat-int", Internal: true}, nil)
 		ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
@@ -434,7 +403,7 @@ func TestResourceServiceGetByID(t *testing.T) {
 		}
 	})
 	t.Run("non-admin cannot read internal resource", func(t *testing.T) {
-		rs, ra, _, _ := newS2STestService(t, []string{"cat-int"})
+		rs, ra, _, _ := newS2STestService(t)
 		ra.EXPECT().GetByID(gomock.Any(), nil, "r1").
 			Return(&interfaces.Resource{ID: "r1", CatalogID: "cat-int", Internal: true}, nil)
 
@@ -444,7 +413,7 @@ func TestResourceServiceGetByID(t *testing.T) {
 		}
 	})
 	t.Run("keeps per-account auth for non-internal resource with S2S marker", func(t *testing.T) {
-		rs, ra, ps, _ := newS2STestService(t, []string{})
+		rs, ra, ps, _ := newS2STestService(t)
 		ra.EXPECT().GetByID(gomock.Any(), nil, "r1").
 			Return(&interfaces.Resource{ID: "r1", CatalogID: "cat-user"}, nil)
 		ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
@@ -1793,12 +1762,40 @@ func TestResourceServiceUpdateDiscoverStatus(t *testing.T) {
 	})
 }
 
-func TestResourceServiceUpdate(t *testing.T) {
-	t.Run("rejects changing internal after creation", func(t *testing.T) {
-		rs, _, _, _, _, _, _ := newTestService(t)
-		internal := true
+func updateResourceForTest(t *testing.T, rs *resourceService, resource *interfaces.Resource,
+	req *interfaces.ResourceRequest) error {
+	t.Helper()
+	id := "r1"
+	if resource != nil {
+		id = resource.ID
+	}
+	mockRA, ok := rs.ra.(*vmock.MockResourceAccess)
+	require.True(t, ok)
+	mockRA.EXPECT().GetByID(gomock.Any(), nil, id).Return(resource, nil)
+	req.ID = id
+	return rs.Update(context.Background(), req)
+}
 
-		err := rs.Update(context.Background(), &interfaces.Resource{
+func TestResourceServiceUpdate(t *testing.T) {
+	t.Run("authorizes before rejecting an enabled change", func(t *testing.T) {
+		rs, _, mockPS, _, _, _, _ := newTestService(t)
+		resource := &interfaces.Resource{ID: "r1", Enabled: true}
+		mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			ID:   "r1",
+		}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+
+		err := updateResourceForTest(t, rs, resource, &interfaces.ResourceRequest{Enabled: false})
+
+		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_EnabledFieldNotAllowed)
+		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+	})
+	t.Run("rejects changing internal after creation", func(t *testing.T) {
+		rs, _, mockPS, _, _, _, _ := newTestService(t)
+		internal := true
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+
+		err := updateResourceForTest(t, rs, &interfaces.Resource{
 			ID: "r1", CatalogID: "cat1", Internal: false,
 		}, &interfaces.ResourceRequest{Internal: &internal})
 
@@ -1828,7 +1825,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		}
 		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), resource, int64(1)).Return(int64(1), nil)
 
-		err := rs.Update(context.Background(), resource, &interfaces.ResourceRequest{
+		err := updateResourceForTest(t, rs, resource, &interfaces.ResourceRequest{
 			CatalogID:          "cat1",
 			Category:           interfaces.ResourceCategoryDataset,
 			Name:               "dataset",
@@ -1848,12 +1845,25 @@ func TestResourceServiceUpdate(t *testing.T) {
 		assert.Equal(t, "Exact match", resource.SchemaDefinition[0].Features[0].Description)
 	})
 
-	t.Run("update nil resource", func(t *testing.T) {
-		rs, _, _, _, _, _, _ := newTestService(t)
-		err := rs.Update(context.Background(), nil, &interfaces.ResourceRequest{})
+	t.Run("update missing resource", func(t *testing.T) {
+		rs, _, mockPS, _, _, _, _ := newTestService(t)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		err := updateResourceForTest(t, rs, nil, &interfaces.ResourceRequest{})
 		if err == nil {
-			t.Fatal("expected error for nil resource")
+			t.Fatal("expected error for missing resource")
 		}
+	})
+	t.Run("does not query resource when permission is denied", func(t *testing.T) {
+		rs, _, mockPS, _, _, _, _ := newTestService(t)
+		permissionErr := rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			ID:   "r1",
+		}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(permissionErr)
+
+		err := rs.Update(context.Background(), &interfaces.ResourceRequest{ID: "r1"})
+
+		assert.ErrorIs(t, err, permissionErr)
 	})
 	t.Run("update success", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
@@ -1876,7 +1886,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), gomock.Any()).Return(true, nil)
 		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).Return(int64(1), nil)
 
-		err := rs.Update(context.Background(), &interfaces.Resource{ID: "r1", CatalogID: "cat1", Name: "updated", Category: interfaces.ResourceCategoryTable}, &interfaces.ResourceRequest{
+		err := updateResourceForTest(t, rs, &interfaces.Resource{ID: "r1", CatalogID: "cat1", Name: "updated", Category: interfaces.ResourceCategoryTable}, &interfaces.ResourceRequest{
 			CatalogID: "cat1",
 			Name:      "updated",
 			Category:  interfaces.ResourceCategoryTable,
@@ -1918,7 +1928,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 				}},
 			}},
 		}
-		err := rs.Update(context.Background(), resource, &interfaces.ResourceRequest{
+		err := updateResourceForTest(t, rs, resource, &interfaces.ResourceRequest{
 			CatalogID:        "cat1",
 			Category:         interfaces.ResourceCategoryTable,
 			Name:             "table",
@@ -1960,7 +1970,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		mockDS.EXPECT().Update(gomock.Any(), resource).Return(nil)
 		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), resource, int64(0)).Return(int64(1), nil)
 
-		err := rs.Update(context.Background(), resource, &interfaces.ResourceRequest{
+		err := updateResourceForTest(t, rs, resource, &interfaces.ResourceRequest{
 			CatalogID: "cat1",
 			Category:  interfaces.ResourceCategoryDataset,
 			Name:      "dataset",
@@ -1997,7 +2007,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), resource, int64(0)).Return(int64(1), nil)
 		mockDS.EXPECT().Update(gomock.Any(), resource).Return(nil)
 
-		err := rs.Update(context.Background(), resource, &interfaces.ResourceRequest{
+		err := updateResourceForTest(t, rs, resource, &interfaces.ResourceRequest{
 			CatalogID:        "cat1",
 			Category:         interfaces.ResourceCategoryDataset,
 			Name:             "dataset",
@@ -2028,7 +2038,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).Return(nil, int64(0), nil)
 		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), resource, int64(42)).Return(int64(0), nil)
 
-		err := rs.Update(context.Background(), resource, &interfaces.ResourceRequest{
+		err := updateResourceForTest(t, rs, resource, &interfaces.ResourceRequest{
 			CatalogID:          "cat1",
 			Category:           interfaces.ResourceCategoryDataset,
 			Name:               "dataset",
@@ -2057,7 +2067,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).
 			Return([]map[string]any{{"id": "doc-1"}}, int64(1), nil)
 
-		err := rs.Update(context.Background(), resource, &interfaces.ResourceRequest{
+		err := updateResourceForTest(t, rs, resource, &interfaces.ResourceRequest{
 			CatalogID: "cat1",
 			Category:  interfaces.ResourceCategoryDataset,
 			Name:      "dataset",
@@ -2083,7 +2093,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 				return 0, nil
 			})
 
-		err := rs.Update(context.Background(), &interfaces.Resource{ID: "r1", CatalogID: "cat1", Name: "updated", Category: interfaces.ResourceCategoryTable}, &interfaces.ResourceRequest{
+		err := updateResourceForTest(t, rs, &interfaces.Resource{ID: "r1", CatalogID: "cat1", Name: "updated", Category: interfaces.ResourceCategoryTable}, &interfaces.ResourceRequest{
 			CatalogID:          "cat1",
 			Name:               "updated",
 			Category:           interfaces.ResourceCategoryTable,
@@ -2102,7 +2112,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), gomock.Any()).Return(true, nil)
 		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).Return(int64(0), nil)
 
-		err := rs.Update(context.Background(), &interfaces.Resource{ID: "r1", CatalogID: "cat1", Name: "updated", Category: interfaces.ResourceCategoryTable}, &interfaces.ResourceRequest{
+		err := updateResourceForTest(t, rs, &interfaces.Resource{ID: "r1", CatalogID: "cat1", Name: "updated", Category: interfaces.ResourceCategoryTable}, &interfaces.ResourceRequest{
 			CatalogID: "cat1",
 			Name:      "updated",
 			Category:  interfaces.ResourceCategoryTable,
@@ -2128,7 +2138,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 				}}, nil
 			})
 
-		err := rs.Update(context.Background(), &interfaces.Resource{
+		err := updateResourceForTest(t, rs, &interfaces.Resource{
 			ID:               "r1",
 			CatalogID:        "cat1",
 			Category:         interfaces.ResourceCategoryTable,
@@ -2174,7 +2184,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 				}
 				return 1, nil
 			})
-		err := rs.Update(context.Background(), &interfaces.Resource{
+		err := updateResourceForTest(t, rs, &interfaces.Resource{
 			ID:               "r1",
 			CatalogID:        "cat1",
 			Category:         interfaces.ResourceCategoryTable,
@@ -2230,7 +2240,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			interfaces.ResourceLocalIndexStatusStale,
 			"vega-build-r1-task-1", "",
 		).Return(true, nil)
-		err := rs.Update(context.Background(), &interfaces.Resource{
+		err := updateResourceForTest(t, rs, &interfaces.Resource{
 			ID:               "r1",
 			CatalogID:        "cat1",
 			Category:         interfaces.ResourceCategoryTable,
@@ -2274,7 +2284,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			"vega-build-r1-task-1", "",
 		).Return(true, nil)
 
-		err := rs.Update(context.Background(), &interfaces.Resource{
+		err := updateResourceForTest(t, rs, &interfaces.Resource{
 			ID:               "r1",
 			CatalogID:        "cat1",
 			Category:         interfaces.ResourceCategoryTable,
@@ -2319,7 +2329,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 				}}, nil
 			})
 
-		err := rs.Update(context.Background(), &interfaces.Resource{
+		err := updateResourceForTest(t, rs, &interfaces.Resource{
 			ID:               "r1",
 			CatalogID:        "cat1",
 			Category:         interfaces.ResourceCategoryTable,
@@ -2370,7 +2380,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			})
 		mockRA.EXPECT().UpdateLocalIndexState(gomock.Any(), gomock.Not(nil), "r1",
 			interfaces.ResourceLocalIndexStatusAvailable, "vega-build-r1-task-1", "").Return(true, nil)
-		err := rs.Update(context.Background(), &interfaces.Resource{
+		err := updateResourceForTest(t, rs, &interfaces.Resource{
 			ID:               "r1",
 			CatalogID:        "cat1",
 			Category:         interfaces.ResourceCategoryTable,
@@ -2411,7 +2421,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
 		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).Return(int64(1), nil)
 
-		err := rs.Update(context.Background(), &interfaces.Resource{
+		err := updateResourceForTest(t, rs, &interfaces.Resource{
 			ID:               "r1",
 			CatalogID:        "cat1",
 			Category:         interfaces.ResourceCategoryTable,
@@ -2449,7 +2459,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
 		mockMFS.EXPECT().GetModelByID(gomock.Any(), "missing-model-id").Return(nil, fmt.Errorf("model not found"))
 
-		err := rs.Update(context.Background(), &interfaces.Resource{
+		err := updateResourceForTest(t, rs, &interfaces.Resource{
 			ID:               "r1",
 			CatalogID:        "cat1",
 			Category:         interfaces.ResourceCategoryTable,
@@ -2495,7 +2505,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
 		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).Return(int64(1), nil)
-		err := rs.Update(context.Background(), &interfaces.Resource{
+		err := updateResourceForTest(t, rs, &interfaces.Resource{
 			ID:               "r1",
 			CatalogID:        "cat1",
 			Category:         interfaces.ResourceCategoryTable,
@@ -2537,7 +2547,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 				}
 				return 1, nil
 			})
-		err := rs.Update(context.Background(), &interfaces.Resource{
+		err := updateResourceForTest(t, rs, &interfaces.Resource{
 			ID:               "r1",
 			CatalogID:        "cat1",
 			Category:         interfaces.ResourceCategoryTable,
@@ -2582,7 +2592,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 				return 1, nil
 			})
 
-		err := rs.Update(context.Background(), &interfaces.Resource{
+		err := updateResourceForTest(t, rs, &interfaces.Resource{
 			ID:               "r1",
 			CatalogID:        "cat1",
 			Category:         interfaces.ResourceCategoryTable,
@@ -2608,7 +2618,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		rs, _, mockPS, _, _, _, _ := newTestService(t)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
-		err := rs.Update(context.Background(), &interfaces.Resource{
+		err := updateResourceForTest(t, rs, &interfaces.Resource{
 			ID:        "r1",
 			CatalogID: "cat1",
 			Category:  interfaces.ResourceCategoryTable,
@@ -2627,7 +2637,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		rs, _, mockPS, _, _, _, _ := newTestService(t)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
-		err := rs.Update(context.Background(), &interfaces.Resource{
+		err := updateResourceForTest(t, rs, &interfaces.Resource{
 			ID:        "r1",
 			CatalogID: "cat1",
 			Category:  interfaces.ResourceCategoryDataset,
@@ -2646,7 +2656,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		rs, _, mockPS, _, _, _, _ := newTestService(t)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
-		err := rs.Update(context.Background(), &interfaces.Resource{
+		err := updateResourceForTest(t, rs, &interfaces.Resource{
 			ID:        "r1",
 			CatalogID: "cat1",
 			Category:  interfaces.ResourceCategoryDataset,
@@ -2667,7 +2677,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		rs, _, mockPS, _, _, _, _ := newTestService(t)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
-		err := rs.Update(context.Background(), &interfaces.Resource{
+		err := updateResourceForTest(t, rs, &interfaces.Resource{
 			ID:               "r1",
 			CatalogID:        "cat1",
 			Category:         interfaces.ResourceCategoryTable,
@@ -2712,7 +2722,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 				}
 				return 1, nil
 			})
-		err := rs.Update(context.Background(), &interfaces.Resource{
+		err := updateResourceForTest(t, rs, &interfaces.Resource{
 			ID:               "r1",
 			CatalogID:        "cat1",
 			Category:         interfaces.ResourceCategoryDataset,
@@ -2734,6 +2744,35 @@ func TestResourceServiceUpdate(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
+}
+
+func TestResourceServiceSetEnabledAuthorizesIdempotentRequest(t *testing.T) {
+	rs, mockRA, mockPS, _, _, _, _ := newTestService(t)
+	resource := &interfaces.Resource{ID: "r1", Enabled: true}
+	mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+		ID:   "r1",
+	}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+	mockRA.EXPECT().GetByID(gomock.Any(), nil, "r1").Return(resource, nil)
+
+	got, err := rs.SetEnabled(context.Background(), "r1", true)
+
+	require.NoError(t, err)
+	assert.Same(t, resource, got)
+}
+
+func TestResourceServiceSetEnabledDoesNotQueryWhenPermissionDenied(t *testing.T) {
+	rs, _, mockPS, _, _, _, _ := newTestService(t)
+	permissionErr := rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
+	mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+		ID:   "r1",
+	}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(permissionErr)
+
+	resource, err := rs.SetEnabled(context.Background(), "r1", true)
+
+	assert.Nil(t, resource)
+	assert.ErrorIs(t, err, permissionErr)
 }
 
 func TestResourceServiceListAuthResourcesDoesNotFilterByPermission(t *testing.T) {
@@ -2770,18 +2809,12 @@ func TestResourceServiceListAuthResourcesIncludesInternalForBuiltinAdmin(t *test
 }
 
 // 删资源时任务在运行中：级联拒绝，资源不删。
-func newS2STestService(t *testing.T, internalCatalogIDs []string) (
+func newS2STestService(t *testing.T) (
 	*resourceService, *vmock.MockResourceAccess, *vmock.MockPermissionService, *vmock.MockUserMgmtService) {
 	ctrl := gomock.NewController(t)
 	ra := vmock.NewMockResourceAccess(ctrl)
 	ps := vmock.NewMockPermissionService(ctrl)
 	ums := vmock.NewMockUserMgmtService(ctrl)
-	cs := vmock.NewMockCatalogService(ctrl)
-	rs := &resourceService{ra: ra, ps: ps, ums: ums, cs: cs}
-	internalCatalogs := make(map[string]struct{}, len(internalCatalogIDs))
-	for _, id := range internalCatalogIDs {
-		internalCatalogs[id] = struct{}{}
-	}
-	cs.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(internalCatalogs, nil).AnyTimes()
+	rs := &resourceService{ra: ra, ps: ps, ums: ums}
 	return rs, ra, ps, ums
 }

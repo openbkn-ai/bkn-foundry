@@ -23,19 +23,15 @@ type CatalogService interface {
 	// ListConnectorTypeStats groups visible catalogs matching params by connector type.
 	ListConnectorTypeStats(ctx context.Context, params CatalogsQueryParams) ([]*CatalogConnectorTypeStat, error)
 	// Update updates a Catalog.
-	Update(ctx context.Context, catalog *Catalog, req *CatalogRequest, allowUnhealthy bool) error
+	Update(ctx context.Context, req *CatalogRequest, allowUnhealthy bool) error
 	// SetEnabled updates Catalog enabled state.
-	SetEnabled(ctx context.Context, catalog *Catalog, enabled bool) error
+	SetEnabled(ctx context.Context, id string, enabled bool) (*Catalog, error)
 	// DeleteByID deletes a Catalog by ID.
 	DeleteByID(ctx context.Context, id string) error
 	// GetDeletionImpact returns the current impact and guards for deleting a catalog.
 	GetDeletionImpact(ctx context.Context, id string) (*CatalogDeletionImpact, error)
 	// CheckExistByID checks if a Catalog exists by ID.
 	CheckExistByID(ctx context.Context, id string) (bool, error)
-	// ListInternalIDs lists the ids of all internal system directories.
-	ListInternalIDs(ctx context.Context) ([]string, error)
-	// InternalCatalogIDSet returns the ids of all internal system directories as a set.
-	InternalCatalogIDSet(ctx context.Context) (map[string]struct{}, error)
 	// CheckExistByName checks if a Catalog exists by name.
 	CheckExistByName(ctx context.Context, name string) (bool, error)
 	// TestConnection tests catalog connection.

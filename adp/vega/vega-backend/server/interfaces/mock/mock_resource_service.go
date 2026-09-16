@@ -57,36 +57,6 @@ func (mr *MockResourceServiceMockRecorder) CheckExistByCategories(ctx, catalogID
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckExistByCategories", reflect.TypeOf((*MockResourceService)(nil).CheckExistByCategories), ctx, catalogID, categories)
 }
 
-// CheckExistByID mocks base method.
-func (m *MockResourceService) CheckExistByID(ctx context.Context, id string) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CheckExistByID", ctx, id)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CheckExistByID indicates an expected call of CheckExistByID.
-func (mr *MockResourceServiceMockRecorder) CheckExistByID(ctx, id any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckExistByID", reflect.TypeOf((*MockResourceService)(nil).CheckExistByID), ctx, id)
-}
-
-// CheckExistByName mocks base method.
-func (m *MockResourceService) CheckExistByName(ctx context.Context, catalogID, name string) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CheckExistByName", ctx, catalogID, name)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CheckExistByName indicates an expected call of CheckExistByName.
-func (mr *MockResourceServiceMockRecorder) CheckExistByName(ctx, catalogID, name any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckExistByName", reflect.TypeOf((*MockResourceService)(nil).CheckExistByName), ctx, catalogID, name)
-}
-
 // CheckResourcePermission mocks base method.
 func (m *MockResourceService) CheckResourcePermission(ctx context.Context, resourceID, op string) error {
 	m.ctrl.T.Helper()
@@ -158,21 +128,6 @@ func (m *MockResourceService) GetByIDs(ctx context.Context, ids []string, includ
 func (mr *MockResourceServiceMockRecorder) GetByIDs(ctx, ids, includeRowCount any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByIDs", reflect.TypeOf((*MockResourceService)(nil).GetByIDs), ctx, ids, includeRowCount)
-}
-
-// GetByName mocks base method.
-func (m *MockResourceService) GetByName(ctx context.Context, catalogID, name string) (*interfaces.Resource, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetByName", ctx, catalogID, name)
-	ret0, _ := ret[0].(*interfaces.Resource)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetByName indicates an expected call of GetByName.
-func (mr *MockResourceServiceMockRecorder) GetByName(ctx, catalogID, name any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByName", reflect.TypeOf((*MockResourceService)(nil).GetByName), ctx, catalogID, name)
 }
 
 // InternalCreate mocks base method.
@@ -354,31 +309,32 @@ func (mr *MockResourceServiceMockRecorder) ListAuthResources(ctx, params any) *g
 }
 
 // SetEnabled mocks base method.
-func (m *MockResourceService) SetEnabled(ctx context.Context, resource *interfaces.Resource, enabled bool) error {
+func (m *MockResourceService) SetEnabled(ctx context.Context, id string, enabled bool) (*interfaces.Resource, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetEnabled", ctx, resource, enabled)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret := m.ctrl.Call(m, "SetEnabled", ctx, id, enabled)
+	ret0, _ := ret[0].(*interfaces.Resource)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // SetEnabled indicates an expected call of SetEnabled.
-func (mr *MockResourceServiceMockRecorder) SetEnabled(ctx, resource, enabled any) *gomock.Call {
+func (mr *MockResourceServiceMockRecorder) SetEnabled(ctx, id, enabled any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetEnabled", reflect.TypeOf((*MockResourceService)(nil).SetEnabled), ctx, resource, enabled)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetEnabled", reflect.TypeOf((*MockResourceService)(nil).SetEnabled), ctx, id, enabled)
 }
 
 // Update mocks base method.
-func (m *MockResourceService) Update(ctx context.Context, resource *interfaces.Resource, req *interfaces.ResourceRequest) error {
+func (m *MockResourceService) Update(ctx context.Context, req *interfaces.ResourceRequest) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Update", ctx, resource, req)
+	ret := m.ctrl.Call(m, "Update", ctx, req)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Update indicates an expected call of Update.
-func (mr *MockResourceServiceMockRecorder) Update(ctx, resource, req any) *gomock.Call {
+func (mr *MockResourceServiceMockRecorder) Update(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockResourceService)(nil).Update), ctx, resource, req)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockResourceService)(nil).Update), ctx, req)
 }
 
 // UpdateDiscoverStatus mocks base method.

@@ -204,9 +204,8 @@ func Test_CatalogRestHandler_SetCatalogEnabled(t *testing.T) {
 
 	t.Run("enable disabled catalog", func(t *testing.T) {
 		engine, cs, _ := setupCatalogHandlerTest(t)
-		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+		cs.EXPECT().SetEnabled(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Name: "catalog", Enabled: false}, nil)
-		cs.EXPECT().SetEnabled(gomock.Any(), gomock.Any(), true).Return(nil)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/catalogs/catalog-1/enable", nil)
 		w := httptest.NewRecorder()
@@ -218,9 +217,8 @@ func Test_CatalogRestHandler_SetCatalogEnabled(t *testing.T) {
 
 	t.Run("disable enabled catalog", func(t *testing.T) {
 		engine, cs, _ := setupCatalogHandlerTest(t)
-		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+		cs.EXPECT().SetEnabled(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Name: "catalog", Enabled: true}, nil)
-		cs.EXPECT().SetEnabled(gomock.Any(), gomock.Any(), false).Return(nil)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/catalogs/catalog-1/disable", nil)
 		w := httptest.NewRecorder()
@@ -232,7 +230,7 @@ func Test_CatalogRestHandler_SetCatalogEnabled(t *testing.T) {
 
 	t.Run("enable already enabled catalog is idempotent", func(t *testing.T) {
 		engine, cs, _ := setupCatalogHandlerTest(t)
-		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+		cs.EXPECT().SetEnabled(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Name: "catalog", Enabled: true}, nil)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/catalogs/catalog-1/enable", nil)
@@ -386,14 +384,10 @@ func Test_CatalogRestHandler_UpdateRejectsEnabledChange(t *testing.T) {
 
 	t.Run("rejects enabled change through update API", func(t *testing.T) {
 		engine, cs, _ := setupCatalogHandlerTest(t)
-		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
-			Return(&interfaces.Catalog{
-				ID:            "catalog-1",
-				Name:          "catalog",
-				Enabled:       false,
-				ConnectorType: "mariadb",
-				ConnectorCfg:  interfaces.ConnectorConfig{},
-			}, nil)
+		cs.EXPECT().Update(gomock.Any(), gomock.Any(), false).
+			Return(rest.NewHTTPError(context.Background(), http.StatusConflict,
+				verrors.VegaBackend_Catalog_EnabledFieldNotAllowed).
+				WithErrorDetails("use POST /catalogs/{id}/enable or /disable to change enabled state"))
 
 		body := `{"id":"catalog-1","name":"catalog","enabled":true,"connector_type":"mariadb","connector_config":{},"expected_update_time":1}`
 		req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/catalogs/catalog-1", strings.NewReader(body))
@@ -592,19 +586,8 @@ func Test_CatalogRestHandler_UpdateAllowsDatabaseChange(t *testing.T) {
 
 	t.Run("allows database change through update API", func(t *testing.T) {
 		engine, cs, _ := setupCatalogHandlerTest(t)
-		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
-			Return(&interfaces.Catalog{
-				ID:            "catalog-1",
-				Name:          "catalog",
-				Enabled:       true,
-				ConnectorType: "mariadb",
-				ConnectorCfg: interfaces.ConnectorConfig{
-					"host":     "localhost",
-					"database": "db1",
-				},
-			}, nil)
-		cs.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any(), false).
-			DoAndReturn(func(_ context.Context, _ *interfaces.Catalog, req *interfaces.CatalogRequest, _ bool) error {
+		cs.EXPECT().Update(gomock.Any(), gomock.Any(), false).
+			DoAndReturn(func(_ context.Context, req *interfaces.CatalogRequest, _ bool) error {
 				assert.Equal(t, "db2", req.ConnectorCfg["database"])
 				return nil
 			})
@@ -625,13 +608,7 @@ func Test_CatalogRestHandler_UpdatePassesAllowUnhealthy(t *testing.T) {
 	defer restoreGinMode()
 
 	engine, cs, _ := setupCatalogHandlerTest(t)
-	cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{
-		ID:            "catalog-1",
-		Name:          "catalog",
-		Enabled:       true,
-		ConnectorType: "mariadb",
-	}, nil)
-	cs.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any(), true).Return(nil)
+	cs.EXPECT().Update(gomock.Any(), gomock.Any(), true).Return(nil)
 
 	body := `{"id":"catalog-1","name":"catalog","enabled":true,"connector_type":"mariadb","connector_config":{},"expected_update_time":1}`
 	req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/catalogs/catalog-1?allow_unhealthy=true", strings.NewReader(body))

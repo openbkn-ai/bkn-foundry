@@ -134,23 +134,6 @@ func TestCatalogAccessListConnectorTypePermissionRefs(t *testing.T) {
 	})
 }
 
-func TestCatalogAccessListInternalIDs(t *testing.T) {
-	t.Run("returns internal catalog ids", func(t *testing.T) {
-		access, mock, cleanup := newCatalogAccessMock(t)
-		defer cleanup()
-
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id FROM t_catalog WHERE f_internal = ?")).
-			WithArgs(true).
-			WillReturnRows(sqlmock.NewRows([]string{"f_id"}).AddRow("internal-1").AddRow("internal-2"))
-
-		got, err := access.ListInternalIDs(context.Background())
-
-		require.NoError(t, err)
-		assert.Equal(t, []string{"internal-1", "internal-2"}, got)
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
-}
-
 func TestCatalogAccessListPermissionRefsReturnsIterationError(t *testing.T) {
 	access, mock, cleanup := newCatalogAccessMock(t)
 	defer cleanup()

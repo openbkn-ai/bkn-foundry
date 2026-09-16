@@ -340,6 +340,48 @@ func TestQueryResourceDataPreservesLargeIntegers(t *testing.T) {
 	assert.False(t, strings.Contains(string(wire), "e+"))
 }
 
+func TestQueryResourceDataUsesAdminOnlyForInternalConceptDataset(t *testing.T) {
+	tests := []struct {
+		name          string
+		resourceID    string
+		wantAccountID string
+	}{
+		{
+			name:          "internal concept dataset",
+			resourceID:    interfaces.BKN_DATASET_ID,
+			wantAccountID: interfaces.ADMIN_ACCOUNT_ID,
+		},
+		{
+			name:          "ordinary resource",
+			resourceID:    "resource-1",
+			wantAccountID: "user-42",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockCtrl := gomock.NewController(t)
+			mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
+			mockHTTPClient.EXPECT().
+				PostNoUnmarshal(gomock.Any(), "http://vega/resources/"+tc.resourceID+"/data", gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, _ string, headers map[string]string, _ any) (int, []byte, error) {
+					assert.Equal(t, tc.wantAccountID, headers[interfaces.HTTP_HEADER_ACCOUNT_ID])
+					assert.Equal(t, interfaces.ADMIN_ACCOUNT_TYPE, headers[interfaces.HTTP_HEADER_ACCOUNT_TYPE])
+					return http.StatusOK, []byte(`{"entries":[],"total_count":0}`), nil
+				})
+
+			access := &vegaBackendAccess{httpClient: mockHTTPClient, baseUrl: "http://vega"}
+			ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+				interfaces.AccountInfo{ID: "user-42", Type: interfaces.ACCESSOR_TYPE_USER})
+
+			_, err := access.QueryResourceData(ctx, tc.resourceID, &interfaces.ResourceDataQueryParams{
+				Paging: interfaces.ResourceDataPagingRequest{Mode: "single"},
+			})
+			require.NoError(t, err)
+		})
+	}
+}
+
 func TestWriteDatasetDocumentUsesSingleDocumentReplace(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)

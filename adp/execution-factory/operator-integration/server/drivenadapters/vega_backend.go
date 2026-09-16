@@ -51,6 +51,15 @@ func (v *vegaBackendClient) buildHeaders(ctx context.Context) map[string]string 
 	return headers
 }
 
+func (v *vegaBackendClient) buildDatasetDataHeaders(ctx context.Context, datasetID string) map[string]string {
+	headers := v.buildHeaders(ctx)
+	if datasetID == interfaces.CAPABILITY_DATASET_ID {
+		headers[string(interfaces.HeaderXAccountID)] = interfaces.ADMIN_ACCOUNT_ID
+		headers[string(interfaces.HeaderXAccountType)] = interfaces.ADMIN_ACCOUNT_TYPE
+	}
+	return headers
+}
+
 // GetCatalogByID Gets the Vega catalog.
 func (v *vegaBackendClient) GetCatalogByID(ctx context.Context, id string) (*interfaces.VegaCatalog, error) {
 	src := fmt.Sprintf("%s/v1/catalogs/%s", v.baseURL, url.PathEscape(id))
@@ -230,7 +239,7 @@ func (v *vegaBackendClient) DeleteResource(ctx context.Context, id string) error
 
 func (v *vegaBackendClient) WriteDatasetDocument(ctx context.Context, datasetID, docID string, document map[string]any) error {
 	src := fmt.Sprintf("%s/v1/resources/%s/data/%s", v.baseURL, url.PathEscape(datasetID), url.PathEscape(docID))
-	headers := v.buildHeaders(ctx)
+	headers := v.buildDatasetDataHeaders(ctx, datasetID)
 	v.logger.WithContext(ctx).Infof("write vega dataset document, resource_id=%s, doc_id=%s, url=%s", datasetID, docID, src)
 	respCode, respData, err := v.httpClient.PutNoUnmarshal(ctx, src, headers, document)
 	if err != nil {
@@ -245,7 +254,7 @@ func (v *vegaBackendClient) WriteDatasetDocument(ctx context.Context, datasetID,
 
 func (v *vegaBackendClient) DeleteDatasetDocumentByID(ctx context.Context, datasetID string, docID string) error {
 	src := fmt.Sprintf("%s/v1/resources/%s/data/%s", v.baseURL, url.PathEscape(datasetID), url.PathEscape(docID))
-	headers := v.buildHeaders(ctx)
+	headers := v.buildDatasetDataHeaders(ctx, datasetID)
 	v.logger.WithContext(ctx).Infof("delete vega dataset document, resource_id=%s, doc_id=%s, url=%s", datasetID, docID, src)
 	respCode, respData, err := v.httpClient.DeleteNoUnmarshal(ctx, src, headers)
 	if err != nil {
@@ -263,7 +272,7 @@ func (v *vegaBackendClient) DeleteDatasetDocumentByID(ctx context.Context, datas
 func (v *vegaBackendClient) QueryDatasetData(ctx context.Context, datasetID string,
 	params *interfaces.VegaDataQueryParams) (*interfaces.VegaDataQueryResp, error) {
 	src := fmt.Sprintf("%s/v1/resources/%s/data", v.baseURL, url.PathEscape(datasetID))
-	headers := v.buildHeaders(ctx)
+	headers := v.buildDatasetDataHeaders(ctx, datasetID)
 	headers["X-HTTP-Method-Override"] = http.MethodGet
 	respCode, respData, err := v.httpClient.PostNoUnmarshal(ctx, src, headers, params)
 	if err != nil {

@@ -22,14 +22,12 @@ type ResourceService interface {
 	// GetByIDs retrieves Resources by IDs. Callers must provide unique IDs;
 	// includeRowCount controls whether source metadata estimates and dataset document counts are included.
 	GetByIDs(ctx context.Context, ids []string, includeRowCount bool) ([]*Resource, error)
-	// GetByName retrieves a Resource by catalog and name.
-	GetByName(ctx context.Context, catalogID string, name string) (*Resource, error)
 	// List lists resource summaries with filters.
 	List(ctx context.Context, params ResourcesQueryParams) ([]*ResourceSummary, int64, error)
 	// Update updates a Resource.
-	Update(ctx context.Context, resource *Resource, req *ResourceRequest) error
+	Update(ctx context.Context, req *ResourceRequest) error
 	// SetEnabled enables or disables a Resource without changing its discovery status or metadata.
-	SetEnabled(ctx context.Context, resource *Resource, enabled bool) error
+	SetEnabled(ctx context.Context, id string, enabled bool) (*Resource, error)
 	// UpdateStatus updates a Resource's status.
 	UpdateStatus(ctx context.Context, id string, status string, statusMessage string) error
 	// UpdateDiscoverStatus updates a Resource's last discover status.
@@ -37,11 +35,6 @@ type ResourceService interface {
 	// DeleteByIDs deletes Resources by IDs. Callers must provide unique IDs;
 	// missing resources are skipped when ignoreMissing is true.
 	DeleteByIDs(ctx context.Context, ids []string, ignoreMissing bool) error
-	// CheckExistByID checks if a Resource exists by ID.
-	CheckExistByID(ctx context.Context, id string) (bool, error)
-	// CheckExistByName checks if a Resource exists by name.
-	CheckExistByName(ctx context.Context, catalogID string, name string) (bool, error)
-
 	// ListAuthResources lists resource auth resources with filters.
 	ListAuthResources(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, int64, error)
 

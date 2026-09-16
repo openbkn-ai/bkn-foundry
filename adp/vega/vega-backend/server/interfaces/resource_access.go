@@ -25,8 +25,6 @@ type ResourceAccess interface {
 	GetSummariesByIDs(ctx context.Context, ids []string) (map[string]*ResourceSummary, error)
 	// GetPermissionRefsByIDs retrieves resource-to-catalog relations keyed by resource ID.
 	GetPermissionRefsByIDs(ctx context.Context, ids []string) (map[string]ResourcePermissionRef, error)
-	// GetByName retrieves a Resource by catalog and name.
-	GetByName(ctx context.Context, catalogID string, name string) (*Resource, error)
 	// GetByCatalogID retrieves all Resources under a Catalog.
 	GetByCatalogID(ctx context.Context, catalogID string) ([]*Resource, error)
 	// List lists resource summaries with filters.

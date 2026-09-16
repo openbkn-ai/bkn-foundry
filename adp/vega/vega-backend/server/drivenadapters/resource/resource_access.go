@@ -519,40 +519,6 @@ func (ra *resourceAccess) GetPermissionRefsByIDs(ctx context.Context, ids []stri
 	return refs, nil
 }
 
-// GetByName retrieves ra Resource by catalog and name.
-func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name string) (*interfaces.Resource, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query resource by name")
-	defer span.End()
-
-	span.SetAttributes(attr.Key("resource_name").String(name))
-
-	sqlStr, vals, err := sq.Select(resourceColumns...).
-		From(RESOURCE_TABLE_NAME).
-		Where(sq.Eq{"f_catalog_id": catalogID}).
-		Where(sq.Eq{"f_name": name}).
-		ToSql()
-	if err != nil {
-		logger.Errorf("Failed to build select resource sql: %v", err)
-		span.SetStatus(codes.Error, "Build sql failed")
-		return nil, err
-	}
-
-	row := ra.db.QueryRowContext(ctx, sqlStr, vals...)
-	resource, err := scanResource(row)
-	if errors.Is(err, sql.ErrNoRows) {
-		span.SetStatus(codes.Ok, "")
-		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
-	}
-	if err != nil {
-		logger.Errorf("Scan resource failed: %v", err)
-		span.SetStatus(codes.Error, "Scan failed")
-		return nil, err
-	}
-
-	span.SetStatus(codes.Ok, "")
-	return resource, nil
-}
-
 // ListPermissionRefs lists the minimal relations needed before list authorization.
 func (ra *resourceAccess) ListPermissionRefs(ctx context.Context, params interfaces.ResourcesQueryParams) ([]interfaces.ResourcePermissionRef, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List resource permission refs")

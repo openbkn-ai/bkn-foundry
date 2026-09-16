@@ -27,7 +27,7 @@ const (
 	executionFactoryCatalogID   = "bkn_execution_factory_catalog"
 	executionFactoryCatalogDesc = "Execution factory logical namespace"
 
-	capabilityDataset       = "bkn_execution_factory_capability_dataset"
+	capabilityDataset       = interfaces.CAPABILITY_DATASET_ID
 	capabilityDatasetDesc   = "Execution factory capability index: Skills, Function tools and MCP tools"
 	capabilityDatasetStatus = "active"
 
