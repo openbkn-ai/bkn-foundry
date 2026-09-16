@@ -14,25 +14,25 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
-// registerAuthorizationCatalog exposes the catalog on the ClusterIP-only authz
+// registerAuthorizationRegistry exposes the catalog on the ClusterIP-only authz
 // surface for service-to-service callers. Browser callers must use
-// registerMeAuthorizationCatalog instead; it is protected by RequireUser.
-func registerAuthorizationCatalog(g *gin.RouterGroup, db *gorm.DB) {
-	g.GET("/catalog", authorizationCatalogHandler(db))
+// registerMeAuthorizationRegistry instead; it is protected by RequireUser.
+func registerAuthorizationRegistry(g *gin.RouterGroup, db *gorm.DB) {
+	g.GET("/registry", authorizationRegistryHandler(db))
 }
 
-// registerMeAuthorizationCatalog exposes the same persisted contract to a
+// registerMeAuthorizationRegistry exposes the same persisted contract to a
 // signed-in browser through the gateway-exposed /me surface. The catalog has no
 // grants, principals, or concrete resource ids, but it must not make the
 // tokenless /authz surface browser-reachable.
-func registerMeAuthorizationCatalog(g *gin.RouterGroup, db *gorm.DB) {
-	g.GET("/authorization-catalog", authorizationCatalogHandler(db))
+func registerMeAuthorizationRegistry(g *gin.RouterGroup, db *gorm.DB) {
+	g.GET("/authorization-registry", authorizationRegistryHandler(db))
 }
 
-// authorizationCatalogHandler reads the catalog currently effective in
+// authorizationRegistryHandler reads the catalog currently effective in
 // bkn-safe's database. Consumers must not keep a second hand-maintained copy:
 // seed may change it during an upgrade and the enforcer evaluates these rows.
-func authorizationCatalogHandler(db *gorm.DB) gin.HandlerFunc {
+func authorizationRegistryHandler(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var resourceTypes []model.ResourceType
 		if err := db.WithContext(c.Request.Context()).
@@ -51,11 +51,11 @@ func authorizationCatalogHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		operationsByType := make(map[string][]authorizationCatalogOperation, len(resourceTypes))
+		operationsByType := make(map[string][]authorizationRegistryOperation, len(resourceTypes))
 		for _, operation := range operations {
 			operationsByType[operation.ResourceTypeID] = append(
 				operationsByType[operation.ResourceTypeID],
-				authorizationCatalogOperation{
+				authorizationRegistryOperation{
 					ID:              operation.ID,
 					Name:            operation.Name,
 					ParentOperation: operation.ParentOperationID,
@@ -64,9 +64,9 @@ func authorizationCatalogHandler(db *gorm.DB) gin.HandlerFunc {
 			)
 		}
 
-		items := make([]authorizationCatalogResourceType, 0, len(resourceTypes))
+		items := make([]authorizationRegistryResourceType, 0, len(resourceTypes))
 		for _, resourceType := range resourceTypes {
-			items = append(items, authorizationCatalogResourceType{
+			items = append(items, authorizationRegistryResourceType{
 				ID:         resourceType.ID,
 				Name:       resourceType.Name,
 				ParentType: resourceType.ParentTypeID,
@@ -77,14 +77,14 @@ func authorizationCatalogHandler(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-type authorizationCatalogResourceType struct {
-	ID         string                          `json:"id"`
-	Name       string                          `json:"name"`
-	ParentType string                          `json:"parent_type,omitempty"`
-	Operations []authorizationCatalogOperation `json:"operations"`
+type authorizationRegistryResourceType struct {
+	ID         string                           `json:"id"`
+	Name       string                           `json:"name"`
+	ParentType string                           `json:"parent_type,omitempty"`
+	Operations []authorizationRegistryOperation `json:"operations"`
 }
 
-type authorizationCatalogOperation struct {
+type authorizationRegistryOperation struct {
 	ID              string   `json:"id"`
 	Name            string   `json:"name"`
 	ParentOperation string   `json:"parent_operation,omitempty"`

@@ -307,10 +307,10 @@ func TestValidateHierarchyRejectsAuthoringMistakes(t *testing.T) {
 func TestValidateHierarchyAcceptsShippedCatalog(t *testing.T) {
 	var c catalog
 	if err := json.Unmarshal(catalogJSON, &c); err != nil {
-		t.Fatalf("parse authorization-catalog.json: %v", err)
+		t.Fatalf("parse authorization-registry.json: %v", err)
 	}
 	if err := validateHierarchy(c); err != nil {
-		t.Fatalf("shipped authorization-catalog.json declares an invalid hierarchy: %v", err)
+		t.Fatalf("shipped authorization-registry.json declares an invalid hierarchy: %v", err)
 	}
 }
 
