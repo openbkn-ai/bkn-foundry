@@ -255,9 +255,23 @@ func TestObjectGrantRevokeSemantics(t *testing.T) {
 	if w := adminReq(t, r, http.MethodDelete, objectGrantsPath, gin.H{"grant_id": grantID}); w.Code != http.StatusNoContent {
 		t.Fatalf("revoke: want 204, got %d: %s", w.Code, w.Body.String())
 	}
-	if detail := onlyAuditDetail(t, db); !strings.Contains(detail, `"removed":true`) ||
-		!strings.Contains(detail, `"grant_id":"`+grantID+`"`) {
-		t.Fatalf("effective revoke: want stable identity and removed=true, got %s", detail)
+	var detail struct {
+		Outcome struct {
+			AuthoritySource string `json:"authority_source"`
+			CreatedBy       string `json:"created_by"`
+			GrantID         string `json:"grant_id"`
+			PolicySource    string `json:"policy_source"`
+			Removed         bool   `json:"removed"`
+			Via             string `json:"via"`
+		} `json:"_outcome"`
+	}
+	if raw := onlyAuditDetail(t, db); json.Unmarshal([]byte(raw), &detail) != nil ||
+		detail.Outcome.GrantID != grantID || !detail.Outcome.Removed ||
+		detail.Outcome.PolicySource != string(authz.PolicySourceLegacy) ||
+		detail.Outcome.AuthoritySource != string(authz.AuthoritySourceMigration) ||
+		detail.Outcome.CreatedBy != string(authz.AuthoritySourceMigration) ||
+		detail.Outcome.Via != string(authorityAdminAuthz) {
+		t.Fatalf("effective revoke: want stable identity and source provenance, got %s", raw)
 	}
 	if allowed, _ := e.Check("grantee-1", "catalog", "c1", "modify"); !allowed {
 		t.Fatal("revoking one grant removed its sibling operation")

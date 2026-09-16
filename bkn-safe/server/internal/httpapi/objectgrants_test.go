@@ -783,7 +783,7 @@ func TestObjectGrantsOwnerMayShareOwnObject(t *testing.T) {
 }
 
 func TestObjectGrantsOwnerBatchRevokeIsAllOrNothing(t *testing.T) {
-	r, e := ownerGrantFixture(t)
+	r, e, db := ownerGrantFixtureWithDB(t)
 	if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants", map[string]any{
 		"accessor_id": "u-mate",
 		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
@@ -822,11 +822,21 @@ func TestObjectGrantsOwnerBatchRevokeIsAllOrNothing(t *testing.T) {
 		t.Fatal("rejected batch partially removed the owner source")
 	}
 
+	clearAuditLog(t, db)
 	w = tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants/revoke", map[string]any{
 		"grant_ids": []string{ownerViewID, ownerModifyID},
 	}, "u-owner")
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("owner batch revoke = %d %s; want 204", w.Code, w.Body.String())
+	}
+	if detail := onlyAuditDetail(t, db); !strings.Contains(detail, `"grant_sources"`) ||
+		!strings.Contains(detail, `"grant_id":"`+ownerViewID+`"`) ||
+		!strings.Contains(detail, `"grant_id":"`+ownerModifyID+`"`) ||
+		!strings.Contains(detail, `"policy_source":"professional_rule"`) ||
+		!strings.Contains(detail, `"authority_source":"owner_delegate"`) ||
+		!strings.Contains(detail, `"created_by":"u-owner"`) ||
+		!strings.Contains(detail, `"via":"owner"`) {
+		t.Fatalf("owner batch revoke: want every source provenance in audit detail, got %s", detail)
 	}
 	if ok, _ := e.Check("u-mate", "knowledge_network", "kn-mine", "view_detail"); ok {
 		t.Fatal("successful batch retained view_detail")

@@ -1148,8 +1148,10 @@ func revokeObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 		if !bind(c, &req) {
 			return
 		}
-		if removed, ok := revokeObjectGrantIDs(c, e, db, []string{req.GrantID}); ok {
-			setAuditOutcome(c, map[string]any{"grant_id": strings.TrimSpace(req.GrantID), "removed": removed > 0})
+		if result, ok := revokeObjectGrantIDs(c, e, db, []string{req.GrantID}); ok {
+			outcome := result.sources[0]
+			outcome["removed"] = result.removed > 0
+			setAuditOutcome(c, outcome)
 			c.Status(http.StatusNoContent)
 		}
 	}
@@ -1167,17 +1169,30 @@ func revokeObjectGrantBatchHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFu
 		if !bind(c, &req) {
 			return
 		}
-		if removed, ok := revokeObjectGrantIDs(c, e, db, req.GrantIDs); ok {
-			setAuditOutcome(c, map[string]any{"grant_ids": req.GrantIDs, "removed": removed})
+		if result, ok := revokeObjectGrantIDs(c, e, db, req.GrantIDs); ok {
+			setAuditOutcome(c, map[string]any{
+				"grant_ids":     result.grantIDs,
+				"grant_sources": result.sources,
+				"removed":       result.removed,
+			})
 			c.Status(http.StatusNoContent)
 		}
 	}
 }
 
-func revokeObjectGrantIDs(c *gin.Context, e *authz.Enforcer, db *gorm.DB, grantIDs []string) (int, bool) {
+// objectGrantRevokeResult keeps provenance available for audit after the policy
+// rows are deleted. Request bodies contain only opaque stable IDs, so the
+// audit middleware cannot reconstruct the source once RevokePolicies commits.
+type objectGrantRevokeResult struct {
+	grantIDs []string
+	sources  []gin.H
+	removed  int
+}
+
+func revokeObjectGrantIDs(c *gin.Context, e *authz.Enforcer, db *gorm.DB, grantIDs []string) (objectGrantRevokeResult, bool) {
 	if len(grantIDs) == 0 || len(grantIDs) > 500 {
 		replyPublicError(c, http.StatusBadRequest)
-		return 0, false
+		return objectGrantRevokeResult{}, false
 	}
 	seen := make(map[string]struct{}, len(grantIDs))
 	normalized := make([]string, 0, len(grantIDs))
@@ -1185,77 +1200,101 @@ func revokeObjectGrantIDs(c *gin.Context, e *authz.Enforcer, db *gorm.DB, grantI
 		grantID = strings.TrimSpace(grantID)
 		if grantID == "" || len(grantID) > 64 {
 			replyPublicError(c, http.StatusBadRequest)
-			return 0, false
+			return objectGrantRevokeResult{}, false
 		}
 		if _, duplicate := seen[grantID]; duplicate {
 			replyPublicError(c, http.StatusBadRequest)
-			return 0, false
+			return objectGrantRevokeResult{}, false
 		}
 		seen[grantID] = struct{}{}
 		normalized = append(normalized, grantID)
 	}
 
+	result := objectGrantRevokeResult{
+		grantIDs: normalized,
+		sources:  make([]gin.H, 0, len(normalized)),
+	}
 	for _, grantID := range normalized {
 		records, err := e.PolicyRecords(authz.PolicyFilter{GrantID: grantID})
 		if err != nil {
 			serverError(c, err)
-			return 0, false
+			return objectGrantRevokeResult{}, false
 		}
 		if len(records) == 0 {
 			allowed, err := e.CheckContext(c.Request.Context(), c.GetString(ctxAccessorID),
 				"admin-authz", "*", "revoke")
 			if err != nil {
 				serverError(c, err)
-				return 0, false
+				return objectGrantRevokeResult{}, false
 			}
 			if !allowed {
 				replyPublicError(c, http.StatusForbidden)
-				return 0, false
+				return objectGrantRevokeResult{}, false
 			}
+			result.sources = append(result.sources, gin.H{
+				"grant_id": grantID,
+				"removed":  false,
+				"via":      string(authorityAdminAuthz),
+			})
 			continue
 		}
-		if !authorizeObjectGrantRevoke(c, e, db, records[0]) {
-			return 0, false
+		authority, ok := authorizeObjectGrantRevoke(c, e, db, records[0])
+		if !ok {
+			return objectGrantRevokeResult{}, false
 		}
+		result.sources = append(result.sources, objectGrantRevokeAuditSource(records[0], authority))
 	}
 
 	removed, err := e.RevokePolicies(normalized)
 	if err != nil {
 		serverError(c, err)
-		return 0, false
+		return objectGrantRevokeResult{}, false
 	}
-	return removed, true
+	result.removed = removed
+	return result, true
 }
 
-func authorizeObjectGrantRevoke(c *gin.Context, e *authz.Enforcer, db *gorm.DB, record authz.PolicyRecord) bool {
+func objectGrantRevokeAuditSource(record authz.PolicyRecord, authority grantAuthority) gin.H {
+	return gin.H{
+		"grant_id":         record.GrantID,
+		"policy_source":    record.PolicySource,
+		"authority_source": record.AuthoritySource,
+		"created_by":       record.CreatedBy,
+		"operation":        record.Operation,
+		"effect":           record.Effect,
+		"via":              string(authority),
+	}
+}
+
+func authorizeObjectGrantRevoke(c *gin.Context, e *authz.Enforcer, db *gorm.DB, record authz.PolicyRecord) (grantAuthority, bool) {
 	// Role grants have their own rbac_basic route, capability gate and
 	// admin-role:permissions check. Letting a stable ID through this user-object
 	// route would bypass all three.
 	if record.PolicySource == authz.PolicySourceRolePermission {
 		replyPublicError(c, http.StatusForbidden)
-		return false
+		return "", false
 	}
 	resourceType, resourceID, ok := strings.Cut(record.Object, ":")
 	if !ok || resourceType == "" || !isConcreteResourceID(resourceID) {
 		replyPublicError(c, http.StatusBadRequest)
-		return false
+		return "", false
 	}
 	ref := resourceRef{Type: resourceType, ID: resourceID}
 	managed, err := managedproxy.IsManaged(c.Request.Context(), db, record.AccessorID)
 	if err != nil {
 		serverError(c, err)
-		return false
+		return "", false
 	}
 	if managed {
 		replyPublicError(c, http.StatusForbidden)
-		return false
+		return "", false
 	}
 	// Revoking on an object is the mirror of granting on it: whoever can open
 	// their own object up can close it again. No op restriction applies — taking
 	// access away can only narrow, never widen.
 	authority, ok := resolveGrantAuthority(c, e, db, "revoke", ref)
 	if !ok {
-		return false
+		return "", false
 	}
 	// A delegated owner may revoke only an ordinary allow produced by that same
 	// delegated writer. Stable source identity prevents cross-grantor removal.
@@ -1266,8 +1305,8 @@ func authorizeObjectGrantRevoke(c *gin.Context, e *authz.Enforcer, db *gorm.DB, 
 			record.Effect == authz.EffectAllow && record.Operation != opAuthorize
 		if !ordinaryOwnerGrant {
 			replyPublicError(c, http.StatusForbidden)
-			return false
+			return "", false
 		}
 	}
-	return true
+	return authority, true
 }
