@@ -481,6 +481,22 @@ func Test_ResourceDataRestHandler_DeleteResourceDataByQuery(t *testing.T) {
 		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
 	})
 
+	t.Run("rejects a selector that does not decode to a filter condition", func(t *testing.T) {
+		engine, rs, _, _ := setupResourceDataHandlerTest(t)
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(sampleDatasetResource(), nil)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(`{"filter_condition":{"kind":"remove"}}`))
+		req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodDelete)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "filter condition with an operation")
+		// No delete is allowed when a caller's selector cannot be compiled.
+	})
+
 	t.Run("rejects empty delete filter", func(t *testing.T) {
 		engine, rs, _, _ := setupResourceDataHandlerTest(t)
 		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(sampleDatasetResource(), nil)

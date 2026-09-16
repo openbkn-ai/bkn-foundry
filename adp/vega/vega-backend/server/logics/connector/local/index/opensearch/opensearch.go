@@ -864,25 +864,24 @@ func bulkDeleteResponseError(result map[string]any) error {
 
 // Delete Documents By Query
 func (c *OpenSearchConnector) DeleteDocumentsByQuery(ctx context.Context, indexName string, params *interfaces.ResourceDataQueryParams, schemaDefinition []*interfaces.Property) error {
+	if params == nil || params.ActualFilterCond == nil {
+		return errors.New("delete-by-query requires a non-empty filter condition")
+	}
 	if err := c.Connect(ctx); err != nil {
 		return err
 	}
 
-	query := map[string]any{
-		"query": map[string]any{
-			"match_all": map[string]any{},
-		},
+	filterQuery, err := c.ConvertFilterCondition(params.ActualFilterCond, schemaDefinition)
+	if err != nil {
+		return err
 	}
-
-	if params != nil && params.ActualFilterCond != nil {
-		filterQuery, err := c.ConvertFilterCondition(params.ActualFilterCond, schemaDefinition)
-		if err != nil {
-			return err
-		}
-		if filterQuery != nil {
-			query["query"] = filterQuery
-		}
+	if filterQuery == nil {
+		return errors.New("delete-by-query filter produced an empty query")
 	}
+	if isUnconditionalDeleteQuery(filterQuery) {
+		return errors.New("delete-by-query filter produced an unconditional query")
+	}
+	query := map[string]any{"query": filterQuery}
 
 	queryBytes, err := sonic.Marshal(query)
 	if err != nil {
@@ -907,6 +906,18 @@ func (c *OpenSearchConnector) DeleteDocumentsByQuery(ctx context.Context, indexN
 	}
 
 	return nil
+}
+
+func isUnconditionalDeleteQuery(query map[string]any) bool {
+	if _, ok := query["match_all"]; ok {
+		return true
+	}
+	booleanQuery, ok := query["bool"].(map[string]any)
+	if !ok || len(booleanQuery) != 1 {
+		return false
+	}
+	must, ok := booleanQuery["must"].([]map[string]any)
+	return ok && len(must) == 0
 }
 
 // index exist

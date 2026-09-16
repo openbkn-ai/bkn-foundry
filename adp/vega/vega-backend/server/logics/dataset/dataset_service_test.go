@@ -261,12 +261,57 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 
 	t.Run("delete by query wraps error", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
+		resource := &interfaces.Resource{
+			ID:             "dataset-1",
+			LocalIndexName: "dataset-1",
+			SchemaDefinition: []*interfaces.Property{{
+				Name: "id",
+				Type: interfaces.DataType_Integer,
+			}},
+		}
+		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{
+			Name:      "id",
+			Operation: filter_condition.OperationEqual,
+			ValueOptCfg: interfaces.ValueOptCfg{
+				ValueFrom: interfaces.ValueFrom_Const,
+				Value:     1,
+			},
+		}}
 		lim.EXPECT().DeleteDocumentsByQuery(gomock.Any(), "dataset-1", resource, params).Return(errors.New("delete failed"))
 
 		err := ds.DeleteDocumentsByQuery(ctx, resource, params)
 
 		assertHTTPError(t, err)
 		assert.Contains(t, err.Error(), "delete failed")
+	})
+
+	t.Run("delete by query rejects an empty filter without calling the index", func(t *testing.T) {
+		ds, _ := newDatasetServiceMock(t)
+
+		err := ds.DeleteDocumentsByQuery(ctx, resource, &interfaces.ResourceDataQueryParams{
+			FilterCondCfg: &interfaces.FilterCondCfg{},
+		})
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "non-empty filter")
+	})
+
+	t.Run("delete by query rejects an and condition containing only empty filters", func(t *testing.T) {
+		ds, _ := newDatasetServiceMock(t)
+
+		err := ds.DeleteDocumentsByQuery(ctx, resource, &interfaces.ResourceDataQueryParams{
+			FilterCondCfg: &interfaces.FilterCondCfg{
+				Operation: filter_condition.OperationAnd,
+				SubConds:  []*interfaces.FilterCondCfg{{}},
+			},
+		})
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "non-empty filter")
 	})
 
 	t.Run("delete by query resolves resource generated fields before local index access", func(t *testing.T) {

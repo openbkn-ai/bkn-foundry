@@ -293,6 +293,11 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 		span.SetStatus(codes.Error, "Permission denied")
 		return err
 	}
+	if params == nil || params.FilterCondCfg == nil {
+		span.SetStatus(codes.Error, "Delete dataset documents rejected without filter")
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			WithErrorDetails("delete-by-query requires a filter condition")
+	}
 	querySchema := local_index.SchemaForQuery(res.SchemaDefinition)
 	fieldMap := make(map[string]*interfaces.Property, len(querySchema))
 	for _, prop := range querySchema {
@@ -309,6 +314,16 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails(err.Error())
 	}
+	if actualFilterCond == nil {
+		span.SetStatus(codes.Error, "Delete dataset documents rejected with empty filter")
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			WithErrorDetails("delete-by-query requires a non-empty filter condition")
+	}
+	if !hasEffectiveDeleteFilter(actualFilterCond) {
+		span.SetStatus(codes.Error, "Delete dataset documents rejected with ineffective filter")
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			WithErrorDetails("delete-by-query requires a non-empty filter condition")
+	}
 	params.ActualFilterCond = actualFilterCond
 	// Call the local index store to batch delete documents
 	if err := ds.lim.DeleteDocumentsByQuery(ctx, res.LocalIndexName, res, params); err != nil {
@@ -323,6 +338,33 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func hasEffectiveDeleteFilter(condition interfaces.FilterCondition) bool {
+	if condition == nil {
+		return false
+	}
+	switch typed := condition.(type) {
+	case *filter_condition.AndCond:
+		if len(typed.SubConds) == 0 {
+			return false
+		}
+		for _, subCondition := range typed.SubConds {
+			if !hasEffectiveDeleteFilter(subCondition) {
+				return false
+			}
+		}
+	case *filter_condition.OrCond:
+		if len(typed.SubConds) == 0 {
+			return false
+		}
+		for _, subCondition := range typed.SubConds {
+			if !hasEffectiveDeleteFilter(subCondition) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func (ds *datasetService) checkDocumentPermission(ctx context.Context, res *interfaces.Resource, operation string) error {

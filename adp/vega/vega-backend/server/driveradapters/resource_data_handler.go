@@ -272,6 +272,13 @@ func (r *restHandler) deleteResourceDataByQuery(c *gin.Context, ctx context.Cont
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	if actualCond == nil || actualCond.Operation == "" {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterCondition).
+			WithErrorDetails("delete-by-query requires a filter condition with an operation")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 	params.FilterCondCfg = actualCond
 
 	if err := r.ds.DeleteDocumentsByQuery(ctx, resource, &params); err != nil {
