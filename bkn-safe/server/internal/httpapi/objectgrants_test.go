@@ -1432,6 +1432,53 @@ func TestObjectGrantsOwnerDirectoryLookups(t *testing.T) {
 	}
 }
 
+func TestObjectGrantsOwnerPolicyReadIdentifiesRoleSubjects(t *testing.T) {
+	r, e, db := ownerGrantFixtureWithDB(t)
+	if err := db.Create(&model.Role{ID: "role-readers", Name: "Readers", Source: model.RoleSourceCustom}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantRolePermission("role-readers", "knowledge_network", "kn-mine", "view_detail"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantObjectPermission(authz.PublicAccessorID, "knowledge_network", "kn-mine", "view_detail"); err != nil {
+		t.Fatal(err)
+	}
+
+	w := tokReq(t, r, http.MethodGet,
+		"/api/safe/v1/me/object-grants?resource_type=knowledge_network&resource_id=kn-mine", nil, "u-owner")
+	if w.Code != http.StatusOK {
+		t.Fatalf("read grants with role: want 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	var grants struct {
+		Entries []struct {
+			AccessorID   string `json:"accessor_id"`
+			AccessorName string `json:"accessor_name"`
+			AccessorType string `json:"accessor_type"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &grants); err != nil {
+		t.Fatal(err)
+	}
+	foundRole, foundPublic := false, false
+	for _, entry := range grants.Entries {
+		if entry.AccessorID == "role-readers" {
+			if entry.AccessorType != "role" || entry.AccessorName != "Readers" {
+				t.Fatalf("role identity = %+v, want type=role name=Readers", entry)
+			}
+			foundRole = true
+		}
+		if entry.AccessorID == authz.PublicAccessorID {
+			if entry.AccessorType != "public" {
+				t.Fatalf("public identity = %+v, want type=public", entry)
+			}
+			foundPublic = true
+		}
+	}
+	if !foundRole || !foundPublic {
+		t.Fatalf("subject rows missing: role=%t public=%t entries=%+v", foundRole, foundPublic, grants.Entries)
+	}
+}
+
 // Stable source slicing lets a delegate manage an ordinary owner-written row
 // for a user who also holds authorize, without touching that protected sibling.
 func TestObjectGrantsDelegateCannotMutateProtectedSources(t *testing.T) {

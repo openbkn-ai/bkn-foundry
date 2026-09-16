@@ -769,7 +769,7 @@ func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, 
 		// Names are resolved here rather than left to the caller: the owner-facing
 		// surface has no user directory of its own (that is admin-only), so a
 		// client would have nothing to turn an accessor id into a person with.
-		named, err := grantAccessorNames(c, db, ids)
+		identities, err := grantAccessorIdentities(c, db, ids)
 		if err != nil {
 			serverError(c, err)
 			return
@@ -795,12 +795,16 @@ func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, 
 				"grants":              grants,
 				"effective_decisions": decisions,
 			}
-			// A row whose subject is a role, or a user since deleted, resolves to
-			// nothing. It is still shown — hiding a grant that exists would be
-			// worse than showing a bare id.
-			if who, ok := named[policy.AccessorID]; ok {
-				entry["accessor_account"] = who.Account
-				entry["accessor_name"] = who.Name
+			// A deleted user has no directory row, but a role is still a valid
+			// subject. Tell clients which case it is so they do not turn a role's
+			// expected user-directory 404 into a misleading "deleted user" label.
+			identity := identities[policy.AccessorID]
+			entry["accessor_type"] = identity.kind
+			if identity.account != "" {
+				entry["accessor_account"] = identity.account
+			}
+			if identity.name != "" {
+				entry["accessor_name"] = identity.name
 			}
 			entries = append(entries, entry)
 		}
@@ -864,20 +868,48 @@ func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, 
 	g.DELETE("/object-grants", revokeObjectGrantHandler(e, db))
 }
 
-// grantAccessorNames resolves grant subjects to accounts, skipping ids that are
-// not users (casbin stores role subjects in the same column).
-func grantAccessorNames(c *gin.Context, db *gorm.DB, ids []string) (map[string]model.User, error) {
-	out := map[string]model.User{}
+type grantAccessorIdentity struct {
+	kind    string
+	account string
+	name    string
+}
+
+// grantAccessorIdentities resolves the two subject types Casbin stores in an
+// object-policy row. Missing subjects remain classified as users: that is the
+// only way a client can accurately render a deleted user without exposing its
+// opaque ID. Roles are explicitly classified and named instead.
+func grantAccessorIdentities(c *gin.Context, db *gorm.DB, ids []string) (map[string]grantAccessorIdentity, error) {
+	out := make(map[string]grantAccessorIdentity, len(ids))
 	if len(ids) == 0 {
 		return out, nil
 	}
-	var rows []model.User
+	for _, id := range ids {
+		kind := "user"
+		if id == authz.PublicAccessorID {
+			kind = "public"
+		}
+		out[id] = grantAccessorIdentity{kind: kind}
+	}
+	var users []model.User
 	if err := db.WithContext(c.Request.Context()).Model(&model.User{}).
-		Where("id IN ?", ids).Find(&rows).Error; err != nil {
+		Where("id IN ?", ids).Find(&users).Error; err != nil {
 		return nil, err
 	}
-	for _, row := range rows {
-		out[row.ID] = row
+	userIDs := make(map[string]struct{}, len(users))
+	for _, user := range users {
+		userIDs[user.ID] = struct{}{}
+		out[user.ID] = grantAccessorIdentity{kind: "user", account: user.Account, name: user.Name}
+	}
+	var roles []model.Role
+	if err := db.WithContext(c.Request.Context()).Model(&model.Role{}).
+		Where("id IN ?", ids).Find(&roles).Error; err != nil {
+		return nil, err
+	}
+	for _, role := range roles {
+		if _, isUser := userIDs[role.ID]; isUser {
+			continue
+		}
+		out[role.ID] = grantAccessorIdentity{kind: "role", name: role.Name}
 	}
 	return out, nil
 }

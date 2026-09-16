@@ -411,6 +411,12 @@ components:
       required: [accessor_id, resource, operations, denied_operations, grants, effective_decisions]
       properties:
         accessor_id: {type: string}
+        accessor_type:
+          type: string
+          enum: [user, role, public]
+          description: Subject kind returned by the object-scoped `/me` read. A missing user row is still `user`, so clients can render it as a deleted user; roles and the public subject must not be looked up through the user directory.
+        accessor_account: {type: string}
+        accessor_name: {type: string}
         resource: {$ref: '#/components/schemas/ResourceRef'}
         bundle: {$ref: '#/components/schemas/CommunityBundle'}
         operations: {type: array, items: {type: string}}
