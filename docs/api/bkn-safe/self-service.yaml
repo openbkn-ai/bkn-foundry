@@ -4,15 +4,43 @@ info:
   version: 0.1.3
   description: |
     Allows an authenticated subject to read its own direct knowledge-network
-    instance grants. BKN Trace uses this API to recover the exact set of
-    knowledge networks managed by a network_builder. It is not a role permission
-    listing and does not return role-inherited grants, wildcard grants, or grants
-    belonging to another subject.
+    instance grants and the authorization registry used by the authorization
+    management UI. BKN Trace uses this API to recover the exact set of
+    knowledge networks managed by a network_builder. Direct-grant reads are not
+    role permission listings and do not return role-inherited grants, wildcard
+    grants, or grants belonging to another subject.
 servers:
   - url: /api/safe/v1
 security:
   - BearerAuth: []
 paths:
+  /me/authorization-registry:
+    get:
+      tags: [Self service]
+      operationId: getMyAuthorizationRegistry
+      summary: Get the authorization registry for the signed-in subject
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      description: |
+        Returns the resource-type and operation definitions currently persisted
+        in bkn-safe. The response contains no grants, principals, or concrete
+        resource IDs. It is authenticated with `RequireUser` and is intended
+        for browser authorization-management clients; service-to-service
+        callers use the internal `/api/safe/v1/authz/registry` endpoint.
+      responses:
+        '200':
+          description: Authorization resource types and their operations.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoCache'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizationRegistryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /me/knowledge-network-grants:
     get:
       tags: [Self service]
@@ -48,23 +76,9 @@ paths:
                           items:
                             type: string
         '401':
-          description: Missing or invalid bearer token
-          headers:
-            Content-Language:
-              $ref: '#/components/headers/ContentLanguage'
-            Cache-Control:
-              $ref: '#/components/headers/PrivateNoCache'
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '../_shared/errors.yaml#/components/schemas/Error'
-                  - type: object
-                    properties:
-                      error:
-                        type: string
-                        deprecated: true
-                        description: Human-readable error alias for legacy clients; identical to `description`.
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
 components:
   parameters:
     AcceptLanguage:
@@ -86,6 +100,83 @@ components:
       schema:
         type: string
         example: private, no-cache
+  responses:
+    Unauthorized:
+      description: Missing or invalid bearer token
+      headers:
+        Content-Language:
+          $ref: '#/components/headers/ContentLanguage'
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoCache'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BknSafeError'
+    InternalError:
+      description: Authorization registry or storage failure.
+      headers:
+        Content-Language:
+          $ref: '#/components/headers/ContentLanguage'
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoCache'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BknSafeError'
+  schemas:
+    BknSafeError:
+      description: BKN Safe error envelope with the deprecated legacy `error` alias.
+      allOf:
+        - $ref: '../_shared/errors.yaml#/components/schemas/Error'
+        - type: object
+          properties:
+            error:
+              type: string
+              deprecated: true
+              description: Human-readable error alias for legacy clients; identical to `description`.
+    AuthorizationRegistryResponse:
+      type: object
+      required: [resource_types]
+      properties:
+        resource_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthorizationRegistryResourceType'
+    AuthorizationRegistryResourceType:
+      type: object
+      required: [id, name, operations]
+      properties:
+        id:
+          type: string
+          description: Stable authorization resource-type identifier.
+        name:
+          type: string
+          description: Display name registered for the resource type.
+        parent_type:
+          type: string
+          description: Parent resource type from which compatible operations may inherit; omitted when none is declared.
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthorizationRegistryOperation'
+    AuthorizationRegistryOperation:
+      type: object
+      required: [id, name, requires]
+      properties:
+        id:
+          type: string
+          description: Stable operation identifier.
+        name:
+          type: string
+          description: Display name registered for the operation.
+        parent_operation:
+          type: string
+          description: Compatible operation on `parent_type` used for parent-resource inheritance; omitted when none is declared.
+        requires:
+          type: array
+          description: Direct same-resource prerequisite operations. Empty when the operation has no prerequisites.
+          items:
+            type: string
   securitySchemes:
     BearerAuth:
       type: http
