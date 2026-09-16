@@ -30,7 +30,7 @@ func TestAuthorizationResourcesForwardsKnowledgeNetworkQuery(t *testing.T) {
 		_, _ = w.Write([]byte(`{"entries":[{"id":"kn-1","name":"Supply"}],"total":1}`))
 	}))
 	defer backend.Close()
-	catalog, err := NewAuthorizationResourceCatalog(config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second})
+	catalog, err := NewAuthorizationResourceCatalog(config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second}, config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,5 +54,36 @@ func TestAuthorizationResourcesRejectsUnsupportedResourceType(t *testing.T) {
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/safe/v1/admin/authorization-resources?resource_type=vega_resource", nil))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d", w.Code)
+	}
+}
+
+func TestAuthorizationResourcesForwardsExecutionFactoryQuery(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	executionFactory := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/agent-operator-integration/internal-v1/authorization-resources" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("resource_type"); got != "skill" {
+			t.Fatalf("resource_type = %q", got)
+		}
+		if got := r.URL.Query().Get("direction"); got != "desc" {
+			t.Fatalf("direction = %q", got)
+		}
+		_, _ = w.Write([]byte(`{"entries":[{"id":"skill-1","name":"Runbook"}],"total":1}`))
+	}))
+	defer executionFactory.Close()
+	catalog, err := NewAuthorizationResourceCatalog(
+		config.UpstreamConfig{BaseURL: executionFactory.URL, Timeout: time.Second},
+		config.UpstreamConfig{BaseURL: executionFactory.URL, Timeout: time.Second},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := gin.New()
+	registerAuthorizationResources(r.Group("/api/safe/v1/admin"), catalog)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/safe/v1/admin/authorization-resources?resource_type=skill&direction=desc", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", w.Code, w.Body.String())
 	}
 }

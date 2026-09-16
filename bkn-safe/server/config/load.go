@@ -155,6 +155,14 @@ func applyEnv(cfg *Config) {
 			cfg.Upstreams.BKNBackend.Timeout = d
 		}
 	}
+	if v := os.Getenv("SAFE_EXECUTION_FACTORY_BASE_URL"); v != "" {
+		cfg.Upstreams.ExecutionFactory.BaseURL = v
+	}
+	if v := os.Getenv("SAFE_EXECUTION_FACTORY_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.Upstreams.ExecutionFactory.Timeout = d
+		}
+	}
 }
 
 func envInt(k string) (int, bool) {

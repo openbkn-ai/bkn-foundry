@@ -33,6 +33,10 @@ upstreams:
     # intentionally fixed in bkn-safe code, not configurable here.
     base_url: http://127.0.0.1:13014
     timeout: 3s
+  execution_factory:
+    # The authorization-resource path is intentionally fixed in bkn-safe code.
+    base_url: http://127.0.0.1:13014
+    timeout: 3s
 
 ldap:
   url: ""

@@ -14,31 +14,33 @@ import (
 )
 
 type restPrivateHandler struct {
-	OperatorRestHandler OperatorRestHandler
-	ToolBoxRestHandler  ToolBoxRestHandler
-	MCPRestHandler      MCPRestHandler
-	UpgradeHandler      common.UpgradeHandler
-	UnifiedProxyHandler common.UnifiedProxyHandler
-	ImpexHandler        common.ImpexHandler
-	Logger              interfaces.Logger
-	SkillRestHandler    SkillRestHandler
-	CapabilityHandler   CapabilityRestHandler
-	Hydra               interfaces.Hydra
+	OperatorRestHandler    OperatorRestHandler
+	ToolBoxRestHandler     ToolBoxRestHandler
+	MCPRestHandler         MCPRestHandler
+	UpgradeHandler         common.UpgradeHandler
+	UnifiedProxyHandler    common.UnifiedProxyHandler
+	ImpexHandler           common.ImpexHandler
+	Logger                 interfaces.Logger
+	SkillRestHandler       SkillRestHandler
+	CapabilityHandler      CapabilityRestHandler
+	Hydra                  interfaces.Hydra
+	AuthorizationResources *authorizationResourceHandler
 }
 
 // NewRestPrivateHandler creates a restHandler instance.
 func NewRestPrivateHandler() interfaces.HTTPRouterInterface {
 	return &restPrivateHandler{
-		OperatorRestHandler: NewOperatorRestHandler(),
-		ToolBoxRestHandler:  NewToolBoxRestHandler(),
-		MCPRestHandler:      NewMCPRestHandler(),
-		UpgradeHandler:      common.NewUpgradeHandler(),
-		UnifiedProxyHandler: common.NewUnifiedProxyHandler(),
-		ImpexHandler:        common.NewImpexHandler(),
-		Logger:              config.NewConfigLoader().GetLogger(),
-		SkillRestHandler:    NewSkillRestHandler(),
-		CapabilityHandler:   NewCapabilityRestHandler(),
-		Hydra:               drivenadapters.NewHydra(),
+		OperatorRestHandler:    NewOperatorRestHandler(),
+		ToolBoxRestHandler:     NewToolBoxRestHandler(),
+		MCPRestHandler:         NewMCPRestHandler(),
+		UpgradeHandler:         common.NewUpgradeHandler(),
+		UnifiedProxyHandler:    common.NewUnifiedProxyHandler(),
+		ImpexHandler:           common.NewImpexHandler(),
+		Logger:                 config.NewConfigLoader().GetLogger(),
+		SkillRestHandler:       NewSkillRestHandler(),
+		CapabilityHandler:      NewCapabilityRestHandler(),
+		Hydra:                  drivenadapters.NewHydra(),
+		AuthorizationResources: newAuthorizationResourceHandler(),
 	}
 }
 
@@ -55,6 +57,7 @@ func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 		middlewareHeaderAuthContext(r.Hydra),
 	)
 	engine.Use(mws...)
+	engine.GET("/authorization-resources", r.AuthorizationResources.ListAuthorizationResources)
 	// Operator interface.
 	r.OperatorRestHandler.RegisterPrivate(engine)
 	// toolbox interface.

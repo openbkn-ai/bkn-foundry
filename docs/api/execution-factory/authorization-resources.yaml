@@ -1,0 +1,51 @@
+openapi: 3.0.3
+info:
+  title: Execution Factory Authorization Resources
+  version: v1
+paths:
+  /api/agent-operator-integration/internal-v1/authorization-resources:
+    get:
+      summary: List authorization resources
+      description: Cluster-internal resource picker endpoint. It returns all matching resources and does not apply caller business-resource grants.
+      parameters:
+        - name: resource_type
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [tool_box, function, mcp, skill]
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [name], default: name }
+        - name: direction
+          in: query
+          schema: { type: string, enum: [asc, desc], default: asc }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: Resource page
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries, total]
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name]
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                  total: { type: integer, format: int64 }
+        '400':
+          description: Invalid query parameters or resource type

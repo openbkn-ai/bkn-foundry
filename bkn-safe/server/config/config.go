@@ -32,7 +32,8 @@ type Config struct {
 // UpstreamsConfig contains environment-specific base URLs. Provider paths and
 // response mappings remain compiled into bkn-safe.
 type UpstreamsConfig struct {
-	BKNBackend UpstreamConfig `yaml:"bkn_backend"`
+	BKNBackend       UpstreamConfig `yaml:"bkn_backend"`
+	ExecutionFactory UpstreamConfig `yaml:"execution_factory"`
 }
 
 type UpstreamConfig struct {

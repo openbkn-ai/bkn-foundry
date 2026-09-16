@@ -19,7 +19,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [knowledge_network]
+            enum: [knowledge_network, tool_box, function, mcp, skill]
         - name: name
           in: query
           schema:

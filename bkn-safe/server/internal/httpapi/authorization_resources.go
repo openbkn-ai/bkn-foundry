@@ -18,7 +18,13 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/config"
 )
 
-const knowledgeNetworkResourceType = "knowledge_network"
+const (
+	knowledgeNetworkResourceType = "knowledge_network"
+	toolBoxResourceType          = "tool_box"
+	functionResourceType         = "function"
+	mcpResourceType              = "mcp"
+	skillResourceType            = "skill"
+)
 
 type AuthorizationResource struct {
 	ID   string `json:"id"`
@@ -50,13 +56,33 @@ type authorizationResourceCatalog struct {
 	providers map[string]AuthorizationResourceProvider
 }
 
-func NewAuthorizationResourceCatalog(upstream config.UpstreamConfig) (AuthorizationResourceCatalog, error) {
-	provider, err := newKnowledgeNetworkProvider(upstream)
+func NewAuthorizationResourceCatalog(bknBackend, executionFactory config.UpstreamConfig) (AuthorizationResourceCatalog, error) {
+	knowledgeNetworks, err := newAuthorizationResourceProvider(bknBackend, "/api/bkn-backend/in/v1/authorization-resources", "bkn backend")
+	if err != nil {
+		return nil, err
+	}
+	toolBoxes, err := newAuthorizationResourceProvider(executionFactory, "/api/agent-operator-integration/internal-v1/authorization-resources", "execution factory", toolBoxResourceType)
+	if err != nil {
+		return nil, err
+	}
+	functions, err := newAuthorizationResourceProvider(executionFactory, "/api/agent-operator-integration/internal-v1/authorization-resources", "execution factory", functionResourceType)
+	if err != nil {
+		return nil, err
+	}
+	mcp, err := newAuthorizationResourceProvider(executionFactory, "/api/agent-operator-integration/internal-v1/authorization-resources", "execution factory", mcpResourceType)
+	if err != nil {
+		return nil, err
+	}
+	skills, err := newAuthorizationResourceProvider(executionFactory, "/api/agent-operator-integration/internal-v1/authorization-resources", "execution factory", skillResourceType)
 	if err != nil {
 		return nil, err
 	}
 	return &authorizationResourceCatalog{providers: map[string]AuthorizationResourceProvider{
-		knowledgeNetworkResourceType: provider,
+		knowledgeNetworkResourceType: knowledgeNetworks,
+		toolBoxResourceType:          toolBoxes,
+		functionResourceType:         functions,
+		mcpResourceType:              mcp,
+		skillResourceType:            skills,
 	}}, nil
 }
 
@@ -70,25 +96,30 @@ func (c *authorizationResourceCatalog) List(ctx context.Context, resourceType st
 
 var errUnsupportedResourceType = errors.New("unsupported authorization resource type")
 
-type knowledgeNetworkProvider struct {
-	endpoint string
-	client   *http.Client
+type authorizationResourceProvider struct {
+	endpoint     string
+	client       *http.Client
+	resourceType string
 }
 
-func newKnowledgeNetworkProvider(upstream config.UpstreamConfig) (*knowledgeNetworkProvider, error) {
+func newAuthorizationResourceProvider(upstream config.UpstreamConfig, path, service string, resourceType ...string) (*authorizationResourceProvider, error) {
 	baseURL, err := url.ParseRequestURI(upstream.BaseURL)
 	if err != nil || baseURL.Scheme == "" || baseURL.Host == "" {
-		return nil, fmt.Errorf("invalid bkn backend base URL")
+		return nil, fmt.Errorf("invalid %s base URL", service)
 	}
 	timeout := upstream.Timeout
 	if timeout <= 0 {
-		return nil, fmt.Errorf("bkn backend timeout must be positive")
+		return nil, fmt.Errorf("%s timeout must be positive", service)
 	}
-	baseURL.Path = strings.TrimRight(baseURL.Path, "/") + "/api/bkn-backend/in/v1/authorization-resources"
-	return &knowledgeNetworkProvider{endpoint: baseURL.String(), client: &http.Client{Timeout: timeout}}, nil
+	baseURL.Path = strings.TrimRight(baseURL.Path, "/") + path
+	provider := &authorizationResourceProvider{endpoint: baseURL.String(), client: &http.Client{Timeout: timeout}}
+	if len(resourceType) > 0 {
+		provider.resourceType = resourceType[0]
+	}
+	return provider, nil
 }
 
-func (p *knowledgeNetworkProvider) List(ctx context.Context, query AuthorizationResourceQuery) (AuthorizationResourceList, error) {
+func (p *authorizationResourceProvider) List(ctx context.Context, query AuthorizationResourceQuery) (AuthorizationResourceList, error) {
 	u, err := url.Parse(p.endpoint)
 	if err != nil {
 		return AuthorizationResourceList{}, err
@@ -98,6 +129,9 @@ func (p *knowledgeNetworkProvider) List(ctx context.Context, query Authorization
 	values.Set("direction", query.Direction)
 	values.Set("offset", strconv.Itoa(query.Offset))
 	values.Set("limit", strconv.Itoa(query.Limit))
+	if p.resourceType != "" {
+		values.Set("resource_type", p.resourceType)
+	}
 	if query.Name != "" {
 		values.Set("name", query.Name)
 	}
@@ -114,7 +148,7 @@ func (p *knowledgeNetworkProvider) List(ctx context.Context, query Authorization
 		_ = response.Body.Close()
 	}()
 	if response.StatusCode != http.StatusOK {
-		return AuthorizationResourceList{}, fmt.Errorf("bkn backend returned status %d", response.StatusCode)
+		return AuthorizationResourceList{}, fmt.Errorf("authorization resource upstream returned status %d", response.StatusCode)
 	}
 	var result AuthorizationResourceList
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
