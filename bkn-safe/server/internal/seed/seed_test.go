@@ -771,7 +771,6 @@ func TestNetworkBuilderPermissionMatrixMatchesBusinessBuilderRole(t *testing.T) 
 		"catalog:*":           {"create"},
 		"knowledge_network:*": {"create"},
 		"large_model:*":       {"create", "display", "modify", "delete", "execute"},
-		"operator:*":          {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},
 		"small_model:*":       {"create", "display", "modify", "delete", "execute"},
 		"tool_box:*":          {"create"},
 		"function:*":          {"create"},
@@ -800,7 +799,7 @@ func TestApplyRemovesFormerNetworkBuilderExecutionFactoryGrants(t *testing.T) {
 	if err := e.AssignRole(user, roleID); err != nil {
 		t.Fatal(err)
 	}
-	for _, resourceType := range []string{"skill", "mcp", "function", "tool_box"} {
+	for _, resourceType := range []string{"operator", "skill", "mcp", "function", "tool_box"} {
 		if err := e.GrantRolePermission(roleID, resourceType, "*", "publish"); err != nil {
 			t.Fatal(err)
 		}
@@ -809,12 +808,12 @@ func TestApplyRemovesFormerNetworkBuilderExecutionFactoryGrants(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, resourceType := range []string{"skill", "mcp", "function", "tool_box"} {
+	for _, resourceType := range []string{"operator", "skill", "mcp", "function", "tool_box"} {
 		for _, tc := range []struct {
 			operation string
 			want      bool
 		}{
-			{"create", true},
+			{"create", resourceType != "operator"},
 			{"publish", false},
 		} {
 			got, err := e.Check(user, resourceType, "other-owner-resource", tc.operation)
