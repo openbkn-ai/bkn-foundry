@@ -88,7 +88,6 @@ type evidenceOutcome struct {
 }
 
 var (
-	artifactHashJSON   = sonic.Config{EscapeHTML: false, SortMapKeys: true}.Froze()
 	evidenceHTTPClient = &http.Client{}
 	evidenceInFlight   = make(chan struct{}, maxInFlightEvidenceBatches)
 )
@@ -134,12 +133,37 @@ func HashValue(value any) string {
 }
 
 func hashArtifactContent(value any) (string, error) {
-	raw, err := artifactHashJSON.Marshal(value)
+	raw, err := canonicalArtifactContent(value)
 	if err != nil {
 		return "", err
 	}
 	sum := sha256.Sum256(raw)
 	return "sha256:" + hex.EncodeToString(sum[:]), nil
+}
+
+// canonicalArtifactContent mirrors Core's artifact-content normalization so the
+// digest remains valid after the artifact crosses the HTTP JSON boundary.
+func canonicalArtifactContent(value any) ([]byte, error) {
+	// Content first crosses the HTTP JSON encoder before Core decodes it. Round
+	// trip here as well so replacement characters for malformed UTF-8 and JSON
+	// number precision have exactly the representation Core will canonicalize.
+	transport, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(transport))
+	decoder.UseNumber()
+	var normalized any
+	if err := decoder.Decode(&normalized); err != nil {
+		return nil, err
+	}
+	var buffer bytes.Buffer
+	encoder := json.NewEncoder(&buffer)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(normalized); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(buffer.Bytes(), []byte("\n")), nil
 }
 
 func EvidenceEnabled() bool {
@@ -241,7 +265,7 @@ func postArtifactWithRetry(
 	if url == "" {
 		return errors.New("BKN Trace artifact URL is not configured")
 	}
-	body, err := sonic.Marshal(artifact)
+	body, err := json.Marshal(artifact)
 	if err != nil {
 		return err
 	}

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"runtime/debug"
+	"strings"
 
 	"github.com/bytedance/sonic"
 	mcpsdk "github.com/mark3labs/mcp-go/mcp"
@@ -307,19 +308,37 @@ func parseBusinessRefs(value any, currentKnID string) ([]bkntrace.BusinessRef, *
 // tool inputs. It is deliberately capability-specific: answer text, labels and
 // domain names never participate in evidence scope.
 func observedToolBusinessRefs(toolName string, arguments map[string]any, currentKnID string) []bkntrace.BusinessRef {
-	if toolName != toolKeyQueryMetric || currentKnID == "" {
+	if currentKnID == "" {
 		return nil
 	}
 	if inputKnID := stringValue(arguments["kn_id"]); inputKnID != "" && inputKnID != currentKnID {
 		return nil
 	}
-	metricID := stringValue(arguments["metric_id"])
-	if metricID == "" {
-		return nil
-	}
-	return []bkntrace.BusinessRef{
+	refs := []bkntrace.BusinessRef{
 		{RefType: "knowledge_network", RefID: "kn:" + currentKnID, Version: "unversioned"},
-		{RefType: "metric", RefID: "metric:" + currentKnID + ":" + metricID, Version: "unversioned"},
+	}
+	switch toolName {
+	case toolKeyGetKnDetail:
+		return refs
+	case toolKeyGetObjectTypes, toolKeyGetRelationTypes:
+		refType, prefix := "object_type", "object"
+		if toolName == toolKeyGetRelationTypes {
+			refType, prefix = "relation_type", "relation"
+		}
+		for _, id := range stringSliceValue(arguments["ids"]) {
+			if id = strings.TrimSpace(id); id != "" {
+				refs = append(refs, bkntrace.BusinessRef{RefType: refType, RefID: prefix + ":" + currentKnID + ":" + id, Version: "unversioned"})
+			}
+		}
+		return refs
+	case toolKeyQueryMetric:
+		metricID := stringValue(arguments["metric_id"])
+		if metricID == "" {
+			return nil
+		}
+		return append(refs, bkntrace.BusinessRef{RefType: "metric", RefID: "metric:" + currentKnID + ":" + metricID, Version: "unversioned"})
+	default:
+		return nil
 	}
 }
 

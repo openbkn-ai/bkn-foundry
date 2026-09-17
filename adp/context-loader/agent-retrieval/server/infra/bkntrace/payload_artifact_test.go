@@ -7,7 +7,10 @@
 package bkntrace
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -70,5 +73,47 @@ func TestPayloadArtifactHashMatchesPostedPreciseContent(t *testing.T) {
 	content := artifact["content"].(map[string]any)
 	if content["value"] != json.Number("9007199254740993") {
 		t.Fatalf("numeric payload changed before artifact submission: %#v", content)
+	}
+}
+
+func TestArtifactContentHashMatchesCoreAfterArtifactTransportEdgeCases(t *testing.T) {
+	tests := []struct {
+		name    string
+		content any
+	}{
+		{name: "line separators", content: map[string]any{"text": "first\u2028second\u2029third"}},
+		{name: "invalid UTF-8", content: map[string]any{"text": string([]byte{'a', 0xff, 'b'})}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := hashArtifactContent(tc.content)
+			if err != nil {
+				t.Fatalf("sender hash: %v", err)
+			}
+			body, err := json.Marshal(map[string]any{"content": tc.content})
+			if err != nil {
+				t.Fatalf("serialize artifact: %v", err)
+			}
+			var artifact struct {
+				Content any `json:"content"`
+			}
+			decoder := json.NewDecoder(bytes.NewReader(body))
+			decoder.UseNumber()
+			if err := decoder.Decode(&artifact); err != nil {
+				t.Fatalf("Core decodes artifact: %v", err)
+			}
+			var canonical bytes.Buffer
+			encoder := json.NewEncoder(&canonical)
+			encoder.SetEscapeHTML(false)
+			if err := encoder.Encode(artifact.Content); err != nil {
+				t.Fatalf("Core canonicalizes artifact: %v", err)
+			}
+			raw := bytes.TrimSuffix(canonical.Bytes(), []byte("\n"))
+			sum := sha256.Sum256(raw)
+			want := "sha256:" + hex.EncodeToString(sum[:])
+			if got != want {
+				t.Fatalf("sender hash=%q, Core hash after transport=%q", got, want)
+			}
+		})
 	}
 }
