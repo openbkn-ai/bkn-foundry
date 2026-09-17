@@ -14,6 +14,7 @@ import (
 
 func TestAuthorizationRegistryReturnsPersistedContract(t *testing.T) {
 	r, _, db := newTestServer(t)
+	notGrantable := false
 	if err := db.Create(&model.ResourceType{ID: "parent", Name: "Parent"}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +33,7 @@ func TestAuthorizationRegistryReturnsPersistedContract(t *testing.T) {
 	}
 	if err := db.Create(&model.Operation{
 		ResourceTypeID: "child", ID: "modify", Name: "Modify", Description: "Modify child resources.",
-		ParentOperationID: "manage", RequiredOperationIDs: "view",
+		Grantable: &notGrantable, ParentOperationID: "manage", RequiredOperationIDs: "view",
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -58,8 +59,11 @@ func TestAuthorizationRegistryReturnsPersistedContract(t *testing.T) {
 		t.Fatalf("child operations = %#v", child.Operations)
 	}
 	modify := child.Operations[0]
-	if modify.Description != "Modify child resources." || modify.ParentOperation != "manage" || len(modify.Requires) != 1 || modify.Requires[0] != "view" {
+	if modify.Description != "Modify child resources." || modify.Grantable || modify.ParentOperation != "manage" || len(modify.Requires) != 1 || modify.Requires[0] != "view" {
 		t.Fatalf("modify = %#v", modify)
+	}
+	if !child.Operations[1].Grantable {
+		t.Fatalf("view = %#v, want grantable default true", child.Operations[1])
 	}
 }
 

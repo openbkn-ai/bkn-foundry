@@ -188,6 +188,33 @@ func TestObjectGrantsSetListRevoke(t *testing.T) {
 	}
 }
 
+func TestObjectGrantRejectsNonGrantableOperation(t *testing.T) {
+	r, e, db, users := newAdminServer(t)
+	if err := users.CreateLocalUser(t.Context(), &model.User{
+		ID: "summary-reader", Account: "summary-reader", Name: "Summary Reader", Enabled: true,
+	}, "pw-init0"); err != nil {
+		t.Fatal(err)
+	}
+	seedCatalogOps(t, db, "report", "summary")
+	if err := db.Model(&model.Operation{}).
+		Where("resource_type_id = ? AND id = ?", "report", "summary").
+		Update("grantable", false).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants", map[string]any{
+		"accessor_id": "summary-reader",
+		"resource":    map[string]any{"type": "report", "id": "r-1"},
+		"operations":  []string{"summary"},
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("non-grantable object grant = %d body=%s, want 400", w.Code, w.Body.String())
+	}
+	if allowed, err := e.Check("summary-reader", "report", "r-1", "summary"); err != nil || allowed {
+		t.Fatalf("non-grantable object grant persisted: allowed=%v err=%v", allowed, err)
+	}
+}
+
 func TestObjectGrantsHideAndRejectModelPermissions(t *testing.T) {
 	r, e, db, users := newAdminServer(t)
 	if err := users.CreateLocalUser(t.Context(), &model.User{ID: "model-user", Account: "model-user", Enabled: true}, "pw-init0"); err != nil {

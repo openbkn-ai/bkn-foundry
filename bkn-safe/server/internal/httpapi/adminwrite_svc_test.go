@@ -58,3 +58,32 @@ func TestAdminWriteRejectsCustomModelRolePermissions(t *testing.T) {
 		}
 	}
 }
+
+func TestAdminWriteRejectsNonGrantableRolePermission(t *testing.T) {
+	_, e, db := newTestServer(t)
+	const roleID = "custom-report-role"
+	notGrantable := false
+	if err := db.Create(&model.Role{ID: roleID, Name: roleID, Source: model.RoleSourceCustom}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.ResourceType{ID: "report", Name: "Report"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.Operation{
+		ResourceTypeID: "report", ID: "summary", Name: "Summary", Grantable: &notGrantable,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	err := newAdminWriteServices(e, db).GrantRolePermission(t.Context(), roleID, "report", "r-1", "summary")
+	if !errors.Is(err, adminwrite.ErrInvalid) {
+		t.Fatalf("GrantRolePermission error = %v, want ErrInvalid", err)
+	}
+	grants, err := e.RolePermissions(roleID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(grants) != 0 {
+		t.Fatalf("non-grantable role permission persisted: %+v", grants)
+	}
+}

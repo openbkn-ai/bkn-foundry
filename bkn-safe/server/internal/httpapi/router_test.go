@@ -238,6 +238,30 @@ func TestAuthzBadRequest(t *testing.T) {
 	}
 }
 
+func TestPolicyWriteRejectsNonGrantableOperation(t *testing.T) {
+	r, e, db := newTestServer(t)
+	notGrantable := false
+	if err := db.Create(&model.ResourceType{ID: "report", Name: "Report"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.Operation{
+		ResourceTypeID: "report", ID: "summary", Name: "Summary", Grantable: &notGrantable,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	w := do(t, r, http.MethodPost, "/api/safe/v1/authz/policies", map[string]any{
+		"accessor_id": "u-1",
+		"resource":    map[string]string{"type": "report", "id": "r-1"},
+		"operations":  []string{"summary"},
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("non-grantable policy = %d body=%s, want 400", w.Code, w.Body.String())
+	}
+	if allowed, err := e.Check("u-1", "report", "r-1", "summary"); err != nil || allowed {
+		t.Fatalf("non-grantable policy persisted: allowed=%v err=%v", allowed, err)
+	}
+}
+
 // TestPolicyWriteWildcardGuard covers the stage-1 contract on the tokenless
 // /authz/policies route: the two wildcard shapes that produce a policy matching
 // every object are refused, and every shape a real service sends today still

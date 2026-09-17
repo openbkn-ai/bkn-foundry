@@ -394,6 +394,14 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 			serverError(c, err)
 			return
 		}
+		if err := e.ValidateGrantableOperations(c.Request.Context(), req.Resource.Type, ops); err != nil {
+			if errors.Is(err, authz.ErrOperationNotGrantable) {
+				replyPublicError(c, http.StatusBadRequest)
+				return
+			}
+			serverError(c, err)
+			return
+		}
 		// Keep non-BKN lifecycle callers on the compatibility source. The
 		// normalized set is one transaction, so target and requirements cannot
 		// become partially visible.

@@ -1,5 +1,5 @@
 {
-  "_comment": "Authorization resource-and-operation contract. Exact operation ids are the seed source of truth. name is a concise display label; description is optional explanatory text. parent_type + parent_operation are an explicit bkn-safe generic fallback mapping only: an empty parent_operation means no generic inheritance, never same-name inheritance by convention. requires contains same-resource prerequisites that bkn-safe normalizes into allow grants and enforces at runtime. Business services may retain separately documented checks on another resource; do not encode those as parent_operation unless bkn-safe owns the fallback. NOTE: view (execution factory / flow automation) and view_detail (Vega / BKN) are distinct operation ids. Role-to-permission grants are maintained in grants.json.",
+  "_comment": "Authorization resource-and-operation contract. Exact operation ids are the seed source of truth. name is a concise display label; description is optional explanatory text. grantable is optional and defaults to true; false reserves an operation for computed/read-only decisions and forbids persisted allow or deny policies. parent_type + parent_operation are an explicit bkn-safe generic fallback mapping only: an empty parent_operation means no generic inheritance, never same-name inheritance by convention. requires contains same-resource prerequisites that bkn-safe normalizes into allow grants and enforces at runtime. Business services may retain separately documented checks on another resource; do not encode those as parent_operation unless bkn-safe owns the fallback. NOTE: view (execution factory / flow automation) and view_detail (Vega / BKN) are distinct operation ids. Role-to-permission grants are maintained in grants.json.",
   "resource_types": [
     {
       "id": "agent",
@@ -95,6 +95,12 @@
           "id": "view_detail",
           "name": "查看",
           "description": "查看数据目录的配置与概览。当目录下数据资源未显式授予查看权限时，可回退到数据目录的查看权限。"
+        },
+        {
+          "id": "view_summary",
+          "name": "查看摘要",
+          "description": "查看数据目录摘要以便导航。该操作由 bkn-safe 在鉴权读取时计算，不能配置为允许或禁止规则。",
+          "grantable": false
         },
         {
           "id": "create",

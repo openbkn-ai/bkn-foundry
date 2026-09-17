@@ -81,6 +81,59 @@ func TestRoleGrantAndWildcard(t *testing.T) {
 	}
 }
 
+func TestNonGrantableOperationRejectsEveryPolicyEffect(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	notGrantable := false
+	if err := db.Create(&model.ResourceType{ID: "report", Name: "Report"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&[]model.Operation{
+		{ResourceTypeID: "report", ID: "view", Name: "View"},
+		{ResourceTypeID: "report", ID: "summary", Name: "Summary", Grantable: &notGrantable},
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	mustNoErr(t, e.GrantObjectPermission("reader", "report", "r-1", "view"))
+	for name, write := range map[string]func() error{
+		"object allow": func() error {
+			return e.GrantObjectPermission("reader", "report", "r-1", "summary")
+		},
+		"object deny": func() error {
+			return e.DenyObjectPermission("reader", "report", "r-1", "summary")
+		},
+		"role allow": func() error {
+			return e.GrantRolePermission("report-reader", "report", "*", "summary")
+		},
+		"type wildcard": func() error {
+			return e.GrantRolePermission("report-reader", "report", "*", ActAll)
+		},
+		"global direct": func() error {
+			return e.Grant("global-reader", "*", "summary")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := write(); !errors.Is(err, ErrOperationNotGrantable) {
+				t.Fatalf("write error = %v, want ErrOperationNotGrantable", err)
+			}
+		})
+	}
+
+	if err := e.GrantNormalizedObjectPermissions(t.Context(), "batch-reader", "report", "r-2",
+		[]string{"view", "summary"}); !errors.Is(err, ErrOperationNotGrantable) {
+		t.Fatalf("normalized write error = %v, want ErrOperationNotGrantable", err)
+	}
+	if allowed, err := e.Check("batch-reader", "report", "r-2", "view"); err != nil || allowed {
+		t.Fatalf("partial normalized grant survived: allowed=%v err=%v", allowed, err)
+	}
+	if allowed, err := e.Check("global-reader", "report", "r-1", "summary"); err != nil || allowed {
+		t.Fatalf("global non-grantable grant persisted: allowed=%v err=%v", allowed, err)
+	}
+	if err := e.Grant("break-glass-admin", "*", ActAll); err != nil {
+		t.Fatalf("global wildcard recovery grant = %v", err)
+	}
+}
+
 func TestFunctionGrantDoesNotCrossResourceTypes(t *testing.T) {
 	e := newTestEnforcer(t)
 	const user = "function-only"

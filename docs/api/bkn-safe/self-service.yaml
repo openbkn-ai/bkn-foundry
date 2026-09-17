@@ -161,7 +161,7 @@ components:
             $ref: '#/components/schemas/AuthorizationRegistryOperation'
     AuthorizationRegistryOperation:
       type: object
-      required: [id, name, requires]
+      required: [id, name, grantable, requires]
       properties:
         id:
           type: string
@@ -172,6 +172,9 @@ components:
         description:
           type: string
           description: Optional explanation of the operation's scope and limitations.
+        grantable:
+          type: boolean
+          description: Whether authorization write APIs may persist allow or deny policies for this operation. Defaults to true when omitted from the seed registry.
         parent_operation:
           type: string
           description: Compatible operation on `parent_type` used for parent-resource inheritance; omitted when none is declared.

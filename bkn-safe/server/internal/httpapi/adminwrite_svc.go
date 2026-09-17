@@ -137,6 +137,12 @@ func (s *adminWriteServices) GrantRolePermission(ctx context.Context, roleID, re
 	if err != nil {
 		return err
 	}
+	if err := s.e.ValidateGrantableOperations(ctx, resourceType, ops); err != nil {
+		if errors.Is(err, authz.ErrOperationNotGrantable) {
+			return fmt.Errorf("%w: operation is not grantable", adminwrite.ErrInvalid)
+		}
+		return err
+	}
 	return s.e.GrantNormalizedRolePermissions(ctx, role.ID, resourceType, resourceID, ops)
 }
 

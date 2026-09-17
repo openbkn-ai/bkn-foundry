@@ -264,6 +264,11 @@ type Operation struct {
 	ID             string `gorm:"primaryKey;size:64"` // e.g. "use"
 	Name           string `gorm:"size:128"`
 	Description    string `gorm:"size:1024"`
+	// Grantable controls whether an operation may be persisted as an allow or
+	// deny policy. The database default keeps every operation from an older
+	// registry grantable. A pointer lets seed persist an explicit false instead
+	// of GORM replacing the bool zero value with the database default.
+	Grantable *bool `gorm:"not null;default:true"`
 	// ParentOperationID is the operation to look for ON THE PARENT when this one
 	// is not granted on the instance itself. It is an explicit MAPPING, never the
 	// same name by convention: "modify" on a data table means "edit that table",
@@ -280,6 +285,12 @@ type Operation struct {
 	// the former "implies" rule represented the same stored edge, but enforced it
 	// only while writing. Seed rewrites the authoritative values on every start.
 	RequiredOperationIDs string `gorm:"column:implied_operation_ids;size:512"`
+}
+
+// IsGrantable preserves the registry's backward-compatible default when an
+// Operation is constructed in memory without the optional field.
+func (o Operation) IsGrantable() bool {
+	return o.Grantable == nil || *o.Grantable
 }
 
 // ResourceParent records that ONE concrete resource instance sits under one

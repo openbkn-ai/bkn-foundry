@@ -118,6 +118,7 @@ type catalogOperation struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	Grantable   *bool  `json:"grantable"`
 	// ParentOperation is the operation checked on the parent instance when this
 	// one is not granted on the instance itself. Empty = no inheritance.
 	ParentOperation string `json:"parent_operation"`
@@ -428,8 +429,12 @@ func reconcileSeedRoles(enforcer *authz.Enforcer) error {
 }
 
 func seedCatalog(db *gorm.DB) error {
+	return seedCatalogData(db, catalogJSON)
+}
+
+func seedCatalogData(db *gorm.DB, data []byte) error {
 	var c catalog
-	if err := json.Unmarshal(catalogJSON, &c); err != nil {
+	if err := json.Unmarshal(data, &c); err != nil {
 		return err
 	}
 	// The hierarchy is validated BEFORE anything is written: a typo'd parent type
@@ -453,14 +458,31 @@ func seedCatalog(db *gorm.DB) error {
 		declared := make([]string, 0, len(rt.Operations))
 		for _, op := range rt.Operations {
 			declared = append(declared, op.ID)
+			grantable := true
+			if op.Grantable != nil {
+				grantable = *op.Grantable
+			}
 			opRow := model.Operation{
-				ResourceTypeID: rt.ID, ID: op.ID, Name: op.Name, Description: op.Description,
+				ResourceTypeID:       rt.ID,
+				ID:                   op.ID,
+				Name:                 op.Name,
+				Description:          op.Description,
+				Grantable:            &grantable,
 				ParentOperationID:    op.ParentOperation,
 				RequiredOperationIDs: strings.Join(op.Requires, ","),
 			}
 			if err := db.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "resource_type_id"}, {Name: "id"}},
-				DoUpdates: clause.AssignmentColumns([]string{"name", "description", "parent_operation_id", "implied_operation_ids"}),
+				Columns: []clause.Column{
+					{Name: "resource_type_id"},
+					{Name: "id"},
+				},
+				DoUpdates: clause.AssignmentColumns([]string{
+					"name",
+					"description",
+					"grantable",
+					"parent_operation_id",
+					"implied_operation_ids",
+				}),
 			}).Create(&opRow).Error; err != nil {
 				return err
 			}

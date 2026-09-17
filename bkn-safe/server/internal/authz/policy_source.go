@@ -284,6 +284,9 @@ func (en *Enforcer) addPolicyGrant(grant PolicyGrant) (bool, error) {
 	if err := validatePolicyGrant(grant); err != nil {
 		return false, err
 	}
+	if err := en.validateGrantablePolicy(en.db.Statement.Context, grant.Object, grant.Operation); err != nil {
+		return false, err
+	}
 	row := grantModel(grant)
 	result := en.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
 	if result.Error != nil {

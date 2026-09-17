@@ -141,6 +141,20 @@ func TestGrantIsIdempotentAndLastSourceRevokesOwnedPolicy(t *testing.T) {
 	}
 }
 
+func TestGrantRejectsNonGrantableOperation(t *testing.T) {
+	f := newFixture(t)
+	f.authorize(t, "r-1", "query_data")
+	if err := f.db.Model(&model.Operation{}).
+		Where("resource_type_id = ? AND id = ?", "resource", "query_data").
+		Update("grantable", false).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if _, changed, err := f.service.Grant(t.Context(), f.request("source-1", "ot-1", "r-1")); !errors.Is(err, proxygrant.ErrInvalidRequest) || changed {
+		t.Fatalf("Grant() = changed %v, err %v; want non-grantable invalid request", changed, err)
+	}
+}
+
 func TestGrantAndSyncNormalizeDirectOperationRequirements(t *testing.T) {
 	f := newFixture(t)
 	if err := f.db.Model(&model.Operation{}).

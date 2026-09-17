@@ -710,16 +710,19 @@ func objectGrantQueryParam(c *gin.Context, primary, alias string) string {
 	return c.Query(alias)
 }
 
-// catalogOpSet returns the resource type's registered operation ids as a set
-// (membership-test form of catalogOps).
+// catalogOpSet returns the resource type's grantable operation ids as a set.
+// Read-only/computed operations remain available from the registry and the
+// decision APIs, but never appear valid on an authorization write request.
 func catalogOpSet(db *gorm.DB, resourceType string) (map[string]bool, error) {
-	ops, err := catalogOps(db, resourceType)
-	if err != nil {
+	var operations []model.Operation
+	if err := db.Where("resource_type_id = ?", resourceType).Find(&operations).Error; err != nil {
 		return nil, err
 	}
-	set := make(map[string]bool, len(ops))
-	for _, op := range ops {
-		set[op] = true
+	set := make(map[string]bool, len(operations))
+	for _, operation := range operations {
+		if operation.IsGrantable() {
+			set[operation.ID] = true
+		}
 	}
 	return set, nil
 }

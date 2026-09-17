@@ -940,12 +940,15 @@ func validateAdministrativeAuthority(tx *authz.PolicyTransaction, grantorID stri
 }
 
 func validateRegisteredOperation(db *gorm.DB, spec SourceSpec) error {
-	var registered int64
-	if err := db.Model(&model.Operation{}).
-		Where("resource_type_id = ? AND id = ?", spec.ResourceType, spec.Operation).Count(&registered).Error; err != nil {
+	var operation model.Operation
+	if err := db.Where("resource_type_id = ? AND id = ?", spec.ResourceType, spec.Operation).
+		First(&operation).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrInvalidRequest
+		}
 		return err
 	}
-	if registered == 0 {
+	if !operation.IsGrantable() {
 		return ErrInvalidRequest
 	}
 	return nil
@@ -973,7 +976,9 @@ func validateRegisteredOperations(db *gorm.DB, specs []SourceSpec) error {
 	}
 	available := map[string]bool{}
 	for _, operation := range registered {
-		available[operation.ResourceTypeID+"\x00"+operation.ID] = true
+		if operation.IsGrantable() {
+			available[operation.ResourceTypeID+"\x00"+operation.ID] = true
+		}
 	}
 	for _, spec := range specs {
 		if !available[spec.ResourceType+"\x00"+spec.Operation] {

@@ -5,6 +5,7 @@
 package seed
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -96,6 +97,52 @@ func TestApplySeedsRolesCatalogGrants(t *testing.T) {
 	}
 	if !ok {
 		t.Error("network_builder should be able to create knowledge networks after seed")
+	}
+}
+
+func TestSeedCatalogGrantableDefaultsTrueAndPersistsFalse(t *testing.T) {
+	db := newDB(t)
+	data := []byte(`{
+		"resource_types": [{
+			"id": "report",
+			"name": "Report",
+			"operations": [
+				{"id": "view", "name": "View"},
+				{"id": "summary", "name": "Summary", "grantable": false}
+			]
+		}]
+	}`)
+	if err := seedCatalogData(db, data); err != nil {
+		t.Fatal(err)
+	}
+	for operation, want := range map[string]bool{"view": true, "summary": false} {
+		var row model.Operation
+		if err := db.First(&row, "resource_type_id = ? AND id = ?", "report", operation).Error; err != nil {
+			t.Fatal(err)
+		}
+		if got := row.IsGrantable(); got != want {
+			t.Errorf("report/%s grantable = %v, want %v", operation, got, want)
+		}
+	}
+
+	// Removing the optional field restores the compatibility default on an
+	// upgraded deployment instead of preserving the previous false value.
+	data = []byte(`{
+		"resource_types": [{
+			"id": "report",
+			"name": "Report",
+			"operations": [{"id": "summary", "name": "Summary"}]
+		}]
+	}`)
+	if err := seedCatalogData(db, data); err != nil {
+		t.Fatal(err)
+	}
+	var summary model.Operation
+	if err := db.First(&summary, "resource_type_id = ? AND id = ?", "report", "summary").Error; err != nil {
+		t.Fatal(err)
+	}
+	if !summary.IsGrantable() {
+		t.Fatal("report/summary remained non-grantable after the field was omitted")
 	}
 }
 
@@ -630,10 +677,20 @@ func TestCatalogResourceOperationSplit(t *testing.T) {
 	}
 
 	catalogOps := ops("catalog")
-	for _, op := range []string{"view_detail", "create", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data", "data_write"} {
+	for _, op := range []string{"view_detail", "view_summary", "create", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data", "data_write"} {
 		if !catalogOps[op] {
 			t.Errorf("catalog is missing operation %q", op)
 		}
+	}
+	var summary model.Operation
+	if err := db.First(&summary, "resource_type_id = ? AND id = ?", "catalog", "view_summary").Error; err != nil {
+		t.Fatal(err)
+	}
+	if summary.IsGrantable() {
+		t.Fatal("catalog/view_summary must be non-grantable")
+	}
+	if err := e.GrantObjectPermission("summary-reader", "catalog", "catalog-1", "view_summary"); !errors.Is(err, authz.ErrOperationNotGrantable) {
+		t.Fatalf("grant catalog/view_summary error = %v, want ErrOperationNotGrantable", err)
 	}
 
 	resourceOps := ops("resource")
