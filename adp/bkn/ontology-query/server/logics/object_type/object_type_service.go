@@ -238,7 +238,10 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 	if err != nil {
 		return resps, err
 	}
-	if query.Sort == nil {
+	// A missing or explicitly empty sort both need the stable default used by
+	// Vega cursor paging. JSON clients commonly encode an optional empty list
+	// as [], which must not bypass this default.
+	if len(query.Sort) == 0 {
 		query.Sort = logics.BuildViewSort(objectType)
 	}
 
@@ -551,6 +554,20 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		}
 	}
 	resp, err := ots.vba.QueryResourceData(ctx, objectType.DataSource.ID, params)
+	// Object-type bindings identify a Vega resource by ID but do not carry its
+	// category. Cursor paging is unavailable for some categories. Retry only an
+	// initial cursor request rejected as unsupported, retaining the historical
+	// single-page behavior for those resources. A continuation is never retried:
+	// it can only exist for a category that already accepted cursor paging.
+	if err != nil && query.ResourceCursor == "" && isCursorPagingUnsupported(err) {
+		singlePageParams := *params
+		singlePageParams.Paging = interfaces.ResourceDataPagingRequest{
+			Mode:   interfaces.ResourceDataPagingModeSingle,
+			Limit:  query.Limit,
+			Offset: query.Offset,
+		}
+		resp, err = ots.vba.QueryResourceData(ctx, objectType.DataSource.ID, &singlePageParams)
+	}
 	if err != nil {
 		// When downstream identifies a caller-side issue (4xx), pass through the original status code and carry its reason upward.
 		// Upgrading everything to 500 makes self-correctable problems such as unsupported operators or resources without built indexes look
@@ -598,6 +615,11 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 	}
 	resps.Datas = objects
 	return nil
+}
+
+func isCursorPagingUnsupported(err error) bool {
+	downstream, ok := interfaces.AsVegaDownstreamError(err)
+	return ok && downstream.StatusCode == http.StatusNotImplemented
 }
 
 // getObjectsFromObjectIndex retrieves object data from the object-type index.

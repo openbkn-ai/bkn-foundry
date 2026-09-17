@@ -198,6 +198,44 @@ func TestObjectQueryCursorReauthorizesAndNeverExposesRawPosition(t *testing.T) {
 	}
 }
 
+func TestObjectQueryUsesDefaultSortAndFallsBackToSingleForUnsupportedCursorPaging(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	objectType := accessPlanObjectType()
+	objectType.DataSource = &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"}
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", "main", "customer").Return(objectType, true, nil)
+	vega := &vegaStubForOTQuery{
+		errors: []error{interfaces.NewVegaDownstreamError(http.StatusNotImplemented, "")},
+		responses: []*interfaces.DatasetQueryResponse{{
+			Entries: []map[string]any{{"customer_id": "customer-1", "phone": "13812345678"}},
+		}},
+	}
+	service := &objectTypeService{
+		omAccess: models, vba: vega, proxy: &objectTypeProxyResolverStub{},
+		propertyAccess: fullPropertyAccessStub{}, cursor: testQueryCursorCodec(t, time.Now()),
+	}
+
+	result, err := service.GetObjectsByObjectTypeID(context.Background(), &interfaces.ObjectQueryBaseOnObjectType{
+		KNID: "kn-1", Branch: "main", ObjectTypeID: "customer", Properties: []string{"id"},
+		PageQuery: interfaces.PageQuery{Limit: 10, Sort: []*interfaces.SortParams{}},
+	})
+	if err != nil {
+		t.Fatalf("GetObjectsByObjectTypeID() error = %v", err)
+	}
+	if len(result.Datas) != 1 || len(vega.paramsHistory) != 2 {
+		t.Fatalf("result = %#v, requests = %#v", result, vega.paramsHistory)
+	}
+	initial, fallback := vega.paramsHistory[0], vega.paramsHistory[1]
+	if initial.Paging.Mode != interfaces.ResourceDataPagingModeCursor || len(initial.Sort) < 2 ||
+		initial.Sort[1].Field != "customer_id" {
+		t.Fatalf("initial cursor request must use default stable sort: %#v", initial)
+	}
+	if fallback.Paging.Mode != interfaces.ResourceDataPagingModeSingle || fallback.Paging.Cursor != "" ||
+		len(fallback.Sort) != len(initial.Sort) {
+		t.Fatalf("single fallback request = %#v", fallback)
+	}
+}
+
 func accessPlanObjectType() interfaces.ObjectType {
 	keepStart, keepEnd := 1, 1
 	return interfaces.ObjectType{

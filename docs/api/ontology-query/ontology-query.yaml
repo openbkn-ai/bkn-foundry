@@ -142,7 +142,11 @@ paths:
                     type: array
                     items: { type: object, additionalProperties: true }
                   total_count: { type: integer, format: int64 }
-                  cursor: { type: string }
+                  cursor:
+                    description: Compatibility field; equal to paging.next_cursor. New callers should use paging.next_cursor.
+                    type: string
+                  paging:
+                    $ref: '#/components/schemas/ObjectPagingResponse'
         '403': { description: "Caller query_data is denied, or the managed proxy lacks resource query_data (`OntologyQuery.Proxy.PermissionDenied`)." }
         '404': { description: The published object type or proxy mapping does not exist (`OntologyQuery.Proxy.MappingNotFound` for the latter). }
         '503': { description: "Proxy binding is invalid, disabled, pending, failed, or unavailable; see the stable `OntologyQuery.Proxy.*` error code." }
@@ -4312,6 +4316,11 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ObjectPropertyValue'
+        paging:
+          $ref: '#/components/schemas/ObjectPagingResponse'
+        cursor:
+          description: 兼容字段；值等同于 paging.next_cursor。新调用方应使用 paging.next_cursor。
+          type: string
     ActionParam:
       description: 行动参数
       required:
