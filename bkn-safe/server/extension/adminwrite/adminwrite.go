@@ -60,6 +60,9 @@ var (
 	// (e.g. granting the admin-console capability through a role permission,
 	// which would turn this route into an admin-promotion path). Maps to 403.
 	ErrForbidden = errors.New("adminwrite: forbidden")
+	// ErrRoleNameExisted means a role identifier already exists. The concrete
+	// error returned by core may carry the existing role ID for the HTTP layer.
+	ErrRoleNameExisted = errors.New("adminwrite: role name existed")
 
 	// Stable sub-errors retain the reason without exposing wrapped free-form
 	// diagnostics as a client contract. They continue to match their parent

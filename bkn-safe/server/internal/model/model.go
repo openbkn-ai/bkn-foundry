@@ -201,10 +201,14 @@ const (
 // Role — preserves the ISF role UUIDs (seeded from role.json). Source is
 // system|business for built-ins, custom for API-created roles.
 type Role struct {
-	ID          string `gorm:"primaryKey;size:64"`
-	Name        string `gorm:"size:128"`
-	Description string `gorm:"size:1024"`
-	Source      string `gorm:"size:16"` // system | business | custom
+	ID   string `gorm:"primaryKey;size:64"`
+	Name string `gorm:"size:128"`
+	// NameKey is the canonical form of Name (trimmed and case-folded). It is
+	// nullable so adding it to a deployment with legacy duplicate role names
+	// does not make the schema migration fail; all newly written roles set it.
+	NameKey     *string `gorm:"size:128;uniqueIndex:idx_roles_name_key"`
+	Description string  `gorm:"size:1024"`
+	Source      string  `gorm:"size:16"` // system | business | custom
 	CreatedAt   time.Time
 }
 

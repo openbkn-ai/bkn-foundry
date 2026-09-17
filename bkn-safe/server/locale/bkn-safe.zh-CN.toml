@@ -27,6 +27,11 @@ Description = "请求与当前资源状态冲突。"
 Solution = "请刷新资源状态后重试。"
 ErrorLink = ""
 
+[RESOURCE_EXISTED]
+Description = "角色标识已存在。"
+Solution = "请使用其他角色标识。"
+ErrorLink = ""
+
 [BknSafe.MethodNotAllowed]
 Description = "不支持当前请求方法。"
 Solution = "请使用接口支持的请求方法。"

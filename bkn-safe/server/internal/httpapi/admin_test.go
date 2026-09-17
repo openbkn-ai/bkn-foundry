@@ -613,6 +613,40 @@ func TestRoleCRUDAndBuiltInProtection(t *testing.T) {
 	}
 }
 
+func TestRoleIdentifierConflictReturnsExistingRoleID(t *testing.T) {
+	r, _, _, _ := newAdminServer(t)
+	const path = "/api/safe/v1/admin/roles"
+	if w := adminReq(t, r, http.MethodPost, path, map[string]any{"id": "same-first", "name": " Same "}); w.Code != http.StatusCreated {
+		t.Fatalf("create first role: %d (%s)", w.Code, w.Body.String())
+	}
+	w := adminReq(t, r, http.MethodPost, path, map[string]any{"id": "same-second", "name": "same"})
+	if w.Code != http.StatusConflict {
+		t.Fatalf("duplicate create: want 409, got %d (%s)", w.Code, w.Body.String())
+	}
+	var body struct {
+		ErrorCode    string         `json:"error_code"`
+		ErrorDetails map[string]any `json:"error_details"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode conflict response: %v", err)
+	}
+	if body.ErrorCode != "RESOURCE_EXISTED" {
+		t.Errorf("error code = %q, want RESOURCE_EXISTED", body.ErrorCode)
+	}
+	if body.ErrorDetails["existing_id"] != "same-first" {
+		t.Errorf("existing_id = %v, want same-first", body.ErrorDetails["existing_id"])
+	}
+	if w := adminReq(t, r, http.MethodPut, path+"/same-second", map[string]any{"name": "other"}); w.Code != http.StatusNotFound {
+		t.Fatalf("unexpected duplicate role exists before rename check: %d (%s)", w.Code, w.Body.String())
+	}
+	if w := adminReq(t, r, http.MethodPost, path, map[string]any{"id": "other", "name": "other"}); w.Code != http.StatusCreated {
+		t.Fatalf("create second role: %d (%s)", w.Code, w.Body.String())
+	}
+	if w := adminReq(t, r, http.MethodPut, path+"/other", map[string]any{"name": " SAME "}); w.Code != http.StatusConflict {
+		t.Errorf("duplicate rename: want 409, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
 func TestUserListSearchAndFindByAccount(t *testing.T) {
 	r, _, _, users := newAdminServer(t)
 	ctx := t.Context()
