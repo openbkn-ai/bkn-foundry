@@ -77,7 +77,31 @@ func TestAuthResourceRestHandlerListAuthorizationResourcesByIn(t *testing.T) {
 		engine.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
-		assert.Contains(t, w.Body.String(), "valid values: catalog, resource")
+		assert.Contains(t, w.Body.String(), "valid values: catalog, resource, connector_type")
+	})
+
+	t.Run("lists connector type resources", func(t *testing.T) {
+		engine := gin.New()
+		engine.Use(gin.Recovery())
+
+		mockCtrl := gomock.NewController(t)
+		t.Cleanup(mockCtrl.Finish)
+
+		cts := vmock.NewMockConnectorTypeService(mockCtrl)
+		handler := MockNewRestHandler(&common.AppSetting{}, vmock.NewMockAuthService(mockCtrl), nil, nil, nil, nil, cts, nil, nil, nil)
+		handler.RegisterPublic(engine)
+
+		cts.EXPECT().ListAuthResourceEntries(gomock.Any(), gomock.Any()).
+			Return([]*interfaces.AuthResourceEntry{{ID: "postgres", Name: "PostgreSQL"}}, int64(1), nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/authorization-resources?resource_type=connector_type", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), `"id":"postgres"`)
+		assert.Contains(t, w.Body.String(), `"total":1`)
 	})
 
 	t.Run("rejects invalid pagination query", func(t *testing.T) {

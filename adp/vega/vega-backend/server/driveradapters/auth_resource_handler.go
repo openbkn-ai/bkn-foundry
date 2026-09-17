@@ -49,9 +49,11 @@ func (r *restHandler) ListAuthorizationResourcesByIn(c *gin.Context) {
 		entries, total, err = r.cs.ListAuthResourceEntries(ctx, query)
 	case interfaces.AUTH_RESOURCE_TYPE_RESOURCE:
 		entries, total, err = r.rs.ListAuthResourceEntries(ctx, query)
+	case interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE:
+		entries, total, err = r.cts.ListAuthResourceEntries(ctx, query)
 	default:
 		err = rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
-			WithErrorDetails("resource_type is invalid; valid values: catalog, resource")
+			WithErrorDetails("resource_type is invalid; valid values: catalog, resource, connector_type")
 	}
 	if err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
