@@ -631,6 +631,9 @@ components:
             - index
             - logicview
             - dataset
+        built_in:
+          description: 是否为平台内置资源；仅内置管理员可见，且必须与所属 Catalog 的 `built_in` 一致
+          type: boolean
         enabled:
           description: 是否允许该资源用于查询或构建；与 `status` 独立
           type: boolean
@@ -763,6 +766,9 @@ components:
             - index
             - logicview
             - dataset
+        built_in:
+          description: 仅创建时可传；必须与所属 Catalog 的 `built_in` 一致，更新时不可修改
+          type: boolean
         enabled:
           description: |
             是否允许该资源用于查询或构建。创建时省略默认 `true`；PUT 时该值必须与当前值一致，
@@ -859,6 +865,9 @@ components:
           description: 资源类型
           type: string
           enum: [table, file, fileset, api, metric, topic, index, logicview, dataset]
+        built_in:
+          description: 是否为平台内置资源
+          type: boolean
         enabled:
           description: 是否允许该资源用于查询或构建；与 `status` 独立
           type: boolean

@@ -14,9 +14,9 @@ var AuthResourceSort = map[string]struct{}{
 
 type AuthResourceQueryParams struct {
 	PaginationQueryParams
-	Name            string
-	CatalogID       string
-	IncludeInternal bool
+	Name           string
+	CatalogID      string
+	IncludeBuiltin bool
 }
 
 type AuthResourceEntry struct {

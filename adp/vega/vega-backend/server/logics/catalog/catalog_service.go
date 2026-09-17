@@ -144,19 +144,19 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create catalog")
 	defer span.End()
 
-	if req.Internal && req.ConnectorType != "" {
-		span.SetStatus(codes.Error, "Physical catalog cannot be internal")
+	if req.Builtin && req.ConnectorType != "" {
+		span.SetStatus(codes.Error, "Physical catalog cannot be built-in")
 		return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
 			verrors.VegaBackend_Catalog_InvalidParameter).
-			WithErrorDetails("internal catalogs must be logical")
+			WithErrorDetails("built-in catalogs must be logical")
 	}
-	if req.Internal && !interfaces.IsBuiltinAdmin(ctx) {
+	if req.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
 		return "", rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails("internal catalogs are restricted to the built-in administrator")
+			WithErrorDetails("built-in catalogs are restricted to the built-in administrator")
 	}
 
 	// bkn-safe decides the type-wide catalog create permission after the local
-	// internal-catalog guard above.
+	// built-in catalog guard above.
 	err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 		ID:   interfaces.RESOURCE_ID_ALL,
@@ -255,7 +255,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 		Description:   req.Description,
 		Type:          catalogType,
 		Enabled:       req.Enabled,
-		Internal:      req.Internal,
+		Builtin:       req.Builtin,
 		ConnectorType: req.ConnectorType,
 		ConnectorCfg:  req.ConnectorCfg,
 		CatalogHealthCheckStatus: interfaces.CatalogHealthCheckStatus{
@@ -348,7 +348,7 @@ func (cs *catalogService) listPermittedCatalogIDs(ctx context.Context, visibilit
 	visibilityMatch string, includeOperations bool,
 	params interfaces.CatalogsQueryParams) ([]string, map[string]interfaces.PermissionResourceOps, error) {
 
-	params.IncludeInternal = interfaces.IsBuiltinAdmin(ctx)
+	params.IncludeBuiltin = interfaces.IsBuiltinAdmin(ctx)
 	refs, err := cs.ca.ListPermissionRefs(ctx, params)
 	if err != nil {
 		return nil, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
@@ -375,7 +375,7 @@ func (cs *catalogService) listPermittedCatalogIDs(ctx context.Context, visibilit
 }
 
 // CheckCatalogPermission checks bkn-safe permission for one catalog ID. When
-// getCatalog is true, it also checks existence and internal visibility and
+// getCatalog is true, it also checks existence and built-in visibility and
 // returns the non-sensitive catalog.
 func (cs *catalogService) CheckCatalogPermission(ctx context.Context, catalogID string,
 	ops []string, getCatalog bool) (bool, *interfaces.Catalog, error) {
@@ -398,8 +398,8 @@ func (cs *catalogService) CheckCatalogPermission(ctx context.Context, catalogID 
 		if catalogErr != nil {
 			return false, nil, catalogErr
 		}
-		if catalog.Internal && !interfaces.IsBuiltinAdmin(ctx) {
-			return false, nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).WithErrorDetails("internal catalogs are restricted to the built-in administrator")
+		if catalog.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
+			return false, nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).WithErrorDetails("built-in catalogs are restricted to the built-in administrator")
 		}
 		return true, catalog, nil
 	}
@@ -425,9 +425,9 @@ func (cs *catalogService) GetByID(ctx context.Context, id string, withSensitiveF
 	}
 
 	// Apply the fixed internal guard before bkn-safe's normal catalog check.
-	if catalog.Internal && !interfaces.IsBuiltinAdmin(ctx) {
+	if catalog.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
 		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails("internal catalogs are restricted to the built-in administrator")
+			WithErrorDetails("built-in catalogs are restricted to the built-in administrator")
 	}
 
 	matchResoucesMap, err := cs.ps.FilterVisibleResourcesWithOperations(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG,
@@ -553,9 +553,9 @@ func (cs *catalogService) GetByIDs(ctx context.Context, ids []string) ([]*interf
 	// Internal catalog details are restricted before bkn-safe authorization.
 	if !interfaces.IsBuiltinAdmin(ctx) {
 		for _, catalog := range catalogs {
-			if catalog.Internal {
+			if catalog.Builtin {
 				return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-					WithErrorDetails("internal catalogs are restricted to the built-in administrator")
+					WithErrorDetails("built-in catalogs are restricted to the built-in administrator")
 			}
 		}
 	}
@@ -681,7 +681,7 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 
 // ListConnectorTypeStats returns one count per catalog and connector type after applying catalog view permissions.
 func (cs *catalogService) ListConnectorTypeStats(ctx context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.CatalogConnectorTypeStat, error) {
-	params.IncludeInternal = interfaces.IsBuiltinAdmin(ctx)
+	params.IncludeBuiltin = interfaces.IsBuiltinAdmin(ctx)
 	refs, err := cs.ca.ListConnectorTypePermissionRefs(ctx, params)
 	if err != nil {
 		return nil, err
@@ -749,9 +749,9 @@ func (cs *catalogService) Update(ctx context.Context, req *interfaces.CatalogReq
 		span.SetStatus(codes.Error, "Catalog not found")
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
-	if catalog.Internal && !interfaces.IsBuiltinAdmin(ctx) {
+	if catalog.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
 		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails("internal catalogs are restricted to the built-in administrator")
+			WithErrorDetails("built-in catalogs are restricted to the built-in administrator")
 	}
 
 	if req.ConnectorType != catalog.ConnectorType {
@@ -908,9 +908,9 @@ func (cs *catalogService) SetEnabled(ctx context.Context, id string, enabled boo
 		span.SetStatus(codes.Error, "Catalog not found")
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
-	if catalog.Internal && !interfaces.IsBuiltinAdmin(ctx) {
+	if catalog.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
 		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails("internal catalogs are restricted to the built-in administrator")
+			WithErrorDetails("built-in catalogs are restricted to the built-in administrator")
 	}
 	if catalog.Enabled == enabled {
 		span.SetStatus(codes.Ok, "")
@@ -1262,9 +1262,9 @@ func (cs *catalogService) TestConnection(ctx context.Context, catalogID string) 
 	if catalog == nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
-	if catalog.Internal && !interfaces.IsBuiltinAdmin(ctx) {
+	if catalog.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
 		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails("internal catalogs are restricted to the built-in administrator")
+			WithErrorDetails("built-in catalogs are restricted to the built-in administrator")
 	}
 
 	result, err := cs.testCatalogConnection(ctx, catalog)
@@ -1525,7 +1525,7 @@ func (cs *catalogService) ListAuthResourceEntries(ctx context.Context,
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ListAuthResourceEntries")
 	defer span.End()
 
-	params.IncludeInternal = interfaces.IsBuiltinAdmin(ctx)
+	params.IncludeBuiltin = interfaces.IsBuiltinAdmin(ctx)
 	entries, total, err := cs.ca.ListAuthResourceEntries(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "ListAuthResourceEntries failed")

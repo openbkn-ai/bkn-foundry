@@ -250,7 +250,7 @@ func TestRestHandlerProxyReadRejectsInternalResource(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			engine, _, rs, _, pas, audit := setupProxyReadHandlerTest(t, nil)
 			rs.EXPECT().InternalGetByID(gomock.Any(), gomock.Nil(), "resource-1").
-				Return(&interfaces.Resource{ID: "resource-1", Internal: true}, nil)
+				Return(&interfaces.Resource{ID: "resource-1", Builtin: true}, nil)
 
 			req := httptest.NewRequest(test.method, test.url, strings.NewReader(test.body))
 			setProxyReadHeaders(req, test.operation, test.childType)

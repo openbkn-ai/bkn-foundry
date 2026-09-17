@@ -186,7 +186,7 @@ func (dtw *DiscoverTaskWorker) createTableResource(ctx context.Context, catalog 
 
 	req := &interfaces.ResourceRequest{
 		CatalogID:        catalog.ID,
-		Internal:         &catalog.Internal,
+		Builtin:          &catalog.Builtin,
 		Name:             sourceIdentifier,
 		Description:      table.Description,
 		Category:         interfaces.ResourceCategoryTable,

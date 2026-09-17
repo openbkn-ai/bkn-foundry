@@ -907,7 +907,7 @@ func TestSemanticUnderstandingTaskWorkerApplyCatalogResult(t *testing.T) {
 		{ID: "output", Type: interfaces.LogicDefinitionNodeType_Output, Inputs: []string{"source"}},
 	}
 	catalogService.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", false).
-		Return(&interfaces.Catalog{ID: "catalog-1", Internal: true}, nil)
+		Return(&interfaces.Catalog{ID: "catalog-1", Builtin: true}, nil)
 
 	resourceService.EXPECT().
 		InternalGetByCatalogID(gomock.Any(), "catalog-1").
@@ -924,8 +924,8 @@ func TestSemanticUnderstandingTaskWorkerApplyCatalogResult(t *testing.T) {
 			assert.Equal(t, "summary view", req.Description)
 			assert.Equal(t, interfaces.ResourceCategoryLogicView, req.Category)
 			assert.Equal(t, logicDefinition, req.LogicDefinition)
-			require.NotNil(t, req.Internal)
-			assert.True(t, *req.Internal)
+			require.NotNil(t, req.Builtin)
+			assert.True(t, *req.Builtin)
 			return &interfaces.Resource{ID: "view-1"}, nil
 		})
 	resourceService.EXPECT().
@@ -954,7 +954,7 @@ func TestSemanticUnderstandingTaskWorkerApplyCatalogResultRejectsInvalidSourceId
 		ApplyMode: interfaces.SemanticUnderstandingApplyModeForce,
 	}
 	catalogService.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", false).
-		Return(&interfaces.Catalog{ID: "catalog-1", Internal: false}, nil)
+		Return(&interfaces.Catalog{ID: "catalog-1", Builtin: false}, nil)
 	resourceService.EXPECT().
 		InternalGetByCatalogID(gomock.Any(), "catalog-1").
 		Return([]*interfaces.Resource{{ID: "resource-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable}}, nil)

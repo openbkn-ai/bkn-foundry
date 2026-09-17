@@ -71,7 +71,7 @@ type Catalog struct {
 	Type    string `json:"type"`
 	Enabled bool   `json:"enabled"`
 	// Internal catalogs and their resources are visible only to the built-in admin.
-	Internal bool `json:"internal"`
+	Builtin bool `json:"built_in"`
 
 	ConnectorType string          `json:"connector_type"`
 	ConnectorCfg  ConnectorConfig `json:"connector_config"`
@@ -96,9 +96,9 @@ type CatalogSummary struct {
 	Tags        []string `json:"tags"`
 	Description string   `json:"description"`
 
-	Type     string `json:"type"`
-	Enabled  bool   `json:"enabled"`
-	Internal bool   `json:"internal"`
+	Type    string `json:"type"`
+	Enabled bool   `json:"enabled"`
+	Builtin bool   `json:"built_in"`
 
 	ConnectorType string   `json:"connector_type"`
 	Schemas       []string `json:"schemas"`
@@ -129,9 +129,9 @@ type CatalogsQueryParams struct {
 	ConnectorType     string
 	Enabled           *bool
 	HealthCheckStatus string
-	// IncludeInternal is set only by the service after checking the caller's
+	// IncludeBuiltin is set only by the service after checking the caller's
 	// account. It is not populated from an external list request.
-	IncludeInternal bool
+	IncludeBuiltin bool
 }
 
 // CatalogCreateRequest represents create catalog request.
@@ -145,8 +145,8 @@ type CatalogRequest struct {
 	ConnectorCfg  ConnectorConfig `json:"connector_config"`
 
 	// Internal only takes effect during creation and cannot be changed by updates.
-	// Only the built-in admin may create an internal catalog.
-	Internal bool `json:"internal,omitempty"`
+	// Only the built-in admin may create an built-in catalog.
+	Builtin bool `json:"built_in,omitempty"`
 
 	// HealthCheckSchedule only takes effect when the physical directory is created; Create the default Schedule of the inherit mode when nil.
 	HealthCheckSchedule *CatalogHealthCheckScheduleRequest `json:"health_check_schedule,omitempty"`

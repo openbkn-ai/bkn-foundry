@@ -72,7 +72,7 @@ type Resource struct {
 	Description string   `json:"description"`
 
 	Category string `json:"category"` // Resource category: table/file/fileset/...
-	Internal bool   `json:"internal"`
+	Builtin  bool   `json:"built_in"`
 
 	Enabled            bool   `json:"enabled"`
 	Status             string `json:"status"`               // Status: active/stale/deprecated
@@ -117,7 +117,7 @@ type ResourceSummary struct {
 	Description string   `json:"description"`
 
 	Category string `json:"category"`
-	Internal bool   `json:"internal"`
+	Builtin  bool   `json:"built_in"`
 
 	Enabled            bool   `json:"enabled"`
 	Status             string `json:"status"`
@@ -184,9 +184,9 @@ type ResourcesQueryParams struct {
 	Category  string
 	Status    string
 	Schema    string
-	// IncludeInternal is set only by the service after checking the caller's
+	// IncludeBuiltin is set only by the service after checking the caller's
 	// account. It is not populated from an external list request.
-	IncludeInternal bool
+	IncludeBuiltin bool
 }
 
 // ResourceCreateRequest represents create resource request.
@@ -198,7 +198,7 @@ type ResourceRequest struct {
 	Description string   `json:"description"`
 
 	Category string `json:"category"`
-	Internal *bool  `json:"internal,omitempty"`
+	Builtin  *bool  `json:"built_in,omitempty"`
 
 	Enabled bool   `json:"enabled"`
 	Status  string `json:"status"`

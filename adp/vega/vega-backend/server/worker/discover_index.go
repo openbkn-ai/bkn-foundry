@@ -170,7 +170,7 @@ func (dtw *DiscoverTaskWorker) createIndexResource(ctx context.Context,
 
 	req := &interfaces.ResourceRequest{
 		CatalogID:        catalog.ID,
-		Internal:         &catalog.Internal,
+		Builtin:          &catalog.Builtin,
 		Name:             index.Name,
 		Description:      index.Description,
 		Category:         interfaces.ResourceCategoryIndex,

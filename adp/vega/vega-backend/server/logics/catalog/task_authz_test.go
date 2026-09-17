@@ -69,7 +69,7 @@ func TestCheckCatalogPermission(t *testing.T) {
 		ps := mock_interfaces.NewMockPermissionService(ctrl)
 		cs := &catalogService{ca: ca, ps: ps}
 		ps.EXPECT().CheckPermission(gomock.Any(), resource, ops).Return(nil)
-		ca.EXPECT().GetByID(gomock.Any(), "cat-1").Return(&interfaces.Catalog{ID: "cat-1", Internal: true}, nil)
+		ca.EXPECT().GetByID(gomock.Any(), "cat-1").Return(&interfaces.Catalog{ID: "cat-1", Builtin: true}, nil)
 
 		allowed, catalog, err := cs.CheckCatalogPermission(context.Background(), "cat-1", ops, true)
 		require.Error(t, err)

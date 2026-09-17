@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS t_catalog (
 
     f_type                    VARCHAR(20) NOT NULL DEFAULT '' COMMENT '目录类型: physical, logical',
     f_enabled                 BOOLEAN NOT NULL DEFAULT TRUE COMMENT '是否启用',
-    f_internal                BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否系统内部目录：内部目录在权限服务按 internal_catalog 类型注册，业务角色的 catalog:* 通配授权匹配不到，仅超级管理员可见',
+    f_builtin                BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否系统内部目录：内部目录在权限服务按 internal_catalog 类型注册，业务角色的 catalog:* 通配授权匹配不到，仅超级管理员可见',
 
     -- Physical Catalog 专属字段
     f_connector_type          VARCHAR(50) NOT NULL DEFAULT '' COMMENT '数据源类型: mysql, postgresql, s3, kafka, elasticsearch, api, prometheus, etc.',
@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS t_resource (
     f_description             VARCHAR(1000) NOT NULL DEFAULT '' COMMENT '数据资源描述',
 
     f_category                VARCHAR(20) NOT NULL DEFAULT '' COMMENT '数据资源类型: table, file, fileset, api, metric, topic, index, logicview, dataset',
-    f_internal                BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否为内置资源',
+    f_builtin                BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否为内置资源',
 
     -- 状态管理
     f_enabled                 BOOLEAN NOT NULL DEFAULT TRUE COMMENT '资源是否启用',

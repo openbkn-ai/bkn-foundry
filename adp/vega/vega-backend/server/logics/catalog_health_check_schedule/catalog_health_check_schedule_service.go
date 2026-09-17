@@ -187,7 +187,7 @@ func (chcss *catalogHealthCheckScheduleService) Update(ctx context.Context, cata
 			verrors.VegaBackend_CatalogHealthCheckSchedule_InvalidParameter).WithErrorDetails("health check schedules are only supported for physical catalogs")
 	}
 
-	if catalog.Internal && !interfaces.IsBuiltinAdmin(ctx) {
+	if catalog.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
 		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
 			WithErrorDetails("internal catalogs are restricted to the built-in administrator")
 	}

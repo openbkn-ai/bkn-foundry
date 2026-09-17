@@ -50,7 +50,7 @@ var catalogColumns = []string{
 	"f_description",
 	"f_type",
 	"f_enabled",
-	"f_internal",
+	"f_builtin",
 	"f_connector_type",
 	"f_connector_config",
 	"f_metadata",
@@ -72,7 +72,7 @@ var catalogSummaryColumns = []string{
 	"f_description",
 	"f_type",
 	"f_enabled",
-	"f_internal",
+	"f_builtin",
 	"f_connector_type",
 	"f_metadata",
 	"f_health_check_status",
@@ -100,7 +100,7 @@ func scanCatalog(scanner catalogRowScanner) (*interfaces.Catalog, error) {
 		&catalog.Description,
 		&catalog.Type,
 		&catalog.Enabled,
-		&catalog.Internal,
+		&catalog.Builtin,
 		&catalog.ConnectorType,
 		&connectorConfigStr,
 		&metadataStr,
@@ -140,7 +140,7 @@ func scanCatalogSummary(scanner catalogRowScanner) (*interfaces.CatalogSummary, 
 		&summary.Description,
 		&summary.Type,
 		&summary.Enabled,
-		&summary.Internal,
+		&summary.Builtin,
 		&summary.ConnectorType,
 		&metadataStr,
 		&summary.HealthCheckStatus,
@@ -171,8 +171,8 @@ func scanCatalogSummary(scanner catalogRowScanner) (*interfaces.CatalogSummary, 
 }
 
 func applyCatalogFilters(builder sq.SelectBuilder, params interfaces.CatalogsQueryParams) sq.SelectBuilder {
-	if !params.IncludeInternal {
-		builder = builder.Where(sq.Eq{"f_internal": false})
+	if !params.IncludeBuiltin {
+		builder = builder.Where(sq.Eq{"f_builtin": false})
 	}
 	if params.Name != "" {
 		builder = builder.Where(sq.Like{"f_name": "%" + common.EscapeLikePattern(params.Name) + "%"})
@@ -233,7 +233,7 @@ func (ca *catalogAccess) Create(ctx context.Context, tx *sql.Tx, catalog *interf
 			"f_description",
 			"f_type",
 			"f_enabled",
-			"f_internal",
+			"f_builtin",
 			"f_connector_type",
 			"f_connector_config",
 			"f_metadata",
@@ -254,7 +254,7 @@ func (ca *catalogAccess) Create(ctx context.Context, tx *sql.Tx, catalog *interf
 			catalog.Description,
 			catalog.Type,
 			catalog.Enabled,
-			catalog.Internal,
+			catalog.Builtin,
 			catalog.ConnectorType,
 			connectorConfigStr,
 			"{}",
@@ -584,9 +584,9 @@ func (ca *catalogAccess) ListAuthResourceEntries(ctx context.Context, params int
 		"f_name",
 	).From(CATALOG_TABLE_NAME)
 	countBuilder := sq.Select("COUNT(*)").From(CATALOG_TABLE_NAME)
-	if !params.IncludeInternal {
-		builder = builder.Where(sq.Eq{"f_internal": false})
-		countBuilder = countBuilder.Where(sq.Eq{"f_internal": false})
+	if !params.IncludeBuiltin {
+		builder = builder.Where(sq.Eq{"f_builtin": false})
+		countBuilder = countBuilder.Where(sq.Eq{"f_builtin": false})
 	}
 
 	if params.Name != "" {

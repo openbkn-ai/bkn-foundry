@@ -36,8 +36,8 @@ func TestReconcileFilesetResources(t *testing.T) {
 		rs.EXPECT().Create(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.ResourceRequest{})).
 			DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
 				assert.Equal(t, "catalog-1", req.CatalogID)
-				require.NotNil(t, req.Internal)
-				assert.True(t, *req.Internal)
+				require.NotNil(t, req.Builtin)
+				assert.True(t, *req.Builtin)
 				assert.Equal(t, "Docs", req.Name)
 				assert.Equal(t, interfaces.ResourceCategoryFileset, req.Category)
 				assert.Equal(t, "/team/docs", req.SourceIdentifier)
@@ -46,7 +46,7 @@ func TestReconcileFilesetResources(t *testing.T) {
 			})
 		rs.EXPECT().UpdateDiscoverStatus(gomock.Any(), "r1", interfaces.DiscoverStatusNew).Return(nil)
 
-		result, items, err := dh.reconcileFilesetResources(context.Background(), &interfaces.DiscoverTask{DiscoverActions: &actions}, &interfaces.Catalog{ID: "catalog-1", Internal: true},
+		result, items, err := dh.reconcileFilesetResources(context.Background(), &interfaces.DiscoverTask{DiscoverActions: &actions}, &interfaces.Catalog{ID: "catalog-1", Builtin: true},
 			[]*interfaces.FilesetMeta{{ID: "fs-1", Name: "Docs", DisplayPath: "/team/docs"}}, nil)
 
 		require.NoError(t, err)

@@ -85,10 +85,10 @@ func NewResourceService(appSetting *common.AppSetting, datasetService interfaces
 // resource itself. Resource inheritance and operation requirements belong to
 // bkn-safe; Vega does not translate or supplement that decision.
 func (rs *resourceService) checkResourcePermission(ctx context.Context,
-	resourceID string, internal bool, op string) error {
-	if internal && !interfaces.IsBuiltinAdmin(ctx) {
+	resourceID string, builtin bool, op string) error {
+	if builtin && !interfaces.IsBuiltinAdmin(ctx) {
 		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails("internal resources are restricted to the built-in administrator")
+			WithErrorDetails("built-in resources are restricted to the built-in administrator")
 	}
 	return rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: resourceID,
@@ -135,10 +135,10 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		accountInfo = v.(interfaces.AccountInfo)
 	}
 
-	resourceInternal := req.Internal != nil && *req.Internal
-	if resourceInternal != parentCatalog.Internal {
+	resourceBuiltin := req.Builtin != nil && *req.Builtin
+	if resourceBuiltin != parentCatalog.Builtin {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-			WithErrorDetails("resource internal must match its catalog internal value")
+			WithErrorDetails("resource built_in must match its catalog built_in value")
 	}
 
 	now := time.Now().UnixMilli()
@@ -202,7 +202,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		Tags:             req.Tags,
 		Description:      req.Description,
 		Category:         req.Category,
-		Internal:         resourceInternal,
+		Builtin:          resourceBuiltin,
 		Enabled:          true,
 		Status:           req.Status,
 		Schema:           req.Schema,
@@ -309,9 +309,9 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 	populateResourceColumnCount(resource)
 
 	// Apply the fixed internal guard before checking resource permissions.
-	if resource.Internal && !interfaces.IsBuiltinAdmin(ctx) {
+	if resource.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
 		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails("internal resources are restricted to the built-in administrator")
+			WithErrorDetails("built-in resources are restricted to the built-in administrator")
 	}
 
 	matchResoucesMap, err := rs.ps.FilterVisibleResourcesWithOperations(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
@@ -357,7 +357,7 @@ func (rs *resourceService) CheckResourcePermission(ctx context.Context, resource
 			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", op))
 	}
 
-	return rs.checkResourcePermission(ctx, resource.ID, resource.Internal, op)
+	return rs.checkResourcePermission(ctx, resource.ID, resource.Builtin, op)
 }
 
 func (rs *resourceService) InternalGetByID(ctx context.Context, tx *sql.Tx, id string) (*interfaces.Resource, error) {
@@ -438,9 +438,9 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string, includeRo
 
 	if !interfaces.IsBuiltinAdmin(ctx) {
 		for _, resource := range resources {
-			if resource.Internal {
+			if resource.Builtin {
 				return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-					WithErrorDetails("internal resources are restricted to the built-in administrator")
+					WithErrorDetails("built-in resources are restricted to the built-in administrator")
 			}
 		}
 	}
@@ -536,7 +536,7 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List resources")
 	defer span.End()
 
-	params.IncludeInternal = interfaces.IsBuiltinAdmin(ctx)
+	params.IncludeBuiltin = interfaces.IsBuiltinAdmin(ctx)
 	// Query the ids of all resources
 	refs, err := rs.ra.ListPermissionRefs(ctx, params)
 	if err != nil {
@@ -665,7 +665,7 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 func (rs *resourceService) InternalList(ctx context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.ResourceSummary, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalList")
 	defer span.End()
-	params.IncludeInternal = true
+	params.IncludeBuiltin = true
 	summaries, _, err := rs.ra.List(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List resources failed")
@@ -697,13 +697,13 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 		span.SetStatus(codes.Error, "Resource not found")
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
-	if resource.Internal && !interfaces.IsBuiltinAdmin(ctx) {
+	if resource.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
 		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails("internal resources are restricted to the built-in administrator")
+			WithErrorDetails("built-in resources are restricted to the built-in administrator")
 	}
-	if req.Internal != nil && *req.Internal != resource.Internal {
+	if req.Builtin != nil && *req.Builtin != resource.Builtin {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-			WithErrorDetails("resource internal is immutable")
+			WithErrorDetails("resource built_in is immutable")
 	}
 	if req.Enabled != resource.Enabled {
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_EnabledFieldNotAllowed).
@@ -990,9 +990,9 @@ func (rs *resourceService) SetEnabled(ctx context.Context, id string, enabled bo
 		span.SetStatus(codes.Error, "Resource not found")
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
-	if resource.Internal && !interfaces.IsBuiltinAdmin(ctx) {
+	if resource.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
 		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails("internal resources are restricted to the built-in administrator")
+			WithErrorDetails("built-in resources are restricted to the built-in administrator")
 	}
 	if resource.Enabled == enabled {
 		span.SetStatus(codes.Ok, "")
@@ -1085,7 +1085,7 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string, ignore
 		}
 	}
 
-	// Load the requested Resources once so internal visibility and the deletion
+	// Load the requested Resources once so built-in visibility and the deletion
 	// lifecycle use the same immutable rows.
 	resourcesByID, err := rs.ra.GetByIDs(ctx, ids)
 	if err != nil {
@@ -1112,9 +1112,9 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string, ignore
 	}
 	if !interfaces.IsBuiltinAdmin(ctx) {
 		for _, resource := range resources {
-			if resource.Internal {
+			if resource.Builtin {
 				return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-					WithErrorDetails("internal resources are restricted to the built-in administrator")
+					WithErrorDetails("built-in resources are restricted to the built-in administrator")
 			}
 		}
 	}
@@ -1317,7 +1317,7 @@ func (rs *resourceService) InternalCreate(ctx context.Context, tx *sql.Tx, req *
 	if _, ok := ctx.Value(resourceParentTrackerKey{}).(*ResourceParentTracker); !ok {
 		return nil, fmt.Errorf("resource parent tracker is required")
 	}
-	resourceInternal := req.Internal != nil && *req.Internal
+	resourceBuiltin := req.Builtin != nil && *req.Builtin
 
 	now := time.Now().UnixMilli()
 	id := req.ID
@@ -1359,7 +1359,7 @@ func (rs *resourceService) InternalCreate(ctx context.Context, tx *sql.Tx, req *
 		Description:      req.Description,
 		Category:         req.Category,
 		Enabled:          true,
-		Internal:         resourceInternal,
+		Builtin:          resourceBuiltin,
 		Status:           req.Status,
 		Schema:           req.Schema,
 		SourceIdentifier: req.SourceIdentifier,
@@ -1898,7 +1898,7 @@ func (rs *resourceService) ListAuthResourceEntries(ctx context.Context, params i
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ListAuthResourceEntries")
 	defer span.End()
 
-	params.IncludeInternal = interfaces.IsBuiltinAdmin(ctx)
+	params.IncludeBuiltin = interfaces.IsBuiltinAdmin(ctx)
 	entries, total, err := rs.ra.ListAuthResourceEntries(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "ListAuthResourceEntries failed")

@@ -1251,7 +1251,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 			sourceIdentifiers[view.SourceIdentifier] = struct{}{}
 			req := &interfaces.ResourceRequest{
 				CatalogID:        task.CatalogID,
-				Internal:         &catalog.Internal,
+				Builtin:          &catalog.Builtin,
 				Name:             view.Name,
 				SourceIdentifier: view.SourceIdentifier,
 				Description:      view.Description,

@@ -693,8 +693,8 @@ components:
         enabled:
           description: 是否启用
           type: boolean
-        internal:
-          description: 是否为内部 Catalog
+        built_in:
+          description: 是否为内置 Catalog
           type: boolean
         connector_type:
           description: 连接器类型标识（参见 connector-type.yaml）；SQL Server 使用 `sqlserver`
@@ -808,8 +808,8 @@ components:
               options:
                 encrypt: true
                 trustservercertificate: false
-        internal:
-          description: 仅 POST 创建 logical Catalog 时可设为 `true`；与非空 `connector_type` 同时提供返回 400。省略时为 `false`，PUT 时忽略。
+        built_in:
+          description: 仅 POST 创建内置 logical Catalog 时可设为 `true`；与非空 `connector_type` 同时提供返回 400。省略时为 `false`，PUT 时忽略。
           type: boolean
     CatalogCreateRequest:
       allOf:
@@ -858,8 +858,8 @@ components:
         enabled:
           description: 是否启用
           type: boolean
-        internal:
-          description: 是否为内部 Catalog
+        built_in:
+          description: 是否为内置 Catalog
           type: boolean
         connector_type:
           description: 连接器类型标识

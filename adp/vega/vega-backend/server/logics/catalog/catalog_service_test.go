@@ -340,7 +340,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 
 		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
 			Name:          "internal-physical-catalog",
-			Internal:      true,
+			Builtin:       true,
 			ConnectorType: interfaces.ConnectorTypePostgreSQL,
 		}, false)
 
@@ -348,7 +348,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_Catalog_InvalidParameter, httpErr.BaseError.ErrorCode)
-		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "internal catalogs must be logical")
+		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "built-in catalogs must be logical")
 	})
 
 	t.Run("does not expose connector error when connection test fails", func(t *testing.T) {
@@ -524,8 +524,8 @@ func TestCatalogServiceCreate(t *testing.T) {
 		mockCA.EXPECT().GetByName(gomock.Any(), "internal-catalog").Return(nil, nil)
 		mockCA.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, _ *sql.Tx, catalog *interfaces.Catalog) error {
-				if !catalog.Internal {
-					t.Fatal("expected catalog.Internal=true")
+				if !catalog.Builtin {
+					t.Fatal("expected catalog.Builtin=true")
 				}
 				return nil
 			},
@@ -544,8 +544,8 @@ func TestCatalogServiceCreate(t *testing.T) {
 		ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
 			interfaces.AccountInfo{ID: interfaces.BuiltinAdminID})
 		_, err = cs.Create(ctx, &interfaces.CatalogRequest{
-			Name:     "internal-catalog",
-			Internal: true,
+			Name:    "internal-catalog",
+			Builtin: true,
 		}, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -732,8 +732,8 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 			ID:   "internal-catalog",
 		}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
 		ca.EXPECT().GetByID(gomock.Any(), "internal-catalog").Return(&interfaces.Catalog{
-			ID:       "internal-catalog",
-			Internal: true,
+			ID:      "internal-catalog",
+			Builtin: true,
 		}, nil)
 
 		cs := &catalogService{ca: ca, ps: ps}
@@ -1643,7 +1643,7 @@ func TestCatalogServiceList(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
 		params := interfaces.CatalogsQueryParams{}
-		mockCA.EXPECT().ListPermissionRefs(gomock.Any(), interfaces.CatalogsQueryParams{IncludeInternal: true}).Return(nil, nil)
+		mockCA.EXPECT().ListPermissionRefs(gomock.Any(), interfaces.CatalogsQueryParams{IncludeBuiltin: true}).Return(nil, nil)
 
 		cs := &catalogService{ca: mockCA}
 		ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
@@ -1750,7 +1750,7 @@ func TestCatalogServiceListAuthResourcesIncludesInternalForBuiltinAdmin(t *testi
 	ca := mock_interfaces.NewMockCatalogAccess(ctrl)
 	cs := &catalogService{ca: ca}
 	params := interfaces.AuthResourceQueryParams{}
-	ca.EXPECT().ListAuthResourceEntries(gomock.Any(), interfaces.AuthResourceQueryParams{IncludeInternal: true}).
+	ca.EXPECT().ListAuthResourceEntries(gomock.Any(), interfaces.AuthResourceQueryParams{IncludeBuiltin: true}).
 		Return([]*interfaces.AuthResourceEntry{}, int64(3), nil)
 	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
 		interfaces.AccountInfo{ID: interfaces.BuiltinAdminID})
@@ -2052,7 +2052,7 @@ func TestCatalogServiceDeleteByID(t *testing.T) {
 func TestCatalogServiceGetByID(t *testing.T) {
 	t.Run("trusted proxy cannot bypass internal catalog guard", func(t *testing.T) {
 		cs, ca, _, _ := newS2SCatalogService(t)
-		ca.EXPECT().GetByID(gomock.Any(), "c1").Return(&interfaces.Catalog{ID: "c1", Internal: true}, nil)
+		ca.EXPECT().GetByID(gomock.Any(), "c1").Return(&interfaces.Catalog{ID: "c1", Builtin: true}, nil)
 
 		_, err := cs.GetByID(interfaces.WithTrustedProxyRead(context.Background()), "c1", false)
 		require.Error(t, err)
@@ -2061,7 +2061,7 @@ func TestCatalogServiceGetByID(t *testing.T) {
 	t.Run("built-in admin reads internal catalog through catalog hierarchy", func(t *testing.T) {
 		cs, ca, ps, ums := newS2SCatalogService(t)
 		ca.EXPECT().GetByID(gomock.Any(), "c1").
-			Return(&interfaces.Catalog{ID: "c1", Internal: true}, nil)
+			Return(&interfaces.Catalog{ID: "c1", Builtin: true}, nil)
 		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 			[]string{"c1"}, gomock.Any(), interfaces.VISIBILITY_MATCH_ALL).
 			Return(map[string]interfaces.PermissionResourceOps{"c1": {ResourceID: "c1", Operations: interfaces.COMMON_OPERATIONS}}, nil)
@@ -2080,7 +2080,7 @@ func TestCatalogServiceGetByID(t *testing.T) {
 	t.Run("non-admin cannot read internal catalog", func(t *testing.T) {
 		cs, ca, _, _ := newS2SCatalogService(t)
 		ca.EXPECT().GetByID(gomock.Any(), "c1").
-			Return(&interfaces.Catalog{ID: "c1", Internal: true}, nil)
+			Return(&interfaces.Catalog{ID: "c1", Builtin: true}, nil)
 
 		_, err := cs.GetByID(context.Background(), "c1", false)
 		if err == nil {
@@ -2090,7 +2090,7 @@ func TestCatalogServiceGetByID(t *testing.T) {
 	t.Run("catalog get by idnon internal with marker still authz", func(t *testing.T) {
 		cs, ca, ps, _ := newS2SCatalogService(t)
 		ca.EXPECT().GetByID(gomock.Any(), "c1").
-			Return(&interfaces.Catalog{ID: "c1", Internal: false}, nil)
+			Return(&interfaces.Catalog{ID: "c1", Builtin: false}, nil)
 		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 			gomock.Any(), gomock.Any(), interfaces.VISIBILITY_MATCH_ALL).
 			Return(map[string]interfaces.PermissionResourceOps{}, nil)

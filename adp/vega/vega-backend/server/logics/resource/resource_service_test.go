@@ -321,7 +321,7 @@ func TestResourceServiceCheckExistByID(t *testing.T) {
 func TestResourceServiceGetByID(t *testing.T) {
 	t.Run("trusted proxy cannot bypass internal resource guard", func(t *testing.T) {
 		rs, mockRA, _, _ := newS2STestService(t)
-		mockRA.EXPECT().GetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "cat-int", Internal: true}, nil)
+		mockRA.EXPECT().GetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "cat-int", Builtin: true}, nil)
 
 		_, err := rs.GetByID(interfaces.WithTrustedProxyRead(context.Background()), "r1")
 		require.Error(t, err)
@@ -386,7 +386,7 @@ func TestResourceServiceGetByID(t *testing.T) {
 	t.Run("built-in admin reads internal resource through resource hierarchy", func(t *testing.T) {
 		rs, ra, ps, ums := newS2STestService(t)
 		ra.EXPECT().GetByID(gomock.Any(), nil, "r1").
-			Return(&interfaces.Resource{ID: "r1", CatalogID: "cat-int", Internal: true}, nil)
+			Return(&interfaces.Resource{ID: "r1", CatalogID: "cat-int", Builtin: true}, nil)
 		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
 			[]string{"r1"}, gomock.Any(), interfaces.VISIBILITY_MATCH_ALL).
 			Return(map[string]interfaces.PermissionResourceOps{"r1": {ResourceID: "r1", Operations: interfaces.COMMON_OPERATIONS}}, nil)
@@ -405,7 +405,7 @@ func TestResourceServiceGetByID(t *testing.T) {
 	t.Run("non-admin cannot read internal resource", func(t *testing.T) {
 		rs, ra, _, _ := newS2STestService(t)
 		ra.EXPECT().GetByID(gomock.Any(), nil, "r1").
-			Return(&interfaces.Resource{ID: "r1", CatalogID: "cat-int", Internal: true}, nil)
+			Return(&interfaces.Resource{ID: "r1", CatalogID: "cat-int", Builtin: true}, nil)
 
 		_, err := rs.GetByID(context.Background(), "r1")
 		if err == nil {
@@ -681,7 +681,7 @@ func TestResourceServiceInternalGetByCatalogID(t *testing.T) {
 func TestResourceServiceList(t *testing.T) {
 	t.Run("includes internal candidates for built-in admin", func(t *testing.T) {
 		rs, mockRA, _, _, _, _, _ := newTestService(t)
-		mockRA.EXPECT().ListPermissionRefs(gomock.Any(), interfaces.ResourcesQueryParams{IncludeInternal: true}).
+		mockRA.EXPECT().ListPermissionRefs(gomock.Any(), interfaces.ResourcesQueryParams{IncludeBuiltin: true}).
 			Return(nil, nil)
 		ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
 			interfaces.AccountInfo{ID: interfaces.BuiltinAdminID})
@@ -1093,7 +1093,7 @@ func TestResourceServiceCreate(t *testing.T) {
 		expectResourceServiceTransaction(t, rs, true)
 		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, resource *interfaces.Resource) error {
-				assert.False(t, resource.Internal)
+				assert.False(t, resource.Builtin)
 				return nil
 			})
 
@@ -1105,7 +1105,7 @@ func TestResourceServiceCreate(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		require.NotNil(t, resource)
-		assert.False(t, resource.Internal)
+		assert.False(t, resource.Builtin)
 	})
 	t.Run("rejects internal resource in a normal catalog", func(t *testing.T) {
 		rs, _, _, _, _, _, _ := newTestService(t)
@@ -1115,7 +1115,7 @@ func TestResourceServiceCreate(t *testing.T) {
 			CatalogID: "cat-normal",
 			Name:      "invalid-internal-resource",
 			Category:  interfaces.ResourceCategoryTable,
-			Internal:  &internal,
+			Builtin:   &internal,
 		})
 
 		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
@@ -1128,7 +1128,7 @@ func TestResourceServiceCreate(t *testing.T) {
 		rs := &resourceService{cs: mockCS}
 		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-internal",
 			[]string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}, true).
-			Return(true, &interfaces.Catalog{ID: "cat-internal", Internal: true}, nil)
+			Return(true, &interfaces.Catalog{ID: "cat-internal", Builtin: true}, nil)
 		ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
 			interfaces.AccountInfo{ID: interfaces.BuiltinAdminID})
 
@@ -1157,7 +1157,7 @@ func TestResourceServiceCreate(t *testing.T) {
 			CatalogID: "cat-internal",
 			Name:      "internal-resource",
 			Category:  interfaces.ResourceCategoryTable,
-			Internal:  &internal,
+			Builtin:   &internal,
 		})
 
 		httpErr := requireResourceHTTPError(t, err, rest.PublicError_Forbidden)
@@ -1197,7 +1197,7 @@ func TestResourceServiceCreate(t *testing.T) {
 		expectResourceServiceTransaction(t, rs, true)
 		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, resource *interfaces.Resource) error {
-				assert.False(t, resource.Internal)
+				assert.False(t, resource.Builtin)
 				return nil
 			})
 
@@ -1353,10 +1353,10 @@ func TestResourceServiceCreate(t *testing.T) {
 
 		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-internal",
 			[]string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}, true).
-			Return(true, &interfaces.Catalog{ID: "cat-internal", Internal: true}, nil)
+			Return(true, &interfaces.Catalog{ID: "cat-internal", Builtin: true}, nil)
 		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, resource *interfaces.Resource) error {
-				assert.True(t, resource.Internal)
+				assert.True(t, resource.Builtin)
 				return nil
 			})
 		mockPS.EXPECT().UpsertResourceParents(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
@@ -1369,7 +1369,7 @@ func TestResourceServiceCreate(t *testing.T) {
 			CatalogID: "cat-internal",
 			Name:      "internal-res",
 			Category:  "table",
-			Internal:  &internal,
+			Builtin:   &internal,
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1389,7 +1389,7 @@ func TestResourceServiceInternalCreateTracksParentForTransactionCompensation(t *
 
 	mockRA.EXPECT().Create(gomock.Any(), tx, gomock.Any()).
 		DoAndReturn(func(_ context.Context, _ *sql.Tx, resource *interfaces.Resource) error {
-			assert.True(t, resource.Internal)
+			assert.True(t, resource.Builtin)
 			return nil
 		})
 	mockPS.EXPECT().UpsertResourceParents(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
@@ -1404,7 +1404,7 @@ func TestResourceServiceInternalCreateTracksParentForTransactionCompensation(t *
 		CatalogID: "cat-internal",
 		Name:      "internal-resource",
 		Category:  interfaces.ResourceCategoryTable,
-		Internal:  &internal,
+		Builtin:   &internal,
 	})
 
 	require.NoError(t, err)
@@ -1799,8 +1799,8 @@ func TestResourceServiceUpdate(t *testing.T) {
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 		err := updateResourceForTest(t, rs, &interfaces.Resource{
-			ID: "r1", CatalogID: "cat1", Internal: false,
-		}, &interfaces.ResourceRequest{Internal: &internal})
+			ID: "r1", CatalogID: "cat1", Builtin: false,
+		}, &interfaces.ResourceRequest{Builtin: &internal})
 
 		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
@@ -2799,7 +2799,7 @@ func TestResourceServiceListAuthResourcesIncludesInternalForBuiltinAdmin(t *test
 	ctrl := gomock.NewController(t)
 	ra := vmock.NewMockResourceAccess(ctrl)
 	rs := &resourceService{ra: ra}
-	ra.EXPECT().ListAuthResourceEntries(gomock.Any(), interfaces.AuthResourceQueryParams{IncludeInternal: true}).
+	ra.EXPECT().ListAuthResourceEntries(gomock.Any(), interfaces.AuthResourceQueryParams{IncludeBuiltin: true}).
 		Return([]*interfaces.AuthResourceEntry{}, int64(3), nil)
 	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
 		interfaces.AccountInfo{ID: interfaces.BuiltinAdminID})

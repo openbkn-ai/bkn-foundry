@@ -242,7 +242,7 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 		service.ps = ps
 		current := &interfaces.CatalogHealthCheckSchedule{CatalogID: "catalog-1"}
 
-		ca.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical, Internal: true}, nil)
+		ca.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical, Builtin: true}, nil)
 		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG, ID: "catalog-1"}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
 		sa.EXPECT().GetByCatalogID(gomock.Any(), "catalog-1").Return(current, nil)
 		sa.EXPECT().Update(gomock.Any(), current, int64(0)).Return(int64(1), nil)

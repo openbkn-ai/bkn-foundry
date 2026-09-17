@@ -144,7 +144,7 @@ func (r *restHandler) loadProxyResource(c *gin.Context, ctx context.Context, spa
 		rest.ReplyError(c, httpErr)
 		return nil, false
 	}
-	if resource.Internal && !interfaces.IsBuiltinAdmin(ctx) {
+	if resource.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
 		r.recordProxyReadAudit(ctx, request, "deny", "internal_resource")
 		httpErr := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)

@@ -172,7 +172,7 @@ func (dtw *DiscoverTaskWorker) createFilesetResource(ctx context.Context, catalo
 	meta["original_description"] = ""
 	req := &interfaces.ResourceRequest{
 		CatalogID:        catalog.ID,
-		Internal:         &catalog.Internal,
+		Builtin:          &catalog.Builtin,
 		Name:             fs.Name,
 		Category:         interfaces.ResourceCategoryFileset,
 		Enabled:          true,
