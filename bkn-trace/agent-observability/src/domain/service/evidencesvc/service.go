@@ -6,6 +6,7 @@
 package evidencesvc
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -295,7 +296,9 @@ func NewWithBusinessResolverAndProjectionSource(
 
 func (s *Service) IngestArtifact(ctx context.Context, body []byte) (evidencevo.ArtifactIngestResponse, evidencevo.ValidationErrors, error) {
 	var artifact evidencevo.EvidenceArtifact
-	if err := json.Unmarshal(body, &artifact); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	if err := decoder.Decode(&artifact); err != nil {
 		return evidencevo.ArtifactIngestResponse{}, evidencevo.ValidationErrors{
 			evidencevo.NewValidationError("BKN_TRACE_INVALID_JSON", "$", "request body must match evidence artifact schema"),
 		}, nil

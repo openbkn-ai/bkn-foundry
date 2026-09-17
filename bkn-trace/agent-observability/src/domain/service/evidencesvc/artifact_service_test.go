@@ -7,6 +7,8 @@ package evidencesvc
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"testing"
 
@@ -307,6 +309,25 @@ func validArtifactBody(t *testing.T, artifactID string, content any) []byte {
 		t.Fatal(err)
 	}
 	return body
+}
+
+func TestIngestArtifactPreservesLargeJSONIntegerForContentHash(t *testing.T) {
+	content := json.RawMessage(`{"label":"<stock>","value":9007199254740993}`)
+	sum := sha256.Sum256(content)
+	body, err := json.Marshal(evidencevo.EvidenceArtifact{
+		ArtifactID: "artifact_precise_integer", ArtifactType: evidencevo.ArtifactTypeQuestion,
+		RequestID: "req_artifact_service", TraceID: "4bf92f3577b34da6a3ce929d0e0e4736",
+		InteractionID: "interaction_001", OperationID: "operation_001", SourceRef: "interaction:interaction_001",
+		ContentType: "application/json", SchemaVersion: evidencevo.ArtifactContractVersion, ObservedAt: "2026-07-26T08:00:00Z",
+		Content: content, ContentHash: "sha256:" + hex.EncodeToString(sum[:]), AccountID: "acct_demo", AccountType: "app",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, validationErrors, err := NewWithArtifactStore(evidencestore.New(), evidencestore.New()).IngestArtifact(context.Background(), body)
+	if err != nil || len(validationErrors) != 0 {
+		t.Fatalf("precise JSON artifact was rejected: validation=%+v err=%v", validationErrors, err)
+	}
 }
 
 func hasErrorCode(errors evidencevo.ValidationErrors, code string) bool {
