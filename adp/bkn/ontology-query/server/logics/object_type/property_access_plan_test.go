@@ -236,6 +236,37 @@ func TestObjectQueryUsesDefaultSortAndFallsBackToSingleForUnsupportedCursorPagin
 	}
 }
 
+func TestObjectQueryAppendsPrimaryKeyTieBreakerToExplicitResourceSort(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	objectType := accessPlanObjectType()
+	objectType.DataSource = &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"}
+	objectType.DataProperties = append(objectType.DataProperties,
+		cond.DataProperty{Name: "amount", Type: "number", MappedField: cond.Field{Name: "amount"}})
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", "main", "customer").Return(objectType, true, nil)
+	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{
+		Entries: []map[string]any{{"customer_id": "customer-1", "amount": 100}},
+		Paging:  &interfaces.ResourceDataPagingResponse{},
+	}}
+	service := &objectTypeService{
+		omAccess: models, vba: vega, proxy: &objectTypeProxyResolverStub{},
+		propertyAccess: fullPropertyAccessStub{}, cursor: testQueryCursorCodec(t, time.Now()),
+	}
+
+	_, err := service.GetObjectsByObjectTypeID(context.Background(), &interfaces.ObjectQueryBaseOnObjectType{
+		KNID: "kn-1", Branch: "main", ObjectTypeID: "customer", Properties: []string{"id"},
+		PageQuery: interfaces.PageQuery{Limit: 1, Sort: []*interfaces.SortParams{{Field: "amount", Direction: "desc"}}},
+	})
+	if err != nil {
+		t.Fatalf("GetObjectsByObjectTypeID() error = %v", err)
+	}
+	if vega.lastParams == nil || len(vega.lastParams.Sort) != 2 ||
+		vega.lastParams.Sort[0].Field != "amount" || vega.lastParams.Sort[0].Direction != "desc" ||
+		vega.lastParams.Sort[1].Field != "customer_id" || vega.lastParams.Sort[1].Direction != "asc" {
+		t.Fatalf("Vega cursor sort = %#v", vega.lastParams)
+	}
+}
+
 func accessPlanObjectType() interfaces.ObjectType {
 	keepStart, keepEnd := 1, 1
 	return interfaces.ObjectType{
