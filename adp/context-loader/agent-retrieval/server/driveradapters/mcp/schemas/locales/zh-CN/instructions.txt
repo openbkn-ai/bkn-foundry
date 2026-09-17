@@ -64,6 +64,8 @@ run_cypher 与 run_sql 的分工：能用对象类和关系类说清楚的查询
 
 提示：聚合类问题（如「每个 X 的 Y 总数/排名」）先用 run_cypher 在模型上写（如 MATCH (x:X)-[:R]->(y:Y) RETURN x.name AS name, sum(y.v) AS total ORDER BY total DESC LIMIT 10），子集写不出再落 run_sql；不要用 query_object_instance 的 sort 近似。
 
+成员资格、多条件阈值、求和、计数和去重也必须下推到 run_cypher、已建模指标或已授权的 run_sql。用户同时要求总数和明细时，让同一次可重算查询返回聚合结果及对应明细，或用共享条件的两次查询分别返回。不能先用 query_object_instance 拉回多页数据，再在 Agent 上下文里自行筛选、计数或去重；这种上下文计算无法形成完整、可重放的业务证据。
+
 run_sql 语法边界：仅写单条 SELECT；可用同一 catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 与常用聚合函数。不得使用 WITH/CTE、UNION/INTERSECT/EXCEPT、多语句、写入/DDL 或跨 catalog join；子查询和窗口函数不在当前兼容性承诺内。
 
 MySQL 标识符需要引用时用反引号包裹；双引号是字符串字面量，不是标识符。

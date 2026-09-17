@@ -1,4 +1,4 @@
-"""业务溯源优化 Agent 的部署合同。"""
+"""知识网络优化 Agent 的部署合同。"""
 
 import json
 from pathlib import Path
@@ -53,9 +53,14 @@ def test_business_provenance_agent_has_only_readonly_schema_tools():
 
 
 def test_business_provenance_agent_prompt_matches_the_runtime_output_contract():
-    prompt = _agent_package()["prompt"]["content"]
+    item = _agent_package()
+    prompt = item["prompt"]["content"]
 
     assert "\\n" not in prompt
+    assert item["spec"]["name"] == "知识网络优化Agent"
+    assert "知识网络优化 Agent" in prompt
+    assert "不包含 Claim Agent 生成的证据链判断" in prompt
+    assert "不得评价页面布局、证据链文案或交互体验" in prompt
     for required in (
         '"decision": "change_required|no_change|not_evaluable"',
         '"scope": "bkn|bkn_trace|mcp|sdk|agent"',

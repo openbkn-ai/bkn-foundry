@@ -21,7 +21,7 @@ import (
 
 const (
 	capabilityManifestID      = "openbkn.context-loader.mcp"
-	capabilityManifestVersion = "0.1.5"
+	capabilityManifestVersion = "0.1.6"
 
 	capabilityResolutionMatched       = "matched"
 	capabilityResolutionExecutionOnly = "execution_only"
@@ -242,9 +242,9 @@ func capabilitySpecs() []capabilitySpec {
 		{toolKeyGetActionExecution, "business_function", "execution_only", "none", "none"},
 		{toolKeyListActionExecutions, "discovery", "execution_only", "none", "none"},
 		{toolKeyListKnowledgeNetworks, "discovery", "execution_only", "none", "none"},
-		{toolKeyGetKnDetail, "discovery", "execution_only", "none", "none"},
-		{toolKeyGetObjectTypes, "discovery", "execution_only", "none", "none"},
-		{toolKeyGetRelationTypes, "discovery", "execution_only", "none", "none"},
+		{toolKeyGetKnDetail, "discovery", "ontology_schema_snapshot/v1", "none", "ontology_schema_snapshot/v1"},
+		{toolKeyGetObjectTypes, "discovery", "ontology_schema_snapshot/v1", "none", "ontology_schema_snapshot/v1"},
+		{toolKeyGetRelationTypes, "discovery", "ontology_schema_snapshot/v1", "none", "ontology_schema_snapshot/v1"},
 		{toolKeyRunSQL, "semantic_query", "mapped_sql_result/v1", "cover_physical_descendants", "mapped_sql_result/v1"},
 		{toolKeyRunCypher, "semantic_query", "semantic_query_descriptor/v1", "cover_physical_descendants", "semantic_query_descriptor/v1"},
 		{toolKeyListResources, "discovery", "execution_only", "none", "none"},

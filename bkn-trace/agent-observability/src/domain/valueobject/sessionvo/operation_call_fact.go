@@ -26,6 +26,7 @@ const (
 	MaxInlinePayloadBytes         = 1 << 20
 	PayloadOmittedReasonTooLarge  = "payload_too_large"
 	PayloadOmittedReasonSerialize = "serialization_failed"
+	PayloadOmittedReasonArtifact  = "artifact_write_failed"
 
 	ProtocolMCP      OperationProtocol = "mcp"
 	ProtocolSDK      OperationProtocol = "sdk"
@@ -103,7 +104,7 @@ func NormalizePayloadEnvelope(payload PayloadEnvelope) (PayloadEnvelope, error) 
 			if payload.ByteLength <= MaxInlinePayloadBytes {
 				return PayloadEnvelope{}, errors.New("payload_too_large requires a byte length above the inline limit")
 			}
-		case PayloadOmittedReasonSerialize:
+		case PayloadOmittedReasonSerialize, PayloadOmittedReasonArtifact:
 			if payload.ByteLength < 0 {
 				return PayloadEnvelope{}, errors.New("serialization_failed byte length cannot be negative")
 			}

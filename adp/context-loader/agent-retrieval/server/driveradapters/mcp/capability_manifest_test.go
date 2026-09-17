@@ -21,7 +21,7 @@ func TestCapabilityManifestCoversTheAssembledRuntimeCatalog(t *testing.T) {
 	noExtensions(t)
 	manifest := mustLoadCapabilityManifest()
 
-	if manifest.ManifestID != "openbkn.context-loader.mcp" || manifest.Version != "0.1.5" {
+	if manifest.ManifestID != "openbkn.context-loader.mcp" || manifest.Version != "0.1.6" {
 		t.Fatalf("manifest identity = %q@%q", manifest.ManifestID, manifest.Version)
 	}
 	for _, tool := range assembledTools(t) {
@@ -47,6 +47,9 @@ func TestCapabilityManifestClassifiesEvidenceBoundaries(t *testing.T) {
 		toolKeyExecuteTool:         {"business_function", "execution_only", "managed_children_only"},
 		toolKeyRunCode:             {"orchestrator", "execution_only", "managed_children_only"},
 		toolKeySearchSchema:        {"discovery", "execution_only", "none"},
+		toolKeyGetKnDetail:         {"discovery", "ontology_schema_snapshot/v1", "none"},
+		toolKeyGetObjectTypes:      {"discovery", "ontology_schema_snapshot/v1", "none"},
+		toolKeyGetRelationTypes:    {"discovery", "ontology_schema_snapshot/v1", "none"},
 	}
 	tools := map[string]msdk.Tool{}
 	for _, tool := range assembledTools(t) {

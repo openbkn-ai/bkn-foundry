@@ -642,6 +642,7 @@ func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetr
 			log.Printf("WARN: get_kn_detail capability bindings unreadable for kn %s: %v", knID, err)
 		}
 		resp.Slim(getStringArg(req, "detail_level", interfaces.DetailLevelSummary))
+		bkntrace.EmitSchemaSnapshotEvents(ctx, nil, "network", knID, nil, resp, true)
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
@@ -708,7 +709,7 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 		if err := metrics.AttachRelatedMetrics(ctx, knID, matched); err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		bkntrace.EmitSchemaDefinitionEvents(ctx, nil, "object", knID, args.IDs, len(matched))
+		bkntrace.EmitSchemaSnapshotEvents(ctx, nil, "object", knID, args.IDs, matched, len(matched) == len(args.IDs))
 		resp := &interfaces.ObjectTypesResp{KnID: knID, ObjectTypes: matched}
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {
@@ -742,7 +743,7 @@ func handleGetRelationTypes(bkn interfaces.BknBackendAccess) func(ctx context.Co
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		bkntrace.EmitSchemaDefinitionEvents(ctx, nil, "relation", knID, args.IDs, len(matched))
+		bkntrace.EmitSchemaSnapshotEvents(ctx, nil, "relation", knID, args.IDs, matched, len(matched) == len(args.IDs))
 		resp := &interfaces.RelationTypesResp{KnID: knID, RelationTypes: matched}
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {
@@ -817,6 +818,7 @@ func handleQueryMetric(service knmetrics.KnMetricsService) func(ctx context.Cont
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
+		bkntrace.EmitQueryMetricEvents(ctx, nil, args, resp)
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil

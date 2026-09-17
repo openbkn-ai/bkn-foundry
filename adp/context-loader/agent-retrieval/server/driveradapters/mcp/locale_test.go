@@ -244,6 +244,26 @@ func TestServerInstructionsRouteModelAggregationToCypherFirst(t *testing.T) {
 	}
 }
 
+func TestServerInstructionsRequireRecomputableMembershipThresholdAndDetail(t *testing.T) {
+	tests := []struct {
+		locale string
+		want   []string
+	}{
+		{locale: "zh-CN", want: []string{"成员资格、多条件阈值", "总数和明细", "不能先用 query_object_instance 拉回多页数据，再在 Agent 上下文里自行筛选、计数或去重"}},
+		{locale: "en-US", want: []string{"membership, multi-condition thresholds", "both the total and the detail rows", "Do not page data through query_object_instance and then filter, count, or deduplicate it in Agent context"}},
+	}
+	for _, test := range tests {
+		t.Run(test.locale, func(t *testing.T) {
+			instructions := loadMCPLocaleBundle(test.locale).ServerInstructions()
+			for _, want := range test.want {
+				if !strings.Contains(instructions, want) {
+					t.Fatalf("instructions for %s omit %q", test.locale, want)
+				}
+			}
+		})
+	}
+}
+
 func TestStartInteractionDescriptionGuidesStableAgentIdentity(t *testing.T) {
 	tests := []struct {
 		locale string

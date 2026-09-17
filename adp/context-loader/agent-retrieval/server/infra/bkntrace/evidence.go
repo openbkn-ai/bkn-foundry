@@ -295,6 +295,13 @@ func EmitQueryObjectInstanceEvents(ctx context.Context, logger interfaces.Logger
 	return submitAndReturnFirstEventID(ctx, logger, req, BuildQueryObjectInstanceEvents(ctx, req, resp))
 }
 
+func EmitQueryMetricEvents(ctx context.Context, logger interfaces.Logger, req *interfaces.QueryMetricReq, resp *interfaces.QueryMetricResp) string {
+	if !EvidenceEnabled() {
+		return ""
+	}
+	return submitAndReturnFirstEventID(ctx, logger, req, BuildQueryMetricEvents(ctx, req, resp))
+}
+
 func EmitQueryInstanceSubgraphEvents(ctx context.Context, logger interfaces.Logger, req *interfaces.QueryInstanceSubgraphReq, resp *interfaces.QueryInstanceSubgraphResp) string {
 	if !EvidenceEnabled() {
 		return ""
@@ -362,6 +369,13 @@ func EmitSchemaDefinitionEvents(ctx context.Context, logger interfaces.Logger, k
 		return ""
 	}
 	return submitAndReturnFirstEventID(ctx, logger, nil, BuildSchemaDefinitionEvents(ctx, kind, knID, ids, matched))
+}
+
+func EmitSchemaSnapshotEvents(ctx context.Context, logger interfaces.Logger, kind, knID string, ids []string, definition any, complete bool) string {
+	if !EvidenceEnabled() {
+		return ""
+	}
+	return submitAndReturnFirstEventID(ctx, logger, nil, BuildSchemaSnapshotEvents(ctx, kind, knID, ids, definition, complete))
 }
 
 func submitAndReturnFirstEventID(ctx context.Context, logger interfaces.Logger, req any, events []Event) string {
@@ -450,6 +464,46 @@ func BuildQueryObjectInstanceEvents(ctx context.Context, req *interfaces.QueryOb
 		candidateCount = len(resp.Data)
 	}
 	return buildRetrievalEvents(ec, "context.query_object", queryObjectConditionHash(req), candidateCount, queryObjectTruncated(req, resp), refs)
+}
+
+func BuildQueryMetricEvents(ctx context.Context, req *interfaces.QueryMetricReq, resp *interfaces.QueryMetricResp) []Event {
+	ec, ok := contextFromRequest(ctx, nil)
+	if !ok || req == nil || strings.TrimSpace(req.KnID) == "" || strings.TrimSpace(req.MetricID) == "" {
+		return nil
+	}
+	rows := []map[string]any{}
+	if resp != nil {
+		for _, series := range resp.Datas {
+			if series == nil {
+				continue
+			}
+			for index, value := range series.Values {
+				row := map[string]any{"dimensions": series.Labels, "value": value}
+				if index < len(series.Times) {
+					row["time"] = series.Times[index]
+				}
+				if index < len(series.TimeStrs) {
+					row["time_text"] = series.TimeStrs[index]
+				}
+				rows = append(rows, row)
+			}
+		}
+	}
+	metricRef := "metric:" + strings.TrimSpace(req.KnID) + ":" + strings.TrimSpace(req.MetricID)
+	payload := map[string]any{
+		"metric_ref": metricRef, "network_ref": "kn:" + strings.TrimSpace(req.KnID),
+		"dimensions": append([]string(nil), req.AnalysisDimensions...), "conditions": req.Cond,
+		"time": req.Time, "having": req.Having, "order_by": req.OrderBy,
+		"aggregation_definition": "defined_by_metric", "rows": rows, "row_count": len(rows),
+		"complete": resp != nil, "cardinality": "metric_series_rows",
+		"source_refs": []map[string]any{
+			controlledRef("kn:"+strings.TrimSpace(req.KnID), "knowledge_network"),
+			controlledRef(metricRef, "metric"),
+		},
+	}
+	event := buildEvent(ec, "metric.query.completed", "context.query_metric", payload, "", ec.causationEventID)
+	event["bkn.trace.schema.version"] = "2.2.0"
+	return []Event{event}
 }
 
 func BuildQueryInstanceSubgraphEvents(ctx context.Context, req *interfaces.QueryInstanceSubgraphReq, resp *interfaces.QueryInstanceSubgraphResp) []Event {
@@ -741,6 +795,33 @@ func BuildSchemaDefinitionEvents(ctx context.Context, kind, knID string, ids []s
 		})
 	}
 	return buildRetrievalEvents(ec, "context.get_"+kind+"_types", HashValue(strings.Join(ids, "\x00")), matched, false, refs)
+}
+
+func BuildSchemaSnapshotEvents(ctx context.Context, kind, knID string, ids []string, definition any, complete bool) []Event {
+	ec, ok := contextFromRequest(ctx, nil)
+	if !ok || strings.TrimSpace(knID) == "" {
+		return nil
+	}
+	refs := []map[string]any{controlledRef("kn:"+strings.TrimSpace(knID), "knowledge_network")}
+	refType := kind
+	if kind == "network" {
+		refType = "knowledge_network"
+	}
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		refs = append(refs, controlledRef(kind+":"+strings.TrimSpace(knID)+":"+id, refType))
+	}
+	payload := map[string]any{
+		"network_ref": "kn:" + strings.TrimSpace(knID), "schema_kind": kind,
+		"definition_refs": refs, "definition_count": len(ids), "complete": complete,
+		"definition": definition, "source_refs": refs,
+	}
+	event := buildEvent(ec, "ontology.schema.snapshot", "context.get_"+kind+"_schema", payload, "", ec.causationEventID)
+	event["bkn.trace.schema.version"] = "2.2.0"
+	return []Event{event}
 }
 
 func buildRetrievalEvents(ec eventContext, operation, queryHash string, candidateCount int, truncated bool, refs []map[string]any) []Event {

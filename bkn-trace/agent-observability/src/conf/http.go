@@ -5,14 +5,26 @@
 
 package conf
 
+import (
+	"os"
+	"strings"
+)
+
 type HTTPServerConfig struct {
 	Address         string
 	InternalAddress string
 }
 
 func NewHTTPServerConfig() HTTPServerConfig {
-	return HTTPServerConfig{
+	config := HTTPServerConfig{
 		Address:         ":8080",
 		InternalAddress: ":8081",
 	}
+	if value := strings.TrimSpace(os.Getenv("BKN_TRACE_HTTP_ADDRESS")); value != "" {
+		config.Address = value
+	}
+	if value := strings.TrimSpace(os.Getenv("BKN_TRACE_INTERNAL_HTTP_ADDRESS")); value != "" {
+		config.InternalAddress = value
+	}
+	return config
 }

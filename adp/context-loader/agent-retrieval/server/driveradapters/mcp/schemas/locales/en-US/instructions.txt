@@ -57,4 +57,5 @@ run_cypher versus run_sql: a question that can be stated in object types and rel
 
 Tips:
 - For aggregation questions such as "total Y by each X" or ranking tasks, write them on the model with run_cypher first (for example MATCH (x:X)-[:R]->(y:Y) RETURN x.name AS name, sum(y.v) AS total ORDER BY total DESC LIMIT 10), and fall back to run_sql only when the subset cannot express them; do not approximate with query_object_instance sorting.
+- Push membership, multi-condition thresholds, sums, counts, and deduplication into run_cypher, a modelled metric, or an authorized run_sql call. When the user asks for both the total and the detail rows, return both from one recomputable query or use two queries with the same recorded conditions. Do not page data through query_object_instance and then filter, count, or deduplicate it in Agent context; that context calculation cannot form complete, replayable business evidence.
 - Never copy the literal placeholder name "resource_id"; replace it with the actual id returned by search_schema or list_resources.

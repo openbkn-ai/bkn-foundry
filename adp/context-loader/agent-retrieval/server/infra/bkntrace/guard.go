@@ -44,7 +44,8 @@ type GuardIntent struct {
 }
 
 type GuardState struct {
-	Result OperationResult
+	Result       OperationResult
+	ArtifactRefs []string
 }
 
 type GuardDisposition string
@@ -87,7 +88,7 @@ func (g *Guard) Begin(
 	if err != nil || apiErr != nil {
 		return ctx, GuardState{}, "", apiErr, err
 	}
-	state := GuardState{Result: result}
+	state := GuardState{Result: result, ArtifactRefs: append([]string(nil), result.PayloadArtifactRefs...)}
 	switch result.Receipt.ReceiptStatus {
 	case "completed", "failed":
 		return ctx, state, GuardReplay, nil, nil
@@ -150,13 +151,14 @@ func (g *Guard) Finish(
 		return OperationResult{}, nil, marshalErr
 	}
 	input := FinishAttemptInput{
-		OperationID: state.Result.Operation.OperationID,
-		Attempt:     state.Result.Operation.Attempt,
-		ReceiptID:   state.Result.Receipt.ReceiptID,
-		RequestID:   traceContext.RequestID,
-		TraceID:     spanContext.TraceID().String(),
-		SpanID:      spanContext.SpanID().String(),
-		Retryable:   retryable,
+		OperationID:  state.Result.Operation.OperationID,
+		Attempt:      state.Result.Operation.Attempt,
+		ReceiptID:    state.Result.Receipt.ReceiptID,
+		RequestID:    traceContext.RequestID,
+		TraceID:      spanContext.TraceID().String(),
+		SpanID:       spanContext.SpanID().String(),
+		Retryable:    retryable,
+		ArtifactRefs: append([]string(nil), state.ArtifactRefs...),
 	}
 	if failed {
 		input.Error = rawPayload

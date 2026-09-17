@@ -165,10 +165,11 @@ type Receipt struct {
 }
 
 type OperationResult struct {
-	Operation Operation `json:"operation"`
-	Receipt   Receipt   `json:"receipt"`
-	Created   bool      `json:"created"`
-	Execute   bool      `json:"execute"`
+	Operation           Operation `json:"operation"`
+	Receipt             Receipt   `json:"receipt"`
+	Created             bool      `json:"created"`
+	Execute             bool      `json:"execute"`
+	PayloadArtifactRefs []string  `json:"-"`
 }
 
 type PayloadEnvelope struct {
@@ -211,18 +212,34 @@ type FinishAttemptInput struct {
 }
 
 type LifecycleClient struct {
-	baseURL string
-	client  *http.Client
+	baseURL          string
+	client           *http.Client
+	payloadArtifacts PayloadArtifactWriter
+}
+
+type PayloadArtifactWriter interface {
+	Put(ctx context.Context, mediaType string, raw []byte) (ref string, digest string, err error)
 }
 
 func NewLifecycleClient(baseURL string, client *http.Client) *LifecycleClient {
 	if client == nil {
 		client = newLifecycleHTTPClient()
 	}
-	return &LifecycleClient{
+	result := &LifecycleClient{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		client:  client,
 	}
+	if evidenceArtifactURL() != "" {
+		result.payloadArtifacts = evidencePayloadArtifactWriter{}
+	}
+	return result
+}
+
+func (c *LifecycleClient) WithPayloadArtifactWriter(writer PayloadArtifactWriter) *LifecycleClient {
+	if c != nil {
+		c.payloadArtifacts = writer
+	}
+	return c
 }
 
 func NewLifecycleClientFromEnv() *LifecycleClient {
@@ -279,10 +296,12 @@ func (c *LifecycleClient) EnsureOperation(
 			CurrentStatus: interaction.ExecutionStatus, RequiredAction: "start_interaction",
 		}, nil
 	}
+	payloadContext := withPayloadArtifactScope(ctx, payloadArtifactScope{InteractionID: input.InteractionID, Direction: "input"})
+	payload, artifactRef, _ := boundedJSONPayloadWithWriter(payloadContext, c.payloadArtifacts, input.Input)
 	body := map[string]any{
 		"operation_key": input.OperationKey, "tool_name": input.ToolName,
 		"protocol": input.Protocol, "source_module": input.SourceModule,
-		"input": boundedJSONPayload(input.Input), "required": true,
+		"input": payload, "required": true,
 		"lease_token": interaction.LeaseToken, "lease_epoch": interaction.LeaseEpoch,
 	}
 	if input.ParentOperationID != "" {
@@ -298,6 +317,9 @@ func (c *LifecycleClient) EnsureOperation(
 	path := "/conversations/" + url.PathEscape(input.ConversationID) +
 		"/interactions/" + url.PathEscape(input.InteractionID) + "/operations:ensure"
 	apiErr, err = c.do(ctx, http.MethodPost, path, body, &result)
+	if artifactRef != "" {
+		result.PayloadArtifactRefs = append(result.PayloadArtifactRefs, artifactRef)
+	}
 	return result, apiErr, err
 }
 
@@ -406,9 +428,21 @@ func (c *LifecycleClient) finishAttempt(
 		"partial_reasons":        input.PartialReasons,
 	}
 	if action == "complete" {
-		body["output"] = boundedJSONPayload(input.Output)
+		payloadContext := withPayloadArtifactScope(ctx, payloadArtifactScope{OperationID: input.OperationID, Attempt: input.Attempt, Direction: "output"})
+		payload, ref, _ := boundedJSONPayloadWithWriter(payloadContext, c.payloadArtifacts, input.Output)
+		body["output"] = payload
+		if ref != "" {
+			input.ArtifactRefs = appendUniqueLifecycleRef(input.ArtifactRefs, ref)
+			body["artifact_refs"] = input.ArtifactRefs
+		}
 	} else {
-		body["error"] = boundedJSONPayload(input.Error)
+		payloadContext := withPayloadArtifactScope(ctx, payloadArtifactScope{OperationID: input.OperationID, Attempt: input.Attempt, Direction: "error"})
+		payload, ref, _ := boundedJSONPayloadWithWriter(payloadContext, c.payloadArtifacts, input.Error)
+		body["error"] = payload
+		if ref != "" {
+			input.ArtifactRefs = appendUniqueLifecycleRef(input.ArtifactRefs, ref)
+			body["artifact_refs"] = input.ArtifactRefs
+		}
 	}
 	var result OperationResult
 	path := "/operations/" + url.PathEscape(input.OperationID) + "/attempts/" +
@@ -418,29 +452,50 @@ func (c *LifecycleClient) finishAttempt(
 }
 
 func boundedJSONPayload(raw json.RawMessage) PayloadEnvelope {
+	payload, _, _ := boundedJSONPayloadWithWriter(context.Background(), nil, raw)
+	return payload
+}
+
+func boundedJSONPayloadWithWriter(ctx context.Context, writer PayloadArtifactWriter, raw json.RawMessage) (PayloadEnvelope, string, error) {
 	var value any
 	if err := common.UnmarshalPreciseJSON(raw, &value); err != nil {
 		return PayloadEnvelope{
 			Mode: "omitted", MediaType: "application/json", ByteLength: len(raw),
 			OmittedReason: "serialization_failed",
-		}
+		}, "", nil
 	}
 	canonical, err := sonic.ConfigStd.Marshal(value)
 	if err != nil {
 		return PayloadEnvelope{
 			Mode: "omitted", MediaType: "application/json", ByteLength: len(raw),
 			OmittedReason: "serialization_failed",
-		}
+		}, "", nil
 	}
 	if len(canonical) > maxInlinePayloadBytes {
+		if writer != nil {
+			ref, _, writeErr := writer.Put(ctx, "application/json", canonical)
+			if writeErr == nil && strings.TrimSpace(ref) != "" {
+				return PayloadEnvelope{Mode: "referenced", MediaType: "application/json", ByteLength: len(canonical), Ref: strings.TrimSpace(ref)}, strings.TrimSpace(ref), nil
+			}
+			return PayloadEnvelope{Mode: "omitted", MediaType: "application/json", ByteLength: len(canonical), OmittedReason: "artifact_write_failed"}, "", writeErr
+		}
 		return PayloadEnvelope{
 			Mode: "omitted", MediaType: "application/json", ByteLength: len(canonical),
 			OmittedReason: "payload_too_large",
-		}
+		}, "", nil
 	}
 	return PayloadEnvelope{
 		Mode: "inline", MediaType: "application/json", ByteLength: len(canonical), Inline: canonical,
+	}, "", nil
+}
+
+func appendUniqueLifecycleRef(values []string, value string) []string {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
 	}
+	return append(values, value)
 }
 
 func (c *LifecycleClient) Call(
