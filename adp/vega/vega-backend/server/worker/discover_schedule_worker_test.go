@@ -138,7 +138,7 @@ func TestDiscoverScheduleWorkerRunSchedule(t *testing.T) {
 		schedule.NextRun = time.Now().Add(-time.Minute).UnixMilli()
 		schedule.EndTime = time.Now().Add(-time.Second).UnixMilli()
 		schedule.Creator = interfaces.AccountInfo{ID: "schedule-creator", Type: "user"}
-		dss.EXPECT().UpdateEnabled(gomock.Any(), schedule, false).DoAndReturn(func(ctx context.Context, _ *interfaces.DiscoverSchedule, _ bool) error {
+		dss.EXPECT().InternalUpdateEnabled(gomock.Any(), schedule, false).DoAndReturn(func(ctx context.Context, _ *interfaces.DiscoverSchedule, _ bool) error {
 			assert.Equal(t, schedule.Creator, ctx.Value(interfaces.ACCOUNT_INFO_KEY))
 			return nil
 		})
@@ -152,7 +152,7 @@ func TestDiscoverScheduleWorkerRunSchedule(t *testing.T) {
 		schedule := dueDiscoverSchedule("schedule-1")
 		schedule.NextRun = time.Now().Add(-time.Minute).UnixMilli()
 		schedule.CronExpr = "*/30 * * * *"
-		dss.EXPECT().UpdateEnabled(gomock.Any(), schedule, false).Return(nil)
+		dss.EXPECT().InternalUpdateEnabled(gomock.Any(), schedule, false).Return(nil)
 
 		newTestDiscoverScheduleWorker(nil, dss).runSchedule(context.Background(), schedule)
 	})

@@ -99,6 +99,20 @@ func (mr *MockDiscoverScheduleServiceMockRecorder) GetByID(ctx, id any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockDiscoverScheduleService)(nil).GetByID), ctx, id)
 }
 
+// InternalUpdateEnabled mocks base method.
+func (m *MockDiscoverScheduleService) InternalUpdateEnabled(ctx context.Context, schedule *interfaces.DiscoverSchedule, enabled bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalUpdateEnabled", ctx, schedule, enabled)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InternalUpdateEnabled indicates an expected call of InternalUpdateEnabled.
+func (mr *MockDiscoverScheduleServiceMockRecorder) InternalUpdateEnabled(ctx, schedule, enabled any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalUpdateEnabled", reflect.TypeOf((*MockDiscoverScheduleService)(nil).InternalUpdateEnabled), ctx, schedule, enabled)
+}
+
 // List mocks base method.
 func (m *MockDiscoverScheduleService) List(ctx context.Context, params interfaces.DiscoverScheduleQueryParams) ([]*interfaces.DiscoverSchedule, int64, error) {
 	m.ctrl.T.Helper()

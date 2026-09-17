@@ -298,15 +298,29 @@ func (dss *discoverScheduleService) Delete(ctx context.Context, schedule *interf
 // UpdateEnabled updates the enabled state of a discover schedule.
 func (dss *discoverScheduleService) UpdateEnabled(ctx context.Context,
 	schedule *interfaces.DiscoverSchedule, enabled bool) error {
+	return dss.updateEnabled(ctx, schedule, enabled, true)
+}
+
+// InternalUpdateEnabled updates a schedule state for the internal scheduler.
+// The worker only disables expired or invalid schedules, so it is not subject to the creator's current permission.
+func (dss *discoverScheduleService) InternalUpdateEnabled(ctx context.Context,
+	schedule *interfaces.DiscoverSchedule, enabled bool) error {
+	return dss.updateEnabled(ctx, schedule, enabled, false)
+}
+
+func (dss *discoverScheduleService) updateEnabled(ctx context.Context,
+	schedule *interfaces.DiscoverSchedule, enabled, requirePermission bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverScheduleService.UpdateEnabled")
 	defer span.End()
 
 	if schedule == nil {
 		return fmt.Errorf("discover schedule not found")
 	}
-	// The handler has already resolved the schedule; use it for authorization.
-	if err := dss.requireTaskManage(ctx, schedule.CatalogID); err != nil {
-		return err
+	if requirePermission {
+		// The handler has already resolved the schedule; use it for authorization.
+		if err := dss.requireTaskManage(ctx, schedule.CatalogID); err != nil {
+			return err
+		}
 	}
 
 	nowTime := time.Now()

@@ -111,7 +111,7 @@ func (dsw *DiscoverScheduleWorker) runSchedule(ctx context.Context, schedule *in
 	}
 
 	if schedule.EndTime > 0 && now.UnixMilli() > schedule.EndTime {
-		if err := dsw.dss.UpdateEnabled(ctx, schedule, false); err != nil {
+		if err := dsw.dss.InternalUpdateEnabled(ctx, schedule, false); err != nil {
 			logger.Errorf("Disable expired discover schedule failed: schedule_id=%s, catalog_id=%s, error=%v", schedule.ID, catalogID, err)
 		}
 		return
@@ -120,7 +120,7 @@ func (dsw *DiscoverScheduleWorker) runSchedule(ctx context.Context, schedule *in
 	cronSchedule, err := common.ParseHourlyCronExpr(schedule.CronExpr)
 	if err != nil {
 		logger.Errorf("Parse discover schedule cron expression failed; disabling schedule: schedule_id=%s, catalog_id=%s, error=%v", schedule.ID, catalogID, err)
-		if disableErr := dsw.dss.UpdateEnabled(ctx, schedule, false); disableErr != nil {
+		if disableErr := dsw.dss.InternalUpdateEnabled(ctx, schedule, false); disableErr != nil {
 			logger.Errorf("Disable discover schedule with invalid cron expression failed: schedule_id=%s, catalog_id=%s, error=%v", schedule.ID, catalogID, disableErr)
 		}
 		return

@@ -28,4 +28,7 @@ type DiscoverScheduleService interface {
 	UpdateRunMetadata(ctx context.Context, id string, expectedUpdateTime, expectedNextRun, lastRun, nextRun int64) (int64, error)
 	// ExecuteSchedule executes a discover schedule.
 	ExecuteSchedule(ctx context.Context, schedule *DiscoverSchedule) error
+
+	// InternalUpdateEnabled updates a schedule state for the internal scheduler without user authorization.
+	InternalUpdateEnabled(ctx context.Context, schedule *DiscoverSchedule, enabled bool) error
 }
