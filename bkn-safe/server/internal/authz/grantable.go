@@ -18,6 +18,12 @@ import (
 // authorization result.
 var ErrOperationNotGrantable = errors.New("operation is not grantable")
 
+// ErrSubResourceWildcard identifies a policy attempting to grant every
+// instance of a registered sub-type. Such resources are meaningful only as
+// concrete children of a parent, so a type-wide policy would bypass their
+// ownership and parent-level authorization contracts.
+var ErrSubResourceWildcard = errors.New("sub-resource wildcard grant is not allowed")
+
 // ValidateGrantableOperations rejects only registered operations explicitly
 // marked grantable=false. Unknown operations retain their existing validation
 // behavior at the calling API, while legacy registry rows and in-memory test
@@ -85,9 +91,20 @@ func (en *Enforcer) validateGrantablePolicy(ctx context.Context, object, operati
 		}
 		return nil
 	}
-	resourceType, _, ok := strings.Cut(object, ":")
+	resourceType, resourceID, ok := strings.Cut(object, ":")
 	if !ok || resourceType == "" {
 		return nil
+	}
+	if hasWildcard(resourceID) {
+		var parentTypeID string
+		if err := en.db.WithContext(ctx).Model(&model.ResourceType{}).
+			Where("id = ? AND parent_type_id <> ''", resourceType).
+			Limit(1).Pluck("parent_type_id", &parentTypeID).Error; err != nil {
+			return err
+		}
+		if parentTypeID != "" {
+			return fmt.Errorf("%w: %s", ErrSubResourceWildcard, object)
+		}
 	}
 	return en.ValidateGrantableOperations(ctx, resourceType, []string{operation})
 }

@@ -14,7 +14,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
-func TestAuthzExplainRequiresAdminViewAndShowsRequirementDenial(t *testing.T) {
+func TestAuthzExplainShowsWriteTimeRequirementsWithoutChangingDecision(t *testing.T) {
 	r, e, db, users := newAdminServer(t)
 	if err := users.CreateLocalUser(t.Context(), &model.User{
 		ID: "explain-target", Account: "explain-target", Enabled: true,
@@ -74,8 +74,8 @@ func TestAuthzExplainRequiresAdminViewAndShowsRequirementDenial(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if response.Evaluation.Decision != "deny" || response.Evaluation.Basis != "requires" ||
-		response.Evaluation.DeniedRequirement != "view_detail" || response.Evaluation.RequirementBasis != "direct" {
+	if response.Evaluation.Decision != "allow" || response.Evaluation.Basis != "direct" ||
+		response.Evaluation.DeniedRequirement != "" || response.Evaluation.RequirementBasis != "" {
 		t.Fatalf("evaluation = %+v", response.Evaluation)
 	}
 	if len(response.Steps) != 1 || len(response.Steps[0].MatchedGrants) != 1 ||

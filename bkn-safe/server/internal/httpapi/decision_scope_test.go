@@ -21,7 +21,7 @@ type checkDecisionResponse struct {
 	RequirementBasis  string   `json:"requirement_basis"`
 }
 
-func TestCheckReturnsOperationRequirementReason(t *testing.T) {
+func TestCheckDoesNotApplyOperationRequirements(t *testing.T) {
 	r, enforcer, db := newTestServer(t)
 	const user = "http-requires-user"
 	seedEnabledUser(t, db, user)
@@ -44,9 +44,8 @@ func TestCheckReturnsOperationRequirementReason(t *testing.T) {
 		t.Fatalf("effective check = %d %s", response.Code, response.Body.String())
 	}
 	got := decodeCheckDecision(t, response.Body.Bytes())
-	if got.Allowed || got.Decision != "deny" || got.Basis != "requires" ||
-		got.DeniedRequirement != "view_detail" || got.RequirementBasis != "direct" ||
-		len(got.Requires) != 1 || got.Requires[0] != "view_detail" {
+	if !got.Allowed || got.Decision != "allow" || got.Basis != "direct" ||
+		got.DeniedRequirement != "" || got.RequirementBasis != "" || len(got.Requires) != 0 {
 		t.Fatalf("effective check = %+v", got)
 	}
 
@@ -54,7 +53,7 @@ func TestCheckReturnsOperationRequirementReason(t *testing.T) {
 	response = doSingleCheck(t, r, request)
 	got = decodeCheckDecision(t, response.Body.Bytes())
 	if !got.Allowed || got.Decision != "allow" || got.Basis != "direct" ||
-		len(got.Requires) != 1 || got.Requires[0] != "view_detail" || got.DeniedRequirement != "" {
+		len(got.Requires) != 0 || got.DeniedRequirement != "" {
 		t.Fatalf("local check = %+v", got)
 	}
 
@@ -92,11 +91,10 @@ func TestCheckReturnsOperationRequirementReason(t *testing.T) {
 			Requires []string
 		}{decision.Decision, decision.Requires}
 	}
-	if target := byOperation["resource_manage"]; target.Decision != "allow" ||
-		len(target.Requires) != 1 || target.Requires[0] != "view_detail" {
+	if target := byOperation["resource_manage"]; target.Decision != "allow" || len(target.Requires) != 0 {
 		t.Fatalf("resource_manage local metadata = %+v", target)
 	}
-	if requirement := byOperation["view_detail"]; requirement.Decision != "deny" {
+	if requirement := byOperation["view_detail"]; requirement.Decision != "deny" || len(requirement.Requires) != 0 {
 		t.Fatalf("view_detail local decision = %+v", requirement)
 	}
 }

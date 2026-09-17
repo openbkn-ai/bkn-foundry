@@ -111,21 +111,24 @@ func TestSeedDeclaresKnowledgeNetworkHierarchy(t *testing.T) {
 	if vegaResource.ParentTypeID != "catalog" {
 		t.Errorf("Vega resource parent = %q, want catalog", vegaResource.ParentTypeID)
 	}
-	resourceOps := map[string]string{}
+	resourceOps := map[string]model.Operation{}
 	var operations []model.Operation
 	if err := db.Where("resource_type_id = ?", "resource").Find(&operations).Error; err != nil {
 		t.Fatalf("load Vega resource operations: %v", err)
 	}
 	for _, operation := range operations {
-		resourceOps[operation.ID] = operation.ParentOperationID
+		resourceOps[operation.ID] = operation
 	}
-	if got := resourceOps["view_detail"]; got != "view_detail" {
+	if got := resourceOps["view_detail"].ParentOperationID; got != "view_detail" {
 		t.Errorf("resource/view_detail parent operation = %q, want view_detail", got)
 	}
-	if got := resourceOps["query_data"]; got != "query_data" {
+	if got := resourceOps["view_detail"].DerivedToOperationID; got != "view_summary" {
+		t.Errorf("resource/view_detail derived operation = %q, want view_summary", got)
+	}
+	if got := resourceOps["query_data"].ParentOperationID; got != "query_data" {
 		t.Errorf("resource/query_data parent operation = %q, want query_data", got)
 	}
-	if got := resourceOps["data_write"]; got != "data_write" {
+	if got := resourceOps["data_write"].ParentOperationID; got != "data_write" {
 		t.Errorf("resource/data_write parent operation = %q, want data_write", got)
 	}
 
@@ -152,12 +155,12 @@ func TestSeedDeclaresKnowledgeNetworkHierarchy(t *testing.T) {
 		t.Fatalf("parent inheritance crossed the KN boundary: %v, %v", allowed, checkErr)
 	}
 	mustNoErrSeed(t, e.GrantObjectPermission("requires-view", "object_type", "kn-1/shared", "modify"))
-	if allowed, _ := e.Check("requires-view", "object_type", "kn-1/shared", "modify"); allowed {
-		t.Fatal("object_type/modify bypassed its view_detail requirement")
+	if allowed, _ := e.Check("requires-view", "object_type", "kn-1/shared", "modify"); !allowed {
+		t.Fatal("object_type/modify was changed by its write-time view_detail requirement")
 	}
 	mustNoErrSeed(t, e.GrantObjectPermission("requires-view", "object_type", "kn-1/shared", "view_detail"))
 	if allowed, _ := e.Check("requires-view", "object_type", "kn-1/shared", "modify"); !allowed {
-		t.Fatal("object_type/modify stayed denied after its view_detail requirement was granted")
+		t.Fatal("object_type/modify became denied after view_detail was granted")
 	}
 
 	assertFinal := func(user string, allowed bool, basis authz.DecisionBasis) {
@@ -243,9 +246,13 @@ func TestSeedDeclaresVegaAuthorizationHierarchy(t *testing.T) {
 			t.Errorf("resource unexpectedly declares %q", operation.ID)
 			continue
 		}
-		if operation.ParentOperationID != wantParent || operation.RequiredOperationIDs != "" {
-			t.Errorf("resource/%s parent=%q requires=%q, want parent=%q and no prerequisite",
-				operation.ID, operation.ParentOperationID, operation.RequiredOperationIDs, wantParent)
+		wantDerived := ""
+		if operation.ID == "view_detail" {
+			wantDerived = "view_summary"
+		}
+		if operation.ParentOperationID != wantParent || operation.RequiredOperationIDs != "" || operation.DerivedToOperationID != wantDerived {
+			t.Errorf("resource/%s parent=%q requires=%q derived=%q, want parent=%q no prerequisite derived=%q",
+				operation.ID, operation.ParentOperationID, operation.RequiredOperationIDs, operation.DerivedToOperationID, wantParent, wantDerived)
 		}
 	}
 
@@ -345,6 +352,79 @@ func TestValidateHierarchyAcceptsShippedCatalog(t *testing.T) {
 	}
 	if err := validateHierarchy(c); err != nil {
 		t.Fatalf("shipped authorization-registry.json declares an invalid hierarchy: %v", err)
+	}
+	if err := validateDerivedOperations(c); err != nil {
+		t.Fatalf("shipped authorization-registry.json declares invalid derived operations: %v", err)
+	}
+}
+
+func TestValidateDerivedOperationsRejectsInvalidDefinitions(t *testing.T) {
+	notGrantable := false
+	cases := []struct {
+		name    string
+		catalog catalog
+		wantErr string
+	}{
+		{
+			name: "source without parent type",
+			catalog: catalog{ResourceTypes: []catalogResourceType{{
+				ID: "resource", Operations: []catalogOperation{{ID: "view_detail", DerivedToOperation: "view_summary"}},
+			}}},
+			wantErr: "has no parent_type",
+		},
+		{
+			name: "target missing from parent",
+			catalog: catalog{ResourceTypes: []catalogResourceType{
+				{ID: "catalog", Operations: []catalogOperation{{ID: "view_detail"}}},
+				{ID: "resource", ParentType: "catalog", Operations: []catalogOperation{{ID: "view_detail", DerivedToOperation: "view_summary"}}},
+			}},
+			wantErr: "not a registered operation",
+		},
+		{
+			name: "target is grantable",
+			catalog: catalog{ResourceTypes: []catalogResourceType{
+				{ID: "catalog", Operations: []catalogOperation{{ID: "view_summary"}}},
+				{ID: "resource", ParentType: "catalog", Operations: []catalogOperation{{ID: "view_detail", DerivedToOperation: "view_summary"}}},
+			}},
+			wantErr: "grantable operation",
+		},
+		{
+			name: "target derives again",
+			catalog: catalog{ResourceTypes: []catalogResourceType{
+				{ID: "workspace", Operations: []catalogOperation{{ID: "view_list", Grantable: &notGrantable}}},
+				{ID: "catalog", ParentType: "workspace", Operations: []catalogOperation{{ID: "view_summary", Grantable: &notGrantable, DerivedToOperation: "view_list"}}},
+				{ID: "resource", ParentType: "catalog", Operations: []catalogOperation{{ID: "view_detail", DerivedToOperation: "view_summary"}}},
+			}},
+			wantErr: "which derives again",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateDerivedOperations(tc.catalog)
+			if err == nil {
+				t.Fatal("validateDerivedOperations accepted invalid definition")
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Errorf("error = %q, want it to mention %q", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateDerivedOperationsAllowsSourceRequirements(t *testing.T) {
+	notGrantable := false
+	c := catalog{ResourceTypes: []catalogResourceType{
+		{ID: "catalog", Operations: []catalogOperation{{ID: "view_summary", Grantable: &notGrantable}}},
+		{ID: "resource", ParentType: "catalog", Operations: []catalogOperation{
+			{ID: "query_data"},
+			{ID: "view_detail", DerivedToOperation: "view_summary", Requires: []string{"query_data"}},
+		}},
+	}}
+	if err := validateDerivedOperations(c); err != nil {
+		t.Fatalf("validateDerivedOperations rejected source requirements: %v", err)
+	}
+	if err := validateRequirements(c); err != nil {
+		t.Fatalf("validateRequirements rejected source requirements: %v", err)
 	}
 }
 

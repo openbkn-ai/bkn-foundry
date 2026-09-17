@@ -7,6 +7,7 @@ package authz
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync/atomic"
 	"testing"
 
@@ -55,42 +56,34 @@ func TestStructuredDecisionPriority(t *testing.T) {
 	ownedBy(t, db, "res-1", "cat-1")
 
 	const user = "decision-user"
-	mustNoErr(t, e.GrantRolePermission("resource-reader", "resource", "*", "view_detail"))
+	mustNoErr(t, e.GrantRolePermission("resource-reader", "resource", "res-1", "view_detail"))
 	mustNoErr(t, e.AssignRole(user, "resource-reader"))
 
-	// A parent deny is more specific than the child's type-wide allow.
+	// A parent deny does not displace a concrete child allow.
 	mustNoErr(t, e.DenyObjectPermission(user, "catalog", "cat-1", "view_detail"))
 	got, err := e.OperationDecision(t.Context(), user, "resource", "res-1", "view_detail")
 	if err != nil {
 		t.Fatal(err)
 	}
-	requireDecision(t, got, DecisionDeny, BasisInherited)
-
-	// An exact child allow is more specific than the parent deny.
-	mustNoErr(t, e.GrantObjectPermission(user, "resource", "res-1", "view_detail"))
-	got, err = e.OperationDecision(t.Context(), user, "resource", "res-1", "view_detail")
-	if err != nil {
-		t.Fatal(err)
-	}
 	requireDecision(t, got, DecisionAllow, BasisDirect)
 
-	// A type-wide deny is terminal even when an exact allow also exists.
-	mustNoErr(t, e.DenyObjectPermission(user, "resource", "*", "view_detail"))
+	// A concrete child deny is terminal even when a role allows the same child.
+	mustNoErr(t, e.DenyObjectPermission(user, "resource", "res-1", "view_detail"))
 	got, err = e.OperationDecision(t.Context(), user, "resource", "res-1", "view_detail")
 	if err != nil {
 		t.Fatal(err)
 	}
-	requireDecision(t, got, DecisionDeny, BasisWildcard)
+	requireDecision(t, got, DecisionDeny, BasisDirect)
 }
 
 func TestLocalAndEffectiveScopes(t *testing.T) {
 	e, db := newTestEnforcerDB(t)
 	declareCatalogHierarchy(t, db)
 	const user = "scope-user"
-	mustNoErr(t, e.GrantRolePermission("reader", "resource", "*", "view_detail"))
+	mustNoErr(t, e.GrantRolePermission("reader", "catalog", "*", "view_detail"))
 	mustNoErr(t, e.AssignRole(user, "reader"))
 
-	local, err := e.LocalDecision(t.Context(), user, "resource", "r-1", "view_detail")
+	local, err := e.LocalDecision(t.Context(), user, "catalog", "r-1", "view_detail")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +92,7 @@ func TestLocalAndEffectiveScopes(t *testing.T) {
 		t.Fatalf("local = %+v", local)
 	}
 
-	missing, err := e.LocalDecision(t.Context(), user, "resource", "r-1", "modify")
+	missing, err := e.LocalDecision(t.Context(), user, "catalog", "r-1", "modify")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +146,7 @@ func TestRemovingChildRuleRestoresParentFallback(t *testing.T) {
 	requireDecision(t, fallback, DecisionDeny, BasisInherited)
 }
 
-func TestOperationRequiresIsEnforcedAcrossFinalEntryPoints(t *testing.T) {
+func TestOperationRequiresDoesNotChangeFinalEntryPoints(t *testing.T) {
 	e, db := newTestEnforcerDB(t)
 	if err := db.Create(&[]model.Operation{
 		{ResourceTypeID: "document", ID: "view", Name: "view"},
@@ -172,20 +165,17 @@ func TestOperationRequiresIsEnforcedAcrossFinalEntryPoints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	requireDecision(t, decision, DecisionDeny, BasisRequires)
-	if decision.DeniedRequirement != "view" || decision.RequirementBasis != BasisDirect {
-		t.Fatalf("requires reason = %+v", decision)
-	}
-	if len(decision.Requirements) != 1 || decision.Requirements[0] != "view" {
-		t.Fatalf("requirements = %v, want [view]", decision.Requirements)
+	requireDecision(t, decision, DecisionAllow, BasisDirect)
+	if len(decision.Requirements) != 0 {
+		t.Fatalf("final decision exposed write-time requirements: %+v", decision)
 	}
 
 	allowed, err := e.AllowedOps(user, "document", resource, []string{"modify", "view"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(allowed) != 0 {
-		t.Fatalf("AllowedOps = %v, want no final operations", allowed)
+	if !reflect.DeepEqual(allowed, []string{"modify"}) {
+		t.Fatalf("AllowedOps = %v, want [modify]", allowed)
 	}
 
 	filtered, err := e.FilterResourceOps(user,
@@ -193,24 +183,13 @@ func TestOperationRequiresIsEnforcedAcrossFinalEntryPoints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(filtered) != 1 || len(filtered[0].Operations) != 0 ||
-		len(filtered[0].Decisions) != 1 || filtered[0].Decisions[0].Basis != BasisRequires {
+	if len(filtered) != 1 || !reflect.DeepEqual(filtered[0].Operations, []string{"modify"}) ||
+		len(filtered[0].Decisions) != 1 || filtered[0].Decisions[0].Basis != BasisDirect {
 		t.Fatalf("FilterResourceOps = %+v", filtered)
 	}
-
-	// Removing the later prerequisite deny restores the untouched modify allow;
-	// no authorization rewrite is needed.
-	if _, err := e.RemoveAccessorResourcePoliciesForEffect(denyRole, "document", resource, EffectDeny); err != nil {
-		t.Fatal(err)
-	}
-	decision, err = e.OperationDecision(t.Context(), user, "document", resource, "modify")
-	if err != nil {
-		t.Fatal(err)
-	}
-	requireDecision(t, decision, DecisionAllow, BasisDirect)
 }
 
-func TestLocalDecisionReportsButDoesNotExecuteRequirements(t *testing.T) {
+func TestLocalDecisionDoesNotExposeWriteTimeRequirements(t *testing.T) {
 	e, db := newTestEnforcerDB(t)
 	if err := db.Create(&[]model.Operation{
 		{ResourceTypeID: "catalog", ID: "view_detail"},
@@ -227,8 +206,8 @@ func TestLocalDecisionReportsButDoesNotExecuteRequirements(t *testing.T) {
 		t.Fatal(err)
 	}
 	requireDecision(t, local, DecisionAllow, BasisDirect)
-	if len(local.Requirements) != 1 || local.Requirements[0] != "view_detail" {
-		t.Fatalf("local requirements = %v", local.Requirements)
+	if len(local.Requirements) != 0 {
+		t.Fatalf("local decision exposed write-time requirements = %v", local.Requirements)
 	}
 
 	batch, err := e.FilterResourceOpsScoped(t.Context(), user,
@@ -236,15 +215,14 @@ func TestLocalDecisionReportsButDoesNotExecuteRequirements(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(batch) != 1 || len(batch[0].Decisions) != 2 {
+	if len(batch) != 1 || len(batch[0].Decisions) != 1 {
 		t.Fatalf("local batch = %+v", batch)
 	}
 	byOperation := map[string]OperationDecision{}
 	for _, decision := range batch[0].Decisions {
 		byOperation[decision.Operation] = decision
 	}
-	if byOperation["resource_manage"].Decision != DecisionAllow ||
-		byOperation["view_detail"].Decision != DecisionDeny {
+	if byOperation["resource_manage"].Decision != DecisionAllow {
 		t.Fatalf("local decisions = %+v", byOperation)
 	}
 }
@@ -294,11 +272,7 @@ func TestOperationSupportsMultipleDirectRequirements(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	requireDecision(t, decision, DecisionDeny, BasisRequires)
-	if decision.DeniedRequirement != "approve" || len(decision.Requirements) != 2 ||
-		decision.Requirements[0] != "view" || decision.Requirements[1] != "approve" {
-		t.Fatalf("multi-requirement decision = %+v", decision)
-	}
+	requireDecision(t, decision, DecisionAllow, BasisDirect)
 }
 
 type structuredEEFake struct {

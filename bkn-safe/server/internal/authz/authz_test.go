@@ -159,19 +159,19 @@ func TestFunctionGrantDoesNotCrossResourceTypes(t *testing.T) {
 func TestExplicitDenyOverridesOrdinaryAllows(t *testing.T) {
 	e := newTestEnforcer(t)
 	const user, role = "alice", "reader-role"
-	mustNoErr(t, e.GrantRolePermission(role, "resource", "*", "view_detail"))
+	mustNoErr(t, e.GrantRolePermission(role, "document", "*", "view_detail"))
 	mustNoErr(t, e.AssignRole(user, role))
-	mustNoErr(t, e.GrantObjectPermission(user, "resource", "r-1", "view_detail"))
-	mustNoErr(t, e.DenyObjectPermission(user, "resource", "r-1", "view_detail"))
+	mustNoErr(t, e.GrantObjectPermission(user, "document", "r-1", "view_detail"))
+	mustNoErr(t, e.DenyObjectPermission(user, "document", "r-1", "view_detail"))
 
-	denied, err := e.Check(user, "resource", "r-1", "view_detail")
+	denied, err := e.Check(user, "document", "r-1", "view_detail")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if denied {
 		t.Fatal("an exact user deny did not override the role's type-wide allow")
 	}
-	allowed, err := e.Check(user, "resource", "r-2", "view_detail")
+	allowed, err := e.Check(user, "document", "r-2", "view_detail")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,13 +183,13 @@ func TestExplicitDenyOverridesOrdinaryAllows(t *testing.T) {
 func TestAccessibleResourcesFiltersDenyInBatch(t *testing.T) {
 	e := newTestEnforcer(t)
 	const user, role = "alice", "reader-role"
-	mustNoErr(t, e.GrantRolePermission(role, "resource", "*", "view_detail"))
+	mustNoErr(t, e.GrantRolePermission(role, "document", "*", "view_detail"))
 	mustNoErr(t, e.AssignRole(user, role))
-	mustNoErr(t, e.GrantObjectPermission(user, "resource", "r-1", "view_detail"))
-	mustNoErr(t, e.GrantObjectPermission(user, "resource", "r-2", "view_detail"))
-	mustNoErr(t, e.DenyObjectPermission(user, "resource", "r-1", "view_detail"))
+	mustNoErr(t, e.GrantObjectPermission(user, "document", "r-1", "view_detail"))
+	mustNoErr(t, e.GrantObjectPermission(user, "document", "r-2", "view_detail"))
+	mustNoErr(t, e.DenyObjectPermission(user, "document", "r-1", "view_detail"))
 
-	got, err := e.AccessibleResources(user, "resource", "view_detail")
+	got, err := e.AccessibleResources(user, "document", "view_detail")
 	if err != nil {
 		t.Fatal(err)
 	}

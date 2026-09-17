@@ -255,13 +255,18 @@ func deterministicPolicyGrantBy(sub, object, operation, effect string, source Po
 }
 
 func grantModel(grant PolicyGrant) safemodel.AuthorizationGrant {
+	projectionKey := policyProjectionKey(grant.AccessorID, grant.Object,
+		grant.Operation, grant.Effect, grant.PolicySource, grant.AuthoritySource)
 	return safemodel.AuthorizationGrant{
-		GrantID: grant.GrantID,
-		ProjectionKey: policyProjectionKey(grant.AccessorID, grant.Object, grant.Operation, grant.Effect,
-			grant.PolicySource, grant.AuthoritySource),
-		AccessorID: grant.AccessorID, Object: grant.Object,
-		Operation: grant.Operation, Effect: grant.Effect, PolicySource: string(grant.PolicySource),
-		AuthoritySource: string(grant.AuthoritySource), CreatedBy: grant.CreatedBy,
+		GrantID:         grant.GrantID,
+		ProjectionKey:   projectionKey,
+		AccessorID:      grant.AccessorID,
+		Object:          grant.Object,
+		Operation:       grant.Operation,
+		Effect:          grant.Effect,
+		PolicySource:    string(grant.PolicySource),
+		AuthoritySource: string(grant.AuthoritySource),
+		CreatedBy:       grant.CreatedBy,
 	}
 }
 

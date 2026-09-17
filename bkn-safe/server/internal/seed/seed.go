@@ -122,9 +122,13 @@ type catalogOperation struct {
 	// ParentOperation is the operation checked on the parent instance when this
 	// one is not granted on the instance itself. Empty = no inheritance.
 	ParentOperation string `json:"parent_operation"`
-	// Requires lists direct prerequisites on the SAME type. They are enforced at
-	// runtime and normalized into allow writes. The first version permits one
-	// layer only; a required operation may not declare its own requirements.
+	// DerivedToOperation is computed on the current instance's parent from a
+	// concrete, direct allow of this child operation. Empty = no upward effect.
+	DerivedToOperation string `json:"derived_to_operation"`
+	// Requires lists direct prerequisites on the SAME type. They are normalized
+	// into allow writes and do not participate in read-time authorization. The
+	// first version permits one layer only; a required operation may not declare
+	// its own requirements.
 	Requires []string `json:"requires"`
 }
 
@@ -191,6 +195,9 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 	}
 	if err := seedBusinessProvenanceOwner(db); err != nil {
 		return fmt.Errorf("seed business provenance owner: %w", err)
+	}
+	if err := enforcer.PrimeDerivedRules(context.Background()); err != nil {
+		return fmt.Errorf("prime derived authorization rules: %w", err)
 	}
 	return nil
 }
@@ -447,6 +454,9 @@ func seedCatalogData(db *gorm.DB, data []byte) error {
 	if err := validateHierarchy(c); err != nil {
 		return err
 	}
+	if err := validateDerivedOperations(c); err != nil {
+		return err
+	}
 	for _, rt := range c.ResourceTypes {
 		rtRow := model.ResourceType{ID: rt.ID, Name: rt.Name, ParentTypeID: rt.ParentType}
 		if err := db.Clauses(clause.OnConflict{
@@ -469,6 +479,7 @@ func seedCatalogData(db *gorm.DB, data []byte) error {
 				Description:          op.Description,
 				Grantable:            &grantable,
 				ParentOperationID:    op.ParentOperation,
+				DerivedToOperationID: op.DerivedToOperation,
 				RequiredOperationIDs: strings.Join(op.Requires, ","),
 			}
 			if err := db.Clauses(clause.OnConflict{
@@ -481,6 +492,7 @@ func seedCatalogData(db *gorm.DB, data []byte) error {
 					"description",
 					"grantable",
 					"parent_operation_id",
+					"derived_to_operation_id",
 					"implied_operation_ids",
 				}),
 			}).Create(&opRow).Error; err != nil {
@@ -563,6 +575,52 @@ func validateHierarchy(c catalog) error {
 				return fmt.Errorf("resource type parent chain has a cycle at %q", cur)
 			}
 			seen[cur] = true
+		}
+	}
+	return nil
+}
+
+// validateDerivedOperations keeps child-to-parent derived operations explicit
+// and finite. Source-operation requirements are independent of the derived
+// effect and are validated by validateRequirements.
+func validateDerivedOperations(c catalog) error {
+	resourceTypes := make(map[string]catalogResourceType, len(c.ResourceTypes))
+	for _, rt := range c.ResourceTypes {
+		resourceTypes[rt.ID] = rt
+	}
+	for _, rt := range c.ResourceTypes {
+		for _, op := range rt.Operations {
+			if op.DerivedToOperation == "" {
+				continue
+			}
+			if rt.ParentType == "" {
+				return fmt.Errorf("operation %s/%s declares derived_to_operation %q but %s has no parent_type",
+					rt.ID, op.ID, op.DerivedToOperation, rt.ID)
+			}
+			parent, ok := resourceTypes[rt.ParentType]
+			if !ok {
+				return fmt.Errorf("operation %s/%s derives to unregistered parent type %s",
+					rt.ID, op.ID, rt.ParentType)
+			}
+			var target catalogOperation
+			for _, candidate := range parent.Operations {
+				if candidate.ID == op.DerivedToOperation {
+					target = candidate
+					break
+				}
+			}
+			if target.ID == "" {
+				return fmt.Errorf("operation %s/%s derives to %s/%s, which is not a registered operation",
+					rt.ID, op.ID, rt.ParentType, op.DerivedToOperation)
+			}
+			if target.Grantable == nil || *target.Grantable {
+				return fmt.Errorf("operation %s/%s derives to grantable operation %s/%s",
+					rt.ID, op.ID, rt.ParentType, target.ID)
+			}
+			if target.DerivedToOperation != "" {
+				return fmt.Errorf("operation %s/%s derives to %s/%s, which derives again",
+					rt.ID, op.ID, rt.ParentType, target.ID)
+			}
 		}
 	}
 	return nil

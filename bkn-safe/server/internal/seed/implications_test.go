@@ -211,7 +211,7 @@ func TestSeedPersistsCatalogManagementRequirements(t *testing.T) {
 	}
 }
 
-func TestCatalogManagementRequirementsDenyAndRecoverIndependentlyOfDataQuery(t *testing.T) {
+func TestCatalogManagementRequirementsDoNotChangeReadDecisions(t *testing.T) {
 	db := newDB(t)
 	e, err := authz.New(db)
 	if err != nil {
@@ -233,30 +233,18 @@ func TestCatalogManagementRequirementsDenyAndRecoverIndependentlyOfDataQuery(t *
 			if err != nil {
 				t.Fatal(err)
 			}
-			if decision.Decision != authz.DecisionDeny || decision.Basis != authz.BasisRequires ||
-				decision.DeniedRequirement != "view_detail" {
-				t.Fatalf("catalog/%s decision = %+v, want requires deny on view_detail", operation, decision)
+			if decision.Decision != authz.DecisionAllow || decision.Basis != authz.BasisDirect {
+				t.Fatalf("catalog/%s decision = %+v, want direct allow", operation, decision)
 			}
 			ids, err := e.AccessibleResources(user, "catalog", operation)
-			if err != nil || len(ids) != 0 {
-				t.Fatalf("AccessibleResources(catalog/%s) = %v, %v; want none", operation, ids, err)
+			if err != nil || !reflect.DeepEqual(ids, []string{resource}) {
+				t.Fatalf("AccessibleResources(catalog/%s) = %v, %v; want [%s]", operation, ids, err, resource)
 			}
 			filtered, err := e.FilterResourceOps(user,
 				[]authz.ResourceRef{{Type: "catalog", ID: resource}}, nil, []string{operation})
-			if err != nil || len(filtered) != 1 || len(filtered[0].Operations) != 0 ||
-				len(filtered[0].Decisions) != 1 || filtered[0].Decisions[0].Basis != authz.BasisRequires {
-				t.Fatalf("FilterResourceOps(catalog/%s) = %+v, %v; want requires denial", operation, filtered, err)
-			}
-
-			if _, err := e.RemoveAccessorResourcePoliciesForEffect(user, "catalog", resource, authz.EffectDeny); err != nil {
-				t.Fatal(err)
-			}
-			decision, err = e.OperationDecision(t.Context(), user, "catalog", resource, operation)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if decision.Decision != authz.DecisionAllow {
-				t.Fatalf("catalog/%s did not recover after view_detail deny removal: %+v", operation, decision)
+			if err != nil || len(filtered) != 1 || !reflect.DeepEqual(filtered[0].Operations, []string{operation}) ||
+				len(filtered[0].Decisions) != 1 || filtered[0].Decisions[0].Basis != authz.BasisDirect {
+				t.Fatalf("FilterResourceOps(catalog/%s) = %+v, %v; want direct allow", operation, filtered, err)
 			}
 		})
 	}
@@ -274,7 +262,7 @@ func TestCatalogManagementRequirementsDenyAndRecoverIndependentlyOfDataQuery(t *
 	}
 }
 
-func TestConnectorTypeRequirementsApplyToChecksAndLists(t *testing.T) {
+func TestConnectorTypeRequirementsDoNotChangeChecksAndLists(t *testing.T) {
 	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionProfessional))
 	t.Cleanup(entitlement.ResetForTest)
 	db := newDB(t)
@@ -306,18 +294,17 @@ func TestConnectorTypeRequirementsApplyToChecksAndLists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decision.Decision != authz.DecisionDeny || decision.Basis != authz.BasisRequires ||
-		decision.DeniedRequirement != "view_detail" {
-		t.Fatalf("modify decision = %+v; want requires deny on view_detail", decision)
+	if decision.Decision != authz.DecisionAllow || decision.Basis != authz.BasisDirect {
+		t.Fatalf("modify decision = %+v; want direct allow", decision)
 	}
 	ids, err := e.AccessibleResources(user, "connector_type", "modify")
-	if err != nil || len(ids) != 0 {
-		t.Fatalf("AccessibleResources(modify) = %v, %v; want none", ids, err)
+	if err != nil || !reflect.DeepEqual(ids, []string{"remote-api"}) {
+		t.Fatalf("AccessibleResources(modify) = %v, %v; want [remote-api]", ids, err)
 	}
 	filtered, err := e.FilterResourceOps(user,
 		[]authz.ResourceRef{{Type: "connector_type", ID: "remote-api"}}, nil, []string{"modify"})
-	if err != nil || len(filtered) != 1 || len(filtered[0].Operations) != 0 ||
-		len(filtered[0].Decisions) != 1 || filtered[0].Decisions[0].Basis != authz.BasisRequires {
+	if err != nil || len(filtered) != 1 || !reflect.DeepEqual(filtered[0].Operations, []string{"modify"}) ||
+		len(filtered[0].Decisions) != 1 || filtered[0].Decisions[0].Basis != authz.BasisDirect {
 		t.Fatalf("FilterResourceOps(modify) = %+v, %v", filtered, err)
 	}
 
@@ -398,7 +385,7 @@ func TestSeedPrunesWithdrawnConnectorTaskManageGrants(t *testing.T) {
 	}
 }
 
-func TestIndependentResourceRequirementsApplyToChecksAndLists(t *testing.T) {
+func TestIndependentResourceRequirementsDoNotChangeChecksAndLists(t *testing.T) {
 	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionProfessional))
 	t.Cleanup(entitlement.ResetForTest)
 	db := newDB(t)
@@ -438,18 +425,17 @@ func TestIndependentResourceRequirementsApplyToChecksAndLists(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if decision.Decision != authz.DecisionDeny || decision.Basis != authz.BasisRequires ||
-				decision.DeniedRequirement != viewOperation {
-				t.Fatalf("modify decision = %+v; want requires deny on %s", decision, viewOperation)
+			if decision.Decision != authz.DecisionAllow || decision.Basis != authz.BasisDirect {
+				t.Fatalf("modify decision = %+v; want direct allow", decision)
 			}
 			ids, err := e.AccessibleResources(user, resourceType, "modify")
-			if err != nil || len(ids) != 0 {
-				t.Fatalf("AccessibleResources(modify) = %v, %v; want none", ids, err)
+			if err != nil || !reflect.DeepEqual(ids, []string{resourceID}) {
+				t.Fatalf("AccessibleResources(modify) = %v, %v; want [%s]", ids, err, resourceID)
 			}
 			filtered, err := e.FilterResourceOps(user,
 				[]authz.ResourceRef{{Type: resourceType, ID: resourceID}}, nil, []string{"modify"})
-			if err != nil || len(filtered) != 1 || len(filtered[0].Operations) != 0 ||
-				len(filtered[0].Decisions) != 1 || filtered[0].Decisions[0].Basis != authz.BasisRequires {
+			if err != nil || len(filtered) != 1 || !reflect.DeepEqual(filtered[0].Operations, []string{"modify"}) ||
+				len(filtered[0].Decisions) != 1 || filtered[0].Decisions[0].Basis != authz.BasisDirect {
 				t.Fatalf("FilterResourceOps(modify) = %+v, %v", filtered, err)
 			}
 		})

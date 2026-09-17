@@ -61,6 +61,9 @@ func newFixture(t *testing.T) fixture {
 			t.Fatal(err)
 		}
 	}
+	if err := enforcer.PrimeDerivedRules(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	return fixture{
 		db: db, enforcer: enforcer, service: proxygrant.New(db, enforcer),
 		proxyID: proxy.ProxyAccountID, grantor: grantor,

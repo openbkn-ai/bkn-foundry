@@ -5,6 +5,9 @@
 package authz
 
 import (
+	"context"
+	"errors"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,10 +33,11 @@ func declareCatalogHierarchy(t *testing.T, db *gorm.DB) {
 	}
 	ops := []model.Operation{
 		{ResourceTypeID: "catalog", ID: "view_detail"},
+		{ResourceTypeID: "catalog", ID: "view_summary", Grantable: boolPtr(false)},
 		{ResourceTypeID: "catalog", ID: "modify"},
 		{ResourceTypeID: "catalog", ID: "authorize"},
 		{ResourceTypeID: "catalog", ID: "resource_manage"},
-		{ResourceTypeID: "resource", ID: "view_detail", ParentOperationID: "view_detail"},
+		{ResourceTypeID: "resource", ID: "view_detail", ParentOperationID: "view_detail", DerivedToOperationID: "view_summary"},
 		{ResourceTypeID: "resource", ID: "modify", ParentOperationID: "resource_manage"},
 		{ResourceTypeID: "resource", ID: "delete", ParentOperationID: "resource_manage"},
 		{ResourceTypeID: "resource", ID: "authorize"}, // deliberately no mapping
@@ -42,6 +46,8 @@ func declareCatalogHierarchy(t *testing.T, db *gorm.DB) {
 		t.Fatalf("seed operations: %v", err)
 	}
 }
+
+func boolPtr(value bool) *bool { return &value }
 
 func ownedBy(t *testing.T, db *gorm.DB, resourceID, catalogID string) {
 	t.Helper()
@@ -79,6 +85,102 @@ func TestCheckInheritsThroughTheCatalog(t *testing.T) {
 	}
 	if ok {
 		t.Error("a table with no recorded catalog inherited anyway")
+	}
+}
+
+func TestCatalogSummaryIsDerivedFromConcreteResourceView(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	ownedBy(t, db, "res-1", "cat-1")
+	ownedBy(t, db, "res-2", "cat-1")
+	ownedBy(t, db, "res-3", "cat-2")
+
+	const user = "summary-reader"
+	mustNoErr(t, e.GrantObjectPermission(user, "resource", "res-1", "view_detail"))
+
+	allowed, err := e.Check(user, "catalog", "cat-1", "view_summary")
+	if err != nil || !allowed {
+		t.Fatalf("derived catalog summary = %v, %v; want allow", allowed, err)
+	}
+	decision, err := e.OperationDecision(t.Context(), user, "catalog", "cat-1", "view_summary")
+	if err != nil || decision.Basis != BasisDerived {
+		t.Fatalf("summary decision = %+v, %v; want derived allow", decision, err)
+	}
+	allowed, err = e.Check(user, "catalog", "cat-2", "view_summary")
+	if err != nil || allowed {
+		t.Fatalf("unrelated catalog summary = %v, %v; want deny", allowed, err)
+	}
+
+	ops, err := e.AllowedOps(user, "catalog", "cat-1", []string{"view_detail", "view_summary"})
+	if err != nil || !reflect.DeepEqual(ops, []string{"view_summary"}) {
+		t.Fatalf("AllowedOps = %v, %v; want [view_summary]", ops, err)
+	}
+	filtered, err := e.FilterResourceOps(user,
+		[]ResourceRef{{Type: "catalog", ID: "cat-1"}, {Type: "catalog", ID: "cat-2"}},
+		nil, []string{"view_detail", "view_summary"})
+	if err != nil || len(filtered) != 2 || !reflect.DeepEqual(filtered[0].Operations, []string{"view_summary"}) || len(filtered[1].Operations) != 0 {
+		t.Fatalf("FilterResourceOps = %+v, %v; want only cat-1 summary", filtered, err)
+	}
+}
+
+func TestDerivedRuleLoadFailureIsRetried(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	ownedBy(t, db, "res-1", "cat-1")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := e.PrimeDerivedRules(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled prime error = %v, want context.Canceled", err)
+	}
+
+	mustNoErr(t, e.GrantObjectPermission("summary-reader", "resource", "res-1", "view_detail"))
+	allowed, err := e.Check("summary-reader", "catalog", "cat-1", "view_summary")
+	if err != nil || !allowed {
+		t.Fatalf("derived summary after retry = %v, %v; want allow", allowed, err)
+	}
+}
+
+func TestCatalogSummaryDoesNotUseInheritedOrDeniedResourceView(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	ownedBy(t, db, "inherited", "cat-inherited")
+	ownedBy(t, db, "denied", "cat-denied")
+
+	const user = "summary-reader"
+	mustNoErr(t, e.GrantObjectPermission(user, "catalog", "cat-inherited", "view_detail"))
+	mustNoErr(t, e.GrantObjectPermission(user, "resource", "denied", "view_detail"))
+	mustNoErr(t, e.DenyObjectPermission(user, "resource", "denied", "view_detail"))
+
+	for _, catalogID := range []string{"cat-inherited", "cat-denied"} {
+		allowed, err := e.Check(user, "catalog", catalogID, "view_summary")
+		if err != nil || allowed {
+			t.Fatalf("catalog %s summary = %v, %v; want deny", catalogID, allowed, err)
+		}
+	}
+}
+
+func TestResourceWildcardPoliciesAreRejected(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	if err := db.Create(&model.ResourceType{ID: "nested_resource", ParentTypeID: "resource"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	for _, grant := range []struct {
+		name string
+		call func() error
+	}{
+		{"object allow", func() error { return e.GrantObjectPermission("user", "resource", "*", "view_detail") }},
+		{"object deny", func() error { return e.DenyObjectPermission("user", "resource", "*", "view_detail") }},
+		{"role allow", func() error { return e.GrantRolePermission("role", "resource", "*", "view_detail") }},
+		{"nested subtype", func() error { return e.GrantObjectPermission("user", "nested_resource", "*", "view_detail") }},
+	} {
+		t.Run(grant.name, func(t *testing.T) {
+			if err := grant.call(); !errors.Is(err, ErrSubResourceWildcard) {
+				t.Fatalf("grant error = %v, want ErrSubResourceWildcard", err)
+			}
+		})
 	}
 }
 
@@ -784,18 +886,16 @@ func TestPreviewOwnershipKeepsDirectGrantsOnReparent(t *testing.T) {
 	}
 }
 
-// TestPreviewOwnershipKeepsWildcardGrantOnReparent covers the decision order
-// introduced by #1428: a child type-wide allow remains the fallback when the
-// proposed parent has no rule. The preview must not report that allow as lost
-// merely because it is wildcard-based.
-func TestPreviewOwnershipKeepsWildcardGrantOnReparent(t *testing.T) {
+// TestPreviewOwnershipKeepsConcreteGrantOnReparent ensures an independent
+// child grant survives a move even when the new parent has no matching rule.
+func TestPreviewOwnershipKeepsConcreteGrantOnReparent(t *testing.T) {
 	e, db := newTestEnforcerDB(t)
 	declareCatalogHierarchy(t, db)
 	ownedBy(t, db, "res-1", "cat-old")
 
 	const role = "role-builder"
 	mustNoErr(t, e.GrantRolePermission(role, "catalog", "cat-old", "resource_manage"))
-	mustNoErr(t, e.GrantRolePermission(role, "resource", "*", "modify"))
+	mustNoErr(t, e.GrantRolePermission(role, "resource", "res-1", "modify"))
 
 	flips, total, err := e.PreviewOwnership("resource", "catalog", map[string]string{"res-1": "cat-new"}, 100)
 	if err != nil {
@@ -829,22 +929,19 @@ func TestPreviewOwnershipFirstRegistrationWithoutConflictDoesNotRevoke(t *testin
 	}
 }
 
-func TestPreviewOwnershipReportsWildcardLossFromNewParentDeny(t *testing.T) {
+func TestPreviewOwnershipKeepsConcreteGrantWhenNewParentDenies(t *testing.T) {
 	e, db := newTestEnforcerDB(t)
 	declareCatalogHierarchy(t, db)
 
 	const role = "role-reader"
-	mustNoErr(t, e.GrantRolePermission(role, "resource", "*", "view_detail"))
+	mustNoErr(t, e.GrantRolePermission(role, "resource", "res-1", "view_detail"))
 	mustNoErr(t, e.DenyObjectPermission(role, "catalog", "cat-1", "view_detail"))
 
 	flips, total, err := e.PreviewOwnership("resource", "catalog", map[string]string{"res-1": "cat-1"}, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if total != 1 || len(flips) != 1 {
-		t.Fatalf("flips = %+v (total %d), want the wildcard view_detail revoke", flips, total)
-	}
-	if got := flips[0]; got.AccessorID != role || got.ResourceID != "res-1" || got.Operation != "view_detail" || got.Direction != FlipRevoke {
-		t.Fatalf("flip = %+v, want role-reader/res-1/view_detail revoke", got)
+	if total != 0 || len(flips) != 0 {
+		t.Fatalf("flips = %+v (total %d), want no change from concrete child grant", flips, total)
 	}
 }

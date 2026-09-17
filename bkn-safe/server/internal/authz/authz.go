@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"sync"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
@@ -100,6 +101,12 @@ type Enforcer struct {
 	// of a reload. It is a channel rather than a mutex so a caller whose context
 	// ends while queued leaves without doing any work (#1511).
 	writeSlot chan struct{}
+	// The authorization registry is static after startup reconciliation. Cache
+	// child-to-parent derivation metadata so ordinary authorization checks do
+	// not add registry queries.
+	derivedRulesMu    sync.Mutex
+	derivedRulesReady bool
+	derivedRules      map[string][]derivedRule
 }
 
 // New builds an Enforcer using a GORM-backed policy store on the given db.

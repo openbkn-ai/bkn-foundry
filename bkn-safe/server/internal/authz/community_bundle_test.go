@@ -111,9 +111,8 @@ func TestConnectorTypeBundleAndProfessionalDecisions(t *testing.T) {
 		directHolder, "connector_type", resourceID, "modify", EffectAllow, AuthoritySourceAdminAuthz,
 	))
 	decision, err := e.OperationDecision(t.Context(), directHolder, "connector_type", resourceID, "modify")
-	if err != nil || decision.Decision != DecisionDeny || decision.Basis != BasisRequires ||
-		decision.DeniedRequirement != "view_detail" {
-		t.Fatalf("modify without view_detail = %+v, %v; want requires deny", decision, err)
+	if err != nil || decision.Decision != DecisionAllow || decision.Basis != BasisDirect {
+		t.Fatalf("modify without view_detail = %+v, %v; want direct allow", decision, err)
 	}
 	mustNoErr(t, e.GrantProfessionalObjectPermission(
 		directHolder, "connector_type", resourceID, "view_detail", EffectAllow, AuthoritySourceAdminAuthz,

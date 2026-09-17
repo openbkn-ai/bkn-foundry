@@ -64,4 +64,7 @@ func TestMigrateKeepsLegacyOperationsGrantable(t *testing.T) {
 	if operation.Grantable == nil || !operation.IsGrantable() {
 		t.Fatalf("legacy operation grantable = %v, want true", operation.Grantable)
 	}
+	if operation.DerivedToOperationID != "" {
+		t.Fatalf("legacy operation derived_to_operation_id = %q, want empty", operation.DerivedToOperationID)
+	}
 }

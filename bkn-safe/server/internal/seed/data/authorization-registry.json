@@ -171,7 +171,8 @@
           "id": "view_detail",
           "name": "查看",
           "description": "查看数据资源的配置、结构和内容。未显式授予时，可回退到所属数据目录的查看权限。",
-          "parent_operation": "view_detail"
+          "parent_operation": "view_detail",
+          "derived_to_operation": "view_summary"
         },
         {
           "id": "modify",

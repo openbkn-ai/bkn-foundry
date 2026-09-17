@@ -48,8 +48,8 @@ func directRequirements(db *gorm.DB, resourceType string,
 }
 
 // NormalizeOperations adds every direct requirement while preserving the
-// caller's first-seen order. It is the write-side counterpart of the mandatory
-// runtime check; callers receive the exact set they should persist or return.
+// caller's first-seen order. Callers use the result to persist an authorization
+// set that satisfies the declared write-time constraint.
 func (en *Enforcer) NormalizeOperations(ctx context.Context, resourceType string,
 	operations []string) ([]string, error) {
 	requires, err := en.DirectRequirements(ctx, resourceType, operations)
@@ -136,45 +136,6 @@ func requiringOperationsByRequirement(db *gorm.DB, resourceType string,
 		}
 	}
 	return result, nil
-}
-
-func (en *Enforcer) requirementsFor(ctx context.Context,
-	want map[ResourceRef][]string) (map[string]map[string][]string, error) {
-	byType := make(map[string][]string)
-	for resource, operations := range want {
-		byType[resource.Type] = append(byType[resource.Type], operations...)
-	}
-	result := make(map[string]map[string][]string, len(byType))
-	for resourceType, operations := range byType {
-		requires, err := en.DirectRequirements(ctx, resourceType, operations)
-		if err != nil {
-			return nil, err
-		}
-		result[resourceType] = requires
-	}
-	return result, nil
-}
-
-func expandWithRequirements(want map[ResourceRef][]string,
-	requires map[string]map[string][]string) map[ResourceRef][]string {
-	expanded := make(map[ResourceRef][]string, len(want))
-	for resource, operations := range want {
-		ops := append([]string(nil), operations...)
-		seen := make(map[string]bool, len(ops))
-		for _, operation := range ops {
-			seen[operation] = true
-		}
-		for _, operation := range operations {
-			for _, required := range requires[resource.Type][operation] {
-				if !seen[required] {
-					seen[required] = true
-					ops = append(ops, required)
-				}
-			}
-		}
-		expanded[resource] = ops
-	}
-	return expanded
 }
 
 func splitOperationIDs(value string) []string {

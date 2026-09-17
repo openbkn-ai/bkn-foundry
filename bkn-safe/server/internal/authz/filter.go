@@ -114,7 +114,7 @@ func (en *Enforcer) CheckResourceOpsScoped(ctx context.Context, accessorID strin
 		}
 	}
 	originalWant := cloneResourceOperations(want)
-	decided, requirements, _, err := en.decideResourceOpsScoped(ctx, accessorID, want, scope, true)
+	decided, _, _, err := en.decideResourceOpsScoped(ctx, accessorID, want, scope, true)
 	if err != nil {
 		return nil, err
 	}
@@ -123,9 +123,6 @@ func (en *Enforcer) CheckResourceOpsScoped(ctx context.Context, accessorID strin
 		item := FilteredResource{Type: resource.Type, ID: resource.ID}
 		for _, operation := range originalWant[resource] {
 			decision := decided[resource][operation]
-			if scope == ScopeLocal {
-				decision.Requirements = append([]string(nil), requirements[resource.Type][operation]...)
-			}
 			item.Decisions = append(item.Decisions, OperationDecision{
 				Operation: operation, Decision: decision.Decision, Basis: decision.Basis,
 				Requirements: decision.Requirements, DeniedRequirement: decision.DeniedRequirement,
@@ -168,7 +165,7 @@ func (en *Enforcer) filterResourceOps(ctx context.Context, accessorID string,
 			want[r] = union
 		}
 	}
-	decided, requirements, evaluatedWant, err := en.decideResourceOpsScoped(ctx, accessorID, want, scope, validateProvenance)
+	decided, _, evaluatedWant, err := en.decideResourceOpsScoped(ctx, accessorID, want, scope, validateProvenance)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +183,6 @@ func (en *Enforcer) filterResourceOps(ctx context.Context, accessorID string,
 			}
 			for _, op := range want[r] {
 				d := resourceDecisions[op]
-				d.Requirements = append([]string(nil), requirements[r.Type][op]...)
 				item.Decisions = append(item.Decisions, OperationDecision{
 					Operation: op, Decision: d.Decision, Basis: d.Basis,
 					Requirements:      d.Requirements,
@@ -249,14 +245,6 @@ func (en *Enforcer) decideResourceOpsScoped(ctx context.Context, accessorID stri
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	var requirements map[string]map[string][]string
-	if scope == ScopeLocal {
-		requirements, err = en.requirementsFor(ctx, want)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		want = expandWithRequirements(want, requirements)
-	}
 	var decided map[ResourceRef]map[string]Evaluation
 	if scope == ScopeLocal {
 		decided, err = en.localDecisionsWithIndex(ctx, accessorID, idx, want)
@@ -301,7 +289,7 @@ func (en *Enforcer) decideResourceOpsScoped(ctx context.Context, accessorID stri
 			}
 		}
 	}
-	return decided, requirements, want, nil
+	return decided, nil, want, nil
 }
 
 // grantRow is one policy line the accessor can invoke: the object pattern and

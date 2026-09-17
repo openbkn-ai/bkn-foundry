@@ -54,6 +54,7 @@ const (
 	BasisInherited DecisionBasis = "inherited"
 	BasisBundle    DecisionBasis = "bundle"
 	BasisWildcard  DecisionBasis = "wildcard"
+	BasisDerived   DecisionBasis = "derived"
 	BasisDefault   DecisionBasis = "default"
 	BasisRequires  DecisionBasis = "requires"
 	BasisNone      DecisionBasis = "none"
@@ -111,9 +112,10 @@ func resolveEffective(local Evaluation, inherited Evaluation, hasInherited bool)
 }
 
 // LocalDecision returns only the rules attached to the requested resource. It
-// deliberately skips parent traversal, default deny and operation requires.
+// deliberately skips parent traversal and default deny.
 // Only the network- and shape-restricted Vega orchestration path may expose it.
-func (en *Enforcer) LocalDecision(ctx context.Context, accessorID, resourceType, resourceID, op string) (Evaluation, error) {
+func (en *Enforcer) LocalDecision(ctx context.Context, accessorID,
+	resourceType, resourceID, op string) (Evaluation, error) {
 	idx, err := en.grantIndex(accessorID)
 	if err != nil {
 		return Evaluation{}, err
@@ -128,18 +130,12 @@ func (en *Enforcer) LocalDecision(ctx context.Context, accessorID, resourceType,
 	if err != nil {
 		return Evaluation{}, err
 	}
-	requires, err := en.DirectRequirements(ctx, resourceType, []string{op})
-	if err != nil {
-		return Evaluation{}, err
-	}
-	decision.Requirements = requires[op]
 	return decision, nil
 }
 
-// OperationDecision is the only final authorization entry point. Callers must
-// not substitute the base-effective layer or they would bypass direct operation
-// prerequisites.
-func (en *Enforcer) OperationDecision(ctx context.Context, accessorID, resourceType, resourceID, op string) (Evaluation, error) {
+// OperationDecision is the only final authorization entry point.
+func (en *Enforcer) OperationDecision(ctx context.Context, accessorID,
+	resourceType, resourceID, op string) (Evaluation, error) {
 	idx, err := en.grantIndex(accessorID)
 	if err != nil {
 		return Evaluation{}, err

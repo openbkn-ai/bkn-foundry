@@ -206,40 +206,40 @@ func TestEffectivePermissionsScope(t *testing.T) {
 		role = "r-a"
 		user = "u1"
 	)
-	mustNoErr(t, e.GrantRolePermission(role, "resource", "*", "view_detail"))
+	mustNoErr(t, e.GrantRolePermission(role, "document", "*", "view_detail"))
 	mustNoErr(t, e.AssignRole(user, role))
 	// Two instances with a surplus op beyond the type-wide view_detail.
-	mustNoErr(t, e.GrantObjectPermission(user, "resource", "r1", "modify"))
-	mustNoErr(t, e.GrantObjectPermission(user, "resource", "r2", "modify"))
+	mustNoErr(t, e.GrantObjectPermission(user, "document", "r1", "modify"))
+	mustNoErr(t, e.GrantObjectPermission(user, "document", "r2", "modify"))
 	// A different type that must be filtered out.
 	mustNoErr(t, e.GrantObjectPermission(user, "agent", "a1", "use"))
 
-	// resource_type only: drops agent, keeps resource:* + both instances.
-	_, grants, err := e.EffectivePermissions(user, PermQuery{ResourceType: "resource"})
+	// resource_type only: drops agent, keeps document:* + both instances.
+	_, grants, err := e.EffectivePermissions(user, PermQuery{ResourceType: "document"})
 	mustNoErr(t, err)
 	idx := byObject(grants)
 	if _, ok := idx["agent:a1"]; ok {
 		t.Fatalf("agent:a1 must be filtered by resource_type: %+v", grants)
 	}
-	if !eqOps(idx["resource:*"], "view_detail") {
-		t.Fatalf("resource:* = %v", idx["resource:*"])
+	if !eqOps(idx["document:*"], "view_detail") {
+		t.Fatalf("document:* = %v", idx["document:*"])
 	}
-	if !eqOps(idx["resource:r1"], "modify") || !eqOps(idx["resource:r2"], "modify") {
+	if !eqOps(idx["document:r1"], "modify") || !eqOps(idx["document:r2"], "modify") {
 		t.Fatalf("both instances expected: %+v", grants)
 	}
 
-	// resource_id=r1: narrows instances to r1, still keeps resource:* row.
-	_, grants, err = e.EffectivePermissions(user, PermQuery{ResourceType: "resource", ResourceIDs: []string{"r1"}})
+	// resource_id=r1: narrows instances to r1, still keeps document:* row.
+	_, grants, err = e.EffectivePermissions(user, PermQuery{ResourceType: "document", ResourceIDs: []string{"r1"}})
 	mustNoErr(t, err)
 	idx = byObject(grants)
-	if _, ok := idx["resource:r2"]; ok {
-		t.Fatalf("resource:r2 must be narrowed out: %+v", grants)
+	if _, ok := idx["document:r2"]; ok {
+		t.Fatalf("document:r2 must be narrowed out: %+v", grants)
 	}
-	if !eqOps(idx["resource:*"], "view_detail") {
+	if !eqOps(idx["document:*"], "view_detail") {
 		t.Fatalf("type-wide row must remain under resource_id filter: %+v", grants)
 	}
-	if !eqOps(idx["resource:r1"], "modify") {
-		t.Fatalf("resource:r1 = %v", idx["resource:r1"])
+	if !eqOps(idx["document:r1"], "modify") {
+		t.Fatalf("document:r1 = %v", idx["document:r1"])
 	}
 }
 
@@ -334,15 +334,15 @@ func TestEffectivePermissionsTypeWideOnlyInstanceOnlyType(t *testing.T) {
 func TestEffectivePermissionsReportsDenyExceptionsAdditively(t *testing.T) {
 	e := newTestEnforcer(t)
 	const user, role = "alice", "reader-role"
-	mustNoErr(t, e.GrantRolePermission(role, "resource", "*", "view_detail"))
+	mustNoErr(t, e.GrantRolePermission(role, "document", "*", "view_detail"))
 	mustNoErr(t, e.AssignRole(user, role))
-	mustNoErr(t, e.DenyObjectPermission(user, "resource", "r-1", "view_detail"))
+	mustNoErr(t, e.DenyObjectPermission(user, "document", "r-1", "view_detail"))
 
 	_, grants, err := e.EffectivePermissions(user, PermQuery{})
 	mustNoErr(t, err)
 	var exception *RoleGrant
 	for i := range grants {
-		if grants[i].Object == "resource:r-1" {
+		if grants[i].Object == "document:r-1" {
 			exception = &grants[i]
 			break
 		}

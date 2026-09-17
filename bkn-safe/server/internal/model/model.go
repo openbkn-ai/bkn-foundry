@@ -284,10 +284,14 @@ type Operation struct {
 	// name would turn the right to rename a catalog into the right to rewrite
 	// every table in it. Empty = the operation does not inherit at all (#800).
 	ParentOperationID string `gorm:"size:64"`
+	// DerivedToOperationID declares an operation produced on this type's parent
+	// when this concrete child operation has an independent direct allow. It is
+	// metadata for read-time authorization calculation, never a persisted grant.
+	DerivedToOperationID string `gorm:"size:64"`
 	// RequiredOperationIDs are direct prerequisites on the SAME resource type.
-	// They are enforced at runtime and also added when an allow set is written, so
-	// a saved grant remains usable and later deny/role changes cannot bypass the
-	// prerequisite. The first version deliberately permits one layer only.
+	// They are enforced when an allow set is written, so the persisted set contains
+	// every prerequisite. They do not alter read-time authorization decisions.
+	// The first version deliberately permits one layer only.
 	//
 	// The legacy database column name is retained to keep upgrades schema-only:
 	// the former "implies" rule represented the same stored edge, but enforced it

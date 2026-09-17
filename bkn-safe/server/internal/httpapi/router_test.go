@@ -193,22 +193,22 @@ func TestAuthzEndpointsApplyDenyWithoutChangingBusinessRequests(t *testing.T) {
 	r, e, db := newTestServer(t)
 	const user, role = "alice", "reader-role"
 	seedEnabledUser(t, db, user)
-	if err := db.Create(&model.Operation{ResourceTypeID: "resource", ID: "view_detail", Name: "view_detail"}).Error; err != nil {
+	if err := db.Create(&model.Operation{ResourceTypeID: "document", ID: "view_detail", Name: "view_detail"}).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := e.GrantRolePermission(role, "resource", "*", "view_detail"); err != nil {
+	if err := e.GrantRolePermission(role, "document", "*", "view_detail"); err != nil {
 		t.Fatal(err)
 	}
 	if err := e.AssignRole(user, role); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.DenyObjectPermission(user, "resource", "r-1", "view_detail"); err != nil {
+	if err := e.DenyObjectPermission(user, "document", "r-1", "view_detail"); err != nil {
 		t.Fatal(err)
 	}
 
 	check := doSingleCheck(t, r, map[string]any{
 		"accessor_id": user,
-		"resource":    map[string]string{"type": "resource", "id": "r-1"},
+		"resource":    map[string]string{"type": "document", "id": "r-1"},
 		"operation":   "view_detail",
 	})
 	var decision struct {
@@ -220,7 +220,7 @@ func TestAuthzEndpointsApplyDenyWithoutChangingBusinessRequests(t *testing.T) {
 
 	filter := do(t, r, http.MethodPost, "/api/safe/v1/authz/resource-filter", map[string]any{
 		"accessor_id":           user,
-		"resource_type":         "resource",
+		"resource_type":         "document",
 		"resource_ids":          []string{"r-1", "r-2"},
 		"visibility_operations": []string{"view_detail"},
 	})
