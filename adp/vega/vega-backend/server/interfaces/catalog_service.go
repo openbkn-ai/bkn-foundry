@@ -43,10 +43,10 @@ type CatalogService interface {
 	// ListAuthResourceEntries lists catalog authorization entries with filters.
 	ListAuthResourceEntries(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, int64, error)
 
-	// ListPermittedCatalogIDs returns the catalog IDs permitted for every
-	// requested operation, preserving the requested catalog sort order. The
+	// ListPermittedCatalogIDs returns catalog IDs matching visibilityMatch across
+	// the requested operations, preserving the requested catalog sort order. The
 	// resource operations map contains the bkn-safe result for each returned ID.
-	ListPermittedCatalogIDs(ctx context.Context, ops []string, allowOperation bool,
+	ListPermittedCatalogIDs(ctx context.Context, ops []string, visibilityMatch string, allowOperation bool,
 		params CatalogsQueryParams) ([]string, map[string]PermissionResourceOps, error)
 
 	// CheckCatalogPermission checks bkn-safe permission for a catalog ID. When

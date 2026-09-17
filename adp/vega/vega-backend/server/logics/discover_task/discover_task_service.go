@@ -242,8 +242,8 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 			return []*interfaces.DiscoverTaskSummary{}, 0, nil
 		}
 	} else {
-		visible, _, err := dts.cs.ListPermittedCatalogIDs(ctx,
-			[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, false, interfaces.CatalogsQueryParams{})
+		visible, _, err := dts.cs.ListPermittedCatalogIDs(ctx, []string{interfaces.OPERATION_TYPE_TASK_MANAGE},
+			interfaces.VISIBILITY_MATCH_ALL, false, interfaces.CatalogsQueryParams{})
 		if err != nil {
 			span.SetStatus(codes.Error, "Resolve authorized catalogs failed")
 			return nil, 0, err

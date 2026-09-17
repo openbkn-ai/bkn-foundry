@@ -166,7 +166,8 @@ func (dss *discoverScheduleService) List(ctx context.Context, params interfaces.
 			return []*interfaces.DiscoverSchedule{}, 0, nil
 		}
 	} else {
-		visible, _, err := dss.cs.ListPermittedCatalogIDs(ctx, []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, false, interfaces.CatalogsQueryParams{})
+		visible, _, err := dss.cs.ListPermittedCatalogIDs(ctx, []string{interfaces.OPERATION_TYPE_TASK_MANAGE},
+			interfaces.VISIBILITY_MATCH_ALL, false, interfaces.CatalogsQueryParams{})
 		if err != nil {
 			return nil, 0, err
 		}

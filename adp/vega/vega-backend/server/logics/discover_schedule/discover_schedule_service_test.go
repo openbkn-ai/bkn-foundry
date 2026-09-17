@@ -37,7 +37,7 @@ func newTestDiscoverScheduleService(t *testing.T) (*discoverScheduleService, *vm
 		AnyTimes().
 		Return(true, nil, nil)
 	cs.EXPECT().
-		ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		AnyTimes().
 		Return([]string{"catalog-1"}, nil, nil)
 
@@ -294,7 +294,7 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 		service := &discoverScheduleService{dsa: dsa, cs: cs, ums: ums}
 
 		cs.EXPECT().
-			ListPermittedCatalogIDs(gomock.Any(), []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, false, interfaces.CatalogsQueryParams{}).
+			ListPermittedCatalogIDs(gomock.Any(), []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, interfaces.VISIBILITY_MATCH_ALL, false, interfaces.CatalogsQueryParams{}).
 			Return(visible, nil, nil)
 		dsa.EXPECT().
 			List(gomock.Any(), gomock.Cond(func(params interfaces.DiscoverScheduleQueryParams) bool {
@@ -317,7 +317,7 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 		service := &discoverScheduleService{dsa: dsa, cs: cs}
 
 		cs.EXPECT().
-			ListPermittedCatalogIDs(gomock.Any(), []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, false, interfaces.CatalogsQueryParams{}).
+			ListPermittedCatalogIDs(gomock.Any(), []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, interfaces.VISIBILITY_MATCH_ALL, false, interfaces.CatalogsQueryParams{}).
 			Return([]string{}, nil, nil)
 
 		got, total, err := service.List(context.Background(), interfaces.DiscoverScheduleQueryParams{})
@@ -406,7 +406,7 @@ func TestDiscoverScheduleServicePopulatesCatalogName(t *testing.T) {
 		AnyTimes().
 		Return(true, nil, nil)
 	cs.EXPECT().
-		ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		AnyTimes().
 		Return([]string{"catalog-1"}, nil, nil)
 	service := &discoverScheduleService{dsa: dsa, cs: cs, ums: ums}
@@ -443,7 +443,7 @@ func TestDiscoverScheduleServicePopulatesCatalogName(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		dsa := vmock.NewMockDiscoverScheduleAccess(ctrl)
 		cs := vmock.NewMockCatalogService(ctrl)
-		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return([]string{"catalog-3"}, nil, nil)
+		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return([]string{"catalog-3"}, nil, nil)
 		ums := vmock.NewMockUserMgmtService(ctrl)
 		service := &discoverScheduleService{dsa: dsa, cs: cs, ums: ums}
 		schedules := []*interfaces.DiscoverSchedule{{ID: "schedule-4", CatalogID: "catalog-3"}}

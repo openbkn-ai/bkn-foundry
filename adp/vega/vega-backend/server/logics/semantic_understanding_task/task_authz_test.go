@@ -100,7 +100,7 @@ func TestSemanticTaskListPushesTheVisibleCatalogsIntoTheQuery(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, suta, cs := newSvc(ctrl)
 
-		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, false, interfaces.CatalogsQueryParams{}).
+		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, interfaces.VISIBILITY_MATCH_ALL, false, interfaces.CatalogsQueryParams{}).
 			Return([]string{"cat-1"}, nil, nil)
 		suta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, p interfaces.SemanticUnderstandingTaskQueryParams) (
@@ -120,7 +120,7 @@ func TestSemanticTaskListPushesTheVisibleCatalogsIntoTheQuery(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, suta, cs := newSvc(ctrl)
 
-		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil, nil, nil)
 		_ = suta
 

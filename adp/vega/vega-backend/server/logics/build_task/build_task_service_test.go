@@ -221,7 +221,7 @@ func TestBuildTaskServiceList(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		mockCS.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return([]string{"catalog-1"}, nil, nil)
 		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
 		service := &buildTaskService{bta: mockBTA, cs: mockCS, rs: mockRS, ums: mockUMS}
@@ -252,7 +252,7 @@ func TestBuildTaskServiceList(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		mockCS.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return([]string{"catalog-1"}, nil, nil)
 		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
 		service := &buildTaskService{bta: mockBTA, cs: mockCS, rs: mockRS, ums: mockUMS}
@@ -277,7 +277,7 @@ func TestBuildTaskServiceList(t *testing.T) {
 		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		cs := mock_interfaces.NewMockCatalogService(ctrl)
 		service := &buildTaskService{bta: bta, cs: cs}
-		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return([]string{"catalog-1"}, nil, nil)
 		bta.EXPECT().List(gomock.Any(), interfaces.BuildTasksQueryParams{CatalogIDs: []string{"catalog-1"}}).
 			Return(nil, int64(0), errors.New("list failed"))

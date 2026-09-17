@@ -239,9 +239,9 @@ func (mr *MockCatalogServiceMockRecorder) ListConnectorTypeStats(ctx, params any
 }
 
 // ListPermittedCatalogIDs mocks base method.
-func (m *MockCatalogService) ListPermittedCatalogIDs(ctx context.Context, ops []string, allowOperation bool, params interfaces.CatalogsQueryParams) ([]string, map[string]interfaces.PermissionResourceOps, error) {
+func (m *MockCatalogService) ListPermittedCatalogIDs(ctx context.Context, ops []string, visibilityMatch string, allowOperation bool, params interfaces.CatalogsQueryParams) ([]string, map[string]interfaces.PermissionResourceOps, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListPermittedCatalogIDs", ctx, ops, allowOperation, params)
+	ret := m.ctrl.Call(m, "ListPermittedCatalogIDs", ctx, ops, visibilityMatch, allowOperation, params)
 	ret0, _ := ret[0].([]string)
 	ret1, _ := ret[1].(map[string]interfaces.PermissionResourceOps)
 	ret2, _ := ret[2].(error)
@@ -249,9 +249,9 @@ func (m *MockCatalogService) ListPermittedCatalogIDs(ctx context.Context, ops []
 }
 
 // ListPermittedCatalogIDs indicates an expected call of ListPermittedCatalogIDs.
-func (mr *MockCatalogServiceMockRecorder) ListPermittedCatalogIDs(ctx, ops, allowOperation, params any) *gomock.Call {
+func (mr *MockCatalogServiceMockRecorder) ListPermittedCatalogIDs(ctx, ops, visibilityMatch, allowOperation, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPermittedCatalogIDs", reflect.TypeOf((*MockCatalogService)(nil).ListPermittedCatalogIDs), ctx, ops, allowOperation, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPermittedCatalogIDs", reflect.TypeOf((*MockCatalogService)(nil).ListPermittedCatalogIDs), ctx, ops, visibilityMatch, allowOperation, params)
 }
 
 // SetEnabled mocks base method.
