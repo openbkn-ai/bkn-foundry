@@ -440,6 +440,10 @@ func (cgs *conceptGroupService) ListConceptGroups(ctx context.Context,
 		return []*interfaces.ConceptGroup{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
 	}
+	if interfaces.IsAuthorizationResourceCatalog(ctx) {
+		total := len(conceptGroups)
+		return permission.PaginateKNChildCandidates(conceptGroups, query.Offset, query.Limit), total, nil
+	}
 
 	var operationMap map[string]interfaces.PermissionResourceOps
 	conceptGroups, total, operationMap, err := permission.FilterAndPaginateKNChildrenWithOperations(ctx, cgs.ps,

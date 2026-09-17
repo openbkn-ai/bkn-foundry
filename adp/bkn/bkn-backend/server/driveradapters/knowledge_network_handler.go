@@ -632,6 +632,7 @@ func (r *restHandler) ListAuthorizationResources(c *gin.Context) {
 	}
 
 	name := strings.TrimSpace(c.Query("name"))
+	ctx = interfaces.WithAuthorizationResourceCatalog(ctx)
 	entries := make([]*interfaces.AuthorizationResource, 0)
 	var total int
 	switch resourceType {

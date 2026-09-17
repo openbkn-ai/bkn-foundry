@@ -374,6 +374,10 @@ func (ms *metricService) ListMetrics(ctx context.Context, query interfaces.Metri
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Metric_InternalError).WithErrorDetails(err.Error())
 	}
+	if interfaces.IsAuthorizationResourceCatalog(ctx) {
+		total := len(list)
+		return &interfaces.MetricsList{Entries: permission.PaginateKNChildCandidates(list, query.Offset, query.Limit), TotalCount: int64(total)}, nil
+	}
 	var operationMap map[string]interfaces.PermissionResourceOps
 	var total int
 	list, total, operationMap, err = permission.FilterAndPaginateKNChildrenWithOperations(ctx, ms.ps,

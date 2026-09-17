@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"database/sql"
 	"encoding/base64"
 	"errors"
 	"net/http"
@@ -735,6 +736,35 @@ func Test_KnowledgeNetworkRestHandler_ListAuthorizationResourcesRejectsUnsupport
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestKnowledgeNetworkRestHandlerListsChildAuthorizationResourcesWithoutAccount(t *testing.T) {
+	test := setGinMode()
+	defer test()
+	handler, mockCtrl, engine, _ := newKNTestHandler(t)
+	defer mockCtrl.Finish()
+	objectTypes := bmock.NewMockObjectTypeService(mockCtrl)
+	handler.ots = objectTypes
+	objectTypes.EXPECT().ListObjectTypes(gomock.Any(), nil, gomock.Any()).DoAndReturn(
+		func(ctx context.Context, _ *sql.Tx, query interfaces.ObjectTypesQueryParams) ([]*interfaces.ObjectType, int, error) {
+			if !interfaces.IsAuthorizationResourceCatalog(ctx) {
+				t.Fatal("authorization resource catalog marker is missing")
+			}
+			if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
+				t.Fatal("internal catalog must not synthesize an account")
+			}
+			if query.KNID != "kn-1" || query.NamePattern != "order" {
+				t.Fatalf("query = %+v", query)
+			}
+			return []*interfaces.ObjectType{{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "order", OTName: "Order"}}}, 1, nil
+		})
+	req := httptest.NewRequest(http.MethodGet,
+		"/api/bkn-backend/in/v1/authorization-resources?resource_type=object_type&parent_type=knowledge_network&parent_id=kn-1&name=order&sort=name&direction=asc", nil)
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"id":"kn-1/order"`) {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
 	}
 }
 
