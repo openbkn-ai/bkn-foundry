@@ -43,6 +43,7 @@ type operationIntent struct {
 type operationResult struct {
 	Operation        any             `json:"operation"`
 	Receipt          any             `json:"receipt"`
+	ArtifactRefs     []string        `json:"-"`
 	Created          bool            `json:"created"`
 	Execute          bool            `json:"execute"`
 	LifecycleContext context.Context `json:"-"`

@@ -1368,6 +1368,19 @@ func TestEvidenceHandlerIngestsAndQueriesAuthorizedArtifact(t *testing.T) {
 	}
 }
 
+func TestEvidenceHandlerAcceptsArtifactLargerThanEventBatch(t *testing.T) {
+	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	body := strings.Replace(validHandlerArtifact(), "用户原始问题", strings.Repeat("x", maxEvidenceBodyBytes+1), 1)
+	req := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/artifacts", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	handler.IngestEvidenceArtifact(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected oversized artifact to be accepted, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestEvidenceHandlerArtifactQueryDoesNotLeakUnauthorizedPreview(t *testing.T) {
 	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
 	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/artifacts", strings.NewReader(validHandlerArtifact()))

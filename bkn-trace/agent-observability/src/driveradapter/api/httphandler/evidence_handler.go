@@ -27,6 +27,10 @@ import (
 )
 
 const maxEvidenceBodyBytes = 1 << 20
+
+// Artifact content is the governed overflow path for recorded operation
+// payloads, so it needs a larger bound than ordinary evidence-event batches.
+const maxEvidenceArtifactBodyBytes = 16 << 20
 const evidenceIngestTokenEnv = "BKN_TRACE_EVIDENCE_INGEST_TOKEN"
 const evidenceAllowUnauthenticatedIngestEnv = "BKN_TRACE_ALLOW_UNAUTHENTICATED_INGEST"
 const evidenceIngestTokenHeader = "X-BKN-Trace-Ingest-Token"
@@ -197,7 +201,7 @@ func (h *EvidenceHandler) IngestEvidenceArtifact(w http.ResponseWriter, r *http.
 	if !h.authorizeEvidenceIngest(w, r) {
 		return
 	}
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxEvidenceBodyBytes))
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxEvidenceArtifactBodyBytes))
 	if err != nil {
 		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "failed to read request body"})
 		return

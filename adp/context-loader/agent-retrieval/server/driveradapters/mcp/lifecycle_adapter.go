@@ -74,7 +74,7 @@ func ensureOperationAdapter(client *bkntrace.LifecycleClient) ensureOperationFun
 		}
 		return &operationResult{
 			Operation: state.Result.Operation, Receipt: state.Result.Receipt, Created: state.Result.Created,
-			Execute:          state.Result.Execute,
+			ArtifactRefs: append([]string(nil), state.ArtifactRefs...), Execute: state.Result.Execute,
 			LifecycleContext: lifecycleContext,
 		}, nil, nil
 	}
@@ -112,7 +112,7 @@ func completeOperationAdapter(client *bkntrace.LifecycleClient) completeOperatio
 		state := bkntrace.GuardState{Result: bkntrace.OperationResult{
 			Operation: operation,
 			Receipt:   receipt,
-		}}
+		}, ArtifactRefs: append([]string(nil), ensured.ArtifactRefs...)}
 		retryable, _ := ctx.Value(downstreamRetryableKey{}).(bool)
 		result, apiErr, err := bkntrace.NewGuard(client).Finish(
 			ctx, state, raw, downstream.IsError, retryable,

@@ -18,6 +18,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -816,12 +817,31 @@ func BuildSchemaSnapshotEvents(ctx context.Context, kind, knID string, ids []str
 	}
 	payload := map[string]any{
 		"network_ref": "kn:" + strings.TrimSpace(knID), "schema_kind": kind,
-		"definition_refs": refs, "definition_count": len(ids), "complete": complete,
+		"definition_refs": refs, "definition_count": schemaDefinitionCount(definition), "complete": complete,
 		"definition": definition, "source_refs": refs,
 	}
 	event := buildEvent(ec, "ontology.schema.snapshot", "context.get_"+kind+"_schema", payload, "", ec.causationEventID)
 	event["bkn.trace.schema.version"] = "2.2.0"
 	return []Event{event}
+}
+
+func schemaDefinitionCount(definition any) int {
+	if definition == nil {
+		return 0
+	}
+	value := reflect.ValueOf(definition)
+	for value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface {
+		if value.IsNil() {
+			return 0
+		}
+		value = value.Elem()
+	}
+	switch value.Kind() {
+	case reflect.Array, reflect.Slice, reflect.Map:
+		return value.Len()
+	default:
+		return 1
+	}
 }
 
 func buildRetrievalEvents(ec eventContext, operation, queryHash string, candidateCount int, truncated bool, refs []map[string]any) []Event {

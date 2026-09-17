@@ -142,7 +142,7 @@ func TestBuildSchemaSnapshotEventsDistinguishesCompleteEmptyFromUnknown(t *testi
 		t.Fatalf("schema events = %d", len(events))
 	}
 	payload := events[0]["payload"].(map[string]any)
-	if payload["schema_kind"] != "network" || payload["complete"] != true || payload["definition_count"] != 0 {
+	if payload["schema_kind"] != "network" || payload["complete"] != true || payload["definition_count"] != 1 {
 		t.Fatalf("complete empty schema lost: %#v", payload)
 	}
 	definition := payload["definition"].(map[string]any)
