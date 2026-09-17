@@ -48,6 +48,8 @@ type fakeOperator struct {
 	boxDisabledTools map[string]map[string]bool
 	// boxEnabledUnknown marks a box whose enabled-tools walk overflowed: the set is a prefix.
 	boxEnabledUnknown map[string]bool
+	// boxMetadataType overrides a box's metadata type; boxes not named are Function boxes.
+	boxMetadataType map[string]string
 	// hitsByCall, when set, serves a different ranking per SearchCapabilities call, in order; the
 	// last one repeats. gotTopKs records the top_k of every call so a test can pin how many pages
 	// were asked for and how wide.
@@ -68,7 +70,11 @@ func (f *fakeOperator) ToolBoxLifecycle(_ context.Context, boxID string) (*inter
 	// The execution factory's own records are independent of the caller-visible catalogue, so
 	// enablement is modelled from every tool the fake ranking knows about, minus the ones named
 	// disabled — not from toolsByBox, which stands for the token-gated listing.
-	out := &interfaces.ToolBoxLifecycle{Published: !f.boxUnpublished[boxID], MetadataType: "function", EnabledTools: map[string]struct{}{}, EnabledKnown: !f.boxEnabledUnknown[boxID]}
+	metadataType := "function"
+	if t, ok := f.boxMetadataType[boxID]; ok {
+		metadataType = t
+	}
+	out := &interfaces.ToolBoxLifecycle{Published: !f.boxUnpublished[boxID], MetadataType: metadataType, EnabledTools: map[string]struct{}{}, EnabledKnown: !f.boxEnabledUnknown[boxID]}
 	pages := append([][]interfaces.CapabilityHit{f.hits}, f.hitsByCall...)
 	for _, page := range pages {
 		for _, h := range page {
@@ -601,6 +607,29 @@ func TestExecutePassesOnlyBusinessArguments(t *testing.T) {
 	}
 	if len(op.listedToolbox) != 0 {
 		t.Fatalf("managed execution consulted caller-scoped catalogue: %v", op.listedToolbox)
+	}
+}
+
+// An OpenAPI box is published as a tool_box grant source, so its proxy is resolved as tool_box;
+// only a Function box asks for the function target (#1615).
+func TestExecuteResolvesOpenAPIBoxAsToolBoxTarget(t *testing.T) {
+	bkn := &fakeBkn{refs: functionRefs("box-1/t1")}
+	op := &fakeOperator{
+		toolsByBox:      map[string]*interfaces.ListPublishedToolsResponse{"box-1": tools("box-1", "t1")},
+		execResp:        map[string]any{"ok": true},
+		boxMetadataType: map[string]string{"box-1": "openapi"},
+	}
+
+	if _, err := newService(bkn, op).ExecuteTool(context.Background(), &ExecuteToolReq{
+		KnID: "kn1", ToolboxID: "box-1", ToolID: "t1",
+	}); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if bkn.gotProxyBinding.TargetType != interfaces.KNProxyTargetTypeToolBox {
+		t.Fatalf("expected an OpenAPI box to resolve as tool_box, got %+v", bkn.gotProxyBinding)
+	}
+	if op.gotProxy == nil || op.gotProxy.Binding.TargetType != interfaces.KNProxyTargetTypeToolBox {
+		t.Fatalf("expected a tool_box capability proxy, got %+v", op.gotProxy)
 	}
 }
 
