@@ -38,11 +38,12 @@ class PermissionManager:
             return False
 
     async def _bkn_safe_check(self, user_id, resource_type, resource_id, operation) -> bool:
+        resource_id = str(resource_id)
         session = await self.get_session()
         async with session.post(
                 f"{self.bkn_safe_url}/api/safe/v1/authz/checks",
                 json={"accessor_id": user_id,
-                      "checks": [{"resource": {"type": resource_type, "id": str(resource_id)},
+                      "checks": [{"resource": {"type": resource_type, "id": resource_id},
                                   "operation": operation}],
                       "evaluation_scope": "effective"},
                 headers=internal_request_headers({'Content-Type': 'application/json'})) as response:
@@ -51,7 +52,18 @@ class PermissionManager:
             data = await response.json()
             if not isinstance(data, dict) or not isinstance(data.get('allowed'), bool):
                 raise RuntimeError("bkn-safe check returned an invalid decision")
-            return data['allowed']
+            results = data.get('results')
+            if not isinstance(results, list) or len(results) != 1:
+                raise RuntimeError("bkn-safe check returned an invalid result")
+            result = results[0]
+            if (not isinstance(result, dict)
+                    or result.get('resource_type') != resource_type
+                    or result.get('resource_id') != resource_id
+                    or result.get('operation') != operation
+                    or not isinstance(result.get('allowed'), bool)
+                    or result['allowed'] != data['allowed']):
+                raise RuntimeError("bkn-safe check returned an inconsistent result")
+            return result['allowed']
 
     async def _bkn_safe_filter_ids(self, user_id, operation, resource_type,
                                    candidate_ids=None) -> list:

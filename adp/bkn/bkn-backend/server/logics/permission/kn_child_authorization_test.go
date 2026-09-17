@@ -61,8 +61,8 @@ type childCandidate struct {
 func TestFilterAndPaginateKNChildrenWithOperationsProjectsCanonicalOperations(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ps := interfacemock.NewMockPermissionService(ctrl)
-	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_ACTION_TYPE,
-		[]string{"kn-1/action-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true).
+	ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.RESOURCE_TYPE_ACTION_TYPE,
+		[]string{"kn-1/action-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).
 		Return(map[string]interfaces.PermissionResourceOps{
 			"kn-1/action-1": {ResourceID: "kn-1/action-1", Operations: []string{
 				interfaces.OPERATION_TYPE_VIEW_DETAIL,
@@ -90,8 +90,8 @@ func TestFilterAndPaginateKNChildrenWithOperationsProjectsCanonicalOperations(t 
 func TestGetKNChildOperationsUsesCanonicalDetailResource(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ps := interfacemock.NewMockPermissionService(ctrl)
-	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
-		[]string{"kn-1/metric-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true).
+	ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
+		[]string{"kn-1/metric-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).
 		Return(map[string]interfaces.PermissionResourceOps{
 			"kn-1/metric-1": {ResourceID: "kn-1/metric-1", Operations: []string{
 				interfaces.OPERATION_TYPE_VIEW_DETAIL,
@@ -115,8 +115,8 @@ func TestGetKNChildOperationsUsesCanonicalDetailResource(t *testing.T) {
 func TestFilterKNChildResourceIDsWithAnyOperationKeepsQueryOnlyChildren(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ps := interfacemock.NewMockPermissionService(ctrl)
-	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
-		[]string{"kn-1/query-only", "kn-1/none"}, []string(nil), true).
+	ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		[]string{"kn-1/query-only", "kn-1/none"}, []string(nil)).
 		Return(map[string]interfaces.PermissionResourceOps{
 			"kn-1/query-only": {
 				ResourceID: "kn-1/query-only",
@@ -144,9 +144,9 @@ func TestFilterKNChildResourceIDsWithAnyOperationKeepsQueryOnlyChildren(t *testi
 func TestFilterAndPaginateKNChildrenFiltersCanonicalIDsBeforePaging(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ps := interfacemock.NewMockPermissionService(ctrl)
-	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+	ps.EXPECT().FilterVisibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
 		[]string{"kn-2/one", "kn-2/two", "kn-2/three"},
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, false).
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).
 		Return(map[string]interfaces.PermissionResourceOps{
 			"kn-2/one":   {ResourceID: "kn-2/one", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
 			"kn-2/three": {ResourceID: "kn-2/three", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
@@ -168,8 +168,8 @@ func TestFilterAndPaginateKNChildrenPropagatesFilterFailure(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ps := interfacemock.NewMockPermissionService(ctrl)
 	wantErr := errors.New("bkn-safe unavailable")
-	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_RISK_TYPE,
-		[]string{"kn-1/risk-1"}, gomock.Any(), false).
+	ps.EXPECT().FilterVisibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_RISK_TYPE,
+		[]string{"kn-1/risk-1"}, gomock.Any()).
 		Return(nil, wantErr)
 
 	got, total, err := FilterAndPaginateKNChildren(context.Background(), ps,
@@ -183,8 +183,8 @@ func TestFilterAndPaginateKNChildrenPropagatesFilterFailure(t *testing.T) {
 func TestFilterAndPaginateKNChildrenSkipsHistoricalInvalidIDs(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ps := interfacemock.NewMockPermissionService(ctrl)
-	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
-		[]string{"kn-1/valid"}, gomock.Any(), false).
+	ps.EXPECT().FilterVisibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		[]string{"kn-1/valid"}, gomock.Any()).
 		Return(map[string]interfaces.PermissionResourceOps{
 			"kn-1/valid": {ResourceID: "kn-1/valid"},
 		}, nil)
@@ -211,8 +211,8 @@ func TestFilterAndPaginateKNChildrenSupportsEveryChildResourceType(t *testing.T)
 		t.Run(resourceType, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			ps := interfacemock.NewMockPermissionService(ctrl)
-			ps.EXPECT().FilterResources(gomock.Any(), resourceType, []string{"kn-1/child-1"},
-				[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, false).
+			ps.EXPECT().FilterVisibleResources(gomock.Any(), resourceType, []string{"kn-1/child-1"},
+				[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).
 				Return(map[string]interfaces.PermissionResourceOps{
 					"kn-1/child-1": {ResourceID: "kn-1/child-1"},
 				}, nil)
@@ -240,8 +240,8 @@ func TestFilterAndPaginateKNChildrenWithOperationsUsesCatalogProjectionForEveryC
 		t.Run(resourceType, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			ps := interfacemock.NewMockPermissionService(ctrl)
-			ps.EXPECT().FilterResources(gomock.Any(), resourceType, []string{"kn-1/child-1"},
-				[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true).
+			ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), resourceType, []string{"kn-1/child-1"},
+				[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).
 				Return(map[string]interfaces.PermissionResourceOps{
 					"kn-1/child-1": {
 						ResourceID: "kn-1/child-1",
@@ -267,13 +267,13 @@ func TestFilterAndPaginateKNChildrenMergesRuntimeConfiguredBlocks(t *testing.T) 
 	ctrl := gomock.NewController(t)
 	ps := interfacemock.NewMockPermissionService(ctrl)
 	gomock.InOrder(
-		ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
-			[]string{"kn-1/one", "kn-1/two"}, gomock.Any(), false).
+		ps.EXPECT().FilterVisibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+			[]string{"kn-1/one", "kn-1/two"}, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{
 				"kn-1/one": {ResourceID: "kn-1/one"},
 			}, nil),
-		ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
-			[]string{"kn-1/three"}, gomock.Any(), false).
+		ps.EXPECT().FilterVisibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+			[]string{"kn-1/three"}, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{
 				"kn-1/three": {ResourceID: "kn-1/three"},
 			}, nil),
@@ -295,13 +295,13 @@ func TestFilterAndPaginateKNChildrenDiscardsEarlierBlocksOnLaterFailure(t *testi
 	ps := interfacemock.NewMockPermissionService(ctrl)
 	wantErr := errors.New("second block timed out")
 	gomock.InOrder(
-		ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
-			[]string{"kn-1/one"}, gomock.Any(), false).
+		ps.EXPECT().FilterVisibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
+			[]string{"kn-1/one"}, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{
 				"kn-1/one": {ResourceID: "kn-1/one"},
 			}, nil),
-		ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
-			[]string{"kn-1/two"}, gomock.Any(), false).
+		ps.EXPECT().FilterVisibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
+			[]string{"kn-1/two"}, gomock.Any()).
 			Return(nil, wantErr),
 	)
 
@@ -318,13 +318,13 @@ func TestFilterKNChildIDsKeepsEqualChildIDsIsolatedByKN(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ps := interfacemock.NewMockPermissionService(ctrl)
 	gomock.InOrder(
-		ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
-			[]string{"kn-1/shared"}, gomock.Any(), false).
+		ps.EXPECT().FilterVisibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+			[]string{"kn-1/shared"}, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{
 				"kn-1/shared": {ResourceID: "kn-1/shared"},
 			}, nil),
-		ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
-			[]string{"kn-2/shared"}, gomock.Any(), false).
+		ps.EXPECT().FilterVisibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+			[]string{"kn-2/shared"}, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{}, nil),
 	)
 
@@ -345,8 +345,8 @@ func TestFilterKNChildIDsKeepsEqualChildIDsIsolatedByKN(t *testing.T) {
 func TestFilterKNChildIDsSkipsHistoricalInvalidIDs(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ps := interfacemock.NewMockPermissionService(ctrl)
-	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
-		[]string{"kn-1/valid"}, gomock.Any(), false).
+	ps.EXPECT().FilterVisibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
+		[]string{"kn-1/valid"}, gomock.Any()).
 		Return(map[string]interfaces.PermissionResourceOps{
 			"kn-1/valid": {ResourceID: "kn-1/valid"},
 		}, nil)

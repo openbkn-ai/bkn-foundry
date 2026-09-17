@@ -140,10 +140,10 @@ func TestSafeFilterResourcesIsBulk(t *testing.T) {
 
 		s := &safePermissionAccess{safe: newSafeClient(srv.URL)}
 		got, err := s.FilterResources(ctx, interfaces.PermissionResourcesFilter{
-			Accessor:       interfaces.PermissionAccessor{ID: "acc", Type: interfaces.ACCESSOR_TYPE_USER},
-			Resources:      resourcesOfType(100, interfaces.AUTH_RESOURCE_TYPE_RESOURCE),
-			Operations:     []string{op},
-			AllowOperation: true,
+			Accessor:          interfaces.PermissionAccessor{ID: "acc", Type: interfaces.ACCESSOR_TYPE_USER},
+			Resources:         resourcesOfType(100, interfaces.AUTH_RESOURCE_TYPE_RESOURCE),
+			Operations:        []string{op},
+			IncludeOperations: true,
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -164,10 +164,10 @@ func TestSafeFilterResourcesIsBulk(t *testing.T) {
 
 		s := &safePermissionAccess{safe: newSafeClient(srv.URL)}
 		got, err := s.FilterResources(ctx, interfaces.PermissionResourcesFilter{
-			Accessor:       interfaces.PermissionAccessor{ID: "acc", Type: interfaces.ACCESSOR_TYPE_USER},
-			Resources:      resourcesOfType(100, interfaces.AUTH_RESOURCE_TYPE_RESOURCE),
-			Operations:     []string{op},
-			AllowOperation: true,
+			Accessor:          interfaces.PermissionAccessor{ID: "acc", Type: interfaces.ACCESSOR_TYPE_USER},
+			Resources:         resourcesOfType(100, interfaces.AUTH_RESOURCE_TYPE_RESOURCE),
+			Operations:        []string{op},
+			IncludeOperations: true,
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -225,10 +225,10 @@ func TestFilterResourcesReportsCompleteOperations(t *testing.T) {
 
 	pa := &safePermissionAccess{safe: newSafeClient(srv.URL)}
 	got, err := pa.FilterResources(context.Background(), interfaces.PermissionResourcesFilter{
-		Accessor:       interfaces.PermissionAccessor{ID: "u-1", Type: "user"},
-		Resources:      []interfaces.PermissionResource{{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "r-1"}},
-		Operations:     []string{interfaces.OPERATION_TYPE_VIEW_DETAIL},
-		AllowOperation: true,
+		Accessor:          interfaces.PermissionAccessor{ID: "u-1", Type: "user"},
+		Resources:         []interfaces.PermissionResource{{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "r-1"}},
+		Operations:        []string{interfaces.OPERATION_TYPE_VIEW_DETAIL},
+		IncludeOperations: true,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -295,7 +295,7 @@ func TestFilterResourcesCombinesWildcardOperationWithConcreteRequirement(t *test
 		Operations: []string{
 			interfaces.OPERATION_TYPE_VIEW_DETAIL,
 		},
-		AllowOperation: true,
+		IncludeOperations: true,
 	})
 	if err != nil {
 		t.Fatal(err)

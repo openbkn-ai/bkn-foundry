@@ -202,8 +202,19 @@ func (ps *PermissionServiceImpl) UpdateResource(ctx context.Context, resource in
 	return nil
 }
 
-func (ps *PermissionServiceImpl) FilterResources(ctx context.Context, resourceType string, ids []string,
-	ops []string, visibilityMatch string, allowOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
+func (ps *PermissionServiceImpl) FilterVisibleResources(ctx context.Context, resourceType string, ids []string,
+	visibilityOperations []string, visibilityMatch string) (map[string]interfaces.PermissionResourceOps, error) {
+	return ps.filterResources(ctx, resourceType, ids, visibilityOperations, visibilityMatch, false)
+}
+
+func (ps *PermissionServiceImpl) FilterVisibleResourcesWithOperations(ctx context.Context, resourceType string,
+	ids []string, visibilityOperations []string, visibilityMatch string) (map[string]interfaces.PermissionResourceOps, error) {
+	return ps.filterResources(ctx, resourceType, ids, visibilityOperations, visibilityMatch, true)
+}
+
+func (ps *PermissionServiceImpl) filterResources(ctx context.Context, resourceType string, ids []string,
+	visibilityOperations []string, visibilityMatch string,
+	includeOperations bool) (map[string]interfaces.PermissionResourceOps, error) {
 	accountInfo := interfaces.AccountInfo{}
 	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
@@ -230,10 +241,10 @@ func (ps *PermissionServiceImpl) FilterResources(ctx context.Context, resourceTy
 			ID:   accountInfo.ID,
 			Type: accountInfo.Type,
 		},
-		Resources:       resources,
-		Operations:      ops,
-		VisibilityMatch: visibilityMatch,
-		AllowOperation:  allowOperation,
+		Resources:         resources,
+		Operations:        visibilityOperations,
+		VisibilityMatch:   visibilityMatch,
+		IncludeOperations: includeOperations,
 	})
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,

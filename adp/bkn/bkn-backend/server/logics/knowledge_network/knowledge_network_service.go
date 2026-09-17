@@ -72,7 +72,6 @@ type knowledgeNetworkService struct {
 	rts        interfaces.RelationTypeService
 	ums        interfaces.UserMgmtService
 	vbs        interfaces.VegaBackendService
-
 }
 
 func NewKNService(appSetting *common.AppSetting) interfaces.KNServiceWithProxyMutation {
@@ -561,8 +560,8 @@ func (kns *knowledgeNetworkService) resolveKNNavigationVisibility(ctx context.Co
 		return visibility, nil
 	}
 
-	operations, err := kns.ps.FilterResources(ctx, interfaces.RESOURCE_TYPE_KN, knIDs,
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
+	operations, err := kns.ps.FilterVisibleResourcesWithOperations(ctx, interfaces.RESOURCE_TYPE_KN, knIDs,
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
 	if err != nil {
 		return nil, err
 	}
@@ -1810,8 +1809,8 @@ func (kns *knowledgeNetworkService) ListKnSrcs(ctx context.Context,
 		resMids = append(resMids, m.ID)
 	}
 	// Validate permission-management operations.
-	matchResoucesMap, err := kns.ps.FilterResources(ctx, interfaces.RESOURCE_TYPE_KN, resMids,
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, false)
+	matchResoucesMap, err := kns.ps.FilterVisibleResources(ctx, interfaces.RESOURCE_TYPE_KN, resMids,
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
 	if err != nil {
 		return emptyResources, 0, err
 	}

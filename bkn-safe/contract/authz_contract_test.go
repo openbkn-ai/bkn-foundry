@@ -2,20 +2,19 @@
 //
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-// authz_contract_test.go proves the Casbin RBAC-subset model reproduces ISF
-// authorization decisions on the frozen golden traffic. This validates the core
-// replacement assumption: bkn-safe can back the authorization contract with
-// Casbin and stay decision-for-decision compatible with ISF.
+// authz_contract_test.go pins the Casbin RBAC-subset model to the authorization
+// decisions captured when the bkn-safe contract was established.
 //
 // The golden values below are inlined constants (this test reads no files). The
 // contract-freeze spec they came from lives in bkn-docs (docs/foundry). Golden:
 // dip-poc real captures — user f6ae435c, resource agent:probe:
 //
-//	operation-check  {accessor user, resource agent:probe, op use} -> {result:true}
-//	resource-operation (allow_operation:true) -> [{id:probe, operation:[mgnt_built_in_agent, use]}]
+//	operation check {accessor user, resource agent:probe, op use} -> {result:true}
+//	operation projection -> [{id:probe, operation:[mgnt_built_in_agent, use]}]
 //
 // The user holds the app-admin role (1572fb82-...), which grants the agent
-// resource-type ops. We model that and assert Casbin agrees with ISF.
+// resource-type operations. We model that and assert Casbin agrees with the
+// frozen fixture.
 package contract
 
 import (
@@ -104,7 +103,7 @@ func TestOperationCheckMatchesGolden(t *testing.T) {
 		t.Fatalf("enforce: %v", err)
 	}
 	if !ok {
-		t.Fatal("operation-check(user, agent:probe, use) = false; ISF golden = true")
+		t.Fatal("operation-check(user, agent:probe, use) = false; frozen decision = true")
 	}
 }
 
@@ -140,10 +139,8 @@ func TestResourceWildcardMatch(t *testing.T) {
 	}
 }
 
-// TestResourceOperationMatchesGolden — resource-operation with allow_operation
-// returns the FULL set of allowed ops on the resource. ISF golden for
-// agent:probe = ["mgnt_built_in_agent","use"]. We reproduce by enumerating the
-// candidate op universe and collecting those Casbin allows, then compare sets.
+// TestResourceOperationMatchesGolden verifies the complete allowed operation
+// set for agent:probe against the frozen contract fixture.
 func TestResourceOperationMatchesGolden(t *testing.T) {
 	e := newEnforcer(t)
 
@@ -151,10 +148,10 @@ func TestResourceOperationMatchesGolden(t *testing.T) {
 	candidates := []string{"use", "mgnt_built_in_agent", "delete", "publish"}
 	got := allowedOps(t, e, userF6ae, "agent:probe", candidates)
 
-	want := []string{"mgnt_built_in_agent", "use"} // ISF golden (sorted)
+	want := []string{"mgnt_built_in_agent", "use"} // Frozen expected set (sorted).
 	sort.Strings(got)
 	if !equal(got, want) {
-		t.Errorf("resource-operation(user, agent:probe) = %v, want %v (ISF golden)", got, want)
+		t.Errorf("resource-operation(user, agent:probe) = %v, want %v", got, want)
 	}
 }
 

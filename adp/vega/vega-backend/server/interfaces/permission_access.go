@@ -142,10 +142,10 @@ type PermissionResourcesFilter struct {
 	Operations []string             `json:"operation,omitempty"`
 	// VisibilityMatch selects how Operations determine visibility.
 	VisibilityMatch string `json:"visibility_match,omitempty"`
-	// AllowOperation selects the independent operation-projection axis. False
+	// IncludeOperations selects the independent operation-projection axis. False
 	// returns visible resources only; true returns each resource's effective ops.
-	AllowOperation bool   `json:"allow_operation"`
-	Method         string `json:"method,omitempty"`
+	IncludeOperations bool   `json:"include_operations"`
+	Method            string `json:"method,omitempty"`
 }
 
 // Set permissions

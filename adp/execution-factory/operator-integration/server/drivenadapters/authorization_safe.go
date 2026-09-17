@@ -42,28 +42,21 @@ func (s *safeAuthorization) allowedAll(ctx context.Context, accessorID, rtype, r
 	if len(ops) == 0 {
 		return true, nil
 	}
-	checks := make([]map[string]any, 0, len(ops))
+	checks := make([]*interfaces.AuthOperationRequirement, 0, len(ops))
 	for _, op := range ops {
-		checks = append(checks, map[string]any{
-			"resource":  map[string]string{"type": rtype, "id": rid},
-			"operation": string(op),
+		checks = append(checks, &interfaces.AuthOperationRequirement{
+			Resource:  &interfaces.AuthResource{Type: rtype, ID: rid},
+			Operation: op,
 		})
 	}
-	var out struct {
-		Allowed *bool `json:"allowed"`
-	}
-	err := s.post(ctx, "/api/safe/v1/authz/checks", map[string]any{
-		"accessor_id":      accessorID,
-		"checks":           checks,
-		"evaluation_scope": "effective",
-	}, &out)
+	response, err := s.OperationChecks(ctx, &interfaces.AuthOperationChecksRequest{
+		Accessor: &interfaces.AuthAccessor{ID: accessorID},
+		Checks:   checks,
+	})
 	if err != nil {
 		return false, err
 	}
-	if out.Allowed == nil {
-		return false, fmt.Errorf("invalid bkn-safe check response")
-	}
-	return *out.Allowed, nil
+	return response.Result, nil
 }
 
 func (s *safeAuthorization) OperationCheck(ctx context.Context, req *interfaces.AuthOperationCheckRequest) (*interfaces.AuthOperationCheckResponse, error) {

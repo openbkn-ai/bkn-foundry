@@ -221,8 +221,8 @@ func TestBuildTaskServiceList(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return([]string{"catalog-1"}, nil, nil)
+		mockCS.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return([]string{"catalog-1"}, nil)
 		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
 		service := &buildTaskService{bta: mockBTA, cs: mockCS, rs: mockRS, ums: mockUMS}
 		tasks := []*interfaces.BuildTaskSummary{
@@ -252,8 +252,8 @@ func TestBuildTaskServiceList(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return([]string{"catalog-1"}, nil, nil)
+		mockCS.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return([]string{"catalog-1"}, nil)
 		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
 		service := &buildTaskService{bta: mockBTA, cs: mockCS, rs: mockRS, ums: mockUMS}
 		tasks := []*interfaces.BuildTaskSummary{{ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1"}}
@@ -277,8 +277,8 @@ func TestBuildTaskServiceList(t *testing.T) {
 		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		cs := mock_interfaces.NewMockCatalogService(ctrl)
 		service := &buildTaskService{bta: bta, cs: cs}
-		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return([]string{"catalog-1"}, nil, nil)
+		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return([]string{"catalog-1"}, nil)
 		bta.EXPECT().List(gomock.Any(), interfaces.BuildTasksQueryParams{CatalogIDs: []string{"catalog-1"}}).
 			Return(nil, int64(0), errors.New("list failed"))
 

@@ -21,6 +21,7 @@ import (
 type MockPermissionService struct {
 	ctrl     *gomock.Controller
 	recorder *MockPermissionServiceMockRecorder
+	isgomock struct{}
 }
 
 // MockPermissionServiceMockRecorder is the mock recorder for MockPermissionService.
@@ -111,19 +112,34 @@ func (mr *MockPermissionServiceMockRecorder) DeleteResources(ctx, resourceType, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteResources", reflect.TypeOf((*MockPermissionService)(nil).DeleteResources), ctx, resourceType, ids)
 }
 
-// FilterResources mocks base method.
-func (m *MockPermissionService) FilterResources(ctx context.Context, resourceType string, ids, ops []string, visibilityMatch string, allowOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
+// FilterVisibleResources mocks base method.
+func (m *MockPermissionService) FilterVisibleResources(ctx context.Context, resourceType string, ids, visibilityOperations []string, visibilityMatch string) (map[string]interfaces.PermissionResourceOps, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FilterResources", ctx, resourceType, ids, ops, visibilityMatch, allowOperation)
+	ret := m.ctrl.Call(m, "FilterVisibleResources", ctx, resourceType, ids, visibilityOperations, visibilityMatch)
 	ret0, _ := ret[0].(map[string]interfaces.PermissionResourceOps)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// FilterResources indicates an expected call of FilterResources.
-func (mr *MockPermissionServiceMockRecorder) FilterResources(ctx, resourceType, ids, ops, visibilityMatch, allowOperation any) *gomock.Call {
+// FilterVisibleResources indicates an expected call of FilterVisibleResources.
+func (mr *MockPermissionServiceMockRecorder) FilterVisibleResources(ctx, resourceType, ids, visibilityOperations, visibilityMatch any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FilterResources", reflect.TypeOf((*MockPermissionService)(nil).FilterResources), ctx, resourceType, ids, ops, visibilityMatch, allowOperation)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FilterVisibleResources", reflect.TypeOf((*MockPermissionService)(nil).FilterVisibleResources), ctx, resourceType, ids, visibilityOperations, visibilityMatch)
+}
+
+// FilterVisibleResourcesWithOperations mocks base method.
+func (m *MockPermissionService) FilterVisibleResourcesWithOperations(ctx context.Context, resourceType string, ids, visibilityOperations []string, visibilityMatch string) (map[string]interfaces.PermissionResourceOps, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FilterVisibleResourcesWithOperations", ctx, resourceType, ids, visibilityOperations, visibilityMatch)
+	ret0, _ := ret[0].(map[string]interfaces.PermissionResourceOps)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FilterVisibleResourcesWithOperations indicates an expected call of FilterVisibleResourcesWithOperations.
+func (mr *MockPermissionServiceMockRecorder) FilterVisibleResourcesWithOperations(ctx, resourceType, ids, visibilityOperations, visibilityMatch any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FilterVisibleResourcesWithOperations", reflect.TypeOf((*MockPermissionService)(nil).FilterVisibleResourcesWithOperations), ctx, resourceType, ids, visibilityOperations, visibilityMatch)
 }
 
 // GetResourceParents mocks base method.

@@ -53,7 +53,16 @@ func TestProxyExecutionAuthorizationAccessReadsStateAndExactGrant(t *testing.T) 
 		if got := r.Header.Get(common.HeaderBKNRequestID); got != "req_12345678" {
 			t.Errorf("request id = %q, want req_12345678", got)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]bool{"allowed": true})
+		results := make([]map[string]any, 0, len(request.Checks))
+		for _, check := range request.Checks {
+			results = append(results, map[string]any{
+				"resource_type": check.Resource.Type,
+				"resource_id":   check.Resource.ID,
+				"operation":     check.Operation,
+				"allowed":       true,
+			})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"allowed": true, "results": results})
 	})
 	server := httptest.NewServer(mux)
 	defer server.Close()

@@ -212,8 +212,8 @@ func TestRiskTypeServiceSearchRiskTypesContinuesDefaultCursorPaging(t *testing.T
 		rta.EXPECT().GetAllRiskTypesByKnID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return([]*interfaces.RiskType{
 			{RTID: "risk"}, {RTID: "risk-last"},
 		}, nil)
-		ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_RISK_TYPE,
-			[]string{"kn1/risk", "kn1/risk-last"}, gomock.Any(), gomock.Any()).
+		ps.EXPECT().FilterVisibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_RISK_TYPE,
+			[]string{"kn1/risk", "kn1/risk-last"}, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{
 				"kn1/risk":      {ResourceID: "kn1/risk"},
 				"kn1/risk-last": {ResourceID: "kn1/risk-last"},
@@ -249,9 +249,9 @@ func TestRiskTypeServiceSearchRiskTypesFiltersTrustedCandidatesBeforeDatasetPagi
 
 	rta.EXPECT().GetAllRiskTypesByKnID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH).
 		Return([]*interfaces.RiskType{{RTID: "risk-1"}, {RTID: "risk-2"}, {RTID: "risk-3"}}, nil)
-	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_RISK_TYPE,
+	ps.EXPECT().FilterVisibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_RISK_TYPE,
 		[]string{"kn-1/risk-1", "kn-1/risk-2", "kn-1/risk-3"},
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, false).
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).
 		Return(map[string]interfaces.PermissionResourceOps{
 			"kn-1/risk-1": {ResourceID: "kn-1/risk-1"},
 			"kn-1/risk-3": {ResourceID: "kn-1/risk-3"},

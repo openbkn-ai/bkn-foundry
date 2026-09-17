@@ -231,8 +231,7 @@ func (en *Enforcer) hasCurrentProxySource(ctx context.Context, proxyID, resource
 }
 
 // AllowedOps returns, from the candidate ops, those the accessor may perform on
-// the resource. Mirrors ISF resource-operation (allow_operation): the result is
-// a set; callers must not depend on order.
+// the resource. The result is a set; callers must not depend on order.
 func (en *Enforcer) AllowedOps(accessorID, resourceType, resourceID string, candidates []string) ([]string, error) {
 	return en.AllowedOpsContext(context.Background(), accessorID, resourceType, resourceID, candidates)
 }

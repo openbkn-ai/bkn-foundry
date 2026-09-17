@@ -225,6 +225,11 @@ func (s *authServiceImpl) OperationCheckBatch(ctx context.Context, accessor *int
 		return nil, oerrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 			oerrors.ErrExtCommonAuthorizationUnavailable, nil)
 	}
+	if response == nil || len(response.Decisions) != len(requirements) {
+		s.logger.WithContext(ctx).Errorf("[OperationCheckBatch] authorization checks returned an invalid response")
+		return nil, oerrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
+			oerrors.ErrExtCommonAuthorizationUnavailable, nil)
+	}
 	return response.Decisions, nil
 }
 

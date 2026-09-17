@@ -44,7 +44,10 @@ class TestPermissionManagerAuthz(unittest.IsolatedAsyncioTestCase):
         return manager
 
     async def test_runtime_check_uses_real_resource_operation_and_effective_scope(self):
-        session = _Session([_Response({"allowed": True})])
+        session = _Session([_Response({"allowed": True, "results": [{
+            "resource_type": "large_model", "resource_id": "1234567890123456789",
+            "operation": "execute", "allowed": True,
+        }]})])
         manager = self.manager(session)
         allowed = await manager.check_single_permission(
             "user-1", 1234567890123456789, "execute", "large_model", "user")
@@ -81,7 +84,19 @@ class TestPermissionManagerAuthz(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(session.calls[0]["json"]["evaluation_scope"], "effective")
 
     async def test_invalid_or_failed_safe_response_fails_closed(self):
-        for response in [_Response({}, status=503), _Response({"decision": "allow"})]:
+        for response in [
+                _Response({}, status=503),
+                _Response({"decision": "allow"}),
+                _Response({"allowed": True, "results": []}),
+                _Response({"allowed": True, "results": [{
+                    "resource_type": "small_model", "resource_id": "another-model",
+                    "operation": "execute", "allowed": True,
+                }]}),
+                _Response({"allowed": True, "results": [{
+                    "resource_type": "small_model", "resource_id": "model-1",
+                    "operation": "execute", "allowed": False,
+                }]}),
+        ]:
             with self.subTest(response=response.payload):
                 manager = self.manager(_Session([response]))
                 allowed = await manager.check_single_permission(

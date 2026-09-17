@@ -160,9 +160,9 @@ type PermissionResourcesFilter struct {
 	Accessor   PermissionAccessor   `json:"accessor,omitempty"`
 	Resources  []PermissionResource `json:"resources,omitempty"`
 	Operations []string             `json:"operation,omitempty"`
-	// AllowOperation selects the independent operation-projection axis. False
+	// IncludeOperations selects the independent operation-projection axis. False
 	// returns visible resources only; true returns each resource's effective ops.
-	AllowOperation bool `json:"allow_operation"`
+	IncludeOperations bool `json:"include_operations"`
 }
 
 // PermissionPolicy describes a policy to apply.

@@ -278,7 +278,7 @@ func FilterKNChildResourceIDsWithAnyOperation(ctx context.Context, ps interfaces
 
 func filterKNChildResourceIDs(ctx context.Context, ps interfaces.PermissionService,
 	resourceType string, resourceIDs, visibilityOperations []string,
-	allowOperation, requireAnyOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
+	includeOperations, requireAnyOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
 
 	chunkSize := resourceFilterChunkSize(len(resourceIDs))
 	matched := make(map[string]interfaces.PermissionResourceOps, len(resourceIDs))
@@ -288,8 +288,13 @@ func filterKNChildResourceIDs(ctx context.Context, ps interfaces.PermissionServi
 			end = len(resourceIDs)
 		}
 		blockIDs := resourceIDs[start:end]
-		block, err := ps.FilterResources(ctx, resourceType, blockIDs,
-			visibilityOperations, allowOperation)
+		var block map[string]interfaces.PermissionResourceOps
+		var err error
+		if includeOperations {
+			block, err = ps.FilterVisibleResourcesWithOperations(ctx, resourceType, blockIDs, visibilityOperations)
+		} else {
+			block, err = ps.FilterVisibleResources(ctx, resourceType, blockIDs, visibilityOperations)
+		}
 		if err != nil {
 			return nil, err
 		}

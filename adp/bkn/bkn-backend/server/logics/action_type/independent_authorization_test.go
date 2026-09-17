@@ -40,8 +40,8 @@ func independentActionFixture() []*interfaces.ActionType {
 	}
 }
 
-func independentActionPermissions(objectTypeErr error) func(context.Context, string, []string, []string, bool) (map[string]interfaces.PermissionResourceOps, error) {
-	return func(ctx context.Context, resourceType string, ids, visibility []string, _ bool) (map[string]interfaces.PermissionResourceOps, error) {
+func independentActionPermissions(objectTypeErr error) func(context.Context, string, []string, []string) (map[string]interfaces.PermissionResourceOps, error) {
+	return func(ctx context.Context, resourceType string, ids, visibility []string) (map[string]interfaces.PermissionResourceOps, error) {
 		if resourceType == interfaces.RESOURCE_TYPE_OBJECT_TYPE {
 			if objectTypeErr != nil {
 				return nil, objectTypeErr
@@ -50,7 +50,7 @@ func independentActionPermissions(objectTypeErr error) func(context.Context, str
 			// types visible here proves list pagination is not coupled to this map.
 			return map[string]interfaces.PermissionResourceOps{}, nil
 		}
-		return allowAllActionPermissionResources(ctx, resourceType, ids, visibility, true)
+		return allowAllActionPermissionResources(ctx, resourceType, ids, visibility)
 	}
 }
 
@@ -61,8 +61,9 @@ func newIndependentActionTestService(t *testing.T, objectTypeErr error) (*action
 	ps := bmock.NewMockPermissionService(ctrl)
 	ots := bmock.NewMockObjectTypeService(ctrl)
 	ums := bmock.NewMockUserMgmtService(ctrl)
-	ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+	ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		DoAndReturn(independentActionPermissions(objectTypeErr)).AnyTimes()
+	ps.EXPECT().RequirePermissions(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(map[string]*interfaces.ObjectType{}, nil).AnyTimes()
 	ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
@@ -151,7 +152,9 @@ func TestSearchActionTypes_KeepsDirectlyReadableActionsWithHiddenBindings(t *tes
 	objectTypeUnavailable := errors.New("object type authorization unavailable")
 	ata.EXPECT().GetActionTypeIDsByKnID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH).
 		Return([]string{"at-hidden"}, nil)
-	ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+	ps.EXPECT().FilterVisibleResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(independentActionPermissions(objectTypeUnavailable)).AnyTimes()
+	ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		DoAndReturn(independentActionPermissions(objectTypeUnavailable)).AnyTimes()
 	vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
 		Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{{

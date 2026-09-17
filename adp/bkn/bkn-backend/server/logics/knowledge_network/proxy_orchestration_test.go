@@ -1308,8 +1308,8 @@ func TestListGovernedKNProxiesFiltersUnauthorizedMappings(t *testing.T) {
 		{KNID: "kn-b", ProxyAccountID: "proxy-b"},
 		{KNID: "kn-a", ProxyAccountID: "proxy-a"},
 	}
-	permissionService.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_KN,
-		[]string{"kn-hidden", "kn-b", "kn-a"}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}, false).
+	permissionService.EXPECT().FilterVisibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_KN,
+		[]string{"kn-hidden", "kn-b", "kn-a"}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}).
 		Return(map[string]interfaces.PermissionResourceOps{
 			"kn-a": {},
 			"kn-b": {},

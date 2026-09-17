@@ -54,7 +54,7 @@ func newResourceSearchService(t *testing.T, visible []string, entries []map[stri
 	ps := bmock.NewMockPermissionService(ctrl)
 	ota := bmock.NewMockObjectTypeAccess(ctrl)
 	ota.EXPECT().GetObjectTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return(visible, nil).AnyTimes()
-	ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+	ps.EXPECT().FilterVisibleResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		DoAndReturn(allowAllPermissionResources).AnyTimes()
 	vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
 		Return(&interfaces.DatasetQueryResponse{Entries: entries}, nil)

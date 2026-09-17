@@ -195,14 +195,17 @@ func Test_conceptGroupService_GetStatByConceptGroup(t *testing.T) {
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, ids, _ []string, _ bool) (map[string]interfaces.PermissionResourceOps, error) {
-				matched := make(map[string]interfaces.PermissionResourceOps, len(ids))
-				for _, id := range ids {
-					matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}}
-				}
-				return matched, nil
-			}).AnyTimes()
+		allowAll := func(_ context.Context, _ string, ids, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
+			matched := make(map[string]interfaces.PermissionResourceOps, len(ids))
+			for _, id := range ids {
+				matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}}
+			}
+			return matched, nil
+		}
+		ps.EXPECT().FilterVisibleResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(allowAll).AnyTimes()
+		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(allowAll).AnyTimes()
 
 		service := &conceptGroupService{
 			appSetting: appSetting,
@@ -303,8 +306,8 @@ func Test_conceptGroupService_ListConceptGroups(t *testing.T) {
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ums := bmock.NewMockUserMgmtService(mockCtrl)
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, ids, _ []string, _ bool) (map[string]interfaces.PermissionResourceOps, error) {
+		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, ids, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
 				matched := make(map[string]interfaces.PermissionResourceOps, len(ids))
 				for _, id := range ids {
 					matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE}}
@@ -522,8 +525,8 @@ func Test_conceptGroupService_GetConceptGroupByID(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, ids, _ []string, _ bool) (map[string]interfaces.PermissionResourceOps, error) {
+		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, ids, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
 				matched := make(map[string]interfaces.PermissionResourceOps, len(ids))
 				for _, id := range ids {
 					matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_MODIFY, interfaces.OPERATION_TYPE_DELETE}}

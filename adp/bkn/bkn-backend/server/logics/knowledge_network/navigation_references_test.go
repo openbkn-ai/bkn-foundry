@@ -40,8 +40,8 @@ func newNavigationFixture(t *testing.T, visibleObjectTypes []string, objectTypeE
 	for _, id := range visibleObjectTypes {
 		visible[interfaces.KNChildResourceID("kn1", id)] = struct{}{}
 	}
-	ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, resourceType string, ids, _ []string, _ bool) (map[string]interfaces.PermissionResourceOps, error) {
+	ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, resourceType string, ids, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
 			matched := map[string]interfaces.PermissionResourceOps{}
 			switch resourceType {
 			case interfaces.RESOURCE_TYPE_KN:
@@ -186,8 +186,8 @@ func TestNavigation_ReferencesAcrossNetworksCostOneAuthorizationCall(t *testing.
 		Return([]*interfaces.RelationType{navRelation("rt-2", "ot-c", "ot-hidden")}, nil)
 
 	objectTypeCalls := 0
-	ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, resourceType string, ids, _ []string, _ bool) (map[string]interfaces.PermissionResourceOps, error) {
+	ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, resourceType string, ids, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
 			matched := map[string]interfaces.PermissionResourceOps{}
 			switch resourceType {
 			case interfaces.RESOURCE_TYPE_KN:

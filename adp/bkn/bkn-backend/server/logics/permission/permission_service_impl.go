@@ -392,9 +392,21 @@ func (ps *PermissionServiceImpl) DeleteResourceParents(ctx context.Context, reso
 	return nil
 }
 
-// Filter the resource list.
-func (ps *PermissionServiceImpl) FilterResources(ctx context.Context, resourceType string, ids []string,
-	ops []string, allowOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
+// FilterVisibleResources performs pure visibility filtering.
+func (ps *PermissionServiceImpl) FilterVisibleResources(ctx context.Context, resourceType string, ids []string,
+	visibilityOperations []string) (map[string]interfaces.PermissionResourceOps, error) {
+	return ps.filterResources(ctx, resourceType, ids, visibilityOperations, false)
+}
+
+// FilterVisibleResourcesWithOperations returns visible resources with their
+// complete registry-backed effective operation sets.
+func (ps *PermissionServiceImpl) FilterVisibleResourcesWithOperations(ctx context.Context, resourceType string,
+	ids []string, visibilityOperations []string) (map[string]interfaces.PermissionResourceOps, error) {
+	return ps.filterResources(ctx, resourceType, ids, visibilityOperations, true)
+}
+
+func (ps *PermissionServiceImpl) filterResources(ctx context.Context, resourceType string, ids []string,
+	visibilityOperations []string, includeOperations bool) (map[string]interfaces.PermissionResourceOps, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "FilterPermissionResources")
 	defer span.End()
 
@@ -422,9 +434,9 @@ func (ps *PermissionServiceImpl) FilterResources(ctx context.Context, resourceTy
 			ID:   accountInfo.ID,
 			Type: accountInfo.Type,
 		},
-		Resources:      resources,
-		Operations:     ops,
-		AllowOperation: allowOperation,
+		Resources:         resources,
+		Operations:        visibilityOperations,
+		IncludeOperations: includeOperations,
 	})
 	if err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,

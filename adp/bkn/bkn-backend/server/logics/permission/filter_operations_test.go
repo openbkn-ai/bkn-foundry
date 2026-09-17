@@ -61,8 +61,8 @@ func Test_PermissionServiceImpl_FilterResources_FullOperationSet(t *testing.T) {
 		}
 
 		ctx := withAccountInfo(context.Background(), "u1", "user")
-		result, err := svc.FilterResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{"kn1", "kn2"},
-			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
+		result, err := svc.FilterVisibleResourcesWithOperations(ctx, interfaces.RESOURCE_TYPE_KN, []string{"kn1", "kn2"},
+			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
 
 		So(err, ShouldBeNil)
 		So(paths, ShouldResemble, []string{"/api/safe/v1/authz/resource-filter"})

@@ -146,15 +146,6 @@ func validAuthorizationID(id string) bool {
 	return id != "" && strings.TrimSpace(id) == id && !strings.ContainsAny(id, "/*")
 }
 
-func contains(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
-}
-
 func permissionUnavailable(ctx context.Context) error {
 	return infraerrors.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
 		"query authorization is unavailable")

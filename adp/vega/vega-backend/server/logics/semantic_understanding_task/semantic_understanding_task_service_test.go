@@ -813,7 +813,7 @@ func TestSemanticUnderstandingTaskServicePopulatesReferenceNames(t *testing.T) {
 	resourceService.EXPECT().InternalGetByID(gomock.Any(), nil, gomock.Any()).
 		Return(&interfaces.Resource{ID: "resource-2"}, nil).AnyTimes()
 	// This case verifies name enrichment; list authorization returns its catalog.
-	catalogService.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"catalog-1"}, nil, nil).AnyTimes()
+	catalogService.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"catalog-1"}, nil).AnyTimes()
 	userMgmtService := mock_interfaces.NewMockUserMgmtService(ctrl)
 	service := &semanticUnderstandingTaskService{
 		suta: taskAccess,
@@ -828,8 +828,8 @@ func TestSemanticUnderstandingTaskServicePopulatesReferenceNames(t *testing.T) {
 			{ID: "task-2", CatalogID: "catalog-1", ResourceID: "resource-1"},
 		}
 		taskAccess.EXPECT().List(gomock.Any(), gomock.Any()).Return(tasks, int64(2), nil)
-		catalogService.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"catalog-1"}, nil, nil).AnyTimes()
-		catalogService.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"catalog-1"}, nil, nil).AnyTimes()
+		catalogService.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"catalog-1"}, nil).AnyTimes()
+		catalogService.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"catalog-1"}, nil).AnyTimes()
 		resourceService.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-1"}).Return(map[string]*interfaces.Resource{"resource-1": {ID: "resource-1", Name: "资源一"}}, nil)
 		catalogService.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-1"}).Return(map[string]*interfaces.Catalog{"catalog-1": {ID: "catalog-1", Name: "目录一"}}, nil)
 

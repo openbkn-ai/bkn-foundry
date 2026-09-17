@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "python3 tools/check_hardcoded_chinese.py --update-baseline",
-  "violation_count": 2535,
+  "violation_count": 2532,
   "violations": {
     "adp/bkn/bkn-backend/script/delete_concept_index/script.py": [
       "028026370fec2a882dbb",
@@ -1526,8 +1526,7 @@
       "2211d5abb859eefebda3",
       "ced48379bb7a0a08df70",
       "4346ed65e79887343e49",
-      "5a4b4b1b4d78d62aa40b",
-      "c7dc1de35e2b09d0f468"
+      "5a4b4b1b4d78d62aa40b"
     ],
     "infra/mf-model-api/app/commons/restful_api.py": [
       "772b702220d3803ece1f",
@@ -2218,9 +2217,6 @@
       "6eae642340c8c86485ee",
       "2930f6fd2e4c315e08b0"
     ],
-    "infra/mf-model-api/app/utils/permission_manager.py": [
-      "fb3a6ec651a550d573e3"
-    ],
     "infra/mf-model-api/main.py": [
       "c3cc68dcc7d8d9340b49"
     ],
@@ -2439,9 +2435,6 @@
       "35179c50b3f081ce8558",
       "9e4a801ae809f3200b22",
       "9f164626641c3c79000f"
-    ],
-    "infra/mf-model-manager/app/utils/permission_manager.py": [
-      "4c2465b8cc184ad8b262"
     ],
     "infra/mf-model-manager/app/utils/quota_aggregator.py": [
       "2ba81876db5ba4fa02ec",

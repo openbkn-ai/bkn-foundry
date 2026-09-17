@@ -41,7 +41,16 @@ func fakeAuthz(t *testing.T) *httptest.Server {
 			req.EvaluationScope == "effective" &&
 			len(req.Checks) == 1 && req.Checks[0].Resource.Type == "skill" &&
 			req.Checks[0].Resource.ID == interfaces.ResourceIDAll && req.Checks[0].Operation == "view"
-		_ = json.NewEncoder(w).Encode(map[string]bool{"allowed": allowed})
+		results := make([]map[string]any, 0, len(req.Checks))
+		for _, check := range req.Checks {
+			results = append(results, map[string]any{
+				"resource_type": check.Resource.Type,
+				"resource_id":   check.Resource.ID,
+				"operation":     check.Operation,
+				"allowed":       allowed,
+			})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"allowed": allowed, "results": results})
 	})
 	mux.HandleFunc("/api/safe/v1/authz/resources", func(w http.ResponseWriter, r *http.Request) {
 		accessorID := r.URL.Query().Get("accessor_id")
@@ -203,7 +212,12 @@ func TestSafeAuthorizationUsesEffectiveLocale(t *testing.T) {
 		if got := r.Header.Get(sharedrest.AcceptLanguageHeader); got != sharedrest.AmericanEnglish {
 			t.Errorf("Accept-Language = %q, want %q", got, sharedrest.AmericanEnglish)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"allowed": true})
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"allowed": true,
+			"results": []map[string]any{{
+				"resource_type": "skill", "resource_id": "skill-1", "operation": "view", "allowed": true,
+			}},
+		})
 	}))
 	defer server.Close()
 
@@ -234,7 +248,13 @@ func TestSafeAuthorizationBatchesMultipleOperationChecks(t *testing.T) {
 		if len(body.Checks) != 2 || body.Checks[0].Operation != "view" || body.Checks[1].Operation != "modify" {
 			t.Fatalf("checks = %+v, want one ordered two-item batch", body.Checks)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"allowed": true})
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"allowed": true,
+			"results": []map[string]any{
+				{"resource_type": "skill", "resource_id": "skill-1", "operation": "view", "allowed": true},
+				{"resource_type": "skill", "resource_id": "skill-1", "operation": "modify", "allowed": true},
+			},
+		})
 	}))
 	defer server.Close()
 
@@ -322,7 +342,7 @@ func TestSafeAuthorizationResourceFilterCanSkipOperationProjection(t *testing.T)
 
 func TestSafeAuthorizationRejectsIncompleteCheckResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{})
+		_ = json.NewEncoder(w).Encode(map[string]any{"allowed": true})
 	}))
 	defer server.Close()
 

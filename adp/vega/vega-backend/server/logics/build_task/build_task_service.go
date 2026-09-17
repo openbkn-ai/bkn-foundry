@@ -723,8 +723,8 @@ func (bts *buildTaskService) List(ctx context.Context,
 			return []*interfaces.BuildTaskSummary{}, 0, nil
 		}
 	} else {
-		visible, _, err := bts.cs.ListPermittedCatalogIDs(ctx, []string{interfaces.OPERATION_TYPE_TASK_MANAGE},
-			interfaces.VISIBILITY_MATCH_ALL, false, interfaces.CatalogsQueryParams{})
+		visible, err := bts.cs.ListPermittedCatalogIDs(ctx, []string{interfaces.OPERATION_TYPE_TASK_MANAGE},
+			interfaces.VISIBILITY_MATCH_ALL, interfaces.CatalogsQueryParams{})
 		if err != nil {
 			span.SetStatus(codes.Error, "Resolve authorized catalogs failed")
 			return nil, 0, err

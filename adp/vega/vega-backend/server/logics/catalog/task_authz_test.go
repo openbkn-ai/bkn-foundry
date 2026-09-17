@@ -86,12 +86,12 @@ func TestListPermittedCatalogIDs(t *testing.T) {
 		cs := &catalogService{ca: ca, ps: ps}
 
 		ca.EXPECT().ListPermissionRefs(gomock.Any(), gomock.Any()).Return([]interfaces.CatalogPermissionRef{{CatalogID: "cat-1"}, {CatalogID: "cat-2"}}, nil)
-		ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
-			[]string{"cat-1", "cat-2"}, gomock.Any(), interfaces.VISIBILITY_MATCH_ALL, true).
+		ps.EXPECT().FilterVisibleResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			[]string{"cat-1", "cat-2"}, gomock.Any(), interfaces.VISIBILITY_MATCH_ALL).
 			Return(map[string]interfaces.PermissionResourceOps{"cat-1": {ResourceID: "cat-1"}}, nil)
 
-		ids, _, err := cs.ListPermittedCatalogIDs(context.Background(),
-			[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, interfaces.VISIBILITY_MATCH_ALL, true, interfaces.CatalogsQueryParams{})
+		ids, err := cs.ListPermittedCatalogIDs(context.Background(),
+			[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, interfaces.VISIBILITY_MATCH_ALL, interfaces.CatalogsQueryParams{})
 		require.NoError(t, err)
 		assert.Equal(t, []string{"cat-1"}, ids)
 	})
@@ -103,16 +103,16 @@ func TestListPermittedCatalogIDs(t *testing.T) {
 		cs := &catalogService{ca: ca, ps: ps}
 
 		ca.EXPECT().ListPermissionRefs(gomock.Any(), gomock.Any()).Return([]interfaces.CatalogPermissionRef{{CatalogID: "cat-1"}}, nil)
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ps.EXPECT().FilterVisibleResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{}, nil)
 
-		ids, _, err := cs.ListPermittedCatalogIDs(context.Background(),
-			[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, interfaces.VISIBILITY_MATCH_ALL, true, interfaces.CatalogsQueryParams{})
+		ids, err := cs.ListPermittedCatalogIDs(context.Background(),
+			[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, interfaces.VISIBILITY_MATCH_ALL, interfaces.CatalogsQueryParams{})
 		require.NoError(t, err)
 		assert.Empty(t, ids)
 	})
 
-	t.Run("passes allow operation through to bkn-safe", func(t *testing.T) {
+	t.Run("uses pure visibility filtering", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		ca := mock_interfaces.NewMockCatalogAccess(ctrl)
 		ps := mock_interfaces.NewMockPermissionService(ctrl)
@@ -120,13 +120,13 @@ func TestListPermittedCatalogIDs(t *testing.T) {
 
 		ca.EXPECT().ListPermissionRefs(gomock.Any(), gomock.Any()).
 			Return([]interfaces.CatalogPermissionRef{{CatalogID: "cat-1"}}, nil)
-		ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
-			[]string{"cat-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, interfaces.VISIBILITY_MATCH_ALL, false,
+		ps.EXPECT().FilterVisibleResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			[]string{"cat-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, interfaces.VISIBILITY_MATCH_ALL,
 		).
 			Return(map[string]interfaces.PermissionResourceOps{"cat-1": {ResourceID: "cat-1"}}, nil)
 
-		ids, _, err := cs.ListPermittedCatalogIDs(context.Background(),
-			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, interfaces.VISIBILITY_MATCH_ALL, false, interfaces.CatalogsQueryParams{})
+		ids, err := cs.ListPermittedCatalogIDs(context.Background(),
+			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, interfaces.VISIBILITY_MATCH_ALL, interfaces.CatalogsQueryParams{})
 		require.NoError(t, err)
 		assert.Equal(t, []string{"cat-1"}, ids)
 	})

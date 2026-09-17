@@ -20,8 +20,13 @@ type PermissionService interface {
 	// or _NONE.
 	ResolvePropertyAccessLevels(ctx context.Context, objectTypeRef string, properties []string) (map[string]string, error)
 	RequireFullPropertyAccess(ctx context.Context, objectTypeRef string, properties []string) error
-	FilterResources(ctx context.Context, resourceType string, ids []string,
-		ops []string, allowOperation bool) (map[string]PermissionResourceOps, error)
+	// FilterVisibleResources returns only resources satisfying every visibility operation.
+	FilterVisibleResources(ctx context.Context, resourceType string, ids []string,
+		visibilityOperations []string) (map[string]PermissionResourceOps, error)
+	// FilterVisibleResourcesWithOperations also returns each visible resource's
+	// complete registry-backed effective operation set.
+	FilterVisibleResourcesWithOperations(ctx context.Context, resourceType string, ids []string,
+		visibilityOperations []string) (map[string]PermissionResourceOps, error)
 
 	CreateResources(ctx context.Context, resources []PermissionResource, ops []string) error
 	DeleteResources(ctx context.Context, resourceType string, ids []string) error

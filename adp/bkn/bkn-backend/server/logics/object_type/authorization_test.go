@@ -61,8 +61,8 @@ func TestObjectTypeSingleResourceAuthorization(t *testing.T) {
 					Return("object", true, nil)
 			}
 			if tt.name == "detail" {
-				ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
-					[]string{"kn-1/ot-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true).
+				ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+					[]string{"kn-1/ot-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).
 					Return(nil, denied)
 			} else {
 				ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
@@ -113,11 +113,10 @@ func TestObjectTypeMultiResourceDetailRequiresEveryChildPermission(t *testing.T)
 			{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot-1"}},
 			{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot-2"}},
 		}, nil)
-	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
-		[]string{"kn-1/ot-1", "kn-1/ot-2"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, false).
-		Return(map[string]interfaces.PermissionResourceOps{
-			"kn-1/ot-1": {ResourceID: "kn-1/ot-1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
-		}, nil)
+	ps.EXPECT().RequirePermissions(gomock.Any(), []interfaces.PermissionRequirement{
+		{Resource: interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE, ID: "kn-1/ot-1"}, Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL},
+		{Resource: interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE, ID: "kn-1/ot-2"}, Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL},
+	}).Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
 	sqlMock.ExpectRollback()
 
 	service := &objectTypeService{db: db, ota: ota, ps: ps}

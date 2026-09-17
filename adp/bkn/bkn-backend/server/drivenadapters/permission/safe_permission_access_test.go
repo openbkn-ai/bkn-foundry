@@ -163,10 +163,10 @@ func knFilter(ids []string, ops, _ []string) interfaces.PermissionResourcesFilte
 		resources = append(resources, interfaces.PermissionResource{Type: "knowledge_network", ID: id})
 	}
 	return interfaces.PermissionResourcesFilter{
-		Accessor:       interfaces.PermissionAccessor{ID: "u-1", Type: "user"},
-		Resources:      resources,
-		Operations:     ops,
-		AllowOperation: true,
+		Accessor:          interfaces.PermissionAccessor{ID: "u-1", Type: "user"},
+		Resources:         resources,
+		Operations:        ops,
+		IncludeOperations: true,
 	}
 }
 
@@ -334,7 +334,7 @@ func TestSafeFilterResourcesUsesCatalogFallback(t *testing.T) {
 func TestSafeFilterResourcesVisibilityOnly(t *testing.T) {
 	access, calls := newFilterStub(t, map[string][]string{"kn-1": {}})
 	filter := knFilter([]string{"kn-1"}, []string{"view_detail"}, nil)
-	filter.AllowOperation = false
+	filter.IncludeOperations = false
 
 	got, err := access.FilterResources(context.Background(), filter)
 	if err != nil {

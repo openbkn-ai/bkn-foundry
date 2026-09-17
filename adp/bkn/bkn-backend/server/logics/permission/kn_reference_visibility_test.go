@@ -19,8 +19,8 @@ import (
 func TestVisibleReferencedObjectTypes_AnyEffectiveOperationMakesAReferenceVisible(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ps := bmock.NewMockPermissionService(ctrl)
-	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
-		[]string{"kn-1/ot-a", "kn-1/ot-query", "kn-1/ot-hidden"}, []string(nil), true).
+	ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		[]string{"kn-1/ot-a", "kn-1/ot-query", "kn-1/ot-hidden"}, []string(nil)).
 		Return(map[string]interfaces.PermissionResourceOps{
 			"kn-1/ot-a":      {ResourceID: "kn-1/ot-a", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
 			"kn-1/ot-query":  {ResourceID: "kn-1/ot-query", Operations: []string{interfaces.OPERATION_TYPE_QUERY_DATA}},
@@ -58,7 +58,7 @@ func TestVisibleReferencedObjectTypes_AuthorizationFailureIsReturned(t *testing.
 	ctrl := gomock.NewController(t)
 	ps := bmock.NewMockPermissionService(ctrl)
 	unavailable := errors.New("authorization unavailable")
-	ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+	ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil, unavailable)
 
 	if _, err := VisibleReferencedObjectTypes(context.Background(), ps, "kn-1", []string{"ot-a"}); !errors.Is(err, unavailable) {
@@ -69,8 +69,8 @@ func TestVisibleReferencedObjectTypes_AuthorizationFailureIsReturned(t *testing.
 func TestVisibleReferencedObjectTypesByKN_OneCallForEveryNetwork(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ps := bmock.NewMockPermissionService(ctrl)
-	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
-		[]string{"kn-1/ot-a", "kn-1/ot-b", "kn-2/ot-a"}, []string(nil), true).
+	ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		[]string{"kn-1/ot-a", "kn-1/ot-b", "kn-2/ot-a"}, []string(nil)).
 		Return(map[string]interfaces.PermissionResourceOps{
 			"kn-1/ot-a": {ResourceID: "kn-1/ot-a", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
 			"kn-2/ot-a": {ResourceID: "kn-2/ot-a", Operations: []string{interfaces.OPERATION_TYPE_QUERY_DATA}},

@@ -173,7 +173,7 @@ func (s *safePermissionAccess) CheckPermissions(ctx context.Context,
 
 func (s *safePermissionAccess) FilterResources(ctx context.Context, filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
 	resources, err := s.safe.filterResources(ctx, filter.Accessor.ID, filter.Resources,
-		filter.Operations, filter.VisibilityMatch, filter.AllowOperation)
+		filter.Operations, filter.VisibilityMatch, filter.IncludeOperations)
 	if err != nil {
 		return nil, err
 	}

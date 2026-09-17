@@ -57,8 +57,8 @@ func TestConceptGroupSingleResourceAuthorization(t *testing.T) {
 					Return("group", true, nil)
 			}
 			if tt.name == "detail" {
-				ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
-					[]string{"kn-1/cg-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true).
+				ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
+					[]string{"kn-1/cg-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).
 					Return(nil, denied)
 			} else {
 				ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{

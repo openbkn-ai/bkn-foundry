@@ -217,7 +217,7 @@ func (s *safePermissionAccess) filterBatch(ctx context.Context,
 }
 
 func (s *safePermissionAccess) FilterResources(ctx context.Context, filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
-	return s.filterBatch(ctx, filter, filter.Operations, filter.AllowOperation)
+	return s.filterBatch(ctx, filter, filter.Operations, filter.IncludeOperations)
 }
 
 func (s *safePermissionAccess) CreateResources(ctx context.Context, policies []interfaces.PermissionPolicy) error {

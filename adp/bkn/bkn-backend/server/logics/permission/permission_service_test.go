@@ -287,7 +287,7 @@ func Test_PermissionServiceImpl_FilterResources(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		Convey("Failed: missing account info\n", func() {
-			result, err := svc.FilterResources(context.Background(), "kn", []string{"kn1"}, []string{"read"}, true)
+			result, err := svc.FilterVisibleResourcesWithOperations(context.Background(), "kn", []string{"kn1"}, []string{"read"})
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 		})
@@ -302,20 +302,36 @@ func Test_PermissionServiceImpl_FilterResources(t *testing.T) {
 			pa.EXPECT().FilterResources(gomock.Any(), gomock.Any()).DoAndReturn(
 				func(_ context.Context, filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
 					So(filter.Operations, ShouldResemble, []string{"read"})
-					So(filter.AllowOperation, ShouldBeTrue)
+					So(filter.IncludeOperations, ShouldBeTrue)
 					return paResult, nil
 				})
 
-			result, err := svc.FilterResources(ctx, "kn", []string{"kn1"}, []string{"read"}, true)
+			result, err := svc.FilterVisibleResourcesWithOperations(ctx, "kn", []string{"kn1"}, []string{"read"})
 			So(err, ShouldBeNil)
 			So(result["kn1"].ResourceID, ShouldEqual, "kn1")
+		})
+
+		Convey("Success: pure filtering disables operation projection\n", func() {
+			ctx := withAccountInfo(context.Background(), "u1", "user")
+			pa.EXPECT().FilterResources(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
+					So(filter.Operations, ShouldResemble, []string{"read"})
+					So(filter.IncludeOperations, ShouldBeFalse)
+					return map[string]interfaces.PermissionResourceOps{
+						"kn1": {ResourceID: "kn1"},
+					}, nil
+				})
+
+			result, err := svc.FilterVisibleResources(ctx, "kn", []string{"kn1"}, []string{"read"})
+			So(err, ShouldBeNil)
+			So(result["kn1"].Operations, ShouldBeEmpty)
 		})
 
 		Convey("Failed: pa.FilterResources returns error\n", func() {
 			ctx := withAccountInfo(context.Background(), "u1", "user")
 			pa.EXPECT().FilterResources(gomock.Any(), gomock.Any()).Return(nil, errors.New("filter error"))
 
-			result, err := svc.FilterResources(ctx, "kn", []string{"kn1"}, []string{"read"}, true)
+			result, err := svc.FilterVisibleResourcesWithOperations(ctx, "kn", []string{"kn1"}, []string{"read"})
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 		})
@@ -326,7 +342,7 @@ func Test_PermissionServiceImpl_FilterResources(t *testing.T) {
 				"kn2": {ResourceID: "kn2", Operations: []string{"read"}},
 			}, nil)
 
-			result, err := svc.FilterResources(ctx, "kn", []string{"kn1"}, []string{"read"}, true)
+			result, err := svc.FilterVisibleResourcesWithOperations(ctx, "kn", []string{"kn1"}, []string{"read"})
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 		})

@@ -33,7 +33,7 @@ func newTestDiscoverTaskService(t *testing.T) (*discoverTaskService, *vmock.Mock
 		Return(true, nil, nil).AnyTimes()
 	cs.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any(), true).
 		Return(true, nil, nil).AnyTimes()
-	cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"catalog-1"}, nil, nil).AnyTimes()
+	cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"catalog-1"}, nil).AnyTimes()
 
 	return &discoverTaskService{
 		cs:  cs,
@@ -188,7 +188,7 @@ func TestDiscoverTaskServicePopulatesCatalogName(t *testing.T) {
 	cs := vmock.NewMockCatalogService(ctrl)
 	ums := vmock.NewMockUserMgmtService(ctrl)
 	// This case verifies name enrichment; list authorization returns its catalog.
-	cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"catalog-1"}, nil, nil).AnyTimes()
+	cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"catalog-1"}, nil).AnyTimes()
 	cs.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any(), true).
 		Return(true, nil, nil).AnyTimes()
 	cs.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any(), true).
@@ -228,7 +228,7 @@ func TestDiscoverTaskServicePopulatesCatalogName(t *testing.T) {
 		dta := vmock.NewMockDiscoverTaskAccess(ctrl)
 		cs := vmock.NewMockCatalogService(ctrl)
 		ums := vmock.NewMockUserMgmtService(ctrl)
-		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"catalog-1"}, nil, nil).AnyTimes()
+		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"catalog-1"}, nil).AnyTimes()
 		service := &discoverTaskService{dta: dta, cs: cs, ums: ums}
 		tasks := []*interfaces.DiscoverTaskSummary{{ID: "task-4", CatalogID: "catalog-3"}}
 
@@ -250,7 +250,7 @@ func TestDiscoverTaskServicePopulatesCatalogName(t *testing.T) {
 		cs := vmock.NewMockCatalogService(ctrl)
 		rs := vmock.NewMockResourceService(ctrl)
 		ums := vmock.NewMockUserMgmtService(ctrl)
-		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"catalog-1"}, nil, nil)
+		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"catalog-1"}, nil)
 		service := &discoverTaskService{dta: dta, cs: cs, rs: rs, ums: ums}
 		tasks := []*interfaces.DiscoverTaskSummary{
 			{ID: "task-5", CatalogID: "catalog-4", ResourceID: "resource-1"},

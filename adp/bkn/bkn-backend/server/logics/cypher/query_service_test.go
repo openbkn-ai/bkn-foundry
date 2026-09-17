@@ -202,11 +202,11 @@ func (p *stubPermission) ResolvePropertyAccessLevels(_ context.Context, objectTy
 	return levels, nil
 }
 
-func (p *stubPermission) FilterResources(_ context.Context, _ string, ids []string,
-	ops []string, _ bool) (map[string]interfaces.PermissionResourceOps, error) {
+func (p *stubPermission) FilterVisibleResources(_ context.Context, _ string, ids []string,
+	visibilityOperations []string) (map[string]interfaces.PermissionResourceOps, error) {
 
 	p.filtered = append(p.filtered, ids...)
-	p.operations = ops
+	p.operations = visibilityOperations
 	if p.err != nil {
 		return nil, p.err
 	}
@@ -215,7 +215,7 @@ func (p *stubPermission) FilterResources(_ context.Context, _ string, ids []stri
 		if p.denied[id] {
 			continue
 		}
-		matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: ops}
+		matched[id] = interfaces.PermissionResourceOps{ResourceID: id}
 	}
 	return matched, nil
 }

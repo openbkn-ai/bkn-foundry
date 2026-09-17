@@ -251,8 +251,8 @@ func TestPermissionServiceImplFilterResources(t *testing.T) {
 		access := vmock.NewMockPermissionAccess(ctrl)
 		svc := &PermissionServiceImpl{pa: access}
 
-		got, err := svc.FilterResources(contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER),
-			interfaces.AUTH_RESOURCE_TYPE_CATALOG, nil, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, interfaces.VISIBILITY_MATCH_ALL, true,
+		got, err := svc.FilterVisibleResourcesWithOperations(contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER),
+			interfaces.AUTH_RESOURCE_TYPE_CATALOG, nil, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, interfaces.VISIBILITY_MATCH_ALL,
 		)
 
 		require.NoError(t, err)
@@ -274,9 +274,9 @@ func TestPermissionServiceImplFilterResources(t *testing.T) {
 			})
 		svc := &PermissionServiceImpl{pa: access}
 
-		got, err := svc.FilterResources(contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER),
+		got, err := svc.FilterVisibleResources(contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER),
 			interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{"catalog-1", "catalog-2"},
-			[]string{interfaces.OPERATION_TYPE_MODIFY}, interfaces.VISIBILITY_MATCH_ANY, false)
+			[]string{interfaces.OPERATION_TYPE_MODIFY}, interfaces.VISIBILITY_MATCH_ANY)
 
 		require.NoError(t, err)
 		assert.Equal(t, map[string]interfaces.PermissionResourceOps{
@@ -290,7 +290,7 @@ func TestPermissionServiceImplFilterResources(t *testing.T) {
 		}, filter.Resources)
 		assert.Equal(t, []string{interfaces.OPERATION_TYPE_MODIFY}, filter.Operations)
 		assert.Equal(t, interfaces.VISIBILITY_MATCH_ANY, filter.VisibilityMatch)
-		assert.False(t, filter.AllowOperation)
+		assert.False(t, filter.IncludeOperations)
 	})
 
 	t.Run("rejects missing account", func(t *testing.T) {
@@ -299,9 +299,9 @@ func TestPermissionServiceImplFilterResources(t *testing.T) {
 		access := vmock.NewMockPermissionAccess(ctrl)
 		svc := &PermissionServiceImpl{pa: access}
 
-		got, err := svc.FilterResources(context.Background(),
+		got, err := svc.FilterVisibleResourcesWithOperations(context.Background(),
 			interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{"catalog-1"},
-			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, interfaces.VISIBILITY_MATCH_ALL, true)
+			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, interfaces.VISIBILITY_MATCH_ALL)
 
 		assertHTTPStatus(t, err, http.StatusForbidden)
 		assert.Nil(t, got)
@@ -314,9 +314,9 @@ func TestPermissionServiceImplFilterResources(t *testing.T) {
 		access.EXPECT().FilterResources(gomock.Any(), gomock.Any()).Return(nil, errors.New("filter failed"))
 		svc := &PermissionServiceImpl{pa: access}
 
-		got, err := svc.FilterResources(contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER),
+		got, err := svc.FilterVisibleResourcesWithOperations(contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER),
 			interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{"catalog-1"},
-			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, interfaces.VISIBILITY_MATCH_ALL, true)
+			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, interfaces.VISIBILITY_MATCH_ALL)
 
 		assertHTTPStatus(t, err, http.StatusInternalServerError)
 		assert.Nil(t, got)

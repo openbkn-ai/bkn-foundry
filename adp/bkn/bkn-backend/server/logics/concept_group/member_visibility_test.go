@@ -19,13 +19,13 @@ import (
 // memberPermissions answers every concept group, and object, relation and action types the way
 // the member fixtures describe: nothing on ot-hidden, query_data alone on ot-query, and two
 // relation and action types the caller may not read themselves.
-func memberPermissions(objectTypeErr error) func(context.Context, string, []string, []string, bool) (map[string]interfaces.PermissionResourceOps, error) {
+func memberPermissions(objectTypeErr error) func(context.Context, string, []string, []string) (map[string]interfaces.PermissionResourceOps, error) {
 	denied := map[string]struct{}{
 		"kn-1/ot-hidden":     {},
 		"kn-1/rt-unreadable": {},
 		"kn-1/at-unreadable": {},
 	}
-	return func(_ context.Context, resourceType string, ids, _ []string, _ bool) (map[string]interfaces.PermissionResourceOps, error) {
+	return func(_ context.Context, resourceType string, ids, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
 		if resourceType == interfaces.RESOURCE_TYPE_OBJECT_TYPE && objectTypeErr != nil {
 			return nil, objectTypeErr
 		}
@@ -60,7 +60,9 @@ func newMemberTestService(t *testing.T, objectTypeErr error) (*conceptGroupServi
 	}
 	ps := bmock.NewMockPermissionService(ctrl)
 	ums := bmock.NewMockUserMgmtService(ctrl)
-	ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+	ps.EXPECT().FilterVisibleResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(memberPermissions(objectTypeErr)).AnyTimes()
+	ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		DoAndReturn(memberPermissions(objectTypeErr)).AnyTimes()
 	ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	return &conceptGroupService{cga: mocks.cga, rta: mocks.rta, ata: mocks.ata, ps: ps, ums: ums}, mocks
