@@ -123,6 +123,31 @@ func TestCatalogSummaryIsDerivedFromConcreteResourceView(t *testing.T) {
 	}
 }
 
+func TestDerivedSourceIDsOnlyIncludesExactDirectCoreAllowCandidates(t *testing.T) {
+	idx := newGrantIndex([][]string{
+		{"user", "resource:res-view", "view_detail", EffectAllow},
+		{"user", "resource:res-all", ActAll, EffectAllow},
+		{"user", "resource:res-denied", "view_detail", EffectDeny},
+		{"user", "resource:res-bundle", ActFullBusinessAccess, EffectAllow, string(PolicySourceCommunityBundle)},
+		{"user", "resource:*", "view_detail", EffectAllow},
+		{"user", "other:other-1", "view_detail", EffectAllow},
+	}, false)
+
+	got := derivedSourceIDs(idx, []derivedRule{
+		{childType: "resource", childOp: "view_detail"},
+		{childType: "resource", childOp: "modify"},
+	})
+	want := map[string]map[string][]string{
+		"resource": {
+			"view_detail": {"res-all", "res-view"},
+			"modify":      {"res-all"},
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("derivedSourceIDs = %#v, want %#v", got, want)
+	}
+}
+
 func TestDerivedRuleLoadFailureIsRetried(t *testing.T) {
 	e, db := newTestEnforcerDB(t)
 	declareCatalogHierarchy(t, db)
