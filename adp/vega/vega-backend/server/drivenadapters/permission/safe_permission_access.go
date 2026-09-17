@@ -66,8 +66,9 @@ func (c *safeClient) allowedAll(ctx context.Context, accessorID, rtype, rid stri
 func (c *safeClient) checkPermissions(ctx context.Context,
 	request interfaces.PermissionChecksRequest) (interfaces.PermissionChecksResponse, error) {
 
-	response := interfaces.PermissionChecksResponse{Allowed: true, Results: []interfaces.PermissionCheckResult{}}
+	response := interfaces.PermissionChecksResponse{Results: []interfaces.PermissionCheckResult{}}
 	if len(request.Checks) == 0 {
+		response.Allowed = true
 		return response, nil
 	}
 	if err := c.do(ctx, http.MethodPost, "/api/safe/v1/authz/checks", request, &response); err != nil {

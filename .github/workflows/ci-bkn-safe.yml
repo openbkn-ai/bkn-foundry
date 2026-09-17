@@ -38,7 +38,7 @@ jobs:
         env:
           GOWORK: 'off'
         with:
-          working-directory: bkn-safe/cmd/authz-shadow
+          working-directory: bkn-safe/contract
       - name: Lint all bkn-safe modules through the Makefile
         working-directory: bkn-safe
         run: make lint

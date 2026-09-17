@@ -125,6 +125,23 @@ func TestSafeCheckPermissionBatchesOperations(t *testing.T) {
 	}
 }
 
+func TestSafeCheckPermissionFailsClosedOnDependencyError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(srv.Close)
+
+	access := &safePermissionAccess{safe: newSafeClient(srv.URL)}
+	allowed, err := access.CheckPermission(context.Background(), interfaces.PermissionCheck{
+		Accessor:   interfaces.PermissionAccessor{ID: "u-1", Type: interfaces.ACCESSOR_TYPE_USER},
+		Resource:   interfaces.PermissionResource{Type: "object_type", ID: "kn-1/orders"},
+		Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL},
+	})
+	if err == nil || allowed {
+		t.Fatalf("CheckPermission() = %v, %v; want denied result with dependency error", allowed, err)
+	}
+}
+
 // The adapter must resolve authorization in bulk: round-trips depend on the
 // number of operations and resource types, never on how many resources are being
 // filtered. Filtering per resource is what made large catalogs time out (#357).
