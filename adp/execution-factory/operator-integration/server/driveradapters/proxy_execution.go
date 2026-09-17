@@ -60,10 +60,18 @@ func managedProxyExecutionBoundary(recorder interfaces.ProxyExecutionAuditRecord
 		// The caller's platform credential is never a third-party Tool or MCP
 		// credential. Configured business headers in the execution body remain
 		// available and are sanitized by the existing outbound clients.
+		// The one exception is this deployment's own Function runtime: a Function
+		// backing a logic property or action reads BKN as the caller who asked
+		// for it. Capture the credential off the headers for that use only.
+		callerAuthorization := ""
+		if request.TargetType == interfaces.ProxyTargetTypeFunction {
+			callerAuthorization = strings.TrimSpace(c.GetHeader("Authorization"))
+		}
 		c.Request.Header.Del("Authorization")
 		c.Request.Header.Del("X-Authorization")
 		c.Request.Header.Del("X-Api-Key")
-		c.Request = c.Request.WithContext(interfaces.WithProxyExecutionContext(c.Request.Context(), request))
+		ctx := interfaces.WithProxyExecutionContext(c.Request.Context(), request)
+		c.Request = c.Request.WithContext(interfaces.WithProxyCallerAuthorization(ctx, callerAuthorization))
 		c.Next()
 	}
 }

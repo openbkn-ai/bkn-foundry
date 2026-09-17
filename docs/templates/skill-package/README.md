@@ -69,13 +69,13 @@ metadata:
 
 ### 运行环境
 
-平台沙箱预装 `bkn_osdk` 与 `sandbox_sdk`。通过 `execute_tool` 或行动触发时，执行工厂向沙箱注入：
+平台沙箱预装 `bkn_osdk` 与 `sandbox_sdk`。通过 `execute_tool`、行动或逻辑属性触发时，执行工厂向沙箱注入：
 
 | 环境变量 | 含义 |
 | --- | --- |
 | `BKN_BASE_URL` | 集群内平台地址，bkn-osdk 据此回访 BKN |
 | `BKN_TOKEN` | 调用者凭据，函数以调用者身份读数 |
-| `BKN_CONVERSATION_ID` / `BKN_INTERACTION_ID` | 当前受管交互，函数内的每次读数都挂到同一条证据链 |
+| `BKN_CONVERSATION_ID` / `BKN_INTERACTION_ID` | 当前受管交互，函数内的每次读数都挂到同一条证据链。Studio 试算等不在受管交互内的触发为空，函数仍以调用者身份读数 |
 | `BKN_PARENT_OPERATION_ID` | 触发本次执行的操作，嵌套读数记为它的子操作 |
 
 因此函数代码里**不写 URL、不写 Token、不传 bkn_context**，直接 `from bkn_osdk import kn` 调用。

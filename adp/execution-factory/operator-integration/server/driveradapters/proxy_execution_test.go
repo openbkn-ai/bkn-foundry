@@ -69,6 +69,9 @@ func TestManagedProxyExecutionAllowsOnlyExactExecutionRoutes(t *testing.T) {
 			if !ok || proxy.ExecutionID != "execution-1" || proxy.TargetID != "box-1" {
 				t.Errorf("proxy context = %+v, %v", proxy, ok)
 			}
+			if got := interfaces.ProxyCallerAuthorizationFromContext(c.Request.Context()); got != "" {
+				t.Errorf("OpenAPI Tool target captured the caller credential: %q", got)
+			}
 			c.Status(http.StatusOK)
 		})
 		request := httptest.NewRequest(http.MethodPost,
@@ -86,6 +89,33 @@ func TestManagedProxyExecutionAllowsOnlyExactExecutionRoutes(t *testing.T) {
 		}
 		if len(recorder.events) != 0 {
 			t.Fatalf("route validation emitted final audit events: %+v", recorder.events)
+		}
+	})
+
+	// A Function backing a logic property reads BKN as its caller, so the
+	// credential is kept off the headers but beside the proxy context.
+	t.Run("Function execution keeps the caller credential off the headers", func(t *testing.T) {
+		handlerCalls := 0
+		engine := proxyExecutionTestEngine(nil, func(c *gin.Context) {
+			handlerCalls++
+			if c.GetHeader("Authorization") != "" || c.GetHeader("X-Authorization") != "" {
+				t.Error("platform credentials reached the execution handler headers")
+			}
+			if got := interfaces.ProxyCallerAuthorizationFromContext(c.Request.Context()); got != "Bearer caller-oauth" {
+				t.Errorf("captured caller credential = %q", got)
+			}
+			c.Status(http.StatusOK)
+		})
+		request := httptest.NewRequest(http.MethodPost,
+			"/api/agent-operator-integration/internal-v1/tool-box/box-1/proxy/tool-1", nil)
+		addValidProxyExecutionHeaders(request, interfaces.ProxyTargetTypeFunction, "box-1", interfaces.ProxyChildTypeLogic)
+		request.Header.Set("Authorization", "Bearer caller-oauth")
+		response := httptest.NewRecorder()
+
+		engine.ServeHTTP(response, request)
+
+		if response.Code != http.StatusOK || handlerCalls != 1 {
+			t.Fatalf("status=%d handler=%d", response.Code, handlerCalls)
 		}
 	})
 

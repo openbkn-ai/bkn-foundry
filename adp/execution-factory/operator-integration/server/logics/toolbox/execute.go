@@ -477,15 +477,27 @@ func isPlatformFunctionTarget(rawURL string) bool {
 // other address is a third party, and the sanitizer above is what keeps
 // platform identity away from it.
 //
-// All three values must be present. A partial context means the call did not
-// come through a managed Interaction, and a credential without the lifecycle
-// guard it belongs to is exactly what must not reach a pooled sandbox.
+// On a direct Toolbox call all three values must be present. A partial context
+// means the call did not come through a managed Interaction, and a credential
+// without the lifecycle guard it belongs to is exactly what must not reach a
+// pooled sandbox.
+//
+// A trusted proxy call from ontology-query is different: a logic property or
+// action backed by a Function is evaluated by a Studio trial or a plain property
+// query just as often as inside an Interaction, and without the caller's
+// credential the Function cannot read BKN at all. The execution itself is still
+// authorized as the knowledge network's proxy account; the credential only
+// decides what the Function can read, which is what the caller could read
+// anyway. The Interaction is forwarded when the caller was in one.
 //
 // Server-captured values win over anything in the body: a Tool that could state
 // them would be stating whose credential it runs under.
 func functionRuntimeHeaders(headers map[string]any, req *interfaces.ExecuteToolReq) map[string]any {
-	if req == nil || req.RequestAuthorization == "" ||
-		req.BKNConversationID == "" || req.BKNInteractionID == "" {
+	if req == nil || req.RequestAuthorization == "" {
+		return headers
+	}
+	managed := req.BKNConversationID != "" && req.BKNInteractionID != ""
+	if !managed && !req.TrustedProxyCall {
 		return headers
 	}
 	forwarded := make(map[string]any, len(headers)+4)
@@ -493,9 +505,17 @@ func functionRuntimeHeaders(headers map[string]any, req *interfaces.ExecuteToolR
 		forwarded[key] = value
 	}
 	forwarded["Authorization"] = req.RequestAuthorization
-	forwarded[string(interfaces.HeaderBKNConversationID)] = req.BKNConversationID
-	forwarded[string(interfaces.HeaderBKNInteractionID)] = req.BKNInteractionID
-	forwarded[string(interfaces.HeaderBKNParentOperationID)] = req.BKNParentOperationID
+	for _, key := range []interfaces.HeaderKey{
+		interfaces.HeaderBKNConversationID, interfaces.HeaderBKNInteractionID, interfaces.HeaderBKNParentOperationID,
+	} {
+		// Never let a body-supplied Interaction sit beside the caller's token.
+		delete(forwarded, string(key))
+	}
+	if managed {
+		forwarded[string(interfaces.HeaderBKNConversationID)] = req.BKNConversationID
+		forwarded[string(interfaces.HeaderBKNInteractionID)] = req.BKNInteractionID
+		forwarded[string(interfaces.HeaderBKNParentOperationID)] = req.BKNParentOperationID
+	}
 	return forwarded
 }
 

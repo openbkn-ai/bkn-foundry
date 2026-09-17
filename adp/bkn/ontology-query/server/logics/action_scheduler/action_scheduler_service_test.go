@@ -562,10 +562,14 @@ func Test_executeAsync_ContextAndProgress(t *testing.T) {
 				So(ctx.Value(interfaces.ACCOUNT_INFO_KEY), ShouldResemble, execution.Executor)
 				_, ok := ctx.Deadline()
 				So(ok, ShouldBeTrue)
+				credential, ok := interfaces.CallerRuntimeCredentialFromContext(ctx)
+				So(ok, ShouldBeTrue)
+				So(credential.Authorization, ShouldEqual, "Bearer caller-token")
 				return map[string]any{"checked": true}, nil
 			})
 
-		service.executeAsync(execution, actionType, req)
+		service.executeAsync(execution, actionType, req,
+			interfaces.CallerRuntimeCredential{Authorization: "Bearer caller-token"})
 
 		So(len(progressUpdates), ShouldBeGreaterThanOrEqualTo, 1)
 		So(progressUpdates[0].SuccessCount, ShouldEqual, 1)
@@ -664,7 +668,7 @@ func Test_executeAsync_AggregatedInvokesToolOnce(t *testing.T) {
 				return map[string]any{"message_id": "m_1"}, nil
 			}).Times(1)
 
-		service.executeAsync(execution, actionType, req)
+		service.executeAsync(execution, actionType, req, interfaces.CallerRuntimeCredential{})
 
 		So(finalOutcome, ShouldNotBeNil)
 		So(finalOutcome.Status, ShouldEqual, interfaces.ExecutionStatusCompleted)
@@ -742,7 +746,7 @@ func Test_executeAsync_AggregatedCancelledBeforeInvocation(t *testing.T) {
 		// After cancellation, the tool must not be called at all.
 		aoAccess.EXPECT().ExecuteToolAsProxy(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
-		service.executeAsync(execution, actionType, req)
+		service.executeAsync(execution, actionType, req, interfaces.CallerRuntimeCredential{})
 
 		So(finalOutcome, ShouldNotBeNil)
 		So(finalOutcome.Status, ShouldEqual, interfaces.ExecutionStatusCancelled)
@@ -785,7 +789,7 @@ func Test_executeAsync_AggregatedCancelledDuringInvocation(t *testing.T) {
 		aoAccess.EXPECT().ExecuteToolAsProxy(gomock.Any(), "box_001", "tool_001", gomock.Any()).
 			Return(map[string]any{"message_id": "m_1"}, nil).Times(1)
 
-		service.executeAsync(execution, actionType, req)
+		service.executeAsync(execution, actionType, req, interfaces.CallerRuntimeCredential{})
 
 		So(finalOutcome, ShouldNotBeNil)
 		So(finalOutcome.Status, ShouldEqual, interfaces.ExecutionStatusCancelled)
@@ -856,7 +860,7 @@ func Test_executeAsync_PerInstanceStillFansOut(t *testing.T) {
 				return map[string]any{"ok": true}, nil
 			}).Times(3)
 
-		service.executeAsync(execution, actionType, req)
+		service.executeAsync(execution, actionType, req, interfaces.CallerRuntimeCredential{})
 
 		So(sentOrderNos, ShouldResemble, []any{"A", "B", "C"})
 		So(finalOutcome.SuccessCount, ShouldEqual, 3)
@@ -926,7 +930,7 @@ func Test_executeAsync_PerInstanceCancelledMidway(t *testing.T) {
 		aoAccess.EXPECT().ExecuteToolAsProxy(gomock.Any(), "box_001", "tool_001", gomock.Any()).
 			Return(map[string]any{"ok": true}, nil).Times(1)
 
-		service.executeAsync(execution, actionType, req)
+		service.executeAsync(execution, actionType, req, interfaces.CallerRuntimeCredential{})
 
 		So(finalOutcome, ShouldNotBeNil)
 		So(finalOutcome.Status, ShouldEqual, interfaces.ExecutionStatusCancelled)
@@ -1626,7 +1630,7 @@ func Test_executeAsync_AppendsOnlyNewResults(t *testing.T) {
 		aoAccess.EXPECT().ExecuteToolAsProxy(gomock.Any(), "box_001", "tool_001", gomock.Any()).
 			Return(map[string]any{"ok": true}, nil).Times(total)
 
-		service.executeAsync(execution, actionType, req)
+		service.executeAsync(execution, actionType, req, interfaces.CallerRuntimeCredential{})
 
 		// Batch 1 (positions 0-99) fails and stays pending, so batch 2 rewrites it together
 		// with positions 100-199; the last partial batch (200-249) is stored before finishing.
@@ -1672,7 +1676,7 @@ func Test_executeAsync_RetriesFinalResultsFlush(t *testing.T) {
 			aoAccess.EXPECT().ExecuteToolAsProxy(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(map[string]any{"ok": true}, nil)
 
-			service.executeAsync(execution, actionType, req)
+			service.executeAsync(execution, actionType, req, interfaces.CallerRuntimeCredential{})
 			return appendCalls, finished
 		}
 

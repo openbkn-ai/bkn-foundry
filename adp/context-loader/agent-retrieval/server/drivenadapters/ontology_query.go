@@ -328,6 +328,16 @@ func classifyActionError(ctx context.Context, err error, fallbackDetailKey strin
 		infraErr.LocalizedDetail(ctx, fallbackDetailKey))
 }
 
+// withFunctionRuntimeCredential forwards the caller's own credential, so a
+// Function backing a logic property or action reads BKN as the caller who asked
+// for it. ontology-query still authorizes the request by the account headers;
+// it hands this credential only to the Execution Factory Function runtime.
+func withFunctionRuntimeCredential(ctx context.Context, header map[string]string) {
+	if token, ok := common.GetRawTokenFromCtx(ctx); ok {
+		header["Authorization"] = "Bearer " + token
+	}
+}
+
 // QueryLogicProperties queries logical property values.
 func (o *ontologyQueryClient) QueryLogicProperties(ctx context.Context, req *interfaces.QueryLogicPropertiesReq) (resp *interfaces.QueryLogicPropertiesResp, err error) {
 	uri := fmt.Sprintf(queryLogicPropertiesURI, url.PathEscape(req.KnID), url.PathEscape(req.OtID))
@@ -344,6 +354,7 @@ func (o *ontologyQueryClient) QueryLogicProperties(ctx context.Context, req *int
 		req.KnID, req.OtID, len(req.InstanceIdentities), len(req.Properties))
 
 	header := common.GetHeaderForChildOperation(ctx, "ontology.logic_property.query", 1)
+	withFunctionRuntimeCredential(ctx, header)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 
@@ -429,6 +440,7 @@ func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interface
 		url, len(req.InstanceIdentities), dynamicParamKeys)
 
 	header := common.GetHeaderForChildOperation(ctx, "ontology.action.execute", 1)
+	withFunctionRuntimeCredential(ctx, header)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 
 	_, respBody, err := o.httpClient.PostBytes(ctx, url, header, body)

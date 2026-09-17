@@ -95,7 +95,35 @@ func (aoa *agentOperatorAccess) proxyHeaders(
 	if proxy.ExecutionID != "" {
 		headers[interfaces.HTTPHeaderBKNExecutionID] = proxy.ExecutionID
 	}
-	return common.MergeTraceHeadersForChildOperation(ctx, headers, "action.proxy.execute", 1), nil
+	headers = common.MergeTraceHeadersForChildOperation(ctx, headers, "action.proxy.execute", 1)
+	addFunctionRuntimeCredential(ctx, headers, binding.TargetType)
+	return headers, nil
+}
+
+// addFunctionRuntimeCredential lets a Function reached through the proxy read
+// BKN as the caller who invoked it. Execution Factory authorizes the execution
+// as the proxy account, keeps this credential off every third-party Tool, and
+// hands it only to its own Function runtime. It is sent for Function targets
+// only, so an OpenAPI Tool or MCP route never receives it at all.
+//
+// The Conversation travels only beside an Interaction, so the Function's reads
+// join the Interaction that asked for them. Their parent is the operation the
+// caller already registered with the trace core (Context Loader's tool call):
+// ontology-query's own child operation ids are never registered, and a read
+// declaring one as its parent is rejected as parent_operation_not_found.
+func addFunctionRuntimeCredential(ctx context.Context, headers map[string]string, targetType string) {
+	if targetType != interfaces.ProxyTargetTypeFunction {
+		return
+	}
+	credential, ok := interfaces.CallerRuntimeCredentialFromContext(ctx)
+	if !ok {
+		return
+	}
+	headers["Authorization"] = credential.Authorization
+	if credential.ConversationID != "" && headers[common.HeaderBKNInteractionID] != "" {
+		headers[common.HeaderBKNConversationID] = credential.ConversationID
+		headers[common.HeaderBKNParentOperationID] = credential.ParentOperationID
+	}
 }
 
 func directCallerHeaders(ctx context.Context, operation string) map[string]string {

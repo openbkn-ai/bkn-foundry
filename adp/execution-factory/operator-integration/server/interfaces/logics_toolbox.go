@@ -334,7 +334,12 @@ type ExecuteToolReq struct {
 	BKNConversationID    string `json:"-"`
 	BKNInteractionID     string `json:"-"`
 	BKNParentOperationID string `json:"-"`
-	HTTPRequestParams    `json:",inline"`
+	// TrustedProxyCall marks a call that passed ontology-query's managed proxy
+	// boundary. A logic property or action is evaluated outside any managed
+	// Interaction (a Studio trial, a plain property query), so on this path the
+	// credential is forwarded without one; see functionRuntimeHeaders.
+	TrustedProxyCall  bool `json:"-"`
+	HTTPRequestParams `json:",inline"`
 }
 
 // ConvertOperatorToToolReq operator converts tool request.
